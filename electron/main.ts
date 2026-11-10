@@ -16,7 +16,9 @@ import { engineBusy, engineFlush, serverCall, setServerSink } from "./browser/en
 import { attach, attachable, servedHere, type Call, type Link } from "./host.ts"
 import { talkCall } from "./talklog.ts"
 import { CODE, DEV, HOST, WORKTREE } from "./identity.ts"
-import { appUpdates, checkInstalled, initUpdates, modeChanged, pageSafe, quitUpdates, RELEASE, restartToUpdate, scheduleUpdates, updatable, UPDATE_MODES, updateMenuItem, worktreeChanged, worktreeNow,
+import { codeRoot, commitAt, hold } from "./storehost.ts"
+import { DESKTOP_PROTOCOL } from "../core/desktopapp.ts"
+import { appUpdates, checkInstalled, initUpdates, launchedFrom, lookNow, mainBehind, updatesReady, modeChanged, pageSafe, quitUpdates, RELEASE, restartToUpdate, scheduleUpdates, updatable, UPDATE_MODES, updateMenuItem, worktreeChanged, worktreeNow,
   windowReady, type UpdateMode } from "./updates.ts"
 import { appHandlers, appsOn, appsWindow, stopApps } from "./apps.ts"
 import { dictationHandlers, setDictationServer, stopDictation } from "./dictation.ts"
@@ -123,11 +125,13 @@ function uncaught(kind: "uncaught" | "rejection", e: unknown) {
  *  answered), or the launch is done with none. What it recorded since then goes to that window's Errors (vau errors). */
 let shellTold = false, shellReported = false
 function shellReady(w: Win | null) {
-  if (!shellTold) { shellTold = true; HOST?.ready() }
+  if (!shellTold) { shellTold = true; HOST?.ready(); updatesReady() }
   if (!w || shellReported || !HOST) return
   shellReported = true
   const short = (c: string | null) => c?.slice(0, 7) ?? "this build"
-  const errors = HOST.events().map((e) => ({ kind: "boot", t: e.t, stack: "", build: CODE?.commit ?? "",
+  const events = HOST.events(), passed = events.find((e) => e.kind === "passed")
+  launchedFrom({ from: HOST.from, commit: CODE?.commit ?? null, ...(passed ? { fellBack: { commit: passed.commit, why: passed.why } } : {}) })
+  const errors = events.map((e) => ({ kind: "boot", t: e.t, stack: "", build: CODE?.commit ?? "",
     message: e.kind === "passed" ? `The app didn't start on ${short(e.commit)}: ${e.why}; it runs ${short(CODE?.commit ?? null)}`
       : `The app ${e.kind === "late" ? "was slow to start" : e.kind === "crashed" ? "crashed starting" : "couldn't start"} on ${short(e.commit)}: ${e.why}` }))
   if (errors.length) void fetch(`http://127.0.0.1:${w.port}/api/errors`, { method: "POST", headers: { "Content-Type": "application/json" },
@@ -250,8 +254,10 @@ class PortTaken extends Error {}
 type Win = { vault: Known; win: AppWindow; server: ChildProcess | null; link: Link | null; port: number; ready: boolean; queue: string[]
   /** Its server goes with it, the helper on or not (it reopens with a new one: apps:reopen). */
   ending?: boolean
-  /** Its server was stopped to start again on purpose (a Dev instance's code changed): not a crash. */
+  /** Its server was stopped to start again on purpose (a Dev instance's code changed, an update): not a crash. */
   restarting?: boolean
+  /** The commit of the web build its server serves, when that isn't its code's (the store's adopt-web). */
+  web?: string
   /** Opened by Set up Vaultite: its page shows the welcome card's next pages (asked once, `app:welcome`). */
   welcome?: boolean
   /** What its page last told the menu bar (`menu:sync`): its commands, pins and recent files. */
@@ -298,6 +304,7 @@ function serverFor(v: Known) {
  *  permissions (core/coreops/permissions.ts), the app's updates (app.version), the Dictations list (plugins/core/dictation). */
 const answerCall = (v: Known, m: Call) => Promise.resolve().then(() => m.name === "app:permissions" ? (MAC ? macPermissions().then((p) => p.macPermissions()) : null)
   : m.name === "app:updates" ? appUpdates()
+  : m.name === "app:update-look" ? lookNow(Array.isArray(m.args) ? m.args[0] as { port?: unknown; commit?: unknown } : undefined)
   : typeof m.name === "string" && m.name.startsWith("screen:") ? (helper ? helper.screenCall(m.name, Array.isArray(m.args) ? m.args : []) : null)
   : typeof m.name === "string" && m.name.startsWith("talk:") ? talkCall(m.name, Array.isArray(m.args) ? m.args : [])
   : typeof m.name === "string" && m.name.startsWith("dictations:") ? (MAC ? import("./dictationlist.ts").then((d) => d.dictationsCall(String(m.name), Array.isArray(m.args) ? m.args : [])) : { items: [], total: 0, here: false })
@@ -311,12 +318,16 @@ function desktopEvent(w: Win, name: string, data: unknown) {
 }
 setServerSink((win, name, data) => { for (const w of wins.values()) if (w.win === win) desktopEvent(w, name, data) })
 
-function startServer(v: Known, port: number): Promise<ChildProcess> {
+/** The root each own server runs (its code's commit: commitAt). */
+const rootOf = new WeakMap<ChildProcess, string>()
+function startServer(v: Known, port: number, own = false): Promise<ChildProcess> {
   const logDir = app.getPath("logs")
   fs.mkdirSync(logDir, { recursive: true })
   const log = fs.createWriteStream(serverLog(v.path), { flags: "a" })
-  const child = fork(path.join(ROOT, "server.ts"), [], {
-    cwd: ROOT, stdio: ["ignore", "pipe", "pipe", "ipc"],
+  // (from the store's current root, Main's updates: storehost.ts; else its own)
+  const root = own ? ROOT : codeRoot()
+  const child = fork(path.join(root, "server.ts"), [], {
+    cwd: root, stdio: ["ignore", "pipe", "pipe", "ipc"],
     env: {
       ...process.env, ELECTRON_RUN_AS_NODE: "1", VAULTITE_DESKTOP: "1", VAULTITE_VAULT: v.path, VAULTITE_LOCAL: LOCAL,
       HOST: "127.0.0.1", PORT: String(port),
@@ -328,6 +339,12 @@ function startServer(v: Known, port: number): Promise<ChildProcess> {
     },
   })
   child.stderr!.pipe(log)
+  rootOf.set(child, root)
+  if (child.pid) hold(root, child.pid, "server")
+  // (one from another root than this process's may speak another protocol: it says first, and one that doesn't match
+  // gives way to one of this app's own code, the app offered its relaunch onto the newer)
+  let spoke: unknown = root === ROOT ? DESKTOP_PROTOCOL : undefined
+  child.on("message", (m: { type?: string; protocol?: unknown }) => { if (m?.type === "desktop:hello") spoke = m.protocol })
   child.on("message", (m: Call) => {
     if (m?.type !== "desktop:call" || typeof m.rid !== "number") return
     const reply = (r: { value?: unknown; error?: string }) => { if (child.connected) child.send({ type: "desktop:reply", rid: m.rid, ...r }) }
@@ -339,7 +356,15 @@ function startServer(v: Known, port: number): Promise<ChildProcess> {
     child.stdout!.on("data", (b: Buffer) => {
       log.write(b)
       if (out.length < 100_000) out += b.toString()
-      if (/vaultite on http/.test(out)) { clearTimeout(timer); ok(child) }
+      if (!/vaultite on http/.test(out)) return
+      clearTimeout(timer)
+      if (spoke === DESKTOP_PROTOCOL) return ok(child)
+      console.error(`vaultite: ${nameOf(v.path)}'s server from ${root} speaks protocol ${String(spoke ?? "?")}, this app ${DESKTOP_PROTOCOL}: its own code instead`)
+      const c = commitAt(root)
+      if (c) mainBehind(c)
+      child.removeAllListeners("exit")
+      child.once("exit", () => startServer(v, port, true).then(ok, fail))
+      child.kill()
     })
     child.stderr!.on("data", (b: Buffer) => { if (out.length < 100_000) out += b.toString() })
     child.once("exit", (code) => {
@@ -1302,6 +1327,16 @@ initUpdates({
   buildMenu,
   nameOf,
   helper: () => !!helper,
+  servers: () => {
+    const own = [...wins.values()].filter((w) => w.server?.exitCode === null)
+    const root = own[0]?.server ? rootOf.get(own[0].server) : undefined
+    if (!root) return null
+    const code = commitAt(root)
+    return { code, web: own[0].web ?? code }
+  },
+  restartServers: () => { for (const w of wins.values()) if (w.server?.exitCode === null) { w.restarting = true; w.web = undefined; w.server.kill() } },
+  adoptWeb: (dist, commit) => { for (const w of wins.values()) if (w.server?.exitCode === null && w.server.connected) { w.server.send({ type: "adopt-web", dist }); w.web = commit } },
+  path: () => [...pathDirs(), process.env.PATH].filter(Boolean).join(path.delimiter),
 })
 
 // ---------- a Dev instance on a worktree (electron/devroot.ts) ----------

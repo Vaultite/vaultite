@@ -187,4 +187,17 @@ await section("after a launch: the running server against the installed build", 
     && !afterUpdate({ installed: NEW, app: NEW, server: null, restarted: false }).restart)
 })
 
+await section("Main's updates through its code store: where, and its two policies (electron/storepolicy.ts)", async () => {
+  const { policyFor, storeWanted } = await import("../electron/storepolicy.ts")
+  const main = { packaged: true, channel: "main", release: false, platform: "darwin", marker: true }
+  check("Vaultite Main where its marker is: the store", storeWanted(main) && storeWanted({ ...main, platform: "linux" }))
+  check("...not without the marker (updates as before), nor a release, Windows, Dev or a run from source", !storeWanted({ ...main, marker: false }) && !storeWanted({ ...main, release: true })
+    && !storeWanted({ ...main, platform: "win32" }) && !storeWanted({ ...main, channel: "dev" }) && !storeWanted({ ...main, channel: "nightly", release: true }) && !storeWanted({ ...main, packaged: false }))
+  const server = "5".repeat(40), attached = await policyFor(server), alone = await policyFor("")
+  check("attached to a service: only the commit its server runs, checked by its server booting", attached.follows === "server" && (await attached.ci("", server)).ok === true
+    && (await attached.ci("", "6".repeat(40))).ok === null && attached.recipe.preflight.map((x) => x.name).join() === "server boots")
+  check("standalone: the branch's newest, CI not waited for, smoke too", alone.follows === "branch" && (await alone.ci("", "6".repeat(40))).ok === true
+    && alone.recipe.preflight.map((x) => x.name).join() === "server boots,smoke")
+})
+
 await exit(summary("update", t0))

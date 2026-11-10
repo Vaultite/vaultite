@@ -6,8 +6,9 @@ import path from "node:path"
 import { fingerprint } from "./print.mjs"
 
 /** What a shell may run besides its bundle (a new shell each: this file is one of its inputs): Vaultite Dev a worktree
- *  (VAULTITE_CODE_ROOT, electron/dev.ts); Main its store's roots, off until stage 5 turns it on. */
-export const ENABLED = Object.freeze({ dev: true, store: false })
+ *  (VAULTITE_CODE_ROOT, electron/dev.ts); Main its store's roots (storeIn: where its marker is). */
+export const ENABLED = Object.freeze({ dev: true, store: true })
+export { MARKER, STORE, storeIn } from "./store.mjs"
 /** A run that dies within this of becoming ready crashed starting; two such in a row make its root bad. */
 export const SETTLED_AFTER = 60_000
 

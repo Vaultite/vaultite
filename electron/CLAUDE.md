@@ -15,6 +15,12 @@
   it opens the sandbox, never Set up, and takes in the worktree's changes as they're saved (`devroot.ts`, `devreach.ts`):
   web/dist rebuilt, its servers restarted, a relaunch offered (done, headless). `--stop` ends one with everything it
   started (whatever carries its `VAULTITE_USER_DATA`); its shell has `--inspect` on, so QA drives it (`VAULTITE_QA_SHELL=dev`).
+- Vaultite Main where `use-code-store` is in its data folder (`storepolicy.ts`, read at each look and launch) updates
+  through the root store (core/update/store.ts, `storehost.ts`): each commit made once into a read-only root, then only
+  what it changed acts (core/update/plan.ts): its servers take the new web build or restart from the new root, the main
+  process is offered a relaunch onto it (seconds, nothing installed); only a new shell fingerprint builds and installs the
+  app as before. Attached to a service it takes only its server's commit; standalone, the branch's newest. Processes run
+  from a root hold it (core/update/lease.ts) until they end. Removing the marker runs the bundle at the next launch.
 - An update (update.sh install) is staged beside the app and renamed in once it quit: a copy opened from the old bundle
   meanwhile would run the replaced tree while the disk says new (`ps` still shows the old path), so a running main is
   looked for first, and the app checks its server against build.json once up (installed.ts). The app's binary also runs

@@ -4,6 +4,7 @@ import { app, dialog } from "electron"
 import module from "node:module"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
+import { fingerprint } from "./print.mjs"
 import * as roots from "./roots.mjs"
 
 /** A run not ready by then (no window's server answering) failed: another root is tried, else it's said. */
@@ -21,8 +22,12 @@ const userData = app.getPath("userData")
 module.enableCompileCache?.(path.join(userData, "compile-cache"))
 
 const dir = roots.stateDir(userData)
-const choose = () => roots.pick({ bundle, packaged: app.isPackaged, platform: process.platform, shell, env: process.env,
-  uid: process.getuid?.(), store: path.join(userData, "code.noindex"), bad: roots.badRoots(dir) })
+// (web/qa/update-roots.mjs: a run from source picking as Vaultite Main's shell would, its checkout the bundle; never a
+// packaged app's, whose identity is its stamp's)
+const asMain = !app.isPackaged && process.env.VAULTITE_SHELL_TEST === "main"
+const picking = asMain ? { ...shell, channel: "main", fingerprint: fingerprint(bundle) } : shell
+const choose = () => roots.pick({ bundle, packaged: app.isPackaged || asMain, platform: process.platform, shell: picking, env: process.env,
+  uid: process.getuid?.(), store: roots.storeIn(userData), bad: roots.badRoots(dir) })
 roots.settle(dir, { bundle })
 const picked = choose()
 for (const p of picked.passed) roots.event(dir, { kind: "passed", root: p.root, commit: roots.commitOf(p.root), why: p.why, ran: picked.root })

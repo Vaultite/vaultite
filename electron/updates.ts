@@ -8,6 +8,9 @@ import path from "node:path"
 import { plainError, sentence } from "../core/plainerror.ts"
 import { BRANCH, CODE, DEV, SHELL, WORKTREE } from "./identity.ts"
 import { afterUpdate, installedCommit } from "./installed.ts"
+import { relaunchSoon, storeLook, storeOn, storeReady, storeStatus, type StoreHost } from "./storehost.ts"
+/** As often as the service looks (core/update/updater.ts' LOOK_EVERY): a look where nothing moved is a fetch. */
+const LOOK_EVERY = 3 * 60_000
 
 const ROOT = path.dirname(import.meta.dirname)
 const MAC = process.platform === "darwin"
@@ -39,6 +42,12 @@ export type UpdatesHost = {
   nameOf(vault: string): string
   /** The menu-bar helper runs (a Mac's, not a scripted copy's nor Vaultite Dev's). */
   helper(): boolean
+  /** Its own servers (the store's updates, storehost.ts): their commits, restarted, or serving another web build. */
+  servers: StoreHost["servers"]
+  restartServers(): void
+  adoptWeb(dist: string, commit: string): void
+  /** The user's PATH, as their login shell has it. */
+  path(): string
 }
 let host: UpdatesHost
 export function initUpdates(h: UpdatesHost) { host = h }
@@ -71,6 +80,9 @@ const replaceable = () => MAC ? BUNDLE.endsWith(".app") : !process.env.APPIMAGE 
 let checking: ChildProcess | null = null
 /** The commit of a finished build waiting for a restart (a release's: its version). */
 let ready: string | null = null
+/** How `ready` goes in: a new app put in place (update.sh install, a release's installer), or (the store's) a relaunch
+ *  of this one onto a root it already has. */
+let readyHow: "install" | "relaunch" = "install"
 /** What the update is doing now, shown in the windows as a toast that stays (null: nothing). */
 let status: string | null = null
 /** Written as the app quits to update (what it updates to), read and removed by the first window after the restart. */
@@ -78,9 +90,59 @@ const UPDATED = () => path.join(app.getPath("userData"), "updated")
 
 /** What this app's updates are doing, and the commit it runs (null: not a build), for its server's app.version. */
 export function appUpdates() {
+  const store = storeOn() ? storeStatus() : null
   return { mode: host.mode(), available: updatable(), from: worktree ? "worktree" : RELEASE ? "releases" : BRANCH, ready, doing: status,
-    commit: worktree?.commit ?? CODE?.commit ?? null, helper: host.helper(), ...(worktree ? { worktree } : {}) }
+    commit: worktree?.commit ?? CODE?.commit ?? null, helper: host.helper(), ...(worktree ? { worktree } : {}),
+    ...(store ? { store, how: readyHow } : {}), ...(started ? { root: started } : {}), ...(behind && ready ? { behind } : {}) }
 }
+
+/** Why the main process runs older code (the store's plan: what changed that it runs), while its relaunch waits. */
+let behind: string | null = null
+/** The code root this launch runs, and (after a fallback) the one it didn't and why: the shell's word (main.ts). */
+let started: { from: string; commit: string | null; fellBack?: { commit: string | null; why: string } } | null = null
+export function launchedFrom(r: NonNullable<typeof started>) { started = r }
+
+/** What the store's updates use of the app (storehost.ts). */
+const storeHost = (): StoreHost => ({
+  attached: attachedTo, servers: () => host.servers(), restartServers: () => host.restartServers(), adoptWeb: (d, c) => host.adoptWeb(d, c),
+  offerRelaunch: (c, why) => { behind = why ?? null; offer(c, "relaunch") }, offerInstall: (c) => offer(c, "install"),
+  busy: async () => (host.busy() ? "an agent is at work in the browser" : null), path: () => host.path(),
+  log: (line) => { try { fs.mkdirSync(app.getPath("logs"), { recursive: true }); fs.appendFileSync(path.join(app.getPath("logs"), "update.log"), `${new Date().toISOString()} ${line}\n`) } catch { /* no log */ } },
+})
+/** An update ready, offered in every window and the menu; automatic, made once it's safe. */
+function offer(commit: string, how: typeof readyHow) {
+  if (ready === commit && readyHow === how) return
+  ready = commit
+  readyHow = how
+  for (const w of host.windows()) tell(w)
+  host.buildMenu()
+  restartIfSafe()
+}
+let storeLooking: Promise<unknown> | null = null
+/** One look through the store (one at a time); by hand, its state said. */
+function storeCheck(byHand: boolean) {
+  if (storeLooking || (!byHand && host.mode() === "off")) return
+  if (byHand) setStatus("Checking for updates…")
+  host.buildMenu()
+  storeLooking = storeLook(storeHost()).then((s) => {
+    if (byHand && s.state === "current" && !ready) dialog.showMessageBox({ message: `${app.getName()} is up to date`, detail: `It runs ${CODE!.commit.slice(0, 7)}: ${s.why}.` })
+    else if (byHand && s.state === "failed" && !host.quitting()) updateFailed(sentence(s.why))
+  }).catch((e) => storeHost().log(`store: the look failed: ${(e as Error).message}`))
+    .finally(() => { storeLooking = null; if (byHand) setStatus(null); host.buildMenu() })
+}
+/** A look now (vau update, from its server): through the store, its state after it; else update.sh's build started. */
+export async function lookNow(asking?: { port?: unknown; commit?: unknown }) {
+  // (the server asking says its commit: asked back while its op runs, it couldn't answer)
+  if (typeof asking?.port === "number" && typeof asking.commit === "string") told.set(asking.port, asking.commit)
+  if (storeOn()) { if (!storeLooking) storeCheck(false); await storeLooking; told.clear(); return storeStatus() }
+  told.clear()
+  checkForUpdate(false)
+  return { branch: null, state: checking ? "updating" : "current", why: checking ? "building the newest with update.sh" : "nothing to build now (one an hour at most)", checked: Date.now() }
+}
+/** A server this app forked runs newer code than the app can talk to: a relaunch onto it offered. */
+export const mainBehind = (commit: string) => offer(commit, "relaunch")
+/** This launch is ready (its first window's page up): what the store keeps of it (storehost.ts storeReady). */
+export function updatesReady() { void storeReady(storeHost()).catch((e) => storeHost().log(`store: ${(e as Error).message}`)) }
 
 /** A Dev instance's worktree (electron/devroot.ts): what it runs now. */
 let worktree: { worktree: string; branch: string; commit: string; dirty: boolean } | null = null
@@ -104,6 +166,7 @@ function updateLog() {
 function checkForUpdate(byHand: boolean) {
   if (!byHand && host.mode() === "off") return
   if (RELEASE) return void checkRelease(byHand)
+  if (storeOn()) return storeCheck(byHand)
   if (!updatable() || checking || looking) return
   // A build is minutes of compiling and a 20k-file app copied: on the timer, at most one an hour, however often main moves.
   if (!byHand && Date.now() - lastBuild() < BUILD_EVERY) return
@@ -121,14 +184,25 @@ function lastBuild() {
 /** The commit the servers its windows attached to run, when every open window is attached: the app updates to that
  *  rather than the branch's newest, so the two are one version. "" otherwise. */
 async function attachedCommit() {
+  return (await attachedTo()) || ""
+}
+/** As attachedCommit, but null when every window is attached and a server didn't say (a service just restarted, still
+ *  making its module graph): the store's look waits for it rather than take the branch's newest. */
+async function attachedTo(): Promise<string | null> {
   const all = host.windows()
   if (!all.length || all.some((w) => !w.link)) return ""
-  const ran = await Promise.all(all.map((w) => serverCommit(w.port)))
-  return ran.every((c) => /^[0-9a-f]{40}$/.test(c) && c === ran[0]) ? ran[0] : ""
+  const ran = await Promise.all(all.map((w) => told.get(w.port) ?? serverCommit(w.port)))
+  if (ran.some((c) => !/^[0-9a-f]{40}$/.test(c))) return null
+  return ran.every((c) => c === ran[0]) ? ran[0] : ""
 }
+/** Servers' commits as they told them, by port (a look one asked for: lookNow). */
+const told = new Map<number, string>()
 /** The commit the server on `port` runs (its app.version), "" when it doesn't say. */
 const serverCommit = (port: number) => fetch(`http://127.0.0.1:${port}/api/ops/app.version`, { method: "POST", headers: { "Content-Type": "application/json" },
-  body: "{}", signal: AbortSignal.timeout(5000) }).then((r) => r.json()).then((j: { commit?: unknown }) => String(j.commit ?? ""), () => "")
+  body: "{}", signal: AbortSignal.timeout(5000) }).then((r) => r.json()).then((j: { commit?: unknown }) => String(j.commit ?? ""), (e) => {
+    storeHost().log(`its server on port ${port} didn't say its commit: ${(e as Error).message}`)
+    return ""
+  })
 
 /** Vaults whose server this run restarted onto the installed build (once each). */
 const restartedOnto = new Set<string>()
@@ -146,7 +220,7 @@ export function checkInstalled(w: UpdateWindow) {
     const log = updateLog(), at = new Date().toISOString()
     if (stale) {
       fs.writeSync(log, `${at} this app runs ${CODE!.commit}, but ${installed} is installed: it started from the app an update replaced\n`)
-      if (!RELEASE && built() === installed && ready !== installed) { ready = installed; for (const x of host.windows()) tell(x); host.buildMenu() }
+      if (!RELEASE && built() === installed && ready !== installed) { ready = installed; readyHow = "install"; for (const x of host.windows()) tell(x); host.buildMenu() }
     }
     if (restart && w.server?.exitCode === null) {
       restartedOnto.add(p)
@@ -190,7 +264,7 @@ function buildUpdate(byHand: boolean, want: string) {
     setStatus(null)
     const commit = out.trim().split("\n").pop()?.trim() ?? ""
     if (code === 0 && commit === built()) {
-      if (ready !== commit || byHand) { ready = commit; for (const w of host.windows()) tell(w) }
+      if (ready !== commit || byHand) { ready = commit; readyHow = "install"; for (const w of host.windows()) tell(w) }
     } else if (byHand && code === 3) {
       dialog.showMessageBox({ message: `${app.getName()} is up to date`, detail: `It runs ${CODE!.commit.slice(0, 7)}, ${want ? "the version its server runs" : `the newest on ${BRANCH}`}.` })
     } else if (byHand && !host.quitting()) {
@@ -225,6 +299,9 @@ function built() {
 function tell(w: UpdateWindow) {
   if (!w.ready || !ready) return
   const msg = WORKTREE ? { type: "update", text: `${ready}: relaunch to run them`, label: "Relaunch" }
+    // (the store's: nothing to install, a relaunch of a couple of seconds onto code it already has)
+    : readyHow === "relaunch" ? { type: "update", text: `${app.getName()} ${ready.slice(0, 7)} is ready: relaunching takes a couple of seconds${host.mode() === "automatic" ? ", and it does so while you're away" : ""}`,
+      label: "Relaunch", auto: host.mode() === "automatic" }
     : { type: "update", name: app.getName(), version: RELEASE ? ready : ready.slice(0, 7), auto: host.mode() === "automatic" }
   w.win.webContents.send("vaultite", msg)
   for (const [wc, of] of host.popouts()) if (of === w && !wc.isDestroyed()) wc.send("vaultite", msg)
@@ -279,6 +356,12 @@ export function restartToUpdate(byHand = false) {
     host.beginQuit()
     setStatus("Restarting to update…", true)
     return void afterFlush(() => { app.relaunch(); app.quit() })
+  }
+  if (readyHow === "relaunch") {
+    if (!ready) return
+    host.beginQuit()
+    restarting(ready.slice(0, 7))
+    return void afterFlush(() => { relaunchSoon(); app.quit() })
   }
   if (RELEASE) {
     if (!ready || !releases) return
@@ -355,6 +438,7 @@ async function releaseUpdater() {
   let version = ""
   const downloaded = () => {
     ready = version || "new"
+    readyHow = "install"
     for (const w of host.windows()) tell(w)
     host.buildMenu()
   }
@@ -397,8 +481,9 @@ async function checkRelease(byHand: boolean) {
 export function updateMenuItem() {
   if (WORKTREE) return ready ? { label: "Relaunch to run your changes", click: () => restartToUpdate(true) } : null
   if (!updatable()) return null
-  return ready ? { label: "Restart to update", click: () => restartToUpdate(true) }
-    : { label: checking || fetching ? "Checking for updates…" : "Check for updates…", enabled: !checking && !fetching, click: () => checkForUpdate(true) }
+  const busy = !!checking || fetching || !!storeLooking
+  return ready ? { label: readyHow === "relaunch" ? "Relaunch to update" : "Restart to update", click: () => restartToUpdate(true) }
+    : { label: busy ? "Checking for updates…" : "Check for updates…", enabled: !busy, click: () => checkForUpdate(true) }
 }
 
 /** A window's page is up: what the update is doing, and the update waiting, if any. */
@@ -425,13 +510,18 @@ export function scheduleUpdates() {
     setInterval(() => checkForUpdate(false), 4 * 60 * 60_000)
   } else if (updatable()) {
     moveUnindexed()
-    setTimeout(() => checkForUpdate(false), 60_000)
-    setInterval(() => checkForUpdate(false), 30 * 60_000)
+    // (the store's looks, where its marker is: as often as the service's, a look where nothing moved a fetch; else
+    // update.sh's builds, as before: each a whole app, at most one an hour)
+    const old = () => { if (!storeOn()) checkForUpdate(false) }, store = () => { if (storeOn()) checkForUpdate(false) }
+    setTimeout(old, 60_000)
+    setInterval(old, 30 * 60_000)
+    setTimeout(store, 60_000)
+    setInterval(store, LOOK_EVERY)
   }
 }
 
 /** The app quits: a build under way stops; one ready goes in now, while nothing is open, and the next launch runs it. */
 export function quitUpdates() {
   stopChecking()
-  if (!RELEASE && host.mode() !== "off" && updatable()) install(false)
+  if (!RELEASE && readyHow === "install" && host.mode() !== "off" && updatable()) install(false)
 }

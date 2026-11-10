@@ -96,7 +96,7 @@ check("the shell imports only Node's, Electron's and its own files, all fingerpr
 
 // ---------- the picker (electron/shell/roots.mjs) ----------
 const R = await import("../electron/shell/roots.mjs")
-check("as built: Dev runs its worktrees; Main's store is off until its stage", R.ENABLED.dev && !R.ENABLED.store && Object.isFrozen(R.ENABLED))
+check("as built: Dev runs its worktrees, Main its store's roots (where the marker is)", R.ENABLED.dev && R.ENABLED.store && Object.isFrozen(R.ENABLED))
 const uid = process.getuid?.()
 /** A code root built for shell fingerprint `print` (its inputs.json lists only what's in it). */
 function root(at: string, o: { print?: string; mode?: number } = {}) {
@@ -123,8 +123,15 @@ check("a run from source: its own folder, whatever it's told", same([pick({ pack
 check("a release: the bundle, whatever the env and the store say", pick({ shell: { release: true, channel: "nightly" }, env, enabled: ON }).root === bundleDir
   && pick({ shell: { release: true, channel: "main" }, enabled: ON }).root === bundleDir)
 check("Windows: the bundle", pick({ platform: "win32", shell: { channel: "main" }, env, enabled: ON }).root === bundleDir && pick({ platform: "win32", shell: { channel: "dev" }, env, enabled: ON }).root === bundleDir)
-check("as built: Dev takes VAULTITE_CODE_ROOT, Main's store changes nothing", pick({ shell: { channel: "dev" }, env }).root === dev && pick({ shell: { channel: "main" } }).root === bundleDir
-  && !pick({ shell: { channel: "main" } }).passed.length)
+check("as built: Dev takes VAULTITE_CODE_ROOT; Main its store's current root, none without the marker (no store given)", pick({ shell: { channel: "dev" }, env }).root === dev
+  && pick({ shell: { channel: "main" } }).root === cur && pick({ shell: { channel: "main" }, store: null }).root === bundleDir)
+{
+  const ud = path.join(tmp, "marker-ud")
+  fs.mkdirSync(ud, { recursive: true })
+  const none = R.storeIn(ud)
+  fs.writeFileSync(path.join(ud, R.MARKER), "")
+  check("the marker turns the store on for a machine; removed, off at the next launch", none === null && R.storeIn(ud) === path.join(ud, R.STORE))
+}
 check("...off, Dev's override changes nothing either", pick({ shell: { channel: "dev" }, env, enabled: { dev: false, store: false } }).root === bundleDir)
 check("...nor without one: Dev opened from the Dock runs its bundle", pick({ shell: { channel: "dev" } }).root === bundleDir)
 check("Dev, on: its VAULTITE_CODE_ROOT", same(pick({ shell: { channel: "dev" }, env, enabled: ON }), { root: dev, from: "dev", passed: [] }))

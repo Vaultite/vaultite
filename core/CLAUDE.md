@@ -49,7 +49,7 @@
 
 ## Updates
 - `update/` is the one update engine, with no Electron in it: the service host (`selfupdate.ts`, its checkout in place)
-  and the desktop app's (`electron/updates.ts`, on the root store) drive it. What only one host needs goes in that host.
+  and the desktop app's (`electron/storehost.ts`, on the root store where its marker is) drive it. What only one host needs goes in that host.
 - A store root (`update/store.ts`) is read-only once made, and its `node_modules` is a deps set shared by every root
   of the same package-lock.json: never install or write in a root (a new lock makes a new set). Only builds' caches in
   a set (`.tmp`, `.vite`) stay writable.
@@ -57,3 +57,6 @@
   0555, the same fingerprint): change them together, and know a change to roots.mjs is a new shell.
 - `update/plan.ts` decides what a new root restarts: whatever isn't known (a commit's changes, the graph, a fingerprint)
   takes the heavier action.
+- The store's gc keeps current, good, a root made in the last 10 minutes (about to be current) and every root a live
+  process leased (`update/lease.ts`: the keepers, the app's servers and main): whatever runs from a root leases it.
+- A host's own CI gate (`ci`: the desktop app's, storepolicy.ts) needs no GitHub origin; the default asks GitHub.

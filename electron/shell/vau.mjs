@@ -9,5 +9,5 @@ const shell = roots.readShell(bundle)
 // (packaged: stamped by its packager, sign.cjs; a checkout's own stamp has no appId)
 const userData = roots.userDataOf(shell.productName ?? "Vaultite")
 const { root } = roots.pick({ bundle, packaged: !!shell.appId, platform: process.platform, shell, env: process.env,
-  uid: process.getuid?.(), store: path.join(userData, "code.noindex"), bad: roots.badRoots(roots.stateDir(userData)) })
+  uid: process.getuid?.(), store: roots.storeIn(userData), bad: roots.badRoots(roots.stateDir(userData)) })
 await import(pathToFileURL(path.join(root, "bin", "vau")).href)

@@ -18,7 +18,14 @@ type AppUpdates = { mode: "automatic" | "notify" | "off"; available: boolean; fr
   /** A Dev instance's: the worktree it runs (electron/devroot.ts). */
   worktree?: { worktree: string; branch: string; commit: string; dirty: boolean }
   /** Whether its menu-bar helper runs (electron/updates.ts). */
-  helper?: boolean }
+  helper?: boolean
+  /** Main's updates through the root store (electron/storehost.ts): their state, and how the one ready goes in. */
+  store?: { state: string; why: string; running?: string; last?: { from: string; to: string; at: number } }
+  how?: "install" | "relaunch"
+  /** Why the main process runs older code, while its relaunch waits (the store's plan). */
+  behind?: string
+  /** The code root this launch runs (the shell's pick), and after a fallback the one it didn't and why. */
+  root?: { from: string; commit: string | null; fellBack?: { commit: string | null; why: string } } }
 /** Whether a commit is live, and when not, whether that can still change by itself (`final`: it can't). `why`, one
  *  sentence saying it: the output's last line. */
 export type Verdict = { commit: string; live: boolean; final: boolean; why: string
@@ -171,7 +178,7 @@ new build by themselves (at once when hidden; visible, they offer Reload). machi
 /** The processes this server knows the commits of: itself (the one it started on), and the desktop app it's in or
  *  attached to, with its menu-bar helper on a Mac (the app says its commit; the keepers don't say theirs). */
 const processList = (startedOn: string | null, app: AppUpdates | "unknown" | null) => [{ id: "server", commit: startedOn },
-  ...(app && app !== "unknown" ? [{ id: "desktop", commit: app.commit ?? null }, ...(process.platform === "darwin" ? [{ id: "helper", commit: app.commit ?? null }] : [])] : [])]
+  ...(app && app !== "unknown" ? [{ id: "desktop", commit: app.commit ?? null }, ...((app.helper ?? process.platform === "darwin") ? [{ id: "helper", commit: app.commit ?? null }] : [])] : [])]
 
 /** A process's line: its commit, and whether what it runs changed since. */
 const processLine = (p: Process) => `${p.label}: ${p.commit ? `started on ${short(p.commit)}` : "commit unknown"}, ${p.stale === null ? `can't say if it runs the newest code (${p.why})`
@@ -187,5 +194,8 @@ function updatesLine(u: Any, app: AppUpdates | "unknown" | null) {
   if (app === "unknown") return "the desktop app's, which didn't say how they are (an older app)"
   if (!app.available) return "off (this desktop app's build doesn't update itself)"
   if (app.mode === "off") return "off in the desktop app (it looks only when asked, from its menu)"
-  return `by the desktop app, ${app.mode}, from ${app.from}${app.doing ? `: ${app.doing}` : app.ready ? `: ${app.ready.slice(0, 7)} ready, restart to update` : ""}`
+  const ready = app.ready ? `: ${app.ready.slice(0, 7)} ready, ${app.how === "relaunch" ? "relaunch to run it (a couple of seconds)" : "restart to update"}` : ""
+  const store = app.store ? `; through its code store: ${app.store.state}, ${app.store.why}` : ""
+  const root = app.root?.fellBack ? `; it fell back from ${app.root.fellBack.commit?.slice(0, 7) ?? "a root"} (${app.root.fellBack.why})` : ""
+  return `by the desktop app, ${app.mode}, from ${app.from}${app.doing ? `: ${app.doing}` : ready}${store}${root}`
 }

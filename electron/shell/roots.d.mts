@@ -5,6 +5,9 @@ export type Picked = { root: string; from: "bundle" | "checkout" | "dev" | "curr
 export type ShellEvent = { t: number; kind: string; root: string; commit: string | null; why: string; ran?: string }
 export const ENABLED: Readonly<{ dev: boolean; store: boolean }>
 export const SETTLED_AFTER: number
+export const MARKER: string
+export const STORE: string
+export function storeIn(userData: string): string | null
 export function readShell(bundle: string): Shell
 export function commitOf(root: string): string | null
 export function userDataOf(name: string, env?: Record<string, string | undefined>, platform?: string, home?: string): string

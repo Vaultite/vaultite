@@ -2,7 +2,9 @@
 // (core/update/updater.ts), for whoever just pushed and doesn't want to wait for the next.
 import type { Op } from "../ops.ts"
 import type { UpdateStatus } from "../update/updater.ts"
-import { checkNow, LOOK_EVERY } from "../update/updater.ts"
+import { checkNow, LOOK_EVERY, updateStatus } from "../update/updater.ts"
+import { desktopCall, inDesktop } from "../desktopapp.ts"
+import { running } from "../running.ts"
 
 const short = (sha?: string) => String(sha ?? "").slice(0, 7)
 
@@ -16,13 +18,18 @@ looks now. It takes a commit only as a timed look does: CI's tests for this serv
 clean and on the branch, nobody is at work in the browser. A look already under way is joined, not run twice. It
 answers the updates' state after the look (vau version's): when the checkout is what blocks it, which files aren't
 committed or which commits aren't on the branch; when the commit taken is red on another OS, which job. A server it updates answers first, then restarts if its own code changed. Another server: --url.
+A server in the desktop app that follows no branch asks the app instead: Vaultite Main looks now, taking the commit
+through its code store where that's on (only what it changed restarts), else starting its build of the whole app.
 
   vau update
   vau update --json
   vau --url https://m1.example.ts.net:8447 update`,
     kind: "write",
     owner: "updating the server",
-    run: () => checkNow(),
+    // (a server that follows nothing in the desktop app: the app's own updates look now, Main's through its code store)
+    // (this server's own commit told: the app can't ask it while this op runs)
+    run: async () => updateStatus().branch || !inDesktop() ? checkNow()
+      : ((await desktopCall("app:update-look", [{ port: Number(process.env.PORT), commit: (await running()).commit }], 30 * 60_000).catch(() => null)) as UpdateStatus | null) ?? checkNow(),
     text: (s: UpdateStatus) => [
       s.branch ? `Following ${s.branch}, ${s.state}: ${s.why}` : `Updates ${s.state}: ${s.why}`,
       ...(s.running || s.origin ? [[s.running && `Runs ${short(s.running)}`, s.origin && `origin/${s.branch} is at ${short(s.origin)}`].filter(Boolean).join("; ")] : []),

@@ -20,8 +20,15 @@ type Version = {
     last?: { from: string; to: string; at: number; elsewhere?: string[] }; error?: { message: string } }
   app: null | "unknown" | { mode: "automatic" | "notify" | "off"; available: boolean; ready: string | null; doing: string | null; commit?: string | null
     /** A Vaultite Dev instance's worktree (electron/devroot.ts). */
-    worktree?: { worktree: string; branch: string; commit: string; dirty: boolean } }
+    worktree?: { worktree: string; branch: string; commit: string; dirty: boolean }
+    /** Main's updates through its code store (electron/storehost.ts): how the one ready goes in, and the root it runs. */
+    store?: { state: string; why: string }; how?: "install" | "relaunch"; behind?: string
+    root?: { from: string; commit: string | null; fellBack?: { commit: string | null; why: string } } }
+  /** Each process and whether it runs older code (core/running.ts). */
+  processes?: { id: string; label: string; commit: string | null; stale: boolean | null; first?: string; why?: string }[]
 }
+/** Where a launch's code came from, as the shell says (electron/shell/roots.mjs). */
+const FROM: Record<string, string> = { current: "from its code store", good: "from its code store (the last that started)", bundle: "its own bundle", checkout: "this checkout", dev: "a worktree" }
 
 const short = (sha: string) => sha.slice(0, 7)
 const STATE = { current: "Up to date", waiting: "Waiting", updating: "Updating", failed: "Failed", off: "Off" } as const
@@ -74,8 +81,23 @@ export function Running() {
           <SettingRow label="App" data-settings-row="running-app" value={app.commit ? <Hash sha={app.commit} /> : undefined}
             onClick={app.commit ? () => void copy(app.commit!) : undefined} chevron={app.commit ? Copy : null}
             sub={app.worktree ? [`${app.worktree.branch} in ${app.worktree.worktree}`, app.worktree.dirty && "uncommitted changes", app.ready && `${app.ready}: relaunch to run them`].filter(Boolean).join(" · ")
-              : app.doing ?? (app.ready ? `${short(app.ready)} is ready: restart to update` : app.mode === "off" ? "Updates off" : "No update waiting")} />
+              : app.doing ?? (app.ready ? `${short(app.ready)} is ready: ${app.how === "relaunch" ? "relaunch to run it, a couple of seconds" : "restart to update"}` : app.mode === "off" ? "Updates off" : "No update waiting")} />
         )}
+        {app?.root && app.store && (
+          <SettingRow label="App's code" data-settings-row="running-root" value={app.root.commit ? <Hash sha={app.root.commit} /> : undefined}
+            sub={capitalize(FROM[app.root.from] ?? app.root.from) + (app.root.fellBack ? `: ${app.root.fellBack.commit ? short(app.root.fellBack.commit) : "the newest"} didn't start (${app.root.fellBack.why})` : "")} />
+        )}
+        {(v.processes ?? []).filter((p) => p.id !== "server" || p.stale).map((p) => {
+          // (the app's own word, from its store's plan, when its server runs a root older than the one it waits to relaunch onto)
+          const behind = (p.id === "desktop" || p.id === "helper") && app?.behind
+          const stale = behind ? true : p.stale
+          return (
+            <SettingRow key={p.id} label={p.label} data-settings-row={`running-process-${p.id}`}
+              value={stale === null ? "Can't say" : stale ? <span className="text-[var(--orange)]">Older code</span> : "Current"}
+              sub={behind ? `Runs older code: ${behind}, so a relaunch runs it` : stale ? `Runs older code: ${p.first} changed${p.id === "desktop" || p.id === "helper" ? ", so a relaunch runs it" : ""}`
+                : stale === null ? capitalize(p.why ?? "") : undefined} />
+          )
+        })}
       </Group>
     </Section>
   )
