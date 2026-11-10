@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { gitEnv } from "../core/gitenv.ts"
-import { describe, osRisk, parseDiff } from "./osrisk.ts"
+import { alsoTry, describe, osRisk, parseDiff } from "./osrisk.ts"
 import { failuresOf, mainRed, notice, redStreaks, type Api, type Run } from "./mainci.ts"
 import { checkPush, judge, riskKey, tried, tryHead } from "./try.ts"
 const t0 = Date.now()
@@ -14,7 +14,7 @@ section("osrisk")
 const whys = (file: string, ...added: string[]) => osRisk([{ file, added }]).map((r) => r.why)
 check("a path built in the server is OS-sensitive", whys("core/files.ts", "const p = path.resolve(dir, name)").includes("builds or compares paths"))
 check("a process started is", whys("plugins/core/terminal/plugin.ts", "const child = spawn(shell, args)").includes("starts or stops a process"))
-check("a tool run by name is", whys("core/cli.ts", 'execFileSync("which", ["git"])').includes("runs a tool one OS lacks"))
+check("a tool run by name is", whys("core/agents.ts", 'execFileSync("which", ["git"])').includes("runs a tool one OS lacks"))
 check("file times are", whys("core/live.ts", "if (st.mtimeMs > seen) changed.push(f)").includes("file system behaviour (modes, links, renames, watching, file times)"))
 check("a regex's exec isn't a process", whys("core/links.ts", "const m = re.exec(text)").length === 0)
 check("ordinary lines aren't", whys("core/links.ts", "const total = items.length + 1", "return { ok: true }").length === 0)
@@ -25,6 +25,9 @@ check("the native helpers are, their Swift too (CI's macOS has an older Xcode)",
 check("how tests start is", whys("tools/test/lib.ts")[0] === "how tests and the app's runs start" && whys("core/runtime.ts")[0] === "how tests and the app's runs start")
 const many = osRisk(["a", "b", "c", "d"].map((n) => ({ file: `core/${n}.ts`, added: ["path.relative(x, y)"] })))
 check("described by reason, a few files each", describe(many) === "builds or compares paths (core/a.ts, core/b.ts, core/c.ts and 1 more)", describe(many))
+check("what windows.yml's surfaces exercises is OS-sensitive whatever its lines, and its try runs surfaces too; elsewhere not",
+  whys("electron/setup.ts", "const a = 1")[0] === "what vau, Set up, the service and the installer do on Windows" && alsoTry(osRisk([{ file: "electron/setup.ts", added: [] }, { file: "core/x.ts", added: ["path.resolve(a)"] }])).join() === "surfaces"
+  && alsoTry(osRisk([{ file: "bin/vau.cmd", added: [] }])).join() === "surfaces" && alsoTry(osRisk([{ file: "core/x.ts", added: ["path.resolve(a)"] }])).length === 0)
 const diff = ["diff --git a/core/x.ts b/core/x.ts", "--- a/core/x.ts", "+++ b/core/x.ts", "@@ -1 +1 @@", "-old", "+const p = path.resolve(a)",
   "diff --git a/web/src/y.tsx b/web/src/y.tsx", "+++ b/web/src/y.tsx", "+spawn()"].join("\n")
 const parsed = parseDiff(diff)
@@ -121,15 +124,17 @@ const w = at(work)
 w("init", "-q", "-b", "main"); w("remote", "add", "origin", origin)
 fs.mkdirSync(path.join(work, "core")); fs.writeFileSync(path.join(work, "core/files.ts"), "export const a = 1\n"); w("add", "-A"); w("commit", "-qm", "base"); w("push", "-q", "origin", "main")
 w("checkout", "-qb", "change"); fs.writeFileSync(path.join(work, "core/files.ts"), "export const p = (d: string) => path.resolve(d)\n"); w("commit", "-qam", "change")
-type Script = { second?: "ok" | "FAIL"; never?: boolean }
+type Script = { second?: "ok" | "FAIL"; never?: boolean; surfaces?: "ok" | "FAIL" }
 function fake(sc: Script) {
   let attempt = 1
   const asked: string[] = [], gh: string[] = []
+  const windows = { id: 88, path: ".github/workflows/windows.yml", html_url: "https://github.com/x/runs/88" }
   const jobsOf = () => attempt === 1 ? [{ id: 1, name: "test (ubuntu-24.04)", status: "completed", conclusion: "success" }, { id: 2, name: "test (windows-2025)", status: sc.never ? "in_progress" : "completed", conclusion: sc.never ? null : "failure" }]
     : [{ id: 1, name: "test (ubuntu-24.04)", status: "completed", conclusion: "success" }, { id: 3, name: "test (windows-2025)", status: "completed", conclusion: sc.second === "ok" ? "success" : "failure" }]
   const api: Api = async <T>(p: string) => {
     asked.push(p)
-    if (p.includes("/workflows/ci.yml/runs?branch=try")) return { workflow_runs: [{ id: 77, html_url: "https://github.com/x/runs/77" }] } as T
+    if (p.includes("/actions/runs?branch=try")) return { workflow_runs: [{ id: 77, path: ".github/workflows/ci.yml", html_url: "https://github.com/x/runs/77" }, ...p.includes("-surfaces") ? [windows] : []] } as T
+    if (p.includes("/runs/88/jobs")) return { jobs: [{ id: 9, name: "surfaces", status: "completed", conclusion: sc.surfaces === "FAIL" ? "failure" : "success" }, { id: 10, name: "arm64", status: "completed", conclusion: "skipped" }] } as T
     if (p.includes("/runs/77/jobs")) return { jobs: jobsOf() } as T
     if (/runs\/77$/.test(p)) return { run_attempt: attempt } as T
     if (p.includes("check-runs/")) return [failed("test_vault.ts", "terminal: teleport finds the checkout  -> C:/x")] as T
@@ -139,7 +144,8 @@ function fake(sc: Script) {
   const ghDid = (args: string[]) => { gh.push(args.join(" ")); if (args.at(-1)?.endsWith("rerun-failed-jobs")) attempt = 2; return true }
   return { api, gh: ghDid, asked, ghAsked: gh }
 }
-const tryOnce = async (sc: Script, timeoutMin?: number) => {
+const tryOnce = async (sc: Script, timeoutMin?: number, branch = "change") => {
+  w("checkout", "-q", branch)
   const f = fake(sc), logs: string[] = []
   const ok = await tryHead(work, { api: f.api, gh: f.gh, pause: async () => {}, log: (s) => logs.push(s), timeoutMin })
   return { ok, logs: logs.join("\n"), f, left: at(origin)("for-each-ref", "--format=%(refname)", "refs/heads/try").stdout.trim() }
@@ -154,6 +160,10 @@ check("try: a failure that passes the second time is flaky, said so; the try pas
 fs.rmSync(path.join(work, ".git", "vaultite"), { recursive: true, force: true })
 const slow = await tryOnce({ never: true }, 0.0001)
 check("try: past its time, the run is cancelled and it fails loudly", !slow.ok && /timed out after .* min, cancelled/.test(slow.logs) && slow.f.ghAsked.some((a) => a.endsWith("/cancel")) && slow.left === "", slow)
+w("checkout", "-qb", "setup", "main"); fs.mkdirSync(path.join(work, "electron")); fs.writeFileSync(path.join(work, "electron/setup.ts"), "export const bin = (d: string) => path.join(d, 'vau.cmd')\n"); w("add", "-A"); w("commit", "-qm", "setup")
+const surf = await tryOnce({ second: "ok", surfaces: "FAIL" }, undefined, "setup")
+check("try: a change to what surfaces exercises runs windows.yml's surfaces too (not arm64), and its failure counts", !surf.ok && surf.f.asked.some((p) => p.includes("branch=try%2F") && p.includes("-surfaces"))
+  && surf.f.asked.some((p) => p.includes("/runs/88/jobs")) && /surfaces failed/.test(surf.logs) && !/arm64/.test(surf.logs) && surf.left === "", surf)
 fs.writeFileSync(path.join(work, "core/files.ts"), "export const b = 2\n")
 const dirtyTry = await tryOnce({})
 check("try: uncommitted work isn't tried, nothing pushed", !dirtyTry.ok && /commit first/.test(dirtyTry.logs) && !dirtyTry.f.asked.length, dirtyTry)

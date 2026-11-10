@@ -53,7 +53,8 @@ is its point.
   test harness): say why. CI runs the full suite on three OSes on every push.
 - A change likely to behave differently on Windows or Linux (processes, paths, file times, the CLI's shims, CI: verify
   says so) is tried there before it lands: commit, then `npm run verify -- --try` (HEAD's tests on GitHub's three OSes
-  too, about 6 min, bounded). pre-push refuses one untried; `VAULTITE_TRY=skip` only while GitHub's runners are down.
+  too, about 6 min, 12 with Windows' vau, Set up and installer checks; bounded). pre-push refuses one
+  untried; `VAULTITE_TRY=skip` only while GitHub's runners are down.
 - Long commands (verify, tests, QA, builds) run in the background, and you wait for the notice that they ended: no
   `sleep` or `until` loop on their log.
 - Live: after the push, from the worktree, `bin/vau --url <server> version HEAD --wait` on the server following main

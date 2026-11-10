@@ -1,5 +1,5 @@
 // What this branch changed, checked, timing each: build, check, then the tests and QA scripts it reaches (--all: every
-// test and smoke; --try: HEAD on GitHub's runners too). node tools/verify.ts [--base main] [--all] [--try] [--dry]
+// test and smoke; --try: HEAD on GitHub's runners too). node tools/verify.ts [--base main] [--all] [--try [--surfaces]] [--dry]
 import "./test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { spawn, spawnSync } from "node:child_process"
 import fs from "node:fs"
@@ -62,7 +62,7 @@ if (risks.length) console.log(`OS-sensitive: ${describe(risks)}`)
 const tryLog = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "verify-try-")), "try.log")
 const trying = tryIt && !dry ? new Promise<{ ok: boolean; ms: number }>((resolve) => {
   const t = Date.now(), fd = fs.openSync(tryLog, "w")
-  spawn(process.execPath, [path.join(ROOT, "tools/try.ts")], { cwd: ROOT, stdio: ["ignore", fd, fd] })
+  spawn(process.execPath, [path.join(ROOT, "tools/try.ts"), ...argv.filter((a) => a === "--surfaces")], { cwd: ROOT, stdio: ["ignore", fd, fd] })
     .on("close", (code) => resolve({ ok: code === 0, ms: Date.now() - t })).on("error", () => resolve({ ok: false, ms: Date.now() - t }))
 }) : null
 const rows: { name: string; why: string; s: string; ok: boolean | null }[] = []

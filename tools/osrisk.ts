@@ -10,10 +10,15 @@ export type Risk = { file: string; why: string }
 /** A file of a diff and the lines it adds. */
 export type Touched = { file: string; added: string[] }
 
+/** What windows.yml's surfaces job exercises and the tests don't (.github/windows/): vau from each shell through its
+ *  shims, Set up's PATH, opening files, the service, WSL, the installer. */
+const SURFACES = /^(bin\/|\.github\/windows\/|core\/(appentry|cli|service|wslvau|opening)\.ts$|electron\/(setup|install|installed|natives|source|sign|nightly)\.(ts|cjs)$|electron\/win\/|tools\/test_(installer|setup)\.ts$)/
+
 /** Files that are OS-specific whatever their lines: what starts processes or the run itself on each OS. */
 const FILES: [RegExp, string][] = [
   [/^bin\//, "the CLI's shims"],
   [/^\.github\//, "CI itself"],
+  [SURFACES, "what vau, Set up, the service and the installer do on Windows"],
   [/^package(-lock)?\.json$/, "the packages (native builds, scripts)"],
   [/\.(sh|ps1|cmd|bat)$/, "a shell script"],
   // (the helpers' Swift too: CI's macOS builds it with an older Xcode than the Mac it was made on)
@@ -58,6 +63,12 @@ export function parseDiff(diff: string): Touched[] {
     if (cur && line.startsWith("+") && !line.startsWith("+++")) cur.added.push(line.slice(1))
   }
   return out
+}
+
+/** The jobs beyond CI's tests a try of an OS-sensitive change runs: windows.yml's surfaces (11 min) for what only it
+ *  exercises. Not arm64 nor the demo: none of last week's breakages was only theirs. */
+export function alsoTry(risks: Risk[]): string[] {
+  return risks.some((r) => SURFACES.test(r.file)) ? ["surfaces"] : []
 }
 
 /** The OS risks of this checkout's change since `base` (its commits, uncommitted edits and new files). */

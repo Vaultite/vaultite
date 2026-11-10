@@ -1,12 +1,12 @@
 // A try run: HEAD through CI's tests on Linux, macOS and Windows (ci.yml on a try/ branch) before it lands. A pass is kept
-// for pre-push (--check <from> <to>); a failure main has too isn't the change's. node tools/try.ts [--timeout <min>]
+// for pre-push (--check <from> <to>); a failure main has too isn't the change's. tools/try.ts [--timeout <min>] [--surfaces]
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { CI_WORKFLOW, TRY_PREFIX, githubApi } from "../core/update/ci.ts"
 import { gitEnv } from "../core/gitenv.ts"
 import { REPO, mainRed, runFailures, sameTest, type Api, type Failure, type Job, type Run } from "./mainci.ts"
-import { describe, osRisk, parseDiff, type Risk } from "./osrisk.ts"
+import { alsoTry, describe, osRisk, parseDiff, type Risk } from "./osrisk.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "..")
 
@@ -58,15 +58,16 @@ export function judge(jobs: Job[], failures: Failure[], mains: Failure[]) {
 
 const minutes = (j: { started_at?: string; completed_at?: string }) =>
   j.started_at && j.completed_at ? `${((Date.parse(j.completed_at) - Date.parse(j.started_at)) / 60000).toFixed(1)} min` : ""
-/** Minutes a try waits at most: a run (about 6) and a failure's second attempt. */
-const TIMEOUT = 20
-type Jobs = (Job & { status?: string; started_at?: string; completed_at?: string })[]
+/** Minutes a try waits at most: a run (about 6) and a failure's second attempt; with surfaces (about 11), more. */
+const TIMEOUT = 20, TIMEOUT_MORE = 30
+const WINDOWS_WORKFLOW = ".github/workflows/windows.yml"
+type Jobs = (Job & { status?: string; started_at?: string; completed_at?: string; run?: number })[]
 type Verdict = ReturnType<typeof judge>
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-/** Tries HEAD: pushes it to a try/ branch, waits for ci.yml's run there (at most `timeoutMin`, then cancels it), says each
- *  job's result, deletes the branch, keeps a pass. */
-export async function tryHead(root: string, o: { timeoutMin?: number; log?: (s: string) => void; api?: Api; gh?: (args: string[]) => boolean; pause?: (ms: number) => Promise<unknown> } = {}): Promise<boolean> {
+/** Tries HEAD: pushes it to a try/ branch (named for the jobs it adds: `-surfaces` runs windows.yml's too), waits for its
+ *  runs (at most `timeoutMin`, then cancels them), says each job's result, deletes the branch, keeps a pass. */
+export async function tryHead(root: string, o: { timeoutMin?: number; also?: string[]; log?: (s: string) => void; api?: Api; gh?: (args: string[]) => boolean; pause?: (ms: number) => Promise<unknown> } = {}): Promise<boolean> {
   const log = o.log ?? console.log, api = o.api ?? (<T>(p: string) => githubApi<T>(p)), pause = o.pause ?? sleep
   /** gh, for what needs a sign-in (a run cancelled or run again): whether it did it. */
   const ghDid = o.gh ?? ((args: string[]) => spawnSync("gh", args, { encoding: "utf8", timeout: 30_000 }).status === 0)
@@ -77,29 +78,36 @@ export async function tryHead(root: string, o: { timeoutMin?: number; log?: (s: 
   if (!fetched.ok) return fail(`can't fetch origin's main: ${fetched.err}`)
   const sha = git(root, ["rev-parse", "HEAD"]).out, base = git(root, ["merge-base", "FETCH_HEAD", "HEAD"]).out
   if (sha === base) return fail("HEAD is on main already: nothing to try")
-  const ref = `${TRY_PREFIX}${sha.slice(0, 12)}`, t0 = Date.now(), deadline = t0 + (o.timeoutMin ?? TIMEOUT) * 60_000
+  const also = [...new Set([...o.also ?? [], ...alsoTry(riskKey(root, base, sha).risks)])].sort()
+  const wants = [CI_WORKFLOW, ...also.includes("surfaces") ? [WINDOWS_WORKFLOW] : []]
+  const minutesAtMost = o.timeoutMin ?? (also.length ? TIMEOUT_MORE : TIMEOUT)
+  const ref = `${TRY_PREFIX}${sha.slice(0, 12)}${also.map((j) => `-${j}`).join("")}`, t0 = Date.now(), deadline = t0 + minutesAtMost * 60_000
   const pushed = git(root, ["push", "-q", "--no-verify", "origin", `+HEAD:refs/heads/${ref}`], { timeout: 120_000 })
   if (!pushed.ok) return fail(`can't push ${ref}: ${pushed.err}`)
   const drop = () => git(root, ["push", "-q", "--no-verify", "origin", "--delete", ref], { timeout: 60_000 })
   const stop = () => { drop(); process.exit(130) }
   process.once("SIGINT", stop).once("SIGTERM", stop)
-  let run: Run | undefined
   try {
     // (gh signed in has 5000 calls an hour; anonymous 60, shared by the machine: asked less often)
     const gh = ghDid(["auth", "token"]), every = gh ? 15_000 : 60_000
-    for (let waited = 0; !run; waited += 5000) {
-      if (waited > 180_000) return fail(`no CI run started on ${ref} in 3 min (ci.yml runs the try/ pushes of commits that have it)`)
+    let runs: Run[] = []
+    for (let waited = 0; runs.length < wants.length; waited += 5000) {
+      if (waited > 180_000) return fail(`no run of ${wants.filter((w) => !runs.some((r) => r.path?.startsWith(w))).map((w) => path.basename(w)).join(", ")} started on ${ref} in 3 min (it runs the try/ pushes of commits that have it)`)
       await pause(5000)
-      const got = await api<{ workflow_runs?: Run[] }>(`repos/${REPO}/actions/workflows/${path.basename(CI_WORKFLOW)}/runs?branch=${encodeURIComponent(ref)}&head_sha=${sha}&per_page=5`)
-      run = typeof got === "string" ? undefined : got.workflow_runs?.[0]
+      const got = await api<{ workflow_runs?: Run[] }>(`repos/${REPO}/actions/runs?branch=${encodeURIComponent(ref)}&head_sha=${sha}&per_page=10`)
+      const all = typeof got === "string" ? [] : got.workflow_runs ?? []
+      runs = wants.flatMap((w) => all.filter((r) => r.path?.startsWith(w)).slice(0, 1))
     }
-    log(`try: ${sha.slice(0, 9)} on ${ref}: ${run.html_url ?? ""}`)
-    const id = run.id, said = new Set<number>()
-    /** The run's jobs (its latest attempt's) once all have ended, each said as it does; null past the deadline. */
+    log(`try: ${sha.slice(0, 9)} on ${ref}${also.length ? ` (${also.join(", ")} too: it changes what ${also.length > 1 ? "they exercise" : "it exercises"})` : ""}: ${runs.map((r) => r.html_url ?? r.id).join(" ")}`)
+    const said = new Set<number>()
+    /** Every run's jobs (their latest attempts') once all have ended, each said as it does; null past the deadline. */
     const ended = async (): Promise<Jobs | null> => {
       for (;;) {
-        const got = await api<{ jobs?: Jobs }>(`repos/${REPO}/actions/runs/${id}/jobs?per_page=50`)
-        const jobs = typeof got === "string" ? [] : got.jobs ?? []
+        const jobs: Jobs = []
+        for (const r of runs) {
+          const got = await api<{ jobs?: Jobs }>(`repos/${REPO}/actions/runs/${r.id}/jobs?per_page=50`)
+          jobs.push(...(typeof got === "string" ? [{ id: -r.id, name: path.basename(r.path ?? ""), status: "unknown", conclusion: null }] : got.jobs ?? []).map((j) => ({ ...j, run: r.id })))
+        }
         for (const j of jobs) if (j.status === "completed" && j.conclusion !== "skipped" && !said.has(j.id)) { said.add(j.id); log(`  ${j.conclusion === "success" ? "ok  " : "FAIL"}  ${j.name}  ${minutes(j)}`) }
         if (jobs.length && jobs.every((j) => j.status === "completed")) return jobs
         if (Date.now() > deadline) return null
@@ -107,13 +115,14 @@ export async function tryHead(root: string, o: { timeoutMin?: number; log?: (s: 
       }
     }
     const verdict = async (jobs: Jobs) => {
-      const got = await runFailures(api, id), failures = typeof got === "string" ? [] : got
+      const failures: Failure[] = []
+      for (const r of runs) { const got = await runFailures(api, r.id); if (typeof got !== "string") failures.push(...got) }
       const reds = failures.length ? await mainRed(api) : []
-      return judge(jobs, failures, typeof reds === "string" ? [] : reds.filter((r) => r.workflow === "CI").flatMap((r) => r.failures))
+      return judge(jobs, failures, typeof reds === "string" ? [] : reds.flatMap((r) => r.failures))
     }
-    const timedOut = (jobs: string[]) => {
-      ghDid(["api", "-X", "POST", `repos/${REPO}/actions/runs/${id}/cancel`])
-      return fail(`timed out after ${o.timeoutMin ?? TIMEOUT} min, cancelled: ${jobs.join(", ") || "its jobs"} still running`)
+    const timedOut = (still: string[]) => {
+      for (const r of runs) ghDid(["api", "-X", "POST", `repos/${REPO}/actions/runs/${r.id}/cancel`])
+      return fail(`timed out after ${minutesAtMost} min, cancelled: ${still.join(", ") || "its jobs"} still running`)
     }
     const tell = (rows: Verdict["rows"]) => { for (const r of rows.filter((r) => r.state !== "ok")) log(`  ${r.job} ${r.state === "FAIL" ? "failed" : "failed as main does"}${r.tests.length ? `:\n        ${r.tests.slice(0, 8).join("\n        ")}` : ` (${r.conclusion})`}`) }
     let jobs = await ended()
@@ -121,13 +130,14 @@ export async function tryHead(root: string, o: { timeoutMin?: number; log?: (s: 
     let v = await verdict(jobs), flaky: string[] = []
     // (a flaky test passes the second time, a broken one doesn't: a failure runs again once, where gh may ask for it)
     const first = v.rows.filter((r) => r.state === "FAIL")
-    if (first.length && gh && ghDid(["api", "-X", "POST", `repos/${REPO}/actions/runs/${id}/rerun-failed-jobs`])) {
+    const again = runs.filter((r) => jobs!.some((j) => j.run === r.id && first.some((f) => f.job === j.name)))
+    if (first.length && gh && again.every((r) => ghDid(["api", "-X", "POST", `repos/${REPO}/actions/runs/${r.id}/rerun-failed-jobs`]))) {
       tell(first)
       log(`try: running ${first.map((r) => r.job).join(", ")} again, once`)
-      for (let n = 0; n < 12; n++) {
+      for (const r of again) for (let n = 0; n < 12; n++) {
         await pause(5000)
-        const r = await api<{ run_attempt?: number }>(`repos/${REPO}/actions/runs/${id}`)
-        if (typeof r !== "string" && (r.run_attempt ?? 1) > 1) break
+        const got = await api<{ run_attempt?: number }>(`repos/${REPO}/actions/runs/${r.id}`)
+        if (typeof got !== "string" && (got.run_attempt ?? 1) > 1) break
       }
       jobs = await ended()
       if (!jobs) return timedOut(first.map((r) => r.job))
@@ -139,7 +149,7 @@ export async function tryHead(root: string, o: { timeoutMin?: number; log?: (s: 
     if (flaky.length) log(`try: flaky, failed once then passed (worth a fix of its own):\n        ${flaky.join("\n        ")}`)
     if (!v.ok) return fail(`on ${v.rows.filter((r) => r.state === "FAIL").map((r) => r.job).join(", ")} (${took})`)
     const { key } = riskKey(root, base, sha)
-    if (key) keep(root, key, { sha, run: run.html_url, at: new Date().toISOString() })
+    if (key) keep(root, key, { sha, runs: runs.map((r) => r.html_url), at: new Date().toISOString() })
     log(`try: ok on ${v.rows.map((r) => r.job).join(", ")}${v.rows.some((r) => r.state === "main's") ? " (failing only as main does)" : ""} in ${took}`)
     return true
   } finally {
@@ -157,5 +167,5 @@ if (import.meta.main) {
     process.exit(why ? 1 : 0)
   }
   const t = argv.indexOf("--timeout")
-  process.exit(await tryHead(ROOT, { timeoutMin: t >= 0 ? Number(argv[t + 1]) : undefined }) ? 0 : 1)
+  process.exit(await tryHead(ROOT, { timeoutMin: t >= 0 ? Number(argv[t + 1]) : undefined, also: argv.includes("--surfaces") ? ["surfaces"] : [] }) ? 0 : 1)
 }
