@@ -169,8 +169,11 @@ async function selfId(): Promise<string | null> {
   return (await machines()).find((m) => m.self)?.id ?? null
 }
 
+/** The machine `id` names: its id, else its id or label in any case ("M4", "Mini PC"), as agents write what they read. */
 async function machine(id: string) {
-  return (await machines()).find((m) => m.id === id) ?? null
+  const list = await machines(), key = id.trim().toLowerCase()
+  return list.find((m) => m.id === id) ?? list.find((m) => m.id.toLowerCase() === key)
+    ?? list.find((m) => m.label?.toLowerCase() === key) ?? null
 }
 
 shareKept(plugin, machines, vaultId)

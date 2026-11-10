@@ -274,6 +274,8 @@ export default async ($: VaultTest) => {
       ;[c, body] = await api("POST", "ops/terminal.ask", { prompt: "Look", machine: "box", files: ["Attachments/Qa there.png"] })
       check("terminal.ask: files passed on with it, once that machine has them", c === 200 && body.id === "claude-qa2@box" &&
         seen.includes(`ask ${JSON.stringify({ prompt: "Look", agent: "claude", files: ["Attachments/Qa there.png"] })}`), [c, body, seen])
+      ;[c, body] = await api("POST", "ops/terminal.ask", { prompt: "Hi", machine: "BOX" })
+      check("terminal.ask: a machine named in another case is that machine", c === 200 && body.machine === "box", [c, body])
       ;[c, body] = await api("POST", "ops/terminal.ask", { prompt: "Hi", machine: "gone" })
       check("terminal.ask: an offline machine says so", c === 502 && String(body.error).includes("offline"), [c, body])
       ;[c, body] = await api("POST", "ops/terminal.run", { path: "Notes/Qa there.md", machine: "nope" })
