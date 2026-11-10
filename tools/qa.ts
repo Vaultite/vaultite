@@ -8,8 +8,8 @@ import { createRequire } from "node:module"
 import os from "node:os"
 import path from "node:path"
 import { freePort, killTree, record, sleep, stopTerminals, testServer } from "./test/lib.ts"
-import { slot } from "./qa_slots.ts"
-import { QA, SKIP, allScripts, head } from "./qa_scripts.ts"
+import { front, slot } from "./qa_slots.ts"
+import { FRONT, QA, SKIP, allScripts, head } from "./qa_scripts.ts"
 import { type Boot, copyTemplate, template, type Variant } from "./qa_template.ts"
 import { asInteractiveJob, throttled } from "./qa_job.ts"
 import { officialBundles, officialRepos } from "./test/official.ts"
@@ -234,8 +234,10 @@ await Promise.all(Array.from({ length: jobs }, async () => {
     if (!name) { await sleep(1000); continue }
     running.add(name)
     // (this machine's QA slot, shared with other agents' runs, held for the script and its servers)
-    const asked = Date.now(), release = await slot(name), waited = Date.now() - asked
-    const r = await run(name).finally(release)
+    // (and on a Mac the front window, for one that brings its own forward: after the slot, so no two wait on each other)
+    const asked = Date.now(), release = await slot(name), out = process.platform === "darwin" && FRONT.has(name) ? await front(name) : () => {}
+    const waited = Date.now() - asked
+    const r = await run(name).finally(() => { out(); release() })
     running.delete(name)
     Object.assign(spent, { setup: spent.setup + r.setup, script: spent.script + r.script, waited: spent.waited + waited, waits: spent.waits + (waited >= 1000 ? 1 : 0) })
     if (r.skipped) { console.log(`skip ${name} (${r.skipped})`); continue }

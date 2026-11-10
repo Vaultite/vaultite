@@ -25,12 +25,19 @@ function reap(f: string, pid: number) {
 /** Waits for a free slot; resolves to its release (at once when VAULTITE_QA_SLOT says the caller holds one). */
 export async function slot(label = path.basename(process.argv[1] ?? "qa")): Promise<() => void> {
   if (process.env.VAULTITE_QA_SLOT) return () => {}
-  fs.mkdirSync(DIR, { recursive: true })
+  return take(DIR, SLOTS, label, `a QA slot (all ${SLOTS} on this machine are running; VAULTITE_QA_SLOTS)`)
+}
+/** The Mac's front window, one script at a time on this machine: one bringing its window forward (BaseWindow.focus) takes
+ *  the pointer and focus from another's, whose hovers and peeks then end mid-check (tools/qa_scripts.ts' FRONT). */
+export const front = (label: string) => take(path.join(sharedTmp(), "vaultite-qa-front"), 1, label, "the front window (another QA script brings its own forward)")
+
+async function take(dir: string, count: number, label: string, what: string): Promise<() => void> {
+  fs.mkdirSync(dir, { recursive: true })
   let said = false
   const asked = Date.now()
   for (;;) {
-    for (let i = 0; i < SLOTS; i++) {
-      const f = path.join(DIR, String(i))
+    for (let i = 0; i < count; i++) {
+      const f = path.join(dir, String(i))
       try { fs.writeFileSync(f, String(process.pid), { flag: "wx" }) } catch {
         const pid = owner(f)
         if (pid && !alive(pid)) reap(f, pid)
@@ -38,10 +45,10 @@ export async function slot(label = path.basename(process.argv[1] ?? "qa")): Prom
       }
       mine.add(f)
       // (how long, so a slow run shows the time it spent queued behind other agents' runs)
-      if (said) console.error(`${label}: got a QA slot after waiting ${((Date.now() - asked) / 1000).toFixed(0)} s`)
+      if (said) console.error(`${label}: got ${what.replace(/ \(.*$/, "")} after waiting ${((Date.now() - asked) / 1000).toFixed(0)} s`)
       return () => { mine.delete(f); if (owner(f) === process.pid) fs.rmSync(f, { force: true }) }
     }
-    if (!said) { console.error(`${label}: waiting for a QA slot (all ${SLOTS} on this machine are running; VAULTITE_QA_SLOTS)`); said = true }
+    if (!said) { console.error(`${label}: waiting for ${what}`); said = true }
     await new Promise((r) => setTimeout(r, 2000))
   }
 }

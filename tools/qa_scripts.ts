@@ -8,6 +8,10 @@ export const QA = path.resolve(import.meta.dirname, "../web/qa")
  *  build (the demo's: CI's demo job runs it, and named here it's built first). */
 export const SKIP = new Set(["boot", "perf", "stability", "termperf", "shots", "subjects", "machines", "inboxmachines", "termhost", "demo"])
 
+/** Desktop scripts that bring their window forward on a Mac (BaseWindow.focus), or whose checks need it to stay in front
+ *  (lights' hover peek): one at a time on a machine (tools/qa_slots.ts' front). */
+export const FRONT = new Set(["agentpages", "desktop", "lights", "webpanes", "webrestore", "webviewer"])
+
 /** Every script's name, the skipped ones too. */
 export const allScripts = () => fs.readdirSync(QA).filter((f) => f.endsWith(".mjs")).map((f) => f.slice(0, -4)).sort()
 
