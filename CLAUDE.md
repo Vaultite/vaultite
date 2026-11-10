@@ -61,7 +61,7 @@ is its point.
   `VAULTITE_TRY=skip` only while GitHub's runners are down.
 - A command that fits in the shell tool's 10-minute limit runs in the foreground with its timeout set (`npm run verify`
   does: a few minutes). One that can't is started detached, then waited on with the bounded wait its tool offers, run
-  again while it says it's still running. Never a `sleep` or `until` loop of your own; and a sub-agent never ends its
+  again while it says it's still running (`node tools/try.ts`, then `node tools/try.ts --wait`). Never a `sleep` or `until` loop of your own; and a sub-agent never ends its
   turn to wait for a background command's notice: none wakes it.
 - Live: after the push, from the worktree, `bin/vau --url <server> version HEAD --wait --timeout 540` on the server
   following main (`CLAUDE.local.md` names it; the worktree's vau, as an older one may not resolve `HEAD` or exit 1),
