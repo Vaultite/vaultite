@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A model named as people say it reaches Claude Code**: "Fable 5.2", "opus 55" or "sonnet" starts Claude Code on
+  its id (claude-fable-5-2) or alias, in a job, a terminal, a delegate or a chat; a name it can't run is refused at once,
+  saying what it takes, instead of a job that fails a second in.
 - **A quieter Agents panel**: one list, no Needs you or Done headings, no filter or machine names: a small dot says
   where each agent stands and a short time ends its row (how it runs and where in its tooltip). Agents done and read
   over half an hour ago fold under Earlier. The filter and machines stay on the Agents tab.

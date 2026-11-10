@@ -2,7 +2,7 @@
 // answer or carries on. Its turns are heard through its inbox thread (inbox.event); it never gets more than its parent.
 import fs from "node:fs"
 import path from "node:path"
-import { type AgentModels, type Asking, type Choice, agentName, HOME, KNOWN_AGENTS, MODEL_NAME, newTerminalId, parseTerminal, PERMISSION_MODES, type PermissionMode,
+import { agentModel, type AgentModels, type Asking, type Choice, agentName, HOME, KNOWN_AGENTS, newTerminalId, parseTerminal, PERMISSION_MODES, type PermissionMode,
   startAgent } from "../../../core/agents.ts"
 import { byUser, type OpCtx, OpError, Plugin, quoted, userSurface } from "../../../core/plugins.ts"
 import { type Item, writeAtomic } from "../../../core/vault.ts"
@@ -346,9 +346,9 @@ it's done (vau delegate status <id> to look, --wait to wait).
     const how = await plugin.ask<AgentModels | null>(`agent-models:${agent}`, null)
     if (!how) throw new OpError(`${nameOf(agent)} isn't here: its plugin is off (vau plugin on ${agent === "claude" ? "claude-code" : agent})`, 409)
     if (mode && !how.modes?.includes(mode)) throw new OpError(`${nameOf(agent)} can't be held to a permission mode here (its plugin is older): delegate to another agent`, 409)
-    if (p.model && !MODEL_NAME.test(str(p.model))) throw new OpError(`'${p.model}' isn't a model's name`)
+    const model = (await agentModel(plugin, agent, str(p.model))).id
     if (p.effort && how.efforts.length && !how.efforts.includes(str(p.effort))) throw new OpError(`effort: ${how.efforts.join(", ")} (got ${p.effort})`)
-    const t = await launch(ctx, { parent, agent, task: said, title: str(p.title), cwd: folderOf(p.cwd), model: str(p.model), effort: str(p.effort), mode })
+    const t = await launch(ctx, { parent, agent, task: said, title: str(p.title), cwd: folderOf(p.cwd), model, effort: str(p.effort), mode })
     const timedOut = p.mode === "wait" ? await settle(t, Number(p.timeout) * 1000) : false
     return view(t, { clamped, ...(p.mode === "wait" ? { timedOut } : {}) })
   },

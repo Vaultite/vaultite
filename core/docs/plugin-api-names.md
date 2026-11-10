@@ -1099,6 +1099,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `AgentHow`: How a session is started, besides its id and first prompt.
 - `agentIn(name, profile?)`: Agent `name` in account `profile` as a terminal names it (no account, or one that can't be named: just `name`).
 - `AgentMeter`: A live session by its terminal (service "agent-meters:<name>"): `session` the id it resumes; with `meters`, `tokens` its last request read of a `window`, cached for `ttl` seconds from `last` (ms).
+- `agentModel(plugin, name, said)`: `said` as agent `name` (claude, codex...) takes it (its service "agent-model-id:<name>"); one whose agent has none keeps its words.
+- `AgentModel`: What an agent's service "agent-model-id:<name>" answers for a model as people say it ("Fable 5.2"): its id as its --model takes it and the name it reads as ("" for none), or why it names none of…
 - `AgentModels`: What an agent's service "agent-models:<name>" answers: the models a session of it may run (`id` as its --model takes it), its efforts, least first, and the permission modes it's held to…
 - `agentName(id)`: An agent's name by its id or its name in a terminal ("claude"), or null.
 - `agentRefusal(text)`: What a terminal shows instead of running its agent (`text`, why not), then a plain shell.

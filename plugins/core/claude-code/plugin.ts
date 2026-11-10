@@ -5,7 +5,7 @@ import { createHash } from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { type AgentAsk, type AgentCommand, type AgentMeter, type AgentModels, type Asking, type Choice, type Question, type AgentStart, ago, codingAgent, dayOf, expandHome, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows,
+import { type AgentAsk, type AgentCommand, type AgentMeter, type AgentModel, type AgentModels, type Asking, type Choice, type Question, type AgentStart, ago, codingAgent, dayOf, expandHome, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows,
   limitWindow, type Live, type SampleAsk, agentRefusal, notOnThisMachine, priceList, processes, projectName, projectOf, shellQuote, projectRoots, epochSeconds, Tally, terminalOf, Transcript, transcripts,
   type Usage, lastTurn, parseTerminal, PERMISSION_MODES, type PermissionMode, usedFirst, when } from "../../../core/agents.ts"
 import { bullets, localDate, Plugin, section } from "../../../core/plugins.ts"
@@ -17,6 +17,7 @@ import { type EditSpan, editSpans } from "./edits.ts"
 import { dialogOn } from "./dialog.ts"
 import { SAMPLE_DIR, sample } from "./sample.ts"
 import { teleports } from "./teleport.ts"
+import { FAMILIES, modelId, modelName, notAModel } from "./models.ts"
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 const int = (v: unknown) => Math.trunc(Number(v) || 0)
 
@@ -39,13 +40,6 @@ const price = priceList<[number, number, number, number, number]>({
 const FAST = 2
 const PLANS: [string, string, number | null][] = [["max_20x", "Max 20x", 200], ["max_5x", "Max 5x", 100], ["max", "Max", null],
   ["pro", "Pro", 20], ["team", "Team", null], ["enterprise", "Enterprise", null]]
-
-/** claude-opus-5-5 -> Opus 5.5, claude-haiku-4-5-20251001 -> Haiku 4.5. */
-function modelName(model: string) {
-  const parts = model.replace(/^claude-/, "").split("-").filter((p) => !(/^\d+$/.test(p) && p.length === 8))
-  const words = parts.filter((p) => !/^\d+$/.test(p)), nums = parts.filter((p) => /^\d+$/.test(p))
-  return [...words.map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()), nums.join(".")].join(" ").trim() || model
-}
 
 // ---------- accounts (Claude Code's config folders, CLAUDE_CONFIG_DIR)
 
@@ -554,9 +548,14 @@ plugin.provide("agent:claude", async (start: AgentStart): Promise<AgentCommand> 
 })
 
 /** The models a session may run, by the aliases --model takes (each its family's latest), and its efforts. */
-const models = (): AgentModels => ({ models: ["sonnet", "opus", "haiku", "fable"].map((id) => ({ id, label: modelName(id) })),
+const models = (): AgentModels => ({ models: FAMILIES.map((id) => ({ id, label: modelName(id) })),
   efforts: ["low", "medium", "high", "xhigh", "max"], modes: [...PERMISSION_MODES] })
 plugin.provide("agent-models:claude", models)
+/** A model as people say it ("Fable 5.2", "opus 55") as --model takes it (claude-fable-5-2, opus), and its name. */
+plugin.provide("agent-model-id:claude", (said: string): AgentModel => {
+  const id = modelId(said)
+  return id === null ? { error: notAModel(said) } : { id, label: id && modelName(id) }
+})
 
 /** The permission mode a session runs in now (the service "agent-mode:claude": what a subagent it delegates to may have at
  *  most): the chat's, else its transcript's last. The session in `terminal` when `session` isn't given; null: unknown. */

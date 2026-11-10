@@ -6,7 +6,7 @@ import type { IncomingMessage } from "node:http"
 import os from "node:os"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
-import { type AgentAsk, type AgentCommand, askLabel, type AgentHow, type AgentMeter, type AgentStart, type AgentState, agentName, agentSession, MODEL_NAME, serversOwn, PERMISSION_MODES, shellQuote, parseTerminal } from "../../../core/agents.ts"
+import { type AgentAsk, type AgentCommand, agentModel, askLabel, type AgentHow, type AgentMeter, type AgentStart, type AgentState, agentName, agentSession, MODEL_NAME, serversOwn, PERMISSION_MODES, shellQuote, parseTerminal } from "../../../core/agents.ts"
 import {
   agentLines, HTTPError, LOCAL as LOCAL_DIR, readableImage, vauDir, writeWslVau, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, span, splitMachine, type Machine,
   type Request, type Access, accessOf, NOT_THE_USER, userSurface, whoOf,
@@ -1595,7 +1595,10 @@ plugin.route("POST", "terminals/*", async (req) => {
   const name = typeof req.body?.name === "string" ? cleanName(req.body.name) : ""
   if (command && agentOf(id)) throw new HTTPError(400, "a terminal runs an agent or a command, not both")
   const cols = clamp(req.body?.cols, 2, 1000, 120), rows = clamp(req.body?.rows, 1, 500, 40)
-  if (!starting.has(id)) starting.set(id, start(id, cols, rows, LOCAL, prompt, savedDark(), { allow, model: word(req.body?.model), effort: word(req.body?.effort), mode, cwd },
+  // (a model as people say it, "Fable 5.2", as its agent takes it: one it can't run is refused now, not a terminal that dies)
+  const said = typeof req.body?.model === "string" ? req.body.model : "", agent = agentOf(id)?.name
+  const model = said.trim() && agent ? (await agentModel(plugin, agent, said)).id : word(said)
+  if (!starting.has(id)) starting.set(id, start(id, cols, rows, LOCAL, prompt, savedDark(), { allow, model: model || null, effort: word(req.body?.effort), mode, cwd },
     { command, ...(name ? { name } : {}) })
     .finally(() => starting.delete(id)))
   try { await starting.get(id)! } catch (e) {

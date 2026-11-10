@@ -261,6 +261,23 @@ export default async ($: VaultTest) => {
     check("claude accounts: a new session in an account runs with its folder", run.command.startsWith(`CLAUDE_CONFIG_DIR='${WORK}' claude`), run)
     run = await start({ resume: null, context: "", state: null, profile: null, model: "haiku", effort: "medium" })
     check("claude: a session can run another model, at another effort", run.command.includes("--model 'haiku' --effort 'medium'"), run)
+    {
+      // A model as people say it reaches --model as Claude Code takes it: an alias, or a full id; a provider's id as is.
+      const { agentModel } = await import("../../../core/agents.ts")
+      const ask = cc.plugin.services["agent-model-id:claude"]
+      const cases: [string, string][] = [["Fable 5.2", "claude-fable-5-2"], ["fable-5.2", "claude-fable-5-2"], ["Opus 5.5", "claude-opus-5-5"], ["opus 55", "claude-opus-5-5"],
+        ["Claude Sonnet 5.5", "claude-sonnet-5-5"], ["haiku 5.5", "claude-haiku-5-5"], ["Sonnet", "sonnet"], ["opus", "opus"], ["Fable", "fable"], ["sonnet [1m]", "sonnet[1m]"],
+        ["claude-opus-5-5", "claude-opus-5-5"], ["claude-haiku-4-5-20251001", "claude-haiku-4-5-20251001"], ["claude-3-5-haiku", "claude-3-5-haiku"], ["opusplan", "opusplan"],
+        ["us.anthropic.claude-opus-4-1-20250805-v1:0", "us.anthropic.claude-opus-4-1-20250805-v1:0"]]
+      const wrong = cases.filter(([said, id]) => ask(said)?.id !== id).map(([said]) => [said, ask(said)])
+      check("claude models: said as people say them, they reach --model by an alias or full id", !wrong.length, wrong)
+      check("claude models: each reads by its name (Fable 5.2, not fable-5.2)", ask("fable-5.2").label === "Fable 5.2" && ask("opus").label === "Opus", [ask("fable-5.2"), ask("opus")])
+      const refused = ["gpt 5", "gemini-3-pro", "claude", "o3"].filter((said) => !/isn't a model Claude Code runs: sonnet, opus, haiku, fable/.test(ask(said)?.error ?? ""))
+      check("claude models: a name that's no Claude model is refused, saying what it takes", !refused.length, refused.map((s) => [s, ask(s)]))
+      const thrown = await agentModel(cc.plugin, "claude", "gpt 5").then(() => null, (e: Error) => e.message)
+      const codex = await agentModel(cc.plugin, "codex", "gpt-6.1-sol")
+      check("agent models: one Claude Code can't run throws; another agent's (Codex's) passes as said", /isn't a model Claude Code runs/.test(thrown ?? "") && codex.id === "gpt-6.1-sol", [thrown, codex])
+    }
     run = await start({ resume: sid, context: "", state: null, profile: null })
     check("claude accounts: resuming finds the session's account (a private one too) and its folder", run.command.startsWith(`CLAUDE_CONFIG_DIR='${WORK}' claude --resume`) &&
       run.cwd === "/Users/sam/acme", run)

@@ -1,6 +1,6 @@
 // Terminal's operations (`vau terminal`), through the plugin's routes, Workspaces' and the user's window: no more than
 // those allow. A terminal is its id, its name or the end of its id, @<machine> another machine's (run there: passOn).
-import { MODEL_NAME, PERMISSION_MODES, startAgent, TERMINAL_AGENT, newTerminalId, parseTerminal, resumeTerminalId, type AgentHow } from "../../../core/agents.ts"
+import { agentModel, MODEL_NAME, PERMISSION_MODES, startAgent, TERMINAL_AGENT, newTerminalId, parseTerminal, resumeTerminalId, type AgentHow } from "../../../core/agents.ts"
 import { byUser, fmtAgo, type Machine, MACHINE_CLIENT, OpError, type OpCtx, type Plugin, quoted, splitMachine } from "../../../core/plugins.ts"
 import { allPanes, clean } from "../../../core/layout.ts"
 
@@ -130,10 +130,11 @@ const HOW = {
   mode: { type: "string", enum: [...PERMISSION_MODES], description: "its permission mode (auto, acceptEdits, plan...)" },
   allow: { type: "array", items: { type: "string" }, description: "tools it may use without asking (Bash(npm test:*))" },
 } as const
-/** The `how` an agent starts with, checked. */
-function howOf(p: { model?: string; effort?: string; mode?: string; allow?: string[]; cwd?: string }): AgentHow {
-  for (const k of ["model", "effort"] as const) if (p[k] && !MODEL_NAME.test(p[k]!)) throw new OpError(`'${p[k]}' isn't a ${k}'s name (\`${k}\`)`)
-  return { ...(p.model ? { model: p.model } : {}), ...(p.effort ? { effort: p.effort } : {}), ...(p.mode ? { mode: p.mode as AgentHow["mode"] } : {}),
+/** The `how` agent `agent` starts with, checked: its model as it takes it ("Fable 5.2": claude-fable-5-2). */
+async function howOf(plugin: Plugin, agent: string | undefined, p: { model?: string; effort?: string; mode?: string; allow?: string[]; cwd?: string }): Promise<AgentHow> {
+  if (p.effort && !MODEL_NAME.test(p.effort)) throw new OpError(`'${p.effort}' isn't an effort's name (\`effort\`)`)
+  const model = agent && p.model ? (await agentModel(plugin, agent.split("_")[0], p.model)).id : p.model
+  return { ...(model ? { model } : {}), ...(p.effort ? { effort: p.effort } : {}), ...(p.mode ? { mode: p.mode as AgentHow["mode"] } : {}),
     ...(p.allow?.length ? { allow: p.allow } : {}), ...(p.cwd ? { cwd: p.cwd } : {}) }
 }
 /** Shows it, or says no window is open (the session runs anyway: it isn't an error to have started it). */
@@ -295,7 +296,7 @@ its tab too (as vau terminal open does). With machine, on another of the Machine
       open: { type: "boolean", description: "show its tab in the user's window too" },
     },
     run: async ({ command, agent, prompt, session, name, cwd, machine, wait, timeout, open, model, effort, mode, allow }, ctx) => {
-      const how = howOf({ model, effort, mode, allow, cwd })
+      const how = await howOf(plugin, agent, { model, effort, mode, allow, cwd })
       if (session && (!agent || !/^[\w.-]{4,100}$/.test(session))) throw new OpError(agent ? `'${session}' isn't a session's id` : "a `session` is an agent's: name the `agent` (claude, codex...)")
       if (!agent && (model || effort || mode || allow?.length)) throw new OpError("`model`, `effort`, `mode` and `allow` are an agent's: name the `agent`")
       if (command && agent) throw new OpError("give a `command` or an `agent`, not both")
@@ -351,7 +352,7 @@ id (--json). In the background, without a tab: vau terminal start.
     args: ["agent"],
     run: async ({ agent, prompt, split, model, effort, mode, allow, cwd }, ctx) => {
       if (agent && !TERMINAL_AGENT.test(agent)) throw new OpError(`'${agent}' isn't an agent's name (claude, codex, opencode...; claude_personal: one of its accounts)`)
-      const said = prompt?.trim(), how = howOf({ model, effort, mode, allow, cwd })
+      const said = prompt?.trim(), how = await howOf(plugin, agent, { model, effort, mode, allow, cwd })
       if (said && !agent) throw new OpError("a prompt is an agent's: name the agent (claude, codex...)")
       if (!agent && (model || effort || mode || allow?.length)) throw new OpError("`model`, `effort`, `mode` and `allow` are an agent's: name the `agent`")
       const t = newTerminalId(agent)

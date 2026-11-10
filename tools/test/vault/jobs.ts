@@ -430,6 +430,30 @@ export default async ($: VaultTest) => {
       ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Fix it", cwd: "~/no-such-repo-here" }, agent))
       check("handoff: a folder that isn't here (nor on a machine jobs prefer) is refused at once, no job left failed",
         st === 404 && /no folder ~\/no-such-repo-here, nor a checkout of no-such-repo-here \(looked in /.test(b.error) && /Leave cwd out/.test(b.error) && (await api("POST", "ops/companion.jobs", {}))[1].jobs.length === before, [st, b])
+      {
+        // A model said as people say it ("a Fable 5.2 on medium effort") reaches Claude Code by its id, its card naming it
+        // plainly; one Claude Code can't run is refused at the handoff, so the companion can say so, and no job is left.
+        const started: string[] = []
+        for (const [model, id, name] of [["Fable 5.2", "claude-fable-5-2", "Fable 5.2"], ["opus 55", "claude-opus-5-5", "Opus 5.5"]]) {
+          ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Discuss the plan", model, effort: "medium", cwd: repo }, agent))
+          if (b?.id) started.push(b.id)
+          check(`handoff --model "${model}": Claude Code is started on ${id}, its card says Claude Code ${name}`, st === 200 && said.at(-1)?.model === id && said.at(-1)?.effort === "medium" &&
+            String(b.where).includes(`Claude Code ${name}`), [st, b?.where, said.at(-1)?.model])
+        }
+        for (const id of started) await asItsTool(() => api("POST", "ops/companion.job-stop", { id }, agent)).catch(() => {})
+        const count = (await api("POST", "ops/companion.jobs", {}))[1].jobs.length, starts = said.length
+        ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Discuss the plan", model: "gpt 5", cwd: repo }, agent))
+        check("handoff --model a name Claude Code can't run: refused at once, saying what it takes; no job, nothing started",
+          st === 400 && /'gpt 5' isn't a model Claude Code runs: sonnet, opus, haiku, fable/.test(b.error) && said.length === starts &&
+          (await api("POST", "ops/companion.jobs", {}))[1].jobs.length === count, [st, b])
+        // (every start of Claude Code takes it so: a terminal started with one too)
+        const t = `claude-modeltest${Date.now() % 1000}`
+        ;[st, b] = await api("POST", "ops/terminal.start", { agent: "claude", model: "Haiku 5.5", prompt: "hi" })
+        check("terminal start --model \"Haiku 5.5\": Claude Code runs claude-haiku-5-5", st === 200 && said.at(-1)?.model === "claude-haiku-5-5", [st, b, said.at(-1)?.model])
+        if (b?.id) await api("DELETE", `terminals/${b.id}`).catch(() => {})
+        ;[st, b] = await api("POST", `terminals/${t}`, { model: "gemini 3", prompt: "hi" })
+        check("terminal route: a model Claude Code can't run is refused, no terminal started", st === 400 && /isn't a model Claude Code runs/.test(b.error) && said.at(-1)?.model === "claude-haiku-5-5", [st, b])
+      }
       // Do it: a task line handed over, in progress; a line that isn't an open task; one that moved; only words.
       const asApp = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" } } as unknown as IncomingMessage
       const ends: string[] = [], linkEnd = (b: Any) => { const id = String(b.link ?? "").split("/").pop()!; ends.push(id); return id }

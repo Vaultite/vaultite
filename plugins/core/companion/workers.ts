@@ -4,7 +4,7 @@ import { execFile, spawn } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { agentName, KNOWN_AGENTS, parseTerminal } from "../../../core/agents.ts"
+import { agentModel, agentName, KNOWN_AGENTS, parseTerminal } from "../../../core/agents.ts"
 import { gitEnv, inDesktop, type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin, quoted, ROOT, userSurface, whoOf } from "../../../core/plugins.ts"
 import { cardOf, choiceIn, commitsIn, endEvent, HANDED, inPlace, landedSaid, landTask, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, type Marks, nowOf, type Queued, queuedLine, picturesIn, type Result, resumeOf,
   step, terminalOf, type Waits, type Where, worktreeOf } from "./jobs.ts"
@@ -338,16 +338,17 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   }
   /** The Claude Code a job runs as when the handoff names none: the setting, with its account (claude_personal). */
   const jobsAgent = () => { const own = setting("jobs_agent") || "claude"; return own.split("_")[0] === "claude" ? own : "claude" }
-  /** Who works on it: the harness asked (Claude Code in the jobs' account by default, else the account asked), its model and effort. */
-  function harnessOf(p: Record<string, unknown>) {
+  /** Who works on it: the harness asked (Claude Code in the jobs' account by default, else the account asked), its model
+   *  as it takes it ("Fable 5.2": claude-fable-5-2; one it can't run is refused here, before a job starts) and effort. */
+  async function harnessOf(p: Record<string, unknown>) {
     const asked = str(p.agent) || "claude", account = str(p.account).trim().toLowerCase()
     if (account && asked !== "claude") throw new OpError("account is Claude Code's: leave agent out (or claude) to pick one of its accounts")
     if (account && !/^[a-z0-9][\w.-]{0,40}$/.test(account)) throw new OpError(`'${account}' isn't an account's id: vau limits lists them (personal, agent...)`)
     const agent = account ? (account === "default" ? "claude" : `claude_${account}`) : asked === "claude" ? jobsAgent() : asked
     const claude = agent.split("_")[0] === "claude"
-    const model = str(p.model) || (claude ? setting("jobs_model") : ""), effort = str(p.effort) || (claude ? setting("jobs_effort") : "")
-    const profile = parseTerminal(`${agent}-x`)?.profile ?? ""
-    return { agent, account: profile ? cap(profile) : "", model, effort, harness: [agentName(agent.split("_")[0]) ?? cap(agent), cap(model)].filter(Boolean).join(" ") }
+    const { id: model, label } = await agentModel(plugin, agent.split("_")[0], str(p.model) || (claude ? setting("jobs_model") : ""))
+    const effort = str(p.effort) || (claude ? setting("jobs_effort") : ""), profile = parseTerminal(`${agent}-x`)?.profile ?? ""
+    return { agent, account: profile ? cap(profile) : "", model, effort, harness: [agentName(agent.split("_")[0]) ?? cap(agent), cap(label)].filter(Boolean).join(" ") }
   }
 
   // ---------- reading its worker
@@ -661,7 +662,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   /** Job `j`, waiting for its machine, placed there and started now that it's back (its ask `q.ask`, its handoff `q.start`). */
   async function startWaiting(ctx: OpCtx, j: Job, q: Queued) {
     const p = q.start ?? {}
-    j.where = { ...await route(q.ask, p), ...harnessOf(p) }
+    j.where = { ...await route(q.ask, p), ...await harnessOf(p) }
     await accountThere(ctx, j.where.machine, p)
     await launch(ctx, j, q.text, q.ask, p)
   }
@@ -748,7 +749,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     const asked = str(p.machine).trim()
     let where: Where
     try {
-      where = { ...await route(m, p), ...harnessOf(p) }
+      where = { ...await route(m, p), ...await harnessOf(p) }
       await accountThere(ctx, where.machine, p)
     } catch (e) {
       if (typeof task === "string" && await away(asked, e)) return await waitFor(ctx, task, titleOf(task), m, p, asked)
@@ -768,7 +769,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   /** A job handed to `machine` while it's offline: kept, waiting (Jobs shows it), started once it's back (flush). */
   async function waitFor(ctx: OpCtx, task: string, title: string, m: Moment | undefined, p: Record<string, unknown>, machine: string) {
     const now = Date.now(), label = await labelOf(machine), { say: _, ...start } = p
-    const where: Where = { machine, label, cwd: str(p.cwd), repo: "", why: `${label} is offline: it starts once it's back`, ...harnessOf(p) }
+    const where: Where = { machine, label, cwd: str(p.cwd), repo: "", why: `${label} is offline: it starts once it's back`, ...await harnessOf(p) }
     const j: Job = { id: newId(), title, state: "waiting", where, terminal: "", now: `Waiting for ${label} to come back`, ...(m ? { asked: m.t } : {}), started: now, turn: now, at: now,
       seen: false, log: [], queued: [{ note: task, text: task, at: now, start: { ...start, machine }, ...(m ? { ask: m } : {}), by: ctx.who }] }
     all().unshift(j)
@@ -837,7 +838,7 @@ resumes), with land for their word to merge it, and ask false when their ask isn
       say: { type: "string", description: "one short line instead of the default announcement (Handed that off to a background agent.), only when they need more (a question, an unexpected place it runs)" },
       agent: { type: "string", enum: ["claude", "codex", "opencode"], default: "claude", description: "who does it: Claude Code (on Opus, high, unless model says), Codex or OpenCode" },
       account: { type: "string", description: "the Claude Code account it runs in, by its id as vau limits lists them on that machine (personal, agent, default...); default: the setting jobs_agent's" },
-      model: { type: "string", description: "its model (default: the setting jobs_model for Claude Code, the agent's own else)" },
+      model: { type: "string", description: "its model, as they said it for Claude Code (Fable 5.2, opus, a full id; default: the setting jobs_model), the agent's own name else" },
       effort: { type: "string", description: "how hard it thinks (default: the setting jobs_effort for Claude Code)" },
       title: { type: "string", description: "its name in the menu bar's Jobs (default: the task's first words); with job, its new name, when the follow-up changes what it's about" },
       cwd: { type: "string", description: "the folder it works in (~ for home), instead of the one the ask was over; one not on that machine is its own checkout of that repo there" },

@@ -2,7 +2,7 @@
 // schedules, `vau`); terminal.ask: a question for an agent in a new background terminal (the Ask box).
 import fs from "node:fs"
 import path from "node:path"
-import { agentIn, MODEL_NAME, newTerminalId, shellQuote, startAgent, TERMINAL_AGENT } from "../../../core/agents.ts"
+import { agentIn, agentModel, newTerminalId, shellQuote, startAgent, TERMINAL_AGENT } from "../../../core/agents.ts"
 import { type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin, quoted } from "../../../core/plugins.ts"
 import { show } from "./ops.ts"
 
@@ -236,12 +236,12 @@ machine's copies are there. title: the prompt's first words, until the agent nam
       open: { type: "boolean", description: "open its terminal's tab in the user's window (default false: in the background)" },
     },
     args: ["prompt"],
-    run: async ({ prompt, agent, account, machine, model, files = [], open }, ctx) => {
+    run: async ({ prompt, agent, account, machine, model: asked, files = [], open }, ctx) => {
       const said = prompt.trim()
       if (!said) throw new OpError("say what to ask")
       if (!TERMINAL_AGENT.test(agent)) throw new OpError(`'${agent}' isn't an agent's name (claude, codex, opencode...; claude_personal: one of its accounts)`)
       if (account && !/^[a-z0-9]{1,32}$/.test(account)) throw new OpError(`'${account}' isn't an account's id`)
-      if (model && !MODEL_NAME.test(model)) throw new OpError(`'${model}' isn't a model's name`)
+      const model = (await agentModel(plugin, agent.split("_")[0], asked ?? "")).id
       for (const rel of files) vaultFile(rel)
       const m = await machineFor(machine)
       let id: string

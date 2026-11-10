@@ -191,6 +191,7 @@ by its path.
 - `agent-mode:claude` (claude-code): The permission mode a session runs in now (the service "agent-mode:claude": what a subagent it delegates to may have at most): the chat's, else its transcript's last. The session in `terminal` when `session` isn't given; null: unknown.
 - `agent-mode:codex` (codex): The mode a session runs in now, from its last turn's sandbox and approvals (the service "agent-mode:codex"): what a subagent it delegates to may have at most. The session in `terminal` when `session` isn't given; null: unknown.
 - `agent-model:claude-code` (claude-code)
+- `agent-model-id:claude` (claude-code): A model as people say it ("Fable 5.2", "opus 55") as --model takes it (claude-fable-5-2, opus), and its name.
 - `agent-models:claude` (claude-code)
 - `agent-models:codex` (codex): The models its picker lists (its cache of them, $CODEX_HOME/models_cache.json), and the efforts all of them take.
 - `agent-pick:claude` (claude-code): The keys answering its questions with `choices`, or "chat" ("agent-pick:claude"): a digit picks (a multi-select's toggles, then Tab; its Type something is ↓ past the options, then Tab, Enter); 1 submits the review at the end.

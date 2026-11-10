@@ -10,7 +10,7 @@ import type { DatabaseSync } from "node:sqlite"
 import { bullets, fmtMin, HTTPError, localDate, OpError, type OpCtx, type Plugin, processTable, type Request, section, serverUrl } from "./plugins.ts"
 import { stableNode } from "./service.ts"
 import { vauEntry } from "./appentry.ts"
-import { KNOWN_AGENTS, parseTerminal } from "./terminalids.ts"
+import { KNOWN_AGENTS, MODEL_NAME, parseTerminal } from "./terminalids.ts"
 import { spawnBin } from "./winbin.ts"
 /** Starting programs on Windows by name (core/winbin.ts). */
 export { spawnBin, winCommand, withPath } from "./winbin.ts"
@@ -435,6 +435,20 @@ export type AgentHow = Pick<AgentStart, "allow" | "model" | "effort" | "mode" | 
 /** What an agent's service "agent-models:<name>" answers: the models a session of it may run (`id` as its --model takes
  *  it), its efforts, least first, and the permission modes it's held to (AgentStart's `mode`; none: it takes none). */
 export type AgentModels = { models: { id: string; label: string }[]; efforts: string[]; modes?: PermissionMode[] }
+
+/** What an agent's service "agent-model-id:<name>" answers for a model as people say it ("Fable 5.2"): its id as its
+ *  --model takes it and the name it reads as ("" for none), or why it names none of the agent's. */
+export type AgentModel = { id: string; label: string } | { error: string }
+/** `said` as agent `name` (claude, codex...) takes it (its service "agent-model-id:<name>"); one whose agent has none keeps its words. */
+export async function agentModel(plugin: Plugin, name: string, said: string): Promise<{ id: string; label: string }> {
+  const s = said.trim()
+  if (!s) return { id: "", label: "" }
+  const r = await plugin.ask<AgentModel | null>(`agent-model-id:${name}`, null, s)
+  if (r && "error" in r) throw new OpError(r.error)
+  if (r) return r
+  if (!MODEL_NAME.test(s)) throw new OpError(`'${s}' isn't a model's name`)
+  return { id: s, label: s }
+}
 
 /** What the service "sample" is asked: one reply to `prompt`, no tools, nothing remembered (an artifact's
  *  claude.sample). It answers SampleAnswer, or throws an Error with `code` (a claude.sample error code). */

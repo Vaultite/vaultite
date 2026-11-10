@@ -14,6 +14,7 @@ import { agentLines, byUser, type Machine, MACHINE_CLIENT, machineSocket, NOT_TH
 import { byUser as asUser } from "../../../core/writegate.ts"
 import { type Entry, IMAGE_MAX, IMAGE_TYPES, IMAGES_MAX, type ImageType, imageType, Reader } from "./chatlog.ts"
 import { type Answer, codeOf, eachMessage, EFFORTS, type Effort, type Event, type Mode, MODES, type Spec, type Summary, type ToolDef } from "./chathost.ts"
+import { modelId, notAModel } from "./models.ts"
 
 type Account = { id: string; dir: string; label: string; private: boolean }
 /** What the chat takes from the rest of the plugin (plugin.ts). */
@@ -437,12 +438,18 @@ export function chats(plugin: Plugin, d: ChatDeps) {
       ...(o.allowed?.length ? { allowed: o.allowed } : {}), ...(o.denied?.length ? { denied: o.denied } : {}), ...(o.dirs?.length ? { dirs: o.dirs } : {}), ...(o.inbox === false ? { quiet: true } : {}), ...(o.quick ? { quick: true } : {}) }
   }
 
+  /** Model `said` as people say it ("Fable 5.2") as --model takes it (claude-fable-5-2); refused when it names none. */
+  function runsAs(said: string) {
+    const id = modelId(said)
+    if (id === null) throw new OpError(notAModel(said))
+    return id
+  }
   /** A new session: its id. `own`: a plugin's, run so again when it's resumed. */
   async function start(o: ChatStart, own = false) {
     busyAt = Date.now()
     const a = accountOf(o.account)
     if (o.cwd && !fs.statSync(o.cwd, { throwIfNoEntry: false })?.isDirectory()) throw new OpError(`there's no folder ${o.cwd}`, 404)
-    if (o.model && !d.models().models.some((m) => m.id === o.model) && !/^claude-[\w.-]+$/.test(o.model)) throw new OpError(`'${o.model}' isn't a model Claude Code runs`)
+    if (o.model) o = { ...o, model: runsAs(o.model) }
     const id = crypto.randomUUID()
     if (own) owned.set(id, { ...o, prompt: undefined, images: undefined, uuid: undefined })
     const said = o.prompt?.trim() || o.images?.length ? { prompt: o.prompt?.trim() ?? "", ...(o.images?.length ? { images: o.images } : {}), ...(o.uuid ? { uuid: o.uuid } : {}) } : {}
@@ -462,6 +469,7 @@ export function chats(plugin: Plugin, d: ChatDeps) {
   /** What the user says to session `id`: straight in while the keeper runs it, else it's resumed with it. */
   async function send(id: string, text: string, given: ChatStart = {}) {
     busyAt = Date.now()
+    if (given.model) given = { ...given, model: runsAs(given.model) }
     if (!SESSION.test(id)) throw new OpError(`'${id}' isn't a session id`)
     const o = { ...owned.get(id), ...given }
     const said = text.trim(), pics = { ...(given.images?.length ? { images: given.images } : {}), ...(given.uuid ? { uuid: given.uuid } : {}) }
@@ -884,7 +892,7 @@ after an approved plan (acceptEdits, default...).`,
     run: async (p) => {
       hostedOr404(p.id)
       if (!p.model && !p.effort && !p.mode) throw new OpError("`model`, `effort` or `mode`: what to change")
-      const { s } = await ask("set", { id: p.id, ...(p.model ? { model: p.model } : {}), ...(p.effort ? { effort: p.effort } : {}), ...(p.mode ? { mode: p.mode } : {}) }) as { s: Summary }
+      const { s } = await ask("set", { id: p.id, ...(p.model ? { model: runsAs(p.model) } : {}), ...(p.effort ? { effort: p.effort } : {}), ...(p.mode ? { mode: p.mode } : {}) }) as { s: Summary }
       return { id: p.id, model: s.model, effort: s.effort, mode: s.mode }
     },
     text: (r) => `Now ${d.modelName(r.model) || "its model"}${r.effort ? `, ${r.effort} effort` : ""}, ${MODE_LABELS[r.mode as Mode] ?? r.mode}.`,
