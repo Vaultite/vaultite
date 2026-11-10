@@ -25,10 +25,11 @@ check("its terminal runs the agent", await until(async () => (await api("GET", "
 const shot = path.join(os.tmpdir(), "vaultite-qa-shot.png")
 execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=1280x800:rate=1", "-frames:v", "1", shot])
 const title = "Lighthouse page redesigned"
-const named = `Feature needs you · ${title}`
-const file = `Inbox/${named}.md`
-vau("inbox", "report", title, "--work", "feature", "--tldr", "The Lighthouse page has a new header. Two questions before it ships.", "--summary", "The **Lighthouse** page has a new header.\n- Moved the logo\n- New colours", "--questions", "Keep the old footer?", "Ship it today?",
-  "--agent", "claude", "--images", shot)
+// (its decisions have defaults it went with: a record, archived as it comes, the questions items of their own)
+const named = `Feature done · ${title}`
+const file = `Inbox/.archive/${named}.md`
+vau("inbox", "report", title, "--work", "feature", "--tldr", "The Lighthouse page has a new header. Two questions before it ships.", "--summary", "The **Lighthouse** page has a new header.\n- Moved the logo\n- New colours",
+  "--decision", "Keep the old footer? | Keep it* | Drop it", "Ship it today? | Ship it | Wait*", "--agent", "claude", "--images", shot)
 check("report: written, naming its terminal", read(file).includes(`terminal: ${term}`) && read(file).includes("```block-reply"), read(file))
 
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } })
@@ -37,7 +38,8 @@ await page.goto(`${B}#file/${enc(file)}`)
 const box = page.locator("textarea[data-reply]")
 check("reply box: drawn at the report's end", await until(() => box.isVisible().catch(() => false), 10000))
 check("reply box: says who it answers", (await page.getByText("Reply to Claude Code").count()) > 0)
-check("report: its questions", (await page.getByText("Keep the old footer?").count()) > 0)
+check("report: its questions, as decisions", await until(async () => (await page.locator("[data-decisions-block] [data-decision]", { hasText: "Keep the old footer?" }).count()) === 1 &&
+  (await page.locator("[data-decisions-block] [data-decision]", { hasText: "Ship it today?" }).count()) === 1, 5000), await page.locator("[data-decisions-block]").innerText().catch(() => ""))
 check("report: its tl;dr drawn on top, a callout", (await page.locator(".cm-callout, [data-callout]").first().innerText().catch(() => "")).includes("In short") ||
   (await page.getByText("In short").count()) > 0)
 check("report: its screenshot", await until(() => page.locator("img[src*='vaultite-qa-shot']").count().then((n) => n > 0), 5000))
@@ -53,9 +55,8 @@ const screen = await until(async () => {
   return s.text?.includes("Keep the footer, ship it") ? s : null
 }, 8000)
 check("reply: typed into its terminal", !!screen, screen)
-const archived = `Inbox/.archive/${named}.md`
-check("reply: kept in the report with when, which is done", await until(() => /> \[!note\] You replied · \d{4}-\d\d-\d\d \d\d:\d\d\n> Keep the footer, ship it/.test(read(archived)), 8000), read(archived) || read(file))
-check("reply: the report stays open, in the archive", await until(() => page.url().includes(enc("Inbox/.archive/")) && box.isVisible(), 5000), page.url())
+check("reply: kept in the report with when", await until(() => /> \[!note\] You replied · \d{4}-\d\d-\d\d \d\d:\d\d\n> Keep the footer, ship it/.test(read(file)), 8000), read(file))
+check("reply: the report stays open", await until(() => page.url().includes(enc(file)) && box.isVisible(), 5000), page.url())
 check("reply: still scrolled where it was read, not back at the top", before > 100 && await until(async () => Math.abs((await scrolled()) - before) < 40, 4000), { before, after: await scrolled() })
 await page.screenshot({ path: `${OUT}report-replied.png` })
 
@@ -64,8 +65,8 @@ await page.screenshot({ path: `${OUT}report-replied.png` })
 const shell = "q7r8s9t1"
 await api("POST", `terminals/${shell}`)
 vauIn(shell, "inbox", "report", "Beacon footer kept", "--work", "change", "--tldr", "Kept the Beacon footer.", "--summary", "Kept the footer.", "--agent", "claude")
-const inShell = await until(() => readdirSync(path.join(VAULT, "Inbox")).find((f) => f.endsWith(".md") && read(`Inbox/${f}`).includes(`terminal: ${shell}`)), 5000)
-await page.goto(`${B}#file/${enc(`Inbox/${inShell}`)}`)
+const inShell = await until(() => readdirSync(path.join(VAULT, "Inbox/.archive")).find((f) => f.endsWith(".md") && read(`Inbox/.archive/${f}`).includes(`terminal: ${shell}`)), 5000)
+await page.goto(`${B}#file/${enc(`Inbox/.archive/${inShell}`)}`)
 const plan = page.locator("[data-reply-plan]")
 check("a shell's report: the box says a new session gets the reply", await until(async () => (await plan.getAttribute("data-reply-plan").catch(() => null)) === "new", 10000) &&
   (await plan.innerText()).startsWith("Starts a new session"), await plan.innerText().catch(() => null))
@@ -80,7 +81,7 @@ for (const t of [shell, fresh]) if (t) await api("DELETE", `terminals/${t}`).cat
 
 const phone = await browser.newContext({ ...devices["iPhone 13"], viewport: { width: 390, height: 844 } })
 const ph = watch(await phone.newPage())
-await ph.goto(`${B}#file/${enc(archived)}`)
+await ph.goto(`${B}#file/${enc(file)}`)
 const pbox = ph.locator("textarea[data-reply]")
 await until(() => pbox.isVisible().catch(() => false), 10000)
 await pbox.scrollIntoViewIfNeeded()
