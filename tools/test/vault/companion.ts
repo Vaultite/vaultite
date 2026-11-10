@@ -7,6 +7,9 @@ export default async ($: VaultTest) => {
   const { api, check, exists, read, write } = $
   // Companion (plugins/core/companion): moments in, ops out; the windows' socket is QA's (web/qa/companion.mjs).
   const c = await import("../../../plugins/core/companion/plugin.ts")
+  check("companion: a chat session reads what a summoned one does (its jobs, where they run, the talk), as tools",
+    ["jobs", "job", "where", "conversation", "see", "status"].every((t) => c.TOOLS.includes(t)) && c.SUMMONED_TOOLS.filter((t) => t !== "live-undo").every((t) => c.TOOLS.includes(t)),
+    c.SUMMONED_TOOLS.filter((t) => !c.TOOLS.includes(t)))
   // (its rounds only when a check runs one: the minute's would end the made-up sessions, whose terminals never run, as a
   // slower machine's test reaches them)
   clearInterval(c.watchdog)

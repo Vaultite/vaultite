@@ -2000,8 +2000,8 @@ export type Chat = {
 const chat = () => (plugin.peer("claude-code")?.exports.chat ?? null) as Chat | null
 /** Claude Code's companions run through the SDK; Codex's and OpenCode's in terminals, looping on `next`. */
 const onChat = (agent: string) => agent.split("_")[0] === "claude"
-/** The actions a chat session has as tools: the ops of those names, run as it. */
-const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "layer", "see", "act", "check", "follow", "unfollow", "keep", "clear", "history", "status", "handover", "handoff", "open", "page", "job", "job-open", "job-stop", "job-answer", "job-show", "talk", "tour", "tour-save"]
+/** The actions a chat session has as tools: the ops of those names, run as it (vau companion is refused it in Bash). */
+export const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "layer", "see", "act", "check", "follow", "unfollow", "keep", "clear", "history", "status", "handover", "handoff", "where", "open", "page", "jobs", "job", "job-open", "job-stop", "job-answer", "job-show", "talk", "conversation", "tour", "tour-save"]
 /** Tools whose answers the talk leaves out: what it read, and its words (logged as they're said). */
 const QUIET_RESULTS = new Set(["see", "check", "history", "status", "conversation", "say", "pass", "look", "highlight"])
 /** An action's last call of a turn: its turn ends with it, no call of the model's after (a summary nobody reads). */
@@ -2078,7 +2078,7 @@ function chatOptions(name: string, how: { runs?: string; agent?: string; model?:
 
 /** What the summoned session has besides its words (said, its tags pointing and marking): drawing more than a mark,
  *  reading or acting on a page, following, handing off. */
-const SUMMONED_TOOLS = ["pass", "open", "page", "draw", "layer", "see", "act", "check", "follow", "clear", "handoff", "where", "jobs", "job", "job-open", "job-stop", "job-answer", "job-show", "talk", "live-undo", "conversation", "tour", "tour-save"]
+export const SUMMONED_TOOLS = ["pass", "open", "page", "draw", "layer", "see", "act", "check", "follow", "clear", "handoff", "where", "jobs", "job", "job-open", "job-stop", "job-answer", "job-show", "talk", "live-undo", "conversation", "tour", "tour-save"]
 /** What its words and tags become. */
 const SUMMONED_ACTS = ["say", "look", "draw"]
 /** Of Claude Code's own tools, the one it has: vau, to read the vault (ALLOWED's commands). */
