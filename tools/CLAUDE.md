@@ -7,6 +7,12 @@
   gets its own TMPDIR, removed at its end, and fails if anything in it reached the user's own vaults (`core/testrun.ts`:
   a test's server or app refuses one, the user's server refuses its `vau`, claude.ai connectors are off). Make temp
   folders with `os.tmpdir()`, never a fixed `/tmp` path; what must outlast a run (built helpers) goes in `sharedTmp()`.
+- Every test runs on Linux, macOS and Windows in CI, and Windows breaks most often: paths (`\`, a drive, 8.3 short
+  names like `RUNNER~1` against the long ones), no Unix tools (CI runs in Git Bash, so a `cp` or `rm` it puts on PATH
+  passes there and fails on a user's Windows: use `fs`), file clocks coarser than `Date.now()`. A Windows failure
+  reproduces on any Windows machine: clone, `npm ci`, `npm run build`, `node tools/test_vault.ts <area>`.
+- The desktop main process's launch budget (`tools/perf/startup.ts --main`, from the sources) runs in pre-push: over
+  it, import the new code lazily, or raise its limit in `startup.json` in the same commit.
 - Tests use made-up data only: agents' homes are `tools/fixtures/<id>` (Vaultite/plugins': `<id>/.test/fixtures`),
   pointed at by env vars (`tools/test/vault/harness.ts`), never this machine's.
 - `tools/test_agents_linux.ts` (not in `npm test`: it starts real terminals on a sandbox server) runs the app's agents
