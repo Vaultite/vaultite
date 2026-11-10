@@ -122,6 +122,12 @@ fs.rmSync(path.join(home, ".local/bin/claude"))
   check("from the Dock: an account chosen outside an agent's session is the user's", asFromDock(own).length === 0 && own.CLAUDE_CONFIG_DIR && own.GIT_EDITOR === "true", own)
   const shell = { HOME: home, VAULTITE: "1", VAULTITE_TERMINAL: "zsh-x2", CLAUDE_CONFIG_DIR: path.join(home, ".claude-alice"), GIT_EDITOR: "vim" }
   asFromDock(shell)
+  const { serversOwn } = await import("../core/sessionenv.ts")
+  const server = { PORT: "8793", HOST: "127.0.0.1", npm_lifecycle_event: "start", ELECTRON_RUN_AS_NODE: "1", NODE_COMPILE_CACHE: "/ud/compile-cache",
+    VAULTITE_LAUNCHED_AT: "1", VAULTITE_FORKED_AT: "2", VAULTITE_VAU_ENTRY: "/app/electron/shell/vau.mjs", VAULTITE_DESKTOP: "1", VAULTITE_LOCAL: "/l", TMUX: "x" }
+  check("a terminal's shell and an agent's session never inherit the server's own (its compile cache, how the app runs it, its port)",
+    Object.keys(server).every((k) => serversOwn(k)), Object.keys(server).filter((k) => !serversOwn(k)))
+  check("...but the user's own, and a test run's marks", ["HOME", "PATH", "LANG", "NODE_OPTIONS", "VAULTITE_TEST_RUN", "SSH_AUTH_SOCK"].every((k) => !serversOwn(k)))
   check("from the Dock: a plain terminal's variables dropped, the shell's own kept", !shell.VAULTITE && !shell.VAULTITE_TERMINAL && !!shell.CLAUDE_CONFIG_DIR && shell.GIT_EDITOR === "vim", shell)
 }
 

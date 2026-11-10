@@ -1158,6 +1158,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `SampleAsk`: What the service "sample" is asked: one reply to `prompt`, no tools, nothing remembered (an artifact's claude.sample).
 - `scanDays()`: How many days back the scans read now.
 - `scanEvery(ms)`: How often the scans read new lines at most (the tests: whenever asked).
+- `serversOwn(k)`: Whether `k` is the server's own, which its terminals and agents' sessions never inherit: npm's, its address, Vaultite's (not a test run's marks), ELECTRON_RUN_AS_NODE (Electron apps would start as…
 - `sessionsOf(procs, key, pick)`: Each process, newest first, with the session it writes: `pick`ed among those a newer one didn't take (`free`); a process whose pick was taken is left out.
 - `shellQuote(s)`: `s` as one word of a shell command.
 - `spawnBin(bin, args, o)`: spawn() talking over stdin and stdout, but on Windows a program found as its shells would (a .cmd included).

@@ -6,7 +6,7 @@ import type { IncomingMessage } from "node:http"
 import os from "node:os"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
-import { type AgentAsk, type AgentCommand, askLabel, type AgentHow, type AgentMeter, type AgentStart, type AgentState, agentName, agentSession, MODEL_NAME, PERMISSION_MODES, shellQuote, parseTerminal } from "../../../core/agents.ts"
+import { type AgentAsk, type AgentCommand, askLabel, type AgentHow, type AgentMeter, type AgentStart, type AgentState, agentName, agentSession, MODEL_NAME, serversOwn, PERMISSION_MODES, shellQuote, parseTerminal } from "../../../core/agents.ts"
 import {
   agentLines, HTTPError, LOCAL as LOCAL_DIR, readableImage, vauDir, writeWslVau, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, span, splitMachine, type Machine,
   type Request, type Access, accessOf, NOT_THE_USER, userSurface, whoOf,
@@ -277,10 +277,7 @@ setTimeout(tmuxLeft, 10_000).unref?.()
 function env(): Record<string, string> {
   const out: Record<string, string> = {}
   for (const [k, v] of Object.entries(process.env)) {
-    // (ELECTRON_RUN_AS_NODE: how the desktop app runs this server; a shell that kept it would start every Electron app,
-    // Vaultite or VS Code, as plain Node, which exits at once; a test run's marks kept: core/testrun.ts)
-    if (v === undefined || k.startsWith("npm_") || (k.startsWith("VAULTITE_") && !/^VAULTITE_TEST(_RUN|_HOME)?$/.test(k)) || agentSession(k, v)
-      || ["PORT", "HOST", "INIT_CWD", "TMUX", "TMUX_PANE", "ELECTRON_RUN_AS_NODE"].includes(k)) continue
+    if (v === undefined || serversOwn(k) || agentSession(k, v)) continue
     // (Windows' variables have any case, and a shell given Path and PATH would take either: one, Path)
     out[WIN && k.toUpperCase() === "PATH" ? PATH : k] = v
   }

@@ -12,6 +12,11 @@ const AGENT_SESSION = ["CLAUDECODE", "CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_S
 export const agentSession = (k: string, v?: string) => AGENT_SESSION.includes(k) || (k.startsWith("CODEX_") && k !== "CODEX_HOME")
   || (k === "GIT_EDITOR" && v === "true")
 
+/** Whether `k` is the server's own, which its terminals and agents' sessions never inherit: npm's, its address, Vaultite's
+ *  (not a test run's marks), ELECTRON_RUN_AS_NODE (Electron apps would start as Node), tmux's, Node's compile cache. */
+export const serversOwn = (k: string) => k.startsWith("npm_") || (k.startsWith("VAULTITE_") && !/^VAULTITE_TEST(_RUN|_HOME)?$/.test(k))
+  || ["PORT", "HOST", "INIT_CWD", "TMUX", "TMUX_PANE", "ELECTRON_RUN_AS_NODE", "NODE_COMPILE_CACHE"].includes(k)
+
 /** Which account the session's agent runs in: set per account by whoever started it (its launcher, an alias). */
 const ACCOUNT = ["CLAUDE_CONFIG_DIR", "CODEX_HOME"]
 
