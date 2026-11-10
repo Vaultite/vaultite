@@ -81,6 +81,21 @@ await section("the commit it runs", async () => {
   check("isHash: hashes only", isHash(b) && isHash(b.slice(0, 4)) && !isHash("HEAD") && !isHash("main") && !isHash("abc") && !isHash(`${b.slice(0, 7)}^`) && !isHash("v1.2.0"))
   const none = runningIn(path.join(tmp, "nowhere"), () => ({ entry: null, eager: [], stamp: null }))
   check("not a checkout: unknown", (await none.running()).commit === null && await none.contains("a".repeat(40), "b".repeat(40)) === null)
+  check("… and whether a process runs older code, unknown", (await none.processes([{ id: "server", commit: a }]))[0].stale === null)
+})
+
+await section("whether each process runs older code (the module graph)", async () => {
+  const sha = commit({ "server.ts": `import "./core/a.ts"`, "core/a.ts": "export const a = 1", "web/src/x.tsx": "", "README.md": "" }, "graph")
+  const r = runningIn(repo, () => ({ entry: null, eager: [], stamp: null }))
+  const ask = () => r.processes([{ id: "server", commit: sha }, { id: "desktop", commit: null }, { id: "helper", commit: "f".repeat(40) }])
+  fs.writeFileSync(path.join(repo, "README.md"), "more"); fs.writeFileSync(path.join(repo, "web/src/x.tsx"), "more")
+  let [server, app, helper] = await ask()
+  check("what the server doesn't reach changed: not stale", server.stale === false && server.label === "Server", server)
+  check("a process that didn't say its commit, or one this checkout hasn't: can't say, and why", app.stale === null && !!app.why && helper.stale === null && /doesn't have/.test(helper.why ?? ""), [app, helper])
+  fs.writeFileSync(path.join(repo, "core/a.ts"), "export const a = 2") // (uncommitted: what the disk has is what a restart runs)
+  ;[server] = await ask()
+  check("a file it reaches changed: stale, saying which and how", server.stale === true && server.first === "core/a.ts" && server.chain?.join(">") === "server.ts>core/a.ts", server)
+  git("checkout", "--", ".")
 })
 
 await section("app.version asks about a hash only", async () => {

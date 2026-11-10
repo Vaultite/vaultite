@@ -3,7 +3,7 @@
 import { type Machine, MACHINE_CLIENT } from "../plugins.ts"
 import { type Op, OpError, type OpCtx } from "../ops.ts"
 import { desktopCall, inDesktop } from "../desktopapp.ts"
-import { ambiguousCommit, contains, isHash, resolveCommit, running } from "../running.ts"
+import { ambiguousCommit, contains, isHash, processes, type Process, resolveCommit, running } from "../running.ts"
 import { type UpdateStatus, updateStatus } from "../update/updater.ts"
 import { redRoute } from "../update/git.ts"
 import { API_VERSION, APP_VERSION } from "../version.ts"
@@ -92,6 +92,9 @@ updates: a service install following a branch (vau service install --updates mai
 (current, waiting and why, updating, failed), when it last looked, the last update and a failed one (in vau errors too).
 app: the desktop app this server runs in or is attached to updates itself (and its server) in its mode: automatic,
 notify (the default: offers Restart to update) or off (only from its menu); ready is a build waiting for a restart.
+processes: this server, and the desktop app (and its menu-bar helper) when there's one: the commit each started on, and
+whether a file it runs (its imports, followed: core/update/closure.ts) changed since in this checkout (stale), the first
+such file and how it's reached. In a checkout only.
 
 Is my commit live? Give it (a hash, short or full; in a checkout of the app, HEAD or a branch too): live says whether
 this server runs it or a commit after it, and why not. With wait it waits until it is, or until the updates say why it
@@ -123,20 +126,30 @@ new build by themselves (at once when hidden; visible, they offer Reload). machi
         if (there) return there
       }
       const live = given ? (wait ? await waitFor(given, Number(timeout ?? 900)) : await look(given)) : undefined
-      const { startedOn: _, ...now } = await running()
+      const { startedOn, ...now } = await running(), app = await appUpdates()
       return { ...(live ? { live } : {}), version: APP_VERSION, api: API_VERSION, ...now, pid: process.pid, started: Date.now() - Math.round(process.uptime() * 1000),
-        updates: updateStatus(), app: await appUpdates() }
+        updates: updateStatus(), app, processes: await processes(processList(startedOn, app)) }
     },
     text: (r: Any) => [...(r.live ? [r.live.why] : []),
       `Vaultite ${r.version} (plugin API ${r.api})${r.commit ? `, ${short(r.commit)}${r.branch ? ` on ${r.branch}` : ""}` : ""}${r.machine ? ` on ${r.machine}` : ""}`,
       ...(r.subject ? [`Commit: ${r.subject}${r.at ? ` (${new Date(r.at).toISOString()})` : ""}`] : []),
       // (out of step: a checkout pulled and built but not restarted, or restarted but not built)
       ...(r.web?.commit && r.commit && r.web.commit !== r.commit ? [`Web app: built from ${short(r.web.commit)}, not ${short(r.commit)}`] : []),
+      ...(r.processes ?? []).map(processLine),
       `Updates: ${updatesLine(r.updates, r.app)}`,
       ...(r.updates.last ? [`Last update: ${short(r.updates.last.from)} to ${short(r.updates.last.to)}, ${new Date(r.updates.last.at).toISOString()}${r.updates.last.elsewhere?.length ? ` (CI red on it elsewhere: ${r.updates.last.elsewhere.join(", ")})` : ""}`] : []),
       ...(r.updates.error ? [`Failed: ${r.updates.error.message}`] : [])].join("\n"),
   }]
 }
+
+/** The processes this server knows the commits of: itself (the one it started on), and the desktop app it's in or
+ *  attached to, with its menu-bar helper on a Mac (the app says its commit; the keepers don't say theirs). */
+const processList = (startedOn: string | null, app: AppUpdates | "unknown" | null) => [{ id: "server", commit: startedOn },
+  ...(app && app !== "unknown" ? [{ id: "desktop", commit: app.commit ?? null }, ...(process.platform === "darwin" ? [{ id: "helper", commit: app.commit ?? null }] : [])] : [])]
+
+/** A process's line: its commit, and whether what it runs changed since. */
+const processLine = (p: Process) => `${p.label}: ${p.commit ? `started on ${short(p.commit)}` : "commit unknown"}, ${p.stale === null ? `can't say if it runs the newest code (${p.why})`
+  : p.stale ? `runs older code: ${p.first} changed since${p.why ? ` (${p.why})` : p.chain && p.chain.length > 1 ? ` (${p.chain.join(" > ")})` : ""}` : "nothing it runs changed since"}`
 
 /** The desktop app's updates, when it runs this server or is attached to it (null: none; unknown: it didn't say). */
 const appUpdates = (): Promise<AppUpdates | "unknown" | null> => !inDesktop() ? Promise.resolve(null)
