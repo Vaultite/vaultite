@@ -30,6 +30,7 @@ import { inVault, otherAppScheme, runsCode } from "../core/opening.ts"
 import { permissionFor, whose } from "./apppermissions.ts"
 import * as Setup from "./setup.ts"
 import { gitEnv } from "../core/gitenv.ts"
+import { vauEntry } from "../core/appentry.ts"
 import { strings } from "../core/values.ts"
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
@@ -725,7 +726,7 @@ let chosen: { path: string; made: boolean; added: boolean } | null = null
 const where = (): Setup.Where => {
   const home = process.env.VAULTITE_SETUP_HOME ? path.resolve(process.env.VAULTITE_SETUP_HOME) : app.getPath("home")
   return {
-    home, exe: process.execPath, root: ROOT, userData: app.getPath("userData"),
+    home, exe: process.execPath, vau: vauEntry(), userData: app.getPath("userData"),
     env: process.env.VAULTITE_USER_DATA ? { VAULTITE_USER_DATA: app.getPath("userData") } : {},
     ...(process.env.VAULTITE_SETUP_HOME ? {} : { documents: app.getPath("documents") }),
     ...(!process.env.VAULTITE_SETUP_HOME && process.env.CLAUDE_CONFIG_DIR ? { claudeDir: path.resolve(process.env.CLAUDE_CONFIG_DIR) } : {}),

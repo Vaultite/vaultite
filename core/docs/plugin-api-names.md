@@ -994,6 +994,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `unsynced(rel)`: What isn't synced: the folder's own machinery, the OS's litter, sync's temporary files.
 - `unzip(buf, max?)`: The entries of the zip in `buf`, by name (folders left out); each one's bytes, inflated when read (one past `max` bytes throws).
 - `userSurface(w)`: Who may answer for the user (approve or deny a permission: a gate, a terminal's question): the app, their phone's and watch's notifications, or a machine passing one on; never vau, since a…
+- `vauEntry(env?)`: The `vau` CLI's entry (a script run by Node, or by the app's executable as Node).
 - `VAULT_PATH`
 - `vaultHere(vaultPath)`: A vault on this machine: its real path and key (that path's hash), under which what's kept here for it goes (<LOCAL>/<what>/<key>).
 - `vaultPath(p, mustExist?, vault?, explicit?, trash?)`: A safe vault-relative path, or a 400.
@@ -1003,7 +1004,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `wikiTargets(text)`: The targets of every [[link]] (and ![[embed]]) in Markdown, outside code (fences and inline).
 - `withPinFile(entry, file)`: The entry with its file moved to `file` (a search as it is).
 - `WriteRefused`: A write the gate refused: a 403 for the API.
-- `writeWslVau(o?)`: Writes vau for WSL (when it changed) running this checkout's bin/vau with `exe` as Node (this process's by default: the app's executable or node.exe); returns its folder.
+- `writeWslVau(o?)`: Writes vau for WSL (when it changed) running vau's entry (core/appentry.ts) with `exe` as Node (this process's by default: the app's executable or node.exe); returns its folder.
 - `xmlDecode(s)`: XML or HTML text with its entities decoded (&amp;, &#233;, &#x2014;).
 - `zipEntries(file)`: Every entry of the zip at `file` (folders left out).
 - `zipFiles(files)`: A zip of these files (name -> content), deflated: the tests' made-up exports.

@@ -9,13 +9,14 @@ import { check, exit, summary } from "./test/lib.ts"
 const t0 = Date.now()
 
 const S = await import("../electron/setup.ts")
+const { vauEntry } = await import("../core/appentry.ts")
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-setup-test-"))
 const home = path.join(tmp, "home")
 const put = (rel: string, text: string) => { const p = path.join(home, rel); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, text); return p }
 // Node as "the app's executable": the shim runs bin/vau with it, as the app runs it with Electron.
 // (macOS' and Linux' logic on Windows too: its own below)
-const w = { home, exe: process.execPath, root: ROOT, userData: path.join(tmp, "userData"), env: { VAULTITE_USER_DATA: path.join(tmp, "userData") },
+const w = { home, exe: process.execPath, vau: vauEntry({}), userData: path.join(tmp, "userData"), env: { VAULTITE_USER_DATA: path.join(tmp, "userData") },
   platform: process.platform === "win32" ? "linux" : process.platform }
 fs.mkdirSync(home, { recursive: true })
 
@@ -125,6 +126,8 @@ fs.rmSync(path.join(home, ".local/bin/claude"))
 }
 
 // ---------- vau ----------
+check("vau's entry: this code's bin/vau", vauEntry({}) === path.join(ROOT, "bin", "vau") && fs.existsSync(vauEntry({})))
+check("vau's entry: VAULTITE_VAU_ENTRY names another", vauEntry({ VAULTITE_VAU_ENTRY: "/opt/lighthouse/vau.mjs" }) === "/opt/lighthouse/vau.mjs")
 check("vau: not installed", S.vauStatus(w, []).path === null)
 const v1 = S.installVau(w)
 check("vau: written to ~/.local/bin", v1.path === path.join(home, ".local/bin/vau") && (process.platform === "win32" || (fs.statSync(v1.path).mode & 0o111) !== 0), v1)
@@ -134,6 +137,7 @@ if (process.platform !== "win32") {
   const out = execFileSync(v1.path, ["--help"], { encoding: "utf8", env: { PATH: "/usr/bin:/bin", HOME: home } })
   check("vau: runs with no node on the PATH", /vau: drive Vaultite/.test(out), out.slice(0, 200))
 }
+check("vau: the shim runs vau's entry", fs.readFileSync(v1.path, "utf8").includes(vauEntry({})))
 check("vau: the shim passes the app's userData on", fs.readFileSync(v1.path, "utf8").includes(`VAULTITE_USER_DATA='${w.userData}'`))
 // Someone else's vau in ~/.local/bin stays; ours goes in userData.
 const home2 = path.join(tmp, "home2"), w2 = { ...w, home: home2 }

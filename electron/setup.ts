@@ -10,9 +10,9 @@ import { vauShims } from "../core/vaushims.ts"
 /** Where it looks and writes: a made-up home folder in tests and QA, never the user's. */
 export type Where = {
   home: string
-  /** The app's executable (run as Node) and its source folder (bin/vau). */
+  /** The app's executable (run as Node) and the vau CLI's entry it runs (core/appentry.ts). */
   exe: string
-  root: string
+  vau: string
   /** The app's userData (a vau of the app's own when ~/.local/bin has someone else's). */
   userData: string
   /** Variables the shim sets (VAULTITE_USER_DATA when the app runs with another). */
@@ -174,7 +174,7 @@ export function setCodexComputerUse(w: Where, codex: string): Promise<void> {
 // ---------- vau ----------
 // (Windows: vau.cmd for cmd and PowerShell and the script for Git Bash, in a folder of ours added to the user's PATH)
 const MARK = "vau, the Vaultite command, written by Set up Vaultite"
-const shims = (w: Where) => vauShims({ exe: w.exe, script: path.join(w.root, "bin", "vau"), env: w.env,
+const shims = (w: Where) => vauShims({ exe: w.exe, script: w.vau, env: w.env,
   mark: `${MARK} (${path.basename(w.exe)} runs it as Node). Safe to delete.` }, platformOf(w))
 const platformOf = (w: Where) => w.platform ?? process.platform
 

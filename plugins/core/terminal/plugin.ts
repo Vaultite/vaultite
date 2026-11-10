@@ -8,7 +8,7 @@ import path from "node:path"
 import { type RawData, WebSocket } from "ws"
 import { type AgentAsk, type AgentCommand, askLabel, type AgentHow, type AgentMeter, type AgentStart, type AgentState, agentName, agentSession, MODEL_NAME, PERMISSION_MODES, shellQuote, parseTerminal } from "../../../core/agents.ts"
 import {
-  agentLines, HTTPError, LOCAL as LOCAL_DIR, readableImage, vauShims, writeWslVau, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, span, splitMachine, type Machine,
+  agentLines, HTTPError, LOCAL as LOCAL_DIR, readableImage, vauEntry, vauShims, writeWslVau, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, span, splitMachine, type Machine,
   type Request, type Access, accessOf, NOT_THE_USER, userSurface, whoOf,
 } from "../../../core/plugins.ts"
 import {
@@ -306,14 +306,11 @@ const PICTURES_MOD = path.join(plugin.dir, "claude-pictures")
 /** The environment's PATH, as Windows spells it. */
 const PATH = WIN ? "Path" : "PATH"
 
-/** The app's folder (the repo, or the packaged app's resources): its bin/ holds the `vau` CLI. */
-const APP_ROOT = path.resolve(plugin.dir, "..", "..", "..")
-
 /** The folder whose vau a terminal finds first: the app's bin/ when Node runs the server; the desktop app (no `node`) and
  *  Windows (can't run bin/vau) get LOCAL/bin's shims running it with the server's runtime as Node (vaushims.ts). */
 function vauBin(): string {
-  if (!process.versions.electron && !WIN) return path.join(APP_ROOT, "bin")
-  return shims(path.join(LOCAL_DIR, "bin"), vauShims({ exe: process.execPath, script: path.join(APP_ROOT, "bin", "vau"),
+  if (!process.versions.electron && !WIN) return path.dirname(vauEntry())
+  return shims(path.join(LOCAL_DIR, "bin"), vauShims({ exe: process.execPath, script: vauEntry(),
     mark: "vau for Vaultite's terminals (plugins/core/terminal), remade as needed." }))
 }
 /** Files written into `dir` where they're missing or differ: its path. */

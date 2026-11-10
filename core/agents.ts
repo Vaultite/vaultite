@@ -7,8 +7,9 @@ import os from "node:os"
 import path from "node:path"
 import { promisify } from "node:util"
 import type { DatabaseSync } from "node:sqlite"
-import { bullets, fmtMin, HTTPError, localDate, OpError, type OpCtx, type Plugin, processTable, type Request, ROOT, section, serverUrl } from "./plugins.ts"
+import { bullets, fmtMin, HTTPError, localDate, OpError, type OpCtx, type Plugin, processTable, type Request, section, serverUrl } from "./plugins.ts"
 import { stableNode } from "./service.ts"
+import { vauEntry } from "./appentry.ts"
 import { KNOWN_AGENTS, parseTerminal } from "./terminalids.ts"
 import { spawnBin } from "./winbin.ts"
 /** Starting programs on Windows by name (core/winbin.ts). */
@@ -28,7 +29,7 @@ export const HOME = os.homedir()
 export function vauMcpServer(): { command: string; args: string[]; env: Record<string, string> } {
   const env: Record<string, string> = { VAULTITE_URL: serverUrl() }
   if (process.env.ELECTRON_RUN_AS_NODE) env.ELECTRON_RUN_AS_NODE = "1"
-  return { command: stableNode(process.execPath, process.env.PATH), args: [path.join(ROOT, "bin", "vau"), "mcp"], env }
+  return { command: stableNode(process.execPath, process.env.PATH), args: [vauEntry(), "mcp"], env }
 }
 const run = promisify(execFile)
 const pad = (n: number) => String(n).padStart(2, "0")

@@ -4,23 +4,22 @@ import { execFile } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { fileURLToPath } from "node:url"
+import { vauEntry } from "./appentry.ts"
 import { writeAtomic } from "./vault.ts"
 import { wslShim } from "./vaushims.ts"
 
-const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const WSL_MARK = "vau for WSL, written by Vaultite: runs Windows' vau through WSL's interop. Safe to delete."
 
 /** The folder holding vau for WSL, a Windows path (in WSL: wslpath -u, or core/wsl.ts' toWsl). */
 const wslVauDir = (env: Record<string, string | undefined> = process.env) =>
   path.win32.join(env.LOCALAPPDATA || path.win32.join(os.homedir(), "AppData", "Local"), "Vaultite", "wsl")
 
-/** Writes vau for WSL (when it changed) running this checkout's bin/vau with `exe` as Node (this process's by default:
+/** Writes vau for WSL (when it changed) running vau's entry (core/appentry.ts) with `exe` as Node (this process's by default:
  *  the app's executable or node.exe); returns its folder. */
 export function writeWslVau(o: { exe?: string; dir?: string; env?: Record<string, string> } = {}): string {
   const dir = o.dir ?? wslVauDir()
   const env = o.env ?? (process.env.VAULTITE_USER_DATA ? { VAULTITE_USER_DATA: process.env.VAULTITE_USER_DATA } : {})
-  const text = wslShim({ exe: o.exe ?? process.execPath, script: path.join(ROOT, "bin", "vau"), env, mark: WSL_MARK })
+  const text = wslShim({ exe: o.exe ?? process.execPath, script: vauEntry(), env, mark: WSL_MARK })
   const file = path.join(dir, "vau")
   let was = ""
   try { was = fs.readFileSync(file, "utf8") } catch { /* not written yet */ }

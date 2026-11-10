@@ -180,7 +180,7 @@ await section("uninstall", async () => {
   const dir = path.dirname(exe)
   // Set up's vau naming this install (the update's first run wrote it; else written here, never over another's)
   const S = await import("../electron/setup.ts")
-  const w = { home: os.homedir(), exe, root: path.join(dir, "resources", "app"), userData: tmp }, vau = path.join(S.winBin(w), "vau.cmd")
+  const w = { home: os.homedir(), exe, vau: path.join(dir, "resources", "app", "bin", "vau"), userData: tmp }, vau = path.join(S.winBin(w), "vau.cmd")
   if (!fs.existsSync(vau)) S.installVau(w, null)
   const ours = fs.readFileSync(vau, "utf8").includes(`(${NAME}.exe runs it as Node)`)
   const r = spawnSync(path.join(dir, `Uninstall ${NAME}.exe`), ["/S"], { stdio: "inherit" })

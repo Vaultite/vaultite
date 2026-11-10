@@ -3,9 +3,10 @@
 import { spawn } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
+import { vauEntry } from "./appentry.ts"
 import { matching, typeMatches, type VaultEvent } from "./events.ts"
 import { ID, type Op, OpError, opProblems, type Param, whoOf } from "./ops.ts"
-import { LOCAL, type Plugin, ROOT, serverUrl, vaultHere } from "./plugins.ts"
+import { LOCAL, type Plugin, serverUrl, vaultHere } from "./plugins.ts"
 import { hashed, inside } from "./rules.ts"
 import { type Job, type When, whenProblems } from "./schedule.ts"
 import type { Item, Vault } from "./vault.ts"
@@ -160,15 +161,15 @@ export class Hooks {
     const env: Record<string, string> = {}
     for (const [k, v] of Object.entries(process.env)) if (v !== undefined && k !== "ELECTRON_RUN_AS_NODE" && k !== "VAULTITE_TERMINAL") env[k] = v
     Object.assign(env, {
-      VAULTITE: "1", VAULTITE_URL: serverUrl(), VAULTITE_VAULT: this.vault.path, VAULTITE_BIN: path.join(ROOT, "bin", "vau"),
+      VAULTITE: "1", VAULTITE_URL: serverUrl(), VAULTITE_VAULT: this.vault.path, VAULTITE_BIN: vauEntry(),
       VAULTITE_PLUGIN_ID: p.id, VAULTITE_PLUGIN_DIR: p.dir, VAULTITE_PLUGIN_STATE: this.stateDir(p.id),
-      PATH: [path.join(ROOT, "bin"), NODE_DIR, process.env.PATH].filter(Boolean).join(path.delimiter), ...o.env,
+      PATH: [path.dirname(vauEntry()), NODE_DIR, process.env.PATH].filter(Boolean).join(path.delimiter), ...o.env,
     })
     let prog = command[0].includes("/") && !path.isAbsolute(command[0]) ? path.resolve(p.dir, command[0]) : command[0]
     let args = command.slice(1)
     // (on Windows `node` and `vau` are this Node: a .cmd can't run without a shell, and the desktop app has no node.exe)
     if (process.platform === "win32" && (prog === "node" || prog === "vau")) {
-      if (prog === "vau") args = [path.join(ROOT, "bin", "vau"), ...args]
+      if (prog === "vau") args = [vauEntry(), ...args]
       prog = process.execPath
       if (process.versions.electron) env.ELECTRON_RUN_AS_NODE = "1"
     }
