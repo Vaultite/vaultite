@@ -27,6 +27,9 @@ the main writers. Served on a private network (a tailnet), no accounts.
 - No compatibility shims: migrate data and every caller, and delete the old API in the same change.
 - Backend code runs with Node's type stripping, so it's erasable TS: no enums, no parameter properties, `import type`,
   imports name the `.ts` file. Files in `core/` that the web imports use no Node.
+- Which process a file reaches is its imports' graph (`core/update/closure.ts`; `node tools/closure.ts <commit>` says
+  why). Code loaded or a file read by a computed path (`import(x)`, a path from `import.meta` or `ROOT`, a process
+  started from a file) is declared in `core/update/sites.ts`: `tools/test_closure.ts` fails on one that isn't.
 - The Swift helpers (`electron/*.swift`) build with the Xcode on CI's `macos-15` runner, older than ours: no newer API,
   and a long expression typed in steps (its type checker gives up on one that ours takes).
 - `core/` is the server, `web/src/core/` the app's core; several file names exist on both sides, so say which.
