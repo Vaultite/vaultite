@@ -119,7 +119,9 @@ async function main() {
       if (!dry) {
         fs.mkdirSync(path.dirname(to!), { recursive: true })
         fs.mkdirSync(path.join(local!, "sync"), { recursive: true })
+        // (Windows has no cp: CI's Git Bash puts one on PATH, a user's machine doesn't)
         if (process.platform === "darwin") execFileSync("cp", ["-c", "-R", from!, to!])
+        else if (process.platform === "win32") fs.cpSync(from!, to!, { recursive: true, preserveTimestamps: true, verbatimSymlinks: true })
         else execFileSync("cp", ["-a", from!, to!])
         const after = hashes(to!), diff = differences(before, after)
         if (diff.length) { fs.rmSync(to!, { recursive: true, force: true }); die(`the copy differs (${diff.length}), removed:\n${diff.slice(0, 20).join("\n")}`) }
