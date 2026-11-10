@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A quieter Agents panel**: one list, no Needs you or Done headings, no filter or machine names: a small dot says
+  where each agent stands and a short time ends its row (how it runs and where in its tooltip). Agents done and read
+  over half an hour ago fold under Earlier. The filter and machines stay on the Agents tab.
 - **`vau version --wait` rides out the server's restart**: a wait cut by an update's restart, directly or through
   Tailscale Serve (its 502), or through `--machine`, goes on with the time left and answers from the new server; when
   the server stays down it says so and for how long, never an empty error. The verdict is the output's last line.

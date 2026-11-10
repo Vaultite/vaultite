@@ -1,6 +1,7 @@
 // The Agents panel (the terminals socket, the chats route and the machines stood in for): offered once in the right
-// sidebar, every agent in one list (needs you, working, done), each kind's icon and machine, the filter, a click opening
-// a terminal's tab or a chat's, and the same list in a phone's drawer. Writes the sidebars: throwaway server only.
+// sidebar, every agent in one flat list (needs you, working, done) with its state's glyph and a short time, older ones
+// folded under Earlier, the filter on the tab only, a click opening its tab, and a phone's drawer. Writes the
+// sidebars: throwaway server only.
 //   node web/qa/agentspanel.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { execFileSync } from "node:child_process"
@@ -50,7 +51,7 @@ async function standIn(page) {
 }
 const rowsOf = (page, scope) => page.$$eval(`${scope} [data-agent-run]`, (els) => els.map((e) => ({
   id: e.dataset.agentRun, kind: e.dataset.kind, state: e.dataset.state, text: e.innerText.trim().replace(/\s+/g, " "),
-  where: e.querySelector("[data-agent-where]")?.textContent ?? "", dot: e.querySelector("[data-dot]")?.dataset.dot ?? null, bold: e.className.includes("font-semibold") })))
+  where: e.querySelector("[data-agent-where]")?.textContent ?? "", when: e.querySelector("[data-agent-when]")?.textContent ?? "", tip: e.dataset.tip ?? "", dot: e.querySelector("[data-dot]")?.dataset.dot ?? null, bold: e.className.includes("font-medium") })))
 
 // ---------- desktop: offered in the right sidebar, in its order ----------
 const D = watch(await browser.newPage({ viewport: { width: 1440, height: 900 } }), { console: true, ignore: /favicon|Failed to load resource|WebSocket/ })
@@ -60,33 +61,34 @@ await D.waitForSelector("[role=tree]", { timeout: 60000 })
 const shown = await until(async () => !!(await D.$("[data-agents-panel] [data-agent-run]")), 15000)
 const sides = await until(() => /Right sidebar:\n\s+1\. agents:agents/.test(vau("panels", "--vault")), 5000)
 check("Agents: offered once an agent runs, at the top of the right sidebar", shown && sides, vau("panels", "--vault").split("\nHidden")[0])
-await until(async () => (await rowsOf(D, "[data-agents-panel]")).length === 6, 10000)
+await until(async () => (await rowsOf(D, "[data-agents-panel]")).length === 5, 10000)
 const rows = await rowsOf(D, "[data-agents-panel]")
 const order = rows.map((r) => r.id)
 const want = [`terminal:${T.asks.id}`, "chat:c-asks", `terminal:${T.works.id}`, "chat:c-works@laptop", `terminal:${T.rests.id}`, "chat:c-rests"]
-check("Agents: needs you, then working, then done, terminals and chats in one list (a chat a terminal took over once)", JSON.stringify(order) === JSON.stringify(want), order)
-const groups = await D.$$eval("[data-agents-panel] [data-agent-group]", (els) => els.map((e) => [e.dataset.agentGroup, e.firstElementChild?.textContent]))
-check("Agents: under Needs you, Working and Done", JSON.stringify(groups) === JSON.stringify([["needs", "Needs you · 2"], ["working", "Working · 2"], ["done", "Done"]]), groups)
+check("Agents: needs you, then working, then done lately, one list (a chat a terminal took over once)", JSON.stringify(order) === JSON.stringify(want.slice(0, 5)), order)
+const panelText = await D.locator("[data-agents-panel]").innerText()
+const heads = (await D.$$("[data-agents-panel] [data-agent-where]")).length + (/Needs you|Working|Done|All|M1|M4|Mini PC/.test(panelText) ? 1 : 0)
+check("Agents: no group headings, filter or machine names on the rows", heads === 0, panelText)
 const by = Object.fromEntries(rows.map((r) => [r.id, r]))
-check("Agents: each row's kind (terminal or chat) and machine", JSON.stringify(rows.map((r) => [r.kind, r.where])) === JSON.stringify([
-  ["terminal", "M1"], ["chat", "M1"], ["terminal", "M4"], ["chat", "M4"], ["terminal", "Mini PC"], ["chat", "M1"]]), rows.map((r) => [r.kind, r.where]))
-check("Agents: its state as the dot (ask, working, none at rest), the ones that need you bold",
-  JSON.stringify(rows.map((r) => [r.dot, r.bold])) === JSON.stringify([["ask", true], ["ask", true], ["working", false], ["working", false], [null, false], [null, false]]), rows.map((r) => [r.dot, r.bold]))
+check("Agents: the machine and kind said in each row's tooltip", by[`terminal:${T.works.id}`]?.tip.includes("on M4") && by[`terminal:${T.rests.id}`]?.tip.includes("In a terminal"), rows.map((r) => r.tip))
+check("Agents: its state as the glyph (ask, working, none at rest), the ones that need you stronger",
+  JSON.stringify(rows.map((r) => [r.dot, r.bold])) === JSON.stringify([["ask", true], ["ask", true], ["working", false], ["working", false], [null, false]]), rows.map((r) => [r.dot, r.bold]))
+check("Agents: a short time at the end of the ones not asking", rows.slice(2).every((r) => /^(now|\d+(m|h|d|mo))$/.test(r.when)) && rows[0].when === "", rows.map((r) => r.when))
 check("Agents: what each is doing", by[`terminal:${T.works.id}`]?.text.includes("Write the release notes") && by["chat:c-works@laptop"]?.text.includes("Summarize Alice's notes"), rows)
 await D.locator("[data-agents-panel]").screenshot({ path: `${OUT}panel.png` })
 
-// ---------- the filter ----------
-const filter = D.locator("[data-agents-panel] [data-agent-filter]")
-check("Agents: a filter on its heading, All to start", (await filter.innerText().catch(() => "")).trim() === "All")
-await filter.click()
-await D.getByRole("menuitemcheckbox", { name: /^Chats/ }).or(D.getByRole("menuitem", { name: /^Chats/ })).or(D.getByRole("menuitemradio", { name: /^Chats/ })).first().click()
+// ---------- earlier ones fold ----------
+const earlier = D.locator("[data-agents-panel] [data-agent-earlier]")
+check("Agents: the one done an hour ago folded under Earlier 1, closed", (await earlier.innerText().catch(() => "")).replace(/\s+/g, " ").trim() === "Earlier 1"
+  && (await earlier.getAttribute("data-agent-earlier")) === "closed")
+await earlier.click()
 await wait(300)
-const chats = await rowsOf(D, "[data-agents-panel]")
-check("Agents: Chats shows only the chats", chats.length === 3 && chats.every((r) => r.kind === "chat"), chats.map((r) => r.id))
-await filter.click()
-await D.getByRole("menuitemcheckbox", { name: /^All/ }).or(D.getByRole("menuitem", { name: /^All/ })).or(D.getByRole("menuitemradio", { name: /^All/ })).first().click()
+const all = await rowsOf(D, "[data-agents-panel]")
+check("Agents: opening Earlier shows it, last and dimmer", JSON.stringify(all.map((r) => r.id)) === JSON.stringify(want), all.map((r) => r.id))
+await D.locator("[data-agents-panel]").screenshot({ path: `${OUT}panel-earlier.png` })
+await earlier.click()
 await wait(300)
-check("Agents: All shows every one again", (await rowsOf(D, "[data-agents-panel]")).length === 6)
+check("Agents: and closing it folds it again", (await rowsOf(D, "[data-agents-panel]")).length === 5)
 
 // ---------- a click opens it in its own place ----------
 const active = () => D.$eval("[data-tab-bar] [data-tab-id][aria-selected=true], [data-tab-bar] [data-tab-id][data-active]", (e) => e.dataset.tabId).catch(() => "")
@@ -122,7 +124,7 @@ await wait(2000)
 await P.locator("[data-phone-header] button[aria-label='Open right sidebar']").tap()
 await wait(800)
 const phone = await rowsOf(P, "[data-phone-drawer] [data-agents-panel]").catch(() => [])
-check("phone: the drawer lists them in the same order", JSON.stringify(phone.map((r) => r.id)) === JSON.stringify(want), phone.map((r) => r.id))
+check("phone: the drawer lists them in the same order", JSON.stringify(phone.map((r) => r.id)) === JSON.stringify(want.slice(0, 5)), phone.map((r) => r.id))
 const tall = await P.$eval("[data-phone-drawer] [data-agent-run]", (e) => e.getBoundingClientRect().height).catch(() => 0)
 check("phone: rows at the sidebar's phone size (40px)", tall >= 39.5, tall)
 await P.locator("[data-phone-drawer] [data-agents-panel]").screenshot({ path: `${OUT}phone.png` }).catch(() => P.screenshot({ path: `${OUT}phone.png` }))
