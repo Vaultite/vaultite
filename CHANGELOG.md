@@ -26,8 +26,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   menu-bar helper), whether code it runs changed since it started, naming the first such file.
 - **A server following a branch updates sooner and says why it waits**: it takes a commit once CI's tests for its own
   OS passed, even while the rest of the run goes on (another OS's failure is said in `vau version` and its log, and
-  doesn't hold it back), and an update of the web app alone goes through while an agent uses the browser (only a
-  restart waits for it). It looks every 3 minutes instead of 10 (asking GitHub at most 20 times an hour), `vau update`
+  doesn't hold it back), and an update of the web app alone goes through while an agent uses the browser; a restart
+  waits only for an agent's call under way and a minute after its last one, and vau sends a call the restart kept from
+  the server again (one that only reads, even if it may have reached it). It looks every 3 minutes instead of 10 (asking GitHub at most 20 times an hour), `vau update`
   looks now, and its log has each change of state with the commits and why; when the checkout blocks it, it names the
   uncommitted files or the commits not on the branch.
 - **Claude chats show each answer once**: a chat opened just as its session changed (a turn ending, a new title) no

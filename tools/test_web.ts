@@ -3122,6 +3122,18 @@ await section("passkeys", async () => {
   server.close()
 })
 
+// ---------- Browser: when agents' browsing holds a restart (electron/browser/agentbusy.ts) ----------
+await section("agents hold restarts", async () => {
+  const { agentBusy, QUIET_AFTER } = await import("../electron/browser/agentbusy.ts")
+  const now = 1_000_000_000
+  check("a call under way holds either restart, however long ago the last action", agentBusy("server", { inFlight: 1, lastStep: 0, now }) === "an agent's call is under way"
+    && agentBusy("app", { inFlight: 2, lastStep: 0, now }) !== null)
+  check("the server's: held for a minute after the last action", agentBusy("server", { inFlight: 0, lastStep: now - 59_000, now }) === "an agent acted in a page in the last minute")
+  check("…then let through (it keeps nothing an agent loses)", QUIET_AFTER.server === 60_000 && agentBusy("server", { inFlight: 0, lastStep: now - 60_000, now }) === null)
+  check("the app's (its pages reload): held for 10 minutes", agentBusy("app", { inFlight: 0, lastStep: now - 9 * 60_000, now }) === "an agent acted in a page in the last 10 minutes"
+    && agentBusy("app", { inFlight: 0, lastStep: now - 10 * 60_000, now }) === null)
+})
+
 // ---------- Browser: Google's sign-in sees Firefox (electron/browser/googleagent.ts) ----------
 await section("google sign-in", async () => {
   const g = await import("../electron/browser/googleagent.ts")

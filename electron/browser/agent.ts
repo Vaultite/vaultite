@@ -8,6 +8,7 @@ import { allPages, appWindows, busyWhen, cdp, eachPage, eachSession, engineBusy,
 import { docOf, exposed, filling, heldNear, markRan, scrub, scrubDeep, wasFilled } from "./pagesecrets.ts"
 import { changes, mainLines } from "./axlines.ts"
 import { findWords } from "./findwords.ts"
+import { agentBusy } from "./agentbusy.ts"
 
 /** A step's small picture, for the replay's filmstrip (agentruns.ts reads them). */
 export const THUMB_WIDTH = 320
@@ -983,13 +984,10 @@ handle("agents:live", async () => {
 /** Agent calls under way (a `run` script among them), and when an agent last did something in a page. */
 let inFlight = 0
 let lastStep = 0
-/** An agent that acted this recently is likely mid-task, between calls. */
-const BUSY_MS = 10 * 60_000
 keepPage((id) => owners.has(id) || asks.has(id))
 // (an ask can wait for days: it holds only the app's restart, which would lose it)
 busyWhen(() => asks.size ? "a page waits on the user for an agent" : null, true)
-busyWhen(() => inFlight ? "an agent's call is under way"
-  : Date.now() - lastStep < BUSY_MS ? "an agent acted in a page in the last 10 minutes" : null)
+busyWhen((of) => agentBusy(of, { inFlight, lastStep, now: Date.now() }))
 /** An agent call, counted while it runs. What it answers, or fails with, never has a secret the app filled. */
 export const serve = (name: `agent:${string}`, fn: Parameters<typeof handle>[1]) => handle(name, async (...a) => {
   inFlight++

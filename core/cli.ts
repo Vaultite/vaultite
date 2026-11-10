@@ -13,6 +13,8 @@ import { TEST_HEADER, inTestRun, testRunId } from "./testrun.ts"
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const DEFAULT_URL = "http://127.0.0.1:8793"
+/** How long a call the server never got is tried again: a server restarting into an update answers within seconds. */
+const RESTART_RETRY_MS = 60_000
 
 export type Any = any
 export type Obj = Record<string, Any>
@@ -51,6 +53,8 @@ export type PluginCli = {
 /** A command that failed (exit 1), or one written wrong (`usage`: a missing or bad argument, exit 2). */
 export class CliError extends Error {
   usage: boolean
+  /** Nothing was listening: the server never got the call. */
+  refused = false
   constructor(message: string, usage = false) {
     super(message)
     this.usage = usage
@@ -163,7 +167,8 @@ export class Ctx {
       } catch (e) {
         // Nothing listening: the next server that may be, and it's the one from then on (only then: a request that
         // failed on its way may have been done, and must not be done again elsewhere).
-        if (!this.next.length || (e as NodeJS.ErrnoException).code !== "ECONNREFUSED") { this.next = []; throw new CliError(this.down()) }
+        const refused = (e as NodeJS.ErrnoException).code === "ECONNREFUSED"
+        if (!this.next.length || !refused) { this.next = []; throw Object.assign(new CliError(this.down()), { refused }) }
         this.url = this.next.shift()!
       }
     }
@@ -210,9 +215,34 @@ export class Ctx {
       "service: vau service install), or set VAULTITE_URL to the server that's running."
   }
 
+  /** An op called, sent again through the server's restart where safe: one it never got (nothing listening) for up to
+   *  RESTART_RETRY_MS; one it may have got (cut, a proxy's empty 502 to 504) once, if it only reads. Never a write twice. */
+  async op(e: { id: string; kind: string }, query: string, params: unknown, o: { resend?: boolean } = {}): Promise<{ status: number; body: unknown }> {
+    // (`resend` false: a long call sends itself again, with the time it has left)
+    const until = Date.now() + (o.resend === false ? 0 : RESTART_RETRY_MS)
+    let resent = false
+    for (;;) {
+      let r: { status: number; body: unknown } | null = null, failed: CliError | null = null
+      try { r = await this.api("POST", `ops/${encodeURIComponent(e.id)}${query}`, params) } catch (err) { if (!(err instanceof CliError)) throw err; failed = err }
+      if (r && !restarting(r.status, r.body)) return r
+      const unsent = !!failed?.refused
+      if (Date.now() >= until || !(unsent || (e.kind === "read" && !resent))) { if (failed) throw failed; return r! }
+      if (!unsent) resent = true
+      await new Promise((ok) => setTimeout(ok, 1000))
+    }
+  }
+
+  /** An op's answer through op(); a failure (4xx, 5xx) is an error with the server's message. */
+  async callOp(e: { id: string; kind: string }, query: string, params: unknown): Promise<Any> {
+    return this.answer(await this.op(e, query, params), `ops/${e.id}`)
+  }
+
   /** An API call's body; a failure (4xx, 5xx) is an error with the server's message. */
   async call(method: string, route: string, body?: unknown): Promise<Any> {
-    const r = await this.api(method, route, body)
+    return this.answer(await this.api(method, route, body), route)
+  }
+
+  private answer(r: { status: number; body: unknown }, route: string): Any {
     if (r.status >= 400) {
       const msg = (r.body && typeof r.body === "object" && "error" in r.body ? (r.body as Obj).error : String(r.body).slice(0, 300)) || `the server answered ${r.status}, with no reason`
       if (r.status === 404 && msg === "not found") throw new CliError(`the server has no /api/${route.split("?")[0]} (an older version? restart it)`)
@@ -295,9 +325,10 @@ it's installed, running and answering. uninstall stops it and removes the files.
 
 --updates <branch> has the server follow that branch of origin: every 3 minutes (vau update: now), a newer commit whose
 CI tests passed on this machine's OS (ci.yml's test job for it; another OS's failure is only said) is merged
-(fast-forward only, the checkout clean), installed and built, and the server restarts when its own code changed; never
-while an agent is at work in the desktop app's browser. A failure keeps the version before (vau errors says why). vau
-version shows what runs and what the updates are doing; the log, each change and why.
+(fast-forward only, the checkout clean), installed and built, and the server restarts when its own code changed: never
+during an agent's call to the desktop app's browser, nor within a minute of its last one (vau sends a call that never
+reached the server again). A failure keeps the version before (vau errors says why). vau version shows what runs and
+what the updates are doing; the log, each change and why.
 
   vau service install --vault ~/Vault
   vau service install --vault ~/Vault --updates main
@@ -708,7 +739,7 @@ async function runOp(e: OpEntry, argv: string[], c: Ctx, how: Shape): Promise<{ 
   let r: { status: number; body: unknown } | null = null, down: number | null = null
   for (let p = params; ;) {
     let failed: CliError | null = null
-    try { r = await c.api("POST", `ops/${encodeURIComponent(e.id)}${json || out ? "" : both ? "?as=both" : "?as=text"}`, p) }
+    try { r = await c.op(e, json || out ? "" : both ? "?as=both" : "?as=text", p, { resend: !loc.again }) }
     catch (err) { if (!(err instanceof CliError)) throw err; failed = err; r = null }
     if (r && !(loc.again && restarting(r.status, r.body))) break
     down ??= Date.now()

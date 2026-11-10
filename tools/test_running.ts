@@ -255,4 +255,49 @@ await section("a wait through a restart", async () => {
   }
 })
 
+await section("an agent's call through a restart: sent again only where that's safe", async () => {
+  // (a server whose port answers nothing for `downMs`, then takes calls as `steps` say, kept in `got`)
+  const flaky = async (steps: ("cut" | "proxy" | "answer")[], downMs = 0) => {
+    const got: string[] = [], port = await new Promise<number>((ok) => { const s = http.createServer().listen(0, "127.0.0.1", () => { const p = (s.address() as net.AddressInfo).port; s.close(() => ok(p)) }) })
+    let srv: http.Server | null = null
+    const up = () => { srv = http.createServer((req, res) => {
+      const step = steps[Math.min(got.length, steps.length - 1)]
+      got.push(req.url ?? "")
+      if (step === "cut") return void req.socket.destroy()
+      if (step === "proxy") return void res.writeHead(502).end()
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ done: true }))
+    }).listen(port, "127.0.0.1") }
+    if (downMs) setTimeout(up, downMs); else up()
+    return { url: `http://127.0.0.1:${port}`, got, close: () => srv?.close() }
+  }
+  const act = { id: "web-viewer.act", kind: "write" }, snap = { id: "web-viewer.snapshot", kind: "read" }
+  const call = (url: string, e: { id: string; kind: string }) => new Ctx({ url }).callOp(e, "?as=text", {}).then((b: Any) => (b?.done ? "answered" : String(b)), (e: Error) => e.message)
+  {
+    const s = await flaky(["answer"], 1500)
+    const r = await call(s.url, act)
+    check("a click sent while nothing listens (the server restarting) goes once it's back, and once", r === "answered" && s.got.length === 1, { r, got: s.got })
+    s.close()
+  }
+  {
+    const s = await flaky(["cut", "answer"])
+    const r = await call(s.url, act)
+    check("a click the restart cut, which the server may have done, isn't sent again: it says the server didn't answer", /isn't answering at/.test(r) && s.got.length === 1, { r, got: s.got })
+    s.close()
+  }
+  {
+    const s = await flaky(["cut", "answer"])
+    const r = await call(s.url, snap)
+    check("a read the restart cut is sent again once", r === "answered" && s.got.length === 2, { r, got: s.got })
+    s.close()
+  }
+  {
+    const s = await flaky(["proxy"])
+    const r = await new Ctx({ url: s.url }).op(snap, "", {})
+    check("…only once: a proxy's empty 502 again is the answer", r.status === 502 && s.got.length === 2, { r, got: s.got })
+    const w = await new Ctx({ url: s.url }).op(act, "", {})
+    check("a write a proxy answered 502 for isn't sent again", w.status === 502 && s.got.length === 3, s.got)
+    s.close()
+  }
+})
+
 await exit(summary("running", t0))

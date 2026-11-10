@@ -27,17 +27,22 @@ The same tools are served over HTTP at <server>/api/mcp (this machine and its ow
       let pictured = new Set<string>()
       /** Each op's parameters filled from this environment when not given (VAULTITE_TERMINAL...), as vau fills them. */
       let envs = new Map<string, [string, string][]>()
+      /** Each op's kind: what reads may be sent again after a restart cut it. */
+      let kinds = new Map<string, string>()
       /** The server's API as the client, each call told to Activity as `mcp <tool>`; its errors are the tool's. Unless one
        *  was named, each call finds the server again: the desktop app's vault may open after the client started this. */
       const as = (agent: string | null, tool: string) => {
         const t = new Ctx({ url: c.fixed ? c.url : undefined, env: c.env, client: "mcp", agent: agent ?? undefined })
         t.command = `mcp ${tool}`
-        return async (method: string, route: string, body?: unknown) => {
-          try { return await t.call(method, route, body) } catch (e) {
+        const asTool = async <T>(fn: () => Promise<T>) => {
+          try { return await fn() } catch (e) {
             if (e instanceof CliError) throw new ToolError(e.message)
             throw e
           }
         }
+        // (an op as vau sends it: again, where safe, while the server restarts)
+        return Object.assign((method: string, route: string, body?: unknown) => asTool(() => t.call(method, route, body)),
+          { op: (id: string, query: string, params: unknown) => asTool(() => t.callOp({ id, kind: kinds.get(id) ?? "write" }, query, params)) })
       }
       const server = {
         version: APP_VERSION,
@@ -46,6 +51,7 @@ The same tools are served over HTTP at <server>/api/mcp (this machine and its ow
         tools: async () => {
           const entries = await as(session.client?.agent ?? null, "tools/list")("GET", "ops") as import("../../../core/plugins.ts").OpEntry[]
           pictured = new Set(entries.filter((e) => e.image).map((e) => e.id))
+          kinds = new Map(entries.map((e) => [e.id, e.kind]))
           envs = new Map(entries.map((e) => [e.id, Object.entries(e.params.properties ?? {}).flatMap(([k, s]) => (s.env ? [[k, s.env] as [string, string]] : []))]))
           return toolsOf(entries)
         },
@@ -55,8 +61,8 @@ The same tools are served over HTTP at <server>/api/mcp (this machine and its ow
             const params = { ...given }
             for (const [k, v] of envs.get(id) ?? []) if (params[k] === undefined && c.env[v]) params[k] = c.env[v]
             // (an op whose answer is a picture too, a screenshot: both)
-            if (!pictured.has(id)) return String(await call("POST", `ops/${encodeURIComponent(id)}?as=text`, params) ?? "")
-            const r = await call("POST", `ops/${encodeURIComponent(id)}?as=answer`, params) as { text?: unknown; image?: { data: string; mimeType: string } } | null
+            if (!pictured.has(id)) return String(await call.op(id, "?as=text", params) ?? "")
+            const r = await call.op(id, "?as=answer", params) as { text?: unknown; image?: { data: string; mimeType: string } } | null
             return { text: String(r?.text ?? ""), image: r?.image ?? null }
           } }
         },

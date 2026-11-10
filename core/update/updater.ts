@@ -57,6 +57,8 @@ export type UpdaterOptions = {
   /** Why the server shouldn't restart now (an agent at work in the browser), or null: it holds only an update that restarts. */
   busy: () => Promise<string | null>
   restart: () => void
+  /** How often a built update that restarts asks again whether the browser is quiet (ms). */
+  quietEvery?: number
   /** Whether taking these changed files restarts the server (the host's rule; default: it does, not being known). */
   restarts?: (files: string[]) => boolean
   /** Whether CI passed on a commit (default: GitHub Actions, core/update/ci.ts); ok null is not yet. */
@@ -164,6 +166,11 @@ async function lookOnce(o: UpdaterOptions): Promise<UpdateStatus> {
     const applied = await o.apply({ head, running, to: next, files })
     if ("failed" in applied) return fail(next, applied.failed, applied.cause ?? applied.failed)
     const { restart } = applied
+    // (an agent may have begun while it built: the restart waits till the browser is quiet again, the build kept)
+    for (let b = restart ? await o.busy() : null; b; b = await o.busy()) {
+      set("updating", `${short(next)} is built; the server restarts once the browser is quiet (${b})`, { next })
+      await new Promise((r) => setTimeout(r, o.quietEvery ?? 2000))
+    }
     const elsewhere = target.ci.elsewhere ?? []
     kept = { last: { from: running, to: next, at: Date.now(), restarted: restart, ...(elsewhere.length ? { elsewhere } : {}) } }
     keep()

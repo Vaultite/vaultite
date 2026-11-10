@@ -295,15 +295,15 @@ const holders: ((id: number) => boolean)[] = []
 export const holdPage = (fn: (id: number) => boolean) => { holders.push(fn) }
 export const pageHeld = (id: number) => holders.some((fn) => fn(id))
 
-const holds: { fn: () => string | null; appOnly: boolean }[] = []
+const holds: { fn: (of: "app" | "server") => string | null; appOnly: boolean }[] = []
 /** `fn` says why the browser is busy now (null: it isn't): an automatic update waits till none says so. `appOnly`:
  *  what only the app's restart loses (a pending ask), not its server's (the app attaches again). */
-export const busyWhen = (fn: () => string | null, appOnly = false) => { holds.push({ fn, appOnly }) }
+export const busyWhen = (fn: (of: "app" | "server") => string | null, appOnly = false) => { holds.push({ fn, appOnly }) }
 /** Why the browser is busy, or null when a restart (of the app, or of its server) loses nothing. */
 export function engineBusy(of: "app" | "server" = "app"): string | null {
   for (const h of holds) {
     if (of === "server" && h.appOnly) continue
-    try { const why = h.fn(); if (why) return why } catch (e) { console.error("vaultite: a browser feature couldn't say if it's busy:", e) }
+    try { const why = h.fn(of); if (why) return why } catch (e) { console.error("vaultite: a browser feature couldn't say if it's busy:", e) }
   }
   return null
 }
