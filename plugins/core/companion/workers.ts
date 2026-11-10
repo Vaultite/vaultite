@@ -346,6 +346,8 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     return { machine: m.id, there: { ...far, ...(here.base ? { base: here.base } : {}), why: `${here.why}, all pushed: ${far.why}, on ${m.label} (${pick.why}), previewed there` },
       moved: `${here.preview ? `the preview ${here.preview}` : `${tilde(here.cwd)}, open in their editor`} on ${await labelOf("")}${at ? ` (${at})` : ""}` }
   }
+  /** Whether coding jobs land their own change once its checks pass (the setting jobs_land), not waiting for Keep and merge. */
+  const lands = () => plugin.settings().jobs_land === true
   /** The Claude Code a job runs as when the handoff names none: the setting, with its account (claude_personal). */
   const jobsAgent = () => { const own = setting("jobs_agent") || "claude"; return own.split("_")[0] === "claude" ? own : "claude" }
   /** Who works on it: the harness asked (Claude Code in the jobs' account by default, else the account asked), its model
@@ -809,7 +811,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     else if (where.repo) Object.assign(where, worktreeOf(where.cwd, where.repo, j.id))
     j.now = `starting in ${tilde(where.cwd)}`
     try {
-      const r = await ctx.op("terminal.start", { agent: where.agent, prompt: where.machine ? await carry(where.machine, jobTask(told, m, where, j.id)) : jobTask(told, m, where, j.id), name: j.title, cwd: where.cwd,
+      const r = await ctx.op("terminal.start", { agent: where.agent, prompt: where.machine ? await carry(where.machine, jobTask(told, m, where, j.id, lands())) : jobTask(told, m, where, j.id, lands()), name: j.title, cwd: where.cwd,
         ...(where.model ? { model: where.model } : {}), ...(where.effort ? { effort: where.effort } : {}),
         ...(where.agent.split("_")[0] === "claude" && setting("jobs_mode") ? { mode: setting("jobs_mode") } : {}), ...(where.machine ? { machine: where.machine } : {}) }) as { id: string }
       j.terminal = r.id.split("@")[0]

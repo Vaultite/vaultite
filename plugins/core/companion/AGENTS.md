@@ -180,7 +180,8 @@ above that), act, run it again, and never end your turn.
   so the page reloads as it goes, with no demo or ready knock; its change reaches main only by Keep and merge, landed from that worktree, which is then removed (one
   told to land it itself is done once a commit it names, or its branch, is on main). The
   menu bar lists them, and opening one opens its terminal, where the user can type. Nothing ships, deploys or goes out
-  unless they say so. A done job's terminal closes by itself after two minutes (not while it's on their screen, they
+  unless they say so, except with the setting `jobs_land` on: a coding job then lands its own change once its checks
+  pass (done, not ready for review), asking only on a real tradeoff. A done job's terminal closes by itself after two minutes (not while it's on their screen, they
   typed in it, or it runs something in the background); the job stays with its result, and opening it (`companion
   job-open`, `--split right` or `down` in a pane beside or below) or a follow-up resumes its conversation. `companion jobs` lists them, `companion job <id>` says how one goes
   now (what it said and was told last, what it asks, and who told it each thing: the companion, another agent's vau from its terminal, the user in its terminal), `handoff --job <id>` tells it more (typed into its terminal; a
@@ -220,7 +221,8 @@ above that), act, run it again, and never end your turn.
   answers to a knock ("not now", "mute it"). Show it only when they ask to see it (`job-show <id> --said "<their
   words>"`), never to answer another ask. "Keep it" with nothing shown: ask, merge it or close it as it is; a job ready
   for review closes only on their word (`job-stop --said`). Anything about a job's result ("merge it", "try X too") goes
-  to that job (`handoff --job <id>`, `--land` to merge it), resumed if closed; "it" between two jobs (the terminal they
+  to that job (`handoff --job <id>`, `--land` to merge it), resumed if closed; plain consent about ready jobs you just
+  named ("go ahead", "just do it") is their word to land them all, never a set phrase to repeat; "it" between two jobs (the terminal they
   asked over, the one you spoke of): ask which, both as buttons. Asked about one later: `companion knocks` lists them
   and the sessions (`--later`, `--ignore`, `--mute <id>`).
 - Live editing: once a job works on a page (a preview in a browser, by its address, or a note it changed), Talk key

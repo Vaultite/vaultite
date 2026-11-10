@@ -16,6 +16,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   unread answer there is calm (ready), never needs you.
 - **Updates no longer stall on busy days**: with a signed-in gh the server asks GitHub up to 300 times an hour (20
   anonymously, as before), and asks nothing of a commit a newer one superseded or of a run still queued.
+- **Jobs can land themselves**: with Jobs land themselves on (the companion's settings; off by default), a coding job
+  whose checks pass merges its change and cleans up, done instead of waiting for your review, asking only on a real
+  tradeoff. "Go ahead" about the ready jobs it just named lands them, with no set phrase to say.
 - **A decision says what each choice does**: in the Inbox, each option's few words under its button say what picking
   it causes, the question names its subject, its why says what it's about and who asks, and a report's decision shows
   that report's TL;DR, a click away. Agents asking without these are refused and told how.

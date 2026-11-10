@@ -81,6 +81,10 @@ export default async ($: VaultTest) => {
         site.tree === "/Users/alice/Projects/site-j3k9x2a" && site.branch === "job-j3k9x2a" &&
         jt.includes("git -C /Users/alice/Projects/site worktree add /Users/alice/Projects/site-j3k9x2a -b job-j3k9x2a 0123456789ab") && /never in \/Users\/alice\/Projects\/site itself/.test(jt) &&
         /install them there/.test(jt) && /Keep and merge lands it/.test(jt) && /running server's own checkout/.test(live) && !/worktree/.test(note) && !/They asked over/.test(jt), jt)
+      const lands = J.jobTask("Fix the footer", undefined, site, "j3k9x2a", true), watchedLand = J.jobTask("x", undefined, { ...site, watched: true }, "j3k9x2a", true)
+      check("jobs: with jobs_land, a coding job lands itself once its checks pass, from its worktree, cleaned up; it asks only on a real tradeoff; one over a watched preview doesn't",
+        /land it yourself, from your worktree \/Users\/alice\/Projects\/site-j3k9x2a/.test(lands) && /worktree remove/.test(lands) && /"Merged:"/.test(lands) && /only on a real tradeoff/.test(lands) &&
+        !/Keep and merge lands it/.test(lands) && lands.includes("tour-save") && !/land it yourself/.test(watchedLand) && !/land it yourself/.test(note), lands)
       const moved = J.jobTask("Fix the footer", undefined, { ...site, moved: "the preview http://localhost:5173 on M4" }, "j3k9x2a")
       const over = { cwd: site.cwd, repo: "site", label: "M4", preview: "http://localhost:5173" }
       const watching = J.jobTask("Make the heading blue", undefined, { ...over, watched: true }, "j3k9x2a")

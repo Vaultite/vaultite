@@ -36,10 +36,14 @@ export const landable = (j: Pick<Job, "state" | "where" | "result" | "land"> & P
 /** What its worker is told when they keep its change: land it from its worktree as its repo says (never merging in the
  *  checkout it was asked over), clean that up, then say how it went in its first word. One line: it's typed in. */
 export function landTask(w: Pick<Where, "cwd" | "tree" | "branch" | "live">) {
+  return `They watched your change and kept it: merge it now${mergeSteps(w)}`
+}
+/** How a change lands: from its worktree, as its repo's rules say, then cleaned up, said in its last message's first word. */
+function mergeSteps(w: Pick<Where, "cwd" | "tree" | "branch" | "live">) {
   const rules = "as this repo's own rules say (its CLAUDE.md, AGENTS.md or CONTRIBUTING: the checks to run first, how a branch lands, and whether to push or deploy; a step those rules keep for the user still waits for them)"
   const end = "Start your last message with \"Merged:\" and where it landed, in a line, or with \"Not merged:\" and why."
-  if (!w.tree) return `They watched your change and kept it: merge it now, ${rules}. ${end}`
-  return `They watched your change and kept it: merge it now, from your worktree ${w.tree} (branch ${w.branch}), ${rules}. Never switch or edit ${w.cwd}${w.live ? " (the running server's own checkout: nothing lands there)" : ""}: with a remote, rebase onto its main, squash it to one commit and git push origin HEAD:main (or its PR, when the rules land by one)${w.live ? " (the server takes main itself)" : ""}; with none, ${w.live ? "don't merge" : "squash-merge it into that checkout only if it's clean"}. Then git -C ${w.cwd} worktree remove ${w.tree}, and branch -D ${w.branch}. ${end}`
+  if (!w.tree) return `, ${rules}. ${end}`
+  return `, from your worktree ${w.tree} (branch ${w.branch}), ${rules}. Never switch or edit ${w.cwd}${w.live ? " (the running server's own checkout: nothing lands there)" : ""}: with a remote, rebase onto its main, squash it to one commit and git push origin HEAD:main (or its PR, when the rules land by one)${w.live ? " (the server takes main itself)" : ""}; with none, ${w.live ? "don't merge" : "squash-merge it into that checkout only if it's clean"}. Then git -C ${w.cwd} worktree remove ${w.tree}, and branch -D ${w.branch}. ${end}`
 }
 /** Whether a worker's last message says it merged what they kept (true), says it didn't (false), or neither (null). */
 export function mergedSaid(text: string): boolean | null {
@@ -296,14 +300,15 @@ function worktreeLine(w: Pick<Where, "cwd" | "base" | "tree" | "branch" | "live"
 export function proofTask(id: string) {
   return `If your change shows on screen, show it working rather than say so: before you end, record a short demo of it (what Show me plays for them when you're ready, wherever your change is): vau companion tour-save "<the change in a few words, as a noun: the blue save button>" --job ${id} --record <your own copy's address> --text '<steps>'. --record plays the steps there in a headless Chrome (never on their screen, no sound) and keeps the video (an mp4 of a few MB) with the proof: run your own copy of the change for it, never their live app (your dev server, or for Vaultite a throwaway server from your worktree: vau sandbox <dir>, then its npm start on a free port, as its CLAUDE.md says), and --open the note or page it shows on there. A step is a numbered line: one short sentence, shown as its caption and said aloud as it plays, with a tag on the thing by its words on that page ([ring "Save"], [point "Jobs"], [frame "Settings"]); two to four steps; (wait: click) or (do: click "Save") on a step clicks it, so the next shows what it led to. Add (before: <a png>) to a step to flip a picture of that thing before your change over it as it is now: take it before you change anything (a headless screenshot of just that element), of the thing alone. The Mac's own UI (the menu bar's menus, the notch, notifications) no browser shows: for a step on it, give (before: <png>) and (after: <png>) stills of it (screenshots cropped to it with sips), shown as a before and after slide, and say in its words what to open to see it. Then embed the video in your report: vau inbox report ... --video <the video's path tour-save gave>. Nothing to show on screen (research, a backend change): skip it.`
 }
-/** What a worker is told: the task, the ask it came from (its words, where, under the pointer, the screen), where to
- *  work (a coding job: its own worktree), how to end (theirs to review, nothing outward unasked), and its proof. */
-export function jobTask(task: string, m: Moment | undefined, w?: Pick<Where, "cwd" | "repo" | "base" | "tree" | "branch" | "live" | "label" | "moved" | "preview" | "watched">, id?: string) {
-  const asked = askLines(m), coding = !!w?.repo, watching = coding && !!w.watched
+/** What a worker is told: the task, the ask it came from, where to work (a coding job: its own worktree), how to end
+ *  (theirs to review, or `land`: merged by itself once its checks pass; nothing else outward unasked), its proof. */
+export function jobTask(task: string, m: Moment | undefined, w?: Pick<Where, "cwd" | "repo" | "base" | "tree" | "branch" | "live" | "label" | "moved" | "preview" | "watched">, id?: string, land = false) {
+  const asked = askLines(m), coding = !!w?.repo, watching = coding && !!w.watched, lands = coding && !watching && land && !!w.tree
   return [task.trim(), asked.length ? `The user asked for this through their companion in Vaultite:\n${asked.join("\n")}` : "",
     coding && w.tree ? worktreeLine(w) : "",
     watching ? `They watch ${w.preview} reload as you change ${w.cwd}, the checkout serving it: edit it right there (no worktree, no branch), the smallest change that does it, fast, with no checks or summaries unless they ask. Commit only on their word.` : "",
-    `You're a job they handed off, in a terminal of Vaultite they can open and type in. ${coding ? "Change the code freely, but don't push, merge, deploy, publish, post or message anyone unless they say so: it ends in their review (their Keep and merge lands it). End" : "End"} with a few lines: what you found or did, the files you changed, and how to try it (a preview's link if there is one).`,
+    lands ? `You're a job they handed off, in a terminal of Vaultite they can open and type in. They want it done, not asked about: decide what you can, and ask them (vau inbox ask) only on a real tradeoff, a choice they'd want a say in. Once your checks pass and your demo is recorded, land it yourself${mergeSteps(w)} Nothing else outward (posts, messages, a publish) unless they say so. End with a few lines: what you did, the files you changed, and where it landed.`
+      : `You're a job they handed off, in a terminal of Vaultite they can open and type in. ${coding ? "Change the code freely, but don't push, merge, deploy, publish, post or message anyone unless they say so: it ends in their review (their Keep and merge lands it). End" : "End"} with a few lines: what you found or did, the files you changed, and how to try it (a preview's link if there is one).`,
     // (they watched it change: no demo to record)
     id && !watching ? proofTask(id) : ""]
     .filter(Boolean).join("\n\n")
