@@ -9,6 +9,7 @@ import os from "node:os"
 import path from "node:path"
 import { freePort, killTree, record, sleep, stopTerminals, testServer } from "./test/lib.ts"
 import { slot } from "./qa_slots.ts"
+import { QA, SKIP, allScripts, head } from "./qa_scripts.ts"
 import { type Boot, copyTemplate, template, type Variant } from "./qa_template.ts"
 import { asInteractiveJob, throttled } from "./qa_job.ts"
 import { officialBundles, officialRepos } from "./test/official.ts"
@@ -16,11 +17,7 @@ import { ANCHOR, localToday } from "../core/sandbox.ts"
 import { sharedTmp } from "../core/testrun.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "..")
-const QA = path.join(ROOT, "web/qa")
 const OFFICIAL = path.resolve(process.env.VAULTITE_PLUGINS ?? path.join(ROOT, "..", "vaultite-plugins"))
-/** Not tests (benchmarks, a library, the smoke test), needing more than one machine (machines, inboxmachines), or another
- *  build (the demo's: CI's demo job runs it, and named here it's built first). */
-const SKIP = new Set(["boot", "perf", "stability", "termperf", "shots", "subjects", "machines", "inboxmachines", "termhost", "demo"])
 const TIMEOUT = 8 * 60_000
 /** Scripts on the sample as written, whatever the day: counts that only go down need the same files every run, and a
  *  sandbox dated to today has that day's logs. */
@@ -60,7 +57,7 @@ function lint() {
 const opt = (name: string, d: number) => { const i = argv.indexOf(`--${name}`); return i < 0 ? d : Number(argv.splice(i, 2)[1]) }
 const repeat = opt("repeat", 1), jobs = opt("jobs", 3)
 const names = argv.length ? argv.map((a) => path.basename(a, ".mjs"))
-  : fs.readdirSync(QA).filter((f) => f.endsWith(".mjs")).map((f) => f.slice(0, -4)).filter((n) => !SKIP.has(n))
+  : allScripts().filter((n) => !SKIP.has(n))
 // Electron's binary, fetched on its first use when npm skipped its install script: once here, before scripts launch it
 // together (one would run it half written: ETXTBSY).
 const desktop = (n: string) => { try { return fs.readFileSync(path.join(QA, `${n}.mjs`), "utf8").includes("_electron") } catch { return false } }
@@ -82,8 +79,7 @@ if (process.platform === "darwin" && !process.env.VAULTITE_QA_JOB && await throt
 
 /** The usage line's arguments, after `node web/qa/<name>.mjs`. */
 function usage(name: string) {
-  const head = fs.readFileSync(path.join(QA, `${name}.mjs`), "utf8").split("\n").filter((l) => l.startsWith("//")).join("\n")
-  const m = new RegExp(`node web/qa/${name}\\.mjs([^\\n(]*)`).exec(head)
+  const m = new RegExp(`node web/qa/${name}\\.mjs([^\\n(]*)`).exec(head(name))
   return (m?.[1] ?? "").match(/<[^>]+>|\[[^\]]+\]/g) ?? []
 }
 

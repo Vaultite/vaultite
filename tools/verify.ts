@@ -6,6 +6,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { AREAS } from "./test/vault/index.ts"
 import { gitEnv } from "../core/gitenv.ts"
+import { qaFor } from "./qa_scripts.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "..")
 const argv = process.argv.slice(2)
@@ -34,21 +35,8 @@ function areasFor(files: string[]): string[] {
   return all.filter((a) => out.has(a))
 }
 
-/** QA scripts whose header comment names a changed path (or that changed themselves). */
-function qaFor(files: string[]): string[] {
-  const dir = path.join(ROOT, "web/qa")
-  return fs.readdirSync(dir).filter((f) => f.endsWith(".mjs")).map((f) => f.slice(0, -4)).filter((name) => {
-    if (files.includes(`web/qa/${name}.mjs`)) return true
-    const head = fs.readFileSync(path.join(dir, `${name}.mjs`), "utf8").split("\n").filter((l) => l.startsWith("//")).join("\n")
-    return files.some((f) => {
-      const plugin = /^plugins\/core\/[\w-]+/.exec(f)?.[0]
-      return head.includes(f) || (plugin && head.includes(plugin)) || (/^(core|web\/src)\//.test(f) && head.includes(f.replace(/^web\/src\//, "").replace(/\.tsx?$/, ".ts")))
-    })
-  }).filter((n) => !["boot", "perf", "stability", "termperf", "shots", "subjects", "machines", "termhost", "demo"].includes(n))
-}
-
 const web = changed.some((f) => f.startsWith("web/"))
-const areas = areasFor(changed), qa = qaFor(changed)
+const areas = areasFor(changed), qa = [...qaFor(changed).keys()].sort()
 type Stage = { name: string; cmd: string[]; why: string }
 const picked: Stage[] = [
   ...(changed.some((f) => f.startsWith("web/src/") || f === "tools/test_web.ts") ? [{ name: "test_web", cmd: ["node", "tools/test_web.ts"], why: "web/src or its test changed" }] : []),
