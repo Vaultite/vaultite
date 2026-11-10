@@ -138,14 +138,26 @@ export default async ($: VaultTest) => {
     fs.writeFileSync(page, "<h1>Hello</h1>\n")
     const cc = app.plugins.find((p) => p.id === "claude-code")!.services, was = { ...cc }
     const osc = (s: string) => `printf '\\033]7501;state=${s}\\033\\\\'`
-    // (a stand-in worker: rests, then each line typed in is a turn; a live edit L1 changes the title)
+    // (a stand-in worker: rests, then each line typed in is a turn, ended when the test says (`end`), never on a clock:
+    // the app runs in this process, and a busy one saw a turn end before the test set what it said)
+    const go = path.join(repo, "go")
     const script = `sleep 0.3; ${osc("working")}; sleep 0.5; ${osc("idle")}; while IFS= read -r l; do ${osc("working")}; echo "$l" >> told.txt; ` +
-      `case "$l" in *"Live edit L1:"*) perl -pi -e 's/Hello/Hi/' index.html;; *"Live edit L2:"*) perl -pi -e 's/Hello/Howdy/' index.html;; esac; sleep 1.5; ${osc("idle")}; done`
+      `case "$l" in *"Live edit L1:"*) perl -pi -e 's/Hello/Hi/' index.html;; *"Live edit L2:"*) perl -pi -e 's/Hello/Howdy/' index.html;; esac; ` +
+      `while [ ! -e '${go}' ]; do sleep 0.05; done; rm -f '${go}'; ${osc("idle")}; done`
     const starts: Any[] = []
     cc["agent:claude"] = async (start: Any) => { starts.push(start); return { command: script, cwd: null } }
     let context: Any = null
     cc["agent-context:claude"] = async () => context
     let turn: Any = null
+    const termState = app.plugins.find((p) => p.id === "terminal")!.services["terminal:state"] as (id: string) => Any
+    /** The worker's turn ends, saying `said`, once its terminal was seen working on it (a real one's turn lasts seconds;
+     *  the stand-in's two state marks, a moment apart, may otherwise be read as one). */
+    const end = async (said: Any) => {
+      const t = String((await api("POST", "ops/companion.job", { id: job }))[1].terminal ?? "").split("@")[0]
+      await waitFor(() => termState(t)?.state === "working", 10000, 20)
+      turn = said
+      fs.writeFileSync(go, "")
+    }
     cc["agent-turn:claude"] = async () => turn
     cc["agent-edits:claude"] = async () => [{ prompt: "Live edit L1: …", at: 0, edits: [{ file: page, kind: "edit", old: "Hello", new: "Hi", all: false, original: "<h1>Hello</h1>\n" }] },
       { prompt: "Live edit L2: …", at: 0, edits: [{ file: page, kind: "edit", old: "Hello", new: "Howdy", all: false, original: "<h1>Hello</h1>\n<p>mine</p>\n" }] }]
@@ -168,7 +180,7 @@ export default async ($: VaultTest) => {
         !!typed && m?.live === job && fs.readFileSync(page, "utf8") === "<h1>Hi</h1>\n", [told(), m])
       const [hs, hb] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Make the title say Hi", job }, agent))
       check("live edit: the companion handing the same ask on is refused: the job has it", hs === 409 && /already went straight to the job/.test(hb.error), [hs, hb])
-      turn = { text: "Title says Hi now.", files: [page], at: Date.now() + 1000, final: true }
+      await end({ text: "Title says Hi now.", files: [page], at: Date.now(), final: true })
       const said = await waitFor(async () => (await says()).includes("Title says Hi now."), 10000, 100)
       check("live edit: its turn over with nothing to ring (no screen here), its few words are said", !!said, await says())
 
@@ -186,7 +198,7 @@ export default async ($: VaultTest) => {
       check("live edit: its next ask tells it what was undone, so it knows what's on disk", !!noted, told())
       c.screenMoment({ kind: "ask", agent: "Claude", text: "undo that too", ...over })
       const later = await waitFor(async () => (await says()).includes("I'll undo it once it's done."), 3000, 50)
-      turn = { text: "Footer added.", files: [page], at: Date.now() + 500, final: true }
+      await end({ text: "Footer added.", files: [page], at: Date.now(), final: true })
       const after = await waitFor(() => fs.readFileSync(page, "utf8") === "<h1>Hello</h1>\n<p>mine</p>\n", 10000, 50)
       check("live edit: undo said while it works waits for its turn's end, then takes back the ask it was on", !!later && !!after, [await says(), fs.readFileSync(page, "utf8")])
       turn = null
@@ -197,8 +209,7 @@ export default async ($: VaultTest) => {
       const other = c.screenMoment({ kind: "ask", agent: "Claude", text: "remind me to call Alice at five", ...over }) as Any
       await waitFor(() => /Live edit L3: /.test(told()), 8000, 50)
       check("live edit: anything not plainly a question goes to its job at once", other?.live === job, other)
-      // (a turn ending after it was told: the stand-in isn't a TUI, so its terminal takes seconds to say it took the words)
-      turn = { text: "(not for me)", files: [], at: Date.now() + 30_000, final: true }
+      await end({ text: "(not for me)", files: [], at: Date.now(), final: true })
       const handed = await waitFor(() => other.live === undefined, 20000, 50)
       check("live edit: one its worker says isn't about the page goes to the companion after all, nothing said for it", !!handed && !(await says()).includes("(not for me)"), [other, await says()])
 

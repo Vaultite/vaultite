@@ -408,6 +408,8 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   /** When each job's worker was first seen at rest (its turn may be over once that holds). */
   const resting = new Map<string, number>()
   const busy = new Set<string>()
+  /** Jobs being typed into (steer): their worker at rest meanwhile hasn't begun yet. */
+  const sending = new Set<string>()
   /** Jobs whose terminal moved (or whose rest ended) while they were being read: read once more after. */
   const again = new Map<string, boolean>()
   const HOLD = 1500
@@ -444,7 +446,8 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
       else if (s.state === "error") { moved = move(j, "error"); resting.delete(j.id) }
       else if ((s.state === "idle" || s.state === "done") && (j.state === "working" || j.state === "needs you" || j.state === "starting")) {
         const since = resting.get(j.id)
-        if (since === undefined) { resting.set(j.id, Date.now()); setTimeout(() => void refresh(j), HOLD + 100).unref?.() }
+        if (sending.has(j.id)) resting.delete(j.id)
+        else if (since === undefined) { resting.set(j.id, Date.now()); setTimeout(() => void refresh(j), HOLD + 100).unref?.() }
         else if (Date.now() - since >= HOLD) moved = await finish(j)
       } else if (j.state === "done") moved = await tidy(j, s)
       if (j.state === "ready for review" && Date.now() - (shipRead.get(j.id) ?? 0) >= SHIP_READ) moved = await shippedSince(j) || moved
@@ -684,9 +687,22 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
       if (!await wake(ctx, j, text)) throw new OpError(`${j.id}'s terminal can't be reached now: try again (${linkOf(j)})`, 502)
     } else {
       if (s?.state === "blocked" && s.kind === "permission") throw new OpError(`${j.id} waits on a permission in its terminal (${s.msg ?? "open it"}): only the user answers it (its notification, or job-answer on their words; ${linkOf(j)})`, 409)
-      const r = await ctx.op("terminal.send", { id: terminalOf(j), text }) as { submitted?: boolean | null; why?: string }
-      if (r.submitted === false) throw new OpError(`it didn't take it: ${r.why ?? "its input kept the text"} (${linkOf(j)})`, 409)
+      // (told before it's typed, its rest not its turn's end till the terminal took the words, which takes a while: a
+      // quick turn ending meanwhile is this one's, never followed by a told that comes after it)
+      const was = { state: j.state, turn: j.turn, now: j.now }
+      toldNow(j, shown)
+      sending.add(j.id)
+      const back = () => { Object.assign(j, was); changed() }
+      const r = await (ctx.op("terminal.send", { id: terminalOf(j), text }) as Promise<{ submitted?: boolean | null; why?: string }>)
+        .catch((e) => { back(); throw e }).finally(() => sending.delete(j.id))
+      if (r.submitted === false) { back(); throw new OpError(`it didn't take it: ${r.why ?? "its input kept the text"} (${linkOf(j)})`, 409) }
+      void refresh(j).catch((e) => console.error("companion: jobs:", e))
+      return
     }
+    toldNow(j, shown)
+  }
+  /** Job `j` told `shown`: working on it, its turn from now. */
+  function toldNow(j: Job, shown: string) {
     move(j, "told")
     j.turn = Date.now()
     j.now = `Told: ${gist(shown, 120)}`
