@@ -5,4 +5,4 @@
 while read -r _ _ ref _; do [ "$ref" = refs/heads/main ] && main=1; done
 [ -n "$main" ] && [ -d node_modules ] || exit 0
 npx tsc -b && npm run -s check >/dev/null || { echo "pre-push: main must pass tsc and npm run check (see above)" >&2; exit 1; }
-out=$(node tools/perf/startup.ts --main) || { echo "$out" | grep FAIL >&2; echo "pre-push: the desktop main process is over its launch budget (tools/perf/startup.json): import it lazily, or raise the limit in the same commit" >&2; exit 1; }
+out=$(node tools/perf/startup.ts --main) || { echo "$out" | grep FAIL >&2; echo "pre-push: the desktop main process is over its launch budget (tools/perf/startup.json): import it lazily; raise the limit (same commit) only for growth you meant" >&2; exit 1; }

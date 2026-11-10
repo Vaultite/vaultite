@@ -71,7 +71,10 @@
   can reach it needs a role or class the rule covers.
 
 ## QA
-- `node web/qa/<script>.mjs <base>`: most write, so only against a throwaway server (each header says). Run `layout.mjs`
+- `npm run qa -- <script>...`: each on a sandbox copied from a shared template, with its setup, script and slot-wait
+  time; run by hand (`node web/qa/<script>.mjs <base>`) one pays for its own sandbox, and most write, so only against a
+  throwaway server. verify picks a script when its comments name a changed file: a script's header names the files
+  it exercises (CONTRIBUTING.md). Run `layout.mjs`
   after UI changes, `sheets.mjs` after sheet changes, `appearance.mjs` after styling, `scrollers.mjs` after a new
   scroller.
 - Counts that only go down: `counts.mjs` (components React renders per keystroke and per outside change, against

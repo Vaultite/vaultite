@@ -27,6 +27,8 @@ the main writers. Served on a private network (a tailnet), no accounts.
 - No compatibility shims: migrate data and every caller, and delete the old API in the same change.
 - Backend code runs with Node's type stripping, so it's erasable TS: no enums, no parameter properties, `import type`,
   imports name the `.ts` file. Files in `core/` that the web imports use no Node.
+- The Swift helpers (`electron/*.swift`) build with the Xcode on CI's `macos-15` runner, older than ours: no newer API,
+  and a long expression typed in steps (its type checker gives up on one that ours takes).
 - `core/` is the server, `web/src/core/` the app's core; several file names exist on both sides, so say which.
 - The packaged app ships only `dependencies` (vault plugins import some: `plugins/CLAUDE.md`, rule 5): keep backend deps few.
 - npm runs no install scripts and takes only versions a week old (`.npmrc`): a dep that needs a script (a native build)
@@ -81,4 +83,6 @@ is its point.
 - **Commits**: Conventional Commits, `type(scope): summary` in at most 72 chars, saying what changed for the user
   (`fix(phone): tab list zoom no longer stretches the page`); a body only when the why isn't in the diff. Scope is the
   area (`phone`, `desktop`, `editor`, `plugins`, `server`, `cli`...). `.githooks/commit-msg` checks the shape.
-  `.githooks/pre-push` runs tsc and `npm run check` before a push to main: CI on main is everyone's, keep it green.
+  `.githooks/pre-push` runs tsc, `npm run check` and the desktop main process's launch budget
+  (`node tools/perf/startup.ts --main`) before a push to main: CI on main is everyone's, keep it green. Over the
+  budget, cut what the main process imports at launch (import it lazily); raise the limit only for growth you meant.
