@@ -10,6 +10,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { hold } from "../../../tools/qa_slots.ts"
 import { quietGrants } from "../../../tools/qa_grants.ts"
+import { MARK, carrying, endAll } from "../../../tools/test/leftovers.ts"
 import { TEST_HEADER, refuseOwnVault, sharedTmp, testRunId } from "../../../core/testrun.ts"
 
 // (servers and apps under test, from every checkout and copy: Node's compile cache in the shared temp folder is never
@@ -93,6 +94,8 @@ export const LIVE_OK = process.env.VAULTITE_QA_LIVE === "1"
  *  dictation or the voice, so it's skipped where the user's app runs unless VAULTITE_QA_LIVE=1. */
 export async function qa(script, { chrome = {}, live = false } = {}) {
   const argv = args(script)
+  // (what it starts carries this, its desktop app's keepers too, which outlive the app by design: ended with the script)
+  process.env[MARK] ??= `${path.basename(fileURLToPath(script), ".mjs")}-${process.pid}-${Date.now()}`
   if (live && !LIVE_OK && await userApp()) { console.log("skipped: the user's Vaultite app runs here (VAULTITE_QA_LIVE=1 runs it anyway)"); process.exit(0) }
   // (never the user's own: their vault, or their server, which refuses a test run's call; a copy forgets its machines)
   for (const a of argv) {
@@ -112,7 +115,7 @@ export async function qa(script, { chrome = {}, live = false } = {}) {
   await hold()
   const browser = chrome ? await launch(chrome) : null
   // (a throw ends the run with Chrome closed: left open, it holds the runner's pipe and the run hangs to its timeout)
-  const crash = async (e) => { console.error(e); await Promise.race([browser?.close(), wait(5000)]).catch(() => {}); process.exit(1) }
+  const crash = async (e) => { console.error(e); await Promise.race([browser?.close(), wait(5000)]).catch(() => {}); await endAll(carrying(process.env[MARK])); process.exit(1) }
   process.on("uncaughtException", crash).on("unhandledRejection", crash)
   const fails = [], errs = []
   let watched = false, errorsChecked = false
@@ -134,11 +137,12 @@ export async function qa(script, { chrome = {}, live = false } = {}) {
   const done = async () => {
     if (watched && !errorsChecked) noErrors()
     await browser?.close()
+    await endAll(carrying(process.env[MARK]))
     console.log(fails.length ? `\n${fails.length} failed` : "\nall passed")
     process.exit(fails.length ? 1 : 0)
   }
   /** Ends it as skipped (tools/qa.ts lists it so), when what it covers isn't here. */
-  const skip = async (why) => { await browser?.close(); console.log(`skipped: ${why}`); process.exit(0) }
+  const skip = async (why) => { await browser?.close(); await endAll(carrying(process.env[MARK])); console.log(`skipped: ${why}`); process.exit(0) }
   return { args: argv, browser, check, fails, errs, watch, noErrors, done, skip }
 }
 

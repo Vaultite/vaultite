@@ -15,6 +15,7 @@ import { asInteractiveJob, throttled } from "./qa_job.ts"
 import { officialBundles, officialRepos } from "./test/official.ts"
 import { ANCHOR, localToday } from "../core/sandbox.ts"
 import { sharedTmp } from "../core/testrun.ts"
+import { MARK, carrying, endAll } from "./test/leftovers.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "..")
 const OFFICIAL = path.resolve(process.env.VAULTITE_PLUGINS ?? path.join(ROOT, "..", "vaultite-plugins"))
@@ -174,6 +175,15 @@ async function demo(): Promise<Ran> {
 type Ran = { ok: boolean, out: string, skipped?: string, setup: number, script: number, template?: number }
 async function run(name: string): Promise<Ran> {
   if (name === "demo") return demo()
+  const mark = `${name}-${process.pid}-${Date.now()}`
+  const r = await setUpAndRun(name, mark)
+  // (what the script started that outlived it and its teardown, a desktop app's keepers say: ended, and the run fails)
+  const left = carrying(mark)
+  if (!left.length) return r
+  await endAll(left)
+  return { ...r, ok: false, out: `${r.out}\nFAIL left ${left.length} process${left.length > 1 ? "es" : ""} running: ${left.map((x) => `${x.pid} ${x.command.slice(0, 120)}`).join("; ")}` }
+}
+async function setUpAndRun(name: string, mark: string): Promise<Ran> {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `vaultite-qa-${name}-`))
   const out = path.join(tmp, "out"), claude = claudeHome(path.join(tmp, "claude"))
   fs.mkdirSync(out)
@@ -208,7 +218,7 @@ async function run(name: string): Promise<Ran> {
       else return { ok: true, out: "", skipped: `needs ${tok}`, setup: Date.now() - began, script: 0 }
     }
     setup = Date.now() - began
-    const { code, text } = await exec([path.join(QA, `${name}.mjs`), ...args], { ...env, QA_BASE: main.base, VAULTITE_URL: main.base.slice(0, -1) })
+    const { code, text } = await exec([path.join(QA, `${name}.mjs`), ...args], { ...env, QA_BASE: main.base, VAULTITE_URL: main.base.slice(0, -1), [MARK]: mark })
     const skipped = code === 0 ? /^skipped: (.*)$/m.exec(text)?.[1] : undefined
     return { ok: code === 0, out: text, skipped, setup, script: Date.now() - began - setup, template: made }
   } catch (e) {
