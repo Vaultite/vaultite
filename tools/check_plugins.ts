@@ -413,6 +413,22 @@ for (const f of sources.concat(walk(path.join(ROOT, "web", "qa"))).filter((f) =>
   }
 }
 
+// Every TypeScript file is type-checked by one of the projects `tsc -b` builds (tsconfig.json's references), or named here
+// with why not: a CI script outside them once passed a field renamed away, and only Windows' CI saw it.
+const UNTYPED: Record<string, string> = {
+  "tools/test/kdbx/upstream/": "upstream kdbxweb's tests, kept as written (typed for an older TypeScript)",
+  "plugins/core/terminal/claude-pictures/": "a Claude Code mod: its 'claude-code' types are Claude Code's own",
+}
+{
+  const { spawnSync } = await import("node:child_process")
+  const { gitEnv } = await import("../core/gitenv.ts")
+  const projects = (JSON.parse(fs.readFileSync(path.join(ROOT, "tsconfig.json"), "utf8")) as { references: { path: string }[] }).references.map((r) => r.path)
+  const typed = new Set(projects.flatMap((p) => spawnSync(process.execPath, [path.join(ROOT, "node_modules/typescript/bin/tsc"), "-p", p, "--listFilesOnly"], { cwd: ROOT, encoding: "utf8" })
+    .stdout.split("\n").filter(Boolean).map((f) => path.relative(ROOT, f.trim()).split(path.sep).join("/"))))
+  const ts = spawnSync("git", ["ls-files", "*.ts", "*.tsx", "*.mts", "*.cts"], { cwd: ROOT, encoding: "utf8", env: gitEnv() }).stdout.split("\n").filter(Boolean)
+  for (const f of ts) if (!typed.has(f) && !Object.keys(UNTYPED).some((k) => f.startsWith(k))) problems.push(`${f}: no tsconfig project type-checks it (add it to one's include, or to UNTYPED in tools/check_plugins.ts, saying why)`)
+}
+
 // The browser engine stands alone (electron/browser/CLAUDE.md): it reaches the app only through its host.
 for (const f of walk(path.join(ROOT, "electron", "browser")).filter((f) => /\.(ts|cjs|js)$/.test(f)))
   for (const m of fs.readFileSync(f, "utf8").matchAll(/(?:from|import\(|require\()\s*["'](\.\.\/[^"']*)["']/g))

@@ -7,8 +7,11 @@ import { kindOf } from "../../core/syncengine.ts"
 const vault = new URLSearchParams(location.search).get("vault") ?? ""
 /** A copy synced from shadow mode: kept for testing only, so nothing typed here is kept (it would never reach the vault). */
 const testing = vault.endsWith("-shadow")
-const local = phoneLocal
-if (!local || !/^[A-Za-z0-9-]{1,80}$/.test(vault)) throw new Error("the offline app opens from the iPhone app, on a vault's copy")
+function opened() {
+  if (!phoneLocal || !/^[A-Za-z0-9-]{1,80}$/.test(vault)) throw new Error("the offline app opens from the iPhone app, on a vault's copy")
+  return phoneLocal
+}
+const local = opened()
 
 const b64 = (u: Uint8Array) => { let s = ""; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000)); return btoa(s) }
 const unb64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0))
@@ -25,7 +28,7 @@ let writing: Promise<unknown> = Promise.resolve()
 server.addEventListener("message", (e) => {
   if (e.data.type !== "wrote") return
   for (const f of e.data.files as { path: string; data: Uint8Array | null }[]) {
-    writing = writing.then(() => (f.data ? local.write({ area: "vault", vault, path: f.path, data: b64(f.data) }) : local.remove({ area: "vault", vault, path: f.path }))).catch(() => {})
+    writing = writing.then((): Promise<unknown> => (f.data ? local.write({ area: "vault", vault, path: f.path, data: b64(f.data) }) : local.remove({ area: "vault", vault, path: f.path }))).catch(() => {})
   }
 })
 
