@@ -1,10 +1,10 @@
 // A service install following a branch (`vau service install --updates main`: VAULTITE_UPDATES in the job's env, so
 // this machine's choice, not the vault's): the commit core/update/ picks is merged, built, and run by a restart.
 import { execFile } from "node:child_process"
-import fs from "node:fs"
 import path from "node:path"
 import { promisify } from "node:util"
 import { gitIn, isAncestor, short } from "./update/git.ts"
+import { fixSpawnHelper } from "./update/npm.ts"
 import type { Update, UpdaterOptions } from "./update/updater.ts"
 import { errText } from "./update/updater.ts"
 
@@ -15,17 +15,6 @@ const MINUTE = 60_000
  *  never loaded by it (the desktop and iOS apps, tools, CI, docs for people). */
 export const backendChanged = (files: string[]) => files.some((f) =>
   !/^(web|electron|ios|tools|screenshots|examples|\.github|\.githooks)\//.test(f) && !/\.(tsx|css)$/.test(f) && !/^[^/]+\.md$/.test(f))
-
-/** node-pty's helper loses its exec bit in an npm install, and terminals then fail (Setup.md). */
-function fixSpawnHelper(root: string) {
-  const dir = path.join(root, "node_modules", "node-pty", "prebuilds")
-  try {
-    for (const d of fs.readdirSync(dir)) if (d.startsWith("darwin-")) {
-      const f = path.join(dir, d, "spawn-helper")
-      if (fs.existsSync(f)) fs.chmodSync(f, 0o755)
-    }
-  } catch { /* no prebuilds here (Linux builds its own) */ }
-}
 
 export type InPlaceOptions = Omit<UpdaterOptions, "apply"> & {
   /** Runs npm (install, run build) in the checkout. */
@@ -42,7 +31,7 @@ export function inPlace({ npm: npmIn, ...o }: InPlaceOptions): UpdaterOptions {
     const lock = files.includes("package-lock.json")
     const install = async () => {
       await npm(["install", "--no-audit", "--no-fund"])
-      fixSpawnHelper(o.root)
+      fixSpawnHelper(path.join(o.root, "node_modules"))
       await git("checkout", "--", "package-lock.json") // (npm may rewrite it: the tree stays clean for the next update)
     }
     try {

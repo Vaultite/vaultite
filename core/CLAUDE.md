@@ -46,3 +46,14 @@
 - Moves through the API update `[[links]]` and what plugins keep (`plugin.onMove`); renames by hand don't.
 - The vault's own AGENTS.md and CLAUDE.md are the user's: Agent files adds one pointer line, only when allowed.
 - `POST /api/file/open` answers only this machine (loopback, no proxy headers, the app's Origin).
+
+## Updates
+- `update/` is the one update engine, with no Electron in it: the service host (`selfupdate.ts`, its checkout in place)
+  and the desktop app's (`electron/updates.ts`, on the root store) drive it. What only one host needs goes in that host.
+- A store root (`update/store.ts`) is read-only once made, and its `node_modules` is a deps set shared by every root
+  of the same package-lock.json: never install or write in a root (a new lock makes a new set). Only builds' caches in
+  a set (`.tmp`, `.vite`) stay writable.
+- The store's layout and pointers are what `electron/shell/roots.mjs` reads and enforces (in the store, the user's,
+  0555, the same fingerprint): change them together, and know a change to roots.mjs is a new shell.
+- `update/plan.ts` decides what a new root restarts: whatever isn't known (a commit's changes, the graph, a fingerprint)
+  takes the heavier action.

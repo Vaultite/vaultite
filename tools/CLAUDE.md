@@ -27,3 +27,5 @@
 - Performance: `tools/perf/` (moving around the app, step by step: `motion.mjs`) and `web/qa/perf.mjs`; compare before
   and after on servers run alternately. A real vault (one brought from Obsidian): `node tools/perf/bigvault.ts --vault
   <dir> --root <before checkout>`, on a copy; never commit one.
+- `build_helpers.ts --cache <dir>` (the root store's) reuses a native helper by its name, its sources' hash: anything
+  a helper is built from goes into that hash (a `salt`), or a root gets a stale one from the cache.

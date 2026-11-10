@@ -54,6 +54,7 @@ export const SITES: Site[] = [
   { file: "core/agents.ts", why: "agents' MCP server is `vau mcp` (the CLI); finding npm beside this Node", spawns: ["cli"] },
   { file: "core/hooks.ts", why: "plugins' hook commands, run per event from their folders", spawns: ["a hook's command, per event"] },
   { file: "core/wslvau.ts", why: "WSL's vau shim runs the CLI", spawns: ["cli"] },
+  { file: "core/update/store.ts", why: "a code root's own build, helpers, stamp and preflight, run in that root", spawns: ["a root's npm and node steps, per prepare"] },
   { file: "core/cli.ts", why: "vau merges in the built-in plugins' cli.ts; `vau service` runs server.ts",
     at: ['import(pathToFileURL(path.join(d, "cli.ts")).href)'], anchors: true, caller: "bin/vau", spawns: ["server"], loads: ["plugins/core/*/cli.ts"] },
   { file: "plugins/core/agent-files/plugin.ts", why: "the core's AGENTS.md, in agents' files", anchors: true, reads: ["core/AGENTS.md"] },
