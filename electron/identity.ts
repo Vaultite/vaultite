@@ -44,6 +44,8 @@ export const HOST = ((globalThis as { vaultiteShell?: ShellHost }).vaultiteShell
 /** The running shell's stamp; outside the app, the one beside this code. */
 export const SHELL = HOST?.shell ?? shellAt(ROOT)
 export const CODE = codeAt(ROOT)
+/** A Vaultite Dev instance's worktree (the shell picked VAULTITE_CODE_ROOT: electron/dev.ts), null otherwise. */
+export const WORKTREE = HOST?.from === "dev" ? HOST.root : null
 /** Vaultite Dev, and the branch it updates from. */
 export const DEV = SHELL.channel === "dev"
 export const BRANCH = (DEV && SHELL.branch) || "main"

@@ -5,28 +5,10 @@ import fs from "node:fs"
 import { createRequire } from "node:module"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { webStale } from "./webfresh.ts"
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
-const built = (() => {
-  try {
-    return Math.min(...["index.html", "vaults.html", "onboarding.html"].map((f) => fs.statSync(path.join(ROOT, "web", "dist", f)).mtimeMs))
-  } catch {
-    return 0
-  }
-})()
-
-/** The newest source file of the web app (web/src, the plugins' frontends). */
-function newest(dir: string): number {
-  let t = 0
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (e.name === "node_modules" || e.name === "dist" || e.name === "qa" || e.name.startsWith(".")) continue
-    const p = path.join(dir, e.name)
-    t = Math.max(t, e.isDirectory() ? newest(p) : /\.(tsx?|css|html)$/.test(e.name) ? fs.statSync(p).mtimeMs : 0)
-  }
-  return t
-}
-
-if (built < Math.max(newest(path.join(ROOT, "web")), newest(path.join(ROOT, "plugins")))) {
+if (webStale(ROOT)) {
   // (Windows' npm is a .cmd, which only a shell runs)
   const r = spawnSync("npm", ["run", "build"], { cwd: ROOT, stdio: "inherit", shell: process.platform === "win32" })
   if (r.status) process.exit(r.status)

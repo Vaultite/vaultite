@@ -106,9 +106,10 @@ export function startDesktop() {
     else if (m.type === "web" && m.url && /^https?:\/\//i.test(m.url)) { const url = m.url; void import("@/core/links").then((l) => l.openWebLink(url, { newTab: false, fromApp: true })) }
     else if (m.type === "go" && m.path) openFile(m.path)
     else if (m.type === "spelling") spellingHeard({ word: m.word ?? "", suggestions: m.suggestions ?? [] })
+    // (a Dev instance's: its worktree's changes, its own words)
     else if (m.type === "update") {
-      notify(`A new version of ${m.name ?? "Vaultite"} is ready (${m.version})${m.auto ? ". It restarts into it while you're away" : ""}`,
-        { id: "update", duration: Infinity, action: { label: "Restart to update", run: () => app.restartToUpdate() } })
+      notify(m.text ?? `A new version of ${m.name ?? "Vaultite"} is ready (${m.version})${m.auto ? ". It restarts into it while you're away" : ""}`,
+        { id: "update", duration: Infinity, action: { label: m.label ?? "Restart to update", run: () => app.restartToUpdate() } })
       if (m.auto) reportSafety(app)
     }
     // What the update is doing (checking, building, downloading, restarting): the same toast, staying until it's done.

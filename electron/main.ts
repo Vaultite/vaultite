@@ -15,8 +15,8 @@ import "./browser/index.ts"
 import { engineBusy, engineFlush, serverCall, setServerSink } from "./browser/engine.ts"
 import { attach, attachable, servedHere, type Call, type Link } from "./host.ts"
 import { talkCall } from "./talklog.ts"
-import { CODE, DEV, HOST } from "./identity.ts"
-import { appUpdates, checkInstalled, initUpdates, modeChanged, pageSafe, quitUpdates, RELEASE, restartToUpdate, scheduleUpdates, updatable, UPDATE_MODES, updateMenuItem,
+import { CODE, DEV, HOST, WORKTREE } from "./identity.ts"
+import { appUpdates, checkInstalled, initUpdates, modeChanged, pageSafe, quitUpdates, RELEASE, restartToUpdate, scheduleUpdates, updatable, UPDATE_MODES, updateMenuItem, worktreeChanged, worktreeNow,
   windowReady, type UpdateMode } from "./updates.ts"
 import { appHandlers, appsOn, appsWindow, stopApps } from "./apps.ts"
 import { dictationHandlers, setDictationServer, stopDictation } from "./dictation.ts"
@@ -248,6 +248,8 @@ class PortTaken extends Error {}
 type Win = { vault: Known; win: AppWindow; server: ChildProcess | null; link: Link | null; port: number; ready: boolean; queue: string[]
   /** Its server goes with it, the helper on or not (it reopens with a new one: apps:reopen). */
   ending?: boolean
+  /** Its server was stopped to start again on purpose (a Dev instance's code changed): not a crash. */
+  restarting?: boolean
   /** Opened by Set up Vaultite: its page shows the welcome card's next pages (asked once, `app:welcome`). */
   welcome?: boolean
   /** What its page last told the menu bar (`menu:sync`): its commands, pins and recent files. */
@@ -404,7 +406,7 @@ async function openVault(p: string, file?: string) {
   const apps = appsOn(p), glass = translucentAt(p), clear = apps || (MAC && glass)
   const win = new AppWindow({
     width: b?.width ?? 1280, height: b?.height ?? 820, x: b?.x, y: b?.y, minWidth: 800, minHeight: 480, show: false,
-    title: nameOf(p), ...chrome(),
+    title: dev?.titled(nameOf(p)) ?? nameOf(p), ...chrome(),
     // (a click in a window that's behind acts too, as in a browser: a web page's field it lands on gets the keyboard,
     // not whatever had it in the app before)
     acceptFirstMouse: true,
@@ -474,7 +476,8 @@ async function openVault(p: string, file?: string) {
     child.stderr!.on("data", (b: Buffer) => { said = (said + b.toString()).slice(-2000) })
     child.on("exit", (code) => {
       if (win.isDestroyed() || quitting || child !== w.server) return
-      const now = Date.now()
+      const now = Date.now(), meant = !!w.restarting
+      w.restarting = false
       restarts = restarts.filter((t) => now - t < 60_000)
       const fail = (why: string) => {
         if (win.isDestroyed()) return
@@ -483,9 +486,9 @@ async function openVault(p: string, file?: string) {
           { why: starting ? "Its server stopped as it started." : "Its server stopped three times in a minute.", log: serverLog(p) })
         win.close()
       }
-      if (now - since < 10_000 || restarts.length >= 3) return fail(`the server stopped (exit ${code})\n${said}`)
-      restarts.push(now)
-      console.error(`vaultite: ${nameOf(p)}'s server stopped (exit ${code}), starting it again`)
+      if (!meant && (now - since < 10_000 || restarts.length >= 3)) return fail(`the server stopped (exit ${code})\n${said}`)
+      if (!meant) restarts.push(now)
+      console.error(`vaultite: ${nameOf(p)}'s server stopped (${meant ? "to run new code" : `exit ${code}`}), starting it again`)
       // (its own port, never another: the page's localStorage is kept by it)
       const at = w.port, started = startServer(v, at)
       const up = started.then((c): [ChildProcess, number] => [c, at])
@@ -1298,6 +1301,20 @@ initUpdates({
   nameOf,
 })
 
+// ---------- a Dev instance on a worktree (electron/devroot.ts) ----------
+let dev: typeof import("./devroot.ts") | null = null
+async function startWorktree() {
+  dev = await import("./devroot.ts")
+  await dev.startDev({
+    root: WORKTREE!, userData: app.getPath("userData"), headless: QUIET, debugPort: devtools ?? null, shellPrint: HOST?.shell.fingerprint,
+    info: worktreeNow,
+    // (headless, an agent's: it relaunches at once)
+    changed: (what) => { worktreeChanged(what); if (QUIET) restartToUpdate() },
+    restartServers: () => { for (const w of wins.values()) if (w.server?.exitCode === null) { w.restarting = true; w.server.kill() } },
+    say: (text) => { for (const w of wins.values()) if (w.ready) w.win.webContents.send("vaultite", { type: "update-status", text, done: true }) },
+  })
+}
+
 // ---------- quitting ----------
 
 /** Web pages unloaded before quitting, as closing their tabs would (sites save their sign-ins then): once, by whichever
@@ -1654,7 +1671,8 @@ app.whenReady().then(async () => {
   if (await offerMove()) return
   if (fs.existsSync(DOCK_ICON()) || !app.isPackaged) applyDockIcon()
   app.setAboutPanelOptions({ applicationName: app.getName(), applicationVersion: app.getVersion() })
-  if (DEV) app.dock?.setBadge("dev")
+  if (WORKTREE) await startWorktree()
+  if (DEV) app.dock?.setBadge(dev?.badge() ?? "dev")
   // (a Mac's, but for a copy a script drives or Vaultite Dev, unless VAULTITE_HELPER=1)
   if (process.env.VAULTITE_HELPER === "1" || (MAC && !driven && !DEV && process.env.VAULTITE_HELPER !== "0")) helper = await import("./helper.ts")
   const homePath = () => lastFocused && (wins.has(lastFocused) || kept.has(lastFocused)) ? lastFocused : [...wins.keys()][0] ?? [...kept.keys()][0]

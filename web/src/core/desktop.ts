@@ -48,7 +48,7 @@ export type DesktopApi = {
    *  `zoom`). `step` answers the size it came to; `on` hears every change. Older builds don't have it. */
   interfaceSize?: { get: () => Promise<number>; step: (step: -1 | 0 | 1) => Promise<number>; on: (fn: (zoom: number) => void) => void }
   /** `spelling`: a right-click the page left to the system, with the misspelled word under it ("" none) and guesses. */
-  on: (fn: (msg: { type: string; id?: string; bundle?: string; path?: string; url?: string; version?: string; name?: string; auto?: boolean; text?: string | null; done?: boolean; restart?: boolean; word?: string; suggestions?: string[] }) => void) => void
+  on: (fn: (msg: { type: string; id?: string; bundle?: string; path?: string; url?: string; version?: string; name?: string; auto?: boolean; text?: string | null; label?: string; done?: boolean; restart?: boolean; word?: string; suggestions?: string[] }) => void) => void
   /** Tell the menu bar this window's commands, pins and recent files (electron/menu.ts). Builds from before it don't
    *  have it. */
   syncMenu?: (snap: MenuSnapshot) => Promise<unknown>

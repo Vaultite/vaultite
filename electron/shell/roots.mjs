@@ -5,9 +5,9 @@ import os from "node:os"
 import path from "node:path"
 import { fingerprint } from "./print.mjs"
 
-/** Kept off until their stages turn them on (each a new shell: this file is one of its inputs). Off, the picker never
- *  reads VAULTITE_CODE_ROOT (Dev) or a store's pointers (Main): every build runs its bundle. */
-export const ENABLED = Object.freeze({ dev: false, store: false })
+/** What a shell may run besides its bundle (a new shell each: this file is one of its inputs): Vaultite Dev a worktree
+ *  (VAULTITE_CODE_ROOT, electron/dev.ts); Main its store's roots, off until stage 5 turns it on. */
+export const ENABLED = Object.freeze({ dev: true, store: false })
 /** A run that dies within this of becoming ready crashed starting; two such in a row make its root bad. */
 export const SETTLED_AFTER = 60_000
 

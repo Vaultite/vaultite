@@ -65,6 +65,9 @@ is its point.
   commit is live, or exits 1 saying why not: CI red on it (fix forward), its checkout blocked (say so). That one
   command is the check: don't watch CI, as a queued run is dropped when newer pushes arrive and may never finish.
   `vau update` there looks now instead of at its next 3-minute look.
+- Try a branch in the desktop app: `npm run app:dev` in its worktree (Vaultite Dev beside Main, its windows behind until
+  you switch to it; it follows the worktree's changes). An agent: `npm run app:dev -- --headless` (quiet, its pid,
+  debug port and server printed), then `npm run app:dev -- --stop`.
 - Throwaway server: `vau sandbox /tmp/v`, then `VAULTITE_VAULT=/tmp/v VAULTITE_LOCAL=/tmp/local PORT=<free> npm start`.
   On a copy of a real vault, first empty its machines (`.vaultite/plugins/machines/data.json`: `{"machines": []}`): with
   them it shares the real machines' tabs and state, and showing a terminal tab starts its agent (a `resume-` one resumes

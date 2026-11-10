@@ -60,7 +60,7 @@ for (const [platform, res] of [["darwin", "Lighthouse Main.app/Contents/Resource
 // ---------- one reader ----------
 const files = (dir: string): string[] => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
   e.isDirectory() ? files(path.join(dir, e.name)) : e.name.endsWith(".ts") ? [path.join(dir, e.name)] : [])
-const readers = files(path.join(ROOT, "electron")).filter((f) => !/[/\\](identity|stamp)\.ts$/.test(f))
+const readers = files(path.join(ROOT, "electron")).filter((f) => !/[/\\](identity|stamp|dev)\.ts$/.test(f))
   .filter((f) => /"(build|shell)\.json"/.test(fs.readFileSync(f, "utf8")))
 check("in the app, only identity.ts reads its stamps", !readers.length, readers.map((f) => path.relative(ROOT, f)))
 // (a root's package.json says "Vaultite" from a checkout: Dev and Main would open the release's userData)
@@ -96,7 +96,7 @@ check("the shell imports only Node's, Electron's and its own files, all fingerpr
 
 // ---------- the picker (electron/shell/roots.mjs) ----------
 const R = await import("../electron/shell/roots.mjs")
-check("Dev's and Main's own roots are off until their stages", !R.ENABLED.dev && !R.ENABLED.store && Object.isFrozen(R.ENABLED))
+check("as built: Dev runs its worktrees; Main's store is off until its stage", R.ENABLED.dev && !R.ENABLED.store && Object.isFrozen(R.ENABLED))
 const uid = process.getuid?.()
 /** A code root built for shell fingerprint `print` (its inputs.json lists only what's in it). */
 function root(at: string, o: { print?: string; mode?: number } = {}) {
@@ -123,8 +123,10 @@ check("a run from source: its own folder, whatever it's told", same([pick({ pack
 check("a release: the bundle, whatever the env and the store say", pick({ shell: { release: true, channel: "nightly" }, env, enabled: ON }).root === bundleDir
   && pick({ shell: { release: true, channel: "main" }, enabled: ON }).root === bundleDir)
 check("Windows: the bundle", pick({ platform: "win32", shell: { channel: "main" }, env, enabled: ON }).root === bundleDir && pick({ platform: "win32", shell: { channel: "dev" }, env, enabled: ON }).root === bundleDir)
-check("off (as built): Dev's override and Main's store change nothing", pick({ shell: { channel: "dev" }, env }).root === bundleDir && pick({ shell: { channel: "main" } }).root === bundleDir
+check("as built: Dev takes VAULTITE_CODE_ROOT, Main's store changes nothing", pick({ shell: { channel: "dev" }, env }).root === dev && pick({ shell: { channel: "main" } }).root === bundleDir
   && !pick({ shell: { channel: "main" } }).passed.length)
+check("...off, Dev's override changes nothing either", pick({ shell: { channel: "dev" }, env, enabled: { dev: false, store: false } }).root === bundleDir)
+check("...nor without one: Dev opened from the Dock runs its bundle", pick({ shell: { channel: "dev" } }).root === bundleDir)
 check("Dev, on: its VAULTITE_CODE_ROOT", same(pick({ shell: { channel: "dev" }, env, enabled: ON }), { root: dev, from: "dev", passed: [] }))
 check("...only Dev's: Main ignores it", pick({ shell: { channel: "main" }, env, enabled: { dev: true, store: false } }).root === bundleDir)
 const devMis = pick({ shell: { channel: "dev", fingerprint: fingerprint(other) }, env, enabled: ON })
@@ -205,6 +207,35 @@ check("vau.mjs finds the app's userData as Electron names it", R.userDataOf("Lig
   fs.writeFileSync(path.join(ud, "code.noindex", "current.json"), JSON.stringify({ commit: S1 }))
   const out = execFileSync(process.execPath, [path.join(app, "electron/shell/vau.mjs"), "note", "--title", "Lighthouse"], { encoding: "utf8", env: { ...process.env, VAULTITE_USER_DATA: ud } })
   check("vau.mjs runs the picked root's bin/vau with its arguments (the bundle's: the store is off)", same(JSON.parse(out), { root: app, args: ["note", "--title", "Lighthouse"] }), out)
+}
+
+// ---------- Vaultite Dev's instances (electron/devinstance.ts) ----------
+{
+  const D = await import("../electron/devinstance.ts")
+  const data = path.join(tmp, "devdata"), wa = path.join(tmp, "wt", "lighthouse"), wb = path.join(tmp, "wt2", "lighthouse")
+  fs.mkdirSync(wa, { recursive: true }); fs.mkdirSync(wb, { recursive: true })
+  check("two worktrees of one name get their own instances", D.slugOf(wa) !== D.slugOf(wb) && D.slugOf(wa).startsWith("lighthouse-") && D.slugOf(wa) === D.slugOf(wa + "/"))
+  check("...and an instance its own data, under Dev's", D.appData(data, wa) === path.join(data, "instances", D.slugOf(wa), "app") && D.appData(data, wa) !== D.appData(data, wb))
+  check("a shell is kept by its fingerprint", D.shellDir(data, P) === path.join(data, "shells", P.slice(0, 16)))
+  const ud = D.appData(data, wa), hd = path.join(D.instancesOf(data, wa), "headless-12")
+  for (const d of [ud, hd]) fs.mkdirSync(d, { recursive: true })
+  fs.writeFileSync(path.join(ud, "instance.json"), JSON.stringify({ pid: 12, root: wa, worktree: "lighthouse", headless: false, debugPort: null, started: 1 }))
+  const all = D.instances(data), mine = D.instances(data, wa)
+  check("instances: each worktree's, kept and headless, with their records", all.length === 2 && mine.length === 2 && mine.find((i) => !i.headless)?.info?.pid === 12
+    && mine.find((i) => i.headless)?.info === null && !D.instances(data, wb).length, all)
+  const ps = [`  41 /Apps/Lighthouse Dev.app/Contents/MacOS/Lighthouse Dev HOME=/Users/alice VAULTITE_USER_DATA=${ud} VAULTITE_CODE_ROOT=${wa}`,
+    `  42 /Apps/Lighthouse Dev Helper termd.ts /tmp/s.sock VAULTITE_USER_DATA=${ud}`, `  43 node other.ts VAULTITE_USER_DATA=${ud}-2 X=1`,
+    `  44 node elsewhere.ts VAULTITE_USER_DATA=${hd}`, "  45 /bin/zsh -l"].join("\n")
+  check("what an instance started is told by its userData, not one that begins the same", same(D.ownedBy(ps, ud), [41, 42]) && same(D.ownedBy(ps, hd), [44]), D.ownedBy(ps, ud))
+}
+
+// ---------- which processes a change reaches (electron/devreach.ts: the module graph) ----------
+{
+  const { reach } = await import("../electron/devreach.ts")
+  const cache = new Map(), r = (...f: string[]) => { const x = reach(ROOT, f, cache); return [x.web, x.server, x.main].map(Number).join("") }
+  check("a Dev instance: a page's source rebuilds the web app, a backend file restarts the servers, a main-process file relaunches",
+    r("web/src/App.tsx") === "100" && r("core/coreops/version.ts") === "010" && r("electron/menu.ts") === "001", [r("web/src/App.tsx"), r("core/coreops/version.ts"), r("electron/menu.ts")])
+  check("...one both import, both; a test or a doc, none", r("core/appentry.ts").endsWith("11") && r("tools/test_shell.ts") === "000" && r("README.md") === "000")
 }
 
 await exit(summary("shell", t0))

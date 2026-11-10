@@ -18,7 +18,9 @@ type Version = {
   web?: { entry: string | null; commit: string | null }
   updates: { branch: string | null; state: "off" | "current" | "waiting" | "updating" | "failed"; why: string; checked: number | null
     last?: { from: string; to: string; at: number; elsewhere?: string[] }; error?: { message: string } }
-  app: null | "unknown" | { mode: "automatic" | "notify" | "off"; available: boolean; ready: string | null; doing: string | null; commit?: string | null }
+  app: null | "unknown" | { mode: "automatic" | "notify" | "off"; available: boolean; ready: string | null; doing: string | null; commit?: string | null
+    /** A Vaultite Dev instance's worktree (electron/devroot.ts). */
+    worktree?: { worktree: string; branch: string; commit: string; dirty: boolean } }
 }
 
 const short = (sha: string) => sha.slice(0, 7)
@@ -71,7 +73,8 @@ export function Running() {
         {app && (app.commit || app.doing || app.ready) && (
           <SettingRow label="App" data-settings-row="running-app" value={app.commit ? <Hash sha={app.commit} /> : undefined}
             onClick={app.commit ? () => void copy(app.commit!) : undefined} chevron={app.commit ? Copy : null}
-            sub={app.doing ?? (app.ready ? `${short(app.ready)} is ready: restart to update` : app.mode === "off" ? "Updates off" : "No update waiting")} />
+            sub={app.worktree ? [`${app.worktree.branch} in ${app.worktree.worktree}`, app.worktree.dirty && "uncommitted changes", app.ready && `${app.ready}: relaunch to run them`].filter(Boolean).join(" · ")
+              : app.doing ?? (app.ready ? `${short(app.ready)} is ready: restart to update` : app.mode === "off" ? "Updates off" : "No update waiting")} />
         )}
       </Group>
     </Section>

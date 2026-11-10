@@ -9,15 +9,19 @@
   build is a new app and its terminals get "Operation not permitted" on an iCloud Drive vault. A new native need is an
   entitlement (`entitlements.plist`) or an Info.plist usage string (package.json's `build`).
 - Four apps, each its own id, name and userData, so any of them install side by side: Vaultite (releases), Vaultite
-  Nightly (`nightly.cjs`), Vaultite Main (`source.cjs`: built from source, `app:build`) and Vaultite Dev (a branch;
-  `npm run app:dev` opens the sandbox, never Set up).
+  Nightly (`nightly.cjs`), Vaultite Main (`source.cjs`: built from source, `app:build`) and Vaultite Dev (`dev.cjs`).
+- Vaultite Dev runs a worktree's own code (`VAULTITE_CODE_ROOT`) in a Dev shell built for its fingerprint (`dev.ts`:
+  `npm run app:dev`), one instance per worktree with data of its own (userData, ports, sandbox, keepers; no helper):
+  it opens the sandbox, never Set up, and takes in the worktree's changes as they're saved (`devroot.ts`, `devreach.ts`):
+  web/dist rebuilt, its servers restarted, a relaunch offered (done, headless). `--stop` ends one with everything it
+  started (whatever carries its `VAULTITE_USER_DATA`); its shell has `--inspect` on, so QA drives it (`VAULTITE_QA_SHELL=dev`).
 - An update (update.sh install) is staged beside the app and renamed in once it quit: a copy opened from the old bundle
   meanwhile would run the replaced tree while the disk says new (`ps` still shows the old path), so a running main is
   looked for first, and the app checks its server against build.json once up (installed.ts). The app's binary also runs
   its server, terminal keeper and agents' `vau mcp`: those aren't the app running.
 - The app's entry is its shell (`shell/`: package.json `main` is `shell/boot.mjs`), plain .mjs on Node's and Electron's
-  own modules: it sets the app's name and id (shell.json), picks the code root (`roots.mjs`: the bundle, until Dev's and
-  Main's own roots are turned on in `ENABLED`) and keeps a record in userData/shell (attempts, bad roots, events, told in
+  own modules: it sets the app's name and id (shell.json), picks the code root (`roots.mjs`: the bundle; Dev's worktree;
+  Main's store once turned on in `ENABLED`) and keeps a record in userData/shell (attempts, bad roots, events, told in
   the first window's Errors). Its files and what `inputs.json` lists are the shell fingerprint (stamped in shell.json): a
   change to one needs a new build of the app. `shell/vau.mjs` is the CLI's one stable path (`VAULTITE_VAU_ENTRY`).
 - Test a release under another `appId` and `productName`: one sharing the installed app's bundle id makes macOS re-check

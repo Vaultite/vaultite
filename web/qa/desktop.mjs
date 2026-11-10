@@ -6,8 +6,9 @@ import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, SELECT_WORD, qa, terminalText, until, wait } from "./lib/qa.mjs"
+import { ROOT, SELECT_WORD, desktopApp, qa, terminalText, until, wait } from "./lib/qa.mjs"
 import { pathToFileURL } from "node:url"
+import { gitEnv } from "../../core/gitenv.ts"
 
 const { args: [VAULT, BIN], check, errs, watch, noErrors, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-desktop-"))
@@ -17,9 +18,11 @@ const MAC = process.platform === "darwin"
 const CMD = MAC ? "Cmd" : "Ctrl" // (accelerators: Electron's Cmd is Super on Linux, so the menu says Ctrl there)
 fs.mkdirSync(OUT)
 
+// (VAULTITE_QA_SHELL=dev: through the packaged Vaultite Dev shell, lib/qa.mjs)
+const DESKTOP = BIN ? { executablePath: BIN, args: [], env: {} } : await desktopApp()
 const app = await _electron.launch({
-  executablePath: BIN ?? path.join(ROOT, "node_modules/.bin/electron"), args: BIN ? ["--vault", VAULT] : [ROOT, "--vault", VAULT],
-  env: { ...process.env, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_USER_DATA: path.join(TMP, "userData"), VAULTITE_LOCAL: path.join(TMP, "local") },
+  executablePath: DESKTOP.executablePath, args: [...DESKTOP.args, "--vault", VAULT],
+  env: { ...process.env, ...DESKTOP.env, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_USER_DATA: path.join(TMP, "userData"), VAULTITE_LOCAL: path.join(TMP, "local") },
 })
 const win = await app.firstWindow()
 watch(win, { console: true })
@@ -31,14 +34,18 @@ check("the window serves the vault from its own server", /^http:\/\/127\.0\.0\.1
   const app_ = (await (await fetch(`${origin}/api/ops/app.version`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })).json()).app
   let built = null
   try { built = JSON.parse(fs.readFileSync(path.join(ROOT, "electron/build.json"), "utf8")).commit ?? null } catch { /* not a build */ }
-  check("vau version: the app's own commit (its build's, null from source)", app_ && "commit" in app_ && (BIN ? /^[0-9a-f]{40}$/.test(app_.commit) : app_.commit === built), app_)
+  // (through the Dev shell, VAULTITE_QA_SHELL=dev: the worktree's own commit, branch and folder)
+  const head = execFileSync("git", ["-C", ROOT, "rev-parse", "HEAD"], { encoding: "utf8", env: gitEnv() }).trim()
+  check("vau version: the app's own commit (its build's, null from source; a Dev instance's worktree's)", app_ && "commit" in app_
+    && (app_.worktree ? app_.commit === head && app_.worktree.worktree === path.basename(ROOT) : BIN ? /^[0-9a-f]{40}$/.test(app_.commit) : app_.commit === built), app_)
   // Settings > About's App row (web/src/components/Running.tsx): the short hash and the update state; a tap copies it whole.
   await win.evaluate(() => { window.__copied = []; navigator.clipboard.writeText = async (t) => { window.__copied.push(t) }; location.hash = "settings" })
   await until(async () => { await win.locator('[data-settings-nav="about"]').click().catch(() => {}); return (await win.locator('[data-settings-row="running"]').count()) === 1 }, 8000)
   const row = win.locator('[data-settings-row="running-app"]')
   if (app_?.commit) {
     const text = await until(async () => { const t = await row.textContent().catch(() => ""); return t?.includes(app_.commit.slice(0, 7)) ? t : null }, 8000)
-    check("About's App row: the app's short commit and its update state", text && !text.includes(app_.commit.slice(7, 12)) && /No update waiting|Updates off|is ready|…/.test(text), text)
+    check("About's App row: the app's short commit and its update state (a Dev instance's: its branch and worktree)", text && !text.includes(app_.commit.slice(7, 12))
+      && (app_.worktree ? text.includes(`${app_.worktree.branch} in ${app_.worktree.worktree}`) : /No update waiting|Updates off|is ready|…/.test(text)), text)
     await row.click()
     check("… a tap copies the whole commit", await until(() => win.evaluate((sha) => window.__copied.includes(sha), app_.commit), 4000), await win.evaluate(() => window.__copied))
   } else {
@@ -432,8 +439,8 @@ check("quitting stops the servers", await until(async () => { try { await fetch(
 fs.mkdirSync(path.join(TMP, "userData-fresh"), { recursive: true })
 fs.writeFileSync(path.join(TMP, "userData-fresh", "setup.json"), JSON.stringify({ done: new Date().toISOString() }))
 const fresh = await _electron.launch({
-  executablePath: BIN ?? path.join(ROOT, "node_modules/.bin/electron"), args: BIN ? [] : [ROOT],
-  env: { ...process.env, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_USER_DATA: path.join(TMP, "userData-fresh"), VAULTITE_LOCAL: path.join(TMP, "local") },
+  executablePath: DESKTOP.executablePath, args: DESKTOP.args,
+  env: { ...process.env, ...DESKTOP.env, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_USER_DATA: path.join(TMP, "userData-fresh"), VAULTITE_LOCAL: path.join(TMP, "local") },
 })
 const first = await fresh.firstWindow()
 await first.waitForSelector("text=Open folder as vault")

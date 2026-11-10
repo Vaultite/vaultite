@@ -6,7 +6,7 @@ import { spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { plainError, sentence } from "../core/plainerror.ts"
-import { BRANCH, CODE, DEV, SHELL } from "./identity.ts"
+import { BRANCH, CODE, DEV, SHELL, WORKTREE } from "./identity.ts"
 import { afterUpdate, installedCommit } from "./installed.ts"
 
 const ROOT = path.dirname(import.meta.dirname)
@@ -42,7 +42,8 @@ let host: UpdatesHost
 export function initUpdates(h: UpdatesHost) { host = h }
 
 // (Windows updates only from releases: a build from source has no update.sh there)
-export const updatable = () => app.isPackaged && !!CODE && (SHELL.release === true || !WIN)
+// (a Dev instance on a worktree runs its changes instead: worktreeChanged)
+export const updatable = () => !WORKTREE && app.isPackaged && !!CODE && (SHELL.release === true || !WIN)
 /** A release build updates from the release feed (electron-updater), not by building from git. */
 export const RELEASE = app.isPackaged && !!CODE && SHELL.release === true
 /** The clone update.sh builds in, and the finished build it leaves next to it (Vaultite Main.app, and its commit).
@@ -75,7 +76,19 @@ const UPDATED = () => path.join(app.getPath("userData"), "updated")
 
 /** What this app's updates are doing, and the commit it runs (null: not a build), for its server's app.version. */
 export function appUpdates() {
-  return { mode: host.mode(), available: updatable(), from: RELEASE ? "releases" : BRANCH, ready, doing: status, commit: CODE?.commit ?? null }
+  return { mode: host.mode(), available: updatable(), from: worktree ? "worktree" : RELEASE ? "releases" : BRANCH, ready, doing: status,
+    commit: worktree?.commit ?? CODE?.commit ?? null, ...(worktree ? { worktree } : {}) }
+}
+
+/** A Dev instance's worktree (electron/devroot.ts): what it runs now. */
+let worktree: { worktree: string; branch: string; commit: string; dirty: boolean } | null = null
+export function worktreeNow(w: NonNullable<typeof worktree>) { worktree = w }
+/** Its changes the main process runs only once relaunched: offered in its windows and the menu. */
+export function worktreeChanged(what: string) {
+  if (ready === what) return
+  ready = what
+  for (const w of host.windows()) tell(w)
+  host.buildMenu()
 }
 
 function updateLog() {
@@ -209,7 +222,8 @@ function built() {
 /** Offer the update in a window (a toast with Restart); automatic, the window says when it's safe to restart. */
 function tell(w: UpdateWindow) {
   if (!w.ready || !ready) return
-  const msg = { type: "update", name: app.getName(), version: RELEASE ? ready : ready.slice(0, 7), auto: host.mode() === "automatic" }
+  const msg = WORKTREE ? { type: "update", text: `${ready}: relaunch to run them`, label: "Relaunch" }
+    : { type: "update", name: app.getName(), version: RELEASE ? ready : ready.slice(0, 7), auto: host.mode() === "automatic" }
   w.win.webContents.send("vaultite", msg)
   for (const [wc, of] of host.popouts()) if (of === w && !wc.isDestroyed()) wc.send("vaultite", msg)
 }
@@ -258,6 +272,12 @@ function stopChecking() {
  *  process to end). A newer build under way is dropped (the next check starts it again). */
 export function restartToUpdate(byHand = false) {
   if (status === "Restarting to update…") return // pressed twice
+  if (WORKTREE) {
+    if (!ready) return
+    host.beginQuit()
+    setStatus("Restarting to update…", true)
+    return void afterFlush(() => { app.relaunch(); app.quit() })
+  }
   if (RELEASE) {
     if (!ready || !releases) return
     host.beginQuit() // its windows close before the app quits: they're reopened after
@@ -373,6 +393,7 @@ async function checkRelease(byHand: boolean) {
 
 /** The menu's update item: Restart to update, else Check for updates (null: this app doesn't update itself). */
 export function updateMenuItem() {
+  if (WORKTREE) return ready ? { label: "Relaunch to run your changes", click: () => restartToUpdate(true) } : null
   if (!updatable()) return null
   return ready ? { label: "Restart to update", click: () => restartToUpdate(true) }
     : { label: checking || fetching ? "Checking for updates…" : "Check for updates…", enabled: !checking && !fetching, click: () => checkForUpdate(true) }

@@ -112,11 +112,12 @@ function staple(file, tries = 5) {
 
 // The cookie encryption fuse (EnableCookieEncryption) flips before signing, as a change after breaks the signature. A
 // build without it drops every cookie: update.sh (it greps this file) never goes back to one; start.ts sets it.
-async function fuses(context) {
+async function fuses(context, shell) {
   const { FuseVersion, FuseV1Options } = require("@electron/fuses")
   await context.packager.addElectronFuses(context, { version: FuseVersion.V1, [FuseV1Options.EnableCookieEncryption]: true,
-    // (NODE_OPTIONS and --inspect are ignored, by the servers and terminals run as Node too: nothing they start may use them)
-    [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false, [FuseV1Options.EnableNodeCliInspectArguments]: false })
+    // (NODE_OPTIONS and --inspect are ignored, by the servers and terminals run as Node too: nothing they start may use
+    // them; but Vaultite Dev's --inspect is on, so the desktop QA drives the packaged app as agents verify against it)
+    [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false, [FuseV1Options.EnableNodeCliInspectArguments]: shell.channel === "dev" })
 }
 
 /** The name and id it's packaged as, into the shell.json stamp.ts wrote (electron/identity.ts): its userData and, on
@@ -128,12 +129,13 @@ function stampShell(context) {
   const file = path.join(res, "electron", "shell.json")
   let stamped = {}
   try { stamped = JSON.parse(fs.readFileSync(file, "utf8")) } catch { /* not stamped: a name and id still */ }
-  fs.writeFileSync(file, JSON.stringify({ ...stamped, appId: id, productName }, null, 2) + "\n")
+  const shell = { ...stamped, appId: id, productName }
+  fs.writeFileSync(file, JSON.stringify(shell, null, 2) + "\n")
+  return shell
 }
 
 exports.default = async function sign(context) {
-  stampShell(context)
-  await fuses(context)
+  await fuses(context, stampShell(context))
   if (context.electronPlatformName === "win32") return require("./natives.cjs").windows(context)
   if (context.electronPlatformName !== "darwin") return
   await require("./natives.cjs").default(context)

@@ -67,6 +67,16 @@ function args(script) {
   return argv
 }
 
+/** The desktop app a script drives: this checkout run by Electron, or with VAULTITE_QA_SHELL=dev the packaged Vaultite
+ *  Dev shell running it (its own identity; built for this worktree once: npm run app:dev -- --headless, then --stop). */
+export async function desktopApp() {
+  if (process.env.VAULTITE_QA_SHELL !== "dev") return { executablePath: path.join(ROOT, "node_modules/.bin/electron"), args: [ROOT], env: {} }
+  const [{ devApp }, { fingerprint }] = await Promise.all([import("../../../electron/devinstance.ts"), import("../../../electron/shell/print.mjs")])
+  const dev = devApp(ROOT), shell = dev.shellFor(fingerprint(ROOT))
+  if (!shell) throw new Error(`no ${dev.name} shell for this worktree: npm run app:dev -- --headless builds one (then --stop)`)
+  return { executablePath: dev.exe(shell), args: [], env: { VAULTITE_CODE_ROOT: ROOT } }
+}
+
 /** Whether the user's own app runs here, hearing their keys (electron/helper.ts' lock, taken only by a packaged app that
  *  isn't scripted): a script that drives the helper, dictation or the voice then waits for VAULTITE_QA_LIVE=1. */
 export function userApp() {

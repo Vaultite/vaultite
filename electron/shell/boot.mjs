@@ -31,8 +31,9 @@ roots.begin(dir, { pid: process.pid, root: picked.root, commit })
 // (a quit, even before it was ready, leaves nothing to settle; app.exit() skips both, so it ends it itself)
 app.on("will-quit", () => roots.ended(dir, process.pid))
 process.on("exit", () => roots.ended(dir, process.pid))
-// The CLI's one stable path: what shims, agents' MCP configs and the servers' children run (core/appentry.ts).
-process.env.VAULTITE_VAU_ENTRY = path.join(bundle, "electron", "shell", "vau.mjs")
+// The CLI's one stable path, what shims, agents' MCP configs and the servers' children run (core/appentry.ts); a Dev
+// instance's worktree is its root for its life, so its own bin/vau (its terminals run that worktree's vau).
+process.env.VAULTITE_VAU_ENTRY = picked.from === "dev" ? path.join(picked.root, "bin", "vau") : path.join(bundle, "electron", "shell", "vau.mjs")
 
 let isReady = false
 /** It failed (`why`): recorded, and when another root can run now, the app starts again on it (true). */

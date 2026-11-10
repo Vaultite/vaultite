@@ -8,7 +8,8 @@
     "electron/mac/icon-nightly.png",
     "electron/sign.cjs",
     "electron/source.cjs",
-    "electron/nightly.cjs"
+    "electron/nightly.cjs",
+    "electron/dev.cjs"
   ],
   "package": [
     "main",
