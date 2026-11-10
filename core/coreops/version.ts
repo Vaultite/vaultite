@@ -14,7 +14,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 /** How often a wait looks again (each look is a few git commands). */
 const LOOK_MS = 3000
 
-type AppUpdates = { mode: "automatic" | "notify" | "off"; available: boolean; from: string; ready: string | null; doing: string | null; commit?: string | null }
+type AppUpdates = { mode: "automatic" | "notify" | "off"; available: boolean; from: string; ready: string | null; doing: string | null; commit?: string | null
+  /** A Dev instance's: the worktree it runs (electron/devroot.ts). */
+  worktree?: { worktree: string; branch: string; commit: string; dirty: boolean } }
 /** Whether a commit is live, and when not, whether that can still change by itself (`final`: it can't). */
 export type Verdict = { commit: string; live: boolean; final: boolean; why: string }
 
@@ -132,6 +134,7 @@ new build by themselves (at once when hidden; visible, they offer Reload). machi
     },
     text: (r: Any) => [...(r.live ? [r.live.why] : []),
       `Vaultite ${r.version} (plugin API ${r.api})${r.commit ? `, ${short(r.commit)}${r.branch ? ` on ${r.branch}` : ""}` : ""}${r.machine ? ` on ${r.machine}` : ""}`,
+      ...(r.app?.worktree ? [`Worktree: ${r.app.worktree.worktree}, ${r.app.worktree.branch}@${short(r.app.worktree.commit)}${r.app.worktree.dirty ? ", with changes not committed" : ""}`] : []),
       ...(r.subject ? [`Commit: ${r.subject}${r.at ? ` (${new Date(r.at).toISOString()})` : ""}`] : []),
       // (out of step: a checkout pulled and built but not restarted, or restarted but not built)
       ...(r.web?.commit && r.commit && r.web.commit !== r.commit ? [`Web app: built from ${short(r.web.commit)}, not ${short(r.commit)}`] : []),

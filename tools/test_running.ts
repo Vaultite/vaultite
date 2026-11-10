@@ -141,4 +141,12 @@ const app = { mode: "automatic" as const, available: true, from: "main", ready: 
 check("the desktop app's, automatic: on its way", !v({ updates: off, app }).final)
 check("off, or notify (someone must restart it): it won't be by itself", v({ updates: off, app: { ...app, mode: "off" } }).final && v({ updates: off, app: { ...app, mode: "notify" } }).final)
 
+section("vau version's text")
+{
+  const op = versionOps()[0], base = { version: "0.1.0", api: 9, commit: full, branch: null, updates: off, app: null }
+  const dev = op.text!({ ...base, app: { mode: "notify", available: true, from: "worktree", ready: null, doing: null, commit: full, worktree: { worktree: "lighthouse-fix", branch: "fix", commit: full, dirty: true } } }, {})
+  check("a Dev instance: its worktree, branch and commit, and whether it has changes", dev.split("\n")[1] === "Worktree: lighthouse-fix, fix@ccccccc, with changes not committed", dev)
+  check("none otherwise", !op.text!(base, {}).includes("Worktree"))
+}
+
 await exit(summary("running", t0))
