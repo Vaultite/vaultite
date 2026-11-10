@@ -1,7 +1,7 @@
 // The vault as the web app sees it (GET /api/state), plus date helpers. Every item has a string id (its vault path
 // without .md) and `modified` (a local stamp, "YYYY-MM-DD HH:MM:SS").
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react"
-import { editCount, edited, onKeptChange, onVaultChange, settled, startLive, type Paths } from "@/core/live"
+import { editCount, edited, type LiveMark, onKeptChange, onVaultChange, settled, startLive, type Paths } from "@/core/live"
 import { get, send } from "@/core/http"
 import { hydratePrefs } from "@/core/prefs"
 import { errorText, notifyError } from "@/core/notify"
@@ -317,7 +317,7 @@ export const onState = (fn: (s: State) => Promise<void>) => { beforeState = fn }
 /** The state as the server last gave it (`v`) and its store: what a refresh asks the server to patch, so only what
  *  changed comes. Optimistic changes (mutate) are dropped at each refresh, which starts from the server's. */
 let server: { v: string; state: State; store: Store } | null = null
-type Answer = { v: string; state: State } | { v: string; since: string; patch: Patch | null }
+type Answer = ({ v: string; state: State } | { v: string; since: string; patch: Patch | null }) & { live?: LiveMark }
 
 /** The state after the server's answer: the whole state, or the one it has patched; null when the patch isn't of the
  *  state this app has (it then asks for the whole state). */
@@ -343,6 +343,7 @@ function load(): Promise<void> {
       try {
         const answer = await get<Answer>(`state?since=${encodeURIComponent(server?.v ?? "0")}`)
         loading?.mark("state")
+        startLive(answer.live) // (the first answer: live updates start from where it stood)
         if (editCount() !== gen) { again = true; continue }
         const all = stateOf(answer)
         if (!all) { server = null; again = true; continue }
@@ -362,6 +363,7 @@ function load(): Promise<void> {
         if (loading) { const l = loading; loading = null; requestAnimationFrame(() => { l.mark("draw"); l.end() }) }
       } catch (e) {
         publish({ error: errorText(e, "Couldn't load the vault") })
+        startLive() // (no state: it listens anyway, and tries again when the server's back)
       }
     } while (again)
   }
@@ -391,8 +393,7 @@ export function startStore() {
   if (started) return
   started = true
   loading?.mark("scripts")
-  load()
-  startLive()
+  load() // (it starts live updates once its answer came)
   onVaultChange(() => loadSoon())
   onKeptChange((_names, state) => { if (state) loadSoon() })
 }

@@ -233,10 +233,15 @@ function revive() {
   connect()
 }
 
-/** Start listening (once, from the store). */
-export function startLive() {
+/** Where the page's view of the vault stands, as /api/state says it with the state (core/live.ts' mark). */
+export type LiveMark = { at?: string; kept?: string; state?: number }
+/** Start listening (once, from the store, once its first state came: `from`, where that stood). The socket starts from
+ *  there as it does when back from away: its hello tells what changed between the read and the connect. */
+export function startLive(from?: LiveMark) {
   if (started || typeof WebSocket === "undefined") return
   started = true
+  if (typeof from?.at === "string") heard = from.at
+  if (typeof from?.kept === "string" && typeof from.state === "number") { keptSeen = from.kept; keptState = from.state }
   connect()
   document.addEventListener("visibilitychange", () => {
     // Only time in view counts as lost: back in view while still down, it counts from now.

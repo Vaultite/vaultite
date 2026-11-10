@@ -152,6 +152,16 @@ export default async ($: VaultTest) => {
     check("live: back, a window hears what changed while it was away", JSON.stringify(hello(at).paths) === '["Notes/Away one.md","Notes/Away two.md"]', hello(at))
     check("live: and nothing when nothing did", JSON.stringify(hello(hello().at).paths) === "[]")
     check("live: from another server (restarted), anything may have", hello("other:0").paths === null && !("paths" in hello()))
+    // The state says where the events stood as it was read: a socket connecting from there hears what changed since.
+    const was = $.app.liveMark
+    $.app.liveMark = () => own.mark()
+    const [, raw] = await api("GET", "state?since=0")
+    const said = (typeof raw === "string" || Buffer.isBuffer(raw) ? JSON.parse(String(raw)) : raw).live
+    check("live: the state says where the events stood", said?.at === own.at && typeof said?.kept === "string" && typeof said?.state === "number", said)
+    own.add("Notes/Between.md")
+    await wait(() => got.some((c) => c.paths?.includes("Notes/Between.md")))
+    check("live: a socket connecting after the state's read hears what changed in between", JSON.stringify(hello(said?.at).paths) === '["Notes/Between.md"]', hello(said?.at))
+    $.app.liveMark = was
     own.close()
   }
   check("live: .git, .DS_Store, iCloud placeholders and temp files are ignored",

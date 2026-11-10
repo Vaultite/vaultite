@@ -233,7 +233,13 @@ export class Live {
       } catch { /* not ours */ }
     })
     const missed = at === undefined ? undefined : this.since(at)
-    ws.send(JSON.stringify({ type: "hello", v: this.v, at: this.at, web: Live.web() ?? undefined, ...this.keptMark(), ...(missed !== undefined ? { paths: missed } : {}) }))
+    ws.send(JSON.stringify({ type: "hello", v: this.v, web: Live.web() ?? undefined, ...this.mark(), ...(missed !== undefined ? { paths: missed } : {}) }))
+  }
+
+  /** Where what windows are told stands now: the changes (`at`) and the kept entries. /api/state says it too, so a
+   *  window that read the state before its socket connected hears what changed in between (its hello's `paths`). */
+  mark() {
+    return { at: this.at, ...this.keptMark() }
   }
 
   /** Where the kept entries are (core/kept.ts): `kept`, the store and its last change, which a window back after a

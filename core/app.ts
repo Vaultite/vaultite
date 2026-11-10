@@ -75,6 +75,8 @@ export class App {
   ui: ((message: Item | null) => unknown) | null = null
   /** The devices with app windows open on this server, and a message to one's windows (server.ts: core/live.ts). */
   presence: { list: () => Present[]; tell: (device: string, msg: Item) => number } | null = null
+  /** Where the live events stand (server.ts: core/live.ts' mark), said with the state it answers. */
+  liveMark: (() => Item) | null = null
   /** The plugins that moved out of the app being installed, once it's open (core/migrations.ts migrateMoved). */
   moving: Promise<void> = Promise.resolve()
   private core: Op[] | null = null
@@ -353,6 +355,8 @@ export class App {
   /** GET /api/state?since=<v>: the state as a patch of state v (the one the app has), when it's still kept; else whole.
    *  The answer is JSON made from the pieces, so nothing is serialized twice. */
   async stateSince(since: string) {
+    // (read before the state: what changes after it, the window's socket tells it again, at worst twice)
+    const mark = this.liveMark?.()
     const now = this.snap(await this.state())
     const v = JSON.stringify(now.v)
     let out: string | Buffer
@@ -363,6 +367,7 @@ export class App {
       out = `{"v":${v},"since":${JSON.stringify(since)},"patch":${patch}}`
     // (kept as UTF-8 bytes: half a string's size when a character outside Latin-1 makes it two bytes a character)
     } else out = now.whole ??= Buffer.from(`{"v":${v},"state":${SP.jsonOf(now.piece)}}`)
+    if (mark) out = Buffer.concat([Buffer.from(`{"live":${JSON.stringify(mark)},`), (typeof out === "string" ? Buffer.from(out) : out).subarray(1)])
     return new Text(out, "application/json")
   }
 

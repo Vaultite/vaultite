@@ -116,6 +116,7 @@ function watch(l: LiveType) {
   l.listen((c) => app.changed(c.paths))
   app.ui = l.drive // ops drive the user's window the way POST /api/ui does
   app.presence = { list: () => l.present(), tell: (device, msg) => l.tell(device, msg) }
+  app.liveMark = () => l.mark()
   return l
 }
 
