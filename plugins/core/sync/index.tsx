@@ -160,8 +160,11 @@ const keepOnPhone = (path: string, off = false) => op("sync.keep", { path, devic
   .then(() => notify(off ? "This phone keeps it by its rules again" : "Kept on this phone: it comes down next time it syncs"), (e) => notifyError(e, "Couldn't keep it on this phone"))
 const kept = (path: string) => { const s = phoneSync(); return !!s && (rulesOf(s).keep ?? []).some((r) => r.path === path) }
 
+// (the iPhone app's only: on a computer each store change would redraw it for nothing; one element, as they redraw backgrounds)
+const background = <Background />
+
 export default definePlugin({
-  background: () => <Background />,
+  background: phoneLocal ? () => background : undefined,
   views: { "phone-downloads": { icon: HardDriveDownload, title: () => "Downloads", render: () => <Downloads /> } },
   commands: [{ id: "sync:downloads", name: "Show downloads on this phone", icon: HardDriveDownload, when: () => !!phoneLocal, run: () => openView("phone-downloads", { newTab: true }) }],
   fileMarks: () => marks(),
