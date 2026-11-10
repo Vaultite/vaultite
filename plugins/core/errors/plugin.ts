@@ -136,7 +136,7 @@ plugin.onServerError((e: ServerError) => {
 
 // ---------- the app's
 
-const KINDS = new Set(["uncaught", "rejection", "boundary", "stopped", "boot", "stale", "shown", "plugin"])
+const KINDS = new Set(["uncaught", "rejection", "boundary", "stopped", "boot", "stale", "shown", "plugin", "update"])
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "")
 
 plugin.route("POST", "errors", (req) => {

@@ -11,7 +11,7 @@ type Filter = "all" | "app" | "server"
 const KIND: Record<string, string> = {
   stopped: "stopped the app", boot: "before the app started", boundary: "a block or view failed", uncaught: "uncaught",
   rejection: "unhandled rejection", stale: "an older build (reloaded)", error: "logged", fatal: "ended the server",
-  shown: "told in a toast or a page", plugin: "a plugin couldn't start",
+  shown: "told in a toast or a page", plugin: "a plugin couldn't start", update: "the app's updates",
 }
 /** Errors forgotten from here: gone at once, back if it fails. */
 const forgetting = removals()

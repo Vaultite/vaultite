@@ -22,7 +22,7 @@
   through the root store (core/update/store.ts, `storehost.ts`): each commit made once into a read-only root, then only
   what it changed acts (core/update/plan.ts): its servers take the new web build or restart from the new root, the main
   process is offered a relaunch onto it (seconds, nothing installed); only a new shell fingerprint builds and installs the
-  app as before. Attached to a service it takes only its server's commit; standalone, the branch's newest. Processes run
+  app as before. Attached to a service it takes only its server's commit; standalone, the branch's newest. A server it started (this launch's, its last one's taken over) is never a service: a window attaching to one would pin the app to a commit that only moves with the app (storepolicy.ts pinOf). Processes run
   from a root hold it (core/update/lease.ts) until they end. Removing the marker runs the bundle at the next launch.
 - An update (update.sh install) is staged beside the app and renamed in once it quit: a copy opened from the old bundle
   meanwhile would run the replaced tree while the disk says new (`ps` still shows the old path), so a running main is

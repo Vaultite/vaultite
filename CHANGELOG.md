@@ -59,7 +59,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   the service again to move an existing one onto it.
 - **The desktop app's update relaunch keeps its servers**: Vaultite Main relaunching onto a new version (its code
   store's, a Dev instance's) leaves each vault's server running and takes it over in under a second, so nothing is read
-  again and `vau`, the phone and agents never see it go.
+  again and `vau`, the phone and agents never see it go; only a real service (`vau service`'s, another app's) holds
+  its updates to the commit it runs, never a server the app started itself.
 - **Agents don't see the app's restarts**: `vau` and `vau mcp` run by the app (its terminals, agents and hooks) wait up
   to 30 s for a server that's restarting (an update, the app relaunching) rather than fail at once; elsewhere a server
   that isn't there is said at once.

@@ -188,7 +188,7 @@ await section("after a launch: the running server against the installed build", 
 })
 
 await section("Main's updates through its code store: where, and its two policies (electron/storepolicy.ts)", async () => {
-  const { policyFor, storeWanted } = await import("../electron/storepolicy.ts")
+  const { pinOf, policyFor, storeWanted } = await import("../electron/storepolicy.ts")
   const main = { packaged: true, channel: "main", release: false, platform: "darwin", marker: true }
   check("Vaultite Main where its marker is: the store", storeWanted(main) && storeWanted({ ...main, platform: "linux" }))
   check("...not without the marker (updates as before), nor a release, Windows, Dev or a run from source", !storeWanted({ ...main, marker: false }) && !storeWanted({ ...main, release: true })
@@ -198,6 +198,13 @@ await section("Main's updates through its code store: where, and its two policie
     && (await attached.ci("", "6".repeat(40))).ok === null && attached.recipe.preflight.map((x) => x.name).join() === "server boots")
   check("standalone: the branch's newest, CI not waited for, smoke too", alone.follows === "branch" && (await alone.ci("", "6".repeat(40))).ok === true
     && alone.recipe.preflight.map((x) => x.name).join() === "server boots,smoke")
+  // (what updates.ts' attachedTo gives policyFor: a window's server, own or a service, and the commit it runs)
+  const service = (commit: string) => ({ own: false, commit }), mine = { own: true, commit: "" }
+  check("every window on a real service (vau service's, another app's): pinned to the commit it runs", pinOf([service(server), service(server)]) === server)
+  check("...one not saying yet: the look waits (null); two on different commits, or a window on its own server: the branch",
+    pinOf([service(server), service("")]) === null && pinOf([service(server), service("6".repeat(40))]) === "" && pinOf([service(server), null]) === "" && pinOf([]) === "")
+  check("windows attached to this app's own kept server (its last launch's, taken over; started at launch): the branch, never pinned to it",
+    pinOf([mine]) === "" && pinOf([mine, service(server)]) === "")
 })
 
 await exit(summary("update", t0))

@@ -23,6 +23,18 @@ export type Policy = {
   ci: (repo: string, sha: string) => Promise<CiResult>
 }
 
+/** A window's server: null, its own; else the one it attached to, `own` when this app started it all the same (this
+ *  launch or its last, taken over), and the commit it says it runs ("": it didn't say, or wasn't asked). */
+export type Attachment = { own: boolean; commit: string } | null
+/** The commit every window's server runs when each is a real service (one this app didn't start); "": the branch, as
+ *  with any on its own server, which moves only with the app (waiting for it waits forever); null: one didn't say. */
+export function pinOf(windows: Attachment[]): string | null {
+  if (!windows.length || windows.some((w) => !w || w.own)) return ""
+  const ran = windows.map((w) => w!.commit)
+  if (ran.some((c) => !/^[0-9a-f]{40}$/.test(c))) return null
+  return ran.every((c) => c === ran[0]) ? ran[0] : ""
+}
+
 /** Attached to a service (`server`: the commit it runs, which CI for this OS passed): that commit only, checked by its
  *  server booting (about 10 s). Standalone: the branch's newest, CI not waited for (as before), with smoke too. */
 export async function policyFor(server: string): Promise<Policy> {

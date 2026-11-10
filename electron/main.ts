@@ -15,7 +15,7 @@ import "./browser/index.ts"
 import { engineBusy, engineFlush, serverCall, setServerSink } from "./browser/engine.ts"
 import { attach, attachable, servedHere, type Call, type Link } from "./host.ts"
 import type { Adopted } from "./heir.ts"
-import type { Serving } from "../core/serving.ts"
+import { servingOf, type Serving } from "../core/serving.ts"
 import { talkCall } from "./talklog.ts"
 import { CODE, DEV, HOST, WORKTREE } from "./identity.ts"
 import { codeRoot, commitAt, hold } from "./storehost.ts"
@@ -285,6 +285,16 @@ const popouts = new Map<WebContents, Win>()
 
 /** Servers on their way up or running, by vault path: each vault's is started once. */
 const booting = new Map<string, Promise<[ChildProcess, number]>>()
+/** The pids of the servers this app runs: forked, or taken over from its last launch (adopt). */
+const ownPids = new Set<number>()
+function ownServer(pid: number | undefined, s: { once(e: "exit", fn: () => void): unknown }) {
+  if (!pid) return
+  ownPids.add(pid)
+  s.once("exit", () => ownPids.delete(pid))
+}
+/** The server serving `p` here to attach to (servedHere): never the one this launch started (at launch, before its
+ *  window), which claims the vault too: attached, it would pin the app's updates to its own commit (storepolicy.ts). */
+const servedElsewhere = (p: string) => (booting.has(p) ? Promise.resolve(null) : servedHere(p))
 function serverFor(v: Known) {
   let b = booting.get(v.path)
   if (!b) {
@@ -363,6 +373,7 @@ function startServer(v: Known, port: number, own = false): Promise<ChildProcess>
   fs.closeSync(fd)
   rootOf.set(child, root)
   logFrom.set(child, from)
+  ownServer(child.pid, child)
   if (child.pid) hold(root, child.pid, "server")
   // (one from another root than this process's may speak another protocol: it says first, and one that doesn't match
   // gives way to one of this app's own code, the app offered its relaunch onto the newer)
@@ -454,7 +465,7 @@ async function openVault(p: string, file?: string) {
   kept.delete(p)
   had?.link?.stop()
   // (served here already, by its service: the window attaches to that server)
-  const there = had?.server && had.server.exitCode === null ? null : await servedHere(p).catch((e) => { failedBox(`Couldn't open ${nameOf(p)}`, e, { why: "Its server didn't start." }); throw e })
+  const there = had?.server && had.server.exitCode === null ? null : await servedElsewhere(p).catch((e) => { failedBox(`Couldn't open ${nameOf(p)}`, e, { why: "Its server didn't start." }); throw e })
   const starting = there ? null : serverFor(v)
   // The window (and its renderer process) is made while the server starts; its page loads once the server listens.
   const b = v.bounds
@@ -588,6 +599,7 @@ async function adopt(v: Known, s: Serving): Promise<ChildProcess> {
   const link = await attach(v.path, s, (m) => answerCall(v, m), () => (v.outside?.length ? [{ type: "allow", paths: v.outside }] : []), () => a?.kill())
   a = new (await import("./heir.ts")).Adopted(s.pid, link)
   const child = a as unknown as ChildProcess // (it stands in for one: heir.ts)
+  ownServer(s.pid, a)
   rootOf.set(child, s.heir!.root)
   logFrom.set(child, (() => { try { return fs.statSync(serverLog(v.path)).size } catch { return 0 } })())
   console.error(`vaultite: ${nameOf(v.path)}'s server (pid ${s.pid}) kept running through the relaunch: taken over`)
@@ -615,7 +627,7 @@ async function helperHome() {
   if (!v) return false
   if (MAC) void app.dock?.hide()
   try {
-    const there = await servedHere(v.path)
+    const there = await servedElsewhere(v.path)
     if (there && heirHere(there)) keepServer(v.path, { server: await adopt(v, there), link: null, port: there.port })
     else if (there) keepServer(v.path, { server: null, link: await attach(v.path, there, (m) => answerCall(v, m), () => []), port: there.port })
     else { const [server, port] = await serverFor(v); keepServer(v.path, { server, link: null, port }) }
@@ -1379,6 +1391,7 @@ initUpdates({
   flush: () => unloadOnce().then(() => engineFlush()),
   buildMenu,
   nameOf,
+  ownsServer: (w) => { const s = servingOf(w.vault.path); return !!s && ownPids.has(s.pid) },
   helper: () => !!helper,
   helperCommit: () => helperAt?.commit() ?? null,
   reloadHelper: (root, commit) => helperAt?.reload(root, commit),

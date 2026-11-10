@@ -46,6 +46,9 @@ export type UpdatesHost = {
   helper(): boolean
   helperCommit: StoreHost["helper"]
   reloadHelper: StoreHost["reloadHelper"]
+  /** Whether the server window `w` is attached to is this app's own (it started it, or took it over from its last
+   *  launch): a window should never attach to one, but one that did doesn't pin its updates (attached.ts). */
+  ownsServer(w: UpdateWindow): boolean
   /** Its own servers (the store's updates, storehost.ts): their commits, restarted, or serving another web build. */
   servers: StoreHost["servers"]
   restartServers(): void
@@ -189,28 +192,15 @@ function lastBuild() {
   try { return Number(fs.readFileSync(BUILT_AT(), "utf8")) || 0 } catch { return 0 }
 }
 
-/** The commit the servers its windows attached to run, when every open window is attached: the app updates to that
- *  rather than the branch's newest, so the two are one version. "" otherwise. */
+/** The commit the servers its windows attached to run, when every open window is attached to a real service (pinOf):
+ *  the app updates to that rather than the branch's newest, so the two are one version. "" otherwise. */
 async function attachedCommit() {
   return (await attachedTo()) || ""
 }
-/** As attachedCommit, but null when every window is attached and a server didn't say (a service just restarted, still
- *  making its module graph): the store's look waits for it rather than take the branch's newest. */
-async function attachedTo(): Promise<string | null> {
-  const all = host.windows()
-  if (!all.length || all.some((w) => !w.link)) return ""
-  const ran = await Promise.all(all.map((w) => told.get(w.port) ?? serverCommit(w.port)))
-  if (ran.some((c) => !/^[0-9a-f]{40}$/.test(c))) return null
-  return ran.every((c) => c === ran[0]) ? ran[0] : ""
-}
+/** As attachedCommit, but null when a service didn't say (attached.ts). */
+const attachedTo = async () => (await import("./attached.ts")).attachedTo(host, told, logUpdate)
 /** Servers' commits as they told them, by port (a look one asked for: lookNow). */
 const told = new Map<number, string>()
-/** The commit the server on `port` runs (its app.version), "" when it doesn't say. */
-const serverCommit = (port: number) => fetch(`http://127.0.0.1:${port}/api/ops/app.version`, { method: "POST", headers: { "Content-Type": "application/json" },
-  body: "{}", signal: AbortSignal.timeout(5000) }).then((r) => r.json()).then((j: { commit?: unknown }) => String(j.commit ?? ""), (e) => {
-    storeHost().log(`its server on port ${port} didn't say its commit: ${(e as Error).message}`)
-    return ""
-  })
 
 /** Vaults whose server this run restarted onto the installed build (once each). */
 const restartedOnto = new Set<string>()
@@ -222,7 +212,7 @@ export function checkInstalled(w: UpdateWindow) {
   setTimeout(() => void (async () => {
     const p = w.vault.path
     if (!host.windows().includes(w) || !w.server || w.server.exitCode !== null) return
-    const installed = installedCommit(ROOT), server = (await serverCommit(w.port)) || null
+    const installed = installedCommit(ROOT), server = (await (await import("./attached.ts")).serverCommit(w.port, logUpdate)) || null
     const { stale, restart } = afterUpdate({ installed, app: CODE?.commit ?? null, server, restarted: restartedOnto.has(p) })
     if (!stale && !restart) return
     const log = updateLog(), at = new Date().toISOString()
