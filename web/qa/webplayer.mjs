@@ -292,10 +292,12 @@ await back()
 await setting({ playerFullScreen: false }); await wait(500)
 
 // ---------- picture in picture ----------
+// (quiet, the video is marked rather than put in the system's window over the user's work: electron/player.ts' PIP)
+const inPip = "!!document.querySelector('#v[data-vaultite-pip]')"
 await more("Picture in picture")
-check("Picture in picture: its video in a window over every other", await until(() => inPage("document.pictureInPictureElement?.id === 'v'"), 4000))
+check("Picture in picture: its video in a window over every other", await until(() => inPage(inPip), 4000))
 await more("Picture in picture")
-check("… and back", await until(() => inPage("!document.pictureInPictureElement"), 4000))
+check("… and back", await until(() => inPage(`!(${inPip})`), 4000))
 
 // ---------- closing the tab closes its player ----------
 await more("Open as player")

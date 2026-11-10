@@ -3,7 +3,7 @@
 import { app, BaseWindow, type MenuItemConstructorOptions, type Rectangle, screen, WebContentsView } from "electron"
 import fs from "node:fs"
 import path from "node:path"
-import { quiet } from "./quiet.ts"
+import { QUIET, quiet } from "./quiet.ts"
 import { lightsShown, topStrip } from "./topstrip.ts"
 import { isOnTop, setOnTop, watchFocus } from "./ontop.ts"
 import { writeAtomic } from "./setup.ts"
@@ -110,13 +110,19 @@ export const FULL_GUARD = `(() => {
   }
 })()`
 export const UNFILL = `(() => { window.__vaultitePlayer?.off(); if (document.fullscreenElement) void document.exitFullscreen().catch(() => {}) })()`
-export const PIP = `(() => {
-  if (document.pictureInPictureElement) return void document.exitPictureInPicture().catch(() => {})
+// Picture in picture for the page's main video, or out of it. A quiet copy (quiet.ts) marks the video instead
+// (data-vaultite-pip): the system's window would show over the user's work.
+const pip = (on: string, out: string, enter: string) => `(() => {
+  const on = ${on}
+  if (on) return void ${out}
   ${MAIN_VIDEO}
   const v = videos.filter((c) => c.n > 0).sort((a, b) => b.n - a.n)[0]?.el
   if (!v) return "none"
-  return v.requestPictureInPicture().then(() => true, () => false)
+  return ${enter}
 })()`
+export const PIP = QUIET
+  ? pip(`document.querySelector("video[data-vaultite-pip]")`, `on.removeAttribute("data-vaultite-pip")`, `(v.setAttribute("data-vaultite-pip", ""), true)`)
+  : pip("document.pictureInPictureElement", "document.exitPictureInPicture().catch(() => {})", "v.requestPictureInPicture().then(() => true, () => false)")
 
 /** Resolves with the page's main video's aspect (width / height) once it has one other than `last`: a page written into
  *  (a pop-out) gets its video late, and a call's video changes size as the camera on the other end does. */

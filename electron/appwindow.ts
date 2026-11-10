@@ -15,7 +15,8 @@ export class AppWindow extends BaseWindow {
 
   /** `adopt`: the page window.open made (a pop-out), shown here rather than in a window of Electron's. */
   constructor({ webPreferences, ...options }: AppWindowOptions, adopt?: WebContents) {
-    super(options)
+    // (shown once made, not by Electron as it's made: what's done to each window first, quiet.ts', is before it shows)
+    super({ ...options, show: false })
     // (an adopted page takes `webPreferences` too: its preload, which Electron leaves out when it doesn't make the window)
     this.view = new WebContentsView(adopt ? { webContents: adopt, webPreferences } : { webPreferences })
     // (see-through where its page paints nothing: a Browser page under it shows there while it's raised)
@@ -34,6 +35,7 @@ export class AppWindow extends BaseWindow {
     // (its page closed itself, a pop-out's window.close(): the window goes too)
     wc.once("destroyed", () => { if (!this.isDestroyed()) this.close() })
     for (const fn of made) fn(this)
+    if (options.show !== false) this.show()
   }
 
   get webContents() { return this.view.webContents }

@@ -4,7 +4,7 @@ import "../core/winspawn.ts" // (first: on Windows no program the main process s
 import "./dockenv.ts" // (before anything reads the environment)
 import { app, BaseWindow, type BaseWindowConstructorOptions, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, session, shell, systemPreferences, type IpcMainInvokeEvent, type Rectangle, type WebContents, type WebPreferences } from "electron"
 import { AppWindow } from "./appwindow.ts"
-import { QUIET, quiet } from "./quiet.ts"
+import { QUIET, quiet, quietPage, shownInstead } from "./quiet.ts"
 import { execFile, execFileSync, fork, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
@@ -62,6 +62,8 @@ if (QUIET) {
   app.commandLine.appendSwitch("disable-backgrounding-occluded-windows")
   app.commandLine.appendSwitch("disable-renderer-backgrounding")
   app.on("browser-window-created", (_e, w) => quiet(w, w.webContents))
+  app.on("web-contents-created", (_e, wc) => quietPage(wc))
+  Object.assign(globalThis, { vaultiteQuiet: shownInstead })
   AppWindow.each((w) => quiet(w, w.webContents))
   app.focus = () => {}
   void app.whenReady().then(() => app.dock?.hide())
