@@ -42,7 +42,7 @@ export const SITES: Site[] = [
     at: ["import(pathToFileURL(file).href)"], anchors: true, caller: "core/app.ts", loads: ["plugins/core/*/plugin.ts"], reads: ["plugins/core/*/manifest.json"] },
   { file: "core/vaultplugins.ts", why: "vault plugins' backends: from the vault, not the app, importing the core's API and app plugins' exports; the app's Tailwind setup compiles their classes",
     at: ["import(`${pathToFileURL(file).href}?plugin="], anchors: true, caller: "core/app.ts",
-    loads: ["core/{plugins,vault,client,timeline,agents,layout}.ts"], reads: ["web/src/index.css", "package.json"], fresh: ["web/dist/**"] },
+    loads: ["core/{plugins,vault,client,timeline,agents,layout}.ts"], reads: ["package.json"], fresh: ["web/dist/**", "web/src/index.css"] },
   { file: "core/docs.ts", why: "the docs' topics: core/docs and plugins' docs/", anchors: true, reads: ["core/docs/*.md", "plugins/core/*/docs/*.md"] },
   { file: "core/bundles.ts", why: "the app's bundles (setups), read when listed or applied", anchors: true, reads: ["bundles/**"] },
   { file: "core/sandbox.ts", why: "a new sandbox copies the sample vault and the design doc, each time", anchors: true, fresh: ["examples/vault/**", "core/docs/design.md"] },

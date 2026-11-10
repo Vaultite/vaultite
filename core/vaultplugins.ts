@@ -21,8 +21,14 @@ import { type Item, readText, type Vault, writeAtomic } from "./vault.ts"
 export const DIR = ".vaultite/plugins"
 const CACHE = path.join(LOCAL, "cache", "plugins")
 const CSS = path.join(ROOT, "web", "src", "index.css") // the app's Tailwind setup: a plugin's classes compile against it
-// Part of every plugin's version: a new way of building (bump it), or a new app stylesheet, builds bundles again.
-const BUILD = "5:" + crypto.createHash("sha256").update(readText(CSS)).digest("hex").slice(0, 8)
+// Part of every plugin's version: a new way of building (bump it), or a new app stylesheet, builds bundles again (read
+// when asked: a stylesheet changed under a running server rebuilds them, no restart).
+let built: { at: string; build: string } | null = null
+function buildKey() {
+  const st = fs.statSync(CSS), at = `${st.mtimeMs}:${st.size}`
+  if (built?.at !== at) built = { at, build: "5:" + crypto.createHash("sha256").update(readText(CSS)).digest("hex").slice(0, 8) }
+  return built.build
+}
 // What its code bundles against: the app's packages. A new stylesheet alone only redoes its styles (an update that
 // bundled Excalidraw again took seconds off the app's start).
 const CODE = "7:" + crypto.createHash("sha256").update(JSON.stringify(JSON.parse(readText(path.join(ROOT, "package.json"))).dependencies ?? {})).digest("hex").slice(0, 8)
@@ -166,7 +172,7 @@ async function styles(id: string, dir: string, used: Set<string>) {
   const app = classesOfApp()
   const theirs = (c: string) => app.has(escapeClass(c))
   const sorted = [...candidates].sort()
-  const key = crypto.createHash("sha256").update(BUILD).update(CODE).update(dir).update(sorted.map((c) => `${c}\0${theirs(c) ? 1 : 0}`).join("\n")).digest("hex").slice(0, 12)
+  const key = crypto.createHash("sha256").update(buildKey()).update(CODE).update(dir).update(sorted.map((c) => `${c}\0${theirs(c) ? 1 : 0}`).join("\n")).digest("hex").slice(0, 12)
   const file = path.join(CACHE, `${id}-styles-${key}.json`)
   stylesFile.set(id, path.basename(file))
   try { return JSON.parse(readText(file)) as string } catch { /* not made yet */ }
@@ -476,7 +482,7 @@ export class VaultPlugins {
           manifest = r.manifest ?? manifest
           const digest = digestOf(dir)
           // (the app's built stylesheet too: which of its classes the app has decides their layer; CODE: code bundled anew is a new version)
-          const hash = crypto.createHash("sha256").update(BUILD).update(CODE).update((builtCss(), appCss?.file ?? "")).update(digest.content).update(theirs).digest("hex").slice(0, 12)
+          const hash = crypto.createHash("sha256").update(buildKey()).update(CODE).update((builtCss(), appCss?.file ?? "")).update(digest.content).update(theirs).digest("hex").slice(0, 12)
           const icon = iconOf(manifest.icon, (f) => { const file = path.join(dir, f); return inside(dir, file) && fs.statSync(file, { throwIfNoEntry: false })?.isFile() ? readText(file) : null })
           vp = { plugin: null, loaded: "", bundle: null, failed: {}, blocked: null, ...vp, id: name, dir, manifest, icon, stat, problems, warnings, hash, digest }
         } catch (e) {
