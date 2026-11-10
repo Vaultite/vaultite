@@ -1301,6 +1301,7 @@ initUpdates({
   flush: () => unloadOnce().then(() => engineFlush()),
   buildMenu,
   nameOf,
+  helper: () => !!helper,
 })
 
 // ---------- a Dev instance on a worktree (electron/devroot.ts) ----------

@@ -16,7 +16,9 @@ const LOOK_MS = 3000
 
 type AppUpdates = { mode: "automatic" | "notify" | "off"; available: boolean; from: string; ready: string | null; doing: string | null; commit?: string | null
   /** A Dev instance's: the worktree it runs (electron/devroot.ts). */
-  worktree?: { worktree: string; branch: string; commit: string; dirty: boolean } }
+  worktree?: { worktree: string; branch: string; commit: string; dirty: boolean }
+  /** Whether its menu-bar helper runs (electron/updates.ts). */
+  helper?: boolean }
 /** Whether a commit is live, and when not, whether that can still change by itself (`final`: it can't). */
 export type Verdict = { commit: string; live: boolean; final: boolean; why: string }
 

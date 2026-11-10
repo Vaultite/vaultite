@@ -37,6 +37,8 @@ export type UpdatesHost = {
   flush(): Promise<unknown>
   buildMenu(): void
   nameOf(vault: string): string
+  /** The menu-bar helper runs (a Mac's, not a scripted copy's nor Vaultite Dev's). */
+  helper(): boolean
 }
 let host: UpdatesHost
 export function initUpdates(h: UpdatesHost) { host = h }
@@ -77,7 +79,7 @@ const UPDATED = () => path.join(app.getPath("userData"), "updated")
 /** What this app's updates are doing, and the commit it runs (null: not a build), for its server's app.version. */
 export function appUpdates() {
   return { mode: host.mode(), available: updatable(), from: worktree ? "worktree" : RELEASE ? "releases" : BRANCH, ready, doing: status,
-    commit: worktree?.commit ?? CODE?.commit ?? null, ...(worktree ? { worktree } : {}) }
+    commit: worktree?.commit ?? CODE?.commit ?? null, helper: host.helper(), ...(worktree ? { worktree } : {}) }
 }
 
 /** A Dev instance's worktree (electron/devroot.ts): what it runs now. */
