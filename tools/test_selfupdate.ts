@@ -6,7 +6,7 @@ import path from "node:path"
 import { check, exit, section, summary, tempDir } from "./test/lib.ts"
 import type { CiResult } from "../core/update/ci.ts"
 import { checkForUpdate } from "../core/update/updater.ts"
-import { backendChanged, inPlace } from "../core/selfupdate.ts"
+import { backendChanged, inPlace, shadow } from "../core/selfupdate.ts"
 import { gitEnv } from "../core/gitenv.ts"
 const t0 = Date.now()
 
@@ -183,6 +183,21 @@ await section("vau update: a look asked for while one runs joins it", async () =
 section("what restarts the server")
 check("web/, the desktop app, tools and docs don't", !backendChanged(["web/src/a.ts", "plugins/core/x/index.tsx", "electron/main.ts", "tools/t.ts", "CHANGELOG.md", "web/dist/x.js"]))
 check("core, plugins' backends, server.ts and dependencies do", ["core/a.ts", "plugins/core/x/plugin.ts", "server.ts", "package.json", "core/docs/design.md"].every((f) => backendChanged([f])))
+
+await section("the module graph's answer beside it, said when they differ", async () => {
+  const dir = tempDir("vaultite-shadow-test-")
+  for (const [f, t] of Object.entries({ "server.ts": `import "./core/a.ts"`, "core/a.ts": "", "web/src/x.tsx": "" })) {
+    fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true }); fs.writeFileSync(path.join(dir, f), t)
+  }
+  const lines: string[] = [], log = (l: string) => lines.push(l)
+  await shadow(dir, ["web/src/x.tsx"], false, log)
+  await shadow(dir, ["core/a.ts"], true, log)
+  check("nothing when they agree", !lines.length, lines)
+  await shadow(dir, ["core/a.ts"], false, log)
+  await shadow(dir, ["core/docs/new.md"], true, log)
+  check("both ways when they don't, with the files", lines.length === 2 && /would restart \(core\/a\.ts; server\.ts > core\/a\.ts\)/.test(lines[0])
+    && /would not restart \(the server reaches none of core\/docs\/new\.md\)/.test(lines[1]), lines)
+})
 
 section("an inherited GIT_DIR")
 const inDecoy = (...args: string[]) => execFileSync("git", ["--git-dir", decoy, ...args], { encoding: "utf8", env: gitEnv() })

@@ -62,7 +62,25 @@ export function inPlace({ npm: npmIn, ...o }: InPlaceOptions): UpdaterOptions {
       } catch (e2) { back = `, and going back to ${short(was)} failed too: ${errText(e2)}` }
       return { failed: `${short(to)} didn't install or build: ${errText(e)}${back}`, cause: e }
     }
-    return { restart: backendChanged(files) }
+    const restart = backendChanged(files)
+    await shadow(o.root, files, restart, o.log ?? console.log)
+    return { restart }
   }
   return { ...o, apply }
+}
+
+/** The module graph's answer beside backendChanged's (core/update/closure.ts), said when they differ: evidence before
+ *  the graph decides anything. The update acts on backendChanged. */
+export async function shadow(root: string, files: string[], restart: boolean, log: (line: string) => void) {
+  try {
+    const { diskTree, graphOf } = await import("./update/closure.ts")
+    const g = graphOf(diskTree(root)), hit = g.hit("server", files)
+    if (!!hit === restart) return
+    const list = (xs: string[]) => `${xs.slice(0, 5).join(", ")}${xs.length > 5 ? ` and ${xs.length - 5} more` : ""}`
+    const reached = files.filter((f) => g.reach("server").files.has(f))
+    log(restart
+      ? `vaultite: updates: the module graph would not restart (the server reaches none of ${list(files.filter((f) => backendChanged([f])))}); restarting, as the folder rule says`
+      : `vaultite: updates: the module graph would restart (${hit!.unknown ? `it can't follow ${hit!.unknown.file}:${hit!.unknown.line}: ${hit!.unknown.text}`
+        : `${list(reached)}; ${hit!.chain.join(" > ")}`}); not restarting, as the folder rule says`)
+  } catch (e) { log(`vaultite: updates: the module graph failed: ${errText(e)}`) }
 }
