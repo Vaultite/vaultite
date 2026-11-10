@@ -64,11 +64,15 @@ npm run smoke       # the build starts: Chrome, desktop and phone, no page error
 
 `npm run verify` runs what this branch's changes need (build, check, the vault test's areas and the QA scripts that
 name the changed files, the web test and smoke when web/ changed) and times each; `npm run verify -- --all` runs all four.
+A QA script is picked when its comments name a changed file (its whole path; a web/src one may drop `web/src/`); a
+built-in plugin's file that no script names picks the scripts naming that plugin's folder itself. So a script's header
+names the files it exercises.
 
 UI changes: the scripts in `web/qa/` drive the app in Chromium at desktop and phone sizes (`node web/qa/layout.mjs
 http://127.0.0.1:8799`). Many write to the vault, so run them only against a throwaway server; each one's header says
 what it covers and whether it writes. `npm run qa` runs them all, each on a sandbox and server of its own
-(`npm run qa -- sheets links` runs some, `--repeat 3` finds flaky ones, `--lint` finds selectors nothing draws). The
+(`npm run qa -- sheets links` runs some, `--repeat 3` finds flaky ones, `--lint` finds selectors nothing draws); each
+result says its setup, script and slot-wait time. The
 desktop ones (`desktop.mjs`, `webviewer.mjs`, `weblogins.mjs`, `media-desktop.mjs`) run the Electron app quietly
 (`VAULTITE_QUIET`: its windows transparent, click-through and never focused); `SHOW=1` shows the window.
 
