@@ -2,9 +2,9 @@
 // network: the host's path end to end is test_selfupdate. In npm test.
 import { check, exit, section, summary } from "./test/lib.ts"
 import type { CiResult, CiRun } from "../core/update/ci.ts"
-import { CI_WORKFLOW, ciOf, githubCi, githubRepo } from "../core/update/ci.ts"
+import { CI_CALLS_PER_HOUR, CI_WORKFLOW, callBudget, ciOf, githubCi, githubRepo } from "../core/update/ci.ts"
 import { pickTarget } from "../core/update/git.ts"
-import { placed } from "../core/update/updater.ts"
+import { LOOK_EVERY, placed } from "../core/update/updater.ts"
 const t0 = Date.now()
 
 section("ci.ts")
@@ -19,17 +19,54 @@ check("cancelled is not yet", ciOf([run("push", "completed", "cancelled")]).ok =
 
 await section("githubCi: one call for the branch, one more per commit not in it", async () => {
   const asked: string[] = []
+  let clock = 0
   const ci = githubCi("main", async (api) => {
     asked.push(api)
     if (api.includes("/workflows/")) return [run("push", "completed", "success", CI_WORKFLOW, "aaa")]
     return api.includes("head_sha=ccc") ? "GitHub answered 403 about CI" : [run("push", "in_progress", null, CI_WORKFLOW, "bbb")]
-  })
+  }, { budget: callBudget(100, () => clock), now: () => clock })
   const a = await ci("Alice/lighthouse", "aaa"), a2 = await ci("Alice/lighthouse", "aaa")
   check("a commit among the branch's runs", a.ok === true && a2.ok === true && asked.length === 1, asked)
   check("the branch's runs asked of once, by workflow and branch", asked[0] === "repos/Alice/lighthouse/actions/workflows/ci.yml/runs?branch=main&per_page=100", asked)
   check("one not among them asked of on its own", (await ci("Alice/lighthouse", "bbb")).ok === null && asked[1] === "repos/Alice/lighthouse/actions/runs?head_sha=bbb&per_page=50", asked)
   const c = await ci("Alice/lighthouse", "ccc")
   check("GitHub not answering is not yet, saying why", c.ok === null && /403/.test(c.why), c)
+  clock += 60_000 // (the next look)
+  asked.length = 0
+  check("a pass is final: never asked again", (await ci("Alice/lighthouse", "aaa")).ok === true && !asked.length, asked)
+  await ci("Alice/lighthouse", "bbb")
+  check("a commit not among the branch's runs is asked of on its own only once", asked.length === 1 && asked[0].includes("/workflows/"), asked)
+})
+
+await section("githubCi: a red verdict asked again after 10 minutes, a failing list asks no more", async () => {
+  let clock = 0, list: CiRun[] | string = [run("push", "completed", "failure", CI_WORKFLOW, "red")]
+  const asked: string[] = []
+  const ci = githubCi("main", async (api) => (asked.push(api), list), { budget: callBudget(100, () => clock), now: () => clock })
+  check("red", (await ci("Alice/lighthouse", "red")).ok === false && asked.length === 1)
+  clock += 9 * 60_000
+  check("still red, not asked within 10 minutes", (await ci("Alice/lighthouse", "red")).ok === false && asked.length === 1, asked)
+  clock += 60_000
+  list = [run("push", "completed", "failure", CI_WORKFLOW, "red"), run("schedule", "completed", "success", CI_WORKFLOW, "red")]
+  check("asked again: the nightly passed it", (await ci("Alice/lighthouse", "red")).ok === true && asked.length === 2, asked)
+  clock += 60_000
+  list = "GitHub answered 502 about CI"
+  const down = await ci("Alice/lighthouse", "new")
+  check("the branch's runs not answering: not yet, and no commit asked of on its own", down.ok === null && /502/.test(down.why) && asked.length === 3, { down, asked })
+})
+
+await section(`the request budget: at most ${CI_CALLS_PER_HOUR} calls to GitHub in any hour, whatever the looks`, async () => {
+  // Worst case: a look every LOOK_EVERY with a commit CI never finishes (one call each), plus vau update asked in a loop.
+  check("an hour of timed looks fits the budget with one call each", 60 / (LOOK_EVERY / 60_000) <= CI_CALLS_PER_HOUR, LOOK_EVERY)
+  check("the budget leaves most of GitHub's 60 anonymous calls an hour", CI_CALLS_PER_HOUR <= 20)
+  let clock = 0, calls = 0
+  const ci = githubCi("main", async () => (calls++, [run("push", "in_progress", null, CI_WORKFLOW, "t")]), { budget: callBudget(CI_CALLS_PER_HOUR, () => clock), now: () => clock })
+  let last = { ok: null as boolean | null, why: "" }
+  for (let i = 0; i < 600; i++) { clock += 6_000; last = await ci("Alice/lighthouse", i % 3 ? "t" : `c${i}`) } // (a call every 6 s for an hour)
+  check("an hour of looks every 6 seconds asks at most the budget", calls === CI_CALLS_PER_HOUR, calls)
+  check("…and says why it doesn't ask", last.ok === null && /asked again later/.test(last.why), last)
+  clock += 3_600_000
+  await ci("Alice/lighthouse", "t")
+  check("…and asks again an hour on", calls === CI_CALLS_PER_HOUR + 1, calls)
 })
 
 await section("git.ts: pickTarget", async () => {

@@ -17,6 +17,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   until it is or the updates say why it won't be, exiting 1 with the reason; no polling loop of your own.
 - **`vau version` names the commit that runs**: after an update that only rebuilt the web app, it and Machines name the
   new commit, not the one the server started on.
+- **A server following a branch updates sooner**: it looks every 3 minutes instead of 10, asking GitHub at most 20
+  times an hour (a look where nothing moved asks it nothing).
 - **Live editing shows each change as you ask**: a job asked over a preview you're watching edits the checkout
   serving it, so the page reloads as it goes, with no worktree, demo or ready knock in the way.
 - **Companion tours stop cleanly when they can't play**: a tour whose things aren't on your screen says so once and

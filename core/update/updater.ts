@@ -89,7 +89,7 @@ export async function checkForUpdate(o: UpdaterOptions): Promise<UpdateStatus> {
     if (await isDirty(git)) return set("waiting", "the checkout has uncommitted changes", remote)
     const repo = await originRepo(git)
     if (!repo) return set("waiting", "origin isn't on GitHub, so CI can't be checked", remote)
-    const ci = o.ci ?? githubCi(o.branch)
+    const ci = o.ci ??= githubCi(o.branch) // (kept: what CI said lasts across looks)
     const target = await pickTarget({ tip: remote, since: () => commitsSince(git, head, remote), ci: (sha) => ci(repo, sha), failed: kept.error?.commit })
     if ("why" in target) return set("waiting", target.why, remote)
     const next = target.to
@@ -114,11 +114,15 @@ export async function checkForUpdate(o: UpdaterOptions): Promise<UpdateStatus> {
   }
 }
 
-/** Look every 10 minutes (the first a minute after the start), one look at a time. */
+/** How often a look runs. A look where nothing moved is a git fetch; CI is asked only about a commit to take whose
+ *  verdict isn't known yet, at most once a look, and never more than CI_CALLS_PER_HOUR (20) times in any hour. */
+export const LOOK_EVERY = 3 * MINUTE
+
+/** Look every few minutes (the first a minute after the start), one look at a time. */
 export function startUpdater(o: UpdaterOptions) {
   if (!o.running) void gitIn(o.root)("rev-parse", "HEAD").then((head) => { o.running = head }, () => {})
   status = { branch: o.branch, state: "waiting", why: "the first look is a minute after the server starts", checked: null }
   try { Object.assign(status, JSON.parse(fs.readFileSync(o.stateFile, "utf8"))) } catch { /* none yet */ }
-  const later = (ms: number) => setTimeout(() => void checkForUpdate(o).finally(() => later(10 * MINUTE)), ms).unref()
+  const later = (ms: number) => setTimeout(() => void checkForUpdate(o).finally(() => later(LOOK_EVERY)), ms).unref()
   later(MINUTE)
 }
