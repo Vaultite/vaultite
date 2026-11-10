@@ -19,6 +19,8 @@ type Store = { plugins: Record<string, Approval>; allowed: Record<string, string
 export type Digest = { content: string; files: Record<string, string> }
 
 const sha = (s: string) => crypto.createHash("sha256").update(s).digest("hex")
+/** The store's file name in VAULTITE_LOCAL/trust/ for the vault at `vaultPath` (a copy of a vault has its own). */
+export const trustName = (vaultPath: string) => `${sha(vaultHere(vaultPath).real).slice(0, 12)}.json`
 
 export class Trust {
   file: string
@@ -28,7 +30,7 @@ export class Trust {
   private stamp = -1
 
   constructor(vaultPath: string) {
-    this.file = path.join(LOCAL, "trust", `${sha(vaultHere(vaultPath).real).slice(0, 12)}.json`)
+    this.file = path.join(LOCAL, "trust", trustName(vaultPath))
   }
 
   /** Whether this vault has a store on this machine yet (made on its first sync, approving nothing). */

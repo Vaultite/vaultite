@@ -2,17 +2,18 @@
 // node tools/qa.ts [script...] [--repeat 3] [--jobs 3]; --lint: selectors QA scripts use that no source draws.
 import "./test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { execFileSync, spawn, spawnSync } from "node:child_process"
+import { createHash } from "node:crypto"
 import fs from "node:fs"
 import { createRequire } from "node:module"
 import os from "node:os"
 import path from "node:path"
 import { freePort, killTree, record, sleep, stopTerminals, testServer } from "./test/lib.ts"
 import { slot } from "./qa_slots.ts"
-import { quietGrants } from "./qa_grants.ts"
+import { type Boot, copyTemplate, template, type Variant } from "./qa_template.ts"
 import { asInteractiveJob, throttled } from "./qa_job.ts"
 import { officialBundles, officialRepos } from "./test/official.ts"
-import { MOVED } from "../core/migrations.ts"
-import { ANCHOR } from "../core/sandbox.ts"
+import { ANCHOR, localToday } from "../core/sandbox.ts"
+import { sharedTmp } from "../core/testrun.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "..")
 const QA = path.join(ROOT, "web/qa")
@@ -89,13 +90,22 @@ function usage(name: string) {
 /** Stand-ins for the coding agents the app starts by name (its own and Vaultite/plugins'): they say their name, then sleep.
  *  QA's terminals find them first (VAULTITE_AGENT_BIN), so QA never starts a real agent nor finds one missing. */
 function standIns() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-qa-agents-")), src = path.join(dir, "agent.c")
   // (compiled, so its process is named as the agent: a script runs as sh, and a copied system binary won't run)
-  fs.writeFileSync(src, `#include <stdio.h>\n#include <string.h>\n#include <unistd.h>\nint main(int c, char **v) { const char *n = strrchr(v[0], '/');
-    printf("%s: a stand-in for QA\\n", n ? n + 1 : v[0]); fflush(stdout); sleep(3600); return 0; }\n`)
-  execFileSync("cc", ["-o", path.join(dir, "claude"), src])
-  fs.rmSync(src)
-  for (const name of ["codex", "agent", "opencode", "openclaw", "hermes"]) fs.linkSync(path.join(dir, "claude"), path.join(dir, name))
+  const code = `#include <stdio.h>\n#include <string.h>\n#include <unistd.h>\nint main(int c, char **v) { const char *n = strrchr(v[0], '/');
+    printf("%s: a stand-in for QA\\n", n ? n + 1 : v[0]); fflush(stdout); sleep(3600); return 0; }\n`
+  const names = ["codex", "agent", "opencode", "openclaw", "hermes"]
+  const key = createHash("sha256").update(JSON.stringify([code, names, process.platform, process.arch])).digest("hex").slice(0, 12)
+  // (built once per source, renamed in whole: two runs at once, or one stopped midway, never use half of it)
+  const dir = path.join(sharedTmp(), `vaultite-qa-agents-${key}`)
+  if (fs.existsSync(dir)) return dir
+  const work = fs.mkdtempSync(`${dir}.making-`), src = path.join(work, "agent.c")
+  try {
+    fs.writeFileSync(src, code)
+    execFileSync("cc", ["-o", path.join(work, "claude"), src])
+    fs.rmSync(src)
+    for (const name of names) fs.linkSync(path.join(work, "claude"), path.join(work, name))
+    try { fs.renameSync(work, dir) } catch (e) { if (!fs.existsSync(dir)) throw e }
+  } finally { fs.rmSync(work, { recursive: true, force: true }) }
   return dir
 }
 const AGENT_BIN = standIns()
@@ -107,13 +117,38 @@ async function serve(vault: string, local: string, env: Record<string, string>):
     cwd: ROOT, stdio: "ignore", env: { ...process.env, VAULTITE_HOSTS: "home-mac.example.ts.net", ...env, PORT: String(port), HOST: "127.0.0.1", VAULTITE_VAULT: vault, VAULTITE_LOCAL: local },
   })
   const base = `http://127.0.0.1:${port}/`
-  for (let i = 0; i < 160; i++) { try { if ((await fetch(`${base}api/state`)).ok) return { base, port, proc } } catch { await sleep(250) } }
+  for (let i = 0; i < 800; i++) { try { if ((await fetch(`${base}api/state`)).ok) return { base, port, proc } } catch { await sleep(50) } }
   throw new Error(`the server on ${vault} didn't start`)
 }
-function stop(s: Server) {
-  if (s.proc.exitCode === null) s.proc.kill()
+/** Stops it and its terminals; resolves once it exited (or 5 s on), so nothing writes into its folders after. */
+async function stop(s: Server) {
+  if (s.proc.exitCode === null && s.proc.signalCode === null) {
+    const gone = new Promise((r) => s.proc.once("exit", r))
+    s.proc.kill()
+    await Promise.race([gone, sleep(5000)])
+  }
   stopTerminals(s.port)
 }
+
+/** What a script and its servers get besides their vault: the stand-in agents, Claude's made-up home `claude`, and the
+ *  made-up repositories under `repos` (web/qa/pluginstore.mjs; a bundle's Vaultite plugins from them, never GitHub). */
+function envFor(claude: string, repos: string): Record<string, string> {
+  const env: Record<string, string> = { CLAUDE_CONFIG_DIR: claude, VAULTITE_AGENT_BIN: AGENT_BIN }
+  // (the desktop scripts' app as root, a container's user: Chromium starts only unsandboxed then)
+  if (process.getuid?.() === 0) env.ELECTRON_DISABLE_SANDBOX = "1"
+  env.VAULTITE_GITHUB = officialRepos(repos)
+  env.VAULTITE_BUNDLES = officialBundles(repos)
+  return env
+}
+const claudeHome = (dir: string) => { fs.cpSync(path.join(ROOT, "tools/fixtures/claude"), dir, { recursive: true }); return dir }
+
+/** The template's server: a script's, on the template's folders. */
+const boot: Boot = async (at, scratch) => {
+  const s = await serve(at.vault, at.local, envFor(claudeHome(path.join(scratch, "claude")), at.repos))
+  return { base: s.base, stop: () => stop(s) }
+}
+/** The script's template: the sample on the day (UNDATED's on the sample's), with Vaultite's own plugins (but ALONE's). */
+const variant = (name: string): Variant => ({ day: UNDATED.has(name) ? ANCHOR : localToday(), plugins: !ALONE.has(name), official: OFFICIAL })
 
 /** Node running `args` in the checkout, in the caller's QA slot: its exit code and output, killed after TIMEOUT. */
 async function exec(args: string[], env: Record<string, string>) {
@@ -141,30 +176,17 @@ async function demo() {
 async function run(name: string): Promise<{ ok: boolean, ms: number, out: string, skipped?: string }> {
   if (name === "demo") return demo()
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `vaultite-qa-${name}-`))
-  const vault = path.join(tmp, "vault"), out = path.join(tmp, "out"), claude = path.join(tmp, "claude")
+  const out = path.join(tmp, "out"), claude = claudeHome(path.join(tmp, "claude"))
   fs.mkdirSync(out)
-  fs.cpSync(path.join(ROOT, "tools/fixtures/claude"), claude, { recursive: true })
-  const made = spawnSync(process.execPath, [path.join(ROOT, "bin/vau"), "sandbox", vault, ...(UNDATED.has(name) ? ["--today", ANCHOR] : [])], { encoding: "utf8" })
-  if (made.status !== 0) return { ok: false, ms: 0, out: made.stderr || made.stdout }
-  quietGrants(vault)
   const servers: Server[] = []
   const t = Date.now()
   try {
-    const env: Record<string, string> = { CLAUDE_CONFIG_DIR: claude, VAULTITE_AGENT_BIN: AGENT_BIN }
-    // (the desktop scripts' app as root, a container's user: Chromium starts only unsandboxed then)
-    if (process.getuid?.() === 0) env.ELECTRON_DISABLE_SANDBOX = "1"
-    // (a made-up plugin directory and git repositories, on this machine: web/qa/pluginstore.mjs)
-    // (Vaultite's own plugins a bundle installs come from a made-up Vaultite/plugins, never GitHub)
-    env.VAULTITE_GITHUB = officialRepos(path.join(tmp, "repos"))
-    env.VAULTITE_BUNDLES = officialBundles(path.join(tmp, "repos"))
-    if ((usage(name) as string[]).includes("<plugin index>")) Object.assign(env, { VAULTITE_PLUGIN_INDEX: path.join(tmp, "index.json"), VAULTITE_GITHUB: `file://${path.join(tmp, "repos")}` })
-    const main = await serve(vault, path.join(tmp, "local"), env)
+    const from = await template(variant(name), boot)
+    const { vault, local, repos } = copyTemplate(from, tmp)
+    const env = envFor(claude, repos)
+    if ((usage(name) as string[]).includes("<plugin index>")) Object.assign(env, { VAULTITE_PLUGIN_INDEX: path.join(tmp, "index.json"), VAULTITE_GITHUB: `file://${repos}` })
+    const main = await serve(vault, local, env)
     servers.push(main)
-    // (Vaultite's own plugins the sample turns on, from their checkout, as the demo has them)
-    const on: string[] = JSON.parse(fs.readFileSync(path.join(vault, ".vaultite/plugins.json"), "utf8")).enabled ?? []
-    for (const id of Object.keys(MOVED).filter((x) => !ALONE.has(name) && on.includes(x) && fs.existsSync(path.join(OFFICIAL, x, "manifest.json")))) {
-      for (const a of [["plugin", "install", path.join(OFFICIAL, id)], ["plugin", "on", id]]) spawnSync(process.execPath, [path.join(ROOT, "bin/vau"), "--url", main.base, ...a], { stdio: "ignore" })
-    }
     const args: string[] = []
     for (const tok of usage(name)) {
       const t = tok.slice(1, -1).replace(/^<|>$/g, "")
@@ -190,7 +212,7 @@ async function run(name: string): Promise<{ ok: boolean, ms: number, out: string
   } catch (e) {
     return { ok: false, ms: Date.now() - t, out: String(e) }
   } finally {
-    servers.forEach(stop)
+    await Promise.all(servers.map(stop))
     // (a server still exiting may write one last file: retried, and a leftover temp folder never ends the run)
     try { fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 }) } catch { /* the OS's temp cleanup */ }
   }
@@ -225,5 +247,4 @@ const flaky = [...runs].filter(([, rs]) => rs.includes(true) && rs.includes(fals
 if (fails.length) console.log(`\n${fails.join("\n\n")}`)
 console.log(`\n${[...runs.values()].flat().filter(Boolean).length}/${[...runs.values()].flat().length} runs passed` +
   (flaky.length ? `; flaky: ${flaky.join(", ")}` : ""))
-fs.rmSync(AGENT_BIN, { recursive: true, force: true })
 process.exit(fails.length ? 1 : 0)
