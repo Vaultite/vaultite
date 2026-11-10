@@ -994,6 +994,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `unsynced(rel)`: What isn't synced: the folder's own machinery, the OS's litter, sync's temporary files.
 - `unzip(buf, max?)`: The entries of the zip in `buf`, by name (folders left out); each one's bytes, inflated when read (one past `max` bytes throws).
 - `userSurface(w)`: Who may answer for the user (approve or deny a permission: a gate, a terminal's question): the app, their phone's and watch's notifications, or a machine passing one on; never vau, since a…
+- `vauDir(local)`: A folder with a `vau` that runs (and vau.cmd on Windows), for a PATH: bin/ itself when plain Node runs this code's; else shims in `local`/bin running the entry with this process's runtime as Node…
 - `vauEntry(env?)`: The `vau` CLI's entry (a script run by Node, or by the app's executable as Node).
 - `VAULT_PATH`
 - `vaultHere(vaultPath)`: A vault on this machine: its real path and key (that path's hash), under which what's kept here for it goes (<LOCAL>/<what>/<key>).

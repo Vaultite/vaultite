@@ -8,7 +8,7 @@ import path from "node:path"
 import { type RawData, WebSocket } from "ws"
 import { type AgentAsk, type AgentCommand, askLabel, type AgentHow, type AgentMeter, type AgentStart, type AgentState, agentName, agentSession, MODEL_NAME, PERMISSION_MODES, shellQuote, parseTerminal } from "../../../core/agents.ts"
 import {
-  agentLines, HTTPError, LOCAL as LOCAL_DIR, readableImage, vauEntry, vauShims, writeWslVau, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, span, splitMachine, type Machine,
+  agentLines, HTTPError, LOCAL as LOCAL_DIR, readableImage, vauDir, writeWslVau, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, span, splitMachine, type Machine,
   type Request, type Access, accessOf, NOT_THE_USER, userSurface, whoOf,
 } from "../../../core/plugins.ts"
 import {
@@ -306,26 +306,6 @@ const PICTURES_MOD = path.join(plugin.dir, "claude-pictures")
 /** The environment's PATH, as Windows spells it. */
 const PATH = WIN ? "Path" : "PATH"
 
-/** The folder whose vau a terminal finds first: the app's bin/ when Node runs the server; the desktop app (no `node`) and
- *  Windows (can't run bin/vau) get LOCAL/bin's shims running it with the server's runtime as Node (vaushims.ts). */
-function vauBin(): string {
-  if (!process.versions.electron && !WIN) return path.dirname(vauEntry())
-  return shims(path.join(LOCAL_DIR, "bin"), vauShims({ exe: process.execPath, script: vauEntry(),
-    mark: "vau for Vaultite's terminals (plugins/core/terminal), remade as needed." }))
-}
-/** Files written into `dir` where they're missing or differ: its path. */
-function shims(dir: string, files: Record<string, string>) {
-  for (const [name, text] of Object.entries(files)) {
-    const file = path.join(dir, name)
-    try {
-      if (fs.readFileSync(file, "utf8") !== text) throw new Error("old")
-    } catch {
-      fs.mkdirSync(dir, { recursive: true })
-      fs.writeFileSync(file, text, { mode: 0o755 })
-    }
-  }
-  return dir
-}
 /** Where a terminal is opened from: through Tailscale Serve, and which app (the iPhone app and an attached desktop app set
  *  a cookie: core/phoneapp.ts, electron/host.ts). */
 type From = { remote: boolean; client: "desktop" | "iphone" | "web" }
@@ -342,7 +322,8 @@ const AGENT_BIN = process.env.VAULTITE_AGENT_BIN ?? ""
 /** What a shell is told about where it runs (see the docstring): Vaultite's variables, and PATH with the app's bin/.
  *  A WSL distro's get them through WSLENV, paths made its own (/p), with its own vau. */
 function context(id: string | null, from: From, sh = shell()): Record<string, string> {
-  const bin = vauBin(), kind = kindOf(sh)
+  // (the folder whose vau a terminal finds first: core/appentry.ts)
+  const bin = vauDir(LOCAL_DIR), kind = kindOf(sh)
   shellFiles()
   const out: Record<string, string> = {
     VAULTITE: "1",
