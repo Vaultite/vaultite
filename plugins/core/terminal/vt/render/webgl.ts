@@ -53,9 +53,7 @@ export class WebglRenderer implements Renderer {
 
   constructor(canvas: HTMLCanvasElement, onLost: () => void) {
     this.canvas = canvas
-    // (its drawing kept: frames come only on a change, and WebKit can show an older one while a page loads, a reload's
-    // replay left undrawn; each frame clears first, so keeping costs a copy, not a load)
-    const gl = canvas.getContext("webgl2", { alpha: true, antialias: false, depth: false, stencil: false, premultipliedAlpha: true, preserveDrawingBuffer: true })
+    const gl = canvas.getContext("webgl2", { alpha: true, antialias: false, depth: false, stencil: false, premultipliedAlpha: true, preserveDrawingBuffer: false })
     if (!gl) throw new Error("no WebGL2")
     this.gl = gl
     canvas.addEventListener("webglcontextlost", (e) => { e.preventDefault(); if (this.lost) return; this.lost = true; onLost() }, { once: true })

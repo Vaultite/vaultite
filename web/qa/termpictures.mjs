@@ -80,6 +80,9 @@ async function run(b, label, { phone = false, reload = true } = {}) {
       await page.reload()
       await until(() => page.$("[data-term-screen]"), 20000)
       await until(async () => /fixture-end/.test(await terminalText(page)), 15000)
+      // (focused, as before it: WebKit's screenshot reads a WebGL canvas's buffer, kept only while it draws, and an idle
+      // unfocused terminal draws nothing, so it reads blank where the screen shows the frame; the cursor's blink draws)
+      await page.locator("[data-term]").first().click()
       await wait(1000)
       c = await colours(page, `${label}-reloaded`)
       check(`${label}: after a reload too (the server sent them again)`, quadrants(c), c)
