@@ -73,7 +73,19 @@ await page.locator("[role=menu] button", { hasText: /^Pinned pages$/ }).first().
 await page.locator("[role=menu] button", { hasText: /^More$/ }).last().hover(); await page.waitForTimeout(300)
 const moreRows = () => page.locator("[role=menu]").last().locator("[role=menuitemcheckbox]")
 const more = await moreRows().allInnerTexts()
-check("More ▸ lists the pages not pinned, unticked", more.length > 1 && !more.some((t) => (side.last ?? []).includes(t)) && (await moreRows().evaluateAll((els) => els.every((e) => e.getAttribute("aria-checked") === "false"))), more)
+// (its groups: the pages, the file on screen, the plugins' views; a view may share a page's name: the Agents view, the Agents page)
+const groups = await page.locator("[role=menu]").last().evaluate((m) => {
+  const gs = [[]]
+  for (const el of m.querySelectorAll("[role=separator], [role=menuitemcheckbox]")) {
+    if (el.getAttribute("role") !== "separator") gs.at(-1).push(el.innerText.split("\n")[0]); else if (gs.at(-1).length) gs.push([])
+  }
+  return gs
+})
+const pins = await page.locator("nav[aria-label=Pages] a").evaluateAll((as) => as.map((a) => ({ name: a.innerText.split("\n")[0], view: decodeURIComponent(a.getAttribute("href") ?? "").startsWith("#view/") })))
+const pinnedOf = (view) => pins.filter((p) => p.view === view).map((p) => p.name)
+check("More ▸ lists the pages not pinned, then the views not pinned, unticked", more.length > 1 && groups.length >= 2 &&
+  !groups.slice(0, -1).flat().some((n) => pinnedOf(false).includes(n)) && !groups.at(-1).some((n) => pinnedOf(true).includes(n)) &&
+  (await moreRows().evaluateAll((els) => els.every((e) => e.getAttribute("aria-checked") === "false"))), { groups, pins })
 if (more.length > 1) {
   const [a, b] = [more[0].split("\n")[0], more[1].split("\n")[0]]
   await moreRows().nth(0).click(); await page.waitForTimeout(300)
