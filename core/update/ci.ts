@@ -5,8 +5,10 @@ import { promisify } from "node:util"
 
 const exec = promisify(execFile)
 
-/** A commit's verdict; ok null is not yet (running, not run, cancelled, GitHub not answering). */
-export type CiResult = { ok: boolean | null; why: string }
+/** Where CI is with a commit: none when it has no run (a commit pushed under a newer one never gets one). */
+export type CiState = "passed" | "failed" | "running" | "none" | "cancelled"
+/** A commit's verdict; ok null is not yet (running, not run, cancelled, GitHub not answering: no `state`). */
+export type CiResult = { ok: boolean | null; why: string; state?: CiState }
 /** Asks CI about a commit of "owner/repo". */
 export type Ci = (repo: string, sha: string) => Promise<CiResult>
 /** A workflow run, as GitHub's API gives it. */
@@ -88,9 +90,9 @@ export function githubCi(branch: string, runs: (api: string) => Promise<CiRun[] 
 /** CI's verdict from a commit's workflow runs: one of the push or nightly runs passed; red only when they all failed. */
 export function ciOf(runs: CiRun[]): CiResult {
   const ours = runs.filter((r) => (r.path ?? "").startsWith(CI_WORKFLOW) && (r.event === "push" || r.event === "schedule"))
-  if (ours.some((r) => r.status === "completed" && r.conclusion === "success")) return { ok: true, why: "CI passed" }
-  if (!ours.length) return { ok: null, why: "CI hasn't run on it yet" }
-  if (ours.some((r) => r.status !== "completed")) return { ok: null, why: "CI is running on it" }
-  if (ours.every((r) => r.conclusion === "cancelled")) return { ok: null, why: "CI's run on it was cancelled" }
-  return { ok: false, why: "CI failed on it" }
+  if (ours.some((r) => r.status === "completed" && r.conclusion === "success")) return { ok: true, why: "CI passed", state: "passed" }
+  if (!ours.length) return { ok: null, why: "CI hasn't run on it yet", state: "none" }
+  if (ours.some((r) => r.status !== "completed")) return { ok: null, why: "CI is running on it", state: "running" }
+  if (ours.every((r) => r.conclusion === "cancelled")) return { ok: null, why: "CI's run on it was cancelled", state: "cancelled" }
+  return { ok: false, why: "CI failed on it", state: "failed" }
 }

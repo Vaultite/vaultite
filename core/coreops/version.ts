@@ -5,6 +5,7 @@ import { type Op, OpError, type OpCtx } from "../ops.ts"
 import { desktopCall, inDesktop } from "../desktopapp.ts"
 import { contains, resolveCommit, running } from "../running.ts"
 import { type UpdateStatus, updateStatus } from "../update/updater.ts"
+import { redRoute } from "../update/git.ts"
 import { API_VERSION, APP_VERSION } from "../version.ts"
 import type { Any } from "./common.ts"
 
@@ -28,6 +29,8 @@ export function verdict(o: { given: string; full: string | null; runs: string | 
     // (what an agent left in the checkout doesn't go away by itself; before it has the commit, the next look decides)
     if (u.blocked && (o.full || u.blocked.by === "branch")) return not(true, `its checkout blocks the updates: ${u.why}`)
     if (u.state === "failed" && o.failed) return not(true, `its update failed: ${u.error?.message ?? u.why}`)
+    const red = o.full && u.state === "waiting" && u.ci ? redRoute(u.ci, o.full) : null
+    if (red) return not(true, `CI failed on ${red === o.full ? "it" : `${short(red)}, the newest commit with it, and passed on none between`}: it goes live with a fix CI passes`)
     if (!o.full) return not(false, `this checkout doesn't have it yet (it fetches ${u.branch} each time its updates look: ${u.state}, ${u.why})`)
     return not(false, `updates ${u.state}: ${u.why}`)
   }
@@ -92,9 +95,9 @@ notify (the default: offers Restart to update) or off (only from its menu); read
 
 Is my commit live? Give it (a hash, short or full; in a checkout of the app, HEAD or a branch too): live says whether
 this server runs it or a commit after it, and why not. With wait it waits until it is, or until the updates say why it
-won't be (a failed update, updates off, a checkout with uncommitted changes, commits not on the branch or another branch
-checked out: it names them), timeout seconds at most: no loop of your own needed. Exit 1 when it isn't
-live, with the reason. A branch's commits land on main squashed: give main's (git log origin/main). Open pages take a
+won't be (a failed update, CI red on it, updates off, a checkout with uncommitted changes, commits not on the branch
+or another branch checked out: it names them), timeout seconds at most: no loop of your own needed. Exit 1 when it
+isn't live, with the reason. A branch's commits land on main squashed: give main's (git log origin/main). Open pages take a
 new build by themselves (at once when hidden; visible, they offer Reload). machine: another machine's (Machines).
 
   vau version

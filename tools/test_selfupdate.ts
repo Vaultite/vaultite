@@ -46,6 +46,7 @@ await section("up to date, then a web-only update", async () => {
   ci = { ok: null, why: "CI is running on it" }
   const s = await look()
   check("waits for CI, naming the commit", s.state === "waiting" && s.why.includes("CI is running") && s.next === next && head() === first, s)
+  check("…and saying what CI said of it", s.ci?.length === 1 && s.ci[0].commit === next && s.ci[0].ok === null, s.ci)
   ci = { ok: true, why: "CI passed" }
   busy = "an agent's call is under way"
   const b = await look()

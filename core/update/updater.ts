@@ -4,7 +4,7 @@ import fs from "node:fs"
 import path from "node:path"
 import type { Ci } from "./ci.ts"
 import { githubCi } from "./ci.ts"
-import type { Relation } from "./git.ts"
+import type { Judged, Relation } from "./git.ts"
 import { capped, changedFiles, commitsNotIn, commitsSince, currentBranch, dirtyFiles, fetchBranch, gitIn, originRepo, pickTarget, relation, short } from "./git.ts"
 
 type UpdateState = "off" | "current" | "waiting" | "updating" | "failed"
@@ -29,6 +29,8 @@ export type UpdateStatus = {
   next?: string
   /** What in the checkout stops it, when that's what does. */
   blocked?: Blocked
+  /** While it waits on CI: what CI said of the commits it asked about, the tip first (git.ts' redRoute reads it). */
+  ci?: Judged[]
   last?: { from: string; to: string; at: number; restarted: boolean }
   /** The update that failed (it isn't tried again until the branch moves on). */
   error?: { at: number; commit: string; message: string }
@@ -117,9 +119,9 @@ async function lookOnce(o: UpdaterOptions): Promise<UpdateStatus> {
   let kept: Kept = {}, origin: string | undefined
   try { kept = JSON.parse(fs.readFileSync(o.stateFile, "utf8")) } catch { /* none yet */ }
   const keep = () => { try { fs.mkdirSync(path.dirname(o.stateFile), { recursive: true }); fs.writeFileSync(o.stateFile, JSON.stringify({ last: kept.last, error: kept.error })) } catch { /* shown, not kept */ } }
-  const set = (state: UpdateState, why: string, more: { next?: string; blocked?: Blocked; error?: unknown } = {}) => {
+  const set = (state: UpdateState, why: string, more: { next?: string; blocked?: Blocked; ci?: Judged[]; error?: unknown } = {}) => {
     status = { branch: o.branch, state, why, checked: Date.now(), ...(o.running ? { running: o.running } : {}), ...(origin ? { origin } : {}),
-      ...(more.next ? { next: more.next } : {}), ...(more.blocked ? { blocked: more.blocked } : {}), ...(kept.last ? { last: kept.last } : {}), ...(kept.error ? { error: kept.error } : {}) }
+      ...(more.next ? { next: more.next } : {}), ...(more.blocked ? { blocked: more.blocked } : {}), ...(more.ci ? { ci: more.ci } : {}), ...(kept.last ? { last: kept.last } : {}), ...(kept.error ? { error: kept.error } : {}) }
     note(status, log, more.error)
     return status
   }
@@ -146,7 +148,7 @@ async function lookOnce(o: UpdaterOptions): Promise<UpdateStatus> {
     if (!repo) return set("waiting", "origin isn't on GitHub, so CI can't be checked", { next: remote })
     const ci = o.ci ??= githubCi(o.branch) // (kept: what CI said lasts across looks)
     const target = await pickTarget({ tip: remote, since: () => commitsSince(git, head, remote), ci: (sha) => ci(repo, sha), failed: kept.error?.commit })
-    if ("why" in target) return set("waiting", target.why, { next: remote })
+    if ("why" in target) return set("waiting", target.why, { next: remote, ci: target.judged })
     const next = target.to
     const busy = await o.busy()
     if (busy) return set("waiting", `busy: ${busy}`, { next })

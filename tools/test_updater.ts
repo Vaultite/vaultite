@@ -3,7 +3,7 @@
 import { check, exit, section, summary } from "./test/lib.ts"
 import type { CiResult, CiRun } from "../core/update/ci.ts"
 import { CI_CALLS_PER_HOUR, CI_WORKFLOW, callBudget, ciOf, githubCi, githubRepo } from "../core/update/ci.ts"
-import { capped, pickTarget } from "../core/update/git.ts"
+import { capped, pickTarget, redRoute } from "../core/update/git.ts"
 import { LOOK_EVERY, placed } from "../core/update/updater.ts"
 const t0 = Date.now()
 
@@ -16,6 +16,8 @@ check("a dispatched QA run doesn't", ciOf([run("workflow_dispatch", "completed",
 check("another workflow doesn't", ciOf([run("push", "completed", "success", ".github/workflows/release.yml")]).ok === null)
 check("running is not yet, failed is red", ciOf([run("push", "in_progress", null)]).ok === null && ciOf([run("push", "completed", "failure")]).ok === false)
 check("cancelled is not yet", ciOf([run("push", "completed", "cancelled")]).ok === null)
+check("each verdict says where CI is", [ciOf([run("push", "completed", "success")]), ciOf([run("push", "completed", "failure")]), ciOf([run("push", "in_progress", null)]), ciOf([]), ciOf([run("push", "completed", "cancelled")])]
+  .map((r) => r.state).join() === "passed,failed,running,none,cancelled")
 
 await section("githubCi: one call for the branch, one more per commit not in it", async () => {
   const asked: string[] = []
@@ -89,11 +91,21 @@ await section("git.ts: pickTarget", async () => {
   check("else the newest that passed", "to" in newest.r && newest.r.to === "c2" && newest.asked.join() === "t,c3,c2", newest)
   const none = await pick({})
   check("none passed: waits, saying why and naming the tip", "why" in none.r && none.r.why === "CI is running on it (t)", none)
+  check("…with what CI said of each commit asked, the tip first", "judged" in none.r && none.r.judged.map((j) => j.commit).join() === "t,c3,c2,c1", none)
   const failed = await pick({ c1: passed }, "c2")
   check("never the commit that failed before, nor older", "why" in failed.r && failed.asked.join() === "t,c3", failed)
   const red = await pick({ t: { ok: false, why: "CI failed on it" }, c3: passed })
   check("a red tip: the newest before it that passed", "to" in red.r && red.r.to === "c3", red)
 })
+
+section("git.ts: redRoute")
+const j = (commit: string, state?: "passed" | "failed" | "running" | "none" | "cancelled") => ({ commit, ok: state === "failed" ? false : null, ...(state ? { state } : {}) })
+check("the tip itself red: that's the end of it", redRoute([j("t", "failed"), j("c1", "running")], "t") === "t")
+check("an older commit with no run of its own under a red tip: red", redRoute([j("t", "failed"), j("c2", "none"), j("c1", "failed")], "c2") === "t")
+check("a commit between still running: it may pass", redRoute([j("t", "failed"), j("c2", "running"), j("c1", "failed")], "c1") === null)
+check("a tip still running over a red commit: the tip may bring it", redRoute([j("t", "running"), j("c1", "failed")], "c1") === null)
+check("GitHub didn't say of one between: not known", redRoute([j("t", "failed"), j("c2"), j("c1", "none")], "c1") === null)
+check("a commit not asked about: not known", redRoute([j("t", "failed")], "x") === null)
 
 section("updater.ts: placed")
 const at = { branch: "main", head: "h", remote: "r", running: "h" }

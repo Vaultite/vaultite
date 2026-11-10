@@ -2,7 +2,7 @@
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { gitEnv } from "../gitenv.ts"
-import type { CiResult } from "./ci.ts"
+import type { CiResult, CiState } from "./ci.ts"
 import { githubRepo } from "./ci.ts"
 
 const exec = promisify(execFile)
@@ -58,14 +58,28 @@ export const changedFiles = async (git: Git, from: string, to: string) => (await
 export const commitsSince = async (git: Git, head: string, tip: string) =>
   (await git("rev-list", "--first-parent", "--max-count=40", `${head}..${tip}`)).split("\n").filter(Boolean)
 
-/** The commit to update to: the tip once CI passed it, else the newest after the checkout's that did (a branch pushed to
- *  faster than CI runs never has its tip passed), never the one that failed before nor older. Else why it waits. */
-export async function pickTarget(o: { tip: string; since: () => Promise<string[]>; ci: (sha: string) => Promise<CiResult>; failed?: string }): Promise<{ to: string } | { why: string }> {
+/** A commit CI was asked about, and its answer (no state: GitHub didn't say). */
+export type Judged = { commit: string; ok: boolean | null; state?: CiState }
+
+/** The commit to update to: the tip once CI passed it, else the newest after the checkout's that did, never the one that
+ *  failed before nor older. Else why it waits, and what CI said of each commit asked, the tip first (first parents). */
+export async function pickTarget(o: { tip: string; since: () => Promise<string[]>; ci: (sha: string) => Promise<CiResult>; failed?: string }): Promise<{ to: string } | { why: string; judged: Judged[] }> {
   const tip = await o.ci(o.tip)
   if (tip.ok === true) return { to: o.tip }
+  const judged: Judged[] = [{ commit: o.tip, ok: tip.ok, ...(tip.state ? { state: tip.state } : {}) }]
   for (const c of (await o.since()).slice(1)) {
     if (c === o.failed) break
-    if ((await o.ci(c)).ok === true) return { to: c }
+    const r = await o.ci(c)
+    if (r.ok === true) return { to: c }
+    judged.push({ commit: c, ok: r.ok, ...(r.state ? { state: r.state } : {}) })
   }
-  return { why: `${tip.why} (${short(o.tip)})` }
+  return { why: `${tip.why} (${short(o.tip)})`, judged }
+}
+
+/** CI failed on every commit that could bring `commit`: the branch's tip (`judged[0]`) failed, and none from `commit` up
+ *  to it passed or still runs (a red is final as the updates take it: asked again only after 10 minutes). The tip, or null. */
+export function redRoute(judged: Judged[], commit: string): string | null {
+  const i = judged.findIndex((j) => j.commit === commit)
+  if (i < 0 || judged[0].state !== "failed") return null
+  return judged.slice(1, i + 1).every((j) => j.state === "failed" || j.state === "none" || j.state === "cancelled") ? judged[0].commit : null
 }
