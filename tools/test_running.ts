@@ -6,9 +6,9 @@ import path from "node:path"
 import { check, exit, section, sleep, summary, tempDir, waitFor } from "./test/lib.ts"
 import { stampIn, stampOf, stampText } from "../core/buildstamp.ts"
 import { gitEnv } from "../core/gitenv.ts"
-import { runningIn } from "../core/running.ts"
+import { isHash, runningIn } from "../core/running.ts"
 import type { UpdateStatus } from "../core/update/updater.ts"
-import { verdict } from "../core/coreops/version.ts"
+import { verdict, versionOps } from "../core/coreops/version.ts"
 import { webBuilds } from "../core/webbuild.ts"
 const t0 = Date.now()
 
@@ -73,10 +73,25 @@ await section("the commit it runs", async () => {
   check("built from one that changes the server: still the one it started on, till it restarts", back.commit === a && back.web.commit === c, back)
   check("has: itself and what came before it", await r.contains(b, a) === true && await r.contains(b, b.slice(0, 7)) === true)
   check("not what came after", await r.contains(a, b) === false)
-  check("a short hash and HEAD in full; an unknown one null", await r.resolve(b.slice(0, 7)) === b && await r.resolve("HEAD") === c && await r.resolve("deadbeef") === null)
-  check("not a ref's name", await r.resolve("--all") === null)
+  check("a short hash in full, an unknown one null", await r.resolve(b.slice(0, 7)) === b && await r.resolve(b.toUpperCase()) === b && await r.resolve("deadbeef") === null)
+  check("never a name: HEAD, a branch, a relative ref, an option", await r.resolve("HEAD") === null && await r.resolve("main") === null && await r.resolve(`${c}~1`) === null && await r.resolve("--all") === null)
+  git("branch", "feedfacecafe", a)
+  check("a branch named like a hash isn't taken for one", await r.resolve("feedfacecafe") === null)
+  check("a short hash naming one commit isn't ambiguous", await r.ambiguous(b.slice(0, 7)) === false && await r.ambiguous(b) === false)
+  check("isHash: hashes only", isHash(b) && isHash(b.slice(0, 4)) && !isHash("HEAD") && !isHash("main") && !isHash("abc") && !isHash(`${b.slice(0, 7)}^`) && !isHash("v1.2.0"))
   const none = runningIn(path.join(tmp, "nowhere"), () => ({ entry: null, eager: [], stamp: null }))
   check("not a checkout: unknown", (await none.running()).commit === null && await none.contains("a".repeat(40), "b".repeat(40)) === null)
+})
+
+await section("app.version asks about a hash only", async () => {
+  const op = versionOps()[0], ctx = { who: { client: "cli" } } as Parameters<typeof op.run>[1]
+  const refused = async (p: Record<string, unknown>) => { try { await op.run(p, ctx); return "" } catch (e) { return String((e as Error).message) } }
+  for (const name of ["HEAD", "main", "v1.2.0", "HEAD~1", "origin/main"]) {
+    const why = await refused({ commit: name })
+    check(`refuses ${name}, saying to give a hash or use a current vau`, /`commit` is a commit's hash/.test(why) && why.includes(`git rev-parse ${name}`) && /current vau/.test(why), why)
+  }
+  const fwd = await refused({ commit: "HEAD", machine: "studio", wait: true })
+  check("before passing it on to another machine too", /`commit` is a commit's hash/.test(fwd), fwd)
 })
 
 section("is it live")

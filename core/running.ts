@@ -52,8 +52,19 @@ export function runningIn(root: string, web: () => WebBuild) {
     return base
   }
 
-  /** A commit as given (a short hash, a branch) in full, or null when this checkout doesn't have it (yet). */
-  const resolve = async (given: string) => /^[\w./-]+$/.test(given) && !given.startsWith("-") ? git("rev-parse", "--verify", "--quiet", `${given}^{commit}`) : null
+  /** A hash (full or short) in full, or null when this checkout doesn't have it (yet). Never a name: see isHash. */
+  const resolve = async (given: string) => {
+    if (!isHash(given)) return null
+    const full = await git("rev-parse", "--verify", "--quiet", `${given.toLowerCase()}^{commit}`)
+    return full?.startsWith(given.toLowerCase()) ? full : null // (a branch named like a hash is still a name)
+  }
+  /** Whether a short hash names more than one commit here. */
+  const ambiguous = async (given: string) => {
+    if (!isHash(given) || given.length === 40) return false
+    const all = (await git("rev-parse", `--disambiguate=${given.toLowerCase()}`) ?? "").split("\n").filter(Boolean)
+    if (all.length < 2) return false
+    return (await Promise.all(all.map((sha) => git("cat-file", "-t", sha)))).filter((t) => t === "commit").length > 1
+  }
   /** Whether `commit` is `of` or comes before it (null: git can't say: not a checkout). */
   const contains = async (of: string, commit: string) => {
     if (/^[0-9a-f]{7,}$/.test(commit) && of.startsWith(commit)) return true
@@ -62,11 +73,15 @@ export function runningIn(root: string, web: () => WebBuild) {
   }
   /** Whether `commit` is on `ref` (origin/main): null when either isn't known here. */
   const onRef = async (commit: string, ref: string) => (await git("rev-parse", "--verify", "--quiet", ref)) ? contains(ref, commit) : null
-  return { running, resolve, contains, onRef }
+  return { running, resolve, ambiguous, contains, onRef }
 }
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const here = runningIn(ROOT, served.read)
 /** What this server runs now. */
 export const running = here.running
-export const { resolve: resolveCommit, contains, onRef } = here
+export const { resolve: resolveCommit, ambiguous: ambiguousCommit, contains, onRef } = here
+
+/** A commit's hash, full or short: how a caller names one to a server. A name (HEAD, a branch, a tag, HEAD~1) is the
+ *  caller's checkout's, and read in the server's would answer about another commit. */
+export const isHash = (given: string) => /^[0-9a-f]{4,40}$/i.test(given)

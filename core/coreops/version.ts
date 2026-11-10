@@ -3,7 +3,7 @@
 import { type Machine, MACHINE_CLIENT } from "../plugins.ts"
 import { type Op, OpError, type OpCtx } from "../ops.ts"
 import { desktopCall, inDesktop } from "../desktopapp.ts"
-import { contains, resolveCommit, running } from "../running.ts"
+import { ambiguousCommit, contains, isHash, resolveCommit, running } from "../running.ts"
 import { type UpdateStatus, updateStatus } from "../update/updater.ts"
 import { redRoute } from "../update/git.ts"
 import { API_VERSION, APP_VERSION } from "../version.ts"
@@ -106,7 +106,7 @@ new build by themselves (at once when hidden; visible, they offer Reload). machi
   vau version HEAD --wait --machine studio`,
     kind: "read",
     params: {
-      commit: { type: "string", description: "a commit (its hash, short or full): whether it's live here (what this server runs is it, or after it)" },
+      commit: { type: "string", description: "a commit's hash, short or full (vau turns HEAD or a branch into one where it runs): whether it's live here (what this server runs is it, or after it)" },
       wait: { type: "boolean", description: "with commit: wait until it's live, or until the updates say why it won't be" },
       timeout: { type: "number", minimum: 0, maximum: 3600, default: 900, description: "with wait: seconds to wait at most" },
       machine: { type: "string", description: "another of the Machines, by its id (studio): its version, asked through this server" },
@@ -115,6 +115,9 @@ new build by themselves (at once when hidden; visible, they offer Reload). machi
     run: async ({ commit, wait, timeout, machine }, ctx) => {
       const given = typeof commit === "string" ? commit.trim() : ""
       if (wait && !given) throw new OpError("wait for which commit? give it (`commit`)")
+      // (an older vau sends HEAD or a branch as typed: this server would read it in its own checkout)
+      if (given && !isHash(given)) throw new OpError(`\`commit\` is a commit's hash, full or short, not a name like ${given}: names are read where you are, so give its hash (git rev-parse ${given}), or use a current vau, which does`)
+      if (given && !machine && await ambiguousCommit(given)) throw new OpError(`\`commit\` ${given} names more than one commit here: give more of its hash`)
       if (machine) {
         const there = await elsewhere(ctx, String(machine), { ...(given ? { commit: given } : {}), ...(wait ? { wait: true, timeout } : {}) })
         if (there) return there
