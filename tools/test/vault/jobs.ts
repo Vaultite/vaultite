@@ -170,6 +170,7 @@ export default async ($: VaultTest) => {
     const on = [await onMainSince(repo, base, `Pushed as ${landed}.`), await onMainSince(repo, base, `Committed as ${local}, not pushed.`), await onMainSince(repo, base, `Based on ${base.slice(0, 8)}.`),
       await onMainSince(repo, base, "Done.", "job-x"), await onMainSince(repo, landed, `Pushed as ${landed}.`)]
     check("jobs: a job's change is on main when a commit it names (or its branch) is on origin/main after its base", on.join() === "true,false,false,false,false", { landed, local, on })
+    check("jobs: a commit its branch was rebased onto isn't its landing, though its words name it", !await onMainSince(repo, base, `Rebased onto ${landed.slice(0, 7)}, not pushed.`, "job-x"), landed)
     g("update-ref", "refs/remotes/origin/main", "job-x")
     check("jobs: its branch landed on main counts too", await onMainSince(repo, base, "Done.", "job-x"))
     g("checkout", "-q", "-"); g("branch", "-qD", "job-x"); g("update-ref", "-d", "refs/remotes/origin/main"); g("reset", "-q", "--hard", base)

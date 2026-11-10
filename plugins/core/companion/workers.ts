@@ -71,14 +71,17 @@ export async function diffSince(cwd: string, base: string) {
   const n = fresh.split("\n").filter(Boolean).length, c = Number(commits.trim()) || 0
   return [m ? `${m[1]} file${m[1] === "1" ? "" : "s"} changed, +${m[2] ?? 0} -${m[3] ?? 0}` : "", n ? `${n} new file${n > 1 ? "s" : ""}` : "", c ? `${c} commit${c > 1 ? "s" : ""}` : ""].filter(Boolean).join(", ")
 }
-/** Whether a commit `text` names, or branch `branch`, came after `base` and is on `cwd`'s remote main: a job that landed
- *  its own change (pushing from a worktree moves the checkout's origin/main too). */
+/** Whether a commit `text` names (not one its branch was built on), or branch `branch`, came after `base` and is on
+ *  `cwd`'s remote main: a job that landed its own change (pushing from a worktree moves the checkout's origin/main too). */
 export async function onMainSince(cwd: string, base: string, text: string, branch = "", marks?: Marks | null) {
   const main = await mainOf(cwd)
   if (!main || !base) return false
-  for (const h of [...commitsIn(text), ...(branch ? [branch] : [])]) {
+  const from = branch && await gitOk(cwd, ["rev-parse", "--verify", "-q", `refs/heads/${branch}`]) ? (await git(cwd, ["merge-base", main, `refs/heads/${branch}`])).trim() : ""
+  for (const h of commitsIn(text)) {
+    if (from && await gitOk(cwd, ["merge-base", "--is-ancestor", h, from])) continue
     if (await gitOk(cwd, ["merge-base", "--is-ancestor", h, main]) && !(await gitOk(cwd, ["merge-base", "--is-ancestor", h, base]))) return true
   }
+  if (branch && await gitOk(cwd, ["merge-base", "--is-ancestor", branch, main]) && !(await gitOk(cwd, ["merge-base", "--is-ancestor", branch, base]))) return true
   // (rebased or squashed by someone else, its branch maybe gone: its change itself on main, by patch-id)
   if (!marks?.whole && !marks?.each.length) return false
   const on = await mainPatches(cwd, base, main)
