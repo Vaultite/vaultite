@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Updates no longer stall on busy days**: with a signed-in gh the server asks GitHub up to 300 times an hour (20
+  anonymously, as before), and asks nothing of a commit a newer one superseded or of a run still queued.
 - **A job says who told it each thing**: its handoff and every follow-up keep who sent them (the companion, another
   agent's vau from its terminal, a script, you in the app or in its terminal), shown in `companion job` (told last (by
   ...)), its JSON and the jobs list, so the companion no longer claims what another session sent.

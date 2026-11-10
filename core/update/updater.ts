@@ -156,7 +156,7 @@ async function lookOnce(o: UpdaterOptions): Promise<UpdateStatus> {
     const repo = await originRepo(git) ?? ""
     if (!repo && !o.ci) return set("waiting", "origin isn't on GitHub, so CI can't be checked", { next: remote })
     const ci = o.ci ??= githubCi(o.branch) // (kept: what CI said lasts across looks)
-    const target = await pickTarget({ tip: remote, since: () => commitsSince(git, head, remote), ci: (sha) => ci(repo, sha), failed: kept.error?.commit })
+    const target = await pickTarget({ tip: remote, since: () => commitsSince(git, head, remote), ci: (sha, q) => ci(repo, sha, q), failed: kept.error?.commit })
     if ("why" in target) return set("waiting", target.why, { next: remote, ci: target.judged })
     const next = target.to
     // (busy holds only a restart: an update of the web app alone goes through while agents browse)
@@ -188,7 +188,7 @@ async function lookOnce(o: UpdaterOptions): Promise<UpdateStatus> {
 }
 
 /** How often a look runs. A look where nothing moved is a git fetch; CI is asked only about a commit to take whose
- *  verdict isn't known yet (its run's jobs: one call a look), never more than CI_CALLS_PER_HOUR (20) in any hour. */
+ *  verdict isn't known yet (its run's jobs: one call a look), never more than ciCallsPerHour() in any hour (20 anonymously, 300 through a signed-in gh). */
 export const LOOK_EVERY = 3 * MINUTE
 
 let following: UpdaterOptions | null = null

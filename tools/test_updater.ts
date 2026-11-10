@@ -2,7 +2,7 @@
 // network: the host's path end to end is test_selfupdate. In npm test.
 import { check, exit, section, summary } from "./test/lib.ts"
 import type { CiJob, CiResult, CiRun } from "../core/update/ci.ts"
-import { CI_CALLS_PER_HOUR, CI_WORKFLOW, callBudget, ciOf, githubCi, githubRepo, osGate } from "../core/update/ci.ts"
+import { CI_CALLS_PER_HOUR, CI_CALLS_SIGNED_IN, CI_WORKFLOW, callBudget, ciCallsPerHour, ciOf, githubCi, githubRepo, osGate } from "../core/update/ci.ts"
 import { capped, pickTarget, redRoute } from "../core/update/git.ts"
 import { LOOK_EVERY, placed } from "../core/update/updater.ts"
 const t0 = Date.now()
@@ -64,6 +64,27 @@ await section("githubCi: one call for the branch, one more per commit not in it"
   check("a pass is final: never asked again", (await ci("Alice/lighthouse", "aaa")).ok === true && !asked.length, asked)
   await ci("Alice/lighthouse", "bbb")
   check("a commit not among the branch's runs is asked of on its own only once", asked.length === 1 && asked[0].includes("/workflows/"), asked)
+  clock += 60_000
+  asked.length = 0
+  const old = await ci("Alice/lighthouse", "ddd", { superseded: true })
+  check("a superseded commit not among the branch's runs: never asked of on its own (it never had a run)", old.state === "none" && asked.length === 1 && asked[0].includes("/workflows/"), { old, asked })
+})
+
+await section("githubCi: a queued run's jobs aren't asked (none can have ended)", async () => {
+  let clock = 0
+  const asked: string[] = []
+  const ci = githubCi("main", async (api) => (asked.push(api), api.includes("/jobs") ? { jobs: [] } : body([{ ...run("push", "queued", null, CI_WORKFLOW, "q"), id: 4 }])), { budget: callBudget(100, () => clock), now: () => clock, gate: osGate("darwin") })
+  const q = await ci("Alice/lighthouse", "q")
+  clock += LIST_GONE
+  await ci("Alice/lighthouse", "q")
+  check("queued: running, one call a look (the list)", q.state === "running" && asked.length === 2 && asked.every((a) => a.includes("/workflows/")), asked)
+  asked.length = 0
+  clock += LIST_GONE
+  const started = githubCi("main", async (api) => (asked.push(api), api.includes("/jobs") ? { jobs: [job(MAC, "completed", "success")] } : body([{ ...run("push", asked.length > 1 ? "in_progress" : "queued", null, CI_WORKFLOW, "q"), id: 4 }])), { budget: callBudget(100, () => clock), now: () => clock, gate: osGate("darwin") })
+  await started("Alice/lighthouse", "q")
+  clock += LIST_GONE
+  const s = await started("Alice/lighthouse", "q")
+  check("once it starts (the list says), its jobs are asked", s.ok === true && asked.length === 3 && asked[2].endsWith("/runs/4/jobs?per_page=50"), { s, asked })
 })
 
 await section("githubCi: a red verdict asked again after 10 minutes, a failing list asks no more", async () => {
@@ -113,6 +134,17 @@ await section(`the request budget: at most ${CI_CALLS_PER_HOUR} calls to GitHub 
   // update asked in a loop: the budget holds it at CI_CALLS_PER_HOUR.
   check("an hour of timed looks fits the budget with one call each", 60 / (LOOK_EVERY / 60_000) <= CI_CALLS_PER_HOUR, LOOK_EVERY)
   check("the budget leaves most of GitHub's 60 anonymous calls an hour", CI_CALLS_PER_HOUR <= 20)
+  check("sized by how GitHub is reached: anonymous's until a signed-in gh answers, then a small share of its 5000",
+    ciCallsPerHour(null) === CI_CALLS_PER_HOUR && ciCallsPerHour(false) === CI_CALLS_PER_HOUR && ciCallsPerHour(true) === CI_CALLS_SIGNED_IN && CI_CALLS_SIGNED_IN <= 500 && CI_CALLS_SIGNED_IN >= 10 * 60 / (LOOK_EVERY / 60_000))
+  {
+    let viaGh = false, clock = 0
+    const b = callBudget(() => ciCallsPerHour(viaGh), () => clock)
+    let n = 0
+    while (b.take()) n++
+    viaGh = true
+    while (b.take()) n++
+    check("a budget sized at each call grows once gh answers, the calls already made counted", n === CI_CALLS_SIGNED_IN && b.max() === CI_CALLS_SIGNED_IN, n)
+  }
   for (const gate of [null, mac]) {
     let clock = 0, calls = 0
     const ci = githubCi("main", async (api) => (calls++, api.includes("/jobs") ? { jobs: [job(MAC, "in_progress")] } : body([{ ...run("push", "in_progress", null, CI_WORKFLOW, "t"), id: 3 }])),
@@ -135,10 +167,11 @@ await section("git.ts: pickTarget", async () => {
   const passed: CiResult = { ok: true, why: "CI passed" }, running: CiResult = { ok: null, why: "CI is running on it" }
   // (the branch's commits after the checkout's, newest first: t is the tip)
   const since = ["t", "c3", "c2", "c1"]
+  const supersededWrong: string[] = []
   const pick = async (verdicts: Record<string, CiResult>, failed?: string) => {
     const asked: string[] = []
     let listed = 0
-    const r = await pickTarget({ tip: "t", failed, since: async () => (listed++, since), ci: async (sha) => (asked.push(sha), verdicts[sha] ?? running) })
+    const r = await pickTarget({ tip: "t", failed, since: async () => (listed++, since), ci: async (sha, q) => (asked.push(sha), !!q?.superseded !== (sha !== "t") && supersededWrong.push(sha), verdicts[sha] ?? running) })
     return { r, asked, listed }
   }
   const tip = await pick({ t: passed })
@@ -152,6 +185,7 @@ await section("git.ts: pickTarget", async () => {
   check("never the commit that failed before, nor older", "why" in failed.r && failed.asked.join() === "t,c3", failed)
   const red = await pick({ t: { ok: false, why: "CI failed on it" }, c3: passed })
   check("a red tip: the newest before it that passed", "to" in red.r && red.r.to === "c3", red)
+  check("only the tip is asked of as the branch's; the commits under it as superseded", !supersededWrong.length, supersededWrong)
 })
 
 section("git.ts: redRoute")

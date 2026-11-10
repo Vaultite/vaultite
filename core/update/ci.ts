@@ -10,8 +10,9 @@ export type CiState = "passed" | "failed" | "running" | "none" | "cancelled"
 /** A commit's verdict; ok null is not yet (running, not run, cancelled, GitHub not answering: no `state`). `elsewhere`:
  *  the jobs that failed besides the ones it waits for (another OS's tests, the demo), as far as GitHub said. */
 export type CiResult = { ok: boolean | null; why: string; state?: CiState; elsewhere?: string[] }
-/** Asks CI about a commit of "owner/repo". */
-export type Ci = (repo: string, sha: string) => Promise<CiResult>
+/** Asks CI about a commit of "owner/repo". `superseded`: an older commit than the branch's tip, answered from what the
+ *  branch's runs already say (a commit pushed under a newer one never gets a run of its own to look up). */
+export type Ci = (repo: string, sha: string, o?: { superseded?: boolean }) => Promise<CiResult>
 /** A workflow run, as GitHub's API gives it. */
 export type CiRun = { id?: number; path?: string; event?: string; status?: string; conclusion?: string | null; head_sha?: string; head_branch?: string | null }
 
@@ -37,11 +38,17 @@ export const TRY_PREFIX = "try/"
 /** "owner/repo" of a GitHub remote's url, or null. */
 export const githubRepo = (url: string) => /github\.com[/:]([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/.exec(url.trim())?.[1] ?? null
 
+/** How githubApi last reached GitHub: through a signed-in gh, anonymously, or not yet (null). */
+let signedIn: boolean | null = null
+
 /** GitHub's API (the gh CLI when it's signed in, else anonymously: the repo is public): its answer, or why not. */
 export async function githubApi<T>(api: string, timeout = 30_000): Promise<T | string> {
   try {
-    return JSON.parse((await exec("gh", ["api", api], { timeout })).stdout) as T
+    const body = JSON.parse((await exec("gh", ["api", api], { timeout })).stdout) as T
+    signedIn = true
+    return body
   } catch { /* (not signed in, or no gh: anonymously) */ }
+  signedIn = false
   try {
     const r = await fetch(`https://api.github.com/${api}`, { headers: { accept: "application/vnd.github+json", "user-agent": "vaultite" }, signal: AbortSignal.timeout(timeout) })
     return r.ok ? await r.json() as T : `GitHub answered ${r.status} about CI`
@@ -53,15 +60,21 @@ export async function githubApi<T>(api: string, timeout = 30_000): Promise<T | s
 /** GitHub's API allows 60 calls an hour without a login, per address, shared by every machine behind it: the updates
  *  ask at most this many in any hour, whatever the looks or check-nows (two hosts on one network still leave a third). */
 export const CI_CALLS_PER_HOUR = 20
+/** Signed in, GitHub allows 5000 an hour per account (every gh on it, every machine): the updates take a small share. */
+export const CI_CALLS_SIGNED_IN = 300
 const HOUR = 3_600_000
 
-/** At most `max` calls in any hour: `take` says whether one more may go now. */
-export function callBudget(max = CI_CALLS_PER_HOUR, now = Date.now) {
-  const at: number[] = []
+/** The updates' calls an hour by how githubApi reaches GitHub: anonymous's until a signed-in gh answered. */
+export const ciCallsPerHour = (viaGh: boolean | null = signedIn) => viaGh ? CI_CALLS_SIGNED_IN : CI_CALLS_PER_HOUR
+
+/** At most `max` calls in any hour (a function: sized at each call): `take` says whether one more may go now. */
+export function callBudget(limit: number | (() => number) = CI_CALLS_PER_HOUR, now = Date.now) {
+  const at: number[] = [], max = typeof limit === "number" ? () => limit : limit
   return {
+    max,
     take() {
       while (at.length && now() - at[0] >= HOUR) at.shift()
-      if (at.length >= max) return false
+      if (at.length >= max()) return false
       at.push(now())
       return true
     },
@@ -70,7 +83,7 @@ export function callBudget(max = CI_CALLS_PER_HOUR, now = Date.now) {
 }
 export type CallBudget = ReturnType<typeof callBudget>
 /** This process's, shared by every look (timed or asked for). */
-const hourly = callBudget()
+const hourly = callBudget(() => ciCallsPerHour())
 
 /** A red verdict is asked again after this (a re-run or the nightly may pass it); a pass is final. */
 const RED_RECHECK = 10 * 60_000
@@ -81,24 +94,24 @@ const LIST_FOR = 15_000
  *  own once, a run's jobs only while they may change (once all ended, never again), a pass never, a red every 10 min. */
 export function githubCi(branch: string, get: (api: string) => Promise<unknown> = githubApi, o: { budget?: CallBudget; now?: () => number; gate?: Gate | null } = {}): Ci {
   const budget = o.budget ?? hourly, now = o.now ?? Date.now, gate = o.gate === undefined ? osGate() : o.gate
-  const ask = <T>(api: string) => (budget.take() ? get(api) : Promise.resolve(`GitHub's API was asked ${CI_CALLS_PER_HOUR} times this hour, the most the updates ask: CI is asked again later`)) as Promise<T | string>
+  const ask = <T>(api: string) => (budget.take() ? get(api) : Promise.resolve(`GitHub's API was asked ${budget.max()} times this hour, the most the updates ask: CI is asked again later`)) as Promise<T | string>
   const runsOf = (body: { workflow_runs?: CiRun[] } | string) => typeof body === "string" ? body : body.workflow_runs ?? []
   const known = new Map<string, { r: CiResult; at: number }>(), seen = new Map<string, CiRun[]>(), ended = new Map<number, CiJob[]>()
   let list: { at: number; runs: Promise<CiRun[] | string> } | null = null
-  return async (repo, sha) => {
+  return async (repo, sha, { superseded = false } = {}) => {
     const k = known.get(sha)
     if (k && (k.r.ok === true || (k.r.ok === false && now() - k.at < RED_RECHECK))) return k.r
     // (a red asked again: a re-run's jobs or the nightly's run may pass it)
     if (k?.r.ok === false) { for (const r of seen.get(sha) ?? []) if (r.id) ended.delete(r.id); seen.delete(sha) }
-    // (with a gate, a run's progress is read from its jobs; without, from the list)
-    let runs = gate ? seen.get(sha) : undefined
+    // (with a gate, a run's progress is read from its jobs, once it started; without, or before, from the list)
+    let runs = gate && !seen.get(sha)?.some(waiting) ? seen.get(sha) : undefined
     if (!runs?.length) {
       if (!list || now() - list.at >= LIST_FOR) list = { at: now(), runs: ask<{ workflow_runs?: CiRun[] }>(`repos/${repo}/actions/workflows/${path.basename(CI_WORKFLOW)}/runs?branch=${branch}&per_page=100`).then(runsOf) }
       const all = await list.runs
       if (typeof all === "string") return { ok: null, why: all }
       runs = all.filter((r) => r.head_sha === sha)
-      // (one not among the branch's latest runs: its own, older than the list, asked once)
-      if (!runs.length && !seen.has(sha)) {
+      // (one not among the branch's latest runs: its own, older than the list, asked once; a superseded one never had one)
+      if (!runs.length && !seen.has(sha) && !superseded) {
         const theirs = runsOf(await ask<{ workflow_runs?: CiRun[] }>(`repos/${repo}/actions/runs?head_sha=${sha}&per_page=50`))
         if (typeof theirs === "string") return { ok: null, why: theirs }
         runs = theirs
@@ -127,8 +140,11 @@ export function githubCi(branch: string, get: (api: string) => Promise<unknown> 
  *  branch, only the tests). */
 const ours = (runs: CiRun[]) => runs.filter((r) => (r.path ?? "").startsWith(CI_WORKFLOW) && (r.event === "push" || r.event === "schedule") && !r.head_branch?.startsWith(TRY_PREFIX))
 
-/** Whether a run's verdict needs its jobs: not when it passed whole, nor, with no gate, while it runs. */
-const needsJobs = (run: CiRun, gate: Gate | null) => !(run.status === "completed" && run.conclusion === "success") && (!!gate || run.status === "completed")
+/** Whether a run's verdict needs its jobs: not when it passed whole, nor while it waits to start (none of its jobs can
+ *  have ended), nor, with no gate, while it runs. */
+const WAITING = new Set(["queued", "pending", "waiting", "requested"])
+const waiting = (run: CiRun) => WAITING.has(run.status ?? "")
+const needsJobs = (run: CiRun, gate: Gate | null) => !(run.status === "completed" && run.conclusion === "success") && !waiting(run) && (!!gate || run.status === "completed")
 
 const RED = new Set(["failure", "timed_out", "startup_failure"])
 type RunVerdict = { state: CiState | "unknown"; why?: string; elsewhere: string[] }

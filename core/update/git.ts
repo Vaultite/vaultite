@@ -63,13 +63,13 @@ export type Judged = { commit: string; ok: boolean | null; state?: CiState }
 
 /** The commit to update to: the tip once CI passed it, else the newest after the checkout's that did, never the one that
  *  failed before nor older. Else why it waits, and what CI said of each commit asked, the tip first (first parents). */
-export async function pickTarget(o: { tip: string; since: () => Promise<string[]>; ci: (sha: string) => Promise<CiResult>; failed?: string }): Promise<{ to: string; ci: CiResult } | { why: string; judged: Judged[] }> {
+export async function pickTarget(o: { tip: string; since: () => Promise<string[]>; ci: (sha: string, o?: { superseded?: boolean }) => Promise<CiResult>; failed?: string }): Promise<{ to: string; ci: CiResult } | { why: string; judged: Judged[] }> {
   const tip = await o.ci(o.tip)
   if (tip.ok === true) return { to: o.tip, ci: tip }
   const judged: Judged[] = [{ commit: o.tip, ok: tip.ok, ...(tip.state ? { state: tip.state } : {}) }]
   for (const c of (await o.since()).slice(1)) {
     if (c === o.failed) break
-    const r = await o.ci(c)
+    const r = await o.ci(c, { superseded: true })
     if (r.ok === true) return { to: c, ci: r }
     judged.push({ commit: c, ok: r.ok, ...(r.state ? { state: r.state } : {}) })
   }
