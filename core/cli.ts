@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 import { camel, flagOf, kebab, opDoc, type OpEntry, usage as opUsage } from "./ops.ts"
 import { distance } from "./blocks.ts"
 import { EVENT_TYPES } from "./events.ts"
+import { gitEnv } from "./gitenv.ts"
 import { servingOf } from "./serving.ts"
 import { TEST_HEADER, inTestRun, testRunId } from "./testrun.ts"
 
@@ -408,10 +409,27 @@ vau events | while read -r ev; do echo "$ev" | jq -r .type; done`,
 /** A path on this computer as the shell gave it (~ is home: PowerShell and cmd leave it to vau). */
 const local = (p: string) => path.resolve(String(p).replace(/^~(?=[\\/]|$)/, os.homedir()))
 
-/** What vau does around an op with this computer's files, which the server (maybe another machine's) can't reach: `params`
- *  turns paths into text, `extra` takes more words, `out` prints the answer, `code` the exit code it means (else 0). */
-export type Local = { params?: (p: Obj, c: Ctx) => Promise<Obj>; extra?: number; out?: (result: Any, p: Obj, extra: string[]) => string; code?: (result: Any) => number }
+/** What vau does around an op with what only this computer has: `params` turns paths into text, `extra` takes more words,
+ *  `out` prints the answer, `code` its exit code (else 0), `again` what to resend a long call the server dropped with. */
+export type Local = { params?: (p: Obj, c: Ctx) => Promise<Obj>; extra?: number; out?: (result: Any, p: Obj, extra: string[]) => string; code?: (result: Any) => number
+  again?: (p: Obj, ms: number) => Obj | null }
 const LOCAL: Record<string, Local> = {
+  // vau version <commit>: HEAD or a branch named as this checkout knows it, in full; exit 1 when it isn't live; a wait
+  // goes on through the server's restart (an update's).
+  "app.version": {
+    params: async (p) => {
+      const given = typeof p.commit === "string" ? p.commit.trim() : ""
+      if (!given || /^[0-9a-f]{40}$/.test(given) || !/^[\w./~^-]+$/.test(given) || given.startsWith("-")) return p
+      const { execFileSync } = await import("node:child_process")
+      try { return { ...p, commit: execFileSync("git", ["rev-parse", "--verify", "--quiet", `${given}^{commit}`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], env: gitEnv() }).trim() || given } }
+      catch { return p } // (not a checkout, or one without it: the server's to find)
+    },
+    code: (r) => (r?.live && !r.live.live ? 1 : 0),
+    again: (p, ms) => {
+      const left = Math.round(Number(p.timeout ?? 900) - ms / 1000)
+      return p.wait && left > 5 ? { ...p, timeout: left } : null
+    },
+  },
   // vau write <path> [--from <file>] [--base <file>]: the text from a file or stdin, the base from a file.
   "file.write": {
     params: async ({ from, base, ...p }, c) => {
@@ -673,7 +691,17 @@ async function runOp(e: OpEntry, argv: string[], c: Ctx, how: Shape): Promise<{ 
   const out = !!loc.out && !json
   // (an exit code read from the answer: the answer and its text, both)
   const both = !!loc.code && !json && !out
-  const r = await c.api("POST", `ops/${encodeURIComponent(e.id)}${json || out ? "" : both ? "?as=both" : "?as=text"}`, params)
+  const began = Date.now()
+  const call = async (p: Obj): Promise<{ status: number; body: unknown }> => {
+    try { return await c.api("POST", `ops/${encodeURIComponent(e.id)}${json || out ? "" : both ? "?as=both" : "?as=text"}`, p) }
+    catch (err) {
+      const next = err instanceof CliError && loc.again?.(params, Date.now() - began)
+      if (!next) throw err
+      await new Promise((r) => setTimeout(r, 3000))
+      return call(next)
+    }
+  }
+  const r = await call(params)
   if (r.status >= 400) {
     const b = r.body as Obj
     const said = cliError(e, String(b && typeof b === "object" && "error" in b ? b.error : r.body).replace(`${e.id}: `, ""), Array.isArray(b?.problems) ? b.problems as string[] : [])

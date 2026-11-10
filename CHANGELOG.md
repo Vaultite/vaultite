@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **`vau version <commit>` says whether it's live**: here or on another machine (`--machine`), and with `--wait` waits
+  until it is or the updates say why it won't be, exiting 1 with the reason; no polling loop of your own.
 - **`vau version` names the commit that runs**: after an update that only rebuilt the web app, it and Machines name the
   new commit, not the one the server started on.
 - **Live editing shows each change as you ask**: a job asked over a preview you're watching edits the checkout

@@ -1,5 +1,5 @@
-// What a server runs (core/running.ts, core/webbuild.ts, core/buildstamp.ts): on a throwaway git repo and build
-// folder. In npm test.
+// What a server runs and whether a commit is live (core/running.ts, core/webbuild.ts, app.version's verdict): on a
+// throwaway git repo and build folder. In npm test.
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
@@ -7,6 +7,8 @@ import { check, exit, section, sleep, summary, tempDir, waitFor } from "./test/l
 import { stampIn, stampOf, stampText } from "../core/buildstamp.ts"
 import { gitEnv } from "../core/gitenv.ts"
 import { runningIn } from "../core/running.ts"
+import type { UpdateStatus } from "../core/update/updater.ts"
+import { verdict } from "../core/coreops/version.ts"
 import { webBuilds } from "../core/webbuild.ts"
 const t0 = Date.now()
 
@@ -76,5 +78,21 @@ await section("the commit it runs", async () => {
   const none = runningIn(path.join(tmp, "nowhere"), () => ({ entry: null, eager: [], stamp: null }))
   check("not a checkout: unknown", (await none.running()).commit === null && await none.contains("a".repeat(40), "b".repeat(40)) === null)
 })
+
+section("is it live")
+const full = "c".repeat(40), runs = "d".repeat(40)
+const following = (state: UpdateStatus["state"], why: string, more: Partial<UpdateStatus> = {}): UpdateStatus => ({ branch: "main", state, why, checked: Date.now(), ...more })
+const off: UpdateStatus = { branch: null, state: "off", why: "", checked: null }
+const v = (o: Partial<Parameters<typeof verdict>[0]>) => verdict({ given: "ccccccc", full, runs, has: false, failed: false, updates: following("current", "up to date"), app: null, ...o })
+check("in what it runs: live", v({ has: true }).live && /is live here: it runs ddddddd, which has it/.test(v({ has: true }).why), v({ has: true }))
+check("what it runs itself: live", v({ runs: full, has: null }).live)
+check("waiting on CI: not yet, and why", ((x) => !x.live && !x.final && /isn't live here yet: updates waiting: CI hasn't passed/.test(x.why))(v({ updates: following("waiting", "CI hasn't passed (ccccccc)") })))
+check("not fetched yet: not yet", ((x) => !x.final && /doesn't have it yet/.test(x.why))(v({ full: null })))
+check("its update failed: it won't be", ((x) => !x.live && x.final && /won't be live here: its update failed: didn't build/.test(x.why))(v({ failed: true, updates: following("failed", "x", { error: { at: 1, commit: full, message: "didn't build" } }) })))
+check("an older one failed: still on its way", !v({ failed: false, updates: following("failed", "x", { error: { at: 1, commit: runs, message: "no" } }) }).final)
+check("no updates here: it won't be", ((x) => x.final && /doesn't update itself/.test(x.why))(v({ updates: off })))
+const app = { mode: "automatic" as const, available: true, from: "main", ready: null, doing: null }
+check("the desktop app's, automatic: on its way", !v({ updates: off, app }).final)
+check("off, or notify (someone must restart it): it won't be by itself", v({ updates: off, app: { ...app, mode: "off" } }).final && v({ updates: off, app: { ...app, mode: "notify" } }).final)
 
 await exit(summary("running", t0))
