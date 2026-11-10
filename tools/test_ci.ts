@@ -6,7 +6,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { gitEnv } from "../core/gitenv.ts"
 import { alsoTry, describe, osRisk, parseDiff } from "./osrisk.ts"
-import { failuresOf, mainRed, notice, redStreaks, type Api, type Run } from "./mainci.ts"
+import { failuresOf, mainRed, nightlyRed, notice, redStreaks, type Api, type Run } from "./mainci.ts"
 import { checkPush, judge, riskKey, tried, tryHead } from "./try.ts"
 const t0 = Date.now()
 
@@ -77,6 +77,16 @@ const again = github()
 await mainRed(again.api, { cache, walk: 3 })
 check("a finished run's failures are asked once", !again.asked.some((p) => p.includes("runs/4/jobs")), again.asked)
 check("GitHub not answering: no notice", typeof await mainRed(github({ fail: true }).api) === "string")
+const nightlyApi = (conclusion: string): Api => async <T>(p: string) => {
+  if (p.includes("event=schedule")) return { workflow_runs: [run(9, null, { event: "schedule" }), run(8, conclusion, { event: "schedule", created_at: "2026-11-09T05:17:00Z" })] } as T
+  if (p.includes("runs/8/jobs")) return { jobs: [job(80, "qa", "failure"), job(81, "test (macos-15)", "success")] } as T
+  if (p.includes("check-runs/80/")) return [failed("qa counts", "budget: 41 requests, at most 30"), failed("qa requests", "a second fetch of the tree")] as T
+  return "not found"
+}
+const night = await nightlyRed(nightlyApi("failure"))
+const told = notice([], 3, typeof night === "string" ? null : night)
+check("the nightly red: its date, the job and its scripts, said even when the pushes are green", /^main is red on its nightly run/.test(told) && told.includes("Nightly (11-09) red: qa: qa counts: budget: 41 requests, at most 30; qa requests: a second fetch of the tree") && told.includes("runs/8"), told)
+check("the nightly green, or still running: nothing", await nightlyRed(nightlyApi("success")) === null)
 check("main green: nothing said", notice([]) === "" && (await mainRed(github({ runs: [run(2, "success"), run(1, "failure")] }).api) as unknown[]).length === 0)
 
 section("try")

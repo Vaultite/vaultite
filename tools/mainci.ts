@@ -1,4 +1,4 @@
-// Main's CI as the next pusher needs it: what's red (jobs, tests), since which commit, how many pushes on top. `--notice`:
+// Main's CI as the next pusher needs it: what's red (jobs, tests, the nightly's), since which commit, pushes on top. `--notice`:
 // pre-push's few lines or nothing, in at most 2.5 s, silent offline; tools/try.ts asks it what's already red.
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
@@ -91,12 +91,23 @@ export async function mainRed(api: Api, o: { cache?: Map<number, Failure[]>; wal
   return out
 }
 
+/** The newest finished nightly run of ci.yml on main (every test and QA script) when it failed, and what failed; null
+ *  when it passed, or why not. */
+export async function nightlyRed(api: Api, cache?: Map<number, Failure[]>): Promise<{ run: Run; failures: Failure[] } | null | string> {
+  const list = await api<{ workflow_runs?: Run[] }>(`repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&event=schedule&status=completed&per_page=5`)
+  if (typeof list === "string") return list
+  const run = (list.workflow_runs ?? []).find(finished)
+  if (run?.conclusion !== "failure") return null
+  const failures = await runFailures(api, run.id, cache)
+  return typeof failures === "string" ? failures : { run, failures }
+}
+
 const subject = (r: Run) => (r.head_commit?.message ?? "").split("\n")[0].slice(0, 72)
 
 /** The notice: what's red on main, a few lines; none when it's green. */
-export function notice(reds: Red[], max = 3): string {
-  if (!reds.length) return ""
-  const lines = ["main is red on CI (this push still goes):"]
+export function notice(reds: Red[], max = 3, nightly: { run: Run; failures: Failure[] } | null = null): string {
+  if (!reds.length && !nightly) return ""
+  const lines = [`main is red on ${reds.length ? "CI" : "its nightly run"} (this push still goes):`]
   for (const r of reds) {
     const jobs = new Map<string, string[]>()
     for (const f of r.failures) jobs.set(f.job, [...jobs.get(f.job) ?? [], f.test])
@@ -104,6 +115,12 @@ export function notice(reds: Red[], max = 3): string {
     lines.push(`  ${r.workflow}, red since ${r.sure ? "" : "at least "}${r.since.head_sha?.slice(0, 9)} ${subject(r.since)}${pushes}`)
     for (const [job, tests] of jobs) lines.push(`    ${job}: ${tests.slice(0, max).join("; ")}${tests.length > max ? `; and ${tests.length - max} more` : ""}`)
     if (r.run.html_url) lines.push(`    ${r.run.html_url}`)
+  }
+  if (nightly) {
+    const jobs = new Map<string, string[]>()
+    for (const f of nightly.failures) jobs.set(f.job, [...jobs.get(f.job) ?? [], f.test])
+    lines.push(`  Nightly (${nightly.run.created_at.slice(5, 10)}) red: ${[...jobs].map(([job, tests]) => `${job}: ${tests.slice(0, max).join("; ")}${tests.length > max ? `; and ${tests.length - max} more` : ""}`).join(" | ")}`)
+    if (nightly.run.html_url) lines.push(`    ${nightly.run.html_url}`)
   }
   return lines.join("\n")
 }
@@ -120,7 +137,7 @@ const slim = (body: unknown) => {
     head_sha: r.head_sha, head_branch: r.head_branch, created_at: r.created_at, html_url: r.html_url, head_commit: { message: subject(r) } })) }
 }
 type Cache = { answers: Record<string, { at: number; body: unknown }>; failures: [number, Failure[]][] }
-const LIST_FOR = 60_000
+const LIST_FOR = 60_000, NIGHTLY_FOR = 30 * 60_000
 
 /** The notice with a cache: GitHub asked at most once a minute per question and checkout, a finished run's failures
  *  never again. */
@@ -128,7 +145,8 @@ export async function cachedNotice(root: string, timeout = 1500, now = Date.now(
   const file = cacheFile(root)
   let c: Cache = { answers: {}, failures: [] }
   try { if (file) c = { ...c, ...JSON.parse(fs.readFileSync(file, "utf8")) as Cache } } catch { /* (none yet) */ }
-  for (const [k, a] of Object.entries(c.answers)) if (now - a.at >= LIST_FOR) delete c.answers[k]
+  // (the nightly's list changes once a night: kept longer)
+  for (const [k, a] of Object.entries(c.answers)) if (now - a.at >= (k.includes("event=schedule") ? NIGHTLY_FOR : LIST_FOR)) delete c.answers[k]
   const cache = new Map(c.failures)
   const save = () => {
     if (!file) return
@@ -144,10 +162,10 @@ export async function cachedNotice(root: string, timeout = 1500, now = Date.now(
     return got
   }
   // (saved after each run learned: a notice cut short by its time still keeps it)
-  const reds = await mainRed(api, { cache, learned: save })
+  const [reds, nightly] = await Promise.all([mainRed(api, { cache, learned: save }), nightlyRed(api, cache)])
   if (typeof reds === "string") return ""
   save()
-  return notice(reds)
+  return notice(reds, 3, typeof nightly === "string" ? null : nightly)
 }
 
 if (import.meta.main && process.argv.includes("--notice")) {
