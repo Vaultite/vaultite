@@ -4,7 +4,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
-import { camel, flagOf, kebab, opDoc, type OpEntry, usage as opUsage } from "./ops.ts"
+import { camel, flagOf, kebab, opDoc, type OpEntry, restarting, usage as opUsage } from "./ops.ts"
 import { distance } from "./blocks.ts"
 import { EVENT_TYPES } from "./events.ts"
 import { gitEnv } from "./gitenv.ts"
@@ -158,11 +158,12 @@ export class Ctx {
     for (;;) {
       try {
         res = await request(`${this.url}/api/${route}`, method, body === undefined ? undefined : JSON.stringify(body), this.who())
+        this.next = [] // (it answered: this command's server, restarting or not)
         break
       } catch (e) {
         // Nothing listening: the next server that may be, and it's the one from then on (only then: a request that
         // failed on its way may have been done, and must not be done again elsewhere).
-        if (!this.next.length || (e as NodeJS.ErrnoException).code !== "ECONNREFUSED") throw new CliError(this.down())
+        if (!this.next.length || (e as NodeJS.ErrnoException).code !== "ECONNREFUSED") { this.next = []; throw new CliError(this.down()) }
         this.url = this.next.shift()!
       }
     }
@@ -213,7 +214,7 @@ export class Ctx {
   async call(method: string, route: string, body?: unknown): Promise<Any> {
     const r = await this.api(method, route, body)
     if (r.status >= 400) {
-      const msg = r.body && typeof r.body === "object" && "error" in r.body ? (r.body as Obj).error : String(r.body).slice(0, 300)
+      const msg = (r.body && typeof r.body === "object" && "error" in r.body ? (r.body as Obj).error : String(r.body).slice(0, 300)) || `the server answered ${r.status}, with no reason`
       if (r.status === 404 && msg === "not found") throw new CliError(`the server has no /api/${route.split("?")[0]} (an older version? restart it)`)
       throw new CliError(String(msg))
     }
@@ -411,9 +412,12 @@ vau events | while read -r ev; do echo "$ev" | jq -r .type; done`,
 const local = (p: string) => path.resolve(String(p).replace(/^~(?=[\\/]|$)/, os.homedir()))
 
 /** What vau does around an op with what only this computer has: `params` turns paths into text, `extra` takes more words,
- *  `out` prints the answer, `code` its exit code (else 0), `again` what to resend a long call the server dropped with. */
+ *  `out` prints the answer, `code` its exit code (else 0). */
 export type Local = { params?: (p: Obj, c: Ctx) => Promise<Obj>; extra?: number; out?: (result: Any, p: Obj, extra: string[]) => string; code?: (result: Any) => number
-  again?: (p: Obj, ms: number) => Obj | null }
+  /** A long call the server's restart cut, `ms` into it: the parameters to send again (null: none). */
+  again?: (p: Obj, ms: number) => Obj | null
+  /** The answer once it's given up on (`why`: how the server stayed silent), or null for an error. */
+  gone?: (p: Obj, why: string, ms: number) => { result: Any; text: string } | null }
 const LOCAL: Record<string, Local> = {
   // vau version <commit>: HEAD or a branch named as this checkout knows it, in full; exit 1 when it isn't live; a wait
   // goes on through the server's restart (an update's).
@@ -426,9 +430,16 @@ const LOCAL: Record<string, Local> = {
       catch { return p } // (not a checkout, or one without it: the server's to find)
     },
     code: (r) => (r?.live && !r.live.live ? 1 : 0),
+    // (sent again with the time left, saying the time spent: the wait's timeout counts once, across restarts)
     again: (p, ms) => {
       const left = Math.round(Number(p.timeout ?? 900) - ms / 1000)
-      return p.wait && left > 5 ? { ...p, timeout: left } : null
+      return p.wait && left > 5 ? { ...p, timeout: left, waited: Number(p.waited ?? 0) + Math.round(ms / 1000) } : null
+    },
+    gone: (p, why, ms) => {
+      if (!p.wait || typeof p.commit !== "string") return null
+      const live = { commit: p.commit, live: false, final: false, outcome: "unreachable", waited: Number(p.waited ?? 0) + Math.round(ms / 1000),
+        why: `${p.commit.slice(0, 7)}: can't tell if it's live: ${why}, till the wait's ${p.timeout ?? 900} s were up` }
+      return { result: { live }, text: live.why }
     },
   },
   // vau write <path> [--from <file>] [--base <file>]: the text from a file or stdin, the base from a file.
@@ -692,20 +703,26 @@ async function runOp(e: OpEntry, argv: string[], c: Ctx, how: Shape): Promise<{ 
   const out = !!loc.out && !json
   // (an exit code read from the answer: the answer and its text, both)
   const both = !!loc.code && !json && !out
+  // A long call (a wait) the server's restart cut is sent again till its time is up, to the same server.
   const began = Date.now()
-  const call = async (p: Obj): Promise<{ status: number; body: unknown }> => {
-    try { return await c.api("POST", `ops/${encodeURIComponent(e.id)}${json || out ? "" : both ? "?as=both" : "?as=text"}`, p) }
-    catch (err) {
-      const next = err instanceof CliError && loc.again?.(params, Date.now() - began)
-      if (!next) throw err
-      await new Promise((r) => setTimeout(r, 3000))
-      return call(next)
-    }
+  let r: { status: number; body: unknown } | null = null, down: number | null = null
+  for (let p = params; ;) {
+    let failed: CliError | null = null
+    try { r = await c.api("POST", `ops/${encodeURIComponent(e.id)}${json || out ? "" : both ? "?as=both" : "?as=text"}`, p) }
+    catch (err) { if (!(err instanceof CliError)) throw err; failed = err; r = null }
+    if (r && !(loc.again && restarting(r.status, r.body))) break
+    down ??= Date.now()
+    const next = loc.again?.(params, Date.now() - began)
+    if (next) { p = next; await new Promise((ok) => setTimeout(ok, 3000)); continue }
+    const why = `the server at ${c.url} ${r ? `answered ${r.status}, not itself (a proxy: the server behind it is down)` : "didn't answer"} for ${Math.round((Date.now() - down) / 1000)} s`
+    const gone = loc.gone?.(params, why, Date.now() - began)
+    if (gone) return { out: json ? JSON.stringify(gone.result, null, 2) : gone.text, code: loc.code?.(gone.result) ?? 1 }
+    throw failed ?? new CliError(why)
   }
-  const r = await call(params)
   if (r.status >= 400) {
     const b = r.body as Obj
-    const said = cliError(e, String(b && typeof b === "object" && "error" in b ? b.error : r.body).replace(`${e.id}: `, ""), Array.isArray(b?.problems) ? b.problems as string[] : [])
+    const reason = String(b && typeof b === "object" && "error" in b ? b.error : r.body).replace(`${e.id}: `, "") || `the server answered ${r.status}, with no reason`
+    const said = cliError(e, reason, Array.isArray(b?.problems) ? b.problems as string[] : [])
     // (a 400 with problems is the parameters' check: the command line was wrong)
     throw new CliError([said.msg, ...said.problems.map((x) => `  - ${x}`)].join("\n"), r.status === 400 && Array.isArray(b?.problems))
   }

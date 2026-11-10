@@ -1,7 +1,7 @@
 // app.version: what this server runs and what its updates (core/selfupdate.ts, or the desktop app's) are doing; given a
 // commit, whether it's live, waiting for it when asked. Another machine's through this one.
 import { type Machine, MACHINE_CLIENT } from "../plugins.ts"
-import { type Op, OpError, type OpCtx } from "../ops.ts"
+import { type Op, OpError, type OpCtx, restarting } from "../ops.ts"
 import { desktopCall, inDesktop } from "../desktopapp.ts"
 import { ambiguousCommit, contains, isHash, processes, type Process, resolveCommit, running } from "../running.ts"
 import { type UpdateStatus, updateStatus } from "../update/updater.ts"
@@ -19,16 +19,21 @@ type AppUpdates = { mode: "automatic" | "notify" | "off"; available: boolean; fr
   worktree?: { worktree: string; branch: string; commit: string; dirty: boolean }
   /** Whether its menu-bar helper runs (electron/updates.ts). */
   helper?: boolean }
-/** Whether a commit is live, and when not, whether that can still change by itself (`final`: it can't). */
-export type Verdict = { commit: string; live: boolean; final: boolean; why: string }
+/** Whether a commit is live, and when not, whether that can still change by itself (`final`: it can't). `why`, one
+ *  sentence saying it: the output's last line. */
+export type Verdict = { commit: string; live: boolean; final: boolean; why: string
+  /** never: not by itself; pending: asked without waiting; timeout: waited all it may; unreachable: its server didn't answer. */
+  outcome: "live" | "never" | "pending" | "timeout" | "unreachable"
+  /** With wait: the seconds it waited, across the server's restarts. */
+  waited?: number }
 
 /** Is `given` (`full` in full: null when this checkout doesn't have it) live in `runs`? `has`: whether `runs` has it
  *  (null: git can't say), `failed`: whether the update that failed has it. */
 export function verdict(o: { given: string; full: string | null; runs: string | null; has: boolean | null; failed: boolean; updates: UpdateStatus
   app: AppUpdates | "unknown" | null }): Verdict {
   const { updates: u, app } = o, name = o.full ? short(o.full) : o.given, commit = o.full ?? o.given
-  if (o.has || (o.runs && o.full === o.runs)) return { commit, live: true, final: true, why: `${name} is live here: it runs ${short(o.runs)}${o.full === o.runs ? "" : ", which has it"}` }
-  const not = (final: boolean, why: string) => ({ commit, live: false, final, why: `${name} ${final ? "won't be live here" : "isn't live here yet"}: ${why}` })
+  if (o.has || (o.runs && o.full === o.runs)) return { commit, live: true, final: true, outcome: "live", why: `${name} is live here: it runs ${short(o.runs)}${o.full === o.runs ? "" : ", which has it"}` }
+  const not = (final: boolean, why: string): Verdict => ({ commit, live: false, final, outcome: final ? "never" : "pending", why: `${name} ${final ? "won't be live here" : "isn't live here yet"}: ${why}` })
   if (u.branch) {
     // (what an agent left in the checkout doesn't go away by itself; before it has the commit, the next look decides)
     if (u.blocked && (o.full || u.blocked.by === "branch")) return not(true, `its checkout blocks the updates: ${u.why}`)
@@ -53,15 +58,18 @@ async function look(given: string): Promise<Verdict> {
   return verdict({ given, full, runs: runs.commit, has, failed, updates: u, app })
 }
 
-/** Wait (`timeout` s at most) till it's live, or can't be by itself. */
-async function waitFor(given: string, timeout: number): Promise<Verdict & { waited: number }> {
+/** Wait (`timeout` s at most) till it's live, or can't be by itself; `before`, the seconds a wait this one goes on
+ *  from already took (vau sends it again when the server's restart cut it). */
+export async function waitFor(given: string, timeout: number, before = 0, lookNow: (given: string) => Promise<Verdict> = look): Promise<Verdict> {
   const began = Date.now()
   for (;;) {
-    const v = await look(given), waited = Math.round((Date.now() - began) / 1000)
-    if (v.live || v.final || waited >= timeout) return { ...v, waited, ...(!v.live && !v.final ? { why: `${v.why} (waited ${waited} s)` } : {}) }
-    await sleep(Math.min(LOOK_MS, (timeout - waited) * 1000))
+    const v = await lookNow(given), now = Math.round((Date.now() - began) / 1000), waited = before + now
+    if (v.live || v.final) return { ...v, waited }
+    if (now >= timeout) return { ...v, outcome: "timeout", waited, why: v.why.replace(/ isn't live here yet: /, ` still isn't live here after ${waited} s of waiting (timed out): `) }
+    await sleep(Math.min(LOOK_MS, (timeout - now) * 1000))
   }
 }
+
 
 /** Another machine's answer to app.version, through this server; a wait outlasts its restarts (an update's). */
 async function elsewhere(ctx: OpCtx, id: string, body: Any): Promise<Any> {
@@ -71,18 +79,27 @@ async function elsewhere(ctx: OpCtx, id: string, body: Any): Promise<Any> {
   if (!m) throw new OpError(`no machine '${id}' (\`machine\`: Machines lists them)`, 404)
   if (m.self) return null
   if (!m.url) throw new OpError(`${m.label} doesn't run Vaultite's server, only lets its files be read (\`machine\`)`, 409)
-  const until = Date.now() + (body.wait ? Number(body.timeout ?? 900) * 1000 : 0)
+  const began = Date.now(), before = Number(body.waited ?? 0), timeout = Number(body.timeout ?? 900)
+  let down: number | null = null, said = ""
   for (;;) {
-    const left = Math.max(0, Math.round((until - Date.now()) / 1000))
+    const spent = Math.round((Date.now() - began) / 1000), left = Math.max(0, timeout - spent)
     const r = await fetch(`${m.url}/api/ops/app.version`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" },
-      body: JSON.stringify(body.wait ? { ...body, timeout: left } : body), signal: AbortSignal.timeout((left + 30) * 1000) }).catch(() => null)
-    if (r) {
-      const out = await r.json().catch(() => ({})) as Any
-      if (!r.ok) throw new OpError(`${m.label}: ${out.error || `answered ${r.status}`}`, r.status)
+      body: JSON.stringify(body.wait ? { ...body, timeout: left, waited: before + spent } : body), signal: AbortSignal.timeout((left + 30) * 1000) }).catch(() => null)
+    const out = r ? await r.json().catch(() => null) as Any : null
+    if (r && !restarting(r.status, out)) {
+      if (!r.ok) throw new OpError(`${m.label} refused it: ${out?.error || `it answered ${r.status}`}`, r.status)
       return { ...out, machine: m.id }
     }
-    if (Date.now() + 5000 > until) throw new OpError(`${m.label} doesn't answer`, 502)
-    await sleep(5000) // (restarting into an update, most likely)
+    // (restarting into an update, most likely: asked again till the wait's time is up)
+    down ??= Date.now()
+    said = r ? `answered ${r.status} (its proxy: the server behind it is down)` : "didn't answer"
+    if (!body.wait || Date.now() + 5000 > began + timeout * 1000) {
+      const why = `${m.label} ${said} for ${Math.round((Date.now() - down) / 1000)} s${body.wait ? `, till the wait's ${timeout} s were up` : ""}`
+      if (!body.commit) throw new OpError(why, 502)
+      return { machine: m.id, live: { commit: body.commit, live: false, final: false, outcome: "unreachable", waited: before + Math.round((Date.now() - began) / 1000),
+        why: `${short(body.commit)}: can't tell if it's live on ${m.label}: ${why}` } }
+    }
+    await sleep(5000)
   }
 }
 
@@ -103,8 +120,9 @@ such file and how it's reached. In a checkout only.
 Is my commit live? Give it (a hash, short or full; in a checkout of the app, HEAD or a branch too): live says whether
 this server runs it or a commit after it, and why not. With wait it waits until it is, or until the updates say why it
 won't be (a failed update, CI red on it, updates off, a checkout with uncommitted changes, commits not on the branch
-or another branch checked out: it names them), timeout seconds at most: no loop of your own needed. Exit 1 when it
-isn't live, with the reason. A branch's commits land on main squashed: give main's (git log origin/main). Open pages take a
+or another branch checked out: it names them), timeout seconds at most: no loop of your own needed. A restart
+meanwhile (an update's) is ridden out, the time spent counted once. The last line is the verdict (live: outcome live,
+never, timeout, or unreachable when the server stayed down), and the exit is 1 unless it's live. A branch's commits land on main squashed: give main's (git log origin/main). Open pages take a
 new build by themselves (at once when hidden; visible, they offer Reload). machine: another machine's (Machines).
 
   vau version
@@ -116,25 +134,27 @@ new build by themselves (at once when hidden; visible, they offer Reload). machi
       commit: { type: "string", description: "a commit's hash, short or full (vau turns HEAD or a branch into one where it runs): whether it's live here (what this server runs is it, or after it)" },
       wait: { type: "boolean", description: "with commit: wait until it's live, or until the updates say why it won't be" },
       timeout: { type: "number", minimum: 0, maximum: 3600, default: 900, description: "with wait: seconds to wait at most" },
+      waited: { type: "number", minimum: 0, default: 0, description: "with wait: seconds it already waited before this call (vau sends a wait again when the server's restart cut it)" },
       machine: { type: "string", description: "another of the Machines, by its id (studio): its version, asked through this server" },
     },
     args: ["commit"],
-    run: async ({ commit, wait, timeout, machine }, ctx) => {
+    run: async ({ commit, wait, timeout, waited, machine }, ctx) => {
       const given = typeof commit === "string" ? commit.trim() : ""
       if (wait && !given) throw new OpError("wait for which commit? give it (`commit`)")
       // (an older vau sends HEAD or a branch as typed: this server would read it in its own checkout)
       if (given && !isHash(given)) throw new OpError(`\`commit\` is a commit's hash, full or short, not a name like ${given}: names are read where you are, so give its hash (git rev-parse ${given}), or use a current vau, which does`)
       if (given && !machine && await ambiguousCommit(given)) throw new OpError(`\`commit\` ${given} names more than one commit here: give more of its hash`)
       if (machine) {
-        const there = await elsewhere(ctx, String(machine), { ...(given ? { commit: given } : {}), ...(wait ? { wait: true, timeout } : {}) })
+        const there = await elsewhere(ctx, String(machine), { ...(given ? { commit: given } : {}), ...(wait ? { wait: true, timeout, waited } : {}) })
         if (there) return there
       }
-      const live = given ? (wait ? await waitFor(given, Number(timeout ?? 900)) : await look(given)) : undefined
+      const live = given ? (wait ? await waitFor(given, Number(timeout ?? 900), Number(waited ?? 0)) : await look(given)) : undefined
       const { startedOn, ...now } = await running(), app = await appUpdates()
       return { ...(live ? { live } : {}), version: APP_VERSION, api: API_VERSION, ...now, pid: process.pid, started: Date.now() - Math.round(process.uptime() * 1000),
         updates: updateStatus(), app, processes: await processes(processList(startedOn, app)) }
     },
-    text: (r: Any) => [...(r.live ? [r.live.why] : []),
+    // (the verdict last: an agent's output cut to its end, or its exit code lost to a pipe, still says it)
+    text: (r: Any) => r.version === undefined ? String(r.live?.why ?? "") : [
       `Vaultite ${r.version} (plugin API ${r.api})${r.commit ? `, ${short(r.commit)}${r.branch ? ` on ${r.branch}` : ""}` : ""}${r.machine ? ` on ${r.machine}` : ""}`,
       ...(r.app?.worktree ? [`Worktree: ${r.app.worktree.worktree}, ${r.app.worktree.branch}@${short(r.app.worktree.commit)}${r.app.worktree.dirty ? ", with changes not committed" : ""}`] : []),
       ...(r.subject ? [`Commit: ${r.subject}${r.at ? ` (${new Date(r.at).toISOString()})` : ""}`] : []),
@@ -143,7 +163,8 @@ new build by themselves (at once when hidden; visible, they offer Reload). machi
       ...(r.processes ?? []).map(processLine),
       `Updates: ${updatesLine(r.updates, r.app)}`,
       ...(r.updates.last ? [`Last update: ${short(r.updates.last.from)} to ${short(r.updates.last.to)}, ${new Date(r.updates.last.at).toISOString()}${r.updates.last.elsewhere?.length ? ` (CI red on it elsewhere: ${r.updates.last.elsewhere.join(", ")})` : ""}`] : []),
-      ...(r.updates.error ? [`Failed: ${r.updates.error.message}`] : [])].join("\n"),
+      ...(r.updates.error ? [`Failed: ${r.updates.error.message}`] : []),
+      ...(r.live ? [r.live.why] : [])].join("\n"),
   }]
 }
 

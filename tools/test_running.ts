@@ -3,12 +3,16 @@
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
-import { check, exit, section, sleep, summary, tempDir, waitFor } from "./test/lib.ts"
+import { type Any, check, exit, section, sleep, summary, tempDir, waitFor } from "./test/lib.ts"
 import { stampIn, stampOf, stampText } from "../core/buildstamp.ts"
 import { gitEnv } from "../core/gitenv.ts"
 import { isHash, runningIn } from "../core/running.ts"
 import type { UpdateStatus } from "../core/update/updater.ts"
-import { verdict, versionOps } from "../core/coreops/version.ts"
+import { verdict, versionOps, waitFor as waitLive } from "../core/coreops/version.ts"
+import { Ctx, execute } from "../core/cli.ts"
+import { entryOf } from "../core/ops.ts"
+import http from "node:http"
+import type net from "node:net"
 import { webBuilds } from "../core/webbuild.ts"
 const t0 = Date.now()
 
@@ -148,5 +152,107 @@ section("vau version's text")
   check("a Dev instance: its worktree, branch and commit, and whether it has changes", dev.split("\n")[1] === "Worktree: lighthouse-fix, fix@ccccccc, with changes not committed", dev)
   check("none otherwise", !op.text!(base, {}).includes("Worktree"))
 }
+
+// A wait through the server's restart: the call cut, the server refusing, its proxy's empty 502, then the new server.
+// vau and a machine's wait ride it out in the timeout, or say why not. A step a call (sent again after 3 s; machine's 5 s).
+type Step = "cut" | "refuse" | "proxy" | "answer"
+/** A server for app.version whose calls go `steps` in turn (the last one again after), kept in `asked`. */
+async function restartingServer(steps: Step[], live = true) {
+  const asked: Any[] = []
+  let port = 0, listening: http.Server | null = null
+  const entry = entryOf(versionOps()[0], null)
+  const sockets = new Set<net.Socket>()
+  const handler: http.RequestListener = (req, res) => {
+    let raw = ""
+    req.on("data", (d) => { raw += d })
+    req.on("end", () => {
+      if (req.method === "GET") return res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(req.url?.includes("word=") ? [entry] : entry))
+      const body = JSON.parse(raw || "{}"), step = steps[Math.min(asked.length, steps.length - 1)]
+      asked.push(body)
+      if (step === "cut") return void setTimeout(() => req.socket.destroy(), 200)
+      if (step === "refuse") { req.socket.destroy(); return void stop(1500) }
+      if (step === "proxy") return res.writeHead(502).end()
+      const why = live ? `${String(body.commit).slice(0, 7)} is live here: it runs it` : `${String(body.commit).slice(0, 7)} won't be live here: its update failed`
+      const result = { live: { commit: body.commit, live, final: true, outcome: live ? "live" : "never", why, waited: body.waited ?? 0 }, version: "0.0.0" }
+      const wantsBoth = req.url?.includes("as=both")
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(wantsBoth ? { result, text: `Vaultite 0.0.0\n${why}` } : result))
+    })
+  }
+  const listen = () => new Promise<void>((ok) => {
+    listening = http.createServer(handler)
+    listening.on("connection", (c) => { sockets.add(c); c.on("close", () => sockets.delete(c)) })
+    listening.listen(port, "127.0.0.1", () => { port = (listening!.address() as net.AddressInfo).port; ok() })
+  })
+  /** Down for `ms` (refusing), then up again on its port. */
+  const stop = (ms: number) => { const s = listening; listening = null; s?.close(); for (const c of sockets) c.destroy(); setTimeout(() => void listen(), ms) }
+  await listen()
+  return { url: `http://127.0.0.1:${port}`, asked, close: () => { listening?.close(); for (const c of sockets) c.destroy() } }
+}
+const sha = "f".repeat(40)
+
+await section("a wait through a restart", async () => {
+  {
+    const srv = await restartingServer(["cut", "refuse", "proxy", "answer"])
+    const r = await execute(["version", sha, "--wait", "--timeout", "60"], { url: srv.url })
+    const lines = r.out.split("\n")
+    check("vau: a wait cut, refused, then a proxy's 502: it answers from the new server", r.code === 0 && /is live here/.test(lines.at(-1) ?? ""), r)
+    const waits = srv.asked.slice(1)
+    check("vau: sent again with the time left and the time spent: the timeout counts once", waits.length >= 3 && waits.every((b) => Math.abs(Number(b.timeout) + Number(b.waited ?? 0) - 60) <= 1)
+      && Number(waits.at(-1).waited) >= 6, srv.asked)
+    check("vau: each time the same commit, as a hash", srv.asked.every((b) => b.commit === sha && b.wait === true), srv.asked)
+    srv.close()
+  }
+  {
+    const srv = await restartingServer(["cut", "proxy", "answer"], false)
+    const r = await execute(["version", sha, "--wait", "--timeout", "60"], { url: srv.url })
+    check("vau: a verdict from the new server that it won't be: exit 1, said last", r.code === 1 && /won't be live here: its update failed$/.test(r.out), r)
+    srv.close()
+  }
+  {
+    const srv = await restartingServer(["cut", "proxy"])
+    const r = await execute(["version", sha, "--wait", "--timeout", "8"], { url: srv.url })
+    check("vau: never back within the timeout: exit 1, its last line says the server didn't answer and how long", r.code === 1 && !r.err &&
+      new RegExp(`^ffffff\\w: can't tell if it's live: the server at ${srv.url.replace(/\./g, "\\.")} answered 502, not itself \\(a proxy: the server behind it is down\\) for \\d+ s, till the wait's 8 s were up$`).test(r.out.split("\n").at(-1) ?? ""), r)
+    const json = await execute(["version", sha, "--wait", "--timeout", "8", "--json"], { url: srv.url })
+    const said = JSON.parse(json.out || "{}").live
+    check("vau --json: the same, as the answer's live: outcome unreachable", json.code === 1 && said?.outcome === "unreachable" && said.live === false && /can't tell/.test(said.why), json)
+    const once = await execute(["version"], { url: srv.url })
+    check("vau: a proxy's 502 with nothing in it is said, never an empty error", once.code === 1 && /answered 502, not itself/.test(once.err), once)
+    srv.close()
+  }
+  {
+    // (vau finds the server itself: one that answered is the one it waits on, never another found after it)
+    const a = await restartingServer(["cut", "refuse", "answer"]), b = await restartingServer(["answer"])
+    const c: Any = new Ctx({ url: a.url })
+    c.next = [b.url]
+    const ask = () => c.api("POST", "ops/app.version", { commit: sha, wait: true }).then(() => "answered", (e: Error) => e.message)
+    const got = await ask() // (cut)
+    await ask() // (cut again, and it goes down)
+    await ask() // (refused)
+    check("vau: a server found that dropped the call stays the one asked, restarting", /isn't answering at/.test(got) && b.asked.length === 0 && c.url === a.url, { got, b: b.asked.length, url: c.url })
+    a.close(); b.close()
+  }
+  {
+    // Another machine's, through this server: it rides out that machine's restart the same way.
+    const srv = await restartingServer(["cut", "proxy", "answer"])
+    const op = versionOps()[0]
+    const ctx: Any = { who: { client: "cli" }, api: async (_m: string, route: string) => (route === "machines" ? [{ id: "studio", label: "Studio", url: srv.url, online: true, self: false }] : null) }
+    const out: Any = await op.run({ commit: sha, wait: true, timeout: 60, machine: "studio" }, ctx)
+    check("machine: its wait rides out the restart and answers from its new server", out.machine === "studio" && out.live?.live === true, out)
+    check("machine: sent again with the time left and the time spent", srv.asked.length === 3 && srv.asked.every((b) => Math.abs(Number(b.timeout) + Number(b.waited ?? 0) - 60) <= 1), srv.asked)
+    srv.close()
+    const gone = await restartingServer(["proxy"])
+    ctx.api = async (_m: string, route: string) => (route === "machines" ? [{ id: "studio", label: "Studio", url: gone.url, online: true, self: false }] : null)
+    const lost: Any = await op.run({ commit: sha, wait: true, timeout: 6, machine: "studio" }, ctx)
+    check("machine: never back: unreachable, said", lost.live?.outcome === "unreachable" && /can't tell if it's live on Studio: Studio answered 502/.test(lost.live.why) && op.text!(lost, {}) === lost.live.why, lost)
+    gone.close()
+  }
+  {
+    // This server's own wait, sent again after a restart: it counts from the time already spent.
+    const pending = async () => ({ commit: sha, live: false, final: false, outcome: "pending" as const, why: "fffffff isn't live here yet: updates waiting: CI is running on it" })
+    const x = await waitLive(sha, 1, 30, pending)
+    check("local: a wait sent again times out counting what it waited before", x.outcome === "timeout" && x.waited! >= 31 && /still isn't live here after 3\d s of waiting \(timed out\): updates waiting/.test(x.why), x)
+  }
+})
 
 await exit(summary("running", t0))

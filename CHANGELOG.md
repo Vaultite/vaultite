@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **`vau version --wait` rides out the server's restart**: a wait cut by an update's restart, directly or through
+  Tailscale Serve (its 502), or through `--machine`, goes on with the time left and answers from the new server; when
+  the server stays down it says so and for how long, never an empty error. The verdict is the output's last line.
 - **A page just opened misses no change**: what changed between the app reading the vault and its live connection
   coming up is shown once it's up, as a page back from away already had it.
 - **Settings > About shows what's running**: the server's commit (a tap copies it), its subject and age, whether this

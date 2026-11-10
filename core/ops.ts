@@ -41,6 +41,10 @@ export type OpKind = "read" | "write" | "destructive"
  *  "claude-code"), how to name that agent to the user, and what a note or a log it writes says as its `source`. */
 export type Who = { client: string | null; agent: string | null; label: string; source: string }
 
+/** No answer from the server itself: none (it's restarting), or its proxy's (Tailscale Serve's 502 to 504, no error of
+ *  the server's in it). A long call (a wait) is sent again; anything else is the server's answer. */
+export const restarting = (status: number | null, body: unknown) => status === null || (status >= 502 && status <= 504 && !(body && typeof body === "object" && "error" in body))
+
 export type OpCtx = {
   vault: Vault
   who: Who
