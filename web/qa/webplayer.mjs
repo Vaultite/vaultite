@@ -96,6 +96,8 @@ const inPage = (code) => app.evaluate(({ webContents }, [code, src]) => {
   const wc = webContents.getAllWebContents().find((w) => new RegExp(src).test(w.getURL()))
   return wc ? wc.executeJavaScript(code, true) : null
 }, [code, OURS.source])
+/** Whether the test's page is still open (asked of the main process: a page being closed may never answer a script). */
+const pageOpen = () => app.evaluate(({ webContents }, src) => webContents.getAllWebContents().some((w) => !w.isDestroyed() && new RegExp(src).test(w.getURL())), OURS.source)
 const fills = (w) => w?.bounds && w.bounds.x === 0 && w.bounds.y === 0 && w.bounds.width === w.content.width && w.bounds.height === w.content.height
 const playing = async () => { const a = await inPage("document.querySelector('video').currentTime"); await wait(600); const b = await inPage("document.querySelector('video').currentTime"); return b > a }
 const send = (events) => app.evaluate(({ webContents }, [events, src]) => {
@@ -236,7 +238,8 @@ check("the window leaving full screen takes the page's out too", await until(() 
 await wait(300)
 check("the site's own full screen button, from the window: full screen and back", await (async () => {
   await inPage("document.getElementById('full').click()") // (the page's button: inside the player, under the fill)
-  const a = await until(async () => (await where()).full, 3000)
+  // (the window goes full screen before the page is told it is: exitFullscreen before that throws)
+  const a = await until(async () => (await where()).full && await inPage("!!document.fullscreenElement"), 3000)
   await inPage("document.exitFullscreen()")
   return a && await until(async () => !(await where()).full, 3000)
 })())
@@ -298,7 +301,7 @@ check("… and back", await until(() => inPage("!document.pictureInPictureElemen
 await more("Open as player")
 await until(async () => (await where()).in === "player", 5000)
 await ui({ action: "command", id: "tab:close" })
-check("closing its tab ends the page and its player", await until(async () => (await where()).players === 0 && !(await inPage("1")), 6000), await where())
+check("closing its tab ends the page and its player", await until(async () => (await where()).players === 0 && !(await pageOpen()), 6000), await where())
 
 // ---------- a video file ----------
 await ui({ action: "open", path: `view:web/${SITE}/clip.webm`, newTab: true })
