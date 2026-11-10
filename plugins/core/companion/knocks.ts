@@ -1,6 +1,7 @@
 // Knocks: a background session asking for the user in one line, without interrupting: the helper brings each up at a
 // pause, one at a time, by the notch with the sessions' presences. Plain functions: knockops.ts keeps them.
 import { agentTint } from "../../../core/agenttint.ts"
+import { hasNews, waitsOnUser } from "../../../core/attention.ts"
 
 export const URGENCIES = ["low", "normal", "high"] as const
 export type Urgency = typeof URGENCIES[number]
@@ -123,14 +124,14 @@ export const graceWaits = (k: Knock, p: { talking: boolean; still: number; locke
 
 // ---------- presences: the background sessions, small by the notch
 
-/** needs you: waits on the user (blocked, or a knock); ready: a job ready for review, its ready knock (calm); working;
- *  done: at rest a while, listed only. */
+/** needs you: waits on the user (blocked, or a knock); ready: something to look at (an answer unread, a job ready for
+ *  review, its ready knock: calm); working; done: at rest a while, listed only. */
 export type PresenceState = "needs you" | "ready" | "working" | "done"
 /** One session as the notch shows it: who, in what state, what it does now (`step`) or a knock's line; `terminal`: what
  *  a click opens and a Talk key held over it talks to. */
 export type Presence = { id: string; who: string; tint: string; state: PresenceState; since: number; step?: string; line?: string; knock?: string; urgency?: Urgency; terminal?: string; open?: string }
 /** A terminal as terminal.list gives it, the fields read here (`msg`: its agent's last step, in its own words). */
-export type TermRow = { id: string; agent?: string | null; state?: string; needs?: boolean; name?: string; title?: string; machineLabel?: string; msg?: string }
+export type TermRow = { id: string; agent?: string | null; state?: string; needs?: boolean; review?: boolean; name?: string; title?: string; machineLabel?: string; msg?: string }
 /** A done session stays a while, then goes. */
 export const DONE_MS = 15 * 60_000
 /** The groups as the island lists them, in order, in the Agents panel's words. */
@@ -139,7 +140,7 @@ export const PRESENCE_GROUPS: { state: PresenceState; label: string }[] = [
 ]
 const RANKED: Record<PresenceState, number> = { "needs you": 0, ready: 1, working: 2, done: 3 }
 const stateOf = (r: TermRow): PresenceState | null =>
-  r.state === "blocked" || r.needs ? "needs you" : r.state === "working" ? "working" : r.state === "done" || r.state === "error" ? "done" : null
+  waitsOnUser(r) ? "needs you" : r.state === "working" ? "working" : hasNews(r) ? "ready" : r.state === "done" || r.state === "error" ? "done" : null
 
 /** Each agent's terminal (`titles`: jobs'; `ready`: jobs' ready for review; `skip`: the companion's) and each live knock
  *  (a held one is ready, calm), in the Agents panel's order: needs you, ready, working oldest first, done newest first. */

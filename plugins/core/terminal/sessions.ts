@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react"
 import { agentOfTerminal, agentsOn, announceAgent, closeView, confirmDialog, notify, notifyError, op, openView, parseTerminal, type Agent, type AgentPhase, type AgentRun, type Dot } from "@vaultite"
 import { agentTint } from "../../../core/agenttint.ts"
+import { hasNews, waitsOnUser } from "../../../core/attention.ts"
 import { resumeTerminalId } from "../../../core/terminalids.ts"
 
 // Which terminal the keyboard was in last (for "End terminal session"), without loading the terminal: the lazy view
@@ -201,10 +202,7 @@ export const tintOf = (s: Session, a = agentIn(s)) => (!a || (resting(s) && !cac
 export const rankOf = (s: Session, a = agentIn(s)) => (!a ? 4 : needsYou(s, a) ? 0 : s.state === "working" ? 1 : hasNews(s) ? 2 : 3)
 /** It needs the user: its agent waits on them, blocked on a permission, a question or a login (a job needing an answer
  *  is one). A turn that ended with something to read is news (hasNews), not this. */
-export const needsYou = (s: Session, a = agentIn(s)) => !!a && s.state === "blocked"
-/** It has something for the user to look at, though it waits on nothing: an answer unread (its Inbox row), a job in it
- *  ready for review. */
-export const hasNews = (s: Session) => !!s.needs || !!s.review
+export const needsYou = (s: Session, a = agentIn(s)) => !!a && waitsOnUser(s)
 /** Its program says it's at rest: waiting for the next instruction, or finished (done or failed, its result to look at). */
 export const resting = (s: Session) => s.state === "idle" || s.state === "done" || s.state === "error"
 /** An agent's session as the Agents panel lists it (null: a plain shell), its menu aside; what folds either panel's row

@@ -104,6 +104,8 @@ export default async ($: VaultTest) => {
       both.find((p) => p.id === "claude-8")?.state === "ready" && both.find((p) => p.id === "claude-2")?.state === "needs you", both)
     check("presences: in the Agents panel's order and words", K.PRESENCE_GROUPS.map((g) => g.label).join() === "Needs you,Ready for review,Working,Done" &&
       both.map((p) => p.state).join() === "needs you,ready,working,done", both.map((p) => p.state))
+    const news = K.presencesOf([{ id: "claude-9", agent: "claude", state: "done", needs: true }, { id: "claude-10", agent: "claude", state: "idle", needs: true }], [], new Map(), T)
+    check("presences: an unread answer is something to look at (ready, calm), never needs you", news.map((p) => `${p.id}:${p.state}`).join() === "claude-9:ready,claude-10:ready", news)
     const later = K.presencesOf(rows, [], seen, T + K.DONE_MS + 1)
     check("presences: a done one goes after a while; a knock gone, its session is as its terminal says",
       !later.some((p) => p.id === "codex-3") && later.find((p) => p.id === "claude-1")?.state === "working", later)
