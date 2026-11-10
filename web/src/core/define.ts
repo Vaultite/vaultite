@@ -203,6 +203,8 @@ export type AgentRun = {
   session?: string
   /** When it last changed (ms), else when it started (`started`): the ones at rest, newest first. */
   at: number; started?: boolean
+  /** When it came to rest (ms), when that isn't `at` (a terminal's `at` is its start): when it folds (agentorder.ts). */
+  since?: number
   /** The tab it opens ("view:terminal/<id>"): its own tab if one shows it, else a new one. */
   to?: string
   /** Or what a click does (a cloud session's page); `newTab` with ⌘ or a middle-click. */

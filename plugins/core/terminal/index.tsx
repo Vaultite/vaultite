@@ -76,14 +76,15 @@ const tabsKey = () => JSON.stringify((getSessions().list ?? []).map((s) => {
 
 const openTab = (to: string) => openView(to, { newTab: !isViewOpen(to) })
 
-/** The status bar's agents at work and the ones that need the user (as Terminals says: blocked, or an Inbox row unread):
+/** The status bar's agents at work and the ones that need the user (as Terminals says: blocked, waiting on them):
  *  a click goes to the first that needs them, else Terminals. */
 function AgentsAtWork() {
   const list = useSessions().list ?? [], ai = useAi()
   const working = list.filter((s) => agentIn(s) && s.state === "working"), needs = list.filter((s) => needsYou(s))
   if (!ai || (!working.length && !needs.length)) return null
-  const tip = [working.length && `${working.length} working`, needs.length && `${needs.length} need you`].filter(Boolean).join(", ")
-  return <AmbientButton icon={Bot} text={needs.length ? `${working.length} · ${needs.length} need you` : working.length} tip={`Agents: ${tip}`}
+  const need = `${needs.length} need${needs.length === 1 ? "s" : ""} you`
+  const tip = [working.length && `${working.length} working`, needs.length && need].filter(Boolean).join(", ")
+  return <AmbientButton icon={Bot} text={needs.length ? `${working.length} · ${need}` : working.length} tip={`Agents: ${tip}`}
     tint={needs.length ? "var(--yellow)" : undefined} onClick={() => openTab(needs.length ? `view:terminal/${needs[0].id}` : "view:terminals")} />
 }
 

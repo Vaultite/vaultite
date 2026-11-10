@@ -68,6 +68,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `askMicrophone()`: Before recording: in the desktop app, macOS's permission for the microphone (false: refused).
 - `askMove(path, opts?)`: "Move file to…": pick a folder (fuzzy, "/" the top level), then move it there.
 - `askMoveMany(paths, opts?)`: "Move to…" for several: one folder for them all (one none of them is, nor is inside).
+- `asksNothing(r)`: It asks nothing of the user: at rest, nothing unread (an answer, a result ready for review), not failed.
 - `askText(o)`: The palette as a text field: Enter gives what's typed (trimmed; `label` names the row it makes), an empty Enter `onBlank` where there is one, Esc nothing.
 - `attachmentFolder(s, from)`: The folder a file pasted into the note `from` goes in: the File explorer's attachment folder (another app's when unset: core/filing.ts), else Attachments.
 - `backDetail()`: One sheet back (the Back button in a stacked sheet).
@@ -196,6 +197,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `drawnLink(el)`: The link drawn at `el` in rendered Markdown (a note's, a sheet's) and its text, or null.
 - `dropHighlightEmoji(md)`: Each `==🟢` at a highlight's start back to `==`, for text shown without its marks (previews, sorting).
 - `dropTab(item, d)`: Drop `item` there: a tab, a pane or a group moves, a file opens (a tab of its own in the list, or in a pane).
+- `EarlierRow({ count, open, className, … })`: A list's fold: "Earlier" and how many it holds, its chevron turned while open.
 - `edgeScroller(axis?)`: Scrolls a box while a drag holds the pointer near its edge, faster the closer: `near` on every move, `stop` when the pointer leaves or the drag ends.
 - `Editable({ value, set, placeholder, className, children })`: A value a block shows that can be changed in place (a person's context): click, type, Enter.
 - `editAt(path, line, opts?)`: Open a file in editing (its view may be on its way), the cursor at a 0-based line counting frontmatter (`col` in it, or `find` selected there), scrolled to; `from`: a line (numbered the same) on…
@@ -256,6 +258,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `foldGroup(id, collapsed?)`: Fold a tab group to its name, or open it (`collapsed` left out: the other way).
 - `foldGroupMoving(id)`: Fold or open a tab group as the user does it (its chip or row clicked): its tabs shrink into it, then it folds; or they grow out of it.
 - `foldInList(open, activate?)`: Open (true) or close the row's children, or step into the first child / out to the parent, tree-style; `activate` opens a leaf on → (Vim's l).
+- `foldsAway(r, now, shown, after?)`: It folds under Earlier (the Agents and Terminals panels): it has asked nothing for `after` (null: never) since it came to rest (never when that's unknown: a terminal's `at` is its start) and no…
 - `followLink(s, link, how, from?)`: Follow a link clicked in drawn Markdown (a file, heading or ^block, a detail, a #tag, a command, a web or app link).
 - `followMapTheme(map, onTheme)`: Follow light/dark and the colour scheme (data-scheme): reload the style so no old scheme colours linger.
 - `FormatCtx`
@@ -539,6 +542,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `PropType`
 - `PropTypes`
 - `put(path, body)`
+- `QUIET_AFTER`: How long a run that asks nothing stays in the panels' view once it came to rest, before it folds under Earlier, unless the user set otherwise (the Agents plugin's setting `fold`).
 - `range(from, n)`
 - `rawUrl(path, opts?)`: The address of a file's bytes (a vault path, or an outside file's absolute path).
 - `readFile(path)`: A file's text.
@@ -762,14 +766,17 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useDrag`: The drag, drawn again on every move; with `pick`, only when what it picks changes (`(d) => d?.item`: once a drag).
 - `useDropHit(id)`: What a drop on this target would do right now, while something is dragged over it: the same object while the answer is (targets answer anew on every move), so it's drawn again only when that changes.
 - `useDropTarget(id, at, drop, opts?)`: Take drops while mounted.
+- `useEarlier(key)`: Whether a list's Earlier is open (closed to start, kept per workspace under `key`), and what opens or closes it.
 - `useEnabled()`
 - `useFileIcon(store)`: A file's icon as the file tree draws it (its own, a dashboard's or a person's, in its colour), by path.
 - `useFocusedFile()`
+- `useGlide(box, order)`: The rows in `box` that change places (each `data-glide`, its key) glide there, so the eye can follow where one went.
 - `useGroupIn(ref, id)`: A tab group's chip or row, made just now: it comes in where it stays (its editor opens under it at once).
 - `useGroupLines(root, axis)`: `root`'s tab groups' lines: a group's chip is its `data-line-head` (its colour `--line`), each tab drawn in it (a drag's preview's, a closed one's copy) `data-line-of`; along the bar (x) or down…
 - `useGrowIn(ref, tab)`: A tab's element grows in as it's drawn: a new tab (springing), or one of a group just opened (as the others fold).
 - `useHeldFocus()`: holdFocus for a component that is the overlay: held from its first render (before an autoFocus field inside it takes the focus) until it unmounts.
 - `useHeldHeight(key, shrinks?, anyWidth?)`: holdHeight for a React element: put the ref on it.
+- `useHold(box)`: Whether the user is in the list, so nothing moves under them: the pointer over it, the keyboard in it, a menu opened from a row, a finger on it or its sidebar scrolling (a phone has no hover).
 - `useKeptCount(key, now, first?, most?)`: How many rows to draw while list `key` loads: `now` (how many it has; undefined while loading) is kept for next time, and while loading, what it had last time, at most `most` (`first`: never seen).
 - `useLive(path, version?, files?, every?)`: Live data from a plugin's route per mount (the last answer meanwhile), again when its cache or settings change, on a reconnect, `version`, vault files (`files`: any, or by path) and every `every`…
 - `useMachines()`: The machines, live (null until they're known; [] with the plugin off).
@@ -800,6 +807,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useSidebarMode()`
 - `useSidebars()`
 - `useSlide(box, order, axis)`: Slide `box`'s `[data-slide]` items (its children, `box` positioned) into `order`, their keys; those left out fade.
+- `useSteady(sorted, held, old)`: The rows in their order and which fold under Earlier (`old`); while `held`, as they last were: each keeps its place and its side of the fold (what it shows still changes), new ones come last.
 - `useStore()`: The store and the last error loading it, redrawn when either changes.
 - `useStoreWith(pick)`: What `pick` reads of the store (null till it loads), redrawn only when that changes: a slice the store didn't change keeps its object, so pick one (or a value), never a new array or object made…
 - `useSuggest(value, set, find, o?)`: Spread `input` on the field (with its own handlers given here) and draw `list` anywhere.

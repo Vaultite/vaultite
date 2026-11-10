@@ -16,8 +16,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   saying what it takes, instead of a job that fails a second in.
 - **A quieter Agents panel**: one list, no Needs you or Done headings, no filter or machine names: a small dot says
   where each agent stands and a short time ends its row (how it runs and where in its tooltip). Agents done and read
-  over half an hour ago fold under Earlier. Rows hold still while you're in the list (the pointer, a menu or a finger
-  on it) and glide to their new places once you leave. The filter and machines stay on the Agents tab.
+  over 5 minutes ago (Coding agents' setting Fold finished agents: from a minute to an hour, or never), with nothing
+  for you and no tab, fold under Earlier, in the Terminals panel too (never one
+  waiting on you, with an answer unread, failed or a job ready for review, which now shows the unread dot). Amber
+  "needs you" is only an agent waiting on you (a permission, a question, a login), in both panels and the status bar:
+  a finished turn not yet read is blue, unread. Rows hold still while you're in the list (the pointer, a menu or a
+  finger on it) and glide to their new places once you leave. The filter and machines stay on the Agents tab.
 - **`vau version --wait` rides out the server's restart**: a wait cut by an update's restart, directly or through
   Tailscale Serve (its 502), or through `--machine`, goes on with the time left and answers from the new server; when
   the server stays down it says so and for how long, never an empty error. The verdict is the output's last line.

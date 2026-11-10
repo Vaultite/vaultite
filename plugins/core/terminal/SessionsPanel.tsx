@@ -1,13 +1,16 @@
 // The Terminals panel: every shell the server runs (sessions outlive tabs: a closed tab only detaches), live, with
 // agents' states and other machines' sessions, the ones that need you first. Claude Code on the web's: Cloud sessions.
-import { useContext, useEffect, useRef, useState, useSyncExternalStore, type MouseEvent } from "react"
+import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent } from "react"
 import { Copy, MessagesSquare, Monitor, Plus, SquareTerminal, X } from "lucide-react"
 import {
-  capitalize, chooseDefaultPlace, choosePlace, cn, copyText, currentWorkspace, HeadingButton, isViewOpen, LoadingSidebarRows, menuBelow, menuFor, notify,
-  notifyError, onMachine, openAgent, openTerminal, openView, PanelFold, SidebarHeading, SidebarRow, startDrag, useAgents, useDrag, useKeptCount, useTerminalAccount,
-  useWorkspaceVersion, viewMenuItems, workspaceList, type Agent, type MenuItem, type SidebarCtx,
+  capitalize, chooseDefaultPlace, choosePlace, cn, copyText, currentWorkspace, EarlierRow, foldsAway, HeadingButton, isViewOpen, LoadingSidebarRows, menuBelow, menuFor, notify,
+  notifyError, onMachine, openAgent, openTerminal, openView, PanelFold, SidebarHeading, SidebarRow, startDrag, useAgents, useDrag, useEarlier, useGlide, useHold, useKeptCount,
+  useSteady, useTerminalAccount, useTick, useWorkspaceVersion, viewMenuItems, workspaceList, type Agent, type MenuItem, type SidebarCtx,
 } from "@vaultite"
-import { agentIn, cacheLeft, dotOf, endForGood, getSessions, iconOf, labelOf, meterText, needsYou, rankOf, resting, stateClass, stateTip, subscribeSessions, tintOf, type Session } from "./sessions"
+import {
+  agentIn, cacheLeft, dotOf, endForGood, getSessions, iconOf, labelOf, meterText, needsYou, rankOf, resting, runOf, stateClass, stateTip, subscribeSessions, tintOf, type Session,
+} from "./sessions"
+import { useFoldAfter } from "@plugins/agents/fold"
 
 /** The sessions, as the server says now (null until it answers; `refused`: this device may not have a shell): the one
  *  list the terminal tabs' names, colours and states come from too (sessions.ts). */
@@ -35,7 +38,7 @@ function Row({ s, open, tab, page, where }: { s: Session; open: boolean; tab: st
     <div onPointerDown={(e) => startDrag(e, { from: "row", to, label: labelOf(s, a) })} className={cn(dragged === to && "opacity-50")}>
     {/* Its icon and dot as its tab's; one that needs you bold, as an unread mail. */}
     <SidebarRow icon={iconOf(s, a) ?? SquareTerminal} iconClassName={stateClass(s, a)} tint={tintOf(s, a)} badge={dotOf(s, a)} tag={s.machineLabel && short(s.machineLabel)} label={labelOf(s, a)} open={open}
-      active={tab === to} tip={tip} more data-session={s.id} data-state={s.state} data-agent={a?.name} data-needs={needs ? "" : undefined}
+      active={tab === to} tip={tip} more data-session={s.id} data-glide={s.id} data-state={s.state} data-agent={a?.name} data-needs={needs ? "" : undefined}
       className={needs ? "font-semibold" : undefined}
       data-where={where}
       data-machine={s.machine}
@@ -104,51 +107,52 @@ function Meters({ s, tint }: { s: Session; tint?: string }) {
   )
 }
 
-/** The sessions split by workspace: the current one's (open in its tabs, or in no workspace's), then the ones only
- *  other workspaces show, with their names (by number order). Without Workspaces, all of them are `here`. */
-function byWorkspace(list: Session[]): { here: Session[]; other: { s: Session; where: string }[] } {
+/** The sessions only other workspaces' tabs show (by their place, `view:terminal/<id>`), with those workspaces' names (by
+ *  number order). Without Workspaces, none. */
+function elsewhere(): Map<string, string> {
   const desk = currentWorkspace()
-  if (!desk) return { here: list, other: [] }
+  const out = new Map<string, string[]>()
+  if (!desk) return new Map()
   const mine = new Set(desk.places)
-  const elsewhere = new Map<string, string[]>()
   for (const w of workspaceList()) {
     if (w.n === desk.n) continue
-    for (const p of w.places) if (p.startsWith("view:terminal/") && !mine.has(p)) elsewhere.set(p, [...(elsewhere.get(p) ?? []), w.label])
+    for (const p of w.places) if (p.startsWith("view:terminal/") && !mine.has(p)) out.set(p, [...(out.get(p) ?? []), w.label])
   }
-  const here: Session[] = [], other: { s: Session; where: string }[] = []
-  for (const s of list) {
-    const w = elsewhere.get(`view:terminal/${s.id}`)
-    if (w) other.push({ s, where: w.join(", ") }); else here.push(s)
-  }
-  return { here, other }
+  return new Map([...out].map(([p, names]) => [p, names.join(", ")]))
 }
 
-/** Sorted by state, as a mailbox's unread first (needs you, working, idle, plain shells), the server's order within
- *  each. While `held` (the pointer is over them) the order stays, new ones last, so no row moves out from under a click. */
-function useByState(list: Session[], held: boolean) {
-  const agents = useAgents()
-  const last = useRef<string[]>([])
-  if (held) {
-    const at = new Map(last.current.map((id, i) => [id, i]))
-    return [...list].sort((x, y) => (at.get(x.id) ?? Infinity) - (at.get(y.id) ?? Infinity))
-  }
-  const sorted = [...list].sort((x, y) => rankOf(x, agentIn(x, agents)) - rankOf(y, agentIn(y, agents)))
-  last.current = sorted.map((s) => s.id)
-  return sorted
-}
+const EARLIER = "terminal:earlier"
+const placeOf = (s: Session) => `view:terminal/${s.id}`
 
-/** The rows, the current workspace's first, then the others' under their heading. */
+/** The rows by state (rankOf), the current workspace's then the ones only other workspaces show; in the panel, an
+ *  agent's asking nothing a while, with no tab, folds under Earlier (foldsAway). None moves while the user is in it. */
 function Rows({ list, open, tab, page }: { list: Session[]; open: boolean; tab: string; page?: boolean }) {
   useWorkspaceVersion()
-  const [held, setHeld] = useState(false)
-  const { here, other } = byWorkspace(useByState(list, held))
+  const agents = useAgents()
+  const box = useRef<HTMLDivElement>(null)
+  const held = useHold(box)
+  const [unfolded, unfold] = useEarlier(EARLIER)
+  useTick(60_000, !page)
+  const now = Date.now(), others = elsewhere(), after = useFoldAfter()
+  const sorted = useMemo(() => [...list].sort((x, y) => rankOf(x, agentIn(x, agents)) - rankOf(y, agentIn(y, agents))), [list, agents])
+  const { front, earlier } = useSteady(sorted, held, (s) => {
+    const run = !page && !others.has(placeOf(s)) && runOf(s, agentIn(s, agents))
+    return !!run && foldsAway(run, now, isViewOpen(placeOf(s)), after)
+  })
+  const here = front.filter((s) => !others.has(placeOf(s))), other = front.filter((s) => others.has(placeOf(s)))
+  const folded = open && earlier.length > 0
+  const ids = (l: Session[]) => l.map((s) => s.id)
+  useGlide(box, [...ids(here), "|", ...(folded && unfolded ? ids(earlier) : []), "|", ...ids(other)].join("\n"))
+  const row = (s: Session) => <Row key={s.id} s={s} open={open} tab={tab} page={page} where={others.get(placeOf(s))} />
   return (
-    <div className="flex flex-col gap-px" onPointerEnter={() => setHeld(true)} onPointerLeave={() => setHeld(false)}>
-      {here.map((s) => <Row key={s.id} s={s} open={open} tab={tab} page={page} />)}
+    <div ref={box} className="flex flex-col gap-px" data-terminal-rows data-held={held || undefined}>
+      {here.map(row)}
+      {folded && <EarlierRow count={earlier.length} open={unfolded} onClick={unfold} data-terminals-earlier={unfolded ? "open" : "closed"} />}
+      {folded && unfolded && earlier.map(row)}
       {!!other.length && (open
-        ? <div data-terminals-elsewhere className={cn("flex h-6 items-end px-1.5 pb-0.5 text-[11px] font-medium text-tertiary max-md:h-8 max-md:text-[13px]", here.length && "mt-1")}>Other workspaces</div>
+        ? <div data-terminals-elsewhere data-glide="elsewhere" className={cn("flex h-6 items-end px-1.5 pb-0.5 text-[11px] font-medium text-tertiary max-md:h-8 max-md:text-[13px]", here.length && "mt-1")}>Other workspaces</div>
         : here.length > 0 && <div aria-hidden className="mx-auto my-1 h-px w-4 bg-border" />)}
-      {other.map(({ s, where }) => <Row key={s.id} s={s} open={open} tab={tab} page={page} where={where} />)}
+      {other.map(row)}
     </div>
   )
 }

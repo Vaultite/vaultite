@@ -24,7 +24,7 @@ import { bestFound, byLabel, checkMarks, type Found, isAnswer, type Mark, type R
 import { anchorsOf, inPicture, inSummoned, type Lane, screenNear, SUMMONED_PROMPT, summonedLane } from "./summoned.ts"
 import { languageIn } from "./spoken.ts"
 import { elevenUsage, voiceHere, voiceHereText, voiceOps } from "./voice.ts"
-import { type Job, type JobState, jobSpoken, jobTimingsText, landable } from "./jobs.ts"
+import { type Job, type JobState, jobSpoken, jobTimingsText, landable, terminalOf } from "./jobs.ts"
 import { jobTold } from "./jobnews.ts"
 import { knockOps } from "./knockops.ts"
 import { beforeLayer, FLIPS, layerOwner, readyNow } from "./proof.ts"
@@ -2793,6 +2793,15 @@ const jobs = jobOps(plugin, {
 })
 captureOps(plugin, jobs)
 teachOps(plugin)
+/** The terminals whose job is ready for review, as Terminal's list names them (another machine's `<id>@<machine>`):
+ *  its rows keep them in view, never folded away. */
+plugin.provide("companion:review", async () => {
+  const self = await plugin.ask<string | null>("machines:self", null)
+  return jobs.list().filter((j) => j.state === "ready for review" && j.terminal).map((j) => {
+    const t = terminalOf(j)
+    return self && t.endsWith(`@${self}`) ? t.slice(0, -self.length - 1) : t
+  })
+})
 // Knocks: background sessions asking for the user, one line at a pause, and their presences by the notch (knocks.ts).
 const knocks = knockOps(plugin, { toScreens, listening: () => screens.size > 0, jobs: () => jobs.list(), off: () => mode() === "off", hidden: () => plugin.settings().island === false })
 const liveEditing = liveEdits(plugin, {

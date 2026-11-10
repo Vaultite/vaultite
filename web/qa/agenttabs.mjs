@@ -47,16 +47,16 @@ await until(async () => !!(await D.$(`[data-session="${working.id}"]`)), 10000)
 const rows = await D.$$eval("[data-session]", (els) => els.map((e) => ({ id: e.dataset.session, needs: e.dataset.needs !== undefined, bold: e.className.includes("font-semibold"),
   dot: e.querySelector("[data-dot]")?.dataset.dot ?? null, icon: e.querySelector("svg")?.getAttribute("class") ?? "" })))
 const order = rows.map((r) => r.id)
-check("Terminals: the ones that need you first (waiting, then with an unread row), then working, then at rest, then shells",
-  JSON.stringify(order) === JSON.stringify([blocked.id, unseen.id, working.id, seen.id, failed.id, shell.id]), order)
+check("Terminals: the ones waiting on you first, then working, then one with an answer unread, then at rest, then shells",
+  JSON.stringify(order) === JSON.stringify([blocked.id, working.id, unseen.id, seen.id, failed.id, shell.id]), order)
 const row = (s) => rows.find((r) => r.id === s.id)
-check("Terminals: those that need you are bold", [blocked, unseen].every((s) => row(s)?.bold) && [working, seen, failed].every((s) => !row(s)?.bold), rows)
+check("Terminals: the one waiting on you is bold; a finished turn unread isn't", row(blocked)?.bold && row(blocked)?.needs && [working, unseen, seen, failed].every((s) => !row(s)?.bold && !row(s)?.needs), rows)
 const dots = Object.fromEntries([working, blocked, unseen, seen, failed].map((s) => [s.title, row(s)?.dot]))
-check("Terminals: Claude's logo on each, its state a dot: working, ask, unread, none, error",
+check("Terminals: Claude's logo on each, its state a dot: working, ask (amber: blocked), unread (blue: a finished turn unread), none, error",
   JSON.stringify(dots) === JSON.stringify({ "Working one": "working", "Blocked one": "ask", "Unseen one": "unread", "Seen one": null, "Failed one": "error" })
   && [working, seen].every((s) => !/working-dot|lucide-check/.test(row(s)?.icon)), dots)
 const ambient = await D.$eval('[data-status-items] > [data-status-key$="agents"]', (e) => e.innerText.trim()).catch(() => "")
-check("status bar: agents at work count what Terminals says needs you (blocked and an unread row)", ambient === "1 · 2 need you", ambient)
+check("status bar: agents at work count what Terminals says needs you (blocked, not an unread row)", ambient === "1 · 1 needs you", ambient)
 
 // ---------- tabs: each session opened from its row ----------
 for (const s of [working, blocked, unseen, seen, failed]) { await D.click(`[data-session="${s.id}"]`); await wait(400) }

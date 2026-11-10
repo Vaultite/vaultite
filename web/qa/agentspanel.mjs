@@ -1,8 +1,9 @@
 // The Agents panel (the terminals socket, the chats route and the machines stood in for): offered once in the right
-// sidebar, every agent in one flat list (needs you, working, done) with its state's glyph and a short time, older ones
-// folded under Earlier, the filter on the tab only, a click opening its tab, and a phone's drawer; rows holding still
-// while the pointer, a menu or a finger is in the list, and settling once it's let go. Writes the sidebars: throwaway
-// server only.
+// sidebar, every agent in one flat list (needs you, working, done) with its state's glyph and a short time, the ones
+// asking nothing a few minutes folded under Earlier (never one ready for review or unread: core/agentorder.ts), the
+// filter on the tab only, a click opening its tab, and a phone's drawer; rows holding still while the pointer, a menu or
+// a finger is in the list, and settling once it's let go (core/steadyrows.tsx). Writes the sidebars: throwaway server
+// only.
 //   node web/qa/agentspanel.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { execFileSync } from "node:child_process"
@@ -121,6 +122,33 @@ const menued = (await D.locator("[role=menu]").count()) > 0
 check("Agents: nor while a row's menu is open", menued && same(await ids(), resorted), { menued, ids: await ids() })
 await D.keyboard.press("Escape")
 check("Agents: and settles once it closes", await until(async () => same(await ids(), order), 5000), await ids())
+
+// ---------- what asks nothing folds a few minutes after it's done; what's for the user never does ----------
+const ago = (m) => now - m * 60000
+const Q = {
+  quiet: term(5, { state: "idle", since: ago(10), clients: 0, title: "Rename the Lighthouse assets" }),
+  review: term(6, { state: "idle", since: ago(10), clients: 0, review: true, title: "Check the Lighthouse build" }),
+  unread: term(7, { state: "done", since: ago(10), clients: 0, needs: true, title: "Answer about the Lighthouse beta" }),
+  failed: term(8, { state: "error", since: ago(10), clients: 0, title: "Deploy the Lighthouse site" }),
+  just: term(4, { state: "idle", since: ago(1), clients: 0, title: "Bump the Lighthouse version" }),
+}
+sayD(JSON.stringify({ t: "sessions", list: [...Object.values(T), ...Object.values(Q), shell] }))
+await away()
+const qid = (k) => `terminal:${Q[k].id}`
+const settled = await until(async () => (await ids()).includes(qid("just")) && (await earlier.innerText().catch(() => "")).replace(/\s+/g, " ").trim() === "Earlier 2", 5000)
+const front = await ids()
+check("Agents: a terminal done and read 10 min ago, with no tab, folds under Earlier; one just done stays", settled && !front.includes(qid("quiet")) && front.includes(qid("just")), front)
+check("Agents: one ready for review, one with an unread answer and one failed never fold", ["review", "unread", "failed"].every((k) => front.includes(qid(k))), front)
+const dotFor = async (k) => (await rowsOf(D, "[data-agents-panel]")).find((r) => r.id === qid(k))
+const [reviewRow, unreadRow] = [await dotFor("review"), await dotFor("unread")]
+check("Agents: one ready for review says so with the unread dot", reviewRow?.dot === "unread", reviewRow)
+check("Agents: a finished turn unread is blue (unread), not amber, and not bold", unreadRow?.dot === "unread" && unreadRow?.state === "done" && !unreadRow?.bold, unreadRow)
+await earlier.click()
+check("Agents: Earlier opens to show it", await until(async () => (await ids()).includes(qid("quiet")), 3000), await ids())
+await earlier.click()
+await wait(300)
+sayD(LIST)
+await until(async () => !(await ids()).includes(qid("just")), 5000)
 
 // ---------- a click opens it in its own place ----------
 const active = () => D.$eval("[data-tab-bar] [data-tab-id][aria-selected=true], [data-tab-bar] [data-tab-id][data-active]", (e) => e.dataset.tabId).catch(() => "")

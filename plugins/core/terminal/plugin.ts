@@ -1203,10 +1203,14 @@ let follow: ReturnType<typeof setInterval> | null = null
 type Listed = { id: string; agent: string | null; process: string; busy: boolean; clients: number; started: number; title?: string
   /** What its program is doing (state.ts); `kind` and `msg` (untrusted) as it said. */
   state?: SessionState; kind?: Kind; msg?: string
+  /** When its state last changed (ms). */
+  since?: number
   /** Its agent's command was typed into its shell, its program not in front yet: the shell's prompt is the agent's. */
   starting?: true
   /** The Inbox has a row for it that needs the user, unread (its service "inbox:needs"): an answer to read, a question. */
   needs?: true
+  /** A job in it is ready for review (the service "companion:review"): its result is the user's to look at. */
+  review?: true
   /** The note it was started on (terminal.run). */
   note?: string
   /** The name the user gave it (terminal.rename). */
@@ -1272,7 +1276,7 @@ async function readList(): Promise<Listed[]> {
         // (what an agent titled its terminal goes with it: a shell at its prompt keeps no title)
         title: front !== null ? titleOf(x.title ?? "") : undefined, backend: b.name,
         ...(x.cwd ? { cwd: x.cwd } : {}), ...(x.command ? { command: x.command } : {}), ...(x.cols ? { cols: x.cols, rows: x.rows } : {}), ...(x.activity ? { activity: x.activity } : {}),
-        ...(now ? { state: now.state, ...(now.kind ? { kind: now.kind } : {}), ...(now.msg ? { msg: now.msg } : {}) } : {}),
+        ...(now ? { state: now.state, since: t!.at, ...(now.kind ? { kind: now.kind } : {}), ...(now.msg ? { msg: now.msg } : {}) } : {}),
         ...(progressOf(x.id) ? { progress: progressOf(x.id)! } : {}),
         ...(t?.starting ? { starting: true as const } : {}),
         ...(noteOf(x.id) ? { note: noteOf(x.id) } : {}),
@@ -1317,7 +1321,9 @@ const remotes = new Map<string, { sock: WebSocket; list: Listed[] }>()
 
 async function list(local: boolean): Promise<Listed[]> {
   const mine = await localList()
-  return local ? mine : [...mine, ...[...remotes.values()].flatMap((r) => r.list)]
+  const all = local ? mine : [...mine, ...[...remotes.values()].flatMap((r) => r.list)]
+  const review = new Set(await plugin.ask<string[]>("companion:review", []))
+  return review.size ? all.map((x) => (review.has(x.id) ? { ...x, review: true as const } : x)) : all
 }
 
 /** Follow every other machine that has a terminal (and drop the ones that went away). */

@@ -205,6 +205,7 @@ by its path.
 - `companion:private` (companion): Whether a web page (its address, its container) is private: the companion never sees it, nor do watches.
 - `companion:hidden` (companion): Whether a note is private (the setting's folders, or companion: private in it).
 - `companion:watch` (companion): A watch's hit: a moment for the companion while it runs (true), else the watches' inbox (false).
+- `companion:review` (companion): The terminals whose job is ready for review, as Terminal's list names them (another machine's `<id>@<machine>`): its rows keep them in view, never folded away.
 - `companion:guest` (companion): A guest's app's socket (the share's gateway checked who and what): their threads, and what they say in them.
 - `context` (pages, workspaces): What `vau context` says of it: the pinned pages the user's window shows.
 - `delegate:lineage` (delegate)

@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react"
-import { agentOfTerminal, agentsOn, announceAgent, closeView, confirmDialog, notify, notifyError, op, openView, parseTerminal, type Agent, type AgentPhase, type Dot } from "@vaultite"
+import { agentOfTerminal, agentsOn, announceAgent, closeView, confirmDialog, notify, notifyError, op, openView, parseTerminal, type Agent, type AgentPhase, type AgentRun, type Dot } from "@vaultite"
+import { agentTint } from "../../../core/agenttint.ts"
 import { resumeTerminalId } from "../../../core/terminalids.ts"
 
 // Which terminal the keyboard was in last (for "End terminal session"), without loading the terminal: the lazy view
@@ -38,12 +39,16 @@ export type Session = { id: string; agent: string | null; process: string; busy?
   /** What its program is doing (OSC 7501, else its agent's hooks or a question on its screen): blocked is waiting on
    *  the user (`kind`: for a permission, an answer or a login), `msg` its words (the program's). */
   state?: "idle" | "working" | "blocked" | "done" | "error"; kind?: "permission" | "question" | "auth"; msg?: string
+  /** When its state last changed (ms): when it came to rest, once at rest. */
+  since?: number
   /** What its agent last said of its progress (inbox.progress): the Agents panel's step. */
   progress?: string
   /** Its agent's command was typed into its shell and its program isn't in front yet. */
   starting?: boolean
   /** The Inbox has a row for it that needs the user, unread: an answer to read, a question. */
   needs?: boolean
+  /** A job in it is ready for review (Companion's): something for the user to look at, though nothing's unread. */
+  review?: boolean
   /** The note it was started on (Dispatch, terminal.run): its tab opens beside that note's. */
   note?: string
   /** Its agent isn't installed on that machine. */
@@ -192,12 +197,28 @@ async function settle(ids: string[]) {
 /** A session's colour: its agent's own (Claude Code's orange), grey once at rest with its cache gone or a plain shell.
  *  Its state is its dot's (dotOf). */
 export const tintOf = (s: Session, a = agentIn(s)) => (!a || (resting(s) && !cacheIn(s)) ? undefined : a.tint)
-/** Where a session sorts, as a mailbox's unread first: needs you, working, idle (or saying nothing), a plain shell. */
-export const rankOf = (s: Session, a = agentIn(s)) => (!a ? 3 : needsYou(s, a) ? 0 : s.state === "working" ? 1 : 2)
-/** It needs the user: its agent waits on them (blocked), or its Inbox row does, unread (an answer to read, a question). */
-export const needsYou = (s: Session, a = agentIn(s)) => !!a && (s.state === "blocked" || !!s.needs)
+/** Where a session sorts: needs you, working, something for you to look at, idle (or saying nothing), a plain shell. */
+export const rankOf = (s: Session, a = agentIn(s)) => (!a ? 4 : needsYou(s, a) ? 0 : s.state === "working" ? 1 : hasNews(s) ? 2 : 3)
+/** It needs the user: its agent waits on them, blocked on a permission, a question or a login (a job needing an answer
+ *  is one). A turn that ended with something to read is news (hasNews), not this. */
+export const needsYou = (s: Session, a = agentIn(s)) => !!a && s.state === "blocked"
+/** It has something for the user to look at, though it waits on nothing: an answer unread (its Inbox row), a job in it
+ *  ready for review. */
+export const hasNews = (s: Session) => !!s.needs || !!s.review
 /** Its program says it's at rest: waiting for the next instruction, or finished (done or failed, its result to look at). */
 export const resting = (s: Session) => s.state === "idle" || s.state === "done" || s.state === "error"
+/** An agent's session as the Agents panel lists it (null: a plain shell), its menu aside; what folds either panel's row
+ *  away is foldsAway's word on this. A job ready for review is unread, as a cloud session's is. */
+export function runOf(s: Session, a = agentIn(s)): AgentRun | null {
+  if (!a) return null
+  const needs = needsYou(s, a)
+  return {
+    id: `terminal:${s.id}`, kind: "terminal", title: labelOf(s, a), step: s.progress || s.msg || undefined,
+    state: needs ? "needs" : s.state === "working" || s.starting ? "working" : "done", failed: s.state === "error", unread: !needs && hasNews(s),
+    machine: s.machine, where: s.machineLabel, agent: a.label, tint: `var(--${agentTint(s.id)})`, session: s.session, at: s.started, started: true,
+    ...(resting(s) && !s.starting && s.since ? { since: s.since } : {}), to: `view:terminal/${s.id}`,
+  }
+}
 
 // ---------- every session the server runs, live (one socket for the whole app) ----------
 // The Terminals panel, its tab and the terminal tabs' names and states all read this one list.
@@ -299,13 +320,13 @@ export function runningResume(id: string): string | null {
 /** Its icon: always its agent's, so a tab says which agent; what it's doing is its dot (dotOf). */
 export const iconOf = (s: Session, a = agentIn(s)): LucideIcon | null => a?.icon ?? null
 /** The dot on its icon: breathing while it works, yellow while it waits on you, blue with an answer to read (its Inbox
- *  row unread), red once it failed; none at rest. */
+ *  row unread, or a job in it ready for review), red once it failed; none at rest. */
 export function dotOf(s: Session, a = agentIn(s)): Dot {
   if (!a) return false
   if (s.state === "blocked") return "ask"
   if (s.state === "working") return "working"
   if (s.state === "error") return "error"
-  return s.needs ? "unread" : false
+  return hasNews(s) ? "unread" : false
 }
 /** Its icon's classes: at rest, dimmed as far as its prompt cache ran out (Agent meters). */
 export const stateClass = (s: Session, a = agentIn(s)) => (a && resting(s) ? DRAIN[Math.ceil(cacheIn(s) * 10)] : undefined)
@@ -333,4 +354,4 @@ export function meterText(s: Session) {
     cache && resting(s) && (left ? `cache ${left} min left` : "cache expired")].filter(Boolean).join(", ")
 }
 export const stateTip = (s: Session) => (s.missing ? " (not installed)" : s.state === "working" ? " (working)" : s.state === "blocked" ? " (waiting for you)"
-  : s.needs ? " (has something for you)" : s.state === "error" ? " (failed)" : s.state === "done" ? " (done)" : "")
+  : hasNews(s) ? " (has something for you)" : s.state === "error" ? " (failed)" : s.state === "done" ? " (done)" : "")

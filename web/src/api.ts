@@ -146,8 +146,10 @@ export { useViewsVersion, viewsChanged } from "@/core/plugins"
 export { devicePref } from "@/core/prefs"
 export { aiOn, setAi, useAi } from "@/core/ai"
 // Every coding agent on every machine, merged from the plugins' `agentRuns` (the Agents panel).
-export { orderRuns } from "@/core/agentorder"
+export { asksNothing, foldsAway, orderRuns, QUIET_AFTER } from "@/core/agentorder"
 export { useAgentRuns } from "@/core/agentruns"
+// A live list that holds still while the user is in it, and folds what asks nothing under Earlier (Agents, Terminals).
+export { EarlierRow, useEarlier, useGlide, useHold, useSteady } from "@/core/steadyrows"
 // A value module state keeps, that hooks and subscribers follow (safe while a module loads).
 export { cell, type Cell } from "@/core/signal"
 /** Taps answered at once: rows taken off a list before the write is done, a button's slow action, a value just chosen. */
