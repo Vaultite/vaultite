@@ -96,7 +96,9 @@ try {
     })
     check("the note offers the other side", other && /first line, from (a|b)/.test(other.text) && other.base !== null, v)
     const idea = (r: Any) => (r?.[0]?.conflicts ?? []).filter((c: Any) => c.path === "Notes/Idea.md")
-    const [, cs] = await op("b", "sync.conflicts")
+    // (b hears of the clash at its next trade with a, which may come after a showed it)
+    let cs: Any = null
+    await until(async () => { cs = (await op("b", "sync.conflicts"))[1]; return idea(cs).length === 1 })
     check("b lists the same clash", idea(cs).length === 1 && idea(cs)[0].conflict.id === other?.id.slice(5), cs)
     const [s] = await api("a", "POST", "sync-conflicts/resolve", { path: "Notes/Idea.md", id: other?.id })
     check("settled in the note", s === 200)
