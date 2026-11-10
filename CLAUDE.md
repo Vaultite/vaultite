@@ -46,8 +46,16 @@ is its point.
   real vault. Restart after backend changes; frontend changes need only `npm run build`.
 - Debugging: `vau errors` (the app's and the server's, with stacks), `vau activity --action failed` (calls agents and
   the CLI got wrong, and why); a server log line's `#<id>` is the request its errors name.
-- Done means `npm run build`, `npm run check`, `npm test` and `npm run smoke` pass (`npm run verify` runs what a branch
-  needs, `npm run verify -- --all` all four), and the change is live (`CLAUDE.local.md`).
+- Done means `npm run verify` passes (build, check, and the tests and QA the branch reaches) and the change is live.
+  `npm run verify -- --all` (`npm test` and smoke too) only for a change much rests on (a dependency, the build, the
+  test harness): say why. CI runs the full suite on three OSes on every push.
+- Long commands (verify, tests, QA, builds) run in the background, and you wait for the notice that they ended: no
+  `sleep` or `until` loop on their log.
+- Live: after the push, from the worktree, `bin/vau --url <server> version HEAD --wait` on the server following main
+  (`CLAUDE.local.md` names it; the worktree's vau, as an older one may not resolve `HEAD` or exit 1). It ends when the
+  commit is live, or exits 1 saying why not: CI red on it (fix forward), its checkout blocked (say so). That one
+  command is the check: don't watch CI, as a queued run is dropped when newer pushes arrive and may never finish.
+  `vau update` there looks now instead of at its next 3-minute look.
 - Throwaway server: `vau sandbox /tmp/v`, then `VAULTITE_VAULT=/tmp/v VAULTITE_LOCAL=/tmp/local PORT=<free> npm start`.
   On a copy of a real vault, first empty its machines (`.vaultite/plugins/machines/data.json`: `{"machines": []}`): with
   them it shares the real machines' tabs and state, and showing a terminal tab starts its agent (a `resume-` one resumes
@@ -60,13 +68,14 @@ is its point.
   Pattern kills (`pkill -f`, `killall`) hit the user's own apps.
 
 ## Working here
-- Work in a git worktree, never the main checkout: several sessions run at once (check `git worktree list` first),
-  and an always-on machine's checkout is its live server's. `git worktree add ../vaultite-<task> -b <task>`, symlink
-  `node_modules` (a real `npm install` in the worktree once you add a package, never into the checkout's), commit after
-  each working step. Land from the worktree, never by merging in a checkout: rebase onto `origin/main`, squash to one
-  commit, `git push origin HEAD:main`; then `git pull --ff-only` a checkout that isn't a live server's (a server
-  following main takes it itself), deploy, remove the worktree and its branch. Park work in commits: `git stash` is
-  shared by every worktree.
+- Work in a git worktree, never the main checkout: several sessions run at once (check `git worktree list` first).
+  `git worktree add ../vaultite-<task> -b <task>`, symlink `node_modules` (a real `npm install` in the worktree once you
+  add a package, never into the checkout's), commit after each working step. Land from the worktree, never by merging
+  in a checkout: rebase onto `origin/main`, squash to one commit, `git push origin HEAD:main`; then `git pull --ff-only`
+  a checkout that isn't a live server's, check it's live, remove the worktree and its branch. Park work in commits:
+  `git stash` is shared by every worktree.
+- A live server's checkout is its updater's alone, even on that machine: never edit, commit, pull or cherry-pick
+  there. A file left uncommitted or a commit not on main blocks its updates, and ships what CI never passed.
 - Comments: at most 2 lines, saying why, not what.
 - CHANGELOG.md: one user-facing line per change (edit an Unreleased line rather than add another).
 - **Commits**: Conventional Commits, `type(scope): summary` in at most 72 chars, saying what changed for the user

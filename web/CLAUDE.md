@@ -8,8 +8,10 @@
   plugin API while it loads (`npm run check` lists what may run at top level).
 - What the app starts with is a few files (vite.config.ts `bootChunks`; `tools/perf/startup.ts` counts them): a heavy
   library only a view needs (CodeMirror, dnd-kit) comes through `import()`, never a plugin's top level.
-- The app never shows a blank window: index.html shows the error. A vanished chunk reloads into the new build only when
-  nothing would be lost (`core/unsaved.ts`).
+- The app never shows a blank window: index.html shows the error.
+- A new build reaches open pages within a second (`core/builds.ts`): offered with Reload; a hidden page, or one whose
+  chunk vanished, reloads into it only when nothing would be lost (`core/unsaved.ts`). What a reload would cut registers there:
+  `trackUnsaved` (an edit not saved), `trackUnderway` (a recording).
 
 ## UI conventions
 - One sheet system: every detail view is `components/DetailSheet.tsx` via `openDetail(path)`; no other modals, sheets
