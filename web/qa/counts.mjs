@@ -1,6 +1,8 @@
 // Counts that only go down (React renders per keystroke, palette, outside change), against counts.json's limits;
 // --ratchet lowers a limit a win beat (commit it). WRITES: types into notes: throwaway server.
 //   node web/qa/counts.mjs <base url> [--ratchet] [--census]
+// What moves it most, so verify runs it on them: web/src/App.tsx, web/src/core/plugins.ts (plugins' backgrounds, redrawn on
+// every change), web/src/core/data.ts, web/src/editor/Editor.tsx; the nightly run has the rest.
 import fs from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"
 const { args: [B0], browser, check, done } = await qa(import.meta.url)

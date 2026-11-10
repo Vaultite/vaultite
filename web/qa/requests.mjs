@@ -2,6 +2,8 @@
 // as over the tailnet, against requests.json's limits; --ratchet lowers a limit a win beat (commit it), --print lists
 // the routes, --trace each API call and socket message. WRITES: types into a note: throwaway server.
 //   node web/qa/requests.mjs <base url> [--ratchet] [--print] [--trace]
+// What moves it most, so verify runs it on them: vite.config.ts (what loads at start), web/src/api.ts, web/src/core/data.ts,
+// web/src/core/live.ts; the nightly run has the rest.
 import fs from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"
 const { args: [B0], browser, check, watch, noErrors, done } = await qa(import.meta.url)
