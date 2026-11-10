@@ -161,23 +161,28 @@ async function exec(args: string[], env: Record<string, string>) {
 
 /** The web demo (demo.mjs): no server of ours (it's in the browser), on a build made for the run, never a stale one,
  *  with Vaultite's own plugins built in as vaultite.com builds it. */
-async function demo() {
+async function demo(): Promise<Ran> {
   const t = Date.now(), env = { VAULTITE_PLUGINS: OFFICIAL }
   const built = await exec([path.join(ROOT, "node_modules/vite/bin/vite.js"), "build", "-c", "vite.demo.config.ts", "--logLevel", "warn"], env)
-  if (built.code !== 0) return { ok: false, ms: Date.now() - t, out: `npm run build:demo failed:\n${built.text}` }
+  const setup = Date.now() - t
+  if (built.code !== 0) return { ok: false, setup, script: 0, out: `npm run build:demo failed:\n${built.text}` }
   const { code, text } = await exec([path.join(QA, "demo.mjs")], env)
-  return { ok: code === 0, ms: Date.now() - t, out: text }
+  return { ok: code === 0, setup, script: Date.now() - t - setup, out: text }
 }
 
-async function run(name: string): Promise<{ ok: boolean, ms: number, out: string, skipped?: string }> {
+/** A script's run: whether it passed, its output, and its time setting up (`template`: of it, the template's) and running. */
+type Ran = { ok: boolean, out: string, skipped?: string, setup: number, script: number, template?: number }
+async function run(name: string): Promise<Ran> {
   if (name === "demo") return demo()
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `vaultite-qa-${name}-`))
   const out = path.join(tmp, "out"), claude = claudeHome(path.join(tmp, "claude"))
   fs.mkdirSync(out)
   const servers: Server[] = []
-  const t = Date.now()
+  const began = Date.now()
+  let setup = 0, made = 0
   try {
     const from = await template(variant(name), boot)
+    made = Date.now() - began
     const { vault, local, repos } = copyTemplate(from, tmp)
     const env = envFor(claude, repos)
     if ((usage(name) as string[]).includes("<plugin index>")) Object.assign(env, { VAULTITE_PLUGIN_INDEX: path.join(tmp, "index.json"), VAULTITE_GITHUB: `file://${repos}` })
@@ -200,13 +205,14 @@ async function run(name: string): Promise<{ ok: boolean, ms: number, out: string
       else if (t === "plugin repos") args.push(path.join(tmp, "repos"))
       else if (/(out|shots|screenshots) dir$/.test(t)) args.push(out)
       else if (tok.startsWith("[")) break
-      else return { ok: true, ms: 0, out: "", skipped: `needs ${tok}` }
+      else return { ok: true, out: "", skipped: `needs ${tok}`, setup: Date.now() - began, script: 0 }
     }
+    setup = Date.now() - began
     const { code, text } = await exec([path.join(QA, `${name}.mjs`), ...args], { ...env, QA_BASE: main.base, VAULTITE_URL: main.base.slice(0, -1) })
     const skipped = code === 0 ? /^skipped: (.*)$/m.exec(text)?.[1] : undefined
-    return { ok: code === 0, ms: Date.now() - t, out: text, skipped }
+    return { ok: code === 0, out: text, skipped, setup, script: Date.now() - began - setup, template: made }
   } catch (e) {
-    return { ok: false, ms: Date.now() - t, out: String(e) }
+    return { ok: false, out: String(e), setup: setup || Date.now() - began, script: setup ? Date.now() - began - setup : 0, template: made }
   } finally {
     await Promise.all(servers.map(stop))
     // (a server still exiting may write one last file: retried, and a leftover temp folder never ends the run)
@@ -220,19 +226,24 @@ const running = new Set<string>()
 const next = () => { const i = queue.findIndex((n) => !running.has(n)); return i < 0 ? null : queue.splice(i, 1)[0] }
 const fails: string[] = []
 const runs = new Map<string, boolean[]>(), times = new Map<string, number>(), t0 = Date.now()
+const spent = { setup: 0, script: 0, waited: 0, waits: 0 }
+const sec = (ms: number) => `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)} s`
 await Promise.all(Array.from({ length: jobs }, async () => {
   while (queue.length) {
     const name = next()
     if (!name) { await sleep(1000); continue }
     running.add(name)
     // (this machine's QA slot, shared with other agents' runs, held for the script and its servers)
-    const release = await slot(name)
+    const asked = Date.now(), release = await slot(name), waited = Date.now() - asked
     const r = await run(name).finally(release)
     running.delete(name)
+    Object.assign(spent, { setup: spent.setup + r.setup, script: spent.script + r.script, waited: spent.waited + waited, waits: spent.waits + (waited >= 1000 ? 1 : 0) })
     if (r.skipped) { console.log(`skip ${name} (${r.skipped})`); continue }
     runs.set(name, [...runs.get(name) ?? [], r.ok])
-    times.set(name, r.ms)
-    console.log(`${r.ok ? "ok  " : "FAIL"} ${name} (${(r.ms / 1000).toFixed(0)} s)`)
+    times.set(name, r.setup + r.script)
+    // (where its time went: setting up, the script, and waiting for this machine's slot or for the template to be made)
+    const more = [(r.template ?? 0) >= 1000 && `template ${sec(r.template!)}`, waited >= 1000 && `slot wait ${sec(waited)}`].filter(Boolean)
+    console.log(`${r.ok ? "ok  " : "FAIL"} ${name} (${sec(r.setup + r.script)}: setup ${sec(r.setup)}, script ${sec(r.script)}${more.length ? `; ${more.join(", ")}` : ""})`)
     // (what failed, and the last check that passed: where a script that threw got to)
     const lines = r.out.trim().split("\n"), lastOk = lines.findLastIndex((l) => l.startsWith("ok"))
     if (!r.ok) fails.push(`--- ${name}\n${lines.filter((l, i) => i === lastOk || !l.startsWith("ok")).slice(-25).join("\n")}`)
@@ -242,5 +253,6 @@ record("qa", [...runs].map(([name, rs]) => ({ name, ms: times.get(name) ?? 0, ok
 const flaky = [...runs].filter(([, rs]) => rs.includes(true) && rs.includes(false)).map(([n]) => n)
 if (fails.length) console.log(`\n${fails.join("\n\n")}`)
 console.log(`\n${[...runs.values()].flat().filter(Boolean).length}/${[...runs.values()].flat().length} runs passed` +
-  (flaky.length ? `; flaky: ${flaky.join(", ")}` : ""))
+  (flaky.length ? `; flaky: ${flaky.join(", ")}` : "") + ` in ${sec(Date.now() - t0)}; summed over them: setup ${sec(spent.setup)}, scripts ${sec(spent.script)}, ` +
+  `slot waits ${sec(spent.waited)}${spent.waits ? ` (${spent.waits} waited)` : ""}`)
 process.exit(fails.length ? 1 : 0)

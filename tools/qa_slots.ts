@@ -27,6 +27,7 @@ export async function slot(label = path.basename(process.argv[1] ?? "qa")): Prom
   if (process.env.VAULTITE_QA_SLOT) return () => {}
   fs.mkdirSync(DIR, { recursive: true })
   let said = false
+  const asked = Date.now()
   for (;;) {
     for (let i = 0; i < SLOTS; i++) {
       const f = path.join(DIR, String(i))
@@ -36,6 +37,8 @@ export async function slot(label = path.basename(process.argv[1] ?? "qa")): Prom
         continue
       }
       mine.add(f)
+      // (how long, so a slow run shows the time it spent queued behind other agents' runs)
+      if (said) console.error(`${label}: got a QA slot after waiting ${((Date.now() - asked) / 1000).toFixed(0)} s`)
       return () => { mine.delete(f); if (owner(f) === process.pid) fs.rmSync(f, { force: true }) }
     }
     if (!said) { console.error(`${label}: waiting for a QA slot (all ${SLOTS} on this machine are running; VAULTITE_QA_SLOTS)`); said = true }
