@@ -17,6 +17,8 @@ export type CiRun = { path?: string; event?: string; status?: string; conclusion
 /** CI's workflow for pushes to main (.github/workflows/ci.yml): main is judged by its push and nightly runs, never by one
  *  run by hand (those are QA). */
 export const CI_WORKFLOW = ".github/workflows/ci.yml"
+/** The branches a try run pushes (tools/try.ts): ci.yml runs its tests there. */
+export const TRY_PREFIX = "try/"
 
 /** "owner/repo" of a GitHub remote's url, or null. */
 export const githubRepo = (url: string) => /github\.com[/:]([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/.exec(url.trim())?.[1] ?? null
@@ -93,9 +95,10 @@ export function githubCi(branch: string, runs: (api: string) => Promise<CiRun[] 
   }
 }
 
-/** CI's verdict from a commit's workflow runs: one of the push or nightly runs passed; red only when they all failed. */
+/** CI's verdict from a commit's workflow runs: one of the push or nightly runs passed; red only when they all failed. A
+ *  try run (tools/try.ts: a try/ branch, only the tests) is never main's. */
 export function ciOf(runs: CiRun[]): CiResult {
-  const ours = runs.filter((r) => (r.path ?? "").startsWith(CI_WORKFLOW) && (r.event === "push" || r.event === "schedule"))
+  const ours = runs.filter((r) => (r.path ?? "").startsWith(CI_WORKFLOW) && (r.event === "push" || r.event === "schedule") && !r.head_branch?.startsWith(TRY_PREFIX))
   if (ours.some((r) => r.status === "completed" && r.conclusion === "success")) return { ok: true, why: "CI passed", state: "passed" }
   if (!ours.length) return { ok: null, why: "CI hasn't run on it yet", state: "none" }
   if (ours.some((r) => r.status !== "completed")) return { ok: null, why: "CI is running on it", state: "running" }

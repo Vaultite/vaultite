@@ -51,6 +51,9 @@ is its point.
 - Done means `npm run verify` passes (build, check, and the tests and QA the branch reaches) and the change is live.
   `npm run verify -- --all` (`npm test` and smoke too) only for a change much rests on (a dependency, the build, the
   test harness): say why. CI runs the full suite on three OSes on every push.
+- A change likely to behave differently on Windows or Linux (processes, paths, file times, the CLI's shims, CI: verify
+  says so) is tried there before it lands: commit, then `npm run verify -- --try` (HEAD's tests on GitHub's three OSes
+  too, about 6 min, bounded). pre-push refuses one untried; `VAULTITE_TRY=skip` only while GitHub's runners are down.
 - Long commands (verify, tests, QA, builds) run in the background, and you wait for the notice that they ended: no
   `sleep` or `until` loop on their log.
 - Live: after the push, from the worktree, `bin/vau --url <server> version HEAD --wait` on the server following main

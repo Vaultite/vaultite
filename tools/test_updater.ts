@@ -16,6 +16,8 @@ check("a dispatched QA run doesn't", ciOf([run("workflow_dispatch", "completed",
 check("another workflow doesn't", ciOf([run("push", "completed", "success", ".github/workflows/release.yml")]).ok === null)
 check("running is not yet, failed is red", ciOf([run("push", "in_progress", null)]).ok === null && ciOf([run("push", "completed", "failure")]).ok === false)
 check("cancelled is not yet", ciOf([run("push", "completed", "cancelled")]).ok === null)
+check("a try run (tools/try.ts) isn't main's", ciOf([{ ...run("push", "completed", "success"), head_branch: "try/0123456789ab" }]).ok === null
+  && ciOf([{ ...run("push", "completed", "success"), head_branch: "main" }]).ok === true)
 check("each verdict says where CI is", [ciOf([run("push", "completed", "success")]), ciOf([run("push", "completed", "failure")]), ciOf([run("push", "in_progress", null)]), ciOf([]), ciOf([run("push", "completed", "cancelled")])]
   .map((r) => r.state).join() === "passed,failed,running,none,cancelled")
 

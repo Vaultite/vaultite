@@ -1,7 +1,33 @@
-// Main's red notice (mainci.ts) on made-up runs: what failed, since when, the pushes on top. No network. In npm test.
-import { check, exit, section, summary } from "./test/lib.ts"
+// What keeps main green across OSes: the OS-sensitive rule (osrisk.ts), main's red notice (mainci.ts) and the try run's
+// verdict and record (try.ts), on made-up runs and a scratch repository. No network. In npm test.
+import { check, exit, section, summary, tempDir } from "./test/lib.ts"
+import { spawnSync } from "node:child_process"
+import fs from "node:fs"
+import path from "node:path"
+import { gitEnv } from "../core/gitenv.ts"
+import { describe, osRisk, parseDiff } from "./osrisk.ts"
 import { failuresOf, mainRed, notice, redStreaks, type Api, type Run } from "./mainci.ts"
+import { checkPush, judge, riskKey, tried, tryHead } from "./try.ts"
 const t0 = Date.now()
+
+section("osrisk")
+const whys = (file: string, ...added: string[]) => osRisk([{ file, added }]).map((r) => r.why)
+check("a path built in the server is OS-sensitive", whys("core/files.ts", "const p = path.resolve(dir, name)").includes("builds or compares paths"))
+check("a process started is", whys("plugins/core/terminal/plugin.ts", "const child = spawn(shell, args)").includes("starts or stops a process"))
+check("a tool run by name is", whys("core/cli.ts", 'execFileSync("which", ["git"])').includes("runs a tool one OS lacks"))
+check("file times are", whys("core/live.ts", "if (st.mtimeMs > seen) changed.push(f)").includes("file system behaviour (modes, links, renames, watching, file times)"))
+check("a regex's exec isn't a process", whys("core/links.ts", "const m = re.exec(text)").length === 0)
+check("ordinary lines aren't", whys("core/links.ts", "const total = items.length + 1", "return { ok: true }").length === 0)
+check("the browser's code isn't (no OS APIs there)", whys("web/src/core/paths.ts", "const p = path.resolve(a)").length === 0 && whys("web/qa/tabs.mjs", "spawn(x)").length === 0)
+check("prose isn't", whys("CHANGELOG.md", "- spawn(x) path.resolve") .length === 0 && whys("core/docs/app.md", "spawn(") .length === 0)
+check("the CLI's shims, CI and the packages are, whatever their lines", whys("bin/vau.cmd")[0] === "the CLI's shims" && whys(".github/workflows/ci.yml")[0] === "CI itself" && whys("package.json")[0] === "the packages (native builds, scripts)")
+check("how tests start is", whys("tools/test/lib.ts")[0] === "how tests and the app's runs start" && whys("core/runtime.ts")[0] === "how tests and the app's runs start")
+const many = osRisk(["a", "b", "c", "d"].map((n) => ({ file: `core/${n}.ts`, added: ["path.relative(x, y)"] })))
+check("described by reason, a few files each", describe(many) === "builds or compares paths (core/a.ts, core/b.ts, core/c.ts and 1 more)", describe(many))
+const diff = ["diff --git a/core/x.ts b/core/x.ts", "--- a/core/x.ts", "+++ b/core/x.ts", "@@ -1 +1 @@", "-old", "+const p = path.resolve(a)",
+  "diff --git a/web/src/y.tsx b/web/src/y.tsx", "+++ b/web/src/y.tsx", "+spawn()"].join("\n")
+const parsed = parseDiff(diff)
+check("a diff's files and their added lines", parsed.length === 2 && parsed[0].file === "core/x.ts" && parsed[0].added.join() === "const p = path.resolve(a)" && osRisk(parsed).length === 1, parsed)
 
 section("mainci")
 const run = (id: number, conclusion: string | null, o: Partial<Run> = {}): Run => ({ id, path: ".github/workflows/ci.yml", event: "push", head_branch: "main", status: conclusion ? "completed" : "in_progress",
@@ -48,5 +74,87 @@ await mainRed(again.api, { cache, walk: 3 })
 check("a finished run's failures are asked once", !again.asked.some((p) => p.includes("runs/4/jobs")), again.asked)
 check("GitHub not answering: no notice", typeof await mainRed(github({ fail: true }).api) === "string")
 check("main green: nothing said", notice([]) === "" && (await mainRed(github({ runs: [run(2, "success"), run(1, "failure")] }).api) as unknown[]).length === 0)
+
+section("try")
+const jobs = [job(1, "test (ubuntu-24.04)", "success"), job(2, "test (windows-2025)", "failure"), job(3, "demo", "skipped")]
+const mine = [{ job: "test (windows-2025)", test: "test_vault.ts: live: walks" }]
+check("a job failing on its own is the change's", !judge(jobs, mine, []).ok && judge(jobs, mine, []).rows.find((r) => r.job === "test (windows-2025)")?.state === "FAIL")
+const asMain = judge(jobs, mine, [{ job: "test (windows-2025)", test: "test_vault.ts: live: walks" }])
+check("failing only as main does isn't, and a skipped job isn't counted", asMain.ok && asMain.rows.length === 2 && asMain.rows[1].state === "main's", asMain)
+check("a failure main has on another OS is still the change's", !judge(jobs, mine, [{ job: "test (macos-15)", test: "test_vault.ts: live: walks" }]).ok)
+check("a job that failed with nothing said (cancelled, timed out) is a failure", !judge([job(2, "test (windows-2025)", "cancelled")], [], []).ok)
+
+// A scratch repository: main, a branch with an OS-sensitive change, main moving on, the branch rebased.
+const repo = tempDir("tryrepo-")
+const git = (...a: string[]) => spawnSync("git", ["-c", "user.name=Alice Park", "-c", "user.email=alice@example.com", "-c", "commit.gpgsign=false", ...a], { cwd: repo, encoding: "utf8", env: gitEnv() }).stdout.trim()
+const write = (f: string, text: string) => { fs.mkdirSync(path.dirname(path.join(repo, f)), { recursive: true }); fs.writeFileSync(path.join(repo, f), text) }
+git("init", "-q", "-b", "main")
+write("core/files.ts", "export const a = 1\n"); write("README.md", "# Lighthouse\n"); git("add", "-A"); git("commit", "-qm", "base")
+const base = git("rev-parse", "HEAD")
+git("checkout", "-qb", "change")
+write("core/files.ts", "export const a = 1\nexport const p = (d: string) => path.resolve(d, 'x')\n"); write("CHANGELOG.md", "- a change\n"); git("add", "-A"); git("commit", "-qm", "change")
+const before = riskKey(repo, base, "HEAD")
+check("a change's OS-sensitive part has a key", !!before.key && before.risks.length === 1, before)
+check("pre-push stops it untried", /OS-sensitive and hasn't passed a try run: builds or compares paths \(core\/files\.ts\)/.test(checkPush(repo, base, git("rev-parse", "HEAD")) ?? ""))
+git("checkout", "-q", "main"); write("README.md", "# Lighthouse\n\nTides.\n"); write("CHANGELOG.md", "- another\n"); git("add", "-A"); git("commit", "-qm", "theirs")
+const moved = git("rev-parse", "HEAD")
+check("one not on top of main is left to the remote's refusal", checkPush(repo, moved, git("rev-parse", "change")) === null)
+git("checkout", "-q", "change"); git("rebase", "-q", "-X", "theirs", "main")
+const after = riskKey(repo, moved, "HEAD")
+check("rebased (a CHANGELOG conflict too), its key is the same", after.key === before.key, { before, after })
+const dir = path.join(repo, ".git", "vaultite", "tried")
+fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, `${before.key}.json`), "{}")
+check("tried, pre-push lets it go", tried(repo, before.key!) && checkPush(repo, moved, git("rev-parse", "HEAD")) === null)
+write("README.md", "# Lighthouse\n\nTides and boats.\n"); git("commit", "-qam", "docs")
+check("then a change elsewhere keeps it tried", checkPush(repo, moved, git("rev-parse", "HEAD")) === null)
+write("core/files.ts", "export const a = 2\nexport const p = (d: string) => path.resolve(d, 'y')\n"); git("commit", "-qam", "more")
+check("a new OS-sensitive change needs its own try", checkPush(repo, moved, git("rev-parse", "HEAD")) !== null)
+write("core/other.ts", "export const b = 2\n"); git("add", "-A"); git("commit", "-qm", "plain")
+check("nothing OS-sensitive: no key, nothing asked", riskKey(repo, git("rev-parse", "HEAD~1"), "HEAD").key === null && checkPush(repo, git("rev-parse", "HEAD~1"), git("rev-parse", "HEAD")) === null)
+
+// A whole try against a made-up GitHub, its origin a bare repository here: pushed, waited for, judged, deleted.
+const origin = tempDir("tryorigin-"), work = tempDir("trywork-")
+const at = (cwd: string) => (...a: string[]) => spawnSync("git", ["-c", "user.name=Alice Park", "-c", "user.email=alice@example.com", "-c", "commit.gpgsign=false", ...a], { cwd, encoding: "utf8", env: gitEnv() })
+at(origin)("init", "-q", "--bare", "-b", "main")
+const w = at(work)
+w("init", "-q", "-b", "main"); w("remote", "add", "origin", origin)
+fs.mkdirSync(path.join(work, "core")); fs.writeFileSync(path.join(work, "core/files.ts"), "export const a = 1\n"); w("add", "-A"); w("commit", "-qm", "base"); w("push", "-q", "origin", "main")
+w("checkout", "-qb", "change"); fs.writeFileSync(path.join(work, "core/files.ts"), "export const p = (d: string) => path.resolve(d)\n"); w("commit", "-qam", "change")
+type Script = { second?: "ok" | "FAIL"; never?: boolean }
+function fake(sc: Script) {
+  let attempt = 1
+  const asked: string[] = [], gh: string[] = []
+  const jobsOf = () => attempt === 1 ? [{ id: 1, name: "test (ubuntu-24.04)", status: "completed", conclusion: "success" }, { id: 2, name: "test (windows-2025)", status: sc.never ? "in_progress" : "completed", conclusion: sc.never ? null : "failure" }]
+    : [{ id: 1, name: "test (ubuntu-24.04)", status: "completed", conclusion: "success" }, { id: 3, name: "test (windows-2025)", status: "completed", conclusion: sc.second === "ok" ? "success" : "failure" }]
+  const api: Api = async <T>(p: string) => {
+    asked.push(p)
+    if (p.includes("/workflows/ci.yml/runs?branch=try")) return { workflow_runs: [{ id: 77, html_url: "https://github.com/x/runs/77" }] } as T
+    if (p.includes("/runs/77/jobs")) return { jobs: jobsOf() } as T
+    if (/runs\/77$/.test(p)) return { run_attempt: attempt } as T
+    if (p.includes("check-runs/")) return [failed("test_vault.ts", "terminal: teleport finds the checkout  -> C:/x")] as T
+    if (p.includes("/actions/runs?")) return { workflow_runs: [] } as T
+    return "not found"
+  }
+  const ghDid = (args: string[]) => { gh.push(args.join(" ")); if (args.at(-1)?.endsWith("rerun-failed-jobs")) attempt = 2; return true }
+  return { api, gh: ghDid, asked, ghAsked: gh }
+}
+const tryOnce = async (sc: Script, timeoutMin?: number) => {
+  const f = fake(sc), logs: string[] = []
+  const ok = await tryHead(work, { api: f.api, gh: f.gh, pause: async () => {}, log: (s) => logs.push(s), timeoutMin })
+  return { ok, logs: logs.join("\n"), f, left: at(origin)("for-each-ref", "--format=%(refname)", "refs/heads/try").stdout.trim() }
+}
+const sensitive = riskKey(work, w("merge-base", "main", "HEAD").stdout.trim(), "HEAD").key!
+const broken = await tryOnce({ second: "FAIL" })
+check("try: a failure that fails again is the change's: named with its test, not kept, its branch deleted", !broken.ok && /test \(windows-2025\) failed:\n\s+test_vault\.ts: terminal: teleport/.test(broken.logs)
+  && /try: FAIL on test \(windows-2025\)/.test(broken.logs) && !tried(work, sensitive) && broken.left === "", broken)
+const flaky = await tryOnce({ second: "ok" })
+check("try: a failure that passes the second time is flaky, said so; the try passes and is kept for pre-push", flaky.ok && /flaky, failed once then passed/.test(flaky.logs) && tried(work, sensitive)
+  && flaky.f.ghAsked.some((a) => a.endsWith("rerun-failed-jobs")) && flaky.left === "", flaky)
+fs.rmSync(path.join(work, ".git", "vaultite"), { recursive: true, force: true })
+const slow = await tryOnce({ never: true }, 0.0001)
+check("try: past its time, the run is cancelled and it fails loudly", !slow.ok && /timed out after .* min, cancelled/.test(slow.logs) && slow.f.ghAsked.some((a) => a.endsWith("/cancel")) && slow.left === "", slow)
+fs.writeFileSync(path.join(work, "core/files.ts"), "export const b = 2\n")
+const dirtyTry = await tryOnce({})
+check("try: uncommitted work isn't tried, nothing pushed", !dirtyTry.ok && /commit first/.test(dirtyTry.logs) && !dirtyTry.f.asked.length, dirtyTry)
 
 await exit(summary("ci", t0))

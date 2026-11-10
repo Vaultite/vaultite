@@ -1,9 +1,10 @@
 # Every push to main and pull request: build, check and the tests on Linux, macOS and Windows (windows.yml: Arm and the
 # app itself), and the web demo. Nightly: every UI QA script too, so they don't rot (`-f scripts="a b"`: only those).
+# A try/ branch (tools/try.ts: a change tried before it lands) runs the tests only, and never counts as main's.
 name: CI
 on:
   push:
-    branches: [main]
+    branches: [main, "try/**"]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -12,12 +13,12 @@ on:
         required: false
   schedule:
     - cron: "17 5 * * *" # (off the hour: GitHub delays, and may drop, runs on it)
-# A pull request's newer push cancels its older run; main's runs finish, the newest push waiting while one runs (GitHub
-# drops the ones queued between), so main's head is always tested and a run's failure names its commit. The nightly and
-# runs by hand (QA) queue apart, so a push never drops one.
+# A pull request's (or try branch's) newer push cancels its older run; main's runs finish, the newest push waiting while
+# one runs (GitHub drops the ones queued between), so main's head is always tested and a run's failure names its commit.
+# The nightly and runs by hand (QA) queue apart, so a push never drops one.
 concurrency:
   group: ci-${{ github.ref }}${{ github.event_name == 'schedule' && '-nightly' || github.event_name == 'workflow_dispatch' && '-qa' || '' }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/try/') }}
 jobs:
   test:
     strategy:
@@ -74,6 +75,7 @@ jobs:
   # The web demo as the site builds it (Vaultite's own plugins at their main), in Chrome and WebKit: a demo that can't
   # start is caught on the push that broke it, not at a release.
   demo:
+    if: ${{ !startsWith(github.ref, 'refs/heads/try/') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:

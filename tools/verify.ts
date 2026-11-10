@@ -1,17 +1,19 @@
 // What this branch changed, checked, timing each: build, check, then the tests and QA scripts it reaches (--all: every
-// test and smoke, the done gate). node tools/verify.ts [--base main] [--all] [--dry]
+// test and smoke; --try: HEAD on GitHub's runners too). node tools/verify.ts [--base main] [--all] [--try] [--dry]
 import "./test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
-import { spawnSync } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
 import fs from "node:fs"
+import os from "node:os"
 import path from "node:path"
 import { AREAS } from "./test/vault/index.ts"
 import { gitEnv } from "../core/gitenv.ts"
 import { qaFor } from "./qa_scripts.ts"
+import { changeRisk, describe } from "./osrisk.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "..")
 const argv = process.argv.slice(2)
 const base = argv.includes("--base") ? argv[argv.indexOf("--base") + 1] : "main"
-const dry = argv.includes("--dry"), all = argv.includes("--all")
+const dry = argv.includes("--dry"), all = argv.includes("--all"), tryIt = argv.includes("--try")
 const git = (...a: string[]) => spawnSync("git", a, { cwd: ROOT, encoding: "utf8", env: gitEnv() }).stdout.split("\n").filter(Boolean)
 const changed = [...new Set([...git("diff", "--name-only", `${base}...HEAD`), ...git("diff", "--name-only", "HEAD"),
   ...git("ls-files", "--others", "--exclude-standard")])].sort()
@@ -53,7 +55,16 @@ const stages: Stage[] = [
   ...(all ? [{ name: "test", cmd: ["npm", "test"], why: "--all" }, { name: "smoke", cmd: ["npm", "run", "smoke"], why: "--all" }] : picked),
 ]
 
+const risks = changeRisk(ROOT, base)
 console.log(`${changed.length} files changed since ${base}`)
+if (risks.length) console.log(`OS-sensitive: ${describe(risks)}`)
+// (a try waits on GitHub's runners: it starts first, the stages run meanwhile; its log is a file, not a pipe left unread)
+const tryLog = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "verify-try-")), "try.log")
+const trying = tryIt && !dry ? new Promise<{ ok: boolean; ms: number }>((resolve) => {
+  const t = Date.now(), fd = fs.openSync(tryLog, "w")
+  spawn(process.execPath, [path.join(ROOT, "tools/try.ts")], { cwd: ROOT, stdio: ["ignore", fd, fd] })
+    .on("close", (code) => resolve({ ok: code === 0, ms: Date.now() - t })).on("error", () => resolve({ ok: false, ms: Date.now() - t }))
+}) : null
 const rows: { name: string; why: string; s: string; ok: boolean | null }[] = []
 for (const st of stages) {
   if (dry) { rows.push({ name: st.name, why: st.why, s: "-", ok: null }); continue }
@@ -62,8 +73,15 @@ for (const st of stages) {
   const r = spawnSync(st.cmd[0], st.cmd.slice(1), { cwd: ROOT, stdio: "inherit" })
   rows.push({ name: st.name, why: st.why, s: ((Date.now() - t) / 1000).toFixed(1), ok: r.status === 0 })
 }
+if (trying) {
+  console.log("\n== try: tools/try.ts (HEAD on GitHub's Linux, macOS and Windows runners)")
+  const r = await trying
+  console.log(fs.readFileSync(tryLog, "utf8").trimEnd())
+  rows.push({ name: "try", why: "Linux, macOS and Windows (GitHub)", s: (r.ms / 1000).toFixed(1), ok: r.ok })
+} else if (tryIt) rows.push({ name: "try", why: "Linux, macOS and Windows (GitHub)", s: "-", ok: null })
 console.log("\nstage        time    result  what")
 for (const r of rows) console.log(`${r.name.padEnd(12)} ${r.s.padStart(6)}s  ${r.ok === null ? "-     " : r.ok ? "ok    " : "FAIL  "}  ${r.why.slice(0, 90)}`)
 const ok = rows.every((r) => r.ok !== false)
 console.log(`\n${dry ? "dry run" : ok ? "ok" : "FAIL"}`)
+if (risks.length && !tryIt) console.log("OS-sensitive (above): before it lands, try HEAD on Linux, macOS and Windows: npm run verify -- --try (pre-push asks)")
 process.exit(ok ? 0 : 1)
