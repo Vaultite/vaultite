@@ -4,7 +4,7 @@
 import fs from "node:fs"
 import http from "node:http"
 import path from "node:path"
-import { ROOT, launch, qa, wait } from "./lib/qa.mjs"
+import { ROOT, launch, qa, until, wait } from "./lib/qa.mjs"
 const { check, done } = await qa(import.meta.url, { chrome: false })
 
 const DIST = path.join(ROOT, "web/dist-demo")
@@ -39,7 +39,8 @@ async function visit(name, browser) {
   }, [method, p, body])
   const drawn = () => page.waitForFunction(() => document.getElementById("vau-boot-error") || document.querySelector("#root [data-pane]"), null, { timeout: 30000 })
     .then(() => page.evaluate(() => document.getElementById("vau-boot-error")?.innerText ?? "")).catch(() => "nothing drawn in 30 s")
-  const open = async (file) => { await leave(); await page.goto(`${base}#view/files/file/${encodeURIComponent(file)}`); await drawn(); await wait(1500) }
+  // (what a check needs drawn there, it waits for: WebKit on a busy runner takes seconds)
+  const open = async (file) => { await leave(); await page.goto(`${base}#view/files/file/${encodeURIComponent(file)}`); await drawn() }
   const shown = () => page.evaluate(() => document.querySelector("[data-pane]")?.innerText ?? "")
   const is = (what, ok, got) => check(`${name}: ${what}`, ok, got)
   /** How many of the sample's notes were last edited on each day (a calendar by `updated`). */
@@ -61,13 +62,13 @@ async function visit(name, browser) {
   is("the sample's pins are in the sidebar", await page.getByText("Start here").first().waitFor({ timeout: 10000 }).then(() => true, () => false))
 
   await open("Notes/Lisbon trip.md")
-  is("a note opens in the editor", (await page.locator(".cm-content").count()) > 0 && (await shown()).includes("Lisbon"), (await shown()).slice(0, 200))
+  is("a note opens in the editor", await until(async () => (await page.locator(".cm-content").count()) > 0 && (await shown()).includes("Lisbon"), 15000), (await shown()).slice(0, 200))
 
   // (the pages of Vaultite's own plugins the sample turns on, built in here)
   for (const name of ["Today", "Health", "Learning", "Projects"]) {
     const at = (await api("GET", "files")).json?.files?.find((f) => f.plugin === name.toLowerCase() && f.type === "dashboard")?.path
     await open(at)
-    is(`${name} draws its blocks`, at && (await page.locator("[data-pane] [data-block]").count()) > 0, at ?? `no ${name} page`)
+    is(`${name} draws its blocks`, !!at && await until(async () => (await page.locator("[data-pane] [data-block]").count()) > 0, 15000), at ?? `no ${name} page`)
   }
 
   const found = await api("POST", "ops/file.search", { query: "Lisbon" })
@@ -123,21 +124,22 @@ async function visit(name, browser) {
   is("...and Today, Health, Learning and Projects", ["Today", "Health", "Learning", "Projects"].every((n) => life?.on?.includes(n) && !life?.notInDemo?.includes(n)), life)
   const shelf = (await api("GET", "files")).json?.files?.find((f) => f.path.endsWith("Books/Piranesi.md"))?.path
   await open(shelf)
-  is("a book draws its block", (await page.locator("[data-pane] [data-block]").count()) > 0, shelf)
+  is("a book draws its block", await until(async () => (await page.locator("[data-pane] [data-block]").count()) > 0, 15000), shelf)
   const wanted = await api("POST", "bundles/import/preview", { file: { vaultite: "bundle", format: 1, id: "shelf", files: {
     "bundle.json": { name: "Shelf" }, "plugins.json": { enabled: ["books", "lighthouse"], install: { books: { source: "Vaultite/plugins/books" }, lighthouse: { source: "alicepark/lighthouse" } } } } } })
   const code = (wanted.json?.plan?.code ?? []).map((c) => c.id), missing = wanted.json?.plan?.plugins?.missing ?? []
   is("a bundle installing Vaultite's own gets the built-in one here, others' are left out", wanted.status === 200 && !code.length && !missing.includes("books"), wanted.json?.plan)
 
   const MARK = "Edited in the demo"
+  const saved = async () => JSON.stringify((await api("GET", "file?path=Notes%2FLisbon%20trip.md")).json).includes(MARK)
   await open("Notes/Lisbon trip.md")
-  await page.locator(".cm-content").click()
+  await page.locator(".cm-content").click({ timeout: 15000 })
   await page.keyboard.press("ControlOrMeta+End")
   await page.keyboard.type(`\n${MARK}\n`)
-  await wait(2500) // (autosave)
+  const autosaved = await until(saved, 15000)
   await open("Notes/Lisbon trip.md")
-  is("an edit is kept across a reload", (await shown()).includes(MARK), (await shown()).slice(-300))
-  is("and the server has it", JSON.stringify((await api("GET", "file?path=Notes%2FLisbon%20trip.md")).json).includes(MARK))
+  is("an edit is kept across a reload", await until(async () => (await shown()).includes(MARK), 15000), (await shown()).slice(-300))
+  is("and the server has it", autosaved && await saved())
   const kept = await editDays()
   is("and the notes' edit times came back with them", spread(kept), kept)
 
@@ -146,7 +148,7 @@ async function visit(name, browser) {
   await page.waitForURL((u) => !u.hash, { timeout: 10000 }).catch(() => {})
   await drawn()
   await open("Notes/Lisbon trip.md")
-  is("Reset brings the sample back", !(await shown()).includes(MARK) && (await shown()).includes("Lisbon"), (await shown()).slice(-300))
+  is("Reset brings the sample back", await until(async () => { const t = await shown(); return !t.includes(MARK) && t.includes("Lisbon") }, 15000), (await shown()).slice(-300))
 
   // A bundle's page (vaultite.com/b/...) has a demo of its own: what one leaves never shows on another's.
   const pageOf = async (id, hash = "") => { await leave(); await page.goto(`${base}?desk=page&bundle=gh:Vaultite/vaultite/bundles/${id}${hash}`); await drawn() }
