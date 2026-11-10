@@ -114,12 +114,17 @@ const id = (await win.evaluate(() => window.vaultite.web.list()))?.find((p) => p
 await win.click("[data-web-login]")
 const item = win.locator("[role=menuitem]", { hasText: "Lighthouse" }).first()
 check("its list: the site's entry, with its username", await item.isVisible().catch(() => false) && /alice/.test(await item.innerText()), await item.innerText().catch(() => ""))
+// (a Mac with Touch ID unlocks with it, a test's finger always confirming: VAULTITE_TEST_TOUCHID; elsewhere the file's password)
+const touchId = (await engine("passwords:status"))?.touchId === true
 await item.click()
-await win.waitForSelector("[data-confirm] input[type=password]", { timeout: 10000 })
-check("locked: picking it asks to unlock first", true)
-await win.fill("[data-confirm] input[type=password]", MAIN_PW)
-await win.click("[data-confirm-ok]")
+if (!touchId) {
+  await win.waitForSelector("[data-confirm] input[type=password]", { timeout: 10000 })
+  check("locked: picking it asks to unlock first", true)
+  await win.fill("[data-confirm] input[type=password]", MAIN_PW)
+  await win.click("[data-confirm-ok]")
+}
 const filled = await until(async () => { const v = await inPage("[user.value, pw.value]"); return v?.[1] ? v : null }, 15000)
+if (touchId) check("locked: picking it unlocks with Touch ID first, no password asked", !!filled && !(await win.locator("[data-confirm]").count()))
 check("… unlocked, it fills the username and password", filled?.[0] === "alice" && filled?.[1] === SECRET, filled && [filled[0], filled[1] === SECRET])
 check("… and the passwords are unlocked", (await engine("passwords:status"))?.locked === false)
 
