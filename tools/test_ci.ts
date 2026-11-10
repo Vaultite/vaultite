@@ -21,6 +21,7 @@ check("ordinary lines aren't", whys("core/links.ts", "const total = items.length
 check("the browser's code isn't (no OS APIs there)", whys("web/src/core/paths.ts", "const p = path.resolve(a)").length === 0 && whys("web/qa/tabs.mjs", "spawn(x)").length === 0)
 check("prose isn't", whys("CHANGELOG.md", "- spawn(x) path.resolve") .length === 0 && whys("core/docs/app.md", "spawn(") .length === 0)
 check("the CLI's shims, CI and the packages are, whatever their lines", whys("bin/vau.cmd")[0] === "the CLI's shims" && whys(".github/workflows/ci.yml")[0] === "CI itself" && whys("package.json")[0] === "the packages (native builds, scripts)")
+check("the native helpers are, their Swift too (CI's macOS has an older Xcode)", whys("electron/voice.swift")[0] === "the native helpers" && whys("tools/build_helpers.ts")[0] === "the native helpers")
 check("how tests start is", whys("tools/test/lib.ts")[0] === "how tests and the app's runs start" && whys("core/runtime.ts")[0] === "how tests and the app's runs start")
 const many = osRisk(["a", "b", "c", "d"].map((n) => ({ file: `core/${n}.ts`, added: ["path.relative(x, y)"] })))
 check("described by reason, a few files each", describe(many) === "builds or compares paths (core/a.ts, core/b.ts, core/c.ts and 1 more)", describe(many))

@@ -16,8 +16,8 @@ const FILES: [RegExp, string][] = [
   [/^\.github\//, "CI itself"],
   [/^package(-lock)?\.json$/, "the packages (native builds, scripts)"],
   [/\.(sh|ps1|cmd|bat)$/, "a shell script"],
-  // (not the helpers' Swift: it builds and runs on macOS only, the Mac it was made on)
-  [/^tools\/build_helpers\.ts$|^electron\/[\w-]+-build\.ts$/, "how the native helpers are built"],
+  // (the helpers' Swift too: CI's macOS builds it with an older Xcode than the Mac it was made on)
+  [/^tools\/build_helpers\.ts$|^electron\/[\w-]+-build\.ts$|^electron\/[^/]+\.(swift|m)$/, "the native helpers"],
   [/^tools\/(test|build)\.ts$|^tools\/test\/(lib|isolate|vault\/harness)\.ts$|^core\/(runtime|testrun|gitenv|sessionenv)\.ts$/, "how tests and the app's runs start"],
 ]
 
