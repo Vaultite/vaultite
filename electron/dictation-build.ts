@@ -18,7 +18,10 @@ const LIB = "libctranscribe.dylib", LIB_ID = `@executable_path/${LIB}`
 /** transcribe.cpp's macOS framework (universal), downloaded once and checked against its pinned hash; null without it. */
 async function framework(): Promise<string | null> {
   const dir = path.join(CACHE, "TranscribeCpp.xcframework", "macos-arm64_x86_64")
-  if (fs.existsSync(path.join(dir, FRAMEWORK))) return dir
+  // (whole only with its module map: macOS's temp cleaner takes files untouched for days and leaves their folders)
+  const whole = () => fs.existsSync(path.join(dir, FRAMEWORK, "Modules", "module.modulemap"))
+  if (whole()) return dir
+  fs.rmSync(CACHE, { recursive: true, force: true })
   try {
     const res = await fetch(ZIP_URL)
     if (!res.ok) throw new Error(`${res.status}`)
@@ -30,7 +33,7 @@ async function framework(): Promise<string | null> {
     const r = await run("/usr/bin/ditto", ["-x", "-k", zip, CACHE])
     fs.rmSync(zip, { force: true })
     if (!r.ok) throw new Error(r.err)
-    return fs.existsSync(path.join(dir, FRAMEWORK)) ? dir : null
+    return whole() ? dir : null
   } catch (e) {
     console.warn(`dictation: Parakeet left out (transcribe.cpp ${TRANSCRIBE.version}: ${(e as Error).message})`)
     return null
