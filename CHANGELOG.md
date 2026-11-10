@@ -36,6 +36,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   uncommitted files or the commits not on the branch.
 - **Claude chats show each answer once**: a chat opened just as its session changed (a turn ending, a new title) no
   longer lists its answers a second time below the conversation.
+- **The companion knows why it's silent**: asked why it isn't speaking, it says what it is (an app with the mic open
+  read as a call, its voice off, the realtime voice out of credits) instead of guessing.
+- **Quiet for a call, said plainly**: the companion's box says why it's quiet, naming the app with your mic ("Quiet:
+  Chrome has your mic"), with Not a call to have it speak again until that app lets go. Its play button turns to Stop
+  while an answer is said. Apps that keep the mic open all day (Krisp, SoundSource) and a tab holding it for hours no
+  longer count as a call.
 - **Live editing shows each change as you ask**: a job asked over a preview you're watching edits the checkout
   serving it, so the page reloads as it goes, with no worktree, demo or ready knock in the way.
 - **Companion tours stop cleanly when they can't play**: a tour whose things aren't on your screen says so once and

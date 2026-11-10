@@ -21,12 +21,19 @@ const BROWSERS: Record<string, string> = {
   "company.thebrowser.Browser": "Arc", "com.microsoft.edgemac": "Edge", "com.brave.Browser": "Brave", "com.vivaldi.Vivaldi": "Vivaldi",
   "com.operasoftware.Opera": "Opera", "com.openai.atlas": "ChatGPT Atlas",
 }
+/** Apps that keep the mic open all day for the user's own sake (noise filters, audio routers, mic mixers): never a call. */
+const ALWAYS_ON = [/krisp/i, /^com\.rogueamoeba\.(soundsource|loopback)/i, /^com\.elgato\.wavelink/i, /^com\.reincubate\.camo/i, /nvidia.*broadcast/i, /^com\.bzg\.boom/i]
 /** Dictation apps hold the mic a moment at a time: never a call. */
 const DICTATION = [/wispr/i, /superwhisper/i, /macwhisper/i, /vorssaint/i, /voiceink/i, /aqua\.?voice/i, /^com\.apple\.(CoreSpeech|corespeechd|assistantd|SpeechRecognitionCore|siri)/i]
 /** Another app holding the mic this long is a call or a recording (OBS, Voice Memos...): quiet then too. */
 export const HELD_MS = 5000
 /** A call's mic gone quiet stays a call this long (a page's mute stops its mic). */
 export const GRACE_MS = 15_000
+/** A browser or another app holding the mic longer than this is stuck (a tab that never let go), not a call; an app for
+ *  calls never is (a long hangout). */
+export const STUCK_MS = 3 * 3600_000
+/** An app excused ("Not a call") counts again once it let go of the mic this long (a blip isn't a let-go). */
+export const LET_GO_MS = 3000
 
 /** The base app of a helper's bundle (com.google.Chrome.helper -> com.google.Chrome). */
 const base = (b: string) => b.replace(/\.helper(\.[\w.-]+)?$/i, "").replace(/\.(renderer|gpu|plugin)$/i, "")
@@ -43,27 +50,34 @@ function who(u: MicUser) {
 function ignored(u: MicUser, own: Set<number>) {
   if (own.has(u.pid) || u.chain.some((p) => own.has(p))) return true
   const b = [u.bundle, u.appBundle].join(" ")
-  if (/vaultite/i.test(b) || DICTATION.some((r) => r.test(u.bundle) || r.test(u.appBundle) || r.test(u.app))) return true
+  if (/vaultite/i.test(b) || [...DICTATION, ...ALWAYS_ON].some((r) => r.test(u.bundle) || r.test(u.appBundle) || r.test(u.app))) return true
   const w = who(u)
   // (the system's daemons open the mic for Siri and such; its call apps are named above)
   return w.kind === "other" && /^com\.apple\./.test(w.bundle) && !/VoiceMemos|QuickTimePlayerX|Photo ?Booth/i.test(w.bundle)
 }
 
-/** The call now: an app for calls opening the mic is on one at once, another once it held it HELD_MS (`first`: since
- *  when, the caller's); it ends GRACE_MS after its mic stops (an app for calls: once it stops playing sound too). */
-export function callFrom(users: MicUser[], own: Set<number>, was: Call | null, first: Map<string, number>, now: number): Call | null {
-  const open = users.filter((u) => u.input && !ignored(u, own)).map((u) => ({ u, w: who(u) }))
-  for (const k of [...first.keys()]) if (!open.some((o) => o.w.bundle === k)) first.delete(k)
-  for (const o of open) if (!first.has(o.w.bundle)) first.set(o.w.bundle, now)
+/** The call now: a call app on the mic at once, another after HELD_MS till STUCK_MS (`first`: since when); over GRACE_MS
+ *  after its mic stops. `excused`: apps said not on a call (bundle: last seen on the mic), out till they let go of it. */
+export function callFrom(users: MicUser[], own: Set<number>, was: Call | null, first: Map<string, number>, now: number, excused = new Map<string, number>()): Call | null {
+  const held = users.filter((u) => u.input && !ignored(u, own)).map((u) => ({ u, w: who(u) }))
+  for (const k of [...first.keys()]) if (!held.some((o) => o.w.bundle === k)) first.delete(k)
+  for (const o of held) if (!first.has(o.w.bundle)) first.set(o.w.bundle, now)
+  for (const [k, seen] of excused) if (held.some((o) => o.w.bundle === k)) excused.set(k, now); else if (now - seen >= LET_GO_MS) excused.delete(k)
+  const open = held.filter((o) => !excused.has(o.w.bundle) && (o.w.kind === "call" || now - first.get(o.w.bundle)! < STUCK_MS))
+  if (was && excused.has(was.bundle)) was = null
   // (the call's own app first, so it keeps its name while another opens the mic)
   const on = open.find((o) => o.w.bundle === was?.bundle) ?? open.find((o) => o.w.kind !== "other") ?? open.find((o) => now - first.get(o.w.bundle)! >= HELD_MS)
   if (on) return was?.bundle === on.w.bundle ? { ...was, heard: now } : { app: on.w.app, bundle: on.w.bundle, since: now, heard: now }
   if (!was) return null
+  // (still holding the mic but stuck: over at once)
+  if (held.some((o) => o.w.bundle === was!.bundle)) return null
   // (a call app still playing the call's sound: muted, not hung up)
-  const playing = users.some((u) => u.output && !ignored(u, own) && who(u).bundle === was.bundle && who(u).kind === "call")
+  const playing = users.some((u) => u.output && !ignored(u, own) && who(u).bundle === was!.bundle && who(u).kind === "call")
   if (playing) return { ...was, heard: now }
   return now - was.heard < GRACE_MS ? was : null
 }
 
 /** The call in a few words, for `vau companion status`. */
 export const callSaid = (c: Call | null) => (c ? (c.app === "a phone call" ? "on a phone call" : `on a call in ${c.app}`) : "")
+/** Why it's quiet, at a glance in its box: the app holding the mic named. */
+export const callShown = (app: string) => (app === "a phone call" ? "Quiet: you're on a phone call" : `Quiet: ${app} has your mic`)

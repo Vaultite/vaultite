@@ -7,7 +7,7 @@ export type ChatItem = { id: string; kind: string; text?: string; t: number; que
 
 const ICON = "grid size-6 shrink-0 cursor-pointer place-items-center rounded text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground [@media(pointer:coarse)]:size-9"
 
-export function Chat({ name, tint, items, draft, setDraft, send, close, more, words, time, actions, tools, busy, focus, placeholder, phone, windowed, className, style }: {
+export function Chat({ name, tint, items, draft, setDraft, send, close, more, words, time, actions, tools, notice, busy, focus, placeholder, phone, windowed, className, style }: {
   name: string; tint: string
   items: ChatItem[]
   draft: string; setDraft: (s: string) => void; send: () => void; close: () => void
@@ -19,6 +19,8 @@ export function Chat({ name, tint, items, draft, setDraft, send, close, more, wo
   actions?: (n: ChatItem) => ReactNode
   /** Beside the box (the screen's microphone). */
   tools?: ReactNode
+  /** A line above the box, on its own (the screen's: why its voice is quiet). */
+  notice?: ReactNode
   /** At work on what it was asked: its answer is on its way. */
   busy?: boolean
   focus: boolean
@@ -61,7 +63,8 @@ export function Chat({ name, tint, items, draft, setDraft, send, close, more, wo
           {busy && <div data-companion-busy className="pb-2.5 pl-0.5" aria-label={`${name} is thinking`}><span className="companion-dots" style={{ color: tint }}><i /><i /><i /></span></div>}
         </div>
       )}
-      <div className={`flex items-center ${items.length > 0 || busy ? "border-t border-border/60" : ""}`}>
+      {notice}
+      <div className={`flex items-center ${items.length > 0 || busy || notice ? "border-t border-border/60" : ""}`}>
         <input autoFocus={focus} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={placeholder ?? `Ask ${name}`} enterKeyHint="send"
           onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); send() } else if (e.key === "Escape") { e.preventDefault(); close() } }}
           className="h-9 min-w-0 flex-1 bg-transparent px-3 text-[13.5px] outline-none [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[17px]" />

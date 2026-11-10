@@ -61,7 +61,7 @@
   one lock; a scripted copy hears a file, never the microphone (or, where no recognizer is, as on macOS 15, VAULTITE_DICTATION_TEXT's words), and where that lock is held (the user's app runs) its QA
   (web/qa/helper.mjs) is skipped unless VAULTITE_QA_LIVE=1. Each Talk-key press is logged (presslog.ts:
   userData/talk/talk-<day>.jsonl, a missed press's audio beside it): a press that went nowhere can be traced, and one
-  that went shows its answer's first sound (`sound`: whose voice, ms after let-go), a voice failing over and one saying nothing (`voice-silent`: a notice says so once, and the answer shows in its box), one kept quiet for a call (`quiet`: calllogic.ts); `stt` names
+  that went shows its answer's first sound (`sound`: whose voice, ms after let-go), a voice failing over and one saying nothing (`voice-silent`: a notice says so once, and the answer shows in its box), one kept quiet for a call (`quiet`: calllogic.ts; `not-a-call`, its box's button pressed); `stt` names
   the recognizer that heard it (`soniox`, else this Mac's with `why`), `stt-fallback` one failing mid-press; its `mic`
   and `micWhy` the input device and why, `mic-change` one that went mid-press.
 - A dictation that leaves its window moves to the helper (dictation.ts `handOver`, the page keeps where it began till its

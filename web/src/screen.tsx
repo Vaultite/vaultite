@@ -2,7 +2,7 @@
 // their bubbles (a click opens #panel, which takes the keyboard), the dictation pill. Nothing rests here.
 import { StrictMode, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createRoot } from "react-dom/client"
-import { Check, CircleHelp, Mic, Volume2 } from "lucide-react"
+import { Check, CircleHelp, Mic, Play, Square, VolumeOff } from "lucide-react"
 import { Marked } from "marked"
 import "./index.css"
 import { makePill } from "@/core/pill"
@@ -50,8 +50,10 @@ type At = { agents: Record<string, number[]>; summon: [number, number] | null; l
 type PanelData = { name: string; tint: string; items: ChatItem[]; busy?: boolean; words?: { text: string; listening: boolean; done?: boolean; id?: number; send?: boolean }
   /** What its empty field says (an answer's box: how to reply without the mouse). */
   hint?: string
-  /** Its answer was kept quiet for a call: a play button says it. */
-  play?: boolean }
+  /** Its voice button: `play` an answer kept unsaid (quiet for a call, or stopped), `stop` one being said. */
+  play?: "play" | "stop"
+  /** Quiet for a call, why ("Quiet: Chrome has your mic"): a Not a call button beside it. */
+  quiet?: string }
 type Bridge = { on: (fn: (s: Shown) => void) => () => void; onAt: (fn: (a: At) => void) => () => void
   holds?: (m: { boxes: Box[]; pressing: boolean }) => void; near?: () => void
   onPointer?: (fn: (p: [number, number, number, number]) => void) => () => void; pilot?: (to: [number, number] | null) => void
@@ -59,7 +61,7 @@ type Bridge = { on: (fn: (s: Shown) => void) => () => void; onAt: (fn: (a: At) =
   onCue?: (fn: (name: Cue) => void) => () => void
   open: (name: string, x: number, y: number) => void; stop: () => void; draw?: DrawBridge
   region?: (r: Rect) => void; regionAct?: (what: string) => void
-  panel: { on: (fn: (d: PanelData) => void) => () => void; size: (h: number) => void; send: (text: string) => void; close: (esc?: boolean) => void; mic: () => void; play?: () => void; more: (x: number, y: number) => void } }
+  panel: { on: (fn: (d: PanelData) => void) => () => void; size: (h: number) => void; send: (text: string) => void; close: (esc?: boolean) => void; mic: () => void; play?: () => void; stop?: () => void; notCall?: () => void; more: (x: number, y: number) => void } }
 const api = (window as unknown as { vaultiteScreen?: Bridge }).vaultiteScreen
 
 followSystemTheme()
@@ -584,12 +586,24 @@ function Panel() {
         send={() => { if (text.trim()) { api?.panel.send(text); setDraft("") } }} busy={d.busy} close={() => api?.panel.close()} more={(e) => api?.panel.more(e.clientX, e.clientY)}
         words={(n) => <div className="note-prose compact companion-md" dangerouslySetInnerHTML={{ __html: html(n.text ?? "") }} />}
         time={(t) => TIME.format(t)}
+        notice={d.quiet && (
+          // (why it says nothing, at a glance, and the way out when the app with the mic isn't on a call)
+          <div data-companion-quiet role="status" className="flex items-center gap-2 border-t border-border/60 py-1 pr-1.5 pl-3 text-[12px] text-muted-foreground">
+            <VolumeOff className="size-3.5 shrink-0" aria-hidden />
+            <span className="min-w-0 flex-1 truncate">{d.quiet}</span>
+            <button type="button" data-tip="Speak again until it lets go of the mic"
+              className="h-6 shrink-0 cursor-pointer rounded-full bg-foreground/[0.06] px-2.5 font-medium text-foreground hover:bg-foreground/[0.11]" onClick={() => api?.panel.notCall?.()}>
+              Not a call
+            </button>
+          </div>
+        )}
         tools={<>
           {d.play && (
-            <button type="button" aria-label="Say it aloud" data-tip="Kept quiet for your call: say it aloud"
-              className="mr-1 grid size-7 shrink-0 cursor-pointer place-items-center rounded-full text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground"
-              onClick={() => api?.panel.play?.()}>
-              <Volume2 className="size-4" />
+            <button type="button" aria-label={d.play === "stop" ? "Stop speaking" : "Say it aloud"} aria-pressed={d.play === "stop"} data-tip={d.play === "stop" ? "Stop" : "Say it aloud"}
+              className="mr-1 grid size-7 shrink-0 cursor-pointer place-items-center rounded-full text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground aria-pressed:text-white aria-pressed:hover:bg-[var(--c)]"
+              style={{ "--c": tint, ...(d.play === "stop" ? { background: tint } : {}) } as React.CSSProperties}
+              onClick={() => (d.play === "stop" ? api?.panel.stop?.() : api?.panel.play?.())}>
+              {d.play === "stop" ? <Square className="size-3 fill-current" /> : <Play className="size-4 translate-x-px" />}
             </button>
           )}
           <button type="button" aria-label={listening ? "Stop dictating" : "Dictate"} aria-pressed={listening} data-tip={listening ? "Stop" : "Dictate"}

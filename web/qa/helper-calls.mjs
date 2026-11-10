@@ -1,6 +1,7 @@
 // The companion over the screen on a call (electron/helper.ts, calllogic.ts), in the desktop app, unseen: asked by typing
 // in its box (a Talk key's tap), its answer is said aloud; while another app has the mic (a stand-in Zoom) the same
-// answer shows in its box with a play button, unsaid and uncued, and the play button says it.
+// answer shows in its box with a play button, unsaid and uncued, its box saying why, and the play button says it. A
+// browser tab holding the mic with no call (a stand-in Firefox): Not a call speaks again till it lets go of the mic.
 // The screen helper is stood in for. WRITES: throwaway vault only.   node web/qa/helper-calls.mjs <vault copy>
 import { _electron } from "playwright-core"
 import fs from "node:fs"
@@ -65,7 +66,8 @@ const b = await typedAsk("And now?")
 check("the companion answers", await answer("The Share button is at the top right."))
 check("on a call, its answer shows in its box", !!b && await until(() => b.evaluate(() => /Share button is at the top right/.test(document.body.textContent)), 20000, 200),
   [await b?.evaluate(() => document.body.textContent), await helper((h) => h.asked().slice(-4))])
-check("…with a play button, its field saying why", !!b && await until(() => b.evaluate(() => !!document.querySelector('[aria-label="Say it aloud"]') && document.querySelector("[data-companion-popover] input")?.placeholder === "Kept quiet for your call"), 5000, 200))
+check("…with a play button, its box saying why, naming the app", !!b && await until(() => b.evaluate(() => !!document.querySelector('[aria-label="Say it aloud"]') && document.querySelector("[data-companion-quiet]")?.textContent?.startsWith("Quiet: Zoom has your mic")), 5000, 200),
+  await b?.evaluate(() => document.querySelector("[data-companion-quiet]")?.textContent))
 await wait(1500)
 check("…and nothing is said", (await said()) === before && !(await helper((h) => h.spoken().some((m) => m.cmd === "say" && /Share button/.test(m.text ?? "")))), await helper((h) => h.spoken().slice(-3)))
 check("…nor its answer's cue played", (await helper((h) => h.asked().filter((m) => m.cue === "answer" && !m.quiet).length)) === cues, await helper((h) => h.asked().filter((m) => m.cue)))
@@ -80,6 +82,28 @@ const after = await said()
 await typedAsk("Once more")
 check("…and its answers are said aloud again", await until(async () => (await said()) > after, 15000, 200), await helper((h) => h.spoken().slice(-3)))
 await end()
+
+// ---------- a browser tab holding the mic, no call (a stand-in Firefox): Not a call speaks again, till it lets go
+const fox = { ok: true, users: [{ pid: 9002, bundle: "org.mozilla.firefox", app: "Firefox", appBundle: "org.mozilla.firefox", chain: [1], input: true, output: false }] }
+await helper((h, m) => h.stub("mics", m), fox)
+check("a browser holding the mic is heard as a call", await until(() => helper((h) => h.asked().some((m) => m.t === "call" && m.call === "on a call in Firefox")), 5000, 200))
+const b2 = await typedAsk("Is it quiet?")
+check("the companion answers", await answer("The Export button is in the File menu."))
+check("its box says Firefox has the mic", !!b2 && await until(() => b2.evaluate(() => document.querySelector("[data-companion-quiet]")?.textContent?.startsWith("Quiet: Firefox has your mic")), 20000, 200),
+  await b2?.evaluate(() => document.body.textContent))
+await b2?.click("[data-companion-quiet] button")
+check("Not a call: its box says nothing of a call, and the answer kept quiet is said", await until(async () => !(await b2.evaluate(() => !!document.querySelector("[data-companion-quiet]")))
+  && await helper((h) => h.spoken().some((m) => m.cmd === "say" && /Export button/.test(m.text ?? ""))), 5000, 200), await helper((h) => h.spoken().slice(-3)))
+check("…and the server's told it's over", await until(() => helper((h) => h.asked().filter((m) => m.t === "call").at(-1)?.call === ""), 5000, 200))
+await end()
+const spoke = await said()
+await typedAsk("Still there?")
+check("while Firefox still holds the mic, answers are said aloud", await until(async () => (await said()) > spoke, 15000, 200), await helper((h) => h.spoken().slice(-3)))
+await end()
+await helper((h) => h.stub("mics", { ok: true, users: [] }))
+await wait(5000) // (let go for longer than a blip)
+await helper((h, m) => h.stub("mics", m), fox)
+check("once it let go, its next hold counts again", await until(() => helper((h) => h.asked().filter((m) => m.t === "call").at(-1)?.call === "on a call in Firefox"), 5000, 200))
 
 await app.close()
 fs.rmSync(TMP, { recursive: true, force: true })

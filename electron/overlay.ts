@@ -14,8 +14,10 @@ export type OverlayActs = { open: (name: string, at: Point) => void; stop: () =>
 /** What the user does in a cursor's conversation: asks (typed), the microphone, More (its menu), and it closed (`esc`:
  *  by Esc in it; else clicked away, its close, or closed by the helper). */
 export type PanelActs = { send: (name: string, text: string) => void; mic: () => void
-  /** Its play button: the answer kept quiet for a call, said now. */
-  play: (name: string) => void; more: (name: string, at: { window: BrowserWindow; x: number; y: number }) => void; closed: (name: string, why?: "esc") => void }
+  /** Its play button: the answer kept quiet for a call (or stopped), said now; its stop button: the answer said, stopped. */
+  play: (name: string) => void; stop: (name: string) => void
+  /** Its Not a call: the app holding the mic isn't on one. */
+  notCall: (name: string) => void; more: (name: string, at: { window: BrowserWindow; x: number; y: number }) => void; closed: (name: string, why?: "esc") => void }
 
 const PRELOAD = path.join(import.meta.dirname, "screen-preload.cjs")
 const wins = new Map<number, BrowserWindow>()
@@ -225,8 +227,10 @@ export type PanelData = { name: string; tint: string; items: { id: string; kind:
   words?: { text: string; listening: boolean; done?: boolean; id?: number; send?: boolean }
   /** What its empty field says (an answer's box: how to reply without the mouse). */
   hint?: string
-  /** Its answer was kept quiet for a call: a play button says it. */
-  play?: boolean }
+  /** Its voice button: `play` an answer kept unsaid (quiet for a call, or stopped), `stop` one being said. */
+  play?: "play" | "stop"
+  /** Quiet for a call, why (calllogic.ts callShown: "Quiet: Chrome has your mic"), with a Not a call button. */
+  quiet?: string }
 const WIDTH = 300, PAD = 16
 /** `travels`: an exchange's box, going with the companion as it rides beside the pointer (`goal`: where it's going,
  *  `held`: till when it holds for the pointer reaching for it). */
@@ -342,6 +346,8 @@ export function onPanel(a: PanelActs) {
   ipcMain.on("panel:close", (e, esc: unknown) => { if (ofPanel(e)) closePanel(esc === true) })
   ipcMain.on("panel:mic", (e) => { if (ofPanel(e)) a.mic() })
   ipcMain.on("panel:play", (e) => { const p = ofPanel(e); if (p) a.play(p.name) })
+  ipcMain.on("panel:stop", (e) => { const p = ofPanel(e); if (p) a.stop(p.name) })
+  ipcMain.on("panel:not-call", (e) => { const p = ofPanel(e); if (p) a.notCall(p.name) })
   ipcMain.on("panel:more", (e, m: { x?: unknown; y?: unknown }) => {
     const p = ofPanel(e)
     if (!p || typeof m?.x !== "number" || typeof m.y !== "number") return

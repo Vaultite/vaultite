@@ -508,7 +508,7 @@ export default async ($: VaultTest) => {
   {
     // On a call (electron/calllogic.ts), from made-up mic users: an app for calls or a browser at once, another app once it
     // held the mic a while; never this app, dictation or the system's own; a call ends a grace after its mic stops.
-    const { callFrom, callSaid, GRACE_MS, HELD_MS } = await import("../../../electron/calllogic.ts")
+    const { callFrom, callSaid, callShown, GRACE_MS, HELD_MS, LET_GO_MS, STUCK_MS } = await import("../../../electron/calllogic.ts")
     const u = (bundle: string, o: Partial<{ app: string; appBundle: string; chain: number[]; input: boolean; output: boolean; pid: number }> = {}) =>
       ({ pid: 500, bundle, app: "", appBundle: "", chain: [1], input: true, output: false, ...o })
     const own = new Set([42]), t0 = 1_000_000
@@ -539,6 +539,26 @@ export default async ($: VaultTest) => {
     check("call: a browser playing sound after its call (a video) is no call", video === null, video)
     const both = callFrom([u("us.zoom.xos", { appBundle: "us.zoom.xos" }), u("com.google.Chrome.helper", { appBundle: "com.google.Chrome" })], own, zoom, new Map(), t0 + 5000)
     check("call: keeps its app's name while another opens the mic too", both?.app === "Zoom" && both.since === t0, both)
+    // A false call's way out: an app excused (Not a call) is no call till it lets go of the mic; its next hold counts.
+    const fox = [u("org.mozilla.firefox", { app: "Firefox", appBundle: "org.mozilla.firefox" })], ex = new Map<string, number>(), ff = new Map<string, number>()
+    const foxCall = callFrom(fox, own, null, ff, t0, ex)
+    ex.set("org.mozilla.firefox", t0)
+    check("call: an app excused is no call while it still holds the mic, the call it was over at once",
+      foxCall?.app === "Firefox" && callFrom(fox, own, foxCall, ff, t0 + 1500, ex) === null && callFrom(fox, own, null, ff, t0 + 60_000, ex) === null)
+    check("call: excused, another app's call still counts", callFrom([...fox, u("us.zoom.xos", { appBundle: "us.zoom.xos" })], own, null, ff, t0 + 61_000, ex)?.app === "Zoom")
+    callFrom([], own, null, ff, t0 + 62_000, ex)
+    check("call: a blip off the mic keeps it excused", callFrom(fox, own, null, ff, t0 + 62_000 + LET_GO_MS - 1, ex) === null && ex.has("org.mozilla.firefox"))
+    callFrom([], own, null, ff, t0 + 70_000, ex)
+    check("call: let go a while, its next hold counts again", !ex.has("org.mozilla.firefox") && callFrom(fox, own, null, ff, t0 + 70_000 + LET_GO_MS, ex)?.app === "Firefox")
+    // Held for hours by a browser or another app, it's stuck (a tab never let go), not a call; an app for calls still is.
+    const sf = new Map<string, number>(), edge = [u("com.microsoft.edgemac.helper", { appBundle: "com.microsoft.edgemac" })], edgeCall = callFrom(edge, own, null, sf, t0)
+    const stuck = callFrom(edge, own, edgeCall, sf, t0 + STUCK_MS)
+    const df = new Map<string, number>(), disc = [u("com.hnc.Discord", { appBundle: "com.hnc.Discord" })], hang = callFrom(disc, own, null, df, t0)
+    check("call: a browser holding the mic for hours is stuck, no call; Discord for hours is still on one",
+      edgeCall?.app === "Edge" && stuck === null && callFrom(disc, own, hang, df, t0 + STUCK_MS * 2)?.app === "Discord", [edgeCall, stuck])
+    check("call: apps that keep the mic open all day (Krisp, SoundSource, Wave Link) are never one",
+      callFrom([u("ai.krisp.krispMac", { app: "krisp" }), u("com.rogueamoeba.soundsource"), u("com.elgato.WaveLink")], own, null, new Map(), t0 + HELD_MS * 3) === null)
+    check("call: its box names the app", callShown("Chrome") === "Quiet: Chrome has your mic" && callShown("a phone call") === "Quiet: you're on a phone call")
   }
   {
     // The display at key-down and at let-go: kept both only when something there came or went (a toast), not a caret.

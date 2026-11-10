@@ -1410,6 +1410,16 @@ function awareness() {
     front?.name ? `The app in front: ${front.name}${front.title ? `, "${front.title}"` : ""}.` : ""].filter(Boolean).join(" ")
 }
 
+/** Why its voice is silent now, if it is (off, a call, the realtime voice paused), for every ask's head: asked why
+ *  it said nothing, it knows rather than guesses. */
+export function voiceSilence(o: { off: boolean; call?: string; paused?: { account: string } | null }) {
+  if (o.off) return "Your voice is off (its voice setting): answers show as text only."
+  return [o.call ? `Your answers aren't said aloud now: they seem ${o.call} (that app has the microphone open), so each shows as text with a play button (its Quiet on calls setting). If they aren't on a call, the Not a call button in your box by their pointer has you speak again until that app lets go of the mic.` : "",
+    o.paused ? `Your realtime voice is paused: ${o.paused.account === "quota" ? "the OpenAI account has no credits" : "OpenAI refused its key"}.` : ""].filter(Boolean).join(" ")
+}
+/** A moment's head beyond its asks: where they are (pair only) and why its voice is silent (any mode). */
+const headAware = () => [mode() === "pair" ? awareness() : "", voiceSilence({ off: setting("voice") === "off", call: [...calls.values()].at(-1), paused: pausedNow() })].filter(Boolean).join(" ")
+
 /** The browser tab showing pane `id` (the engine lists the window's tab with each page), or null. */
 type BrowserTab = { tab: number; url: string; title: string; container: string | null; access: string; pane?: string }
 async function pageOf(id: string, name = ownName()): Promise<BrowserTab | null> {
@@ -2186,7 +2196,7 @@ async function startChat(name: string, how: { agent: string; model: string; effo
   const k = key(name)
   starting(name, { ...at, runs: how.agent, model: how.model || undefined, effort: how.effort || undefined }, after)
   const waiting = pendingFor(name), given = waiting.some(wakes) ? hand(name, waiting) : []
-  const first = given.length ? `${READY}\n\n${momentsText(given, mode(), focus(), await excerpts(apiCtx, given), mode() === "pair" ? awareness() : "")}`
+  const first = given.length ? `${READY}\n\n${momentsText(given, mode(), focus(), await excerpts(apiCtx, given), headAware())}`
     : `${READY} Then end your turn: what the user does comes as your next messages.`
   turning.add(k)
   let s: ChatState
@@ -2216,7 +2226,7 @@ async function pump(name: string) {
     turning.add(k)
     resend.delete(k)
     const given = hand(name, got)
-    text = momentsText(given, mode(), focus(), await excerpts(apiCtx, given), mode() === "pair" ? awareness() : "")
+    text = momentsText(given, mode(), focus(), await excerpts(apiCtx, given), headAware())
     const was = stopped.get(k)
     if (was && stopped.delete(k)) text = `${STOPPED(was)}\n${text}`
   } else if (fresh.has(k) || (Date.now() - (handing.get(k) ?? 0) > ASK_AGAIN && await due(s))) {
@@ -2479,7 +2489,7 @@ asks to its @name and answers to its items; edit and open go to the companion, o
       if (!got.length && fresh.has(k) && session(name)) return handover()
     }
     if (got.length) got = hand(name, got)
-    return { mode: mode(), focus: focus(), moments: got, cursor: delivered.get(k) ?? after, notes: await excerpts(ctx, got), ...(got.length && mode() === "pair" ? { aware: awareness() } : {}) }
+    return { mode: mode(), focus: focus(), moments: got, cursor: delivered.get(k) ?? after, notes: await excerpts(ctx, got), ...(got.length && headAware() ? { aware: headAware() } : {}) }
   },
   text: (r) => (r.ended ? "Your session has ended: stop here, without running next again." : r.handover ? handoverAsk(r.as) : momentsText(r.moments, r.mode, r.focus, r.notes, r.aware)),
 })

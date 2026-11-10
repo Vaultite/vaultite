@@ -75,6 +75,11 @@ export default async ($: VaultTest) => {
       told.lines[10].endsWith("@claude read these") && [4, 6, 8].every((i) => told.lines[i].endsWith("end")) && [0, 2, 12].every((i) => told.lines[i].endsWith("…")), told.lines.map((l) => l.slice(-12)))
     check("companion: and reads as numbered lines", c.momentsText([], "pair", null, []).includes("Nothing yet") &&
       c.momentsText([{ seq: 1, t: 0, kind: "ask", path: "N.md", line: 2, text: "hi" }], "pair", null, [ask!]).endsWith("N.md, lines 1-2 of 2:\n   1  a\n   2  b"))
+    // Asked why it said nothing, it knows: each ask's head says why its voice is silent (a call, off, no credits).
+    const rec = c.voiceSilence({ off: false, call: "on a call in Voice Memos" }), off = c.voiceSilence({ off: true, call: "on a call in Zoom" })
+    check("companion: an ask's head says why its voice is silent, and nothing when it speaks",
+      /aren't said aloud now: they seem on a call in Voice Memos .*play button.*Not a call/.test(rec) && /^Your voice is off/.test(off) && !off.includes("Zoom") &&
+      /no credits/.test(c.voiceSilence({ off: false, paused: { account: "quota" } })) && c.voiceSilence({ off: false, paused: null }) === "", [rec, off])
     // Timings: handed, first action, back to next; seqs restart with the server.
     const ms = [{ seq: 1, t: 1000, kind: "ask" }, { seq: 2, t: 1500, kind: "edit" }, { seq: 1, t: 9000, kind: "ask" }] as Any[]
     const acts = [{ t: 0, as: "C", op: "next" }, { t: 1100, as: "C", op: "handed", seqs: [1] }, { t: 3100, as: "C", op: "say" }, { t: 3200, as: "C", op: "next" },
