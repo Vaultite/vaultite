@@ -27,14 +27,19 @@ if (!base) {
   base = `http://127.0.0.1:${port}/`
   let up = false
   for (let i = 0; i < 120 && !up && server.exitCode === null; i++) { try { up = (await fetch(`${base}api/state`)).ok } catch { await wait(250) } }
-  if (!up) { console.error(`errors: the server didn't start\n${log.slice(-2000)}`); stop(); process.exit(1) }
+  if (!up) { console.error(`errors: the server didn't start\n${log.slice(-2000)}`); await stop(); process.exit(1) }
 }
 if (!base.endsWith("/")) base += "/"
 
-function stop() {
-  if (server && server.exitCode === null) server.kill()
+/** Stops the server and removes its folders once it has exited: one still exiting writes its last files into them. */
+async function stop() {
+  if (server && server.exitCode === null && server.signalCode === null) {
+    const gone = new Promise((r) => server.once("exit", r))
+    server.kill()
+    await Promise.race([gone, wait(5000)])
+  }
   if (port) spawnSync("tmux", ["-L", `vaultite-${port}`, "kill-server"], { stdio: "ignore" })
-  if (tmp) fs.rmSync(tmp, { recursive: true, force: true })
+  if (tmp) fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
 }
 
 const errors = async (q = "") => (await (await fetch(`${base}api/errors${q}`)).json()).groups
@@ -108,6 +113,6 @@ try {
   await fetch(`${base}api/errors`, { method: "DELETE" })
 } finally {
   await browser.close()
-  stop()
+  await stop()
 }
 await done()
