@@ -1,11 +1,12 @@
 // The update engine's decisions (core/update/): CI's verdict, the commit to take, where a checkout stands. No git, no
 // network: the host's path end to end is test_selfupdate. In npm test.
 import { check, exit, section, summary } from "./test/lib.ts"
-import type { CiResult, CiRun } from "../core/update/ci.ts"
-import { CI_CALLS_PER_HOUR, CI_WORKFLOW, callBudget, ciOf, githubCi, githubRepo } from "../core/update/ci.ts"
+import type { CiJob, CiResult, CiRun } from "../core/update/ci.ts"
+import { CI_CALLS_PER_HOUR, CI_WORKFLOW, callBudget, ciOf, githubCi, githubRepo, osGate } from "../core/update/ci.ts"
 import { capped, pickTarget, redRoute } from "../core/update/git.ts"
 import { LOOK_EVERY, placed } from "../core/update/updater.ts"
 const t0 = Date.now()
+const LIST_GONE = 20_000 // (past the 15 s the branch's runs serve one look)
 
 section("ci.ts")
 check("githubRepo: https and ssh remotes", githubRepo("git@github.com:Vaultite/vaultite.git") === "Vaultite/vaultite" && githubRepo("https://github.com/Vaultite/vaultite") === "Vaultite/vaultite" && githubRepo("/srv/x.git") === null)
@@ -21,14 +22,37 @@ check("a try run (tools/try.ts) isn't main's", ciOf([{ ...run("push", "completed
 check("each verdict says where CI is", [ciOf([run("push", "completed", "success")]), ciOf([run("push", "completed", "failure")]), ciOf([run("push", "in_progress", null)]), ciOf([]), ciOf([run("push", "completed", "cancelled")])]
   .map((r) => r.state).join() === "passed,failed,running,none,cancelled")
 
+section("ci.ts: the gate, this OS's test job")
+const mac = osGate("darwin")!, job = (name: string, status: string, conclusion: string | null = null): CiJob => ({ name, status, conclusion })
+const MAC = "test (macos-15)", LINUX = "test (ubuntu-24.04)", WIN = "test (windows-2025)"
+check("each OS waits for its own test job", mac.job(MAC) && !mac.job(LINUX) && osGate("linux")!.job(LINUX) && osGate("win32")!.job(WIN) && !osGate("win32")!.job("demo")
+  && osGate("aix") === null, [mac.label, osGate("linux")!.label])
+const gated = (r: CiRun, jobs: CiJob[] | string | undefined) => ciOf([r], { gate: mac, jobs: () => jobs })
+const going = { ...run("push", "in_progress", null), id: 1 }
+const early = gated(going, [job(MAC, "completed", "success"), job(LINUX, "in_progress"), job("demo", "queued")])
+check("its job passed while the run goes on: green at once", early.ok === true && early.state === "passed" && early.why === "CI's macOS tests passed" && !early.elsewhere, early)
+const failedEarly = gated(going, [job(MAC, "completed", "failure"), job(LINUX, "in_progress")])
+check("its job failed while the run goes on: red at once", failedEarly.ok === false && failedEarly.state === "failed" && /macOS tests failed/.test(failedEarly.why), failedEarly)
+const others = gated({ ...run("push", "completed", "failure"), id: 1 }, [job(MAC, "completed", "success"), job(LINUX, "completed", "failure"), job("demo", "completed", "failure")])
+check("another OS's failure (or the demo's) doesn't block it, and is said", others.ok === true && others.elsewhere?.join() === `${LINUX},demo`, others)
+check("its job still running: not yet", gated(going, [job(MAC, "in_progress"), job(LINUX, "completed", "success")]).state === "running")
+check("a run queued, no jobs yet: not yet", gated(going, []).state === "running")
+check("a whole run that passed needs no jobs", gated({ ...run("push", "completed", "success"), id: 1 }, undefined).ok === true)
+const blind = gated({ ...run("push", "completed", "failure"), id: 1 }, "GitHub answered 502 about CI")
+check("a red run whose jobs GitHub didn't give: not known, saying why", blind.ok === null && !blind.state && /502/.test(blind.why), blind)
+check("timed out is red, cancelled is not yet", gated(going, [job(MAC, "completed", "timed_out")]).ok === false && gated({ ...run("push", "completed", "cancelled"), id: 1 }, [job(MAC, "completed", "cancelled")]).state === "cancelled")
+const nightly = ciOf([{ ...run("push", "completed", "failure"), id: 1 }, { ...run("schedule", "completed", "failure"), id: 2 }], { gate: mac, jobs: (r) => r.id === 1 ? [job(MAC, "completed", "failure")] : [job(MAC, "completed", "success"), job("qa", "completed", "failure")] })
+check("the nightly's test job counts too", nightly.ok === true && nightly.elsewhere?.join() === "qa", nightly)
+
+const body = (runs: CiRun[]) => ({ workflow_runs: runs })
 await section("githubCi: one call for the branch, one more per commit not in it", async () => {
   const asked: string[] = []
   let clock = 0
   const ci = githubCi("main", async (api) => {
     asked.push(api)
-    if (api.includes("/workflows/")) return [run("push", "completed", "success", CI_WORKFLOW, "aaa")]
-    return api.includes("head_sha=ccc") ? "GitHub answered 403 about CI" : [run("push", "in_progress", null, CI_WORKFLOW, "bbb")]
-  }, { budget: callBudget(100, () => clock), now: () => clock })
+    if (api.includes("/workflows/")) return body([run("push", "completed", "success", CI_WORKFLOW, "aaa")])
+    return api.includes("head_sha=ccc") ? "GitHub answered 403 about CI" : body([run("push", "in_progress", null, CI_WORKFLOW, "bbb")])
+  }, { budget: callBudget(100, () => clock), now: () => clock, gate: null })
   const a = await ci("Alice/lighthouse", "aaa"), a2 = await ci("Alice/lighthouse", "aaa")
   check("a commit among the branch's runs", a.ok === true && a2.ok === true && asked.length === 1, asked)
   check("the branch's runs asked of once, by workflow and branch", asked[0] === "repos/Alice/lighthouse/actions/workflows/ci.yml/runs?branch=main&per_page=100", asked)
@@ -45,7 +69,7 @@ await section("githubCi: one call for the branch, one more per commit not in it"
 await section("githubCi: a red verdict asked again after 10 minutes, a failing list asks no more", async () => {
   let clock = 0, list: CiRun[] | string = [run("push", "completed", "failure", CI_WORKFLOW, "red")]
   const asked: string[] = []
-  const ci = githubCi("main", async (api) => (asked.push(api), list), { budget: callBudget(100, () => clock), now: () => clock })
+  const ci = githubCi("main", async (api) => (asked.push(api), typeof list === "string" ? list : body(list)), { budget: callBudget(100, () => clock), now: () => clock, gate: null })
   check("red", (await ci("Alice/lighthouse", "red")).ok === false && asked.length === 1)
   clock += 9 * 60_000
   check("still red, not asked within 10 minutes", (await ci("Alice/lighthouse", "red")).ok === false && asked.length === 1, asked)
@@ -58,19 +82,49 @@ await section("githubCi: a red verdict asked again after 10 minutes, a failing l
   check("the branch's runs not answering: not yet, and no commit asked of on its own", down.ok === null && /502/.test(down.why) && asked.length === 3, { down, asked })
 })
 
+await section("githubCi with a gate: a run's jobs while they may change, once when they've ended", async () => {
+  let clock = 0, jobs: CiJob[] = [job(MAC, "in_progress"), job(LINUX, "in_progress")]
+  let runs = [{ ...run("push", "in_progress", null, CI_WORKFLOW, "t"), id: 7 }]
+  const asked: string[] = []
+  const ci = githubCi("main", async (api) => (asked.push(api), api.includes("/jobs") ? { jobs } : body(runs)), { budget: callBudget(100, () => clock), now: () => clock, gate: mac })
+  check("its job running: the list, then the run's jobs", (await ci("Alice/lighthouse", "t")).state === "running" && asked.join() === "repos/Alice/lighthouse/actions/workflows/ci.yml/runs?branch=main&per_page=100,repos/Alice/lighthouse/actions/runs/7/jobs?per_page=50", asked)
+  clock += LOOK_EVERY
+  asked.length = 0
+  jobs = [job(MAC, "completed", "success"), job(LINUX, "completed", "failure"), job("demo", "in_progress")]
+  const pass = await ci("Alice/lighthouse", "t")
+  check("the next look asks only the jobs (one call), and takes it once its job passed", asked.length === 1 && asked[0].endsWith("/runs/7/jobs?per_page=50") && pass.ok === true && pass.elsewhere?.join() === LINUX, { asked, pass })
+  asked.length = 0
+  runs = [{ ...run("push", "completed", "failure", CI_WORKFLOW, "r"), id: 8 }]
+  jobs = [job(MAC, "completed", "failure"), job(LINUX, "completed", "success")]
+  clock += LIST_GONE
+  check("red: its job failed", (await ci("Alice/lighthouse", "r")).ok === false && asked.length === 2, asked)
+  clock += 10 * 60_000
+  asked.length = 0
+  jobs = [job(MAC, "completed", "success"), job(LINUX, "completed", "success")]
+  check("asked again after 10 minutes (a re-run): the list and the jobs again", (await ci("Alice/lighthouse", "r")).ok === true && asked.length === 2, asked)
+  asked.length = 0
+  runs = [{ ...run("push", "completed", "success", CI_WORKFLOW, "g"), id: 9 }]
+  clock += LIST_GONE
+  check("a run that passed whole: no jobs asked", (await ci("Alice/lighthouse", "g")).ok === true && asked.length === 1, asked)
+})
+
 await section(`the request budget: at most ${CI_CALLS_PER_HOUR} calls to GitHub in any hour, whatever the looks`, async () => {
-  // Worst case: a look every LOOK_EVERY with a commit CI never finishes (one call each), plus vau update asked in a loop.
+  // Worst case: a look every LOOK_EVERY with a commit whose job never ends (its run's jobs, one call a look), plus vau
+  // update asked in a loop: the budget holds it at CI_CALLS_PER_HOUR.
   check("an hour of timed looks fits the budget with one call each", 60 / (LOOK_EVERY / 60_000) <= CI_CALLS_PER_HOUR, LOOK_EVERY)
   check("the budget leaves most of GitHub's 60 anonymous calls an hour", CI_CALLS_PER_HOUR <= 20)
-  let clock = 0, calls = 0
-  const ci = githubCi("main", async () => (calls++, [run("push", "in_progress", null, CI_WORKFLOW, "t")]), { budget: callBudget(CI_CALLS_PER_HOUR, () => clock), now: () => clock })
-  let last = { ok: null as boolean | null, why: "" }
-  for (let i = 0; i < 600; i++) { clock += 6_000; last = await ci("Alice/lighthouse", i % 3 ? "t" : `c${i}`) } // (a call every 6 s for an hour)
-  check("an hour of looks every 6 seconds asks at most the budget", calls === CI_CALLS_PER_HOUR, calls)
-  check("…and says why it doesn't ask", last.ok === null && /asked again later/.test(last.why), last)
-  clock += 3_600_000
-  await ci("Alice/lighthouse", "t")
-  check("…and asks again an hour on", calls === CI_CALLS_PER_HOUR + 1, calls)
+  for (const gate of [null, mac]) {
+    let clock = 0, calls = 0
+    const ci = githubCi("main", async (api) => (calls++, api.includes("/jobs") ? { jobs: [job(MAC, "in_progress")] } : body([{ ...run("push", "in_progress", null, CI_WORKFLOW, "t"), id: 3 }])),
+      { budget: callBudget(CI_CALLS_PER_HOUR, () => clock), now: () => clock, gate })
+    let last: CiResult = { ok: null, why: "" }
+    for (let i = 0; i < 600; i++) { clock += 6_000; last = await ci("Alice/lighthouse", i % 3 ? "t" : `c${i}`) } // (a call every 6 s for an hour)
+    check(`${gate ? "with" : "without"} a gate: an hour of looks every 6 seconds asks at most the budget`, calls === CI_CALLS_PER_HOUR, calls)
+    check("…and says why it doesn't ask", last.ok === null && /asked again later/.test(last.why), last)
+    clock += 3_600_000
+    await ci("Alice/lighthouse", "t")
+    check("…and asks again an hour on", calls === CI_CALLS_PER_HOUR + 1, calls)
+  }
 })
 
 section("git.ts: capped")

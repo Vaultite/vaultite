@@ -17,7 +17,7 @@ type Version = {
   commit: string | null; subject?: string; at?: number
   web?: { entry: string | null; commit: string | null }
   updates: { branch: string | null; state: "off" | "current" | "waiting" | "updating" | "failed"; why: string; checked: number | null
-    last?: { from: string; to: string; at: number }; error?: { message: string } }
+    last?: { from: string; to: string; at: number; elsewhere?: string[] }; error?: { message: string } }
   app: null | "unknown" | { mode: "automatic" | "notify" | "off"; available: boolean; ready: string | null; doing: string | null; commit?: string | null }
 }
 
@@ -52,7 +52,7 @@ export function Running() {
   // (this window's build: the one the server serves, or an older one it reloads out of when it's away)
   const behind = !!BUILD && !!served && served !== BUILD
   const mine = PAGE_STAMP?.commit
-  const last = u.last ? `last update ${fmtAgo(u.last.at)}` : ""
+  const last = u.last ? `last update ${fmtAgo(u.last.at)}${u.last.elsewhere?.length ? ` (CI red on it elsewhere: ${u.last.elsewhere.join(", ")})` : ""}` : ""
   return (
     <Section title="Running" className="mt-6">
       <Group>

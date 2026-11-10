@@ -133,7 +133,7 @@ new build by themselves (at once when hidden; visible, they offer Reload). machi
       // (out of step: a checkout pulled and built but not restarted, or restarted but not built)
       ...(r.web?.commit && r.commit && r.web.commit !== r.commit ? [`Web app: built from ${short(r.web.commit)}, not ${short(r.commit)}`] : []),
       `Updates: ${updatesLine(r.updates, r.app)}`,
-      ...(r.updates.last ? [`Last update: ${short(r.updates.last.from)} to ${short(r.updates.last.to)}, ${new Date(r.updates.last.at).toISOString()}`] : []),
+      ...(r.updates.last ? [`Last update: ${short(r.updates.last.from)} to ${short(r.updates.last.to)}, ${new Date(r.updates.last.at).toISOString()}${r.updates.last.elsewhere?.length ? ` (CI red on it elsewhere: ${r.updates.last.elsewhere.join(", ")})` : ""}`] : []),
       ...(r.updates.error ? [`Failed: ${r.updates.error.message}`] : [])].join("\n"),
   }]
 }

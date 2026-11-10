@@ -154,6 +154,18 @@ await section("the log: each change of state or reason once, with the commits", 
   failBuild = false
 })
 
+await section("taken on this OS's green while another's is red: said in the status and once in the log", async () => {
+  const next = commit({ "web/src/elsewhere.ts": "1" }, "feat(web): elsewhere")
+  verdicts.set(next, { ok: true, why: "CI's macOS tests passed", state: "passed", elsewhere: ["test (ubuntu-24.04)"] })
+  logged.length = 0
+  const u = await look(); await look()
+  check("updated, naming the job red elsewhere", u.state === "current" && head() === next && /updated to \w+ \(the web app only\); CI is red on it elsewhere: test \(ubuntu-24\.04\)/.test(u.why)
+    && u.last?.elsewhere?.join() === "test (ubuntu-24.04)", u)
+  check("…once in the log", logged.filter((l) => l.line.includes("red on it elsewhere")).length === 1, logged)
+  check("…and kept with the last update across a restart", JSON.parse(fs.readFileSync(o.stateFile, "utf8")).last?.elsewhere?.[0] === "test (ubuntu-24.04)")
+  verdicts.delete(next)
+})
+
 await section("vau update: a look asked for while one runs joins it", async () => {
   let release = () => {}
   const gate = new Promise<void>((r) => { release = r })

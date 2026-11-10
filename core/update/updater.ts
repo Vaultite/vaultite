@@ -1,4 +1,4 @@
-// Following a branch: every few minutes a look at origin, and a newer commit CI passed is handed to the host to take
+// Following a branch: every few minutes a look at origin; a newer commit CI passed on this OS (ci.ts) goes to the host
 // (core/selfupdate.ts, in place). Each change of state or reason is logged, so why it waited can be read later.
 import fs from "node:fs"
 import path from "node:path"
@@ -31,7 +31,8 @@ export type UpdateStatus = {
   blocked?: Blocked
   /** While it waits on CI: what CI said of the commits it asked about, the tip first (git.ts' redRoute reads it). */
   ci?: Judged[]
-  last?: { from: string; to: string; at: number; restarted: boolean }
+  /** The last update; `elsewhere`: the CI jobs that had failed on it besides this OS's (which passed) when it was taken. */
+  last?: { from: string; to: string; at: number; restarted: boolean; elsewhere?: string[] }
   /** The update that failed (it isn't tried again until the branch moves on). */
   error?: { at: number; commit: string; message: string }
 }
@@ -158,10 +159,12 @@ async function lookOnce(o: UpdaterOptions): Promise<UpdateStatus> {
     const applied = await o.apply({ head, running, to: next, files })
     if ("failed" in applied) return fail(next, applied.failed, applied.cause ?? applied.failed)
     const { restart } = applied
-    kept = { last: { from: running, to: next, at: Date.now(), restarted: restart } }
+    const elsewhere = target.ci.elsewhere ?? []
+    kept = { last: { from: running, to: next, at: Date.now(), restarted: restart, ...(elsewhere.length ? { elsewhere } : {}) } }
     keep()
     o.running = next // (a web-only update is live once built)
-    set("current", restart ? `updated to ${short(next)}, restarting` : `updated to ${short(next)} (the web app only)`)
+    const red = elsewhere.length ? `; CI is red on it elsewhere: ${elsewhere.join(", ")}` : ""
+    set("current", `${restart ? `updated to ${short(next)}, restarting` : `updated to ${short(next)} (the web app only)`}${red}`)
     if (restart) o.restart()
     return status
   } catch (e) {
@@ -171,7 +174,7 @@ async function lookOnce(o: UpdaterOptions): Promise<UpdateStatus> {
 }
 
 /** How often a look runs. A look where nothing moved is a git fetch; CI is asked only about a commit to take whose
- *  verdict isn't known yet, at most once a look, and never more than CI_CALLS_PER_HOUR (20) times in any hour. */
+ *  verdict isn't known yet (its run's jobs: one call a look), never more than CI_CALLS_PER_HOUR (20) in any hour. */
 export const LOOK_EVERY = 3 * MINUTE
 
 let following: UpdaterOptions | null = null

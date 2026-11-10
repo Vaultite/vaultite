@@ -292,10 +292,11 @@ again after moving the checkout or Node. --print shows the file without writing 
 with Tailscale Serve (\`tailscale serve --bg --https=8447 http://127.0.0.1:8793\`): SECURITY.md. status says whether
 it's installed, running and answering. uninstall stops it and removes the files.
 
---updates <branch> has the server follow that branch of origin: every 3 minutes (vau update: now), a newer commit CI
-passed on is merged (fast-forward only, the checkout clean), installed and built, and the server restarts when its own
-code changed; never while an agent is at work in the desktop app's browser. A failure keeps the version before (vau
-errors says why). vau version shows what runs and what the updates are doing; the log, each change and why.
+--updates <branch> has the server follow that branch of origin: every 3 minutes (vau update: now), a newer commit whose
+CI tests passed on this machine's OS (ci.yml's test job for it; another OS's failure is only said) is merged
+(fast-forward only, the checkout clean), installed and built, and the server restarts when its own code changed; never
+while an agent is at work in the desktop app's browser. A failure keeps the version before (vau errors says why). vau
+version shows what runs and what the updates are doing; the log, each change and why.
 
   vau service install --vault ~/Vault
   vau service install --vault ~/Vault --updates main
