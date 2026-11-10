@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Settings > About shows what's running**: the server's commit (a tap copies it), its subject and age, whether this
+  window or the phone app runs the same build, the server's updates (waiting and why, failed and why, the last one)
+  and, in the desktop app, its own update.
 - **A new version reaches open pages at once**: a web build the server takes without restarting is told to every open
   page within seconds. A page you're not looking at (the phone app in the background, a hidden window) reloads into it
   by itself when that loses nothing (edits not saved, a form in a sheet, a recording, dictation or sound playing hold

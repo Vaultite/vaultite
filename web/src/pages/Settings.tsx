@@ -24,6 +24,7 @@ import { PluginSettings } from "@/components/PluginSettings"
 import { AppearancePanel } from "@/components/Appearance"
 import { EditorPanel } from "@/components/EditorSettings"
 import { PermissionsPanel } from "@/components/Permissions"
+import { Running } from "@/components/Running"
 import { aiParts, AiPanel } from "@/components/AiSettings"
 import { aiOn } from "@/core/ai"
 import { Catch } from "@/components/Guard"
@@ -103,6 +104,9 @@ function Updates() {
   )
 }
 
+/** About: the app's version and how it updates, then what runs. */
+const About = () => <><Updates /><Running /></>
+
 // ---------- sections
 
 /** A section: the app's own (appearance, editor…), with its plugins' settings under it; a plugin's page
@@ -121,7 +125,7 @@ const CORE: Sec[] = [
   // (macOS's: the desktop app on a Mac only)
   ...(desktopApp?.permission ? [headed("permissions", "Permissions", ShieldCheck, "var(--blue)", () => <PermissionsPanel />, "What macOS lets Vaultite do on this Mac")] : []),
   // (last of the app's own: looked for when something's wrong or new, not to set things up)
-  headed("about", "About", Info, "var(--gray)", () => <Updates />, "Version, updates and errors"),
+  headed("about", "About", Info, "var(--gray)", () => <About />, "Version, updates and errors"),
   // (the menu's AI group: the app's plugins' pages follow it)
   headed("ai", "AI", Sparkles, "var(--purple)", (store) => <AiPanel store={store} />, "Agents, the apps you connect and what they read"),
   // (the menu's Plugins group: yours, then Get)
@@ -296,6 +300,7 @@ function findable(store: Store, disabled: string[], show: Show): Found[] {
     { id: "vaults", label: "Manage vaults", sub: store.vault.path, where: "Vaults", words: "vault folder",
       run: () => { if (desktopApp) void desktopApp.manageVaults(); else openDetail("vaults") } },
     { ...row("version", "Version", "About", '[data-settings-row="version"]', `Vaultite ${APP_VERSION}`), words: "about" },
+    { ...row("running", "Running", "About", '[data-settings-row="running"]', "The server's commit and its updates"), words: "commit build deployed live hash server" },
     ...(desktopApp?.permission ? [{ id: "permissions", label: "Permissions", sub: "What macOS lets Vaultite do", where: "Settings", run: () => show("permissions"),
       words: "privacy security macos microphone camera location accessibility screen recording input monitoring automation files folders desktop documents downloads full disk access icloud vault signed signature" }] : []),
     ...(desktopApp?.updates ? [{ ...row("updates", "App updates", "About", '[data-settings-row="updates"]', "Automatic, notify or off"), words: "update upgrade restart" }] : []),
