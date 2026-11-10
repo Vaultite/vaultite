@@ -15,6 +15,11 @@
   meanwhile would run the replaced tree while the disk says new (`ps` still shows the old path), so a running main is
   looked for first, and the app checks its server against build.json once up (installed.ts). The app's binary also runs
   its server, terminal keeper and agents' `vau mcp`: those aren't the app running.
+- The app's entry is its shell (`shell/`: package.json `main` is `shell/boot.mjs`), plain .mjs on Node's and Electron's
+  own modules: it sets the app's name and id (shell.json), picks the code root (`roots.mjs`: the bundle, until Dev's and
+  Main's own roots are turned on in `ENABLED`) and keeps a record in userData/shell (attempts, bad roots, events, told in
+  the first window's Errors). Its files and what `inputs.json` lists are the shell fingerprint (stamped in shell.json): a
+  change to one needs a new build of the app. `shell/vau.mjs` is the CLI's one stable path (`VAULTITE_VAU_ENTRY`).
 - Test a release under another `appId` and `productName`: one sharing the installed app's bundle id makes macOS re-check
   its privacy grants. Uploading the update feed is by hand, never part of a build.
 - Debugging the real window: `debugPort` in `vaults.json` (or `VAULTITE_DEBUG_PORT`) serves Chromium's DevTools

@@ -14,7 +14,7 @@ unalias -a 2>/dev/null || true
 ulimit -n 65536 2>/dev/null || ulimit -n 10240 2>/dev/null || true
 
 # A whole copy of the build in <from> at <to>, checked: its build.json is the commit update.sh build wrote, its key
-# files are there, as many files as the build. Else why not (stdout), with rsync's own words in the log.
+# files and shell are there, as many files as the build. Else why not (stdout), with rsync's own words in the log.
 stage() {
   rsync -a "$1/" "$2/" || { echo "the copy into $2 failed"; return 1; }
   got=$(sed -n 's/^.*"commit": *"\([0-9a-f]*\)".*$/\1/p' "$2/$res/electron/build.json" 2>/dev/null | head -n 1)
@@ -23,6 +23,15 @@ stage() {
     [ -e "$2/$f" ] || { echo "the copy has no $f"; return 1; }
   done
   [ -x "$2/$bin" ] || { echo "the copy's $bin can't run"; return 1; }
+  # A build with a shell (electron/shell/boot.mjs, its entry) has it whole, and the same fingerprint in its shell.json.
+  if [ -e "$1/$res/electron/shell/boot.mjs" ]; then
+    for f in boot.mjs roots.mjs vau.mjs print.mjs inputs.json; do
+      [ -e "$2/$res/electron/shell/$f" ] || { echo "the copy has no electron/shell/$f"; return 1; }
+    done
+    print=$(sed -n 's/^.*"fingerprint": *"\([0-9a-f]*\)".*$/\1/p' "$1/$res/electron/shell.json" 2>/dev/null | head -n 1)
+    [ -n "$print" ] || { echo "the build's shell.json has no fingerprint"; return 1; }
+    [ "$(sed -n 's/^.*"fingerprint": *"\([0-9a-f]*\)".*$/\1/p' "$2/$res/electron/shell.json" 2>/dev/null | head -n 1)" = "$print" ] || { echo "the copy's shell.json has another fingerprint"; return 1; }
+  fi
   [ $(( $(find "$1" | wc -l) )) -eq $(( $(find "$2" | wc -l) )) ] || { echo "the copy has a different number of files than the build"; return 1; }
 }
 # The pids of the app's own main process, run from <its executable> (not its helpers, server, terminal keeper or agents'

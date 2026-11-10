@@ -15,7 +15,7 @@ import "./browser/index.ts"
 import { engineBusy, engineFlush, serverCall, setServerSink } from "./browser/engine.ts"
 import { attach, attachable, servedHere, type Call, type Link } from "./host.ts"
 import { talkCall } from "./talklog.ts"
-import { APP_ID, CODE, DEV, NAME } from "./identity.ts"
+import { CODE, DEV, HOST } from "./identity.ts"
 import { appUpdates, checkInstalled, initUpdates, modeChanged, pageSafe, quitUpdates, RELEASE, restartToUpdate, scheduleUpdates, updatable, UPDATE_MODES, updateMenuItem,
   windowReady, type UpdateMode } from "./updates.ts"
 import { appHandlers, appsOn, appsWindow, stopApps } from "./apps.ts"
@@ -54,9 +54,6 @@ const chrome = (): BaseWindowConstructorOptions => WIN
   ? { titleBarStyle: "hidden", titleBarOverlay: { color: background(), symbolColor: nativeTheme.shouldUseDarkColors ? "#ffffff" : "#000000", height: CONTROLS_HEIGHT } }
   : { titleBarStyle: "hiddenInset", trafficLightPosition: LIGHTS }
 
-app.setName(NAME)
-if (WIN && APP_ID) app.setAppUserModelId(APP_ID)
-if (process.env.VAULTITE_USER_DATA) app.setPath("userData", path.resolve(process.env.VAULTITE_USER_DATA))
 // Under --no-sandbox (an AppImage under AppArmor, Playwright on Linux) renderers no window makes keep Electron's sandboxed
 // renderer, which runs service-worker preloads; not as root, where Chromium sandboxes nothing and each would die.
 if (app.commandLine.hasSwitch("no-sandbox") && process.getuid?.() !== 0) app.commandLine.appendSwitch("enable-sandbox")
@@ -119,6 +116,20 @@ function uncaught(kind: "uncaught" | "rejection", e: unknown) {
     const body = JSON.stringify({ device: "desktop", errors: [{ kind, t: Date.now(), message: `Main process: ${err.message}`, stack: err.stack ?? "", build: CODE?.commit ?? "" }] })
     for (const w of wins.values()) void fetch(`http://127.0.0.1:${w.port}/api/errors`, { method: "POST", headers: { "Content-Type": "application/json" }, body }).catch(() => {})
   } catch { /* before the windows exist */ }
+}
+/** The shell's record (electron/shell/boot.mjs): this run is ready once the first vault window's page is up (its server
+ *  answered), or the launch is done with none. What it recorded since then goes to that window's Errors (vau errors). */
+let shellTold = false, shellReported = false
+function shellReady(w: Win | null) {
+  if (!shellTold) { shellTold = true; HOST?.ready() }
+  if (!w || shellReported || !HOST) return
+  shellReported = true
+  const short = (c: string | null) => c?.slice(0, 7) ?? "this build"
+  const errors = HOST.events().map((e) => ({ kind: "boot", t: e.t, stack: "", build: CODE?.commit ?? "",
+    message: e.kind === "passed" ? `The app didn't start on ${short(e.commit)}: ${e.why}; it runs ${short(CODE?.commit ?? null)}`
+      : `The app ${e.kind === "late" ? "was slow to start" : e.kind === "crashed" ? "crashed starting" : "couldn't start"} on ${short(e.commit)}: ${e.why}` }))
+  if (errors.length) void fetch(`http://127.0.0.1:${w.port}/api/errors`, { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ device: "desktop", errors }) }).catch(() => {})
 }
 const told = new WeakSet<object>()
 /** A failure told in a box: what happened in plain words (core/plainerror.ts), `why` when the error has none to give;
@@ -1037,6 +1048,7 @@ handle("app:ready", (w) => {
   if (!w) return []
   w.ready = true
   windowReady(w)
+  shellReady(w)
   return w.queue.splice(0)
 })
 handle("app:update-restart", () => restartToUpdate(true))
@@ -1683,6 +1695,7 @@ app.whenReady().then(async () => {
   for (const u of earlyLinks.splice(0)) await appLink(u).catch(() => {})
   behind = false
   launched = true
+  setTimeout(() => { if (!wins.size) shellReady(null) }, 20_000)
   if (!MAC && !AppWindow.getAllWindows().length) showManager() // (every window the launch opened failed)
   if (LINUX) unsandboxedNotice()
   scheduleUpdates()

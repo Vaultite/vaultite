@@ -1,10 +1,17 @@
-// The app's identity and build facts, by owner: the installed app's (electron/shell.json: its name, id, channel and the
-// commit it was built from) and its code's (electron/build.json: commit and repo). No Electron: tools/test_shell.ts runs it.
+// The app's identity and build facts, by owner: the installed app's (electron/shell.json: its name, id, channel, shell
+// fingerprint, the commit it was built from) and the code's (electron/build.json: commit and repo). No Electron imports.
 import fs from "node:fs"
 import path from "node:path"
 
 /** The installed app's: stamp.ts writes its channel, sign.cjs (afterPack) the name and id it was packaged as. */
-export type Shell = { channel?: "dev" | "nightly" | "main"; release?: boolean; branch?: string; commit?: string; appId?: string; productName?: string }
+export type Shell = { channel?: "dev" | "nightly" | "main"; release?: boolean; branch?: string; commit?: string; fingerprint?: string
+  appId?: string; productName?: string }
+/** The shell that started this process (electron/shell/boot.mjs): the code root it picked, and its record of it. */
+export type ShellHost = { root: string; bundleRoot: string; shell: Shell; from: string
+  /** The first window's server answered (or, with none, the launch is done). */
+  ready(): void
+  /** What happened since last asked: a root passed over, an earlier run that failed (electron/shell/roots.mjs). */
+  events(): { t: number; kind: string; root: string; commit: string | null; why: string; ran?: string }[] }
 /** The code's: which commit of which repo it is. */
 export type Code = { commit: string; repo: string }
 
@@ -24,20 +31,19 @@ export function codeAt(root: string): Code | null {
 }
 
 /** What stamp.ts writes for a build of `commit` (on `branch`), as the build's env says. */
-export function stamps(o: { commit: string; repo: string; branch: string; env: Record<string, string | undefined> }): { code: Code; shell: Shell } {
+export function stamps(o: { commit: string; repo: string; branch: string; fingerprint: string; env: Record<string, string | undefined> }): { code: Code; shell: Shell } {
   const { VAULTITE_RELEASE: release, VAULTITE_CHANNEL: channel } = o.env
   return { code: { commit: o.commit, repo: o.repo }, shell: {
     ...(release ? { release: true } : {}),
     ...(channel === "dev" ? { channel, branch: o.branch } : channel === "nightly" || channel === "main" ? { channel } : {}),
-    commit: o.commit } }
+    commit: o.commit, fingerprint: o.fingerprint } }
 }
 
-export const SHELL = shellAt(ROOT)
+/** In the app, its shell; null elsewhere (tools, tests). */
+export const HOST = ((globalThis as { vaultiteShell?: ShellHost }).vaultiteShell ?? null)
+/** The running shell's stamp; outside the app, the one beside this code. */
+export const SHELL = HOST?.shell ?? shellAt(ROOT)
 export const CODE = codeAt(ROOT)
-/** The app's name, and so its userData: each build named otherwise (Main, Dev, Nightly, a test release) keeps its own. */
-export const NAME = SHELL.productName ?? "Vaultite"
-/** Windows' AppUserModelID for it (its Start menu shortcut's, so notifications are its); unset from source. */
-export const APP_ID = SHELL.appId ?? null
 /** Vaultite Dev, and the branch it updates from. */
 export const DEV = SHELL.channel === "dev"
 export const BRANCH = (DEV && SHELL.branch) || "main"

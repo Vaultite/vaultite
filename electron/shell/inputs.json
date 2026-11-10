@@ -1,0 +1,28 @@
+{
+  "files": [
+    "electron/shell",
+    "electron/entitlements.plist",
+    "electron/quicklook",
+    "electron/quicklook.cjs",
+    "electron/mac/icon.png",
+    "electron/mac/icon-nightly.png",
+    "electron/sign.cjs",
+    "electron/source.cjs",
+    "electron/nightly.cjs"
+  ],
+  "package": [
+    "main",
+    "build.appId",
+    "build.productName",
+    "build.electronLanguages",
+    "build.protocols",
+    "build.mac.extendInfo",
+    "build.mac.fileAssociations",
+    "build.mac.hardenedRuntime",
+    "build.linux.executableName",
+    "build.linux.desktop",
+    "build.linux.fileAssociations",
+    "build.win.fileAssociations"
+  ],
+  "electron": "package-lock.json"
+}

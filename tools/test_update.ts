@@ -19,12 +19,14 @@ const RES = MAC ? "Contents/Resources/app" : "resources/app", BIN = MAC ? `Conte
 const bundle = (dir: string) => path.join(dir, MAC ? `${NAME}.app` : NAME)
 
 /** A build of `commit` at `at` (the executable a link to Node, so a "copy of the app" can run from inside it). */
-function makeBuild(at: string, commit: string, o: { omit?: string } = {}) {
+function makeBuild(at: string, commit: string, o: { omit?: string; print?: string } = {}) {
   fs.rmSync(at, { recursive: true, force: true })
   const files: Record<string, string> = {
     [`${RES}/electron/build.json`]: JSON.stringify({ commit, repo: "https://github.com/Alice/lighthouse.git" }, null, 2),
-    [`${RES}/electron/shell.json`]: JSON.stringify({ channel: "main", commit, appId: "app.lighthouse.main", productName: NAME }, null, 2),
-    [`${RES}/server.ts`]: `// ${commit}`, [`${RES}/package.json`]: `{ "main": "electron/boot.ts" }`,
+    [`${RES}/electron/shell.json`]: JSON.stringify({ channel: "main", commit, ...(o.print === "" ? {} : { fingerprint: o.print ?? "f".repeat(64) }), appId: "app.lighthouse.main", productName: NAME }, null, 2),
+    // (the shell: electron/shell/boot.mjs, package.json's main, and what it runs with)
+    ...Object.fromEntries(["boot.mjs", "roots.mjs", "vau.mjs", "print.mjs", "inputs.json"].map((f) => [`${RES}/electron/shell/${f}`, ""])),
+    [`${RES}/server.ts`]: `// ${commit}`, [`${RES}/package.json`]: `{ "main": "electron/shell/boot.mjs" }`,
     [`${RES}/electron/boot.ts`]: "", [`${RES}/electron/main.ts`]: "", [`${RES}/plugins/core/lighthouse/plugin.ts`]: `// ${commit}`,
     // (the terminal keeper and the CLI, which the app's binary runs as Node: they hold on, as theirs do)
     [`${RES}/plugins/core/terminal/termd/daemon.ts`]: "setInterval(() => {}, 1000)\n", [`${RES}/bin/vau`]: "setInterval(() => {}, 1000)\n",
@@ -60,11 +62,11 @@ const opens = () => (fs.existsSync(opened) ? fs.readFileSync(opened, "utf8").tri
 type Install = { child: ChildProcess; staged: Promise<boolean>; done: Promise<number | null>; log: () => string; events: string[] }
 /** update.sh install for the app `pid` stands for: the old app installed, the new build in update.noindex. */
 let n = 0
-function install(o: { next?: string; build?: string; omit?: string; stay?: boolean; pid: number }): Install & { app: string } {
+function install(o: { next?: string; build?: string; omit?: string; print?: string; stay?: boolean; pid: number }): Install & { app: string } {
   const dir = path.join(tmp, `case-${++n}`), apps = path.join(dir, "Applications"), next = path.join(dir, "update.noindex")
   fs.mkdirSync(apps, { recursive: true })
   makeBuild(bundle(apps), OLD)
-  makeBuild(bundle(next), o.build ?? NEW, { omit: o.omit })
+  makeBuild(bundle(next), o.build ?? NEW, { omit: o.omit, print: o.print })
   fs.writeFileSync(path.join(next, "commit"), `${o.next ?? NEW}\n`)
   fs.rmSync(opened, { force: true })
   const env: NodeJS.ProcessEnv = { ...process.env, VAULTITE_UPDATE_OPEN: OPEN }
@@ -104,6 +106,8 @@ await section("a copy that isn't the build is never staged", async () => {
     ["another commit's build.json", { build: OLD.replace(/a/g, "c") }, "build.json says"],
     ["no server.ts", { omit: `${RES}/server.ts` }, `no ${RES}/server.ts`],
     ["no electron/main.ts", { omit: `${RES}/electron/main.ts` }, `no ${RES}/electron/main.ts`],
+    ["a shell without its picker", { omit: `${RES}/electron/shell/roots.mjs` }, "no electron/shell/roots.mjs"],
+    ["a shell without its fingerprint", { print: "" }, "no fingerprint"],
   ] as const) {
     const app = appPid(), i = install({ pid: app.pid!, ...o })
     const staged = await i.staged, code = await i.done
@@ -112,6 +116,13 @@ await section("a copy that isn't the build is never staged", async () => {
     check(`${what}: the log says why`, i.log().includes("not installed") && i.log().includes(why), i.log())
     await end(app)
   }
+})
+
+await section("a build from before the shell (a server's older commit) still goes in", async () => {
+  const app = appPid(), i = install({ pid: app.pid!, omit: `${RES}/electron/shell/boot.mjs` })
+  check("staged", await i.staged, i.log())
+  await end(app)
+  check("...and installed", (await i.done) === 0 && commitAt(i.app) === NEW, i.log())
 })
 
 await section("opened again before the swap: not swapped out from under it", async () => {

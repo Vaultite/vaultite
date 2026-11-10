@@ -27,7 +27,8 @@ function graph(entry: string) {
   return seen
 }
 
-const main = graph(path.join(ROOT, JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).main))
+// (the shell, package.json's main, and the code's entry it imports by a path it picks: electron/shell/boot.mjs)
+const main = new Map([...graph(path.join(ROOT, JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).main)), ...graph(path.join(ROOT, "electron", "boot.ts"))])
 const kb = (n: number) => Math.round(n / 1024)
 const now: Record<string, number> = { desktopMainKB: kb([...main.values()].reduce((a, b) => a + b, 0)) }
 const DIST = path.join(ROOT, "web", "dist")
