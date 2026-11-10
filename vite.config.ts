@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
@@ -5,6 +6,8 @@ import fs from 'node:fs'
 import { defineConfig, type Plugin } from 'vite'
 import { ICON_FILE, ICON_NAME, PLUGIN_MODULE, svgIcon } from './core/pluginmeta.ts'
 import { exportFile } from './core/rules.ts'
+import { STAMP_META, stampText } from './core/buildstamp.ts'
+import { gitEnv } from './core/gitenv.ts'
 
 // An open page keeps asking for the build it loaded from (a view's chunk), so a rebuild keeps the last days' builds.
 // VAULTITE_CLEAN_BUILD=1 (the desktop and iPhone apps' builds, which ship dist) keeps only this one.
@@ -24,6 +27,22 @@ function keepRecentBuilds(): Plugin {
         try { if (clean || fs.statSync(path.join(dir, f)).mtimeMs < oldest) fs.rmSync(path.join(dir, f)) } catch { /* gone */ }
       }
     },
+  }
+}
+
+// Which commit a build is, in its pages (core/buildstamp.ts): open pages, vau version and Settings > About read it.
+function buildStamp(): Plugin {
+  let content = ''
+  return {
+    name: 'vaultite-build-stamp',
+    apply: 'build',
+    buildStart() {
+      try {
+        const [commit, at, ...subject] = execFileSync('git', ['log', '-1', '--format=%H%n%ct%n%s'], { cwd: import.meta.dirname, encoding: 'utf8', env: gitEnv() }).trim().split('\n')
+        content = stampText({ commit, at: Number(at) * 1000, subject: subject.join(' ') })
+      } catch { content = '' } // (not a checkout: no stamp)
+    },
+    transformIndexHtml: () => (content ? [{ tag: 'meta', attrs: { name: STAMP_META, content }, injectTo: 'head' }] : []),
   }
 }
 
@@ -169,7 +188,7 @@ export function noOfficialPlugins(): Plugin {
 // The app is in web/ (the core) and plugins/ (every feature, one folder each); both are bundled together.
 export default defineConfig({
   root: 'web',
-  plugins: [pluginModules([path.resolve(import.meta.dirname, 'plugins/core')]), react(), tailwindcss(), keepRecentBuilds(), pluginIcons(), noOfficialPlugins(), lucideByFile(), bootChunks()],
+  plugins: [pluginModules([path.resolve(import.meta.dirname, 'plugins/core')]), react(), tailwindcss(), keepRecentBuilds(), buildStamp(), pluginIcons(), noOfficialPlugins(), lucideByFile(), bootChunks()],
   resolve: {
     alias: {
       // What plugins import: the plugin API (web/src/api.ts). Core code uses @/.

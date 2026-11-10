@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **`vau version` names the commit that runs**: after an update that only rebuilt the web app, it and Machines name the
+  new commit, not the one the server started on.
 - **Live editing shows each change as you ask**: a job asked over a preview you're watching edits the checkout
   serving it, so the page reloads as it goes, with no worktree, demo or ready knock in the way.
 - **Companion tours stop cleanly when they can't play**: a tour whose things aren't on your screen says so once and

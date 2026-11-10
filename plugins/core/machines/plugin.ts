@@ -1,11 +1,8 @@
 // Machines: other computers serving this vault's app, in its settings (a server adds itself once; entries are the
 // user's). No accounts: whoever reaches one machine reaches the others through it, but shells stay the owner's.
-import { execFile } from "node:child_process"
 import crypto from "node:crypto"
-import fs from "node:fs"
 import os from "node:os"
-import path from "node:path"
-import { API_VERSION, APP_VERSION, bullets, gitEnv, HTTPError, inDesktop, LOADED, localDate, noDesktop, MACHINE_CLIENT, Plugin, reply, ROOT, section, Text } from "../../../core/plugins.ts"
+import { API_VERSION, APP_VERSION, bullets, HTTPError, inDesktop, LOADED, localDate, noDesktop, MACHINE_CLIENT, Plugin, reply, running, section, Text } from "../../../core/plugins.ts"
 import { dialIn, type DialEntry } from "./dial.ts"
 import { shareKept } from "./kept.ts"
 import { alerts, duration, EVERY, KEEP_DAYS, report, reportText, sample, watch, type Report, type Sample } from "./health.ts"
@@ -32,18 +29,6 @@ const ID = /^[a-z0-9][a-z0-9-]{0,62}$/
 
 /** A host name as a machine id: "Studio-Mac.local" -> "studio-mac". */
 export const slug = (s: string) => s.toLowerCase().replace(/\.local$/, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 63)
-
-/** The app's commit (which version each machine runs): its checkout's, or the packaged desktop app's electron/build.json. */
-const commit = new Promise<string>((resolve) => {
-  execFile("git", ["-C", ROOT, "rev-parse", "--short", "HEAD"], { timeout: 3000, env: gitEnv() }, (err, out) => {
-    if (!err) return resolve(out.trim())
-    try {
-      resolve(String(JSON.parse(fs.readFileSync(path.join(ROOT, "electron", "build.json"), "utf8")).commit ?? "").slice(0, 7))
-    } catch {
-      resolve("")
-    }
-  })
-})
 
 /** An address on the tailnet (a .ts.net name, a 100.64/10 or fd7a:115c:a1e0:: address) or this machine's loopback: the
  *  settings are a vault file, and the server asks what's there as its owner, so never a host its writer picks. */
@@ -87,7 +72,7 @@ function vaultId(): string {
 
 async function self() {
   return { instance: INSTANCE, host: HOST, platform: process.platform, version: APP_VERSION, api: API_VERSION,
-    commit: await commit, plugins: enabledPlugins(), vault: vaultId(), desktop: inDesktop(), standalone: STANDALONE,
+    commit: (await running()).commit?.slice(0, 7) ?? "", plugins: enabledPlugins(), vault: vaultId(), desktop: inDesktop(), standalone: STANDALONE,
     // (the agent machines listed, as connected here: whoever asks has those that dial in here without asking again)
     dialed: Object.fromEntries(listed().filter((m) => m.via).map((m) => [m.id, dial.summary(m.id)])) }
 }

@@ -39,9 +39,10 @@ starting.mark("spawn")
 const { WebSocketServer } = await import("ws")
 const { decodePart: decode, jsonOf, open, queryOf } = await import("./core/app.ts")
 const { Live } = await import("./core/live.ts")
+const { served: web } = await import("./core/webbuild.ts")
 const { flushKept } = await import("./core/kept.ts")
 const events = await import("./core/events.ts")
-Live.web = webBuild
+Live.web = () => web.read().entry
 const { clean } = await import("./core/files.ts")
 const { allow, allowedPath, isOutside } = await import("./core/outside.ts")
 const { isHeic, jpegOf } = await import("./core/heic.ts")
@@ -55,7 +56,7 @@ const { answers, claim, reclaim, servingKey } = await import("./core/serving.ts"
 const { attach, detach, onHostMessage } = await import("./core/desktopapp.ts")
 starting.mark("imports")
 
-const DIST = path.join(ROOT, "web", "dist") // built web app (npm run build)
+const DIST = web.dist // built web app (npm run build)
 const ASSETS = path.join(DIST, "assets") // Vite names every file here by its content's hash
 const HOST = process.env.HOST || "127.0.0.1"
 const PORT = Number(process.env.PORT || 8793)
@@ -530,23 +531,6 @@ async function improve() {
   improving = false
 }
 
-/** The web app's build in web/dist: its entry script's name (named by content), read again when index.html changes. */
-let built = { at: 0, name: null as string | null, eager: [] as string[] }
-function webBuild() {
-  try {
-    const at = fs.statSync(path.join(DIST, "index.html")).mtimeMs
-    if (at !== built.at) {
-      const html = fs.readFileSync(path.join(DIST, "index.html"), "utf8")
-      const m = /<script type="module"[^>]*\ssrc="[^"]*\/([^"/]+\.js)"/.exec(html)
-      const eager = [...html.matchAll(/<(?:script|link)\b[^>]*?(?:src|href)="\.?\/?(assets\/[^"]+\.(?:js|css))"/g)].map((e) => path.join(DIST, e[1]))
-      built = { at, name: m?.[1] ?? null, eager }
-    }
-    return built.name
-  } catch {
-    return null
-  }
-}
-
 /** The web app (web/dist). Its assets are named by content, so a browser keeps them for good; index.html is asked again
  *  each time (a 304 when unchanged), icons after an hour (each logo drawn asked again). Over the network they're compressed. */
 async function file(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
@@ -575,7 +559,7 @@ async function file(req: http.IncomingMessage, res: http.ServerResponse, url: UR
   }
   const enc = encodingFor(req, type, st.size)
   // (what index.html loads is compressed while it travels, not once each file is asked for)
-  if (enc && p === path.join(DIST, "index.html")) { webBuild(); for (const f of built.eager) fs.stat(f, (e, s) => { if (!e) void pack(f, s, enc).catch(() => {}) }) }
+  if (enc && p === path.join(DIST, "index.html")) { for (const f of web.read().eager) fs.stat(f, (e, s) => { if (!e) void pack(f, s, enc).catch(() => {}) }) }
   try {
     const data = enc ? await pack(p, st, enc) : fs.readFileSync(p)
     res.writeHead(200, { ...headers, "Content-Type": type, "Content-Length": String(data.length), ...(enc ? { "Content-Encoding": enc } : {}) })
