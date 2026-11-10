@@ -49,10 +49,9 @@ await section("up to date, then a web-only update", async () => {
   check("…and saying what CI said of it", s.ci?.length === 1 && s.ci[0].commit === next && s.ci[0].ok === null, s.ci)
   ci = { ok: true, why: "CI passed" }
   busy = "an agent's call is under way"
-  const b = await look()
-  check("waits while the browser is busy", b.state === "waiting" && b.why.includes("an agent's call") && head() === first, b)
-  busy = null
   const u = await look()
+  busy = null
+  check("busy holds only a restart: the web app updates while an agent browses, saying so", u.state === "current" && /\(the web app only, while busy: an agent's call is under way\)/.test(u.why), u)
   check("updates: fast-forwards and builds, no install (the lock didn't change)", u.state === "current" && head() === next && JSON.stringify(npmCalls) === '["run build"]', { u, npmCalls })
   check("the web app only: no restart", restarts === 0 && u.last?.restarted === false && u.last.from === first && u.last.to === next, u)
 })
@@ -92,6 +91,11 @@ await section("a backend update with new dependencies restarts", async () => {
   npmCalls.length = 0
   const r0 = restarts
   const next = commit({ "core/x.ts": "3", "package-lock.json": '{"v":3}' }, "feat(server): three")
+  busy = "an agent acted in a page in the last 10 minutes"
+  const held = await look()
+  busy = null
+  check("an update that restarts waits while the browser is busy, saying why", held.state === "waiting" && held.why === "busy: an agent acted in a page in the last 10 minutes; the update restarts the server"
+    && held.next === next && !npmCalls.length && restarts === r0, held)
   const u = await look()
   check("installs (the lock changed), then builds", JSON.stringify(npmCalls) === '["install --no-audit --no-fund","run build"]', npmCalls)
   check("restarts for a backend change", restarts === r0 + 1 && u.last?.restarted === true && head() === next, u)

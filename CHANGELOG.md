@@ -22,17 +22,14 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   until it is or the updates say why it won't be (a failed update, CI red on it, or a checkout with uncommitted
   changes or commits not on the branch, named), exiting 1 with the reason; no polling loop of your own.
 - **`vau version` names the commit that runs**: after an update that only rebuilt the web app, it and Machines name the
-  new commit, not the one the server started on.
-- **A server following a branch updates sooner and says why it waits**: it takes a commit once CI's tests for its own
-  OS passed, even while the rest of the run goes on (another OS's failure is said in `vau version` and its log, and
-  doesn't hold it back), looks every 3 minutes instead of 10 (asking GitHub at most 20 times an hour), `vau update`
-  looks now, and its log has each change of state with the commits and why; when the checkout blocks it, it names the
-  uncommitted files or the commits not on the branch.
   new commit, not the one the server started on. In a checkout it also says, for the server and the desktop app (and its
   menu-bar helper), whether code it runs changed since it started, naming the first such file.
-- **A server following a branch updates sooner and says why it waits**: it looks every 3 minutes instead of 10
-  (asking GitHub at most 20 times an hour), `vau update` looks now, and its log has each change of state with the
-  commits and why; when the checkout blocks it, it names the uncommitted files or the commits not on the branch.
+- **A server following a branch updates sooner and says why it waits**: it takes a commit once CI's tests for its own
+  OS passed, even while the rest of the run goes on (another OS's failure is said in `vau version` and its log, and
+  doesn't hold it back), and an update of the web app alone goes through while an agent uses the browser (only a
+  restart waits for it). It looks every 3 minutes instead of 10 (asking GitHub at most 20 times an hour), `vau update`
+  looks now, and its log has each change of state with the commits and why; when the checkout blocks it, it names the
+  uncommitted files or the commits not on the branch.
 - **Claude chats show each answer once**: a chat opened just as its session changed (a turn ending, a new title) no
   longer lists its answers a second time below the conversation.
 - **Live editing shows each change as you ask**: a job asked over a preview you're watching edits the checkout

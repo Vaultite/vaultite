@@ -54,9 +54,11 @@ export type UpdaterOptions = {
   running?: string
   /** Where what lasts across restarts is kept (the last update, the one that failed). */
   stateFile: string
-  /** Why the server shouldn't restart now (an agent at work in the browser), or null. */
+  /** Why the server shouldn't restart now (an agent at work in the browser), or null: it holds only an update that restarts. */
   busy: () => Promise<string | null>
   restart: () => void
+  /** Whether taking these changed files restarts the server (the host's rule; default: it does, not being known). */
+  restarts?: (files: string[]) => boolean
   /** Whether CI passed on a commit (default: GitHub Actions, core/update/ci.ts); ok null is not yet. */
   ci?: Ci
   /** Takes a commit into the checkout and builds it, never leaving it half-updated. */
@@ -154,10 +156,10 @@ async function lookOnce(o: UpdaterOptions): Promise<UpdateStatus> {
     const target = await pickTarget({ tip: remote, since: () => commitsSince(git, head, remote), ci: (sha) => ci(repo, sha), failed: kept.error?.commit })
     if ("why" in target) return set("waiting", target.why, { next: remote, ci: target.judged })
     const next = target.to
+    // (busy holds only a restart: an update of the web app alone goes through while agents browse)
+    const files = await changedFiles(git, running, next), restarts = o.restarts?.(files) ?? true
     const busy = await o.busy()
-    if (busy) return set("waiting", `busy: ${busy}`, { next })
-
-    const files = await changedFiles(git, running, next)
+    if (busy && restarts) return set("waiting", `busy: ${busy}; the update restarts the server`, { next })
     set("updating", `updating to ${short(next)} (${plural(files.length, "file")})`, { next })
     const applied = await o.apply({ head, running, to: next, files })
     if ("failed" in applied) return fail(next, applied.failed, applied.cause ?? applied.failed)
@@ -167,7 +169,7 @@ async function lookOnce(o: UpdaterOptions): Promise<UpdateStatus> {
     keep()
     o.running = next // (a web-only update is live once built)
     const red = elsewhere.length ? `; CI is red on it elsewhere: ${elsewhere.join(", ")}` : ""
-    set("current", `${restart ? `updated to ${short(next)}, restarting` : `updated to ${short(next)} (the web app only)`}${red}`)
+    set("current", `${restart ? `updated to ${short(next)}, restarting` : `updated to ${short(next)} (the web app only${busy ? `, while busy: ${busy}` : ""})`}${red}`)
     if (restart) o.restart()
     return status
   } catch (e) {

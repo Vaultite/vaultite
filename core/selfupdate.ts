@@ -55,7 +55,7 @@ export function inPlace({ npm: npmIn, ...o }: InPlaceOptions): UpdaterOptions {
     await shadow(o.root, files, restart, o.log ?? console.log)
     return { restart }
   }
-  return { ...o, apply }
+  return { ...o, apply, restarts: backendChanged }
 }
 
 /** The module graph's answer beside backendChanged's (core/update/closure.ts), said when they differ: evidence before
