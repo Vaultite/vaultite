@@ -1,7 +1,8 @@
 // The Agents panel (the terminals socket, the chats route and the machines stood in for): offered once in the right
 // sidebar, every agent in one flat list (needs you, working, done) with its state's glyph and a short time, older ones
-// folded under Earlier, the filter on the tab only, a click opening its tab, and a phone's drawer. Writes the
-// sidebars: throwaway server only.
+// folded under Earlier, the filter on the tab only, a click opening its tab, and a phone's drawer; rows holding still
+// while the pointer, a menu or a finger is in the list, and settling once it's let go. Writes the sidebars: throwaway
+// server only.
 //   node web/qa/agentspanel.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { execFileSync } from "node:child_process"
@@ -37,9 +38,13 @@ const C = {
   dup: chat("took-over@box", { state: "idle", title: "Tidy the Lighthouse README" }),
 }
 const LIST = JSON.stringify({ t: "sessions", list: [...Object.values(T), shell] })
+// (the one at rest asking now: sorted, it goes up to the second row)
+const ASKS = JSON.stringify({ t: "sessions", list: [T.asks, T.works, { ...T.rests, state: "blocked", kind: "permission", msg: "Push?" }, shell] })
 
+/** Stands in for the server; says a new terminals list to the page's sockets. */
 async function standIn(page) {
-  await page.routeWebSocket(/\/api\/terminals(\?.*)?$/, (ws) => ws.send(LIST))
+  const socks = new Set()
+  await page.routeWebSocket(/\/api\/terminals(\?.*)?$/, (ws) => { socks.add(ws); ws.send(LIST) })
   await page.routeWebSocket(/\/api\/terminal\/[^/?]+/, (ws) => {
     ws.send(JSON.stringify({ t: "attached", fresh: false, tmux: false, scrollback: 1000 }))
     ws.send(JSON.stringify({ t: "size", cols: 80, rows: 24 }))
@@ -48,6 +53,7 @@ async function standIn(page) {
     cwd: C.works.cwd, account: "default", model: "", effort: "", tui: null, driven: "", history: { entries: [], start: 0 }, live: [] })))
   await page.route(/\/api\/claude-code\/chats(\?.*)?$/, (r) => r.fulfill({ json: { sessions: Object.values(C) } }))
   await page.route(/\/api\/machines(\?.*)?$/, (r) => r.fulfill({ json: MACHINES }))
+  return (list) => { for (const ws of socks) try { ws.send(list) } catch { socks.delete(ws) } }
 }
 const rowsOf = (page, scope) => page.$$eval(`${scope} [data-agent-run]`, (els) => els.map((e) => ({
   id: e.dataset.agentRun, kind: e.dataset.kind, state: e.dataset.state, text: e.innerText.trim().replace(/\s+/g, " "),
@@ -55,7 +61,7 @@ const rowsOf = (page, scope) => page.$$eval(`${scope} [data-agent-run]`, (els) =
 
 // ---------- desktop: offered in the right sidebar, in its order ----------
 const D = watch(await browser.newPage({ viewport: { width: 1440, height: 900 } }), { console: true, ignore: /favicon|Failed to load resource|WebSocket/ })
-await standIn(D)
+const sayD = await standIn(D)
 await D.goto(B)
 await D.waitForSelector("[role=tree]", { timeout: 60000 })
 const shown = await until(async () => !!(await D.$("[data-agents-panel] [data-agent-run]")), 15000)
@@ -90,6 +96,32 @@ await earlier.click()
 await wait(300)
 check("Agents: and closing it folds it again", (await rowsOf(D, "[data-agents-panel]")).length === 5)
 
+// ---------- nothing moves under the pointer ----------
+const R = `terminal:${T.rests.id}`
+const resorted = [`terminal:${T.asks.id}`, R, "chat:c-asks", `terminal:${T.works.id}`, "chat:c-works@laptop"]
+const ids = async (p = D, scope = "[data-agents-panel]") => (await rowsOf(p, scope)).map((r) => r.id)
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+const away = () => D.mouse.move(900, 450)
+await D.hover(`[data-agents-panel] [data-agent-run="terminal:${T.works.id}"]`)
+await wait(200)
+sayD(ASKS)
+const asked = await until(async () => (await rowsOf(D, "[data-agents-panel]")).find((r) => r.id === R)?.dot === "ask", 5000)
+await wait(1000)
+check("Agents: a row starting to ask under the pointer says so in its place, nothing moving", asked && same(await ids(), order), await ids())
+await away()
+check("Agents: once the pointer leaves, it settles into its place", await until(async () => same(await ids(), resorted), 5000), await ids())
+// (a row's menu open, the pointer gone to it: still held)
+await D.click(`[data-agents-panel] [data-agent-run="${R}"]`, { button: "right" })
+await D.waitForSelector("[role=menu]", { timeout: 5000 }).catch(() => {})
+await away()
+sayD(LIST)
+await until(async () => (await rowsOf(D, "[data-agents-panel]")).find((r) => r.id === R)?.dot === null, 5000)
+await wait(1200)
+const menued = (await D.locator("[role=menu]").count()) > 0
+check("Agents: nor while a row's menu is open", menued && same(await ids(), resorted), { menued, ids: await ids() })
+await D.keyboard.press("Escape")
+check("Agents: and settles once it closes", await until(async () => same(await ids(), order), 5000), await ids())
+
 // ---------- a click opens it in its own place ----------
 const active = () => D.$eval("[data-tab-bar] [data-tab-id][aria-selected=true], [data-tab-bar] [data-tab-id][data-active]", (e) => e.dataset.tabId).catch(() => "")
 const hash = () => D.evaluate(() => decodeURIComponent(location.hash))
@@ -117,7 +149,7 @@ await D.close()
 // ---------- a phone: the same list in its drawer ----------
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true })
 const P = watch(await ctx.newPage(), { ignore: /favicon|Failed to load resource|WebSocket/ })
-await standIn(P)
+const sayP = await standIn(P)
 await P.goto(B)
 await wait(2000)
 // (the right sidebar's panels are the right drawer's)
@@ -127,6 +159,14 @@ const phone = await rowsOf(P, "[data-phone-drawer] [data-agents-panel]").catch((
 check("phone: the drawer lists them in the same order", JSON.stringify(phone.map((r) => r.id)) === JSON.stringify(want.slice(0, 5)), phone.map((r) => r.id))
 const tall = await P.$eval("[data-phone-drawer] [data-agent-run]", (e) => e.getBoundingClientRect().height).catch(() => 0)
 check("phone: rows at the sidebar's phone size (40px)", tall >= 39.5, tall)
+// (a finger has no hover: a touch holds the list, a moment past it)
+await P.locator("[data-phone-drawer] [data-agent-earlier]").tap()
+sayP(ASKS)
+await wait(1000)
+const held = await ids(P, "[data-phone-drawer] [data-agents-panel]")
+check("phone: just after a touch, rows hold still", same(held.slice(0, 5), want.slice(0, 5)), held)
+const later = await until(async () => same((await ids(P, "[data-phone-drawer] [data-agents-panel]")).slice(0, 5), resorted), 6000)
+check("phone: and settle a moment later", later, await ids(P, "[data-phone-drawer] [data-agents-panel]"))
 await P.locator("[data-phone-drawer] [data-agents-panel]").screenshot({ path: `${OUT}phone.png` }).catch(() => P.screenshot({ path: `${OUT}phone.png` }))
 await ctx.close()
 await done()

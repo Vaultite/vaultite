@@ -55,6 +55,8 @@ export { offerPicture } from "@/core/snapshot"
 export { onResized, resizing } from "@/core/resizing"
 /** Whether things move: the Animation setting is on and the system doesn't ask for less motion. */
 export { moves } from "@/core/animation"
+/** FLIP: an element laid out in its new place glides there from where it was (nothing when things are kept still). */
+export { slideFrom } from "@/core/animation"
 export { pickIcon } from "@/components/IconPicker"
 export { BrandIcon, GitHubIcon } from "@/core/icons"
 // The tabs and splits as a whole (Workspaces keeps one per workspace).
