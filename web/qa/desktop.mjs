@@ -27,6 +27,12 @@ await win.waitForSelector("[role=tree]", { timeout: 60000 })
 const origin = new URL(win.url()).origin
 check("the window serves the vault from its own server", /^http:\/\/127\.0\.0\.1:\d+$/.test(origin) &&
   (await (await fetch(`${origin}/api/vault`)).json()).path === VAULT, origin)
+{
+  const app_ = (await (await fetch(`${origin}/api/ops/app.version`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })).json()).app
+  let built = null
+  try { built = JSON.parse(fs.readFileSync(path.join(ROOT, "electron/build.json"), "utf8")).commit ?? null } catch { /* not a build */ }
+  check("vau version: the app's own commit (its build's, null from source)", app_ && "commit" in app_ && (BIN ? /^[0-9a-f]{40}$/.test(app_.commit) : app_.commit === built), app_)
+}
 check("the page knows it's in the app", await win.evaluate(() => document.documentElement.hasAttribute("data-electron") && window.vaultite?.desktop === true))
 check("the page knows its platform", await win.evaluate((p) => document.documentElement.dataset.platform === p && window.vaultite?.platform === p, process.platform))
 const toggle = await win.locator("[data-sidebar-toggle='']").boundingBox()

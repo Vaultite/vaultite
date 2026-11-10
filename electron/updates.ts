@@ -73,9 +73,9 @@ let status: string | null = null
 /** Written as the app quits to update (what it updates to), read and removed by the first window after the restart. */
 const UPDATED = () => path.join(app.getPath("userData"), "updated")
 
-/** What this app's updates are doing, for its server's app.version (vau version). */
+/** What this app's updates are doing, and the commit it runs (null: not a build), for its server's app.version. */
 export function appUpdates() {
-  return { mode: host.mode(), available: updatable(), from: RELEASE ? "releases" : BRANCH, ready, doing: status }
+  return { mode: host.mode(), available: updatable(), from: RELEASE ? "releases" : BRANCH, ready, doing: status, commit: CODE?.commit ?? null }
 }
 
 function updateLog() {
