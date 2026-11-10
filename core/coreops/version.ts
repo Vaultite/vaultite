@@ -25,6 +25,8 @@ export function verdict(o: { given: string; full: string | null; runs: string | 
   if (o.has || (o.runs && o.full === o.runs)) return { commit, live: true, final: true, why: `${name} is live here: it runs ${short(o.runs)}${o.full === o.runs ? "" : ", which has it"}` }
   const not = (final: boolean, why: string) => ({ commit, live: false, final, why: `${name} ${final ? "won't be live here" : "isn't live here yet"}: ${why}` })
   if (u.branch) {
+    // (what an agent left in the checkout doesn't go away by itself; before it has the commit, the next look decides)
+    if (u.blocked && (o.full || u.blocked.by === "branch")) return not(true, `its checkout blocks the updates: ${u.why}`)
     if (u.state === "failed" && o.failed) return not(true, `its update failed: ${u.error?.message ?? u.why}`)
     if (!o.full) return not(false, `this checkout doesn't have it yet (it fetches ${u.branch} each time its updates look: ${u.state}, ${u.why})`)
     return not(false, `updates ${u.state}: ${u.why}`)
@@ -90,7 +92,8 @@ notify (the default: offers Restart to update) or off (only from its menu); read
 
 Is my commit live? Give it (a hash, short or full; in a checkout of the app, HEAD or a branch too): live says whether
 this server runs it or a commit after it, and why not. With wait it waits until it is, or until the updates say why it
-won't be (a failed update, updates off), timeout seconds at most: no loop of your own needed. Exit 1 when it isn't
+won't be (a failed update, updates off, a checkout with uncommitted changes, commits not on the branch or another branch
+checked out: it names them), timeout seconds at most: no loop of your own needed. Exit 1 when it isn't
 live, with the reason. A branch's commits land on main squashed: give main's (git log origin/main). Open pages take a
 new build by themselves (at once when hidden; visible, they offer Reload). machine: another machine's (Machines).
 

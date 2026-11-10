@@ -14,11 +14,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   by itself when that loses nothing (edits not saved, a form in a sheet, a recording, dictation or sound playing hold
   it), so the next look is the new version; one in view offers Reload.
 - **`vau version <commit>` says whether it's live**: here or on another machine (`--machine`), and with `--wait` waits
-  until it is or the updates say why it won't be, exiting 1 with the reason; no polling loop of your own.
+  until it is or the updates say why it won't be (a failed update, or a checkout with uncommitted changes or commits
+  not on the branch, named), exiting 1 with the reason; no polling loop of your own.
 - **`vau version` names the commit that runs**: after an update that only rebuilt the web app, it and Machines name the
   new commit, not the one the server started on.
-- **A server following a branch updates sooner**: it looks every 3 minutes instead of 10, asking GitHub at most 20
-  times an hour (a look where nothing moved asks it nothing).
 - **A server following a branch updates sooner and says why it waits**: it looks every 3 minutes instead of 10
   (asking GitHub at most 20 times an hour), `vau update` looks now, and its log has each change of state with the
   commits and why; when the checkout blocks it, it names the uncommitted files or the commits not on the branch.
