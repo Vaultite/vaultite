@@ -15,6 +15,11 @@ export default async ($: VaultTest) => {
       const at = await readLines(f, 0, (b: Buffer) => { got.push(b.toString()) }, chunk)
       check(`transcripts: long lines read whole, a chunk of ${chunk} bytes`, JSON.stringify(got) === JSON.stringify(lines) && at === lines.join("\n").length + 1, [got.length, at])
     }
+    // (a chat tab's hello and a state change's title read the same transcript at once)
+    const { Transcript } = await import("../../../core/agents.ts")
+    const said: string[] = [], t = new Transcript(f, () => ({ line: (l: string) => said.push(l), settle: () => {} }), ["a"])
+    await Promise.all([t.read(), t.read(), t.read()])
+    check("transcripts: reads at once feed each line once", said.length === 1, said.length)
   }
   // A scan kept on disk: a new server reads on from where the last stopped, and a scan of other code reads all again.
   {

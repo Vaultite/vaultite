@@ -565,11 +565,19 @@ export class Transcript<T extends Talk> {
   private mtime = 0
   private make: () => T
   private wanted: Buffer[]
+  private reading: Promise<unknown> = Promise.resolve()
   constructor(file: string, make: () => T, wanted: string[]) {
     this.file = file; this.make = make; this.talk = make(); this.wanted = wanted.map((w) => Buffer.from(w))
   }
 
-  async read() {
+  /** One read at a time: two at once would both feed the talk the lines after the same offset (each message twice). */
+  read(): Promise<this> {
+    const r = this.reading.then(() => this.readOn())
+    this.reading = r.catch(() => {})
+    return r
+  }
+
+  private async readOn() {
     const st = await fs.promises.stat(this.file)
     if (st.size === this.size && st.mtimeMs === this.mtime) return this
     if (st.size < this.offset) { this.offset = 0; this.talk = this.make() } // rewritten: from the top

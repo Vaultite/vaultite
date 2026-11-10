@@ -479,8 +479,10 @@ export default async ($: VaultTest) => {
       open(w.id, t.ws)
       await waitFor(() => t.got.some((m) => m.t === "hello"), 3000, 20)
       const shown = t.got.find((m) => m.t === "hello").history.entries.map((e: Any) => e.id)
+      const differs = live.findIndex((e, i) => shown[i] !== e.id), at = differs < 0 ? live.length : differs
       check("chat tab: reloaded, the transcript and the keeper's entries in the order they were shown (an ask after its call, each turn's end after it)",
-        shown.join() === live.map((e) => e.id).join(), { shown, live: live.map((e) => `${e.k}:${e.id}`) })
+        shown.join() === live.map((e) => e.id).join(), { at, of: [shown.length, live.length], shown: shown.slice(Math.max(0, at - 2), at + 4),
+          live: live.slice(Math.max(0, at - 2), at + 4).map((e) => `${e.k}:${e.id}:${e.at}`) })
       t.ws.close()
       const e = (k: string, id: string, more: Any = {}) => ({ k, id, at: "", text: "", ...more })
       const m1 = merge([e("user", "u1"), e("text", "a:0"), e("note", "n", { text: "Interrupted" }), e("user", "u2"), e("text", "b:0")],
