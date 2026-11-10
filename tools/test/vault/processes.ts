@@ -9,7 +9,9 @@ export default async ($: VaultTest) => {
   // as starting one per read took 20 s on an Arm machine. Here the platform's own shell stands in.
   const { keptShell } = await import("../../../core/keptshell.ts")
   const win = process.platform === "win32"
-  const kept = () => win ? keptShell("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "-"], { echo: (m) => `'${m}'`, idle: 400 })
+  // (module autoload off, the one module these use imported: its first command took 22 s on CI's Arm runner, core/plugins.ts)
+  const PS = "$PSModuleAutoLoadingPreference = 'None'; Import-Module Microsoft.PowerShell.Utility"
+  const kept = () => win ? keptShell("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "-"], { echo: (m) => `'${m}'`, first: PS, idle: 400 })
     : keptShell("sh", [], { echo: (m) => `echo '${m}'`, idle: 400 })
   const pid = win ? "$PID" : "echo $$", hang = win ? "Start-Sleep 30" : "sleep 30"
   const sh = kept()
@@ -23,6 +25,18 @@ export default async ($: VaultTest) => {
   const again = await sh.ask(pid, 30_000)
   check("kept shell: unasked a while, it ends; asked again, it starts again", /^\d+$/.test(again?.trim() ?? "") && again?.trim() !== after?.trim(), [after, again])
   sh.close()
+  // Starting isn't a script's time: a shell's first line can take seconds (PowerShell's module autoload: 22 s on Arm).
+  const slow = win ? "Start-Sleep -Milliseconds 1500" : "sleep 1.5"
+  const late = win ? keptShell("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "-"], { echo: (m) => `'${m}'`, first: `${PS}; ${slow}` })
+    : keptShell("sh", [], { echo: (m) => `echo '${m}'`, first: slow })
+  const lateAnswer = await late.ask(pid, 1000)
+  check("kept shell: a script's timeout counts from when the shell is up, not through a slow start", /^\d+$/.test(lateAnswer?.trim() ?? ""), lateAnswer)
+  late.close()
+  const stuckUp = win ? keptShell("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "-"], { echo: (m) => `'${m}'`, first: `${PS}; Start-Sleep 30`, start: 2000 })
+    : keptShell("sh", [], { echo: (m) => `echo '${m}'`, first: "sleep 30", start: 2000 })
+  const t1 = Date.now(), never = await stuckUp.ask(pid, 30_000)
+  check("kept shell: one that doesn't come up within its start bound is ended, its ask null", never === null && Date.now() - t1 < 10_000, [never, Date.now() - t1])
+  stuckUp.close()
   // A process that asked once and has nothing else to do ends: the shell kept doesn't hold it.
   const mod = JSON.stringify(pathToFileURL(path.resolve(import.meta.dirname, "../../../core/keptshell.ts")).href)
   const r = spawnSync(process.execPath, ["--input-type=module", "-e", `import { keptShell } from ${mod}

@@ -10,13 +10,16 @@ export type KeptShell = {
   close(): void
 }
 
-/** `cmd args` reading a script a line on stdin (`echo(marker)` prints a marker after each): started when asked (`first`
- *  its first line), ended `idle` ms after its last answer or with this process (its stdin closes). */
-export function keptShell(cmd: string, args: string[], o: { echo: (marker: string) => string; first?: string; idle?: number }): KeptShell {
-  const MARK = `<<vaultite-${crypto.randomUUID()}>>`
+/** `cmd args` reading a script a line on stdin (`echo(marker)` prints a marker after each), up once its `first` line ran
+ *  (within `start` ms), a script's timeout from then; ended `idle` ms after its last answer or with this process. */
+export function keptShell(cmd: string, args: string[], o: { echo: (marker: string) => string; first?: string; idle?: number; start?: number }): KeptShell {
+  const MARK = `<<vaultite-${crypto.randomUUID()}>>`, UP = `${MARK}up`
   let child: ChildProcessWithoutNullStreams | null = null, queue: Promise<unknown> = Promise.resolve(), idle: NodeJS.Timeout | null = null
   let asked = 0
+  const ups = new WeakMap<ChildProcessWithoutNullStreams, Promise<boolean>>()
   const end = () => { const c = child; child = null; if (c && c.exitCode === null) { c.stdin.end(); c.kill() } }
+  /** Whether shell `c` came up (its first line run), within `start` ms; one that didn't is ended. */
+  const up = (c: ChildProcessWithoutNullStreams) => ups.get(c) ?? Promise.resolve(false)
   function start() {
     const c = spawn(cmd, args, { windowsHide: true })
     c.stdout.setEncoding("utf8")
@@ -27,11 +30,23 @@ export function keptShell(cmd: string, args: string[], o: { echo: (marker: strin
     c.unref()
     for (const s of [c.stdin, c.stdout, c.stderr]) (s as unknown as Socket).unref?.()
     c.stderr.resume()
-    if (o.first) c.stdin.write(`${o.first}\n`)
+    ups.set(c, new Promise<boolean>((resolve) => {
+      let out = ""
+      const done = (ok: boolean) => { clearTimeout(timer); c.stdout.off("data", data); c.off("exit", gone); if (!ok && child === c) end(); resolve(ok) }
+      const data = (d: string) => { out += d; if (out.includes(UP)) done(true) }
+      const gone = () => done(false)
+      const timer = setTimeout(() => done(false), o.start ?? 180_000)
+      c.stdout.on("data", data)
+      c.once("exit", gone)
+    }))
+    c.stdin.write(`${o.first ? `${o.first}; ` : ""}${o.echo(UP)}\n`)
     return (child = c)
   }
-  const once = (script: string, timeout: number) => new Promise<string | null>((resolve) => {
+  const once = async (script: string, timeout: number) => {
     const c = child ?? start()
+    return await up(c) ? ask1(c, script, timeout) : null
+  }
+  const ask1 = (c: ChildProcessWithoutNullStreams, script: string, timeout: number) => new Promise<string | null>((resolve) => {
     let out = ""
     const done = (text: string | null) => { clearTimeout(timer); c.stdout.off("data", data); c.off("exit", gone); resolve(text) }
     const data = (d: string) => { out += d; const at = out.indexOf(MARK); if (at >= 0) done(out.slice(0, at)) }

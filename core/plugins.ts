@@ -238,15 +238,14 @@ export function processTable(maxAge = 1000): Promise<Map<number, Proc>> {
   return p
 }
 
-/** Windows' processes (Win32_Process): no terminals' foreground groups there (tpgid 0). Asked of one PowerShell kept
- *  running (keptshell.ts): a new one each time took seconds a read, 20 s on an Arm machine. */
+/** Windows' processes (Win32_Process; tpgid 0), from one PowerShell kept running (keptshell.ts). Module autoload took
+ *  22 s at its first command on CI's Arm runner: off, the one module the read needs imported, it reads in 0.4 s. */
 const powershell = process.platform === "win32" ? keptShell("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "-"],
-  { echo: (m) => `'${m}'`, first: "[Console]::OutputEncoding = [Text.Encoding]::UTF8" }) : null
+  { echo: (m) => `'${m}'`, first: "$PSModuleAutoLoadingPreference = 'None'; Import-Module CimCmdlets; [Console]::OutputEncoding = [Text.Encoding]::UTF8" }) : null
 async function windowsProcesses() {
   // (tabs as [char]9: `t is a tab only in double quotes)
   const script = "Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,CreationDate,CommandLine,Name | ForEach-Object { ($_.ProcessId, $_.ParentProcessId, " +
     "$(if ($_.CreationDate) { ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() } else { 0 }), $(if ($_.CommandLine) { $_.CommandLine -replace '[\\r\\n\\t]', ' ' } else { $_.Name })) -join [char]9 }"
-  // (the first read starts PowerShell: half a minute on an Arm machine under load)
   const out = await powershell!.ask(script, 60_000)
   const map = new Map<number, Proc>()
   for (const line of String(out ?? "").split(/\r?\n/)) {
