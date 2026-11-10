@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Filtering finds what you mean**: every list you type to filter (the palette, the quick switcher, pickers, the slash
+  menu, panels) meets a word in another form (files finds File explorer, terminals Open terminal) and ranks whole words
+  above a name's start; in the palette, commands and panels come before settings that match as well.
 - **The inbox holds only what needs you**: an agent's answer or status that only tells you something is done quietly,
   unread on its row in the Agents panel, with no badge, toast or notification; what asks you something, waits on you
   or failed still comes. Inbox setting Agents' answers puts them back in the inbox.

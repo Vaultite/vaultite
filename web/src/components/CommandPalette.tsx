@@ -1,5 +1,5 @@
-// The command palette (⌘P): commands offered now, fuzzy by name, the used last first; a setting shows its switch or
-// value. A plugin that's off whose name is typed is offered to turn on ("turn off" and a name, to turn off).
+// The command palette (⌘P): commands offered now, fuzzy by name (core/paletterank.ts), the used last first; a setting
+// shows its switch or value. A plugin that's off whose name is typed is offered to turn on ("turn off" and a name, to turn off).
 import { useMemo, useState } from "react"
 import { flushSync } from "react-dom"
 import { available, commandName, isOn, isSetting, keysOf, recentCommands, runCommand, runOrSay, useCommandList, type Command } from "@/core/commands"
@@ -9,6 +9,7 @@ import { isEnabled, names, offWithAi, pluginById, setSwitch, switchedOn, usePlug
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { notify } from "@/core/notify"
 import { fuzzy, hasWords } from "@/core/fuzzy"
+import { rankCommands } from "@/core/paletterank"
 import { Keys, marked, NoMatches, Palette, useFinderQuery } from "@/components/Palette"
 import { cn } from "@/lib/utils"
 
@@ -105,12 +106,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       const rank = (c: Command) => { const i = recent.indexOf(c.id); return i < 0 ? recent.length : i }
       return [...cs].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name)).map((c) => ({ ...c, marks: [] }))
     }
-    const typed = q.trim().toLowerCase().split(/\s+/)
-    const byWords = (c: Command) => { const ws = `${c.name} ${c.words}`.toLowerCase().split(/\s+/); return typed.every((t) => ws.some((w) => w.startsWith(t))) }
-    // A match by its other words comes after every match by name.
-    const found: Row[] = cs.flatMap((c) => { const m = fuzzy(q.trim(), c.name); return m ? [{ ...c, marks: m.marks, score: m.score }] : c.words && byWords(c) ? [{ ...c, marks: [], score: -Infinity }] : [] })
-      .sort((a, b) => b.score - a.score).map(({ score: _, ...c }) => c)
-    return [...found, ...pluginRows(plugins, disabled, q.trim())]
+    return [...rankCommands(cs, q), ...pluginRows(plugins, disabled, q.trim())]
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [all, q, plugins, disabled, names])
 

@@ -4,7 +4,7 @@ import { startCompletion, type Completion, type CompletionContext } from "@codem
 import { syntaxTree } from "@codemirror/language"
 import type { EditorView } from "@codemirror/view"
 import type { SlashItem } from "@/core/define"
-import { fuzzy } from "@/core/fuzzy"
+import { fuzzy, startsWords } from "@/core/fuzzy"
 
 const CODE = /^(FencedCode|CodeBlock|CodeText|InlineCode|CodeInfo|CodeMark)$/
 
@@ -45,7 +45,7 @@ export function slashSource(items: () => SlashItem[]) {
     const hits = !q ? all.map((it, i) => ({ it, score: -i }))
       : all.flatMap((it, i) => {
         const t = fuzzy(q, it.title)
-        const k = (it.keywords ?? "").toLowerCase().split(/\s+/).some((w) => w.startsWith(q))
+        const k = !!it.keywords && startsWords(q, it.keywords)
         return t || k ? [{ it, score: (t?.score ?? 0) + (k ? 5 : 0) - i / 1000 }] : []
       }).sort((a, b) => b.score - a.score)
     if (!hits.length) return null
