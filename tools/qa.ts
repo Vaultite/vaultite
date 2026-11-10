@@ -247,6 +247,11 @@ await Promise.all(Array.from({ length: jobs }, async () => {
     // (what failed, and the last check that passed: where a script that threw got to)
     const lines = r.out.trim().split("\n"), lastOk = lines.findLastIndex((l) => l.startsWith("ok"))
     if (!r.ok) fails.push(`--- ${name}\n${lines.filter((l, i) => i === lastOk || !l.startsWith("ok")).slice(-25).join("\n")}`)
+    // (on GitHub, each failed script an annotation, its first failed check: what main's red notice names, tools/mainci.ts)
+    if (!r.ok && process.env.GITHUB_ACTIONS) {
+      const why = (lines.find((l) => l.startsWith("FAIL ")) ?? lines.findLast((l) => l.trim()) ?? "failed").replace(/^FAIL\s+/, "").split("  (got ")[0].slice(0, 300)
+      console.log(`::error title=qa ${name}::${why.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A")}`)
+    }
   }
 }))
 record("qa", [...runs].map(([name, rs]) => ({ name, ms: times.get(name) ?? 0, ok: rs.every(Boolean), fails: rs.every(Boolean) ? [] : [name] })), Date.now() - t0)
