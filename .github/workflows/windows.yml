@@ -43,7 +43,8 @@ jobs:
         run: npm run smoke
   surfaces:
     runs-on: windows-2025
-    timeout-minutes: 60
+    # (a try's, tools/try.ts SURFACES_JOB_MIN)
+    timeout-minutes: ${{ startsWith(github.ref, 'refs/heads/try/') && 20 || 60 }}
     defaults:
       run:
         shell: bash

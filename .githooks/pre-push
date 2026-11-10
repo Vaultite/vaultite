@@ -7,6 +7,8 @@ while read -r _ sha ref old; do [ "$ref" = refs/heads/main ] && main=1 && to=$sh
 [ -n "$main" ] && [ -d node_modules ] || exit 0
 said=$(mktemp) || exit 1
 node tools/mainci.ts --notice >"$said" 2>/dev/null &
+# (tries nobody came back to are ended apart, never waited for here)
+( node tools/try.ts --sweep >/dev/null 2>&1 & )
 notice() { wait; cat "$said" >&2; rm -f "$said"; }
 fail() { [ -n "$1" ] && echo "$1" >&2; notice; exit 1; }
 npx tsc -b && npm run -s check >/dev/null || fail "pre-push: main must pass tsc and npm run check (see above)"

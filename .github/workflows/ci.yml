@@ -26,7 +26,8 @@ jobs:
       matrix:
         runner: [ubuntu-24.04, macos-15, windows-2025]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 45
+    # (a try's, tools/try.ts JOB_MIN: its bounds are said there)
+    timeout-minutes: ${{ startsWith(github.ref, 'refs/heads/try/') && 15 || 45 }}
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: 1 # (nothing here starts the desktop app: windows.yml and the nightly QA do)
     defaults:

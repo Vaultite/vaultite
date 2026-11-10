@@ -7,7 +7,7 @@ import path from "node:path"
 import { gitEnv } from "../core/gitenv.ts"
 import { alsoTry, describe, osRisk, parseDiff } from "./osrisk.ts"
 import { failuresOf, mainRed, nightlyRed, notice, redStreaks, type Api, type Run } from "./mainci.ts"
-import { checkPush, judge, riskKey, tried, tryHead } from "./try.ts"
+import { ATTEMPT_MIN, checkPush, judge, loadTry, riskKey, startTry, sweep, tried, waitTry } from "./try.ts"
 const t0 = Date.now()
 
 section("osrisk")
@@ -134,48 +134,74 @@ const w = at(work)
 w("init", "-q", "-b", "main"); w("remote", "add", "origin", origin)
 fs.mkdirSync(path.join(work, "core")); fs.writeFileSync(path.join(work, "core/files.ts"), "export const a = 1\n"); w("add", "-A"); w("commit", "-qm", "base"); w("push", "-q", "origin", "main")
 w("checkout", "-qb", "change"); fs.writeFileSync(path.join(work, "core/files.ts"), "export const p = (d: string) => path.resolve(d)\n"); w("commit", "-qam", "change")
-type Script = { second?: "ok" | "FAIL"; never?: boolean; surfaces?: "ok" | "FAIL" }
-function fake(sc: Script) {
-  let attempt = 1
-  const asked: string[] = [], gh: string[] = []
+/** A made-up GitHub for one try: its jobs running until `done`, the Windows one failing (`second`: then, run again). */
+function fake(sc: { second?: "ok" | "FAIL"; surfaces?: "ok" | "FAIL" } = {}) {
+  let attempt = 1, clock = 1_800_000_000_000
+  const g = { done: false, asked: [] as string[], ghAsked: [] as string[] }
   const windows = { id: 88, path: ".github/workflows/windows.yml", html_url: "https://github.com/x/runs/88" }
-  const jobsOf = () => attempt === 1 ? [{ id: 1, name: "test (ubuntu-24.04)", status: "completed", conclusion: "success" }, { id: 2, name: "test (windows-2025)", status: sc.never ? "in_progress" : "completed", conclusion: sc.never ? null : "failure" }]
-    : [{ id: 1, name: "test (ubuntu-24.04)", status: "completed", conclusion: "success" }, { id: 3, name: "test (windows-2025)", status: "completed", conclusion: sc.second === "ok" ? "success" : "failure" }]
+  const jobsOf = () => attempt === 1 ? [{ id: 1, name: "test (ubuntu-24.04)", status: "completed", conclusion: "success", run_attempt: 1 }, { id: 2, name: "test (windows-2025)", status: g.done ? "completed" : "in_progress", conclusion: g.done ? "failure" : null, run_attempt: 1 }]
+    : [{ id: 1, name: "test (ubuntu-24.04)", status: "completed", conclusion: "success", run_attempt: 1 }, { id: 3, name: "test (windows-2025)", status: "completed", conclusion: sc.second === "ok" ? "success" : "failure", run_attempt: 2 }]
   const api: Api = async <T>(p: string) => {
-    asked.push(p)
+    g.asked.push(p)
     if (p.includes("/actions/runs?branch=try")) return { workflow_runs: [{ id: 77, path: ".github/workflows/ci.yml", html_url: "https://github.com/x/runs/77" }, ...p.includes("-surfaces") ? [windows] : []] } as T
-    if (p.includes("/runs/88/jobs")) return { jobs: [{ id: 9, name: "surfaces", status: "completed", conclusion: sc.surfaces === "FAIL" ? "failure" : "success" }, { id: 10, name: "arm64", status: "completed", conclusion: "skipped" }] } as T
+    if (p.includes("/runs/88/jobs")) return { jobs: [{ id: 9 + attempt * 10, name: "surfaces", status: "completed", conclusion: sc.surfaces === "FAIL" ? "failure" : "success", run_attempt: attempt }, { id: 10, name: "arm64", status: "completed", conclusion: "skipped" }] } as T
     if (p.includes("/runs/77/jobs")) return { jobs: jobsOf() } as T
-    if (/runs\/77$/.test(p)) return { run_attempt: attempt } as T
     if (p.includes("check-runs/")) return [failed("test_vault.ts", "terminal: teleport finds the checkout  -> C:/x")] as T
     if (p.includes("/actions/runs?")) return { workflow_runs: [] } as T
     return "not found"
   }
-  const ghDid = (args: string[]) => { gh.push(args.join(" ")); if (args.at(-1)?.endsWith("rerun-failed-jobs")) attempt = 2; return true }
-  return { api, gh: ghDid, asked, ghAsked: gh }
+  const gh = (args: string[]) => { g.ghAsked.push(args.join(" ")); if (args.at(-1)?.endsWith("rerun-failed-jobs")) attempt = 2; return true }
+  const logs: string[] = []
+  const o = { api, gh, log: (l: string) => logs.push(l), now: () => clock, pause: async (ms: number) => { clock += ms }, precheck: () => null }
+  return { g, o, logs, text: () => logs.join("\n"), last: () => logs.at(-1) ?? "", tick: (ms: number) => { clock += ms } }
 }
-const tryOnce = async (sc: Script, timeoutMin?: number, branch = "change") => {
-  w("checkout", "-q", branch)
-  const f = fake(sc), logs: string[] = []
-  const ok = await tryHead(work, { api: f.api, gh: f.gh, pause: async () => {}, log: (s) => logs.push(s), timeoutMin })
-  return { ok, logs: logs.join("\n"), f, left: at(origin)("for-each-ref", "--format=%(refname)", "refs/heads/try").stdout.trim() }
-}
+const branches = () => at(origin)("for-each-ref", "--format=%(refname)", "refs/heads/try").stdout.trim()
+const forget = () => fs.rmSync(path.join(work, ".git", "vaultite"), { recursive: true, force: true })
 const sensitive = riskKey(work, w("merge-base", "main", "HEAD").stdout.trim(), "HEAD").key!
-const broken = await tryOnce({ second: "FAIL" })
-check("try: a failure that fails again is the change's: named with its test, not kept, its branch deleted", !broken.ok && /test \(windows-2025\) failed:\n\s+test_vault\.ts: terminal: teleport/.test(broken.logs)
-  && /try: FAIL on test \(windows-2025\)/.test(broken.logs) && !tried(work, sensitive) && broken.left === "", broken)
-const flaky = await tryOnce({ second: "ok" })
-check("try: a failure that passes the second time is flaky, said so; the try passes and is kept for pre-push", flaky.ok && /flaky, failed once then passed/.test(flaky.logs) && tried(work, sensitive)
-  && flaky.f.ghAsked.some((a) => a.endsWith("rerun-failed-jobs")) && flaky.left === "", flaky)
-fs.rmSync(path.join(work, ".git", "vaultite"), { recursive: true, force: true })
-const slow = await tryOnce({ never: true }, 0.0001)
-check("try: past its time, the run is cancelled and it fails loudly", !slow.ok && /timed out after .* min, cancelled/.test(slow.logs) && slow.f.ghAsked.some((a) => a.endsWith("/cancel")) && slow.left === "", slow)
+const head = () => w("rev-parse", "HEAD").stdout.trim()
+
+const pre = fake()
+check("try: what fails at once anyway (tsc, check) fails here first, nothing pushed", !startTry(work, { ...pre.o, precheck: () => "npm run check fails here" }) && /^try: NOT STARTED: npm run check fails/.test(pre.last()) && branches() === "")
+const a = fake({ second: "ok" })
+check("try: started, it returns at once: HEAD on its try branch, kept as this checkout's try", startTry(work, a.o) && /^try: STARTED [0-9a-f]{9} on try\/[0-9a-f]{12}: about 6 min\. Wait: node tools\/try\.ts --wait$/.test(a.last())
+  && branches().startsWith("refs/heads/try/") && loadTry(work, head())?.ref === branches().slice("refs/heads/".length), [a.logs, branches()])
+check("try: started again while it runs: said, not pushed again", startTry(work, a.o) && /STARTED already/.test(a.last()))
+check("pre-push, meanwhile: its try is running, wait for it", /Its try is running: node tools\/try\.ts --wait/.test(checkPush(work, w("merge-base", "main", "HEAD").stdout.trim(), head()) ?? ""))
+const w1 = await waitTry(work, { ...a.o, seconds: 0 })
+check("try --wait, not done: still running, how far, and what to run again; nothing ended", w1.status === "running" && /^try: STILL RUNNING [0-9a-f]{9}: 1 of 2 jobs done; keep waiting: node tools\/try\.ts --wait$/.test(w1.line) && branches() !== "", [w1, a.logs])
+a.g.done = true
+const w2 = await waitTry(work, { ...a.o, seconds: 300 })
+check("try --wait again: a failure runs again once, passes: PASSED with the flaky test in its last line, kept for pre-push, branch deleted",
+  w2.status === "passed" && /^try: PASSED [0-9a-f]{9} on test \(ubuntu-24\.04\), test \(windows-2025\) in .* min; flaky \(failed once, then passed\): test \(windows-2025\): test_vault\.ts: terminal: teleport/.test(w2.line)
+  && a.last() === w2.line && a.logs.filter((l) => l === w2.line).length === 1 && a.g.ghAsked.some((x) => x.endsWith("rerun-failed-jobs")) && tried(work, sensitive) && branches() === "", [w2, a.logs])
+const asked = a.g.asked.length, w3 = await waitTry(work, { ...a.o, seconds: 300 })
+check("try --wait once it ended: the verdict again, GitHub not asked", w3.status === "passed" && w3.line === w2.line && a.g.asked.length === asked)
+forget()
+const b = fake({ second: "FAIL" }); b.g.done = true
+startTry(work, b.o)
+const wb = await waitTry(work, { ...b.o, seconds: 300 })
+check("try: failing again is the change's: FAILED naming the job and its test, not kept", wb.status === "failed" && /^try: FAILED [0-9a-f]{9} on test \(windows-2025\): test_vault\.ts: terminal: teleport/.test(wb.line) && !tried(work, sensitive) && branches() === "", [wb, b.logs])
+forget()
+const c = fake()
+startTry(work, c.o)
+await waitTry(work, { ...c.o, seconds: 0 })
+c.tick((ATTEMPT_MIN + 1) * 60_000)
+sweep(work, c.o)
+const wc = await waitTry(work, { ...c.o, seconds: 0 })
+check("try: one nobody came back to is ended by the next try command: cancelled, its branch deleted, TIMED OUT", wc.status === "failed" && /^try: TIMED OUT [0-9a-f]{9}: not done 25 min after it started \(cancelled\)$/.test(wc.line)
+  && c.g.ghAsked.some((x) => x.endsWith("/cancel")) && branches() === "", [wc, c.logs])
+forget()
 w("checkout", "-qb", "setup", "main"); fs.mkdirSync(path.join(work, "electron")); fs.writeFileSync(path.join(work, "electron/setup.ts"), "export const bin = (d: string) => path.join(d, 'vau.cmd')\n"); w("add", "-A"); w("commit", "-qm", "setup")
-const surf = await tryOnce({ second: "ok", surfaces: "FAIL" }, undefined, "setup")
-check("try: a change to what surfaces exercises runs windows.yml's surfaces too (not arm64), and its failure counts", !surf.ok && surf.f.asked.some((p) => p.includes("branch=try%2F") && p.includes("-surfaces"))
-  && surf.f.asked.some((p) => p.includes("/runs/88/jobs")) && /surfaces failed/.test(surf.logs) && !/arm64/.test(surf.logs) && surf.left === "", surf)
-fs.writeFileSync(path.join(work, "core/files.ts"), "export const b = 2\n")
-const dirtyTry = await tryOnce({})
-check("try: uncommitted work isn't tried, nothing pushed", !dirtyTry.ok && /commit first/.test(dirtyTry.logs) && !dirtyTry.f.asked.length, dirtyTry)
+const s1 = fake({ surfaces: "FAIL", second: "FAIL" }); s1.g.done = true
+startTry(work, s1.o)
+const ws = await waitTry(work, { ...s1.o, seconds: 300 })
+check("try: a change to what surfaces exercises runs windows.yml's surfaces too (not arm64), and its failure counts", /on try\/[0-9a-f]{12}-surfaces \(surfaces too/.test(s1.text()) && ws.status === "failed"
+  && /^try: FAILED .* surfaces/.test(ws.line) && s1.g.asked.some((p) => p.includes("/runs/88/jobs")) && !/arm64/.test(s1.text()) && branches() === "", [ws, s1.logs])
+fs.writeFileSync(path.join(work, "electron/setup.ts"), "export const b = 2\n")
+const d1 = fake()
+check("try: uncommitted work isn't tried, nothing pushed", !startTry(work, d1.o) && /NOT STARTED: HEAD is what's tried: commit first/.test(d1.last()) && !d1.g.asked.length && branches() === "")
+w("checkout", "-q", "--", "."); w("checkout", "-q", "main")
+const n1 = fake()
+check("try --wait with none started: says so, with what to run", (await waitTry(work, { ...n1.o, seconds: 0 })).status === "none" && /^try: NONE of [0-9a-f]{9} \(HEAD\) started: node tools\/try\.ts$/.test(n1.last()))
 
 await exit(summary("ci", t0))

@@ -55,9 +55,10 @@ is its point.
   `npm run verify -- --all` (`npm test` and smoke too) only for a change much rests on (a dependency, the build, the
   test harness): say why. CI runs the full suite on three OSes on every push.
 - A change likely to behave differently on Windows or Linux (processes, paths, file times, the CLI's shims, CI: verify
-  says so) is tried there before it lands: commit, then `npm run verify -- --try` (HEAD's tests on GitHub's three OSes
-  too, about 6 min, 12 with Windows' vau, Set up and installer checks; bounded). pre-push refuses one
-  untried; `VAULTITE_TRY=skip` only while GitHub's runners are down.
+  says so) is tried there before it lands: commit, then `npm run verify -- --try` (it starts HEAD's try on GitHub's
+  three OSes, about 6 min, 11 with Windows' vau and installer checks, and waits within 8.5 min in all). Exit 3 is "still
+  running": `node tools/try.ts --wait` again until it says PASSED or FAILED. pre-push refuses one untried;
+  `VAULTITE_TRY=skip` only while GitHub's runners are down.
 - A command that fits in the shell tool's 10-minute limit runs in the foreground with its timeout set (`npm run verify`
   does: a few minutes). One that can't is started detached, then waited on with the bounded wait its tool offers, run
   again while it says it's still running. Never a `sleep` or `until` loop of your own; and a sub-agent never ends its

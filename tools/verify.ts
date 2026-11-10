@@ -1,14 +1,14 @@
 // What this branch changed, checked, timing each: build, check, then the tests and QA scripts it reaches (--all: every
-// test and smoke; --try: HEAD on GitHub's runners too). node tools/verify.ts [--base main] [--all] [--try [--surfaces]] [--dry]
+// test and smoke; --try: HEAD on GitHub's runners too, tools/try.ts). node tools/verify.ts [--base main] [--all] [--try [--surfaces]] [--dry]
 import "./test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
-import { spawn, spawnSync } from "node:child_process"
+import { spawnSync } from "node:child_process"
 import fs from "node:fs"
-import os from "node:os"
 import path from "node:path"
 import { AREAS } from "./test/vault/index.ts"
 import { gitEnv } from "../core/gitenv.ts"
 import { qaFor } from "./qa_scripts.ts"
 import { changeRisk, describe } from "./osrisk.ts"
+import { WAIT_SECONDS, startTry, waitTry, type Waited } from "./try.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "..")
 const argv = process.argv.slice(2)
@@ -58,30 +58,34 @@ const stages: Stage[] = [
 const risks = changeRisk(ROOT, base)
 console.log(`${changed.length} files changed since ${base}`)
 if (risks.length) console.log(`OS-sensitive: ${describe(risks)}`)
-// (a try waits on GitHub's runners: it starts first, the stages run meanwhile; its log is a file, not a pipe left unread)
-const tryLog = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "verify-try-")), "try.log")
-const trying = tryIt && !dry ? new Promise<{ ok: boolean; ms: number }>((resolve) => {
-  const t = Date.now(), fd = fs.openSync(tryLog, "w")
-  spawn(process.execPath, [path.join(ROOT, "tools/try.ts"), ...argv.filter((a) => a === "--surfaces")], { cwd: ROOT, stdio: ["ignore", fd, fd] })
-    .on("close", (code) => resolve({ ok: code === 0, ms: Date.now() - t })).on("error", () => resolve({ ok: false, ms: Date.now() - t }))
-}) : null
 const rows: { name: string; why: string; s: string; ok: boolean | null }[] = []
+const t0 = Date.now(), also = argv.includes("--surfaces") ? ["surfaces"] : []
+let trying = false
 for (const st of stages) {
   if (dry) { rows.push({ name: st.name, why: st.why, s: "-", ok: null }); continue }
   console.log(`\n== ${st.name}: ${st.cmd.join(" ")}`)
   const t = Date.now()
   const r = spawnSync(st.cmd[0], st.cmd.slice(1), { cwd: ROOT, stdio: "inherit" })
   rows.push({ name: st.name, why: st.why, s: ((Date.now() - t) / 1000).toFixed(1), ok: r.status === 0 })
+  // (the try starts once build and check pass, what would fail its every job; the other stages run while it does)
+  if (tryIt && st.name === "check") {
+    console.log("\n== try: tools/try.ts (HEAD on GitHub's Linux, macOS and Windows runners)")
+    trying = rows.every((x) => x.ok) ? startTry(ROOT, { also, precheck: () => null }) : (console.log("try: NOT STARTED: build or check fails here"), false)
+  }
 }
+let waited: Waited | null = null
 if (trying) {
-  console.log("\n== try: tools/try.ts (HEAD on GitHub's Linux, macOS and Windows runners)")
-  const r = await trying
-  console.log(fs.readFileSync(tryLog, "utf8").trimEnd())
-  rows.push({ name: "try", why: "Linux, macOS and Windows (GitHub)", s: (r.ms / 1000).toFixed(1), ok: r.ok })
-} else if (tryIt) rows.push({ name: "try", why: "Linux, macOS and Windows (GitHub)", s: "-", ok: null })
+  // (verify as a whole stays within a wait's bound: a sub-agent's command gets 10 minutes)
+  console.log("\n== try: waiting for it (node tools/try.ts --wait)")
+  const t = Date.now()
+  waited = await waitTry(ROOT, { seconds: Math.max(30, WAIT_SECONDS - (Date.now() - t0) / 1000) })
+  rows.push({ name: "try", why: "Linux, macOS and Windows (GitHub)", s: ((Date.now() - t) / 1000).toFixed(1), ok: waited.status === "passed" ? true : waited.status === "running" ? null : false })
+} else if (tryIt && !dry) rows.push({ name: "try", why: "not started (above)", s: "-", ok: false })
 console.log("\nstage        time    result  what")
 for (const r of rows) console.log(`${r.name.padEnd(12)} ${r.s.padStart(6)}s  ${r.ok === null ? "-     " : r.ok ? "ok    " : "FAIL  "}  ${r.why.slice(0, 90)}`)
-const ok = rows.every((r) => r.ok !== false)
-console.log(`\n${dry ? "dry run" : ok ? "ok" : "FAIL"}`)
-if (risks.length && !tryIt) console.log("OS-sensitive (above): before it lands, try HEAD on Linux, macOS and Windows: npm run verify -- --try (pre-push asks)")
-process.exit(ok ? 0 : 1)
+const failed = rows.filter((r) => r.ok === false).map((r) => r.name)
+if (risks.length && !tryIt) console.log("\nOS-sensitive (above): before it lands, try HEAD on Linux, macOS and Windows: npm run verify -- --try (pre-push asks)")
+// (the last line says it all, read alone: exit 0 ok, 1 failed, 3 the try still running)
+console.log(`\n${dry ? "verify: dry run" : failed.length ? `verify: FAIL (${failed.join(", ")})${waited?.status === "failed" ? `; ${waited.line}` : ""}`
+  : waited?.status === "running" ? `verify: ok here; ${waited.line}` : `verify: ok${waited ? `; ${waited.line}` : ""}`}`)
+process.exit(failed.length ? 1 : waited?.status === "running" ? 3 : 0)
