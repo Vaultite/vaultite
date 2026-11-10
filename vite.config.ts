@@ -125,14 +125,14 @@ export function lucideByFile(): Plugin {
 
 /** What a window runs as it starts comes in a few files rather than a hundred (a phone fetched them 6 at a time): a
  *  module goes with the others the same pages (index.html and its siblings) import, big libraries apart from the app. */
-const boot = { pages: new Map<string, string>(), libs: new Set<string>(), editor: new Set<string>(), terminal: new Set<string>() }
+const boot = { pages: new Map<string, string>(), libs: new Set<string>(), editor: new Set<string>(), terminal: new Set<string>(), chat: new Set<string>() }
 const isLib = (id: string) => /[\\/]node_modules[\\/]/.test(id)
 export function bootChunks(): Plugin {
   return {
     name: 'vaultite-boot-chunks',
     apply: 'build',
     buildEnd() {
-      boot.pages.clear(); boot.libs.clear(); boot.editor.clear(); boot.terminal.clear()
+      boot.pages.clear(); boot.libs.clear(); boot.editor.clear(); boot.terminal.clear(); boot.chat.clear()
       const pages = [...this.getModuleIds()].filter((id) => id.endsWith('.html') && this.getModuleInfo(id)?.isEntry).sort()
       const starts = new Set(pages.flatMap((p) => this.getModuleInfo(p)?.importedIds ?? []))
       for (const page of pages) {
@@ -153,13 +153,19 @@ export function bootChunks(): Plugin {
         boot.editor.add(id)
         todo.push(...(this.getModuleInfo(id)?.importedIds ?? []))
       }
-      // The terminal's libghostty-vt side (its screen, input and renderers), which a terminal tab loads: one file, not
-      // one per module (every plugin module is a vault plugin's lazy import, so each would be its own file).
-      const vt = /[\\/]plugins[\\/]core[\\/]terminal[\\/]vt[\\/]/
-      const term = [...this.getModuleIds()].filter((id) => /[\\/]plugins[\\/]core[\\/]terminal[\\/]Terminal\.tsx$/.test(id))
-      for (let id; (id = term.pop());) {
-        for (const i of this.getModuleInfo(id)?.importedIds ?? []) if (vt.test(i) && !boot.pages.has(i) && !boot.terminal.has(i)) { boot.terminal.add(i); term.push(i) }
+      // A lazy view's own modules in one file, not one per module (every plugin module is a vault plugin's lazy import,
+      // so each would be its own file): those under `folder` that `root` reaches and no page starts with (the root too).
+      const own = (root: RegExp, folder: RegExp, into: Set<string>) => {
+        const todo = [...this.getModuleIds()].filter((id) => root.test(id))
+        for (const id of todo) if (folder.test(id) && !boot.pages.has(id)) into.add(id)
+        for (let id; (id = todo.pop());) {
+          for (const i of this.getModuleInfo(id)?.importedIds ?? []) if (folder.test(i) && !boot.pages.has(i) && !into.has(i)) { into.add(i); todo.push(i) }
+        }
       }
+      // The terminal's libghostty-vt side (its screen, input and renderers), which a terminal tab loads
+      own(/[\\/]plugins[\\/]core[\\/]terminal[\\/]Terminal\.tsx$/, /[\\/]plugins[\\/]core[\\/]terminal[\\/]vt[\\/]/, boot.terminal)
+      // Claude Code's chat (claude-code/index.tsx loads it once a computer is idle)
+      own(/[\\/]plugins[\\/]core[\\/]claude-code[\\/]ChatTab\.tsx$/, /[\\/]plugins[\\/]core[\\/]claude-code[\\/]/, boot.chat)
     },
   }
 }
@@ -173,7 +179,7 @@ export const bootGroups = [...Array.from({ length: PAGES * 2 }, (_, i) => {
     test: (id: string) => !!boot.pages.get(id)?.includes('~index') && boot.pages.get(id)!.split('~').length - 1 === pages && libOf(id) === lib,
     name: (id: string) => `${lib ? 'vendor' : 'app'}${boot.pages.get(id)!.replace('~index', '')}`,
   }
-}), { name: 'editor', test: (id: string) => boot.editor.has(id) }, { name: 'terminal', test: (id: string) => boot.terminal.has(id) }]
+}), { name: 'editor', test: (id: string) => boot.editor.has(id) }, { name: 'terminal', test: (id: string) => boot.terminal.has(id) }, { name: 'chat', test: (id: string) => boot.chat.has(id) }]
 
 /** virtual:official-plugins: Vaultite's own plugins the demo builds in as the app's (vite.demo.config.ts); none here. */
 export function noOfficialPlugins(): Plugin {
