@@ -335,9 +335,13 @@ async function sampleHealth() {
   for (const a of alerts(watching, s, HOST))
     await plugin.ask("inbox:event", null, { source: "machines", kind: "error", key: `health-${HOST}-${a.key}`, title: a.title, body: a.body })
 }
-const sampler = setInterval(() => void sampleHealth().catch((e) => console.error("machines: health sample:", e)), EVERY)
-sampler.unref?.()
-plugin.onUnload(() => clearInterval(sampler))
+// (not in a test run: a loaded runner's real samples, and their alerts, landed among the tests' own; what reads one is
+// tested apart)
+if (process.env.VAULTITE_TEST !== "1") {
+  const sampler = setInterval(() => void sampleHealth().catch((e) => console.error("machines: health sample:", e)), EVERY)
+  sampler.unref?.()
+  plugin.onUnload(() => clearInterval(sampler))
+}
 
 plugin.op({
   id: "machines.health", cli: "machines health", mcp: "machine_health", kind: "read", owner: "This machine's processes",
