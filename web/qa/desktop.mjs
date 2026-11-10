@@ -32,6 +32,21 @@ check("the window serves the vault from its own server", /^http:\/\/127\.0\.0\.1
   let built = null
   try { built = JSON.parse(fs.readFileSync(path.join(ROOT, "electron/build.json"), "utf8")).commit ?? null } catch { /* not a build */ }
   check("vau version: the app's own commit (its build's, null from source)", app_ && "commit" in app_ && (BIN ? /^[0-9a-f]{40}$/.test(app_.commit) : app_.commit === built), app_)
+  // Settings > About's App row (web/src/components/Running.tsx): the short hash and the update state; a tap copies it whole.
+  await win.evaluate(() => { window.__copied = []; navigator.clipboard.writeText = async (t) => { window.__copied.push(t) }; location.hash = "settings" })
+  await until(async () => { await win.locator('[data-settings-nav="about"]').click().catch(() => {}); return (await win.locator('[data-settings-row="running"]').count()) === 1 }, 8000)
+  const row = win.locator('[data-settings-row="running-app"]')
+  if (app_?.commit) {
+    const text = await until(async () => { const t = await row.textContent().catch(() => ""); return t?.includes(app_.commit.slice(0, 7)) ? t : null }, 8000)
+    check("About's App row: the app's short commit and its update state", text && !text.includes(app_.commit.slice(7, 12)) && /No update waiting|Updates off|is ready|…/.test(text), text)
+    await row.click()
+    check("… a tap copies the whole commit", await until(() => win.evaluate((sha) => window.__copied.includes(sha), app_.commit), 4000), await win.evaluate(() => window.__copied))
+  } else {
+    await wait(500)
+    check("About's App row: none when the app isn't a build", (await row.count()) === 0)
+  }
+  await win.evaluate(() => { history.back() })
+  await win.waitForSelector("[role=tree]")
 }
 check("the page knows it's in the app", await win.evaluate(() => document.documentElement.hasAttribute("data-electron") && window.vaultite?.desktop === true))
 check("the page knows its platform", await win.evaluate((p) => document.documentElement.dataset.platform === p && window.vaultite?.platform === p, process.platform))
