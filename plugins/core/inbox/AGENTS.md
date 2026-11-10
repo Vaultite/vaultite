@@ -78,9 +78,11 @@ What it says, as Markdown.
 **Threads**: each coding agent's session is one thread, its event (kept on the machine it runs on, not in the vault),
 with a `state`:
 - `open`, it needs the user: it asks (a permission, a question, any dialog it shows, to sign in, a plan to approve), its
-  turn ended with something for them (a question, an answer to read, a failure: judged from its last message, by a small
-  model when its words don't settle it), or its report is one the inbox keeps (a failure, public, the digest). It's told
-  then (toast, the phone and watch). A report that isn't leaves its thread done, quietly.
+  turn ended with something for them (a question or a failure: `reply`; judged from its last message, by a small model
+  when its words don't settle it), or its report is one the inbox keeps (a failure, public, the digest). It's told then
+  (toast, the phone and watch). A report that isn't leaves its thread done, quietly. A turn that only tells them
+  something (`answer`: what they asked to know, a status) is done quietly, unread on its row, never told; the setting
+  `answers: inbox` keeps it open and told instead.
 - `working`: the user answered (a reply, Approve, a pick, a prompt in its terminal) and its agent is on it. Its next turn
   ends open again when it has something for them, else done.
 - `done`: the user settled it (`vau inbox settle <id>`, which archives its report too), or a turn after their answer

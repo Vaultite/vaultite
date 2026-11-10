@@ -187,7 +187,7 @@ const dir = () => plugin.localDir(false)
 function settings() {
   const s = plugin.loaded ? plugin.settings({}) : {}
   return { keep: Math.max(1, Number(s.keep_days) || 7), push: ["all", "waiting", "off"].includes(str(s.push)) ? str(s.push) : "waiting",
-    audio: s.voice_audio !== false,
+    audio: s.voice_audio !== false, answers: s.answers === "inbox" ? "inbox" : "quiet",
     dispatch: TERMINAL_AGENT.test(str(s.dispatch).trim()) ? str(s.dispatch).trim() : "",
     prompt: str(s.dispatch_prompt).trim() || str(plugin.manifest.settings?.dispatch_prompt?.default) }
 }
@@ -342,7 +342,7 @@ export function eventOf(b: Item): Omit<InboxEvent, "id" | "t"> {
   return e
 }
 
-const ASKS = ["permission", "question", "auth", "plan", "answer", "report", "error"]
+const ASKS = ["permission", "question", "auth", "plan", "reply", "answer", "report", "error"]
 const newId = (now: number) => `${now.toString(36)}-${crypto.randomBytes(3).toString("hex")}`
 
 /** Add an event, open and unread (or update the same one, still open, from within a minute: a message sent twice).
@@ -1075,7 +1075,7 @@ export async function heard(h: Heard) {
 }
 
 /** Why a row needs the user, in a word or two (vau inbox). */
-const NEEDS: Record<string, string> = { permission: "asks permission", question: "asks", auth: "sign in", plan: "plan", answer: "answered", report: "report", error: "failed" }
+const NEEDS: Record<string, string> = { permission: "asks permission", question: "asks", auth: "sign in", plan: "plan", reply: "asks you", answer: "answered", report: "report", error: "failed" }
 const ASKING: Record<string, string> = { permission: "Asks permission", question: "Asks you something", auth: "Needs you to sign in", plan: "A plan to approve" }
 
 /** What a blocked session asks, in its own words (its agent's "agent-asking"): a question its hooks call a permission
@@ -1136,7 +1136,9 @@ async function turnEnded(who: Who, h: Heard, since: number) {
   const sample = plugin.service("sample") as ((a: SampleAsk) => Promise<{ text: string; truncated: boolean }>) | null
   const v = await judge({ prompt, text, error: h.state === "error" } satisfies Turn, sample)
   const now = list().find(rowOf(who)), turn = turnOf(prompt)
-  if (v.needs) await sessionRow(who, { state: "open", ask: v.why as Need, body, read: false, link: undefined, questions: undefined, turn }, true, h.cwd)
+  // (an answer that only tells, the setting `answers` quiet: done on its agent's row, unread, never told)
+  if (v.needs && v.why === "answer" && settings().answers === "quiet") await sessionRow(who, { state: "done", ask: "answer", body, read: false, link: undefined, questions: undefined, turn: undefined }, false, h.cwd)
+  else if (v.needs) await sessionRow(who, { state: "open", ask: v.why as Need, body, read: false, link: undefined, questions: undefined, turn }, true, h.cwd)
   else if (!now || !stillOpen(now, turn)) await sessionRow(who, { state: "done", ask: undefined, body, read: true, questions: undefined, turn: undefined }, false, h.cwd)
   else told(now) // (still to read: it stays as it was)
   endHanded(who.terminal)

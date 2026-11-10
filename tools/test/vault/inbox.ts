@@ -167,7 +167,7 @@ export default async ($: VaultTest) => {
       ]
       const off = cases.filter(([, t, want]) => (sure(t)?.needs ?? null) !== want)
       check("needs: what a turn's words settle, the same each time; the rest for the model", !off.length, off.map(([why, t]) => [why, sure(t)]))
-      check("needs: the model is asked for one word, told to keep the unsure on needs you", /exactly one word: NEEDS_YOU or DONE/.test(SYSTEM) && /When unsure, NEEDS_YOU/.test(SYSTEM))
+      check("needs: the model is asked for one word, told to keep the unsure on needs you", /exactly one word: NEEDS_YOU, ANSWER or DONE/.test(SYSTEM) && /When unsure between NEEDS_YOU and another, NEEDS_YOU/.test(SYSTEM))
       const { lastTurn } = await import("../../../core/agents.ts")
       const at = "2026-01-01T10:00:00Z", later = "2026-01-01T10:00:05Z"
       const said = lastTurn([{ kind: "user", text: "Go", at }, { kind: "assistant", text: "Looking.", at }, { kind: "tool", id: "1", name: "Bash", summary: "ls", input: "", result: "", error: false, at: later }])
@@ -208,7 +208,7 @@ export default async ($: VaultTest) => {
     let all = await rows()
     row = all.find((e) => e.terminal === "claude-k3j2h1g0")
     check("its turn ends with a question: the same thread needs you again, its answer whole, a plain preview",
-      all.filter((e) => e.terminal === "claude-k3j2h1g0").length === 1 && row?.state === "open" && row.ask === "answer" && !row.read &&
+      all.filter((e) => e.terminal === "claude-k3j2h1g0").length === 1 && row?.state === "open" && row.ask === "reply" && !row.read &&
       row.body.includes("1. **Await** it") && row.preview === "Two ways: Await it Retry Which one?", row)
     await api("POST", "inbox/hook?agent=claude&terminal=claude-k3j2h1g0", { hook_event_name: "Stop", session_id: "abc", last_assistant_message: "" })
     row = (await rows()).find((e) => e.terminal === "claude-k3j2h1g0")
@@ -216,7 +216,7 @@ export default async ($: VaultTest) => {
     await api("POST", "inbox/events/read", { ids: [row.id] })
     await api("POST", "inbox/hook?agent=claude&terminal=claude-k3j2h1g0", { hook_event_name: "Stop", session_id: "abc", last_assistant_message: "" })
     row = (await rows()).find((e) => e.terminal === "claude-k3j2h1g0")
-    check("read (opened, not answered), then another quiet turn: it still needs you, reading doesn't settle it", row?.state === "open" && row.read === true && row.ask === "answer", row)
+    check("read (opened, not answered), then another quiet turn: it still needs you, reading doesn't settle it", row?.state === "open" && row.read === true && row.ask === "reply", row)
     const toldAt = row.nt
     await api("POST", "inbox/hook?agent=claude&terminal=claude-k3j2h1g0", { hook_event_name: "UserPromptSubmit", session_id: "abc" })
     await api("POST", "inbox/hook?agent=claude&terminal=claude-k3j2h1g0", { hook_event_name: "Stop", session_id: "abc", last_assistant_message: "" })
@@ -247,7 +247,7 @@ export default async ($: VaultTest) => {
       tell({ terminal: "claude-osc75010", agent: "claude", state: "done", from: "hooks", at })
       let r = (await rows()).filter((e) => e.terminal === "claude-osc75010")
       check("inbox:state: a turn's end, its message from the transcript, asked of a quick model with what the user said; said twice, once",
-        r.length === 1 && r[0].state === "open" && r[0].ask === "answer" && r[0].session === "sess-osc" && r[0].body === read.text &&
+        r.length === 1 && r[0].state === "open" && r[0].ask === "reply" && r[0].session === "sess-osc" && r[0].body === read.text &&
         asked?.tier === "quick" && asked.prompt.includes("Look at the release and tell me what it needs.") && asked.prompt.includes(read.text), [r, asked?.prompt])
       cc.services.sample = async () => ({ text: "DONE", truncated: false })
       await api("POST", "inbox/events/read", { ids: [r[0].id] })
@@ -286,16 +286,33 @@ export default async ($: VaultTest) => {
       // Codex says no done: its turn ends working -> idle. Its session's name is its own (the terminal's says the folder).
       const cx = app.plugins.find((p) => p.id === "codex")!, cxTurn = cx.services["agent-turn:codex"]
       cx.services["agent-turn:codex"] = async (terminal: string) => (terminal === "codex-osc75012" ? { session: "cx-sess", title: "Answer 2+2",
-        prompt: "What is 2+2? Answer in one short sentence.", text: "2 + 2 = 4.", at: Date.now(), final: true } : null)
+        prompt: "What is 2+2?", text: "2 + 2 = 4.", at: Date.now(), final: true } : null)
       cc.services.sample = async () => ({ text: "NEEDS_YOU", truncated: false })
       for (const state of ["idle", "working", "idle"]) tell({ terminal: "codex-osc75012", agent: "codex", state, from: "osc7501", at })
       // (starting up, it says it works, then idle, with no session yet: no turn)
       for (const state of ["idle", "working", "idle"]) tell({ terminal: "codex-osc75013", agent: "codex", state, from: "osc7501", at })
       await settled()
       r = (await rows()).filter((e) => e.terminal === "codex-osc75012" || e.terminal === "codex-osc75013")
-      check("inbox:state: Codex's working -> idle is a turn's end: its answer to the user's question needs you, titled as its session; starting up isn't a turn",
-        r.length === 1 && r[0].state === "open" && r[0].ask === "answer" && r[0].body === "2 + 2 = 4." && r[0].title === "Answer 2+2" && r[0].session === "cx-sess", r)
+      check("inbox:state: Codex's working -> idle is a turn's end: an answer that only tells is done quietly, unread, never told, titled as its session; starting up isn't a turn",
+        r.length === 1 && r[0].state === "done" && r[0].ask === "answer" && !r[0].read && !r[0].nt && r[0].body === "2 + 2 = 4." && r[0].title === "Answer 2+2" && r[0].session === "cx-sess", r)
       await api("DELETE", `inbox/events/${r[0].id}`)
+      {
+        // The setting `answers`: inbox keeps an answer to read in the inbox, told; a model's ANSWER is one too.
+        await api("PATCH", "config/plugin/inbox", { answers: "inbox" })
+        for (const state of ["working", "idle"]) tell({ terminal: "codex-osc75012", agent: "codex", state, from: "osc7501", at })
+        await settled()
+        r = (await rows()).filter((e) => e.terminal === "codex-osc75012")
+        check("answers: inbox keeps an answer to read open, unread", r.length === 1 && r[0].state === "open" && r[0].ask === "answer" && !r[0].read, r)
+        await api("DELETE", `inbox/events/${r[0].id}`)
+        await api("PATCH", "config/plugin/inbox", { answers: null })
+        cx.services["agent-turn:codex"] = async (terminal: string) => (terminal === "codex-osc75014" ? { session: "cx-sess2", prompt: "Look at the logs and tell me what you see.", text: "Two restarts overnight, both after the update.", at: Date.now(), final: true } : null)
+        cc.services.sample = async () => ({ text: "ANSWER", truncated: false })
+        for (const state of ["idle", "working", "idle"]) tell({ terminal: "codex-osc75014", agent: "codex", state, from: "osc7501", at })
+        await settled()
+        r = (await rows()).filter((e) => e.terminal === "codex-osc75014")
+        check("answers: the model's ANSWER, by default, is done quietly too", r.length === 1 && r[0].state === "done" && r[0].ask === "answer" && !r[0].read && !r[0].nt, r)
+        await api("DELETE", `inbox/events/${r[0].id}`)
+      }
       // A question in its own words (agent-asking), whatever its hooks call it: Claude Code's say permission.
       const askWas = cc.services["agent-asking:claude"]
       const qs = [{ question: "How should it sign builds?", header: "Signing", options: [{ label: "Local cert (Recommended)", description: "Made here once" }, { label: "Not now" }] }]
@@ -731,7 +748,7 @@ export default async ($: VaultTest) => {
       check("a host's session: Chat about this goes to its host (the user's alone), then it's working", byAgent === 403 && st === 200 &&
         JSON.stringify(got.at(-1)) === '["sdk-1",{"chat":true}]' && (await now())?.state === "working", [byAgent, st, b, got])
       e = await host({ agent: "sdk", session: "sdk-1", state: "done", prompt: "Roll it out", text: "Rolled out to US. Should I do EU next?" })
-      check("inbox:session: a turn ending with a question: open again, its host's", e?.state === "open" && e.ask === "answer" && !e.read && e.host === true, e)
+      check("inbox:session: a turn ending with a question: open again, its host's", e?.state === "open" && e.ask === "reply" && !e.read && e.host === true, e)
       const asked = await host({ agent: "sdk", session: "sdk-2", state: "waiting", ask: "permission", text: "Run the migration?" })
       ;[st, b] = await api("POST", "ops/inbox.answer", { id: asked.id, answer: "approve" }, asApp)
       check("a host's session asking permission: approved through its host, then working", st === 200 && JSON.stringify(got.at(-1)) === '["sdk-2",{"answer":"approve"}]' &&
