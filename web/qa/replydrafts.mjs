@@ -67,16 +67,19 @@ await wait(300)
 await shot(page, "2-desktop-light-sheet")
 
 // A send that never answers (the app killed or suspended mid-send): the draft stays, no second send.
-let posts = 0
-await page.route("**/api/ops/inbox.reply", () => { posts++ }) // (never answered)
+let posts = 0, hung = null
+await page.route("**/api/ops/inbox.reply", (r) => { posts++; hung = r }) // (never answered)
 await sheet.getByRole("button", { name: "Send" }).click()
 check("sending: shown at once, the box waits", !!(await until(() => sheet.locator("[data-reply-sending]").count())) && await sheet.locator("[data-reply]").isDisabled())
 check("sending: its draft still stored", (await stored(page, KEY)) === SAID, await stored(page, KEY))
 await sheet.locator("[data-reply]").press("Control+Enter").catch(() => {})
 await wait(300)
 check("sending: no second send", posts === 1, posts)
-await page.unroute("**/api/ops/inbox.reply")
+// (the app gone mid-send: its request never arrives; unrouted while held, Chrome would send it on, and the session,
+// working on the reply, would leave the inbox for the Agents panel)
 await page.goto("about:blank")
+await hung?.abort().catch(() => {})
+await page.unroute("**/api/ops/inbox.reply")
 await page.goto(`${B}#view/inbox`)
 await until(() => evRow.count(), 8000)
 check("reopened after a send that never answered: still a draft on its row", !!(await until(() => evRow.locator("[data-reply-draft]").count())))
