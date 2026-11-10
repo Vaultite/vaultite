@@ -180,6 +180,22 @@ await section("vau update: a look asked for while one runs joins it", async () =
   o.busy = slow
 })
 
+await section("a bare clone (a root store's): no branch nor tree, what runs is the head", async () => {
+  const bare = path.join(tmp, "store.git")
+  execFileSync("git", ["clone", "--quiet", "--bare", origin, bare], { stdio: "pipe", env: gitEnv() })
+  git(bare, "remote", "set-url", "origin", GH)
+  git(bare, "config", `url.${origin}.insteadOf`, GH)
+  const was = git(dev, "rev-parse", "HEAD"), applied: { head: string; running: string; to: string; files: string[] }[] = []
+  const b = { root: bare, bare: true, branch: "main", running: was, stateFile: path.join(tmp, "state", "bare.json"), busy: async () => null, restart: () => {},
+    ci: async () => ({ ok: true, why: "CI passed", state: "passed" as const }), apply: async (u: (typeof applied)[number]) => { applied.push(u); return { restart: true } } }
+  check("on its commit: current, nothing asked of the checkout it hasn't", (await checkForUpdate(b)).state === "current" && !applied.length)
+  const next = commit({ "core/bare.ts": "1" }, "feat(server): bare")
+  const u = await checkForUpdate(b)
+  check("a newer commit: handed to the host from what runs, with the files between", u.state === "current" && applied.length === 1 && applied[0].head === was && applied[0].running === was
+    && applied[0].to === next && applied[0].files.join() === "core/bare.ts", { u, applied })
+  check("…and what runs is it now", b.running === next && u.running === next)
+})
+
 section("what restarts the server")
 check("web/, the desktop app, tools and docs don't", !backendChanged(["web/src/a.ts", "plugins/core/x/index.tsx", "electron/main.ts", "tools/t.ts", "CHANGELOG.md", "web/dist/x.js"]))
 check("core, plugins' backends, server.ts and dependencies do", ["core/a.ts", "plugins/core/x/plugin.ts", "server.ts", "package.json", "core/docs/design.md"].every((f) => backendChanged([f])))

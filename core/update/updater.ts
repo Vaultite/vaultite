@@ -45,7 +45,10 @@ export type Update = { head: string; running: string; to: string; files: string[
 export type Applied = { restart: boolean } | { failed: string; cause?: unknown }
 
 export type UpdaterOptions = {
+  /** The git it follows: a checkout on the branch, or (`bare`) a bare clone, a root store's (core/update/store.ts). */
   root: string
+  /** No branch checked out, no tree to keep clean: what runs (`running`, which the host sets) is the head. */
+  bare?: boolean
   branch: string
   /** The commit this server started on (what runs): a checkout moved past it, merged or pulled here, is run too. */
   running?: string
@@ -132,9 +135,9 @@ async function lookOnce(o: UpdaterOptions): Promise<UpdateStatus> {
     return set("failed", message, { next: commit, blocked, error: e ?? message })
   }
   try {
-    const on = await currentBranch(git)
+    const on = o.bare ? o.branch : await currentBranch(git)
     if (on !== o.branch) return set("waiting", `the checkout is on ${on || "a detached commit"}, not ${o.branch}: it updates once ${o.branch} is checked out again`, { blocked: { by: "branch" } })
-    const fetched = await fetchBranch(git, o.branch), { head, remote } = fetched
+    const fetched = await fetchBranch(git, o.branch), { remote } = fetched, head = o.bare ? o.running || remote : fetched.head
     origin = remote
     o.running ||= head
     const running = o.running
@@ -143,7 +146,7 @@ async function lookOnce(o: UpdaterOptions): Promise<UpdateStatus> {
     const there = rel === "diverged" ? await commitsNotIn(git, head, remote) : undefined
     const stop = placed({ branch: o.branch, head, remote, running, relation: rel, failed: kept.error, here, there })
     if (stop) return stop.fail ? fail(remote, stop.why, undefined, stop.blocked) : set(stop.state, stop.why, stop)
-    const dirty = await dirtyFiles(git)
+    const dirty = o.bare ? [] : await dirtyFiles(git)
     if (dirty.length) return set("waiting", `the checkout has uncommitted changes (${capped(dirty)}): it updates once they're committed or undone`, { next: remote, blocked: { by: "uncommitted", files: dirty.slice(0, 20) } })
     const repo = await originRepo(git)
     if (!repo) return set("waiting", "origin isn't on GitHub, so CI can't be checked", { next: remote })
@@ -186,7 +189,7 @@ export function startUpdater(o: UpdaterOptions) {
   following = o
   status = { branch: o.branch, state: "waiting", why: "the first look is a minute after the server starts", checked: null }
   try { Object.assign(status, JSON.parse(fs.readFileSync(o.stateFile, "utf8"))) } catch { /* none yet */ }
-  if (!o.running) void gitIn(o.root)("rev-parse", "HEAD").then((head) => { o.running ||= head; status.running ??= o.running }, () => {})
+  if (!o.running && !o.bare) void gitIn(o.root)("rev-parse", "HEAD").then((head) => { o.running ||= head; status.running ??= o.running }, () => {})
   else status.running = o.running
   const later = (ms: number) => setTimeout(() => void checkForUpdate(o).finally(() => later(LOOK_EVERY)), ms).unref()
   later(MINUTE)
