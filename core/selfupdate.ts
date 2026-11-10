@@ -6,6 +6,7 @@ import { promisify } from "node:util"
 import { gitIn, isAncestor, short } from "./update/git.ts"
 import { fixSpawnHelper } from "./update/npm.ts"
 import type { Update, UpdaterOptions } from "./update/updater.ts"
+import { graphModule } from "./update/graph.ts"
 import { errText } from "./update/updater.ts"
 
 const exec = promisify(execFile)
@@ -61,8 +62,10 @@ export function inPlace({ npm: npmIn, ...o }: InPlaceOptions): UpdaterOptions {
 /** The module graph's answer beside backendChanged's (core/update/closure.ts), said when they differ: evidence before
  *  the graph decides anything. The update acts on backendChanged. */
 export async function shadow(root: string, files: string[], restart: boolean, log: (line: string) => void) {
+  const mod = graphModule()
+  if (!mod) return // (a host without the graph: nothing to compare)
   try {
-    const { diskTree, graphOf } = await import("./update/closure.ts")
+    const { diskTree, graphOf } = await mod
     const g = graphOf(diskTree(root)), hit = g.hit("server", files)
     if (!!hit === restart) return
     const list = (xs: string[]) => `${xs.slice(0, 5).join(", ")}${xs.length > 5 ? ` and ${xs.length - 5} more` : ""}`

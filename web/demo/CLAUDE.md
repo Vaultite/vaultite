@@ -6,6 +6,9 @@ The web demo (`npm run build:demo`): the whole app in a browser, no server, on t
   to it. The UI is the app's own.
 - Node in the browser (`node/`): `fs` is a folder tree in memory, kept in IndexedDB. What can't run in a browser
   (processes, sockets) is `node/stub.ts`.
+- The demo bundles every import the core reaches, lazy ones too. A server-only heavy module (the module graph's parser)
+  comes from `server.ts` through a hook (`core/update/graph.ts`), never imported by the core; `npm run check` fails when
+  the demo's reach (`node tools/closure.ts --entry demo`) has `core/update/closure.ts`.
 - Vaultite's own plugins (Vaultite/plugins, checked out at `VAULTITE_PLUGINS`, default `../vaultite-plugins`) are built
   in as if they were the app's, off until turned on; a bundle installing one gets it (`fitForDemo` drops other installs).
 - Browsers can't follow an AsyncLocalStorage across awaits, so the worker answers one request at a time.

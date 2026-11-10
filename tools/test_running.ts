@@ -14,6 +14,7 @@ import { entryOf } from "../core/ops.ts"
 import http from "node:http"
 import type net from "node:net"
 import { webBuilds } from "../core/webbuild.ts"
+import { giveGraph } from "../core/update/graph.ts"
 const t0 = Date.now()
 
 const tmp = tempDir("vaultite-running-test-")
@@ -92,6 +93,9 @@ await section("whether each process runs older code (the module graph)", async (
   const sha = commit({ "server.ts": `import "./core/a.ts"`, "core/a.ts": "export const a = 1", "web/src/x.tsx": "", "README.md": "" }, "graph")
   const r = runningIn(repo, () => ({ entry: null, eager: [], stamp: null }))
   const ask = () => r.processes([{ id: "server", commit: sha }, { id: "desktop", commit: null }, { id: "helper", commit: "f".repeat(40) }])
+  const without = (await ask())[0]
+  check("no graph given by the host (the web demo): can't say, and why", without.stale === null && /no module graph/.test(without.why ?? ""), without)
+  giveGraph(() => import("../core/update/closure.ts")) // (as server.ts does)
   fs.writeFileSync(path.join(repo, "README.md"), "more"); fs.writeFileSync(path.join(repo, "web/src/x.tsx"), "more")
   let [server, app, helper] = await ask()
   check("what the server doesn't reach changed: not stale", server.stale === false && server.label === "Server", server)

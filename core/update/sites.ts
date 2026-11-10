@@ -14,6 +14,8 @@ export const ENTRIES: Entry[] = [
   { id: "termd", label: "Terminal keeper", from: ["plugins/core/terminal/termd/termd.ts"], mode: "node" },
   { id: "chatd", label: "Chat keeper", from: ["plugins/core/claude-code/chatd.ts"], mode: "node" },
   // (vite builds web/dist from its pages; its config and what that reads shape the build too)
+  // (the server in a browser: npm run build:demo bundles the core against web/demo/node's stubs)
+  { id: "demo", label: "Web demo", from: ["web/demo/worker.ts"], mode: "vite" },
   { id: "web", label: "Web app", from: ["web/index.html", "web/vaults.html", "web/onboarding.html", "web/phone.html", "web/screen.html", "vite.config.ts"], mode: "vite" },
 ]
 

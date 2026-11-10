@@ -8,6 +8,7 @@ import type { CiResult } from "../core/update/ci.ts"
 import { checkForUpdate } from "../core/update/updater.ts"
 import { backendChanged, inPlace, shadow } from "../core/selfupdate.ts"
 import { gitEnv } from "../core/gitenv.ts"
+import { giveGraph } from "../core/update/graph.ts"
 const t0 = Date.now()
 
 const tmp = tempDir("vaultite-selfupdate-test-")
@@ -218,6 +219,7 @@ await section("the module graph's answer beside it, said when they differ", asyn
     fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true }); fs.writeFileSync(path.join(dir, f), t)
   }
   const lines: string[] = [], log = (l: string) => lines.push(l)
+  giveGraph(() => import("../core/update/closure.ts")) // (as server.ts does)
   await shadow(dir, ["web/src/x.tsx"], false, log)
   await shadow(dir, ["core/a.ts"], true, log)
   check("nothing when they agree", !lines.length, lines)

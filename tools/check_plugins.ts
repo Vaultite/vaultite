@@ -413,6 +413,18 @@ for (const f of sources.concat(walk(path.join(ROOT, "web", "qa"))).filter((f) =>
   }
 }
 
+// What the browser builds (the web app, and the demo: the core against web/demo/node's stubs) never carry: the module
+// graph's parser comes from the server (core/update/graph.ts). Bundled, it broke the demo's build (CI's demo job).
+{
+  const { diskTree, graphOf } = await import("../core/update/closure.ts")
+  const g = graphOf(diskTree(ROOT))
+  for (const id of ["web", "demo"]) {
+    const r = g.reach(id), label = g.entries.find((e) => e.id === id)!.label
+    // (the web app's build config runs in Node: what it imports is no page's)
+    for (const f of ["core/update/closure.ts"]) if (r.files.has(f) && g.chainOf(r, f)[0] !== "vite.config.ts") problems.push(`${label} reaches ${f} (${g.chainOf(r, f).join(" > ")}): load it through core/update/graph.ts, which the server gives`)
+  }
+}
+
 // Every TypeScript file is type-checked by one of the projects `tsc -b` builds (tsconfig.json's references), or named here
 // with why not: a CI script outside them once passed a field renamed away, and only Windows' CI saw it.
 const UNTYPED: Record<string, string> = {

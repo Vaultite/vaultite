@@ -8,6 +8,7 @@ import { promisify } from "node:util"
 import { gitEnv } from "./gitenv.ts"
 import { backendChanged } from "./selfupdate.ts"
 import type { ParseCache } from "./update/closure.ts"
+import { graphModule } from "./update/graph.ts"
 import { ENTRIES } from "./update/sites.ts"
 import { served, type WebBuild } from "./webbuild.ts"
 
@@ -87,9 +88,11 @@ export function runningIn(root: string, web: () => WebBuild) {
     const label = (id: string) => ENTRIES.find((e) => e.id === id)?.label ?? id
     const none = (why: string) => list.map((p) => ({ ...p, label: label(p.id), stale: null, why }))
     if (!(await git("rev-parse", "--git-dir"))) return none("not a checkout: nothing to compare with")
+    const mod = graphModule() // (a parser: the host's, loaded only when asked)
+    if (!mod) return none("this server has no module graph (its host gives none)")
     let graph
     try {
-      const { diskTree, graphOf } = await import("./update/closure.ts") // (a parser: only when asked)
+      const { diskTree, graphOf } = await mod
       graph = graphOf(diskTree(root), { cache: parses ??= new Map() })
     } catch (e) { return none(`the module graph failed: ${(e as Error).message}`) }
     return Promise.all(list.map(async (p): Promise<Process> => {
