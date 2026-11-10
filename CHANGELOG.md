@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A job says who told it each thing**: its handoff and every follow-up keep who sent them (the companion, another
+  agent's vau from its terminal, a script, you in the app or in its terminal), shown in `companion job` (told last (by
+  ...)), its JSON and the jobs list, so the companion no longer claims what another session sent.
 - **A model named as people say it reaches Claude Code**: "Fable 5.2", "opus 55" or "sonnet" starts Claude Code on
   its id (claude-fable-5-2) or alias, in a job, a terminal, a delegate or a chat; a name it can't run is refused at once,
   saying what it takes, instead of a job that fails a second in.

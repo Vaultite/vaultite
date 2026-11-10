@@ -79,7 +79,12 @@ export type Result = { text?: string; files?: string[]; diff?: string; pr?: stri
 export type Transition = { t: number; ev: JobEvent; from: JobState; to: JobState }
 /** Its worker's latest turn as last read: what it said last and when, what it was told last (a follow-up, the user's
  *  or the companion's), the questions it asks, its background tasks still running. */
-export type Last = { text: string; at: number; told?: string; asks?: string[]; background?: number }
+export type Last = { text: string; at: number; told?: string; asks?: string[]; background?: number
+  /** Who told it `told`, as toldBy finds it ("" unknown). */
+  by?: string }
+/** One thing a job was told (a follow-up, a correction, their word to merge it): when, who told it (tellerOf in
+ *  workers.ts), its first words. */
+export type Tell = { at: number; by: string; text: string }
 /** What its worker waits on, answerable where the user is (its notification's buttons, their word to the companion): the
  *  prompt's question and its choices (a permission's: approve's, then deny's; none: it takes more, in its terminal), since when. */
 export type Waits = { kind: "permission" | "question"; question: string; choices: string[]; at: number }
@@ -91,14 +96,16 @@ export const inPlace = (w: Pick<Where, "repo" | "preview" | "live" | "moved">) =
  *  of all of it, and of each of its commits. Read while its branch exists, kept with the job for after. */
 export type Marks = { whole: string; each: string[] }
 /** A handoff kept while its machine is offline, sent once it's back: a follow-up (`land`: to merge), or with `start` the
- *  job's own start (its handoff's params, `ask` its ask). `note`: the task as given (never kept twice); `by`: who handed it. */
-export type Queued = { note: string; text: string; at: number; shown?: string; land?: boolean; title?: string; start?: Record<string, unknown>; ask?: Moment; by?: Who }
+ *  job's own start (its handoff's params, `ask` its ask). `note`: the task as given; `by`: who handed it, `teller` as Tell's. */
+export type Queued = { note: string; text: string; at: number; shown?: string; land?: boolean; title?: string; start?: Record<string, unknown>; ask?: Moment; by?: Who; teller?: string }
 export type Job = {
   id: string; title: string; state: JobState; where: Where
   /** What waits for its machine to come back, in order. */
   queued?: Queued[]
   /** Its worker's terminal id, on where.machine. */
   terminal: string
+  /** Who handed it off, and who told it each thing since (the last 8): so whoever reads it can say who sent what. */
+  by?: string; tells?: Tell[]
   /** Its worker's session (its transcript, read after its terminal ends), when that end was read, and when its terminal
    *  was closed for being done (its conversation resumes from its card). */
   session?: string; exited?: number; closed?: number
@@ -190,6 +197,18 @@ export function lastOf(t: { text: string; at: number; final?: boolean; prompt?: 
   const q = asks?.length ? asks : t.final ? questionsIn(t.text) : []
   return { text: t.text.slice(0, 4000), at: t.at, ...(told ? { told } : {}), ...(q.length ? { asks: q } : {}), ...(t.background ? { background: t.background } : {}) }
 }
+const tellKey = (s: string) => plain(s).toLowerCase().slice(0, 80)
+/** Who told job `j` its worker's latest `prompt`: the follow-up it begins as, else the user when they typed in its
+ *  terminal since the last one (`typed`: when, its tab's), else "" (an agent's vau terminal send, say). */
+export function toldBy(j: Pick<Job, "tells" | "started">, prompt: string, typed = 0) {
+  const k = tellKey(prompt), hit = k ? j.tells?.findLast((t) => tellKey(t.text) === k) : undefined
+  return hit ? hit.by : typed > (j.tells?.at(-1)?.at ?? j.started) ? "you, in its terminal" : ""
+}
+/** Who told job `j` last, for its lines in lists: its latest follow-up's teller, else who handed it off. */
+const toldLast = (j: Job) => (j.tells?.length ? `told last by ${j.tells.at(-1)!.by}` : j.by ? `handed off by ${j.by}` : "")
+/** Its follow-ups, oldest first, each with who told it: the last four. */
+const tellsLine = (j: Job, now: number) => (j.tells?.length ? `told (by whom, oldest first): ${j.tells.slice(-4).map((t) => `${t.by}, ${ago(t.at, now)}: "${cut(plain(t.text), 100)}"`).join(" | ")}` : "")
+
 /** What its worker does now, one line: what it waits on, else what it said last in this turn, else what it's told. */
 export function nowOf(j: Pick<Job, "title" | "turn" | "last" | "now">, s: { kind?: string; msg?: string; title?: string }) {
   if (s.kind) return `waits on ${s.kind === "permission" ? "a permission" : s.kind === "question" ? "an answer" : s.kind}${s.msg ? `: ${s.msg}` : ""}`
@@ -305,7 +324,8 @@ export function jobText(j: Job, now = Date.now()) {
     j.state === "needs you" && j.waits ? `waits on: ${waitsLine(j.waits)}${j.waits.choices.length ? ": companion job-answer with the user's choice, only on their words" : ""}` : "",
     j.queued?.length ? `${queuedLine(j)} (sent by itself then: nothing to retry): ${j.queued.map((q) => cut(plain(q.note), 120)).join(" | ")}` : "",
     l?.background ? `in the background: ${l.background} task${l.background > 1 ? "s" : ""} of its still running (a command, a subagent)` : "",
-    l?.told ? `told last: ${l.told}` : "",
+    j.by ? `handed off by ${j.by}` : "", tellsLine(j, now),
+    l?.told ? `told last${l.by ? ` (by ${l.by})` : ""}: ${l.told}` : "",
     said ? `it said (${ago(said.at, now)}): ${cut(said.text.trim(), 1500)}` : "", l?.asks?.length ? `asks: ${l.asks.join(" | ")}` : "",
     j.where.tree ? `its worktree: ${j.where.tree} (branch ${j.where.branch}), beside ${j.where.cwd}` : "",
     resultLine(r) ? `results: ${resultLine(r)}` : "", r?.files?.length ? `files: ${r.files.slice(0, 12).join(", ")}` : "",
@@ -318,7 +338,7 @@ export function jobText(j: Job, now = Date.now()) {
 /** Jobs as an agent lists them (newest first). */
 export function jobsText(jobs: Job[], now = Date.now()) {
   if (!jobs.length) return "No jobs: companion handoff starts one."
-  return jobs.map((j) => `- ${j.id} · ${j.state}${unseen(j) ? " (new)" : ""} · ${j.title} · ${whereLine(j.where)} · ${took(j, now)}` +
+  return jobs.map((j) => `- ${j.id} · ${j.state}${unseen(j) ? " (new)" : ""} · ${j.title} · ${whereLine(j.where)} · ${took(j, now)}${toldLast(j) ? ` · ${toldLast(j)}` : ""}` +
     (j.queued?.length ? `\n  ${queuedLine(j)}` : j.now && live(j.state) ? `\n  now: ${cut(j.now, 120)}` : "") + (j.state === "needs you" && j.waits ? `\n  waits on: ${waitsLine(j.waits)}` : "") + (j.last?.asks?.length ? `\n  asks: ${cut(j.last.asks.join(" | "), 200)}` : "") +
     (resultLine(j.result) ? `\n  ${resultLine(j.result)}` : "") +
     (j.result?.text && !live(j.state) ? `\n  ${cut(j.result.text.replace(/\s+/g, " "), 200)}` : "")).join("\n")
@@ -329,8 +349,8 @@ export function jobsLine(jobs: Job[], now = Date.now()) {
   // (the newest few, and every one that waits on them, however old: "merge it all" means those too)
   const newest = jobs.filter((j) => live(j.state) || (now - j.at < 6 * 3600_000 && j.state !== "stopped")).slice(0, 4)
   const recent = jobs.filter((j) => newest.includes(j) || j.state === "ready for review" || j.state === "needs you")
-  return recent.length ? `Your jobs (to tell one more or correct it, and anything about one's result (merge it, try X too): handoff with its job, land for their word to merge it; to stop one: job-stop; how one goes: job; to show them one that's ready, on their screen: job-show; what one waits on, with the choice their words name: job-answer): ${recent.map((j) =>
-    `${j.id} "${cut(j.title, 60)}" (${j.state}${j.queued?.length ? `: ${queuedLine(j).toLowerCase()}, sent by itself then` : j.state === "needs you" && j.waits ? `: waits on ${waitsLine(j.waits)}` : j.now && live(j.state) ? `: ${cut(j.now.replace(/\.$/, ""), 80)}` : ""}${j.last?.asks?.length && !j.waits ? `; asks: ${cut(j.last.asks[0], 80)}` : ""}; ${whereLine(j.where)}; ${took(j, now)})`).join(", ")}.` : ""
+  return recent.length ? `Your jobs (to tell one more or correct it, and anything about one's result (merge it, try X too): handoff with its job, land for their word to merge it; to stop one: job-stop; how one goes, and who told it what: job; to show them one that's ready, on their screen: job-show; what one waits on, with the choice their words name: job-answer): ${recent.map((j) =>
+    `${j.id} "${cut(j.title, 60)}" (${j.state}${j.queued?.length ? `: ${queuedLine(j).toLowerCase()}, sent by itself then` : j.state === "needs you" && j.waits ? `: waits on ${waitsLine(j.waits)}` : j.now && live(j.state) ? `: ${cut(j.now.replace(/\.$/, ""), 80)}` : ""}${j.last?.asks?.length && !j.waits ? `; asks: ${cut(j.last.asks[0], 80)}` : ""}; ${whereLine(j.where)}; ${took(j, now)}${toldLast(j) ? `; ${toldLast(j)}` : ""})`).join(", ")}.` : ""
 }
 
 /** How fast jobs got going (ms): from the ask to their card, and to their worker's first step. */

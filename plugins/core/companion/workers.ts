@@ -6,7 +6,7 @@ import os from "node:os"
 import path from "node:path"
 import { agentModel, agentName, KNOWN_AGENTS, parseTerminal } from "../../../core/agents.ts"
 import { gitEnv, inDesktop, type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin, quoted, ROOT, userSurface, whoOf } from "../../../core/plugins.ts"
-import { cardOf, choiceIn, commitsIn, endEvent, HANDED, inPlace, landedSaid, landTask, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, type Marks, nowOf, type Queued, queuedLine, picturesIn, type Result, resumeOf,
+import { cardOf, choiceIn, commitsIn, endEvent, HANDED, inPlace, landedSaid, landTask, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, type Marks, nowOf, type Queued, queuedLine, toldBy, picturesIn, type Result, resumeOf,
   step, terminalOf, type Waits, type Where, worktreeOf } from "./jobs.ts"
 import { requestWriter } from "../../../core/vault.ts"
 import type { Moment } from "./plugin.ts"
@@ -62,6 +62,16 @@ export const tidyAfter = (ms: number) => { grace = ms }
 let flushTicks = 5
 export const flushEvery = (ticks: number) => { flushTicks = ticks }
 const str = (v: unknown) => (typeof v === "string" ? v : "")
+/** Who tells a job what the app itself passes on (their talk, a capture, a live edit, their Needs changes). */
+const COMPANION = "the companion"
+/** Who a call telling a job something is, as whoever reads the job says it: the user in the app, the companion
+ *  `companion`'s own turn, else the caller (another agent's vau, from its terminal; a script), which isn't the companion. */
+function tellerOf(ctx: OpCtx, companion: string) {
+  if (userSurface(ctx.who)) return "you, in the app"
+  if (companion) return `the companion (${companion})`
+  const t = requestWriter.getStore()?.terminal
+  return ctx.who.agent ? `another agent, not the companion: ${ctx.who.label}${t ? ` in terminal ${t}` : ""}` : `not the companion: ${ctx.who.label === "vau" ? "vau from a shell or script" : ctx.who.label}`
+}
 const git = (cwd: string, args: string[]) => new Promise<string>((ok) => execFile("git", args, { cwd, timeout: 5000, maxBuffer: 4 << 20, env: gitEnv() }, (e, out) => ok(e ? "" : String(out))))
 /** The changes since `base` in one line: files changed, lines in and out, new files, commits ("" when none). */
 export async function diffSince(cwd: string, base: string) {
@@ -466,6 +476,8 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   function heard(j: Job, s: Seen) {
     if (!s.turn) return
     j.last = lastOf(s.turn, s.asks)
+    const by = j.last.told ? toldBy(j, s.turn.prompt ?? "", s.typed) : ""
+    if (by) j.last.by = by
     if (s.turn.session) j.session ??= s.turn.session
   }
   /** What its turn ended with (`s`, read with its turn): its words since the job's turn began, files, diff, links. */
@@ -567,7 +579,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   }
   /** Job `j`'s worker started over in a new conversation, told `text` first (its old one's context grown large: live
    *  editing's summary and next ask), then its old terminal ended. Its card shows `shown`. */
-  async function fresh(ctx: OpCtx, j: Job, text: string, shown = text) {
+  async function fresh(ctx: OpCtx, j: Job, text: string, shown = text, by = COMPANION) {
     if (j.state === "stopped") throw new OpError(`${j.id} was stopped: hand it off again`, 409)
     if (j.where.machine) text = await carry(j.where.machine, text)
     const old = terminalOf(j), was = await seenOf(j).catch(() => null)
@@ -575,6 +587,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     await startIn(ctx, j, text)
     delete j.session
     if (was?.running) await ctx.op("terminal.end", { id: old }).catch(() => {})
+    toldFrom(j, by, text)
     move(j, "told")
     j.turn = Date.now()
     j.now = `Started fresh: ${gist(shown, 120)}`
@@ -643,8 +656,8 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
           const ctx = { who: by, op: async (id: string, ps?: Record<string, unknown>) => (await plugin.runOp(id, ps ?? {}, by)).result } as unknown as OpCtx
           try {
             if (q.start) await startWaiting(ctx, j, q)
-            else if (q.land) await land(ctx, j, q.text, q.shown)
-            else await steer(ctx, j, q.text, q.shown)
+            else if (q.land) await land(ctx, j, q.text, q.shown, q.teller)
+            else await steer(ctx, j, q.text, q.shown, q.teller)
             if (q.title && !q.start) await retitle(ctx, j, q.title)
             j.queued.shift()
           } catch (e) {
@@ -681,7 +694,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   }
   /** A follow-up or correction to job `j`, typed into its worker's terminal (the user's own words, as if they typed);
    *  its terminal closed or ended, its conversation resumed with it. */
-  async function steer(ctx: OpCtx, j: Job, text: string, shown = text) {
+  async function steer(ctx: OpCtx, j: Job, text: string, shown = text, by = COMPANION) {
     if (j.state === "stopped") throw new OpError(`${j.id} was stopped: hand it off again`, 409)
     if (j.where.machine) text = await carry(j.where.machine, text)
     const s = await seenOf(j).catch(() => null)
@@ -689,6 +702,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
       if (!j.exited) await ended(j, s)
       changed()
       if (!await wake(ctx, j, text)) throw new OpError(`${j.id}'s terminal can't be reached now: try again (${linkOf(j)})`, 502)
+      toldFrom(j, by, text)
     } else {
       if (s?.state === "blocked" && s.kind === "permission") throw new OpError(`${j.id} waits on a permission in its terminal (${s.msg ?? "open it"}): only the user answers it (its notification, or job-answer on their words; ${linkOf(j)})`, 409)
       // (told before it's typed, its rest not its turn's end till the terminal took the words, which takes a while: a
@@ -700,10 +714,16 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
       const r = await (ctx.op("terminal.send", { id: terminalOf(j), text }) as Promise<{ submitted?: boolean | null; why?: string }>)
         .catch((e) => { back(); throw e }).finally(() => sending.delete(j.id))
       if (r.submitted === false) { back(); throw new OpError(`it didn't take it: ${r.why ?? "its input kept the text"} (${linkOf(j)})`, 409) }
+      toldFrom(j, by, text)
       void refresh(j).catch((e) => console.error("companion: jobs:", e))
       return
     }
     toldNow(j, shown)
+  }
+  /** Job `j` told `text` by `by` (tellerOf), kept with it: the last 8. */
+  function toldFrom(j: Job, by: string, text: string) {
+    (j.tells ??= []).push({ at: Date.now(), by, text: text.replace(/\s+/g, " ").trim().slice(0, 300) })
+    if (j.tells.length > 8) j.tells.splice(0, j.tells.length - 8)
   }
   /** Job `j` told `shown`: working on it, its turn from now. */
   function toldNow(j: Job, shown: string) {
@@ -715,10 +735,10 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   }
 
   /** They kept job `j`'s change: its own worker, warm with its context, told to land it (closed once it says merged). */
-  async function land(ctx: OpCtx, j: Job, note = "", shown?: string) {
+  async function land(ctx: OpCtx, j: Job, note = "", shown?: string, by = COMPANION) {
     const was = j.land
     j.land = { asked: Date.now() }
-    try { await steer(ctx, j, [landTask(j.where), note].filter(Boolean).join(" "), shown ?? "Kept: merge it") } catch (e) { j.land = was; throw e }
+    try { await steer(ctx, j, [landTask(j.where), note].filter(Boolean).join(" "), shown ?? "Kept: merge it", by) } catch (e) { j.land = was; throw e }
   }
   /** Closed by the user (their stop, their Keep): one ready for review is done, else stopped; its terminal ends. */
   async function close(ctx: OpCtx, j: Job) {
@@ -743,7 +763,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
 
   /** A new job doing `task` (told where it runs: what it's given may depend on it), placed by the ask it came from (`m`)
  *  unless `p` says where; started in its terminal. */
-  async function begin(ctx: OpCtx, task: string | ((w: Where) => Promise<string>), m: Moment | undefined, p: Record<string, unknown>) {
+  async function begin(ctx: OpCtx, task: string | ((w: Where) => Promise<string>), m: Moment | undefined, p: Record<string, unknown>, by = COMPANION) {
     const titleOf = (told: string) => (str(p.title).trim() || told.replace(/\s+/g, " ")).slice(0, 80).replace(/^(.{60,}?)\s.*$/, "$1…")
     // (a machine asked for that's offline: the job waits for it, shown so in Jobs, never a retry left to them)
     const asked = str(p.machine).trim()
@@ -752,26 +772,26 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
       where = { ...await route(m, p), ...await harnessOf(p) }
       await accountThere(ctx, where.machine, p)
     } catch (e) {
-      if (typeof task === "string" && await away(asked, e)) return await waitFor(ctx, task, titleOf(task), m, p, asked)
+      if (typeof task === "string" && await away(asked, e)) return await waitFor(ctx, task, titleOf(task), m, p, asked, by)
       throw e
     }
     const told = typeof task === "string" ? task : await task(where)
     const now = Date.now()
-    const j: Job = { id: newId(), title: titleOf(told), state: "starting", where, terminal: "", now: "", ...(m ? { asked: m.t } : {}), started: now, turn: now, at: now, seen: false, log: [] }
+    const j: Job = { id: newId(), title: titleOf(told), state: "starting", where, terminal: "", now: "", ...(m ? { asked: m.t } : {}), started: now, turn: now, at: now, seen: false, log: [], by }
     all().unshift(j)
     try { await launch(ctx, j, told, m, p) } catch (e) {
       if (typeof task !== "string" || !await away(where.machine, e)) throw e
       all().splice(all().indexOf(j), 1)
-      return await waitFor(ctx, task, j.title, m, p, where.machine)
+      return await waitFor(ctx, task, j.title, m, p, where.machine, by)
     }
     return j
   }
   /** A job handed to `machine` while it's offline: kept, waiting (Jobs shows it), started once it's back (flush). */
-  async function waitFor(ctx: OpCtx, task: string, title: string, m: Moment | undefined, p: Record<string, unknown>, machine: string) {
+  async function waitFor(ctx: OpCtx, task: string, title: string, m: Moment | undefined, p: Record<string, unknown>, machine: string, by: string) {
     const now = Date.now(), label = await labelOf(machine), { say: _, ...start } = p
     const where: Where = { machine, label, cwd: str(p.cwd), repo: "", why: `${label} is offline: it starts once it's back`, ...await harnessOf(p) }
     const j: Job = { id: newId(), title, state: "waiting", where, terminal: "", now: `Waiting for ${label} to come back`, ...(m ? { asked: m.t } : {}), started: now, turn: now, at: now,
-      seen: false, log: [], queued: [{ note: task, text: task, at: now, start: { ...start, machine }, ...(m ? { ask: m } : {}), by: ctx.who }] }
+      seen: false, log: [], by, queued: [{ note: task, text: task, at: now, start: { ...start, machine }, ...(m ? { ask: m } : {}), by: ctx.who, teller: by }] }
     all().unshift(j)
     j.carded = now
     changed()
@@ -855,9 +875,10 @@ resumes), with land for their word to merge it, and ask false when their ask isn
       // (another agent's vau or a script, as the companion by its `who`: not its words, nor its user's ask)
       // (and only the ask its turn answers: one long past isn't what it hands off now)
       const own = d.own(name, ctx), latest = own ? d.askOf(name) : undefined, ask = latest && Date.now() - latest.t <= ANSWERING_MS ? latest : undefined
-      if (!own) return await handoff(p, ctx, task, ask, async () => {})
+      const by = tellerOf(ctx, own ? name : "")
+      if (!own) return await handoff(p, ctx, task, ask, by, async () => {})
       holding(name, ctx)
-      try { return await handoff(p, ctx, task, ask, async (t: Told) => { d.did(name, "handoff"); heldTold(name, { ...t, say: str(p.say).trim() }) }) }
+      try { return await handoff(p, ctx, task, ask, by, async (t: Told) => { d.did(name, "handoff"); heldTold(name, { ...t, say: str(p.say).trim() }) }) }
       finally { release(name) }
     },
     text: (r) => r.queued ? `Kept for later (${r.id}): "${r.title}". ${r.now}: it's sent by itself then, shown waiting in Jobs; nothing for them to retry. End your turn.`
@@ -887,7 +908,7 @@ resumes), with land for their word to merge it, and ask false when their ask isn
     t.timer.unref?.()
   }
 
-  async function handoff(p: Record<string, unknown>, ctx: OpCtx, task: string, ask: Moment | undefined, told: (t: Told) => Promise<void>) {
+  async function handoff(p: Record<string, unknown>, ctx: OpCtx, task: string, ask: Moment | undefined, by: string, told: (t: Told) => Promise<void>) {
       // (an ask live editing sent straight to the job on its page: it has it already)
       const sent = ask?.live
       if (sent) throw new OpError(`this ask already went straight to the job ${sent} working on that page (live editing), which does it: end your turn`, 409)
@@ -899,12 +920,12 @@ resumes), with land for their word to merge it, and ask false when their ask isn
         if (unsureWhy) throw new OpError(unsureWhy, 409)
         if (str(p.account)) throw new OpError("account is a new job's: a job keeps the account it runs in")
         const text = followTask(task, fresh), title = str(p.title).trim()
-        const q: Queued = { note: task, text, at: Date.now(), ...(p.land === true ? { land: true, shown: task } : {}), ...(title ? { title } : {}), by: ctx.who }
+        const q: Queued = { note: task, text, at: Date.now(), ...(p.land === true ? { land: true, shown: task } : {}), ...(title ? { title } : {}), by: ctx.who, teller: by }
         // (its machine offline, or one it waits for already: kept and passed on once it's back)
         if (j.queued?.length) { const kept = keep(j, q); if (kept && fresh) j.asked = fresh.t; await told({ kind: "kept", title: j.title, line: kept ? `${j.where.label} is still offline: that goes to its job once it's back.` : `That's already waiting for ${j.where.label}.` }); return { ...cardOf(j), queued: true } }
         try {
-          if (p.land === true) await land(ctx, j, text, task)
-          else await steer(ctx, j, text)
+          if (p.land === true) await land(ctx, j, text, task, by)
+          else await steer(ctx, j, text, text, by)
         } catch (e) {
           if (!await away(j.where.machine, e)) throw e
           keep(j, q)
@@ -917,7 +938,7 @@ resumes), with land for their word to merge it, and ask false when their ask isn
         await told(p.land === true ? { kind: "land", title: j.title, line: "Told its job to merge it." } : { kind: "follow", title: j.title, line: "Passed that on to its job." })
         return cardOf(j)
       }
-      const j = await begin(ctx, task, ask, p)
+      const j = await begin(ctx, task, ask, p, by)
       // (every handoff of its own says so in a line, a routine one too: else it looked like nothing happened)
       await told(j.state === "waiting" ? { kind: "kept", title: j.title, line: `${j.where.label} is offline: the job starts there once it's back.` } : { kind: "new", title: j.title, line: "Handed that off to a background agent." })
       return { ...cardOf(j), why: j.where.why, ...(j.state === "waiting" ? { queued: true } : {}) }
@@ -1198,14 +1219,14 @@ a guess from a look at one machine's folders.
     /** Job `id`, or the one its id ends with (3 letters or more); 404 when none. */
     find: jobOf,
     /** Job `id` told `text`, typed into its terminal (its conversation resumed if it closed); its card shows `shown`. */
-    tell: (ctx: OpCtx, id: string, text: string, shown?: string) => steer(ctx, jobOf(id), text, shown),
+    tell: (ctx: OpCtx, id: string, text: string, shown?: string, by?: string) => steer(ctx, jobOf(id), text, shown, by),
     /** Job `id`'s worker in a new conversation, told `text` first; its old terminal ended. */
-    fresh: (ctx: OpCtx, id: string, text: string, shown?: string) => fresh(ctx, jobOf(id), text, shown),
+    fresh: (ctx: OpCtx, id: string, text: string, shown?: string, by?: string) => fresh(ctx, jobOf(id), text, shown, by),
     /** How full job `j`'s worker's context is now, null when its agent doesn't say or its terminal is gone. */
     context: async (j: Job) => (await (j.where.machine ? atMachine(j.where.machine, "companion.worker", { id: j.terminal, context: true, ...(j.session ? { session: j.session } : {}) }, 10) as Promise<Seen>
       : seenHere(j.terminal, { context: true, ...(j.session ? { session: j.session } : {}) })).catch(() => null))?.context ?? null,
     /** They kept job `id`'s change: its worker told to merge it, the job closed once it says it merged. */
-    land: (ctx: OpCtx, id: string) => land(ctx, jobOf(id)),
+    land: (ctx: OpCtx, id: string) => land(ctx, jobOf(id), "", undefined, "you, by Keep and merge"),
     /** Job `id` ready for review looked for on main now (its proof's choice is about to ask): done when it landed. */
     shipped: async (id: string) => {
       const j = jobOf(id)

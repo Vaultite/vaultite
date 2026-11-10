@@ -385,6 +385,19 @@ export default async ($: VaultTest) => {
         J.followTask("Darker", { t: 1, seq: 1, kind: "ask", text: "make it darker", voice: true, app: "com.example.browser", title: "Site", shot: "/s.png" } as Any) ===
           'Darker (The user, through their companion: They said (dictated, so it may hold slips: go by the task): "make it darker" · Where: on their screen, in "Site" (com.example.browser) · Their screen then (a picture): /s.png)' &&
         J.followTask("Darker", undefined) === "Darker")
+      {
+        // (who told it what: the companion's own turn here, read wherever the job is)
+        turn = { text: "Darker now.", files: [], at: Date.now(), final: false, prompt: "Use the darker blue" }
+        const r = await waitFor(async () => { const r = (await api("POST", "ops/companion.job", { id: card.id }))[1]; return r.last?.by && r }, 5000, 100)
+        const text = r ? J.jobText(r) : "", line = J.jobsLine([r]), list = J.jobsText([r])
+        check("handoff --job by the companion: its job says so, in its JSON, its text (told last by), its line in the companion's asks and in jobs",
+          r?.by === "the companion (Claude)" && r.tells?.at(-1)?.by === "the companion (Claude)" && text.includes("handed off by the companion (Claude)") &&
+          text.includes("told last (by the companion (Claude)): Use the darker blue") && line.includes("told last by the companion (Claude)") && list.includes("told last by the companion (Claude)"), [r?.by, r?.tells, r?.last, text])
+        check("jobs: a prompt no handoff sent, typed in its tab since, is the user's in its terminal; else no one's said",
+          J.toldBy({ tells: r.tells, started: 0 }, "something else", Date.now() + 1000) === "you, in its terminal" && J.toldBy({ tells: r.tells, started: 0 }, "something else", 1) === "" &&
+          J.toldBy({ tells: r.tells, started: 0 }, "Use the darker blue", Date.now() + 1000) === "the companion (Claude)")
+        turn = null
+      }
       const asks = await waitFor(async () => { const r = (await api("POST", "ops/companion.job", { id: card.id }))[1]; return r.state === "needs you" && r }, 10000, 100)
       check("jobs: a permission it waits on is needs you, saying what", !!asks && /waits on a permission: Bash\(rm -rf build\)/.test(asks.now), asks)
       ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "go on", say: "Telling it.", job: card.id }, agent))
@@ -406,6 +419,20 @@ export default async ($: VaultTest) => {
           const prompt = said.at(-1)?.prompt ?? ""
           check(`handoff from ${by === agent ? "another agent's vau" : "a script"}: its task alone, without the companion's latest ask; nothing said in its voice`,
             st === 200 && prompt.includes(task) && !prompt.includes("download this video") && !/through their companion/.test(prompt) && await says() === was, [st, b, prompt])
+          const j = (await api("POST", "ops/companion.job", { id: b.id }))[1]
+          check(`handoff from ${by === agent ? "another agent's vau" : "a script"}: its job says who handed it off, never the companion`,
+            j.by === (by === agent ? "another agent, not the companion: Claude Code" : "not the companion: vau from a shell or script"), j.by)
+        }
+        {
+          // (another session's follow-up to a job, from its own terminal: the job says that one told it, not the companion)
+          const other = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code", "x-vaultite-terminal": "claude-watcher1" } } as unknown as IncomingMessage
+          const [st] = await api("POST", "ops/companion.handoff", { task: "Also keep the pointer when watched", job: ended[0] }, other)
+          const by = "another agent, not the companion: Claude Code in terminal claude-watcher1"
+          turn = { text: "Kept it.", files: [], at: Date.now(), final: false, prompt: "Also keep the pointer when watched" }
+          const r = await waitFor(async () => { const r = (await api("POST", "ops/companion.job", { id: ended[0] }))[1]; return r.last?.by && r }, 5000, 100)
+          turn = null
+          check("handoff --job from another agent's vau: its job says that agent told it (its terminal), never the companion",
+            st === 200 && r?.tells?.at(-1)?.by === by && J.jobText(r).includes(`told last (by ${by}): Also keep the pointer when watched`) && J.jobsLine([r]).includes(`told last by ${by}`), [st, r?.tells, r?.last])
         }
         const [, conv] = await api("POST", "ops/companion.conversation", {})
         const ex = (conv.exchanges as Any[]).findLast((e) => e.text === "download this video please")
