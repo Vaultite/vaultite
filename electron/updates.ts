@@ -128,7 +128,7 @@ async function attachedCommit() {
 }
 /** The commit the server on `port` runs (its app.version), "" when it doesn't say. */
 const serverCommit = (port: number) => fetch(`http://127.0.0.1:${port}/api/ops/app.version`, { method: "POST", headers: { "Content-Type": "application/json" },
-  body: "{}", signal: AbortSignal.timeout(5000) }).then((r) => r.json()).then((j: { result?: { commit?: unknown } }) => String(j.result?.commit ?? ""), () => "")
+  body: "{}", signal: AbortSignal.timeout(5000) }).then((r) => r.json()).then((j: { commit?: unknown }) => String(j.commit ?? ""), () => "")
 
 /** Vaults whose server this run restarted onto the installed build (once each). */
 const restartedOnto = new Set<string>()
