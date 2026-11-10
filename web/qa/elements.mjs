@@ -208,8 +208,9 @@ await until(async () => {
   await win.keyboard.press("Escape")
 }, 10000)
 await menuItem("Style this site…").click()
-check("Style this site… on a subdomain makes its host's file, not its parent site's", await until(() => fs.existsSync(SUBSTYLE), 10000)
-  && !fs.existsSync(path.join(VAULT, ".vaultite/plugins/web-viewer/sites/localhost.css")) && !unstyled().includes("docs.localhost"), [fs.existsSync(SUBSTYLE), unstyled()])
+// (its file is made first, then its style turned on again: two writes)
+check("Style this site… on a subdomain makes its host's file, not its parent site's", await until(() => fs.existsSync(SUBSTYLE) && !unstyled().includes("docs.localhost"), 10000)
+  && !fs.existsSync(path.join(VAULT, ".vaultite/plugins/web-viewer/sites/localhost.css")), [fs.existsSync(SUBSTYLE), unstyled()])
 
 console.log(errs.length ? `page errors:\n${errs.slice(0, 5).join("\n")}` : "no page errors")
 await app.close()
