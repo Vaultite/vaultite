@@ -169,15 +169,19 @@ cpSync(`${FIXTURE}label.ts`, abs(`${DIR}/label.ts`))
 check("fixed, it builds again", await until(async () => { const p = await listed(); return p?.loaded && !p.problems.length }, 8000), (await listed())?.problems)
 
 // ---------- code that throws as it starts: said in plain words; what it threw behind Show details, and in Errors ----------
+const fixed = (await listed())?.bundle
 write(`${DIR}/label.ts`, `${read(`${DIR}/label.ts`)}\nconst Base = (globalThis as { NoSuchBase?: new () => object }).NoSuchBase as new () => object\nexport const broken = new (class extends Base {})()\n`)
 check("its toast says it couldn't start, not what it threw", await until(async () => (await toast("Lighthouse couldn't start").count()) > 0, 12000) &&
   (await page.getByText("Class extends value").count()) === 0)
+// (the page opened again gets the server's state as it is: its new code built first, not the one before)
+await until(async () => { const p = await listed(); return p?.loaded && p.bundle && p.bundle !== fixed }, 8000)
 await page.goto("about:blank"); await page.goto(`${B}#plugins`)
 check("its row says it couldn't start", await until(async () => (await row.innerText()).includes("Couldn't start"), 8000), await row.innerText().catch(() => ""))
 await row.locator('[data-plugin-row="lighthouse"]').click()
 const problems = page.locator("[data-plugin-problems]")
+// (its header shows with any problem: what it threw is the one behind Show details)
 check("its sheet says it couldn't start and hides what it threw; its switch says it's on (to turn it off)",
-  await until(async () => (await problems.innerText().catch(() => "")).includes("Lighthouse couldn't start"), 8000) &&
+  await until(async () => (await problems.innerText().catch(() => "")).includes("Lighthouse couldn't start") && (await problems.getByRole("button", { name: "Show details" }).count()) > 0, 8000) &&
   !(await problems.innerText()).includes("Class extends") && await page.locator("[data-plugin-switch] [role=switch]").getAttribute("aria-checked") === "true",
   await problems.innerText().catch(() => ""))
 await problems.getByRole("button", { name: "Show details" }).click()
