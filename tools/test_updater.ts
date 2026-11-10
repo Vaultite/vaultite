@@ -3,7 +3,7 @@
 import { check, exit, section, summary } from "./test/lib.ts"
 import type { CiResult, CiRun } from "../core/update/ci.ts"
 import { CI_CALLS_PER_HOUR, CI_WORKFLOW, callBudget, ciOf, githubCi, githubRepo } from "../core/update/ci.ts"
-import { pickTarget } from "../core/update/git.ts"
+import { capped, pickTarget } from "../core/update/git.ts"
 import { LOOK_EVERY, placed } from "../core/update/updater.ts"
 const t0 = Date.now()
 
@@ -69,6 +69,10 @@ await section(`the request budget: at most ${CI_CALLS_PER_HOUR} calls to GitHub 
   check("…and asks again an hour on", calls === CI_CALLS_PER_HOUR + 1, calls)
 })
 
+section("git.ts: capped")
+check("a few in words, the rest counted", capped(["a"]) === "a" && capped(["a", "b"]) === "a and b" && capped(["a", "b", "c", "d", "e", "f", "g"]) === "a, b, c, d, e and 2 more"
+  && capped(["a", "b"], 9) === "a, b and 7 more")
+
 await section("git.ts: pickTarget", async () => {
   const passed: CiResult = { ok: true, why: "CI passed" }, running: CiResult = { ok: null, why: "CI is running on it" }
   // (the branch's commits after the checkout's, newest first: t is the tip)
@@ -96,14 +100,17 @@ const at = { branch: "main", head: "h", remote: "r", running: "h" }
 check("same commit, running it: current", placed({ ...at, remote: "h", relation: "same" })?.state === "current")
 check("same commit, running an older one: goes on (built and restarted)", placed({ ...at, remote: "h", running: "o", relation: "same" }) === null)
 check("behind: goes on", placed({ ...at, relation: "behind" }) === null)
-const ahead = placed({ ...at, relation: "ahead" }), aheadOld = placed({ ...at, running: "o", relation: "ahead" })
-check("ahead: current when it runs the checkout's commit, else waits for the push", ahead?.state === "current" && aheadOld?.state === "waiting" && /ahead of origin\/main/.test(ahead.why), { ahead, aheadOld })
-const diverged = placed({ ...at, relation: "diverged" })
+const here = { count: 2, list: ["c0ffee1 feat(web): local one", "c0ffee2 fix(core): local two"] }
+const ahead = placed({ ...at, relation: "ahead", here }), aheadOld = placed({ ...at, running: "o", relation: "ahead", here })
+check("ahead: current when it runs the checkout's commit, else waits for the push", ahead?.state === "current" && aheadOld?.state === "waiting", { ahead, aheadOld })
+check("ahead: names the commits not on the branch", /2 commits not on origin\/main \(c0ffee1 feat\(web\): local one and c0ffee2/.test(ahead?.why ?? "") && ahead?.blocked?.by === "unpushed" && ahead.blocked.commits?.length === 2, ahead)
+const diverged = placed({ ...at, relation: "diverged", here, there: { count: 5, list: [] } })
 check("diverged: a new failure on the branch's commit, to keep", diverged?.state === "failed" && diverged.fail === true && diverged.next === "r" && /diverged/.test(diverged.why), diverged)
+check("diverged: says what the checkout has and origin has", /has 2 commits not on origin\/main \(c0ffee1.*\), origin has 5 it hasn't/.test(diverged?.why ?? "") && diverged?.blocked?.by === "diverged", diverged)
 const error = { at: 1, commit: "r", message: "r didn't install or build" }
-const again = placed({ ...at, relation: "diverged", failed: error }), behindAgain = placed({ ...at, relation: "behind", failed: error })
-check("the commit that failed before: failed again, not kept anew, not tried", again?.state === "failed" && !again.fail && again.why === error.message
-  && behindAgain?.state === "failed" && !behindAgain.fail && behindAgain.next === "r", { again, behindAgain })
+const again = placed({ ...at, relation: "diverged", failed: error, here }), behindAgain = placed({ ...at, relation: "behind", failed: error })
+check("the commit that failed before: failed again, not kept anew, not tried", again?.state === "failed" && !again.fail && /diverged/.test(again.why) && again.blocked?.by === "diverged"
+  && behindAgain?.state === "failed" && !behindAgain.fail && behindAgain.next === "r" && behindAgain.why === error.message, { again, behindAgain })
 check("an older failure doesn't stop a newer commit", placed({ ...at, relation: "behind", failed: { ...error, commit: "x" } }) === null)
 
 await exit(summary("updater", t0))

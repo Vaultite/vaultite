@@ -34,7 +34,20 @@ export async function relation(git: Git, head: string, remote: string): Promise<
 }
 
 /** Tracked files changed and not committed (what a fast-forward or a reset would lose). */
-export const isDirty = async (git: Git) => !!(await git("status", "--porcelain", "--untracked-files=no"))
+export const dirtyFiles = async (git: Git) => (await git("diff", "--name-only", "HEAD")).split("\n").filter(Boolean)
+
+/** The commits in `to` that `from` hasn't ("abc1234 subject", newest first, at most `max`), and how many there are. */
+export async function commitsNotIn(git: Git, from: string, to: string, max = 5) {
+  const count = Number(await git("rev-list", "--count", `${from}..${to}`))
+  const list = count ? (await git("log", "--format=%h %s", `--max-count=${max}`, `${from}..${to}`)).split("\n").filter(Boolean).map((l) => l.length > 72 ? `${l.slice(0, 71)}…` : l) : []
+  return { count, list }
+}
+
+/** Some of a list, in words: "a, b and 3 more". */
+export function capped(items: string[], total = items.length, max = 5) {
+  const shown = items.slice(0, max), more = total - shown.length
+  return more > 0 ? `${shown.join(", ")} and ${more} more` : shown.length > 1 ? `${shown.slice(0, -1).join(", ")} and ${shown.at(-1)}` : shown.join("")
+}
 
 /** origin's "owner/repo" on GitHub, or null. */
 export const originRepo = async (git: Git) => githubRepo(await git("config", "--get", "remote.origin.url"))

@@ -34,8 +34,8 @@ const head = () => git(server, "rev-parse", "HEAD")
 
 let ci: CiResult = { ok: true, why: "CI passed" }, busy: string | null = null, restarts = 0, failBuild = false
 let verdicts = new Map<string, CiResult>() // (a commit's own, else `ci`)
-const npmCalls: string[] = []
-const o = inPlace({ root: server, branch: "main", stateFile: path.join(tmp, "state", "selfupdate.json"),
+const npmCalls: string[] = [], logged: { line: string; error: boolean }[] = []
+const o = inPlace({ log: (line, error) => { logged.push({ line, error: error !== undefined }) }, root: server, branch: "main", stateFile: path.join(tmp, "state", "selfupdate.json"),
   busy: async () => busy, restart: () => { restarts++ }, ci: async (repo, sha) => (repo === "Alice/lighthouse" ? verdicts.get(sha) ?? ci : { ok: false, why: `asked ${repo}` }),
   npm: async (args) => { npmCalls.push(args.join(" ")); if (failBuild && args[0] === "run") throw new Error("vite build failed") } })
 const look = () => checkForUpdate(o)
@@ -77,7 +77,8 @@ await section("merged in the checkout itself (a squash merge on this machine): r
   fs.writeFileSync(path.join(server, "core/y.ts"), "local")
   git(server, "add", "-A"); git(server, "commit", "--quiet", "-m", "feat(server): merged here")
   const ahead = await look()
-  check("not pushed yet: waits, nothing built", ahead.state === "waiting" && /ahead of origin/.test(ahead.why) && !npmCalls.length, ahead)
+  check("not pushed yet: waits, naming the commit, nothing built", ahead.state === "waiting" && /1 commit not on origin\/main \(\w+ feat\(server\): merged here\)/.test(ahead.why)
+    && ahead.blocked?.by === "unpushed" && !npmCalls.length, ahead)
   git(server, "push", "--quiet", origin, "HEAD:main")
   git(dev, "pull", "--quiet", "origin", "main")
   const r0 = restarts
@@ -101,7 +102,8 @@ await section("never half-updated", async () => {
   fs.writeFileSync(path.join(server, "server.ts"), "mine")
   commit({ "core/y.ts": "4" }, "feat(server): four")
   const d = await look()
-  check("waits while the checkout has uncommitted changes", d.state === "waiting" && /uncommitted/.test(d.why) && head() === before, d)
+  check("waits while the checkout has uncommitted changes, naming them", d.state === "waiting" && /uncommitted changes \(server\.ts\)/.test(d.why)
+    && d.blocked?.by === "uncommitted" && d.blocked.files?.join() === "server.ts" && head() === before, d)
   git(server, "checkout", "--", "server.ts")
   ci = { ok: false, why: "CI failed on it" }
   check("waits on red CI", (await look()).state === "waiting" && head() === before)
@@ -126,6 +128,29 @@ await section("what it won't update", async () => {
   commit({ "core/z.ts": "6" }, "feat(server): six")
   const d = await look()
   check("diverged from origin: failed, nothing changed", d.state === "failed" && /diverged/.test(d.why) && fs.existsSync(path.join(server, "local.txt")), d)
+  check("…naming the checkout's own commit", /has 1 commit not on origin\/main \(\w+ local\), origin has 1 it hasn't/.test(d.why) && d.blocked?.by === "diverged", d)
+})
+
+await section("the log: each change of state or reason once, with the commits", async () => {
+  git(server, "reset", "--quiet", "--hard", "origin/main")
+  o.running = head()
+  logged.length = 0
+  await look(); await look()
+  check("a look like the last says nothing", logged.length === 1 && /^vaultite: updates: current, up to date with origin\/main \(runs \w{7}, origin\/main \w{7}\)$/.test(logged[0].line), logged)
+  const next = commit({ "web/src/log.ts": "1" }, "feat(web): log")
+  ci = { ok: null, why: "CI is running on it" }
+  await look(); await look()
+  check("waiting, and why, once", logged.length === 2 && logged[1].line.includes(`waiting, CI is running on it (${next.slice(0, 7)})`), logged)
+  ci = { ok: true, why: "CI passed" }
+  await look()
+  check("updating, then updated", logged.slice(2).map((l) => l.line.split(",")[0]).join() === "vaultite: updates: updating,vaultite: updates: current"
+    && logged.at(-1)!.line.includes(`updated to ${next.slice(0, 7)}`), logged)
+  failBuild = true
+  commit({ "web/src/log.ts": "2" }, "feat(web): log two")
+  await look(); await look()
+  const failed = logged.filter((l) => / failed, /.test(l.line))
+  check("a new failure once, as an error; the same again isn't logged", failed.length === 1 && failed[0].error && /didn't install or build/.test(failed[0].line), logged)
+  failBuild = false
 })
 
 section("what restarts the server")
