@@ -27,16 +27,19 @@ if (!base) {
 async function visit(name, browser) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
   const page = await ctx.newPage()
+  // (WebKit fails the fetches a page leaving had going "due to access control checks": the old page's, not an error)
   const errors = []
-  page.on("pageerror", (e) => errors.push(e.stack || e.message))
-  ctx.on("weberror", (e) => errors.push(String(e.error())))
+  let leaving = false
+  page.on("pageerror", (e) => { if (!leaving) errors.push(e.stack || e.message) })
+  ctx.on("weberror", (e) => { if (!leaving) errors.push(String(e.error())) })
+  const leave = async () => { leaving = true; await page.goto("about:blank").finally(() => { leaving = false }) }
   const api = (method, p, body) => page.evaluate(async ([method, p, body]) => {
     const r = await fetch(`api/${p}`, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined })
     return { status: r.status, json: await r.json().catch(() => null) }
   }, [method, p, body])
   const drawn = () => page.waitForFunction(() => document.getElementById("vau-boot-error") || document.querySelector("#root [data-pane]"), null, { timeout: 30000 })
     .then(() => page.evaluate(() => document.getElementById("vau-boot-error")?.innerText ?? "")).catch(() => "nothing drawn in 30 s")
-  const open = async (file) => { await page.goto("about:blank"); await page.goto(`${base}#view/files/file/${encodeURIComponent(file)}`); await drawn(); await wait(1500) }
+  const open = async (file) => { await leave(); await page.goto(`${base}#view/files/file/${encodeURIComponent(file)}`); await drawn(); await wait(1500) }
   const shown = () => page.evaluate(() => document.querySelector("[data-pane]")?.innerText ?? "")
   const is = (what, ok, got) => check(`${name}: ${what}`, ok, got)
   /** How many of the sample's notes were last edited on each day (a calendar by `updated`). */
@@ -76,7 +79,7 @@ async function visit(name, browser) {
   const refused = await api("PATCH", "config/plugins", { disabled: [] })
   is("a plugin that needs a machine isn't turned on", refused.status === 403 && /needs the Vaultite app/.test(refused.json?.error), refused)
 
-  await page.goto("about:blank")
+  await leave()
   await page.goto(`${base}?bundle=zen`)
   await drawn()
   const bundles = (await api("GET", "bundles")).json, plugins = (await api("GET", "config/plugins")).json
@@ -98,7 +101,7 @@ async function visit(name, browser) {
   is("the Agents page draws them", drew, (await shown()).slice(0, 600))
 
   // Browser: on the web the new tab is the quick switcher, its panels and guide there, nothing broken.
-  await page.goto("about:blank")
+  await leave()
   await page.goto(`${base}?bundle=browser`)
   is("?bundle=browser starts", !(await drawn()))
   const web = (await api("GET", "demo/bundle/browser")).json, nt = (await api("GET", "config/newtab")).json
@@ -111,7 +114,7 @@ async function visit(name, browser) {
     .map((f) => [f, f.endsWith(".json") ? JSON.parse(fs.readFileSync(path.join(DAYS, f), "utf8")) : fs.readFileSync(path.join(DAYS, f), "utf8")]))
   const imported = await api("POST", "bundles/import", { file: { vaultite: "bundle", format: 1, id: "days", files: daysFiles } })
   await wait(1000) // (the demo keeps its files a moment later)
-  await page.goto("about:blank")
+  await leave()
   await page.goto(`${base}?bundle=days`)
   await drawn()
   const books = ((await api("GET", "state")).json?.books ?? []).length, life = (await api("GET", "demo/bundle/days")).json
@@ -146,7 +149,7 @@ async function visit(name, browser) {
   is("Reset brings the sample back", !(await shown()).includes(MARK) && (await shown()).includes("Lisbon"), (await shown()).slice(-300))
 
   // A bundle's page (vaultite.com/b/...) has a demo of its own: what one leaves never shows on another's.
-  const pageOf = async (id, hash = "") => { await page.goto("about:blank"); await page.goto(`${base}?desk=page&bundle=gh:Vaultite/vaultite/bundles/${id}${hash}`); await drawn() }
+  const pageOf = async (id, hash = "") => { await leave(); await page.goto(`${base}?desk=page&bundle=gh:Vaultite/vaultite/bundles/${id}${hash}`); await drawn() }
   const NOTE = "Only on Zen's page.md", has = async () => (await api("GET", `file?path=${encodeURIComponent(NOTE)}`)).status === 200
   const on = async () => (await api("GET", "bundles")).json?.previous?.bundle
   await pageOf("zen")
@@ -155,7 +158,7 @@ async function visit(name, browser) {
   await pageOf("browser")
   is("another bundle's page has none of it", (await on()) === "browser" && !(await has()))
   is("...the Browser's opens its live sites", await page.waitForFunction(() => location.hash.startsWith("#view/web"), null, { timeout: 15000 }).then(() => true, () => false), page.url())
-  await page.goto("about:blank")
+  await leave()
   await page.goto(base)
   await drawn()
   is("nor the main demo", !(await has()) && (await on()) !== "browser")
