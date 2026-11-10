@@ -9,8 +9,8 @@ import { setImmediate as turn } from "node:timers/promises"
 import * as Look from "./appearance.ts"
 import * as B from "./bundles.ts"
 import { CONNECT_HEADER, overNetwork, ownerRefusal } from "./owner.ts"
-import { MARKER as SANDBOX_MARKER } from "./sandbox.ts"
-import { accessToMachine, cachesToKept, migrate, migrateMoved } from "./migrations.ts"
+import { MARKER as SANDBOX_MARKER, newSandbox } from "./sandbox.ts"
+import { accessToMachine, allDone, cachesToKept, migrate, migrateMoved } from "./migrations.ts"
 import { installFrom } from "./coreops/installs.ts"
 import * as F from "./files.ts"
 import * as O from "./outside.ts"
@@ -956,7 +956,7 @@ export async function open(vaultPath: string, { start = true, timing, watch }: {
   fs.mkdirSync(vaultPath, { recursive: true })
   // A vault the app has never opened (no .vaultite/ yet): it starts from Standard (core/start.ts); the pages of the
   // plugins its pick turns on come when it picks its setup (core/bundles.ts offering).
-  const fresh = start && !fs.existsSync(path.join(vaultPath, ".vaultite"))
+  const fresh = start && !fs.existsSync(path.join(vaultPath, ".vaultite")), sandbox = start && newSandbox(vaultPath)
   const kept = start ? keepReads(vaultPath) : null
   const app = await new App(vaultPath).init(timing)
   app.vault.startTexts = kept?.texts ?? null
@@ -964,6 +964,7 @@ export async function open(vaultPath: string, { start = true, timing, watch }: {
   // (watched before it's read: the read is then vouched for, and the first requests don't walk the vault again)
   watch?.(app.vault)
   if (start) {
+    if (sandbox) allDone(app.vault)
     await migrate(app.vault, fresh)
     accessToMachine(app.vault, app.plugins)
     cachesToKept(app.vault)

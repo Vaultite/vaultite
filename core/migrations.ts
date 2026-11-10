@@ -376,6 +376,10 @@ const movedStep = (id: string) => `moved:${id}`
 /** Every step's id: what a vault made as the app's defaults are now has had (a new one, the sandbox). */
 export const DONE = [...STEPS.map((s) => s.id), ...Object.keys(MOVED).map(movedStep)]
 
+/** A vault made as the app's defaults are now (a new sandbox: core/sandbox.ts) has had every step, the moved plugins' too:
+ *  none runs on it, and none installs what its sample turns on from where it moved. */
+export const allDone = (v: Vault) => v.patchConfig(FILE, { done: DONE, later: null })
+
 /** Run the steps this vault hasn't had; a new vault (`fresh`) has them marked done. One that can't run now (a settings
  *  file iCloud holds) runs at the next start, and so do a step's files iCloud hadn't brought yet (`later`), alone. */
 export async function migrate(v: Vault, fresh: boolean) {

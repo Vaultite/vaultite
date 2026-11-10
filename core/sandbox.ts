@@ -4,7 +4,6 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { DONE } from "./migrations.ts"
 
 /** The day examples/vault is written as of: its "today". */
 export const ANCHOR = "2026-10-02"
@@ -46,14 +45,17 @@ export function isSandbox(dir: string) {
   return fs.readdirSync(dir).length === 0 || fs.existsSync(path.join(dir, MARKER))
 }
 
+/** A sandbox no server opened yet: the sample is as the app's defaults are now, so the server marks its migrations done
+ *  rather than run them (one turned Workspaces on). The desktop app makes it without the migrations' code. */
+export const newSandbox = (dir: string) => fs.existsSync(path.join(dir, MARKER)) && !fs.existsSync(path.join(dir, ".vaultite", "migrations.json"))
+
 /** How the sandbox is made from the sample: raise it when makeSandbox makes different files (or times) from the same
  *  sample, so sandboxes made before are made again. */
 const MAKE = 4
 
-/** A stamp of the sample's files (names and contents), its pages, MAKE and the migrations it has had: an app update
- *  that changes any changes it. */
+/** A stamp of the sample's files (names and contents), its pages and MAKE: an app update that changes any changes it. */
 export function sampleStamp(source = SAMPLE) {
-  const h = crypto.createHash("sha1").update(`make ${MAKE} ${DONE.join(",")}\0`)
+  const h = crypto.createHash("sha1").update(`make ${MAKE}\0`)
   for (const rel of (fs.readdirSync(source, { recursive: true }) as string[]).sort()) {
     const p = path.join(source, rel)
     if (!fs.statSync(p).isFile() || path.basename(rel) === ".DS_Store") continue
@@ -96,8 +98,6 @@ export function makeSandbox(dir: string, today = localToday(), source = SAMPLE):
   }
   for (const [rel, text] of daily(today)) put(rel, text)
   for (const [rel, text] of pages(source)) if (!fs.existsSync(path.join(root, rel))) put(rel, text)
-  // (the sample is as the app's defaults are now: no step may change its settings, as one turned Workspaces on)
-  put(".vaultite/migrations.json", JSON.stringify({ done: DONE }, null, 2) + "\n")
   put(MARKER, JSON.stringify({ made: today, anchor: ANCHOR, sample: sampleStamp(source) }, null, 2) + "\n")
   return { files, today }
 }

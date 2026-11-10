@@ -2,6 +2,7 @@
 // spoken yes or no while its offer waits answers it instead of being an ask.
 import type { WebSocket } from "ws"
 import { stepEffect, thingText, type Thing } from "./uimodel.ts"
+import { answerOf } from "./yesno.ts"
 
 type Rect = { x: number; y: number; width: number; height: number }
 /** A thing near the pointer (uimodel.ts), by its id; `ax`: its Accessibility role, which the helper finds it again by. */
@@ -30,17 +31,6 @@ export function effectOf(action: string, r: Done, was: Near[]): Done["effect"] |
   const e = stepEffect(a, r.before ?? null, r.target ?? null, changed), s = r.target?.state ?? r.before?.state ?? {}
   // (a plain button: only what's near it is read, so an unchanged neighbourhood isn't proof it did nothing)
   return !e.ok && s.expanded === undefined && s.checked === undefined && s.selected === undefined && r.target ? { ok: true, saw: "nothing near it changed, so look at the screen to be sure" } : e
-}
-
-/** Their spoken answer to an offer: no at any no word in it ("please stop", "sure, not that one"), yes only when it's
- *  yes words alone, else neither (an ask of its own). */
-const NO = /\b(no|nope|nah|don'?t|do not|not|stop|wait|never ?mind|cancel|hold on|later|não)\b/
-const YES = /^((yes|yeah|yep|yup|sure|ok|okay|please|go ahead|go for it|do it|let'?s do it|sounds good|alright|all right|absolutely|of course|thanks|thank you|sim|claro|pode)\s*)+$/
-export function answerOf(words: string): boolean | null {
-  const w = words.toLowerCase().replace(/[^\p{L}\p{N}' ]+/gu, " ").replace(/\s+/g, " ").trim()
-  if (!w || w.split(" ").length > 8) return null
-  if (NO.test(w)) return false
-  return YES.test(w) ? true : null
 }
 
 /** The step the helper is sent, from act's params and the ask's elements (`near`). */

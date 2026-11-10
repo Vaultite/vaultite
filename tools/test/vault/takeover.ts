@@ -9,6 +9,7 @@ export default async ($: VaultTest) => {
   // app. Its rules apart from the Mac, then act's way to the helper and back with a stand-in helper; nothing is clicked.
   const L = await import("../../../electron/takeoverlogic.ts")
   const T = await import("../../../plugins/core/companion/takeover.ts")
+  const { answerOf } = await import("../../../plugins/core/companion/yesno.ts")
   const frame = { x: 100, y: 200, width: 80, height: 30 }, el = { frame, role: "button", label: "Save" }
   const mail = { ok: true, bundle: "com.example.mail", name: "Mail", role: "AXButton", actions: ["AXPress"] }
   const none = () => false, priv = (a: { bundle: string }) => a.bundle === "com.example.diary"
@@ -81,11 +82,11 @@ export default async ($: VaultTest) => {
   check("takeover: a box already as asked isn't pressed again",
     ops(L.plan({ action: "check", el }, { ...mail, checked: true })) === "" && ops(L.plan({ action: "uncheck", el }, { ...mail, checked: true })) === "press | click")
   check("takeover: a spoken yes or no answers an offer; anything longer is an ask",
-    T.answerOf("Yes, please!") === true && T.answerOf("sure") === true && T.answerOf("okay, go ahead") === true && T.answerOf("No, not now") === false &&
-    T.answerOf("don't") === false && T.answerOf("what does this button do?") === null && T.answerOf("") === null)
+    answerOf("Yes, please!") === true && answerOf("sure") === true && answerOf("okay, go ahead") === true && answerOf("No, not now") === false &&
+    answerOf("don't") === false && answerOf("what does this button do?") === null && answerOf("") === null)
   check("takeover: a no anywhere is a no, and a yes is only yes words",
-    T.answerOf("please stop") === false && T.answerOf("okay wait") === false && T.answerOf("sure, not that one") === false &&
-    T.answerOf("yes but the other button") === null && T.answerOf("yes do it") === true)
+    answerOf("please stop") === false && answerOf("okay wait") === false && answerOf("sure, not that one") === false &&
+    answerOf("yes but the other button") === null && answerOf("yes do it") === true)
   check("takeover: a private site (the page its window shows) is refused like a private app",
     /private/.test(L.refusal({ action: "click", el }, { ...mail, url: "https://diary.example.com/today" }, (a) => /diary\.example\.com/.test(a.url ?? "")) ?? ""))
   check("takeover: their yes outlasts a step's end, not their taking over or the exchange ending",

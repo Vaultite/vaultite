@@ -131,6 +131,20 @@ await section("the app's own code", () => {
   check("the desktop app doesn't reach the server's plugin loading", !g.reach("desktop").files.has("plugins/core/notes/plugin.ts"))
 })
 
+// Each file the main process reaches is a relaunch when it changes: a server's module or a plugin's backend there came
+// by accident (a pure function beside server code), and every commit to it relaunched every Mac's app.
+await section("the desktop app's main process reaches only its own", () => {
+  const NEVER = [/^plugins\/core\/[^/]+\/plugin\.ts$/, /^server\.ts$/, /\.md$/,
+    /^core\/(plugins|app|vault|ops|migrations|trust|kept|selfupdate|running|docs|blocks|frontmatter|sections|syncengine|hooks|agents|client|timeline|layout|vaultplugins)\.ts$/]
+  for (const id of ["desktop", "helper"]) {
+    const r = g.reach(id), bad = [...r.files.keys()].filter((f) => NEVER.some((n) => n.test(f)))
+    check(`${g.entries.find((e) => e.id === id)!.label}: no plugin's backend, the server's core or a doc`, !bad.length, bad.map((f) => g.chainOf(r, f).join(" > ")))
+  }
+  const main = new Set([...g.reach("desktop").files.keys(), ...g.reach("helper").files.keys()])
+  const outside = [...main].filter((f) => !f.startsWith("electron/"))
+  console.log(`     the main process reaches ${main.size} files, ${outside.length} outside electron/ (their changes relaunch it)`)
+})
+
 if (!module.registerHooks) skip("a real server boot loads nothing the graph misses", "this Node has no module.registerHooks")
 else await section("a real server boot loads nothing the graph misses", async () => {
   const tmp = tempDir("vaultite-closure-test-"), loads = path.join(tmp, "loads"), vault = path.join(tmp, "vault")

@@ -1,6 +1,6 @@
 // The menu-bar helper's reckoning, apart from Electron so it's tested alone (tools/test/vault/helper.ts).
 import { arrowBox, boxAt, flagBox } from "../plugins/core/companion/boxes.ts"
-import { jobTold } from "../plugins/core/companion/jobs.ts"
+import { jobTold } from "../plugins/core/companion/jobnews.ts"
 import type { RegionScene } from "../plugins/core/companion/clips.ts"
 import type { Presence } from "../plugins/core/companion/knocks.ts"
 import { agentTint } from "../core/agenttint.ts"

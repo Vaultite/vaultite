@@ -96,7 +96,7 @@ export const SITES: Site[] = [
     anchors: true, reads: ["electron/{screen,ax,takeover,capture,voice,appwindows}.swift"] },
   { file: "electron/dictation-build.ts", why: "dictation's Swift helper (swiftbuild.ts)", reads: ["electron/dictation.swift"] },
   { file: "electron/macaddons.ts", why: "Objective-C addons built from source and loaded into the process", anchors: true, reads: ["electron/*.m"] },
-  { file: "electron/helper.ts", why: "the defaults of the settings it follows", anchors: true, reads: ["plugins/core/{dictation,companion,screen}/manifest.json"] },
+  { file: "electron/helper.ts", why: "the defaults of the settings it follows, read with them every 10 s", anchors: true, fresh: ["plugins/core/{dictation,companion,screen}/manifest.json"] },
   // ---------- commands, not long-lived processes
   { file: "electron/start.ts", why: "npm run app: starts Electron on this folder", anchors: true, spawns: ["desktop"] },
   { file: "electron/install.ts", why: "npm run app:install", anchors: true },

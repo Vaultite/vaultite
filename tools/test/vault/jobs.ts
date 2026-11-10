@@ -12,6 +12,7 @@ export default async ($: VaultTest) => {
   const { asItsTool } = await import("../../../plugins/core/companion/plugin.ts")
   const { VAULT, api, app, check, read, write } = $
   const J = await import("../../../plugins/core/companion/jobs.ts")
+  const { jobTold } = await import("../../../plugins/core/companion/jobnews.ts")
   const W = await import("../../../plugins/core/companion/where.ts")
 
   // The lifecycle: one table, every move logged, nothing out of stopped.
@@ -50,8 +51,8 @@ export default async ($: VaultTest) => {
       J.jobSpoken({ title: "x", state: "needs you" }, "working") === 'The job "x" needs you.' && J.jobSpoken({ title: "", state: "failed" }, "working") === "A job failed." &&
       J.jobSpoken({ title: "x", state: "done" }, "ready for review") === "" && J.jobSpoken({ title: "x", state: "working" }, "starting") === "")
     check("jobs: notifications by job_news: needing you or failed, quiet or spoken, none when off; one ready or done knocks instead (its proof)",
-      J.jobTold("needs you", "quiet") && J.jobTold("failed", "quiet") && !J.jobTold("done", "quiet") && !J.jobTold("ready for review", "quiet") &&
-      !J.jobTold("done", "spoken") && !J.jobTold("ready for review", "spoken") && J.jobTold("failed", "spoken") && !J.jobTold("needs you", "off") && !J.jobTold("working", "spoken"))
+      jobTold("needs you", "quiet") && jobTold("failed", "quiet") && !jobTold("done", "quiet") && !jobTold("ready for review", "quiet") &&
+      !jobTold("done", "spoken") && !jobTold("ready for review", "spoken") && jobTold("failed", "spoken") && !jobTold("needs you", "off") && !jobTold("working", "spoken"))
     {
       const { jobNews } = await import("../../../electron/helperlogic.ts")
       const j = (state: string) => ({ id: "a", title: "x", state, link: null, unseen: true, at: 0 })

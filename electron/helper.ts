@@ -348,7 +348,9 @@ function login(on: boolean) {
 const manifest = (id: string) => {
   try { return JSON.parse(fs.readFileSync(path.join(import.meta.dirname, "..", "plugins", "core", id, "manifest.json"), "utf8")).settings ?? {} } catch { return {} }
 }
-const DEFAULTS = { dictation: manifest("dictation"), companion: manifest("companion"), screen: manifest("screen") }
+/** The settings' defaults, from the manifests as they are now (read with the settings: a new one needs no relaunch). */
+const defaults = () => ({ dictation: manifest("dictation"), companion: manifest("companion"), screen: manifest("screen") })
+const DEFAULTS = defaults()
 /** The home vault's settings that the helper follows, their defaults the manifests' (read every 10 s and after a change). */
 let prefs: Prefs = { fn: true, keys: DEFAULTS.dictation.keys?.default ?? [], talk: DEFAULTS.companion.keys?.default ?? [], privateApps: DEFAULTS.screen.private_apps?.default ?? [], dictation: {},
   voice: { mode: "auto", provider: "auto", name: "", eleven: { voice: "", model: "" }, speed: 1 }, sounds: true,
@@ -374,7 +376,7 @@ async function refresh() {
   if (!home) return draw()
   const get = (name: string) => op("settings.get", { name }).catch(() => ({}))
   const [d, c, s] = await Promise.all([get("plugin/dictation"), get("plugin/companion"), get("plugin/screen")])
-  prefs = prefsOf(d, c, s, DEFAULTS)
+  prefs = prefsOf(d, c, s, defaults())
   // (for the menu: the decisions an agent waits on, and whether the user muted; a vault without the inbox has neither)
   const [ds, held] = await Promise.all([op("inbox.decisions", {}).catch(() => null), op("inbox.hold", {}).catch(() => null)])
   decisions = ((ds?.decisions ?? []) as { question: string; from: string | null; created: string | null; blocking?: boolean }[]).filter((x) => x.blocking)

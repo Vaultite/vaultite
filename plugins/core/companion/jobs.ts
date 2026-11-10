@@ -123,8 +123,6 @@ export type Job = {
   log: Transition[]
 }
 
-/** Whether a job now `state` is a notification (job_news): needing them or failed (one ready knocks: proofs.ts). */
-export const jobTold = (state: string, news: unknown) => news !== "off" && (state === "needs you" || state === "failed")
 /** What its voice says when job `j` moves to news (needs you, failed; ready and done knock instead), else "". */
 export function jobSpoken(j: Pick<Job, "title" | "state">, from: string) {
   if (from === j.state) return ""
