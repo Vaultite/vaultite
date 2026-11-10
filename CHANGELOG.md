@@ -20,8 +20,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **A server following a branch updates sooner**: it looks every 3 minutes instead of 10, asking GitHub at most 20
   times an hour (a look where nothing moved asks it nothing).
 - **A server following a branch updates sooner and says why it waits**: it looks every 3 minutes instead of 10
-  (asking GitHub at most 20 times an hour), and its log has each change of state with the commits and why; when the
-  checkout blocks it, it names the uncommitted files or the commits not on the branch.
+  (asking GitHub at most 20 times an hour), `vau update` looks now, and its log has each change of state with the
+  commits and why; when the checkout blocks it, it names the uncommitted files or the commits not on the branch.
 - **Live editing shows each change as you ask**: a job asked over a preview you're watching edits the checkout
   serving it, so the page reloads as it goes, with no worktree, demo or ready knock in the way.
 - **Companion tours stop cleanly when they can't play**: a tour whose things aren't on your screen says so once and

@@ -11,7 +11,7 @@ type UpdateState = "off" | "current" | "waiting" | "updating" | "failed"
 /** What in the checkout stops an update (what agents working in a server's checkout leave behind): changes not
  *  committed, commits not on the branch, the two diverged, another branch checked out. */
 export type Blocked = { by: "uncommitted" | "unpushed" | "diverged" | "branch"; files?: string[]; commits?: string[] }
-/** What `app.version` (vau version) shows: what runs and what the updates are doing. */
+/** What `app.version` (vau version) and `app.update` (vau update) show: what runs and what the updates are doing. */
 export type UpdateStatus = {
   /** The branch followed, null when off. */
   branch: string | null
@@ -19,6 +19,8 @@ export type UpdateStatus = {
   /** Why, in words. */
   why: string
   checked: number | null
+  /** A look is under way (`vau update` joins it). */
+  looking?: boolean
   /** The commit this server runs: what it started on, moved on by an update needing no restart. */
   running?: string
   /** origin's commit of the branch at the last look. */
@@ -62,8 +64,9 @@ const MINUTE = 60_000
 export const errText = (e: unknown) => String((e as { stderr?: string }).stderr || (e as Error).message || e).trim().split("\n").slice(-3).join(" ").slice(0, 500)
 
 let status: UpdateStatus = { branch: null, state: "off", why: "not a service install following a branch (vau service install --updates <branch>)", checked: null }
+let looking: Promise<UpdateStatus> | null = null
 /** The updates' state now (off unless this server follows a branch). */
-export const updateStatus = (): UpdateStatus => status
+export const updateStatus = (): UpdateStatus => ({ ...status, looking: !!looking })
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`
 /** Commits as a status names them: how many, and the newest few. */
@@ -103,8 +106,13 @@ function note(s: UpdateStatus, log: NonNullable<UpdaterOptions["log"]>, error?: 
 }
 const toConsole = (line: string, error?: unknown) => error === undefined ? console.log(line) : console.error(line, ...(error instanceof Error ? [error] : []))
 
-/** One look: fetch, and update when the branch is ahead, CI passed, the tree is clean and nobody's busy. Never throws. */
-export async function checkForUpdate(o: UpdaterOptions): Promise<UpdateStatus> {
+/** One look: fetch, and update when the branch is ahead, CI passed, the tree is clean and nobody's busy. One at a time:
+ *  a caller while a look runs gets that look's answer. Never throws. */
+export function checkForUpdate(o: UpdaterOptions): Promise<UpdateStatus> {
+  return looking ??= lookOnce(o).finally(() => { looking = null }).then(updateStatus)
+}
+
+async function lookOnce(o: UpdaterOptions): Promise<UpdateStatus> {
   const git = gitIn(o.root), log = o.log ?? toConsole
   let kept: Kept = {}, origin: string | undefined
   try { kept = JSON.parse(fs.readFileSync(o.stateFile, "utf8")) } catch { /* none yet */ }
@@ -164,8 +172,13 @@ export async function checkForUpdate(o: UpdaterOptions): Promise<UpdateStatus> {
  *  verdict isn't known yet, at most once a look, and never more than CI_CALLS_PER_HOUR (20) times in any hour. */
 export const LOOK_EVERY = 3 * MINUTE
 
+let following: UpdaterOptions | null = null
+/** A look now (`vau update`), as a timed one would: its status, or the updates' (off) when this server follows nothing. */
+export const checkNow = () => following ? checkForUpdate(following) : Promise.resolve(updateStatus())
+
 /** Look every few minutes (the first a minute after the start), one look at a time. */
 export function startUpdater(o: UpdaterOptions) {
+  following = o
   status = { branch: o.branch, state: "waiting", why: "the first look is a minute after the server starts", checked: null }
   try { Object.assign(status, JSON.parse(fs.readFileSync(o.stateFile, "utf8"))) } catch { /* none yet */ }
   if (!o.running) void gitIn(o.root)("rev-parse", "HEAD").then((head) => { o.running ||= head; status.running ??= o.running }, () => {})

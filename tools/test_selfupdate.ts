@@ -153,6 +153,20 @@ await section("the log: each change of state or reason once, with the commits", 
   failBuild = false
 })
 
+await section("vau update: a look asked for while one runs joins it", async () => {
+  let release = () => {}
+  const gate = new Promise<void>((r) => { release = r })
+  const slow = o.busy
+  let looks = 0
+  o.busy = async () => { looks++; await gate; return null }
+  commit({ "web/src/join.ts": "1" }, "feat(web): join")
+  const a = look(), b = look()
+  release()
+  const [ra, rb] = await Promise.all([a, b])
+  check("one look, both callers get its answer", looks === 1 && ra === rb && ra.state === "current" && !ra.looking, { looks, ra })
+  o.busy = slow
+})
+
 section("what restarts the server")
 check("web/, the desktop app, tools and docs don't", !backendChanged(["web/src/a.ts", "plugins/core/x/index.tsx", "electron/main.ts", "tools/t.ts", "CHANGELOG.md", "web/dist/x.js"]))
 check("core, plugins' backends, server.ts and dependencies do", ["core/a.ts", "plugins/core/x/plugin.ts", "server.ts", "package.json", "core/docs/design.md"].every((f) => backendChanged([f])))

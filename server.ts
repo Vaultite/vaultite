@@ -671,8 +671,9 @@ server.listen(PORT, HOST, () => {
 if (process.env.VAULTITE_UPDATES && !DESKTOP && fs.existsSync(path.join(ROOT, ".git"))) {
   const [{ startUpdater }, { inPlace }] = await Promise.all([import("./core/update/updater.ts"), import("./core/selfupdate.ts")])
   startUpdater(inPlace({ root: ROOT, branch: process.env.VAULTITE_UPDATES, stateFile: path.join(LOCAL, "selfupdate.json"),
-    // (as a stop does; Windows' SIGTERM would end it at once, its plugins never told)
-    restart: () => bye(143),
+    // (as a stop does; Windows' SIGTERM would end it at once, its plugins never told. Soon, not now: vau update's answer
+    // goes out first)
+    restart: () => setTimeout(() => bye(143), 200),
     // (any plugin asks the same desktop app; none reachable, or one too old to say, can't be cut short)
     busy: async () => {
       await ready
