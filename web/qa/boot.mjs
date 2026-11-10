@@ -175,6 +175,7 @@ try {
     const agents = ["activity", "token-count", "workspaces", "codex"]
     await call("PATCH", "config/plugins", { disabled: [], enabled: [...list.filter((p) => p.optIn || p.tier === "vault").map((p) => p.id), ...agents] })
     await fetch(`${ownBase}api/state`)
+    const editedAt = Date.now()
     await call("PUT", "file", { path: "Notes/Plain.md", text: "Just a thought, edited.\n" }) // (the user's own: Activity's recap has a day to write)
     const edited = files(own)
     await wait(6000) // (the scheduler's first turn, timers, the change heard)
@@ -187,9 +188,12 @@ try {
     check("own vault: every plugin on, schedules run: nothing written outside .vaultite/ without a grant", jobs.length > 0 && !wrote.length, [jobs.map((j) => j.id), wrote, runs])
     check("own vault: ...the refused write asks the user (Activity's recaps)", grants.writes.some((g) => g.plugin === "activity" && g.answer === "ask"), grants)
     await call("POST", "ops/plugin.grant", { id: "activity" })
+    // (just after midnight it writes yesterday's too, as it should: a run spanning midnight gets two)
+    const day = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}.md` }
+    const days = [day(editedAt - 864e5), day(editedAt), day(Date.now())]
     await call("POST", "ops/schedule.run", { id: "activity/recaps" })
     const recaps = fs.existsSync(path.join(own, "Recaps")) ? fs.readdirSync(path.join(own, "Recaps")) : []
-    check("own vault: allowed, Activity writes its recap", recaps.length === 1, recaps)
+    check("own vault: allowed, Activity writes its recap", recaps.length >= 1 && recaps.length <= 2 && recaps.every((f) => days.includes(f)), recaps)
   }
 } finally {
   await browser.close()
