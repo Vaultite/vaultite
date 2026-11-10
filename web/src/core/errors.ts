@@ -1,7 +1,7 @@
 // The app's errors, queued for the Errors plugin (localStorage: one that stopped the app is sent after the reload),
 // heard in the core since the worst take the plugins down. A failed chunk reloads once safe (unsaved.ts), else asks.
 import { onActivity } from "@/core/activity"
-import { notify } from "@/core/notify"
+import { BUILD, offerNewBuild } from "@/core/builds"
 import { safeToReload } from "@/core/unsaved"
 
 export type AppError = {
@@ -40,14 +40,6 @@ function read(): AppError[] {
 function save() {
   try { if (queue.length) localStorage.setItem(KEY, JSON.stringify(queue)); else localStorage.removeItem(KEY) } catch { /* private mode, full: memory only */ }
 }
-
-/** This page's build: its entry script's file name (named by content). */
-const BUILD = (() => {
-  try {
-    const src = (document.querySelector('script[type="module"][src*="assets/"]') as HTMLScriptElement | null)?.src
-    return src ? src.slice(src.lastIndexOf("/") + 1) : undefined
-  } catch { return undefined }
-})()
 
 function textOf(e: unknown): string {
   if (e instanceof Error) return `${e.name && e.name !== "Error" ? `${e.name}: ` : ""}${e.message}`
@@ -133,9 +125,6 @@ function reconnecting() {
   return () => { clearTimeout(timer); box?.remove() }
 }
 
-/** Reloading would lose what the user is doing: the new build is offered instead (the toast live.ts shows too). */
-const newVersion = () => notify("A new version of Vaultite is ready", { id: "update", duration: Infinity, action: { label: "Reload", run: () => location.reload() } })
-
 /** A file of the app didn't load (an older build's, or the server away): waits for the server (2 min at most), then
  *  reloads. True when it's reloading; false when reloading can't help. `say`: "Reconnecting to Vaultite…" meanwhile. */
 let reloading: Promise<boolean> | null = null
@@ -151,7 +140,7 @@ export function recoverFromStaleBuild(error: unknown, say = true): Promise<boole
         const back = (!!BUILD && !!build && build !== BUILD) || !file || (await loads(file))
         if (!back) { done(); return false }
         // (typing, or edits not yet saved: the user reloads when they're ready)
-        if (!safeToReload()) { done(); newVersion(); return false }
+        if (!safeToReload()) { done(); offerNewBuild(); return false }
         if (!mayReload()) { done(); return false }
         noteAppError("stale", error)
         location.reload()

@@ -43,6 +43,7 @@ const { served: web } = await import("./core/webbuild.ts")
 const { flushKept } = await import("./core/kept.ts")
 const events = await import("./core/events.ts")
 Live.web = () => web.read().entry
+web.on(() => Live.newWeb()) // (a web-only update or a build by hand restarts nothing: open pages hear of it here)
 const { clean } = await import("./core/files.ts")
 const { allow, allowedPath, isOutside } = await import("./core/outside.ts")
 const { isHeic, jpegOf } = await import("./core/heic.ts")

@@ -32,6 +32,15 @@ const KEPT_MS = 120_000
 /** Toasts shown since `t` (ms), newest last. */
 export const noticesSince = (t: number) => shown.filter((n) => n.at >= t)
 
+// What's told before the toaster is drawn (a socket's hello as the app starts) waits for it: sonner would drop it.
+let drawn = false
+const early: (() => void)[] = []
+/** The toaster is drawn (components/Toast.tsx): what waited shows now. */
+export function toasterDrawn() {
+  drawn = true
+  for (const show of early.splice(0)) show()
+}
+
 /** Show a toast. Returns its id (dismissNotice closes it early). */
 export function notify(text: string, opts: NotifyOptions = {}) {
   const { action, kind, id } = opts
@@ -50,7 +59,11 @@ export function notify(text: string, opts: NotifyOptions = {}) {
   }
   // (read from the app's own live region, sonner's silenced: an error interrupts, and its button's key is said)
   announce(action ? `${short(text)}. ${action.label}: ${keyHint(TOAST_KEYS)}` : short(text), { assertive: kind === "error" })
-  return kind === "error" ? toast.error(short(text), data) : toast(short(text), data)
+  const show = () => kind === "error" ? toast.error(short(text), data) : toast(short(text), data)
+  if (drawn) return show()
+  data.id ??= `early-${now}-${early.length}`
+  early.push(show)
+  return data.id
 }
 
 /** Close a toast before its time. */

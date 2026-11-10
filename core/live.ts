@@ -1,5 +1,5 @@
 // Live updates: the vault is watched and every change, whoever made it, is synced and told to each open app over one
-// WebSocket (/api/events: hello, change, moved, ping, ui). Bursts coalesce; `ui` messages go to the window focused last.
+// WebSocket (/api/events: hello, change, moved, kept, web, ping, ui). Bursts coalesce; `ui` goes to the last focused.
 import { eventsOf } from "./events.ts"
 import { OpError } from "./ops.ts"
 import crypto from "node:crypto"
@@ -35,6 +35,12 @@ export type Present = { id: string; windows: number; at: number }
 export class Live {
   /** The web app's build being served (server.ts sets it; null in development). */
   static web: () => string | null = () => null
+  private static open = new Set<Live>()
+  /** The build being served changed (server.ts hears it): every open window is told, as a hello tells it. */
+  static newWeb() {
+    const web = Live.web()
+    if (web) for (const l of Live.open) l.send({ type: "web", web })
+  }
   vault: Vault
   boot = Date.now().toString(36)
   private listeners = new Set<(c: Change) => void>()
@@ -66,6 +72,7 @@ export class Live {
 
   constructor(vault: Vault) {
     this.vault = vault
+    Live.open.add(this)
     this.unkept = keptOf(vault.path).onChange((names) => {
       for (const n of names) this.keptNames.add(n)
       this.keptTimer ??= setTimeout(() => this.tellKept(), QUIET)
@@ -396,6 +403,7 @@ export class Live {
 
   close() {
     this.closed = true
+    Live.open.delete(this)
     this.unmove()
     this.unarrive()
     this.unwrote()

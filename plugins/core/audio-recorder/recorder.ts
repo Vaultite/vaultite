@@ -2,7 +2,7 @@
 // the server can. Indicator.tsx draws what's recording.
 import {
   activeFile, appDevice, askMicrophone, attachmentFolder, cell, choose, createFile, currentFile, dismissNotice, folderOf, get, getStore,
-  insertOnOwnLine, newNoteFolder, notify, notifyError, openFile, pasteAttachments, phoneVoiceNote, post, put, readFile, reload, stem,
+  insertOnOwnLine, newNoteFolder, notify, notifyError, openFile, pasteAttachments, phoneVoiceNote, post, put, readFile, reload, stem, trackUnderway,
 } from "@vaultite"
 
 export type Status =
@@ -42,9 +42,12 @@ export function elapsed(s = getStatus()) {
   return s.before + (s.state === "recording" ? (Date.now() - s.since) / 1000 : 0)
 }
 
+// (the page doesn't reload into a new build, nor the app restart, till it's saved)
+let held = false
 /** Start recording, for `note` (the file being edited, when left out), or (`voice`) a voice note for the inbox. */
 export async function start(note?: string | null, voice = false) {
   if (getStatus().state !== "idle") return
+  if (!held) { trackUnderway(() => getStatus().state !== "idle"); held = true }
   if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
     notify(location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1"
       ? "This browser can't record audio." : "Recording needs the app opened over https.", { kind: "error" })

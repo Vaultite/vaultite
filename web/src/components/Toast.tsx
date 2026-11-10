@@ -1,8 +1,10 @@
 // Toasts drawn by sonner in the app's tokens, so every scheme recolours them: bottom right on desktop, above the tab
 // bar on phones, three at most. No icons but an error's.
+import { useEffect } from "react"
 import { CircleAlert } from "lucide-react"
 import { Toaster as Sonner } from "sonner"
 import { byTab } from "@/core/focus"
+import { toasterDrawn } from "@/core/notify"
 
 // Tabbing out of a toast, sonner gives the keyboard back to where it came from (the Tab undone): not when the user
 // sent it somewhere (or past the page's end).
@@ -31,6 +33,7 @@ const quiet = (el: HTMLElement | null) => { el?.setAttribute("aria-live", "off")
 export function Toaster({ desktop }: { desktop: boolean }) {
   // Phones: above the bar (components/PhoneBar.tsx, its height: --phone-bar); both: above a bundle's trial bar.
   const phone = { bottom: "calc(var(--phone-bar) + var(--mini-player) + var(--trial-bar) + 0.75rem)", left: 16, right: 16 }
+  useEffect(toasterDrawn, []) // (after sonner's own: it listens from then)
   return (
     <Sonner position={desktop ? "bottom-right" : "bottom-center"} visibleToasts={3} gap={8} duration={4000}
       offset={desktop ? { bottom: "calc(40px + env(safe-area-inset-bottom) + var(--corner-cards) + var(--trial-bar))", right: "calc(16px + env(safe-area-inset-right))" } : phone} mobileOffset={phone} className="vau-toaster"

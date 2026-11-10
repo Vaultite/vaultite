@@ -10,6 +10,7 @@ import { holdFocus } from "@/core/focus"
 import { closePalette } from "@/components/Palette"
 import { lockPage } from "@/core/pagelock"
 import { isDesktop } from "@/core/platform"
+import { trackUnsaved } from "@/core/unsaved"
 import { cn } from "@/lib/utils"
 
 /** The open sheet's content that would be lost, as lines ("Name: My setup"), from each form's guard. */
@@ -32,7 +33,13 @@ export function useSheetGuard(lost: () => string[]) {
   const ref = useRef(lost)
   ref.current = lost
   const inSheet = useContext(InSheet)
-  useEffect(() => { if (!inSheet) return; guards.add(ref); return () => { guards.delete(ref) } }, [inSheet])
+  // (and a reload into a new build, or the app's restart, waits for it too)
+  useEffect(() => {
+    if (!inSheet) return
+    guards.add(ref)
+    const untrack = trackUnsaved(() => ref.current().length > 0)
+    return () => { guards.delete(ref); untrack() }
+  }, [inSheet])
 }
 
 /** Run `go` (close, back) unless the content has something unsaved and the user keeps it. */

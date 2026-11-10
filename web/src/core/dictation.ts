@@ -6,6 +6,7 @@ import { fnKey } from "../../../core/fnkey.ts"
 import { announce } from "@/core/announce"
 import { typingIn } from "@/core/commands"
 import { makePill } from "@/core/pill"
+import { trackUnderway } from "@/core/unsaved"
 
 export type DictationEvent =
   /** The microphone is open. */
@@ -96,6 +97,8 @@ const now = cell<Dictation | null>(null)
 export const dictation = () => now.get()
 /** Listening now: a session not told to stop. */
 export const listening = () => { const d = now.get(); return !!d && !d.stopping }
+// (its words would land nowhere: a reload into a new build or the app's restart waits for it to end)
+trackUnderway(() => !!now.get())
 /** The session told to stop, settled (its last words in, or a few seconds gone by). */
 async function settled() {
   for (let i = 0; i < 60 && now.get()?.stopping; i++) await new Promise((r) => setTimeout(r, 50))

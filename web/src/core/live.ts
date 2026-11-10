@@ -1,6 +1,7 @@
-// Live updates: one WebSocket (/api/events) says which files changed, moved, or what an agent asks the window to do.
-// It reconnects with backoff (refreshing once after a gap), holds changes while hidden, and offers a reload on a new build.
+// Live updates: one WebSocket (/api/events) says which files changed, moved, which build is served (builds.ts) or what
+// an agent asks the window to do. It reconnects with backoff (refreshing once after a gap), holds changes while hidden.
 import { useEffect, useRef } from "react"
+import { heardBuild } from "@/core/builds"
 import { DEVICE } from "@/core/device"
 import { notify } from "@/core/notify"
 import { share } from "@/core/share"
@@ -10,22 +11,7 @@ export type Paths = string[] | null
 type Fn = (paths: Paths) => void
 
 const subs = new Set<Fn>()
-/** This page's build: its entry script's name (in development there's none). */
-const BUILD = import.meta.env.PROD
-  ? document.querySelector<HTMLScriptElement>("script[type=module][src]")?.src.split("/").pop() ?? null : null
 const PING = 25_000, POLL = 10_000, LOST = 10_000
-
-/** A new build's files the app starts with, fetched now (each kept for good: named by content), so the reload or next
- *  launch into it starts warm, not as a first visit over a phone's network. */
-let fetchedBuild: string | null = null
-function fetchBuild(entry: string) {
-  if (fetchedBuild === entry) return
-  fetchedBuild = entry
-  fetch(new URL(".", location.href), { cache: "no-cache" }).then((r) => r.text()).then((html) => {
-    for (const [, f] of html.matchAll(/<(?:script|link)\b[^>]*?(?:src|href)="\.?\/?(assets\/[^"]+\.(?:js|css))"/g))
-      void fetch(new URL(f, location.href), { priority: "low" }).then((r) => r.arrayBuffer()).catch(() => {})
-  }).catch(() => { fetchedBuild = null })
-}
 
 export function onVaultChange(fn: Fn) {
   subs.add(fn)
@@ -192,10 +178,9 @@ function connect() {
       // (a shared folder's guest whose access changed: the app draws what they may do from its page)
       if (share && m.role && m.role !== share.role)
         notify(m.role === "read" ? "You can now only view this folder" : m.role === "edit" ? "You can now edit this folder" : "You can now comment in this folder", { id: "share-role", duration: Infinity, action: { label: "Reload", run: () => location.reload() } })
-      if (m.web && BUILD && m.web !== BUILD) {
-        notify("A new version of Vaultite is ready", { id: "update", duration: Infinity, action: { label: "Reload", run: () => location.reload() } })
-        fetchBuild(m.web)
-      }
+      heardBuild(m.web)
+    } else if (m.type === "web") {
+      heardBuild(m.web)
     } else if (m.type === "change") {
       seen = m.v ?? seen
       heard = m.at ?? heard
