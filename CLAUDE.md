@@ -58,11 +58,14 @@ is its point.
   says so) is tried there before it lands: commit, then `npm run verify -- --try` (HEAD's tests on GitHub's three OSes
   too, about 6 min, 12 with Windows' vau, Set up and installer checks; bounded). pre-push refuses one
   untried; `VAULTITE_TRY=skip` only while GitHub's runners are down.
-- Long commands (verify, tests, QA, builds) run in the background, and you wait for the notice that they ended: no
-  `sleep` or `until` loop on their log.
-- Live: after the push, from the worktree, `bin/vau --url <server> version HEAD --wait` on the server following main
-  (`CLAUDE.local.md` names it; the worktree's vau, as an older one may not resolve `HEAD` or exit 1). It ends when the
-  commit is live, or exits 1 saying why not: CI red on it (fix forward), its checkout blocked (say so). That one
+- A command that fits in the shell tool's 10-minute limit runs in the foreground with its timeout set (`npm run verify`
+  does: a few minutes). One that can't is started detached, then waited on with the bounded wait its tool offers, run
+  again while it says it's still running. Never a `sleep` or `until` loop of your own; and a sub-agent never ends its
+  turn to wait for a background command's notice: none wakes it.
+- Live: after the push, from the worktree, `bin/vau --url <server> version HEAD --wait --timeout 540` on the server
+  following main (`CLAUDE.local.md` names it; the worktree's vau, as an older one may not resolve `HEAD` or exit 1),
+  in the foreground and unpiped (no `| tail`: its exit code is the answer). It ends when the commit is live, or exits 1
+  saying why not: still waiting (run it again), CI red on it (fix forward), its checkout blocked (say so). That one
   command is the check: don't watch CI, as a queued run is dropped when newer pushes arrive and may never finish.
   `vau update` there looks now instead of at its next 3-minute look.
 - Try a branch in the desktop app: `npm run app:dev` in its worktree (Vaultite Dev beside Main, its windows behind until
