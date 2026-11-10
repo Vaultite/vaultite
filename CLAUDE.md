@@ -84,5 +84,6 @@ is its point.
   (`fix(phone): tab list zoom no longer stretches the page`); a body only when the why isn't in the diff. Scope is the
   area (`phone`, `desktop`, `editor`, `plugins`, `server`, `cli`...). `.githooks/commit-msg` checks the shape.
   `.githooks/pre-push` runs tsc, `npm run check` and the desktop main process's launch budget
-  (`node tools/perf/startup.ts --main`) before a push to main: CI on main is everyone's, keep it green. Over the
+  (`node tools/perf/startup.ts --main`) before a push to main, and says when main's CI is red (the job, the test, since
+  which commit, never blocking): CI on main is everyone's, keep it green. Over the
   budget, cut what the main process imports at launch (import it lazily); raise the limit only for growth you meant.
