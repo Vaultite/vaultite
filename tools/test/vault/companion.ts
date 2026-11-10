@@ -834,6 +834,22 @@ export default async ($: VaultTest) => {
       st3 === 200 && d1?.id === r3.screen && d1.agent === "Claude" && d1.tint === "orange" && d1.caption === "Share is here. Then pick who." && d1.marks[0].at.w === 96 &&
       JSON.stringify(d1.places["ui:tab:t1"]) === JSON.stringify(rects["ui:tab:t1"]), [st3, r3, d1])
     check("companion: its words are said, its cursor at its first mark", said.notes.some((n: Any) => n.kind === "say" && n.text === "Share is here. Then pick who." && n.sx === 948 && n.sy === 56), said.notes.filter((n: Any) => n.kind === "say"))
+    // (its voice turned off or on: the helper told at once, and every say after carries it, so that answer follows it)
+    {
+      const n0 = helper.got.length
+      const [sv, rv] = await api("POST", "ops/companion.voice", { mode: "off" })
+      await api("POST", "ops/companion.say", { text: "Voice off." })
+      const after = helper.got.slice(n0)
+      check("companion: voice off is set in one step, the helper told, and the say after it carries off",
+        sv === 200 && rv.voice === "off" && c.plugin.settings().voice === "off" && after.some((m: Any) => m.t === "voice" && m.voice === "off") &&
+        after.some((m: Any) => m.t === "note" && m.note.text === "Voice off." && m.voice === "off"), [rv, after])
+      const n1 = helper.got.length
+      const [sv2, rv2] = await api("POST", "ops/companion.voice", { mode: "on" })
+      await api("POST", "ops/companion.say", { text: "Voice on." })
+      const on = helper.got.slice(n1)
+      check("companion: voice on is the default again (auto), and the say after it carries auto",
+        sv2 === 200 && rv2.voice === "auto" && c.plugin.settings().voice === undefined && on.some((m: Any) => m.t === "note" && m.note.text === "Voice on." && m.voice === "auto"), [rv2, on])
+    }
     ;[st3, r3] = await api("POST", "ops/companion.draw", { marks: [{ type: "check", at: [5, 5] }] })
     check("companion: another draw adds to the drawing up", st3 === 200 && last()?.drawing.id === d1.id && last()?.drawing.marks.length === 4, last())
     ;[st3, r3] = await api("POST", "ops/companion.draw", { marks: [{ type: "blob", at: [1, 2] }] })

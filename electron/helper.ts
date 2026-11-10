@@ -21,7 +21,7 @@ import { macAddon } from "./macaddons.ts"
 import { type Call, callFrom, callSaid, callShown, type MicUser } from "./calllogic.ts"
 import { hideFromShares, overlayNumbers } from "./overlaywin.ts"
 import { icon } from "./menu.ts"
-import { openArgs, openedBundle, atOffset, badgeOf, dottedBitmap, beatsWait, besidePointer, bitmapsDiffer, dictationKeys, drawingHold, drawnShapes, floatingOver, type HeldClick, type HelperJob, THUMB, inkOf, jobNews, jobNote, menuNow, cursorBitmap, TINT_RGB, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, type ScreenWindow, liveInput, closeCrop, shotCrop, tappedKeys, trailStrokes } from "./helperlogic.ts"
+import { answerAloud, openArgs, openedBundle, atOffset, badgeOf, dottedBitmap, beatsWait, besidePointer, bitmapsDiffer, dictationKeys, drawingHold, drawnShapes, floatingOver, type HeldClick, type HelperJob, THUMB, inkOf, jobNews, jobNote, menuNow, cursorBitmap, TINT_RGB, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, type ScreenWindow, liveInput, closeCrop, shotCrop, tappedKeys, trailStrokes } from "./helperlogic.ts"
 import { REAL as captureReal, captureHeard, captureHost, recordFor, recordingNow, regionAct, regionDrag, regionMoved, regionRect, regionScene, stopCapture } from "./capture.ts"
 import { quitRecorder } from "./recorder.ts"
 import { happened, keepTimeline, queryTimeline, timelineHost, timelineOn, timelineRefollow } from "./timeline.ts"
@@ -428,6 +428,8 @@ const live = (() => {
     s.on("message", (d) => {
       let m: Record<string, unknown>
       try { m = JSON.parse(String(d)) } catch { return }
+      voiceSetting(m.voice)
+      if (m.t === "voice") return
       // (the companion's drawing over the screen: the server's, its places found there)
       // (a session's layer: the one of the answer coming is paced to its words, the others drawn as they are)
       if (m.t === "drawing" && typeof m.agent === "string") {
@@ -1699,6 +1701,18 @@ function offerAnswered(m: Record<string, unknown>) {
 let saidInBox = 0
 let speakingNow: Scene["speaking"] = null
 
+/** When its voice was last turned on from off: the answer then coming (to an ask before it) is said, typed or not. */
+let turnedOn = 0
+/** Its voice setting as the server has it now (with each say, and as it's changed): followed at once, not at the next
+ *  settings read, so the answer that turned it off shows as text, and the one that turned it on is said. */
+function voiceSetting(v: unknown) {
+  if (v !== "auto" && v !== "always" && v !== "off") return
+  const was = prefs.voice.mode
+  if (v === was) return
+  prefs = { ...prefs, voice: { ...prefs.voice, mode: v } }
+  if (v === "off") { const x = exchange; stopVoice(); if (x?.spoken) { x.spoken = false; answerBox() } }
+  else if (was === "off") turnedOn = Date.now()
+}
 /** One of its says, as its words come: an answer to a Talk key's ask said aloud as the setting says (`auto`: one asked
  *  by voice); its last words when the next say begins, or after a pause. */
 function voiceHeard(n: Note) {
@@ -1711,7 +1725,7 @@ function voiceHeard(n: Note) {
   if (!voiced || voiced.asked !== a.t || voiced.name !== n.agent) {
     const after = !!fronted && !fronted.begun && a.t >= (lastAsk?.up ?? Infinity)
     if (after) { fronted!.begun = true; hushed = Math.max(hushed, a.t); if (voiced?.quiet) clearTimeout(voiced.quiet); voiced = null } else stopVoice(a.t)
-    if (mode === "off" || (mode === "auto" && !a.voice)) return
+    if (!answerAloud(mode, a, n.t, turnedOn)) return
     speaker.begin("", a.lang, after, voiceOf(n.agent, live.state.name, prefs.voice.name))
     heardLines = []
     voiced = { name: n.agent, asked: a.t, notes: [], quiet: null, ...(after ? { fronted: fronted!.s } : {}) }

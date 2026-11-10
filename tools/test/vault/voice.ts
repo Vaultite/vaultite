@@ -195,6 +195,12 @@ export default async ($: VaultTest) => {
     const def = prefsOf({}, {}, {}, decls).voice, set = prefsOf({}, { voice: "always", voice_name: "Larissa", voice_speed: 3 }, {}, decls).voice
     check("voice: its settings, the manifest's defaults (when you speak; ElevenLabs' Brian first, Soniox's Adrian), a speed kept in range", def.mode === "auto" && def.name === "Adrian" && def.speed === 1 && def.provider === "auto" && def.eleven.voice === "nPczCjzI2devNBz1zQrb" && def.eleven.model === "eleven_flash_v2_5" &&
       set.mode === "always" && set.name === "Larissa" && set.speed === 1.3, { def, set })
+    const { answerAloud } = await import("../../../electron/helperlogic.ts")
+    const typed = { t: 100 }, said = { t: 100, voice: true }
+    check("voice: an answer follows the setting now: off says nothing (that turned it off too), auto a spoken ask's, always a typed one's",
+      !answerAloud("off", said, 200, 0) && answerAloud("auto", said, 200, 0) && !answerAloud("auto", typed, 200, 0) && answerAloud("always", typed, 200, 0))
+    check("voice: the answer that turned it on from off is said, typed too; a later typed ask's isn't",
+      answerAloud("auto", typed, 200, 150) && !answerAloud("auto", typed, 120, 150) && !answerAloud("auto", { t: 300 }, 400, 150))
     const d = { id: 1, bounds: { x: 0, y: 0, width: 1000, height: 800 } }
     const scene = (level: number) => sceneFor(d, { agents: [], summon: null, pill: null, speaking: { name: "Claude", level } }, { x: 1, y: 1 }, [d])
     const a = splitScene(scene(0.2)), b = splitScene(scene(0.8))

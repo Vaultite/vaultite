@@ -46,7 +46,7 @@ import { check as checkOn, listView, parseCondition, thingFrom, thingText, type 
 export { nearest } // (its tests reach it through the plugin)
 
 export const plugin = new Plugin(import.meta.url)
-voiceOps(plugin)
+voiceOps(plugin, () => broadcast({ t: "voice" }))
 
 // The user's guides to their apps and sites (guides.ts): one loads with a summoned ask there.
 plugin.kind(new Kind({
@@ -310,6 +310,9 @@ const asked = new Map<string, { ws: WebSocket; done: (ok: boolean, error?: strin
 
 const send = (ws: WebSocket, m: object) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(m)) }
 const broadcast = (m: object) => {
+  // (its voice setting as it is now, with each say: an answer that just turned it off or on is said as it now says)
+  const t = (m as { t: string }).t
+  if (t === "note" || t === "state" || t === "voice") m = { ...m, voice: setting("voice") }
   const text = JSON.stringify(m)
   for (const ws of windows.keys()) if (ws.readyState === ws.OPEN) ws.send(text)
   if (SCREEN_NEWS.has((m as { t: string }).t)) for (const ws of screens) if (ws.readyState === ws.OPEN) ws.send(text)
@@ -1131,7 +1134,7 @@ async function pageFinds(name: string, text: string) {
     .then((r) => ({ pane: t.pane!, ...(r as { zoom: number; found: Found[] }) }), () => null)))
   return each.filter((x): x is NonNullable<typeof x> => !!x && Array.isArray(x.found) && Number.isFinite(x.zoom))
 }
-const SCREEN_NEWS = new Set(["state", "agent", "note", "drop", "said", "hush"])
+const SCREEN_NEWS = new Set(["state", "agent", "note", "drop", "said", "hush", "voice"])
 /** The helper the user last spoke to or answered a knock on: where Still broken records. */
 let lastScreen: WebSocket | null = null
 const toScreens = (m: object) => { const text = JSON.stringify(m); for (const ws of screens) if (ws.readyState === ws.OPEN) ws.send(text) }
@@ -1806,7 +1809,7 @@ const lineText = (p: string, n: number) => { try { return readText(plugin.vault.
 // ---------- the always-on session
 
 /** What its session runs unasked: its own commands, reading the vault, and keeping what it learns of the user. */
-const ALLOW = ["vau companion", "vau docs", "vau read", "vau search", "vau render", "vau links", "vau context", "vau tasks", "vau dataview", "vau remember", "vau dictation add", "vau watches", "vau tabs", "vau browser", "vau limits"]
+const ALLOW = ["vau companion", "vau docs", "vau read", "vau search", "vau render", "vau links", "vau context", "vau tasks", "vau dataview", "vau remember", "vau dictation add", "vau watches", "vau tabs", "vau browser", "vau limits", "vau voice off", "vau voice on", "vau voice always"]
 // The companion's session is session.json; another agent started by name (start --as Ada) is session-ada.json.
 const sessionFile = (name?: string | null) => `${plugin.localDir()}/${name && !isMain(name) ? `session-${key(name)}` : "session"}.json`
 /** A session as kept: its terminal, its model, and how many moments it was handed (a fresh one takes over past

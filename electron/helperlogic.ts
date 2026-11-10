@@ -419,3 +419,9 @@ export function openedBundle(o: { url?: string; app?: string }): string {
   if (/^x-apple\.systempreferences:/i.test(o.url ?? "") || /^system (settings|preferences)$/i.test(o.app ?? "")) return "com.apple.systempreferences"
   return ""
 }
+
+/** Whether an answer is said aloud, by the voice setting as it is now: `auto` an answer to a spoken ask, `always` any;
+ *  turned on from off (`turnedOn`, when), the answer coming then to an ask before it is said, typed or not. */
+export function answerAloud(mode: Prefs["voice"]["mode"], a: { t: number; voice?: boolean }, at: number, turnedOn: number) {
+  return mode === "always" || (mode === "auto" && (!!a.voice || (a.t <= turnedOn && at >= turnedOn)))
+}

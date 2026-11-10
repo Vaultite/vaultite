@@ -45,7 +45,7 @@ export async function elevenUsage(plugin: Plugin): Promise<{ used: number; limit
   } catch { return null }
 }
 
-export function voiceOps(plugin: Plugin) {
+export function voiceOps(plugin: Plugin, changed: () => void) {
   const all = () => allKeys(plugin)
   const eleven = () => keyOf(all().companion?.elevenlabs), soniox = () => keyOf(all().dictation?.soniox)
   const openai = realtimeKeys(plugin)
@@ -98,6 +98,29 @@ vau secret, so it never lands in a transcript. With nothing piped, says whether 
       : r.checked === undefined ? (r.set ? "An ElevenLabs key is set: the companion speaks with ElevenLabs' voice." : `No ElevenLabs key here: ${SET_ELEVEN}`)
       : `Set the ElevenLabs key${r.checked ? "" : " (ElevenLabs didn't answer, so it isn't checked)"}: the companion speaks with ElevenLabs' voice.`,
     did: (p) => ({ action: "settings", text: p.remove ? `Removed the ${p.provider === "openai" ? "OpenAI" : "ElevenLabs"} key` : p.key ? "Set a voice key" : "Checked for a voice key" }),
+  })
+
+  plugin.op({
+    id: "companion.voice",
+    cli: "voice",
+    summary: "Turn the companion's voice off or on in one step (the voice setting): an answer written after it follows the new state.",
+    help: `on is the default (answers said aloud when asked by voice); always says typed asks' answers too.
+Its answers follow it at once: one written after turning it off shows as text, after turning it on is said.
+
+  vau voice off
+  vau voice on
+  vau voice always`,
+    kind: "write",
+    args: ["mode"],
+    params: { mode: { type: "string", required: true, enum: ["off", "on", "auto", "always"], description: "off, on (auto: when asked by voice), or always" } },
+    run: ({ mode }) => {
+      const m = mode === "on" ? "auto" : String(mode)
+      plugin.patchSettings({ voice: m === "auto" ? null : m })
+      changed()
+      return { voice: m }
+    },
+    text: (r: { voice: string }) => r.voice === "off" ? "Voice off: answers show as text only." : r.voice === "always" ? "Voice on: every answer is said aloud." : "Voice on: answers to a spoken ask are said aloud.",
+    did: (p) => ({ action: "settings", text: `Turned the companion's voice ${p.mode === "off" ? "off" : "on"}` }),
   })
 
   plugin.op({
