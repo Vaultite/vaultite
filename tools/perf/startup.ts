@@ -1,5 +1,5 @@
 // What a launch loads before drawing, against startup.json: the desktop main process's imports, web/dist's eager files.
-// node tools/perf/startup.ts [--ratchet]   (--ratchet: limits lowered to now plus headroom)
+// node tools/perf/startup.ts [--ratchet] [--main]   (--ratchet: limits lowered to now plus headroom; --main: no build)
 import "../test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import fs from "node:fs"
 import path from "node:path"
@@ -35,7 +35,9 @@ const DIST = path.join(ROOT, "web", "dist")
 const eagerOf = (page: string) =>
   [...fs.readFileSync(path.join(DIST, page), "utf8").matchAll(/<(?:script|link)\b[^>]*?(?:src|href)="\.?\/?(assets\/[^"]+\.(?:js|css))"/g)].map((m) => m[1])
 const sizeOf = (files: string[], ext: string) => kb(files.filter((f) => f.endsWith(ext)).reduce((n, f) => n + fs.statSync(path.join(DIST, f)).size, 0))
-if (fs.existsSync(path.join(DIST, "index.html"))) {
+// (--main skips web/dist: a worktree's may be an older build's)
+const web = !process.argv.includes("--main")
+if (web && fs.existsSync(path.join(DIST, "index.html"))) {
   const eager = eagerOf("index.html")
   now.webEagerJsKB = sizeOf(eager, ".js")
   now.webEagerCssKB = sizeOf(eager, ".css")
@@ -43,7 +45,7 @@ if (fs.existsSync(path.join(DIST, "index.html"))) {
   now.webEagerFiles = eager.length
   // The iPhone app's first screen, at every launch: a server list, not the app (whose code its imports could reach)
   now.phoneEagerJsKB = sizeOf(eagerOf("phone.html"), ".js")
-} else console.log("startup: no web/dist (npm run build first): the web app's part skipped")
+} else if (web) console.log("startup: no web/dist (npm run build first): the web app's part skipped")
 
 const limits: Record<string, number> = fs.existsSync(LIMITS) ? JSON.parse(fs.readFileSync(LIMITS, "utf8")) : {}
 if (process.argv.includes("--ratchet")) {
