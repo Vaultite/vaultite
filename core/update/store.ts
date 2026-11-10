@@ -8,11 +8,14 @@ import path from "node:path"
 import { promisify } from "node:util"
 import { gitEnv } from "../gitenv.ts"
 import { fixSpawnHelper } from "./npm.ts"
+import { leaseIn, processStart, type Lease } from "./lease.ts"
 import { fingerprint } from "../../electron/shell/print.mjs"
 
 const exec = promisify(execFile)
 const MINUTE = 60_000
 const SHA = /^[0-9a-f]{40}$/
+/** A root this new stays through a gc: made, and about to be current (its host's next step after prepare). */
+const FRESH = 10 * MINUTE
 /** In a deps set, what builds write (tsconfig's tsBuildInfoFile, vite's cacheDir): left writable, shared as caches. */
 const CACHES = [".tmp", ".vite"]
 
@@ -99,11 +102,13 @@ export type StoreOptions = {
   exec?: Exec
   log?: (line: string) => void
   now?: () => number
+  /** How long a root just made stays through a gc (default FRESH, 10 minutes). */
+  fresh?: number
 }
 
 /** A prepared root: where, its commit, its shell fingerprint, its deps set, and how long it took. */
 export type Root = { commit: string; dir: string; fingerprint: string; deps: string; prepared: number; seconds: number; steps: Record<string, number> }
-export type Lease = { pid: number; started: string; what: string }
+export type { Lease }
 
 const readJson = <T>(file: string): T | null => { try { return JSON.parse(fs.readFileSync(file, "utf8")) as T } catch { return null } }
 const writeJson = (file: string, v: unknown) => {
@@ -139,10 +144,9 @@ async function cloneDir(from: string, to: string, run: Exec) {
     fs.cpSync(from, to, { recursive: true, mode: fs.constants.COPYFILE_FICLONE, verbatimSymlinks: true })
   }
 }
-/** When a process started (`ps`), to tell it from a later one with its pid; null when it isn't running. */
-export async function processStart(pid: number): Promise<string | null> {
-  try { return (await exec("ps", ["-o", "lstart=", "-p", String(pid)])).stdout.trim() || null } catch { return null }
-}
+
+/** Each store folder's turn in this process: a prepare and a gc of two rootStore()s of one folder never overlap. */
+const chains = new Map<string, Promise<unknown>>()
 
 export function rootStore(o: StoreOptions) {
   const dir = path.resolve(o.dir), run = o.exec ?? execIn, log = o.log ?? (() => {}), now = o.now ?? Date.now
@@ -158,11 +162,10 @@ export function rootStore(o: StoreOptions) {
     await run("npm", [x.fresh ? "ci" : "install", "--no-audit", "--no-fund"], { cwd: d, env })
   })
 
-  // One prepare or gc at a time, here and in any other process on this store.
-  let held: Promise<unknown> = Promise.resolve()
+  // One prepare or gc at a time, here (every rootStore of this folder in this process: chains) and in any other process.
   const lockFile = path.join(dir, "lock")
   async function locked<T>(fn: () => Promise<T>): Promise<T> {
-    const mine = held.then(async () => {
+    const mine = (chains.get(dir) ?? Promise.resolve()).then(async () => {
       fs.mkdirSync(dir, { recursive: true })
       for (let i = 0; ; i++) {
         try { fs.writeFileSync(lockFile, String(process.pid), { flag: "wx" }); break } catch {
@@ -176,7 +179,7 @@ export function rootStore(o: StoreOptions) {
       }
       try { return await fn() } finally { fs.rmSync(lockFile, { force: true }) }
     })
-    held = mine.catch(() => {})
+    chains.set(dir, mine.catch(() => {}))
     return mine
   }
 
@@ -337,13 +340,7 @@ export function rootStore(o: StoreOptions) {
   }
 
   /** A process running `sha`'s root for long (a keeper): kept from gc while it lives. Answers its release. */
-  async function lease(sha: string, l: { pid: number; what: string }) {
-    const started = await processStart(l.pid)
-    if (!started) throw new Error(`process ${l.pid} isn't running`)
-    const file = path.join(dir, "leases", `${sha}.${l.pid}.json`)
-    writeJson(file, { pid: l.pid, started, what: l.what } satisfies Lease)
-    return () => fs.rmSync(file, { force: true })
-  }
+  const lease = (sha: string, l: { pid: number; what: string }) => leaseIn(dir, sha, l)
   /** The roots leased by a process still running (the same one: its start time too); the rest of the leases removed. */
   async function leased(): Promise<Map<string, Lease[]>> {
     const out = new Map<string, Lease[]>(), at = path.join(dir, "leases")
@@ -357,10 +354,13 @@ export function rootStore(o: StoreOptions) {
     return out
   }
 
-  /** Every root but current, good and the leased removed, with the deps sets none of those use: what it removed. */
+  /** Every root but current, good, the leased and one just made (about to be current: FRESH) removed, with the deps
+   *  sets none of those use: what it removed. */
   function gc() {
     return locked(async () => {
-      const keep = new Set([pointer("current"), pointer("good"), ...(await leased()).keys()].filter((s): s is string => !!s))
+      const fresh = (n: string) => now() - (metaOf(n)?.prepared ?? 0) < (o.fresh ?? FRESH)
+      const keep = new Set([pointer("current"), pointer("good"), ...(await leased()).keys(), ...(fs.existsSync(roots) ? fs.readdirSync(roots).filter((n) => SHA.test(n) && fresh(n)) : [])]
+        .filter((s): s is string => !!s))
       const gone: string[] = []
       let names: string[] = []
       try { names = fs.readdirSync(roots) } catch { /* none */ }

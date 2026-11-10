@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url"
 import { lineReader } from "../lines.ts"
 import { host, ptyDir, type Conn } from "./host.ts"
 import { PROTOCOL } from "./protocol.ts"
+import { holdRoot } from "../../../../core/update/lease.ts"
 
 const SOCK = process.argv[2]
 if (!SOCK) { console.error("usage: termd.ts <socket path> [<its files' path>]"); process.exit(2) }
@@ -16,6 +17,8 @@ const WIN = process.platform === "win32"
 const SELF = fileURLToPath(import.meta.url)
 
 const log = (...a: unknown[]) => console.log(new Date().toISOString(), ...a)
+// (run from a code root in the app's store: kept while it lives, as it outlives the app and its updates)
+void holdRoot(SELF, "termd")
 /** Its own files are gone (the checkout moved): node-pty runs spawn-helper by its path there, so no shell can start.
  *  It retires once it holds none, and the app's server starts another. */
 const stale = () => !fs.existsSync(SELF) || !fs.existsSync(ptyDir)

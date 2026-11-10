@@ -4,6 +4,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { codeOf, Host, listen, relayed } from "./chathost.ts"
+import { holdRoot } from "../../../core/update/lease.ts"
 
 const SOCK = process.argv[2]
 if (!SOCK) { console.error("usage: chatd.ts <socket path> [<its files' path>]"); process.exit(2) }
@@ -11,6 +12,8 @@ const FILES = process.argv[3] || SOCK
 const WIN = process.platform === "win32"
 const SELF = fileURLToPath(import.meta.url)
 const log = (...a: unknown[]) => console.log(new Date().toISOString(), ...a)
+// (run from a code root in the app's store: kept while it lives, as it outlives the app and its updates)
+void holdRoot(SELF, "chatd")
 
 const sdk = await import("@anthropic-ai/claude-agent-sdk")
 const { fromJSONSchema } = await import("zod")

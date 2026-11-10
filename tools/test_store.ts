@@ -68,7 +68,7 @@ const recipe: Recipe = {
   } }],
 }
 const dir = path.join(tmp, "code.noindex"), lines: string[] = []
-const store = rootStore({ dir, url: origin, recipe, install, log: (l) => lines.push(l) })
+const store = rootStore({ dir, url: origin, recipe, install, log: (l) => lines.push(l), fresh: 0 })
 const modeOf = (p: string) => fs.statSync(p).mode & 0o777
 const pickIn = (s: typeof store, print: string, bad = {}) => roots.pick({ bundle: path.join(tmp, "bundle"), packaged: true, platform: "darwin", env: {}, uid: process.getuid?.(),
   shell: { channel: "main", fingerprint: print }, store: s.dir, bad, enabled: { dev: true, store: true } })
@@ -178,6 +178,24 @@ await section("gc: current, good and leased roots stay", async () => {
   check("the picker still runs current", pickIn(store, print).root === store.root(c2))
 })
 function c6Of() { return git(dev, "rev-parse", "HEAD") }
+
+await section("two stores of one folder in one process take turns (the app's look and its gc after a launch)", async () => {
+  let release = () => {}, began = () => {}
+  const started = new Promise<void>((r) => { began = r })
+  const slow: Recipe = { ...recipe, build: [{ name: "slow", run: () => new Promise<void>((r) => { release = r; began() }) }, ...recipe.build] }
+  const a = rootStore({ dir, url: origin, recipe: slow, install }), b = rootStore({ dir, url: origin, recipe, install })
+  const c9 = commit({ "web/src/a.ts": "9\n" }, "ninth")
+  await a.fetch("main")
+  const making = a.prepare(c9)
+  await started // (its root being made: worktree and deps done, the build under way)
+  let collected = false
+  const gc = b.gc().then((gone) => { collected = true; return gone })
+  await new Promise((r) => setTimeout(r, 100))
+  check("the other's gc waits while a root is being made", !collected && fs.existsSync(path.join(dir, "roots", `.staging-${c9}`)))
+  release()
+  const r = await making, gone = await gc
+  check("...and the root made is whole, kept as just made (its host makes it current next)", fs.existsSync(path.join(r.dir, "electron", "build.json")) && !gone.some((g) => g.includes(c9)), gone)
+})
 
 await section("migration: an older source clone moves in, with no download", async () => {
   const source = path.join(tmp, "source.noindex")

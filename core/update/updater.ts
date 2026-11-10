@@ -42,7 +42,7 @@ type Kept = Pick<UpdateStatus, "last" | "error">
 /** A commit to take: from what runs (`running`, which the checkout's `head` may be past) to `to`, and the files between. */
 export type Update = { head: string; running: string; to: string; files: string[] }
 /** Taken, and whether the server must restart to run it; or why not, having gone back to what runs. */
-export type Applied = { restart: boolean } | { failed: string; cause?: unknown }
+export type Applied = { restart: boolean; said?: string } | { failed: string; cause?: unknown }
 
 export type UpdaterOptions = {
   /** The git it follows: a checkout on the branch, or (`bare`) a bare clone, a root store's (core/update/store.ts). */
@@ -152,8 +152,9 @@ async function lookOnce(o: UpdaterOptions): Promise<UpdateStatus> {
     if (stop) return stop.fail ? fail(remote, stop.why, undefined, stop.blocked) : set(stop.state, stop.why, stop)
     const dirty = o.bare ? [] : await dirtyFiles(git)
     if (dirty.length) return set("waiting", `the checkout has uncommitted changes (${capped(dirty)}): it updates once they're committed or undone`, { next: remote, blocked: { by: "uncommitted", files: dirty.slice(0, 20) } })
-    const repo = await originRepo(git)
-    if (!repo) return set("waiting", "origin isn't on GitHub, so CI can't be checked", { next: remote })
+    // (a host's own gate, the desktop app's, needs no GitHub: the default asks GitHub's Actions)
+    const repo = await originRepo(git) ?? ""
+    if (!repo && !o.ci) return set("waiting", "origin isn't on GitHub, so CI can't be checked", { next: remote })
     const ci = o.ci ??= githubCi(o.branch) // (kept: what CI said lasts across looks)
     const target = await pickTarget({ tip: remote, since: () => commitsSince(git, head, remote), ci: (sha) => ci(repo, sha), failed: kept.error?.commit })
     if ("why" in target) return set("waiting", target.why, { next: remote, ci: target.judged })
@@ -176,7 +177,8 @@ async function lookOnce(o: UpdaterOptions): Promise<UpdateStatus> {
     keep()
     o.running = next // (a web-only update is live once built)
     const red = elsewhere.length ? `; CI is red on it elsewhere: ${elsewhere.join(", ")}` : ""
-    set("current", `${restart ? `updated to ${short(next)}, restarting` : `updated to ${short(next)} (the web app only${busy ? `, while busy: ${busy}` : ""})`}${red}`)
+    // (`said`: a host that acts by itself says what it did: the desktop app's, by process)
+    set("current", `${applied.said ? `updated to ${short(next)}: ${applied.said}` : restart ? `updated to ${short(next)}, restarting` : `updated to ${short(next)} (the web app only${busy ? `, while busy: ${busy}` : ""})`}${red}`)
     if (restart) o.restart()
     return status
   } catch (e) {
