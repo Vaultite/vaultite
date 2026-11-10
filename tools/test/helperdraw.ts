@@ -93,7 +93,7 @@ await helper.startHelper({ home: () => ({ port, path: "/vault", name: "Vault" })
 type MenuItem = { label?: string; sublabel?: string; type?: string; enabled?: boolean; click?: () => void }
 const H = (globalThis as unknown as { vaultiteHelper: { heard: (m: object) => void; presses: () => Record<string, unknown>[]; stub: (op: string, v: object) => void; scene: () => Scene | null; asked: () => Record<string, unknown>[]; badge: () => string
   spoken: () => Record<string, unknown>[]
-  menu: () => MenuItem[] } }).vaultiteHelper
+  menu: () => MenuItem[]; holdAppear: (hold: boolean) => void } }).vaultiteHelper
 
 let fails = 0
 const check = (name: string, ok: boolean, info?: unknown) => { if (!ok) fails++; console.log(`${ok ? "ok  " : "FAIL"} ${name}${ok ? "" : ` ${JSON.stringify(info)}`}`) }
@@ -165,9 +165,14 @@ H.stub("near", { ok: true, elements: [{ role: "button", label: "Send", frame: { 
 H.stub("under", { ok: true, bundle: "com.example.mail", name: "Mail", role: "button", label: "Send" })
 H.stub("text", { ok: true, text: "Inbox\nSend" })
 pointer = { x: 500, y: 480 }
+// (its moment held, so a stalled runner can't let it pass before this looks)
+H.holdAppear(true)
+const pressedBefore = H.presses().length
 chord(true)
+await until(() => H.presses().length > pressedBefore)
 await wait(40)
 check("summoned: a shortcut's press shows nothing at first (⌃⌥→ is a window manager's)", !H.scene()!.summon, H.scene()!.summon)
+H.holdAppear(false)
 check("summoned: held, its cursor comes beside the pointer, listening, riding with it (the overlay fed the pointer)",
   await until(() => H.scene()!.summon?.state === "listening" && H.scene()!.summon?.sx === 524 && !!H.scene()!.summon?.follow) && following, [H.scene()!.summon, following])
 // (the pointer moved while held: the overlay's feed tells the helper each move, its trail)

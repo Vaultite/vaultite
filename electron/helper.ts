@@ -129,7 +129,8 @@ export async function startHelper(h: HelperHost) {
     asked: () => [...asked], screenAsked: () => [...screenAsked], spoken: () => [...spoken], scene: () => lastScene, island: islandNow, knocks: (m: Record<string, unknown>) => knocksHeard(m), islandSaid: (text: string, x: number, y: number) => knockSaid(text) || toPresence(text, { x, y }), badge: () => badged, menu: () => menuItems(),
     walk: (what: string) => walkCall(what), talkSaid: (text: string) => walkHeard(text), walkSaid: (text: string) => { walkPending(text); walkFinal(text) },
     teach: (text: string) => teachHeard(text, Date.now()), capture: (text: string) => captureHeard(text, Date.now()), offer: offerScene, offerSaid: (text: string) => offerHeard(text), refresh: () => refresh(), teachSaid: (text: string) => { teachPending(text); teachFinal(text) }, lesson: lessonScene,
-    layers: () => layersUp, watched: () => areas, near: (x: number, y: number) => nearAt({ x, y }) } })
+    layers: () => layersUp, watched: () => areas, near: (x: number, y: number) => nearAt({ x, y }),
+    holdAppear: (hold: boolean) => { if (hold) heldAppear ??= []; else { const due = heldAppear ?? []; heldAppear = null; for (const fn of due) fn() } } } })
   onScreenEvent(heard)
   ipcMain.removeAllListeners("vaultite:place")
   ipcMain.on("vaultite:place", (e, m: { id?: unknown; place?: unknown }) => placeTold(e.sender, m))
@@ -693,10 +694,16 @@ function keepAudio(id: string) {
     return to
   } catch { return null }
 }
+/** A held press's cursor shows a moment after it (a shortcut's press shows nothing). A test holds the moment
+ *  (vaultiteHelper.holdAppear), so a stalled runner never shows the cursor before its check looks. */
+let heldAppear: (() => void)[] | null = null
+const appear = (fn: () => void) => void (heldAppear ? heldAppear.push(fn) : setTimeout(fn, 130))
 /** The companion called up outside Vaultite: its cursor at the pointer (listening, then thinking), the window there, the
  *  pointer's trail while the key is held (`released`: when it was let go); `was`: where its own cursor was. */
 type Summon = { name: string; tint: string; p: Point; w: AppWindowInfo | null; trail: (Point & { t: number })[]; released?: number
   at: number; was: string
+  /** Its cursor may show (a moment after the press: `appear`). */
+  appeared?: boolean
   /** Where the press is (pressmachine.ts), each move in its log. */
   m: PressMachine
   /** Words heard before the recognizer stopped while it was held: sent once it's let go. */
@@ -809,7 +816,7 @@ async function startSummon() {
   s.down = shotAt(p).then((r) => r.shot, () => null)
   live.say({ t: "summoning" })
   // (a press that's a shortcut shows nothing: it appears after a moment)
-  setTimeout(draw, 130)
+  appear(() => { s.appeared = true; draw() })
   void screenAsk("ink", { on: true })
   void screenAsk<AppWindowInfo>("at", { x: p.x, y: p.y }).then((w) => { s.w = w.window ? w : null }, () => {})
   draw()
@@ -2164,7 +2171,7 @@ function draw() {
   // (once its turn is seen at work, it's as busy as the agent is)
   const state = !s ? "watching" : listening ? "listening" : ph === "missed" || ph === "failed" ? "missed" : busy || (s && waiting(s)) ? "thinking" : "watching"
   const home = s && besidePointer(s.p, screen.getDisplayNearestPoint(s.p).bounds)
-  const called: Scene["summon"] = s && home && (!listening || Date.now() - s.at > 120)
+  const called: Scene["summon"] = s && home && (!listening || s.appeared)
     ? { name: s.name, tint: s.tint, state, sx: home.x, sy: home.y, follow: true, ...(words ? { words } : {}), ...doing(s.name), ...(state === "missed" && s.missed ? { missed: s.missed } : {}), ...(listening && session?.into === "summon" ? { level: Math.round(session.level * 20) / 20 } : {}), ...(aimed && !listening ? { aim: { id: aimed.id, x: Math.round(aimed.x), y: Math.round(aimed.y) } } : {}), ...(inkDown && listening ? { drag: true } : {}) } : null
   followPointer(!!called, trailed)
   // (it came: a soft cue, once a press)
