@@ -21,12 +21,16 @@ export default async ($: VaultTest) => {
     {
       // Decisions as given (decisions.ts): text or an object, checked; the same question said again; an answer by its number or words.
       const { specOf, sameQuestion, answerOf, titleOf } = await import("../../../plugins/core/inbox/decisions.ts")
-      const t = specOf("Ship it to the phone too? | Yes | Not yet*")
-      const o = specOf({ question: "Which account?", options: ["Work", "Personal"], default: "personal", blocking: true })
-      const bad = ["Ship? | Yes | No", "Ship? | Yes* | No*", { question: "Ship?", options: ["Yes"], default: "Yes" }, { question: "", options: ["A", "B"], default: "A" }]
+      const t = specOf("Ship the sidebar to the phone too? | Yes: the phone gets it today | Not yet: desktop only* | why: The sidebar job is live on desktop.")
+      const o = specOf({ question: "Which account for tonight's deploy?", options: ["Work: the team sees it", { label: "Personal", does: "only you see it" }], default: "personal", blocking: true, why: "The Lighthouse deploy job asks." })
+      const bad = ["Ship? | Yes: a | No: b", "Ship it now? | Yes: a* | No: b*", "Ship the docs? | Yes* | No: b | why: c", "Ship the docs? | Yes: a* | No: b",
+        { question: "Ship?", options: ["Yes: a"], default: "Yes", why: "c" }, { question: "", options: ["A: a", "B: b"], default: "A", why: "c" }]
         .map((x) => { try { specOf(x); return "" } catch (e) { return (e as Error).message } })
-      check("decision specs: text with its default starred, an object; what's wrong said", t.options.join() === "Yes,Not yet" && t.default === "Not yet" && !t.blocking && t.title === "Ship it to the phone too" &&
-        o.default === "Personal" && o.blocking && bad.every(Boolean), [t, o, bad])
+      check("decision specs: text with its default starred and its why, an object; what's wrong said", t.options.join() === "Yes,Not yet" && t.effects.join() === "the phone gets it today,desktop only" &&
+        t.default === "Not yet" && t.why === "The sidebar job is live on desktop." && !t.blocking && t.title === "Ship the sidebar to the phone too" && !t.warn &&
+        o.default === "Personal" && o.effects[1] === "only you see it" && o.blocking && bad.every(Boolean) && /what it causes/.test(bad[2]) && /say why/.test(bad[3]), [t, o, bad])
+      check("decision specs: a question that doesn't name its subject is warned of", !!specOf("Start the first two steps? | Start: a job starts* | Wait: nothing yet | why: x").warn &&
+        !!specOf("Ship it? | Yes: a* | No: b | why: x").warn, [])
       check("decisions: the same question in other words is one, a different one isn't", sameQuestion("Keep the quieter island?", "keep the quieter island") &&
         sameQuestion("Should we ship the new sidebar to the phone?", "Ship the new sidebar to the phone too?") && !sameQuestion("Ship the sidebar?", "Ship the footer?"))
       check("decision answers: by number, by words, by the only option they start, else their own", answerOf(["Work", "Personal"], "2").answer === "Personal" &&
@@ -479,7 +483,7 @@ export default async ($: VaultTest) => {
     // An agent's report: a record (archived as it comes, its thread done quietly), its questions decisions of their own,
     // each a file with its options and default; the one an agent waits on told. Its TL;DR on top, details folded.
     ;[st, b] = await api("POST", "ops/inbox.report", { title: "Lighthouse docs updated", work: "change", tldr: "The setup page is rewritten.\nLive on the preview.", summary: "Rewrote the **setup** page.\n- New screenshots",
-      decision: ["Publish it today? | Publish* | Wait", { question: "Which domain should the docs use?", options: ["docs.lighthouse.test", "lighthouse.test/docs"], default: "lighthouse.test/docs", blocking: true, why: "The subdomain needs a DNS change." }],
+      decision: ["Publish it today? | Publish: it goes out now* | Wait: it waits for Monday | why: The Lighthouse docs job is done.", { question: "Which domain should the docs use?", options: ["docs.lighthouse.test: a subdomain", "lighthouse.test/docs: under the site"], default: "lighthouse.test/docs", blocking: true, why: "The subdomain needs a DNS change." }],
       session: "sess-report-1", agent: "claude" })
     let rep = read("Inbox/.archive/Change needs you · Lighthouse docs updated.md")
     check("report: archived as it comes, naming its session, with its decisions and a reply box", st === 200 && b.path === "Inbox/.archive/Change needs you · Lighthouse docs updated.md" && b.inbox === false &&
@@ -487,7 +491,7 @@ export default async ($: VaultTest) => {
       rep.trimEnd().endsWith("```block-reply\n```") && rep.includes("from: Claude Code") && b.decisions.length === 2, [st, b, rep])
     check("report: a one-line TL;DR on top, its decisions, then the details folded", rep.split("---\n")[2]?.startsWith("\n> [!tldr] In short\n> The setup page is rewritten. Live on the preview.\n\n```block-decisions\n```\n\n> [!info]- Details\n> Rewrote the **setup** page.\n> - New screenshots"), rep)
     const pub = read("Inbox/Publish it today.md"), dom = read("Inbox/Which domain should the docs use.md")
-    check("decisions: a file each, its question, options, default, the report that asked and its session", /question: Publish it today\?/.test(pub) && /options: \[Publish, Wait\]/.test(pub) &&
+    check("decisions: a file each, its question, options, default, the report that asked and its session", /question: Publish it today\?/.test(pub) && /options: \[Publish, Wait\]/.test(pub) && /effects: \[it goes out now, it waits for Monday\]/.test(pub) &&
       /default: Publish/.test(pub) && !/blocking: true/.test(pub) && pub.includes("report: '[[Change needs you · Lighthouse docs updated]]'") && pub.includes("session: sess-report-1") &&
       pub.includes("```block-decisions") && /blocking: true/.test(dom) && dom.includes("The subdomain needs a DNS change."), [pub, dom])
     ;[, list] = await api("GET", "inbox/events")
@@ -513,12 +517,13 @@ export default async ($: VaultTest) => {
     check("report: the turn ending after it leaves the report's thread as it is", merged.length === 1 && merged[0].ask === "report" && merged[0].state === "done", merged)
     {
       // The same question again (another agent, another wording of it in a few words) is that decision; a bad one says why.
-      ;[st, b] = await api("POST", "ops/inbox.ask", { question: "Publish it today", options: ["Publish", "Wait"], default: "Wait", blocking: true, agent: "codex", session: "sess-codex-1" })
+      ;[st, b] = await api("POST", "ops/inbox.ask", { question: "Publish it today", options: ["Publish: now", "Wait: Monday"], default: "Wait", blocking: true, why: "Codex's docs job.", agent: "codex", session: "sess-codex-1" })
       check("inbox.ask: the same question open already is that one, waiting now", st === 200 && b.merged === true && b.path === "Inbox/Publish it today.md" && /blocking: true/.test(read("Inbox/Publish it today.md")), [st, b])
-      const bad = await Promise.all([{ question: "Ship?", options: ["Yes"], default: "Yes" }, { question: "Ship?", options: ["Yes", "No"], default: "Maybe" }, { question: "Ship?", options: ["Yes", "No"] }]
+      const bad = await Promise.all([{ question: "Ship?", options: ["Yes: a"], default: "Yes", why: "c" }, { question: "Ship?", options: ["Yes: a", "No: b"], default: "Maybe", why: "c" },
+        { question: "Ship?", options: ["Yes: a", "No: b"], why: "c" }, { question: "Ship?", options: ["Yes", "No: b"], default: "No", why: "c" }, { question: "Ship?", options: ["Yes: a", "No: b"], default: "No" }]
         .map((x) => api("POST", "ops/inbox.ask", x)))
-      check("inbox.ask: two options at least, a default among them", bad.every(([c, x]) => c === 400 && /option|default/.test(x.error)), bad)
-      ;[st, b] = await api("POST", "ops/inbox.report", { title: "No default", work: "fix", tldr: "x", summary: "x", decision: ["Ship it? | Yes | No"] })
+      check("inbox.ask: two options at least, each saying what it causes, a default among them, a why", bad.every(([c, x]) => c === 400 && /option|default|why/.test(x.error)), bad)
+      ;[st, b] = await api("POST", "ops/inbox.report", { title: "No default", work: "fix", tldr: "x", summary: "x", decision: ["Ship it? | Yes: a | No: b | why: c"] })
       check("report: a decision's text marks its default", st === 400 && /\*/.test(b.error), [st, b])
       // Answered: archived with its answer; a default kept goes nowhere, an answer it waits on goes to its session.
       // (Claude Code's host stands in: what it's given is what the session would be told)
@@ -539,7 +544,7 @@ export default async ($: VaultTest) => {
       ;[st, b] = await api("POST", "ops/inbox.decide", { item: "Inbox/Which domain should the docs use.md", moot: "The docs moved to the wiki" })
       check("inbox.decide --moot: closed, saying why, nobody told", st === 200 && /closed: The docs moved to the wiki/.test(read("Inbox/.archive/Which domain should the docs use.md")) && got.length === 1, [st, b, got])
       got.length = 0
-      await api("POST", "ops/inbox.ask", { question: "Keep the quieter island?", options: ["Keep", "Go back"], default: "Keep", session: "sess-island", agent: "claude" })
+      await api("POST", "ops/inbox.ask", { question: "Keep the quieter island?", options: ["Keep: it stays quiet", "Go back: it spins again"], default: "Keep", why: "The island job.", session: "sess-island", agent: "claude" })
       ;[st, b] = await api("POST", "ops/inbox.decide", { defaults: true })
       check("inbox.decide --defaults: every open one's default; a default an agent took isn't sent, one it waits on is", st === 200 && b.decided.length === 2 &&
         b.decided.every((d: Any) => d.answer) && got.length === 1 && got[0][0] === "sess-report-1" && /Publish it today\?.*Publish/.test(got[0][1]) && exists("Inbox/.archive/Keep the quieter island.md"), [st, b, got])
@@ -620,10 +625,10 @@ export default async ($: VaultTest) => {
     check("report: a job's demo video is embedded by its vault path, above the screenshots; a picture isn't one",
       demo.indexOf("![[Guides/Proofs/Blue save/Blue save.mp4]]") > 0 && demo.indexOf("![[Guides/Proofs/Blue save/Blue save.mp4]]") < demo.indexOf("after.png]]") && bst === 400 && /mp4/.test(bb.error), [st, b, demo, bb])
     fs.rmSync(path.join(VAULT, "Guides/Proofs/Blue save"), { recursive: true, force: true })
-    const cliOut = await vau("inbox", "report", "From the command line", "--work", "feature", "--tldr", "Did it", "--summary", "Did it", "--decision", "First of the two? | A* | B", "Second of the two? | C | D*", "--session", "sess-cli")
+    const cliOut = await vau("inbox", "report", "From the command line", "--work", "feature", "--tldr", "Did it", "--summary", "Did it", "--decision", "First of the two? | A: a* | B: b | why: w", "Second of the two? | C: c | D: d* | why: w", "--session", "sess-cli")
     rep = read("Inbox/.archive/Feature done · From the command line.md")
     check("report: vau takes a list's values after its flag", cliOut.code === 0 && exists("Inbox/First of the two.md") && /default: D/.test(read("Inbox/Second of the two.md")) && rep.includes("session: sess-cli"), [cliOut, rep])
-    ;[st, b] = await api("POST", "ops/inbox.report", { title: "One question", work: "fix", tldr: "x", summary: "x", decision: "Ship it, or wait? | Ship it, now* | Wait" })
+    ;[st, b] = await api("POST", "ops/inbox.report", { title: "One question", work: "fix", tldr: "x", summary: "x", decision: "Ship it, or wait? | Ship it, now: it goes out* | Wait: it doesn't | why: w" })
     check("report: a decision given as text keeps its commas", st === 200 && /question: Ship it, or wait\?/.test(read("Inbox/Ship it, or wait.md")) && read("Inbox/Ship it, or wait.md").includes("Ship it, now"), [st, b])
     await api("POST", "ops/inbox.decide", { defaults: true })
     ;[st, b] = await api("POST", "ops/inbox.reply", { to: "Inbox/Written by hand.md", text: "hi" })
@@ -705,7 +710,7 @@ export default async ($: VaultTest) => {
       await api("POST", "inbox/hook?agent=claude&terminal=claude-handed2", { hook_event_name: "Stop" })
       check("handed: replied to before its turn ended, that turn's end doesn't end it (its next report will)", handedOf().includes("claude-handed2"), handedOf())
       // The same session's next report goes on in its file: one file per exchange, its title saying where it stands.
-      await api("POST", "ops/inbox.report", { title: "Thread start", work: "fix", tldr: "Ship it?", summary: "First round.", decision: { question: "Ship the thread fix?", options: ["Ship", "Hold"], default: "Ship", blocking: true }, terminal: "claude-thread1", agent: "claude" })
+      await api("POST", "ops/inbox.report", { title: "Thread start", work: "fix", tldr: "Ship it?", summary: "First round.", decision: { question: "Ship the thread fix?", options: ["Ship: it goes out", "Hold: it waits"], default: "Ship", blocking: true, why: "The thread job." }, terminal: "claude-thread1", agent: "claude" })
       await sleep(1100) // (times are to the second)
       await api("POST", "ops/inbox.report", { title: "Came between", work: "fix", tldr: "x", summary: "x", terminal: "claude-between1", agent: "claude" })
       await sleep(1100)

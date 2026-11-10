@@ -25,6 +25,8 @@ export type InboxItem = {
   /** A decision (decisions.ts): its question, options, default, whether its agent waits on it; then the answer or why
    *  it closed; the report that asked it, and others that asked it too (merged). */
   question?: string; options?: string[]; default?: string; blocking?: boolean
+  /** What each option causes, by its index (none on older ones). */
+  effects?: string[]
   answer?: string; answered?: string | null; closed?: string; report?: string; also?: string[]
   /** A report's work (inbox.report: feature, fix, change, research, plan, answer). */
   work?: string

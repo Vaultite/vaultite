@@ -23,11 +23,11 @@ writeFileSync(path.join(VAULT, ".vaultite/sidebars.json"), JSON.stringify({ left
 
 vau("inbox", "report", "Lighthouse header redesigned", "--work", "feature", "--tldr", "The Lighthouse page has its new header, live on the preview.",
   "--summary", "Moved the logo left and gave the header a quieter colour.\n\n- `web/src/Header.tsx`\n- Branch `lighthouse-header`, commit 3f2a1c0",
-  "--decision", "Keep the old footer under the new header? | Keep it* | Drop it",
-  "--decision", JSON.stringify({ question: "Ship the new header to the phone layout too?", options: ["Ship it", "Desktop only"], default: "Desktop only", why: "The phone's header is narrower: the logo would sit above the title." }),
-  "--decision", JSON.stringify({ question: "Which account should tonight's deploy use?", options: ["Work", "Personal"], default: "Personal", blocking: true }))
-vau("inbox", "ask", "Release Beacon 2.4 tonight, or wait for Monday?", "--options", "Tonight", "Monday", "--default", "Monday", "--blocking", "--from", "Codex")
-vau("inbox", "ask", "Keep the old footer under the new header", "--options", "Keep it", "Drop it", "--default", "Keep it")
+  "--decision", "Keep the old footer under the new header? | Keep it: the footer stays* | Drop it: the page ends at the header | why: The Lighthouse header job left the footer as it was.",
+  "--decision", JSON.stringify({ question: "Ship the new header to the phone layout too?", options: ["Ship it: the phone gets it too", "Desktop only: the phone keeps its header"], default: "Desktop only", why: "The phone's header is narrower: the logo would sit above the title." }),
+  "--decision", JSON.stringify({ question: "Which account should tonight's deploy use?", options: ["Work: the team account", "Personal: your own"], default: "Personal", blocking: true, why: "The Lighthouse deploy runs tonight." }))
+vau("inbox", "ask", "Release Beacon 2.4 tonight, or wait for Monday?", "--options", "Tonight: it ships at 9 pm", "Monday: it waits for the weekend to pass", "--default", "Monday", "--blocking", "--why", "Codex finished Beacon 2.4.", "--from", "Codex")
+vau("inbox", "ask", "Keep the old footer under the new header", "--options", "Keep it: the footer stays", "Drop it: the page ends at the header", "--default", "Keep it", "--why", "The Lighthouse header job left the footer as it was.")
 vau("inbox", "progress", "Two of five fixes in; CI runs on the third", "--session", "qa-progress-1", "--agent", "codex")
 const report = readdirSync(path.join(VAULT, "Inbox/.archive")).find((f) => f.includes("Lighthouse header redesigned"))
 check("report: archived as it came, not an inbox item", !!report && !readdirSync(path.join(VAULT, "Inbox")).some((f) => f.includes("Lighthouse header")), readdirSync(path.join(VAULT, "Inbox")))
@@ -43,6 +43,9 @@ check("page: the ones it waits on say so, first", (await rows.first().getAttribu
 check("page: a default taken reads Went with", (await rows.nth(2).innerText()).includes("Went with"), await rows.nth(2).innerText())
 const panel = page.locator("[data-inbox-panel] [data-decision]")
 check("panel: the decisions first", (await panel.count()) === 4, await panel.count())
+const layout = page.locator("[data-inbox-view] [data-decision]", { hasText: "phone layout" })
+check("page: each option says what it causes, under its button, and the why under the question", (await layout.locator("[data-option-does]").allInnerTexts()).join() === "the phone keeps its header,the phone gets it too" &&
+  (await layout.locator("[data-decision-why]").innerText()).includes("narrower"), await layout.innerText())
 await page.locator("[data-inbox-view]").screenshot({ path: `${OUT}1-page.png` })
 await page.locator("aside[data-side=left]").screenshot({ path: `${OUT}2-panel.png` })
 

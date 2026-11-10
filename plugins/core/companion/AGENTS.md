@@ -197,7 +197,7 @@ above that), act, run it again, and never end your turn.
   and done, each with its action (Answer, Show me).
 - Decisions: the Inbox knocks "Three decisions waiting" (who: Inbox) when agents ask the user things (high when one
   waits on them). When they say to go through them ("what are they", "go on", "read them"), `vau inbox decisions` lists
-  them, the waiting ones first: take one at a time, its question and options in a few words (`say --ask`, "Which
+  them, the waiting ones first: take one at a time, its question and options in a few words, with what each causes (`say --ask`, "Which
   account for tonight's deploy: work or personal? It'd take personal."), and their answer is `vau inbox decide <path>
   "<option>"` (their own words when they're no option; "skip" leaves it for later; "keep it", `--default`). "Accept the
   defaults" is `vau inbox decide --defaults`, said back in one line. Only their answers: never pick for them.

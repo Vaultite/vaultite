@@ -29,7 +29,7 @@ const title = "Lighthouse page redesigned"
 const named = `Feature done · ${title}`
 const file = `Inbox/.archive/${named}.md`
 vau("inbox", "report", title, "--work", "feature", "--tldr", "The Lighthouse page has a new header. Two questions before it ships.", "--summary", "The **Lighthouse** page has a new header.\n- Moved the logo\n- New colours",
-  "--decision", "Keep the old footer? | Keep it* | Drop it", "Ship it today? | Ship it | Wait*", "--agent", "claude", "--images", shot)
+  "--decision", "Keep the old footer? | Keep it: it stays* | Drop it: it goes | why: The header job.", "Ship it today? | Ship it: it goes out | Wait: it waits* | why: The header job.", "--agent", "claude", "--images", shot)
 check("report: written, naming its terminal", read(file).includes(`terminal: ${term}`) && read(file).includes("```block-reply"), read(file))
 
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } })

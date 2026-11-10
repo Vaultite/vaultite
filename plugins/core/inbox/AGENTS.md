@@ -1,7 +1,10 @@
 ## Inbox (`Inbox/<Title>.md`, and events)
 The inbox is for decisions: what only the user can settle. Each question is its own item, with its options and the
 default you take if they don't answer; never a question in prose (a "Your call" list in a report goes unanswered).
-- A question: `vau inbox ask "<question>" --options "<a>" "<b>" --default "<a>" [--blocking] [--why "<context>"]`.
+- A question: `vau inbox ask "<question>" --options "<a>: <what it causes>" "<b>: <what it causes>" --default "<a>"
+  --why "<context>" [--blocking]`. The user reads it cold, days later: the question names its subject (the feature, the
+  note, never "it" or "the first two steps"), each option's few words after its colon say what picking it does (shown
+  under its button), and why (required) says in plain words what it's about and which agent or project asks.
   blocking: you're stopped on it (it comes first, toasts and pushes to the phone); else you went with the default already
   and it reads "Went with X; change it?", quietly. The same question open already (yours or another agent's) is that one.
 - The end of a task: `vau inbox report` (below), its questions as `--decision`.
@@ -19,6 +22,7 @@ from: Claude Code
 created: '2026-10-01 18:00:00'
 question: Ship the new sidebar to the phone too?
 options: [Ship it, Not yet]
+effects: [The phone gets it today, Desktop only for now]   # what each option causes, under its button
 default: Not yet            # what its agent takes (or took) if the user doesn't answer
 blocking: true              # its agent waits on it; absent: it went with the default already
 report: '[[Fix done · Sidebar scrolls again]]'   # the report that asked it; also: other reports that asked it too
@@ -30,7 +34,7 @@ agent: claude               # the session its answer goes to (session, terminal,
 ```block-decisions
 ```
 
-Its context: one or two plain sentences.
+Its why: one or two plain sentences (what it's about, who asks).
 ````
 - The user answers (`vau inbox decide <path> "<option>"`, `--default`, `--defaults` for Accept all defaults, `--moot
   "<why>"`, `--undo`): only with their own answer, never for them. Its agent is told (one reply per session, into its
@@ -64,7 +68,8 @@ What it says, as Markdown.
 - **A TL;DR on top** of every result you write (`--tldr`): what it says, in a line or two of plain words.
 - **A report** ends a task you were handed to do alone (a voice note, a note handed to you: Dispatch, a schedule):
   `vau inbox report "<title>" --work <feature|fix|change|research|plan|answer> --tldr "<one line>" --summary
-  "<markdown>" --decision "<question>? | <option>* | <option>"` (`*` the default; `--help` for the rest). It's a record,
+  "<markdown>" --decision "<question>? | <option>: <what it causes>* | <option>: <what it causes> | why: <context>"` (`*`
+  the default; `--help` for the rest). It's a record,
   not an inbox item: archived as it comes (`work:` says what kind), listed in one line in the morning brief (`vau inbox
   reports`) and under Reports today. Only a failure (`--state stuck`), something that went out publicly (`--public`) or
   the daily digest itself (`--digest`) stays in the inbox, told. Its shape: a one-line TL;DR, its decisions (drawn with

@@ -86,20 +86,28 @@ function Options({ r }: { r: InboxItem }) {
   const [own, setOwn] = useState(false)
   if (own) return <OwnAnswer r={r} close={() => setOwn(false)} />
   const options = r.options ?? []
+  const doesOf = (o: string) => r.effects?.[options.indexOf(o)] ?? ""
+  // (what a pick causes, in a few words under its button: older decisions have none)
+  const withDoes = (o: string, b: ReactNode) => {
+    const does = doesOf(o)
+    return does ? <div key={o} className="flex max-w-[16rem] min-w-0 flex-col items-start gap-0.5">{b}
+      <span className="px-0.5 text-[12px] leading-[16px] text-muted-foreground text-pretty max-md:text-[14px] max-md:leading-[18px]" data-option-does>{does}</span></div> : b
+  }
   const button = (o: string, i: number) => {
     const def = o === r.default
-    return (
+    return withDoes(o,
       <Button key={o} size="small" look={r.blocking ? (def ? "secondary" : "outline") : "outline"} className={cn("max-w-full", tall)} data-option={i + 1} data-default={def || undefined}
-        onClick={(e) => { e.stopPropagation(); void decide(r, o) }}>
+        aria-description={doesOf(o) || undefined} onClick={(e) => { e.stopPropagation(); void decide(r, o) }}>
         <span className="truncate">{o}</span>{r.blocking && def && <span className="font-normal text-tertiary">default</span>}
-      </Button>
-    )
+      </Button>)
   }
+  const some = options.some(doesOf)
   return (
-    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={r.question}>
+    <div className={cn("flex flex-wrap gap-1.5", some ? "items-start gap-x-3" : "items-center")} role="group" aria-label={r.question}>
       {r.blocking ? options.map(button) : <>
-        <Button size="small" look="secondary" className={cn("max-w-full", tall)} data-keep onClick={(e) => { e.stopPropagation(); void keepDefault(r) }}>
-          <Check className="size-3.5 shrink-0" strokeWidth={2.5} /><span className="truncate">Keep</span></Button>
+        {withDoes(r.default ?? "", <Button key="keep" size="small" look="secondary" className={cn("max-w-full", tall)} data-keep aria-description={doesOf(r.default ?? "") || undefined}
+          onClick={(e) => { e.stopPropagation(); void keepDefault(r) }}>
+          <Check className="size-3.5 shrink-0" strokeWidth={2.5} /><span className="truncate">Keep</span></Button>)}
         {options.map((o, i) => (o === r.default ? null : button(o, i)))}
       </>}
       <Button size="small" look="quiet" className={tall} data-other onClick={(e) => { e.stopPropagation(); setOwn(true) }}>Other…</Button>
@@ -149,7 +157,10 @@ export function DecisionRow({ r, snooze, swipe, lead, inReport }: { r: InboxItem
           {r.created && <span className="shrink-0 text-[12px] text-tertiary tabular-nums max-md:text-[13px]">{fmtAgo(r.created, { short: true })}</span>}
         </div>
         <div className="mt-0.5 text-[15px] leading-[21px] font-medium text-pretty select-text max-md:text-[17px] max-md:leading-[23px]" data-question>{r.question}</div>
-        {why && <p className="mt-0.5 text-[13px] leading-[18px] text-muted-foreground select-text max-md:text-[15px] max-md:leading-[20px]">{why}</p>}
+        {why && <p className="mt-0.5 text-[13px] leading-[18px] text-muted-foreground select-text max-md:text-[15px] max-md:leading-[20px]" data-decision-why>{why}</p>}
+        {rep?.tldr && <button type="button" data-decision-tldr onClick={() => openFile(pathOf(rep))}
+          className="mt-1 flex w-full cursor-pointer items-start gap-1.5 text-left text-[13px] leading-[18px] text-muted-foreground hover:text-foreground max-md:text-[15px] max-md:leading-[20px]">
+          <FileText className="mt-[2px] size-3.5 shrink-0" strokeWidth={2} /><span className="min-w-0"><span className="font-medium">From its report:</span> {rep.tldr}</span></button>}
         <div className="mt-2"><Options r={r} /></div>
       </div>
       <button type="button" aria-label="More" data-tip="More" onClick={(e) => { e.stopPropagation(); menuBelow(e, menuOf(r, store, snooze)) }}

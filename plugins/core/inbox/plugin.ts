@@ -43,7 +43,8 @@ plugin.kind(new Kind({
   },
   render: (r) => [{ status: r.status || "new", from: r.from || null, source: r.source || null, created: r.created, updated: r.updated || null, origin: r.origin || null,
     agent: r.agent || null, session: r.session || null, terminal: r.terminal || null, machine: r.machine || null, snoozed: r.snoozed || null, pinned: r.pinned === true || null, do: r.do || null,
-    work: r.work || null, question: r.question || null, options: truthy(r.question) && Array.isArray(r.options) ? r.options : null, default: r.question ? r.default || null : null,
+    work: r.work || null, question: r.question || null, options: truthy(r.question) && Array.isArray(r.options) ? r.options : null,
+    effects: truthy(r.question) && Array.isArray(r.effects) && r.effects.some(truthy) ? r.effects : null, default: r.question ? r.default || null : null,
     blocking: r.question ? r.blocking === true : null, answer: r.answer || null, answered: r.answered || null, closed: r.closed || null, report: r.report || null,
     also: Array.isArray(r.also) && r.also.length ? r.also : null }, r.body || ""],
   // (a decision's file draws its question and its answers on top)
@@ -78,7 +79,7 @@ plugin.kind(new Kind({
 function decisionOf(fm: Item): Item {
   if (!truthy(fm.question)) return {}
   const list = (v: unknown) => (Array.isArray(v) ? v.map(str).filter(Boolean) : truthy(v) ? [str(v)] : [])
-  return { question: str(fm.question), options: list(fm.options), default: str(fm.default), blocking: fm.blocking === true, answer: truthy(fm.answer) ? str(fm.answer) : "",
+  return { question: str(fm.question), options: list(fm.options), effects: Array.isArray(fm.effects) ? fm.effects.map(str) : [], default: str(fm.default), blocking: fm.blocking === true, answer: truthy(fm.answer) ? str(fm.answer) : "",
     answered: truthy(fm.answered) ? str(fm.answered) : null, closed: truthy(fm.closed) ? str(fm.closed) : "", report: truthy(fm.report) ? str(fm.report) : "", also: list(fm.also) }
 }
 
@@ -1536,7 +1537,7 @@ async function askAll(ctx: OpCtx, specs: DecisionSpec[], w: Asker, report: strin
       out.push({ path: `${same.id}.md`, question: str(same.question), merged: true, blocking: waits || same.blocking === true })
       continue
     }
-    const r = await ctx.api("POST", "inbox", { title: d.title, body: d.why, from: w.from, question: d.question, options: d.options, default: d.default, blocking: d.blocking,
+    const r = await ctx.api("POST", "inbox", { title: d.title, body: d.why, from: w.from, question: d.question, options: d.options, effects: d.effects, default: d.default, blocking: d.blocking,
       ...(report ? { report: `[[${report}]]` } : {}), ...askerFields(w) }) as Item
     if (d.blocking) tellDecision(r, w)
     out.push({ path: `${r.id}.md`, question: d.question, merged: false, blocking: d.blocking })
@@ -1664,7 +1665,13 @@ function decisionAt(p: string): Item | undefined {
   return r && truthy(r.question) ? r : undefined
 }
 
-const decisionRow = (r: Item) => ({ path: `${r.id}.md`, question: str(r.question), options: (r.options as string[]) ?? [], default: str(r.default), blocking: r.blocking === true,
+/** A decision's options as text, each with what it causes: "Keep (default): the island stays quiet · Go back: ...". */
+const optionsText = (r: Item, sep = " · ") => ((r.options as string[]) ?? []).map((o, i) => {
+  const does = str(((r.effects as string[] | undefined) ?? [])[i])
+  return `${o}${o === r.default ? " (default)" : ""}${does ? `: ${does}` : ""}`
+}).join(sep)
+
+const decisionRow = (r: Item) => ({ path: `${r.id}.md`, question: str(r.question), options: (r.options as string[]) ?? [], effects: (r.effects as string[] | undefined) ?? [], default: str(r.default), blocking: r.blocking === true,
   from: str(r.from) || null, report: str(r.report) || null, why: previewOf(str(r.body).replace(/```[\s\S]*?```/g, "")).slice(0, 300) || null, created: r.created ?? null,
   ...(str(r.answer) ? { answer: str(r.answer), answered: r.answered ?? null } : {}), ...(str(r.closed) ? { closed: str(r.closed) } : {}),
   ...(snoozed(str(r.snoozed)) ? { snoozed: str(r.snoozed) } : {}) })
@@ -1689,7 +1696,7 @@ closed ones too. The companion walks the user through these by voice.
     return { decisions: open.map(decisionRow), ...(recent ? { recent: past.map(decisionRow) } : {}) }
   },
   text: (r) => {
-    const line = (d: Item, i: number) => `${i + 1}. ${d.blocking ? "[waits on you] " : `[went with ${d.default}] `}${d.question}\n   ${(d.options as string[]).map((o) => (o === d.default ? `${o} (default)` : o)).join(" · ")}` +
+    const line = (d: Item, i: number) => `${i + 1}. ${d.blocking ? "[waits on you] " : `[went with ${d.default}] `}${d.question}\n   ${optionsText(d)}` +
       `${d.why ? `\n   ${d.why}` : ""}\n   ${d.path}${d.from ? ` · from ${d.from}` : ""}${d.snoozed ? ` · snoozed until ${d.snoozed}` : ""}`
     const out = [r.decisions.length ? `Waiting on the user (${r.decisions.length}):\n${r.decisions.map(line).join("\n")}` : "No decision waits on the user."]
     if (r.recent?.length) out.push(`Dealt with in the last day:\n${r.recent.map((d: Item) => `  ${d.question}: ${d.answer ? `answered ${d.answer}` : `closed (${d.closed})`}  (${d.path})`).join("\n")}`)
@@ -1706,18 +1713,22 @@ plugin.op({
   help: `A file in Inbox/ the user answers with a tap (or by voice, through the companion). blocking: you're stopped on
 it (it comes first, with a toast and a push to the phone); else you've gone with the default already, and it reads "Went
 with X; change it?", quietly. The same question open already (from another agent or report) is that one, not a second.
+They read it cold: the question names its subject (the feature, the note, never "it" or "the first two steps"), each
+option says what it causes after a colon (shown under its button), and why says what it's about and who asks.
 Ending a task, ask them in your report instead (vau inbox report --decision). The answer is typed into this session (or
 resumes it): a default they kept isn't sent.
 
-  vau inbox ask "Ship the new sidebar to the phone too?" --options "Yes, ship it" "Not yet" --default "Not yet" --blocking
-  vau inbox ask "Keep the quieter island?" --options Keep "Go back" --default Keep --why "The spinner shows only on hover now."`,
+  vau inbox ask "Ship the new sidebar to the phone too?" --options "Ship it: the phone gets it today" "Not yet: desktop only for now" \\
+    --default "Not yet" --blocking --why "The Lighthouse sidebar job finished on desktop; the phone build is untested."
+  vau inbox ask "Keep the quieter island by the notch?" --options "Keep: the spinner shows only on hover" "Go back: it spins all the time" \\
+    --default Keep --why "The notch job made the island quieter."`,
   kind: "write",
   params: {
     question: { type: "string", required: true, description: "the question, one sentence that stands alone (the user may not remember the task)" },
-    options: { type: "array", items: { type: "string" }, commas: false, required: true, description: "2 to 6 short answers, the buttons" },
+    options: { type: "array", items: { type: "string" }, commas: false, required: true, description: "2 to 6 options, each \"<button>: <what it causes, a few words>\"" },
     default: { type: "string", required: true, description: "the option you take (or took) if the user doesn't answer" },
     blocking: { type: "boolean", description: "you wait on it: it comes first and pushes to the phone (default: you went with the default already)" },
-    why: { type: "string", description: "one or two plain sentences of context: what each choice means" },
+    why: { type: "string", required: true, description: "one or two plain sentences: what it's about (which agent, project or note asks) and what the choice changes for them" },
     title: { type: "string", description: "its file's name, a few words (default: the question's)" },
     report: { type: "string", description: "the report it's about (Inbox/<Title>.md)" },
     from: { type: "string", description: "who asks (default: you, as the server knows the caller)" },
@@ -1734,10 +1745,10 @@ resumes it): a default they kept isn't sent.
     if (str(p.report).trim() && !rep) throw new OpError(`no report ${p.report} in the inbox`, 404)
     const w: Asker = { agent, session, terminal, machine: terminal || session ? await selfMachine() : null, from: str(p.from).trim() || (agent ? agentLabel(agent) : ctx.who.label) }
     const [made] = await askAll(ctx, [spec], w, rep ? baseOf(str(rep.id)) : "")
-    return { ...made, session: !!(terminal || session) }
+    return { ...made, session: !!(terminal || session), ...(spec.warn ? { warn: spec.warn } : {}) }
   },
   text: (r) => (r.merged ? `The same question was open already: ${r.path} (it says you asked it too).` : `Asked: ${r.path}${r.blocking ? " (it comes first, with a push to the phone)" : ""}.`) +
-    (r.session ? " Their answer comes back to this session." : ""),
+    (r.session ? " Their answer comes back to this session." : "") + (r.warn ? `\nWarning: ${r.warn}` : ""),
   did: (p) => ({ action: "create", text: `Asked ${quoted(p.question)}` }),
 })
 
@@ -1886,8 +1897,9 @@ plugin.op({
 line (its TL;DR, linked). What reaches the user's inbox is each decision: a question with its options as buttons and
 the default you take if they don't answer. Write it in this order, short:
 - tldr: one line, what happened in plain words (the brief and the push say it).
-- decision: one per question only the user can settle, never prose questions in the summary. Text "Question? | Option*
-  | Option" (* marks the default) or JSON {"question", "options", "default", "blocking", "why"}. You've gone with its
+- decision: one per question only the user can settle, never prose questions in the summary. Text "Question? | Option:
+  what it causes* | Option: what it causes | why: <what it's about, who asks>" (* marks the default) or JSON {"question",
+  "options", "default", "why", "blocking"}. They read it cold, without the report: name its subject. You've gone with its
   default already: it reads "Went with X; change it?", quietly. blocking (or --state waiting for the text ones): you
   stop until they answer; it comes first and pushes to the phone. A question already open (yours or another agent's) is
   the same decision, not a second one.
@@ -1902,7 +1914,8 @@ this turn does: report last. Your session's next report goes on in the same file
 starts with the work and where it stands: "Feature done · Sidebar scrolls again".
 
   vau inbox report "Sidebar scrolls again" --work fix --tldr "The left sidebar scrolls again, live on the M1." \\
-    --summary "The sidebar's list had ..." --decision "Ship it to the phone too? | Yes | Not yet*" \\
+    --summary "The sidebar's list had ..." \\
+    --decision "Ship the sidebar fix to the phone too? | Yes: the phone gets it today | Not yet: desktop only for now* | why: It's live on desktop; the phone build is untested." \\
     --images /tmp/before.png /tmp/after.png
 A job with a proof embeds its demo video: --video <the path tour-save gave> (Guides/Proofs/...).`,
   kind: "write",
@@ -1912,8 +1925,8 @@ A job with a proof embeds its demo video: --video <the path tour-save gave> (Gui
     state: { type: "string", enum: Object.keys(STATE), description: "where it stands: done, waiting (you stop on its decisions), stuck (couldn't finish); waiting when a decision is blocking, else done" },
     tldr: { type: "string", required: true, description: "one line on top: what happened, in plain words (at most about 60 words)" },
     summary: { type: "string", required: true, description: "the details, folded: what you did and where to look, as Markdown" },
-    decision: { type: "array", items: { description: "\"Question? | Option* | Option\" (* the default), or {question, options, default, blocking?, why?}" }, commas: false,
-      description: "each question for the user, its options and the default you take: one decision each" },
+    decision: { type: "array", items: { description: "\"Question? | Option: what it causes* | Option: what it causes | why: <context>\" (* the default), or {question, options, default, why, blocking?}" }, commas: false,
+      description: "each question for the user, its options (each saying what it causes), the default you take and a why: one decision each" },
     settles: { type: "array", items: { type: "string" }, commas: false, description: "decisions this work settled (Inbox/<Title>.md): closed, saying so" },
     public: { type: "boolean", description: "it went out where others see it (a release, a post, a message): the report stays in the inbox, told" },
     digest: { type: "boolean", description: "this report is the user's daily digest itself (the morning brief): it stays in the inbox, told" },
@@ -2012,10 +2025,12 @@ A job with a proof embeds its demo video: --video <the path tour-save gave> (Gui
     else if (told) addEvent({ source: agent || "vau", kind: "waiting", ...report })
     // (later work settles what was asked before it: the rest are read against this report)
     track(closeSettled(ctx, `${tldr}\n\n${summary}`, `[[${baseOf(str(r.id))}]]`, new Set(asked.map((x) => x.path.replace(/\.md$/, "")))))
-    return { path: file, title: r.title, inbox: told, decisions: asked, closed, images, ...(video ? { video } : {}), terminal: terminal || null, session: session || null, ...(prior ? { thread: true } : {}) }
+    const warn = specs.map((d) => d.warn).filter(Boolean)
+    return { path: file, title: r.title, inbox: told, decisions: asked, closed, ...(warn.length ? { warn } : {}), images, ...(video ? { video } : {}), terminal: terminal || null, session: session || null, ...(prior ? { thread: true } : {}) }
   },
   text: (r) => [`Reported: ${r.path}${r.thread ? " (added to this session's report before)" : ""}, ${r.inbox ? "in the user's inbox" : "archived (the morning brief lists it)"}.`,
     ...r.decisions.map((d: Item) => `  ${d.merged ? "Same as one open already" : d.blocking ? "Asked, waiting on it" : "Asked"}: ${d.question} (${d.path})`),
+    ...((r.warn ?? []) as string[]).map((w) => `Warning: ${w}`),
     ...r.closed.map((c: string) => `  Closed: ${c}`),
     r.terminal || r.session ? `Their answers come back to this session${r.terminal && ending.has(r.terminal) ? "; this terminal ends when this turn does." : "."}` : ""].filter(Boolean).join("\n"),
 })
@@ -2745,7 +2760,7 @@ plugin.block("inbox", (ctx) => {
 
 /** A decision as one line of text: its question, what it stands at, its options. */
 const decisionLine = (r: Item) => [`[[${r.id}|${str(r.question)}]]`, str(r.answer) ? `answered: ${str(r.answer)}` : str(r.closed) ? `closed: ${str(r.closed)}` : r.blocking ? "waits on you" : `went with ${str(r.default)}`,
-  `options: ${((r.options as string[]) ?? []).map((o) => (o === r.default ? `${o} (default)` : o)).join(" / ")}`].join(" · ")
+  `options: ${optionsText(r, " / ")}`].join(" · ")
 
 /** The decisions a file asks: a decision's own file, itself; a report, the ones it asked (its `report`, or `also`). */
 export function decisionsIn(p: string): Item[] {
