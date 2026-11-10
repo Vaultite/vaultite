@@ -9,6 +9,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **The inbox holds only what needs you**: an agent's answer or status that only tells you something is done quietly,
   unread on its row in the Agents panel, with no badge, toast or notification; what asks you something, waits on you
   or failed still comes. Inbox setting Agents' answers puts them back in the inbox.
+- **A Now note**: `Now.md` says what you're on now, in at most four tracks (each with why, its next action and when it
+  last moved), then what agents promised you. Agents read it with ME.md and keep it current as things move, and the
+  companion is told it when a talk starts, so "what should I do next?" gets one thing (`vau docs now`).
 - **Updates no longer stall on busy days**: with a signed-in gh the server asks GitHub up to 300 times an hour (20
   anonymously, as before), and asks nothing of a commit a newer one superseded or of a run still queued.
 - **A job says who told it each thing**: its handoff and every follow-up keep who sent them (the companion, another

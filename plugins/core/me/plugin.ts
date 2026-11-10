@@ -5,13 +5,8 @@ import { type Item, Kind, num } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
-/** The setting's path, cleaned: from the vault's top, ending in .md (ME.md when unset or unusable). */
-export function settingPath(v: unknown) {
-  const p = typeof v === "string" ? v.trim().replace(/^\/+/, "") : ""
-  if (!p || p.split("/").some((x) => x === ".." || x.startsWith("."))) return "ME.md"
-  return /\.md$/i.test(p) ? p : `${p}.md`
-}
-const path = () => settingPath(plugin.settings().path)
+/** Where the setting says the user's file is (ME.md unset), following it when it's moved through the app. */
+const path = plugin.settingFile("path", "ME.md")
 
 /** A place entered through the app is looked up in the background (People's geocoder, when it's on, keeps the pin in
  *  its cache); the file's coordinates go only when the place changed without them (they were the old place's). */
@@ -51,15 +46,5 @@ const file = () => {
   return me ? `${me.id}.md` : path()
 }
 plugin.provide("me:file", file)
-
-// Moved through the app (the file, or a folder it's in): the setting follows, so what agents are told stays right.
-plugin.onMove((from, to) => {
-  const at = path()
-  if (to === null || (at !== from && !at.startsWith(`${from}/`))) return
-  const next = { ...plugin.settings() }, moved = to + at.slice(from.length)
-  if (moved.toLowerCase() === "me.md") delete next.path
-  else next.path = moved
-  plugin.saveSettings(Object.keys(next).length ? next : null)
-})
 
 plugin.state(() => ({ me: pinned(plugin.vault.get("me", "me")) }))

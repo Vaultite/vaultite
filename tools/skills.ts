@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url"
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const SKILLS = path.join(ROOT, "skills")
 /** Bytes a SKILL.md may have: an agent reads all of it once the skill is picked. */
-const SKILL_MAX = 4_000
+const SKILL_MAX = 4_150
 const START = /<!-- generated: [^\n]*-->\n/, END = "<!-- end generated -->"
 
 /** The vault's rules as a new vault's .vaultite/AGENTS.md has them (the built-in plugins on by default), without its

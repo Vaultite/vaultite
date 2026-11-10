@@ -38,6 +38,7 @@ Written from the code's own doc comments (tools/plugin_api_doc.ts), so it's what
 - `plugin.readSettings(file)`: The settings as they are on disk now, for a read-modify-write: null when there's none; throws ConfigError (from core/vault.ts) when the file is there but can't be read or doesn't parse, which settings() would take for empty.
 - `plugin.saveSettings(data, file)`: Write the settings (null removes the file).
 - `plugin.patchSettings(changes, { nullRemoves)`: Change some keys (null removes one unless `nullRemoves` is false); returns the settings after. A declared one's value is checked against its manifest declaration (400).
+- `plugin.settingFile(key, fallback)`: One file a setting names (`key`; `fallback` when unset or unusable: Me's "ME.md"): returns its path now, from the vault's top, ending in .md. The setting follows the file moved through the app, so what agents are told stays right.
 - `plugin.localKeys(file)`: The keys its manifest marks `local`, and who may reach it (ACCESS) whatever it marks: this machine's (core/trust.ts), never read from or written to the vault.
 - `plugin.dayLog(kind)`: A log of JSON lines in localDir(), a file a day (<kind>-<date>.jsonl): appended at once (an error that ends the server is on disk first), read and rewritten by day, days older than `keep` pruned at most hourly.
 - `plugin.desktop(name, ...args)`: Ask the desktop app's browser engine (an `agent:` call, electron/browser/agent.ts): the one attached to this server, else an always-on machine's serving this vault (`machines:desktop`); fails when there's none.
@@ -248,6 +249,7 @@ by its path.
 - `mcp:<…>` (tool, app-host, upload-link, apps): mcp; mcp-apps
 - `me:file` (me)
 - `note-dates:stamps` (note-dates): The dates it keeps in a file (path, fm): any edit moves them, so they're no one's change (Review leaves them out).
+- `now:file` (now)
 - `obsidian:stand-ins` (other-apps)
 - `pages:installed` (pages)
 - `pins:installed` (workspaces): Pages just pinned in the vault's list because their plugin wrote them, turned on (Pinned): a workspace with a list of its own gets them too, at its end, so a plugin turned on shows its pages wherever you are.

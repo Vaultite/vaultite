@@ -37,6 +37,7 @@ are the only copy, and the user reads them too.
 - A question for the user: `inbox.ask` (options and a default, never prose); something to read later: `inbox.add`.
 - A tool's card in a note: ```block-mcp-app with `tool:` (one that reads, like tasks_list) and `arguments:` (`vau docs mcp-apps`).
 - `ME.md` is the user: read it before writing anything (who they are, the people who matter, how they want you to work, what not to store).
+- `Now.md` is what the user is on now, if kept: read it with ME.md and keep it current (`vau docs now`).
 <!-- end generated -->
 
 ## Without the app

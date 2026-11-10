@@ -1,0 +1,12 @@
+{
+  "id": "now",
+  "icon": "compass",
+  "category": "life",
+  "essential": true,
+  "name": "Now",
+  "description": "Your Now note, Now.md: what you're on now, in a few tracks (at most four), each with why, its next action and when it last moved, then what agents promised you. Agents read it with ME.md and keep it current as things move, and the companion is told it when a talk starts, so \"what should I do next?\" gets one answer.",
+  "forAgents": "`{path}` is what the user is on now, if kept: read it with ME.md and keep it current (`vau docs now`).",
+  "settings": {
+    "path": { "type": "string", "default": "Now.md", "label": "Your Now note", "description": "where it is, from the vault's top (Personal/Now.md); a file of type now elsewhere is found too" }
+  }
+}

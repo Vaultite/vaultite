@@ -128,7 +128,7 @@ export default async ($: VaultTest) => {
       file.runs === "claude" && file.model === "haiku", [st, r, file])
     await idle(id)
     let entries = await said(id)
-    check("companion chat: its first turn gets it ready, and its cursor shows it starting till that turn ends", /Read ME\.md/.test(entries.find((e) => e.k === "user")?.text ?? "") &&
+    check("companion chat: its first turn gets it ready, and its cursor shows it starting till that turn ends", (entries.find((e) => e.k === "user")?.text ?? "").startsWith("Read ME.md and `vau docs companion` first, once.") &&
       !!(await waitFor(async () => (await claude())?.state === "watching", 3000, 50)), [entries, await claude()])
     ;[, r] = await api("POST", "ops/companion.status", {})
     check("companion chat: status names its session as a chat's", r.sessions.some((s: Any) => s.id === id && s.chat), r.sessions)
@@ -338,6 +338,10 @@ export default async ($: VaultTest) => {
     // Its Talk key's asks: a session of their own on a small model, warm from the companion's start, apart from the long one.
     {
       await api("PATCH", "config/plugin/companion", { summoned_model: "haiku", model: "sonnet" })
+      // (they keep a Now note: fresh sessions are told it, the long one where it is and the summoned one what it says)
+      const meWas = $.exists("ME.md") ? $.read("ME.md") : null
+      write("ME.md", "---\ntype: me\n---\n\n## About me\n\n- Keeps the Lighthouse.\n")
+      write("Now.md", "---\ntype: now\n---\n\n## Tracks\n\n### Lighthouse\n- Next: call Alice about the lamp\n")
       ;[st, r] = await api("POST", "ops/companion.start", {})
       const longId = r.id, laneFile = `${c.plugin.localDir()}/summoned.json`
       const quick = await waitFor(() => { try { return JSON.parse(fs.readFileSync(laneFile, "utf8")).id as string } catch { return null } }, 5000, 50)
@@ -365,6 +369,12 @@ export default async ($: VaultTest) => {
       const asked = (await said(quick!)).filter((e) => e.k === "user").at(-1)?.text ?? ""
       check("summoned: an ask on screen is its session's message, its picture attached, answered in words by the companion's cursor",
         answered?.agent === "Claude" && /- ask on screen/.test(asked) && /a1 button "Send"/.test(asked) && (await said(longId)).length === before, [answered, asked])
+      const meAt = asked.indexOf("(Who they are, their ME.md:"), nowAt = asked.indexOf("(What they're on now, their Now note (Now.md):\n## Tracks")
+      check("now: a fresh chat session is told to read their Now note, a fresh summoned one what it says, after ME.md",
+        ((await said(longId)).find((e) => e.k === "user")?.text ?? "").startsWith("Read ME.md, Now.md (what they're on now) and `vau docs companion` first, once.") &&
+        meAt >= 0 && nowAt > meAt && asked.indexOf("- Next: call Alice about the lamp\n)") > nowAt, asked.slice(0, 600))
+      fs.rmSync(path.join(VAULT, "Now.md"))
+      if (meWas === null) fs.rmSync(path.join(VAULT, "ME.md")); else write("ME.md", meWas)
       check("summoned: its picture is said to be attached, not a path to read", /its picture, attached to this message/.test(asked) && !asked.includes(shot), asked.slice(0, 400))
       check("summoned: its words show as they're written, their tags never", !!growing && !/\[/.test(growing.text), growing)
       check("summoned: the window's text it's given is cut to what's by their pointer", asked.slice(Math.max(0, asked.search(/^- ask on screen/m))).length < 6500 && /Send/.test(asked.split("what the window says")[1] ?? "") && /…/.test(asked), asked.length)
@@ -571,7 +581,7 @@ export default async ($: VaultTest) => {
       const recapped = (await said(warmed!)).find((e) => e.k === "user")?.text ?? ""
       check("summoned: a fresh session's first ask is told the talk so far from its log (theirs, its words and what it did), so it goes on from there",
         /fresh session of an ongoing talk/.test(recapped) && /they (said|asked): words O botão de enviar/.test(recapped) && /you: O botão de enviar/.test(recapped) &&
-        /min ago|just now/.test(recapped), recapped.slice(0, 900))
+        /min ago|just now/.test(recapped) && !/Now note/.test(recapped), recapped.slice(0, 900))
       sc.emit("message", Buffer.from(JSON.stringify({ t: "interrupt" })))
       check("summoned: the Talk key pressed again (or Esc) mid-answer stops its turn at once, never the long session's",
         !!(await waitFor(async () => (await api("POST", "ops/claude-code.chat-list", {}))[1].sessions.find((s: Any) => s.id === warmed)?.state === "idle", 500, 20)) &&

@@ -54,6 +54,20 @@ export default async ($: VaultTest) => {
     ;[, ms] = await api("GET", "state")
     check("me: back at ME.md", ms.me?.id === "ME", ms.me)
   }
+  // Now, ME.md's twin: the Now note is its kind at its path, and agents are told where it is once it's moved.
+  {
+    check("now: none kept, none in the state", (await api("GET", "state"))[1].now === null)
+    write("Now.md", "## Tracks\n\n### Lighthouse\n- Why: it opens in May\n- Next: call Alice about the lamp\n- Moved: 2026-03-02, the stairs are in\n\n## Promises\n")
+    const [, ns] = await api("GET", "state")
+    check("now: Now.md is the Now note, without a type", ns.now?.id === "Now" && ns.now.body.includes("- Next: call Alice about the lamp"), ns.now)
+    await api("POST", "file/move", { from: "Now.md", to: "Plans/On now.md" })
+    check("now: moved in the app, the setting follows and agents are told where it is", vault.config("plugins/now/data").path === "Plans/On now.md" &&
+      (await api("GET", "state"))[1].now?.id === "Plans/On now" && read(".vaultite/AGENTS.md").includes("\n- `Plans/On now.md` is what the user is on now"), [vault.config("plugins/now/data"), read(".vaultite/AGENTS.md")])
+    await api("POST", "file/move", { from: "Plans/On now.md", to: "Now.md" })
+    check("now: back at the top, the setting is the default again", vault.config("plugins/now/data").path === undefined, vault.config("plugins/now/data"))
+    fs.rmSync(path.join(VAULT, "Now.md"))
+    await $.removeFolder("Plans")
+  }
 
   // A broken file is reported and keeps what it held
   const good = "---\ntype: person\nrelation: friend\n---\n"

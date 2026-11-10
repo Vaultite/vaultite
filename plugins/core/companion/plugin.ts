@@ -1904,8 +1904,8 @@ async function due(s: Session) {
 /** What a fresh session is told after its prompt: the last one's summary, its open threads and the user's last asks. */
 export function handoverText(name: string, summary: string, items: Note[], asks: Moment[], chat = false) {
   const open = items.filter((n) => !n.by && key(n.agent) === key(name) && KEPT.has(n.kind)).slice(-20)
-  const last = (n: Note) => n.replies?.at(-1)
-  return [`This session continues an earlier one of yours that grew long. The user sees no change: don't greet them or say you're new. ${chat ? "Read `vau docs companion`, then end your turn: their next moments come as your messages" : `Read \`vau docs companion\`, then run \`${nextCmd(name)}\` at once`} (ME.md when a moment needs it).`,
+  const last = (n: Note) => n.replies?.at(-1), now = nowNote()
+  return [`This session continues an earlier one of yours that grew long. The user sees no change: don't greet them or say you're new. ${chat ? "Read `vau docs companion`, then end your turn: their next moments come as your messages" : `Read \`vau docs companion\`, then run \`${nextCmd(name)}\` at once`} (ME.md${now ? ` or ${now.path}` : ""} when a moment needs it).`,
     summary.trim() ? `What your last session handed over:\n${summary.trim()}` : "",
     open.length ? `Your open threads (reply with ${chat ? "your comment tool and its id" : "`vau companion comment --id <id>`"}):\n${open.map((n) => `- ${n.id} ${n.kind} in ${n.path}${n.line ? `:${n.line}` : ""}${n.orphaned ? " (its text is gone)" : ""}: ${JSON.stringify(cut(n.text ?? n.replace ?? "", 160))}${last(n) ? `; last, ${last(n)!.by === "user" ? "the user" : "you"}: ${JSON.stringify(cut(last(n)!.text, 160))}` : ""}`).join("\n")}` : "",
     asks.length ? `The user's last asks:\n${asks.map((m) => `- ${m.path ?? ""}${m.line ? `:${m.line}` : ""} ${JSON.stringify(cut(m.text ?? "", 160))}`).join("\n")}` : ""].filter(Boolean).join("\n\n")
@@ -2174,17 +2174,28 @@ function closeUpText(m: Moment) {
     : m.sx !== undefined && m.sy !== undefined && ins(m.sx, m.sy) ? `their pointer is at ${px(m.sx, m.sy)} in it` : ""
   return `a closer look at what they pointed at: ${c.shot} (${k}× its picture's size, of its x ${c.at.x - o.x}-${c.at.x - o.x + c.at.width}, y ${c.at.y - o.y}-${c.at.y - o.y + c.at.height}${what ? `; ${what}, the thing they mean` : ""}: name it off this one, it shows what's too small in the picture, a logo, an icon, fine print; tags and points still go by the picture's pixels)`
 }
-/** What a fresh summoned session is told first: their ME.md (its start) and the talk before `t`, its last day. */
+/** Their Now note when they keep one (the service `now:file`, of a plugin that's on): where it is and what it says. */
+function nowNote() {
+  const at = (plugin.service("now:file") as (() => string | null) | null)?.()
+  const now = at ? plugin.vault.entries.get(at)?.item : null
+  return now ? { path: at!, body: String(now.body ?? "").trim() } : null
+}
+/** What a fresh summoned session is told first: their ME.md (its start), their Now note and the talk before `t`, its
+ *  last day. */
 function talkBefore(t: number) {
   const days = [...new Set([localDate(t - 86_400_000), localDate(t)])]
   const xs = days.flatMap((d) => exchanges(log.read(d), acts.read(d), [], ownName())).filter((e) => e.t < t && t - e.t < 86_400_000)
   const body = String((plugin.vault.has("me") ? plugin.vault.get("me", "me") : null)?.body ?? "").trim()
-  return { me: body.length > ME_CHARS ? `${body.slice(0, ME_CHARS)}…` : body, said: talkSoFar(xs, t) }
+  const now = nowNote()
+  return { me: body.length > ME_CHARS ? `${body.slice(0, ME_CHARS)}…` : body,
+    now: now?.body ? { path: now.path, body: now.body.length > NOW_CHARS ? `${now.body.slice(0, NOW_CHARS)}…` : now.body } : null, said: talkSoFar(xs, t) }
 }
-/** How much of ME.md a fresh summoned session is told (its first sections: who they are, how they want it). */
-const ME_CHARS = 5000
+/** How much of ME.md a fresh summoned session is told (its first sections: who they are, how they want it), and of
+ *  their Now note (all of one kept short). */
+const ME_CHARS = 5000, NOW_CHARS = 3000
 
-const READY = "Read ME.md and `vau docs companion` first, once."
+/** What a chat session reads first: ME.md, their Now note when they keep one, and its docs. */
+const ready = () => { const now = nowNote(); return `Read ME.md${now ? `, ${now.path} (what they're on now)` : ""} and \`vau docs companion\` first, once.` }
 /** Agents whose chat session's turn runs (or was just sent its message): moments meanwhile wait for its end. */
 const turning = new Set<string>()
 /** Chat sessions handed over, ended once their last turn does. */
@@ -2199,8 +2210,8 @@ async function startChat(name: string, how: { agent: string; model: string; effo
   const k = key(name)
   starting(name, { ...at, runs: how.agent, model: how.model || undefined, effort: how.effort || undefined }, after)
   const waiting = pendingFor(name), given = waiting.some(wakes) ? hand(name, waiting) : []
-  const first = given.length ? `${READY}\n\n${momentsText(given, mode(), focus(), await excerpts(apiCtx, given), headAware())}`
-    : `${READY} Then end your turn: what the user does comes as your next messages.`
+  const first = given.length ? `${ready()}\n\n${momentsText(given, mode(), focus(), await excerpts(apiCtx, given), headAware())}`
+    : `${ready()} Then end your turn: what the user does comes as your next messages.`
   turning.add(k)
   let s: ChatState
   try { s = await c.start({ ...chatOptions(name, how), prompt: first }) } catch (e) {

@@ -656,6 +656,21 @@ export class Plugin {
     return this.withLocal(this.vault.patchConfig(this.settingsName("data"), Object.fromEntries(mine), { nullRemoves }), "data")
   }
 
+  /** One file a setting names (`key`; `fallback` when unset or unusable: Me's "ME.md"): returns its path now, from the
+   *  vault's top, ending in .md. The setting follows the file moved through the app, so what agents are told stays right. */
+  settingFile(key: string, fallback: string): () => string {
+    const at = () => filePath(this.settings()[key], fallback)
+    this.onMove((from, to) => {
+      const was = at()
+      if (to === null || (was !== from && !was.startsWith(`${from}/`))) return
+      const next = { ...this.settings() }, moved = to + was.slice(from.length)
+      if (moved.toLowerCase() === fallback.toLowerCase()) delete next[key]
+      else next[key] = moved
+      this.saveSettings(Object.keys(next).length ? next : null)
+    })
+    return at
+  }
+
   /** The keys its manifest marks `local`, and who may reach it (ACCESS) whatever it marks: this machine's (core/trust.ts),
    *  never read from or written to the vault. */
   localKeys(file = "data"): string[] {
@@ -978,6 +993,13 @@ export async function load(vault: Vault): Promise<Plugin[]> {
   vault.pluginList = plugins
   LOADED.splice(0, LOADED.length, ...plugins)
   return plugins
+}
+
+/** A setting's path to a file, cleaned: from the vault's top, ending in .md (`fallback` when unset or unusable). */
+function filePath(v: unknown, fallback: string) {
+  const p = typeof v === "string" ? v.trim().replace(/^\/+/, "") : ""
+  if (!p || p.split("/").some((x) => x === ".." || x.startsWith("."))) return fallback
+  return /\.md$/i.test(p) ? p : `${p}.md`
 }
 
 /** Ids of the plugins that are on (Vault.switchedOff: not off, nor anything they require). */
