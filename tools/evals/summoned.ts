@@ -8,7 +8,7 @@ import path from "node:path"
 import { WebSocket } from "ws"
 import { freePort, stopTerminals, testServer, waitFor } from "../test/lib.ts"
 import { parseTags } from "../../plugins/core/companion/tags.ts"
-import { spokenScore } from "./companion/score.ts"
+import { calmFaults, spokenScore } from "./companion/score.ts"
 
 const argv = process.argv.slice(2)
 const opt = (f: string) => { const i = argv.indexOf(f); return i >= 0 ? argv.splice(i, 2)[1] : undefined }
@@ -19,7 +19,7 @@ const near = [{ id: "a1", role: "button", label: "Send", frame: { x: 800, y: 820
   { id: "a3", role: "row", label: "Alice Park, Lisbon trip: flights on Tuesday?", frame: { x: 300, y: 60, width: 460, height: 70 } },
   { id: "a4", role: "row", label: "Bob Lee, Invoice 2026-114 attached", frame: { x: 300, y: 134, width: 460, height: 70 } },
   { id: "a5", role: "text", label: "Hi! I found two flights for Tuesday, 7:05 and 13:20. The early one is cheaper. Which do you prefer?", frame: { x: 800, y: 170, width: 340, height: 50 } }]
-type Ask = { text?: string; sx: number; sy: number; kind?: string; id?: string; app?: string; title?: string; under?: string; screen?: string; near?: unknown[] }
+type Ask = { text?: string; sx: number; sy: number; kind?: string; id?: string; app?: string; title?: string; under?: string; screen?: string; near?: unknown[]; calm?: boolean; aged?: boolean }
 const DEMO: Ask[] = [
   { text: "what does this button do?", sx: 830, sy: 836 },
   { text: "how do I add a file to my reply?", sx: 930, sy: 836 },
@@ -90,13 +90,14 @@ try {
       // (each ask's answer as heard: its says and a drawing's words, in the turn that ask began)
       // (in the order they happened: the history and the live entries come merged, not in order)
       const entries = (await Promise.all(sessions.map(async (s) => (await call("claude-code.chat-read", { id: s, limit: 1000 })).entries as Any[]))).flat()
-        .sort((a, b) => String(a.at).localeCompare(String(b.at))), turns: { words: string[]; pointed: boolean; tags: string[] }[] = []
+        .sort((a, b) => String(a.at).localeCompare(String(b.at))), turns: { words: string[]; pointed: boolean; tags: string[]; tools: string[] }[] = []
       for (const e of entries) {
-        if (e.k === "user") { turns.push({ words: [], pointed: false, tags: [] }); continue }
+        if (e.k === "user") { turns.push({ words: [], pointed: false, tags: [], tools: [] }); continue }
         // (its words, spoken as written: their tags point and draw)
         if (e.k === "text" && turns.length) { const p = parseTags(String(e.text ?? "")); if (p.said) turns.at(-1)!.words.push(p.said); if (p.tags.length) { turns.at(-1)!.pointed = true; turns.at(-1)!.tags.push(...p.tags.map((t) => `${t.kind}${t.label ? ` "${t.label}"` : ""}`)) } continue }
         const input = (typeof e.input === "string" ? JSON.parse(e.input) : e.input) as Any, turn = turns.at(-1)
         if (!turn || e.k !== "tool" || !input) continue
+        if (!/__(say|draw|pass)$/.test(e.name)) turn.tools.push(String(e.name).split("__").pop()!)
         if (/__say$/.test(e.name) && input.text) turn.words.push(String(input.text))
         if (/__draw$/.test(e.name) && input.say) turn.words.push(String(input.say))
         if (/__(say|look|draw)$/.test(e.name) && (input.ax || input.sx !== undefined || input.marks)) turn.pointed = true
@@ -108,7 +109,7 @@ try {
       const sc = spokenScore(heard.map((t) => t.words.join(" ")))
       out.push(`${model}: as speech, ${sc.clean}/${sc.of} clean, ${sc.short}/${sc.of} in 30 words or fewer; words median ${sc.words.median}, mean ${sc.words.mean}, most ${sc.words.most}; pointed in ${heard.filter((t) => t.pointed).length}/${sc.of}`,
         `${model}: faults ${Object.entries(sc.tally).sort((a, b) => b[1] - a[1]).map(([f, k]) => `${f} ${k}`).join(", ") || "none"}`)
-      heard.forEach((t, i) => out.push(`  ${(ASKS[i].id ?? String(i + 1)).padEnd(16)} ${sc.rows[i].faults.length ? `[${sc.rows[i].faults.join(", ")}]` : "[clean]"} ${t.tags.length ? `{${t.tags.join(", ")}} ` : ""}${t.words.join(" ").replace(/\s+/g, " ")}`))
+      heard.forEach((t, i) => { const faults = [...sc.rows[i].faults, ...calmFaults(t.words.join(" "), { ...ASKS[i], ...t })]; out.push(`  ${(ASKS[i].id ?? String(i + 1)).padEnd(16)} ${faults.length ? `[${faults.join(", ")}]` : "[clean]"} ${t.tags.length ? `{${t.tags.join(", ")}} ` : ""}${t.words.join(" ").replace(/\s+/g, " ")}`) })
       console.log(out.slice(from).join("\n"))
     }
     if (process.env.DEBUG) console.log(((await call("claude-code.chat-read", { id: await quick(), limit: 40 })).entries as Any[]).map((e) => `${e.k}${e.name ? `:${e.name}` : ""}${e.at ? ` ${e.at}` : ""} ${JSON.stringify(e.input ?? "").slice(0, 200)}`).join("\n"))

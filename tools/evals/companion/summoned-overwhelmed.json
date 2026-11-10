@@ -1,0 +1,41 @@
+{
+ "about": "Talk key asks from someone overwhelmed (as on 2026-11-10, names made up): `calm` asks want one thing and its smallest step in two sentences, nothing opened or pointed at; an `aged` ask's answer gives a state learned earlier with its age, or checks again. tools/evals/summoned.ts --fixture companion/summoned-overwhelmed.json runs them.",
+ "asks": [
+  {
+   "id": "overwhelmed",
+   "calm": true,
+   "kind": "ask",
+   "text": "There's so much stuff on my screen. Look, I don't know, I'm feeling overwhelmed. Like, what should I do next? One thing at a time.",
+   "app": "app.vaultite.desktop",
+   "title": "Personal/Notes/Admin - Vaultite",
+   "under": "Vaultite: text",
+   "screen": "Vaultite\nFiles\nSearch\nToday\nInbox (12)\nJobs (3 running)\nAgents\nAdmin\nWork and visa forms, documentation, and Drive cleanup\n- [ ] Renew the residence permit: book the appointment, bring the lease and two photos\n- [ ] Lighthouse photos: move them from the school account to the personal one before the 18th\n  Checked 08:10: nothing landed in the personal account yet (Photos 0.07 GB)\n- [ ] Tax form: ask Bob Lee for last year's statement\n- [ ] Drive cleanup: 40 GB of old exports, sort or trash\n- [ ] Health insurance card: upload the new one\n- [ ] Lease renewal: read clause 4, reply to the landlord\n- [ ] Bank: close the old savings account\n- [ ] Passport scan for the visa portal\n- [ ] Expense report for the October trip",
+   "sx": 700,
+   "sy": 400
+  },
+  {
+   "id": "what-now",
+   "calm": true,
+   "kind": "ask",
+   "text": "Okay, so what should I be doing right now? We're doing a thing at a time. Help me out here.",
+   "app": "com.google.Chrome",
+   "title": "New Tab - Google Chrome - Alice",
+   "under": "Google Chrome: group",
+   "screen": "Back\nForward\nReload\nAddress and search bar\nNew Tab\nSearch Google or type a URL",
+   "sx": 720,
+   "sy": 420
+  },
+  {
+   "id": "photos-state",
+   "aged": true,
+   "kind": "ask",
+   "text": "Wait, the photos. I thought we did that already. Did it work or not?",
+   "app": "com.google.Chrome",
+   "title": "New Tab - Google Chrome - Alice",
+   "under": "Google Chrome: group",
+   "screen": "Back\nForward\nReload\nAddress and search bar\nNew Tab\nSearch Google or type a URL",
+   "sx": 720,
+   "sy": 420
+  }
+ ]
+}

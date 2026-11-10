@@ -75,3 +75,15 @@ export function spokenScore(texts: string[]) {
   return { rows, clean: rows.filter((r) => !r.faults.length).length, of: rows.length, short: rows.filter((r) => r.words <= 30).length,
     words: { mean: Math.round(rows.reduce((s, r) => s + r.words, 0) / n), median: sorted[Math.floor((sorted.length - 1) / 2)] ?? 0, most: sorted.at(-1) ?? 0 }, tally }
 }
+/** An answer to someone overwhelmed (`calm`): one thing in two sentences at most, nothing opened, pointed at or drawn;
+ *  a task's state from earlier (`aged`): said with its age, or checked again (a tool run) first. */
+export function calmFaults(text: string, o: { calm?: boolean; aged?: boolean; pointed: boolean; tools: string[] }) {
+  const f: string[] = []
+  if (o.calm) {
+    if (spokenStyle(text).sentences > 2) f.push("more than two sentences")
+    if (o.pointed) f.push("pointed around")
+    if (o.tools.some((t) => /^(open|act|page|job-open|split)$/.test(t))) f.push("opened something")
+  }
+  if (o.aged && !o.tools.length && !/\b(as of|this morning|earlier|last (check|time)|when I (last )?checked|haven.t checked|check(ing)? (again|now))\b/i.test(text)) f.push("stale state as now")
+  return f
+}
