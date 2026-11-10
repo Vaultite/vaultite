@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A reloaded terminal shows its screen in WebKit browsers**: its text and pictures draw at once after a reload,
+  where they could stay blank until the next output or keystroke.
 - **Settings > About shows what's running**: the server's commit (a tap copies it), its subject and age, whether this
   window or the phone app runs the same build, the server's updates (waiting and why, failed and why, the last one)
   and, in the desktop app, its own update.
