@@ -24,7 +24,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   tradeoff. "Go ahead" about the ready jobs it just named lands them, with no set phrase to say.
 - **A decision says what each choice does**: in the Inbox, each option's few words under its button say what picking
   it causes, the question names its subject, its why says what it's about and who asks, and a report's decision shows
-  that report's TL;DR, a click away. Agents asking without these are refused and told how.
+  that report's TL;DR (the round that asked it, in a long thread), a click away, and which session asked, by its name.
+  Agents asking without these are refused and told how.
 - **A job says who told it each thing**: its handoff and every follow-up keep who sent them (the companion, another
   agent's vau from its terminal, a script, you in the app or in its terminal), shown in `companion job` (told last (by
   ...)), its JSON and the jobs list, so the companion no longer claims what another session sent.

@@ -8,6 +8,7 @@ import {
 } from "@vaultite"
 import type { InboxItem } from "./types"
 import { snoozed } from "./snooze"
+import { useEvents } from "./events"
 
 const pathOf = (r: InboxItem) => `${r.id}.md`
 const baseOf = (p: string) => p.replace(/\.md$/i, "").split("/").pop() ?? p
@@ -20,6 +21,13 @@ export const isOpen = (r: InboxItem) => !!r.question && r.status === "new" && !r
 const reportIn = (store: Store | null | undefined, r: InboxItem) => {
   const name = baseOf(linkTo(r.report ?? ""))
   return name ? (store?.inbox ?? []).find((x) => !x.question && baseOf(x.id) === name) : undefined
+}
+/** The session that asked, by its name: kept when it was asked, else its thread's while it's listed (older ones). */
+function useWhere(r: InboxItem) {
+  const { events } = useEvents()
+  if (r.where) return r.where
+  const e = (r.session || r.terminal) ? events.find((x) => x.kind === "session" && ((!!r.session && x.session === r.session) || (!!r.terminal && x.terminal === r.terminal))) : undefined
+  return e?.title ?? ""
 }
 /** Its context: the file's words besides its block, one plain line. */
 const whyOf = (r: InboxItem) => snippet((r.body ?? "").replace(/```[\s\S]*?```/g, " ")).trim()
@@ -140,6 +148,9 @@ export function DecisionRow({ r, snooze, swipe, lead, inReport }: { r: InboxItem
   const { store } = useStore()
   const rep = inReport ? undefined : reportIn(store, r)
   const why = whyOf(r)
+  const where = useWhere(r)
+  // (what its report said as it asked, else the report's own TL;DR: an older one's only context)
+  const gist = r.gist || rep?.tldr || ""
   const away = snoozed(r.snoozed)
   const Icon = r.blocking ? MessageCircleQuestion : CircleCheck
   const row = (
@@ -148,9 +159,11 @@ export function DecisionRow({ r, snooze, swipe, lead, inReport }: { r: InboxItem
       {lead ?? <Icon className="mt-[1px] size-[18px] shrink-0" strokeWidth={2} style={{ color: r.blocking ? "var(--orange)" : "var(--muted-foreground)" }} />}
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2 text-[13px] leading-[18px] text-muted-foreground max-md:text-[15px] max-md:leading-[20px]">
-          <span className="min-w-0 flex-1 truncate">
+          {/* (wraps, never cut: who asked and where is half its context, on a phone too) */}
+          <span className="min-w-0 flex-1 text-pretty">
             <Standing r={r} />
             {r.from && <> · {r.from}</>}
+            {where && <> · <span data-decision-where>{where}</span></>}
             {rep && <> · <button type="button" className="cursor-pointer hover:text-foreground hover:underline" data-decision-report onClick={() => openFile(pathOf(rep))}>{subject(rep.title)}</button></>}
             {away && <> · snoozed</>}
           </span>
@@ -158,9 +171,9 @@ export function DecisionRow({ r, snooze, swipe, lead, inReport }: { r: InboxItem
         </div>
         <div className="mt-0.5 text-[15px] leading-[21px] font-medium text-pretty select-text max-md:text-[17px] max-md:leading-[23px]" data-question>{r.question}</div>
         {why && <p className="mt-0.5 text-[13px] leading-[18px] text-muted-foreground select-text max-md:text-[15px] max-md:leading-[20px]" data-decision-why>{why}</p>}
-        {rep?.tldr && <button type="button" data-decision-tldr onClick={() => openFile(pathOf(rep))}
-          className="mt-1 flex w-full cursor-pointer items-start gap-1.5 text-left text-[13px] leading-[18px] text-muted-foreground hover:text-foreground max-md:text-[15px] max-md:leading-[20px]">
-          <FileText className="mt-[2px] size-3.5 shrink-0" strokeWidth={2} /><span className="min-w-0"><span className="font-medium">From its report:</span> {rep.tldr}</span></button>}
+        {gist && !inReport && <button type="button" data-decision-tldr disabled={!rep} onClick={() => rep && openFile(pathOf(rep))}
+          className="mt-1 flex w-full items-start gap-1.5 text-left text-[13px] leading-[18px] text-muted-foreground enabled:cursor-pointer enabled:hover:text-foreground max-md:text-[15px] max-md:leading-[20px]">
+          <FileText className="mt-[2px] size-3.5 shrink-0" strokeWidth={2} /><span className="min-w-0 select-text"><span className="font-medium">From its report:</span> {gist}</span></button>}
         <div className="mt-2"><Options r={r} /></div>
       </div>
       <button type="button" aria-label="More" data-tip="More" onClick={(e) => { e.stopPropagation(); menuBelow(e, menuOf(r, store, snooze)) }}

@@ -494,6 +494,9 @@ export default async ($: VaultTest) => {
     check("decisions: a file each, its question, options, default, the report that asked and its session", /question: Publish it today\?/.test(pub) && /options: \[Publish, Wait\]/.test(pub) && /effects: \[it goes out now, it waits for Monday\]/.test(pub) &&
       /default: Publish/.test(pub) && !/blocking: true/.test(pub) && pub.includes("report: '[[Change needs you · Lighthouse docs updated]]'") && pub.includes("session: sess-report-1") &&
       pub.includes("```block-decisions") && /blocking: true/.test(dom) && dom.includes("The subdomain needs a DNS change."), [pub, dom])
+    const [, said] = await api("GET", "render?path=Inbox/Publish it today.md")
+    check("decisions: keep what their report said as they were asked, read cold later", pub.includes("gist: The setup page is rewritten. Live on the preview.") &&
+      String(said).includes("Its report: The setup page is rewritten."), said)
     ;[, list] = await api("GET", "inbox/events")
     const repEvent = list.events.find((e: Any) => e.session === "sess-report-1")
     check("report: its session's thread is done with it, quietly (not told), linking it", repEvent?.link === "Inbox/.archive/Change needs you · Lighthouse docs updated.md" && repEvent.state === "done" &&

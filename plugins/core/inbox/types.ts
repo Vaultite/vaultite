@@ -27,6 +27,9 @@ export type InboxItem = {
   question?: string; options?: string[]; default?: string; blocking?: boolean
   /** What each option causes, by its index (none on older ones). */
   effects?: string[]
+  /** What its report said when it asked (that round's TL;DR), and the session that asked by the name the user knows it
+   *  by: filled in when it's asked (none on older ones). */
+  gist?: string; where?: string
   answer?: string; answered?: string | null; closed?: string; report?: string; also?: string[]
   /** A report's work (inbox.report: feature, fix, change, research, plan, answer). */
   work?: string

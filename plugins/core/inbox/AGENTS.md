@@ -26,6 +26,8 @@ effects: [The phone gets it today, Desktop only for now]   # what each option ca
 default: Not yet            # what its agent takes (or took) if the user doesn't answer
 blocking: true              # its agent waits on it; absent: it went with the default already
 report: '[[Fix done · Sidebar scrolls again]]'   # the report that asked it; also: other reports that asked it too
+gist: The left sidebar scrolls again.   # filled in: its report's TL;DR as it asked (that round's)
+where: Sidebar scroll fix   # filled in: the session that asked, by its name
 answer: Ship it             # set by vau inbox decide, with answered (when)
 closed: The sidebar was replaced in 3f2a1c       # instead of an answer: why it no longer matters
 agent: claude               # the session its answer goes to (session, terminal, machine)

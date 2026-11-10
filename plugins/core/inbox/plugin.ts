@@ -46,7 +46,7 @@ plugin.kind(new Kind({
     work: r.work || null, question: r.question || null, options: truthy(r.question) && Array.isArray(r.options) ? r.options : null,
     effects: truthy(r.question) && Array.isArray(r.effects) && r.effects.some(truthy) ? r.effects : null, default: r.question ? r.default || null : null,
     blocking: r.question ? r.blocking === true : null, answer: r.answer || null, answered: r.answered || null, closed: r.closed || null, report: r.report || null,
-    also: Array.isArray(r.also) && r.also.length ? r.also : null }, r.body || ""],
+    also: Array.isArray(r.also) && r.also.length ? r.also : null, gist: r.question ? r.gist || null : null, where: r.question ? r.where || null : null }, r.body || ""],
   // (a decision's file draws its question and its answers on top)
   blocks: (fm) => (truthy(fm.question) ? ["decisions"] : []),
   // Done is archived and archived is done: one state, the file in Inbox/.archive/ (out of the way), whichever key said
@@ -80,12 +80,14 @@ function decisionOf(fm: Item): Item {
   if (!truthy(fm.question)) return {}
   const list = (v: unknown) => (Array.isArray(v) ? v.map(str).filter(Boolean) : truthy(v) ? [str(v)] : [])
   return { question: str(fm.question), options: list(fm.options), effects: Array.isArray(fm.effects) ? fm.effects.map(str) : [], default: str(fm.default), blocking: fm.blocking === true, answer: truthy(fm.answer) ? str(fm.answer) : "",
-    answered: truthy(fm.answered) ? str(fm.answered) : null, closed: truthy(fm.closed) ? str(fm.closed) : "", report: truthy(fm.report) ? str(fm.report) : "", also: list(fm.also) }
+    answered: truthy(fm.answered) ? str(fm.answered) : null, closed: truthy(fm.closed) ? str(fm.closed) : "", report: truthy(fm.report) ? str(fm.report) : "", also: list(fm.also),
+    gist: truthy(fm.gist) ? str(fm.gist) : "", where: truthy(fm.where) ? str(fm.where) : "" }
 }
 
 /** A result's TL;DR, its `> [!tldr]` callout as one line (kept when the state leaves an archived body out). */
-export function tldrOf(body: string) {
-  const m = /^> \[!tldr\][^\n]*\n((?:>.*(?:\n|$))+)/m.exec(body)
+export function tldrOf(body: string, last = false) {
+  const ms = [...body.matchAll(/^> \[!tldr\][^\n]*\n((?:>.*(?:\n|$))+)/gm)]
+  const m = last ? ms.at(-1) : ms[0]
   return m ? m[1].split("\n").map((l) => l.replace(/^>\s?/, "").trim()).filter(Boolean).join(" ").slice(0, 400) : ""
 }
 
@@ -1521,8 +1523,11 @@ function tellDecision(r: Item, w: Asker) {
 
 /** Ask the user `specs`: each a file, or merged into the same question already open (from another agent or note: its
  *  report added to `also`, waiting if this one waits). `report`: the report asking them (its basename). */
-async function askAll(ctx: OpCtx, specs: DecisionSpec[], w: Asker, report: string) {
+async function askAll(ctx: OpCtx, specs: DecisionSpec[], w: Asker, report: string, gist = "") {
   await plugin.vault.sync()
+  // (read cold days later: which session asked, and what its report said then, kept with it)
+  const k: Who = { agent: w.agent, terminal: w.terminal, session: w.session }
+  const where = w.terminal || w.session ? clip(list().find(rowOf(k))?.title || await sessionTitle(k), 120) : ""
   const out: { path: string; question: string; merged: boolean; blocking: boolean }[] = []
   for (const d of specs) {
     const same = openDecisions().find((r) => sameQuestion(str(r.question), d.question)) ??
@@ -1538,7 +1543,7 @@ async function askAll(ctx: OpCtx, specs: DecisionSpec[], w: Asker, report: strin
       continue
     }
     const r = await ctx.api("POST", "inbox", { title: d.title, body: d.why, from: w.from, question: d.question, options: d.options, effects: d.effects, default: d.default, blocking: d.blocking,
-      ...(report ? { report: `[[${report}]]` } : {}), ...askerFields(w) }) as Item
+      ...(report ? { report: `[[${report}]]` } : {}), ...(gist ? { gist: clip(gist, 400) } : {}), ...(where ? { where } : {}), ...askerFields(w) }) as Item
     if (d.blocking) tellDecision(r, w)
     out.push({ path: `${r.id}.md`, question: d.question, merged: false, blocking: d.blocking })
   }
@@ -1672,7 +1677,7 @@ const optionsText = (r: Item, sep = " · ") => ((r.options as string[]) ?? []).m
 }).join(sep)
 
 const decisionRow = (r: Item) => ({ path: `${r.id}.md`, question: str(r.question), options: (r.options as string[]) ?? [], effects: (r.effects as string[] | undefined) ?? [], default: str(r.default), blocking: r.blocking === true,
-  from: str(r.from) || null, report: str(r.report) || null, why: previewOf(str(r.body).replace(/```[\s\S]*?```/g, "")).slice(0, 300) || null, created: r.created ?? null,
+  from: str(r.from) || null, where: str(r.where) || null, report: str(r.report) || null, gist: str(r.gist) || null, why: previewOf(str(r.body).replace(/```[\s\S]*?```/g, "")).slice(0, 300) || null, created: r.created ?? null,
   ...(str(r.answer) ? { answer: str(r.answer), answered: r.answered ?? null } : {}), ...(str(r.closed) ? { closed: str(r.closed) } : {}),
   ...(snoozed(str(r.snoozed)) ? { snoozed: str(r.snoozed) } : {}) })
 
@@ -1697,7 +1702,7 @@ closed ones too. The companion walks the user through these by voice.
   },
   text: (r) => {
     const line = (d: Item, i: number) => `${i + 1}. ${d.blocking ? "[waits on you] " : `[went with ${d.default}] `}${d.question}\n   ${optionsText(d)}` +
-      `${d.why ? `\n   ${d.why}` : ""}\n   ${d.path}${d.from ? ` · from ${d.from}` : ""}${d.snoozed ? ` · snoozed until ${d.snoozed}` : ""}`
+      `${d.why ? `\n   ${d.why}` : ""}${d.gist ? `\n   Its report: ${d.gist}` : ""}\n   ${d.path}${d.from ? ` · from ${d.from}` : ""}${d.where ? ` (${d.where})` : ""}${d.snoozed ? ` · snoozed until ${d.snoozed}` : ""}`
     const out = [r.decisions.length ? `Waiting on the user (${r.decisions.length}):\n${r.decisions.map(line).join("\n")}` : "No decision waits on the user."]
     if (r.recent?.length) out.push(`Dealt with in the last day:\n${r.recent.map((d: Item) => `  ${d.question}: ${d.answer ? `answered ${d.answer}` : `closed (${d.closed})`}  (${d.path})`).join("\n")}`)
     return out.join("\n\n")
@@ -1744,7 +1749,7 @@ resumes it): a default they kept isn't sent.
     const rep = str(p.report).trim() ? reportOf(str(p.report)) : undefined
     if (str(p.report).trim() && !rep) throw new OpError(`no report ${p.report} in the inbox`, 404)
     const w: Asker = { agent, session, terminal, machine: terminal || session ? await selfMachine() : null, from: str(p.from).trim() || (agent ? agentLabel(agent) : ctx.who.label) }
-    const [made] = await askAll(ctx, [spec], w, rep ? baseOf(str(rep.id)) : "")
+    const [made] = await askAll(ctx, [spec], w, rep ? baseOf(str(rep.id)) : "", rep ? tldrOf(str(rep.body), true) : "")
     return { ...made, session: !!(terminal || session), ...(spec.warn ? { warn: spec.warn } : {}) }
   },
   text: (r) => (r.merged ? `The same question was open already: ${r.path} (it says you asked it too).` : `Asked: ${r.path}${r.blocking ? " (it comes first, with a push to the phone)" : ""}.`) +
@@ -2008,7 +2013,7 @@ A job with a proof embeds its demo video: --video <the path tour-save gave> (Gui
     }
     const file = `${r.id}.md`
     const w: Asker = { agent, session, terminal, machine, from: agent ? agentLabel(agent) : ctx.who.label }
-    const asked = specs.length ? await askAll(ctx, specs, w, baseOf(str(r.id))) : []
+    const asked = specs.length ? await askAll(ctx, specs, w, baseOf(str(r.id)), tldr) : []
     const closed: string[] = []
     for (const x of settles) {
       const d = decisionAt(x)
@@ -2759,8 +2764,12 @@ plugin.block("inbox", (ctx) => {
 })
 
 /** A decision as one line of text: its question, what it stands at, its options. */
-const decisionLine = (r: Item) => [`[[${r.id}|${str(r.question)}]]`, str(r.answer) ? `answered: ${str(r.answer)}` : str(r.closed) ? `closed: ${str(r.closed)}` : r.blocking ? "waits on you" : `went with ${str(r.default)}`,
-  `options: ${optionsText(r, " / ")}`].join(" · ")
+const decisionLine = (r: Item) => {
+  const why = previewOf(str(r.body).replace(/```[\s\S]*?```/g, "")).slice(0, 300), gist = str(r.gist) || tldrOf(str(reportOf(str(r.report))?.body ?? ""))
+  return [`[[${r.id}|${str(r.question)}]]`, str(r.answer) ? `answered: ${str(r.answer)}` : str(r.closed) ? `closed: ${str(r.closed)}` : r.blocking ? "waits on you" : `went with ${str(r.default)}`,
+    `options: ${optionsText(r, " / ")}`, ...(str(r.from) ? [`from ${str(r.from)}${str(r.where) ? ` (${str(r.where)})` : ""}`] : [])].join(" · ") +
+    (why ? `\n  - Why: ${why}` : "") + (gist ? `\n  - Its report: ${gist}` : "")
+}
 
 /** The decisions a file asks: a decision's own file, itself; a report, the ones it asked (its `report`, or `also`). */
 export function decisionsIn(p: string): Item[] {
