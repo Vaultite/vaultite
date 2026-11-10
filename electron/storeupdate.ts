@@ -77,25 +77,27 @@ async function apply(h: StoreHost, store: RootStore, u: Update): Promise<Applied
   }
   await store.setCurrent(u.to)
   const { planUpdate } = await engine()
-  const s = h.servers(), main = CODE!.commit
-  const froms = [...new Set([main, s?.code, s?.web].filter((c): c is string => !!c))]
+  const s = h.servers(), main = CODE!.commit, helper = h.helper()
+  const froms = [...new Set([main, helper, s?.code, s?.web].filter((c): c is string => !!c))]
   const changed = Object.fromEntries(await Promise.all(froms.map(async (from) =>
     [from, await exec("git", ["-C", store.repo, "diff", "--name-only", "--no-renames", from, u.to], { env: gitEnv(), maxBuffer: 16 << 20 })
       .then((o) => o.stdout.split("\n").filter(Boolean), () => null)] as const)))
   let graph = null
   try { const { diskTree, graphOf } = await import("../core/update/closure.ts"); graph = graphOf(diskTree(r.dir)) } catch (e) { h.log(`store: no module graph for ${u.to.slice(0, 7)}: ${errText(e)}`) }
   const plan = planUpdate({ to: u.to, changed, graph, shell: { running: SHELL.fingerprint ?? null, root: r.fingerprint },
-    running: { main, ...(s ? { server: s.code && s.web ? { code: s.code, web: s.web } : null, ui: s.web } : {}) } })
-  h.log(`store: ${u.to.slice(0, 7)} is current: ui ${plan.ui}, server ${plan.server}, main ${plan.main}${Object.entries(plan.why).map(([k, w]) => `; ${k}: ${w}`).join("")}`)
+    running: { main, helper, ...(s ? { server: s.code && s.web ? { code: s.code, web: s.web } : null, ui: s.web } : {}) } })
+  h.log(`store: ${u.to.slice(0, 7)} is current: ui ${plan.ui}, server ${plan.server}, main ${plan.main}, helper ${plan.helper}${Object.entries(plan.why).map(([k, w]) => `; ${k}: ${w}`).join("")}`)
   // (once the look has answered: a `vau update` asked through a server that restarts gets its answer first)
   after.push(() => {
     if (plan.server === "restart") void restartWhenIdle(h)
     else if (plan.server === "adopt-web") h.adoptWeb(path.join(r.dir, "web", "dist"), u.to)
     if (plan.main === "relaunch") h.offerRelaunch(u.to, plan.why.main)
+    // (once idle: never mid-press, dictation or voice; helperload.ts)
+    else if (plan.helper === "reload") h.reloadHelper(r.dir, u.to)
     void store.gc().catch((e) => h.log(`store: gc failed: ${errText(e)}`))
   })
   const said = [plan.server === "restart" ? "its servers restart" : plan.server === "adopt-web" ? "its pages take the new web app" : "",
-    plan.main === "relaunch" ? "a relaunch runs it in the app" : ""].filter(Boolean).join("; ") || "nothing it runs changed"
+    plan.main === "relaunch" ? "a relaunch runs it in the app" : plan.helper === "reload" ? "the menu-bar helper reloads onto it" : ""].filter(Boolean).join("; ") || "nothing it runs changed"
   return { restart: false, said }
 }
 

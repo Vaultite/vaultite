@@ -48,8 +48,10 @@
 - `POST /api/file/open` answers only this machine (loopback, no proxy headers, the app's Origin).
 
 ## Updates
-- `update/` is the one update engine, with no Electron in it: the service host (`selfupdate.ts`, its checkout in place)
-  and the desktop app's (`electron/storehost.ts`, on the root store where its marker is) drive it. What only one host needs goes in that host.
+- `update/` is the one update engine, with no Electron in it: the service's hosts (`update/servicestore.ts` on its
+  root store, run through `bin/vaultite-server`, macOS and Linux; `selfupdate.ts`, its checkout in place, Windows and
+  older installs) and the desktop app's (`electron/storehost.ts`, on the root store where its marker is) drive it.
+  What only one host needs goes in that host. A server run from a root keeps its LOCAL in the checkout (data/).
 - A store root (`update/store.ts`) is read-only once made, and its `node_modules` is a deps set shared by every root
   of the same package-lock.json: never install or write in a root (a new lock makes a new set). Only builds' caches in
   a set (`.tmp`, `.vite`) stay writable.

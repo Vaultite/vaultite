@@ -36,12 +36,16 @@ export type UpdatesHost = {
   quitting(): boolean
   /** The app quits for good: its windows close without being forgotten. */
   beginQuit(): void
+  /** Its servers are left running for the relaunched app to take over (a relaunch onto code already on disk). */
+  handOver(): void
   /** Pages unloaded and the browser's cookies written, before quitting. */
   flush(): Promise<unknown>
   buildMenu(): void
   nameOf(vault: string): string
   /** The menu-bar helper runs (a Mac's, not a scripted copy's nor Vaultite Dev's). */
   helper(): boolean
+  helperCommit: StoreHost["helper"]
+  reloadHelper: StoreHost["reloadHelper"]
   /** Its own servers (the store's updates, storehost.ts): their commits, restarted, or serving another web build. */
   servers: StoreHost["servers"]
   restartServers(): void
@@ -107,8 +111,12 @@ const storeHost = (): StoreHost => ({
   attached: attachedTo, servers: () => host.servers(), restartServers: () => host.restartServers(), adoptWeb: (d, c) => host.adoptWeb(d, c),
   offerRelaunch: (c, why) => { behind = why ?? null; offer(c, "relaunch") }, offerInstall: (c) => offer(c, "install"),
   busy: async () => (host.busy() ? "an agent is at work in the browser" : null), path: () => host.path(),
-  log: (line) => { try { fs.mkdirSync(app.getPath("logs"), { recursive: true }); fs.appendFileSync(path.join(app.getPath("logs"), "update.log"), `${new Date().toISOString()} ${line}\n`) } catch { /* no log */ } },
+  helper: () => host.helperCommit(), reloadHelper: (root, commit) => host.reloadHelper(root, commit), log: logUpdate,
 })
+/** A line in update.log (the store's updates, the helper's reloads). */
+export function logUpdate(line: string) {
+  try { fs.mkdirSync(app.getPath("logs"), { recursive: true }); fs.appendFileSync(path.join(app.getPath("logs"), "update.log"), `${new Date().toISOString()} ${line}\n`) } catch { /* no log */ }
+}
 /** An update ready, offered in every window and the menu; automatic, made once it's safe. */
 function offer(commit: string, how: typeof readyHow) {
   if (ready === commit && readyHow === how) return
@@ -353,12 +361,14 @@ export function restartToUpdate(byHand = false) {
   if (status === "Restarting to update…") return // pressed twice
   if (WORKTREE) {
     if (!ready) return
+    host.handOver() // (their own changes restart them: devroot.ts)
     host.beginQuit()
     setStatus("Restarting to update…", true)
     return void afterFlush(() => { app.relaunch(); app.quit() })
   }
   if (readyHow === "relaunch") {
     if (!ready) return
+    host.handOver() // (the plan restarted those whose code changed already: storeupdate.ts)
     host.beginQuit()
     restarting(ready.slice(0, 7))
     return void afterFlush(() => { relaunchSoon(); app.quit() })

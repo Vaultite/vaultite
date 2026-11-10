@@ -4,7 +4,7 @@ import "../core/winspawn.ts" // (first: on Windows no program the main process s
 import "./dockenv.ts" // (before anything reads the environment)
 import { app, BaseWindow, type BaseWindowConstructorOptions, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, session, shell, systemPreferences, type IpcMainInvokeEvent, type Rectangle, type WebContents, type WebPreferences } from "electron"
 import { AppWindow } from "./appwindow.ts"
-import { QUIET, quiet, quietPage, shownInstead } from "./quiet.ts"
+import { QUIET, quiet, quietPage } from "./quiet.ts"
 import { execFile, execFileSync, fork, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
@@ -14,15 +14,18 @@ import { revive, stripKit, unloadPages, webHandlers, webWindow } from "./web.ts"
 import "./browser/index.ts"
 import { engineBusy, engineFlush, serverCall, setServerSink } from "./browser/engine.ts"
 import { attach, attachable, servedHere, type Call, type Link } from "./host.ts"
+import type { Adopted } from "./heir.ts"
+import type { Serving } from "../core/serving.ts"
 import { talkCall } from "./talklog.ts"
 import { CODE, DEV, HOST, WORKTREE } from "./identity.ts"
 import { codeRoot, commitAt, hold } from "./storehost.ts"
 import { DESKTOP_PROTOCOL } from "../core/desktopapp.ts"
-import { appUpdates, checkInstalled, initUpdates, launchedFrom, lookNow, mainBehind, updatesReady, modeChanged, pageSafe, quitUpdates, RELEASE, restartToUpdate, scheduleUpdates, updatable, UPDATE_MODES, updateMenuItem, worktreeChanged, worktreeNow,
+import { appUpdates, checkInstalled, initUpdates, launchedFrom, logUpdate, lookNow, mainBehind, updatesReady, modeChanged, pageSafe, quitUpdates, RELEASE, restartToUpdate, scheduleUpdates, updatable, UPDATE_MODES, updateMenuItem, worktreeChanged, worktreeNow,
   windowReady, type UpdateMode } from "./updates.ts"
 import { appHandlers, appsOn, appsWindow, stopApps } from "./apps.ts"
 import { dictationHandlers, setDictationServer, stopDictation } from "./dictation.ts"
-import type { HelperPrefs } from "./helper.ts"
+import type { HelperHost, HelperPrefs } from "./helper.ts"
+import type { HelperSlot } from "./helperload.ts"
 import { setTranslucent, translucentAt, translucentWindow } from "./translucency.ts"
 import { hideGhost, showGhost, type GhostLook } from "./dragghost.ts"
 import { openSandbox, refreshSandbox, sandboxPath } from "./sandbox.ts"
@@ -65,7 +68,6 @@ if (QUIET) {
   app.commandLine.appendSwitch("disable-renderer-backgrounding")
   app.on("browser-window-created", (_e, w) => quiet(w, w.webContents))
   app.on("web-contents-created", (_e, wc) => quietPage(wc))
-  Object.assign(globalThis, { vaultiteQuiet: shownInstead })
   AppWindow.each((w) => quiet(w, w.webContents))
   app.focus = () => {}
   void app.whenReady().then(() => app.dock?.hide())
@@ -273,6 +275,8 @@ const macPermissions = () => import("./permissions.ts")
 
 /** The menu-bar helper (electron/helper.ts), loaded once the app is ready when it's wanted: not at launch's cost. */
 let helper: typeof import("./helper.ts") | null = null
+/** The helper's code root, swapped by the store's updates (helperload.ts). */
+let helperAt: HelperSlot | null = null
 const helperOn = () => !!helper?.helperOn()
 const homeChanged = () => helper?.homeChanged()
 /** Pop-out windows (a tab moved out of a vault's window: the page opens `/?popout=<id>`), by their
@@ -320,14 +324,32 @@ setServerSink((win, name, data) => { for (const w of wins.values()) if (w.win ==
 
 /** The root each own server runs (its code's commit: commitAt). */
 const rootOf = new WeakMap<ChildProcess, string>()
+/** Where each own server's log was when it started: what it said since. */
+const logFrom = new WeakMap<ChildProcess, number>()
+/** A server the last launch left, taken over (heir.ts: loaded only then). */
+const adopted = (s: ChildProcess | null): s is ChildProcess & Adopted => typeof (s as { release?: unknown } | null)?.release === "function"
+/** What a server wrote to its log since `from` (its start): the last 2000 characters. */
+function logSince(file: string, from: number) {
+  try {
+    const fd = fs.openSync(file, "r")
+    try {
+      const end = fs.fstatSync(fd).size, start = Math.max(from, end - 8000), buf = Buffer.alloc(Math.max(0, end - start))
+      fs.readSync(fd, buf, 0, buf.length, start)
+      return buf.toString("utf8").slice(-2000)
+    } finally { fs.closeSync(fd) }
+  } catch { return "" }
+}
+/** Servers are left running through a relaunch (an update's: server.ts waits for the next launch to take them over). */
+let handingOver = false
 function startServer(v: Known, port: number, own = false): Promise<ChildProcess> {
   const logDir = app.getPath("logs")
   fs.mkdirSync(logDir, { recursive: true })
-  const log = fs.createWriteStream(serverLog(v.path), { flags: "a" })
+  // (a file, not a pipe: a server outlives this process through a relaunch, and goes on writing)
+  const logFile = serverLog(v.path), fd = fs.openSync(logFile, "a"), from = fs.fstatSync(fd).size
   // (from the store's current root, Main's updates: storehost.ts; else its own)
   const root = own ? ROOT : codeRoot()
   const child = fork(path.join(root, "server.ts"), [], {
-    cwd: root, stdio: ["ignore", "pipe", "pipe", "ipc"],
+    cwd: root, stdio: ["ignore", fd, fd, "ipc"], detached: !WIN,
     env: {
       ...process.env, ELECTRON_RUN_AS_NODE: "1", VAULTITE_DESKTOP: "1", VAULTITE_VAULT: v.path, VAULTITE_LOCAL: LOCAL,
       HOST: "127.0.0.1", PORT: String(port),
@@ -338,8 +360,9 @@ function startServer(v: Known, port: number, own = false): Promise<ChildProcess>
       VAULTITE_LAUNCHED_AT: String(Math.round(Date.now() - process.uptime() * 1000)), VAULTITE_FORKED_AT: String(Date.now()),
     },
   })
-  child.stderr!.pipe(log)
+  fs.closeSync(fd)
   rootOf.set(child, root)
+  logFrom.set(child, from)
   if (child.pid) hold(root, child.pid, "server")
   // (one from another root than this process's may speak another protocol: it says first, and one that doesn't match
   // gives way to one of this app's own code, the app offered its relaunch onto the newer)
@@ -351,13 +374,14 @@ function startServer(v: Known, port: number, own = false): Promise<ChildProcess>
     answerCall(v, m).then((value) => reply({ value }), (e) => reply({ error: e instanceof Error ? e.message : String(e) }))
   })
   return new Promise((ok, fail) => {
-    let out = ""
-    const timer = setTimeout(() => fail(new Error(`the server didn't start in time\n${out.slice(-2000)}`)), 120_000)
-    child.stdout!.on("data", (b: Buffer) => {
-      log.write(b)
-      if (out.length < 100_000) out += b.toString()
-      if (!/vaultite on http/.test(out)) return
+    const said = () => logSince(logFile, from)
+    const timer = setTimeout(() => { clearInterval(look); fail(new Error(`the server didn't start in time\n${said()}`)) }, 120_000)
+    let up = false
+    const listening = () => {
+      if (up) return
+      up = true
       clearTimeout(timer)
+      clearInterval(look)
       if (spoke === DESKTOP_PROTOCOL) return ok(child)
       console.error(`vaultite: ${nameOf(v.path)}'s server from ${root} speaks protocol ${String(spoke ?? "?")}, this app ${DESKTOP_PROTOCOL}: its own code instead`)
       const c = commitAt(root)
@@ -365,11 +389,15 @@ function startServer(v: Known, port: number, own = false): Promise<ChildProcess>
       child.removeAllListeners("exit")
       child.once("exit", () => startServer(v, port, true).then(ok, fail))
       child.kill()
-    })
-    child.stderr!.on("data", (b: Buffer) => { if (out.length < 100_000) out += b.toString() })
+    }
+    // (it says so; one of an older root only logs it)
+    child.on("message", (m: { type?: string }) => { if (m?.type === "desktop:listening") listening() })
+    const look = setInterval(() => { if (/vaultite on http/.test(said())) listening() }, 500)
     child.once("exit", (code) => {
       clearTimeout(timer)
-      fail(/EADDRINUSE/.test(out) ? new PortTaken(`port ${port} is taken`) : new Error(`the server stopped (exit ${code})\n${out.slice(-2000)}`))
+      clearInterval(look)
+      const out = said()
+      fail(/EADDRINUSE/.test(out) ? new PortTaken(`port ${port} is taken`) : new Error(`the server stopped (exit ${code})\n${out}`))
     })
     if (v.outside?.length) child.send({ type: "allow", paths: v.outside })
   })
@@ -448,7 +476,8 @@ async function openVault(p: string, file?: string) {
   let server: ChildProcess | null = null, link: Link | null = null, port: number, loadFailed = false
   const outside = () => (v.outside?.length ? [{ type: "allow", paths: v.outside }] : [])
   try {
-    if (there) {
+    if (there && heirHere(there)) [server, port] = [await adopt(v, there), there.port]
+    else if (there) {
       port = there.port
       // (a page that loaded while its server was down is Chromium's error page: loaded again once it's back)
       link = await attach(p, there, (m) => answerCall(v, m), () => { if (loadFailed && !win.isDestroyed()) void win.loadURL(`http://127.0.0.1:${port}/`).catch(() => {}); return outside() })
@@ -490,7 +519,8 @@ async function openVault(p: string, file?: string) {
     if (helperOn() && !quitting && !w.ending && (w.link || w.server?.exitCode === null)) keepServer(p, { server: w.server, link: w.link, port: w.port })
     else {
       booting.delete(p)
-      w.server?.kill()
+      if (!handingOver) w.server?.kill()
+      else if (adopted(w.server)) w.server.release()
       w.link?.stop()
     }
     homeChanged()
@@ -498,10 +528,10 @@ async function openVault(p: string, file?: string) {
   })
   // The server ends on its own only on failure: soon after start, a vault it can't open (say why, close the window);
   // later, a crash: a new one on the same port, which the page reconnects to (errors.ts), three times a minute at most.
-  let said = "", since = Date.now(), restarts: number[] = []
+  let since = Date.now(), restarts: number[] = []
   const watchServer = (child: ChildProcess) => {
-    child.stderr!.on("data", (b: Buffer) => { said = (said + b.toString()).slice(-2000) })
     child.on("exit", (code) => {
+      const said = logSince(serverLog(p), logFrom.get(child) ?? Infinity)
       if (win.isDestroyed() || quitting || child !== w.server) return
       const now = Date.now(), meant = !!w.restarting
       w.restarting = false
@@ -525,7 +555,6 @@ async function openVault(p: string, file?: string) {
         if (win.isDestroyed()) return void next.kill()
         w.server = next
         since = Date.now()
-        said = ""
         watchServer(next)
         // (a page that tried to load while it was down is Chromium's error page, which can't reconnect)
         if (!win.webContents.getURL().startsWith(`http://127.0.0.1:${at}/`) || loadFailed) { w.ready = false; void win.loadURL(`http://127.0.0.1:${at}/`).catch(() => {}) }
@@ -550,6 +579,28 @@ async function openVault(p: string, file?: string) {
   return w
 }
 
+/** Whether `s` is a server this app's last launch left for this one (its relaunch: server.ts). */
+const heirHere = (s: Serving) => !!s.heir && s.app && s.heir.app === app.getPath("userData")
+/** Take over the server the last launch left (heirHere): this launch's own from now on, as one it forked. */
+async function adopt(v: Known, s: Serving): Promise<ChildProcess> {
+  let a: Adopted | null = null
+  // (one speaking another protocol than this code's gives way to one of this code: watchServer starts it)
+  const link = await attach(v.path, s, (m) => answerCall(v, m), () => (v.outside?.length ? [{ type: "allow", paths: v.outside }] : []), () => a?.kill())
+  a = new (await import("./heir.ts")).Adopted(s.pid, link)
+  const child = a as unknown as ChildProcess // (it stands in for one: heir.ts)
+  rootOf.set(child, s.heir!.root)
+  logFrom.set(child, (() => { try { return fs.statSync(serverLog(v.path)).size } catch { return 0 } })())
+  console.error(`vaultite: ${nameOf(v.path)}'s server (pid ${s.pid}) kept running through the relaunch: taken over`)
+  return child
+}
+
+/** Leave every server running for the next launch (an update's relaunch): each waits a while to be taken over. */
+function handOver() {
+  handingOver = true
+  const m = { type: "desktop:relaunching", app: app.getPath("userData") }
+  for (const w of [...wins.values(), ...kept.values()]) if (w.server?.exitCode === null) w.server.send(m)
+}
+
 /** A vault's server kept with no window (the helper's): it ends with the app, or on its own (a crash: the next window
  *  starts another). */
 function keepServer(p: string, k: Kept) {
@@ -565,7 +616,8 @@ async function helperHome() {
   if (MAC) void app.dock?.hide()
   try {
     const there = await servedHere(v.path)
-    if (there) keepServer(v.path, { server: null, link: await attach(v.path, there, (m) => answerCall(v, m), () => []), port: there.port })
+    if (there && heirHere(there)) keepServer(v.path, { server: await adopt(v, there), link: null, port: there.port })
+    else if (there) keepServer(v.path, { server: null, link: await attach(v.path, there, (m) => answerCall(v, m), () => []), port: there.port })
     else { const [server, port] = await serverFor(v); keepServer(v.path, { server, link: null, port }) }
     lastFocused = v.path
     homeChanged()
@@ -1323,10 +1375,13 @@ initUpdates({
   busy: () => !!engineBusy(),
   quitting: () => quitting,
   beginQuit: () => { quitting = true },
+  handOver,
   flush: () => unloadOnce().then(() => engineFlush()),
   buildMenu,
   nameOf,
   helper: () => !!helper,
+  helperCommit: () => helperAt?.commit() ?? null,
+  reloadHelper: (root, commit) => helperAt?.reload(root, commit),
   servers: () => {
     const own = [...wins.values()].filter((w) => w.server?.exitCode === null)
     const root = own[0]?.server ? rootOf.get(own[0].server) : undefined
@@ -1338,6 +1393,9 @@ initUpdates({
   adoptWeb: (dist, commit) => { for (const w of wins.values()) if (w.server?.exitCode === null && w.server.connected) { w.server.send({ type: "adopt-web", dist }); w.web = commit } },
   path: () => [...pathDirs(), process.env.PATH].filter(Boolean).join(path.delimiter),
 })
+
+// (a scripted copy from source, QA's: an update's relaunch on a signal, web/qa/relaunch.mjs)
+if (!app.isPackaged && QUIET) process.on("SIGUSR2", () => { handOver(); quitting = true; app.relaunch(); app.quit() })
 
 // ---------- a Dev instance on a worktree (electron/devroot.ts) ----------
 let dev: typeof import("./devroot.ts") | null = null
@@ -1611,7 +1669,11 @@ app.on("before-quit", (e) => {
   void unloadOnce().finally(() => app.quit())
 })
 app.on("will-quit", () => {
-  for (const w of [...wins.values(), ...kept.values()]) { w.server?.kill(); w.link?.stop() }
+  for (const w of [...wins.values(), ...kept.values()]) {
+    if (!handingOver) w.server?.kill()
+    else if (adopted(w.server)) w.server.release()
+    w.link?.stop()
+  }
   stopApps()
   stopDictation()
   quitUpdates()
@@ -1718,7 +1780,8 @@ app.whenReady().then(async () => {
     const p = win ? [...wins.values()].find((w) => w.win === win)?.vault.path : homePath()
     return (p ? wins.get(p)?.port ?? kept.get(p)?.port : null) ?? null
   })
-  if (helper) await helper.startHelper({
+  const helperHost: HelperHost = {
+    dictation: await import("./dictation.ts"),
     home: () => {
       const p = homePath()
       const port = p ? wins.get(p)?.port ?? kept.get(p)?.port : undefined
@@ -1734,7 +1797,9 @@ app.whenReady().then(async () => {
     event: (name, data) => { for (const w of [...wins.values(), ...kept.values()]) { const m = { type: "desktop:event", name, data }; if (w.server?.connected) w.server.send(m); else w.link?.send(m) } },
     prefs: () => helperPrefs, setPrefs: (x) => { helperPrefs = { ...helperPrefs, ...x }; save() },
     icon: path.join(ROOT, "electron", "tray", "stoneTemplate.png"),
-  })
+  }
+  if (helper) helperAt = (await import("./helperload.ts")).helperSlot({ now: () => helper, set: (h) => { helper = h }, host: helperHost, log: logUpdate })
+  if (helper) await helper.startHelper(helperHost)
   // (a Mac's Info.plist and Linux's desktop file name the scheme; the installer can't on Windows)
   if (WIN && app.isPackaged && !app.isDefaultProtocolClient("vaultite")) app.setAsDefaultProtocolClient("vaultite")
   buildMenu()

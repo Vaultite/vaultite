@@ -32,8 +32,8 @@ export async function servedHere(vault: string): Promise<Serving | null> {
 }
 
 /** Attach to the server serving `vault`, answering its calls with `answer`, and again whenever it restarts; `hello`:
- *  what it's told each time (the outside files the window may open). */
-export async function attach(vault: string, s: Serving, answer: (m: Call) => Promise<unknown>, hello: () => object[]): Promise<Link> {
+ *  what it's told each time (the outside files the window may open); `refused`: it speaks another protocol. */
+export async function attach(vault: string, s: Serving, answer: (m: Call) => Promise<unknown>, hello: () => object[], refused?: () => void): Promise<Link> {
   // (the page's terminals say they're the desktop app's: plugins/core/terminal)
   await session.defaultSession.cookies.set({ url: `http://127.0.0.1:${s.port}`, name: "vaultite_client", value: "desktop",
     expirationDate: Date.now() / 1000 + 10 * 365 * 86400 })
@@ -62,6 +62,7 @@ export async function attach(vault: string, s: Serving, answer: (m: Call) => Pro
       if (stopped) return
       if (code === 4000 || code === 4001) console.error(`vaultite: ${vault}'s server let its browser go: ${String(why) || code}`)
       if (code === 4001) return // (another app attached: it's that one's)
+      if (code === 4000 && refused) return refused()
       setTimeout(connect, wait)
       wait = Math.min(wait * 2, code === 4000 ? 60_000 : 5000)
     })

@@ -283,6 +283,27 @@ await section("an agent's call through a restart: sent again only where that's s
     s.close()
   }
   {
+    // (the catalog is asked first: the app's own processes wait for it too; elsewhere nothing up is said at once)
+    const late = async () => {
+      const port = await new Promise<number>((ok) => { const s = http.createServer().listen(0, "127.0.0.1", () => { const p = (s.address() as net.AddressInfo).port; s.close(() => ok(p)) }) })
+      const got: string[] = [], entry = entryOf(versionOps()[0], null)
+      let srv: http.Server | null = null
+      setTimeout(() => { srv = http.createServer((req, res) => {
+        got.push(`${req.method} ${req.url}`)
+        const body = req.method === "GET" ? (req.url?.includes("word=") ? [entry] : entry) : { version: "0.0.0" }
+        res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(body))
+      }).listen(port, "127.0.0.1") }, 1500)
+      return { url: `http://127.0.0.1:${port}`, got, close: () => srv?.close() }
+    }
+    const a = await late(), t0 = Date.now(), away = await execute(["version"], { url: a.url, env: {} })
+    check("vau outside the app: a server that refuses is said at once", away.code === 1 && /isn't answering at/.test(away.err) && Date.now() - t0 < 1000, away)
+    await sleep(1600)
+    a.close()
+    const b = await late(), r = await execute(["version", "--json"], { url: b.url, env: { VAULTITE: "1" } })
+    check("vau in the app's terminals: a server restarting is waited for, its catalog and the call both", r.code === 0 && b.got[0]?.startsWith("GET /api/ops") && b.got.some((x) => x.startsWith("POST")), { r, got: b.got })
+    b.close()
+  }
+  {
     const s = await flaky(["cut", "answer"])
     const r = await call(s.url, act)
     check("a click the restart cut, which the server may have done, isn't sent again: it says the server didn't answer", /isn't answering at/.test(r) && s.got.length === 1, { r, got: s.got })

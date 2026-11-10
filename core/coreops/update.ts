@@ -25,6 +25,8 @@ through its code store where that's on (only what it changed restarts), else sta
   vau update --json
   vau --url https://m1.example.ts.net:8447 update`,
     kind: "write",
+    // (it writes nothing in the vault, and a look may take minutes: a store root made, a build)
+    lock: false,
     owner: "updating the server",
     // (a server that follows nothing in the desktop app: the app's own updates look now, Main's through its code store)
     // (this server's own commit told: the app can't ask it while this op runs)

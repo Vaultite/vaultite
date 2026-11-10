@@ -3,6 +3,9 @@
 - Each vault is a window with its own `server.ts` (forked with `ELECTRON_RUN_AS_NODE`, a port kept per vault so each
   keeps its localStorage), dying with its window, unless a server here already serves it (its service): then the window
   attaches to that one and answers its browser calls (host.ts). `vaults.json` is this Mac's, never a vault's.
+- An update's relaunch (the store's, a Dev instance's) keeps the servers: told `desktop:relaunching` first, each waits
+  30 s with its claim naming this app's data as heir, and the next launch takes it over (heir.ts: its own from then on,
+  told things over the host socket, as no IPC can be had again). So a server's output is a file, never a pipe to main.
 - Files from outside a vault (Open with, a drop) are read or written only when the main process sent their path
   (`core/outside.ts`).
 - Signing (`sign.cjs`): with a real identity macOS keeps the app's privacy grants across builds; signed ad hoc, each
@@ -64,6 +67,13 @@
   that went shows its answer's first sound (`sound`: whose voice, ms after let-go), a voice failing over and one saying nothing (`voice-silent`: a notice says so once, and the answer shows in its box), one kept quiet for a call (`quiet`: calllogic.ts; `not-a-call`, its box's button pressed); `stt` names
   the recognizer that heard it (`soniox`, else this Mac's with `why`), `stt-fallback` one failing mid-press; its `mic`
   and `micWhy` the input device and why, `mic-change` one that went mid-press.
+- The helper reloads onto a new code root in place (helperload.ts, the store's plan `helper: reload`: a commit only its
+  slice runs), once `helperBusy()` says nothing would be cut short: the new root's helper.ts is a module graph of its own,
+  started after the old one's `stopHelper`. So the helper keeps no state in a module the main process imports too (a
+  second copy would drift from main's): the main process's comes through `HelperHost` (dictation's one recognizer and
+  owner), a shared module stays stateless (tools/test_closure.ts lists both), and what a module of its sets up on
+  Electron's emitters goes through helperscope.ts, given back at stop (web/qa/helperreload.mjs counts it). ESM never
+  unloads: each reload leaves the old graph's code and module state in memory (nothing live) till the next relaunch.
 - A dictation that leaves its window moves to the helper (dictation.ts `handOver`, the page keeps where it began till its
   words land: web core/dictation.ts): it's the helper's overlay that shows over every app. dictationroam.ts picks where they land;
   dictationfix.ts follows another app's field they went into for the user's fixes (screen.swift `follow`, polled: apps

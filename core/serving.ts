@@ -7,7 +7,10 @@ import path from "node:path"
 import { runtimeDir } from "./runtime.ts"
 
 /** Who serves a vault here: `key` is what an attaching desktop app shows it may (core/desktopapp.ts). */
-export type Serving = { pid: number; port: number; key: string; vault: string; app: boolean }
+export type Serving = { pid: number; port: number; key: string; vault: string; app: boolean
+  /** An app's server left running through that app's relaunch: the app's data folder (its next launch takes it over),
+   *  and the code root it runs. */
+  heir?: { app: string; root: string } }
 
 const real = (p: string) => { try { return fs.realpathSync(p) } catch { return path.resolve(p) } }
 const fileFor = (vault: string) => path.join(runtimeDir(), `vaultite-serves-${crypto.createHash("sha1").update(real(vault)).digest("hex").slice(0, 12)}.json`)
@@ -55,6 +58,18 @@ export const answers = (port: number) => new Promise<boolean>((done) => {
 export function reclaim(vault: string, port: number, app: boolean) {
   try { fs.unlinkSync(fileFor(vault)) } catch { /* gone */ }
   return claim(vault, port, app)
+}
+
+/** Mark this process's claim as waiting for `heir` (its app relaunching), or not (null). */
+export function bequeath(heir: Serving["heir"] | null) {
+  if (!mine) return
+  try {
+    const s = JSON.parse(fs.readFileSync(mine.file, "utf8")) as Serving
+    if (s.pid !== process.pid) return
+    if (heir) s.heir = heir; else delete s.heir
+    fs.writeFileSync(`${mine.file}.tmp`, JSON.stringify(s) + "\n", { mode: 0o600 })
+    fs.renameSync(`${mine.file}.tmp`, mine.file)
+  } catch { /* gone */ }
 }
 
 /** The key an attaching desktop app must show (this server's claim's), or "" when it has none. */

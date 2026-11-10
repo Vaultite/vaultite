@@ -10,7 +10,8 @@ import { WebSocket } from "ws"
 import { HOLD_MS, TAP_MS, fnActsToo, fnKey, isChord, keyCodes, modKeys, talkGesture, type FnAction, type FnEvent, type ModEvent, type TalkAction } from "../core/fnkey.ts"
 import { joinText } from "../core/dictationtext.ts"
 import { privateApp } from "../core/privateapps.ts"
-import { dictate, dictating, keptLanded, stopFor, dictationEngines, expectedWords, freeFor, handOver, onAudioDevices, onDictating, onRoam, releaseMic, type DictationSink, type Roam } from "./dictation.ts"
+import type { DictationSink, Roam } from "./dictation.ts"
+import { freeAll, listen as hear, onFree } from "./helperscope.ts"
 import { land, landedSaid } from "./dictationroam.ts"
 import { followField, type Followed } from "./dictationfix.ts"
 import { learnedList, type Teach } from "../plugins/core/dictation/learn.ts"
@@ -49,7 +50,12 @@ import { type Needs, offerHeard, offerHost, offerScene, offerTimeline, OFFER_UP_
 export type Home = { port: number; path: string; name: string }
 /** This Mac's say (vaults.json): open at login, and the notice about macOS acting on fn too, shown. */
 export type HelperPrefs = { login?: boolean; fnNotice?: boolean }
+/** Dictation is the main process's (its windows dictate too, and hand a dictation over): the helper uses that one,
+ *  never a copy of its own, so a helper reloaded from another code root shares its one recognizer and owner. */
+export type Dictation = Pick<typeof import("./dictation.ts"), "dictate" | "dictating" | "keptLanded" | "stopFor" | "dictationEngines" | "expectedWords"
+  | "freeFor" | "handOver" | "onAudioDevices" | "onDictating" | "onRoam" | "releaseMic">
 export type HelperHost = {
+  dictation: Dictation
   home: () => Home | null
   /** Open (or bring forward) the home vault's window; none known: the vaults list. */
   openHome: () => void
@@ -74,6 +80,11 @@ const LOCK_NAME = LIVE ? "vaultite-helper" : `vaultite-helper-${process.pid}`
 // (Windows listens only on a named pipe, never a file's path)
 const LOCK = process.platform === "win32" ? `\\\\.\\pipe\\${LOCK_NAME}-${os.userInfo().username}` : path.join(os.tmpdir(), `${LOCK_NAME}.sock`)
 let host: HelperHost | null = null
+/** The host's dictation (kept after a stop: what's still in flight there asks it). */
+let dictation: Dictation | null = null
+const via = <K extends keyof Dictation>(k: K) => ((...a: unknown[]) => (dictation![k] as (...a: unknown[]) => unknown)(...a)) as Dictation[K]
+const dictate = via("dictate"), dictating = via("dictating"), keptLanded = via("keptLanded"), stopFor = via("stopFor"), dictationEngines = via("dictationEngines"),
+  expectedWords = via("expectedWords"), freeFor = via("freeFor"), handOver = via("handOver"), releaseMic = via("releaseMic")
 /** A scripted copy's stand-ins for the screen helper's answers (web/qa/helper.mjs): it never reads or types into the
  *  user's apps. */
 const stubs = new Map<string, Record<string, unknown>>()
@@ -124,7 +135,8 @@ export async function startHelper(h: HelperHost) {
   lock = await takeLock()
   if (!lock) return false
   host = h
-  app.on("will-quit", stopHelper)
+  dictation = h.dictation
+  hear(app, "will-quit", stopHelper)
   if (QUIET) Object.assign(globalThis, { vaultiteHelper: { heard: (m: Record<string, unknown>) => heard(m), stub: (op: string, v?: Record<string, unknown> | null) => (v == null ? stubs.delete(op) : stubs.set(op, v)), presses: () => presses.read(),
     asked: () => [...asked], screenAsked: () => [...screenAsked], spoken: () => [...spoken], scene: () => lastScene, island: islandNow, knocks: (m: Record<string, unknown>) => knocksHeard(m), islandSaid: (text: string, x: number, y: number) => knockSaid(text) || toPresence(text, { x, y }), badge: () => badged, menu: () => menuItems(),
     walk: (what: string) => walkCall(what), talkSaid: (text: string) => walkHeard(text), walkSaid: (text: string) => { walkPending(text); walkFinal(text) },
@@ -132,14 +144,13 @@ export async function startHelper(h: HelperHost) {
     layers: () => layersUp, watched: () => areas, near: (x: number, y: number) => nearAt({ x, y }),
     holdAppear: (hold: boolean) => { if (hold) heldAppear ??= []; else { const due = heldAppear ?? []; heldAppear = null; for (const fn of due) fn() } } } })
   onScreenEvent(heard)
-  ipcMain.removeAllListeners("vaultite:place")
-  ipcMain.on("vaultite:place", (e, m: { id?: unknown; place?: unknown }) => placeTold(e.sender, m))
-  ipcMain.removeAllListeners("vaultite:dictation-landed")
-  ipcMain.on("vaultite:dictation-landed", (_e, m: { id?: unknown; ok?: boolean; elsewhere?: boolean }) => { if (typeof m?.id === "number") landAsks.get(m.id)?.(m) })
-  onRoam({ take: roamIn, stop: () => { if (session?.into !== "field") return false; stopFor(session.sink); return true } })
-  onDictating(() => stopVoice())
+  hear(ipcMain, "vaultite:place", (e: Electron.IpcMainEvent, m: { id?: unknown; place?: unknown }) => placeTold(e.sender, m))
+  hear(ipcMain, "vaultite:dictation-landed", (_e: unknown, m: { id?: unknown; ok?: boolean; elsewhere?: boolean }) => { if (typeof m?.id === "number") landAsks.get(m.id)?.(m) })
+  h.dictation.onRoam({ take: roamIn, stop: () => { if (session?.into !== "field") return false; stopFor(session.sink); return true } })
+  onFree(() => h.dictation.onRoam(null))
+  onFree(h.dictation.onDictating(() => stopVoice()))
   // (the mic it would hear with now, for its status: devices plugged, the output changed)
-  onAudioDevices((d) => micTold(pickMic(prefs.dictation.microphone, d)))
+  onFree(h.dictation.onAudioDevices((d) => micTold(pickMic(prefs.dictation.microphone, d))))
   overlayActs({ open: openChat, stop: () => { if (session) stopFor(session.sink) }, region: regionMoved, regionAct })
   timelineHost({ exclude: excluded, bundles: () => prefs.privateApps, holding: recordingNow, privateNow: () => hidden(front),
     clicks: (on) => void screenAsk("clicks", { on }).catch(() => {}) })
@@ -214,6 +225,25 @@ export function stopHelper() {
   tray = null
   lock?.close()
   lock = null
+  // (started again, in this copy or another: it follows the home vault afresh)
+  based = ""
+  freeAll()
+}
+
+/** What a reload onto another code root would cut short now (a press, a dictation, its voice, a walk...), or null. */
+export function helperBusy(): string | null {
+  if (!host) return null
+  if (session || starting) return "it's dictating"
+  if (summon && ACTIVE.has(summon.m.phase)) return "a Talk key's press is under way"
+  if (exchange && going(exchange)) return "an exchange with the companion is on"
+  if (speakingNow || speaker.saying() || voiceFront.speaking()) return "the companion is speaking"
+  if (panelOpen()) return "the companion's box is open"
+  if (walkOn()) return "a QA walk is on"
+  if (watching()) return "a lesson is being taught"
+  if (recordingNow()) return "a replay is being kept"
+  if (takeoverDriving()) return "an agent drives another app"
+  if (dictating()) return "a window's dictation is under way"
+  return null
 }
 
 /** Its cursor off the screen: done there (its exchange over, idle, its words gone). */
@@ -494,6 +524,7 @@ const hidden = (a: { bundle?: string; name?: string } | null) => !!a && privateA
 const frontHappened = () => { if (front) happened({ t: Date.now(), kind: "app", ...(hidden(front) ? { app: "", name: "", private: true } : { app: front.bundle, name: front.name, title: front.title }) }) }
 
 function heard(m: Record<string, unknown>) {
+  if (!host) return
   if (m.event === "fn") return prefs.talk.includes("fn") ? talkHeard(m as FnEvent) : prefs.keys.includes("fn") ? fnHeard(m) : undefined
   if (m.event === "mod") return modHeard(m)
   if (m.event === "chord") return chordHeard(m)

@@ -145,6 +145,30 @@ await section("the desktop app's main process reaches only its own", () => {
   console.log(`     the main process reaches ${main.size} files, ${outside.length} outside electron/ (their changes relaunch it)`)
 })
 
+// The helper reloads onto a new code root apart from the main process (electron/helperload.ts), as a module graph of its
+// own: a module both import is then two copies, so it may keep no state; the main process's state comes through HelperHost.
+await section("the menu-bar helper shares no state with the main process", () => {
+  const own = graphOf(tree, { entries: [{ id: "helper", label: "helper.ts", from: ["electron/helper.ts"], mode: "node" }] }).reach("helper")
+  const main = g.reach("desktop").files
+  /** The main process's own state: windows, the browser, dictation's one recognizer, the servers, updates. */
+  const STATEFUL = ["electron/main.ts", "electron/appwindow.ts", "electron/web.ts", "electron/browser/engine.ts", "electron/browser/index.ts", "electron/dictation.ts",
+    "electron/dictationlist.ts", "electron/mics.ts", "electron/host.ts", "electron/updates.ts", "electron/storehost.ts", "electron/permissions.ts", "electron/gestures.ts",
+    "electron/popup.ts", "electron/player.ts", "electron/apps.ts", "electron/helperload.ts"]
+  /** Imported by both, and why a second copy is harmless. A new one is a decision: stateless, or through HelperHost. */
+  const STATELESS: Record<string, string> = {
+    "core/dictationtext.ts": "pure functions", "electron/miclogic.ts": "pure functions", "electron/presslog.ts": "a factory: each log its own",
+    "electron/swiftbuild.ts": "a factory; builds are atomic renames", "electron/linehelper.ts": "a factory: each child its owner's",
+    "electron/macaddons.ts": "loads an addon (Node-API: loading it again is allowed)", "electron/menu.ts": "the helper uses icon(), a cache of files' images",
+    "electron/quiet.ts": "QUIET and quiet(); its count lives on globalThis",
+  }
+  const stateful = STATEFUL.filter((f) => own.files.has(f))
+  check("it imports none of the main process's stateful modules", !stateful.length, stateful.map((f) => g.chainOf(own, f).join(" > ")))
+  const shared = [...own.files.keys()].filter((f) => main.has(f) && /\.(ts|mjs|cjs|js)$/.test(f) && !f.startsWith("node_modules/"))
+  const unsaid = shared.filter((f) => !STATELESS[f])
+  check(`what it shares with the main process keeps no state (${shared.length} files)`, !unsaid.length, unsaid.map((f) => g.chainOf(own, f).join(" > ")))
+  check("each listed as shared still is", Object.keys(STATELESS).every((f) => shared.includes(f)), Object.keys(STATELESS).filter((f) => !shared.includes(f)))
+})
+
 if (!module.registerHooks) skip("a real server boot loads nothing the graph misses", "this Node has no module.registerHooks")
 else await section("a real server boot loads nothing the graph misses", async () => {
   const tmp = tempDir("vaultite-closure-test-"), loads = path.join(tmp, "loads"), vault = path.join(tmp, "vault")

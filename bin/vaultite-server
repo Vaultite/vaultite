@@ -1,0 +1,62 @@
+#!/usr/bin/env node
+// The service's server (vau service install --updates, macOS and Linux): the code store's current root, else its good
+// one, else this checkout's own (core/update/servicestore.ts). Plain JS on Node alone: the one path the job runs.
+import fs from "node:fs"
+import module from "node:module"
+import path from "node:path"
+import { pathToFileURL } from "node:url"
+
+module.enableCompileCache?.()
+const checkout = path.dirname(import.meta.dirname)
+const store = process.env.VAULTITE_CODE_STORE
+const SHA = /^[0-9a-f]{40}$/
+/** A root that stopped as it started this many times in a row is bad (the server clears the count once it's up). */
+const TRIES = 3
+const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, "utf8")) } catch { return null } }
+const writeJson = (file, v) => {
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  fs.writeFileSync(`${file}.${process.pid}.tmp`, JSON.stringify(v) + "\n")
+  fs.renameSync(`${file}.${process.pid}.tmp`, file)
+}
+
+/** Why `root` can't run (null: it can): inside the store, the user's, writable by nobody else, with its server. */
+function problem(root) {
+  let real, base
+  try { real = fs.realpathSync(root); base = fs.realpathSync(store) } catch { return "it isn't there" }
+  if (!real.startsWith(base + path.sep)) return "it isn't in the store"
+  const st = fs.statSync(real)
+  if (process.getuid && st.uid !== process.getuid()) return "it isn't the user's"
+  if (st.mode & 0o022) return "others can write to it"
+  if (!fs.existsSync(path.join(real, "server.ts"))) return "it has no server.ts"
+  return null
+}
+
+function pick() {
+  if (!store) return null
+  const tries = path.join(store, "service-start.json")
+  for (const name of ["current", "good"]) {
+    const sha = readJson(path.join(store, `${name}.json`))?.commit
+    if (typeof sha !== "string" || !SHA.test(sha) || fs.existsSync(path.join(store, "bad", `${sha}.json`))) continue
+    const why = problem(path.join(store, "roots", sha))
+    if (why) { console.error(`vaultite: the code store's ${name} root ${sha.slice(0, 7)} can't run: ${why}`); continue }
+    const was = readJson(tries)
+    const n = was?.commit === sha ? (Number(was.n) || 0) + 1 : 1
+    if (n > TRIES) {
+      writeJson(path.join(store, "bad", `${sha}.json`), { why: `its server stopped as it started ${TRIES} times`, t: Date.now() })
+      console.error(`vaultite: ${sha.slice(0, 7)}'s server stopped as it started ${TRIES} times: it's bad, not run again`)
+      continue
+    }
+    writeJson(tries, { commit: sha, n, t: Date.now() })
+    return { root: path.join(store, "roots", sha), from: name }
+  }
+  return null
+}
+
+const at = pick()
+const root = at?.root ?? checkout
+if (at) console.log(`vaultite: runs the code store's ${at.from} root ${path.basename(root).slice(0, 7)}`)
+process.env.VAULTITE_SERVICE_CHECKOUT = checkout // (its store's first clone, and where it falls back to)
+// (this machine's own files, its secrets, stay the checkout's: a root is read-only, and goes)
+process.env.VAULTITE_LOCAL ||= path.join(checkout, "data")
+process.chdir(root)
+await import(pathToFileURL(path.join(root, "server.ts")).href)

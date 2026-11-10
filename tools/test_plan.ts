@@ -20,7 +20,7 @@ const graph = { hit: (e: string, changed: string[]): Hit | null => {
 } }
 const all = { ui: A, server: { code: A, web: A }, main: A }
 const plan = (changed: string[] | null, o: Partial<PlanInput> = {}) => planUpdate({ to: TO, running: all, changed: { [A]: changed }, graph, shell: { running: FP, root: FP }, ...o })
-const row = (p: Plan) => `ui ${p.ui}, server ${p.server}, main ${p.main}, shell ${p.shell}${p.stale.length ? `, stale ${p.stale.join(" ")}` : ""}`
+const row = (p: Plan) => `ui ${p.ui}, server ${p.server}, main ${p.main}${p.helper === "reload" ? ", helper reload" : ""}, shell ${p.shell}${p.stale.length ? `, stale ${p.stale.join(" ")}` : ""}`
 
 section("the table")
 const rows: [string, string[] | null, Partial<PlanInput>, string][] = [
@@ -29,7 +29,9 @@ const rows: [string, string[] | null, Partial<PlanInput>, string][] = [
   ["the server's code only", ["server.ts"], {}, "ui none, server restart, main none, shell none"],
   ["code both reach: both", ["core/vault.ts"], {}, "ui none, server restart, main relaunch, shell none"],
   ["the server's code and the web app: a restart serves the new build", ["server.ts", "web/src/app.tsx"], {}, "ui reload, server restart, main none, shell none"],
-  ["the helper (a slice of main): main relaunches", ["electron/helper.ts"], {}, "ui none, server none, main relaunch, shell none"],
+  ["the helper alone (a slice of main): it reloads, main stays", ["electron/helper.ts"], {}, "ui none, server none, main none, helper reload, shell none"],
+  ["the helper and main's own code: main relaunches (the helper with it)", ["electron/helper.ts", "electron/main.ts"], {}, "ui none, server none, main relaunch, shell none"],
+  ["no helper running: nothing for it", ["electron/helper.ts"], { running: { ...all, helper: null } }, "ui none, server none, main none, shell none"],
   ["what changed isn't known: everything that runs", null, {}, "ui reload, server restart, main relaunch, shell none"],
   ["no graph: everything that runs", ["README.md"], { graph: null }, "ui reload, server restart, main relaunch, shell none"],
   ["another shell: rebuilt, main and the servers on it", ["web/src/app.tsx"], { shell: { running: FP, root: "2".repeat(64) } }, "ui reload, server restart, main relaunch, shell rebuild"],
@@ -49,6 +51,12 @@ section("each process from its own commit")
   const p = planUpdate({ to: TO, running: { ui: B, server: { code: A, web: B }, main: B }, changed: { [A]: ["server.ts", "web/src/app.tsx"], [B]: ["web/src/app.tsx"] }, graph, shell: { running: FP, root: FP } })
   check("each judged by what changed since its own start", row(p) === "ui reload, server restart, main none, shell none", { got: row(p), why: p.why })
   const q = planUpdate({ to: TO, running: { ui: B, server: { code: A, web: B }, main: A }, changed: { [B]: ["web/src/app.tsx"] }, graph, shell: { running: FP, root: FP } })
+  // (the helper reloaded onto B before: judged from B, not from the main process's A)
+  const h = (changed: Record<string, string[]>) => row(planUpdate({ to: TO, running: { main: A, helper: B }, changed, graph, shell: { running: FP, root: FP } }))
+  check("the helper from its own commit: nothing new for it since", h({ [A]: ["electron/helper.ts"], [B]: ["README.md"] }) === "ui none, server none, main none, shell none", h({ [A]: ["electron/helper.ts"], [B]: [] }))
+  check("…its change since its own commit: a reload", h({ [A]: ["electron/helper.ts"], [B]: ["electron/helper.ts"] }) === "ui none, server none, main none, helper reload, shell none")
+  check("…its commit's changes not known: a reload", h({ [A]: ["README.md"] }) === "ui none, server none, main none, helper reload, shell none")
+  check("…main's code changed since main's: a relaunch, no reload", h({ [A]: ["electron/main.ts"], [B]: ["electron/helper.ts"] }) === "ui none, server none, main relaunch, shell none")
   check("one whose start isn't known: the heavier", row(q) === "ui reload, server restart, main relaunch, shell none" && /isn't known/.test(q.why.server ?? ""), { got: row(q), why: q.why })
 }
 check("why: the file and the chain", /server runs server\.ts, which changed/.test(plan(["server.ts"]).why.server ?? "") && /can't be followed past x\.ts:3/.test(plan(["x"], { running: { keepers: { chatd: A } } }).why.chatd ?? ""))
@@ -57,7 +65,10 @@ await section("on this checkout's own graph", async () => {
   const g = graphOf(diskTree(path.dirname(import.meta.dirname)))
   const real = (changed: string[]) => row(planUpdate({ to: TO, running: all, changed: { [A]: changed }, graph: g, shell: { running: FP, root: FP } }))
   check("a page's component: reload and adopt", real(["web/src/components/Toast.tsx"]) === "ui reload, server adopt-web, main none, shell none", real(["web/src/components/Toast.tsx"]))
-  check("the menu-bar helper: main only", real(["electron/helper.ts"]) === "ui none, server none, main relaunch, shell none", real(["electron/helper.ts"]))
+  check("the menu-bar helper: it reloads, nothing else", real(["electron/helper.ts"]) === "ui none, server none, main none, helper reload, shell none", real(["electron/helper.ts"]))
+  check("…its overlay, a file only it reaches: the same", real(["electron/overlay.ts"]) === "ui none, server none, main none, helper reload, shell none", real(["electron/overlay.ts"]))
+  check("…dictation, the main process's that it uses through its host: a relaunch", real(["electron/dictation.ts"]) === "ui none, server none, main relaunch, shell none", real(["electron/dictation.ts"]))
+  check("…a file both import (stateless, two copies): a relaunch", real(["electron/menu.ts"]).includes("main relaunch"), real(["electron/menu.ts"]))
   check("a doc for people: nothing", real(["CHANGELOG.md"]) === "ui none, server none, main none, shell none", real(["CHANGELOG.md"]))
   check("the vault index: the server", real(["core/vault.ts"]).includes("server restart"), real(["core/vault.ts"]))
 })

@@ -4,13 +4,14 @@ import { type BaseWindow, type Rectangle, screen, type WebContents } from "elect
 
 export const QUIET = !!process.env.VAULTITE_QUIET
 
-/** What a quiet copy was asked to show and didn't (main.ts puts it on globalThis for the scripts). */
-export const shownInstead = { lookUps: 0 }
+/** What a quiet copy was asked to show and didn't, for the scripts: on globalThis, so this file keeps no state (the
+ *  menu-bar helper reloaded from another code root runs its own copy of it). */
+const shownInstead = () => ((globalThis as { vaultiteQuiet?: { lookUps: number } }).vaultiteQuiet ??= { lookUps: 0 })
 
 /** Page `wc` quiet, under VAULTITE_QUIET: Look up's popover, the system's over the user's work, only counted. */
 export function quietPage(wc: WebContents) {
   if (!QUIET) return
-  wc.showDefinitionForSelection = () => { shownInstead.lookUps++ }
+  wc.showDefinitionForSelection = () => { shownInstead().lookUps++ }
 }
 
 /** Window `w` (its page `page`) quiet, under VAULTITE_QUIET. */

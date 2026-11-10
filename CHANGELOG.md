@@ -27,6 +27,24 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   "needs you" is only an agent waiting on you (a permission, a question, a login), in both panels and the status bar:
   a finished turn not yet read is blue, unread. Rows hold still while you're in the list (the pointer, a menu or a
   finger on it) and glide to their new places once you leave. The filter and machines stay on the Agents tab.
+  over half an hour ago fold under Earlier. Rows hold still while you're in the list (the pointer, a menu or a finger
+  on it) and glide to their new places once you leave. The filter and machines stay on the Agents tab.
+- **The menu-bar helper updates without a relaunch**: on Vaultite Main's code store, a change only the helper runs (the
+  companion over the screen, its keys and voice) reloads it in place once it's idle, never mid-press, dictation or
+  speech; the app and its windows go on as they were.
+- **A quieter Agents panel**: one list, no Needs you or Done headings, no filter or machine names: a small dot says
+  where each agent stands and a short time ends its row (how it runs and where in its tooltip). Agents done and read
+  over half an hour ago fold under Earlier. The filter and machines stay on the Agents tab.
+- **A service following a branch runs from code roots**: `vau service install --updates <branch>` on macOS and Linux
+  makes each commit once into a read-only folder of its own and runs the newest that works, taking a web-only change in
+  place; a commit whose server won't start is left for the last good one, and the checkout is free to work in. Install
+  the service again to move an existing one onto it.
+- **The desktop app's update relaunch keeps its servers**: Vaultite Main relaunching onto a new version (its code
+  store's, a Dev instance's) leaves each vault's server running and takes it over in under a second, so nothing is read
+  again and `vau`, the phone and agents never see it go.
+- **Agents don't see the app's restarts**: `vau` and `vau mcp` run by the app (its terminals, agents and hooks) wait up
+  to 30 s for a server that's restarting (an update, the app relaunching) rather than fail at once; elsewhere a server
+  that isn't there is said at once.
 - **`vau version --wait` rides out the server's restart**: a wait cut by an update's restart, directly or through
   Tailscale Serve (its 502), or through `--machine`, goes on with the time left and answers from the new server; when
   the server stays down it says so and for how long, never an empty error. The verdict is the output's last line.

@@ -256,7 +256,7 @@ export const handOver = (from: DictationSink, to: DictationSink) => {
 export type Roam = { pending?: string; held?: boolean; free?: boolean; start?: boolean }
 /** Who takes a window's session when it leaves it (the menu-bar helper), and stops one it has. */
 let roamer: { take: (win: AppWindow, sink: DictationSink, o: Roam) => boolean; stop: () => boolean } | null = null
-export const onRoam = (r: NonNullable<typeof roamer>) => { roamer = r }
+export const onRoam = (r: typeof roamer) => { roamer = r }
 export const dictating = () => owner
 export { engines as dictationEngines }
 

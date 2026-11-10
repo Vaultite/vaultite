@@ -55,8 +55,8 @@ const { runsCode } = await import("./core/opening.ts")
 const { contentType, enabled, FileAnswer, HTTPError, LOADED, LOCAL, matchSocket, ROOT, Text, VAULT_PATH } = await import("./core/plugins.ts")
 const { fetchFromICloud, iCloud, keepDownloaded, slowReads } = await import("./core/vault.ts")
 const vaults = await import("./core/vaults.ts")
-const { answers, claim, reclaim, servingKey } = await import("./core/serving.ts")
-const { attach, detach, onHostMessage } = await import("./core/desktopapp.ts")
+const { answers, bequeath, claim, reclaim, servingKey } = await import("./core/serving.ts")
+const { attach, detach, inDesktop, onHost, onHostMessage } = await import("./core/desktopapp.ts")
 starting.mark("imports")
 
 const HOST = process.env.HOST || "127.0.0.1"
@@ -169,7 +169,22 @@ const bye = (code: number) => {
   flushKept()
   void Promise.race([app?.vaultPlugins.close(), new Promise((r) => setTimeout(r, 1000))]).finally(() => process.exit(code))
 }
-if (DESKTOP) process.on("disconnect", () => bye(0))
+// An app's server ends with its app, unless the app is relaunching (its update): then it waits a while for the new one
+// to take it over (electron/main.ts adopts it), and a socket the app attached by (not its fork) gets a moment to come back.
+const RELAUNCH_WAIT_MS = 30_000, SOCKET_WAIT_MS = 10_000
+let heir: { app: string; until: number } | null = null, lingering: ReturnType<typeof setTimeout> | null = null
+onHostMessage("desktop:relaunching", (m) => { if (DESKTOP && typeof m.app === "string") heir = { app: m.app, until: Date.now() + RELAUNCH_WAIT_MS } })
+if (DESKTOP) onHost(() => {
+  if (lingering) { clearTimeout(lingering); lingering = null }
+  if (heir) { heir = null; bequeath(null); console.log("vaultite: its app is back: taken over") }
+}, (how) => {
+  if (inDesktop() || going) return
+  const relaunch = !!heir && Date.now() < heir.until
+  if (!relaunch && how === "ipc") return bye(0)
+  if (relaunch) { bequeath({ app: heir!.app, root: ROOT }); console.log("vaultite: its app is relaunching: waiting for it") }
+  if (lingering) clearTimeout(lingering)
+  lingering = setTimeout(() => { if (!inDesktop()) { console.log("vaultite: no app came back for it: stopping"); bye(0) } }, relaunch ? RELAUNCH_WAIT_MS : SOCKET_WAIT_MS)
+})
 process.on("SIGTERM", () => bye(143))
 process.on("SIGINT", () => bye(130))
 
@@ -672,12 +687,15 @@ server.on("upgrade", async (req: http.IncomingMessage, socket: Duplex, head: Buf
 server.listen(PORT, HOST, () => {
   starting.mark("listen")
   console.log(`vaultite on http://${HOST}:${PORT}  vault=${VAULT_AT}`)
+  // (the app that forked it: its stdout is a file, so it's told so)
+  if (DESKTOP && process.connected) process.send!({ type: "desktop:listening" })
 })
 
-// A service install following a branch updates itself (core/selfupdate.ts); the service manager starts it again.
+// A service install following a branch updates itself: from its code store where bin/vaultite-server runs it (macOS,
+// Linux: core/update/servicestore.ts), else its checkout in place (core/selfupdate.ts); the service manager restarts it.
 if (process.env.VAULTITE_UPDATES && !DESKTOP && fs.existsSync(path.join(ROOT, ".git"))) {
-  const [{ startUpdater }, { inPlace }] = await Promise.all([import("./core/update/updater.ts"), import("./core/selfupdate.ts")])
-  startUpdater(inPlace({ root: ROOT, branch: process.env.VAULTITE_UPDATES, stateFile: path.join(LOCAL, "selfupdate.json"),
+  const { startUpdater } = await import("./core/update/updater.ts")
+  const follow = { branch: process.env.VAULTITE_UPDATES, stateFile: path.join(LOCAL, "selfupdate.json"),
     // (as a stop does; Windows' SIGTERM would end it at once, its plugins never told. Soon, not now: vau update's answer
     // goes out first)
     restart: () => setTimeout(() => bye(143), 200),
@@ -686,5 +704,15 @@ if (process.env.VAULTITE_UPDATES && !DESKTOP && fs.existsSync(path.join(ROOT, ".
       await ready
       const r = await LOADED[0]?.desktop("agent:busy", "server").catch(() => null) as { busy?: boolean; why?: string } | null
       return r?.busy ? String(r.why || "the browser is busy") : null
-    } }))
+    } }
+  const store = process.env.VAULTITE_CODE_STORE, checkout = process.env.VAULTITE_SERVICE_CHECKOUT
+  if (store && checkout) {
+    // (once it's up: its root ran well, and a crash at start is counted afresh)
+    void ready.then(async () => {
+      fs.rmSync(path.join(store, "service-start.json"), { force: true })
+      const [{ inStore }, { holdRoot }] = await Promise.all([import("./core/update/servicestore.ts"), import("./core/update/lease.ts")])
+      void holdRoot(ROOT, "server")
+      startUpdater(await inStore({ ...follow, checkout, store, root: ROOT, adoptWeb: (dist) => web.adopt(dist) }))
+    }).catch((e) => console.error("vaultite: updates from the code store didn't start:", e))
+  } else startUpdater((await import("./core/selfupdate.ts")).inPlace({ root: ROOT, ...follow }))
 }

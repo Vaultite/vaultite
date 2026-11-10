@@ -4,6 +4,7 @@ import { type BrowserWindow, ipcMain, screen, type Display } from "electron"
 import path from "node:path"
 import { overlayWindow, takesPointer } from "./overlaywin.ts"
 import { quiet } from "./quiet.ts"
+import { listen, onFree } from "./helperscope.ts"
 import { islandSpot, islandsOn, type OtherWindow, type Rect, roomAt, type Spot, windowAt } from "./islandlogic.ts"
 import type { Knock, Presence } from "../plugins/core/companion/knocks.ts"
 import type { WalkScene } from "../plugins/core/companion/walks.ts"
@@ -34,13 +35,14 @@ let faces: (Rect & { id: string })[] = []
 export function islandActs(a: IslandActs) {
   if (acts) { acts = a; return }
   acts = a
+  onFree(() => { acts = null })
   const mine = (e: Electron.IpcMainEvent) => !!win && !win.isDestroyed() && e.sender === win.webContents
-  ipcMain.on("island:faces", (e, list: unknown) => {
+  listen(ipcMain, "island:faces", (e, list: unknown) => {
     if (!mine(e) || !Array.isArray(list)) return
     faces = list.flatMap((f: { id?: unknown; x?: unknown; y?: unknown; width?: unknown; height?: unknown }) =>
       typeof f?.id === "string" && [f.x, f.y, f.width, f.height].every((n) => typeof n === "number") ? [f as Rect & { id: string }] : [])
   })
-  ipcMain.on("island:act", (e, m: { act?: unknown; id?: unknown; mute?: unknown }) => {
+  listen(ipcMain, "island:act", (e, m: { act?: unknown; id?: unknown; mute?: unknown }) => {
     if (!mine(e) || typeof m?.id !== "string") return
     if (m.act === "open") acts?.open(m.id)
     else if (m.act === "later") acts?.later(m.id)

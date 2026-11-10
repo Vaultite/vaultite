@@ -27,6 +27,10 @@ export type StoreHost = {
   /** The main process runs older code than `commit` (`why`: what changed that it runs): a relaunch offered (made when
    *  safe, automatic). */
   offerRelaunch(commit: string, why?: string): void
+  /** The commit the menu-bar helper's code is from (it may be newer than the main process's: reloaded); null: none runs. */
+  helper(): string | null
+  /** The helper moved onto `root` (`commit`) once it's idle, the main process left running. */
+  reloadHelper(root: string, commit: string): void
   /** A new shell's app for `commit` is built (update.noindex): installed as before, when restarted. */
   offerInstall(commit: string): void
   /** Why nothing should restart now (an agent at work in the browser), or null. */

@@ -7,7 +7,8 @@ import path from "node:path"
 import { servingOf } from "./serving.ts"
 
 const LABEL = "app.vaultite.server"
-/** `updates`: a branch this checkout follows on its own (core/selfupdate.ts), this machine's choice. */
+/** `updates`: a branch it follows on its own, this machine's choice: from a code store of its own on macOS and Linux
+ *  (bin/vaultite-server, core/update/servicestore.ts), the checkout in place on Windows (core/selfupdate.ts). */
 export type ServiceOptions = { root: string; node: string; vault: string; port?: number; host?: string; home?: string; updates?: string }
 export type ServicePlan = { platform: "darwin" | "linux" | "win32"; file: string; text: string; log: string; start: string[][]; stop: string[][]
   /** More files it writes (Windows: the task's definition, UTF-16 as schtasks reads it). */
@@ -83,7 +84,10 @@ for (;;) {
 /** What it writes and runs, without doing it: the job's file and the commands that start or stop it. */
 export function servicePlan(platform: string, o: ServiceOptions): ServicePlan {
   const home = o.home ?? os.homedir()
-  const server = (platform === "win32" ? path.win32 : path.posix).join(o.root, "server.ts")
+  const p = platform === "win32" ? path.win32 : path.posix
+  // (following a branch: the store's current root behind a path that stays, the checkout its first clone and fallback)
+  const stored = !!o.updates && platform !== "win32"
+  const server = p.join(o.root, stored ? p.join("bin", "vaultite-server") : "server.ts")
   // Login shells set their own PATH; this one is for what the server runs itself (git, tailscale, the agents' CLIs).
   // (Linux: also where its package managers put CLIs, when they're there: snap, linuxbrew, bun, cargo, volta, npm's -g)
   const extra = platform === "linux" ? ["/snap/bin", "/home/linuxbrew/.linuxbrew/bin", ...[".bun/bin", ".cargo/bin", ".volta/bin", ".npm-global/bin"].map((d) => path.join(home, d))]
@@ -96,6 +100,7 @@ export function servicePlan(platform: string, o: ServiceOptions): ServicePlan {
   if (o.port) env.PORT = String(o.port)
   if (o.host) env.HOST = o.host
   if (o.updates) env.VAULTITE_UPDATES = o.updates
+  if (stored) env.VAULTITE_CODE_STORE = p.join(o.root, "data", platform === "darwin" ? "code.noindex" : "code") // (.noindex: Spotlight)
   if (platform === "win32") return windowsPlan(o, home, env)
   if (platform === "darwin") {
     const file = path.join(home, "Library", "LaunchAgents", `${LABEL}.plist`)

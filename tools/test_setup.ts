@@ -219,6 +219,13 @@ check("service: a systemd user unit on Linux, paths with spaces quoted, linger o
 check("service: % is escaped for systemd", SV.servicePlan("linux", { ...so, vault: "/v/100%" }).text.includes("VAULTITE_VAULT=/v/100%%"))
 check("service: --updates follows a branch, in the job's env (this machine's choice)", SV.servicePlan("darwin", { ...so, updates: "main" }).text.includes("<key>VAULTITE_UPDATES</key><string>main</string>") &&
   SV.servicePlan("linux", { ...so, updates: "main" }).text.includes('Environment="VAULTITE_UPDATES=main"') && !mac.text.includes("VAULTITE_UPDATES"))
+{
+  const m = SV.servicePlan("darwin", { ...so, updates: "main" }).text, l = SV.servicePlan("linux", { ...so, updates: "main" }).text
+  check("service: following a branch, it runs the code store's root through bin/vaultite-server, the store in its data", m.includes("<string>/srv/vault ite/bin/vaultite-server</string>") &&
+    m.includes("<key>VAULTITE_CODE_STORE</key><string>/srv/vault ite/data/code.noindex</string>") && l.includes('"/srv/vault ite/bin/vaultite-server"') &&
+    l.includes('Environment="VAULTITE_CODE_STORE=/srv/vault ite/data/code"') && !mac.text.includes("CODE_STORE") && mac.text.includes("/srv/vault ite/server.ts"), { m, l })
+  check("service: on Windows it stays in place (no store)", !SV.servicePlan("win32", { ...so, updates: "main", root: "C:\\src", node: "C:\\node.exe", vault: "C:\\v" }).text.includes("CODE_STORE"))
+}
 const win = SV.servicePlan("win32", { ...so, root: "C:\\src\\vault ite", node: "C:\\Program Files\\nodejs\\node.exe", vault: "C:\\Users\\Zoë\\My Vault" })
 check("service: on Windows a task at login running wscript's launcher, no time limit, restarted", win.more?.[0].text.includes("<LogonTrigger>") &&
   win.more[0].text.includes("<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>") && win.more[0].text.includes("<LogonType>InteractiveToken</LogonType>") &&

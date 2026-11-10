@@ -15,6 +15,9 @@ const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const DEFAULT_URL = "http://127.0.0.1:8793"
 /** How long a call the server never got is tried again: a server restarting into an update answers within seconds. */
 const RESTART_RETRY_MS = 60_000
+/** How long a server that refuses is waited for by what the app started (its terminals, agents, hooks: VAULTITE=1), so
+ *  its restart (an update, the app relaunching) isn't an error; elsewhere nothing up is said at once. */
+const COMING_BACK_MS = 30_000
 
 export type Any = any
 export type Obj = Record<string, Any>
@@ -168,6 +171,7 @@ export class Ctx {
         // Nothing listening: the next server that may be, and it's the one from then on (only then: a request that
         // failed on its way may have been done, and must not be done again elsewhere).
         const refused = (e as NodeJS.ErrnoException).code === "ECONNREFUSED"
+        if (refused && !this.next.length && this.comingBack()) { await new Promise((ok) => setTimeout(ok, 500)); continue }
         if (!this.next.length || !refused) { this.next = []; throw Object.assign(new CliError(this.down()), { refused }) }
         this.url = this.next.shift()!
       }
@@ -177,6 +181,21 @@ export class Ctx {
       try { out = JSON.parse(res.text) } catch { /* as text */ }
     }
     return { status: res.status, body: out }
+  }
+
+  /** When a refused call stops waiting for its server to come back (COMING_BACK_MS from the first refusal). */
+  private patience: number | null = null
+  private told = false
+  /** Whether a refused call waits for the server once more: the app's own processes, within COMING_BACK_MS. */
+  private comingBack() {
+    if (this.env.VAULTITE !== "1") return false
+    this.patience ??= Date.now() + COMING_BACK_MS
+    if (Date.now() >= this.patience) return false
+    if (!this.told && Date.now() >= this.patience - COMING_BACK_MS + 2000 && process.stderr.isTTY) {
+      this.told = true
+      process.stderr.write(`vau: waiting for Vaultite at ${this.url} to come back (restarting?)\n`)
+    }
+    return true
   }
 
   /** Who's calling, for the server's Activity: the CLI, the coding agent it runs under when its variables say so (Claude
@@ -324,11 +343,16 @@ with Tailscale Serve (\`tailscale serve --bg --https=8447 http://127.0.0.1:8793\
 it's installed, running and answering. uninstall stops it and removes the files.
 
 --updates <branch> has the server follow that branch of origin: every 3 minutes (vau update: now), a newer commit whose
-CI tests passed on this machine's OS (ci.yml's test job for it; another OS's failure is only said) is merged
-(fast-forward only, the checkout clean), installed and built, and the server restarts when its own code changed: never
-during an agent's call to the desktop app's browser, nor within a minute of its last one (vau sends a call that never
-reached the server again). A failure keeps the version before (vau errors says why). vau version shows what runs and
-what the updates are doing; the log, each change and why.
+CI tests passed on this machine's OS (ci.yml's test job for it; another OS's failure is only said) is taken. On macOS
+and Linux it's made into a read-only folder of its own (a code root, in the checkout's data/code.noindex or data/code,
+installed, built and its server booted once), and the job runs bin/vaultite-server, which starts the newest root that
+works (else the checkout): the server takes the new web app in place, or restarts onto the root when its own code
+changed. The checkout is then only where it came from: work in it as in any other. On Windows the checkout is
+fast-forwarded (it must be clean), installed and built in place. A restart is never during an agent's call to the
+desktop app's browser, nor within a minute of its last one (vau sends a call that never reached the server again). A
+failure keeps the version before (vau errors says why); a root whose server stops as it starts three times is never run
+again. vau version shows what runs and what the updates are doing; the log, each change and why. A service installed
+before code roots runs the checkout in place until it's installed again.
 
   vau service install --vault ~/Vault
   vau service install --vault ~/Vault --updates main

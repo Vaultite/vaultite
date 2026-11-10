@@ -2,6 +2,7 @@
 // and at this Mac), waits its grace (a ready one's 15 s hold) for "not now", then is told; island.ts draws it.
 import { powerMonitor, screen } from "electron"
 import { actOn, graceOver, graceWaits, HEARD_MS, holdOf, type Knock, type KnockAct, knockReply, over, pick, type Presence } from "../plugins/core/companion/knocks.ts"
+import { listen } from "./helperscope.ts"
 import { islandActs, islandReady, presenceAt, showIsland, spotNow } from "./island.ts"
 import type { OtherWindow, Rect, Spot } from "./islandlogic.ts"
 import type { WalkScene } from "../plugins/core/companion/walks.ts"
@@ -74,7 +75,7 @@ export function knockHost(h: KnockHost) {
       tick()
     },
   })
-  for (const e of ["display-added", "display-removed", "display-metrics-changed"] as const) screen.on(e as "display-added", () => { notches = null; tick() })
+  for (const e of ["display-added", "display-removed", "display-metrics-changed"]) listen(screen, e, () => { notches = null; tick() })
 }
 export function stopKnocks() {
   if (timer) clearTimeout(timer)

@@ -12,6 +12,7 @@ type Host = { send: (m: Msg) => void; close: (why: string, code?: number) => voi
 const pending = new Map<number, { ok: (v: unknown) => void; fail: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>()
 const handlers = new Map<string, (m: Msg) => void>()
 const listeners = new Set<(name: string, data: unknown) => void>()
+const comings = new Set<(how: "ipc" | "socket") => void>(), goings = new Set<(how: "ipc" | "socket") => void>()
 let next = 1
 let attached: Host | null = null
 /** Why the last app to attach was turned away (another version), till one attaches. */
@@ -42,6 +43,7 @@ function heard(m: Msg) {
   if (typeof m.error === "string") p.fail(new Error(m.error)); else p.ok(m.value)
 }
 process.on("message", heard)
+process.on("disconnect", () => { if (process.env.VAULTITE_DESKTOP === "1") for (const fn of goings) fn("ipc") })
 // (a server the app forked says its protocol first: one from another code root than the app's may speak another)
 forked()?.send({ type: "desktop:hello", protocol: DESKTOP_PROTOCOL })
 
@@ -64,7 +66,8 @@ export function attach(ws: WebSocket) {
     refused = ""
     ws.send(JSON.stringify({ type: "welcome", protocol: DESKTOP_PROTOCOL }))
     ws.on("message", (d) => { try { heard(JSON.parse(String(d))) } catch { /* not JSON */ } })
-    ws.on("close", () => { if (attached === h) { attached = null; gone("the desktop app detached") } })
+    ws.on("close", () => { if (attached === h) { attached = null; gone("the desktop app detached"); for (const fn of goings) fn("socket") } })
+    for (const fn of comings) fn("socket")
   })
 }
 
@@ -95,4 +98,10 @@ onHostMessage("desktop:event", (m) => {
 export function onDesktopEvent(fn: (name: string, data: unknown) => void): () => void {
   listeners.add(fn)
   return () => { listeners.delete(fn) }
+}
+
+/** `came` hears an app attach, `went` the app that forked this server go (ipc) or an attached one's socket close. */
+export function onHost(came: (how: "ipc" | "socket") => void, went: (how: "ipc" | "socket") => void) {
+  comings.add(came)
+  goings.add(went)
 }

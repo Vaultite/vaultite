@@ -5,6 +5,7 @@ import path from "node:path"
 import { besidePointer, grownAt, panelAt, pointerBox, type Point, reaching, type Rect, type Scene, sceneFor, splitScene } from "./helperlogic.ts"
 import { drawingFor, type Drawing, type DrawAct, offered } from "./drawing.ts"
 import { overlayWindow, takesPointer } from "./overlaywin.ts"
+import { listen, onFree } from "./helperscope.ts"
 import { rectOf, spots } from "../plugins/core/companion/screenmarks.ts"
 
 /** What the user does to it: clicks a bubble (its conversation opens by its cursor, `at`: the screen's), stops dictating. */
@@ -82,7 +83,8 @@ export function showOverlay(base: string | null, s?: Scene) {
   if (next !== url) { url = next; for (const w of wins.values()) void w.loadURL(url).catch(() => {}) }
   if (!watching) {
     watching = true
-    for (const e of ["display-added", "display-removed", "display-metrics-changed"] as const) screen.on(e as "display-added", fit)
+    for (const e of ["display-added", "display-removed", "display-metrics-changed"]) listen(screen, e, fit)
+    onFree(() => { watching = false })
   }
   if (wins.size !== screen.getAllDisplays().length) fit(); else push()
 }
@@ -171,22 +173,22 @@ export function drawingActs(fn: (a: DrawAct) => void) { onDrawAct = fn }
 const mine = (e: IpcMainEvent) => [...wins.values()].find((w) => w.webContents === e.sender)
 export function overlayActs(a: OverlayActs) {
   acts = a
-  ipcMain.on("screen:open", (e, m: { name?: unknown; x?: unknown; y?: unknown }) => {
+  listen(ipcMain, "screen:open", (e, m: { name?: unknown; x?: unknown; y?: unknown }) => {
     const w = mine(e)
     if (!w || typeof m?.name !== "string" || typeof m.x !== "number" || typeof m.y !== "number") return
     const b = w.getBounds()
     acts?.open(m.name, { x: b.x + m.x, y: b.y + m.y })
   })
-  ipcMain.on("screen:stop", (e) => { if (mine(e)) acts?.stop() })
-  ipcMain.on("screen:region", (e, r: unknown) => {
+  listen(ipcMain, "screen:stop", (e) => { if (mine(e)) acts?.stop() })
+  listen(ipcMain, "screen:region", (e, r: unknown) => {
     const w = mine(e), o = (r ?? {}) as Record<string, unknown>, v = [o.x, o.y, o.width, o.height]
     if (!w || !v.every((n) => typeof n === "number" && Number.isFinite(n))) return
     const b = w.getBounds()
     acts?.region?.({ x: Math.round(b.x + Number(o.x)), y: Math.round(b.y + Number(o.y)), width: Math.round(Number(o.width)), height: Math.round(Number(o.height)) })
   })
-  ipcMain.on("screen:region-act", (e, what: unknown) => { if (mine(e) && typeof what === "string") acts?.regionAct?.(what) })
+  listen(ipcMain, "screen:region-act", (e, what: unknown) => { if (mine(e) && typeof what === "string") acts?.regionAct?.(what) })
   // (where the companion's pilot is headed: its box goes with it)
-  ipcMain.on("screen:pilot", (e, to: unknown) => {
+  listen(ipcMain, "screen:pilot", (e, to: unknown) => {
     const w = mine(e)
     if (!w) return
     const b = w.getBounds()
@@ -194,7 +196,7 @@ export function overlayActs(a: OverlayActs) {
   })
   // (the pen the display with the drawing gives its cursor: every display's cursor follows it, or one would stay by
   // the pointer on another display while it draws on this one)
-  ipcMain.on("screen:pen", (e, s: { strokes?: unknown } | null) => {
+  listen(ipcMain, "screen:pen", (e, s: { strokes?: unknown } | null) => {
     const w = mine(e)
     if (!w || (s !== null && !Array.isArray(s?.strokes))) return
     const b = w.getBounds()
@@ -204,7 +206,7 @@ export function overlayActs(a: OverlayActs) {
       o.webContents.send("vaultite:pen", s && { ...s, strokes: (s.strokes as { pts: [number, number][] }[]).map((k) => ({ ...k, pts: k.pts.map(([x, y]) => [x + dx, y + dy]) })) })
     }
   })
-  ipcMain.on("screen:draw-act", (e, a: DrawAct) => {
+  listen(ipcMain, "screen:draw-act", (e, a: DrawAct) => {
     const d = a && typeof a === "object" ? [...layers.values()].find((l) => l.id === a.id) : undefined
     if (!mine(e) || !d) return
     const act = { ...a, id: d.id }
@@ -341,14 +343,14 @@ function travel(p: Point, now: number) {
 const ofPanel = (e: IpcMainEvent) => (panel && !panel.w.isDestroyed() && panel.w.webContents === e.sender ? panel : null)
 export function onPanel(a: PanelActs) {
   panelActs = a
-  ipcMain.on("panel:size", (e, h: unknown) => { const p = ofPanel(e); if (p && typeof h === "number" && h > 0 && Math.round(h) !== p.height) { p.height = Math.round(h); place() } })
-  ipcMain.on("panel:send", (e, text: unknown) => { const p = ofPanel(e); if (p && typeof text === "string" && text.trim()) { a.send(p.name, text.trim()) } })
-  ipcMain.on("panel:close", (e, esc: unknown) => { if (ofPanel(e)) closePanel(esc === true) })
-  ipcMain.on("panel:mic", (e) => { if (ofPanel(e)) a.mic() })
-  ipcMain.on("panel:play", (e) => { const p = ofPanel(e); if (p) a.play(p.name) })
-  ipcMain.on("panel:stop", (e) => { const p = ofPanel(e); if (p) a.stop(p.name) })
-  ipcMain.on("panel:not-call", (e) => { const p = ofPanel(e); if (p) a.notCall(p.name) })
-  ipcMain.on("panel:more", (e, m: { x?: unknown; y?: unknown }) => {
+  listen(ipcMain, "panel:size", (e, h: unknown) => { const p = ofPanel(e); if (p && typeof h === "number" && h > 0 && Math.round(h) !== p.height) { p.height = Math.round(h); place() } })
+  listen(ipcMain, "panel:send", (e, text: unknown) => { const p = ofPanel(e); if (p && typeof text === "string" && text.trim()) { a.send(p.name, text.trim()) } })
+  listen(ipcMain, "panel:close", (e, esc: unknown) => { if (ofPanel(e)) closePanel(esc === true) })
+  listen(ipcMain, "panel:mic", (e) => { if (ofPanel(e)) a.mic() })
+  listen(ipcMain, "panel:play", (e) => { const p = ofPanel(e); if (p) a.play(p.name) })
+  listen(ipcMain, "panel:stop", (e) => { const p = ofPanel(e); if (p) a.stop(p.name) })
+  listen(ipcMain, "panel:not-call", (e) => { const p = ofPanel(e); if (p) a.notCall(p.name) })
+  listen(ipcMain, "panel:more", (e, m: { x?: unknown; y?: unknown }) => {
     const p = ofPanel(e)
     if (!p || typeof m?.x !== "number" || typeof m.y !== "number") return
     // (its menu takes the keyboard a moment: no reason to close)

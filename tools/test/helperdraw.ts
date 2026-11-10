@@ -89,7 +89,7 @@ const helper = await import(at("helper.ts"))
 const hp: Record<string, unknown> = {}
 /** The vault window's page while it has the keyboard (null: another app's in front): what the helper sends it. */
 let focused: { isDestroyed: () => boolean; send: (ch: string, m: unknown) => void; got: unknown[] } | null = null
-await helper.startHelper({ home: () => ({ port, path: "/vault", name: "Vault" }), homeWindow, openHome() {}, focusedPage: () => focused, event() {}, prefs: () => hp, setPrefs: (x: object) => Object.assign(hp, x), quit() {}, icon: "" })
+await helper.startHelper({ dictation: await import(at("dictation.ts")), home: () => ({ port, path: "/vault", name: "Vault" }), homeWindow, openHome() {}, focusedPage: () => focused, event() {}, prefs: () => hp, setPrefs: (x: object) => Object.assign(hp, x), quit() {}, icon: "" })
 type MenuItem = { label?: string; sublabel?: string; type?: string; enabled?: boolean; click?: () => void }
 const H = (globalThis as unknown as { vaultiteHelper: { heard: (m: object) => void; presses: () => Record<string, unknown>[]; stub: (op: string, v: object) => void; scene: () => Scene | null; asked: () => Record<string, unknown>[]; badge: () => string
   spoken: () => Record<string, unknown>[]

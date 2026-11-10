@@ -8,8 +8,10 @@ export type Running = {
   ui?: string | null
   /** The server's code, and the web build it serves (a web-only update moves only that). */
   server?: { code: string; web: string } | null
-  /** The desktop app's main process (its menu-bar helper too). */
+  /** The desktop app's main process. */
   main?: string | null
+  /** Its menu-bar helper, reloaded apart from it (absent: the main process's commit; null: none runs). */
+  helper?: string | null
   /** The terminal and chat keepers: they outlive the app, and talk to it by a versioned protocol. */
   keepers?: { termd?: string | null; chatd?: string | null }
 }
@@ -28,12 +30,14 @@ export type Plan = {
   ui: "reload" | "none"
   server: "restart" | "adopt-web" | "none"
   main: "relaunch" | "none"
+  /** The helper onto the new root in place: only what it alone runs changed (a relaunch reloads it anyway). */
+  helper: "reload" | "none"
   /** Never restarted by an update: their protocol says what they can talk to. `stale`: those whose code changed. */
   keepers: "none"
   shell: "rebuild" | "none"
   stale: string[]
   /** Why each that does something does it. */
-  why: Partial<Record<"ui" | "server" | "main" | "shell" | "termd" | "chatd", string>>
+  why: Partial<Record<"ui" | "server" | "main" | "helper" | "shell" | "termd" | "chatd", string>>
 }
 
 /** What a plan does to each process, from the lightest to the heaviest. */
@@ -52,7 +56,7 @@ export function planUpdate(p: PlanInput): Plan {
     }
     return null
   }
-  const plan: Plan = { ui: "none", server: "none", main: "none", keepers: "none", shell: "none", stale: [], why }
+  const plan: Plan = { ui: "none", server: "none", main: "none", helper: "none", keepers: "none", shell: "none", stale: [], why }
 
   const { running: r } = p
   if (!p.shell.running || !p.shell.root || p.shell.running !== p.shell.root) {
@@ -60,8 +64,14 @@ export function planUpdate(p: PlanInput): Plan {
     why.shell = !p.shell.running || !p.shell.root ? "a shell fingerprint isn't known" : "the root needs another shell (its fingerprint differs)"
   }
   if (r.main) {
-    const w = plan.shell === "rebuild" ? `the shell is rebuilt: ${why.shell}` : reaches(r.main, ["desktop", "helper"])
+    const w = plan.shell === "rebuild" ? `the shell is rebuilt: ${why.shell}` : reaches(r.main, ["desktop"])
     if (w) { plan.main = "relaunch"; why.main = w }
+  }
+  // (what the helper shares with the main process is the main process's: changed, that's a relaunch above)
+  const helper = r.helper === undefined ? r.main : r.helper
+  if (helper && plan.main === "none") {
+    const w = reaches(helper, ["helper"])
+    if (w) { plan.helper = "reload"; why.helper = w }
   }
   if (r.server) {
     // (a new shell is a new Node too: the servers run on its binary)
