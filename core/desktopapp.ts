@@ -42,6 +42,8 @@ function heard(m: Msg) {
   if (typeof m.error === "string") p.fail(new Error(m.error)); else p.ok(m.value)
 }
 process.on("message", heard)
+// (a server the app forked says its protocol first: one from another code root than the app's may speak another)
+forked()?.send({ type: "desktop:hello", protocol: DESKTOP_PROTOCOL })
 
 function gone(why: string) {
   for (const [rid, p] of pending) { pending.delete(rid); clearTimeout(p.timer); p.fail(new Error(why)) }

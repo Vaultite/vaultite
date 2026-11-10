@@ -57,8 +57,6 @@ const { answers, claim, reclaim, servingKey } = await import("./core/serving.ts"
 const { attach, detach, onHostMessage } = await import("./core/desktopapp.ts")
 starting.mark("imports")
 
-const DIST = web.dist // built web app (npm run build)
-const ASSETS = path.join(DIST, "assets") // Vite names every file here by its content's hash
 const HOST = process.env.HOST || "127.0.0.1"
 const PORT = Number(process.env.PORT || 8793)
 process.env.PORT = String(PORT) // (what the plugins' names go by: Terminal's terminal server; unset, an app serves nothing)
@@ -156,6 +154,10 @@ async function switchTo(p: string) {
 
 // The desktop app's main process: files from outside the vault its window may open.
 onHostMessage("allow", (m) => allow(m.paths))
+// (its app's next code root's web build, when only that changed: served from now on, the pages told; never an attached app's)
+onHostMessage("adopt-web", (m) => {
+  if (DESKTOP && typeof m.dist === "string" && path.isAbsolute(m.dist) && fs.existsSync(path.join(m.dist, "index.html"))) web.adopt(m.dist)
+})
 // Going (the app gone, even if it crashed; a stop): the vault's own plugins stop first (onUnload), so what they run does.
 // (listening the whole time: signal-exit kills the process at once when it's the only listener left)
 let going = false
@@ -443,7 +445,7 @@ async function served(req: http.IncomingMessage, res: http.ServerResponse, url: 
   const slash = raw.indexOf("/")
   if (slash < 1 || slash === raw.length - 1) return false
   const prefix = decode(raw.slice(0, slash))
-  if (prefix === "api" || fs.existsSync(path.join(DIST, prefix))) return false
+  if (prefix === "api" || fs.existsSync(path.join(web.dist, prefix))) return false
   // (sandboxed pages ask for these with Origin "null": only the Host is checked, so a rebound name can't read the vault)
   const why = await foreign(req, false)
   if (why) { void send(res, 403, why, "text/plain; charset=utf-8"); return true }
@@ -536,6 +538,8 @@ async function improve() {
 /** The web app (web/dist). Its assets are named by content, so a browser keeps them for good; index.html is asked again
  *  each time (a 304 when unchanged), icons after an hour (each logo drawn asked again). Over the network they're compressed. */
 async function file(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
+  // (the built web app: a desktop app's next code root's, once it says so: adopt-web)
+  const DIST = web.dist, ASSETS = path.join(DIST, "assets") // (Vite names every file in assets by its content's hash)
   let p = path.normalize(path.join(DIST, decode(url.pathname)))
   if (p !== DIST && !p.startsWith(DIST + path.sep)) return send(res, 403, "Forbidden", "text/plain")
   let st: fs.Stats

@@ -11,10 +11,10 @@ const NONE: WebBuild = { entry: null, eager: [], stamp: null }
 const ENTRY = /<script type="module"[^>]*\ssrc="[^"]*\/([^"/]+\.js)"/
 const EAGER = /<(?:script|link)\b[^>]*?(?:src|href)="\.?\/?(assets\/[^"]+\.(?:js|css))"/g
 
-/** A build folder's: `read` its index.html (again only once it changed), `on` hears a new entry once the file held
- *  still a moment. Polled each `ms`: a rebuild writes the file again, which a watch on it can lose. */
-export function webBuilds(dist: string, ms = 1000) {
-  const index = path.join(dist, "index.html")
+/** A build folder's: `read` its index.html (again once changed), `on` hears a new entry once it held still (polled: a
+ *  watch can lose a rewrite). `adopt`: another folder's from now on (a code root's, plan.ts' adopt-web), told as new. */
+export function webBuilds(first: string, ms = 1000) {
+  let dist = first, index = path.join(dist, "index.html")
   let seen = "", built = NONE
   function read(): WebBuild {
     try {
@@ -49,7 +49,13 @@ export function webBuilds(dist: string, ms = 1000) {
       if (!subs.size) { fs.unwatchFile(index, changed); clearTimeout(settle) }
     }
   }
-  return { dist, read, on }
+  function adopt(to: string) {
+    if (path.resolve(to) === dist) return
+    if (subs.size) fs.unwatchFile(index, changed)
+    dist = path.resolve(to); index = path.join(dist, "index.html"); seen = ""
+    if (subs.size) { fs.watchFile(index, { interval: ms, persistent: false }, changed); changed() }
+  }
+  return { get dist() { return dist }, read, on, adopt }
 }
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))

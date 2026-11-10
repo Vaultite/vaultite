@@ -16,6 +16,7 @@ import { hookProblems, Hooks, scheduleOf } from "./hooks.ts"
 import type { Op } from "./ops.ts"
 import { type Digest, trustOf, type Trust } from "./trust.ts"
 import { official } from "./updates.ts"
+import { served } from "./webbuild.ts"
 import { type Item, readText, type Vault, writeAtomic } from "./vault.ts"
 
 export const DIR = ".vaultite/plugins"
@@ -139,7 +140,7 @@ registerHooks({
 /** The app's built stylesheet (web/dist), to tell which classes it has; "" before a build. */
 let appCss: { file: string; text: string } | null = null
 function builtCss() {
-  const dist = path.join(ROOT, "web", "dist")
+  const dist = served.dist
   let file = ""
   try { file = /href="\.\/assets\/([^"]+\.css)"/.exec(readText(path.join(dist, "index.html")))?.[1] ?? "" } catch { /* not built */ }
   if (appCss?.file !== file) { try { appCss = { file, text: file ? readText(path.join(dist, "assets", file)) : "" } } catch { appCss = { file, text: "" } } }
