@@ -3744,8 +3744,9 @@ await section("screen drawings", async () => {
     sm.bestFound(spotsFound, [{ x: 820, y: 90, w: 0, h: 0 }])?.x === 800 && sm.bestFound(spotsFound, [{ x: 120, y: 90, w: 0, h: 0 }])?.x === 100 && sm.bestFound(spotsFound)?.x === 100 &&
     sm.bestFound([...spotsFound, { x: 0, y: 0, w: 5, h: 5, q: 3 }], [{ x: 820, y: 90, w: 0, h: 0 }])?.q === 3 && sm.bestFound([]) === null)
   const near = [{ id: "a1", label: "Address and search bar" }, { id: "a2", label: "Send" }, { id: "a3", label: "Send later" }, { id: "a4", label: "New tab" }]
-  check("screen drawings: words name the element saying them: the same words first, then the most like them",
-    sm.byLabel(near, "send")?.id === "a2" && sm.byLabel(near, "Send later")?.id === "a3" && sm.byLabel(near, "address bar") === null && sm.byLabel(near, "the New tab button")?.id === "a4" && sm.byLabel(near, "") === null)
+  check("screen drawings: words name the element saying them all, in order: the same words first; never one saying only some",
+    sm.byLabel(near, "send")?.id === "a2" && sm.byLabel(near, "Send later")?.id === "a3" && sm.byLabel(near, "address bar") === null && sm.byLabel(near, "and search")?.id === "a1" &&
+    sm.byLabel(near, "the New tab button") === null && sm.byLabel(near, "sen") === null && sm.byLabel([...near, { id: "a5", label: "Agents" }], "4:24 PM · Agents") === null && sm.byLabel(near, "") === null)
   const tg: Any = await import(pathToFileURL(path.join(ROOT, "plugins/core/companion/tags.ts")).href)
   const { said, tags } = tg.parseTags('Here [ring "Morning report"] and there [arrow a1 "Send"], with [ring a2 "Share"].')
   check("screen drawings: a mark tag with words alone marks the thing saying them (no label repeating them); an arrow's end can be words",

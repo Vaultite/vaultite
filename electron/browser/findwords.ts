@@ -16,22 +16,36 @@ export function findWords(text: string) {
   for (const el of document.querySelectorAll("[aria-label], [title], img[alt], input[placeholder]")) {
     if ([el.getAttribute("aria-label"), el.getAttribute("title"), el.getAttribute("alt"), el.getAttribute("placeholder")].some((n) => n && norm(n) === want)) add(el, el.getBoundingClientRect(), 3)
   }
-  let flat = "", block: Element | null = null
-  const at: [Text, number][] = [], walk = document.createTreeWalker(document.body ?? document.documentElement, NodeFilter.SHOW_TEXT)
+  // (each character's block: words across blocks are found only along one row, each just after the one before)
+  let flat = "", block: Element | null = null, nb = 0
+  const at: [Text, number][] = [], blocks: number[] = [], walk = document.createTreeWalker(document.body ?? document.documentElement, NodeFilter.SHOW_TEXT)
   for (let n = walk.nextNode() as Text | null; n; n = walk.nextNode() as Text | null) {
     const v = n.nodeValue ?? "", p = n.parentElement
     if (!v.trim() || !p || p.closest("script, style, noscript, template")) continue
     const b = p.closest("p, div, li, dt, dd, td, th, tr, h1, h2, h3, h4, h5, h6, pre, blockquote, section, article, header, footer, nav, aside, main, figcaption, label, button, option, summary")
-    if (b !== block && flat && !flat.endsWith(" ")) { flat += " "; at.push([n, 0]) }
+    if (b !== block) { nb++; if (flat && !flat.endsWith(" ")) { flat += " "; at.push([n, 0]); blocks.push(nb) } }
     block = b
     for (let i = 0; i < v.length; i++) {
       const c = v[i].toLowerCase()
-      if (/[\p{L}\p{N}]/u.test(c)) { flat += c[0]; at.push([n, i]) } else if (flat && !flat.endsWith(" ")) { flat += " "; at.push([n, i]) }
+      if (/[\p{L}\p{N}]/u.test(c)) { flat += c[0]; at.push([n, i]); blocks.push(nb) } else if (flat && !flat.endsWith(" ")) { flat += " "; at.push([n, i]); blocks.push(nb) }
     }
+  }
+  const letter = ([n, i]: [Text, number]) => { const r = document.createRange(); r.setStart(n, i); r.setEnd(n, Math.min(i + 1, n.length)); return r.getBoundingClientRect() }
+  const oneRow = (i: number, end: number) => {
+    for (let k = i + 1; k <= end; k++) {
+      if (blocks[k] === blocks[k - 1]) continue
+      let a = k - 1, b = k
+      while (a > i && flat[a] === " ") a--
+      while (b < end && flat[b] === " ") b++
+      const x = letter(at[a]), y = letter(at[b]), h = Math.max(x.height, y.height, 1)
+      if (Math.min(x.bottom, y.bottom) - Math.max(x.top, y.top) < Math.min(x.height, y.height) / 2 || y.left < x.left || y.left - x.right > 4 * h) return false
+    }
+    return true
   }
   for (let i = flat.indexOf(want), k = 0; i >= 0 && k < 40; i = flat.indexOf(want, i + 1), k++) {
     const whole = (i === 0 || flat[i - 1] === " ") && (i + want.length === flat.length || flat[i + want.length] === " ")
     if (!whole && want.length < 6) continue
+    if (!oneRow(i, i + want.length - 1)) continue
     const range = document.createRange()
     range.setStart(at[i][0], at[i][1])
     range.setEnd(at[i + want.length - 1][0], at[i + want.length - 1][1] + 1)

@@ -63,7 +63,7 @@ export function screenDrawings(plugin: Plugin, o: {
     if (missing.length) throw new OpError(`not on the user's screen: ${missing.join(", ")} (vau tabs lists the panes)`, 409)
     await Promise.all(findsOf(ms).map(async (text) => { if (places[`find:${text}`]) return; const r = await o.find(agent, text).catch(() => null); if (r) places[`find:${text}`] = r }))
     const unfound = findsOf(ms).filter((t) => !places[`find:${t}`])
-    if (unfound.length) throw new OpError(`nothing on the user's screen says ${unfound.map((t) => JSON.stringify(t)).join(", ")} now, so nothing was drawn and they saw no mark: use the words exactly as it shows them (a few will do), an element by id, or the area's box; don't go on as if they saw it`, 409)
+    if (unfound.length) throw new OpError(`nothing on the user's screen says ${unfound.map((t) => JSON.stringify(t)).join(", ")} now (all those words, in order), so nothing was drawn and they saw no mark: aim again by an element's id or by words it does show, exactly as it shows them (a few in a row will do), never a guessed box; don't go on as if they saw it`, 409)
     // (a guessed pixel: round what they drew there, or the element it's on)
     ms = snapMarks(ms, places, o.drawn(agent))
     // (only marks that land on a display are drawn, and said to be; a card's picture or video found, or said why not)

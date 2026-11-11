@@ -341,12 +341,12 @@ export function unshown(marks: Mark[], places: Record<string, Rect> = {}, displa
 
 /** Words as found: a key's glyph by its name (macOS labels the fn key 🌐, which people call fn or globe). */
 const norm = (t: string) => t.toLowerCase().replace(/🌐/gu, " fn ").replace(/\bglobe\b/g, "fn").replace(/[^\p{L}\p{N}]+/gu, " ").trim()
-/** The element of `els` saying `text`: the same words, else the most like them (its label in them, or them in it). */
+/** The element of `els` saying `text`: the same words, else one saying them all whole and in order (first at its
+ *  start); never one saying only some of them ("Agents" isn't "4:24 PM · Agents"). */
 export function byLabel<T extends { label: string }>(els: T[], text: string): T | null {
   const want = norm(text)
   if (!want) return null
-  return els.find((e) => norm(e.label) === want) ?? els.find((e) => norm(e.label).startsWith(want)) ?? els.find((e) => norm(e.label).includes(want))
-    ?? els.find((e) => norm(e.label).length >= 3 && want.includes(norm(e.label))) ?? null
+  return els.find((e) => norm(e.label) === want) ?? els.find((e) => norm(e.label).startsWith(`${want} `)) ?? els.find((e) => ` ${norm(e.label)} `.includes(` ${want} `)) ?? null
 }
 
 /** Words found on the screen, and how well (3: an element named them; 2: their whole words; 1: inside longer words). */

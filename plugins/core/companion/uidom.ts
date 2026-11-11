@@ -2,8 +2,11 @@
 // screen reader reads), so the companion resolves and checks the app's UI as it does another app's Accessibility.
 import { actionable, check, resolve, type Action, type Condition, type Inside, type Role, type State, type Target, type Thing, type Tree, type Verdict, type View } from "./uimodel.ts"
 
-/** What the companion draws or says itself: never a thing on screen to act on. */
-const OWN = ".companion-overlay, [data-companion-bubble], .companion-cursor, [data-companion-talk], [data-companion-conversation]"
+/** What the companion draws over the screen (its overlay, bubbles, cursor): never what's there, nor over it. */
+export const DRAWN = ".companion-overlay, [data-companion-bubble], .companion-cursor"
+/** What the companion draws or says itself, never a thing on screen: that, and its talk's words (asks and answers echo
+ *  the screen's) and line to ask. The rest of its talk (a turn's time and place, its jobs) is the app's UI like any. */
+export const OWN = `${DRAWN}, [data-companion-own], [data-ask-line]`
 const SKIP = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "SVG", "svg", "PATH", "path"])
 const INPUT: Record<string, Role> = { checkbox: "checkbox", radio: "radio", range: "slider", search: "searchbox", button: "button", submit: "button", reset: "button", number: "spinbutton" }
 /** Roles whose name is their text (a button's words), the rest named only by a label. */

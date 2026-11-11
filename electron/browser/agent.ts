@@ -7,7 +7,6 @@ import path from "node:path"
 import { allPages, appWindows, busyWhen, cdp, eachPage, eachSession, engineBusy, handle, holdPage, keepPage, localUrl, mayOpen, onRequest, openInBackground, setAgentOwned, setAgentActing, tell, type EngineWindow, type EnginePage } from "./engine.ts"
 import { docOf, exposed, filling, heldNear, markRan, scrub, scrubDeep, wasFilled } from "./pagesecrets.ts"
 import { changes, mainLines } from "./axlines.ts"
-import { findWords } from "./findwords.ts"
 import { agentBusy } from "./agentbusy.ts"
 
 /** A step's small picture, for the replay's filmstrip (agentruns.ts reads them). */
@@ -1057,7 +1056,7 @@ serve("agent:at", async (_win, tab, x, y) => {
 })
 // (the companion's marks: where the page shows words now, in its viewport's CSS px)
 serve("agent:find", async (_win, tab, words) => {
-  const p = pageFor(tab, "read"), want = String(words ?? "").slice(0, 200)
+  const p = pageFor(tab, "read"), want = String(words ?? "").slice(0, 200), { findWords } = await import("./findwords.ts")
   const found = await p.wc.executeJavaScriptInIsolatedWorld(1011, [{ code: `(${findWords})(${JSON.stringify(want)})` }]).catch(() => []) as unknown
   return { tab: p.id, zoom: p.wc.getZoomFactor(), found: Array.isArray(found) ? found.slice(0, 20) : [] }
 })

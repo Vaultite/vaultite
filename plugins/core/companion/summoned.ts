@@ -199,7 +199,7 @@ export function summonedLane(o: {
     const a = o.acts(), mark = markOf(t, beatOf(said, t.offset)), of = asks
     const failed = (r: unknown) => {
       const x = r as { isError?: boolean; content?: { text?: string }[] } | null, why = x?.isError ? x.content?.map((c) => c.text ?? "").join(" ") ?? "" : null
-      if (why !== null) missed.push(`your [${t.kind}${"find" in t.at ? ` "${t.at.find}"` : ""}] ${t.kind === "point" ? "pointed nowhere" : "wasn't drawn"}: ${/nothing on the user's screen says/.test(why) ? "nothing on their screen says that now" : why.slice(0, 160)}${of === asks && shown ? " (what else you drew for it did show)" : ""}`)
+      if (why !== null) missed.push(`your [${t.kind}${"find" in t.at ? ` "${t.at.find}"` : ""}] ${t.kind === "point" ? "pointed nowhere" : "wasn't drawn"}: ${/nothing on the user's screen says/.test(why) ? "nothing on their screen says those words, all of them in order, now (aim by an element's id or words it does show, never a guessed box)" : why.slice(0, 160)}${of === asks && shown ? " (what else you drew for it did show)" : ""}`)
     }
     if (t.kind === "point") return ("find" in t.at ? o.found(t.at.find).then((at) => a.look.run(at ?? placeOf(t.at))) : a.look.run(onScreen("look", placeOf(t.at)))).then(failed)
     return mark ? a.draw.run(onScreen("draw", { marks: [mark] })).then((r) => { failed(r); drew(r, of) }) : Promise.resolve()

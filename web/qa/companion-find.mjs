@@ -77,8 +77,14 @@ const put = await page.evaluate(() => {
   add("left:500px;top:560px", "Lighthouse beam 8")
   add("left:490px;top:550px;width:200px;height:40px;z-index:100000", "")
   add("left:40px;top:620px", "Try agai tomorrow again")
+  // (a talk's tag, a time and a place, side by side in a row, on the companion's page; the place alone in a panel)
+  const tag = add("left:40px;top:680px", "<div data-companion-conversation><div style='display:flex;gap:6px'><div>4:24 PM</div><div>·</div><div>Lantern</div></div></div>")
+  const alone = add("left:1100px;top:680px", "<div>Lantern</div>")
+  add("left:40px;top:730px", "<div>Every lamp</div><div>at dusk</div>")
+  add("left:500px;top:730px", "<div data-companion-own>Quiet harbor 12</div>")
+  add("left:40px;top:790px", "<div>it ends with Cedar</div>"); add("left:700px;top:790px", "<div>Ridge starts here</div>")
   const ox = window.screenX, oy = window.screenY + Math.max(0, window.outerHeight - window.innerHeight), at = (e) => { const b = e.getBoundingClientRect(); return { x: Math.round(ox + b.left), y: Math.round(oy + b.top) } }
-  return { left: at(left), right: at(right) }
+  return { left: at(left), right: at(right), tag: at(tag), alone: at(alone) }
 })
 const findAt = async (words, sx, sy) => {
   helper.send(JSON.stringify({ t: "moment", kind: "ask", agent: "Claude", text: "this one", ui, sx, sy }))
@@ -91,6 +97,14 @@ check("words split by styling are found whole; of two places saying them, the on
   Math.abs((nearRight.at?.x ?? -99) - put.right.x) <= 2 && Math.abs((nearLeft.at?.x ?? -99) - put.left.x) <= 2, { nearRight, nearLeft, put })
 const hidden = await findAt("Lighthouse beam 7", 520, 510), covered = await findAt("Lighthouse beam 8", 520, 570), inside = await findAt("gai", 60, 630)
 check("words hidden, under something or only inside longer words aren't found", hidden.res.status === 409 && covered.res.status === 409 && inside.res.status === 409, { hidden, covered, inside })
+// (the tag's words across its row's elements, on the companion's page, though the pointer is by "Lantern" alone)
+const tagged = await findAt("4:24 PM · Lantern", put.alone.x + 10, put.alone.y + 5), missing = await findAt("9:31 PM · Lantern", put.alone.x + 10, put.alone.y + 5)
+check("words across a row's elements are found whole, on the companion's page too; never on one of them elsewhere, by the pointer",
+  tagged.res.status === 200 && Math.abs((tagged.at?.x ?? -99) - put.tag.x) <= 2 && tagged.at.w > 60, { tagged, put })
+check("words not all shown in a row aren't drawn, though one of them is by the pointer, and it says so",
+  missing.res.status === 409 && !missing.at && /nothing on the user's screen says "9:31 PM · Lantern"/.test(missing.res.error ?? ""), missing)
+const stacked = await findAt("lamp at dusk", 60, 740), own = await findAt("Quiet harbor 12", 520, 740), apart = await findAt("Cedar Ridge", 300, 800)
+check("words split across rows, across panels far apart, or in the companion's talk aren't found", stacked.res.status === 409 && own.res.status === 409 && apart.res.status === 409, { stacked, own, apart })
 await page.evaluate(() => window.qaFind?.forEach((e) => e.remove()))
 
 // (a web page's own finder, electron/browser/findwords.ts, run as agent:find runs it: in the page)
@@ -98,11 +112,14 @@ const { findWords } = await import("../../electron/browser/findwords.ts")
 const site = await ctx.newPage()
 await site.setContent(`<body style="font:16px sans-serif;margin:0"><p style="position:absolute;left:20px;top:40px">No model, <em>no internet</em>. Your vault changes only when you write in it.</p>
   <p style="position:absolute;left:20px;top:200px;visibility:hidden">Use AI</p><button aria-label="Use AI" style="position:absolute;left:400px;top:200px;width:40px;height:30px">🤖</button>
-  <p style="position:absolute;left:20px;top:300px">Again and again</p></body>`)
+  <p style="position:absolute;left:20px;top:300px">Again and again</p>
+  <div style="position:absolute;left:20px;top:400px;display:flex;gap:6px"><div>4:24 PM</div><div>·</div><div>Lantern</div></div>
+  <div style="position:absolute;left:20px;top:440px"><div>Every lamp</div><div>at dusk</div></div></body>`)
 const inPage = (words) => site.evaluate(`(${findWords})(${JSON.stringify(words)})`)
-const [line, label, part] = await Promise.all([inPage("No model, no internet. Your vault changes only when you write in it."), inPage("Use AI"), inPage("ai")])
-check("a web page's words are found there whole, across its styling; an element its label names; hidden or inside words, not",
-  line.length === 1 && line[0].q === 2 && Math.abs(line[0].x - 20) <= 2 && label.length === 1 && label[0].q === 3 && Math.abs(label[0].x - 400) <= 2 && part.length === 0, { line, label, part })
+const [line, label, part, row, rows] = await Promise.all([inPage("No model, no internet. Your vault changes only when you write in it."), inPage("Use AI"), inPage("ai"), inPage("4:24 PM · Lantern"), inPage("lamp at dusk")])
+check("a web page's words are found there whole, across its styling and a row's elements; an element its label names; hidden, inside words or across rows, not",
+  line.length === 1 && line[0].q === 2 && Math.abs(line[0].x - 20) <= 2 && label.length === 1 && label[0].q === 3 && Math.abs(label[0].x - 400) <= 2 && part.length === 0 &&
+  row.length === 1 && Math.abs(row[0].x - 20) <= 2 && rows.length === 0, { line, label, part, row, rows })
 await site.close()
 
 await op("companion.clear")

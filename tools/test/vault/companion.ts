@@ -989,6 +989,14 @@ export default async ($: VaultTest) => {
         !asked.some((a) => a[0] === "agent:find" && a[1] === 3), [st3, r3, right, left, asked])
       ;[st3, r3] = await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: { find: "Nowhere at all" } }] })
       check("companion: words nothing shows draw nothing, and it says they saw no mark", st3 === 409 && /nothing on the user's screen says "Nowhere at all".*saw no mark/.test(r3.error), r3)
+      // (over Vaultite's window, a panel saying one of the words by their pointer: a mark by words lands only where all of them are)
+      c.screenMoment({ kind: "ask", text: "what are these tags?", pane: "p1", sx: 900, sy: 400, near: [{ id: "a3", role: "group", label: "Agents", frame: { x: 1052, y: 65, width: 269, height: 416 } }] })
+      ;[st3, r3] = await api("POST", "ops/companion.draw", { marks: [{ type: "underline", at: { find: "4:24 PM · Agents" } }] })
+      const partly = last()?.drawing?.places?.["find:4:24 PM · Agents"]
+      check("companion: words only partly said by an element near them (Agents of 4:24 PM · Agents) draw nothing, and it says to aim by id or words shown",
+        st3 === 409 && !partly && /nothing on the user's screen says "4:24 PM · Agents".*all those words.*element's id.*never a guessed box/.test(r3.error), [st3, r3, partly])
+      ;[st3] = await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: { find: "Agents" } }] })
+      check("companion: words an element near them says whole land on it", st3 === 200 && last()?.drawing?.places?.["find:Agents"]?.x === 1052, last()?.drawing?.places)
     } finally { c.plugin.desktop = wasDesktop; await api("POST", "ops/companion.clear", {}) }
     ;[st3] = await api("POST", "ops/companion.save-drawing", {})
     check("companion: nothing up, nothing to keep", st3 === 404)

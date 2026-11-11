@@ -93,7 +93,7 @@ export function Turn({ e, name, tint = "var(--orange)", compact }: { e: Exchange
   return (
     <div className={cn("flex flex-col", compact ? "gap-1" : "gap-1.5")} data-companion-turn>
       <div className="flex flex-col items-end gap-0.5">
-        <div className={cn("bg-foreground/[0.06] whitespace-pre-wrap select-text", words, compact ? "max-w-[88%] rounded-[12px] rounded-br-[4px] px-2.5 py-1.5" : "max-w-[85%] rounded-[14px] rounded-br-[4px] px-3 py-2")}>{e.text || (e.kind === "point" ? "Look at this" : "")}</div>
+        <div data-companion-own className={cn("bg-foreground/[0.06] whitespace-pre-wrap select-text", words, compact ? "max-w-[88%] rounded-[12px] rounded-br-[4px] px-2.5 py-1.5" : "max-w-[85%] rounded-[14px] rounded-br-[4px] px-3 py-2")}>{e.text || (e.kind === "point" ? "Look at this" : "")}</div>
         <div className={cn("flex max-w-full min-w-0 items-center gap-1 text-muted-foreground", meta)} data-tip={fmtStamp(e.t)}>
           {e.voice && <Mic className="size-3 shrink-0" aria-label="Said" />}<span className={cn(compact && "truncate")}>{time(e.t)}{e.where ? ` · ${e.where}` : ""}</span>
         </div>
@@ -101,7 +101,7 @@ export function Turn({ e, name, tint = "var(--orange)", compact }: { e: Exchange
       <div className={cn("flex gap-2", compact ? "max-w-[92%]" : "max-w-[85%]")}>
         <Arrow tint={tint} size={compact ? 14 : 16} className={cn("shrink-0", compact ? "mt-[2px]" : "mt-[3px]")} aria-label={name} />
         <div className="min-w-0 flex-1">
-          {e.said.length ? <div className={cn("whitespace-pre-wrap select-text", words)}>{e.said.join("\n\n")}</div>
+          {e.said.length ? <div data-companion-own className={cn("whitespace-pre-wrap select-text", words)}>{e.said.join("\n\n")}</div>
             : <div className={cn("text-muted-foreground", words, waiting && "animate-pulse")}>{did.length ? "" : waiting ? "Thinking…" : "Silence"}</div>}
           <div className={cn("mt-0.5 flex flex-wrap items-center gap-x-1.5 text-muted-foreground", meta)}>
             {did.length > 0 && <span>{did.join(", ")}</span>}
@@ -130,7 +130,7 @@ function Details({ e }: { e: Exchange }) {
   }, [e.press?.id, e.shot])
   const steps = e.press?.steps ?? []
   return (
-    <div className="mt-2 flex flex-col gap-2 rounded-[10px] border border-border p-3" data-companion-details>
+    <div className="mt-2 flex flex-col gap-2 rounded-[10px] border border-border p-3" data-companion-details data-companion-own>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[13px]">
         {e.word !== undefined && <><dt className="text-muted-foreground">First word</dt><dd className="tabular-nums">{secs(e.word)} after the ask</dd></>}
         {e.total !== undefined && <><dt className="text-muted-foreground">Done</dt><dd className="tabular-nums">{secs(e.total)} after the ask</dd></>}

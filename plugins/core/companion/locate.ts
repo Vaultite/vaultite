@@ -1,5 +1,6 @@
 // Where the app's places are on the screen, for a drawing over it (the server's `locate`): a pane, the app's UI by its
 // data-ui id, words the window shows. Screen points, as the window's own position, its page's CSS px and its zoom say.
+import { DRAWN, OWN } from "./uidom.ts"
 type Rect = { x: number; y: number; w: number; h: number; q?: number }
 type Sized = { interfaceSize?: { get: () => Promise<number>; on: (fn: (zoom: number) => void) => void } }
 /** The desktop app's interface size (its whole-window zoom): a CSS px is this many screen points. */
@@ -51,23 +52,42 @@ export function screenOf(pane: HTMLElement): Screen | null {
   return { r, lines, rowH: r.height / Math.max(1, lines.length), cw: host.terminalCell?.()?.width || 8 }
 }
 
-/** What the companion draws or says itself (its overlay, its bubbles, its talk with them): never where words are found. */
-const OWN = ".companion-overlay, [data-companion-bubble], .companion-cursor, [data-companion-talk], [data-companion-conversation]"
 const shown = (r: { width: number; height: number; bottom: number; right: number; top: number; left: number }) => r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth
 /** Whether `el` shows at `r` now: not hidden (a pane's kept tab, a closed fold) nor under something (a web page's view
  *  over a pane, a sheet), the companion's own drawing aside. */
 export function onTop(el: Element, r: { left: number; top: number; width: number; height: number }) {
   if (!el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) return false
   const x = Math.min(innerWidth - 1, Math.max(0, r.left + Math.min(r.width / 2, 12))), y = Math.min(innerHeight - 1, Math.max(0, r.top + r.height / 2))
-  const top = document.elementsFromPoint(x, y).find((e) => !e.closest(OWN))
+  const top = document.elementsFromPoint(x, y).find((e) => !e.closest(DRAWN))
   return !!top && (el.contains(top) || top.contains(el))
 }
 /** Words as they're compared: lower case, anything but letters and digits one space. */
 export const normWords = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()
 const BLOCK = "p, div, li, dt, dd, td, th, tr, h1, h2, h3, h4, h5, h6, pre, blockquote, section, article, header, footer, nav, aside, main, figcaption, label, button, option, summary, .cm-line"
 
-/** Where the window shows `text` now (CSS px), how well (3: an element named it, a button's label or tip; 2: its whole
- *  words in the text, across a line's styled parts; 1: inside longer words), nearest `near` of the best: shown, on top. */
+/** A letter's box on the screen (CSS px). */
+function letterBox([n, i]: [Text, number]) {
+  const r = document.createRange()
+  r.setStart(n, i)
+  r.setEnd(n, Math.min(i + 1, n.length))
+  return r.getBoundingClientRect()
+}
+/** Whether the words `flat` has from `i` to `end` are read together: in one block (a paragraph's lines), or from block
+ *  to block along one row, each just after the one before (a time, a dot, a place), never a pane's end and the next's. */
+function oneRow(flat: string, at: [Text, number][], blocks: number[], i: number, end: number) {
+  for (let k = i + 1; k <= end; k++) {
+    if (blocks[k] === blocks[k - 1]) continue
+    let a = k - 1, b = k
+    while (a > i && flat[a] === " ") a--
+    while (b < end && flat[b] === " ") b++
+    const x = letterBox(at[a]), y = letterBox(at[b]), h = Math.max(x.height, y.height, 1)
+    if (Math.min(x.bottom, y.bottom) - Math.max(x.top, y.top) < Math.min(x.height, y.height) / 2 || y.left < x.left || y.left - x.right > 4 * h) return false
+  }
+  return true
+}
+
+/** Where the window shows all of `text`'s words, in order (CSS px), how well (3: an element named it; 2: its whole words,
+ *  across styled parts or a row's elements; 1: inside longer words), nearest `near` of the best: shown, on top. */
 export function findText(text: string, near?: { x: number; y: number }): { r: DOMRect; q: number } | null {
   const want = normWords(text)
   if (!want) return null
@@ -78,25 +98,27 @@ export function findText(text: string, near?: { x: number; y: number }): { r: DO
     const r = el.getBoundingClientRect()
     if (shown(r) && onTop(el, r)) found.push({ r, q: 3 })
   }
-  // (the text as one string of words, each character back to its node, so words split by styling are found whole)
+  // (the text as one string of words, each character back to its node and its block, so words split by styling are
+  // found whole, and across blocks only along one row)
   let flat = ""
-  const at: [Text, number][] = []
-  let block: Element | null = null
+  const at: [Text, number][] = [], blocks: number[] = []
+  let block: Element | null = null, nb = 0
   const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
   for (let n = walk.nextNode() as Text | null; n; n = walk.nextNode() as Text | null) {
     const v = n.nodeValue ?? "", p = n.parentElement
     if (!v.trim() || !p || p.closest("script, style, noscript, template") || p.closest(OWN)) continue
     const b = p.closest(BLOCK)
-    if (b !== block && flat && !flat.endsWith(" ")) { flat += " "; at.push([n, 0]) }
+    if (b !== block) { nb++; if (flat && !flat.endsWith(" ")) { flat += " "; at.push([n, 0]); blocks.push(nb) } }
     block = b
     for (let i = 0; i < v.length; i++) {
       const c = v[i].toLowerCase()
-      if (/[\p{L}\p{N}]/u.test(c)) { flat += c[0]; at.push([n, i]) } else if (flat && !flat.endsWith(" ")) { flat += " "; at.push([n, i]) }
+      if (/[\p{L}\p{N}]/u.test(c)) { flat += c[0]; at.push([n, i]); blocks.push(nb) } else if (flat && !flat.endsWith(" ")) { flat += " "; at.push([n, i]); blocks.push(nb) }
     }
   }
   for (let i = flat.indexOf(want), k = 0; i >= 0 && k < 40; i = flat.indexOf(want, i + 1), k++) {
     const whole = (i === 0 || flat[i - 1] === " ") && (i + want.length === flat.length || flat[i + want.length] === " ")
     if (!whole && want.length < 6) continue
+    if (!oneRow(flat, at, blocks, i, i + want.length - 1)) continue
     const [a, ai] = at[i], [b, bi] = at[i + want.length - 1], range = document.createRange()
     range.setStart(a, ai)
     range.setEnd(b, bi + 1)
