@@ -2,10 +2,11 @@
 // desktop app's first window, 1280×820 with both sidebars open. Each section the menu lists, Plugins and Get plugins too,
 // opens in the menu's place with a way back; so do the sidebar's Plugins button, the palette, search, an old #get tab
 // (pages/Setup.tsx) and core/apppages.ts' openSettings. A phone's Plugins stays its own page. What the menu's Plugins
-// counts, and Remote access (plugins/core/mcp/Connections.tsx) saying it's optional. Writes nothing.
+// counts, and Remote access (plugins/core/mcp/Connections.tsx) saying it's optional. The palette's way to where a
+// setting is (core/switches.ts' placeOf, ⌘↩): Settings at its row, in place, not a sheet. Writes nothing.
 //   node web/qa/settingsnarrow.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
-import { palette, qa, until, wait } from "./lib/qa.mjs"
+import { openPalette, palette, qa, until, wait } from "./lib/qa.mjs"
 
 const { args: [B, OUT = "/tmp/settingsnarrow-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
@@ -99,6 +100,24 @@ try {
   await until(() => page.locator("[data-settings]").count(), 8000); await wait(1000)
   await rightSidebar(true)
   check("#get shows Settings' Get plugins", await inPlace("get") && !(await page.locator("[data-setup] [data-setup-tab]").count()))
+
+  // The palette's way to where a setting is (⌘↩ on it): Settings at its row, in the menu's place, not a sheet.
+  const onScreen = async (el) => { const r = await el.boundingBox(); return !!r && r.y >= 0 && r.y + r.height <= 820 }
+  async function whereItIs(name) {
+    await openPalette(page); await page.waitForSelector("[role=dialog] input:focus"); await page.keyboard.type(name)
+    await until(() => page.locator("[role=option]", { hasText: name }).count(), 3000)
+    await page.keyboard.press("ControlOrMeta+Enter"); await wait(600)
+  }
+  if (await back.count()) await toMenu()
+  await whereItIs("File icons")
+  const icons = page.locator('[data-settings] [data-settings-row="file-icons"]')
+  check("a setting's place: its section in Settings, in place", await inPlace("appearance") && !(await page.locator("dialog[open]").count()))
+  check("…at its row", !!(await until(() => onScreen(icons), 3000)))
+  await toMenu()
+  await whereItIs("Notifications from pages")
+  const notes = page.locator('[data-settings] [data-plugin-settings-sheet="web-viewer"] [data-setting]', { hasText: "Notifications from pages" })
+  check("a plugin's setting's place: its page in Settings, in place", await inPlace("plugin:web-viewer") && !(await page.locator("dialog[open]").count()))
+  check("…at its row", !!(await until(() => onScreen(notes.first()), 3000)))
   await ctx.close()
 
   // A phone: Plugins is its own page.

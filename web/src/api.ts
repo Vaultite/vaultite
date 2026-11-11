@@ -314,7 +314,7 @@ export const pluginOn = (id: string) => isEnabled(id, getPrefs().disabled)
 // The Mac's notifications (the desktop app; null in a browser): the Inbox shows one while the window isn't in front.
 export { systemNotify } from "@/core/desktop"
 // Settings > Permissions (the desktop app on a Mac; null elsewhere): the terminal's way there when macOS blocks the vault.
-export { openPermissions } from "@/core/desktop"
+export { openPermissions } from "@/core/apppages"
 /** The companion's cursor's spring (the in-app one and the one over the screen move alike). */
 export { CURSOR_SPRING, glide as springStep, stiffness, type Glide } from "@/core/spring"
 /** Dictation: the session (into a note's editor or a field), its events for plugins (`onDictation`) and its source. */

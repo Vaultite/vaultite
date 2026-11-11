@@ -1,7 +1,6 @@
 // The desktop app's side of the page (`window.vaultite`; null in a browser), not its wiring (core/desktopapp.ts). Every
 // focus asks the main process for the keyboard back (`web.take`): Chromium moves it between native views silently.
 import type { DictationSource } from "@/core/dictation"
-import { openDetail } from "@/core/nav"
 import { notify } from "@/core/notify"
 import { isMac, showLabel } from "@/core/platform"
 
@@ -373,10 +372,6 @@ export async function savePdf(name: string): Promise<string | null | undefined> 
 /** Before recording: in the desktop app, macOS's permission for the microphone (false: refused). Browsers ask
  *  themselves, so true there. */
 export const askMicrophone = async () => (desktop?.microphone ? desktop.microphone().catch(() => true) : true)
-
-/** Settings > Permissions, what macOS lets the app do: null where there's none (a browser, another system, an older
- *  build). The terminal's way there when macOS keeps an agent from the vault. */
-export const openPermissions = desktop?.permission ? () => openDetail("settings-section/permissions") : null
 
 /** In the desktop app, the Mac's notification (`title`, a line of `body`): resolves true when the user clicks it (the
  *  window then comes to the front), false when it's dismissed; null in a browser, or an app build without it. */

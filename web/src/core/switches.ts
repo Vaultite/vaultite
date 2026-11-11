@@ -13,7 +13,8 @@ import { openPluginSettings, pluginSettings, revealRow, settingDefault, settings
 import { getPrefs, onPrefs, setPrefs, type Prefs } from "@/core/prefs"
 import { signal } from "@/core/signal"
 import { quickTextSizeSub } from "@/core/textsize"
-import { isMac } from "@/core/platform"
+import { isDesktop, isMac } from "@/core/platform"
+import { openSettings } from "@/core/apppages"
 import { capitalize } from "@/lib/utils"
 
 export type SwitchDef = {
@@ -131,18 +132,17 @@ export const allSwitches = (disabled = getPrefs().disabled) => [...CORE, ...swit
 export function placeOf(s: Pick<SwitchDef, "id" | "section" | "plugin">) {
   if (s.plugin) {
     const { id, key } = s.plugin, p = pluginById(id), home = p && settingsHome(p)
-    // (the app's own plugins' are a part of a Settings section)
-    if (home && !settingsApart(p)) return { name: p.name, open: () => {
-      openDetail(`settings-section/${encodeURIComponent(home)}`)
-      revealRow(`[data-plugin-settings-sheet="${CSS.escape(id)}"] [data-setting="${CSS.escape(key)}"]`)
-    } }
-    return { name: p?.name ?? id, open: () => openPluginSettings(id, key) }
+    const row = `[data-plugin-settings-sheet="${CSS.escape(id)}"] [data-setting="${CSS.escape(key)}"]`
+    // (the app's own plugins' are a part of a Settings section; the others', on a computer, on their page there)
+    if (home && !settingsApart(p)) return { name: p.name, open: () => openSettings(home, row) }
+    return { name: p?.name ?? id, open: () => (isDesktop() ? openSettings(`plugin:${id}`, row) : openPluginSettings(id, key)) }
   }
-  const section = s.section ?? "appearance"
+  const section = s.section ?? "appearance", row = `[data-settings-row="${s.id.replace(/^setting:/, "")}"]`
   return { name: SECTIONS[section] ?? capitalize(section), open: () => {
     // (the sidebars' own are in their sheet, beside the panels)
-    openDetail(section === "sidebars" ? "sidebars" : `settings-section/${encodeURIComponent(section)}`)
-    revealRow(`[data-settings-row="${s.id.replace(/^setting:/, "")}"]`)
+    if (section !== "sidebars") return openSettings(section, row)
+    openDetail("sidebars")
+    revealRow(row)
   } }
 }
 

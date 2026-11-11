@@ -21,7 +21,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **`vau notify --action-open` takes a file anywhere**: an absolute path outside the vault keeps its leading slash and
   opens in the desktop app (one that isn't there is refused); a path inside the vault is its vault path.
   Plugins button, which did nothing there. Plugins' number says what it counts (7 on), and Remote access says it's
-  optional.
+  optional. A setting's place from the palette (⌘↩) and Permissions open in Settings too, not over it.
 - **A cleaner first vault**: it opens on one Start here tab, not two; a layout looked at on the welcome card and left
   leaves nothing behind (switching layouts takes back the guide the last one added, while unchanged; Undo puts it
   back); Start here says only what's true (Settings > AI, no word of AI until you say to use an agent); the agent's

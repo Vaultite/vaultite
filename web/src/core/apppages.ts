@@ -5,6 +5,8 @@ import { isDesktop } from "@/core/platform"
 import { share } from "@/core/share"
 import { findOpen, go, replaceTabTarget } from "@/core/workspace"
 import { openDetail } from "@/core/nav"
+import { desktop } from "@/core/desktop"
+import { revealRow } from "@/core/pluginSettings"
 import { cell } from "@/core/signal"
 
 const SETUP_TABS = ["plugins", "get"] as const
@@ -58,9 +60,14 @@ export function showSettingsSection(section: string) {
   settingsSectionOpen.set(true)
 }
 
-/** Open Settings on a section (a phone's: its sheet). */
-export function openSettings(section: string) {
+/** Open Settings on a section (a phone's: its sheet), and go to the row `selector` finds in it. */
+export function openSettings(section: string, selector?: string) {
   showSettingsSection(section)
   if (isDesktop()) goTo("settings")
   else openDetail(`settings-section/${encodeURIComponent(section)}`)
+  if (selector) revealRow(selector)
 }
+
+/** Settings > Permissions, what macOS lets the app do: null where there's none (a browser, another system, an older
+ *  build). The terminal's way there when macOS keeps an agent from the vault. */
+export const openPermissions = desktop?.permission ? () => openSettings("permissions") : null
