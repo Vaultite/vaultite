@@ -437,17 +437,18 @@ export default async ($: VaultTest) => {
       // Not the companion's: another agent's vau (an inbox-resumed session, a job) and a script share its `who`, never its voice or ask.
       {
         const script = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli" } } as unknown as IncomingMessage
-        const says = async () => (await api("POST", "ops/companion.status", {}))[1].notes.filter((n: Any) => n.kind === "say").length
+        // (said since `from`: a count of all would drop as older lines' time on screen ends)
+        const says = async (from: number) => (await api("POST", "ops/companion.status", {}))[1].notes.filter((n: Any) => n.kind === "say" && n.t >= from).length
         c.screenMoment({ kind: "ask", agent: "Claude", text: "download this video please", app: "com.example.browser", title: "Clips", sx: 10, sy: 20 })
         // (a handoff's line is held a moment for the turn's next one: an earlier one's said first)
         await new Promise((r) => setTimeout(r, 700))
-        const was = await says(), ended: string[] = []
+        const from = Date.now(), ended: string[] = []
         for (const [by, task] of [[agent, "Skip the pointer when unwatched"], [script, "Sync the design hub"]] as const) {
           const [st, b] = await api("POST", "ops/companion.handoff", { task, say: "Handed that off.", cwd: repo }, by)
           ended.push(b.id)
           const prompt = said.at(-1)?.prompt ?? ""
           check(`handoff from ${by === agent ? "another agent's vau" : "a script"}: its task alone, without the companion's latest ask; nothing said in its voice`,
-            st === 200 && prompt.includes(task) && !prompt.includes("download this video") && !/through their companion/.test(prompt) && await says() === was, [st, b, prompt])
+            st === 200 && prompt.includes(task) && !prompt.includes("download this video") && !/through their companion/.test(prompt) && await says(from) === 0, [st, b, prompt])
           const j = (await api("POST", "ops/companion.job", { id: b.id }))[1]
           check(`handoff from ${by === agent ? "another agent's vau" : "a script"}: its job says who handed it off, never the companion`,
             j.by === (by === agent ? "another agent, not the companion: Claude Code" : "not the companion: vau from a shell or script"), j.by)
