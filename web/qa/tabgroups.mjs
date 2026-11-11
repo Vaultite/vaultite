@@ -1,7 +1,7 @@
 // Tab groups (made, joined, folded, dragged, kept over a reload) and vertical tabs (the Tabs panel), vau tabs, a phone's
 // cards. Writes the vault's appearance and sidebars (put back): throwaway server only.
 //   node web/qa/tabgroups.mjs <base url> <vault path> [out dir]
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { command, palette, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B0, VAULT, OUT = "/tmp/tabgroups-shots/"], browser, check, watch, done } = await qa(import.meta.url)
@@ -12,7 +12,9 @@ const keep = (f) => { const p = path.join(VAULT, ".vaultite", f); return { p, wa
 const sidebars = keep("sidebars.json"), look = keep("appearance.json")
 const lookNow = () => JSON.parse(existsSync(look.p) ? readFileSync(look.p, "utf8") : "{}")
 const theme = (t) => writeFileSync(look.p, JSON.stringify({ ...lookNow(), theme: t }) + "\n")
-const notes = ["Start here.md", "Projects/Lighthouse.md", "Projects/Garden planner.md", "ME.md", "Daily/2026-10-20.md"].filter((p) => existsSync(path.join(VAULT, p)))
+// The sandbox's dailies move with today: its newest is today's, always there.
+const day = (() => { try { return readdirSync(path.join(VAULT, "Daily")).filter((f) => /^\d{4}-\d\d-\d\d\.md$/.test(f)).sort().at(-1)?.slice(0, -3) } catch { return undefined } })()
+const notes = ["Start here.md", "Projects/Lighthouse.md", "Projects/Garden planner.md", "ME.md", `Daily/${day}.md`].filter((p) => existsSync(path.join(VAULT, p)))
 if (notes.length < 5) { console.error("needs the sandbox vault (vau sandbox <folder>)"); process.exit(2) }
 writeFileSync(look.p, JSON.stringify({ ...lookNow(), tabBar: true, theme: "light" }) + "\n")
 
@@ -96,7 +98,7 @@ try {
   }
   if (newtab.was === null) rmSync(newtab.p); else writeFileSync(newtab.p, newtab.was)
   await page.click(`[data-tab-bar] [data-tab-id="${wasShown}"]`); await wait(300)
-  await menu(tab("2026-10-20"), "Add tab to group", "New group")
+  await menu(tab(day), "Add tab to group", "New group")
   await until(() => page.$("[role=menu] [data-menu-field] input"), 3000); await page.keyboard.press("Backspace"); await page.keyboard.press("Enter"); await wait(300)
   const chips = await page.$$eval("[data-group-chip]", (els) => els.map((e) => ({ text: ((e) => { const c = e.cloneNode(true); for (const x of c.querySelectorAll("[data-group-count][aria-hidden]")) x.remove(); return c.textContent.trim() })(e), name: e.querySelector("[data-group-name]").getAttribute("aria-label"), bg: getComputedStyle(e.firstElementChild).backgroundColor })))
   check("a group without a name is a square of its colour, in the next colour", chips.length === 2 && chips[1].text === "" && chips[1].name === "Blue group" && chips[0].bg !== chips[1].bg, chips)
