@@ -4,7 +4,7 @@ import { execFileSync, spawn, spawnSync } from "node:child_process"
 import fs from "node:fs"
 import net from "node:net"
 import path from "node:path"
-import { appData, devApp, instanceAt, instances, instancesOf, ownedBy, shellDir } from "./devinstance.ts"
+import { appData, devApp, instanceAt, instances, instancesOf, ownedNow, shellDir } from "./devinstance.ts"
 import { webStale } from "./webfresh.ts"
 import { fingerprint } from "./shell/print.mjs"
 
@@ -62,7 +62,7 @@ async function stop(userData: string, headless: boolean) {
     if (alive(info.pid)) process.kill(info.pid, "SIGKILL")
   }
   // (servers, terminal and chat keepers: they carry its userData; its terminals' shells end with their keeper)
-  const left = () => ownedBy(execFileSync("ps", ["-A", "-ww", "-E", "-o", "pid=", "-o", "command="], { encoding: "utf8", maxBuffer: 64 << 20 }), userData).filter((p) => p !== process.pid)
+  const left = () => ownedNow(userData).filter((p) => p !== process.pid)
   for (const pid of left()) try { process.kill(pid, "SIGTERM") } catch { /* gone */ }
   for (let i = 0; i < 25 && left().length; i++) await sleep(200)
   for (const pid of left()) try { process.kill(pid, "SIGKILL") } catch { /* gone */ }

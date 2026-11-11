@@ -60,8 +60,8 @@ const repeat = opt("repeat", 1), jobs = opt("jobs", 3)
 const names = argv.length ? argv.map((a) => path.basename(a, ".mjs"))
   : allScripts().filter((n) => !SKIP.has(n))
 // Electron's binary, fetched on its first use when npm skipped its install script: once here, before scripts launch it
-// together (one would run it half written: ETXTBSY).
-const desktop = (n: string) => { try { return fs.readFileSync(path.join(QA, `${n}.mjs`), "utf8").includes("_electron") } catch { return false } }
+// together (one would run it half written: ETXTBSY), by Playwright's _electron or the path require("electron") gives.
+const desktop = (n: string) => { try { return /_electron\b|\("electron"\)/.test(fs.readFileSync(path.join(QA, `${n}.mjs`), "utf8")) } catch { return false } }
 if (names.some(desktop)) createRequire(import.meta.url)("electron")
 // Electron needs a display: on a Linux box without one (ssh, a server), a virtual one, as CI's.
 if (names.some(desktop) && process.platform === "linux" && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {

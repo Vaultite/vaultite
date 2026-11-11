@@ -1,12 +1,12 @@
 // The shell's fallback, through the packaged Vaultite Dev shell (electron/shell/boot.mjs, roots.mjs): a code root that
 // doesn't load is marked bad, the app starts again on its bundle, and its first window's Errors say so. WRITES: temp only.
 //   node web/qa/shell.mjs <vault copy>   (its shell: npm run app:dev -- --headless once, then --stop)
-import { execFileSync, spawn } from "node:child_process"
+import { spawn } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { ROOT, qa, until } from "./lib/qa.mjs"
-import { devApp, ownedBy } from "../../electron/devinstance.ts"
+import { devApp, ownedNow } from "../../electron/devinstance.ts"
 import { fingerprint } from "../../electron/shell/print.mjs"
 
 const { args: [VAULT], check, done } = await qa(import.meta.url, { chrome: false })
@@ -49,7 +49,7 @@ try {
   check("...and its window's Errors (vau errors) tell the user", !!errors, errors)
 } finally {
   // (the run it relaunched isn't ours to hold: everything with its userData ends)
-  const owned = () => ownedBy(execFileSync("ps", ["-A", "-ww", "-E", "-o", "pid=", "-o", "command="], { encoding: "utf8", maxBuffer: 64 << 20 }), userData)
+  const owned = () => ownedNow(userData)
   for (const pid of owned()) try { process.kill(pid, "SIGTERM") } catch { /* gone */ }
   await until(() => !owned().length, 15_000)
   for (const pid of owned()) try { process.kill(pid, "SIGKILL") } catch { /* gone */ }

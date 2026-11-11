@@ -3,10 +3,11 @@
 //   node web/qa/update-roots.mjs <vault copy>   (from source: VAULTITE_SHELL_TEST=main picks as Main's shell)
 import { execFileSync, spawn } from "node:child_process"
 import fs from "node:fs"
+import { createRequire } from "node:module"
 import os from "node:os"
 import path from "node:path"
 import { ROOT, qa, until } from "./lib/qa.mjs"
-import { ownedBy } from "../../electron/devinstance.ts"
+import { ownedNow } from "../../electron/devinstance.ts"
 import { gitEnv } from "../../core/gitenv.ts"
 import { fingerprint } from "../../electron/shell/print.mjs"
 
@@ -31,17 +32,19 @@ fs.writeFileSync(path.join(userData, "use-code-store"), "")
 const point = (name, commit) => fs.writeFileSync(path.join(store, `${name}.json`), JSON.stringify({ commit, t: Date.now() }))
 check("the roots are built for this shell (its checkout's fingerprint)", fingerprint(A) === fingerprint(ROOT) && fingerprint(B) === fingerprint(ROOT))
 
-const electron = path.join(ROOT, "node_modules/electron/dist/Electron.app/Contents/MacOS/Electron")
+// (the binary itself, fetched if npm's install didn't)
+const electron = createRequire(import.meta.url)("electron")
 const env = { ...process.env, VAULTITE_QUIET: "1", VAULTITE_SHELL_TEST: "main", VAULTITE_USER_DATA: userData, VAULTITE_LOCAL: path.join(TMP, "local") }
 delete env.NODE_COMPILE_CACHE
-const owned = () => ownedBy(execFileSync("ps", ["-A", "-ww", "-E", "-o", "pid=", "-o", "command="], { encoding: "utf8", maxBuffer: 64 << 20 }), userData)
+const owned = () => ownedNow(userData)
 const stop = async () => {
   for (const pid of owned()) try { process.kill(pid, "SIGTERM") } catch { /* gone */ }
   await until(() => !owned().length, 15_000)
   for (const pid of owned()) try { process.kill(pid, "SIGKILL") } catch { /* gone */ }
   fs.rmSync(path.join(userData, "shell", "good.json"), { force: true })
 }
-const launch = () => spawn(process.platform === "darwin" ? electron : path.join(ROOT, "node_modules/.bin/electron"), [ROOT, "--vault", VAULT], { env, stdio: "ignore", detached: true })
+// (Linux: --no-sandbox, as Playwright launches the other desktop scripts: a checkout's chrome-sandbox isn't setuid root)
+const launch = () => spawn(electron, [...(process.platform === "linux" ? ["--no-sandbox"] : []), ROOT, "--vault", VAULT], { env, stdio: "ignore", detached: true })
 /** Its app, once its first window is up: what it says it runs (app.version's app). */
 const app = async () => {
   const good = await until(() => fs.existsSync(path.join(userData, "shell", "good.json")), 60_000)

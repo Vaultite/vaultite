@@ -1,5 +1,6 @@
 // Vaultite Dev's instances (electron/dev.ts): a worktree's own (<Dev's data>/instances/<slug>/app, kept between runs) and
 // headless ones for agents (…/headless-<pid>, removed once stopped), and its shells by fingerprint. No Electron.
+import { execFileSync } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import { createRequire } from "node:module"
@@ -56,4 +57,19 @@ export function ownedBy(ps: string, userData: string): number[] {
     const at = m ? m[2].indexOf(mark) : -1
     return m && at >= 0 && [" ", undefined].includes(m[2][at + mark.length]) ? [Number(m[1])] : []
   })
+}
+
+/** The processes running with this userData in their environment now: from ps on a Mac (its -E), /proc on Linux, where
+ *  ps has no -E. */
+export function ownedNow(userData: string): number[] {
+  if (process.platform !== "linux") return ownedBy(execFileSync("ps", ["-A", "-ww", "-E", "-o", "pid=", "-o", "command="], { encoding: "utf8", maxBuffer: 64 << 20 }), userData)
+  const mark = `VAULTITE_USER_DATA=${userData}`
+  const pids = fs.readdirSync("/proc").filter((n) => /^\d+$/.test(n)).filter((n) => {
+    try { return fs.readFileSync(`/proc/${n}/environ`, "utf8").split("\0").includes(mark) } catch { return false } // (gone, or not ours)
+  }).map(Number)
+  // (and its main process by Chromium's lock, "<host>-<pid>": a relaunched one's environment reads blank there, Chromium's
+  // process title written over it)
+  let main = 0
+  try { main = Number(/-(\d+)$/.exec(fs.readlinkSync(path.join(userData, "SingletonLock")))?.[1]) || 0 } catch { /* none */ }
+  return main && !pids.includes(main) && fs.existsSync(`/proc/${main}`) ? [...pids, main] : pids
 }
