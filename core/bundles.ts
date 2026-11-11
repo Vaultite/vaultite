@@ -760,18 +760,6 @@ export async function apply(b: Bundle, host: Host, n: number | null, allowCode: 
     }
     (prev.installed ??= []).push(c.id)
   }
-  // The layout it replaces takes back the files it added, while they're as it wrote them: a layout looked at and left
-  // (the welcome card's) leaves nothing behind.
-  if (inUse && inUse.bundle !== b.id) {
-    for (const a of inUse.added ?? []) {
-      if (p.files.add.includes(a.path) || p.files.kept.includes(a.path)) continue
-      let data: Buffer
-      try { data = fs.readFileSync(v.abs(a.path)) } catch { continue }
-      if (hash(data) !== a.hash) continue
-      ;(prev.taken ??= []).push({ path: a.path, trash: toTrash(v, a.path) })
-    }
-    for (const a of prev.taken ?? []) pruneDirs(v, path.dirname(a.path))
-  }
   const keep = (file: string, patch: Item) => {
     if (!Object.keys(patch).length) return
     const cur = v.config(file)
@@ -852,6 +840,18 @@ export async function apply(b: Bundle, host: Host, n: number | null, allowCode: 
       prev.workspace.pinned = pins.workspace.filter((x) => !own.includes(x))
       await pinTo(host, own, pins.workspace, n)
     }
+  }
+  // The layout it replaces takes back the files it added, while they're as it wrote them: a layout looked at and left
+  // (the welcome card's) leaves nothing behind. (Last: trashing runs plugins' move hooks.)
+  if (inUse && inUse.bundle !== b.id) {
+    for (const a of inUse.added ?? []) {
+      if (p.files.add.includes(a.path) || p.files.kept.includes(a.path)) continue
+      let data: Buffer
+      try { data = fs.readFileSync(v.abs(a.path)) } catch { continue }
+      if (hash(data) !== a.hash) continue
+      ;(prev.taken ??= []).push({ path: a.path, trash: toTrash(v, a.path) })
+    }
+    for (const a of prev.taken ?? []) pruneDirs(v, path.dirname(a.path))
   }
   doneOnboarding(v)
   // What a restore goes back to: the setup from before this, or, while another is tried, from before that.
