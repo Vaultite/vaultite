@@ -6,7 +6,7 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, qa, until, wait, keepAwake } from "./lib/qa.mjs"
+import { ROOT, qa, until, wait, keepAwake, uiAt } from "./lib/qa.mjs"
 
 const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-history-"))
@@ -47,7 +47,7 @@ watch(win, { console: true, fail: false })
 await win.waitForSelector("[role=tree]", { timeout: 60000 })
 const origin = new URL(win.url()).origin
 await app.evaluate(({ BaseWindow }) => { const w = BaseWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }); w.focus() })
-const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+const ui = (body) => uiAt(origin)(body)
 const open = async (to) => { await ui({ action: "open", path: to, newTab: true }); await wait(500) }
 const command = async (id) => { await ui({ action: "command", id }); await wait(700) }
 const engine = (name, ...args) => win.evaluate(([name, args]) => window.vaultite.web.engine(name, ...args), [name, args])

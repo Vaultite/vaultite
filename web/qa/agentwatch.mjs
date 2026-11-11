@@ -6,7 +6,7 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, qa, until, wait } from "./lib/qa.mjs"
+import { ROOT, qa, until, wait, uiAt } from "./lib/qa.mjs"
 
 const { args: [VAULT, SHOTS], check, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-agentwatch-"))
@@ -42,7 +42,7 @@ try {
     return r.ok ? (j.result ?? j) : { error: j.error ?? r.status, status: r.status }
   }
   const shot = async (name) => { if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); await win.screenshot({ path: path.join(SHOTS, `${name}.png`) }) } }
-  const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+  const ui = (body) => uiAt(origin)(body)
   await wait(2000) // (the app tells the desktop app what agents may do as it starts)
   for (let i = 0; i < 5 && await until(() => win.locator("[data-confirm-ok]").count(), i ? 1500 : 4000); i++) { await win.getByRole("button", { name: "Not now" }).first().click().catch(() => {}); await wait(300) }
 

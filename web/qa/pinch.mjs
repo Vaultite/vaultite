@@ -10,7 +10,7 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, qa, until, wait, keepAwake } from "./lib/qa.mjs"
+import { ROOT, qa, until, wait, keepAwake, uiAt } from "./lib/qa.mjs"
 
 const { args: [VAULT], check, watch, done, skip } = await qa(import.meta.url, { chrome: false })
 if (process.platform !== "darwin") await skip("a Mac's trackpad")
@@ -40,7 +40,7 @@ try {
   watch(win, { console: true, fail: false })
   await win.waitForSelector("[role=tree]", { timeout: 60000 })
   const origin = new URL(win.url()).origin
-  const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+  const ui = (body) => uiAt(origin)(body)
   await app.evaluate(({ BaseWindow }) => { const w = BaseWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }); w.moveTop(); w.focus() })
   await ui({ action: "open", path: "Notes/Reading list.md" })
   await win.waitForSelector(".cm-link[data-url]", { timeout: 15000 })

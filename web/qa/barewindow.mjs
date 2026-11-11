@@ -14,7 +14,7 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, qa, until, wait, keepAwake } from "./lib/qa.mjs"
+import { ROOT, qa, until, wait, keepAwake, uiAt } from "./lib/qa.mjs"
 import { stopTerminals } from "../../tools/test/lib.ts"
 
 const { args: [VAULT, OUT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
@@ -75,7 +75,7 @@ try {
     Menu.prototype.popup = function () { globalThis.__menu = this }
   })
   const lights = () => app.evaluate(() => globalThis.__lights.at(-1))
-  const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+  const ui = (body) => uiAt(origin)(body)
   /** The pop-out: its content's size and place, its web page's bounds, its strip (the data: page over it) and drag. */
   const where = () => app.evaluate(async ({ BaseWindow }, src) => {
     const w = BaseWindow.getAllWindows().find((x) => x.webContents?.getURL().includes("?popout="))

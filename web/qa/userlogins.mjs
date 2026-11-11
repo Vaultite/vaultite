@@ -10,7 +10,7 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, qa, until, wait } from "./lib/qa.mjs"
+import { ROOT, qa, until, wait, uiAt } from "./lib/qa.mjs"
 
 const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-userlogins-"))
@@ -74,7 +74,7 @@ const op = async (id, params) => {
   const j = await r.json().catch(() => ({}))
   return r.ok ? (j.result ?? j) : { error: j.error ?? r.status, status: r.status }
 }
-const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+const ui = (body) => uiAt(origin)(body)
 // (agents may act in Work: they read the user's tab there, and open pages of their own)
 await fetch(`${origin}/api/config/plugin/web-viewer`, { method: "PATCH", headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ containers: [{ id: "agents", name: "Agents", color: "purple", agents: "act" }, { id: "work", name: "Work", color: "orange", agents: "act" }] }) })

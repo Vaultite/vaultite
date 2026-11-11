@@ -11,7 +11,7 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, qa, until, wait } from "./lib/qa.mjs"
+import { ROOT, qa, until, wait, uiAt } from "./lib/qa.mjs"
 
 const { args: [VAULT], check, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-webcompat-"))
@@ -94,7 +94,7 @@ await app.evaluate(({ app: a, BaseWindow, BrowserWindow, dialog, Menu, shell }, 
 const asked = () => app.evaluate(() => globalThis.__asked)
 /** The next questions' answers (any left from before are dropped). */
 const answerNext = (...r) => app.evaluate((_e, r) => { globalThis.__answers = r }, r)
-const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+const ui = (body) => uiAt(origin)(body)
 const menuClick = (label) => app.evaluate(({ Menu, BaseWindow, BrowserWindow }, label) => {
   const find = (items) => { for (const i of items) { if (i.label === label) return i; const s = i.submenu && find(i.submenu.items); if (s) return s } }
   find(Menu.getApplicationMenu().items).click(undefined, BaseWindow.getAllWindows().find((x) => !(x instanceof BrowserWindow)))

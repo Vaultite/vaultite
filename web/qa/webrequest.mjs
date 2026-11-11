@@ -12,7 +12,7 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, qa, until, wait, keepAwake } from "./lib/qa.mjs"
+import { ROOT, qa, until, wait, keepAwake, uiAt } from "./lib/qa.mjs"
 
 const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-webrequest-"))
@@ -68,7 +68,7 @@ watch(win, { console: true, fail: false })
 await win.waitForSelector("[role=tree]", { timeout: 60000 })
 const origin = new URL(win.url()).origin
 await app.evaluate(({ BaseWindow }) => { const w = BaseWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }); w.focus() })
-const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+const ui = (body) => uiAt(origin)(body)
 const openUrl = async (url) => { await ui({ action: "open", path: `view:web/${url}` }); await wait(500) }
 const engine = (...args) => win.evaluate((a) => window.vaultite.web.engine(...a), args)
 
@@ -143,7 +143,8 @@ const sheet = (code) => app.evaluate(({ BrowserWindow }, code) => {
   return s ? s.webContents.executeJavaScript(code) : null
 }, code)
 check("onAuthRequired: a wrong password, asked once more, it gives up: the user's asked", /asks for a username and password/.test(await until(() => sheet("document.body.innerText"), 15000) ?? ""))
-await sheet(`document.getElementById("cancel").click()`)
+// (clicked after the call returns: Cancel closes the sheet, and a call into a page that closes under it never answers)
+await sheet(`setTimeout(() => document.getElementById("cancel").click()); true`)
 check("… whose Cancel shows the site's 401, no loop", await until(async () => (await inView(`${SITE}/auth-wrong`, "document.getElementById('out')?.textContent")) === "denied", 15000),
   await inView(`${SITE}/auth-wrong`, "document.body.innerText"))
 await openUrl(`${SITE}/auth`)

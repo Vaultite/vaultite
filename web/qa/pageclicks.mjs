@@ -10,7 +10,7 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, qa, until, wait } from "./lib/qa.mjs"
+import { ROOT, qa, until, wait, uiAt } from "./lib/qa.mjs"
 
 const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-pageclicks-"))
@@ -35,7 +35,7 @@ await win.waitForSelector("[role=tree]", { timeout: 60000 })
 const origin = new URL(win.url()).origin
 await app.evaluate(({ BaseWindow }) => { BaseWindow.getAllWindows()[0].setBounds({ x: 40, y: 40, width: 1280, height: 800 }) })
 const patch = (what, o) => fetch(`${origin}/api/config/${what}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(o) })
-const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+const ui = (body) => uiAt(origin)(body)
 
 /** The pages shown in the window: their webContents ids and bounds (window CSS px). */
 const pages = () => app.evaluate(({ BaseWindow }) => {

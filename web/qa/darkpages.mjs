@@ -10,7 +10,7 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, SHOTS, qa, until, wait, keepAwake } from "./lib/qa.mjs"
+import { ROOT, SHOTS, qa, until, wait, keepAwake, uiAt } from "./lib/qa.mjs"
 
 const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-darkpages-"))
@@ -81,7 +81,7 @@ await app.evaluate(({ WebContentsView }) => {
   const set = WebContentsView.prototype.setBackgroundColor
   WebContentsView.prototype.setBackgroundColor = function (c) { this.qaColor = c; return set.call(this, c) }
 })
-const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+const ui = (body) => uiAt(origin)(body)
 
 /** The visible page's view: `fn` runs on it in the main process. */
 const onView = (fn, arg) => app.evaluate(({ BaseWindow }, [fn, arg]) => {

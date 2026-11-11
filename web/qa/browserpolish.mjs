@@ -12,7 +12,7 @@ import http from "node:http"
 import https from "node:https"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, qa, until, keepAwake } from "./lib/qa.mjs"
+import { ROOT, qa, until, keepAwake, uiAt } from "./lib/qa.mjs"
 
 const { args: [VAULT], check, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-browserpolish-"))
@@ -54,7 +54,7 @@ watch(win, { console: true, fail: false })
 await win.waitForSelector("[role=tree]", { timeout: 60000 })
 const origin = new URL(win.url()).origin
 await app.evaluate(({ BaseWindow }) => { const w = BaseWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }); w.focus() })
-const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+const ui = (body) => uiAt(origin)(body)
 const open = (url) => ui({ action: "open", path: url, newTab: true })
 /** Every web page, in which window (0: the vault's, 1: a pop-out) and whether it's shown. */
 const pages = () => app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows().flatMap((w) => w.contentView.children

@@ -12,7 +12,7 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, qa, until, wait, keepAwake } from "./lib/qa.mjs"
+import { ROOT, qa, until, wait, keepAwake, uiAt } from "./lib/qa.mjs"
 
 const { args: [VAULT, OUT_ARG], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
 const OUT = path.resolve(OUT_ARG)
@@ -475,7 +475,7 @@ check("openLinks: browser: a click goes to the browser", await until(async () =>
 check("… and opens no web tab", (await pages()).length === before, await pages())
 
 // ---------- a tab's page is its own ----------
-const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+const ui = (body) => uiAt(origin)(body)
 const n0 = (await pages()).length
 await ui({ action: "open", path: `${SITE}/slow`, newTab: true })
 // (its page still loading: nothing in yet, or the spare's about:blank it was started in)

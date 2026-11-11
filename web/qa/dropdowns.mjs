@@ -13,7 +13,7 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, qa, until, wait } from "./lib/qa.mjs"
+import { ROOT, qa, until, wait, uiAt } from "./lib/qa.mjs"
 
 const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-dropdowns-"))
@@ -85,7 +85,7 @@ try {
   watch(win, { console: true, fail: false })
   await win.waitForSelector("[role=tree]", { timeout: 60000 })
   const origin = new URL(win.url()).origin
-  const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+  const ui = (body) => uiAt(origin)(body)
   // Every webContents.focus(), by whose (the window's own page or a site's), and when (main process ms).
   await app.evaluate(({ BaseWindow, BrowserWindow }) => {
     const w = BaseWindow.getAllWindows().find((x) => !(x instanceof BrowserWindow))

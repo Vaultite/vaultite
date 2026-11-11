@@ -14,7 +14,7 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, qa, until, wait, keepAwake } from "./lib/qa.mjs"
+import { ROOT, qa, until, wait, keepAwake, uiAt } from "./lib/qa.mjs"
 import { stopTerminals } from "../../tools/test/lib.ts"
 
 const { args: [VAULT, OUT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
@@ -70,7 +70,7 @@ await app.evaluate(({ BaseWindow, screen }) => {
   const vis = BaseWindow.prototype.setWindowButtonVisibility
   if (vis) BaseWindow.prototype.setWindowButtonVisibility = function (on) { if (this.getTitle() === "Vaultite player") globalThis.__lights.push(on); return vis.call(this, on) }
 })
-const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+const ui = (body) => uiAt(origin)(body)
 const setting = (o) => fetch(`${origin}/api/config/plugin/web-viewer`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(o) })
 const op = async (id, params) => {
   const r = await fetch(`${origin}/api/ops/web-viewer.${id}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "mcp", "X-Vaultite-Agent": "claude-code" }, body: JSON.stringify(params ?? {}) })

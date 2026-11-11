@@ -15,7 +15,7 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, SHOTS, qa, until, wait } from "./lib/qa.mjs"
+import { ROOT, SHOTS, qa, until, wait, uiAt } from "./lib/qa.mjs"
 
 const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-webwatch-"))
@@ -110,7 +110,7 @@ async function launch() {
 }
 await launch()
 await app.evaluate(({ BaseWindow }) => { const w = BaseWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }) })
-const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+const ui = (body) => uiAt(origin)(body)
 const events = async () => (await (await fetch(`${origin}/api/inbox/events?limit=100`)).json()).events
 const titled = async (t) => (await events()).filter((e) => e.title === t)
 const setting = (id, o) => fetch(`${origin}/api/config/plugin/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(o) })

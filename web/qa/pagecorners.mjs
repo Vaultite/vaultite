@@ -10,7 +10,7 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, qa, until, wait, keepAwake } from "./lib/qa.mjs"
+import { ROOT, qa, until, wait, keepAwake, uiAt } from "./lib/qa.mjs"
 
 const { args: [VAULT], check, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-pagecorners-"))
@@ -37,7 +37,7 @@ await app.evaluate(({ BaseWindow, WebContentsView }) => {
   WebContentsView.prototype.setBorderRadius = function (r) { this.qaRadius = r; return set.call(this, r) }
   const w = BaseWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }); w.focus()
 })
-const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+const ui = (body) => uiAt(origin)(body)
 const appearance = (o) => fetch(`${origin}/api/config/appearance`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(o) })
 const setting = (o) => fetch(`${origin}/api/config/plugin/web-viewer`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(o) })
 

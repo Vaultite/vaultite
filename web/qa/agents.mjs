@@ -16,7 +16,7 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, freePort, qa, until, wait, keepAwake } from "./lib/qa.mjs"
+import { ROOT, freePort, qa, until, wait, keepAwake, uiAt } from "./lib/qa.mjs"
 import { testServer } from "../../tools/test/lib.ts"
 
 const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
@@ -74,7 +74,7 @@ watch(win, { console: true, fail: false })
 await win.waitForSelector("[role=tree]", { timeout: 60000 })
 const origin = new URL(win.url()).origin
 await app.evaluate(({ app: a, BaseWindow }, dl) => { a.setPath("downloads", dl); const w = BaseWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1400, height: 860 }); w.focus() }, DOWNLOADS)
-const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+const ui = (body) => uiAt(origin)(body)
 /** A browser op, as an agent calls it: its answer, or { error } with its status. */
 const op = async (id, params) => {
   const r = await fetch(`${origin}/api/ops/web-viewer.${id}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "mcp", "X-Vaultite-Agent": "claude-code" }, body: JSON.stringify(params ?? {}) })

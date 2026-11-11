@@ -12,7 +12,7 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, qa, until, wait, keepAwake } from "./lib/qa.mjs"
+import { ROOT, qa, until, wait, keepAwake, uiAt } from "./lib/qa.mjs"
 
 const { args: [VAULT], check, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-webtabs-"))
@@ -86,7 +86,7 @@ async function launch() {
   })
 }
 await launch()
-const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+const ui = (body) => uiAt(origin)(body)
 const skipped = () => win.evaluate(() => window.__skipFocus ?? [])
 const menuClick = async (label) => { await win.evaluate((l) => { window.__step = l }, label); await menuClick_(label) }
 const menuClick_ = (label) => app.evaluate(({ Menu, BaseWindow, BrowserWindow }, label) => {
