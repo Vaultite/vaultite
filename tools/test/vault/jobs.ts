@@ -40,6 +40,21 @@ export default async ($: VaultTest) => {
       "The M1 takes it from main.", "Made the heading blue. Try http://localhost:5173."]
     check("jobs: a worker's words saying it landed its change on main, never ones that only might", said.every(J.landedSaid) && !unsaid.some(J.landedSaid), [said.filter((t) => !J.landedSaid(t)), unsaid.filter(J.landedSaid)])
     check("jobs: the commits a message names", J.commitsIn("pushed as 7493dcf6 (`c09009afa67159e`), see #12345678 and abcdefgh, deadbeef").join() === "7493dcf6,c09009afa67159e", J.commitsIn("pushed as 7493dcf6 (`c09009afa67159e`), see #12345678 and abcdefgh, deadbeef"))
+    {
+      // (a turn at rest: its background tasks running hold it working, and one landing itself until it says how that went)
+      const R = (o: Any) => J.restEvent({ landed: false, changes: true, text: "Fixed it.", at: 0, now: 1000, ...o })
+      check("jobs: a turn ending with its background tasks running stays working; one landing itself is never ready for review before it says Merged or Not merged",
+        R({ background: 1 }) === "working" && R({ background: 2, changes: false }) === "working" && R({ background: 1, landed: true }) === "landed" &&
+        R({}) === "changed" && R({ changes: false }) === "answered" && R({ landed: true }) === "landed" &&
+        R({ lands: true, text: "Verify is still running in the background. When it's done I'll land the fix." }) === "working" &&
+        R({ lands: true, text: "Not merged: verify fails on main too." }) === "changed" && R({ lands: true, now: J.LAND_WAIT + 1 }) === "changed" &&
+        R({ lands: true, changes: false, text: "Nothing to change." }) === "answered")
+      const j = { title: "t", turn: 0, now: "", last: { text: "Still running local verify before the try.", at: 5, background: 1 } }
+      check("jobs: at rest with a background task, its now-line says it waits on that; working, what it says",
+        J.nowOf(j, { state: "idle" }) === "waits on its task in the background: Still running local verify before the try." &&
+        J.nowOf({ ...j, last: { ...j.last, background: 3 } }, { state: "done" }).startsWith("waits on its 3 tasks in the background") &&
+        J.nowOf(j, { state: "working" }) === "Still running local verify before the try.", J.nowOf(j, { state: "idle" }))
+    }
     const E = (text: boolean, final: boolean, changes: boolean, crashed: boolean) => J.endEvent({ text, final, changes, crashed })
     check("jobs: a terminal ending after its worker left an answer is done (with changes, ready for review), mid-turn too unless it crashed; with nothing, failed",
       E(true, false, false, false) === "answered" && E(true, true, true, true) === "changed" && E(false, false, true, false) === "changed" &&
@@ -602,9 +617,12 @@ export default async ($: VaultTest) => {
     try {
       const [st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Write the summary", cwd: plain }, agent))
       first = b.link.split("/").pop()
-      const done = await waitFor(async () => { const r = await job(b.id); return r.state === "done" && r }, 15000, 200)
-      check("jobs: done while it runs something in the background, its terminal stays", st === 200 && !!done && await runs(first) && !done.closed, done)
+      const going = await waitFor(async () => { const r = await job(b.id); return r.state === "working" && /^waits on its task in the background: Wrote the summary/.test(r.now) && r }, 15000, 200)
+      check("jobs: its turn over while it runs something in the background, it stays working, saying it waits on that; its terminal stays",
+        st === 200 && !!going && await runs(first) && !going.closed && !going.log.some((x: Any) => x.to === "done" || x.to === "ready for review"), going ?? await job(b.id))
       background = 0
+      const done = await waitFor(async () => { const r = await job(b.id); return r.state === "done" && r }, 25000, 200)
+      check("jobs: its background tasks over and its turn after them ended, it's done", !!done, await job(b.id))
       const closed = await waitFor(async () => { const r = await job(b.id); return r.closed && r }, 10000, 200)
       check("jobs: done a while, its terminal closes by itself; it stays done, its result and questions kept, resuming from its card",
         !!closed && closed.state === "done" && closed.terminal === "resume-claude-sess-tidy" && /Wrote the summary/.test(closed.result?.text ?? "") &&

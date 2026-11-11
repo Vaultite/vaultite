@@ -76,6 +76,8 @@ export type Where = { machine: string; label: string; cwd: string; repo: string;
   /** A coding job's own git worktree and branch (worktreeOf), beside its checkout `cwd`, which it never edits; `live`:
    *  that checkout is the running server's own. */
   tree?: string; branch?: string; live?: boolean
+  /** It lands its own change once its checks pass (jobs_land, when it started): never ready for review before it says how that went. */
+  lands?: boolean
   /** It edits the checkout serving the preview they asked over (inPlace): they watch it reload, so no worktree. */
   watched?: boolean }
 /** What a turn ended with: its last message, the files it changed, the diff since `base` (one line), a PR, a link to try. */
@@ -158,6 +160,17 @@ export function step(j: Job, ev: JobEvent, t = Date.now()): Transition | null {
   return x
 }
 
+/** How long a job landing itself may rest, its change neither landed nor said not to be, before it's ready for review. */
+export const LAND_WAIT = 10 * 60_000
+/** A worker's turn at rest: still `working` while its background tasks run (their end starts its next turn), or while
+ *  one landing itself hasn't said "Merged:" or "Not merged:" (LAND_WAIT since `at`); else landed, changed or answered. */
+export function restEvent(o: { background?: number; landed: boolean; changes: boolean; lands?: boolean; text: string; at: number; now?: number }): JobEvent {
+  if (o.landed) return "landed"
+  if (o.background) return "working"
+  if (o.lands && o.changes && mergedSaid(o.text) === null && (o.now ?? Date.now()) - o.at < LAND_WAIT) return "working"
+  return o.changes ? "changed" : "answered"
+}
+
 /** How a worker's terminal ending moves its job, by what it left: an answer in its turn since the job's began (`final`:
  *  that turn over), changes to review, and whether it crashed (lost, killed, an error code) rather than was ended. */
 export function endEvent(o: { text: boolean; final: boolean; changes: boolean; crashed: boolean }): JobEvent {
@@ -214,8 +227,10 @@ const toldLast = (j: Job) => (j.tells?.length ? `told last by ${j.tells.at(-1)!.
 const tellsLine = (j: Job, now: number) => (j.tells?.length ? `told (by whom, oldest first): ${j.tells.slice(-4).map((t) => `${t.by}, ${ago(t.at, now)}: "${cut(plain(t.text), 100)}"`).join(" | ")}` : "")
 
 /** What its worker does now, one line: what it waits on, else what it said last in this turn, else what it's told. */
-export function nowOf(j: Pick<Job, "title" | "turn" | "last" | "now">, s: { kind?: string; msg?: string; title?: string }) {
+export function nowOf(j: Pick<Job, "title" | "turn" | "last" | "now">, s: { kind?: string; msg?: string; title?: string; state?: string }) {
   if (s.kind) return `waits on ${s.kind === "permission" ? "a permission" : s.kind === "question" ? "an answer" : s.kind}${s.msg ? `: ${s.msg}` : ""}`
+  const n = j.last?.background ?? 0
+  if (n && (s.state === "idle" || s.state === "done")) return `waits on ${n === 1 ? "its task" : `its ${n} tasks`} in the background${j.last!.text ? `: ${gist(j.last!.text)}` : ""}`
   if (j.last?.text && j.last.at >= j.turn - 1000) return gist(j.last.text)
   const title = (s.title ?? "").replace(/^[^\p{L}\p{N}]+/u, "").trim()
   return s.msg || (title && title !== j.title ? title : "") || j.now

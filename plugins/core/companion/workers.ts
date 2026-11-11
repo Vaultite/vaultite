@@ -6,7 +6,7 @@ import os from "node:os"
 import path from "node:path"
 import { agentModel, agentName, KNOWN_AGENTS, parseTerminal } from "../../../core/agents.ts"
 import { gitEnv, inDesktop, type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin, quoted, ROOT, userSurface, whoOf } from "../../../core/plugins.ts"
-import { cardOf, choiceIn, commitsIn, endEvent, HANDED, inPlace, landedSaid, landTask, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, type Marks, nowOf, type Queued, queuedLine, toldBy, picturesIn, type Result, resumeOf,
+import { cardOf, choiceIn, commitsIn, endEvent, HANDED, inPlace, landedSaid, landTask, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, type Marks, nowOf, restEvent, type Queued, queuedLine, toldBy, picturesIn, type Result, resumeOf,
   step, terminalOf, type Waits, type Where, worktreeOf } from "./jobs.ts"
 import { requestWriter } from "../../../core/vault.ts"
 import type { Moment } from "./plugin.ts"
@@ -457,14 +457,14 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
       if (s.running && j.exited) { delete j.exited; delete j.closed; moved = true }
       if ((s.typed ?? 0) > j.started && !j.held) { j.held = true; moved = true }
       if (!s.running) { resting.delete(j.id); if (!j.exited) moved = await ended(j, s) }
-      else if (s.state === "working") { j.stepped ??= Date.now(); moved = move(j, "working"); resting.delete(j.id); if (!j.session) moved = await learn(j) || moved }
+      else if (s.state === "working") { j.stepped ??= Date.now(); moved = move(j, "working"); resting.delete(j.id); goingOn.delete(j.id); if (!j.session) moved = await learn(j) || moved }
       else if (s.state === "blocked") { moved = move(j, "asks"); resting.delete(j.id) }
       else if (s.state === "error") { moved = move(j, "error"); resting.delete(j.id) }
       else if ((s.state === "idle" || s.state === "done") && (j.state === "working" || j.state === "needs you" || j.state === "starting")) {
         const since = resting.get(j.id)
         if (sending.has(j.id)) resting.delete(j.id)
         else if (since === undefined) { resting.set(j.id, Date.now()); setTimeout(() => void refresh(j), HOLD + 100).unref?.() }
-        else if (Date.now() - since >= HOLD) moved = await finish(j)
+        else if (Date.now() - since >= HOLD && Date.now() - (goingOn.get(j.id) ?? 0) >= READ) moved = await finish(j)
       } else if (j.state === "done") moved = await tidy(j, s)
       if (j.state === "ready for review" && Date.now() - (shipRead.get(j.id) ?? 0) >= SHIP_READ) moved = await shippedSince(j) || moved
       if (moved || waited || j.now !== was || j.last?.at !== said || marked.delete(j.id)) changed()
@@ -498,12 +498,17 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     if (!s) return false
     const t = s.turn
     if (j.state === "starting" && !(t?.final && t.at >= j.turn - 1000)) return false
-    resting.delete(j.id)
     const r = resultOf(j, s)
-    j.result = r.result
     heard(j, s)
-    return move(j, landed(j, r.text) || shipped(j, s, r.text) ? "landed" : r.changes ? "changed" : "answered")
+    const ev = restEvent({ background: t?.background, landed: landed(j, r.text) || shipped(j, s, r.text), changes: r.changes, lands: j.where.lands, text: r.text, at: t?.at || j.turn })
+    // (it goes on: read again at its next rest, its now-line saying what it waits on)
+    if (ev === "working") { goingOn.set(j.id, Date.now()); j.now = nowOf(j, s); return move(j, ev) }
+    resting.delete(j.id); goingOn.delete(j.id)
+    j.result = r.result
+    return move(j, ev)
   }
+  /** Jobs at rest whose turn ended with work still going (finish's restEvent): when that was last read. */
+  const goingOn = new Map<string, number>()
   /** Whether job `j` landed its own change (`s` read with its diff, `text` its words): a commit it names, or its branch,
    *  on main since it began, else its words saying so when they name none. Never one merging what they kept (landed). */
   const shipped = (j: Job, s: Seen, text: string) => !!j.where.repo && !(j.land && j.land.at === undefined) && (s.onMain === true || (!commitsIn(text).length && landedSaid(text)))
@@ -808,7 +813,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     // (a coding job's own worktree, beside the checkout it was asked over: it lands only by their Keep and merge)
     // (one over a preview they watch edits what serves it, so the page reloads as it goes)
     if (inPlace(where)) where.watched = true
-    else if (where.repo) Object.assign(where, worktreeOf(where.cwd, where.repo, j.id))
+    else if (where.repo) Object.assign(where, worktreeOf(where.cwd, where.repo, j.id), lands() ? { lands: true } : {})
     j.now = `starting in ${tilde(where.cwd)}`
     try {
       const r = await ctx.op("terminal.start", { agent: where.agent, prompt: where.machine ? await carry(where.machine, jobTask(told, m, where, j.id, lands())) : jobTask(told, m, where, j.id, lands()), name: j.title, cwd: where.cwd,
