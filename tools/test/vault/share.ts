@@ -107,7 +107,8 @@ export default async ($: VaultTest) => {
     await $.vault.sync()
     const probe = await (await get(`${a.at}/api/file/linked?path=Probe.md`, as(a))).json()
     const toB = await (await get(`${a.at}/api/file/linked?path=Sub/B.md`, as(a))).json()
-    check("share: a note's links say nothing of what's outside the folder (there or not)", JSON.stringify(probe?.links) === JSON.stringify(["Sub/B"]), probe)
+    check("share: a note's links are as written, saying nothing of what's outside the folder (there or not)", JSON.stringify(probe?.links) ===
+      JSON.stringify(["./a/../../Secret/S.md", "./a/../../Secret/NOPE.md", "../Secret/S.md", "../Nope.md", "Sub/B"]), probe)
     check("share: what links to a note, by the guest's paths", toB.path === "Sub/B.md" && toB.linked.some((l: Any) => l.path === "Probe.md") && !JSON.stringify(toB).includes("Shared/"), toB)
     fs.rmSync(path.join(VAULT, "Shared/Probe.md"))
     await $.vault.sync()

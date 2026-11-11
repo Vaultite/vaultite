@@ -108,6 +108,40 @@ export default async ($: VaultTest) => {
   check("graph: follows a file changed on disk", gedge("Graph test/Far.md", "Graph test/Alone.md"))
   const [, hubLinks] = await api("POST", "ops/graph.links", { path: "Graph test/Hub.md" })
   check("graph.links: a pair linked both ways is in both lists", hubLinks.in.includes("Graph test/Spoke one.md") && hubLinks.out.includes("Graph test/Spoke one.md") && hubLinks.in.includes("Graph test/Spoke two.md"), hubLinks)
+  // Markdown links are links, as Obsidian counts them: relative to the note, from the top, by name, .md left out,
+  // encoded, an image; not a URL, a #heading or code.
+  {
+    const { mdLinkTarget, noteLinks } = await import("../../../core/links.ts")
+    const hrefs = ["../a/b.md#H", "a/b.md", "/a/b.md", "b", "My%20note.md", "<My note.md>", "./b.md#^id", "https://x.org/a.md", "mailto:a@b.org", "#Heading", "%zz.md"]
+    check("links: a Markdown link's address as a link target", JSON.stringify(hrefs.map(mdLinkTarget)) ===
+      JSON.stringify(["../a/b.md", "./a/b.md", "/a/b.md", "b", "My note.md", "My note.md", "./b.md", null, null, null, "%zz.md"]), hrefs.map(mdLinkTarget))
+    const nl = [...noteLinks('[[A]] ![[B.png|20]] [c](C.md) ![d](img/D.png "T") [u](https://u.org)\n`[e](E.md)` |[[F\\|f]]|\n```\n[g](G.md)\n```\n')]
+    check("links: a note's links are its wikilinks, embeds and Markdown links, outside code", JSON.stringify(nl.map((l) => [l.target, l.embed])) ===
+      JSON.stringify([["A", false], ["B.png", true], ["C.md", false], ["./img/D.png", true], ["F", false]]), nl)
+    write("Md links/People/Alice Example.md", "A made-up person.\n")
+    const forms: [string, string][] = [["Rel", "[a](../People/Alice%20Example.md)"], ["No ext", "[a](../People/Alice%20Example)"], ["Top", "[a](Md%20links/People/Alice%20Example.md)"],
+      ["Slash", "[a](/Md%20links/People/Alice%20Example.md#Intro)"], ["Angle", "[a](<../People/Alice Example.md>)"], ["Name", "[a](Alice%20Example.md)"]]
+    for (const [n, l] of forms) write(`Md links/Notes/${n}.md`, `Met ${l} today.\n`)
+    write("Md links/Notes/Not links.md", "[u](https://example.com/Alice%20Example.md) [h](#Alice) `[c](../People/Alice%20Example.md)` [m](../People/Nobody.md)\n")
+    write("Md links/Notes/Picture.md", "![p](../Media/pic.png)\n")
+    write("Md links/Media/pic.png", "not really a picture")
+    ;[, graph] = await api("GET", "graph")
+    const into = (p: string) => graph.edges.filter((e: Any) => e.to === p || (e.both && e.from === p)).map((e: Any) => (e.to === p ? e.from : e.to)).sort()
+    check("graph: a Markdown link of every form is an edge", JSON.stringify(into("Md links/People/Alice Example.md")) === JSON.stringify(forms.map(([n]) => `Md links/Notes/${n}.md`).sort()),
+      into("Md links/People/Alice Example.md"))
+    check("graph: a Markdown image makes its file a node, linked", gedge("Md links/Notes/Picture.md", "Md links/Media/pic.png"), graph.edges.filter((e: Any) => e.from.startsWith("Md links/")))
+    check("graph: a URL, a #heading, code and a file that isn't there aren't edges", !graph.edges.some((e: Any) => e.from === "Md links/Notes/Not links.md" || e.to === "Md links/Notes/Not links.md"))
+    let [, ml] = await api("POST", "ops/graph.links", { path: "Md links/People/Alice Example.md" })
+    check("graph.links: Markdown links are in its links", JSON.stringify([...ml.in].sort()) === JSON.stringify(forms.map(([n]) => `Md links/Notes/${n}.md`).sort()), ml)
+    ;[, localG] = await api("GET", "graph?path=Md links/People/Alice Example.md&depth=1")
+    check("graph: a local graph has the notes linking by a Markdown link", lp(localG).length === forms.length + 1, lp(localG))
+    write("Md links/People/Nobody.md", "Here now.\n")
+    write("Md links/Notes/Rel.md", "No link now.\n")
+    ;[, graph] = await api("GET", "graph")
+    check("graph: a Markdown link finds a file made since; one taken out is gone", gedge("Md links/Notes/Not links.md", "Md links/People/Nobody.md") &&
+      !gedge("Md links/Notes/Rel.md", "Md links/People/Alice Example.md"), graph.edges.filter((e: Any) => e.from.startsWith("Md links/")))
+    await $.removeFolder("Md links")
+  }
   write("Graph test/With graph.md", "Links to [[Hub]].\n\n```block-graph\ndepth: 2\n```\n")
   let [, gtext] = await api("GET", "render?path=Graph test/With graph.md")
   check("graph: the block as text lists neighbours as links", gtext.includes("- [[Hub]] (links to it)") && gtext.includes("**Two links away") && gtext.includes("[[Spoke one]]") && !gtext.includes("```block-graph"), gtext)

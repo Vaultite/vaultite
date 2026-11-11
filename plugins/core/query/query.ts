@@ -10,7 +10,8 @@ export type Opts = Record<string, unknown>
 /** A file to query: path, frontmatter, mtime, created (lazy), tags (frontmatter and inline), type (core/fileprops.ts)
  *  and whether it's archived. */
 export type Rec = { path: string; fm: Record<string, unknown>; mtime: number; created?: () => number; tags?: string[]; type?: string | null; archived?: boolean
-  /** Its size in bytes, and the [[links]] and ![[embeds]] in it (body and properties), for Bases' `file.size`, `file.links`... */
+  /** Its size in bytes, and the links and embeds in it (body and properties; core/links.ts' noteLinks), for Bases'
+   *  `file.size`, `file.links`... */
   size?: number; links?: () => string[]; embeds?: () => string[] }
 export type Column = { key: string; label: string }
 /** A file on a map: where, and its pin's colour (CSS: an app colour's name is var(--name)) and lucide icon. */

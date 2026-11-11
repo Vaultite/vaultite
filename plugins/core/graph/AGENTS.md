@@ -1,7 +1,7 @@
 ## Graph view
-The vault as a graph: every Markdown file is a dot, and a [[link]] (or ![[embed]]) between two files is a line; other
-files (images, drawings, canvases) are dots when something links to them or, for a `.canvas`, when its cards name
-files. Nothing is stored: it's read from the files. "Open graph view" (palette) shows the whole vault in a tab (filter,
+The vault as a graph: every Markdown file is a dot, and a link between two files is a line ([[link]], ![[embed]] or
+[text](Note.md), as Obsidian counts them); other files (images, drawings, canvases) are dots when something links to
+them or, for a `.canvas`, when its cards name files. Nothing is stored: it's read from the files. "Open graph view" (palette) shows the whole vault in a tab (filter,
 find, colour by folder or type; click a dot to open it), "Open local graph" one file's neighbours, and the sidebar's
 Local graph panel (hidden until shown from the sidebar's right-click menu, or `vau panels show "local graph"`) follows
 the file you're on; as a tab (drag its heading onto a pane, or its button) it's `view:local-graph`, following too.

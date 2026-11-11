@@ -911,6 +911,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `keptOf(vaultPath)`: The store of the vault at `vaultPath` on this machine.
 - `kindOf(path)`
 - `linkResolver(files, opts?)`: A resolver over these files: a link target (written in `from`) to a file's path, or null.
+- `linkTargets(text)`: The targets of every link in a note's Markdown (noteLinks).
 - `liveMarkdown(text)`: Whether words a guest adds (a comment, a reply: all of it theirs) hold anything live.
 - `load(vault)`: Import every plugin.ts and register its kinds, in discover() order (manifest-only plugins too, for their AGENTS.md).
 - `LOADED`
@@ -930,6 +931,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `nodeId(n)`: The id a version has: a hash of everything else in it, so two devices that make the same merge agree on it.
 - `noDesktop()`
 - `NOT_THE_USER`: Why a caller may not answer for the user, as its refusal says.
+- `noteLinks(text)`: Every link in a note's Markdown, outside code (fences and inline), as Obsidian counts them: [[links]], ![[embeds]] and Markdown links to files in the vault ([text](path), ![](path); not URLs, nor…
 - `OpCall`: An op being run, as plugin.around sees it: `plugin` is the op's (null: the core's).
 - `opcodes(a, b)`: How to turn a into b: equal runs and changed runs (replace / delete / insert).
 - `OpError`: What an op can't do, with what to do instead: a 400 over HTTP (`status`), the tool's error over MCP.

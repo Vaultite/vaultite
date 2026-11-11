@@ -38,6 +38,23 @@ export default async ($: VaultTest) => {
     check("mentions: aliases, longest name first, unicode words", JSON.stringify(findMentions("Met Zoë and Zoë Souza; zoëlle no", ["Zoë Souza", "Zoë"]).map((m) => m.text)) ===
       JSON.stringify(["Zoë", "Zoë Souza"]), findMentions("Met Zoë and Zoë Souza; zoëlle no", ["Zoë Souza", "Zoë"]))
   }
+  // Markdown links are links too: linked mentions, outgoing links, and never an unlinked mention.
+  {
+    write("Links test/Md/Ada Stone.md", "A made-up person.\n")
+    write("Links test/Md/Notes/Rel.md", "Lunch with [Ada Stone](../Ada%20Stone.md).\n")
+    write("Links test/Md/Notes/No ext.md", "Call [Ada](../Ada%20Stone#Phone), then Ada Stone again.\n")
+    write("Links test/Md/Notes/Top.md", "See [her](/Links%20test/Md/Ada%20Stone.md) and [nobody](Nobody.md).\n")
+    write("Links test/Md/Notes/Web.md", "[Ada Stone](https://example.com/Ada%20Stone.md)\n")
+    const [c, lk] = await api("GET", "file/linked?path=Links test/Md/Ada Stone.md")
+    check("linked mentions: Markdown links relative, without .md and from the top, each with its line",
+      c === 200 && JSON.stringify(lk.linked.map((l: Any) => l.path).sort()) === JSON.stringify(["Links test/Md/Notes/No ext.md", "Links test/Md/Notes/Rel.md", "Links test/Md/Notes/Top.md"]) &&
+      lk.linked.find((l: Any) => l.path === "Links test/Md/Notes/Rel.md").line === "Lunch with [Ada Stone](../Ada%20Stone.md).", lk)
+    const [, top] = await api("GET", "file/linked?path=Links test/Md/Notes/Top.md")
+    check("outgoing links: a Markdown link's target as written, decoded", JSON.stringify(top.links) === JSON.stringify(["/Links test/Md/Ada Stone.md", "Nobody.md"]), top)
+    const [, un] = await api("GET", "backlinks/unlinked?path=Links test/Md/Ada Stone.md")
+    check("unlinked mentions: a name in a Markdown link (to a note or a URL) isn't one; plain text beside it is",
+      JSON.stringify(un.mentions.map((m: Any) => `${m.path}:${m.col}`).sort()) === JSON.stringify(["Links test/Md/Notes/No ext.md:39"]), un)
+  }
   // A web page's links: the notes about it (`source`), linking it however it's written, and elsewhere on its site.
   {
     write("Links test/Web about.md", "---\ntype: note\nsource: https://www.example.com/posts/one/\n---\n\nMy notes.\n")

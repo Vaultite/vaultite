@@ -6,7 +6,7 @@ import type { IncomingMessage, ServerResponse } from "node:http"
 import path from "node:path"
 import { type Duplex, Readable, Writable } from "node:stream"
 import { WebSocket, WebSocketServer } from "ws"
-import { contentType, guestRefusal, HTTPError, type Machine, MACHINE_CLIENT, OpError, parseSearch, pipeSockets, type Plugin, reply, ROOT, Text, type Who, wikiTargets } from "../../../core/plugins.ts"
+import { contentType, guestRefusal, HTTPError, type Machine, MACHINE_CLIENT, OpError, parseSearch, pipeSockets, type Plugin, reply, ROOT, Text, type Who, linkTargets } from "../../../core/plugins.ts"
 import type { Item } from "../../../core/vault.ts"
 
 export type Role = "read" | "comment" | "edit"
@@ -383,11 +383,11 @@ export class Gateway {
     // (as the app asks for it: api/raw/<its name>?path=..., the name only for the browser's sake)
     if (method === "GET" && (route === "raw" || route.startsWith("raw/"))) return this.raw(req, res, f.at(q.path), q.download === "1")
     if (key === "GET file/linked") {
-      // Their files linking to it, and its own links as written: wikilinks only (a Markdown link by path is resolved
-      // only when its file is there, which would tell what's outside the folder).
+      // Their files linking to it, and its own links as written (never resolved here: that would tell what's outside
+      // the folder).
       const rel = f.at(q.path), t = await api("GET", `file/linked?path=${encodeURIComponent(rel)}`) as { linked: { path: string; line: string }[] }
       const linked = t.linked.flatMap((l) => { const p = f.see(l.path); return p === null ? [] : [{ ...l, path: p }] })
-      return this.json(res, 200, { path: f.see(rel), linked, links: wikiTargets(this.plugin.vault.entries.get(rel)?.body ?? "") })
+      return this.json(res, 200, { path: f.see(rel), linked, links: linkTargets(this.plugin.vault.entries.get(rel)?.body ?? "") })
     }
     if (key === "GET search") {
       if (this.limited(`search:${g.id}`, SEARCHES)) return this.json(res, 429, { error: "too many searches at once: wait a moment" })

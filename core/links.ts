@@ -12,12 +12,54 @@ export type Resolve<T> = (target: string, from?: string) => T | null
 
 const WIKI = () => /!?\[\[([^[\]\n|#^]+)(?:[#^][^[\]\n|]*)?(?:\|[^[\]\n]*)?\]\]/g
 const CODE = /(`+)(?:(?!\1).)+?\1/g
+// A [[link]] or ![[embed]] (target, #heading, |alias), or a Markdown link or image (its text, then its address and title)
+const LINK = () => /(!?\[\[)([^[\]\n|#^]+)([#^][^[\]\n|]*)?(\|[^[\]\n]*)?\]\]|(!?\[[^\]\n]*\]\()(<[^>\n]+>|[^)\s]+)((?:\s+"[^"\n]*")?\))/g
 
 /** The targets of every [[link]] (and ![[embed]]) in Markdown, outside code (fences and inline). */
 export function wikiTargets(text: string): string[] {
   const out: string[] = []
   for (const [line, code] of fenced(text)) if (!code) for (const m of line.replace(CODE, "").matchAll(WIKI())) out.push(m[1].trim())
   return out
+}
+
+/** A link in a note: its target as a resolver reads it, the line it's on (as written) and whether it's an embed. */
+export type NoteLink = { target: string; line: string; embed: boolean }
+
+/** Every link in a note's Markdown, outside code (fences and inline), as Obsidian counts them: [[links]], ![[embeds]]
+ *  and Markdown links to files in the vault ([text](path), ![](path); not URLs, nor a heading in the same note). */
+export function* noteLinks(text: string): Generator<NoteLink> {
+  if (!text.includes("[[") && !text.includes("](")) return
+  for (const [line, code] of fenced(text)) {
+    if (code || !(line.includes("[[") || line.includes("]("))) continue
+    for (const m of line.replace(CODE, "").matchAll(LINK())) {
+      // (`[[x\|alias]]` in a table is a link to x)
+      if (m[2] !== undefined) { yield { target: m[2].replace(/\\$/, "").trim(), line, embed: m[1].startsWith("!") }; continue }
+      const target = mdLinkTarget(m[6])
+      if (target) yield { target, line, embed: m[5].startsWith("!") }
+    }
+  }
+}
+
+/** The targets of every link in a note's Markdown (noteLinks). */
+export const linkTargets = (text: string): string[] => Array.from(noteLinks(text), (l) => l.target)
+
+/** A Markdown link's address, when it's a file in the vault (no scheme, not just #heading): as written (`raw`, without
+ *  <angle brackets>), its path decoded (`path`) and its #anchor. */
+function localHref(href: string): { angle: boolean; raw: string; path: string; anchor: string } | null {
+  const angle = href.startsWith("<"), raw = angle ? href.slice(1, -1) : href
+  if (!raw || /^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("#")) return null
+  const hash = raw.indexOf("#"), p = hash < 0 ? raw : raw.slice(0, hash)
+  let path = p
+  try { path = decodeURIComponent(p) } catch { /* not encoded */ }
+  return { angle, raw: p, path, anchor: hash < 0 ? "" : raw.slice(hash) }
+}
+
+/** A Markdown link's address as a link target, or null when it isn't a file in the vault. As Obsidian reads it: from
+ *  the note's folder first, then the vault's top, then by name (`Sub/Idea.md` is written `./Sub/Idea.md` for that). */
+export function mdLinkTarget(href: string): string | null {
+  const p = localHref(href)?.path.trim()
+  if (!p) return null
+  return p.includes("/") && !/^(\.\.?\/|\/)/.test(p) ? `./${p}` : p
 }
 
 /** Each line of Markdown, and whether it's code: a fence's own line or one inside it. */
@@ -138,8 +180,6 @@ export function linkResolver(files: LinkFile[], opts?: { twins?: boolean }): Res
     labels: [...(f.aliases ?? []), ...(f.names ?? [])] })), opts).resolve
 }
 
-const LINK = () => /(!?\[\[)([^[\]\n|#^]+)([#^][^[\]\n|]*)?(\|[^[\]\n]*)?\]\]|(!?\[[^\]\n]*\]\()(<[^>\n]+>|[^)\s]+)((?:\s+"[^"\n]*")?\))/g
-
 /** A link in a line of Markdown: its span, where its target is written (`target`) and its text (`text`: a
  *  [[link|alias]]'s alias, a [text](url)'s text); `embed`: an ![[embed]] or ![image](url). */
 export type LinkSpan = { wiki?: string; url?: string; tag?: string; from: number; to: number; target: [number, number]; text?: [number, number]; embed?: boolean }
@@ -178,11 +218,9 @@ function relinkSpan(s: string, to: (target: string, md: boolean) => string | nul
       const t = to(target.slice(0, target.length - esc.length).trim(), false)
       return t === null ? all : `${open}${t}${head ?? ""}${esc}${alias ?? ""}]]`
     }
-    const angle = href!.startsWith("<"), raw = angle ? href!.slice(1, -1) : href!
-    if (/^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("#")) return all
-    const hash = raw.indexOf("#"), p = hash < 0 ? raw : raw.slice(0, hash), anchor = hash < 0 ? "" : raw.slice(hash)
-    let dec = p
-    try { dec = decodeURIComponent(p) } catch { /* not encoded */ }
+    const h = localHref(href!)
+    if (!h) return all
+    const { angle, raw: p, path: dec, anchor } = h
     const t = dec && to(dec, true)
     if (!t) return all
     const pct = (c: string) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`

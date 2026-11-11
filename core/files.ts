@@ -15,7 +15,7 @@ import { xmlDecode } from "./unzip.ts"
 import { applyEdit, editOf, textHash } from "./texthash.ts"
 import { blocksIn } from "./sections.ts"
 import { prose } from "./frontmatter.ts"
-import { fenced, linkResolver } from "./links.ts"
+import { linkResolver, noteLinks } from "./links.ts"
 import { addEntry, entryLine, entryProblem, type NewEntry, timelineKind } from "./timeline.ts"
 import { guard, notHereYet } from "./writegate.ts"
 import { byGuest, guestRefusal } from "./guests.ts"
@@ -24,7 +24,6 @@ import { cmp, DEVICE_NAME, type Entry, linkKey, fetchFromICloud, iCloud, type It
 const WIKI = () => /\[\[([^[\]\n|#^]+)((?:#[^[\]\n|]*)?)((?:\|[^[\]\n]*)?)\]\]/g
 const SKIP = new Set([".DS_Store", ".git", ".localized"]) // never shown, even with hidden files on
 const STAMP = / \d{4}-\d{2}-\d{2} \d{6}(?: \d+)?$/ // what trashing adds to a name (" 1" when two went at once)
-const CODE = /(`+)(?:(?!\1).)+?\1/g // an inline code span
 
 function showHidden(vault: Vault | null) {
   return !!(vault && vault.config("files").showHidden)
@@ -90,32 +89,11 @@ function context(line: string, at?: (s: string) => [number, number][]) {
   return chars(s, 200)
 }
 
-/** A Markdown link to a note (`[text](Some%20Note.md#Heading)`, written instead of a wikilink): not a URL. */
-const MDLINK = () => /\[[^\]\n]*\]\((?:<([^>\n]+?\.md)>|((?![a-z][a-z0-9+.-]*:)[^)\s]+?\.md))(?:#[^)\s]*)?\)/gi
-
-/** What a Markdown link names, as a wikilink target: its path from the vault's top when it's relative to the file and
- *  such a file exists, else as written (a name or a vault path), without .md. */
-function mdTarget(vault: Vault | null, rel: string, href: string) {
-  let t = href
-  try { t = decodeURIComponent(href) } catch { /* not encoded */ }
-  t = t.replace(/^\/+/, "")
-  const dir = rel.includes("/") ? rel.slice(0, rel.lastIndexOf("/")) : ""
-  const joined = path.posix.normalize(dir ? `${dir}/${t}` : t)
-  if (vault && !joined.startsWith("..") && vault.entries.has(joined)) t = joined
-  return t.replace(/^(\.\.?\/)+/, "").replace(/\.md$/i, "")
-}
-
-/** [target, the line it's on] for every wikilink in a file (body and frontmatter values), and Markdown links to notes;
- *  the line as written (`context` makes it the one shown). */
-function linksOf(e: Entry, vault: Vault | null = null) {
+/** [target, the line it's on] for every link in a file (core/links.ts' noteLinks, and its frontmatter values'
+ *  wikilinks); the line as written (`context` makes it the one shown). */
+function linksOf(e: Entry) {
   const out: [string, string][] = []
-  // (a body with neither kind of link has none to find line by line)
-  for (const [line, code] of e.body.includes("[[") || e.body.includes("](") ? fenced(e.body) : []) {
-    if (code) continue // a link in code is just text
-    const text = line.replace(CODE, "")
-    for (const m of text.matchAll(WIKI())) out.push([m[1].trim(), line])
-    if (text.includes("](")) for (const m of text.matchAll(MDLINK())) out.push([mdTarget(vault, e.rel, m[1] ?? m[2]), line])
-  }
+  for (const l of noteLinks(e.body)) out.push([l.target, l.line])
   for (const [k, v] of Object.entries(e.fm)) {
     for (const s of Array.isArray(v) ? v : [v]) {
       if (typeof s === "string") for (const m of s.matchAll(WIKI())) out.push([m[1].trim(), `${k}: ${s}`])
@@ -746,7 +724,7 @@ function linkIndex(vault: Vault): Linked {
   if (ix?.version === vault.version) return ix
   if (!ix) {
     const made: Linked = { version: vault.version, resolve: linkResolver(vault.linkFiles()), names: new Map(), out: new Map(), into: new Map(), byName: new Map() }
-    for (const [rel, e] of vault.entries) { made.names.set(rel, linkKey(e)); add(vault, made, rel, e) }
+    for (const [rel, e] of vault.entries) { made.names.set(rel, linkKey(e)); add(made, rel, e) }
     for (const rel of vault.others.keys()) made.names.set(rel, "")
     linkIndexes.set(vault, made)
     return made
@@ -778,12 +756,12 @@ function linkIndex(vault: Vault): Linked {
     ix.resolve = linkResolver(vault.linkFiles())
     for (const n of named) for (const rel of ix.byName.get(n) ?? []) redo.add(rel)
   }
-  for (const rel of redo) { drop(ix, rel); add(vault, ix, rel, vault.entries.get(rel)!) }
+  for (const rel of redo) { drop(ix, rel); add(ix, rel, vault.entries.get(rel)!) }
   ix.version = vault.version
   return ix
 }
-function add(vault: Vault, ix: Linked, rel: string, e: Entry) {
-  const written = linksOf(e, vault).map(([t]) => t)
+function add(ix: Linked, rel: string, e: Entry) {
+  const written = linksOf(e).map(([t]) => t)
   const to = [...new Set(written.map((t) => ix.resolve(t, rel)).filter((p): p is string => !!p && p !== rel))]
   const named = [...new Set(written.map(linkName))]
   ix.out.set(rel, { e, to, named })
@@ -804,11 +782,11 @@ function linkedTo(vault: Vault, rel: string): { path: string; linked: { path: st
   const at = (p: string) => vault.entries.get(p)!.stat.ns
   from.sort((a, b) => (at(a) === at(b) ? cmp(a, b) : at(b) > at(a) ? 1 : -1))
   const linked = from.map((p) => {
-    const hit = linksOf(vault.entries.get(p)!, vault).find(([t]) => ix.resolve(t, p) === rel)
+    const hit = linksOf(vault.entries.get(p)!).find(([t]) => ix.resolve(t, p) === rel)
     return { path: p, line: hit ? context(hit[1]) : "" }
   })
   const e = vault.entries.get(rel)
-  return { path: rel, linked, links: e ? linksOf(e, vault).map(([t]) => t) : [] }
+  return { path: rel, linked, links: e ? linksOf(e).map(([t]) => t) : [] }
 }
 
 /** The file routes, or undefined if the request isn't one of them. */

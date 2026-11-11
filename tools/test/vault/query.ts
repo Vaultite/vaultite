@@ -209,5 +209,21 @@ export default async ($: VaultTest) => {
   }
   // (what it wrote goes: in a vault with no other notes, its note would be where a later area's new ones go)
   fs.rmSync(path.join(VAULT, "Templates/Qtest person.md"))
-  for (const d of ["Query test", "Bases test"]) await $.removeFolder(d)
+  // Markdown links are a file's links, as Obsidian counts them: file.hasLink, file.links, file.embeds, file.backlinks.
+  {
+    write("Query md/Target.md", "The target.\n")
+    write("Query md/Notes/Rel.md", "See [t](../Target.md) and ![pic](../pic.png).\n")
+    write("Query md/Notes/Top.md", "See [t](/Query%20md/Target).\n")
+    write("Query md/Notes/None.md", "Not [t](https://example.com/Target.md), nor `[t](../Target.md)`.\n")
+    write("Query md/pic.png", "not really a picture")
+    const ask = async (base: string, at = "Query md/Target.md") => api("GET", `query?q=${JSON.stringify({ base })}&self=${at}&this=${at}`)
+    let [c, r] = await ask("filters: file.hasLink(this)")
+    check("query: file.hasLink sees Markdown links (relative, from the top, .md left out), not URLs or code",
+      c === 200 && JSON.stringify(r.groups[0].rows.map((x: Any) => x.title).sort()) === '["Rel","Top"]', r)
+    ;[c, r] = await ask('filters: file.inFolder("Query md/Notes")\nformulas:\n  out: file.links\n  emb: file.embeds\n  back: this.file.backlinks.length\nviews:\n  - type: table\n    order: [file.name, formula.out, formula.emb, formula.back]\n')
+    const row = (t: string) => r.groups[0].rows.find((x: Any) => x.title === t)
+    check("query: file.links and file.embeds name the files a Markdown link finds; backlinks count them", c === 200 && JSON.stringify(row("Rel")?.values) === '{"file":"Rel","formula.out":["[[Query md/Target]]","[[Query md/pic.png]]"],"formula.emb":["[[Query md/pic.png]]"],"formula.back":2}' &&
+      JSON.stringify(row("Top")?.values["formula.out"]) === '["[[Query md/Target]]"]' && JSON.stringify(row("None")?.values["formula.out"]) === "[]", r.groups[0].rows)
+  }
+  for (const d of ["Query test", "Bases test", "Query md"]) await $.removeFolder(d)
 }

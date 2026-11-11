@@ -1,6 +1,6 @@
 // Obsidian Bases and `vau query` on one engine (query.ts; bases.ts turns a view into options), served at /api/query.
 // Nothing is stored: the files are the data; edits are the app's small edits to frontmatter or the .base.
-import { HTTPError, Plugin, frontmatterTargets, source, type PropTypes, typedValue, typeOf, wikiTargets } from "../../../core/plugins.ts"
+import { HTTPError, Plugin, frontmatterTargets, noteLinks, source, type PropTypes, typedValue, typeOf } from "../../../core/plugins.ts"
 import { type Entry, type Item, loadFm, readText, type Vault } from "../../../core/vault.ts"
 import { baseOptions } from "./bases.ts"
 import { markdown, type Opts, QueryError, type Rec, type Result, run, type RunCtx } from "./query.ts"
@@ -17,13 +17,13 @@ function templatesFolder() {
   return "Templates"
 }
 
-const EMBED = /!\[\[([^\]|#\n]+)/g
-// A file's links and embeds, read once per read of it.
+// A file's links and embeds (its text's, as Obsidian counts them, and its properties' [[links]]), read once per read of it.
 const linkCache = new WeakMap<Entry, { body: string; fm: Item; links: string[]; embeds: string[] }>()
 function linksOf(e: Entry) {
   let c = linkCache.get(e)
   if (!c || c.body !== e.body || c.fm !== e.fm) {
-    c = { body: e.body, fm: e.fm, links: [...wikiTargets(e.body), ...frontmatterTargets(e.fm)], embeds: [...e.body.matchAll(EMBED)].map((m) => m[1].trim()) }
+    const body = [...noteLinks(e.body)]
+    c = { body: e.body, fm: e.fm, links: [...body.map((l) => l.target), ...frontmatterTargets(e.fm)], embeds: body.filter((l) => l.embed).map((l) => l.target) }
     linkCache.set(e, c)
   }
   return c

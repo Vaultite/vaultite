@@ -472,8 +472,14 @@ function prop(rec: Rec | null, name: string): V {
   return k ? wrap(rec.fm[k]) : null
 }
 
-function linksOf(rec: Rec): BLink[] {
-  return (rec.links?.() ?? []).map((t) => new BLink(t))
+/** Links written in `rec` as links that mean the same anywhere: a path (a Markdown link's: `../Idea.md`) as the file
+ *  it finds from there. */
+function linksOf(rec: Rec, targets: string[] | undefined, env: Env): BLink[] {
+  return (targets ?? []).map((t) => {
+    if (!/^\.{0,2}\//.test(t)) return new BLink(t)
+    const to = env.resolve(t, rec.path)
+    return new BLink(to ? to.path.replace(/\.md$/i, "") : t.replace(/^(\.\.?\/)+|^\/+/, ""))
+  })
 }
 
 /** A file's field (file.name, file.mtime...); other names are its properties. */
@@ -489,8 +495,8 @@ function fileField(f: BFile, name: string, s: Scope): V {
     case "ctime": return new BDate(r.created ? r.created() : r.mtime, true)
     case "mtime": return new BDate(r.mtime, true)
     case "tags": return [...(r.tags ?? [])].map((t) => (t.startsWith("#") ? t : `#${t}`))
-    case "links": return linksOf(r)
-    case "embeds": return (r.embeds?.() ?? []).map((t) => new BLink(t))
+    case "links": return linksOf(r, r.links?.(), s.env)
+    case "embeds": return linksOf(r, r.embeds?.(), s.env)
     case "backlinks": return s.env.backlinks(r).map((p) => new BLink(p.replace(/\.md$/i, "")))
     case "properties": return wrap(r.fm)
     case "file": return f

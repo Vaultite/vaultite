@@ -1,7 +1,7 @@
 // Graph view's server side: /api/graph (the whole vault or a local graph) and its settings. Nodes include linked
 // attachments and files plugins read links from; links resolve like the app's. Nothing is stored.
 import fs from "node:fs"
-import { frontmatterLinks, HTTPError, type LinkFile, linkResolver, LOADED, OpError, parseSearch, Plugin, type SearchDoc, SearchError, searchMatches, wikiTargets } from "../../../core/plugins.ts"
+import { frontmatterLinks, HTTPError, type LinkFile, linkResolver, LOADED, OpError, parseSearch, Plugin, type SearchDoc, SearchError, searchMatches, linkTargets } from "../../../core/plugins.ts"
 import { type Entry, readText, stemOf, type Vault } from "../../../core/vault.ts"
 import { BODY, buildGraph, type Built, filterGraph, type Graph, type GraphFile, type GraphNode, localGraph, localMarkdown, MAX_DEPTH } from "./graph.ts"
 
@@ -33,7 +33,7 @@ function seen(vault: Vault, rel: string, e: Entry): Seen {
     const title = e.fm.title || e.fm.name || stemOf(rel), aliases = e.fm.aliases
     const target = { path: rel, aliases: (Array.isArray(aliases) ? aliases : aliases ? [aliases] : []).map(String), archived: e.archived }
     s = { settings: 0, excluded, target, key: `${rel}\u0001${target.aliases.join("\u0001")}${e.archived ? "\u0002" : ""}`,
-      file: { path: rel, title: typeof title === "string" ? title : String(title), type: e.type, tags: e.tags, links: s?.file.links ?? wikiTargets(e.body),
+      file: { path: rel, title: typeof title === "string" ? title : String(title), type: e.type, tags: e.tags, links: s?.file.links ?? linkTargets(e.body),
         props: s?.file.props ?? frontmatterLinks(e.fm), ...(e.archived ? { archived: true } : {}), ...(excluded ? { excluded: true } : {}) } }
   }
   s.settings = vault.settingsVersion
