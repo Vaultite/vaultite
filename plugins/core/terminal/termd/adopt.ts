@@ -1,4 +1,4 @@
-// Taking over an older terminal server's terminals (protocol 1: ptyd.ts, the keeper before; 2: termd with xterm.js), held through it and mirrored
+// Taking over an older terminal server's terminals (protocol 1: ptyd.ts, the keeper before; 2: termd with xterm.js; 3: before pictures), held through it and mirrored
 // here (screen, OSC 7501, end), so an upgrade keeps them whole; once its last one ends it's let go, and it exits.
 import net from "node:net"
 import { lineReader } from "../lines.ts"

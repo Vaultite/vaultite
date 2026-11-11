@@ -464,12 +464,12 @@ export default async ($: VaultTest) => {
       cap?.text === "old screen\n$ after" && got.includes("ls\r") && exited?.exit?.code === 2, [cap, got, exited])
   }
 
-  // Protocol 2 (termd with xterm.js): its changes come as events once subscribed, its picture is xterm.js' serialize.
-  if (process.platform !== "win32") {
+  // Protocols 2 (termd with xterm.js) and 3 (before pictures): its changes come as events once subscribed, its picture is xterm.js' serialize.
+  for (const v of [2, 3]) if (process.platform !== "win32") {
     const net = await import("node:net")
     const { host } = await import("../../../plugins/core/terminal/termd/host.ts")
     const { waitFor } = await import("../lib.ts")
-    const old = path.join(tmp, "old-termd2.sock"), ops: string[] = []
+    const old = path.join(tmp, `old-termd${v}.sock`), ops: string[] = []
     let ctl: import("node:net").Socket | null = null
     const oldServer = net.createServer((sock) => {
       sock.setEncoding("utf8")
@@ -480,7 +480,7 @@ export default async ($: VaultTest) => {
           const m = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1)
           const re = (x: object) => sock.write(JSON.stringify({ re: m.re, ...x }) + "\n")
           ops.push(m.op)
-          if (m.op === "hello") { ctl ??= sock; re({ v: 2, pid: 4343 }) }
+          if (m.op === "hello") { ctl ??= sock; re({ v, pid: 4343 }) }
           else if (m.op === "list") re({ sessions: [{ id: "two1", pid: 98, process: "claude", created: 2000, title: "Two", cols: 40, rows: 6, said: { seen: true, status: null } }] })
           else if (m.op === "attach") re({ cols: 40, rows: 6 })
           else if (m.op === "snapshot") re({ data: "\x1b[1mtwo\x1b[0m screen\r\n\x1b[?2004h> " })
@@ -502,7 +502,7 @@ export default async ($: VaultTest) => {
     const cap = msgs.find((m) => m.re === 2) as { text?: string } | undefined, info = (msgs.find((m) => m.re === 3) as { sessions: { said: unknown; title: string }[] }).sessions[0]
     const pasteOn = h.sessions.get("two1")?.term.mode(2004)
     oldServer.close()
-    check("terminal server: it takes over protocol 2's terminals, their changes heard as events, their picture read (modes too)", JSON.stringify(adopted?.adopted) === '["two1"]' &&
+    check(`terminal server: it takes over protocol ${v}'s terminals, their changes heard as events, their picture read (modes too)`, JSON.stringify(adopted?.adopted) === '["two1"]' &&
       ops.includes("subscribe") && !ops.includes("status") && cap?.text === "two screen\n>" && pasteOn === true && info.title === "Two, renamed" &&
       JSON.stringify(info.said) === JSON.stringify({ seen: true, status: { state: "blocked", kind: "permission" } }), [adopted, ops, cap, info, pasteOn])
   }

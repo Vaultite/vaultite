@@ -3,8 +3,8 @@
 import type { Said } from "../osc7501.ts"
 
 /** The protocol, in its socket's name: a server speaking another takes over the older one's terminals (adopt.ts).
- *  1 was ptyd.ts, the keeper before; 2 termd with xterm.js' headless terminal, before libghostty-vt. */
-export const PROTOCOL = 3
+ *  1 ptyd.ts, the keeper before; 2 termd with xterm.js; 3 before pictures (a running one kept new terminals off them). */
+export const PROTOCOL = 4
 
 /** How a terminal's program ended: its exit code, or the signal that ended it (0: none). `lost`: the server holding it
  *  went away first, so how it ended is unknown. */
