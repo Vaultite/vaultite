@@ -90,7 +90,8 @@ try {
   check("no other window opens with it", app.windows().length === 1, app.windows().map((x) => x.url()))
   check("one page, the vault: Create a vault by default, called Vault, in iCloud Drive", await w.isChecked("[data-choice=new] input") && await w.inputValue("[data-vault-name]") === "Vault"
     && await w.getAttribute("[data-place=icloud]", "aria-checked") === "true")
-  check("page dots, the first of four, no numbered steps", (await w.getAttribute("[data-dots]", "data-dots")) === "1/4" && !(await w.$("[data-steps]")))
+  check("one page: no page dots, no numbered steps", !(await w.$("[data-dots]")) && !(await w.$("[data-steps]")))
+  check("it says it adds vau, and where, before it does", /adds its command line, vau, to ~\/\.local\/bin/.test(await w.textContent("[data-vau-line]") ?? "") && !fs.existsSync(path.join(HOME, ".local/bin/vau")))
   check("it fits: nothing scrolls", await w.evaluate(() => document.scrollingElement.scrollHeight <= innerHeight))
   await shoot(app, w, "1-welcome")
   await w.click("[data-choice=open]")
@@ -113,7 +114,9 @@ try {
   check("setup is remembered as done, outside the vault", !!JSON.parse(fs.readFileSync(path.join(TMP, "userData/setup.json"), "utf8")).done && !fs.readdirSync(VAULT, { recursive: true }).some((f) => /setup\.json$/.test(f)))
 
   // The welcome card goes on over the vault: the look, AI, (permissions), done.
-  check("the welcome card goes on over it, on the second dot", !!(await until(() => vw.$("[data-welcome=first-run]"), 15000)) && (await vw.getAttribute("[data-dots]", "data-dots")) === "2/4")
+  check("the welcome card goes on over it, on its first dot of three", !!(await until(() => vw.$("[data-welcome=first-run]"), 15000)) && (await vw.getAttribute("[data-dots]", "data-dots")) === "1/3")
+  const aiOf = (dir) => { try { return JSON.parse(fs.readFileSync(path.join(dir, ".vaultite/plugins.json"), "utf8")).ai } catch { return undefined } }
+  check("a vault new to the app has AI off until the card asks: no AI behind it", aiOf(VAULT) === false && !(await vw.$("[data-newtab-connect]")), aiOf(VAULT))
   await until(() => vw.locator("[data-welcome] [data-layout-pick]").count(), 8000)
   check("its look page: the three layouts, no Back (the vault is made)", await vw.locator("[data-welcome] [data-layout-pick]").count() === 3 && !(await vw.$("[data-welcome-back]")))
   await shoot(app, vw, "3-look")
@@ -126,7 +129,7 @@ try {
     if (MAC) {
       await vw.waitForSelector("[data-welcome-permissions] [data-permission=screen]", { timeout: 15000 })
       check("Use them, on a Mac: Accessibility and Screen recording, nothing else", JSON.stringify(await vw.$$eval("[data-permission]", (l) => l.map((e) => e.dataset.permission))) === '["accessibility","screen"]')
-      check("...still the AI dot", (await vw.getAttribute("[data-dots]", "data-dots")) === "3/4")
+      check("...still the AI dot", (await vw.getAttribute("[data-dots]", "data-dots")) === "2/3")
       await shoot(app, vw, "5-permissions")
       check("nothing outside the vault changes before Allow", JSON.stringify(claudeJson().projects ?? {}) === "{}")
       await vw.click("[data-act=accessibility]")
@@ -138,7 +141,8 @@ try {
     }
   } else await vw.click("[data-welcome-next]")
   await vw.waitForSelector("[data-welcome-body=done]", { timeout: 15000 })
-  check("then done, on the last dot", (await vw.getAttribute("[data-dots]", "data-dots")) === "4/4")
+  check("then done, on the last dot", (await vw.getAttribute("[data-dots]", "data-dots")) === "3/3")
+  check(found ? "Use them: AI on" : "no agent: AI still off", (aiOf(VAULT) !== false) === found, aiOf(VAULT))
   await shoot(app, vw, "6-done")
   await vw.keyboard.press("ControlOrMeta+o")
   check("pressing its key ends it", await until(async () => !(await vw.$("[data-welcome]")), 5000))
@@ -200,6 +204,7 @@ try {
   check("an opened folder gets the welcome card too", !!(await until(() => gw.$("[data-welcome=first-run]"), 15000)))
   await gw.keyboard.press("Escape")
   check("Esc ends it", await until(async () => !(await gw.$("[data-welcome]")), 4000))
+  check("...AI still off, as after Not now (it was never answered)", aiOf(OBSIDIAN) === false, aiOf(OBSIDIAN))
   await wait(1500)
   check("nothing outside the vault changed", fs.readFileSync(CLAUDE_JSON, "utf8") === claudeBefore)
   const obsidianAfter = tree(OBSIDIAN)

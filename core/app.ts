@@ -279,7 +279,12 @@ export class App {
 
   /** Which plugins are on, as one string; "offering:" before it while a new vault is being offered the bundles. */
   private onKey() {
-    const on = [...enabled(this.vault, this.plugins)].sort().join(",")
+    // (AI's switch aside: AI turned on turns none of its plugins on, so it writes none of their pages)
+    const conf = this.vault.config("plugins"), list = (k: string) => (Array.isArray(conf[k]) ? conf[k] as unknown[] : [])
+    const own = (p: Plugin) => !list("disabled").includes(p.id) && (!(p.manifest.offByDefault || p.tier === "vault") || list("enabled").includes(p.id))
+    const set = enabled(this.vault, this.plugins)
+    if (conf.ai === false) for (const p of this.plugins) if (p.manifest.ai === true && own(p)) set.add(p.id)
+    const on = [...set].sort().join(",")
     return B.offering(this.vault) ? `offering:${on}` : on
   }
 

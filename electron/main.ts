@@ -891,7 +891,7 @@ function setupHandle(name: string, fn: (...args: never[]) => unknown) {
 
 setupHandle("setup:info", () => {
   const w = where()
-  return { places: Setup.places(w), obsidian: Setup.obsidianVaults(w), vau: Setup.vauStatus(w, pathDirs()), mac: MAC }
+  return { places: Setup.places(w), obsidian: Setup.obsidianVaults(w), vau: Setup.vauStatus(w, pathDirs()), vauHome: Setup.vauHome(w), mac: MAC }
 })
 setupHandle("setup:pick", async () => {
   const r = await dialog.showOpenDialog(setupWin!, { properties: ["openDirectory", "createDirectory"] })
@@ -915,12 +915,17 @@ setupHandle("setup:choose", async (c: { kind: "new"; parent: string; name: strin
     if (!fs.statSync(p, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`${p} isn't a folder`)
   }
   chosen = { path: p, made, added: !find(p) }
+  const fresh = !fs.existsSync(path.join(p, ".vaultite"))
   const port = (await servedHere(p))?.port ?? (await serverFor(remember(p)))[1]
-  // Starter content only when the user asked for it (core/start.ts): opening a folder writes nothing outside .vaultite/.
-  if (c.kind === "new" && c.starter) {
-    const r = await fetch(`http://127.0.0.1:${port}/api/ops/vault.starter`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/desktop" }, body: "{}" })
-    if (!r.ok) console.error("starter content:", r.status, await r.text())
+  const call = async (opId: string, body: object, what: string) => {
+    const r = await fetch(`http://127.0.0.1:${port}/api/ops/${opId}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/desktop" }, body: JSON.stringify(body) })
+    if (!r.ok) console.error(`${what}:`, r.status, await r.text())
   }
+  // A vault new to the app has AI off until the welcome card asks (nothing of it shows before a yes); one set up before
+  // keeps its own.
+  if (fresh) await call("ai.set", { on: "off" }, "AI off until asked")
+  // Starter content only when the user asked for it (core/start.ts): opening a folder writes nothing outside .vaultite/.
+  if (c.kind === "new" && c.starter) await call("vault.starter", {}, "starter content")
   return chosen
 })
 setupHandle("setup:vau", async (system: boolean) => {

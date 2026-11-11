@@ -25,31 +25,44 @@ ${a.name}'s cursor shows up in this note, and it answers here.
 ## Find your way
 
 - ⌘O finds any file, ⌘P runs any command, ⌘N makes a note (Ctrl on Windows and Linux).
+- ⌥⌘D opens today's daily note, ⌘G the graph of your notes and their links.
 - Settings > Appearance picks a layout: Standard, Zen or Browser.
 - Plugins turns on one feature at a time.
 ${a ? `- In a terminal (Open terminal, from ⌘P), \`${a.bin}\` runs ${a.name} in this folder, with the vault's rules.
 - Settings > AI connects Claude, ChatGPT, Muse and Grok Bot to this vault, on the web and on your phone.
-` : ""}- [[How this vault works]]: what a file is, and what a note can hold.
+` : ""}- [[How this vault works]]: what a note can hold, and how notes connect.
 - Delete this note when you're done with it.
 `
 
 /** A tour of what a note can hold, each piece written as it's saved (as the playground's, for a vault with nothing yet). */
 const howItWorks = (a: Agent | null) => `A vault is a folder of plain Markdown files. There's no database: open any file in another editor and it reads fine. To see how each piece below is written, switch to editing (⌘E, or Ctrl+E) and put the cursor on it.
 
-## What a file is
+${a ? `## What a file is
 
-What a file is comes from the \`type:\` in its frontmatter (a log, a person, a project), never its folder, so put things wherever you like. A file without one is a plain note. The pages plugins add (a dashboard, a list) live in \`Dashboards/\`.
-${a ? `
+What a file is comes from the \`type:\` in its properties (a log, a person, a project), never its folder, so put things wherever you like. A file without one is a plain note. The pages plugins add (a dashboard, a list) live in \`Dashboards/\`.
+
 > [!tip] ${a.name} follows the same rules
 > The app gives any agent it starts the vault's rules (\`.vaultite/AGENTS.md\`: a line from each plugin that's on, then your own rules at its end), and each kind of file's format on demand. AGENTS.md and CLAUDE.md in this folder point agents started elsewhere at them too.
-` : ""}
-## Links and embeds
+
+` : ""}## Links and embeds
 
 Links go to files ([[Start here]]), headings ([[How this vault works#Tasks]]) or a single line ([[How this vault works#^one-line]]). A line can end with an id like this one, so a link goes to just that line. ^one-line
 
 An embed shows another note's section in place:
 
 ![[Start here#Find your way]]
+
+## Properties
+
+A note's properties are the \`key: value\` lines between \`---\` at its very top, as in Obsidian: its tags, a date, a status. The app shows them under the title.
+
+## Daily notes and templates
+
+⌥⌘D (Ctrl+Alt+D) opens today's note, named by its date. Notes in a \`Templates\` folder are templates: Insert template (from ⌘P) puts one in the note you're writing, its \`{{date}}\` and \`{{title}}\` filled in.
+
+## The graph
+
+⌘G (Ctrl+G) draws your notes and the links between them. This note and [[Start here]] link to each other, so they show joined.
 
 ## Tasks
 

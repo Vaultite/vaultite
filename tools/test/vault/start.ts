@@ -2,7 +2,11 @@ import fs from "node:fs"
 import path from "node:path"
 import type { VaultTest } from "./harness.ts"
 import { MOVED, NOW_OPT_IN } from "../../../core/migrations.ts"
+import { whoOf } from "../../../core/ops.ts"
 import { Vault } from "../../../core/vault.ts"
+
+/** The desktop app, as Set up Vaultite calls the starter (the user's write, not an agent's). */
+const APP = whoOf("app/desktop", null)
 
 // The app's own plugins that are off until turned on: Standard (the app's defaults) turns none of them on.
 const optIn = fs.readdirSync(path.join(import.meta.dirname, "../../../plugins/core")).filter((id) => {
@@ -40,7 +44,7 @@ export default async ($: VaultTest) => {
       && !pj?.disabled?.includes("terminal") && !pj?.disabled?.includes("claude-code") && !pj?.disabled?.includes("provenance"), pj)
     check("new vault: Standard's look (Gruvbox, the default: unset)", !look?.scheme && look?.fileIcons === false, look)
     check("new vault: nothing outside .vaultite/ until asked", JSON.stringify(fs.readdirSync(fresh)) === '[".vaultite"]', fs.readdirSync(fresh))
-    await freshApp.callOp("vault.starter", {})
+    await freshApp.callOp("vault.starter", {}, APP)
     const fp = conf(fresh, "pages"), text = (rel: string) => fs.readFileSync(path.join(fresh, rel), "utf8")
     check("new vault, starter content chosen: Start here, the only pin", JSON.stringify(fp?.pinned) === '["Start here.md"]', [fp, fs.readdirSync(fresh)])
     const how = text("How this vault works.md")
@@ -49,6 +53,9 @@ export default async ($: VaultTest) => {
     // (AI isn't answered yet: nothing of it, and nothing for agents, until the user says to use one)
     const said = /\b(AI|Claude|claude|Codex|agents?)\b|Connections/
     check("new vault, starter content chosen: no word of AI or a menu that isn't there", !said.test(text("Start here.md")) && !said.test(how), [text("Start here.md"), how])
+    check("new vault, starter content chosen: about notes (links, properties, daily notes, templates, the graph), not kinds or dashboards", ["## Links", "## Properties", "## Daily notes and templates", "## The graph"].every((h) => how.includes(h))
+      && !how.includes("type:") && !how.includes("Dashboards"), how)
+    check("new vault: nothing written into its notes (Note dates is off until asked)", text("Start here.md").startsWith("This vault") && text("How this vault works.md").startsWith("A vault"), text("Start here.md").slice(0, 80))
     check("new vault, starter content chosen: no agent's page, no AGENTS.md or CLAUDE.md", JSON.stringify(fs.readdirSync(fresh).sort()) === '[".vaultite","How this vault works.md","Start here.md"]', fs.readdirSync(fresh))
     check("new vault: nothing to restore, nothing offered", !fs.existsSync(path.join(fresh, ".vaultite/bundles/previous.json")) && !fs.existsSync(path.join(fresh, ".vaultite/bundles/onboarding.json")))
     await freshApp.host().call("POST", "bundles/standard/apply", {})
@@ -91,27 +98,30 @@ export default async ($: VaultTest) => {
     fs.rmSync(path.join(fresh, "Mine.md"))
     // The welcome card's Use it: the agent's page and pointers come, and the notes, as written, say what it can do.
     const plain = [text("Start here.md"), text("How this vault works.md")]
-    const used = (await freshApp.callOp("vault.starter", { agent: "claude-code" })).result as { wrote: string[] }
+    const used = (await freshApp.callOp("vault.starter", { agent: "claude-code" }, APP)).result as { wrote: string[] }
     await freshApp.vault.sync()
     check("new vault, its agent used: the agent's page (Claude), not pinned, not the others' (Errors)", fs.existsSync(path.join(fresh, "Dashboards/Claude.md")) &&
       !fs.existsSync(path.join(fresh, "Dashboards/Errors.md")) && JSON.stringify(conf(fresh, "pages")?.pinned) === '["Start here.md"]', [used, conf(fresh, "pages")])
     check("new vault, its agent used: agents started in it find its rules", /\.vaultite\/AGENTS\.md/.test(text("CLAUDE.md")) && fs.existsSync(path.join(fresh, "AGENTS.md")), fs.readdirSync(fresh))
     check("new vault, its agent used: Start here says to ask it, and where Settings has the AI apps", text("Start here.md").includes("`@claude what can I do with this vault?`") &&
-      text("Start here.md").includes("Settings > AI connects") && !text("Start here.md").includes("Connections") && /^---\n[\s\S]*?\n---\n\nThis vault/.test(text("Start here.md")), text("Start here.md"))
+      text("Start here.md").includes("Settings > AI connects") && !text("Start here.md").includes("Connections"), text("Start here.md"))
     check("new vault, its agent used: How this vault works names it", text("How this vault works.md").includes("Claude Code follows the same rules") && text("How this vault works.md") !== plain[1], text("How this vault works.md").slice(0, 600))
-    const twice = (await freshApp.callOp("vault.starter", { agent: "claude-code" })).result as { wrote: string[] }
+    const twice = (await freshApp.callOp("vault.starter", { agent: "claude-code" }, APP)).result as { wrote: string[] }
     check("new vault, its agent used again: nothing more to write", !twice.wrote.length && plain[0] !== text("Start here.md"), twice)
     // The welcome card's Not now (AI off): Standard is still the layout in use, unchanged (AI is the user's, not a
     // layout's), and Use it's content doesn't come.
     const noAi = path.join(tmp, "Fresh, no AI")
     fs.mkdirSync(noAi)
     const noAiApp = await open(noAi)
-    await noAiApp.callOp("vault.starter", {})
+    await noAiApp.callOp("vault.starter", {}, APP)
     await noAiApp.host().call("PATCH", "config/plugins", { ai: false })
     const layouts = ((await noAiApp.host().call("GET", "bundles")) as { bundles: { id: string; inUse?: boolean; modified?: boolean }[] }).bundles.filter((b) => b.inUse)
     check("new vault, AI off: Standard is in use, not changed", JSON.stringify(layouts.map((b) => `${b.id}${b.modified ? " modified" : ""}`)) === '["standard"]', layouts)
-    const notUsed = (await noAiApp.callOp("vault.starter", { agent: "claude-code" })).result as { wrote: string[] }
+    const notUsed = (await noAiApp.callOp("vault.starter", { agent: "claude-code" }, APP)).result as { wrote: string[] }
     check("new vault, AI off: no agent's page or pointers", !notUsed.wrote.length && JSON.stringify(fs.readdirSync(noAi).sort()) === '[".vaultite","How this vault works.md","Start here.md"]', [notUsed, fs.readdirSync(noAi)])
+    await noAiApp.host().call("PATCH", "config/plugins", { ai: null })
+    await noAiApp.state()
+    check("new vault, AI turned on: none of its plugins' pages (they were switched on all along)", !fs.existsSync(path.join(noAi, "Dashboards")) && JSON.stringify(conf(noAi, "pages")?.pinned) === '["Start here.md"]', [fs.readdirSync(noAi), conf(noAi, "pages")])
     const own = path.join(tmp, "Own notes")
     fs.mkdirSync(path.join(own, "Ideas"), { recursive: true })
     fs.writeFileSync(path.join(own, "Ideas/One.md"), "An idea.\n")

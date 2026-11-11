@@ -82,7 +82,7 @@ export function cachesToKept(vault: Vault) {
 }
 
 /** Built-ins that were on from the start (`essential`) and became `offByDefault`: on where they weren't switched off. */
-export const NOW_OPT_IN = ["activity", "dispatch", "token-count", "workspaces", "codex", "cursor", "opencode", "openclaw", "hermes"]
+export const NOW_OPT_IN = ["activity", "dispatch", "token-count", "workspaces", "codex", "cursor", "opencode", "openclaw", "hermes", "note-dates"]
 
 /** Every Markdown file of the vault's own, archived ones too (not .vaultite/, .trash or .git), relative paths. */
 function markdownFiles(root: string, rel = ""): string[] {
@@ -212,22 +212,24 @@ function bundlePicturesOut(v: Vault) {
   for (const b of saved) for (const f of ["preview.png", "preview-dark.png"]) fs.rmSync(v.abs(`.vaultite/bundles/${b}/${f}`), { force: true })
 }
 
+/** Built-ins `ids` became opt-in: on where they were on (not switched off), in `enabled`. */
+function nowOptIn(v: Vault, ids: string[]) {
+  const conf = v.readConfig("plugins") ?? {}
+  const disabled = strs(conf.disabled), enabled = strs(conf.enabled)
+  // (not one that moved out of the app since: on by default was never asking to install it)
+  const on = ids.filter((id) => !disabled.includes(id) && !enabled.includes(id) && !Object.hasOwn(MOVED, id))
+  // (`disabled` no longer counts for them: off is out of `enabled`)
+  if (on.length || disabled.some((id) => ids.includes(id))) v.patchConfig("plugins", { disabled: disabled.filter((id) => !ids.includes(id)), enabled: [...enabled, ...on] })
+}
+
 /** A step: what it changes in the vault. One that changes files (`only` those, when some were left) returns the files it
  *  couldn't read yet, to change at a later start. */
 const STEPS: { id: string; run: (v: Vault, only?: string[]) => void | Promise<string[]> }[] = [
   { id: "stamps-local-2026-10", run: stampsToLocal },
   { id: "base-layout-2026-10", run: (v, only) => eachMarkdown(v, only, (_, text) => baseLayoutOut(text)) },
-  {
-    id: "plugins-opt-in-2026-10",
-    run: (v) => {
-      const conf = v.readConfig("plugins") ?? {}
-      const disabled = strs(conf.disabled), enabled = strs(conf.enabled)
-      // (not one that moved out of the app since: on by default was never asking to install it)
-      const on = NOW_OPT_IN.filter((id) => !disabled.includes(id) && !enabled.includes(id) && !Object.hasOwn(MOVED, id))
-      // (`disabled` no longer counts for them: off is out of `enabled`)
-      v.patchConfig("plugins", { disabled: disabled.filter((id) => !NOW_OPT_IN.includes(id)), enabled: [...enabled, ...on] })
-    },
-  },
+  { id: "plugins-opt-in-2026-10", run: (v) => nowOptIn(v, NOW_OPT_IN) },
+  // (Note dates: a new vault writes nothing into its notes unless asked)
+  { id: "note-dates-opt-in-2026-11", run: (v) => nowOptIn(v, ["note-dates"]) },
   {
     // Daily notes became their own plugin, apart from Today: its settings, hotkeys and buttons follow, in the vault and
     // in the bundles saved in it.

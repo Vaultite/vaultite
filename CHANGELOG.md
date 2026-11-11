@@ -28,6 +28,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   leaves nothing behind (switching layouts takes back the guide the last one added, while unchanged; Undo puts it
   back); Start here says only what's true (Settings > AI, no word of AI until you say to use an agent); the agent's
   page and AGENTS.md and CLAUDE.md come only with Use it; and answering Not now no longer marks Standard as Changed.
+  Without AI its example notes are about notes (links, properties, daily notes, templates, the graph). A vault new to
+  the app has AI off until the welcome card's yes, and skipping the card is Not now; turning AI on adds no pages. Set up
+  Vaultite is one page with no page dots, and says it adds vau (installed as you go on, not as it opens).
+- **Note dates is off in new vaults**: nothing is written into a new vault's notes unless you turn it on (Plugins);
+  vaults that had it keep it.
 - **A note's name shows once**: a note whose text opens with its name as a heading (`# Lighthouse` in Lighthouse.md, as
   Obsidian notes often do) shows it as its title only; the heading stays in the file, in source mode, and with Show
   inline title off.

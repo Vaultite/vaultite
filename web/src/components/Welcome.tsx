@@ -70,10 +70,11 @@ function Welcome({ ask }: { ask: WelcomeAsk }) {
   const ending = useRef<Promise<unknown> | null>(null)
   const endOffer = () => (ending.current ??= getStore()?.bundles?.onboarding
     ? skipOnboarding().catch((e) => notifyError(e, "Couldn't set up the vault")) : Promise.resolve())
-  /** Closed; skipped before AI was answered, a computer with no agent doesn't keep AI on for nothing. */
+  /** Closed. Skipped before AI was answered, a vault new here is as after Not now: AI off until a yes (the desktop's
+   *  first run starts one so: electron/main.ts); one set up before stays as it is. */
   const finish = (how: "done" | "skip") => {
     closeWelcome()
-    const off = how === "skip" && (ask.firstRun || ask.newVault) && !answer && agents && !found.length
+    const off = how === "skip" && ask.newVault && !answer
     void endOffer().then(() => { if (off && aiOn()) return setAi(false) })
   }
 
@@ -97,7 +98,7 @@ function Welcome({ ask }: { ask: WelcomeAsk }) {
   // None here: a new vault starts without AI (connected later in Settings); seen again, it's left as it is.
   const without = () => { if (ask.firstRun || ask.newVault) notNow(); else go("done") }
 
-  const count = ask.firstRun ? 4 : 3, at = DOT[page] + (ask.firstRun ? 1 : 0)
+  const count = 3, at = DOT[page]
   const next = page === "look" ? () => { void endOffer(); go("ai") } : page === "permissions" ? () => go("done") : page === "done" ? () => finish("done") : null
 
   const keys = (e: KeyboardEvent) => {

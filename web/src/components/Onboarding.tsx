@@ -5,13 +5,13 @@ import { CircleAlert, FlaskConical, FolderOpen, FolderPlus, type LucideIcon } fr
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/Button"
 import { Bar } from "@/components/kit"
-import { Dots, FIRST_RUN_PAGES, PageFoot } from "@/components/WelcomeParts"
+import { PageFoot } from "@/components/WelcomeParts"
 import { plainText } from "../../../core/plainerror.ts"
 
 type Vau = { path: string | null; onPath: boolean; system: boolean; other: string | null }
 type Chosen = { path?: string; made?: boolean; added?: boolean } | null
 type VaultChoice = { kind: "new"; name: string; parent: string; starter: boolean } | { kind: "open"; path: string }
-type Info = { places: { icloud: string | null; documents: string; home: string }; obsidian: { path: string; name: string }[]; vau: Vau; mac: boolean }
+type Info = { places: { icloud: string | null; documents: string; home: string }; obsidian: { path: string; name: string }[]; vau: Vau; vauHome: string; mac: boolean }
 
 /** The preload's window.vaultite.onboarding (electron/preload.cjs): answered only for this window. */
 export type SetupApi = {
@@ -36,11 +36,7 @@ export function Onboarding({ setup }: { setup: SetupApi }) {
   const [error, setError] = useState("")
 
   useEffect(() => {
-    setup.info().then((i) => {
-      setInfo(i)
-      // vau comes installed, like Obsidian's CLI: in ~/.local/bin, no password (what agents in the terminal use).
-      if (!i.vau.path) setup.vau(false).catch((e) => console.error("vau:", e))
-    }, (e) => setError(plainText(e)))
+    setup.info().then(setInfo, (e) => setError(plainText(e)))
   }, [setup])
 
   return (
@@ -80,7 +76,11 @@ function VaultPage({ setup, info }: { setup: SetupApi; info: Info }) {
     // (done: the window closes; until then it says it's working)
     try { await fn() } catch (e) { setError(plainText(e)); setBusy(null) }
   }
+  // vau comes installed, like Obsidian's CLI: in ~/.local/bin, no password (what agents in the terminal use). Said
+  // under the page, done as the user goes on.
+  const vau = () => (info.vau.path ? Promise.resolve() : setup.vau(false).then(() => {}, (e) => console.error("vau:", e)))
   const go = () => run("go", async () => {
+    await vau()
     await setup.choose(kind === "new" ? { kind, name: name.trim(), parent, starter } : { kind, path: folder })
     await setup.finish()
   })
@@ -137,13 +137,13 @@ function VaultPage({ setup, info }: { setup: SetupApi; info: Info }) {
         )}
       </div>
       {error && <p role="alert" className="flex items-start gap-1.5 pb-3 text-destructive"><CircleAlert className="mt-px size-4 shrink-0" />{error}</p>}
+      {!info.vau.path && <p className="pb-1 text-[12px] leading-[16px] text-muted-foreground" data-vau-line>Vaultite also adds its command line, vau, to {info.vauHome}.</p>}
       <PageFoot className="pt-3"
         left={
-          <Button size="small" look="quiet" className="-ml-2 h-8 gap-1.5 px-2" disabled={!!busy} busy={busy === "sandbox"} onClick={() => void run("sandbox", () => setup.sandbox())} data-look>
+          <Button size="small" look="quiet" className="-ml-2 h-8 gap-1.5 px-2" disabled={!!busy} busy={busy === "sandbox"} onClick={() => void run("sandbox", async () => { await vau(); await setup.sandbox() })} data-look>
             <FlaskConical className="size-3.5" strokeWidth={2.25} />Try the playground
           </Button>
         }
-        dots={<Dots count={FIRST_RUN_PAGES} at={0} />}
         right={
           <Button look="primary" className="h-8 min-w-[112px] px-4 text-[13px]" type="submit" disabled={!ready || busy === "sandbox"} busy={busy === "go"} data-next>
             {kind === "new" ? "Create vault" : "Open vault"}

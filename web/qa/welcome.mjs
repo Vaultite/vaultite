@@ -2,7 +2,7 @@
 // layout and the theme behind it, no toasts; AI branches on the agents found (answered here by a stand-in for ai.agents):
 // found, Use them turns their plugins on and Not now turns AI off (Standard not marked changed for it); a layout looked at
 // and left leaves no file (core/bundles.ts); none, Continue says it works without; Done teaches the
-// quick switcher's key by pressing it; Skip and Esc close it as it is (no agents: AI off); the app's keys wait while it's
+// quick switcher's key by pressing it; Skip and Esc close it, a new vault's AI off as after Not now; the app's keys wait while it's
 // up; Show welcome in the palette brings it back for a vault set up long ago; a phone skips it, on Standard. Shots: light,
 // dark, AI found and none. WRITES settings: throwaway server only.
 //   node web/qa/welcome.mjs <base url> <vault path> [out dir]
@@ -159,6 +159,17 @@ await wait(600)
 await page.locator("[data-welcome-skip]").click()
 await gone(page)
 check("skipped: the offer ends (Standard), and with no agent AI is off", await until(() => !existsSync(OFFER) && plugins().ai === false, 6000), plugins())
+await ctx.close()
+
+// ---------- a new vault skipped with agents found: as Not now, AI off (no half state: AI on, no agent's plugin) ----------
+await api("POST", "ops/settings.set", { name: "plugins", values: { ai: null } })
+offer()
+;({ ctx, page } = await open())
+await until(() => card(page).count(), 8000)
+await wait(600)
+await page.keyboard.press("Escape")
+await gone(page)
+check("skipped with agents found: AI off too, as after Not now", await until(() => !existsSync(OFFER) && plugins().ai === false, 6000), plugins())
 await ctx.close()
 
 // ---------- a phone: no card, Standard ----------

@@ -212,6 +212,12 @@ export function vauStatus(w: Where, dirs = shellPath(w)): VauStatus {
   return { path: at, onPath: system || (!!at && dirs.includes(path.dirname(at))), system, other }
 }
 
+/** The folder installVau puts vau in, as the user knows it (~/.local/bin), for the setup window to say. */
+export function vauHome(w: Where) {
+  const user = userBin(w), dir = path.dirname(platformOf(w) === "win32" ? path.join(winBin(w), "vau.cmd") : exists(user) && !ours(user) ? appBin(w) : user)
+  return tilde(w, dir)
+}
+
 /** Write (or update) our vau. Returns where, and what was done. On Windows its folder goes on the user's PATH too
  *  (`userPath`, the registry's unless the home is made up: tests and QA never touch the real one). */
 export function installVau(w: Where, userPath: UserPath | null = w.home === os.homedir() ? registryPath : null): { path: string; did: string } {
