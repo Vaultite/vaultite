@@ -12,7 +12,8 @@ const ALIASES: Record<string, string> = {
   sms: "text", imessage: "text", whatsapp: "message", messaged: "message", dm: "message", chat: "message",
   emailed: "email", "e-mail": "email", mail: "email", studied: "study", fact: "note", info: "note",
 }
-const ENTRY = /^\s{0,3}(?:[-*+]\s+)?(?:\[[ xX]\]\s+)?(\d{4})-(\d{1,2})-(\d{1,2})(?!\d)\s*(.*)$/
+// (a date may be bold: `- **2026-04-22** | ...`, as many write it by hand and GBrain's pages do)
+const ENTRY = /^\s{0,3}(?:[-*+]\s+)?(?:\[[ xX]\]\s+)?(\*\*|__)?(\d{4})-(\d{1,2})-(\d{1,2})(?!\d)\1\s*(.*)$/
 const LEAD = /^(?:·|•|—|–|-|\||:|,)\s*/
 const SEPS: [RegExp, string][] = [[/\s*·\s*/, " · "], [/\s*•\s*/, " • "], [/\s+\|\s+/, " | "], [/\s+[—–]\s+/, " — "], [/\s+-\s+/, " - "]]
 const DURATION = /^(?:(\d+(?:\.\d+)?)\s*(h|hr|hrs|hours?))?\s*(?:(\d+)\s*(m|min|mins|minutes?))?$/i
@@ -37,9 +38,9 @@ export function timelineKind(v: unknown): string | null {
 export function parseEntry(line: string): Entry | null {
   const m = ENTRY.exec(line)
   if (!m) return null
-  const [, y, mo, d] = m
+  const [, , y, mo, d] = m
   if (+mo < 1 || +mo > 12 || +d < 1 || +d > 31) return null
-  const rest = m[4].trim().replace(LEAD, "")
+  const rest = m[5].trim().replace(LEAD, "")
   const sep = SEPS.find(([r]) => r.test(rest))
   let parts = (sep ? rest.split(new RegExp(sep[0].source, "g")) : [rest]).map((x) => x.trim()).filter(Boolean)
   if (!parts.length) parts = [""]

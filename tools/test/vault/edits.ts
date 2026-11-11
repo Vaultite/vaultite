@@ -82,6 +82,9 @@ Something that isn't an entry
   check("a timeline line takes a kind of its own, a word or two", code === 201 || code === 200, code)
   check("...written as one and read back as one", read("Trips/Trip.md").includes("- 2026-09-29 · game night · Won\n") &&
     (await import("../../../core/timeline.ts")).parseEntry("- 2026-09-29 · game night · Won")?.kind === "game night", read("Trips/Trip.md"))
+  const { parseEntry } = await import("../../../core/timeline.ts")
+  check("a bold date reads as an entry's (GBrain's lines too)", parseEntry("- **2026-04-22** | Meeting notes — Pricing chat")?.date === "2026-04-22" &&
+    parseEntry("- **2026-04-22** | Meeting notes — Pricing chat")?.notes === "Pricing chat" && parseEntry("- **2026-04-22 · call") === null)
   ;[code] = await api("POST", "timeline", { path: "Trips/Trip.md", date: "2026-09-29", kind: "dance" })
   check("...but not alone (it would read as a note)", code === 400, code)
   ;[code] = await api("POST", "timeline", { path: "Trips/Trip.md", date: "2026-09-29", kind: "a · b", notes: "x" })

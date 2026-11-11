@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Timelines read bold dates**: a line like `- **2026-04-22** | Meeting notes — Pricing chat` (as many write by hand,
+  and GBrain's pages do) reads as an entry instead of a line not understood.
 - **A cleaner Conversations tab**: the talk reads as a chat, its line stays at the foot clear of the status bar,
   and when, where and what the companion did show only as you hover a turn.
 - **The companion fades away in place**: an idle cursor fades out gently where it was, never gliding off to the status
