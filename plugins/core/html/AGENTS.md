@@ -32,3 +32,11 @@ Markdown page can't do. The app runs them sandboxed: no network, no access to th
   tall); the same works for a CSV. A link to it in the sidebar: `vau pin <file>`. Drawn in the sidebar: `vau panels right <file>`.
 - `/api/render?path=Finance/Spending.html` gives its title, its text and the files it reads (not what its code
   draws: read those files to answer questions about it).
+
+## Mockups and pictures of a UI
+A UI proposal or explanation shows each option as a real picture, never ASCII art or a layout told in words: a
+screenshot of a quick prototype running on your own copy, or a polished HTML mockup in the vault (the app's colours,
+real text, one element per option, e.g. `<div class="option">`). Make the pictures with `vau html picture "<page>.html"
+--selector ".option"` (or `--url <your dev server's page> --out "<folder>/<name>.png"` for a prototype; `--full`,
+`--dark`), then embed each in the note (`![[<folder>/<name> 1.png]]`) with a plain sentence under it. Look at each
+before you show it.

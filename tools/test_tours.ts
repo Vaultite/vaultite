@@ -336,5 +336,19 @@ Some words before the steps.
   check("tour: a question that only has the phrase in it is the model's", !tourAsked(all, "what's new in this email?") && !tourAsked(all, "new") && !tourAsked(all, "") && !tourAsked(all.slice(1), "what's new"))
 }
 
+{
+  // A mockup's options as pictures (vau html picture): one each, at twice the size, in a headless Chrome.
+  const { chromePath } = await import("../core/headless.ts"), { pictures } = await import("../plugins/core/html/picture.ts")
+  if (!chromePath()) console.log("skip: html picture (no Chrome here)")
+  else {
+    const html = `<body style="margin:0;background:#fff"><div class="opt" style="width:200px;height:100px;background:#c00">A</div><div class="opt" style="width:300px;height:50px;background:#00c">B</div></body>`
+    const shots = await pictures({ url: `data:text/html,${encodeURIComponent(html)}`, width: 640, height: 400, selector: ".opt" })
+    const png = (b: Buffer) => b.subarray(1, 4).toString() === "PNG" ? [b.readUInt32BE(16), b.readUInt32BE(20)] : []
+    check("html picture: each element a selector matches, its own size at 2x", shots.length === 2 && png(shots[0].png).join() === "400,200" && png(shots[1].png).join() === "600,100" && shots[1].width === 300, shots.map((x) => [x.width, x.height, png(x.png)]))
+    const whole = await pictures({ url: `data:text/html,${encodeURIComponent(html)}`, width: 640, height: 400, scale: 1 })
+    check("html picture: the window by default", whole.length === 1 && png(whole[0].png).join() === "640,400", png(whole[0].png))
+  }
+}
+
 console.log(`${passed} passed, ${failed} failed`)
 process.exitCode = failed ? 1 : 0

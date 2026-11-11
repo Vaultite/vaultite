@@ -67,7 +67,8 @@ What it says, as Markdown.
 - Pin (`vau inbox pin <path|event id>`, `--off` unpins): kept on top under Pinned whatever it waits on, until it's settled.
 - Hold (`vau inbox hold 30m --label "Practice guitar"`, or 07:30, off): nothing is told (toasts, the Mac's and the phone's
   notifications) until then, on every machine; what came is unread, summed up in one line when it ends.
-- **A TL;DR on top** of every result you write (`--tldr`): what it says, in a line or two of plain words.
+- **A TL;DR on top** of every result you write (`--tldr`): what it says, in a line or two of plain words. All of it in
+  plain, short sentences, each thing called by its full name: no clipped shorthand.
 - **A report** ends a task you were handed to do alone (a voice note, a note handed to you: Dispatch, a schedule):
   `vau inbox report "<title>" --work <feature|fix|change|research|plan|answer> --tldr "<one line>" --summary
   "<markdown>" --decision "<question>? | <option>: <what it causes>* | <option>: <what it causes> | why: <context>"` (`*`
@@ -75,7 +76,8 @@ What it says, as Markdown.
   not an inbox item: archived as it comes (`work:` says what kind), listed in one line in the morning brief (`vau inbox
   reports`) and under Reports today. Only a failure (`--state stuck`), something that went out publicly (`--public`) or
   the daily digest itself (`--digest`) stays in the inbox, told. Its shape: a one-line TL;DR, its decisions (drawn with
-  their buttons), screenshots, then the details folded (at most about 1,500 words): what was asked (link the note), what
+  their buttons), screenshots (a UI proposal: each option as a real picture, `vau html picture`; never ASCII), then the
+  details folded (at most about 1,500 words): what was asked (link the note), what
   you did, where (files, repo, branch, commit), what's left; a new session may pick it up without your context. It names
   your session (from VAULTITE_TERMINAL and CLAUDE_CODE_SESSION_ID) and ends with a reply box. Report last: your terminal
   ends when that turn does. The user's answers and replies are typed into your terminal if it still runs, else resume your

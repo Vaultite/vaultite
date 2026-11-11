@@ -2,10 +2,12 @@
 // it's off), plus `text:html` and `looks:html`. An artifact is framed by a wrapper (frame=1 asks for the page itself).
 import crypto from "node:crypto"
 import fs from "node:fs"
+import { pathToFileURL } from "node:url"
 import { contentType, HTTPError, isOutside, type Machine, machineSocket, OpError, outsidePath, pipeSockets, Plugin, reply, Text, vaultPath } from "../../../core/plugins.ts"
-import type { Item, Vault } from "../../../core/vault.ts"
+import { type Item, type Vault, writeAtomic } from "../../../core/vault.ts"
 import { ARTIFACT, artifactText, cdn, CSP, looks, moved, page, saveState, stat, WRAP_CSP, wrapper } from "./artifacts.ts"
 import { artifactIn, dataOf, movedData, publish, sampleGrant, sampleSocket, saveData, versionOf } from "./claude.ts"
+import { MOST, pictures } from "./picture.ts"
 import { sharedPages } from "./shared.ts"
 import type { RawData, WebSocket } from "ws"
 
@@ -161,6 +163,57 @@ plugin.op({
     const rel = pageOf(path)
     try { return { state: shared.set(rel, values, ctx.who.label) } } catch (e) { throw new OpError((e as Error).message) }
   },
+})
+
+plugin.op({
+  id: "html.picture",
+  cli: "html picture",
+  summary: "A picture of a page, saved as a PNG in the vault for a note to embed: an HTML mockup here, or a prototype a server serves.",
+  help: `What a UI proposal shows each option with (never an ASCII sketch): draw the options as an HTML mockup, one element
+each, then a picture of each, embedded in the note. Drawn in a headless Chrome (never on the user's screen), at twice the
+size (sharp on a Retina screen), light unless dark. A page in the vault is opened as a file (its own HTML, CSS and
+pictures beside it; vau.csv and the app's bridge aren't there); one the app draws, by its server's address (your own
+copy's: a sandbox or dev server, never the user's live app).
+
+  vau html picture "Projects/Sidebar - options.html" --selector ".option"
+  vau html picture --url "http://127.0.0.1:8801/#file/Today.md" --out "Projects/Sidebar - now.png"`,
+  kind: "write",
+  params: {
+    path: { type: "string", format: "path", description: "the page (.html), a vault path" },
+    url: { type: "string", description: "instead: an http(s) address to draw (a dev or sandbox server's page)" },
+    out: { type: "string", format: "path", description: "the PNG to save, a vault path (default: beside the page, its name); more than one picture is numbered" },
+    selector: { type: "string", description: `a CSS selector: a picture of each element it matches (each option of a mockup), at most ${MOST}` },
+    width: { type: "number", minimum: 320, maximum: 3840, default: 1280, description: "the window's width (CSS pixels)" },
+    height: { type: "number", minimum: 240, maximum: 2400, default: 800, description: "the window's height" },
+    full: { type: "boolean", description: "the whole page, not only the window" },
+    dark: { type: "boolean", description: "in dark mode (prefers-color-scheme)" },
+  },
+  args: ["path"],
+  run: async (p) => {
+    const url = typeof p.url === "string" ? p.url.trim() : ""
+    if (!url === !p.path) throw new OpError("give a page (path) or a url, one of them")
+    if (url && !/^https?:\/\//i.test(url)) throw new OpError("url: an http(s) address")
+    const rel = url ? "" : pageOf(p.path)
+    const out = typeof p.out === "string" && p.out.trim() ? vaultPath(p.out, false, plugin.vault) : rel ? rel.replace(ARTIFACT, ".png") : ""
+    if (!out) throw new OpError("out: where to save the picture (a vault path), as a url has no place in the vault")
+    if (!/\.png$/i.test(out)) throw new OpError("out: a .png")
+    let shots
+    try {
+      shots = await pictures({ url: url || pathToFileURL(plugin.vault.abs(rel)).href, width: Number(p.width ?? 1280), height: Number(p.height ?? 800),
+        selector: typeof p.selector === "string" && p.selector.trim() ? p.selector : undefined, full: !!p.full, dark: !!p.dark })
+    } catch (e) { throw new OpError((e as Error).message) }
+    const files = shots.map((s, i) => {
+      const at = shots.length > 1 ? out.replace(/\.png$/i, ` ${i + 1}.png`) : out
+      writeAtomic(plugin.vault.abs(at), s.png)
+      return { path: at, width: s.width, height: s.height, embed: `![[${at}]]` }
+    })
+    return { files }
+  },
+  text: (r: { files: { path: string; width: number; height: number; embed: string }[] }) =>
+    `${r.files.map((f) => `Saved ${f.path} (${f.width}×${f.height}). Embed it with ${f.embed}`).join("\n")}\nLook at it before you show it: a picture that's wrong is worse than none.`,
+  // (the first, so an agent sees what it made)
+  image: (r: { files: { path: string }[] }) => (r.files[0] ? { data: fs.readFileSync(plugin.vault.abs(r.files[0].path)).toString("base64"), mimeType: "image/png" } : null),
+  did: (p) => ({ action: "create", text: `Drew a picture of ${p.path ?? p.url}` }),
 })
 
 plugin.route("POST", "artifact/stat", (req) => stat(plugin.vault, obj(req.body)))

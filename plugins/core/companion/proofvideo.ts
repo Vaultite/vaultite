@@ -2,9 +2,8 @@
 // headless Chrome, never on the user's screen and with no sound, its marks and each step's words drawn in, as an mp4.
 import { spawn } from "node:child_process"
 import fs from "node:fs"
-import { createRequire } from "node:module"
-import os from "node:os"
 import path from "node:path"
+import { type Cdp, chromePath, headless } from "../../../core/headless.ts"
 import type { Do, Step, Tour } from "./tour.ts"
 import { FLIPS, holdMs } from "./proof.ts"
 
@@ -14,13 +13,6 @@ const FPS = 15
 /** The most a proof runs: a short video, a few MB. */
 const MOST_MS = 120_000
 
-/** Chrome to record in: VAULTITE_CHROME, Playwright's Chromium (a checkout's), Google Chrome, Linux's Chromium. Not the
- *  installed Chrome first: a headless one left running is what macOS brings forward when it's opened. */
-export function chromePath() {
-  const bundled = () => { try { return createRequire(import.meta.url)("playwright-core").chromium.executablePath() as string } catch { return undefined } }
-  return [process.env.VAULTITE_CHROME, bundled(), "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Chromium.app/Contents/MacOS/Chromium",
-    "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser", "/snap/bin/chromium"].find((p) => p && fs.existsSync(p)) ?? null
-}
 /** ffmpeg, from PATH or where Homebrew and Linux put it. */
 export function ffmpegPath() {
   const dirs = [...(process.env.PATH ?? "").split(path.delimiter), "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"]
@@ -40,25 +32,6 @@ export function proofUrl(url: string, open?: string) {
   if (!open || /^https?:\/\//i.test(open)) return open || url
   const base = url.replace(/#.*$/, "").replace(/\/+$/, "")
   return /\.\w+$/.test(open) ? `${base}/#file/${encodeURIComponent(open)}` : `${base}/#${open.replace(/^#/, "")}`
-}
-
-type Cdp = { send: (method: string, params?: Record<string, unknown>) => Promise<Record<string, unknown>>; on: (method: string, f: (p: Record<string, unknown>) => void) => void; close: () => void }
-async function cdp(wsUrl: string): Promise<Cdp> {
-  const ws = new WebSocket(wsUrl)
-  await new Promise<void>((ok, fail) => { ws.onopen = () => ok(); ws.onerror = () => fail(new Error("couldn't reach the recording browser")) })
-  let id = 0
-  const waits = new Map<number, { ok: (v: Record<string, unknown>) => void; fail: (e: Error) => void }>(), subs = new Map<string, ((p: Record<string, unknown>) => void)[]>()
-  ws.onmessage = (e) => {
-    const m = JSON.parse(String(e.data)) as { id?: number; result?: Record<string, unknown>; error?: { message: string }; method?: string; params?: Record<string, unknown> }
-    if (m.id !== undefined) { const w = waits.get(m.id); waits.delete(m.id); if (m.error) w?.fail(new Error(m.error.message)); else w?.ok(m.result ?? {}) }
-    else if (m.method) for (const f of subs.get(m.method) ?? []) f(m.params ?? {})
-  }
-  ws.onclose = () => { for (const w of waits.values()) w.fail(new Error("the recording browser closed")); waits.clear() }
-  return {
-    send: (method, params = {}) => new Promise((ok, fail) => { const n = ++id; waits.set(n, { ok, fail }); ws.send(JSON.stringify({ id: n, method, params })) }),
-    on: (method, f) => subs.set(method, [...(subs.get(method) ?? []), f]),
-    close: () => ws.close(),
-  }
 }
 
 /** What the page is given: finding a thing by its words (the smallest that says them, its label first), the marks, the
@@ -164,30 +137,11 @@ export async function recordProof(o: { url: string; tour: Pick<Tour, "title" | "
   const chrome = chromePath(), ffmpeg = ffmpegPath()
   if (!chrome) throw new Error("no Chrome to record in here (Google Chrome, or Chromium: VAULTITE_CHROME names one)")
   if (!ffmpeg) throw new Error("no ffmpeg here to make the video (brew install ffmpeg, or apt install ffmpeg)")
-  const profile = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-proof-"))
-  // (headless and muted: never a window or a sound of the user's)
-  const browser = spawn(chrome, ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--mute-audio", "--no-first-run", "--no-default-browser-check",
-    "--hide-scrollbars", "--force-device-scale-factor=1", `--window-size=${SIZE.width},${SIZE.height}`, "--disable-extensions", "--autoplay-policy=user-gesture-required", "about:blank"], { stdio: ["ignore", "ignore", "pipe"] })
-  let enc: ReturnType<typeof spawn> | null = null, page: Cdp | null = null
-  const stop = () => { try { page?.close() } catch { /* gone */ } browser.kill("SIGKILL"); enc?.kill("SIGKILL") }
-  o.signal?.addEventListener("abort", stop, { once: true })
+  const browser = await headless(SIZE, o.signal)
+  let enc: ReturnType<typeof spawn> | null = null
+  o.signal?.addEventListener("abort", () => enc?.kill("SIGKILL"), { once: true })
   try {
-    const endpoint = await new Promise<string>((ok, fail) => {
-      let err = ""
-      const t = setTimeout(() => fail(new Error(`Chrome didn't start to record: ${err.slice(-300)}`)), 20_000)
-      browser.stderr!.on("data", (d: Buffer) => { err += d; const m = /DevTools listening on (ws:\/\/\S+)/.exec(err); if (m) { clearTimeout(t); ok(m[1]) } })
-      browser.on("exit", () => { clearTimeout(t); fail(new Error(`Chrome quit before recording: ${err.slice(-300)}`)) })
-    })
-    const port = new URL(endpoint).port
-    // (its first tab comes a moment after the browser says it listens)
-    let tab: { type: string; webSocketDebuggerUrl: string } | undefined
-    for (let i = 0; i < 50 && !tab; i++) {
-      tab = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json() as { type: string; webSocketDebuggerUrl: string }[]).find((t) => t.type === "page")
-      if (!tab) await sleep(100)
-    }
-    if (!tab) throw new Error("Chrome opened no page to record")
-    page = await cdp(tab.webSocketDebuggerUrl)
-    const p = page
+    const p = browser.page
     await p.send("Page.enable"); await p.send("Runtime.enable")
     await p.send("Emulation.setDeviceMetricsOverride", { ...SIZE, deviceScaleFactor: 1, mobile: false })
     const loaded = new Promise<void>((ok) => p.on("Page.loadEventFired", () => ok()))
@@ -286,11 +240,8 @@ export async function recordProof(o: { url: string; tour: Pick<Tour, "title" | "
     if (code !== 0) throw new Error(`ffmpeg couldn't make the video: ${encErr.trim().slice(-300)}`)
     return { file: o.out, ms: Date.now() - t0, times, bytes: fs.statSync(o.out).size }
   } finally {
-    // (its profile goes once it has quit: a browser still writing there makes the removal fail, and hide the real error)
-    const quit = browser.exitCode !== null ? Promise.resolve() : new Promise<void>((ok) => browser.once("exit", () => ok()))
-    stop()
-    await Promise.race([quit, sleep(3000)])
-    try { fs.rmSync(profile, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }) } catch (e) { console.error(`companion proof: ${profile} stays: ${(e as Error).message}`) }
+    enc?.kill("SIGKILL")
+    await browser.quit()
   }
 }
 

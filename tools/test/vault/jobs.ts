@@ -85,6 +85,8 @@ export default async ($: VaultTest) => {
       check("jobs: with jobs_land, a coding job lands itself once its checks pass, from its worktree, cleaned up; it asks only on a real tradeoff; one over a watched preview doesn't",
         /land it yourself, from your worktree \/Users\/alice\/Projects\/site-j3k9x2a/.test(lands) && /worktree remove/.test(lands) && /"Merged:"/.test(lands) && /only on a real tradeoff/.test(lands) &&
         !/Keep and merge lands it/.test(lands) && lands.includes("tour-save") && !/land it yourself/.test(watchedLand) && !/land it yourself/.test(note), lands)
+      check("jobs: a worker writes plain sentences and shows a UI as real pictures (vau html picture, embedded), never ASCII; one over a watched preview isn't told",
+        [jt, note].every((t) => /plain, short sentences/.test(t) && t.includes("vau html picture") && /Never ASCII art/.test(t)) && !J.jobTask("x", undefined, { ...site, watched: true }, "j3k9x2a").includes("vau html picture"), note)
       const moved = J.jobTask("Fix the footer", undefined, { ...site, moved: "the preview http://localhost:5173 on M4" }, "j3k9x2a")
       const over = { cwd: site.cwd, repo: "site", label: "M4", preview: "http://localhost:5173" }
       const watching = J.jobTask("Make the heading blue", undefined, { ...over, watched: true }, "j3k9x2a")
