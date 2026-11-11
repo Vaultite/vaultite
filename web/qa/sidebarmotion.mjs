@@ -9,7 +9,7 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, apiAt, qa, until, wait, keepAwake } from "./lib/qa.mjs"
+import { ROOT, apiAt, keepAwake, qa, until, wait, windowHeard } from "./lib/qa.mjs"
 
 const { args: [VAULT, RUNS = "3"], check, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-sidebarmotion-"))
@@ -39,7 +39,8 @@ try {
   watch(win, { console: true, fail: false })
   await win.waitForSelector("aside[data-side=right]", { timeout: 60000 })
   await app.evaluate(({ BaseWindow }, [width, height]) => BaseWindow.getAllWindows()[0].setBounds({ x: 40, y: 40, width, height }), [W, H])
-  const user = apiAt(`${new URL(win.url()).origin}/`, { "X-Vaultite-Client": "cli" })
+  const origin = new URL(win.url()).origin, user = apiAt(`${origin}/`, { "X-Vaultite-Client": "cli" })
+  await windowHeard(origin)
   await user("POST", "ops/ui.open", { path: `${SITE}/notes` })
   const note = fs.readdirSync(path.join(VAULT, "Notes")).find((f) => f.endsWith(".md"))
   await user("POST", "ops/ui.open", { path: `Notes/${note}`, split: "right" })

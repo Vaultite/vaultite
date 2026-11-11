@@ -152,13 +152,14 @@ export const apiAt = (base, headers = {}) => async (method, p, body) => {
   return r.headers.get("content-type")?.includes("json") ? r.json() : r.text()
 }
 
-/** POST /api/ui (open, command, notify) to the desktop app on `origin`, once a window of it hears: a page's live socket
- *  connects after its first state, so an ask made as the window draws can find none yet (409, nothing sent). */
-export const uiAt = (origin) => async (body, ms = 15_000) => {
-  const post = () => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-  let r = await post()
-  for (const end = Date.now() + ms; r.status === 409 && Date.now() < end; r = await post()) await wait(100)
-  return r
+/** Whether a window of the desktop app on `origin` hears its server, once one does: a page's live socket connects after
+ *  its first state, so what drives a window (POST /api/ui, ops/ui.open) as one draws can find none (409, nothing sent). */
+export const windowHeard = (origin, ms = 15_000) => until(async () => ((await fetch(`${origin}/api/ui`).then((r) => r.json(), () => null))?.windows ?? 0) > 0, ms)
+
+/** POST /api/ui (open, command, notify) to the desktop app on `origin`, once a window of it hears (windowHeard). */
+export const uiAt = (origin) => async (body) => {
+  await windowHeard(origin)
+  return fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
 }
 
 /** New tabs' view, from Settings (.vaultite/editor.json; null: the default again). */
