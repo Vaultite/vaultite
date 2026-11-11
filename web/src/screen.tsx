@@ -297,7 +297,7 @@ let view: View = { s: null, gone: [], summonGone: null, behindGone: null }
 const fading = new Map<string, ReturnType<typeof setTimeout>>()
 const listeners = new Set<() => void>()
 const set = (v: Partial<View>) => { view = { ...view, ...v }; for (const l of listeners) l() }
-const FADE = 260
+const FADE = 560
 
 function leave(key: string, done: () => void) {
   if (fading.has(key)) return
@@ -401,7 +401,7 @@ const FLAG = cn("absolute top-[18px] left-[13px] flex items-center gap-1 rounded
   "group-data-[flag-right]:right-[-6px] group-data-[flag-right]:left-auto group-data-[low]:top-[-20px]")
 const WORDS = cn("companion-pop absolute top-0 left-0 flex w-max max-w-[320px] flex-col rounded-[12px] border border-border/60 px-3 py-1.5 text-[13.5px] leading-snug text-foreground shadow-lg",
   "data-[side=right]:data-up:rounded-bl-[4px] data-[side=left]:data-up:rounded-br-[4px] data-[side=right]:not-data-up:rounded-tl-[4px] data-[side=left]:not-data-up:rounded-tr-[4px]")
-const FADES = "screen-in group fixed top-0 left-0 transition-opacity duration-300 data-gone:pointer-events-none data-gone:opacity-0 data-leaving:delay-150"
+const FADES = "screen-in group fixed top-0 left-0 transition-opacity duration-300 data-gone:pointer-events-none data-gone:opacity-0 data-gone:duration-500 data-gone:ease-out data-leaving:delay-150"
 
 /** An agent's cursor as the window draws it (plugins/core/companion/Overlay.tsx): the arrow, its flag (its name, what it
  *  does, its mark), its bubble beside; going into the window, it fades as it lands where the window draws it. */

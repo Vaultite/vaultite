@@ -1,10 +1,10 @@
-import { lazy, useEffect, useLayoutEffect, useSyncExternalStore } from "react"
+import { lazy, useEffect, useSyncExternalStore } from "react"
 import { Crosshair, Play, MessageCircle, MessageCirclePlus, MessageSquarePlus, MessagesSquare, Power, SquareTerminal, Undo2 } from "lucide-react"
 import { answerPlaceAt, cn, currentEditor, definePlugin, menuAbove, notify, notifyError, op, share, useFocusedFile, type MenuItem } from "@vaultite"
 import { drawDriven } from "@plugins/claude-code/driven"
 import { askDrawing, watchCanvases } from "./canvas"
 import { ConversationsIcon, ConversationsPanel, ConversationsView } from "./Conversations"
-import { type Agent, bump, canUndoEdit, connect, getState, liveAgents, type Note, setGuest, startComment, subscribe, undoEdit, unread, viewOf } from "./live"
+import { type Agent, canUndoEdit, connect, getState, liveAgents, type Note, setGuest, startComment, subscribe, undoEdit, unread, viewOf } from "./live"
 import { presence } from "./look"
 import { Arrow, follow, Overlay, placeAt, showSaid } from "./Overlay"
 import { Presence } from "./Presence"
@@ -57,8 +57,8 @@ function addComment() {
 }
 const COMMENT = { id: "companion:comment", name: "Add comment", label: "Comment", keys: ["Mod+Alt+M"], when: () => !!noteEditor(), run: addComment, icon: MessageSquarePlus }
 
-/** The status bar's companion: where its agents rest, an arrow each in its colour (the main one, then up to two more at
- *  work), which their cursors glide out of to where their attention is and back into (Overlay's home); and its menu. */
+/** The status bar's companion: an arrow each in its colour (the main one, then up to two more at work), and its menu.
+ *  Their cursors never fly to it: resting, one fades where it was (Overlay's home). */
 function Status() {
   const s = useSyncExternalStore(subscribe, getState)
   const a = s.agents.find((x) => x.name.toLowerCase() === s.name.toLowerCase())
@@ -69,9 +69,6 @@ function Status() {
   // the pointer over the screen: one companion at a time, that one)
   const busy = (x?: Agent) => { const m = x && x.name !== s.riding && presence(x, { age: 3 }).mark; return m === "dots" || m === "wave" }
   const arrows = [{ name: a?.name ?? s.name, tint, busy: busy(a) }, ...others.map((x) => ({ name: x.name, tint: `var(--${x.tint})`, busy: busy(x) }))]
-  // (the cursors find their homes as these come and go)
-  const homes = arrows.map((x) => x.name).join()
-  useLayoutEffect(() => bump(), [homes])
   const items = (): MenuItem[] => [
     modeItem(true),
     ...(s.mode !== "off" && a && s.said.some((n) => n.agent === a.name) ? [{ label: "What it said", icon: MessageCircle, hint: unread(a.name).length ? `${unread(a.name).length} new` : undefined, run: () => showSaid(a.name), sep: true }] : []),
@@ -88,7 +85,7 @@ function Status() {
     <button type="button" onClick={(e) => menuAbove(e, items())} aria-label={`${s.name}, companion`} data-tip={tip} data-tip-side="top"
       data-companion-status className="relative size-6 shrink-0 cursor-pointer rounded-[5px] hover:bg-foreground/[0.06]">
       {arrows.map((x, i) => (
-        <Arrow key={x.name} data-companion-home={x.name} tint={x.tint} size={16} className={cn("absolute top-[4px]", x.busy && "animate-pulse")}
+        <Arrow key={x.name} tint={x.tint} size={16} className={cn("absolute top-[4px]", x.busy && "animate-pulse")}
           style={{ left: 4 + (i - (arrows.length - 1) / 2) * 5, zIndex: arrows.length - i }} />
       ))}
       {/* (what it said that you haven't seen, as an app's badge: its menu's What it said shows it) */}

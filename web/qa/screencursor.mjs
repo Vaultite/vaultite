@@ -49,7 +49,7 @@ const steps = xs.slice(1).map((x, i) => x - xs[i])
 check("it glides there over many frames, never back, never past", xs.length > 20 && steps.every((d) => d >= -0.01) && Math.max(...xs) <= 697.01 && new Set(xs).size > 15, { n: xs.length, xs: xs.slice(0, 30) })
 check("it settles exactly there", JSON.stringify(run.at(-1)) === "[697,398]", run.at(-1))
 const before = await page.evaluate(() => window.__frames)
-await page.waitForTimeout(400)
+await page.waitForTimeout(700)
 const after = await page.evaluate(() => window.__frames)
 check("still, it asks for no frames (the loop sleeps)", after - before === 0, { before, after })
 
@@ -74,17 +74,17 @@ await scene([A(300, 300), { ...A(600, 200), name: "Ada", from: { x: -200, y: 200
 const ada = await page.evaluate(() => { const el = [...document.querySelectorAll('#root > div[style*="translate"]')].filter((e) => e.style.transform.startsWith("translate"))[1]; return el?.style.transform })
 check("a cursor new here with `from` starts there and glides in", !!ada && /translate\(-\d/.test(ada), ada)
 
-// gone: it fades, then it's taken away
+// gone: it fades (FADE, screen.tsx), then it's taken away
 await scene([])
 await page.waitForTimeout(50)
 const fading = await page.evaluate(() => document.querySelectorAll("[data-gone]").length)
-await page.waitForTimeout(400)
+await page.waitForTimeout(700)
 const left = await page.evaluate(() => document.querySelectorAll('#root > div[style*="translate"]').length)
 check("a cursor that goes fades out, then is gone", fading === 2 && left === 0, { fading, left })
 
 // as the window draws it: its flag (name, mark), its bubble beside, ringed in its colour
 await scene([A(200, 300, { t: Date.now(), say: { id: "s1", text: "The **build** failed on line 12." } }), { ...A(1100, 760), name: "Ada", tint: "blue", state: "listening", t: Date.now() }])
-await page.waitForTimeout(400)
+await page.waitForTimeout(700)
 const look = await page.evaluate(() => {
   const [c, ada] = [...document.querySelectorAll('#root > div[style*="translate"]')]
   return { flag: c.textContent, dots: !!c.querySelector(".companion-dots"), bob: !!c.querySelector(".companion-bob"), bubble: c.querySelector(".companion-pop")?.textContent,
@@ -100,6 +100,9 @@ await scene([A(200, 300, { t: Date.now(), leaving: true }), { ...A(900, 760), na
 await page.waitForTimeout(30)
 const going = await page.evaluate(() => document.querySelector("#root > div[data-leaving]")?.hasAttribute("data-gone"))
 check("one going into the window fades on its way", going === true)
+// (those gone, faded out before the next)
+await scene([])
+await page.waitForTimeout(700)
 
 // summoned: at the pointer, listening with its words by it, then thinking; its own cursor takes over, no ghost
 const S = (state, extra = {}) => ({ name: "Claude", tint: "orange", state, sx: 600, sy: 400, ...extra })
@@ -115,7 +118,7 @@ await page.waitForTimeout(30)
 const swapped = await page.evaluate(() => ({ cursors: document.querySelectorAll('#root > div[style*="translate"]').length, ghost: document.querySelectorAll("[data-gone]").length }))
 check("its own cursor takes over: one, no fading copy behind", swapped.cursors === 1 && swapped.ghost === 0, swapped)
 await scene([])
-await page.waitForTimeout(400)
+await page.waitForTimeout(700)
 
 // its words never cover its arrow, its name or what it points at, anywhere on screen (the bug: its box over its name)
 const long = "Here's what this row is: an invoice from Lighthouse, due Friday. Want me to add a task for it, or draft a reply?"
@@ -137,7 +140,7 @@ check("its bubble never covers its arrow, its name or what it points at, and sta
 await scene([A(400, 500, { t: Date.now(), say: { id: "s2", text: long } })])
 await page.waitForTimeout(500)
 await page.mouse.click(400, 500)
-await page.waitForTimeout(400)
+await page.waitForTimeout(700)
 check("its cursor clicked: nothing (it isn't a button)", !(await calls("open")).length, await calls("open"))
 const bub = await page.evaluate(() => { const r = document.querySelector("[data-bubble-text]").getBoundingClientRect(); return [r.x + 20, r.y + 8] })
 await page.mouse.click(bub[0], bub[1])

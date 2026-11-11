@@ -1,5 +1,5 @@
-// The agents over the whole app: each one's cursor gliding to where its attention is (docked in its arrow in the status
-// bar when it's nowhere, Status in index.tsx), its words in a bubble by it (on a drawing: canvas.ts; a phone: Phone.tsx), its comments in the margin.
+// The agents over the whole app: each one's cursor gliding to where its attention is (fading where it was when it's
+// nowhere), its words in a bubble by it (on a drawing: canvas.ts; a phone: Phone.tsx), its comments in the margin.
 import { memo, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import { Check, ChevronDown, ChevronUp, Copy, Ellipsis, MessageSquarePlus, Pin, TextCursorInput, Trash2, UserRound, X } from "lucide-react"
@@ -22,7 +22,7 @@ import { PhoneLayer, usePhone } from "./Phone"
 export const unsent = () => { notify("Couldn't send it: not connected to the server. Try again in a moment", { kind: "error", id: "companion-unsent" }) }
 
 /** low: too near the bottom of where it's drawn for its flag below it (the flag goes above); drawn: the canvas draws it;
- *  docked: at its arrow in the status bar (x, y: the arrow's corner), where it rests unseen, the arrow standing for it. */
+ *  docked: resting, faded out where it last was. */
 type Spot = { x: number; y: number; parked?: boolean; low?: boolean; drawn?: boolean; docked?: boolean; rides?: boolean
   /** Out on the screen (another app's window): the desktop helper draws it there, so here it hides at once, where it was. */
   away?: boolean
@@ -108,19 +108,14 @@ function rowOf(path: string): Spot | null {
 
 /** Where each cursor was last shown, for one with nowhere to be to fade there. */
 const lastShown = new Map<string, Spot>()
-/** Where an agent with nowhere to be rests: its arrow in the status bar, else (the bar's companion hidden, a phone) it
- *  fades where it last was, never flying off to a corner, and never shows there again: that spot may be minutes old. */
+/** Where an agent with nowhere to be rests: it fades out where it last was, never gliding off to the status bar or a
+ *  corner, and never shows there again: that spot may be minutes old. */
 function home(a: Agent, _i: number): Spot | null {
-  const el = document.querySelector(`[data-companion-home="${CSS.escape(a.name)}"]`)
-  const r = el?.getClientRects().length ? el.getBoundingClientRect() : null
-  if (r?.width) return { x: r.left, y: r.top, parked: true, low: true, docked: true }
   const was = lastShown.get(a.name)
   return was ? { ...was, parked: true, docked: true, faded: true } : null
 }
-/** How long an agent's cursor stays where it last acted, idle, before it goes home. */
+/** How long an agent's cursor stays where it last acted, idle, before it fades. */
 const IDLE_MS = 8000
-/** The status bar's arrows' size to the cursor's (Arrow: the same shape, 16px of 20). */
-export const DOCK_SCALE = 0.8
 
 /** The end of the row `pos` is on (a long line wraps into several), at most `to`. */
 function rowEnd(v: EditorView, pos: number, to: number) {
@@ -592,9 +587,8 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, others, under, shi
     addEventListener("pointerdown", down, true)
     return () => removeEventListener("pointerdown", down, true)
   }, [open, fan, setOpen])
-  // (resting at home, it's its arrow in the status bar: it fades as it lands there, and shows again as it leaves; with no
-  // arrow there, it fades where it was, its words and asks waiting in its history and the inbox)
-  const docked = !!spot.docked && !open && (!!spot.faded || (!fan && !bubble && !a.asks && !typed && !menued))
+  // (resting, it fades out where it was, its words and asks waiting in its history and the inbox)
+  const docked = !!spot.docked && !open
   // (its question is here, with its buttons: the inbox's toast of it, now or arriving just after, would cover them)
   const asked = docked ? undefined : a.asks?.event
   useEffect(() => {
@@ -612,7 +606,10 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, others, under, shi
   // (shown, it's drawn over a web page it reaches, as a toast is: layers.ts checks each float's box against the page's)
   const floats = !docked && !away
   const tx = docked ? at.x : at.x - 3, ty = docked ? at.y : at.y - 2
-  useGlide(box, tx, ty, away || arriving, a.state === "writing" || typed ? stiffness(WRITING_MS) : CURSOR_SPRING)
+  // (back from resting: it fades in where it's going, never gliding over from where it faded)
+  const wasDocked = useRef(docked), rested = wasDocked.current && !docked
+  wasDocked.current = docked
+  useGlide(box, tx, ty, away || arriving || rested, a.state === "writing" || typed ? stiffness(WRITING_MS) : CURSOR_SPRING)
   // (its words, its box or its question placed by one rule (boxes.ts): never over its arrow, its name or what it points at)
   useLayoutEffect(() => {
     const el = box.current, words = el?.querySelector<HTMLElement>(":scope > [data-companion-bubble], :scope > [data-companion-popover], :scope > [data-companion-ask]")
@@ -631,8 +628,8 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, others, under, shi
     <div ref={box} className="companion-cursor pointer-events-none fixed top-0 left-0 z-(--z-page-float)" data-agent={a.name} data-floats={floats ? "" : undefined} data-state={a.state} data-seen={seen || undefined} data-open={open || undefined} data-stacked={many ? others.length + 1 : undefined}
       onPointerEnter={enter} onPointerLeave={() => setHover(false)}
       data-docked={docked || undefined} data-faded={(docked && spot.faded) || undefined} data-away={away || undefined} data-to={`${Math.round(tx)},${Math.round(ty)}`}
-      style={{ scale: docked ? String(DOCK_SCALE) : "1", transformOrigin: "0 0",
-        transition: away ? "none" : `scale 380ms cubic-bezier(.2,.85,.25,1), ${arriving ? "opacity .2s .35s" : docked ? "opacity .25s .45s, visibility 0s .7s" : "opacity .3s"}`,
+      style={{
+        transition: away ? "none" : arriving ? "opacity .2s .35s" : docked ? "opacity .6s ease-out, visibility 0s .6s" : "opacity .3s",
         opacity: docked || away ? 0 : shown.dim ? 0.55 : 1, visibility: docked || away ? "hidden" : undefined, zIndex: spot.rides ? "var(--z-peek-rider)" : open || fan ? "calc(var(--z-page-float) + 2)" : many ? "calc(var(--z-page-float) + 1)" : undefined }}>
       {!spot.drawn && <>
       <div className={cn("relative", shown.bob && "companion-bob")}>
@@ -1050,7 +1047,7 @@ export function Overlay() {
   })
   // (cursors on the same spot, as in a shared doc: side by side, one flag, "Perf +1", fanning out into each of them)
   for (const c of cursors) {
-    // (docked ones each have their own arrow, side by side in the status bar: no stack)
+    // (resting ones are unseen: no stack)
     const top = c.spot && !c.spot.docked && !c.spot.away && cursors.find((o) => o !== c && o.spot && !o.spot.docked && !o.spot.away && !o.under && Math.abs(o.spot.x - c.spot!.x) < 14 && Math.abs(o.spot.y - c.spot!.y) < 10 && cursors.indexOf(o) < cursors.indexOf(c))
     if (top) { c.under = true; top.with.push(c.a); c.shift = top.with.length }
   }

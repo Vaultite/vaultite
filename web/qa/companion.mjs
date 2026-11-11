@@ -585,12 +585,16 @@ await until(() => !text(NOTE).includes("Marigolds keep pests"), 5000)
 check("fold: from its menu, out of the note, a bubble instead", !text(NOTE).includes("Marigolds keep pests") && await cursor.getByText("Marigolds keep pests away too.").isVisible().catch(() => false))
 await op("companion.clear")
 
-// Idle a while, its cursor goes home (the status bar): it shows only while it works, writes, speaks or points.
+// Idle a while, its cursor fades where it was: it shows only while it works, writes, speaks or points.
 await op("companion.clear")
 await op("companion.look", { path: NOTE, find: "Basil" })
 await wait(900)
 check("idle: where it last looked, a moment", (await cursor.getAttribute("data-docked")) === null)
-check("idle: then home, out of the note", await until(async () => (await cursor.getAttribute("data-docked")) !== null, 12000), await cursor.getAttribute("data-docked"))
+const lookedAt = await cursor.getAttribute("data-to")
+// (shown, it's drawn at its tip less 3, 2: resting, at the spot itself)
+const near = (p, q) => { const [a, b] = [p, q].map((x) => (x ?? "").split(",").map(Number)); return Math.abs(a[0] - b[0]) <= 4 && Math.abs(a[1] - b[1]) <= 4 }
+check("idle: then it rests, out of the note", await until(async () => (await cursor.getAttribute("data-docked")) !== null, 12000), await cursor.getAttribute("data-docked"))
+check("idle: it fades in place, never gliding off to the status bar", (await cursor.getAttribute("data-faded")) !== null && near(await cursor.getAttribute("data-to"), lookedAt), await cursor.getAttribute("data-to"))
 // (its line scrolled out of view, a quiet cursor hides there rather than waiting at the edge, and comes back with the line)
 {
   const pane = page.locator(`.file-view[data-path="${NOTE}"]:visible`).locator("xpath=ancestor::*[@data-pane][1]")
