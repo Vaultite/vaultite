@@ -53,7 +53,7 @@ const SITE = `http://127.0.0.1:${PORT}`
 
 // A note with a web link (the second line, so the cursor isn't on it).
 fs.mkdirSync(path.join(VAULT, "Notes"), { recursive: true })
-fs.writeFileSync(path.join(VAULT, "Notes/Reading list.md"), `# Reading list\n\nStart with [the field notes](${SITE}/article) today.\n`)
+fs.writeFileSync(path.join(VAULT, "Notes/Reading list.md"), `# Reading list\n\nStart with [the field notes](${SITE}/article) today.\n\nMore to read later.\n`)
 
 // (Dark, the app and its pages: SHOW puts the window in front of whoever runs it, often at night.)
 fs.mkdirSync(path.join(VAULT, ".vaultite"), { recursive: true })
@@ -182,7 +182,7 @@ await win.locator(".cm-link[data-url]").first().click({ modifiers: ["ControlOrMe
 check("⌥⌘-click on a web link in a note: the system browser", await until(async () => (await opened()).includes(`${SITE}/article`), 10000), await opened())
 check("… and no web tab", (await pages()).length === 0, await pages())
 // (the cursor off the link's line, so it's drawn as a link: on its line, only ⌘ follows it)
-await win.locator(".cm-line", { hasText: "Reading list" }).first().click()
+await win.locator(".cm-line", { hasText: "More to read later" }).first().click()
 await wait(300)
 await win.locator(".cm-link[data-url]").first().click()
 check("a click on a web link in a note opens a web tab", await until(async () => (await pages()).some((p) => p.url === `${SITE}/article` && p.visible), 15000), await pages())

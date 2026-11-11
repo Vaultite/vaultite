@@ -1700,8 +1700,8 @@ app.on("window-all-closed", () => {
 })
 app.on("activate", () => { if (!wins.size && !manager && !setupWin && !remoteWins.size) openHome() })
 
-/** Opened from its disk image (or Downloads): offer to move into Applications, as Finder's drag would. True: it moved,
- *  and relaunches from there. The relaunched app ejects the image it came from. */
+/** Opened from its disk image (or Downloads): offer to move into Applications (a copy there: movelogic.ts), never to a
+ *  copy a script drives. True: it moved, and relaunches from there, which ejects the image it came from. */
 async function offerMove(): Promise<boolean> {
   const moved = path.join(app.getPath("userData"), "moved-from-dmg")
   if (fs.existsSync(moved)) {
@@ -1709,7 +1709,7 @@ async function offerMove(): Promise<boolean> {
     ejectImages()
   }
   const never = path.join(app.getPath("userData"), "never-move")
-  if (!MAC || !RELEASE || app.isInApplicationsFolder() || fs.existsSync(never)) return false
+  if (!MAC || !RELEASE || driven || app.isInApplicationsFolder() || fs.existsSync(never)) return false
   const r = await dialog.showMessageBox({ message: `Move ${app.getName()} to Applications?`,
     detail: "It runs from there, so it's still there after you eject the disk image, and it can update itself.",
     buttons: ["Move to Applications", "Not now"], defaultId: 0, cancelId: 1, checkboxLabel: "Don't ask again" })
@@ -1720,7 +1720,18 @@ async function offerMove(): Promise<boolean> {
   fs.mkdirSync(app.getPath("userData"), { recursive: true })
   fs.writeFileSync(moved, "")
   try {
-    if (app.moveToApplicationsFolder({ conflictHandler: () => true })) return true
+    const { moveConflict, plistVersion } = await import("./movelogic.ts")
+    // (the copy there: the one Electron would trash, by this bundle's name)
+    const there = path.join("/Applications", path.basename(path.resolve(app.getPath("exe"), "../../..")))
+    const conflictHandler = (type: "exists" | "existsAndRunning") => {
+      let plist = ""
+      try { plist = fs.readFileSync(path.join(there, "Contents", "Info.plist"), "utf8") } catch { /* unread: asked */ }
+      const c = moveConflict(app.getName(), app.getVersion(), { version: plistVersion(plist), running: type === "existsAndRunning" })
+      if (c.kind === "replace") return true
+      if (c.kind === "say") { dialog.showMessageBoxSync({ type: "info", message: c.message, detail: c.detail }); return false }
+      return dialog.showMessageBoxSync({ type: "warning", message: c.message, detail: c.detail, buttons: c.buttons!, defaultId: 0, cancelId: 0 }) === 1
+    }
+    if (app.moveToApplicationsFolder({ conflictHandler })) return true
     fs.rmSync(moved, { force: true })
     return false
   } catch (e) {

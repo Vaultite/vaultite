@@ -35,7 +35,7 @@ const server = http.createServer((req, res) => {
 await new Promise((ok, fail) => { server.once("error", fail); server.listen(0, "127.0.0.1", ok) })
 const SITE = `http://127.0.0.1:${server.address().port}`
 fs.mkdirSync(path.join(VAULT, "Notes"), { recursive: true })
-fs.writeFileSync(path.join(VAULT, "Notes/Reading list.md"), `# Reading list\n\nStart with [the field notes](${SITE}/article) today.\n`)
+fs.writeFileSync(path.join(VAULT, "Notes/Reading list.md"), `# Reading list\n\nStart with [the field notes](${SITE}/article) today.\n\nMore to read later.\n`)
 
 // ---------- the app ----------
 const USER = path.join(TMP, "userData")
@@ -120,7 +120,7 @@ const tabs = () => win.evaluate(() => {
 // ---------- a page, and Back and Forward ----------
 await fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "open", path: "Notes/Reading list.md" }) })
 await win.waitForSelector(".cm-link[data-url]", { timeout: 15000 })
-await win.locator(".cm-line", { hasText: "Reading list" }).first().click()
+await win.locator(".cm-line", { hasText: "More to read later" }).first().click()
 await win.locator(".cm-link[data-url]").first().click()
 check("a web tab at the article", await until(() => at("/article"), 15000), await pages())
 await wait(800)

@@ -2,7 +2,7 @@
 // shows it while they're dragged. They go between lines, on a line of their own, as an image is a block of its own.
 import { StateEffect, StateField, type EditorState, type Extension } from "@codemirror/state"
 import { EditorView, layer, RectangleMarker } from "@codemirror/view"
-import { bodyStart } from "./frontmatter"
+import { bodyStart, shownStart } from "./frontmatter"
 
 /** Before or after the line at `pos`, or in it (an empty line). */
 export type DropSpot = { pos: number; where: "before" | "after" | "in" }
@@ -33,10 +33,10 @@ const held = StateField.define<ReadonlyMap<number, DropSpot>>({
   },
 })
 
-/** Where something dropped at (x, y) goes: between the lines nearest it, never in the frontmatter; below the text, at
+/** Where something dropped at (x, y) goes: between the lines nearest it, never in the frontmatter (nor a hidden title); below the text, at
  *  its end. */
 export function spotAt(view: EditorView, at: { x: number; y: number }): DropSpot {
-  const doc = view.state.doc, floor = bodyStart(doc)
+  const doc = view.state.doc, floor = Math.max(bodyStart(doc), shownStart(view.state))
   const r = view.contentDOM.getBoundingClientRect()
   const blank = (b: { from: number; to: number }) => !doc.sliceString(b.from, b.to).trim()
   if (at.y >= r.bottom) {

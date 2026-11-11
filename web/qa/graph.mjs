@@ -78,6 +78,7 @@ for (let y = cb.y + 120; y < cb.y + cb.height - 60 && !hovered; y += 9) {
   }
 }
 check(`hovering a dot lights it (${hovered})`, !!hovered)
+check("...and names it, whatever its neighbours", (await canvas.evaluate((el) => el.labels?.() ?? [])).some((l) => l.full && hovered.includes(l.text.replace(/…$/, ""))))
 await page.screenshot({ path: `${OUT}graph-hover.png` })
 const at = await page.evaluate(() => [location.hash])
 await page.mouse.down(); await page.mouse.up()
@@ -99,6 +100,25 @@ await req("POST", "file", { path: "Qa graph/Made while open.md", text: `Links to
 check("a file made while it's open joins the graph", !!(await until(async () => (await nodes()) === all.nodes.length + 1, 8000)), await nodes())
 await req("DELETE", `file?path=${encodeURIComponent("Qa graph/Made while open.md")}`)
 check("and leaves it once deleted", !!(await until(async () => (await nodes()) === all.nodes.length, 8000)), await nodes())
+
+// Labels never overlap: a dozen long-named files all linked to each other, filtered to and fitted (a tight knot whose
+// names would pile up): the ones that would meet another fade out, and a dot's name comes back on hover.
+const CROWD = Array.from({ length: 12 }, (_, i) => `Qa graph/Crowd ${i + 1} with a rather long name.md`)
+for (const f of CROWD) await req("POST", "file", { path: f, text: CROWD.filter((o) => o !== f).map((o) => `[[${o.split("/").pop().replace(/\.md$/, "")}]]`).join(" ") + "\n" })
+await until(async () => (await nodes()) === all.nodes.length + CROWD.length, 8000)
+await page.fill("[data-graph-search]", "Crowd")
+await until(async () => (await nodes()) === CROWD.length, 8000)
+await page.click("button[aria-label='Fit the graph']"); await wait(2500)
+{
+  const labels = () => canvas.evaluate((el) => el.labels?.() ?? [])
+  const named = (await labels()).filter((l) => l.full)
+  const meet = named.flatMap((a, i) => named.slice(i + 1).filter((b) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1).map((b) => `${a.text} / ${b.text}`))
+  check(`a crowded knot: names drawn, none over another, the rest faded (${named.length} of ${CROWD.length} named; meeting: ${meet.slice(0, 2).join(", ") || "none"})`, named.length > 0 && !meet.length && named.length < CROWD.length)
+  await page.screenshot({ path: `${OUT}graph-labels.png` })
+}
+await page.fill("[data-graph-search]", "")
+for (const f of CROWD) await req("DELETE", `file?path=${encodeURIComponent(f)}`)
+check("the knot's files gone, every file again", !!(await until(async () => (await nodes()) === all.nodes.length, 8000)), await nodes())
 
 // Filters panel: files with no links, a switch (saved at once, the panel staying open).
 await page.click("[data-graph-filters]")

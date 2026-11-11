@@ -1,7 +1,7 @@
 // Templates' server side: which folder it is, so the vault never reads the notes there as people or logs
 // (`templates:folder`), and the hook other plugins expand templates through (`template:expand`); the app does the rest.
 import { formatDate, Plugin } from "../../../core/plugins.ts"
-import { fillVars, FORMATS, mergeFm } from "./fill.ts"
+import { fillVars, FORMATS, fromTemplate } from "./fill.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -26,11 +26,7 @@ plugin.route("POST", "templates/expand", (req) => {
   return fn ? fn(req.body, req) : { text: req.body.text }
 }, { lock: false })
 
-const FM = /^---\n[\s\S]*?\n---[ \t]*\n?/
 /** A template's text as a note's, as the app makes it (fill.ts), its frontmatter merged into `into`'s (a new file's
  *  own keys win): for plugins that make notes on the server. `now`: what {{date}} is (a daily note's day). */
-plugin.exports.fill = (text: string, title: string, into = "", now = new Date()) => {
-  const t = fillVars(text, title, formatDate, now, { date: format("dateFormat", FORMATS.date), time: format("timeFormat", FORMATS.time) })
-  const fm = FM.exec(t)?.[0] ?? "", own = FM.exec(into)?.[0] ?? ""
-  return (fm ? mergeFm(own, fm) : own) + t.slice(fm.length).replace(/^\n+/, "")
-}
+plugin.exports.fill = (text: string, title: string, into = "", now = new Date()) =>
+  fromTemplate(fillVars(text, title, formatDate, now, { date: format("dateFormat", FORMATS.date), time: format("timeFormat", FORMATS.time) }), into)

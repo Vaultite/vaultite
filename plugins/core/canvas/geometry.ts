@@ -83,6 +83,9 @@ export const within = (a: Box, b: { x0: number; y0: number; x1: number; y1: numb
   a.x >= b.x0 && a.y >= b.y0 && a.x + a.width <= b.x1 && a.y + a.height <= b.y1
 
 export const snapGrid = (v: number) => Math.round(v / GRID) * GRID
+/** `v` pulled onto the grid when it's within a notch of a line (half the cards' `tol`, a quarter of the grid at most),
+ *  else as it is: a gentle aid that never holds what's dragged back from the pointer. */
+const notch = (v: number, tol: number) => { const g = snapGrid(v); return Math.abs(g - v) <= Math.min(tol / 2, GRID / 4) ? g : v }
 
 /** The lines other cards offer to snap to on one axis: their two edges and their centre. */
 function lines(others: Box[], axis: "x" | "y") {
@@ -108,7 +111,7 @@ function nearest(mine: number[], cands: { at: number; a: number; b: number }[], 
 }
 
 /** A box being moved, snapped: to other cards' edges and centres (`others`; a guide is drawn for each) when one is
- *  within `tol`, else to the grid (its top left corner). Returns how far to shift it, and the guides. */
+ *  within `tol`, else to the grid (its top left corner) when near a line. Returns how far to shift it, and the guides. */
 export function snapMove(box: Box, others: Box[], opts: { grid: boolean; objects: boolean; tol: number }) {
   const guides: Guide[] = []
   let dx = 0, dy = 0
@@ -119,8 +122,8 @@ export function snapMove(box: Box, others: Box[], opts: { grid: boolean; objects
   }
   const hx = opts.objects ? nearest([box.x, box.x + box.width / 2, box.x + box.width], lines(others, "x"), opts.tol) : null
   const hy = opts.objects ? nearest([box.y, box.y + box.height / 2, box.y + box.height], lines(others, "y"), opts.tol) : null
-  if (hx) dx = hx.delta; else if (opts.grid) dx = snapGrid(box.x) - box.x
-  if (hy) dy = hy.delta; else if (opts.grid) dy = snapGrid(box.y) - box.y
+  if (hx) dx = hx.delta; else if (opts.grid) dx = notch(box.x, opts.tol) - box.x
+  if (hy) dy = hy.delta; else if (opts.grid) dy = notch(box.y, opts.tol) - box.y
   if (hx) span("x", hx.delta, hx.line)
   if (hy) span("y", hy.delta, hy.line)
   return { dx, dy, guides }
@@ -143,7 +146,7 @@ export function resizeBox(start: Box, dir: Dir, dx: number, dy: number, others: 
         return v + hit.delta
       }
     }
-    return opts.grid ? snapGrid(v) : v
+    return opts.grid ? notch(v, opts.tol) : v
   }
   if (!opts.keep) {
     if (dir.includes("w")) x0 = snap(x0, "x")

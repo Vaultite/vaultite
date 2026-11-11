@@ -11,7 +11,7 @@ mkdirSync(OUT, { recursive: true })
 
 const URL_ = "https://example.com/an-article"
 await fetch(`${B}api/file`, { method: "POST", headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ path: "Notes/Qa web links.md", text: `# Qa web links\n\nRead [the article](${URL_}) later.\n` }) })
+  body: JSON.stringify({ path: "Notes/Qa web links.md", text: `# Qa web links\n\nRead [the article](${URL_}) later.\n\nBelow the link.\n` }) })
 
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
 await ctx.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } })
@@ -21,7 +21,7 @@ const page = watch(await ctx.newPage(), { console: true, fail: false })
 
 await page.goto(`${B}#file/${encodeURIComponent("Notes/Qa web links.md")}`)
 await page.waitForSelector(".cm-link[data-url]", { timeout: 15000 })
-await page.locator(".cm-line", { hasText: "Qa web links" }).first().click()
+await page.locator(".cm-line", { hasText: "Below the link." }).first().click()
 await wait(300)
 let popup = page.waitForEvent("popup", { timeout: 5000 }).catch(() => null)
 await page.locator(".cm-link[data-url]").first().click()

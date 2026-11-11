@@ -13,8 +13,8 @@ import { tags } from "@lezer/highlight"
 import { Compartment, EditorSelection, EditorState, Prec, Text, Transaction, type Extension, type SelectionRange } from "@codemirror/state"
 import { EditorView, keymap, placeholder, tooltips, type ViewUpdate } from "@codemirror/view"
 import { codeStyle, indentOf, languageFor, ownIndent } from "./languages"
-import { drawnBlocks, fenceMenu, findable, linkHandler, livePreview, offBlocks, previewConfig, textStart, type PreviewConfig } from "./livePreview"
-import { bodyStart, frontmatter, frontmatterSyntax, hiddenFrontmatter, withBodyLine } from "./frontmatter"
+import { drawnBlocks, fenceMenu, findable, linkHandler, livePreview, offBlocks, previewConfig, textStart, textStartIn, type PreviewConfig } from "./livePreview"
+import { bodyStart, frontmatter, frontmatterSyntax, hiddenFrontmatter, shownStart, titled, titleEnd, withBodyLine } from "./frontmatter"
 import { slashSource } from "./slash"
 import { followReader, sightMargins } from "./sight"
 import { blockOptionSource } from "./blockOptions"
@@ -56,7 +56,8 @@ export type EditorApi = {
   /** Scroll so that this line (0-based) is at the top of what scrolls it (measured on the way, unlike a guess from the
    *  heights of lines not drawn yet). */
   reveal: (line: number) => void
-  /** Where the app can put the cursor near `pos` without opening a drawn block (livePreview's offBlocks). */
+  /** Where the app can put the cursor near `pos` without opening a drawn block (livePreview's offBlocks), at its line's
+   *  text. */
   offBlocks: (pos: number) => number | null
   /** Put in `text` with its clashes shown in place (editor/conflicts.ts); false if one can't be shown, and nothing changed.
    *  `open` hears how many are left as the user settles them; `note`, what the bars say instead of "edited while you typed". */
@@ -106,6 +107,8 @@ type Props = {
   source?: boolean
   /** A Markdown file's whole text with its frontmatter hidden (live preview and reading): positions are the file's. */
   frontmatter?: boolean
+  /** The title drawn above it (with `frontmatter`): a first heading that only says it again is hidden too. */
+  title?: string
   /** Not Markdown (source only): JSON, HTML (an artifact) or plain text (CSV). */
   code?: "json" | "html" | "text"
   /** A code file (source only): its name, for its language. */
@@ -262,7 +265,7 @@ function traceUpdate(u: ViewUpdate, path: string) {
 }
 const callers = () => (new Error().stack ?? "").split("\n").slice(3, 12).map((l) => l.trim().replace(/^at /, "")).join(" < ")
 
-export default function Editor({ doc, editable, config, onChange, onOpen, names, tags, headings, slash, onReady, placeholderText, label, source, frontmatter: hides, code, language, markdownLinks, onAttach, docPath, floatingTooltips, onEscape, onBlur, numbered, onUndoFrontmatter, keep }: Props) {
+export default function Editor({ doc, editable, config, onChange, onOpen, names, tags, headings, slash, onReady, placeholderText, label, source, frontmatter: hides, title, code, language, markdownLinks, onAttach, docPath, floatingTooltips, onEscape, onBlur, numbered, onUndoFrontmatter, keep }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
   const cfg = useRef(new Compartment())
@@ -271,6 +274,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
   const plugged = useRef(new Compartment())
   const nums = useRef(new Compartment())
   const prose = useRef(new Compartment())
+  const naming = useRef(new Compartment())
   const { disabled, enabled, lineNumbers: numbersOn } = usePrefs()
   const settings = useEditorSettings()
   const plugins = usePluginsVersion()
@@ -365,8 +369,9 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
       parent: host.current!,
       state: start({
         doc: fill(doc),
-        // (a new editor's cursor starts at the body, never inside the hidden frontmatter: typing there went before `---`)
-        selection: hides ? EditorSelection.cursor(bodyStart(Text.of(fill(doc).split(/\r\n?|\n/)))) : undefined,
+        // (a new editor's cursor starts at what's shown, never inside the hidden frontmatter: typing there went before `---`;
+        // past a list's bullet or checkbox there, which shows as typed with the cursor in front of it)
+        selection: hides ? EditorSelection.cursor(((t) => textStartIn(t, titleEnd(t, bodyStart(t), title ?? "")))(Text.of(fill(doc).split(/\r\n?|\n/)))) : undefined,
         extensions: language !== undefined ? [
           Prec.highest(plugged.current.of([])),
           leaving, sight, history(), conflicts, indentUnit.of(indentOf(doc)), EditorView.lineWrapping, numberGutter(),
@@ -419,7 +424,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
             { key: "Tab", run: indentMore }, { key: "Shift-Tab", run: indentLess },
             ...markdownKeymap, ...defaultKeymap, ...historyKeymap,
           ]),
-          hides ? hiddenFrontmatter(placeholderText ?? "Start writing") : placeholder(placeholderText ?? "Start writing"),
+          hides ? [naming.current.of(titled.of(title ?? "")), hiddenFrontmatter(placeholderText ?? "Start writing")] : placeholder(placeholderText ?? "Start writing"),
           EditorView.contentAttributes.of({ autocorrect: "on", autocapitalize: "sentences", "aria-label": label ?? "Note" }),
           EditorView.updateListener.of((u) => {
             const start = u.state.field(frontmatter, false) ?? 0
@@ -432,6 +437,9 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
     })
     view.current = v
     if (language) languageFor(language).then((l) => { if (l && view.current === v) v.dispatch({ effects: lang.current.reconfigure(l) }) })
+    // Where the app puts the cursor: at a line's text, past a heading's #s, a quote's > or a list's bullet or box (in
+    // front of them they show as typed, as if the user had gone there).
+    const placed = (pos: number | null) => (pos !== null && pos === v.state.doc.lineAt(pos).from ? textStart(v.state, pos) : pos)
     const api: EditorApi = {
       view: v,
       restored,
@@ -453,7 +461,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
         })
       },
       conflict: (text, clashes, who, open, note) => {
-        const at = v.state.field(frontmatter, false) ?? 0
+        const at = shownStart(v.state)
         if (at && clashes.some((k) => k.at < v.state.doc.lineAt(at).number - 1)) return false
         api.replace(text)
         return showConflicts(v, clashes, who, open, note)
@@ -475,9 +483,9 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
         if (!changes.length) return
         v.dispatch({ changes, annotations: isolateHistory.of("full"), userEvent: "input.app" })
       },
-      offBlocks: (pos) => offBlocks(v.state, pos),
+      offBlocks: (pos) => placed(offBlocks(v.state, pos)),
       focus: (at) => {
-        const pos = at ? offBlocks(v.state, at === "start" ? v.state.field(frontmatter, false) ?? 0 : v.state.doc.length) : null
+        const pos = at ? placed(offBlocks(v.state, at === "start" ? shownStart(v.state) : v.state.doc.length)) : null
         if (pos !== null) v.dispatch({ selection: EditorSelection.cursor(pos) })
         v.focus()
       },
@@ -492,15 +500,15 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
         // (from under the bars drawn over it, as scrollToLine's margin counts from there: a heading gone to is the one)
         const top = sightOf(v.dom).top + 80
         const h = top - v.documentTop
-        // (never above the body: a hidden frontmatter's lines aren't on screen)
-        const first = v.state.doc.lineAt(v.state.field(frontmatter, false) ?? 0).number - 1
+        // (never above what's shown: a hidden frontmatter's and title's lines aren't on screen)
+        const first = v.state.doc.lineAt(shownStart(v.state)).number - 1
         return Math.max(first, h <= 0 ? 0 : v.state.doc.lineAt(v.lineBlockAtHeight(Math.min(h, v.contentHeight)).from).number - 1)
       },
       dom: v.dom,
     }) : null
     // Every editor: commands find the one the user means (Find, folding: core/editors.ts).
     const unlist = registerEditor({ view: v, kind: language !== undefined ? "code" : code ? "text" : "markdown", path: docPath ?? (language || undefined), source: !!source,
-      start: (s) => s.field(frontmatter, false) ?? 0, undo: () => undo(v), redo: () => redo(v), findable, blocks: () => drawnBlocks(v) })
+      start: shownStart, undo: () => undo(v), redo: () => redo(v), findable, blocks: () => drawnBlocks(v) })
     trace("editor", { ev: "mount", path: docPath ?? label, head: v.state.selection.main.head, editable, source: !!source })
     return () => { trace("editor", { ev: "destroy", path: docPath ?? label, head: v.state.selection.main.head }); leaveConflicts(v); unready?.(); unregister?.(); unlist(); if (keepAs) keepState(keepAs, v.state, !!source); v.destroy(); view.current = null }
     // One editor per file: the parent keys this component by path.
@@ -533,6 +541,15 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
   useEffect(() => {
     view.current?.dispatch({ effects: edit.current.reconfigure([EditorView.editable.of(editable), EditorState.readOnly.of(!editable)]) })
   }, [editable])
+  // The title drawn above it or not (Settings > Editor > Show inline title): a first heading that's it hides or shows.
+  useEffect(() => {
+    const v = view.current
+    if (!v || !hides) return
+    v.dispatch({ effects: naming.current.reconfigure(titled.of(title ?? "")) })
+    const start = shownStart(v.state)
+    if (v.state.selection.main.from < start) v.dispatch({ selection: EditorSelection.cursor(start) })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title])
 
   // (the desktop app opens files dropped elsewhere; here they're attachments)
   return <div ref={host} data-file-drop={editable && onAttach && language === undefined && !code ? "" : undefined}

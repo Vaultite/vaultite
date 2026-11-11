@@ -102,6 +102,14 @@ await page.getByText("Snap to grid", { exact: true }).click(); await wait(300)
 await page.click("[data-canvas-tool=Snapping]"); await wait(200)
 check("snapping to the grid is back on (kept in the plugin's settings)", await page.locator("[role=menu] [aria-checked=true]").filter({ hasText: "Snap to grid" }).count() === 1)
 await page.keyboard.press("Escape")
+// With the grid on, a dragged card follows the pointer: the grid is only a notch near its lines, never holding it back
+// (a first run's drag seemed to barely move it).
+const was = read().nodes.find((n) => n.id === "a"), aAt = await node("a").boundingBox()
+await dragTo({ x: aAt.x + 40, y: aAt.y + 60 }, { x: aAt.x + 40 + 57 * k0, y: aAt.y + 60 + 33 * k0 })
+const followed = await until((d) => { const a = d.nodes.find((n) => n.id === "a"); return Math.abs(a.x - was.x - 57) <= 3 && Math.abs(a.y - was.y - 33) <= 3 })
+check(`a card dragged with the grid on follows the pointer (moved ${read().nodes.find((n) => n.id === "a").x - was.x}, ${read().nodes.find((n) => n.id === "a").y - was.y} for 57, 33)`, followed)
+await page.keyboard.press("ControlOrMeta+z")
+check("...and ⌘Z puts it back", await until((d) => { const a = d.nodes.find((n) => n.id === "a"); return a.x === was.x && a.y === was.y }))
 
 // Resize from the left edge.
 await node("a").click()

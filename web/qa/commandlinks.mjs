@@ -6,14 +6,14 @@ const { args: [B], browser, check, errs, watch, done } = await qa(import.meta.ur
 
 const NOTE = "Notes/Qa command links.md"
 await fetch(`${B}api/file`, { method: "POST", headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ path: NOTE, text: "# Qa command links\n\n[Find a file](vaultite://command/switcher:open) and [a new tab](vaultite://command/tab:new).\n" }) })
+  body: JSON.stringify({ path: NOTE, text: "# Qa command links\n\n[Find a file](vaultite://command/switcher:open) and [a new tab](vaultite://command/tab:new).\n\nBelow the links.\n" }) })
 
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
 await ctx.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } })
 const page = watch(await ctx.newPage())
 await page.goto(`${B}#file/${encodeURIComponent(NOTE)}`)
 await page.waitForSelector(".cm-link[data-url]", { timeout: 15000 })
-await page.locator(".cm-line", { hasText: "Qa command links" }).first().click()
+await page.locator(".cm-line", { hasText: "Below the links" }).first().click()
 await wait(300)
 const link = (text) => page.locator(".cm-link[data-url]", { hasText: text }).first()
 const tabs = () => page.locator("[data-tab-id]").count()

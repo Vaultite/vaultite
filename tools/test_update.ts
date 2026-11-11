@@ -207,4 +207,22 @@ await section("Main's updates through its code store: where, and its two policie
     pinOf([mine]) === "" && pinOf([mine, service(server)]) === "")
 })
 
+await section("moved into Applications from its disk image: a copy already there (electron/movelogic.ts)", async () => {
+  const { moveConflict, plistVersion } = await import("../electron/movelogic.ts")
+  const plist = (v: string) => `<?xml version="1.0"?>\n<plist version="1.0">\n<dict>\n\t<key>CFBundleName</key>\n\t<string>Lighthouse</string>\n\t<key>CFBundleShortVersionString</key>\n\t<string>${v}</string>\n</dict>\n</plist>\n`
+  check("its version read from its Info.plist; none when it says none", plistVersion(plist("0.12.0")) === "0.12.0" && plistVersion("<plist><dict></dict></plist>") === null && plistVersion("") === null)
+  const at = (version: string | null, running = false) => moveConflict("Lighthouse", "0.12.0", { version, running })
+  check("an older or the same version, not running: replaced without a word", at("0.11.4").kind === "replace" && at("0.12.0").kind === "replace" && at("0.12.0-beta.1").kind === "replace")
+  const newer = at("0.13.0")
+  check("a newer one: asked, keeping it the default, saying both versions", newer.kind === "ask" && newer.buttons?.[0] === "Keep the newer one" && /0\.13\.0/.test(newer.detail) && /0\.12\.0/.test(newer.detail), newer)
+  const unread = at(null)
+  check("one whose version can't be read: asked too", unread.kind === "ask" && unread.buttons?.[1] === "Replace it", unread)
+  const open = at("0.11.0", true)
+  check("one that's running, whatever its version: never replaced, it says to quit it first", open.kind === "say" && /Quit it/.test(open.detail) && at("0.13.0", true).kind === "say", open)
+  const main = fs.readFileSync(path.join(import.meta.dirname, "..", "electron", "main.ts"), "utf8")
+  const offer = main.slice(main.indexOf("async function offerMove"), main.indexOf("function ejectImages"))
+  check("main.ts asks through it, and a copy a script drives (VAULTITE_QUIET) is never asked", /moveConflict\(/.test(offer) && !/conflictHandler: \(\) => true/.test(offer) &&
+    /if \(![^\n]*\bdriven\b[^\n]*\) return false/.test(offer) && /const driven = !!process\.env\.VAULTITE_QUIET/.test(main))
+})
+
 await exit(summary("update", t0))

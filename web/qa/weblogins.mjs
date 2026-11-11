@@ -40,7 +40,7 @@ if (fs.existsSync(pluginsFile)) {
   fs.writeFileSync(pluginsFile, JSON.stringify({ ...p, enabled: [...(p.enabled ?? []).filter((x) => x !== "workspaces"), "workspaces"] }, null, 2) + "\n")
 }
 fs.mkdirSync(path.join(VAULT, "Notes"), { recursive: true })
-fs.writeFileSync(path.join(VAULT, "Notes/Site.md"), `# Site\n\nSee [who](${SITE}/whoami) and [who again](${SITE}/whoami?again).\n`)
+fs.writeFileSync(path.join(VAULT, "Notes/Site.md"), `# Site\n\nSee [who](${SITE}/whoami) and [who again](${SITE}/whoami?again).\n\nBelow the links.\n`)
 
 // ---------- the app ----------
 const app = await _electron.launch({
@@ -70,7 +70,7 @@ const cookiesIn = (partition) => app.evaluate(async ({ session }, p) => (await s
 async function openLink(n) {
   await ui({ action: "open", path: "Notes/Site.md" })
   await win.waitForSelector("section [data-pane] .cm-link[data-url]", { timeout: 15000 })
-  await win.locator(".cm-line", { hasText: "Site" }).first().click()
+  await win.locator(".cm-line", { hasText: "Below the links" }).first().click()
   await wait(300)
   await win.locator("section [data-pane] .cm-link[data-url]").nth(n).click()
   await win.mouse.move(5, 400) // (off the link: its preview would cover the page)

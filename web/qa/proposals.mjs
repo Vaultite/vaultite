@@ -27,7 +27,7 @@ if (want.length) {
 }
 await api("PATCH", "config/plugin/companion", { mode: "quiet", comments: null })
 await op("plugin.grant", { id: "activity", allow: false })
-const DIR = "QA proposals", NOTE = `${DIR}/Trip plan.md`
+const DIR = "QA proposals", NOTE = `${DIR}/Lisbon trip.md`
 rmSync(file(DIR), { recursive: true, force: true })
 const BEFORE = "# Trip plan\n\nWe fly to Lisbon on Friday.\nThe hotel is near the river.\n\n## Budget\n\nAbout 900 euros.\n\n## Risks\n"
 await api("PUT", "file", { path: NOTE, text: BEFORE })

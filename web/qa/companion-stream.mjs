@@ -2,7 +2,7 @@
 // writes, it waits while the user types and goes on after, their words stay theirs (what they wrote meanwhile reaches it
 // as theirs alone), its whole edit is one undo step, its cursor stays at its end, and Esc stops it where it is. The
 // server's stream is played to the window's socket, so no session runs.
-// WRITES "QA companion/Stream.md" and the plugin's data.json: throwaway server only.
+// WRITES "QA companion/Streamed answer.md" and the plugin's data.json: throwaway server only.
 //   node web/qa/companion-stream.mjs <base url> <vault path>
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"
@@ -12,7 +12,7 @@ const file = (rel) => `${VAULT}/${rel}`
 const keep = (rel) => { const was = existsSync(file(rel)) ? readFileSync(file(rel), "utf8") : null; return () => { if (was === null) rmSync(file(rel), { force: true }); else writeFileSync(file(rel), was) } }
 const restore = keep(".vaultite/plugins/companion/data.json")
 const api = (method, p, body) => fetch(`${B}/api/${p}`, { method, headers: { "Content-Type": "application/json" }, body: body && JSON.stringify(body) }).then((r) => r.json())
-const NOTE = "QA companion/Stream.md", TEXT = "# Stream\n\nLine one.\n\nLine two.\n"
+const NOTE = "QA companion/Streamed answer.md", TEXT = "# Stream\n\nLine one.\n\nLine two.\n"
 await api("PATCH", "config/plugin/companion", { mode: "pair", pause: 1 })
 await api("PUT", "file", { path: NOTE, text: TEXT })
 
@@ -162,5 +162,5 @@ check("socket closed: the stream ends with what it had", (await doc()).includes(
 
 await ctx.close()
 restore()
-rmSync(file("QA companion/Stream.md"), { force: true })
+rmSync(file("QA companion/Streamed answer.md"), { force: true })
 await done()

@@ -2,7 +2,7 @@
 // block, a widget's first text): each number is moved by the difference, measured after every layout.
 import type { EditorState } from "@codemirror/state"
 import { highlightActiveLineGutter, lineNumbers, ViewPlugin, type EditorView, type ViewUpdate } from "@codemirror/view"
-import { frontmatter } from "./frontmatter"
+import { shownStart } from "./frontmatter"
 
 /** Where a font's baseline is below the top of its text's box (a 0-high inline box sits on it), or with `lineHeight`
  *  below the top of an empty line's. */
@@ -85,9 +85,9 @@ const align = ViewPlugin.fromClass(class {
   }
 })
 
-/** The body's line numbers: a hidden frontmatter's lines have none and aren't counted. */
+/** The body's line numbers: a hidden frontmatter's and title's lines have none and aren't counted. */
 function bodyNumber(n: number, state: EditorState) {
-  const start = state.field(frontmatter, false)
+  const start = shownStart(state)
   const above = start ? state.doc.lineAt(start).number - 1 : 0
   return n > above ? String(n - above) : ""
 }

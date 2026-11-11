@@ -14,7 +14,7 @@ import { keepOnScreen } from "@/core/anchor"
 import { blockHeightKey, heightOf, holdHeight, textKey } from "@/core/heights"
 import { BLOCK_ID, blockName, FENCE, scan, TAG } from "../../../core/sections.ts"
 import { fenceLayout, infoWithLayout, type LayoutKey } from "../../../core/blocks.ts"
-import { frontmatter } from "./frontmatter"
+import { frontmatter, shownStart } from "./frontmatter"
 import { blockLines, COPY_ICON, copyCode, drawEmbeds, dropMermaid, hydrate, markdownDrawn, renderMath, renderMermaid, richClick, taskMarks, wireTasks } from "@/core/richmd"
 import { capitalize } from "@/lib/utils"
 import { drawTable as drawCells, enterTable } from "./tables"
@@ -152,8 +152,10 @@ function touchedLines(state: EditorState, from: number, to: number) {
 
 /** A line's first position drawn as text (after its marks, bullet, checkbox or label): where CodeMirror can measure it to
  *  scroll there, reading too (where a hidden-Markdown line's very start has no size). */
-export function textStart(state: EditorState, pos: number) {
-  const l = state.doc.lineAt(pos)
+export const textStart = (state: EditorState, pos: number) => textStartIn(state.doc, pos)
+/** textStart in a document, before there's an editor of it. */
+export function textStartIn(doc: Text, pos: number) {
+  const l = doc.lineAt(pos)
   const m = /^(?:[ \t]*(?:#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+(?:\[[ xX]\][ \t]+)?|\d+[.)][ \t]+|\[\^[^\]\s]+\]:[ \t]?))*/.exec(l.text)
   return l.from + (m ? m[0].length : 0)
 }
@@ -887,8 +889,8 @@ function inline(view: EditorView): DecorationSet {
     return task ? 18 + 0.4 * m.size + m.width(space) : bullet ? BULLET * m.size + m.width(space) : m.width(state.sliceDoc(lm.from, end) + space)
   }
 
-  // (nothing in a hidden frontmatter: editor/frontmatter.ts)
-  const body = state.field(frontmatter, false) ?? 0
+  // (nothing in a hidden frontmatter or title: editor/frontmatter.ts)
+  const body = shownStart(state)
   // Inline HTML drawn in its place (`H<sub>2</sub>O`): what's inside is the widget's, not the passes below.
   const htmls: [number, number][] = []
   const inHtml = (a: number, b: number) => htmls.some(([f, t]) => a < t && b > f)
@@ -1607,7 +1609,7 @@ const blockField = StateField.define<{ c: Cands; deco: DecorationSet }>({
 /** A place for the cursor that opens no drawn block (nor a hidden frontmatter): `pos` when its line is in none, else the line after the block (or
  *  before it, at the end); null when every line is in one. Where the app puts the cursor itself (opening a note, ⌘E). */
 export function offBlocks(state: EditorState, pos: number): number | null {
-  pos = Math.max(pos, state.field(frontmatter, false) ?? 0)
+  pos = Math.max(pos, shownStart(state))
   const list = state.field(blockField, false)?.c.list.filter((x) => !x.always)
   if (!list?.length) return pos
   const doc = state.doc, start = doc.lineAt(pos).number
@@ -1629,11 +1631,11 @@ const READ_KINDS: Record<string, string> = { Frontmatter: "frontmatter", Paragra
   Blockquote: "quote", FencedCode: "code", CodeBlock: "code", HorizontalRule: "rule" }
 
 function readsOf(state: EditorState): Read[] {
-  const out: Read[] = [], doc = state.doc, body = state.field(frontmatter, false) ?? 0
+  const out: Read[] = [], doc = state.doc, body = state.field(frontmatter, false) ?? 0, start = shownStart(state)
   for (let n = syntaxTree(state).topNode.firstChild; n; n = n.nextSibling) {
     const kind = READ_KINDS[n.name] ?? (/^(ATX|Setext)Heading/.test(n.name) ? "heading" : null)
-    // (the frontmatter is hidden: offered as itself, never as the rule and heading it would parse as)
-    if (!kind || (kind === "frontmatter" ? !body : n.from < body)) continue
+    // (the frontmatter is hidden: offered as itself, never as the rule and heading it would parse as; a hidden title not at all)
+    if (!kind || (kind === "frontmatter" ? !body : n.from < start)) continue
     const first = doc.lineAt(n.from), last = doc.lineAt(Math.max(n.from, n.to - 1))
     out.push({ from: first.from, to: last.to, a: first.number, b: last.number, kind, text: doc.sliceString(first.from, last.to) })
   }

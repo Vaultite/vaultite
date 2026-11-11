@@ -868,6 +868,9 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   // included), under the path bar.
   const layout = format?.layout ?? "box"
   const page = layout === "full" && shown === "read" && pane
+  // The name drawn as the title (Settings > Editor's inline title: off, it's only in the tab and the path bar; a sheet,
+  // having neither, keeps it). A note whose text opens with it as a heading shows it once: the editor hides that one.
+  const titled = showInlineTitle || !pane
   const pageCtx: PageCtx = { store, path, fm: props, get body() { return cur.current.body }, setProperty: ctx.setProperty, title: stem(path), place: pane ? "page" : "sheet", disabled }
   pageRef.current = pageCtx
   // A page read, or edited as it's read, is as wide as its cards; one of only text reads as a note does, in the same
@@ -957,9 +960,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
           <TitleLine icon={view?.icon ?? Folder} tint={view?.tint} text={folderLine(path)} head={fileHead} pane={pane}
             toggle={!pane && !ro && views.length > 1 && <ViewToggle mode={shown} setMode={setMode} edit={edit} views={views} phone="sheet" />} />
         )}
-        {/* The inline title (Settings > Editor): off, the name is only in the tab and the path bar (a sheet, having
-            neither, keeps it). */}
-        {!page && !(code && pane && !phoneTab) && (showInlineTitle || !pane ? (
+        {!page && !(code && pane && !phoneTab) && (titled ? (
           <TitleRow icon={props.icon} tint={props.tint} phone={phoneTab}
             onIcon={changeable && iconChangeable(path) ? () => changeIcon(path, (n) => setProperty("icon", n)) : undefined}>
             <Title path={path} editable={shown !== "read" && !ro && !isProtected(path) && !outside} sheet={!pane} focus={fresh} settle={settle}
@@ -980,7 +981,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
               <Editor key={source ? `${path}:source` : `${path}:text${fmText ? ":fm" : ""}`} doc={full()} keep={path} config={config} {...wiring} label={stem(path)}
                 docPath={isMd(path) ? path : undefined} onAttach={outside ? undefined : attach}
                 {...(source ? { editable: !ro, source: true, numbered: true, code: strict ? "json" : format?.code, language: code ? path : format?.source ? `source.${format.source}` : undefined }
-                  : { frontmatter: !fmText, editable: shown === "live" && !ro, placeholderText: shown === "read" ? "" : "Start writing", numbered: shown !== "read",
+                  : { frontmatter: !fmText, title: titled && !page ? stem(path) : undefined, editable: shown === "live" && !ro, placeholderText: shown === "read" ? "" : "Start writing", numbered: shown !== "read",
                     onUndoFrontmatter: () => revealProps(article.current) })}
                 onReady={(api) => {
                   const me = { api, source }

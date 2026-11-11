@@ -183,8 +183,16 @@ export default async ($: VaultTest) => {
       check("daily notes: Obsidian's settings are the defaults, never written", st.settingDefaults["plugins/daily-notes/data"]?.format === "YYYY/MM/DD-MM-YYYY" &&
         st.filing.homes.find((h: Any) => h.key === "days")?.folder === "Journal" && !exists(".vaultite/plugins/daily-notes/data.json") && !exists(".vaultite/folders.json"), [st.settingDefaults, st.filing])
       t = await run("daily-note.open", { date: "2026-09-23" })
-      check("daily-note.open: named in the format, in the folder, from the template filled for that day", !t.error && t.result.path === "Journal/2026/09/23-09-2026.md" &&
-        read("Journal/2026/09/23-09-2026.md") === "---\nmood: \n---\n\n# Wednesday\n", [t, exists(t.result?.path ?? "x") && read(t.result.path)])
+      check("daily-note.open: named in the format, in the folder, from the template filled for that day, spaced as it is", !t.error && t.result.path === "Journal/2026/09/23-09-2026.md" &&
+        read("Journal/2026/09/23-09-2026.md") === "---\nmood: \n---\n# Wednesday\n", [t, exists(t.result?.path ?? "x") && read(t.result.path)])
+      const { fromTemplate } = await import("../../../plugins/core/templates/fill.ts")
+      check("templates: a new note is the template's text as written, its frontmatter merged and the app's own keys left out (New note from template too)",
+        fromTemplate("---\ndate: x\n---\n# Meeting\n") === "---\ndate: x\n---\n# Meeting\n" && fromTemplate("---\ndate: x\n---\n\n# Meeting\n") === "---\ndate: x\n---\n\n# Meeting\n" &&
+        fromTemplate("---\nid: a\n---\n\n# Meeting\n") === "# Meeting\n" && fromTemplate("# Meeting\n", "---\ntype: day\n---\n") === "---\ntype: day\n---\n# Meeting\n" &&
+        fromTemplate("---\ndate: x\n---\n# M\n", "---\ntype: day\n---\n") === "---\ntype: day\ndate: x\n---\n# M\n")
+      write("Tpl/Day.md", "---\nmood: \nid: tpl\n---\n\n# {{date:dddd}}\n")
+      t = await run("daily-note.open", { date: "2026-09-25" })
+      check("daily-note.open: a template's blank line after its frontmatter kept, its id left out", !t.error && read(t.result.path) === "---\nmood: \n---\n\n# Friday\n", [t, exists(t.result?.path ?? "x") && read(t.result.path)])
       write(".obsidian/templates.json", JSON.stringify({ folder: "Tpl/", dateFormat: "D MMM YYYY" }))
       let [, tpl] = await api("GET", "templates")
       check("templates: Obsidian's templates.json's folder and formats, while unset", tpl.folder === "Tpl" && tpl.dateFormat === "D MMM YYYY" && tpl.timeFormat === "HH:mm", tpl)

@@ -28,7 +28,7 @@ const server = http.createServer((_q, res) => { res.writeHead(200, { "Content-Ty
 await new Promise((ok, fail) => { server.once("error", fail); server.listen(0, "127.0.0.1", ok) })
 const SITE = `http://127.0.0.1:${server.address().port}`
 fs.mkdirSync(path.join(VAULT, "Notes"), { recursive: true })
-fs.writeFileSync(path.join(VAULT, "Notes/Reading list.md"), `# Reading list\n\nStart with [the field notes](${SITE}/article) today.\n`)
+fs.writeFileSync(path.join(VAULT, "Notes/Reading list.md"), `# Reading list\n\nStart with [the field notes](${SITE}/article) today.\n\nMore to read later.\n`)
 
 // (shown, not quiet: macOS routes a gesture to the window under the pointer, and a quiet one lets everything through)
 const app = await _electron.launch({
@@ -44,7 +44,7 @@ try {
   await app.evaluate(({ BaseWindow }) => { const w = BaseWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }); w.moveTop(); w.focus() })
   await ui({ action: "open", path: "Notes/Reading list.md" })
   await win.waitForSelector(".cm-link[data-url]", { timeout: 15000 })
-  await win.locator(".cm-line", { hasText: "Reading list" }).first().click()
+  await win.locator(".cm-line", { hasText: "More to read later" }).first().click()
   await win.locator(".cm-link[data-url]").first().click()
   /** The shown page: whether the window's page is over it, and its middle on the screen. */
   const shown = () => app.evaluate(({ BaseWindow }) => {

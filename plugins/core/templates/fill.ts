@@ -38,5 +38,15 @@ export function mergeFm(file: string, template: string) {
   const add = entries(inner(template)).filter(([k]) => !keys.has(k) && !OWN.has(k))
   if (!add.length) return file
   const lines = [...have.map(([, l]) => l), ...add.map(([, l]) => l)].join("\n")
-  return `---\n${lines}\n---\n${file ? file.replace(/^---\n[\s\S]*?\n?---[ \t]*\n?/, "") : "\n"}`
+  return `---\n${lines}\n---\n${file.replace(/^---\n[\s\S]*?\n?---[ \t]*\n?/, "")}`
+}
+
+const FM = /^---\n(?:[\s\S]*?\n)?---[ \t]*(?:\n|$)/
+/** A template's text (filled in) as a new note's: its frontmatter merged into `into`'s (the keys a new file has of its
+ *  own, which win), and the rest as the template has it, blank lines and all, as Obsidian copies it. */
+export function fromTemplate(text: string, into = "") {
+  const fm = FM.exec(text)?.[0] ?? "", own = FM.exec(into)?.[0] ?? ""
+  const head = fm ? mergeFm(own, fm) : own, rest = text.slice(fm.length)
+  // (a frontmatter of only the app's own keys leaves nothing above the text: no blank line to start the note)
+  return head + (head ? rest : rest.replace(/^\n+/, ""))
 }

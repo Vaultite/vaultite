@@ -134,6 +134,8 @@ export default async ($: VaultTest) => {
     const others = [{ x: 300, y: 0, width: 100, height: 100 }]
     const sm = geo.snapMove({ x: 197, y: 23, width: 100, height: 40 }, others, { grid: true, objects: true, tol: 6 })
     check("canvas snap: a box near another's edge snaps to it, with a guide; else to the grid", sm.dx === 3 && sm.guides.length === 1 && sm.guides[0].axis === "x" && sm.dy === -3, sm)
+    const free = geo.snapMove({ x: 151, y: 70, width: 100, height: 40 }, others, { grid: true, objects: true, tol: 6 })
+    check("canvas snap: between grid lines and away from cards, a dragged box stays where the pointer has it", free.dx === 0 && free.dy === 0 && !free.guides.length, free)
     const off = geo.snapMove({ x: 197, y: 50, width: 100, height: 40 }, others, { grid: false, objects: false, tol: 6 })
     check("canvas snap: off, nothing moves", off.dx === 0 && off.dy === 0 && !off.guides.length)
     const rs = geo.resizeBox({ x: 0, y: 0, width: 200, height: 100 }, "nw", 150, 90, [], { grid: false, objects: false, tol: 6 })

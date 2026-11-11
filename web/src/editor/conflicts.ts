@@ -7,7 +7,7 @@ import type { Clash } from "@/core/merge"
 import { theirName } from "@/core/autosave"
 import { notify } from "@/core/notify"
 import { capitalize } from "@/lib/utils"
-import { frontmatter } from "./frontmatter"
+import { shownStart } from "./frontmatter"
 
 /** One clash in the doc: the user's lines are `from`..`to` (whole lines, no break after; empty if they deleted them). */
 type Chunk = { id: number; from: number; to: number; theirs: string[] }
@@ -153,9 +153,9 @@ export const conflicts: Extension = [
 ]
 
 /** Show `clashes` (lines of `text`, now the doc) in place; false when one is where it can't be shown (a hidden
- *  frontmatter). `open` hears how many are left as each is settled (or undone); `note` is the bars' (Conflicts). */
+ *  frontmatter or title). `open` hears how many are left as each is settled (or undone); `note` is the bars' (Conflicts). */
 export function showConflicts(view: EditorView, clashes: Clash[], who: string | undefined, open: Open, note?: string): boolean {
-  const doc = view.state.doc, body = view.state.field(frontmatter, false) ?? 0
+  const doc = view.state.doc, body = shownStart(view.state)
   let id = Date.now()
   const chunks: Chunk[] = []
   for (const k of clashes) {

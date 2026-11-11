@@ -1,12 +1,13 @@
 // The graph on a <canvas> with d3-force, coloured from the app's tokens. Quick with thousands of nodes: one path per
-// colour, ticked only while it moves, labels only where there's room.
+// colour, ticked only while it moves, labels only where there's room (none drawn over another).
 import { useEffect, useRef, useState } from "react"
 import { Maximize } from "lucide-react"
 import { forceLink, forceManyBody, forceSimulation, forceX, forceY, type Simulation, type SimulationLinkDatum, type SimulationNodeDatum } from "d3-force"
 import { onLook } from "@vaultite"
 import { nameOf, type Graph, type GraphEdge, type GraphNode } from "./graph"
 
-type SimNode = SimulationNodeDatum & { n: GraphNode; r: number; tok: string; color: string; label: string; low: string }
+/** `text`/`tw`: its label as drawn and that text's width at size `tws`; `la`: how far its label has faded in (0 to 1). */
+type SimNode = SimulationNodeDatum & { n: GraphNode; r: number; tok: string; color: string; label: string; low: string; text: string; tw: number; tws: number; la: number }
 /** `tok`/`color`: its own colour, when its link type has one. */
 type SimLink = SimulationLinkDatum<SimNode> & { e: GraphEdge; tok: string | null; color: string | null }
 
@@ -60,6 +61,27 @@ function recolour(nodes: SimNode[], links: SimLink[], p: { colorOf: (n: GraphNod
   for (const l of links) { l.tok = p.edgeColor?.(l.e) ?? null; l.color = l.tok ? token(l.tok, "") || null : null }
 }
 
+/** The screen's room for labels: `take` claims a box when it overlaps none taken (`force`: whatever it overlaps),
+ *  looked up in a grid of cells so a frame with hundreds of labels stays quick. */
+function labelRoom() {
+  const CELL = 64, cells = new Map<number, number[]>(), boxes: number[] = []
+  return {
+    take(x0: number, y0: number, x1: number, y1: number, force = false) {
+      const ca = Math.floor(x0 / CELL), cb = Math.floor(x1 / CELL), ra = Math.floor(y0 / CELL), rb = Math.floor(y1 / CELL)
+      if (!force) {
+        for (let cx = ca; cx <= cb; cx++) for (let cy = ra; cy <= rb; cy++) {
+          const c = cells.get(cx * 4096 + cy)
+          if (c) for (const i of c) if (boxes[i] < x1 && boxes[i + 2] > x0 && boxes[i + 1] < y1 && boxes[i + 3] > y0) return false
+        }
+      }
+      const i = boxes.length
+      boxes.push(x0, y0, x1, y1)
+      for (let cx = ca; cx <= cb; cx++) for (let cy = ra; cy <= rb; cy++) { const k = cx * 4096 + cy, c = cells.get(k); if (c) c.push(i); else cells.set(k, [i]) }
+      return true
+    },
+  }
+}
+
 const radius = (degree: number, compact?: boolean) => Math.min(compact ? 9 : 16, (compact ? 3 : 3.5) + Math.sqrt(degree) * (compact ? 1.2 : 1.7))
 
 export type Look = { nodeSize?: number; lineWidth?: number; textFade?: number; repel?: number; linkDistance?: number; center?: number }
@@ -81,7 +103,7 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
   const canvas = useRef<HTMLCanvasElement>(null)
   // Everything the drawing loop reads, kept in one mutable place so props changing never restarts the loop.
   const st = useRef({
-    nodes: [] as SimNode[], links: [] as SimLink[], by: new Map<string, SimNode>(), adj: new Map<string, Set<string>>(),
+    nodes: [] as SimNode[], order: [] as SimNode[], links: [] as SimLink[], by: new Map<string, SimNode>(), adj: new Map<string, Set<string>>(),
     sim: null as Simulation<SimNode, SimLink> | null,
     t: { k: 1, x: 0, y: 0 }, w: 0, h: 0, dpr: 1, touched: false,
     // Marking it dirty asks for a frame: the loop runs while something moves or changed, never every frame of a still graph.
@@ -112,8 +134,11 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
         fresh++
       }
       const pinned = n.path === focus
-      return { n, x: pinned ? 0 : p.x, y: pinned ? 0 : p.y, fx: pinned ? 0 : undefined, fy: pinned ? 0 : undefined, r: radius(n.degree, compact) * num(looks.current.nodeSize, 1), tok: "", color: "", label: n.tag ? n.path : nameOf(n.path), low: `${nameOf(n.path)}\n${n.title}`.toLowerCase() }
+      return { n, x: pinned ? 0 : p.x, y: pinned ? 0 : p.y, fx: pinned ? 0 : undefined, fy: pinned ? 0 : undefined, r: radius(n.degree, compact) * num(looks.current.nodeSize, 1), tok: "", color: "", label: n.tag ? n.path : nameOf(n.path), low: `${nameOf(n.path)}\n${n.title}`.toLowerCase(), text: "", tw: 0, tws: 0, la: 0 }
     })
+    for (const n of nodes) n.text = n.label.length > 32 ? n.label.slice(0, 31) + "…" : n.label
+    // (who names itself first where labels would meet: the files with the most links)
+    const order = nodes.slice().sort((a, b) => b.n.degree - a.n.degree)
     const by = new Map(nodes.map((n) => [n.n.path, n]))
     const links: SimLink[] = graph.edges.flatMap((e) => (by.has(e.from) && by.has(e.to) ? [{ source: by.get(e.from)!, target: by.get(e.to)!, e, tok: null, color: null }] : []))
     recolour(nodes, links, paint.current)
@@ -128,7 +153,7 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
       .stop()
     setForces(sim, looks.current, !!compact, many)
     sim.alpha(fresh > nodes.length / 3 ? 1 : fresh ? 0.3 : 0.08)
-    Object.assign(s, { nodes, links, by, adj, sim, dirty: true })
+    Object.assign(s, { nodes, order, links, by, adj, sim, dirty: true })
     if (s.hover && !by.has(s.hover.n.path)) s.hover = null
   }, [graph, scope, focus, compact])
   useEffect(() => { recolour(st.current.nodes, st.current.links, { colorOf, edgeColor }); st.current.dirty = true }, [colorOf, edgeColor])
@@ -162,6 +187,7 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
       for (const n of s.nodes) n.color = token(n.tok, n.color)
       for (const l of s.links) if (l.tok) l.color = token(l.tok, l.color ?? "")
       if (canvas.current) s.font = getComputedStyle(canvas.current).fontFamily || "system-ui"
+      for (const n of s.nodes) n.tws = 0
       s.dirty = true
     }
     read()
@@ -402,7 +428,8 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
       }
       ctx.restore()
 
-      // Labels in screen space (crisp at any zoom): the lit ones always, the rest once there's room.
+      // Labels in screen space (crisp at any zoom): the lit ones always, the rest once there's room, and never one over
+      // another: the file with more links names itself first, one that would overlap fades out until zooming makes room.
       const size = s.compact ? 11 : 12
       ctx.font = `${size}px ${s.font}`
       ctx.textAlign = "center"
@@ -412,23 +439,46 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
       const near = s.compact && s.focus ? adj.get(s.focus) : null
       const fade = Math.pow(2, num(s.look.textFade, 0) / 2)
       const zoomLabels = t.k >= (s.compact ? 1.4 : all > 600 ? 1.6 : all > 150 ? 1.05 : 0.55) * fade
-      let drawn = 0
-      for (const n of nodes) {
-        const important = n === hover || (lit?.has(n.n.path) ?? false) || n.n.path === s.focus || (!!q && match(n) && all < 400) || (!lit && (near?.has(n.n.path) ?? false) && (near?.size ?? 0) <= 24)
-        const big = n.r * t.k >= (s.compact ? 7 : 9) * fade
-        if (!important && !(zoomLabels || big)) continue
-        if (!important && faded(n)) continue
-        const sx = s.w / 2 + t.x + n.x! * t.k, sy = s.h / 2 + t.y + (n.y! + n.r) * t.k + 3
-        if (sx < -80 || sx > s.w + 80 || sy < -20 || sy > s.h + 20) continue
-        if (!important && ++drawn > 400) continue
-        const text = n.label.length > 32 ? n.label.slice(0, 31) + "…" : n.label
-        ctx.globalAlpha = important ? 1 : Math.min(1, 0.35 + (t.k - 0.5) * 0.6)
+      const room = labelRoom()
+      const shown: [SimNode, number, number, number][] = []
+      let drawn = 0, fading = false
+      const focusNode = s.focus ? s.by.get(s.focus) : undefined
+      // (the hovered file and the graph's own first: always named, the space theirs; then the lit, then by links)
+      const firsts = [hover, focusNode].filter((n, i, a): n is SimNode => !!n && a.indexOf(n) === i)
+      const important = (n: SimNode) => (lit?.has(n.n.path) ?? false) || (!!q && match(n) && all < 400) || (!lit && (near?.has(n.n.path) ?? false) && (near?.size ?? 0) <= 24)
+      // (a pass for the lit ones only when there are any: the order is every file, thousands of them)
+      const leads = !!lit || !!q || !!near
+      for (const pass of leads ? [0, 1, 2] : [0, 2]) {
+        for (const n of pass === 0 ? firsts : s.order) {
+          if (pass && firsts.includes(n)) continue
+          const must = pass === 0, lead = must || (leads && important(n))
+          if (pass === 1 && !lead) continue
+          if (pass === 2 && lead) continue
+          const big = n.r * t.k >= (s.compact ? 7 : 9) * fade
+          const want = lead || ((zoomLabels || big) && !faded(n))
+          const sx = s.w / 2 + t.x + n.x! * t.k, sy = s.h / 2 + t.y + (n.y! + n.r) * t.k + 3
+          if (!want || sx < -80 || sx > s.w + 80 || sy < -20 || sy > s.h + 20 || (!lead && drawn >= 400)) { n.la = 0; continue }
+          if (n.tws !== size) { n.tw = ctx.measureText(n.text).width; n.tws = size }
+          const fits = room.take(sx - n.tw / 2 - 4, sy - 1, sx + n.tw / 2 + 4, sy + size + 2, must)
+          if (fits && !lead) drawn++
+          // (one that's just come into room fades in, one that's lost it fades out, so a moving graph doesn't flicker)
+          const goal = fits ? 1 : 0
+          n.la = must ? 1 : Math.abs(goal - n.la) < 0.04 ? goal : n.la + (goal - n.la) * 0.3
+          if (n.la !== goal) fading = true
+          if (n.la > 0) shown.push([n, sx, sy, (lead ? 1 : Math.min(1, 0.35 + (t.k - 0.5) * 0.6)) * n.la])
+        }
+      }
+      // (what's named and where, for tests: as graphHover)
+      ;(el as HTMLCanvasElement & { labels?: unknown }).labels = () => shown.map(([n, sx, sy, alpha]) => ({ text: n.text, x0: sx - n.tw / 2, x1: sx + n.tw / 2, y0: sy, y1: sy + size, alpha, full: n.la === 1 }))
+      for (const [n, sx, sy, alpha] of shown) {
+        ctx.globalAlpha = alpha
         ctx.lineWidth = 3
         ctx.strokeStyle = colors.bg
-        ctx.strokeText(text, sx, sy)
-        ctx.fillStyle = important && n === hover ? colors.fg : colors.muted
-        ctx.fillText(text, sx, sy)
+        ctx.strokeText(n.text, sx, sy)
+        ctx.fillStyle = n === hover ? colors.fg : colors.muted
+        ctx.fillText(n.text, sx, sy)
       }
+      if (fading) s.dirty = true
       ctx.globalAlpha = 1
     }
     // Off screen (scrolled away, or in a tab kept drawn but hidden) it neither moves nor draws: it goes on when seen.

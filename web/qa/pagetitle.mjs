@@ -1,4 +1,5 @@
-// A file's title is one thing everywhere: dashboards' and notes' alike, Show inline title off, a phone's header name.
+// A file's title is one thing everywhere: dashboards' and notes' alike, Show inline title off, a phone's header name;
+// a note opening with its name as a heading shows it once (web/src/editor/frontmatter.ts), editing and reading.
 // Writes .vaultite/editor.json (put back) and Qa page title/ (removed): throwaway server only.
 //   node web/qa/pagetitle.mjs <base url> <vault path> [out dir]
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -10,6 +11,9 @@ const hash = (p) => `#file/${encodeURIComponent(p)}`
 const DASH = "Qa page title/Board.md", NOTE = "Qa page title/Long note.md"
 mkdirSync(`${VAULT}/Qa page title`, { recursive: true })
 writeFileSync(`${VAULT}/${DASH}`, "---\ntype: dashboard\nicon: sun\ntint: orange\n---\n\nWhat this board is.\n\n```block-routines\n```\n")
+const NAMED = "Qa page title/Lighthouse plan.md", OTHER = "Qa page title/Garden.md"
+writeFileSync(`${VAULT}/${NAMED}`, "---\ntags: [plan]\n---\n# Lighthouse plan\n\nFirst words.\n")
+writeFileSync(`${VAULT}/${OTHER}`, "# Garden redesign\n\nBeds first.\n")
 writeFileSync(`${VAULT}/${NOTE}`, `---\nicon: leaf\n---\n\n${Array.from({ length: 80 }, (_, i) => `Line ${i + 1} of a long note.`).join("\n\n")}\n`)
 const editorFile = `${VAULT}/.vaultite/editor.json`
 const editorWas = (() => { try { return readFileSync(editorFile, "utf8") } catch { return null } })()
@@ -38,7 +42,27 @@ const title = "article.file-view [data-title-row]"
     (await page.locator(`${title} textarea[aria-label='File name']`).count()) === 1 && (await size(page, `${title} textarea`)) === noteSize)
   check("dashboard edited: Properties", (await page.locator("article.file-view section[aria-label=Properties]").count()) === 1)
   await page.screenshot({ path: `${OUT}dashboard-edit.png` })
+  // A note whose text opens with `# <its name>` (Obsidian's habit): the title says it, the editor doesn't again.
+  const text = () => page.locator("article.file-view .cm-content").first().innerText()
+  await page.goto("about:blank"); await page.goto(`${B}${hash(NAMED)}`)
+  await until(async () => (await text()).includes("First words."), 8000)
+  check("a heading that's the note's name: shown once, as its title", (await page.locator(`${title} textarea`).inputValue()) === "Lighthouse plan" && !(await text()).includes("Lighthouse plan"), await text())
+  await page.screenshot({ path: `${OUT}named-heading.png` })
+  await page.locator("article.file-view .cm-line", { hasText: "First words." }).click()
+  await page.keyboard.press("Home"); await page.keyboard.press("Backspace"); await page.keyboard.press("Backspace")
+  await page.keyboard.type("Hey "); await page.keyboard.press("End"); await page.keyboard.type(" More.")
+  const saved = await until(() => readFileSync(`${VAULT}/${NAMED}`, "utf8").includes("First words. More."), 5000)
+  check("...the text edits as ever, and the heading stays in the file (Backspace at the top doesn't reach it)", saved &&
+    readFileSync(`${VAULT}/${NAMED}`, "utf8") === "---\ntags: [plan]\n---\n# Lighthouse plan\n\nHey First words. More.\n", readFileSync(`${VAULT}/${NAMED}`, "utf8"))
+  await page.locator("button[aria-label=Read]").first().click(); await wait(800)
+  check("...read, the same: once", (await page.locator(`${title} h1`).first().innerText()).trim() === "Lighthouse plan" && !(await text()).includes("Lighthouse plan"))
+  await page.goto("about:blank"); await page.goto(`${B}${hash(OTHER)}`)
+  await until(async () => (await text()).includes("Beds first."), 8000)
+  check("a first heading that isn't the name stays in the text", (await text()).includes("Garden redesign"))
   await setEditor({ showInlineTitle: false })
+  await page.goto("about:blank"); await page.goto(`${B}${hash(NAMED)}`)
+  await until(async () => (await text()).includes("First words."), 8000)
+  check("inline title off: the heading is the title, in the text", (await text()).includes("Lighthouse plan") && (await page.locator(title).count()) === 0)
   await page.goto("about:blank"); await page.goto(`${B}${hash(DASH)}`)
   await until(() => page.locator('[class~="@container"] > .grid > *').count(), 8000)
   check("inline title off: no title drawn", (await page.locator(title).count()) === 0)

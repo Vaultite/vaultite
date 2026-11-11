@@ -27,6 +27,16 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   leaves nothing behind (switching layouts takes back the guide the last one added, while unchanged; Undo puts it
   back); Start here says only what's true (Settings > AI, no word of AI until you say to use an agent); the agent's
   page and AGENTS.md and CLAUDE.md come only with Use it; and answering Not now no longer marks Standard as Changed.
+- **A note's name shows once**: a note whose text opens with its name as a heading (`# Lighthouse` in Lighthouse.md, as
+  Obsidian notes often do) shows it as its title only; the heading stays in the file, in source mode, and with Show
+  inline title off.
+- **Graph names never pile up**: a name that would overlap another fades out, the file with more links keeping its own,
+  and comes back as you zoom in or hover its dot.
+- **New notes keep their template's spacing**: daily notes and New note from template no longer add a blank line after
+  the frontmatter; the template's text comes as written.
+- **Canvas cards follow the pointer**: a dragged or resized card moves with it, settling on the grid only near a line.
+- **Move to Applications never replaces a newer or open copy**: a newer Vaultite already there is kept unless you choose
+  to replace it, and one that's open is left alone, with a word on why.
 - **Timelines read bold dates**: a line like `- **2026-04-22** | Meeting notes — Pricing chat` (as many write by hand,
   and GBrain's pages do) reads as an entry instead of a line not understood.
 - **Markdown links count as links**: `[text](Note.md)` and `![](image.png)` (relative, from the top, without `.md`)

@@ -5,7 +5,7 @@ import {
   activeFile, besideActive, choose, createFile, definePlugin, folderOf, formatDate, freeName, get, getStore, newNoteFolder, notify, notifyError,
   op, openNew, post, readFile, splitFm, stem, type Store,
 } from "@vaultite"
-import { fillVars, FORMATS, mergeFm } from "./fill"
+import { fillVars, FORMATS, fromTemplate, mergeFm } from "./fill"
 
 let folder = "Templates"
 let formats = FORMATS
@@ -83,8 +83,7 @@ async function newFrom(path: string) {
   const name = freeName(s.files, where, "Untitled")
   const r = await expand(fillVars(text, name, formatDate, new Date(), (await settings()).formats), path, `${where ? `${where}/` : ""}${name}.md`, "new")
   if (!r) return
-  const { fm, body } = splitFm(r.text)
-  const f = await createFile(folderOf(r.path), stem(r.path), mergeFm("", fm) + body)
+  const f = await createFile(folderOf(r.path), stem(r.path), fromTemplate(r.text))
   openNew(f.path)
 }
 
