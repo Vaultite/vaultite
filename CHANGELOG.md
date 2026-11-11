@@ -25,10 +25,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Jobs can land themselves**: with Jobs land themselves on (the companion's settings; off by default), a coding job
   whose checks pass merges its change and cleans up, done instead of waiting for your review, asking only on a real
   tradeoff. "Go ahead" about the ready jobs it just named lands them, with no set phrase to say.
-- **A decision says what each choice does**: in the Inbox, each option's few words under its button say what picking
-  it causes, the question names its subject, its why says what it's about and who asks, and a report's decision shows
-  that report's TL;DR (the round that asked it, in a long thread), a click away, and which session asked, by its name.
-  Agents asking without these are refused and told how.
+- **A decision says what each choice does**: a decision reads top down: the question, who asked (the agent and its
+  session), why in plain words, what its report said when it asked (a click opens it), then its options as one list,
+  each with what picking it does beneath and the one it went with marked. Agents asking without these are refused and
+  told how.
 - **A job says who told it each thing**: its handoff and every follow-up keep who sent them (the companion, another
   agent's vau from its terminal, a script, you in the app or in its terminal), shown in `companion job` (told last (by
   ...)), its JSON and the jobs list, so the companion no longer claims what another session sent.

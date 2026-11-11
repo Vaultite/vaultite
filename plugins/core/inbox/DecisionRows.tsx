@@ -1,7 +1,7 @@
 // Decisions drawn: a question an agent asked, its options as buttons (the default marked), on the Inbox page, the
 // dashboard block and in its own file (```block-decisions```, a report's too). A tap answers it (inbox.decide).
 import { useState, type ReactNode } from "react"
-import { ArrowUp, Check, CircleCheck, FileText, MessageCircleQuestion, MoreHorizontal, RotateCcw, X } from "lucide-react"
+import { ArrowUp, Check, Circle, CircleCheck, FileText, MessageCircleQuestion, MoreHorizontal, RotateCcw, X } from "lucide-react"
 import {
   Button, cn, confirmDialog, fmtAgo, haptic, menuBelow, menuFor, notify, notifyError, op, openFile, optimistic, snippet, SwipeRow, useStore,
   type BlockCtx, type MenuItem, type Store, type SwipeAction,
@@ -88,37 +88,38 @@ function OwnAnswer({ r, close }: { r: InboxItem; close: () => void }) {
   )
 }
 
-/** Its buttons: every option (its default marked) where its agent waits; where it went with the default, Keep it, then
- *  the others to change it to. Other… takes an answer of their own. */
+/** Its options as one list of choices, each its words and what picking it does beneath; where it went with the default
+ *  already, that one first, marked, and a tap keeps it. Something else… takes an answer of their own. */
 function Options({ r }: { r: InboxItem }) {
   const [own, setOwn] = useState(false)
-  if (own) return <OwnAnswer r={r} close={() => setOwn(false)} />
   const options = r.options ?? []
   const doesOf = (o: string) => r.effects?.[options.indexOf(o)] ?? ""
-  // (what a pick causes, in a few words under its button: older decisions have none)
-  const withDoes = (o: string, b: ReactNode) => {
-    const does = doesOf(o)
-    return does ? <div key={o} className="flex max-w-[16rem] min-w-0 flex-col items-start gap-0.5">{b}
-      <span className="px-0.5 text-[12px] leading-[16px] text-muted-foreground text-pretty max-md:text-[14px] max-md:leading-[18px]" data-option-does>{does}</span></div> : b
+  // (what stands now on top: the default it went with, then what it could change to)
+  const order = r.blocking ? options : [...options.filter((o) => o === r.default), ...options.filter((o) => o !== r.default)]
+  const row = (o: string) => {
+    const def = o === r.default, kept = def && !r.blocking, does = doesOf(o)
+    return (
+      <button key={o} type="button" data-option={options.indexOf(o) + 1} data-default={def || undefined} data-keep={kept || undefined}
+        aria-description={does || undefined} onClick={(e) => { e.stopPropagation(); void (kept ? keepDefault(r) : decide(r, o)) }}
+        className={cn("group/opt flex w-full cursor-pointer items-start gap-2.5 px-3 py-2 text-left transition-colors hover:bg-foreground/[0.05] active:bg-foreground/[0.08] max-md:min-h-11 max-md:py-2.5",
+          kept && "bg-foreground/[0.03]")}>
+        {kept ? <CircleCheck className="mt-[2px] size-4 shrink-0 text-foreground/80 max-md:mt-[3px]" strokeWidth={2} />
+          : <Circle className="mt-[2px] size-4 shrink-0 text-tertiary group-hover/opt:text-muted-foreground max-md:mt-[3px]" strokeWidth={1.75} />}
+        <span className="min-w-0 flex-1">
+          <span className="block text-[14px] leading-[20px] font-medium text-foreground text-pretty max-md:text-[16px] max-md:leading-[22px]">{o}</span>
+          {does && <span className="block text-[13px] leading-[18px] text-muted-foreground text-pretty max-md:text-[15px] max-md:leading-[20px]" data-option-does>{does}</span>}
+        </span>
+        {def && <span className="mt-[2px] shrink-0 rounded-chip bg-foreground/[0.06] px-1.5 py-px text-[11px] leading-[16px] font-medium text-muted-foreground max-md:text-[12px]">
+          {kept ? "Went with this" : "Default"}</span>}
+      </button>
+    )
   }
-  const button = (o: string, i: number) => {
-    const def = o === r.default
-    return withDoes(o,
-      <Button key={o} size="small" look={r.blocking ? (def ? "secondary" : "outline") : "outline"} className={cn("max-w-full", tall)} data-option={i + 1} data-default={def || undefined}
-        aria-description={doesOf(o) || undefined} onClick={(e) => { e.stopPropagation(); void decide(r, o) }}>
-        <span className="truncate">{o}</span>{r.blocking && def && <span className="font-normal text-tertiary">default</span>}
-      </Button>)
-  }
-  const some = options.some(doesOf)
   return (
-    <div className={cn("flex flex-wrap gap-1.5", some ? "items-start gap-x-3" : "items-center")} role="group" aria-label={r.question}>
-      {r.blocking ? options.map(button) : <>
-        {withDoes(r.default ?? "", <Button key="keep" size="small" look="secondary" className={cn("max-w-full", tall)} data-keep aria-description={doesOf(r.default ?? "") || undefined}
-          onClick={(e) => { e.stopPropagation(); void keepDefault(r) }}>
-          <Check className="size-3.5 shrink-0" strokeWidth={2.5} /><span className="truncate">Keep</span></Button>)}
-        {options.map((o, i) => (o === r.default ? null : button(o, i)))}
-      </>}
-      <Button size="small" look="quiet" className={tall} data-other onClick={(e) => { e.stopPropagation(); setOwn(true) }}>Other…</Button>
+    <div className="max-w-[36rem]">
+      <div className="overflow-hidden rounded-control border-[0.5px] border-border divide-y-[0.5px] divide-border" role="group" aria-label={r.question}>{order.map(row)}</div>
+      <div className="mt-1.5">{own ? <OwnAnswer r={r} close={() => setOwn(false)} />
+        : <button type="button" data-other onClick={(e) => { e.stopPropagation(); setOwn(true) }}
+          className="cursor-pointer text-[13px] leading-[20px] text-muted-foreground hover:text-foreground max-md:h-11 max-md:text-[15px]">Something else…</button>}</div>
     </div>
   )
 }
@@ -134,10 +135,11 @@ const menuOf = (r: InboxItem, store: Store | null | undefined, snooze?: (r: Inbo
   ]
 }
 
-/** Where it stands, said first: an agent waits on it, or it went with the default already. */
+/** Where it stands, when it's news: an agent waits on it (one it went with the default on says so in its list). */
 function Standing({ r }: { r: InboxItem }) {
-  if (r.blocking) return <span data-standing className="font-medium" style={{ color: "var(--orange)" }}>Waits on you</span>
-  return <span data-standing>Went with <span className="font-medium text-foreground/80">{r.default}</span></span>
+  if (!r.blocking) return null
+  return <span data-standing className="rounded-chip px-1.5 py-px text-[11px] leading-[16px] font-semibold max-md:text-[12px]"
+    style={{ color: "var(--orange)", background: "color-mix(in srgb, var(--orange) 14%, transparent)" }}>Waits on you</span>
 }
 
 /** One decision, open: where it stands and who asked, the question, its context, its buttons. `snooze`: its menu's
@@ -153,28 +155,30 @@ export function DecisionRow({ r, snooze, swipe, lead, inReport }: { r: InboxItem
   const gist = r.gist || rep?.tldr || ""
   const away = snoozed(r.snoozed)
   const Icon = r.blocking ? MessageCircleQuestion : CircleCheck
+  const by = [r.from, where].filter(Boolean).join(" · ")
   const row = (
     <div data-decision={r.id} data-blocking={r.blocking || undefined} onContextMenu={menuFor(() => menuOf(r, store, snooze))}
-      className="group/dec relative isolate flex gap-3 py-3 before:absolute before:inset-y-0 before:-inset-x-2 before:-z-10 before:rounded-[8px] hover:before:bg-foreground/[0.03]">
-      {lead ?? <Icon className="mt-[1px] size-[18px] shrink-0" strokeWidth={2} style={{ color: r.blocking ? "var(--orange)" : "var(--muted-foreground)" }} />}
+      className="group/dec relative isolate flex gap-3 py-4 before:absolute before:inset-y-0 before:-inset-x-2 before:-z-10 before:rounded-[8px] hover:before:bg-foreground/[0.02]">
+      {lead ?? <Icon className="mt-[2px] size-[18px] shrink-0 max-md:hidden" strokeWidth={2} style={{ color: r.blocking ? "var(--orange)" : "var(--muted-foreground)" }} />}
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-2 text-[13px] leading-[18px] text-muted-foreground max-md:text-[15px] max-md:leading-[20px]">
-          {/* (wraps, never cut: who asked and where is half its context, on a phone too) */}
-          <span className="min-w-0 flex-1 text-pretty">
-            <Standing r={r} />
-            {r.from && <> · {r.from}</>}
-            {where && <> · <span data-decision-where>{where}</span></>}
-            {rep && <> · <button type="button" className="cursor-pointer hover:text-foreground hover:underline" data-decision-report onClick={() => openFile(pathOf(rep))}>{subject(rep.title)}</button></>}
-            {away && <> · snoozed</>}
-          </span>
-          {r.created && <span className="shrink-0 text-[12px] text-tertiary tabular-nums max-md:text-[13px]">{fmtAgo(r.created, { short: true })}</span>}
+        {/* The question, then who asks; its why in plain words; what its report said; the choices. */}
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1 text-[15px] leading-[21px] font-semibold text-pretty select-text max-md:text-[17px] max-md:leading-[23px]" data-question>{r.question}</div>
+          {r.created && <span className="mt-[2px] shrink-0 text-[12px] leading-[18px] text-tertiary tabular-nums max-md:text-[13px]">{fmtAgo(r.created, { short: true })}</span>}
         </div>
-        <div className="mt-0.5 text-[15px] leading-[21px] font-medium text-pretty select-text max-md:text-[17px] max-md:leading-[23px]" data-question>{r.question}</div>
-        {why && <p className="mt-0.5 text-[13px] leading-[18px] text-muted-foreground select-text max-md:text-[15px] max-md:leading-[20px]" data-decision-why>{why}</p>}
-        {gist && !inReport && <button type="button" data-decision-tldr disabled={!rep} onClick={() => rep && openFile(pathOf(rep))}
-          className="mt-1 flex w-full items-start gap-1.5 text-left text-[13px] leading-[18px] text-muted-foreground enabled:cursor-pointer enabled:hover:text-foreground max-md:text-[15px] max-md:leading-[20px]">
-          <FileText className="mt-[2px] size-3.5 shrink-0" strokeWidth={2} /><span className="min-w-0 select-text"><span className="font-medium">From its report:</span> {gist}</span></button>}
-        <div className="mt-2"><Options r={r} /></div>
+        {(r.blocking || by || away) && <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12px] leading-[17px] text-muted-foreground max-md:text-[14px] max-md:leading-[19px]">
+          <Standing r={r} />
+          {by && <span className="min-w-0" data-decision-where={where || undefined}>{by}</span>}
+          {away && <span className="text-tertiary">· snoozed</span>}
+        </div>}
+        {why && <p className="mt-2 max-w-[40rem] text-[14px] leading-[20px] text-foreground/75 text-pretty select-text max-md:text-[16px] max-md:leading-[23px]" data-decision-why>{why}</p>}
+        {gist && !inReport && <button type="button" data-decision-tldr disabled={!rep} onClick={(e) => { e.stopPropagation(); if (rep) openFile(pathOf(rep)) }}
+          className="group/rep mt-2.5 block w-full max-w-[40rem] border-l-2 border-border pl-3 text-left enabled:cursor-pointer">
+          {rep && <span className="flex items-center gap-1 text-[12px] leading-[17px] font-medium text-tertiary group-enabled/rep:group-hover/rep:text-muted-foreground max-md:text-[13px]" data-decision-report>
+            <FileText className="size-3 shrink-0" strokeWidth={2.25} /><span className="truncate">Report · {subject(rep.title)}</span></span>}
+          <span className="mt-0.5 line-clamp-2 text-[13px] leading-[18px] text-muted-foreground text-pretty group-enabled/rep:group-hover/rep:text-foreground/80 max-md:line-clamp-3 max-md:text-[15px] max-md:leading-[21px]">{gist}</span>
+        </button>}
+        <div className="mt-3"><Options r={r} /></div>
       </div>
       <button type="button" aria-label="More" data-tip="More" onClick={(e) => { e.stopPropagation(); menuBelow(e, menuOf(r, store, snooze)) }}
         className="-mr-1 grid size-6 shrink-0 cursor-pointer place-items-center rounded-[5px] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground max-md:hidden md:invisible md:group-hover/dec:visible">
