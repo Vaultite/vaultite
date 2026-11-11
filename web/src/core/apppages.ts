@@ -35,8 +35,10 @@ const goTo = (to: string, newTab = false) => { if (isDesktop()) go(to, newTab); 
 
 /** Open one of the app's pages (in a new tab: at its first tab). */
 export function openAppPage(p: AppPage, newTab = false) {
-  if (p.id === "setup" && !newTab) openSetup()
-  else goTo(hrefOf(p).slice(1), newTab)
+  if (p.id === "setup" && !newTab) return openSetup()
+  // (Settings itself opens on its menu and search, not on a section a narrow pane left open)
+  if (p.id === "settings") settingsSectionOpen.set(false)
+  goTo(hrefOf(p).slice(1), newTab)
 }
 
 /** Open Plugins on `tab`: on a computer, Settings' section (pages/Setup.tsx); on a phone its page, else as a tab already

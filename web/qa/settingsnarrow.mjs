@@ -3,7 +3,8 @@
 // opens in the menu's place with a way back; so do the sidebar's Plugins button, the palette, search, an old #get tab
 // (pages/Setup.tsx) and core/apppages.ts' openSettings. A phone's Plugins stays its own page. What the menu's Plugins
 // counts, and Remote access (plugins/core/mcp/Connections.tsx) saying it's optional. The palette's way to where a
-// setting is (core/switches.ts' placeOf, ⌘↩): Settings at its row, in place, not a sheet. Writes nothing.
+// setting is (core/switches.ts' placeOf, ⌘↩): Settings at its row, in place, not a sheet. Settings itself (its button,
+// ⌘,) opens on its menu and search. Writes nothing.
 //   node web/qa/settingsnarrow.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { openPalette, palette, qa, until, wait } from "./lib/qa.mjs"
@@ -118,6 +119,16 @@ try {
   const notes = page.locator('[data-settings] [data-plugin-settings-sheet="web-viewer"] [data-setting]', { hasText: "Notifications from pages" })
   check("a plugin's setting's place: its page in Settings, in place", await inPlace("plugin:web-viewer") && !(await page.locator("dialog[open]").count()))
   check("…at its row", !!(await until(() => onScreen(notes.first()), 3000)))
+
+  // Settings itself (the sidebar's button, ⌘,) with a section left open: its menu and its search, not that section.
+  const search = page.locator("[data-settings] [data-settings-search] input")
+  const atMenu = async () => !!(await until(async () => await menu.isVisible() && await search.isVisible() && !(await back.count()), 3000))
+  await page.locator("aside").first().getByText("Start here", { exact: true }).first().click(); await wait(800)
+  await page.locator("[data-app-page=settings]").click()
+  check("Settings' button, a section left open: the menu, with its search", await atMenu())
+  await menu.locator('[data-settings-nav="editor"]').click(); await inPlace("editor")
+  await page.keyboard.press("ControlOrMeta+,")
+  check("…and ⌘, from a section", await atMenu())
   await ctx.close()
 
   // A phone: Plugins is its own page.
