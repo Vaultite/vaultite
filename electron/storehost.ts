@@ -9,6 +9,7 @@ import type { Root } from "../core/update/store.ts"
 import type { UpdateStatus } from "../core/update/updater.ts"
 import { codeAt, SHELL } from "./identity.ts"
 import { markerFile, storeDir, storeWanted } from "./storepolicy.ts"
+import { relaunchOptions } from "./argv.ts"
 
 const ROOT = path.dirname(import.meta.dirname)
 export const SHA = /^[0-9a-f]{40}$/
@@ -81,5 +82,5 @@ export function relaunchSoon() {
   if (process.platform === "darwin" && label && label !== "0" && !label.startsWith("application.")) {
     spawn("/bin/sh", ["-c", 'while kill -0 "$1" 2>/dev/null; do sleep 0.2; done; launchctl kickstart "gui/$(id -u)/$2"', "sh", String(process.pid), label],
       { detached: true, stdio: "ignore" }).unref()
-  } else app.relaunch()
+  } else app.relaunch(relaunchOptions())
 }

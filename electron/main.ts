@@ -4,6 +4,7 @@ import "../core/winspawn.ts" // (first: on Windows no program the main process s
 import "./dockenv.ts" // (before anything reads the environment)
 import { app, BaseWindow, type BaseWindowConstructorOptions, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, session, shell, systemPreferences, type IpcMainInvokeEvent, type Rectangle, type WebContents, type WebPreferences } from "electron"
 import { AppWindow } from "./appwindow.ts"
+import { relaunchOptions, vaultArg } from "./argv.ts"
 import { QUIET, quiet, quietPage } from "./quiet.ts"
 import { execFile, execFileSync, fork, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
@@ -1413,7 +1414,7 @@ initUpdates({
 })
 
 // (a scripted copy from source, QA's: an update's relaunch on a signal, web/qa/relaunch.mjs)
-if (!app.isPackaged && QUIET) process.on("SIGUSR2", () => { handOver(); quitting = true; app.relaunch(); app.quit() })
+if (!app.isPackaged && QUIET) process.on("SIGUSR2", () => { handOver(); quitting = true; app.relaunch(relaunchOptions()); app.quit() })
 
 // ---------- a Dev instance on a worktree (electron/devroot.ts) ----------
 let dev: typeof import("./devroot.ts") | null = null
@@ -1554,11 +1555,8 @@ function unsandboxedNotice() {
 }
 
 // ---------- the app ----------
-/** The vault asked for on the command line (`--vault <path>`). */
-function asked() {
-  const i = process.argv.indexOf("--vault")
-  return i > 0 && process.argv[i + 1] ? path.resolve(process.argv[i + 1]) : null
-}
+/** The vault asked for on the command line (`--vault <path>`, a relaunch's `--vault=<path>`: argv.ts). */
+const asked = () => vaultArg(process.argv)
 /** A vault asked for that isn't there (a typo, a drive not connected) is made only once the user says so. */
 async function madeIfAsked(p: string) {
   if (fs.existsSync(p)) return true
@@ -1666,11 +1664,10 @@ else {
 // Launched again (Linux and Windows: the app's icon, Open with, a vaultite:// link, `vaultite <file>`): this one opens
 // what it was given, else comes forward.
 app.on("second-instance", (_e, argv, cwd) => {
-  const i = argv.indexOf("--vault")
+  const p = vaultArg(argv, cwd)
   const files = MAC ? [] : argFiles(argv, cwd), links = MAC ? [] : argLinks(argv)
   if (links.length) for (const u of links) void appLink(u).catch(() => {})
-  else if (i > 0 && argv[i + 1]) {
-    const p = path.resolve(cwd, argv[i + 1])
+  else if (p) {
     void madeIfAsked(p).then(async (go) => { if (go) await openVault(p) }).catch((e) => failedBox("Couldn't open the vault", e))
   }
   else if (files.length) void openFiles(files, null)

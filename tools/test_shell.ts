@@ -1,11 +1,12 @@
 // The shell (electron/shell/): the app's identity and build facts (identity.ts, stamp.ts, sign.cjs), its fingerprint,
-// the code root it picks and its record of each, and the vau trampoline. In npm test.
+// the code root it picks and its record of each, the vau trampoline and the app's command line (argv.ts). In npm test.
 import fs from "node:fs"
 import { execFileSync } from "node:child_process"
 import { createRequire } from "node:module"
 import path from "node:path"
 import { type Any, check, exit, summary, tempDir } from "./test/lib.ts"
 import { codeAt, shellAt, stamps } from "../electron/identity.ts"
+import { relaunchOptions, vaultArg } from "../electron/argv.ts"
 const t0 = Date.now()
 
 const ROOT = path.dirname(import.meta.dirname)
@@ -243,6 +244,17 @@ check("vau.mjs finds the app's userData as Electron names it", R.userDataOf("Lig
   check("a Dev instance: a page's source rebuilds the web app, a backend file restarts the servers, a main-process file relaunches",
     r("web/src/App.tsx") === "100" && r("core/coreops/version.ts") === "010" && r("electron/menu.ts") === "001", [r("web/src/App.tsx"), r("core/coreops/version.ts"), r("electron/menu.ts")])
   check("...one both import, both; a test or a doc, none", r("core/appentry.ts").endsWith("11") && r("tools/test_shell.ts") === "000" && r("README.md") === "000")
+}
+
+// ---------- the command line (electron/argv.ts) ----------
+{
+  const exe = "/opt/lighthouse/electron", app = "/src/lighthouse/", v = path.resolve("/vaults/alice")
+  check("--vault <path> and --vault=<path> name the vault, from where it was asked", vaultArg([exe, app, "--vault", "/vaults/alice"]) === v &&
+    vaultArg([exe, "--vault=/vaults/alice", app]) === v && vaultArg([exe, app, "--vault", "alice"], "/vaults") === v && vaultArg([exe, app]) === null && vaultArg([exe, "--vault="]) === null)
+  // (Chromium's command line, a relaunch's, puts switches first: `--vault` alone would take the app's folder for its path)
+  const { args } = relaunchOptions([exe, app, "--vault", "/vaults/alice", "--no-sandbox"])
+  check("a relaunch keeps the command line, its vault joined to --vault=", JSON.stringify(args) === JSON.stringify([app, `--vault=${v}`, "--no-sandbox"]) &&
+    vaultArg([exe, ...args.filter((a) => a.startsWith("-")), ...args.filter((a) => !a.startsWith("-"))]) === v, args)
 }
 
 await exit(summary("shell", t0))

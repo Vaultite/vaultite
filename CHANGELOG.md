@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Linux: a relaunch reopens its vault**: the desktop app run from a checkout with `--vault <folder>` comes back on
+  that vault after an update's relaunch, not on its own code folder.
 - **Long browser waits last**: `vau browser wait --helped --timeout 600` (and other waits) waits as long as asked,
   instead of failing after 90 s saying the desktop app didn't answer.
 - **Narrow Settings opens every section**: in a pane too narrow for the menu beside it (the first window, both sidebars

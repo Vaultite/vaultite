@@ -9,6 +9,7 @@ import { plainError, sentence } from "../core/plainerror.ts"
 import { BRANCH, CODE, DEV, SHELL, WORKTREE } from "./identity.ts"
 import { afterUpdate, installedCommit } from "./installed.ts"
 import { relaunchSoon, storeLook, storeOn, storeReady, storeStatus, type StoreHost } from "./storehost.ts"
+import { relaunchOptions } from "./argv.ts"
 /** As often as the service looks (core/update/updater.ts' LOOK_EVERY): a look where nothing moved is a fetch. */
 const LOOK_EVERY = 3 * 60_000
 
@@ -354,7 +355,7 @@ export function restartToUpdate(byHand = false) {
     host.handOver() // (their own changes restart them: devroot.ts)
     host.beginQuit()
     setStatus("Restarting to update…", true)
-    return void afterFlush(() => { app.relaunch(); app.quit() })
+    return void afterFlush(() => { app.relaunch(relaunchOptions()); app.quit() })
   }
   if (readyHow === "relaunch") {
     if (!ready) return
