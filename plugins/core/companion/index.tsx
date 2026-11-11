@@ -142,7 +142,7 @@ export default definePlugin({
   // (its key is threads.ts' PANEL)
   sidebar: { conversations: { title: "Conversations", sort: 20, side: "right", view: "conversations", names: ["comments", "threads", "talk"], flyout: { icon: ConversationsIcon, width: 320 },
     render: (ctx) => <ConversationsPanel {...ctx} /> } },
-  views: { conversations: { icon: MessagesSquare, title: () => "Conversations", render: () => <ConversationsView /> } },
+  views: { conversations: { icon: MessagesSquare, full: true, title: () => "Conversations", render: () => <ConversationsView /> } },
   commands: share ? (comments() ? [COMMENT] : []) : [
     { id: "companion:ask", name: "Ask the companion", label: "Ask", keys: ["Mod+Shift+K"], run: () => ask(), icon: MessageCirclePlus },
     COMMENT,

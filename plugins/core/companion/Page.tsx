@@ -82,31 +82,32 @@ export function ConversationBlock() {
   )
 }
 
-/** One exchange: their words on the right, its answer on the left, Details under it. `compact`: a sidebar's, at its
- *  sizes, where they asked cut to a line and no Details (the page has them). */
+/** One exchange: their words on the right, its answer on the left, Details under it. `compact`: the Conversations
+ *  panel's and tab's (CompactTurn). */
 export function Turn({ e, name, tint = "var(--orange)", compact }: { e: Exchange; name: string; tint?: string; compact?: boolean }) {
   const [open, setOpen] = useState(false)
   const did = e.did.filter((d) => d !== "pointed")
   // (its answer still to come: asked under 2 min ago, nothing said, done or done to it)
   const waiting = !e.said.length && !did.length && e.total === undefined && Date.now() - e.t < 120_000
-  const words = compact ? "text-[13px] leading-[18px]" : "text-[15px] leading-[20px]", meta = compact ? "text-[11.5px] leading-[15px]" : "text-[12px]"
+  if (compact) return <CompactTurn e={e} name={name} tint={tint} did={did} waiting={waiting} />
+  const words = "text-[15px] leading-[20px]", meta = "text-[12px]"
   return (
-    <div className={cn("flex flex-col", compact ? "gap-1" : "gap-1.5")} data-companion-turn>
+    <div className="flex flex-col gap-1.5" data-companion-turn>
       <div className="flex flex-col items-end gap-0.5">
-        <div data-companion-own className={cn("bg-foreground/[0.06] whitespace-pre-wrap select-text", words, compact ? "max-w-[88%] rounded-[12px] rounded-br-[4px] px-2.5 py-1.5" : "max-w-[85%] rounded-[14px] rounded-br-[4px] px-3 py-2")}>{e.text || (e.kind === "point" ? "Look at this" : "")}</div>
+        <div data-companion-own className={cn("bg-foreground/[0.06] whitespace-pre-wrap select-text", words, "max-w-[85%] rounded-[14px] rounded-br-[4px] px-3 py-2")}>{e.text || (e.kind === "point" ? "Look at this" : "")}</div>
         <div className={cn("flex max-w-full min-w-0 items-center gap-1 text-muted-foreground", meta)} data-tip={fmtStamp(e.t)}>
-          {e.voice && <Mic className="size-3 shrink-0" aria-label="Said" />}<span className={cn(compact && "truncate")}>{time(e.t)}{e.where ? ` · ${e.where}` : ""}</span>
+          {e.voice && <Mic className="size-3 shrink-0" aria-label="Said" />}<span>{time(e.t)}{e.where ? ` · ${e.where}` : ""}</span>
         </div>
       </div>
-      <div className={cn("flex gap-2", compact ? "max-w-[92%]" : "max-w-[85%]")}>
-        <Arrow tint={tint} size={compact ? 14 : 16} className={cn("shrink-0", compact ? "mt-[2px]" : "mt-[3px]")} aria-label={name} />
+      <div className="flex max-w-[85%] gap-2">
+        <Arrow tint={tint} size={16} className="mt-[3px] shrink-0" aria-label={name} />
         <div className="min-w-0 flex-1">
           {e.said.length ? <div data-companion-own className={cn("whitespace-pre-wrap select-text", words)}>{e.said.join("\n\n")}</div>
             : <div className={cn("text-muted-foreground", words, waiting && "animate-pulse")}>{did.length ? "" : waiting ? "Thinking…" : "Silence"}</div>}
           <div className={cn("mt-0.5 flex flex-wrap items-center gap-x-1.5 text-muted-foreground", meta)}>
             {did.length > 0 && <span>{did.join(", ")}</span>}
-            {!compact && e.word !== undefined && <span>{did.length ? "· " : ""}first word in {secs(e.word)}</span>}
-            {!compact && (e.press || e.shot) && (
+            {e.word !== undefined && <span>{did.length ? "· " : ""}first word in {secs(e.word)}</span>}
+            {(e.press || e.shot) && (
               <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="-mx-1 flex cursor-pointer items-center gap-0.5 rounded-[5px] px-1 hover:bg-foreground/[0.05] hover:text-foreground">
                 Details<ChevronRight className={cn("size-3 transition-transform", open && "rotate-90")} strokeWidth={2.5} />
               </button>
@@ -114,6 +115,35 @@ export function Turn({ e, name, tint = "var(--orange)", compact }: { e: Exchange
           </div>
           {open && <Details e={e} />}
         </div>
+      </div>
+    </div>
+  )
+}
+
+/** Shown while the turn is hovered or focused (always, where there's no hover): drawn in the gap under its line, so
+ *  showing it moves nothing. */
+const ASIDE = "pointer-events-none absolute top-full mt-[3px] flex max-w-full min-w-0 items-center gap-1 text-[11.5px] leading-[15px] text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/turn:pointer-events-auto group-hover/turn:opacity-100 group-focus-within/turn:opacity-100 [@media(hover:none)]:opacity-100"
+
+/** A turn as a chat's: their words in a bubble, its answer as plain text by its arrow; when, where and what it did
+ *  beside them only on hover. An answer that's only acts says them. */
+function CompactTurn({ e, name, tint, did, waiting }: { e: Exchange; name: string; tint: string; did: string[]; waiting: boolean }) {
+  const words = "text-[13px] leading-[19px]"
+  const acts = did.length ? did.join(", ") : ""
+  return (
+    <div className="group/turn flex flex-col gap-[22px]" data-companion-turn>
+      <div className="relative flex flex-col items-end">
+        <div data-companion-own className={cn("max-w-[85%] rounded-[16px] bg-foreground/[0.07] px-3 py-[7px] whitespace-pre-wrap select-text", words)}>{e.text || (e.kind === "point" ? "Look at this" : "")}</div>
+        <div className={cn(ASIDE, "right-1")} data-tip={fmtStamp(e.t)} data-turn-meta>
+          {e.voice && <Mic className="size-3 shrink-0" aria-label="Said" />}<span className="truncate">{time(e.t)}{e.where ? ` · ${e.where}` : ""}</span>
+        </div>
+      </div>
+      <div className="relative flex max-w-[94%] gap-2">
+        <Arrow tint={tint} size={14} className="mt-[3px] shrink-0" aria-label={name} />
+        <div className="min-w-0 flex-1">
+          {e.said.length ? <div data-companion-own className={cn("whitespace-pre-wrap select-text", words)}>{e.said.join("\n\n")}</div>
+            : <div className={cn("text-muted-foreground", words, waiting && "animate-pulse")}>{waiting ? "Thinking…" : acts ? acts.charAt(0).toUpperCase() + acts.slice(1) : "Silence"}</div>}
+        </div>
+        {e.said.length > 0 && acts && <div className={cn(ASIDE, "left-[22px]")} data-turn-did>{acts}</div>}
       </div>
     </div>
   )

@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A cleaner Conversations tab**: the talk reads as a chat, its line stays at the foot clear of the status bar,
+  and when, where and what the companion did show only as you hover a turn.
 - **Silence**: a companion answer with no spoken words says Silence in Conversations, not a sentence about it.
 - **The companion knows when you didn't hear it**: asked why it said nothing, it says its answer was kept quiet for a
   call (in which app, when), or that its voice was off or failing then, and offers to say it now.

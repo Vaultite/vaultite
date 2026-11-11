@@ -35,18 +35,19 @@ export function ConversationsPanel({ open, file, phone }: SidebarCtx) {
   return <Conversations path={file || last.path} big={phone} />
 }
 
-/** The tab (view:conversations): the threads of the file in the pane focused last. */
+/** The tab (view:conversations, the whole pane): the threads of the file in the pane focused last, or the talk as a
+ *  chat, its line at the pane's foot (its own, as a chat's: the status bar spans the other panes). */
 export function ConversationsView() {
   const { path } = useFocusedFile()
   return (
-    <div className="pb-10" data-conversations-view>
-      <h1 className="mb-4 truncate text-[22px] leading-[28px] font-bold max-md:hidden">Conversations</h1>
-      <div data-size-up className="size-up-bleed"><Conversations path={path} page /></div>
+    <div className="flex h-full min-h-0 flex-col bg-background" data-conversations-view>
+      <Conversations path={path} page />
     </div>
   )
 }
 
-/** `page`: drawn in its tab, where the pane scrolls the talk (in a sidebar, the talk scrolls in a box of its own). */
+/** `page`: the whole of its tab, where the talk or the threads scroll between a header and its line (in a sidebar, the
+ *  talk scrolls in a box of its own). */
 function Conversations({ path, big, page }: { path: string; big?: boolean; page?: boolean }) {
   const s = useSyncExternalStore(subscribe, getState)
   const [filter, setFilter] = useState<Filter>("open")
@@ -65,12 +66,16 @@ function Conversations({ path, big, page }: { path: string; big?: boolean; page?
   const tab: Tab = share ? "note" : chosen?.path === path ? chosen.tab : threads.length ? "note" : "talk"
   const list = filter === "open" ? threads : past ?? []
   return (
-    <div data-companion-panel data-tab={tab} className="flex flex-col gap-1.5 pb-1">
+    <div data-companion-panel data-tab={tab} className={cn("flex flex-col gap-1.5", page ? "h-full min-h-0" : "pb-1")}>
       {!share && (
-        <Segmented label="Conversation" value={tab} onChange={(t) => setChosen({ path, tab: t })} className="mx-0.5 mb-0.5"
-          options={[{ value: "talk", label: "Talk" }, { value: "note", label: "Comments", count: threads.length }]} />
+        <div className={cn(page && "mx-auto flex w-full max-w-[44rem] items-center gap-2 px-4 pt-3 max-md:px-3")}>
+          <Segmented label="Conversation" value={tab} onChange={(t) => setChosen({ path, tab: t })} className={page ? "w-[15rem] max-md:flex-1" : "mx-0.5 mb-0.5"} big={page}
+            options={[{ value: "talk", label: "Talk" }, { value: "note", label: "Comments", count: threads.length }]} />
+          {page && <span className="flex-1" />}
+          {page && <OpenPage />}
+        </div>
       )}
-      {tab === "talk" ? <Talk page={page} /> : <>
+      {tab === "talk" ? <Talk page={page} /> : <div className={cn("flex flex-col gap-1.5", page && "mx-auto min-h-0 w-full max-w-[44rem] flex-1 overflow-y-auto px-4 pb-4 max-md:px-3")}>
         <div className="flex min-h-7 items-center gap-2 pl-1">
           <div className="min-w-0 flex-1"><Faces path={path} big={big} fit /></div>
           {md && <Filters filter={filter} setFilter={setFilter} open={threads.length} resolved={resolved} />}
@@ -79,7 +84,7 @@ function Conversations({ path, big, page }: { path: string; big?: boolean; page?
           : filter === "resolved" && !past ? <Loading className="px-1.5 text-[13px] leading-[18px]" />
           : !list.length ? <p className="px-1.5 text-[13px] text-tertiary">{filter === "open" ? "No comments in this note." : "Nothing resolved yet."}</p>
           : list.map((n) => <Thread key={n.id} n={n} picked={s.picked === n.id} resolved={filter === "resolved"} />)}
-      </>}
+      </div>}
     </div>
   )
 }
@@ -96,40 +101,59 @@ function Talk({ page }: { page?: boolean }) {
   const [sent, setSent] = useState<{ t: number; text: string }[]>([])
   const pending = sent.filter((x) => Date.now() - x.t < 60_000 && !shown?.exchanges.some((e) => e.t >= x.t - 5000 && e.text.trim() === x.text))
   const box = useRef<HTMLDivElement>(null)
-  useAtEnd(box, `${items.length}:${items.at(-1)?.e?.said.length ?? 0}:${pending.length}`, page)
+  useAtEnd(box, `${items.length}:${items.at(-1)?.e?.said.length ?? 0}:${pending.length}`)
   const asked = (text: string): Exchange => ({ t: Date.now(), seq: -1, kind: "ask", text, where: "", voice: false, summoned: false, said: [], did: [] })
+  const talk = !shown ? <Loading className="px-0.5 text-[13px] leading-[18px]" error={error ? "Couldn't read the companion's talk." : undefined} />
+    : !items.length && !pending.length ? <p className="px-0.5 text-[13px] text-tertiary">Nothing yet today.</p>
+    : items.map((x) => (x.e ? <Turn key={`e${x.e.seq}-${x.e.t}`} e={x.e} name={name} tint={tint} compact /> : <JobRow key={`j${x.j.id}`} j={x.j} />))
+  const sentNow = (text: string) => { setSent((s) => [...s.slice(-4), { t: Date.now(), text }]); again() }
+  if (page) return (
+    <div data-companion-talk className="flex min-h-0 flex-1 flex-col">
+      <div ref={box} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="mx-auto flex w-full max-w-[44rem] flex-col gap-6 px-5 pt-4 pb-8 max-md:px-4">
+          <div className="text-center text-[11.5px] font-medium text-muted-foreground">Today</div>
+          {talk}
+          {pending.map((x) => <Turn key={`p${x.t}`} e={{ ...asked(x.text), t: x.t }} name={name} tint={tint} compact />)}
+        </div>
+      </div>
+      {/* (the pane's foot is its own, as a chat's: the status bar spans the other panes; the talk fades out under it) */}
+      <AskLine name={name} onSent={sentNow} className="relative mx-auto w-full max-w-[44rem] max-md:px-3
+        before:pointer-events-none before:absolute before:inset-x-0 before:-top-6 before:h-6 before:bg-gradient-to-t before:from-background before:to-transparent" />
+    </div>
+  )
   return (
     <div data-companion-talk className="flex flex-col gap-1.5">
       <div className="flex min-h-6 items-center gap-1 pr-0.5 pl-1.5">
         <span className="flex-1 text-[12px] font-semibold text-muted-foreground">Today</span>
-        <HeadingButton icon={Maximize2} label="Open the Companion page" className="max-sm:size-8" data-companion-open-page
-          onClick={() => void op("companion.page").catch((e) => notifyError(e, "Couldn't open its page"))} />
+        <OpenPage />
       </div>
       {/* (at its ends the wheel goes on to the panel's box: a panel shorter than the talk scrolls its ask line in) */}
-      <div ref={box} className={cn("flex flex-col gap-3 px-1", !page && "max-h-[min(62vh,560px)] overflow-y-auto max-sm:max-h-[46vh] max-sm:overscroll-contain")}>
-        {!shown ? <Loading className="px-0.5 text-[13px] leading-[18px]" error={error ? "Couldn't read the companion's talk." : undefined} />
-          : !items.length && !pending.length ? <p className="px-0.5 text-[13px] text-tertiary">Nothing yet today.</p>
-          : items.map((x) => (x.e ? <Turn key={`e${x.e.seq}-${x.e.t}`} e={x.e} name={name} tint={tint} compact /> : <JobRow key={`j${x.j.id}`} j={x.j} />))}
+      <div ref={box} className="flex max-h-[min(62vh,560px)] flex-col gap-5 overflow-y-auto px-1 pt-1 pb-5 max-sm:max-h-[46vh] max-sm:overscroll-contain">
+        {talk}
         {pending.map((x) => <Turn key={`p${x.t}`} e={{ ...asked(x.text), t: x.t }} name={name} tint={tint} compact />)}
       </div>
-      <AskLine name={name} compact className={cn("px-0.5 pt-1", page && "sticky bottom-0 bg-background pb-2")}
-        onSent={(text) => { setSent((s) => [...s.slice(-4), { t: Date.now(), text }]); again() }} />
+      <AskLine name={name} compact className="px-0.5" onSent={sentNow} />
     </div>
   )
 }
 
-/** Keeps a chat's scroller at its end as `key` moves, unless the user scrolled up to read. `page`: the pane scrolls it. */
-function useAtEnd(ref: RefObject<HTMLDivElement | null>, key: string, page?: boolean) {
+/** The Companion page (its whole talk, day by day, and what it used), a click away. */
+const OpenPage = () => (
+  <HeadingButton icon={Maximize2} label="Open the Companion page" className="max-sm:size-8" data-companion-open-page
+    onClick={() => void op("companion.page").catch((e) => notifyError(e, "Couldn't open its page"))} />
+)
+
+/** Keeps a chat's scroller at its end as `key` moves, unless the user scrolled up to read. */
+function useAtEnd(ref: RefObject<HTMLDivElement | null>, key: string) {
   const end = useRef(true)
-  const scroller = () => { let el: HTMLElement | null = ref.current; if (!page) return el; while (el && !/(auto|scroll)/.test(getComputedStyle(el).overflowY)) el = el.parentElement; return el }
   useEffect(() => {
-    const el = scroller()
+    const el = ref.current
     if (!el) return
     const on = () => { end.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48 }
     el.addEventListener("scroll", on, { passive: true })
     return () => el.removeEventListener("scroll", on)
-  }, [page])
-  useLayoutEffect(() => { const el = scroller(); if (el && end.current) el.scrollTop = el.scrollHeight }, [key])
+  }, [])
+  useLayoutEffect(() => { const el = ref.current; if (el && end.current) el.scrollTop = el.scrollHeight }, [key])
 }
 
 /** Open / Resolved, as a small segmented control. */
