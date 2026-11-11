@@ -8,6 +8,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **Long browser waits last**: `vau browser wait --helped --timeout 600` (and other waits) waits as long as asked,
   instead of failing after 90 s saying the desktop app didn't answer.
+- **Narrow Settings opens every section**: in a pane too narrow for the menu beside it (the first window, both sidebars
+  open), Plugins, Get plugins and each other section open in the menu's place, with a way back; so does the sidebar's
+  Plugins button, which did nothing there.
 - **Timelines read bold dates**: a line like `- **2026-04-22** | Meeting notes — Pricing chat` (as many write by hand,
   and GBrain's pages do) reads as an entry instead of a line not understood.
 - **Markdown links count as links**: `[text](Note.md)` and `![](image.png)` (relative, from the top, without `.md`)

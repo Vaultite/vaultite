@@ -1,5 +1,5 @@
-// Settings' shell, as System Settings is: a menu with its search on top (what it finds takes the menu's place), beside
-// what's picked, each scrolling on its own. Narrow, the page is the menu (a pick opens a sheet). Plugins scrolls the same.
+// Settings' shell, as System Settings is: a menu (or what its search finds) beside what's picked, each scrolling on its
+// own. Narrow, the page is the menu, or what's picked in its place (a phone's: a sheet). Plugins scrolls the same.
 import { Fragment, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type UIEvent } from "react"
 import { ChevronRight, type LucideIcon } from "lucide-react"
 import { usePane } from "@/core/pane"
@@ -108,12 +108,13 @@ function Scroller({ page, className, children, ...rest }: { page?: string; class
   return <div ref={el} onScroll={keep} className={cn("overflow-y-auto overscroll-contain", className)} {...rest}>{children}</div>
 }
 
-/** The narrow layout in a pane scrolls itself (a phone's, the window does), at the reading width. */
-function PageScroller({ children, ...rest }: { children: ReactNode } & Attrs) {
+/** The narrow layout in a pane scrolls itself (a phone's, the window does), at the reading width. `page`: a new one
+ *  starts at the top. */
+function PageScroller({ page, children, ...rest }: { page?: string; children: ReactNode } & Attrs) {
   const { pane: own } = usePane()
   if (!own) return <div {...rest}>{children}</div>
   return (
-    <Scroller className="h-full [scrollbar-gutter:stable]" {...rest}>
+    <Scroller page={page} className="h-full [scrollbar-gutter:stable]" {...rest}>
       <div className="mx-auto max-w-[912px] px-8 pb-6">{children}</div>
     </Scroller>
   )
@@ -129,7 +130,7 @@ type Search = {
 }
 
 /** `side`: under the search where wide (the menu, or what it found). `page`: what's picked (a new one starts at its top).
- *  Narrow: `title`, the search, then `children` alone (the page draws the menu as its list). */
+ *  Narrow: `title`, the search, then `children` alone (the page draws the menu as its list, or what's picked). */
 export function RailLayout({ rail: [ref, wide], search, side, page, title, children }: {
   rail: Rail; search?: Search; side: ReactNode; page: string; title?: string; children: ReactNode
 }) {
@@ -162,7 +163,7 @@ export function RailLayout({ rail: [ref, wide], search, side, page, title, child
   }
   return (
     <div ref={ref} className={cn(own && "h-full")} data-rail-layout="narrow">
-      <PageScroller>
+      <PageScroller page={page}>
         {title && <PageHeader title={title} />}
         {field && <div className="mb-4">{field}</div>}
         {children}

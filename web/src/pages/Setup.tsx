@@ -1,9 +1,10 @@
-// Plugins (id "setup"): Your plugins, and Get (the store and imports). Wide, sections of Settings (PluginsPane), where a
-// pane showing #plugins or #get goes; narrow (a phone), their own page with two tabs, each its own address.
+// Plugins (id "setup"): Your plugins, and Get (the store and imports). On a computer, sections of Settings (PluginsPane),
+// where a pane showing #plugins or #get goes; on a phone, their own page with two tabs, each its own address.
 import { useEffect, useLayoutEffect } from "react"
 import { Puzzle, Store as StoreIcon } from "lucide-react"
 import type { Store } from "@/core/data"
-import { openSetup, settingsSection, type SetupTab } from "@/core/apppages"
+import { openSetup, showSettingsSection, type SetupTab } from "@/core/apppages"
+import { useDesktop } from "@/core/platform"
 import { replaceTabTarget } from "@/core/workspace"
 import { PageHeader, Segmented, SheetHead } from "@/components/kit"
 import { RailLayout, useRail } from "@/components/RailLayout"
@@ -16,14 +17,15 @@ type Tab = SetupTab
 
 /** `at`: the workspace tab it's drawn in. */
 export function Setup({ store, tab, at }: { store: Store; tab: SetupTab; at?: string }) {
-  const rail = useRail(), wide = rail[1]
+  const rail = useRail(), desktop = useDesktop()
   const pick = (to: SetupTab) => { if (at) replaceTabTarget(at, to); else openSetup(to) }
-  // Wide, it's Settings' section: the tab shows Settings there (an old tab, a link, a page opened in a new tab).
+  // On a computer it's Settings' section, the pane wide or narrow: the tab shows Settings there (an old tab, a link, a
+  // page opened in a new tab).
   useLayoutEffect(() => {
-    if (!wide || !at) return
-    settingsSection.set(tab)
+    if (!desktop || !at) return
+    showSettingsSection(tab)
     replaceTabTarget(at, "settings")
-  }, [wide, at, tab])
+  }, [desktop, at, tab])
   return (
     <div data-setup={tab}>
       <RailLayout rail={rail} page={tab} side={null}>

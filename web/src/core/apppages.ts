@@ -49,10 +49,18 @@ export function openSetup(tab?: SetupTab) {
 
 /** Which section Settings shows: kept while the app runs, so Settings reopens where it was. */
 export const settingsSection = cell("appearance")
+/** Where a pane is too narrow for the menu beside it, whether that section takes the menu's place (else the menu). */
+export const settingsSectionOpen = cell(false)
+
+/** Show `section` in Settings: beside the menu where the pane is wide, in its place where narrow. */
+export function showSettingsSection(section: string) {
+  settingsSection.set(section)
+  settingsSectionOpen.set(true)
+}
 
 /** Open Settings on a section (a phone's: its sheet). */
 export function openSettings(section: string) {
-  settingsSection.set(section)
+  showSettingsSection(section)
   if (isDesktop()) goTo("settings")
   else openDetail(`settings-section/${encodeURIComponent(section)}`)
 }

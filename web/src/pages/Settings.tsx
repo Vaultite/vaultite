@@ -1,11 +1,12 @@
-// Settings: sections beside the one shown (a sheet each where narrow). The app's own plugins' settings are parts of their
-// kind's section (Search field's in Files); the others' are on their page, under Plugins, a section here with Get.
+// Settings: sections beside the one shown (narrow, in their place; a phone's, a sheet each). The app's own plugins'
+// settings are parts of their kind's section (Search field's in Files); the others' on their page, under Plugins.
 import { useContext, useMemo, useState, useEffect, type ReactNode } from "react"
 import { ChevronLeft, FolderOpen, Info, Keyboard, Palette, PenLine, Puzzle, ShieldCheck, SlidersHorizontal, Sparkles, SquareTerminal, Store as StoreIcon, type LucideIcon } from "lucide-react"
 import type { Store } from "@/core/data"
 import { desktop as desktopApp, type UpdateMode } from "@/core/desktop"
 import { isDesktop } from "@/core/platform"
-import { openSetup, settingsSection } from "@/core/apppages"
+import { openSetup, settingsSection, settingsSectionOpen, showSettingsSection } from "@/core/apppages"
+import { usePane } from "@/core/pane"
 import { openDetail } from "@/core/nav"
 import { isEnabled, offWithAi, PLUGINS, pluginById, switchedOn, tileTint, type Plugin } from "@/core/plugins"
 import { hasSettings, openPluginSettings, revealRow, settingsApart, settingsHome, settingsTitle, withSettings } from "@/core/pluginSettings"
@@ -114,7 +115,7 @@ const About = () => <><Updates /><Running /></>
 type Sec = { id: string; label: string; icon: LucideIcon; tint?: string; render: (store: Store) => ReactNode }
 const headed = (id: string, label: string, icon: LucideIcon, tint: string, body: (store: Store) => ReactNode, sub?: string): Sec =>
   ({ id, label, icon, tint, render: (store) => <><SheetHead icon={icon} tint={tint} title={label} sub={sub} />{body(store)}<Members store={store} section={id} /></> })
-/** Plugins, or Get: a section of Settings where wide; a pick between them where narrow is their own page. */
+/** Plugins, or Get: a section of Settings (a phone's: their own page). */
 const pickSetup = (to: "plugins" | "get") => (settingsSection.get() === to ? undefined : openSetup(to))
 const CORE: Sec[] = [
   headed("appearance", "Appearance", Palette, "var(--blue)", () => <AppearancePanel />, "Layout, colours, text and motion"),
@@ -195,9 +196,13 @@ const pluginSec = (id: string): Sec | null => {
 /** Back to the section a plugin's page belongs to (Plugins, or the app's section its settings are part of). */
 function Crumb({ plugin }: { plugin: Plugin }) {
   const to = litOf(`plugin:${plugin.id}`) ?? "plugins"
-  const label = CORE.find((s) => s.id === to)?.label ?? "Plugins"
+  return <Back label={CORE.find((s) => s.id === to)?.label ?? "Plugins"} onClick={() => settingsSection.set(to)} data-settings-crumb={to} />
+}
+
+/** A way back, above a page: to the section it's part of, or (narrow) to the menu. */
+function Back({ label, onClick, ...attrs }: { label: string; onClick: () => void } & Record<`data-${string}`, string>) {
   return (
-    <button type="button" onClick={() => settingsSection.set(to)} data-settings-crumb={to}
+    <button type="button" onClick={onClick} {...attrs}
       className="-ml-1.5 mb-2 flex h-7 cursor-pointer items-center gap-0.5 rounded-control pr-2 pl-1 text-[13px] font-medium text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground">
       <ChevronLeft className="size-4" strokeWidth={2.25} />{label}
     </button>
@@ -215,7 +220,7 @@ function placeOfPlugin(id: string): { section: string } | { sheet: string } {
   return home && !settingsApart(p) ? { section: home } : { sheet: id }
 }
 
-/** One section on its own: the sheet a narrow pane opens (`settings-section/<id>`). */
+/** One section on its own: the sheet a phone opens (`settings-section/<id>`). */
 export function SettingsSection({ store, id }: { store: Store; id: string }) {
   const { disabled } = usePrefs()
   const s = sectionOf(id, disabled)
@@ -254,7 +259,8 @@ function litOf(active: string) {
 /** A setting search finds: `where` it is (Appearance, a plugin's name), and what choosing it does; a switch is flipped
  *  right there. */
 type Found = { id: string; label: string; sub?: string; where: string; words: string; run: () => void; switch?: SwitchDef }
-/** Goes to a section, and to the row `selector` finds in it: beside the list, or in a sheet where the pane is narrow. */
+/** Goes to a section, and to the row `selector` finds in it: beside the menu, in its place where the pane is narrow, or
+ *  in a sheet on a phone. */
 type Show = (section: string, selector?: string) => void
 
 /** Everything in the sections and in plugins' settings that search can find. */
@@ -392,18 +398,21 @@ export function Settings({ store }: { store: Store }) {
   const [picked, setPicked] = useState<string | null>(null)
   const q = query.trim()
   const rail = useRail(), wide = rail[1]
-  const current = settingsSection.use()
+  const { pane: own } = usePane()
+  const current = settingsSection.use(), open = settingsSectionOpen.use()
   // A plugin turned off takes its section with it: back to the first.
   const sec = sectionOf(current, disabled) ?? CORE[0]
+  // Narrow in a pane, the section picked takes the menu's place, under a way back to it (a split view's way when small).
+  const inPlace = !wide && !!own && open
   const show: Show = (to, selector) => {
-    // (narrow, Plugins and Get are their own page)
-    if (!wide && (to === "plugins" || to === "get")) return openSetup(to)
+    // (a phone's Plugins and Get are their own page)
+    if (!own && (to === "plugins" || to === "get")) return openSetup(to)
     let id = to
     // (the app's own plugins' settings are in a section: there, at its part)
     const at = id.startsWith("plugin:") ? placeOfPlugin(id.slice(7)) : null
     if (at && "section" in at) { selector ??= `[data-settings-member="${CSS.escape(id.slice(7))}"]`; id = at.section }
-    if (wide) {
-      settingsSection.set(id)
+    if (own) {
+      showSettingsSection(id)
       if (selector) revealRow(selector)
     } else if (id.startsWith("plugin:")) {
       const key = selector?.match(/data-setting="(.*)"\]$/)?.[1]
@@ -413,7 +422,7 @@ export function Settings({ store }: { store: Store }) {
       if (selector) revealRow(selector)
     }
   }
-  const found = useMemo(() => (q ? search(findable(store, disabled, show), q) : []), [store, disabled, q, wide])
+  const found = useMemo(() => (q ? search(findable(store, disabled, show), q) : []), [store, disabled, q, own])
   const lit = found.find((f) => f.id === picked) ?? null
   // (the search stays, so the next find is a click or an arrow away)
   const choose = (f: Found) => { setPicked(f.id); f.run() }
@@ -427,24 +436,29 @@ export function Settings({ store }: { store: Store }) {
   }
   const typed = (v: string) => { setQuery(v); setPicked(null) }
   const items = menu(prefs)
-  // (narrow, each row opens a sheet or a page: a chevron says so)
+  // (narrow, each row opens the section in its place, a sheet or a page: a chevron says so)
   const menuOf = (active: string | null) => <RailMenu label="Settings" tiles chevrons={!wide} items={items} active={active} pick={(id) => show(id)} data-settings-list="" />
+  const section = (
+    <DenseRows.Provider value>
+      {/* (a plugin's row goes to its page, here in Settings) */}
+      <OpenPlugin.Provider value={(id) => show(`plugin:${id}`)}>
+        <div data-settings-section={sec.id}>
+          <Catch key={sec.id} fallback={() => <p className="text-[15px] text-muted-foreground">This section couldn't be drawn.</p>}>{sec.render(store)}</Catch>
+        </div>
+      </OpenPlugin.Provider>
+    </DenseRows.Provider>
+  )
   return (
     <div data-settings>
-      <RailLayout rail={rail} page={sec.id} title="Settings"
+      {/* (in the menu's place, the section's own heading names it: no title or search above it) */}
+      <RailLayout rail={rail} page={wide || inPlace ? sec.id : ""} title={inPlace ? undefined : "Settings"}
         side={q ? <Results found={found} query={q} picked={picked} choose={choose} /> : menuOf(litOf(sec.id))}
-        search={{ value: query, onChange: typed, placeholder: "Search settings", attrs: { "data-settings-search": "" },
+        search={inPlace ? undefined : { value: query, onChange: typed, placeholder: "Search settings", attrs: { "data-settings-search": "" },
           onSubmit: () => { const f = lit ?? found[0]; if (!f) return; if (wide) choose(f); else f.run() }, onMove: wide ? move : undefined }}>
-        {wide ? (
-          <DenseRows.Provider value>
-            {/* (a plugin's row goes to its page, here beside the menu) */}
-            <OpenPlugin.Provider value={(id) => show(`plugin:${id}`)}>
-              <div data-settings-section={sec.id}>
-                <Catch key={sec.id} fallback={() => <p className="text-[15px] text-muted-foreground">This section couldn't be drawn.</p>}>{sec.render(store)}</Catch>
-              </div>
-            </OpenPlugin.Provider>
-          </DenseRows.Provider>
-        ) : q ? <FoundList found={found} query={q} />
+        {wide ? section
+          // (a plugin's page has its own way back, to the section it's listed in)
+          : inPlace ? <>{!sec.id.startsWith("plugin:") && <Back label="Settings" onClick={() => settingsSectionOpen.set(false)} data-settings-back="" />}{section}</>
+          : q ? <FoundList found={found} query={q} />
           // (the page, a phone's or a narrow pane's: its rows a size up, as every page of the sidebar's lists)
           : <div className="size-up-bleed"><div data-size-up>{menuOf(null)}</div></div>}
       </RailLayout>
