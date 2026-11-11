@@ -12,8 +12,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   open), Plugins, Get plugins and each other section open in the menu's place, with a way back; so does the sidebar's
   Plugins button, which did nothing there.
 - **AI off means off at once**: turning Use AI off (or answering Not now in the welcome) takes away the agents'
-  commands and keys (Open Claude Code, Ask the companion), the Agents panel and its settings, Agents at work and
-  Screen right away, not at the next reload. Dictation stays: it's speech to text.
+  commands and keys (Open Claude Code, Ask the companion), the Agents panel, Agents at work, Screen, who wrote a line
+  (Provenance), Review, MCP Apps, the Inbox panel and the settings in Settings > AI right away, not at the next
+  reload. Dictation, the inbox's notices and Live answers stay; MCP still serves agents you run yourself.
 - **A missing coding agent says where to get it**: opening Claude Code (or another agent) that isn't installed says so
   in its terminal and in a toast whose Open goes to its site.
 - **Links in properties**: `owner: "[[Alice Park]]"`, a list of links and web addresses are drawn as links, as in

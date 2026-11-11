@@ -117,7 +117,11 @@ export function hasSettings(p: Plugin, files: string[] = getStore()?.pluginSetti
 
 /** The plugins whose settings can be opened now: on, with something to set. */
 export const withSettings = (store: Store | null = getStore(), disabled = getPrefs().disabled) =>
-  PLUGINS.filter((p) => isEnabled(p.id, disabled) && hasSettings(p, store?.pluginSettings ?? []))
+  PLUGINS.filter((p) => settingsShown(p, disabled) && hasSettings(p, store?.pluginSettings ?? []))
+
+/** A plugin's settings are offered (its sheet, its switches and choices in the palette): it's on, and they aren't in
+ *  Settings > AI while AI is off (that section is then only its switch: what's there serves AI). */
+export const settingsShown = (p: Plugin, disabled = getPrefs().disabled) => isEnabled(p.id, disabled) && (getPrefs().ai || settingsHome(p) !== "ai")
 
 let goingTo: { id: string; key: string } | null = null
 
@@ -152,7 +156,7 @@ export function revealRow(selector: string, within: ParentNode = document) {
 export const settingsCommands = (): Command[] =>
   PLUGINS.map((p) => ({
     id: `plugin-settings:${p.id}`, name: `Open ${settingsTitle(p.name)}`,
-    when: () => isEnabled(p.id, getPrefs().disabled) && hasSettings(p),
+    when: () => settingsShown(p) && hasSettings(p),
     run: () => openPluginSettings(p.id),
     icon: p.icon,
   }))

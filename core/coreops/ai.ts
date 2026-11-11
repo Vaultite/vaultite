@@ -39,8 +39,8 @@ export function aiOps(app: App): Op[] {
     cli: "ai",
     summary: "Use AI or not: on (the default), off (no coding agents, companion or AI apps in the app), or as it is now.",
     help: `The app's Use AI switch (Settings > AI), plugins.json \`ai\`. Off, every plugin that's for AI (its manifest's
-\`ai\`: Claude Code, Codex, the companion, cloud sessions, AI usage) is off whatever its own switch says, and the app shows
-no agent buttons or AI items. Each plugin's own switch stays as it was: back on, they are too. Ops, MCP and vau don't
+\`ai\`: Claude Code, Codex, the companion, cloud sessions, the Agents panel, Screen, Review, Provenance, MCP Apps, AI
+usage) is off whatever its own switch says, and the app shows no agent buttons or AI items. Each plugin's own switch stays as it was: back on, they are too. Ops, MCP and vau don't
 change, so an agent the user runs can still use the vault. Without a value, it says which it is.
 
   vau ai

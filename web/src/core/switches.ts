@@ -8,8 +8,8 @@ import { reload } from "@/core/data"
 import { editorSet, editorSettings, setEditor, type EditorSettings } from "@/core/editorPrefs"
 import { openDetail } from "@/core/nav"
 import { notify, notifyError } from "@/core/notify"
-import { isEnabled, pluginById, PLUGINS, setSwitch, switchedOn } from "@/core/plugins"
-import { openPluginSettings, pluginSettings, revealRow, settingDefault, settingsApart, settingsHome } from "@/core/pluginSettings"
+import { pluginById, PLUGINS, setSwitch, switchedOn } from "@/core/plugins"
+import { openPluginSettings, pluginSettings, revealRow, settingDefault, settingsApart, settingsHome, settingsShown } from "@/core/pluginSettings"
 import { getPrefs, onPrefs, setPrefs, type Prefs } from "@/core/prefs"
 import { signal } from "@/core/signal"
 import { quickTextSizeSub } from "@/core/textsize"
@@ -101,7 +101,7 @@ export const coreSwitch = (id: string) => CORE.find((s) => s.id === id)!
 /** A plugin's boolean settings, while it's on. Not a `local` one: those say who may reach this machine, chosen in its
  *  settings where what they do is read first. */
 function pluginSwitches(disabled: string[]): SwitchDef[] {
-  return PLUGINS.filter((p) => isEnabled(p.id, disabled)).flatMap((p) => Object.entries(p.settingsDecls ?? {}).flatMap(([key, d]) => {
+  return PLUGINS.filter((p) => settingsShown(p, disabled)).flatMap((p) => Object.entries(p.settingsDecls ?? {}).flatMap(([key, d]) => {
     if (d.type !== "boolean" || d.local) return []
     const s = pluginSettings<Record<string, unknown>>(p.id)
     const dflt = () => settingDefault(p.id, key, d) === true

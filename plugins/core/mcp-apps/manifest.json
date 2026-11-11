@@ -3,6 +3,7 @@
   "icon": "layout-panel-top",
   "category": "agents",
   "essential": true,
+  "ai": true,
   "requires": ["mcp"],
   "name": "MCP Apps",
   "description": "Cards for AI apps that draw MCP Apps (claude.ai, ChatGPT): a note read is drawn with Open in Vaultite, a task list ticks in place, a Kanban board moves its cards. The same cards draw in your notes, with a block naming a tool.",

@@ -1,7 +1,7 @@
 // MCP's frontend: its Plugins page entry, settings sheet (how to connect) and view:connections (apps connected from the
 // internet).
 import { Bot, Copy, Globe, Plug } from "lucide-react"
-import { copyText, definePlugin, Group, notify, notifyError, openView, Panel, Section, SettingRow } from "@vaultite"
+import { aiOn, copyText, definePlugin, Group, notify, notifyError, openView, Panel, Section, SettingRow } from "@vaultite"
 import { AiApps, CONNECTION_DETAIL, ConnectionSheet, ConnectionsView, ConnectSection, connectionTitle, RemoteAccess, SETUP_DETAIL, SetupSheet, setupTitle, type AppId } from "./Connections"
 import { GrokBotIcon, MuseIcon } from "./marks"
 
@@ -52,5 +52,6 @@ export default definePlugin({
   },
   newTab: { connect: { title: "Connect your AI", sort: 5, heading: false, render: () => <ConnectSection /> } },
   views: { connections: { icon: Plug, title: () => "Connections", render: () => <ConnectionsView /> } },
-  commands: [{ id: "mcp:connections", name: "Open connections", run: () => openView("connections", { newTab: true }) }],
+  // (AI apps first, then remote access: Settings has that one while AI is off)
+  commands: [{ id: "mcp:connections", name: "Open connections", when: aiOn, run: () => openView("connections", { newTab: true }) }],
 })

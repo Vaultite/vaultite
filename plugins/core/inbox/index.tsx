@@ -144,7 +144,7 @@ export default definePlugin({
   background: ({ store }) => <Background store={store} />,
   header: { inbox: { sort: 50, phoneBar: true, render: (ctx) => <InboxButton {...ctx} /> } },
   sidebar: {
-    inbox: { title: "Inbox", heading: false, sort: 20, hidden: true, view: "inbox", flyout: { icon: InboxRailIcon }, render: (ctx) => <InboxPanel {...ctx} /> },
+    inbox: { title: "Inbox", heading: false, sort: 20, hidden: true, ai: true, view: "inbox", flyout: { icon: InboxRailIcon }, render: (ctx) => <InboxPanel {...ctx} /> },
   },
   views: { inbox: { icon: InboxIcon, title: () => "Inbox", render: ({ store, focused }) => <InboxPage store={store} focused={focused} /> } },
   details: {

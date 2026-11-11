@@ -11,7 +11,7 @@ import { opensChoices, setOpens } from "@/core/launcher"
 import { notify, notifyError } from "@/core/notify"
 import { isDesktop } from "@/core/platform"
 import { isEnabled, PLUGINS } from "@/core/plugins"
-import { pluginSettings, settingDefault } from "@/core/pluginSettings"
+import { pluginSettings, settingDefault, settingsShown } from "@/core/pluginSettings"
 import { getPrefs, setPrefs, type Animation, type Density, type FileBarFade, type FileSort, type Theme } from "@/core/prefs"
 import { placeOf } from "@/core/switches"
 import type { UpdatePolicy } from "../../../core/updates.ts"
@@ -70,7 +70,7 @@ export const coreChoice = (id: string) => CORE.find((c) => c.id === id)!
 /** A plugin's enum settings, while it's on. Not a `local` one (who may reach this machine: chosen in its settings,
  *  where what it does is read first). */
 function pluginChoices(disabled: string[]): ChoiceDef[] {
-  return PLUGINS.filter((p) => isEnabled(p.id, disabled)).flatMap((p) => Object.entries(p.settingsDecls ?? {}).flatMap(([key, d]) =>
+  return PLUGINS.filter((p) => settingsShown(p, disabled)).flatMap((p) => Object.entries(p.settingsDecls ?? {}).flatMap(([key, d]) =>
     d.type !== "enum" || !d.values?.length || d.local ? [] : [declChoice(p, key, d, settingDefault(p.id, key, d), pluginSettings<Record<string, unknown>>(p.id))]))
 }
 

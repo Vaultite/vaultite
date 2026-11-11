@@ -15,7 +15,7 @@ change them with their plugins' ops: `vau workspace`, `vau tabs`).
 **Plugins**, `.vaultite/plugins.json`: `disabled` (app plugins off), `enabled` (vault plugins and off-by-default ones
 on: the app's off-by-default ones like people, logs), `index` (the plugin directory's address, an https URL; unset: Vaultite's), `updates` (which installed plugins update on their
 own: `vaultite`, the default, `all` or `off`) with `updatesOn` / `updatesOff` (plugin ids that do or don't, whatever it says), `ai`
-(`false`: Use AI is off, so the plugins for AI, Claude Code, Codex, the companion and the like, are off whatever their
+(`false`: Use AI is off, so the plugins for AI, Claude Code, Codex, the companion, Review, Provenance and the like, are off whatever their
 switches say, which come back as they were when it's on; unset: on; `vau ai on|off`). Ops, MCP and vau work either way. A
 plugin's settings: `.vaultite/plugins/<id>/data.json` (`vau docs <id>`).
 

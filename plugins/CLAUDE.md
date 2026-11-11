@@ -12,10 +12,11 @@
   Formats go in the plugin's `AGENTS.md` (`vau docs <id>`); a short guide beside it, `docs/<topic>.md` (`vau docs <topic>`).
 - Ask for a service (`plugin.provide` / `plugin.ask`), never for a plugin's id. Whether a plugin is off:
   `plugin.isOff()` / `vault.switchedOff()`.
-- A plugin for AI (an agent, the companion, AI usage; vault plugins' too) says `"ai": true` in its manifest: it's off
-  while Use AI is (plugins.json `ai: false`), its own switch kept. What serves agents only through ops (MCP, inbox,
-  review) doesn't: an agent the user runs must still reach the vault, though not their screen (Screen says `ai`). An
-  always-on plugin's AI parts check `aiOn()` (a status bar item: its `ai`).
+- A plugin for AI (an agent, the companion, AI usage, what shows what AI wrote or changed; vault plugins' too) says
+  `"ai": true` in its manifest: it's off while Use AI is (plugins.json `ai: false`), its own switch kept. What only lets
+  an agent the user runs reach the vault (MCP, Watches, Agent files: ops and files, nothing drawn) doesn't, though not
+  their screen (Screen says `ai`). An always-on plugin's AI parts check `aiOn()` (a status bar item or a sidebar panel:
+  its `ai`); its settings in Settings > AI hide with AI.
 - A new app plugin: decide whether each built-in bundle turns it on (`bundles/CLAUDE.md`).
 - Moving one out to Vaultite/plugins: its folder goes there (tagged), out of here in the same change, and into
   `MOVED` (`core/migrations.ts`): vaults that had it on install it once; bundles name it with `install`.

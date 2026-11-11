@@ -429,9 +429,9 @@ export type PanelOf = { key: string; plugin: Plugin; panel: SidebarPanel }
 
 /** The panels of the plugins that are on, by `sort` (then the plugins' order): the order of the Panels menu. */
 export function sidebarPanels(disabled: string[]): PanelOf[] {
-  const named = [...sidebars().left, ...sidebars().right]
+  const named = [...sidebars().left, ...sidebars().right], ai = getPrefs().ai
   return active(disabled)
-    .flatMap((p) => [...Object.entries(p.sidebar ?? {}).map(([name, panel]) => ({ key: `${p.id}:${name}`, plugin: p, panel })),
+    .flatMap((p) => [...Object.entries(p.sidebar ?? {}).filter(([, panel]) => ai || !panel.ai).map(([name, panel]) => ({ key: `${p.id}:${name}`, plugin: p, panel })),
       ...Object.entries(p.sidebarFor ?? {}).flatMap(([name, make]) => named.filter((k) => k.startsWith(`${p.id}:${name}/`)).map((key) => ({ key, plugin: p, panel: panelFor(key, name, p, make) }))),
       ...Object.entries(p.fileBar ?? {}).map(([name, item]) => ({ key: `${p.id}:${name}`, plugin: p, panel: barPanel(`${p.id}:${name}`, p, item) }))])
     .map((x, i) => ({ ...x, i }))

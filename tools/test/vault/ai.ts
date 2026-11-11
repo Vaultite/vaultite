@@ -21,9 +21,11 @@ export default async ($: VaultTest) => {
   check("ai off: plugins.json says ai false, its lists as they were", conf().ai === false && lists() === was, conf())
   check("ai off: it says which stay off", r.text.startsWith("AI is off") && r.text.includes("Claude Code") && r.text.includes("Companion"), r.text)
   const off = vault.switchedOff()
-  check("ai off: the app's plugins for AI are off (Claude Code, the companion, cloud sessions)", ["claude-code", "companion", "cloud-sessions"].every((id) => off.has(id)), [...off])
-  check("ai off: what serves agents through ops stays on (MCP, inbox, terminal, review, provenance, agent files)",
-    ["mcp", "inbox", "terminal", "review", "provenance", "agent-files"].every((id) => !off.has(id)), [...off])
+  check("ai off: the app's plugins for AI are off (Claude Code, the companion, cloud sessions, the Agents panel, Screen)",
+    ["claude-code", "companion", "cloud-sessions", "agents", "screen"].every((id) => off.has(id)), [...off])
+  check("ai off: what shows what AI wrote or changed is off too (provenance, review, MCP Apps)", ["provenance", "review", "mcp-apps"].every((id) => off.has(id)), [...off])
+  check("ai off: what serves agents through ops stays on (MCP, inbox, terminal, watches, agent files), and dictation",
+    ["mcp", "inbox", "terminal", "watches", "agent-files", "dictation"].every((id) => !off.has(id)), [...off])
   check("ai off: a vault plugin for AI is off too, another isn't", !app.vaultPlugins.enabled().has("qa-ai-tool") && app.vaultPlugins.enabled().has("qa-plain-tool"))
   const [, list] = await api("POST", "ops/plugin.list", {})
   const cc = (list as Any[]).find((p) => p.id === "claude-code")

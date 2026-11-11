@@ -1,10 +1,10 @@
 // Use AI (Settings > AI, core/ai.ts): off, the app shows nothing for AI (the companion, token counts, agents' commands
-// and keys, at once with no reload (App.tsx), the Agents panel's settings, Screen, AI plugins on the Plugins page, the
-// new tab's Connect your AI) while ops and MCP still answer; back on, every plugin is as its own switch was. Settings >
+// and keys, at once with no reload (App.tsx), Settings > AI's settings (pluginSettings.ts), Screen, who wrote a line,
+// the Inbox panel, AI plugins on the Plugins page, the new tab's Connect your AI) while ops and MCP still answer; back on, every plugin is as its own switch was. Settings >
 // AI's agents show their paths only on hover. Shots: light, dark, 390px phone, on and off. WRITES plugins.json and a
 // note: throwaway server only.
 //   node web/qa/aiswitch.mjs <base url> <vault path> [out dir]
-import { mkdirSync, readFileSync } from "node:fs"
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { SHOTS, apiAt, command, qa, until, wait } from "./lib/qa.mjs"
 
@@ -17,6 +17,10 @@ const NOTE = "Qa ai/Harbour plan.md"
 await api("POST", "ops/settings.set", { name: "plugins", values: { ai: null } })
 await api("POST", "file", { path: NOTE, text: "# Harbour plan\n\nAlice Park walks the Lighthouse path at dawn.\n" })
 const before = lists(conf())
+// (the Inbox panel in the sidebar, as the Standard layout has it)
+const SIDEBARS = path.join(VAULT, ".vaultite", "sidebars.json")
+const hadSidebars = (() => { try { return readFileSync(SIDEBARS, "utf8") } catch { return null } })()
+writeFileSync(SIDEBARS, JSON.stringify({ left: ["pages:pages", "files:files", "inbox:inbox"], right: [], collapsed: [] }, null, 2))
 
 /** A window at `w`×`h` on the note, its colour scheme `scheme`. */
 async function open(w, h, scheme = "light", mobile = false) {
@@ -47,6 +51,8 @@ const { ctx, page } = await open(1280, 800)
 check("on at first: the companion and the token count are in the status bar", !!(await until(async () =>
   (await page.locator('[data-status-key="companion:status"]').count()) && (await page.locator('[data-status-key^="token-count:"]').count()), 6000)))
 check("...and the palette has Open Claude Code", await hasCommand(page, "Open Claude Code"))
+check("...the Inbox panel and who wrote it in the status bar", !!(await until(() => page.locator('[data-panel="inbox:inbox"]').count(), 4000)) &&
+  await page.locator('[data-status-key="provenance:origin"]').count() === 1)
 await settingsAi(page)
 check("Settings > AI: Use AI, on", (await aiSwitch(page).getAttribute("aria-checked")) === "true")
 check("...its line says it all works without", (await page.locator('[data-settings-row="ai"]').innerText()).includes("Vaultite works fully without them"))
@@ -77,16 +83,19 @@ check("...the section keeps only the switch, off", !!(await until(async () => !(
   && (await aiSwitch(page).getAttribute("aria-checked")) === "false")
 await wait(400) // (the switch's slide)
 await page.screenshot({ path: `${OUT}aiswitch-off-light.png` })
-check("...nor the Coding agents' settings under it (the Agents panel's)", !(await page.locator('[data-settings-member="agents"]').count()) &&
-  await page.locator('[data-settings-member="mcp"]').count() === 1)
+check("...nor any plugin's settings under it (the Agents panel's, MCP's, the Inbox's)", !(await page.locator("[data-settings-member]").count()))
 // (in the same page: what the plugins registered goes as AI does, not at the next reload)
 await page.evaluate((n) => { location.hash = `#file/${encodeURIComponent(n)}` }, NOTE); await page.waitForSelector("main"); await wait(800)
 check("...at once, no reload: no Open Claude Code, Ask the companion or the Agents panel's settings", !(await hasCommand(page, "Open Claude Code")) &&
   !(await hasCommand(page, "Ask the companion")) && !(await hasCommand(page, "Sort agents by")) && !(await hasCommand(page, "Agents at work")))
+check("...nor who wrote a line, MCP's settings, the Inbox's agents' answers or Connections", !(await hasCommand(page, "Label who wrote it")) &&
+  !(await hasCommand(page, "Open MCP settings")) && !(await hasCommand(page, "Agents' answers")) && !(await hasCommand(page, "Open connections")))
+check("...the inbox itself stays (the app's notices)", await hasCommand(page, "Open inbox"))
 await page.goto("about:blank"); await page.goto(`${B}#file/${encodeURIComponent(NOTE)}`); await page.waitForSelector("main"); await wait(1500)
 // (an item that draws nothing keeps its empty slot: Agents at work's, with no agent at work)
 const keys = await page.locator("[data-status-key]").evaluateAll((els) => els.filter((e) => e.childElementCount).map((e) => e.getAttribute("data-status-key")))
-check("...no companion, token count or agents in the status bar", !keys.some((k) => /^(companion|token-count):|^terminal:agents$/.test(k)), keys)
+check("...no companion, token count, agents or who wrote it in the status bar", !keys.some((k) => /^(companion|token-count|provenance|review):|^terminal:agents$/.test(k)), keys)
+check("...nor the Inbox panel", !(await page.locator('[data-panel="inbox:inbox"]').count()))
 check("...no agent commands (nor their keys): Open Claude Code, Ask the companion, Ask an agent", !(await hasCommand(page, "Open Claude Code")) && !(await hasCommand(page, "Ask the companion")) && !(await hasCommand(page, "Ask an agent")))
 check("...plain terminals stay", await hasCommand(page, "Open terminal"))
 await page.keyboard.press("ControlOrMeta+Shift+k"); await wait(500)
@@ -135,4 +144,5 @@ for (const scheme of ["light", "dark"]) {
   await phone.ctx.close()
 }
 await api("POST", "ops/settings.set", { name: "plugins", values: { ai: null } })
+if (hadSidebars === null) rmSync(SIDEBARS, { force: true }); else writeFileSync(SIDEBARS, hadSidebars)
 await done()

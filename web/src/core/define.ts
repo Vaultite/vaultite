@@ -403,6 +403,9 @@ export type SidebarPanel = {
   menu?: () => FileMenuItem[]
   /** Draws an icons-only form with `dock` (Buttons): a phone can draw it in its drawer's dock, at the thumb, instead. */
   dockable?: true
+  /** For AI (the Inbox's, where agents ask and report): not drawn, nor in the Panels menu, while Use AI is off; its place
+   *  in the sidebar is kept. */
+  ai?: boolean
   /** It lists the open tabs (Tabs): Show tabs in the sidebar puts it at the top of the left sidebar, the tab bar off;
    *  its menu has Show tabs on top with Move to the other sidebar. */
   tabList?: true
