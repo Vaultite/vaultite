@@ -58,9 +58,12 @@ const api = async (port: number, method: string, route: string, body?: unknown, 
   return [r.status, await r.json().catch(() => null)] as [number, Any]
 }
 const devicesOn = async (port: number) => ((await api(port, "GET", "tabs/devices"))[1]?.devices ?? []) as Any[]
-/** Every file under .vaultite/ and its time: what the app wrote into the vault. */
+/** Every file under .vaultite/ and its time: what the app wrote into the vault. A write's own temp file (core/vault.ts'
+ *  `<name>.tmp-<pid>-<n>`, gone once renamed) is that write, not one of its own. */
 const stamps = (v: string) => Object.fromEntries((fs.readdirSync(path.join(v, ".vaultite"), { recursive: true }) as string[])
-  .map((f) => [f, fs.statSync(path.join(v, ".vaultite", f))]).filter(([, st]) => (st as fs.Stats).isFile()).map(([f, st]) => [f, (st as fs.Stats).mtimeMs]))
+  .filter((f) => !/\.tmp-\d+-\d+$/.test(f))
+  .map((f) => [f, fs.statSync(path.join(v, ".vaultite", f), { throwIfNoEntry: false })]).filter(([, st]) => (st as fs.Stats | undefined)?.isFile())
+  .map(([f, st]) => [f, (st as fs.Stats).mtimeMs]))
 
 try {
   await Promise.all([start(pa, VA, "local-a"), start(pb, VB, "local-b")])
