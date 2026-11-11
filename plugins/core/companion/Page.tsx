@@ -102,7 +102,7 @@ export function Turn({ e, name, tint = "var(--orange)", compact }: { e: Exchange
         <Arrow tint={tint} size={compact ? 14 : 16} className={cn("shrink-0", compact ? "mt-[2px]" : "mt-[3px]")} aria-label={name} />
         <div className="min-w-0 flex-1">
           {e.said.length ? <div className={cn("whitespace-pre-wrap select-text", words)}>{e.said.join("\n\n")}</div>
-            : <div className={cn("text-muted-foreground", words, waiting && "animate-pulse")}>{did.length ? "" : waiting ? "Thinking…" : "No words kept for this answer."}</div>}
+            : <div className={cn("text-muted-foreground", words, waiting && "animate-pulse")}>{did.length ? "" : waiting ? "Thinking…" : "Silence"}</div>}
           <div className={cn("mt-0.5 flex flex-wrap items-center gap-x-1.5 text-muted-foreground", meta)}>
             {did.length > 0 && <span>{did.join(", ")}</span>}
             {!compact && e.word !== undefined && <span>{did.length ? "· " : ""}first word in {secs(e.word)}</span>}
