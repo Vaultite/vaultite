@@ -1648,6 +1648,7 @@ const speaker = companionVoice({
   // output changing under it (said again from a little before))
   told: (e) => {
     voiceTrouble(e)
+    if (e.t === "silent" && voiced) unheard(voiced.name, voiced.asked, "silent", e.why ?? `${VOICES[e.by] ?? e.by}'s voice made no sound`)
     const x = lastAsk
     if (!x) return
     if (e.t === "fallback") return x.press.after("voice-fallback", { why: e.why, from: e.from, to: e.to })
@@ -1756,7 +1757,7 @@ function voiceHeard(n: Note) {
   if (!voiced || voiced.asked !== a.t || voiced.name !== n.agent) {
     const after = !!fronted && !fronted.begun && a.t >= (lastAsk?.up ?? Infinity)
     if (after) { fronted!.begun = true; hushed = Math.max(hushed, a.t); if (voiced?.quiet) clearTimeout(voiced.quiet); voiced = null } else stopVoice(a.t)
-    if (!answerAloud(mode, a, n.t, turnedOn)) return
+    if (!answerAloud(mode, a, n.t, turnedOn)) return void (mode === "off" && a.voice && unheard(n.agent, a.t, "off"))
     speaker.begin("", a.lang, after, voiceOf(n.agent, live.state.name, prefs.voice.name))
     heardLines = []
     voiced = { name: n.agent, asked: a.t, notes: [], quiet: null, ...(after ? { fronted: fronted!.s } : {}) }
@@ -1909,7 +1910,7 @@ function callChanged(next: Call | null) {
   if (!quietForCall()) return
   // (a call began while it spoke: it stops, and its answer shows)
   const x = exchange
-  if (speaker.saying() || voiceFront.speaking()) { const v = voiced; stopVoice(); if (v) quietHeld = { name: v.name, asked: v.asked } }
+  if (speaker.saying() || voiceFront.speaking()) { const v = voiced; stopVoice(); if (v) { quietHeld = { name: v.name, asked: v.asked }; unheard(v.name, v.asked, "call", callSaid(call)) } }
   if (x?.spoken) { x.spoken = false; answerBox() }
   // (hands-free talk in its box would hear the call: it stops, its words so far kept; their own press still works)
   if (session?.into === "panel" && session.talk) stopFor(session.sink)
@@ -1920,9 +1921,17 @@ function keptQuiet(name: string, asked: number) {
   quietHeld = { name, asked }
   // (in the press's log: why it said nothing)
   lastAsk?.press.after("quiet", { call: call?.app ?? "" })
+  unheard(name, asked, "call", callSaid(call))
   if (exchange?.name === name && exchange.spoken) { exchange.spoken = false; return answerBox() }
   const d = chatOf(name)
   if (d) panelData(d)
+}
+/** An answer not said aloud, and why, told the server once (its next asks' heads say so). */
+let unheardLast = ""
+function unheard(name: string, asked: number, why: "call" | "off" | "silent", detail = "") {
+  if (unheardLast === `${name}:${asked}:${why}`) return
+  unheardLast = `${name}:${asked}:${why}`
+  live.say({ t: "unheard", agent: name, asked, why, detail })
 }
 /** Its play button: the answer kept quiet (or stopped), said now from its start (they asked: the call or not). */
 function playQuiet(name: string) {
@@ -1930,6 +1939,8 @@ function playQuiet(name: string) {
   if (!h || h.name !== name) return
   const says = live.state.said.filter((n) => n.agent === name && n.kind === "say" && n.text && n.answers?.t === h.asked)
   if (!says.length) return
+  unheardLast = ""
+  live.say({ t: "heard", agent: name, asked: h.asked })
   stopVoice()
   replaying = name
   speaker.begin("", says[0].answers?.lang, false, voiceOf(name, live.state.name, prefs.voice.name))

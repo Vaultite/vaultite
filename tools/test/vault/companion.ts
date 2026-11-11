@@ -83,6 +83,13 @@ export default async ($: VaultTest) => {
     check("companion: an ask's head says why its voice is silent, and nothing when it speaks",
       /aren't said aloud now: they seem on a call in Voice Memos .*play button.*Not a call/.test(rec) && /^Your voice is off/.test(off) && !off.includes("Zoom") &&
       /no credits/.test(c.voiceSilence({ off: false, paused: { account: "quota" } })) && c.voiceSilence({ off: false, paused: null }) === "", [rec, off])
+    // Asked "did you say anything?" once the call is over, it knows its last answer was kept quiet, when and for what.
+    const at = new Date(2026, 10, 10, 16, 24, 46).getTime()
+    const held = c.voiceSilence({ off: false, unheard: [{ at, why: "call", detail: "on a call in Chrome", ask: "What's on my calendar this afternoon?" }] })
+    const twice = c.voiceSilence({ off: false, unheard: [{ at, why: "off", detail: "" }, { at: at + 60_000, why: "silent", detail: "its player quit (SIGKILL)" }] })
+    check("companion: an ask after a held answer says it wasn't heard, when, why (the call's app), and offers to say it",
+      /^Your last answer wasn't heard aloud: at 16:24 \(to "What's on my calendar this afternoon\?"\), kept quiet, as they seemed on a call in Chrome\. .*offer to say it now/.test(held) &&
+      !held.includes("aren't said aloud now") && /answers weren't heard aloud: at 16:24, your voice was off then; at 16:25, your voice failed \(its player quit/.test(twice), [held, twice])
     // Timings: handed, first action, back to next; seqs restart with the server.
     const ms = [{ seq: 1, t: 1000, kind: "ask" }, { seq: 2, t: 1500, kind: "edit" }, { seq: 1, t: 9000, kind: "ask" }] as Any[]
     const acts = [{ t: 0, as: "C", op: "next" }, { t: 1100, as: "C", op: "handed", seqs: [1] }, { t: 3100, as: "C", op: "say" }, { t: 3200, as: "C", op: "next" },

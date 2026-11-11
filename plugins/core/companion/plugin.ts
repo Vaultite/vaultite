@@ -1255,6 +1255,8 @@ function screenSocket(ws: WebSocket, req: IncomingMessage) {
     if (m.t === "answered") screenAnswered(m)
     // (its realtime voice paused, and why, or back: for its status)
     if (m.t === "mic") mics.set(ws, str(m.mic).slice(0, 300))
+    // (an answer its voice didn't say, or said after all)
+    if (m.t === "unheard" || m.t === "heard") return void screenUnheard(m)
     if (m.t === "call") { if (str(m.call)) calls.set(ws, str(m.call).slice(0, 120)); else calls.delete(ws) }
     if (m.t === "realtime") { const p = m.paused as Record<string, unknown> | null; realtimePaused.set(ws, p && typeof p === "object" ? { account: str(p.account), why: str(p.why).slice(0, 300), until: Number(p.until) || 0 } : null) }
   })
@@ -1413,15 +1415,35 @@ function awareness() {
     front?.name ? `The app in front: ${front.name}${front.title ? `, "${front.title}"` : ""}.` : ""].filter(Boolean).join(" ")
 }
 
-/** Why its voice is silent now, if it is (off, a call, the realtime voice paused), for every ask's head: asked why
- *  it said nothing, it knows rather than guesses. */
-export function voiceSilence(o: { off: boolean; call?: string; paused?: { account: string } | null }) {
+/** An answer its voice didn't say, as the helper tells it (helper.ts): kept quiet for a call (`detail`: "on a call in
+ *  Zoom"), its voice off then, or its voice failing (`detail`: why). */
+export type Unheard = { agent: string; asked: number; at: number; why: "call" | "off" | "silent"; detail: string }
+const UNHEARD_MS = 10 * 60_000
+let unheard: Unheard[] = []
+/** The helper's word on an answer: not said aloud (`unheard`), or said after all from its play button (`heard`). */
+function screenUnheard(m: Record<string, unknown>) {
+  const agent = str(m.agent).slice(0, 80), asked = Number(m.asked) || 0, now = Date.now()
+  unheard = unheard.filter((u) => now - u.at < UNHEARD_MS && !(key(u.agent) === key(agent) && u.asked === asked))
+  const why = m.why === "call" || m.why === "off" || m.why === "silent" ? m.why : null
+  if (m.t === "unheard" && why) unheard = [...unheard, { agent, asked, at: now, why, detail: str(m.detail).slice(0, 200) } satisfies Unheard].slice(-5)
+}
+const hhmm = (t: number) => { const d = new Date(t); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}` }
+const UNHEARD_WHY = { call: (d: string) => `kept quiet, as they seemed ${d || "on a call"}`, off: () => "your voice was off then", silent: (d: string) => `your voice failed${d ? ` (${d})` : ""}` }
+/** Why its voice is silent now, if it is (off, a call, the realtime voice paused), and its last answers that weren't
+ *  heard, for every ask's head: asked whether it said anything, it knows rather than guesses. */
+export function voiceSilence(o: { off: boolean; call?: string; paused?: { account: string } | null; unheard?: (Pick<Unheard, "at" | "why" | "detail"> & { ask?: string })[] }) {
   if (o.off) return "Your voice is off (its voice setting): answers show as text only."
-  return [o.call ? `Your answers aren't said aloud now: they seem ${o.call} (that app has the microphone open), so each shows as text with a play button (its Quiet on calls setting). If they aren't on a call, the Not a call button in your box by their pointer has you speak again until that app lets go of the mic.` : "",
+  const held = (o.unheard ?? []).slice(-2).map((u) => `at ${hhmm(u.at)}${u.ask ? ` (to ${JSON.stringify(cut(u.ask, 60))})` : ""}, ${UNHEARD_WHY[u.why](u.detail)}`)
+  return [held.length ? `${held.length > 1 ? "Your last answers weren't" : "Your last answer wasn't"} heard aloud: ${held.join("; ")}. Asked whether you said anything, say so and why, and offer to say it now (or its play button in your box).` : "",
+    o.call ? `Your answers aren't said aloud now: they seem ${o.call} (that app has the microphone open), so each shows as text with a play button (its Quiet on calls setting). If they aren't on a call, the Not a call button in your box by their pointer has you speak again until that app lets go of the mic.` : "",
     o.paused ? `Your realtime voice is paused: ${o.paused.account === "quota" ? "the OpenAI account has no credits" : "OpenAI refused its key"}.` : ""].filter(Boolean).join(" ")
 }
-/** A moment's head beyond its asks: where they are (pair only) and why its voice is silent (any mode). */
-const headAware = () => [mode() === "pair" ? awareness() : "", voiceSilence({ off: setting("voice") === "off", call: [...calls.values()].at(-1), paused: pausedNow() })].filter(Boolean).join(" ")
+/** Agent `name`'s answers not heard in the last few minutes, each with its ask's words. */
+const unheardOf = (name: string) => unheard.filter((u) => key(u.agent) === key(name) && Date.now() - u.at < UNHEARD_MS)
+  .map((u) => ({ ...u, ask: said.find((n) => n.kind === "ask" && n.t === u.asked && key(n.agent ?? "") === key(name))?.text }))
+/** A moment's head beyond its asks: where they are (pair only) and why its voice is (or was just) silent (any mode). */
+const headAware = (name: string) => [mode() === "pair" ? awareness() : "",
+  voiceSilence({ off: setting("voice") === "off", call: [...calls.values()].at(-1), paused: pausedNow(), unheard: unheardOf(name) })].filter(Boolean).join(" ")
 
 /** The browser tab showing pane `id` (the engine lists the window's tab with each page), or null. */
 type BrowserTab = { tab: number; url: string; title: string; container: string | null; access: string; pane?: string }
@@ -2210,7 +2232,7 @@ async function startChat(name: string, how: { agent: string; model: string; effo
   const k = key(name)
   starting(name, { ...at, runs: how.agent, model: how.model || undefined, effort: how.effort || undefined }, after)
   const waiting = pendingFor(name), given = waiting.some(wakes) ? hand(name, waiting) : []
-  const first = given.length ? `${ready()}\n\n${momentsText(given, mode(), focus(), await excerpts(apiCtx, given), headAware())}`
+  const first = given.length ? `${ready()}\n\n${momentsText(given, mode(), focus(), await excerpts(apiCtx, given), headAware(name))}`
     : `${ready()} Then end your turn: what the user does comes as your next messages.`
   turning.add(k)
   let s: ChatState
@@ -2240,7 +2262,7 @@ async function pump(name: string) {
     turning.add(k)
     resend.delete(k)
     const given = hand(name, got)
-    text = momentsText(given, mode(), focus(), await excerpts(apiCtx, given), headAware())
+    text = momentsText(given, mode(), focus(), await excerpts(apiCtx, given), headAware(name))
     const was = stopped.get(k)
     if (was && stopped.delete(k)) text = `${STOPPED(was)}\n${text}`
   } else if (fresh.has(k) || (Date.now() - (handing.get(k) ?? 0) > ASK_AGAIN && await due(s))) {
@@ -2503,7 +2525,7 @@ asks to its @name and answers to its items; edit and open go to the companion, o
       if (!got.length && fresh.has(k) && session(name)) return handover()
     }
     if (got.length) got = hand(name, got)
-    return { mode: mode(), focus: focus(), moments: got, cursor: delivered.get(k) ?? after, notes: await excerpts(ctx, got), ...(got.length && headAware() ? { aware: headAware() } : {}) }
+    return { mode: mode(), focus: focus(), moments: got, cursor: delivered.get(k) ?? after, notes: await excerpts(ctx, got), ...(got.length && headAware(name) ? { aware: headAware(name) } : {}) }
   },
   text: (r) => (r.ended ? "Your session has ended: stop here, without running next again." : r.handover ? handoverAsk(r.as) : momentsText(r.moments, r.mode, r.focus, r.notes, r.aware)),
 })

@@ -7,6 +7,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 ## Unreleased
 
 - **Silence**: a companion answer with no spoken words says Silence in Conversations, not a sentence about it.
+- **The companion knows when you didn't hear it**: asked why it said nothing, it says its answer was kept quiet for a
+  call (in which app, when), or that its voice was off or failing then, and offers to say it now.
 - **Filtering finds what you mean**: every list you type to filter (the palette, the quick switcher, pickers, the slash
   menu, panels) meets a word in another form (files finds File explorer, terminals Open terminal) and ranks whole words
   above a name's start; in the palette, commands and panels come before settings that match as well.
