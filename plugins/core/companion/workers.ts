@@ -10,7 +10,7 @@ import { cardOf, choiceIn, commitsIn, endEvent, HANDED, inPlace, landedSaid, lan
   step, terminalOf, type Waits, type Where, worktreeOf } from "./jobs.ts"
 import { requestWriter } from "../../../core/vault.ts"
 import type { Moment } from "./plugin.ts"
-import { branchOf, checkoutNamed, type Found, githubOf, headOf, machineOfUrl, onlyHere, type Over, preferredMachine, refusal, repoOf, resolveHere, checkoutsLine, rootsLine, surfaceOf, tilde, urlsIn, watched } from "./where.ts"
+import { branchOf, checkoutNamed, type Found, githubOf, headOf, machineOfUrl, onlyHere, type Over, preferredMachine, refusal, repoOf, resolveHere, checkoutsLine, rootsLine, surfaceOf, tilde, unpushed, urlsIn, watched } from "./where.ts"
 
 /** What the plugin gives the jobs: the ask a handoff came from, whose a call is, its say, its action log, who an `as` names. */
 export type JobDeps = {
@@ -269,7 +269,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
 
   /** Where an ask over `o` (or `cwd`, or `repo`, as given) runs here: its folder, repo and base, or why it never runs
    *  here. A folder or repo another machine names is this machine's own checkout of it (each keeps its repos in its place). */
-  async function placeHere(o: Over, cwd: string, repo = ""): Promise<Found & { repo: string; base: string; refused: string; missing?: boolean; looked?: string; have?: string; live?: boolean }> {
+  async function placeHere(o: Over, cwd: string, repo = ""): Promise<Found & { repo: string; base: string; refused: string; missing?: boolean; looked?: string; have?: string; live?: boolean; carried?: boolean }> {
     const self = (await machines()).filter((m) => m.self).map((m) => hostOf(m.url)).filter(Boolean)
     const isDir = (d: string) => !!fs.statSync(d, { throwIfNoEntry: false })?.isDirectory()
     const asked = cwd.replace(/^~(?=$|\/)/, os.homedir())
@@ -318,9 +318,26 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     if (there.missing) ({ machine, there } = await elsewhere(str(p.cwd), repo, there))
     let moved = ""
     if (!asked && !machine) ({ machine, there, moved } = await preferred(o, there))
+    else if (repo && !machine && !str(p.cwd)) ({ machine, there } = await named(there))
     if (there.refused) throw new OpError(`it can't run there: ${there.refused}. Say so (where it would have run: ${tilde(there.cwd)})`, 403)
     return { machine, label: await labelOf(machine), cwd: there.cwd, repo: there.repo, why: there.why, ...(there.base ? { base: there.base } : {}), ...(there.preview ? { preview: there.preview } : {}),
-      ...(moved ? { moved } : {}), ...(there.live ? { live: true } : {}) }
+      ...(moved ? { moved } : {}), ...(there.live ? { live: true } : {}), ...(there.carried ? { carried: true } : {}) }
+  }
+  /** A repo named (no machine, no folder) and checked out here: to the machine jobs prefer when it has the repo too and
+   *  the commit a job starts from is pushed (its worktree never takes uncommitted changes), else here, saying why. */
+  async function named(here: Placed): Promise<{ machine: string; there: Placed }> {
+    const all = await machines(), self = all.find((x) => x.self), stay = (why: string) => ({ machine: "", there: { ...here, why: `${here.why} (${why}: here)` } })
+    const want = setting("jobs_machine").trim() || "auto", standalone = self ? !!self.standalone : !inDesktop()
+    const pick = preferredMachine(all, want, await plugin.ask<string>("machines:vault", ""), standalone)
+    if (here.refused) return { machine: "", there: here }
+    if (!pick.machine) return stay(pick.why || (want === "here" ? "jobs_machine is here" : standalone ? "this machine is the always-on one" : want === "auto" ? "no always-on machine with this vault is online" : "jobs_machine names this machine"))
+    const m = pick.machine, slug = await githubOf(here.cwd), left = slug ? await unpushed(here.cwd) : ""
+    if (!slug) return stay(`its repo isn't on GitHub, so ${m.label} can't have it`)
+    if (left) return stay(`${left} it starts from would be missing on ${m.label}`)
+    const far = await atMachine(m.id, "companion.where", { url: `https://github.com/${slug}` }, 6).catch(() => null) as Placed | null
+    if (!far || far.missing || !far.repo) return stay(far ? `not checked out on ${m.label}` : `${m.label} doesn't answer`)
+    // (its worktree there starts at the commit it would have here, pushed)
+    return { machine: m.id, there: { ...far, ...(here.base ? { base: here.base, carried: true } : {}), why: `${here.why}, all pushed: ${far.why}, on ${m.label} (${pick.why})` } }
   }
   /** An ask placed `here` moved to the machine jobs prefer: its checkout of the GitHub page's repo or of a pushed preview's
    *  (an editor project's), else its vault unless the repo is only here. `moved`: what the user watched here. */

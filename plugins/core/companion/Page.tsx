@@ -8,7 +8,7 @@ import { getState, subscribe } from "./live"
 import { Arrow } from "./Overlay"
 
 /** jobs.ts' JobCard, `at` its start (companion conversation). */
-export type JobCard = { id: string; title: string; state: string; link: string | null; at: number; result?: string; where?: string; now?: string; ended?: number }
+export type JobCard = { id: string; title: string; state: string; link: string | null; at: number; result?: string; where?: string; why?: string; now?: string; ended?: number }
 export type Day = { day: string; exchanges: Exchange[]; spent: Spent[]; jobs: JobCard[] }
 type UsageRow = { service: string; today: Spent; week: Spent; left?: { used: number; limit: number; resets?: number; unit: string }; billing?: string }
 
@@ -205,7 +205,7 @@ export function Job({ j }: { j: JobCard }) {
         <span className="min-w-0 flex-1 truncate text-[15px] font-medium">{j.title || "A job"}</span>
         {j.link && <Button look="quiet" size="small" onClick={() => openJob(j)} onContextMenu={jobMenu(j)}>Open</Button>}
       </div>
-      <div className="text-[13px] text-muted-foreground">
+      <div className="text-[13px] text-muted-foreground" data-tip={j.why ? `Runs there: ${j.why}` : undefined}>
         {st.word}{j.where ? ` · ${j.where}` : ""} · {long < 1 ? "under a minute" : `${Math.round(long)} min`}
       </div>
       {(j.now || j.result) && <div className="line-clamp-3 text-[13px] leading-[18px] select-text">{j.now && !/done|failed|stopped|review/.test(j.state) ? j.now : j.result}</div>}

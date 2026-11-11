@@ -73,6 +73,8 @@ export type Where = { machine: string; label: string; cwd: string; repo: string;
   why: string; base?: string; preview?: string
   /** What the user watched on the machine it left (a preview, an editor's project): it previews on its own machine. */
   moved?: string
+  /** Its `base` is the commit the machine it left had (a named repo moved, all pushed): fetched there if need be. */
+  carried?: boolean
   /** A coding job's own git worktree and branch (worktreeOf), beside its checkout `cwd`, which it never edits; `live`:
    *  that checkout is the running server's own. */
   tree?: string; branch?: string; live?: boolean
@@ -251,10 +253,12 @@ const saidOf = (j: Job) => (j.last?.text ? j.last : j.result?.text ? { text: j.r
 
 /** A job as the menu bar and the app list it (`waits`: what it waits on, while it needs the user). */
 export type JobCard = { id: string; title: string; state: JobState; link: string; unseen: boolean; at: number; started: number; ended?: number; where: string; now: string; took: string; result: string
+  /** Why it runs where it does (Where.why). */
+  why?: string
   waits?: { question: string; choices: string[] } }
 export const cardOf = (j: Job, now = Date.now()): JobCard => ({ id: j.id, title: j.title, state: j.queued?.length ? "waiting" : j.state, link: j.terminal ? linkOf(j) : "", unseen: unseen(j), at: j.at, started: j.started,
   ...(live(j.state) ? {} : { ended: j.at }), ...(j.state === "needs you" && j.waits ? { waits: { question: j.waits.question, choices: j.waits.choices } } : {}),
-  where: whereLine(j.where), now: queuedLine(j) || j.now, took: took(j, now),
+  where: whereLine(j.where), ...(j.where.why ? { why: j.where.why } : {}), now: queuedLine(j) || j.now, took: took(j, now),
   result: resultLine(j.result) || cut((j.result?.text ?? "").replace(/\s+/g, " ").trim(), 200) })
 
 const YES = /^(yes|y|yeah|yep|approve|allow|ok|okay|trust|accept|sure)$/i, NO = /^(no|n|nope|deny|reject|refuse|exit|disable|don't|cancel)$/i
@@ -305,9 +309,9 @@ export function worktreeOf(cwd: string, repo: string, id: string) {
 }
 /** How a coding job keeps off its checkout: its own worktree, made from the commit it was asked at, its packages
  *  installed there before checks; `moved`: it runs on another machine than the one they asked over. */
-function worktreeLine(w: Pick<Where, "cwd" | "base" | "tree" | "branch" | "live" | "label" | "moved">) {
+function worktreeLine(w: Pick<Where, "cwd" | "base" | "tree" | "branch" | "live" | "label" | "moved" | "carried">) {
   const at = w.base ? ` ${w.base.slice(0, 12)}` : ""
-  return [`Work in your own git worktree, never in ${w.cwd} itself: leave its working tree and branch as they are (${w.live ? "it's the running server's own checkout" : "it may be a live server's, or theirs mid-work"}). Before your first edit, make it: git -C ${w.cwd} worktree add ${w.tree} -b ${w.branch}${at}${w.moved ? " (fetch that commit first if need be)" : ""}; then edit, build, test and commit only there (absolute paths, or cd ${w.tree} && … in each command). It has none of the checkout's installed packages: before checks, install them there (npm ci, or as the repo's rules say; a symlink to the checkout's node_modules is fine until you add or change a package, then a real install in the worktree, never into the checkout's). Changing nothing (research, an answer): no worktree.`,
+  return [`Work in your own git worktree, never in ${w.cwd} itself: leave its working tree and branch as they are (${w.live ? "it's the running server's own checkout" : "it may be a live server's, or theirs mid-work"}). Before your first edit, make it: git -C ${w.cwd} worktree add ${w.tree} -b ${w.branch}${at}${w.moved || w.carried ? " (fetch that commit first if need be)" : ""}; then edit, build, test and commit only there (absolute paths, or cd ${w.tree} && … in each command). It has none of the checkout's installed packages: before checks, install them there (npm ci, or as the repo's rules say; a symlink to the checkout's node_modules is fine until you add or change a package, then a real install in the worktree, never into the checkout's). Changing nothing (research, an answer): no worktree.`,
     w.moved ? `They asked over ${w.moved}. You run on ${w.label} instead, from its checkout of that repo: try your change in ${w.label}'s own preview (its dev server or Tailscale Serve), not theirs. In your result, give its link and say it's on ${w.label}.` : ""].filter(Boolean).join(" ")
 }
 /** How a worker shows its change working (its proof), when the change shows on screen: a short demo video it records
@@ -320,7 +324,7 @@ export function proofTask(id: string) {
 export const WRITING = `What you write for them (a report, a proposal, a note): plain, short sentences anyone could follow, each thing called by its full name, no clipped shorthand. Anything about a UI (a proposal, its options, an explanation of how something looks or moves) shows it rather than tells it: each option as a real, high-fidelity picture, a screenshot of a quick prototype of it running on your own copy or a polished HTML mockup in the vault (one element per option), made into PNGs with vau html picture and embedded in the note (![[...png]]) with a line under each saying what it is. Never ASCII art or a layout described in words. Look at each picture before you show it.`
 /** What a worker is told: the task, the ask it came from, where to work (a coding job: its own worktree), how to end
  *  (theirs to review, or `land`: merged by itself once its checks pass; nothing else outward unasked), its proof. */
-export function jobTask(task: string, m: Moment | undefined, w?: Pick<Where, "cwd" | "repo" | "base" | "tree" | "branch" | "live" | "label" | "moved" | "preview" | "watched">, id?: string, land = false) {
+export function jobTask(task: string, m: Moment | undefined, w?: Pick<Where, "cwd" | "repo" | "base" | "tree" | "branch" | "live" | "label" | "moved" | "carried" | "preview" | "watched">, id?: string, land = false) {
   const asked = askLines(m), coding = !!w?.repo, watching = coding && !!w.watched, lands = coding && !watching && land && !!w.tree
   return [task.trim(), asked.length ? `The user asked for this through their companion in Vaultite:\n${asked.join("\n")}` : "",
     coding && w.tree ? worktreeLine(w) : "",
@@ -346,6 +350,7 @@ export function followTask(task: string, m: Moment | undefined, id?: string) {
 export function jobText(j: Job, now = Date.now()) {
   const r = j.result, l = j.last, said = saidOf(j)
   return [`${j.id} · ${j.state}${unseen(j) ? " (new)" : ""} · "${j.title}" · ${whereLine(j.where)} · ${took(j, now)}`,
+    j.where.why ? `why there: ${j.where.why}` : "",
     live(j.state) && j.now && !(said && j.now === gist(said.text)) ? `now: ${j.now}` : "",
     j.state === "needs you" && j.waits ? `waits on: ${waitsLine(j.waits)}${j.waits.choices.length ? ": companion job-answer with the user's choice, only on their words" : ""}` : "",
     j.queued?.length ? `${queuedLine(j)} (sent by itself then: nothing to retry): ${j.queued.map((q) => cut(plain(q.note), 120)).join(" | ")}` : "",

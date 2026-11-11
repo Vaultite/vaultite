@@ -977,6 +977,40 @@ setTimeout(draw, 300)
           ;[st, b] = await ask()
           check("handoff over a pushed preview the always-on machine hasn't checked out: it stays here, saying so",
             st === 200 && !b.link.includes("@") && /not checked out on Studio: here\)$/.test(b.why) && calls.some((c) => c.op === "companion.where"), [st, b])
+          // A repo named, with no machine nor folder: to the always-on machine when it has it and what a job starts from is pushed.
+          const Wh = await import("../../../plugins/core/companion/where.ts")
+          Wh.checkoutsIn(roots)
+          farHas = true
+          const byName = async () => {
+            calls.length = 0
+            const r = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Make the header blue", repo: "site", say: "On it." }, agent))
+            if (!String(r[1].link ?? "").includes("@")) ours.push(String(r[1].link ?? "").split("/").pop()!)
+            else await asItsTool(() => api("POST", "ops/companion.job-stop", { id: r[1].id }, agent))
+            return r
+          }
+          try {
+            const head = g("rev-parse", "HEAD").trim()
+            fs.appendFileSync(path.join(repo, "index.html"), "<p>wip</p>\n")
+            ;[st, b] = await byName()
+            const start = calls.find((c) => c.op === "terminal.start")
+            check("handoff naming a repo checked out here, its commits pushed: on the always-on machine (uncommitted changes a worktree never takes don't tie it), from this commit, saying why",
+              st === 200 && b.link.endsWith("@studio") && /^site is .*site here, all pushed: as asked, on Studio \(always on\)$/.test(b.why) &&
+              JSON.stringify(calls.find((c) => c.op === "companion.where")?.p) === JSON.stringify({ url: "https://github.com/lighthouse/site" }) &&
+              start?.p.cwd === "/home/alice/Projects/site" && (start?.p.prompt ?? "").includes(`${head.slice(0, 12)} (fetch that commit first if need be)`), [st, b, start?.p])
+            g("checkout", "--", "index.html")
+            fs.appendFileSync(path.join(repo, "index.html"), "<p>local</p>\n"); g("commit", "-qam", "local only")
+            ;[st, b] = await byName()
+            check("handoff naming a repo with a commit only here: it stays here, its why saying the commit would be missing there",
+              st === 200 && !b.link.includes("@") && /1 unpushed commit it starts from would be missing on Studio: here\)$/.test(b.why) && !calls.some((c) => c.op === "companion.where"), [st, b])
+            g("reset", "-q", "--hard", head)
+            await api("PATCH", "config/plugin/companion", { jobs_machine: "here" })
+            ;[st, b] = await byName()
+            check("handoff naming a repo with jobs_machine here: it stays here, saying so", st === 200 && !b.link.includes("@") && /jobs_machine is here: here\)$/.test(b.why), [st, b])
+            await api("PATCH", "config/plugin/companion", { jobs_machine: "auto" })
+            farHas = false
+            ;[st, b] = await byName()
+            check("handoff naming a repo the always-on machine hasn't checked out: it stays here, saying so", st === 200 && !b.link.includes("@") && /not checked out on Studio: here\)$/.test(b.why), [st, b])
+          } finally { Wh.checkoutsIn(); await api("PATCH", "config/plugin/companion", { jobs_machine: "auto" }) }
         } finally {
           await api("PATCH", "config/plugin/companion", { mode: "off" })
           pv.kill()

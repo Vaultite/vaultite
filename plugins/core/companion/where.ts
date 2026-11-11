@@ -177,6 +177,14 @@ export async function onlyHere(dir: string) {
   const n = status.split("\n").filter(Boolean).length, c = Number(ahead.trim()) || 0
   return [n ? `${n} uncommitted change${n > 1 ? "s" : ""}` : "", c ? `${c} unpushed commit${c > 1 ? "s" : ""}` : ""].filter(Boolean).join(" and ")
 }
+/** The commits a job's worktree here would start from that no remote has, in words ("" when none): its uncommitted
+ *  changes aren't counted, as a worktree never takes them. */
+export async function unpushed(dir: string) {
+  const ahead = await ran("git", ["rev-list", "--count", "HEAD", "--not", "--remotes"], dir)
+  if (ahead === null) return "commits git couldn't read"
+  const c = Number(ahead.trim()) || 0
+  return c ? `${c} unpushed commit${c > 1 ? "s" : ""}` : ""
+}
 /** Its branch now ("" when detached). */
 export const branchOf = async (dir: string) => { const b = (await run("git", ["rev-parse", "--abbrev-ref", "HEAD"], dir)).trim(); return b === "HEAD" ? "" : b }
 

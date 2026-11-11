@@ -130,7 +130,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   that machine, and opens Claude Code on the web with your prompt ready to send for a cloud session.
 - **Companion jobs find each machine's own copy of a repo**: a repo named by another Mac's folder (or by its name) runs
   in this Mac's own checkout of it, wherever it keeps it, and the companion says where it looked and what that Mac has
-  instead of guessing.
+  instead of guessing. With Jobs' machine on auto, a job naming a repo runs on the always-on machine when it has that
+  repo too and nothing the job needs is unpushed here; the job says why it runs where it does.
 - **The companion says several handoffs in one line**: passing one message on to three jobs says "Passed that on to
   three jobs: ..." once, not the same line three times. Asked to merge it all, it lands every job ready for review,
   and what it says about jobs comes from their list, never memory.
