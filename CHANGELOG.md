@@ -28,7 +28,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   optional. A setting's place from the palette (⌘↩) and Permissions open in Settings too, not over it.
 - **A cleaner first vault**: it opens on one Start here tab, not two; a layout looked at on the welcome card and left
   leaves nothing behind (switching layouts takes back the guide the last one added, while unchanged; Undo puts it
-  back); Start here says only what's true (Settings > AI, no word of AI until you say to use an agent); the agent's
+  back; a guide opens only the first time); Start here says only what's true (Settings > AI, no word of AI until you say to use an agent); the agent's
   page and AGENTS.md and CLAUDE.md come only with Use it; and answering Not now no longer marks Standard as Changed.
   Without AI its example notes are about notes (links, properties, daily notes, templates, the graph). A vault new to
   the app has AI off until the welcome card's yes, and skipping the card is Not now; turning AI on adds no pages. Set up

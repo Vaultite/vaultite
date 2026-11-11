@@ -122,6 +122,13 @@ export default async ($: VaultTest) => {
     await noAiApp.host().call("PATCH", "config/plugins", { ai: null })
     await noAiApp.state()
     check("new vault, AI turned on: none of its plugins' pages (they were switched on all along)", !fs.existsSync(path.join(noAi, "Dashboards")) && JSON.stringify(conf(noAi, "pages")?.pinned) === '["Start here.md"]', [fs.readdirSync(noAi), conf(noAi, "pages")])
+    // A layout's guide opens the first time it comes; taken back and come again, quietly (the user has read it).
+    type Applied = { open: string | null }
+    const first = await noAiApp.host().call("POST", "bundles/zen/apply", {}) as Applied
+    await noAiApp.host().call("POST", "bundles/standard/apply", {})
+    const again = await noAiApp.host().call("POST", "bundles/zen/apply", {}) as Applied
+    check("a layout's guide opens the first time it comes, not when it comes back", first.open === "Guides/How Zen works.md" && again.open !== first.open
+      && fs.existsSync(path.join(noAi, "Guides/How Zen works.md")), [first.open, again.open])
     const own = path.join(tmp, "Own notes")
     fs.mkdirSync(path.join(own, "Ideas"), { recursive: true })
     fs.writeFileSync(path.join(own, "Ideas/One.md"), "An idea.\n")

@@ -597,9 +597,9 @@ export type Previous = {
   /** The layouts' tweaks before it (tweaks/<id>.json, null: none), put back by a restore. */
   tweaks?: Record<string, Tweaks | null>
 }
-/** The bundle applied last (applied.json), the changes it was applied without, and the files it added (a layout's
- *  guide, the pages it pinned), which another layout applied over it takes back while they're as it wrote them. */
-type Applied = { bundle: string; name: string; at: string; skip: string[]; added?: Previous["added"] }
+/** The bundle applied last (applied.json), the changes it was applied without, the files it added (taken back by the
+ *  next layout while unchanged), and `guided`: the layouts whose guide this vault has had (it opens only the first time). */
+type Applied = { bundle: string; name: string; at: string; skip: string[]; added?: Previous["added"]; guided?: string[] }
 /** A bundle being tried (trial.json): Keep ends it, Restore puts back the setup from before it. */
 export type Trial = { bundle: string; name: string; at: string }
 
@@ -609,7 +609,8 @@ function readRecord<T>(v: Vault, rel: string, ok: (o: Item) => boolean): T | nul
 const readPrevious = (v: Vault) => readRecord<Previous>(v, PREVIOUS, (o) => typeof o.bundle === "string")
 const readApplied = (v: Vault) => {
   const a = readRecord<Applied>(v, APPLIED, (o) => typeof o.bundle === "string")
-  return a && { ...a, skip: strs(a.skip), added: Array.isArray(a.added) ? a.added.filter((x) => isObj(x) && typeof x.path === "string" && typeof x.hash === "string") : [] }
+  return a && { ...a, skip: strs(a.skip), guided: strs(a.guided),
+    added: Array.isArray(a.added) ? a.added.filter((x) => isObj(x) && typeof x.path === "string" && typeof x.hash === "string") : [] }
 }
 const readTrial = (v: Vault) => readRecord<Trial>(v, TRIAL, (o) => typeof o.bundle === "string")
 /** Write a record, or remove it (null). */
@@ -868,10 +869,11 @@ export async function apply(b: Bundle, host: Host, n: number | null, allowCode: 
   const kept = before ? merged(before, prev) : prev
   if (remember) writeRecord(v, PREVIOUS, kept)
   writeRecord(v, TRIAL, trial && remember ? { bundle: b.id, name, at: prev.at } : null)
-  if (layout) writeRecord(v, APPLIED, { bundle: b.id, name, at: prev.at, skip: [...left].sort(), ...(prev.added.length ? { added: prev.added } : {}) })
-  const guide = info(b, host).guide
+  const guide = info(b, host).guide, added = !!guide && p.files.add.includes(guide), guided = prev.was?.guided ?? []
+  const guidedNow = added && !guided.includes(b.id) ? [...guided, b.id] : guided
+  if (layout) writeRecord(v, APPLIED, { bundle: b.id, name, at: prev.at, skip: [...left].sort(), ...(prev.added.length ? { added: prev.added } : {}), ...(guidedNow.length ? { guided: guidedNow } : {}) })
   return { applied: name, plan: { ...p, pins }, previous: remember ? { bundle: kept.bundle, name: kept.name, at: kept.at } : null,
-    trial: trial && remember ? { id: b.id, name, at: prev.at } : null, open: quiet ? null : (guide && p.files.add.includes(guide) ? guide : pins?.list[0] ?? null) }
+    trial: trial && remember ? { id: b.id, name, at: prev.at } : null, open: quiet ? null : (added && !guided.includes(b.id) ? guide : pins?.list[0] ?? null) }
 }
 
 /** Put back the setup from before the last apply (from before a trial, while one lasts), and forget it. Changes made
@@ -1149,7 +1151,8 @@ async function save(host: Host, o: SaveOptions) {
   // (the setup is this bundle's now: its card is the one in use, untweaked; the layout it came from, its tweaks saved
   // in it, is itself again)
   const bundle = info(find(v, id), host)
-  writeRecord(v, APPLIED, { bundle: id, name: bundle.name, at: new Date().toISOString(), skip: [] })
+  const guided = readApplied(v)?.guided ?? []
+  writeRecord(v, APPLIED, { bundle: id, name: bundle.name, at: new Date().toISOString(), skip: [], ...(guided.length ? { guided } : {}) })
   for (const x of new Set([id, base ?? id])) writeTweaks(v, x, null)
   return { bundle: { ...bundle, tweaked: false } }
 }
