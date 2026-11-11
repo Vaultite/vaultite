@@ -13,7 +13,7 @@ import { _electron } from "playwright-core"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, qa, until, wait } from "./lib/qa.mjs"
+import { ROOT, qa, until, wait, uiAt } from "./lib/qa.mjs"
 
 const { args: [VAULT], check, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-sitesview-"))
@@ -67,7 +67,7 @@ await app.evaluate(({ BaseWindow, ipcMain }, fix) => {
     return { ok: true }
   })
 }, FIX)
-const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+const ui = (body) => uiAt(origin)(body)
 await ui({ action: "command", id: "web:sites-tab" })
 const personal = win.locator("[data-web-logins-section=personal]")
 await until(async () => (await personal.locator("[data-web-site]").count()) > 0, 15000)
@@ -155,7 +155,7 @@ await win.keyboard.press("Escape")
 await win.locator("[data-web-page] [data-web-container]:visible").hover()
 await wait(500)
 await ui({ action: "command", id: "web:sites-tab" })
-await until(async () => (await work.isVisible()), 5000)
+check("… listed again, Work's Google login gone", await until(async () => (await work.isVisible()) && !(await work.locator("[data-web-site='google.com']").count()), 5000), await work.innerText().catch(() => null))
 
 const data = () => JSON.parse(fs.readFileSync(path.join(VAULT, ".vaultite/plugins/web-viewer/data.json"), "utf8"))
 const moves = () => app.evaluate(() => globalThis.moves.map((m) => m.join(" ")))
