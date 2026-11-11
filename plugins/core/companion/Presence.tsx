@@ -5,7 +5,7 @@ import { cn, type FileHead, menuBelow, menuFor, type MenuItem } from "@vaultite"
 import { type Agent, getState, goToPerson, liveAgents, subscribe, unread } from "./live"
 import { follow, showSaid } from "./Overlay"
 import { usePhone } from "./Phone"
-import { STATUS } from "./look"
+import { STATUS } from "../../../core/desktop/cursor"
 import { agentMenu } from "./session"
 
 const FACES = 4

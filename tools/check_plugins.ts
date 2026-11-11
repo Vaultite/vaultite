@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 import { parseAst } from "rolldown/parseAst"
 import { declsOf, drawnBy, drawsOf, optionNotes, parseOptions, type BlockDecls } from "../core/blocks.ts"
 import { blocksIn } from "../core/sections.ts"
-import { blockProblems, iconNames, listedPackage, nodeSide, PLUGIN_PACKAGES, pluginProblems, SHARED, SHARED_EDITOR, walk } from "../core/rules.ts"
+import { blockProblems, iconNames, inside, listedPackage, nodeSide, PLUGIN_PACKAGES, pluginProblems, SHARED, SHARED_EDITOR, walk } from "../core/rules.ts"
 import { ICON_NAME } from "../core/pluginmeta.ts"
 import { opProblems } from "../core/ops.ts"
 
@@ -445,6 +445,29 @@ const UNTYPED: Record<string, string> = {
 for (const f of walk(path.join(ROOT, "electron", "browser")).filter((f) => /\.(ts|cjs|js)$/.test(f)))
   for (const m of fs.readFileSync(f, "utf8").matchAll(/(?:from|import\(|require\()\s*["'](\.\.\/[^"']*)["']/g))
     problems.push(`${path.relative(ROOT, f)}: imports ${m[1]}: the engine imports nothing of the app's (setEngineHost)`)
+
+// The core imports no plugin: the server, the desktop app and the app's own pages reach one only by loading it. What
+// they share is the core's (the desktop app's contracts: core/desktop/). Only the loaders below name plugins' files.
+const LOADERS: Record<string, string> = {
+  "web/src/core/plugins.ts": "the registry: every app plugin's manifest, module and pages (import.meta.glob)",
+  "web/src/core/vaultPlugins.ts": "the modules app plugins export to vault plugins, each loaded when asked (import.meta.glob)",
+}
+{
+  const SPEC = /(?:\bfrom\s*|\bimport\s*\(\s*|^\s*import\s+|\brequire\s*\(\s*)["']([^"']+)["']|import\.meta\.glob\b[^(]*\(([^)]*)\)/gm
+  const loading = new Set<string>()
+  const code = ["core", "electron", path.join("web", "src")].flatMap((d) => walk(path.join(ROOT, d))).concat(path.join(ROOT, "server.ts"))
+  for (const f of code.filter((f) => /\.(ts|tsx|mts|mjs|cjs|js)$/.test(f))) {
+    const rel = path.relative(ROOT, f).split(path.sep).join("/"), text = fs.readFileSync(f, "utf8")
+    for (const m of text.matchAll(SPEC)) {
+      for (const spec of m[1] !== undefined ? [m[1]] : [...m[2].matchAll(/["'`]!?([^"'`]+)["'`]/g)].map((x) => x[1])) {
+        if (!spec.startsWith("@plugins/") && !(spec.startsWith(".") && inside(PLUGINS, path.resolve(path.dirname(f), spec)))) continue
+        if (LOADERS[rel]) { loading.add(rel); continue }
+        problems.push(`${rel}:${text.slice(0, m.index).split("\n").length}: imports ${spec}: the core imports no plugin (what both use goes in core/, the desktop app's contracts in core/desktop/)`)
+      }
+    }
+  }
+  for (const f of Object.keys(LOADERS)) if (!loading.has(f)) problems.push(`tools/check_plugins.ts: LOADERS names ${f}, which loads no plugin's files now: take it out`)
+}
 
 // The server and the app import only what the built app ships: `dependencies` and theirs, not peers or devDependencies
 // (zod, only the Agent SDK's peer, worked from source and was missing from the app: its chat keeper didn't start).

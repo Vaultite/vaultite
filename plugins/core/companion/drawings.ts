@@ -3,8 +3,8 @@
 import fs from "node:fs"
 import { type OpCtx, OpError, type Plugin } from "../../../core/plugins.ts"
 import { appPlaces, checkMarks, type Drawing, drawingText, editMarks, findsOf, idsIn, type KeptFile, type Mark, type Media, pruned, type Rect, sentences, snapMarks, type Spot, spots,
-  toExcalidraw, unshown, lifeOf, isAnswer } from "./screenmarks.ts"
-import { fileTitle } from "./names.ts"
+  toExcalidraw, unshown, lifeOf, isAnswer } from "../../../core/desktop/screenmarks.ts"
+import { fileTitle } from "../../../core/desktop/names.ts"
 
 /** A drawing left up this long with nothing new goes by itself. */
 const IDLE_MS = 5 * 60_000

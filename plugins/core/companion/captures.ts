@@ -3,11 +3,11 @@
 import path from "node:path"
 import type { OpCtx, Plugin } from "../../../core/plugins.ts"
 import { OpError } from "../../../core/plugins.ts"
-import { captureTitle, type Narration, narrationLines, type Rect } from "./clips.ts"
+import { captureTitle, type Narration, narrationLines, type Rect } from "../../../core/desktop/clips.ts"
 import { type Job, live, type Where } from "./jobs.ts"
 import type { Moment } from "./plugin.ts"
 import type { Found, Over } from "./where.ts"
-import { localStamp } from "./names.ts"
+import { localStamp } from "../../../core/desktop/names.ts"
 import { freeBase, ownCapture, saveFiles, vaultFileOn } from "./vaultfiles.ts"
 
 export type Capture = { kind: "recording" | "replay"; job?: string; clip: string; ms: number; width: number; height: number; frames: { t: number; file: string }[]

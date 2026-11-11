@@ -1,7 +1,7 @@
 // The companion's voice apart from Electron (tools/test/vault/voice.ts): says cut in pieces as they stream, made by cloud
 // voices a few ahead, played in order; one that fails (offline, dropped) hands on to the next, then this Mac's, from there.
-import { type Heard, sentences } from "../plugins/core/companion/screenmarks.ts"
-import { chunker, languageOf, sayable } from "../plugins/core/companion/spoken.ts"
+import { type Heard, sentences } from "../core/desktop/screenmarks.ts"
+import { chunker, languageOf, sayable } from "../core/desktop/spoken.ts"
 
 /** A piece of an answer: its plain words, in its language (two letters). `n` counts every piece ever, so what a player
  *  says late of an older one is told apart. */

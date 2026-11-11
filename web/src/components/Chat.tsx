@@ -1,5 +1,5 @@
 // A cursor's conversation, clicked open: its last words and what the user asked it, above a box to ask it more. One look
-// in the window (Overlay.tsx's Popover) and over the screen (web/src/screen.tsx's panel); each gives its own words' drawing.
+// in the window (the companion's Popover) and over the screen (screen.tsx's panel); each gives its own words' drawing.
 import { useLayoutEffect, useRef, type ReactNode } from "react"
 import { Ellipsis, X } from "lucide-react"
 

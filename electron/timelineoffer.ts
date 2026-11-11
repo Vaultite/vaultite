@@ -1,6 +1,6 @@
 /** The timeline off (their choice) when they ask for what needs it: one line, said and on a card by their pointer, offers
  *  to turn it on (its button or a spoken yes), never a dead end; on, it keeps from then, and says what came before wasn't. */
-import { answerOf } from "../plugins/core/companion/yesno.ts"
+import { answerOf } from "../core/desktop/yesno.ts"
 import type { Answer } from "./takeoverlogic.ts"
 
 /** What needed it: a replay of the last seconds, or a skill from what they just did. */

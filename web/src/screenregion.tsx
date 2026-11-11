@@ -2,7 +2,7 @@
 // corners resize it, the pointer goes through inside; its pill records, stops, sends the last seconds, closes.
 import { useEffect, useRef, useState } from "react"
 import { History, X } from "lucide-react"
-import { clock, type Rect, type RegionScene } from "../../plugins/core/companion/clips"
+import { clock, type Rect, type RegionScene } from "../../core/desktop/clips"
 import { HOLD } from "./screendraw/hold"
 
 type Edge = "move" | "nw" | "ne" | "sw" | "se"

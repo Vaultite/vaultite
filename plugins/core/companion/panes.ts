@@ -3,7 +3,7 @@
 import { Eye } from "lucide-react"
 import { focusedPane, getStore, getTabLayout, noticesSince, notifyError, onTabLayoutChange, op, panesOf, revealUi, setUiMarks, shownTab, tabLabel, tabOfPane, type UiMark } from "@vaultite"
 import { checkDom, domTree, domView, resolveDom, uiElement } from "./uidom"
-import { actionable, parseCondition, stateWords, stepEffect, type State, type Target } from "./uimodel"
+import { actionable, parseCondition, stateWords, stepEffect, type State, type Target } from "../../../core/desktop/uimodel"
 import { getState, sayWhereSoon, setPanes, subscribe, tintOf, uiChanged, type Follow } from "./live"
 
 /** The most a window tells: a vault's tabs, rarely this many. */

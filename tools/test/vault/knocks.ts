@@ -2,7 +2,7 @@ import type { Any, VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
   const { api, check } = $
-  const K = await import("../../../plugins/core/companion/knocks.ts")
+  const K = await import("../../../core/desktop/knocks.ts")
   const I = await import("../../../electron/islandlogic.ts")
   const H = await import("../../../electron/helperlogic.ts")
   const A = await import("../../../core/agenttint.ts")

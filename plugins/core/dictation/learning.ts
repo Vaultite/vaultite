@@ -1,10 +1,9 @@
 // Words just dictated, watched a minute for the user's fixes (Wispr Flow's window): what a fix teaches goes into the
 // dictionary, said with a toast and its Undo. The editor, terminals and fields each say how to read their words back.
 import { notify, op } from "@vaultite"
-import { learnedList, type Teach, watchWith } from "./learn.ts"
-import type { Entry } from "./words.ts"
+import { type Entry, learnedList, type Teach, watchWith } from "../../../core/desktop/dictationlearn.ts"
 
-export { SETTLE_MS, WATCH_MS, type Watch } from "./learn.ts"
+export { SETTLE_MS, WATCH_MS, type Watch } from "../../../core/desktop/dictationlearn.ts"
 
 const inApp: Teach = {
   add: async (e) => (await op<{ added: Entry | null }>("dictation.add", { ...e, fixed: true }))?.added ?? null,

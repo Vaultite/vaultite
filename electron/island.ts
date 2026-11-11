@@ -6,8 +6,8 @@ import { overlayWindow, takesPointer } from "./overlaywin.ts"
 import { quiet } from "./quiet.ts"
 import { listen, onFree } from "./helperscope.ts"
 import { islandSpot, islandsOn, type OtherWindow, type Rect, roomAt, type Spot, windowAt } from "./islandlogic.ts"
-import type { Knock, Presence } from "../plugins/core/companion/knocks.ts"
-import type { WalkScene } from "../plugins/core/companion/walks.ts"
+import type { Knock, Presence } from "../core/desktop/knocks.ts"
+import type { WalkScene } from "../core/desktop/walks.ts"
 
 /** What the page draws: the presences, the knock showing (`left`: ms of its grace left), a QA walk or lesson on, where it
  *  sits in its window. */

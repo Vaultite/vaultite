@@ -2,9 +2,9 @@
  *  with a frame and clip from the timeline if screen recording is allowed (never asked); done sends them (walk-send). */
 import { screen } from "electron"
 import path from "node:path"
-import { anchorOf, anchorText } from "../plugins/core/companion/anchor.ts"
-import type { Rect, Thing } from "../plugins/core/companion/uimodel.ts"
-import { countText, dwellAt, type Point, sentences, thingAt, walkCommand, type WalkItem, type WalkPlace, type WalkScene } from "../plugins/core/companion/walks.ts"
+import { anchorOf, anchorText } from "../core/desktop/anchor.ts"
+import type { Rect, Thing } from "../core/desktop/uimodel.ts"
+import { countText, dwellAt, type Point, sentences, thingAt, walkCommand, type WalkItem, type WalkPlace, type WalkScene } from "../core/desktop/walks.ts"
 import { captureDir } from "./recorder.ts"
 import { happened, queryTimeline, timelineFilmed } from "./timeline.ts"
 

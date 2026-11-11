@@ -2,7 +2,7 @@
 // user is at), the sessions' presences worked out here from the terminals of every machine, both sent to the helpers.
 import type { OpCtx, Plugin } from "../../../core/plugins.ts"
 import { OpError } from "../../../core/plugins.ts"
-import { actOn, addKnock, duration, expire, type Knock, type KnockAct, makeKnock, over, type Presence, presencesOf, type PresenceState, type TermRow, URGENCIES } from "./knocks.ts"
+import { actOn, addKnock, duration, expire, type Knock, type KnockAct, makeKnock, over, type Presence, presencesOf, type PresenceState, type TermRow, URGENCIES } from "../../../core/desktop/knocks.ts"
 import { type Job, terminalOf } from "./jobs.ts"
 
 const str = (v: unknown) => (typeof v === "string" ? v : "")

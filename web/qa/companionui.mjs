@@ -1,4 +1,4 @@
-// The companion's one UI model in Vaultite's window (plugins/core/companion/uimodel.ts, uidom.ts, panes.ts): tasks any
+// The companion's one UI model in Vaultite's window (core/desktop/uimodel.ts, uidom.ts, panes.ts): tasks any
 // user asks, by role and name, each read back: fold and open a section, show a place, select a tab, find a setting's
 // switch, read a state with check, and an act that changes nothing says so. Throwaway server only (it opens tabs).
 //   node web/qa/companionui.mjs <base url> [out dir]

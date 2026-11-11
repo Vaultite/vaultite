@@ -2,7 +2,7 @@
 // window is, a ui model check and what shows now, each asked over the companion's socket.
 import { interfaceZoom } from "./locate.ts"
 import { checkDom, domThings, domView } from "./uidom.ts"
-import type { Condition, Rect } from "./uimodel.ts"
+import type { Condition, Rect } from "../../../core/desktop/uimodel.ts"
 
 /** The window's frame on screen, and a CSS px of it as screen points. */
 function toScreen() {

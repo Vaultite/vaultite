@@ -9,7 +9,7 @@ export default async ($: VaultTest) => {
   const { check, tmp, sleep } = $
   // The companion's voice (electron/voice.ts): words made plain and cut as they stream, made ahead, played in order, this
   // Mac's from where the cloud stopped. Nothing plays a sound: the player writes a file, the cloud is a stand-in.
-  const { chunker, languageIn, languageOf, sayable, speakable } = await import("../../../plugins/core/companion/spoken.ts")
+  const { chunker, languageIn, languageOf, sayable, speakable } = await import("../../../core/desktop/spoken.ts")
   {
     check("voice: Markdown said as plain words: no code, ids or addresses, a link by its words",
       speakable("Click **Share** (a3), then see [the guide](https://x.com/g) or https://example.com/a. Run:\n```\nnpm test\n```\nDone 🎉") ===

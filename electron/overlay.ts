@@ -6,7 +6,7 @@ import { besidePointer, grownAt, panelAt, pointerBox, type Point, reaching, type
 import { drawingFor, type Drawing, type DrawAct, offered } from "./drawing.ts"
 import { overlayWindow, takesPointer } from "./overlaywin.ts"
 import { listen, onFree } from "./helperscope.ts"
-import { rectOf, spots } from "../plugins/core/companion/screenmarks.ts"
+import { rectOf, spots } from "../core/desktop/screenmarks.ts"
 
 /** What the user does to it: clicks a bubble (its conversation opens by its cursor, `at`: the screen's), stops dictating. */
 export type OverlayActs = { open: (name: string, at: Point) => void; stop: () => void

@@ -1,7 +1,7 @@
 // The companions' layers over the screen (companion draw --marks), mounted by screen.tsx: what electron/overlay.ts sends
 // this display, each session's layer drawn by Draw.tsx (loaded with the first one); what the user presses goes back.
 import { lazy, Suspense, useSyncExternalStore } from "react"
-import type { Drawing, Rect } from "../../../plugins/core/companion/screenmarks"
+import type { Drawing, Rect } from "../../../core/desktop/screenmarks"
 import type { PenScript } from "../core/pilot"
 import type { Here } from "./layout"
 

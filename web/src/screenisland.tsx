@@ -4,8 +4,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Undo2, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { HOLD } from "./screendraw/hold"
-import { type Knock, type Presence, PRESENCE_GROUPS } from "../../plugins/core/companion/knocks"
-import { countText, type WalkScene } from "../../plugins/core/companion/walks"
+import { type Knock, type Presence, PRESENCE_GROUPS } from "../../core/desktop/knocks"
+import { countText, type WalkScene } from "../../core/desktop/walks"
 
 type Spot = { x: number; y: number; bar: number; align: "left" | "centre"; attached: boolean; room?: number }
 export type IslandData = { presences: Presence[]; knock: (Knock & { tint: string; left: number }) | null; walk: WalkScene | null; spot: Spot; left: number; width: number }

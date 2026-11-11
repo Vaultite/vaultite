@@ -1,4 +1,4 @@
-// Region capture's rules (the desktop app's capture.ts runs them, captures.ts sends what it made): what a Talk key's
+// Region capture's rules (electron/capture.ts runs them, the companion's captures.ts sends what it made): a Talk key's
 // words ask of it, the box a drag makes and its moves over a clip, their words by time. No Electron: the tests read it.
 import { fileTitle } from "./names.ts"
 export type Rect = { x: number; y: number; width: number; height: number }

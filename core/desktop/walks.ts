@@ -1,4 +1,4 @@
-// A QA walk's rules (the desktop app's walk.ts runs one, walkops.ts sends it): the words that start, scratch and end it,
+// A QA walk's rules (electron/walk.ts runs one, the companion's walkops.ts sends it): the words that start, scratch and end it,
 // its sentences, where the pointer rested as each was said, and the project each item is in. No Node: the tests read it.
 import { type Anchor, anchorText } from "./anchor.ts"
 import type { Rect, Thing } from "./uimodel.ts"

@@ -1,9 +1,9 @@
 /** Teach by showing (companion/teach.ts' rules): "watch me" keeps the timeline for a lesson, each act on its thing and
  *  their words; "that's it" makes it a draft tour or skill (companion.teach), as does "make what I just did a skill". */
-import { ACTS, type El, type Kind } from "../plugins/core/screen/timeline.ts"
-import { clickedThing, keptValue, recentStretch, teachCommand, type Act, type As } from "../plugins/core/companion/teach.ts"
-import type { Rect, Thing } from "../plugins/core/companion/uimodel.ts"
-import type { WalkScene } from "../plugins/core/companion/walks.ts"
+import { ACTS, type El, type Kind } from "../core/desktop/screentimeline.ts"
+import { clickedThing, keptValue, recentStretch, teachCommand, type Act, type As } from "../core/desktop/teach.ts"
+import type { Rect, Thing } from "../core/desktop/uimodel.ts"
+import type { WalkScene } from "../core/desktop/walks.ts"
 import { happened, queryTimeline, timelineOn } from "./timeline.ts"
 
 type Point = { x: number; y: number }

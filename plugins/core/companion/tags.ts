@@ -1,6 +1,6 @@
 // The summoned companion's words as it writes them: plain text, spoken as it streams, with tags inline for pointing and
 // marks ("It's this one [point a3], and you send it from here [ring a5 "Send"]."). No Node: the tests read it too.
-import { sentences } from "./screenmarks.ts"
+import { sentences } from "../../../core/desktop/screenmarks.ts"
 
 /** Where a tag points: an element the ask listed (a3), a screen point or rect, words to find, a pane, the app's UI, a
  *  page's element (e12). */
@@ -101,7 +101,7 @@ export function beatOf(said: string, offset: number) {
   return !n ? 0 : /[.!?…:]\s*$/.test(before) ? n : n - 1
 }
 
-/** A mark tag as draw's marks have it (screenmarks.ts), with its beat; null for a point (its cursor flies there). */
+/** A mark tag as draw's marks have it (core/desktop/screenmarks.ts), with its beat; null for a point (its cursor flies there). */
 export function markOf(t: Tag, beat?: number): Record<string, unknown> | null {
   const spot = (s: Spot) => ("ax" in s ? { el: s.ax } : "sx" in s ? (s.w ? [s.sx, s.sy, s.w, s.h] : [s.sx, s.sy]) : s)
   if (t.kind === "point") return null

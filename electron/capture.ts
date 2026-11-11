@@ -1,7 +1,7 @@
 /** Region capture: a box dragged with the Talk key held; "record this" records it, "stop" sends it, "that, just now"
  *  sends the timeline's last seconds; companion.capture hands what's sent to the job on that surface, or saves it. */
 import { screen } from "electron"
-import { type BoxAt, boxesSince, boxMoved, boxOf, captureCommand, type Narration, type Point, RECORD_MOST_MS, type Rect, type RegionScene, REPLAY_MS } from "../plugins/core/companion/clips.ts"
+import { type BoxAt, boxesSince, boxMoved, boxOf, captureCommand, type Narration, type Point, RECORD_MOST_MS, type Rect, type RegionScene, REPLAY_MS } from "../core/desktop/clips.ts"
 import { type Clip, holdVideo, onVideoStopped, REAL, saveClip, stopVideo, videoAt } from "./recorder.ts"
 import { happened, queryTimeline, timelineOn, timelineRefollow } from "./timeline.ts"
 

@@ -1,8 +1,8 @@
 // The dictionary (Dictionary.md, type: dictionary): one list item a line, a word dictation should know ("- Vorssaint") or
 // "said: written" ("- Olympicos: Olimpicos"); the rest of the note is the user's. No Node, no DOM: the app reads it too.
 import { parseReplacement } from "../../../core/dictationtext.ts"
+import type { Entry } from "../../../core/desktop/dictationlearn.ts"
 
-export type Entry = { word: string; said?: string }
 export type Dictionary = { words: string[]; replacements: [string, string][] }
 
 const ITEM = /^(\s*[-*+]\s+)(?!\[[ xX]\])(.*\S)\s*$/

@@ -1,6 +1,6 @@
 // Where a drawing's parts go on one display (no DOM): labels beside what they name, never over it and on screen; cards on
 // calm space, clear of what's marked; arrows bent between two things.
-import { type Area, CARDS, type Drawing, isAnswer, type Mark, type Media, PAPER, type Rect, rectOf, type Spot } from "../../../plugins/core/companion/screenmarks"
+import { type Area, CARDS, type Drawing, isAnswer, type Mark, type Media, PAPER, type Rect, rectOf, type Spot } from "../../../core/desktop/screenmarks"
 
 export type Size = { w: number; h: number }
 export type Pt = { x: number; y: number }

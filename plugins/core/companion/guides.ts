@@ -1,6 +1,6 @@
 // Guides: the user's notes on an app or a site (type: guide, in Guides/), loaded with a summoned ask there. No Node.
 import type { Moment } from "./plugin.ts"
-import { hostOf, siteIn } from "./places.ts"
+import { hostOf, siteIn } from "../../../core/desktop/places.ts"
 
 export type Guide = { id: string; title: string; app: string[]; site: string[]; body: string }
 

@@ -5,7 +5,7 @@ import { spawn, type ChildProcess } from "node:child_process"
 import path from "node:path"
 import { cloudVoice, type CloudConfig, type CloudVoice } from "./tts.ts"
 import { voice, type Voice } from "./voicelogic.ts"
-import type { Heard } from "../plugins/core/companion/screenmarks.ts"
+import type { Heard } from "../core/desktop/screenmarks.ts"
 import { voiceSwift } from "./swiftbuild.ts"
 
 /** Its helper goes after this long unused (its process, and the audio device with it). */

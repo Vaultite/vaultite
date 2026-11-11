@@ -1,12 +1,13 @@
 // Teach by showing on the server: a lesson (what the desktop app watched, or the timeline's last minutes) made a draft
-// tour in Guides/ or a draft skill in .agents/skills/. The rules are teach.ts'; tours.ts plays and promotes them.
+// tour in Guides/ or a draft skill in .agents/skills/. The rules are lesson.ts'; tours.ts plays and promotes them.
 import { type OpCtx, OpError, type Plugin } from "../../../core/plugins.ts"
 import fs from "node:fs"
 import { dirname } from "node:path"
 import { readText, writeText } from "../../../core/vault.ts"
-import { type Act, type As, kindFor, type Lesson, lessonSkillText, lessonTitle, lessonTour, lessonTourText, recentStretch, skillName } from "./teach.ts"
-import { fileTitle } from "./names.ts"
-import { offWhy } from "../screen/timeline.ts"
+import { type Act, type As, recentStretch } from "../../../core/desktop/teach.ts"
+import { kindFor, type Lesson, lessonSkillText, lessonTitle, lessonTour, lessonTourText, skillName } from "./lesson.ts"
+import { fileTitle } from "../../../core/desktop/names.ts"
+import { offWhy } from "../../../core/desktop/screentimeline.ts"
 
 const KINDS = ["app", "click", "key", "field", "said"]
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v.trim() ? (Number.isFinite(Number(v)) ? Number(v) : Date.parse(v)) : undefined)

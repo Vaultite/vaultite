@@ -2,7 +2,7 @@
 // (perfect-freehand's outline, filled) or a sketch (rough.js' paths).
 import { getStroke } from "perfect-freehand"
 import rough from "roughjs"
-import type { Rect } from "../../../plugins/core/companion/screenmarks"
+import type { Rect } from "../../../core/desktop/screenmarks"
 import { type Pt, type RingShape } from "./layout"
 
 export type Line = [number, number][]

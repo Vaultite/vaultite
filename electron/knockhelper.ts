@@ -1,11 +1,11 @@
-// The helper's side of knocks (companion/knocks.ts): each comes up at a pause it sees (no one talking, the user still
-// and at this Mac), waits its grace (a ready one's 15 s hold) for "not now", then is told; island.ts draws it.
+// The helper's side of knocks (core/desktop/knocks.ts): each comes up at a pause it sees (no one talking, the user
+// still and at this Mac), waits its grace (a ready one's 15 s hold) for "not now", then is told; island.ts draws it.
 import { powerMonitor, screen } from "electron"
-import { actOn, graceOver, graceWaits, HEARD_MS, holdOf, type Knock, type KnockAct, knockReply, over, pick, type Presence } from "../plugins/core/companion/knocks.ts"
+import { actOn, graceOver, graceWaits, HEARD_MS, holdOf, type Knock, type KnockAct, knockReply, over, pick, type Presence } from "../core/desktop/knocks.ts"
 import { listen } from "./helperscope.ts"
 import { islandActs, islandReady, presenceAt, showIsland, spotNow } from "./island.ts"
 import type { OtherWindow, Rect, Spot } from "./islandlogic.ts"
-import type { WalkScene } from "../plugins/core/companion/walks.ts"
+import type { WalkScene } from "../core/desktop/walks.ts"
 import { agentTint } from "../core/agenttint.ts"
 
 export type KnockHost = {

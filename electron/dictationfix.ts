@@ -1,6 +1,6 @@
 // Words dictated into another app's field, followed a minute for the user's fixes (screen.swift `follow`), learned as in
-// Vaultite (plugins/core/dictation/learn.ts). Its text is held only while followed; only a fix's word is kept. No Electron.
-import { type Teach, watchWith } from "../plugins/core/dictation/learn.ts"
+// Vaultite (core/desktop/dictationlearn.ts). Its text is held only while followed; only a fix's word is kept. No Electron.
+import { type Teach, watchWith } from "../core/desktop/dictationlearn.ts"
 
 /** Where words said went in a field's text: what's before and after them; null when they aren't there as said. */
 export function placeOf(value: string, said: string, caret = -1): { before: string; after: string } | null {

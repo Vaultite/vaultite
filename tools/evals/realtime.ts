@@ -9,7 +9,7 @@ import { WebSocket } from "ws"
 import { freePort, stopTerminals, testServer, waitFor } from "../test/lib.ts"
 import { realtimeFront, type Route, type TurnLog } from "../../electron/realtimefront.ts"
 import { cloudVoice } from "../../electron/tts.ts"
-import { chunker, speakable } from "../../plugins/core/companion/spoken.ts"
+import { chunker, speakable } from "../../core/desktop/spoken.ts"
 
 const argv = process.argv.slice(2)
 const opt = (f: string) => { const i = argv.indexOf(f); return i >= 0 ? argv.splice(i, 2)[1] : undefined }

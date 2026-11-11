@@ -10,7 +10,7 @@ export default async ($: VaultTest) => {
   const { VAULT, api, app, check } = $
   // QA walks: the words that start, scratch and end one, its sentences, where the pointer rested, the thing there, and
   // the project each item is in; done, one job per project (companion.walk-send).
-  const W = await import("../../../plugins/core/companion/walks.ts")
+  const W = await import("../../../core/desktop/walks.ts")
   {
     const cmd = (t: string, on = false) => { const c = W.walkCommand(t, on); return c ? `${c.do}|${c.rest}` : "" }
     check("walk: start a QA walk (and its ways of saying it, the recognizer's slips too) starts one, what follows its first item",
@@ -57,7 +57,7 @@ export default async ($: VaultTest) => {
 
   // The timeline names the thing pointed at as they said something.
   {
-    const T = await import("../../../plugins/core/screen/timeline.ts")
+    const T = await import("../../../core/desktop/screentimeline.ts")
     check("walk: the timeline has the thing pointed at as an item was said",
       T.timelineLines([{ t: 1500, kind: "thing", x: 710, y: 20, thing: 'button "Share" in "Toolbar"' }], 0).join() === '[1.5 s] pointing at button "Share" in "Toolbar" (710,20)')
   }

@@ -5,7 +5,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { captureSwift } from "./swiftbuild.ts"
 import { lineHelper } from "./linehelper.ts"
-import type { BoxAt, Point, Rect } from "../plugins/core/companion/clips.ts"
+import type { BoxAt, Point, Rect } from "../core/desktop/clips.ts"
 
 /** A scripted copy records nothing, unless its QA asks for the real screen (web/qa/capture.mjs). */
 export const REAL = !process.env.VAULTITE_QUIET || !!process.env.VAULTITE_CAPTURE

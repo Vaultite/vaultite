@@ -1,6 +1,6 @@
-// Condition over time: the ui model's checks (uimodel.ts) with what happens (click, type, idle, after), joined (and,
-// or) and bounded (within 10s). Waiting watches one over time. No Node: the tests read it.
-import { type Condition as Check, conditionText as checkText, normWords, parseCondition as parseCheck } from "./uimodel.ts"
+// Condition over time: the ui model's checks (core/desktop/uimodel.ts) with what happens (click, type, idle, after),
+// joined (and, or) and bounded (within 10s). Waiting watches one over time. No Node: the tests read it.
+import { type Condition as Check, conditionText as checkText, normWords, parseCondition as parseCheck } from "../../../core/desktop/uimodel.ts"
 
 export type Clause =
   /** The user clicked (the thing saying `text`), or typed (into it): seen as it happens, kept once seen. */

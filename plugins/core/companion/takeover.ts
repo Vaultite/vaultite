@@ -1,11 +1,11 @@
 // Take-over, the server's side: act on the screen goes to the helper the ask came from (electron/takeover.ts); a
 // spoken yes or no while its offer waits answers it instead of being an ask.
 import type { WebSocket } from "ws"
-import { stepEffect, thingText, type Thing } from "./uimodel.ts"
-import { answerOf } from "./yesno.ts"
+import { stepEffect, thingText, type Thing } from "../../../core/desktop/uimodel.ts"
+import { answerOf } from "../../../core/desktop/yesno.ts"
 
 type Rect = { x: number; y: number; width: number; height: number }
-/** A thing near the pointer (uimodel.ts), by its id; `ax`: its Accessibility role, which the helper finds it again by. */
+/** A thing near the pointer (core/desktop/uimodel.ts), by its id; `ax`: its Accessibility role, which the helper finds it again by. */
 export type Near = Thing & { id: string; ax?: string }
 /** What act was told, on the screen. */
 export type ScreenAct = { action: string; ax?: string; sx?: number; sy?: number; value?: string; key?: string; direction?: string; ask?: string; doing?: string
@@ -16,7 +16,7 @@ export type Done = { ok: boolean; why?: string; text?: string; how?: string; nea
   found?: Near
   /** A scroll's: false when nothing there moved (at its end, or not what scrolls). */
   moved?: boolean
-  /** A things request's: every thing in the window asked about (uimodel.ts' shape). */
+  /** A things request's: every thing in the window asked about (core/desktop/uimodel.ts' shape). */
   things?: Thing[]
   /** Done behind their windows (read back there), their pointer and front app untouched. */
   behind?: boolean

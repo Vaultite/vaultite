@@ -1,7 +1,7 @@
 // What agents see of the user's Mac outside Vaultite, through this machine's desktop app (electron/helper.ts): the app in
 // front (told unasked, metadata only), a window's text and its picture (asked). Private apps never reach them.
 import { inDesktop, OpError, Plugin, privateApp } from "../../../core/plugins.ts"
-import { type Happened, KINDS, offWhy, timelineLines } from "./timeline.ts"
+import { type Happened, KINDS, offWhy, timelineLines } from "../../../core/desktop/screentimeline.ts"
 
 export const plugin = new Plugin(import.meta.url)
 

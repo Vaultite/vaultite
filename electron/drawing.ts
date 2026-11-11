@@ -1,5 +1,5 @@
 // The companion's drawing over the screens (overlay.ts), apart from Electron so it's tested alone: each display's part.
-import { type Drawing, rectOf, spots } from "../plugins/core/companion/screenmarks.ts"
+import { type Drawing, rectOf, spots } from "../core/desktop/screenmarks.ts"
 
 export type { Drawing }
 type Display = { id: number; bounds: { x: number; y: number; width: number; height: number }; workArea?: { y: number } }

@@ -2,13 +2,13 @@
  *  click or Esc stops it, their hands on it pause what needs them; the steps are takeover.swift's (takeoverlogic.ts). */
 import { app, BrowserWindow, screen } from "electron"
 import path from "node:path"
-import { HEX } from "../plugins/core/companion/screenmarks.ts"
+import { HEX } from "../core/desktop/screenmarks.ts"
 import { takeoverSwift } from "./swiftbuild.ts"
 import { lineHelper } from "./linehelper.ts"
 import { overlayWindow } from "./overlaywin.ts"
 import { quiet } from "./quiet.ts"
 import { privateApp } from "../core/privateapps.ts"
-import { hostOf, siteIn } from "../plugins/core/companion/places.ts"
+import { hostOf, siteIn } from "../core/desktop/places.ts"
 import { aimedAt, type Answer, type Call, cardSpot, declined, handGrace, intentOf, keepsYes, kindOf, OFFER_MS, outward, PAUSED_MS, pausedLine, plan, type Probe, type Rect, refusal, REST_MS,
   spotOf, type Step, tookText, types, probeThing, behindPlan, behindRefusal, cursorIn, inFront, LOOK_MS, type Readback, SETTLE_MS, unsureLine, verified,
   type Window } from "./takeoverlogic.ts"

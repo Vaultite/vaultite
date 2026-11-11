@@ -2,8 +2,8 @@
 // its words; labels in pills, cards on calm space, a Keep and a Clear while it's up.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { ArrowRight, Check, Copy, ExternalLink, ImageOff, Pause, Play, Volume2, VolumeX, X } from "lucide-react"
-import { edgeOf, type Media, type Mark, pacedBeats, PALETTE, type PaperItem, type Rect, svgFit } from "../../../plugins/core/companion/screenmarks"
-import { flatten } from "../../../plugins/core/companion/svgpath"
+import { edgeOf, type Media, type Mark, pacedBeats, PALETTE, type PaperItem, type Rect, svgFit } from "../../../core/desktop/screenmarks"
+import { flatten } from "../../../core/desktop/svgpath"
 import { PEN_LEAD, type PenScript } from "../core/pilot"
 import { CAPTION_H, clampInto, inflate, place, type Placed, type Pt, ringShape, type Size, TOOLS, toolsRoom } from "./layout"
 import { hash, headLines, inkPath, type Line, linePath, sketch, type Sketched } from "./ink"

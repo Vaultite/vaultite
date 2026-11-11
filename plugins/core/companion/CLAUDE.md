@@ -1,7 +1,7 @@
 # Notes for `plugins/core/companion/`
 
 ## One UI model
-A thing on screen is one shape everywhere (`uimodel.ts`): role (ARIA's words), name, state (expanded, selected,
+A thing on screen is one shape everywhere (`core/desktop/uimodel.ts`): role (ARIA's words), name, state (expanded, selected,
 checked, disabled, focused, value), actions and the labelled things it's in, nearest first. Vaultite's window reads it
 from its ARIA (`uidom.ts`: `domTree`, `domThings`, `resolveDom`, `domView`), other apps from Accessibility (the helper's
 `near` in electron/screen.swift; `axThings` in electron/helper.ts, the `things` request, `takeovers().things()`). A

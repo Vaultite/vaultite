@@ -1,7 +1,7 @@
 // The screen under the companion's marks (helper.ts samples it, small and grey, while a mark that points is up): a mark
 // on a thing that moved follows it (found again by Accessibility); changed for good there, a mark fades. No Electron.
-import { anchorOf, type Anchor, refind, type Seen } from "../plugins/core/companion/anchor.ts"
-import { type Drawing, lifeOf, type Rect, rectOf, spots } from "../plugins/core/companion/screenmarks.ts"
+import { anchorOf, type Anchor, refind, type Seen } from "../core/desktop/anchor.ts"
+import { type Drawing, lifeOf, type Rect, rectOf, spots } from "../core/desktop/screenmarks.ts"
 
 /** How often the areas are sampled (ms). */
 export const SAMPLE_MS = 500

@@ -9,7 +9,7 @@ export default async ($: VaultTest) => {
   // app. Its rules apart from the Mac, then act's way to the helper and back with a stand-in helper; nothing is clicked.
   const L = await import("../../../electron/takeoverlogic.ts")
   const T = await import("../../../plugins/core/companion/takeover.ts")
-  const { answerOf } = await import("../../../plugins/core/companion/yesno.ts")
+  const { answerOf } = await import("../../../core/desktop/yesno.ts")
   const frame = { x: 100, y: 200, width: 80, height: 30 }, el = { frame, role: "button", label: "Save" }
   const mail = { ok: true, bundle: "com.example.mail", name: "Mail", role: "AXButton", actions: ["AXPress"] }
   const none = () => false, priv = (a: { bundle: string }) => a.bundle === "com.example.diary"
@@ -116,7 +116,7 @@ export default async ($: VaultTest) => {
     JSON.stringify(T.macOpen("", "Calculator", "/v", "/h")) === '{"app":"Calculator"}' && JSON.stringify(T.macOpen("x-apple.systempreferences:com.apple.Keyboard-Settings.extension", "", "/v", "/h")) === '{"url":"x-apple.systempreferences:com.apple.Keyboard-Settings.extension"}' &&
     JSON.stringify(T.macOpen("~/Downloads", "", "/v", "/h")) === '{"path":"/h/Downloads"}' && T.macOpen("/v/Notes/A.md", "", "/v", "/h") === null && T.macOpen("Notes/A.md", "", "/v", "/h") === null &&
     T.macOpen("view:graph", "", "/v", "/h") === null && T.macOpen("https://example.com", "", "/v", "/h") === null && JSON.stringify(T.macOpen("https://example.com", "Safari", "/v", "/h")) === '{"app":"Safari","url":"https://example.com"}')
-  const { byLabel } = await import("../../../plugins/core/companion/screenmarks.ts")
+  const { byLabel } = await import("../../../core/desktop/screenmarks.ts")
   const keys = [{ label: "Keyboard brightness" }, { label: "Press 🌐︎ key to" }]
   check("open on the Mac: the fn key's setting is found by its words, said fn or globe (macOS shows a 🌐)",
     byLabel(keys, "Press fn key to")?.label === "Press 🌐︎ key to" && byLabel(keys, "press globe key")?.label === "Press 🌐︎ key to" && byLabel(keys, "brightness")?.label === "Keyboard brightness")
@@ -244,7 +244,7 @@ export default async ($: VaultTest) => {
   check("takeover: a step only for another app isn't sent to a page", st === 400 && /another app/.test(r.error), [st, r])
   await api("PATCH", "config/plugin/companion", { mode: "off", summoned_model: null })
   {
-    // One UI model in other apps (plugins/core/companion/uimodel.ts): a fold pressed only when it isn't so, a step's
+    // One UI model in other apps (core/desktop/uimodel.ts): a fold pressed only when it isn't so, a step's
     // element read back before and after, and an answer that says plainly when it didn't change
     const tri = { ...mail, role: "AXDisclosureTriangle" }
     check("takeover: expand and collapse press only when the fold isn't so already",

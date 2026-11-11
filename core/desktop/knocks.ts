@@ -1,7 +1,7 @@
 // Knocks: a background session asking for the user in one line, without interrupting: the helper brings each up at a
-// pause, one at a time, by the notch with the sessions' presences. Plain functions: knockops.ts keeps them.
-import { agentTint } from "../../../core/agenttint.ts"
-import { hasNews, waitsOnUser } from "../../../core/attention.ts"
+// pause, one at a time, by the notch with the sessions' presences. Plain functions: the companion's knockops.ts keeps them.
+import { agentTint } from "../agenttint.ts"
+import { hasNews, waitsOnUser } from "../attention.ts"
 
 export const URGENCIES = ["low", "normal", "high"] as const
 export type Urgency = typeof URGENCIES[number]

@@ -1,22 +1,22 @@
 // The companion as this window knows it: the server's agents and notes (/api/companion/live), the editors showing
 // files, and what the user does in them, said back. No CodeMirror here: the editor is its own chunk (editor.ts).
 import type { EditorView } from "@codemirror/view"
-import { howWith } from "./look.ts"
+import type { CursorState } from "../../../core/desktop/cursor.ts"
 import { profileOf } from "./profiles.ts"
 import type { Change, Hunk } from "./text.ts"
 
 export type Mode = "off" | "quiet" | "pair"
-import type { Target } from "./places.ts"
+import type { Target } from "../../../core/desktop/places.ts"
 import { locate } from "./locate.ts"
 import { listenInputs } from "./inputs.ts"
 import { windowCheck, windowSnapshot, windowThings } from "./tourwindow.ts"
-export type { Target } from "./places.ts"
+export type { Target } from "../../../core/desktop/places.ts"
 /** listening: this window's own, the user dictating where it is (`hear`) while it's free; the server never says it. */
 /** Where a page's element is in its page (CSS px, at its zoom): the server's word for a place's `el`. */
 export type Boxed = { box?: { x: number; y: number; w: number; h: number; zoom: number } }
 /** What an agent follows this session (follows.ts): a pane, a tab group, or a part of the app's UI. */
 export type Follow = { id: string; agent: string; pane?: string; tab?: string; group?: string; ui?: string; title: string; since: number }
-export type Agent = Target & Boxed & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "starting" | "away" | "listening"; t: number; seen?: boolean
+export type Agent = Target & Boxed & { name: string; tint: string; state: CursorState; t: number; seen?: boolean
   /** Why it let what it saw pass, in its few words (by the seen tick). */
   why?: string
   /** When it last pointed at its place (look, highlight, a say given one): a phone shows it there a moment. */
@@ -383,6 +383,14 @@ export const mentionNames = () => (share ? [] : [...new Set(["companion", "claud
 export const howOf = (name: string): How => profileOf(name, state.profiles) ?? state.fresh
 /** What a session runs, as the user reads it: "Claude Code · Opus · high", "Codex · GPT-6.1 Sol · medium". */
 export const howText = (h: Partial<How> & { runs?: string }) => howWith(h, state.harnesses)
+/** What a session runs, in words (Claude Code · Opus · high), by the coding agents that can run: the cursor's header,
+ *  in the window and over the screen. */
+function howWith(h: Partial<How> & { runs?: string }, harnesses: Harness[]) {
+  const id = (h.agent ?? h.runs ?? "").split("_")[0], harness = harnesses.find((x) => x.id === id)
+  const model = h.model && (harness?.models.find((m) => m.id === h.model)?.label ?? capitalize(h.model))
+  return [harness?.name ?? (id && capitalize(id)), model, h.effort && effortName(h.effort)].filter(Boolean).join(" · ")
+}
+export const effortName = (e: string) => (e === "xhigh" ? "extra high" : e)
 /** A new agent's name as typed after @, as its agent calls itself when it's one (opencode: OpenCode). */
 export const nameAs = (name: string) => state.harnesses.find((x) => x.id === name.toLowerCase())?.name ?? capitalize(name)
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)

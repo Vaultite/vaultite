@@ -1,6 +1,8 @@
 // Dictation that learns: the user fixing a word they just dictated ("for saint" to "Vorssaint") teaches dictation it.
-// Only a misheard word's fix counts, not rewording or grammar. No DOM: the helper uses it for other apps (dictationfix.ts).
-import type { Entry } from "./words.ts"
+// Only a misheard word's fix counts, not rewording or grammar. No DOM: the helper's too, in other apps (dictationfix.ts).
+
+/** A dictionary entry (Dictionary.md: the dictation plugin's words.ts): a word dictation should know, or what's said for it. */
+export type Entry = { word: string; said?: string }
 
 const WORD = /[@#]?[\p{L}\p{N}](?:[\p{L}\p{N}'’_.+-]*[\p{L}\p{N}])?/gu
 type Tok = { w: string; at: number }

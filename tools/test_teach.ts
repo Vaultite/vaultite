@@ -1,7 +1,8 @@
 // Teach by showing, apart from any screen: their words, a lesson's acts made steps, a tour and a skill, and a draft
 // promoted once it played through. node tools/test_teach.ts
 import "./test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
-import { type Act, clickedThing, keptValue, secretLike, kindFor, type Lesson, lessonSkillText, lessonTitle, lessonTour, lessonTourText, playedThrough, promoted, recentStretch, skillName, stepsOf, teachCommand, yours } from "../plugins/core/companion/teach.ts"
+import { type Act, clickedThing, keptValue, secretLike, recentStretch, teachCommand } from "../core/desktop/teach.ts"
+import { kindFor, type Lesson, lessonSkillText, lessonTitle, lessonTour, lessonTourText, playedThrough, promoted, skillName, stepsOf, yours } from "../plugins/core/companion/lesson.ts"
 import { parseTour, plan } from "../plugins/core/companion/tour.ts"
 import { parseText } from "../core/vault.ts"
 

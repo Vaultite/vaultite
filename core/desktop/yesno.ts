@@ -1,5 +1,5 @@
-// A spoken yes or no to an offer (take-over's, the timeline's: electron/timelineoffer.ts), apart from the companion's
-// server code, so the desktop app's helper reads it without loading the plugin.
+// A spoken yes or no to an offer (take-over's, the timeline's: electron/timelineoffer.ts), for the companion's server
+// and the desktop app's helper alike.
 
 /** Their spoken answer to an offer: no at any no word in it ("please stop", "sure, not that one"), yes only when it's
  *  yes words alone, else neither (an ask of its own). */

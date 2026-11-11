@@ -1,8 +1,8 @@
 // The menu-bar helper's reckoning, apart from Electron so it's tested alone (tools/test/vault/helper.ts).
-import { arrowBox, boxAt, flagBox } from "../plugins/core/companion/boxes.ts"
-import { jobTold } from "../plugins/core/companion/jobnews.ts"
-import type { RegionScene } from "../plugins/core/companion/clips.ts"
-import type { Presence } from "../plugins/core/companion/knocks.ts"
+import { arrowBox, boxAt, flagBox } from "../core/desktop/boxes.ts"
+import { jobTold } from "../core/desktop/jobnews.ts"
+import type { RegionScene } from "../core/desktop/clips.ts"
+import type { Presence } from "../core/desktop/knocks.ts"
 import { agentTint } from "../core/agenttint.ts"
 
 export type Rect = { x: number; y: number; width: number; height: number }
@@ -201,7 +201,7 @@ function simplify(k: Point[], eps: number): Point[] {
   return far <= eps ? [a, b] : [...simplify(k.slice(0, at + 1), eps).slice(0, -1), ...simplify(k.slice(at), eps)]
 }
 
-/** Where a cursor's conversation opens (its top left, points) for a cursor at `p`, by the window's rule (boxes.ts): inside
+/** Where a cursor's conversation opens (its top left, points) for a cursor at `p`, by the window's rule (core/desktop/boxes.ts): inside
  *  the space windows get, never over its arrow, its name (`flag`: its width, about), what it points at or `clear`. */
 export function panelAt(p: Point, size: { width: number; height: number }, area: Rect, flag = 120, target?: Rect | null, clear: Rect[] = []): Point {
   const b = boxAt(p, size, area, [arrowBox(p), flagBox(p, flag, area), ...(target ? [target] : []), ...clear])

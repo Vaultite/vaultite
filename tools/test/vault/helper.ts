@@ -121,7 +121,7 @@ export default async ($: VaultTest) => {
       !beatsWait({ saying: false, aloud: true, words: true, working: true }) && !beatsWait({ saying: null, aloud: false, words: true, working: true }))
     check("helper: a drawing is held up a few seconds to be seen, longer for each beat", drawingHold(0) >= 3000 && drawingHold(2) > drawingHold(0) && drawingHold(99) <= 20_000)
     const area = { x: 0, y: 25, width: 1600, height: 975 }, bounds = { x: 0, y: 0, width: 1600, height: 1000 }, size = { width: 300, height: 200 }
-    const { arrowBox, boxAt, flagBox } = await import("../../../plugins/core/companion/boxes.ts")
+    const { arrowBox, boxAt, flagBox } = await import("../../../core/desktop/boxes.ts")
     const meets = (a: Rect, b: Rect) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
     type Rect = { x: number; y: number; width: number; height: number }
     const covers: unknown[] = []
@@ -394,7 +394,7 @@ export default async ($: VaultTest) => {
       waitPoses.every((q) => q.x === 124 && q.y === 120) && Math.abs(rode.x - 324) < 2 && flown.x > 400 && flown.x < 900 && there.x === 900 && there.y === 700, { rode, flown, there, lead })
     const still = penAt({ id: "x", strokes: [{ start: 5000, dur: 200, pts: [[500, 500], [600, 500]] }] }, 2000, { x: 0, y: 0 }, 0)
     check("pilot: its pen waits where it was till a flight's time before its first stroke", still.p.x === 0 && still.p.y === 0 && !still.flying, still)
-    const { pacedBeats } = await import("../../../plugins/core/companion/screenmarks.ts")
+    const { pacedBeats } = await import("../../../core/desktop/screenmarks.ts")
     const held = pacedBeats("Your chats are here. You start one here.", 1, [{ at: 1500, dur: 900 }, null], 1000, true), guessed = pacedBeats("Your chats are here. You start one here.", 1, [null, null], 1000)
     check("beats: while its words are being said, a beat waits for its sentence to be heard; with no voice, the reading time",
       JSON.stringify(held.times) === "[500,null]" && guessed.times[0] === 0 && guessed.times[1] > 0, [held, guessed])

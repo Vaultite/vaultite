@@ -1,6 +1,6 @@
-// Vaultite's window as the UI model (uimodel.ts) reads it: each element's role, name and state from its ARIA (what a
+// Vaultite's window as the UI model (core/desktop/uimodel.ts) reads it: each element's role, name and state from its ARIA (what a
 // screen reader reads), so the companion resolves and checks the app's UI as it does another app's Accessibility.
-import { actionable, check, resolve, type Action, type Condition, type Inside, type Role, type State, type Target, type Thing, type Tree, type Verdict, type View } from "./uimodel.ts"
+import { actionable, check, resolve, type Action, type Condition, type Inside, type Role, type State, type Target, type Thing, type Tree, type Verdict, type View } from "../../../core/desktop/uimodel.ts"
 
 /** What the companion draws over the screen (its overlay, bubbles, cursor): never what's there, nor over it. */
 export const DRAWN = ".companion-overlay, [data-companion-bubble], .companion-cursor"

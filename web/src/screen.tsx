@@ -16,14 +16,14 @@ import { type Cue, cueLength, playCue } from "@/core/cues"
 import { penSound } from "@/core/pensound"
 import { cn, followSystemTheme } from "@/lib/utils"
 // (what its flag shows, by the window's own rule: the two draw one cursor)
-import { presence, type Mark as MarkKind } from "../../plugins/core/companion/look"
-import { arrowBox, boxAt, flagBox } from "../../plugins/core/companion/boxes"
-import { Chat, type ChatItem } from "../../plugins/core/companion/Chat"
+import { presence, type Mark as MarkKind } from "../../core/desktop/cursor"
+import { arrowBox, boxAt, flagBox } from "../../core/desktop/boxes"
+import { Chat, type ChatItem } from "@/components/Chat"
 import { type DrawBridge, ScreenDrawings } from "./screendraw"
 import { type Box, HOLD, tellHolds } from "./screendraw/hold"
 import { Region, REGION_STYLE } from "./screenregion"
 import { Island, ISLAND_STYLE } from "./screenisland"
-import type { RegionScene } from "../../plugins/core/companion/clips"
+import type { RegionScene } from "../../core/desktop/clips"
 
 type Point = { x: number; y: number }
 type Rect = { x: number; y: number; width: number; height: number }
@@ -267,8 +267,8 @@ function attach(key: string, paint: Paint) {
     if (el) paint(el, m.g.x, m.g.y)
   }
 }
-// (the arrow's tip at the point; its name and words placed by the window's rule (boxes.ts): never over its arrow, its
-// name or what it points at)
+// (the arrow's tip at the point; its name and words placed by the window's rule (core/desktop/boxes.ts): never over its
+// arrow, its name or what it points at)
 const paintCursor: Paint = (el, x, y) => {
   el.style.transform = `translate(${x - 3}px, ${y - 2}px)`
   const top = view.s?.top ?? 0, area = { x: 0, y: top, width: innerWidth, height: innerHeight - top }, tip = { x, y }
@@ -375,7 +375,7 @@ function Hold({ children, onHover, ...rest }: React.HTMLAttributes<HTMLDivElemen
   )
 }
 
-/** Since it last acted, as the window counts it (look.ts): 0 under 3 s, 1 under 4 s, 2 under 8 s, 3 after. */
+/** Since it last acted, as the window counts it (core/desktop/cursor.ts): 0 under 3 s, 1 under 4 s, 2 under 8 s, 3 after. */
 function useAge(t?: number): 0 | 1 | 2 | 3 {
   const [, tick] = useReducer((n: number) => n + 1, 0)
   const since = t ? Date.now() - t : Infinity, age = since < 3000 ? 0 : since < 4000 ? 1 : since < 8000 ? 2 : 3

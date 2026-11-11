@@ -142,7 +142,7 @@ export default async ($: VaultTest) => {
 
   {
     // Its cursor: every state shows by itself, unhovered, long after it began (its name, and dots, a wave or a tick).
-    const { presence } = await import("../../../plugins/core/companion/look.ts")
+    const { presence } = await import("../../../core/desktop/cursor.ts")
     const at = (state: Any, o: Any = {}, a: Any = {}) => presence({ state, ...a }, { age: 3, ...o })
     const sign = (x: ReturnType<typeof presence>) => `${x.flag ? "flag" : "-"} ${x.mark ?? "-"}${x.bob ? " bob" : ""}${x.dim ? " dim" : ""}${x.words ? ` ${x.words}` : ""}`
     const got = {
@@ -781,7 +781,7 @@ export default async ($: VaultTest) => {
   }
   {
     // Places beyond notes (panes, the app's UI), what it follows and its watches, as moments.
-    const pl = await import("../../../plugins/core/companion/places.ts"), tx = await import("../../../plugins/core/companion/text.ts")
+    const pl = await import("../../../core/desktop/places.ts"), tx = await import("../../../plugins/core/companion/text.ts")
     check("companion: a pane says what it shows", pl.paneSource("view:terminal/claude-k3").terminal === "claude-k3" && pl.paneSource("view:web/https://a.com/x").url === "https://a.com/x" &&
       pl.paneSource("file:N.md").path === "N.md" && pl.paneSource("settings").kind === "view")
     check("companion: private sites cover their subdomains; the setting's lines are folders, sites, containers and apps",

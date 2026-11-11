@@ -1,5 +1,5 @@
 // Where a cursor's words go (its bubble, its caption, its box): never over its arrow, its name or what it points at.
-// One rule for the window (Overlay.tsx) and the screen (web/src/screen.tsx, electron/overlay.ts). No Node, no DOM.
+// One rule for the window (the companion's Overlay.tsx) and the screen (web/src/screen.tsx, electron/overlay.ts). No DOM.
 
 export type Box = { x: number; y: number; width: number; height: number }
 type Point = { x: number; y: number }

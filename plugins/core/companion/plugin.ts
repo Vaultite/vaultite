@@ -16,16 +16,16 @@ import { rooms } from "./rooms.ts"
 import { partialArgs } from "./partial.ts"
 import { BIG_EDIT, changesOf, linesIn, tally } from "./proposals.ts"
 import { type Change, changeAt, type Hunk, isPrivate, nearest, privateOf } from "./text.ts"
-import { hostOf, type Pane, paneSource, PLACE_KEYS, placeText, siteIn, type Target } from "./places.ts"
+import { hostOf, type Pane, paneSource, PLACE_KEYS, placeText, siteIn, type Target } from "../../../core/desktop/places.ts"
 import { AUTO_RULES, NEVER_READ, NEVER_RUN, readableDirs } from "./reach.ts"
 import { screenDrawings } from "./drawings.ts"
 import { screenMedia } from "./media.ts"
-import { bestFound, byLabel, checkMarks, type Found, isAnswer, type Mark, type Rect as ScreenRect, rectOf, spots, VOCABULARY } from "./screenmarks.ts"
+import { bestFound, byLabel, checkMarks, type Found, isAnswer, type Mark, type Rect as ScreenRect, rectOf, spots, VOCABULARY } from "../../../core/desktop/screenmarks.ts"
 import { anchorsOf, inPicture, inSummoned, type Lane, screenNear, SUMMONED_PROMPT, summonedLane } from "./summoned.ts"
-import { languageIn } from "./spoken.ts"
+import { languageIn } from "../../../core/desktop/spoken.ts"
 import { elevenUsage, voiceHere, voiceHereText, voiceOps } from "./voice.ts"
 import { type Job, type JobState, jobSpoken, jobTimingsText, landable, terminalOf } from "./jobs.ts"
-import { jobTold } from "./jobnews.ts"
+import { jobTold } from "../../../core/desktop/jobnews.ts"
 import { knockOps } from "./knockops.ts"
 import { beforeLayer, FLIPS, layerOwner, readyNow } from "./proof.ts"
 import { proofOps } from "./proofs.ts"
@@ -39,10 +39,10 @@ import { type Exchange, exchanges, type PressLine, type Spent, spent, talkSoFar 
 import { type Guide, guideFor, guideLines, parseGuide, sitesOf } from "./guides.ts"
 import { type Screen, toursOf } from "./tours.ts"
 import type { Tour } from "./tour.ts"
-import type { Seen } from "./anchor.ts"
+import type { Seen } from "../../../core/desktop/anchor.ts"
 import { beatOf, markOf, placeOf as tagPlace, type Spot, type Tag } from "./tags.ts"
 import { doneText, effectOf, isBrowser, macOpen, nearText, stepOf, takeovers } from "./takeover.ts"
-import { check as checkOn, listView, parseCondition, thingFrom, thingText, type Verdict } from "./uimodel.ts"
+import { check as checkOn, listView, parseCondition, thingFrom, thingText, type Verdict } from "../../../core/desktop/uimodel.ts"
 export { nearest } // (its tests reach it through the plugin)
 
 export const plugin = new Plugin(import.meta.url)
@@ -120,7 +120,7 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
   /** change: what a pane it follows did (`what`: a command ended, the page changed; `changes` its lines); watch: a
    *  watch's hit (`item` the watch, `text` what to do). A page's address. */
   what?: string; url?: string }
-export type { Target } from "./places.ts"
+export type { Target } from "../../../core/desktop/places.ts"
 type Rect = { x: number; y: number; width: number; height: number }
 /** An element near the pointer (the helper's Accessibility): its id to point by, its role, its words, its frame. */
 type Near = import("./takeover.ts").Near
@@ -2850,7 +2850,7 @@ plugin.provide("companion:review", async () => {
     return self && t.endsWith(`@${self}`) ? t.slice(0, -self.length - 1) : t
   })
 })
-// Knocks: background sessions asking for the user, one line at a pause, and their presences by the notch (knocks.ts).
+// Knocks: background sessions asking for the user, one line at a pause, and their presences by the notch (core/desktop/knocks.ts).
 const knocks = knockOps(plugin, { toScreens, listening: () => screens.size > 0, jobs: () => jobs.list(), off: () => mode() === "off", hidden: () => plugin.settings().island === false })
 const liveEditing = liveEdits(plugin, {
   jobs,
@@ -3597,7 +3597,7 @@ or keys pause a step that needs them, a click or Esc stops it. Answers the eleme
 
 /** What each agent's last check of another app read: what its next `changed` compares with. */
 const checked = new Map<string, string>()
-/** One condition (uimodel.ts' language: expanded "Files", shows "Saved", selected tab "Notes", changed) checked once where
+/** One condition (core/desktop/uimodel.ts' language: expanded "Files", shows "Saved", selected tab "Notes", changed) checked once where
  *  agent `name`'s last ask was: another app's window (its helper's Accessibility) or Vaultite's (its page). */
 export async function checkNow(ctx: OpCtx, name: string, condition: string): Promise<Verdict & { where: string }> {
   let c

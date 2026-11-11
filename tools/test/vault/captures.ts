@@ -12,7 +12,7 @@ export default async ($: VaultTest) => {
   const { asItsTool } = await import("../../../plugins/core/companion/plugin.ts")
   const { VAULT, api, app, check } = $
   // Region capture: what a Talk key's words ask of it, the box and its moves, and where a clip goes (companion.capture).
-  const C = await import("../../../plugins/core/companion/clips.ts")
+  const C = await import("../../../core/desktop/clips.ts")
   {
     const cmd = (t: string, rec = false) => { const c = C.captureCommand(t, rec); return c ? `${c.do}|${c.rest}` : "" }
     check("capture: record this (and its ways of saying it) starts one, the rest of their words kept as narration",
@@ -44,7 +44,7 @@ export default async ($: VaultTest) => {
 
   // The screen's timeline: kept for its last seconds and bounded, read by a time range or from when they said something.
   {
-    const T = await import("../../../plugins/core/screen/timeline.ts")
+    const T = await import("../../../core/desktop/screentimeline.ts")
     const now = 100_000
     const h: Any[] = [{ t: 50_000, kind: "app", app: "a", name: "Old" }, { t: 60_000, kind: "pointer", x: 0, y: 0 }, { t: 75_000, kind: "said", text: "Record this, it blinks here" },
       { t: 80_000, kind: "pointer", x: 1, y: 1 }, { t: 80_100, kind: "pointer", x: 2, y: 2 }, { t: 80_400, kind: "pointer", x: 3, y: 3 }, { t: 85_000, kind: "click", x: 5, y: 5, under: 'Safari: button "Close"' },
@@ -71,7 +71,7 @@ export default async ($: VaultTest) => {
   // The timeline off (the user's default) when they ask for what needs it: never a dead end. The app's own words get a
   // card and a line offering to turn it on (a click or a spoken yes); an agent asking is told to offer the same.
   {
-    const T = await import("../../../plugins/core/screen/timeline.ts")
+    const T = await import("../../../core/desktop/screentimeline.ts")
     check("timeline: off, an agent asking is told to offer to turn it on (vau screen keep), and that it keeps only from then",
       /offer to turn it on .*vau screen keep.*never what came before/.test(T.offWhy(T.OFF_WHY)) && T.offWhy("nothing said like \"x\"") === "nothing said like \"x\"", T.offWhy(T.OFF_WHY))
     const O = await import("../../../electron/timelineoffer.ts")

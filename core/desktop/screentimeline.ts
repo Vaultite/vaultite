@@ -1,4 +1,4 @@
-// The screen's timeline's rules (the desktop app's timeline.ts keeps it): the last seconds on one clock, in memory only,
+// The screen's timeline's rules (electron/timeline.ts keeps it, the screen plugin reads it): the last seconds on one clock, in memory only,
 // read by a time range or from when they said something. No Electron: the tests read it.
 export type Rect = { x: number; y: number; width: number; height: number }
 /** A thing acted on, as the companion's ui model reads it: its role, words, frame and the labelled things it's in. */

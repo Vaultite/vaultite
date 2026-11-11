@@ -7,7 +7,7 @@ import os from "node:os"
 import path from "node:path"
 import { contentType, fetchPublic, FileAnswer, HTTPError, OpError, type Plugin, readableImage } from "../../../core/plugins.ts"
 import { screenshotDir } from "./reach.ts"
-import { IMAGE_EXT, type KeptFile, type Media, VIDEO_EXT } from "./screenmarks.ts"
+import { IMAGE_EXT, type KeptFile, type Media, VIDEO_EXT } from "../../../core/desktop/screenmarks.ts"
 
 /** Tokens kept (the cards up and a few gone): each a file a card was allowed to show. */
 const TOKENS = 64

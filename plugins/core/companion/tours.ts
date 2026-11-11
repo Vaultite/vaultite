@@ -1,17 +1,17 @@
 // Tours, anchors and waits on the server (companion tour, tour-save, anchor, wait) over a screen plugin.ts lends:
-// Vaultite's window, or the app an ask was over through the Mac's helper. The rules are tour.ts', anchor.ts', condition.ts'.
+// Vaultite's window, or the app an ask was over through the Mac's helper. The rules are tour.ts', core/desktop/anchor.ts', condition.ts'.
 import fs from "node:fs"
 import os from "node:os"
 import nodePath from "node:path"
 import { type OpCtx, OpError, type Plugin } from "../../../core/plugins.ts"
 import { joinPath, Kind, parseText, safeName } from "../../../core/vault.ts"
-import { type Anchor, anchorOf, anchorText, keepAnchor, refind, type Seen, type Where } from "./anchor.ts"
+import { type Anchor, anchorOf, anchorText, keepAnchor, refind, type Seen, type Where } from "../../../core/desktop/anchor.ts"
 import { type Condition, conditionText, type Input, parseCondition, watch } from "./condition.ts"
-import { playedThrough, promoted, skillName } from "./teach.ts"
+import { playedThrough, promoted, skillName } from "./lesson.ts"
 import { noteText, writeNote } from "./teachops.ts"
 import { type Aim, type Do, type Fx, lostLine, type Mode, MODES, nativeSteps, parseTour, play, type Result, type Step, type Tour, tourAsked, tourFromAnswer, tourText } from "./tour.ts"
-import type { Condition as Check, Rect } from "./uimodel.ts"
-import { fileTitle } from "./names.ts"
+import type { Condition as Check, Rect } from "../../../core/desktop/uimodel.ts"
+import { fileTitle } from "../../../core/desktop/names.ts"
 import { saveFiles } from "./vaultfiles.ts"
 import { proofUrl, recordProof } from "./proofvideo.ts"
 
@@ -117,7 +117,7 @@ export function toursOf(plugin: Plugin, o: {
   }
 
   /** Play `tour` for agent `name` on its screen in `mode`, from step `from`; a draft (`file`) that plays through is
-   *  promoted (teach.ts). */
+   *  promoted (lesson.ts). */
   function start(name: string, s: Screen, tour: Tour, mode: Mode, from = 1, file?: { path: string; ctx: OpCtx }, o2: { quiet?: boolean } = {}) {
     playing.get(name)?.ctl.abort()
     const ctl = new AbortController(), began = Date.now()

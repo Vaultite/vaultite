@@ -12,7 +12,7 @@ export default async ($: VaultTest) => {
   const { asItsTool } = await import("../../../plugins/core/companion/plugin.ts")
   const { VAULT, api, app, check, read, write } = $
   const J = await import("../../../plugins/core/companion/jobs.ts")
-  const { jobTold } = await import("../../../plugins/core/companion/jobnews.ts")
+  const { jobTold } = await import("../../../core/desktop/jobnews.ts")
   const W = await import("../../../plugins/core/companion/where.ts")
 
   // The lifecycle: one table, every move logged, nothing out of stopped.

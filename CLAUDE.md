@@ -33,6 +33,8 @@ the main writers. Served on a private network (a tailnet), no accounts.
 - The Swift helpers (`electron/*.swift`) build with the Xcode on CI's `macos-15` runner, older than ours: no newer API,
   and a long expression typed in steps (its type checker gives up on one that ours takes).
 - `core/` is the server, `web/src/core/` the app's core; several file names exist on both sides, so say which.
+- The core (`core/`, `electron/`, `web/src/`) never imports a plugin, only loads them: what both use is the core's, the
+  desktop app's contracts with plugins (the overlay's marks, the UI model, knocks, walks) in `core/desktop/` (`npm run check`).
 - The packaged app ships only `dependencies` (vault plugins import some: `plugins/CLAUDE.md`, rule 5): keep backend deps few.
 - npm runs no install scripts and takes only versions a week old (`.npmrc`): a dep that needs a script (a native build)
   gets its own step (`npm rebuild <name>`); an urgent security fix, `--min-release-age=0`. Pin new deps exactly. One

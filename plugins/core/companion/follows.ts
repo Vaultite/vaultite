@@ -1,7 +1,7 @@
 // What the companion follows this session (only when asked: companion follow): a terminal at a command's end or its agent's state, a
 // page at a navigation, a selection or a settled change, a tab group's panes. In memory; a watch is the kept kind.
 import type { Plugin } from "../../../core/plugins.ts"
-import { type Pane, paneSource } from "./places.ts"
+import { type Pane, paneSource } from "../../../core/desktop/places.ts"
 
 /** A follow: of a pane, a tab (its panes), a tab group, or the app's UI (`ui`, the window watches it); who follows. */
 export type Follow = { id: string; agent: string; pane?: string; tab?: string; group?: string; ui?: string; title: string; since: number }

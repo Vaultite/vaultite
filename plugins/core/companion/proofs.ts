@@ -3,7 +3,7 @@
 import type { OpCtx, Plugin } from "../../../core/plugins.ts"
 import { OpError } from "../../../core/plugins.ts"
 import { type Job, landable, live, terminalOf } from "./jobs.ts"
-import { type Knock, READY_HOLD_MS } from "./knocks.ts"
+import { type Knock, READY_HOLD_MS } from "../../../core/desktop/knocks.ts"
 import type { Moment } from "./plugin.ts"
 import { type Asked, asksToSee, type Choice, choiceSaid, choicesFor, narration, readyLine, readyNow, summaryOf } from "./proof.ts"
 import type { Result, Tour } from "./tour.ts"

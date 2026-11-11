@@ -1,6 +1,6 @@
 // Take-over's rules, apart from the Mac (tested alone): what it never does, what needs the user's yes each time, and
 // how each step is done (Accessibility first, then the pointer or the keys).
-import { actionsOfAx, roleOfAx, type Thing } from "../plugins/core/companion/uimodel.ts"
+import { actionsOfAx, roleOfAx, type Thing } from "../core/desktop/uimodel.ts"
 
 export type Rect = { x: number; y: number; width: number; height: number }
 /** A step the companion asked for: at an element an ask listed (`el`), a screen point (`at`), or the field with the
@@ -14,7 +14,7 @@ export type Step = { action: string; el?: { frame: Rect; role?: string; label?: 
 /** What takeover.swift found there (`probe`). */
 export type Probe = { ok: boolean; why?: string; bundle?: string; name?: string; pid?: number; vaultite?: boolean; role?: string; roleName?: string; subrole?: string
   secure?: boolean; label?: string; frame?: Rect | null; actions?: string[]; valueSettable?: boolean; checked?: boolean; web?: boolean; window?: number; title?: string
-  /** Its state, read back after a step (uimodel.ts). */
+  /** Its state, read back after a step (core/desktop/uimodel.ts). */
   expanded?: boolean; selected?: boolean; disabled?: boolean; value?: string
   /** The page or document its window shows (a browser's address): a private site is never acted on. */
   url?: string }
@@ -202,7 +202,7 @@ export function tookText(why: string): string {
   return "the exchange ended: stop"
 }
 
-/** What a probe found, as a thing (uimodel.ts): what a step's effect is read from. */
+/** What a probe found, as a thing (core/desktop/uimodel.ts): what a step's effect is read from. */
 export function probeThing(p: Probe | null): Thing | null {
   if (!p?.ok || !p.frame) return null
   const state: Thing["state"] = {}

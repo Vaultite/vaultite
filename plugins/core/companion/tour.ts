@@ -1,9 +1,9 @@
 // Tours: a recorded companion answer played step by step without the model, each target found fresh (anchors) as its
 // step comes, the model asked only when one isn't. No Node.
-import { type Anchor, anchorOf, type Seen } from "./anchor.ts"
+import { type Anchor, anchorOf, type Seen } from "../../../core/desktop/anchor.ts"
 import { type Condition, conditionText, parseCondition, type Watched } from "./condition.ts"
 import { parseTags, type Spot, type Tag } from "./tags.ts"
-import type { Rect } from "./uimodel.ts"
+import type { Rect } from "../../../core/desktop/uimodel.ts"
 
 export type Mode = "show" | "guide" | "do"
 export const MODES: readonly Mode[] = ["show", "guide", "do"]

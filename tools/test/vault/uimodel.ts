@@ -2,12 +2,12 @@ import type { VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
   const { check } = $
-  // The companion's one UI model (plugins/core/companion/uimodel.ts): targets resolved to the part that acts, conditions
+  // The companion's one UI model (core/desktop/uimodel.ts): targets resolved to the part that acts, conditions
   // read back, the same for Vaultite's window and another app's Accessibility. A made-up tree stands in for either.
-  const M = await import("../../../plugins/core/companion/uimodel.ts")
-  type N = { t: Partial<import("../../../plugins/core/companion/uimodel.ts").Thing> & { role: string; label: string }; kids: N[]; up?: N; rel?: N[] }
+  const M = await import("../../../core/desktop/uimodel.ts")
+  type N = { t: Partial<import("../../../core/desktop/uimodel.ts").Thing> & { role: string; label: string }; kids: N[]; up?: N; rel?: N[] }
   const n = (t: N["t"], ...kids: N[]): N => { const x: N = { t, kids }; for (const k of kids) k.up = x; return x }
-  const thing = (x: N): import("../../../plugins/core/companion/uimodel.ts").Thing => {
+  const thing = (x: N): import("../../../core/desktop/uimodel.ts").Thing => {
     const inside: { role: string; label: string }[] = []
     for (let p = x.up; p; p = p.up) if (p.t.label) inside.push({ role: p.t.role, label: p.t.label })
     return { frame: { x: 0, y: 0, width: 10, height: 10 }, state: {}, actions: [], inside, ...x.t }
@@ -27,7 +27,7 @@ export default async ($: VaultTest) => {
   const settings = n({ role: "group", label: "Appearance" }, label, toggle)
   const win = n({ role: "window", label: "Vaultite" }, n({ role: "region", label: "Left sidebar" }, files), tabs, settings, n({ role: "button", label: "hidden" }))
 
-  const at = (t: import("../../../plugins/core/companion/uimodel.ts").Target, a?: import("../../../plugins/core/companion/uimodel.ts").Action) => M.resolve(tree, win, t, a)?.e
+  const at = (t: import("../../../core/desktop/uimodel.ts").Target, a?: import("../../../core/desktop/uimodel.ts").Action) => M.resolve(tree, win, t, a)?.e
   check("uimodel: a panel named or by its id resolves to its disclosure heading, not its container", at({ name: "Files" }) === heading && at({ ui: "panel:files:files" }) === heading && at({ name: "files" }, "expand") === heading)
   check("uimodel: words inside a row resolve to the row, a label to its control, a role to its kin",
     at({ name: "Projects" }) === row && M.actingPart(tree, projects) === row && at({ name: "Dark mode" }) === toggle && at({ role: "button", name: "Notes" }) === notesTab && at({ role: "tab", name: "Notes" }) === notesTab)
@@ -35,7 +35,7 @@ export default async ($: VaultTest) => {
   check("uimodel: the resolved thing carries its labelled ancestors nearest first and its ui id",
     JSON.stringify(M.resolve(tree, win, { name: "Projects" })!.thing.inside.map((i) => i.label)) === JSON.stringify(["Files", "Left sidebar", "Vaultite"]) && M.resolve(tree, win, { ui: "panel:files:files" })!.named.ui === "panel:files:files")
 
-  const view = (root: N, extra = "") => ({ find: (t: import("../../../plugins/core/companion/uimodel.ts").Target) => M.resolve(tree, root, t)?.thing ?? null, shows: (w: string) => JSON.stringify(root, (k, v) => (k === "up" ? undefined : v)).toLowerCase().includes(w.toLowerCase()), snapshot: () => JSON.stringify(root, (k, v) => (k === "up" ? undefined : v)) + extra })
+  const view = (root: N, extra = "") => ({ find: (t: import("../../../core/desktop/uimodel.ts").Target) => M.resolve(tree, root, t)?.thing ?? null, shows: (w: string) => JSON.stringify(root, (k, v) => (k === "up" ? undefined : v)).toLowerCase().includes(w.toLowerCase()), snapshot: () => JSON.stringify(root, (k, v) => (k === "up" ? undefined : v)) + extra })
   const P = M.parseCondition
   check("uimodel: conditions read as written, aliases to one kind",
     JSON.stringify(P(`expanded "Files"`)) === JSON.stringify({ kind: "expanded", target: { name: "Files" } }) && P(`collapsed "Files"`).not === true && P(`not folded "Files"`).not === undefined &&

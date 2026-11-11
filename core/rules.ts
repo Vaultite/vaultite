@@ -266,6 +266,8 @@ function importProblems(file: string, src: string, where: string, rules: ImportR
       if (inside(rules.dir, target)) continue // its own folder
       if (rules.vault) { say(spec, "a vault plugin imports only from its own folder, \"@vaultite\" and packages"); continue }
       if (!backend) continue // (the check before this one didn't look at these)
+      // (the desktop app's contracts, Node-free, are the app's own plugins' too: never the plugin API)
+      if (inside(path.join(rules.root, "core", "desktop"), target)) continue
       const inCore = path.dirname(target) === path.join(rules.root, "core")
       const core = path.basename(target)
       if (!inCore || !(CORE_FOR_PLUGINS.has(core) || (core === "cli.ts" && path.basename(file) === "cli.ts"))) {

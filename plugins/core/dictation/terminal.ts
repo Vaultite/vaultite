@@ -1,7 +1,7 @@
 // Dictation into a terminal: each settled chunk goes in at its cursor as a paste (bracketed when its program asked), on
 // one line and never with an Enter, so nothing runs until the user presses it. The terminal draws the pending words.
 import { joinText, type DictationTarget } from "@vaultite"
-import { TypedLine } from "./learn.ts"
+import { TypedLine } from "../../../core/desktop/dictationlearn.ts"
 import { WATCH_MS, watchFix, type Watch } from "./learning.ts"
 
 /** What a terminal view offers dictation, on its [data-terminal] element (plugins/core/terminal/Terminal.tsx). */

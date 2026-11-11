@@ -2213,9 +2213,9 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("dictation in a terminal: nothing said, nothing sent", !c.sent.length, c.sent)
 }
 
-// ---------- Dictation that learns: a misheard word's fix, in a note, a terminal or a field (plugins/core/dictation/learn.ts) ----------
+// ---------- Dictation that learns: a misheard word's fix, in a note, a terminal or a field (core/desktop/dictationlearn.ts) ----------
 {
-  const { corrections, TypedLine } = await plugin("dictation/learn.ts")
+  const { corrections, TypedLine } = await import(pathToFileURL(path.join(ROOT, "core", "desktop", "dictationlearn.ts")).href)
   const fix = (a: string, b: string) => JSON.stringify(corrections(a, b))
   check("learn: one misheard word fixed", fix("We're going to the Olympicos tomorrow", "We're going to the Olimpicos tomorrow") === '[{"word":"Olimpicos","said":"Olympicos"}]')
   check("learn: several words heard for one, and two fixes in a sentence", fix("I couldn't pronounce for saint here", "I couldn't pronounce Vorssaint here") === '[{"word":"Vorssaint","said":"for saint"}]' &&
@@ -3545,7 +3545,7 @@ await section("companion reach", async () => {
 })
 
 await section("screen drawings", async () => {
-  const sm: Any = await import(pathToFileURL(path.join(ROOT, "plugins/core/companion/screenmarks.ts")).href)
+  const sm: Any = await import(pathToFileURL(path.join(ROOT, "core/desktop/screenmarks.ts")).href)
   const lay: Any = await web("screendraw/layout.ts")
   const dr: Any = await import(pathToFileURL(path.join(ROOT, "electron/drawing.ts")).href)
   const err = (marks: unknown) => { try { sm.checkMarks(marks); return "" } catch (e) { return (e as Error).message } }
@@ -3663,7 +3663,7 @@ await section("screen drawings", async () => {
   const svgBad = [err([{ type: "paper", items: [{ type: "svg", paths: [{ d: "<script>alert(1)</script>" }] }] }]), err([{ type: "paper", items: [{ type: "svg", paths: [{ d: "M0 0 L10 10 url(#x)" }] }] }]),
     err([{ type: "paper", items: [{ type: "svg", d: "M0 0 L10 10", fill: "url(javascript:x)" }] }]), err([{ type: "paper", items: [{ type: "svg", paths: [{ d: "L10 10" }] }] }])]
   check("screen drawings: svg takes path data only: no markup, no urls, no colour but a name or #hex, starting with M", svgBad.every((e) => /d: |fill: |colour|color/.test(e)), svgBad)
-  const sp: Any = await import(pathToFileURL(path.join(ROOT, "plugins/core/companion/svgpath.ts")).href)
+  const sp: Any = await import(pathToFileURL(path.join(ROOT, "core/desktop/svgpath.ts")).href)
   const circle = sp.boundsOf(sp.flatten("M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0Z")), quad = sp.flatten("M0 0 Q10 20 20 0 T40 0 H50 V10 h-5 z")
   check("screen drawings: path data flattened: arcs as their circle, curves sampled, relative and closing commands",
     Math.abs(circle[0] - 2) < 0.2 && Math.abs(circle[2] - 20) < 0.3 && Math.abs(circle[3] - 20) < 0.3 && quad.length === 1 && quad[0].closed && quad[0].pts.at(-1).join() === "0,0", { circle, quad })

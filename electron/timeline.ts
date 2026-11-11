@@ -1,8 +1,8 @@
-/** The screen's timeline (plugins/core/screen/timeline.ts): the pointer, the app in front, clicks, the Talk key's words,
+/** The screen's timeline (core/desktop/screentimeline.ts): the pointer, the app in front, clicks, the Talk key's words,
  *  the box and the video, kept in memory only while the setting and the companion are on; read with screen.timeline. */
 import { screen } from "electron"
-import type { BoxAt, Rect } from "../plugins/core/companion/clips.ts"
-import { ACTS_MS, type Happened, KEEP_MS, kept, MOST, OFF_WHY, type Query, rangeOf, within } from "../plugins/core/screen/timeline.ts"
+import type { BoxAt, Rect } from "../core/desktop/clips.ts"
+import { ACTS_MS, type Happened, KEEP_MS, kept, MOST, OFF_WHY, type Query, rangeOf, within } from "../core/desktop/screentimeline.ts"
 import { type Clip, holdVideo, saveClip, stopVideo, videoAt, videoOn } from "./recorder.ts"
 
 /** What helper.ts lends it. */

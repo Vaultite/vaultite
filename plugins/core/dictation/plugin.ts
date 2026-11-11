@@ -2,7 +2,8 @@
 // to dictate (electron/dictation.ts) and for the companion's voice (companion/voice.ts), and streams to Soniox itself.
 import { inDesktop, OpError, Plugin } from "../../../core/plugins.ts"
 import { Kind } from "../../../core/vault.ts"
-import { addEntry, type Entry, hintOf, readDictionary, readEntries, removeEntry } from "./words.ts"
+import { addEntry, hintOf, readDictionary, readEntries, removeEntry } from "./words.ts"
+import type { Entry } from "../../../core/desktop/dictationlearn.ts"
 
 export const plugin = new Plugin(import.meta.url)
 

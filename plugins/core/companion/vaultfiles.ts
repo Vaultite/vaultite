@@ -1,5 +1,5 @@
 // What the companion saves into the vault (captures, QA walks, tours, lessons): a free name, the files beside a note,
-// and a vault path as a worker on another machine reads it. Their names: names.ts.
+// and a vault path as a worker on another machine reads it. Their names: core/desktop/names.ts.
 import fs from "node:fs"
 import path from "node:path"
 import type { OpCtx, Plugin } from "../../../core/plugins.ts"

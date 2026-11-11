@@ -1,6 +1,6 @@
 // The companion over the screen (web/src/screen.tsx, the page electron/overlay.ts' windows draw), headless with a stand-in
 // for its bridge: cursors glide, fade, look as the window's and hand over to it; their words never cover their name
-// (plugins/core/companion/boxes.ts), a bubble clicked opens the conversation (#panel); summoned, listening and thinking,
+// (core/desktop/boxes.ts), a bubble clicked opens the conversation (#panel); summoned, listening and thinking,
 // its words. Reads only web/dist (npm run build first): no app, no window on screen.
 // node web/qa/screencursor.mjs
 import fs from "node:fs"

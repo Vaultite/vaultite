@@ -11,7 +11,7 @@ export default async ($: VaultTest) => {
   const { asItsTool } = await import("../../../plugins/core/companion/plugin.ts")
   const { app, api, check } = $
   const T = await import("../../../plugins/core/companion/talks.ts")
-  const S = await import("../../../plugins/core/companion/spoken.ts")
+  const S = await import("../../../core/desktop/spoken.ts")
 
   check("talk: back (and its kin) is the app's own; words about going back to something aren't",
     ["back", "Back.", "go back", "okay, back to Claude", "thanks, that's all", "back to the companion", "done talking", "end the talk", "back now"].every(T.isBack) &&

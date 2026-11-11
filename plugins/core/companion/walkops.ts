@@ -3,12 +3,12 @@
 import path from "node:path"
 import type { OpCtx, Plugin } from "../../../core/plugins.ts"
 import { inDesktop, OpError } from "../../../core/plugins.ts"
-import { anchorText } from "./anchor.ts"
+import { anchorText } from "../../../core/desktop/anchor.ts"
 import type { Job, Where } from "./jobs.ts"
 import type { Moment } from "./plugin.ts"
-import { countText, type Project, projectFor, projectOf, type WalkItem, walkJobText, type WalkPlace } from "./walks.ts"
+import { countText, type Project, projectFor, projectOf, type WalkItem, walkJobText, type WalkPlace } from "../../../core/desktop/walks.ts"
 import type { Found, Over } from "./where.ts"
-import { localStamp, localTime } from "./names.ts"
+import { localStamp, localTime } from "../../../core/desktop/names.ts"
 import { freeBase, ownCapture, saveFiles, vaultFileOn } from "./vaultfiles.ts"
 
 type Jobs = { begin: (ctx: OpCtx, task: (w: Where) => Promise<string>, m: Moment | undefined, p: Record<string, unknown>) => Promise<Job>

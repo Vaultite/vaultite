@@ -3,16 +3,15 @@
 import { memo, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import { Check, ChevronDown, ChevronUp, Copy, Ellipsis, MessageSquarePlus, Pin, TextCursorInput, Trash2, UserRound, X } from "lucide-react"
-import { canvasOf, canvasShown, cn, CURSOR_SPRING, springStep, type Glide, stiffness, moves, selectTab, getTabLayout, tabOfPane, commandKeys, confirmDialog, copyText, dateText, dismissNotice, fmtStamp, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, type MenuItem, noticesSince, notify, notifyError, op, openFile, plural, runCommandById, dictationSource, seenArea, share, snippet, useDictation, useMenuShowing } from "@vaultite"
+import { canvasOf, canvasShown, Chat, cn, CURSOR_SPRING, springStep, type Glide, stiffness, moves, selectTab, getTabLayout, tabOfPane, commandKeys, confirmDialog, copyText, dateText, dismissNotice, fmtStamp, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, type MenuItem, noticesSince, notify, notifyError, op, openFile, plural, runCommandById, dictationSource, seenArea, share, snippet, useDictation, useMenuShowing } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
 import { pointFor } from "./canvas"
 import { domTree, resolveDom, uiElement } from "./uidom"
-import type { Thing } from "./uimodel"
+import type { Thing } from "../../../core/desktop/uimodel"
 import { accept, type Agent, answer, answered, arrivedAt, authorOf, comment, getState, type Target, type Note, onBump, pick, pin, type Reply, replyAuthor, review, sawSays, sendMoment, sawShown, startComment, subscribe, threadTint, tintOf, typing, viewOf, views } from "./live"
-import { arrowBox, boxAt } from "./boxes"
+import { arrowBox, boxAt } from "../../../core/desktop/boxes"
 import { interfaceZoom, onTop, type Screen, screenOf } from "./locate"
-import { Chat } from "./Chat"
-import { presence, STATUS } from "./look"
+import { presence, STATUS } from "../../../core/desktop/cursor"
 import { agentMenu } from "./session"
 import { changeAt, nearest } from "./text"
 import { showThread, useInMargin } from "./threads"
@@ -333,8 +332,8 @@ export function placeAt(x: number, y: number): Record<string, unknown> | null {
   return { ...p, ...(text ? { under: text } : {}), ...(near.length ? { near } : {}), ...notices }
 }
 
-/** What the window draws near x, y that a mark can name, nearest first, as things (uimodel.ts; frame in CSS px): the
- *  ids an ask over Vaultite's UI points at, as Accessibility's are in another app. */
+/** What the window draws near x, y that a mark can name, nearest first, as things (core/desktop/uimodel.ts; frame in
+ *  CSS px): the ids an ask over Vaultite's UI points at, as Accessibility's are in another app. */
 const NAMED = "button, a[href], input, select, textarea, h1, h2, h3, h4, [role], [data-ui], [aria-label], [data-tip]"
 export function elementsNear(x: number, y: number, radius = 260, most = 30): Thing[] {
   const seen = new Set<string>(), out: (Thing & { d: number })[] = [], tree = domTree()
@@ -395,7 +394,7 @@ export function noticesText(now = Date.now()) {
   return noticesSince(now - 60_000).slice(-5).map((n) => `${JSON.stringify(n.text)} (${n.kind === "error" ? "an error, " : ""}${Math.max(0, Math.round((now - n.at) / 1000))} s ago)`).join("; ")
 }
 
-/** A box's corner nearest its cursor's tip, sharper (`data-side`, `data-up`: where boxes.ts put it). */
+/** A box's corner nearest its cursor's tip, sharper (`data-side`, `data-up`: where core/desktop/boxes.ts put it). */
 const CORNER = "data-[side=right]:data-up:rounded-bl-[4px] data-[side=left]:data-up:rounded-br-[4px] data-[side=right]:not-data-up:rounded-tl-[4px] data-[side=left]:not-data-up:rounded-tr-[4px]"
 
 /** How long a bubble takes to read (ms): shown this long with the window in front, it's seen. */
@@ -499,7 +498,7 @@ const shallow = (x: unknown, y: unknown) => !!x && !!y && typeof x === "object" 
   && Object.keys(x).length === Object.keys(y).length && Object.entries(x).every(([k, v]) => Object.is(v, (y as Record<string, unknown>)[k]))
 const sameProps = <P extends object>(a: P, b: P) => Object.entries(b).every(([k, v]) => typeof v === "function" || Object.is((a as Record<string, unknown>)[k], v) || shallow((a as Record<string, unknown>)[k], v))
 
-/** A flag's mark (look.ts): dots working, a wave listening, a tick for a moment let pass (`at`: when, to play it anew). */
+/** A flag's mark (core/desktop/cursor.ts): dots working, a wave listening, a tick for a moment let pass (`at`: when, to play it anew). */
 export function Mark({ mark, label, at }: { mark: ReturnType<typeof presence>["mark"]; label?: string; at?: number }) {
   if (mark === "dots") return <span className="companion-dots" data-companion-sign="dots" aria-label={label} aria-hidden={!label || undefined}><i /><i /><i /></span>
   if (mark === "wave") return <span className="companion-wave" data-companion-sign="wave" aria-label={label} aria-hidden={!label || undefined}><i /><i /><i /></span>
@@ -575,7 +574,7 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, others, under, shi
   const closeFan = (focusFlag = false) => { clearTimeout(shut.current); if (focusFlag) { setFan(false); flagRef.current?.focus() } else shut.current = setTimeout(() => setFan(false), 350) }
   useEffect(() => () => clearTimeout(shut.current), [])
   useEffect(() => { if (!many) setFan(false) }, [many])
-  // (its flag goes toward the room; its words go where boxes.ts finds room)
+  // (its flag goes toward the room; its words go where core/desktop/boxes.ts finds room)
   const flagRight = at.x > innerWidth - 140
   // (its name and its mark show while it does anything, then it fades to the bare arrow, as in a shared doc; hovered, again)
   const shown = presence(a, { bubble: !!bubble, held: waiting, typed, age, looked: hover || open || fan })
@@ -610,7 +609,7 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, others, under, shi
   const wasDocked = useRef(docked), rested = wasDocked.current && !docked
   wasDocked.current = docked
   useGlide(box, tx, ty, away || arriving || rested, a.state === "writing" || typed ? stiffness(WRITING_MS) : CURSOR_SPRING)
-  // (its words, its box or its question placed by one rule (boxes.ts): never over its arrow, its name or what it points at)
+  // (its words, its box or its question placed by one rule (core/desktop/boxes.ts): never over its arrow, its name or what it points at)
   useLayoutEffect(() => {
     const el = box.current, words = el?.querySelector<HTMLElement>(":scope > [data-companion-bubble], :scope > [data-companion-popover], :scope > [data-companion-ask]")
     if (!el || !words || docked) return

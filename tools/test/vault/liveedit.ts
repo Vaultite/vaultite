@@ -13,7 +13,7 @@ export default async ($: VaultTest) => {
   const { app, api, check } = $
   const L = await import("../../../plugins/core/companion/liveedit.ts")
   const U = await import("../../../plugins/core/companion/unedit.ts")
-  const F = await import("../../../plugins/core/companion/framediff.ts")
+  const F = await import("../../../core/desktop/framediff.ts")
   const E = await import("../../../plugins/core/claude-code/edits.ts")
   const W = await import("../../../plugins/core/companion/where.ts")
 

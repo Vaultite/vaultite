@@ -111,6 +111,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `cell(initial)`: One value that hooks and subscribers follow: `set` a new one (the same one changes nothing), `use()` it in React (`use(pick)`: a part of it, drawn again only when that part changes).
 - `Cell`
 - `changedFiles(store, n, skip?)`: The vault's recently changed files, newest first, at most `n`, without those in `skip`.
+- `Chat({ name, tint, items, draft, setDraft, send, close, more, words, time, actions, tools, notice, busy, focus, placeholder, phone, windowed, className, style })`
+- `ChatItem`
 - `CheckItem`: One thing a checklist turns on or off; `icon`: what it is (a panel's, as the rail shows it), beside its check.
 - `checklist(id, { on, off, set })`: Which things are on, as menu rows: on ones ticked, in order, then More ▸ with `off`.
 - `CHIP_TINTS`: The colours a value can have: the app's colour tokens, which every colour scheme sets.
