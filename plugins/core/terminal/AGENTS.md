@@ -7,6 +7,7 @@ brings an agent and is on. It keeps nothing in the vault but its settings (below
   they ended, and a tab put back gets its screen and history again. Only the tab that opened an agent starts it: a
   tab put back (a reload, the app reopened, another device) reattaches, and if that agent's session is gone it says so
   and offers a new one rather than starting it by itself.
+- Terminals show pictures (the kitty graphics protocol, as Ghostty and kitty do): a command that draws one (`kitty +kitten icat`, `chafa -f kitty`) shows it in place, and Claude Code in a terminal here shows the images it reads and the ones pasted to it (PNG), through the `claude-pictures` mod Vaultite loads into its terminals.
 - A shell open on two devices has the size of the last one used: going back to one (focusing its tab or window, a
   click, a key) gives it its size again.
 - The sidebar's Terminals panel (also a tab, `view:terminals`) lists every running shell: click to open it, x to end
