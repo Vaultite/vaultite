@@ -44,9 +44,17 @@ async function get(p: string, wait = 8000) {
 const t0 = Date.now()
 
 try {
+  // The vault is read once the plugins are loaded, which takes a busy runner half a minute: timed from when the server
+  // starts reading the file (a FIFO opens for writing only once it has a reader), not from its spawn. Held open: no EOF.
+  let held = -1
+  while (held < 0 && Date.now() - t0 < 180_000 && server.exitCode === null) {
+    try { held = fs.openSync(path.join(VAULT, "Notes/Slow.md"), fs.constants.O_WRONLY | fs.constants.O_NONBLOCK) } catch { await sleep(100) }
+  }
+  check("the server starts reading the vault", held >= 0, [Date.now() - t0, log.slice(-500)])
+  if (held < 0) throw new Error("the server never read Notes/Slow.md")
   let loading: any = null
-  // (a busy runner takes seconds to load the server's plugins before it reads a file: generous, it ends when named)
-  while (Date.now() - t0 < 30_000) {
+  // (named once it has been read for a second, core/vault.ts SLOW)
+  for (const since = Date.now(); Date.now() - since < 15_000;) {
     const r = await get("loading", 1000)
     if (r.status === 200) { loading = r.body; if (loading.ready || loading.downloading.includes("Notes/Slow.md")) break } // (the Held notes may be named first)
     await sleep(100)
@@ -70,7 +78,6 @@ try {
 
   // iCloud gives it: the read ends, and the vault reads it without being asked.
   // (the file is there for good, then the read waiting on the FIFO ends)
-  const held = fs.openSync(path.join(VAULT, "Notes/Slow.md"), "w")
   put("Notes/.Slow.tmp", "---\ntype: note\n---\n\nArrived.\n")
   fs.renameSync(path.join(VAULT, "Notes/.Slow.tmp"), path.join(VAULT, "Notes/Slow.md"))
   fs.closeSync(held)
@@ -83,6 +90,8 @@ try {
   check("once it arrives it's read", arrived)
   const slow = await get("file?path=Notes/Slow.md")
   check("and opens", slow.status === 200 && slow.body.text.includes("Arrived."), slow)
+} catch (e) {
+  check("the test runs to its end", false, String(e))
 } finally {
   // (reaped before the next server: a killed one not yet waited for still holds the vault's claim, so that one wouldn't start)
   if (server.exitCode === null && server.signalCode === null) { server.kill("SIGKILL"); await once(server, "exit") }
