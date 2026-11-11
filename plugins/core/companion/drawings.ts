@@ -103,7 +103,7 @@ export function screenDrawings(plugin: Plugin, o: {
 
   /** `marks` drawn by `agent`: added to its drawing up (one from an exchange before, or kept, is replaced), timed with
    *  `say` or its words; `unshown`, why each mark left out couldn't show. */
-  async function draw(agent: string, marks: unknown, say?: string) {
+  async function draw(agent: string, marks: unknown, say?: string, hint?: string) {
     let ms: Mark[]
     try { ms = checkMarks(marks) } catch (e) { throw new OpError((e as Error).message) }
     asking(ms, say ?? o.words(agent))
@@ -114,7 +114,7 @@ export function screenDrawings(plugin: Plugin, o: {
     const got = await placed(agent, ms)
     if (!got.marks.length) throw new OpError(`${got.left.join("; ")}, so nothing was drawn and they saw no mark: use an element's id, the words exactly as their screen shows them, or a box on their screen; don't go on as if they saw it`, 409)
     ms = named(got.marks, new Set([...taken, ...idsIn(got.marks)]))
-    const caption = say ?? o.words(agent), q = asking(ms, caption)
+    const caption = say ?? o.words(agent), asked = asking(ms, caption), q = { ...asked, ...(asked.question && hint ? { hint: hint.slice(0, 160) } : {}) }
     if (adding) up({ ...now!, marks: pruned([...now!.marks, ...ms]).slice(-40), places: { ...now!.places, ...got.places }, hidden: undefined, ...(caption ? { caption } : {}), ...q })
     else up({ id: `d${Date.now().toString(36)}${++n}`, agent, tint: o.tint(agent), t: Date.now(), marks: ms, places: got.places, ...(caption ? { caption } : {}), ...q })
     return { drawing: layers.get(agent)!, unshown: got.left }

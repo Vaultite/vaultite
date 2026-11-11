@@ -505,6 +505,17 @@ for (const pointer of [{ x: 640, y: 740 }, null]) {
   check(`proof video: its choice is one card, Keep and merge, Needs changes, Not yet, clear of Keep and Clear and of the video${pointer ? ", the pointer by them" : ""}`,
     !!choice && !!tools && !hit(choice, tools) && !hit(choice, video) && onScreen(choice) && rows === "Keep and merge,Needs changes,Not yet", { choice, tools, video, rows })
   if (pointer) await page.screenshot({ path: path.join(SHOTS, "screendraw-proof-choice.png") })
+  // (its hint under the answers: their Talk key's words go to that job; the card grows to hold it)
+  if (pointer) await page.locator("[data-choices]").screenshot({ path: path.join(SHOTS, "screendraw-proof-choice-card.png") })
+  const hint = 'Or hold your Talk key and say what to change: it goes to "Make the heading blue".'
+  await show(page, { ...proof, id: "dpvh", question: "Keep it and merge it in, or does it need changes?", hint, marks: [...proof.marks,
+    ...["Keep and merge", "Needs changes", "Not yet"].map((label, i) => ({ type: "button", id: `m${i}`, label, do: { ask: label } }))] }, at)
+  await page.waitForTimeout(900)
+  const hinted = (await rects(page, "[data-choices]"))[0], line = (await rects(page, ".sd-choices-hint"))[0]
+  const fits = await page.evaluate(() => { const c = document.querySelector("[data-choices]"); return c.scrollHeight <= c.clientHeight + 1 })
+  check(`proof video: its choice card shows the hint under the answers, whole inside it${pointer ? ", the pointer by them" : ""}`,
+    !!hinted && !!line && line.y >= hinted.y && line.y + line.h <= hinted.y + hinted.h + 1 && fits && onScreen(hinted) && !hit(hinted, tools), { hinted, line, fits, tools, on: onScreen(hinted) })
+  if (pointer) await page.locator("[data-choices]").screenshot({ path: path.join(SHOTS, "screendraw-proof-choice-hint.png") })
   // (a button placed at the bottom, as any agent may: it keeps off the toolbar too)
   await show(page, { ...proof, id: "dpv2", marks: [...proof.marks, ...["Keep and merge", "Needs changes"].map((label, i) => ({ type: "button", id: `c${i}`, label, do: { ask: label }, at: { area: "bottom" } }))] }, at)
   await page.waitForTimeout(900)

@@ -124,7 +124,7 @@ export default function Draw({ d, act, leaving, pen, slot = 0, named = false }: 
     // (a choice's card is all its answers: dismissed, they all go)
     const ids = p.answers ? p.answers.map((a, i) => a.id ?? `${p.i + i}`) : [id]
     const away = !!leaving || !!d.hidden || !!p.mark.gone || ids.some((x) => hidden.has(x))
-    return { off, bounds, move: (o) => setMoved((m) => ({ ...m, [id]: o })), open: setFull, agent: d.agent, question: d.question, away,
+    return { off, bounds, move: (o) => setMoved((m) => ({ ...m, [id]: o })), open: setFull, agent: d.agent, question: d.question, hint: d.hint, away,
       natural: (px) => setNaturals((n) => (n[id]?.[0] === px[0] && n[id]?.[1] === px[1] ? n : { ...n, [id]: px })),
       media: (state) => act({ kind: "media", id: d.id, mark: id, ...state }),
       dismiss: () => { setHidden((h) => new Set([...h, ...ids])); for (const mark of ids) act({ kind: "dismiss", id: d.id, mark }) } }
@@ -291,7 +291,7 @@ type CardCtx = { off: Pt; bounds: Rect; move: (off: Pt) => void; dismiss: () => 
   /** A video as the user left it (its speaker, its play), told the server so what's up says so. */
   media: (state: { sound?: boolean; paused?: boolean }) => void
   /** Whose drawing, and the question its answers came with. */
-  agent: string; question?: string
+  agent: string; question?: string; hint?: string
   /** Going or hidden (dismissed, erased, its layer hidden or taken down): a video stops at once, never heard unseen. */
   away: boolean }
 
@@ -469,6 +469,7 @@ function Choices({ answers, c, delay, ctx, act }: { answers: Extract<Mark, { typ
           )
         })}
       </div>
+      {ctx.hint && <div className="sd-choices-hint sd-fade" style={{ "--delay": ms(delay + 120 + answers.length * 90) } as React.CSSProperties}>{ctx.hint}</div>}
     </div>
   )
 }

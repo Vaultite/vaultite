@@ -14,6 +14,8 @@ const str = (v: unknown) => (typeof v === "string" ? v : "")
 const CHOOSE_MS = 5 * 60_000
 /** A surface just opened: a moment for it to show before the tour looks for its things. */
 const SETTLE_MS = 900
+/** How long after its choice card went up their next ask is still taken as about the job just shown. */
+const REVIEWED_MS = 10 * 60_000
 
 export type ProofDeps = {
   jobs: { list: () => Job[]; find: (id: string) => Job; seen: (ids: string[]) => void; tell: (ctx: OpCtx, id: string, text: string, shown?: string) => Promise<void>
@@ -30,7 +32,7 @@ export type ProofDeps = {
   /** Its words in a bubble (said aloud while a proof shows), at a place of Vaultite's when given. */
   say: (text: string, o?: { ask?: boolean }) => Promise<unknown>
   /** The choice's buttons on the screen (the helper's), or false when there's no screen to draw on. */
-  choices: (job: Job, c: { say: string; buttons: string[] }) => Promise<boolean>
+  choices: (job: Job, c: { say: string; buttons: string[]; hint?: string }) => Promise<boolean>
   /** Its proof's layers taken down (a step's before, the choices). */
   clear: () => void
   /** Open what a job worked on (a note, a page), so its tour finds its things. */
@@ -56,6 +58,8 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
   /** What the choice answers now: a job just shown (or offered to merge first); `tell`: its next words go to it (no
    *  helper to record). */
   let pending: { job: string; until: number; asked: Asked; tell?: boolean } | null = null
+  /** The job whose change they just watched: their next ask that isn't a choice is taken as about it (once). */
+  let reviewed: { job: string; until: number } | null = null
   let playing: { job: string; ctl: { stopped: boolean } } | null = null
   /** The job being shown, looked for on main as it starts. */
   let mainRead: Promise<boolean> = Promise.resolve(false)
@@ -101,6 +105,7 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
     // (its change may have reached main since it was last looked for: the choice and the offer to merge go by that)
     mainRead = d.jobs.shipped(j.id).catch(() => false)
     playing = { job: j.id, ctl: mine }
+    reviewed = null
     d.showing({ voice })
     try {
       if (!proof) return await plain(j, mine, `It didn't leave a demo to show you, so here's what it says it did. ${summaryOf(j)}`)
@@ -151,6 +156,7 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
     await mainRead
     if (mine.stopped) return
     pending = { job: j.id, until: Date.now() + CHOOSE_MS, asked }
+    reviewed = { job: j.id, until: Date.now() + REVIEWED_MS }
     const c = choicesFor(j, asked)
     if (!(await d.choices(j, c).catch(() => false))) await d.say(c.say, { ask: true })
   }
@@ -165,6 +171,7 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
     const j = d.jobs.list().find((x) => x.id === p.job)
     if (!j) throw new OpError("that job is gone", 404)
     if (what === "later") {
+      reviewed = null
       await d.say("Okay, it waits in Jobs.")
       return { job: j.id, later: true }
     }
@@ -257,6 +264,7 @@ saves it: companion tour-save "<the change>" --job <its id> --record <its own se
       if (!p || Date.now() > p.until) { pending = null; return false }
       if (p.tell) {
         pending = null
+        reviewed = null
         void d.jobs.tell(ctx, p.job, `The user looked at what you made and it needs changes. They said: ${JSON.stringify(text.slice(0, 2000))}`, text)
           .then(() => d.say("Sent to the job."), (e) => d.say(`It didn't reach the job: ${(e as Error).message}`)).catch(() => {})
         return true
@@ -265,6 +273,14 @@ saves it: companion tour-save "<the change>" --job <its id> --record <its own se
       if (!c) { pending = null; d.clear(); return false }
       void chose(ctx, c).catch((e) => d.say((e as Error).message)).catch(() => {})
       return true
+    },
+    /** The job their ask `text` is about, when it comes right after that job's change was shown (its choice card up, or
+     *  answered but for Not yet), once: the companion is told they just watched it, and so is the job when it's passed on. */
+    reviewedBy(text: string) {
+      const r = reviewed
+      if (!r || !text.trim()) return undefined
+      reviewed = null
+      return Date.now() <= r.until && d.jobs.list().some((x) => x.id === r.job) ? r.job : undefined
     },
     /** A proof playing now stops (a new ask: they moved on). */
     stop: () => { if (playing) playing.ctl.stopped = true },

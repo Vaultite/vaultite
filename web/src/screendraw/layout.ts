@@ -160,14 +160,16 @@ export function areaRect(a: Area, size: Size, bounds: Rect, margin = 24): Rect {
 
 /** A choice's card: its question atop, a row per answer (its label, and what it sends when that says more). */
 export const CHOICE = { w: [240, 360] as const, pad: 12, head: 20, q: 14, row: 34, sub: 17, gap: 4 }
-export function choicesSize(question: string, answers: Extract<Mark, { type: "button" }>[], measure: (text: string, px: number, bold?: boolean) => number = rough): Size {
+export function choicesSize(question: string, answers: Extract<Mark, { type: "button" }>[], measure: (text: string, px: number, bold?: boolean) => number = rough, hint = ""): Size {
   const subs = answers.filter((a) => "ask" in a.do && a.do.ask !== a.label)
   const want = Math.max(measure(question, CHOICE.q, true) + CHOICE.pad * 2, ...answers.map((a) => measure(a.label, 13.5, true) + 60), ...subs.map((a) => measure("ask" in a.do ? a.do.ask : "", 12) + 60))
   const w = Math.round(Math.min(CHOICE.w[1], Math.max(CHOICE.w[0], want)))
   // (its question wraps; what an answer sends, to two lines)
   const qLines = question ? lines(question, w - CHOICE.pad * 2 + 24, CHOICE.q, measure) * 20 + 8 : 4
   const subLines = subs.reduce((n, a) => n + Math.min(2, lines("ask" in a.do ? a.do.ask : "", w - 60 + 24, 12, measure)), 0)
-  return { w, h: CHOICE.pad * 2 + CHOICE.head + qLines + answers.length * (CHOICE.row + CHOICE.gap) + subLines * CHOICE.sub }
+  // (a hint under the answers, its lines as they wrap)
+  const hintH = hint ? 8 + lines(hint, w - CHOICE.pad * 2, 12, measure) * CHOICE.sub : 0
+  return { w, h: CHOICE.pad * 2 + CHOICE.head + qLines + answers.length * (CHOICE.row + CHOICE.gap) + subLines * CHOICE.sub + hintH }
 }
 /** By their pointer, where the companion asks: left of it first (its own cursor and words ride to its right), else
  *  below it, else above; clear of the other cards. */
@@ -245,7 +247,7 @@ export function place(d: Drawing, here: Here, labelSize: (m: Mark) => Size | nul
     const m = p.mark
     if (!CARDS.has(m.type) || (isAnswer(m) && p !== first)) continue
     if (p === first) {
-      const size = choicesSize(d.question ?? "", p.answers!, measure), at = here.pointer && { x: here.pointer.x - here.origin.x, y: here.pointer.y - here.origin.y }
+      const size = choicesSize(d.question ?? "", p.answers!, measure, d.hint), at = here.pointer && { x: here.pointer.x - here.origin.x, y: here.pointer.y - here.origin.y }
       p.card = (at && besidePointer(at, size, bounds, taken)) || calmSpot(size, bounds, [...avoid, ...content], near, 24, 60, taken)
       taken.push(p.card)
       continue

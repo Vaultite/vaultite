@@ -39,11 +39,14 @@ export function summaryOf(j: Pick<Job, "result" | "last" | "title">) {
  *  or not yet (it waits in Jobs). An offer to merge first (its change isn't live where they are): yes or not yet. */
 export type Choice = "keep" | "broken" | "later"
 export type Asked = "proof" | "offer"
-/** The words of the choice for job `j`: its question and buttons, each button's words what happens. */
-export function choicesFor(j: Pick<Job, "state" | "where" | "result" | "land"> & Partial<Pick<Job, "log">>, asked: Asked = "proof"): { say: string; buttons: string[] } {
+/** The words of the choice for job `j`: its question and buttons, each button's words what happens; `hint`, under them,
+ *  that their Talk key's words go to that job (what to change, said rather than pressed). */
+export function choicesFor(j: Pick<Job, "state" | "where" | "result" | "land"> & Partial<Pick<Job, "log" | "title">>, asked: Asked = "proof"): { say: string; buttons: string[]; hint?: string } {
   if (asked === "offer") return { say: "Merge it first, then show you?", buttons: ["Merge it first", "Not yet"] }
-  if (landable(j)) return { say: "Keep it and merge it in, or does it need changes?", buttons: ["Keep and merge", "Needs changes", "Not yet"] }
-  return { say: j.where.repo && onMain(j) ? "It's already in. Keep it, or does it need changes?" : "Keep it, or does it need changes?", buttons: ["Keep", "Needs changes"] }
+  const title = (j.title ?? "").replace(/\s+/g, " ").trim(), short = title.length > 48 ? `${title.slice(0, 47)}…` : title
+  const hint = `Or hold your Talk key and say what to change: it goes to ${short ? `"${short}"` : "this job"}.`
+  if (landable(j)) return { say: "Keep it and merge it in, or does it need changes?", buttons: ["Keep and merge", "Needs changes", "Not yet"], hint }
+  return { say: j.where.repo && onMain(j) ? "It's already in. Keep it, or does it need changes?" : "Keep it, or does it need changes?", buttons: ["Keep", "Needs changes"], hint }
 }
 
 /** The user's answer after a proof (`asked`) in a few words: keep it (merge it), needs changes, not yet, or neither (a

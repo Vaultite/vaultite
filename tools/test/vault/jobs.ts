@@ -369,7 +369,15 @@ export default async ($: VaultTest) => {
           sst === 200 && sb.video === vb.video && v?.at?.area === "top" && /The%20blue%20heading\.mp4/.test(v?.url ?? "") && !!both && !!choice &&
           !!already && choice.drawing.marks.filter((k: Any) => k.type === "button").map((k: Any) => k.label).join() === "Keep,Needs changes",
           { buttons: choice?.drawing.marks.map((k: Any) => k.label), already, said: (await api("POST", "ops/companion.status", {}))[1].notes.filter((n: Any) => n.kind === "say").map((n: Any) => n.text).slice(-3), sst, sb, v, both })
-        await api("POST", "ops/companion.job-show", { choose: "later" })
+        check("proof: its choice card says, under its answers, that their Talk key's words go to that job", /^Or hold your Talk key and say what to change: it goes to "Make the heading blue"\.$/.test(choice?.drawing.hint ?? ""), choice?.drawing.hint)
+        // (their words next, not a choice, over another note: about the job just shown, told the companion and the job; asked
+        // long ago here, so no later handoff takes them as its ask)
+        const fb = c.addMoment({ kind: "ask", for: "Claude", text: "the heading is too big now, make it smaller", path: "Inbox/Status bar.md", line: 28, t: Date.now() - 20 * 60_000 }) as Any
+        const fbText = c.momentsText([fb], "pair", null), next = c.addMoment({ kind: "ask", for: "Claude", text: "what's on my calendar", path: "Inbox/Status bar.md", line: 3, t: Date.now() - 20 * 60_000 }) as Any
+        check("proof: their next ask after it (not a choice), over another note, is marked as about the job just shown: its line says so, the job is told they just watched it; the ask after, not",
+          fb?.reviewed === card.id && fbText.includes(`just after they watched job ${card.id} "Make the heading blue"`) && fbText.includes(`handoff --job ${card.id}`) &&
+          J.followTask("Smaller", fb, card.id).startsWith("They just watched your demo (Show me)") && !J.followTask("Smaller", fb, "other").startsWith("They just") && !next?.reviewed,
+          { fb: fb?.reviewed, fbText, next: next?.reviewed })
         win.emit("close")
       }
       sc.emit("message", Buffer.from(JSON.stringify({ t: "job-seen", ids: [card.id] })))

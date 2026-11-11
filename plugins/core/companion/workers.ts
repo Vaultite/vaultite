@@ -921,7 +921,7 @@ resumes), with land for their word to merge it, and ask false when their ask isn
         const unsureWhy = ctx.who.agent ? unsure(j, m, str(p.which)) : ""
         if (unsureWhy) throw new OpError(unsureWhy, 409)
         if (str(p.account)) throw new OpError("account is a new job's: a job keeps the account it runs in")
-        const text = followTask(task, fresh), title = str(p.title).trim()
+        const text = followTask(task, fresh, j.id), title = str(p.title).trim()
         const q: Queued = { note: task, text, at: Date.now(), ...(p.land === true ? { land: true, shown: task } : {}), ...(title ? { title } : {}), by: ctx.who, teller: by }
         // (its machine offline, or one it waits for already: kept and passed on once it's back)
         if (j.queued?.length) { const kept = keep(j, q); if (kept && fresh) j.asked = fresh.t; await told({ kind: "kept", title: j.title, line: kept ? `${j.where.label} is still offline: that goes to its job once it's back.` : `That's already waiting for ${j.where.label}.` }); return { ...cardOf(j), queued: true } }

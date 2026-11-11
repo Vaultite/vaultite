@@ -269,6 +269,9 @@ Some words before the steps.
   // (the choice says what happens: a change of its own merges, one with none just keeps; every button's words answer it)
   const coded = { state: "ready for review" as const, where: { repo: "site" } as unknown as Job["where"], result: { diff: "1 file changed, +1 -0" } }, note = { ...coded, where: { repo: "" } as unknown as Job["where"] }
   const cs = [P.choicesFor(coded), P.choicesFor(note), P.choicesFor(coded, "offer")]
+  check("proof: its choice's hint says their Talk key's words go to that job, by name when it has one; an offer has none",
+    P.choicesFor({ ...coded, title: "Make the save button blue" }).hint === 'Or hold your Talk key and say what to change: it goes to "Make the save button blue".' &&
+    cs[0].hint === "Or hold your Talk key and say what to change: it goes to this job." && !cs[2].hint, cs.map((x) => x.hint))
   check("proof: a job with a change of its own asks Keep and merge, Needs changes, Not yet; one with none, Keep or Needs changes; each button its own answer",
     cs[0].buttons.join() === "Keep and merge,Needs changes,Not yet" && cs[1].buttons.join() === "Keep,Needs changes" && cs[2].buttons.join() === "Merge it first,Not yet" &&
     cs.every((c, i) => c.buttons.every((b) => P.choiceSaid(b, i === 2 ? "offer" : "proof") !== null)) && !J.landable({ ...coded, land: { asked: 1, at: 2, merged: true } }) &&

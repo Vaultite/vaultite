@@ -318,10 +318,12 @@ export function jobTask(task: string, m: Moment | undefined, w?: Pick<Where, "cw
     .filter(Boolean).join("\n\n")
 }
 
-/** A follow-up typed into a job, one line: the companion's note, then the user's own words and screen (none lost retold). */
-export function followTask(task: string, m: Moment | undefined) {
-  const asked = askLines(m)
-  return [task.trim(), asked.length ? `(The user, through their companion: ${asked.join(" · ")})` : ""].filter(Boolean).join(" ")
+/** A follow-up typed into job `id`, one line: the companion's note, then the user's own words and screen (none lost
+ *  retold); asked right after they watched its change (Show me), said so: their words are about what it made. */
+export function followTask(task: string, m: Moment | undefined, id?: string) {
+  const asked = askLines(m), watched = !!id && m?.reviewed === id
+  return [watched ? "They just watched your demo (Show me) and read its choice card: this is their feedback on what you made, whatever note or page their screen shows." : "",
+    task.trim(), asked.length ? `(The user, through their companion: ${asked.join(" · ")})` : ""].filter(Boolean).join(" ")
 }
 
 /** One job as an agent reads it: its state, where, how long, what it does now, what it was told and said last, the

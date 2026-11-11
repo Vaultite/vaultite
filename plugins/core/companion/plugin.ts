@@ -85,6 +85,8 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
   live?: string; shotWindow?: number
   /** A question asked over a page a job works on, so the companion's, not sent live: that job's id (its work to read). */
   pageJob?: string
+  /** Asked right after a job's change was shown (Show me, then its choice card): that job's id; their words are about it. */
+  reviewed?: string
   /** A tour's step handed to the model (tours.ts): the player's words, never the user's, so it's no ask in their box. */
   tour?: boolean
   /** Asked through the realtime voice (the desktop app's realtimefront.ts): it already told them it's looking and says
@@ -371,6 +373,8 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
   else full.for = addressee(m.for)
   // (Keep or Still broken, just after a job's proof: the app's, never the model's, nor an ask a later job is told of)
   if (m.kind === "ask" && full.for && isMain(full.for) && full.text && !m.tour && proofs.answer(liveCtx(from), full.text)) return full
+  // (else, right after a proof, their words are about the job just shown, whatever note or page is behind them)
+  if (m.kind === "ask" && full.for && isMain(full.for) && full.text && !m.tour && !m.live) { const r = proofs.reviewedBy(full.text); if (r) full.reviewed = r }
   // (an ask already asked, as it reads, a while ago: a line asked again by Enter on it, after a restart too)
   if (m.kind === "ask" && !m.item && !m.summoned && log.read(localDate(full.t)).some((x) => x.kind === "ask" && x.for === full.for && x.path === full.path && x.text === full.text && full.t - x.t < 2 * 3600_000)) return null
   log.append(full.t, [full])
@@ -2662,6 +2666,13 @@ function pageJobLine(id: string) {
   return `  over the page job ${id} "${cut(j.title, 60)}" (${j.state}) works on: their changes there go to it, this question is yours, answer it now${asked ? `; asked live there: ${asked}` : ""}${said ? `; it said last: ${JSON.stringify(cut(said, 300))}` : ""}; more of its work (its diff, files, what it was told): companion job ${id}`
 }
 
+/** What an ask right after a job's proof says of it: they just watched that job's change, so their words are about it. */
+function reviewedLine(id: string) {
+  const j = jobs.list().find((x) => x.id === id)
+  const name = j ? `job ${id} "${cut(j.title, 60)}" (${j.state})` : `job ${id}`
+  return `  just after they watched ${name}'s change (Show me) and read its choice card: these words are about that job, not the note, page or app behind them, unless they plainly name something else. What to change (or any feedback on it) goes to it: handoff --job ${id}, their words go with it; a question about it you answer (companion job ${id})`
+}
+
 /** Moments as an agent reads them. */
 export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Excerpt[] = [], aware = "") {
   const guided = new Set<string>()
@@ -2711,6 +2722,7 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
     if (m.closeUp) out.push(`  ${closeUpText(m)}`)
     if (m.notices) out.push(`  Vaultite's toasts of the last minute (gone from the picture, maybe): ${m.notices}`)
     if (m.pageJob) out.push(pageJobLine(m.pageJob))
+    if (m.reviewed) out.push(reviewedLine(m.reviewed))
     if (m.front === "realtime") out.push(`  asked through the realtime voice: it already told them you're looking, so answer at once, no "let me look"${m.talk?.length ? `; said before: ${m.talk.map((x) => JSON.stringify(x)).join(", ")}` : ""}`)
     if (m.under) out.push(`  under their pointer${m.sx !== undefined ? ` (sx ${m.sx}, sy ${m.sy})` : ""}: ${m.under}`)
     else if (m.sx !== undefined && m.app) out.push(`  their pointer: sx ${m.sx}, sy ${m.sy}`)
@@ -2905,7 +2917,7 @@ const proofs = proofOps(plugin, {
   choices: async (_j, c) => {
     if (!screens.size || !displaysOf(ownName()).length) return false
     // (answers, no place of their own: one card, its question atop, by the pointer; placed, each was a loose chip on Clear)
-    await plugin.host.call("companion.draw", { say: c.say, marks: c.buttons.map((label) => ({ type: "button", label, do: { ask: label } })) }, AS_TOOL, { report: "companion job-show" })
+    await plugin.host.call("companion.draw", { say: c.say, ...(c.hint ? { hint: c.hint } : {}), marks: c.buttons.map((label) => ({ type: "button", label, do: { ask: label } })) }, AS_TOOL, { report: "companion job-show" })
     return true
   },
   clear: () => { stopFlips(); screenDrawing.clear({ agent: ownName() }) },
@@ -3845,6 +3857,7 @@ drawing's text (next, vau render). Only in pair mode or when they asked you to.
   lock: false,
   params: { marks: { type: "array", items: { type: "object" }, description: "marks to draw on the screen: {\"type\": \"ring\" | \"point\" | \"frame\" | \"connect\" | \"paper\" | ..., ...} (see help)" },
     say: { type: "string", description: "with marks, written after them: your words, said once the marks check; each mark's beat is a sentence of them" },
+    hint: { type: "string", description: "with a choice's buttons: one short line under them, shown, never said (another way to answer)" },
     actions: { type: "array", items: { type: "object" }, description: "what to change, in order, by id: {\"op\": \"add\" | \"move\" | \"change\" | \"delete\", ...}; without path the drawing on the screen, with path that drawing file" },
     path: PATH, as: AS },
   run: async (p, ctx) => {
@@ -3877,7 +3890,7 @@ drawing's text (next, vau render). Only in pair mode or when they asked you to.
 async function drawOnScreen(p: Record<string, unknown>, ctx: OpCtx) {
   const name = who(p)
   did(name, "draw")
-  const { drawing: d, unshown } = await screenDrawing.draw(name, p.marks, str(p.say) || undefined).catch((e) => {
+  const { drawing: d, unshown } = await screenDrawing.draw(name, p.marks, str(p.say) || undefined, str(p.hint).trim() || undefined).catch((e) => {
     const use = toolUse.getStore(), n = use ? streams.get(use)?.note : undefined, ask = askOf(name)?.t
     if (n && ask !== undefined) saidUndrawn.set(key(name), { note: n, text: notes.get(n)?.text ?? str(p.say), ask })
     throw e

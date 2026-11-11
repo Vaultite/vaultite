@@ -66,7 +66,9 @@ export type Drawing = { id: string; agent: string; tint: string; t: number; mark
   /** Hidden for now (companion layer --hide): kept as it is, drawn again when shown. */
   hidden?: boolean
   /** The question its answers (buttons that ask) came with: shown atop them. */
-  question?: string }
+  question?: string
+  /** A line under a choice's answers, shown, never said: another way to answer (their Talk key's words). */
+  hint?: string }
 export type Spoken = { at: number; dur: number }
 
 export const MARK_TYPES: MarkType[] = ["point", "ring", "frame", "underline", "strike", "connect", "num", "check", "cross", "spotlight", "scroll", "write", "paper", "sticky", "list", "button", "copy", "open", "image", "video"]

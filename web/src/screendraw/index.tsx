@@ -105,6 +105,7 @@ document.head.append(Object.assign(document.createElement("style"), { textConten
 .sd-answer svg { color: var(--tint); }
 .sd-answer:hover:not(:disabled) { background: color-mix(in srgb, var(--tint) 14%, var(--background)); }
 .sd-answer:disabled { cursor: default; opacity: .45; } .sd-answer[data-picked] { opacity: 1; box-shadow: 0 0 0 1.5px var(--tint); }
+.sd-choices-hint { margin-top: 8px; font-size: 12px; line-height: 17px; color: color-mix(in srgb, var(--foreground) 62%, transparent); }
 .sd-answer-sub { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-size: 12px; font-weight: 400; line-height: 17px; color: color-mix(in srgb, var(--foreground) 62%, transparent); overflow: hidden; }
 .sd-media-bar button { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 999px; cursor: pointer; } .sd-media-bar button:hover { background: rgba(255,255,255,.18); }
 .sd-media-bar input { flex: 1; min-width: 0; accent-color: var(--tint); cursor: pointer; }

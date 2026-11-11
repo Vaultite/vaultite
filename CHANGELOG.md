@@ -12,6 +12,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   bar first, in the window or over other apps.
 - **Proposals come as pictures**: `vau html picture` turns an HTML mockup, or a prototype's page, into PNGs a note
   embeds (each option its own), and jobs show a UI change that way, in plain sentences, never as ASCII sketches.
+- **Feedback after Show me goes to that job**: what you say with the Talk key right after a job's demo is taken as about
+  that job, not the note behind it, and the job is told you just watched it; its choice card says so under its answers.
 - **Silence**: a companion answer with no spoken words says Silence in Conversations, not a sentence about it.
 - **The companion knows when you didn't hear it**: asked why it said nothing, it says its answer was kept quiet for a
   call (in which app, when), or that its voice was off or failing then, and offers to say it now.
