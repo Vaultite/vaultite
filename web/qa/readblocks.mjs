@@ -13,7 +13,8 @@ const GEMS = "---\norigin: ai\n---\n# Gems\n\nA plain line about [[Plain]].\n\nA
 
 rmSync(abs(DIR), { recursive: true, force: true })
 write(NOTE, GEMS)
-write(PLAIN, "---\norigin: ai\n---\n# Plain\n\nNothing a plugin changes, with a [[Gems]] link.\n\n- one\n- two\n\n> A quote.\n")
+// (a heading other than its name: a first `# Plain` hides behind the title, drawn by no block)
+write(PLAIN, "---\norigin: ai\n---\n# Nothing special\n\nNothing a plugin changes, with a [[Gems]] link.\n\n- one\n- two\n\n> A quote.\n")
 
 try {
   const ctx = await browser.newContext({ viewport: { width: 1300, height: 900 } })
