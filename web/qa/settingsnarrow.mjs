@@ -1,7 +1,8 @@
 // Settings in a pane too narrow for its menu beside a section (pages/Settings.tsx, components/RailLayout.tsx): the
 // desktop app's first window, 1280×820 with both sidebars open. Each section the menu lists, Plugins and Get plugins too,
 // opens in the menu's place with a way back; so do the sidebar's Plugins button, the palette, search, an old #get tab
-// (pages/Setup.tsx) and core/apppages.ts' openSettings. A phone's Plugins stays its own page. Writes nothing.
+// (pages/Setup.tsx) and core/apppages.ts' openSettings. A phone's Plugins stays its own page. What the menu's Plugins
+// counts, and Remote access (plugins/core/mcp/Connections.tsx) saying it's optional. Writes nothing.
 //   node web/qa/settingsnarrow.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { palette, qa, until, wait } from "./lib/qa.mjs"
@@ -35,11 +36,17 @@ try {
   // Every section the menu lists opens in its place, and its way back is to the menu.
   const ids = await menu.locator("[data-settings-nav]").evaluateAll((els) => els.map((e) => e.getAttribute("data-settings-nav")))
   check("the menu lists Plugins and Get plugins", ids.includes("plugins") && ids.includes("get"), ids)
+  const pluginsRow = (await menu.locator('[data-settings-nav="plugins"]').innerText()).replace(/\s+/g, " ").trim()
+  check("Plugins says what its number counts", /^Plugins \d+ on$/.test(pluginsRow), pluginsRow)
   const broken = []
   for (const id of ids) {
     await menu.locator(`[data-settings-nav="${id}"]`).click()
     if (!(await inPlace(id)) || !(await back.isVisible())) { broken.push(id); await page.goto(`${B}#settings`); await wait(1500); continue }
     if (id === "plugins") await page.screenshot({ path: `${OUT}plugins.png` })
+    if (id === "mcp:remote") {
+      const says = await until(async () => await shown(id).locator("[data-cloud-sign-in]").count() && shown(id).innerText(), 6000)
+      check("Remote access, signed out: what it's for, and that the rest works without it", /phone/.test(says) && /everything else works without it/.test(says), says)
+    }
     await toMenu()
   }
   check("each section opens in the menu's place, with a way back to it", !broken.length, broken)

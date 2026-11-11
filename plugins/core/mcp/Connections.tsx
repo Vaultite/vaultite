@@ -109,7 +109,7 @@ function CloudSignIn({ cloud, onDone, intro }: { cloud: Cloud; onDone: () => voi
   )
 }
 
-const CLOUD_INTRO = "Gives your vault an address on vaultite.app, so AI apps on the web and your phone reach it while this machine is on. Free, with no tunnel to set up."
+const CLOUD_INTRO = "Gives your vault an address on vaultite.app, so your phone and AI apps on the web reach it while this machine is on. Free, with no tunnel to set up. Optional: everything else works without it."
 
 /** Vaultite Cloud, last on the page: signed out, a sign-in; else its state, the addresses and sign out. */
 function CloudSection({ data, onDone }: { data: State; onDone: () => void }) {

@@ -11,8 +11,8 @@ type Attrs = Record<`data-${string}`, string | undefined>
 
 export type RailItem = {
   id: string; label: string; icon?: LucideIcon; tint?: string
-  /** At its right end: how many it holds. */
-  count?: number
+  /** At its right end: what it holds, said in words (Plugins' "7 on"). */
+  value?: string
   /** Above it: a heading (Features), or only some space. */
   heading?: string; gap?: boolean
   /** Its heading folds what's under it, to the next heading or space. */
@@ -86,7 +86,7 @@ export function RailMenu({ label, items, active, pick, tiles: tiled, chevrons, .
             {head}
             {!folded && (
               <SidebarRow icon={icon} tint={tiled ? undefined : it.tint} label={it.label} open active={active === it.id} aria-current={active === it.id ? "page" : undefined} onClick={() => pick(it.id)} {...it.attrs}>
-                {it.count !== undefined && <span className="pr-0.5 text-[12px] text-muted-foreground tabular-nums">{it.count}</span>}
+                {it.value && <span className="pr-0.5 text-[12px] text-muted-foreground tabular-nums">{it.value}</span>}
                 {chevrons && <ChevronRight aria-hidden className="size-4 shrink-0 text-tertiary" strokeWidth={2.5} />}
               </SidebarRow>
             )}

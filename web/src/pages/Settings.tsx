@@ -241,7 +241,7 @@ function menu(prefs: Prefs): RailItem[] {
   return [
     ...CORE.filter((s) => !grouped.includes(s.id)).map((s) => item(s)),
     ...[...CORE.filter((s) => AI_GROUP.includes(s.id)), ...pages.filter((s) => s.plugin.alwaysOn)].map((s, i) => item(s, { gap: i === 0 })),
-    ...CORE.filter((s) => PLUGINS_GROUP.includes(s.id)).map((s, i) => item(s, { gap: i === 0, count: s.id === "plugins" ? on : undefined, attrs: setupAttrs(s.id) })),
+    ...CORE.filter((s) => PLUGINS_GROUP.includes(s.id)).map((s, i) => item(s, { gap: i === 0, value: s.id === "plugins" ? `${on} on` : undefined, attrs: setupAttrs(s.id) })),
     ...pages.filter((s) => !s.plugin.alwaysOn).sort((a, b) => byName.compare(a.label, b.label)).map((s) => item(s)),
   ]
 }

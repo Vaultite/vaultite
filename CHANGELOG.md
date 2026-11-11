@@ -20,6 +20,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   Obsidian; a click beside one edits the text.
 - **`vau notify --action-open` takes a file anywhere**: an absolute path outside the vault keeps its leading slash and
   opens in the desktop app (one that isn't there is refused); a path inside the vault is its vault path.
+  Plugins button, which did nothing there. Plugins' number says what it counts (7 on), and Remote access says it's
+  optional.
 - **Timelines read bold dates**: a line like `- **2026-04-22** | Meeting notes — Pricing chat` (as many write by hand,
   and GBrain's pages do) reads as an entry instead of a line not understood.
 - **Markdown links count as links**: `[text](Note.md)` and `![](image.png)` (relative, from the top, without `.md`)
