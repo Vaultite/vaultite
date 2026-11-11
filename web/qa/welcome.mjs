@@ -1,6 +1,7 @@
 // The welcome card (components/Welcome.tsx, core/welcome.ts): a new vault shows it over the app; its look page applies a
 // layout and the theme behind it, no toasts; AI branches on the agents found (answered here by a stand-in for ai.agents):
-// found, Use them turns their plugins on and Not now turns AI off; none, Continue says it works without; Done teaches the
+// found, Use them turns their plugins on and Not now turns AI off (Standard not marked changed for it); a layout looked at
+// and left leaves no file (core/bundles.ts); none, Continue says it works without; Done teaches the
 // quick switcher's key by pressing it; Skip and Esc close it as it is (no agents: AI off); the app's keys wait while it's
 // up; Show welcome in the palette brings it back for a vault set up long ago; a phone skips it, on Standard. Shots: light,
 // dark, AI found and none. WRITES settings: throwaway server only.
@@ -51,6 +52,10 @@ await until(() => json("appearance.json")?.rails === false, 8000)
 await wait(400)
 check("a tile applies its layout behind the card, quietly: no toast, no guide, the offer ended", json("appearance.json")?.rails === false && !existsSync(OFFER)
   && !(await page.locator("[data-sonner-toast]", { hasText: "Zen" }).count()) && await card(page).count() === 1)
+const ZEN_GUIDE = path.join(VAULT, "Guides/How Zen works.md"), guided = existsSync(ZEN_GUIDE)
+await page.locator('[data-welcome] [data-layout-pick="standard"]').click()
+await until(() => json("appearance.json")?.rails !== false && !existsSync(ZEN_GUIDE), 8000)
+check("Standard again: Zen looked at and left leaves nothing (its guide taken back)", guided && json("appearance.json")?.rails !== false && !existsSync(ZEN_GUIDE))
 await page.locator('[data-welcome-theme="dark"]').click()
 check("Dark applies at once", await until(() => page.evaluate(() => document.documentElement.classList.contains("dark")), 3000))
 await page.screenshot({ path: `${OUT}welcome-look-dark.png` })
@@ -71,6 +76,8 @@ await page.locator("[data-welcome-next]").click()
 await page.locator("[data-welcome-not-now]").click()
 await until(() => page.locator("[data-welcome-body=done]").count(), 4000)
 check("Not now: AI off for real", await until(() => plugins().ai === false, 4000), plugins())
+const layouts = (await api("GET", "bundles")).bundles.filter((b) => b.inUse)
+check("...and Standard, the layout in use, isn't marked changed by it", JSON.stringify(layouts.map((b) => `${b.id}${b.modified ? " modified" : ""}`)) === '["standard"]', layouts)
 check("then done: the quick switcher's key to press", (await page.locator("[data-welcome-done]").innerText()).includes("to find any note"))
 await page.keyboard.press("ControlOrMeta+o")
 check("pressing it: it lights up", !!(await until(() => page.locator("[data-welcome-done=pressed]").count(), 2000)))

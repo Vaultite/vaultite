@@ -83,10 +83,13 @@ function Welcome({ ask }: { ask: WelcomeAsk }) {
       setAnswer("use")
       await endOffer()
       if (!aiOn()) await setAi(true)
-      for (const a of found) { const p = pluginById(a.id); if (p && !switchedOn(p, getPrefs())) setSwitch(p, true, true) }
+      await Promise.all(found.map((a) => { const p = pluginById(a.id); return p && !switchedOn(p, getPrefs()) ? setSwitch(p, true, true) : null }))
       // The first one found is the one you talk to (the companion), when it can be.
-      const first = found.map((a) => Object.keys(pluginById(a.id)?.agents ?? {})[0]).find(Boolean)
+      const lead = found.find((a) => Object.keys(pluginById(a.id)?.agents ?? {})[0]) ?? found[0]
+      const first = Object.keys(pluginById(lead.id)?.agents ?? {})[0]
       if (first && pluginById("companion")) await setCompanion(first)
+      // A new vault's starter notes, if it has them, say now what the agent can do, and its page and pointers come.
+      if (ask.firstRun || ask.newVault) await op("vault.starter", { agent: lead.id })
       go(await permissionsWanted() ? "permissions" : "done")
     } catch (e) { notifyError(e, "Couldn't turn on the agents") } finally { setBusy(false) }
   }

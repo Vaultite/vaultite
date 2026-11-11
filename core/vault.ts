@@ -1780,10 +1780,12 @@ export class Vault {
     return true
   }
 
+  /** Move a note to .trash, its index and pins following; returns where it went. */
   trash(rel: string) {
     const to = this.toTrash(rel)
     this.drop(rel)
     this.moved(rel, null, to)
+    return to
   }
 
   /** Move a file or folder to .trash, named with the time (" 1", " 2"... when taken); returns where it went. Index untouched. */

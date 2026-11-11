@@ -22,6 +22,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   opens in the desktop app (one that isn't there is refused); a path inside the vault is its vault path.
   Plugins button, which did nothing there. Plugins' number says what it counts (7 on), and Remote access says it's
   optional.
+- **A cleaner first vault**: it opens on one Start here tab, not two; a layout looked at on the welcome card and left
+  leaves nothing behind (switching layouts takes back the guide the last one added, while unchanged; Undo puts it
+  back); Start here says only what's true (Settings > AI, no word of AI until you say to use an agent); the agent's
+  page and AGENTS.md and CLAUDE.md come only with Use it; and answering Not now no longer marks Standard as Changed.
 - **Timelines read bold dates**: a line like `- **2026-04-22** | Meeting notes — Pricing chat` (as many write by hand,
   and GBrain's pages do) reads as an entry instead of a line not understood.
 - **Markdown links count as links**: `[text](Note.md)` and `![](image.png)` (relative, from the top, without `.md`)

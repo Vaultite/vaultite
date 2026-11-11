@@ -48,7 +48,7 @@ pages and a knowledge graph of what links to what.
    (`sudo apt install ./vaultite_*.deb` also sets up Chromium's sandbox on Ubuntu 24.04+).
 2. **Make a vault**, or open a folder of Markdown you already have: Vaultite changes none of it. Or try the playground,
    a made-up vault, first.
-3. **Connect your AI** in Settings, Connections: Claude, ChatGPT, Muse or Grok Bot, on the web and your phone (they
+3. **Connect your AI** in Settings, AI: Claude, ChatGPT, Muse or Grok Bot, on the web and your phone (they
    reach Vaultite through Vaultite Cloud's relay or a tunnel of your own: [SECURITY.md](SECURITY.md)). Claude Code and
    Codex in Vaultite's terminals already know the vault.
 

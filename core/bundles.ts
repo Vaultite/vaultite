@@ -457,8 +457,10 @@ export async function plan(b: Bundle, host: Host, n: number | null, { skip = new
   // Turning Workspaces on, the window goes to a workspace whose own panels and pins would show instead of its: that one
   // is the one it changes (the device's pick, else the first in use, as the app picks: plugins/core/workspaces/state.ts).
   if (!n && on.includes("workspaces")) n = landing ?? await firstWorkspace(host)
-  // A plugin for AI it turns on while AI is off: it turns AI on too, and says so (core/coreops/ai.ts).
-  if (conf.ai === false && [...targets ?? []].some(([id, want]) => want && kinds.get(id)?.ai)) take({ id: "ai", part: "plugin", label: "Turn on AI, which its agents need" })
+  // A plugin for AI it turns on by name while AI is off: it turns AI on too, and says so (core/coreops/ai.ts). One it
+  // leaves on by default (Standard's agents) leaves AI as the user set it: AI isn't a layout's.
+  const named = new Set([...strs(pj?.enabled), ...allCode.map((c) => c.id)])
+  if (conf.ai === false && [...targets ?? []].some(([id, want]) => want && named.has(id) && kinds.get(id)?.ai)) take({ id: "ai", part: "plugin", label: "Turn on AI, which its agents need" })
   const missing = [...new Set([...strs(pj?.disabled), ...strs(pj?.enabled)])].filter((id) => !kinds.has(id) && !code.includes(id) && !installs.some((x) => x.id === id))
   // settings
   const set: Plan["settings"] = [], skipped: Plan["skipped"] = []
@@ -586,6 +588,8 @@ export type Previous = {
   workspace: { n: number; sidebars: unknown; pins: string[] | null; pinned: string[] } | null
   /** Files it added, with their text's hash (trashed on restore while unchanged). */
   added: { path: string; hash: string }[]
+  /** Files the layout it replaced had added, unchanged, that it took to the trash (`trash`: where): put back on restore. */
+  taken?: { path: string; trash: string }[]
   /** Vault plugins it installed from their source (uninstalled on restore). */
   installed?: string[]
   /** The bundle applied before it (applied.json), applied again by a restore. */
@@ -593,8 +597,9 @@ export type Previous = {
   /** The layouts' tweaks before it (tweaks/<id>.json, null: none), put back by a restore. */
   tweaks?: Record<string, Tweaks | null>
 }
-/** The bundle applied last (applied.json), and the changes it was applied without. */
-type Applied = { bundle: string; name: string; at: string; skip: string[] }
+/** The bundle applied last (applied.json), the changes it was applied without, and the files it added (a layout's
+ *  guide, the pages it pinned), which another layout applied over it takes back while they're as it wrote them. */
+type Applied = { bundle: string; name: string; at: string; skip: string[]; added?: Previous["added"] }
 /** A bundle being tried (trial.json): Keep ends it, Restore puts back the setup from before it. */
 export type Trial = { bundle: string; name: string; at: string }
 
@@ -602,7 +607,10 @@ function readRecord<T>(v: Vault, rel: string, ok: (o: Item) => boolean): T | nul
   try { const o = JSON.parse(readText(v.abs(rel))); return isObj(o) && ok(o) ? o as T : null } catch { return null }
 }
 const readPrevious = (v: Vault) => readRecord<Previous>(v, PREVIOUS, (o) => typeof o.bundle === "string")
-const readApplied = (v: Vault) => { const a = readRecord<Applied>(v, APPLIED, (o) => typeof o.bundle === "string"); return a && { ...a, skip: strs(a.skip) } }
+const readApplied = (v: Vault) => {
+  const a = readRecord<Applied>(v, APPLIED, (o) => typeof o.bundle === "string")
+  return a && { ...a, skip: strs(a.skip), added: Array.isArray(a.added) ? a.added.filter((x) => isObj(x) && typeof x.path === "string" && typeof x.hash === "string") : [] }
+}
 const readTrial = (v: Vault) => readRecord<Trial>(v, TRIAL, (o) => typeof o.bundle === "string")
 /** Write a record, or remove it (null). */
 function writeRecord(v: Vault, rel: string, o: object | null) {
@@ -702,7 +710,7 @@ function merged(old: Previous, now: Previous): Previous {
   return { ...now, config, order: { ...now.order, ...old.order },
     absent: [...new Set([...old.absent, ...now.absent.filter((x) => !(x in old.config) && !(x === "pages" && oldPins))])],
     pins: oldPins ? old.pins : now.pins, pinned: [...new Set([...old.pinned, ...now.pinned])], workspace: w,
-    added: [...old.added, ...now.added.filter((a) => !old.added.some((x) => x.path === a.path))],
+    added: [...old.added, ...now.added.filter((a) => !old.added.some((x) => x.path === a.path))], taken: [...old.taken ?? [], ...now.taken ?? []],
     installed: [...new Set([...old.installed ?? [], ...now.installed ?? []])], was: old.was ?? null, tweaks: { ...now.tweaks, ...old.tweaks } }
 }
 
@@ -751,6 +759,18 @@ export async function apply(b: Bundle, host: Host, n: number | null, allowCode: 
       throw new HTTPError(e instanceof OpError ? e.status : 502, `${name} isn't applied: couldn't install ${c.name} from ${c.source}: ${(e as Error).message}. Nothing was installed or changed.`)
     }
     (prev.installed ??= []).push(c.id)
+  }
+  // The layout it replaces takes back the files it added, while they're as it wrote them: a layout looked at and left
+  // (the welcome card's) leaves nothing behind.
+  if (inUse && inUse.bundle !== b.id) {
+    for (const a of inUse.added ?? []) {
+      if (p.files.add.includes(a.path) || p.files.kept.includes(a.path)) continue
+      let data: Buffer
+      try { data = fs.readFileSync(v.abs(a.path)) } catch { continue }
+      if (hash(data) !== a.hash) continue
+      ;(prev.taken ??= []).push({ path: a.path, trash: toTrash(v, a.path) })
+    }
+    for (const a of prev.taken ?? []) pruneDirs(v, path.dirname(a.path))
   }
   const keep = (file: string, patch: Item) => {
     if (!Object.keys(patch).length) return
@@ -845,7 +865,7 @@ export async function apply(b: Bundle, host: Host, n: number | null, allowCode: 
   const kept = before ? merged(before, prev) : prev
   if (remember) writeRecord(v, PREVIOUS, kept)
   writeRecord(v, TRIAL, trial && remember ? { bundle: b.id, name, at: prev.at } : null)
-  if (layout) writeRecord(v, APPLIED, { bundle: b.id, name, at: prev.at, skip: [...left].sort() })
+  if (layout) writeRecord(v, APPLIED, { bundle: b.id, name, at: prev.at, skip: [...left].sort(), ...(prev.added.length ? { added: prev.added } : {}) })
   const guide = info(b, host).guide
   return { applied: name, plan: { ...p, pins }, previous: remember ? { bundle: kept.bundle, name: kept.name, at: kept.at } : null,
     trial: trial && remember ? { id: b.id, name, at: prev.at } : null, open: quiet ? null : (guide && p.files.add.includes(guide) ? guide : pins?.list[0] ?? null) }
@@ -900,6 +920,12 @@ async function restore(host: Host) {
     trashed.push(a.path)
   }
   for (const a of prev.added) pruneDirs(v, path.dirname(a.path))
+  // Files it took from the layout before, back where they were (unless one's there now).
+  for (const t of prev.taken ?? []) {
+    if (fs.existsSync(v.abs(t.path)) || !fs.existsSync(v.abs(t.trash))) continue
+    fs.mkdirSync(path.dirname(v.abs(t.path)), { recursive: true })
+    fs.renameSync(v.abs(t.trash), v.abs(t.path))
+  }
   // Plugins it installed, while off and as installed (not one turned on since, or edited): uninstalled.
   const lock = readLock(v), conf = v.config("plugins")
   for (const id of prev.installed ?? []) {
@@ -924,10 +950,9 @@ function keep(v: Vault) {
   return { kept: t.name, ...status(v) }
 }
 
-/** A file to the vault's .trash (a note through the vault, so its index and pins follow). */
+/** A file to the vault's .trash (a note through the vault, so its index and pins follow); returns where it went. */
 function toTrash(v: Vault, rel: string) {
-  if (rel.endsWith(".md") && !rel.startsWith(".")) v.trash(rel)
-  else v.toTrash(rel)
+  return rel.endsWith(".md") && !rel.startsWith(".") ? v.trash(rel) : v.toTrash(rel)
 }
 
 /** Remove folders left empty (up to the vault's top, never .vaultite/ itself or its kinds' folders). */

@@ -3,7 +3,8 @@
 // vault, Claude Code and its config): the first launch shows one page, the vault, with page dots; a new vault in iCloud
 // Drive opens, its window going on with the welcome card (the look, AI as found here, on a Mac the two permissions once
 // agents are used, Allow turning Claude Code's computer use on for the vault, then done); it starts from Standard, its
-// Start here written, pinned and opened, vau installed (it runs without Node and serves MCP); a relaunch shows neither,
+// Start here written (with AI used, what the agent can do: core/start.ts), pinned and opened in one tab
+// (core/desktopapp.ts), vau installed (it runs without Node and serves MCP); a relaunch shows neither,
 // the menu shows setup again; an Obsidian vault opened changes none of its files; Manage vaults connects to another
 // machine's server, opened in a window with no bridge; "Try the playground" opens the sandbox, and the next launch shows
 // setup again; Manage vaults offers the playground too. Screenshots, light and dark. WRITES: temp folders only (its own
@@ -149,8 +150,17 @@ try {
   // (and the pages of agents Use them switched on: Codex's)
   check("Start here is written and the first pin", fs.existsSync(path.join(VAULT, "Start here.md")) && pages.pinned[0] === "Start here.md"
     && pages.pinned.slice(1).every((p) => /^Dashboards\/(Codex|OpenCode)\.md$/.test(p)), pages)
-  check("Start here opens in a tab, its text drawn", await until(() => vw.evaluate(() => decodeURIComponent(location.hash).includes("Start here") && /@claude what can I do/.test(document.querySelector("[data-pane]")?.textContent ?? "")), 20000),
-    await vw.evaluate(() => location.hash))
+  // (Use them: Start here says to ask Claude Code, its page and the pointers for agents come; else no word of AI)
+  check("Start here opens in a tab, its text drawn", await until(() => vw.evaluate((found) => decodeURIComponent(location.hash).includes("Start here")
+    && (found ? /@claude what can I do/ : /Find your way/).test(document.querySelector("[data-pane]")?.textContent ?? ""), found), 20000), await vw.evaluate(() => location.hash))
+  const startText = fs.readFileSync(path.join(VAULT, "Start here.md"), "utf8")
+  check(found ? "...saying what Claude Code can do, Settings > AI for the apps" : "...with no word of AI", found ? startText.includes("Settings > AI connects") && !startText.includes("Connections")
+    : !/\b(AI|Claude|claude|Codex)\b|Connections/.test(startText), startText)
+  check(found ? "Claude Code's page and the pointers for agents come with Use them" : "no agent's page or pointers without AI",
+    ["Dashboards/Claude.md", "CLAUDE.md", "AGENTS.md"].every((f) => fs.existsSync(path.join(VAULT, f)) === found), fs.readdirSync(VAULT, { recursive: true }))
+  // (the window's first tab shows the first pin, and the desktop asks for Start here too: one tab, not two)
+  const startTabs = () => vw.evaluate(() => [...document.querySelectorAll("[data-tab-id]")].map((t) => t.textContent.trim()))
+  check("...once: one tab shows it", (await startTabs()).filter((t) => /^Start here/.test(t)).length === 1, await startTabs())
   await vw.screenshot({ path: path.join(SHOTS, "7-vault.png") })
   const VAU = path.join(HOME, ".local/bin/vau")
   check("vau is installed", await until(() => fs.existsSync(VAU), 15000))

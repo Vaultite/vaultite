@@ -268,19 +268,20 @@ export function standingIn(app: string, id: string) {
 }
 
 /** `quiet`: no word of the stand-ins it turned off (a swap the user asked for by name). */
-export function setSwitch(p: Plugin, on: boolean, quiet = false) {
-  if (p.alwaysOn) return
+/** Resolves once it's saved (the first run's Use it waits for that before it asks for the agent's page). */
+export function setSwitch(p: Plugin, on: boolean, quiet = false): Promise<void> {
+  if (p.alwaysOn) return Promise.resolve()
   if (on) {
     const others = alternativesOf(p)
     for (const q of others) setSwitch(q, false)
     const label = (q: Plugin) => (q.tier === "hosted" ? `${q.name} (${hostOf(q)?.kind ?? q.host})` : q.name)
     if (others.length && !quiet) notify(`Turned off ${others.map(label).join(" and ")}: ${label(p)} does the same`)
   }
-  if (p.tier === "hosted") return void Promise.resolve(hostOf(p)?.setOn(p.id, on)).catch((e) => notifyError(e, `Couldn't turn ${p.name} ${on ? "on" : "off"}`))
+  if (p.tier === "hosted") return Promise.resolve(hostOf(p)?.setOn(p.id, on)).then(() => {}, (e) => { notifyError(e, `Couldn't turn ${p.name} ${on ? "on" : "off"}`) })
   // A vault plugin turned on here is allowed to run here first (as it's shown), then turned on in the vault (refused,
   // it's on and waits for this machine's owner).
-  if (p.tier === "vault" && on) return void allowPlugin(p).then(() => turn(p, true))
-  turn(p, on)
+  if (p.tier === "vault" && on) return allowPlugin(p).then(() => turn(p, true))
+  return turn(p, on)
 }
 
 function turn(p: Plugin, on: boolean) {

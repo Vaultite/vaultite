@@ -41,21 +41,19 @@ export default async ($: VaultTest) => {
     check("new vault: Standard's look (Gruvbox, the default: unset)", !look?.scheme && look?.fileIcons === false, look)
     check("new vault: nothing outside .vaultite/ until asked", JSON.stringify(fs.readdirSync(fresh)) === '[".vaultite"]', fs.readdirSync(fresh))
     await freshApp.callOp("vault.starter", {})
-    const fp = conf(fresh, "pages")
-    check("new vault, starter content chosen: Start here, the only pin", JSON.stringify(fp?.pinned) === '["Start here.md"]'
-      && fs.readFileSync(path.join(fresh, "Start here.md"), "utf8").includes("claude"), [fp, fs.readdirSync(fresh)])
-    check("new vault, starter content chosen: the agent's page (Claude), not pinned, not the others' (Errors)", !fs.existsSync(path.join(fresh, "Dashboards/Errors.md")) &&
-      fs.existsSync(path.join(fresh, "Dashboards/Claude.md")) && !fs.existsSync(path.join(fresh, "Dashboards/People.md")), fs.readdirSync(path.join(fresh, "Dashboards")))
-    const how = fs.readFileSync(path.join(fresh, "How this vault works.md"), "utf8")
+    const fp = conf(fresh, "pages"), text = (rel: string) => fs.readFileSync(path.join(fresh, rel), "utf8")
+    check("new vault, starter content chosen: Start here, the only pin", JSON.stringify(fp?.pinned) === '["Start here.md"]', [fp, fs.readdirSync(fresh)])
+    const how = text("How this vault works.md")
     check("new vault, starter content chosen: How this vault works, linked from Start here", how.includes("\\text{notes a year}") && how.includes("```mermaid") &&
-      fs.readFileSync(path.join(fresh, "Start here.md"), "utf8").includes("[[How this vault works]]"), how.slice(0, 400))
-    await freshApp.vault.sync()
-    check("new vault, starter content chosen: agents started in it find its rules", fs.existsSync(path.join(fresh, "CLAUDE.md")) && /\.vaultite\/AGENTS\.md/.test(fs.readFileSync(path.join(fresh, "CLAUDE.md"), "utf8")), fs.readdirSync(fresh))
+      text("Start here.md").includes("[[How this vault works]]"), how.slice(0, 400))
+    // (AI isn't answered yet: nothing of it, and nothing for agents, until the user says to use one)
+    const said = /\b(AI|Claude|claude|Codex|agents?)\b|Connections/
+    check("new vault, starter content chosen: no word of AI or a menu that isn't there", !said.test(text("Start here.md")) && !said.test(how), [text("Start here.md"), how])
+    check("new vault, starter content chosen: no agent's page, no AGENTS.md or CLAUDE.md", JSON.stringify(fs.readdirSync(fresh).sort()) === '[".vaultite","How this vault works.md","Start here.md"]', fs.readdirSync(fresh))
     check("new vault: nothing to restore, nothing offered", !fs.existsSync(path.join(fresh, ".vaultite/bundles/previous.json")) && !fs.existsSync(path.join(fresh, ".vaultite/bundles/onboarding.json")))
     await freshApp.host().call("POST", "bundles/standard/apply", {})
     await freshApp.state()
-    check("new vault, Standard applied: what it had, no plugin's page added (Errors, People)", JSON.stringify(fs.readdirSync(path.join(fresh, "Dashboards"))) === '["Claude.md"]',
-      fs.readdirSync(path.join(fresh, "Dashboards")))
+    check("new vault, Standard applied: what it had, no plugin's page added (Errors, People)", !fs.existsSync(path.join(fresh, "Dashboards")), fs.readdirSync(fresh))
     const inUse = async () => ((await freshApp.host().call("GET", "bundles")) as { bundles: { id: string; inUse?: boolean; modified?: boolean }[] }).bundles
       .filter((b) => b.inUse).map((b) => `${b.id}${b.modified ? " modified" : ""}`)
     const was = await inUse()
@@ -76,8 +74,44 @@ export default async ($: VaultTest) => {
     const standard = configs()
     await freshApp.host().call("POST", "bundles/zen/apply", {})
     const zen = configs()
+    const guide = "Guides/How Zen works.md", withZen = fs.existsSync(path.join(fresh, guide))
     await freshApp.host().call("POST", "bundles/standard/apply", {})
     check("new vault: Zen, then Standard, is Standard again (every settings file as it was)", zen !== standard && configs() === standard, [standard, zen, configs()])
+    // (as the welcome card's tiles do: a layout looked at and left leaves nothing; Undo puts it back)
+    check("new vault: Zen, then Standard, takes back Zen's guide, its folder too", withZen && !fs.existsSync(path.join(fresh, "Guides")), fs.readdirSync(fresh))
+    await freshApp.host().call("POST", "bundles/restore", {})
+    check("...and a restore to Zen puts its guide back", fs.existsSync(path.join(fresh, guide)), fs.readdirSync(fresh))
+    await freshApp.host().call("POST", "bundles/standard/apply", {})
+    fs.writeFileSync(path.join(fresh, "Mine.md"), "Mine.\n")
+    await freshApp.host().call("POST", "bundles/zen/apply", {})
+    fs.appendFileSync(path.join(fresh, guide), "My own line.\n")
+    await freshApp.host().call("POST", "bundles/standard/apply", {})
+    check("...but one the user changed stays, and the user's own files", fs.existsSync(path.join(fresh, guide)) && fs.existsSync(path.join(fresh, "Mine.md")), fs.readdirSync(fresh))
+    fs.rmSync(path.join(fresh, "Guides"), { recursive: true })
+    fs.rmSync(path.join(fresh, "Mine.md"))
+    // The welcome card's Use it: the agent's page and pointers come, and the notes, as written, say what it can do.
+    const plain = [text("Start here.md"), text("How this vault works.md")]
+    const used = (await freshApp.callOp("vault.starter", { agent: "claude-code" })).result as { wrote: string[] }
+    await freshApp.vault.sync()
+    check("new vault, its agent used: the agent's page (Claude), not pinned, not the others' (Errors)", fs.existsSync(path.join(fresh, "Dashboards/Claude.md")) &&
+      !fs.existsSync(path.join(fresh, "Dashboards/Errors.md")) && JSON.stringify(conf(fresh, "pages")?.pinned) === '["Start here.md"]', [used, conf(fresh, "pages")])
+    check("new vault, its agent used: agents started in it find its rules", /\.vaultite\/AGENTS\.md/.test(text("CLAUDE.md")) && fs.existsSync(path.join(fresh, "AGENTS.md")), fs.readdirSync(fresh))
+    check("new vault, its agent used: Start here says to ask it, and where Settings has the AI apps", text("Start here.md").includes("`@claude what can I do with this vault?`") &&
+      text("Start here.md").includes("Settings > AI connects") && !text("Start here.md").includes("Connections") && /^---\n[\s\S]*?\n---\n\nThis vault/.test(text("Start here.md")), text("Start here.md"))
+    check("new vault, its agent used: How this vault works names it", text("How this vault works.md").includes("Claude Code follows the same rules") && text("How this vault works.md") !== plain[1], text("How this vault works.md").slice(0, 600))
+    const twice = (await freshApp.callOp("vault.starter", { agent: "claude-code" })).result as { wrote: string[] }
+    check("new vault, its agent used again: nothing more to write", !twice.wrote.length && plain[0] !== text("Start here.md"), twice)
+    // The welcome card's Not now (AI off): Standard is still the layout in use, unchanged (AI is the user's, not a
+    // layout's), and Use it's content doesn't come.
+    const noAi = path.join(tmp, "Fresh, no AI")
+    fs.mkdirSync(noAi)
+    const noAiApp = await open(noAi)
+    await noAiApp.callOp("vault.starter", {})
+    await noAiApp.host().call("PATCH", "config/plugins", { ai: false })
+    const layouts = ((await noAiApp.host().call("GET", "bundles")) as { bundles: { id: string; inUse?: boolean; modified?: boolean }[] }).bundles.filter((b) => b.inUse)
+    check("new vault, AI off: Standard is in use, not changed", JSON.stringify(layouts.map((b) => `${b.id}${b.modified ? " modified" : ""}`)) === '["standard"]', layouts)
+    const notUsed = (await noAiApp.callOp("vault.starter", { agent: "claude-code" })).result as { wrote: string[] }
+    check("new vault, AI off: no agent's page or pointers", !notUsed.wrote.length && JSON.stringify(fs.readdirSync(noAi).sort()) === '[".vaultite","How this vault works.md","Start here.md"]', [notUsed, fs.readdirSync(noAi)])
     const own = path.join(tmp, "Own notes")
     fs.mkdirSync(path.join(own, "Ideas"), { recursive: true })
     fs.writeFileSync(path.join(own, "Ideas/One.md"), "An idea.\n")

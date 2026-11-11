@@ -10,6 +10,7 @@ import { startFileDrops } from "@/core/filedrop"
 import { dismissNotice, notify } from "@/core/notify"
 import { recentFiles, subscribeScoped, workspacePins } from "@/core/scope"
 import { safeToRestart } from "@/core/unsaved"
+import { panesShowing } from "@/core/workspace"
 import { whenIdle } from "@/lib/utils"
 
 /** Automatic updates: tell the desktop app whether a restart would lose nothing in this page, as that changes. */
@@ -58,8 +59,9 @@ async function upload(e: FileSystemEntry, to: string): Promise<void> {
   }
 }
 
-/** Open what the desktop app hands this window: a vault path or an allowed outside file. */
-const open = (path: string) => openFile(path, { newTab: true })
+/** Open what the desktop app hands this window (a vault path or an allowed outside file): its tab when one shows it
+ *  (a new vault's Start here, already its first tab), else a new tab. */
+const open = (path: string) => openFile(path, { newTab: !panesShowing(`file:${path}`).length })
 
 /** Open a file outside the vault by its absolute path (a notice's Open): the desktop app lets this window have it, as a
  *  file dropped on it, or opens the vault it's in; a browser can't, nor a computer it isn't on, which a toast says. */

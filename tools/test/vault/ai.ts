@@ -34,6 +34,9 @@ export default async ($: VaultTest) => {
   const [code, tools] = await api("POST", "mcp", { jsonrpc: "2.0", id: 1, method: "tools/list" })
   check("ai off: MCP lists its tools", code === 200 && (JSON.stringify(tools).includes("write_file")), [code, JSON.stringify(tools).slice(0, 300)])
 
+  // A layout leaving the plugins for AI as they come (Standard's agents) leaves AI off: AI is the user's, not a layout's.
+  const [, std] = await api("GET", "bundles/standard")
+  check("ai off: Standard doesn't turn AI on", !(std as Any).plan.changes.some((c: Any) => c.id === "ai"), (std as Any).plan.changes)
   // A bundle that turns on a plugin for AI turns AI on too, saying so, and restoring puts it back off.
   const dir = path.join(VAULT, ".vaultite/bundles/qa-agents")
   fs.mkdirSync(dir, { recursive: true })
