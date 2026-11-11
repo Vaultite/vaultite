@@ -1,6 +1,6 @@
 // A file's properties: a row per key edited in place, each change rewriting only its own line; a key's input is its
 // vault-wide type's (core/proptypes.ts) when it has one. Nested values are shown and edited in source mode.
-import { memo, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react"
+import { memo, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react"
 import { Braces, Calendar, CalendarClock, ChevronRight, Forward, Hash, Link, List, Plus, SquareCheck, Tags, Text, X, type LucideIcon } from "lucide-react"
 import { PROP_TYPES, typeOf, typeProblem, type PropType, type PropTypes } from "../../../core/proptypes.ts"
 import { getStore, optimistic, stampMs } from "@/core/data"
@@ -8,6 +8,7 @@ import { editorSettings, PROPERTIES_SHOWN, showPropertiesAs } from "@/core/edito
 import { get, op } from "@/core/http"
 import { fieldSuggestions, typesOf, valuesOf, vocabOf } from "@/core/vocab"
 import { useSuggest } from "@/components/Suggest"
+import { Markdown } from "@/components/Markdown"
 import { fromLocal, propKind, readProps, renameProp, setProp, toLocal, typedNumber, type PropKind } from "@/core/frontmatter"
 import { menuBelow, menuFor, type MenuItem } from "@/components/ContextMenu"
 import { Switch } from "@/components/kit"
@@ -19,13 +20,31 @@ import { glide } from "@/core/animation"
  *  `load` asks for them as it's focused. */
 type Suggestions = { list: () => [string, number][]; has?: string[]; load?: () => void }
 
-function Field({ value, onCommit, readOnly, placeholder, className, inputMode, autoFocus, type, step, suggest }: {
+// A value's links (`[[Alice Park]]`, a web address) are drawn as links, as in a note; the rest of it as it's written.
+const LINKS = /\[\[[^\]\n]+\]\]|https?:\/\/[^\s<>"'\])]+/g
+const hasLinks = (s: string) => s.search(LINKS) >= 0
+function Linked({ text, from }: { text: string; from?: string }) {
+  const parts: ReactNode[] = []
+  let at = 0
+  for (const m of text.matchAll(LINKS)) {
+    if (m.index > at) parts.push(text.slice(at, m.index))
+    parts.push(<Markdown key={m.index} inline text={m[0]} from={from} />)
+    at = m.index + m[0].length
+  }
+  return <>{parts}{text.slice(at)}</>
+}
+
+function Field({ value, onCommit, readOnly, placeholder, className, inputMode, autoFocus, type, step, suggest, from }: {
   value: string; onCommit: (v: string) => void; readOnly: boolean; placeholder?: string; className?: string
   inputMode?: "text" | "decimal"; autoFocus?: boolean; type?: "date" | "datetime-local"; step?: number; suggest?: Suggestions
+  /** The file it's in, for a value's links (none: a key, drawn as typed). */
+  from?: string
 }) {
   const [v, setV] = useState(value)
+  // (a value with links is drawn with them until it's clicked, beside them, to edit)
+  const [editing, setEditing] = useState(false)
   useEffect(() => setV(value), [value])
-  const commit = () => { if (v !== value) onCommit(v) }
+  const commit = () => { setEditing(false); if (v !== value) onCommit(v) }
   // (none for the value as it is, unless empty: Enter keeps it)
   const s = useSuggest(v, setV, (t) => (suggest && (t !== value || !t) ? fieldSuggestions(suggest.list(), t, suggest.has) : null), {
     completesOnly: true,
@@ -34,13 +53,22 @@ function Field({ value, onCommit, readOnly, placeholder, className, inputMode, a
     onBlur: commit,
     onKeyDown: (e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur() } if (e.key === "Escape") { setV(value); e.currentTarget.blur() } },
   })
+  const linked = from !== undefined && !type && hasLinks(value)
   // Read-only (reading, or a file that can't be changed): the whole value as text, wrapped, never cut off mid-word.
   if (readOnly) {
-    return <div className={cn("min-h-8 px-1.5 py-1.5 text-[15px] leading-5 break-words", !value && "text-muted-foreground", className)}>{value || placeholder}</div>
+    return <div className={cn("min-h-8 px-1.5 py-1.5 text-[15px] leading-5 break-words", !value && "text-muted-foreground", className)}>{linked ? <Linked text={value} from={from} /> : value || placeholder}</div>
+  }
+  if (linked && !editing && !autoFocus) {
+    return (
+      <div role="textbox" tabIndex={0} aria-readonly={false} data-prop-linked onClick={() => setEditing(true)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); setEditing(true) } }}
+        className={cn("min-h-8 cursor-text rounded-[6px] px-1.5 py-1.5 text-[15px] leading-5 break-words outline-none hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.06] max-md:min-h-11 max-md:py-3", className)}>
+        <Linked text={value} from={from} />
+      </div>
+    )
   }
   return (
     <>
-      <input value={v} readOnly={readOnly} placeholder={placeholder} inputMode={inputMode} spellCheck={false} autoFocus={autoFocus} type={type} step={step}
+      <input value={v} readOnly={readOnly} placeholder={placeholder} inputMode={inputMode} spellCheck={false} autoFocus={autoFocus || editing} type={type} step={step}
         onChange={(e) => setV(e.target.value)} {...(suggest ? s.input : { onBlur: s.input.onBlur, onKeyDown: s.input.onKeyDown })}
         className={cn("h-8 w-full min-w-0 rounded-[6px] bg-transparent px-1.5 text-[15px] outline-none max-md:h-11 placeholder:text-muted-foreground",
           !readOnly && "hover:bg-foreground/[0.04] focus:bg-foreground/[0.06]", className)} />
@@ -49,7 +77,7 @@ function Field({ value, onCommit, readOnly, placeholder, className, inputMode, a
   )
 }
 
-function Chips({ items, onChange, readOnly, suggest }: { items: unknown[]; onChange: (v: unknown[]) => void; readOnly: boolean; suggest?: Suggestions }) {
+function Chips({ items, onChange, readOnly, suggest, from }: { items: unknown[]; onChange: (v: unknown[]) => void; readOnly: boolean; suggest?: Suggestions; from: string }) {
   const [draft, setDraft] = useState("")
   const add = () => {
     const parts = draft.split(",").map((s) => s.trim()).filter(Boolean)
@@ -68,7 +96,7 @@ function Chips({ items, onChange, readOnly, suggest }: { items: unknown[]; onCha
     <div className="flex min-h-8 flex-wrap items-center gap-1 px-1 py-1 max-md:min-h-11">
       {items.map((x, i) => (
         <span key={`${i}-${String(x)}`} className="flex min-h-6 max-w-full items-center gap-0.5 rounded-[12px] bg-muted pr-1 pl-2.5 text-[13px] leading-[18px] max-md:min-h-8 max-md:rounded-[16px] max-md:text-[15px]">
-          <span className="min-w-0 py-[3px] break-words">{String(x)}</span>
+          <span className="min-w-0 py-[3px] break-words"><Linked text={String(x)} from={from} /></span>
           {!readOnly && (
             <button type="button" aria-label={`Remove ${String(x)}`} onClick={() => onChange(items.filter((_, k) => k !== i))}
               className="relative grid size-5 shrink-0 cursor-pointer place-items-center rounded-full text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground max-md:after:absolute max-md:after:-inset-3">
@@ -147,8 +175,8 @@ function TypeButton({ k, v, types, readOnly, stamp }: { k: string; v: unknown; t
   )
 }
 
-function Value({ k, v, set, readOnly, autoFocus, type, stamps, suggest }: {
-  k: string; v: unknown; set: (v: unknown) => void; readOnly: boolean; autoFocus?: boolean; type: PropType | null; stamps: string[]; suggest?: Suggestions
+function Value({ k, v, set, readOnly, autoFocus, type, stamps, suggest, from }: {
+  k: string; v: unknown; set: (v: unknown) => void; readOnly: boolean; autoFocus?: boolean; type: PropType | null; stamps: string[]; suggest?: Suggestions; from: string
 }) {
   if (kept(stamps, k, v)) {
     const d = new Date(stampMs(v as string))
@@ -166,7 +194,7 @@ function Value({ k, v, set, readOnly, autoFocus, type, stamps, suggest }: {
       return <Field value={empty ? "" : String(v)} readOnly={readOnly} inputMode="decimal" className="num" placeholder={empty ? "Empty" : undefined}
         onCommit={(s) => set(typedNumber(s))} />
     case "list":
-      return <Chips items={Array.isArray(v) ? v : empty ? [] : [v]} readOnly={readOnly} onChange={(x) => set(x)} suggest={suggest} />
+      return <Chips items={Array.isArray(v) ? v : empty ? [] : [v]} readOnly={readOnly} onChange={(x) => set(x)} suggest={suggest} from={from} />
     case "date":
       if (!type) break
       return <Field value={empty ? "" : String(v)} readOnly={readOnly} type="date" placeholder="Empty" className="num" onCommit={(s) => set(s || null)} />
@@ -179,7 +207,7 @@ function Value({ k, v, set, readOnly, autoFocus, type, stamps, suggest }: {
       return <div className="truncate px-1.5 py-1.5 text-[15px] leading-5 text-muted-foreground" data-tip="Edit this in source mode">{summary(v)}</div>
   }
   return <Field value={v === null || v === undefined ? "" : String(v)} readOnly={readOnly} placeholder="Empty" autoFocus={autoFocus}
-    onCommit={(s) => set(s)} suggest={suggest} />
+    onCommit={(s) => set(s)} suggest={suggest} from={from} />
 }
 
 // What Properties suggest. Names and values come from All properties (its state and API: none while it's off), read
@@ -303,7 +331,7 @@ export const Properties = memo(function Properties({ path, block, onChange, read
                   </div>
                   <div role="cell" className="flex min-w-0 items-start">
                     <div className="min-w-0 flex-1">
-                      <Value k={k} v={props[k]} type={type} stamps={stamps} readOnly={readOnly} autoFocus={k === added} set={(v) => onChange(setProp(block, k, v))}
+                      <Value k={k} v={props[k]} type={type} stamps={stamps} readOnly={readOnly} autoFocus={k === added} from={path} set={(v) => onChange(setProp(block, k, v))}
                         suggest={type === "tags" ? { list: vaultTags } : type === "aliases" ? undefined : values(k)} />
                       {why && <p className="px-1.5 pb-1 text-[13px] leading-[18px] text-muted-foreground" data-prop-note={k}>{k} {why}</p>}
                     </div>

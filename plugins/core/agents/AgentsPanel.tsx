@@ -6,7 +6,7 @@ import {
   asksNothing, cn, commandItems, EarlierRow, fmtAgo, foldsAway, HeadingButton, isViewOpen, LoadingSidebarRows, menuBelow, menuFor, openAgent, openView, PanelFold, Segmented,
   SidebarHeading, SidebarRow, useAgentRuns, useAgents, useEarlier, useGlide, useHold, useKeptCount, useMachines, useScopedState, useSteady, useTick, type AgentRun, type MenuItem,
 } from "@vaultite"
-import { useFoldAfter } from "./fold"
+import { useFoldAfter } from "@plugins/terminal/fold"
 import { useView, viewMenu, type Group, type Sort } from "./view"
 
 export type Filter = "all" | AgentRun["kind"]

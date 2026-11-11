@@ -322,6 +322,9 @@ export { joinText } from "../../core/dictationtext.ts"
 export { answerPlaceAt, dictation, dictationSource, fnDictation, hintDictation, landDictation, listening, onDictation, pressDictation, speakingIn, startDictation, stopDictation, useDictation, type Dictation, type DictationEngine, type DictationEngines, type DictationEvent, type DictationSource, type DictationTarget, type DictationWhere, type MicList } from "@/core/dictation"
 // The Dock's icon (the desktop app; null in a browser): the Dock icon plugin.
 export { dockIcon } from "@/core/desktop"
+// A file outside the vault, by its absolute path (a notice's Open): the desktop app opens it.
+export { isOutside } from "@/core/desktop"
+export { openOutside } from "@/core/desktopapp"
 // macOS's Look up and the spell checker (the desktop app; null in a browser): the editor's menu.
 export { lookUp, spelling } from "@/core/desktop"
 // Web pages laid over a pane (the Browser): null in a browser, and in app builds from before it.

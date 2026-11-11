@@ -329,12 +329,19 @@ export function usePlugins() {
 }
 
 /** The enabled plugins, in order (the same list until the plugins or what turns them on change: don't change it). */
-let on: { generation: number; disabled: string[]; enabled: string[]; ai: boolean; list: Plugin[] } | null = null
+let on: { generation: number; disabled: string[]; enabled: string[]; ai: boolean; list: Plugin[]; key: string } | null = null
 export function active(disabled: string[]) {
   const { enabled, ai } = getPrefs()
   if (on?.generation === generation && on.disabled === disabled && on.enabled === enabled && on.ai === ai) return on.list
-  on = { generation, disabled, enabled, ai, list: PLUGINS.filter((p) => isEnabled(p.id, disabled)) }
+  const list = PLUGINS.filter((p) => isEnabled(p.id, disabled))
+  on = { generation, disabled, enabled, ai, list, key: list.map((p) => p.id).join() }
   return on.list
+}
+/** Which plugins are on, as text: what's made from them (commands, backgrounds) is made again when it changes, whatever
+ *  turned one on or off (its switch, what it requires, Use AI, being allowed here). */
+export function activeKey(disabled: string[]) {
+  active(disabled)
+  return on!.key
 }
 
 /** The buttons a tab showing `to` has on hover (`tabButtons`), from the plugins that are on, in their order. */
@@ -698,7 +705,8 @@ export const noteTopItems = (disabled: string[]) => slotItems("noteTop", disable
 
 /** What the plugins that are on can draw at the start of the status bar (see AmbientItem), as "<plugin>:<name>". */
 export function ambientItems(disabled: string[]) {
-  return active(disabled).flatMap((p) => Object.entries(p.ambient ?? {}).map(([name, item]) => ({ key: `${p.id}:${name}`, item })))
+  const ai = getPrefs().ai
+  return active(disabled).flatMap((p) => Object.entries(p.ambient ?? {}).filter(([, item]) => ai || !item.ai).map(([name, item]) => ({ key: `${p.id}:${name}`, item })))
 }
 
 /** The names the plugins that are on give the first steps of key sequences (see `keyGroups`), by canonical steps. */

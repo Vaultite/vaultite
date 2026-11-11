@@ -15,7 +15,7 @@ import { spawnBin } from "./winbin.ts"
 /** Starting programs on Windows by name (core/winbin.ts). */
 export { spawnBin, winCommand, withPath } from "./winbin.ts"
 /** A terminal's id and the agent it runs (core/terminalids.ts, which the web app shares). */
-export { agentIn, agentName, KNOWN_AGENTS, MODEL_NAME, newTerminalId, parseTerminal, resumeTerminalId, TERMINAL_AGENT, type TerminalAgent } from "./terminalids.ts"
+export { agentIn, agentName, agentSite, KNOWN_AGENTS, MODEL_NAME, newTerminalId, parseTerminal, resumeTerminalId, TERMINAL_AGENT, type TerminalAgent } from "./terminalids.ts"
 /** An agent's own session's variables (core/sessionenv.ts). */
 export { agentSession, serversOwn } from "./sessionenv.ts"
 import { USAGE_BLOCKS } from "./rules.ts"

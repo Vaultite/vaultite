@@ -5,19 +5,19 @@ import path from "node:path"
 import type { App } from "../app.ts"
 import { findBin, HOME } from "../agents.ts"
 import type { Op } from "../ops.ts"
-import { agentName } from "../terminalids.ts"
+import { agentName, agentSite } from "../terminalids.ts"
 import type { Any } from "./common.ts"
 import { onOff, pluginList } from "./plugins.ts"
 
-/** The coding agents Vaultite runs (each its plugin: the app's, or one from Vaultite's directory), their command and
- *  where to read about them. */
-export const CODING_AGENTS: { id: string; bin: string; site: string }[] = [
-  { id: "claude-code", bin: "claude", site: "https://claude.com/claude-code" },
-  { id: "codex", bin: "codex", site: "https://developers.openai.com/codex/cli" },
-  { id: "cursor", bin: "cursor-agent", site: "https://cursor.com/cli" },
-  { id: "opencode", bin: "opencode", site: "https://opencode.ai" },
-  { id: "openclaw", bin: "openclaw", site: "https://openclaw.ai" },
-  { id: "hermes", bin: "hermes", site: "https://github.com/NousResearch/hermes-agent" },
+/** The coding agents Vaultite runs (each its plugin: the app's, or one from Vaultite's directory) and their command;
+ *  where to get each is KNOWN_AGENTS'. */
+export const CODING_AGENTS: { id: string; bin: string }[] = [
+  { id: "claude-code", bin: "claude" },
+  { id: "codex", bin: "codex" },
+  { id: "cursor", bin: "cursor-agent" },
+  { id: "opencode", bin: "opencode" },
+  { id: "openclaw", bin: "openclaw" },
+  { id: "hermes", bin: "hermes" },
 ]
 
 /** Where its command is: on the server's PATH or where installers put it (findBin), their own folders too. */
@@ -69,7 +69,7 @@ installed), its site, and its plugin (the app's, or one to install from Vaultite
       const ps = pluginList(app), { own } = onOff(ps, app.vault.config("plugins"))
       return CODING_AGENTS.map((a) => {
         const p = ps.find((x) => x.id === a.id)
-        return { id: a.id, name: agentName(a.id) ?? a.id, path: whereIs(a), site: a.site, plugin: !!p, on: !!p && own(p) }
+        return { id: a.id, name: agentName(a.id) ?? a.id, path: whereIs(a), site: agentSite(a.id) ?? "", plugin: !!p, on: !!p && own(p) }
       })
     },
     text: (rows: CodingAgent[]) => rows.map((a) => `${a.path ? "found" : "  -  "}  ${a.name.padEnd(12)} ${a.path ?? a.site}` +

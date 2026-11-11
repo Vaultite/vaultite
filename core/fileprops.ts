@@ -92,3 +92,6 @@ export function attachmentDir(spec: string, from: string): string {
 /** A folder new files go in, as settings show it (core/filing.ts): `set` when the vault's folders.json names it
  *  (else another app's setting or the guess). Keyed by a kind's collection, or `dashboards` (pages, the plugins' too). */
 export type Home = { key: string; type: string; plugin: string; label: string; folder: string; set: boolean }
+
+/** An absolute path, never a vault one (which can't have ":" or "\\"): /x, or Windows' C:/x, C:\x and \\server\x. */
+export const isOutside = (p: unknown): p is string => typeof p === "string" && /^(\/|[a-z]:[\\/]|\\\\)/i.test(p)

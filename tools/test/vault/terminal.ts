@@ -305,6 +305,10 @@ export default async ($: VaultTest) => {
       }
       check(`terminal: ${path.basename(sh)} marks an agent that isn't installed, not one that ran`, marked("no-such-agent-x1 --flag") === "missing" &&
         marked("FOO=1 no-such-agent-x1") === "missing" && marked("true") === "" && marked("false") === "", [marked("no-such-agent-x1"), marked("true")])
+      // (and says where to get it, under the shell's error)
+      let said = ""
+      try { said = execFileSync(sh, ["-c", term.markMissing("no-such-agent-x1", path.join(home, "state-said"), sh, term.missingText("claude"))], { cwd: home, env, stdio: ["ignore", "pipe", "ignore"], timeout: 10_000 }).toString() } catch (e) { said = String((e as Any).stdout) }
+      check(`terminal: ${path.basename(sh)} says where to get an agent that isn't installed`, said.trim() === "Claude Code isn't installed on this machine. Get it at https://claude.com/claude-code, then open it again.", said)
     }
     fs.rmSync(home, { recursive: true, force: true })
   }

@@ -1,7 +1,8 @@
 // Use AI (Settings > AI, core/ai.ts): off, the app shows nothing for AI (the companion, token counts, agents' commands
-// and keys, AI plugins on the Plugins page, the new tab's Connect your AI) while ops and MCP still answer; back on,
-// every plugin is as its own switch was. Settings > AI's agents show their paths only on hover. Shots: light, dark,
-// 390px phone, on and off. WRITES plugins.json and a note: throwaway server only.
+// and keys, at once with no reload (App.tsx), the Agents panel's settings, Screen, AI plugins on the Plugins page, the
+// new tab's Connect your AI) while ops and MCP still answer; back on, every plugin is as its own switch was. Settings >
+// AI's agents show their paths only on hover. Shots: light, dark, 390px phone, on and off. WRITES plugins.json and a
+// note: throwaway server only.
 //   node web/qa/aiswitch.mjs <base url> <vault path> [out dir]
 import { mkdirSync, readFileSync } from "node:fs"
 import path from "node:path"
@@ -76,6 +77,12 @@ check("...the section keeps only the switch, off", !!(await until(async () => !(
   && (await aiSwitch(page).getAttribute("aria-checked")) === "false")
 await wait(400) // (the switch's slide)
 await page.screenshot({ path: `${OUT}aiswitch-off-light.png` })
+check("...nor the Coding agents' settings under it (the Agents panel's)", !(await page.locator('[data-settings-member="agents"]').count()) &&
+  await page.locator('[data-settings-member="mcp"]').count() === 1)
+// (in the same page: what the plugins registered goes as AI does, not at the next reload)
+await page.evaluate((n) => { location.hash = `#file/${encodeURIComponent(n)}` }, NOTE); await page.waitForSelector("main"); await wait(800)
+check("...at once, no reload: no Open Claude Code, Ask the companion or the Agents panel's settings", !(await hasCommand(page, "Open Claude Code")) &&
+  !(await hasCommand(page, "Ask the companion")) && !(await hasCommand(page, "Sort agents by")) && !(await hasCommand(page, "Agents at work")))
 await page.goto("about:blank"); await page.goto(`${B}#file/${encodeURIComponent(NOTE)}`); await page.waitForSelector("main"); await wait(1500)
 // (an item that draws nothing keeps its empty slot: Agents at work's, with no agent at work)
 const keys = await page.locator("[data-status-key]").evaluateAll((els) => els.filter((e) => e.childElementCount).map((e) => e.getAttribute("data-status-key")))
@@ -85,7 +92,7 @@ check("...plain terminals stay", await hasCommand(page, "Open terminal"))
 await page.keyboard.press("ControlOrMeta+Shift+k"); await wait(500)
 check("...⌘⇧K (the companion's) does nothing", !(await page.locator("[data-companion-ask], [data-ask-box]").count()))
 await page.goto("about:blank"); await page.goto(`${B}#plugins`); await until(() => page.locator("[data-plugin-row]").count(), 6000)
-check("...the Plugins page lists no plugin for AI", !(await page.locator('[data-plugin-row="claude-code"], [data-plugin-row="companion"], [data-plugin-row="token-count"], [data-plugin-members~="claude-code"]').count()))
+check("...the Plugins page lists no plugin for AI, Screen neither", !(await page.locator('[data-plugin-row="claude-code"], [data-plugin-row="companion"], [data-plugin-row="token-count"], [data-plugin-row="screen"], [data-plugin-members~="claude-code"]').count()))
 await command(page, "New tab"); await wait(800)
 check("...a new tab has no Connect your AI", !(await page.locator("[data-newtab-connect]").count()))
 const version = await api("POST", "ops/app.version", {})

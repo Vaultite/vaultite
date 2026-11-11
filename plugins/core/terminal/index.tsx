@@ -79,9 +79,9 @@ const openTab = (to: string) => openView(to, { newTab: !isViewOpen(to) })
 /** The status bar's agents at work and the ones that need the user (as Terminals says: blocked, waiting on them):
  *  a click goes to the first that needs them, else Terminals. */
 function AgentsAtWork() {
-  const list = useSessions().list ?? [], ai = useAi()
+  const list = useSessions().list ?? []
   const working = list.filter((s) => agentIn(s) && s.state === "working"), needs = list.filter((s) => needsYou(s))
-  if (!ai || (!working.length && !needs.length)) return null
+  if (!working.length && !needs.length) return null
   const need = `${needs.length} need${needs.length === 1 ? "s" : ""} you`
   const tip = [working.length && `${working.length} working`, needs.length && need].filter(Boolean).join(", ")
   return <AmbientButton icon={Bot} text={needs.length ? `${working.length} · ${need}` : working.length} tip={`Agents: ${tip}`}
@@ -204,7 +204,7 @@ export default definePlugin({
   // Its sessions running an agent, in the Agents panel with every other agent.
   agentRuns: useTerminalRuns,
   // Every running shell in the sidebar, live.
-  ambient: { agents: { title: "Agents at work", sort: 20, render: () => <AgentsAtWork /> } },
+  ambient: { agents: { title: "Agents at work", sort: 20, ai: true, render: () => <AgentsAtWork /> } },
   sidebar: { sessions: { title: "Terminals", names: ["terminals", "terminal", "shells"], heading: false, sort: 30, view: "terminals", render: (ctx) => <Sessions {...ctx} /> } },
   // The running terminals and agents on a blank tab's page, when the user shows it (right-click a blank tab, Sections).
   newTab: { sessions: { title: "Terminals", sort: 5, hidden: true, render: () => <SessionList /> } },

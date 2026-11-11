@@ -11,6 +11,15 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Narrow Settings opens every section**: in a pane too narrow for the menu beside it (the first window, both sidebars
   open), Plugins, Get plugins and each other section open in the menu's place, with a way back; so does the sidebar's
   Plugins button, which did nothing there.
+- **AI off means off at once**: turning Use AI off (or answering Not now in the welcome) takes away the agents'
+  commands and keys (Open Claude Code, Ask the companion), the Agents panel and its settings, Agents at work and
+  Screen right away, not at the next reload. Dictation stays: it's speech to text.
+- **A missing coding agent says where to get it**: opening Claude Code (or another agent) that isn't installed says so
+  in its terminal and in a toast whose Open goes to its site.
+- **Links in properties**: `owner: "[[Alice Park]]"`, a list of links and web addresses are drawn as links, as in
+  Obsidian; a click beside one edits the text.
+- **`vau notify --action-open` takes a file anywhere**: an absolute path outside the vault keeps its leading slash and
+  opens in the desktop app (one that isn't there is refused); a path inside the vault is its vault path.
 - **Timelines read bold dates**: a line like `- **2026-04-22** | Meeting notes — Pricing chat` (as many write by hand,
   and GBrain's pages do) reads as an entry instead of a line not understood.
 - **Markdown links count as links**: `[text](Note.md)` and `![](image.png)` (relative, from the top, without `.md`)

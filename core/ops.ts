@@ -4,7 +4,7 @@ import { distance } from "./blocks.ts"
 import { actionProblems, type OpAction } from "./actions.ts"
 import type { Readable } from "node:stream"
 import { KNOWN_AGENTS } from "./terminalids.ts"
-import { isHiddenPath } from "./fileprops.ts"
+import { isHiddenPath, isOutside } from "./fileprops.ts"
 import type { Item, Vault } from "./vault.ts"
 
 type Any = any
@@ -30,6 +30,8 @@ export type Schema = {
   stdin?: boolean
   /** A list given as text is one item, not split at its commas (questions, sentences). */
   commas?: false
+  /** A "path" that may be a file outside the vault: an absolute one outside it is kept whole (pathAsSaid). */
+  outside?: true
 }
 
 /** A parameter: its schema, and whether it must be given. */
@@ -432,9 +434,12 @@ export function pluginOpsDoc(entries: OpEntry[]): string {
 
 type TreeFile = { path: string; type?: unknown }
 
+type Tree = { files?: TreeFile[]; others?: TreeFile[]; folders?: string[] }
+
 /** A path as the user says it ("Today", "notes/idea") made a vault path: exact, with .md, any case, a file's name, or
  *  a path from before a folder moved; a web address is its web tab. Views, folders and misses come back as given ("Logs/Work" never picks Work.md). */
-export function pathAsSaid(tree: { files?: TreeFile[]; others?: TreeFile[]; folders?: string[] }, raw: string): string {
+export function pathAsSaid(tree: Tree, raw: string, at?: { root: string; outside?: boolean }): string {
+  if (at && isOutside(raw.trim())) return absoluteAsSaid(tree, raw.trim(), at.root, !!at.outside)
   if (/^https?:\/\//i.test(raw.trim())) return `view:web/${raw.trim()}` // a web address: its web tab
   // (a view's arg as is: an address's last slash is its own)
   if (raw.trim().startsWith("view:")) return raw.trim()
@@ -458,4 +463,16 @@ export function pathAsSaid(tree: { files?: TreeFile[]; others?: TreeFile[]; fold
   const hidden = p.split("/").some((s) => s.startsWith("."))
   return all.find((x) => x === p) ?? by((x) => x === `${p}.md`) ?? by((x) => x.toLowerCase() === low || x.toLowerCase() === `${low}.md`) ??
     by((x) => stem(x) === low, named) ?? (low.includes("/") && !hidden ? by((x) => stem(x) === tail, named) : null) ?? p
+}
+
+// Given the vault's folder, an absolute path in it is its vault path; one outside it is a vault file's from the top
+// ("/Notes/Idea.md") if there's one, else, for a param that takes them (`outside`), kept whole.
+function absoluteAsSaid(tree: Tree, abs: string, root: string, outside: boolean) {
+  const slashed = (s: string) => s.replace(/\\/g, "/").replace(/\/+$/, "")
+  const p = slashed(abs), r = slashed(root)
+  // (Windows' paths and a Mac's disk ignore case)
+  if (p.toLowerCase().startsWith(`${r.toLowerCase()}/`)) return pathAsSaid(tree, p.slice(r.length + 1))
+  const inVault = pathAsSaid(tree, p)
+  const known = (tree.folders ?? []).includes(inVault) || [...(tree.files ?? []), ...(tree.others ?? [])].some((f) => f.path === inVault)
+  return known || !outside ? inVault : abs
 }

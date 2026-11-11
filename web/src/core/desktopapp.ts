@@ -61,6 +61,16 @@ async function upload(e: FileSystemEntry, to: string): Promise<void> {
 /** Open what the desktop app hands this window: a vault path or an allowed outside file. */
 const open = (path: string) => openFile(path, { newTab: true })
 
+/** Open a file outside the vault by its absolute path (a notice's Open): the desktop app lets this window have it, as a
+ *  file dropped on it, or opens the vault it's in; a browser can't, nor a computer it isn't on, which a toast says. */
+export async function openOutside(path: string) {
+  const name = path.split(/[\\/]/).pop() || path
+  if (!desktop) return void notify(`${name} is outside the vault: the desktop app opens it, on the computer it's on`)
+  const mine = await desktop.openOutside([path])
+  if (mine.length) mine.forEach(open)
+  else notify(`Couldn't open ${name}: it isn't on this computer`)
+}
+
 /** The other vaults (for the vault menu's Open entries): the desktop app's, or on the web the server's (/api/vaults),
  *  asked for once the app is idle and again when the window gets the focus (on the web at most once a minute). */
 let known: { path: string; name: string }[] = []

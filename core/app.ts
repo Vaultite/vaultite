@@ -654,7 +654,10 @@ export class App {
     const paths = Object.entries(op.params ?? {}).filter(([k, p]) => p.format === "path" && params[k] !== undefined)
     if (paths.length) {
       const tree = (await this.respond("GET", ["files"], {}, {}, undefined, true)).body as Item
-      for (const [k, p] of paths) params[k] = p.type === "array" ? (params[k] as string[]).map((x) => pathAsSaid(tree, x)) : pathAsSaid(tree, params[k] as string)
+      for (const [k, p] of paths) {
+        const said = (x: string) => pathAsSaid(tree, x, { root: this.vault.path, outside: p.outside })
+        params[k] = p.type === "array" ? (params[k] as string[]).map(said) : said(params[k] as string)
+      }
     }
     const ctx: OpCtx = {
       vault: this.vault,

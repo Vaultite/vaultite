@@ -10,7 +10,7 @@ import {
 import {
   agentIn, cacheLeft, dotOf, endForGood, getSessions, iconOf, labelOf, meterText, needsYou, rankOf, resting, runOf, stateClass, stateTip, subscribeSessions, tintOf, type Session,
 } from "./sessions"
-import { useFoldAfter } from "@plugins/agents/fold"
+import { useFoldAfter } from "./fold"
 
 /** The sessions, as the server says now (null until it answers; `refused`: this device may not have a shell): the one
  *  list the terminal tabs' names, colours and states come from too (sessions.ts). */

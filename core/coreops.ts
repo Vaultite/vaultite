@@ -1,5 +1,6 @@
 // The core's operations (core/ops.ts), by area, each a function of the App; the bigger areas are in core/coreops/.
 // A new op goes here when it's the core's (files, docs, settings, plugins, the window), else in its plugin.
+import fs from "node:fs"
 import type { App } from "./app.ts"
 import { aiOps } from "./coreops/ai.ts"
 import { bundleOps } from "./coreops/bundles.ts"
@@ -25,6 +26,7 @@ import { commandList } from "./appsource.ts"
 import { propTypeOps } from "./coreops/proptypes.ts"
 import { topic, topics } from "./docs.ts"
 import { type Op, OpError, quoted } from "./ops.ts"
+import { isOutside } from "./fileprops.ts"
 
 /** Every op of the core, in the order the catalog lists them (and `vau --help` its commands): where am I first. */
 export function coreOps(app: App): Op[] {
@@ -191,16 +193,18 @@ there now; with none, the ones in the app's source. filter keeps ids and names w
     summary: "Tell the user something happened: a toast in their window, kept in their inbox.",
     help: `Tells the user something finished or changed ("Imported 12 meals", "Wrote the weekly review"), not every step.
 It's an event in their inbox: a toast in every open window, a system notification while the desktop app is in the
-background, and kept for later when no window is open. actionOpen adds its Open button, to a vault file or view.
-error shows it as an error (a red icon).
+background, and kept for later when no window is open. actionOpen adds its Open button, to a vault file or view, a
+web address, or a file elsewhere on this machine by its absolute path (the desktop app opens it in a tab). error shows
+it as an error (a red icon).
 
   vau notify "Imported 12 meals from Hevy"
   vau notify "Wrote your weekly review" --action-open "Notes/Weekly review.md"
+  vau notify "The recording is ready" --action-open ~/Downloads/demo.mp4
   vau notify "The GitHub refresh failed: rate limited" --error`,
     kind: "write",
     params: {
       text: { type: "string", required: true, description: "what happened, one line" },
-      actionOpen: { type: "string", format: "path", description: "a vault file, view or web address its Open button opens" },
+      actionOpen: { type: "string", format: "path", outside: true, description: "a vault file, view or web address its Open button opens, or a file elsewhere on this machine (its absolute path)" },
       error: { type: "boolean", description: "shown as an error" },
       terminal: { type: "string", env: "VAULTITE_TERMINAL", description: "the app terminal it's about (its id; vau fills it in when it runs in one)" },
     },
@@ -209,6 +213,11 @@ error shows it as an error (a red icon).
       // (events are toasts and notifications on this machine's screen: its owner's, as Inbox's own route says)
       const why = await ctx.refusal?.("the inbox")
       if (why) throw new OpError(why, 403)
+      if (isOutside(actionOpen)) {
+        const st = fs.statSync(actionOpen, { throwIfNoEntry: false })
+        if (!st) throw new OpError(`\`actionOpen\`: there's no ${actionOpen} on this machine`)
+        if (!st.isFile()) throw new OpError(`\`actionOpen\`: ${actionOpen} is a folder: give a file`)
+      }
       const source = ctx.who.source === "cli" || ctx.who.source === "api" ? "vau" : ctx.who.source
       const event = await app.notice({ source, kind: error ? "error" : "info", title: text,
         ...(actionOpen ? { link: actionOpen } : {}), ...(terminal ? { terminal } : {}) })

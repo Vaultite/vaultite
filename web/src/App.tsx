@@ -28,7 +28,7 @@ import { backDetail, closeDetail, openDetail, replaceHash, route, setDetailRedir
 import { keepScroll, restoreScroll, scrollOf } from "@/core/viewstate"
 import { currentWorkspace, noteOpened, subscribeScoped, useWorkspacesOn } from "@/core/scope"
 import { sayWindowState, setWindowState } from "@/core/live"
-import { backgrounds, detailFor, homeTab, isEnabled, panelsIn, pluginById, pluginCommands, safeMode, showTabsIn, shownHeaderItems, tabListPanel, tabsInSidebar, turnPluginsBackOn, usePluginsVersion, useSidebars, viewFor } from "@/core/plugins"
+import { activeKey, backgrounds, detailFor, homeTab, isEnabled, panelsIn, pluginById, pluginCommands, safeMode, showTabsIn, shownHeaderItems, tabListPanel, tabsInSidebar, turnPluginsBackOn, usePluginsVersion, useSidebars, viewFor } from "@/core/plugins"
 import { leaveGroup } from "@/core/tabgroups"
 import { canRenameTab, chooseTabGroup, renameTab, renameTabGroup } from "@/core/tabnames"
 import { canReopen, reopenLatest } from "@/core/tabarchive"
@@ -533,20 +533,21 @@ export default function App() {
   // Plugins' own commands (Open terminal...), while they're on (an opt-in one's too: `enabled`), and again when the
   // vault's plugins arrive or change.
   const pluginsVersion = usePluginsVersion()
+  const onKey = activeKey(disabled)
   // Plugins' background work, drawn again when the store changes (it listens to the rest itself): a tab switched or a
   // sidebar shown redraws none of it. One that throws stops alone (its error goes to Errors).
   const running = useMemo(() => store && backgrounds(disabled).map(({ key, Run }) => <Catch key={key} fallback={() => null}><Run store={store} /></Catch>),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [store, disabled.join(), enabled.join(), pluginsVersion])
-  useCommands(() => pluginCommands(disabled), [disabled.join(), enabled.join(), pluginsVersion])
+    [store, onKey, pluginsVersion])
+  useCommands(() => pluginCommands(disabled), [onKey, pluginsVersion])
   // "Open <Name> settings": each plugin's settings sheet, while it's on and has some (core/pluginSettings.ts).
-  useCommands(settingsCommands, [disabled.join(), enabled.join(), pluginsVersion])
+  useCommands(settingsCommands, [onKey, pluginsVersion])
   // Text sizes: notes' and the plugins' kinds (the Terminal's), apart from the interface size (core/textsize.ts).
-  useCommands(() => textSizeCommands(disabled), [disabled.join(), enabled.join()])
+  useCommands(() => textSizeCommands(disabled), [onKey])
   // ⌘+ ⌘- ⌘0: what's focused, else the interface size (core/zoom.ts).
   useCommands(zoomCommands, [])
   // Every setting, the app's and the plugins': on/off (core/switches.ts) and of a few values (core/choices.ts).
-  useCommands(() => [...allSwitches(disabled).map(switchCommand), ...allChoices(disabled).map(choiceCommand)], [disabled.join(), enabled.join(), pluginsVersion])
+  useCommands(() => [...allSwitches(disabled).map(switchCommand), ...allChoices(disabled).map(choiceCommand)], [onKey, pluginsVersion])
   // A pop-out window (core/workspace.ts POPOUT) has no sidebars: its tabs fill it; with its bars hidden, only what it shows.
   const popout = isPopout()
   const bare = useBarsHidden()

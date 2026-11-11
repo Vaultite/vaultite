@@ -1,7 +1,7 @@
 // The Inbox's events in the app: one socket while the plugin is on; changes apply here at once and the server's answer
 // comes back over the socket.
 import { useMemo } from "react"
-import { agentsOn, canRunAgents, cell, clickOpening, del, detailPath, fetchMachines, focusedPane, get, getTabLayout, shownTab, isDesktop, isViewOpen, notify, notifyError, onMachine, op, openAgent, openDetail, openFile, openView, openWebLink, post, splitMachine, type Agent, type TabLayout } from "@vaultite"
+import { agentsOn, canRunAgents, cell, clickOpening, del, detailPath, fetchMachines, focusedPane, get, getTabLayout, shownTab, isDesktop, isOutside, isViewOpen, notify, notifyError, onMachine, op, openAgent, openDetail, openFile, openOutside, openView, openWebLink, post, splitMachine, type Agent, type TabLayout } from "@vaultite"
 import { snoozed, snoozeMs } from "./snooze"
 import { isMessage, waitsOnYou } from "./threads"
 import type { InboxEvent } from "./types"
@@ -215,9 +215,11 @@ export function openEvent(e: InboxEvent) {
   if (!to) return
   // (⌘- or middle-clicked, a session opens in a tab, its terminal's or its view, rather than its sheet)
   const tab = to.startsWith("detail:") && clickOpening() ? viewOf(e) : null
-  if (/^https?:/.test(to)) openWebLink(to)
+  // (a web address `vau notify` was given is its web tab, view:web/<url>: a link, so a browser opens it when Browser is off)
+  if (/^https?:/.test(to) || /^view:web\/https?:/.test(to)) openWebLink(to.replace(/^view:web\//, ""))
   else if (tab || to.startsWith("view:")) openView(tab ?? to, { newTab: !isViewOpen(tab ?? to) })
   else if (to.startsWith("detail:")) openDetail(to.slice(7))
+  else if (isOutside(to.slice(5))) void openOutside(to.slice(5))
   else openFile(to.slice(5))
 }
 

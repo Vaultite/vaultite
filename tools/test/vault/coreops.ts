@@ -138,6 +138,13 @@ export default async ($: VaultTest) => {
     check("pathAsSaid: a view is kept as is, its arg's last slash too", pathAsSaid(saidTree, " view:web/https://example.com/ ") === "view:web/https://example.com/" && pathAsSaid(saidTree, "view:inbox") === "view:inbox")
     check("pathAsSaid: a file's name still finds it", pathAsSaid(saidTree, "work") === "Work.md" && pathAsSaid(saidTree, "Old/Work") === "Work.md")
     check("pathAsSaid: a hidden folder's file is kept, not another of its name", pathAsSaid(saidTree, ".vaultite/pages/Work.md") === ".vaultite/pages/Work.md")
+    // An absolute path: the vault's own in its folder, a vault file from the top, else whole only where a param takes it.
+    const vaultAt = { root: "/Users/alice/Vault" }, outsideAt = { ...vaultAt, outside: true }
+    check("pathAsSaid: an absolute path in the vault is its vault path", pathAsSaid(saidTree, "/Users/alice/Vault/Home/Logs/Work/Run.md", vaultAt) === "Home/Logs/Work/Run.md" &&
+      pathAsSaid(saidTree, "C:\\Vault\\Work.md", { root: "c:/vault" }) === "Work.md")
+    check("pathAsSaid: one from the vault's top finds its file", pathAsSaid(saidTree, "/Home/Logs/Work/Run.md", outsideAt) === "Home/Logs/Work/Run.md")
+    check("pathAsSaid: one outside the vault stays whole where it's taken, else reads as a vault path", pathAsSaid(saidTree, "/Users/alice/Downloads/a.mp4", outsideAt) === "/Users/alice/Downloads/a.mp4" &&
+      pathAsSaid(saidTree, "/Users/alice/Downloads/a.mp4", vaultAt) === "Users/alice/Downloads/a.mp4" && pathAsSaid(saidTree, "/Users/alice/Downloads/a.mp4") === "Users/alice/Downloads/a.mp4")
     // (hidden files listed: Settings shows them) A name never becomes a hidden file: the MCP gate judged the name as said.
     const hiddenTree = { files: [{ path: ".claude/Notes.md" }, { path: ".archive/Old plan.md" }], others: [{ path: ".vaultite/plugins.json" }, { path: ".claude/settings.local.json" }, { path: "Projects/.env" }], folders: [] }
     check("pathAsSaid: a name never finds a hidden file, only its whole path does",

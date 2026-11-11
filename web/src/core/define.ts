@@ -484,6 +484,8 @@ export type AmbientItem = {
   hidden?: boolean
   /** In the bar's left corner until the user moves it: what's about the user rather than the file (Vim's mode). */
   left?: boolean
+  /** For AI (agents at work): not there while Use AI is off, as a plugin whose manifest says `ai`. */
+  ai?: boolean
 }
 
 /** Drawn in a file's header: on desktop in the tab's top bar (`place: "bar"`), in a sheet and on phones above the title

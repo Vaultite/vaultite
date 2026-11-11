@@ -45,6 +45,18 @@ export default async ($: VaultTest) => {
   let [, inboxNow] = await api("GET", "inbox/events")
   check("vau notify: an inbox event, its link a vault path", cr.code === 0 && inboxNow.events[0]?.title === "Wrote the review" && inboxNow.events[0].kind === "info" &&
     inboxNow.events[0].link === "Dashboards/Errors.md" && inboxNow.events[0].source === "vau" && !uiOf(w2).some((m: Any) => m.action === "notify"), [cr, inboxNow.events[0]])
+  // Its Open to a file elsewhere on this machine keeps the whole path (the desktop app opens it); one in the vault is
+  // the vault's path, and one that isn't there is refused.
+  const elsewhere = path.join(tmp, "Recording.mp4")
+  fs.writeFileSync(elsewhere, "")
+  cr = await vau("notify", "Recorded", "--action-open", elsewhere)
+  ;[, inboxNow] = await api("GET", "inbox/events")
+  check("vau notify: an absolute path outside the vault stays whole", cr.code === 0 && inboxNow.events[0]?.link === elsewhere, [cr, inboxNow.events[0]])
+  cr = await vau("notify", "Wrote", "--action-open", path.join(VAULT, "Dashboards", "Errors.md"))
+  ;[, inboxNow] = await api("GET", "inbox/events")
+  check("vau notify: an absolute path in the vault is its vault path", cr.code === 0 && inboxNow.events[0]?.link === "Dashboards/Errors.md", [cr, inboxNow.events[0]])
+  cr = await vau("notify", "Gone", "--action-open", path.join(tmp, "Nowhere.mp4"))
+  check("vau notify: a file that isn't there is refused, saying so", cr.code === 1 && cr.err.includes("--action-open") && cr.err.includes("Nowhere.mp4"), cr)
   cr = await vau("notify", "It broke", "--error")
   ;[, inboxNow] = await api("GET", "inbox/events")
   check("vau notify --error: an error event, no link", cr.code === 0 && inboxNow.events[0]?.title === "It broke" && inboxNow.events[0].kind === "error" && !inboxNow.events[0].link, inboxNow.events[0])

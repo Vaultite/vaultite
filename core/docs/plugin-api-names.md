@@ -329,6 +329,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `isListedPage(path, store?)`: A page offered to pin where the pages are listed (Pinned's): not one of a dated run (PageView `series`).
 - `isMac`: A Mac, iPhone or iPad: ⌘ is the app's Mod key.
 - `iso(d)`
+- `isOutside`
 - `isPage(path, store?)`: A page: a file a plugin draws as one (a dashboard).
 - `isPopout()`
 - `isViewOpen(to)`: Whether a view (`terminal/abc`) is open in a pane somewhere.
@@ -458,6 +459,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `openMenu(at, items, up?, again?)`
 - `openNew(path, opts?)`: Open a file just made, in editing with its name ready to type.
 - `openNewTab({ group, at }?)`: A new tab (or at the end of tab group `group`, a phone's open one): a blank one, or newtab.json's `opens`.
+- `openOutside(path)`: Open a file outside the vault by its absolute path (a notice's Open): the desktop app lets this window have it, as a file dropped on it, or opens the vault it's in; a browser can't, nor a computer…
 - `openPermissions`: Settings > Permissions, what macOS lets the app do: null where there's none (a browser, another system, an older build).
 - `openPlace(p, opts?)`: Open what a place says.
 - `openPluginSettings(id, key?)`: Open a plugin's settings sheet (over the sheet that's open, if any); `key`: the setting to go to (its row's `data-setting`), scrolled to and flashed once the sheet has drawn it.
@@ -907,7 +909,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `HTTPError`
 - `inDesktop()`: Whether this server has a desktop app on this machine to ask (its browser).
 - `isColor(c)`
-- `isOutside(p)`: An absolute path, never a vault one (which can't have ":" or "\\"): /x, or Windows' C:/x, C:\x and \\server\x.
+- `isOutside`
 - `isTextKind(k)`: Kinds whose text the app reads (and writes); "other" is tried as text too.
 - `isZip(file)`: Does the file start like a zip ("PK\3\4", or an empty one's "PK\5\6")? Claude's exports may come named .dms.
 - `keptOf(vaultPath)`: The store of the vault at `vaultPath` on this machine.
@@ -944,7 +946,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `parseCsv(text)`: Rows of fields.
 - `parseDate(text, fmt, opts?)`: The date `text` names in a moment.js format (a week's first day), or null if the format doesn't write it ("2026-13-01" in YYYY-MM-DD); `loose`: what the text starts with, read as moment does.
 - `parseSearch(q, opts?)`: A query as a tree (throws SearchError).
-- `pathAsSaid(tree, raw)`: A path as the user says it ("Today", "notes/idea") made a vault path: exact, with .md, any case, a file's name, or a path from before a folder moved; a web address is its web tab.
+- `pathAsSaid(tree, raw, at?)`: A path as the user says it ("Today", "notes/idea") made a vault path: exact, with .md, any case, a file's name, or a path from before a folder moved; a web address is its web tab.
 - `pinFile(entry)`: The file an entry is in (null: a search or a view).
 - `pinKind(entry)`: What an entry is: a path (`file`: a file or a folder), a heading (or block) in a note, a search, or a view (its tab's target: a web page, Inbox, a coding agent's conversation).
 - `pinProblem(vault, entry)`: Why `entry` can't be pinned (a file or folder that isn't in the vault, an empty search), or null.
@@ -1120,6 +1122,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `agentName(id)`: An agent's name by its id or its name in a terminal ("claude"), or null.
 - `agentRefusal(text)`: What a terminal shows instead of running its agent (`text`, why not), then a plain shell.
 - `agentSession(k, v?)`: Whether variable `k` (=`v`) is a coding agent's own session's, which nothing it starts should inherit (Claude Code's tools also get GIT_EDITOR=true, so git never waits on an editor).
+- `agentSite(id)`: Where to get a coding agent, by its id or its name in a terminal, or null.
 - `AgentStart`: What Terminal gives an agent's "agent:<name>" service, which answers the command (and folder) to run in a login shell, which then stays a plain shell (AgentCommand).
 - `AgentState`: A terminal's agent as the Terminals panel shows it.
 - `AgentUse`: An agent a plugin runs, as a terminal names it (claude_agent: with its account), and for what ("Companion chat"): the service "agents-used:<plugin>" answers a list.

@@ -6,7 +6,7 @@ import type { IncomingMessage } from "node:http"
 import os from "node:os"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
-import { type AgentAsk, type AgentCommand, agentModel, askLabel, type AgentHow, type AgentMeter, type AgentStart, type AgentState, agentName, agentSession, MODEL_NAME, serversOwn, PERMISSION_MODES, shellQuote, parseTerminal, repoName } from "../../../core/agents.ts"
+import { type AgentAsk, type AgentCommand, agentModel, askLabel, type AgentHow, type AgentMeter, type AgentStart, type AgentState, agentName, agentSession, agentSite, MODEL_NAME, serversOwn, PERMISSION_MODES, shellQuote, parseTerminal, repoName } from "../../../core/agents.ts"
 import {
   agentLines, HTTPError, LOCAL as LOCAL_DIR, readableImage, vauDir, writeWslVau, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, span, splitMachine, type Machine,
   type Request, type Access, accessOf, NOT_THE_USER, userSurface, whoOf,
@@ -675,18 +675,24 @@ plugin.onUnload(() => clearInterval(looker))
 
 /** What an agent's state file says when its shell had no such command (exit 127): it isn't installed here. */
 const MISSING = "missing"
-/** The agent's command, then its state file marked MISSING when the shell found no such program. */
-export function markMissing(command: string, file: string, sh = shell()) {
-  const mark = `printf %s ${MISSING} > ${shellQuote(file)} 2>/dev/null`
+/** The agent's command, then, when the shell found no such program, `say` (where to get it) under its error and its
+ *  state file marked MISSING. */
+export function markMissing(command: string, file: string, sh = shell(), say = "") {
+  const mark = `${say ? `printf '\\n%s\\n' ${shellQuote(say)}; ` : ""}printf %s ${MISSING} > ${shellQuote(file)} 2>/dev/null`
   return progName(sh) === "fish" ? `${command}; if test $status -eq 127; ${mark}; end` : `${command}; if [ $? -eq 127 ]; then ${mark}; fi`
 }
+/** What a terminal and the toast say when agent `agent` ("claude") isn't installed: where to get it. */
+export function missingText(agent: string) {
+  const name = agentName(agent) ?? agent, site = agentSite(agent)
+  return site ? `${name} isn't installed on this machine. Get it at ${site}, then open it again.` : `${name} isn't installed on this machine: install it, then open it again.`
+}
 
-/** Agent terminal `id`'s program isn't installed: the user is told (its terminal shows the shell's error), and the
- *  plugin that started it hears "terminal.agent-missing". */
+/** Agent terminal `id`'s program isn't installed: the user is told, with where to get it (its terminal says so too),
+ *  and the plugin that started it hears "terminal.agent-missing". */
 function agentMissing(id: string, agent: string) {
-  const name = agentName(agent) ?? agent
   tell("terminal.agent-missing", { id, agent })
-  void plugin.runOp("ui.notify", { text: `${name} isn't installed on this machine: install it, then start it again`, error: true, terminal: id }).catch(() => {})
+  const site = agentSite(agent)
+  void plugin.runOp("ui.notify", { text: `${agentName(agent) ?? agent} isn't installed on this machine`, error: true, terminal: id, ...(site ? { actionOpen: site } : {}) }).catch(() => {})
 }
 
 /** A hook's command marking a terminal's state in `file` (the stream hears it: "inbox:state"); nothing once file `osc`
@@ -726,9 +732,9 @@ async function agentRun(id: string, prompt: string | null, dark: boolean | null,
     // (a resumed session's own folder, else the one it was asked to start in)
     let cwd = typeof run.cwd === "string" && run.cwd ? run.cwd : how.cwd || null
     try { if (cwd && !fs.statSync(cwd).isDirectory()) cwd = null } catch { cwd = null }
-    if (!native) return { command: markMissing(run.command, there(stateFile(id)), kind === "wsl" ? "sh" : sh), cwd }
+    if (!native) return { command: markMissing(run.command, there(stateFile(id)), kind === "wsl" ? "sh" : sh, missingText(a.name)), cwd }
     const bash = Array.isArray(run.argv) && run.argv.length ? null : gitBash()
-    const argv = bash ? [bash, "-l", "-c", markMissing(run.command, stateFile(id).replace(/\\/g, "/"), bash)] : run.argv
+    const argv = bash ? [bash, "-l", "-c", markMissing(run.command, stateFile(id).replace(/\\/g, "/"), bash, missingText(a.name))] : run.argv
     if (!argv?.length) return { command: run.command, cwd }
     return { command: starterLine(id, { argv, env: run.env ?? {}, cwd, state: stateFile(id) }, kind), cwd }
   } catch {

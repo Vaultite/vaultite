@@ -3,6 +3,8 @@
   "icon": "bot",
   "category": "ai-apps",
   "alwaysOn": true,
+  "ai": true,
+  "requires": ["terminal"],
   "name": "Coding agents",
   "description": "The Agents panel: every coding agent on every machine in one list (terminals, chats, cloud sessions), the ones that need you first. And one set of blocks for every coding agent: its plan's limits, its sessions, its usage by day, project and model, and one project's. A block's `agent:` names whose (claude-code, codex...): each agent's plugin draws them, read from that agent's own files, and with that plugin off its blocks are off too.",
   "settings": {
@@ -11,7 +13,6 @@
     "hide": { "type": "list", "values": ["terminal", "chat", "cloud"], "labels": { "terminal": "Terminals", "chat": "Chats", "cloud": "Cloud" }, "label": "Hidden kinds", "description": "the kinds of agents the Agents panel and tab leave out: the ones in terminals, in chats or in the cloud" },
     "fold": { "type": "enum", "values": ["1", "5", "15", "30", "60", "never"], "labels": { "1": "After a minute", "5": "After 5 minutes", "15": "After 15 minutes", "30": "After 30 minutes", "60": "After an hour", "never": "Never" }, "default": "5", "label": "Fold finished agents", "description": "how long an agent done and read, with nothing for you and no tab open, stays in the Agents and Terminals panels before it folds under Earlier; never keeps every one listed" }
   },
-  "exports": ["fold"],
   "blocks": {
     "agent-limits": {
       "description": "an agent's plan limits (the session, the week, a month's included usage): how much is used and when each renews",

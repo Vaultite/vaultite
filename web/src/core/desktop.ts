@@ -424,6 +424,6 @@ export const spelling = desktop?.learnWord ? {
 export const dockIcon = () => desktop?.dock ?? null
 
 /** Something from outside the vault (an absolute path: /x, Windows' C:/x), opened in the desktop app. */
-export const isOutside = (path: string) => /^(\/|[a-z]:[\\/]|\\\\)/i.test(path)
+export { isOutside } from "../../../core/fileprops.ts"
 
 export const hasFiles = (dt: DataTransfer | null) => !!dt && [...dt.types].includes("Files")
