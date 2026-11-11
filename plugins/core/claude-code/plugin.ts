@@ -585,6 +585,23 @@ plugin.provide("agent-session:claude", (id: string): { transcript: string; last:
   return t ? { transcript: found.file, last: t.st.mtimeMs, ttl: ttlOf(t.text), account: found.account.id } : null
 })
 
+/** The account a session runs in ("agent-account:claude": the Inbox mutes the ones the user muted): its transcript's, else
+ *  the one running in app terminal `terminal`, else the one its id names; null when it can't be told. */
+plugin.provide("agent-account:claude", async (terminal: string, session = ""): Promise<{ id: string; label: string } | null> => {
+  const accts = accounts(), of = (a: Account | undefined) => (a ? { id: a.id, label: a.label } : null)
+  const found = session ? sessionFile(session, true) : null
+  if (found) return of(found.account)
+  if (!terminal) return null
+  for (const { a, s, pid } of running(accts)) {
+    const key = `${pid}@${s.procStart}`
+    const t = terminals.get(key) ?? await terminalOf(plugin, pid)
+    if (t) terminals.set(key, t)
+    if (t === terminal) return of(a)
+  }
+  const named = parseTerminal(terminal)
+  return named?.agent === "claude" ? of(accts.find((a) => a.id === (named.profile ?? "default")) ?? accts[0]) : null
+})
+
 /** A session's latest turn: the user's last message, Claude's last answer, its background tasks running ("agent-turn:claude",
  *  read as a turn ends). The session running in `terminal` when `session` isn't given; never a private account's. */
 plugin.provide("agent-turn:claude", async (terminal: string, session = "") => {
@@ -748,7 +765,7 @@ type Read = { tokens: number; last: number; ttl: number }
 const lastRead = new Map<string, { size: number; meter: Read | null }>()
 plugin.provide("agent-meters:claude", async (meters?: boolean): Promise<AgentMeter[]> => {
   const out: AgentMeter[] = []
-  for (const { a, s, pid, sid } of running(accounts())) {
+  for (const { a, s, pid, sid, cwd } of running(accounts())) {
     if (!sid) continue
     const key = `${pid}@${s.procStart}`
     let terminal = terminals.get(key)
@@ -757,9 +774,10 @@ plugin.provide("agent-meters:claude", async (meters?: boolean): Promise<AgentMet
       if (!terminal) continue
       terminals.set(key, terminal)
     }
+    const at = { terminal, session: sid, account: a.id, ...(a.private || !cwd ? {} : { cwd }) }
     const found = meters && sessionFile(sid, true), m = found && lastRequest(found.file)
-    if (!m) { out.push({ terminal, session: sid }); continue }
-    out.push({ terminal, session: sid, ...m, window: windowOf(a.dir, sid, m.tokens) })
+    if (!m) { out.push(at); continue }
+    out.push({ ...at, ...m, window: windowOf(a.dir, sid, m.tokens) })
   }
   return out
 })

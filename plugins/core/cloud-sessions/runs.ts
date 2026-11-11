@@ -2,7 +2,7 @@
 // (every shown account's, the recent ones). Only the desktop app reads them.
 import { useMemo, useSyncExternalStore } from "react"
 import type { AgentRun } from "@vaultite"
-import { cloudListed, getCloud, hasCloud, openSession, settings, shownAccounts, statusOf, subscribeCloud } from "./cloud"
+import { accountOf, cloudListed, getCloud, hasCloud, openSession, repoName, repoOf, settings, shownAccounts, statusOf, subscribeCloud } from "./cloud"
 import { sessionMenu } from "./CloudPanel"
 import { agentTint } from "../../../core/agenttint.ts"
 
@@ -14,8 +14,9 @@ export function useCloudRuns(): AgentRun[] | null {
     const shown = shownAccounts(s, hidden)
     const list = s.sessions.filter((c) => !c.account || shown.some((a) => a.id === c.account) || !s.accounts.some((a) => a.id === c.account))
     return cloudListed(list).listed.map((c): AgentRun => {
-      const st = statusOf(c)
+      const st = statusOf(c), repo = repoOf(c)?.repo, account = s.accounts.length > 1 ? accountOf(s, c)?.label : undefined
       return {
+        ...(account ? { account } : {}), ...(repo ? { project: repoName(repo) } : {}),
         id: `cloud:${c.id}`, kind: "cloud", title: c.title, step: c.summary,
         // (ready for review is at rest with something to look at: an unread answer's dot, not Needs you)
         state: st === "needs" ? "needs" : st === "working" ? "working" : "done", unread: c.unread || st === "review",

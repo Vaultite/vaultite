@@ -22,6 +22,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **The companion's marks by words land only where all its words are**: a mark at "4:24 PM · Agents" finds those words
   in order, across a row's pieces (a time, a dot, a place), in any pane or page, its Conversations page's tags too; never
   on an Agents panel by your pointer that says one of them. Words shown nowhere draw nothing, and it's told to aim again.
+- **Group, sort and mute agents**: the Agents panel's menu groups its agents by state, repository, machine or account,
+  sorts them by status or the latest first, and shows only the kinds you pick; its Notifications mutes a Claude Code
+  account, whose sessions then never notify you nor show in the inbox (Inbox setting Muted accounts).
 - **Filtering finds what you mean**: every list you type to filter (the palette, the quick switcher, pickers, the slash
   menu, panels) meets a word in another form (files finds File explorer, terminals Open terminal) and ranks whole words
   above a name's start; in the palette, commands and panels come before settings that match as well.

@@ -191,6 +191,7 @@ function settings() {
   const s = plugin.loaded ? plugin.settings({}) : {}
   return { keep: Math.max(1, Number(s.keep_days) || 7), push: ["all", "waiting", "off"].includes(str(s.push)) ? str(s.push) : "waiting",
     audio: s.voice_audio !== false, answers: s.answers === "inbox" ? "inbox" : "quiet",
+    muted: (Array.isArray(s.muted) ? s.muted : []).map((x: unknown) => str(x).trim().toLowerCase()).filter(Boolean) as string[],
     dispatch: TERMINAL_AGENT.test(str(s.dispatch).trim()) ? str(s.dispatch).trim() : "",
     prompt: str(s.dispatch_prompt).trim() || str(plugin.manifest.settings?.dispatch_prompt?.default) }
 }
@@ -1045,7 +1046,7 @@ export function fromHook(j: Item): Omit<Heard, "agent" | "from"> | null {
  *  judged. Never throws, and the terminal never waits on it. */
 export async function heard(h: Heard) {
   const key = h.terminal || (h.session ? `session:${h.session}` : "")
-  if (!key || !h.agent) return
+  if (!key || !h.agent || await muted(h.agent, h.terminal ?? "", h.session ?? "")) return
   const was = states.get(key)
   // (the same said twice: once; an agent's own hook says only that a turn ended or that it asks, each news; after a
   // restart, what its terminal told before)
@@ -1075,6 +1076,15 @@ export async function heard(h: Heard) {
   // Out of a question without working again: refused or interrupted, which the user did.
   if (prev === "blocked" && h.state !== "error" && !own) return resolve(who.terminal, who.session, false, "done")
   if (prev === "working" || own) await turnEnded(who, h, was?.since ?? now)
+}
+
+/** Whether the session runs in an account the user muted (the setting `muted`: by its name or id), as its agent's plugin
+ *  says ("agent-account:<agent>"). */
+async function muted(agent: string, terminal: string, session: string) {
+  const names = settings().muted
+  if (!names.length) return false
+  const a = await plugin.ask<{ id: string; label: string } | null>(`agent-account:${agent}`, null, terminal, session).catch(() => null)
+  return !!a && names.some((n) => n === a.id.toLowerCase() || n === a.label.toLowerCase())
 }
 
 /** Why a row needs the user, in a word or two (vau inbox). */

@@ -120,7 +120,7 @@ export { fileAt, iconOf, isListedPage, isPage, namedIcon, offPlugin, pageOf, tin
 export { attachmentFolder, pasteAttachments } from "@/core/conventions"
 export {
   accountsOf, askedAt, canRunAgents, chooseDefaultPlace, choosePlace, getDefaultPlace, defaultPlaceOf, mintedHere, openAgent, openPlace, openTerminal, places, resolvePlace, setDefaultPlace, terminalId, useDefaultPlace,
-  useTerminalAccount, type AgentAccount, type DefaultPlace, type Place,
+  useAccountNames, useTerminalAccount, type AgentAccount, type DefaultPlace, type Place,
 } from "@/core/agents"
 // Your other machines (Machines plugin): their terminals are <id>@<machine>, their API is machines/<machine>/<path>.
 export { fetchMachines, machinePath, onMachine, otherMachines, severalMachines, splitMachine, useMachines, type Machine } from "@/core/machines"

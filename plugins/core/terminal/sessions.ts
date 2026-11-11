@@ -60,6 +60,8 @@ export type Session = { id: string; agent: string | null; process: string; busy?
   backend?: string; external?: boolean
   /** Its agent's own session id (what it resumes; Claude Code's names its transcript), when the agent says. */
   session?: string
+  /** The account its agent runs in (its id), when the agent says; the repository it works in. */
+  account?: string; project?: string
   /** Its agent's context and prompt cache, with Agent meters on (its service terminal:meters), drawn as it says (`as`). */
   meter?: Meter }
 export type Meter = { context?: { tokens: number; window: number; as: "bar" | "percent" | "tokens" }; cache?: { until: number; ttl: number; as: "icon" | "bar" } }
@@ -213,7 +215,7 @@ export function runOf(s: Session, a = agentIn(s)): AgentRun | null {
   return {
     id: `terminal:${s.id}`, kind: "terminal", title: labelOf(s, a), step: s.progress || s.msg || undefined,
     state: needs ? "needs" : s.state === "working" || s.starting ? "working" : "done", failed: s.state === "error", unread: !needs && hasNews(s),
-    machine: s.machine, where: s.machineLabel, agent: a.label, tint: `var(--${agentTint(s.id)})`, session: s.session, at: s.started, started: true,
+    machine: s.machine, where: s.machineLabel, agent: a.label, ...(s.project ? { project: s.project } : {}), tint: `var(--${agentTint(s.id)})`, session: s.session, at: s.started, started: true,
     ...(resting(s) && !s.starting && s.since ? { since: s.since } : {}), to: `view:terminal/${s.id}`,
   }
 }

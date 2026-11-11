@@ -8,7 +8,7 @@ import os from "node:os"
 import path from "node:path"
 import readline from "node:readline"
 import type { WebSocket } from "ws"
-import { type AgentChatNew, type Asking, type Choice, choiceOf, findBin, HOME, Transcript, transcripts } from "../../../core/agents.ts"
+import { type AgentChatNew, type Asking, type Choice, choiceOf, findBin, HOME, repoName, Transcript, transcripts } from "../../../core/agents.ts"
 import { agentLines, byUser, type Machine, MACHINE_CLIENT, machineSocket, NOT_THE_USER, type Op, type OpCtx, OpError, type Param, outliving, pipeSockets, type Plugin, runtimeDir,
   splitMachine, Text, userSurface } from "../../../core/plugins.ts"
 import { byUser as asUser } from "../../../core/writegate.ts"
@@ -930,7 +930,9 @@ after an approved plan (acceptEdits, default...).`,
     const progress = plugin.service("inbox:progress") as ((t: string, s: string) => string | null) | null
     return { ...r, sessions: r.sessions.map((s) => {
       const said = progress?.("", splitMachine(s.id)[0]) ?? null
-      return { ...s, turn: s.turn && { prompt: s.turn.prompt.slice(0, 200), text: s.turn.text.slice(-200), error: s.turn.error }, ...(said ? { progress: said } : {}) }
+      // (its repository named here, where its folder is: another machine's says its own)
+      const project = (s as { project?: string }).project ?? (s.id.includes("@") ? "" : repoName(s.cwd))
+      return { ...s, turn: s.turn && { prompt: s.turn.prompt.slice(0, 200), text: s.turn.text.slice(-200), error: s.turn.error }, ...(said ? { progress: said } : {}), ...(project ? { project } : {}) }
     }) }
   }, { sync: false })
 

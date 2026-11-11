@@ -1,6 +1,6 @@
 // Coding agents in terminal tabs (the Terminal plugin runs them; a plugin brings one with `agents` in its definition
 // and the service "agent:<name>" in its backend): open a new session, or resume one in the folder it ran in.
-import { useEffect, useState } from "react"
+import { useEffect, useState, useSyncExternalStore } from "react"
 import { SquareTerminal, type LucideIcon } from "lucide-react"
 import { choose } from "@/components/Chooser"
 import { get } from "@/core/http"
@@ -102,6 +102,32 @@ export function accountsOf(a: Agent, machine: string, fresh = false): Promise<Ag
   accountLists.set(key, { at: Date.now(), list })
   return list
 }
+
+// Every agent's accounts by machine, read once each (again after five minutes), for rows that say whose they are.
+const names = new Map<string, { at: number; list: AgentAccount[] }>()
+const namesHeard = new Set<() => void>()
+/** The name of agent `agent`'s account `id` ("" or none: its first, its bare name's) on `machine`: "" while it isn't
+ *  known yet, and for an agent with a single account (there's nothing to tell apart). */
+function accountName(agent: string, machine: string, id?: string) {
+  const a = agentsOn().find((x) => x.name === agent)
+  if (!a?.accounts) return ""
+  const key = `${agent}@${machine}`, had = names.get(key)
+  if (!had || Date.now() - had.at > 300_000) {
+    names.set(key, { at: Date.now(), list: had?.list ?? [] })
+    void accountsOf(a, machine, !!had).then((list) => {
+      names.set(key, { at: Date.now(), list })
+      // (another function, so what was made from the last one is made again)
+      named = (...args) => accountName(...args)
+      namesHeard.forEach((f) => f())
+    })
+  }
+  const list = names.get(key)!.list
+  return list.length > 1 ? (id ? list.find((x) => x.id === id) : list[0])?.label ?? "" : ""
+}
+let named: typeof accountName = (...args) => accountName(...args)
+const hearNames = (f: () => void) => { namesHeard.add(f); return () => { namesHeard.delete(f) } }
+/** Agents' accounts' names (accountName): another function each time more are read. */
+export const useAccountNames = () => useSyncExternalStore(hearNames, () => named)
 
 /** The account terminal `id` runs agent `a` in, by label, when it has several (else ""): the one its id names, or the
  *  first (its bare name's). A resumed session's isn't in its id: "". */

@@ -6,7 +6,7 @@ import type { IncomingMessage } from "node:http"
 import os from "node:os"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
-import { type AgentAsk, type AgentCommand, agentModel, askLabel, type AgentHow, type AgentMeter, type AgentStart, type AgentState, agentName, agentSession, MODEL_NAME, serversOwn, PERMISSION_MODES, shellQuote, parseTerminal } from "../../../core/agents.ts"
+import { type AgentAsk, type AgentCommand, agentModel, askLabel, type AgentHow, type AgentMeter, type AgentStart, type AgentState, agentName, agentSession, MODEL_NAME, serversOwn, PERMISSION_MODES, shellQuote, parseTerminal, repoName } from "../../../core/agents.ts"
 import {
   agentLines, HTTPError, LOCAL as LOCAL_DIR, readableImage, vauDir, writeWslVau, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, span, splitMachine, type Machine,
   type Request, type Access, accessOf, NOT_THE_USER, userSurface, whoOf,
@@ -1224,6 +1224,9 @@ type Listed = { id: string; agent: string | null; process: string; busy: boolean
   cwd?: string; command?: string; cols?: number; rows?: number; activity?: number
   /** Its agent's own session id (what it resumes), when the agent says (its service "agent-meters:<name>"). */
   session?: string
+  /** The account its agent runs in (its id), when the agent says; the repository it works in (its folder's, else the
+   *  terminal's). The Agents panel groups by them. */
+  account?: string; project?: string
   /** Its agent's context and prompt cache, with Agent meters on (the service "terminal:meters"). */
   meter?: unknown }
 
@@ -1275,7 +1278,7 @@ async function readList(): Promise<Listed[]> {
       out.set(x.id, { id: x.id, agent: agentOf(x.id)?.name ?? null, process: front ?? x.process, busy: front !== null, clients, started: x.created || s?.started || 0,
         // (what an agent titled its terminal goes with it: a shell at its prompt keeps no title)
         title: front !== null ? titleOf(x.title ?? "") : undefined, backend: b.name,
-        ...(x.cwd ? { cwd: x.cwd } : {}), ...(x.command ? { command: x.command } : {}), ...(x.cols ? { cols: x.cols, rows: x.rows } : {}), ...(x.activity ? { activity: x.activity } : {}),
+        ...(x.cwd ? { cwd: x.cwd, project: repoName(x.cwd) } : {}), ...(x.command ? { command: x.command } : {}), ...(x.cols ? { cols: x.cols, rows: x.rows } : {}), ...(x.activity ? { activity: x.activity } : {}),
         ...(now ? { state: now.state, since: t!.at, ...(now.kind ? { kind: now.kind } : {}), ...(now.msg ? { msg: now.msg } : {}) } : {}),
         ...(progressOf(x.id) ? { progress: progressOf(x.id)! } : {}),
         ...(t?.starting ? { starting: true as const } : {}),
@@ -1289,7 +1292,12 @@ async function readList(): Promise<Listed[]> {
   // (an agent run by hand in a plain terminal goes by its program's name: claude, codex)
   const meters = plugin.service("terminal:meters"), agents = [...new Set([...out.values()].flatMap((x) => (x.busy ? [x.agent ?? x.process] : [])))]
   const live = (await Promise.all(agents.map((a) => liveOf(a, typeof meters === "function")))).flat().filter((m) => out.get(m.terminal)?.busy)
-  for (const m of live) if (m.session) out.get(m.terminal)!.session = m.session
+  for (const m of live) {
+    const x = out.get(m.terminal)!
+    if (m.session) x.session = m.session
+    if (m.account) x.account = m.account
+    if (m.cwd) x.project = repoName(m.cwd)
+  }
   timing.mark("agents")
   for (const x of out.values()) if (x.state && await plugin.ask<boolean>("inbox:needs", false, x.id, x.session ?? "")) x.needs = true
   timing.mark("inbox")

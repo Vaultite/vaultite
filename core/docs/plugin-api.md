@@ -182,6 +182,7 @@ by its path.
 - `activity:changes` (activity)
 - `agent:claude` (claude-code)
 - `agent:codex` (codex): `codex`, or `codex resume <id>` in its folder, with the model given. No context or hooks: any `-c` makes it run without its shared background server (it reads AGENTS.md itself), which only an effort (no flag) or commands allowed cost.
+- `agent-account:claude` (claude-code): The account a session runs in ("agent-account:claude": the Inbox mutes the ones the user muted): its transcript's, else the one running in app terminal `terminal`, else the one its id names; null when it can't be told.
 - `agent-asking:claude` (claude-code): What a session waits on ("agent-asking:claude", the Inbox shows it whole): its AskUserQuestion or plan, else a dialog its terminal shows, as a question (not a permission: Approve and Deny answer it). Never a private account's.
 - `agent-asks:claude` (claude-code)
 - `agent-asks:codex` (codex): Its dialogs, seen on its screen, by their last lines: Approve and Deny press these keys, and before 0.163 (no OSC 7501, no hooks) they're its only blocked state. Folder trust, its default Trust; a command or edits, Yes, Esc No.

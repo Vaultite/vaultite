@@ -745,6 +745,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `typingIn(el)`: Where keys type: a text field, an editor, a terminal (contenteditable, or a field you type text in), or a widget that keeps its keys, marked `data-keeps-keys` (a remote screen takes every key, a…
 - `UiMark`: `run` gets the click: a menu at the mark (`menuBelow`).
 - `unhighlight(view)`: Take out the coloured highlight the selection is in, marks and colour (false if it's in none: plain ones toggle as the other marks do).
+- `useAccountNames()`: Agents' accounts' names (accountName): another function each time more are read.
 - `useAgentRoute(route, options, query?, version?)`: A plugin's `route` for a block, with `query`, on its options' `machine` (this one when it's none or this) and `account` (and `for`: a plugin whose accounts come first): `on` names another machine…
 - `useAgentRuns(on?)`: Every agent the plugins that are on know of, in order, and whether some haven't said yet (`loading`).
 - `useAgents()`
@@ -1107,7 +1108,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `AgentCommand`: What an "agent:<name>" service answers: its line for a POSIX shell, run in `cwd`; `argv` and `env` start it where that can't run (PowerShell, cmd), else Git Bash runs `command` there.
 - `AgentHow`: How a session is started, besides its id and first prompt.
 - `agentIn(name, profile?)`: Agent `name` in account `profile` as a terminal names it (no account, or one that can't be named: just `name`).
-- `AgentMeter`: A live session by its terminal (service "agent-meters:<name>"): `session` the id it resumes; with `meters`, `tokens` its last request read of a `window`, cached for `ttl` seconds from `last` (ms).
+- `AgentMeter`: A live session by its terminal (service "agent-meters:<name>"): its `session` id, `account` id and `cwd`; with `meters`, `tokens` its last request read of a `window`, cached for `ttl` seconds from…
 - `agentModel(plugin, name, said)`: `said` as agent `name` (claude, codex...) takes it (its service "agent-model-id:<name>"); one whose agent has none keeps its words.
 - `AgentModel`: What an agent's service "agent-model-id:<name>" answers for a model as people say it ("Fable 5.2"): its id as its --model takes it and the name it reads as ("" for none), or why it names none of…
 - `AgentModels`: What an agent's service "agent-models:<name>" answers: the models a session of it may run (`id` as its --model takes it), its efforts, least first, and the permission modes it's held to…
@@ -1163,6 +1164,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `projectRoots(cwds, own?)`: Folder -> its project's root.
 - `Question`: A question an agent asks in its own words (Claude Code's AskUserQuestion): its options, one or several of them, an answer typed instead and Chat about this; `closed`, a dialog read off its screen:…
 - `readLines(file, offset, line, chunk?)`: Calls `line` with each whole line of `file` from byte `offset`; returns where the last one ended.
+- `repoName(cwd)`: The repository a folder is: a git worktree's own (its .git a file naming <repo>/.git/worktrees/<name>), an agent's worktree under .claude/worktrees/ its repository's, else the folder's name.
 - `resumeTerminalId(name, session, profile?)`: The id of a terminal resuming agent `name`'s session `session` (in account `profile`: one only it can reach, a cloud session's).
 - `Said`
 - `SampleAnswer`

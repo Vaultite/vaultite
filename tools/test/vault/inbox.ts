@@ -267,6 +267,18 @@ export default async ($: VaultTest) => {
       tell({ terminal: "claude-osc75010", agent: "claude", state: "idle", from: "osc7501", at })
       r = (await rows()).filter((e) => e.terminal === "claude-osc75010")
       check("inbox:state: answered, then done with nothing for you: done, quiet", r[0]?.read === true && r[0].state === "done" && r[0].body === "Tagged v1.2.0 and pushed.", r)
+      {
+        // The setting `muted`: a session in an account the user muted (its agent's plugin says whose) makes no thread.
+        const acct = cc.services["agent-account:claude"]
+        cc.services["agent-account:claude"] = async (terminal: string) => (terminal === "claude_contact-mute0001" ? { id: "contact", label: "Contact" } : { id: "default", label: "Work" })
+        await api("PATCH", "config/plugin/inbox", { muted: ["Contact"] })
+        tell({ terminal: "claude_contact-mute0001", agent: "claude", state: "blocked", kind: "permission", msg: "Run it?", from: "osc7501", at })
+        tell({ terminal: "claude-mute0002", agent: "claude", state: "blocked", kind: "permission", msg: "Run it?", from: "osc7501", at })
+        const m = await rows()
+        check("muted: a session in a muted account makes no thread, another account's does", !m.some((e) => e.terminal === "claude_contact-mute0001") && m.some((e) => e.terminal === "claude-mute0002"), m)
+        await api("PATCH", "config/plugin/inbox", { muted: null })
+        cc.services["agent-account:claude"] = acct
+      }
       // OSC 7501's done comes before Claude Code writes its last answer: the transcript has the turn's earlier words (or
       // none), then the answer a moment later. The answer is what's judged.
       let reads = 0

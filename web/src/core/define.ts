@@ -199,6 +199,9 @@ export type AgentRun = {
   where?: string
   /** Its agent ("Claude Code") and the agent's colour. */
   agent?: string; tint?: string
+  /** The account it runs in, by name ("Personal"), when its agent has several; the repository or folder it works in
+   *  ("vaultite"). The panel groups by them. */
+  account?: string; project?: string
   /** Its agent's own session id: the same session listed twice (a chat a terminal took over) shows once, the terminal. */
   session?: string
   /** When it last changed (ms), else when it started (`started`): the ones at rest, newest first. */

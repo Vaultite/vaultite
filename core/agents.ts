@@ -113,6 +113,23 @@ export const projectName = (root: string) => (root === HOME || root === "" ? "Ho
 /** A folder's project name, through `rootsOf` (an agent's own worktrees). */
 export const projectOf = (cwd: string, rootsOf: (cwds: string[]) => Map<string, string> = projectRoots) => projectName(rootsOf([cwd]).get(cwd)!)
 
+const repos = new Map<string, string>()
+/** The repository a folder is: a git worktree's own (its .git a file naming <repo>/.git/worktrees/<name>), an agent's
+ *  worktree under .claude/worktrees/ its repository's, else the folder's name. Kept per folder. */
+export function repoName(cwd: string) {
+  if (!cwd) return ""
+  let r = repos.get(cwd)
+  if (r !== undefined) return r
+  r = projectName(cwd.split("/.claude/worktrees/")[0])
+  try {
+    const m = /^gitdir:\s*(.+?)[\\/]\.git[\\/]worktrees[\\/]/m.exec(fs.readFileSync(path.join(cwd, ".git"), "utf8"))
+    if (m) r = projectName(path.resolve(cwd, m[1]))
+  } catch { /* not a worktree's root */ }
+  repos.set(cwd, r)
+  if (repos.size > 500) repos.delete(repos.keys().next().value!)
+  return r
+}
+
 /** The accounts `id` names ("" or none: all of them); none of them is a 404 that lists them. */
 function accountsNamed<A extends { id: string }>(all: A[], id: unknown, what: string): A[] {
   if (typeof id !== "string" || !id) return all
@@ -347,9 +364,9 @@ export function jsonLines<T>(bin: string, args: string[], o: { env: NodeJS.Proce
 
 /** A terminal's agent as the Terminals panel shows it. */
 export type AgentState = "working" | "waiting" | "idle"
-/** A live session by its terminal (service "agent-meters:<name>"): `session` the id it resumes; with `meters`, `tokens`
- *  its last request read of a `window`, cached for `ttl` seconds from `last` (ms). */
-export type AgentMeter = { terminal: string; session?: string; tokens?: number; window?: number; last?: number; ttl?: number }
+/** A live session by its terminal (service "agent-meters:<name>"): its `session` id, `account` id and `cwd`; with
+ *  `meters`, `tokens` its last request read of a `window`, cached for `ttl` seconds from `last` (ms). */
+export type AgentMeter = { terminal: string; session?: string; account?: string; cwd?: string; tokens?: number; window?: number; last?: number; ttl?: number }
 /** What Terminal gives an agent's "agent:<name>" service, which answers the command (and folder) to run in a login
  *  shell, which then stays a plain shell (AgentCommand). Ids: <name>-<id>, <name>_<profile>-<id>, resume-<name>-<session>. */
 export type AgentStart = {
