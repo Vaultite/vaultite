@@ -966,6 +966,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Replica`
 - `reply(status, body)`
 - `Reply`: An answer with a status other than 200: `return reply(201, item)`.
+- `replyWithin(waits?)`: How long a call's answer is awaited: 90 s, or for one that itself waits up to `waits` ms (agent:wait), that and a margin.
 - `Request`
 - `RequestEnd`: How a request ended: `error`, what a failed one (4xx, 5xx) answered.
 - `RequestHook`

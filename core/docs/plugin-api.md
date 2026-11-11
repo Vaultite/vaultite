@@ -42,6 +42,7 @@ Written from the code's own doc comments (tools/plugin_api_doc.ts), so it's what
 - `plugin.localKeys(file)`: The keys its manifest marks `local`, and who may reach it (ACCESS) whatever it marks: this machine's (core/trust.ts), never read from or written to the vault.
 - `plugin.dayLog(kind)`: A log of JSON lines in localDir(), a file a day (<kind>-<date>.jsonl): appended at once (an error that ends the server is on disk first), read and rewritten by day, days older than `keep` pruned at most hourly.
 - `plugin.desktop(name, ...args)`: Ask the desktop app's browser engine (an `agent:` call, electron/browser/agent.ts): the one attached to this server, else an always-on machine's serving this vault (`machines:desktop`); fails when there's none.
+- `plugin.desktopWaiting(ms, name, ...args)`: plugin.desktop for a call that itself waits up to `ms` (agent:wait's timeout): its answer is awaited that long and a margin more, here or on the machine whose browser it is, not the usual 90 s.
 - `plugin.onDesktopEvent(fn)`: fn(name, data) hears what this server's desktop app tells it unasked (a live view's frames), till it's unloaded.
 - `plugin.localDir(make)`: Its folder on this machine for this vault, <LOCAL>/<id>/<vault key>/ (disposable, never synced): made unless `make` is false, with vault.txt naming the vault.
 - `plugin.kept(name, fallback?)`: What it keeps that isn't the user's (runtime state: what's open, a place in a video; core/kept.ts): in this server's memory and on its own disk, never in the vault. A new copy each time, or `fallback` while there's none.

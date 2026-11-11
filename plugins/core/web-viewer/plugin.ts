@@ -29,8 +29,10 @@ type Page = { tab: number; url: string; title: string; downloads?: Download[] }
 type Acted = Page & { navigated: boolean; diff?: { page: boolean; lines: string[]; more: number }; opened?: { tab: number; url: string; title: string }[] }
 
 /** Ask the engine, its refusals as plain errors for the agent. */
-async function ask<T>(name: string, ...args: unknown[]): Promise<T> {
-  try { return (await plugin.desktop(name, ...args)) as T } catch (e) { throw new OpError((e as Error).message, 409) }
+const ask = <T>(name: string, ...args: unknown[]) => askWaiting<T>(0, name, ...args)
+/** ask for a call that itself waits up to `ms` (agent:wait): answered within that, not the usual 90 s. */
+async function askWaiting<T>(ms: number, name: string, ...args: unknown[]): Promise<T> {
+  try { return (await plugin.desktopWaiting(ms, name, ...args)) as T } catch (e) { throw new OpError((e as Error).message, 409) }
 }
 /** Who asks: `remote` when it isn't this machine's owner (an app on the internet, a guest through another machine), whose
  *  pages never reach this machine or its network (the engine checks). */
@@ -334,7 +336,8 @@ the Downloads folder of the Mac whose browser it is). helped: the user said Done
   },
   args: ["tab"],
   run: async (p) => {
-    const r = await ask<Page & { download?: Download }>("agent:wait", p.tab, { text: p.text, url: p.url, download: !!p.download, helped: !!p.helped }, p.timeout * 1000)
+    const ms = p.timeout * 1000
+    const r = await askWaiting<Page & { download?: Download }>(ms, "agent:wait", p.tab, { text: p.text, url: p.url, download: !!p.download, helped: !!p.helped }, ms)
     if (p.helped) await plugin.ask("inbox:drop", null, "browser", `help-${p.tab}`)
     return r
   },
@@ -534,7 +537,7 @@ the site's pages, load the page again (browser go <tab> reload) before logging i
     await plugin.ask("inbox:event", null, { source: "browser", kind: "waiting", key: `login-${r.ask}`, title: `${ctx.who.label} asks to log in to ${r.site}`,
       body: `As ${as(r.entry!)}, from the passwords for agents, in browser tab ${p.tab}${p.task ? ` (${p.task})` : ""}. Approve it with your passkey (it never sees the password): ${r.approve}`,
       link: r.approve })
-    const state = await ask<string>("agent:login-wait", r.grant, APPROVAL_WAIT)
+    const state = await askWaiting<string>(APPROVAL_WAIT, "agent:login-wait", r.grant, APPROVAL_WAIT)
     if (state === "waiting") { used(r, "waiting for the user"); return { tab: r.tab, url: r.url, title: r.title, status: "waiting" as const, site: r.site, entry: r.entry } }
     drop(r)
     if (state === "denied") used(r, "denied")

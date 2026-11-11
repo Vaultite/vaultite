@@ -86,8 +86,8 @@ export default async ($: VaultTest) => {
     const { LOADED } = await import("../../../core/plugins.ts")
     const wv = LOADED.find((p) => p.id === "web-viewer")!
     const asked: unknown[][] = []
-    const was = wv.desktop
-    wv.desktop = async (name: string, ...args: unknown[]) => {
+    const was = wv.desktopWaiting
+    wv.desktopWaiting = async (_ms: number, name: string, ...args: unknown[]) => {
       asked.push([name, ...args])
       if (name === "agent:act") return { tab: args[0], url: "https://example.com/", title: "Example", navigated: false }
       if (name === "agent:live:tabs") return [{ tab: 3, url: "https://example.com/", title: "Example" }]
@@ -106,7 +106,7 @@ export default async ($: VaultTest) => {
       let steps: Any[] = []
       for (let i = 0; i < 20 && !steps.length; i++) { await sleep(100); steps = (await api("GET", `web-viewer/tabs/3/steps?since=${since}`))[1].steps }
       check("live view: a tab's steps are what Activity kept of agents' ops in it, and only its", steps.length === 1 && steps[0].text === "Clicked e5", steps)
-    } finally { wv.desktop = was }
+    } finally { wv.desktopWaiting = was }
     // What the desktop app tells the server unasked reaches who listens (core/desktopapp.ts).
     const { onDesktopEvent } = await import("../../../core/desktopapp.ts")
     const heard: unknown[] = []

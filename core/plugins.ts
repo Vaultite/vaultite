@@ -24,8 +24,8 @@ export { vauDir, vauEntry } from "./appentry.ts"
 export { vauShims } from "./vaushims.ts"
 export { distros, fromWsl, toWsl } from "./wsl.ts"
 export { writeWslVau } from "./wslvau.ts"
-import { desktopCall, inDesktop, noDesktop, onDesktopEvent } from "./desktopapp.ts"
-export { inDesktop, noDesktop } from "./desktopapp.ts"
+import { desktopCall, inDesktop, noDesktop, onDesktopEvent, replyWithin } from "./desktopapp.ts"
+export { inDesktop, noDesktop, replyWithin } from "./desktopapp.ts"
 export { running } from "./running.ts"
 export { privateApp } from "./privateapps.ts"
 import { pinFile, pinKind, withPinFile } from "./pins.ts"
@@ -727,9 +727,15 @@ export class Plugin {
   /** Ask the desktop app's browser engine (an `agent:` call, electron/browser/agent.ts): the one attached to this
    *  server, else an always-on machine's serving this vault (`machines:desktop`); fails when there's none. */
   desktop(name: string, ...args: unknown[]): Promise<unknown> {
-    if (inDesktop()) return desktopCall(name, args)
+    return this.desktopWaiting(0, name, ...args)
+  }
+
+  /** plugin.desktop for a call that itself waits up to `ms` (agent:wait's timeout): its answer is awaited that long and a
+   *  margin more, here or on the machine whose browser it is, not the usual 90 s. */
+  desktopWaiting(ms: number, name: string, ...args: unknown[]): Promise<unknown> {
+    if (inDesktop()) return desktopCall(name, args, replyWithin(ms))
     const there = this.service("machines:desktop")
-    return typeof there === "function" ? Promise.resolve().then(() => there(name, args)) : Promise.reject(new Error(noDesktop()))
+    return typeof there === "function" ? Promise.resolve().then(() => there(name, args, ms)) : Promise.reject(new Error(noDesktop()))
   }
 
   /** fn(name, data) hears what this server's desktop app tells it unasked (a live view's frames), till it's unloaded. */

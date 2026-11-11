@@ -2,7 +2,7 @@
 // user's). No accounts: whoever reaches one machine reaches the others through it, but shells stay the owner's.
 import crypto from "node:crypto"
 import os from "node:os"
-import { API_VERSION, APP_VERSION, bullets, HTTPError, inDesktop, LOADED, localDate, noDesktop, MACHINE_CLIENT, Plugin, reply, running, section, Text } from "../../../core/plugins.ts"
+import { API_VERSION, APP_VERSION, bullets, HTTPError, inDesktop, LOADED, localDate, noDesktop, MACHINE_CLIENT, Plugin, replyWithin, reply, running, section, Text } from "../../../core/plugins.ts"
 import { dialIn, type DialEntry } from "./dial.ts"
 import { shareKept } from "./kept.ts"
 import { alerts, duration, EVERY, KEEP_DAYS, report, reportText, sample, watch, type Report, type Sample } from "./health.ts"
@@ -204,8 +204,8 @@ async function browserThere(all: Machine[]) {
   const own = vaultId()
   return all.find((x) => !x.self && !x.via && x.online && x.desktop && x.standalone && (!own || x.vault === own)) ?? null
 }
-/** Ask that machine's browser engine. */
-async function desktopThere(name: string, args: unknown[]) {
+/** Ask that machine's browser engine; `waits`: how long the call itself may wait (plugin.desktopWaiting). */
+async function desktopThere(name: string, args: unknown[], waits = 0) {
   const own = vaultId(), all = await machines()
   const m = await browserThere(all)
   if (!m) {
@@ -217,7 +217,7 @@ async function desktopThere(name: string, args: unknown[]) {
   let r: Response
   try {
     r = await fetch(`${m.url}/api/machines/desktop`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" },
-      body: JSON.stringify({ name, args }), signal: AbortSignal.timeout(100_000) })
+      body: JSON.stringify({ name, args, waits }), signal: AbortSignal.timeout(replyWithin(waits) + 10_000) })
   } catch { throw new Error(`${m.label}'s desktop app doesn't answer`) }
   const answer = await r.json().catch(() => ({})) as Item
   if (!r.ok) throw new Error(`${String(answer.error || `${m.label} answered ${r.status}`)} (on ${m.label})`)
@@ -234,7 +234,8 @@ plugin.route("POST", "machines/desktop", async (req) => {
   if (!inDesktop()) throw new HTTPError(409, "no desktop app is attached to this machine's server")
   const name = String(req.body?.name ?? "")
   if (!/^agent:[a-z-]+$/.test(name)) throw new HTTPError(400, "only the browser's agent calls")
-  try { return { value: (await plugin.desktop(name, ...(Array.isArray(req.body.args) ? req.body.args : []))) ?? null } }
+  const waits = Math.min(3600_000, Math.max(0, Number(req.body?.waits) || 0))
+  try { return { value: (await plugin.desktopWaiting(waits, name, ...(Array.isArray(req.body.args) ? req.body.args : []))) ?? null } }
   catch (e) { throw new HTTPError(409, (e as Error).message) }
 }, { lock: false })
 

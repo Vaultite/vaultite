@@ -76,8 +76,12 @@ export function detach(why: string) {
   attached?.close(why)
 }
 
+const REPLY_MS = 90_000
+/** How long a call's answer is awaited: 90 s, or for one that itself waits up to `waits` ms (agent:wait), that and a margin. */
+export const replyWithin = (waits = 0) => Math.max(REPLY_MS, waits + 30_000)
+
 /** Ask the desktop app `name` (an `agent:` call, `app:permissions`); fails after `ms`. */
-export function desktopCall(name: string, args: unknown[], ms = 90_000): Promise<unknown> {
+export function desktopCall(name: string, args: unknown[], ms = REPLY_MS): Promise<unknown> {
   const h = host()
   if (!h) return Promise.reject(new Error(noDesktop()))
   const rid = next++

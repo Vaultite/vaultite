@@ -300,4 +300,38 @@ export default async ($: VaultTest) => {
       await api("GET", "machines")
     }
   }
+
+  // Another machine's browser (machines:desktop): a call that waits itself (browser wait --helped's 600 s) says so, and
+  // is awaited that long there and here, not the usual 90 s.
+  {
+    const asked: Any[] = []
+    const peer = (await import("node:http")).createServer((req, res) => {
+      const json = (status: number, body: unknown) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(body)) }
+      if (req.url === "/api/machines/self") return json(200, { instance: "peer-3", host: "studio", version: "0.1.0", plugins: ["web-viewer"], desktop: true, standalone: true,
+        vault: JSON.parse(fs.readFileSync(path.join(VAULT, ".vaultite/plugins/machines/vault.json"), "utf8")).id })
+      if (req.url === "/api/machines/desktop" && req.method === "POST") {
+        let b = ""
+        req.on("data", (d) => { b += d })
+        req.on("end", () => { asked.push(JSON.parse(b)); json(200, { value: { tab: 3, url: "https://example.com/", title: "Example" } }) })
+        return
+      }
+      json(404, { error: "no such thing" })
+    })
+    await new Promise<void>((r) => peer.listen(0, "127.0.0.1", () => r()))
+    write(".vaultite/plugins/machines/data.json", JSON.stringify({ machines: [{ id: "studio", label: "Studio", url: `http://127.0.0.1:${(peer.address() as { port: number }).port}/` }] }))
+    await api("GET", "machines")
+    try {
+      const [c, body] = await api("POST", "ops/web-viewer.wait", { tab: 3, helped: true, timeout: 600 })
+      await api("POST", "ops/web-viewer.wait", { tab: 3, text: "Order placed", timeout: 45 })
+      const [helped, text] = asked
+      check("browser wait: another machine's browser is asked with the wait's own time (600 s), not the usual 90 s", c === 200 && body.tab === 3 &&
+        helped?.name === "agent:wait" && helped.waits === 600_000 && helped.args?.[2] === 600_000 && text?.waits === 45_000, [c, body, asked])
+      const { replyWithin } = await import("../../../core/desktopapp.ts")
+      check("browser wait: its answer awaited that long and a margin; a call that doesn't wait, 90 s", replyWithin(600_000) > 600_000 && replyWithin(0) === 90_000 && replyWithin(1000) === 90_000)
+    } finally {
+      peer.close()
+      fs.rmSync(path.join(VAULT, ".vaultite/plugins/machines/data.json"))
+      await api("GET", "machines")
+    }
+  }
 }
