@@ -26,7 +26,7 @@ function Label({ file, place }: { file: FileHead; place: "bar" | "line" | "statu
   if (!labelled(file.path)) return null
   const showUnset = unsetHere(store, place)
   if (!isNote(file.path)) return <OtherLabel file={file} place={place} values={valuesOf(store)} showUnset={showUnset} />
-  return <PropertyChip file={file} prop={KEY} values={valuesOf(store)} place={place} showUnset={showUnset} name="Origin" unset="Unlabeled" unsetTip="Unlabeled: who wrote it?" />
+  return <PropertyChip file={file} prop={KEY} values={valuesOf(store)} place={place} showUnset={showUnset} name="Origin" unset="Unlabeled" unsetTip="Who wrote it, you or an AI: not labeled yet" />
 }
 
 /** A file that isn't a note (an image, a PDF): its label from the server, the list's or what its bytes say, set through
@@ -47,7 +47,7 @@ function OtherLabel({ file, place, values, showUnset }: { file: FileHead; place:
   // An unlabelled file whose bytes say an AI made it: its value, with why.
   const shown = useMemo(() => (now?.from === "file" ? values.map((v) => (v.value === now.origin ? { ...v, hint: "The file says an AI made it" } : v)) : values), [values, now?.from, now?.origin])
   if (!data && !set) return null
-  return <PropertyChip file={head} prop={KEY} values={shown} place={place} showUnset={showUnset} name="Origin" unset="Unlabeled" unsetTip="Unlabeled: who made it?" />
+  return <PropertyChip file={head} prop={KEY} values={shown} place={place} showUnset={showUnset} name="Origin" unset="Unlabeled" unsetTip="Who made it, you or an AI: not labeled yet" />
 }
 
 /** Label the file in the focused tab: a note as a small edit of the file (the open editor merges it in; the same label

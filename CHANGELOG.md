@@ -14,7 +14,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **AI off means off at once**: turning Use AI off (or answering Not now in the welcome) takes away the agents'
   commands and keys (Open Claude Code, Ask the companion), the Agents panel, Agents at work, Screen, who wrote a line
   (Provenance), Review, MCP Apps, the Inbox panel and the settings in Settings > AI right away, not at the next
-  reload. Dictation, the inbox's notices and Live answers stay; MCP still serves agents you run yourself.
+  reload. Dictation, the inbox's notices and Live answers stay; MCP still serves agents you run yourself. With AI
+  on, the status bar's Unlabeled chip says it's who wrote the file, you or an AI.
 - **A missing coding agent says where to get it**: opening Claude Code (or another agent) that isn't installed says so
   in its terminal and in a toast whose Open goes to its site.
 - **Links in properties**: `owner: "[[Alice Park]]"`, a list of links and web addresses are drawn as links, as in
