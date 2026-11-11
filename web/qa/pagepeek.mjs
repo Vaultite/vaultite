@@ -7,7 +7,7 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, qa, until, wait, keepAwake } from "./lib/qa.mjs"
+import { ROOT, keepAwake, qa, uiAt, until, wait } from "./lib/qa.mjs"
 
 const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-pagepeek-"))
@@ -31,7 +31,7 @@ try {
   await win.waitForSelector("aside[data-side=right]", { timeout: 60000 })
   const origin = new URL(win.url()).origin
   await app.evaluate(({ BaseWindow }) => { const w = BaseWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }); w.focus() })
-  await fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "open", path: `view:web/${SITE}` }) })
+  await uiAt(origin)({ action: "open", path: `view:web/${SITE}` })
   for (const t of ["[data-sidebar-toggle='']", "[data-sidebar-toggle=right]"]) await win.click(t)
   await win.mouse.move(640, 400)
 
