@@ -841,15 +841,18 @@ export async function apply(b: Bundle, host: Host, n: number | null, allowCode: 
       await pinTo(host, own, pins.workspace, n)
     }
   }
-  // The layout it replaces takes back the files it added, while they're as it wrote them: a layout looked at and left
-  // (the welcome card's) leaves nothing behind. (Last: trashing runs plugins' move hooks.)
+  // The layout it replaces takes back the files it added, while they're as it wrote them and unpinned: a layout looked at
+  // and left (the welcome card's) leaves nothing behind. Untouched, nothing follows them: no move hooks.
   if (inUse && inUse.bundle !== b.id) {
+    const pinned = strs(v.config("pages").pinned)
     for (const a of inUse.added ?? []) {
-      if (p.files.add.includes(a.path) || p.files.kept.includes(a.path)) continue
+      if (p.files.add.includes(a.path) || p.files.kept.includes(a.path) || pinned.includes(a.path)) continue
       let data: Buffer
       try { data = fs.readFileSync(v.abs(a.path)) } catch { continue }
       if (hash(data) !== a.hash) continue
-      ;(prev.taken ??= []).push({ path: a.path, trash: toTrash(v, a.path) })
+      const trash = v.toTrash(a.path)
+      v.drop(a.path)
+      ;(prev.taken ??= []).push({ path: a.path, trash })
     }
     for (const a of prev.taken ?? []) pruneDirs(v, path.dirname(a.path))
   }
