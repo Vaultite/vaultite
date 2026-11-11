@@ -25,9 +25,13 @@
 
 ## What it is
 
-A folder of Markdown files (your vault) that you and your AI write in, and Vaultite draws as pages.
+A second brain for you and your AI: a folder of Markdown files (your vault) you both write in, which Vaultite draws as
+pages and a knowledge graph of what links to what.
 
 - **Plain files, no database.** Open the vault in another Markdown app, grep it, sync it with iCloud or keep it in git.
+- **Your Obsidian vault, as is.** Open it and its notes, links, properties and hotkeys carry over; with the Obsidian
+  plugins add-on (Plugins, Get), 105 of the 126 community plugins checked work: Dataview, Templater, Tasks, Excalidraw,
+  Kanban...
 - **Made for agents.** Claude Code, Codex and any MCP client share one set of operations (the `vau` CLI, MCP, HTTP).
 - **Everything is a plugin**, even the file tree, hot-reloaded. People, logs and notes come with it, off until a bundle
   or you turn them on. Write your own in the vault.
