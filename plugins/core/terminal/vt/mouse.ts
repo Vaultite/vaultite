@@ -1,5 +1,3 @@
-// The pointer: reported to a program that asked for the mouse (Shift held: selects instead), else Ghostty's selection
-// gestures (a click, a double click's word, a triple's line, a drag), links under it, and the wheel.
 import { MOD_ALT, MOD_CTRL, MOD_SHIFT, MOD_SUPER } from "./screen.ts"
 import type { Term } from "./term.ts"
 
@@ -31,7 +29,7 @@ export function wirePointer(t: Term) {
   }
 
   const onDown = (e: PointerEvent) => {
-    if (e.pointerType === "touch") return // (Terminal.tsx: a tap focuses, a hold opens the menu, a swipe scrolls)
+    if (e.pointerType === "touch") return
     if (e.button > 2) return
     const { c, at } = px(e)
     if (!c.inside && e.button === 0 && c.px > t.cols * t.m.cssW) return scrollbarDrag(e)
@@ -65,7 +63,6 @@ export function wirePointer(t: Term) {
     const { c, at } = px(e)
     t.s.gestureEvent("drag", c, at, geo(), performance.now(), e.altKey)
     t.requestRender(true)
-    // Past the top or bottom: the history scrolls on while it's held there.
     clearInterval(scrollTimer)
     const r = t.screenEl.getBoundingClientRect()
     const dir = e.clientY < r.top ? -1 : e.clientY > r.top + t.rows * t.m.cssH ? 1 : 0
@@ -81,20 +78,17 @@ export function wirePointer(t: Term) {
     if (d.button !== 0) return
     const { c, at } = px(e)
     t.s.gestureEvent("release", c, at, geo(), performance.now())
-    // A click (not a drag) on a link opens it.
     if (!d.moved && d.link && t.hovered?.link === d.link.link) { t.s.clearSelection(); d.link.link.activate(e, d.link.link.text) }
     t.requestRender(true)
   }
   const onLeave = (e: PointerEvent) => { if (!down && t.hovered) { t.hovered.link.leave?.(e, t.hovered.link.text); t.hovered = null; el.removeAttribute("data-term-link"); t.requestRender(true) } }
   const onWheel = (e: WheelEvent) => {
-    // (⌘ or ⌃ over it changes its text size: Terminal.tsx's wheel)
     if (e.ctrlKey || e.metaKey || e.defaultPrevented) return
     e.preventDefault()
     const { c } = px(e)
     t.wheel(e.deltaY, { x: c.px, y: c.py }, e.deltaMode === 1 ? "lines" : "px", e.shiftKey)
     if (e.deltaMode === 2) t.wheel(e.deltaY * t.rows, null, "lines")
   }
-  // The scrollbar's thumb dragged (the gutter at the right).
   const scrollbarDrag = (e: PointerEvent) => {
     e.preventDefault()
     const r = t.screenEl.getBoundingClientRect(), H = t.rows * t.m.cssH

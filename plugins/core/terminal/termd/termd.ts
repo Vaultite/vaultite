@@ -1,5 +1,3 @@
-// The terminal server: a detached Node process owning the app's terminals whole (host.ts), so they outlive the app's
-// server: pty, screen and history, meta, OSC 7501, size, clients, how each ended. Its socket speaks protocol.ts.
 import fs from "node:fs"
 import net from "node:net"
 import path from "node:path"
@@ -11,14 +9,14 @@ import { holdRoot } from "../../../../core/update/lease.ts"
 
 const SOCK = process.argv[2]
 if (!SOCK) { console.error("usage: termd.ts <socket path> [<its files' path>]"); process.exit(2) }
-/** Where its .pid goes (`${FILES}.pid`): the socket's path, or beside a pipe's (which isn't a file). */
+/** A Windows pipe isn't a file: its .pid goes beside FILES. */
 const FILES = process.argv[3] || SOCK
 const WIN = process.platform === "win32"
 const SELF = fileURLToPath(import.meta.url)
 
 const log = (...a: unknown[]) => console.log(new Date().toISOString(), ...a)
 // node-pty's ptys aren't close-on-exec: on Linux this one inherits those its starter held, and would keep them (and
-// their shells' hangup) for as long as it runs. None is its own yet. (macOS' libuv spawns closing them.)
+// their shells' hangup) for as long as it runs. macOS' libuv spawns closing them.
 if (process.platform === "linux") {
   for (const f of fs.readdirSync("/proc/self/fd")) {
     const fd = Number(f)
@@ -26,36 +24,29 @@ if (process.platform === "linux") {
     try { if (/^\/dev\/(ptmx|pts\/)/.test(fs.readlinkSync(`/proc/self/fd/${f}`))) fs.closeSync(fd) } catch { /* gone */ }
   }
 }
-// (run from a code root in the app's store: kept while it lives, as it outlives the app and its updates)
 void holdRoot(SELF, "termd")
-/** Its own files are gone (the checkout moved): node-pty runs spawn-helper by its path there, so no shell can start.
- *  It retires once it holds none, and the app's server starts another. */
+/** node-pty runs spawn-helper by its path in the checkout: once that moved, no shell can start. */
 const stale = () => !fs.existsSync(SELF) || !fs.existsSync(ptyDir)
 
 const h = host({ log, pid: process.pid, file: SELF, stale, retire: () => retire(), changed: () => idleCheck() })
 
 let lastConn = Date.now()
-/** Whether it's the live server's (backendName "vaultite", port 8793), not a worktree's dev or QA app's. */
 const LIVE = /-vaultite\.sock$/.test(path.basename(FILES))
-/** How long a stale server for another app keeps terminals nobody watched or used (that app went with its worktree). */
 const ORPHANED = Number(process.env.VAULTITE_TERMD_ORPHANED) || 60 * 60_000
 let ending = false
-/** No terminals besides spare ones, and nobody connected for a minute: the spares end, and so does this. */
 function idleCheck() {
   h.trimEnded()
   if (stale()) { if (!retire() && orphaned()) endOrphans(); return }
   if (h.connections) return
   if (Date.now() - lastConn < 60_000) return
   for (const s of h.sessions.values()) if (s.spare) s.driver.kill()
-  if (h.sessions.size) return // (spares on their way out: next time)
+  if (h.sessions.size) return
   log("nothing left: exiting")
   server.close()
   removeFiles()
   process.exit(0)
 }
 
-/** Its files gone, it serves another port's app, and none of its terminals was watched or used for ORPHANED: that app
- *  (a QA run's, a dev build's) left them behind, and they'd keep this running for days. */
 function orphaned() {
   const now = Date.now()
   return !LIVE && !ending && !h.connections && now - lastConn > ORPHANED &&
@@ -68,8 +59,6 @@ function endOrphans() {
 }
 
 let retiring = false
-/** A stale server holding only spares makes way: frees its socket path at once, ends its spares and exits. False while
- *  it holds terminals (it keeps them and tries again each idleCheck). */
 function retire() {
   if (retiring) return true
   if ([...h.sessions.values()].some((s) => !s.spare)) return false
@@ -78,7 +67,6 @@ function retire() {
   h.killAll()
   removeFiles()
   server.close()
-  // (after the answer that says so has gone out)
   setTimeout(() => { for (const s of sockets) s.destroy(); process.exit(0) }, 200)
   return true
 }
@@ -106,12 +94,11 @@ const server = net.createServer((sock) => {
   sock.on("error", gone)
 })
 
-/** Its socket file (not a pipe: Windows removes that with it) and pid file. */
+/** Windows removes a pipe with its server. */
 function removeFiles() {
   for (const f of [...(WIN ? [] : [SOCK]), `${FILES}.pid`]) try { fs.rmSync(f, { force: true }) } catch { /* gone */ }
 }
 
-/** Another one already answers at this path: leave it be. A stale socket file (one that ended badly) is removed. */
 function start() {
   const probe = net.connect(SOCK)
   probe.on("connect", () => { probe.destroy(); log("another one answers here: exiting"); process.exit(0) })
@@ -122,7 +109,6 @@ function start() {
     }
     server.listen(SOCK, () => {
       if (!WIN) try { fs.chmodSync(SOCK, 0o600) } catch { /* the folder is the user's anyway */ }
-      // (on Windows it's also what says one runs: backend.ts looks for it rather than open the pipe)
       try { fs.writeFileSync(`${FILES}.pid`, `${process.pid}\n`) } catch { /* only for stopping it by hand */ }
       log(`listening on ${SOCK} (v${PROTOCOL}, pid ${process.pid})`)
     })
@@ -131,7 +117,6 @@ function start() {
 server.on("error", (e) => { log("server:", e); process.exit(1) })
 start()
 setInterval(idleCheck, 15_000)
-// Its loop held up (a synchronous call that took long): every terminal waited meanwhile, so the app's server hears it.
 let tick = performance.now()
 setInterval(() => {
   const now = performance.now(), late = now - tick - 1000
@@ -140,7 +125,6 @@ setInterval(() => {
   log(`its loop was held up ${Math.round(late)} ms`)
   h.trouble("", `its loop was held up ${(late / 1000).toFixed(1)} s: every terminal it holds waited meanwhile`)
 }, 1000).unref()
-// The app's server going away isn't this one's business; only a SIGTERM (or SIGKILL) ends it, with its terminals.
 process.on("SIGHUP", () => {})
 process.on("SIGINT", () => {})
 process.on("SIGTERM", () => {
@@ -149,5 +133,4 @@ process.on("SIGTERM", () => {
   setTimeout(() => process.exit(0), 300)
 })
 process.on("uncaughtException", (e) => log("uncaught:", e))
-// (this server ending would end every terminal: a failed promise is logged too)
 process.on("unhandledRejection", (e) => log("unhandled:", e))

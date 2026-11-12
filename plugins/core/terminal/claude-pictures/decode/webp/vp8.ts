@@ -7,7 +7,6 @@ import { BPS, DC, H, inverseDc, inverseDct, inverseWht, predictBlock, predictSub
 import { AC_TABLE, BANDS, BMODE_PROBS, CAT_PROBS, COEFF_PROBS, COEFF_UPDATE_PROBS, DC_TABLE, ZIGZAG } from "./vp8/tables.ts"
 import type { Yuv } from "./vp8/yuv.ts"
 
-/** A VP8 key frame's size, from its first 10 bytes; throws unless they start one this decodes. */
 export function vp8Size(b: Uint8Array): { width: number; height: number } {
   need(b.length >= 10, "VP8 frame cut short")
   const bits = b[0] | (b[1] << 8) | (b[2] << 16)
@@ -19,35 +18,25 @@ export function vp8Size(b: Uint8Array): { width: number; height: number } {
   return { width: (b[6] | (b[7] << 8)) & 0x3fff, height: (b[8] | (b[9] << 8)) & 0x3fff }
 }
 
-/** A segment's dequantization factors, [DC, the rest], for luma, the second-order block and chroma. */
 type Quant = { y1: [number, number]; y2: [number, number]; uv: [number, number] }
-/** A loop filter's thresholds; `limit` 0 for none. */
 type Strength = { limit: number; interior: number; hev: number }
 
-/** The frame header (9.2-9.11), what the macroblocks are read with. */
+/** RFC 6386 9.2-9.11. */
 type Header = {
-  /** Whether each macroblock says its segment, with these probabilities. */
   segmentMap: boolean
   segmentProbs: Uint8Array
   quants: Quant[]
-  /** 0 none, 1 simple, 2 normal. */
   filterType: number
-  /** By segment, then whether a macroblock has subblock modes: `strengths[2 * segment + i4]`. */
   strengths: Strength[]
-  /** The coefficient probabilities, as COEFF_PROBS lays them out. */
   probs: Uint8Array
-  /** A macroblock's skip flag's probability, or -1 for none. */
   skipProb: number
-  /** The token partitions, a macroblock row each in turn. */
   partitions: BoolDecoder[]
 }
 
 // The work buffer's layout (libwebp's): luma below a row of edge pixels, chroma U and V side by side below it.
 const Y_OFF = BPS + 8, U_OFF = Y_OFF + 16 * BPS + BPS, V_OFF = U_OFF + 16
-// Each 4x4 luma subblock's place in it.
 const SCAN = Int32Array.from({ length: 16 }, (_, n) => (n & 3) * 4 + (n >> 2) * 4 * BPS)
 
-/** The frame's YUV planes: macroblock-aligned, its size `width` x `height`. */
 export function decodeVp8(b: Uint8Array, limits: Limits): Yuv {
   const { width, height } = vp8Size(b)
   sized(width, height, limits)
@@ -58,7 +47,6 @@ export function decodeVp8(b: Uint8Array, limits: Limits): Yuv {
   const mbW = (width + 15) >> 4, mbH = (height + 15) >> 4
   const yStride = mbW * 16, uvStride = mbW * 8
   const Y = new Uint8Array(yStride * mbH * 16), U = new Uint8Array(uvStride * mbH * 8), Vp = new Uint8Array(uvStride * mbH * 8)
-  // (each macroblock's filter strength, an index in strengths, and whether its inner edges are filtered)
   const strength = new Uint8Array(mbW * mbH), inner = new Uint8Array(mbW * mbH)
   const ctx: Context = { modesAbove: new Uint8Array(4 * mbW), modesLeft: new Uint8Array(4), nzAbove: new Uint8Array(mbW), nzDcAbove: new Uint8Array(mbW), nzLeft: 0, nzDcLeft: 0 }
   const mb: Macroblock = { segment: 0, skip: false, i4: false, modes: new Uint8Array(16), uvMode: 0, nzY: 0, nzUv: 0 }
@@ -86,7 +74,6 @@ export function decodeVp8(b: Uint8Array, limits: Limits): Yuv {
     }
   }
 
-  // Loop filter (15), in macroblock order
   if (h.filterType) {
     const normal = h.filterType === 2
     for (let mbY = 0; mbY < mbH; mbY++) for (let mbX = 0; mbX < mbW; mbX++) {
@@ -99,7 +86,6 @@ export function decodeVp8(b: Uint8Array, limits: Limits): Yuv {
   return { width, height, y: Y, u: U, v: Vp, yStride, uvStride }
 }
 
-/** The frame header from the first partition, and the token partitions after it (from `at`). */
 function readHeader(b: Uint8Array, br: BoolDecoder, at: number): Header {
   br.bit(0x80) // (colour space: no other is defined)
   br.bit(0x80) // (clamping type: libwebp always clamps)
@@ -137,7 +123,6 @@ function readHeader(b: Uint8Array, br: BoolDecoder, at: number): Header {
   }
   need(at < b.length, "VP8 partitions cut short")
   partitions.push(new BoolDecoder(b, at, b.length))
-  // Quantizers (9.6, 14.1)
   const baseQ = br.literal(7)
   const dY1Dc = br.maybeSigned(4), dY2Dc = br.maybeSigned(4), dY2Ac = br.maybeSigned(4), dUvDc = br.maybeSigned(4), dUvAc = br.maybeSigned(4)
   const quants: Quant[] = [], strengths: Strength[] = []
@@ -160,7 +145,6 @@ function readHeader(b: Uint8Array, br: BoolDecoder, at: number): Header {
     }
   }
   br.bit(0x80) // (refresh_entropy_probs: there's one frame)
-  // Coefficient probabilities (13.4), and the skip flag's (9.11)
   const probs = new Uint8Array(COEFF_PROBS.length)
   for (let i = 0; i < probs.length; i++) probs[i] = br.bit(COEFF_UPDATE_PROBS[i]) ? br.literal(8) : COEFF_PROBS[i]
   const skipProb = br.bit(0x80) ? br.literal(8) : -1
@@ -171,15 +155,10 @@ function readHeader(b: Uint8Array, br: BoolDecoder, at: number): Header {
 
 const clip = (v: number, max: number) => (v < 0 ? 0 : v > max ? max : v)
 
-/** What a macroblock's reading takes from its neighbours': the subblock modes above (4 a macroblock) and left, which
- *  subblocks above and left had coefficients (bits 0-3 luma, 4-5 U, 6-7 V), and whether the second-order blocks did. */
 type Context = { modesAbove: Uint8Array; modesLeft: Uint8Array; nzAbove: Uint8Array; nzDcAbove: Uint8Array; nzLeft: number; nzDcLeft: number }
 
-/** A macroblock as read: its modes (`modes[0]` a 16x16 one's), and each subblock's coefficients' code (libwebp's: 0
- *  none, 1 DC only, 2 a few, 3 more), 2 bits each, the first subblock highest. */
 type Macroblock = { segment: number; skip: boolean; i4: boolean; modes: Uint8Array; uvMode: number; nzY: number; nzUv: number }
 
-/** A macroblock's header from the first partition (19.3): its segment, skip flag and prediction modes (11). */
 function readMacroblock(br: BoolDecoder, h: Header, ctx: Context, mbX: number, mb: Macroblock) {
   const p = h.segmentProbs
   mb.segment = h.segmentMap ? (!br.bit(p[0]) ? br.bit(p[1]) : 2 + br.bit(p[2])) : 0
@@ -206,7 +185,7 @@ function readMacroblock(br: BoolDecoder, h: Header, ctx: Context, mbX: number, m
   mb.uvMode = !br.bit(142) ? DC : !br.bit(114) ? V : br.bit(183) ? TM : H
 }
 
-/** A subblock's mode (11.2's tree), its probabilities at `BMODE_PROBS[p]`, by the modes above and left. */
+/** RFC 6386 11.2's tree. */
 function subblockMode(br: BoolDecoder, p: number): number {
   const P = BMODE_PROBS
   if (!br.bit(P[p])) return 0 // DC
@@ -216,8 +195,6 @@ function subblockMode(br: BoolDecoder, p: number): number {
   return !br.bit(P[p + 6]) ? 6 : !br.bit(P[p + 7]) ? 7 : !br.bit(P[p + 8]) ? 8 : 9 // LD, VL, HD, HU
 }
 
-/** A macroblock's coefficients (13), dequantized into `coeffs` (16 luma subblocks, 4 U, 4 V, 16 each), the
- *  second-order block's through its inverse WHT; its codes in `mb`, its neighbours' contexts updated. */
 function readResiduals(br: BoolDecoder, probs: Uint8Array, q: Quant, ctx: Context, mbX: number, mb: Macroblock, coeffs: Int16Array, dc: Int16Array) {
   coeffs.fill(0)
   mb.nzY = mb.nzUv = 0
@@ -226,7 +203,7 @@ function readResiduals(br: BoolDecoder, probs: Uint8Array, q: Quant, ctx: Contex
     if (!mb.i4) ctx.nzDcAbove[mbX] = ctx.nzDcLeft = 0
     return
   }
-  let first = 0, type = 3 // (subblocks predicted on their own: all 16 coefficients)
+  let first = 0, type = 3
   if (!mb.i4) {
     dc.fill(0)
     const n = tokens(br, probs, 1, ctx.nzDcAbove[mbX] + ctx.nzDcLeft, q.y2[0], q.y2[1], 0, dc, 0)
@@ -278,11 +255,9 @@ function readResiduals(br: BoolDecoder, probs: Uint8Array, q: Quant, ctx: Contex
   mb.nzUv = nzUv
 }
 
-/** A subblock's code by the position after its last coefficient and its DC. */
 const code = (n: number, dc: number) => (n > 3 ? 3 : n > 1 ? 2 : dc !== 0 ? 1 : 0)
 
-/** A block's coefficients (13.2-13.3) of `type` (0 luma after a second-order block, 1 that block, 2 chroma, 3 luma),
- *  from position `n` on, dequantized into `out[k]` in raster order. The position after its last one not zero. */
+/** `type` (13.3): 0 luma after a second-order block, 1 that block, 2 chroma, 3 luma. */
 function tokens(br: BoolDecoder, probs: Uint8Array, type: number, ctx: number, dq0: number, dq1: number, n: number, out: Int16Array, k: number): number {
   const t = type * 8
   let p = ((t + BANDS[n]) * 3 + ctx) * 11
@@ -314,7 +289,6 @@ function largeValue(br: BoolDecoder, probs: Uint8Array, p: number): number {
   return v + 3 + (8 << cat)
 }
 
-/** A macroblock's prediction and residuals in the work buffer (12, 14). */
 function reconstruct(w: Uint8Array, mb: Macroblock, coeffs: Int16Array, hasLeft: boolean, hasTop: boolean) {
   if (mb.i4) {
     for (let n = 0; n < 16; n++) {
@@ -332,14 +306,12 @@ function reconstruct(w: Uint8Array, mb: Macroblock, coeffs: Int16Array, hasLeft:
   chromaResidual(mb.nzUv >> 8, coeffs, 320, w, V_OFF)
 }
 
-/** A luma subblock's residual added, by its code. */
 function residual(code: number, c: Int16Array, k: number, b: Uint8Array, o: number) {
   code &= 3
   if (code > 1) inverseDct(c, k, b, o)
   else if (code) inverseDc(c, k, b, o)
 }
 
-/** A chroma block's 4 subblocks' residuals, by their codes. */
 function chromaResidual(codes: number, c: Int16Array, k: number, b: Uint8Array, o: number) {
   if (!(codes & 0xff)) return
   for (let n = 0; n < 4; n++) {
@@ -349,8 +321,6 @@ function chromaResidual(codes: number, c: Int16Array, k: number, b: Uint8Array, 
   }
 }
 
-/** The work buffer's edges for macroblock (mbX, mbY): the pixels above (and above right, for subblocks) and left of
- *  it, from the planes (not yet filtered), or 127 above the frame and 129 left of it. */
 function edges(w: Uint8Array, Y: Uint8Array, U: Uint8Array, V: Uint8Array, ys: number, uvs: number, mbX: number, mbY: number, mbW: number) {
   const top = Y_OFF - BPS
   if (mbY === 0) {

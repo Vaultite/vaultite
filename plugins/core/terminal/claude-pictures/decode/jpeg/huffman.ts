@@ -2,23 +2,17 @@
 // cut-short picture decodes as far as it goes, every loop bounded by the picture's size, never by its bytes.
 import { need } from "../pixels.ts"
 
-/** A Huffman table as DHT defines it: a lookup by the next 9 bits for the common short codes, libjpeg's canonical
- *  limits for the longer ones. */
 export type Huffman = {
-  /** By the next 9 bits: (code length << 8) | symbol, or 0 when the code is longer. */
   look: Uint16Array
-  /** By code length 1..16: the largest code of that length (-1: none; [17] stops the search), and what turns a code
-   *  of it into its symbol's index. */
   maxcode: Int32Array
   valoff: Int32Array
   values: Uint8Array
-  /** The largest symbol: a DC table's are bit counts, 15 at most. */
   maxSymbol: number
 }
 
 const LOOK = 9
 
-/** The table of DHT's 16 code counts by length and its symbols (jpeg_make_d_derived_tbl). */
+/** libjpeg's jpeg_make_d_derived_tbl. */
 export function huffman(counts: Uint8Array, symbols: Uint8Array): Huffman {
   const sizes: number[] = []
   for (let l = 1; l <= 16; l++) for (let i = 0; i < counts[l - 1]; i++) sizes.push(l)
@@ -47,18 +41,13 @@ export function huffman(counts: Uint8Array, symbols: Uint8Array): Huffman {
   return { look, maxcode, valoff, values, maxSymbol }
 }
 
-/** The entropy-coded bytes of a scan, from `pos`, read a few bits at a time. */
 export class BitReader {
   data: Uint8Array
-  /** The next byte not yet in `bits`. */
   pos: number
-  /** Up to 32 bits read ahead: the low `nbits` of them are next, high first. */
   bits = 0
   nbits = 0
-  /** Zero bits fed past the segment's end: once `nbits` is under it, the data has run out. */
   pad = 0
   atMarker = false
-  /** Data that ran out before a missing restart marker, so the segment after is skipped too (see restart, scan.ts). */
   starved = false
 
   constructor(data: Uint8Array, pos: number) {
@@ -66,12 +55,10 @@ export class BitReader {
     this.pos = pos
   }
 
-  /** Whether the segment's data has run out: what's left of it is skipped, rather than decoded from zeros. */
   get exhausted() {
     return this.starved || this.nbits < this.pad
   }
 
-  /** Tops `bits` up to more than 24. */
   fill() {
     const d = this.data
     while (this.nbits <= 24) {
@@ -89,7 +76,7 @@ export class BitReader {
     }
   }
 
-  /** The next symbol by table `t`. A code no table has reads as 0, as libjpeg's does (it warns). */
+  /** A code no table has reads as 0, as libjpeg's does. */
   decode(t: Huffman): number {
     if (this.nbits < 16) this.fill()
     const e = t.look[(this.bits >>> (this.nbits - LOOK)) & ((1 << LOOK) - 1)]
@@ -101,21 +88,17 @@ export class BitReader {
     return t.values[(code + t.valoff[l]) & 255]
   }
 
-  /** The next `n` bits (0..16) as a number. */
   getBits(n: number): number {
     if (this.nbits < n) this.fill()
     this.nbits -= n
     return (this.bits >>> this.nbits) & ((1 << n) - 1)
   }
 
-  /** The next `s` bits (1..15) as a signed value (the spec's EXTEND). */
   extend(s: number): number {
     const v = this.getBits(s)
     return v < 1 << (s - 1) ? v - (1 << s) + 1 : v
   }
 
-  /** Drops what's read ahead, and finds the next marker from here: its code, with `pos` at its 0xFF, or -1 when the
-   *  bytes end first. */
   seekMarker(): number {
     this.bits = this.nbits = this.pad = 0
     this.atMarker = this.starved = false
@@ -127,7 +110,6 @@ export class BitReader {
     return -1
   }
 
-  /** Leaves the segment empty: it reads zeros, and is skipped if the last one had run out too. */
   starve(skip: boolean) {
     this.atMarker = true
     this.starved = skip

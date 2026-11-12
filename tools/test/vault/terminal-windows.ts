@@ -22,7 +22,7 @@ export default async ($: VaultTest) => {
 
   // A command alone in PowerShell exits with its program's code, and 1 when a cmdlet failed (no code: $? only).
   {
-    const { launch } = await import("../../../plugins/core/terminal/backend.ts")
+    const { launch } = await import("../../../plugins/core/terminal/launch.ts")
     const { spawnSync } = await import("node:child_process")
     const codeOf = (command: string) => {
       const l = launch({ shell: defaultShell(), run: { command }, only: true, cwd: tmp, env: process.env as Record<string, string>, ctx: {}, cols: 80, rows: 24, scrollback: 100 })

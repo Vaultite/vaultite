@@ -1,5 +1,3 @@
-// The Terminals panel: every shell the server runs (sessions outlive tabs: a closed tab only detaches), live, with
-// agents' states and other machines' sessions, the ones that need you first. Claude Code on the web's: Cloud sessions.
 import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent } from "react"
 import { Copy, MessagesSquare, Monitor, Plus, SquareTerminal, X } from "lucide-react"
 import {
@@ -12,31 +10,21 @@ import {
 } from "./sessions"
 import { useFoldAfter } from "./fold"
 
-/** The sessions, as the server says now (null until it answers; `refused`: this device may not have a shell): the one
- *  list the terminal tabs' names, colours and states come from too (sessions.ts). */
 export const useSessions = () => useSyncExternalStore(subscribeSessions, getSessions)
-/** The sessions the panel lists: another program's own (a herdr pane) only while a tab shows it (its own panel has the rest). */
 const listed = (list: Session[] | null) => list?.filter((s) => !s.external || s.clients > 0) ?? null
 
-
-/** One session's row (its icon in its colour, with its name and what the row can't say as the tooltip). `page`: in the
- *  Terminals tab (view:terminals), with what it's doing and since when spelled out. */
 function Row({ s, open, tab, page, where }: { s: Session; open: boolean; tab: string; page?: boolean
-  /** Shown only in other workspaces' tabs: their names. */
   where?: string }) {
   const to = `view:terminal/${s.id}`
   const a = agentIn(s, useAgents())
   const account = useTerminalAccount(s.id, a)
   const needs = needsYou(s, a)
   const dragged = useDrag((d) => d?.item.to)
-  // What the row shows only as colours and rings, or not at all: its state, account, machine, workspace, meters.
   const tip = [labelOf(s, a) + (a ? stateTip(s) : ""),
     [account && `${account} account`, s.machineLabel && `on ${s.machineLabel}`, where && `in ${where}`, !s.clients && "detached"].filter(Boolean).join(", "),
     a && s.meter && capitalize(meterText(s))].filter(Boolean).join("\n")
   return (
-    // Dragged (core/drag.ts), like a file from the tree: onto a pane's edge, its middle or a tab bar, it opens there.
     <div onPointerDown={(e) => startDrag(e, { from: "row", to, label: labelOf(s, a) })} className={cn(dragged === to && "opacity-50")}>
-    {/* Its icon and dot as its tab's; one that needs you bold, as an unread mail. */}
     <SidebarRow icon={iconOf(s, a) ?? SquareTerminal} iconClassName={stateClass(s, a)} tint={tintOf(s, a)} badge={dotOf(s, a)} tag={s.machineLabel && short(s.machineLabel)} label={labelOf(s, a)} open={open}
       active={tab === to} tip={tip} more data-session={s.id} data-glide={s.id} data-state={s.state} data-agent={a?.name} data-needs={needs ? "" : undefined}
       className={needs ? "font-semibold" : undefined}
@@ -45,11 +33,8 @@ function Row({ s, open, tab, page, where }: { s: Session; open: boolean; tab: st
       swipe={() => [{ label: "End", icon: X, danger: true, run: () => endForGood(s.id), removes: true }]}
       onContextMenu={menuFor(() => menuOf(s, a))}
       onClick={(e) => openView(to, { newTab: !isViewOpen(to) || e.metaKey || e.ctrlKey || e.button === 1 })}>
-      {/* At most half the row, so the name always shows. The machine is a tag on the icon, and detached (nobody
-          watching: no tab on any device, no vau terminal attach) is in the tooltip and the Terminals tab. */}
       {page && <span className="mr-1 max-w-[50%] truncate text-[11px] font-normal text-tertiary group-hover/row:hidden">{[where && `in ${where}`, about(s, a, true, account)].filter(Boolean).join(" · ")}</span>}
       {!page && where && <span className="mr-1 max-w-20 shrink-0 truncate text-[11px] font-normal text-tertiary group-hover/row:hidden">{where}</span>}
-      {/* (last, so every row's ring lines up at its edge) */}
       {a && s.meter && <Meters s={s} tint={a.tint} />}
     </SidebarRow>
     </div>
@@ -57,27 +42,22 @@ function Row({ s, open, tab, page, where }: { s: Session; open: boolean; tab: st
 }
 
 const copy = (text: string, what: string) => () => void copyText(text).then(() => notify(`Copied the ${what}`, { id: "copied" }), (e) => notifyError(e))
-/** A session's menu: its ids (its agent's own when it says, what `claude --resume` takes), its agent's conversation, End. */
 export function menuOf(s: Session, a: Agent | null): MenuItem[] {
   const conversation = a?.session && s.session && `view:${a.session}/${onMachine(s.session, s.machine)}`
   return [
     ...(s.session ? [{ label: "Copy session ID", icon: Copy, run: copy(s.session, "session ID") }] : []),
     { label: "Copy terminal ID", icon: Copy, run: copy(s.id, "terminal ID") },
     ...(conversation ? [{ label: "Open conversation", icon: MessagesSquare, sep: true, run: () => openView(conversation, { newTab: !isViewOpen(conversation) }) }] : []),
-    // (Pin: its conversation, from Pinned)
     ...viewMenuItems(`view:terminal/${s.id}`).map((it, i) => (i ? it : { ...it, sep: true })),
     { label: "End session", icon: X, danger: true, sep: true, run: () => void endForGood(s.id) },
   ]
 }
 
-/** A machine's name short enough for the icon's tag: "M1" as is, "Mini PC" → "MP", "studio" → "ST". */
 const short = (l: string) => {
   const w = l.trim().split(/\s+/)
   return (l.length <= 3 ? l : w.length > 1 ? w.map((x) => x[0]).join("").slice(0, 3) : l.slice(0, 2)).toUpperCase()
 }
 
-/** Agent meters beside the name (sessions.ts: Meter): its context as a ring that fills up (as Claude's desktop app
- *  does), a percent or tokens, with its cache's time left as an inner ring while idle; the numbers are in the row's tooltip. */
 function Meters({ s, tint }: { s: Session; tint?: string }) {
   const { context: c, cache } = s.meter!
   const used = c ? Math.min(1, c.tokens / c.window) : 0
@@ -107,8 +87,6 @@ function Meters({ s, tint }: { s: Session; tint?: string }) {
   )
 }
 
-/** The sessions only other workspaces' tabs show (by their place, `view:terminal/<id>`), with those workspaces' names (by
- *  number order). Without Workspaces, none. */
 function elsewhere(): Map<string, string> {
   const desk = currentWorkspace()
   const out = new Map<string, string[]>()
@@ -124,8 +102,6 @@ function elsewhere(): Map<string, string> {
 const EARLIER = "terminal:earlier"
 const placeOf = (s: Session) => `view:terminal/${s.id}`
 
-/** The rows by state (rankOf), the current workspace's then the ones only other workspaces show; in the panel, an
- *  agent's asking nothing a while, with no tab, folds under Earlier (foldsAway). None moves while the user is in it. */
 function Rows({ list, open, tab, page }: { list: Session[]; open: boolean; tab: string; page?: boolean }) {
   useWorkspaceVersion()
   const agents = useAgents()
@@ -157,7 +133,6 @@ function Rows({ list, open, tab, page }: { list: Session[]; open: boolean; tab: 
   )
 }
 
-/** The + button's menu: a terminal, then every coding agent that's on. */
 export function newMenu(e: MouseEvent, agents: Agent[]) {
   menuBelow(e, [
     { label: "New terminal", icon: SquareTerminal, run: () => void openTerminal() },
@@ -167,16 +142,13 @@ export function newMenu(e: MouseEvent, agents: Agent[]) {
   ])
 }
 
-/** The panel folds itself (without saving) while there are no sessions; in the rail, only the sessions' icons. */
 export function Sessions({ open, tab }: SidebarCtx) {
   const { list: all, refused } = useSessions()
   const list = listed(all)
   const agents = useAgents()
   const fold = useContext(PanelFold)
-  // (while they come, as many rows as last time; none last time, it stays folded as it was)
   const rows = useKeptCount("terminal:sessions", list?.length, 0)
   const empty = list ? !list.length : !rows
-  // Opened by hand while empty: until a session comes along (then it's open anyway) or it's folded again.
   const [peek, setPeek] = useState(false)
   useEffect(() => { if (!empty) setPeek(false) }, [empty])
   if (refused) return null
@@ -187,16 +159,13 @@ export function Sessions({ open, tab }: SidebarCtx) {
     collapsed: folded,
     toggle: () => {
       if (!empty) return fold.toggle()
-      // Empty: showing it is local (peek), so an empty panel never gets saved as open or folded.
       if (fold.collapsed) { fold.toggle(); setPeek(true) } else setPeek(!peek)
     },
   }
   return (
-    // (folded for being empty, it takes no room while the sidebars' headings are quiet: Sidebar.tsx, data-panel-empty)
     <div className="flex shrink-0 flex-col" data-auto-folded={auto || undefined} data-panel-empty={auto || undefined}>
       <PanelFold.Provider value={own}>
         <SidebarHeading title="Terminals" open={open}>
-          {/* The first agent (Claude Code, when it's on) a click away; + for a terminal or any agent. */}
           {agents.slice(0, 1).map((a) => (
             <HeadingButton icon={a.icon} label={`New ${a.label}`} strokeWidth={2} key={a.name} data-agent={a.name} onClick={() => openAgent(a.name)} />
           ))}
@@ -218,7 +187,6 @@ export function Sessions({ open, tab }: SidebarCtx) {
   )
 }
 
-/** The sessions' rows in the Terminals tab (view:terminals): the panel's rows, spelled out. */
 export function SessionList() {
   const list = listed(useSessions().list)
   const rows = useKeptCount("terminal:sessions", list?.length, 0)
@@ -235,8 +203,6 @@ export function SessionList() {
   )
 }
 
-/** A session's state in words, for search: "Working · started 5 min ago · detached"; `short`, for its row (next to its
- *  name, on a phone too): "Working · 5 min · detached". `account`: its agent's, when it has several (useTerminalAccount). */
 export function about(s: Session, a: Agent | null, short?: boolean, account?: string) {
   const st = a ? stateTip(s).replace(/^ \((.*)\)$/, "$1") : ""
   const mins = Math.max(0, Math.round((Date.now() - s.started) / 60000))

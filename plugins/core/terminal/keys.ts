@@ -1,6 +1,3 @@
-// Keys by name, as a terminal sends them (tmux's names: Enter, C-c, M-x, Up, F5, PageUp...). Loaded by the terminal
-// server too (termd.ts): no imports.
-
 /** What a terminal's modes change in what a key sends: arrows and Home/End in application cursor mode (DECCKM). */
 export type KeyModes = { appCursor?: boolean }
 
@@ -15,8 +12,6 @@ const SS3: Record<string, string> = { f1: "P", f2: "Q", f3: "R", f4: "S" }
 const PLAIN: Record<string, string> = { enter: "\r", return: "\r", tab: "\t", btab: `${CSI}Z`, escape: "\x1b", esc: "\x1b", space: " ",
   bspace: "\x7f", backspace: "\x7f" }
 
-/** One key's bytes, or null when it isn't a key's name: `[C-][M-][S-]<name>` (C-c, M-Enter, S-Up, C-M-x) or one
- *  character. */
 export function keyBytes(name: string, modes: KeyModes = {}): string | null {
   let rest = name.trim(), ctrl = false, meta = false, shift = false
   for (let m = /^([CMS])-(.+)$/i.exec(rest); m; m = /^([CMS])-(.+)$/i.exec(rest)) {
@@ -49,7 +44,6 @@ export function keyBytes(name: string, modes: KeyModes = {}): string | null {
   return meta ? `\x1b${out}` : out
 }
 
-/** Several keys' bytes, in order; throws naming the first that isn't a key. */
 export function keysBytes(names: string[], modes: KeyModes = {}): string {
   let out = ""
   for (const n of names) {

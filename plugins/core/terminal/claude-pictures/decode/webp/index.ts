@@ -1,5 +1,4 @@
-// A WebP's pixels (RFC 9649): the container here, the picture by vp8.ts or vp8l.ts, alpha from ALPH. An animation
-// shows its first frame on a transparent canvas, as Claude sees it; metadata and unknown chunks are skipped.
+// RFC 9649. An animation shows its first frame on a transparent canvas, as Claude sees it.
 import { type Limits, need, type Rgba, sized, Unreadable } from "../pixels.ts"
 import { decodeVp8 } from "./vp8.ts"
 import { yuvToRgba } from "./vp8/yuv.ts"
@@ -9,7 +8,6 @@ const ANIMATION = 0x02
 
 type Chunk = { tag: string; at: number; size: number }
 
-/** A WebP's pixels (an animation's first frame). Throws when it isn't one this reads, or is too big for `limits`. */
 export function decodeWebp(b: Uint8Array, limits: Limits): Rgba {
   need(b.length >= 12 && tag(b, 0) === "RIFF" && tag(b, 8) === "WEBP", "not a WebP")
   const riff = le32(b, 4)
@@ -28,7 +26,6 @@ export function decodeWebp(b: Uint8Array, limits: Limits): Rgba {
     need(pic.width === width && pic.height === height, "picture and canvas sizes differ")
     return pic
   }
-  // (an animation: its first frame, at its offset on a transparent canvas)
   const anmf = chunks.find((c) => c.tag === "ANMF")
   need(anmf && anmf.size >= 16, "no animation frame")
   const x = 2 * le24(b, anmf.at), y = 2 * le24(b, anmf.at + 3)
@@ -40,7 +37,6 @@ export function decodeWebp(b: Uint8Array, limits: Limits): Rgba {
   return { width, height, data }
 }
 
-/** The picture of the first VP8 or VP8L chunk from `chunks[from]` on, a lossy one with the alpha of an ALPH before it. */
 function image(b: Uint8Array, chunks: Chunk[], from: number, limits: Limits): Rgba {
   let alpha: Chunk | null = null
   for (let i = from; i < chunks.length; i++) {
@@ -60,8 +56,7 @@ function image(b: Uint8Array, chunks: Chunk[], from: number, limits: Limits): Rg
   throw new Unreadable("no VP8 or VP8L chunk")
 }
 
-/** An ALPH chunk's alpha plane (RFC 9649 5.2.3): raw or lossless, then unfiltered. Its pre-processing bits (a hint
- *  that levels were quantized) are ignored, as libwebp does by default. */
+/** RFC 9649 5.2.3. Its pre-processing bits are ignored, as libwebp does by default. */
 function decodeAlpha(d: Uint8Array, width: number, height: number, limits: Limits): Uint8Array {
   need(d.length > 1, "ALPH cut short")
   const method = d[0] & 3, filter = (d[0] >> 2) & 3
@@ -78,14 +73,12 @@ function decodeAlpha(d: Uint8Array, width: number, height: number, limits: Limit
   return unfilter(filter, deltas, width, height)
 }
 
-/** The alpha plane its filter predicted (none, horizontal, vertical, gradient), from the differences it stored. */
 function unfilter(filter: number, deltas: Uint8Array, width: number, height: number): Uint8Array {
   if (filter === 0) return deltas
   const out = new Uint8Array(width * height)
   for (let y = 0, o = 0; y < height; y++, o += width) {
     const up = o - width
     if (y === 0 || filter === 1) {
-      // (left-predicted; the first of a row from above, or 0 for the very first)
       let pred = y === 0 ? 0 : out[up]
       for (let x = 0; x < width; x++) pred = out[o + x] = (pred + deltas[o + x]) & 255
     } else if (filter === 2) {
@@ -101,7 +94,6 @@ function unfilter(filter: number, deltas: Uint8Array, width: number, height: num
   return out
 }
 
-/** The chunks from `at` to `end`: each's tag, payload offset and size (an odd one padded). */
 function chunksOf(b: Uint8Array, at: number, end: number): Chunk[] {
   const chunks: Chunk[] = []
   while (at + 8 <= end) {

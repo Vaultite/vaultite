@@ -4,8 +4,6 @@ import { agentTint } from "../../../core/agenttint.ts"
 import { hasNews, waitsOnUser } from "../../../core/attention.ts"
 import { resumeTerminalId } from "../../../core/terminalids.ts"
 
-// Which terminal the keyboard was in last (for "End terminal session"), without loading the terminal: the lazy view
-// registers itself here while it's mounted.
 type Live = { id: string; end: () => void }
 const live = new Map<string, Live>()
 let last = ""
@@ -18,13 +16,10 @@ export function register(t: Live) {
 export const touch = (id: string) => { last = id }
 export const current = () => live.get(last) ?? null
 
-// Terminals kept while their tabs are hidden (Terminal.tsx parks them, so a tab coming back shows at once, without a
-// new socket or the replay): one whose last tab closes, or whose session is ended here, is let go.
 const parked = new Map<string, () => void>()
 const closedNow = new Set<string>()
 export const parkTerminal = (id: string, letGo: () => void) => { parked.set(id, letGo) }
 export const unparkTerminal = (id: string) => { parked.delete(id) }
-/** Its last tab closed a moment ago (its view unmounts after that): not to be parked. */
 export const closedJustNow = (id: string) => closedNow.has(id)
 function letGo(id: string) {
   const f = parked.get(id)
@@ -32,57 +27,33 @@ function letGo(id: string) {
   f?.()
 }
 
-/** A session as /api/terminals lists it: `agent`, the coding agent its id names (codex-<id>), or null; `machine` and
- *  `machineLabel`, another machine's (its id ends in @<machine>). */
 export type Session = { id: string; agent: string | null; process: string; busy?: boolean; clients: number; started: number; title?: string
-  /** The name the user gave it (Rename tab…, terminal.rename): before what its program titles it. */
   name?: string
-  /** What its program is doing (OSC 7501, else its agent's hooks or a question on its screen): blocked is waiting on
-   *  the user (`kind`: for a permission, an answer or a login), `msg` its words (the program's). */
   state?: "idle" | "working" | "blocked" | "done" | "error"; kind?: "permission" | "question" | "auth"; msg?: string
-  /** When its state last changed (ms): when it came to rest, once at rest. */
   since?: number
-  /** What its agent last said of its progress (inbox.progress): the Agents panel's step. */
   progress?: string
-  /** Its agent's command was typed into its shell and its program isn't in front yet. */
   starting?: boolean
-  /** The Inbox has a row for it that needs the user, unread: an answer to read, a question. */
   needs?: boolean
-  /** A job in it is ready for review (Companion's): something for the user to look at, though nothing's unread. */
   review?: boolean
-  /** The note it was started on (Dispatch, terminal.run): its tab opens beside that note's. */
   note?: string
-  /** Its agent isn't installed on that machine. */
   missing?: boolean
   machine?: string; machineLabel?: string
-  /** Where it runs (backend.ts: vaultite, pty, herdr...), and whether it's another program's own (a herdr pane the
-   *  user opened there: listed only while a tab shows it, never ended by closing one). */
   backend?: string; external?: boolean
-  /** Its agent's own session id (what it resumes; Claude Code's names its transcript), when the agent says. */
   session?: string
-  /** The account its agent runs in (its id), when the agent says; the repository it works in. */
   account?: string; project?: string
-  /** Its agent's context and prompt cache, with Agent meters on (its service terminal:meters), drawn as it says (`as`). */
   meter?: Meter }
 export type Meter = { context?: { tokens: number; window: number; as: "bar" | "percent" | "tokens" }; cache?: { until: number; ttl: number; as: "icon" | "bar" } }
 
-/** A shell running a program shows it ("vim"); a shell at its prompt, or an agent, just its kind. */
 export const SHELLS = new Set(["zsh", "bash", "fish", "sh", "dash", "-zsh", "-bash", "-sh", "login", "pwsh", "powershell", "cmd", "wsl"])
-/** The coding agent a session runs: opened as one (while it runs, not the shell it leaves after), or its program run in
- *  a plain terminal (`claude`, `codex`); null for anything else. From the agents of the plugins that are on. */
 export function agentIn(s: Session, agents: Agent[] = agentsOn()): Agent | null {
   const own = s.agent ? agents.find((a) => a.name === s.agent) : undefined
-  // Something runs in front of its shell: the agent (whatever its binary's called). At the shell's prompt: only while it
-  // starts (the server says: the shell runs a moment before the agent does), not once the agent has quit.
   if (own && s.busy !== undefined) return s.busy || s.starting ? own : null
   if (own && (!s.process || s.process === "node" || SHELLS.has(s.process) || own.process?.includes(s.process))) return own
   return agents.find((a) => a.process?.includes(s.process)) ?? null
 }
 export const labelOf = (s: Session, a = agentIn(s)) => s.name || autoLabel(s, a)
-/** What it's called without a name of the user's: its agent's title, what runs in it, or just "Terminal". */
 export const autoLabel = (s: Session, a = agentIn(s)) => (a ? s.title || a.label : s.process && !SHELLS.has(s.process) ? s.process : "Terminal")
 
-/** Name session `id` (Rename tab…), "" for its automatic name: shown at once, kept by the server (terminal.rename). */
 export async function nameSession(id: string, name: string) {
   const was = sessionById(id), clean = name.replace(/\s+/g, " ").trim()
   const swap = (s: Session | null) => { if (s && now.list) put({ list: now.list.map((x) => (x.id === id ? s : x)) }) }
@@ -94,25 +65,20 @@ export async function nameSession(id: string, name: string) {
     notifyError(e, "Couldn't rename the terminal")
   }
 }
-/** Something besides the shell runs in it (an agent, a server, vim, a script like `mo`): ending it would kill that. The
- *  server says (`busy`: it checks the terminal's foreground group); an older one, only by the program's name. */
 export const busy = (s: Session) => s.busy ?? (!!s.process && !SHELLS.has(s.process))
 
-/** The sessions as the server says now, once (/api/terminals' first message); null if it doesn't answer in time. */
 function fetchSessions(ms = 1500): Promise<Session[] | null> {
   return new Promise((resolve) => {
     const sock = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/terminals`)
     const done = (v: Session[] | null) => { clearTimeout(timer); sock.close(); resolve(v) }
     const timer = setTimeout(() => done(null), ms)
     sock.onmessage = (e) => {
-      try { const m = JSON.parse(e.data); if (m.t === "sessions" && Array.isArray(m.list)) done(m.list) } catch { /* not ours */ }
+      try { const m = JSON.parse(e.data); if (m.t === "sessions" && Array.isArray(m.list)) done(m.list) } catch {}
     }
     sock.onerror = () => done(null)
   })
 }
 
-/** The ones among `ids` with something running (what ending them would kill). The server not answering in time (slow
- *  isn't gone): all `unknown`, so nothing ends them; nor another machine's not in the list. */
 async function running(ids: string[]) {
   const list = await fetchSessions()
   const unknown = list ? ids.filter((id) => id.includes("@") && !list.some((s) => s.id === id)) : [...ids]
@@ -122,13 +88,10 @@ async function running(ids: string[]) {
   return Object.assign(keep, { unknown })
 }
 
-/** What to ask before ending these sessions for good, or null when nothing but a shell runs in them. The live list
- *  saying they run something asks at once; only "nothing runs" is made sure of with the server (ending kills it). */
 async function confirmEnd(ids: string[]) {
   const seen = ws?.readyState === WebSocket.OPEN ? ids.map(sessionById) : []
   const known = seen.length > 0 && seen.every((s) => s && busy(s))
   const r = known ? null : await running(ids)
-  // (what runs there couldn't be checked: asked all the same, as ending kills it)
   const busyOnes = known ? seen.map((s) => labelOf(s!)) : [...r!.map((x) => x.label), ...r!.unknown.filter((id) => !r!.some((x) => x.id === id)).map((id) => { const s = sessionById(id); return s ? labelOf(s) : "this terminal" })]
   if (!busyOnes.length) return null
   const one = busyOnes.length === 1
@@ -141,9 +104,7 @@ async function confirmEnd(ids: string[]) {
 }
 
 const socketFor = (id: string, q = "") => `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/terminal/${encodeURIComponent(id)}${q}`
-/** Sessions being ended here: their tabs closing isn't news (tabClosed), and lists leave them out at once. */
 const ending = new Set<string>()
-/** End a session for good: its shell and whatever runs in it. */
 function endSession(id: string) {
   letGo(id)
   ending.add(id)
@@ -153,8 +114,6 @@ function endSession(id: string) {
   sock.onerror = () => sock.close()
 }
 
-/** End a session for good (its row's menu, its tab's End session, the command), closing its tabs here. An agent at rest
- *  just ends (the toast's Resume resumes its conversation); one at work, or anything else running in it, asks first. */
 export async function endForGood(id: string) {
   const s = sessionById(id), a = s ? agentIn(s) : null
   if (s && a && resting(s)) {
@@ -170,8 +129,6 @@ export async function endForGood(id: string) {
   closeView(`terminal/${id}`)
 }
 
-/** Closing a tab isn't ending what runs in it: at its last tab a shell at its prompt ends, one running something stays
- *  detached, in Terminals: an agent quietly, anything else (a server left by mistake?) with a toast offering to end it. */
 let closing = new Set<string>()
 let closeTimer = 0
 export function tabClosed(id: string) {
@@ -185,7 +142,6 @@ export function tabClosed(id: string) {
 }
 async function settle(ids: string[]) {
   const keep = await running(ids)
-  // (another program's own, a herdr pane: closing its tab here leaves it be)
   const theirs = new Set((getSessions().list ?? []).filter((s) => s.external).map((s) => s.id))
   for (const id of ids) if (!keep.some((k) => k.id === id) && !keep.unknown.includes(id) && !theirs.has(id)) endSession(id)
   const agent = (id: string) => { const s = sessionById(id); return s ? !!agentIn(s) : !!agentOfTerminal(id) }
@@ -197,18 +153,10 @@ async function settle(ids: string[]) {
   })
 }
 
-/** A session's colour: its agent's own (Claude Code's orange), grey once at rest with its cache gone or a plain shell.
- *  Its state is its dot's (dotOf). */
 export const tintOf = (s: Session, a = agentIn(s)) => (!a || (resting(s) && !cacheIn(s)) ? undefined : a.tint)
-/** Where a session sorts: needs you, working, something for you to look at, idle (or saying nothing), a plain shell. */
 export const rankOf = (s: Session, a = agentIn(s)) => (!a ? 4 : needsYou(s, a) ? 0 : s.state === "working" ? 1 : hasNews(s) ? 2 : 3)
-/** It needs the user: its agent waits on them, blocked on a permission, a question or a login (a job needing an answer
- *  is one). A turn that ended with something to read is news (hasNews), not this. */
 export const needsYou = (s: Session, a = agentIn(s)) => !!a && waitsOnUser(s)
-/** Its program says it's at rest: waiting for the next instruction, or finished (done or failed, its result to look at). */
 export const resting = (s: Session) => s.state === "idle" || s.state === "done" || s.state === "error"
-/** An agent's session as the Agents panel lists it (null: a plain shell), its menu aside; what folds either panel's row
- *  away is foldsAway's word on this. A job ready for review is unread, as a cloud session's is. */
 export function runOf(s: Session, a = agentIn(s)): AgentRun | null {
   if (!a) return null
   const needs = needsYou(s, a)
@@ -220,8 +168,6 @@ export function runOf(s: Session, a = agentIn(s)): AgentRun | null {
   }
 }
 
-// ---------- every session the server runs, live (one socket for the whole app) ----------
-// The Terminals panel, its tab and the terminal tabs' names and states all read this one list.
 type Sessions = { list: Session[] | null; refused: string }
 let now: Sessions = { list: null, refused: "" }
 const listeners = new Set<() => void>()
@@ -234,7 +180,6 @@ const put = (next: Partial<Sessions>) => {
   tick()
 }
 const PHASE: Record<string, AgentPhase> = { working: "working", blocked: "waiting", idle: "done", done: "done", error: "failed" }
-/** A screen reader hears an agent's turn end, or that it waits on the user, wherever its tab is: not each list. */
 function tell(was: Session[] | null, list: Session[]) {
   if (!was) return
   const before = new Map(was.map((s) => [s.id, s]))
@@ -243,7 +188,6 @@ function tell(was: Session[] | null, list: Session[]) {
     if (a && b) announceAgent(labelOf(s, a), PHASE[b.state ?? ""] ?? null, PHASE[s.state ?? ""] ?? null)
   }
 }
-// While a cache drains, the list is told again every 15 s, so icons and bars follow the clock between the server's lists.
 let ticking = 0
 function tick() {
   const any = now.list?.some((s) => s.meter?.cache && s.meter.cache.until > Date.now())
@@ -263,7 +207,6 @@ function connect() {
   }
   sock.onclose = (e) => {
     if (ws !== sock || e.code === 4003) return
-    // The server restarting: reconnect, and the list comes back.
     timer = window.setTimeout(connect, Math.min(10000, 500 * 2 ** Math.min(tries++, 5)))
   }
 }
@@ -275,15 +218,11 @@ function disconnect() {
   clearTimeout(timer)
   sock?.close()
 }
-// Hidden, the socket closes: while one is open the server reads every shell's state (ps) every 2 s, all day. Shown
-// again it opens, and its first message is the list as it is now.
 if (typeof document !== "undefined") document.addEventListener("visibilitychange", () => {
   if (document.hidden) disconnect()
   else if (listeners.size && !ws) connect()
 })
 
-/** Listen to the sessions list (the socket opens with the first listener, while the page is shown, and closes after the
- *  last). */
 export function subscribeSessions(fn: () => void) {
   listeners.add(fn)
   if (!ws && !document.hidden) connect()
@@ -294,33 +233,24 @@ export function subscribeSessions(fn: () => void) {
   }
 }
 export const getSessions = () => now
-/** The session with this id, as the server said last (null: not known yet). */
 export const sessionById = (id: string) => now.list?.find((s) => s.id === id) ?? null
 
-/** What a pin of terminal `id` keeps: its agent's conversation as a resume (resume-<agent>[_<account>]-<session>, then
- *  @<machine>), when the agent has conversations (a session view) and says which one it's in; null for a shell. */
 export function pinOfTerminal(id: string): string | null {
   const s = sessionById(id), t = parseTerminal(id)
   const a = s ? agentIn(s) : agentOfTerminal(id)
   const session = s?.session ?? t?.resume
   if (!a?.session || !session) return null
   const machine = s?.machine ?? t?.machine
-  // (its account kept: a job watches the id with it, and another account's resume is another terminal)
   return `${resumeTerminalId(a.name, session, t?.agent === a.name ? t.profile : null)}${machine ? `@${machine}` : ""}`
 }
 
-/** The terminal already running the conversation resume id `id` names (not itself): opened there, it isn't resumed
- *  twice. */
 export function runningResume(id: string): string | null {
   const t = parseTerminal(id)
   if (!t?.resume) return null
   return now.list?.find((s) => s.id !== id && s.session === t.resume && (s.machine ?? null) === t.machine && agentIn(s)?.name === t.agent)?.id ?? null
 }
 
-/** Its icon: always its agent's, so a tab says which agent; what it's doing is its dot (dotOf). */
 export const iconOf = (s: Session, a = agentIn(s)): LucideIcon | null => a?.icon ?? null
-/** The dot on its icon: breathing while it works, yellow while it waits on you, blue with an answer to read (its Inbox
- *  row unread, or a job in it ready for review), red once it failed; none at rest. */
 export function dotOf(s: Session, a = agentIn(s)): Dot {
   if (!a) return false
   if (s.state === "blocked") return "ask"
@@ -328,16 +258,13 @@ export function dotOf(s: Session, a = agentIn(s)): Dot {
   if (s.state === "error") return "error"
   return hasNews(s) ? "unread" : false
 }
-/** Its icon's classes: at rest, dimmed as far as its prompt cache ran out (Agent meters). */
 export const stateClass = (s: Session, a = agentIn(s)) => (a && resting(s) ? DRAIN[Math.ceil(cacheIn(s) * 10)] : undefined)
 
-/** How much of its prompt cache's time an idle agent has left (0-1), when Agent meters draws it in the icon. */
 export const cacheIn = (s: Session) => {
   const c = s.meter?.cache
   return c?.as === "icon" && resting(s) ? cacheLeft(c) : 0
 }
 export const cacheLeft = (c: { until: number; ttl: number }) => Math.min(1, Math.max(0, (c.until - Date.now()) / (c.ttl * 1000)))
-/** The icon dimmed from the top as far as its cache has run out (DRAIN[n]: n tenths left, still coloured). */
 const DRAIN = [undefined,
   "[mask-image:linear-gradient(to_bottom,rgb(0_0_0/0.3)_90%,#000_90%)]", "[mask-image:linear-gradient(to_bottom,rgb(0_0_0/0.3)_80%,#000_80%)]",
   "[mask-image:linear-gradient(to_bottom,rgb(0_0_0/0.3)_70%,#000_70%)]", "[mask-image:linear-gradient(to_bottom,rgb(0_0_0/0.3)_60%,#000_60%)]",
@@ -345,7 +272,6 @@ const DRAIN = [undefined,
   "[mask-image:linear-gradient(to_bottom,rgb(0_0_0/0.3)_30%,#000_30%)]", "[mask-image:linear-gradient(to_bottom,rgb(0_0_0/0.3)_20%,#000_20%)]",
   "[mask-image:linear-gradient(to_bottom,rgb(0_0_0/0.3)_10%,#000_10%)]", undefined]
 
-/** Its meters in words, for its tooltip and the Terminals tab: "context 116k of 1M (12%), cache 42 min left". */
 export function meterText(s: Session) {
   const { context: c, cache } = s.meter ?? {}
   const k = (n: number) => (n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M` : `${Math.round(n / 1000)}k`)

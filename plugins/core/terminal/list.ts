@@ -1,5 +1,3 @@
-// The list of sessions (the Terminals panel), a WebSocket at /api/terminals, sent on connect and on every change
-// (`process` polled every 2 s while watched; other machines' every 30 s). Same access as a shell: it names what runs.
 import os from "node:os"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
@@ -15,14 +13,13 @@ import { FRONT_AGE, frontSeen, metas, nameOf, noteOf, oldMeta, progressOf, sight
 import { makeSpare } from "./start.ts"
 import { allowed, terminalMachines } from "./machines.ts"
 import { pageInput } from "./routes.ts"
-/** A shell at its prompt: nothing else runs in it (the app's `busy` is the other side of this). */
 const SHELLS = new Set(["zsh", "bash", "fish", "sh", "dash", "-zsh", "-bash", "-sh", "login", "pwsh", "powershell", "cmd", "wsl", ""])
 const VERSION = /^\d+(\.\d+)+$/
 /** A shell's process by its name: on Linux node-pty says the path it was started by ("/bin/bash"). */
 export const byName = (x: Shell): Shell => (x.process?.includes("/") ? { ...x, process: path.basename(x.process) } : x)
 /** What runs in front in a shell, or null at its prompt. A script reads as its interpreter (`mo` as "bash"), so a
  *  shell's name is checked against the foreground group: not the shell itself, something runs. */
-let readsTable = false // the last list read the process table (inFront): this one asks for it with the backends
+let readsTable = false
 export async function inFront(x: Shell): Promise<string | null> {
   if (WIN) return frontOnWindows(x)
   // A program whose binary is named for its version (Claude Code's native install runs
@@ -52,43 +49,28 @@ async function frontOnWindows(x: Shell): Promise<string | null> {
   const agent = kids(kid[0])[0]
   return agent ? progName(argv0(agent[1].args)) : agentOf(x.id)?.name ?? "agent"
 }
-/** A Windows command line's program ("C:\\x\\claude.exe" --resume ...). */
 const argv0 = (line: string) => (line.startsWith('"') ? line.slice(1, line.indexOf('"', 1) >>> 0) : line.split(" ")[0])
 
-const watchers = new Map<WebSocket, boolean>() // socket -> this machine's sessions only (?local=1)
+const watchers = new Map<WebSocket, boolean>()
 const lastList = new Map<boolean, string>()
 let listTimer: ReturnType<typeof setTimeout> | null = null
 let poll: ReturnType<typeof setInterval> | null = null
 let follow: ReturnType<typeof setInterval> | null = null
 
 export type Listed = { id: string; agent: string | null; process: string; busy: boolean; clients: number; started: number; title?: string
-  /** What its program is doing (state.ts); `kind` and `msg` (untrusted) as it said. */
   state?: SessionState; kind?: Kind; msg?: string
-  /** When its state last changed (ms). */
   since?: number
-  /** Its agent's command was typed into its shell, its program not in front yet: the shell's prompt is the agent's. */
   starting?: true
-  /** The Inbox has a row for it that needs the user, unread (its service "inbox:needs"): an answer to read, a question. */
   needs?: true
-  /** A job in it is ready for review (the service "companion:review"): its result is the user's to look at. */
   review?: true
-  /** The note it was started on (terminal.run). */
   note?: string
-  /** The name the user gave it (terminal.rename). */
   name?: string
-  /** Its agent isn't installed here (the shell found no such program). */
   missing?: true
   machine?: string; machineLabel?: string; backend?: string; external?: boolean
-  /** Its program's pid, and the older terminal server's it's held through (termd/adopt.ts), which ends after its last. */
   pid?: number; via?: number
-  /** The folder it started in, what it was started to run ("claude", "npm test", "zsh"), its size and last activity. */
   cwd?: string; command?: string; cols?: number; rows?: number; activity?: number
-  /** Its agent's own session id (what it resumes), when the agent says (its service "agent-meters:<name>"). */
   session?: string
-  /** The account its agent runs in (its id), when the agent says; the repository it works in (its folder's, else the
-   *  terminal's). The Agents panel groups by them. */
   account?: string; project?: string
-  /** Its agent's context and prompt cache, with Agent meters on (the service "terminal:meters"). */
   meter?: unknown }
 
 const HOST = os.hostname().replace(/\.local$/, "")
@@ -98,8 +80,6 @@ function titleOf(raw: string) {
   return !t || t === HOST || t === os.hostname() ? undefined : t.slice(0, 120)
 }
 
-/** This machine's sessions, oldest first, from every backend (one nobody reattached since a restart too), with what
- *  runs and what its agent's hooks said. Another program's own shells are `external`. */
 export function localList(): Promise<Listed[]> {
   if (lastLocal && performance.now() - lastLocal.at < LIST_FRESH) return lastLocal.list
   const mine = { at: performance.now(), list: readList() }
@@ -107,17 +87,14 @@ export function localList(): Promise<Listed[]> {
   mine.list.catch(() => { if (lastLocal === mine) lastLocal = null })
   return mine.list
 }
-/** The last list made, shared by what asks soon after (the panel's poll, agents' terminal.list, a tab's title):
- *  reading it runs `ps` and asks every backend. A change (listChanged) forgets it. */
 export let lastLocal: { at: number; list: Promise<Listed[]> } | null = null
-const LIST_FRESH = 1900 // (under the poll's 2 s, so each poll reads it again)
+const LIST_FRESH = 1900
 
 async function readList(): Promise<Listed[]> {
   const out = new Map<string, Listed>(), timing = span("terminal.list"), seen = Date.now() - FRONT_AGE
-  // (all at once: a plugin's list may start a process, and so does the process table inFront reads)
   if (readsTable) void processTable()
   readsTable = false
-  const all = backends(), lists = await Promise.all(all.map((b) => b.list().catch(() => [] as Shell[])))
+  const all = backends(), lists = await Promise.all(all.map((b) => b.list().catch((): Shell[] => [])))
   timing.mark("backends")
   for (const [i, b] of all.entries()) {
     for (const x of lists[i].map(byName)) {
@@ -126,18 +103,14 @@ async function readList(): Promise<Listed[]> {
       if (b.setMeta) metas.set(x.id, x.meta ?? {})
       if (!ours(b)) ownedBy(x.id, b)
       const s = sessions.get(x.id)
-      // Who's watching: the app's sockets plus holds besides this server's own (another server's), so a session
-      // no tab shows reads as detached.
       const clients = s ? s.clients.size + Math.max(0, x.attached - 1) : x.attached
       sight(x)
       const front = await inFront(x)
       frontSeen(b, x.id, front !== null, seen)
       const t = terms.get(x.id), now = t ? nowOf(t) : null
-      // (an agent's terminal from before this server started: its questions are watched for again)
       const agent = agentOf(x.id)?.name
       if (agent && front !== null && !watching.has(x.id) && !t?.osc?.status && !t?.hooks) void watchAsks(x.id, agent)
       out.set(x.id, { id: x.id, agent: agentOf(x.id)?.name ?? null, process: front ?? x.process, busy: front !== null, clients, started: x.created || s?.started || 0,
-        // (what an agent titled its terminal goes with it: a shell at its prompt keeps no title)
         title: front !== null ? titleOf(x.title ?? "") : undefined, backend: b.name,
         ...(x.cwd ? { cwd: x.cwd, project: repoName(x.cwd) } : {}), ...(x.command ? { command: x.command } : {}), ...(x.cols ? { cols: x.cols, rows: x.rows } : {}), ...(x.activity ? { activity: x.activity } : {}),
         ...(now ? { state: now.state, since: t!.at, ...(now.kind ? { kind: now.kind } : {}), ...(now.msg ? { msg: now.msg } : {}) } : {}),
@@ -150,7 +123,6 @@ async function readList(): Promise<Listed[]> {
     }
   }
   timing.mark("in front")
-  // (an agent run by hand in a plain terminal goes by its program's name: claude, codex)
   const meters = plugin.service("terminal:meters"), agents = [...new Set([...out.values()].flatMap((x) => (x.busy ? [x.agent ?? x.process] : [])))]
   const live = (await Promise.all(agents.map((a) => liveOf(a, typeof meters === "function")))).flat().filter((m) => out.get(m.terminal)?.busy)
   for (const m of live) {
@@ -163,7 +135,7 @@ async function readList(): Promise<Listed[]> {
   for (const x of out.values()) if (x.state && await plugin.ask<boolean>("inbox:needs", false, x.id, x.session ?? "")) x.needs = true
   timing.mark("inbox")
   if (typeof meters === "function" && live.length) {
-    const by = await Promise.resolve(meters(live)).catch(() => null) as Record<string, unknown> | null
+    const by: Record<string, unknown> | null = await Promise.resolve(meters(live)).catch(() => null)
     for (const [id, m] of Object.entries(by ?? {})) { const x = out.get(id); if (x) x.meter = m }
     timing.mark("meters")
   }
@@ -172,21 +144,19 @@ async function readList(): Promise<Listed[]> {
   return [...out.values()].sort((a, b) => a.started - b.started)
 }
 
-// Asked on every list (every 2 s while watched): agents' answers are kept a few seconds.
 const kept = new Map<string, { at: number; list: Promise<AgentMeter[]> }>()
-/** An agent's live sessions by terminal (its plugin's service "agent-meters:<name>"), with their meters when drawn. */
 function liveOf(agent: string, meters: boolean): Promise<AgentMeter[]> {
   const fn = plugin.service(`agent-meters:${agent}`)
   if (typeof fn !== "function") return Promise.resolve([])
   const key = `${agent}:${meters}`, was = kept.get(key)
   if (was && Date.now() - was.at < 3000) return was.list
-  const list = Promise.resolve(fn(meters)).then((l) => (Array.isArray(l) ? l as AgentMeter[] : []), () => [])
+  const list = Promise.resolve(fn(meters)).then((l): AgentMeter[] => (Array.isArray(l) ? l : []), () => [])
   kept.set(key, { at: Date.now(), list })
   return list
 }
 
-/** The other machines' sessions, as their lists said last: machine id -> its socket and list. */
-export const remotes = new Map<string, { sock: WebSocket; list: Listed[] }>()
+type Remote = { sock: WebSocket; list: Listed[] }
+export const remotes = new Map<string, Remote>()
 
 async function list(local: boolean): Promise<Listed[]> {
   const mine = await localList()
@@ -195,14 +165,13 @@ async function list(local: boolean): Promise<Listed[]> {
   return review.size ? all.map((x) => (review.has(x.id) ? { ...x, review: true as const } : x)) : all
 }
 
-/** Follow every other machine that has a terminal (and drop the ones that went away). */
 async function followMachines() {
   const want = await terminalMachines()
   for (const [id, r] of remotes) if (!want.some((m) => m.id === id)) { r.sock.terminate(); remotes.delete(id); listChanged() }
   for (const m of want) {
     if (remotes.has(m.id) || ![...watchers.values()].some((local) => !local)) continue
     const sock = machineSocket(m, "terminals", { local: "1" })
-    const r = { sock, list: [] as Listed[] }
+    const r: Remote = { sock, list: [] }
     remotes.set(m.id, r)
     sock.on("message", (data: RawData) => {
       let msg: { t?: string; list?: Listed[] }
@@ -224,7 +193,6 @@ function stopFollowing() {
   remotes.clear()
 }
 
-// One at a time, in order: a list read earlier never lands after a later one (a new session's note, then its tab opening).
 let sending = Promise.resolve()
 export function sendList() {
   sending = sending.then(sendOnce, sendOnce)
@@ -234,7 +202,6 @@ async function sendOnce() {
   for (const local of [true, false]) {
     const to = [...watchers].filter(([, l]) => l === local).map(([ws]) => ws)
     if (!to.length) continue
-    // (without each one's last output time: a busy terminal's changes every poll, and the app draws nothing from it)
     const text = JSON.stringify({ t: "sessions", list: (await list(local)).map(({ activity: _, ...x }) => x) })
     if (text === lastList.get(local)) continue
     lastList.set(local, text)
@@ -242,7 +209,6 @@ async function sendOnce() {
   }
 }
 
-/** Something changed: tell the watchers (bursts, like a tab closing and its shell ending, coalesce). */
 export function listChanged() {
   lastLocal = null
   if (!watchers.size || listTimer) return
@@ -254,7 +220,6 @@ plugin.socket("terminals", async (ws, req, { query }) => {
   if (!(await allowed(ws, req))) return
   const local = !!query.local
   watchers.set(ws, local)
-  // A page with the app open: a shell kept ready for its next terminal.
   if (!local) makeSpare(fromReq(req))
   ws.send(JSON.stringify({ t: "sessions", list: await list(local) }))
   poll ??= setInterval(() => void sendList(), 2000)
@@ -271,10 +236,9 @@ plugin.socket("terminals", async (ws, req, { query }) => {
 plugin.onUnload(() => { if (poll) clearInterval(poll); if (listTimer) clearTimeout(listTimer); stopFollowing() })
 
 
-/** Every backend's shells: shell pid -> {id, title} (a second ago at most). */
 const shellPids = () => plugin.memo(1, async function shellPids() {
   const map = new Map<number, { id: string; title?: string }>()
-  for (const b of backends()) for (const x of await b.list().catch(() => [] as Shell[])) if (x.pid && !x.spare) map.set(x.pid, { id: x.id, title: nameOf(x.id) ?? titleOf(x.title ?? "") })
+  for (const b of backends()) for (const x of await b.list().catch((): Shell[] => [])) if (x.pid && !x.spare) map.set(x.pid, { id: x.id, title: nameOf(x.id) ?? titleOf(x.title ?? "") })
   return map
 })
 

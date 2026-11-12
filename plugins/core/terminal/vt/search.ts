@@ -1,5 +1,3 @@
-// Find in a terminal's history and screen: Ghostty's own search for plain text (it ignores ASCII case), the rows' text
-// in JS for case-sensitive, whole-word and regex searches. Matches are cells of history and screen (from 0).
 import type { Match, Screen } from "./screen.ts"
 
 export type FindSpec = { text: string; caseSensitive: boolean; wholeWord: boolean; regexp: boolean }

@@ -1,5 +1,3 @@
-// A page's terminal on libghostty-vt: what vt.ts keeps, plus what drawing and input need (its render state, the key,
-// mouse, focus and paste encoders, selection gestures, search, the viewport). No DOM here: term.ts holds the page.
 import { Vt, type VtOptions } from "./vt.ts"
 
 type Field = { offset: number; size: number; type: string }
@@ -10,11 +8,8 @@ export type Row = {
   /** Each column's text: " " for an empty cell, "" for a wide character's second half. */
   text: string[]
   fg: Int32Array; bg: Int32Array; ul: Int32Array
-  /** Per column: F_* below. */
   flags: Uint16Array
-  /** Its selected columns (inclusive), or null. */
   sel: [number, number] | null
-  /** It goes on in the next row (soft wrap). */
   wrap: boolean
 }
 export const F_BOLD = 1, F_ITALIC = 2, F_FAINT = 4, F_BLINK = 8, F_INVERSE = 16, F_INVISIBLE = 32, F_STRIKE = 64, F_OVERLINE = 128
@@ -59,7 +54,6 @@ export class Screen extends Vt {
   private gesture = 0; private gestureEv: number[] = []
   private search_ = 0
   private imageIt = 0; private imageBuf = 0
-  /** Scratch for bigger out-parameters (1 KB). */
   private big = 0
   private styleCache = new Map<number, number[]>()
   private keyNames: Record<string, number>
@@ -118,8 +112,6 @@ export class Screen extends Vt {
   /** Lines of history kept (about: whole pages go). */
   setScrollback(n: number) { this.scrollback = n; this.set("SCROLLBACK_MAX_LINES", this.size(n > 0 ? n + 1024 : 0)) }
 
-  // ---------- colours
-
   /** The terminal's colours: default fg/bg and the 16 named ones (the rest of the 256 stay Ghostty's). */
   setColors(fg: number, bg: number, cursor: number | null, named: number[]) {
     const rgb = (v: number) => { const d = this.dv; d.setUint8(this.big, v >> 16 & 255); d.setUint8(this.big + 1, v >> 8 & 255); d.setUint8(this.big + 2, v & 255); return this.big }
@@ -131,9 +123,6 @@ export class Screen extends Vt {
     this.set("COLOR_PALETTE", this.big)
   }
 
-  // ---------- drawing
-
-  /** Takes the terminal's state for a frame: "none", "some" rows or "all" changed. */
   update(): "none" | "some" | "all" {
     this.check(this.x.ghostty_render_state_update(this.rs, this.h), "render update")
     const dirty = this.rsGet("DIRTY", (d, p) => d.getInt32(p, true))
@@ -152,11 +141,9 @@ export class Screen extends Vt {
     this.check(this.x.ghostty_render_state_get(this.rs, this.e("GhosttyRenderStateData", data), this.scratch), `render ${data}`)
     return read(this.dv, this.scratch)
   }
-  /** The frame's rows into `rows` (the dirty ones, or all), then marked clean. */
   readRows(rows: Row[], all: boolean) {
     const x = this.x, cols = this.rsGet("COLS", (d, p) => d.getUint16(p, true)), n = this.rsGet("ROWS", (d, p) => d.getUint16(p, true))
     rows.length = n
-    // (the row iterator we made, pointed at this frame's rows)
     const it = this.rows_
     this.dv.setUint32(this.scratch + 32, it, true)
     this.check(x.ghostty_render_state_get(this.rs, this.e("GhosttyRenderStateData", "ROW_ITERATOR"), this.scratch + 32), "rows")
@@ -172,7 +159,6 @@ export class Screen extends Vt {
       else if (!all) {
         if (x.ghostty_render_state_row_get(it, this.e("GhosttyRenderStateRowData", "DIRTY"), this.scratch) === 0 && !this.dv.getUint8(this.scratch)) continue
       }
-      // Its cells, raw (one call): the content and style id of each; a style read once per id.
       this.check(x.ghostty_render_state_row_get(it, RAW, this.scratch), "cells")
       this.dv.setUint32(this.scratch + 16, this.cells, true)
       this.check(x.ghostty_render_state_row_get(it, CELLS, this.scratch + 16), "cells")
@@ -226,18 +212,15 @@ export class Screen extends Vt {
         }
         fg[c] = cfg; bg[c] = cbg; ul[c] = cul; flags[c] = f
       }
-      // (its row read: clean, as the renderer has it now)
       this.dv.setUint8(this.scratch, 0)
       x.ghostty_render_state_row_set(it, this.e("GhosttyRenderStateRowOption", "DIRTY"), this.scratch)
     }
     x.ghostty_render_state_clean(this.rs)
   }
-  /** A value that changes when the last update() changed the pictures it lays out (placed, moved, scrolled, gone). */
   picturesLaidOut() {
     const r = this.x.ghostty_render_state_get(this.rs, this.e("GhosttyRenderStateData", "IMAGE_PLACEMENTS_GENERATION"), this.scratch)
     return r === 0 ? this.dv.getBigUint64(this.scratch, true) : 0n
   }
-  /** The pictures the last update() laid out, in the order they're drawn: by layer, then z. */
   drawn(): Drawn[] {
     const x = this.x, n = DRAWN_KEYS.length, out: Drawn[] = []
     this.dv.setUint32(this.scratch + 32, this.imageIt, true)
@@ -253,7 +236,6 @@ export class Screen extends Vt {
     return out.sort((a, b) => a.layer - b.layer || a.z - b.z)
   }
 
-  /** Where the cursor is drawn (null: not in the viewport, or hidden). */
   cursorState(): Cursor {
     const p = this.sized("GhosttyRenderStateCursor", this.big)
     this.check(this.x.ghostty_render_state_get(this.rs, this.e("GhosttyRenderStateData", "CURSOR"), p), "cursor")
@@ -264,15 +246,11 @@ export class Screen extends Vt {
       wideTail: !!d.getUint8(o("wide_tail")), style: styles[d.getInt32(o("visual_style"), true)] ?? "block" }
   }
 
-  // ---------- the viewport
-
-  /** Rows of history and screen, where the viewport's top is in them, and its rows. */
   scrollbar() {
     this.check(this.x.ghostty_terminal_get(this.h, this.e("GhosttyTerminalData", "SCROLLBAR"), this.big), "scrollbar")
     const d = this.dv, n = (o: number) => d.getUint32(this.big + o, true) + d.getUint32(this.big + o + 4, true) * 2 ** 32
     return { total: n(0), offset: n(8), len: n(16) }
   }
-  /** Moves the viewport: by `delta` rows, to the top, the bottom, or a row of its history. */
   scroll(to: { delta: number } | "top" | "bottom" | { row: number }) {
     const p = this.big, d = this.dv
     this.u8.fill(0, p, p + 24)
@@ -281,10 +259,7 @@ export class Screen extends Vt {
     if (typeof to === "object") { const v = "delta" in to ? to.delta : to.row; d.setInt32(p + 8, v, true); d.setInt32(p + 12, v < 0 ? -1 : 0, true) }
     this.x.ghostty_terminal_scroll_viewport(this.h, p)
   }
-  /** A program asked for the mouse (any tracking mode). */
   get mouseTracking() { return this.get("MOUSE_TRACKING", (d, p) => d.getUint8(p)) !== 0 }
-
-  // ---------- reading rows (links, text)
 
   /** A grid ref at (x, y) of `tag`'s coordinates (SCREEN: history then screen; VIEWPORT), at p (8 bytes); false if none. */
   private ref(tag: "SCREEN" | "VIEWPORT" | "ACTIVE", x: number, y: number, out: number) {
@@ -294,7 +269,6 @@ export class Screen extends Vt {
     d.setUint16(p + 8, x, true); d.setUint32(p + 12, y, true)
     return this.x.ghostty_terminal_grid_ref(this.h, p, out) === 0
   }
-  /** A row of history and screen (`y` from the top of all) as text and each character's column; and whether it wraps. */
   line(y: number, tag: "SCREEN" | "VIEWPORT" = "SCREEN") {
     const out = this.big + 160, cols = this.cols
     let text = ""
@@ -320,7 +294,6 @@ export class Screen extends Vt {
     }
     return { text, at, wrap, cont }
   }
-  /** An OSC 8 link's URI at a cell of the viewport. */
   hyperlink(x: number, y: number) {
     const out = this.big + 160
     if (!this.ref("VIEWPORT", x, y, out)) return ""
@@ -328,14 +301,10 @@ export class Screen extends Vt {
     if (r !== 0) return ""
     return dec.decode(this.u8.subarray(this.big + 256, this.big + 256 + this.dv.getUint32(this.big + 192, true)))
   }
-  /** Text of its whole history and screen, or from row `from`. */
   textFrom(from: number, unwrap: boolean) { return this.format("PLAIN", from, { unwrap, trim: true }) }
-
-  // ---------- selection
 
   private selectionPtr() { return this.big + 320 }
   hasSelection() { return this.x.ghostty_terminal_get(this.h, this.e("GhosttyTerminalData", "SELECTION"), this.selectionPtr()) === 0 }
-  /** The selection's text (wrapped lines joined), "" for none. */
   selectionText() {
     if (!this.hasSelection()) return ""
     try { return this.format("PLAIN", 0, { unwrap: true, trim: true, selection: this.selectionPtr() }) } catch { return "" }
@@ -344,7 +313,6 @@ export class Screen extends Vt {
   selectAll() {
     if (this.x.ghostty_terminal_select_all(this.h, this.selectionPtr()) === 0) this.set("SELECTION", this.selectionPtr())
   }
-  /** Viewport cells from (x1, y1) to (x2, y2), inclusive, selected. */
   selectRange(x1: number, y1: number, x2: number, y2: number, tag: "VIEWPORT" | "SCREEN" = "VIEWPORT") {
     const s = this.selectionPtr()
     this.u8.fill(0, s, s + 20)
@@ -383,8 +351,6 @@ export class Screen extends Vt {
     g("CLICK_COUNT", p); g("DRAGGED", p + 1); g("AUTOSCROLL", p + 4)
     return { clicks: this.dv.getUint8(p), dragged: !!this.dv.getUint8(p + 1), autoscroll: this.dv.getInt32(p + 4, true) }
   }
-
-  // ---------- input
 
   /** A key as the program wants it (its modes: cursor keys, keypad, modifyOtherKeys), "" when it sends nothing. */
   key(e: { code: string; key: string; action: "press" | "repeat" | "release"; mods: number; text: string; composing?: boolean }) {
@@ -452,9 +418,7 @@ export class Screen extends Vt {
     } finally { x.ghostty_wasm_free(src, n + 1); x.ghostty_wasm_free(out, cap) }
   }
 
-  // ---------- search (literal: Ghostty's own, case-insensitive for ASCII)
-
-  /** Looks for `needle` (""/null: stops). */
+  /** Ghostty's own search: literal, case-insensitive for ASCII. */
   searchFor(needle: string | null) {
     if (!this.search_) this.search_ = this.make((slot) => this.x.ghostty_search_new(0, slot, this.h))
     const opt = this.e("GhosttySearchOption", "NEEDLE")
@@ -466,7 +430,6 @@ export class Screen extends Vt {
     this.dv.setInt32(p + 300, this.e("GhosttySearchScroll", "NONE"), true)
     this.x.ghostty_search_set(this.search_, this.e("GhosttySearchOption", "SELECT_SCROLL"), p + 300)
   }
-  /** Its matches (SCREEN coordinates), all of them, after catching up. */
   searchMatches(max: number): Match[] {
     if (!this.search_) return []
     this.x.ghostty_search_run(this.search_)
@@ -487,14 +450,11 @@ export class Screen extends Vt {
       return out
     } finally { this.x.ghostty_wasm_free(buf, total * 20) }
   }
-  /** A grid ref's SCREEN coordinates. */
   private point(ref: number) {
     const p = this.big + 600
     if (this.x.ghostty_terminal_point_from_grid_ref(this.h, ref, this.e("GhosttyPointTag", "SCREEN"), p) !== 0) return null
     return { x: this.dv.getUint16(p, true), y: this.dv.getUint32(p + 4, true) }
   }
-
-  // ---------- snapshots
 
   /** Its state as GHOSTSNP bytes (history, screen, modes). */
   snapshot() {

@@ -1,5 +1,3 @@
-// Canvas2D: the same frame drawn with fillText, for translucent pages (WebGL draws text on a see-through ground thin
-// and ragged) and where WebGL2 is missing or its context was lost.
 import { F_OVERLINE, F_STRIKE, F_UNDERLINE, F_WIDE, UL_SHIFT } from "../screen.ts"
 import { drawBox, isBox } from "./boxdraw.ts"
 import { colorsOf, lines, placeOf, rgba, styleOf, underlineShape, type Frame, type Renderer } from "./frame.ts"
@@ -11,7 +9,6 @@ export class CanvasRenderer implements Renderer {
   private g: CanvasRenderingContext2D
   private m: Metrics | null = null
   private fonts: string[] = []
-  /** Pictures drawn lately, each as a canvas of its pixels, by image id and generation, most recent last. */
   private pics = new Map<string, HTMLCanvasElement>()
 
   constructor(canvas: HTMLCanvasElement) {
@@ -111,7 +108,6 @@ export class CanvasRenderer implements Renderer {
       g.fillRect(W - bw - Math.round(2 * m.dpr), Math.round(sb.top * H), bw, Math.max(Math.round(sb.height * H), bw * 3))
     }
   }
-  /** A picture, its part drawn where the frame lays it, clipped to the grid. */
   private picture(f: Frame, d: Frame["pictures"][number]) {
     const m = this.m!, g = this.g, key = `${d.image}:${d.generation}`
     let src = this.pics.get(key)
@@ -131,7 +127,6 @@ export class CanvasRenderer implements Renderer {
     if (d.sw > 0 && d.sh > 0) g.drawImage(src, d.sx, d.sy, d.sw, d.sh, at.x, at.y, at.w, at.h)
     g.restore()
   }
-  /** Pictures not drawn in this frame let go, past the few kept for coming back (a scroll). */
   private forget(f: Frame) {
     const keep = new Set(f.pictures.map((d) => `${d.image}:${d.generation}`))
     for (const k of this.pics.keys()) if (this.pics.size > keep.size + 4 && !keep.has(k)) this.pics.delete(k)

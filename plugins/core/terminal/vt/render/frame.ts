@@ -1,5 +1,3 @@
-// What a renderer draws for one frame: the rows (screen.ts) and what goes over them. Both renderers (webgl.ts,
-// canvas.ts) take this, so they draw the same thing.
 import { F_BOLD, F_FAINT, F_INVERSE, F_INVISIBLE, F_ITALIC, type Drawn, type Row } from "../screen.ts"
 import type { Picture } from "../vt.ts"
 import { blend, G_BOLD, G_ITALIC, type Metrics } from "./glyphs.ts"
@@ -7,21 +5,14 @@ import { blend, G_BOLD, G_ITALIC, type Metrics } from "./glyphs.ts"
 export type Mark = { y: number; x1: number; x2: number; color: number; alpha: number; border?: number }
 export type Frame = {
   rows: Row[]; cols: number
-  /** The terminal's own colours. */
   fg: number; bg: number
-  /** No ground drawn (translucent pages): the pane shows through. */
   clear: boolean
   selection: { color: number; alpha: number }
   cursor: { x: number; y: number; style: "block" | "bar" | "underline" | "outline"; color: number; accent: number } | null
-  /** Search matches lit (viewport rows), drawn under the text. */
   marks: Mark[]
-  /** A link under the pointer: underlined. */
   links: { y: number; x1: number; x2: number }[]
   scrollbar: { top: number; height: number; alpha: number; color: number; marks: { at: number; color: number }[] } | null
-  /** What an input method is composing, drawn at the cursor. */
   preedit: string
-  /** Kitty graphics pictures, in drawing order (layer, then z), and their pixels by image id (read once per
-   *  generation: renderers keep what they made of them, keyed by id and generation). */
   pictures: Drawn[]
   picture: (id: number) => Picture | null
 }
@@ -29,13 +20,11 @@ export type Frame = {
 export interface Renderer {
   readonly kind: "webgl" | "canvas"
   readonly canvas: HTMLCanvasElement
-  /** The canvas `width` by `height` device pixels, cells `m`. */
   resize(width: number, height: number, m: Metrics): void
   draw(f: Frame): void
   dispose(): void
 }
 
-/** A cell's text colour and ground (-1: the terminal's own ground), with inverse, faint and invisible applied. */
 export function colorsOf(f: Frame, row: Row, c: number): [number, number, number] {
   const fl = row.flags[c]
   let fg = row.fg[c] < 0 ? f.fg : row.fg[c], bg = row.bg[c]
@@ -45,13 +34,11 @@ export function colorsOf(f: Frame, row: Row, c: number): [number, number, number
 }
 export const styleOf = (fl: number) => (fl & F_BOLD ? G_BOLD : 0) | (fl & F_ITALIC ? G_ITALIC : 0)
 
-/** Underline and strike positions in a cell (device pixels from its top) and the line width. */
 export function lines(m: Metrics) {
   const lw = Math.max(1, Math.round(m.dpr))
   return { lw, under: Math.min(m.h - lw, m.baseline + lw), strike: Math.round(m.baseline - m.size * m.dpr * 0.3) }
 }
 
-/** Curly, dotted and dashed underlines drawn into a cell-sized slot (white; tinted when drawn). */
 export function underlineShape(style: number, m: Metrics) {
   const { lw, under } = lines(m)
   return (g: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D, x: number, y: number, w: number) => {
@@ -78,7 +65,6 @@ export function rgba(p: Picture, premultiplied: boolean) {
   }
   return out
 }
-/** Where a picture is drawn (device px) and the part of the grid it may cover (the screen: no rows above or below). */
 export function placeOf(d: Drawn, w: number, h: number, rows: number, cols: number) {
   return { x: d.col * w + d.dx, y: d.row * h + d.dy, w: d.width, h: d.height, clip: { x: 0, y: 0, w: cols * w, h: rows * h } }
 }

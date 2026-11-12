@@ -1,10 +1,8 @@
 // A GIF's first frame, as Claude sees an animation: placed on its logical screen, the rest transparent.
 import { type Limits, need, type Rgba, sized } from "./pixels.ts"
 
-/** Whether `b` starts as a GIF does. */
 export const isGif = (b: Uint8Array) => b.length >= 6 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38 && (b[4] === 0x37 || b[4] === 0x39) && b[5] === 0x61
 
-/** The first frame's pixels on the GIF's logical screen. Throws when it isn't a GIF this reads. */
 export function decodeGif(b: Uint8Array, limits: Limits): Rgba {
   need(isGif(b) && b.length >= 13, "not a GIF")
   const u16 = (o: number) => { need(o + 2 <= b.length, "cut short"); return b[o] | (b[o + 1] << 8) }
@@ -55,13 +53,11 @@ export function decodeGif(b: Uint8Array, limits: Limits): Rgba {
   }
 }
 
-/** Past a run of sub-blocks (each a length byte, then that many bytes; a 0 ends them). */
 function skipBlocks(b: Uint8Array, at: number) {
   while (at < b.length && b[at]) at += b[at] + 1
   return at + 1
 }
 
-/** A run of sub-blocks' bytes joined (a run cut short: what's there). */
 function blocks(b: Uint8Array, at: number) {
   let n = 0
   for (let i = at; i < b.length && b[i]; i += b[i] + 1) n += Math.min(b[i], b.length - i - 1)
@@ -70,8 +66,6 @@ function blocks(b: Uint8Array, at: number) {
   return data
 }
 
-/** An interlaced frame's rows: the y each row of the data is drawn at (passes every 8th from 0, every 8th from 4,
- *  every 4th from 2, every 2nd from 1). */
 function interlaced(h: number) {
   const rows = new Uint32Array(h)
   let r = 0
@@ -79,12 +73,10 @@ function interlaced(h: number) {
   return rows
 }
 
-/** Up to `count` palette indices from GIF's LZW (variable codes up to 12 bits, LSB first), and how many the data had:
- *  a frame cut short draws those, the rest clear, as browsers draw one still loading. */
+/** A frame cut short draws what it has, the rest clear, as browsers draw one still loading. */
 function lzw(data: Uint8Array, minCode: number, count: number) {
   const out = new Uint8Array(count)
   const clear = 1 << minCode, eoi = clear + 1
-  // (each code a prefix code and its last byte; its first byte and length, to write it backwards in place)
   const prefix = new Int16Array(4096), suffix = new Uint8Array(4096), first = new Uint8Array(4096), length = new Uint16Array(4096)
   for (let i = 0; i < clear; i++) { prefix[i] = -1; suffix[i] = i; first[i] = i; length[i] = 1 }
   let size = minCode + 1, next = eoi + 1, prev = -1, o = 0

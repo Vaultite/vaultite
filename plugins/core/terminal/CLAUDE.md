@@ -56,13 +56,13 @@
   the primary DA answer after it (Claude Code takes a DA answer first as "not spoken here").
 - Terminal ids: `<name>-<id>` starts agent `<name>`, `<name>_<account>-<id>` in an account, `resume-<name>-<session>`
   resumes, through the service `agent:<name>` of the plugin that brings it. Ops name a terminal by id, name or the end
-  of its id (`target` in ops.ts), `@<machine>` passing the op on to that machine.
+  of its id (`target` in targets.ts), `@<machine>` passing the op on to that machine.
 - A command alone (`terminal.start --command`, Spec `only`) is the terminal's program: it ends with it, its exit code
   the terminal's. A command typed into a shell (terminal.run's) leaves the shell.
 - A tab opened from outside only attaches (a page starts only ids it minted), so `vau terminal open` starts the session
   first.
 - The socket answers this machine, or through Tailscale Serve the owner or `allowUsers`; another Origin is refused.
-- Shells start through `SHELL_DIR` (backend.ts), which runs the user's login files and then puts the app's `vau` first
+- Shells start through `SHELL_DIR` (launch.ts), which runs the user's login files and then puts the app's `vau` first
   on PATH (path_helper and Homebrew would put theirs first).
 - Gotchas: node-pty's `spawn-helper` may lack its exec bit (fixed at start); a termd whose checkout moved can't spawn,
   so it retires; shells drop `ELECTRON_RUN_AS_NODE`; whether a shell runs something is its tty's foreground group

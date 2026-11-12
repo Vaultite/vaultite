@@ -1,122 +1,7 @@
-// Terminal's operations (`vau terminal`), through the plugin's routes, Workspaces' and the user's window: no more than
-// those allow. A terminal is its id, its name or the end of its id, @<machine> another machine's (run there: passOn).
-import { agentModel, MODEL_NAME, PERMISSION_MODES, startAgent, TERMINAL_AGENT, newTerminalId, parseTerminal, resumeTerminalId, type AgentHow } from "../../../core/agents.ts"
-import { byUser, fmtAgo, type Machine, MACHINE_CLIENT, OpError, type OpCtx, type Plugin, quoted, splitMachine } from "../../../core/plugins.ts"
-import { allPanes, clean } from "../../../core/layout.ts"
+import { agentModel, MODEL_NAME, PERMISSION_MODES, startAgent, TERMINAL_AGENT, newTerminalId, resumeTerminalId, type AgentHow } from "../../../core/agents.ts"
+import { fmtAgo, type Machine, OpError, type Plugin, quoted } from "../../../core/plugins.ts"
 import type { Trouble } from "./backend.ts"
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Any = any
-type Session = { id: string; agent: string | null; process: string; busy?: boolean; clients: number; started: number; title?: string; state?: string; kind?: string; msg?: string
-  needs?: boolean; note?: string; backend?: string; session?: string; name?: string; cwd?: string; command?: string; cols?: number; rows?: number; activity?: number
-  machine?: string; machineLabel?: string; pid?: number; via?: number }
-type Ended = { id: string; backend: string; command: string; name?: string; note?: string; started: number; exit: { code: number; signal: number; at: number; lost?: boolean } }
-type TabAt = { workspace: number; tab: string }
-
-/** An id that starts a new agent's session (`claude-k3j2h1g0`): a tab of one that's gone offers a new one, never
- *  starts it by itself. Plain shells (`k3j2h1g0`) start again; resumes resume. */
-const freshAgent = (id: string) => { const t = parseTerminal(id); return !!t && !t.resume && !t.machine }
-
-async function sessions(ctx: OpCtx, ended = false): Promise<{ sessions: Session[]; ended?: Ended[]; starting?: string[]; trouble?: Trouble }> {
-  return await ctx.api("GET", `terminals/sessions${ended ? "?ended=1" : ""}`)
-}
-
-/** Where each terminal is shown: terminal id -> its panes (Workspaces' layouts; none without Workspaces). */
-async function tabsOf(ctx: OpCtx): Promise<Map<string, TabAt[]>> {
-  const out = new Map<string, TabAt[]>()
-  let ws: unknown[] = []
-  try { ws = (await ctx.api("GET", "workspaces")).workspaces ?? [] } catch (e) { if (!(e instanceof OpError)) throw e }
-  ws.forEach((w, i) => {
-    const l = clean((w as Any)?.layout)
-    for (const p of l ? [l, ...(l.windows ?? [])].flatMap(allPanes) : []) {
-      const m = /^view:terminal\/(.+)$/.exec(p.to)
-      if (m) out.set(m[1], [...(out.get(m[1]) ?? []), { workspace: i + 1, tab: p.id }])
-    }
-  })
-  return out
-}
-
-/** Close every tab showing terminal `id`, in every workspace; how many closed (0 without Workspaces, or none open). */
-async function closeTabs(ctx: OpCtx, id: string) {
-  try {
-    const r = await ctx.api("POST", "workspaces/close", { path: `view:terminal/${id}` })
-    return (r?.closed as unknown[] | undefined)?.length ?? 0
-  } catch (e) {
-    if (e instanceof OpError) return 0
-    throw e
-  }
-}
-
-/** Show terminal `to` in the user's window: a new tab, or a split. An agent's goes behind the user's tab, with a toast
- *  to show it: agents never take the user's focus. */
-export async function show(ctx: OpCtx, to: string, split: "right" | "down" | null = null, did = "started a session") {
-  const path = `view:terminal/${to}`
-  try {
-    if (byUser(ctx.who)) return void await ctx.ui({ action: "open", path, ...(split ? { split } : {}), newTab: !split })
-    await ctx.ui({ action: "open", path, background: true })
-    const who = ctx.who.label
-    await ctx.ui({ action: "notify", text: `${who[0].toUpperCase()}${who.slice(1)} ${did}`, button: { label: "Show", open: path } })
-  } catch (e) {
-    if (e instanceof OpError && e.status === 409) throw new OpError(`no app window is open: open the app first (the session is running: vau terminal capture ${to})`, 409)
-    throw e
-  }
-}
-
-/** Op `id` run on machine `machine` (Machines) with `body`: its server checks its owner again. Passed on once only.
- *  `seconds`: how long it may take (a wait). */
-export async function passOn(plugin: Plugin, ctx: OpCtx, machine: string, id: string, body: object, seconds = 15): Promise<Any> {
-  const m = await plugin.ask<Machine | null>("machines:machine", null, machine)
-  if (!m || m.self) throw new OpError(`no machine '${machine}' to ask (Machines lists them)`, 404)
-  if (ctx.who.client?.startsWith("machine/")) throw new OpError(`a call passed on from another machine runs where it's sent, not on ${m.label}`, 409)
-  if (!m.online) throw new OpError(`${m.label} is offline`, 502)
-  const r = await fetch(`${m.url}/api/ops/${id}`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" },
-    body: JSON.stringify(body), signal: AbortSignal.timeout(seconds * 1000) }).catch(() => null)
-  if (!r) throw new OpError(`${m.label} doesn't answer`, 502)
-  const out = await r.json().catch(() => ({})) as Any
-  if (r.status === 404 && !out.id) throw new OpError(`${m.label} runs an older Vaultite, without ${id}`, 409)
-  if (!r.ok) throw new OpError(`${m.label}: ${out.error || `answered ${r.status}`}`, r.status)
-  return out
-}
-
-/** The machine `id` names when it isn't this one, else null (no machine named, or this one's id). */
-async function elsewhere(plugin: Plugin, machine: string): Promise<string | null> {
-  if (!machine) return null
-  const m = await plugin.ask<Machine | null>("machines:machine", null, machine)
-  return m?.self ? null : machine
-}
-
-/** A terminal as given (id, tab address, name, the end of its id; @<machine>): [its id, ""] here, [as given, machine]
- *  on another machine. `ended`: one that ended lately counts too (capture, wait, get). */
-export async function target(plugin: Plugin, ctx: OpCtx, raw: string | undefined, o: { ended?: boolean } = {}): Promise<[string, string]> {
-  const given = String(raw ?? "").trim().replace(/^view:terminal\//, "")
-  if (!given) throw new OpError("which terminal? give its id, its name or the end of its id (vau terminal lists them)")
-  const [own, at] = splitMachine(given)
-  const machine = await elsewhere(plugin, at)
-  if (machine) return [own, machine]
-  const r = await sessions(ctx, o.ended)
-  const all: { id: string; name?: string; ended?: boolean }[] = [...r.sessions, ...(r.ended ?? []).filter((e) => !r.sessions.some((s) => s.id === e.id)).map((e) => ({ id: e.id, name: e.name, ended: true }))]
-  if (all.some((s) => s.id === own)) return [own, ""]
-  const low = own.toLowerCase()
-  const pick = (found: typeof all, how: string) => {
-    // (a running one before one that ended, of the same name)
-    const hits = found.some((s) => !s.ended) ? found.filter((s) => !s.ended) : found
-    if (hits.length === 1) return hits[0].id
-    if (hits.length > 1) throw new OpError(`'${own}' is ${hits.length} terminals' ${how}: ${hits.slice(0, 8).map((s) => s.id).join(", ")} (give more of its id)`, 409)
-    return null
-  }
-  const id = pick(all.filter((s) => s.name?.toLowerCase() === low), "name")
-    ?? (own.length >= 3 ? pick(all.filter((s) => s.id.endsWith(own)), "id ending") ?? pick(all.filter((s) => s.id.startsWith(own)), "id start") : null)
-  if (id) return [id, ""]
-  // (one that isn't running: its own op says so, as it always has: a tab's id, a session that just ended)
-  if (/^[\w-]{1,64}$/.test(own) && (parseTerminal(own) || /^[a-z0-9]{8}$/.test(own))) return [own, ""]
-  throw new OpError(`no terminal '${own}' here (vau terminal lists them; another machine's is <id>@<machine>)`, 404)
-}
-
-/** Runs `op` on the machine `machine` names with `body` (the terminal there as given), its answer's ids that machine's. */
-async function there(plugin: Plugin, ctx: OpCtx, machine: string, op: string, body: Record<string, unknown>, seconds?: number) {
-  const out = await passOn(plugin, ctx, machine, op, body, seconds)
-  return { ...out, ...(typeof out.id === "string" ? { id: `${out.id}@${machine}` } : {}), machine }
-}
+import { type Any, closeTabs, elsewhere, type Ended, freshAgent, passOn, type Session, sessions, show, shown, type TabAt, tabsOf, target, there } from "./targets.ts"
 
 const where = (tabs: TabAt[] | undefined) => (tabs?.length ? `tab in workspace ${[...new Set(tabs.map((t) => t.workspace))].join(", ")}` : "no tab")
 const SPLIT = { type: "string", enum: ["right", "down"], description: "in a pane beside (right) or below (down) the current one, not a new tab (the user's only: an agent's goes behind theirs)" } as const
@@ -124,34 +9,25 @@ const ID = { type: "string", required: true, description: "the terminal: its id,
 const OWN = { type: "string", env: "VAULTITE_TERMINAL", description: "the terminal: its id, its name or the end of its id (vau terminal lists them), <id>@<machine> for another machine's; left out, the one you run in (VAULTITE_TERMINAL)" } as const
 const MACHINE = { type: "string", description: "another of the Machines to run it on, by its id (studio); this one when left out" } as const
 const STATES = ["exit", "idle", "working", "blocked", "done", "error", "quiet"]
-/** How an agent starts (the route takes them: plugin.ts), as start and open take them. */
 const HOW = {
   model: { type: "string", description: "the model it runs (opus, sonnet, gpt-6.1-sol...); its default when left out" },
   effort: { type: "string", description: "its reasoning effort, for an agent that takes one (low ... xhigh, max)" },
   mode: { type: "string", enum: [...PERMISSION_MODES], description: "its permission mode (auto, acceptEdits, plan...)" },
   allow: { type: "array", items: { type: "string" }, description: "tools it may use without asking (Bash(npm test:*))" },
 } as const
-/** The `how` agent `agent` starts with, checked: its model as it takes it ("Fable 5.2": claude-fable-5-2). */
-async function howOf(plugin: Plugin, agent: string | undefined, p: { model?: string; effort?: string; mode?: string; allow?: string[]; cwd?: string }): Promise<AgentHow> {
+async function howOf(plugin: Plugin, agent: string | undefined, p: { model?: string; effort?: string; mode?: AgentHow["mode"]; allow?: string[]; cwd?: string }): Promise<AgentHow> {
   if (p.effort && !MODEL_NAME.test(p.effort)) throw new OpError(`'${p.effort}' isn't an effort's name (\`effort\`)`)
   const model = agent && p.model ? (await agentModel(plugin, agent.split("_")[0], p.model)).id : p.model
-  return { ...(model ? { model } : {}), ...(p.effort ? { effort: p.effort } : {}), ...(p.mode ? { mode: p.mode as AgentHow["mode"] } : {}),
+  return { ...(model ? { model } : {}), ...(p.effort ? { effort: p.effort } : {}), ...(p.mode ? { mode: p.mode } : {}),
     ...(p.allow?.length ? { allow: p.allow } : {}), ...(p.cwd ? { cwd: p.cwd } : {}) }
 }
-/** Shows it, or says no window is open (the session runs anyway: it isn't an error to have started it). */
-async function shown(ctx: OpCtx, id: string, split: "right" | "down" | null = null, did?: string) {
-  try { await show(ctx, id, split, did); return true } catch (e) { if (e instanceof OpError && e.status === 409) return false; throw e }
-}
 
-/** How a wait went (terminal.wait's answer). */
 const waited = (r: Any) => r.met === "exit" ? `${r.id} ended (${how(r.exit)}) after ${r.waited} s.`
   : r.met === "match" ? `${r.id} shows ${quoted(r.matched, 80)} after ${r.waited} s.`
   : r.met ? `${r.id} is ${r.met}${r.kind ? ` (${r.kind}${r.msg ? `: ${r.msg}` : ""})` : ""} after ${r.waited} s.`
   : r.exit ? `${r.id} ended (${how(r.exit)}) before it was ${r.for.join(" or ")}.`
   : `Still not ${r.for.join(" or ")} after ${r.waited} s: ${r.id} is ${r.state ?? "running"}.`
-/** How long ago, short: "2m ago", "just now". */
 const ago = (t: number) => { const a = fmtAgo(t, { short: true }); return a === "now" ? "just now" : `${a} ago` }
-/** A terminal's line in a list: its id, what runs, its state, its name and title, and where it's shown. */
 const row = (s: Session & { tabs?: TabAt[] }) => `${s.id}  ${s.process || "-"}${s.state ? ` (${s.state}${s.kind ? `: ${s.kind}` : ""}${s.state !== "blocked" && s.needs ? ", unread" : ""})` : ""}${s.name ? `  named "${s.name}"` : ""}${s.title ? `  "${s.title}"` : ""}${s.session ? `  session ${s.session}` : ""}${s.note ? `  on ${s.note}` : ""}  ${ago(s.started)}, ${s.machine ? `on ${s.machineLabel ?? s.machine}` : where(s.tabs)}${s.backend === "pty" ? " (in the server: a restart ends it)" : ""}${s.via ? ` (held by the older terminal server, pid ${s.via}, which ends after its last)` : ""}`
 const how = (e: { code: number; signal: number; lost?: boolean }) => (e.lost ? "lost: its terminal server went away, so how is unknown" : e.signal ? `signal ${e.signal}` : `exit code ${e.code}`)
 
@@ -210,7 +86,6 @@ terminal attach <terminal> shows one in the terminal you run it in (⌃\ detache
       const ended = ((r.ended ?? []) as Ended[]).map((e) => `${e.id}  ${e.command || "-"}${e.name ? `  named "${e.name}"` : ""}  ended ${ago(e.exit.at)} (${how(e.exit)})`)
       const away = Object.entries((r.machines ?? {}) as Record<string, string>).filter(([, v]) => v !== "ok").map(([k, v]) => `${k}: ${v}`)
       const t = r.trouble as Trouble | undefined
-      // (said first: the terminals that server holds are missing below, and frozen)
       const trouble = t ? `${t.text[0].toUpperCase()}${t.text.slice(1)} (${ago(t.since)}), so they aren't listed here. vau errors says more.\n\n` : ""
       return trouble + (rows.length ? rows.join("\n") : "(no terminal sessions)") + (gone.length ? `\n\nTabs with no session:\n${gone.join("\n")}` : "") +
         (ended.length ? `\n\nEnded lately:\n${ended.join("\n")}` : "") + (away.length ? `\n\nNot listed:\n${away.join("\n")}` : "")
@@ -285,7 +160,7 @@ its tab too (as vau terminal open does). With machine, on another of the Machine
   vau terminal start --agent codex --prompt "Review the diff in core/" --name review
   vau terminal start --command "npm run dev" --cwd ~/code/site --machine studio`,
     kind: "write",
-    lock: false, // starting a shell holds nothing of the vault
+    lock: false,
     params: {
       command: { type: "string", description: "a shell command to run, alone: the terminal ends when it does, with its exit code" },
       agent: { type: "string", description: "a coding agent to run instead (claude, codex, opencode...; claude_personal: one of its accounts)" },
@@ -346,7 +221,7 @@ id (--json). In the background, without a tab: vau terminal start.
   vau terminal open
   vau terminal open claude --prompt "Fix the failing test in core/" --split right`,
     kind: "write",
-    lock: false, // starting a shell holds nothing of the vault
+    lock: false,
     params: {
       agent: { type: "string", description: "the agent to run (claude, codex, opencode...; claude_personal: one of its accounts); none: a shell" },
       prompt: { type: "string", description: "the agent's first message: its task" },

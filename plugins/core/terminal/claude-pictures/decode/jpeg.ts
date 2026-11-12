@@ -8,7 +8,6 @@ import { type Huffman, huffman } from "./jpeg/huffman.ts"
 import { idct } from "./jpeg/idct.ts"
 import { decodeScan, type Scan } from "./jpeg/scan.ts"
 
-/** Scans a picture may have: about 10 make a progressive one, and each walks the whole picture. */
 const MAX_SCANS = 256
 
 const REFUSED: Record<number, string> = {
@@ -17,7 +16,6 @@ const REFUSED: Record<number, string> = {
   0xce: "arithmetic-coded", 0xcf: "arithmetic-coded", 0xde: "hierarchical", 0xdf: "hierarchical",
 }
 
-/** A JPEG's pixels. Throws (Unreadable) on bytes it can't read; a picture cut short decodes as far as its data goes. */
 export function decodeJpeg(bytes: Uint8Array, limits: Limits): Rgba {
   const d = bytes
   need(d.length > 4 && d[0] === 0xff && d[1] === 0xd8, "not a JPEG")
@@ -37,7 +35,6 @@ export function decodeJpeg(bytes: Uint8Array, limits: Limits): Rgba {
     if ((m >= 0xd0 && m <= 0xd7) || m === 0x01) continue // (RSTn or TEM: no segment)
     need(m !== 0xd8, "a second SOI")
     need(!REFUSED[m], `${REFUSED[m]} JPEG`)
-    // (a segment cut short ends the picture, if it has any data yet)
     if (pos + 2 > d.length || pos + u16(pos) > d.length) { need(scans, "cut short"); break }
     const len = u16(pos), at = pos + 2, end = pos + len
     need(len >= 2, "bad segment length")
@@ -63,7 +60,6 @@ export function decodeJpeg(bytes: Uint8Array, limits: Limits): Rgba {
   return orient(px, orientation)
 }
 
-/** SOF: the frame, its planes allocated (once its size is known to be within `limits`). */
 function readFrame(d: Uint8Array, at: number, end: number, progressive: boolean, limits: Limits): Frame {
   need(end - at >= 6, "bad SOF")
   need(d[at] === 8, `${d[at]}-bit JPEG`)
@@ -83,7 +79,6 @@ function readFrame(d: Uint8Array, at: number, end: number, progressive: boolean,
     const w = Math.ceil((width * h) / hmax), hh = Math.ceil((height * v) / vmax)
     return { width: w, height: hh, blocksW: Math.ceil(w / 8), blocksH: Math.ceil(hh / 8) }
   })
-  // (whole blocks make a long thin picture's planes many times its pixels: held to a budget by the limit's pixels)
   const bytes = sizes.reduce((sum, s) => sum + s.blocksW * s.blocksH * 64, 0) * (progressive ? 3 : 1)
   need(bytes <= 16 * limits.maxPixels + (1 << 20), `too big: ${width}x${height}`)
   const components: Component[] = raw.map((c, i) => {
@@ -93,7 +88,6 @@ function readFrame(d: Uint8Array, at: number, end: number, progressive: boolean,
   return { width, height, progressive, components, hmax, vmax, mcusX: Math.ceil(width / (8 * hmax)), mcusY: Math.ceil(height / (8 * vmax)) }
 }
 
-/** DHT: one or more tables, by class (DC, AC) and number. */
 function readHuffman(d: Uint8Array, at: number, end: number, dc: (Huffman | null)[], ac: (Huffman | null)[]) {
   while (at < end) {
     need(at + 17 <= end, "bad DHT")
@@ -106,7 +100,6 @@ function readHuffman(d: Uint8Array, at: number, end: number, dc: (Huffman | null
   }
 }
 
-/** DQT: one or more tables, 8 or 16 bits a value, kept in natural order. */
 function readQuant(d: Uint8Array, at: number, end: number, quant: (Int32Array | null)[]) {
   while (at < end) {
     const pq = d[at] >> 4, tq = d[at] & 15
@@ -118,8 +111,7 @@ function readQuant(d: Uint8Array, at: number, end: number, quant: (Int32Array | 
   }
 }
 
-/** SOS: the scan's components and tables, checked as libjpeg does; each component's quantization table latched at
- *  its first scan. */
+/** Checked as libjpeg checks SOS; a component's quantization table is latched at its first scan, as libjpeg does. */
 function readScan(d: Uint8Array, at: number, end: number, frame: Frame, quant: (Int32Array | null)[], dcTables: (Huffman | null)[], acTables: (Huffman | null)[]): Scan {
   const n = d[at]
   need(n >= 1 && n <= 4 && end - at >= 4 + 2 * n, "bad SOS")
@@ -146,7 +138,6 @@ function readScan(d: Uint8Array, at: number, end: number, frame: Frame, quant: (
   return { components, dc, ac, ss, se, ah, al }
 }
 
-/** A progressive component's coefficients, all scans read, as its samples (one no scan reached stays grey). */
 function inverse(c: Component) {
   if (!c.quant) return
   const stride = c.blocksW * 8

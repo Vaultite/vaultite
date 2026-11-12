@@ -1,17 +1,12 @@
-// A Claude Code mod Vaultite's terminals load (terminal/plugin.ts env): the pictures Claude reads and the ones pasted,
-// drawn under their rows as Claude got them, after Claude Code's own resize (PNG, JPEG, GIF, WebP).
 import type { ElementTable, Register } from 'claude-code'
 import { decoded, drawn, type Picture } from './picture.ts'
 
 type Got = Picture | { why: string }
 
-/** Bytes of one pasted picture read at most (Claude's own limit is below it). */
 const PASTED_MAX = 32 << 20
-/** Pictures kept decoded, by what they're found by (a row is drawn again and again): the last few of each. */
 const KEPT = 20
-/** Pasted pictures, by the prompt's text they came with (the row draws only its text): their bytes until first drawn. */
+/** By the prompt's text: UserMessage's render gets only its text. */
 const pasted = new Map<string, { bytes?: Uint8Array; got?: Got }[]>()
-/** Read calls' pictures, by their base64. */
 const reads = new Map<string, Got>()
 
 const keep = <V,>(m: Map<string, V>, key: string, v: V) => {
@@ -20,7 +15,6 @@ const keep = <V,>(m: Map<string, V>, key: string, v: V) => {
   return v
 }
 
-/** A Read call's picture, when it read an image: as Claude got it. */
 function readPicture(output: unknown): Got | null {
   const o = output as { type?: string; file?: { base64?: string } } | undefined
   const b64 = o?.type === 'image' ? o.file?.base64 : undefined
@@ -29,7 +23,7 @@ function readPicture(output: unknown): Got | null {
 }
 
 export const register: Register = on => {
-  // Pasted pictures: their bytes read while the prompt goes in (only then are they answered), drawn under its row.
+  // $.prompt.media answers only while the prompt goes in.
   on('prompt.submit', async ($, e, next) => {
     const got: { bytes?: Uint8Array; got?: Got }[] = []
     for (const a of e.attachments ?? []) {
@@ -61,7 +55,7 @@ export const register: Register = on => {
     )
   })
 
-  // A standalone Read's result, and a run of reads folded into one line. (Only a terminal has Image.)
+  // Only the terminal surface has Image.
   on('ui.render', { component: 'ToolResult' }, async ($, e, next) => {
     if (e.surface !== 'terminal' || e.props.tool !== 'Read' || e.props.isErrored) return next(e)
     const p = readPicture(e.props.output)
@@ -88,8 +82,6 @@ export const register: Register = on => {
   })
 }
 
-/** A picture drawn as one of `share` in its row, or a dim line saying why it isn't (a feature no decoder here has, a
- *  file cut short). */
 function shown({ Image, Text }: Pick<ElementTable<'terminal'>, 'Image' | 'Text'>, p: Got, share: number, key: string, alt: string) {
   if ('why' in p) return <Text key={key} dimColor>[{alt} not shown: {p.why}]</Text>
   const d = drawn(p, share)

@@ -8,9 +8,8 @@ import { TerminalsView } from "./TerminalsView"
 import { useTerminalRuns } from "./runs"
 import { AskBox, openAsk } from "./AskBox"
 import { vtModule } from "./vt/wasm"
+import { TERMINAL_POINTS } from "./font"
 
-// The terminal is its own chunk, with libghostty-vt's WebAssembly compiled beside it: loaded when a terminal tab opens,
-// or ahead of it once the app is idle on a computer (phones, which rarely open one, load it when they do).
 let chunk: Promise<typeof import("./Terminal")> | null = null
 const preload = () => (chunk ??= Promise.all([import("./Terminal"), vtModule()]).then(([m]) => m))
 const TerminalView = lazy(preload)
@@ -32,22 +31,17 @@ function Preview() {
   )
 }
 
-/** While a terminal tab is open, follow the sessions list so tabs show each session's name, colour and state; on a
- *  computer, also preload the terminal's chunk once idle. */
 const AGENTS = "agents:agents"
 const offered = devicePref<boolean>("agents:offered", false)
 
 function SessionNames() {
   const layout = useSyncExternalStore(onTabLayoutChange, getTabLayout)
   const any = JSON.stringify(layout).includes('"view:terminal/')
-  // (tabs drawn again only when what they show of a session changed, not on each list: a whole-app render)
   useEffect(() => {
     if (!any) return
     let was = ""
     return subscribeSessions(() => { const k = tabsKey(); if (k !== was) { was = k; viewsChanged() } })
   }, [any])
-  // The Agents panel offered once per device, at the top of the right sidebar, when an agent first runs (a setup saved
-  // before the panel existed doesn't list it); hidden after, it stays hidden.
   useEffect(() => {
     if (offered.get()) return
     const offer = () => {
@@ -68,7 +62,6 @@ function SessionNames() {
   return null
 }
 
-/** What terminal tabs show of each session (index.tsx' views: title, icon, its tint, class and dot, where it opens). */
 const tabsKey = () => JSON.stringify((getSessions().list ?? []).map((s) => {
   const a = agentIn(s)
   return [s.id, labelOf(s, a), s.machineLabel, a?.name, stateClass(s, a), tintOf(s, a), dotOf(s, a), s.note, s.session]
@@ -76,8 +69,6 @@ const tabsKey = () => JSON.stringify((getSessions().list ?? []).map((s) => {
 
 const openTab = (to: string) => openView(to, { newTab: !isViewOpen(to) })
 
-/** The status bar's agents at work and the ones that need the user (as Terminals says: blocked, waiting on them):
- *  a click goes to the first that needs them, else Terminals. */
 function AgentsAtWork() {
   const list = useSessions().list ?? []
   const working = list.filter((s) => agentIn(s) && s.state === "working"), needs = list.filter((s) => needsYou(s))
@@ -88,7 +79,6 @@ function AgentsAtWork() {
     tint={needs.length ? "var(--yellow)" : undefined} onClick={() => openTab(needs.length ? `view:terminal/${needs[0].id}` : "view:terminals")} />
 }
 
-/** What a coding agent started in a terminal here is told, word for word (GET /api/terminals/instructions). */
 function Instructions() {
   const { data, error } = useLive<{ text: string }>("terminals/instructions")
   return (
@@ -103,14 +93,12 @@ function Instructions() {
 
 const showInstructions = () => openTab("view:terminal-instructions")
 
-/** The terminal the keyboard is in, else the focused pane's (not under a sheet). */
 function terminalHere() {
   const at = document.activeElement?.closest("[data-terminal-view]")
   if (at) return at
   return document.querySelector("dialog[open]") ? null : document.querySelector("#main-scroll [data-terminal-view]")
 }
 
-/** Its settings: what agents are told, while AI is on (plain terminals have nothing to set). */
 function AgentsTold() {
   if (!useAi()) return null
   return (
@@ -121,35 +109,24 @@ function AgentsTold() {
 }
 
 export default definePlugin({
-  // view:terminal/<session id>: that session's shell, kept across reloads. Agent ids run the agent, and @<machine> ids
-  // are another machine's.
   views: {
     terminal: {
-      // The session's own name, colour and state, as its row in the Terminals panel and the rail show them (an agent's
-      // session name, a running program); until the server has said, what it was opened as.
       icon: SquareTerminal,
-      // Its agent's logo, with its state as a dot on the corner (sessions.ts: dotOf).
       iconFor: (arg) => { const s = sessionById(arg); return (s ? iconOf(s) : agentOfTerminal(arg)?.icon) ?? SquareTerminal },
       title: (arg) => {
         const s = sessionById(arg), label = s ? labelOf(s) : agentOfTerminal(arg)?.label ?? "Terminal"
         const on = s?.machineLabel ?? (arg.includes("@") ? arg.slice(arg.indexOf("@") + 1) : "")
         return on ? `${label} · ${on}` : label
       },
-      // Its name is the session's, on every device and in agents' list (Rename tab…).
       rename: (arg) => { const s = sessionById(arg); return s ? { name: labelOf(s), auto: autoLabel(s), set: (n) => nameSession(arg, n) } : null },
       iconClass: (arg) => { const s = sessionById(arg); return s ? stateClass(s) : undefined },
       iconTint: (arg) => { const s = sessionById(arg); return s ? tintOf(s) : agentOfTerminal(arg)?.tint },
       iconBadge: (arg) => { const s = sessionById(arg); return !!s && dotOf(s) },
-      // Started on a note (Dispatch): its tab opens beside that note's, in its tab group.
       opensBeside: (arg) => { const n = sessionById(arg)?.note; return n ? `file:${n}` : null },
       full: true,
-      // Links, pages and other views open beside a terminal, never in its tab.
       keepsTab: true,
-      // A coding agent's terminal pins as its conversation, and a pin opens the terminal running it, else resumes it.
       pinAs: pinOfTerminal,
       resolve: runningResume,
-      // Its last tab closed: an idle shell ends, one running something (an agent) keeps running, detached (sessions.ts:
-      // tabClosed). Ending for good is the Terminals row's …, the tab's End session, or the command.
       onClose: (arg) => tabClosed(arg || "main"),
       tabMenu: (arg) => [{ label: "End session", icon: SquareX, danger: true, run: () => void endForGood(arg || "main") }],
       render: ({ arg, focused, close }) => (
@@ -158,21 +135,16 @@ export default definePlugin({
         </Suspense>
       ),
     },
-    // The sidebar's Terminals panel as a tab (drag its heading onto a pane, or the command).
     terminals: { icon: SquareTerminal, title: () => "Terminals", render: () => <TerminalsView /> },
     "terminal-instructions": { icon: FileText, title: () => "What agents are told", render: () => <Instructions /> },
   },
   settingsPanel: () => <AgentsTold />,
-  // Its text size, apart from the interface size (⌘+ or ⌘+scroll over a terminal, the commands, Settings > Appearance),
-  // a point at a time as in Ghostty: Terminal.tsx's FONT at 100%.
-  textSizes: { terminal: { label: "Terminal", sub: "Terminals' text: more or fewer columns", points: 13 } },
+  textSizes: { terminal: { label: "Terminal", sub: "Terminals' text: more or fewer columns", points: TERMINAL_POINTS } },
   background: () => <><SessionNames /><AskBox /></>,
   commands: [
-    // New ones open where the workspace says (chooseDefaultPlace); ⌃` is always this machine, the way out when that one's away.
     { id: "terminal:open", name: "Open terminal", words: "new", run: () => void openTerminal(), icon: SquareTerminal },
     { id: "terminal:open-here", name: "Open terminal on this machine", words: "new", keys: ["Ctrl+`"], run: () => void openTerminal({ machine: "" }), icon: SquareTerminal },
     { id: "terminal:open-split", desktop: true, name: "Open terminal in right split", words: "new", run: () => void openTerminal({ split: true }) },
-    // A question for an agent that answers in the background (Dictate's ⌘J opens it and dictates into it).
     { id: "terminal:ask", name: "Ask an agent in the background…", when: () => aiOn() && canRunAgents(), run: openAsk, icon: MessageSquareText, label: "Ask" },
     { id: "terminal:open-where", name: "Open a terminal or an agent on a machine…", when: severalMachines, run: () => void choosePlace(), icon: Server },
     { id: "terminal:home", name: "Choose where terminals and agents open in this workspace…", when: severalMachines, run: () => void chooseDefaultPlace(), icon: Server },
@@ -182,13 +154,9 @@ export default definePlugin({
     { id: "terminal:find", name: "Find in terminal", keys: isMac ? ["Mod+F"] : ["Ctrl+Shift+F"], when: () => !!terminalHere(),
       run: () => { const v = terminalHere(); if (v) return preload().then((m) => m.openFind(v)) }, icon: Search },
     { id: "terminal:end", name: "End terminal session", when: () => !!current(), run: () => { const c = current(); if (c) void endForGood(c.id) }, icon: SquareX },
-    // Out of the shell without a mouse (Vim's ⌃\ ⌃N), so the app's keys work again. Off a Mac ⌃ is the app's ⌘ and ⌃\
-    // toggles the sidebar, so no default there.
     { id: "terminal:leave", name: "Leave the terminal", keys: isMac ? ["Ctrl+\\ Ctrl+N"] : undefined,
-      when: () => !!document.activeElement?.matches("[data-term-input]"), run: () => (document.activeElement as HTMLElement | null)?.blur(), icon: LogOut },
+      when: () => !!document.activeElement?.matches("[data-term-input]"), run: () => { const at = document.activeElement; if (at instanceof HTMLElement) at.blur() }, icon: LogOut },
   ],
-  // Every running shell (other machines' too) in the quick switcher and the search tab: by its name, its agent, what
-  // it runs and its machine; picking one goes to its tab (or opens one).
   searchLive: {
     subscribe: subscribeSessions,
     docs: () => (getSessions().list ?? []).map((s) => {
@@ -201,12 +169,9 @@ export default definePlugin({
       }
     }),
   },
-  // Its sessions running an agent, in the Agents panel with every other agent.
   agentRuns: useTerminalRuns,
-  // Every running shell in the sidebar, live.
   ambient: { agents: { title: "Agents at work", sort: 20, ai: true, render: () => <AgentsAtWork /> } },
   sidebar: { sessions: { title: "Terminals", names: ["terminals", "terminal", "shells"], heading: false, sort: 30, view: "terminals", render: (ctx) => <Sessions {...ctx} /> } },
-  // The running terminals and agents on a blank tab's page, when the user shows it (right-click a blank tab, Sections).
   newTab: { sessions: { title: "Terminals", sort: 5, hidden: true, render: () => <SessionList /> } },
   preview: () => <Preview />,
 })

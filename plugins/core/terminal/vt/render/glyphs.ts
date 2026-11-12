@@ -1,11 +1,8 @@
-// A cell's size, measured as xterm.js did (a screen keeps its columns), and WebGL's glyph atlas: each glyph drawn once
-// by Canvas2D in its colour on its ground (on a clear one text reads heavier), the ground then cleared, as xterm.js did.
 import { drawBox, isBox } from "./boxdraw.ts"
 
 export type Metrics = {
   /** A cell in device pixels (whole ones, so rows and columns tile without seams) and in CSS pixels. */
   w: number; h: number; cssW: number; cssH: number; dpr: number
-  /** Where text's baseline sits in a cell, device pixels from its top. */
   baseline: number
   font: string; size: number
 }
@@ -25,15 +22,12 @@ export function measure(family: string, size: number, lineHeight: number, dpr: n
   return { w, h, cssW: w / dpr, cssH: h / dpr, dpr, baseline: Math.round((h - (asc + desc)) / 2 + asc), font: family, size }
 }
 
-/** A slot of the atlas; `color`: drawn as it is (else a white shape, tinted when drawn). */
 export type Glyph = { x: number; y: number; w: number; h: number; color: boolean
   /** Where its ink starts in its slot (it's drawn only there: a quad a slot's size each overdraws its neighbours). */
   ox: number; oy: number }
 
-/** Style bits a glyph is drawn in. */
 export const G_BOLD = 1, G_ITALIC = 2
 
-/** Atlases by cell and font: terminals drawn alike share one, as xterm.js's did. */
 const shared = new Map<string, { atlas: Atlas; users: number }>()
 const keyOf = (m: Metrics) => `${m.font}|${m.size}|${m.dpr}|${m.w}x${m.h}|${m.baseline}`
 export function acquireAtlas(m: Metrics) {
@@ -48,19 +42,15 @@ export function releaseAtlas(a: Atlas) {
   if (had?.atlas === a && --had.users <= 0) { shared.delete(k); a.canvas.width = a.canvas.height = 0 }
 }
 
-/** Glyphs packed in rows of a canvas; each slot a cell (two for wide ones) plus a margin all round for what spills
- *  out of it (italics, accents). Full, it grows once, then starts again (`generation`: renderers upload it whole). */
 export class Atlas {
   canvas: OffscreenCanvas
   size = 1024
   private g: OffscreenCanvasRenderingContext2D
   private map = new Map<string, Glyph | null>()
   private x = 0; private y = 0; private rowH = 0
-  /** Margin round each slot, device pixels. */
   pad: number
   m: Metrics
   generation = 0
-  /** Every slot drawn this generation, in order (each renderer uploads those it hasn't). */
   log: Glyph[] = []
 
   constructor(m: Metrics) {
@@ -76,7 +66,6 @@ export class Atlas {
     this.generation++
     this.log = []
   }
-  /** The glyph for `text` in `style`, `cells` wide, in `fg` on `bg` (null: nothing to draw). */
   get(text: string, style: number, cells: number, fg: number, bg: number): Glyph | null {
     const key = `${fg},${bg},${style}${cells}${text}`
     const had = this.map.get(key)
@@ -85,7 +74,6 @@ export class Atlas {
     this.map.set(key, out)
     return out
   }
-  /** A special shape (curly underline...) drawn by `paint` into a cell-sized slot. */
   shape(key: string, paint: (g: OffscreenCanvasRenderingContext2D, x: number, y: number, w: number, h: number) => void): Glyph {
     const had = this.map.get(key)
     if (had) return had
@@ -124,7 +112,6 @@ export class Atlas {
       else g.fillText(text, x, y + baseline)
       g.restore()
     }
-    // Its ground made clear: what spills into the cells beside it doesn't cover them.
     const data = g.getImageData(s.x, s.y, s.w, s.h), d = data.data, br = (bg >> 16) & 255, bgg = (bg >> 8) & 255, bb = bg & 255
     let x0 = s.w, y0 = s.h, x1 = -1, y1 = -1
     for (let i = 0; i < d.length; i += 4) {
@@ -140,9 +127,7 @@ export class Atlas {
   }
 }
 
-/** 0xRRGGBB as CSS. */
 export const css = (c: number, a = 1) => (a >= 1 ? `#${(c & 0xffffff).toString(16).padStart(6, "0")}` : `rgba(${(c >> 16) & 255},${(c >> 8) & 255},${c & 255},${a})`)
-/** a toward b by t (0..1). */
 export const blend = (a: number, b: number, t: number) => {
   const ch = (s: number) => Math.round(((a >> s) & 255) + (((b >> s) & 255) - ((a >> s) & 255)) * t)
   return (ch(16) << 16) | (ch(8) << 8) | ch(0)

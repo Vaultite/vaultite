@@ -1,5 +1,3 @@
-// Sessions from outside the app (`vau terminal`): routes for list, screen, start, send and end; this machine's only,
-// same access as a shell.
 import fs from "node:fs"
 import path from "node:path"
 import { agentModel, MODEL_NAME, PERMISSION_MODES } from "../../../core/agents.ts"
@@ -14,14 +12,10 @@ import { end, endHere, start } from "./start.ts"
 import { starting } from "./machines.ts"
 import { listChanged, localList } from "./list.ts"
 
-/** A name for a terminal as kept: one line, at most 80 characters. */
 const cleanName = (s: string) => s.replace(/[\s\p{Cc}]+/gu, " ").trim().slice(0, 80)
 
-/** When each terminal was last typed into (a page, vau terminal send): a state told before that is an older turn's. */
 export const lastInput = new Map<string, number>()
-/** When each was last typed into in one of its tabs: by the user, not an op. */
 export const pageInput = new Map<string, number>()
-/** What was sent into each terminal from outside its tabs (vau terminal send and key, the inbox), by whom: the last 20. */
 type Sent = { at: number; by: string; text?: string; keys?: string[] }
 const inputs = new Map<string, Sent[]>()
 function typed(id: string, sent?: Omit<Sent, "at">) {
@@ -31,12 +25,10 @@ function typed(id: string, sent?: Omit<Sent, "at">) {
     log.push({ at: Date.now(), ...sent, ...(sent.text ? { text: sent.text.length > 500 ? `${sent.text.slice(0, 500)}…` : sent.text } : {}) })
     inputs.set(id, log.slice(-20))
   }
-  // Enter may have started a program (claude, vim): tabs show its name soon, not at the next poll.
   setTimeout(listChanged, 400)
 }
 /** How long typed text needs before its Enter: an agent takes a long text as a paste, and an Enter inside that is a new line. */
 const settle = (text: string) => Math.min(1000, 150 + Math.floor(text.length / 4))
-/** Types `text` into terminal `id` as typed (a long one as a paste: asPaste), then Enter apart from it. */
 async function sendText(b: Backend, id: string, text: string, enter: boolean, by = "app") {
   if (text) await b.send(id, { text, paste: asPaste(text) })
   if (enter) {
@@ -46,29 +38,24 @@ async function sendText(b: Backend, id: string, text: string, enter: boolean, by
   typed(id, { by, ...(text ? { text } : {}), ...(enter ? { keys: ["Enter"] } : {}) })
 }
 
-/** What terminal.wait waits for: the terminal's end, one of its program's states, or its output going quiet. */
 const WAITS = new Set(["exit", "idle", "working", "blocked", "done", "error", "quiet"])
 const MAX_WAIT = 3600
 
-/** The terminals that ended lately, as their backends keep them (the terminal server: an hour), newest last. */
 async function endedList() {
-  const all = await Promise.all(backends().map(async (b) => (await b.list({ ended: true }).catch(() => [] as Shell[])).filter((x) => x.exit).map((x) => ({ b, x }))))
+  const all = await Promise.all(backends().map(async (b) => (await b.list({ ended: true }).catch((): Shell[] => [])).filter((x) => x.exit).map((x) => ({ b, x }))))
   return all.flat().sort((a, b) => a.x.exit!.at - b.x.exit!.at).map(({ b, x }) => ({ id: x.id, backend: b.name, command: x.command ?? "", ...(x.meta?.name ? { name: x.meta.name } : {}),
     ...(x.meta?.note ? { note: x.meta.note } : {}), started: x.created, exit: x.exit! }))
 }
-/** Terminal `id` if it ended lately: its backend and how. */
 async function endedOf(id: string): Promise<{ b: Backend; exit: Ended } | null> {
   for (const b of backends()) {
-    const x = (await b.list({ ended: true }).catch(() => [] as Shell[])).find((y) => y.id === id && y.exit)
+    const x = (await b.list({ ended: true }).catch((): Shell[] => [])).find((y) => y.id === id && y.exit)
     if (x) return { b, exit: x.exit! }
   }
   const e = endOf(id)
   return e ? { b: fallback, exit: e } : null
 }
 
-/** The wait itself (see the route): what it met (null: the time ran out), the state now, and how it ended if it did. */
 async function waitFor(id: string, wants: string[], o: { ms: number; quiet: number; abort: AbortSignal; match?: RegExp; hold?: number }) {
-  // (left out: an agent's turn over, as herdr has it, else its end; a pattern alone: only it)
   const want = new Set(wants.length ? wants : o.match ? [] : agentOf(id) || current(id) ? ["idle", "blocked", "done", "error"] : ["exit"])
   if (o.match) want.add("match")
   // An agent at rest for a moment between steps of one turn isn't done: idle and done count once they've held.
@@ -80,7 +67,6 @@ async function waitFor(id: string, wants: string[], o: { ms: number; quiet: numb
       ...(now ? { state: now.state, ...(now.kind ? { kind: now.kind } : {}), ...(now.msg ? { msg: now.msg } : {}) } : {}), ...(exit ? { exit } : {}) }
   }
   const gone = async () => {
-    // (told here first: its session here may still be letting go of it)
     const told = endOf(id)
     if (!told && (await backendOf(id))) return null
     const e = told ?? (await endedOf(id))?.exit
@@ -119,7 +105,6 @@ async function waitFor(id: string, wants: string[], o: { ms: number; quiet: numb
     const onExit = (x: string) => { if (x === id) void check() }
     const stop = () => finish(result(null))
     const timer = setTimeout(stop, o.ms)
-    // (each second too: output going quiet, a backend that tells nothing)
     const poll = setInterval(() => void check(), want.has("quiet") ? Math.min(1000, o.quiet / 2) : o.match || hold < 1000 ? 500 : 1000)
     stateHeard.add(heard)
     exitHeard.add(onExit)
@@ -127,7 +112,6 @@ async function waitFor(id: string, wants: string[], o: { ms: number; quiet: numb
     void check()
   })
 }
-/** What hears each terminal's end as it's told (terminal.wait). */
 export const exitHeard = new Set<(id: string) => void>()
 /** terminal.wait for this server's plugins (the service "terminal:wait"), `signal` ending it early (met null). */
 plugin.provide("terminal:wait", (id: string, o: { for?: string[]; timeout?: number; quiet?: number; hold?: number; signal?: AbortSignal } = {}) =>
@@ -137,7 +121,6 @@ plugin.provide("terminal:wait", (id: string, o: { for?: string[]; timeout?: numb
 async function owner(req: Request) {
   await plugin.ownerOnly(req, "the terminal")
 }
-/** The id a route names, this machine's: another machine's (id@machine) is answered there. */
 function localId(req: Request) {
   const id = req.arg(0)
   if (!TERMINAL_ID.test(id)) throw new HTTPError(400, "a terminal id is letters, digits, - and _")
@@ -162,8 +145,6 @@ plugin.route("POST", "terminals/*/state", async (req) => {
   return {}
 }, { lock: false, sync: false })
 
-/** The shells a terminal can start here, as the setting `shell` offers them: "" its default (the login shell, on
- *  Windows PowerShell), then each by the name its users know (Windows Terminal's). */
 plugin.route("GET", "terminals/shells", async (req) => {
   await owner(req)
   const all = await shellsHere(), dflt = defaultShell()
@@ -171,13 +152,10 @@ plugin.route("GET", "terminals/shells", async (req) => {
   return { choices: [{ value: "", label: `Default (${name})` }, ...all.map((x) => ({ value: x.shell, label: x.label }))] }
 })
 
-// What a coding agent started here is told, exactly (Show what agents are told; vau terminal instructions).
 plugin.route("GET", "terminals/instructions", () => ({ text: agentContext() }))
 
-/** This machine's terminals; `ended=1`: the ones that ended lately too (kept a while by their backend, with how). */
 /** Why terminals here can't be reached now (their server not answering: frozen, missing from lists), or null. */
 plugin.provide("terminal:trouble", () => backends().map((b) => b.trouble?.()).find(Boolean)?.text ?? null)
-/** No terminal `id` here, as far as can be seen: a server not answering may hold it (its trouble, said). */
 const noTerminal = (id: string, what = "terminal") => {
   const t = backends().map((b) => b.trouble?.()).find(Boolean)
   return `there's no ${what} '${id}' (vau terminal lists them)${t ? `, unless ${t.text}` : ""}`
@@ -185,20 +163,15 @@ const noTerminal = (id: string, what = "terminal") => {
 
 plugin.route("GET", "terminals/sessions", async (req) => {
   await owner(req)
-  // (`starting`: ones whose shell is on its way, not listed yet: their tabs aren't gone)
-  // (`trouble`: a backend whose terminals can't be reached now, its server not answering: they're missing from the list)
   const trouble = backends().map((b) => b.trouble?.()).find(Boolean)
   return { sessions: await localList(), backend: (await backendForNew()).name, ...(starting.size ? { starting: [...starting.keys()] } : {}), ...(req.query.ended ? { ended: await endedList() } : {}),
     ...(trouble ? { trouble } : {}) }
 })
 
-/** What a terminal shows: its last `lines` lines (its screen and the history above it; `all`: all it keeps), as text
- *  (wrapped lines joined), vt (its own sequences: colors, the cursor) or html. One that ended lately too. */
 plugin.route("GET", "terminals/*/capture", async (req) => {
   await owner(req)
   const id = localId(req)
   const format: CaptureFormat = req.query.format === "vt" || req.query.format === "html" ? req.query.format : "text"
-  // (none given: its screen)
   const lines = req.query.lines === "all" ? null : req.query.lines ? clamp(req.query.lines, 1, scrollback() + 500, 50) : undefined
   const b = (await backendOf(id)) ?? (await endedOf(id))?.b
   if (!b) throw new HTTPError(404, noTerminal(id))
@@ -216,19 +189,16 @@ plugin.route("POST", "terminals/*", async (req) => {
   const mode = PERMISSION_MODES.find((m) => m === req.body?.mode) ?? null
   const cwd = typeof req.body?.cwd === "string" && path.isAbsolute(req.body.cwd) ? req.body.cwd : null
   if (cwd && !fs.statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) throw new HTTPError(404, `there's no folder ${cwd}`)
-  // (a command alone, as the terminal's program: it ends with it; a name for its list and tabs)
   const command = typeof req.body?.command === "string" && req.body.command.trim() ? req.body.command.trim() : undefined
   const name = typeof req.body?.name === "string" ? cleanName(req.body.name) : ""
   if (command && agentOf(id)) throw new HTTPError(400, "a terminal runs an agent or a command, not both")
   const cols = clamp(req.body?.cols, 2, 1000, 120), rows = clamp(req.body?.rows, 1, 500, 40), home = homeOf(req.body?.home)
-  // (a model as people say it, "Fable 5.2", as its agent takes it: one it can't run is refused now, not a terminal that dies)
   const said = typeof req.body?.model === "string" ? req.body.model : "", agent = agentOf(id)?.name
   const model = said.trim() && agent ? (await agentModel(plugin, agent, said)).id : word(said)
   if (!starting.has(id)) starting.set(id, start(id, cols, rows, LOCAL, prompt, savedDark(), { allow, model: model || null, effort: word(req.body?.effort), mode, cwd },
     { command, ...(name ? { name } : {}), ...(home ? { home } : {}) })
     .finally(() => starting.delete(id)))
   try { await starting.get(id)! } catch (e) {
-    // (a command that ended within ms has nothing left to attach to: how it ended is the answer)
     const ended = command ? await endedOf(id) : null
     if (!ended) throw e
     return { id, started: true, agent: null, exit: ended.exit }
@@ -236,8 +206,6 @@ plugin.route("POST", "terminals/*", async (req) => {
   return { id, started: true, agent: agentOf(id)?.name ?? null }
 }, { lock: false })
 
-/** Name a session (terminal.rename): its tabs, Terminals and agents' list show it; "" gives back what its program
- *  titles it. */
 plugin.route("POST", "terminals/*/name", async (req) => {
   await owner(req)
   const id = localId(req)
@@ -247,12 +215,9 @@ plugin.route("POST", "terminals/*/name", async (req) => {
   return { id, name: name || null }
 }, { lock: false })
 
-/** Answer the question an agent terminal shows (approve or deny) with the keys its agent declares (`agent`: whose, for
- *  one run by hand in a plain shell); 409 when it shows none. */
 plugin.route("POST", "terminals/*/answer", async (req) => {
   await owner(req)
   const h = (k: string) => { const v = req.http?.headers[k]; return typeof v === "string" ? v : null }
-  // (the user's yes or no, never an agent's: inbox.answer checks its caller, then asks this in-process)
   if (req.http && !userSurface(whoOf(h("x-vaultite-client"), h("x-vaultite-agent")))) throw new HTTPError(403, NOT_THE_USER)
   const id = localId(req), answer: unknown = req.body?.answer
   if (answer !== "approve" && answer !== "deny") throw new HTTPError(400, "answer: approve or deny")
@@ -269,22 +234,19 @@ plugin.route("POST", "terminals/*/answer", async (req) => {
   return { id, ask: hit.id, answer }
 }, { lock: false })
 
-/** What was sent into a terminal from outside its tabs lately, and by whom (typed, the last 20). */
 plugin.route("GET", "terminals/*/inputs", async (req) => {
   await owner(req)
   const id = localId(req)
   return { id, inputs: inputs.get(id) ?? [] }
 })
 
-/** Type `text` (then Enter, unless `enter` is false), or press `keys` by name (keys.ts: Enter, C-c, Up, M-x...). */
 plugin.route("POST", "terminals/*/send", async (req) => {
   await owner(req)
   const id = localId(req)
   const b = await mustRun(id)
-  const keys = Array.isArray(req.body?.keys) ? req.body.keys.map(String).filter(Boolean) as string[] : []
+  const keys: string[] = Array.isArray(req.body?.keys) ? req.body.keys.map(String).filter(Boolean) : []
   const by = typeof req.http?.headers["x-vaultite-agent"] === "string" ? req.http.headers["x-vaultite-agent"] : String(req.http?.headers["x-vaultite-client"] ?? "app")
   if (keys.length) {
-    // (named wrong: the terminal server says which)
     await b.send(id, { keys }).catch((e: Error) => { throw new HTTPError(400, e.message) })
     typed(id, { by, keys })
     return { id, keys }
@@ -294,12 +256,9 @@ plugin.route("POST", "terminals/*/send", async (req) => {
   if (!text && !enter) throw new HTTPError(400, "send needs a text (or enter)")
   const before = current(id), since = Date.now()
   await sendText(b, id, text, enter, by)
-  // (`confirm`: say whether an agent took it, as terminal.send does; the Inbox's reply checks in its own way)
   return { id, sent: text.length, enter, ...(req.body?.confirm && enter && text && (agentOf(id) || before) ? await submitted(b, id, text, before, since) : {}) }
 }, { lock: false })
 
-/** Whether a text sent with its Enter reached an agent as a message: it started working on it (a state told after it),
- *  else why not, as far as its screen says: the text still in its input (vim mode, a survey, a dialog took the Enter). */
 async function submitted(b: Backend, id: string, text: string, before: Now | null, since: number): Promise<{ submitted: boolean | null; why?: string }> {
   if (before?.state === "blocked") return { submitted: false, why: `it was waiting on the user${before.kind ? ` (${before.kind}${before.msg ? `: ${before.msg}` : ""})` : ""}: what you typed went to that` }
   for (const until = Date.now() + 6000; Date.now() < until; await new Promise((r) => setTimeout(r, 200))) {
@@ -314,12 +273,10 @@ async function submitted(b: Backend, id: string, text: string, before: Now | nul
   return { submitted: null, why: "it didn't say it started working on it (vau terminal capture shows its screen)" }
 }
 
-/** Waits until terminal `id` ends (`for` exit), is in a state `for` names (told after its last input: waitFor), or prints
- *  nothing for `quiet` seconds (quiet); at most `timeout` seconds. */
 plugin.route("POST", "terminals/*/wait", async (req) => {
   await owner(req)
   const id = localId(req)
-  const wants = (Array.isArray(req.body?.for) ? req.body.for : String(req.body?.for ?? "").split(",")).map((x: unknown) => String(x).trim()).filter(Boolean) as string[]
+  const wants: string[] = (Array.isArray(req.body?.for) ? req.body.for : String(req.body?.for ?? "").split(",")).map((x: unknown) => String(x).trim()).filter(Boolean)
   const bad = wants.find((w) => !WAITS.has(w))
   if (bad) throw new HTTPError(400, `\`for\` is exit, ${[...WAITS].filter((w) => w !== "exit").join(", ")}: not '${bad}'`)
   const timeout = Math.max(0, Math.min(MAX_WAIT, Number(req.body?.timeout ?? 300) || 0))
@@ -329,7 +286,6 @@ plugin.route("POST", "terminals/*/wait", async (req) => {
     try { match = new RegExp(req.body.match, "m") } catch (e) { throw new HTTPError(400, `\`match\` isn't a pattern: ${(e as Error).message}`) }
   }
   const hold = req.body?.hold === undefined ? undefined : Math.max(0, Math.min(60, Number(req.body.hold) || 0)) * 1000
-  // (the caller gone: its socket closed)
   const abort = new AbortController(), sock = req.http?.socket, gone = () => abort.abort()
   sock?.once("close", gone)
   try { return { id, ...await waitFor(id, wants, { ms: timeout * 1000, quiet: quiet * 1000, abort: abort.signal, match, hold }) } } finally { sock?.off("close", gone) }
@@ -339,7 +295,6 @@ plugin.route("DELETE", "terminals/*", async (req) => {
   await owner(req)
   const id = localId(req)
   const b = await mustRun(id)
-  // (?keep=1: its tabs stay, saying it ended)
   const s = sessions.get(id), keep = req.query.keep === "1"
   if (s) end(s, keep)
   else await endHere(b, id, keep)

@@ -1,5 +1,3 @@
-// Links on a terminal's rows: web addresses (a line wrapped over rows read whole), a program's OSC 8 links, and other
-// plugins' providers in xterm.js's shape (`registerLinkProvider`: Terminal.tsx's vault files).
 import type { Screen } from "./screen.ts"
 
 /** Columns and rows count from 1, as xterm.js has them; y is a row of history and screen. */
@@ -15,9 +13,7 @@ export type LinkProvider = { provideLinks: (y: number, done: (links: Link[] | un
 /** Web addresses, as xterm.js's web links addon found them. */
 const URL_RE = /(https?|HTTPS?):[/]{2}[^\s"'!*(){}|\\^<>`]*[^\s"':,.!?{}|\\^~[\]`()<>]/g
 
-/** The web addresses on the line holding row `y` (of history and screen, from 0), as links on that row. */
 export function webLinks(s: Screen, y: number, open: (e: MouseEvent, uri: string) => void): Link[] {
-  // The whole line: rows before it that wrap into it, and rows after while it wraps on.
   let first = y
   for (let i = 0; i < 20 && first > 0; i++) { const prev = s.line(first - 1); if (!prev?.wrap) break; first-- }
   const parts: { y: number; text: string; at: number[] }[] = []
@@ -28,7 +24,6 @@ export function webLinks(s: Screen, y: number, open: (e: MouseEvent, uri: string
     if (!l.wrap) break
   }
   const text = parts.map((p) => p.text).join(""), out: Link[] = []
-  /** A character's place (index in the joined line) as a 1-based cell. */
   const cell = (i: number) => {
     for (const p of parts) { if (i < p.text.length) return { x: p.at[i] + 1, y: p.y + 1 }; i -= p.text.length }
     return null
@@ -42,7 +37,6 @@ export function webLinks(s: Screen, y: number, open: (e: MouseEvent, uri: string
   return out
 }
 
-/** The OSC 8 link under a viewport cell: its URI and the run of cells on the row that carry it. */
 export function osc8At(s: Screen, row: { flags: Uint16Array }, x: number, vy: number, LINK: number): { uri: string; x1: number; x2: number } | null {
   if (!(row.flags[x] & LINK)) return null
   const uri = s.hyperlink(x, vy)

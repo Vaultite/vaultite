@@ -1,5 +1,3 @@
-// The page's libghostty-vt: fetched and compiled once, ahead of the first terminal (index.tsx starts it with the
-// terminal's chunk), each terminal then an instance of its own.
 import url from "./ghostty-vt.wasm?url"
 
 let compiled: Promise<WebAssembly.Module> | null = null

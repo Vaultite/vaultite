@@ -1,28 +1,20 @@
-// A terminal's screen and history (libghostty-vt) in a thread of its own (screenworker.ts): a parse that never returns
-// stops that one screen, never the terminal server's loop. One that hasn't answered for HUNG starts again blank.
 import { Worker } from "node:worker_threads"
 import { vtModule } from "../vt/load.ts"
 import type { Capture, CaptureFormat } from "./protocol.ts"
 
-/** How long a screen may take over what it was given before it's taken as stuck: a full batch parsed, or a whole
- *  history as html, takes well under a second, a few on a loaded machine. */
 export const HUNG = 10_000
-/** Started again this many times in a minute, it stays off (blank): its thread can't run here. */
 const RESTARTS_MAX = 3
 
 export type ScreenOptions = {
   cols: number; rows: number; scrollback: number
   onTitle?(title: string): void
-  /** Its answers to the program's questions (DA, cursor position...). */
   onReply?(data: string): void
-  /** It failed or was stuck, and starts again blank: what happened, said for the log and the app. */
   onTrouble?(text: string): void
 }
 
 type Waiting = { n: number; at: number; bytes: number; ok?: (v: never) => void; fail?: (e: Error) => void }
 type Said = { n: number; app: boolean; paste: boolean; out?: unknown; error?: string; title?: string; reply?: string }
 
-/** Every screen with a thread, looked at each second for one that's stuck. */
 const screens = new Set<Screen>()
 let looking: ReturnType<typeof setInterval> | null = null
 
@@ -30,13 +22,11 @@ export class Screen {
   cols: number; rows: number
   readonly scrollback: number
   cell = { width: 8, height: 16 }
-  /** Output given to it and not yet parsed (UTF-16 units): the pty waits past HOLD (host.ts). */
   inflight = 0
   private o: ScreenOptions
   private w: Worker | null = null
   private n = 0
   private waiting: Waiting[] = []
-  /** Its modes as of what it parsed last: application cursor keys (1), bracketed paste (2004). */
   private modes = { app: false, paste: false }
   private restarts: number[] = []
   private off = false
@@ -62,7 +52,6 @@ export class Screen {
   }
 
   private heard(m: Said) {
-    // (answered in order: what it answers is the oldest still waiting)
     const x = this.waiting[0]
     if (!x || x.n !== m.n) return
     this.waiting.shift()
@@ -82,23 +71,19 @@ export class Screen {
     this.inflight += bytes
     this.w.postMessage({ n, ...m })
   }
-  private ask<T>(m: Record<string, unknown>) { return new Promise<T>((ok, fail) => this.post(m, 0, ok as Waiting["ok"], fail)) }
+  private ask<T>(m: Record<string, unknown>) { return new Promise<T>((ok, fail) => this.post(m, 0, ok, fail)) }
 
-  /** Output, parsed in its thread in the order given. */
   write(d: string) { if (d) this.post({ op: "write", d }, d.length) }
   resize(cols: number, rows: number, cellWidth = this.cell.width, cellHeight = this.cell.height) {
     this.cols = cols; this.rows = rows; this.cell = { width: cellWidth, height: cellHeight }
     this.post({ op: "resize", cols, rows, cw: cellWidth, ch: cellHeight })
   }
-  /** One of the modes kept here (1: application cursor keys, 2004: bracketed paste), as of what it parsed last. */
+  /** DEC modes 1, application cursor keys, and 2004, bracketed paste. */
   mode(n: 1 | 2004) { return n === 1 ? this.modes.app : this.modes.paste }
-  /** What it shows once what it was given before is parsed: `lines` from its bottom, or all of it (null). */
   capture(format: CaptureFormat, lines: number | null) { return this.ask<Capture>({ op: "capture", format, lines }) }
-  /** Its screen and history replayable, pictures first (kitty.ts withPictures). */
   snapshot() { return this.ask<string>({ op: "snapshot" }) }
   text(lines: number) { return this.ask<string>({ op: "text", lines }) }
 
-  /** Stuck past HUNG on what it was given: started again blank. */
   check(now = performance.now()) {
     const at = this.waiting[0]?.at
     if (at === undefined || now - at < HUNG) return false

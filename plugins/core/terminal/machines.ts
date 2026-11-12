@@ -1,5 +1,3 @@
-// Another machine's shells (Machines): an id ending in @<machine> is let in here first, then joined to the same
-// socket there, which checks again. A machine that doesn't answer drops the socket, so the tab tries again.
 import type { IncomingMessage } from "node:http"
 import { type RawData, WebSocket } from "ws"
 import { HTTPError, machineSocket, pipeSockets, splitMachine, type Machine } from "../../../core/plugins.ts"
@@ -9,13 +7,10 @@ import { attach, closesTabs, end, endHere, resize, start } from "./start.ts"
 import { type Listed, remotes } from "./list.ts"
 
 const machineOf = (id: string) => plugin.ask<Machine | null>("machines:machine", null, id)
-/** The other machines online that have a terminal. */
 export const terminalMachines = async () => (await plugin.ask<Machine[]>("machines", [])).filter((m) => !m.self && m.online && m.plugins?.includes("terminal"))
 
-/** Joins this socket to `path` on machine `m` (see above). */
 function joinRemote(ws: WebSocket, m: Machine | null, id: string, path: string, query: Record<string, string>) {
   if (!m || !m.online || !m.plugins?.includes("terminal")) {
-    // Never a shell here instead: it's that machine's. Not listed, it won't come; listed, it may (the page tries again).
     if (!m) { ws.send(JSON.stringify({ t: "refused", reason: `this terminal runs on '${id}', which isn't one of this vault's machines` })); return ws.close(REFUSED, "refused") }
     ws.send(JSON.stringify({ t: "unreachable", machine: m.id, label: m.label, reason: !m.online ? "isn't answering" : "has its terminal turned off" }))
     return ws.close(1013, "unavailable")
@@ -27,8 +22,6 @@ function joinRemote(ws: WebSocket, m: Machine | null, id: string, path: string, 
 }
 
 
-/** Another machine's sessions: as followed for the Terminals panel, else asked once (its /api/terminals?local=1's first
- *  list); null when it doesn't answer in time. */
 function sessionsOn(m: Machine, ms = 2500): Promise<Listed[] | null> {
   const r = remotes.get(m.id)
   if (r?.list.length) return Promise.resolve(r.list.map((x) => ({ ...x, id: splitMachine(x.id)[0] })))
@@ -37,7 +30,7 @@ function sessionsOn(m: Machine, ms = 2500): Promise<Listed[] | null> {
     const done = (v: Listed[] | null) => { clearTimeout(timer); sock.terminate(); resolve(v) }
     const timer = setTimeout(() => done(null), ms)
     sock.on("message", (data: RawData) => {
-      try { const msg = JSON.parse(String(data)); if (msg.t === "sessions" && Array.isArray(msg.list)) done(msg.list) } catch { /* not ours */ }
+      try { const msg = JSON.parse(String(data)); if (msg.t === "sessions" && Array.isArray(msg.list)) done(msg.list) } catch {}
     })
     sock.on("error", () => done(null))
     sock.on("close", () => done(null))
@@ -59,7 +52,7 @@ plugin.provide("terminal:locate", locate)
  *  Vaultite's variables and the app's vau first on PATH, so its commands run as they would in a terminal. */
 plugin.provide("terminal:agent-env", (): Record<string, string> => ({ ...env(), ...context(null, LOCAL) }))
 
-export const starting = new Map<string, Promise<{ s: Session; fresh: boolean }>>() // two sockets to a new id get the same shell
+export const starting = new Map<string, Promise<{ s: Session; fresh: boolean }>>()
 
 /** Refuse this socket if its request may not have a shell (in the socket, not before it: a refused upgrade reaches the
  *  page only as "closed", so it would retry forever). True when it may go on. */
@@ -78,14 +71,13 @@ plugin.socket("terminal/*", async (ws, req, { wild, query }) => {
   if (!(await allowed(ws, req))) return
   if (at) {
     const m = await machineOf(at)
-    // Machines turned off (no list to ask): a shell here with this id is the one (it was saved as this machine's).
-    if (!m && !plugin.service("machines:machine") && (await runsHere(id))) { /* here */ }
-    else if (!m?.self) return joinRemote(ws, m, at, `terminal/${encodeURIComponent(id)}`, query)
+    const savedHere = !m && !plugin.service("machines:machine") && (await runsHere(id))
+    if (!savedHere && !m?.self) return joinRemote(ws, m, at, `terminal/${encodeURIComponent(id)}`, query)
   }
   if (query.end) {
     const s = sessions.get(id)
     if (s) end(s)
-    else { const b = await backendOf(id); if (b) await endHere(b, id).catch(() => {}) } // a tab closed while its session had no client here (after a restart)
+    else { const b = await backendOf(id); if (b) await endHere(b, id).catch(() => {}) }
     return ws.close(EXITED, "ended")
   }
   const cols = clamp(query.cols, 2, 1000, 80), rows = clamp(query.rows, 1, 500, 24)
@@ -95,15 +87,11 @@ plugin.socket("terminal/*", async (ws, req, { wild, query }) => {
     resize(s, cols, rows, cell)
     return attach(s, ws, false)
   }
-  // A tab put back asks only to attach: an agent's new session that ended (or was lost) isn't started again, nor
-  // a session ended for good (its tab closes).
   const agent = agentOf(id), ended = closesTabs(id)
   if (query.attach && (ended || (agent && !agent.resume)) && !starting.has(id) && !(await runsHere(id))) {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: "gone", ...(ended ? { ended: true } : {}) }))
     return ws.close(GONE, "gone")
   }
-  // One another plugin's backend held (herdr's pane) is that backend's: while it's away its tab waits for it, never
-  // starting a shell of its own under that id; gone from it, it's gone.
   const owned = ownerOf(id)
   if (owned && !starting.has(id) && !(await runsHere(id))) {
     const b = pluginBackend()
@@ -115,7 +103,6 @@ plugin.socket("terminal/*", async (ws, req, { wild, query }) => {
     return ws.close(1013, "unavailable")
   }
   const first = !starting.has(id)
-  // Through Tailscale Serve (allowed() checked who), or from the iPhone app: the shell may say so.
   if (first) starting.set(id, start(id, cols, rows, fromReq(req), null, query.dark === "1" ? true : query.dark === "0" ? false : null).finally(() => starting.delete(id)))
   starting.get(id)!.then(({ s, fresh }) => { if (ws.readyState !== ws.OPEN) return; if (cell) resize(s, s.link.cols, s.link.rows, cell); attach(s, ws, first && fresh) }, (e) => {
     console.error("terminal:", e)

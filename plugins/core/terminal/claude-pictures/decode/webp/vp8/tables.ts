@@ -330,7 +330,6 @@ export const AC_TABLE = new Uint16Array([
 /** A coefficient's band by its position (13.3), with a 17th entry so the one past the last reads as band 0. */
 export const BANDS = new Uint8Array([0, 1, 2, 3, 6, 4, 5, 6, 6, 6, 6, 6, 6, 6, 6, 7, 0])
 
-/** The raster position of each zigzag-ordered coefficient. */
 export const ZIGZAG = new Uint8Array([0, 1, 4, 8, 5, 2, 3, 6, 9, 12, 13, 10, 7, 11, 14, 15])
 
 /** The extra-bits probabilities of the DCT_CAT3..6 tokens (13.2). */

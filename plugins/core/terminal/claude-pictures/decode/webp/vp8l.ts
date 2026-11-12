@@ -1,8 +1,7 @@
 // WebP's lossless bitstream (VP8L, RFC 9649 section 5), and an ALPH chunk's of method 1 (the same, headerless, its
-// size given, alpha in its green): ours, as the mod worker has no image decoder and kitty takes only PNG or pixels.
+// size given, alpha in its green).
 import { type Limits, need, type Rgba, sized } from "../pixels.ts"
 
-/** A VP8L chunk's pixels; with `implicit`, an ALPH chunk's lossless stream (after its 1-byte header) of that size. */
 export function decodeVp8l(data: Uint8Array, limits: Limits, implicit?: { width: number; height: number }): Rgba {
   const br = new Bits(data)
   let width: number, height: number, opaque = false
@@ -24,14 +23,11 @@ export function decodeVp8l(data: Uint8Array, limits: Limits, implicit?: { width:
   return { width, height, data: out }
 }
 
-// --- the image: transforms around the main entropy-coded image ---
-
 type Transform =
   | { kind: 0 | 1; width: number; bits: number; data: Uint32Array } // predictor, colour transform
   | { kind: 2 } // subtract green
   | { kind: 3; width: number; bits: number; palette: Uint32Array } // colour indexing
 
-/** The ARGB pixels of the main image: its transforms read, its pixels decoded, the transforms undone. */
 function decodeImage(br: Bits, width: number, height: number, limits: Limits): Uint32Array {
   const transforms: Transform[] = []
   let xsize = width, seen = 0
@@ -62,22 +58,16 @@ function decodeImage(br: Bits, width: number, height: number, limits: Limits): U
   return px
 }
 
-/** `size` in blocks of `1 << bits`. */
 const shrink = (size: number, bits: number) => (size + (1 << bits) - 1) >> bits
-
-// --- an entropy-coded image: its colour cache, prefix codes and LZ77-coded pixels ---
 
 const LITERALS = 256, LENGTHS = 24, DISTANCES = 40
 
-/** A `width * height` image stream's ARGB pixels: the main one (`main`, which may have meta prefix codes) or a
- *  transform's or the entropy image's. */
 function decodeStream(br: Bits, width: number, height: number, main: boolean, limits: Limits): Uint32Array {
   let cacheBits = 0
   if (br.read(1)) {
     cacheBits = br.read(4)
     need(cacheBits >= 1 && cacheBits <= 11, `colour cache bits ${cacheBits}`)
   }
-  // (the entropy image: which group of prefix codes each block of pixels uses; only the groups used are kept)
   let metaBits = 0, metaWidth = 0, groupOf: Uint32Array | null = null, groups = 1, kept = 1, keep: Int32Array | null = null
   if (main && br.read(1)) {
     metaBits = br.read(3) + 2
@@ -93,7 +83,7 @@ function decodeStream(br: Bits, width: number, height: number, main: boolean, li
       groupOf[i] = keep[g] * 5
     }
   }
-  const codes = new Codes(Math.max(1 << 16, limits.maxPixels * 4)) // (tables at most 16 bytes a pixel allowed)
+  const codes = new Codes(Math.max(1 << 16, limits.maxPixels * 4))
   const handles = new Int32Array(kept * 5), lengths = new Uint8Array(LITERALS + LENGTHS + 2048)
   const alphabets = [LITERALS + LENGTHS + (cacheBits ? 1 << cacheBits : 0), 256, 256, 256, DISTANCES]
   for (let g = 0; g < groups; g++) {
@@ -102,14 +92,13 @@ function decodeStream(br: Bits, width: number, height: number, main: boolean, li
       const h = readCode(br, codes, alphabets[k], lengths)
       if (slot >= 0) handles[slot * 5 + k] = h
     }
-    if (slot < 0) codes.used = mark // (parsed, not kept)
+    if (slot < 0) codes.used = mark
     need(!br.over(), "cut short")
   }
   return decodePixels(br, width, height, codes.table, handles, cacheBits, metaBits, metaWidth, groupOf)
 }
 
-/** The LZ77-coded pixels, each read with its block's group of five prefix codes (green with lengths and cache codes,
- *  red, blue, alpha, distance). */
+/** Each pixel's five prefix codes: green (with lengths and cache codes), red, blue, alpha, distance. */
 function decodePixels(br: Bits, width: number, height: number, t: Uint32Array, handles: Int32Array, cacheBits: number,
   metaBits: number, metaWidth: number, groupOf: Uint32Array | null): Uint32Array {
   const total = width * height, out = new Uint32Array(total)
@@ -138,7 +127,7 @@ function decodePixels(br: Bits, width: number, height: number, t: Uint32Array, h
       const r = br.symbol(t, handles[g + 1]), b = br.symbol(t, handles[g + 2]), a = br.symbol(t, handles[g + 3])
       px = ((a << 24) | (r << 16) | (s << 8) | b) >>> 0
       if (cache) cache[Math.imul(px, 0x1e35a7bd) >>> shift] = px
-    } else px = cache![s - LITERALS - LENGTHS] // (the alphabet has cache codes only with a cache; it holds px already)
+    } else px = cache![s - LITERALS - LENGTHS]
     out[i++] = px
     if (++x === width) { x = 0; y++; need(!br.over(), "cut short") }
   }
@@ -156,18 +145,14 @@ const PLANE = new Uint8Array([
   0x4f, 0x10, 0x20, 0x62, 0x6e, 0x30, 0x73, 0x7d, 0x51, 0x5f, 0x40, 0x72, 0x7e, 0x61, 0x6f, 0x50, 0x71, 0x7f, 0x60, 0x70,
 ])
 
-/** A distance code as a distance back in pixels, in an image `width` wide (at least 1). */
 function planeDistance(width: number, code: number) {
   if (code > 120) return code - 120
   const p = PLANE[code - 1], dist = (p >> 4) * width + 8 - (p & 15)
   return dist >= 1 ? dist : 1
 }
 
-// --- prefix codes ---
-
 const ORDER = [17, 18, 0, 1, 2, 3, 4, 5, 16, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 
-/** One prefix code of `size` symbols read and built in `codes`: its handle (Codes.add). */
 function readCode(br: Bits, codes: Codes, size: number, lengths: Uint8Array): number {
   lengths.fill(0, 0, size)
   if (br.read(1)) { // (simple: one or two symbols)
@@ -206,12 +191,9 @@ function readCode(br: Bits, codes: Codes, size: number, lengths: Uint8Array): nu
 }
 
 const ROOT = 8, MAX_LENGTH = 15
-/** Space for the largest table one code can make: the root's, and at most one second-level table of at most
- *  `1 << (MAX_LENGTH - ROOT)` per root entry. */
 const MAX_TABLE = (1 << ROOT) + (1 << ROOT) * (1 << (MAX_LENGTH - ROOT))
 
-/** Prefix codes as libwebp's two-level tables in one growing array (a symbol a lookup or two). An entry is
- *  `value << 4 | bits`: a symbol and its length, or in the root, a subtable's offset from it and 8 + its bits. */
+/** Prefix codes as libwebp's two-level tables, in one growing array. */
 class Codes {
   table = new Uint32Array(1 << 12)
   used = 0
@@ -223,8 +205,6 @@ class Codes {
 
   constructor(cap: number) { this.cap = cap }
 
-  /** A code of the `size` symbols with these lengths built: its handle, the table's offset, or for a code of one
-   *  symbol (which takes no bits) `~symbol`. Throws on a code that isn't complete. */
   add(lengths: Uint8Array, size: number): number {
     const { count, offset, sorted, scratch: t } = this
     count.fill(0)
@@ -281,19 +261,17 @@ class Codes {
   }
 }
 
-/** `code` in every `step`-th entry of `t[base .. base + end)`. */
 function replicate(t: Uint32Array, base: number, step: number, end: number, code: number) {
   do { end -= step; t[base + end] = code } while (end > 0)
 }
 
-/** The next code of `len` bits after `key`, bits reversed (codes are read from their first bit, LSB-first). */
+/** Codes are read from their first bit, LSB-first: keys count up bit-reversed. */
 function nextKey(key: number, len: number) {
   let step = 1 << (len - 1)
   while (key & step) step >>= 1
   return step ? (key & (step - 1)) + step : key
 }
 
-/** The bits of a second-level table for the codes from `len` on that share its root entry. */
 function nextTableBits(count: Int32Array, len: number) {
   let left = 1 << (len - ROOT)
   while (len < MAX_LENGTH) {
@@ -305,10 +283,6 @@ function nextTableBits(count: Int32Array, len: number) {
   return len - ROOT
 }
 
-// --- the bits ---
-
-/** The stream's bits, LSB-first. Past its end it reads zeros, and says so (over) once those are used: loops are
- *  bounded by the image's size, and check it then. */
 class Bits {
   private readonly buf: Uint8Array
   private pos = 0
@@ -325,10 +299,8 @@ class Bits {
     }
   }
 
-  /** Whether more bits were used than the stream has. */
   over() { return this.pos * 8 - this.n > this.buf.length * 8 }
 
-  /** The next `n` bits (at most 24) as a number. */
   read(n: number): number {
     if (this.n < n) this.fill()
     const v = this.val & ((1 << n) - 1)
@@ -337,7 +309,6 @@ class Bits {
     return v
   }
 
-  /** The next symbol of the code at `h` in `t` (Codes.add). */
   symbol(t: Uint32Array, h: number): number {
     if (h < 0) return ~h
     if (this.n < MAX_LENGTH) this.fill()
@@ -354,7 +325,6 @@ class Bits {
     return e >>> 4
   }
 
-  /** A length or distance from its prefix symbol and extra bits. */
   prefixed(sym: number): number {
     if (sym < 4) return sym + 1
     const extra = (sym - 2) >> 1
@@ -362,9 +332,6 @@ class Bits {
   }
 }
 
-// --- the transforms, undone ---
-
-/** Each channel of a and b added, mod 256. */
 function addPixels(a: number, b: number) {
   return (((a & 0xff00ff00) + (b & 0xff00ff00)) & 0xff00ff00) | (((a & 0x00ff00ff) + (b & 0x00ff00ff)) & 0x00ff00ff)
 }
@@ -373,7 +340,7 @@ const average = (a: number, b: number) => (((a ^ b) & 0xfefefefe) >>> 1) + (a & 
 const clamp = (v: number) => v < 0 ? 0 : v > 255 ? 255 : v
 
 function select(l: number, t: number, tl: number) {
-  let d = 0 // (how much nearer the prediction L + T - TL is to T than to L, over the channels)
+  let d = 0
   for (let s = 0; s < 32; s += 8) {
     const c = (tl >>> s) & 255
     d += Math.abs(((l >>> s) & 255) - c) - Math.abs(((t >>> s) & 255) - c)
@@ -396,8 +363,6 @@ function addSubtractHalf(a: number, b: number) {
   return px
 }
 
-/** The predictor transform undone in place: each pixel plus its prediction from the pixels decoded before it, by
- *  its block's mode (the first row from the left, the first column from above). */
 function unpredict(d: Uint32Array, width: number, height: number, bits: number, modes: Uint32Array) {
   const mw = shrink(width, bits)
   d[0] = addPixels(d[0], 0xff000000)
@@ -429,7 +394,6 @@ function unpredict(d: Uint32Array, width: number, height: number, bits: number, 
   }
 }
 
-/** The colour transform undone in place: red and blue given back what green (and red, blue) took from them. */
 function uncorrelate(d: Uint32Array, width: number, height: number, bits: number, m: Uint32Array) {
   const mw = shrink(width, bits)
   for (let y = 0, i = 0; y < height; y++) {
@@ -444,7 +408,6 @@ function uncorrelate(d: Uint32Array, width: number, height: number, bits: number
   }
 }
 
-/** Subtract green undone in place. */
 function addGreen(d: Uint32Array) {
   for (let i = 0; i < d.length; i++) {
     const px = d[i], g = (px >>> 8) & 255
@@ -452,8 +415,7 @@ function addGreen(d: Uint32Array) {
   }
 }
 
-/** Colour indexing undone: each index (several to a pixel's green for small palettes) as its colour, an index past
- *  the palette as transparent black. */
+/** An index past the palette is transparent black. */
 function unindex(d: Uint32Array, width: number, height: number, bits: number, palette: Uint32Array): Uint32Array {
   const colors = new Uint32Array(256), packed = shrink(width, bits)
   colors.set(palette.subarray(0, 256))

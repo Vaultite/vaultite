@@ -1,24 +1,15 @@
-// A JPEG frame as its scans fill it in: the components' sample planes, and, progressive, their coefficients till the
-// last scan.
-
-/** One component of the frame (Y, Cb, Cr, K...). */
 export type Component = {
   id: number
-  /** Sampling factors, 1..4. */
   h: number
   v: number
-  /** Which quantization table it names, and that table as it was at its first scan (libjpeg latches it there). */
   tq: number
+  /** As it was at the component's first scan: libjpeg latches it there. */
   quant: Int32Array | null
-  /** Its size in samples (the picture's, scaled by its sampling against the largest), and in the blocks covering
-   *  that: what a scan of it alone walks. An interleaved scan's MCUs at the edges have more, which show nowhere. */
   width: number
   height: number
   blocksW: number
   blocksH: number
-  /** Its samples, `blocksW * 8` a row; a block no scan reached stays mid-grey (as a block of zeros decodes). */
   plane: Uint8Array
-  /** Progressive only: 64 coefficients a block, in natural order, the blocks as in the plane. */
   coefs: Int16Array | null
 }
 

@@ -1,5 +1,3 @@
-// The Terminals panel as a tab (view:terminals): every shell the server runs, the same rows as the sidebar's, with what
-// each is doing and since when, and buttons to open a new terminal or a coding agent (each plugin's that's on).
 import { Plus } from "lucide-react"
 import { openAgent, openTerminal, useAgents, useTick } from "@vaultite"
 import { SessionList, useSessions } from "./SessionsPanel"
@@ -9,7 +7,6 @@ const button = "flex h-7 cursor-pointer items-center gap-1.5 rounded-[6px] bg-fo
 export function TerminalsView() {
   const { list, refused } = useSessions()
   const agents = useAgents()
-  // "started 5 min ago" moves on by itself.
   useTick()
   if (refused) return <p className="text-[15px] text-muted-foreground">This device can't open shells on the server ({refused}).</p>
   return (
@@ -27,7 +24,6 @@ export function TerminalsView() {
           <Plus className="size-3.5" strokeWidth={2.25} />New terminal
         </button>
       </div>
-      {/* The sidebar's rows, a size up (on phones 17px, 44px rows). */}
       <div className="size-up-bleed"><div data-size-up>
         <SessionList />
       </div></div>

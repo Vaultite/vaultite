@@ -1,5 +1,3 @@
-// Kitty graphics on their way from a pty to its terminals: a picture named by a file (t=f, t=t) is read here, where the
-// pty is, and a PNG decoded, so every terminal (this server's, each page's, maybe on another device) gets pixels.
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -7,24 +5,21 @@ import zlib from "node:zlib"
 import type { Picture, Placement, Vt } from "../vt/vt.ts"
 import { decodePng, isPng } from "./png.ts"
 
-/** Bytes of one picture at most: a file read, or pixels decoded (a terminal's whole storage: vt.ts KITTY_STORAGE). */
 export const PICTURE_MAX = 64 << 20
-/** Base64 per chunk of a rewritten picture (a multiple of 4, as the protocol asks). */
+/** The protocol asks for a multiple of 4. */
 const CHUNK = 1 << 16
-/** What runs in front when the program could be on another machine, whose file names aren't this one's. */
 const REMOTE = /^(ssh|mosh-client|et|telnet|docker|podman|kubectl)$/
 
 type Keys = Map<string, string>
-const parseKeys = (s: string): Keys => new Map(s.split(",").filter(Boolean).map((kv) => { const i = kv.indexOf("="); return [kv.slice(0, i), kv.slice(i + 1)] as [string, string] }))
+const parseKeys = (s: string): Keys => new Map(s.split(",").filter(Boolean).map((kv): [string, string] => { const i = kv.indexOf("="); return [kv.slice(0, i), kv.slice(i + 1)] }))
 const keysText = (k: Keys) => [...k].map(([a, b]) => `${a}=${b}`).join(",")
 const apc = (keys: string, payload = "") => `\x1b_G${keys}${payload ? `;${payload}` : ""}\x1b\\`
 
-/** Folders a temporary file (t=t) may be in. */
 const TEMP_DIRS = [...new Set([os.tmpdir(), "/tmp", "/var/tmp"].flatMap((d) => { try { return [fs.realpathSync(d)] } catch { return [] } }))]
 const under = (p: string, dirs: string[]) => dirs.some((d) => p === d || p.startsWith(d + path.sep))
 
-/** A file's bytes as the protocol names it (`temp`: t=t, removed once read), or why not. Regular files only, never a
- *  device's or a FIFO's; a temporary one only in a temp folder, by its own name (no link out of it), as kitty has it. */
+/** As kitty has it: regular files only, never a device's or a FIFO's; a temporary one (t=t, removed once read) only in
+ *  a temp folder, by its own name, no link out of it. */
 export function readPicture(name: string, temp: boolean, offset = 0, size = 0): Buffer | string {
   if (!path.isAbsolute(name)) return "not an absolute path"
   let real: string, st: fs.Stats
@@ -46,32 +41,23 @@ export function readPicture(name: string, temp: boolean, offset = 0, size = 0): 
 }
 
 export type KittyOptions = {
-  /** Output on, in the order it came. */
   emit: (d: string) => void
-  /** The program could be remote (ssh in front): its file names aren't read here. */
   remote: () => boolean
   log?: (...a: unknown[]) => void
 }
 
-/** One terminal's output, its kitty graphics commands rewritten where they need this machine: a picture by file
- *  becomes its bytes (direct, t=d), a PNG its pixels (f=32 or 24, zlib). Anything else goes on as it came. */
 export class KittyFeed {
   private o: KittyOptions
-  /** Inside a command (after ESC _ G): what's held of it, and whether it's being passed on as it comes. */
   private cmd: string | null = null
   private passing = false
-  /** A held ESC (or ESC _) that ended the last piece. */
   private tail = ""
-  /** A picture coming in chunks (m=1) that's rewritten whole: its first chunk's keys and the payload so far. */
   private chunks: { keys: Keys; heads: string[]; payload: string[]; size: number } | null = null
-  /** Its chunks pass on as they come. */
   private chunksPass = false
 
   constructor(o: KittyOptions) { this.o = o }
 
   feed(d: string) {
     if (this.tail) { d = this.tail + d; this.tail = "" }
-    // (the common case: nothing of the protocol in it)
     if (this.cmd === null && !d.includes("\x1b_G")) {
       const t = d.endsWith("\x1b") ? 1 : d.endsWith("\x1b_") ? 2 : 0
       if (t) { this.tail = d.slice(-t); d = d.slice(0, -t) }
@@ -96,7 +82,7 @@ export class KittyFeed {
       const body = d.slice(i, st < 0 ? d.length : st)
       if (this.passing) out += body; else this.cmd += body
       if (st < 0) {
-        // (an ESC at the end may be the start of its terminator)
+        // A pty read can end between the ESC and the backslash of a terminator.
         if (body.endsWith("\x1b")) { if (this.passing) out = out.slice(0, -1); else this.cmd = this.cmd.slice(0, -1); this.tail = "\x1b" }
         if (!this.passing) this.decideEarly()
         if (this.passing && this.cmd) { out += "\x1b_G" + this.cmd; this.cmd = "" }
@@ -110,16 +96,13 @@ export class KittyFeed {
     if (out) this.o.emit(out)
   }
 
-  /** A command still coming whose keys say it needs nothing here passes on as it comes (a long direct picture). */
   private decideEarly() {
     const semi = this.cmd!.indexOf(";")
     if (semi < 0 && this.cmd!.length < 4096) return
     const keys = parseKeys(this.cmd!.slice(0, semi < 0 ? undefined : semi))
-    // (one held past what a picture may be is passed on as it is: what reads it says it's too big)
     if (!this.wanted(keys) || this.cmd!.length > PICTURE_MAX * 1.4) this.passing = true
   }
 
-  /** Whether a command is rewritten here (held whole): a picture by file, or a PNG, or a chunk of one held. */
   private wanted(keys: Keys) {
     if (this.chunks || this.chunksPass) return !this.chunksPass && !!this.chunks
     const t = keys.get("t") ?? "d", f = keys.get("f") ?? "32", a = keys.get("a") ?? "t"
@@ -127,12 +110,10 @@ export class KittyFeed {
     return t === "f" || t === "t" || (t === "d" && f === "100")
   }
 
-  /** A whole command (its keys and payload): what goes on in its place. */
   private command(body: string) {
     const raw = `\x1b_G${body}\x1b\\`
     const semi = body.indexOf(";"), head = semi < 0 ? body : body.slice(0, semi), keys = parseKeys(head), payload = semi < 0 ? "" : body.slice(semi + 1)
     const more = keys.get("m") === "1"
-    // A later chunk of a picture: held, passed, or (the last) the whole picture rewritten.
     if (this.chunks || this.chunksPass) {
       if (this.chunksPass) { if (!more) this.chunksPass = false; return raw }
       const c = this.chunks!
@@ -148,7 +129,6 @@ export class KittyFeed {
     return this.rewrite(keys, payload, raw)
   }
 
-  /** A picture's command with its bytes (or pixels) in it, sent direct; as it came when that can't be. */
   private rewrite(keys: Keys, payload: string, raw: string) {
     const t = keys.get("t") ?? "d"
     let data: Buffer
@@ -175,7 +155,7 @@ export class KittyFeed {
   }
 }
 
-/** A command as chunks (m=1 ... m=0), its keys on the first, `q` on each (no answer to a chunk). */
+/** The protocol takes keys on the first chunk only, and `q` on each, else each chunk is answered. */
 function chunked(keys: Keys, b64: string) {
   if (b64.length <= CHUNK) return apc(keysText(keys), b64)
   const q = keys.get("q"), rest = q ? `,q=${q}` : ""
@@ -184,17 +164,12 @@ function chunked(keys: Keys, b64: string) {
   return s
 }
 
-/** Whether what runs in front of a terminal could be on another machine. */
 export const remoteFront = (name: string) => REMOTE.test(name)
 
-// ---------- a page attaching: its pictures with its screen
-
-/** Bytes of pictures sent to a page that attaches, at most (base64 of their zlib'd pixels), newest first: a phone
- *  attaching shouldn't pull tens of MB. One with more pixels than REPLAY_PIXELS goes smaller. */
 export const REPLAY_MAX = 8 << 20
 const REPLAY_PIXELS = 1 << 20
 
-/** A picture's pixels as kitty takes them (RGB or RGBA: gray widened), at most REPLAY_PIXELS (area-averaged down). */
+/** Kitty takes RGB or RGBA only. */
 function sendable(p: Picture) {
   const ch = p.format === "rgba" ? 4 : p.format === "rgb" ? 3 : p.format === "gray_alpha" ? 2 : 1, out = ch === 2 || ch === 4 ? 4 : 3
   const k = Math.max(1, Math.ceil(Math.sqrt((p.width * p.height) / REPLAY_PIXELS)))
@@ -203,7 +178,6 @@ function sendable(p: Picture) {
   return { ...s, scale: s.width / p.width, format: out * 8 }
 }
 
-/** Pixels of `ch` channels made `k` times smaller each way (area-averaged), as `out` channels (3 or 4: gray widened). */
 function shrink(src: Uint8Array, width: number, height: number, ch: number, out: number, k: number) {
   const w = Math.max(1, Math.floor(width / k)), h = Math.max(1, Math.floor(height / k))
   const data = Buffer.alloc(w * h * out), sum = new Float64Array(4)
@@ -222,23 +196,19 @@ function shrink(src: Uint8Array, width: number, height: number, ch: number, out:
   return { width: w, height: h, data }
 }
 
-/** A cell's size in pixels on the densest screen a picture is drawn for: what a picture placed in cells needs at most. */
 const CELL_PX = { width: 24, height: 48 }
 
-/** How many times smaller a picture shown whole in `c` × `r` cells (a=T, U=1: Claude Code's) can be kept and look the
- *  same: pixels past what its cells show only fill KITTY_STORAGE, whose oldest pictures go (their rows left blank). */
+/** Claude Code shows pictures whole in c × r cells (a=T, U=1). Pixels past what those show only fill Ghostty's image
+ *  storage, whose oldest pictures go (their rows left blank). */
 export function keptScale(keys: Map<string, string>, width: number, height: number) {
   const cols = Number(keys.get("c")) || 0, rows = Number(keys.get("r")) || 0
   if (keys.get("a") !== "T" || keys.get("U") !== "1" || !cols || !rows || ["x", "y", "w", "h"].some((k) => keys.has(k))) return 1
   return Math.max(1, Math.floor(Math.max(width / (cols * CELL_PX.width), height / (rows * CELL_PX.height))))
 }
 
-/** A terminal's snapshot (vt.ts serialize) with its placed pictures sent first, then put back: one in history after
- *  its line is written (the cursor up to it and back), one on the screen at the end; the alternate screen's alone. */
 export function withPictures(t: Vt) {
   const vt = t.serialize(), placements = t.placements()
   if (!placements.length) return vt
-  // (newest first, within REPLAY_MAX)
   const pics = [...new Set(placements.map((p) => p.image))].map((id) => t.picture(id)).filter((p): p is Picture => !!p).sort((a, b) => (a.generation < b.generation ? 1 : -1))
   let sent = 0, head = ""
   const scale = new Map<number, number>()
@@ -277,7 +247,6 @@ export function withPictures(t: Vt) {
     const at = m.index + m[0].length
     return vt.slice(0, at) + head + vt.slice(at) + atEnd(fixed.filter((p) => p.y >= active))
   }
-  // Each row's logical line (soft-wrapped rows are one line of the output), and the last row of each line.
   const from = Math.max(0, t.length - t.rows - t.scrollback), cont = t.continued(from), lineOf: number[] = [], lastRow: number[] = []
   cont.forEach((c, i) => { const l = i === 0 ? 0 : lineOf[i - 1] + (c ? 0 : 1); lineOf.push(l); lastRow[l] = i })
   const lines = vt.split("\r\n"), end: Placement[] = []

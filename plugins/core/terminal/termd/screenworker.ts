@@ -1,5 +1,3 @@
-// One terminal's screen and history (libghostty-vt), in a thread of its own (screen.ts): what the terminal server asks of
-// it, answered in order. Each message is answered with its number, so screen.ts knows what's done and since when one isn't.
 import { parentPort, workerData } from "node:worker_threads"
 import { Vt } from "../vt/vt.ts"
 import { withPictures } from "./kitty.ts"
@@ -17,7 +15,6 @@ function answer(m: In): unknown {
   switch (m.op) {
     case "write":
       try { t.write(m.d) } catch (e) {
-        // (libghostty-vt failed on it: a blank screen from here)
         const was = t
         t = make(was.cols, was.rows, was.scrollback)
         return { failed: String((e as Error)?.message ?? e) }

@@ -4,8 +4,6 @@ import { BitReader, type Huffman } from "./huffman.ts"
 import { type Component, type Frame, NATURAL } from "./frame.ts"
 import { idct } from "./idct.ts"
 
-/** What SOS says of a scan: its components, the tables each codes with (null where the scan needs none), and, in a
- *  progressive frame, its band (`ss..se`) and bit (`ah`: the last scan's, 0 for a first; `al`: this one's). */
 export type Scan = {
   components: Component[]
   dc: (Huffman | null)[]
@@ -16,8 +14,6 @@ export type Scan = {
   al: number
 }
 
-/** Decodes the scan whose data starts at `pos`, every `interval` MCUs a restart (0: none). Where the next marker is
- *  (the bytes' length when none is). */
 export function decodeScan(data: Uint8Array, pos: number, frame: Frame, scan: Scan, interval: number): number {
   const r = new BitReader(data, pos)
   const { components: comps, dc, ac, ss, se, ah, al } = scan
@@ -25,8 +21,7 @@ export function decodeScan(data: Uint8Array, pos: number, frame: Frame, scan: Sc
   const block = new Int16Array(64), spare = new Int16Array(64)
   let eobrun = 0
 
-  // (one block, `ci` the component's place in the scan, at block row `row` and column `col` of the component: those
-  // past its blocks, in an edge MCU, are read and dropped)
+  // (blocks past the component's, in an edge MCU, are read and dropped)
   const sequential = (c: Component, ci: number, row: number, col: number) => {
     const s = r.decode(dc[ci]!)
     preds[ci] += s ? r.extend(s) : 0
@@ -73,7 +68,6 @@ export function decodeScan(data: Uint8Array, pos: number, frame: Frame, scan: Sc
         // (a new coefficient is ±1 at this bit; libjpeg reads any other size as 1, warning)
         if (rs & 15) s = r.getBits(1) ? p1 : m1
         else if (run !== 15) { eobrun = (1 << run) + (run ? r.getBits(run) : 0); break }
-        // (past `run` zero coefficients, each nonzero one met getting its correction bit, to where the new one goes)
         do {
           const z = at + NATURAL[k]
           if (co[z] !== 0) { if (r.getBits(1) && (co[z] & p1) === 0) co[z] += co[z] >= 0 ? p1 : m1 }
@@ -84,7 +78,6 @@ export function decodeScan(data: Uint8Array, pos: number, frame: Frame, scan: Sc
       }
     }
     if (eobrun > 0) {
-      // (the rest of the band is in an end-of-band run: only its nonzero coefficients' correction bits)
       for (; k <= se; k++) {
         const z = at + NATURAL[k]
         if (co[z] !== 0 && r.getBits(1) && (co[z] & p1) === 0) co[z] += co[z] >= 0 ? p1 : m1

@@ -23,7 +23,7 @@ function trueMotion(b: Uint8Array, o: number, size: number) {
   }
 }
 
-/** A 16x16 luma or 8x8 chroma block's prediction (`size` 16 or 8): DC uses only the edges the macroblock has. */
+/** DC uses only the edges the macroblock has. */
 export function predictBlock(b: Uint8Array, o: number, size: number, mode: number, hasTop: boolean, hasLeft: boolean) {
   if (mode === DC) {
     const shift = size === 16 ? 4 : 3
@@ -36,7 +36,6 @@ export function predictBlock(b: Uint8Array, o: number, size: number, mode: numbe
   else for (let y = 0; y < size; y++) b.fill(b[o + y * BPS - 1], o + y * BPS, o + y * BPS + size)
 }
 
-/** A 4x4 subblock's prediction: from the 4 pixels above, the 4 above right, the 4 left and the corner. */
 export function predictSubblock(b: Uint8Array, o: number, mode: number) {
   const t = o - BPS
   const X = b[t - 1], A = b[t], B = b[t + 1], C = b[t + 2], D = b[t + 3], E = b[t + 4], F = b[t + 5], G = b[t + 6], Hh = b[t + 7]
@@ -124,7 +123,6 @@ const mul1 = (a: number) => ((a * 20091) >> 16) + a
 const mul2 = (a: number) => (a * 35468) >> 16
 const tmp = new Int32Array(16)
 
-/** Adds the inverse DCT of the 16 coefficients at `c[k]` to the 4x4 block at `o`. */
 export function inverseDct(c: Int16Array, k: number, b: Uint8Array, o: number) {
   for (let i = 0; i < 4; i++) {
     const i0 = c[k + i], i4 = c[k + 4 + i], i8 = c[k + 8 + i], i12 = c[k + 12 + i]
@@ -140,14 +138,11 @@ export function inverseDct(c: Int16Array, k: number, b: Uint8Array, o: number) {
   }
 }
 
-/** The same when only the DC coefficient isn't zero. */
 export function inverseDc(c: Int16Array, k: number, b: Uint8Array, o: number) {
   const dc = (c[k] + 4) >> 3
   for (let y = 0; y < 4; y++, o += BPS) for (let x = 0; x < 4; x++) b[o + x] = clip8(b[o + x] + dc)
 }
 
-/** The inverse Walsh-Hadamard transform of a 16x16 macroblock's second-order coefficients (`dc`): its subblocks' DC
- *  coefficients, written at `out[16 * n]`. */
 export function inverseWht(dc: Int16Array, out: Int16Array) {
   for (let i = 0; i < 4; i++) {
     const a0 = dc[i] + dc[12 + i], a1 = dc[4 + i] + dc[8 + i], a2 = dc[4 + i] - dc[8 + i], a3 = dc[i] - dc[12 + i]

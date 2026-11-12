@@ -25,7 +25,6 @@ void main() { vec2 p = u_rect.xy + a_unit * u_rect.zw; gl_Position = vec4(p / u_
 const PICTURE_FS = `#version 300 es
 precision mediump float; uniform sampler2D u_pic; in vec2 v_uv; out vec4 o; void main() { o = texture(u_pic, v_uv); }`
 
-/** Instances, grown as needed: rects are x, y, w, h, r, g, b, a; glyphs add the atlas rect. */
 class Batch {
   data: Float32Array
   n = 0
@@ -39,7 +38,6 @@ export class WebglRenderer implements Renderer {
   canvas: HTMLCanvasElement
   private gl: WebGL2RenderingContext
   private rectProg: WebGLProgram; private glyphProg: WebGLProgram; private picProg: WebGLProgram
-  /** Pictures drawn lately as textures, by image id and generation, most recent last (null: too big to be one). */
   private pics = new Map<string, { tex: WebGLTexture | null; w: number; h: number }>()
   private vao: WebGLVertexArrayObject; private unit: WebGLBuffer; private inst: WebGLBuffer
   private tex: WebGLTexture
@@ -112,7 +110,6 @@ export class WebglRenderer implements Renderer {
   draw(f: Frame) {
     const atlas = this.atlas, gen = atlas?.generation
     this.build(f)
-    // (the atlas started again while this frame was laid out: its first glyphs are gone, so it's laid out again)
     if (atlas && atlas.generation !== gen) this.build(f)
     this.flush(f)
   }
@@ -122,7 +119,6 @@ export class WebglRenderer implements Renderer {
     const { w, h } = m, { lw, under, strike } = lines(m)
     for (const b of [this.ground, this.glyphs, this.over, this.top]) b.n = 0
     const sel = f.selection
-    // Marks by row: a cell's ground is its own, the selection's over it, or a match's.
     const marks = new Map<number, Mark[]>()
     for (const k of f.marks) marks.set(k.y, [...(marks.get(k.y) ?? []), k])
     for (let y = 0; y < f.rows.length; y++) {
@@ -131,7 +127,6 @@ export class WebglRenderer implements Renderer {
       const top = y * h, rowMarks = marks.get(y)
       const { text: texts, bg: grounds, flags } = row
       for (let c = 0; c < f.cols; c++) {
-        // (most cells are blank on the terminal's own ground: nothing to draw)
         if (texts[c] === " " && grounds[c] < 0 && !(flags[c] & (F_INVERSE | F_UNDERLINE | F_STRIKE | F_OVERLINE)) && !row.sel && !rowMarks) continue
         let [fg, bg, visible] = colorsOf(f, row, c)
         const fl = row.flags[c], cells = fl & F_WIDE ? 2 : 1
@@ -164,7 +159,6 @@ export class WebglRenderer implements Renderer {
     if (cur && f.rows[cur.y]) {
       const row = f.rows[cur.y], cx = cur.x * w, cy = cur.y * h, cells = row.flags[cur.x] & F_WIDE ? 2 : 1
       if (f.preedit) {
-        // (what the input method composes, over the cursor, underlined)
         let x = cx
         for (const ch of f.preedit) {
           const g = atlas.get(ch, 0, 1, f.fg, f.bg)
@@ -197,7 +191,7 @@ export class WebglRenderer implements Renderer {
     gl.clear(gl.COLOR_BUFFER_BIT)
     gl.bindTexture(gl.TEXTURE_2D, this.tex)
     if (this.generation !== atlas.generation) {
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, atlas.canvas as unknown as TexImageSource)
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, atlas.canvas)
       this.generation = atlas.generation
       this.uploaded = atlas.log.length
     } else if (this.uploaded < atlas.log.length) {
@@ -214,7 +208,6 @@ export class WebglRenderer implements Renderer {
     this.passMixed(this.top)
     this.forget(f)
   }
-  /** A layer's pictures, each its part of a texture on a quad, clipped to the grid. */
   private pictures(f: Frame, layer: number) {
     const gl = this.gl, m = this.m!
     let drew = false
@@ -259,7 +252,6 @@ export class WebglRenderer implements Renderer {
     this.pics.set(key, t)
     return t
   }
-  /** Textures of pictures not in this frame freed, past the few kept for coming back (a scroll). */
   private forget(f: Frame) {
     const keep = new Set(f.pictures.map((d) => `${d.image}:${d.generation}`))
     for (const [k, t] of this.pics) if (this.pics.size > keep.size + 4 && !keep.has(k)) { if (t.tex) this.gl.deleteTexture(t.tex); this.pics.delete(k) }
@@ -267,10 +259,8 @@ export class WebglRenderer implements Renderer {
   private outline(b: Batch, x: number, y: number, w: number, h: number, lw: number, c: number) {
     this.rect(b, x, y, w, lw, c); this.rect(b, x, y + h - lw, w, lw, c); this.rect(b, x, y, lw, h, c); this.rect(b, x + w - lw, y, lw, h, c)
   }
-  /** The top layer holds both kinds (the cursor's block, then its glyph): drawn in order, a run of one kind at a time. */
   private passMixed(b: Batch) {
     if (!b.n) return
-    // (rects were written with stride 12 too: a zero atlas rect marks one)
     let i = 0
     while (i < b.n) {
       const glyph = b.data[i * 12 + 10] > 0

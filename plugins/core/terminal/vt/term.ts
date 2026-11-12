@@ -1,5 +1,3 @@
-// A terminal in a page on libghostty-vt (screen.ts), xterm.js's shape for what Terminal.tsx uses: drawn by WebGL2 or
-// Canvas2D (render/), typed in through [data-term-input]; all bound for the program goes to one `onBytes`.
 import { CanvasRenderer } from "./render/canvas.ts"
 import type { Frame, Mark, Renderer } from "./render/frame.ts"
 import { measure, type Metrics } from "./render/glyphs.ts"
@@ -13,16 +11,13 @@ import { F_LINK, Screen, type Drawn, type Match, type Row } from "./screen.ts"
 export type { Link, LinkProvider } from "./links.ts"
 export type { FindSpec } from "./search.ts"
 
-/** Colours as 0xRRGGBB. */
 export type Theme = {
   foreground: number; background: number; cursor: number; cursorAccent: number
   /** The 16 named colours (black, red... bright white). */
   ansi: number[]
   selection: { color: number; alpha: number }; selectionInactive: { color: number; alpha: number }
   scrollbar: number
-  /** Search: matches, the current one and its border, and their marks in the scrollbar. */
   find: { match: number; active: number; border: number; ruler: number; activeRuler: number }
-  /** No ground drawn: the page shows through (translucent pages). */
   clear: boolean
 }
 export type CursorStyle = "block" | "bar" | "underline"
@@ -30,7 +25,6 @@ export type TermOptions = {
   fontFamily: string; fontSize: number; lineHeight: number
   cursorStyle: CursorStyle; cursorInactiveStyle: CursorStyle | "outline"; cursorBlink: boolean
   scrollback: number; theme: Theme
-  /** A web or OSC 8 link clicked. */
   onLink: (e: MouseEvent, uri: string) => void
   /** A program copying (OSC 52). */
   onCopy: (text: string) => void
@@ -39,15 +33,11 @@ export type TermOptions = {
 type Disposable = { dispose: () => void }
 type Listener<T> = (v: T) => void
 
-/** How long a piece of output is parsed for before the page gets a frame (ms). */
 const SLICE_MS = 8
-/** Output parsed at once at most (bytes). */
 const PIECE = 64 << 10
-/** Room at the right for the scrollbar, CSS px. */
 export const GUTTER = 10
 
 let wasm: WebAssembly.Module | null = null
-/** The compiled module, given by whoever loaded it (index.tsx). */
 export const setModule = (m: WebAssembly.Module) => { wasm = m }
 
 export class Term {
@@ -57,9 +47,7 @@ export class Term {
   element!: HTMLDivElement; textarea!: HTMLTextAreaElement; screenEl!: HTMLDivElement; canvas!: HTMLCanvasElement
   m!: Metrics
   r: Renderer | null = null
-  /** Its last drawn rows, as the renderer has them. */
   view: Row[] = []
-  /** Its pictures as last laid out, and that layout's generation. */
   private pics: Drawn[] = []
   private laidOut = -1n
   focused = false
@@ -73,10 +61,9 @@ export class Term {
   private blinkOn = true
   private blinkTimer = 0
   private lastOffset = -1
-  private handlers = { render: new Set<Listener<void>>(), bytes: new Set<(v: string | Uint8Array, reply: boolean) => void>(), resize: new Set<Listener<{ cols: number; rows: number }>>(), scroll: new Set<Listener<number>>() }
+  private handlers = { render: new Set<Listener<void>>(), bytes: new Set<(v: string | Uint8Array<ArrayBuffer>, reply: boolean) => void>(), resize: new Set<Listener<{ cols: number; rows: number }>>(), scroll: new Set<Listener<number>>() }
   private keyHook: ((e: KeyboardEvent) => boolean) | null = null
   providers = new Set<LinkProvider>()
-  /** The link under the pointer, underlined. */
   hovered: { link: Link; cells: { y: number; x1: number; x2: number }[] } | null = null
   private finding: { spec: FindSpec; matches: Match[]; current: number; max: number; onResults: (r: { index: number; count: number }) => void; timer: number } | null = null
   scrollbarShown = 0
@@ -85,7 +72,6 @@ export class Term {
   private wantGl: boolean
   private glLost = false
   private disposed = false
-  /** Output came while it was parked (out of the page, its tab hidden): drawn at once when it's back. */
   private unseen = false
 
   constructor(o: TermOptions & { cols?: number; rows?: number; webgl: boolean }) {
@@ -97,8 +83,6 @@ export class Term {
     this.s.onClipboard = (t) => o.onCopy(t)
     this.applyTheme()
   }
-
-  // ---------- the page
 
   open(parent: HTMLElement) {
     const root = this.element = document.createElement("div")
@@ -124,7 +108,6 @@ export class Term {
     this.makeRenderer()
     this.wireInput()
     this.off.push(wirePointer(this))
-    // (another display's density: measured again)
     const dpr = () => {
       const q = matchMedia(`(resolution: ${devicePixelRatio}dppx)`)
       const on = () => { this.measure(); this.fit(); dpr() }
@@ -152,7 +135,6 @@ export class Term {
     this.element.dataset.termRenderer = this.r.kind
     this.allRows = true; this.stale = true
   }
-  /** WebGL wanted or not (translucent pages draw with Canvas2D); a lost context stays Canvas2D. */
   setWebgl(on: boolean) {
     if (on === this.wantGl && this.r) return
     this.wantGl = on
@@ -165,7 +147,6 @@ export class Term {
     const ta = this.textarea
     if (ta) { ta.style.lineHeight = `${this.m.cssH}px`; ta.style.fontFamily = this.o.fontFamily; ta.style.fontSize = `${this.o.fontSize}px` }
   }
-  /** Columns and rows for its box (none while it isn't laid out); the canvas fills the box. */
   fit() {
     const el = this.element
     if (!el || !el.clientWidth || !el.clientHeight) return false
@@ -177,7 +158,6 @@ export class Term {
     this.r?.resize(w, h, m)
     if (cols !== this.cols || rows !== this.rows) this.resize(cols, rows)
     this.allRows = true; this.stale = true
-    // (a new size clears the canvas, and one back from parking shows what it missed: drawn at once, never blank or old)
     if (cleared || this.unseen) this.renderNow(); else this.requestRender()
     return true
   }
@@ -190,8 +170,6 @@ export class Term {
     for (const fn of this.handlers.resize) fn({ cols, rows })
     this.requestRender()
   }
-
-  // ---------- options
 
   setFont(family: string, size: number) {
     if (family === this.o.fontFamily && size === this.o.fontSize) return
@@ -210,7 +188,6 @@ export class Term {
     const t = this.o.theme
     this.s.setColors(t.foreground, t.background, t.cursor, t.ansi)
     this.allRows = true
-    // (its ground behind the canvas too: the margin round the grid, and what scripts read)
     const ground = this.element?.querySelector<HTMLElement>("[data-term-ground]")
     if (ground) ground.style.backgroundColor = t.clear ? "transparent" : `#${t.background.toString(16).padStart(6, "0")}`
   }
@@ -220,9 +197,6 @@ export class Term {
   }
   setScrollback(n: number) { this.o.scrollback = n; this.s.setScrollback(n) }
 
-  // ---------- output
-
-  /** Output to parse, in ≤8 ms slices between frames; `cb` once it's parsed. */
   write(data: Uint8Array | string, cb?: () => void) {
     this.queue.push({ data, at: 0, cb })
     if (!this.pumping) this.pump()
@@ -245,7 +219,6 @@ export class Term {
     if (this.finding) this.refind()
     if (this.queue.length) this.pumping = window.setTimeout(this.pump, 0)
   }
-  /** A blank screen; output still queued from before is dropped (a reconnect replays it, or it was the old shell's). */
   reset() {
     this.queue.length = 0
     this.s.reset()
@@ -254,19 +227,13 @@ export class Term {
     this.requestRender()
   }
 
-  // ---------- drawing
-
-  /** A frame soon (`force`: drawn even if the screen didn't change: the cursor, a link, the scrollbar). */
   requestRender(force = false) {
     if (force) this.stale = true
     if (this.frame || this.disposed) return
-    // (parked: no frames woken for a page that can't show it)
     if (this.element && !this.element.isConnected) { this.stale = true; this.unseen = true; return }
     this.frame = requestAnimationFrame(() => { this.frame = 0; this.render() })
   }
-  /** Drawn now, not at the next frame (a picture of it, a new size). */
   renderNow() { cancelAnimationFrame(this.frame); this.frame = 0; this.stale = true; this.render() }
-  /** Its rows read from the terminal, as they are now. */
   private sync() {
     // (synchronized output, mode 2026: what's on screen holds till the program's frame is whole, a second at most)
     if (this.s.mode(2026)) {
@@ -320,7 +287,6 @@ export class Term {
       pictures: this.pics, picture: (id) => this.s.picture(id),
     }
   }
-  /** The scrollbar shows while it scrolls (and a moment after), as macOS's do. */
   showScrollbar() {
     this.scrollbarShown = 0.5
     clearTimeout(this.scrollbarTimer)
@@ -343,26 +309,17 @@ export class Term {
     this.blinkTimer = window.setInterval(() => { this.blinkOn = !this.blinkOn; this.requestRender(true) }, 600)
   }
 
-  // ---------- input
-
-  /** Bytes for the program: typed, pasted, the mouse; `reply`, the terminal's own answer to what it was sent. */
-  onBytes(fn: (v: string | Uint8Array, reply: boolean) => void): Disposable { this.handlers.bytes.add(fn); return { dispose: () => this.handlers.bytes.delete(fn) } }
-  /** After each frame drawn (what sits over the screen follows it: dictation's words). */
+  onBytes(fn: (v: string | Uint8Array<ArrayBuffer>, reply: boolean) => void): Disposable { this.handlers.bytes.add(fn); return { dispose: () => this.handlers.bytes.delete(fn) } }
   onRender(fn: Listener<void>): Disposable { this.handlers.render.add(fn); return { dispose: () => this.handlers.render.delete(fn) } }
   onResize(fn: Listener<{ cols: number; rows: number }>): Disposable { this.handlers.resize.add(fn); return { dispose: () => this.handlers.resize.delete(fn) } }
   onScroll(fn: Listener<number>): Disposable { this.handlers.scroll.add(fn); return { dispose: () => this.handlers.scroll.delete(fn) } }
-  emit(data: string | Uint8Array, reply = false) { if (data.length) for (const fn of this.handlers.bytes) fn(data, reply) }
-  /** Bytes as if typed (the phone's key row); the view goes to the end, as typing does. */
+  emit(data: string | Uint8Array<ArrayBuffer>, reply = false) { if (data.length) for (const fn of this.handlers.bytes) fn(data, reply) }
   input(data: string) { this.toBottom(); this.emit(data) }
-  /** Text pasted: bracketed when the program asked, unsafe control characters dropped. */
   paste(text: string) { this.toBottom(); this.emit(this.s.paste(text.replace(/\r?\n/g, "\r"))) }
-  /** Sees a key before the terminal does: false keeps it from the terminal. */
   attachCustomKeyEventHandler(fn: (e: KeyboardEvent) => boolean) { this.keyHook = fn }
   /** Pastes bracketed (mode 2004). */
   get bracketedPaste() { return this.s.mode(2004) }
-  /** The cursor's cell of the viewport, as it is now (null: scrolled off or hidden). */
   cursor() { if (this.stale) this.sync(); const c = this.s.cursorState(); return c ? { x: c.x, y: c.y } : null }
-  /** A viewport row's text, its first `upTo` columns. */
   rowText(y: number, upTo: number) { const l = this.s.line(y, "VIEWPORT"); if (!l) return ""; let i = 0; while (i < l.at.length && l.at[i] < upTo) i++; return l.text.slice(0, i) }
   /** Cursor keys in application mode (DECCKM). */
   get applicationCursor() { return this.s.mode(1) }
@@ -374,8 +331,8 @@ export class Term {
     const ta = this.textarea
     let typedByKey = false, composedNow = ""
     const on = <K extends keyof HTMLElementEventMap>(el: HTMLElement, type: K, fn: (e: HTMLElementEventMap[K]) => void, opts?: AddEventListenerOptions) => {
-      el.addEventListener(type, fn as EventListener, opts)
-      this.off.push(() => el.removeEventListener(type, fn as EventListener, opts))
+      el.addEventListener(type, fn, opts)
+      this.off.push(() => el.removeEventListener(type, fn, opts))
     }
     on(ta, "keydown", (e) => {
       typedByKey = false
@@ -434,16 +391,11 @@ export class Term {
     on(ta, "blur", () => { this.focused = false; this.emit(this.s.focus(false)); this.blink(); this.requestRender(true) })
   }
 
-  // ---------- selection
-
   hasSelection() { return this.s.hasSelection() && !!this.s.selectionText() }
   getSelection() { return this.s.selectionText() }
   clearSelection() { this.s.clearSelection(); this.requestRender(true) }
   selectAll() { this.s.selectAll(); this.requestRender(true) }
 
-  // ---------- the viewport
-
-  /** Rows above the screen (history), the viewport's top among them and all of history and screen. */
   get viewport() { const b = this.s.scrollbar(); return { y: b.offset, base: Math.max(0, b.total - b.len), length: b.total } }
   scrollLines(n: number) { if (n) { this.s.scroll({ delta: n }); this.showScrollbar() } }
   scrollToBottom() { this.s.scroll("bottom"); this.requestRender(true) }
@@ -467,21 +419,15 @@ export class Term {
     }
     this.scrollLines(n)
   }
-  /** A cell's size in device pixels (the cells a picture covers), as the server's terminal is told it. */
   get cellPixels() { return { cw: this.m?.w ?? 8, ch: this.m?.h ?? 16 } }
-  /** The grid in device pixels, for the mouse encoder. */
   surface() { return { width: this.cols * this.m.w, height: this.rows * this.m.h, cellWidth: this.m.w, cellHeight: this.m.h } }
-  /** A point of the page (client px) as a viewport cell, clamped; and the point in the grid (CSS px). */
   cellAt(clientX: number, clientY: number) {
     const r = this.screenEl.getBoundingClientRect(), px = clientX - r.left, py = clientY - r.top
     const x = Math.min(this.cols - 1, Math.max(0, Math.floor(px / this.m.cssW))), y = Math.min(this.rows - 1, Math.max(0, Math.floor(py / this.m.cssH)))
     return { x, y, px, py, inside: px >= 0 && py >= 0 && px < this.cols * this.m.cssW && py < this.rows * this.m.cssH }
   }
 
-  // ---------- links
-
   registerLinkProvider(p: LinkProvider): Disposable { this.providers.add(p); return { dispose: () => this.providers.delete(p) } }
-  /** The link at a viewport cell: OSC 8, then the providers', then a web address. */
   linkAt(x: number, vy: number): { link: Link; cells: { y: number; x1: number; x2: number }[] } | null {
     const top = this.s.scrollbar().offset, y = top + vy, row = this.view[vy]
     if (row) {
@@ -505,10 +451,6 @@ export class Term {
     return { link: hit, cells }
   }
 
-  // ---------- find
-
-  /** Finds `spec` in its history and screen: `by` 0 looks again from the current match (else the newest), 1 the next one
-   *  down, -1 up. The results go to `onResults`. */
   find(spec: FindSpec, by: 0 | 1 | -1, max: number, onResults: (r: { index: number; count: number }) => void) {
     const was = this.finding
     const same = was && was.spec.text === spec.text && was.spec.caseSensitive === spec.caseSensitive && was.spec.wholeWord === spec.wholeWord && was.spec.regexp === spec.regexp
@@ -525,7 +467,6 @@ export class Term {
     onResults({ index: current, count: matches.length })
     this.requestRender(true)
   }
-  /** The terminal changed while finding: its matches again, soon. */
   private refind() {
     const f = this.finding!
     if (f.timer) return
@@ -553,15 +494,11 @@ export class Term {
     this.requestRender(true)
   }
 
-  // ---------- for scripts and the app
-
-  /** What it shows as text (`all`: its whole history too). */
   text(all = false) {
     if (all) return this.s.textFrom(0, false)
     if (this.stale) this.sync()
     return this.view.map((r) => r.text.join("").trimEnd()).join("\n")
   }
-  /** What it shows, drawn now into a new canvas (a closing pane's fade, a dragged card). */
   picture() {
     if (!this.canvas?.width) return null
     this.renderNow()

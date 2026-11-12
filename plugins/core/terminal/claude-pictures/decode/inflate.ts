@@ -1,14 +1,11 @@
 // zlib's inflate (RFC 1950 around RFC 1951's DEFLATE), for PNG: the mod's worker has no zlib of its own.
 import { need } from "./pixels.ts"
 
-/** A zlib stream's bytes, at most `max` of them (a stream that says more is refused). */
 export function inflateZlib(b: Uint8Array, max: number): Uint8Array {
   need(b.length >= 2 && (b[0] & 0x0f) === 8 && ((b[0] << 8) | b[1]) % 31 === 0 && !(b[1] & 0x20), "not a zlib stream")
   return inflate(b.subarray(2), max)
 }
 
-/** A prefix code as one table read by its longest code's bits (DEFLATE's codes come bit-reversed, LSB first): each
- *  entry its symbol << 4 | its length (0: no code there). */
 type Code = { table: Int32Array; bits: number }
 
 function code(lengths: Uint8Array, n: number): Code {
@@ -25,6 +22,7 @@ function code(lengths: Uint8Array, n: number): Code {
     const len = lengths[i]
     if (!len) continue
     let c = next[len]++, r = 0
+    // DEFLATE's codes come bit-reversed, LSB first.
     for (let k = 0; k < len; k++) { r = (r << 1) | (c & 1); c >>= 1 }
     for (let j = r; j < table.length; j += 1 << len) table[j] = (i << 4) | len
   }
@@ -37,14 +35,12 @@ const DIST_BASE = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 25
 const DIST_EXTRA = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13]
 const ORDER = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]
 
-/** The fixed codes of a type-1 block. */
 const FIXED = (() => {
   const l = new Uint8Array(288)
   l.fill(8, 0, 144); l.fill(9, 144, 256); l.fill(7, 256, 280); l.fill(8, 280, 288)
   return { lit: code(l, 288), dist: code(new Uint8Array(30).fill(5), 30) }
 })()
 
-/** Raw DEFLATE's bytes, at most `max`: stored, fixed and dynamic blocks. Throws on a stream cut short or wrong. */
 export function inflate(b: Uint8Array, max: number): Uint8Array {
   let out = new Uint8Array(Math.min(max, Math.max(1024, b.length * 4))), o = 0
   let at = 0, bits = 0, held = 0

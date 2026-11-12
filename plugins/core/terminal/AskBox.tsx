@@ -1,31 +1,23 @@
-// The Ask box (terminal:ask): a question for a coding agent in a new background terminal (terminal.ask), with the files
-// pasted or dropped in, then a toast with Open. Where (agent, account, machine): picked under the field, kept per workspace.
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react"
 import { ArrowUp, ChevronDown, FileText, Server, X } from "lucide-react"
 import { accountsOf, agentsOn, cell, cn, defaultPlaceOf, getStore, isViewOpen, keyHint, notify, notifyError, op, openMenu, openView, otherMachines, PaletteFrame,
   pastedFiles, resolvePlace, saveAttachments, useAgents, useDefaultPlace, useMachines, useScopedState, type Agent, type AgentAccount, type MenuItem } from "@vaultite"
 
 const shown = cell(false)
-/** Open the Ask box (its field focused, so dictation types into it). */
 export const openAsk = () => shown.set(true)
 
-/** Where asks go when the user has picked it in the box (per workspace); what's left out is the workspace's default. */
 type AskPlace = { agent?: string; profile?: string; machine?: string }
 const NONE: AskPlace = {}
 
-/** The agent asks go to: the one picked, else Claude Code, else the first that's on. */
 const agentOf = (list: Agent[], name?: string) => list.find((a) => a.name === name) ?? list.find((a) => a.name === "claude") ?? list[0] ?? null
 const speaker = (a: Agent | null) => a?.speaker ?? a?.label ?? "an agent"
 
-// The unsent question, kept on this device until it's asked: clicking off the box or Esc closes it, not loses it.
 const DRAFT = "vaultite.ask"
 const draftOf = () => { try { return localStorage.getItem(DRAFT) ?? "" } catch { return "" } }
 function keepDraft(text: string) {
   try { if (text.trim()) localStorage.setItem(DRAFT, text); else localStorage.removeItem(DRAFT) } catch { /* private mode, full */ }
 }
 
-/** A file pasted or dropped in, kept with the draft until it's asked (in memory: a reload lets go of it); `path` once
- *  saved, so asking again after a failure doesn't save it twice. */
 type Attached = { id: number; file: File; url?: string; path?: string }
 const attached = cell<Attached[]>([])
 let nextId = 0
@@ -49,19 +41,16 @@ function Box({ close }: { close: () => void }) {
   const machine = saved.machine ?? fallback.machine
   const profile = saved.profile ?? fallback.profile
   const others = otherMachines(machines, "terminal")
-  // The ones that could run it but are away: listed, greyed, so the chip and its choices don't come and go with them.
   const away = (machines ?? []).filter((m) => !m.self && !m.online && !m.readOnly && (!m.plugins?.length || m.plugins.includes("terminal")))
   const machineLabel = (machine ? machines?.find((m) => m.id === machine)?.label ?? machine : machines?.find((m) => m.self)?.label) ?? "This machine"
   const accounts = useAccounts(agent, machine)
   const account = accounts.length > 1 ? accounts.find((x) => x.id === profile) ?? accounts[0] : null
 
-  // At the end of a kept draft, so what's typed or dictated next follows it.
   useLayoutEffect(() => {
     const f = field.current
     f?.focus({ preventScroll: true })
     f?.setSelectionRange(f.value.length, f.value.length)
   }, [])
-  // The field grows with what's typed (or dictated), up to a third of the screen, then scrolls.
   useLayoutEffect(() => {
     const f = field.current
     if (!f) return
@@ -74,7 +63,6 @@ function Box({ close }: { close: () => void }) {
     if (!prompt || sending || !agent) return
     setSending(true)
     try {
-      // (saved first, where pasted files go: on another machine the ask waits for its copies)
       const unsaved = files.filter((x) => !x.path), s = getStore()
       if (unsaved.length) {
         if (!s) throw new Error("The vault isn't loaded yet")
@@ -82,8 +70,6 @@ function Box({ close }: { close: () => void }) {
         unsaved.forEach((x, i) => { x.path = paths[i] })
       }
       const given = files.map((x) => x.path!)
-      // Nothing picked here: the workspace's default, which gives way to this machine when that one's away.
-      // A machine picked here that's away now: this one, said in the toast.
       const at = saved.machine === undefined ? await resolvePlace(agent.name, { profile: saved.profile })
         : machine && away.some((m) => m.id === machine) ? { machine: "", profile, instead: `${machineLabel} is offline` } : { machine, profile, instead: "" }
       const r = await op<{ id: string; title: string }>("terminal.ask", { prompt, agent: agent.name, ...(at.profile ? { account: at.profile } : {}),
@@ -121,9 +107,8 @@ function Box({ close }: { close: () => void }) {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send() }
   }
 
-  /** A menu under the chip clicked, built once what it lists is known; picking in it gives the field the keyboard back. */
   const menuUnder = async (e: MouseEvent, build: () => Promise<MenuItem[]> | MenuItem[]) => {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const r = e.currentTarget.getBoundingClientRect()
     const items = (await build()).map((it) => ({ ...it, run: () => { it.run(); setTimeout(() => field.current?.focus(), 0) } }))
     openMenu({ x: r.left, y: r.bottom + 4, flip: r.top - 4 }, items)
   }
@@ -143,7 +128,7 @@ function Box({ close }: { close: () => void }) {
   const Icon = agent?.icon
   return (
     <PaletteFrame label="Ask an agent" onClose={close}>
-      <div data-ask-box onDragOver={onDragOver} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false) }} onDrop={onDrop}
+      <div data-ask-box onDragOver={onDragOver} onDragLeave={(e) => { if (!(e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget))) setOver(false) }} onDrop={onDrop}
         className={cn("flex flex-col", over && "bg-primary/[0.06] ring-1 ring-primary ring-inset")}>
         {files.length > 0 && (
           <div data-ask-files className={cn("flex flex-wrap gap-2 px-4 pt-4", sending && "opacity-60")}>
@@ -178,7 +163,6 @@ function Box({ close }: { close: () => void }) {
   )
 }
 
-/** A file going with the question: an image's thumbnail, else its name; its x takes it off. */
 function Thumb({ item, remove }: { item: Attached; remove?: () => void }) {
   const name = item.file.name || "Pasted image"
   return (
@@ -201,7 +185,6 @@ function Thumb({ item, remove }: { item: Attached; remove?: () => void }) {
   )
 }
 
-/** A picker in the row under the field, like a model picker: what's chosen, a menu of the others. */
 function Chip({ onClick, label, children }: { onClick: (e: MouseEvent) => void; label: string; children: ReactNode }) {
   return (
     <button type="button" aria-label={label} aria-haspopup="menu" onClick={onClick}
@@ -212,7 +195,6 @@ function Chip({ onClick, label, children }: { onClick: (e: MouseEvent) => void; 
   )
 }
 
-/** Agent `a`'s accounts on `machine` when it has several (else none), for the chip's label. */
 function useAccounts(a: Agent | null, machine: string) {
   const [list, setList] = useState<AgentAccount[]>([])
   useEffect(() => {

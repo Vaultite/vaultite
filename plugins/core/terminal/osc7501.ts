@@ -1,21 +1,18 @@
 // OSC 7501, the Program Status Protocol (rev 0.4): a program says it's idle, working, blocked on the user, done or failed,
-// and why. Read where a pty is held (the keeper loads this too: no imports); everything in a report is untrusted.
+// and why. Everything in a report is untrusted.
 
 export type SessionState = "idle" | "working" | "blocked" | "done" | "error"
 export type Kind = "permission" | "question" | "auth"
 /** One report, checked: `id` "" is the root record. */
 export type Report = { state: SessionState | "clear"; id: string; kind?: Kind; progress?: number; app?: string; title?: string; msg?: string }
-/** What a terminal's records say together (`state` below). */
 export type Status = { state: SessionState; kind?: Kind; msg?: string; app?: string }
-/** What a shell's holder tells the server: `seen`, its program speaks the protocol (it probed or reported; its
- *  records may be cleared since). */
 export type Said = { seen: boolean; status: Status | null }
 
 /** The answer to `OSC 7501 ; ?`: unlike the probe, so a pty that echoes it back doesn't make it a new probe. */
 export const REPLY = "\x1b]7501;?:states=idle,working,done,blocked,error:kinds=permission,question,auth\x1b\\"
 
-const STATES = new Set(["idle", "working", "blocked", "done", "error", "clear"])
-const KINDS = new Set(["permission", "question", "auth"])
+const STATES = ["idle", "working", "blocked", "done", "error", "clear"] as const
+const KINDS = ["permission", "question", "auth"] as const
 const MAX_SEQUENCE = 4096 // OSC through ST
 const MAX_BODY = MAX_SEQUENCE - "\x1b]7501;".length - 1
 const MAX_RECORDS = 256
@@ -27,7 +24,6 @@ const SEGMENT = /^[A-Za-z0-9_.+-]{1,32}$/
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/
 const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}(?:==)?|[A-Za-z0-9+/]{3}=?)?$/
 
-/** A base64 value as one line of UTF-8, or null (too long, not base64, not UTF-8, a control character). */
 function text(v: string, maxEnc: number, maxDec: number): string | null {
   if (v.length > maxEnc || !BASE64.test(v)) return null
   const bytes = Buffer.from(v, "base64")
@@ -51,9 +47,9 @@ export function parse(body: string): Report | "probe" | null {
     if (!k || k.length > 16 || !KEY.test(k) || !VALUE.test(v)) continue
     pairs.set(k, v)
   }
-  const state = pairs.get("state")
-  if (!state || !STATES.has(state)) return null
-  const r: Report = { state: state as Report["state"], id: "" }
+  const state = STATES.find((s) => s === pairs.get("state"))
+  if (!state) return null
+  const r: Report = { state, id: "" }
   const id = pairs.get("id")
   if (id !== undefined) {
     if (!validId(id)) return null
@@ -66,8 +62,8 @@ export function parse(body: string): Report | "probe" | null {
     if (t === null) return null
     r[k] = t
   }
-  const kind = pairs.get("kind")
-  if (state === "blocked" && kind && KINDS.has(kind)) r.kind = kind as Kind
+  const kind = KINDS.find((k) => k === pairs.get("kind"))
+  if (state === "blocked" && kind) r.kind = kind
   const progress = pairs.get("progress")
   if ((state === "working" || state === "blocked") && progress && /^\d{1,3}$/.test(progress) && Number(progress) <= 100) r.progress = Number(progress)
   const app = pairs.get("app")
@@ -81,23 +77,21 @@ export type Seen = { t: "probe" } | { t: "report"; r: Report } | { t: "prompt" }
 const ESC = "\x1b", BEL = "\x07"
 const Mode = { Text: 0, Esc: 1, Number: 2, Body: 3, BodyEsc: 4 } as const
 
-/** Finds OSC 7501 (and what ends its records) in a program's output, chunk by chunk, and takes it out of what's passed
- *  on. A sequence whose start went out with an earlier chunk goes on whole (a terminal ignores it): nothing is held back. */
 export class Scanner {
   private mode: number = Mode.Text
   private num = ""
   private body = ""
-  private over = false // the body passed MAX_BODY: discarded
-  private extra = 0 // its characters past that
+  private over = false
+  private extra = 0
   private osc: "7501" | "133" | "other" = "other"
-  private passing = false // this sequence's start was passed on: it goes on whole
+  private passing = false
 
   feed(d: string): { out: string; seen: Seen[] } {
     const seen: Seen[] = []
     let out = ""
-    let from = this.mode === Mode.Body || this.mode === Mode.BodyEsc ? (this.passing || this.osc !== "7501" ? 0 : -1) : 0 // -1: taking it out
-    let start = -1 // where the sequence being read began in this chunk
-    const end = (i: number) => { // the sequence ended at i: what follows goes on again
+    let from = this.mode === Mode.Body || this.mode === Mode.BodyEsc ? (this.passing || this.osc !== "7501" ? 0 : -1) : 0
+    let start = -1
+    const end = (i: number) => {
       if (from < 0) from = i + 1
       this.mode = Mode.Text
     }
@@ -105,7 +99,6 @@ export class Scanner {
       const c = d[i]
       switch (this.mode) {
         case Mode.Text: {
-          // (straight to the next ESC: a flood of plain text costs one indexOf, not a step per character)
           const at = c === ESC ? i : d.indexOf(ESC, i)
           if (at < 0) { i = d.length; break }
           i = at; this.mode = Mode.Esc; start = i; this.passing = false
@@ -123,7 +116,6 @@ export class Scanner {
             this.osc = this.num === "7501" ? "7501" : this.num === "133" ? "133" : "other"
             this.mode = Mode.Body; this.body = ""; this.over = false; this.extra = 0
             if (this.osc === "7501" && !this.passing && start >= 0) {
-              // (its start is in this chunk: everything before it goes on, it doesn't)
               out += d.slice(from, start)
               from = -1
             }
@@ -135,11 +127,9 @@ export class Scanner {
           if (c === BEL) { this.finish(seen); end(i) }
           else if (c === ESC) this.mode = Mode.BodyEsc
           else if (c === "\x18" || c === "\x1a") end(i) // CAN, SUB: cancelled
-          else if (this.osc === "other") { /* not ours */ }
-          else if (this.body.length < (this.osc === "133" ? 4 : MAX_BODY)) this.body += c
+          else if (this.osc !== "other" && this.body.length < (this.osc === "133" ? 4 : MAX_BODY)) this.body += c
           else if (this.osc === "7501") {
             this.over = true
-            // Never ended: it stops being taken out, and its rest is the program's text.
             if (++this.extra > MAX_SEQUENCE) { if (from < 0) from = i; this.mode = Mode.Text }
           }
           break
@@ -155,7 +145,6 @@ export class Scanner {
       }
     }
     if (from >= 0) out += d.slice(from)
-    // A sequence still open went on as far as it came: the rest of it does too (one being taken out goes on being).
     if (this.mode !== Mode.Text && from >= 0) this.passing = true
     return { out, seen }
   }
@@ -172,14 +161,11 @@ export class Scanner {
 
 type Record = Omit<Report, "id" | "state"> & { state: SessionState; at: number }
 
-/** A terminal's records (one per id, each the last report that named it), and what they say together. */
 export class Records {
   private map = new Map<string, Record>()
   private tick = 0
-  /** The program has probed or reported: it speaks the protocol. */
   seen = false
 
-  /** Applies what a stream said; true when the records changed. */
   take(x: Seen): boolean {
     if (x.t === "report") return this.report(x.r)
     if (x.t === "prompt") return this.drop()
@@ -203,7 +189,7 @@ export class Records {
       this.map.delete(oldest)
     }
     this.map.delete(r.id) // (Map order: newest last)
-    this.map.set(r.id, { ...rest, state: r.state as SessionState, at: ++this.tick })
+    this.map.set(r.id, { ...rest, state: r.state, at: ++this.tick })
     return true
   }
 
@@ -214,7 +200,6 @@ export class Records {
     return changed
   }
 
-  /** A record's app, or its nearest ancestor's. */
   private appOf(id: string): string | undefined {
     for (let k = id; ; k = k.includes("/") ? k.slice(0, k.lastIndexOf("/")) : "") {
       const app = this.map.get(k)?.app

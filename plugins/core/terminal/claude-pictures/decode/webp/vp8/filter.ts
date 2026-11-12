@@ -3,10 +3,9 @@
 
 const abs = (v: number) => (v < 0 ? -v : v)
 const clip8 = (v: number) => (v < 0 ? 0 : v > 255 ? 255 : v)
-const sclip1 = (v: number) => (v < -128 ? -128 : v > 127 ? 127 : v) // (to a signed byte)
+const sclip1 = (v: number) => (v < -128 ? -128 : v > 127 ? 127 : v)
 const sclip2 = (v: number) => (v < -16 ? -16 : v > 15 ? 15 : v)
 
-/** The common adjustment, of the 2 pixels nearest the edge (simple filter, and high edge variance). */
 function filter2(p: Uint8Array, i: number, step: number) {
   const p1 = p[i - 2 * step], p0 = p[i - step], q0 = p[i], q1 = p[i + step]
   const a = 3 * (q0 - p0) + sclip1(p1 - q1)
@@ -15,7 +14,6 @@ function filter2(p: Uint8Array, i: number, step: number) {
   p[i] = clip8(q0 - a1)
 }
 
-/** A subblock edge's: 4 pixels. */
 function filter4(p: Uint8Array, i: number, step: number) {
   const p1 = p[i - 2 * step], p0 = p[i - step], q0 = p[i], q1 = p[i + step]
   const a = 3 * (q0 - p0)
@@ -26,7 +24,6 @@ function filter4(p: Uint8Array, i: number, step: number) {
   p[i + step] = clip8(q1 - a3)
 }
 
-/** A macroblock edge's: 6 pixels. */
 function filter6(p: Uint8Array, i: number, step: number) {
   const p2 = p[i - 3 * step], p1 = p[i - 2 * step], p0 = p[i - step], q0 = p[i], q1 = p[i + step], q2 = p[i + 2 * step]
   const a = sclip1(3 * (q0 - p0) + sclip1(p1 - q1))
@@ -41,7 +38,6 @@ function filter6(p: Uint8Array, i: number, step: number) {
 
 const edgeSmall = (p: Uint8Array, i: number, step: number, t: number) => 4 * abs(p[i - step] - p[i]) + abs(p[i - 2 * step] - p[i + step]) <= t
 
-/** Whether an edge's step is small enough to be the codec's, and its interior smooth enough (`it`), to filter. */
 function smooth(p: Uint8Array, i: number, step: number, t: number, it: number) {
   const p3 = p[i - 4 * step], p2 = p[i - 3 * step], p1 = p[i - 2 * step], p0 = p[i - step]
   const q0 = p[i], q1 = p[i + step], q2 = p[i + 2 * step], q3 = p[i + 3 * step]
@@ -51,13 +47,11 @@ function smooth(p: Uint8Array, i: number, step: number, t: number, it: number) {
 
 const highVariance = (p: Uint8Array, i: number, step: number, t: number) => abs(p[i - 2 * step] - p[i - step]) > t || abs(p[i + step] - p[i]) > t
 
-/** The simple filter along `n` pixels of an edge. */
 export function simpleEdge(p: Uint8Array, i: number, step: number, stride: number, n: number, limit: number) {
   const t = 2 * limit + 1
   for (let k = 0; k < n; k++, i += stride) if (edgeSmall(p, i, step, t)) filter2(p, i, step)
 }
 
-/** The normal filter along `n` pixels of a macroblock edge (`mb`) or a subblock one. */
 export function normalEdge(p: Uint8Array, i: number, step: number, stride: number, n: number, limit: number, interior: number, hev: number, mb: boolean) {
   const t = 2 * limit + 1
   for (let k = 0; k < n; k++, i += stride) {
@@ -68,8 +62,7 @@ export function normalEdge(p: Uint8Array, i: number, step: number, stride: numbe
   }
 }
 
-/** A macroblock's loop filtering in place, as libwebp orders it: its left edge, its inner vertical edges, its top edge,
- *  its inner horizontal ones. Luma at `y` (`ys` a row), chroma at `u`/`v` (`uvs`), or null for the simple filter. */
+/** In libwebp's order: the left edge, inner vertical edges, top edge, inner horizontal ones. */
 export function filterMacroblock(
   Y: Uint8Array, y: number, ys: number, U: Uint8Array | null, V: Uint8Array | null, uv: number, uvs: number,
   left: boolean, top: boolean, inner: boolean, limit: number, interior: number, hev: number,

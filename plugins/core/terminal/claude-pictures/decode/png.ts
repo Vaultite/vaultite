@@ -1,12 +1,8 @@
-// A PNG's pixels, in the mod's worker (termd's own png.ts decodes the ones other programs send, with Node's zlib):
-// every colour type and bit depth, palettes and tRNS, Adam7 interlacing.
 import { inflateZlib } from "./inflate.ts"
 import { type Limits, need, type Rgba, sized } from "./pixels.ts"
 
-/** Whether `b` starts as a PNG does. */
 export const isPng = (b: Uint8Array) => b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 && b[4] === 0x0d && b[5] === 0x0a && b[6] === 0x1a && b[7] === 0x0a
 
-/** Its pixels. Throws when it isn't a PNG this reads. */
 export function decodePng(b: Uint8Array, limits: Limits): Rgba {
   need(isPng(b), "not a PNG")
   let at = 8, width = 0, height = 0, depth = 0, type = 0, interlace = 0, idatBytes = 0
@@ -22,7 +18,7 @@ export function decodePng(b: Uint8Array, limits: Limits): Rgba {
     else if (kind === "IDAT") { idat.push(body); idatBytes += body.length }
     else if (kind === "IEND") break
   }
-  const samples = ({ 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 } as Record<number, number>)[type]
+  const samples = SAMPLES[type] ?? 0
   need(samples && [1, 2, 4, 8, 16].includes(depth) && (type === 3 ? depth <= 8 && palette : type === 0 || depth >= 8), "bad header")
   sized(width, height, limits)
   const passes = interlace ? [[0, 0, 8, 8], [4, 0, 8, 8], [0, 4, 4, 8], [2, 0, 4, 4], [0, 2, 2, 4], [1, 0, 2, 2], [0, 1, 1, 2]] : [[0, 0, 1, 1]]
@@ -55,7 +51,7 @@ export function decodePng(b: Uint8Array, limits: Limits): Rgba {
   }
   return { width, height, data: out }
 
-  /** Pixel `x` of a line, as 8-bit RGBA at `o` (a colour key in tRNS compares samples at full depth). */
+  // A tRNS colour key compares samples at full bit depth.
   function put(o: number, line: Uint8Array, x: number) {
     const sample = (i: number) => {
       const k = x * samples + i
@@ -84,6 +80,7 @@ export function decodePng(b: Uint8Array, limits: Limits): Rgba {
 }
 
 const be32 = (a: Uint8Array, o: number) => ((a[o] << 24) | (a[o + 1] << 16) | (a[o + 2] << 8) | a[o + 3]) >>> 0
+const SAMPLES: Partial<Record<number, number>> = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }
 
 function unfilter(filter: number, line: Uint8Array, prev: Uint8Array, bpp: number) {
   const n = line.length

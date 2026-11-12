@@ -283,7 +283,7 @@ export default async ($: VaultTest) => {
     // Vaultite's vau first on PATH after the user's startup files put another vau first (as Homebrew's shellenv does),
     // then QA's stand-in agents (VAULTITE_AGENT_BIN) before the user's own.
     const { execFileSync } = await import("node:child_process")
-    const { SHELL_DIR, shellArgs, shellFiles } = await import("../../../plugins/core/terminal/backend.ts")
+    const { SHELL_DIR, shellArgs, shellFiles } = await import("../../../plugins/core/terminal/launch.ts")
     shellFiles()
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "vau-shell-")), ours = path.join(home, "ours"), other = path.join(home, "other"), agents = path.join(home, "agents")
     for (const d of [ours, other, agents]) { fs.mkdirSync(d); for (const f of ["vau", "claude"]) if (d !== ours || f === "vau") fs.writeFileSync(path.join(d, f), "#!/bin/sh\n", { mode: 0o755 }) }

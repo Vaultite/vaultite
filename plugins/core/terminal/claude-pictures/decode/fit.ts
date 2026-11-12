@@ -1,13 +1,9 @@
-// A picture made smaller for the cells it's drawn in: what a terminal can't show is only bytes to carry and keep.
 import type { Rgba } from "./pixels.ts"
 
-/** `px` within `maxWidth` × `maxHeight` and `maxPixels`, its shape kept: area-averaged down (each pixel weighted by
- *  its alpha, so clear ones don't darken their neighbours' edges), or `px` itself when it fits. */
 export function fit(px: Rgba, maxWidth: number, maxHeight: number, maxPixels: number): Rgba {
   const k = Math.max(1, px.width / maxWidth, px.height / maxHeight, Math.sqrt((px.width * px.height) / maxPixels))
   if (k === 1) return px
   const width = Math.max(1, Math.floor(px.width / k)), height = Math.max(1, Math.floor(px.height / k))
-  // (two passes: rows narrowed, then columns shortened; premultiplied in floats between them)
   const across = spans(px.width, width), down = spans(px.height, height)
   const mid = new Float32Array(width * px.height * 4)
   for (let y = 0; y < px.height; y++) {
@@ -37,8 +33,6 @@ export function fit(px: Rgba, maxWidth: number, maxHeight: number, maxPixels: nu
   return { width, height, data }
 }
 
-/** For each of `to` pixels along a line of `from`: the source pixels it covers (from `start`), and how much of each
- *  (weights summing to 1), all of them flat in `weight` (pixel n's are from[n] to from[n + 1]). */
 function spans(from: number, to: number) {
   const scale = from / to, start = new Int32Array(to), offsets = new Int32Array(to + 1), weights: number[] = []
   for (let n = 0; n < to; n++) {

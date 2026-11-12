@@ -1,6 +1,3 @@
-// A terminal's screen and history, kept by libghostty-vt (Ghostty's terminal as WebAssembly, ghostty-vt.wasm: its
-// version in PROVENANCE.md). No Node here: the server loads the module (load.ts), a page can too.
-
 type Exports = Record<string, (...a: number[]) => number> & { memory: WebAssembly.Memory; __indirect_function_table: WebAssembly.Table }
 type TypeInfo = { kind: string; values?: Record<string, number> }
 
@@ -17,7 +14,6 @@ function asXterm(reply: string) {
 const enc = new TextEncoder(), dec = new TextDecoder()
 /** About the rows a page of history holds at most: kept beyond a scrollback, as history goes by the page. */
 const PAGE_ROWS = 1024
-/** Pieces of output written at most this long (UTF-16 units), so the buffer it's copied into stays small. */
 const SLICE = 1 << 16
 
 /** Bytes of kitty graphics pictures one terminal keeps, each of its screens (libghostty-vt drops the oldest past it). */
@@ -37,8 +33,6 @@ const WASI: Record<string, (mem: () => DataView) => (...a: never[]) => number> =
   },
   proc_exit: () => (code: number) => { throw new Error(`libghostty-vt exited (${code})`) },
 }
-/** What `module` imports, given: the WASI functions above, bound to its memory (once the instance has it). Anything
- *  else it imports is refused, loudly. */
 export function wasiImports(module: WebAssembly.Module, memory: () => WebAssembly.Memory) {
   const out: Record<string, Record<string, WebAssembly.ImportValue>> = {}
   let view: DataView | null = null
@@ -72,7 +66,6 @@ export type VtOptions = {
   cols: number; rows: number
   /** Lines of history kept (about: whole pages go). */
   scrollback: number
-  /** Its answers to the program's questions (DA, cursor position...). */
   onReply?: (data: string) => void
   onTitle?: (title: string) => void
 }
@@ -109,7 +102,6 @@ export class Vt {
   protected h = 0
   private fmt = 0
   protected o: VtOptions
-  /** Scratch for out-parameters (64 bytes), and the input buffer output is copied into. */
   protected scratch = 0
   private inPtr = 0
   private inLen = 0
@@ -144,8 +136,6 @@ export class Vt {
     this.fmt = this.make((slot) => this.x.ghostty_formatter_terminal_new(0, slot, this.h))
   }
 
-  // ---------- the C ABI
-
   protected e(type: string, name: string) {
     const v = this.types[type]?.values?.[name]
     if (v === undefined) throw new Error(`libghostty-vt has no ${type} ${name}`)
@@ -155,15 +145,12 @@ export class Vt {
   protected get dv() { return new DataView(this.x.memory.buffer) }
   protected cstr(p: number) { const b = this.u8; let n = p; while (b[n]) n++; return dec.decode(b.subarray(p, n)) }
   protected check(r: number, what: string) { if (r !== 0) throw new Error(`libghostty-vt: ${what} failed (${r})`); return r }
-  /** A handle a constructor puts in an out-slot. */
   protected make(fn: (slot: number) => number) {
     const slot = this.x.ghostty_wasm_alloc_opaque()
     try { this.check(fn(slot), "new"); return this.x.ghostty_wasm_take_opaque(slot) } finally { this.x.ghostty_wasm_free_opaque(slot) }
   }
-  /** A size_t at the scratch, its pointer. */
   protected size(v: number) { this.dv.setUint32(this.scratch, v >>> 0, true); return this.scratch }
   protected set(opt: string, ptr: number) { this.check(this.x.ghostty_terminal_set(this.h, this.e("GhosttyTerminalOption", opt), ptr), `set ${opt}`) }
-  /** The formatter's options as last set. */
   private fopts: Record<string, number> = {}
   private fset(opt: string, v: number) {
     if (this.fopts[opt] === v) return
@@ -178,7 +165,6 @@ export class Vt {
   protected u16(data: string) { return this.get(data, (d, p) => d.getUint16(p, true)) }
   protected u32(data: string) { return this.get(data, (d, p) => d.getUint32(p, true)) }
 
-  /** More callbacks a subclass sets (the page's clipboard): an option, its signature and function. */
   protected more(): { opt: string; sig: [number, boolean]; fn: (...a: number[]) => number | void }[] { return [] }
   private callbacks() {
     const table = this.x.__indirect_function_table, more = this.more()
@@ -204,9 +190,6 @@ export class Vt {
     more.forEach((m, i) => this.set(m.opt, at + 3 + i))
   }
 
-  // ---------- the terminal
-
-  /** Output, parsed now (its answers go out after). */
   write(data: string | Uint8Array) {
     if (this.writing) throw new Error("libghostty-vt: write during a write")
     this.writing = true
@@ -260,7 +243,6 @@ export class Vt {
   /** Where the cursor is on its screen; past the last column with a wrap pending (as xterm.js tells it). */
   get cursor() { return { x: this.u16("CURSOR_X") + (this.get("CURSOR_PENDING_WRAP", (d, p) => d.getUint8(p)) ? 1 : 0), y: this.u16("CURSOR_Y") } }
   get alternate() { return this.u32("ACTIVE_SCREEN") === this.e("GhosttyTerminalScreen", "ALTERNATE") }
-  /** Rows in its history and screen. */
   get length() { return this.u32("TOTAL_ROWS") }
   /** A DEC private mode (`ansi`: an ANSI one) is set. */
   mode(n: number, ansi = false) {
@@ -278,16 +260,12 @@ export class Vt {
     this.set("MODE", this.scratch)
   }
 
-  // ---------- what it shows
-
-  /** Its screen and history from row `from` (of its screen and history) down, as text, VT or HTML. */
   protected format(emit: "PLAIN" | "VT" | "HTML", from: number, o: { unwrap: boolean; trim: boolean; extras?: number; selection?: number }) {
     this.fset("EMIT", this.e("GhosttyFormatterFormat", emit))
     this.fset("UNWRAP", o.unwrap ? 1 : 0)
     this.fset("TRIM", o.trim ? 1 : 0)
     this.fset("EXTRAS", o.extras ?? 0)
     const opt = this.e("GhosttyFormatterOption", "SELECTION")
-    // A selection from the first row asked to the end (else the whole screen), set just before it's used.
     const sel = o.selection ?? (from > 0 ? this.selection(from) : 0)
     try {
       this.check(this.x.ghostty_formatter_set(this.fmt, opt, sel), "select")
@@ -301,7 +279,6 @@ export class Vt {
       if (sel) { this.x.ghostty_formatter_set(this.fmt, opt, 0); if (!o.selection) this.x.ghostty_wasm_free(sel, 64) }
     }
   }
-  /** A GhosttySelection from (0, from) of its screen and history to its last cell. */
   private selection(from: number) {
     const p = this.x.ghostty_wasm_alloc(64), d = this.dv
     const ref = (x: number, y: number, out: number) => {
@@ -315,8 +292,6 @@ export class Vt {
     return p
   }
 
-  /** Its text, a wrapped line joined to the one before, trailing blank lines left out: its last `lines` lines
-   *  (null: all). */
   text(lines: number | null) {
     const from = lines === null ? 0 : Math.max(0, this.length - Math.max(lines, this.rows) * 2)
     const out = this.format("PLAIN", from, { unwrap: true, trim: true }).split("\n")
@@ -341,10 +316,8 @@ export class Vt {
     } finally { copy.dispose() }
   }
   html(above = this.scrollback) {
-    // (its palette as CSS variables, which its colors name)
     return this.format("HTML", Math.max(0, this.length - this.rows - above), { unwrap: false, trim: true, extras: PALETTE })
   }
-  /** A copy of it (its snapshot restored in another terminal of the same instance). */
   private copy(): Vt {
     const pp = this.scratch + 32, lp = this.scratch + 40
     this.check(this.x.ghostty_snapshot_encode_alloc(this.h, 0, pp, lp), "snapshot")
@@ -391,7 +364,6 @@ export class Vt {
     return { line: line.trimEnd(), typed: typed.trimEnd(), suggested: suggested.trim() }
   }
 
-  /** For each row of history and screen from `from` on, whether it goes on from the row above (a soft wrap). */
   continued(from: number) {
     const n = this.length, out: boolean[] = [], p = this.x.ghostty_wasm_alloc(48)
     try {
@@ -405,11 +377,7 @@ export class Vt {
     return out
   }
 
-  // ---------- kitty graphics
-
-  /** Its active screen's picture storage (a handle it owns), 0 when it has none. */
   protected graphics() { return this.x.ghostty_terminal_get(this.h, this.e("GhosttyTerminalData", "KITTY_GRAPHICS"), this.scratch) === 0 ? this.dv.getUint32(this.scratch, true) : 0 }
-  /** A value that changes with every picture sent, placed or deleted on its active screen (0: none yet). */
   get picturesGeneration() {
     const g = this.graphics()
     if (!g || this.x.ghostty_kitty_graphics_get(g, this.e("GhosttyKittyGraphicsData", "GENERATION"), this.scratch) !== 0) return 0n
@@ -469,7 +437,6 @@ export class Vt {
   /** Bytes its instance holds (WebAssembly memory only grows). */
   get memory() { return this.x.memory.buffer.byteLength }
 
-  /** Its terminal freed (the instance goes with the last reference to it; a copy shares its original's). */
   dispose() {
     if (!this.h) return
     this.x.ghostty_formatter_free(this.fmt)

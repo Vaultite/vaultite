@@ -11,8 +11,6 @@ for (let i = 0; i < 1024; i++) RANGE[i] = Math.max(0, Math.min(255, (i < 512 ? i
 
 const ws = new Int32Array(64)
 
-/** Block `c[co..co+64]` (natural order), dequantized by `q`, as 8x8 samples at `out[at]`, `stride` a row. `dcOnly`
- *  when its AC coefficients are all zero: one sample fills it (what the full steps would give). */
 export function idct(c: Int16Array, co: number, q: Int32Array, out: Uint8Array, at: number, stride: number, dcOnly: boolean) {
   if (dcOnly) {
     const v = RANGE[((c[co] * q[0] * 4 + 16) >> 5) & 1023]

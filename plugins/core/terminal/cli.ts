@@ -1,10 +1,7 @@
-// Terminal's part of vau around its ops: `vau terminal attach`, a terminal of the app in this one (it streams, so it
-// can't be an op), and the exit codes of `vau terminal wait` and `start --wait` (the terminal's, for scripts).
 import { CliError, done, type PluginCli } from "../../../core/cli.ts"
 
 type Waited = { met?: string | null; timedOut?: boolean; exit?: { code: number; signal: number; lost?: boolean } }
-/** The terminal's own exit code when the wait was for its end (128 + a signal's number; 1 lost: how is unknown), 124
- *  when the time ran out (as timeout(1)), 1 when it ended before what was waited for, else 0. */
+// 124 when the time ran out, as timeout(1) exits; 128 + a signal's number, as a shell reports one.
 const waitCode = (r: Waited | null) => {
   if (!r || r.met === undefined) return 0
   if (r.met === "exit" && r.exit) return r.exit.lost ? 1 : r.exit.signal ? 128 + r.exit.signal : r.exit.code & 255
@@ -12,13 +9,11 @@ const waitCode = (r: Waited | null) => {
   return r.met ? 0 : 1
 }
 
-/** ⌃\ (as dtach and abduco have it): back to this terminal, the app's left running. */
 const DETACH = 0x1c
 
 export const cli: PluginCli = {
   ops: {
     "terminal.wait": { code: waitCode },
-    // (with --wait: as wait's)
     "terminal.start": { code: (r: Waited) => (r && "met" in r ? waitCode(r) : 0) },
     "terminal.send": { code: (r: Waited) => (r && "met" in r ? waitCode(r) : 0) },
   },
@@ -39,7 +34,6 @@ id, its name or the end of its id, <id>@<machine> for another machine's (through
       const given = a._[0]
       if (!given) throw new CliError("which terminal? vau terminal attach <id or name> (vau terminal lists them)", true)
       if (!process.stdin.isTTY || !process.stdout.isTTY) throw new CliError("attach needs a terminal: run it in one, not piped")
-      // (resolved as the ops do: a name, the end of an id)
       const got = await c.call("POST", "ops/terminal.get", { id: given }) as { id?: string; ended?: boolean; exit?: Waited["exit"] }
       if (!got?.id) throw new CliError(`no terminal '${given}'`)
       if (got.ended) throw new CliError(`${got.id} ended${got.exit ? ` (exit code ${got.exit.code})` : ""}: vau terminal capture ${got.id} shows what it left`)
@@ -51,10 +45,9 @@ id, its name or the end of its id, <id>@<machine> for another machine's (through
       const ws = new WebSocket(`${c.url.replace(/^http/, "ws")}/api/terminal/${encodeURIComponent(id)}?${q}`, { headers: { "X-Vaultite-Client": "cli" } })
       const code = await new Promise<number>((resolve, reject) => {
         let said = "", raw = false
-        // (the terminal's size as the server last said: another device may have made it its own)
         let shell = size()
         const restore = () => {
-          if (raw) { try { input.setRawMode(false) } catch { /* gone */ } raw = false }
+          if (raw) { try { input.setRawMode(false) } catch {} raw = false }
           input.pause()
           input.off("data", typed)
           process.off("SIGWINCH", resized)
@@ -63,7 +56,6 @@ id, its name or the end of its id, <id>@<machine> for another machine's (through
         }
         const typed = (d: Buffer) => {
           if (d.length === 1 && d[0] === DETACH) { said = `Detached from ${id}: it's still running (vau terminal attach ${id} again).`; ws.close(1000); return }
-          // Typing here claims its size back from another device that resized it, as a tab does (Terminal.tsx: claim).
           const mine = size()
           if (mine.cols !== shell.cols || mine.rows !== shell.rows) resized()
           if (ws.readyState === ws.OPEN) ws.send(d, { binary: true })
@@ -81,7 +73,6 @@ id, its name or the end of its id, <id>@<machine> for another machine's (through
           let m: { t?: string; code?: number; signal?: number; reason?: string; label?: string; ended?: boolean; lost?: boolean; cols?: number; rows?: number }
           try { m = JSON.parse(String(data)) } catch { return }
           if (m.t === "size") shell = { cols: Number(m.cols) || 0, rows: Number(m.rows) || 0 }
-          // (its picture comes next: drawn on a clean screen, its history above it)
           if (m.t === "attached") out.write("\x1b[H\x1b[2J\x1b[3J")
           else if (m.t === "exit" && m.lost) { exit = 1; said = `${id} was lost: its terminal server went away.` }
           else if (m.t === "exit") { exit = m.signal ? 128 + m.signal : (m.code ?? 0) & 255; said = `${id} ended${m.ended ? "" : ` (${m.signal ? `signal ${m.signal}` : `exit code ${m.code ?? 0}`})`}.` }
@@ -92,7 +83,6 @@ id, its name or the end of its id, <id>@<machine> for another machine's (through
         ws.on("close", () => {
           if (failed) return
           restore()
-          // (closed with nothing said: the connection dropped, the server restarting or the network gone)
           if (!said) { said = `Connection lost: ${id} may still be running (vau terminal attach ${id} again).`; exit = 1 }
           out.write(`${said}\r\n`)
           resolve(exit)

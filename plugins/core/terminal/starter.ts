@@ -1,13 +1,9 @@
-// Starts an agent from PowerShell or cmd on Windows (plugin.ts: agentRun), where its POSIX line can't run: `<the server's
-// Node> starter.ts <job.json>` runs the job's program here (Ctrl+C is the agent's), then the shell goes on.
 import { execFileSync, spawn } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { winCommand } from "../../../core/winbin.ts"
 
-/** What plugin.ts writes for it (read once, then removed). `state`: the terminal's state file, marked `missing` when
- *  there's no such program. */
 export type Job = { argv: string[]; env?: Record<string, string>; cwd?: string | null; state?: string | null }
 
 /** The system's Path then the user's, as Windows keeps them (HKLM, HKCU), %VARS% expanded; null when unread. */
@@ -38,9 +34,8 @@ async function main() {
     if (fresh) { env.Path = `${env.Path ?? env.PATH ?? ""};${fresh}`; delete env.PATH; how = winCommand(job.argv, env) }
   }
   if (!how) {
-    // (said before it is marked: the server then tells the user, who comes here to read why)
     process.stderr.write(`${job.argv[0]}: not found (it isn't installed, or isn't on Path)\r\n`, () => {
-      if (job.state) try { fs.writeFileSync(job.state, "missing") } catch { /* told on screen anyway */ }
+      if (job.state) try { fs.writeFileSync(job.state, "missing") } catch {}
       process.exit(127)
     })
     return

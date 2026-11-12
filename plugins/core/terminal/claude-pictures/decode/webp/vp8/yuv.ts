@@ -1,7 +1,6 @@
 // YUV 4:2:0 to RGBA as libwebp's decoder gives it by default, to match dwebp: chroma "fancy" upsampled (9-3-3-1, its
 // rounding) and converted in its fixed point (yuv.h).
 
-/** A decoded frame: luma `width` x `height` at `yStride` a row, chroma at half that each way (rounded up). */
 export type Yuv = { width: number; height: number; y: Uint8Array; u: Uint8Array; v: Uint8Array; yStride: number; uvStride: number }
 
 // (BT.601 limited range: (x * k) >> 8 with libwebp's constants, 6 fractional bits left)
@@ -14,10 +13,8 @@ function put(out: Uint8Array, o: number, y: number, u: number, v: number) {
   out[o + 2] = clip(yy + ((u * 33050) >> 8) - 17685)
 }
 
-/** The chroma nearest sample `n` of four: `a` beside it in its row, `b` beside it in the other, `o` opposite. */
 const blend = (n: number, a: number, b: number, o: number) => ((((n + a + b + o + 8) + 2 * (a + b)) >> 3) + n) >> 1
 
-/** Luma row `r`'s pixels at `out[at]` on, its chroma from chroma rows `near` and `far` (the one it's between). */
 function row(f: Yuv, r: number, near: number, far: number, out: Uint8Array, at: number) {
   const { y: Y, u: U, v: V, width } = f
   const yo = r * f.yStride, n = near * f.uvStride, d = far * f.uvStride
@@ -35,7 +32,6 @@ function row(f: Yuv, r: number, near: number, far: number, out: Uint8Array, at: 
   }
 }
 
-/** The frame's pixels as RGBA, alpha 255. */
 export function yuvToRgba(f: Yuv): Uint8Array {
   const { width, height } = f
   const out = new Uint8Array(width * height * 4).fill(255)

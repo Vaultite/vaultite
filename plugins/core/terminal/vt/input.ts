@@ -1,10 +1,7 @@
-// Keys to what a program reads, by Ghostty's key encoder (kitty keyboard off). A key's text goes at its keydown, as
-// xterm.js sent it; dead keys, input methods, dictation and iOS's keyboard (keyCode 229) come by the field's events.
 import { MOD_ALT, MOD_CTRL, MOD_SHIFT, MOD_SUPER, type Screen } from "./screen.ts"
 
 const modsOf = (e: KeyboardEvent) => (e.shiftKey ? MOD_SHIFT : 0) | (e.ctrlKey ? MOD_CTRL : 0) | (e.altKey ? MOD_ALT : 0) | (e.metaKey ? MOD_SUPER : 0)
 
-/** What a key sends; null: nothing here (its text comes through the input field, or it's the browser's: ⌘ keys). */
 export function keyBytes(s: Screen, e: KeyboardEvent, mac: boolean): string | null {
   if (e.isComposing || e.keyCode === 229 || e.key === "Dead" || e.key === "Process") return null
   if (e.metaKey) return null // (⌘C, ⌘V: the browser's copy and paste events)

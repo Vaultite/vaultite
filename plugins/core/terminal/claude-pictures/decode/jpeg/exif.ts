@@ -1,7 +1,5 @@
-// A photo's EXIF orientation: how its camera was held, which viewers turn it upright by.
 import type { Rgba } from "../pixels.ts"
 
-/** The orientation (1..8) an APP1 segment's body `d[at..end]` gives, or 0 when it isn't EXIF or doesn't say. */
 export function exifOrientation(d: Uint8Array, at: number, end: number): number {
   // ("Exif\0\0", then a TIFF header: its byte order, 42, and where IFD0 is, from the header)
   if (end - at < 14 || d[at] !== 0x45 || d[at + 1] !== 0x78 || d[at + 2] !== 0x69 || d[at + 3] !== 0x66 || d[at + 4] || d[at + 5]) return 0
@@ -27,11 +25,10 @@ export function orient(px: Rgba, o: number): Rgba {
   if (o < 2 || o > 8) return px
   const { width: w, height: h } = px
   const W = o >= 5 ? h : w, H = o >= 5 ? w : h
-  // (source pixel (x, y) goes to (ax x + bx y + cx, ay x + by y + cy))
-  const [ax, bx, cx, ay, by, cy] = ({
-    2: [-1, 0, w - 1, 0, 1, 0], 3: [-1, 0, w - 1, 0, -1, h - 1], 4: [1, 0, 0, 0, -1, h - 1], 5: [0, 1, 0, 1, 0, 0],
-    6: [0, -1, h - 1, 1, 0, 0], 7: [0, -1, h - 1, -1, 0, w - 1], 8: [0, 1, 0, -1, 0, w - 1],
-  } as Record<number, number[]>)[o]
+  const [ax, bx, cx, ay, by, cy] = [
+    [-1, 0, w - 1, 0, 1, 0], [-1, 0, w - 1, 0, -1, h - 1], [1, 0, 0, 0, -1, h - 1], [0, 1, 0, 1, 0, 0],
+    [0, -1, h - 1, 1, 0, 0], [0, -1, h - 1, -1, 0, w - 1], [0, 1, 0, -1, 0, w - 1],
+  ][o - 2]
   const src = new Uint32Array(px.data.buffer, px.data.byteOffset, w * h)
   const data = new Uint8Array(w * h * 4), dst = new Uint32Array(data.buffer)
   const stepX = ay * W + ax, stepY = by * W + bx

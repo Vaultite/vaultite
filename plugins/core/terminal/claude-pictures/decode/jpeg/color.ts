@@ -17,7 +17,6 @@ for (let i = 0; i < 256; i++) {
 }
 const clamp = (v: number) => (v < 0 ? 0 : v > 255 ? 255 : v)
 
-/** The frame's pixels, `frame.width * frame.height` of them, as RGBA (opaque). */
 export function toRgba(frame: Frame, space: ColorSpace): Uint8Array {
   const { width: W, height: H } = frame
   const out = new Uint8Array(W * H * 4)
@@ -66,7 +65,6 @@ export function toRgba(frame: Frame, space: ColorSpace): Uint8Array {
 /** a * b / 255, rounded as Pillow's MULDIV255 does. */
 const mul255 = (a: number, b: number) => { const t = a * b + 128; return ((t >> 8) + t) >> 8 }
 
-/** Row `y` of component `c` at the picture's size: a function of `y` to the buffer and offset it's at. */
 function upsampler(frame: Frame, c: Component): (y: number) => [Uint8Array, number] {
   const p = c.plane, stride = c.blocksW * 8, cw = c.width, last = c.height - 1
   const hr = frame.hmax / c.h, vr = frame.vmax / c.v
@@ -89,7 +87,6 @@ function upsampler(frame: Frame, c: Component): (y: number) => [Uint8Array, numb
       return [out, 0]
     }
   }
-  /** The input row nearest output row `y`, and the next nearest (above for an even row, below for an odd one). */
   const near = (y: number) => (y >> 1) * stride
   const far = (y: number) => Math.min(last, Math.max(0, (y >> 1) + (y & 1 ? 1 : -1))) * stride
   if (hr === 1 && vr === 2) {

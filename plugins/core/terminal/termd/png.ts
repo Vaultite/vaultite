@@ -1,14 +1,12 @@
-// A PNG's pixels, decoded where a terminal's pty is (kitty.ts): the pages' terminals take pixels, as they have no
-// decoder of their own (libghostty-vt asks its host for one, synchronously, and a page has none that is).
+// libghostty-vt asks its host to decode a PNG synchronously, and a page has no synchronous decoder: termd decodes them.
 import zlib from "node:zlib"
 
 export type Pixels = { width: number; height: number; channels: 3 | 4; data: Buffer }
 
 const SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+const SAMPLES: Record<number, number> = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }
 export const isPng = (b: Uint8Array) => b.length > 8 && SIGNATURE.equals(b.subarray(0, 8))
 
-/** Its pixels, 8 bits a channel: RGB, or RGBA when it has any transparency. Null when it isn't a PNG this reads, or
- *  it decodes to more than `maxBytes`. */
 export function decodePng(b: Buffer, maxBytes: number): Pixels | null {
   if (!isPng(b)) return null
   let at = 8, width = 0, height = 0, depth = 0, type = 0, interlace = 0
@@ -23,7 +21,7 @@ export function decodePng(b: Buffer, maxBytes: number): Pixels | null {
     else if (kind === "IDAT") idat.push(body)
     else if (kind === "IEND") break
   }
-  const samples = ({ 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 } as Record<number, number>)[type]
+  const samples = SAMPLES[type]
   if (!samples || !width || !height || ![1, 2, 4, 8, 16].includes(depth) || (type === 3 && !palette)) return null
   const alpha = type === 4 || type === 6 || !!trns, channels: 3 | 4 = alpha ? 4 : 3
   if (width * height * channels > maxBytes) return null
@@ -31,7 +29,7 @@ export function decodePng(b: Buffer, maxBytes: number): Pixels | null {
   try { raw = zlib.inflateSync(Buffer.concat(idat), { maxOutputLength: Math.ceil(width * samples * depth / 8 + 1) * height * 2 + 1024 }) } catch { return null }
   const out = Buffer.alloc(width * height * channels)
   const bpp = Math.max(1, (samples * depth) >> 3)
-  // (Adam7: seven passes of a grid; one pass of every pixel when not interlaced)
+  // Adam7 interlacing: seven passes of a grid.
   const passes = interlace ? [[0, 0, 8, 8], [4, 0, 8, 8], [0, 4, 4, 8], [2, 0, 4, 4], [0, 2, 2, 4], [1, 0, 2, 2], [0, 1, 1, 2]] : [[0, 0, 1, 1]]
   let off = 0
   for (const [x0, y0, dx, dy] of passes) {
@@ -50,7 +48,7 @@ export function decodePng(b: Buffer, maxBytes: number): Pixels | null {
   }
   return { width, height, channels, data: out }
 
-  /** Pixel `x` of a line, as 8-bit RGB(A) at `o` (a colour key in tRNS compares its samples at full depth). */
+  /** A colour key in tRNS compares its samples at full depth. */
   function put(dst: Buffer, o: number, line: Buffer, x: number) {
     const raw = (i: number) => {
       const k = x * samples + i
