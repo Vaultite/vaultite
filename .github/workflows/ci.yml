@@ -1,10 +1,11 @@
 # Every push to main and pull request: build, check and the tests on Linux, macOS and Windows (windows.yml: Arm and the
 # app itself), and the web demo. Nightly: every UI QA script too, so they don't rot (`-f scripts="a b"`: only those).
-# A try/ branch (tools/try.ts: a change tried before it lands) runs the tests only, and never counts as main's.
+# A try/ branch (tools/try.ts: a change tried before it lands) runs the tests only, and never counts as main's; one
+# marked -skip-<os> leaves that OS's out (a machine of the user's runs it), all three: none (windows.yml's surfaces only).
 name: CI
 on:
   push:
-    branches: [main, "try/**"]
+    branches: [main, "try/**", "!try/*-skip-linux-skip-macos-skip-windows*"]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -25,6 +26,10 @@ jobs:
       fail-fast: false
       matrix:
         runner: [ubuntu-24.04, macos-15, windows-2025]
+        exclude:
+          - runner: ${{ contains(github.ref, '-skip-linux') && 'ubuntu-24.04' || 'none' }}
+          - runner: ${{ contains(github.ref, '-skip-macos') && 'macos-15' || 'none' }}
+          - runner: ${{ contains(github.ref, '-skip-windows') && 'windows-2025' || 'none' }}
     runs-on: ${{ matrix.runner }}
     # (a try's, tools/try.ts JOB_MIN: its bounds are said there)
     timeout-minutes: ${{ startsWith(github.ref, 'refs/heads/try/') && 15 || 45 }}

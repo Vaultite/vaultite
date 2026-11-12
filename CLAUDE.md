@@ -59,8 +59,9 @@ is its point.
 - Iterate on the failing stage's own command (verify prints it, and its whole output's file), then verify once at the
   end: it skips what passed on the same files, so a rerun after a commit or to add `--try` costs nothing.
 - A change likely to behave differently on Windows or Linux (processes, paths, file times, the CLI's shims, CI: verify
-  says so) is tried there before it lands: commit, then `npm run verify -- --try` (it starts HEAD's try on GitHub's
-  three OSes, about 6 min, 11 with Windows' vau and installer checks, and waits within 8.5 min in all). Exit 3 is "still
+  says so) is tried there before it lands: commit, then `npm run verify -- --try` (it starts HEAD's try on the three
+  OSes, each on an idle machine of the Machines with it, else GitHub's runners: about 6 min, 11 with Windows' vau and
+  installer checks, always GitHub's; it waits within 8.5 min in all). Exit 3 is "still
   running": `node tools/try.ts --wait` again until it says PASSED or FAILED. pre-push refuses one untried;
   `VAULTITE_TRY=skip` only while GitHub's runners are down.
 - A command that fits in the shell tool's 10-minute limit runs in the foreground with its timeout set (`npm run verify`

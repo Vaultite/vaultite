@@ -3,7 +3,9 @@ Your other computers running Vaultite (one vault, many machines: the vault is th
 run). The list is `.vaultite/plugins/machines/data.json`: `{"machines": [{"id": "studio", "label": "Studio", "url":
 "https://studio.example.ts.net:8447"}]}` (`id`: lowercase letters, digits and -; `url`: where its app answers, on the tailnet: a .ts.net name or a tailnet address). A server
 served through Tailscale Serve adds itself once (with the Tailscale plugin on; `added` remembers it, so one you remove
-stays removed); edit the labels freely.
+stays removed); edit the labels freely. A machine without Vaultite that tries run on (a Windows VM) is `{"id": "lab",
+"label": "Lab VM", "ssh": "lab"}` (`ssh`: a host or an ssh config's Host, key login, Node and git there), which the app doesn't
+list. `"try": false` on any entry: `npm run verify -- --try` never runs there.
 - `GET /api/machines` says which answer and what each runs (`self`: this one); `GET /api/machines/<id>/<path>` is
   `GET /api/<path>` on that machine (read-only, for this machine's owner).
 - The browser's agents (`vau docs web-viewer`) on a server that isn't a desktop app's go to the first machine listed

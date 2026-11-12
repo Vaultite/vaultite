@@ -16,6 +16,9 @@
   surfaces, for a change to what it exercises: `-surfaces`), and returns; `--wait` (any number of times, from any
   process) follows it, runs a failure again once, and deletes the branch at its end. Its bounds are in its head. A
   one-OS breakage the rule missed is a pattern to add there, measured against main's past runs.
+- An OS an idle machine of the Machines has runs there instead (`try_machines.ts`: `-skip-<os>` on the branch): CI's
+  test job in a fresh worktree (`~/.vaultite-try`), its runner apart. Not what a machine can't run as CI does: surfaces
+  (a clean image), Swift on macOS (CI's older Xcode), a change to CI. Off: `VAULTITE_TRY_MACHINES=off`.
 - The desktop main process's launch budget (`tools/perf/startup.ts --main`, from the sources) runs in pre-push: over
   it, import the new code lazily; raise its limit in `startup.json` (in the same commit) only for growth you meant.
 - A QA script's sandbox is a copy of a template (`tools/qa_template.ts`: the sample, Vaultite's own plugins installed

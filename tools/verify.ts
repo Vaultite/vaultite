@@ -1,5 +1,5 @@
 // What this branch changed, checked, timing each: build, check, then the tests and QA scripts it reaches (--all: every
-// test and smoke; --try: HEAD on GitHub's runners too, tools/try.ts). node tools/verify.ts [--base main] [--all] [--try [--surfaces]] [--dry] [--fresh]
+// test and smoke; --try: HEAD on Linux, macOS and Windows too, idle Machines first, else GitHub's runners: tools/try.ts). node tools/verify.ts [--base main] [--all] [--try [--surfaces]] [--dry] [--fresh]
 import "./test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { spawn, spawnSync } from "node:child_process"
 import fs from "node:fs"
@@ -9,6 +9,7 @@ import { gitEnv } from "../core/gitenv.ts"
 import { qaFor } from "./qa_scripts.ts"
 import { changeRisk, describe } from "./osrisk.ts"
 import { WAIT_SECONDS, startTry, waitTry, type Waited } from "./try.ts"
+import { findMachines } from "./try_machines.ts"
 // (a stage that passed on the same files isn't run again; --fresh: every one is)
 import { filesState, passes } from "./verify_passed.ts"
 
@@ -94,8 +95,8 @@ for (const [i, st] of stages.entries()) {
   }
   // (the try starts once build and check pass, what would fail its every job; the other stages run while it does)
   if (tryIt && !dry && st.name === "check") {
-    say("\n== try: tools/try.ts (HEAD on GitHub's Linux, macOS and Windows runners)")
-    trying = rows.every((x) => x.ok) ? startTry(ROOT, { also, precheck: () => null }) : (say("try: NOT STARTED: build or check fails here"), false)
+    say("\n== try: tools/try.ts (HEAD on Linux, macOS and Windows: idle Machines first, else GitHub's runners)")
+    trying = rows.every((x) => x.ok) ? await startTry(ROOT, { also, precheck: () => null, machines: (oses, log) => findMachines(ROOT, oses, log) }) : (say("try: NOT STARTED: build or check fails here"), false)
   }
 }
 let waited: Waited | null = null
@@ -104,7 +105,7 @@ if (trying) {
   say("\n== try: waiting for it (node tools/try.ts --wait)")
   const t = Date.now()
   waited = await waitTry(ROOT, { seconds: Math.max(30, WAIT_SECONDS - (Date.now() - t0) / 1000) })
-  rows.push({ name: "try", why: "Linux, macOS and Windows (GitHub)", s: ((Date.now() - t) / 1000).toFixed(1), ok: waited.status === "passed" ? true : waited.status === "running" ? null : false, cmd: [] })
+  rows.push({ name: "try", why: "Linux, macOS and Windows", s: ((Date.now() - t) / 1000).toFixed(1), ok: waited.status === "passed" ? true : waited.status === "running" ? null : false, cmd: [] })
 } else if (tryIt && !dry) rows.push({ name: "try", why: "not started (above)", s: "-", ok: false, cmd: [] })
 say("\nstage        time    result  what")
 for (const r of rows) say(`${r.name.padEnd(12)} ${r.s.padStart(6)}s  ${r.ok === null ? "-     " : r.ok ? "ok    " : "FAIL  "}  ${r.why.slice(0, 90)}`)

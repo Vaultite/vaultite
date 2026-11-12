@@ -9,6 +9,7 @@ import { alsoTry, describe, osRisk, parseDiff } from "./osrisk.ts"
 import { filesState, passes, workTree } from "./verify_passed.ts"
 import { failuresOf, mainRed, nightlyRed, notice, redStreaks, type Api, type Run } from "./mainci.ts"
 import { ATTEMPT_MIN, checkPush, judge, loadTry, riskKey, startTry, sweep, tried, waitTry } from "./try.ts"
+import { MACHINE_REF, STEPS, machinesOff, parseJob, type Machine, type Os, type Part } from "./try_machines.ts"
 const t0 = Date.now()
 
 section("osrisk")
@@ -162,11 +163,11 @@ const sensitive = riskKey(work, w("merge-base", "main", "HEAD").stdout.trim(), "
 const head = () => w("rev-parse", "HEAD").stdout.trim()
 
 const pre = fake()
-check("try: what fails at once anyway (tsc, check) fails here first, nothing pushed", !startTry(work, { ...pre.o, precheck: () => "npm run check fails here" }) && /^try: NOT STARTED: npm run check fails/.test(pre.last()) && branches() === "")
+check("try: what fails at once anyway (tsc, check) fails here first, nothing pushed", !(await startTry(work, { ...pre.o, precheck: () => "npm run check fails here" })) && /^try: NOT STARTED: npm run check fails/.test(pre.last()) && branches() === "")
 const a = fake({ second: "ok" })
-check("try: started, it returns at once: HEAD on its try branch, kept as this checkout's try", startTry(work, a.o) && /^try: STARTED [0-9a-f]{9} on try\/[0-9a-f]{12}: about 6 min\. Wait: node tools\/try\.ts --wait$/.test(a.last())
+check("try: started, it returns at once: HEAD on its try branch, kept as this checkout's try", (await startTry(work, a.o)) && /^try: STARTED [0-9a-f]{9} on try\/[0-9a-f]{12}: about 6 min\. Wait: node tools\/try\.ts --wait$/.test(a.last())
   && branches().startsWith("refs/heads/try/") && loadTry(work, head())?.ref === branches().slice("refs/heads/".length), [a.logs, branches()])
-check("try: started again while it runs: said, not pushed again", startTry(work, a.o) && /STARTED already/.test(a.last()))
+check("try: started again while it runs: said, not pushed again", (await startTry(work, a.o)) && /STARTED already/.test(a.last()))
 check("pre-push, meanwhile: its try is running, wait for it", /Its try is running: node tools\/try\.ts --wait/.test(checkPush(work, w("merge-base", "main", "HEAD").stdout.trim(), head()) ?? ""))
 const w1 = await waitTry(work, { ...a.o, seconds: 0 })
 check("try --wait, not done: still running, how far, and what to run again; nothing ended", w1.status === "running" && /^try: STILL RUNNING [0-9a-f]{9}: 1 of 2 jobs done; keep waiting: node tools\/try\.ts --wait$/.test(w1.line) && branches() !== "", [w1, a.logs])
@@ -179,12 +180,12 @@ const asked = a.g.asked.length, w3 = await waitTry(work, { ...a.o, seconds: 300 
 check("try --wait once it ended: the verdict again, GitHub not asked", w3.status === "passed" && w3.line === w2.line && a.g.asked.length === asked)
 forget()
 const b = fake({ second: "FAIL" }); b.g.done = true
-startTry(work, b.o)
+await startTry(work, b.o)
 const wb = await waitTry(work, { ...b.o, seconds: 300 })
 check("try: failing again is the change's: FAILED naming the job and its test, not kept", wb.status === "failed" && /^try: FAILED [0-9a-f]{9} on test \(windows-2025\): test_vault\.ts: terminal: teleport/.test(wb.line) && !tried(work, sensitive) && branches() === "", [wb, b.logs])
 forget()
 const c = fake()
-startTry(work, c.o)
+await startTry(work, c.o)
 await waitTry(work, { ...c.o, seconds: 0 })
 c.tick((ATTEMPT_MIN + 1) * 60_000)
 sweep(work, c.o)
@@ -194,16 +195,87 @@ check("try: one nobody came back to is ended by the next try command: cancelled,
 forget()
 w("checkout", "-qb", "setup", "main"); fs.mkdirSync(path.join(work, "electron")); fs.writeFileSync(path.join(work, "electron/setup.ts"), "export const bin = (d: string) => path.join(d, 'vau.cmd')\n"); w("add", "-A"); w("commit", "-qm", "setup")
 const s1 = fake({ surfaces: "FAIL", second: "FAIL" }); s1.g.done = true
-startTry(work, s1.o)
+await startTry(work, s1.o)
 const ws = await waitTry(work, { ...s1.o, seconds: 300 })
 check("try: a change to what surfaces exercises runs windows.yml's surfaces too (not arm64), and its failure counts", /on try\/[0-9a-f]{12}-surfaces \(surfaces too/.test(s1.text()) && ws.status === "failed"
   && /^try: FAILED .* surfaces/.test(ws.line) && s1.g.asked.some((p) => p.includes("/runs/88/jobs")) && !/arm64/.test(s1.text()) && branches() === "", [ws, s1.logs])
 fs.writeFileSync(path.join(work, "electron/setup.ts"), "export const b = 2\n")
 const d1 = fake()
-check("try: uncommitted work isn't tried, nothing pushed", !startTry(work, d1.o) && /NOT STARTED: HEAD is what's tried: commit first/.test(d1.last()) && !d1.g.asked.length && branches() === "")
+check("try: uncommitted work isn't tried, nothing pushed", !(await startTry(work, d1.o)) && /NOT STARTED: HEAD is what's tried: commit first/.test(d1.last()) && !d1.g.asked.length && branches() === "")
 w("checkout", "-q", "--", "."); w("checkout", "-q", "main")
 const n1 = fake()
 check("try --wait with none started: says so, with what to run", (await waitTry(work, { ...n1.o, seconds: 0 })).status === "none" && /^try: NONE of [0-9a-f]{9} \(HEAD\) started: node tools\/try\.ts$/.test(n1.last()))
+
+section("try on machines")
+{
+  const yml = fs.readFileSync(path.join(import.meta.dirname, "..", ".github/workflows/ci.yml"), "utf8")
+  const job = yml.slice(yml.indexOf("\n  test:"), yml.indexOf("\n  demo:"))
+  const runs = [...job.matchAll(/^\s+(?:- )?run: (.+)$/gm)].map((m) => m[1].replace(/\$\{\{[^}]*\}\}\s*/g, "").trim()).filter((r) => !r.startsWith("sudo "))
+  check("a machine runs ci.yml's test job, step by step (but what needs sudo on a runner)", runs.join() === STEPS.map((x) => x.cmd).join(), { runs, steps: STEPS.map((x) => x.cmd) })
+  const r = parseJob(["== npm test", "try-job: step FAIL 3.0 npm test", "try-job: summary", "try-job: result ok 20.5 npm ci", "try-job: result FAIL 61.2 npm test",
+    "try-job: fail npm test: test_vault.ts: terminal: teleport", "try-job: flaky npm test: test_vault.ts: live: walks", "try-job: log /home/alice/.vaultite-try/logs/a.log", "try-job: done FAIL 90.0"].join("\r\n"))
+  check("a job's summary, read: its steps, failures, flaky tests and log", !r.ok && r.steps?.length === 2 && r.steps[1].ok === false && r.failures?.join() === "test_vault.ts: terminal: teleport"
+    && r.flaky?.join() === "test_vault.ts: live: walks" && r.log === "/home/alice/.vaultite-try/logs/a.log", r)
+  check("a job cut before its summary says so", parseJob("try-job: step ok 1.0 npm ci").why === "it ended without its summary")
+  check("machines off: VAULTITE_TRY_MACHINES=off", machinesOff(work, { VAULTITE_TRY_MACHINES: "off" }) && !machinesOff(work, {}))
+
+  // Linux and Windows on made-up machines (the part files their runners would write), macOS on a made-up GitHub.
+  w("checkout", "-qb", "machines", "main"); fs.writeFileSync(path.join(work, "core/files.ts"), "export const q = (d: string) => path.relative(d, 'x')\n"); w("commit", "-qam", "machines")
+  const offered: Os[][] = [], parts = new Map<string, Part>()
+  const ms = (oses: Os[]) => { offered.push(oses); return Promise.resolve([{ id: "studio", label: "Studio", os: "linux" as Os, reach: { kind: "here" as const } }, { id: "lab", label: "Lab VM", os: "win32" as Os, reach: { kind: "ssh" as const, dest: "lab" } }].filter((m: Machine) => oses.includes(m.os))) }
+  const put = (file: string, p: Part) => { parts.set(file, p); fs.writeFileSync(file, JSON.stringify(p)) }
+  let clock = 1_800_000_000_000
+  const asked: string[] = []
+  const api: Api = async <T>(p: string) => {
+    asked.push(p)
+    if (p.includes("/actions/runs?branch=try")) return { workflow_runs: [{ id: 70, path: ".github/workflows/ci.yml", html_url: "https://github.com/x/runs/70" }] } as T
+    if (p.includes("/runs/70/jobs")) return { jobs: [{ id: 5, name: "test (macos-15)", status: "completed", conclusion: "success", run_attempt: 1 }] } as T
+    if (p.includes("/actions/runs?")) return { workflow_runs: [] } as T
+    return "not found"
+  }
+  const logs: string[] = []
+  const o = { api, gh: () => true, log: (l: string) => logs.push(l), now: () => clock, pause: async (ms: number) => { clock += ms }, precheck: () => null, machines: ms, startPart: put }
+  const started = await startTry(work, o)
+  const t = loadTry(work, head())
+  check("try: Linux and Windows go to the machines that have them, macOS to GitHub with the others left out of ci.yml's matrix", started && /-skip-linux-skip-windows$/.test(t?.ref ?? "")
+    && t?.parts?.map((x) => x.os).join() === "linux,win32" && /on try\/[0-9a-f]{12}-skip-linux-skip-windows \(GitHub: macOS\), Studio \(Linux\), Lab VM \(Windows\)/.test(logs.at(-1) ?? ""), [logs, t])
+  check("… the commit on a hidden ref for the remote machine, fetched from GitHub there, from this checkout here", at(origin)("rev-parse", MACHINE_REF(head())).stdout.trim() === head()
+    && [...parts.values()].map((p) => p.source.startsWith("https://github.com/") ? "github" : "here").join() === "here,github")
+  const w1 = await waitTry(work, { ...o, seconds: 0 })
+  check("try --wait: GitHub done, the machines still running: still running", w1.status === "running" && /1 of 3 jobs done/.test(w1.line), w1)
+  const end = (file: string, more: Partial<Part>) => put(file, { ...parts.get(file)!, ended: clock, ok: true, steps: [{ name: "npm test", ok: true, s: 60 }], log: "/x/part.log", ...more })
+  const [lin, win] = [...parts.keys()]
+  end(lin, {}); end(win, { flaky: ["test_vault.ts: terminal: teleport"] })
+  const w2 = await waitTry(work, { ...o, seconds: 60 })
+  check("try --wait: PASSED naming where each ran, a machine's flaky test said; kept for pre-push with its machines; refs deleted",
+    w2.status === "passed" && /^try: PASSED [0-9a-f]{9} on test \(macos-15\), test \(ubuntu-24\.04\) on Studio, test \(windows-2025\) on Lab VM in .*; flaky \(failed once, then passed\): test \(windows-2025\) on Lab VM: test_vault\.ts: terminal: teleport$/.test(w2.line)
+    && tried(work, riskKey(work, w("merge-base", "main", "HEAD").stdout.trim(), "HEAD").key!) && branches() === "" && !at(origin)("rev-parse", "-q", "--verify", MACHINE_REF(head())).stdout.trim(), [w2, logs])
+  forget()
+
+  // Every OS on a machine: nothing on GitHub; a machine's failure as main's isn't the change's, one of its own is.
+  const all = (oses: Os[]) => Promise.resolve((["linux", "darwin", "win32"] as Os[]).filter((x) => oses.includes(x)).map((os) => ({ id: os, label: `Box ${os}`, os, reach: { kind: "here" as const } })))
+  const o2 = { ...o, machines: all }
+  asked.length = 0
+  await startTry(work, o2)
+  const t2 = loadTry(work, head())!
+  check("try: every OS on a machine, nothing pushed to GitHub, nothing asked of it", t2.ref === "" && t2.wants.length === 0 && branches() === "" && !asked.length, t2)
+  for (const x of t2.parts!) end(x.file, x.os === "win32" ? { ok: false, failures: ["test_vault.ts: terminal: lost"], steps: [{ name: "npm test", ok: false, s: 9 }] } : {})
+  const w3 = await waitTry(work, { ...o2, seconds: 60 })
+  check("try: a machine's own failure fails it, naming the machine and where its output is", w3.status === "failed" && /^try: FAILED [0-9a-f]{9} on test \(windows-2025\) on Box win32: test_vault\.ts: terminal: lost$/.test(w3.line)
+    && logs.some((l) => /its output: \/x\/part\.log/.test(l)), [w3, logs])
+  forget()
+
+  // What the machines can't run as CI does stays on GitHub: CI's own change everywhere, the helpers' Swift on macOS.
+  offered.length = 0
+  w("checkout", "-qb", "swift", "main"); fs.mkdirSync(path.join(work, "electron"), { recursive: true }); fs.writeFileSync(path.join(work, "electron/voice.swift"), "let a = 1\n"); w("add", "-A"); w("commit", "-qm", "swift")
+  await startTry(work, o)
+  forget()
+  w("checkout", "-qb", "ci", "main"); fs.mkdirSync(path.join(work, ".github"), { recursive: true }); fs.writeFileSync(path.join(work, ".github/x.yml"), "a: 1\n"); w("add", "-A"); w("commit", "-qm", "ci")
+  await startTry(work, o)
+  check("try: a change to the helpers' Swift keeps macOS on GitHub (its older Xcode), one to CI itself every OS", offered.map((x) => x.join("+")).join() === "linux+win32,", offered)
+  forget()
+  w("checkout", "-q", "main")
+}
 
 section("verify passes")
 {

@@ -1,5 +1,5 @@
-// A try: HEAD through CI's tests on Linux, macOS and Windows (ci.yml on a try/ branch) before it lands, started and waited
-// for apart (it lives on GitHub). A pass is kept for pre-push (--check); a failure main has too isn't the change's.
+// A try: HEAD through CI's tests on Linux, macOS and Windows before it lands, each OS on an idle machine of the user's
+// (try_machines.ts) or GitHub's (ci.yml on a try/ branch), started and waited for apart. A pass is kept for pre-push (--check).
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
@@ -7,6 +7,7 @@ import { CI_WORKFLOW, TRY_PREFIX, githubApi } from "../core/update/ci.ts"
 import { gitEnv } from "../core/gitenv.ts"
 import { REPO, mainRed, runFailures, sameTest, type Api, type Failure, type Job, type Run } from "./mainci.ts"
 import { alsoTry, describe, osRisk, parseDiff, type Risk } from "./osrisk.ts"
+import { CI_JOB, MACHINE_REF, OSES, OS_NAME, SKIP, findMachines, partFile, partNow, startPart, stopPart, type Machine, type Os, type Part } from "./try_machines.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "..")
 /** The bounds, once: a try's jobs stop after JOB_MIN (surfaces SURFACES_JOB_MIN: ci.yml, windows.yml); an attempt not done
@@ -42,6 +43,8 @@ function write(file: string, what: object) {
 export type Try = {
   sha: string; base: string; ref: string; key: string | null; also: string[]; wants: string[]; started: number; attemptAt: number
   runs?: { id: number; path?: string; html_url?: string }[]; rerun?: { job: string; tests: string[] }[]
+  /** The OSes run on the user's machines (their state: try_machines.ts' Part); `ref` "": none on GitHub. */
+  parts?: { os: Os; file: string; remote: boolean }[]
   verdict?: { state: "passed" | "failed" | "timed out"; lines: string[]; line: string; at: number }
 }
 const tryFile = (root: string, sha: string) => path.join(stateDir(root, "tries"), `${sha}.json`)
@@ -60,7 +63,7 @@ export function checkPush(root: string, from: string, to: string): string | null
   const mine = allTries(root).filter((t) => t.key === key).sort((a, b) => b.started - a.started)[0]
   return [`pre-push: this push is OS-sensitive and hasn't passed a try run: ${describe(risks)}.`,
     mine?.verdict ? `  Its try ${mine.verdict.line.replace(/^try: /, "")}` : mine ? "  Its try is running: node tools/try.ts --wait (a pass is kept for this push)"
-      : "  Try it on GitHub's Linux, macOS and Windows runners first: node tools/try.ts, then node tools/try.ts --wait (or npm run verify -- --try)",
+      : "  Try it on Linux, macOS and Windows first: node tools/try.ts, then node tools/try.ts --wait (or npm run verify -- --try)",
     "  Pushing anyway (GitHub's runners down): VAULTITE_TRY=skip git push ..."].join("\n")
 }
 
@@ -83,7 +86,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const WINDOWS_WORKFLOW = ".github/workflows/windows.yml"
 
 /** What a try's commands may be given instead of GitHub, gh, the clock and a pause (tests). */
-export type Deps = { log?: (s: string) => void; api?: Api; gh?: (args: string[]) => boolean; now?: () => number; pause?: (ms: number) => Promise<unknown> }
+export type Deps = { log?: (s: string) => void; api?: Api; gh?: (args: string[]) => boolean; now?: () => number; pause?: (ms: number) => Promise<unknown>
+  /** The machines that run some OSes instead of GitHub (none unless given: try_machines.ts' findMachines), and how a part starts. */
+  machines?: (oses: Os[], log: (s: string) => void) => Promise<Machine[]>; startPart?: (file: string, p: Part) => void }
 function deps(o: Deps) {
   return { log: o.log ?? console.log, api: o.api ?? (<T>(p: string) => githubApi<T>(p)), now: o.now ?? Date.now, pause: o.pause ?? sleep,
     gh: o.gh ?? ((args: string[]) => spawnSync("gh", args, { encoding: "utf8", timeout: 30_000 }).status === 0) }
@@ -99,9 +104,15 @@ function precheck(root: string): string | null {
 
 /** Ends a try: its branch deleted, a pass kept for pre-push, the verdict kept (a later wait says it again) and said. */
 function finish(root: string, t: Try, d: ReturnType<typeof deps>, state: NonNullable<Try["verdict"]>["state"], lines: string[], line: string): Waited {
-  const gone = git(root, ["push", "-q", "--no-verify", "origin", "--delete", t.ref], { timeout: 60_000 })
-  if (!gone.ok && !/remote ref does not exist/.test(gone.err)) lines.push(`couldn't delete ${t.ref}: ${gone.err} (git push origin --delete ${t.ref})`)
-  if (state === "passed" && t.key) write(path.join(stateDir(root, "tried"), `${t.key}.json`), { sha: t.sha, runs: t.runs?.map((r) => r.html_url), at: d.now() })
+  const parts = t.parts ?? []
+  for (const x of parts) stopPart(x.file)
+  if (parts.length) git(root, ["update-ref", "-d", MACHINE_REF(t.sha)])
+  for (const ref of [t.ref, ...parts.some((x) => x.remote) ? [MACHINE_REF(t.sha)] : []].filter(Boolean)) {
+    const gone = git(root, ["push", "-q", "--no-verify", "origin", "--delete", ref], { timeout: 60_000 })
+    if (!gone.ok && !/remote ref does not exist/.test(gone.err)) lines.push(`couldn't delete ${ref}: ${gone.err} (git push origin --delete ${ref})`)
+  }
+  if (state === "passed" && t.key) write(path.join(stateDir(root, "tried"), `${t.key}.json`), { sha: t.sha, runs: t.runs?.map((r) => r.html_url),
+    machines: parts.map((x) => { const p = partNow(x.file); return p ? `${p.job} on ${p.label}` : x.os }), at: d.now() })
   t.verdict = { state, lines, line, at: d.now() }
   saveTry(root, t)
   for (const l of lines) d.log(`  ${l}`)
@@ -113,16 +124,19 @@ function finish(root: string, t: Try, d: ReturnType<typeof deps>, state: NonNull
 export function sweep(root: string, o: Deps = {}) {
   const d = deps({ ...o, log: o.log ?? (() => {}) })
   for (const t of allTries(root)) {
-    if (t.verdict) { if (d.now() - t.verdict.at > 7 * 86_400_000) fs.rmSync(tryFile(root, t.sha), { force: true }); continue }
+    if (t.verdict) {
+      if (d.now() - t.verdict.at > 7 * 86_400_000) for (const f of [tryFile(root, t.sha), ...(t.parts ?? []).flatMap((x) => [x.file, x.file.replace(/\.json$/, ".log")])]) fs.rmSync(f, { force: true })
+      continue
+    }
     if (d.now() - t.attemptAt < ATTEMPT_MIN * 60_000) continue
     for (const r of t.runs ?? []) d.gh(["api", "-X", "POST", `repos/${REPO}/actions/runs/${r.id}/cancel`])
     finish(root, t, d, "timed out", [], `try: TIMED OUT ${t.sha.slice(0, 9)}: not done ${ATTEMPT_MIN} min after it ${t.rerun ? "ran again" : "started"} (cancelled)`)
   }
 }
 
-/** Starts a try of HEAD and returns: the cheap checks first, then HEAD pushed to a try/ branch (`-surfaces`: windows.yml's
- *  surfaces too) and kept as this checkout's try. Already running or passed: says so. */
-export function startTry(root: string, o: Deps & { also?: string[]; precheck?: () => string | null } = {}): boolean {
+/** Starts a try of HEAD and returns: the cheap checks first, then each OS on an idle machine of the user's (`machines`),
+ *  the rest on a try/ branch (`-skip-<os>`: not there; `-surfaces`: windows.yml's too), kept as this checkout's try. */
+export async function startTry(root: string, o: Deps & { also?: string[]; precheck?: () => string | null } = {}): Promise<boolean> {
   const d = deps(o)
   const no = (why: string) => { d.log(`try: NOT STARTED: ${why}`); return false }
   sweep(root, o)
@@ -139,12 +153,35 @@ export function startTry(root: string, o: Deps & { also?: string[]; precheck?: (
   if (bad) return no(bad)
   const { key, risks } = riskKey(root, base, sha)
   const also = [...new Set([...o.also ?? [], ...alsoTry(risks)])].sort()
-  const t: Try = { sha, base, key, also, ref: `${TRY_PREFIX}${sha.slice(0, 12)}${also.map((j) => `-${j}`).join("")}`,
-    wants: [CI_WORKFLOW, ...also.includes("surfaces") ? [WINDOWS_WORKFLOW] : []], started: d.now(), attemptAt: d.now() }
-  const pushed = git(root, ["push", "-q", "--no-verify", "origin", `+HEAD:refs/heads/${t.ref}`], { timeout: 120_000 })
-  if (!pushed.ok) return no(`can't push ${t.ref}: ${pushed.err}`)
+  // (CI's own change runs only where CI does; the helpers' Swift builds with CI's older Xcode only on GitHub's Mac)
+  const oses = risks.some((r) => r.why === "CI itself") ? [] : OSES.filter((x) => x !== "darwin" || !risks.some((r) => r.why === "the native helpers"))
+  const picks = o.machines ? await o.machines(oses, d.log) : []
+  const github = OSES.filter((x) => !picks.some((m) => m.os === x)), surfaces = also.includes("surfaces")
+  const wants = [...github.length ? [CI_WORKFLOW] : [], ...surfaces ? [WINDOWS_WORKFLOW] : []]
+  const marks = [...OSES.filter((x) => !github.includes(x)).map((x) => SKIP[x]), ...also]
+  const t: Try = { sha, base, key, also, ref: wants.length ? `${TRY_PREFIX}${sha.slice(0, 12)}${marks.map((j) => `-${j}`).join("")}` : "",
+    wants, started: d.now(), attemptAt: d.now(), parts: [] }
+  if (picks.length) {
+    git(root, ["update-ref", MACHINE_REF(sha), sha])
+    const out = picks.some((m) => m.reach.kind !== "here") && git(root, ["push", "-q", "--no-verify", "origin", `+${sha}:${MACHINE_REF(sha)}`], { timeout: 120_000 })
+    if (out && !out.ok) return no(`can't push ${MACHINE_REF(sha)} for the machines: ${out.err}`)
+  }
+  if (t.ref) {
+    const pushed = git(root, ["push", "-q", "--no-verify", "origin", `+HEAD:refs/heads/${t.ref}`], { timeout: 120_000 })
+    if (!pushed.ok) return no(`can't push ${t.ref}: ${pushed.err}`)
+  }
+  const dir = stateDir(root, "tries"), common = path.resolve(root, git(root, ["rev-parse", "--git-common-dir"]).out)
+  fs.mkdirSync(dir, { recursive: true })
+  for (const m of picks) {
+    const file = partFile(dir, sha, m.os)
+    ;(o.startPart ?? startPart)(file, { ...m, sha, job: CI_JOB[m.os], ref: MACHINE_REF(sha), started: d.now(),
+      source: m.reach.kind === "here" ? common : `https://github.com/${REPO}.git` })
+    t.parts!.push({ os: m.os, file, remote: m.reach.kind !== "here" })
+  }
   saveTry(root, t)
-  d.log(`try: STARTED ${sha.slice(0, 9)} on ${t.ref}${also.length ? ` (${also.join(", ")} too: it changes what that exercises)` : ""}: about ${also.length ? 11 : 6} min. Wait: node tools/try.ts --wait`)
+  const where = [...t.ref ? [`${t.ref}${picks.length ? ` (GitHub: ${github.map((x) => OS_NAME[x]).join(", ") || "surfaces"})` : ""}`] : [],
+    ...picks.map((m) => `${m.label} (${OS_NAME[m.os]})`)].join(", ")
+  d.log(`try: STARTED ${sha.slice(0, 9)} on ${where}${also.length ? ` (${also.join(", ")} too: it changes what that exercises)` : ""}: about ${surfaces ? 11 : 6} min. Wait: node tools/try.ts --wait`)
   return true
 }
 
@@ -164,12 +201,13 @@ export async function waitTry(root: string, o: Deps & { seconds?: number } = {})
     return said(t.verdict.state === "passed" ? "passed" : "failed", t.verdict.line)
   }
   const gh = d.gh(["auth", "token"]), every = gh ? 15_000 : 60_000 // (anonymous: 60 calls an hour, the machine's)
-  const shown = new Set<number>()
+  const shown = new Set<number | string>(), on = new Map<string, string>()
+  const named = (job: string) => on.has(job) ? `${job} on ${on.get(job)}` : job
   let done = 0, total = 0
   for (;;) {
     const over = ended()
     if (over) return over
-    if (!t.runs || t.runs.length < t.wants.length) {
+    if (t.wants.length && (!t.runs || t.runs.length < t.wants.length)) {
       const got = await d.api<{ workflow_runs?: Run[] }>(`repos/${REPO}/actions/runs?branch=${encodeURIComponent(t.ref)}&head_sha=${t.sha}&per_page=10`)
       const all = (typeof got === "string" ? [] : got.workflow_runs ?? []).filter((r) => !r.created_at || Date.parse(r.created_at) > t.started - 120_000)
       const runs = t.wants.flatMap((w) => all.filter((r) => r.path?.startsWith(w)).slice(0, 1))
@@ -181,42 +219,58 @@ export async function waitTry(root: string, o: Deps & { seconds?: number } = {})
         return finish(root, t, d, "failed", [], `try: FAILED ${t.sha.slice(0, 9)}: no run of ${t.wants.map((w) => path.basename(w)).join(", ")} started on ${t.ref} in 3 min`)
       }
     }
-    if (t.runs && t.runs.length === t.wants.length) {
+    // (the machines' parts: each said as it ends, judged as a GitHub job of the same name)
+    const parts = (t.parts ?? []).map((x) => partNow(x.file)).filter((p): p is Part => !!p)
+    for (const p of parts) {
+      on.set(p.job, p.label)
+      if (p.ended && !shown.has(p.os)) { shown.add(p.os); d.log(`  ${p.ok ? "ok  " : "FAIL"}  ${named(p.job)}  ${((p.ended - p.started) / 60000).toFixed(1)} min${p.ok ? "" : `: ${p.log}`}`) }
+    }
+    if (!t.wants.length || (t.runs && t.runs.length === t.wants.length)) {
       const jobs: Jobs = []
-      for (const r of t.runs) {
+      for (const r of t.runs ?? []) {
         const got = await d.api<{ jobs?: Jobs }>(`repos/${REPO}/actions/runs/${r.id}/jobs?per_page=50`)
         jobs.push(...(typeof got === "string" ? [{ id: -r.id, name: path.basename(r.path ?? ""), status: "unknown", conclusion: null }] : got.jobs ?? []).map((j) => ({ ...j, run: r.id })))
       }
       const counted = jobs.filter((j) => j.conclusion !== "skipped")
       for (const j of counted) if (j.status === "completed" && !shown.has(j.id)) { shown.add(j.id); d.log(`  ${j.conclusion === "success" ? "ok  " : "FAIL"}  ${j.name}  ${minutes(j)}`) }
-      done = counted.filter((j) => j.status === "completed").length
-      total = counted.length
+      done = counted.filter((j) => j.status === "completed").length + parts.filter((p) => p.ended).length
+      total = counted.length + parts.length
       // (a rerun's jobs show as its second attempt: until then the list is still the first's)
-      const settled = jobs.length > 0 && jobs.every((j) => j.status === "completed") && (!t.rerun || t.rerun.every((r) => jobs.some((j) => j.name === r.job && (j.run_attempt ?? 1) > 1)))
+      const settled = (!t.wants.length || (jobs.length > 0 && jobs.every((j) => j.status === "completed") && (!t.rerun || t.rerun.every((r) => jobs.some((j) => j.name === r.job && (j.run_attempt ?? 1) > 1)))))
+        && parts.length === (t.parts ?? []).length && parts.every((p) => p.ended)
       if (settled) {
         const failures: Failure[] = []
-        for (const r of t.runs) { const got = await runFailures(d.api, r.id); if (typeof got !== "string") failures.push(...got) }
+        for (const r of t.runs ?? []) { const got = await runFailures(d.api, r.id); if (typeof got !== "string") failures.push(...got) }
+        for (const p of parts.filter((x) => !x.ok)) {
+          const tests = p.failures?.length ? p.failures : p.why ? [p.why] : (p.steps ?? []).filter((x) => !x.ok).map((x) => `step: ${x.name}`)
+          failures.push(...tests.map((test) => ({ job: p.job, test })))
+        }
         const reds = failures.length ? await mainRed(d.api) : []
-        const v: Verdict = judge(jobs, failures, typeof reds === "string" ? [] : reds.flatMap((r) => r.failures))
-        const failed = v.rows.filter((r) => r.state === "FAIL")
-        const again = t.runs.filter((r) => jobs.some((j) => j.run === r.id && failed.some((f) => f.job === j.name)))
-        if (failed.length && !t.rerun && gh && again.every((r) => d.gh(["api", "-X", "POST", `repos/${REPO}/actions/runs/${r.id}/rerun-failed-jobs`]))) {
-          t.rerun = failed.map((r) => ({ job: r.job, tests: r.tests }))
+        const all = [...jobs, ...parts.map((p, i) => ({ id: -1 - i, name: p.job, status: "completed", conclusion: p.ok ? "success" : "failure" }))]
+        const v: Verdict = judge(all, failures, typeof reds === "string" ? [] : reds.flatMap((r) => r.failures))
+        // (a machine's part ran its failures again itself: only GitHub's jobs are run again here)
+        const failed = v.rows.filter((r) => r.state === "FAIL"), failedThere = failed.filter((r) => jobs.some((j) => j.name === r.job))
+        const again = (t.runs ?? []).filter((r) => jobs.some((j) => j.run === r.id && failedThere.some((f) => f.job === j.name)))
+        if (failedThere.length && !t.rerun && gh && again.every((r) => d.gh(["api", "-X", "POST", `repos/${REPO}/actions/runs/${r.id}/rerun-failed-jobs`]))) {
+          t.rerun = failedThere.map((r) => ({ job: r.job, tests: r.tests }))
           t.attemptAt = d.now()
           saveTry(root, t)
-          for (const r of failed) d.log(`  ${r.job} failed${r.tests.length ? `: ${r.tests.slice(0, 4).join("; ")}` : ""}; running it again, once`)
+          for (const r of failedThere) d.log(`  ${r.job} failed${r.tests.length ? `: ${r.tests.slice(0, 4).join("; ")}` : ""}; running it again, once`)
         } else {
-          const flaky = (t.rerun ?? []).filter((r) => v.rows.find((x) => x.job === r.job)?.state === "ok").flatMap((r) => r.tests.map((x) => `${r.job}: ${x}`))
-          const lines = v.rows.filter((r) => r.state !== "ok").map((r) => `${r.job} ${r.state === "FAIL" ? "failed" : "failed as main does"}${r.tests.length ? `: ${r.tests.slice(0, 8).join("; ")}` : ` (${r.conclusion})`}`)
+          const flaky = [...(t.rerun ?? []).filter((r) => v.rows.find((x) => x.job === r.job)?.state === "ok").flatMap((r) => r.tests.map((x) => `${r.job}: ${x}`)),
+            ...parts.flatMap((p) => (p.flaky ?? []).map((x) => `${named(p.job)}: ${x}`))]
+          const lines = v.rows.filter((r) => r.state !== "ok").map((r) => `${named(r.job)} ${r.state === "FAIL" ? "failed" : "failed as main does"}${r.tests.length ? `: ${r.tests.slice(0, 8).join("; ")}` : ` (${r.conclusion})`}`)
+          for (const p of parts.filter((x) => !x.ok)) lines.push(`${named(p.job)}: its output: ${p.log}`)
           const took = `${((d.now() - t.started) / 60000).toFixed(1)} min`, at = `${t.sha.slice(0, 9)}`
           const line = v.ok
-            ? `try: PASSED ${at} on ${v.rows.map((r) => r.job).join(", ")} in ${took}${flaky.length ? `; flaky (failed once, then passed): ${flaky.join("; ")}` : ""}${v.rows.some((r) => r.state === "main's") ? "; failing only as main does" : ""}`
-            : `try: FAILED ${at} on ${failed.map((r) => `${r.job}${r.tests.length ? `: ${r.tests.slice(0, 3).join("; ")}` : ""}`).join(" | ")}`
+            ? `try: PASSED ${at} on ${v.rows.map((r) => named(r.job)).join(", ")} in ${took}${flaky.length ? `; flaky (failed once, then passed): ${flaky.join("; ")}` : ""}${v.rows.some((r) => r.state === "main's") ? "; failing only as main does" : ""}`
+            : `try: FAILED ${at} on ${failed.map((r) => `${named(r.job)}${r.tests.length ? `: ${r.tests.slice(0, 3).join("; ")}` : ""}`).join(" | ")}`
           return finish(root, t, d, v.ok ? "passed" : "failed", lines, line)
         }
       } else if (d.now() - t.attemptAt > ATTEMPT_MIN * 60_000) {
-        for (const r of t.runs) d.gh(["api", "-X", "POST", `repos/${REPO}/actions/runs/${r.id}/cancel`])
-        return finish(root, t, d, "timed out", [], `try: TIMED OUT ${t.sha.slice(0, 9)}: ${counted.filter((j) => j.status !== "completed").map((j) => j.name).join(", ")} not done ${ATTEMPT_MIN} min after it ${t.rerun ? "ran again" : "started"} (cancelled)`)
+        for (const r of t.runs ?? []) d.gh(["api", "-X", "POST", `repos/${REPO}/actions/runs/${r.id}/cancel`])
+        const late = [...counted.filter((j) => j.status !== "completed").map((j) => j.name), ...parts.filter((p) => !p.ended).map((p) => named(p.job))]
+        return finish(root, t, d, "timed out", [], `try: TIMED OUT ${t.sha.slice(0, 9)}: ${late.join(", ")} not done ${ATTEMPT_MIN} min after it ${t.rerun ? "ran again" : "started"} (cancelled)`)
       }
     }
     const left = until - d.now()
@@ -239,5 +293,5 @@ if (import.meta.main) {
     const w = await waitTry(ROOT, { seconds: Number.isFinite(s) && s >= 0 ? s : undefined })
     process.exit({ passed: 0, failed: 1, none: 2, running: 3 }[w.status])
   }
-  process.exit(startTry(ROOT, { also: argv.includes("--surfaces") ? ["surfaces"] : [] }) ? 0 : 1)
+  process.exit(await startTry(ROOT, { also: argv.includes("--surfaces") ? ["surfaces"] : [], machines: (oses, log) => findMachines(ROOT, oses, log) }) ? 0 : 1)
 }
