@@ -21,10 +21,10 @@ const ipc = new Map<string, (e: { sender: unknown }, m?: unknown) => void>()
 /** The app's own folder (its logs, the log of presses), apart from anything real. */
 const USERDATA = fs.mkdtempSync(path.join(os.tmpdir(), "vau-helperdraw-"))
 mock.module(pathToFileURL(fs.realpathSync(path.join(ROOT, "node_modules/electron/index.js"))).href, { exports: {
-  app: { on() {}, getName: () => "Vaultite", getPath: () => USERDATA, getLoginItemSettings: () => ({ openAtLogin: false }), setLoginItemSettings() {}, isPackaged: false, getPreferredSystemLanguages: () => ["en-US"] },
-  clipboard: { writeText() {} }, Menu: { buildFromTemplate() {} }, ipcMain: { on: (ch: string, fn: (e: { sender: unknown }, m?: unknown) => void) => { ipc.set(ch, fn) }, removeAllListeners() {} }, Notification: class { static isSupported() { return false } }, nativeImage: { createFromPath: () => ({ setTemplateImage() {}, isEmpty: () => true }), createEmpty: () => ({ addRepresentation() {} }) }, shell: {}, Tray: class {},
+  app: { on() {}, removeListener() {}, getName: () => "Vaultite", getPath: () => USERDATA, getLoginItemSettings: () => ({ openAtLogin: false }), setLoginItemSettings() {}, isPackaged: false, getPreferredSystemLanguages: () => ["en-US"] },
+  clipboard: { writeText() {} }, Menu: { buildFromTemplate() {} }, ipcMain: { on: (ch: string, fn: (e: { sender: unknown }, m?: unknown) => void) => { ipc.set(ch, fn) }, removeListener: (ch: string) => { ipc.delete(ch) }, removeAllListeners() {} }, Notification: class { static isSupported() { return false } }, nativeImage: { createFromPath: () => ({ setTemplateImage() {}, isEmpty: () => true }), createEmpty: () => ({ addRepresentation() {} }) }, shell: {}, Tray: class {},
   systemPreferences: { getMediaAccessStatus: () => "not-determined" },
-  screen: { getCursorScreenPoint: () => pointer, getDisplayMatching: () => display, getDisplayNearestPoint: () => display, getAllDisplays: () => [display] },
+  screen: { on() {}, removeListener() {}, getCursorScreenPoint: () => pointer, getDisplayMatching: () => display, getDisplayNearestPoint: () => display, getAllDisplays: () => [display] },
 } })
 type Acts = { open: (name: string, at: Pt) => void }
 type PanelActs = { send: (name: string, text: string) => void; closed: (name: string) => void }
