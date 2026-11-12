@@ -19,7 +19,7 @@
   decoder), so termd's terminal and every page's take the same bytes and answer alike; their answers (a=q) are the
   one exception to `asXterm`. `CLAUDE_CODE_FORCE_TERMINAL_IMAGES` (plugin.ts env) makes Claude Code draw them and
   assume file reads; Claude Code draws only mods' pictures, so its terminals load ours (`claude-pictures/`, through
-  `CLAUDE_CODE_PLUGIN_DIRS`: no account touched) for what it reads and what's pasted (PNG only: a mod can't decode JPEG). A page attaching gets them with its snapshot (`withPictures`, REPLAY_MAX); with the alternate
+  `CLAUDE_CODE_PLUGIN_DIRS`: no account touched) for what it reads and what's pasted, as Claude got them (Claude Code re-encodes a big paste as JPEG): PNG, JPEG, GIF or WebP, decoded in the mod (`claude-pictures/decode/`: our own decoders, plain TS with no Node, as its worker has none, so PNG twice, termd's with Node's zlib) and sent as pixels as small as their cells need, the pictures of one row sharing the 2 MiB of Image source Claude Code allows a tree; one it can't read is a dim line saying why. A page attaching gets them with its snapshot (`withPictures`, REPLAY_MAX); with the alternate
   screen up, only that screen's. Pages send their cell size in pixels with their size: a picture without `c`/`r`
   covers the same cells in termd as in the page.
 - The page's terminal (`vt/term.ts`) is libghostty-vt's too, from the same `ghostty-vt.wasm` (`vt/wasm.ts`, compiled

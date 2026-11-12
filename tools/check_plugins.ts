@@ -429,7 +429,7 @@ for (const f of sources.concat(walk(path.join(ROOT, "web", "qa"))).filter((f) =>
 // with why not: a CI script outside them once passed a field renamed away, and only Windows' CI saw it.
 const UNTYPED: Record<string, string> = {
   "tools/test/kdbx/upstream/": "upstream kdbxweb's tests, kept as written (typed for an older TypeScript)",
-  "plugins/core/terminal/claude-pictures/": "a Claude Code mod: its 'claude-code' types are Claude Code's own",
+  "plugins/core/terminal/claude-pictures/hooks/": "a Claude Code mod: its 'claude-code' types are Claude Code's own (its decoders, decode/, are typed through tools/test_pictures.ts)",
 }
 {
   const { spawnSync } = await import("node:child_process")
