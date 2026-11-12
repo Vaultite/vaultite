@@ -9,7 +9,7 @@ import { gitEnv, inDesktop, type Machine, type OpCtx, OpError, type Plugin, quot
 import { cardOf, choiceIn, commitsIn, endEvent, fixTask, HANDED, inPlace, landedSaid, landTask, liveStep, mergedCommit, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, type Marks, nowOf, restEvent, type Queued, queuedLine, toldBy, type Result, resumeOf,
   type ProofMode, prunedLine, step, terminalOf, type Waits, type Where, worktreeOf } from "./jobs.ts"
 import { requestWriter } from "../../../core/vault.ts"
-import type { Moment } from "./plugin.ts"
+import type { Moment } from "./types.ts"
 import { APP_REPO, appUiOf, branchOf, checkoutNamed, dropTree, checkoutNames, type Found, fileAt, githubOf, headOf, jobBase, machineOfUrl, onlyHere, type Over, refusal, repoOf, resolveHere, checkoutsLine, rootsLine, sitesIn, surfaceOf, tilde, unpushed, urlsIn, watched } from "./where.ts"
 import { type Home, type Read, workerLinks } from "./links.ts"
 import { capOf, CLOUD, cloudIn, lacks, type Needs, place, type Ranked, type RepoRule, rulesIn, rulesNeed, RULES_FILE, type Traits } from "./placement.ts"

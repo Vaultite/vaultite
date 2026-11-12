@@ -120,6 +120,14 @@ function shape(rel: string, name: string) {
     .map((m) => `\`${m.key.name}${m.optional ? "?" : ""}\`${docBefore(src, m.start) ? ` (${first(docBefore(src, m.start)).replace(/\.$/, "")})` : ""}`).join("; ")
 }
 
+/** A plugin's own files from its plugin.ts, in the order they run (each one's imports first, as ESM does). */
+function loadOrder(file: string, seen = new Set<string>()): string[] {
+  if (seen.has(file)) return []
+  seen.add(file)
+  const deps = [...fs.readFileSync(file, "utf8").matchAll(/^import (?!type )(?:[^"\n]* from )?"(\.\/[^"]+\.ts)"/gm)].map((m) => path.join(path.dirname(file), m[1]))
+  return [...deps.flatMap((d) => loadOrder(d, seen)), file]
+}
+
 /** The services the app's plugins offer (plugin.provide), with the comment above each: what a plugin asks for by name. */
 function services() {
   const dir = path.join(ROOT, "plugins", "core")
@@ -127,8 +135,7 @@ function services() {
   for (const id of fs.readdirSync(dir).sort()) {
     const file = path.join(dir, id, "plugin.ts")
     if (!fs.existsSync(file)) continue
-    const src = fs.readFileSync(file, "utf8")
-    for (const m of src.matchAll(/plugin\.provide\("([^"]+)"/g)) {
+    for (const src of loadOrder(file).map((f) => fs.readFileSync(f, "utf8"))) for (const m of src.matchAll(/plugin\.provide\("([^"]+)"/g)) {
       const s = found.get(m[1]) ?? { plugins: new Set<string>(), doc: "" }
       s.plugins.add(id)
       s.doc ||= docBefore(src, m.index!)

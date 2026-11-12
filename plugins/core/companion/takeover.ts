@@ -109,7 +109,7 @@ export function takeovers(send: (ws: WebSocket, m: object) => void, fly: (agent:
     /** Do a step where the last ask came from; answers once it's done, refused, declined or stopped. */
     async act(step: ReturnType<typeof stepOf>, who: { agent: string; tint: string; ask?: string }): Promise<Done> {
       // (the companion's private apps and sites: the helper checks what's there against them before each step)
-      const { apps, sites } = (await import("./plugin.ts")).privates()
+      const { apps, sites } = (await import("./settings.ts")).privates()
       return request((id) => ({ t: "takeover", id, agent: who.agent, tint: who.tint, step, apps, sites, ...(who.ask ? { ask: who.ask } : {}) }), STEP_MS)
     },
     /** Ask them (`line` by their pointer, `sub` under it) on the Mac whose helper asked: `ok` once they say yes. */

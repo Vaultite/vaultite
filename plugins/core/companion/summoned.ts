@@ -3,7 +3,8 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import crypto from "node:crypto"
 import fs from "node:fs"
-import type { Agent, Chat, ChatHow, ChatState as State, ChatTool, Moment } from "./plugin.ts"
+import type { Chat, ChatHow, ChatState as State, ChatTool } from "./chat.ts"
+import type { Agent, Moment } from "./types.ts"
 import { readableText } from "./reach.ts"
 import { beatOf, markOf, parseTags, placeOf, type Tag } from "./tags.ts"
 

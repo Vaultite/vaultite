@@ -1,6 +1,6 @@
 // The Companion page's conversation: what the user asked it (a Talk key's press, an @name in a note) and what it
 // answered and did, a day at a time, from its logs (moments, actions) and the helper's press log. Plain functions.
-import type { Act, Moment } from "./plugin.ts"
+import type { Act, Moment } from "./types.ts"
 
 /** A press log line (electron/presslog.ts): its steps, `end` with its outcome, `sound` once heard. */
 export type PressLine = { t: number; press: string; kind: string; ev: string; ms?: number; [k: string]: unknown }

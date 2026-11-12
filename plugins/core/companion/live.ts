@@ -21,7 +21,7 @@ export type Agent = Target & Boxed & { name: string; tint: string; state: Cursor
   why?: string
   /** When it last pointed at its place (look, highlight, a say given one): a phone shows it there a moment. */
   pointed?: number
-  /** Moved there without acting (plugin.ts setAgent): its cursor rests at home till it acts. */
+  /** Moved there without acting (state.ts setAgent): its cursor rests at home till it acts. */
   rests?: boolean
   runs?: string; model?: string; effort?: string; asks?: { event: string; text: string } }
 /** What a session runs: its coding agent (claude, codex, claude_work), model and effort ("": its own). */

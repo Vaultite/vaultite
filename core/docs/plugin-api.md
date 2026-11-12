@@ -185,9 +185,11 @@ by its path.
 - `agent:codex` (codex): `codex`, or `codex resume <id>` in its folder, with the model given. No context or hooks: any `-c` makes it run without its shared background server (it reads AGENTS.md itself), which only an effort (no flag) or commands allowed cost.
 - `agent-account:claude` (claude-code): The account a session runs in ("agent-account:claude": the Inbox mutes the ones the user muted): its transcript's, else the one running in app terminal `terminal`, else the one its id names; null when it can't be told.
 - `agent-accounts:claude` (claude-code): Its accounts' ids (vau limits'): what a job may ask to run in on this machine.
+- `agent-answer:claude` (claude-code)
 - `agent-asking:claude` (claude-code): What a session waits on ("agent-asking:claude", the Inbox shows it whole): its AskUserQuestion or plan, else a dialog its terminal shows, as a question (not a permission: Approve and Deny answer it). Never a private account's.
 - `agent-asks:claude` (claude-code)
 - `agent-asks:codex` (codex): Its dialogs, seen on its screen, by their last lines: Approve and Deny press these keys, and before 0.163 (no OSC 7501, no hooks) they're its only blocked state. Folder trust, its default Trust; a command or edits, Yes, Esc No.
+- `agent-chat-new:claude` (claude-code)
 - `agent-context:claude` (claude-code): How full a session's context is now: its last request's tokens and its window ("agent-context:claude": a job taking live edits starts fresh before it compacts). The session in `terminal` when `session` isn't given.
 - `agent-edits:claude` (claude-code): The files a session changed after each message it was told and each of its words (the service "agent-edits:claude": the companion takes a live edit's back): the session in `terminal` when `session` isn't given, from `from` on.
 - `agent-meters:claude` (claude-code)
@@ -199,11 +201,16 @@ by its path.
 - `agent-models:claude` (claude-code)
 - `agent-models:codex` (codex): The models its picker lists (its cache of them, $CODEX_HOME/models_cache.json), and the efforts all of them take.
 - `agent-pick:claude` (claude-code): The keys answering its questions with `choices`, or "chat" ("agent-pick:claude"): a digit picks (a multi-select's toggles, then Tab; its Type something is ↓ past the options, then Tab, Enter); 1 submits the review at the end.
+- `agent-reply:claude` (claude-code)
 - `agent-said:claude` (claude-code): The user's own latest message in a session ("agent-said:claude": an agent quoting their word, the companion's job-stop), not a notice or another session's message; the session in `terminal` when `session` isn't given.
 - `agent-session:claude` (claude-code): A session's last response and how long its prompt cache lasts (the service "agent-session:claude": the Inbox resumes it while cached). The TTL is an hour when its last responses wrote 1 h cache, else five minutes.
 - `agent-turn:claude` (claude-code): A session's latest turn: the user's last message (or, `auto`, what else started it), Claude's last answer, its background tasks running ("agent-turn:claude", read as a turn ends). The session running in `terminal` when `session` isn't given; never a private account's.
 - `agent-turn:codex` (codex): A session's latest turn: the user's last message and Codex's last answer, and the session's title (the service "agent-turn:codex": the Inbox reads it as a turn ends). The session running in `terminal` when `session` isn't given.
 - `agents-used:companion` (companion): The coding agents it runs, as a terminal names them (claude_agent), and for what (the service "agents-used:companion"): its chat's while it's on, then its jobs'. `agent-limits` with `for: companion` shows these accounts first.
+- `cloud-read:claude` (claude-code)
+- `cloud-ready:claude` (claude-code)
+- `cloud-start:claude` (claude-code)
+- `cloud-tell:claude` (claude-code)
 - `companion:who` (companion): The agent whose session runs in app terminal `terminal`, as Provenance names who wrote a line: its name, colour, and the model and effort it was started with; null when it's no companion's.
 - `companion:panes` (companion): The panes the windows show (but private ones): each one's id, title, tab group and what it shows (note:, terminal:, site:).
 - `companion:private` (companion): Whether a web page (its address, its container) is private: the companion never sees it, nor do watches.
@@ -240,6 +247,8 @@ by its path.
 - `log-areas` (logs)
 - `logs:areas` (logs): The areas as the app has them (Today's routines take their icon and weekly goal).
 - `looks:csv` (tables)
+- `machines:public` (machines)
+- `machines:upgrade` (machines)
 - `machines` (machines)
 - `machines:machine` (machines)
 - `machines:self` (machines)

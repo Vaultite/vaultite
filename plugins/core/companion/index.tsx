@@ -15,7 +15,7 @@ import { ConversationBlock, UsageBlock } from "./Page"
 import { privateNote } from "./private"
 import { offerThreads } from "./threads"
 
-// Companion: an always-on agent session in the app, with a cursor of its own (plugin.ts says how it's fed). editor.ts
+// Companion: an always-on agent session in the app, with a cursor of its own (state.ts and next.ts say how it's fed). editor.ts
 // loads with the first note.
 let loading: Promise<typeof import("./editor")> | null = null
 let loaded: typeof import("./editor") | null = null

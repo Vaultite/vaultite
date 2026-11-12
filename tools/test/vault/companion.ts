@@ -7,17 +7,31 @@ export default async ($: VaultTest) => {
   const { api, check, exists, read, write } = $
   // Companion (plugins/core/companion): moments in, ops out; the windows' socket is QA's (web/qa/companion.mjs).
   const c = await import("../../../plugins/core/companion/plugin.ts")
+  const cAlwayson = await import("../../../plugins/core/companion/alwayson.ts")
+  const cChat = await import("../../../plugins/core/companion/chat.ts")
+  const cChatturns = await import("../../../plugins/core/companion/chatturns.ts")
+  const cComments = await import("../../../plugins/core/companion/comments.ts")
+  const cEdits = await import("../../../plugins/core/companion/edits.ts")
+  const cLane = await import("../../../plugins/core/companion/lane.ts")
+  const cNext = await import("../../../plugins/core/companion/next.ts")
+  const cPageops = await import("../../../plugins/core/companion/pageops.ts")
+  const cPeople = await import("../../../plugins/core/companion/people.ts")
+  const cSettings = await import("../../../plugins/core/companion/settings.ts")
+  const cState = await import("../../../plugins/core/companion/state.ts")
+  const cText = await import("../../../plugins/core/companion/text.ts")
+  const cWindowpanes = await import("../../../plugins/core/companion/windowpanes.ts")
+  const cWindows = await import("../../../plugins/core/companion/windows.ts")
   check("companion: a chat session reads what a summoned one does (its jobs, where they run, the talk), as tools",
-    ["jobs", "job", "where", "conversation", "see", "status"].every((t) => c.TOOLS.includes(t)) && c.SUMMONED_TOOLS.filter((t) => t !== "live-undo").every((t) => c.TOOLS.includes(t)),
-    c.SUMMONED_TOOLS.filter((t) => !c.TOOLS.includes(t)))
+    ["jobs", "job", "where", "conversation", "see", "status"].every((t) => cChat.TOOLS.includes(t)) && cLane.SUMMONED_TOOLS.filter((t) => t !== "live-undo").every((t) => cChat.TOOLS.includes(t)),
+    cLane.SUMMONED_TOOLS.filter((t) => !cChat.TOOLS.includes(t)))
   // (its rounds only when a check runs one: the minute's would end the made-up sessions, whose terminals never run, as a
   // slower machine's test reaches them)
-  clearInterval(c.watchdog)
-  check("companion: text found nearest the line it was said to be on", c.nearest("a\nx\nb\nx\n", "x", 4) === 6 && c.nearest("a\nx\nb\nx\n", "x") === 2 && c.nearest("abc", "z") === -1)
+  clearInterval(cChatturns.watchdog)
+  check("companion: text found nearest the line it was said to be on", cText.nearest("a\nx\nb\nx\n", "x", 4) === 6 && cText.nearest("a\nx\nb\nx\n", "x") === 2 && cText.nearest("abc", "z") === -1)
   check("companion: an edit replaces found text, or adds lines after a line, at the top or at the end",
-    c.editText("a\nb\n", { find: "b", text: "B" }) === "a\nB\n" && c.editText("a\nb\n", { line: 1, text: "x" }) === "a\nx\nb\n" &&
-    c.editText("a\nb\n", { line: 0, text: "x" }) === "x\na\nb\n" && c.editText("a\nb\n", { append: true, text: "x" }) === "a\nb\nx\n" &&
-    c.editText("a\nb", { append: true, text: "x" }) === "a\nb\nx")
+    cEdits.editText("a\nb\n", { find: "b", text: "B" }) === "a\nB\n" && cEdits.editText("a\nb\n", { line: 1, text: "x" }) === "a\nx\nb\n" &&
+    cEdits.editText("a\nb\n", { line: 0, text: "x" }) === "x\na\nb\n" && cEdits.editText("a\nb\n", { append: true, text: "x" }) === "a\nb\nx\n" &&
+    cEdits.editText("a\nb", { append: true, text: "x" }) === "a\nb\nx")
 
   {
     // The talk a fresh summoned session is told: from the log, with what it did, withdrawn answers and small talk.
@@ -63,7 +77,7 @@ export default async ($: VaultTest) => {
     check("companion: mid-line, only the agents around count, and never an email or a link", !ask("ask @ada later") && !ask("mail bob@claude.com") && !ask("x.com/@claude") && !ask("@bob hi"))
     check("companion: every @name of a line is found, where it is", JSON.stringify(l.mentionsOf("@ada and @claude, a@claude", names, mid)) === JSON.stringify([{ from: 0, to: 4, name: "ada" }, { from: 9, to: 16, name: "claude" }]))
     check("companion: an @name in a person's comment asks that agent; an email or a stranger doesn't",
-      c.mentioned("is this right @claude?") === "Claude" && c.mentioned("@Claude look") === "Claude" && !c.mentioned("mail bob@claude.com") && !c.mentioned("@nobody here"))
+      cPeople.mentioned("is this right @claude?") === "Claude" && cPeople.mentioned("@Claude look") === "Claude" && !cPeople.mentioned("mail bob@claude.com") && !cPeople.mentioned("@nobody here"))
     check("companion: an @ can start a mention after a space or a line's start, not in a word", l.canMention("") && l.canMention("hey ") && l.canMention("(") && !l.canMention("bob") && !l.canMention("x.com/"))
     check("companion: an ask is sent at a pause only with words besides its @names", !l.asksSomething("@claude?", l.mentionsOf("@claude?", names, mid)) &&
       !l.asksSomething("- @claude ", l.mentionsOf("- @claude ", names, mid)) && l.asksSomething("how is it @claude?", l.mentionsOf("how is it @claude?", names, mid)))
@@ -79,27 +93,27 @@ export default async ($: VaultTest) => {
   {
     // Note text sent with moments: a short note whole for an ask, a few lines around an edit.
     const text = Array.from({ length: 200 }, (_, i) => `line ${i + 1}`).join("\n") + "\n"
-    const ask = c.excerpt("N.md", "a\nb\n", [{ seq: 1, t: 0, kind: "ask", line: 2 }]), long = c.excerpt("N.md", text, [{ seq: 1, t: 0, kind: "ask", line: 150 }])
-    const edit = c.excerpt("N.md", text, [{ seq: 1, t: 0, kind: "edit", line: 50, hunks: [{ line: 50, added: ["x", "y"], removed: [] }] }])
+    const ask = cNext.excerpt("N.md", "a\nb\n", [{ seq: 1, t: 0, kind: "ask", line: 2 }]), long = cNext.excerpt("N.md", text, [{ seq: 1, t: 0, kind: "ask", line: 150 }])
+    const edit = cNext.excerpt("N.md", text, [{ seq: 1, t: 0, kind: "edit", line: 50, hunks: [{ line: 50, added: ["x", "y"], removed: [] }] }])
     check("companion: an ask comes with its note, whole when short, else the lines around it",
       ask?.from === 1 && ask.to === 2 && ask.lines.join() === "a,b" && long?.from === 110 && long.to === 190 && long.lines[0] === "line 110", [ask, long])
     check("companion: an edit comes with a few lines around what changed", edit?.from === 44 && edit.to === 57, edit)
     const para = (k: string) => `${k} ${"word ".repeat(120)}end`
     const talk = [para("p1"), "", para("p2"), "", para("p3"), "", para("p4"), "", para("p5"), "", `${para("ask")} @claude read these`, "", para("after")].join("\n")
-    const told = c.excerpt("Talk.md", talk, [{ seq: 1, t: 0, kind: "ask", line: 11 }])!
+    const told = cNext.excerpt("Talk.md", talk, [{ seq: 1, t: 0, kind: "ask", line: 11 }])!
     check("companion: the ask's paragraph and the three above come whole, other long lines cut",
       told.lines[10].endsWith("@claude read these") && [4, 6, 8].every((i) => told.lines[i].endsWith("end")) && [0, 2, 12].every((i) => told.lines[i].endsWith("…")), told.lines.map((l) => l.slice(-12)))
-    check("companion: and reads as numbered lines", c.momentsText([], "pair", null, []).includes("Nothing yet") &&
-      c.momentsText([{ seq: 1, t: 0, kind: "ask", path: "N.md", line: 2, text: "hi" }], "pair", null, [ask!]).endsWith("N.md, lines 1-2 of 2:\n   1  a\n   2  b"))
+    check("companion: and reads as numbered lines", cNext.momentsText([], "pair", null, []).includes("Nothing yet") &&
+      cNext.momentsText([{ seq: 1, t: 0, kind: "ask", path: "N.md", line: 2, text: "hi" }], "pair", null, [ask!]).endsWith("N.md, lines 1-2 of 2:\n   1  a\n   2  b"))
     // Asked why it said nothing, it knows: each ask's head says why its voice is silent (a call, off, no credits).
-    const rec = c.voiceSilence({ off: false, call: "on a call in Voice Memos" }), off = c.voiceSilence({ off: true, call: "on a call in Zoom" })
+    const rec = cWindowpanes.voiceSilence({ off: false, call: "on a call in Voice Memos" }), off = cWindowpanes.voiceSilence({ off: true, call: "on a call in Zoom" })
     check("companion: an ask's head says why its voice is silent, and nothing when it speaks",
       /aren't said aloud now: they seem on a call in Voice Memos .*play button.*Not a call/.test(rec) && /^Your voice is off/.test(off) && !off.includes("Zoom") &&
-      /no credits/.test(c.voiceSilence({ off: false, paused: { account: "quota" } })) && c.voiceSilence({ off: false, paused: null }) === "", [rec, off])
+      /no credits/.test(cWindowpanes.voiceSilence({ off: false, paused: { account: "quota" } })) && cWindowpanes.voiceSilence({ off: false, paused: null }) === "", [rec, off])
     // Asked "did you say anything?" once the call is over, it knows its last answer was kept quiet, when and for what.
     const at = new Date(2026, 10, 10, 16, 24, 46).getTime()
-    const held = c.voiceSilence({ off: false, unheard: [{ at, why: "call", detail: "on a call in Chrome", ask: "What's on my calendar this afternoon?" }] })
-    const twice = c.voiceSilence({ off: false, unheard: [{ at, why: "off", detail: "" }, { at: at + 60_000, why: "silent", detail: "its player quit (SIGKILL)" }] })
+    const held = cWindowpanes.voiceSilence({ off: false, unheard: [{ at, why: "call", detail: "on a call in Chrome", ask: "What's on my calendar this afternoon?" }] })
+    const twice = cWindowpanes.voiceSilence({ off: false, unheard: [{ at, why: "off", detail: "" }, { at: at + 60_000, why: "silent", detail: "its player quit (SIGKILL)" }] })
     check("companion: an ask after a held answer says it wasn't heard, when, why (the call's app), and offers to say it",
       /^Your last answer wasn't heard aloud: at 16:24 \(to "What's on my calendar this afternoon\?"\), kept quiet, as they seemed on a call in Chrome\. .*offer to say it now/.test(held) &&
       !held.includes("aren't said aloud now") && /answers weren't heard aloud: at 16:24, your voice was off then; at 16:25, your voice failed \(its player quit/.test(twice), [held, twice])
@@ -107,24 +121,24 @@ export default async ($: VaultTest) => {
     const ms = [{ seq: 1, t: 1000, kind: "ask" }, { seq: 2, t: 1500, kind: "edit" }, { seq: 1, t: 9000, kind: "ask" }] as Any[]
     const acts = [{ t: 0, as: "C", op: "next" }, { t: 1100, as: "C", op: "handed", seqs: [1] }, { t: 3100, as: "C", op: "say" }, { t: 3200, as: "C", op: "next" },
       { t: 3200, as: "C", op: "handed", seqs: [2] }, { t: 4000, as: "C", op: "next" }, { t: 9000, as: "C", op: "handed", seqs: [1] }]
-    const [a, e, b] = c.timings(ms, acts)
+    const [a, e, b] = cPageops.timings(ms, acts)
     check("companion timings: per moment, its handoff, think to the first action and total", a.handoff === 100 && a.think === 2000 && a.op === "say" && a.total === 2200 &&
       e.handoff === 1700 && e.think === undefined && e.total === 2500 && b.handoff === 0 && b.total === undefined, [a, e, b])
-    const two = c.timings([{ seq: 5, t: 0, kind: "edit" }] as Any[], [{ t: 100, as: "C", op: "handed", seqs: [5] }, { t: 300, as: "Q", op: "handed", seqs: [5] },
+    const two = cPageops.timings([{ seq: 5, t: 0, kind: "edit" }] as Any[], [{ t: 100, as: "C", op: "handed", seqs: [5] }, { t: 300, as: "Q", op: "handed", seqs: [5] },
       { t: 900, as: "Q", op: "say" }, { t: 2000, as: "C", op: "say" }])
     check("companion timings: a moment handed to two agents, a row each, and a summary each", two.length === 2 && two[0].as === "C" && two[0].think === 1900 &&
-      two[1].as === "Q" && two[1].think === 600 && /\nQ \(1\): pause -, handoff 0\.3/.test(c.timingsText("2026-10-16", two)), [two, c.timingsText("2026-10-16", two)])
-    check("companion timings: read as a table and a summary", /asks and replies \(2\): pause -, handoff 0\.0\/0\.1, think 2\.0\/2\.0/.test(c.timingsText("2026-10-16", [a, e, b])), c.timingsText("2026-10-16", [a, e, b]))
+      two[1].as === "Q" && two[1].think === 600 && /\nQ \(1\): pause -, handoff 0\.3/.test(cPageops.timingsText("2026-10-16", two)), [two, cPageops.timingsText("2026-10-16", two)])
+    check("companion timings: read as a table and a summary", /asks and replies \(2\): pause -, handoff 0\.0\/0\.1, think 2\.0\/2\.0/.test(cPageops.timingsText("2026-10-16", [a, e, b])), cPageops.timingsText("2026-10-16", [a, e, b]))
     // (its first word streamed before its call; handed again, as they went on: from then)
-    const [w] = c.timings([{ seq: 7, t: 0, kind: "ask" }] as Any[], [{ t: 100, as: "C", op: "handed", seqs: [7] }, { t: 400, as: "C", op: "again", seqs: [7] }, { t: 500, as: "C", op: "done" },
+    const [w] = cPageops.timings([{ seq: 7, t: 0, kind: "ask" }] as Any[], [{ t: 100, as: "C", op: "handed", seqs: [7] }, { t: 400, as: "C", op: "again", seqs: [7] }, { t: 500, as: "C", op: "done" },
       { t: 600, as: "C", op: "handed", seqs: [7] }, { t: 1500, as: "C", op: "word" }, { t: 3000, as: "C", op: "edit" }, { t: 3500, as: "C", op: "done" }])
     check("companion timings: the first word shown, from its last handing", w.handoff === 600 && w.word === 900 && w.think === 2400 && w.op === "edit" && w.total === 3500 &&
-      /think 2\.4\/2\.4, word 0\.9\/0\.9/.test(c.timingsText("2026-11-02", [w])), [w, c.timingsText("2026-11-02", [w])])
+      /think 2\.4\/2\.4, word 0\.9\/0\.9/.test(cPageops.timingsText("2026-11-02", [w])), [w, cPageops.timingsText("2026-11-02", [w])])
     // Where an edit ends: its cursor stays there.
     const doc = "# A\n\nCall Alice\n"
-    check("companion: an edit's end, its last line and words", JSON.stringify(c.endOf(doc, { after: "Call Alice", text: "- one\n- two\n" })) === '{"line":5,"find":"- two"}' &&
-      JSON.stringify(c.endOf(doc, { find: "Alice", text: "Ben\nand Cy" })) === '{"line":4,"find":"and Cy"}' && c.endOf(doc, { append: true, text: "End" })?.line === 4 &&
-      c.endOf(doc, { find: "Nobody", text: "x" }) === null, [c.endOf(doc, { after: "Call Alice", text: "- one\n- two\n" }), c.endOf(doc, { find: "Alice", text: "Ben\nand Cy" }), c.endOf(doc, { append: true, text: "End" })])
+    check("companion: an edit's end, its last line and words", JSON.stringify(cEdits.endOf(doc, { after: "Call Alice", text: "- one\n- two\n" })) === '{"line":5,"find":"- two"}' &&
+      JSON.stringify(cEdits.endOf(doc, { find: "Alice", text: "Ben\nand Cy" })) === '{"line":4,"find":"and Cy"}' && cEdits.endOf(doc, { append: true, text: "End" })?.line === 4 &&
+      cEdits.endOf(doc, { find: "Nobody", text: "x" }) === null, [cEdits.endOf(doc, { after: "Call Alice", text: "- one\n- two\n" }), cEdits.endOf(doc, { find: "Alice", text: "Ben\nand Cy" }), cEdits.endOf(doc, { append: true, text: "End" })])
     // What the user changed, as hunks: theirs alone, never what an agent wrote between them.
     const { hunksIn } = await import("../../../plugins/core/companion/live.ts")
     const was = ["# Trip", "", "Ask?", "", "End"], now = ["# Trip!", "", "Ask?", "Its line", "Its other", "", "Mine", "End"]
@@ -174,8 +188,8 @@ export default async ($: VaultTest) => {
   await api("PATCH", "config/plugin/companion", { mode: "quiet" })
   // (asks earlier blocks left waiting, as their Talk key's session took them or not: handed out first, not this check's)
   await api("POST", "ops/companion.next", { timeout: 0 })
-  check("companion: quiet hears asks, not what the user writes", c.addMoment({ kind: "edit", path: "Notes/A.md", hunks: [] }) === null &&
-    c.addMoment({ kind: "ask", path: "Notes/A.md", line: 3, text: "what's this?" })?.kind === "ask")
+  check("companion: quiet hears asks, not what the user writes", cState.addMoment({ kind: "edit", path: "Notes/A.md", hunks: [] }) === null &&
+    cState.addMoment({ kind: "ask", path: "Notes/A.md", line: 3, text: "what's this?" })?.kind === "ask")
   let [st, r] = await api("POST", "ops/companion.next", { timeout: 0 })
   check("companion: next answers the ask waiting, as the companion (Claude)", st === 200 && r.moments.length === 1 && r.moments[0].text === "what's this?" && r.mode === "quiet", [st, r])
   ;[, r] = await api("POST", "ops/companion.timings", {})
@@ -186,16 +200,16 @@ export default async ($: VaultTest) => {
     // An ask they go on writing after it went (a pause mid-dictation): before it's handed, the same ask as it reads now;
     // after, a new one with the whole line, that says so.
     const said = "One more thing, on the margin comments, color the agent's name. The \""
-    const one = c.addMoment({ kind: "ask", path: "Notes/A.md", line: 7, text: said, waited: 2000 })
-    const two = c.addMoment({ kind: "ask", path: "Notes/A.md", line: 7, text: `${said}You" can stay gray` })
+    const one = cState.addMoment({ kind: "ask", path: "Notes/A.md", line: 7, text: said, waited: 2000 })
+    const two = cState.addMoment({ kind: "ask", path: "Notes/A.md", line: 7, text: `${said}You" can stay gray` })
     ;[, r] = await api("POST", "ops/companion.next", { timeout: 0 })
     check("companion: an ask written on before it's handed is one ask, as it reads now", one === two && r.moments.length === 1 && r.moments[0].text.endsWith("stay gray") && r.moments[0].waited === 2000, r.moments)
-    c.addMoment({ kind: "ask", path: "Notes/A.md", line: 7, text: `${said}You" can stay gray, and the dots too` })
-    c.addMoment({ kind: "ask", path: "Notes/A.md", line: 7, text: "Something else entirely" })
+    cState.addMoment({ kind: "ask", path: "Notes/A.md", line: 7, text: `${said}You" can stay gray, and the dots too` })
+    cState.addMoment({ kind: "ask", path: "Notes/A.md", line: 7, text: "Something else entirely" })
     ;[, r] = await api("POST", "ops/companion.next", { timeout: 0 })
-    check("companion: the same ask again (Enter on its line after a restart) isn't asked twice", c.addMoment({ kind: "ask", path: "Notes/A.md", line: 7, text: "Something else entirely" }) === null)
+    check("companion: the same ask again (Enter on its line after a restart) isn't asked twice", cState.addMoment({ kind: "ask", path: "Notes/A.md", line: 7, text: "Something else entirely" }) === null)
     check("companion: once handed, a new ask with the whole line, that says it goes on; another ask is its own", r.moments.length === 2 && r.moments[0].more === one!.seq &&
-      !r.moments[1].more && c.momentsText(r.moments, "quiet", null).includes("went on writing it"), r.moments)
+      !r.moments[1].more && cNext.momentsText(r.moments, "quiet", null).includes("went on writing it"), r.moments)
     // Busy on an ask: its cursor keeps thinking after a first word, until it's back for more (no seen tick: it acted).
     await api("POST", "ops/companion.say", { text: "On it", path: "Notes/A.md" })
     ;[, r] = await api("POST", "ops/companion.status", {})
@@ -209,7 +223,7 @@ export default async ($: VaultTest) => {
   write("Notes/A.md", "# A\n\nCall Alice friday\n")
   const waiting = api("POST", "ops/companion.next", { timeout: 5 })
   await $.sleep(50)
-  c.addMoment({ kind: "edit", path: "Notes/A.md", line: 2, hunks: [{ line: 2, added: ["Call Alice friday"], removed: [] }] })
+  cState.addMoment({ kind: "edit", path: "Notes/A.md", line: 2, hunks: [{ line: 2, added: ["Call Alice friday"], removed: [] }] })
   ;[st, r] = await waiting
   check("companion: a waiting next wakes on what the user writes (pair)", st === 200 && r.moments[0]?.kind === "edit" && r.moments[0].hunks[0].added[0] === "Call Alice friday", r)
   check("companion: with the note's lines around what they wrote", r.notes[0]?.path === "Notes/A.md" && r.notes[0].lines.includes("Call Alice friday"), r.notes)
@@ -220,7 +234,7 @@ export default async ($: VaultTest) => {
   const seen = r.moments
   ;[, r] = await api("POST", "ops/companion.status", {})
   check("companion: back for more without acting, it let it pass: seen, there", !seen.length && r.agents.some((a: Any) => a.name === "Claude" && a.state === "watching" && a.seen && a.path === "Notes/A.md"), r.agents)
-  c.addMoment({ kind: "open", path: "Notes/A.md", line: 1 })
+  cState.addMoment({ kind: "open", path: "Notes/A.md", line: 1 })
   await api("POST", "ops/companion.next", { timeout: 0 })
   await api("POST", "ops/companion.look", { path: "Notes/A.md", line: 1 })
   await api("POST", "ops/companion.next", { timeout: 0 })
@@ -232,8 +246,8 @@ export default async ($: VaultTest) => {
     await $.sleep(50)
     ;[, r] = await api("POST", "ops/companion.status", {})
     const acted = r.agents.find((a: Any) => a.name === "Claude")?.t
-    c.addMoment({ kind: "open", path: "Notes/B.md", line: 1 })
-    c.addMoment({ kind: "open", path: "Notes/C.md", line: 4 })
+    cState.addMoment({ kind: "open", path: "Notes/B.md", line: 1 })
+    cState.addMoment({ kind: "open", path: "Notes/C.md", line: 4 })
     ;[, r] = await api("POST", "ops/companion.status", {})
     check("companion: an open moves the cursor there, no turn needed", r.agents.some((a: Any) => a.name === "Claude" && a.path === "Notes/C.md" && a.line === 4 && a.state === "watching"), r.agents)
     check("companion: …as a move, not an act: it rests (no cursor shown for it), when it last acted kept", r.agents.some((a: Any) => a.name === "Claude" && a.rests && a.t === acted), [acted, r.agents])
@@ -241,22 +255,22 @@ export default async ($: VaultTest) => {
     check("companion: an open alone wakes no one", r.moments.length === 0, r.moments)
     const next = api("POST", "ops/companion.next", { timeout: 3 })
     await $.sleep(50)
-    c.addMoment({ kind: "edit", path: "Notes/C.md", line: 4, hunks: [{ line: 4, removed: [], added: ["New thought"] }] })
+    cState.addMoment({ kind: "edit", path: "Notes/C.md", line: 4, hunks: [{ line: 4, removed: [], added: ["New thought"] }] })
     ;[, r] = await next
     check("companion: it comes with the next moment, the last note they went to only", r.moments.map((m: Any) => `${m.kind} ${m.path}`).join() === "open Notes/C.md,edit Notes/C.md", r.moments)
   }
   {
     // Typing on, before the agent saw it: one moment, from what the line was to what it is.
-    const one = c.addMoment({ kind: "edit", path: "Notes/A.md", line: 3, hunks: [{ line: 3, removed: ["Hi"], added: ["Hi or a"] }] })
-    const two = c.addMoment({ kind: "edit", path: "Notes/A.md", line: 3, hunks: [{ line: 3, removed: ["Hi or a"], added: ["Hi or an", "x"] }] })
-    c.addMoment({ kind: "edit", path: "Notes/A.md", line: 5, hunks: [{ line: 5, removed: [], added: ["y"] }] })
+    const one = cState.addMoment({ kind: "edit", path: "Notes/A.md", line: 3, hunks: [{ line: 3, removed: ["Hi"], added: ["Hi or a"] }] })
+    const two = cState.addMoment({ kind: "edit", path: "Notes/A.md", line: 3, hunks: [{ line: 3, removed: ["Hi or a"], added: ["Hi or an", "x"] }] })
+    cState.addMoment({ kind: "edit", path: "Notes/A.md", line: 5, hunks: [{ line: 5, removed: [], added: ["y"] }] })
     const [, got] = await api("POST", "ops/companion.next", { timeout: 0 })
     check("companion: edits of the same lines before the agent saw them are one moment", one === two && got.moments.length === 1 &&
       JSON.stringify(got.moments[0].hunks) === JSON.stringify([{ line: 3, removed: ["Hi"], added: ["Hi or an", "x", "y"] }]), got.moments)
-    check("companion: an edit of spaces alone isn't a moment", c.addMoment({ kind: "edit", path: "Notes/A.md", line: 4, hunks: [{ line: 4, removed: ["Hi."], added: ["Hi. ", ""] }] }) === null)
-    check("companion: an edit elsewhere stays its own", c.mergeHunks([{ line: 3, removed: [], added: ["a"] }], [{ line: 9, removed: ["b"], added: ["c"] }]) === null)
+    check("companion: an edit of spaces alone isn't a moment", cState.addMoment({ kind: "edit", path: "Notes/A.md", line: 4, hunks: [{ line: 4, removed: ["Hi."], added: ["Hi. ", ""] }] }) === null)
+    check("companion: an edit elsewhere stays its own", cState.mergeHunks([{ line: 3, removed: [], added: ["a"] }], [{ line: 9, removed: ["b"], added: ["c"] }]) === null)
   }
-  check("companion: moments read as lines for an agent", c.momentsText(edited, "pair", { path: "Notes/A.md", line: 2 }).includes("+ Call Alice friday"))
+  check("companion: moments read as lines for an agent", cNext.momentsText(edited, "pair", { path: "Notes/A.md", line: 2 }).includes("+ Call Alice friday"))
   {
     // Its timeline and chat read moments back from its messages (moments.ts): what momentsText writes, read again.
     const { readMoments } = await import("../../../plugins/core/companion/moments.ts")
@@ -268,7 +282,7 @@ export default async ($: VaultTest) => {
       { seq: 4, t: 0, kind: "accept", item: "n7", path: "Notes/A.md", line: 5, to: "Call Ben" },
       { seq: 5, t: 0, kind: "point", path: "Notes/A.md", line: 2 }, { seq: 6, t: 0, kind: "ask", text: "no note" }, { seq: 7, t: 0, kind: "open", path: "Notes/B.md" },
     ] as Any[]
-    const text = `Read ME.md first.\n\n${c.momentsText(ms, "pair", { path: "Notes/My plans.md", line: 7 }, [{ path: "Notes/My plans.md", from: 1, to: 2, of: 9, lines: ["a", "  b"] }])}`
+    const text = `Read ME.md first.\n\n${cNext.momentsText(ms, "pair", { path: "Notes/My plans.md", line: 7 }, [{ path: "Notes/My plans.md", from: 1, to: 2, of: 9, lines: ["a", "  b"] }])}`
     const m = readMoments(text)
     check("companion: its moments read back from what it was sent, whatever's in their text and paths", !!m && m.before === "Read ME.md first." && m.mode === "pair" &&
       m.focus?.path === "Notes/My plans.md" && m.focus.line === 7 && m.moments.length === 7 &&
@@ -279,28 +293,28 @@ export default async ($: VaultTest) => {
     check("companion: a message that isn't moments isn't read as them", readMoments("Time for a fresh session: this one has grown long.") === null)
     // (asked over another app with a note open in Vaultite: they're in that app, the note only behind it)
     const chrome = { seq: 3, t: 0, kind: "ask" as const, for: "Claude", text: "It's internal.example.com", app: "com.google.Chrome", window: 7, title: "New Tab", sx: 5, sy: 5, summoned: true }
-    const away = c.momentsText([chrome], "pair", { path: "Notes/My plans.md", line: 7 }), awayRead = readMoments(away)
+    const away = cNext.momentsText([chrome], "pair", { path: "Notes/My plans.md", line: 7 }), awayRead = readMoments(away)
     check("companion: an ask over another app says they're there, not in Vaultite (its note only behind), read back as such",
       away.startsWith("Mode: pair. The user is in com.google.Chrome, not Vaultite (Vaultite shows Notes/My plans.md at line 7).") && !/^Mode: pair\. The user is in Notes/.test(away) &&
       awayRead?.away === "com.google.Chrome" && awayRead.focus?.path === "Notes/My plans.md" && awayRead.focus.line === 7 && awayRead.moments[0]?.text === "It's internal.example.com" &&
-      c.momentsText([{ ...chrome, app: "private" }], "quiet", null).startsWith("Mode: quiet. The user is in a private app, not Vaultite.") &&
-      readMoments(c.momentsText([{ ...chrome, app: undefined, path: "Notes/A.md", line: 2 }], "pair", { path: "Notes/A.md", line: 2 }))?.away === undefined, [away, awayRead])
-    const moved = readMoments(c.momentsText([{ seq: 1, t: 0, kind: "reply", bubble: true, item: "n3", path: "Notes/A.md", line: 2, text: "yes" },
+      cNext.momentsText([{ ...chrome, app: "private" }], "quiet", null).startsWith("Mode: quiet. The user is in a private app, not Vaultite.") &&
+      readMoments(cNext.momentsText([{ ...chrome, app: undefined, path: "Notes/A.md", line: 2 }], "pair", { path: "Notes/A.md", line: 2 }))?.away === undefined, [away, awayRead])
+    const moved = readMoments(cNext.momentsText([{ seq: 1, t: 0, kind: "reply", bubble: true, item: "n3", path: "Notes/A.md", line: 2, text: "yes" },
       { seq: 2, t: 0, kind: "dismiss", bubble: true, item: "n4", path: "Notes/A.md", line: 3, text: "Hi: there" },
       { seq: 3, t: 0, kind: "move", into: "note", item: "n5", path: "Notes/A.md", line: 6, text: "Kept" }, { seq: 4, t: 0, kind: "move", into: "bubble", path: "Notes/A.md", line: 9, text: "Back" }] as Any[], "pair", null))
     check("companion: replies to its bubbles, closing them and moving its words read back too", JSON.stringify(moved?.moments.map((x) => [x.kind, x.bubble ?? x.into, x.item ?? "", x.line, x.text])) ===
       JSON.stringify([["reply", true, "n3", 2, "yes"], ["dismiss", true, "n4", 3, "Hi: there"], ["move", "note", "", 6, "Kept"], ["move", "bubble", "", 9, "Back"]]), moved?.moments)
     const at = "2026-11-02T10:00:00.000Z", tool = (id: string, name: string, input: Any, result?: string, error?: boolean) => ({ k: "tool", id, name, summary: "", input, result, error, at }) as Any
     const ts = turnsOf([
-      { k: "user", id: "u1", text: c.momentsText([ms[0]], "pair", null), at },
+      { k: "user", id: "u1", text: cNext.momentsText([ms[0]], "pair", null), at },
       tool("t1", "mcp__vaultite-app__say", { text: "On it" }, "Said."),
       tool("t2", "Bash", { command: "vau read Notes/A.md" }, "…"), tool("t3", "Bash", { command: "vau search basil" }, "…"),
       tool("t4", "mcp__vaultite-app__suggest", { find: "basil", replace: "thyme", path: "Notes/A.md" }, "Suggested (n7uaz)."),
       tool("t5", "mcp__vaultite-app__edit", { text: "a\nb\nc", after: "## Plan" }, "Typed into Notes/My plans.md."),
       tool("t6", "Bash", { command: "vau terminal open claude_default --prompt \"Fix the test\"" }, "Opened claude_default-ab12cd34 (claude_default)."),
       tool("t7", "mcp__vaultite-app__comment", { text: "x" }, "there's no note", true),
-      { k: "user", id: "u2", text: c.momentsText([{ seq: 8, t: 0, kind: "reject", item: "n7uaz", path: "Notes/A.md", line: 1 }], "pair", null), at },
-      { k: "user", id: "u3", text: c.momentsText([{ seq: 9, t: 0, kind: "edit", path: "Notes/B.md", hunks: [{ line: 1, removed: [], added: ["hi"] }] }], "pair", null), at },
+      { k: "user", id: "u2", text: cNext.momentsText([{ seq: 8, t: 0, kind: "reject", item: "n7uaz", path: "Notes/A.md", line: 1 }], "pair", null), at },
+      { k: "user", id: "u3", text: cNext.momentsText([{ seq: 9, t: 0, kind: "edit", path: "Notes/B.md", hunks: [{ line: 1, removed: [], added: ["hi"] }] }], "pair", null), at },
     ] as Any[])
     const acts = ts[0]?.acts ?? []
     check("companion: its session reads as turns: what the user did, then what it did, reads folded, sessions it started, an item's answer on it",
@@ -316,14 +330,14 @@ export default async ($: VaultTest) => {
       t.isPrivate("a.md", "---\ntitle: A\ncompanion: private\n---\nhi", []) && !t.isPrivate("a.md", "companion: private\n", []))
     write("Notes/Secret.md", "---\ncompanion: private\n---\nDear diary @claude what now?\n")
     await api("PATCH", "config/plugin/companion", { private: ["Journal"] })
-    check("companion: nothing of a private note reaches it, asks neither", c.addMoment({ kind: "ask", path: "Notes/Secret.md", line: 4, text: "what now?" }) === null &&
-      c.addMoment({ kind: "edit", path: "Journal/Day.md", line: 1, hunks: [{ line: 1, removed: [], added: ["Today"] }] }) === null &&
-      !!c.addMoment({ kind: "edit", path: "Notes/A.md", line: 1, hunks: [{ line: 1, removed: [], added: ["# A!"] }] }))
+    check("companion: nothing of a private note reaches it, asks neither", cState.addMoment({ kind: "ask", path: "Notes/Secret.md", line: 4, text: "what now?" }) === null &&
+      cState.addMoment({ kind: "edit", path: "Journal/Day.md", line: 1, hunks: [{ line: 1, removed: [], added: ["Today"] }] }) === null &&
+      !!cState.addMoment({ kind: "edit", path: "Notes/A.md", line: 1, hunks: [{ line: 1, removed: [], added: ["# A!"] }] }))
     await api("PATCH", "config/plugin/companion", { private: null })
     await api("POST", "ops/companion.next", { timeout: 0 })
 
     // Silence made visible: pass shows why by its seen tick.
-    c.addMoment({ kind: "edit", path: "Notes/A.md", line: 3, hunks: [{ line: 3, removed: [], added: ["Note to self"] }] })
+    cState.addMoment({ kind: "edit", path: "Notes/A.md", line: 3, hunks: [{ line: 3, removed: [], added: ["Note to self"] }] })
     await api("POST", "ops/companion.next", { timeout: 0 })
     ;[st, r] = await api("POST", "ops/companion.pass", { reason: "Not for me." })
     const [, stat] = await api("POST", "ops/companion.status", {})
@@ -333,16 +347,16 @@ export default async ($: VaultTest) => {
     write("Notes/B.md", "# B\n\nHow do modes work?\nStill that question.\n\nLater text\n")
     ;[, r] = await api("POST", "ops/companion.say", { text: "For you, or a note to yourself?", ask: true, path: "Notes/B.md", find: "How do modes" })
     const q = r
-    check("companion: a say with ask is a question bubble, longer words show longer", q.question === true && c.sayMs("a b c") === 12_000 && c.sayMs("w ".repeat(60)) > 12_000 && c.sayMs("w ".repeat(900)) === 45_000, q)
-    c.answer(q.id, "reply", "for you")
+    check("companion: a say with ask is a question bubble, longer words show longer", q.question === true && cSettings.sayMs("a b c") === 12_000 && cSettings.sayMs("w ".repeat(60)) > 12_000 && cSettings.sayMs("w ".repeat(900)) === 45_000, q)
+    cComments.answer(q.id, "reply", "for you")
     ;[, r] = await api("POST", "ops/companion.next", { timeout: 0 })
     check("companion: a reply in a bubble is a reply moment, that quotes it", r.moments.some((m: Any) => m.kind === "reply" && m.bubble && m.item === q.id && m.text === "for you") &&
-      c.momentsText(r.moments, "pair", null).includes('reply to your bubble') && c.momentsText(r.moments, "pair", null).includes("note to yourself"), r.moments)
+      cNext.momentsText(r.moments, "pair", null).includes('reply to your bubble') && cNext.momentsText(r.moments, "pair", null).includes("note to yourself"), r.moments)
     ;[, r] = await api("POST", "ops/companion.say", { text: "Modes: quiet and pair.", path: "Notes/B.md", find: "How do modes" })
     const said = r
     const waiting = api("POST", "ops/companion.next", { timeout: 1 })
     await $.sleep(50)
-    c.answer(said.id, "dismiss")
+    cComments.answer(said.id, "dismiss")
     ;[, r] = await waiting
     check("companion: a bubble closed wakes no one", r.moments.length === 0, r.moments)
     ;[st, r] = await api("POST", "ops/companion.place", { id: said.id })
@@ -351,13 +365,13 @@ export default async ($: VaultTest) => {
     check("companion: Put in note writes its words after the paragraph it was said by", st === 200 && read("Notes/B.md") === "# B\n\nHow do modes work?\nStill that question.\n\nModes: quiet and pair.\n\nLater text\n", [st, r, read("Notes/B.md")])
     ;[, r] = await api("POST", "ops/companion.next", { timeout: 0 })
     check("companion: closing and moving ride along with the next, as hints", r.moments.map((m: Any) => m.kind).join() === "dismiss,move" && r.moments[1].into === "note" &&
-      /closed it/.test(c.momentsText(r.moments, "pair", null)) && /put your bubble in the note/.test(c.momentsText(r.moments, "pair", null)), r.moments)
-    check("companion: and it's marked in the cursor's history", c.recentSays().some((n: Any) => n.id === said.id && n.placed && n.seen))
+      /closed it/.test(cNext.momentsText(r.moments, "pair", null)) && /put your bubble in the note/.test(cNext.momentsText(r.moments, "pair", null)), r.moments)
+    check("companion: and it's marked in the cursor's history", cState.recentSays().some((n: Any) => n.id === said.id && n.placed && n.seen))
     ;[st, r] = await api("POST", "ops/companion.fold", { as: "Claude", path: "Notes/B.md", line: 4, text: "Modes: quiet and pair." }, $.sentBy("app/desktop"))
     const folded = r
     ;[, r] = await api("POST", "ops/companion.next", { timeout: 0 })
-    check("companion: folded back, its words are a bubble by its cursor, and a hint", st === 200 && c.recentSays().some((n: Any) => n.id === folded.id && n.text === "Modes: quiet and pair.") &&
-      r.moments.some((m: Any) => m.kind === "move" && m.into === "bubble") && /folded what you wrote/.test(c.momentsText(r.moments, "pair", null)), [folded, r.moments])
+    check("companion: folded back, its words are a bubble by its cursor, and a hint", st === 200 && cState.recentSays().some((n: Any) => n.id === folded.id && n.text === "Modes: quiet and pair.") &&
+      r.moments.some((m: Any) => m.kind === "move" && m.into === "bubble") && /folded what you wrote/.test(cNext.momentsText(r.moments, "pair", null)), [folded, r.moments])
   }
   {
     // The eval (tools/evals/companion.ts): a session's turns against the contract; its fixture, and the check itself.
@@ -406,7 +420,7 @@ export default async ($: VaultTest) => {
     // A drawing's moments: what changed, the scene as its window saw it (the last one), the user's pointer.
     const ms = [{ seq: 1, t: 0, kind: "edit", path: "D.excalidraw", x: 5, y: 9, changes: ["+ r1 rectangle at 0,0"], scene: "old" },
       { seq: 2, t: 1, kind: "ask", path: "D.excalidraw", find: "t1", text: "why?", scene: "1 items:\n- t1 text \"@claude why?\"" }] as Any[]
-    const ex = await c.excerpts(null as Any, ms), text = c.momentsText(ms, "pair", { path: "D.excalidraw", x: 5, y: 9 }, ex)
+    const ex = await cNext.excerpts(null as Any, ms), text = cNext.momentsText(ms, "pair", { path: "D.excalidraw", x: 5, y: 9 }, ex)
     check("companion: a drawing's moments read with what changed and its scene, at the user's pointer", ex.length === 1 && !!ex[0].scene?.startsWith("1 items") &&
       text.includes("The user is in D.excalidraw at 5,9.") && text.includes("  + r1 rectangle at 0,0") && text.includes('- ask D.excalidraw (in t1): "why?"') && text.endsWith('- t1 text "@claude why?"'), text)
     ;[st, r] = await api("POST", "ops/companion.draw", { path: "Notes/A.md", actions: [{ op: "delete", id: "x" }] })
@@ -418,7 +432,7 @@ export default async ($: VaultTest) => {
   ;[, r] = await api("POST", "ops/companion.status", {})
   check("companion: a suggestion is kept, by its agent, Claude in orange", st === 200 && r.notes.some((n: Any) => n.id === id && n.kind === "suggestion" && n.agent === "Claude") &&
     r.agents.some((a: Any) => a.name === "Claude" && a.tint === "orange"), r)
-  c.answer(id, "accept")
+  cComments.answer(id, "accept")
   ;[, r] = await api("POST", "ops/companion.next", { timeout: 0 })
   check("companion: taking it is a moment for the agent, and it's gone", r.moments.some((m: Any) => m.kind === "accept" && m.item === id && m.to === "Friday") &&
     !(await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.id === id), r)
@@ -458,7 +472,7 @@ export default async ($: VaultTest) => {
       (await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.id === r.id && n.kind === "proposal"), [st, r])
     const big = r.id
     write(P, "# Plan\n\nOne, by hand\n2\n3\n4\n5\n6\n7\n8\n")
-    c.loadAll()
+    cComments.loadAll()
     ;[, r] = await api("POST", "ops/companion.status", {})
     check("companion: a change whose text the user has since changed is stale (it can only be left)", r.notes.find((n: Any) => n.id === big)?.changes?.[0]?.stale === true, r.notes.find((n: Any) => n.id === big))
     ;[st, r] = await api("POST", "ops/companion.review", { id: big, verdict: "accept" }, user)
@@ -469,7 +483,7 @@ export default async ($: VaultTest) => {
   }
 
   ;[st, r] = await api("POST", "ops/companion.comment", { path: "Notes/A.md", find: "Alice", text: "Alice is away until Monday." })
-  c.answer(r.id, "reply", "Then Tuesday")
+  cComments.answer(r.id, "reply", "Then Tuesday")
   ;[, r] = await api("POST", "ops/companion.next", { timeout: 0 })
   check("companion: a reply to a comment comes back with its words", r.moments.some((m: Any) => m.kind === "reply" && m.text === "Then Tuesday"), r)
 
@@ -480,7 +494,7 @@ export default async ($: VaultTest) => {
     write("Notes/B.md", "# B\n\nOne\n")
     const all = await Promise.all(["Two", "Three", "Four"].map((t, i) => api("POST", "ops/companion.edit", { path: "Notes/B.md", after: ["One", "Two", "Three"][i], text: t })))
     check("companion: quick edits of a note go one at a time, each where the last left it", all.every(([s]) => s === 200) && read("Notes/B.md") === "# B\n\nOne\nTwo\nThree\nFour\n", [all, read("Notes/B.md")])
-    check("companion: after anchors new lines to a line's text, wherever it moved", c.editText("a\nb\nc", { after: "b", line: 1, text: "x" }) === "a\nb\nx\nc")
+    check("companion: after anchors new lines to a line's text, wherever it moved", cEdits.editText("a\nb\nc", { after: "b", line: 1, text: "x" }) === "a\nb\nx\nc")
   }
   ;[st, r] = await api("POST", "ops/companion.highlight", { path: "Notes/A.md", find: "Tuesday", keep: true })
   check("companion: a kept highlight is in the file in its colour", st === 200 && read("Notes/A.md").includes("==🟠Tuesday=="), [st, read("Notes/A.md")])
@@ -493,34 +507,34 @@ export default async ($: VaultTest) => {
     const kept = (p: string) => (exists(side(p)) ? JSON.parse(read(side(p))).comments : null)
     const status = async () => (await api("POST", "ops/companion.status", {}))[1].notes as Any[]
     check("companion: an item's line follows its text, or its line's text; gone, null",
-      c.anchorLine("x\na\nb\n", { find: "b", line: 2 }) === 3 && c.anchorLine("x\ny\na\n", { anchor: "a", line: 1 }) === 3 &&
-      c.anchorLine("x\n", { find: "b", line: 1 }) === null && c.anchorLine("x\ny\n", { line: 9 }) === 2)
+      cComments.anchorLine("x\na\nb\n", { find: "b", line: 2 }) === 3 && cComments.anchorLine("x\ny\na\n", { anchor: "a", line: 1 }) === 3 &&
+      cComments.anchorLine("x\n", { find: "b", line: 1 }) === null && cComments.anchorLine("x\ny\n", { line: 9 }) === 2)
     write("Kept/K.md", "# K\n\nMeet Bob\nPlan the trip\n")
     let [, cm] = await api("POST", "ops/companion.comment", { path: "Kept/K.md", find: "Bob", text: "Bob is in Lisbon." })
     const [, ln] = await api("POST", "ops/companion.comment", { path: "Kept/K.md", line: 4, text: "Which trip?" })
     const [, sg] = await api("POST", "ops/companion.suggest", { path: "Kept/K.md", find: "Plan", replace: "Book" })
     await api("POST", "ops/companion.comment", { id: cm.id, text: "Back on Friday." })
-    c.answer(cm.id, "reply", "Thanks")
+    cComments.answer(cm.id, "reply", "Thanks")
     let k = kept("Kept/K.md")
     check("companion: comments and suggestions are kept in the note's sidecar, replies too", k?.length === 3 && !("path" in k[0]) &&
       k.find((n: Any) => n.id === cm.id)?.replies?.map((r: Any) => r.text).join() === "Back on Friday.,Thanks" && k.find((n: Any) => n.id === ln.id)?.anchor === "Plan the trip", k)
-    c.loadAll(true)
+    cComments.loadAll(true)
     check("companion: and read again as the server starts", (await status()).filter((n) => n.path === "Kept/K.md").map((n) => n.id).sort().join() === [cm.id, ln.id, sg.id].sort().join())
     write("Kept/K.md", "# K\n\nNew line\nAnother\nMeet Bob\nPlan the trip\n")
-    c.loadAll()
+    cComments.loadAll()
     k = kept("Kept/K.md")
     check("companion: lines written above move them with their text", k.find((n: Any) => n.id === cm.id).line === 5 && k.find((n: Any) => n.id === ln.id).line === 6, k)
     write("Kept/K.md", "# K\n\nNew line\nAnother\nMeet\n")
-    c.loadAll()
+    cComments.loadAll()
     k = kept("Kept/K.md")
     check("companion: their text gone, a comment stays by its last line, orphaned, a suggestion goes", k.length === 2 && k.find((n: Any) => n.id === cm.id).line === 5 &&
       k.find((n: Any) => n.id === cm.id).orphaned && k.find((n: Any) => n.id === ln.id).line === 5 && !(await status()).some((n) => n.id === sg.id), k)
     write("Kept/K.md", "# K\n\nNew line\nMeet Bob\n")
-    c.loadAll()
+    cComments.loadAll()
     k = kept("Kept/K.md")
     check("companion: its text back (an undo), it's found again", k.find((n: Any) => n.id === cm.id).line === 4 && !k.find((n: Any) => n.id === cm.id).orphaned, k)
     write("Kept/K.md", "# K\n\nNew line\nAnother\nMeet\n")
-    c.loadAll()
+    cComments.loadAll()
     k = kept("Kept/K.md")
 
     write(side("Kept/K.md"), JSON.stringify({ comments: [...k, { id: "nzz1", kind: "comment", agent: "Claude", t: 1, text: "From the phone", line: 1 }] }))
@@ -536,15 +550,15 @@ export default async ($: VaultTest) => {
     check("companion: deleted, it goes into the trash with it", kept(del.trashed)?.length === 3 && !exists(side("Kept/Moved/L.md")), del)
     await api("POST", "file/restore", { path: del.trashed })
     check("companion: and comes back with it", kept("Kept/Moved/L.md")?.length === 3 && !exists(side(del.trashed)))
-    for (const n of await status()) if (n.path === "Kept/Moved/L.md") c.answer(n.id, "dismiss")
+    for (const n of await status()) if (n.path === "Kept/Moved/L.md") cComments.answer(n.id, "dismiss")
     const sc = JSON.parse(read(side("Kept/Moved/L.md")))
     check("companion: dismissed comments stay in the note's history, in its sidecar", sc.comments.length === 0 && sc.past.length === 3 && sc.past.every((n: Any) => n.dismissed), sc)
     let [, h] = await api("POST", "ops/companion.history", { path: "Kept/Moved/L.md" })
     check("companion: history lists them", h.open.length === 0 && h.past.length === 3 && h.past.some((n: Any) => n.id === cm.id && n.replies?.length === 2), h)
-    c.reopen(cm.id)
+    cComments.reopen(cm.id)
     ;[, h] = await api("POST", "ops/companion.history", { path: "Kept/Moved/L.md" })
     check("companion: one reopened is back in the margin, as it was", h.open.some((n: Any) => n.id === cm.id && n.replies?.length === 2 && !n.dismissed) && h.past.length === 2, h)
-    c.loadAll(true)
+    cComments.loadAll(true)
     ;[, h] = await api("POST", "ops/companion.history", { path: "Kept/Moved/L.md" })
     check("companion: history is read again as the server starts", h.open.length === 1 && h.past.length === 2, h)
     const back = h.past[0].id
@@ -574,26 +588,26 @@ export default async ($: VaultTest) => {
     await api("POST", "ops/companion.next", { timeout: 0, as: "Ada" })
     const ada = api("POST", "ops/companion.next", { timeout: 5, as: "ada" })
     await $.sleep(50)
-    c.addMoment({ kind: "ask", for: "ADA", path: "Notes/A.md", line: 3, text: "for Ada" })
+    cState.addMoment({ kind: "ask", for: "ADA", path: "Notes/A.md", line: 3, text: "for Ada" })
     let [, got] = await ada
     ;[, r] = await api("POST", "ops/companion.status", {})
     check("companion: @ada is an ask for Ada alone, who shows thinking (any case)", got.moments.length === 1 && got.moments[0].text === "for Ada" &&
       r.agents.find((a: Any) => a.name === "Ada")?.state === "thinking" && r.agents.find((a: Any) => a.name === "Claude")?.state !== "thinking", [got, r.agents])
     ;[, got] = await api("POST", "ops/companion.next", { timeout: 0 })
     check("companion: and the companion doesn't get it", !got.moments.some((m: Any) => m.text === "for Ada"), got)
-    c.addMoment({ kind: "ask", for: "bob", text: "who?" })
-    c.addMoment({ kind: "ask", text: "plain" })
-    c.addMoment({ kind: "edit", path: "Notes/A.md", hunks: [] })
+    cState.addMoment({ kind: "ask", for: "bob", text: "who?" })
+    cState.addMoment({ kind: "ask", text: "plain" })
+    cState.addMoment({ kind: "edit", path: "Notes/A.md", hunks: [] })
     ;[, got] = await api("POST", "ops/companion.next", { timeout: 0 })
     const [, adaGot] = await api("POST", "ops/companion.next", { timeout: 0, as: "Ada" })
     check("companion: an unknown name and no name go to the companion, edits too; Ada gets none", got.moments.map((m: Any) => m.text ?? m.kind).join() === "who?,plain,edit" &&
       adaGot.moments.length === 0, [got, adaGot])
     await api("POST", "ops/companion.next", { timeout: 0, as: "Ada", watch: true })
-    c.addMoment({ kind: "edit", path: "Notes/A.md", hunks: [] })
+    cState.addMoment({ kind: "edit", path: "Notes/A.md", hunks: [] })
     ;[, got] = await api("POST", "ops/companion.next", { timeout: 0, as: "Ada", watch: true })
     check("companion: an agent with watch gets edits too", got.moments.some((m: Any) => m.kind === "edit"), got)
     ;[, r] = await api("POST", "ops/companion.comment", { path: "Notes/A.md", find: "Alice", text: "From Ada", as: "Ada" })
-    c.answer(r.id, "reply", "Thanks Ada")
+    cComments.answer(r.id, "reply", "Thanks Ada")
     ;[, got] = await api("POST", "ops/companion.next", { timeout: 0, as: "Ada" })
     const [, mainGot] = await api("POST", "ops/companion.next", { timeout: 0 })
     check("companion: a reply goes to the agent whose comment it is", got.moments.some((m: Any) => m.kind === "reply" && m.text === "Thanks Ada") &&
@@ -606,11 +620,11 @@ export default async ($: VaultTest) => {
     check("companion: an agent's name is one word", (await api("POST", "ops/companion.start", { as: "two words" }))[0] >= 400)
     // Started from the @ picker: Claude Code runs Sonnet at medium unless told; an ask while it boots waits for its first next.
     check("companion: a new Claude Code session runs Sonnet at medium, Codex its own, either what it's given",
-      JSON.stringify([c.howOf("claude"), c.howOf("claude_work"), c.howOf("codex"), c.howOf("codex", "gpt-5", "high"), c.howOf("claude", "opus")]) ===
+      JSON.stringify([cSettings.howOf("claude"), cSettings.howOf("claude_work"), cSettings.howOf("codex"), cSettings.howOf("codex", "gpt-5", "high"), cSettings.howOf("claude", "opus")]) ===
       JSON.stringify([{ model: "sonnet", effort: "medium" }, { model: "sonnet", effort: "medium" }, { model: "", effort: "" }, { model: "gpt-5", effort: "high" }, { model: "opus", effort: "medium" }]))
     await api("POST", "ops/companion.next", { timeout: 0 })
-    c.starting("Bob", { path: "Notes/A.md", line: 3, model: "opus", effort: "high" })
-    c.addMoment({ kind: "ask", for: "bob", path: "Notes/A.md", line: 3, text: "for Bob" })
+    cAlwayson.starting("Bob", { path: "Notes/A.md", line: 3, model: "opus", effort: "high" })
+    cState.addMoment({ kind: "ask", for: "bob", path: "Notes/A.md", line: 3, text: "for Bob" })
     ;[, r] = await api("POST", "ops/companion.status", {})
     const bob = r.agents.find((a: Any) => a.name === "Bob")
     check("companion: an agent starting shows so, where it was called, with its model, and an ask to it is its own", bob?.state === "starting" && bob.path === "Notes/A.md" &&
@@ -629,12 +643,12 @@ export default async ($: VaultTest) => {
       JSON.stringify([profileOf("Opus-review", table), profileOf("sol", table), profileOf("bob", table), profileOf("opus2", table)]) ===
       JSON.stringify([{ agent: "claude", model: "opus", effort: "high" }, { agent: "codex", model: "gpt-6.1-sol", effort: "medium" }, null, null]), table)
     check("companion: a new agent runs its name's profile, else the settings; an agent given drops the profile's model",
-      JSON.stringify([c.howFor("Opus-review"), c.howFor("Luna"), c.howFor("Bob"), c.howFor("Opus-x", "codex"), c.howFor("Claude")]) ===
+      JSON.stringify([cSettings.howFor("Opus-review"), cSettings.howFor("Luna"), cSettings.howFor("Bob"), cSettings.howFor("Opus-x", "codex"), cSettings.howFor("Claude")]) ===
       JSON.stringify([{ agent: "claude", model: "opus", effort: "medium" }, { agent: "codex", model: "gpt-6-luna", effort: "medium" }, { agent: "claude", model: "sonnet", effort: "medium" },
         { agent: "codex", model: "", effort: "" }, { agent: "claude", model: "sonnet", effort: "medium" }]))
     await api("POST", "ops/companion.next", { timeout: 0 })
-    c.addMoment({ kind: "ask", for: "opus-review", path: "Notes/A.md", line: 3, text: "for Opus" })
-    c.addMoment({ kind: "ask", for: "claude", path: "Notes/A.md", line: 3, text: "for the companion" })
+    cState.addMoment({ kind: "ask", for: "opus-review", path: "Notes/A.md", line: 3, text: "for Opus" })
+    cState.addMoment({ kind: "ask", for: "claude", path: "Notes/A.md", line: 3, text: "for the companion" })
     ;[, got] = await api("POST", "ops/companion.next", { timeout: 0 })
     ;[, r] = await api("POST", "ops/companion.status", {})
     const opus = r.agents.find((a: Any) => a.name === "Opus-review")
@@ -643,8 +657,8 @@ export default async ($: VaultTest) => {
       r.moments.some((m: Any) => m.text === "for Opus" && m.for === "Opus-review"), [got, opus])
     // An ask that finds the companion's session not running starts it: the ask waits for its first next.
     await api("POST", "ops/companion.next", { timeout: 0 })
-    const woke = c.addMoment({ kind: "ask", path: "Notes/A.md", line: 3, text: "are you there" })!
-    c.starting("Claude", { path: "Notes/A.md", line: 3 }, woke.seq - 1)
+    const woke = cState.addMoment({ kind: "ask", path: "Notes/A.md", line: 3, text: "are you there" })!
+    cAlwayson.starting("Claude", { path: "Notes/A.md", line: 3 }, woke.seq - 1)
     ;[, got] = await api("POST", "ops/companion.next", { timeout: 0 })
     check("companion: started by an ask, its first next gets that ask", got.moments.some((m: Any) => m.text === "are you there"), got)
   }
@@ -652,26 +666,26 @@ export default async ($: VaultTest) => {
     // The cursor: dropped on a line, a point (an ask without words); its says kept, a few per agent; one pinned, a comment.
     await api("POST", "ops/companion.next", { timeout: 0 })
     write("Notes/P.md", "# P\n\nPlant the basil\nWater it\n")
-    c.addMoment({ kind: "point", path: "Notes/P.md", line: 3, find: "basil", selection: "the basil" })
+    cState.addMoment({ kind: "point", path: "Notes/P.md", line: 3, find: "basil", selection: "the basil" })
     let [, got] = await api("POST", "ops/companion.next", { timeout: 0 })
     ;[, r] = await api("POST", "ops/companion.status", {})
     check("companion: a dropped cursor is a point for it, with the note's lines, and it thinks there", got.moments.some((m: Any) => m.kind === "point" && m.line === 3 && m.selection === "the basil") &&
       got.notes[0]?.lines.includes("Plant the basil") && r.agents.some((a: Any) => a.name === "Claude" && a.state === "thinking" && a.find === "basil"), [got, r.agents])
-    check("companion: and reads as look at this", /- point Notes\/P\.md:3: .*look at this[^\n]*\n  on the selection: "the basil"/.test(c.momentsText(got.moments, "pair", null)), c.momentsText(got.moments, "pair", null))
+    check("companion: and reads as look at this", /- point Notes\/P\.md:3: .*look at this[^\n]*\n  on the selection: "the basil"/.test(cNext.momentsText(got.moments, "pair", null)), cNext.momentsText(got.moments, "pair", null))
     for (let i = 1; i <= 12; i++) await api("POST", "ops/companion.say", { text: `Say ${i}`, path: "Notes/P.md", find: "Water" })
-    const mine = c.recentSays().filter((n: Any) => n.agent === "Claude" && n.kind === "say")
+    const mine = cState.recentSays().filter((n: Any) => n.agent === "Claude" && n.kind === "say")
     check("companion: an agent's last ten says are kept", mine.length === 10 && mine[0].text === "Say 3" && mine[9].text === "Say 12", mine.map((n: Any) => n.text))
-    c.addMoment({ kind: "ask", for: "Claude", path: "Notes/P.md", line: 4, text: "Can you water it" })
-    c.addMoment({ kind: "ask", for: "Claude", path: "Notes/P.md", line: 4, text: "Can you water it tomorrow too" })
-    const asked = c.recentSays().filter((n: Any) => n.kind === "ask" && n.agent === "Claude" && n.text.startsWith("Can you water it"))
+    cState.addMoment({ kind: "ask", for: "Claude", path: "Notes/P.md", line: 4, text: "Can you water it" })
+    cState.addMoment({ kind: "ask", for: "Claude", path: "Notes/P.md", line: 4, text: "Can you water it tomorrow too" })
+    const asked = cState.recentSays().filter((n: Any) => n.kind === "ask" && n.agent === "Claude" && n.text.startsWith("Can you water it"))
     check("companion: what the user asks it is kept with its says (an ask going on, one row), not costing a say",
       asked.length === 1 && asked[0].text === "Can you water it tomorrow too" && asked[0].by === "user" && asked[0].seen &&
-      c.recentSays().filter((n: Any) => n.kind === "say" && n.agent === "Claude").length === 10, c.recentSays())
-    const pinned = c.pin(mine[9].id)
+      cState.recentSays().filter((n: Any) => n.kind === "say" && n.agent === "Claude").length === 10, cState.recentSays())
+    const pinned = cComments.pin(mine[9].id)
     ;[, r] = await api("POST", "ops/companion.status", {})
     check("companion: a say pinned is a comment, same words, same line, and no longer a bubble", pinned?.kind === "comment" && pinned.text === "Say 12" && pinned.line === 4 &&
-      !r.notes.some((n: Any) => n.id === mine[9].id) && c.recentSays().find((n: Any) => n.id === mine[9].id)?.pinned === pinned.id && c.pin(mine[9].id) === null, [pinned, r.notes])
-    const old = c.pin(mine[0].id)
+      !r.notes.some((n: Any) => n.id === mine[9].id) && cState.recentSays().find((n: Any) => n.id === mine[9].id)?.pinned === pinned.id && cComments.pin(mine[9].id) === null, [pinned, r.notes])
+    const old = cComments.pin(mine[0].id)
     check("companion: an old say, gone from the screen, can be pinned too", old?.kind === "comment" && old.text === "Say 3", old)
     await api("POST", "ops/companion.clear", {})
   }
@@ -727,7 +741,7 @@ export default async ($: VaultTest) => {
     const file = `${c.plugin.localDir()}/session.json`
     await api("POST", "ops/companion.next", { timeout: 0 })
     fs.writeFileSync(file, JSON.stringify({ id: "claude-test0001", name: "Claude", t: Date.now(), handed: 5 }))
-    c.addMoment({ kind: "ask", path: "Notes/A.md", line: 3, text: "one" })
+    cState.addMoment({ kind: "ask", path: "Notes/A.md", line: 3, text: "one" })
     let [, got] = await api("POST", "ops/companion.next", { timeout: 0 })
     check("companion: moments handed are counted on its session", got.moments.length === 1 && JSON.parse(fs.readFileSync(file, "utf8")).handed === 6, got)
     let [st, txt] = await api("POST", "ops/companion.next?as=text", { timeout: 0 })
@@ -766,8 +780,8 @@ export default async ($: VaultTest) => {
     await $.sleep(50)
     const t0 = Date.now()
     await api("POST", "ops/companion.stop", {})
-    c.addMoment({ kind: "edit", path: "Notes/A.md", line: 8, hunks: [{ line: 8, removed: [], added: ["More on this"] }] })
-    c.addMoment({ kind: "open", path: "Notes/B.md", line: 1 })
+    cState.addMoment({ kind: "edit", path: "Notes/A.md", line: 8, hunks: [{ line: 8, removed: [], added: ["More on this"] }] })
+    cState.addMoment({ kind: "open", path: "Notes/B.md", line: 1 })
     ;[, got] = await dying
     check("companion: stopped, its waiting next is answered at once, as ended", got.ended && !got.moments.length && Date.now() - t0 < 2000, got)
     check("companion: and no edit or open brings its cursor back", (await claude())?.state === "away", await claude())
@@ -776,11 +790,11 @@ export default async ($: VaultTest) => {
     // Back by any other way (a word sent before it ended): not live, no session, the watchdog takes it away, companion or not.
     await api("POST", "ops/companion.say", { text: "Late" })
     await api("POST", "ops/companion.say", { text: "Late", as: "Zed" })
-    await c.tend()
+    await cChatturns.tend()
     ;[, s2] = await api("POST", "ops/companion.status", {})
     check("companion: the watchdog takes a cursor with no session away, the companion's too", ["Claude", "Zed"].every((n) => s2.agents.find((a: Any) => a.name === n)?.state === "away"), s2.agents)
     await api("POST", "ops/companion.next", { timeout: 0, terminal: "claude-hand0001" })
-    await c.tend()
+    await cChatturns.tend()
     check("companion: one started by hand (another terminal, or none) is back at its next, and stays", (await claude())?.state === "watching", await claude())
     await api("POST", "ops/companion.next", { timeout: 0 })
     fs.rmSync(file, { force: true })
@@ -788,7 +802,7 @@ export default async ($: VaultTest) => {
     const items = [{ id: "n1", kind: "comment", agent: "Claude", t: 0, path: "A.md", line: 3, text: "Alice is away", replies: [{ by: "user", text: "Then Tuesday" }] },
       { id: "n2", kind: "say", agent: "Claude", t: 0, path: "A.md", line: 4, text: "Done" },
       { id: "n3", kind: "suggestion", agent: "Ada", t: 0, path: "A.md", find: "x", replace: "y" }] as Any[]
-    const h = c.handoverText("Claude", "Working on the Lisbon trip.", items, [{ seq: 1, t: 0, kind: "ask", path: "A.md", line: 2, text: "budget?" }])
+    const h = cAlwayson.handoverText("Claude", "Working on the Lisbon trip.", items, [{ seq: 1, t: 0, kind: "ask", path: "A.md", line: 2, text: "budget?" }])
     check("companion: the fresh one is told the summary, its own open threads and the last asks", h.includes("Working on the Lisbon trip.") &&
       h.includes("- n1 comment in A.md:3") && h.includes("the user: \"Then Tuesday\"") && !h.includes("n2") && !h.includes("n3") && h.includes("budget?") && /don't greet/.test(h), h)
   }
@@ -800,15 +814,15 @@ export default async ($: VaultTest) => {
     check("companion: private sites cover their subdomains; the setting's lines are folders, sites, containers and apps",
       pl.siteIn("www.secure.chase.com", ["chase.com"]) && !pl.siteIn("notchase.com", ["chase.com"]) && !tx.isPrivate("bank.com/a.md", "", ["site: bank.com"]) &&
       JSON.stringify(tx.privateOf(["Journal", "site: bank.com", "container: work", "app: com.x"])) === JSON.stringify({ folders: ["Journal"], sites: ["bank.com"], containers: ["work"], apps: ["com.x"] }))
-    check("companion: the starting list keeps password managers and banks from it, not Mail or Messages", c.privatePage("https://my.1password.com/vault") && c.privatePage("https://www.itau.com.br/") &&
-      !c.privatePage("https://mail.google.com/") && !c.privates().apps.some((a: string) => /mail|messages|mobilesms/i.test(a)))
-    const t = c.momentsText([{ seq: 1, t: 0, kind: "change", pane: "t3", title: "zsh", what: "a command ended", changes: ["  ok"] },
+    check("companion: the starting list keeps password managers and banks from it, not Mail or Messages", cSettings.privatePage("https://my.1password.com/vault") && cSettings.privatePage("https://www.itau.com.br/") &&
+      !cSettings.privatePage("https://mail.google.com/") && !cSettings.privates().apps.some((a: string) => /mail|messages|mobilesms/i.test(a)))
+    const t = cNext.momentsText([{ seq: 1, t: 0, kind: "change", pane: "t3", title: "zsh", what: "a command ended", changes: ["  ok"] },
       { seq: 2, t: 0, kind: "watch", item: "Watches/Order", title: "Order", what: "it changed", text: "tell me when it ships", changes: ["+ Shipped"] },
       { seq: 3, t: 0, kind: "point", ui: "panel:files:files", text: "Notes" }], "pair", null, [], `They're looking at "zsh" (pane t3, a terminal).`)
     check("companion: a follow's change, a watch's hit and a point on the app read as moments", t.includes(`- change in "zsh" (pane t3): a command ended\n    ok`) &&
       t.includes(`- watch Watches/Order "Order": it changed`) && t.includes(`they asked: "tell me when it ships"`) && t.includes("- point (panel:files:files): they pointed you here") &&
       t.split("\n")[1].startsWith("They're looking at"), t)
-    const onPane = c.momentsText([{ seq: 4, t: 0, kind: "ask", pane: "t3", title: "zsh", row: 4, text: "what's this?", under: "error: no such file" }], "quiet", null)
+    const onPane = cNext.momentsText([{ seq: 4, t: 0, kind: "ask", pane: "t3", title: "zsh", row: 4, text: "what's this?", under: "error: no such file" }], "quiet", null)
     check("companion: a Talk key's ask on a pane says the pane, its row and what was under the pointer, never a note's line",
       onPane.includes(`- ask "zsh" (pane t3), row 4: "what's this?"`) && onPane.includes("under their pointer: error: no such file") && !onPane.includes("follow"), onPane)
     const back = (await import("../../../plugins/core/companion/moments.ts")).readMoments(t)
@@ -895,7 +909,7 @@ export default async ($: VaultTest) => {
     ;[st3, r3] = await api("POST", "ops/companion.clear", {})
     check("companion: companion clear takes its drawing down", st3 === 200 && last()?.drawing === null, last())
     await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: [1, 1] }] })
-    c.addMoment({ kind: "ask", text: "and this?", app: "com.example.mail", sx: 5, sy: 5 })
+    cState.addMoment({ kind: "ask", text: "and this?", app: "com.example.mail", sx: 5, sy: 5 })
     check("companion: the next ask takes what the last answer pointed with down (nothing else up: its layer)", last()?.drawing === null, last())
     await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: [1, 1] }] })
     helper.emit("message", JSON.stringify({ t: "drawing-act", id: last()?.drawing.id, kind: "clear" }))
@@ -919,9 +933,9 @@ export default async ($: VaultTest) => {
       check("companion: an app as a picture card shows its icon, as Finder does", st3 === 200 && /^api\/companion\/media\/\w+\/\w+\.png$/.test(icon?.url) && icon.px?.[0] >= 256, [st3, r3, icon])
       await api("POST", "ops/companion.clear", { as: "Icons" })
     }
-    c.addMoment({ kind: "ask", text: "make B blue", app: "com.example.mail", sx: 5, sy: 5 })
+    cState.addMoment({ kind: "ask", text: "make B blue", app: "com.example.mail", sx: 5, sy: 5 })
     L = layerOf("Claude")
-    const told = c.momentsText([{ seq: 1, t: 0, kind: "ask", for: "Claude", text: "make B blue" }] as Any[], "pair", null)
+    const told = cNext.momentsText([{ seq: 1, t: 0, kind: "ask", for: "Claude", text: "make B blue" }] as Any[], "pair", null)
     check("companion: at the next ask its cards stay (what pointed goes), and the ask lists them by id to change in place",
       L?.past === true && L.marks.map((m: Any) => m.id).join() === "flow,pic" && told.includes("Still on their screen, your layer") && told.includes("b rect \"B\" at 200,10"), [L?.marks, told])
     ;[st3, r3] = await api("POST", "ops/companion.draw", { actions: [{ op: "change", id: "b", fill: "blue" }, { op: "delete", id: "a" }, { op: "move", id: "pic", at: "bottom-left" }] })
@@ -942,7 +956,7 @@ export default async ($: VaultTest) => {
     const clipOf = () => layerOf("Claude")?.marks.find((m: Any) => m.id === "clip")
     check("companion: a video card plays muted unless asked", st3 === 200 && clipOf() && !clipOf().sound && !clipOf().paused, [st3, r3, clipOf()])
     helper.emit("message", JSON.stringify({ t: "drawing-act", id: layerOf("Claude").id, kind: "media", mark: "clip", paused: true }))
-    const toldClip = c.momentsText([{ seq: 2, t: 0, kind: "ask", for: "Claude", text: "play it" }] as Any[], "pair", null)
+    const toldClip = cNext.momentsText([{ seq: 2, t: 0, kind: "ask", for: "Claude", text: "play it" }] as Any[], "pair", null)
     check("companion: what the user did on a video card is kept, and the next ask says it (paused, muted), to change in place, not in a player",
       clipOf()?.paused === true && toldClip.includes("clip video Clip.mp4 (paused, muted)") && toldClip.includes("never opened again in a player"), [clipOf(), toldClip])
     ;[st3, r3] = await api("POST", "ops/companion.draw", { actions: [{ op: "change", id: "clip", sound: true, paused: false }] })
@@ -957,9 +971,9 @@ export default async ($: VaultTest) => {
     ;[st3, r3] = await api("POST", "ops/companion.draw", { marks: [{ type: "button", id: "lh", label: "Lighthouse", do: { ask: "Hand it to Lighthouse" } }, { type: "button", label: "Alice", do: { ask: "Alice" } }], say: "Two can take it. Which one?" })
     const askedQ = (await api("POST", "ops/companion.status", {}))[1].notes.filter((n: Any) => n.kind === "say" && n.text === "Two can take it. Which one?")
     check("companion: a choice's question goes with its answers, and is asked as a question", st3 === 200 && layerOf("Claude")?.question === "Which one?" && askedQ.at(-1)?.question === true, [layerOf("Claude")?.question, askedQ])
-    const toldQ = c.momentsText([{ seq: 3, t: 0, kind: "ask", for: "Claude", text: "what are these?" }] as Any[], "pair", null)
+    const toldQ = cNext.momentsText([{ seq: 3, t: 0, kind: "ask", for: "Claude", text: "what are these?" }] as Any[], "pair", null)
     check("companion: what's up says a choice's answers and what each sends", toldQ.includes("lh button \"Lighthouse\" (an answer: sends \"Hand it to Lighthouse\")"), toldQ)
-    c.addMoment({ kind: "ask", text: "Hand it to Lighthouse", app: "com.example.mail", sx: 5, sy: 5 })
+    cState.addMoment({ kind: "ask", text: "Hand it to Lighthouse", app: "com.example.mail", sx: 5, sy: 5 })
     check("companion: answered (or asked past), a choice goes; the other cards stay", !layerOf("Claude")?.marks.some((m: Any) => m.type === "button") && !!clipOf(), layerOf("Claude")?.marks)
     ;[st3, r3] = await api("POST", "ops/companion.layer", { hide: true })
     const hidden = layerOf("Claude")
@@ -991,10 +1005,10 @@ export default async ($: VaultTest) => {
       throw new Error("no such call")
     }
     try {
-      c.addMoment({ kind: "ask", text: "cut this", pane: "p2", sx: 760, sy: 80 })
+      cState.addMoment({ kind: "ask", text: "cut this", pane: "p2", sx: 760, sy: 80 })
       ;[st3, r3] = await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: { find: "No model, no internet" } }] })
       const right = last()?.drawing?.places?.["find:No model, no internet"]
-      c.addMoment({ kind: "ask", text: "and here?", pane: "p1", sx: 150, sy: 60 })
+      cState.addMoment({ kind: "ask", text: "and here?", pane: "p1", sx: 150, sy: 60 })
       await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: { find: "No model, no internet" } }] })
       const left = last()?.drawing?.places?.["find:No model, no internet"]
       check("companion: words a web page shows are found there, as it is now, mapped by its zoom; of two pages saying them, the one at their pointer",
@@ -1003,7 +1017,7 @@ export default async ($: VaultTest) => {
       ;[st3, r3] = await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: { find: "Nowhere at all" } }] })
       check("companion: words nothing shows draw nothing, and it says they saw no mark", st3 === 409 && /nothing on the user's screen says "Nowhere at all".*saw no mark/.test(r3.error), r3)
       // (over Vaultite's window, a panel saying one of the words by their pointer: a mark by words lands only where all of them are)
-      c.screenMoment({ kind: "ask", text: "what are these tags?", pane: "p1", sx: 900, sy: 400, near: [{ id: "a3", role: "group", label: "Agents", frame: { x: 1052, y: 65, width: 269, height: 416 } }] })
+      cWindows.screenMoment({ kind: "ask", text: "what are these tags?", pane: "p1", sx: 900, sy: 400, near: [{ id: "a3", role: "group", label: "Agents", frame: { x: 1052, y: 65, width: 269, height: 416 } }] })
       ;[st3, r3] = await api("POST", "ops/companion.draw", { marks: [{ type: "underline", at: { find: "4:24 PM · Agents" } }] })
       const partly = last()?.drawing?.places?.["find:4:24 PM · Agents"]
       check("companion: words only partly said by an element near them (Agents of 4:24 PM · Agents) draw nothing, and it says to aim by id or words shown",
@@ -1014,14 +1028,14 @@ export default async ($: VaultTest) => {
     ;[st3] = await api("POST", "ops/companion.save-drawing", {})
     check("companion: nothing up, nothing to keep", st3 === 404)
     // (the elements a summoned ask came with: {el} spots snap to them on the server too)
-    c.screenMoment({ kind: "ask", text: "what's this?", app: "com.example.mail", sx: 5, sy: 5, near: [{ id: "a1", role: "AXButton", label: "Share", frame: { x: 100, y: 200, width: 80, height: 30 } }] })
+    cWindows.screenMoment({ kind: "ask", text: "what's this?", app: "com.example.mail", sx: 5, sy: 5, near: [{ id: "a1", role: "AXButton", label: "Share", frame: { x: 100, y: 200, width: 80, height: 30 } }] })
     ;[st3] = await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: { el: "a1" } }] })
     const els = last()?.drawing?.places?.["el:a1"], me3 = (await api("POST", "ops/companion.status", {}))[1].agents.find((a: Any) => a.name === "Claude")
     check("companion: an ask's elements are the drawing's places, its cursor at the one ringed", st3 === 200 && els?.w === 80 && els.label === "Share" && me3?.sx === 140 && me3.sy === 215, [els, me3])
     ;[st3, r3] = await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: { el: "a9" } }] })
     check("companion: a mark on an element the ask didn't list draws nothing, and says they saw no mark", st3 === 409 && /a9 isn't an element.*saw no mark/.test(r3.error), r3)
     // (only marks on a display are drawn, and counted: "Drew N" is what showed)
-    c.screenMoment({ kind: "ask", text: "here?", app: "com.example.mail", sx: 5, sy: 5, displays: [{ x: 0, y: 0, width: 1470, height: 956 }, { x: 1470, y: -200, width: 1920, height: 1080 }] })
+    cWindows.screenMoment({ kind: "ask", text: "here?", app: "com.example.mail", sx: 5, sy: 5, displays: [{ x: 0, y: 0, width: 1470, height: 956 }, { x: 1470, y: -200, width: 1920, height: 1080 }] })
     ;[st3, r3] = await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: [100, 100, 40, 20] }, { type: "check", at: [5000, 100] }, { type: "num", at: [2000, 100], n: 1 }] })
     const shownNow = last()?.drawing?.marks ?? []
     check("companion: of its marks, one off every display isn't drawn and the answer says so; one on another display is",
@@ -1031,7 +1045,7 @@ export default async ($: VaultTest) => {
     // (what it showed is in its next asks, where it landed, in the ask's own points: it never denies a mark they saw)
     await api("POST", "ops/companion.look", { sx: 700, sy: 40 })
     const next = { kind: "ask", text: "why did you draw up there?", for: "Claude", seq: 900, t: Date.now() } as Any
-    const was = c.momentsText([next], "pair", null), inPic = c.momentsText([{ ...next, origin: { x: 100, y: 20 } }], "pair", null)
+    const was = cNext.momentsText([next], "pair", null), inPic = cNext.momentsText([{ ...next, origin: { x: 100, y: 20 } }], "pair", null)
     check("companion: its next ask says what it showed lately and where each landed, a mark left out not among them, in the picture's pixels when its points are",
       /What you showed on their screen lately[^\n]*\n(.*\n)*.*your ring at 100,100 40×20\n(.*\n)*.*your cursor pointed at 700,40/.test(was) && !/your check at 5000/.test(was) &&
       /your ring at 0,80 40×20/.test(inPic) && /your cursor pointed at 600,20/.test(inPic), [was, inPic])
@@ -1047,19 +1061,19 @@ export default async ($: VaultTest) => {
     write("Guides/Mail.md", `---\ntype: guide\nsite: mail.example.com\n---\n${"Labels, not folders. ".repeat(120)}\n`)
     write("Guides/Broken.md", "---\ntype: guide\n---\nFor nothing.\n")
     const [, vault] = await api("GET", "vault")
-    const at = (m: Any) => c.momentsText([{ seq: 1, t: 0, kind: "ask", for: "Claude", text: "how?", summoned: true, ...m }], "quiet", null)
+    const at = (m: Any) => cNext.momentsText([{ seq: 1, t: 0, kind: "ask", for: "Claude", text: "how?", summoned: true, ...m }], "quiet", null)
     const figma = at({ app: "com.figma.Desktop", title: "Design" }), web = at({ app: "com.google.Chrome", screen: "Inbox\nhttps://www.figma.com/file/abc\nmore" })
     const mail = at({ app: "com.google.Chrome", screen: "mail.example.com/u/0\n" }), none = at({ app: "com.example.notes" })
     check("guides: a summoned ask in an app (or on its site, by the address its window shows) carries the user's guide to it",
       /their guide to it \(Guides\/Figma\.md\):\n {4}Frames are on the left/.test(figma) && /Guides\/Figma\.md/.test(web), [figma, web])
     check("guides: a long one is cut, saying where the rest is; none, the ask says so (it may offer to write one)",
       mail.split("\nWhat you showed")[0].length < 2200 && /… \(the rest: vau read "Guides\/Mail\.md"\)/.test(mail) && /no guide to com\.example\.notes yet/.test(none) &&
-      !/guide/.test(c.momentsText([{ seq: 2, t: 0, kind: "ask", for: "Claude", text: "x", app: "com.figma.Desktop" }], "quiet", null)), [mail.length, none])
+      !/guide/.test(cNext.momentsText([{ seq: 2, t: 0, kind: "ask", for: "Claude", text: "x", app: "com.figma.Desktop" }], "quiet", null)), [mail.length, none])
     check("guides: one naming no app nor site says so", JSON.stringify(vault).includes("a guide names its app"), vault)
     const [, doc] = await api("POST", "ops/docs.read", { topic: "guides" })
     check("guides: vau docs guides has their format", /type: guide/.test(JSON.stringify(doc)), doc)
   }
 
   await api("PATCH", "config/plugin/companion", { mode: "off" })
-  check("companion: off hears nothing", c.addMoment({ kind: "ask", text: "hello?" }) === null)
+  check("companion: off hears nothing", cState.addMoment({ kind: "ask", text: "hello?" }) === null)
 }

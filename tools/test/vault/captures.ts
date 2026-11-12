@@ -9,7 +9,7 @@ import { waitFor } from "../lib.ts"
 
 export default async ($: VaultTest) => {
   // (the companion acting: its own tool call, not any agent's vau)
-  const { asItsTool } = await import("../../../plugins/core/companion/plugin.ts")
+  const { asItsTool } = await import("../../../plugins/core/companion/chat.ts")
   const { VAULT, api, app, check } = $
   // Region capture: what a Talk key's words ask of it, the box and its moves, and where a clip goes (companion.capture).
   const C = await import("../../../core/desktop/clips.ts")
@@ -146,7 +146,7 @@ export default async ($: VaultTest) => {
     // (a worker that rests, then writes down what it's told)
     cc["agent:claude"] = async (s: Any) => { started.push(s); return { command: `printf '\\033]7501;state=idle\\033\\\\'; IFS= read -r l; echo "$l" > told.txt; sleep 600`, cwd: null } }
     cc["agent-turn:claude"] = async () => null
-    const c = await import("../../../plugins/core/companion/plugin.ts")
+    const cWindows = await import("../../../plugins/core/companion/windows.ts")
     const { matchSocket } = await import("../../../core/plugins.ts")
     const sc = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, send() {}, close() {}, ping() {}, terminate() {} })
     matchSocket(app.plugins, ["companion", "live"])![1].fn(sc as Any, {} as IncomingMessage, { wild: [], query: { screen: "1" } })
@@ -160,7 +160,7 @@ export default async ($: VaultTest) => {
     const ids: string[] = []
     try {
       await api("PATCH", "config/plugin/companion", { mode: "quiet", agent: "claude", summoned_model: "companion" })
-      c.screenMoment({ kind: "ask", agent: "Claude", text: "make the heading blue", app: "com.example.browser", title: "Site", screen: `Address and search bar: localhost:${port}/about`, sx: 10, sy: 20 })
+      cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "make the heading blue", app: "com.example.browser", title: "Site", screen: `Address and search bar: localhost:${port}/about`, sx: 10, sy: 20 })
       ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Make the heading blue" }, agent))
       ids.push(b.id)
       const job = b

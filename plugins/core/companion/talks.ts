@@ -3,7 +3,7 @@
 import type { IncomingMessage } from "node:http"
 import { type OpCtx, OpError, type Plugin } from "../../../core/plugins.ts"
 import { followTask, type Job, live } from "./jobs.ts"
-import type { Moment } from "./plugin.ts"
+import type { Moment } from "./types.ts"
 import { parseTags, type Tag } from "./tags.ts"
 import { agentTint } from "../../../core/agenttint.ts"
 

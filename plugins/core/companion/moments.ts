@@ -1,4 +1,4 @@
-// Moments read back from the text an agent was given (plugin.ts' momentsText): its session's messages are all a chat
+// Moments read back from the text an agent was given (next.ts' momentsText): its session's messages are all a chat
 // keeps of them, so its timeline and its chat draw them from there. No Node, no DOM.
 import type { Hunk } from "./text.ts"
 

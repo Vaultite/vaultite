@@ -2,7 +2,7 @@
 // menu bar, `companion jobs`, the summoned session, ops; each move logged. Plain functions: workers.ts runs them.
 import type { Who } from "../../../core/ops.ts"
 import { parseTerminal, resumeTerminalId } from "../../../core/terminalids.ts"
-import type { Moment } from "./plugin.ts"
+import type { Moment } from "./types.ts"
 
 export const JOB_STATES = ["waiting", "starting", "working", "needs you", "ready for review", "done", "failed", "stopped"] as const
 export type JobState = typeof JOB_STATES[number]

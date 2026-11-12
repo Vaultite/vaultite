@@ -9,7 +9,7 @@ import { waitFor } from "../lib.ts"
 
 export default async ($: VaultTest) => {
   // (the companion acting: its own tool call, not any agent's vau)
-  const { asItsTool } = await import("../../../plugins/core/companion/plugin.ts")
+  const { asItsTool } = await import("../../../plugins/core/companion/chat.ts")
   const { app, api, check } = $
   const L = await import("../../../plugins/core/companion/liveedit.ts")
   const U = await import("../../../plugins/core/companion/unedit.ts")
@@ -126,7 +126,8 @@ export default async ($: VaultTest) => {
   // End to end: a job on a preview, then asks over that page go straight to it (no turn of the companion's), its turn's
   // end said; "undo that" takes back exactly its edits for the last ask, the user's own kept.
   if (process.platform !== "win32") {
-    const c = await import("../../../plugins/core/companion/plugin.ts")
+    const cNext = await import("../../../plugins/core/companion/next.ts")
+    const cWindows = await import("../../../plugins/core/companion/windows.ts")
     const { matchSocket } = await import("../../../core/plugins.ts")
     const heard: Any[] = [], sc = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, send: (d: string) => heard.push(JSON.parse(d)), close() {}, ping() {}, terminate() {} })
     matchSocket(app.plugins, ["companion", "live"])![1].fn(sc as Any, {} as IncomingMessage, { wild: [], query: { screen: "1" } })
@@ -167,14 +168,14 @@ export default async ($: VaultTest) => {
     let job = ""
     try {
       await api("PATCH", "config/plugin/companion", { mode: "quiet", agent: "claude", summoned_model: "companion", jobs_agent: "claude" })
-      c.screenMoment({ kind: "ask", agent: "Claude", text: "make me a landing page", ...over })
+      cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "make me a landing page", ...over })
       const [st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Make a landing page", cwd: repo }, agent))
       job = b.id
       turn = { text: "Made it.", files: [], at: Date.now() + 1500, final: true }
       const ready = await waitFor(async () => { const r = (await api("POST", "ops/companion.job", { id: job }))[1]; return !["starting", "working"].includes(r.state) && r }, 10000, 100)
       check("live edit: a job handed off over a preview is on that page", st === 200 && !!ready && (await api("POST", "ops/companion.jobs", {}))[1].jobs[0].on === "site:http://localhost:5199", [st, b, ready])
 
-      const m = c.screenMoment({ kind: "ask", agent: "Claude", text: "make the title say Hi", ...over }) as Any
+      const m = cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "make the title say Hi", ...over }) as Any
       const typed = await waitFor(() => /Live edit L1: [^\n]*make the title say Hi/.test(told()) && fs.readFileSync(page, "utf8").includes("Hi") && told(), 8000, 50)
       check("live edit: the next ask over that page goes straight into its worker's terminal, tagged, no turn of the companion's first",
         !!typed && m?.live === job && fs.readFileSync(page, "utf8") === "<h1>Hi</h1>\n", [told(), m])
@@ -185,28 +186,28 @@ export default async ($: VaultTest) => {
       check("live edit: its turn over with nothing to ring (no screen here), its few words are said", !!said, await says())
 
       fs.appendFileSync(page, "<p>mine</p>\n")
-      c.screenMoment({ kind: "ask", agent: "Claude", text: "Undo that.", ...over })
+      cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "Undo that.", ...over })
       const back = await waitFor(() => fs.readFileSync(page, "utf8") === "<h1>Hello</h1>\n<p>mine</p>\n", 8000, 50)
       check("live edit: undo that takes back exactly the last ask's edits, their own line since kept, and says so; its worker isn't asked",
         !!back && (await waitFor(async () => (await says()).includes("Undone."), 3000, 50)) && !/Undo that/.test(told()), [fs.readFileSync(page, "utf8"), await says(), told()])
-      c.screenMoment({ kind: "ask", agent: "Claude", text: "undo", ...over })
+      cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "undo", ...over })
       check("live edit: once it's all undone, another undo says there's nothing of its to undo",
         !!await waitFor(async () => (await says()).some((t: string) => /nothing of mine to undo/.test(t)), 3000, 50), await says())
 
-      c.screenMoment({ kind: "ask", agent: "Claude", text: "now a footer", ...over })
+      cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "now a footer", ...over })
       const noted = await waitFor(() => /Live edit L2: [^\n]*they undid your change for L1[^\n]*now a footer/.test(told()), 8000, 50)
       check("live edit: its next ask tells it what was undone, so it knows what's on disk", !!noted, told())
-      c.screenMoment({ kind: "ask", agent: "Claude", text: "undo that too", ...over })
+      cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "undo that too", ...over })
       const later = await waitFor(async () => (await says()).includes("I'll undo it once it's done."), 3000, 50)
       await end({ text: "Footer added.", files: [page], at: Date.now(), final: true })
       const after = await waitFor(() => fs.readFileSync(page, "utf8") === "<h1>Hello</h1>\n<p>mine</p>\n", 10000, 50)
       check("live edit: undo said while it works waits for its turn's end, then takes back the ask it was on", !!later && !!after, [await says(), fs.readFileSync(page, "utf8")])
       turn = null
-      const q = c.screenMoment({ kind: "ask", agent: "Claude", text: "what does this button do?", ...over }) as Any
-      const qText = c.momentsText([q], "quiet", null)
+      const q = cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "what does this button do?", ...over }) as Any
+      const qText = cNext.momentsText([q], "quiet", null)
       check("live edit: a plain question over the page goes to the companion, told the job there and what it was asked live",
         !q?.live && q?.pageJob === job && new RegExp(`over the page job ${job} [^\\n]*this question is yours[^\\n]*L2 "now a footer"[^\\n]*companion job ${job}`).test(qText) && !/what does this button do/.test(told()), [q, qText])
-      const other = c.screenMoment({ kind: "ask", agent: "Claude", text: "remind me to call Alice at five", ...over }) as Any
+      const other = cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "remind me to call Alice at five", ...over }) as Any
       await waitFor(() => /Live edit L3: /.test(told()), 8000, 50)
       check("live edit: anything not plainly a question goes to its job at once", other?.live === job, other)
       await end({ text: "(not for me)", files: [], at: Date.now(), final: true })
@@ -218,7 +219,7 @@ export default async ($: VaultTest) => {
       const was0 = String((await api("POST", "ops/companion.jobs", {}))[1].jobs.find((x: Any) => x.id === job)?.terminal), n0 = starts.length
       context = { tokens: 150_000, window: 1_000_000 }
       turn = null
-      const big = c.screenMoment({ kind: "ask", agent: "Claude", text: "make the title bigger", ...over }) as Any
+      const big = cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "make the title bigger", ...over }) as Any
       const fresh = await waitFor(() => starts.length > n0 && starts.at(-1), 10000, 50) as Any
       const moved = await waitFor(async () => { const r = (await api("POST", "ops/companion.jobs", {}))[1].jobs.find((x: Any) => x.id === job); return r?.terminal !== was0 && r }, 8000, 100) as Any
       check("live edit: a worker grown large starts fresh for its next ask: a new conversation in a new terminal, told the job, its asks so far and the ask",

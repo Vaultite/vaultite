@@ -1,4 +1,4 @@
-// Tours, anchors and waits on the server (companion tour, tour-save, anchor, wait) over a screen plugin.ts lends:
+// Tours, anchors and waits on the server (companion tour, tour-save, anchor, wait) over a screen windows.ts lends:
 // Vaultite's window, or the app an ask was over through the Mac's helper. The rules are tour.ts', core/desktop/anchor.ts', condition.ts'.
 import fs from "node:fs"
 import os from "node:os"

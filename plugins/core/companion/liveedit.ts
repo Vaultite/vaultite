@@ -8,7 +8,7 @@ import type { Box } from "../../../core/desktop/framediff.ts"
 import { followTask, gist, type Job, live } from "./jobs.ts"
 import { isBrowser } from "./takeover.ts"
 import { surfaceOf } from "./where.ts"
-import type { Moment } from "./plugin.ts"
+import type { Moment } from "./types.ts"
 import { type FileEdit, unedit } from "./unedit.ts"
 
 /** One ask sent live: its tag in the worker's terminal (how its edits are found again), its window and that window's
