@@ -13,9 +13,9 @@ import { settings, type Settings } from "./settings"
 import type { InboxEvent, InboxItem } from "./types"
 
 
-/** The user is looking at what an agent's news is about, in a window in front: its terminal or session is the focused
- *  tab, or what it links to is on screen (a browser tab's ask). (Not a message meant to be seen: info, error.) */
-const watching = (e: InboxEvent) => (e.kind === "session" || e.kind === "waiting") && document.visibilityState === "visible" && document.hasFocus() &&
+/** What an agent's news is about is on screen: its terminal or session is the focused tab, or what it links to is shown
+ *  (a browser tab's ask, whose card a toast would cover). Away from the window, the system notification tells it. */
+const watching = (e: InboxEvent) => (e.kind === "session" || e.kind === "waiting") && document.visibilityState === "visible" &&
   ([targetOf(e), viewOf(e)].includes(focusedTarget()) || viewOnScreen(targetOf(e) ?? ""))
 
 /** A toast's text: the title and the body's first line, short (the whole body is in the Inbox: a session's answer, a
