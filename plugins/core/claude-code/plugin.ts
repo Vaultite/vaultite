@@ -607,8 +607,8 @@ plugin.provide("agent-account:claude", async (terminal: string, session = ""): P
   return named?.agent === "claude" ? of(accts.find((a) => a.id === (named.profile ?? "default")) ?? accts[0]) : null
 })
 
-/** A session's latest turn: the user's last message, Claude's last answer, its background tasks running ("agent-turn:claude",
- *  read as a turn ends). The session running in `terminal` when `session` isn't given; never a private account's. */
+/** A session's latest turn: the user's last message (or, `auto`, what else started it), Claude's last answer, its
+ *  background tasks running ("agent-turn:claude", read as a turn ends). The session running in `terminal` when `session` isn't given; never a private account's. */
 plugin.provide("agent-turn:claude", async (terminal: string, session = "") => {
   const now = !terminal && session ? chat.turnNow(session) : null
   const sid = session || await sessionIn(terminal)
@@ -616,7 +616,9 @@ plugin.provide("agent-turn:claude", async (terminal: string, session = "") => {
   const t = found ? await transcript(found.file) : null
   // (a chat's turn as its keeper says it, the files from its transcript)
   if (now) return { ...now, files: t ? lastTurn(t.talk.entries).files : [] }
-  return t ? { session: sid, ...lastTurn(t.talk.entries), background: t.talk.background.size } : null
+  // (a turn its own task, schedule or another session started: that's its prompt, and not the user's)
+  const auto = t?.talk.auto
+  return t ? { session: sid, ...lastTurn(t.talk.entries), ...(auto ? { prompt: auto.text, auto: true } : {}), background: t.talk.background.size } : null
 })
 
 /** The user's own latest message in a session ("agent-said:claude": an agent quoting their word, the companion's

@@ -166,8 +166,8 @@ function pluginBackend(): Backend | null {
 const heard = new WeakSet<Backend>()
 /** What a plugin's backend may use (it implements Backend, backend.ts, through plugin.peer("terminal").exports): */
 plugin.exports.backendKit = { launch, loadPty, ptyLink, mirrored, runScript, shellArgs, plain }
-/** Where this server keeps its terminals: the terminal server's socket (or pipe) and files. */
-plugin.exports.kept = { name: NAME, socket: keeper.socket, files: keeper.files }
+/** Where this server keeps its terminals: the terminal server's socket (or pipe) and files, and its backend. */
+plugin.exports.kept = { name: NAME, socket: keeper.socket, files: keeper.files, backend: keeper }
 /** Every backend, in the order a session's id is looked for. */
 const backends = (): Backend[] => [keeper, fallback, ...[pluginBackend()].filter((b): b is Backend => !!b)]
 
@@ -841,12 +841,10 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
       try { await b.create(id, spec, made) } catch (e) {
         // (out of ptys, the server couldn't start one either: the keeper's message says why)
         if (b !== keeper || /no pseudo-terminal left/.test((e as Error).message)) throw e
-        console.error("terminal: the keeper couldn't start a shell, so this server holds it:", e)
+        // One error a kind (vau errors counts each terminal, and tells the user the first time), not a message a terminal.
+        console.error("terminal: the keeper couldn't start a shell, so this server holds it and restarting the server ends it:", e)
         b = fallback
         await b.create(id, spec, made)
-        // Said out loud: a restart (a deploy) ends this one, and nothing else would show it until then.
-        void plugin.runOp("ui.notify", { text: `This terminal runs in the server, not Vaultite's keeper, so restarting the server ends it (the keeper: ${(e as Error).message})`,
-          error: true, terminal: id }).catch(() => {})
       }
     }
     if (b.spares) refill(from)

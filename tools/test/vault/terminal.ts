@@ -4,7 +4,7 @@ import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
-  const { VAULT, check, tmp, vault } = $
+  const { VAULT, api, check, tmp, vault } = $
   const { execute, servers, cliApi, vau } = $.vars
   // vau terminal (plugins/core/terminal/ops.ts) on a stand-in API and window (no shells): sessions and their tabs,
   // opening, resuming by title, typing, ending, tidying gone agents' tabs.
@@ -322,6 +322,24 @@ export default async ($: VaultTest) => {
       backendName(8793) === "vaultite" && backendName(30123) === "vaultite-30123" && backendName(0, 42) === "vaultite-x42", [backendName(8793), backendName(30123), backendName(0, 42)])
     check("terminal: this test's app keeps its shells apart from a live server's", kept.name === `vaultite-x${process.pid}` &&
       kept.socket.includes(`-vaultite-x${process.pid}`), kept)
+  }
+  // The terminal server up but not starting shells: each new terminal runs in this server instead, an error for Errors
+  // (counted by kind), never an inbox message a terminal.
+  {
+    const keeper = ($.app.plugins.find((p) => p.id === "terminal")!.exports.kept as { backend: Any }).backend
+    const was = { ready: keeper.ready, create: keeper.create }, logged: string[] = [], error = console.error
+    keeper.ready = async () => true
+    keeper.create = async () => { throw new Error("the terminal server didn't answer create") }
+    console.error = (...a: unknown[]) => { logged.push(a.map(String).join(" ")) }
+    const ids = ["kfal1b2c", "kfal3d4e"]
+    try {
+      for (const id of ids) await api("POST", `terminals/${id}`, { command: "sleep 20", cwd: tmp })
+    } finally { Object.assign(keeper, was); console.error = error }
+    const [, l] = await api("GET", "inbox/events")
+    for (const id of ids) await api("DELETE", `terminals/${id}`)
+    check("terminal: started while the terminal server can't: an error each in the log, no inbox message about them",
+      logged.filter((x) => /keeper couldn't start a shell.*restarting the server ends it.*didn't answer create/.test(x)).length === 2 &&
+      !l.events.some((e: Any) => ids.includes(e.terminal)), [logged, l.events.filter((e: Any) => ids.includes(e.terminal))])
   }
 
   // The terminal server lets go of a shell's pty once it ends (node-pty 1.1 kept both ends open on macOS: a keeper

@@ -97,6 +97,22 @@ export default async ($: VaultTest) => {
       const both = cv.background.size
       feed({ type: "queue-operation", operation: "enqueue", content: "<task-notification>\n<task-id>t</task-id>\n<tool-use-id>b1</tool-use-id>\n<status>completed</status>\n</task-notification>" })
       check("transcript: background tasks run till their notification", both === 2 && cv.background.size === 1 && cv.background.has("a1"), [both, [...cv.background]])
+      // What started its latest turn: the user (a skill they ran expands into a meta line of the same prompt), or the
+      // session itself (its task's notice, a schedule's meta prompt, another session's message).
+      const turns = new Conversation(), say = (x: Any) => turns.line(JSON.stringify({ type: "user", timestamp: "2026-03-02T09:00:00Z", ...x }))
+      say({ promptId: "p1", origin: { kind: "human" }, message: { content: "<command-name>/review</command-name>" } })
+      say({ promptId: "p1", isMeta: true, message: { content: "Review the Lighthouse branch for bugs." } })
+      const byUser = turns.auto
+      say({ promptId: "p2", origin: { kind: "task-notification" }, message: { content: "<task-notification>\n<task-id>w1</task-id>\n<summary>Monitor event: Alice Park's build</summary>\n</task-notification>" } })
+      const byTask = turns.auto?.text
+      say({ promptId: "p3", origin: { kind: "human" }, message: { content: "Thanks, carry on" } })
+      const back = turns.auto
+      say({ promptId: "p4", isMeta: true, message: { content: "Nightly sweep: check the Lighthouse deploys" } })
+      const bySchedule = turns.auto?.text
+      say({ message: { content: "Another Claude session sent a message: <cross-session-message from=\"x\">hi</cross-session-message>" } })
+      check("transcript: a turn the session started itself (its task's notice, a schedule, another session) is told apart from the user's",
+        byUser === null && /^<task-notification>/.test(byTask ?? "") && back === null && bySchedule === "Nightly sweep: check the Lighthouse deploys" &&
+        !!turns.auto && turns.entries.filter((e) => e.kind === "user").length === 4, [byUser, byTask, back, bySchedule, turns.auto])
       const keys = (await import("../../../plugins/core/claude-code/plugin.ts")).plugin.services["agent-pick:claude"] as (q: Any, c: Any) => string[]
       const one = [{ question: "Q", options: [{ label: "A" }, { label: "B" }, { label: "C" }] }]
       check("pick keys: a digit; typed: the one after the options, the text, Enter; several or a multi-select end with 1 on the review",

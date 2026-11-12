@@ -38,6 +38,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   the last few minutes and where each landed, so asked "why did you draw there?" it answers from what you saw. A mark at
   a pane lands on the pane you see, never a hidden copy of it.
 
+- **The inbox stops filling with status**: a session's turn its own watcher or schedule started, or one saying nothing
+  needs you, stays on its row instead of under Needs you; a claude.ai session is one quiet row, not a message each
+  turn; and terminals started while the terminal server can't are one error in Errors, not a message each.
 ## 0.13.0 (2026-11-11)
 
 A first run made for anyone: a new vault asks before any AI and writes only what you chose, AI off really is off at

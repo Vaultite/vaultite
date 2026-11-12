@@ -136,7 +136,7 @@ function pageNotified(m: Extract<WebEvent, { type: "notify" | "session" }>) {
   const link = here ? `view:web/${argOf(m.url, container)}` : undefined
   const open = () => { if (link) openView(link, { newTab: !isViewOpen(link) }) }
   const event = m.type === "session"
-    // (one event a session: its news replaces the last within a minute, others' stay their own)
+    // (one row a session: the inbox keeps its finishing quiet, its needing the user open)
     ? { source: m.site, kind: m.kind, title, body, link, session: m.url }
     : { source: m.site || "web", kind: "web", title, body, link }
   post("inbox/events", event).catch(() => {

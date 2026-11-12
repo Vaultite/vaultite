@@ -104,7 +104,7 @@ type Json = any
 
 const INTERRUPTED = /^\[Request interrupted by user/
 /** A user line that isn't the user's: a background task's notice, another session's or a teammate's message. */
-const NOT_SAID = /^(?:<(?:agent-message|cross-session-message|teammate-message|task-notification)\b|Another Claude session sent a message)/
+export const NOT_SAID = /^(?:<(?:agent-message|cross-session-message|teammate-message|task-notification)\b|Another Claude session sent a message)/
 
 /** The user's own latest message in a transcript's lines (typed or queued mid-turn, not a notice or another session's
  *  message, nor a subagent's prompt): what an agent may quote as their word (the companion's job-stop). */

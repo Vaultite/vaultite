@@ -1,7 +1,7 @@
 // A Claude Code session's transcript as a conversation: what the user said, Claude's answers (Markdown) and each tool
 // call with its result; attachments, thinking, sidechains and meta lines are skipped.
 import { type Asking, truncate, type Entry, type Head, type Tool } from "../../../core/agents.ts"
-import { questionsOf, resultText, summarize, userText } from "./chatlog.ts"
+import { NOT_SAID, questionsOf, resultText, summarize, userText } from "./chatlog.ts"
 // (a transcript line: untrusted JSON, each field checked where it's read)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = any
@@ -15,6 +15,10 @@ export class Conversation {
   head: Head = { title: "", cwd: "", model: "", first: "", last: "", branch: "" }
   /** Its background tasks still running (a Bash or Agent call run_in_background), by tool_use id: done once told. */
   background = new Set<string>()
+  /** What started its latest turn when that wasn't the user: its own background task's notice, a schedule it set
+   *  (a meta prompt), another session's message. Null once the user writes. */
+  auto: { text: string; at: string } | null = null
+  private promptId = ""
   private titleKind = ""
   private lastMsg = ""
   private firstPrompt = ""
@@ -27,6 +31,15 @@ export class Conversation {
     this.head.model = top ? top[0] : ""
     if (!this.titleKind) this.head.title = this.firstPrompt
     return this
+  }
+
+  /** A user line `d` (`meta`: a meta one): a new prompt id opens a turn, the user's or not (see `auto`). */
+  private started(d: Json, text: string, at: string, meta: boolean) {
+    const id = typeof d.promptId === "string" ? d.promptId : ""
+    if (meta && (!id || id === this.promptId || !text)) return
+    if (id) this.promptId = id
+    const origin = d.origin?.kind
+    this.auto = meta || (typeof origin === "string" && origin !== "human") || NOT_SAID.test(text) ? { text, at } : null
   }
 
   /** One line of the file (a JSON record). */
@@ -46,8 +59,10 @@ export class Conversation {
       if (done) this.background.delete(done)
       return
     }
-    if ((d.type !== "user" && d.type !== "assistant") || d.isSidechain || d.isMeta) return
+    if ((d.type !== "user" && d.type !== "assistant") || d.isSidechain) return
     const at = typeof d.timestamp === "string" ? d.timestamp : ""
+    // (a meta line opening a turn of its own, a schedule's prompt, isn't in the conversation but did start that turn)
+    if (d.isMeta) return void this.started(d, typeof d.message?.content === "string" ? userText(d.message.content) : "", at, true)
     if (at) { this.head.first ||= at; this.head.last = at }
     if (d.cwd && !this.head.cwd) this.head.cwd = String(d.cwd)
     if (d.gitBranch && d.gitBranch !== "HEAD") this.head.branch = String(d.gitBranch)
@@ -66,6 +81,7 @@ export class Conversation {
       }
       const text = userText(content)
       if (!text) return
+      this.started(d, text, at, false)
       if (!this.firstPrompt) this.firstPrompt = text.replace(/\s+/g, " ").slice(0, 80)
       this.entries.push({ kind: "user", text: truncate(text, 20000), at })
       return

@@ -8,8 +8,9 @@ import type { SampleAnswer, SampleAsk } from "../../../core/agents.ts"
 export type Need = "permission" | "question" | "auth" | "plan" | "reply" | "answer" | "report" | "error"
 export type Verdict = { needs: boolean; why: Need | null; by: "rule" | "model" | "fallback"; ms?: number }
 
-/** A turn as it ended: what the user said last, the agent's final message, and whether it ended in an error. */
-export type Turn = { prompt?: string; text: string; error?: boolean }
+/** A turn as it ended: what the user said last, the agent's final message, and whether it ended in an error; `auto`:
+ *  not the user but the session itself started it (its background task's notice, a schedule, another session). */
+export type Turn = { prompt?: string; text: string; error?: boolean; auto?: boolean }
 
 const plain = (s: string) => s.replace(/```[\s\S]*?```/g, " ").replace(/^\s*(#{1,6}\s|>).*$/gm, "").replace(/[*_`#|]+/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
 
@@ -28,17 +29,24 @@ export function sure(t: Turn): Verdict | null {
   // ("Take your time."): it waits on the answer.
   const [before, last] = [said.at(-2), said.at(-1)]
   if (asks(last) || (asks(before) && last!.length <= 60)) return { needs: true, why: "reply", by: "rule" }
+  // It says so itself ("Nothing else needs you"), or the session went on by itself (a loop, a watcher): its progress,
+  // which its own row keeps; what it needs from the user it asks (inbox.ask).
+  if (t.auto || said.some(nothingForYou)) return { needs: false, why: null, by: "rule" }
   // The user asked a question: what it says is their answer to read.
   if (wondering(lines(t.prompt ?? "").at(-1))) return { needs: true, why: "answer", by: "rule" }
   return null
 }
+
+/** A line saying the user has nothing to do: "Nothing needs you", "Nothing else needs you right now", "No action needed". */
+const nothingForYou = (l: string) => /^(nothing (else |more )?(needs|is waiting on|waits on) you|nothing (else )?for you( to do)?|no action (is )?needed( from you)?)\b/i.test(l) ||
+  /\b(nothing|none of it) (else |more )?needs you\b/i.test(l)
 
 export const SYSTEM = `You triage the final message a coding agent wrote when its turn ended, for the user who started it and is busy elsewhere. Reply with exactly one word: NEEDS_YOU, ANSWER or DONE.
 NEEDS_YOU when either is true:
 1. It asks the user something or waits on them: a question, options to choose from, a confirmation, an approval, a login, something for them to try or do.
 2. It couldn't do what was asked: blocked, failed, something missing, or an error it couldn't fix.
 ANSWER when neither is true but the user's last message asked to know something (a question, "tell me", "look and tell me", "what do you think", a review, an explanation, how it's going) and this message tells it: that answer is for them to read, even when it's short or reads like a report.
-DONE when none is true: the user asked for work and this says it's done or under way (built, fixed, created, shipped, deployed, a report filed in the inbox, the session closing), a status update, an acknowledgement, or a plan the agent is carrying out itself. An offer to do more ("let me know if...") doesn't change that.
+DONE when none is true: the user asked for work and this says it's done or under way (built, fixed, created, shipped, deployed, a report filed in the inbox, the session closing), a status update (one pointing to a question already asked elsewhere, as in the inbox, too), an acknowledgement, or a plan the agent is carrying out itself. An offer to do more ("let me know if...") doesn't change that.
 When unsure between NEEDS_YOU and another, NEEDS_YOU.
 
 Examples:

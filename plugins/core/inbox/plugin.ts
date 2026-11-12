@@ -354,6 +354,15 @@ const newId = (now: number) => `${now.toString(36)}-${crypto.randomBytes(3).toSt
 function addEvent(given: Omit<InboxEvent, "id" | "t">): InboxEvent {
   const now = Date.now()
   const es = list().filter((e) => !given.key || !sameKey(e, given.source, given.key))
+  // A browser's session (claude.ai's, by its address) is one row however often it's told: finishing a turn is its
+  // progress, quietly (a looping session finishes one an hour); needing the user opens it again.
+  if (given.session && /^https?:/.test(given.session) && (given.kind === "done" || given.kind === "waiting") && !given.gate) {
+    const was = es.find((e) => !e.gate && e.source === given.source && e.session === given.session && (e.kind === "done" || e.kind === "waiting")) ?? null
+    const quiet = given.kind === "done"
+    const e: InboxEvent = { ...(was ?? {}), ...given, id: was?.id ?? newId(now), t: now, state: quiet ? "done" : "open", read: quiet, body: given.body ?? was?.body, link: given.link ?? was?.link }
+    if (e.body) e.preview = previewOf(e.body)
+    return put(e, was, es, !quiet)
+  }
   // (a message, `vau notify`'s, only with the same words: a few told in a row from one terminal each show)
   const who = (e: Omit<InboxEvent, "id" | "t">) => `${e.session || e.terminal || ""}\0${e.title}`
   const same = es.find((e) => e.state === "open" && now - e.t < MERGE && e.source === given.source && e.kind === given.kind && who(e) === who(given))
@@ -1119,6 +1128,8 @@ type Who = { agent: string; terminal: string; session: string; host?: boolean
   thread?: string }
 /** An agent's last turn as its plugin reads it (the service "agent-turn:<agent>"): the user's message, its last answer. */
 type Last = { session: string; prompt: string; text: string; at: number; final: boolean
+  /** The session itself started the turn (its task's notice, a schedule), not the user: `prompt` is what did. */
+  auto?: boolean
   /** The session's own name, for an agent whose terminal isn't titled by it (Codex's thread name, else first prompt). */
   title?: string }
 const BODY = 8000
@@ -1126,12 +1137,12 @@ const BODY = 8000
 /** A turn that ended: its last message read (the hook's, else the agent's transcript), judged; needing the user, its
  *  row says so (and tells them); else the row, unless still to read, keeps it quietly. */
 async function turnEnded(who: Who, h: Heard, since: number) {
-  let { text, prompt } = h
+  let { text, prompt } = h, auto = false
   if (text === undefined || prompt === undefined) {
     const t = await lastTurn(who, since, text === undefined)
     // (back to idle with no session to read: it was starting up, as Codex says it works while it does)
     if (!t && h.from === "osc7501" && h.state === "idle" && text === undefined && prompt === undefined) return
-    if (t) { text ??= t.text; prompt ??= t.prompt; who = { ...who, session: who.session || t.session } }
+    if (t) { text ??= t.text; prompt ??= t.prompt; auto = !!t.auto && h.prompt === undefined; who = { ...who, session: who.session || t.session } }
     if (t?.title) name(who, t.title)
   }
   text = (text ?? h.msg ?? "").trim()
@@ -1147,12 +1158,13 @@ async function turnEnded(who: Who, h: Heard, since: number) {
     return void endHanded(who.terminal)
   }
   const sample = plugin.service("sample") as ((a: SampleAsk) => Promise<{ text: string; truncated: boolean }>) | null
-  const v = await judge({ prompt, text, error: h.state === "error" } satisfies Turn, sample)
+  const v = await judge({ prompt, text, error: h.state === "error", auto } satisfies Turn, sample)
   const now = list().find(rowOf(who)), turn = turnOf(prompt)
   // (an answer that only tells, the setting `answers` quiet: done on its agent's row, unread, never told)
   if (v.needs && v.why === "answer" && settings().answers === "quiet") await sessionRow(who, { state: "done", ask: "answer", body, read: false, link: undefined, questions: undefined, turn: undefined }, false, h.cwd)
   else if (v.needs) await sessionRow(who, { state: "open", ask: v.why as Need, body, read: false, link: undefined, questions: undefined, turn }, true, h.cwd)
-  else if (!now || !stillOpen(now, turn)) await sessionRow(who, { state: "done", ask: undefined, body, read: true, questions: undefined, turn: undefined }, false, h.cwd)
+  // (a turn it started itself settles nothing the user hasn't answered)
+  else if (!now || !(auto ? now.state === "open" && !BLOCKED.has(str(now.ask)) : stillOpen(now, turn))) await sessionRow(who, { state: "done", ask: undefined, body, read: true, questions: undefined, turn: undefined }, false, h.cwd)
   else told(now) // (still to read: it stays as it was)
   endHanded(who.terminal)
 }

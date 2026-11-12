@@ -123,6 +123,26 @@ export default async ($: VaultTest) => {
       for (const id of ids) await api("DELETE", `inbox/events/${id}`)
     }
     {
+      // A browser's session (claude.ai's, by its address): each turn it finishes is its progress on one row, quietly,
+      // however far apart; needing the user opens that row; another session has its own.
+      const url = "https://claude.ai/code/session_01LighthouseNotes", other = "https://claude.ai/code/session_01BeaconDocs"
+      const news = (kind: string, body: string, session = url) => api("POST", "inbox/events", { source: "claude.ai", kind, title: kind === "done" ? "Claude Code finished" : "Claude Code needs you", body, session })
+      await news("done", "Lighthouse notes: 40 of 120 migrated")
+      await news("done", "Lighthouse notes: 80 of 120 migrated")
+      const quiet = (await api("GET", "inbox/events"))[1].events.filter((e: Any) => e.session === url)
+      await news("waiting", "Lighthouse notes: which folder for the 3 notes with no date?")
+      const asking = (await api("GET", "inbox/events"))[1].events.filter((e: Any) => e.session === url)
+      await news("done", "Beacon docs: published", other)
+      await news("done", "Lighthouse notes: 120 of 120 migrated")
+      const [, l] = await api("GET", "inbox/events")
+      const mine = l.events.filter((e: Any) => e.session === url), theirs = l.events.filter((e: Any) => e.session === other)
+      check("inbox events: a browser's session is one row, its finished turns quiet (done, read), needing you opens it",
+        quiet.length === 1 && quiet[0].state === "done" && quiet[0].read === true && !quiet[0].nt && asking.length === 1 && asking[0].id === quiet[0].id &&
+        asking[0].kind === "waiting" && asking[0].state === "open" && !asking[0].read && mine.length === 1 && mine[0].state === "done" &&
+        mine[0].body === "Lighthouse notes: 120 of 120 migrated" && theirs.length === 1 && theirs[0].state === "done", [quiet, asking, mine, theirs])
+      for (const e of [...mine, ...theirs]) await api("DELETE", `inbox/events/${e.id}`)
+    }
+    {
       // One of a kind (a key): a new one takes the place of its source's event with that key; inbox:drop takes it away.
       await api("POST", "inbox/events", { source: "lessons", kind: "info", title: "3 cards to review", key: "cards-due" })
       await api("POST", "inbox/events", { source: "lessons", kind: "info", title: "5 cards to review", key: "cards-due", link: "detail:review" })
@@ -168,6 +188,10 @@ export default async ($: VaultTest) => {
         ["a report of work done", { prompt: "Create hello.txt containing hi.", text: "Created `hello.txt` containing `hi`." }, null],
         ["a failure", { prompt: "Read /nonexistent/config.yaml and tell me its port.", text: "The file doesn't exist, so I can't tell you its port setting." }, null],
         ["nothing said", { prompt: "Go on", text: "" }, false],
+        ["it says nothing needs them", { prompt: "Keep an eye on the Lighthouse deploys", text: "Both deploys are green. Alice Park's question is still waiting in the inbox.\n\nNothing else needs you right now." }, false],
+        ["a turn its own watcher started: its progress", { prompt: "<task-notification>build 412</task-notification>", text: "Build 412 passed; the next check runs at 10:00 UTC.", auto: true }, false],
+        ["a turn its own schedule started, failing: still its progress", { prompt: "Nightly sweep", text: "GitHub is down, so the sweep couldn't fetch; retrying at 03:00.", auto: true }, false],
+        ["a turn it started itself that asks", { prompt: "Nightly sweep", text: "The deploy failed twice.\n\nShould I roll it back?", auto: true }, true],
       ]
       const off = cases.filter(([, t, want]) => (sure(t)?.needs ?? null) !== want)
       check("needs: what a turn's words settle, the same each time; the rest for the model", !off.length, off.map(([why, t]) => [why, sure(t)]))
@@ -267,6 +291,31 @@ export default async ($: VaultTest) => {
       tell({ terminal: "claude-osc75010", agent: "claude", state: "idle", from: "osc7501", at })
       r = (await rows()).filter((e) => e.terminal === "claude-osc75010")
       check("inbox:state: answered, then done with nothing for you: done, quiet", r[0]?.read === true && r[0].state === "done" && r[0].body === "Tagged v1.2.0 and pushed.", r)
+      {
+        // A turn the session started itself (its monitor's notice, a schedule): its progress on its row, quietly, never
+        // asked of the model; what the user still has to answer stays open.
+        let judged = 0
+        cc.services.sample = async () => { judged++; return { text: "NEEDS_YOU", truncated: false } }
+        read = { session: "sess-loop", prompt: "Which Beacon release should I tag?", text: "Should it be v2.0 or v2.1?", at: 0, final: true }
+        cc.services["agent-turn:claude"] = async (terminal: string) => (terminal === "claude-loop0001" ? { ...read, at: Date.now() } : null)
+        tell({ terminal: "claude-loop0001", agent: "claude", state: "working", from: "osc7501", at })
+        tell({ terminal: "claude-loop0001", agent: "claude", state: "done", from: "osc7501", at })
+        const asked = (await rows()).find((e) => e.terminal === "claude-loop0001")
+        read = { ...read, prompt: "<task-notification>Monitor event: Beacon CI</task-notification>", text: "Beacon CI is green again; your tag question is still open.", auto: true } as Any
+        tell({ terminal: "claude-loop0001", agent: "claude", state: "working", from: "osc7501", at })
+        tell({ terminal: "claude-loop0001", agent: "claude", state: "done", from: "osc7501", at })
+        const kept = (await rows()).find((e) => e.terminal === "claude-loop0001")
+        await api("POST", "inbox/events/read", { ids: [kept.id] })
+        await api("POST", "inbox/events/done", { ids: [kept.id] })
+        read = { ...read, text: "Beacon CI ran twice more; both passed." }
+        tell({ terminal: "claude-loop0001", agent: "claude", state: "working", from: "osc7501", at })
+        tell({ terminal: "claude-loop0001", agent: "claude", state: "done", from: "osc7501", at })
+        const loop = (await rows()).filter((e) => e.terminal === "claude-loop0001")
+        check("inbox:state: a turn the session started itself is its progress, quiet, not judged; an open question it left stays open",
+          asked?.state === "open" && asked.ask === "reply" && kept?.state === "open" && kept.ask === "reply" && kept.body === "Should it be v2.0 or v2.1?" &&
+          loop.length === 1 && loop[0].state === "done" && loop[0].read === true && loop[0].body === "Beacon CI ran twice more; both passed." && judged === 0, [asked, kept, loop, judged])
+        cc.services.sample = async () => ({ text: "DONE", truncated: false })
+      }
       {
         // The setting `muted`: a session in an account the user muted (its agent's plugin says whose) makes no thread.
         const acct = cc.services["agent-account:claude"]

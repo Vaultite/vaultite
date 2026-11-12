@@ -91,7 +91,9 @@ with a `state`:
   when its words don't settle it), or its report is one the inbox keeps (a failure, public, the digest). It's told then
   (toast, the phone and watch). A report that isn't leaves its thread done, quietly. A turn that only tells them
   something (`answer`: what they asked to know, a status) is done quietly, unread on its row, never told; the setting
-  `answers: inbox` keeps it open and told instead.
+  `answers: inbox` keeps it open and told instead. A turn the session started itself (its background task's notice, a
+  schedule or loop it set, another session's message) is its progress, done quietly on its row, unless it ends on a
+  question: what you need from the user then, ask it (`vau inbox ask`).
 - `working`: the user answered (a reply, Approve, a pick, a prompt in its terminal) and its agent is on it. Its next turn
   ends open again when it has something for them, else done.
 - `done`: the user settled it (`vau inbox settle <id>`, which archives its report too), or a turn after their answer
@@ -100,7 +102,8 @@ Read (bold or not) is only whether they've seen it: opening or reading a thread 
 nothing for the user goes in quietly, done. Reply with `vau inbox reply <id> "<text>"` (typed into its session, resumed
 if it ended). Don't write "nothing needed from you" rules into prompts for this.
 **Events** are the rest, in the same list: `waiting` (something asks the user: a server's question, a browser's ask, a
-paused plugin) is open until done or answered; a message (`vau notify`: info, error) is done once read. With Machines
+paused plugin) is open until done or answered; a message (`vau notify`: info, error) is done once read. A browser's
+session (claude.ai's, its `session` the page's address) is one row: `done` news of it is quiet, `waiting` opens it. With Machines
 every app shows every machine's (another's id ends in `@<machine>`, and reading, answering or replying to it is done
 there; the machine whose session it is sends the push). Approve and Deny answer a permission an agent asks in an app
 terminal, or an app on the public MCP asking to run code here.
