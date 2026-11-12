@@ -28,6 +28,8 @@ fs.writeFileSync(path.join(A, "electron/build.json"), JSON.stringify({ commit: h
 fs.cpSync(A, B, { recursive: true, verbatimSymlinks: true })
 fs.writeFileSync(path.join(B, "electron/boot.ts"), 'throw new Error("broken on purpose")\n')
 fs.writeFileSync(path.join(B, "electron/build.json"), JSON.stringify({ commit: "b".repeat(40), repo: "https://github.com/Alice/lighthouse.git" }))
+// (writable by nobody else, as the store leaves them: a umask of 002 would make them group-writable, and passed over)
+for (const r of [A, B]) fs.chmodSync(r, fs.statSync(r).mode & ~0o022)
 fs.writeFileSync(path.join(userData, "use-code-store"), "")
 const point = (name, commit) => fs.writeFileSync(path.join(store, `${name}.json`), JSON.stringify({ commit, t: Date.now() }))
 check("the roots are built for this shell (its checkout's fingerprint)", fingerprint(A) === fingerprint(ROOT) && fingerprint(B) === fingerprint(ROOT))

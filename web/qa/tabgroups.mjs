@@ -244,7 +244,7 @@ try {
     await new Promise((r) => setTimeout(r, 400))
     const box = e.parentElement, set = box.dataset.lineOf, line = set && box.parentElement.querySelector(`:scope > [data-group-line="${set}"]`), r = box.getBoundingClientRect()
     return { moved: !!box.style.transform, rail: !!line && line.getBoundingClientRect().bottom > r.top + r.height / 2 }
-  }, null, { timeout: 2000 }).catch(() => null)
+  }, null, { timeout: 10_000 }).catch(() => null)
   check("in the panel too: dragged over a group's last row, the rows make way, the group's line beside it", moving?.moved && moving.rail, moving)
   await page.screenshot({ path: `${OUT}vertical-dragging.png`, clip: { x: 0, y: 0, width: 360, height: 400 } })
   await release()
@@ -255,16 +255,18 @@ try {
   const name = (await file.getAttribute("data-tree-path")).split("/").pop().replace(/\.md$/, "")
   const fb = await file.boundingBox(), gp2 = await row("Garden planner").boundingBox()
   await page.mouse.move(fb.x + 40, fb.y + fb.height / 2); await page.mouse.down()
-  await page.mouse.move(fb.x + 48, fb.y + fb.height / 2 + 4, { steps: 2 }); await page.mouse.move(gp2.x + 60, gp2.y + gp2.height * 0.3, { steps: 12 }); await wait(400)
+  await page.mouse.move(fb.x + 48, fb.y + fb.height / 2 + 4, { steps: 2 }); await page.mouse.move(gp2.x + 60, gp2.y + gp2.height * 0.3, { steps: 12 })
   // (measured as they are now: the sidebar may have scrolled a little under the pointer, near its top)
-  const room = await page.evaluate(() => {
+  const measure = () => page.evaluate(() => {
     const rows = [...document.querySelectorAll("[data-tabs-panel] [data-slide]")], gp = rows.find((e) => e.textContent.trim() === "Garden planner")
     const top = gp.getBoundingClientRect().top, m = /translateY\((-?[\d.]+)px\)/.exec(gp.style.transform), made = m ? +m[1] : 0
     const e = rows.find((e) => Math.abs(e.getBoundingClientRect().top - (top - made)) <= 2)
     return { made, what: e && (e.dataset.slide === "incoming" ? "incoming" : e.textContent.trim()), h: e && Math.round(e.getBoundingClientRect().height) }
   })
   const shown = (await page.$$eval("[data-tabs-panel] [data-open-tab]", (els) => els.map((e) => e.textContent.trim()))).includes(name)
-  check("a file from the tree held over the list: the rows make way where it would open (its tab, if one shows it)", room.made > 20 && room.h >= 24 && room.what === (shown ? name : "incoming"), [name, shown, room])
+  const roomFor = (r) => r.made > 20 && r.h >= 24 && r.what === (shown ? name : "incoming")
+  const room = await until(async () => { const r = await measure(); return roomFor(r) ? r : null }, 3000) ?? await measure()
+  check("a file from the tree held over the list: the rows make way where it would open (its tab, if one shows it)", roomFor(room), [name, shown, room])
   await page.screenshot({ path: `${OUT}vertical-file.png`, clip: { x: 0, y: 0, width: 360, height: 400 } })
   await page.keyboard.press("Escape"); await page.mouse.up(); await wait(300)
   const after = await page.$$eval("[data-tabs-panel] :is([data-open-tab], [data-group-row])", (els) => els.map((e) => (e.dataset.groupRow ? `[${((e) => { const c = e.cloneNode(true); for (const x of c.querySelectorAll("[data-group-count][aria-hidden]")) x.remove(); return c.textContent.trim() })(e)}]` : e.textContent.trim())).join(" "))

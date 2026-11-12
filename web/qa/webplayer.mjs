@@ -122,6 +122,9 @@ const frame = async (name, pts) => {
   if (r && OUT) fs.writeFileSync(path.join(OUT, `${name}.png`), Buffer.from(r.png, "base64"))
   return r
 }
+/** The frame once `ok` holds of its colours (within 3 s), else the last: frames at a new size may take a while to come,
+ *  with a software renderer under load. */
+const settled = async (name, pts, ok) => (await until(async () => { const f = await frame(name, pts); return f && ok(f.colours) ? f : null }, 3000)) ?? frame(name, pts)
 const black = (c) => c && c.every((x) => x < 12)
 const film = (c) => c && !black(c) && !(Math.abs(c[0] - 0x1d) < 6 && Math.abs(c[1] - 0x1f) < 6 && Math.abs(c[2] - 0x21) < 6) && Math.max(...c) - Math.min(...c) > 40
 const near = (a, b, d = 2) => Math.abs(a - b) <= d
@@ -182,8 +185,7 @@ check("… its video fills the page, the site's player around it (its captions a
   return p.matches(":popover-open") && v.left === 0 && v.top === 0 && v.width === innerWidth && v.height === innerHeight && document.elementFromPoint(innerWidth / 2, 20) !== document.querySelector("header")
     && getComputedStyle(document.getElementById("caption")).color === "rgb(214, 211, 204)"
 })()`))
-await wait(400)
-const f1 = await frame("1-player", [[0.01, 0.01], [0.99, 0.01], [0.5, 0.5], [0.01, 0.99], [0.99, 0.99]])
+const f1 = await settled("1-player", [[0.01, 0.01], [0.99, 0.01], [0.5, 0.5], [0.01, 0.99], [0.99, 0.99]], (c) => c.every(film))
 check("… drawn edge to edge, no gap at any corner", f1 && f1.colours.every(film), f1?.colours)
 
 // ---------- its controls show with the pointer at its top ----------
@@ -210,9 +212,9 @@ check("resized step by step, its video fills it at every step", await steady("#v
 // ---------- resized to another shape: letterboxed, never the page showing ----------
 await player((w) => w.setContentSize(800, 600))
 check("resized, its page fills it", await until(async () => { const w = await where(); return fills(w) && w.content.width === 800 && w.content.height === 600 }, 3000), await where())
-await wait(300)
-const f2 = await frame("3-letterbox", [[0.5, 0.02], [0.5, 0.5], [0.5, 0.98], [0.02, 0.5], [0.98, 0.5]])
-check("… the video letterboxed in black, centred", f2 && black(f2.colours[0]) && film(f2.colours[1]) && black(f2.colours[2]) && film(f2.colours[3]) && film(f2.colours[4]), f2?.colours)
+const boxed = (c) => black(c[0]) && film(c[1]) && black(c[2]) && film(c[3]) && film(c[4])
+const f2 = await settled("3-letterbox", [[0.5, 0.02], [0.5, 0.5], [0.5, 0.98], [0.02, 0.5], [0.98, 0.5]], boxed)
+check("… the video letterboxed in black, centred", f2 && boxed(f2.colours), f2?.colours)
 const r0 = await player((w) => w.getContentBounds())
 
 // ---------- the page's full screen and the window's are one ----------
@@ -239,9 +241,9 @@ await wait(300)
 check("the site's own full screen button, from the window: full screen and back", await (async () => {
   await inPage("document.getElementById('full').click()") // (the page's button: inside the player, under the fill)
   // (the window goes full screen before the page is told it is: exitFullscreen before that throws)
-  const a = await until(async () => (await where()).full && await inPage("!!document.fullscreenElement"), 3000)
-  await inPage("document.exitFullscreen()")
-  return a && await until(async () => !(await where()).full, 3000)
+  // (a window manager's full screen may take a while: a slow one fails this check, not the script)
+  const a = await until(async () => (await where()).full && await inPage("!!document.fullscreenElement"), 6000)
+  return !!a && await inPage("document.exitFullscreen().then(() => true, () => false)") && await until(async () => !(await where()).full, 3000)
 })())
 
 // ---------- its aspect follows the video ----------
@@ -311,8 +313,7 @@ await until(async () => (await where()).in === "vault" && await inPage("document
 await more("Open as player")
 const clip = await until(async () => { const w = await where(); return w.in === "player" && fills(w) ? w : null }, 5000)
 check("a video file: a player at its aspect (4:3)", clip && near(clip.content.width / clip.content.height, 4 / 3, 0.02), clip?.content)
-await wait(400)
-const f3 = await frame("4-file", [[0.01, 0.01], [0.99, 0.01], [0.5, 0.5], [0.01, 0.99], [0.99, 0.99]])
+const f3 = await settled("4-file", [[0.01, 0.01], [0.99, 0.01], [0.5, 0.5], [0.01, 0.99], [0.99, 0.99]], (c) => c.every((x) => !black(x)))
 check("… drawn edge to edge", f3 && f3.colours.every((c) => !black(c)), f3?.colours)
 await back()
 await ui({ action: "command", id: "tab:close" }); await wait(500)

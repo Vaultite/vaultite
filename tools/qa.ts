@@ -63,11 +63,19 @@ const names = argv.length ? argv.map((a) => path.basename(a, ".mjs"))
 // together (one would run it half written: ETXTBSY), by Playwright's _electron or the path require("electron") gives.
 const desktop = (n: string) => { try { return /_electron\b|\("electron"\)/.test(fs.readFileSync(path.join(QA, `${n}.mjs`), "utf8")) } catch { return false } }
 if (names.some(desktop)) createRequire(import.meta.url)("electron")
-// Electron needs a display: on a Linux box without one (ssh, a server), a virtual one, as CI's.
-if (names.some(desktop) && process.platform === "linux" && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
-  const r = spawnSync("xvfb-run", ["-a", process.execPath, ...process.argv.slice(1)], { stdio: "inherit" })
-  if (r.error) console.error("qa: the desktop scripts need a display, and there's none (DISPLAY) nor xvfb-run (apt install xvfb)")
-  process.exit(r.status ?? 1)
+// On Linux the desktop scripts get a virtual display of their own, as CI's: on the user's, their windows go full screen
+// through its window manager and take its focus (SHOW=1: on the user's display).
+const own = process.platform === "linux" && !process.env.VAULTITE_QA_XVFB && !(process.env.SHOW && (process.env.DISPLAY || process.env.WAYLAND_DISPLAY))
+if (names.some(desktop) && own) {
+  const env: NodeJS.ProcessEnv = { ...process.env, VAULTITE_QA_XVFB: "1" }
+  delete env.WAYLAND_DISPLAY
+  const r = spawnSync("xvfb-run", ["-a", process.execPath, ...process.argv.slice(1)], { stdio: "inherit", env })
+  if (r.error && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
+    console.error("qa: the desktop scripts need a display, and there's none (DISPLAY) nor xvfb-run (apt install xvfb)")
+    process.exit(1)
+  }
+  if (!r.error) process.exit(r.status ?? 1)
+  console.error("qa: no xvfb-run (apt install xvfb): the desktop scripts run on this display, among its windows")
 }
 // On a Mac, from a background job, the run again as an interactive one (tools/qa_job.ts)
 if (process.platform === "darwin" && !process.env.VAULTITE_QA_JOB && await throttled()) {
