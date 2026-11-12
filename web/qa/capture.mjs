@@ -77,6 +77,19 @@ const tl = await fetch(`http://127.0.0.1:${port}/api/ops/screen.timeline`, { met
 const lines = tl.lines ?? []
 check("the timeline's last seconds: the click, and its clip saved when asked",
   lines.some((l) => /clicked at 320,260/.test(l)) && !!tl.clip && fs.existsSync(tl.clip), tl)
+// ---------- its pill sits outside the box, never in what's recorded; its grip moves the box
+const apart = () => overlay.evaluate(() => {
+  const b = document.querySelector("[data-region]").getBoundingClientRect(), p = document.querySelector("[data-region-pill]").getBoundingClientRect()
+  return { apart: p.right <= b.left || p.left >= b.right || p.bottom <= b.top || p.top >= b.bottom, box: [b.left, b.top, b.width, b.height], pill: [p.left, p.top, p.width, p.height] }
+})
+check("its pill sits outside the box", (await apart()).apart, await apart())
+const grip = await overlay.evaluate(() => { const r = document.querySelector('[aria-label="Move the box"]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 } })
+const before = (await region()).rect
+await overlay.mouse.move(grip.x, grip.y); await overlay.mouse.down()
+await overlay.mouse.move(grip.x - 150, grip.y - 150, { steps: 4 }); await overlay.mouse.move(grip.x - 400, grip.y - 400, { steps: 4 }); await overlay.mouse.up()
+const moved = (await region()).rect
+check("dragged by its grip (right of its close), the box moves", moved.x < before.x && moved.y < before.y && moved.width === before.width, { before, moved })
+check("at the screen's top left, its pill goes outside it still (below)", await until(async () => (await apart()).apart, 2000), await apart())
 await overlay.evaluate(() => document.querySelector('[aria-label="Close the box"]').click())
 check("its close takes the box away", await until(async () => !(await region()), 3000))
 

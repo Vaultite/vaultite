@@ -1,6 +1,6 @@
-// The user's box over the screen (electron/capture.ts): a drag with the Talk key held makes it. Its edges move it, its
-// corners resize it, the pointer goes through inside; its pill records, stops, sends the last seconds, closes.
-import { useEffect, useRef, useState } from "react"
+// The user's box over the screen (electron/capture.ts), made by a drag with the Talk key held: edges and the pill's grip
+// move it, corners resize it. The pill (record, stop, last seconds, close) sits outside it, never in what's recorded.
+import { useLayoutEffect, useEffect, useRef, useState } from "react"
 import { History, X } from "lucide-react"
 import { clock, type Rect, type RegionScene } from "../../core/desktop/clips"
 import { HOLD } from "./screendraw/hold"
@@ -17,9 +17,25 @@ function dragged(r0: Rect, edge: Edge, dx: number, dy: number): Rect {
   return { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) }
 }
 
+const GAP = 8, MARGIN = 4
+
+/** Where the pill goes (window px) for a box `rect` on a screen `w` x `h` whose top `top` px the menu bar takes: above
+ *  it, else below, right, left, in its own line; inside only when the box leaves no room around it (the whole screen). */
+export function pillAt(rect: Rect, pill: { width: number; height: number }, w: number, h: number, top: number): { x: number; y: number } {
+  const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(v, Math.max(lo, hi)))
+  const x = clamp(rect.x, MARGIN, w - MARGIN - pill.width), y = clamp(rect.y, top + MARGIN, h - MARGIN - pill.height)
+  if (rect.y - GAP - pill.height >= top + MARGIN) return { x, y: rect.y - GAP - pill.height }
+  if (rect.y + rect.height + GAP + pill.height <= h - MARGIN) return { x, y: rect.y + rect.height + GAP }
+  if (rect.x + rect.width + GAP + pill.width <= w - MARGIN) return { x: rect.x + rect.width + GAP, y }
+  if (rect.x - GAP - pill.width >= MARGIN) return { x: rect.x - GAP - pill.width, y }
+  return { x: clamp(rect.x + GAP, MARGIN, w - MARGIN - pill.width), y: clamp(rect.y + GAP, top + MARGIN, h - MARGIN - pill.height) }
+}
+
 export function Region({ r, top, moved, act }: { r: RegionScene; top: number; moved: (rect: Rect) => void; act: (what: string) => void }) {
   const [held, setHeld] = useState<Rect | null>(null)
-  const drag = useRef<{ edge: Edge; x: number; y: number; r0: Rect } | null>(null)
+  const pill = useRef<HTMLDivElement>(null)
+  // (`pill`: where the pill was from the box, dragged by its grip: it stays under the pointer instead of changing sides)
+  const drag = useRef<{ edge: Edge; x: number; y: number; r0: Rect; pill?: { x: number; y: number } } | null>(null)
   const [, tick] = useState(0)
   useEffect(() => { if (!r.recording) return; const t = setInterval(() => tick((n) => n + 1), 500); return () => clearInterval(t) }, [r.recording])
   // (the window takes the pointer over the edges and the pill (`HOLD`), and through a drag begun on them)
@@ -28,7 +44,9 @@ export function Region({ r, top, moved, act }: { r: RegionScene; top: number; mo
     if (e.button !== 0) return
     e.preventDefault()
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-    drag.current = { edge, x: e.clientX, y: e.clientY, r0: rect }
+    const box = pill.current?.getBoundingClientRect()
+    const grip = !!box && pill.current!.contains(e.currentTarget as Node)
+    drag.current = { edge, x: e.clientX, y: e.clientY, r0: rect, ...(grip ? { pill: { x: box.left - rect.x, y: box.top - rect.y } } : {}) }
   }
   const move = (e: React.PointerEvent) => {
     const d = drag.current
@@ -46,9 +64,21 @@ export function Region({ r, top, moved, act }: { r: RegionScene; top: number; mo
   const band = (style: React.CSSProperties) => <div className="pointer-events-auto absolute cursor-move" style={style} {...handlers("move")} />
   const corner = (edge: Exclude<Edge, "move">, style: React.CSSProperties) =>
     <div className="pointer-events-auto absolute size-3 rounded-[3px] border-2 bg-white" style={{ borderColor: tint, cursor: edge === "nw" || edge === "se" ? "nwse-resize" : "nesw-resize", ...style }} {...handlers(edge)} />
-  // (the pill above the box, inside it when the menu bar is in the way)
-  const pillAbove = rect.y - top >= 34
+  // (measured: its width changes with what it holds)
+  const [size, setSize] = useState({ width: 160, height: 30 })
+  useLayoutEffect(() => {
+    const el = pill.current
+    if (!el) return
+    const fit = () => setSize((s) => s.width === el.offsetWidth && s.height === el.offsetHeight ? s : { width: el.offsetWidth, height: el.offsetHeight })
+    fit()
+    const o = new ResizeObserver(fit)
+    o.observe(el)
+    return () => o.disconnect()
+  }, [])
+  const off = held && drag.current?.pill
+  const at = off ? { x: rect.x + off.x, y: rect.y + off.y } : pillAt(rect, size, innerWidth, innerHeight, top)
   return (
+    <>
     <div className="screen-in pointer-events-none fixed" style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }} data-region={r.recording ? "recording" : "idle"}>
       <div className={r.recording ? "absolute inset-0 rounded-[3px] border-2 region-rec" : "absolute inset-0 rounded-[3px] border-2 border-dashed"} style={{ borderColor: tint, boxShadow: "0 0 0 1px rgba(255,255,255,.55)" }} />
       {band({ left: -BAND / 2, right: -BAND / 2, top: -BAND / 2, height: BAND })}
@@ -58,8 +88,9 @@ export function Region({ r, top, moved, act }: { r: RegionScene; top: number; mo
       {!r.recording && <>
         {corner("nw", { left: -6, top: -6 })}{corner("ne", { right: -6, top: -6 })}{corner("sw", { left: -6, bottom: -6 })}{corner("se", { right: -6, bottom: -6 })}
       </>}
-      <div className="pointer-events-auto absolute left-0 flex items-center gap-0.5 rounded-full border border-black/10 bg-background/95 p-0.5 text-[12px] font-medium shadow-md backdrop-blur"
-        style={pillAbove ? { bottom: "calc(100% + 8px)" } : { top: 8, left: 8 }} {...HOLD}>
+    </div>
+    <div ref={pill} data-region-pill="" className="screen-in pointer-events-auto fixed flex items-center gap-0.5 rounded-full border border-black/10 bg-background/95 p-0.5 text-[12px] font-medium whitespace-nowrap shadow-md backdrop-blur"
+        style={{ left: at.x, top: at.y }} {...HOLD}>
         {r.saving ? <span className="px-2.5 py-1 text-muted-foreground">Saving…</span>
           : r.recording ? (
             <button type="button" className="flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-1 hover:bg-foreground/[0.07]" onClick={() => act("stop")} aria-label="Stop recording and send">
@@ -81,8 +112,14 @@ export function Region({ r, top, moved, act }: { r: RegionScene; top: number; mo
             <X className="size-3.5" />
           </button>
         )}
+        <div role="button" tabIndex={-1} aria-label="Move the box"
+          className="grid h-6 w-5 cursor-grab touch-none place-items-center rounded-full text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground active:cursor-grabbing"
+          {...handlers("move")}>
+          {/* (drawn here: an icon the app shares gets its own file, one more for the app to load at start) */}
+          <svg viewBox="0 0 24 24" className="size-3.5" fill="currentColor" aria-hidden>{[9, 15].flatMap((x) => [5, 12, 19].map((y) => <circle key={`${x}${y}`} cx={x} cy={y} r={1.6} />))}</svg>
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 

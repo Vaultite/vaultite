@@ -10,6 +10,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   moment (Noted, Sent to, Couldn't save it) no longer land in the screen's top left corner, over the menu bar.
 - **Updates no longer stall on GitHub's hourly limit**: a server with a signed-in gh keeps its larger allowance of
   calls to GitHub, whatever GitHub answers, so new commits reach it within minutes.
+- **The screen recorder's buttons stay out of what it records**: they sit outside the box (above it, else below or
+  beside it), never inside where they'd be in the video, and a grip after the close button drags the box.
+- **The Mac's window buttons no longer blink out** when you pin the left sidebar while it's slid in from the edge.
 - **A split's pane tabs stay put in the sidebar**: a split whose panes have tabs of their own lists them under its row
   until you click a cell's +n, which folds them into the row (and lists them again) with a motion; switching tabs no
   longer opens and closes them, and the +n steps aside for the X on hover instead of hiding under it.

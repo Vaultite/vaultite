@@ -632,8 +632,9 @@ export default function App() {
             <div key={key} data-header-item={key} className="flex min-w-0 shrink-0 items-center"><Guard what="This item"><Drawn draw={() => item.render({ store, open: true, file: filePath, tab: targetOf(tab) })} /></Guard></div>
           ))}
         </div>
-        {/* Stand-ins for the Mac's traffic lights while it slides (core/peek.ts places and shows them). */}
-        {hideLeft && hasLights && <span aria-hidden data-lights-ghost=""><i /><i /><i /></span>}
+        {/* Stand-ins for the Mac's traffic lights while it moves (core/peek.ts places and shows them); pinned too, as
+            pinning it while slid in moves it, the Mac's hidden meanwhile. */}
+        {hasLights && <span aria-hidden data-lights-ghost=""><i /><i /><i /></span>}
         {/* The plugins' panels; as a rail, the header's items go first, under the toggle. Phones draw them in drawers
             (PhoneDrawer.tsx). */}
         <div className="flex min-h-0 flex-1 flex-col">
