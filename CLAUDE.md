@@ -56,6 +56,8 @@ is its point.
 - Done means `npm run verify` passes (build, check, and the tests and QA the branch reaches) and the change is live.
   `npm run verify -- --all` (`npm test` and smoke too) only for a change much rests on (a dependency, the build, the
   test harness): say why. CI runs the full suite on three OSes on every push.
+- Iterate on the failing stage's own command (verify prints it, and its whole output's file), then verify once at the
+  end: it skips what passed on the same files, so a rerun after a commit or to add `--try` costs nothing.
 - A change likely to behave differently on Windows or Linux (processes, paths, file times, the CLI's shims, CI: verify
   says so) is tried there before it lands: commit, then `npm run verify -- --try` (it starts HEAD's try on GitHub's
   three OSes, about 6 min, 11 with Windows' vau and installer checks, and waits within 8.5 min in all). Exit 3 is "still

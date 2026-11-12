@@ -1,11 +1,12 @@
-// What keeps main green across OSes: the OS-sensitive rule (osrisk.ts), main's red notice (mainci.ts) and the try run's
-// verdict and record (try.ts), on made-up runs and a scratch repository. No network. In npm test.
+// What keeps main green across OSes: the OS-sensitive rule (osrisk.ts), main's red notice (mainci.ts), the try run's
+// verdict and record (try.ts) and verify's passes (verify_passed.ts), on made-up runs and scratch repositories. No network. In npm test.
 import { check, exit, section, summary, tempDir } from "./test/lib.ts"
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { gitEnv } from "../core/gitenv.ts"
 import { alsoTry, describe, osRisk, parseDiff } from "./osrisk.ts"
+import { filesState, passes, workTree } from "./verify_passed.ts"
 import { failuresOf, mainRed, nightlyRed, notice, redStreaks, type Api, type Run } from "./mainci.ts"
 import { ATTEMPT_MIN, checkPush, judge, loadTry, riskKey, startTry, sweep, tried, waitTry } from "./try.ts"
 const t0 = Date.now()
@@ -203,5 +204,37 @@ check("try: uncommitted work isn't tried, nothing pushed", !startTry(work, d1.o)
 w("checkout", "-q", "--", "."); w("checkout", "-q", "main")
 const n1 = fake()
 check("try --wait with none started: says so, with what to run", (await waitTry(work, { ...n1.o, seconds: 0 })).status === "none" && /^try: NONE of [0-9a-f]{9} \(HEAD\) started: node tools\/try\.ts$/.test(n1.last()))
+
+section("verify passes")
+{
+  const r = tempDir("passrepo-")
+  const g = (...a: string[]) => spawnSync("git", ["-c", "user.name=Alice Park", "-c", "user.email=alice@example.com", "-c", "commit.gpgsign=false", ...a], { cwd: r, encoding: "utf8", env: gitEnv() }).stdout.trim()
+  const put = (f: string, text: string) => fs.writeFileSync(path.join(r, f), text)
+  g("init", "-q", "-b", "main"); put(".gitignore", "out/\n"); put("a.ts", "export const a = 1\n"); g("add", "-A"); g("commit", "-qm", "base")
+  const clean = workTree(r)
+  check("a clean checkout's files are HEAD's tree", clean === g("rev-parse", "HEAD^{tree}"), clean)
+  put("a.ts", "export const a = 2\n")
+  const edited = workTree(r)
+  check("an edit not staged changes them", !!edited && edited !== clean)
+  check("and leaves the checkout's own index alone", g("diff", "--cached", "--name-only") === "" && g("status", "--porcelain") === "M a.ts")
+  g("add", "a.ts")
+  check("staged or not, the same files are the same", workTree(r) === edited)
+  g("commit", "-qm", "two")
+  check("committed, still the same", workTree(r) === edited)
+  put("b.ts", "export const b = 1\n")
+  check("a new file not yet added counts", workTree(r) !== edited)
+  fs.rmSync(path.join(r, "b.ts")); fs.mkdirSync(path.join(r, "out")); put("out/built.js", "1")
+  check("what's ignored doesn't", workTree(r) === edited)
+  let now = 1_000_000
+  const kept = passes(r, { now: () => now }), state = filesState(r)!, cmd = ["node", "tools/test_vault.ts", "jobs"]
+  check("nothing passed yet", kept.passedAt(state, cmd) === null)
+  kept.pass(state, cmd, 12)
+  check("a pass is kept for its files and command", kept.passedAt(state, cmd) === now && kept.passedAt(state, ["npm", "run", "check"]) === null)
+  put("a.ts", "export const a = 3\n")
+  check("other files: not passed", kept.passedAt(filesState(r)!, cmd) === null)
+  now += 8 * 86_400_000
+  check("a week on, it's forgotten", passes(r, { now: () => now }).passedAt(state, cmd) === null)
+  check("outside a checkout, nothing is told", workTree(tempDir("nogit-")) === null)
+}
 
 await exit(summary("ci", t0))
