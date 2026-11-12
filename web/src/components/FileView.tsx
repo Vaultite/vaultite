@@ -699,13 +699,14 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     if (!ed?.api.view.dom.isConnected) { apply(text); changed(); return }
     ed.api.change(text)
   }, [apply])
-  /** What the editor has now: its frontmatter (to `start`; source mode reads it from the text) and body. */
-  const typed = useCallback((text: string, start: number | null) => {
+  /** What the editor has now: its frontmatter (to `start`; source mode reads it from the text) and body; `remote`, others
+   *  typed it (in together): kept here all the same, as what's saved once this one saves alone again is on it. */
+  const typed = useCallback((text: string, start: number | null, remote = false) => {
     const s = start === null ? splitFm(text) : { fm: text.slice(0, start), body: text.slice(start) }
     cur.current = s
     setFm(s.fm)
     onTyped.current()
-    changed()
+    if (!remote) changed()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   // Stable so what's drawn around the text isn't redrawn per keystroke (`editAround` only reads refs and `save`).
@@ -994,7 +995,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
                   ready(api, source); saver.reshow(); if (kept?.write) toText()
                   return () => { if (editor.current === me) editor.current = null }
                 }}
-                onChange={(text, start) => typed(text, source || fmText ? null : start)} />
+                onChange={(text, start, remote) => typed(text, source || fmText ? null : start, remote)} />
             )}
           </Suspense>}
         </div>

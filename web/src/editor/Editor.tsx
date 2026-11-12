@@ -10,7 +10,7 @@ import { yamlFrontmatter, yamlLanguage } from "@codemirror/lang-yaml"
 import { HighlightStyle, indentUnit, languageDataProp, syntaxHighlighting } from "@codemirror/language"
 import { languages } from "@codemirror/language-data"
 import { tags } from "@lezer/highlight"
-import { Compartment, EditorSelection, EditorState, Prec, Text, Transaction, type Extension, type SelectionRange } from "@codemirror/state"
+import { Annotation, Compartment, EditorSelection, EditorState, Prec, Text, Transaction, type Extension, type SelectionRange } from "@codemirror/state"
 import { EditorView, keymap, placeholder, tooltips, type ViewUpdate } from "@codemirror/view"
 import { codeStyle, indentOf, languageFor, ownIndent } from "./languages"
 import { drawnBlocks, fenceMenu, findable, linkHandler, livePreview, offBlocks, previewConfig, textStart, textStartIn, type PreviewConfig } from "./livePreview"
@@ -78,8 +78,9 @@ type Props = {
   doc: string
   editable: boolean
   config: PreviewConfig
-  /** The text, and where its body starts (after the hidden frontmatter; 0 without `frontmatter`). */
-  onChange: (doc: string, start: number) => void
+  /** The text, and where its body starts (after the hidden frontmatter; 0 without `frontmatter`), on every change but
+   *  the host's own (`replace`); `remote`: none of it typed here (others typing in it together), so not this one's to save. */
+  onChange: (doc: string, start: number, remote: boolean) => void
   /** An undo or redo changed the hidden frontmatter (Properties show it). */
   onUndoFrontmatter?: () => void
   onOpen: (link: { wiki?: string; url?: string }, how: boolean | LinkClick) => void
@@ -128,6 +129,11 @@ type Props = {
   keep?: string
 }
 
+/** The host's own text put in (`replace`): it has it already, so it isn't told back. */
+const hosts = Annotation.define<boolean>()
+/** Whether an update changed the text in a way the host doesn't know, and whether it was all from elsewhere. */
+const news = (u: ViewUpdate) => u.docChanged && !u.transactions.every((t) => !t.docChanged || t.annotation(hosts))
+const fromElsewhere = (u: ViewUpdate) => u.transactions.every((t) => !t.docChanged || t.annotation(Transaction.remote))
 
 /** Where floating suggestions go: one layer on <body> (styled like the editor's own: index.css, `.vau-tooltips`). */
 let tooltipLayer: HTMLElement | null = null
@@ -353,7 +359,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
       keymap.of([{ key: "Tab", run: indentMore }, { key: "Shift-Tab", run: indentLess }, ...defaultKeymap, ...historyKeymap]),
       EditorView.contentAttributes.of({ spellcheck: "false", autocorrect: "off", autocapitalize: "off", "aria-label": label ?? "File" }),
       EditorView.updateListener.of((u) => {
-        if (u.docChanged && !u.transactions.every((t) => t.annotation(Transaction.remote))) cb.current.onChange(u.state.doc.toString(), 0)
+        if (news(u)) cb.current.onChange(u.state.doc.toString(), 0, fromElsewhere(u))
       }),
     ]
     // (as this tab's editor of the file was left, its history with it, when it went: editor/kept.ts)
@@ -428,7 +434,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
           EditorView.contentAttributes.of({ autocorrect: "on", autocapitalize: "sentences", "aria-label": label ?? "Note" }),
           EditorView.updateListener.of((u) => {
             const start = u.state.field(frontmatter, false) ?? 0
-            if (u.docChanged && !u.transactions.every((t) => t.annotation(Transaction.remote))) cb.current.onChange(u.state.doc.toString(), start)
+            if (news(u)) cb.current.onChange(u.state.doc.toString(), start, fromElsewhere(u))
             const was = u.startState.field(frontmatter, false) ?? 0
             if (u.transactions.some((t) => t.isUserEvent("undo") || t.isUserEvent("redo")) && u.startState.doc.sliceString(0, was) !== u.state.doc.sliceString(0, start)) cb.current.onUndoFrontmatter?.()
           }),
@@ -451,7 +457,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
         const sc = scrollingBox(v.dom)
         const h = (sc ? sc.getBoundingClientRect().top : 0) - v.documentTop
         const anchor = !v.hasFocus && h > 0 && h < v.contentHeight ? v.lineBlockAtHeight(h) : null
-        const tr = v.state.update({ changes, annotations: [Transaction.remote.of(true), Transaction.addToHistory.of(false)] })
+        const tr = v.state.update({ changes, annotations: [Transaction.remote.of(true), Transaction.addToHistory.of(false), hosts.of(true)] })
         v.dispatch(tr)
         if (!anchor) return
         const pos = tr.changes.mapPos(anchor.from, 1), was = v.documentTop + anchor.top
