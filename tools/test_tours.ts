@@ -236,6 +236,15 @@ Some words before the steps.
   check("lane: a tour's step still waiting is just dropped, never sent", lane.drop(later) && !lane.drop(later), sent)
   await idle()
   check("lane: nothing more went to the session", sent.length === 2, sent)
+  check("lane: no turn on, nothing to wait for", lane.turnEnd() === null)
+  lane.take(moment(4, "Fix the footer and the header"))
+  await settle()
+  let over = false
+  void lane.turnEnd()?.then(() => { over = true })
+  await settle()
+  const during = over
+  await idle()
+  check("lane: what waits for its turn (a handoff's line) goes once it ends, not before", !during && over, { during, over })
 }
 
 // ---------- Proofs: a job's change shown, its befores flipped, then Keep and merge, Needs changes or Not yet

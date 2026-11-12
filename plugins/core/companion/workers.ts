@@ -21,6 +21,8 @@ export type JobDeps = {
    *  in its voice and carries its ask, never another agent's vau or a script's. */
   own: (name: string, ctx: OpCtx) => boolean
   say: (ctx: OpCtx, name: string, text: string) => Promise<unknown>
+  saidSince?: (name: string, since: number) => string[]
+  turnEnd?: (name: string) => Promise<void> | null
   did: (name: string, op: string) => void
   who: (p: Record<string, unknown>) => string
   cards: (cards: JobCard[]) => void
@@ -164,6 +166,7 @@ const marksIn = (v: unknown): Marks | null => {
 export type Told = { kind: "new" | "follow" | "land" | "kept"; title: string; line: string; say?: string }
 /** How long a handoff's line waits for the turn's next handoff, said together. */
 const TELL_MS = 400
+const TURN_END_MAX_MS = 20_000
 const NUMBER = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"]
 /** A job's name said aloud: its title's first words, not ending on a small word. */
 export function jobName(title: string) {
@@ -171,13 +174,20 @@ export function jobName(title: string) {
   while (words.length > 1 && /^(the|a|an|on|of|to|in|for|and|with|at|by|from)$/i.test(words.at(-1)!)) words.pop()
   return words.join(" ").replace(/[.:,;]+$/, "")
 }
-/** What a turn's handoffs say, one line: one's own line (or its say); several, a sentence each kind naming its jobs
- *  ("Passed that on to three jobs: Card fix, Dictation and Screenshots."), says given first. */
-export function toldLine(items: Told[]) {
+const HANDOFF_WORDS = /\bhand(?:ed|ing|s)?\b[^.!?]{0,40}\boff\b|\bhand-?offs?\b|\bbackground (?:agent|job)s?\b|\bpass(?:ed|ing)?\b[^.!?]{0,40}\bon\b|\b(?:start(?:ed|ing)?|made|opened|spun up|sent|gave|put|told)\b[^.!?]{0,30}\b(?:a|an|its|their|new|one|two|three|four|\d+) (?:new )?(?:\w+ )?jobs?\b|\bjobs?(?:'s| is| are)? on (?:it|that|them)\b|\bkicked (?:it |that |this )?off\b|\bto merge\b/i
+export const announces = (text: string) => HANDOFF_WORDS.test(text)
+export function toldLine(items: Told[], turnWords = "") {
   if (!items.length) return ""
-  if (items.length === 1) return items[0].say || items[0].line
-  const says = [...new Set(items.map((x) => x.say).filter(Boolean))] as string[]
+  let announced = announces(turnWords)
+  const out: string[] = []
+  for (const s of new Set(items.flatMap((x) => (x.say ? [x.say] : [])))) {
+    if (!announces(s)) out.push(s)
+    else if (!announced) { out.push(s); announced = true }
+  }
   const rest = items.filter((x) => !x.say)
+  const kept = [...new Set(rest.flatMap((x) => (x.kind === "kept" ? [x.line] : [])))]
+  if (announced) return [...out, ...kept].join(" ")
+  if (items.length === 1 && rest.length) return rest[0].line
   const names = (xs: Told[]) => { const n = [...new Set(xs.map((x) => jobName(x.title)))]; return n.length > 1 ? `${n.slice(0, -1).join(", ")} and ${n.at(-1)}` : n[0] ?? "" }
   const count = (n: number, one: string) => `${NUMBER[n] ?? n} ${one}${n === 1 ? "" : "s"}`
   const of = (k: Told["kind"]) => rest.filter((x) => x.kind === k)
@@ -186,9 +196,9 @@ export function toldLine(items: Told[]) {
     of("follow").length ? `Passed that on to ${of("follow").length === 1 ? names(of("follow")) : `${count(of("follow").length, "job")}: ${names(of("follow"))}`}.` : "",
     of("land").length ? `Told ${of("land").length === 1 ? names(of("land")) : `${count(of("land").length, "job")}, ${names(of("land"))},`} to merge.` : "",
     // (kept for an offline machine: each one's own line says which machine)
-    ...[...new Set(of("kept").map((x) => x.line))],
+    ...kept,
   ].filter(Boolean)
-  return [...says, ...lines].join(" ")
+  return [...out, ...lines].join(" ")
 }
 const NOT_THEIRS = "only on the user's own words: answer it while answering their ask (Talk key) or their message to you that names the choice (made after it began waiting), with said quoting them; else ask them which"
 const newId = () => `j${Array.from({ length: 7 }, () => "abcdefghijklmnopqrstuvwxyz0123456789"[Math.floor(Math.random() * 36)]).join("")}`
@@ -1136,7 +1146,7 @@ resumes), with land for their word to merge it, and ask false when their ask isn
       const own = d.own(name, ctx), latest = own ? d.askOf(name) : undefined, ask = latest && Date.now() - latest.t <= ANSWERING_MS ? latest : undefined
       const by = tellerOf(ctx, own ? name : "")
       if (!own) return await handoff(p, ctx, task, ask, by, async () => {})
-      holding(name, ctx)
+      holding(name, ctx, ask?.t ?? Date.now())
       try { return await handoff(p, ctx, task, ask, by, async (t: Told) => { d.did(name, "handoff"); heldTold(name, { ...t, say: str(p.say).trim() }) }) }
       finally { release(name) }
     },
@@ -1145,25 +1155,30 @@ resumes), with land for their word to merge it, and ask false when their ask isn
     did: (p) => ({ action: "run", text: p.job ? `Told the job ${p.job} ${quoted(p.task, 60)}` : `Handed off ${quoted(p.task, 60)}`, by: d.who(p) }),
   })
 
-  // A turn's handoffs said in one line: each one's line held a moment (several come at once, one tool call each), then
-  // one line naming the jobs, never the default line per call.
-  const told = new Map<string, { ctx: OpCtx; calls: number; items: Told[]; timer?: ReturnType<typeof setTimeout> }>()
-  function holding(name: string, ctx: OpCtx) {
-    const t = told.get(name) ?? { ctx, calls: 0, items: [] }
+  // (held till its turn ends: the turn's own words may announce it after the call)
+  type Held = { ctx: OpCtx; calls: number; items: Told[]; since: number; ends: Promise<void> | null; timer?: ReturnType<typeof setTimeout>; waiting?: boolean }
+  const told = new Map<string, Held>(), mine = new Set<string>()
+  function holding(name: string, ctx: OpCtx, since: number) {
+    const t = told.get(name) ?? { ctx, calls: 0, items: [], since, ends: d.turnEnd?.(name) ?? null }
     clearTimeout(t.timer)
     t.calls++
     t.ctx = ctx
     told.set(name, t)
   }
   const heldTold = (name: string, item: Told) => told.get(name)?.items.push(item)
+  const after = (ms: number) => new Promise<void>((r) => setTimeout(r, ms).unref?.())
   function release(name: string) {
     const t = told.get(name)
     if (!t || --t.calls > 0) return
-    t.timer = setTimeout(() => {
+    const tell = () => {
+      if (told.get(name) !== t) return
       told.delete(name)
-      const line = toldLine(t.items)
+      const line = toldLine(t.items, (d.saidSince?.(name, t.since) ?? []).filter((x) => !mine.has(x)).join(" "))
+      if (line) { mine.add(line); if (mine.size > 50) mine.delete(mine.values().next().value!) }
       if (line) void d.say(t.ctx, name, line).catch((e) => console.error("companion: jobs:", e))
-    }, TELL_MS)
+    }
+    if (t.ends) { if (!t.waiting) { t.waiting = true; void Promise.race([t.ends.then(() => after(TELL_MS)), after(TURN_END_MAX_MS)]).then(tell) } return }
+    t.timer = setTimeout(tell, TELL_MS)
     t.timer.unref?.()
   }
 

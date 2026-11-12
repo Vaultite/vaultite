@@ -173,6 +173,17 @@ export default async ($: VaultTest) => {
         "Told three jobs, Fix the video card, Dictation drops words after and Screenshots in the chat, to merge." &&
       Wk.toldLine([T("new", "Research Hexagon", "x"), T("follow", "Card fix", "x"), T("kept", "Notes", "Studio is offline: the job starts there once it's back.")]) ===
         "Handed off one job to background agents: Research Hexagon. Passed that on to Card fix. Studio is offline: the job starts there once it's back.", Wk.toldLine([T("land", "Fix the video card overlap", "")]))
+    const two = [T("new", "Research Hexagon", "Handed that off to a background agent."), T("new", "Card fix", "Handed that off to a background agent.")]
+    check("handoffs said once a turn: its own words announced them, nothing more; else one line for both, never one each",
+      Wk.toldLine(two, "I've handed it off to a background agent to fix.") === "" && Wk.toldLine([two[0]], "Two background agents are on it.") === "" && Wk.toldLine(two, "I started two jobs, one each.") === "" &&
+      Wk.toldLine(two, "Sure.") === "Handed off two jobs to background agents: Research Hexagon and Card fix.", Wk.toldLine(two))
+    check("handoffs said once a turn: a say announcing it stands for every default line; one answering something else, and an offline machine, still said",
+      Wk.toldLine([T("new", "A", "x", "Handed that off, it runs on the mini PC."), T("new", "B", "x")]) === "Handed that off, it runs on the mini PC." &&
+      Wk.toldLine([T("new", "A", "x", "Handed that off."), T("new", "B", "x", "Passed that on to its job.")]) === "Handed that off." &&
+      Wk.toldLine([T("new", "A", "x", "You're on the personal account.")], "I've handed it off.") === "You're on the personal account." &&
+      Wk.toldLine([T("kept", "A", "Studio is offline: the job starts there once it's back.")], "Handed it off.") === "Studio is offline: the job starts there once it's back." &&
+      !Wk.announces("Sure, the header's blue now.") && !Wk.announces("The footer job is ready for review.") && Wk.announces("A background agent's on it.") &&
+      Wk.announces("I've passed that on to its job.") && Wk.announces("Started two jobs for that.") && Wk.announces("A job's on it."))
   }
 
   // Where: the addresses on screen, Tailscale Serve's ports, the rules, another machine's name.
@@ -634,9 +645,9 @@ export default async ($: VaultTest) => {
         const script = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli" } } as unknown as IncomingMessage
         // (said since `from`: a count of all would drop as older lines' time on screen ends)
         const says = async (from: number) => (await api("POST", "ops/companion.status", {}))[1].notes.filter((n: Any) => n.kind === "say" && n.t >= from).length
+        // (a handoff's line is held a moment for the turn's next one: an earlier one's said first, before this ask)
+        await new Promise((r) => setTimeout(r, 1500))
         cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "download this video please", app: "com.example.browser", title: "Clips", sx: 10, sy: 20 })
-        // (a handoff's line is held a moment for the turn's next one: an earlier one's said first)
-        await new Promise((r) => setTimeout(r, 700))
         const from = Date.now(), ended: string[] = []
         const untrust = () => { const j = JSON.parse(fs.readFileSync(pj, "utf8")); delete j.projects[real]; fs.writeFileSync(pj, JSON.stringify(j)) }
         untrust()
@@ -708,6 +719,26 @@ export default async ($: VaultTest) => {
             String(b.where).includes(`Claude Code ${name}`), [st, b?.where, said.at(-1)?.model])
         }
         for (const id of started) await asItsTool(() => api("POST", "ops/companion.job-stop", { id }, agent)).catch(() => {})
+        {
+          const says = async (from: number) => (await api("POST", "ops/companion.status", {}))[1].notes.filter((n: Any) => n.kind === "say" && n.agent === "Claude" && n.t >= from).map((n: Any) => n.text)
+          await new Promise((r) => setTimeout(r, 700))
+          cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "fix the footer and the header", app: "com.example.browser", title: "Site", sx: 10, sy: 20 })
+          let from = Date.now()
+          const both = await Promise.all(["Fix the footer", "Fix the header"].map((task) => asItsTool(() => api("POST", "ops/companion.handoff", { task, cwd: repo }, agent))))
+          await new Promise((r) => setTimeout(r, 1200))
+          const one = await says(from)
+          check("handoff: a turn handing off two jobs is announced once, one line naming both", both.every(([st]) => st === 200) && one.length === 1 &&
+            /^Handed off two jobs to background agents: Fix the (footer|header) and Fix the (footer|header)\.$/.test(one[0]) && one[0].includes("footer") && one[0].includes("header"), [both.map(([st, b]) => [st, b?.error]), one])
+          for (const [, b] of both) if (b?.id) await asItsTool(() => api("POST", "ops/companion.job-stop", { id: b.id }, agent)).catch(() => {})
+          cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "fix the sidebar", app: "com.example.browser", title: "Site", sx: 10, sy: 20 })
+          from = Date.now()
+          await asItsTool(() => api("POST", "ops/companion.say", { text: "I've handed it off to a background agent to fix." }, agent))
+          const [ost, ob] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Fix the sidebar", cwd: repo }, agent))
+          await new Promise((r) => setTimeout(r, 1200))
+          const own = await says(from)
+          check("handoff: a turn whose own words announced it says nothing more (the app's line not said again)", ost === 200 && own.join("|") === "I've handed it off to a background agent to fix.", [ost, ob?.error, own])
+          if (ob?.id) await asItsTool(() => api("POST", "ops/companion.job-stop", { id: ob.id }, agent)).catch(() => {})
+        }
         const count = (await api("POST", "ops/companion.jobs", {}))[1].jobs.length, starts = said.length
         ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Discuss the plan", model: "gpt 5", cwd: repo }, agent))
         check("handoff --model a name Claude Code can't run: refused at once, saying what it takes; no job, nothing started",

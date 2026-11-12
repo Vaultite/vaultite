@@ -20,7 +20,7 @@ import "./next.ts"
 import { plugin } from "./self.ts"
 import type { Note } from "./types.ts"
 import { sayMs, setting, mode, agentSetting, ownName } from "./settings.ts"
-import { moments, nextSeq, agents, notes, did, windows, send, key, isMain, placeOf, handOut, agentOf, setAgent, putNote, dropNote } from "./state.ts"
+import { moments, nextSeq, agents, notes, said, did, windows, send, key, isMain, placeOf, handOut, agentOf, setAgent, putNote, dropNote } from "./state.ts"
 import { keepSaid } from "./comments.ts"
 import { screens, screenDrawing, tours, type ScreenRectLike, displaysOf, stopFlips, ownTour, screenOf, screenFind, lastScreen, toScreens, nearBy } from "./windows.ts"
 import { paneById } from "./windowpanes.ts"
@@ -34,6 +34,8 @@ export const askOf = (name: string) => (inSummoned.getStore() ? lane().last() : 
 export const jobs = jobOps(plugin, {
   askOf, own: itsOwn,
   say: (ctx, name, text) => plugin.host.call("companion.say", { text, ...(isMain(name) ? {} : { as: name }) }, ctx.who),
+  saidSince: (name, since) => [...new Map([...said, ...notes.values()].flatMap((n) => (n.kind === "say" && key(n.agent) === key(name) && n.t >= since ? [[n.id, n.text ?? ""] as const] : []))).values()],
+  turnEnd: (name) => (inSummoned.getStore() && isMain(name) ? lane().turnEnd() : null),
   did, who, as: AS, cards: (cards) => toScreens({ t: "jobs", jobs: cards }),
   // (a talk's turn is said by the job's cursor, a live edit's told by its ring; a job just ready knocks, its proof to
   // show; the rest is news)

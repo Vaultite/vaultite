@@ -114,6 +114,8 @@ export function summonedLane(o: {
   const missed: string[] = []
   /** The asks handed so far, and whether the last one's marks all failed with nothing else said or shown (`unshown`). */
   let asks = 0, unshown = false
+  const turnWaiters: (() => void)[] = []
+  const settle = () => { for (const f of turnWaiters.splice(0)) f() }
 
   const on = () => !!o.model() && !!o.chat()
   const hostedNow = () => (kept ? o.chat()?.list().find((s) => s.id === kept!.id && s.state !== "error") ?? null : null)
@@ -255,6 +257,7 @@ export function summonedLane(o: {
     o.setAgent(name, acted && (spoke || !shown) ? { state: "watching" } : { state: "watching", seen: true })
     if (was) inSummoned.run(true, () => o.did(name, "done"))
     handed = false; asking = false
+    settle()
   }
 
   /** A fresh session, handed `ms` as its first message; none: started idle, its process up and its tools served while
@@ -286,6 +289,7 @@ export function summonedLane(o: {
    *  once, else one short line, said and logged; never the error itself, which goes to the log and `companion status`. */
   function failed(ms: Moment[], why: string) {
     handed = false; asking = false; round++
+    settle()
     note(why)
     if (!ms.length) return
     if (on() && !ms.some((m) => again.has(m))) {
@@ -352,6 +356,7 @@ export function summonedLane(o: {
     serve() { hear(); if (kept && on()) o.chat()!.serve(kept.id, options(kept.model)) },
     /** Whether its session is busy on an ask (its cursor thinking after a say that isn't its last). */
     busy: () => turning,
+    turnEnd: () => (handed ? new Promise<void>((r) => turnWaiters.push(r)) : null),
     asking: () => asking,
     /** It did `op` on an ask: its words (a say, their first word) are an answer. */
     acted(op?: string) { acted = true; if (op === "say" || op === "word") spoke = true; else if (op && SHOWS.has(op)) shown = true },
@@ -385,6 +390,7 @@ export function summonedLane(o: {
       pending.length = 0
       if (kept) { const id = kept.id; keep(null); await o.chat()?.stop(id).catch(() => {}) }
       turning = false; handed = false; asking = false
+      settle()
     },
   }
 }

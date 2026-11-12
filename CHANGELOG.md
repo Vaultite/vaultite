@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The companion says a handoff once**: when its own words already said it handed something off, the app no longer
+  adds its "Handed that off" line, and several jobs in one answer get one line.
 - **The app loads about 190 KB less script at start**: it bundles only the plugin modules vault plugins may import.
 - **An agent's browser ask no longer toasts over its own card** when the window wasn't in front as it came: the
   card says it, and away from the window the system notification does.
