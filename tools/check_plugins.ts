@@ -387,7 +387,7 @@ for (const f of walk(path.join(ROOT, "electron", "browser")).filter((f) => /\.(t
 // they share is the core's (the desktop app's contracts: core/desktop/). Only the loaders below name plugins' files.
 const LOADERS: Record<string, string> = {
   "web/src/core/plugins.ts": "the registry: every app plugin's manifest, module and pages (import.meta.glob)",
-  "web/src/core/vaultPlugins.ts": "the modules app plugins export to vault plugins, each loaded when asked (import.meta.glob)",
+  "web/src/core/vaultPlugins.ts": "which plugins are the app's (their manifests); the modules they export come from virtual:plugin-exports (vite.config.ts)",
 }
 {
   const SPEC = /(?:\bfrom\s*|\bimport\s*\(\s*|^\s*import\s+|\brequire\s*\(\s*)["']([^"']+)["']|import\.meta\.glob\b[^(]*\(([^)]*)\)/gm

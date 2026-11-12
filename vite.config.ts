@@ -5,7 +5,7 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import fs from 'node:fs'
 import { defineConfig, normalizePath, type Plugin, type Rollup } from 'vite'
-import { ICON_FILE, ICON_NAME, PLUGIN_MODULE, svgIcon } from './core/pluginmeta.ts'
+import { exportsOf, ICON_FILE, ICON_NAME, PLUGIN_MODULE, svgIcon } from './core/pluginmeta.ts'
 import { exportFile } from './core/rules.ts'
 import { STAMP_META, stampText } from './core/buildstamp.ts'
 import { gitEnv } from './core/gitenv.ts'
@@ -78,6 +78,7 @@ export function pluginIcons(more: Record<string, string> = {}): Plugin {
   }
 }
 
+const EXPORTED = 'virtual:plugin-exports', EXPORTED_ID = '\0virtual:plugin-exports'
 /** @plugins/<id>/<module>: a module a plugin's manifest `exports` (core/rules.ts checks who may import it), from the
  *  folders that hold plugins (the app's own; the demo's official ones too). */
 export function pluginModules(dirs: string[]): Plugin {
@@ -85,6 +86,7 @@ export function pluginModules(dirs: string[]): Plugin {
     name: 'vaultite-plugin-modules',
     enforce: 'pre',
     resolveId(spec) {
+      if (spec === EXPORTED) return EXPORTED_ID
       const m = PLUGIN_MODULE.exec(spec)
       if (!m) return null
       for (const d of dirs) {
@@ -95,6 +97,20 @@ export function pluginModules(dirs: string[]): Plugin {
         this.error(`${spec}: ${m[1]} doesn't export '${m[2]}' (its manifest's exports)`)
       }
       return this.error(`${spec}: there's no plugin ${m[1]}`)
+    },
+    load(id) {
+      if (id !== EXPORTED_ID) return null
+      const entries = dirs.flatMap((d) => fs.readdirSync(d).flatMap((plugin) => {
+        const file = path.join(d, plugin, 'manifest.json')
+        if (!fs.existsSync(file)) return []
+        this.addWatchFile(file)
+        const manifest = JSON.parse(fs.readFileSync(file, 'utf8'))
+        return exportsOf(manifest).flatMap((x) => {
+          const f = exportFile(path.join(d, plugin), x, manifest)
+          return f ? [`${JSON.stringify(`${plugin}/${x}`)}: () => import(${JSON.stringify(normalizePath(f))})`] : []
+        })
+      }))
+      return `export default {\n  ${entries.join(',\n  ')}\n}\n`
     },
   }
 }
@@ -327,13 +343,13 @@ export default defineConfig({
         onboarding: path.resolve(import.meta.dirname, 'web/onboarding.html'), phone: path.resolve(import.meta.dirname, 'web/phone.html'),
         screen: path.resolve(import.meta.dirname, 'web/screen.html'),
       },
-      // Vault plugins may import the app's plugins' modules (web/src/core/vaultPlugins.ts globs them, lazily); most are
+      // Vault plugins may import the app's plugins' modules (virtual:plugin-exports, lazily); most are
       // in the main chunk anyway, which is fine.
       // (split across files, modules run in their source order: a cycle between two files is safe; export names stay put,
       // so a file importing another changes only when its own code does)
       output: { codeSplitting: { includeDependenciesRecursively: false, groups: appGroups }, strictExecutionOrder: true, minifyInternalExports: false },
       onwarn(warning, warn) {
-        if (warning.code === 'INEFFECTIVE_DYNAMIC_IMPORT' && warning.message.includes('vaultPlugins.ts')) return
+        if (warning.code === 'INEFFECTIVE_DYNAMIC_IMPORT' && warning.message.includes('virtual:plugin-exports')) return
         warn(warning)
       },
     },

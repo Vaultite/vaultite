@@ -6,6 +6,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The app loads about 190 KB less script at start**: it bundles only the plugin modules vault plugins may import.
 - **Settings' AI section has a little robot for its icon** instead of sparkles.
 - **Remote access in Settings is now Share & sync**: its page says plainly that Vaultite Cloud and shared folders are
   optional, and that without them Vaultite stays on your own network.

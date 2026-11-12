@@ -14,10 +14,8 @@ import { notify } from "@/core/notify"
 import { noteAppError } from "@/core/errors"
 import { safeToReload } from "@/core/unsaved"
 import { API_VERSION } from "../../../core/version.ts"
+import exported from "virtual:plugin-exports"
 
-// The modules the app's plugins export (@plugins/logs/sections), loaded when vault plugins ask: not a worker (a second,
-// unused build of it), nor the terminal's Claude Code mod, which runs in Claude Code.
-const repo = import.meta.glob(["../../../plugins/core/*/**/*.{ts,tsx}", "!../../../plugins/**/plugin.ts", "!../../../plugins/**/import.ts", "!../../../plugins/**/cli.ts", "!../../../plugins/**/*.worker.ts", "!../../../plugins/core/terminal/claude-pictures/**"])
 const manifests = import.meta.glob<{ exports?: string[] }>("../../../plugins/core/*/manifest.json", { eager: true, import: "default" })
 /** Each vault plugin's bundle version in the state being loaded: a plugin's modules come from its bundle (`__exports`). */
 const versions = new Map<string, string>()
@@ -36,11 +34,7 @@ function moduleLoader(spec: string): (() => Promise<unknown>) | null {
   const m = /^@plugins\/([a-z][a-z0-9-]*)\/([\w-]+(?:\/[\w-]+)*)$/.exec(spec)
   if (!m) return null
   const [, id, name] = m, own = manifests[`../../../plugins/core/${id}/manifest.json`]
-  if (own) {
-    const base = `../../../plugins/core/${id}/${name}`
-    const key = own.exports?.includes(name) ? [".ts", ".tsx", "/index.ts", "/index.tsx"].map((x) => base + x).find((k) => k in repo) : undefined
-    return key ? repo[key] : null
-  }
+  if (own) return exported[`${id}/${name}`] ?? null
   const v = versions.get(id)
   if (!v) return null
   return async () => {
