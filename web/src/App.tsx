@@ -90,6 +90,7 @@ import { canReveal, chooseAction, copyLink, copyPath, copyText, duplicate, remov
 import { cn, space, whenIdle } from "@/lib/utils"
 import { byTab } from "@/core/focus"
 import { canGoSide, focusArea, goSide } from "@/core/keylist"
+import { useStateFor } from "@/core/statefor"
 import { chooseScheme, schemeName } from "@/components/SchemeChooser"
 import { chooseFont, fontSetting } from "@/components/FontChooser"
 import { chooseNewTabPage, showNewTabSections } from "@/components/NewTab"
@@ -566,9 +567,8 @@ export default function App() {
   // The right sidebar is there while
   // panels are in it; with none it takes no room, only its dimmed toggle (a click opens it empty to drop panels in).
   const rightCount = panelsIn("right", useSidebars(), disabled).length
-  const [emptyRight, setEmptyRight] = useState(false)
   const hasRight = rightCount > 0
-  useEffect(() => { if (hasRight) setEmptyRight(false) }, [hasRight])
+  const [emptyRight, setEmptyRight] = useStateFor([hasRight], () => false)
   const rightOpen = hasRight ? rightSidebar : emptyRight
   const showRight = !popout && (hasRight || emptyRight)
   const hideRight = desktop && showRight && !rails && !rightOpen

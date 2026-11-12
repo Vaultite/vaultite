@@ -208,6 +208,13 @@ try {
   const fp = await (await f.$("xpath=..")).getAttribute("data-tree-path")
   await f.click()
   check("...a file picked opens and closes it", !!(await until(async () => !(await page.$("[data-flyout]")) && (await page.evaluate(() => decodeURIComponent(location.hash))).includes(fp))), fp)
+  await page.click("aside [data-flyout-icon='files:files']")
+  await until(() => page.$("[data-flyout]"))
+  await page.keyboard.press("ControlOrMeta+Backslash")
+  await until(async () => !(await page.$("aside [data-flyout-icon='files:files']")))
+  await page.keyboard.press("ControlOrMeta+Backslash")
+  await until(() => page.$("aside [data-flyout-icon='files:files']"))
+  check("...the sidebar opened and folded again: no flyout left open", !(await page.$("[data-flyout]")))
   await page.keyboard.press("ControlOrMeta+Backslash")
   await wait(400)
 

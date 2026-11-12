@@ -26,6 +26,7 @@ import { foldPanel, liftedHeight, settle } from "@/components/panelMotion"
 import { modeJustSwitched, useSidebarMode, setSidebarMode } from "@/core/sidebarmode"
 import { PanelAlone, PanelFold, PanelHeading, SidebarHeading } from "@/components/SidebarHeading"
 import { watchHeadingPeek } from "@/core/headingpeek"
+import { useStateFor } from "@/core/statefor"
 import { SwipeRow, type SwipeAction } from "@/components/SwipeRow"
 export { PanelFold, SidebarHeading }
 
@@ -78,8 +79,7 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
   useSlide(box, making, "y")
   useLayoutEffect(settle)
 
-  const [flying, setFlying] = useState<string | null>(null)
-  useEffect(() => { if (ctx.open) setFlying(null) }, [ctx.open])
+  const [flying, setFlying] = useStateFor<string | null>([ctx.open], () => null)
   const mode = useSidebarMode()
   // eslint-disable-next-line react-hooks/exhaustive-deps -- recomputed on each mode switch
   const fades = useMemo(modeJustSwitched, [mode])
