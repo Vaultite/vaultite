@@ -28,7 +28,6 @@ import { happened, keepTimeline, queryTimeline, timelineHost, timelineOn, timeli
 import { islandNow, knockHost, knockSaid, knocksHeard, openFromMenu, presencesNow, stopKnocks, toPresence, walkShown } from "./knockhelper.ts"
 import type { Presence } from "../core/desktop/knocks.ts"
 import { closePanel, cue as playCue, drawingActs, drawingUp, dropDrawings, endDrawing, followPointer, onPanel, openPanel, overlayActs, panelAvoid, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, penSounds, showDrawing, showOverlay, watchLayers, type PanelData } from "./overlay.ts"
-import { type Area, followed as thingFollowed, makeWatch, type On, SAMPLE_MS, sampleFrom, sampleSize, watchedAreas } from "./markwatch.ts"
 import { displayShot as shootDisplay, fnUsage, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, windowShot as shoot, type AppWindowInfo, type Focus, type Rect } from "./screen.ts"
 import { type Drawing, elementPlaces } from "./drawing.ts"
 import { byLabel, type Heard, heardBeats } from "../core/desktop/screenmarks.ts"
@@ -38,6 +37,7 @@ import { type Press, pressLog } from "./presslog.ts"
 import { type Phase, pressMachine, type PressMachine } from "./pressmachine.ts"
 import { talkState } from "./talkstate.ts"
 import { cursorPlaces, onScreen, placeKey } from "./cursorplaces.ts"
+import { markSampler } from "./marksampler.ts"
 import { companionVoice } from "./voice.ts"
 import { realtimeFront } from "./realtimefront.ts"
 import { countText, type WalkPlace } from "../core/desktop/walks.ts"
@@ -142,7 +142,7 @@ export async function startHelper(h: HelperHost) {
     asked: () => [...asked], screenAsked: () => [...screenAsked], spoken: () => [...spoken], scene: () => lastScene, island: islandNow, knocks: (m: Record<string, unknown>) => knocksHeard(m), islandSaid: (text: string, x: number, y: number) => knockSaid(text) || toPresence(text, { x, y }), badge: () => badged, menu: () => menuItems(),
     walk: (what: string) => walkCall(what), talkSaid: (text: string) => walkHeard(text), walkSaid: (text: string) => { walkPending(text); walkFinal(text) },
     teach: (text: string) => teachHeard(text, Date.now()), capture: (text: string) => captureHeard(text, Date.now()), offer: offerScene, offerSaid: (text: string) => offerHeard(text), refresh: () => refresh(), teachSaid: (text: string) => { teachPending(text); teachFinal(text) }, lesson: lessonScene,
-    layers: () => layersUp, watched: () => areas, near: (x: number, y: number) => nearAt({ x, y }),
+    layers: () => marks.layers(), watched: () => marks.areas(), near: (x: number, y: number) => nearAt({ x, y }),
     holdAppear: (hold: boolean) => { if (hold) heldAppear ??= []; else { const due = heldAppear ?? []; heldAppear = null; for (const fn of due) fn() } } } })
   onScreenEvent(heard)
   hear(ipcMain, "vaultite:place", (e: Electron.IpcMainEvent, m: { id?: unknown; place?: unknown }) => placeTold(e.sender, m))
@@ -171,7 +171,7 @@ export async function startHelper(h: HelperHost) {
     focus: () => screenAsk("focus", {}),
     deliver: async (l) => String((await op("companion.teach", l)).said ?? "Saved") })
   drawingActs((a) => live.say({ t: "drawing-act", ...a }))
-  watchLayers(layersChanged)
+  watchLayers(marks.changed)
   knockHost({ say: (m) => live.say(m), talking: () => { const t = talkNow(); return t.listening || t.box || t.speaking || t.pressing || t.answering },
     base: () => (live.state.mode === "off" && !walkOn() && !watching() ? null : based || null), ask: (o, r) => screenAsk(o, r ?? {}), cue: (n) => cue(n),
     walk: (what) => (watching() ? lessonAct(what) : walkAct(what)),
@@ -206,8 +206,9 @@ let refreshing: ReturnType<typeof setInterval> | null = null
 export function stopHelper() {
   if (!host) return
   host = null
-  for (const t of [refreshing, sampling, freeTimer, holding]) if (t) clearInterval(t)
-  refreshing = sampling = freeTimer = holding = null
+  for (const t of [refreshing, freeTimer, holding]) if (t) clearInterval(t)
+  refreshing = freeTimer = holding = null
+  marks.stop()
   followCalls(false)
   voiceFront.close()
   speaker.quit()
@@ -1773,57 +1774,9 @@ function voiceHeardAgent(a: Agent) {
 /** Whether the companion's pen is heard as it draws: with its sounds, not on a call, never in a scripted copy. */
 const penHeard = () => penSounds(!QUIET && prefs.sounds && !quietForCall())
 
-// ---------- the screen under the marks (markwatch.ts): sampled only while a mark that points is up
+// ---------- the screen under the marks: sampled only while a mark that points is up
 
-const watch = makeWatch(), anchored = new Map<string, On | null>(), lookedAt = new Map<string, number>(), followedTo = new Set<string>()
-let areas: Area[] = [], sampling: ReturnType<typeof setInterval> | null = null, sampleBusy = false, sampleAgain = false, layersUp: Drawing[] = []
-function layersChanged(ls: Drawing[]) {
-  layersUp = ls
-  areas = watchedAreas(ls, lastNear, anchored)
-  watch.keep(new Set(areas.map((a) => a.key)))
-  const alive = new Set(areas.map((a) => `${a.layer}/${a.mark}`))
-  for (const k of anchored.keys()) if (!alive.has(k)) anchored.delete(k)
-  for (const k of followedTo) if (!alive.has(k)) followedTo.delete(k)
-  for (const k of lookedAt.keys()) if (!areas.some((a) => a.key === k)) lookedAt.delete(k)
-  // (a new mark's first picture at once: what's compared with is the screen as it came)
-  if (areas.some((a) => !watch.has(a.key))) void sampleMarks()
-  if (areas.length && !sampling) sampling = setInterval(() => void sampleMarks(), SAMPLE_MS)
-  if (!areas.length && sampling) { clearInterval(sampling); sampling = null }
-}
-async function sampleMarks() {
-  if (sampleBusy) { sampleAgain = true; return }
-  if (!areas.length) return
-  sampleBusy = true
-  try {
-    const now = areas
-    const r = await screenAsk<{ ok?: boolean; samples?: unknown[] }>("sample", { areas: now.map((a) => ({ x: a.rect.x, y: a.rect.y, width: a.rect.w, height: a.rect.h, ...sampleSize(a.rect) })), exclude: overlayNumbers() })
-    // (no screen recording: nothing to watch with, till the marks change)
-    if (r.ok === false) { areas = []; if (sampling) clearInterval(sampling); sampling = null; return }
-    const gone = new Map<string, string[]>(), moves = new Map<string, { mark: string; dx: number; dy: number }[]>(), told = new Set<string>()
-    const add = <T,>(m: Map<string, T[]>, k: string, v: T) => { m.set(k, [...(m.get(k) ?? []), v]); }
-    for (const [i, a] of now.entries()) {
-      const s = sampleFrom(r.samples?.[i]), said = s && watch.saw(a, s)
-      if (!said) continue
-      // (on a thing: it moved, the mark follows, even mid-scroll; anything else held there, it fades)
-      if (a.on && (said === "changed" || Date.now() - (lookedAt.get(a.key) ?? 0) >= 900)) {
-        lookedAt.set(a.key, Date.now())
-        const f = thingFollowed(a, await axThings({ x: a.rect.x + a.rect.w / 2, y: a.rect.y + a.rect.h / 2 }, 1500, 250))
-        const id = `${a.layer}/${a.mark}`
-        if (f.kind === "moved") { add(moves, a.layer, { mark: a.mark, dx: f.dx, dy: f.dy }); told.add(a.key); followedTo.add(id); continue }
-        // (just followed there: its first picture was mid-move, this is how its place looks)
-        if (f.kind === "stayed" && said === "changed" && followedTo.delete(id)) { watch.settled(a); continue }
-      }
-      if (said === "changed") { add(gone, a.layer, a.mark); told.add(a.key) }
-    }
-    // (told once: the server's answer brings the layer back as it is now)
-    if (told.size) areas = areas.filter((a) => !told.has(a.key))
-    for (const [id, marks] of gone) live.say({ t: "drawing-act", id, kind: "changed", marks: [...new Set(marks)] })
-    for (const [id, ms] of moves) live.say({ t: "drawing-act", id, kind: "moved", moves: ms.filter((m, i) => ms.findIndex((x) => x.mark === m.mark) === i) })
-  } finally {
-    sampleBusy = false
-    if (sampleAgain) { sampleAgain = false; if (areas.some((a) => !watch.has(a.key))) void sampleMarks() }
-  }
-}
+const marks = markSampler({ ask: screenAsk, things: axThings, near: () => lastNear, say: (m) => live.say(m) })
 
 /** The drawing up, as the server sent it; the sentences of the answer said aloud so far, as heard (any voice's), and
  *  when its pacing last learnt something (a sentence heard, the drawing come). */
