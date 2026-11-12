@@ -152,7 +152,7 @@ export default async ($: VaultTest) => {
     check("mcp upload_file: a local address isn't fetched", t.error && t.text.includes("couldn't download it"), t)
     fs.rmSync(path.join(VAULT, "Attachments"), { recursive: true, force: true })
     const { PublicMcp } = await import("../../../plugins/core/mcp/public.ts")
-    const pubMcp = new PublicMcp({} as Any, { url: "https://own.example", port: 0, redirectHosts: [], tools: null, approvalWait: 1 })
+    const pubMcp = new PublicMcp({} as Any, { url: "https://own.example", port: 0, redirectHosts: [], tools: null, withhold: [], approvalWait: 1 })
     pubMcp.cloudUrl = () => "https://alice.vaultite.app"
     const byDefault = new PublicMcp({} as Any, PublicMcp.cloudOnly())
     check("public mcp sign-in: Claude, ChatGPT, Grok Bot (cursor.com) and Muse (agent.meta.ai) are let in by default, over https only",
@@ -196,6 +196,28 @@ export default async ($: VaultTest) => {
       const marks = ["companion.comment", "companion.suggest", "companion.clear"].map((id) => app.catalog().find((e) => e.id === id))
       check("public mcp read-only: Companion's comments and suggestions in the user's notes are refused, saying is not",
         marks.every((e) => e && accessRefusal("A", "read", e, e.id) !== "") && accessRefusal("A", "read", app.catalog().find((e) => e.id === "companion.say")!, "companion.say") === "", marks.map((e) => e?.kind))
+      // What the owner withholds from internet apps (mcp.public.withhold: a plugin or an op) or leaves out of `tools`:
+      // never listed, ops doesn't show it, and call refuses it.
+      {
+        const host = { catalog: () => app.catalog(), call: (id: string, p: Any, w: Any) => app.callOp(id, p, w) }
+        const held = new PublicMcp({ host, vault, service: () => null, secrets: () => ({ mcp: { public: { withhold: ["web-viewer", "tag.list"] } } }) } as Any, PublicMcp.cloudOnly({ secrets: () => ({ mcp: { public: { withhold: ["web-viewer", "tag.list"] } } }) } as Any))
+        const w: Any = { ...g, access: "write" }
+        const names = held.toolsFor(w).map((x) => x.name)
+        const heldCall = held.toolsFor(w).find((x) => x.name === "call")!, heldOps = held.toolsFor(w).find((x) => x.name === "ops")!
+        const hctx = { client: who, op: held.opFor(["g2", w], who as Any, "call") }
+        const viewerOp = app.catalog().find((e) => e.plugin === "web-viewer" && e.kind === "read")!
+        const byPlugin = await heldCall.run({ id: viewerOp.id, params: {} }, hctx).then(() => "", (e: Error) => e.message)
+        const byOp = await heldCall.run({ id: "tag.list", params: {} }, hctx).then(() => "", (e: Error) => e.message)
+        const shown = await heldOps.run({ filter: "web-viewer" }, hctx)
+        const fine = await heldCall.run({ id: listId, params: { folder: "People" } }, hctx).then((r: Any) => String(r.text ?? r), (e: Error) => e.message)
+        check("public mcp withhold: a withheld plugin's and op's tools aren't listed (Vaultite Cloud's too), ops hides them, call refuses them; the rest runs",
+          rwTools.some((n) => n.startsWith("browser_")) && !names.some((n) => n.startsWith("browser_") || n === "tags") && names.includes("list")
+          && byPlugin.includes("withheld") && byOp.includes("withheld") && !String(shown).includes(viewerOp.id) && fine.includes("People/Sam Park.md"), [names, byPlugin, byOp, shown, fine])
+        const only = new PublicMcp({ host, vault, service: () => null } as Any, { ...PublicMcp.cloudOnly(), tools: ["list", "call", "ops"] })
+        const onlyCall = only.toolsFor(w).find((x) => x.name === "call")!
+        const past = await onlyCall.run({ id: "tag.list", params: {} }, { client: who, op: only.opFor(["g3", w], who as Any, "call") }).then(() => "", (e: Error) => e.message)
+        check("public mcp tools: call can't reach an op whose own tool isn't among mcp.public.tools", same(only.toolsFor(w).map((x) => x.name).sort(), ["call", "list", "ops"]) && past.includes("mcp.public.tools"), past)
+      }
       // The desktop app's browser opening this machine or its network for an app on the internet (its own pages, a NAS).
       const { gateOf } = await import("../../../plugins/core/mcp/public.ts")
       check("public mcp: opening this machine or its network in the browser waits for the owner's yes, a public site doesn't",

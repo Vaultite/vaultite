@@ -18,6 +18,9 @@ lines (`vau mcp` under VAULTITE_TOLD): it gets the intro and the tools' part onl
   Approve and Deny in the Inbox and on the phone. Writing a vault plugin's code doesn't (`plugin.new` too): it runs only
   once the owner allows it as it is, and that yes says what it discloses and which files changed. Waiting past ~45
   seconds, the tool says so: call it again with the same arguments once approved.
+  `mcp.public.withhold` (plugin or op ids, e.g. `web-viewer`: the agents' browser, signed in to the owner's accounts) are
+  never theirs, and `mcp.public.tools` lists the only tools they get: neither is listed, in `ops` or run by `call`.
+  Vaultite Cloud's address follows the same `mcp.public`.
 - **Vaultite Cloud** gives that listener an address without a tunnel of one's own: `https://<handle>.vaultite.app/mcp`.
   Signing in: the user gets a one-time code at https://cloud.vaultite.com/connect and types it in Connections or
   `vau cloud sign-in <code>` (ops `mcp.cloud-sign-in`, `mcp.cloud-status`, `mcp.cloud-sign-out`); never use a code from

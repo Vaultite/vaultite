@@ -116,7 +116,7 @@ const settings = PublicMcp.settingsOf(plugin)
 let pub: PublicMcp | null = null
 function publicMcp() {
   if (!pub) {
-    pub = new PublicMcp(plugin, settings ?? PublicMcp.cloudOnly())
+    pub = new PublicMcp(plugin, settings ?? PublicMcp.cloudOnly(plugin))
     pub.cloudUrl = () => cloud.stored()?.url.replace(/\/+$/, "") ?? null
     pub.appUrl = appUrl
     pub.connect = { key: () => cloud.connectKey, handle: () => cloud.stored()?.handle ?? null, ownerTools }

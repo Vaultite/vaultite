@@ -31,7 +31,7 @@ export default async ($: VaultTest) => {
   check("share: no link without the vault on the internet (mcp.public)", r.status === 409, r)
   // The real public listener (MCP's), with the share's routes on it, at the address links name.
   const mcp = LOADED.find((p) => p.id === "mcp")!
-  const pub = new PublicMcp(mcp, { url: "", port: 0, redirectHosts: [], tools: null, approvalWait: 1 })
+  const pub = new PublicMcp(mcp, { url: "", port: 0, redirectHosts: [], tools: null, withhold: [], approvalWait: 1 })
   pub.start()
   const port = await pub.ready, base = `http://127.0.0.1:${port}`
   fs.writeFileSync(CONFIG, JSON.stringify({ ...config(), mcp: { public: { url: base, port } } }))

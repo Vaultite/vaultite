@@ -85,7 +85,8 @@ const ACCESS_TTL = 3600, REFRESH_TTL = 30 * 86400, SIGN_IN_TTL = 10 * 60, CODE_T
 const SLOW = 15, FAILED_TTL = 10 * 60
 const CODE_CHARS = "BCDFGHJKMNPQRSTVWXZ23456789" // no vowels (no words), no 0/O, 1/I/L
 
-type Settings = { url: string; port: number; redirectHosts: string[]; tools: string[] | null; approvalWait: number }
+/** `tools`: the only tools apps get (null: all); `withhold`: plugins and ops they never get, through `call` neither. */
+type Settings = { url: string; port: number; redirectHosts: string[]; tools: string[] | null; withhold: string[]; approvalWait: number }
 /** A connected app: what it's called, when, what it may do (absent: write), and its refresh token's hash (the one before it
  *  too, for a while: an app that retries a refresh it already made isn't signed out). */
 type Grant = { name: string; client: string; created: string; used?: string; access?: Access; refresh: string; prev?: string; prevUntil?: number }
@@ -142,19 +143,28 @@ export class PublicMcp {
 
   /** The settings in data/config.json, or null when it's off (no url). */
   static settingsOf(plugin: Plugin): Settings | null {
-    const p = (plugin.secrets().mcp as Stored | undefined)?.public
+    const p = PublicMcp.stored(plugin)
     if (!p?.url) return null
     return {
       url: String(p.url).replace(/\/+$/, ""), port: Number(p.port) || 8796,
       redirectHosts: Array.isArray(p.redirectHosts) ? p.redirectHosts.map(String) : REDIRECT_HOSTS,
-      tools: Array.isArray(p.tools) ? p.tools.map(String) : null,
+      ...PublicMcp.limitsOf(p),
       approvalWait: Math.min(Math.max(Number(p.approvalWait) || 45, 1), 90),
     }
   }
 
-  /** For Vaultite Cloud alone (no mcp.public.url): any free port, reached only through its tunnel. */
-  static cloudOnly(): Settings {
-    return { url: "", port: 0, redirectHosts: REDIRECT_HOSTS, tools: null, approvalWait: 45 }
+  /** For Vaultite Cloud alone (no mcp.public.url): any free port, reached only through its tunnel; what apps may use is
+   *  mcp.public's all the same. */
+  static cloudOnly(plugin?: Plugin): Settings {
+    return { url: "", port: 0, redirectHosts: REDIRECT_HOSTS, ...PublicMcp.limitsOf(plugin && PublicMcp.stored(plugin)), approvalWait: 45 }
+  }
+
+  static stored(plugin: Plugin) {
+    return (plugin.secrets().mcp as Stored | undefined)?.public
+  }
+
+  static limitsOf(p: Partial<Settings> | undefined): Pick<Settings, "tools" | "withhold"> {
+    return { tools: Array.isArray(p?.tools) ? p.tools.map(String) : null, withhold: Array.isArray(p?.withhold) ? p.withhold.map(String) : [] }
   }
 
   start() {
@@ -656,11 +666,24 @@ export class PublicMcp {
     this.json(res, 200, out, headers)
   }
 
-  /** The tools an app gets: not what only the owner may run (unless it waits for their yes), only reads when read-only. */
+  /** The tools an app gets: not what only the owner may run (unless it waits for their yes) nor what's withheld, only
+   *  reads when read-only. */
   toolsFor(g: Grant) {
     const allow = this.settings.tools && new Set(this.settings.tools)
-    const entries = this.plugin.host.catalog().filter((e) => (!e.owner || GATED[e.id]) && (g.access !== "read" || e.kind === "read"))
+    const entries = this.plugin.host.catalog().filter((e) => (!e.owner || GATED[e.id]) && !this.withheld(e) && (g.access !== "read" || e.kind === "read"))
     return toolsOf(entries).filter((t) => !allow || allow.has(t.name))
+  }
+
+  /** Why apps may not run this op at all (mcp.public's withhold, or a tool of its own not among `tools`), or "". */
+  limitOf(entry: OpEntry | null) {
+    if (!entry) return ""
+    if (this.withheld(entry)) return `${entry.id} isn't available to apps on the internet: the user withheld it (mcp.public.withhold).`
+    if (this.settings.tools && entry.mcp && !this.settings.tools.includes(entry.mcp)) return `${entry.id} isn't available to apps on the internet: its tool ${entry.mcp} isn't among the ones the user lets them use (mcp.public.tools).`
+    return ""
+  }
+
+  withheld(e: OpEntry) {
+    return this.settings.withhold.some((x) => x === e.id || x === e.plugin)
   }
 
   /** How an app's tool runs an op (its own, or `call`'s): refused when it's the owner's or past the app's access, after
@@ -669,6 +692,8 @@ export class PublicMcp {
     return async (name: string, params: Record<string, unknown>) => {
       const entry = this.entryOf(name)
       if (entry?.owner && !GATED[entry.id]) throw new ToolError(`${entry.id} is only for this machine's owner, on that machine: not an app on the internet.`)
+      const limit = this.limitOf(entry)
+      if (limit) throw new ToolError(limit)
       const refused = accessRefusal(g.name, g.access, entry, name)
       if (refused) throw new ToolError(refused)
       const id = entry?.id ?? name
