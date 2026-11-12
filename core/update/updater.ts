@@ -2,15 +2,18 @@
 // (core/selfupdate.ts, in place). Each change of state or reason is logged, so why it waited can be read later.
 import fs from "node:fs"
 import path from "node:path"
+import { z } from "zod"
 import type { Ci } from "./ci.ts"
 import { githubCi } from "./ci.ts"
-import type { Blocked, Judged, UpdateState, UpdateStatus } from "../contracts/version.ts"
+import { type Blocked, type Judged, type UpdateState, UpdateStatus } from "../contracts/version.ts"
+import { readJson } from "../jsonfile.ts"
 import type { Relation } from "./git.ts"
 import { logger } from "../log.ts"
 import { capped, changedFiles, commitsNotIn, commitsSince, currentBranch, dirtyFiles, fetchBranch, gitIn, originRepo, pickTarget, relation, short } from "./git.ts"
 
-/** What lasts across restarts. */
-type Kept = Pick<UpdateStatus, "last" | "error">
+const Kept = z.object({ last: UpdateStatus.shape.last.catch(undefined), error: UpdateStatus.shape.error.catch(undefined) })
+type Kept = z.infer<typeof Kept>
+const keptIn = (file: string): Kept => { const r = readJson(file, Kept); return r.ok ? r.value : {} }
 
 /** A commit to take: from what runs (`running`, which the checkout's `head` may be past) to `to`, and the files between. */
 export type Update = { head: string; running: string; to: string; files: string[] }
@@ -101,8 +104,8 @@ export function checkForUpdate(o: UpdaterOptions): Promise<UpdateStatus> {
 
 async function lookOnce(o: UpdaterOptions): Promise<UpdateStatus> {
   const git = gitIn(o.root), log = o.log ?? toLog
-  let kept: Kept = {}, origin: string | undefined
-  try { kept = JSON.parse(fs.readFileSync(o.stateFile, "utf8")) } catch { /* none yet */ }
+  let kept = keptIn(o.stateFile)
+  let origin: string | undefined
   const keep = () => { try { fs.mkdirSync(path.dirname(o.stateFile), { recursive: true }); fs.writeFileSync(o.stateFile, JSON.stringify({ last: kept.last, error: kept.error })) } catch { /* shown, not kept */ } }
   const set = (state: UpdateState, why: string, more: { next?: string; blocked?: Blocked; ci?: Judged[]; error?: unknown } = {}) => {
     status = { branch: o.branch, state, why, checked: Date.now(), ...(o.running ? { running: o.running } : {}), ...(origin ? { origin } : {}),
@@ -176,7 +179,8 @@ export const checkNow = () => following ? checkForUpdate(following) : Promise.re
 export function startUpdater(o: UpdaterOptions) {
   following = o
   status = { branch: o.branch, state: "waiting", why: "the first look is a minute after the server starts", checked: null }
-  try { Object.assign(status, JSON.parse(fs.readFileSync(o.stateFile, "utf8"))) } catch { /* none yet */ }
+  const { last, error } = keptIn(o.stateFile)
+  Object.assign(status, last ? { last } : {}, error ? { error } : {})
   if (!o.running && !o.bare) void gitIn(o.root)("rev-parse", "HEAD").then((head) => { o.running ||= head; status.running ??= o.running }, () => {})
   else status.running = o.running
   const later = (ms: number) => setTimeout(() => void checkForUpdate(o).finally(() => later(LOOK_EVERY)), ms).unref()

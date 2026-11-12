@@ -22,7 +22,7 @@ links, the new tab's page) to the user's files, the old folder going. Running it
       let only: string | undefined
       if (plugin) {
         const q = String(plugin).trim().toLowerCase()
-        const p = app.plugins.find((x) => x.id === q) ?? app.plugins.find((x) => String(x.manifest.name ?? "").toLowerCase() === q)
+        const p = app.plugins.find((x) => x.id === q) ?? app.plugins.find((x) => (x.manifest.name ?? "").toLowerCase() === q)
         if (!p) throw new OpError(`no plugin '${plugin}'`, 404)
         if (!enabled(app.vault, app.plugins).has(p.id)) throw new OpError(`${p.manifest.name ?? p.id} is off: turn it on (vau plugin on ${p.id}), which writes its pages`)
         only = p.id

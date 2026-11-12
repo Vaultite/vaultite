@@ -86,7 +86,7 @@ export function generated(vault: Vault, plugins: Plugin[], id: string, rel: stri
 export function grantList(vault: Vault, plugins: Plugin[]): Grant[] {
   const on = enabled(vault, plugins), all = answers(vault)
   return plugins.flatMap((p) => writesOf(p).map((w) => ({
-    plugin: p.id, name: String(p.manifest.name ?? p.id), on: on.has(p.id), place: keyOf(w), folder: !!w.folder, why: w.why,
+    plugin: p.id, name: p.manifest.name ?? p.id, on: on.has(p.id), place: keyOf(w), folder: !!w.folder, why: w.why,
     answer: all[p.id]?.[keyOf(w)] ?? null, at: w.file ?? foldersOf(vault, p, w)[0],
   })))
 }

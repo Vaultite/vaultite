@@ -3,22 +3,22 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { z } from "zod"
+import { listOf, readJson } from "./jsonfile.ts"
 import { HTTPError, LOCAL } from "./plugins.ts"
 import { readText, writeAtomic } from "./vault.ts"
 
-type Known = { path: string; name: string }
-type Saved = { current?: string; vaults?: Known[] }
+const Known = z.looseObject({ path: z.string(), name: z.string() })
+type Known = z.infer<typeof Known>
+const Saved = z.looseObject({ current: z.string().optional().catch(undefined), vaults: listOf(Known).optional() })
+type Saved = z.infer<typeof Saved>
 
 const FILE = () => path.join(LOCAL, "vaults.json")
 const HOME = os.homedir()
 
 function load(): Saved {
-  try {
-    const v = JSON.parse(readText(FILE()))
-    return v && typeof v === "object" ? v : {}
-  } catch {
-    return {}
-  }
+  const r = readJson(FILE(), Saved, readText)
+  return r.ok ? r.value : {}
 }
 
 function save(s: Saved) {
@@ -92,7 +92,7 @@ export async function handle(method: string, parts: string[], query: Record<stri
   if (parts[0] !== "vaults") return undefined
   const route = parts.slice(1).join("/")
   const s = load()
-  const list = (s.vaults ?? []).filter((v) => v && typeof v.path === "string")
+  const list = s.vaults ?? []
   const known = () => ({ current: serving, home: HOME, vaults: list.some((v) => v.path === serving) ? list : remember(list, serving) })
   if (route === "" && method === "GET") return known()
   if (route === "" && method === "DELETE") {

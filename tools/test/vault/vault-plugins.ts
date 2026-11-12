@@ -5,7 +5,6 @@ import { modesEnforced, skip } from "../lib.ts"
 
 export default async ($: VaultTest) => {
   const { ON, VAULT, api, app, check, read, sleep, vault, write, TOOLS } = $
-  // Vault plugins (core/vaultplugins.ts): the made-up Lighthouse (tools/fixtures/lighthouse) in .vaultite/plugins/.
   const LH = ".vaultite/plugins/lighthouse"
   fs.cpSync(path.join(TOOLS, "fixtures", "lighthouse"), path.join(VAULT, LH), { recursive: true })
   // (a vault that is also a code project, `npm init`'s package.json at its top: its plugins still load as ES modules)
@@ -21,8 +20,17 @@ export default async ($: VaultTest) => {
     && (await api("GET", `plugins/lighthouse/${lh.hash}/bundle.js`))[0] === 404 && !app.plugins.some((p) => p.id === "lighthouse"))
   check("vault plugins: a folder with only settings isn't one", !(await vplugin("tide")))
   check("vault plugins: one can't take an app plugin's id", (await vplugin("people"))?.problems[0]?.includes("already has a plugin called 'people'"), await vplugin("people"))
+  {
+    write(".vaultite/plugins/torn/manifest.json", "{not json")
+    write(".vaultite/plugins/odd/manifest.json", JSON.stringify({ id: "odd", name: 5, description: "Made up.", requires: "people", ai: "yes" }))
+    const torn = await vplugin("torn"), odd = await vplugin("odd")
+    check("vault plugins: a manifest that isn't JSON is a problem, not a crash", torn?.problems[0]?.includes("no readable manifest.json"), torn)
+    check("vault plugins: a manifest's malformed keys are problems, its name then its folder's", odd?.name === "odd" && !odd.ai && odd.problems.some((p: string) => p.includes("missing name")) &&
+      odd.problems.some((p: string) => p.includes("requires must be a list")), odd)
+    fs.rmSync(path.join(VAULT, ".vaultite/plugins/torn"), { recursive: true })
+    fs.rmSync(path.join(VAULT, ".vaultite/plugins/odd"), { recursive: true })
+  }
   if (modesEnforced) {
-    // A file that can't be read (iCloud hasn't brought it down): a problem, never a crash, and looked at again.
     const shut = path.join(VAULT, ".vaultite/plugins/shut")
     write(".vaultite/plugins/shut/manifest.json", JSON.stringify({ id: "shut", name: "Shut", description: "Made up." }))
     write(".vaultite/plugins/shut/plugin.ts", "export {}\n")
@@ -35,13 +43,24 @@ export default async ($: VaultTest) => {
   let [, s] = await api("GET", "state")
   check("vault plugins: in /api/state", s.vaultPlugins.some((p: Any) => p.id === "lighthouse"))
   const turn = (on: boolean) => api("PUT", "config/plugins", { ...vault.config("plugins"), enabled: on ? [...ON, "lighthouse"] : ON })
-  // Per-machine trust (core/trust.ts): on in plugins.json alone (a sync, another machine, a shared vault), it waits here.
   await turn(true)
   lh = await vplugin()
   const TRUST = path.join(process.env.VAULTITE_LOCAL!, "trust")
   check("trust: on in plugins.json alone, it waits to be allowed on this machine, and nothing of it runs", lh.on && !lh.loaded && lh.bundle === null &&
     lh.approval?.state === "new" && lh.approval.changed.includes("plugin.ts") && (await api("GET", "lighthouse"))[0] === 404, lh)
   check("trust: kept on this machine (VAULTITE_LOCAL/trust/), never in the vault", fs.readdirSync(TRUST).length === 1 && !fs.readdirSync(path.join(VAULT, ".vaultite")).some((f) => f.includes("trust")))
+  {
+    const { Trust } = await import("../../../core/trust.ts")
+    const other = path.join(VAULT, "..", "another-vault"), as = (text: string) => { const t = new Trust(other); fs.writeFileSync(t.file, text); return new Trust(other) }
+    let t = as("{not json")
+    check("trust: a store that isn't JSON approves nothing", !t.approval("lighthouse") && !t.ran("a") && !t.allows("p", "c") && JSON.stringify(t.local("p")) === "{}")
+    t = as(JSON.stringify({ plugins: [], allowed: "x", local: 5, steps: ["a", 1] }))
+    check("trust: each part of it that isn't what it should be reads as none", !t.approval("0") && t.ran("a") && !t.ran("1") && JSON.stringify(t.local("p")) === "{}")
+    t = as(JSON.stringify({ plugins: { good: { hash: "h", files: {}, at: "2026-01-01T00:00:00Z", later: 1 }, bad: { edits: true } } }))
+    check("trust: an approval reads as written (what a later version adds kept), one that doesn't read approves nothing",
+      t.approved("good", "h") && t.approval("good")?.later === 1 && !t.approved("bad", "h") && !t.approval("bad"))
+    fs.rmSync(t.file)
+  }
   {
     const listed = ((await api("POST", "ops/plugin.list", {}))[1] as Any[]).find((x: Any) => x.id === "lighthouse")
     check("trust: vau plugins says it waits", listed.waiting === true && listed.on === false, listed)
@@ -84,7 +103,6 @@ export default async ($: VaultTest) => {
   check("trust: its code changed (a sync), it's unloaded and waits again, saying which files changed", !lh.loaded && lh.approval?.state === "changed" &&
     JSON.stringify(lh.approval.changed) === '["beam.ts"]' && (await api("GET", "lighthouse"))[0] === 404, lh.approval)
   {
-    // It stopped after being allowed: the user is told once, in the inbox, as waiting on them (App.tellPaused).
     const paused = async () => { await sleep(150); return ((await api("GET", "inbox/events"))[1].events as Any[]).filter((e) => e.key === "paused:lighthouse") }
     let told = await paused()
     check("trust: a plugin that changed after it was allowed tells the user it's paused, waiting on them", told.length === 1 && told[0].kind === "waiting" &&
@@ -129,7 +147,6 @@ export default async ($: VaultTest) => {
   const chunk = /import\(["`']\.\/(logbook-[\w-]+\.js)["`']\)/.exec(bundle)?.[1]
   check("vault plugins: what it imports when needed is a chunk of its own, beside its bundle", !!chunk && !bundle.includes("calm seas") &&
     (await api("GET", `plugins/lighthouse/${lh.bundle}/${chunk}`))[1]?.includes?.("calm seas") && (await api("GET", `plugins/lighthouse/0/${chunk}`))[0] === 404, bundle.slice(-300))
-  // (a chunk that is also a worker's script imports only what it needs: none reads globalThis.__vaultite, a page's)
   const book = chunk ? String((await api("GET", `plugins/lighthouse/${lh.bundle}/${chunk}`))[1]) : ""
   const tallied = /import\(["`']\.\/(tally-[\w-]+\.js)["`']\)/.exec(book)?.[1], reached = tallied ? await reach(tallied) : new Map<string, string>()
   check("vault plugins: a chunk that runs as a worker too reaches none of the page's modules", reached.size > 1 && [...reached.values()].some((c) => c.includes("The beam was"))
@@ -137,7 +154,6 @@ export default async ($: VaultTest) => {
   check("vault plugins: CodeMirror is the app's, loaded with it, not bundled", entry.includes('preload(["@codemirror/view"])')
     && bundle.includes("__vaultite.modules[`@codemirror/view`]") && !bundle.includes("cm-scroller"), bundle.slice(0, 300))
   check("vault plugins: with its Tailwind classes, under the app's", entry.includes("@layer plugins") && entry.includes("tracking-\\\\[0\\\\.0625em\\\\]"), bundle.slice(0, 400))
-  // (which classes the app has is read from its built stylesheet)
   if (!$.built) skip("vault plugins: its variants the app hasn't over the app's classes", "the app isn't built (npm run build)")
   else check("vault plugins: its variants the app hasn't over the app's classes, the app's own under them", /@layer plugin-variants[^]*md\\\\:tracking-/.test(entry) &&
     !/@layer plugin-variants[^]*md\\\\:hidden/.test(entry), bundle.slice(0, 600))
@@ -191,7 +207,6 @@ export default async ($: VaultTest) => {
   check("vault plugins: the frontend's rules too", !lh.loaded && lh.problems.some((p: string) => p.includes("@/core/data")) && lh.problems.some((p: string) => p.includes("node:fs")), lh.problems)
   fs.cpSync(path.join(TOOLS, "fixtures", "lighthouse", "index.tsx"), path.join(VAULT, LH, "index.tsx"))
   {
-    // Its npm packages are the plugin API's (core/rules.ts PLUGIN_PACKAGES); another library it copies into its folder.
     const index = read(`${LH}/index.tsx`), unlisted = (p: string) => p.includes("not one of the npm packages the app gives plugins (react, ") && p.includes("copy the library into the plugin's folder")
     write(`${LH}/plugin.ts`, `import YAML from "yaml"\nvoid YAML\n${lhPlugin}`)
     write(`${LH}/vendor/tiny.js`, `export const tiny = (s) => s.trim()\n`)
@@ -222,7 +237,6 @@ export default async ($: VaultTest) => {
   const version = lh.bundle
   ;[, lout] = await api("GET", "lighthouse")
   check("vault plugins: its settings are data.json, and changing them isn't a new version", lh.loaded && version && lout.beam === "on", [lh, lout])
-  // What a plugin needs of the app (core/version.ts): minAppVersion and apiVersion in its manifest.
   const { API_VERSION, APP_VERSION } = await import("../../../core/version.ts")
   const { compatProblems } = await import("../../../core/rules.ts")
   check("versions: APP_VERSION is package.json's", APP_VERSION === JSON.parse(fs.readFileSync(path.join(TOOLS, "..", "package.json"), "utf8")).version, APP_VERSION)
@@ -267,7 +281,6 @@ export default async ($: VaultTest) => {
     && !app.plugins.some((p) => p.id === "lighthouse"))
   check("vault plugins: and its docs leave", (await api("GET", "docs/lighthouse"))[0] === 404)
   {
-    // (a module a plugin imports later, after it was allowed: the file as allowed, or nothing)
     const TP = ".vaultite/plugins/tidepool"
     write(`${TP}/manifest.json`, JSON.stringify({ id: "tidepool", name: "Tidepool", description: "A made-up plugin.", version: "1.0.0", author: "Alice Park", repo: "alicepark/tidepool", disclosures: {}, apiVersion: 1 }))
     write(`${TP}/plugin.ts`, 'import { Plugin } from "@vaultite/core/plugins.ts"\nexport const plugin = new Plugin(import.meta.url)\nplugin.route("GET", "tidepool/word", async () => ({ word: (await import("./word.ts")).word }))\nplugin.route("GET", "tidepool/later", async () => ({ word: (await import("./later.ts")).word }))\n')

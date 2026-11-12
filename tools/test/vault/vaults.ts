@@ -43,4 +43,14 @@ export default async ($: VaultTest) => {
   }
   vr = await vh("GET", "", {})
   check("vaults: the served one is listed", vr.current === VAULT && vr.vaults.some((v: Any) => v.path === VAULT), vr)
+  {
+    const file = path.join(process.env.VAULTITE_LOCAL!, "vaults.json"), was = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null
+    fs.writeFileSync(file, "{not json")
+    vr = await vh("GET", "", {})
+    check("vaults: a list that isn't JSON is none", vr.vaults.length === 1 && vr.vaults[0].path === VAULT && vaultsMod.current("/x") === "/x", vr)
+    fs.writeFileSync(file, JSON.stringify({ current: 5, vaults: [{ path: 5 }, null, { path: "/elsewhere", name: "elsewhere" }] }))
+    vr = await vh("GET", "", {})
+    check("vaults: what in it isn't a vault is left out", vr.vaults.map((v: Any) => v.path).join() === `${VAULT},/elsewhere` && vaultsMod.current("/x") === "/x", vr)
+    if (was === null) fs.rmSync(file); else fs.writeFileSync(file, was)
+  }
 }

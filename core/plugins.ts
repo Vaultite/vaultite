@@ -10,6 +10,7 @@ import path from "node:path"
 import { setImmediate as turn } from "node:timers/promises"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { type RawData, WebSocket } from "ws"
+import { type Manifest, manifestOf } from "./contracts/manifest.ts"
 import { type BlockDecls, blocksDoc, declsOf, drawsOf, settingsDoc, settingsOf, valueProblem } from "./blocks.ts"
 import type { EventFilter, VaultEvent } from "./events.ts"
 import type { Present } from "./live.ts"
@@ -350,7 +351,7 @@ export function hostOps(vault: Vault, host: OpsHost) {
 
 export class Plugin {
   dir: string
-  manifest: Item
+  manifest: Manifest
   id: string
   tier: string
   kinds: Kind[] = []
@@ -388,7 +389,7 @@ export class Plugin {
   /** `where`: the plugin's import.meta.url (or any file in its folder). */
   constructor(where: string) {
     this.dir = path.dirname(where.startsWith("file:") ? fileURLToPath(where) : where)
-    this.manifest = JSON.parse(readText(path.join(this.dir, "manifest.json")))
+    this.manifest = manifestOf(JSON.parse(readText(path.join(this.dir, "manifest.json"))), path.join(this.dir, "manifest.json"))
     this.id = this.manifest.id
     // core (the app's built-in plugins) or vault (.vaultite/plugins/<id>/ in the vault: core/vaultplugins.ts)
     this.tier = path.basename(path.dirname(path.dirname(this.dir))) === ".vaultite" ? "vault" : "core"
@@ -816,7 +817,7 @@ export class Plugin {
 
   /** Why this request may not have what only this machine's owner may (a shell, the screen), or "" (core/owner.ts). Reads the
    *  plugin's `allowUsers` and `allowRemote` from this machine only (core/trust.ts): a vault's never lets anyone in. */
-  refusal(req: IncomingMessage, what = this.manifest.name as string): Promise<string> {
+  refusal(req: IncomingMessage, what = this.manifest.name ?? this.id): Promise<string> {
     const set = this.localPart("data")
     return ownerRefusal(req, { allowRemote: set.allowRemote === true, allowUsers: Array.isArray(set.allowUsers) ? set.allowUsers : [] }, what)
   }
@@ -1029,9 +1030,9 @@ export function enabled(vault: Vault, plugins: Plugin[]) {
  *  value): composed into the vault's rules (Agent files), MCP's instructions and a terminal agent's context. */
 export function agentLines(vault: Vault, plugins: Plugin[] = LOADED): { plugin: string; text: string }[] {
   const on = enabled(vault, plugins)
-  return plugins.filter((p) => on.has(p.id) && typeof p.manifest.forAgents === "string" && p.manifest.forAgents.trim()).map((p) => {
+  return plugins.filter((p) => on.has(p.id) && p.manifest.forAgents?.trim()).map((p) => {
     const decls = settingsOf(p.manifest), mine = p.settings()
-    const text = String(p.manifest.forAgents).trim().replace(/\{(\w+)\}/g, (all, k: string) => {
+    const text = (p.manifest.forAgents ?? "").trim().replace(/\{(\w+)\}/g, (all, k: string) => {
       const v = Object.hasOwn(mine, k) && mine[k] !== null && mine[k] !== "" ? mine[k] : decls[k]?.default
       return v === undefined || v === null ? all : String(v)
     })

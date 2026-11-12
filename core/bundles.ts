@@ -292,7 +292,7 @@ export function problems(files: Files): string[] {
 function known(host: Host) {
   const out = new Map<string, { name: string; optIn: boolean; vault: boolean; settings: SettingDecls; ai?: boolean }>()
   for (const p of host.plugins()) {
-    out.set(p.id, { name: String(p.manifest.name ?? p.id), optIn: p.tier === "vault" || !!p.manifest.offByDefault, vault: p.tier === "vault", settings: settingsOf(p.manifest), ai: p.manifest.ai === true })
+    out.set(p.id, { name: p.manifest.name ?? p.id, optIn: p.tier === "vault" || !!p.manifest.offByDefault, vault: p.tier === "vault", settings: settingsOf(p.manifest), ai: p.manifest.ai === true })
   }
   for (const v of host.vaultPlugins()) {
     if (!out.has(v.id)) out.set(v.id, { name: String(v.name ?? v.id), optIn: true, vault: true, settings: isObj(v.settings) ? v.settings as SettingDecls : {}, ai: v.ai === true })
@@ -1308,7 +1308,7 @@ function shareOf(b: Bundle, host: Host): { items: ShareItem[]; dropped: string[]
   for (const [id, rel] of settings) {
     const keys = Object.keys(jsonOr(b, rel) ?? {})
     const p = host.plugins().find((x) => x.id === id)
-    items.push({ path: rel, kind: "settings", label: String(p?.manifest.name ?? id), on: true, keys })
+    items.push({ path: rel, kind: "settings", label: p?.manifest.name ?? id, on: true, keys })
   }
   if (b.files["editor.json"] !== undefined) {
     const keys = Object.keys(jsonOr(b, "editor.json") ?? {})

@@ -6,6 +6,8 @@ import { isBuiltin, registerHooks } from "node:module"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { contentType, LOCAL, Plugin, ROOT } from "./plugins.ts"
+import { Manifest } from "./contracts/manifest.ts"
+import { readJson } from "./jsonfile.ts"
 import { disclosuresOf, exportsOf, ICON_NAME, iconOf, PLUGIN_MODULE } from "./pluginmeta.ts"
 import { onItsOwn } from "./writegate.ts"
 import { backendOnly, blockProblems, exportFile, hashed, inside, installProblems, listedPackage, pluginProblems, settingsFile, SHARED, SHARED_EDITOR, UNLISTED, userFilesOf, VAULT_CORE, walk } from "./rules.ts"
@@ -18,6 +20,7 @@ import { type Digest, trustOf, type Trust } from "./trust.ts"
 import { official } from "./updates.ts"
 import { served } from "./webbuild.ts"
 import { type Item, readText, type Vault, writeAtomic } from "./vault.ts"
+import { isObj } from "./values.ts"
 
 export const DIR = ".vaultite/plugins"
 const CACHE = path.join(LOCAL, "cache", "plugins")
@@ -35,7 +38,7 @@ function buildKey() {
 const CODE = "7:" + crypto.createHash("sha256").update(JSON.stringify(JSON.parse(readText(path.join(ROOT, "package.json"))).dependencies ?? {})).digest("hex").slice(0, 8)
 
 export type VaultPlugin = {
-  id: string; dir: string; manifest: Item
+  id: string; dir: string; manifest: Manifest
   /** Its manifest's icon as the app draws it (core/pluginmeta.ts iconOf): a name, or its SVG file as a data address. */
   icon: string | null
   /** Its files' sizes and times (cheap to compare), and a hash of their contents and the app's build: its version. */
@@ -44,11 +47,9 @@ export type VaultPlugin = {
   digest: Digest
   /** Why the plugin index blocks this version (core/pluginindex.ts), or null. */
   blocked: string | null
-  /** Rules it breaks: it isn't loaded. */
   problems: string[]
   /** Where it breaks the block contract (core/rules.ts blockProblems): it loads anyway. */
   warnings: string[]
-  /** Loaded (on, and plugin.ts imported), at which version. */
   plugin: Plugin | null; loaded: string
   /** Its built frontend: bundle.js and the chunks it imports when it needs them (a big package loaded only when used). */
   bundle: { hash: string; code: string; chunks: Record<string, string> } | null
@@ -74,7 +75,8 @@ function moduleUrl(id: string, name: string, vault: boolean): string | null {
   const at = vault ? FOLDERS.get(id) : undefined, f = at && exportFile(at.dir, name)
   return f ? `${pathToFileURL(f).href}?plugin=${encodeURIComponent(id)}&v=${at!.hash}` : null
 }
-const requiresOf = (dir: string): string[] => { try { const r = JSON.parse(readText(path.join(dir, "manifest.json"))).requires; return Array.isArray(r) ? r : [] } catch { return [] } }
+const manifestIn = (dir: string) => readJson(path.join(dir, "manifest.json"), Manifest, readText)
+const requiresOf = (dir: string): string[] => { const r = manifestIn(dir); return r.ok ? r.value.requires ?? [] : [] }
 
 /** A vault plugin's file as an ES module, whatever package.json is above it (a vault that is also a code project may
  *  say `"type": "commonjs"`, which made its plugins fail to load). */
@@ -97,9 +99,7 @@ registerHooks({
   },
   resolve(spec, context, next) {
     const m = context.parentURL ? TAG.exec(context.parentURL) : null
-    // (a vault plugin's plugin.ts, imported by the app with its tag)
     if (!m && TAG.test(spec)) return asModule(next(spec, context))
-    // (an app plugin's backend: another's module, one it exports, of a plugin it requires)
     if (!m) {
       const p = spec.startsWith("@plugins/") && context.parentURL?.startsWith("file:") ? fileURLToPath(context.parentURL) : ""
       if (!p.startsWith(BUILT_IN)) return next(spec, context)
@@ -147,7 +147,6 @@ function builtCss() {
   return appCss!.text
 }
 
-/** A class name as a CSS selector writes it (CSS.escape, for the characters Tailwind's names have). */
 const escapeClass = (c: string) => c.replace(/^(\d)/, "\\3$1 ").replace(/[^\w-]/g, (ch) => `\\${ch}`)
 
 /** The classes the app's built stylesheet has, as its selectors write them: read once per stylesheet. */
@@ -216,7 +215,7 @@ function withAssets(file: string, css: string) {
 async function bundle(vp: VaultPlugin) {
   const { rolldown } = await import("rolldown")
   const dir = fs.realpathSync(vp.dir)
-  const requires = new Set((vp.manifest.requires ?? []) as string[])
+  const requires = new Set(vp.manifest.requires ?? [])
   const preload = new Set<string>()
   const sheets: string[] = [] // stylesheets it imports (a package's own: "@excalidraw/excalidraw/index.css"), in order
   const refuse = (spec: string, why: string): never => { throw new Error(`can't import '${spec}': ${why}`) }
@@ -361,16 +360,17 @@ function dependencyOrder(names: string[], deps: Map<string, string[]>) {
 export function checkVaultPlugin(dir: string, o: { ids: Map<string, string>; label: string; tag?: string | null; installable?: boolean; manifest?: Item
   dirOf?: (id: string) => string }) {
   const { ids, label } = o
-  let manifest: Item | null = o.manifest ?? null, unread = ""
-  if (!manifest) try { manifest = JSON.parse(readText(path.join(dir, "manifest.json"))) } catch (e) { unread = (e as Error).message }
-  const id = typeof manifest?.id === "string" ? manifest.id : path.basename(dir)
+  let raw: unknown = o.manifest ?? null, unread = ""
+  if (!raw) try { raw = JSON.parse(readText(path.join(dir, "manifest.json"))) } catch (e) { unread = (e as Error).message }
+  const written = isObj(raw) ? raw : null
+  const id = typeof written?.id === "string" ? written.id : path.basename(dir)
   const problems: string[] = []
   if (ids.has(id) && ids.get(id) !== "vault") problems.push(`${label}: the app already has a plugin called '${id}'`)
-  if (!manifest) return { manifest, problems: [...problems, `${label}: no readable manifest.json (${unread})`], warnings: [] as string[] }
+  if (!written) return { manifest: null, problems: [...problems, `${label}: no readable manifest.json (${unread || "not an object"})`], warnings: [] as string[] }
   if (!/^[a-z][a-z0-9-]*$/.test(id)) problems.push(`${label}/manifest.json: id must be lowercase letters, digits and dashes, starting with a letter`)
-  problems.push(...pluginProblems(dir, ROOT, ids, true, label, manifest, o.dirOf), ...hookProblems(manifest, dir, `${label}/manifest.json`))
-  if (o.installable || o.tag) problems.push(...installProblems(manifest, o.tag ?? null, `${label}/manifest.json`))
-  return { manifest, problems, warnings: blockProblems(dir, manifest, label) }
+  problems.push(...pluginProblems(dir, ROOT, ids, true, label, written, o.dirOf), ...hookProblems(written, dir, `${label}/manifest.json`))
+  if (o.installable || o.tag) problems.push(...installProblems(written, o.tag ?? null, `${label}/manifest.json`))
+  return { manifest: Manifest.parse({ ...written, id }), problems, warnings: blockProblems(dir, written, label) }
 }
 
 export class VaultPlugins {
@@ -426,7 +426,8 @@ export class VaultPlugins {
     const m = this.found.get(id)?.manifest
     if (m) return m.ai === true
     if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) return false
-    try { return JSON.parse(readText(this.vault.abs(`${DIR}/${id}/manifest.json`))).ai === true } catch { return false }
+    const r = manifestIn(this.vault.abs(`${DIR}/${id}`))
+    return r.ok && r.value.ai === true
   }
 
   /** Let plugin `id` run on this machine as its files are now (core/trust.ts), remembered as `version` or its manifest's,
@@ -434,10 +435,9 @@ export class VaultPlugins {
   allow(id: string, o: { version?: string; edits?: boolean; digest?: Digest } = {}): Digest {
     const dir = this.vault.abs(`${DIR}/${id}`)
     const d = o.digest ?? digestOf(dir)
-    let m: Item = {}
-    try { m = JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8")) } catch { /* none: it says nothing */ }
-    const v = o.version ?? m.version, src = (this.vault.config("plugins-lock")[id] as Item | undefined)?.source
-    this.trust.approve(id, d, { version: typeof v === "string" ? v : undefined, edits: o.edits, source: typeof src === "string" ? src : undefined, says: disclosuresOf(m) })
+    const r = readJson(path.join(dir, "manifest.json"), Manifest), m = r.ok ? r.value : null
+    const src = (this.vault.config("plugins-lock")[id] as Item | undefined)?.source
+    this.trust.approve(id, d, { version: o.version ?? m?.version, edits: o.edits, source: typeof src === "string" ? src : undefined, says: disclosuresOf(m ?? {}) })
     return d
   }
 
@@ -476,7 +476,7 @@ export class VaultPlugins {
       const stat = `${statOf(dir)}\n${names.join(",")}\n${theirs}`
       let vp = this.found.get(name)
       if (!vp || vp.stat !== stat) {
-        let manifest: Item = { id: name, name }
+        let manifest: Manifest = { id: name, name }
         try {
           const r = checkVaultPlugin(dir, { ids, label: `${DIR}/${name}`, dirOf: (id) => path.join(root, id) })
           const { problems, warnings } = r
@@ -602,7 +602,7 @@ export class VaultPlugins {
   paused() {
     const on = this.enabled()
     return [...this.found.values()].filter((vp) => this.trust.approval(vp.id) && !this.adopting.has(vp.id) && this.waits(vp, on)).map((vp) => ({
-      id: vp.id, name: typeof vp.manifest.name === "string" && vp.manifest.name ? vp.manifest.name : vp.id,
+      id: vp.id, name: vp.manifest.name || vp.id,
       changed: this.trust.changes(vp.id, vp.digest).files, jobs: scheduleOf(vp.manifest).map(({ entry: _, ...j }) => j),
     }))
   }

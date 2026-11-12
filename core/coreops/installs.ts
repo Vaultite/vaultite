@@ -28,8 +28,8 @@ export async function installFrom(app: App, source: string, tag?: string | null,
     if (got !== hash) {
       throw new OpError(`its files${commit ? ` at commit ${commit.slice(0, 7)}` : f.tag ? ` at ${f.tag}` : ""} aren't the ones recorded (they hash to ${got}, not ${hash})`, 422)
     }
-    const version = String(f.manifest.version ?? "")
-    const why = app.index.blockedWhy(f.id, version, [src.repo, typeof f.manifest.repo === "string" ? f.manifest.repo : null])
+    const version = f.manifest.version ?? ""
+    const why = app.index.blockedWhy(f.id, version, [src.repo, f.manifest.repo ?? null])
     if (why) throw new OpError(why, 409)
     const lock = readLock(app.vault)
     // (a folder with only its settings is kept for it: one of the app's plugins that became an install)
@@ -40,7 +40,7 @@ export async function installFrom(app: App, source: string, tag?: string | null,
     const entry = await app.hold(() => place(app.vault, f, src, undefined, moved))
     app.vaultPlugins.trust.noEdits(f.id)
     await app.syncPlugins()
-    return { id: f.id, name: String(f.manifest.name ?? f.id), version, tag: f.tag, commit: f.commit, untagged: f.untagged, folder: `${DIR}/${f.id}`,
+    return { id: f.id, name: f.manifest.name ?? f.id, version, tag: f.tag, commit: f.commit, untagged: f.untagged, folder: `${DIR}/${f.id}`,
       disclosures: disclosuresOf(f.manifest), source: entry }
   } finally {
     f.done()
@@ -80,9 +80,9 @@ export function installOps(app: App): Op[] {
         // (a newer commit of a repository of several plugins may not touch this one)
         if (!next.tag && !changes.files.length) { out.push({ id, version: l.version, current: true }); continue }
         const edited = fs.existsSync(dir) && !asLocked(dir, l)
-        const row: Any = { id, name: String(f.manifest.name ?? id), version: l.version, to: String(f.manifest.version ?? ""), tag: f.tag, commit: f.commit, files: changes.files,
+        const row: Any = { id, name: f.manifest.name ?? id, version: l.version, to: f.manifest.version ?? "", tag: f.tag, commit: f.commit, files: changes.files,
           disclosures: changes.disclosures, edited, applied: false }
-        const why = app.index.blockedWhy(id, row.to, [l.repo, typeof f.manifest.repo === "string" ? f.manifest.repo : null])
+        const why = app.index.blockedWhy(id, row.to, [l.repo, f.manifest.repo ?? null])
         if (why) row.error = why
         else if (apply && edited && !force) row.error = "its files were changed here since it was installed: pass force to replace them"
         // (one that says it does more beyond the vault than it did waits for the user, even when it updates on its own)
@@ -222,7 +222,7 @@ update by hand takes it. Allowed on this machine if it was before.
         const allowed = !!app.vaultPlugins.trust.approval(id)
         if (allowed) { app.vaultPlugins.trust.noEdits(id); app.vaultPlugins.allow(id, { version: last.from }) }
         await app.syncPlugins()
-        return { id, name: String(f.manifest.name ?? id), from: l.version, to: last.from, tag, allowed }
+        return { id, name: f.manifest.name ?? id, from: l.version, to: last.from, tag, allowed }
       } finally {
         f.done()
       }
@@ -247,7 +247,7 @@ update by hand takes it. Allowed on this machine if it was before.
     run: ({ id, since }) => {
       const lock = readLock(app.vault)
       if (id && !lock[id]) throw new OpError(`'${id}' wasn't installed from a repository`, 404)
-      const name = (x: string) => { const m = app.vaultPlugins.found.get(x)?.manifest; return typeof m?.name === "string" && m.name ? m.name : x }
+      const name = (x: string) => app.vaultPlugins.found.get(x)?.manifest.name || x
       return Object.entries(lock).filter(([x]) => !id || x === id)
         .flatMap(([x, l]) => (l.history ?? []).map((u: Update) => ({ id: x, name: name(x), ...u })))
         .filter((u) => !since || localDate(Date.parse(u.at)) >= since)
@@ -315,8 +315,8 @@ with \`vau plugin install <source>\` (its repository, and its folder in it when 
           : sort === "updated" ? time(b) - time(a) : b.stars - a.stars || b.score - a.score)
         .map((e) => {
           const here = app.vaultPlugins.found.get(e.id)
-          const installed = here ? String(here.manifest.version ?? "") || null : null
-          const ours = !!here && (lock[e.id]?.repo ?? here.manifest.repo ?? "").toString().toLowerCase() === e.repo.toLowerCase()
+          const installed = here ? here.manifest.version || null : null
+          const ours = !!here && (lock[e.id]?.repo ?? here.manifest.repo ?? "").toLowerCase() === e.repo.toLowerCase()
           return { ...e, source: e.dir ? `${e.repo}/${e.dir}` : e.repo, installed: here ? installed ?? "" : null, ours, update: ours && !!installed && compareVersions(e.version, installed)! > 0,
             blocked: app.index.blockedWhy(e.id, e.version, [e.repo]) }
         })

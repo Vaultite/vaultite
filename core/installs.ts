@@ -12,6 +12,7 @@ import { DISCLOSURES, disclosuresOf } from "./pluginmeta.ts"
 import { ignoreOf, settingsFile, userFilesOf, walk } from "./rules.ts"
 import { notesOf, type Update } from "./updates.ts"
 import { compareVersions, tagVersion } from "./version.ts"
+import type { Manifest } from "./contracts/manifest.ts"
 import { checkVaultPlugin, DIR, digestOf } from "./vaultplugins.ts"
 import { unzip } from "./unzip.ts"
 import { removeTree, type Item, type Vault } from "./vault.ts"
@@ -129,8 +130,7 @@ async function headOf(url: string) {
   return (await git(["ls-remote", url, "HEAD"])).split("\t")[0].trim() || null
 }
 
-/** A source fetched and checked, in a temporary folder: its files (as the vault would have them), manifest, tag, commit. */
-export type Fetched = { dir: string; id: string; manifest: Item; tag: string | null; commit: string | null; untagged: boolean; done: () => void }
+export type Fetched = { dir: string; id: string; manifest: Manifest; tag: string | null; commit: string | null; untagged: boolean; done: () => void }
 
 /** Clone (or copy) a source at its commit, else its tag (else its newest version tag, else the default branch: `untagged`), copy what
  *  the app reads to <tmp>/<id>/ and check it as installed beside `vault`'s plugins (id -> folder): 422 with its problems. */
@@ -173,9 +173,9 @@ export async function fetchSource(src: Source, tiers: Map<string, string>, vault
     stage(from, dir)
     const ids = new Map([...[...vault.keys()].map((v): [string, string] => [v, "vault"]), [id, "vault"], ...tiers])
     const label = `${DIR}/${id}`
-    const { problems } = checkVaultPlugin(dir, { ids, label, tag, installable: true, manifest, dirOf: (r) => vault.get(r) ?? path.join(path.dirname(dir), r) })
-    if (problems.length) throw new OpError(`${src.given}${tag ? ` at ${tag}` : ""} can't be installed`, 422, problems)
-    return { dir, id, manifest, tag, commit, untagged, done }
+    const checked = checkVaultPlugin(dir, { ids, label, tag, installable: true, manifest, dirOf: (r) => vault.get(r) ?? path.join(path.dirname(dir), r) })
+    if (checked.problems.length || !checked.manifest) throw new OpError(`${src.given}${tag ? ` at ${tag}` : ""} can't be installed`, 422, checked.problems)
+    return { dir, id, manifest: checked.manifest, tag, commit, untagged, done }
   } catch (e) {
     try { done() } catch { /* (what failed is e, not its cleanup) */ }
     throw e
@@ -280,9 +280,9 @@ export function place(vault: Vault, f: Fetched, src: Source, change?: { how: Upd
   if (fs.existsSync(target)) fs.renameSync(target, old)
   fs.renameSync(fresh, target)
   fs.rmSync(old, { recursive: true, force: true })
-  const version = String(f.manifest.version ?? "")
+  const version = f.manifest.version ?? ""
   const history = [...(was?.history ?? []), ...(change && was ? [{ from: was.version, to: version, at: new Date().toISOString(), how: change.how, notes: change.notes }] : [])]
-  const entry: Locked = { source: src.given, repo: src.repo ?? (typeof f.manifest.repo === "string" ? f.manifest.repo : null), tag: f.tag, commit: f.commit,
+  const entry: Locked = { source: src.given, repo: src.repo ?? f.manifest.repo ?? null, tag: f.tag, commit: f.commit,
     version, hash: digestOf(target).content, installed: today(), ...(history.length ? { history: history.slice(-HISTORY_MAX) } : {}),
     ...(change?.skip ? { skip: change.skip } : {}), ...(moved ?? was?.moved ? { moved: true as const } : {}) }
   writeLock(vault, f.id, entry)

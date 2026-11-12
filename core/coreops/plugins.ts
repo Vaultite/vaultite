@@ -47,8 +47,8 @@ function scheduledOf(app: App) {
 export function pluginList(app: App): PluginInfo[] {
   const own = app.vaultPlugins.list().map((v): PluginInfo => ({ id: String(v.id), tier: "vault", dir: app.vault.abs(String(v.folder)), name: String(v.name),
     description: String(v.description ?? ""), requires: strings(v.requires), optIn: true, waiting: !!v.approval, edits: !!v.edits, ...(v.ai === true ? { ai: true } : {}) }))
-  return [...app.app.map((p): PluginInfo => ({ id: p.id, tier: p.tier, dir: p.dir, name: String(p.manifest.name ?? p.id),
-    description: String(p.manifest.description ?? ""), requires: strings(p.manifest.requires), optIn: p.manifest.offByDefault === true,
+  return [...app.app.map((p): PluginInfo => ({ id: p.id, tier: p.tier, dir: p.dir, name: p.manifest.name ?? p.id,
+    description: p.manifest.description ?? "", requires: p.manifest.requires ?? [], optIn: p.manifest.offByDefault === true,
     ...(p.manifest.alwaysOn === true ? { alwaysOn: true } : {}), ...(p.manifest.ai === true ? { ai: true } : {}) })), ...own]
 }
 
@@ -96,7 +96,7 @@ export function folderProblems(dir: string, appIds: Map<string, string>, o: { in
   let beside: string[] = []
   try { beside = fs.readdirSync(path.dirname(abs)).filter((n) => n !== base && fs.existsSync(path.join(path.dirname(abs), n, "manifest.json"))) } catch { /* none */ }
   const r = checkVaultPlugin(abs, { ids: new Map([...beside.map((n): [string, string] => [n, "vault"]), [base, "vault"], ...appIds]), label: ".", ...o })
-  const id = typeof r.manifest?.id === "string" ? r.manifest.id : base
+  const id = r.manifest?.id ?? base
   // (its folder may be named after its repository: the check reads it as .vaultite/plugins/<id>/ would)
   const named = `./manifest.json: id must be '${base}' (its folder's name)`
   return { id, problems: r.problems.filter((x) => base === id || x !== named), warnings: r.warnings }

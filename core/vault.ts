@@ -7,6 +7,7 @@ import os from "node:os"
 import path from "node:path"
 import { setImmediate as turn } from "node:timers/promises"
 import { withKindBlocks } from "./blocks.ts"
+import type { Manifest } from "./contracts/manifest.ts"
 import type { KeptText, StartTexts } from "./fmcache.ts"
 import { merge3, patchFrontmatter, same } from "./textedit.ts"
 import { dates, dump, YAMLError } from "./yaml.ts"
@@ -719,8 +720,7 @@ export class Vault {
    *  applies to a key a file doesn't set, never written (the plugins' `setting-defaults`: core/app.ts). */
   defaults: () => Record<string, Item> = () => ({})
   private seeds: { version: number; all: Record<string, Item> } | null = null // defaults(), until the settings change
-  /** The plugins loaded, set as they load (core/plugins.ts, App.syncPlugins): what switchedOff() reads their manifests for. */
-  pluginList: { id: string; manifest: Item; tier?: string }[] = []
+  pluginList: { id: string; manifest: Manifest; tier?: string }[] = []
   private off: { conf: string | null | undefined; list: unknown; off: Set<string> } | null = null
   /** While a server starts, the texts its last start read (core/fmcache.ts): the first walk takes those of files unchanged
    *  since, and keeps what it has in `now` for the next start. */
@@ -1112,7 +1112,7 @@ export class Vault {
     for (let grew = true; grew;) {
       grew = false
       for (const p of this.pluginList) {
-        if (!off.has(p.id) && ((p.manifest.requires ?? []) as string[]).some((r) => off.has(r) || !known.has(r))) { off.add(p.id); grew = true }
+        if (!off.has(p.id) && (p.manifest.requires ?? []).some((r) => off.has(r) || !known.has(r))) { off.add(p.id); grew = true }
       }
     }
     this.off = { conf, list: this.pluginList, off }

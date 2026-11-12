@@ -4,6 +4,8 @@ import { AsyncLocalStorage } from "node:async_hooks"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
+import { z } from "zod"
+import { readJson } from "./jsonfile.ts"
 import { LOCAL, vaultHere } from "./plugins.ts"
 import { writeAtomic } from "./vault.ts"
 
@@ -12,6 +14,11 @@ import { writeAtomic } from "./vault.ts"
 type Entry = { text: string; at: number; shared: boolean; seq: number }
 /** An entry as it travels between machines. */
 export type Shared = { name: string; at: number; data: unknown }
+
+/** A namespace's file (<plugin id>.json): its entries by name, as flush writes them. */
+const Stored = z.record(z.string(), z.unknown())
+const StoredEntry = z.object({ at: z.number(), seq: z.number().catch(0), shared: z.boolean().catch(false), data: z.unknown() })
+const StoreFile = z.object({ id: z.string() })
 
 const SAVE_MS = 1000
 const TOMBSTONE_DAYS = 30
@@ -51,18 +58,19 @@ export class Kept {
     const old = Date.now() - TOMBSTONE_DAYS * 86400_000
     for (const f of files) {
       if (f === "_store.json") {
-        try { this.storeId = String(JSON.parse(fs.readFileSync(path.join(this.dir, f), "utf8")).id ?? "") } catch { /* made again below */ }
+        const r = readJson(path.join(this.dir, f), StoreFile)
+        if (r.ok) this.storeId = r.value.id
         continue
       }
       if (!f.endsWith(".json")) continue
-      let o: Record<string, { at?: unknown; shared?: unknown; seq?: unknown; data?: unknown }>
-      try { o = JSON.parse(fs.readFileSync(path.join(this.dir, f), "utf8")) } catch (e) { console.error(`kept: ${f} doesn't read (${(e as Error).message}): left out`); continue }
-      for (const [name, e] of Object.entries(o ?? {})) {
-        if (!NAME.test(name) || typeof e?.at !== "number") continue
-        const text = JSON.stringify(e.data ?? null)
-        if (text === "null" && e.at < old) continue
-        const seq = typeof e.seq === "number" ? e.seq : 0
-        this.entries.set(name, { text, at: e.at, shared: e.shared === true, seq })
+      const r = readJson(path.join(this.dir, f), Stored)
+      if (!r.ok) { console.error(`kept: ${f} doesn't read (${r.why}): left out`); continue }
+      for (const [name, raw] of Object.entries(r.value)) {
+        const e = StoredEntry.safeParse(raw)
+        if (!NAME.test(name) || !e.success) continue
+        const { at, seq, shared, data } = e.data, text = JSON.stringify(data ?? null)
+        if (text === "null" && at < old) continue
+        this.entries.set(name, { text, at, shared, seq })
         if (seq > this.seq) this.seq = seq
       }
     }

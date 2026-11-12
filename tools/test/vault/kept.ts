@@ -41,6 +41,20 @@ export default async ($: VaultTest) => {
     (!modesEnforced || (fs.statSync(path.join(k.dir, "qa.json")).mode & 0o777) === 0o600))
   check("kept: read back as it was (shared, when, removals too)", again.get<Any>("qa/disk").big.length === 1000 && again.isShared("qa/disk") &&
     again.at("qa/disk") === k.at("qa/disk") && again.get("qa/two", "gone") === "gone" && again.id === k.id && again.seq === k.seq)
+  {
+    const bad = path.join(k.dir, "qb.json"), torn = path.join(k.dir, "qc.json")
+    fs.writeFileSync(bad, JSON.stringify({ "qb/ok": { at: 5, data: 1, shared: "yes" }, "qb/no-at": { at: "5", data: 1 }, "Bad Name": { at: 5, data: 1 }, "qb/null": null }))
+    fs.writeFileSync(torn, "{not json")
+    const was = console.error, said: string[] = []
+    console.error = (...a: unknown[]) => { said.push(a.join(" ")) }
+    const read = new Kept(k.dir)
+    const names = read.names("q").filter((n) => !n.startsWith("qa/"))
+    console.error = was
+    check("kept: an entry that doesn't read is left out, one that does is read (not shared unless it says so)", names.join() === "qb/ok" && read.get("qb/ok") === 1 && !read.isShared("qb/ok"), names)
+    check("kept: a file that isn't JSON is left out, saying so", said.some((s) => s.startsWith("kept: qc.json doesn't read (")), said)
+    fs.rmSync(bad)
+    fs.rmSync(torn)
+  }
 
   // The app's state: a change to what it showed makes a new one, and the windows hear of it; a change to something else
   // kept only tells the routes.

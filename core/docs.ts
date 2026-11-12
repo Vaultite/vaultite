@@ -30,7 +30,7 @@ export function topics(plugins: Plugin[]): Topic[] {
       const text = readText(path.join(p.dir, "docs", f)).trim()
       return { id: f.slice(0, -3), title: titleOf(text, f.slice(0, -3)), plugin: p.id, text }
     }) : []
-    return [...(d ? [{ id: p.id, title: titleOf(d.text, String(p.manifest.name ?? p.id)), plugin: p.id, ...d }] : []), ...more]
+    return [...(d ? [{ id: p.id, title: titleOf(d.text, p.manifest.name ?? p.id), plugin: p.id, ...d }] : []), ...more]
   })]
 }
 

@@ -3,18 +3,30 @@
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
+import { z } from "zod"
+import { listOf, readJson, recordOf } from "./jsonfile.ts"
 import { LOCAL, vaultHere } from "./plugins.ts"
 import type { Disclosures } from "./pluginmeta.ts"
 import { writeAtomic } from "./vault.ts"
-import { isObj } from "./values.ts"
+
+const Says = z.object({ network: z.array(z.string()).optional(), shell: z.boolean().optional(), outsideVault: z.boolean().optional(),
+  clipboard: z.boolean().optional() }) satisfies z.ZodType<Disclosures>
 
 /** An approved version: content hash, each file's, when, version; `edits`: later edits run without asking too; `source`,
  *  `says`: where it came from and what it said it does (an update synced from elsewhere must match both: App.adopt). */
-export type Approval = { hash: string; files: Record<string, string>; at: string; version?: string; edits?: boolean; source?: string; says?: Disclosures
-  paused?: string } // (when the user was told it changed and stopped: once per approval)
+const Approval = z.looseObject({ hash: z.string(), files: z.record(z.string(), z.string()), at: z.string(), version: z.string().optional(),
+  edits: z.boolean().optional(), source: z.string().optional(), says: Says.optional(),
+  paused: z.string().optional() })
+export type Approval = z.infer<typeof Approval>
 type More = { version?: string; edits?: boolean; source?: string; says?: Disclosures }
-type Store = { plugins: Record<string, Approval>; allowed: Record<string, string>; local: Record<string, Record<string, unknown>>
-  steps: string[] } // (this machine's migrations that ran: core/migrations.ts)
+
+const Store = z.object({
+  plugins: recordOf(Approval),
+  allowed: recordOf(z.string()),
+  local: recordOf(z.record(z.string(), z.unknown())),
+  steps: listOf(z.string()),
+})
+type Store = z.infer<typeof Store>
 /** What's hashed of a plugin's folder (core/vaultplugins.ts digestOf). */
 export type Digest = { content: string; files: Record<string, string> }
 
@@ -42,11 +54,8 @@ export class Trust {
     let mtime = 0
     try { mtime = fs.statSync(this.file).mtimeMs } catch { /* none yet */ }
     if (this.data && mtime === this.stamp) return this.data
-    let o: unknown = null
-    try { o = JSON.parse(fs.readFileSync(this.file, "utf8")) } catch { /* none, or unreadable: nothing approved */ }
-    const d = isObj(o) ? o : {}
-    this.data = { plugins: isObj(d.plugins) ? d.plugins as Store["plugins"] : {}, allowed: isObj(d.allowed) ? d.allowed as Store["allowed"] : {},
-      local: isObj(d.local) ? d.local as Store["local"] : {}, steps: Array.isArray(d.steps) ? d.steps.filter((x) => typeof x === "string") : [] }
+    const r = readJson(this.file, Store)
+    this.data = r.ok ? r.value : Store.parse({})
     this.stamp = mtime
     return this.data
   }
@@ -106,8 +115,8 @@ export class Trust {
   changes(id: string, d: Digest): { since: string | null; files: string[] } {
     const a = this.approval(id)
     if (!a) return { since: null, files: Object.keys(d.files).sort() }
-    const names = new Set([...Object.keys(a.files ?? {}), ...Object.keys(d.files)])
-    return { since: a.version ?? a.at.slice(0, 10), files: [...names].filter((f) => a.files?.[f] !== d.files[f]).sort() }
+    const names = new Set([...Object.keys(a.files), ...Object.keys(d.files)])
+    return { since: a.version ?? a.at.slice(0, 10), files: [...names].filter((f) => a.files[f] !== d.files[f]).sort() }
   }
 
   /** Something else a plugin runs that a vault setting names (a command): whether this machine said yes to it. */

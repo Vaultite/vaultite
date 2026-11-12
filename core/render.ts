@@ -165,7 +165,7 @@ export async function blockSources(vault: Vault, plugins: Plugin[], query: Recor
     const owner = p ?? off
     const o = resolveOptions(decl, parsed)
     const other = typeof o.file === "string" && o.file.trim() ? otherFile(vault, o.file, rel) : null
-    const out: BlockSources = { name, plugin: owner?.id ?? null, pluginName: owner ? String(owner.manifest.name ?? owner.id) : null, on: !!p,
+    const out: BlockSources = { name, plugin: owner?.id ?? null, pluginName: owner ? owner.manifest.name ?? owner.id : null, on: !!p,
       description: decl?.description ?? "", options: decl?.options ?? {}, path: rel, line, file: other !== rel ? other : null, sources: [] }
     if (!owner) return out
     // (drawn only to see what it reads: a slow one, live data on its way, is left at what it read by then)
@@ -197,7 +197,7 @@ export async function blockSources(vault: Vault, plugins: Plugin[], query: Recor
       if (!of.length || (shown.length && shown.every((f) => f === here)) || of.every((f) => files.includes(f))) continue
       out.sources.push({ kind: "files", collection: c, type: k.type, paths: sortBy(of, (x) => stemOf(x).toLowerCase()) })
     }
-    const named = (id: string) => String(plugins.find((x) => x.id === id)?.manifest.name ?? id)
+    const named = (id: string) => plugins.find((x) => x.id === id)?.manifest.name ?? id
     for (const id of trace.settings) {
       const path = `.vaultite/plugins/${id}/data.json`
       if (fs.existsSync(vault.abs(path))) out.sources.push({ kind: "settings", plugin: id, label: `${named(id)} settings`, path })

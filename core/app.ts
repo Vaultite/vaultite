@@ -159,8 +159,8 @@ export class App {
     }
     this.vaultPlugins = new VaultPlugins(this.vault, this.app)
     // A version the directory blocks doesn't load: matched by the repo it was installed from, its manifest's, or its id.
-    this.vaultPlugins.blocked = (vp) => this.index.blockedWhy(vp.id, typeof vp.manifest.version === "string" ? vp.manifest.version : null,
-      [readLock(this.vault)[vp.id]?.repo, typeof vp.manifest.repo === "string" ? vp.manifest.repo : null])
+    this.vaultPlugins.blocked = (vp) => this.index.blockedWhy(vp.id, vp.manifest.version ?? null,
+      [readLock(this.vault)[vp.id]?.repo, vp.manifest.repo ?? null])
     this.wire()
     await this.syncPlugins()
     timing?.mark("vault plugins")
@@ -242,7 +242,7 @@ export class App {
           vps.allow(vp.id, { version: l.version, digest: d })
           await this.syncPlugins()
           const u = l.history!.at(-1)!
-          await this.tellUpdated([{ id: vp.id, name: typeof vp.manifest.name === "string" ? vp.manifest.name : vp.id, to: l.version, notes: u.to === l.version ? u.notes : [] }])
+          await this.tellUpdated([{ id: vp.id, name: vp.manifest.name ?? vp.id, to: l.version, notes: u.to === l.version ? u.notes : [] }])
         } catch (e) {
           log.error(`plugin updates: ${vp.id} couldn't be checked against its source: ${(e as Error).message}`)
         } finally {
@@ -323,7 +323,7 @@ export class App {
         if (!Object.hasOwn(decls, block) && !draws.includes(block)) rows.push({ name: block, plugin: id, pluginName: name, tier, on: on.has(id), declared: false, text: true, description: "", options: {} })
       }
     }
-    for (const p of this.app) add(p.id, String(p.manifest.name ?? p.id), p.tier, p.blocks, new Set(p.textBlocks.keys()), drawsOf(p.manifest))
+    for (const p of this.app) add(p.id, p.manifest.name ?? p.id, p.tier, p.blocks, new Set(p.textBlocks.keys()), drawsOf(p.manifest))
     for (const v of this.vaultPlugins.list()) {
       const p = loaded.get(v.id as string)
       add(v.id as string, v.name as string, "vault", v.blocks as BlockDecls, p ? new Set(p.textBlocks.keys()) : null, v.draws as string[])

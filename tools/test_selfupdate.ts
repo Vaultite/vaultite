@@ -193,6 +193,17 @@ await section("vau update: a look asked for while one runs joins it", async () =
   o.busy = slow
 })
 
+await section("its state file, torn or written by hand", async () => {
+  const was = fs.readFileSync(o.stateFile, "utf8")
+  fs.writeFileSync(o.stateFile, "{not json")
+  const torn = await look()
+  check("one that isn't JSON is none: it looks on", torn.state === "current" && torn.last === undefined, torn)
+  fs.writeFileSync(o.stateFile, JSON.stringify({ last: "then", error: { at: "now" } }))
+  const odd = await look()
+  check("…and a part of it that isn't what it should be is none of it", odd.state === "current" && odd.last === undefined && odd.error === undefined, odd)
+  fs.writeFileSync(o.stateFile, was)
+})
+
 await section("a bare clone (a root store's): no branch nor tree, what runs is the head", async () => {
   const bare = path.join(tmp, "store.git")
   execFileSync("git", ["clone", "--quiet", "--bare", origin, bare], { stdio: "pipe", env: gitEnv() })

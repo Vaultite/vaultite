@@ -3,6 +3,8 @@
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { z } from "zod"
+import { readJson } from "./jsonfile.ts"
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 
@@ -10,22 +12,28 @@ const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 export type PluginDir = { id: string; tier: string; dir: string }
 
 /** A palette command with a fixed id: its default keys (none: []); `note`: "desktop app only". */
-export type CommandDef = { id: string; name: string; keys: string[]; note?: string }
+const CommandDef = z.object({ id: z.string(), name: z.string(), keys: z.array(z.string()), note: z.string().optional() })
+export type CommandDef = z.infer<typeof CommandDef>
 
 /** A sidebar panel `<plugin>:<name>`: `heading` when it differs from its title ("Pinned"), `sort` its default place,
  *  `hidden` out of the default setup, `side` "right" if it starts there, `names` its other names, `dockable` by a phone. */
-export type PanelDef = { key: string; title: string; heading?: string; sort: number; plugin: string; hidden: boolean; side?: "right"; names: string[]; dockable?: true }
+const PanelDef = z.object({ key: z.string(), title: z.string(), heading: z.string().optional(), sort: z.number(), plugin: z.string(), hidden: z.boolean(),
+  side: z.literal("right").optional(), names: z.array(z.string()), dockable: z.literal(true).optional() })
+export type PanelDef = z.infer<typeof PanelDef>
 
 /** A plugin's section of a new tab's page: `<plugin>:<name>`, its title, default place, whether it's out of the default
  *  page (`hidden`) and where it's drawn (`only`: phones or computers). */
-export type SectionDef = { key: string; title: string; sort: number; plugin: string; hidden: boolean; only?: "phone" | "desktop" }
+const SectionDef = z.object({ key: z.string(), title: z.string(), sort: z.number(), plugin: z.string(), hidden: z.boolean(), only: z.enum(["phone", "desktop"]).optional() })
+export type SectionDef = z.infer<typeof SectionDef>
 
-type Snapshot = { commands: CommandDef[]; panels: Record<string, PanelDef[]>; sections?: Record<string, SectionDef[]>; icons?: string[] }
+const Snapshot = z.object({ commands: z.array(CommandDef), panels: z.record(z.string(), z.array(PanelDef)), sections: z.record(z.string(), z.array(SectionDef)).optional(),
+  icons: z.array(z.string()).optional() })
+type Snapshot = z.infer<typeof Snapshot>
 
 const SNAPSHOT = path.join(ROOT, "electron", "cli.json")
 let snap: Snapshot | null | undefined
 function snapshot(): Snapshot | null {
-  if (snap === undefined) try { snap = JSON.parse(fs.readFileSync(SNAPSHOT, "utf8")) as Snapshot } catch { snap = null }
+  if (snap === undefined) { const r = readJson(SNAPSHOT, Snapshot); snap = r.ok ? r.value : null }
   return snap ?? null
 }
 
