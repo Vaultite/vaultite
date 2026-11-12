@@ -3957,7 +3957,7 @@ async function editOnScreen(p: Record<string, unknown>, ctx: OpCtx) {
 plugin.op({
   id: "companion.save-drawing",
   cli: "companion save-drawing",
-  summary: "Keep the drawing on the screen as an .excalidraw in the vault: its scratch pads, cards and words (all: its marks too).",
+  summary: "Keep the drawing on the screen as an .excalidraw in the vault, as it looked: its scratch pads, cards (a video as its first frame, linked), buttons and words (all: its marks too).",
   help: "What Keep does on the screen. Default path: Drawings/<its title>.excalidraw.",
   kind: "write",
   params: { id: { type: "string", description: "the drawing (default: the one up)" }, path: { ...PATH, description: "where (default Drawings/<its title>.excalidraw)" },

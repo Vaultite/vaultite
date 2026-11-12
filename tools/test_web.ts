@@ -3575,6 +3575,7 @@ await section("companion reach", async () => {
 
 await section("screen drawings", async () => {
   const sm: Any = await import(pathToFileURL(path.join(ROOT, "core/desktop/screenmarks.ts")).href)
+  const kept: Any = await import(pathToFileURL(path.join(ROOT, "plugins/core/companion/kept.ts")).href)
   const lay: Any = await web("screendraw/layout.ts")
   const dr: Any = await import(pathToFileURL(path.join(ROOT, "electron/drawing.ts")).href)
   const err = (marks: unknown) => { try { sm.checkMarks(marks); return "" } catch (e) { return (e as Error).message } }
@@ -3668,7 +3669,7 @@ await section("screen drawings", async () => {
   check("screen drawings: a copy or an open runs only when the drawing offers it", dr.offered(offer, { id: "d1", kind: "copy", text: "abc" }) && dr.offered(offer, { id: "d1", kind: "open", url: "https://lighthouse.test" }) &&
     !dr.offered(offer, { id: "d1", kind: "open", url: "https://evil.test" }) && !dr.offered(offer, { id: "d1", kind: "copy", text: "other" }))
   // ---- kept: an .excalidraw scene
-  const scene = sm.toExcalidraw(sm.checkMarks([{ type: "paper", title: "Plan", items: [{ type: "rect", x: 10, y: 10, w: 100, h: 50, label: "Idea" }, { type: "arrow", from: [110, 35], to: [200, 35] },
+  const scene = kept.toExcalidraw(sm.checkMarks([{ type: "paper", title: "Plan", items: [{ type: "rect", x: 10, y: 10, w: 100, h: 50, label: "Idea" }, { type: "arrow", from: [110, 35], to: [200, 35] },
     { type: "chart", kind: "bar", x: 10, y: 100, w: 200, h: 100, values: [1, -2, 3], labels: ["a", "b", "c"] }, { type: "path", points: [[0, 0], [10, 10], [20, 5]] }] },
     { type: "sticky", text: "Remember" }, { type: "ring", at: [10, 10, 20, 20] }]), { tint: "blue" })
   const els = scene.elements, ids = new Set(els.map((e: Any) => e.id))
@@ -3680,8 +3681,8 @@ await section("screen drawings", async () => {
   check("screen drawings: a chart's bars (a negative one below its axis) and labels; the sticky beside the pad; screen marks only with all",
     els.filter((e: Any) => e.type === "rectangle" && e.fillStyle === "hachure").length === 3 && els.filter((e: Any) => e.type === "text" && ["a", "b", "c"].includes(e.text)).length === 3 &&
     els.some((e: Any) => e.type === "rectangle" && e.backgroundColor === "#ffec99" && e.x >= 400) && !els.some((e: Any) => e.type === "ellipse" && e.width === 40), els.length)
-  const withMarks = sm.toExcalidraw(sm.checkMarks([{ type: "ring", at: { el: "e1" } }]), { all: true, places: { "el:e1": { x: 10, y: 10, w: 20, h: 20 } } })
-  check("screen drawings: with all, the marks too, where the overlay found them; nothing worth keeping, none", withMarks?.elements.some((e: Any) => e.type === "ellipse") && sm.toExcalidraw(sm.checkMarks([{ type: "ring", at: [1, 1] }])) === null)
+  const withMarks = kept.toExcalidraw(sm.checkMarks([{ type: "ring", at: { el: "e1" } }]), { all: true, places: { "el:e1": { x: 10, y: 10, w: 20, h: 20 } } })
+  check("screen drawings: with all, the marks too, where the overlay found them; nothing worth keeping, none", withMarks?.elements.some((e: Any) => e.type === "ellipse") && kept.toExcalidraw(sm.checkMarks([{ type: "ring", at: [1, 1] }])) === null)
   // ---- media cards, svg, Excalidraw's shapes on a pad, and changes in place by id
   const mediaMarks = sm.checkMarks([{ type: "image", src: "screenshot", at: "top right", caption: "Latest", url: "javascript:x" }, { type: "video", src: "https://lighthouse.test/a.mp4", at: [20, 30] }])
   check("screen drawings: an image or video card: its source as given (never a url of the agent's), an area or a point for where",
@@ -3716,7 +3717,7 @@ await section("screen drawings", async () => {
     edErr([{ op: "move", id: "zz", dx: 1 }]).startsWith("actions[0] (move): no \"zz\"") && edErr([{ op: "spin", id: "in" }]).includes("add, move, change or delete") && edErr([{ op: "change", id: "in" }]).includes("what changes"))
   const upText = sm.drawingText({ id: "d", agent: "Claude", tint: "orange", t: 0, marks: [...flow, ...sm.checkMarks([{ type: "image", id: "pic", src: "x.png", at: "centre" }])] })
   check("screen drawings: what's up reads by id: a pad's items, arrows between ids, a card's place", upText.includes("flow paper 400x160:") && upText.includes("in rect \"Sign in\" at 10,50") && upText.includes("yes arrow ok -> home \"yes\"") && upText.includes("pic image x.png at centre"), upText)
-  const keptK = sm.toExcalidraw([...flow, ...sm.checkMarks([{ type: "paper", items: [{ type: "svg", paths: [{ d: "M0 0 L100 0 L50 80 Z", fill: "yellow" }] }] }, { type: "image", id: "pic", src: "x.png" }, { type: "video", id: "vid", src: "https://lighthouse.test/v.mp4" }])],
+  const keptK = kept.toExcalidraw([...flow, ...sm.checkMarks([{ type: "paper", items: [{ type: "svg", paths: [{ d: "M0 0 L100 0 L50 80 Z", fill: "yellow" }] }] }, { type: "image", id: "pic", src: "x.png" }, { type: "video", id: "vid", src: "https://lighthouse.test/v.mp4" }])],
     { files: { pic: { dataURL: "data:image/png;base64,AAAA", mime: "image/png", px: [800, 600] } } })
   const kEls = keptK.elements, arrowK = kEls.find((e: Any) => e.id === "yes"), homeK = kEls.find((e: Any) => e.id === "home")
   check("screen drawings: kept, Excalidraw's own: a diamond, arrows bound both ways, fills by name, an svg as closed filled lines, a picture embedded, a video as a link",
@@ -3724,6 +3725,27 @@ await section("screen drawings", async () => {
     homeK.backgroundColor === "#b2f2bb" && kEls.some((e: Any) => e.type === "line" && e.backgroundColor === "#ffec99" && e.points.length > 3) &&
     kEls.some((e: Any) => e.type === "image" && keptK.files[e.fileId]?.dataURL.startsWith("data:image/png") && e.width === 480 && e.height === 360) &&
     kEls.some((e: Any) => e.type === "rectangle" && e.link === "https://lighthouse.test/v.mp4") && new Set(kEls.map((e: Any) => e.id)).size === kEls.length, kEls.map((e: Any) => [e.id, e.type]))
+  const keptV = kept.toExcalidraw(sm.checkMarks([{ type: "video", id: "v", src: "Clips/Dark pages that stay dark on every load.mp4", caption: "Dark pages" }, { type: "video", id: "w", src: "Clips/Video cards you can hear and pause, and choices by your pointer.mp4" },
+    { type: "sticky", text: "The dark theme must stay dark on every page load, including the first paint before the styles arrive, and on every window." },
+    { type: "copy", text: "vau companion layer --hide", label: "Copy the command" }, { type: "open", url: "https://lighthouse.test/docs" },
+    { type: "button", label: "The watcher", do: { ask: "Fix the watcher" } }, { type: "button", label: "The video cards", do: { ask: "Fix the video cards" } }])
+    .map((m: Any) => (m.type === "video" ? { ...m, url: `api/raw/x?path=${encodeURIComponent(m.src)}` } : m)),
+    { question: "Which one first?", files: { v: { dataURL: "data:image/png;base64,BBBB", mime: "image/png", px: [1024, 640] } } })
+  const vEls = keptV.elements, byIdV = new Map<unknown, Any>(vEls.map((e: Any) => [e.id, e]))
+  const poster = vEls.find((e: Any) => e.type === "image"), badge = vEls.filter((e: Any) => e.groupIds.length && e.groupIds[0] === poster?.groupIds[0])
+  // (a bound label inside its box: no line wider than the box, the box as tall as its lines)
+  const fits = vEls.filter((e: Any) => e.type === "text" && e.containerId && byIdV.get(e.containerId).type === "rectangle").every((t: Any) => {
+    const c: Any = byIdV.get(t.containerId)
+    return t.text.split("\n").every((l: string) => l.length * t.fontSize * 0.6 <= c.width - 10 + 0.01) && t.height <= c.height - 10 + 0.01 && t.x >= c.x && t.y >= c.y && t.originalText.replace(/\s+/g, " ") === t.text.replace(/\s+/g, " ")
+  })
+  check("screen drawings: kept as it looked: a video as its first frame with a play badge, one group linked to the video; one with no frame, a box sized to its name; labels wrapped inside their boxes",
+    poster?.width === 480 && poster.height === 300 && poster.link === "Clips/Dark pages that stay dark on every load.mp4" && badge.length === 3 && keptV.files[poster.fileId] &&
+    vEls.some((e: Any) => e.type === "rectangle" && e.link?.endsWith("by your pointer.mp4") && e.width > 240) && fits, vEls.map((e: Any) => [e.type, e.width, e.height, e.text]))
+  const chipsV = vEls.filter((e: Any) => e.type === "text" && e.containerId && ["Copy the command", "Open", "The watcher", "The video cards"].includes(e.text))
+  const q = vEls.find((e: Any) => e.text === "Which one first?"), watcher = chipsV.find((e: Any) => e.text === "The watcher"), open = chipsV.find((e: Any) => e.text === "Open")
+  check("screen drawings: kept buttons as buttons: copy with what it copies under it, open linked, a choice's question atop its answers",
+    chipsV.length === 4 && byIdV.get(open.containerId).link === "https://lighthouse.test/docs" && vEls.some((e: Any) => e.text === "vau companion layer --hide" && e.fontFamily === 3) &&
+    q && q.y > open.y && q.y < watcher.y, chipsV.map((e: Any) => [e.text, e.y]))
   const here1 = { width: 1440, height: 900, origin: { x: 0, y: 0 }, home: true, top: 25, pointer: { x: 700, y: 400 } }
   const putCards = lay.place({ id: "d", agent: "C", tint: "orange", t: 0, places: { "el:b": { x: 600, y: 300, w: 120, h: 40 } }, marks: sm.checkMarks([
     { type: "image", id: "a", src: "x.png", at: "top-right" }, { type: "sticky", text: "beside", at: { el: "b" } }, { type: "write", text: "here", at: [100, 700] }, { type: "video", id: "v", src: "y.mp4", size: "l" }]) }, here1, size)

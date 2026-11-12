@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A kept drawing looks in Excalidraw as it did on the screen**: Keep saves a video card as its first frame with a
+  play badge, linked to the video, a picture as itself, and copy, open and choice buttons as buttons; every label
+  wraps inside its box, and a box grows to fit its words.
 - **An always-on Mac's app restarts into its update**: with automatic updates, a build that got ready while every
   window was already idle no longer waits forever for one to be touched; it restarts once the Mac is quiet, and
   update.log says what a restart is waiting on.

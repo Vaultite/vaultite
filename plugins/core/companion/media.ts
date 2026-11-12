@@ -6,13 +6,17 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { contentType, fetchPublic, FileAnswer, HTTPError, OpError, type Plugin, readableImage } from "../../../core/plugins.ts"
+import { thumbOf } from "../../../core/thumbs.ts"
 import { screenshotDir } from "./reach.ts"
-import { IMAGE_EXT, type KeptFile, type Media, VIDEO_EXT } from "../../../core/desktop/screenmarks.ts"
+import type { KeptFile } from "./kept.ts"
+import { IMAGE_EXT, type Media, VIDEO_EXT } from "../../../core/desktop/screenmarks.ts"
 
 /** Tokens kept (the cards up and a few gone): each a file a card was allowed to show. */
 const TOKENS = 64
 /** The most of an image kept in a drawing (Keep embeds its bytes). */
 const KEEP_BYTES = 8 << 20
+/** A kept video's poster frame, its longer side at most this. */
+const POSTER_PX = 960
 
 export function screenMedia(plugin: Plugin, o: {
   /** Whether the companion may read this file of this machine (its read-only folders). */
@@ -76,17 +80,30 @@ export function screenMedia(plugin: Plugin, o: {
     return { ...m, url: serve(file, contentType(file)), name: path.basename(abs), ...pxOf(file) }
   }
 
-  /** The bytes Keep embeds of an image card, or null (a video, too big, gone). */
+  /** The file of this machine a card shows (none for https). */
+  function fileOf(m: Media) {
+    const token = /^api\/companion\/media\/([0-9a-f]+)\//.exec(m.url ?? "")?.[1], vault = /[?&]path=([^&]+)/.exec(m.url ?? "")?.[1]
+    return token ? served.get(token)?.abs : vault ? plugin.vault.abs(decodeURIComponent(vault)) : undefined
+  }
+  /** The bytes Keep embeds of an image card, or of a video's first frame (its poster); null: too big, gone, none. */
   async function bytes(m: Media): Promise<KeptFile | null> {
-    if (m.type !== "image" || !m.url) return null
+    if (!m.url) return null
+    if (m.type === "video") {
+      const abs = fileOf(m)
+      try {
+        const png = abs && (await thumbOf(abs, fs.statSync(abs), POSTER_PX))
+        if (!png) return null
+        const buf = fs.readFileSync(png), px = imageSize(buf)
+        return { dataURL: `data:image/png;base64,${buf.toString("base64")}`, mime: "image/png", ...(px ? { px } : {}) }
+      } catch { return null }
+    }
     let buf: Buffer | null = null, mime = ""
     try {
       if (/^https:/i.test(m.url)) {
         const r = await fetchPublic(m.url, { max: KEEP_BYTES, types: /^image\//, timeout: 8000 })
         if (r.status < 400 && !r.cut && r.type.startsWith("image/")) { buf = r.body; mime = r.type.split(";")[0] }
       } else {
-        const token = /^api\/companion\/media\/([0-9a-f]+)\//.exec(m.url)?.[1], vault = /[?&]path=([^&]+)/.exec(m.url)?.[1]
-        const abs = token ? served.get(token)?.abs : vault ? plugin.vault.abs(decodeURIComponent(vault)) : undefined
+        const abs = fileOf(m)
         const file = abs && /\.(heic|heif)$/i.test(abs) ? await readableImage(abs) : abs
         if (file && fs.statSync(file).size <= KEEP_BYTES) { buf = fs.readFileSync(file); mime = contentType(file) }
       }

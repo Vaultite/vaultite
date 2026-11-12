@@ -166,7 +166,7 @@ function glide(p: Moved): React.CSSProperties {
 }
 
 /** What Keep has something of. */
-const KEEPS = new Set<Mark["type"]>(["paper", "sticky", "list", "write", "image", "video"])
+const KEEPS = new Set<Mark["type"]>(["paper", "sticky", "list", "write", "image", "video", "button", "copy", "open"])
 const isOver = (m: Mark) => (m.type === "image" || m.type === "video") && !!m.over
 const atKey = (m: Mark) => JSON.stringify(("at" in m && m.at) || null)
 /** Where the cards up are held (steady's), so what's placed anew keeps clear of them. */

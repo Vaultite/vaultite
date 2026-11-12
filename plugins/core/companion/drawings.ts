@@ -2,9 +2,10 @@
 // dismissed, or until the screen under them changes; edited by id, hidden and shown, kept as an .excalidraw.
 import fs from "node:fs"
 import { type OpCtx, OpError, type Plugin } from "../../../core/plugins.ts"
-import { appPlaces, checkMarks, type Drawing, drawingText, editMarks, findsOf, idsIn, type KeptFile, type Mark, type Media, pruned, type Rect, sentences, snapMarks, type Spot, spots,
-  toExcalidraw, unshown, lifeOf, isAnswer } from "../../../core/desktop/screenmarks.ts"
+import { appPlaces, checkMarks, type Drawing, drawingText, editMarks, findsOf, idsIn, type Mark, type Media, pruned, type Rect, sentences, snapMarks, type Spot, spots,
+  unshown, lifeOf, isAnswer } from "../../../core/desktop/screenmarks.ts"
 import { fileTitle } from "../../../core/desktop/names.ts"
+import { type KeptFile, toExcalidraw } from "./kept.ts"
 
 /** A drawing left up this long with nothing new goes by itself. */
 const IDLE_MS = 5 * 60_000
@@ -28,7 +29,7 @@ export function screenDrawings(plugin: Plugin, o: {
   words: (agent: string) => string | undefined
   /** The displays its last ask was on (screen points; [] unknown), or null when no helper is there to draw. */
   displays: (agent: string) => Rect[] | null
-  /** An image or video card's source found (media.ts), or an OpError saying why it can't show. */
+  /** An image or video card's source found (media.ts), or an OpError saying why it can't show; what Keep embeds of it. */
   media: { resolve: (m: Media) => Promise<Media>; bytes: (m: Media) => Promise<KeptFile | null> }
 }) {
   /** Each session's layer, by its name; `idle`, when each goes by itself. */
@@ -209,9 +210,9 @@ export function screenDrawings(plugin: Plugin, o: {
     const d = p.id ? byId(p.id) : (p.agent && layers.get(p.agent)) || [...layers.values()].sort((a, b) => b.t - a.t)[0] || null
     if (!d) throw new OpError(p.id ? `no drawing ${p.id} on the screen now` : "nothing is drawn on the screen now", 404)
     const files: Record<string, KeptFile> = {}
-    await Promise.all(d.marks.map(async (m) => { if (m.type === "image" && m.id && !m.gone) { const f = await o.media.bytes(m); if (f) files[m.id] = f } }))
-    const scene = toExcalidraw(d.marks, { tint: d.tint, places: { ...d.places, ...p.places }, all: p.all, files })
-    if (!scene) throw new OpError("nothing to keep: it has no scratch pad, card or words (all: its marks too)", 409)
+    await Promise.all(d.marks.map(async (m) => { if ((m.type === "image" || m.type === "video") && m.id && !m.gone) { const f = await o.media.bytes(m); if (f) files[m.id] = f } }))
+    const scene = toExcalidraw(d.marks, { tint: d.tint, places: { ...d.places, ...p.places }, all: p.all, files, question: d.question })
+    if (!scene) throw new OpError("nothing to keep: it has no scratch pad, card, button or words (all: its marks too)", 409)
     const path = p.path ? withExt(p.path) : free(`${FOLDER}/${titleOf(d)}.excalidraw`)
     await ctx.api("PUT", "file", { path, text: `${JSON.stringify(scene, null, 2)}\n` })
     if (layers.get(d.agent) === d) { layers.set(d.agent, { ...d, kept: path }); o.send(message(d.agent)) }
