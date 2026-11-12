@@ -56,6 +56,9 @@ is its point.
 - Done means `npm run verify` passes (build, check, and the tests and QA the branch reaches) and the change is live.
   `npm run verify -- --all` (`npm test` and smoke too) only for a change much rests on (a dependency, the build, the
   test harness): say why. CI runs the full suite on three OSes on every push.
+- A red main is everyone's. "It fails the same way on main" is never a reason to land: a test red on main fails your
+  change too. Fix it (its own commit, the cause found, no retry or skip without the reason in the test), or, when a
+  job already fixes it (`vau companion jobs`), hand it what you found and wait for its fix before landing.
 - Iterate on the failing stage's own command (verify prints it, and its whole output's file), then verify once at the
   end: it skips what passed on the same files, so a rerun after a commit or to add `--try` costs nothing.
 - A change likely to behave differently on Windows or Linux (processes, paths, file times, the CLI's shims, CI: verify
@@ -106,5 +109,5 @@ is its point.
   area (`phone`, `desktop`, `editor`, `plugins`, `server`, `cli`...). `.githooks/commit-msg` checks the shape.
   `.githooks/pre-push` runs tsc, `npm run check` and the desktop main process's launch budget
   (`node tools/perf/startup.ts --main`) before a push to main, and says when main's CI is red (the job, the test, since
-  which commit, never blocking): CI on main is everyone's, keep it green. Over the
-  budget, cut what the main process imports at launch (import it lazily); raise the limit only for growth you meant.
+  which commit, never blocking). Over a launch budget (`tools/perf/startup.json`), load the new code lazily; a limit
+  is never raised inside a feature's commit, only by a commit of its own saying what the growth buys.

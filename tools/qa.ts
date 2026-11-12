@@ -159,7 +159,8 @@ const variant = (name: string): Variant => ({ day: UNDATED.has(name) ? ANCHOR : 
 
 /** Node running `args` in the checkout, in the caller's QA slot: its exit code and output, killed after TIMEOUT. */
 async function exec(args: string[], env: Record<string, string>) {
-  const child = spawn(process.execPath, args, { cwd: ROOT, env: { ...process.env, ...env, VAULTITE_QA_SLOT: "1" } })
+  // (a job's terminal names its home server: a script's vau would take what reaches the user there, not to QA's server)
+  const child = spawn(process.execPath, args, { cwd: ROOT, env: { ...process.env, VAULTITE_HOME: "", VAULTITE_HOME_AS: "", VAULTITE_TERMINAL: "", ...env, VAULTITE_QA_SLOT: "1" } })
   let text = ""
   child.stdout.on("data", (b) => { text += b })
   child.stderr.on("data", (b) => { text += b })

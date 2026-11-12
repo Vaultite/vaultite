@@ -27,7 +27,7 @@ async function serve(vault, local) {
   const base = `http://127.0.0.1:${port}/`
   let up = false
   for (let i = 0; i < 120 && !up && server.exitCode === null; i++) { try { up = (await fetch(`${base}api/state`)).ok } catch { await wait(250) } }
-  if (!up) { console.error(`boot: the server didn't start\n${said}`); stop(); process.exit(1) }
+  if (!up) { console.error(`boot: the server didn't start\n${said}`); await stop(); process.exit(1) }
   return base
 }
 let base = process.argv[2], tmp = null, github = null, bundles = null
@@ -42,12 +42,16 @@ if (!base) {
 }
 if (!base.endsWith("/")) base += "/"
 
-function stop() {
-  for (const { server, port } of servers) {
-    if (server.exitCode === null) server.kill()
+async function stop() {
+  // (its files removed only once it's gone: on a busy machine a server took over the 2 s of retries to exit, still writing)
+  await Promise.all(servers.map(async ({ server, port }) => {
+    if (server.exitCode === null && server.signalCode === null) {
+      const gone = new Promise((ok) => server.once("exit", ok))
+      server.kill()
+      if (!await Promise.race([gone.then(() => true), new Promise((ok) => setTimeout(ok, 15_000, false))])) { server.kill("SIGKILL"); await gone }
+    }
     stopTerminals(port)
-  }
-  // (a server just killed may still be writing its last files: retried)
+  }))
   if (tmp) fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
 }
 
@@ -57,7 +61,7 @@ let doing = "starting"
 setTimeout(async () => {
   console.error(`boot: stuck 10 min at ${doing}`)
   await Promise.race([browser.close(), wait(5000)]).catch(() => {})
-  stop()
+  await stop()
   process.exit(1)
 }, 600_000).unref()
 // Generous waits: a busy machine is slow, not broken (a broken build fails fast: the error screen, a pageerror).
@@ -197,7 +201,7 @@ try {
   }
 } finally {
   await browser.close()
-  stop()
+  await stop()
 }
 console.log(fails.length ? `\nboot: ${fails.length} failed` : "\nboot: ok, the app starts")
 process.exit(fails.length ? 1 : 0)

@@ -25,8 +25,12 @@ export async function pictures(o: { url: string; width: number; height: number; 
       if (r.exceptionDetails) throw new Error(`the page: ${r.exceptionDetails.text}`)
       return r.result?.value
     }
-    // (a page that draws itself after load, as an app does, and its web fonts: in before the picture)
-    for (let i = 0; i < 40 && !(await js("!!document.body && document.body.innerText.trim().length > 0")); i++) await sleep(250)
+    // (a page that draws itself after load, as an app does, and its web fonts: in before the picture; what's asked for,
+    // when it's elements, as text alone came before them on a slow machine)
+    const drawn = o.selector
+      ? `document.URL !== "about:blank" && [...document.querySelectorAll(${JSON.stringify(o.selector)})].some((e) => e.getBoundingClientRect().width > 0)`
+      : `document.URL !== "about:blank" && !!document.body && document.body.innerText.trim().length > 0`
+    for (let i = 0; i < 120 && !(await js(drawn)); i++) await sleep(250)
     await js("document.fonts ? document.fonts.ready.then(() => true) : true")
     await sleep(800)
     type Rect = { x: number; y: number; w: number; h: number }

@@ -11,6 +11,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   optional, and that without them Vaultite stays on your own network.
 - **A faded file bar comes back from anywhere along its pane's top**: the margins left of Back and right of the
   last button bring it too, not only the bar itself.
+- **On Linux, a closed terminal's shell ends at once**: the terminal server no longer keeps open the ptys of
+  shells the app's server ran itself when it started it.
 - **The desktop app's first-run window and screen sharing's pages open again**: since updates began downloading only
   the files that changed, they stopped on an error as they started.
 - **A shared folder's link opens again for its guests**: since updates began downloading only the files that changed,

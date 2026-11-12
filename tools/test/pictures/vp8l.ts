@@ -82,10 +82,11 @@ export async function testVp8l(): Promise<void> {
     // (damaged copies: cut short, bits flipped, garbage after a header)
     const rnd = random(9649), outcomes = new Map<string, number>()
     let slowest = 0
+    let worst: Uint8Array = new Uint8Array(0)
     const tally = (data: Uint8Array) => {
       const { how, ms } = attempt(data)
       outcomes.set(how, (outcomes.get(how) ?? 0) + 1)
-      slowest = Math.max(slowest, ms)
+      if (ms > slowest) { slowest = ms; worst = data }
     }
     for (const f of ["photo", "alpha", "odd", "gradient", "pal4", "pal16", "pal200", "screen"]) {
       const good = vp8l(`${DIR}/${f}.webp`)
@@ -106,6 +107,8 @@ export async function testVp8l(): Promise<void> {
     }
     const strange = [...outcomes.keys()].filter((k) => k.startsWith("threw"))
     check("damaged copies decode or throw Unreadable", strange.length === 0, strange)
+    // A slow input is slow each time; a busy machine's pause (1.3 s once on CI's arm64 runner, for 3 ms here) is not.
+    slowest = Math.min(slowest, ...[0, 1].map(() => attempt(worst).ms))
     check("damaged copies never hang (each under a second)", slowest < 1000, { slowest })
     console.log(`     damaged copies: ${JSON.stringify(Object.fromEntries(outcomes))}, slowest ${slowest.toFixed(1)} ms`)
 

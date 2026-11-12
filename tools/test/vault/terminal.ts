@@ -363,6 +363,9 @@ export default async ($: VaultTest) => {
     // (ended even when a step throws: a keeper left behind holds its shells' ptys)
     const stop = () => { try { process.kill(Number(fs.readFileSync(`${keeper.files}.pid`, "utf8")), "SIGTERM") } catch { /* none */ } }
     const access: unknown[] = [await keeper.access(tmp)]
+    // A shell of this process's own while the terminal server starts: on Linux it inherits that pty, and must let it go.
+    const { createRequire } = await import("node:module")
+    const own = (createRequire(import.meta.url)("node-pty") as typeof import("node-pty")).spawn("/bin/sh", [], { cwd: tmp, env: spec.env })
     try {
       for (const [id, end] of ways) {
         await keeper.create(id, spec, { spare: id === "leak-spare" })
@@ -376,7 +379,7 @@ export default async ($: VaultTest) => {
         seen.push({ id, open, ready, ended, left })
       }
       access.push(await keeper.access(tmp), await keeper.access(path.join(tmp, "no-such-folder")))
-    } finally { stop() }
+    } finally { stop(); own.kill() }
     check("terminal: the terminal server lets go of a shell's pty once it ends", seen.every((s) => (s.open as number) >= 1 && s.ready && s.ended && s.left === 0), seen)
     // (Settings > Permissions: whether the terminal server itself may read the vault, which macOS can refuse it and not the app)
     check("terminal: the terminal server says whether it can read a folder, and never starts for that", JSON.stringify(access) ===

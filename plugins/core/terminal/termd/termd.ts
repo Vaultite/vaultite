@@ -17,6 +17,15 @@ const WIN = process.platform === "win32"
 const SELF = fileURLToPath(import.meta.url)
 
 const log = (...a: unknown[]) => console.log(new Date().toISOString(), ...a)
+// node-pty's ptys aren't close-on-exec: on Linux this one inherits those its starter held, and would keep them (and
+// their shells' hangup) for as long as it runs. None is its own yet. (macOS' libuv spawns closing them.)
+if (process.platform === "linux") {
+  for (const f of fs.readdirSync("/proc/self/fd")) {
+    const fd = Number(f)
+    if (fd <= 2) continue
+    try { if (/^\/dev\/(ptmx|pts\/)/.test(fs.readlinkSync(`/proc/self/fd/${f}`))) fs.closeSync(fd) } catch { /* gone */ }
+  }
+}
 // (run from a code root in the app's store: kept while it lives, as it outlives the app and its updates)
 void holdRoot(SELF, "termd")
 /** Its own files are gone (the checkout moved): node-pty runs spawn-helper by its path there, so no shell can start.
