@@ -11,14 +11,14 @@ const B = B0.endsWith("/") ? B0 : `${B0}/`
 const PRINT = process.argv.includes("--print")
 const SECS = 20
 // Callbacks a minute (one note; measured ~15 shown, mostly Dispatch's 5 s poll, ~3 hidden): a new poll shows here.
-// The server's main-thread wakeups a minute, the window open (measured ~200; an always-on timer showed ~3000).
 const LIMITS = { shown: 30, hidden: 30, server: 600 }
 
-/** The server's main thread's context switches so far, where /proc tells (Linux), else null. */
+/** The server's main thread's own sleeps so far (voluntary switches: the scheduler's preempting is the machine's load),
+ *  where /proc tells (Linux), else null. */
 function serverWakes() {
   try {
     const pid = execFileSync("lsof", [`-tiTCP:${new URL(B).port}`, "-sTCP:LISTEN"], { encoding: "utf8" }).trim().split("\n")[0]
-    return [...fs.readFileSync(`/proc/${pid}/status`, "utf8").matchAll(/^(?:non)?voluntary_ctxt_switches:\s+(\d+)/gm)].reduce((a, m) => a + Number(m[1]), 0)
+    return [...fs.readFileSync(`/proc/${pid}/status`, "utf8").matchAll(/^voluntary_ctxt_switches:\s+(\d+)/gm)].reduce((a, m) => a + Number(m[1]), 0)
   } catch { return null }
 }
 
