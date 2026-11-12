@@ -558,7 +558,7 @@ export default async ($: VaultTest) => {
       check("summoned: a tool ending its turn with nothing said yet goes on, told to tell them what it did: an ask always gets words",
         /heard nothing from you on this ask/.test(nudged?.text ?? ""), nudged)
       await idle(quick!)
-      const { quietly } = await import("../../../plugins/core/companion/summoned.ts")
+      const { quietly } = await import("../../../plugins/core/companion/talkturn.ts")
       check("summoned: a turn still ending silent says what its last tool did (no ids), else that it got nowhere",
         quietly('Closed "Fix the page" (jzzed4g2): done.') === 'Closed "Fix the page": done.' && /^I didn't get to an answer/.test(quietly("")) && quietly("I couldn't: no job zz") === "I couldn't: no job zz")
       const rows = (await api("POST", "ops/companion.timings", {}))[1].rows.filter((x: Any) => x.as === "Claude (summoned)")

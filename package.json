@@ -131,6 +131,7 @@
     "builder-util": "^26.15.3",
     "electron": "^44.9.3",
     "electron-builder": "^26.15.3",
+    "fast-check": "4.10.2",
     "oxlint": "1.85.0",
     "path-browserify": "^1.0.1",
     "playwright-core": "^1.63.0",
