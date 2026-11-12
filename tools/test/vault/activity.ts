@@ -5,7 +5,8 @@ import type { Any, VaultTest } from "./harness.ts"
 export default async ($: VaultTest) => {
   const { VAULT, api, app, check, tmp, write } = $
   // ---------- Activity: who did what (plugin.onRequest, plugin.onChange), timings ----------
-  const act = await import("../../../plugins/core/activity/plugin.ts")
+  const { sessionsOf } = await import("../../../plugins/core/activity/reading.ts")
+  const { routeOf } = await import("../../../plugins/core/activity/timings.ts")
   /** A request as server.ts reports it: started, run, ended. */
   async function actHeard(method: string, p: string, body: unknown, client: string | null, agent: string | null = null, at = Date.now()) {
     const [route, qs] = p.split("?")
@@ -80,7 +81,7 @@ export default async ($: VaultTest) => {
     const [, txt] = await api("POST", "ops/activity.sessions", { path: "Act/other.md" })
     check("activity: activity.sessions answers them", txt.sessions?.length === 1 && txt.sessions[0].sessionId === "sid-three", txt)
     const ev = (t: number, actor: Any, paths: string[], action = "edit"): Any => ({ id: String(t), t, actor: { kind: "agent", name: "Claude Code", ...actor }, action, text: "", paths })
-    const g = act.sessionsOf([
+    const g = sessionsOf([
       ev(1, { terminal: "claude-a" }, ["N/x.md"]), ev(2, { terminal: "claude-a", sessionId: "s-a", session: "Fix tabs" }, ["N/x.md"]),
       ev(5, { terminal: "claude-b" }, ["N/x.md"]), ev(6, { terminal: "claude-c", sessionId: "s-c" }, ["N/y.md"]),
       ev(7, { terminal: "claude-d" }, ["N/x.md"], "open"), { ...ev(8, {}, ["N/x.md"]), actor: { kind: "you", name: "You" } },
@@ -99,7 +100,7 @@ export default async ($: VaultTest) => {
   check("activity: the summary counts who and which files", sum.buckets.length === 24 && sum.actors.some((a: Any) => a.name === "You") && sum.files.some((f: Any) => f.path === "Act/a.md" && f.n >= 2), sum)
   const [, pf] = await api("GET", "activity/perf")
   check("activity: timings by route", pf.routes.some((r: Any) => r.route === "PUT file" && r.n >= 2) && pf.requests >= 5 && typeof pf.lag.p99 === "number", pf.routes)
-  check("activity: routes' ids become *", act.routeOf("people/Alice Park") === "people/*" && act.routeOf("claude-code/session/9f2c-1") === "claude-code/session/*" && act.routeOf("state") === "state")
+  check("activity: routes' ids become *", routeOf("people/Alice Park") === "people/*" && routeOf("claude-code/session/9f2c-1") === "claude-code/session/*" && routeOf("state") === "state")
   // Operations (POST /api/ops/<id>): worded like the routes they replace, by who asked; reads as reads; timed per op.
   await actHeard("POST", "ops/note.create", { title: "Act op note", body: "From an op." }, "cli", "claude-code")
   await actHeard("POST", "ops/person.timeline-add", { person: "Alice Park", kind: "call", text: "About the op" }, "mcp", "codex")
@@ -122,12 +123,12 @@ export default async ($: VaultTest) => {
   check("activity: a call the CLI got wrong is kept with why (vau activity --action failed)", (await actEvents("&action=failed")).some((e: Any) =>
     e.text.startsWith("nope.thing failed: no operation 'nope.thing'") && e.status === 404), await actEvents("&action=failed"))
   const [, pf2] = await api("GET", "activity/perf")
-  check("activity: ops are timed one by one", act.routeOf("ops/note.create") === "ops/note.create" && pf2.routes.some((r: Any) => r.route === "POST ops/note.create"), pf2.routes.map((r: Any) => r.route))
+  check("activity: ops are timed one by one", routeOf("ops/note.create") === "ops/note.create" && pf2.routes.some((r: Any) => r.route === "POST ops/note.create"), pf2.routes.map((r: Any) => r.route))
   const [, blk] = await api("GET", "render?path=Act/a.md")
   write("Act/feed.md", "```block-activity\npath: Act/a.md\n```\n")
   const [, feedText] = await api("GET", "render?path=Act/feed.md")
   check("activity: its block as text links files", /Edited \[\[Act\/a\]\]/.test(feedText) && typeof blk === "string", feedText)
   fs.rmSync(path.join(VAULT, ".vaultite/plugins/activity/data.json"))
   check("activity: kept outside the vault", fs.existsSync(path.join(tmp, "local", "activity")) && !fs.existsSync(path.join(VAULT, "activity")))
-  Object.assign($.vars, { act, actHeard })
+  Object.assign($.vars, { actHeard })
 }

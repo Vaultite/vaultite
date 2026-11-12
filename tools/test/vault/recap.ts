@@ -4,7 +4,8 @@ import type { Any, VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, app, check, exists, read, write } = $
-  const { act, actHeard } = $.vars
+  const { actHeard } = $.vars
+  const { recapsDue } = await import("../../../plugins/core/activity/dayrecaps.ts")
   // ---------- Activity's recaps (Recaps/<date>.md): what you did each day, from File history's versions and the events ----------
   {
   const rc = await import("../../../plugins/core/activity/recap.ts")
@@ -131,11 +132,11 @@ export default async ($: VaultTest) => {
   check("recap: each day's count by kind", counts.days[localDay()].tasks >= 3 && counts.days[localDay()].captures >= 7, counts.days[localDay()])
   // The job: yesterday's written once; deleted, it isn't made again.
   const yfile = `Recaps/${localDay(Date.now() - 86_400_000)}.md`
-  await act.recapsDue()
+  await recapsDue()
   check("recap: the days before are written once", exists(yfile) && read(yfile).includes("Yesterday's line"), exists(yfile) && read(yfile))
   fs.rmSync(path.join(VAULT, yfile))
   await api("GET", "state")
-  await act.recapsDue()
+  await recapsDue()
   check("recap: one you deleted isn't made again", !exists(yfile))
   {
     // One machine writes the recaps (their job's, Machines' first): --write elsewhere is passed on to it, its answer
