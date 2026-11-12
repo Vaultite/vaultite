@@ -9,7 +9,7 @@ import os from "node:os"
 import path from "node:path"
 import { ROOT, keepAwake, qa, uiAt, until, wait } from "./lib/qa.mjs"
 
-const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
+const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false, motion: true })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-pagepeek-"))
 keepAwake(600)
 

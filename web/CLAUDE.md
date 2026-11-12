@@ -83,6 +83,9 @@
   `counts.json`) and `requests.mjs` (requests per flow, `requests.json`); after a win, run it with `--ratchet` and
   commit the lowered limits. `loading.mjs` fails on any shift
   in the sidebars or the status bar, however small: one scores a few thousandths, under any CLS limit.
+- QA is still (Reduce motion, desktop copies too): a script about motion says `qa(url, { motion: true })`. A desktop
+  copy's pointer is `globalThis.qaPointer`, never the user's.
+- QA reads Vaultite/plugins at `tools/qa_plugins.json`'s commit (`node tools/qa_plugins.ts --bump` moves it).
 - QA runs on Playwright's Chromium (`CHROME` in `web/qa/lib/qa.mjs`): a headless Google Chrome left running hides the
   user's Chrome.
 - On Linux, `npm run qa` runs the desktop scripts on a virtual display of their own (xvfb-run); `SHOW=1`: on yours.

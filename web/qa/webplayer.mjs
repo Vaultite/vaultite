@@ -61,11 +61,9 @@ const win = await app.firstWindow()
 watch(win, { console: true, fail: false })
 await win.waitForSelector("[role=tree]", { timeout: 60000 })
 const origin = new URL(win.url()).origin
-await app.evaluate(({ BaseWindow, screen }) => {
+await app.evaluate(({ BaseWindow }) => {
   const w = BaseWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }); w.focus()
-  // (the pointer as the test puts it, and the Mac's traffic lights as the player shows them)
-  const cursor = screen.getCursorScreenPoint.bind(screen)
-  screen.getCursorScreenPoint = () => globalThis.__cursor ?? cursor()
+  // (the Mac's traffic lights as the player shows them)
   globalThis.__lights = []
   const vis = BaseWindow.prototype.setWindowButtonVisibility
   if (vis) BaseWindow.prototype.setWindowButtonVisibility = function (on) { if (this.getTitle() === "Vaultite player") globalThis.__lights.push(on); return vis.call(this, on) }
@@ -192,7 +190,7 @@ check("… drawn edge to edge, no gap at any corner", f1 && f1.colours.every(fil
 check("its controls are hidden at first", opened && !opened.bar?.shown && (!MAC || (await app.evaluate(() => globalThis.__lights)).at(-1) === false), opened?.bar)
 const strip = (await where()).at
 // (the pointer alone, no event from the page: the window watches it itself, whatever its page does)
-await app.evaluate((_e, at) => { globalThis.__cursor = at }, { x: strip.x + 200, y: strip.y + 10 })
+await app.evaluate((_e, at) => { globalThis.qaPointer = at }, { x: strip.x + 200, y: strip.y + 10 })
 const shown = await until(async () => { const w = await where(); return w.bar?.shown ? w : null }, 2000)
 check("the pointer at its top shows its controls: a bar over the page, the width of the window", shown?.bar.top && shown.bar.bounds.width === shown.content.width && shown.bar.bounds.y === 0, shown?.bar)
 if (MAC) check("… and the Mac's traffic lights", (await app.evaluate(() => globalThis.__lights)).at(-1) === true)
@@ -203,9 +201,9 @@ const barShot = await app.evaluate(async ({ BaseWindow }) => {
 })
 if (OUT) fs.writeFileSync(path.join(OUT, "2-bar.png"), Buffer.from(barShot.png, "base64"))
 check("… which drags the window", barShot.drag === "drag", barShot.drag)
-await app.evaluate((_e, at) => { globalThis.__cursor = at }, { x: strip.x + 200, y: strip.y + 200 })
+await app.evaluate((_e, at) => { globalThis.qaPointer = at }, { x: strip.x + 200, y: strip.y + 200 })
 check("the pointer leaving the top hides them", await until(async () => !(await where()).bar?.shown, 2000) && (!MAC || (await app.evaluate(() => globalThis.__lights)).at(-1) === false))
-await app.evaluate(() => { globalThis.__cursor = { x: -9999, y: -9999 } })
+await app.evaluate(() => { globalThis.qaPointer = { x: -9999, y: -9999 } })
 
 check("resized step by step, its video fills it at every step", await steady("#v"))
 

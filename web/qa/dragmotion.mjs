@@ -7,7 +7,7 @@
 //   node web/qa/dragmotion.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { apiAt, command, palette, qa, until, wait } from "./lib/qa.mjs"
-const { args: [B, OUT = "/tmp/dragmotion-shots/"], browser, check, watch, done } = await qa(import.meta.url)
+const { args: [B, OUT = "/tmp/dragmotion-shots/"], browser, check, watch, done } = await qa(import.meta.url, { motion: true })
 mkdirSync(OUT, { recursive: true })
 const api = apiAt(B)
 const look = await api("GET", "config/appearance")

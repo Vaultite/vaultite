@@ -4,7 +4,7 @@ import "./dockenv.ts"
 import { app, BaseWindow, type BaseWindowConstructorOptions, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, session, shell, systemPreferences, type IpcMainInvokeEvent, type Rectangle, type WebContents, type WebPreferences } from "electron"
 import { AppWindow } from "./appwindow.ts"
 import { relaunchOptions, vaultArg } from "./argv.ts"
-import { QUIET, quiet, quietPage } from "./quiet.ts"
+import { QUIET, fakePointer, quiet, quietPage } from "./quiet.ts"
 import { execFile, execFileSync, fork, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
@@ -64,7 +64,7 @@ if (QUIET) {
   app.on("web-contents-created", (_e, wc) => quietPage(wc))
   AppWindow.each((w) => quiet(w, w.webContents))
   app.focus = () => {}
-  void app.whenReady().then(() => app.dock?.hide())
+  void app.whenReady().then(() => { fakePointer(); app.dock?.hide() })
 }
 const driven = !!process.env.VAULTITE_QUIET || app.commandLine.hasSwitch("remote-debugging-port")
 if (driven && !process.env.VAULTITE_SOUND) app.commandLine.appendSwitch("mute-audio")

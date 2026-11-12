@@ -3,7 +3,7 @@
 //   node web/qa/tabmotion.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { apiAt, qa, wait } from "./lib/qa.mjs"
-const { args: [B, OUT = "/tmp/tabmotion-shots/"], browser, check, watch, done } = await qa(import.meta.url)
+const { args: [B, OUT = "/tmp/tabmotion-shots/"], browser, check, watch, done } = await qa(import.meta.url, { motion: true })
 mkdirSync(OUT, { recursive: true })
 // Frames mid-way only when asked (QA_FRAMES=1): a screenshot during a transition can hold up headless Chrome's next
 // frame past the transition's 4s limit, which then fails it.

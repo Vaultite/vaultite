@@ -25,12 +25,7 @@ try {
   await win.waitForSelector("[role=tree]", { timeout: 60000 })
   const helper = (fn, arg) => app.evaluate((_e, [f, a]) => globalThis.vaultiteHelper && new Function("h", "a", `return (${f})(h, a)`)(globalThis.vaultiteHelper, a), [String(fn), arg])
   check("the helper runs with the app", await helper(() => true))
-  // (the pointer, stood in for: where the main process reads it)
-  const display = await app.evaluate(({ screen }) => {
-    const real = screen.getCursorScreenPoint.bind(screen)
-    screen.getCursorScreenPoint = () => globalThis.qaPointer ?? real()
-    return screen.getDisplayNearestPoint(real()).bounds
-  })
+  const display = await app.evaluate(({ screen }) => screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).bounds)
   // (a 15-inch Air's notch, and status items from 951 as on the M4: a knock's line has no room beside it, so it drops
   // into a card below the bar)
   const items = [951, 999, 1033, 1071].map((x) => ({ window: x, bundle: "com.apple.controlcenter", name: "Control Center", layer: 25, seen: true, vaultite: false, frame: { x: display.x + x, y: display.y, width: 38, height: 33 } }))

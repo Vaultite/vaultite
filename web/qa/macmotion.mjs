@@ -6,7 +6,7 @@
 // WRITES "Qa motion": throwaway server only.
 //   node web/qa/macmotion.mjs <base url>
 import { apiAt, openPalette, qa, until, wait } from "./lib/qa.mjs"
-const { args: [B], browser, check, watch, done } = await qa(import.meta.url)
+const { args: [B], browser, check, watch, done } = await qa(import.meta.url, { motion: true })
 const api = apiAt(B, { "X-Vaultite-Client": "app/qa" })
 
 const D = "Qa motion"

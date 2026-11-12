@@ -13,7 +13,7 @@ import os from "node:os"
 import path from "node:path"
 import { ROOT, keepAwake, qa, until, wait } from "./lib/qa.mjs"
 
-const { args: [VAULT], check, watch, done } = await qa(import.meta.url, { chrome: false })
+const { args: [VAULT], check, watch, done } = await qa(import.meta.url, { chrome: false, motion: true })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-pageorder-"))
 const site = http.createServer((q, r) => { r.writeHead(200, { "Content-Type": "text/html" }); r.end(`<!doctype html><title>${q.url === "/b" ? "Beacon" : "Lighthouse"}</title><body style='margin:0;height:100vh;background:#cde'>Site`) })
 await new Promise((ok) => site.listen(0, "127.0.0.1", ok))

@@ -3,7 +3,7 @@
 //   node web/qa/panemotion.mjs <base url> <vault path> [out dir]
 import { mkdirSync, readdirSync } from "node:fs"
 import { apiAt, command, qa, wait } from "./lib/qa.mjs"
-const { args: [B, VAULT, OUT = "/tmp/panemotion-shots/"], browser, check, watch, done } = await qa(import.meta.url)
+const { args: [B, VAULT, OUT = "/tmp/panemotion-shots/"], browser, check, watch, done } = await qa(import.meta.url, { motion: true })
 mkdirSync(OUT, { recursive: true })
 const api = apiAt(B)
 const note = readdirSync(`${VAULT}/Notes`).filter((f) => f.endsWith(".md")).sort()[0]

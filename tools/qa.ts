@@ -13,18 +13,19 @@ import { FRONT, MEASURES, QA, SKIP, allScripts, head } from "./qa_scripts.ts"
 import { type Boot, copyTemplate, template, type Variant } from "./qa_template.ts"
 import { asInteractiveJob, throttled } from "./qa_job.ts"
 import { officialBundles, officialRepos } from "./test/official.ts"
+import { officialPlugins } from "./qa_plugins.ts"
 import { ANCHOR, localToday } from "../core/sandbox.ts"
 import { sharedTmp } from "../core/testrun.ts"
 import { MARK, carrying, endAll } from "./test/leftovers.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "..")
-const OFFICIAL = path.resolve(process.env.VAULTITE_PLUGINS ?? path.join(ROOT, "..", "vaultite-plugins"))
+const OFFICIAL = officialPlugins()
 const TIMEOUT = 8 * 60_000
 /** Scripts on the sample as written, whatever the day: counts that only go down need the same files every run, and a
  *  sandbox dated to today has that day's logs. */
 const UNDATED = new Set(["counts", "requests", "a11y"])
-/** Budgets of the app alone: without Vaultite/plugins' own, whose checkout moves on its own (its bundles, renders and
- *  polls, dispatch's every 5 s, aren't this repo's to pin). */
+/** Budgets of the app alone: without Vaultite/plugins' own (its bundles, renders and polls, dispatch's every 5 s, aren't
+ *  this repo's to pin). */
 const ALONE = new Set(["counts", "requests"])
 
 const argv = process.argv.slice(2)

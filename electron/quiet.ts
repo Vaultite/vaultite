@@ -4,6 +4,18 @@ import { type BaseWindow, type Rectangle, screen, type WebContents } from "elect
 
 export const QUIET = !!process.env.VAULTITE_QUIET
 
+declare global { var qaPointer: Electron.Point | undefined }
+
+/** Never the user's pointer: `globalThis.qaPointer`, else the main display's centre, where Xvfb's starts. */
+export function fakePointer() {
+  if (!QUIET) return
+  screen.getCursorScreenPoint = () => {
+    if (globalThis.qaPointer) return globalThis.qaPointer
+    const b = screen.getPrimaryDisplay().bounds
+    return { x: Math.round(b.x + b.width / 2), y: Math.round(b.y + b.height / 2) }
+  }
+}
+
 /** What a quiet copy was asked to show and didn't, for the scripts: on globalThis, so this file keeps no state (the
  *  menu-bar helper reloaded from another code root runs its own copy of it). */
 const shownInstead = () => ((globalThis as { vaultiteQuiet?: { lookUps: number } }).vaultiteQuiet ??= { lookUps: 0 })

@@ -5,7 +5,7 @@
 //   node web/qa/paneswipe.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { qa, until, wait, webkitLaunch } from "./lib/qa.mjs"
-const { args: [B, OUT = "/var/tmp/paneswipe-shots/"], browser, check, watch, done } = await qa(import.meta.url)
+const { args: [B, OUT = "/var/tmp/paneswipe-shots/"], browser, check, watch, done } = await qa(import.meta.url, { motion: true })
 mkdirSync(OUT, { recursive: true })
 const api = (method, p, body) => fetch(`${B}api/${p}`, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined })
 const long = (name) => `# ${name}\n\n${Array.from({ length: 60 }, (_, i) => `${name} paragraph ${i + 1}: words enough to wrap across the phone's width, twice at least.`).join("\n\n")}\n`

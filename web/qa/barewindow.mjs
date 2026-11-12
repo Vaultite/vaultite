@@ -59,11 +59,9 @@ try {
   watch(win, { console: true, fail: false })
   await win.waitForSelector("[role=tree]", { timeout: 60000 })
   const origin = new URL(win.url()).origin
-  await app.evaluate(({ BaseWindow, Menu, screen }) => {
+  await app.evaluate(({ BaseWindow, Menu }) => {
     BaseWindow.getAllWindows()[0].setBounds({ x: 40, y: 40, width: 1280, height: 800 })
-    // (the pointer as the test puts it, a pop-out's traffic lights as it shows them, and the menus the pages pop up)
-    const cursor = screen.getCursorScreenPoint.bind(screen)
-    screen.getCursorScreenPoint = () => globalThis.__cursor ?? cursor()
+    // (a pop-out's traffic lights as it shows them, and the menus the pages pop up)
     globalThis.__lights = []
     const vis = BaseWindow.prototype.setWindowButtonVisibility
     globalThis.__popupLights = {}
@@ -141,7 +139,7 @@ try {
 
   // ---------- the pointer at its top ----------
   const at = bare.at
-  await app.evaluate((_e, c) => { globalThis.__cursor = c }, { x: at.x + 300, y: at.y + 12 })
+  await app.evaluate((_e, c) => { globalThis.qaPointer = c }, { x: at.x + 300, y: at.y + 12 })
   await send([{ type: "mouseMove", x: 300, y: 12 }])
   const shown = await until(async () => { const w = await where(); return w.strip?.shown ? w : null }, 2000)
   check("the pointer at its top: a strip across it over the page, which drags the window", shown && shown.strip.top && shown.strip.bounds.y === 0
@@ -159,13 +157,13 @@ try {
   await shot("3-top")
   if (OUT) fs.writeFileSync(path.join(OUT, "3-strip.png"), Buffer.from(await app.evaluate(async ({ BaseWindow }) => (await BaseWindow.getAllWindows().find((x) => x.webContents?.getURL().includes("?popout="))
     .contentView.children.find((x) => x.webContents?.getURL().startsWith("data:")).webContents.capturePage()).toPNG().toString("base64")), "base64"))
-  await app.evaluate((_e, c) => { globalThis.__cursor = c }, { x: at.x + 300, y: at.y + 300 })
+  await app.evaluate((_e, c) => { globalThis.qaPointer = c }, { x: at.x + 300, y: at.y + 300 })
   check("the pointer leaving the top hides them", await until(async () => !(await where()).strip.shown, 2000) && (await lights()) === false)
   // (its own page's pointer too: a note or a terminal there)
-  await app.evaluate((_e, c) => { globalThis.__cursor = c }, { x: at.x + 300, y: at.y + 12 })
+  await app.evaluate((_e, c) => { globalThis.qaPointer = c }, { x: at.x + 300, y: at.y + 12 })
   await send([{ type: "mouseMove", x: 300, y: 12 }], false)
   check("… over the window's own page too", await until(async () => (await where()).strip.shown, 2000) && (await lights()) === true)
-  await app.evaluate((_e, c) => { globalThis.__cursor = c }, { x: at.x + 300, y: at.y + 300 })
+  await app.evaluate((_e, c) => { globalThis.qaPointer = c }, { x: at.x + 300, y: at.y + 300 })
   await until(async () => !(await where()).strip.shown, 2000)
   // (lower down, the page has the pointer: its own top is its own)
   await send([{ type: "mouseMove", x: 300, y: 300 }, { type: "mouseDown", x: 300, y: 300, button: "left", clickCount: 1 }, { type: "mouseUp", x: 300, y: 300, button: "left", clickCount: 1 }])

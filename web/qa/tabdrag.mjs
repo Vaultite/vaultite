@@ -7,7 +7,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { qa, wait } from "./lib/qa.mjs"
-const { args: [B0, VAULT, OUT = "/tmp/tabdrag-shots/"], browser, check, watch, done } = await qa(import.meta.url)
+const { args: [B0, VAULT, OUT = "/tmp/tabdrag-shots/"], browser, check, watch, done } = await qa(import.meta.url, { motion: true })
 const B = B0.endsWith("/") ? B0 : `${B0}/`
 mkdirSync(OUT, { recursive: true })
 const keep = (f) => { const p = path.join(VAULT, ".vaultite", f); return { p, was: existsSync(p) ? readFileSync(p, "utf8") : null } }

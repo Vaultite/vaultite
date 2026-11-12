@@ -35,12 +35,34 @@ export function keepAwake(seconds) {
   const awake = spawn("caffeinate", ["-u", "-d", "-t", String(seconds)], { stdio: "ignore" })
   process.on("exit", () => awake.kill())
 }
+/** Reduce motion, unless a script tests motion (`qa(url, { motion: true })`): Chromium's switch for it reaches no page. */
+let moving = false
+function still(browser) {
+  if (moving) return browser
+  const newContext = browser.newContext.bind(browser), newPage = browser.newPage.bind(browser)
+  browser.newContext = (o = {}) => newContext({ reducedMotion: "reduce", ...o })
+  browser.newPage = (o = {}) => newPage({ reducedMotion: "reduce", ...o })
+  return browser
+}
+async function stillDesktop() {
+  const { _electron } = await import("playwright-core")
+  const launchApp = _electron.launch.bind(_electron)
+  _electron.launch = async (o) => {
+    const app = await launchApp(o)
+    if (moving) return app
+    const still = (p) => p.emulateMedia({ reducedMotion: "reduce" }).catch(() => {})
+    app.windows().forEach(still)
+    app.on("window", still)
+    return app
+  }
+}
 // (imported when used: boot.mjs, the smoke test, says it's skipped rather than failing where there's no Chrome)
-// (each waits for this machine's QA slot first: tools/qa_slots.ts)
-// (muted: a test never plays on the machine's speakers)
-export const launch = async (opts) => { await hold(); return (await import("playwright-core")).chromium.launch({ executablePath: CHROME, ...opts, args: [...(opts?.args ?? []), "--mute-audio"] }) }
+export const launch = async (opts) => {
+  await hold()
+  return still(await (await import("playwright-core")).chromium.launch({ executablePath: CHROME, ...opts, args: [...(opts?.args ?? []), "--mute-audio"] }))
+}
 /** Playwright's WebKit (`npx playwright install webkit`), for what only iOS's engine draws (-webkit-touch-callout). */
-export const webkitLaunch = async (opts) => { await hold(); return (await import("playwright-core")).webkit.launch(opts) }
+export const webkitLaunch = async (opts) => { await hold(); return still(await (await import("playwright-core")).webkit.launch(opts)) }
 
 /** `fn`'s first truthy value within `ms`, else its last; a throw counts as not yet (the page may be mid-render). */
 export async function until(fn, ms = 5000, every = 100) {
@@ -91,9 +113,11 @@ export const LIVE_OK = process.env.VAULTITE_QA_LIVE === "1"
 
 /** One run: its arguments, Chrome (`chrome: false` for none), its checks and its pages' errors; `done()` ends it, exit 1
  *  on any failure (noErrors() checks earlier, before a cleanup that could add some). `live`: it drives the helper,
- *  dictation or the voice, so it's skipped where the user's app runs unless VAULTITE_QA_LIVE=1. */
-export async function qa(script, { chrome = {}, live = false } = {}) {
+ *  dictation or the voice, so it's skipped where the user's app runs unless VAULTITE_QA_LIVE=1. `motion`: it moves. */
+export async function qa(script, { chrome = {}, live = false, motion = false } = {}) {
   const argv = args(script)
+  moving = motion
+  await stillDesktop()
   // (what it starts carries this, its desktop app's keepers too, which outlive the app by design: ended with the script)
   process.env[MARK] ??= `${path.basename(fileURLToPath(script), ".mjs")}-${process.pid}-${Date.now()}`
   if (live && !LIVE_OK && await userApp()) { console.log("skipped: the user's Vaultite app runs here (VAULTITE_QA_LIVE=1 runs it anyway)"); process.exit(0) }
@@ -146,7 +170,6 @@ export async function qa(script, { chrome = {}, live = false } = {}) {
   return { args: argv, browser, check, fails, errs, watch, noErrors, done, skip }
 }
 
-/** The app's API on `base`: JSON in, JSON (or text) out. */
 export const apiAt = (base, headers = {}) => async (method, p, body) => {
   const r = await fetch(`${base}api/${p}`, { method, headers: { "Content-Type": "application/json", ...headers }, body: body == null ? undefined : JSON.stringify(body) })
   return r.headers.get("content-type")?.includes("json") ? r.json() : r.text()
@@ -198,7 +221,6 @@ export async function pluginsFilter(page, label, { category = false } = {}) {
   await page.locator('[aria-label="Close menu"]').click()
 }
 
-/** Real touches through CDP: `touch(type, x, y)`, and `swipe` a finger from one point to another in steps. */
 export async function fingers(page) {
   const cdp = await page.context().newCDPSession(page)
   const touch = (type, x, y) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x, y }] })
@@ -210,7 +232,6 @@ export async function fingers(page) {
   return { cdp, touch, swipe }
 }
 
-/** What the page's terminals show, as text. */
 /** This machine's tailnet name and owner's login, from Tailscale ({} without it): a login through Serve only counts
  *  on the machine's own name (core/owner.ts). */
 export function tailnet() {

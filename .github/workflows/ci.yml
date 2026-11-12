@@ -137,8 +137,10 @@ jobs:
         with:
           name: demo
           save: "true"
-      # (tools/qa.ts builds the demo, then runs web/qa/demo.mjs on it)
+      # (tools/qa.ts builds the demo, then runs web/qa/demo.mjs on it; the plugins at their main, not QA's pin)
       - run: npm run qa -- demo
+        env:
+          VAULTITE_PLUGINS: ../vaultite-plugins
   qa:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04

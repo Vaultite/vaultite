@@ -4,6 +4,7 @@
 import fs from "node:fs"
 import { SHOTS, palette, qa, until, wait, command } from "./lib/qa.mjs"
 const { args: [B, VAULT, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url, {
+  motion: true,
   chrome: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"] },
 })
 const json = { "Content-Type": "application/json" }

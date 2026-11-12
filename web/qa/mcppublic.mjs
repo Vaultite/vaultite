@@ -8,6 +8,7 @@ import os from "node:os"
 import path from "node:path"
 import { ROOT, apiAt, freePort, qa, wait } from "./lib/qa.mjs"
 import { testServer } from "../../tools/test/lib.ts"
+import { officialPlugins } from "../../tools/qa_plugins.ts"
 
 const { args: [VAULT], check, done } = await qa(import.meta.url, { chrome: false })
 
@@ -164,23 +165,20 @@ try {
   await fetch(`${BASE}/api/inbox/events/${encodeURIComponent(ask3?.id ?? "x")}/answer`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/qa" }, body: JSON.stringify({ answer: "deny" }) })
   const denied = await pending
   check("a call waiting for its answer hears a no at once", denied.body?.result?.isError === true && /said no/.test(denied.body.result.content[0].text), denied.body)
-  // Dispatch (Vaultite/plugins, from its checkout beside the app): the owner's op an app may ask for. A file that isn't
-  // there, so no agent starts: past the gate, the op says so.
-  const official = path.resolve(process.env.VAULTITE_PLUGINS ?? path.join(ROOT, "..", "vaultite-plugins"), "dispatch")
-  if (!fs.existsSync(official)) console.log(`skip dispatch.run through the public MCP: no Vaultite/plugins checkout at ${path.dirname(official)}`)
-  else {
-    const vau = (...a) => spawnSync(process.execPath, [path.join(ROOT, "bin", "vau"), "--url", BASE, ...a], { encoding: "utf8", env: { ...process.env, VAULTITE_URL: BASE } })
-    vau("plugin", "install", official); vau("plugin", "on", "dispatch")
-    const dispatchArgs = { name: "call", arguments: { id: "dispatch.run", params: { path: "Notes/QA nowhere.md" } } }
-    const listedOps = await rpc("tools/call", { name: "ops", arguments: { filter: "dispatch" } })
-    check("ops offers dispatch.run", listedOps.body?.result?.content?.[0]?.text?.includes("dispatch.run"), listedOps.body)
-    const waiting = await rpc("tools/call", dispatchArgs)
-    check("dispatch.run waits for the owner's yes", waiting.body?.result?.isError === true && /Waiting/.test(waiting.body.result.content[0].text), waiting.body)
-    const askD = (await json(await fetch(`${BASE}/api/inbox/events`))).body?.events?.find((e) => e.gate && !e.answer && e.title.includes("coding agent"))
-    await fetch(`${BASE}/api/inbox/events/${encodeURIComponent(askD?.id ?? "x")}/answer`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/qa" }, body: JSON.stringify({ answer: "approve" }) })
-    const dispatched = await rpc("tools/call", dispatchArgs)
-    check("approved, it runs as the owner's (the op itself answers, not the owner check)", !!askD && dispatched.body?.result?.isError === true && /there's no file/.test(dispatched.body.result.content[0].text), dispatched.body)
-  }
+  // Dispatch (Vaultite/plugins): the owner's op an app may ask for. A file that isn't there, so no agent starts: past the
+  // gate, the op says so.
+  const official = path.join(officialPlugins(), "dispatch")
+  const vau = (...a) => spawnSync(process.execPath, [path.join(ROOT, "bin", "vau"), "--url", BASE, ...a], { encoding: "utf8", env: { ...process.env, VAULTITE_URL: BASE } })
+  vau("plugin", "install", official); vau("plugin", "on", "dispatch")
+  const dispatchArgs = { name: "call", arguments: { id: "dispatch.run", params: { path: "Notes/QA nowhere.md" } } }
+  const listedOps = await rpc("tools/call", { name: "ops", arguments: { filter: "dispatch" } })
+  check("ops offers dispatch.run", listedOps.body?.result?.content?.[0]?.text?.includes("dispatch.run"), listedOps.body)
+  const waiting = await rpc("tools/call", dispatchArgs)
+  check("dispatch.run waits for the owner's yes", waiting.body?.result?.isError === true && /Waiting/.test(waiting.body.result.content[0].text), waiting.body)
+  const askD = (await json(await fetch(`${BASE}/api/inbox/events`))).body?.events?.find((e) => e.gate && !e.answer && e.title.includes("coding agent"))
+  await fetch(`${BASE}/api/inbox/events/${encodeURIComponent(askD?.id ?? "x")}/answer`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/qa" }, body: JSON.stringify({ answer: "approve" }) })
+  const dispatched = await rpc("tools/call", dispatchArgs)
+  check("approved, it runs as the owner's (the op itself answers, not the owner check)", !!askD && dispatched.body?.result?.isError === true && /there's no file/.test(dispatched.body.result.content[0].text), dispatched.body)
   const otherOwner = await rpc("tools/call", { name: "call", arguments: { id: "terminal.send", params: { id: "x", text: "ls" } } })
   check("other owner ops stay refused", otherOwner.body?.result?.isError === true && /only for this machine's owner/.test(otherOwner.body.result.content[0].text), otherOwner.body)
   check("clipping a local address is gated", (await rpc("tools/call", { name: "clip", arguments: { url: "http://127.0.0.1:8793/api/state" } })).body?.result?.content?.[0]?.text?.includes("Waiting") && !!ask2)
