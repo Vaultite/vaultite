@@ -64,4 +64,27 @@ export default async ($: VaultTest) => {
     check("levels: the island over a cursor's conversation over the companion's screen, a kept-on-top window under them all",
       S.LEVELS.island[1] > S.LEVELS.panel[1] && S.LEVELS.panel[1] > S.LEVELS.screen[1] && S.LEVELS.panel[0] === S.LEVELS.screen[0] && S.LEVELS.onTop[0] === "floating")
   }
+  {
+    const P = await import("../../../electron/pagespot.ts")
+    type E = Parameters<typeof P.spotStep>[1]
+    const run = (events: E[], from: Parameters<typeof P.spotStep>[0] = P.HIDDEN) => events.reduce((acc, e) => {
+      const r = P.spotStep(acc.s, e)
+      return { s: r.to, did: [...acc.did, r.do.join(",")] }
+    }, { s: from, did: [] as string[] })
+    const fit = (o: Partial<{ fill: boolean; rect: boolean; drawn: boolean; now: number }> = {}): E => ({ type: "fit", fill: false, rect: false, drawn: false, now: 5, ...o })
+    check("spot: a tab's page shown in its pane, then hidden, takes the keyboard out with it; hidden again does nothing",
+      run([fit({ rect: true }), fit(), fit()]).did.join(" | ") === "to-tab,show | keys-out,hide | ", run([fit({ rect: true }), fit(), fit()]).did)
+    check("spot: full screen or its player fills, from anywhere, and back in its tab without being raised",
+      run([fit({ rect: true }), fit({ fill: true }), fit({ rect: true })]).did.slice(1).join(" | ") === "to-fill,show | to-tab,show")
+    const agent = run([{ type: "park", now: 1 }, fit({ drawn: true }), { type: "rest" }, { type: "rest" }, fit({ drawn: true, now: 9 })])
+    check("spot: an agent's page parks out of sight drawing, rests hidden and throttled, and wakes on the next fit",
+      agent.did.join(" | ") === "unfocus,unthrottle,to-parked,show |  | hide,throttle |  | unfocus,unthrottle,to-parked,show" && agent.s.at === "parked" && "woke" in agent.s && agent.s.woke === 9, agent)
+    check("spot: a parked page put in its tab comes over the window's other pages and is checked to draw",
+      run([{ type: "park", now: 1 }, fit({ rect: true, drawn: true })]).did[1] === "hide,raise,to-tab,show,see" &&
+      run([fit({ rect: true, drawn: true })]).did[0] === "to-tab,show,see" && run([{ type: "park", now: 1 }, { type: "rest" }, fit({ rect: true })]).did[2] === "hide,raise,to-tab,show")
+    check("spot: let go by its tab, a page hides with the keyboard left as it is, an agent's parks",
+      run([fit({ rect: true }), { type: "stow", drawn: false, now: 1 }]).did[1] === "hide" && run([fit({ rect: true }), { type: "stow", drawn: true, now: 1 }]).s.at === "parked")
+    check("spot: taken out of its window, it's hidden, never parked unseen",
+      run([{ type: "park", now: 1 }, { type: "hide" }]).s.at === "hidden" && !P.shown({ at: "parked", woke: 0 }) && P.shown({ at: "fill" }) && P.shown({ at: "tab" }))
+  }
 }

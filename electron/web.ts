@@ -11,6 +11,7 @@ import { ACCOUNTS, covers, nonempty, type Rule, type Who } from "./siteaccounts.
 import { writeAtomic } from "./setup.ts"
 import { otherAppScheme } from "../core/opening.ts"
 import { QUIET } from "./quiet.ts"
+import { HIDDEN, shown, type Spot, type SpotEvent, spotStep } from "./pagespot.ts"
 import { NO_POINTER, type Passed, type Pointer, type PointerEvent, pointerStep, passedOf, type Raise, raiseOf, type Role, stackOrder } from "./stack.ts"
 import { claim, discardable, flowOn, hear, letGo, LINGER_MS, media, MOVE_MS, outlasted, playback, playing, quietEnds, RECLAIM_MS, tabGone, tabMoved, unclaimed, unmoved, windowReloaded, type Flow, type Owned, type Playback } from "./webpages.ts"
 import { execFile } from "node:child_process"
@@ -66,9 +67,9 @@ type Page = Owned<AppWindow> & { view: WebContentsView; error?: string
   blankBehind?: boolean
   /** No page of its own has painted yet: it shows the window's colour (`looks`) rather than white. */
   fresh: boolean
-  /** An agent's: out of sight it's parked (see `park`) rather than hidden, so it draws on. `parked`: it is now;
-   *  `resting`: hidden there a while (`rest`), `woke` when it last woke; `drew` when its document was last seen drawing. */
-  drawn?: boolean; parked?: boolean; resting?: boolean; woke?: number; drew?: number; seeing?: Promise<void>
+  /** An agent's: out of sight it's parked rather than hidden, so it draws on. `drew`: when its document was last seen
+   *  drawing. */
+  drawn?: boolean; spot: Spot; drew?: number; seeing?: Promise<void>
   /** When the user last pressed a key or the pointer in it, any frame (Chromium's user activation, for its opens). */
   input: number
   /** Where it was opened and the sign-in it reached, till the user moves it on (webpages.ts Flow). */
@@ -433,9 +434,9 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
   view.setBounds({ x: 0, y: 0, width: Math.max(320, Math.round(w / 2)), height: Math.max(240, h - 80) })
   addPage(win, view)
   const p: Page = { id: nextId(), win, view, profile, tab, agent, drawn: agent, holds: 0, closing: false, let: 0, target: url, want: null, sound: playback(),
-    blankBehind: !!taken, fresh: true, typed: new Map(), input: 0, flow: !kept && !agent && shows(url) ? { opened: url } : {} }
+    blankBehind: !!taken, fresh: true, typed: new Map(), input: 0, spot: HIDDEN, flow: !kept && !agent && shows(url) ? { opened: url } : {} }
   pages.set(p.id, p)
-  if (agent) park(p)
+  if (agent) move(p, { type: "park", now: Date.now() })
   const wc = view.webContents
   if (taken) wc.once("did-navigate", () => { wc.navigationHistory.clear(); p.blankBehind = false })
   wc.on("did-navigate", () => { p.drew = undefined })
@@ -448,9 +449,9 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
     wc.on("did-navigate", done)
   }
   // (its window as it is now: a tab moved to another window takes its page along, `moveTo`)
-  pageMade({ id: p.id, wc, profile, get win() { return p.win }, url, opener, hide: () => place(p, null), visible: () => shownNow(p), tab: () => p.tab,
+  pageMade({ id: p.id, wc, profile, get win() { return p.win }, url, opener, hide: () => place(p, null), visible: () => shown(p.spot), tab: () => p.tab,
     player: (on, fullScreen) => { if (on) void toPlayer(p, fullScreen); else fromPlayer(p) }, own: (to) => own(p, tabOf(to)), close: () => end(p),
-    rest: () => rest(p), wake: () => wake(p), resting: () => !!p.resting, refit: () => fit(p) })
+    rest: () => move(p, { type: "rest" }), wake: () => wake(p), resting: () => p.spot.at === "resting", refit: () => fit(p) })
 
   // Only to the web: another app's link (zoommtg://, slack://, mailto:) goes to that app, as a browser does.
   const refuse = (e: { preventDefault: () => void }, to: string) => {
@@ -639,7 +640,7 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
   wc.on("before-mouse-event", (_e, m) => {
     if (m.type === "mouseLeave") { if (atTop) tell(p.win, { type: "top", id: p.id, at: false, left: true }); atTop = null }
     if (p.player) { if (m.type === "mouseMove") strips?.pointerAt(p.player, m.y); return }
-    if ((m.type !== "mouseMove" && m.type !== "mouseDown") || p.full || p.win.isDestroyed() || !shownNow(p)) return
+    if ((m.type !== "mouseMove" && m.type !== "mouseDown") || p.full || p.win.isDestroyed() || !shown(p.spot)) return
     const z = p.win.webContents.getZoomFactor(), b = p.view.getBounds(), [w] = p.win.getContentSize()
     // (a window with its bars hidden: its top strip, topstrip.ts)
     if (m.type === "mouseMove") strips?.pointerAt(p.win, b.y + m.y)
@@ -752,31 +753,41 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
 /** Where an agent's page is out of sight: off the window, shown and unthrottled, so it draws on in a desktop's viewport
  *  (live pictures, screenshots); a hidden view stops drawing at its next cross-site load. */
 const PARKED = { x: -40000, y: 0, width: 1280, height: 800 }
-const shownNow = (p: Page) => p.view.getVisible() && !p.parked
-function park(p: Page) {
+/** Its spot now (read again after a `move`, which narrowing doesn't see). */
+const spotOf = (p: Page): Spot => p.spot
+function move(p: Page, e: SpotEvent) {
   const wc = p.view.webContents
-  if ((p.parked && !p.resting) || wc.isDestroyed()) return
-  if (wc.isFocused() && !p.win.isDestroyed()) p.win.webContents.focus()
-  if (p.resting) p.woke = Date.now()
-  p.parked = true
-  p.resting = false
-  wc.setBackgroundThrottling(false)
-  p.view.setBounds(PARKED)
-  p.view.setVisible(true)
-}
-/** A parked page unused a while: hidden and throttled, drawing nothing (a page's ads and animations cost nothing). */
-function rest(p: Page) {
-  if (!p.parked || p.resting || p.view.webContents.isDestroyed()) return
-  p.resting = true
-  p.view.setVisible(false)
-  p.view.webContents.setBackgroundThrottling(true)
+  if (e.type !== "hide" && wc.isDestroyed()) return
+  const r = spotStep(p.spot, e)
+  p.spot = r.to
+  for (const d of r.do) {
+    if (d === "show" || d === "hide") p.view.setVisible(d === "show")
+    else if (d === "throttle" || d === "unthrottle") wc.setBackgroundThrottling(d === "throttle")
+    else if (d === "to-parked") p.view.setBounds(PARKED)
+    else if (d === "to-fill") {
+      const [width, height] = (p.player ?? p.win).getContentSize()
+      round(p, 0)
+      p.view.setBounds({ x: 0, y: 0, width, height })
+    } else if (d === "to-tab" && p.want) {
+      if (keyboardFrom.get(p.win) === p.id) keyboardFrom.delete(p.win)
+      // The window's page may be zoomed (⌘+): its CSS pixels are that many of the window's.
+      const z = p.win.webContents.getZoomFactor(), rect = p.want
+      round(p, Math.round((rect.radius ?? 0) * z))
+      p.view.setBounds({ x: Math.round(rect.x * z), y: Math.round(rect.y * z), width: Math.round(rect.width * z), height: Math.round(rect.height * z) })
+    } else if (d === "raise") addPage(p.win, p.view)
+    else if (d === "unfocus") { if (wc.isFocused() && !p.win.isDestroyed()) p.win.webContents.focus() }
+    else if (d === "keys-out") {
+      p.hadFocus = wc.isFocused()
+      if (p.hadFocus) { p.win.webContents.focus(); keyboardFrom.set(p.win, p.id) }
+    } else if (d === "see") void seeDraws(p)
+  }
 }
 /** Awake again: parked and drawing, settled once its first frame since is likely drawn. */
 async function wake(p: Page) {
-  if (p.resting) park(p)
-  const left = (p.woke ?? 0) + 100 - Date.now()
+  if (p.spot.at === "resting") move(p, { type: "park", now: Date.now() })
+  const left = (p.spot.at === "parked" ? p.spot.woke : 0) + 100 - Date.now()
   if (left > 0) await new Promise<void>((done) => setTimeout(done, left))
-  if (p.parked && Date.now() - (p.drew ?? 0) > SEEN_MS) await seeDraws(p)
+  if (p.spot.at === "parked" && Date.now() - (p.drew ?? 0) > SEEN_MS) await seeDraws(p)
 }
 /** What page `p`'s document answers to `code` (null: nothing within `ms`). */
 const askPage = (p: Page, code: string, ms: number) => Promise.race([new Promise<null>((done) => setTimeout(done, ms, null)),
@@ -792,9 +803,9 @@ async function drawing(p: Page) {
   const wc = p.view.webContents
   if (wc.isDestroyed()) return
   if (await frameIn(p, 300)) { p.drew = Date.now(); return }
-  if (!p.drawn || p.player || p.resting || !p.view.getVisible() || wc.isDestroyed()) return
-  const parked = !!p.parked
-  if (parked) rest(p)
+  if (!p.drawn || p.player || p.spot.at === "resting" || p.spot.at === "hidden" || !p.view.getVisible() || wc.isDestroyed()) return
+  const parked = p.spot.at === "parked"
+  if (parked) move(p, { type: "rest" })
   else { p.view.setVisible(false); wc.setBackgroundThrottling(true) }
   for (const until = Date.now() + 1000; Date.now() < until;) {
     if (await askPage(p, "document.visibilityState", 200) === "hidden") break
@@ -802,14 +813,13 @@ async function drawing(p: Page) {
   }
   if (wc.isDestroyed()) return
   // (as it was, unless it moved meanwhile: parked or placed again, that's shown it)
-  if (parked && p.resting) park(p)
-  else if (!parked && !p.parked && !p.view.getVisible() && p.want && !p.player) { wc.setBackgroundThrottling(false); p.view.setVisible(true) }
+  if (parked && spotOf(p).at === "resting") move(p, { type: "park", now: Date.now() })
+  else if (!parked && shown(p.spot) && !p.view.getVisible() && !p.player) { wc.setBackgroundThrottling(false); p.view.setVisible(true) }
   // (tried once a while at most, drawn or not: its window may be out of sight)
   await frameIn(p, 1000)
   p.drew = Date.now()
 }
-/** Out of sight: parked if it's an agent's, else hidden. */
-const stow = (p: Page) => { if (p.drawn) park(p); else p.view.setVisible(false) }
+const stow = (p: Page) => move(p, { type: "stow", drawn: !!p.drawn, now: Date.now() })
 
 /** Page `p` into window `win`, its tab having moved there (a pop-out): the same page, live, not loaded again. (Not
  *  `web:adopt`, which gives a tab-less page its tab.) */
@@ -819,7 +829,7 @@ function moveTo(p: Page, win: AppWindow) {
   if (!from.isDestroyed() && !p.player) from.contentView.removeChildView(p.view)
   if (p.full && !p.player) leaveFull(p)
   p.win = win
-  p.view.setVisible(false)
+  move(p, { type: "hide" })
   if (!p.player) addPage(win, p.view)
   if (!from.isDestroyed()) pagesChanged(from)
 }
@@ -844,7 +854,7 @@ function end(p: Page) {
   // (kept for its tab to come back with: ⌘⇧T, shown again after a discard)
   keepPast(p, true)
   const shot = keepFrame(p)
-  p.view.setVisible(false)
+  move(p, { type: "hide" })
   const off = () => { if (!p.win.isDestroyed()) p.win.contentView.removeChildView(p.view) }
   // (none once its contents are gone: closed by its own script)
   const wc = p.view.webContents
@@ -883,7 +893,7 @@ export const unloadPages = async () => {
   // (each tab's history, and what's on screen as a picture, for the next launch to show at once)
   for (const p of pages.values()) keepPast(p, true)
   restoreMod?.savePasts()
-  await Promise.race([Promise.all([...pages.values()].filter(shownNow).map(keepFrame)), new Promise((done) => setTimeout(done, 800))])
+  await Promise.race([Promise.all([...pages.values()].filter((p) => shown(p.spot)).map(keepFrame)), new Promise((done) => setTimeout(done, 800))])
   return Promise.all([...pages.values()].map((p) => { p.closing = true; return unload(p.view.webContents) })).then(() => {})
 }
 
@@ -919,38 +929,11 @@ function place(p: Page, rect: WebRect | null) {
 
 function fit(p: Page) {
   const fill = p.player ?? (p.full ? p.win : null)
-  if (fill) {
-    if (fill.isDestroyed()) return
-    const [width, height] = fill.getContentSize()
-    p.parked = p.resting = false
-    round(p, 0)
-    p.view.setBounds({ x: 0, y: 0, width, height })
-    p.view.setVisible(true)
-    return
-  }
+  if (fill?.isDestroyed()) return
   // (one an agent holds stays where it draws for the agent, its tab showing a picture of it: browser/agent.ts)
   const held = pageHeld(p.id)
   if (held) p.drawn = true
-  const rect = p.agent || held ? null : p.want
-  if (!rect) {
-    if (p.drawn) return park(p)
-    if (!p.view.getVisible()) return
-    p.hadFocus = p.view.webContents.isFocused()
-    p.view.setVisible(false)
-    // (a hidden view keeps the keyboard: the window takes it, for what's over the page, the palette's search)
-    if (p.hadFocus) { p.win.webContents.focus(); keyboardFrom.set(p.win, p.id) }
-    return
-  }
-  if (keyboardFrom.get(p.win) === p.id) keyboardFrom.delete(p.win) // (shown again: `web:place` gives it back)
-  // (from its parking: over the window's other pages, as a page shown afresh is)
-  if (p.parked) { p.parked = p.resting = false; p.view.setVisible(false); addPage(p.win, p.view) }
-  // The window's page may be zoomed (⌘+): its CSS pixels are that many of the window's.
-  const z = p.win.webContents.getZoomFactor()
-  round(p, Math.round((rect.radius ?? 0) * z))
-  p.view.setBounds({ x: Math.round(rect.x * z), y: Math.round(rect.y * z), width: Math.round(rect.width * z), height: Math.round(rect.height * z) })
-  const shown = !p.view.getVisible()
-  p.view.setVisible(true)
-  if (shown && p.drawn) void seeDraws(p)
+  move(p, { type: "fit", fill: !!fill, rect: !p.agent && !held && !!p.want, drawn: !!p.drawn, now: Date.now() })
 }
 const round = (p: Page, r: number) => { if ((p.radius ?? 0) !== r) { p.radius = r; p.view.setBorderRadius(r) } }
 
@@ -986,7 +969,7 @@ function go(p: Page, action: string, url?: string): unknown {
   else if (action === "stop") wc.stop()
   else if (action === "mute" || action === "unmute") { wc.setAudioMuted(action === "mute"); sendState(p) }
   // (a hidden page never has the keyboard: it gets it as it's shown, `web:place` answering `focused`)
-  else if (action === "focus") { if (p.player) return; if (shownNow(p)) wc.focus(); else p.hadFocus = true }
+  else if (action === "focus") { if (p.player) return; if (shown(p.spot)) wc.focus(); else p.hadFocus = true }
   else if (action === "load" && url && shows(url)) { p.target = url; if (!p.agent) p.flow = { opened: url }; void wc.loadURL(url).catch(() => {}) }
   // (answers "none" when the page has no video)
   else if (action === "pip") return playerKit().then((k) => wc.executeJavaScriptInIsolatedWorld(1004, [{ code: k.PIP }], true)).catch(() => null)
@@ -1122,10 +1105,10 @@ function fromPlayer(p: Page, user = false) {
   // (closed after this turn: this may be its own close)
   if (!w.isDestroyed()) { w.contentView.removeChildView(p.view); setImmediate(() => { if (!w.isDestroyed()) w.close() }) }
   if (pages.has(p.id) && !p.win.isDestroyed()) {
-    p.view.setVisible(false)
+    move(p, { type: "hide" })
     p.want = null
     addPage(p.win, p.view)
-    if (p.drawn) { p.parked = p.resting = false; park(p) }
+    if (p.drawn) move(p, { type: "park", now: Date.now() })
     sendState(p)
     pagesChanged(p.win)
     if (user) { p.win.show(); p.win.focus() }
@@ -1172,7 +1155,7 @@ export function webWindow(win: AppWindow) {
   win.contentView.on("bounds-changed", () => { for (const p of pages.values()) if (p.win === win && p.full && !p.player) fit(p) })
   win.on("leave-full-screen", () => { for (const p of pages.values()) if (p.win === win && p.full && !p.player) leaveFull(p) })
   // (back to the window: an agent's page in a tab may have stopped drawing while it was out of sight, `drawing`)
-  win.on("focus", () => { for (const p of pages.values()) if (p.win === win && p.drawn && shownNow(p)) void seeDraws(p) })
+  win.on("focus", () => { for (const p of pages.values()) if (p.win === win && p.drawn && shown(p.spot)) void seeDraws(p) })
   win.on("closed", () => {
     // (a page on its way to another window goes on: that window takes it, else it ends)
     for (const p of [...pages.values()]) if (p.win === win && p.moving === undefined) end(p)
@@ -1288,10 +1271,10 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
     p.orphan = undefined
     pagesChanged(win)
     // (shown at once where its tab asks, a page shown again or a new one, rather than after the tab draws: as `web:place`)
-    const r = rectOf(rect), wasHidden = !shownNow(p)
+    const r = rectOf(rect), wasHidden = !shown(p.spot)
     place(p, r)
     let focused = false
-    if (r && wasHidden && shownNow(p)) { focused = !!p.hadFocus; p.hadFocus = false }
+    if (r && wasHidden && shown(p.spot)) { focused = !!p.hadFocus; p.hadFocus = false }
     return { id: p.id, state: stateOf(p), focused }
   },
   // Tab `tab`'s last picture of `url` (JPEG, its size), drawn while its page comes back; none while it's there.
@@ -1303,11 +1286,11 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
   // The titles tabs' pages had, by address: a tab not loaded yet is named as it was.
   "web:titles": async () => (await restore()).pastTitles(),
   "web:place": (win, id, rect) => {
-    const p = mine(win, id), r = rectOf(rect) && mayOpen(p.profile) ? rectOf(rect) : null, wasHidden = !shownNow(p)
+    const p = mine(win, id), r = rectOf(rect) && mayOpen(p.profile) ? rectOf(rect) : null, wasHidden = !shown(p.spot)
     place(p, r)
     // (shown again: whether it had the keyboard when it was hidden)
-    if (r && wasHidden && shownNow(p)) { const had = !!p.hadFocus; p.hadFocus = false; return { focused: had, shown: true } }
-    return { focused: false, shown: shownNow(p) }
+    if (r && wasHidden && shown(p.spot)) { const had = !!p.hadFocus; p.hadFocus = false; return { focused: had, shown: true } }
+    return { focused: false, shown: shown(p.spot) }
   },
   // The window focused something of its own (desktop.ts): the keyboard comes to it from a page that has it.
   "web:take": (win) => {
@@ -1365,7 +1348,7 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
   // A picture of it as shown (JPEG bytes), for its tab to show in its place while its pane moves (WebPage.tsx).
   "web:shot": async (win, id) => {
     const p = mine(win, id)
-    if (!shownNow(p)) return null
+    if (!shown(p.spot)) return null
     const img = await p.view.webContents.capturePage()
     return img.isEmpty() ? null : img.toJPEG(90)
   },
