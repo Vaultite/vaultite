@@ -1,5 +1,5 @@
 // The bars above files fade (appearance `fileBarFade`). "typing": two keys in a file (not a shortcut's), back once the
-// pointer moves or at Escape. "always": out of sight, shown while the pointer is over a bar or just under it.
+// pointer moves or at Escape. "always": out of sight, shown while the pointer is at its pane's top, beside the bar too.
 import { useEffect } from "react"
 import type { FileBarFade } from "@/core/prefs"
 
@@ -45,13 +45,18 @@ function always(root: DOMStringMap) {
     shown = bar
     bar?.setAttribute("data-shown", "")
   }
-  /** The bar of the pane at (x, y), when the point is on it or just under it. */
+  /** The bar of the pane whose top (x, y) is at: its whole width, the margins beside the bar too, from the thin strip
+   *  or gap above it to just under it (a pane's tabs' strip isn't its top). */
   const barAt = (target: EventTarget | null, x: number, y: number) => {
-    const pane = target instanceof Element ? target.closest<HTMLElement>("[data-pane]") : null
+    const el = target instanceof Element ? target : null
+    if (!el || el.closest("[data-place-strip]")) return null
+    const gap = el.closest<HTMLElement>("[data-pane-gap]")?.dataset.paneGap
+    const frame = gap ? document.querySelector(`section[data-pane-frame="${CSS.escape(gap)}"]:not([data-away])`) : el.closest("section[data-pane-frame]")
+    const pane = frame?.querySelector<HTMLElement>("[data-pane]") ?? el.closest<HTMLElement>("[data-pane]")
     const bar = pane && [...pane.querySelectorAll<HTMLElement>("[data-view-bar]")].find((b) => b.getClientRects().length)
     if (!bar) return null
-    const r = bar.getBoundingClientRect()
-    return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom + NEAR ? bar : null
+    const p = pane.getBoundingClientRect(), r = bar.getBoundingClientRect()
+    return x >= p.left && x <= p.right && y <= r.bottom + NEAR ? bar : null
   }
   let frame = 0, last: PointerEvent | null = null
   const decide = () => {

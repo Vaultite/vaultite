@@ -1,5 +1,5 @@
-// Fade the file bar (appearance `fileBarFade`): always, the bar above a note is out of sight until the pointer is at it
-// (or just under it), and back out once it leaves; typing, it fades after two keys and is back when the pointer moves.
+// Fade the file bar (appearance `fileBarFade`): always, the bar above a note is out of sight until the pointer is at its
+// pane's top (beside it too, or just under it), and back out once it leaves; typing, it fades after two keys and is back when the pointer moves.
 // Glass's transparency (`translucency`) sets index.css's --glass-level. WRITES appearance.json and a note: throwaway
 // server only.
 //   node web/qa/barfade.mjs <base url>
@@ -27,6 +27,13 @@ await page.mouse.move(box.x + box.width / 2, box.y + box.height + 6, { steps: 6 
 check("…the pointer just under it brings it", (await settled(1)) === 1, await opacity())
 await page.mouse.move(box.x + 40, box.y + box.height / 2, { steps: 3 })
 check("…over it, it stays", (await settled(1)) === 1, await opacity())
+const pane = await page.locator("[data-pane]").first().boundingBox()
+await page.mouse.move(box.x + box.width / 2, box.y + 300, { steps: 6 }); await settled(0)
+await page.mouse.move(pane.x + 4, box.y + box.height / 2, { steps: 3 })
+check("…left of Back, in the pane's margin, it comes", (await settled(1)) === 1, await opacity())
+await page.mouse.move(box.x + box.width / 2, box.y + 300, { steps: 6 }); await settled(0)
+await page.mouse.move(pane.x + pane.width - 4, box.y + box.height / 2, { steps: 3 })
+check("…right of its last button, it comes", (await settled(1)) === 1, await opacity())
 await page.mouse.move(box.x + box.width / 2, box.y + 300, { steps: 6 })
 check("…back on the page, it goes again", (await settled(0)) === 0, await opacity())
 await page.mouse.wheel(0, 600); await wait(300)
