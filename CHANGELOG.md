@@ -13,6 +13,14 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Agents open things where you say**: "in a new tab in the left pane", "beside the one showing the brief", or a web
   page "in my Personal container" (`vau open --in left`, `--container Personal`, and the companion's open); a pane or
   container that isn't there is an error naming the ones that are.
+## 0.13.0 (2026-11-11)
+
+A first run made for anyone: a new vault asks before any AI and writes only what you chose, AI off really is off at
+once, narrow Settings reaches Plugins and every section, and Markdown links count as links in backlinks and the graph,
+as in Obsidian. Also device sync, an Agents panel across every machine with groups and muting, jobs that land
+themselves and show a demo video as proof, Claude chats that read like the Claude app's, a bookmarks bar in the Browser,
+tabs dragged into pop-out windows, and graph, canvas, title and template polish.
+
 - **Linux: a relaunch reopens its vault**: the desktop app run from a checkout with `--vault <folder>` comes back on
   that vault after an update's relaunch, not on its own code folder.
 - **Long browser waits last**: `vau browser wait --helped --timeout 600` (and other waits) waits as long as asked,
