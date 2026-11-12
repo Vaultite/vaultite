@@ -11,25 +11,21 @@ import { blockProblems, iconNames, inside, listedPackage, nodeSide, PLUGIN_PACKA
 import { ICON_NAME } from "../core/pluginmeta.ts"
 import { opProblems } from "../core/ops.ts"
 
-// (the plugins load below into a throwaway vault, keeping what they keep on this machine in a throwaway folder too: before
-// core/plugins.ts reads VAULTITE_LOCAL, so it's imported only after, with everything that imports it)
+// core/plugins.ts reads VAULTITE_LOCAL as it loads: set it first, and import what imports it only after.
 const SCRATCH = fs.mkdtempSync(path.join((await import("node:os")).tmpdir(), "vaultite-check-"))
 process.env.VAULTITE_LOCAL = path.join(SCRATCH, "local")
 const { inArea } = await import("../core/hooks.ts")
 
-// A manifest's icon by name is one the app has (the server can't tell: the app's plugins' sources aren't shipped).
 const ICONS = iconNames(path.dirname(path.dirname(fileURLToPath(import.meta.url))))
 const iconProblems = (m: Record<string, unknown> | null | undefined, where: string) => typeof m?.icon === "string" && ICON_NAME.test(m.icon) && !ICONS.has(m.icon)
   ? [`${where}: icon '${m.icon}' isn't one of Lucide's (lucide.dev/icons, by its own name) or one the app's plugins add`] : []
 
-// One plugin's folder (a plugin's own repository, its CI: tools/plugin-action/action.yml).
 const flag = (name: string) => { const i = process.argv.indexOf(name); return i < 0 ? null : process.argv[i + 1] ?? "" }
 if (flag("--plugin") !== null) {
   const dir = path.resolve(flag("--plugin")!)
   const { folderProblems } = await import("../core/coreops/plugins.ts")
   const { discover } = await import("../core/plugins.ts")
   const tag = flag("--tag") || null
-  // (one it requires may be one of Vaultite's own, moved out of the app: beside it, else in their checkout)
   const { MOVED } = await import("../core/migrations.ts")
   const official = path.resolve(process.env.VAULTITE_PLUGINS ?? path.join(fileURLToPath(import.meta.url), "../../../vaultite-plugins"))
   const movedDir = (id: string) => [path.join(path.dirname(dir), id), path.join(official, id)].find((d) => fs.existsSync(path.join(d, "manifest.json")))
@@ -80,7 +76,6 @@ for (const [name, [tier, d]] of found) {
   let m: Record<string, unknown> = {}
   try { m = JSON.parse(fs.readFileSync(path.join(d, "manifest.json"), "utf8")) } catch { continue } // (said above)
   problems.push(...blockProblems(d, m, label), ...iconProblems(m, `${label}/manifest.json`))
-  // Part of the app (`alwaysOn`: no switch), `essential` (on from the start) or off until turned on: one of the three.
   for (const k of ["essential", "alwaysOn"]) if (m[k] !== undefined && m[k] !== true) problems.push(`${label}/manifest.json: ${k} is only true`)
   if (m.alwaysOn === true && (m.essential !== undefined || m.offByDefault !== undefined)) problems.push(`${label}/manifest.json: an alwaysOn plugin is neither essential nor offByDefault`)
   if (m.alwaysOn !== true && m.essential !== true && m.offByDefault !== true) problems.push(`${label}/manifest.json: a built-in that isn't alwaysOn or essential (a Vaultite plugin) is offByDefault`)
@@ -89,8 +84,6 @@ for (const [name, [tier, d]] of found) {
   for (const b of drawsOf(m)) drawers.set(b, [...drawers.get(b) ?? [], name])
 }
 
-// Nothing of the plugin API runs while an app plugin's module loads: the core behind it may not have run yet (the Dock
-// icon plugin once threw then and the app never started). Vault plugins load later; agentPlugin reads only its args.
 const AT_LOAD = new Set(["agentPlugin", "cell", "definePlugin", "devicePref", "pluginSettings", "removals"])
 type Node = { type: string; start: number; [k: string]: unknown }
 const INSIDE = new Set(["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression", "ClassBody"])
@@ -130,8 +123,6 @@ for (const [tier, d] of found.values()) {
   for (const f of walk(d)) if (/\.tsx?$/.test(f) && !f.endsWith(".d.ts") && !nodeSide(f)) problems.push(...loadTimeProblems(f, path.relative(ROOT, f)))
 }
 
-// A command named by id (a key map's, the menu bar's, runCommandById) is one: a typo'd id binds nothing, silently. Only
-// ids of a namespace the app has (a vault plugin's are its own); an id made from a template matches it.
 {
   const srcs = [path.join(ROOT, "web", "src"), PLUGINS].flatMap((d) => walk(d)).filter((f) => /\.tsx?$/.test(f) && !f.endsWith(".d.ts"))
   const ids = new Set<string>(), made: RegExp[] = []
@@ -151,11 +142,8 @@ for (const [tier, d] of found.values()) {
   }
 }
 
-// A block drawn for another plugin is declared with `by`, its `by` option taking those that draw it.
 for (const [b, ps] of drawers) if (!decls[b]?.by) problems.push(`plugins/core/${ps[0]}/manifest.json: draws '${b}', which no app plugin declares with \`by\``)
 
-// The app's Markdown may use the blocks of Vaultite's own plugins (those that moved out of it), and name them where a
-// `by` option names who draws one: read from their checkout (VAULTITE_PLUGINS, else beside the app), else left unchecked.
 const OFFICIAL = path.resolve(process.env.VAULTITE_PLUGINS ?? path.join(ROOT, "..", "vaultite-plugins"))
 const officialDecls: BlockDecls | null = fs.existsSync(OFFICIAL) ? {} : null
 const officialDrawers = new Map<string, string[]>()
@@ -169,7 +157,6 @@ for (const id of officialDecls ? fs.readdirSync(OFFICIAL) : []) {
 }
 for (const [b, d] of Object.entries(decls)) if (d.by) decls[b] = drawnBy(d, [...drawers.get(b) ?? [], ...officialDecls ? officialDrawers.get(b) ?? [] : Object.keys(MOVED)])
 
-// The blocks in the app's own Markdown are declared, with options their declarations allow.
 const docs = [path.join(ROOT, "core", "AGENTS.md"), ...walk(path.join(ROOT, "core", "docs")),
   ...walk(PLUGINS).filter((f) => /\/(pages\/[^/]+|AGENTS)\.md$/.test(f.split(path.sep).join("/"))), ...walk(path.join(ROOT, "examples", "vault")).filter((f) => f.endsWith(".md")),
   ...walk(APP_BUNDLES).filter((f) => f.endsWith(".md")), ...walk(path.join(ROOT, "skills")).filter((f) => f.endsWith(".md"))]
@@ -187,20 +174,17 @@ for (const f of docs) {
   }
 }
 
-// A plugin that moved out of the app (core/migrations.ts MOVED) is gone from it: an install can't take an id the app has.
 for (const [id, source] of Object.entries(MOVED)) {
   if (ids.get(id) === "core") problems.push(`plugins/core/${id}: it moved to ${source} (core/migrations.ts MOVED): take it out of the app`)
   if (!/^Vaultite\/plugins\/[a-z][a-z0-9-]*$/.test(source) || !source.endsWith(`/${id}`)) problems.push(`core/migrations.ts: MOVED.${id} is Vaultite/plugins/${id}, not ${source}`)
 }
 
-// The app's bundles: their shapes, and every plugin, panel and pinned page they name is one the app has.
 const panels = new Set<string>()
 const pages = new Set<string>()
 for (const [id, [tier, d]] of found) {
   if (tier === "vault") continue
   const index = path.join(d, "index.tsx")
   const src = fs.existsSync(index) ? fs.readFileSync(index, "utf8") : ""
-  // (a panel: `<name>: { title: "...", ...` in its `sidebar: {...}`; the first one may share the line with `sidebar:`)
   if (/\bsidebar\s*:\s*\{/.test(src)) for (const x of src.matchAll(/(?:\bsidebar\s*:\s*\{|\n)\s*([\w-]+)\s*:\s*\{\s*title:/g)) panels.add(`${id}:${x[1]}`)
   const pd = path.join(d, "pages")
   if (fs.existsSync(pd)) for (const n of fs.readdirSync(pd)) if (n.endsWith(".md")) pages.add(`Dashboards/${n}`)
@@ -210,19 +194,16 @@ for (const id of fs.existsSync(APP_BUNDLES) ? fs.readdirSync(APP_BUNDLES).sort()
   const dir = path.join(APP_BUNDLES, id)
   if (!fs.statSync(dir).isDirectory()) continue
   const files: Record<string, string | Buffer> = {}
-  // (a picture or a font as its bytes, as the app reads it)
   for (const f of walk(dir)) { const b = fs.readFileSync(f); files[path.relative(dir, f).split(path.sep).join("/")] = isUtf8(b) ? b.toString("utf8") : b }
   builtIns.set(id, files)
   const at = `bundles/${id}`
   problems.push(...bundleProblems(files).map((x) => `${at}: ${x}`))
   const json = (f: string) => { try { return JSON.parse(String(files[f] ?? "null")) } catch { return null } }
   const pj = json("plugins.json")
-  // (one it installs, an official plugin, is checked in its own repository)
   const installs = new Set(Object.keys(pj?.install ?? {}))
   for (const [p, x] of Object.entries<{ source?: string; commit?: string; hash?: string }>(pj?.install ?? {})) {
     if (!/^Vaultite\/plugins\/[a-z][a-z0-9-]*$/.test(x?.source ?? "")) problems.push(`${at}/plugins.json: '${p}' is installed from ${x?.source}: the app's bundles install only Vaultite's plugins (Vaultite/plugins/<id>)`)
     if (ids.has(p)) problems.push(`${at}/plugins.json: '${p}' is one of the app's plugins: it isn't installed`)
-    // (tags move: what's installed is a commit, and refused unless its files are the ones recorded)
     if (!x?.commit || !x.hash) problems.push(`${at}/plugins.json: '${p}' needs its commit and hash: node tools/pin_bundles.ts`)
   }
   for (const p of pj?.enabled ?? []) if (MOVED[p] && !installs.has(p)) problems.push(`${at}/plugins.json: '${p}' moved out of the app: name it in install, pinned (node tools/pin_bundles.ts)`)
@@ -232,7 +213,6 @@ for (const id of fs.existsSync(APP_BUNDLES) ? fs.readdirSync(APP_BUNDLES).sort()
   }
   const sb = json("sidebars.json")
   for (const k of [...sb?.left ?? [], ...sb?.right ?? []]) if (!panels.has(k) && !installs.has(k.split(":")[0])) problems.push(`${at}/sidebars.json: '${k}' isn't a sidebar panel of the app`)
-  // (the pages of one it installs: from its checkout, else left unchecked)
   const theirs = new Set([...installs].flatMap((i) => { const pd = path.join(OFFICIAL, i, "pages"); return fs.existsSync(pd) ? fs.readdirSync(pd).map((n) => `Dashboards/${n}`) : [] }))
   for (const p of json("pages.json")?.pinned ?? []) {
     if (!pages.has(p) && !theirs.has(p) && files[p] === undefined && (officialDecls || !installs.size)) problems.push(`${at}/pages.json: '${p}' is neither a plugin's page nor a file of the bundle`)
@@ -243,8 +223,6 @@ for (const id of fs.existsSync(APP_BUNDLES) ? fs.readdirSync(APP_BUNDLES).sort()
   }
 }
 
-// The app's bundles each say every part of the setup any of them says (Standard the defaults), so applying one leaves
-// nothing of another: the config files, every key of the look but the user's own (core/look.ts), and each editor or plugin setting one sets.
 {
   const { LOOK_KEYS, PERSONAL_LOOK } = await import("../core/look.ts")
   const { EDITOR_KEYS } = await import("../core/editor.ts")
@@ -271,8 +249,6 @@ for (const id of fs.existsSync(APP_BUNDLES) ? fs.readdirSync(APP_BUNDLES).sort()
   }
 }
 
-// The vault's rules stay short (every agent session loads them): core/AGENTS.md, written to .vaultite/AGENTS.md.
-// Formats belong on demand, in a plugin's AGENTS.md or core/docs/.
 const AGENTS_MAX = 2_000, RULES_MAX = 4_000
 const agentsSize = fs.statSync(path.join(ROOT, "core", "AGENTS.md")).size
 if (agentsSize > AGENTS_MAX) problems.push(`core/AGENTS.md (the vault's rules) is ${agentsSize} bytes (at most ${AGENTS_MAX}): only rules go there; formats go in a plugin's AGENTS.md or core/docs/`)
@@ -283,8 +259,6 @@ if (agentsSize > AGENTS_MAX) problems.push(`core/AGENTS.md (the vault's rules) i
   if (all > RULES_MAX) problems.push(`the vault's rules with every plugin's forAgents line are ${all} bytes (at most ${RULES_MAX}): every agent reads them; move detail into the plugins' AGENTS.md`)
 }
 
-// Operations: the core's and every app plugin's (loaded into a throwaway vault, all of them, on or off), a vault plugin's
-// declared in its manifest.
 {
   const { App } = await import("../core/app.ts")
   const { RESERVED } = await import("../plugins/core/mcp/catalog.ts")
@@ -301,8 +275,6 @@ if (agentsSize > AGENTS_MAX) problems.push(`core/AGENTS.md (the vault's rules) i
     for (const op of app.vaultPlugins.hooks.opsOf({ id: name, dir: d, manifest: m })) all.push({ op, plugin: name, kinds: [], vault: true })
   }
   const toolOf = (op: Owned["op"]) => (op.mcp ? (typeof op.mcp === "string" ? op.mcp : op.id.replace(/[.-]/g, "_")) : null)
-  // The commands that run in vau, by whose they are (a plugin's own command may take its ops' name and route to them:
-  // the Inbox's `vau inbox`).
   const names = new Map<string, string | null>(COMMANDS.map((c) => [c.name, null]))
   for (const [id, [tier, d]] of found) {
     if (tier === "vault" || !fs.existsSync(path.join(d, "cli.ts"))) continue
@@ -326,12 +298,10 @@ if (agentsSize > AGENTS_MAX) problems.push(`core/AGENTS.md (the vault's rules) i
     const tool = toolOf(o.op)
     if (tool && RESERVED.has(tool)) problems.push(`${at(o)}: MCP tool name '${tool}' is one MCP keeps for itself (${[...RESERVED].join(", ")})`)
   }
-  // The skills (skills/, tools/skills.ts): short, their generated part up to date, naming only commands vau has.
   const { skillProblems } = await import("./skills.ts")
   problems.push(...await skillProblems({ commands: [...names.keys()], ops: all.filter((o) => !o.vault).map((o) => o.op),
     topic: (t) => app.runOp("docs.read", { topic: t }).then(() => true, () => false) }))
 }
-// The plugin API's reference (core/docs/plugin-api.md) is written from the code: it must be this code's.
 const { generate } = await import("./plugin_api_doc.ts")
 for (const [f, text] of Object.entries(generate())) {
   if (!fs.existsSync(f) || fs.readFileSync(f, "utf8") !== text) problems.push(`${path.relative(ROOT, f)} is out of date: node tools/plugin_api_doc.ts`)
@@ -342,28 +312,21 @@ const VENDORED = new Set(["plugins/core/spreadsheets/xlsx/xlsx.mjs"].map((f) => 
 const sources = ["core", "web/src", "plugins", "electron", "bin", "tools/test", "tools/evals", "tools/perf"].flatMap((d) => walk(path.join(ROOT, d)))
   .concat(path.join(ROOT, "server.ts"), fs.readdirSync(path.join(ROOT, "tools")).map((n) => path.join(ROOT, "tools", n))).filter((f) => !VENDORED.has(f))
 
-// `X > * + *` restyles all of X's subtree each time a child comes or goes (an editor's lines, a long list's rows, as
-// they scroll): `X > :where(:not(:first-child))` matches the same, at the same specificity.
 for (const f of sources.filter((f) => /\.(tsx|css)$/.test(f))) {
   fs.readFileSync(f, "utf8").split("\n").forEach((l, i) => {
     if (/\*\s*\+\s*\*/.test(l) && !/^\s*(\/\/|\/?\*)/.test(l)) problems.push(`${path.relative(ROOT, f)}:${i + 1}: \`* + *\` restyles the whole list as it changes: :where(:not(:first-child))`)
   })
 }
 
-// What the browser builds (the web app, and the demo: the core against web/demo/node's stubs) never carry: the module
-// graph's parser comes from the server (core/update/graph.ts). Bundled, it broke the demo's build (CI's demo job).
 {
   const { diskTree, graphOf } = await import("../core/update/closure.ts")
   const g = graphOf(diskTree(ROOT))
   for (const id of ["web", "demo"]) {
     const r = g.reach(id), label = g.entries.find((e) => e.id === id)!.label
-    // (the web app's build config runs in Node: what it imports is no page's)
     for (const f of ["core/update/closure.ts"]) if (r.files.has(f) && g.chainOf(r, f)[0] !== "vite.config.ts") problems.push(`${label} reaches ${f} (${g.chainOf(r, f).join(" > ")}): load it through core/update/graph.ts, which the server gives`)
   }
 }
 
-// Every TypeScript file is type-checked by one of the projects `tsc -b` builds (tsconfig.json's references), or named here
-// with why not: a CI script outside them once passed a field renamed away, and only Windows' CI saw it.
 const UNTYPED: Record<string, string> = {
   "tools/test/kdbx/upstream/": "upstream kdbxweb's tests, kept as written (typed for an older TypeScript)",
   "plugins/core/terminal/claude-pictures/hooks/": "a Claude Code mod: its 'claude-code' types are Claude Code's own (its decoders, decode/, are typed through tools/test_pictures.ts)",
@@ -378,13 +341,10 @@ const UNTYPED: Record<string, string> = {
   for (const f of ts) if (!typed.has(f) && !Object.keys(UNTYPED).some((k) => f.startsWith(k))) problems.push(`${f}: no tsconfig project type-checks it (add it to one's include, or to UNTYPED in tools/check_plugins.ts, saying why)`)
 }
 
-// The browser engine stands alone (electron/browser/CLAUDE.md): it reaches the app only through its host.
 for (const f of walk(path.join(ROOT, "electron", "browser")).filter((f) => /\.(ts|cjs|js)$/.test(f)))
   for (const m of fs.readFileSync(f, "utf8").matchAll(/(?:from|import\(|require\()\s*["'](\.\.\/[^"']*)["']/g))
     problems.push(`${path.relative(ROOT, f)}: imports ${m[1]}: the engine imports nothing of the app's (setEngineHost)`)
 
-// The core imports no plugin: the server, the desktop app and the app's own pages reach one only by loading it. What
-// they share is the core's (the desktop app's contracts: core/desktop/). Only the loaders below name plugins' files.
 const LOADERS: Record<string, string> = {
   "web/src/core/plugins.ts": "the registry: every app plugin's manifest, module and pages (import.meta.glob)",
   "web/src/core/vaultPlugins.ts": "which plugins are the app's (their manifests); the modules they export come from virtual:plugin-exports (vite.config.ts)",
@@ -406,8 +366,6 @@ const LOADERS: Record<string, string> = {
   for (const f of Object.keys(LOADERS)) if (!loading.has(f)) problems.push(`tools/check_plugins.ts: LOADERS names ${f}, which loads no plugin's files now: take it out`)
 }
 
-// The server and the app import only what the built app ships: `dependencies` and theirs, not peers or devDependencies
-// (zod, only the Agent SDK's peer, worked from source and was missing from the app: its chat keeper didn't start).
 {
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"))
   const shipped = new Set<string>(), todo = Object.keys(pkg.dependencies ?? {})
@@ -420,7 +378,6 @@ const LOADERS: Record<string, string> = {
       todo.push(...Object.keys(p.dependencies ?? {}), ...Object.keys(p.optionalDependencies ?? {}))
     } catch { /* not installed here */ }
   }
-  // (the app is Electron, which the build runs on; the rest are its build's own scripts)
   const BUILT = new Set(["electron", "builder-util", "@electron/fuses"])
   const { builtinModules } = await import("node:module")
   const runs = ["core", "plugins", "electron", "bin"].flatMap((d) => walk(path.join(ROOT, d))).concat(path.join(ROOT, "server.ts"))
@@ -430,19 +387,15 @@ const LOADERS: Record<string, string> = {
     for (const m of text.matchAll(/(?:^|[^.\w$])(?:import\s+(?!type\b)(?:[^"'`;]*?\sfrom\s*)?|import\s*\(\s*|require\s*\(\s*|export\s+(?!type\b)[^"'`;]*?\sfrom\s*)["']([^"'./][^"']*)["']/gm)) {
       const spec = m[1], name = spec.startsWith("@") ? spec.split("/").slice(0, 2).join("/") : spec.split("/")[0]
       if (spec.includes("${") || spec.startsWith("node:") || builtinModules.includes(name) || /^@(vaultite|plugins)(\/|$)/.test(name) || shipped.has(name) || BUILT.has(name)) continue
-      // (`typeof import("x")` is a type: gone once it runs)
       if (/typeof\s+$/.test(text.slice(Math.max(0, m.index - 12), m.index + m[0].indexOf("import")))) continue
       problems.push(`${path.relative(ROOT, f)}:${text.slice(0, m.index).split("\n").length}: imports ${name}, which the built app doesn't ship: add it to package.json's dependencies`)
     }
   }
 }
 
-// What npm installs (.npmrc runs no install scripts): each package that has one is reviewed in allowScripts (false: not
-// run, as npm 12 reads it), and every package comes from the registry with its hash, so a new one can't slip in unseen.
 {
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"))
   const lock = JSON.parse(fs.readFileSync(path.join(ROOT, "package-lock.json"), "utf8")) as { packages: Record<string, { version?: string; resolved?: string; integrity?: string; hasInstallScript?: boolean; link?: boolean; inBundle?: boolean }> }
-  // (what vault plugins may import is the plugin API: it ships, and what the app hands them is on it)
   for (const n of PLUGIN_PACKAGES) if (!pkg.dependencies?.[n]) problems.push(`package.json: ${n} is one of the packages vault plugins import (core/rules.ts PLUGIN_PACKAGES): it goes in dependencies`)
   for (const n of [...SHARED, ...SHARED_EDITOR]) if (n !== "@vaultite" && !listedPackage(n)) problems.push(`core/rules.ts: ${n}, which the app hands vault plugins, isn't in PLUGIN_PACKAGES`)
   const reviewed = pkg.allowScripts ?? {}
