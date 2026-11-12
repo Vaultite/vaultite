@@ -276,6 +276,21 @@ function paneAt(x: number, y: number): PanePlace | null {
   if (page) return { pane, x: Math.round(x - page.left), y: Math.round(y - page.top) }
   return { pane, text: words(el) }
 }
+/** The app's own UI at x, y that lies over a pane or isn't one (a menu, a dialog, a pane's bar, the web viewer's bar), by
+ *  kind, with its words; null on a note's, a page's or a terminal's content, and on what sidebars hold (paneAt's ui). */
+const CHROME: [string, string][] = [['[role="menu"], [role="menubar"], [data-menu-list]', "menu"], ['[role="listbox"]', "list"], ['[role="tooltip"]', "tooltip"],
+  ["[data-web-bar]", "web viewer's bar"], ["[data-pane-bar]", "pane's bar"], ['[role="dialog"], [data-flyout]', "dialog"]]
+function chromeAt(x: number, y: number): { kind: string; words?: string } | null {
+  const top = document.elementsFromPoint(x, y).find((e) => !e.closest(".companion-overlay"))
+  if (!top || top.closest(".cm-editor, [data-web-box], [data-term]")) return null
+  for (const [sel, kind] of CHROME) {
+    const el = top.closest<HTMLElement>(sel)
+    if (!el) continue
+    const named = top.closest<HTMLElement>(NAMED) ?? el
+    return { kind, words: ((named.innerText || named.getAttribute("aria-label") || "").trim() || (el.innerText || "").trim()).slice(0, 1200) || undefined }
+  }
+  return null
+}
 /** Put a bubble in the note, as its agent's words; it goes from the screen once it's there. */
 const placeSay = (id: string) => op("companion.place", { id }).catch((e) => notifyError(e, "Couldn't put it in the note"))
 
@@ -322,6 +337,12 @@ export function Popover({ a, close, menu, phone }: { a: Agent; close: () => void
 export function placeAt(x: number, y: number): Record<string, unknown> | null {
   // (the toasts of the last minute: one they point at may be gone by the time they let go)
   const told = noticesText(), notices = told ? { notices: told } : {}
+  const own = chromeAt(x, y)
+  if (own) {
+    // (the app's own menu, bar or dialog, not the note or page behind it: its words, the pane it's over for context)
+    const p = paneAt(x, y), near = elementsNear(x, y)
+    return { ...(p?.pane ? { pane: p.pane } : p?.ui ? { ui: p.ui } : {}), chrome: own.kind, ...(own.words ? { under: own.words } : {}), ...(near.length ? { near } : {}), ...notices }
+  }
   const at = noteAt(x, y) ?? paneAt(x, y)
   if (!at) return told ? notices : null
   if ("path" in at && at.path) {

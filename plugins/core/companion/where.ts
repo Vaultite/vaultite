@@ -7,7 +7,9 @@ import path from "node:path"
 import { gitEnv } from "../../../core/plugins.ts"
 
 /** What an ask was over, as far as routing needs it (a Moment's). */
-export type Over = { url?: string; app?: string; title?: string; path?: string; screen?: string; under?: string }
+export type Over = { url?: string; app?: string; title?: string; path?: string; screen?: string; under?: string
+  /** Vaultite's own UI it was over: a data-ui id off any pane (a panel, a button), or what lay over the pane (a menu, its bar). */
+  ui?: string; chrome?: string }
 /** Where it resolved: the folder (a repo's top, else the vault), why, what led there, and the preview it came from. */
 export type Found = { cwd: string; why: string; from?: "note" | "github" | "preview" | "site" | "editor" | "vault"; preview?: string }
 
@@ -42,6 +44,19 @@ export function sitesIn(o: Over): URL[] {
   const lines = (o.screen ?? "").split("\n").slice(0, 60).flatMap((l) => { const m = ADDRESS_LINE.exec(l); return m ? [`https://${m[1]}`] : [] })
   return [o.url ?? "", ...lines].flatMap((s) => { try { const u = new URL(s); return isLive(u) ? [u] : [] } catch { return [] } })
     .filter((u, i, all) => all.findIndex((x) => x.href === u.href) === i)
+}
+
+/** Vaultite's own repo (GitHub's owner/name): an ask about the app itself is its work, wherever it was asked. */
+export const APP_REPO = "Vaultite/vaultite"
+const UI_KINDS: Record<string, string> = { panel: "panel", button: "button", group: "tab group", tab: "tab" }
+/** Vaultite's own UI the pointer was on, in words ("" none): a menu, a dialog or a pane's bar over what the pane shows,
+ *  or what's off every pane (a sidebar's panel, a button, the tab bar). A note's, a page's or a terminal's content isn't. */
+export function appUiOf(o: Over) {
+  if (o.chrome) return `Vaultite's own ${o.chrome}`
+  const [kind, id] = (o.ui ?? "").split(/:(.*)/)
+  if (!id || kind === "pane") return ""
+  const name = (o.title ?? "").trim() || id.split(":")[0]
+  return `Vaultite's own ${UI_KINDS[kind] ?? "UI"} ${JSON.stringify(name.slice(0, 60))}`
 }
 
 /** What an ask is over, as one surface a job can work on: a note, else a page's site (a preview's address, the app's);

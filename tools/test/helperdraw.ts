@@ -311,6 +311,19 @@ chord(false)
 const inWin = await until(() => asks().some((m) => m.text === "what's running here?")) ? asks().at(-1)! : null
 check("…let go, one ask goes, about what the page has under the pointer (its pane and row) and the display's point, no app",
   asks().length === asked0 + 1 && inWin?.pane === "p1" && inWin?.row === 4 && inWin?.under === "npm test" && inWin?.sx === 530 && !inWin?.app && homePage.got.some((g) => g.ch === "vaultite:place-at" && (g.m as Pt).x === 430 && (g.m as Pt).y === 421), [inWin, homePage.got])
+{
+  // (on the app's own menu over a pane: the page says so, and the ask keeps it, the menu's words under the pointer)
+  placeHere = { pane: "p1", chrome: "menu", under: "Show hidden files" }
+  chord(true)
+  await until(() => H.scene()!.summon?.state === "listening")
+  heardWords = "why is there a gap here?"
+  await wait(300)
+  chord(false)
+  const onMenu = await until(() => asks().some((m) => m.text === "why is there a gap here?")) ? asks().at(-1)! : null
+  check("…on the app's own menu, the ask says so (chrome) with the menu's words, over its pane", onMenu?.chrome === "menu" && onMenu?.under === "Show hidden files" && onMenu?.pane === "p1", onMenu)
+  placeHere = { pane: "p1", row: 4, under: "npm test", title: "Terminal" }
+  await wait(400)
+}
 check("…one cursor all along: the summoned one, no other drawn on screen, the page told nothing", !focused.got.length && scenes.every((x) => !x.agents.some((a) => a.name === "Claude")), [focused.got, scenes.filter((x) => x.agents.length)])
 
 // ---------- its voice goes on to its end: only the Talk key, Esc or a new ask stop it
@@ -335,10 +348,11 @@ check("voice: Esc stops it at once, and the exchange ends", stops() > stopped &&
 // (barge-in: the key pressed mid-answer stops it, and it listens for the next ask)
 H.stub("at", win)
 H.stub("under", mailUnder)
+const asked1 = asks().length
 chord(true)
 await wait(300)
 chord(false)
-await until(() => asks().length > asked0 + 1)
+await until(() => asks().length > asked1)
 setAgent({ state: "thinking", t: Date.now() })
 voiced("v2", "It's the Send button. It sends the draft.")
 await until(() => H.spoken().some((m) => m.cmd === "say" && /Send button/.test(String(m.text))))

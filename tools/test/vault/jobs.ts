@@ -560,6 +560,42 @@ export default async ($: VaultTest) => {
       ;[st, b] = await asItsTool(() => api("POST", "ops/companion.job-stop", { id: card.id }, agent))
       check("job-stop: stopped, its terminal ended", st === 200 && b.state === "stopped" &&
         !!(await waitFor(async () => !(await api("GET", "terminals/sessions"))[1].sessions.some((s: Any) => card.link.endsWith(s.id)), 5000, 100)), [st, b])
+      // An ask about Vaultite itself (over its own panel, a menu over a page, or said so) runs in Vaultite's repo, whatever the
+      // pane shows; their errands over a panel, and a note's or a page's own content, stay where they were.
+      {
+        const own = path.join(roots[0], "vaultite"), og = (...a: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", ...a], { cwd: own, stdio: "pipe", env: gitEnv() }).toString()
+        fs.mkdirSync(own, { recursive: true }); fs.writeFileSync(path.join(own, "README.md"), "app\n")
+        og("init", "-q"); og("remote", "add", "origin", "git@github.com:Vaultite/vaultite.git"); og("add", "."); og("commit", "-qm", "first")
+        const vt = fs.realpathSync(own), gh = "https://github.com/lighthouse/site"
+        W.checkoutsIn(roots)
+        const runs = async (m: Any, p: Any = {}) => {
+          c.addMoment({ kind: "ask", for: "Claude", summoned: true, ...m })
+          const [st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: m.text, ...p }, agent))
+          const j = st === 200 ? (await api("POST", "ops/companion.job", { id: b.id }))[1] : null
+          if (j) await api("POST", "ops/companion.job-stop", { id: b.id }, agent)
+          return { st, cwd: j?.where.cwd ? (j.where.cwd === VAULT ? VAULT : fs.realpathSync(j.where.cwd)) : "", why: j?.where.why ?? b.error }
+        }
+        try {
+          const panel = await runs({ text: "the agents list jumps when one finishes", ui: "panel:agents", title: "Agents" })
+          check("handoff: an ask over Vaultite's own panel runs in Vaultite's repo, saying why", panel.cwd === vt && /^asked over Vaultite's own panel "Agents": Vaultite\/vaultite is /.test(panel.why), panel)
+          const menu = await runs({ text: "why is there a gap under this", pane: "pgh", title: "lighthouse/site", url: gh, chrome: "menu", under: "Show hidden files" })
+          check("handoff: an ask on the app's menu over a GitHub page runs in Vaultite's repo, not the page's checkout", menu.cwd === vt && /Vaultite's own menu/.test(menu.why), menu)
+          const bar = await runs({ text: "it should say when this finishes downloading", pane: "pgh", title: "lighthouse/site", url: gh, chrome: "web viewer's bar" })
+          const page = await runs({ text: "make this heading blue", pane: "pgh", title: "lighthouse/site", url: gh, under: "Lighthouse" })
+          check("handoff: the web viewer's own bar is the app's; the page's content under it is the page's checkout", bar.cwd === vt && page.cwd === real, [bar, page])
+          const told = await runs({ text: "your bubbles cover the note's last line", path: "Notes/Plan.md", line: 3 }, { about: "app" })
+          check("handoff: about app (the companion's look, asked over a note) runs in Vaultite's repo, not the vault", told.cwd === vt && /^their ask is about Vaultite itself: /.test(told.why), told)
+          const errand = await runs({ text: "file these under Errands", ui: "panel:inbox", title: "Inbox" }, { about: "work" })
+          const note = await runs({ text: "tidy this list", path: "Notes/Plan.md", line: 3 })
+          check("handoff: an errand over a panel (about work), and a note's own words, stay in the vault", errand.cwd === VAULT && note.cwd === VAULT, [errand, note])
+          W.checkoutsIn([path.join(tmp, "nothing")])
+          const none = await runs({ text: "the agents list jumps", ui: "panel:agents", title: "Agents" })
+          check("handoff: over the app's panel with no checkout of Vaultite anywhere (not a developer's), the vault as before, saying so",
+            none.cwd === VAULT && /^asked over Vaultite's own panel "Agents", but .*no checkout of Vaultite\/vaultite.*: .*the vault/.test(none.why), none)
+          // (their line said before the next ask comes, so it's filed under these)
+          await waitFor(async () => (await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.kind === "say" && /tidy this list/.test(n.text)), 5000, 50)
+        } finally { W.checkoutsIn(); fs.rmSync(own, { recursive: true, force: true }) }
+      }
       // Not the companion's: another agent's vau (an inbox-resumed session, a job) and a script share its `who`, never its voice or ask.
       {
         const script = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli" } } as unknown as IncomingMessage

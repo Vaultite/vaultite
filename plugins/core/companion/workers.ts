@@ -10,7 +10,7 @@ import { cardOf, choiceIn, commitsIn, endEvent, fixTask, HANDED, inPlace, landed
   type ProofMode, step, terminalOf, type Waits, type Where, worktreeOf } from "./jobs.ts"
 import { requestWriter } from "../../../core/vault.ts"
 import type { Moment } from "./plugin.ts"
-import { branchOf, checkoutNamed, checkoutNames, type Found, githubOf, headOf, machineOfUrl, onlyHere, type Over, refusal, repoOf, resolveHere, checkoutsLine, rootsLine, sitesIn, surfaceOf, tilde, unpushed, urlsIn, watched } from "./where.ts"
+import { APP_REPO, appUiOf, branchOf, checkoutNamed, checkoutNames, type Found, githubOf, headOf, machineOfUrl, onlyHere, type Over, refusal, repoOf, resolveHere, checkoutsLine, rootsLine, sitesIn, surfaceOf, tilde, unpushed, urlsIn, watched } from "./where.ts"
 import { type Home, type Read, workerLinks } from "./links.ts"
 import { capOf, CLOUD, cloudIn, lacks, type Needs, place, type Ranked, type RepoRule, rulesIn, rulesNeed, RULES_FILE, type Traits } from "./placement.ts"
 
@@ -206,6 +206,13 @@ export function namesRepo(text: string, repo: string) {
   return (r.includes("/") && new RegExp(`(?<![\\w.-])${esc(r)}(?![\\w-])`, "i").test(text)) ||
     new RegExp(`(?<![\\w.-])${esc(name)}(?![\\w-])\\s+${word}\\b|\\b${word}\\s+(?:called\\s+|named\\s+)?${esc(name)}(?![\\w-])`, "i").test(text)
 }
+/** Why an ask is the app's own work ("" not): `about` as the handoff says (app, or work: their notes and errands), else
+ *  Vaultite's own UI under their pointer (appUiOf), not a page's or a note's content. */
+export function appAsk(o: Over, about: string) {
+  if (about === "app") return "their ask is about Vaultite itself"
+  const ui = about === "work" ? "" : appUiOf(o)
+  return ui ? `asked over ${ui}` : ""
+}
 /** Whether the page's own place (`page`, routed with no repo) wins over the repo a handoff named: it maps to a checkout
  *  (not the vault), another than that repo, and the user's words don't name that repo. */
 export const pageWins = (page: { cwd: string; repo: string; from?: Found["from"] }, repo: string, text: string) =>
@@ -309,11 +316,20 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     return r
   }
   async function routed(m: Moment | undefined, p: Record<string, unknown>): Promise<Omit<Where, "agent" | "account" | "harness" | "model" | "effort"> & { from?: Found["from"] }> {
-    const o: Over = m ? { url: m.url, app: m.app, title: m.title, path: m.path, screen: m.screen, under: m.under } : {}
+    const o: Over = m ? { url: m.url, app: m.app, title: m.title, path: m.path, screen: m.screen, under: m.under, ui: m.ui, chrome: m.chrome } : {}
+    const own = !str(p.repo).trim() && !str(p.cwd) ? appAsk(o, str(p.about)) : ""
+    if (own) {
+      // (Vaultite's own look or behaviour is its repo's work, whatever page or note the pane shows; with no checkout of
+      //  it anywhere (not a developer's machines), where the ask was, as before)
+      const r = await routed(m, { ...p, repo: APP_REPO, page: true }).catch((e) => e instanceof OpError && e.status === 404 ? (e as Error).message : Promise.reject(e))
+      if (typeof r !== "string") return { ...r, why: `${own}: ${r.why}` }
+      const at = await routed(m, { ...p, about: "work" })
+      return { ...at, why: `${own}, but ${r.replace(/\. Leave cwd out.*$/, "")}: ${at.why}` }
+    }
     let machine = str(p.machine).trim()
     if (machine && (await plugin.ask<Machine | null>("machines:machine", null, machine))?.self) machine = ""
     const repo = str(p.repo).trim(), asked = !!machine || !!str(p.cwd) || !!repo
-    if (repo && !p.page && !machine && !str(p.cwd) && !o.path && (urlsIn(o).length || sitesIn(o).length)) {
+    if (repo && !p.page && str(p.about) !== "app" && !machine && !str(p.cwd) && !o.path && (urlsIn(o).length || sitesIn(o).length)) {
       // (over a page, its own checkout (a site's deploy, a preview's server, a GitHub page) wins over a repo the handoff
       //  named, unless their words name that repo: one guessed from a page's title sent the site's work to the app)
       const page = await routed(m, { ...p, repo: "" }).catch(() => null)
@@ -1052,7 +1068,9 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     help: `For what takes more than a minute or two: code, research, a document, a long errand, writing in their notes. It
 runs where the ask was over, derived on the spot: a preview's address (localhost, a Tailscale name: the process
 serving it, its repo, on its machine), a live site (the checkout whose deploy config names its address), a GitHub page (its checkout here), an editor's window (its project), a note (the
-vault); cwd and machine say it instead. A job is in the menu bar's Jobs (starting, working, needs you, ready for
+vault); an ask about Vaultite itself (how its panels, sidebars, menus, views, the web viewer's own bar or you look or
+behave: about app, or their pointer on the app's own UI) runs in Vaultite's repo, whatever page or note the pane shows;
+cwd and machine say it instead. A job is in the menu bar's Jobs (starting, working, needs you, ready for
 review, done, failed, stopped) with where it runs; opening it opens its terminal, where the user can type. A coding job
 works in its own git worktree and branch beside the checkout (repo-<job id>, branch job-<job id>), never in the
 checkout itself (one over a preview they watch edits what serves it, live), and ends ready for review (its diff, a preview's link): nothing ships, deploys or goes out unless they
@@ -1083,7 +1101,8 @@ resumes), with land for their word to merge it, and ask false when their ask isn
       effort: { type: "string", description: "how hard it thinks (default: the setting jobs_effort for Claude Code)" },
       title: { type: "string", description: "its name in the menu bar's Jobs (default: the task's first words); with job, its new name, when the follow-up changes what it's about" },
       cwd: { type: "string", description: "the folder it works in (~ for home), instead of the one the ask was over; one not on that machine is its own checkout of that repo there" },
-      repo: { type: "string", description: "the repo it works in, by GitHub's owner/name or its folder's name (vaultite): each machine's own checkout of it (with machine: that one's); only when their words name it: over a page, its own checkout (the one serving or deploying it) wins over a repo guessed from its title" },
+      repo: { type: "string", description: "the repo it works in, by GitHub's owner/name or its folder's name (vaultite): each machine's own checkout of it (with machine: that one's); only when their words name it: over a page, its own checkout (the one serving or deploying it) wins over a repo guessed from its title. Vaultite's own UI: about app instead" },
+      about: { type: "string", enum: ["app", "work"], description: "what their ask is about: app, Vaultite itself (how its panels, sidebars, menus, views, the web viewer's own bar, the Talk list or you look or behave: a bug or a change in the app), which runs in Vaultite's repo whatever page or note is in the pane; work, their notes, errands or a page's own content, even asked over the app's panels. Left out, what was under their pointer decides (the app's own UI: app)" },
       machine: { type: "string", description: "another of the Machines to run it on, by id (with cwd: that machine's folder)" },
       job: { type: "string", description: "a follow-up to this job of yours (its id): typed into its terminal" },
       land: { type: "boolean", description: "with job: their word to merge what it made (merge it, ship it): it's told to land it as its repo's rules say, and closes once merged" },

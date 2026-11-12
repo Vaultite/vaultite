@@ -1313,7 +1313,7 @@ function inAppAt(p: Point): Promise<Record<string, unknown> | null> {
     w.page.send("vaultite:place-at", { id, x: (p.x - b.x) / w.zoom, y: (p.y - b.y) / w.zoom })
   })
 }
-const PLACE_KEYS = new Set(["path", "line", "find", "selection", "pane", "ui", "row", "x", "y", "under", "title", "notices"])
+const PLACE_KEYS = new Set(["path", "line", "find", "selection", "pane", "ui", "row", "x", "y", "under", "title", "notices", "chrome"])
 /** The page's elements near the point (CSS px of its window) as an ask's, in screen points, by id: what `--ax` and a
  *  drawing's `el` point at, as in another app. */
 function pageNear(els: unknown[]): (Near & { id: string })[] {

@@ -69,6 +69,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Jobs over a live site run in the repo that deploys it**: work asked over a page like your website goes to the
   checkout whose deploy config names its address (its wrangler route or CNAME), not a repo guessed from the page's
   title; when no checkout or two of them deploy it, the job's "why there" says so.
+- **Jobs about Vaultite itself run in Vaultite's repo**: work asked about the app's own look or behaviour (a sidebar
+  panel, a menu, a pane's bar, the web viewer's own bar, the companion) goes to your checkout of Vaultite, whatever page
+  or note the pane shows, not the vault; your notes and errands still run in the vault.
 - **Windows: the app's shared plugin modules load once**: the tab list's devices, the web viewer's containers and settings, and the terminal's folding were each built in twice on Windows, so the two copies could disagree; the build now refuses a module bundled twice.
 - **Jobs that land themselves end when they push**: the server waits for the commit to go live, marks the job live
   (or says why not), and sends CI's failures on it back to the job to fix forward.

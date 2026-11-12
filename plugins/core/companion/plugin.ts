@@ -120,6 +120,9 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
   /** In a pane (a terminal, a web page: today's tab id) or the app's UI (a data-ui id), by its title; a terminal's row, a
    *  page's element (a snapshot ref) or the text under the pointer (`text`). */
   pane?: string; ui?: string; row?: number; el?: string
+  /** Under the pointer, Vaultite's own UI over the pane or note (a menu, a dialog, a pane's bar, the web viewer's bar), by
+   *  kind: the ask is likely about the app, not what the pane shows (a job's place, where.ts). */
+  chrome?: string
   /** change: what a pane it follows did (`what`: a command ended, the page changed; `changes` its lines); watch: a
    *  watch's hit (`item` the watch, `text` what to do). A page's address. */
   what?: string; url?: string }
@@ -1166,6 +1169,7 @@ function screenPlace(m: Record<string, unknown>) {
   const at = rect(m.shotAt), displays = Array.isArray(m.displays) ? m.displays.slice(0, 8).map(rect).filter((d): d is Rect => !!d && d.width > 0 && d.height > 0) : []
   return { ...(str(m.app) ? { app: str(m.app).slice(0, 200), ...(str(m.appName) ? { appName: str(m.appName).slice(0, 120) } : {}) } : {}), ...(Number.isInteger(window) && window > 0 ? { window } : {}), ...(Number.isInteger(Number(m.shotWindow)) && Number(m.shotWindow) > 0 ? { shotWindow: Number(m.shotWindow) } : {}), ...(str(m.title) ? { title: str(m.title).slice(0, 300) } : {}),
     ...(str(m.screen) ? { screen: str(m.screen).slice(0, 20_000) } : {}), ...(str(m.under) ? { under: str(m.under).slice(0, 700) } : {}),
+    ...(str(m.chrome) ? { chrome: str(m.chrome).slice(0, 40) } : {}),
     ...(Number.isFinite(sx) && Number.isFinite(sy) && m.sx !== undefined && m.sy !== undefined ? { sx: Math.round(sx), sy: Math.round(sy) } : {}),
     ...(OWN_SHOT.test(shot) ? { shot, ...(at ? { shotAt: at } : {}) } : {}),
     ...(OWN_SHOT.test(down) && OWN_SHOT.test(shot) ? { shotDown: down, ...(rect(m.shotDownAt) ? { shotDownAt: rect(m.shotDownAt)! } : {}) } : {}),
@@ -2730,7 +2734,8 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
     if (m.pageJob) out.push(pageJobLine(m.pageJob))
     if (m.reviewed) out.push(reviewedLine(m.reviewed))
     if (m.front === "realtime") out.push(`  asked through the realtime voice: it already told them you're looking, so answer at once, no "let me look"${m.talk?.length ? `; said before: ${m.talk.map((x) => JSON.stringify(x)).join(", ")}` : ""}`)
-    if (m.under) out.push(`  under their pointer${m.sx !== undefined ? ` (sx ${m.sx}, sy ${m.sy})` : ""}: ${m.under}`)
+    if (m.under) out.push(`  under their pointer${m.sx !== undefined ? ` (sx ${m.sx}, sy ${m.sy})` : ""}${m.chrome ? ` (Vaultite's own ${m.chrome}, not what the pane shows)` : ""}: ${m.under}`)
+    else if (m.chrome) out.push(`  under their pointer: Vaultite's own ${m.chrome}, not what the pane shows`)
     else if (m.sx !== undefined && m.app) out.push(`  their pointer: sx ${m.sx}, sy ${m.sy}`)
     for (const k of m.ink ?? []) out.push(`  they drew ${k.shape === "ring" ? "a ring round" : k.shape === "underline" ? "an underline under" : `a ${k.shape} over`} sx ${k.box.x}-${k.box.x + k.box.width}, sy ${k.box.y}-${k.box.y + k.box.height} (its box ${k.box.x},${k.box.y},${k.box.width},${k.box.height}): ${k.points.map((p) => p.join(",")).join(" ")}`)
     if (m.clicks?.length) out.push(`  they clicked as they spoke (each went to the app as a click; the picture may show what it did): ${m.clicks.map((c) => `${c.under ?? "something"} at sx ${c.sx}, sy ${c.sy}`).join("; ")}`)
