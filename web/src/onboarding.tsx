@@ -1,4 +1,3 @@
-// The desktop app's Set up Vaultite window (web/onboarding.html, loaded from the built files: no vault, no server).
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import "./index.css"

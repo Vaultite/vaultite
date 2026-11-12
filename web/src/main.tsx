@@ -1,33 +1,27 @@
-import "./core/dev" // keeps the console's messages from here on, and answers the server's asks (vau dev, vau commands)
+import "./core/dev"
 import { StrictMode } from "react"
 import { createRoot, type RootOptions } from "react-dom/client"
 import "./index.css"
-import "./core/shifts" // traces layout shifts the user didn't cause
-import "./core/appearance" // applies the theme, scheme, density and fonts before the first paint
-import "./core/selectAll" // ⌘A selects the text the user is in, never the whole window
-import "./core/windowfocus" // a browser window out of focus greys what's selected, as the desktop app does
+import "./core/shifts"
+import "./core/appearance"
+import "./core/selectAll"
+import "./core/windowfocus"
 import App from "./App.tsx"
 import { startStore } from "./core/data"
 import { startDesktop } from "./core/desktopapp"
 import { prefetchShown, watchOpeningSoon } from "./core/files"
 import { noteAppError, recoverFromStaleBuild, startAppErrors } from "./core/errors"
 
-document.body.dataset.arriving = "" // no transitions until the vault's state has drawn (App.tsx)
-startStore() // the vault's state and its live changes, on their way while React draws the first frame
-prefetchShown() // and the files on screen
-watchOpeningSoon() // and a note's text on its way while the pointer rests on its link
-startDesktop() // the desktop app's menu and files (nothing in a browser)
+document.body.dataset.arriving = ""
+startStore()
+prefetchShown()
+watchOpeningSoon()
+startDesktop()
 
-// Started: from here an error is the app's, not index.html's boot screen. One nothing below caught unmounts the app,
-// so say so (showBootError) rather than leave a blank window.
 const boot = window as Window & { __vauStarted?: boolean; showBootError?: (error: unknown, title?: string, opts?: { fresh?: boolean; again?: boolean }) => void }
 boot.__vauStarted = true
 document.getElementById("vau-boot-error")?.remove()
-// Each is kept for the Errors plugin (core/errors.ts); a file of the app that didn't load reloads once the server
-// answers. What a tab, a panel or a sheet draws fails alone (components/Guard.tsx): only the rest stops the app.
 startAppErrors()
-// It stopped within 20 s of starting, the last time too (a minute ago at most): what it opens as it starts may be what
-// fails, so the screen leads with Reload with a new tab.
 const STOPS = "vaultite.stops"
 const stoppedEarly = () => {
   const now = Date.now(), early = performance.now() < 20_000
@@ -42,7 +36,7 @@ const stopped = (error: unknown, info?: { componentStack?: string }) => {
   noteAppError("stopped", error, { component: info?.componentStack, fatal: true })
   void recoverFromStaleBuild(error).then((reloading) => { if (!reloading) boot.showBootError?.(error, "Vaultite stopped", { fresh: true, again: stoppedEarly() }) })
 }
-// (React logs a caught error itself unless given onCaughtError: so does this one)
+// React stops logging caught errors once given onCaughtError: log them as it would.
 const caught = (error: unknown, info: { componentStack?: string }) => { console.error(error); noteAppError("boundary", error, { component: info.componentStack }) }
 const recovered: NonNullable<RootOptions["onRecoverableError"]> = (error, info) =>
   noteAppError("boundary", error instanceof Error && error.cause !== undefined ? error.cause : error, { component: info.componentStack })

@@ -1,5 +1,3 @@
-// A folder's page from the keyboard, Finder's way: arrows move in every view (a grid's both ways, columns' ← → out of
-// folders and into them), ↵ or ⌘↓ opens, ⌘↑ goes up, Space previews, ⌥⌘1–4 show it another way, a name typed goes to it.
 import { ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, ArrowUpToLine, Columns3, CornerDownLeft, Copy, Eye, FolderUp, GalleryHorizontalEnd, LayoutGrid, List, Pencil, SquareArrowOutUpRight, SquareMousePointer, Trash2 } from "lucide-react"
 import { registerCommands, runsCommand, typingIn } from "@/core/commands"
 import { isDesktop, isMac } from "@/core/platform"
@@ -10,21 +8,16 @@ import { duplicate, removeMany } from "@/components/FileActions"
 import { fixed, type FolderItem } from "@/components/FileTree"
 import { naming, pick, pickedIn, SELECT, type Moves } from "@/pages/FolderParts"
 
-/** What the keys need of a folder's page, which says it by its element while it's drawn (FolderPage). */
 export type KeyedPage = {
   path: string; items: FolderItem[]; moves: Moves | null; view: FolderView
   open: (n: FolderItem, newTab?: boolean) => void; show: (n: FolderItem) => void; up: () => void; showAs: (v: FolderView) => void
 }
 export const keyedPages = new WeakMap<HTMLElement, () => KeyedPage>()
 
-/** The folder whose page gives the keyboard back to its things once drawn (after the keys moved it there). */
 let arriving: string | null = null
 export const arrive = (folder: string) => { arriving = folder }
-/** Called by a page once drawn: true when it's the one arrived at (its picked thing, else its first, gets the keyboard). */
 export const arrived = (folder: string) => { if (arriving !== folder) return false; arriving = null; return true }
 
-/** The page the keys are for: the one with the keyboard (not in a field, its view buttons or a playing video, unless
- *  `choices`), or, with nothing focused, the focused pane's. */
 function pageEl(choices = false): HTMLElement | null {
   const a = document.activeElement
   if (a instanceof HTMLElement && a !== document.body) {
@@ -43,7 +36,6 @@ function at(choices = false): At | null {
   const was = pickedIn(p.path)
   return { el, p, lines, flat, cur: on && flat.includes(on) ? on : was && flat.includes(was) ? was : null }
 }
-/** Keys that act on the thing the keyboard is on: not while it's on a button of the page (its own ↵ and Space). */
 const onThing = () => {
   const a = document.activeElement
   if (a instanceof HTMLElement && a !== document.body && !a.closest("[data-folder-item]")) return null
@@ -51,7 +43,6 @@ const onThing = () => {
   return t?.cur ? t : null
 }
 
-/** Give the keyboard to `key`'s thing, drawn by then or in a frame or two (a long list draws it once it's picked). */
 export function focusThing(page: HTMLElement, key: string, tries = 4) {
   const it = page.querySelector<HTMLElement>(`[data-folder-item="${CSS.escape(key)}"]`)
   const f = it && (it.matches("a[href], [tabindex]") ? it : it.querySelector<HTMLElement>("[data-keyrow], a[href]"))
@@ -70,7 +61,6 @@ type Dir = "up" | "down" | "left" | "right" | "first" | "last"
 function move(dir: Dir, extend = false) {
   const t = at()
   if (!t || !t.flat.length) return
-  // (nothing yet: any way starts at the first)
   if (!t.cur) return go(t, dir === "last" ? t.flat[t.flat.length - 1] : t.flat[0], false)
   if (dir === "first" || dir === "last") return go(t, dir === "first" ? t.flat[0] : t.flat[t.flat.length - 1], extend)
   const r = t.lines.findIndex((l) => l.includes(t.cur!)), c = t.lines[r].indexOf(t.cur)
@@ -86,7 +76,6 @@ function move(dir: Dir, extend = false) {
 }
 
 const thing = (t: At) => t.p.items.find((n) => n.path === t.cur)
-/** The selection when the thing with the keyboard is in it, else that thing. */
 const these = (t: At) => { const s = selectedIn(SELECT); return s.includes(t.cur!) ? s : [t.cur!] }
 
 function open(newTab: boolean) {
@@ -100,12 +89,9 @@ function preview() {
   if (t && n && !t.p.moves?.preview?.()) t.p.show(n)
 }
 
-// ---------- a name typed goes to the first thing it starts ----------
 let typed = "", typedAt = 0
 const typing = () => !!typed && performance.now() - typedAt < 1000
 if (typeof window !== "undefined") {
-  // (not a shortcut, so not a command: before them, a name's first letter over a sequence it starts, "G I"; a key that
-  // runs one by itself, Vim's J, is its until a name is under way)
   addEventListener("keydown", (e) => {
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.isComposing || [...e.key].length !== 1) return
     const going = typing()
@@ -147,7 +133,6 @@ registerCommands([
   { id: "folder:rename", name: "Rename it", keys: ["F2"], when: () => { const t = onThing(); return !!t && !fixed(t.cur!) }, run: () => { const t = onThing(); if (t) naming.set({ path: t.cur!, fresh: false }) }, icon: Pencil },
   { id: "folder:duplicate", name: "Duplicate it", keys: ["Mod+D"], when: () => { const t = onThing(); return !!t && !thing(t)?.folder && !fixed(t.cur!) }, run: () => { const t = onThing(); if (t) void duplicate(t.cur!) }, icon: Copy },
   { id: "folder:delete", name: "Delete it, or the selected ones", keys: isMac ? ["Mod+Backspace"] : ["Delete"], when: () => !!onThing(), run: () => { const t = onThing(); if (t) void removeMany(these(t)) }, icon: Trash2 },
-  // (⌘1–4, Finder's, are the tabs')
   ...VIEWS.map(({ v, label, icon }, i) => ({ id: `folder:show-as-${v}`, name: `Show folder as ${label}`, keys: [`Mod+Alt+${i + 1}`],
     when: () => { const t = at(true); return !!t && t.p.view !== v && (i < 2 || isDesktop()) }, run: () => at(true)?.p.showAs(v), icon })),
 ])

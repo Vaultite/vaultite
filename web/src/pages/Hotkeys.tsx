@@ -1,5 +1,3 @@
-// Hotkeys: every command and its keys, by area (Settings' Hotkeys, and a sheet), saved in hotkeys.json one command at a
-// time ([] = no keys); over them a keyboard of what each key does with the modifiers picked, and which are free.
 import { useEffect, useMemo, useState } from "react"
 import { Command as CommandIcon, Keyboard, Plus, RotateCcw, X } from "lucide-react"
 import { canonical, isCustom, isSeeded, keyCaps, keyHint, keysOf, sameKeys, setHotkeys, shortcutOf, useCommandList, useKnownCommands } from "@/core/commands"
@@ -16,7 +14,6 @@ const BROWSER = ["Mod+N", "Mod+T", "Mod+W", "Mod+Q", "Mod+Shift+N", "Mod+Shift+T
 
 type Known = ReturnType<typeof useKnownCommands>[number]
 
-/** The app's own areas, by a command's id before its colon, where no plugin has that id. */
 const AREAS: Record<string, string> = {
   editor: "Editing", list: "Editing", tab: "Tabs and panes", tabs: "Tabs and panes", pane: "Tabs and panes", split: "Tabs and panes",
   sidebar: "Tabs and panes", workspace: "Tabs and panes", nav: "Tabs and panes", newtab: "Tabs and panes", page: "Tabs and panes",
@@ -24,7 +21,6 @@ const AREAS: Record<string, string> = {
   theme: "Appearance", scheme: "Appearance", font: "Appearance", density: "Appearance", layouts: "Appearance", bundles: "Appearance",
   sidebars: "Appearance", "status-bar": "Appearance", icon: "Appearance", "plugin-settings": "Settings",
 }
-/** Switches and choices: Settings' own, apart from what the app does. */
 const SETTINGS = "Settings"
 const areaOf = (c: Known) => {
   if (c.where) return SETTINGS
@@ -32,20 +28,16 @@ const areaOf = (c: Known) => {
   return pluginById(head)?.name ?? AREAS[head] ?? "General"
 }
 
-/** The keys a keyboard draws, as hotkeys name them. */
 const ROWS = [
   ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "="],
   ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "[", "]"],
   ["A", "S", "D", "F", "G", "H", "J", "K", "L", ";", "'", "\\"],
   ["Z", "X", "C", "V", "B", "N", "M", ",", ".", "/"],
 ]
-/** The modifiers a layer can hold: ⌘ ⇧ ⌥ ⌃ on a Mac; elsewhere Ctrl is Mod. */
 const MODS = (isMac ? ["Mod", "Shift", "Alt", "Ctrl"] : ["Mod", "Shift", "Alt"]) as readonly string[]
 const combo = (mods: string[], key: string) => [...MODS.filter((m) => mods.includes(m)), key].join("+")
-/** A modifier as its cap: ⌘ ⇧ ⌥ ⌃ (Ctrl, Shift… elsewhere). With ⌘ held, so ⇧ isn't drawn as a capital. */
 const ORDER = isMac ? ["Mod", "Ctrl", "Alt", "Shift"] : ["Mod", "Alt", "Shift"], CAPS = keyCaps([...ORDER, "A"].join("+"))
 const glyph = (mod: string) => CAPS[ORDER.indexOf(mod)] ?? mod
-/** Modifiers held as caps run together: "⌘⇧". */
 const heldCaps = (held: string) => held.split("+").filter(Boolean).map(glyph).join(isMac ? "" : "+")
 
 const iconBtn = "grid size-6 shrink-0 cursor-pointer place-items-center rounded-[5px] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground"
@@ -62,14 +54,12 @@ function Caps({ keys, onRemove }: { keys: string; onRemove: () => void }) {
   )
 }
 
-/** What's being recorded: keys for a command, or keys to find; then, keys another command has, to settle. */
 type Recording = { id: string } | { id: string; keys: string; others: Known[] }
 const FIND = "\0find"
 
-/** The sheet: a keyboard of what's bound, then every command with its keys, by area. */
 export function HotkeysSheet() {
   const known = useKnownCommands()
-  useCommandList() // redraw when hotkeys.json changes
+  useCommandList()
   const [query, setQuery] = useState("")
   const [show, setShow] = useState<"all" | "keys" | "changed">("all")
   const [mods, setMods] = useState<string[]>(["Mod"])
@@ -77,13 +67,10 @@ export function HotkeysSheet() {
   const [rec, setRec] = useState<Recording | null>(null)
   const [held, setHeld] = useState("")
 
-  /** Who has these keys, but `id`. */
   const holders = (k: string, id?: string) => known.filter((c) => c.id !== id && keysOf(c).some((x) => sameKeys(x, k)))
   const add = (id: string, k: string) => { const c = known.find((x) => x.id === id); const now = c ? keysOf(c) : []; if (!now.some((x) => sameKeys(x, k))) setHotkeys(id, [...now, k]) }
   const take = (id: string, k: string, from: Known[]) => { for (const o of from) setHotkeys(o.id, keysOf(o).filter((x) => !sameKeys(x, k))); add(id, k) }
 
-  // Recording: the next combination with ⌘, ⌃ or ⌥ (or a function key) is it; Esc cancels. Caught before anything
-  // else sees it, so it runs nothing. Keys another command has wait for Replace or Keep both.
   const listening = rec && !("keys" in rec)
   useEffect(() => {
     if (!listening) return
@@ -108,7 +95,7 @@ export function HotkeysSheet() {
     addEventListener("keyup", up, true)
     addEventListener("blur", cancel)
     return () => { removeEventListener("keydown", down, true); removeEventListener("keyup", up, true); removeEventListener("blur", cancel); setHeld("") }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- rebinds only when recording starts or the commands change
   }, [listening, rec?.id, known])
 
   const groups = useMemo(() => {
@@ -169,7 +156,6 @@ export function HotkeysSheet() {
   )
 }
 
-/** One command: its icon, name and place, its keys (each removable), + to record more, a reset once changed. */
 function Row({ c, rec, held, holders, record, cancel, replace, both }: {
   c: Known; rec: Recording | null; held: string; holders: (k: string, id?: string) => Known[]
   record: () => void; cancel: () => void; replace: (k: string, from: Known[]) => void; both: (k: string) => void
@@ -189,7 +175,6 @@ function Row({ c, rec, held, holders, record, cancel, replace, both }: {
       <div className="flex items-center gap-2.5">
         <span className="grid size-5 shrink-0 place-items-center text-muted-foreground">{Icon && <Icon className="size-4" strokeWidth={2} />}</span>
         <div className="min-w-0 flex-1">
-          {/* (a setting's place: "Toasts" is Inbox's) */}
           <div className="truncate text-[14px]">{c.name}{c.where && <span className="text-muted-foreground"> · {c.where}</span>}
             {isSeeded(c.id) && <span data-hotkey-seeded className="text-muted-foreground"> · Obsidian's keys</span>}</div>
           {notes.map((n) => <div key={n} data-hotkey-conflict className="truncate text-[12px] text-ink-(--red)">{n}</div>)}
@@ -224,7 +209,6 @@ function Row({ c, rec, held, holders, record, cancel, replace, both }: {
   )
 }
 
-/** A keyboard under the modifiers picked: each key tinted by what it does then (two commands: red), a click lists them. */
 function KeyMap({ known, mods, setMods, picked, pick }: { known: Known[]; mods: string[]; setMods: (m: string[]) => void; picked: string | null; pick: (k: string | null) => void }) {
   const on = useMemo(() => {
     const keyOf = new Map(ROWS.flat().map((r) => [canonical(combo(mods, r)).toLowerCase(), r]))
@@ -273,7 +257,6 @@ function KeyMap({ known, mods, setMods, picked, pick }: { known: Known[]; mods: 
                 </button>
               )
             })}
-            {/* (the rows' ends line up as a keyboard's do) */}
             {Array.from({ length: 12 - row.length }, (_, j) => <span key={j} className="flex-1" />)}
           </div>
         ))}

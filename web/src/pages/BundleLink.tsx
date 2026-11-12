@@ -1,5 +1,3 @@
-// A bundle's link, in its share sheet: once its file is in a GitHub repository, vaultite.com/b/<owner>/<name> shows it
-// and tries it live in the web demo, then opens it in the app (core/bundlelinks.ts).
 import { useState } from "react"
 import { Link2 } from "lucide-react"
 import { copyText } from "@/core/richmd"

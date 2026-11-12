@@ -1,5 +1,3 @@
-// The iPhone app's first screen, served from its own files: which Vaultite server to open. It opens the last one after
-// checking it answers, else stays here saying why rather than a blank page (?pick: Switch server…).
 import { StrictMode, useEffect, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
 import { AudioLines, ChevronLeft, Clapperboard, Ellipsis, LoaderCircle, Server as ServerIcon } from "lucide-react"
@@ -11,7 +9,6 @@ import { plainText } from "../../core/plainerror.ts"
 
 followSystemTheme()
 
-/** What was typed, as a server's address: https unless it says, no path. Null when it isn't one. */
 function serverUrl(typed: string): string | null {
   const t = typed.trim()
   if (!t) return null
@@ -22,13 +19,11 @@ function serverUrl(typed: string): string | null {
   } catch { return null }
 }
 
-/** A server's name: its machine's (the host's first part: "studio" of studio.tailnet.ts.net). */
 const nameOf = (url: string) => new URL(url).hostname.split(".")[0]
 
 const VIDEO = /\.(mp4|m4v|mov|webm|ogv)$/i
 const placeKey = (path: string) => `vaultite.offline.${path}`
 
-/** Files kept on this iPhone (the player's Download), playable here without a server. */
 function Kept({ items, play, remove }: { items: PhoneDownload[]; play: (d: PhoneDownload) => void; remove: (d: PhoneDownload) => void }) {
   return (
     <section aria-label="On this iPhone" className="flex flex-col">
@@ -59,7 +54,6 @@ function Kept({ items, play, remove }: { items: PhoneDownload[]; play: (d: Phone
   )
 }
 
-/** A kept file playing, from where it stopped here; the place goes to the server when it's next opened. */
 function Playing({ d, close }: { d: PhoneDownload; close: () => void }) {
   const ref = useRef<HTMLVideoElement & HTMLAudioElement>(null)
   useEffect(() => {
@@ -92,7 +86,6 @@ function Playing({ d, close }: { d: PhoneDownload; close: () => void }) {
 
 function Phone() {
   const [servers, setServers] = useState<Server[] | null>(null)
-  /** The server being opened, and why the last one didn't. */
   const [opening, setOpening] = useState<string | null>(null)
   const [error, setError] = useState<{ url: string; text: string } | null>(null)
   const [typed, setTyped] = useState("")
@@ -105,7 +98,6 @@ function Phone() {
     setOpening(url); setError(null)
     const r = await phoneApp!.probe({ url }).catch((e: Error) => ({ ok: false, error: e.message }))
     if (r.ok) {
-      // (opened, this page is gone; still here a while later, its load failed: the buttons come back)
       setTimeout(() => { setOpening(null); setError({ url, text: "It answered, but its page didn't load" }) }, 15_000)
       return phoneApp!.open({ url }).catch((e: Error) => { setOpening(null); setError({ url, text: plainText(e) }) })
     }
@@ -118,12 +110,11 @@ function Phone() {
     phoneApp.servers().then((r) => {
       setServers(r.servers)
       const q = new URLSearchParams(location.search), pick = q.has("pick"), failed = q.get("failed")
-      // (sent back by the app because a server's page didn't load: why, and no opening it again on its own, or a server
-      // that answers its check but not its page would go round and round)
+      // Never reopened on its own: a server that answers its check but not its page would loop.
       if (failed) return setError({ url: failed, text: `Its page didn't load: ${(q.get("why") || "no answer").replace(/\.$/, "")}` })
       if (r.last && !pick && r.servers.some((s) => s.url === r.last)) open(r.last)
     })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once on mount
   }, [])
 
   const save = (list: Server[]) => { setServers(list); return phoneApp!.setServers({ servers: list }) }

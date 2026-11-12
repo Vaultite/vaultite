@@ -1,5 +1,3 @@
-// Setup's Plugins and Get: Your plugins (by category, never the `alwaysOn` parts) or Get's plugins (PluginBrowse.tsx),
-// each narrowed by Filter, the search above the list it looks in. A row not built in says where it's from; tap for its page.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react"
 import { ChevronRight, ListFilter, Search, X } from "lucide-react"
 import { allowPlugin, byCategory, hostOf, isEnabled, names, offWithAi, pluginById, setSwitch, standInOf, switchedOn, tileTint, usePlugins, type Plugin } from "@/core/plugins"
@@ -21,22 +19,16 @@ import { hasWords } from "@/core/fuzzy"
 import { openMenu, type MenuItem } from "@/components/ContextMenu"
 import { glide } from "@/core/animation"
 
-/** Names in the user's order, case aside (one collator, not one per comparison). */
 const byName = new Intl.Collator(undefined, { sensitivity: "base" })
 
-/** What a plugin does, in one line: its description up to the first full stop or colon. */
 const blurb = (d: string | undefined) => (d ?? "").split(/(?<=[\w)])[.:;] /)[0].replace(/\.$/, "")
 
-/** Vaultite made it: built in, or installed from Vaultite's GitHub organisation (never what a manifest says). */
 const certified = (p: Plugin) => p.tier === "core" || (p.tier === "vault" && !!p.meta?.source && official(p.meta.source.source))
 
 type Source = "built-in" | "installed" | "vault"
 const SOURCES: Record<Source, string> = { "built-in": "Built in", installed: "Installed", vault: "In this vault" }
-/** Where it's from: the app's, installed (from a repository, or another app's plugin), or made in this vault. */
 const sourceOf = (p: Plugin): Source => (p.tier === "core" ? "built-in" : p.tier === "hosted" || p.meta?.source ? "installed" : "vault")
 
-/** Where it's from, and who made it when it isn't Vaultite: an installed plugin's author, or the app whose plugin it is.
- *  Nothing for a built-in one (most rows: the label would say nothing). */
 function bylineOf(p: Plugin): { text: string; tip?: string } | null {
   const source = sourceOf(p)
   if (source === "built-in") return null
@@ -46,17 +38,13 @@ function bylineOf(p: Plugin): { text: string; tip?: string } | null {
   return { text: from }
 }
 
-/** Scroll a plugin's row into view (if needed), then pulse it once. The page clears its search and filters first, so
- *  the row is there (Plugins sets `beforeReveal`). */
 let beforeReveal = () => {}
 function reveal(id: string) {
   beforeReveal()
-  // (an original with a stand-in here shares its row)
   const found = pluginById(id), p = found && (standInOf(found) ?? found)
   requestAnimationFrame(() => requestAnimationFrame(() => pulse(p?.id ?? id)))
 }
 function pulse(id: string) {
-  // (one in a group: its group's row)
   const row = document.querySelector<HTMLElement>(`[data-plugin-row="${id}"]`) ?? document.querySelector<HTMLElement>(`[data-plugin-members~="${id}"]`)
   if (!row) return
   const flash = () => { row.classList.remove("reveal-flash"); void row.offsetWidth; row.classList.add("reveal-flash") }
@@ -66,17 +54,12 @@ function pulse(id: string) {
   setTimeout(flash, 350)
 }
 
-
-/** Where a plugin's row goes: its sheet, or (in Settings, where there's room) its page beside the menu. */
 export const OpenPlugin = createContext<(id: string) => void>((id) => openDetail(`plugin/${id}`))
 
-/** `original`: the other app's plugin it stands in for, installed too (Obsidian's Excalidraw): one row for both, its
- *  switch and page the one that runs, and a line to swap them. Its settings are on its page. */
 export function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, original }: { p: Plugin; on: boolean; blocked: string[]; original?: Plugin }) {
   const open = useContext(OpenPlugin)
   const theirs = !!original && !ownOn && switchedOn(original)
   const p = theirs ? original : own, on = ownOn || theirs, blocked = theirs ? [] : ownBlocked
-  // Its own switch is kept: turn People back on and People map comes back as you left it.
   const problem = p.problems?.[0]
   const waiting = on && !problem && !!p.meta?.approval
   const live = on && !blocked.length && !problem && !waiting
@@ -92,25 +75,20 @@ export function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, original }: 
     <div className="group/prow relative isolate flex min-h-15 items-center gap-3 py-2 md:min-h-12 md:py-1.5">
       <button type="button" onClick={() => open(p.id)} aria-label={`${p.name}: details and settings`} data-plugin-row={own.id}
         className="absolute inset-y-0 -inset-x-2 -z-10 cursor-pointer rounded-[8px] transition-colors group-hover/prow:bg-foreground/[0.04] active:bg-foreground/[0.07]" />
-      {/* Off (by its switch, or because something it needs is off): greyed out. */}
       <IconTile icon={p.icon} tint={tileTint(p.id)} className={cn("pointer-events-none size-9 rounded-[9px] transition-opacity md:size-8 md:rounded-[8px]", !live && "opacity-50 grayscale")}
         iconClassName="size-[20px] md:size-[18px]" />
       <div className="pointer-events-none min-w-0 flex-1">
         <div className="text-[15px] leading-[20px] font-medium max-md:line-clamp-2 md:truncate md:text-[14px]">
           {p.name}
-          {/* (the mark only where it tells something: installed, and from Vaultite) */}
           {sourceOf(p) === "installed" && certified(p) && <Certified className="pointer-events-auto ml-1" />}
           {by && <span className="pointer-events-auto ml-1.5 text-[13px] font-normal text-muted-foreground md:text-[12px]" data-plugin-by={own.id} data-plugin-source={sourceOf(p)} data-tip={by.tip}>{by.text}</span>}
-          {/* Only when something it needs is off (what it needs, on, tells nothing): tap to find it in the list. */}
           {!!blocked.length && (
             <button type="button" onClick={(e) => { e.stopPropagation(); reveal(blocked[0]) }} data-plugin-needs={own.id}
               className="pointer-events-auto ml-1.5 cursor-pointer text-[13px] font-normal text-muted-foreground dashed-under hover:text-foreground md:text-[12px]"
               data-tip={`Turn on ${names(blocked)} to use this`}>needs {names(blocked)}</button>
           )}
         </div>
-        {/* A vault plugin that can't run says why (the sheet has the rest). */}
         {problem ? <div className={cn(line, "text-ink-(--red)")}>Couldn't start</div>
-          // On in the vault, but this machine hasn't allowed it (as it is now): the sheet shows what changed and Allow.
           : waiting ? <div className={cn(line, "text-muted-foreground")} data-plugin-waiting={p.id}>
             {p.meta!.approval!.state === "changed" ? "Changed: waiting for you to allow it again" : "Waiting for you to allow it on this machine"}</div>
           : original ? (
@@ -134,8 +112,6 @@ export function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, original }: 
 
 const FOLDER = ".vaultite/plugins"
 
-/** Vault plugins on in the vault that this machine hasn't allowed yet (another machine's, a synced vault's): all at once,
- *  after a dialog saying what each does beyond the vault; one alone is reviewed on its page, as its row's Review does. */
 function Waiting({ list }: { list: Plugin[] }) {
   const [busy, setBusy] = useState(false)
   if (!list.length) return null
@@ -171,7 +147,6 @@ function Waiting({ list }: { list: Plugin[] }) {
   )
 }
 
-/** A card of rows, hairlines between them; a group's plugins one row, where the first of them is (`grouped`). */
 export function Rows({ list, originals, grouped = true }: { list: Plugin[]; originals: Map<string, Plugin>; grouped?: boolean }) {
   const prefs = usePrefs(), { disabled } = prefs
   return (
@@ -185,13 +160,11 @@ export function Rows({ list, originals, grouped = true }: { list: Plugin[]; orig
   )
 }
 
-/** What Filter narrows the list to: a status, a source, a category (`""`: any). */
 type Status = "all" | "on" | "off"
 type Filters = { status: Status; source: Source | "any"; cat: string }
 const NONE: Filters = { status: "all", source: "any", cat: "" }
 const STATUSES: Record<Status, string> = { all: "All", on: "On", off: "Off" }
 
-/** The filters on, under the search: each a chip that removes it, then how many rows show and Clear all. */
 function ActiveFilters<K extends string>({ chips, count, remove, clear }: { chips: { id: K; label: string }[]; count: number | null; remove: (id: K) => void; clear: () => void }) {
   if (!chips.length) return null
   return (
@@ -213,20 +186,16 @@ function ActiveFilters<K extends string>({ chips, count, remove, clear }: { chip
 type Tab = "installed" | "get"
 export type PluginsView = Tab
 
-/** The Plugins page's list (pages/Setup.tsx). `view`: yours or to get, chosen in Plugins' menu (no tabs of its own).
- *  `above`: what Get shows over its plugins, by the same search and filters (the store's layouts and packs). */
 export function Plugins({ view, onView, above }: { store: Store; view?: Tab; onView?: (v: Tab) => void; above?: (query: string, filters: GetFilters) => ReactNode }) {
   const all = usePlugins()
   const prefs = usePrefs()
   const [query, setQuery] = useState("")
   const [own, setOwn] = useState<Tab>("installed")
   const tab = view ?? own, setTab = onView ?? setOwn
-  // (also in a ref: the open Filter menu draws itself again right after a pick, before React has the new state)
+  // Mirrored in a ref: the open Filter menu redraws right after a pick, before React has applied the new state.
   const [filters, setFiltersState] = useState(NONE)
   const latest = useRef(filters)
   const setFilters = (f: Filters) => { latest.current = f; setFiltersState(f) }
-  // Get plugins' filters (in a ref too, as Your plugins'), and what its source lists, for the menu's counts.
-  // (its category is the menu beside the page's too: getCategory)
   const [gotOwn, setGotState] = useState(GET_NONE)
   const getCat = getCategory.use()
   const got = gotOwn.cat === getCat ? gotOwn : { ...gotOwn, cat: getCat }
@@ -241,45 +210,33 @@ export function Plugins({ view, onView, above }: { store: Store; view?: Tab; onV
     return () => { beforeReveal = () => {} }
   }, [setTab])
   const q = query.trim().toLowerCase()
-  // Hosted originals installed beside their stand-in here, by the stand-in's id: drawn in its row, not on their own.
   const originals = new Map<string, Plugin>()
   for (const p of all) { const s = standInOf(p); if (s && !originals.has(s.id)) originals.set(s.id, p) }
   const paired = new Set([...originals.values()].map((p) => p.id))
   const text = (p: Plugin) => `${p.name}\n${p.description ?? ""}\n${groupWords(p)}`.toLowerCase()
-  // (one whose switch is in a Settings section isn't here: Vim keys, in Editor)
-  // (nor, while AI is off, those for AI: Settings > AI brings them back)
   const every = all.filter((p) => !paired.has(p.id) && !p.alwaysOn && !p.switchIn && !offWithAi(p, prefs)).sort((a, b) => byName.compare(a.name, b.name))
   const sections = byCategory(every).filter((s) => s.plugins.length)
-  // On as its switch shows it: switched on (it, or the original it stands in for) and nothing it needs off. A group's
-  // row is on when any of its plugins is.
   const liveOn = (p: Plugin): boolean => {
     if (p.group) return all.some((m) => m.group === p.group && switchedOn(m, prefs) && (m.requires ?? []).every((r) => isEnabled(r, prefs.disabled)))
     const o = originals.get(p.id)
     if (o && !switchedOn(p, prefs) && switchedOn(o, prefs)) return true
     return switchedOn(p, prefs) && (p.requires ?? []).every((r) => isEnabled(r, prefs.disabled))
   }
-  // What the order and Status go by, taken when the filters or the search change, not when a switch flips: a row
-  // switched on or off stays under the finger (and in an On or Off list) till then.
   const key = `${tab}|${q}|${filters.status}|${filters.source}|${filters.cat}|${every.map((p) => p.id).join()}`
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- taken when filters or search change, not when a switch flips
   const onSet = useMemo(() => new Set(every.filter(liveOn).map((p) => p.id)), [key])
-  // A category emptied (its last plugin removed) isn't left picked with nothing in it.
   const cat = sections.find((s) => s.id === filters.cat) ?? null
   const searched = every.filter((p) => !q || hasWords(q, text(p)) || (originals.has(p.id) && hasWords(q, text(originals.get(p.id)!))))
   const passes = (p: Plugin, f: Filters, on: Set<string>) =>
     (f.status === "all" || on.has(p.id) === (f.status === "on")) && (f.source === "any" || sourceOf(p) === f.source) &&
     (!f.cat || categoryOf(p.category).id === f.cat)
   const eff = { ...filters, cat: cat?.id ?? "" }
-  // On ones first, then by name (a group by its own name, its plugins together).
   const nameOf = (p: Plugin) => (p.group ? groupOf(p.group)?.label ?? p.group : p.name)
   const shown = searched.filter((p) => passes(p, eff, onSet))
     .sort((a, b) => Number(onSet.has(b.id)) - Number(onSet.has(a.id)) || byName.compare(nameOf(a), nameOf(b)))
   const waiting = all.filter((p) => p.tier !== "core" && switchedOn(p, prefs) && !p.problems?.length && !!p.meta?.approval && p.meta.approval.state !== "updating")
-  // (a group counts as its one row)
   const rows = (list: Plugin[]) => list.filter((p, i) => !p.group || list.findIndex((q) => q.group === p.group) === i).length
 
-  // Filter's menu: each choice with how many rows it would show, the other filters (and the search) as they are. It
-  // stays open, so several can be picked; Category is a submenu (ten of them).
   const menu = (): MenuItem[] => {
     const f = latest.current, on = new Set(searched.filter(liveOn).map((p) => p.id))
     const count = (g: Partial<Filters>) => String(rows(searched.filter((p) => passes(p, { ...f, ...g }, on))))
@@ -297,8 +254,6 @@ export function Plugins({ view, onView, above }: { store: Store; view?: Tab; onV
       ] },
     ]
   }
-  // Get plugins' menu: the order, where from, then which show and (the directory's) a category, counted in what the
-  // source lists now.
   const getMenu = (): MenuItem[] => {
     const f = gotRef.current, l = listedRef.current
     const pick = (g: Partial<GetFilters>) => () => setGot({ ...gotRef.current, ...g })
@@ -310,7 +265,6 @@ export function Plugins({ view, onView, above }: { store: Store; view?: Tab; onV
       ...sortsOf(f.source).map((s) => ({ label: s.label, checked: sort === s.value, keep: true, run: pick({ sort: s.value }) })),
       ...(sources.length > 1 ? [
         { label: "Source", caption: true, sep: true, run: () => {} },
-        // (another source has its own orders and no categories, and its list comes in afresh)
         ...sources.map((s) => ({ label: s.label, checked: f.source === s.value, keep: true, run: () => { if (gotRef.current.source !== s.value) { setListed(null); pick({ source: s.value, sort: "", cat: "" })() } } })),
       ] : []),
       { label: "Show", caption: true, sep: true, run: () => {} },
@@ -357,7 +311,6 @@ export function Plugins({ view, onView, above }: { store: Store; view?: Tab; onV
           {q ? `No installed plugin matches "${query.trim()}"${chips.length ? " with these filters" : ""}.` : chips.length ? "No plugins match these filters." : "No plugins here."}
         </p>
       ) : !cat && !q ? (
-        // No category picked: a section per category, headings only (nothing folds; Filter picks one).
         byCategory(shown).filter((s) => s.plugins.length).map((s) => (
           <section key={s.id} className="mb-5" data-plugin-category={s.id}>
             <Section title={s.label}><Rows list={s.plugins} originals={originals} /></Section>
@@ -366,7 +319,6 @@ export function Plugins({ view, onView, above }: { store: Store; view?: Tab; onV
       ) : (
         <section data-plugin-category={cat?.id ?? "all"}><Rows list={shown} originals={originals} /></section>
       )}
-      {/* A search also looks where more plugins are: the directory's that aren't here, then Get plugins' other sources. */}
       {q && <DirectoryMatches query={query} showInstalled={reveal} />}
       {q && (
         <button type="button" onClick={() => setTab("get")} data-plugins-search-more
@@ -388,7 +340,6 @@ export function Plugins({ view, onView, above }: { store: Store; view?: Tab; onV
 
   return (
     <div data-plugins>
-      {/* The search is above the list it looks in: what's installed, or (Get plugins) every source. */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {!view && <Segmented<Tab> label="Plugins" value={tab} onChange={setTab} className="shrink-0"
           options={[{ value: "installed", label: "Your plugins", attrs: { "data-plugins-installed": "" } }, { value: "get", label: "Get plugins", attrs: { "data-plugins-get": "" } }]} />}
@@ -407,7 +358,6 @@ export function Plugins({ view, onView, above }: { store: Store; view?: Tab; onV
   )
 }
 
-/** A group's sheet (`plugin-group/<id>`, from its row): each of its plugins with its own switch and gear. */
 export function PluginGroupSheet({ id }: { store: Store; id: string }) {
   const members = groupMembers(id, usePlugins())
   return (

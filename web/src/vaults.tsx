@@ -1,5 +1,3 @@
-// The desktop app's Manage vaults window (web/vaults.html, loaded from the built files: no vault, no server). Also works
-// as a page of the web app (/vaults.html), on the server's list.
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import "./index.css"

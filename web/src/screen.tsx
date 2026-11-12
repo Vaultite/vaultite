@@ -1,5 +1,3 @@
-// The companion over the screen (electron/overlay.ts): summoned (listening, its trail, thinking), agents' cursors and
-// their bubbles (a click opens #panel, which takes the keyboard), the dictation pill. Nothing rests here.
 import { StrictMode, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createRoot } from "react-dom/client"
 import { Check, CircleHelp, Mic, Play, Square, VolumeOff } from "lucide-react"
@@ -15,7 +13,6 @@ import { type Sample, TRAIL, trailPieces } from "@/core/trail"
 import { type Cue, cueLength, playCue } from "@/core/cues"
 import { penSound } from "@/core/pensound"
 import { cn, followSystemTheme } from "@/lib/utils"
-// (what its flag shows, by the window's own rule: the two draw one cursor)
 import { presence, type Mark as MarkKind } from "../../core/desktop/cursor"
 import { arrowBox, boxAt, flagBox } from "../../core/desktop/boxes"
 import { Chat, type ChatItem } from "@/components/Chat"
@@ -28,7 +25,6 @@ import type { RegionScene } from "../../core/desktop/clips"
 type Point = { x: number; y: number }
 type Rect = { x: number; y: number; width: number; height: number }
 type Say = { id: string; text: string; question?: boolean }
-/** Driving another app: what it does now (its caption), `paused` while it waits for their hands (helperlogic.ts'). */
 type Doing = { doing?: string; paused?: boolean }
 type Agent = { name: string; tint: string; state: string; sx: number; sy: number; t?: number; seen?: boolean; why?: string; from?: Point; leaving?: boolean; target?: Rect; say?: Say } & Doing
 type Summoned = Doing & { name: string; tint: string; state: "listening" | "thinking" | "watching" | "missed"; sx: number; sy: number; words?: string; from?: Point; leaving?: boolean
@@ -36,23 +32,15 @@ type Summoned = Doing & { name: string; tint: string; state: "listening" | "thin
   follow?: boolean; aim?: { id: string; x: number; y: number }; level?: number; drag?: boolean }
 type Shown = { width: number; height: number; top: number; agents: Agent[]; summon: Summoned | null
   pill: { level: number; text: string; pending?: string; ready: boolean; free?: boolean; hint?: boolean } | null
-  /** The cursor saying its answer aloud: its level comes with the places (`At.level`). */
   speaking?: { name: string; level?: number } | null
-  /** The user's box, in this display's points. */
   region?: RegionScene | null
   behind?: Behind | null }
-/** A step in a window behind theirs (electron/takeover.ts' BehindCard): its live picture, the cursor in it (fractions of
- *  the window), what it does; `edge`: the room the Dock takes at this display's corner. */
 type Behind = { agent: string; tint: string; app: string; title: string; img: string; aspect: number; cursor: Point | null; caption: string
   end?: "done" | "unsure"; edge: { right: number; bottom: number } }
-/** Only the places changed (helperlogic.ts splitScene): x, y and a target's frame. */
 type At = { agents: Record<string, number[]>; summon: [number, number] | null; level?: number; hear?: number }
 type PanelData = { name: string; tint: string; items: ChatItem[]; busy?: boolean; words?: { text: string; listening: boolean; done?: boolean; id?: number; send?: boolean }
-  /** What its empty field says (an answer's box: how to reply without the mouse). */
   hint?: string
-  /** Its voice button: `play` an answer kept unsaid (quiet for a call, or stopped), `stop` one being said. */
   play?: "play" | "stop"
-  /** Quiet for a call, why ("Quiet: Chrome has your mic"): a Not a call button beside it. */
   quiet?: string }
 type Bridge = { on: (fn: (s: Shown) => void) => () => void; onAt: (fn: (a: At) => void) => () => void
   holds?: (m: { boxes: Box[]; pressing: boolean }) => void; near?: () => void
@@ -66,17 +54,13 @@ const api = (window as unknown as { vaultiteScreen?: Bridge }).vaultiteScreen
 
 followSystemTheme()
 
-// ---------- motion: each cursor glides on a spring, painted straight onto its element; the loop sleeps when all are still
-
 type Paint = (el: HTMLElement, x: number, y: number) => void
 type Mover = { g: Glide; tx: number; ty: number; w: number; el: HTMLElement | null; paint: Paint }
 const movers = new Map<string, Mover>()
-/** An agent's cursor settles in about the in-app one's time. */
 const AGENT = CURSOR_SPRING
 let raf = 0, last = 0
 
 function frame(t: number) {
-  // (the first frame after a rest counts as one frame, not the whole rest)
   const dt = last ? Math.min(0.05, (t - last) / 1000) : 1 / 60
   last = t
   let moving = false
@@ -89,16 +73,11 @@ function frame(t: number) {
   raf = moving ? requestAnimationFrame(frame) : 0
   if (!moving) last = 0
 }
-/** The wall clock as frames count it (a drawing's beats and the pen's strokes are on it): taken again as the loop wakes. */
 let clockOff = Date.now() - performance.now()
 const clock = () => performance.now() + clockOff
 const kick = () => { if (!raf) { clockOff = Date.now() - performance.now(); raf = requestAnimationFrame(frame) } }
 
-// ---------- the summoned companion in its exchange: its pilot (core/pilot.ts) rides it beside the pointer, flies it to
-// what it points at and draws its marks with it; every display runs the same one and draws it while it's there
-
 const flying: { pilot: Pilot | null; el: HTMLElement | null; to: string; reduced: boolean; at: Point | null; sound: boolean; inked: { x: number; y: number; t: number } | null } = { pilot: null, el: null, to: "", reduced: matchMedia("(prefers-reduced-motion: reduce)").matches, at: null, sound: false, inked: null }
-/** Its pen heard as it inks (core/pensound.ts), on the display it's on, when its drawing says it may be. */
 const pen = penSound(() => (audio ??= new AudioContext()), () => napAudio())
 function flyPose(now: number) {
   const pilot = flying.pilot!, pose = pilot.pose(now), el = flying.el
@@ -112,12 +91,9 @@ function flyPose(now: number) {
   if (el) {
     paintCursor(el, pose.x, pose.y)
     el.style.setProperty("--pilot-scale", pose.scale.toFixed(3))
-    // (only the display it's on draws it)
     const on = pose.x > -40 && pose.y > -40 && pose.x < innerWidth + 40 && pose.y < innerHeight + 40
     el.style.visibility = on ? "" : "hidden"
-    // (resting where it points, it floats a little)
     el.toggleAttribute("data-parked", pose.mode === "parked")
-    // (on its way somewhere: its thinking glow gives way to the flight)
     el.toggleAttribute("data-moving", pose.mode === "fly" || pose.mode === "pen" || pose.mode === "back")
     const to = pose.to ? `${Math.round(pose.to.x)},${Math.round(pose.to.y)}` : ""
     if (on && to !== flying.to) { flying.to = to; api?.pilot?.(pose.to ? [Math.round(pose.to.x), Math.round(pose.to.y)] : null) }
@@ -128,14 +104,12 @@ function startFlying(c: Summoned) {
   const now = clock()
   if (!flying.pilot) {
     flying.pilot = makePilot({ reduced: flying.reduced }); flying.to = ""
-    // (its first place: beside the pointer as the scene has it, till the feed says)
     flying.pilot.pointer({ x: c.sx - 24, y: c.sy - 20 }, { x: c.sx, y: c.sy }, now)
   }
   if (c.state === "listening") flying.pilot.release(now)
   flying.pilot.aim(c.state === "listening" ? null : c.aim ?? null, now)
   kick()
 }
-/** A soft cue the helper asks for (it follows the setting `sounds`): its audio made as it plays (core/cues.ts). */
 let audio: AudioContext | null = null
 function cueNow(name: Cue) {
   audio ??= new AudioContext()
@@ -143,7 +117,6 @@ function cueNow(name: Cue) {
   playCue(audio, name)
   napAudio(cueLength(name) * 1000)
 }
-// (one owner for the context the cues and the pen share: suspended once both are quiet, so no audio runs at rest)
 let audioUntil = 0, audioNap: ReturnType<typeof setTimeout> | undefined
 function napAudio(ms = 0) {
   audioUntil = Math.max(audioUntil, Date.now() + ms)
@@ -151,7 +124,6 @@ function napAudio(ms = 0) {
   audioNap = setTimeout(() => { if (!pen.busy() && audio?.state === "running") void audio.suspend() }, audioUntil - Date.now() + 300)
 }
 function pointerMoved(p: [number, number, number, number]) {
-  // (held, the pointer leaves its trail; a drag makes a box instead)
   if (view.s?.summon?.state === "listening" && !view.s.summon.drag) {
     if (!trail.pts.length || trail.tint !== view.s.summon.tint) { trail.tint = view.s.summon.tint; trail.colour = getComputedStyle(document.documentElement).getPropertyValue(`--${trail.tint}`).trim() || "#e8590c" }
     trail.pts.push({ x: p[0], y: p[1], t: clock() })
@@ -161,22 +133,14 @@ function pointerMoved(p: [number, number, number, number]) {
   flying.pilot.pointer({ x: p[0], y: p[1] }, { x: p[2], y: p[3] }, clock())
   kick()
 }
-// ---------- the trail: while the Talk key is held the pointer leaves a thick stroke in the companion's colour, smooth
-// through its samples, the newest part solid and older parts fading (core/trail.ts); let go, the rest fades
 
 const trail: { pts: Sample[]; tint: string; colour: string; el: HTMLCanvasElement | null; mask: HTMLCanvasElement | null
-  /** Let go: since when what's left of it draws into the cursor. */
   into: number } = { pts: [], tint: "", colour: "#e8590c", el: null, mask: null, into: 0 }
-/** How long what's left of the trail takes to draw into the cursor once let go (ms). */
 const INTO_MS = 380
-// (its fade as a mask: each piece's opacity drawn as a grey, the lightest kept where pieces meet (no seams, no beads),
-// then that grey made the alpha of its colour)
 const ALPHA = "vaultite-trail-alpha"
 function drawTrail(now: number) {
   const held = view.s?.summon?.state === "listening"
-  // (reduced motion: no fading, gone once let go)
   if (flying.reduced && !held) trail.pts = []
-  // (let go: what's left of it is drawn into the cursor, the newest part first, and gone)
   const gone = trail.into && !held ? Math.min(1, (now - trail.into) / INTO_MS) : 0, to = flying.at
   if (gone >= 1) trail.pts = []
   const pull = (p: Sample, i: number, all: Sample[]) => {
@@ -185,7 +149,6 @@ function drawTrail(now: number) {
     return { ...p, x: p.x + (to.x - p.x) * e, y: p.y + (to.y - p.y) * e }
   }
   const pieces = trailPieces(trail.pts.map(pull), now, { still: flying.reduced })
-  // (held with the pointer still, once it's all faded: nothing left to draw, so the loop sleeps till the pointer moves)
   const newest = trail.pts.at(-1)
   if (!pieces.length && (!held || !newest || now - newest.t > (flying.reduced ? TRAIL.still : TRAIL.fade))) trail.pts = []
   else if (trail.pts.length > 600) trail.pts = trail.pts.filter((p) => now - p.t < TRAIL.fade)
@@ -195,7 +158,6 @@ function drawTrail(now: number) {
     document.body.insertAdjacentHTML("beforeend", `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="${ALPHA}" color-interpolation-filters="sRGB"><feColorMatrix type="luminanceToAlpha"/></filter></svg>`)
   }
   const dpr = devicePixelRatio || 1, w = Math.round(innerWidth * dpr), h = Math.round(innerHeight * dpr)
-  // (no trail: an empty canvas, sized to nothing, costs nothing)
   const want = trail.pts.length ? [w, h] : [0, 0]
   if (c.width !== want[0] || c.height !== want[1]) { c.width = want[0]; c.height = want[1]; c.style.width = `${innerWidth}px`; c.style.height = `${innerHeight}px` }
   const g = c.getContext("2d")
@@ -203,7 +165,6 @@ function drawTrail(now: number) {
   g.setTransform(1, 0, 0, 1, 0, 0)
   g.clearRect(0, 0, w, h)
   if (!pieces.length) return true
-  // (only the room the trail takes is worked on)
   const pad = TRAIL.width, xs = pieces.flatMap((p) => [p.a[0], p.b[0]]), ys = pieces.flatMap((p) => [p.a[1], p.b[1]])
   const x0 = Math.max(0, Math.floor((Math.min(...xs) - pad) * dpr)), y0 = Math.max(0, Math.floor((Math.min(...ys) - pad) * dpr))
   const x1 = Math.min(w, Math.ceil((Math.max(...xs) + pad) * dpr)), y1 = Math.min(h, Math.ceil((Math.max(...ys) + pad) * dpr))
@@ -233,7 +194,6 @@ function drawTrail(now: number) {
   g.globalCompositeOperation = "source-over"
   return true
 }
-/** A drawing's strokes for its pen (Draw.tsx, on the display that has them; `told`: another display's, in our points). */
 function penFor(s: PenScript | null, told = false) {
   if (!told) api?.pen?.(s)
   flying.sound = !!s?.sound
@@ -242,8 +202,6 @@ function penFor(s: PenScript | null, told = false) {
   kick()
 }
 
-/** Where `key` goes now; a new one starts where it came from (`from`), else there; `now`: there at once (the summoned
- *  one follows the pointer as it is). */
 function aim(key: string, x: number, y: number, w: number, from?: Point, now = false) {
   let m = movers.get(key)
   if (!m) {
@@ -257,7 +215,6 @@ function aim(key: string, x: number, y: number, w: number, from?: Point, now = f
   kick()
 }
 
-/** Its element, painted where it is now (it draws itself after: React never sets its place). */
 function attach(key: string, paint: Paint) {
   return (el: HTMLElement | null) => {
     const m = movers.get(key)
@@ -267,8 +224,6 @@ function attach(key: string, paint: Paint) {
     if (el) paint(el, m.g.x, m.g.y)
   }
 }
-// (the arrow's tip at the point; its name and words placed by the window's rule (core/desktop/boxes.ts): never over its
-// arrow, its name or what it points at)
 const paintCursor: Paint = (el, x, y) => {
   el.style.transform = `translate(${x - 3}px, ${y - 2}px)`
   const top = view.s?.top ?? 0, area = { x: 0, y: top, width: innerWidth, height: innerHeight - top }, tip = { x, y }
@@ -284,13 +239,10 @@ const paintCursor: Paint = (el, x, y) => {
   bubble.dataset.side = b.side
   bubble.toggleAttribute("data-up", b.up)
 }
-/** Its element painted again where it is (its words came or changed: where they go). */
 function repaint(key: string) {
   const m = movers.get(key)
   if (m?.el) m.paint(m.el, m.g.x, m.g.y)
 }
-
-// ---------- what's drawn: the scene, and what just left it (fading where it was going)
 
 type View = { s: Shown | null; gone: Agent[]; summonGone: Summoned | null; behindGone: Behind | null }
 let view: View = { s: null, gone: [], summonGone: null, behindGone: null }
@@ -306,13 +258,10 @@ function leave(key: string, done: () => void) {
 function back(key: string) { clearTimeout(fading.get(key)); fading.delete(key) }
 const targetOf = (a: Agent) => (a.target ? [a.target.x, a.target.y, a.target.width, a.target.height].join() : undefined)
 
-/** Its voice's level, as bars by its name: a style, not a render. */
 const speakAt = (v: number) => document.documentElement.style.setProperty("--speak", String(v))
-/** How loud they are as it listens, as bars by its name. */
 const hearAt = (v: number) => document.documentElement.style.setProperty("--hear", String(v))
 function onScene(s: Shown) {
   const was = view.s
-  // (let go: the trail draws into the cursor)
   if (was?.summon?.state === "listening" && s.summon?.state !== "listening" && trail.pts.length) { trail.into = clock(); kick() }
   if (s.summon?.state === "listening") trail.into = 0
   speakAt(s.speaking?.level ?? 0)
@@ -321,7 +270,6 @@ function onScene(s: Shown) {
   if (s.summon?.follow) { back("summon"); startFlying(s.summon) }
   else if (s.summon) { back("summon"); aim("summon", s.summon.sx, s.summon.sy, AGENT, undefined, s.summon.state === "listening") }
   const names = new Set(s.agents.map((a) => a.name))
-  // (one that became the other, summoned or its own cursor, goes at once: that one glides on from it)
   const swap = (name: string, key: string) => { const twin = s.summon?.name === name || names.has(name); if (twin) { back(key); movers.delete(key) } return !twin }
   const gone = [...view.gone.filter((a) => !names.has(a.name)), ...(was?.agents ?? []).filter((a) => !names.has(a.name) && !view.gone.some((g) => g.name === a.name))]
     .filter((a) => swap(a.name, `agent:${a.name}`))
@@ -329,9 +277,7 @@ function onScene(s: Shown) {
   let summonGone = s.summon ? null : view.summonGone ?? was?.summon ?? null
   if (summonGone && !swap(summonGone.name, "summon")) summonGone = null
   if (summonGone) leave("summon", () => { set({ summonGone: null }); if (!view.s?.summon) flying.pilot = null })
-  // (its exchange over and gone: its pilot with it)
   if (!s.summon && !summonGone) flying.pilot = null
-  // (the card behind fades out with its cursor where it was)
   const behindGone = s.behind ? null : view.behindGone ?? was?.behind ?? null
   if (s.behind) back(BEHIND)
   else if (behindGone) leave(BEHIND, () => set({ behindGone: null }))
@@ -350,9 +296,6 @@ function onAt(at: At) {
   if (view.s?.summon && !view.s.summon.follow && at.summon) aim("summon", at.summon[0], at.summon[1], AGENT, undefined, view.s.summon.state === "listening")
 }
 
-// ---------- the pointer: what it's over takes it (a bubble, the pill, to click); off them, it goes through again
-// (`data-hold`: the window takes it where the pointer is over one, electron/overlaywin.ts)
-
 function Arrow({ tint }: { tint: string }) {
   return (
     <svg width={20} height={20} viewBox="0 0 20 20" className="drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]">
@@ -361,7 +304,6 @@ function Arrow({ tint }: { tint: string }) {
   )
 }
 
-/** Its conversation, by where it is now. */
 function open(name: string, key: string) {
   const m = movers.get(key)
   if (m) api?.open(name, Math.round(m.g.x), Math.round(m.g.y))
@@ -375,7 +317,6 @@ function Hold({ children, onHover, ...rest }: React.HTMLAttributes<HTMLDivElemen
   )
 }
 
-/** Since it last acted, as the window counts it (core/desktop/cursor.ts): 0 under 3 s, 1 under 4 s, 2 under 8 s, 3 after. */
 function useAge(t?: number): 0 | 1 | 2 | 3 {
   const [, tick] = useReducer((n: number) => n + 1, 0)
   const since = t ? Date.now() - t : Infinity, age = since < 3000 ? 0 : since < 4000 ? 1 : since < 8000 ? 2 : 3
@@ -387,7 +328,6 @@ function useAge(t?: number): 0 | 1 | 2 | 3 {
   return age
 }
 
-/** A flag's mark, as the window draws it: dots working, a wave listening, a tick for a moment let pass. */
 function Mark({ mark, at }: { mark: MarkKind | "speak" | "hear"; at?: number }) {
   if (mark === "speak") return <span className="companion-speak" aria-label="speaking"><i /><i /><i /></span>
   if (mark === "hear") return <span className="companion-hear" aria-label="listening"><i /><i /><i /><i /></span>
@@ -403,8 +343,6 @@ const WORDS = cn("companion-pop absolute top-0 left-0 flex w-max max-w-[320px] f
   "data-[side=right]:data-up:rounded-bl-[4px] data-[side=left]:data-up:rounded-br-[4px] data-[side=right]:not-data-up:rounded-tl-[4px] data-[side=left]:not-data-up:rounded-tr-[4px]")
 const FADES = "screen-in group fixed top-0 left-0 transition-opacity duration-300 data-gone:pointer-events-none data-gone:opacity-0 data-gone:duration-500 data-gone:ease-out data-leaving:delay-150"
 
-/** An agent's cursor as the window draws it (plugins/core/companion/Overlay.tsx): the arrow, its flag (its name, what it
- *  does, its mark), its bubble beside; going into the window, it fades as it lands where the window draws it. */
 function Cursor({ a, gone, speaking }: { a: Agent; gone?: boolean; speaking?: boolean }) {
   const tint = `var(--${a.tint})`, key = `agent:${a.name}`
   const [hover, setHover] = useState(false), age = useAge(a.t)
@@ -432,22 +370,17 @@ function Cursor({ a, gone, speaking }: { a: Agent; gone?: boolean; speaking?: bo
   )
 }
 
-/** The companion summoned by a Talk key: at the pointer, listening (a wave, its words as they come) or thinking (dots),
- *  till its own cursor takes over where it was asked. */
 function Summon({ c, gone, speaking }: { c: Summoned; gone?: boolean; speaking?: boolean }) {
   const tint = `var(--${c.tint})`
   useLayoutEffect(() => { if (c.follow) { if (flying.pilot && flying.el) flyPose(clock()) } else repaint("summon") }, [c.words, c.state, c.follow])
-  // (riding with the pointer, its pilot places it each frame; else it glides as the others do)
   const ref = c.follow ? (el: HTMLElement | null) => { flying.el = el; if (el && flying.pilot) flyPose(clock()) } : attach("summon", paintCursor)
   return (
     <div ref={ref} data-gone={gone || c.leaving || undefined} data-companion-summoned={c.state} data-follow={c.follow || undefined} data-speaking={speaking || undefined}
       className={cn(FADES, "pointer-events-none")} style={{ "--c": tint } as React.CSSProperties}>
-      {/* (thinking: a soft glow breathing at its tip, its own, not a spinner; it gives way to its voice or a flight) */}
       <span aria-hidden className="companion-glow" />
       <div className="pilot-arrow relative origin-[3px_2px] [scale:var(--pilot-scale,1)]"><div className={cn(c.state === "thinking" && "companion-bob", c.state === "missed" && "companion-miss")}><Arrow tint={tint} /></div></div>
       <div data-flag style={{ background: tint }} className={FLAG}>
         {c.name}
-        {/* (a press that went nowhere says so, never silence) */}
         {c.state === "missed" && c.missed && <span data-companion-missed className="font-medium opacity-90">{c.missed}</span>}
         {c.doing && c.state !== "listening" && <Doing d={c} />}
         <Mark mark={speaking && c.state !== "listening" ? "speak" : c.state === "listening" ? (c.level === undefined ? "wave" : "hear") : c.state === "thinking" && !c.doing ? "dots" : null} />
@@ -459,20 +392,16 @@ function Summon({ c, gone, speaking }: { c: Summoned; gone?: boolean; speaking?:
   )
 }
 
-/** What it does in another app, by its name (Clicking Files), or that it waits while their hands are on the mouse. */
 function Doing({ d }: { d: Doing }) {
   return <span key={d.doing} data-companion-doing={d.paused ? "paused" : "doing"} className={cn("screen-in max-w-[260px] truncate font-medium", d.paused ? "opacity-75 italic" : "opacity-90")}>{d.doing}</span>
 }
 
-/** The window's picture in its card: whole, its shape kept (a tall one with room either side). */
 const THUMB_W = 268, THUMB_H = 200, BEHIND = "behind"
 function fitted(aspect: number) {
   const h = Math.min(THUMB_H, Math.round(THUMB_W / (aspect || 1)))
   return { h, w: Math.min(THUMB_W, Math.round(h * (aspect || 1))) }
 }
 const paintArrow: Paint = (el, x, y) => { el.style.transform = `translate(${x - 3}px, ${y - 2}px)` }
-/** A step behind their windows, as a picture-in-picture at the main display's corner: the window live, the agent's
- *  cursor gliding in it where the step acts, what it does. */
 function BehindCard({ b, gone }: { b: Behind; gone?: boolean }) {
   const tint = `var(--${b.tint})`, { w, h } = fitted(b.aspect), arrow = useRef<HTMLDivElement>(null)
   const x = b.cursor ? (THUMB_W - w) / 2 + b.cursor.x * w : null, y = b.cursor ? b.cursor.y * h : null
@@ -488,7 +417,6 @@ function BehindCard({ b, gone }: { b: Behind; gone?: boolean }) {
       style={{ right: 16 + b.edge.right, bottom: 16 + b.edge.bottom,
         boxShadow: `0 0 0 1.5px color-mix(in srgb, ${tint} 45%, transparent), 0 14px 36px rgba(0,0,0,.2), 0 2px 8px rgba(0,0,0,.08)` }}>
       <div className="relative" style={{ height: h }}>
-        {/* (the picture is the window with its own corners: a tall one stands in the card, no band either side) */}
         <img src={b.img} alt="" draggable={false} className="absolute top-0 h-full max-w-none rounded-[8.5px] shadow-[0_0_0_0.5px_rgba(0,0,0,.18),0_1px_4px_rgba(0,0,0,.14)]"
           style={{ left: (THUMB_W - w) / 2, width: w }} />
         <div ref={arrow} className={cn("absolute top-0 left-0 transition-opacity duration-200", !b.cursor && "opacity-0")}>
@@ -509,13 +437,11 @@ function BehindCard({ b, gone }: { b: Behind; gone?: boolean }) {
   )
 }
 
-/** Under the menu bar: dictation's box, a word for a moment, where they stay put as you move between apps. */
 const BOX_AT = "screen-box fixed right-3 flex max-w-[380px] justify-end"
 function Hint({ text, top }: { text: string; top: number }) {
   return <div className={cn("screen-in pointer-events-none", BOX_AT)} style={{ top: top + 8 }}><div className="dictation-pill" data-ready><span className="dictation-pending">{text}</span></div></div>
 }
 
-/** Dictation's box: bars while it listens, and the words as they're said (its last lines), settled ones bright. A click stops. */
 function Pill({ p, top }: { p: NonNullable<Shown["pill"]>; top: number }) {
   const bars = useRef<HTMLDivElement>(null), now = useRef(p)
   now.current = p
@@ -536,10 +462,7 @@ function Pill({ p, top }: { p: NonNullable<Shown["pill"]>; top: number }) {
   )
 }
 
-// ---------- a cursor's conversation (#panel): the window's own look (Chat.tsx), in a window that takes the keyboard
-
 const marked = new Marked({ gfm: true, breaks: true })
-// (its words as Markdown, made safe; links open in the browser: overlay.ts)
 const linkAttrs = (href: string) => (/^https?:/i.test(href) ? ` href="${href.replace(/"/g, "&quot;")}" target="_blank" rel="noreferrer"` : null)
 const html = (text: string) => sanitizeHtml(marked.parse(text, { async: false }) as string, { link: linkAttrs, image: () => null })
 const TIME = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" })
@@ -550,17 +473,14 @@ function Panel() {
   const took = useRef(0), box = useRef<HTMLDivElement>(null)
   useEffect(() => api?.panel.on((x) => {
     setD(x)
-    // (words said into its box, once each)
     const w = x.words
     if (w?.done && w.id && w.id !== took.current) {
       took.current = w.id
-      // (a Talk key's words go as they stop, with what was typed before them)
       setDraft((v) => { const all = (v + joinText(v, w.text)).trimStart(); if (!w.send || !all.trim()) return all; api?.panel.send(all); return "" })
     }
   }), [])
   useEffect(() => {
     const esc = (e: KeyboardEvent) => { if (e.key === "Escape") api?.panel.close(true) }
-    // (given the keyboard, by a click anywhere in it or its Talk key tapped: straight into its field)
     const focused = () => { const f = document.querySelector<HTMLInputElement>("[data-companion-popover] input"); if (f && document.activeElement !== f) f.focus() }
     addEventListener("keydown", esc)
     addEventListener("focus", focused)
@@ -586,7 +506,6 @@ function Panel() {
         words={(n) => <div className="note-prose compact companion-md" dangerouslySetInnerHTML={{ __html: html(n.text ?? "") }} />}
         time={(t) => TIME.format(t)}
         notice={d.quiet && (
-          // (why it says nothing, at a glance, and the way out when the app with the mic isn't on a call)
           <div data-companion-quiet role="status" className="flex items-center gap-2 border-t border-border/60 py-1 pr-1.5 pl-3 text-[12px] text-muted-foreground">
             <VolumeOff className="size-3.5 shrink-0" aria-hidden />
             <span className="min-w-0 flex-1 truncate">{d.quiet}</span>
@@ -623,7 +542,6 @@ function Screen() {
   if (!s) return null
   return (
     <>
-      {/* (the agents' drawings, under their cursors) */}
       <ScreenDrawings pen={s.summon?.follow ? penFor : undefined} />
       {s.agents.map((a) => <Cursor key={a.name} a={a} speaking={s.speaking?.name === a.name} />)}
       {gone.map((a) => <Cursor key={a.name} a={a} gone />)}
@@ -635,7 +553,6 @@ function Screen() {
   )
 }
 
-// (the window's marks and pops, as plugins/core/companion/Overlay.tsx has them)
 const STYLE = `
 .screen-in { animation: screen-in .2s ease-out; }
 @keyframes screen-in { from { opacity: 0; } }
@@ -676,6 +593,5 @@ const STYLE = `
 `
 document.head.append(Object.assign(document.createElement("style"), { textContent: location.hash === "#island" ? ISLAND_STYLE : STYLE + REGION_STYLE }))
 document.documentElement.style.background = "transparent"
-// (the overlay and the island take the pointer only over what's marked to: a cursor's conversation is a window of its own)
 if (location.hash !== "#panel") tellHolds(api)
 createRoot(document.getElementById("root")!).render(<StrictMode>{location.hash === "#panel" ? <Panel /> : location.hash === "#island" ? <Island /> : <Screen />}</StrictMode>)

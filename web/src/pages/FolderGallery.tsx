@@ -1,5 +1,3 @@
-// A folder's page as a gallery (Finder's, desktop only): the picked thing large (a photo whole, a video that plays, a
-// page), what it is under it, and the folder's things in a strip below (← → through them: pages/FolderKeys.ts).
 import { useEffect, useRef } from "react"
 import { inArchive } from "@/core/files"
 import { kindOf } from "@/core/filekinds"
@@ -12,7 +10,6 @@ import { Facts, hrefOf, pick as pickIn, playPause, Preview, SELECT, Tile, usePic
 
 export function Gallery({ setMoves, items, counts, menuOf, press, lit, folder, openIt }: Kids & { folder: string; openIt: (n: FolderItem, newTab?: boolean) => void }) {
   const current = usePicked(folder)
-  // (none picked yet: its first file, a gallery being for what's in files)
   const cur = items.find((n) => n.path === current) ?? items.find((n) => !n.folder) ?? items[0]
   const pick = (n: FolderItem) => pickIn(folder, n.path)
   useEffect(() => { if (current !== cur.path) pickIn(folder, cur.path) }, [folder, current, cur.path])

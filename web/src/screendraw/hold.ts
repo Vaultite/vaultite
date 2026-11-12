@@ -1,14 +1,8 @@
-// The overlay's windows take the pointer only over what's marked `data-hold`: their boxes go to the main process, which
-// decides by where the pointer is (electron/overlaywin.ts), never by this page's enters and leaves.
-
-/** A box in the window's points. */
 export type Box = { x: number; y: number; width: number; height: number }
 type Bridge = { holds?: (m: { boxes: Box[]; pressing: boolean }) => void; near?: () => void }
 
-/** Spread on what takes the pointer. */
 export const HOLD = { "data-hold": "" } as const
 
-/** The boxes of the page's visible `data-hold` elements (none hidden, see-through or taking no pointer). */
 export function holdBoxes(root: ParentNode = document): Box[] {
   const out: Box[] = []
   for (const el of root.querySelectorAll<HTMLElement>("[data-hold]")) {
@@ -22,7 +16,6 @@ export function holdBoxes(root: ParentNode = document): Box[] {
   return out
 }
 
-/** Keep the main process told of the page's holds (`api`: the preload's bridge) from now on; the stop. */
 export function tellHolds(api: Bridge | undefined) {
   if (!api?.holds) return () => {}
   let told = "", soon = 0, pressing = false, renewed = 0, neared = 0
@@ -33,7 +26,6 @@ export function tellHolds(api: Bridge | undefined) {
     renewed = performance.now()
     api.holds!({ boxes, pressing })
   }
-  // (looked at once a frame at most; again each frame while something on the page moves or fades to an end)
   const look = () => {
     soon = 0
     send()
@@ -44,8 +36,6 @@ export function tellHolds(api: Bridge | undefined) {
   const on: [EventTarget, string, (e: Event) => void][] = [
     [window, "pointerover", (e) => { schedule(); if (held(e)) api.near?.() }],
     [window, "pointerdown", (e) => { if (held(e)) { pressing = true; send() } }],
-    // (a press goes on: said again now and then, or the window lets it go, overlaywin.ts PRESS_MS; over one, the pointer is
-    // said to be there now and then too, which takes it if the first time came a moment early)
     [window, "pointermove", (e) => {
       const now = performance.now()
       if (pressing && now - renewed > 500) send(true)

@@ -1,5 +1,3 @@
-// A folder's page as columns (Finder's, desktop only): each folder from the vault's top down to the tab's, then what's
-// picked in the last (a folder's things, a file's preview). The tab is the picked thing's folder: crumbs and Back agree.
 import { useEffect, useLayoutEffect, useMemo, useRef, type MouseEvent } from "react"
 import { ChevronRight, SquareArrowOutUpRight } from "lucide-react"
 import type { Store } from "@/core/data"
@@ -30,13 +28,11 @@ export function Columns({ setMoves, files, folder, items, counts, openIt, menuOf
 
   const [fill, h] = useFill(true)
   const box = useRef<HTMLDivElement>(null)
-  // The last columns in sight, as Finder keeps them.
   useLayoutEffect(() => {
     const el = box.current
     if (el) el.scrollLeft = el.scrollWidth
   }, [folder, ahead, cur?.path, current])
 
-  /** Go to `to`, with `then` picked in it (the keyboard on it there: pages/FolderKeys.ts). */
   const step = (to: string, then: string | null, dir: -1 | 1) => {
     if (then) pickIn(to, then)
     arrive(to)
@@ -46,7 +42,6 @@ export function Columns({ setMoves, files, folder, items, counts, openIt, menuOf
     if (column === folder) { if (!selectClick(e, SELECT, n.path, current)) pick(n.path); return }
     step(column, n.path, column.length < folder.length ? -1 : 1)
   }
-  // ← → out of the folder and into the one picked (pages/FolderKeys.ts); Space plays what's previewed.
   useEffect(() => {
     setMoves({
       lines: items.map((n) => [n.path]),
@@ -85,7 +80,6 @@ type RowProps = Pick<Kids, "menuOf" | "press" | "renaming" | "lit"> & {
   openIt: (n: FolderItem, newTab?: boolean) => void; click: (n: FolderItem, column: string, e: MouseEvent) => void
 }
 
-/** One folder's things, drawn near what's in sight; `on`, the one lit (the way down, or what's picked in the last). */
 function Column({ folder, files, on, last, ...row }: RowProps & { folder: string; files: Store["files"]; on: string | null; last: boolean }) {
   const { fileSort, showArchived } = usePrefs()
   const got = useMemo(() => folderItems(files, folder, fileSort, showArchived), [files, folder, fileSort, showArchived])
@@ -94,13 +88,11 @@ function Column({ folder, files, on, last, ...row }: RowProps & { folder: string
   const keys = useMemo(() => items.map((n) => n.path), [items])
   const keep = useKept(list, keys, keys, on)
   const v = useVirtual(list, keys, { estimate: 28, keep: [...keep, row.renaming] })
-  // The lit row in sight as the column comes (each step draws the columns again).
   useLayoutEffect(() => {
     const el = list.current, i = on ? keys.indexOf(on) : -1
     if (!el || i < 0) return
     const top = v.top(i)
     if (top < el.scrollTop || top + 28 > el.scrollTop + el.clientHeight) el.scrollTop = Math.max(0, top - el.clientHeight / 3)
-    // (only as it comes: after that it scrolls as the user scrolls it)
   }, [folder])
   return (
     <div ref={list} data-keylist data-select-list={last ? SELECT : undefined} data-folder-column={folder} data-folder-drop={folder} data-drops=""
@@ -122,7 +114,7 @@ function ColumnRow({ n, index, column, state, last, menuOf, press, renaming, lit
   const { icon: Icon, tint } = iconFor(n)
   const named = renaming === n.path
   const archived = !!n.file?.archived || inArchive(n.path)
-  // (an <a> holds no field: while it's named, the row is a box)
+  // An <a> can't hold an input: while renaming, the row is a div.
   const Box = named ? "div" : "a"
   return (
     <Box href={named ? undefined : hrefOf(n)} tabIndex={named ? -1 : undefined} data-vi={index} data-vk={n.path} data-keyrow data-select-key={last ? n.path : undefined} {...selectedAttr(chosen)}

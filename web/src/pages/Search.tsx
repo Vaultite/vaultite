@@ -1,5 +1,3 @@
-// Search as a tab (view:search/<query>), like VS Code's search editor: the query is the tab's arg, so it stays with
-// the tab. Names (fuzzy, plain words only), then every matching line in files; its options are the plugin's settings.
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react"
 import { CaseSensitive, ChevronRight, Ellipsis, FileText, Search as SearchIcon, X } from "lucide-react"
 import { type Store } from "@/core/data"
@@ -31,12 +29,9 @@ type Result = { path: string; title: string; context: string; mtime: number; mat
 type Found = { results: Result[]; files: number; lines: number }
 type Settings = { matchCase?: boolean; sort?: string; collapse?: boolean; context?: number; explain?: boolean }
 
-/** Files come this many at a time, more as the list is scrolled to its end; each with its first LINES lines. */
 const PAGE = 100, LINES = 20
-/** The most the server gives at once (core/files.ts): files, and lines of one. */
 const MOST = 500, MOST_LINES = 100_000
 
-/** The first `n` results of a search (`params` without a page), and the totals. */
 async function firstOf(params: string, n: number): Promise<Found> {
   let out: Found | null = null
   for (let at = 0; !out || (at < n && out.results.length === at); at += MOST) {
@@ -46,7 +41,6 @@ async function firstOf(params: string, n: number): Promise<Found> {
   return out
 }
 
-/** A line search found opens the file there, the match selected, as Obsidian's does; a file that isn't text opens. */
 const atLine = (kind: string) => kind === "markdown" || kind === "code" || kind === "json"
 
 const SORTS: [string, string][] = [
@@ -55,7 +49,6 @@ const SORTS: [string, string][] = [
   ["created", "Created time (new to old)"], ["created-old", "Created time (old to new)"],
 ]
 
-/** What can be typed, shown while the field is empty: [what a click adds, what it does]. */
 const OPERATORS: [string, string][] = [
   ["path:", "in the path, folders included"], ["file:", "in the file's name"], ["content:", "in the text only"],
   ["tag:", "tagged (tag:project finds #project/lighthouse too)"], ["type:", "of a type: type:person"], ["folder:", "in a folder, or one inside it"],
@@ -65,25 +58,20 @@ const OPERATORS: [string, string][] = [
   ['"', '"a phrase": those words together'], ["-", "-word: without it"], ["OR", "either: work OR school"], ["/", "/regex/: a regular expression"],
 ]
 
-/** The options (changed here at once, saved in the vault). */
 const searchSettings = pluginSettings<Settings>("search")
 
 export function SearchPage({ store, query, setQuery }: { store: Store; query: string
-  /** The query changed (the tab keeps it in its arg). */
   setQuery: (q: string) => void }) {
   const { disabled, fileIcons } = usePrefs()
   const settings = searchSettings.use(), save = (p: { [K in keyof Settings]?: Settings[K] | null }) => void searchSettings.set(p).catch(() => {})
   const [q, setQ] = useState(query)
   const [folder, setFolder] = useState("")
-  // The tab's arg follows what's typed, a moment after (no history entry per letter).
   const sent = useRef(query)
   useEffect(() => {
     const off = trackSoon("the search's address", () => true)
     const t = setTimeout(() => { off(); sent.current = q.trim() ? q : ""; setQuery(sent.current) }, 300)
     return () => { off(); clearTimeout(t) }
   }, [q, setQuery])
-  // And the other way: a query that comes from elsewhere (the address, `vau open view:search/…`, back and forward)
-  // replaces what's in the field; its own, coming back, doesn't.
   useEffect(() => { if (query !== sent.current) { sent.current = query; setQ(query) } }, [query])
   const field = useRef<HTMLInputElement>(null)
   useEffect(() => { if (isDesktop()) field.current?.focus() }, [])
@@ -97,13 +85,11 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
   const marks = useMemo(() => (node ? highlighter(node) : () => []), [node])
   const nameMarks = useMemo(() => (node ? highlighter(node, "name") : () => []), [node])
 
-  // Names: the quick switcher's index (pages, people, files, terminals, what plugins index), for plain words.
   const docs = useSearchIndex(store)
   const allNames = useMemo(() => (plain && !matchCase ? search(docs, q, Infinity) : []), [docs, q, plain, matchCase])
   const [allShown, setAllShown] = useStateFor([q], () => false)
   const names = allShown ? allNames : allNames.slice(0, 8)
 
-  // Inside files: the server's search, every matching line, a page of files at a time.
   const context = settings.context ?? 0
   const params = useMemo(() => {
     const text = q.trim()
@@ -119,7 +105,6 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
   const results = found?.results ?? null
   const [failed, setFailed] = useStateFor([!params], () => "")
   const [busy, setBusy] = useState(false)
-  // A file's every line, once "more in this file" is clicked; asked again with the rest when the vault changes.
   const [whole, setWhole] = useStateFor<Record<string, Match[]>>([!params], () => ({}))
   const shownNow = useRef({ params, n: 0, whole, of: "" })
   shownNow.current = { ...shownNow.current, params, n: results?.length ?? 0, whole }
@@ -131,7 +116,6 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
     if (!params) return
     let on = true
     setBusy(true)
-    // (the vault changed: as many as were shown, again; a new query: its first page)
     const same = shownNow.current.of === params
     const n = same ? Math.max(PAGE, shownNow.current.n) : PAGE
     const open = same ? Object.keys(shownNow.current.whole) : []
@@ -151,7 +135,6 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
     }, 200)
     return () => { on = false; off(); clearTimeout(t) }
   }, [params, wholeOf, store, setFound, setFailed, setWhole])
-  // The next page, as the end of the list comes near.
   const loading = useRef("")
   const more = () => {
     if (!found || busy || found.results.length >= found.files) return
@@ -168,10 +151,8 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
   const showWhole = (path: string) => {
     wholeOf(path).then((ms) => { if (shownNow.current.params === params) setWhole((w) => ({ ...w, [path]: ms })) }, () => {})
   }
-  // Folded files: the ones toggled, or, with "Collapse results" on, every one but those.
   const [toggled, setToggled] = useStateFor<Set<string>>([settings.collapse], () => new Set())
 
-  // Files open beside this tab: in the pane of the file focused last when that's another pane (like the links tab).
   const focused = useFocusedFile()
   const own = usePane().pane
   const pane = focused.pane && focused.pane !== own ? focused.pane : undefined
@@ -182,7 +163,6 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
     if (h.file) return open(h.file, newTab)
     if (h.detail) openDetail(h.detail)
   }
-  // An operator from the list, added at the end ("" with the cursor between the quotes).
   const add = (op: string) => {
     const base = q.replace(/\s+$/, "")
     const lead = base ? `${base} ` : ""
@@ -216,7 +196,6 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
             autoCapitalize="off" autoCorrect="off"
             onKeyDown={(e) => {
               if (e.key === "Enter" && names[0] && !results?.length) pick(names[0], e.metaKey || e.ctrlKey)
-              // ↓ goes down into the results (core/keylist.ts moves through them from there).
               if (e.key === "ArrowDown") {
                 const first = e.currentTarget.closest("[data-search-view]")?.querySelector<HTMLElement>("[data-keyrow]")
                 if (first) { e.preventDefault(); first.focus() }
@@ -315,7 +294,6 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
                     <ul className="ml-[13px] border-l-[0.5px] border-border pl-2">
                       {shown.map((m, i) => {
                         const hit = m.ctx ? [] : marks(m.text)
-                        // (a note's line shows as it reads, marked again there; as written when the match was its syntax)
                         const plain = kind === "markdown" ? snippet(m.text) : m.text, plainHit = m.ctx || plain === m.text ? hit : marks(plain)
                         const [text, at] = m.ctx || plainHit.length || !hit.length ? [plain, plainHit] : [m.text, hit]
                         const ex = m.ctx ? { text, ranges: [] } : excerpt(text, at, 180, 40)

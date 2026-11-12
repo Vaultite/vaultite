@@ -1,27 +1,19 @@
-// A mark's strokes as the ink draws them (Draw.tsx) and as the companion's cursor traces them, its pen (web/src/core/
-// pilot.ts): one geometry and one timing for both, so the cursor keeps to the ink's front. No DOM.
 import { hopFor, OPEN_EASE, type Stroke } from "../core/pilot"
 import { centre, inflate, markSpot, ringBox, ringShape, type Placed, type Pt } from "./layout"
 import { bowLine, checkLines, crossLines, curveLine, headLines, type Line, ringLine, seeded } from "./ink"
 
-/** How far apart marks of one beat start (ms). */
 export const STAGGER = 170
-/** A frame's box takes this long to open, dragged from its top left to its bottom right (the pen at that corner). */
 export const FRAME_MS = 640
-/** Its box's size as it starts opening (px). */
 export const FOCUS_FROM = 12
 
 const lenOf = (l: Line) => l.reduce((s, p, i) => (i ? s + Math.hypot(p[0] - l[i - 1][0], p[1] - l[i - 1][1]) : 0), 0)
-/** How long a line's ink takes to draw. */
 export const durOf = (l: Line) => Math.min(650, Math.max(180, lenOf(l) * 1.3))
-/** When each line starts after its mark's (ms): the next a little before the last is done, as a hand goes on. */
 export function lineStarts(lines: Line[]) {
   let at = 0
   return lines.map((l) => { const s = at; at += durOf(l) * 0.85; return s })
 }
 const pt = (p: [number, number]): Pt => ({ x: p[0], y: p[1] })
 
-/** A screen mark's ink: its lines and the pen's size (null: it draws none, a card or a sketch). Seeded as drawn. */
 export function markInk(p: Placed, seed: number): { lines: Line[]; size?: number } | null {
   const m = p.mark, r = p.box, rnd = seeded(seed)
   if (!r) return null
@@ -49,8 +41,6 @@ export function markInk(p: Placed, seed: number): { lines: Line[]; size?: number
   }
 }
 
-/** The pen's strokes for marks placed here, each mark starting at `startOf(i)` (wall-clock ms): ink lines as drawn, a
- *  frame's box dragged open by its far corner, a step's badge tapped. Cards and spotlights have none. */
 export function penStrokes(placed: Placed[], seedOf: (i: number) => number, startOf: (i: number) => number): Stroke[] {
   const out: Stroke[] = []
   for (const p of placed) {
@@ -58,7 +48,6 @@ export function penStrokes(placed: Placed[], seedOf: (i: number) => number, star
     if (ink) { const starts = lineStarts(ink.lines); ink.lines.forEach((l, j) => out.push({ start: at + starts[j], dur: durOf(l), pts: l })); continue }
     if (p.mark.type === "frame" && p.box) {
       const r = p.ink ?? inflate(p.box, 6)
-      // (from where the box starts, its corner a little out: .sd-focus' first size)
       out.push({ start: at, dur: FRAME_MS, pts: [[r.x + Math.min(FOCUS_FROM, r.w), r.y + Math.min(FOCUS_FROM, r.h)], [r.x + r.w, r.y + r.h]], ease: OPEN_EASE, dry: true })
     } else if (p.mark.type === "num" && p.box) {
       const r = p.box, c = r.w || r.h ? { x: r.x + 1, y: r.y + 1 } : { x: r.x, y: r.y }
@@ -68,10 +57,7 @@ export function penStrokes(placed: Placed[], seedOf: (i: number) => number, star
   return out.sort((a, b) => a.start - b.start)
 }
 
-/** Past this, the next mark waits for the pen to get there (px): nearer, a hand goes on before it's quite done. */
 export const NEAR = 90
-/** Each mark's start (`startOf`, ms) held back so the pen gets there first: a mark far from the last one's end starts
- *  once that's drawn and the pen has hopped over. Cards and spotlights have no pen and don't wait. */
 export function waitForPen(placed: Placed[], seedOf: (i: number) => number, startOf: (i: number) => number): Map<number, number> {
   const out = new Map<number, number>()
   let last: { end: number; at: [number, number] } | null = null

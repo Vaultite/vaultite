@@ -1,5 +1,3 @@
-// Customize sidebars: both sidebars side by side as they sit in the window, and the hidden panels under them. Arranging
-// lives here, in a sheet that stays open, rather than in menus that close as the pointer lets go.
 import { useRef, useState, type RefObject } from "react"
 import { createPortal } from "react-dom"
 import { ArrowDown, ArrowUp, Ellipsis, EyeOff, PanelLeft, PanelRight, SlidersHorizontal } from "lucide-react"
@@ -17,16 +15,12 @@ import { coreSwitch } from "@/core/switches"
 import { panelIcon } from "@/components/Sidebar"
 import { cn } from "@/lib/utils"
 
-/** A list in the sheet: a sidebar, or the hidden panels (null). */
 type Where = Side | null
-/** Where a drop would put it: before panel `before` (null: the end), and the sidebar's `order` that leaves, which its
- *  list makes way for (core/slide.ts; none for the hidden list, in name order). */
 type Drop = { before: string | null; order?: string[] }
 
 const byTitle = new Intl.Collator(undefined, { sensitivity: "base" })
 const other = (side: Side): Side => (side === "left" ? "right" : "left")
 const named = (side: Side) => (side === "left" ? "Left sidebar" : "Right sidebar")
-/** A panel picked up here (not the sidebars' own kind: those take a panel dropped anywhere on them, behind the sheet). */
 const carried = (item: DragItem) => (item.from === "row" && item.drawn && item.panel) || null
 
 export function SidebarsSheet() {
@@ -41,14 +35,12 @@ export function SidebarsSheet() {
     hidden: all.filter((p) => !sideOf(p.key, setup)).sort((a, b) => byTitle.compare(a.panel.title, b.panel.title)),
   }
   const shows = (p: PanelOf) => !query || !!fuzzy(query, [p.panel.title, ...(p.panel.names ?? [])].join(" "))
-  // Restored: the button undoes it until the panels move again (a toast's Undo would be under the sheet, out of reach).
   const [undo, setUndo] = useState<{ run: () => void; landed: boolean } | null>(null)
   const stock = defaultPanels(setup)
   if (undo && stock && !undo.landed) setUndo({ ...undo, landed: true })
   else if (undo?.landed && !stock) setUndo(null)
   const restore = () => setUndo({ run: restoreSidebars(), landed: false })
   const root = useRef<HTMLDivElement>(null)
-  // A panel held near the sheet's top or bottom scrolls it, so every list can be reached (a phone's sheet is long).
   const [edge] = useState(() => edgeScroller())
   useDropTarget("customize:edge", (item, _x, y) => {
     const box = root.current && carried(item) ? scrollerOf(root.current) ?? document.scrollingElement as HTMLElement : null
@@ -60,7 +52,6 @@ export function SidebarsSheet() {
     <div ref={root} data-customize-sidebars>
       <SheetHead icon={SlidersHorizontal} tint="var(--primary)" title="Sidebars"
         sub="How they show, and their panels: drag a panel between them or down to hide it. Right-click one for more." />
-      {/* How they behave first, the switches Settings finds under Sidebars; then what's in them. */}
       <div className="hairline mb-4">
         {[...(desktop ? [] : ["sidebar-buttons"]), "rails", ...(rails ? [] : ["peek-shade"]), "sidebar-scroll", "panel-dividers", "quiet-panel-headings"].map((k) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />)}
       </div>
@@ -82,7 +73,6 @@ export function SidebarsSheet() {
   )
 }
 
-/** A sidebar's panels in order, or the hidden ones by name; each takes panels dropped on it. */
 function PanelList({ where, title, panels, shows, filtered, className }: {
   where: Where; title: string; panels: PanelOf[]; shows: (p: PanelOf) => boolean; filtered: boolean; className?: string
 }) {
@@ -102,14 +92,12 @@ function PanelList({ where, title, panels, shows, filtered, className }: {
             {filtered ? "No panel matches" : where ? "Drag panels here" : "Every panel is in a sidebar"}
           </div>
         )}
-        {/* Where one from elsewhere would go. */}
         {hit?.order?.includes(INCOMING) && seen.length > 0 && <div aria-hidden data-slide={INCOMING} className="h-8 shrink-0" />}
       </div>
     </section>
   )
 }
 
-/** A list as a drop target: a sidebar puts the panel at the gap nearest the pointer, the hidden list hides it. */
 function useListDrop(id: string, where: Where, box: RefObject<HTMLDivElement | null>) {
   useDropTarget<Drop>(id, (item, x, y) => {
     const key = carried(item), el = box.current
@@ -119,7 +107,6 @@ function useListDrop(id: string, where: Where, box: RefObject<HTMLDivElement | n
     if (!where) return sideOf(key) ? { before: null } : null
     const rows = [...el.querySelectorAll<HTMLElement>(":scope > [data-row]")]
     const { order, before, same } = reorder(rows.map((r) => r.dataset.row!), [key], slotAt(el, rows, x, y, "y"))
-    // (its own place: it stays where it is)
     return same ? null : { before, order }
   }, (item, h) => {
     const key = carried(item)!
@@ -129,7 +116,6 @@ function useListDrop(id: string, where: Where, box: RefObject<HTMLDivElement | n
   return useDropHit<Drop>(id)
 }
 
-/** A panel: drag it, or its menu (right-click, a held finger, its … button) moves it without dragging. */
 function PanelRow({ p, where, list }: { p: PanelOf; where: Where; list: PanelOf[] }) {
   const Icon = panelIcon(p)
   const item = useDrag((d) => d?.item)
@@ -160,7 +146,6 @@ function PanelRow({ p, where, list }: { p: PanelOf; where: Where; list: PanelOf[
   )
 }
 
-/** The panel being dragged, under the pointer: drawn in the sheet's own layer (the app's drag picture is under it). */
 function Lifted({ within }: { within: RefObject<HTMLDivElement | null> }) {
   const d = useDrag()
   const host = d && carried(d.item) ? within.current?.closest("dialog") : null

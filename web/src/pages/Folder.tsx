@@ -1,5 +1,3 @@
-// A folder's page (view:folder/<path>, the Files plugin's): a grid, a list, columns or a gallery (files.json
-// `folderView`, every folder the same; a phone has the first two), as Finder. Folders open in its tab, files beside.
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type DragEvent, type FocusEvent, type MouseEvent, type PointerEvent } from "react"
 import { ArrowUpDown, Columns3, Ellipsis, FileInput, FilePlus, FolderInput, FolderOpen, FolderPlus, GalleryHorizontalEnd, Group, LayoutGrid, List, RotateCcw, Share, Trash2 } from "lucide-react"
 import { dateText, getStore, reload, useStore, vaultName, type Store } from "@/core/data"
@@ -31,17 +29,13 @@ import { Gallery } from "@/pages/FolderGallery"
 /** A folder's name as its tab says it; the vault's own for its top. */
 export const folderName = (path: string) => (path ? path.slice(path.lastIndexOf("/") + 1) : vaultName(getStore()))
 
-// ---------- how it shows: Show as, Sort by, Group by ----------
-
 type ViewOption = { value: FolderView; label: string; icon: typeof List }
-/** Finder's four, in its order; a phone has room for the first two (the Files app's). */
 const VIEWS: ViewOption[] = [
   { value: "grid", label: "Grid", icon: LayoutGrid }, { value: "list", label: "List", icon: List },
   { value: "columns", label: "Columns", icon: Columns3 }, { value: "gallery", label: "Gallery", icon: GalleryHorizontalEnd },
 ]
 const viewsFor = (desk: boolean) => (desk ? VIEWS : VIEWS.slice(0, 2))
 const viewOf = (v: unknown): FolderView => VIEWS.find((o) => o.value === v)?.value ?? "list"
-/** The view drawn: on a phone, columns are a list and a gallery a grid (each the nearest it has room for). */
 const shownView = (v: unknown, desk: boolean): FolderView => {
   const view = viewOf(v)
   return desk ? view : view === "columns" ? "list" : view === "gallery" ? "grid" : view
@@ -59,7 +53,6 @@ function groupItems(): MenuItem[] {
   const by = groupOf(getPrefs().folderGroup)
   return GROUPS.map((o) => ({ label: o.label, checked: by === o.value, run: () => void setPrefs({ folderGroup: o.value }) }))
 }
-/** Show as ▸, Sort by ▸, Group by ▸: how every folder's page shows (its tab's menu, its empty space's). */
 function viewMenuItems(): MenuItem[] {
   const v = shownView(getPrefs().folderView, isDesktop())
   const icon = VIEWS.find((o) => o.value === v)!.icon
@@ -69,7 +62,6 @@ function viewMenuItems(): MenuItem[] {
     { label: "Group by", icon: Group, run: () => {}, items: groupItems() },
   ]
 }
-/** The page's Sort button: the order, then the headings (Finder's Group by). */
 const arrangeItems = (): MenuItem[] => [
   { label: "Sort by", caption: true, run: () => {} }, ...sortItems(),
   { label: "Group by", caption: true, sep: true, run: () => {} }, ...groupItems(),
@@ -82,23 +74,19 @@ export function folderTabMenu(path: string): MenuItem[] {
   return grouped([viewMenuItems(), own])
 }
 
-/** A folder made here, its name ready to type. */
 async function newFolderIn(folder: string) {
   const s = getStore()
   if (!s) return
   try { naming.set({ path: await createFolder(folder, freeName(s.files, folder, "New folder", "")), fresh: true }) } catch (e) { notifyError(e, "Couldn't make the folder") }
 }
 const newItems = (path: string): MenuItem[] => [{ label: "New note", icon: FilePlus, run: () => void newNote(path) }, { label: "New folder", icon: FolderPlus, run: () => void newFolderIn(path) }]
-/** The vault's top has no menu of its own: what can be made in it. */
 const rootItems = () => newItems("")
 
-/** The page's … button: the folder's menu, then what the files show. */
 function pageMenu(path: string): MenuItem[] {
   const shown = treeShownItems({ reveal: false })
   if (!path) return grouped([rootItems(), shown])
   return grouped([folderMenu(path, { open: false, inside: true, newFolder: () => void newFolderIn(path) }), shown])
 }
-/** A right-click on its empty space, as Finder's: make something, how it shows, where it is. */
 function spaceMenu(path: string): MenuItem[] {
   const locked = !!path && (fixed(path) || inTrash(path))
   return grouped([locked ? [] : newItems(path), viewMenuItems(), path ? [copyPathItem(path, { folder: true }), ...openFolderHereItem(path)] : [], treeShownItems({ reveal: false })])
@@ -129,10 +117,7 @@ function Crumbs({ path }: { path: string }) {
   )
 }
 
-/** Finder's toolbar, on the page: the four views side by side, Sort (and group), More. One for every folder, Settings'
- *  Files too. */
 function Toolbar({ path, view }: { path: string; view: FolderView }) {
-  // A click on a view keeps the keyboard on the files (Finder's); Tab and Space still reach the choices.
   const choose = (v: FolderView, e: MouseEvent) => { if (e.detail) arrive(path); setView(v) }
   const tool = "grid h-[26px] w-8 cursor-pointer place-items-center rounded-[7px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
   const grouped = groupOf(usePrefs().folderGroup) !== "none"
@@ -158,7 +143,6 @@ function Toolbar({ path, view }: { path: string; view: FolderView }) {
   )
 }
 
-/** Share, as Finder's toolbar has it: the plugins' share items for the folder (one runs, several are a menu). */
 function ShareButton({ path, className, size = "size-[15px]" }: { path: string; className: string; size?: string }) {
   const items = path ? pluginFileGroups(path, undefined, true).share : []
   if (!items.length) return null
@@ -170,8 +154,6 @@ function ShareButton({ path, className, size = "size-[15px]" }: { path: string; 
   )
 }
 
-// ---------- headings (Group by) ----------
-
 type Section = { title: string; items: FolderItem[] }
 const KIND_HEADS: Record<FileKind, string> = {
   markdown: "Notes", image: "Images", video: "Videos", audio: "Audio", pdf: "PDFs", code: "Code", json: "Code", notebook: "Code", binary: "Other", other: "Other",
@@ -179,7 +161,6 @@ const KIND_HEADS: Record<FileKind, string> = {
 const KIND_ORDER = ["Folders", "Notes", "Images", "Videos", "Audio", "PDFs", "Web pages", "Code", "Other"]
 const kindHead = (path: string) => (/\.html?$/i.test(path) ? "Web pages" : KIND_HEADS[kindOf(path)])
 const DAY = 86400_000
-/** A file's heading by when it changed, Finder's way, and its place (newest first). */
 function dateHead(ms: number, today: number, year: number): [number, string] {
   const d = new Date(ms), days = Math.floor((today - new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()) / DAY)
   if (days <= 0) return [0, "Today"]
@@ -189,7 +170,6 @@ function dateHead(ms: number, today: number, year: number): [number, string] {
   if (d.getFullYear() === year) return [100 - d.getMonth(), dateText(d, { month: "long" })]
   return [1000 + year - d.getFullYear(), String(d.getFullYear())]
 }
-/** Its things under headings, in the sort's order within each (folders first, under their own); null: no headings. */
 function sectionsOf(items: FolderItem[], by: FolderGroup): Section[] | null {
   if (by === "none") return null
   const now = new Date(), today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
@@ -210,15 +190,12 @@ function Heading({ title, count, index, k, first }: { title: string; count: numb
   )
 }
 
-// ---------- the page ----------
-
 /** A folder's page: its header, then what it holds in its view, or a calm line when it's empty or gone. */
 export function FolderPage({ store, path }: { store: Store; path: string }) {
   const { fileSort, showArchived, folderView, folderGroup } = usePrefs()
   const desk = useDesktop()
   const view = shownView(folderView, desk)
   const got = useMemo(() => folderItems(store.files, path, fileSort, showArchived), [store.files, path, fileSort, showArchived])
-  // Files open beside it: in the pane of the file focused last when that's another pane (as the Files tab opens them).
   const { pane: own } = usePane()
   const focused = useFocusedFile()
   const pane = focused.pane && focused.pane !== own ? focused.pane : undefined
@@ -227,7 +204,6 @@ export function FolderPage({ store, path }: { store: Store; path: string }) {
   const root = useRef<HTMLDivElement>(null)
   const moves = useRef<Moves | null>(null)
 
-  /** Open it: a folder in this tab, a file beside (⌘ or the middle button: in a new tab). */
   const openIt = (n: FolderItem, newTab = false) => {
     if (n.folder) enter(n.path, 1, newTab)
     else openFile(n.path, { newTab, pane })
@@ -243,13 +219,11 @@ export function FolderPage({ store, path }: { store: Store; path: string }) {
     return fileMenu(n.path, { rename, top: [[openItem(() => openFile(n.path, { newTab: true, pane }), desk ? () => openInSplit(`file:${n.path}`, "right") : undefined)]] })
   })
   useSelectable(SELECT, { menu: (keys) => filesMenu(keys, { newTab: (p) => openFile(p, { newTab: true, pane }) }), noun: ["item", "items"] })
-  // Phones: a row swiped sideways shows Move and Delete (in the trash, Restore and Delete for good), as the tree's do.
   const swipe = (n: FolderItem): SwipeAction[] => {
     if (fixed(n.path) && !inTrash(n.path)) return []
     if (inTrash(n.path)) return [{ label: "Restore", icon: RotateCcw, run: () => void restoreFile(n.path).catch((e) => notifyError(e, "Couldn't restore")), removes: true }, { label: "Delete", icon: Trash2, run: () => remove(n.path), danger: true }]
     return [{ label: "Move", icon: n.folder ? FolderInput : FileInput, run: () => askMove(n.path) }, { label: "Delete", icon: Trash2, run: () => remove(n.path), danger: true, removes: true }]
   }
-  // Held, a row is dragged (a finger holds it first): onto a pane or a tab bar it opens there, onto a folder it moves in.
   const press = (e: PointerEvent<HTMLElement>, n: FolderItem) => {
     if (renaming === n.path || fixed(n.path)) return
     if (!n.folder) openingSoon(n.path, true)
@@ -259,7 +233,6 @@ export function FolderPage({ store, path }: { store: Store; path: string }) {
     startDrag(e, item, { touch: true })
   }
 
-  // Dropped on one of its folders (`data-folder-drop`, which panes leave to it: `data-drops`), what's dragged moves in.
   const target = `folder:${useId()}`
   const dropOn = useDropHit<string>(target)
   const [edge] = useState(() => edgeScroller())
@@ -271,7 +244,6 @@ export function FolderPage({ store, path }: { store: Store; path: string }) {
     const all = item.paths ?? [item.path]
     return into !== undefined && all.some((p) => canMoveInto(p, into)) && all.every((p) => into !== p && !into.startsWith(`${p}/`)) ? into : null
   }, (item, folder) => void moveManyInto(item.paths ?? [item.path!], folder, { reveal: false }), { end: edge.stop })
-  // Files from the computer: copied into the folder under the pointer, or this one (⌥, ⇧ off a Mac: moved).
   const [fromComputer, setFromComputer] = useState<string | null>(null)
   const at = (t: EventTarget | null) => (t as Element | null)?.closest?.<HTMLElement>("[data-folder-drop]")?.dataset.folderDrop ?? path
   const moving = (e: DragEvent) => !!desktop && (isMac ? e.altKey : e.shiftKey)
@@ -293,13 +265,11 @@ export function FolderPage({ store, path }: { store: Store; path: string }) {
   }
   const lit = dropOn ?? (fromComputer !== null && fromComputer !== path ? fromComputer : null)
 
-  // The keys (pages/FolderKeys.ts): what they need of the page, and the keyboard on its things once the keys came here.
   useEffect(() => {
     const el = root.current
     if (!el || !got) return
     keyedPages.set(el, () => ({
       path, items: got.items, moves: moves.current, view, open: openIt,
-      // (Space: beside it, the keyboard staying here; a phone has no beside)
       show: (n) => (desk ? void openInSplit(pathTarget(n.path), "right", false) : openIt(n)),
       up: () => { const parent = folderOf(path); pick(parent, path); arrive(parent); enter(parent, -1) },
       showAs: (v) => { arrive(path); setView(v) },
@@ -308,11 +278,9 @@ export function FolderPage({ store, path }: { store: Store; path: string }) {
   useEffect(() => {
     const el = root.current, all = got?.items
     if (!el || !all?.length || !arrived(path)) return
-    // (none picked: none taken, the first arrow takes the first, as in Finder)
     const was = pickedIn(path)
     if (was && all.some((n) => n.path === was)) focusThing(el, was)
   }, [path, view, got])
-  /** The keyboard on a thing of the page: the one it's on in every view. */
   const onThing = (e: FocusEvent) => {
     const k = (e.target as Element).closest<HTMLElement>("[data-folder-item]")?.dataset.folderItem
     if (k && got?.items.some((n) => n.path === k)) pick(path, k)
@@ -337,8 +305,6 @@ export function FolderPage({ store, path }: { store: Store; path: string }) {
   )
 }
 
-/** Phones: under the title (the page's header draws it), the folders above as crumbs, the other view, and New note, as
- *  Files has. */
 function PhoneHead({ path, view }: { path: string; view: FolderView }) {
   const enter = useEnter()
   const parts = path ? path.split("/").slice(0, -1) : []
@@ -379,10 +345,8 @@ function Empty({ path, desk }: { path: string; desk: boolean }) {
   )
 }
 
-/** A heading's key among the rows' (paths can't hold a NUL). */
+// File paths can't hold a NUL.
 const headKey = (title: string) => `\0${title}`
-
-// ---------- as a list: the sidebar's rows, a size up ----------
 
 type Line = { head: Section } | { n: FolderItem }
 function Rows({ setMoves, items, counts, open, menuOf, swipe, press, renaming, lit, desk, sections, folder }: Kids & { sections: Section[] | null; folder: string }) {
@@ -430,9 +394,6 @@ function Row({ n, index, meta, open, menuOf, swipe, press, renaming, lit }: { n:
   )
 }
 
-// ---------- as a grid: cards with what's in them ----------
-
-/** A card's narrowest (px) and the room between cards, on a computer and a phone (three across, as the Files app). */
 const CARD = { desk: { min: 136, gap: 12 }, phone: { min: 96, gap: 10 } }
 
 type Band = { head: Section } | { cards: FolderItem[] }
@@ -455,7 +416,6 @@ function Grid({ setMoves, items, counts, open, menuOf, press, renaming, lit, des
   }, [items, sections, cols])
   const keys = useMemo(() => bands.map((b) => ("head" in b ? headKey(b.head.title) : `${cols}\0${b.cards[0].path}`)), [bands, cols])
   const all = useMemo(() => bands.flatMap((b) => ("cards" in b ? b.cards.map((n) => n.path) : [])), [bands])
-  /** The row of cards a thing is on. */
   const bandOf = (p: string | null) => { const i = p ? bands.findIndex((b) => "cards" in b && b.cards.some((n) => n.path === p)) : -1; return i < 0 ? null : keys[i] }
   const keep = useKept(list, keys, all, bandOf(usePicked(folder)))
   const v = useVirtual(list, keys, { estimate: desk ? 196 : 150, keep: [...keep, bandOf(renaming)] })
@@ -480,7 +440,7 @@ function Card({ n, meta, text, open, menuOf, press, renaming, lit, desk }: { n: 
   & Pick<Kids, "open" | "menuOf" | "press">) {
   const picked = useSelected(SELECT, n.path)
   const archived = !!n.file?.archived || inArchive(n.path)
-  // (an <a> holds no field: while it's named, the card is a box)
+  // An <a> can't hold an input: while renaming, the card is a div.
   const Box = renaming ? "div" : "a"
   return (
     <Box href={renaming ? undefined : hrefOf(n)} data-keyrow data-select-key={n.path} {...selectedAttr(picked)} data-folder-item={n.path} data-tip={n.name} data-tip-trunc

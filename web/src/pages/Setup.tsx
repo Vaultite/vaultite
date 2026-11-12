@@ -1,5 +1,3 @@
-// Plugins (id "setup"): Your plugins, and Get (the store and imports). On a computer, sections of Settings (PluginsPane),
-// where a pane showing #plugins or #get goes; on a phone, their own page with two tabs, each its own address.
 import { useEffect, useLayoutEffect } from "react"
 import { Puzzle, Store as StoreIcon } from "lucide-react"
 import type { Store } from "@/core/data"
@@ -16,12 +14,9 @@ import { cn } from "@/lib/utils"
 
 type Tab = SetupTab
 
-/** `at`: the workspace tab it's drawn in. */
 export function Setup({ store, tab, at }: { store: Store; tab: SetupTab; at?: string }) {
   const rail = useRail(), desktop = useDesktop()
   const pick = (to: SetupTab) => { if (at) replaceTabTarget(at, to); else openSetup(to) }
-  // On a computer it's Settings' section, the pane wide or narrow: the tab shows Settings there (an old tab, a link, a
-  // page opened in a new tab).
   useLayoutEffect(() => {
     if (!desktop || !at) return
     showSettingsSection(tab)
@@ -40,16 +35,13 @@ export function Setup({ store, tab, at }: { store: Store; tab: SetupTab; at?: st
   )
 }
 
-/** The list a tab shows: yours, or Get's (the store's layouts and packs over its plugins, while nothing narrows them). */
 function PluginsList({ store, tab, pick }: { store: Store; tab: Tab; pick: (to: Tab) => void }) {
-  // (getting one runs code: the Mac's, refused through Vaultite Connect)
   const over = useOverConnect()
   if (tab === "get" && over) return <OnThisMac className="px-1">Plugins, layouts and packs are added on this Mac.</OnThisMac>
   return <Plugins store={store} view={tab === "get" ? "get" : "installed"} onView={(v) => pick(v === "get" ? "get" : "plugins")}
     above={tab === "get" ? (query, filters) => !filters.source && !filters.cat && <StoreBundles query={query} /> : undefined} />
 }
 
-/** Your plugins or Get as a section of Settings: its head, Get's categories as chips, then the list. */
 export function PluginsPane({ store, tab, pick }: { store: Store; tab: Tab; pick: (to: Tab) => void }) {
   return (
     <div data-setup={tab}>
@@ -62,7 +54,6 @@ export function PluginsPane({ store, tab, pick }: { store: Store; tab: Tab; pick
   )
 }
 
-/** Get's categories, each narrowing what it lists (picked again: every category). */
 function Categories() {
   const cats = getCategories.use(), picked = getCategory.use()
   useEffect(primeCategories, [])

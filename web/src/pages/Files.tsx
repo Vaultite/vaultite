@@ -1,4 +1,3 @@
-// Files in a tab (view:files): the sidebar's tree; on phones taller rows under a New note button.
 import { FilePlus } from "lucide-react"
 import type { Store } from "@/core/data"
 import { isDesktop } from "@/core/platform"
@@ -10,7 +9,6 @@ import { Panel } from "@/components/kit"
 export function Files({ store }: { store: Store }) {
   const count = store.files.files.length + store.files.others.length
   const subtitle = `${count} files in your vault`
-  // A tab opens files beside itself: in the pane of the file focused last when that's another pane (like Links).
   const focused = useFocusedFile()
   const own = usePane().pane
   if (isDesktop()) {

@@ -1,5 +1,3 @@
-// Bundles beside the layout picker: Get's layouts and packs, and the sheets: a bundle's preview
-// (what applying it changes, asking first when it runs code), an import's, sharing one. Format: core/bundles.ts.
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react"
 import {
   ArrowRight, BookOpen, Bot, Check, Copy, Download, FilePlus, Import, LayoutDashboard, MoreHorizontal, Package, PackagePlus, PanelLeft, PanelRight, Pin, Plus,
@@ -32,11 +30,8 @@ import { BundleLink } from "./BundleLink"
 const iconOfBundle = (b: Pick<BundleInfo, "icon">) => namedIcon(b.icon) ?? Package
 const tintOfBundle = (b: Pick<BundleInfo, "tint">) => tintOf(b.tint) ?? "var(--primary)"
 
-/** Where a bundle came from, without the commit an import from the directory pinned. */
 const place = (from: string) => from.replace(/@[0-9a-f]{40}$/, "")
 
-/** Pasting a bundle (its JSON, a repository's name) or dropping its file anywhere on the page opens its import, when
- *  nothing else takes it (a field, a sheet). Whether a file is being dragged over it. */
 function useImportGestures(root: RefObject<HTMLDivElement | null>) {
   const [over, setOver] = useState(false)
   useEffect(() => {
@@ -44,7 +39,7 @@ function useImportGestures(root: RefObject<HTMLDivElement | null>) {
     if (!el) return
     const editable = (t: EventTarget | null) => t instanceof HTMLElement && !!t.closest("input, textarea, select, [contenteditable]:not([contenteditable=false])")
     const paste = (e: ClipboardEvent) => {
-      // (a page kept hidden in its pane has no offsetParent; two showing it take one paste once)
+      // A page hidden with display: none has no offsetParent.
       if (e.defaultPrevented || !el.offsetParent || document.querySelector("dialog[open]") || editable(e.target)) return
       const file = [...e.clipboardData?.files ?? []].find((f) => /json/.test(f.type) || f.name.endsWith(".json"))
       const text = e.clipboardData?.getData("text/plain") ?? ""
@@ -76,26 +71,18 @@ function useImportGestures(root: RefObject<HTMLDivElement | null>) {
   return over
 }
 
-// ---------- Get's layouts and packs: the directory's bundles ----------
-
 const CARD = "glass flex min-w-0 flex-1 cursor-pointer flex-col rounded-[12px] text-left ring-primary/60 transition-shadow hover:ring-2 focus-visible:ring-2 focus-visible:outline-none"
-// Two across on a phone, three or four as they fit.
 const GRID = "grid grid-cols-2 gap-3 @2xl:grid-cols-3 @4xl:grid-cols-4"
 
-/** What a shared bundle is, as its card says it. */
 const KIND: Record<NonNullable<Listed["kind"]>, string> = { layout: "Layout", pack: "Pack", look: "Look" }
 
-/** What a listed bundle's picture is drawn from: its sketch (an index from before has none: drawn plain). */
 const drawableOf = (e: Listed): Drawable => ({ id: e.address, source: "vault", theme: null, scheme: null, panels: null, home: null, shape: null, ...e.sketch })
 
-/** A listed bundle's card: its drawing (as Settings' layouts are), its name and kind, and only then that it
- *  runs code, who made it (not Vaultite) and its stars. Opening it is its import preview, pinned at the commit listed. */
 function ListedCard({ e }: { e: Listed }) {
   const theirs = !official(e.repo)
   return (
     <button type="button" onClick={() => openImport(e.address)} data-listed={e.source} data-keyrow className={cn(CARD, "relative")}>
       <span className="block aspect-[16/10] w-full overflow-hidden rounded-t-[11px] border-b-[0.5px] border-border"><LayoutDrawing b={drawableOf(e)} className="block size-full" /></span>
-      {/* (over its picture, where a narrow card's name keeps its room) */}
       {e.imported && (
         <span className={cn("absolute top-2 right-2 rounded-[6px] bg-background/85 px-1.5 text-[11px] leading-[20px] font-medium shadow-[0_0_0_0.5px_var(--border)] backdrop-blur",
           e.current ? "text-muted-foreground" : "text-primary")} {...(e.current ? { "data-listed-imported": true } : { "data-listed-update": true })}>
@@ -109,7 +96,6 @@ function ListedCard({ e }: { e: Listed }) {
         </div>
         {(e.runsCode || theirs || e.stars > 0) && (
           <div className="flex min-w-0 items-center gap-1.5 text-[13px] leading-[18px] text-muted-foreground md:text-[12px] md:leading-[16px]">
-            {/* (a caution, not an alarm: applying it asks first, and says what it installs) */}
             {e.runsCode && (
               <span className="flex min-w-0 items-center gap-1 text-ink-(--orange)" data-bundle-runs-code
                 data-tip={e.installs.length ? `Installs ${AND.format(e.installs.map((x) => x.name))}` : undefined}>
@@ -128,12 +114,9 @@ function ListedCard({ e }: { e: Listed }) {
 
 const Sep = ({ show }: { show: boolean }) => (show ? <span aria-hidden>·</span> : null)
 
-/** Get's layouts and packs: the directory's bundles (shared on GitHub), by Get's search, and Import for one someone
- *  sent (also by pasting it, or dropping its file, anywhere on the page). Unreachable, one quiet line says so. */
 export function StoreBundles({ query: q }: { query: string }) {
   const [dir, setDir] = useState<Directory | null>(null)
   const [failed, setFailed] = useState(false)
-  // (fetched again when the user's imports change: which are theirs, and current)
   const mine = useBundles()?.bundles.filter((b) => b.from).map((b) => `${b.id} ${b.from}`).join("\n")
   useEffect(() => {
     let live = true
@@ -167,7 +150,6 @@ export function StoreBundles({ query: q }: { query: string }) {
   )
 }
 
-/** The directory on its way: ListedCard's shape, its picture a muted block and its name a bar. */
 function CardSkeletons({ count }: { count: number }) {
   return (
     <div className={cn(GRID, "loading-in")} aria-busy data-bundles-loading>
@@ -183,17 +165,12 @@ function CardSkeletons({ count }: { count: number }) {
   )
 }
 
-// ---------- a bundle's preview: what applying it changes here ----------
-
 type Preview = { bundle: BundleInfo; plan: Plan; pages?: Record<string, { icon: string | null; tint: string | null; plugin: string | null }> }
 
 const showValue = (v: unknown) => (v === null || v === undefined ? "default" : typeof v === "boolean" ? (v ? "on" : "off") : Array.isArray(v) ? v.join(", ") || "none" : String(v))
 
-/** Which of a plan's changes the preview leaves out (unticked), and those that go with one left out (`locked`: a plugin
- *  whose install is). Absent: the plan as it is, nothing to tick (an import's preview). */
 type Picks = { off: ReadonlySet<string>; locked: ReadonlySet<string>; toggle: (id: string) => void }
 
-/** A tick before a change: quiet when off, the accent's when on. */
 const Tick = ({ on, className }: { on: boolean; className?: string }) => (
   <span aria-hidden className={cn("grid size-4 shrink-0 place-items-center rounded-[4.5px] transition-colors max-md:size-5 max-md:rounded-[6px]", className,
     on ? "bg-primary text-primary-foreground" : "shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--foreground)_30%,transparent)]")}>
@@ -201,8 +178,6 @@ const Tick = ({ on, className }: { on: boolean; className?: string }) => (
   </span>
 )
 
-/** A change, led by its tick (unticked: dimmed). Without an `id`, a line going with change `rides` (a pin's page) or
- *  none: no tick, dimmed with it. `block`: more than text (the sidebars), its tick at the top. */
 function ChangeLine({ pick, id, rides, block, className, children, ...data }: {
   pick?: Picks; id?: string; rides?: string; block?: boolean; className?: string; children: ReactNode; [data: `data-${string}`]: string | boolean | undefined
 }) {
@@ -233,11 +208,9 @@ function Group({ title, count, children }: { title: string; count?: number; chil
   )
 }
 
-/** Lines two across where they fit (plugins, short and many). */
 const Lines = ({ children, ...rest }: { children: ReactNode; [data: `data-${string}`]: string | boolean | undefined }) =>
   <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2" {...rest}>{children}</div>
 
-/** A plugin a plan turns on or off (`off`: drawn quiet), or one of the user's it leaves alone. */
 function PluginLine({ id, name, off, pick }: { id: string; name: string; off?: boolean; pick?: Picks }) {
   const Icon = pluginById(id)?.icon ?? Puzzle
   return (
@@ -248,7 +221,6 @@ function PluginLine({ id, name, off, pick }: { id: string; name: string; off?: b
   )
 }
 
-/** A panel by its key ("terminal:sessions"): its title and icon, from its plugin's definition. */
 function panelLook(key: string) {
   const [pid, name] = key.split(":")
   const p = pluginById(pid)
@@ -276,7 +248,6 @@ function Side({ side, keys, collapsed }: { side: string; keys: string[]; collaps
   )
 }
 
-/** A pinned page's icon and name (`off`: one it unpins), and whether it's newly pinned or the user's own. */
 function PageText({ path, look, state }: { path: string; look?: { icon: string | null; tint: string | null; plugin: string | null }; state?: "new" | "kept" | "off" }) {
   const Icon = namedIcon(look?.icon) ?? (look?.plugin ? pluginById(look.plugin)?.icon : null) ?? LayoutDashboard
   return <>
@@ -289,8 +260,6 @@ function PageText({ path, look, state }: { path: string; look?: { icon: string |
 
 const sameSet = (a: ReadonlySet<string>, b: ReadonlySet<string>) => a.size === b.size && [...a].every((x) => b.has(x))
 
-/** What applying a bundle changes here, each change ticked: Apply or Try it, without those unticked (then Save as
- *  "My <Name>" keeps it so). A layout tile's Details; the one in use, changed, previewed clean (what Reset puts back). */
 export function BundlePreview({ id }: { id: string }) {
   const [p, setP] = useState<Preview | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -298,14 +267,12 @@ export function BundlePreview({ id }: { id: string }) {
   const [offAdded, setOffAdded] = useState(false)
   const [edits, setEdits] = useState<ReadonlySet<string> | null>(null)
   const l = useBundles()
-  // (the one in use, changed: what Revert, applying it clean, puts back)
   const drift = !!l?.bundles.find((x) => x.id === id)?.modified
   useEffect(() => { previewOf(id, drift).then((x) => setP(x as Preview), (e) => setError(errorText(e))) }, [id, drift])
   if (error) return <SheetHead icon={Package} tint="var(--muted-foreground)" kicker="Bundle" title="Can't open this bundle" sub={error} />
   if (!p) return <div aria-busy><SheetHead icon={Package} tint="var(--muted-foreground)" kicker="Bundle" title={<Line w="45%" />} sub={<Line w="70%" />} /></div>
   const { bundle: b, plan } = p
   const listed = l?.bundles.find((x) => x.id === b.id)
-  // The bundle applied last starts without what it was applied without: applying it is reverting to it.
   const base = new Set((listed?.applied?.skip ?? []).filter((x) => plan.changes.some((c) => c.id === x)))
   const off = edits ?? base
   const pick: Picks = { off, locked: lockedBy(plan, off), toggle: (x) => setEdits(new Set(off.has(x) ? [...off].filter((y) => y !== x) : [...off, x])) }
@@ -349,8 +316,6 @@ export function BundlePreview({ id }: { id: string }) {
   )
 }
 
-/** A bundle given to the app (openImport), not added yet: what applying it changes, then Apply (added, then applied)
- *  or Add (an update says first what's new). Reloaded, what it was given is gone: the Import sheet instead. */
 export function IncomingBundle({ id }: { id: string }) {
   const [source] = useState(() => givenImport(id))
   const [inc, setInc] = useState<Incoming | null>(null)
@@ -407,7 +372,6 @@ export function IncomingBundle({ id }: { id: string }) {
 
 const short = (commit: string | null) => (commit ? commit.slice(0, 7) : "none")
 
-/** What an update changes in the user's copy of a bundle: its files, and the plugins it installs pinned anew. */
 function Updated({ changes: c, name }: { changes: NonNullable<Incoming["changes"]>; name: string }) {
   const files: [string, string][] = [...c.added.map((f): [string, string] => [f, "added"]), ...c.changed.map((f): [string, string] => [f, "changed"]), ...c.removed.map((f): [string, string] => [f, "removed"])]
   return (
@@ -430,8 +394,6 @@ function Updated({ changes: c, name }: { changes: NonNullable<Incoming["changes"
   )
 }
 
-/** A preview's body: what applying the bundle changes here (plugins, panels, pins, the look, settings, files), each
- *  change a line ticked when `pick` is given. */
 function Changes({ p, pick, offAdded, setOffAdded }: { p: Preview; pick?: Picks; offAdded: boolean; setOffAdded: (v: boolean) => void }) {
   const { bundle: b, plan } = p
   const skip = new Set(pick ? skipOf(plan, pick.off) : [])
@@ -442,7 +404,6 @@ function Changes({ p, pick, offAdded, setOffAdded }: { p: Preview; pick?: Picks;
   const has = (id: string) => plan.changes.some((c) => c.id === id)
   const installs = plan.code.filter((c) => c.change)
   const nameOf = (id: string) => pluginById(id)?.name ?? plan.code.find((c) => c.id === id)?.name ?? id
-  // (a vault plugin's own files go with its install, said once there)
   const files = plan.files.add.filter((f) => !f.startsWith(".vaultite/plugins/"))
   return (
     <>
@@ -535,7 +496,6 @@ function Changes({ p, pick, offAdded, setOffAdded }: { p: Preview; pick?: Picks;
         )}
         {(plan.editor.length > 0 || plan.settings.length > 0 || plan.hotkeys.length > 0 || plan.skipped.length > 0) && (
           <Panel title="Settings" icon={Settings2}>
-            {/* (a key it takes out is the default again: said by its value) */}
             {plan.editor.map((c) => <Setting key={`editor.${c.key}`} pick={pick} id={c.change} label={EDITOR_NAMES[c.key] ?? c.key} from={c.from ?? EDITOR_VALUES[c.key]}
               to={c.to ?? EDITOR_VALUES[c.key]} labels={EDITOR_LABELS[c.key]} />)}
             {plan.settings.map((s) => {
@@ -573,15 +533,12 @@ function Setting({ pick, id, label, from, to, labels }: { pick?: Picks; id: stri
   return (
     <ChangeLine pick={pick} id={id} className="min-h-8 text-[14px]">
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      {/* (a value as long as a list is cut off, its tip whole) */}
       <span className="ml-1 max-w-[40%] shrink-0 truncate text-muted-foreground line-through decoration-foreground/25" data-tip={name(from).length > 24 ? name(from) : undefined}>{name(from)}</span>
       <ArrowRight className="size-3.5 shrink-0 text-tertiary" strokeWidth={2.25} />
       <span className="max-w-[40%] shrink-0 truncate font-medium" data-tip={name(to).length > 24 ? name(to) : undefined}>{name(to)}</span>
     </ChangeLine>
   )
 }
-
-// ---------- sharing and importing ----------
 
 const PART: Record<ShareItem["kind"], (x: ShareItem) => string> = {
   page: (x) => (x.own ? "A page with text of your own" : "A page it pins"),
@@ -591,7 +548,6 @@ const PART: Record<ShareItem["kind"], (x: ShareItem) => string> = {
   code: () => "A plugin made in your vault: its code",
 }
 
-/** Share a bundle as one file: what it sends (the user's own parts off at first), then Copy, Copy for an agent, Save. */
 export function ShareBundle({ id }: { id: string }) {
   const b = useBundles()?.bundles.find((x) => x.id === id)
   const [parts, setParts] = useState<{ items: ShareItem[]; dropped: string[] } | null>(null)
@@ -601,14 +557,14 @@ export function ShareBundle({ id }: { id: string }) {
   useEffect(() => {
     shareOf(id).then((p) => { setParts(p); setOn(Object.fromEntries(p.items.map((x) => [x.path, x.on]))) }, (e) => setError(errorText(e)))
   }, [id])
-  // (made before a button is pressed: Safari copies only in the press itself)
+  // Made ahead: Safari copies to the clipboard only inside the press's own handler.
   useEffect(() => {
     if (!parts || !b) return
     let live = true
     const include = parts.items.filter((x) => !x.on && on[x.path]).map((x) => x.path), leave = parts.items.filter((x) => x.on && !on[x.path]).map((x) => x.path)
     bundleText(b, { include, leave }).then((t) => { if (live) setText(t) }, (e) => { if (live) setError(errorText(e)) })
     return () => { live = false }
-  }, [parts, on, b?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [parts, on, b?.id]) // eslint-disable-line react-hooks/exhaustive-deps -- b is new each render, its id is what counts
   if (error) return <SheetHead icon={Share} tint="var(--muted-foreground)" kicker="Share" title="Can't share this bundle" sub={error} />
   if (!b || !parts) return <div aria-busy><SheetHead icon={Share} tint="var(--muted-foreground)" kicker="Share" title={<Line w="45%" />} sub={<Line w="70%" />} /></div>
   const copy = async (agent: boolean) => {
@@ -645,7 +601,6 @@ export function ShareBundle({ id }: { id: string }) {
   )
 }
 
-/** Import a bundle: pasted (its JSON, or a GitHub repository's name), or a file. Added to the user's, not applied. */
 export function ImportBundle() {
   const [text, setText] = useState("")
   const file = useRef<HTMLInputElement>(null)

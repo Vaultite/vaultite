@@ -97,7 +97,6 @@ import { chooseScheme, schemeName } from "@/components/SchemeChooser"
 import { chooseFont, fontSetting } from "@/components/FontChooser"
 import { chooseNewTabPage, showNewTabSections } from "@/components/NewTab"
 
-// The app's own pages, which few visits open: loaded when they are.
 const Setup = lazy(() => import("@/pages/Setup").then((m) => ({ default: m.Setup })))
 const PluginGroupSheet = lazy(() => import("@/pages/Plugins").then((m) => ({ default: m.PluginGroupSheet })))
 const GetPluginSheet = lazy(() => import("@/components/PluginBrowse").then((m) => ({ default: m.GetPluginSheet })))
@@ -112,73 +111,61 @@ const ShareBundle = lazy(() => import("@/pages/Bundles").then((m) => ({ default:
 const ImportBundle = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.ImportBundle })))
 const IncomingBundle = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.IncomingBundle })))
 
-// The app's own pages (core/apppages.ts), each drawn from its lazy chunk: Setup on the tab its address names.
 const DRAW: Record<AppPage["id"], (store: Store, to: string, pane: Pane | null) => React.ReactNode> = {
   setup: (store, to, pane) => <Suspense><Setup store={store} tab={isSetupTab(to) ? to : "plugins"} at={pane?.id} /></Suspense>,
   settings: (store) => <Suspense><Settings store={store} /></Suspense>,
 }
 const pageTabOf = (to: string) => { const p = appPageOf(to); return p && { ...p, render: DRAW[p.id] } }
-/** A pane key: `k` (⌃⌘) on a Mac, `other` elsewhere, where Ctrl is ⌘ and `k` would take an editor's own keys. */
 const mac = (k: string, other?: string) => (isMac ? [k] : other ? [other] : undefined)
-/** The X of the bar's tab that has the keyboard, if it has one (a pinned tab, the last blank one: none). */
 const focusedTabClose = () => {
   const a = document.activeElement
   return a?.matches("[data-tab-strip] [role=tab]") ? a.closest("[data-tab-id]")?.querySelector<HTMLElement>(":scope > [data-tab-close]") ?? null : null
 }
-/** The sidebar: open (its edge drags between these px widths, double-click resets) or an icon rail (RAIL: in spacing
- *  units, so it follows density; `railPx` is what it measures now). */
 const SIDEBAR = { min: 200, max: 480, default: 240 }
 const railPx = () => (parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--spacing")) || 0.25) * 16 * RAIL
 const INSET_L = "env(safe-area-inset-left)", INSET_R = "env(safe-area-inset-right)"
 const sidebarPx = (w: number) => Math.round(Math.min(SIDEBAR.max, Math.max(SIDEBAR.min, w || SIDEBAR.default)))
 let dragFrom = SIDEBAR.default, dragOpen = true
-/** A sidebar's edge dragged to x (the right one's from the right): narrower than halfway between the rail and its
- *  narrowest, it's the rail, and it keeps the width it had when the drag began, so it reopens as it was. */
 function dragSidebar(right: boolean, x: number) {
   const w = right ? innerWidth - x : x
   const [on, width] = right ? ["rightSidebar", "rightSidebarWidth"] as const : ["sidebar", "sidebarWidth"] as const
   if (w <= (railPx() + SIDEBAR.min) / 2) { if (getPrefs()[on]) setPrefs({ [on]: false, [width]: dragFrom }); return }
   setPrefs({ [on]: true, [width]: sidebarPx(w) })
 }
-/** The vault menu (the vault's name at the sidebar's bottom): the other vaults, Manage vaults. */
 const manageVaults = () => (desktopApp ? desktopApp.manageVaults() : openDetail("vaults"))
 const VAULT_MENU = (): MenuItem[] => [
   ...otherVaults().map((v) => ({ label: `Open ${v.name}`, run: () => { (desktopApp ? desktopApp.openVault(v.path) : webVaults.open(v.path)).catch((e) => notifyError(e, "Couldn't open it")) } })),
   { label: "Manage vaults", sep: !!otherVaults().length, run: () => { manageVaults() } },
-  ...(desktopApp?.openSandbox ? [{ label: "Open the playground", run: () => { desktopApp!.openSandbox!() } }] : []), // a made-up vault to try things in
-  ...(phoneApp ? [{ label: "Switch server…", run: () => { phoneApp!.launcher() } }] : []), // the iPhone app's servers
+  ...(desktopApp?.openSandbox ? [{ label: "Open the playground", run: () => { desktopApp!.openSandbox!() } }] : []),
+  ...(phoneApp ? [{ label: "Switch server…", run: () => { phoneApp!.launcher() } }] : []),
 ]
 
-/** A sheet's body and title (detail_): a plugin's `title` or `file` that throws is a sheet saying so (the Guard around
- *  its body), not the app stopped, as it's called while App draws. */
 function sheet_(...a: Parameters<typeof detail_>): ReturnType<typeof detail_> {
   try { return detail_(...a) } catch (e) { return { body: <Drawn draw={() => { throw e }} />, title: "" } }
 }
 
-/** The core's own sheets, from their lazy chunks: by the path's kind ("bundle/": one with an id), its title and body. */
 const CORE_SHEETS: Record<string, [string, (store: Store, id: string) => React.ReactNode]> = {
-  schemes: ["Colour schemes", () => <SchemeGallery />], // Settings' More…, the command "Colour scheme…"
-  fonts: ["Fonts", () => <FontsSheet />], // Settings' Fonts row
-  "settings-section/": ["Settings", (store, id) => <SettingsSection store={store} id={id} />], // a Settings section, where the pane is narrow
-  hotkeys: ["Hotkeys", () => <HotkeysSheet />], // Settings' Hotkeys row, the command "Open hotkeys"
-  sidebars: ["Sidebars", () => <SidebarsSheet />], // Panels ▸ Customize sidebars…, Settings' Sidebars row, the command
-  "bundle/": ["Bundle", (_, id) => <BundlePreview id={id} />], // a bundle's preview (pages/Bundles.tsx)
-  "plugin-group/": ["Plugins", (store, id) => <PluginGroupSheet store={store} id={id} />], // a group's row on Plugins (the coding agents)
-  "plugin-get/": ["Get plugins", (_, id) => <GetPluginSheet id={id} />], // a row of Get plugins: one not installed yet
+  schemes: ["Colour schemes", () => <SchemeGallery />],
+  fonts: ["Fonts", () => <FontsSheet />],
+  "settings-section/": ["Settings", (store, id) => <SettingsSection store={store} id={id} />],
+  hotkeys: ["Hotkeys", () => <HotkeysSheet />],
+  sidebars: ["Sidebars", () => <SidebarsSheet />],
+  "bundle/": ["Bundle", (_, id) => <BundlePreview id={id} />],
+  "plugin-group/": ["Plugins", (store, id) => <PluginGroupSheet store={store} id={id} />],
+  "plugin-get/": ["Get plugins", (_, id) => <GetPluginSheet id={id} />],
   "bundle-share/": ["Share", (_, id) => <ShareBundle id={id} />],
   "bundle-import": ["Import a bundle", () => <ImportBundle />],
-  "bundle-incoming/": ["Import a bundle", (_, id) => <IncomingBundle id={id} />], // a bundle given to the app (core/bundles.ts openImport)
+  "bundle-incoming/": ["Import a bundle", (_, id) => <IncomingBundle id={id} />],
 }
 
-/** The detail sheet for a path: a plugin's (person/…, log/…), or the core's plugin sheet (plugin/<id>). */
 function detail_(store: Store, path: string, disabled: string[], tabInfo: (t: Tab | Pane) => TabInfo): { body: React.ReactNode; title: string; wide?: boolean } {
   const [kind, id] = path.split("/")
   if (kind === "file") {
     const p = decodeURIComponent(id ?? "")
     return { body: <FileView store={store} path={p} pane={false} />, title: stem(p) }
   }
-  if (kind === "tabs") return { body: <TabSwitcher store={store} info={tabInfo} />, title: "Tabs" } // the phone's tab list
-  if (kind === "vaults") { // Manage vaults, on the web (the desktop app has its own window)
+  if (kind === "tabs") return { body: <TabSwitcher store={store} info={tabInfo} />, title: "Tabs" }
+  if (kind === "vaults") {
     return { body: <><SheetHead icon={Logo} tint="var(--primary)" kicker="Vaultite" title="Vaults" /><VaultManager backend={webVaults} /></>, title: "Vaults" }
   }
   const own = CORE_SHEETS[id ? `${kind}/` : kind]
@@ -187,7 +174,7 @@ function detail_(store: Store, path: string, disabled: string[], tabInfo: (t: Ta
     const p = pluginById(id)
     if (p) return { body: <PluginPreview store={store} plugin={p} />, title: p.name }
   }
-  if (kind === "plugin-settings") { // a plugin's settings (core/pluginSettings.ts)
+  if (kind === "plugin-settings") {
     const p = pluginById(decodeURIComponent(id ?? ""))
     if (p) return { body: <PluginSettings store={store} plugin={p} />, title: settingsTitle(p.name) }
   }
@@ -207,8 +194,6 @@ function useRoute() {
     addEventListener("hashchange", on)
     return () => removeEventListener("hashchange", on)
   }, [])
-  // A phone shows one tab at a time in the window, each going back to where it was left (core/viewstate.ts, per vault,
-  // so once the vault is loaded). A computer's panes keep their own.
   const place = useRef("")
   const restoring = useRef(false)
   const loaded = !!useStore().store
@@ -216,8 +201,7 @@ function useRoute() {
     if (isDesktop() || !loaded) return
     place.current = targetOf(r.tab)
     restoring.current = true
-    // (where it was left, by its line when it has one: the editor's guessed heights drift a scrollTop; Back or Forward
-    // to an earlier visit of the file, by that entry's pixels; a file tab kept drawn is as it was left: pixels at once)
+    // By line when it has one: CodeMirror's guessed heights for lines not drawn yet drift a scrollTop.
     const back = takeScroll(), kept = keptShown(), left = back === null || Math.abs(back - scrollOf(place.current)) < 1
     return restoreScroll(null, back ?? scrollOf(place.current), () => { restoring.current = false }, left && !kept ? place.current : undefined,
       document.querySelector<HTMLElement>("#main-scroll article.file-view:not([data-kept] *)"))
@@ -230,16 +214,12 @@ function useRoute() {
   return r
 }
 
-// The vault's own plugins load with each state, before it's drawn.
 onState(loadVaultPlugins)
 
-// A tab's vault file that isn't there any more (deleted from outside the app: its tab isn't reopened).
 const fileGone = (to: string) => {
   const s = getStore(), p = vaultPath(to)
   return !!s && p !== null && !inVault(s, p)
 }
-// Several tabs closed at once (Close others, a group): a toast offers them back, naming ⌘⇧T where it's bound, and goes
-// once they're open again by any way (its Undo, the keys, tab search).
 const CLOSED_TOAST = "tabs-closed"
 let offer = QUIET, unwatch = () => {}
 const tellOffer = (e: OfferEvent) => {
@@ -260,7 +240,6 @@ setClosedTogether((id, n) => tellOffer({ type: "closed", id, n }))
 
 setSheetFile((store, path) => <FileView store={store} path={path} pane={false} />)
 
-// A detail that is a file (a person, a note) opens as the file.
 setDetailRedirect((path) => {
   const s = getStore()
   const d = s ? detailFor(path, getPrefs().disabled) : null
@@ -268,7 +247,6 @@ setDetailRedirect((path) => {
 })
 
 type PaletteKind = "search" | "launcher" | "commands" | "tabs"
-/** The palette open, a cell of its own: opening or closing one draws only it, not the whole app. */
 const paletteOpen = cell<PaletteKind | null>(null)
 const setPalette = (p: PaletteKind | null | ((was: PaletteKind | null) => PaletteKind | null)) => paletteOpen.set(typeof p === "function" ? p(paletteOpen.get()) : p)
 const closePalette = () => paletteOpen.set(null)
@@ -285,79 +263,59 @@ const Palettes = memo(function Palettes({ store }: { store: Store | null }) {
 
 export default function App() {
   const { tab, detail, depth, prev } = useRoute()
-  // The tab list stays on screen a moment after it's left, while the page grows out of it (core/motion.ts).
   const lingering = useLingeringSheet()
   const sheet = detail || lingering || ""
   const { store, error } = useStore()
   const { sidebar, sidebarWidth, rightSidebar, rightSidebarWidth, rails, peekShade, fileBarFade, disabled, enabled, sidebarHeader } = usePrefs()
-  // Where a device starts (a plugin's `home`: Pinned's first page), else a new tab.
   const home = store ? homeTab(store, disabled) : null
   const isFileTab = tab.startsWith("file/") || tab === "file"
   const isViewTab = tab.startsWith("view/")
   const isNewTab = tab === "new"
   const desktop = useDesktop()
-  // The editor's code, once the first page is drawn.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once the store arrives, not on each store change
   useEffect(() => { if (store) whenIdle(preloadEditor) }, [!!store])
-  // (until turned back on: the toast stays, so the visit can't be taken for the app as it is)
   useEffect(() => { if (safeMode) notify("Vault plugins are off for now", { id: "safe-mode", duration: Infinity, action: { label: "Turn back on", run: turnPluginsBackOn } }) }, [])
-  // Files' actions (the ops' catalog) ready before a menu asks, and again when plugins come and go.
   useEffect(() => { if (store) whenIdle(loadActions) }, [!!store, disabled, enabled])
-  // Workspaces off (a layout, another device, or while the app was closed): this device's own tabs come back.
   const workspacesOn = useWorkspacesOn()
   useEffect(() => { if (store && !workspacesOn) tabsInWorkspace(false) }, [!!store, workspacesOn])
-  // The files the focused tab shows go into the current workspace's "opened lately" (core/scope.ts).
   useEffect(() => onWorkspaceChange(() => noteOpened(currentFile())), [])
-  // The window tells the server which workspace it's on (an agent's `vau panels` changes that one), again on a switch.
   useEffect(() => {
     let was = currentWorkspace()?.n ?? null
     setWindowState(() => { const n = currentWorkspace()?.n; return n ? { workspace: n } : {} })
-    // Now, too: the live socket may have opened before this (main.tsx connects first) and said nothing of it.
     sayWindowState()
     return subscribeScoped(() => { const n = currentWorkspace()?.n ?? null; if (n !== was) { was = n; sayWindowState() } })
   }, [])
-  // A device's first visit (nothing saved): its blank tab shows where plugins say it starts (the first pinned page). A
-  // vault new here, or one the desktop's first run just opened, shows the welcome card over it (core/welcome.ts).
   useEffect(() => {
     if (store?.vault.sandbox) sandboxNotice()
     if (store) void startWelcome()
     if (home) fillFirstTab(home)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per store
   }, [store])
-  // No address, or on a phone one it can't show: where the app starts (home, else a new tab).
   useEffect(() => {
     if (!store) return
-    // The address moved on since this was drawn (a workspace's tabs put in place meanwhile): the next draw sees to it.
     if (route().tab !== tab) return
     if (isFileTab || isViewTab || isNewTab || appPageOf(tab)) return
     const to = !tab || (!desktop && !detail) ? (home ? hashOf(home) : desktop ? null : "new") : null
     if (!to) return
     replaceHash(`${to}${detail ? `/${detail}` : ""}`, history.state)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs on a new store or address only
   }, [store, tab])
-  useWorkspace() // re-render when tabs change
-  // The address shows the focused group's active tab; when it changes by itself (back, a link, a page picked in
-  // the phone's drawer), the tab follows. Phones use the same tabs, shown one at a time (components/TabSwitcher.tsx).
+  useWorkspace()
   const known = isFileTab || isViewTab || isNewTab || !!appPageOf(tab)
   useEffect(() => {
-    // (the address moved on since this was drawn: a workspace's tabs put in place took it to their pane, which an old
-    // one followed here would overwrite: the next draw sees to it)
     if (route().tab !== tab) return
     if (known) followHash(tab)
     else if (desktop && !detail && store) replaceHash(hashOf(activePane().to))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- detail is read as of the address change
   }, [tab, desktop, known, !!store])
   useEffect(() => takeLinks({ command: runCommandLink, open: (p) => { const s = getStore(); if (!s?.files.files.some((f) => f.path === p)) return false; openFile(p); return true },
     bundle: (repo) => { if (!getStore()) return false; void openImport(repo); return true } }), [])
-  // First load with no address: show the tab that was open last time.
   useEffect(() => {
     if (!location.hash) replaceHash(hashOf(activePane().to))
   }, [])
   const filePath = isFileTab ? targetOf(tab).slice(5) : ""
-  // (Settings on one of Plugins' sections is Plugins: lit, and its tab named so)
   useSettingsOwner()
   const active = pageShownAt(tab)
-  // A file's sheet in the address (#<tab>/file/…, a phone's): on desktop, the file's tab.
   useEffect(() => {
     if (!desktop || !store || !detail) return
     const [kind, arg] = detail.split("/")
@@ -369,30 +327,22 @@ export default function App() {
   const pageInfo = (id: string) => { const p = pageShownAt(hashOf(id)); return p ? { label: p.label, icon: p.icon, tint: p.tint } : null }
   const tabInfo = useTabInfo(store, pageInfo)
   setPageInfo(pageInfo)
-  // Back when this sheet was opened from another sheet.
   const canBack = !!prev
   const prevTitle = canBack && store ? sheet_(store, prev, disabled, tabInfo).title : ""
   const sheetDetail = store && sheet ? sheet_(store, sheet, disabled, tabInfo) : null
-  // The quick switcher (⌘O), the command palette (⌘P) or Search tabs (⌘⇧A); their commands are below.
   const setSearching = (on: boolean) => setPalette(on ? "search" : null)
-  // The vault's name at the bottom of the sidebar: a menu of vault-wide things (VAULT_MENU).
   const vaultName = vaultNameOf(store)
   const vaultMenu = (e: React.MouseEvent) => menuBelow(e, VAULT_MENU())
-  // The app's commands (⌘P lists them); file commands act on the active tab's file, in the vault only (not "file:/…").
-  // The file the user means: the editor's (a sheet's over the page too), else the focused tab's.
   const actionTarget = () => currentEditor()?.path ?? currentFile()
   const tabFile = () => (isDesktop() ? currentFile() : "")
   const besideText = () => { const ed = currentEditor(); return !!ed?.undo && keysInEditor(ed) }
   useCommands(() => [
-    // (`label` and `icon`: as a blank tab's buttons, core/newtab.ts' default ones.)
     { id: "switcher:open", name: "Open quick switcher", keys: ["Mod+O"], run: () => setPalette((p) => (p === "search" ? null : "search")), fromLink: true, label: "Open a file", icon: FileText },
-    // (a new tab's, picking what it shows: what ⌘T opens with newtab.json's `opens`, core/launcher.ts)
     { id: "switcher:new-tab", name: "Open new tab from quick switcher", run: () => setPalette((p) => (p === "launcher" ? null : "launcher")), icon: Plus },
     { id: "palette:open", name: "Open command palette", keys: ["Mod+P"], run: () => setPalette((p) => (p === "commands" ? null : "commands")), icon: CommandIcon },
     { id: "icon:search", name: "Search icons", run: () => pickIcon({ title: "Search icons", onPick: (n) => copyText(n).then(() => notify(`Copied ${n}: use it as an icon:`, { id: "copied" }), notifyError) }), icon: Smile },
-    // ⌘N, ⌘T, ⌘W are the browser's: the desktop app has them (its menu), the web gets another key or none.
+    // ⌘N, ⌘T, ⌘W are the browser's: only the desktop app can bind them.
     { id: "file:new", name: "Create new note", keys: desktopApp ? ["Mod+N"] : ["Mod+Alt+N"], run: () => void newNote(), fromLink: true, label: "New note", icon: FilePlus },
-    // On a phone the sidebars are drawers (components/PhoneDrawer.tsx).
     { id: "sidebar:toggle", name: "Show left sidebar", keys: ["Mod+\\"],
       run: () => (isDesktop() ? setPrefs({ sidebar: !getPrefs().sidebar }) : openDrawer(drawerOut() === "left" ? null : "left")), icon: PanelLeft,
       nameWhenOn: "Hide left sidebar", on: () => (isDesktop() ? getPrefs().sidebar : drawerOut() === "left") },
@@ -400,20 +350,16 @@ export default function App() {
       run: () => { if (isDesktop()) document.querySelector<HTMLElement>("[data-sidebar-toggle=right]")?.click(); else openDrawer(drawerOut() === "right" ? null : "right") }, icon: PanelRight,
       nameWhenOn: "Hide right sidebar", on: () => (isDesktop() ? document.querySelector("[data-sidebar-toggle=right]")?.getAttribute("aria-expanded") === "true" : drawerOut() === "right") },
     { id: "tab:new", name: "Open new tab", keys: desktopApp ? ["Mod+T"] : undefined, when: isDesktop, run: () => openNewTab(), icon: Plus },
-    // ⌘D and ⇧⌘D as Rex and Ghostty have them, in every pane: an editor's ⌘D (Delete paragraph) moved. Only what's
-    // more particular keeps ⌘D: a focused web page bookmarks, a file tree row duplicates (they have a `when`).
     { id: "split:right", name: "Split right", keys: ["Mod+D", "Mod+Alt+\\"], desktop: true, run: () => splitPane("right"), icon: Columns2 },
     { id: "split:down", name: "Split down", keys: ["Mod+Shift+D"], desktop: true, run: () => splitPane("bottom"), icon: Rows2 },
     { id: "split:left", name: "Split left", desktop: true, run: () => splitPane("left"), icon: Columns2 },
     { id: "split:up", name: "Split up", desktop: true, run: () => splitPane("top"), icon: Rows2 },
     { id: "split:fit", name: "Split along the longer side", desktop: true, words: "best fit", run: splitToFit, icon: LayoutPanelLeft },
     { id: "pane:to-tab", name: "Move pane to new tab", when: () => isDesktop() && severalPanes(), words: "separate split out", run: () => paneToTab(activePane().id), icon: SquareSplitHorizontal },
-    // A pane filling the workspace for now (Ghostty's and tmux's zoom), or floating over it, docked where it sits (Rex's).
     { id: "pane:zoom", name: "Zoom pane", keys: ["Mod+Shift+Enter"], when: () => isDesktop() && canZoom(), run: () => zoomPane(), icon: Maximize2, nameWhenOn: "Unzoom pane", on: isZoomed },
     { id: "pane:float", name: "Float pane", keys: ["Mod+Alt+Enter"], when: () => isDesktop() && (canFloat() || isFloating()), run: toggleFloat, icon: PictureInPicture2,
       nameWhenOn: "Dock pane", on: () => isFloating() },
-    // ⌃⌘ on a Mac (⌥⌘← is Back); off one Alt+Shift (Alt← is Back, Ctrl+Alt arrows the desktop's workspaces, Ctrl+Alt
-    // AltGr on Windows). Past the last pane on a side: that side's sidebar, and back (core/keylist.ts).
+    // Off a Mac Alt+Shift: Alt← is Back, Ctrl+Alt arrows switch the desktop's workspaces, Ctrl+Alt is AltGr on Windows.
     { id: "split:focus-left", name: "Focus pane to the left", keys: mac("Mod+Ctrl+ArrowLeft", "Alt+Shift+ArrowLeft"), when: () => isDesktop() && canGoSide("left"), run: () => goSide("left"), icon: Focus },
     { id: "split:focus-right", name: "Focus pane to the right", keys: mac("Mod+Ctrl+ArrowRight", "Alt+Shift+ArrowRight"), when: () => isDesktop() && canGoSide("right"), run: () => goSide("right"), icon: Focus },
     { id: "split:focus-top", name: "Focus pane above", keys: mac("Mod+Ctrl+ArrowUp", "Alt+Shift+ArrowUp"), when: () => isDesktop() && canGoSide("top"), run: () => goSide("top"), icon: Focus },
@@ -421,7 +367,6 @@ export default function App() {
     { id: "pane:focus-next", name: "Focus next pane", keys: mac("Mod+Ctrl+]", "Alt+Shift+]"), when: () => isDesktop() && severalPanes(), run: () => focusByOrder(1), icon: Focus },
     { id: "pane:focus-previous", name: "Focus previous pane", keys: mac("Mod+Ctrl+[", "Alt+Shift+["), when: () => isDesktop() && severalPanes(), run: () => focusByOrder(-1), icon: Focus },
     { id: "pane:focus-last", name: "Focus last pane", words: "recent back", when: () => isDesktop() && hasLastPane(), run: focusLastPane, icon: Focus },
-    // Moving one swaps it with its neighbour, as Rex does; resizing moves its divider that way, as Ghostty does.
     { id: "pane:move-left", name: "Move pane left", keys: mac("Mod+Ctrl+Shift+ArrowLeft"), when: () => isDesktop() && hasNeighbour("left"), words: "swap", run: () => movePane("left"), icon: MoveLeft },
     { id: "pane:move-right", name: "Move pane right", keys: mac("Mod+Ctrl+Shift+ArrowRight"), when: () => isDesktop() && hasNeighbour("right"), words: "swap", run: () => movePane("right"), icon: MoveRight },
     { id: "pane:move-up", name: "Move pane up", keys: mac("Mod+Ctrl+Shift+ArrowUp"), when: () => isDesktop() && hasNeighbour("top"), words: "swap", run: () => movePane("top"), icon: MoveUp },
@@ -434,51 +379,38 @@ export default function App() {
     // Off a Mac, ⌃⌥← switches workspaces (GNOME, Xfce): ⌥← there, as browsers have it.
     { id: "nav:back", name: "Navigate back", keys: isMac ? ["Mod+Alt+ArrowLeft", "Mod+["] : ["Alt+ArrowLeft"], when: isDesktop, run: () => navigate(-1), icon: ArrowLeft },
     { id: "nav:forward", name: "Navigate forward", keys: isMac ? ["Mod+Alt+ArrowRight", "Mod+]"] : ["Alt+ArrowRight"], when: isDesktop, run: () => navigate(1), icon: ArrowRight },
-    // In a split, ⌘W closes the focused pane's place, as Arc's split view does (its own tabs: the next shows; the split:
-    // Close split). A pinned tab stays: ⌘W rests it, as Arc does; it's closed from its menu, or unpinned first.
     { id: "tab:close", name: "Close current tab", keys: desktopApp ? ["Mod+W"] : undefined, label: "Close tab", icon: X, run: () => {
       const t = activeTab()
       if (t.pinned) restTab(t.id); else if (canClosePane()) closePane(); else closeTab(t.id)
     } },
-    // A tab with the keyboard (Tab to it): Delete does what its X does, which a tablist can't hold as a stop of its own.
     { id: "tab:close-focused", name: "Close the tab that has the keyboard", keys: isMac ? ["Backspace", "Delete"] : ["Delete"], label: "Close tab", icon: X,
       when: () => !!focusedTabClose(), run: () => {
         const x = focusedTabClose()!, bar = x.closest<HTMLElement>("[data-tab-strip]")
         x.click()
-        // (the keyboard stays in the bar, on the tab shown now)
         requestAnimationFrame(() => bar?.querySelector<HTMLElement>("[role=tab][aria-selected=true]")?.focus())
       } },
-    // (⇧⌘W closes the window: ⌥⇧⌘W, beside ⌥⌘W's Close all other tabs. The web has no ⌘W: there it's Close pane.)
     { id: "pane:close", name: "Close pane", keys: desktopApp ? undefined : ["Mod+Alt+Shift+W"], when: () => isDesktop() && canClosePane(), run: () => closeWholePane(activePane().id), icon: SquareX },
     { id: "split:close", name: "Close split", keys: desktopApp ? ["Mod+Alt+Shift+W"] : undefined, words: "whole tab all panes", when: () => isDesktop() && canClosePane(),
       run: () => { const t = activeTab(); if (t.pinned) restTab(t.id); else closeTab(t.id) }, icon: X },
     { id: "tab:toggle-pin", name: "Pin tab", when: isDesktop, run: () => togglePinTab(activeTab().id), icon: Pin, nameWhenOn: "Unpin tab", on: () => !!activeTab().pinned },
-    // Vertical tabs, one switch: the tab bar or the Tabs panel at the top of the left sidebar (core/plugins.ts).
     { id: "tab:sidebar", name: "Show tabs in the sidebar", when: () => isDesktop() && !isPopout() && !!tabListPanel(), run: () => showTabsIn(tabsInSidebar() ? "top" : "sidebar"),
       icon: PanelLeft, nameWhenOn: "Show tabs on top", on: () => tabsInSidebar() },
-    // (the palette as a field: what the name belongs to is what the tab shows, core/tabnames.tsx)
     { id: "tab:rename", name: "Rename tab…", when: () => canRenameTab(activeTab()), run: () => renameTab(), icon: PencilLine },
     { id: "tab:group", name: "Add current tab to group…", when: isDesktop, run: chooseTabGroup, icon: GroupIcon },
     { id: "tab:rename-group", name: "Rename tab group…", when: () => isDesktop() && !!activeTab().group, run: renameTabGroup, icon: PencilLine },
     { id: "tab:ungroup", name: "Remove current tab from group", when: () => isDesktop() && !!activeTab().group, run: () => leaveGroup([activeTab().id]), icon: Ungroup },
-    // A window of its own (a pop-out): no sidebars, its own tabs.
     { id: "tab:move-to-window", name: "Move current tab to new window", when: () => isDesktop() && activePane().to !== "new", run: () => popOut(activeTab().id, true), icon: AppWindow },
     { id: "tab:move-to-main", name: "Move current tab to main window", when: hasMainWindow, run: () => moveToMain([activeTab().id]), icon: AppWindow },
-    // A pop-out with only what it shows, as a video call's pop-out: no tab, pane or page bars, no status bar, and on a Mac
-    // its traffic lights only with the pointer at its top (electron/topstrip.ts).
     { id: "window:bars", name: "Show window bars", nameWhenOn: "Hide window bars", words: "chrome chromeless frameless title bar tab bar toolbar traffic lights compact",
       when: () => isDesktop() && isPopout(), on: () => !barsHidden(), run: () => hideBars(!barsHidden()), icon: PanelTopDashed },
-    // Over other apps' windows and on every Space, as a video call's pop-out (core/ontop.ts), a window at a time.
     { id: "window:on-top", name: "Keep window on top", nameWhenOn: "Stop keeping window on top", words: "always on top float pin pip picture",
       when: () => isDesktop() && canKeepOnTop, on: onTop, run: () => keepOnTop(!onTop()), icon: Pin },
     { id: "tab:open-in-window", name: "Open current tab in new window", when: () => isDesktop() && activePane().to !== "new", run: () => popOut(activeTab().id), icon: SquareArrowOutUpRight },
-    // ⌘1–⌘8 the nth tab, ⌘9 the last, like a browser's (the browser's own keys: the desktop app has them).
     ...[1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ id: `tab:goto-${n}`, name: `Go to tab #${n}`, keys: desktopApp ? [`Mod+${n}`] : undefined,
       when: () => isDesktop() && tabsHere() >= n, run: () => selectTabAt(n), icon: Hash })),
     { id: "tab:goto-last", name: "Go to last tab", keys: desktopApp ? ["Mod+9"] : undefined, when: isDesktop, run: () => selectTabAt(-1), icon: ArrowRightToLine },
     // (⌘⇧T is the browser's too.)
     { id: "tab:reopen", name: "Reopen closed tab", keys: desktopApp ? ["Mod+Shift+T"] : undefined, when: canReopen, run: () => reopenLatest(fileGone), icon: RotateCcw },
-    // (⌘⇧A is Chrome's tab search too: in the web app it searches the app's tabs, which are the ones looked for)
     { id: "tab:search", name: "Search tabs…", keys: ["Mod+Shift+A"], words: "find switch open recently closed archived", when: isDesktop,
       run: () => setPalette((p) => (p === "tabs" ? null : "tabs")), icon: Search },
     { id: "tab:close-others", name: "Close all other tabs", keys: ["Mod+Alt+W"], when: isDesktop, run: () => closeTabs("others", activeTab().id), icon: CopyX },
@@ -493,29 +425,24 @@ export default function App() {
     { id: "file:reveal", name: "Reveal current file in file tree", when: () => !!tabFile() && isEnabled("files", getPrefs().disabled),
       run: () => revealInTree(tabFile(), { scroll: true, flash: true, open: true }), icon: ListTree },
     { id: "file:rename", name: "Rename current file", when: () => !!tabFile() && !isProtected(tabFile()), run: () => askRename(tabFile()), icon: PencilLine },
-    // To the trash at once, with Undo in a toast (in the trash: for good, after asking).
     { id: "file:delete", name: "Delete current file", when: () => !!tabFile() && !isProtected(tabFile()), run: () => remove(tabFile()), icon: Trash2 },
     { id: "file:duplicate", name: "Duplicate current file", when: () => !!tabFile() && !isReadOnly(tabFile()), run: () => duplicate(tabFile()), icon: Copy },
     { id: "file:copy-path", name: "Copy file path", when: () => !!tabFile(), run: () => copyPath(tabFile()), icon: ClipboardCopy },
     { id: "file:copy-link", name: "Copy link to current file", when: () => !!tabFile(), run: () => copyLink(tabFile()), icon: Link },
-    // (The name stays a literal for core/appsource.ts; off a Mac it's the file manager's.)
+    // `id` and `name` first, literal: core/appsource.ts lists commands from the source; off a Mac `name` changes here.
     { id: "file:reveal-finder", name: "Reveal current file in Finder", when: () => !!tabFile() && canReveal(), run: () => revealInFinder(tabFile()), icon: FolderOpen,
       ...(isMac ? {} : { name: isWindows ? "Show current file in Explorer" : "Show current file in folder" }) },
     ...APP_PAGES.map((p) => ({ id: `page:${p.id}`, name: `Open ${p.label}`, keys: p.keys, words: p.words, run: () => openAppPage(p), icon: p.icon })),
-    // (page:setup above is Open Plugins) Its Get, and layouts (core/bundles.ts), picked in Settings > Appearance.
     { id: "page:get", name: "Get plugins and layouts", words: "setup store directory install bundles packs", run: () => openSetup("get"), icon: StoreIcon },
     { id: "layouts:choose", name: "Choose a layout…", words: "bundle setup zen browser standard", run: () => openSettings("appearance"), icon: LayoutTemplate },
     { id: "layouts:save", name: "Save layout as new…", words: "bundle setup", run: () => saveAsNew(currentLayout()), icon: CopyPlus },
     { id: "bundles:import", name: "Import a bundle…", words: "layout pack", run: () => openDetail("bundle-import"), icon: Import },
     { id: "bundles:restore", name: "Restore previous layout", words: "bundle setup undo", when: () => !!previousSetup(), run: () => restoreSetup().catch((e) => notifyError(e, "Couldn't restore it")), icon: ArchiveRestore },
-    // One value of a choice each, for the menu bar's radio items, hotkeys and `vau command`; the palette offers its
-    // picker instead ("Theme…", core/choices.ts).
     { id: "theme:light", name: "Use light theme", unlisted: true, when: () => getPrefs().theme !== "light", run: () => setPrefs({ theme: "light" }), icon: Sun },
     { id: "theme:dark", name: "Use dark theme", unlisted: true, when: () => getPrefs().theme !== "dark", run: () => setPrefs({ theme: "dark" }), icon: Moon },
     { id: "theme:system", name: "Use the system's light or dark theme", unlisted: true, when: () => getPrefs().theme !== "system", run: () => setPrefs({ theme: "system" }), icon: SunMoon },
     { id: "scheme:gruvbox", name: "Use Gruvbox colours (the default)", unlisted: true, when: () => getPrefs().scheme !== "gruvbox", run: () => setPrefs({ scheme: "gruvbox" }), icon: PaletteIcon },
     { id: "scheme:default", name: "Use Classic colours", unlisted: true, when: () => getPrefs().scheme !== "default", run: () => setPrefs({ scheme: "default" }), icon: PaletteIcon },
-    // Named as Settings names them, with the one in use, like every setting of a few values (core/choices.ts).
     { id: "scheme:choose", name: "Colour scheme…", words: "change color colours obsidian themes", run: chooseScheme, icon: PaletteIcon, value: () => schemeName(), place: placeOf({ id: "setting:scheme", section: "appearance" }) },
     { id: "font:text", name: "Text font…", words: "change typeface notes", run: () => chooseFont("textFont"), icon: Type, ...fontSetting("textFont") },
     { id: "font:interface", name: "Interface font…", words: "change typeface ui", run: () => chooseFont("interfaceFont"), icon: Type, ...fontSetting("interfaceFont") },
@@ -524,15 +451,12 @@ export default function App() {
     { id: "newtab:sections", name: "Show sections on new tabs", when: () => !!getPrefs().newTab.page, run: showNewTabSections, icon: Layers },
     { id: "sidebars:customize", name: "Customize sidebars", run: () => openDetail("sidebars"), icon: SlidersHorizontal },
     { id: "hotkeys:open", name: "Open hotkeys", keys: ["Shift+/"], run: () => openDetail("hotkeys"), icon: Keyboard },
-    // The one not in use is offered (the menu bar's radio items); the palette has "Density…" and "Animations…".
     { id: "density:compact", name: "Use compact density", unlisted: true, when: () => getPrefs().density === "comfortable", run: () => setPrefs({ density: "compact" }), icon: FoldVertical },
     { id: "density:comfortable", name: "Use comfortable density", unlisted: true, when: () => getPrefs().density !== "comfortable", run: () => setPrefs({ density: "comfortable" }), icon: UnfoldVertical },
     ...(["natural", "snappy", "off"] as const).map((animation) => ({ id: `animation:${animation}`, name: animation === "off" ? "Turn animations off" : `Use ${animation} animations`, unlisted: true, when: () => getPrefs().animation !== animation, run: () => setPrefs({ animation }), icon: Sparkles })),
-    // "Properties in document": the two not in use (the palette has "Properties in document…").
     { id: "properties:visible", name: "Show properties in notes", unlisted: true, when: () => editorSettings().propertiesInDocument !== "visible", run: () => showPropertiesAs("visible"), icon: Tags },
     { id: "properties:hidden", name: "Hide properties in notes", unlisted: true, when: () => editorSettings().propertiesInDocument !== "hidden", run: () => showPropertiesAs("hidden"), icon: EyeOff },
     { id: "properties:source", name: "Show properties as text while editing", unlisted: true, when: () => editorSettings().propertiesInDocument !== "source", run: () => showPropertiesAs("source"), icon: Braces },
-    // The note's history while the keyboard is beside its text, not in it (a property just removed, a chip clicked).
     { id: "editor:undo", name: "Undo", keys: ["Mod+Z"], when: besideText, run: () => currentEditor()?.undo?.(), icon: Undo2 },
     { id: "editor:redo", name: "Redo", keys: ["Mod+Shift+Z"], when: besideText, run: () => currentEditor()?.redo?.(), icon: Redo2 },
     { id: "vault:reload", name: "Reload the vault", run: () => reload(), icon: RefreshCw },
@@ -541,27 +465,18 @@ export default function App() {
     { id: "app:setup", name: "Set up Vaultite", when: () => !!desktopApp?.setup, run: () => desktopApp?.setup?.(), icon: CirclePlay },
     { id: "app:switch-server", name: "Switch server…", when: () => !!phoneApp, run: () => phoneApp?.launcher(), icon: Server },
     { id: "file:open-outside", name: "Open file from outside the vault…", when: () => !!desktopApp, run: () => desktopApp?.pickOutside(), icon: FileInput },
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- commands read state when run, built once per store
   ], [!!store])
-  // Plugins' own commands (Open terminal...), while they're on (an opt-in one's too: `enabled`), and again when the
-  // vault's plugins arrive or change.
   const pluginsVersion = usePluginsVersion()
   const onKey = activeKey(disabled)
-  // Plugins' background work, drawn again when the store changes (it listens to the rest itself): a tab switched or a
-  // sidebar shown redraws none of it. One that throws stops alone (its error goes to Errors).
   const running = useMemo(() => store && backgrounds(disabled).map(({ key, Run }) => <Catch key={key} fallback={() => null}><Run store={store} /></Catch>),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- disabled changes are covered by onKey
     [store, onKey, pluginsVersion])
   useCommands(() => pluginCommands(disabled), [onKey, pluginsVersion])
-  // "Open <Name> settings": each plugin's settings sheet, while it's on and has some (core/pluginSettings.ts).
   useCommands(settingsCommands, [onKey, pluginsVersion])
-  // Text sizes: notes' and the plugins' kinds (the Terminal's), apart from the interface size (core/textsize.ts).
   useCommands(() => textSizeCommands(disabled), [onKey])
-  // ⌘+ ⌘- ⌘0: what's focused, else the interface size (core/zoom.ts).
   useCommands(zoomCommands, [])
-  // Every setting, the app's and the plugins': on/off (core/switches.ts) and of a few values (core/choices.ts).
   useCommands(() => [...allSwitches(disabled).map(switchCommand), ...allChoices(disabled).map(choiceCommand)], [onKey, pluginsVersion])
-  // A pop-out window (core/workspace.ts POPOUT) has no sidebars: its tabs fill it; with its bars hidden, only what it shows.
   const popout = isPopout()
   const bare = useBarsHidden()
   useLayoutEffect(() => {
@@ -569,13 +484,9 @@ export default function App() {
     document.documentElement.toggleAttribute("data-bars-hidden", bare)
     bareWindow(bare)
   }, [popout, bare])
-  // Without rails a hidden sidebar takes no room: it slides in over the page from its edge (core/peek.ts).
   const hideLeft = desktop && !popout && !rails && !sidebar
-  // (a phone on its side: its notch's room, env(safe-area-inset-*), is added to the sidebar there or takes its place)
   const side = popout ? "0px" : hideLeft ? INSET_L : `calc(${sidebar ? `${sidebarPx(sidebarWidth)}px` : space(RAIL)} + ${INSET_L})`
   const header = shownHeaderItems(disabled, sidebarHeader)
-  // The right sidebar is there while
-  // panels are in it; with none it takes no room, only its dimmed toggle (a click opens it empty to drop panels in).
   const rightCount = panelsIn("right", useSidebars(), disabled).length
   const hasRight = rightCount > 0
   const [emptyRight, setEmptyRight] = useStateFor([hasRight], () => false)
@@ -585,17 +496,13 @@ export default function App() {
   const rside = popout ? "0px" : showRight && !hideRight ? `calc(${rightOpen ? `${sidebarPx(rightSidebarWidth)}px` : space(RAIL)} + ${INSET_R})` : INSET_R
   const peek = usePeek(hideLeft, hideRight && hasRight)
   const leftOpen = sidebar || hideLeft
-  // The traffic lights go with the sidebar they sit in; it slides out once they're gone, inert only then (an inert one
-  // isn't hit, so a web page it's still over would be raised over it meanwhile).
   const leftIn = usePeekLights(hideLeft, peek)
   const leftMotion = useSideMotion(hideLeft, leftIn), rightMotion = useSideMotion(hideRight, peek === "right")
   useBarFade(desktop && fileBarFade)
   useEffect(() => keepTypingInSight(), [])
-  // What's fixed to the window's edges (the status bar) keeps clear of the sidebars.
-  // (before the paint: the bar drawn a frame with the old room moves when it gets the new)
   useLayoutEffect(() => setRoom(desktop ? side : "0px", desktop ? rside : "0px"), [side, rside, desktop])
   useLayoutEffect(() => { setOpenWidth("left", sidebarPx(sidebarWidth)); setOpenWidth("right", sidebarPx(rightSidebarWidth)) }, [sidebarWidth, rightSidebarWidth])
-  // Which sidebars are there, for index.css (not body:has(aside...): that made every DOM change recalc 4x the styles).
+  // Data attributes, not body:has(aside...) in CSS: :has made every DOM change recalc styles 4x.
   useLayoutEffect(() => {
     const root = document.documentElement.dataset
     if (showRight) root.rightSidebar = ""; else delete root.rightSidebar
@@ -603,7 +510,6 @@ export default function App() {
     if (showRight && !rightOpen && rails) root.rightRail = ""; else delete root.rightRail
     if (!rails) root.noRails = ""; else delete root.noRails
   }, [showRight, rightOpen, popout, sidebar, rails])
-  // The shell takes its places without sliding to them while the vault's state comes in (main.tsx sets it).
   useEffect(() => {
     if (!store) return
     const t = setTimeout(() => { delete document.body.dataset.arriving }, 500)
@@ -612,21 +518,15 @@ export default function App() {
 
   return (
     <>
-      {/* The first Tab stop, seen only while it has the keyboard: past the sidebar into the focused pane, as F6 goes. Given
-          the keyboard by no Tab (Chromium on Linux, as a focused web page closes, starts the window over as a Tab would),
-          it hands it on to the pane at once instead of showing. */}
+      {/* Chromium on Linux focuses this with no Tab when a focused web page closes: then it hands focus on to the pane. */}
       {desktop && (
         <button type="button" data-skip-link data-overlay onClick={() => focusArea()} onFocus={(e) => { if (!byTab(e.nativeEvent)) focusArea() }}
           className="sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:top-1.5 focus-visible:left-1/2 focus-visible:z-[90] focus-visible:h-7 focus-visible:-translate-x-1/2 focus-visible:cursor-pointer focus-visible:rounded-[6px] focus-visible:bg-popover focus-visible:px-2.5 focus-visible:text-[13px] focus-visible:font-medium focus-visible:text-popover-foreground focus-visible:shadow-lg">
           Skip to content
         </button>
       )}
-      {/* Desktop: the sidebar. Folded, it's an icon rail where only the width changes, so every icon stays put (RAIL in
-          Sidebar.tsx, all offsets in spacing units). Right-click it to pick which panels show. */}
-      {/* Behind a hidden sidebar slid in, the page dims a little (index.css: it starts once the sidebar is in, so
-          brushing the edge never flashes it). Clicks pass through: one on the page puts the sidebar away. */}
       {peekShade && (hideLeft || hideRight) && <div aria-hidden data-peek-shade="" data-shown={peek ? "" : undefined} className="pointer-events-none fixed inset-0 z-(--z-peek-shade)" />}
-      {/* Over a frame (an HTML file, a PDF) the window hears no pointer: these catch it at the edges meanwhile (core/peek.ts). */}
+      {/* Over an iframe (an HTML file, a PDF) the window gets no pointer events: these catch them at the edges. */}
       {hideLeft && <div aria-hidden data-peek-edge="" className="fixed inset-y-0 left-0 z-(--z-peek-edge) w-[6px]" />}
       {hideRight && hasRight && <div aria-hidden data-peek-edge="" className="fixed inset-y-0 right-0 z-(--z-peek-edge) w-[3px]" />}
       {!popout && <>
@@ -635,26 +535,18 @@ export default function App() {
           "fixed inset-y-0 left-0 z-20 hidden flex-col overflow-hidden border-r-[0.5px] border-border bg-sidebar pr-[calc(--spacing(2)-0.5px)] pl-[calc(--spacing(2)+env(safe-area-inset-left))] pt-[env(safe-area-inset-top)] pb-[max(--spacing(2),env(safe-area-inset-bottom))] md:flex",
           hideLeft && "z-(--z-peek) rounded-[12px] border-0 shadow-[0_8px_32px_rgb(0_0_0/0.22)]",
         )} style={hideLeft ? { width: `${sidebarPx(sidebarWidth)}px`, ...peekPanel("left", leftIn) } : { width: side }}>
-        {/* As tall as the tab bar: right of the toggle, plugins' `header` items (Workspaces' switcher); a container, so
-            an item fits itself to the room the traffic lights leave. */}
         <div data-titlebar onContextMenu={menuFor(headerMenu)} className={cn("@container flex h-10 shrink-0 items-center justify-end gap-1 pl-7.5 whitespace-nowrap transition-opacity duration-(--motion)", !leftOpen && "pointer-events-none opacity-0")}>
           {store && desktop && leftOpen && header.map(({ key, item }) => (
             <div key={key} data-header-item={key} className="flex min-w-0 shrink-0 items-center"><Guard what="This item"><Drawn draw={() => item.render({ store, open: true, file: filePath, tab: targetOf(tab) })} /></Guard></div>
           ))}
         </div>
-        {/* Stand-ins for the Mac's traffic lights while it moves (core/peek.ts places and shows them); pinned too, as
-            pinning it while slid in moves it, the Mac's hidden meanwhile. */}
         {hasLights && <span aria-hidden data-lights-ghost=""><i /><i /><i /></span>}
-        {/* The plugins' panels; as a rail, the header's items go first, under the toggle. Phones draw them in drawers
-            (PhoneDrawer.tsx). */}
         <div className="flex min-h-0 flex-1 flex-col">
           {store && desktop && <SidebarPanels store={store} open={leftOpen} file={filePath} tab={targetOf(tab)}
             head={!leftOpen && header.length ? header.map(({ key, item }) => (
               <div key={key} data-header-item={key} className="flex"><Guard what="This item"><Drawn draw={() => item.render({ store, open: false, file: filePath, tab: targetOf(tab) })} /></Guard></div>
             )) : undefined} />}
         </div>
-        {/* The vault's profile: the vault's name (a menu), then Plugins and Settings as buttons. As a rail,
-            the two buttons stack, in line with the icons above. */}
         <nav aria-label="App" data-sidebar-foot className={cn("-mx-2 -mb-2 flex shrink-0 gap-1 border-t-[0.5px] border-border p-2", !leftOpen && "flex-col items-start")}>
           {leftOpen && share && <SharedWith />}
           {leftOpen && !share && (
@@ -673,8 +565,6 @@ export default function App() {
             </a>
           ))}
         </nav>
-        {/* Its edge (the splits' Resizer): dragged past half its narrowest it folds to the rail, keeping its width, and
-            out again it opens, in one drag. */}
         {!hideLeft && <Resizer label="Resize the sidebar" onStart={() => { dragFrom = sidebarPx(getPrefs().sidebarWidth); dragOpen = getPrefs().sidebar }} onDrag={(x) => dragSidebar(false, x)}
           onCancel={() => setPrefs({ sidebar: dragOpen, sidebarWidth: dragFrom })} onReset={() => setPrefs({ sidebar: true, sidebarWidth: SIDEBAR.default })}
           className="fixed inset-y-0 z-30 hidden w-[7px] md:block" style={{ left: `calc(${side} + var(--pane-gap) / 2 - 3.5px)` }} />}
@@ -688,7 +578,6 @@ export default function App() {
             "fixed inset-y-0 right-0 z-20 hidden flex-col overflow-hidden border-l-[0.5px] border-border bg-sidebar pr-[calc(--spacing(2)+env(safe-area-inset-right))] pl-[calc(--spacing(2)-0.5px)] pt-[env(safe-area-inset-top)] pb-2 md:flex",
             hideRight && "z-(--z-peek) rounded-[12px] border-0 shadow-[0_8px_32px_rgb(0_0_0/0.22)]",
           )} style={hideRight ? { width: `${sidebarPx(rightSidebarWidth)}px`, ...peekPanel("right", peek === "right") } : { width: rside }}>
-          {/* As tall as the tab bar, with the toggle (fixed, below) at its right end. */}
           <div data-titlebar className="h-10 shrink-0" />
           <div className="relative flex min-h-0 flex-1 flex-col">
             {store && desktop && <SidebarPanels side="right" store={store} open={rightOpen || hideRight} file={filePath} tab={targetOf(tab)} />}
@@ -705,8 +594,6 @@ export default function App() {
       {desktop ? (
         <Workspace store={store} error={error} left={side} right={rside} pageInfo={pageInfo} page={pageTabOf} />
       ) : (
-        // Phones: the window scrolls, under the header (its name, the drawer's button, the … menu); one tab at a time,
-        // the active one (the tab list has the others; files open in tabs, as on a computer: core/files.ts, openFile).
         <div id="main-scroll" className="overflow-x-clip">
           {store && <PhoneHeader title={tabInfo(activeTab()).label} tab={activeTab()} />}
           <main className="pb-safe relative mx-auto max-w-5xl px-4 pt-[calc(env(safe-area-inset-top)+3.5rem)]">
@@ -718,14 +605,11 @@ export default function App() {
               {active && !isFileTab && <div key={active.id}><Drawn draw={() => DRAW[active.id](store, tab, activePane())} /></div>}
             </Guard>}
           </main>
-          {/* What a finger drags (a file, a page, a panel: core/drag.ts); a computer's is the Workspace's. */}
           <DragGhost info={tabInfo} />
         </div>
       )}
 
-      {/* The sidebars' toggles, fixed over the window's top corners, come after the panes: in the desktop app a drag
-          region (index.css: a top bar that's its pane's title row) drawn later than them would swallow their clicks. */}
-      {/* (the left one: hidden without a rail, it slides in and out with the sidebar; a click there keeps the sidebar open) */}
+      {/* After the panes: in Electron a drag region drawn later than these toggles would swallow their clicks. */}
       {!popout && (
         <SidebarToggle side="left" open={sidebar} onClick={() => setPrefs({ sidebar: !sidebar })}
           className={hideLeft ? cn("z-(--z-peek-rider) transition-[translate,color,background-color] duration-(--motion-spring) ease-(--spring)", peek !== "left" && "pointer-events-none") : !rails ? "transition-[translate,color,background-color] duration-(--motion-spring) ease-(--spring)" : undefined}
@@ -750,8 +634,6 @@ export default function App() {
       <Chooser />
       <DownloadingNotice store={store} />
       <IconPicker />
-      {/* (the plugins' ambient items show whatever is open; it leaves out a pane drawn edge to edge, a terminal: its
-          columns, StatusBar.tsx) */}
       {desktop && !bare && <StatusBar />}
       {desktop && <KeyHints />}
       {desktop && <Tooltips />}
@@ -762,23 +644,19 @@ export default function App() {
       <BundleTrial store={store} />
       <Toaster desktop={desktop} />
 
-      {/* Plugins' background work (Workspaces keeping the tabs and the vault in step), drawn nowhere. */}
       {running}
       {store && <GrantAsker store={store} />}
 
-      {/* Phones: the bar at the bottom (Back, search, a new tab, the tab list, the menu) and the sidebars as drawers. */}
       {!desktop && (
         <PhoneBar system={APP_PAGES} active={active} listOpen={detail === "tabs"}
           onSearch={() => setSearching(true)} onCommands={() => setPalette("commands")} onNewNote={() => void newNote()} />
       )}
-      {/* Phones: a page pulled down from its top: New note, Commands, Close tab. */}
       {!desktop && store && <PullActions />}
       {!desktop && store && <PhoneDrawers store={store} file={filePath} tab={targetOf(tab)} vaultName={vaultName} vaultMenu={vaultMenu} />}
     </>
   )
 }
 
-/** Once a load: the sandbox is made afresh each time it opens, so nothing written in it lasts. */
 let sandboxTold = false
 function sandboxNotice() {
   if (sandboxTold) return

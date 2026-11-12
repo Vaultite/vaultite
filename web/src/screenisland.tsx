@@ -1,5 +1,3 @@
-// The island by the notch (electron/island.ts): at rest one still count (orange only while one waits on the user), a
-// knock's line as it comes (its × closes it into the island), a QA walk or lesson while on; a hover lists them in the Agents panel's groups and words.
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Undo2, X } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -14,15 +12,11 @@ type Bridge = { on: (fn: (d: IslandData) => void) => () => void; act: (act: stri
   faces?: (list: { id: string; x: number; y: number; width: number; height: number }[]) => void }
 const api = (window as unknown as { vaultiteScreen?: { island?: Bridge } }).vaultiteScreen?.island
 
-/** How far the black runs in under the notch (islandlogic.ts' TUCK). */
 const TUCK = 14
-/** Room kept under the card in its window (electron/island.ts' H), for its shadow: past that it scrolls. */
 const FOOT = 14
-/** A row's second line when its agent says nothing of its own. */
 const QUIET: Record<Presence["state"], string> = { "needs you": "Waiting on you", ready: "Ready for review", working: "Working", done: "Done" }
 const ago = (t: number) => { const m = Math.round((Date.now() - t) / 60_000); return m < 1 ? "now" : m < 60 ? `${m}m` : `${Math.round(m / 60)}h` }
 
-/** An agent as its cursor on screen: its own colour, edged white. */
 function Cursor({ tint, size = 15 }: { tint: string; size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 20 20" aria-hidden className="shrink-0">
@@ -31,8 +25,6 @@ function Cursor({ tint, size = 15 }: { tint: string; size?: number }) {
   )
 }
 
-/** At rest: one cursor and a count, never a face each. Orange counting who waits on the user; else white, counting who
- *  works, a dot when one is ready for review. Moves once, when more come to need them or be ready. */
 function Mark({ presences }: { presences: Presence[] }) {
   const n = (s: Presence["state"]) => presences.filter((p) => p.state === s).length
   const needs = n("needs you"), ready = n("ready"), working = n("working")
@@ -43,7 +35,6 @@ function Mark({ presences }: { presences: Presence[] }) {
   }, [needs, ready])
   if (!needs && !ready && !working) return null
   const state = needs ? "needs you" : ready && !working ? "ready" : "working"
-  // (a Talk key held over it talks to the newest one waiting on them: a spoken reply to what just came)
   const one = presences.filter((p) => p.state === "needs you" && p.terminal).sort((a, b) => b.since - a.since)[0]
   const label = [needs && `${needs} need${needs === 1 ? "s" : ""} you`, ready && `${ready} ready for review`, working && `${working} working`].filter(Boolean).join(", ")
   return (
@@ -58,13 +49,11 @@ function Mark({ presences }: { presences: Presence[] }) {
   )
 }
 
-/** A walk's or a lesson's words: what it is, how many so far. */
 function walkWords(w: WalkScene) {
   const lesson = w.of === "lesson"
   return { name: lesson ? "Watching" : "QA walk", count: lesson ? (w.count === 1 ? "1 step" : `${w.count} steps`) : countText(w.count), lesson }
 }
 
-/** In the bar: a walk on (a red dot as it listens), what it is and its count. */
 function WalkMark({ w }: { w: WalkScene }) {
   const { name, count } = walkWords(w)
   return (
@@ -76,7 +65,6 @@ function WalkMark({ w }: { w: WalkScene }) {
   )
 }
 
-/** In the list: the walk with its buttons; its × asks once more before discarding what it noted. */
 function WalkRow({ w }: { w: WalkScene }) {
   const [discard, setDiscard] = useState(false)
   useEffect(() => { if (!discard) return; const t = setTimeout(() => setDiscard(false), 3500); return () => clearTimeout(t) }, [discard])
@@ -105,7 +93,6 @@ function WalkRow({ w }: { w: WalkScene }) {
   )
 }
 
-/** One agent in the list: its cursor, its name and when, what it does now; its action on the row. */
 function Row({ p }: { p: Presence }) {
   const open = () => api?.act("open", p.id)
   const action = p.state === "needs you" ? "Answer" : p.state === "ready" ? "Show me" : null
@@ -135,11 +122,8 @@ export function Island() {
   const [done, setDone] = useStateFor([open], () => false)
   const hold = useRef<ReturnType<typeof setTimeout>>(undefined)
   useEffect(() => api?.on(setD), [])
-  // (its width follows what it holds, on a spring: the mark, a knock's line)
   const inner = useRef<HTMLDivElement>(null), [fit, setFit] = useState(0)
   useLayoutEffect(() => { const w = inner.current?.offsetWidth ?? 0; if (w && w !== fit) setFit(w) })
-  // (where each session shows, told after each change: a Talk key held over one talks to it)
-  // (a row scrolled out of the list isn't there: each is clipped to what the list shows, and told again as it scrolls)
   const told = useRef(""), list = useRef<HTMLDivElement>(null), [ends, setEnds] = useState("")
   const tell = () => {
     const view = list.current?.getBoundingClientRect()
@@ -150,18 +134,15 @@ export function Island() {
     })
     const text = JSON.stringify(rects)
     if (text !== told.current) { told.current = text; api?.faces?.(rects) }
-    // (which ends have more past them: the list fades there)
     const l = list.current, more = l ? `${l.scrollTop > 1 ? "top " : ""}${l.scrollTop + l.clientHeight < l.scrollHeight - 1 ? "bottom" : ""}`.trim() : ""
     if (more !== ends) setEnds(more)
   }
   useLayoutEffect(tell)
   useEffect(() => () => clearTimeout(hold.current), [])
-  // (the list's "2m"s, kept true while it's open; the done ones fold again once it closes)
   const [, tick] = useState(0)
   useEffect(() => { if (!open) return; const t = setInterval(() => tick((n) => n + 1), 30_000); return () => clearInterval(t) }, [open])
   if (!d) return null
   const { spot, presences, knock } = d, walk = d.walk && d.walk.state !== "told" ? d.walk : null
-  // (a word from the walk: as an item is noted, or where it went once it's over)
   const said = !knock && d.walk?.note ? d.walk.note : null
   const enter = () => {
     clearTimeout(hold.current)
@@ -176,10 +157,7 @@ export function Island() {
   const room = (spot.room ?? Infinity) - walkW
   const radius = spot.bar / 2
   const of = knock ? presences.find((p) => p.knock === knock.id) : undefined
-  // (a ready one's card is calm: Show me; one waiting on them: Answer and Not now. No countdown either way)
   const calm = !!knock?.hold
-  // (no room for its line before the status items: it drops into a card below the bar, as the list does, rather than
-  // cover them; the card hangs from the bar's end, reaching back under the notch when room is short)
   const drop = (!!knock || !!said) && room < 320, rows = presences.length > 0 || !!walk, card = (open && rows) || drop, back = room < 340
   const line = knock ? (
     <>
@@ -188,7 +166,6 @@ export function Island() {
         <span className={cn("island-line min-w-0 text-[12.5px] leading-none", drop ? "island-wrap" : "truncate")}><b className="font-semibold">{knock.who}</b><span className="text-white/75">{`  ${knock.line}`}</span></span>
       </button>
       <button type="button" className={cn("island-chip ml-1 shrink-0", !calm && "island-chip-main")} onClick={() => api?.act("open", of?.id ?? knock.id)} data-island-action={calm ? "Show me" : "Answer"}>{calm ? "Show me" : "Answer"}</button>
-      {/* (closes the card at once, as its time running out would: it rests in the island, listed there; Not now is the list's) */}
       <button type="button" className="island-chip island-icon shrink-0" onClick={() => { setOpen(false); api?.act("dismiss", knock.id) }} aria-label="Close" data-island-dismiss><X className="size-3.5" /></button>
     </>
   ) : said ? (
@@ -198,7 +175,6 @@ export function Island() {
   return (
     <div className="island-root" onPointerEnter={enter} onPointerLeave={leave} data-island data-open={open || undefined}
       style={{ position: "absolute", top: 0, left: d.left - (attached ? TUCK : 0), ...(centre ? { transform: "translateX(-50%)" } : {}) }}>
-      {/* (the bar and its card take the pointer, `HOLD`: the rest of the window lets it through) */}
       <div className="island text-white" {...HOLD}
         style={{ borderRadius: attached ? `0 0 ${radius}px 0` : `0 0 ${radius}px ${radius}px`, paddingLeft: attached ? TUCK : 0, width: fit ? fit + (attached ? TUCK : 0) : undefined }}>
         <div ref={inner} className="flex w-max items-center gap-1.5 px-2.5" style={{ height: spot.bar }}>

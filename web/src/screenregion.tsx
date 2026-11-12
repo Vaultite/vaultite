@@ -1,5 +1,3 @@
-// The user's box over the screen (electron/capture.ts), made by a drag with the Talk key held: edges and the pill's grip
-// move it, corners resize it. The pill (record, stop, last seconds, close) sits outside it, never in what's recorded.
 import { useLayoutEffect, useEffect, useRef, useState } from "react"
 import { History, X } from "lucide-react"
 import { clock, type Rect, type RegionScene } from "../../core/desktop/clips"
@@ -8,7 +6,6 @@ import { HOLD } from "./screendraw/hold"
 type Edge = "move" | "nw" | "ne" | "sw" | "se"
 const BAND = 8, LEAST = 24
 
-/** `rect` dragged by `edge` from where it was (`r0`) by dx, dy, kept at least LEAST a side. */
 function dragged(r0: Rect, edge: Edge, dx: number, dy: number): Rect {
   if (edge === "move") return { ...r0, x: r0.x + dx, y: r0.y + dy }
   const left = edge === "nw" || edge === "sw", top = edge === "nw" || edge === "ne"
@@ -19,8 +16,6 @@ function dragged(r0: Rect, edge: Edge, dx: number, dy: number): Rect {
 
 const GAP = 8, MARGIN = 4
 
-/** Where the pill goes (window px) for a box `rect` on a screen `w` x `h` whose top `top` px the menu bar takes: above
- *  it, else below, right, left, in its own line; inside only when the box leaves no room around it (the whole screen). */
 export function pillAt(rect: Rect, pill: { width: number; height: number }, w: number, h: number, top: number): { x: number; y: number } {
   const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(v, Math.max(lo, hi)))
   const x = clamp(rect.x, MARGIN, w - MARGIN - pill.width), y = clamp(rect.y, top + MARGIN, h - MARGIN - pill.height)
@@ -34,11 +29,9 @@ export function pillAt(rect: Rect, pill: { width: number; height: number }, w: n
 export function Region({ r, top, moved, act }: { r: RegionScene; top: number; moved: (rect: Rect) => void; act: (what: string) => void }) {
   const [held, setHeld] = useState<Rect | null>(null)
   const pill = useRef<HTMLDivElement>(null)
-  // (`pill`: where the pill was from the box, dragged by its grip: it stays under the pointer instead of changing sides)
   const drag = useRef<{ edge: Edge; x: number; y: number; r0: Rect; pill?: { x: number; y: number } } | null>(null)
   const [, tick] = useState(0)
   useEffect(() => { if (!r.recording) return; const t = setInterval(() => tick((n) => n + 1), 500); return () => clearInterval(t) }, [r.recording])
-  // (the window takes the pointer over the edges and the pill (`HOLD`), and through a drag begun on them)
   const rect = held ?? r.rect, tint = r.recording ? "var(--red)" : `var(--${r.tint})`
   const down = (edge: Edge) => (e: React.PointerEvent) => {
     if (e.button !== 0) return
@@ -64,7 +57,6 @@ export function Region({ r, top, moved, act }: { r: RegionScene; top: number; mo
   const band = (style: React.CSSProperties) => <div className="pointer-events-auto absolute cursor-move" style={style} {...handlers("move")} />
   const corner = (edge: Exclude<Edge, "move">, style: React.CSSProperties) =>
     <div className="pointer-events-auto absolute size-3 rounded-[3px] border-2 bg-white" style={{ borderColor: tint, cursor: edge === "nw" || edge === "se" ? "nwse-resize" : "nesw-resize", ...style }} {...handlers(edge)} />
-  // (measured: its width changes with what it holds)
   const [size, setSize] = useState({ width: 160, height: 30 })
   useLayoutEffect(() => {
     const el = pill.current
@@ -115,7 +107,6 @@ export function Region({ r, top, moved, act }: { r: RegionScene; top: number; mo
         <div role="button" tabIndex={-1} aria-label="Move the box"
           className="grid h-6 w-5 cursor-grab touch-none place-items-center rounded-full text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground active:cursor-grabbing"
           {...handlers("move")}>
-          {/* (drawn here: an icon the app shares gets its own file, one more for the app to load at start) */}
           <svg viewBox="0 0 24 24" className="size-3.5" fill="currentColor" aria-hidden>{[9, 15].flatMap((x) => [5, 12, 19].map((y) => <circle key={`${x}${y}`} cx={x} cy={y} r={1.6} />))}</svg>
         </div>
       </div>

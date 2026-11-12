@@ -1,22 +1,16 @@
-// The companions' layers over the screen (companion draw --marks), mounted by screen.tsx: what electron/overlay.ts sends
-// this display, each session's layer drawn by Draw.tsx (loaded with the first one); what the user presses goes back.
 import { lazy, Suspense, useSyncExternalStore } from "react"
 import type { Drawing, Rect } from "../../../core/desktop/screenmarks"
 import type { PenScript } from "../core/pilot"
 import type { Here } from "./layout"
 
-/** A layer as this display gets it: `here`, where the display is and whether it has the cards. */
 export type Shown = Drawing & { here: Here }
-/** What the user pressed: Clear, Keep (with the places as found here), a mark's action, or a card's × (`mark`, its id). */
 export type Act = { id?: string; kind: "clear" | "keep" | "copy" | "open" | "ask" | "dismiss" | "media"; text?: string; url?: string; places?: Record<string, Rect>; mark?: string
-  /** A video card as the user left it (its speaker, its play). */
   sound?: boolean; paused?: boolean }
 export type DrawBridge = { on: (fn: (d: Shown[] | Shown | null) => void) => () => void; act: (a: Act) => void }
 
 const Draw = lazy(() => import("./Draw"))
 const LEAVE = 220
 
-// (heard from the page's first moment, whether drawn yet or not: one sent with the first scene isn't lost)
 type View = { up: Shown[]; gone: Shown[] }
 let view: View = { up: [], gone: [] }
 const listeners = new Set<() => void>()
@@ -24,25 +18,19 @@ const set = (v: View) => { view = v; for (const l of listeners) l() }
 const bridge = (window as unknown as { vaultiteScreen?: { draw?: DrawBridge } }).vaultiteScreen?.draw
 bridge?.on((x) => {
   const up = Array.isArray(x) ? x : x ? [x] : [], ids = new Set(up.map((d) => d.id))
-  // (a layer that went fades out a moment, then it's gone)
   const left = view.up.filter((d) => !ids.has(d.id))
   if (left.length) setTimeout(() => set({ ...view, gone: view.gone.filter((g) => !left.includes(g)) }), LEAVE)
   set({ up, gone: [...view.gone.filter((g) => !ids.has(g.id)), ...left] })
 })
 const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l) } }
 
-/** This display's layers, and those fading as they go; `pen`: the companion's cursor draws the one it's answering with,
- *  told its strokes. */
 export function ScreenDrawings({ pen }: { pen?: (s: PenScript | null) => void }) {
   const { up, gone } = useSyncExternalStore(subscribe, () => view)
   if (!up.length && !gone.length) return null
-  // (the pen follows the newest layer still being drawn: an earlier exchange's is drawn already)
   const lead = up.filter((d) => !d.past && !d.hidden).sort((a, b) => b.t - a.t)[0]?.id
   return <Suspense fallback={null}>
     {[...up, ...gone].map((d) => {
-      // (each layer's Keep and Clear on its own row, named when there are several)
       const shown = up.filter((x) => !x.hidden), slot = shown.indexOf(d)
-      // (its pen from the display with its cards: the others' cursors are told it, screen.tsx)
       return <Draw key={d.id} d={d} leaving={!up.includes(d)} act={(a) => bridge?.act(a)} pen={d.id === lead && d.here.home ? pen : undefined} slot={Math.max(0, slot)} named={shown.length > 1} />
     })}
   </Suspense>
