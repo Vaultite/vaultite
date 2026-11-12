@@ -1,5 +1,3 @@
-// Highlight colours, as Obsidian 1.14 writes them: a colour emoji at a highlight's start (==🟢text==), never shown.
-// Drawn with the class `hl-<colour>` (index.css). CodeMirror types only: the editor is its own chunk.
 import type { EditorState, Text } from "@codemirror/state"
 import { scan } from "../../../core/sections.ts"
 import type { EditorView } from "@codemirror/view"
@@ -31,10 +29,6 @@ export const highlightClass = (color: HighlightColor | null | undefined) => (col
 /** Each `==🟢` at a highlight's start back to `==`, for text shown without its marks (previews, sorting). */
 export const dropHighlightEmoji = (md: string) => md.replace(new RegExp(`(?<!=)==${HIGHLIGHT_EMOJI}(?=[^\\s=])`, "gu"), "==")
 
-// ---------- paragraphs: what a mark runs over ----------
-
-/** ==highlights== in a paragraph's text, running over its soft line breaks. One pass: an opener with no closer after it
- *  ends the search (no later one has a closer either), so unclosed ones cost nothing. `inner`: between the marks. */
 export function highlightSpans(text: string): { index: number; length: number; inner: string }[] {
   const out: { index: number; length: number; inner: string }[] = []
   const open = /(?<!=)==(?=[^\s=])/g, close = /(?<=[^\s=])==(?!=)/g
@@ -47,7 +41,6 @@ export function highlightSpans(text: string): { index: number; length: number; i
   }
   return out
 }
-/** Is a == typed after `before` (the paragraph's text so far) a closing one, a highlight being open? */
 export function closesHighlight(before: string): boolean {
   let open = false
   for (const m of before.matchAll(/(?<!=)==(?!=)/g)) {
@@ -57,7 +50,6 @@ export function closesHighlight(before: string): boolean {
   }
   return open && !!before.length && !/\s$/.test(before)
 }
-/** The %%comments%% of a paragraph's text (from, to), over soft breaks too. */
 export function commentSpans(text: string): [number, number][] {
   const out: [number, number][] = []
   for (let a = text.indexOf("%%"); a >= 0;) {
@@ -70,26 +62,21 @@ export function commentSpans(text: string): [number, number][] {
 }
 
 const QUOTE = /^[ \t]*(?:>[ \t]?)+/
-/** A line's text past its quote marks. */
 export const unquoted = (t: string) => t.replace(QUOTE, "")
 const depth = (t: string) => (QUOTE.exec(t)?.[0].match(/>/g)?.length ?? 0)
 const LEAD = /^(?:[ \t]*(?:#{1,6}[ \t]+|[-*+][ \t]+(?:\[[^\]]\][ \t]+)?|\d{1,9}[.)][ \t]+))*/
 const ITEM = /^[ \t]*(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)/
-// Lines that are a block alone: marks never go on them (fences, rules, table rows, math, a callout's head)...
 const DELIM = /^[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)+\|?[ \t]*$/
 const SKIP = /^ {0,3}(?:```|~~~|\$\$)|^ {0,3}(?:[-*_][ \t]*){3,}$|^[ \t]*\||^\[![\w-]+\][+-]?/
-// ...and ones that only never join a neighbour (headings, HTML, footnote definitions, a setext underline).
 const ALONE = /^ {0,3}(?:#{1,6}(?:[ \t]|$)|<\/?[a-z!]|\[\^[^\]\s]+\]:|=+[ \t]*$)/i
 const alone = (t: string) => { const u = unquoted(t); return SKIP.test(u) || ALONE.test(u) || DELIM.test(u) }
 const blank = (t: string) => !unquoted(t).trim()
-/** Do two neighbouring lines (a above b) belong to one paragraph? A deeper or different quote starts another; a plain
- *  line after a quote is still it (lazy continuation). */
+// CommonMark's lazy continuation: a plain line after a quote is still its paragraph.
 const joins = (a: string, b: string) => {
   if (blank(a) || blank(b) || alone(a) || alone(b) || ITEM.test(unquoted(b))) return false
   const da = depth(a), db = depth(b)
   return da === db || (db === 0 && da > 0)
 }
-/** Lines taken at most this far each way: a paragraph that long isn't prose, and it bounds the work per keystroke. */
 const REACH = 300
 
 /** The lines of the soft-wrapped paragraph around `pos`: up to a blank line or a line that starts another block
@@ -100,7 +87,6 @@ export function paragraphAt(doc: Text, pos: number): { from: number; to: number 
   let top = at, bottom = at
   for (let x = top; x.number > Math.max(1, at.number - REACH) && joins(doc.line(x.number - 1).text, x.text); x = top) top = doc.line(x.number - 1)
   for (let x = bottom; x.number < Math.min(doc.lines, at.number + REACH) && joins(x.text, doc.line(x.number + 1).text); x = bottom) bottom = doc.line(x.number + 1)
-  // (a table's header row, or a setext heading's text, comes just before its delimiter or underline)
   const below = bottom.number < doc.lines ? unquoted(doc.line(bottom.number + 1).text) : ""
   if (DELIM.test(below)) { if (at.number === bottom.number) top = bottom; else bottom = doc.line(bottom.number - 1) }
   return { from: top.from, to: bottom.to }
@@ -134,9 +120,6 @@ export function blockPieces(doc: Text, from: number, to: number): { from: number
   return out
 }
 
-// ---------- in an editor ----------
-
-/** A highlight: `from` at its opening ==, `to` after its closing one, `len` its colour emoji's length. */
 export type Highlight = { from: number; to: number; color: HighlightColor | null; len: number }
 
 /** The highlight from..to is in (its marks too), in that paragraph. */
@@ -165,7 +148,6 @@ export const colorHighlight = (color: HighlightColor | null) => (view: EditorVie
   let cursor: number | undefined
   let selection: { anchor: number; head: number } | undefined
   for (const r of state.selection.ranges) {
-    // (a selection marks each block it touches: a highlight never runs across them)
     const pieces = r.empty ? [r] : blockPieces(state.doc, r.from, r.to)
     for (const piece of pieces) {
       const h = highlightAt(state, piece.from, piece.to)
@@ -173,13 +155,10 @@ export const colorHighlight = (color: HighlightColor | null) => (view: EditorVie
       let { from, to } = piece
       if (r.empty) { const w = state.wordAt(r.head); if (w) ({ from, to } = w) }
       changes.push({ from, insert: open }, { from: to, insert: "==" })
-      // (nothing to wrap: the cursor goes between the new marks)
       if (from === to && state.selection.ranges.length === 1) cursor = from + open.length
     }
-    // (the selection stays on the text, inside the marks around it)
     if (!r.empty && pieces.length && state.selection.ranges.length === 1) selection = { anchor: pieces[0].from, head: pieces[pieces.length - 1].to }
   }
-  // (a selection maps inside the marks put around it; two cursors in one highlight change it once)
   const once = new Map(changes.map((c) => [`${c.from}:${c.to ?? ""}:${c.insert}`, c]))
   const list = [...once.values()]
   const cs = state.changes(list)

@@ -1,5 +1,3 @@
-// Text sizes per kind of content (notes, terminals, plugins' `textSizes`) apart from the interface size, like VS Code's
-// editor and terminal font sizes; ⌘+ ⌘- ⌘0 step the focused one (core/zoom.ts). Per device: a phone and a laptop differ.
 import { AArrowDown, AArrowUp, ALargeSmall } from "lucide-react"
 import { useEffect, type RefObject } from "react"
 import { devicePref, getPrefs, usePrefs } from "@/core/prefs"
@@ -12,10 +10,8 @@ import { useZoomTarget } from "@/core/zoom"
  *  size at 100%, for one that steps a point at a time and says its size in points, as terminals do. */
 export type TextSizeKind = { label: string; sub?: string; points?: number }
 
-/** The core's own kind: notes. */
 const CORE: Record<string, TextSizeKind> = { note: { label: "Note", sub: "Notes' text, title and properties" } }
 
-/** The kinds there are now: the core's, then the plugins' that are on, by id. */
 export function textSizeKinds(disabled: string[]): [string, TextSizeKind][] {
   return [...Object.entries(CORE), ...active(disabled).flatMap((p) => Object.entries(p.textSizes ?? {}))]
 }
@@ -46,7 +42,6 @@ export function stepTextSize(kind: string, step: -1 | 0 | 1) {
   if (next !== undefined) setTextSize(kind, next)
 }
 
-/** A kind's size as said: "14 pt" for one in points, else "120%". */
 export function textSizeText(kind: string, percent = textSize(kind)) {
   const points = kindOf(kind)?.points
   return points ? `${Math.round(points * percent / 100)} pt` : `${percent}%`
@@ -54,10 +49,8 @@ export function textSizeText(kind: string, percent = textSize(kind)) {
 
 const WORDS = "font zoom bigger smaller"
 
-/** What Pinch to resize text (`quickTextSize`, a switch: core/switches.ts) does, under its name. */
 export const quickTextSizeSub = () => `Or ${keyHint("Mod")} and scroll, over a note or terminal`
 
-/** Each kind's three commands, for the palette (no keys by default). */
 export function textSizeCommands(disabled: string[]) {
   return [
     ...textSizeKinds(disabled).flatMap(([kind, k]) => {
@@ -71,8 +64,6 @@ export function textSizeCommands(disabled: string[]) {
   ]
 }
 
-/** How far the wheel goes for one step: a mouse's notch is one; a trackpad's pinch or scroll sends many small deltas,
- *  added up. */
 const NOTCH = 50
 let acc = 0, accKind = "", accAt = 0
 
@@ -91,7 +82,7 @@ export function useTextSizeWheel(ref: RefObject<HTMLElement | null>, kind: strin
       e.preventDefault()
       if (first) e.stopPropagation()
       const px = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY
-      // A pinch's deltas are small (and ⌃ comes with them): weigh them up so a pinch changes the size at a useful pace.
+      // A trackpad pinch comes as ⌃ + wheel with small deltas: weigh them up.
       const d = e.ctrlKey && !e.metaKey && Math.abs(px) < 10 ? px * 5 : px
       if (kind !== accKind || e.timeStamp - accAt > 400) acc = 0
       accKind = kind; accAt = e.timeStamp

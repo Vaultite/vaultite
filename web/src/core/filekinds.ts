@@ -1,5 +1,3 @@
-// What a file is and how it looks in the tree, the tabs and search: the server's core/filetypes.ts (by extension), plus
-// an icon for each sort of file.
 import {
   File, FileArchive, FileAudio, FileCode, FileCog, FileImage, FileKey, FileSpreadsheet, FileTerminal, FileText, FileType, FileVideo, NotebookText,
   type LucideIcon,
@@ -9,7 +7,6 @@ import { plural } from "@/lib/utils"
 
 export { kindOf, type FileKind } from "../../../core/filetypes.ts"
 
-/** Opened by a viewer, never read as text (images, PDFs, audio, video, and known binary files). */
 export const isMedia = (k: FileKind) => k === "image" || k === "pdf" || k === "audio" || k === "video" || k === "binary"
 
 const CONFIG = new Set(["yaml", "yml", "toml", "ini", "cfg", "conf", "env", "properties", "plist", "lock", "editorconfig"])
@@ -38,7 +35,6 @@ export function kindIcon(path: string): LucideIcon {
   return File
 }
 
-/** "PDF document", "Excel workbook", "PNG image": what the card and the status bar call a file. */
 const NAMES: Record<string, string> = {
   pdf: "PDF document", xlsx: "Excel workbook", xls: "Excel workbook", xlsm: "Excel workbook", numbers: "Numbers spreadsheet",
   docx: "Word document", doc: "Word document", pages: "Pages document", pptx: "PowerPoint presentation", key: "Keynote presentation",

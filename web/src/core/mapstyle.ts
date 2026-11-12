@@ -1,12 +1,9 @@
-// How the app's maps look: OpenFreeMap vector tiles (free, no key) recoloured to the scheme with quiet labels. Types
-// only: maps load MapLibre in their own chunk.
 import type { Map as MLMap, MapOptions } from "maplibre-gl"
 import { onLook } from "@/core/appearance"
 
 export type MapTheme = "light" | "dark"
 export const MAP_STYLE: Record<MapTheme, string> = { light: "https://tiles.openfreemap.org/styles/positron", dark: "https://tiles.openfreemap.org/styles/dark" }
 
-// Apple Maps-ish palette over the stock styles (layers that don't exist are skipped).
 const PAINT: Record<MapTheme, Record<string, Record<string, string>>> = {
   light: {
     background: { "background-color": "#f6f4ef" },
@@ -43,7 +40,6 @@ export function restyleMap(map: MLMap, t: MapTheme) {
     if (!map.getLayer(id)) continue
     for (const [k, v] of Object.entries(paint)) map.setPaintProperty(id, k as "fill-color", v)
   }
-  // A colour scheme can recolour the base map: --map-land, --map-water, --map-park (see themes/*.css).
   const css = getComputedStyle(document.documentElement)
   const v = (name: string) => css.getPropertyValue(name).trim()
   const land = v("--map-land"), water = v("--map-water"), park = v("--map-park")
@@ -55,17 +51,15 @@ export function restyleMap(map: MLMap, t: MapTheme) {
   set(["park", "landuse_park", "landcover_wood"], "fill-color", park)
   for (const l of map.getStyle().layers) {
     if (l.type !== "symbol") continue
-    // Sentence case (the stock styles set state and country names in capitals); no road shields.
-    // Keep the base map quiet so the pins read first: no roads, small places, airports or POIs.
     if (/shield|oneway|highway|road|path|village|town|other|suburb|airport|poi/.test(l.id)) { map.setLayoutProperty(l.id, "visibility", "none"); continue }
-    if (l.layout?.["icon-image"]) map.setLayoutProperty(l.id, "icon-image", "") // city dots
+    if (l.layout?.["icon-image"]) map.setLayoutProperty(l.id, "icon-image", "")
     if (l.layout?.["text-field"]) {
       map.setLayoutProperty(l.id, "text-transform", "none")
-      // English names on one line (the stock labels add a second, non-Latin line that renders as dashes here).
+      // The stock labels add a second, non-Latin line that renders as dashes.
       if (JSON.stringify(l.layout["text-field"]).includes("name")) map.setLayoutProperty(l.id, "text-field", ["coalesce", ["get", "name:en"], ["get", "name:latin"], ["get", "name"]])
     }
     if (/label|place|name/.test(l.id)) {
-      const faint = /state/.test(l.id) // state names sit behind city names
+      const faint = /state/.test(l.id)
       map.setPaintProperty(l.id, "text-color", t === "dark" ? (faint ? "#636366" : "#98989d") : (faint ? "#aeaeb2" : "#6e6e73"))
       map.setPaintProperty(l.id, "text-halo-color", land || (t === "dark" ? "rgba(36,36,38,0.85)" : "rgba(246,244,239,0.9)"))
     }
@@ -91,7 +85,7 @@ export function startMap(ml: typeof import("maplibre-gl"), box: HTMLElement, zoo
   let map: MLMap, styled = false, t = mapTheme()
   try {
     map = new ml.Map({
-      container: box, style: MAP_STYLE[t], renderWorldCopies: false, center: [0, 20], zoom: 1.5, ...zoom, // the world, until there are pins to fit
+      container: box, style: MAP_STYLE[t], renderWorldCopies: false, center: [0, 20], zoom: 1.5, ...zoom,
       dragRotate: false, pitchWithRotate: false, touchPitch: false, attributionControl: { compact: true },
     })
   } catch {
@@ -107,7 +101,7 @@ export function startMap(ml: typeof import("maplibre-gl"), box: HTMLElement, zoo
   const unfollow = followMapTheme(map, (nt) => { t = nt })
   map.on("load", () => {
     onLoad()
-    // The compact attribution starts expanded; keep it to its small "i" until tapped.
+    // MapLibre's compact attribution starts expanded.
     box.querySelector(".maplibregl-ctrl-attrib")?.classList.remove("maplibregl-compact-show")
   })
   return { map, stop: () => { clearTimeout(timer); unfollow(); map.remove() } }

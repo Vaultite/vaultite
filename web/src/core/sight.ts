@@ -1,17 +1,13 @@
-// What of an element's page the user sees: the visual viewport (above an on-screen keyboard), cut by the boxes that
-// clip it, under the bars drawn over it (a phone's header and bar, the keys over the keyboard, a pane's view bar).
 import type { EditorView } from "@codemirror/view"
 import { keyboardUp } from "@/components/KeyBar"
 import { currentEditor } from "@/core/editors"
 import { scrollingBox } from "@/lib/utils"
 
-/** Drawn over the page at its top (a phone's header, a pane's view bar), and at its foot (a phone's bar, the keys over
- *  the keyboard, the status bar): by class, as a selector read the whole page on every keystroke. */
 const TOP = "sight-top", FOOT = "sight-foot"
 
 let edge: HTMLElement | null = null
-/** The visual viewport in client coordinates: Chrome's are the layout viewport's, iOS's the visual viewport's while the
- *  keyboard's up, so where a fixed element at the top is says which. */
+// Chrome's client coordinates are the layout viewport's, iOS's the visual viewport's while the keyboard's up: where a
+// fixed element at the top is says which.
 function visible() {
   const vv = visualViewport
   if (!vv) return { top: 0, bottom: innerHeight }
@@ -34,7 +30,6 @@ export function sightOf(el: Element) {
     top = Math.max(top, r.top); bottom = Math.min(bottom, r.bottom)
   }
   const box = el.getBoundingClientRect()
-  // (a sheet is drawn over the page's bars; the keys over the keyboard are drawn in it)
   const layer = el.closest("dialog[open]") ?? document
   const over = (b: DOMRect) => b.height > 0 && b.left < box.right && b.right > box.left
   for (const bar of layer.getElementsByClassName(TOP)) {
@@ -50,7 +45,6 @@ export function sightOf(el: Element) {
 
 type View = Pick<EditorView, "dom" | "documentTop" | "contentHeight" | "lineBlockAt" | "lineBlockAtHeight" | "state">
 
-/** The first line wholly in sight in an editor. */
 export function lineInSight(v: View) {
   const h = Math.max(0, sightOf(v.dom).top - v.documentTop)
   let b = v.lineBlockAtHeight(h)
@@ -58,18 +52,14 @@ export function lineInSight(v: View) {
   return b.from
 }
 
-/** Whether `pos`'s line is wholly in sight in an editor. */
 export function wholly(v: View, pos: number) {
   const b = v.lineBlockAt(pos), s = sightOf(v.dom)
   return v.documentTop + b.top >= s.top - 1 && v.documentTop + b.bottom <= s.bottom + 1
 }
 
-/** Where what's being typed in is: a note's caret, else the field's first line. Null for what places itself over the
- *  page (the palette, a menu: fixed, with nothing scrolling it) and a terminal (it keeps its own rows in sight). */
 function typingAt(): { el: HTMLElement; top: number; bottom: number } | null {
   const at = document.activeElement
   if (!(at instanceof HTMLElement) || !at.matches("input, textarea, [contenteditable=true]") || at.closest("[data-term]")) return null
-  // (in a note, from the editor: its own scroller isn't what scrolls it)
   const el = at.closest<HTMLElement>(".cm-editor") ?? at, ed = currentEditor()
   if (ed?.view.contentDOM === at) {
     try {
@@ -82,8 +72,8 @@ function typingAt(): { el: HTMLElement; top: number; bottom: number } | null {
   return { el, top: r.top, bottom: Math.min(r.bottom, r.top + 48) }
 }
 
-/** iOS scrolls to the caret its own way (not above the keys over the keyboard; from another field, to the keyboard's
- *  edge), so once a tap or the keyboard settles, the caret goes back where the finger put it, as near as is in sight. */
+// iOS scrolls to the caret its own way (behind the keys over the keyboard, or to the keyboard's edge): once a tap or
+// the keyboard settles, the caret goes back where the finger put it.
 export function keepTypingInSight() {
   const vv = visualViewport
   if (!vv) return () => {}
@@ -104,7 +94,6 @@ export function keepTypingInSight() {
   const still = () => { clearTimeout(timer); timer = window.setTimeout(keep, 120) }
   const watch = () => { until = performance.now() + 1000; still() }
   let height = vv.height
-  // (an on-screen keyboard's: a window resized leaves the reader's place alone)
   const resized = () => { if (Math.abs(vv.height - height) >= 1) { height = vv.height; if (keyboardUp()) watch() } }
   const moved = () => { if (until && performance.now() < until) still() }
   const down = (e: TouchEvent) => {
@@ -113,7 +102,6 @@ export function keepTypingInSight() {
     before = e.touches.length === 1 && el.closest?.("input, textarea, [contenteditable=true]") ? scrolled(el) : null
     x = t?.clientX ?? 0; y = t?.clientY ?? 0
   }
-  // (a drag is the reader scrolling, not a tap)
   const drag = (e: TouchEvent) => { const t = e.touches[0]; if (t && Math.hypot(t.clientX - x, t.clientY - y) > 10) before = null }
   const up = () => { if (before !== null) watch() }
   vv.addEventListener("resize", resized)

@@ -1,5 +1,3 @@
-// The other machines this vault's app runs on (Machines plugin): terminals `terminal/<id>@<machine>`, live data through
-// /api/machines/<machine>/<path> (machinePath). Nothing when the plugin is off.
 import { useLive } from "@/core/data"
 import { get } from "@/core/http"
 import { isEnabled, useEnabled } from "@/core/plugins"

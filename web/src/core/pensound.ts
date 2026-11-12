@@ -1,16 +1,9 @@
-// The companion's pen heard as it inks a drawing (screen.tsx): a soft scratch of grainy noise, louder and brighter the
-// faster it moves, gone as it lifts. Very quiet, under the cues; its audio sleeps when the pen is still.
-
-/** How loud the pen gets at its fastest (of full scale): a third of a cue's peak. */
 export const PEN_PEAK = 0.02
-/** How loud it is at `speed` (px/s, the pen's tip): silent when slow, rising quickly, then easing off. */
 export function penLevel(speed: number) {
   if (!(speed > 40)) return 0
   return Math.sqrt(Math.min(1, (speed - 40) / 1600))
 }
 
-/** A pen's voice on an audio context `make` gives: `ink(speed)` each frame it draws, `lift()` when it doesn't. Quiet a
- *  moment after it lifts, it tells `rested()`: the context is the cues' too, and its owner suspends it. */
 export function penSound(make: () => AudioContext, rested: () => void = () => {}) {
   let ctx: AudioContext | null = null, gain: GainNode | null = null, band: BiquadFilterNode | null = null, src: AudioBufferSourceNode | null = null
   let sleep: ReturnType<typeof setTimeout> | null = null
@@ -18,7 +11,6 @@ export function penSound(make: () => AudioContext, rested: () => void = () => {}
     ctx ??= make()
     if (ctx.state === "suspended") void ctx.resume()
     if (src) return
-    // (noise in short grains of varying strength: paper's tooth under a pen, not a hiss)
     const n = Math.round(ctx.sampleRate * 1.3), buf = ctx.createBuffer(1, n, ctx.sampleRate), data = buf.getChannelData(0), grain = Math.round(ctx.sampleRate * 0.006)
     let amp = 0.6
     for (let i = 0; i < n; i++) { if (i % grain === 0) amp = 0.35 + Math.random() * 0.65; data[i] = (Math.random() * 2 - 1) * amp }
@@ -32,13 +24,12 @@ export function penSound(make: () => AudioContext, rested: () => void = () => {}
     if (sleep) clearTimeout(sleep)
     sleep = setTimeout(() => {
       sleep = null
-      try { src?.stop() } catch { /* (already stopped) */ }
+      try { src?.stop() } catch { /* already stopped */ }
       src?.disconnect(); src = null
       rested()
     }, 700)
   }
   return {
-    /** Its noise is playing. */
     busy: () => !!src,
     ink(speed: number) {
       const level = penLevel(speed)

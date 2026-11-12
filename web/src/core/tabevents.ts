@@ -1,5 +1,3 @@
-// What changed in a window's tabs, as events a plugin follows (the companion: what's focused, opened, closed, moved),
-// worked out from each change's before and after (core/workspace.ts' set), so every way of changing them tells alike.
 import { placesIn, type TabList } from "../../../core/layout.ts"
 
 export type TabsEvent =
@@ -18,19 +16,16 @@ const subs = new Set<(e: TabsEvent) => void>()
 /** Hear every change of this window's tabs as events; returns the unsubscribe. */
 export function onTabsEvent(fn: (e: TabsEvent) => void) { subs.add(fn); return () => { subs.delete(fn) } }
 
-/** Tell what changed from `was` to `now` (`wasPane`, `nowPane`: the pane focused on screen before and after). */
 export function tabsChanged(was: TabList, now: TabList, wasPane: string, nowPane: string) {
   if (!subs.size || was === now) return
   const out: TabsEvent[] = []
   const before = new Map(was.tabs.map((t, i) => [t.id, { t, i }])), after = new Map(now.tabs.map((t, i) => [t.id, { t, i }]))
-  // (a place stacked in a pane is open: one shown in its stead is no pane closing)
   const panesBefore = new Map(was.tabs.flatMap((t) => placesIn(t).map((p) => [p.id, { p, tab: t.id }] as const)))
   const panesAfter = new Map(now.tabs.flatMap((t) => placesIn(t).map((p) => [p.id, { p, tab: t.id }] as const)))
   for (const [id] of before) if (!after.has(id)) out.push({ type: "tab-closed", tab: id })
   for (const [id, { i }] of after) {
     const b = before.get(id)
     if (!b) out.push({ type: "tab-opened", tab: id })
-    // (only a tab whose neighbours changed: one opened before it shifts every index after)
     else if (b.i !== i && was.tabs[b.i - 1]?.id !== now.tabs[i - 1]?.id && was.tabs[b.i + 1]?.id !== now.tabs[i + 1]?.id) out.push({ type: "tab-moved", tab: id, at: i })
   }
   for (const [id, { tab }] of panesBefore) if (!panesAfter.has(id)) out.push({ type: "pane-closed", pane: id, tab })

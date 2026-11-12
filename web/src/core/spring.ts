@@ -1,6 +1,4 @@
-// A critically damped spring, stepped exactly for any frame's length (no drift on a slow frame): what glides the
-// companion's cursor over the screen (web/src/screen.tsx). Pure, so it's tested alone (tools/test/vault/helper.ts).
-
+// Pure: tools/test/vault/helper.ts tests it alone.
 /** A point on its way, and its speed (px/s). */
 export type Glide = { x: number; y: number; vx: number; vy: number }
 
@@ -9,7 +7,6 @@ export const stiffness = (ms: number) => 6.64 / (ms / 1000)
 /** An agent's cursor, in the window and over the screen alike: one cursor, one motion. */
 export const CURSOR_SPRING = stiffness(380)
 
-/** One axis of x'' = -w²(x - to) - 2w x', solved: its place and speed `dt` seconds on. */
 function axis(x: number, v: number, to: number, w: number, dt: number): [number, number] {
   const d = x - to, b = v + w * d, e = Math.exp(-w * dt)
   return [to + (d + b * dt) * e, (v - w * b * dt) * e]

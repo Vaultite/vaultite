@@ -1,5 +1,3 @@
-// How long what the user waits for took, part by part (core/spans.ts, the server's): traced ("span"), and sent with
-// the app's perf reports (activity's Report.tsx) so `vau perf` shows them.
 import { trace } from "./trace"
 
 export type Span = { name: string; t: number; ms: number; parts: Record<string, number>; tags?: Record<string, string> }

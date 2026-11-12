@@ -1,5 +1,3 @@
-// Selecting several things in a list, one way everywhere, as in Finder: ⌘-click, ⇧-click, ⇧↑ ⇧↓, ⌘A, Esc; a right-click
-// or drag on a selected row acts on all. Phones: Select in a row's menu, then taps, with SelectionBar.
 import { useEffect, useRef } from "react"
 import { CheckSquare, SquareDashed, SquareMousePointer } from "lucide-react"
 import { registerCommands } from "@/core/commands"
@@ -13,7 +11,6 @@ import { plural } from "@/lib/utils"
  *  several are called ("file", "files"). */
 export type Selectable = { menu: (keys: string[]) => MenuItem[]; noun?: [string, string] }
 
-/** `touch`: a phone's select mode (taps add or take); it stays on with nothing selected until Done. */
 type Sel = { list: string; keys: string[]; set: Set<string>; anchor: string | null; touch: boolean }
 let sel: Sel | null = null
 const subs = signal()
@@ -26,7 +23,6 @@ const make = (list: string, keys: string[], anchor: string | null, touch = false
   return { list, keys: uniq, set: new Set(uniq), anchor, touch }
 }
 
-/** Each list's definitions, the last mounted first used (a list drawn twice: the sidebar's tree and a Files tab's). */
 const defs = new Map<string, Selectable[]>()
 const lists = { get: (list: string) => defs.get(list)?.at(-1), has: (list: string) => !!defs.get(list)?.length }
 /** Make a list's rows selectable while mounted: its container says `data-select-list={list}`, each row
@@ -39,13 +35,11 @@ export function useSelectable(list: string, def: Selectable) {
     defs.set(list, [...(defs.get(list) ?? []), proxy])
     return () => {
       defs.set(list, (defs.get(list) ?? []).filter((d) => d !== proxy))
-      // The list is gone from the screen (a drawer closed, the tab list's sheet): nothing left to act on.
       if (!lists.has(list) && sel?.list === list) put(null)
     }
   }, [list])
 }
 
-/** The selection now (null: none). */
 export const getSelection = () => sel
 /** The keys selected in a list, in the order they were picked (none: empty). */
 export const selectedIn = (list: string) => (sel?.list === list ? sel.keys : [])
@@ -54,27 +48,21 @@ export const useSelected = (list: string, key: string) => subs.use(() => !!sel &
 const none: ReadonlySet<string> = new Set()
 /** The keys selected in a list, live (for a short list drawn in one piece; long ones ask per row: useSelected). */
 export const useSelectedKeys = (list: string): ReadonlySet<string> => subs.use(() => (sel?.list === list ? sel.set : none))
-/** The selection, live. */
 export const useSelectionState = () => subs.use(() => sel)
 /** A phone selecting (in this list): taps pick rows, and swipes rest. */
 export const useSelecting = (list?: string) => subs.use(() => !!sel?.touch && (!list || sel.list === list))
 export const selecting = () => !!sel?.touch
 export function clearSelection() { if (sel) put(null) }
 
-/** A click that opens in a new tab from the keyboard (⌘↵: core/keylist.ts) isn't a ⌘-click. */
 let fromKeys = false
 export function asKeys(fn: () => void) { fromKeys = true; try { fn() } finally { fromKeys = false } }
 
-/** A list that draws only the rows near the screen (core/virtual.ts) says its whole order here, by its element. */
 export const listOrders = new WeakMap<HTMLElement, () => string[]>()
-/** A list's keys in order on screen: its whole order when it says one, else its rows in sight. */
 const keysIn = (box: HTMLElement) => listOrders.get(box)?.() ?? shownRows(box).map((r) => r.dataset.selectKey!)
-/** The rows of the list `el` is in, in order on screen (hidden ones left out). */
 function rowsOf(el: Element | null, list: string) {
   const box = el?.closest<HTMLElement>(`[data-select-list="${CSS.escape(list)}"]`)
   return box ? keysIn(box) : []
 }
-/** A list's own rows in sight, in order: not those of a list inside it (a pinned folder's files, in the pinned list). */
 const shownRows = (box: HTMLElement) =>
   [...box.querySelectorAll<HTMLElement>("[data-select-key]")].filter((r) => r.getClientRects().length > 0 && r.closest("[data-select-list]") === box)
 
@@ -91,7 +79,6 @@ export function selectClick(e: React.MouseEvent | MouseEvent, list: string, key:
     const from = mine?.anchor && order.includes(mine.anchor) ? mine.anchor : current && order.includes(current) ? current : key
     const [a, b] = [order.indexOf(from), order.indexOf(key)].sort((x, y) => x - y)
     const run = a < 0 || b < 0 ? [key] : order.slice(a, b + 1)
-    // ⌘⇧ adds the run to what's selected; ⇧ alone makes it the selection.
     put(make(list, mod && mine ? [...mine.keys, ...run] : run, from))
     return true
   }
@@ -123,18 +110,15 @@ export function selectionFor(list: string, key: string, letGo = true): string[] 
 export function rowMenu(list: string, key: string, own: () => MenuItem[]): () => MenuItem[] {
   return () => {
     const keys = selectionFor(list, key)
-    // (Select first: a phone's menu opens at the finger, and a file's menu can be long.)
     if (keys) return selectionMenu(list, keys)
     const pick = selectItem(list, key), items = own()
     return pick.length ? [...pick, ...items.map((it, i) => (i ? it : { ...it, sep: true }))] : items
   }
 }
 
-/** The list's menu for these keys, under a line saying how many. */
 export function selectionMenu(list: string, keys: string[]): MenuItem[] {
   const def = lists.get(list)
   if (!def) return []
-  // Done with them once one is chosen (they may have moved, closed or gone).
   const after = (it: MenuItem): MenuItem => ({ ...it, run: () => { clearSelection(); it.run() }, items: it.items?.map(after) })
   return [{ label: countOf(list, keys.length), caption: true, run: () => {} }, ...def.menu(keys).map((it, i) => after(i ? it : { ...it, sep: true }))]
 }
@@ -154,26 +138,21 @@ export const startSelecting = (list: string) => put(make(list, [], null, true))
 /** What a row draws while selected: `data-selected`, styled once in index.css. */
 export const selectedAttr = (on: boolean) => (on ? { "data-selected": "" } : {})
 
-// ---------- the keyboard ----------
 const ROW = "[data-keyrow]"
-/** A view that moves its keyboard itself, with commands of its own (a folder's page: pages/FolderKeys.ts). */
 export const OWN = "[data-own-keys]"
 const owned = () => !!document.activeElement?.closest(OWN)
-/** The selectable row the keyboard is on: its list and key. */
 function keyRow() {
   const a = document.activeElement
   const row = a instanceof HTMLElement ? a.closest<HTMLElement>("[data-select-key]") ?? a.querySelector<HTMLElement>(":scope > [data-select-key]") : null
   const list = row?.closest<HTMLElement>("[data-select-list]")?.dataset.selectList
   return row && list && lists.has(list) ? { row, list, key: row.dataset.selectKey! } : null
 }
-/** ⇧↑ / ⇧↓: the keyboard moves a row and the selection runs from where it started to there. */
 function extend(delta: 1 | -1) {
   const at = keyRow()
   if (!at) return
   const box = at.row.closest<HTMLElement>("[data-select-list]")!
   const order = keysIn(box)
   const i = order.indexOf(at.key), key = order[i + delta]
-  // (the row beside the keyboard's is drawn, in a list that draws only some)
   const next = key === undefined || i < 0 ? null : shownRows(box).find((r) => r.dataset.selectKey === key)
   if (!next) return
   selectTo(at.list, order, at.key, key)
@@ -181,8 +160,6 @@ function extend(delta: 1 | -1) {
   focus.focus({ preventScroll: true })
   focus.scrollIntoView({ block: "nearest" })
 }
-/** ⇧ and a key that moves the keyboard from `from` to `key` (a row, or a grid's row down): the selection runs from where
- *  it started (else `from`) to there, in `order`. */
 export function selectTo(list: string, order: string[], from: string, key: string) {
   const anchor = sel?.list === list && sel.anchor && order.includes(sel.anchor) ? sel.anchor : from
   const [a, b] = [order.indexOf(anchor), order.indexOf(key)].sort((x, y) => x - y)
@@ -195,7 +172,6 @@ function selectAll() {
 }
 
 if (typeof window !== "undefined") {
-  // A press outside the selected list (and outside a menu, the phone's bar or a dialog it opened) lets it go.
   addEventListener("pointerdown", (e) => {
     if (!sel || sel.touch || !(e.target instanceof Element)) return
     if (e.target.closest(`[data-select-list="${CSS.escape(sel.list)}"], [role=menu], [data-selection-bar], dialog, .fixed.inset-0`)) return

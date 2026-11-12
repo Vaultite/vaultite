@@ -1,5 +1,3 @@
-// The left sidebar's mode: one panel alone filling it in place of the stack (Activity's), kept in the workspace. Any
-// panel can be one; its plugin's command shows it, and its heading's X (or the command again) brings the panels back.
 import { useSyncExternalStore } from "react"
 import { isDesktop } from "@/core/platform"
 import { peekSidebar } from "@/core/peek"
@@ -17,8 +15,6 @@ export function sidebarMode(prefs = getPrefs()): string | null {
 export const useSidebarMode = () => useSyncExternalStore(subscribeScoped, () => sidebarMode())
 
 let switchedAt = -Infinity
-/** The sidebar's body as it mounts: true when a mode was just switched to (or left), so it fades in as Rex's does; not
- *  as the app opens or a workspace brings its own. */
 export const modeJustSwitched = () => performance.now() - switchedAt < 150
 
 /** Show panel `key` alone in the left sidebar, the sidebar open (null: its panels again). */
@@ -26,7 +22,6 @@ export function setSidebarMode(key: string | null) {
   if (key !== sidebarMode()) switchedAt = performance.now()
   kept.set(key ?? undefined)
   if (!key || !isDesktop()) return
-  // Hidden without a rail, it slides in for this; folded to the rail, it opens.
   if (!peekSidebar("left") && !getPrefs().sidebar) void setPrefs({ sidebar: true })
 }
 

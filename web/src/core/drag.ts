@@ -1,5 +1,4 @@
-// Dragging: one pointer-events primitive for everything (HTML5 drag and drop loses events over frames and differs in
-// Safari and Electron). Targets say whether they'd take the item; the first wins, `weak` ones only when no other does.
+// Pointer events, not HTML5 drag and drop: that loses events over frames and differs in Safari and Electron.
 import { useEffect, useRef } from "react"
 import { noteActivity } from "@/core/activity"
 import { onAway } from "@/core/away"
@@ -58,10 +57,7 @@ export type DragItem = {
    *  draws it, this one only where it would land. */
   elsewhere?: boolean
 }
-/** `stay`: taken where it is already (a tab over its own place in its list): drawn as taken, let go it goes back. */
 type Hit = { target: string; data: unknown; hint?: string; weak?: boolean; stay?: boolean }
-/** `finger`: a touch drag (its picture goes above the finger, where it can be seen). `origin`: where it was pressed and
- *  the pressed element's box then (what's dragged lifts from there, and goes back there if it isn't dropped). */
 export type Drag = { item: DragItem; x: number; y: number; hit: Hit | null; finger?: boolean; origin?: Origin }
 export type Origin = { x: number; y: number; rect: DOMRect }
 
@@ -74,28 +70,19 @@ export const getDrag = () => drag
 export function useDrag(): Drag | null
 export function useDrag<T>(pick: (d: Drag | null) => T): T
 export function useDrag<T>(pick?: (d: Drag | null) => T) { return subs.use(() => (pick ? pick(drag) : drag)) }
-/** What's dragged (the same object the whole drag), or null. */
 export const useDragItem = () => subs.use(() => drag?.item ?? null)
-/** Whether something is being dragged (redraws only when that changes, not on every move). */
 export const useDragging = () => subs.use(() => !!drag)
-/** Call `fn` on every move (and the drag's start and end), outside React: what follows the pointer itself. */
 export const onDrag = (fn: () => void) => subs.subscribe(fn)
-/** How a drag ended: `dropped` on a target, or let go clear of the window and taken there (`away`: a tab torn off). */
 export type DragEnd = { item: DragItem; x: number; y: number; origin?: Origin; dropped: boolean; away: boolean }
 const ends = new Set<(e: DragEnd) => void>()
-/** Hear how each drag ends, before anything is drawn again (a drop: just before it's done): what lands where it was
- *  dropped, or goes back where it came from. */
 export const onDragEnd = (fn: (e: DragEnd) => void) => { ends.add(fn); return () => { ends.delete(fn) } }
 
-/** A finger holds something it picked up (dragged or not yet). */
 let fingerHolds = false
 export const fingerHolding = () => fingerHolds
 // The page mustn't scroll under a finger holding something: WebKit only lets a touchmove stop a begun scroll if a
 // cancelable listener was there all along (as dnd-kit does).
 if (typeof window !== "undefined") addEventListener("touchmove", (e) => { if (fingerHolds && e.cancelable) e.preventDefault() }, { passive: false })
 
-// A mouse or pen something took (a splitter, a card, a scrubber, a pen) is a drag: nothing selects till it's let go
-// (html[data-captured], index.css). Not a finger: every touch is captured where it lands.
 if (typeof window !== "undefined") {
   const captured = new Set<number>(), root = document.documentElement
   addEventListener("gotpointercapture", (e) => { if (e.pointerType !== "touch") { captured.add(e.pointerId); root.toggleAttribute("data-captured", true) } }, true)
@@ -103,15 +90,12 @@ if (typeof window !== "undefined") {
 }
 
 export type DropTarget = {
-  /** What a drop here would do, or null (not over this target, or nothing would change). Called on every move. */
   at: (item: DragItem, x: number, y: number, el: Element | null) => { data: unknown; hint?: string; weak?: boolean; stay?: boolean } | null
   drop: (item: DragItem, data: unknown) => void
-  /** The drag ended (dropped or not): stop timers. */
   end?: () => void
 }
 const targets = new Map<string, DropTarget>()
 
-/** Take drops until the function it returns is called: useDropTarget for what isn't drawn by React (the editor's tables). */
 export function addDropTarget(id: string, t: DropTarget) {
   targets.set(id, t)
   return () => { if (targets.get(id) === t) targets.delete(id) }
@@ -164,8 +148,6 @@ export function beforeStart(list: Element, first: Element, x: number, y: number,
     && (!el || list.contains(el) || (!el.closest("[data-keyrow]") && (!over || over === panel)))
 }
 
-/** The frame each box last scrolled in: two lists in one box (Pinned and the Tabs panel, in a sidebar scrolling as
- *  one) scroll it once a frame, not twice as fast. */
 const scrolled = new WeakMap<Element, number>()
 
 /** Scrolls a box while a drag holds the pointer near its edge, faster the closer: `near` on every move, `stop` when the
@@ -175,12 +157,10 @@ export function edgeScroller(axis: "x" | "y" = "y") {
   const stop = () => { speed = 0 }
   const near = (box: HTMLElement, at: number, alive: () => boolean = () => !!drag) => {
     scrolling = box
-    // The window (a phone's page): between its header and its bar. A finger covers more, so its zone is wider.
     const b = box === document.scrollingElement
       ? { top: document.querySelector("[data-phone-header]")?.getBoundingClientRect().bottom ?? 0, bottom: document.querySelector("[data-phone-bar]")?.getBoundingClientRect().top ?? innerHeight, left: 0, right: innerWidth }
       : box.getBoundingClientRect()
     const [lo, hi] = axis === "x" ? [b.left, b.right] : [b.top, b.bottom]
-    // (a sixth of a short box at most: Pinned squeezed to two rows of tiles doesn't scroll under its second row)
     const zone = Math.min(drag?.finger ? 48 : 24, (hi - lo) / 6)
     const d = at < lo + zone ? at - (lo + zone) : at > hi - zone ? at - (hi - zone) : 0
     speed = Math.max(-14, Math.min(14, Math.round(d / 2)))
@@ -190,7 +170,6 @@ export function edgeScroller(axis: "x" | "y" = "y") {
       if (!speed || !el || !alive()) { frame = 0; return }
       if (scrolled.get(el) !== t) {
         scrolled.set(el, t)
-        // (what a drop under the pointer does is asked again on the scroll: lift's listener)
         if (axis === "x") el.scrollLeft += speed
         else el.scrollTop += speed
       }
@@ -198,17 +177,13 @@ export function edgeScroller(axis: "x" | "y" = "y") {
     }
     frame = requestAnimationFrame(step)
   }
-  /** `near` while (x, y) is over what scrolls `list` (along x, `list` itself), else `stop`: for a list's target, which
-   *  hears every move wherever the pointer is. */
   const over = (list: Element, x: number, y: number) => {
     const page = document.scrollingElement as HTMLElement
     const box = axis === "x" ? list as HTMLElement : scrollerOf(list, true) ?? (page.scrollHeight > page.clientHeight ? page : null)
-    // (nothing scrolls it: a list that fits, the desktop's window)
     if (!box || (axis === "x" && box.scrollWidth <= box.clientWidth)) return stop()
     if (box === page) return near(box, y)
     const b = box.getBoundingClientRect()
     const [at, lo, hi, across, from, to] = axis === "x" ? [x, b.left, b.right, y, b.top, b.bottom] : [y, b.top, b.bottom, x, b.left, b.right]
-    // (past a row's end it goes on, as it can't past a column's: there the next panel or bar takes over)
     const past = axis === "x" ? 48 : 0
     if (across < from || across > to || at < lo - past || at > hi + past) stop()
     else near(box, at)
@@ -228,7 +203,6 @@ export function useDropHit<H>(id: string): H | null {
     const raw = drag?.hit?.target === id ? drag.hit.data : null
     const l = last.current
     if (raw === l.raw) return l.data as H | null
-    // (answers are plain data: a place in a list, a folder)
     const key = raw == null ? "null" : JSON.stringify(raw)
     last.current = key === l.key ? { ...l, raw } : { raw, key, data: raw }
     return last.current.data as H | null
@@ -238,8 +212,6 @@ export function useDropHit<H>(id: string): H | null {
 function hitAt(item: DragItem, x: number, y: number, takes?: (target: string) => boolean): Hit | null {
   const el = document.elementFromPoint(x, y)
   let hit: Hit | null = null, weak: Hit | null = null
-  // Every target hears every move (the tree scrolls near its edge, opens a folder held over), the first answer wins,
-  // a weak one only when nothing else answers.
   for (const [id, t] of targets) {
     if (takes && !takes(id)) continue
     const h = t.at(item, x, y, el)
@@ -250,8 +222,6 @@ function hitAt(item: DragItem, x: number, y: number, takes?: (target: string) =>
 }
 
 let takesElsewhere: ((target: string) => boolean) | undefined
-/** Another window's drag held at (x, y) here (core/windows.ts; null: gone), drawn as this one's own by the targets
- *  `takes` lets answer: where it would land last. Never over a drag of this window's own. */
 export function dragElsewhere(item: DragItem | null, x = 0, y = 0, takes?: (target: string) => boolean): Hit | null {
   if (drag && !drag.item.elsewhere) return null
   if (!item) {
@@ -259,22 +229,16 @@ export function dragElsewhere(item: DragItem | null, x = 0, y = 0, takes?: (targ
     if (drag) { setDrag(null); for (const t of targets.values()) t.end?.() }
     return hit
   }
-  // (the same item the whole drag, as one of this window's own: what's drawn of it is worked out once)
   const it = drag?.item.elsewhere && JSON.stringify(drag.item) === JSON.stringify(item) ? drag.item : item
   takesElsewhere = takes
   setDrag({ item: it, x, y, hit: hitAt(it, x, y, takes) })
   return drag!.hit
 }
 
-/** The drag is on: one cursor, no text selection. Returns how it ends: the highlight goes, and a drop (`hit`) is done;
- *  the click that ends it opens nothing. */
 function lift(item: DragItem, finger = false) {
   const root = document.documentElement
-  // One cursor for the whole drag and nothing selecting (index.css), not a text cursor over an editor.
   root.dataset.dragging = ""
   getSelection()?.removeAllRanges()
-  // Something scrolled under the still pointer (a wheel, a trackpad, an edge scrolling): what a drop there does is
-  // asked again, once a frame.
   let frame = 0
   const scrolled = () => { frame ||= requestAnimationFrame(() => { frame = 0; rehit() }) }
   addEventListener("scroll", scrolled, true)
@@ -282,7 +246,6 @@ function lift(item: DragItem, finger = false) {
     removeEventListener("scroll", scrolled, true)
     cancelAnimationFrame(frame)
     delete root.dataset.dragging
-    // (Before the click below is swallowed: a page's tap is a click too, core/haptics.ts.)
     if (hit && finger) haptic("medium")
     const swallow = (ev: MouseEvent) => { ev.preventDefault(); ev.stopPropagation() }
     addEventListener("click", swallow, true)
@@ -291,21 +254,16 @@ function lift(item: DragItem, finger = false) {
   }
 }
 
-/** What a drag let go outside the window does (a pop-out's tab goes back to the main window: core/windows.ts), given
- *  where on the screen; true if it took it. */
 let outside: ((item: DragItem, screen: { x: number; y: number }) => boolean) | null = null
 export const setOutsideDrop = (fn: typeof outside) => { outside = fn }
-/** Whether a point of this page (client px) is under another of the app's windows, one a drag brought in front of
- *  this one (core/windows.ts): there the drag is that window's, as past this one's edge. */
 let covered: ((x: number, y: number) => boolean) | null = null
 export const setCovered = (fn: typeof covered) => { covered = fn }
-/** Whether a drag at (x, y) is somewhere other than this window: past its edge, or under another window in front. */
 export const pastEdge = (x: number, y: number, finger = false) => !finger && (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight || !!covered?.(x, y))
 
 /** Press on something draggable: a mouse or pen, or a finger where `touch` says a phone has somewhere to drop it (else
  *  a finger scrolls or taps). `data-no-drag` children stay plain buttons. */
 export function startDrag(e: React.PointerEvent<HTMLElement> | PointerEvent, item: DragItem, { touch = false }: { touch?: boolean } = {}) {
-  // (a Mac's Control-click is a right-click: it opens a menu, and moving on to pick from it isn't a drag)
+  // A Mac's Control-click is a right-click.
   if (e.button !== 0 || (isMac && e.ctrlKey) || (e.target as Element).closest("[data-no-drag]")) return
   if (e.pointerType === "touch") { if (touch) pickUp(e, item); return }
   const el = e.currentTarget as HTMLElement, x0 = e.clientX, y0 = e.clientY, id = e.pointerId
@@ -334,7 +292,6 @@ export function startDrag(e: React.PointerEvent<HTMLElement> | PointerEvent, ite
     for (const t of targets.values()) t.end?.()
     const out = !!last && pastEdge(last.clientX, last.clientY)
     const told = (dropped: boolean, away: boolean) => { if (end && last) for (const f of ends) f({ item, x: last.clientX, y: last.clientY, origin, dropped, away }) }
-    // (told of a drop just before it's done: what lands says where from before the layout changes)
     if (drop && hit) told(true, false)
     end?.(drop ? hit : null)
     if (!(drop && hit)) told(false, !!(drop && end && out && outside?.(item, { x: last!.screenX, y: last!.screenY })))
@@ -345,7 +302,6 @@ export function startDrag(e: React.PointerEvent<HTMLElement> | PointerEvent, ite
     if (ev.key !== "Escape" || !end) return
     ev.preventDefault(); ev.stopPropagation()
     stop(false)
-    // The button is still down: letting go of it clicks nothing (the element dragged, which has the pointer, would open).
     try { el.releasePointerCapture(id) } catch { /* already gone */ }
     const swallow = (c: MouseEvent) => { c.preventDefault(); c.stopPropagation() }
     const done = () => { removeEventListener("pointerup", later, true); removeEventListener("pointerdown", done, true); removeEventListener("click", swallow, true) }
@@ -354,12 +310,10 @@ export function startDrag(e: React.PointerEvent<HTMLElement> | PointerEvent, ite
   }
   addEventListener("pointermove", move, true); addEventListener("pointerup", up, true); addEventListener("pointercancel", cancel, true)
   addEventListener("keydown", key, true); addEventListener("dragstart", native, true)
-  // The app sent away mid-drag (core/away.ts): it's dropped nowhere.
   const quit = onAway(() => stop(false))
 }
 
-/** A finger: picked up when the hold fires, dragged once it moves 10px (an open menu closes); before that, moving is a
- *  scroll. Touch events, since they go on while the page is held still. */
+// Touch events, since they go on while the page is held still.
 function pickUp(e: React.PointerEvent<HTMLElement> | PointerEvent, item: DragItem) {
   const el = e.currentTarget as HTMLElement
   let from = { x: e.clientX, y: e.clientY }, picked = false
@@ -396,8 +350,6 @@ function pickUp(e: React.PointerEvent<HTMLElement> | PointerEvent, item: DragIte
 }
 
 const PLACES = { panes: "a pane", panels: "the sidebar", pins: "Pinned", workspaces: "another workspace", newtab: "its place on the new tab", status: "the status bar" }
-/** A drop, in a few words for Activity: what (its path, label or tab) and where (the target's kind, and a folder or a
- *  column when that's what the target answered). */
 function noteDrop(item: DragItem, hit: Hit) {
   const what = item.path || item.label || item.to?.replace(/^(file|view):/, "") || item.from
   const kind = hit.target.split(":")[0]

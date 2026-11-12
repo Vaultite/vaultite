@@ -1,5 +1,3 @@
-// Where the app is used from: this Mac (or its tailnet), or Vaultite Connect without owner tools, where what's the
-// Mac's is refused. The state says (data.ts); views needing the Mac show OnThisMac there instead of asking.
 import { cell } from "@/core/signal"
 
 const here = cell<"mac" | "connect">("mac")

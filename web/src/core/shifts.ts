@@ -1,11 +1,8 @@
-// Layout shifts the user didn't cause, traced as "shift" (what moved, its region, loading or ready): `vau dev eval
-// __vauTrace.shift`. Each load's per region, kept for the last 30: `vau dev eval __vauLoadShifts()`. Chromium only.
 import { getStore, onStore } from "@/core/data"
 import { trace } from "@/core/trace"
 
 type Shift = PerformanceEntry & { value: number; hadRecentInput: boolean; sources?: { node?: Node | null }[] }
 
-/** A moved element as a short name: its tag, data-* names and first classes. */
 function named(n: Node | null | undefined): string {
   if (!(n instanceof Element)) return n ? n.nodeName.toLowerCase() : "?"
   const data = [...n.attributes].filter((a) => a.name.startsWith("data-")).map((a) => `[${a.name}]`).slice(0, 3).join("")
@@ -13,7 +10,6 @@ function named(n: Node | null | undefined): string {
   return `${n.tagName.toLowerCase()}${data}${cls}`.slice(0, 160)
 }
 
-/** The app's regions, the first that holds a moved element names it. */
 const REGIONS: [string, string][] = [
   ["aside[data-side=left]", "left sidebar"], ["aside[data-side=right]", "right sidebar"], ["[data-status-bar]", "status bar"],
   ["[data-tab-bar], [role=tablist]", "tabs"], ["[data-pane]", "pane"],
@@ -23,7 +19,6 @@ function regionOf(n: Node | null | undefined): string {
   return (el && REGIONS.find(([sel]) => el.closest(sel))?.[1]) || "page"
 }
 
-/** How long after the vault's state came a load's shifts still count as the load's. */
 const LOAD_MS = 10_000
 const KEPT = "vaultite.loadshifts"
 type Load = { at: string; moved: Record<string, number> }
@@ -37,7 +32,6 @@ function keep() {
   } catch { /* private mode, or full */ }
 }
 
-/** The last loads on this device: how many shifts each region had once the page was ready, and the share that moved. */
 ;(globalThis as { __vauLoadShifts?: () => unknown }).__vauLoadShifts = () => {
   let loads: Load[] = []
   try { loads = JSON.parse(localStorage.getItem(KEPT) ?? "[]") } catch { /* none kept */ }
@@ -45,7 +39,6 @@ function keep() {
   return { loads: loads.length, moved, share: loads.length ? Math.round((moved / loads.length) * 100) / 100 : 0, last: loads.slice(-10) }
 }
 
-// (the load is kept whether or not anything moved: the share is of all loads)
 const stop = onStore(() => {
   if (!getStore() || readyAt) return
   readyAt = performance.now()

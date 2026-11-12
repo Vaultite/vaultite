@@ -1,5 +1,3 @@
-// What's in the editor's slash menu, like Notion's: the core's entries, then plugins' blocks, then their `slash`
-// items. The editor draws it (editor/slash.ts).
 import { pad, type Store } from "@/core/data"
 import type { SlashItem } from "@/core/define"
 import { blockFor, isEnabled, PLUGINS } from "@/core/plugins"
@@ -33,15 +31,12 @@ const CORE: SlashItem[] = [
   { id: "timeline", title: "Timeline", keywords: "history log entries", line: true, run: (put) => put(`## Timeline\n\n- ${day()} · note · $|\n`) },
 ]
 
-/** "people-due" -> "People due". */
 const human = (name: string) => capitalize(name.replace(/[-_]+/g, " "))
 
-/** Everything the slash menu offers now, in order. */
 export function slashItems(store: Store): SlashItem[] {
   const { disabled } = getPrefs()
   const on = PLUGINS.filter((p) => isEnabled(p.id, disabled))
   const blocks: SlashItem[] = on.flatMap((p) => Object.keys(p.blocks ?? {}).map((name) => {
-    // (its required options typed in, the cursor at the first: core/blocks.ts; one another plugin declares names this one)
     const decl = p.draws?.includes(name) ? blockFor(name, disabled).decl : p.blockDecls?.[name]
     const by = decl?.by ? `${decl.by}: ${p.id}\n` : ""
     const need = by + Object.entries(decl?.options ?? {}).filter(([k, d]) => d.required && k !== decl?.by).map(([k], i) => `${k}: ${i ? "" : "$|"}\n`).join("")

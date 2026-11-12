@@ -1,5 +1,3 @@
-// Tab groups (Group, core/layout.ts), as browsers have them: making, adding to, leaving, naming, colouring, folding,
-// moving and closing one; and what agents ask of the tabs (`vau tabs`). Each change is one `set`.
 import { COLORS, isColor, type Color } from "../../../core/colors.ts"
 import {
   focusedPane, inGroup, isBlankTab, isSplit, nextShown, newGroupId, outsideGroups, panesAt, panesOf, placesIn, placesOf, runOf, spotWords, tabOf, vaultPath,
@@ -9,23 +7,17 @@ import { activePane, activeTab, closeTabIds, closePane, getWorkspace, here, pane
 import { canPaneIntoPane, canTabIntoPane, openInSplit, paneIntoPane, paneToTab, placeTab, splitPane, tabIntoPane, type Zone } from "@/core/splits"
 import { answerUi } from "@/core/askers"
 
-/** A tab group of this window's. */
 export const groupById = (id: string): Group | undefined => here().groups?.find((g) => g.id === id)
-/** The tab groups, in order. */
 export const allGroups = () => here().groups ?? []
-/** A group's tabs. */
 export const tabsIn = (id: string) => here().tabs.filter((t) => t.group === id)
 
-/** The colour a new tab group takes: the first no group has, then round again. */
 export function nextColor(): Color {
   const used = allGroups().map((s) => s.color)
   return COLORS.find((c) => !used.includes(c)) ?? COLORS[used.length % COLORS.length]
 }
 
-/** What a view names a group of its panes (ViewDef.groupName: a web page's site). Set by the app, which knows the views. */
 let viewGroupName: (to: string) => string | null = () => null
 export const setGroupNamer = (fn: (to: string) => string | null) => { viewGroupName = fn }
-/** A name for a new group of these tabs: the folder or the view's name all their panes share, else none. */
 export function suggestName(tabs: Tab[]): string {
   const ps = tabs.flatMap(panesOf)
   const folders = ps.map((p) => { const f = vaultPath(p.to); return f === null ? null : f.split("/").slice(0, -1).join("/") })
@@ -35,11 +27,8 @@ export function suggestName(tabs: Tab[]): string {
   return ""
 }
 
-/** The tabs `ids` in their order in the list. */
 const inOrder = (ids: string[]) => here().tabs.filter((t) => ids.includes(t.id))
 
-/** `tabs` put at `at` (an index into the list without them), in group `group`, taken out of where they were; `def`: a
- *  new group made for them. */
 function gather(tabs: Tab[], at: (rest: Tab[]) => number, group: string, def?: Group, shown?: string): TabList {
   const l = here(), chosen = new Set(tabs.map((t) => t.id))
   const rest = l.tabs.filter((t) => !chosen.has(t.id)), i = at(rest)
@@ -47,7 +36,6 @@ function gather(tabs: Tab[], at: (rest: Tab[]) => number, group: string, def?: G
     ...(def ? { groups: [...(l.groups ?? []), def] } : {}), active: shown ?? l.active }
 }
 
-/** Make tabs a new tab group where the first of them is: its name and colour, or the suggested ones. Returns its id. */
 export function makeGroup(ids: string[], opts: { name?: string; color?: Color; collapsed?: boolean } = {}): string | null {
   const tabs = inOrder(ids)
   if (!tabs.length) return null
@@ -58,8 +46,6 @@ export function makeGroup(ids: string[], opts: { name?: string; color?: Color; c
   return id
 }
 
-/** Tab `id` dropped on tab `onto` (a phone's tab list): the two make a new tab group where `onto` is, or `id` joins
- *  `onto`'s. Returns the group's id. */
 export function groupWith(id: string, onto: string): string | null {
   const a = tabById(id), b = tabById(onto)
   if (!a || !b || id === onto) return null
@@ -70,7 +56,6 @@ export function groupWith(id: string, onto: string): string | null {
   return gid
 }
 
-/** Add tabs to the end of a tab group; `shown`: the one of them to show. */
 export function addToGroup(ids: string[], group: string, shown?: string) {
   const tabs = inOrder(ids).filter((t) => t.group !== group)
   if (!groupById(group) || !tabs.length) return
@@ -96,7 +81,6 @@ export function openInGroup(to: string, name: string, beside = false): string {
   return tab.root.id
 }
 
-/** Take tabs out of their tab groups: each goes right after what's left of its group, as in a browser. */
 export function leaveGroup(ids: string[]) {
   const l = here(), going = new Set(inOrder(ids).filter((t) => t.group).map((t) => t.id))
   if (!going.size) return
@@ -111,7 +95,6 @@ export function leaveGroup(ids: string[]) {
   set({ ...l, tabs })
 }
 
-/** Change a tab group's name, colour or fold. */
 function changeGroup(id: string, fn: (g: Group) => Group) {
   const l = here()
   if (groupById(id)) set({ ...l, groups: l.groups!.map((g) => (g.id === id ? fn(g) : g)) })
@@ -131,14 +114,11 @@ export function foldGroup(id: string, collapsed?: boolean) {
   const next = { ...l, groups: l.groups!.map((x) => (x.id === id ? (fold ? { ...g, collapsed: true } : open) : x)) }
   put(fold ? handOver(next, id) : next, was)
 }
-/** Folding tab group `id`, as its tabs start to move: the tab on screen, if it's one of its, hands over now
- *  (handOver), so the page changes at the click rather than once they've gone. Returns how to hand back. */
 export function handOverFrom(id: string): (() => void) | undefined {
   const l = here(), next = handOver(l, id)
   if (next === l) return
   put(next, l.active)
   const was = l.active, to = next.active, made = !l.tabs.some((t) => t.id === to)
-  // The fold turned round: its tab again, a blank tab made for it gone, if the list still shows the one it got.
   return () => {
     const now = here()
     if (now.active !== to || !now.tabs.some((t) => t.id === was)) return
@@ -146,8 +126,6 @@ export function handOverFrom(id: string): (() => void) | undefined {
     put({ ...now, active: was, tabs: blank ? now.tabs.filter((t) => t !== blank) : now.tabs }, to)
   }
 }
-/** `l` with the tab it shows moved off tab group `id`, which is folding: to the nearest not folded away, after the
- *  group, else before (Chrome's, never into another folded one); with none, a new tab. */
 function handOver(l: TabList, id: string): TabList {
   if (l.tabs.find((t) => t.id === l.active)?.group !== id) return l
   const folded = { ...l, groups: l.groups?.map((s) => (s.id === id ? { ...s, collapsed: true } : s)) }
@@ -156,21 +134,17 @@ function handOver(l: TabList, id: string): TabList {
   const blank = tabOf("new")
   return { ...l, tabs: [...l.tabs, blank], active: blank.id }
 }
-/** The list changed (it showed `was`): the address follows what it shows. */
 function put(l: TabList, was: string) {
   set(l)
   if (l.active !== was) showActive()
 }
 
-/** Ungroup: the group goes, its tabs stay where they are. */
 export function ungroup(id: string) {
   const l = here()
   if (groupById(id)) set({ ...l, groups: l.groups!.filter((g) => g.id !== id) })
 }
-/** Close a tab group's tabs (each reopens with ⌘⇧T; the group goes with its last tab). */
 export const closeGroup = (id: string) => { if (groupById(id)) closeTabIds(tabsIn(id).map((t) => t.id)) }
 
-/** A new tab at the end of a tab group, shown (the blank tab there is moves there if there is one). */
 export function newTabInGroup(id: string) {
   if (!groupById(id)) return
   const blank = here().tabs.find(isBlankTab) ?? tabOf("new")
@@ -178,26 +152,20 @@ export function newTabInGroup(id: string) {
   show("new", true)
 }
 
-/** Would moving a whole tab group to index `at` of the list change anything? Not onto its own place. */
 export function canMoveGroup(id: string, at: number) {
   const r = runOf(here(), id)
   return r.n > 0 && (at < r.at || at > r.at + r.n)
 }
-/** Move a whole tab group (dragged by its name) to before the `at`th tab, never inside another group (before it). */
 export function moveGroupTo(id: string, at: number) {
   if (!canMoveGroup(id, at)) return
   const l = here(), tabs = tabsIn(id), before = l.tabs.slice(0, at).filter((t) => t.group === id).length
   set(gather(tabs, (rest) => outsideGroups(rest, Math.min(at - before, rest.length)), id))
 }
 
-// ---------- what agents ask (vau tabs: plugins/core/tabs/plugin.ts) ----------
-
-// (a split's pane's own tabs follow it, each `behind` the pane it's stacked in)
 const paneLine = (p: Pane, t: Tab, behind?: string) => ({ id: p.id, to: p.to, ...(vaultPath(p.to) ? { path: vaultPath(p.to)! } : {}), ...(behind ? { behind } : {}),
   ...(p.id === t.focus ? { focused: true } : {}), ...(p.float ? { floating: true } : {}), ...(t.zoom === p.id ? { zoomed: true } : {}) })
 const tabLine = (t: Tab, l: TabList) => ({ id: t.id, ...(t.id === l.active ? { active: true } : {}), ...(t.pinned ? { pinned: true } : {}), ...(t.name ? { name: t.name } : {}),
   ...(t.group ? { group: t.group } : {}), panes: panesOf(t).flatMap((p) => [paneLine(p, t), ...(p.stack ?? []).map((x) => paneLine(x, t, p.id))]) })
-/** This window's tabs, each with its panes, and its tab groups; the main window's report has its pop-outs' too. */
 export function tabsReport() {
   const l = here(), w = getWorkspace()
   return {
@@ -206,8 +174,6 @@ export function tabsReport() {
     ...(popoutId() ? { window: popoutId() } : w.windows?.length ? { windows: w.windows.map((x) => ({ id: x.id, tabs: x.tabs.map((t) => tabLine(t, x)) })) } : {}),
   }
 }
-/** What an agent names (a tab's or pane's id, what a pane shows: "file:Notes/a.md", "view:terminal/x", or a file's path
- *  or name): the tabs and panes it is. */
 function find(q: string): { tabs: Tab[]; panes: Pane[] } {
   const l = here(), t = tabById(q), p = paneById(q)
   if (t) return { tabs: [t], panes: [] }
@@ -218,7 +184,6 @@ function find(q: string): { tabs: Tab[]; panes: Pane[] } {
   if (!found.length) throw new Error(`no open tab or pane is ${q} (vau tabs lists them)`)
   return { tabs: [], panes: found }
 }
-/** The tabs an agent names (a pane names its tab). */
 function namedTabs(said: unknown): string[] {
   const out: string[] = []
   for (const q of Array.isArray(said) ? said.map(String) : []) {
@@ -227,7 +192,6 @@ function namedTabs(said: unknown): string[] {
   }
   return out
 }
-/** The one pane an agent names (a tab names its focused pane). */
 function namedPane(q: unknown, what = "pane"): Pane {
   if (typeof q !== "string" || !q) throw new Error(`say which ${what}`)
   const f = find(q)
@@ -235,17 +199,13 @@ function namedPane(q: unknown, what = "pane"): Pane {
   if (ps.length > 1) throw new Error(`${q} is open in ${ps.length} panes: name one by its id (vau tabs lists them)`)
   return ps[0]
 }
-/** What a pane's tab says it shows (a note's name, a page's title). Set by the app, which draws the tabs. */
 let paneLabel: (p: Pane) => string = (p) => p.to
 export const setPaneLabeler = (fn: (p: Pane) => string) => { paneLabel = fn }
 const THIS = /^(this|here|current|focused|active)( one| pane| panel| tab)?$|^the (current|focused|active)( one| pane| panel| tab)?$/i
 const host = (to: string) => { try { return to.startsWith("view:web/") ? new URL(to.slice(9).replace(/^@[a-z0-9]+\//, "")).host.replace(/^www\./, "") : "" } catch { return "" } }
-/** What a pane is called by: its places' targets, paths, names, tab labels and sites, in lower case. */
 const namesOf = (p: Pane) => placesOf(p).flatMap((x) => { const f = vaultPath(x.to); return [x.to, f, f?.split("/").pop()?.replace(/\.md$/, ""), paneLabel(x), host(x.to)] })
   .filter((n): n is string => !!n).map((n) => n.toLowerCase())
 const named = (p: Pane) => `${p.id} (${paneLabel(p)})`
-/** The pane the user names, to open something in it (vau open --in): its id, where it is in the tab on screen ("left",
- *  "the top right one"), "this" (the one focused), or what it shows (a file, a site, words of its tab's title). */
 export function paneNamed(said: string): Pane {
   const q = said.trim(), t = activeTab()
   if (!q) throw new Error("say which pane")
@@ -262,7 +222,7 @@ export function paneNamed(said: string): Pane {
     throw new Error(`${at.length} panes are at the ${where}: ${at.map(named).join(", ")}; name one (by its id, or more of where it is: ${more})`)
   }
   const w = q.toLowerCase().replace(/^(the\s+)?((one|pane|panel|tab|split)\s+)?(showing|with|that shows|that has|where|of|on)\s+/, "").replace(/^the\s+/, "").replace(/\.md$/, "").trim()
-  const i = q.toLowerCase().indexOf(w), as = i >= 0 && w ? q.slice(i, i + w.length) : q // (as said: its case)
+  const i = q.toLowerCase().indexOf(w), as = i >= 0 && w ? q.slice(i, i + w.length) : q
   for (const ps of [panesOf(t), here().tabs.filter((x) => x.id !== t.id).flatMap(panesOf)]) {
     const exact = ps.filter((p) => namesOf(p).includes(w))
     const word = new RegExp(`(^|[^a-z0-9])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`)
@@ -350,7 +310,6 @@ answerUi("tabs", (m) => {
     return { tab: here().active, pane: activePane().id }
   }
   if (m.do === "close") {
-    // (another device closing this one's tabs: named as its list has them, a terminal with or without its machine)
     const bare = (to: string) => (to.startsWith("view:terminal/") ? to.replace(/@[a-z0-9-]+$/, "") : to)
     const want = Array.isArray(m.tabs) ? new Set(m.tabs.map((t) => bare(String(t)))) : null
     const ps = here().tabs.flatMap(placesIn).filter((p) => p.to !== "new" && (!want || want.has(bare(p.to))))

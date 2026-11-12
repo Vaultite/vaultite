@@ -1,5 +1,3 @@
-// Appearance applied to the page: light or dark, colour scheme (themes/*.css or a vault theme), density, fonts and
-// snippets. The last ones applied are in localStorage so index.html applies them before this code loads.
 import { getPrefs, onPrefs, type Prefs } from "@/core/prefs"
 import { SCHEMES, schemeId } from "@/themes/schemes"
 import { signal } from "@/core/signal"
@@ -15,7 +13,6 @@ export { SNIPPETS as SNIPPETS_FOLDER, THEMES as THEMES_FOLDER }
 let vault: VaultAppearance = { themes: [], snippets: [] }
 const subs = signal()
 
-/** The vault's themes and snippets arrived (in /api/state). */
 export function setVaultAppearance(next: VaultAppearance | undefined) {
   if (!next || JSON.stringify(next) === JSON.stringify(vault)) return
   vault = next
@@ -39,13 +36,11 @@ export function onlyMode(scheme: string): "light" | "dark" | undefined {
 }
 
 const str = (v: unknown) => (typeof v === "string" ? v.trim() : "")
-/** A font setting as a font-family value: a bare name with spaces gets quotes ("Iowan Old Style"). */
 function family(v: unknown) {
   const s = str(v).replace(/[;{}]/g, "")
   return s && !/[,'"]/.test(s) && /\s/.test(s) ? `"${s}"` : s
 }
 
-/** A <link> per stylesheet, kept in order at the end of <head> (after the app's CSS, so they win). */
 function syncLinks(kind: string, wanted: { key: string; href: string }[]) {
   const head = document.head
   const have = new Map([...head.querySelectorAll<HTMLLinkElement>(`link[data-vau="${kind}"]`)].map((l) => [l.dataset.key!, l]))
@@ -57,18 +52,16 @@ function syncLinks(kind: string, wanted: { key: string; href: string }[]) {
       l.rel = "stylesheet"
       l.dataset.vau = kind
       l.dataset.key = w.key
-      l.addEventListener("load", lookChanged) // its colours are in only now
+      l.addEventListener("load", lookChanged)
     }
     if (l.getAttribute("href") !== w.href) l.setAttribute("href", w.href)
-    head.appendChild(l) // (re)appended: keeps the order
+    head.appendChild(l)
   }
   for (const l of have.values()) l.remove()
 }
 
-/** A font setting as the stack the app uses: the font, then the system's (a monospace one for code). */
 export const fontStack = (v: unknown, mono = false) => `${family(v)}, ${mono ? "ui-monospace, monospace" : "system-ui, sans-serif"}`
 
-/** The app's own fonts, when a setting is empty (index.css: --font-sans in @theme, --font-code in :root). */
 export const DEFAULT_FONTS = {
   ui: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif, 'Noto Color Emoji'",
   code: "ui-monospace, 'SF Mono', Menlo, 'DejaVu Sans Mono', 'Noto Sans Mono', 'Liberation Mono', 'Ubuntu Mono', monospace",
@@ -76,12 +69,9 @@ export const DEFAULT_FONTS = {
 
 const system = matchMedia("(prefers-color-scheme: dark)")
 const LOOK = "vaultite.look"
-// What <html>'s style says about where things sit, not how they look (the visual viewport's, written as it moves).
 const ROOM = new Set(["--vvh", "--vvtop", "--tab-aspect", "--mto", "--mfrom", "--scrollbar-room", "--window-controls", "--mini-player",
   "--corner-cards", "--trial-bar"])
 
-// What follows the look outside CSS (a terminal's palette, a canvas, a frame): told once it's in place, including
-// after a theme's or snippet's stylesheet has loaded, which a watch on <html>'s attributes misses.
 const looks = new Set<() => void>()
 let looking = false
 function lookChanged() {
@@ -96,18 +86,14 @@ export function onLook(fn: () => void): () => void {
   return () => { looks.delete(fn) }
 }
 
-/** What a picker can show for now: the theme, a colour scheme, density, a font, how see-through glass is. */
 export type LookPreview = Partial<Pick<Prefs, "theme" | "scheme" | "density" | "interfaceFont" | "textFont" | "monoFont" | "translucency" | "pageTranslucency">>
-// Shown for now (the palette's pickers, as the selection moves), saved nowhere.
 let previewing: LookPreview | null = null
-/** Shows those settings on the whole app without saving them; null goes back to the saved ones. */
 export function previewLook(look: LookPreview | null) {
   if (JSON.stringify(previewing) === JSON.stringify(look)) return
   previewing = look
   apply()
 }
 
-/** A transparency setting (0 to 100) as index.css's level (0 to 2); "" at the default, 50. */
 const glassLevel = (v: unknown) => {
   const n = typeof v === "number" && Number.isFinite(v) ? Math.min(100, Math.max(0, v)) : 50
   return n === 50 ? "" : String(n / 50)
@@ -125,14 +111,10 @@ function apply() {
   if (p.density === "comfortable") root.dataset.density = "comfortable"
   else delete root.dataset.density
   root.dataset.animation = p.animation === "snappy" || p.animation === "off" ? p.animation : "natural"
-  // What index.html puts in place before the app's code has loaded (no flash of the other theme): "system" when it
-  // follows the system's, which the page checks itself.
   askTranslucent(p.translucent)
-  // (only read under data-translucent: pages show the desktop only while the chrome does)
   root.toggleAttribute("data-translucent-pages", p.translucent && p.translucentPages)
   root.toggleAttribute("data-dim-panes", p.dimPanes)
   root.toggleAttribute("data-pane-cards", p.paneCards)
-  // How much glass lets through (index.css: --glass-level scales the tints, 1 the scheme's own at 50).
   const glass = glassLevel(p.translucency), pageGlass = glassLevel(p.pageTranslucency)
   const look = { dark: only || p.theme !== "system" ? dark : "system", scheme: root.dataset.scheme ?? "", density: root.dataset.density ?? "",
     ...(translucency.on ? { translucent: true, ...(p.translucentPages ? { pages: true } : {}), ...(glass ? { glass } : {}), ...(pageGlass ? { pageGlass } : {}) } : {}) }
@@ -146,12 +128,11 @@ function apply() {
     if (family(v)) root.style.setProperty(k, fontStack(v, k === "--font-code"))
     else root.style.removeProperty(k)
   }
-  // Every vault theme's stylesheet (the gallery's tiles draw them), then the snippets that are on.
   const on = new Set(Array.isArray(p.snippets) ? p.snippets : [])
   const themes = vault.themes.filter((t) => !t.problem).map((t) => ({ key: t.name, href: `api/themes/${encodeURIComponent(t.name)}.css?v=${t.mtime}` }))
   const snippets = vault.snippets.filter((s) => on.has(s.name)).map((s) => ({ key: s.name, href: `api/snippets/${encodeURIComponent(s.name)}.css?v=${s.mtime}` }))
   const sig = JSON.stringify([themes, snippets])
-  if (sig !== linked) { // only when they change: moving a <link> re-applies its sheet
+  if (sig !== linked) { // moving a <link> re-applies its sheet
     linked = sig
     syncLinks("theme", themes)
     syncLinks("snippet", snippets)
@@ -161,12 +142,7 @@ function apply() {
 }
 let linked = "", applied = ""
 
-
-// ---------- translucent (appearance `translucent`): the window's chrome over the system's blur, in the desktop app
-
 declare const __DEMO_OFFICIAL__: unknown
-/** The web demo (vite.demo.config.ts) has no desktop under its window, so it stands in for one (web/demo/boot.ts and
- *  index.css's data-demo-desk): a glass bundle there looks as it does in the app. */
 const demoGlass: DesktopApi["translucent"] = typeof __DEMO_OFFICIAL__ === "undefined" ? undefined : { set: async (on) => ({ on }), on: () => {} }
 const native = (window as { vaultite?: DesktopApi }).vaultite?.translucent ?? demoGlass
 const reduced = matchMedia("(prefers-reduced-transparency: reduce)")
@@ -181,7 +157,6 @@ function setTranslucency(t: Translucency) {
   apply()
   translucencyChanged.notify()
 }
-/** The window asked to be translucent, or not. Solid at once, see-through only once its blur is there. */
 function askTranslucent(want: boolean) {
   const ask = want && !!native && !reduced.matches
   if (ask === asked) return
@@ -191,13 +166,10 @@ function askTranslucent(want: boolean) {
 }
 native?.on((t) => { if (asked) setTranslucency(t) })
 reduced.addEventListener("change", () => askTranslucent(getPrefs().translucent))
-/** Whether this window may be (the desktop app on a Mac or Windows), is now, and why not while it's asked for. */
 export const canTranslucent = !!native
 export const getTranslucency = () => translucency
 export const onTranslucency = (fn: () => void) => translucencyChanged.subscribe(fn)
 
-// Light or dark and the scheme on <html>, however they got there; only a real change (apply rewrites the same values on
-// every prefs change), its style past ROOM: each look change re-themes every terminal, frame and diagram.
 const scratch = document.createElement("div").style
 const styleLooksChanged = (was: string) => {
   scratch.cssText = was
@@ -209,13 +181,12 @@ new MutationObserver((records) => {
   const root = document.documentElement, seen = new Set<string>()
   for (const r of records) {
     const name = r.attributeName!
-    if (seen.has(name)) continue // (the first record has the value from before them all)
+    if (seen.has(name)) continue // the first record has the value from before them all
     seen.add(name)
     if (name === "style" ? styleLooksChanged(r.oldValue ?? "") : r.oldValue !== root.getAttribute(name)) { lookChanged(); return }
   }
 }).observe(document.documentElement, { attributes: true, attributeOldValue: true, attributeFilter: ["class", "data-scheme", "data-density", "style"] })
 
-// The browser's own bars (Safari's, an installed web app's title bar) in the page's colour, whichever mode the system is in.
 onLook(() => {
   const bg = getComputedStyle(document.documentElement).getPropertyValue("--background").trim()
   if (bg) for (const m of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) m.content = bg

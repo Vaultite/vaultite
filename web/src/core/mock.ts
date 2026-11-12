@@ -1,5 +1,3 @@
-// Made-up data for plugin previews: each plugin makes its own store keys (`mock`, `mockLive` for live data), so every
-// page renders its real layout with fictional people, notes and logs.
 import type { Store } from "@/core/data"
 import { PLUGINS } from "@/core/plugins"
 

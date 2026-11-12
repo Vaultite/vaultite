@@ -1,5 +1,3 @@
-// Where new files go and how links are written: new notes at the top, [[wikilinks]], unless a plugin that's on answers
-// otherwise (`conventions`: a vault's .obsidian/app.json; first answer wins); pasted files where the settings say.
 import type { Conventions } from "@/core/define"
 import { mutate, type Store } from "@/core/data"
 import { op, post, upload } from "@/core/http"
@@ -15,7 +13,6 @@ import { isPage } from "@/core/pages"
 
 type Answer<K extends keyof Conventions> = ReturnType<NonNullable<Conventions[K]>>
 
-/** The first answer of the plugins that are on, or undefined. */
 function ask<K extends keyof Conventions>(key: K, ...args: Parameters<NonNullable<Conventions[K]>>): Answer<K> | undefined {
   const { disabled } = getPrefs()
   for (const p of PLUGINS) {
@@ -33,8 +30,6 @@ export function newNoteFolder(s: Store | null | undefined, from = ""): string {
   return (s ? ask("newNoteFolder", s, unarchived(from)) : undefined) ?? ""
 }
 
-/** The note a [[link]] to nothing names, made by the first plugin that's on and takes it (a daily note's date): its
- *  path, or null when none does (the caller makes a plain note). */
 export async function linkedNote(s: Store, name: string, from = ""): Promise<string | null> {
   const { disabled } = getPrefs()
   for (const p of PLUGINS) {
@@ -53,10 +48,8 @@ export function besideActive<T>(fallback: T, skip?: (path: string) => boolean): 
   return open && !isHidden(open) && !isPage(open) && !skip?.(open) ? folderOf(unarchived(open)) : fallback
 }
 
-/** The editor's settings the vault sets itself (another app's), under .vaultite/editor.json's. */
 export const vaultEditor = (s: Store | null | undefined) => (s ? ask("editor", s) : undefined) ?? {}
 
-/** Links are written [name](path.md), not [[name]]: only when the vault says so. */
 export const markdownLinks = (s: Store | null | undefined) => (s ? ask("markdownLinks", s) : undefined) === true
 
 /** The folder a file pasted into the note `from` goes in: the File explorer's attachment folder (another app's when
@@ -68,12 +61,12 @@ export function attachmentFolder(s: Store | null | undefined, from: string): str
 /** Save pasted or dropped files as `from`'s attachments (or in `folder`), answering their paths: "Pasted image <time>"
  *  when nameless, as Obsidian names them. Each is in the store once saved, not once the server's file watcher sees it. */
 export async function saveAttachments(s: Store, from: string, files: File[], folder = attachmentFolder(s, from)): Promise<string[]> {
-  if (folder && !s.files.folders.includes(folder)) await post("folder", { path: folder }).catch(() => {}) // (there already: fine)
+  if (folder && !s.files.folders.includes(folder)) await post("folder", { path: folder }).catch(() => {})
   const out: string[] = []
   const d = new Date(), p2 = (n: number) => String(n).padStart(2, "0")
   const when = `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`
   for (const f of files) {
-    // (a browser's generic "image.png", the iPhone camera's "image.jpg": nameless, as in Obsidian)
+    // A browser's generic "image.png", the iPhone camera's "image.jpg": nameless, as in Obsidian.
     const nameless = !f.name || /^image\.\w+$/i.test(f.name)
     const ext = (/\.(\w+)$/.exec(f.name)?.[1] ?? /\/(png|jpe?g|gif|webp|svg|heic|heif|avif)/.exec(f.type)?.[1] ?? "png").toLowerCase().replace("jpeg", "jpg")
     const name = nameless ? `Pasted image ${when}.${ext}` : f.name
@@ -95,21 +88,16 @@ export async function pasteAttachments(s: Store, from: string, files: File[]): P
   return paths.map((path) => embedOf(s, path)).join("\n")
 }
 
-/** What to type to embed the vault file `path`. */
 const embedOf = (s: Store, path: string) => markdownLinks(s)
   ? `![](${path.replace(/%/g, "%25").replace(/ /g, "%20").replace(/\(/g, "%28").replace(/\)/g, "%29")})`
   : `![[${path.split("/").pop()!}]]`
 
-/** Save what was dropped on `from` as its attachments, as pasted files are, and answer what to type, one per line:
- *  files and images embedded (one the server can't download: from the web), links as they are. */
 export async function attachDropped(s: Store, from: string, d: Dropped): Promise<string> {
   const lines = d.files.length ? [await pasteAttachments(s, from, d.files)] : []
   for (const url of d.images) lines.push(await imageFrom(s, from, url))
   return [...lines, ...d.links].join("\n")
 }
 
-/** An image by its address saved as an attachment of `from`: one in the page (data:) as it is, one on the web
- *  downloaded by the server (file.upload: public addresses only). */
 async function imageFrom(s: Store, from: string, url: string): Promise<string> {
   if (/^data:/i.test(url)) {
     const blob = await (await fetch(url)).blob()

@@ -1,5 +1,3 @@
-// Toasts: one line that goes away by itself, one action at most. The one toast system
-// (sonner), in the plugin API; agents reach it with `vau notify`.
 import { toast } from "sonner"
 import { plainError, plainText, sentence } from "../../../core/plainerror.ts"
 import { announce } from "@/core/announce"
@@ -17,11 +15,10 @@ export type NotifyOptions = {
   id?: string
 }
 
-/** Past this a toast's text is cut: the CSS shows 3 lines (4 on phones), and a whole log in the DOM helps no one. */
 const MAX = 400
 const short = (text: string) => text.length > MAX ? `${text.slice(0, MAX - 1).trimEnd()}…` : text
 
-/** What takes the keyboard to the newest toast's button (sonner's own key, components/Toast.tsx). */
+// sonner's own key to the newest toast's button.
 export const TOAST_KEYS = "Alt+T"
 
 /** The toasts shown lately, newest last: what an agent asks after its command (`vau command`), and the companion when
@@ -32,10 +29,9 @@ const KEPT_MS = 120_000
 /** Toasts shown since `t` (ms), newest last. */
 export const noticesSince = (t: number) => shown.filter((n) => n.at >= t)
 
-// What's told before the toaster is drawn (a socket's hello as the app starts) waits for it: sonner would drop it.
+// What's told before the toaster is drawn waits for it: sonner would drop it.
 let drawn = false
 const early: (() => void)[] = []
-/** The toaster is drawn (components/Toast.tsx): what waited shows now. */
 export function toasterDrawn() {
   drawn = true
   for (const show of early.splice(0)) show()
@@ -57,7 +53,6 @@ export function notify(text: string, opts: NotifyOptions = {}) {
       },
     },
   }
-  // (read from the app's own live region, sonner's silenced: an error interrupts, and its button's key is said)
   announce(action ? `${short(text)}. ${action.label}: ${keyHint(TOAST_KEYS)}` : short(text), { assertive: kind === "error" })
   const show = () => kind === "error" ? toast.error(short(text), data) : toast(short(text), data)
   if (drawn) return show()
@@ -69,8 +64,6 @@ export function notify(text: string, opts: NotifyOptions = {}) {
 /** Close a toast before its time. */
 export const dismissNotice = (id: string | number) => { toast.dismiss(id) }
 
-/** An error the user is told of: its reason in plain words, or none (a bug): then it's kept in Errors (the server keeps
- *  its own, a 5xx) and that's the toast's Details. */
 function said(e: unknown) {
   const p = plainError(e)
   const status = Number((e as { status?: unknown })?.status) || 0
@@ -87,7 +80,6 @@ export function notifyError(e: unknown, what?: string, opts: Pick<NotifyOptions,
   return notify(text, { ...opts, kind: "error", action })
 }
 
-/** Just the reason, to follow "Couldn't …: ", or null for a bug (kept in Errors). */
 export const errorReason = (e: unknown) => said(e).reason
 
 /** An error as a line of a page or a form (plainText), a bug kept in Errors. */

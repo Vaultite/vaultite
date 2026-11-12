@@ -1,33 +1,24 @@
-// The companion's soft cues (screen.tsx plays them; the setting `sounds`): listen two notes rising, sent a falling glide,
-// answer a soft bell, missed (a press that went nowhere) two low notes falling, knock (a session asking) two soft taps.
-
 export type Cue = "listen" | "sent" | "answer" | "missed" | "knock"
-/** What a cue needs of an audio context (a real one plays it; tools/test_web.ts stands one in). */
 type Param = { setValueAtTime: (v: number, t: number) => unknown; linearRampToValueAtTime: (v: number, t: number) => unknown; exponentialRampToValueAtTime: (v: number, t: number) => unknown }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- a real AudioNode's connect overloads fit no narrower type
 type Node = { connect: (n: any) => unknown }
 export type CueContext = {
   currentTime: number; destination: unknown
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- a real OscillatorNode and the test's stand-in both fit
   createOscillator: () => Node & { type: any; frequency: Param; start: (t: number) => void; stop: (t: number) => void }
   createGain: () => Node & { gain: Param }
 }
 
-/** How loud a cue's notes peak (of full scale): soft, under what's playing. */
 export const CUE_PEAK = 0.06
-/** Each cue's notes: when (s), how long, from and to which pitch (Hz), how loud of the peak, its wave. */
 const NOTES: Record<Cue, { at: number; dur: number; from: number; to?: number; level: number; wave?: string }[]> = {
   listen: [{ at: 0, dur: 0.07, from: 659, level: 0.8 }, { at: 0.075, dur: 0.11, from: 880, level: 1 }],
   sent: [{ at: 0, dur: 0.13, from: 784, to: 523, level: 0.9 }],
   answer: [{ at: 0, dur: 0.32, from: 1047, level: 0.8 }, { at: 0, dur: 0.22, from: 2093, level: 0.25 }, { at: 0.06, dur: 0.3, from: 1319, level: 0.5 }],
   missed: [{ at: 0, dur: 0.1, from: 523, level: 0.7 }, { at: 0.11, dur: 0.16, from: 392, level: 0.6 }],
-  // (two soft taps, as on a door)
   knock: [{ at: 0, dur: 0.07, from: 740, to: 494, level: 0.7, wave: "triangle" }, { at: 0.14, dur: 0.07, from: 740, to: 494, level: 0.55, wave: "triangle" }],
 }
-/** How long cue `name` sounds (s). */
 export const cueLength = (name: Cue) => Math.max(...NOTES[name].map((n) => n.at + n.dur))
 
-/** Play cue `name` on `ctx` from `at` (s, its clock): each note a sine with a quick rise and a soft fall, never a click. */
 export function playCue(ctx: CueContext, name: Cue, at = ctx.currentTime) {
   for (const n of NOTES[name]) {
     const o = ctx.createOscillator(), g = ctx.createGain(), t = at + n.at, peak = CUE_PEAK * n.level

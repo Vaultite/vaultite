@@ -1,5 +1,3 @@
-// This device, as the server knows it: an id kept in this browser (each browser, and each address of the server, is a
-// device of its own, as its tabs are). A browser driven by automation (QA, an agent's) is none: it isn't the user's.
 export const DEVICE: string = (() => {
   if (typeof navigator !== "undefined" && navigator.webdriver) return ""
   const key = "vaultite.device"

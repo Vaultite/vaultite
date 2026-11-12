@@ -1,5 +1,4 @@
-// The Agents panel's order (core/agentruns.tsx) and what folds away there and in Terminals: pure, so
-// tools/test_web.ts checks it.
+// Pure: tools/test_web.ts checks it in Node.
 import type { AgentRun } from "@/core/define"
 
 const RANK: Record<AgentRun["state"], number> = { needs: 0, working: 1, done: 2 }

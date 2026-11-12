@@ -1,5 +1,3 @@
-// Phones: tabs and Back move like a browser's (a page shrinks into its card, Back slides away). Back with the View
-// Transitions API and index.css's `html[data-motion]` rules: without it (iOS < 18), with Reduce motion or animations off, instant.
 import { flushSync } from "react-dom"
 import { relockScroll } from "@/core/pagelock"
 import { moves as zooms, still } from "@/core/animation"
@@ -7,25 +5,20 @@ import { cell } from "@/core/signal"
 
 type Kind = "back" | "forward"
 
-/** Whether changes animate: the API is there, and nothing asks for stillness. */
 const moves = () => typeof document !== "undefined" && typeof document.startViewTransition === "function" && !still()
 
 const VARS = ["--mto", "--mfrom"]
 let running: ViewTransition | null = null
 
 const tick = (ms = 0) => new Promise<void>((r) => setTimeout(r, ms))
-/** Let the change draw: React's render, then what loads right after (a file's text, marked aria-busy while it comes),
- *  for at most `cap` ms (the screen holds its last picture meanwhile, so not long). */
 async function settle(cap = 220) {
   await tick()
   const end = performance.now() + cap
   while (performance.now() < end && document.querySelector("main [aria-busy=true]")) await tick(16)
 }
 
-/** Run `change` as a transition of `kind`; `before` sets what's known from the screen as it is. */
 function run(kind: Kind, change: () => void | Promise<void>, before?: () => void) {
   if (!moves()) { void change(); return }
-  // One at a time: a tap during one jumps it to its end.
   running?.skipTransition()
   const root = document.documentElement
   before?.()
@@ -43,12 +36,9 @@ function run(kind: Kind, change: () => void | Promise<void>, before?: () => void
   })
 }
 
-/** A spring like SwiftUI's: period `response` (s), `damping` 1 stops dead, `v` its start speed (distances/s: a flick's).
- *  `at(t)`: how far along t s in; `ms`: when it's within 0.2% of its place; `easing`: as a CSS `linear()`. */
 export type Spring = { at: (t: number) => number; ms: number; easing: string }
 export function spring(response = 0.3, damping = 1, v = 0): Spring {
   const w = (2 * Math.PI) / response, z = damping
-  // How far it still has to go at t (1 at the start).
   let left: (t: number) => number
   if (z < 1) {
     const wd = w * Math.sqrt(1 - z * z), b = (z * w - v) / wd
@@ -62,24 +52,21 @@ export function spring(response = 0.3, damping = 1, v = 0): Spring {
   return { at, ms, easing }
 }
 
-// The page shrinks into its card (a copy of it, the hero), the cards around fade in. Only transforms and opacity move
-// (iOS runs them off the main thread), and only the hero is scaled up: iOS drops the tiles of a big scaled-up layer.
+// Only transforms and opacity move, as iOS runs those off the main thread. Only the hero scales up, as iOS drops the
+// tiles of a big scaled-up layer.
 const ZOOM = spring(0.3, 1)
 let zooming: Animation[] = []
 let landed: (() => void) | null = null
-/** Styles a zoom set for its length, put back at its end. */
 let undo: (() => void)[] = []
 function hold(el: HTMLElement, prop: "opacity" | "visibility" | "pointerEvents" | "background" | "minHeight", v: string) {
   const was = el.style[prop]
   el.style[prop] = v
   undo.push(() => { el.style[prop] = was })
 }
-/** This zoom's end, `done` (its animations go then); whether it's still this one's. */
 function landing(done: () => void) {
   landed = done
   return () => landed === done
 }
-/** A zoom still going jumps to its end (a tap during one). */
 function finish() {
   const done = landed
   landed = null
@@ -92,30 +79,23 @@ function finish() {
   undo = []
 }
 
-// The tab list's sheet kept on screen after the address has left it, while a page grows out of it (App reads it).
 const lingering = cell<string | null>(null)
 const linger = lingering.set
 export const useLingeringSheet = lingering.use
 
-/** A page a finger has carried up (core/pageLift.ts) is a card with these corners (px, unscaled). */
 export const LIFT_RADIUS = 28
 
-/** Where the page shows (what a card's picture is of): between the header and the bar. Its layout sizes, so a page a
- *  finger has shrunk still says where it is unshrunk. */
 export function pageRect() {
   const top = document.querySelector<HTMLElement>("[data-phone-header]")?.offsetHeight ?? 0
   const bar = document.querySelector<HTMLElement>("[data-phone-bar]")
   const bottom = bar ? innerHeight - bar.offsetHeight : innerHeight
   return new DOMRect(0, top, innerWidth, Math.max(1, bottom - top))
 }
-/** Cards are the page's shape: their pictures line up with it when zoomed to it. */
 function pageShape() {
   const r = pageRect()
   document.documentElement.style.setProperty("--tab-aspect", `${r.width} / ${r.height}`)
 }
 
-/** The parts of a zoom: the card (a tab's, or its picture in a group's) and its picture box (`shot`), the sheet and its
- *  scroller, the cards' grid, the list's top lines and the sheet's bars. */
 type Parts = { sheet: HTMLElement; scroller: HTMLElement; card: HTMLElement; shot: HTMLElement; grid: HTMLElement | null; heads: HTMLElement[]; chrome: HTMLElement[] }
 function partsFor(sheet: ParentNode, id: string, block: ScrollLogicalPosition): Parts | null {
   const k = CSS.escape(id)
@@ -132,11 +112,9 @@ function partsFor(sheet: ParentNode, id: string, block: ScrollLogicalPosition): 
   }
 }
 
-/** The hero: a copy of the card in the list's scroller, so it scrolls and clips with the list. Its picture box (`win`) is
- *  stretched to the page by its transform; the picture (`inner`) and the name (`face`) are unstretched by theirs. */
 type Hero = { el: HTMLElement; win: HTMLElement; inner: HTMLElement; face: HTMLElement[]; ground: HTMLElement | null; S: DOMRect; r: number; gr: number; drawn: boolean }
 function heroOf(p: Parts): Hero {
-  // All read before anything is written: a read after a write lays the whole list out again, on the tap's time.
+  // All read before anything is written: a read after a write lays the whole list out again.
   const c = p.card.getBoundingClientRect(), S = p.shot.getBoundingClientRect(), sc = p.scroller.getBoundingClientRect()
   const left = c.left - sc.left + p.scroller.scrollLeft, top = c.top - sc.top + p.scroller.scrollTop
   const tops = [...p.card.children].map((k) => k.getBoundingClientRect().top)
@@ -145,7 +123,6 @@ function heroOf(p: Parts): Hero {
   const el = p.card.cloneNode(true) as HTMLElement
   const win = p.card === p.shot ? el : el.querySelector<HTMLElement>("[data-tab-shot]")!
   const ground = el.querySelector<HTMLElement>("[data-card-ground]")
-  // Each part of the name kept on the picture's top edge as it's unstretched.
   const face: HTMLElement[] = []
   if (win !== el) [...el.children].forEach((x, i) => {
     if (!(x instanceof HTMLElement) || x === win || x === ground) return
@@ -163,7 +140,7 @@ function heroOf(p: Parts): Hero {
   win.append(inner)
   Object.assign(el.style, {
     position: "absolute", left: `${left}px`, top: `${top}px`,
-    // (no aspect-ratio: WebKit would widen it to its content's width)
+    // No aspect-ratio: WebKit would widen it to its content's width.
     width: `${c.width}px`, height: `${c.height}px`, aspectRatio: "auto", minWidth: "0", margin: "0", zIndex: "30", pointerEvents: "none", transition: "none", scale: "none", opacity: "1",
     transformOrigin: `${S.left - c.left}px ${S.top - c.top}px`,
   })
@@ -172,7 +149,6 @@ function heroOf(p: Parts): Hero {
   return { el, win, inner, face, ground, S, r, gr, drawn }
 }
 
-/** A copy of a card made inert and unmarked: nothing in it is found, focused or read out as the card. */
 export function unmark(copy: HTMLElement) {
   copy.inert = true
   for (const x of [copy, ...copy.querySelectorAll("[data-tab-card], [data-tab-shot], [data-tab-pic], [data-tab-picture], [data-tab-mini], [data-card-ground], [id]")])
@@ -181,8 +157,6 @@ export function unmark(copy: HTMLElement) {
 
 const go = (el: Element, keys: Keyframe[], o: KeyframeAnimationOptions) => { const a = el.animate(keys, o); zooming.push(a); return a }
 const lerp = (a: number, b: number, p: number) => a + (b - a) * p
-/** The hero's moves over a zoom: its picture box from over `A` (corners `ra`: tl, tr, br, bl) to over `B` (`rb`).
- *  Keyframes at the spring's points, so the parts' transforms (each its own) stay in step. */
 function flyHero(h: Hero, A: DOMRect, B: DOMRect, ra: number[], rb: number[]) {
   const S = h.S, n = 40
   const keys = { el: [] as Keyframe[], fix: [] as Keyframe[], win: [] as Keyframe[], ground: [] as Keyframe[] }
@@ -199,26 +173,22 @@ function flyHero(h: Hero, A: DOMRect, B: DOMRect, ra: number[], rb: number[]) {
   go(h.el, keys.el, o)
   go(h.inner, keys.fix, o)
   for (const f of h.face) go(f, keys.fix, o)
-  // (corners: not something iOS moves off the main thread, so apart from the transforms, which stay right without them)
+  // Corners apart: iOS can't move them off the main thread, and the transforms stay right without them.
   go(h.win, keys.win, o)
   if (h.ground) go(h.ground, keys.ground, o)
 }
-/** Faded plainly from `a` to `b` between `from` and `to` ms into the zoom (a spring's overshoot would flash it). */
 function fade(els: Element[], a: Keyframe, b: Keyframe, from: number, to: number) {
   for (const el of els) go(el, [a, b], { delay: Math.max(0, from), duration: Math.max(1, to - Math.max(0, from)), easing: "linear", fill: "both" })
 }
-/** `el` moved along the zoom's spring: `frame(p)` as it goes from 0 to 1, at its points, linear between (what iOS can run
- *  off the main thread, as it can't a `linear()` easing). */
+// Linear between the spring's points: iOS can't run a `linear()` easing off the main thread.
 function sprung(el: Element, frame: (p: number) => Keyframe, n = 30) {
   go(el, Array.from({ length: n + 1 }, (_, i) => ({ ...frame(i === n ? 1 : ZOOM.at((ZOOM.ms * i) / n / 1000)), offset: i / n })), { duration: ZOOM.ms, easing: "linear", fill: "both" })
 }
-/** Scaled from `a` to `b` about the screen's point `mid` (`el` is at `r`), on the zoom's spring. */
 function scaled(el: HTMLElement, r: DOMRect, mid: { x: number; y: number }, a: number, b: number) {
   const transformOrigin = `${mid.x - r.left}px ${mid.y - r.top}px`
   sprung(el, (p) => ({ transformOrigin, transform: `scale(${lerp(a, b, p)})` }))
 }
-/** The sheet's ground (its colour, `bg`) as a layer of its own, so it fades by opacity (the sheet's own colour can't
- *  move off the main thread): the sheet clear meanwhile. */
+// A layer of its own, so it fades by opacity: a background colour can't move off the main thread.
 function groundOf(sheet: HTMLElement, bg: string) {
   const g = document.createElement("div")
   Object.assign(g.style, { position: "absolute", inset: "0", pointerEvents: "none", background: bg })
@@ -228,8 +198,6 @@ function groundOf(sheet: HTMLElement, bg: string) {
   return g
 }
 
-/** The sheet in the list once it's drawn (DetailSheet opens it in an effect): checked again each frame, before it's
- *  painted, for a few. */
 function whenOpen(id: string, then: (p: Parts | null) => void, tries = 6) {
   const d = document.querySelector("dialog[open]")
   const p = d && partsFor(d, id, "center")
@@ -238,9 +206,7 @@ function whenOpen(id: string, then: (p: Parts | null) => void, tries = 6) {
 }
 const finished = () => Promise.all(zooming.map((a) => a.finished)).then(() => {}, () => {})
 
-/** The tab list opening, while it does: what a tap on Done or a card turns around from. */
 let opening: { id: string; h: Hero; ground: HTMLElement; p: Parts } | null = null
-/** Where an opening is, caught midway: its picture's box and corners, the list's scale, how far each part has faded in. */
 type Caught = { id: string; win: DOMRect; r: number; face: number; card: number; sheet: number; grid: number; heads: number; chrome: number }
 function caught(): Caught | null {
   const o = opening
@@ -251,8 +217,6 @@ function caught(): Caught | null {
   return { id: o.id, win, r: o.h.r * k, face: at(o.h.face[0]), card: at(o.h.ground), sheet: at(o.ground), grid: at(o.p.grid), heads: at(o.p.heads[0]), chrome: at(o.p.chrome[0]) }
 }
 
-/** Open the tab list: the page shrinks into its card. `page`: where a finger has carried the page (pageLift.ts),
- *  `reset` puts it back, once the list covers it. */
 export function zoomOut(open: () => void, current: () => string, page?: DOMRect, reset?: () => void) {
   finish()
   pageShape()
@@ -266,13 +230,10 @@ export function zoomOut(open: () => void, current: () => string, page?: DOMRect,
     document.documentElement.dataset.tabZoom = ""
     opening = { id: current(), h, ground, p }
     hold(p.card, "visibility", "hidden")
-    // The hero is the page now: the page itself would show through the list as it fades in, twice over.
     const main = document.querySelector<HTMLElement>("#main-scroll > main")
     if (main) hold(main, "visibility", "hidden")
-    // (its tap target stays: a tap where it's landing takes the page back)
     const tap = p.card.querySelector<HTMLElement>(":scope > button")
     if (tap) hold(tap, "visibility", "visible")
-    // A page a finger has shrunk has its bottom corners rounded (pageLift.ts).
     const lr = page ? LIFT_RADIUS * (page.width / P.width) : 0
     flyHero(h, page ?? P, h.S, [0, 0, lr, lr], [h.r, h.r, h.r, h.r])
     fade([ground], { opacity: 0 }, { opacity: 1 }, 0, 0.3 * T)
@@ -282,15 +243,12 @@ export function zoomOut(open: () => void, current: () => string, page?: DOMRect,
     fade(h.face, { opacity: 0 }, { opacity: 1 }, 0.3 * T, 0.65 * T)
     if (h.ground) fade([h.ground], { opacity: 0 }, { opacity: 1 }, 0.25 * T, 0.6 * T)
     void finished().then(async () => {
-      // The card's own picture drawn before it takes the hero's place.
       await Promise.race([p.shot.querySelector("img")?.decode().catch(() => {}), tick(60)])
       if (mine()) finish()
     })
   })
 }
 
-/** Leave the tab list for tab `id` (`show` it): its card grows into the page at once, the page drawn under it as it
- *  lands (a slow one holds up nothing that moves). Tapped while the list opens, it turns around from where it got to. */
 export function zoomIn(id: string, show: () => void) {
   const c = caught()
   finish()
@@ -298,7 +256,6 @@ export function zoomIn(id: string, show: () => void) {
   const p = zooms() && d ? partsFor(d, id, "nearest") : null
   if (!p) { show(); return }
   const P = pageRect(), bg = getComputedStyle(p.sheet).backgroundColor, h = heroOf(p), T = ZOOM.ms, t0 = performance.now()
-  // (the page under the sheet, hidden till it's the one shown: a sheet caught opening is still see-through)
   const main = document.querySelector<HTMLElement>("#main-scroll > main"), seen = main?.style.visibility ?? ""
   if (main) main.style.visibility = "hidden"
   let shown = false
@@ -319,18 +276,13 @@ export function zoomIn(id: string, show: () => void) {
   if (p.grid) fade([p.grid], { opacity: c?.grid ?? 1 }, { opacity: 0 }, 0, 0.3 * T)
   fade(p.heads, { opacity: c?.heads ?? 1 }, { opacity: 0 }, 0, 0.25 * T)
   const ground = groundOf(p.sheet, bg)
-  // (an opening caught midway: the sheet's bars and ground stay as faded in as they'd got, till they go)
   if (c) { hold(ground, "opacity", String(c.sheet)); for (const el of p.chrome) hold(el, "opacity", String(c.chrome)) }
-  // Within a few px of the page by then: were the main thread to stall drawing it, nothing visible would stop.
   setTimeout(() => {
     if (!mine()) return
     showNow()
-    // The sheet's bars and ground go once the page is there to show, by the time the card lands.
     const left = Math.max(0.25 * T, T - (performance.now() - t0))
     fade(p.chrome, { opacity: c?.chrome ?? 1 }, { opacity: 0 }, 0, left)
     fade([ground], { opacity: c?.sheet ?? 1 }, { opacity: 0 }, 0, left)
-    // The page comes through the card: a drawn stand-in at once, a picture (never quite the page: its text a little
-    // softer, a clock since moved on) once the page is drawn under it and the card is within a few px of landing.
     if (h.drawn) fade([h.el], { opacity: 1 }, { opacity: 0 }, 0, left + 0.15 * T)
     const through = h.drawn ? Promise.resolve() : settle(160).then(() => {
       if (!mine()) return
@@ -338,15 +290,12 @@ export function zoomIn(id: string, show: () => void) {
       fade([h.el], { opacity: 1 }, { opacity: 0 }, from, from + Math.max(0.25 * T, T - (performance.now() - t0) - from))
     })
     void through.then(finished).then(async () => {
-      // The page drawn under the hero (a file's text loads), then the sheet goes.
       if (mine()) await settle(160)
       if (mine()) finish()
     })
   }, 0.55 * T)
 }
 
-/** A new tab, grown out of the + that made it (`from`, the button): from the tab list, the list fades back as it does;
- *  from the bar, the page left (its picture, `behind`) sinks back under it. */
 export function zoomNew(from: Element | null, make: () => void, behind?: string | null) {
   finish()
   const b = from?.getBoundingClientRect()
@@ -356,7 +305,6 @@ export function zoomNew(from: Element | null, make: () => void, behind?: string 
   const mine = landing(() => { if (list) { relockScroll(); flushSync(() => linger(null)) } })
   flushSync(() => { if (list) linger("tabs"); make() })
   const T = ZOOM.ms, mid = { x: b.left + b.width / 2, y: b.top + b.height / 2 }, k = 0.3
-  // (all read before anything is written: heroOf's why)
   const page = document.querySelector<HTMLElement>("#main-scroll > main")
   const grows = [document.querySelector<HTMLElement>("[data-phone-header]"), page].flatMap((el) => (el ? [{ el, r: el.getBoundingClientRect() }] : []))
   const grid = list?.querySelector<HTMLElement>("[data-tabs-grid]"), gr = grid?.getBoundingClientRect()
@@ -388,25 +336,19 @@ export function zoomNew(from: Element | null, make: () => void, behind?: string 
   void finished().then(() => { if (mine()) finish() })
 }
 
-/** Back (-1) or Forward (1): the page slides off to the right (or left), the one before (or after) in from the other
- *  side. `dragged`: how far the page has already been carried (its picture is taken there). */
 export function slide(dir: -1 | 1, dragged = 0, reset?: () => void) {
   run(dir < 0 ? "back" : "forward", () => new Promise<void>((done) => {
     reset?.()
-    // The change is the entry coming back; the page drawn for it a moment later (settle).
     addEventListener("popstate", () => done(), { once: true })
-    setTimeout(done, 400) // the browser had nowhere to go
+    setTimeout(done, 400) // no popstate: the browser had nowhere to go
     history.go(dir)
   }), () => {
     const st = document.documentElement.style, w = innerWidth, left = Math.abs(dragged) / w
-    // The page goes the rest of the way; the other comes from a third of the way out, as far along as the finger got.
     st.setProperty("--mto", `${dir < 0 ? w - dragged : -w - dragged}px`)
     st.setProperty("--mfrom", `${(dir < 0 ? -1 : 1) * w * 0.3 * (1 - left)}px`)
   })
 }
 
-/** A place opened in the same tab, inside this one (1: a folder's subfolder) or above it (-1: a crumb): the page moves
- *  as Forward or Back would, though the history takes a new step rather than walking its own. */
 export function step(dir: -1 | 1, change: () => void) {
   run(dir < 0 ? "back" : "forward", change, () => {
     const st = document.documentElement.style, w = innerWidth

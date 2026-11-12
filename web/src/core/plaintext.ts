@@ -1,4 +1,4 @@
-// Markdown as plain text, apart from links.ts so a page of its own (the screen's overlay) has it without the app.
+// Apart from links.ts so the screen's overlay, a page of its own, has it without the app.
 import { dropHighlightEmoji } from "@/core/highlights"
 import { WIKI_LINK } from "@/core/markdown"
 

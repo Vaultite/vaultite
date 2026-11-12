@@ -107,7 +107,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `CanvasPeer`: Someone else on a canvas: their pointer (in its units), name and colour (a CSS colour), what they have selected.
 - `canvasShown(c)`
 - `capitalize(s)`
-- `captureWindow()`
+- `captureWindow()`: The window as a PNG (base64), or null: a browser, or a build without it.
 - `cell(initial)`: One value that hooks and subscribers follow: `set` a new one (the same one changes nothing), `use()` it in React (`use(pick)`: a part of it, drawn again only when that part changes).
 - `Cell`
 - `changedFiles(store, n, skip?)`: The vault's recently changed files, newest first, at most `n`, without those in `skip`.
@@ -306,7 +306,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `highlightItems(view, at?)`: The colours as menu rows (Default first), the highlight at the selection's ringed; `at`: the one there (the swatch's), with Remove highlight under them.
 - `hintDictation(text)`: Nowhere to dictate: `text` a moment in the pill's place, by what has the keyboard (else at the window's foot, where the helper says it over other apps), and to a screen reader.
 - `holdFocus()`: Call as something opens over the page, before it takes the focus; call what it returns as it closes.
-- `holdHeight(el, key, anyWidth?, shrinks?)`: Hold `el` at `key`'s remembered height (at its width; `anyWidth`: the latest at once, then its width's) while its content comes in, then remember its height as it changes (`shrinks`: see Held; a…
+- `holdHeight(el, key, anyWidth?, shrinks?)`: Hold `el` at `key`'s remembered height (at its width; `anyWidth`: the latest at once, then its width's) while its content comes in, then remember its height as it changes (`shrinks`: let go once…
 - `homeOf(s, kind, fallback)`: Where new files of a kind (its collection: "notes", "days") go: the folder its settings show (the server's: one set, else where most of its files are), else `fallback`.
 - `HostedPlugin`: A plugin another runs (one written for another app): listed by category with its host as byline, drawn like any, while its host answers its switch, approval and removal (PluginHost).
 - `hostPlugins(host, info, list?)`: A host's plugins now (null: none, the host gone or off): they replace its ones before, and whatever they draw (commands, panels, fences, editor extensions) follows.

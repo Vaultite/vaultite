@@ -1,5 +1,3 @@
-// Preferences: most live in the vault's .vaultite/*.json so every device (and any AI) shares them; only sidebar state
-// and plugins' device values are per device. A localStorage copy lets the theme apply before the first request.
 import { patch, put } from "@/core/http"
 import { readSidebars, type Sidebars } from "../../../core/sidebars.ts"
 import { readNewTab, type NewTabSetup } from "../../../core/newtab.ts"
@@ -9,119 +7,59 @@ import { LOOK, LOOK_KEYS } from "../../../core/look.ts"
 import { signal } from "@/core/signal"
 
 export type Theme = "system" | "light" | "dark"
-/** Colour scheme: recolours every page (tokens in index.css, overrides in themes/<name>.css; the list is
- *  themes/schemes.ts), or "theme:<Name>", an Obsidian theme in the vault's .vaultite/themes/ (or .obsidian/themes/). */
 type Scheme = string
 export type Density = "compact" | "comfortable"
-/** How things move (core/animation.ts): springy, quick and straight, or not at all. */
 export type Animation = "snappy" | "natural" | "off"
 export type FileBarFade = "off" | "typing" | "always"
-/** How a sidebar with more than fits scrolls: each panel in its own box, under dividers that set their heights
- *  ("panels"), or the whole sidebar as one ("sidebar"). */
 type SidebarScroll = "panels" | "sidebar"
-/** How the file tree orders files (folders always come first, by name). */
 export type FileSort = "name" | "name-desc" | "modified" | "modified-old" | "created" | "created-old"
-/** How a folder's page shows what it holds (every folder the same). */
 export type FolderView = "list" | "grid" | "columns" | "gallery"
-/** What a folder's page puts its things under headings by (every folder the same). */
 export type FolderGroup = "none" | "kind" | "modified"
 export type Prefs = {
   theme: Theme; scheme: Scheme; sidebar: boolean; disabled: string[]
-  /** Compact (the default sizes) or comfortable (everything spaced out a little). */
   density: Density
   animation: Animation
   sidebarScroll: SidebarScroll
-  /** A hairline between the sidebars' panels (off: only the space between them, a divider showing on hover). */
   panelDividers: boolean
-  /** Panels' headings as headings, or quiet: a slim gap whose name shows while pointed at or ⌥ is held (but a panel
-   *  that says SidebarPanel.needsHeading). */
   panelHeadings: "shown" | "quiet"
-  /** ⌘/⌃ and the wheel, or a pinch, over a note or a terminal steps its text size (core/textsize.ts); off, they do
-   *  what the browser does. */
   quickTextSize: boolean
-  /** CSS font-family lists; empty = the app's own (the system font, SF Mono). */
   interfaceFont: string; textFont: string; monoFont: string
-  /** CSS snippets turned on (.vaultite/snippets/<name>.css, or .obsidian/snippets/), by name. */
   snippets: string[]
-  /** Opt-in plugins turned on: the vault's (off until then: they run code) and the app's `offByDefault` ones (Vim, Finance). */
   enabled: string[]
-  /** Use AI (core/ai.ts): off, the plugins for AI (manifest `ai`) are off whatever their own switches say. */
   ai: boolean
-  /** The open sidebar's width (px; drag its edge). */
   sidebarWidth: number
-  /** The right sidebar (when panels are there): open, or folded to its icon rail; its open width. This device's. */
   rightSidebar: boolean; rightSidebarWidth: number
-  /** Icons before file names, in the file tree and the tabs. */
   fileIcons: boolean
-  /** The tabs above each pane (desktop); off, each pane's bar shows only what's on screen, and the sidebar (the Tabs
-   *  panel, Terminals, Pinned) or the keyboard switches tabs. */
   tabBar: boolean
-  /** Each pane of a split has a strip of its own tabs on top (tab bar on or off); off, a pane starts with what it shows
-   *  (a note's bar its title row), its tabs reached from the tab bar's cell or the Tabs panel. */
   paneTabBars: boolean
-  /** With more than one pane, those without the focus fade a little. */
   dimPanes: boolean
-  /** Desktop panes as inset, rounded cards, the window's chrome showing between them; off, flat panes divided by hairlines. */
   paneCards: boolean
-  /** A hidden sidebar folds to its icon rail; off, it's gone, sliding back over the page while the pointer is at its
-   *  edge of the window. */
   rails: boolean
-  /** Behind a hidden sidebar slid in, the page dims a little. */
   peekShade: boolean
-  /** A phone's top bar has buttons that open the sidebars; off, they're swiped in from the screen's edges (a browser's
-   *  tab keeps them: its edges are the browser's). */
   sidebarButtons: boolean
-  /** The bars above files fade (desktop): while typing in one, back once the pointer moves, or always, back while the
-   *  pointer is over one. */
   fileBarFade: FileBarFade
-  /** The desktop app's window chrome (sidebars, tab bar, status bar) lets the desktop show through, blurred by the
-   *  system (core/translucency.ts says where it can). */
   translucent: boolean
-  /** With `translucent`, pages too (notes, terminals, the app's own pages) show the desktop, more lightly than the
-   *  chrome; web pages and media stay solid. */
   translucentPages: boolean
-  /** How much of the desktop the chrome and the pages let through, 0 (solid) to 100; 50 is the scheme's own. */
   translucency: number; pageTranslucency: number
-  /** Line numbers beside the text of a file being edited (Markdown, source mode, JSON);
-   *  code files always have them. */
   lineNumbers: boolean
-  /** The plugins' ambient items in the status bar, in order ("today:routines"); null: the ones not hidden. */
   statusBar: string[] | null
-  /** Those of them kept in the bar's tray (its "more" button) whatever room there is. */
   statusBarMore: string[]
-  /** Those of them drawn in the bar's left corner (Vim's mode, the companion); null: the items that ask for it. */
   statusBarLeft: string[] | null
-  /** The plugins' items in a file's top bar, in order ("companion:presence"); null: by their `sort`. One docked in a
-   *  sidebar is a panel there (sidebars.json) instead. */
   fileBar: string[] | null
-  /** Those of them hidden (Hide in their menu): in neither the top bar nor a sidebar till docked or moved back. */
   fileBarHidden: string[]
-  /** The plugins' items in the left sidebar's header, in order ("inbox:inbox"); null: every one, by their `sort`. */
   sidebarHeader: string[] | null
-  /** The commands a page pulled down on a phone offers, left, straight down, right (components/PullActions.tsx); null:
-   *  the default ones. */
   pullActions: string[] | null
   fileSort: FileSort
   folderView: FolderView
   folderGroup: FolderGroup
-  /** Files a folder shows in the tree before a "Show N more" row (its folders always show); 0: all of them. */
   folderLimit: number
-  /** Show the open file in the tree (open its folders, scroll to it) whenever it changes. */
   autoReveal: boolean
-  /** Hidden files and folders (.vaultite, .trash) in the file tree; the server only lets them be reached then. */
   showHidden: boolean
-  /** Archive folders (`.archive`, where the Archive plugin moves archived files) in the file tree, dimmed. */
   showArchived: boolean
-  /** The sidebars' panels (.vaultite/sidebars.json, the whole file; core/sidebars.ts): null while it's unset, the
-   *  default (web/src/core/plugins.ts, vaultSidebars). */
   sidebars: Sidebars | null
-  /** A blank tab's sections and buttons (.vaultite/newtab.json; core/newtab.ts), each key null while it's unset. */
   newTab: NewTabSetup
-  /** Which installed plugins update on their own (core/updates.ts), and a plugin's own choice over that. */
   updates: UpdatePolicy; updatesOn: string[]; updatesOff: string[]
-  /** Values plugins keep for this device only (Workspaces: the current workspace), by key; see devicePref. */
   device: Record<string, unknown>
-  /** The keys .vaultite/editor.json sets, as written (core/editorPrefs.ts reads them with their defaults). */
   editor: Record<string, unknown>
 }
 
@@ -129,16 +67,12 @@ const KEY = "vaultite.prefs"
 const DEFAULTS: Prefs = {
   ...LOOK, sidebar: true, sidebarWidth: 240, rightSidebar: true, rightSidebarWidth: 280, disabled: [], enabled: [], ai: true, fileSort: "name", folderView: "list", folderGroup: "none", folderLimit: 0, autoReveal: true, showHidden: false, showArchived: false, sidebars: null, newTab: { sections: null, actions: null, icons: null, page: null, opens: null }, updates: "vaultite", updatesOn: [], updatesOff: [], device: {}, editor: {},
 }
-// Which vault file each synced pref is saved in, key by key; `sidebars` is a whole file (WHOLE).
 const FILES = {
   appearance: LOOK_KEYS, plugins: ["disabled", "enabled", "ai", "updates", "updatesOn", "updatesOff"], files: ["fileSort", "folderView", "folderGroup", "folderLimit", "autoReveal", "showHidden", "showArchived"],
 } as const
 type File = keyof typeof FILES
-/** Prefs that are a whole settings file each: .vaultite/sidebars.json is `sidebars` ({left, right}). */
 const WHOLE = { sidebars: "sidebars" } as const
 
-/** Whether a saved value has its default's shape (a list of names, a number, a flag): a settings file edited by hand to
- *  `"disabled": null` would otherwise stop the app on every load. `statusBar`, `statusBarLeft`, `fileBar`, `sidebarHeader` and `pullActions` may be null. */
 function fits(k: keyof Prefs, v: unknown) {
   const d = DEFAULTS[k], nullable = k === "statusBar" || k === "statusBarLeft" || k === "fileBar" || k === "sidebarHeader" || k === "pullActions"
   if (Array.isArray(d) || nullable) return (v === null && nullable) || (Array.isArray(v) && v.every((x) => typeof x === "string"))
@@ -162,32 +96,25 @@ let prefs = load()
 const changed = signal()
 
 function commit(next: Prefs) {
-  // (AI on or off changes which plugins are on: a new `disabled`, which what's memoized on that goes by)
   if (next.ai !== prefs.ai && next.disabled === prefs.disabled) next = { ...next, disabled: [...next.disabled] }
   prefs = next
   try { localStorage.setItem(KEY, JSON.stringify(prefs)) } catch { /* private mode */ }
   changed.notify()
 }
 
-/** Keys whose default is written as no key at all (null removes it), so a vault keeps only what was chosen. */
 const UNSET_AT_DEFAULT: readonly (keyof Prefs)[] = ["ai"]
 const pick = (file: File, keys: readonly string[] = FILES[file]) => Object.fromEntries(FILES[file].filter((k) => keys.includes(k))
   .map((k) => [k, UNSET_AT_DEFAULT.includes(k) && prefs[k] === DEFAULTS[k] ? null : prefs[k]]))
 
-/** Write these prefs' keys to their file, and only them (PATCH): the file's other keys stay as they are on disk, so one
- *  changed meanwhile (by an AI, another device) isn't put back. */
 function save(file: File, keys?: readonly string[]) {
   return patch(`config/${file}`, pick(file, keys)).then(() => {}, () => { /* offline: the local copy still applies */ })
 }
 
-/** Change prefs; resolves once they're saved in the vault. */
 export function setPrefs(changes: Partial<Prefs>) {
   const before = prefs
   commit({ ...prefs, ...changes })
-  // newtab.json: only its keys that changed (null removes one: back to the default).
   const tab = changes.newTab && (Object.keys(changes.newTab) as (keyof NewTabSetup)[]).filter((k) => JSON.stringify(changes.newTab![k]) !== JSON.stringify(before.newTab[k]))
   const newTab = tab?.length ? [patch("config/newtab", Object.fromEntries(tab.map((k) => [k, prefs.newTab[k]]))).then(() => {}, () => {})] : []
-  // editor.json: only its keys that changed (one taken out: null, back to the default).
   const ed = changes.editor && [...new Set([...Object.keys(before.editor), ...Object.keys(changes.editor)])]
     .filter((k) => JSON.stringify(changes.editor![k]) !== JSON.stringify(before.editor[k]))
   const editor = ed?.length ? [patch("config/editor", Object.fromEntries(ed.map((k) => [k, prefs.editor[k] ?? null]))).then(() => {}, () => {})] : []
@@ -196,8 +123,6 @@ export function setPrefs(changes: Partial<Prefs>) {
   return Promise.all([...whole, ...newTab, ...editor, ...(Object.keys(FILES) as File[]).filter((file) => FILES[file].some((k) => k in changes)).map((file) => save(file, Object.keys(changes)))]).then(() => {})
 }
 
-/** The vault's settings arrived: they're the truth, a key a file doesn't have another app's (`seeds`: the look an
- *  Obsidian vault has, core/plugins.ts settingDefaults), else the default. */
 export function hydratePrefs(config: Partial<Record<File | (typeof WHOLE)[keyof typeof WHOLE] | "newtab" | "editor", Record<string, unknown>>>,
   seeds: Record<string, Record<string, unknown>> = {}) {
   const next = { ...prefs, sidebars: readSidebars(config.sidebars), newTab: readNewTab(config.newtab), editor: isObj(config.editor) ? config.editor : {} }
@@ -221,5 +146,4 @@ export function devicePref<T>(key: string, fallback: T) {
 
 export const usePrefs = () => changed.use(getPrefs)
 
-/** Run fn whenever prefs change (core/appearance.ts applies them to the page). */
 export const onPrefs = changed.subscribe

@@ -1,5 +1,3 @@
-// Where state lives: the vault (settings files), a workspace (what's open and arranged, kept by the Workspaces plugin
-// and shared across its devices) or a device (localStorage). Plugins pick with useScopedState; see web/CLAUDE.md.
 import { useSyncExternalStore } from "react"
 import type { WorkspaceHost, WorkspaceInfo } from "@/core/define"
 import { isEnabled, PLUGINS } from "@/core/plugins"
@@ -7,7 +5,6 @@ import { devicePref, getPrefs, onPrefs } from "@/core/prefs"
 
 export type Scope = "workspace" | "device"
 
-/** The plugin that keeps workspaces, if one is on. */
 function workspaceHost(): WorkspaceHost | null {
   const off = getPrefs().disabled
   return PLUGINS.find((p) => p.workspace && isEnabled(p.id, off))?.workspace ?? null
@@ -21,13 +18,12 @@ export function workspaceChanged() { version++; subs.forEach((f) => f()) }
 export const subscribeScoped = (f: () => void) => subscribe(f)
 const subscribe = (f: () => void) => {
   subs.add(f)
-  const off = onPrefs(f) // a plugin switched on or off brings workspaces or takes them away
+  const off = onPrefs(f)
   return () => { subs.delete(f); off() }
 }
 /** Redraws when the current workspace or what's kept in it changes; answers a number that changes then. */
 export const useWorkspaceVersion = () => useSyncExternalStore(subscribe, () => `${version}:${workspaceHost() ? 1 : 0}`)
 
-/** Whether a plugin keeping workspaces is on, live. */
 export const useWorkspacesOn = () => useSyncExternalStore(subscribe, () => !!workspaceHost())
 
 /** The plugin keeping workspaces, as the phone's tab list pages through them (null: none). */
@@ -42,7 +38,6 @@ export function currentWorkspace(): WorkspaceInfo | null {
   const n = h.current()
   return h.list().find((w) => w.n === n) ?? { n, label: `Workspace ${n}`, places: [] }
 }
-/** Without workspaces, the one this window would go to if a plugin keeping them were turned on (null: none picked). */
 export const landingWorkspace = (): number | null => (workspaceHost() ? null : PLUGINS.find((p) => p.workspace)?.workspace?.picked() || null)
 /** The workspaces in use, and the current one ([] without workspaces). */
 export const workspaceList = (): WorkspaceInfo[] => workspaceHost()?.list() ?? []
@@ -55,7 +50,6 @@ export const workspacePins = (): string[] | null => workspaceHost()?.pinned() ??
 export const pinInWorkspace = (path: string, on: boolean, before: string | null | undefined, base: string[]): Promise<unknown> =>
   workspaceHost()?.pin(path, on, before, base) ?? Promise.resolve()
 
-// ---------- values kept at a level ----------
 const local = (key: string) => devicePref<unknown>(`ws:${key}`, undefined)
 
 function read<T>(key: string, fallback: T, scope: Scope): T {
@@ -91,19 +85,13 @@ export function useScopedState<T>(key: string, fallback: T, scope: Scope = "work
   return [v, (next) => write(key, next, scope)]
 }
 
-// ---------- files opened lately, per workspace ----------
-// So each desk remembers its own work: saved a moment after a file has stayed in view, offered first by new tabs.
 const RECENT_MAX = 200
 const recentState = scopedState<string[]>("core:recent", [], "workspace")
 const NONE: string[] = []
-/** The files opened lately in the current workspace, newest first. */
 export const recentFiles = (): string[] => { const v = recentState.get(); return Array.isArray(v) ? v : NONE }
 export const useRecentFiles = () => useSyncExternalStore(subscribe, recentFiles)
 let recentTimer = 0, noted = ""
-/** The focused tab shows `path` now ("" for something else): it goes first in the list once it's stayed a moment. */
 export function noteOpened(path: string) {
-  // (only when it's new here: another device's change to the workspace isn't this one opening its file again, and two
-  // devices on different files would each put theirs first back and forth)
   const now = `${currentWorkspace()?.n}:${path}`
   if (now === noted) return
   noted = now

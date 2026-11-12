@@ -1,35 +1,23 @@
-// Markdown to HTML outside the editor, with its extras (wikilinks, callouts, footnotes, math, mermaid, tags). As in
-// Obsidian, every link is one, raw HTML is drawn (sanitized) and `![[Note]]` is an embed (`data-md-embed`, caller's).
 import { Lexer, Marked, Renderer, type Token, type Tokens, type TokenizerAndRendererExtension } from "marked"
 import { columnShares, parseTable, sharedMinWidth } from "../editor/tableText"
 import { COPY_ICON } from "./richmd"
 import { dropHighlightEmoji, highlightClass, highlightColor } from "./highlights"
 import { esc, sanitizeHtml } from "./sanitize"
 
-/** A wiki link's source: `[[target]]` or `[[target|shown]]` (groups 1 and 2), for building the patterns that need it. */
 export const WIKI_LINK = String.raw`\[\[([^[\]\n|]+?)(?:\|([^[\]\n]+?))?\]\]`
 const WIKI_START = new RegExp(`^!?${WIKI_LINK}`)
-/** A footnote's text as a tooltip shows it: links by their text, no marks. */
 export const footnoteText = (s: string) => dropHighlightEmoji(s).replace(/\[\[([^\]|]+\|)?|\]\]|[*_`~]/g, "")
 
-/** What a [[target]] is (its kind tints it: person, book...), or null: nothing yet. */
 type Resolves = (target: string) => { kind: string } | null
-/** What drawing needs from the vault: `resolves` links, `asset` a vault file's address (an image), or null. */
 export type MarkdownOpts = { resolves?: Resolves; asset?: (name: string) => string | null }
 
 const IMAGE = /\.(png|jpe?g|gif|webp|svg|avif|bmp|heic)$/i
-/** Addresses that run code where they open: drawn as text. */
 const UNSAFE = /^(javascript|data|vbscript|blob):/i
 const SCHEME = /^[a-z][a-z0-9+.-]*:/i
-/** A table cell this many characters or fewer (a label, a date, `wide: true`) is drawn on one line. */
 const SHORT_CELL = 24
-/** An image's width written after its name or alt text (`|300`, `|300x200`), or 0. */
 const widthOf = (s: string) => Number(/^\s*(\d+)(?:x\d+)?\s*$/.exec(s)?.[1] ?? 0)
 
-// ---------- callouts ----------
-
 const svg = (body: string) => `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`
-// Lucide's icons, for the callouts.
 const ICONS: Record<string, string> = {
   note: '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>',
   abstract: '<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/>',
@@ -47,13 +35,11 @@ const ICONS: Record<string, string> = {
 }
 const BACK = '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5 5.5 5.5 0 0 1-5.5 5.5H11"/>'
 const CHEVRON = '<path d="m9 18 6-6-6-6"/>'
-/** The other names for the callout types. */
 const ALIASES: Record<string, string> = {
   summary: "abstract", tldr: "abstract", hint: "tip", important: "tip", check: "success", done: "success",
   help: "question", faq: "question", caution: "warning", attention: "warning", fail: "failure", missing: "failure",
   error: "danger", cite: "quote",
 }
-/** A callout's first line: `[!type]`, then `-` (folded) or `+` (foldable, open), then its title. */
 export const CALLOUT = /^\[!([\w-]+)\]([+-]?)[ \t]*([^\n]*)(?:\n|$)/
 
 function calloutType(name: string) {
@@ -62,14 +48,10 @@ function calloutType(name: string) {
   return ICONS[type] ? type : "note"
 }
 
-// ---------- footnotes and math: token shapes ----------
-
 type FootnoteDef = Tokens.Generic & { label: string; tokens: Token[] }
 type Math = Tokens.Generic & { text: string; display: boolean }
 
 function make({ resolves, asset }: MarkdownOpts = {}) {
-  // One document's footnotes, reset for each (preprocess): definitions by label (their text, then their HTML once
-  // drawn), and the labels in the order they're first referenced (their numbers).
   let notes = new Map<string, { text: string; html?: string }>()
   let order: string[] = []
 
@@ -80,7 +62,6 @@ function make({ resolves, asset }: MarkdownOpts = {}) {
     tokenizer(src: string) {
       const r = WIKI_START.exec(src)
       if (!r) return
-      // Shown: its alias, else its name (and the heading it goes to: "Note › Heading"; in the same file, the heading).
       const [name, ...at] = r[1].split("#")
       const label = r[2] ?? [name.trim(), ...at.map((x) => x.trim())].filter(Boolean).join(" › ")
       return { type: "wikilink", raw: r[0], target: r[1].trim(), label: label.trim(), embed: r[0].startsWith("!") }
@@ -90,7 +71,6 @@ function make({ resolves, asset }: MarkdownOpts = {}) {
       const kind = hit && !["file", "note"].includes(hit.kind) ? hit.kind : ""
       const link = `<a class="${esc(["wikilink", kind, hit ? "" : "missing"].filter(Boolean).join(" "))}" data-wiki="${esc(t.target)}"${t.embed ? " data-wiki-embed" : ""}>${esc(t.label)}</a>`
       if (!t.embed || !hit) return link
-      // An image in the vault shows (`|300` its width); anything else embedded is drawn by the caller in its place.
       const name = t.target.split("#")[0].trim(), src = asset && IMAGE.test(name) ? asset(name) : null
       const alias = /\|([^\]]*)\]\]$/.exec(t.raw)?.[1] ?? ""
       if (src) return img(src, name, widthOf(alias))
@@ -150,7 +130,7 @@ function make({ resolves, asset }: MarkdownOpts = {}) {
     tokenizer(src: string) {
       const d = /^\$\$([^$]+?)\$\$/.exec(src)
       if (d) return { type: "mathInline", raw: d[0], text: d[1].trim(), display: true } as Math
-      // No space inside the dollars, and no digit right after the closing one ($5 and $10 is text).
+      // Pandoc's rule: no space inside the dollars, no digit right after the closing one ($5 and $10 is text).
       const r = /^\$(?![\s$])((?:\\.|[^\\$\n])+?)(?<![\s\\])\$(?!\d)/.exec(src)
       if (r) return { type: "mathInline", raw: r[0], text: r[1], display: false } as Math
     },
@@ -159,7 +139,6 @@ function make({ resolves, asset }: MarkdownOpts = {}) {
       : `<span class="math math-inline" data-math="inline">${esc((t as Math).text)}</span>`,
   }
 
-  // Marks: ==highlight==, #tags, %%comments%% (inline and over lines) and block ids, which reading hides.
   const highlight: TokenizerAndRendererExtension = {
     name: "highlight",
     level: "inline",
@@ -206,8 +185,6 @@ function make({ resolves, asset }: MarkdownOpts = {}) {
 
   const img = (src: string, alt: string, width = 0, title?: string | null) =>
     `<img src="${esc(src)}" alt="${esc(alt)}"${title ? ` title="${esc(title)}"` : ""}${width ? ` width="${width}"` : ""} loading="lazy">`
-  /** A link's attributes by where it goes: a note or a file in the vault (`data-wiki`, followed like a [[link]]), an app
-   *  command, the web, or another app's scheme (`data-url`: obsidian://, zotero://, tel:, file://); null: not a link. */
   const linkAttrs = (href: string): string | null => {
     if (!href || UNSAFE.test(href)) return null
     if (/^vaultite:\/\/command\/[\w:.-]+$/i.test(href)) return ` class="wikilink" data-url="${esc(href)}"`
@@ -219,7 +196,6 @@ function make({ resolves, asset }: MarkdownOpts = {}) {
     const hit = !resolves || t.startsWith("#") ? { kind: "" } : resolves(t)
     return ` class="${hit ? "wikilink" : "wikilink missing"}" data-wiki="${esc(t)}"`
   }
-  /** An image's address: the web's as it is, a vault file's from `asset`; null for neither. */
   const imageSrc = (href: string): string | null => {
     if (/^https?:/i.test(href)) return href
     if (SCHEME.test(href) || !asset) return null
@@ -229,14 +205,13 @@ function make({ resolves, asset }: MarkdownOpts = {}) {
   }
   const html = (text: string) => sanitizeHtml(text, { link: linkAttrs, image: imageSrc })
 
-  // (a line break is a break, as the editor shows it and Obsidian draws it: a dashboard's lines stay lines)
   const m = new Marked({ gfm: true, breaks: true })
   m.use({
     extensions: [wikilink, footnoteDef, footnoteRef, mathBlock, mathInline, highlight, tag, commentInline, commentBlock, blockId],
     hooks: {
       preprocess(src: string) { notes = new Map(); order = []; return src },
       postprocess(html: string) {
-        html = html.replace(/<p>\s*<\/p>\n?/g, "") // (a paragraph that was only a block id or a comment)
+        html = html.replace(/<p>\s*<\/p>\n?/g, "")
         const labels = [...order, ...[...notes.keys()].filter((l) => !order.includes(l))].filter((l) => notes.has(l))
         if (!labels.length) return html
         const items = labels.map((l) => `<li data-footnote-def="${esc(l)}">${notes.get(l)!.html ?? esc(notes.get(l)!.text)}${order.includes(l)
@@ -245,20 +220,16 @@ function make({ resolves, asset }: MarkdownOpts = {}) {
       },
     },
     renderer: {
-      // Raw HTML is drawn as Obsidian draws it, sanitized (core/sanitize.ts).
       html: ({ text }: Tokens.HTML | Tokens.Tag) => html(text),
-      // Classed by depth too (.note-prose sizes them by class).
       heading({ tokens, depth }: Tokens.Heading) { return `<h${depth} class="h${depth}">${this.parser.parseInline(tokens)}</h${depth}>\n` },
       link({ href, title, tokens }: Tokens.Link) {
         const inner = this.parser.parseInline(tokens), attrs = linkAttrs(href)
         return attrs === null ? inner : `<a${attrs}${title ? ` title="${esc(title)}"` : ""}>${inner}</a>`
       },
-      // (`![alt|300](photo.png)`: a width after the alt text, as in Obsidian)
       image({ href, text, title }: Tokens.Image) {
         const src = imageSrc(href), w = /^(.*?)\|(\d+(?:x\d+)?)$/.exec(text)
         return src ? img(src, w ? w[1] : text, w ? widthOf(w[2]) : 0, title) : esc(text)
       },
-      // Code: a label and a copy button over it; mermaid is drawn later (hydrate), its source showing until then.
       code({ text, lang }: Tokens.Code) {
         const name = (lang ?? "").trim().split(/\s+/)[0]
         if (name.toLowerCase() === "mermaid") return `<div class="md-mermaid" data-mermaid>${esc(text)}</div>\n`
@@ -267,15 +238,13 @@ function make({ resolves, asset }: MarkdownOpts = {}) {
           `<button type="button" class="md-copy" data-copy aria-label="Copy" data-tip="Copy">${COPY_ICON}</button></div>` +
           `<pre><code${cls}>${esc(text.replace(/\n$/, ""))}\n</code></pre></div>\n`
       },
-      // A short cell keeps to one line (index.css): auto layout shares spare width by max-content, so a prose column
-      // beside it would otherwise squeeze "In columns" onto two lines while it wraps anyway.
+      // Auto table layout shares spare width by max-content: a prose column beside a short cell would squeeze it
+      // onto two lines.
       tablecell({ tokens, header, align }: Tokens.TableCell) {
         const tag = header ? "th" : "td", inner = this.parser.parseInline(tokens)
         const short = inner.replace(/<[^>]*>/g, "").replace(/&#?\w+;/g, "_").trim().length <= SHORT_CELL
         return `<${tag}${align ? ` align="${align}"` : ""}${short ? ' class="md-cell-short"' : ""}>${inner}</${tag}>\n`
       },
-      // A table whose separator sets its columns' widths (editor/tableText.ts) draws them as the editor does, in a box
-      // that scrolls once a column would be too narrow. (Past 72 columns first: most tables' separators aren't.)
       table(token: Tokens.Table) {
         const sep = token.raw.split("\n", 2)[1] ?? "", t = sep.trim().length > 72 ? parseTable(token.raw.trimEnd()) : null
         const shares = t && columnShares(t)
@@ -285,7 +254,6 @@ function make({ resolves, asset }: MarkdownOpts = {}) {
           .replace("<table>", `<table class="has-widths" style="min-width: ${sharedMinWidth(shares).toFixed(2)}em"><colgroup>${cols}</colgroup>`)
         return `<div class="md-table-view">${html}</div>\n`
       },
-      // A callout: a blockquote whose first line is `[!type] Title`; foldable ones are a <details>.
       blockquote({ tokens }: Tokens.Blockquote) {
         const first = tokens[0]
         const c = first?.type === "paragraph" ? CALLOUT.exec(first.raw) : null
@@ -309,8 +277,6 @@ function make({ resolves, asset }: MarkdownOpts = {}) {
 const plain = make()
 const md = (opts?: MarkdownOpts) => (opts?.resolves || opts?.asset ? make(opts) : plain)
 
-/** A Markdown document as HTML. */
 export const renderMarkdown = (text: string, opts?: MarkdownOpts) => md(opts).parse(text, { async: false }) as string
 
-/** A line of Markdown (bold, links, code; no headings or lists) as HTML. */
 export const renderInline = (text: string, opts?: MarkdownOpts) => md(opts).parseInline(text, { async: false }) as string

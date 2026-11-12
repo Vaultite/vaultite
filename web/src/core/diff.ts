@@ -1,9 +1,6 @@
-// Line diffs of any size for plugins (File history): core/linediff.ts, in a worker when there are many lines, so the
-// app never waits on one.
 import { diffLines as diffNow } from "../../../core/linediff.ts"
 import type { Opcode } from "../../../core/textedit.ts"
 
-/** Past this many lines in all, the diff is made in the worker. */
 const BIG = 20_000
 
 let worker: Worker | null = null, asked = 0

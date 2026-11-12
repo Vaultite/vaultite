@@ -1,19 +1,14 @@
-// Which pane a view is in (its id, "" outside the desktop's panes, where a view counts as focused), and its tab's.
-// `hidden`: a pane kept drawn while another tab is on screen, never focused.
 import { createContext, useContext, useLayoutEffect, useSyncExternalStore, type RefObject } from "react"
 
 export const PaneContext = createContext<{ pane: string; tab: string; focused: boolean; hidden?: boolean }>({ pane: "", tab: "", focused: true })
 export const usePane = () => useContext(PaneContext)
 
-/** The panes whose view draws a top bar, each with how many. */
 const barred = new Map<string, number>()
 const subs = new Set<() => void>()
 const changed = () => { for (const f of subs) f() }
-/** Whether the pane's view draws a top bar (usePaneTopBar): without a pane tab bar, it's the pane's title row. */
 export const usePaneHasTopBar = (pane: string) =>
   useSyncExternalStore((f) => { subs.add(f); return () => { subs.delete(f) } }, () => barred.has(pane))
 
-/** How far a top bar keeps from what's fixed over the window's corners. */
 const CLEAR = 8
 
 /** A view's top bar (ViewBar, the Browser's): without a pane tab bar its pane's title row (Tabs.tsx; not with `title` false,
@@ -34,7 +29,6 @@ export function usePaneTopBar(ref: RefObject<HTMLElement | null>, title = true) 
     const el = ref.current
     if (!el || hidden) return
     let frame = 0, added = [0, 0]
-    // (its own padding less what it added, not reset to measure: that restyled it twice per frame of a sidebar's resize)
     const fit = () => {
       const b = el.getBoundingClientRect()
       if (!b.width) return
@@ -52,7 +46,6 @@ export function usePaneTopBar(ref: RefObject<HTMLElement | null>, title = true) 
     }
     const soon = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; fit() }) }
     fit()
-    // (its pane resizing as a sidebar opens or folds, the window, or what's in the corners: <html>'s attributes)
     const ro = new ResizeObserver(soon), mo = new MutationObserver(soon)
     ro.observe(el)
     mo.observe(document.documentElement, { attributes: true })
@@ -61,19 +54,15 @@ export function usePaneTopBar(ref: RefObject<HTMLElement | null>, title = true) 
   }, [ref, hidden])
 }
 
-/** What's fixed over the panes' top corners: a sidebar's toggle beside its rail or with none open (with rails: without,
- *  they ride the sidebars), a Mac window's traffic lights where no sidebar holds them, and Windows' window controls. */
+// 88: where the traffic lights end (index.css' 88px); 138: Windows' controls (electron/main.ts CONTROLS_WIDTH).
 function overCorners(): DOMRect[] {
   const d = document.documentElement.dataset
   const out: DOMRect[] = []
   if (!("noRails" in d)) for (const t of document.querySelectorAll("[data-sidebar-toggle]")) out.push(t.getBoundingClientRect())
-  // (index.css: the lights take the window's first 88px; electron/main.ts: they're 16px tall, 14 down at most. A pop-out
-  // with its bars hidden shows them only over its page, with the pointer at its top: electron/topstrip.ts)
   if (lightsOverPanes(d)) {
     const card = lightsCard() ?? { x: 0, y: 0 }
     out.push(new DOMRect(card.x, 0, 88 - CLEAR, 30 + card.y))
   }
-  // (Windows' controls: the window's top-right corner, as wide as electron/preload.cjs says, a title row high)
   if ("electron" in d && d.platform === "win32" && !("fullscreen" in d)) {
     const w = parseFloat(document.documentElement.style.getPropertyValue("--window-controls")) || 138
     out.push(new DOMRect(innerWidth - w + CLEAR, 0, w - CLEAR, 30))
@@ -84,7 +73,6 @@ function overCorners(): DOMRect[] {
 const lightsOverPanes = (d: DOMStringMap) =>
   "electron" in d && d.platform === "darwin" && !("fullscreen" in d) && ("leftRail" in d || ("popout" in d && !("barsHidden" in d)))
 
-/** With cards and no tab bar, the top-left card's corner (px): a Mac's lights beside a rail sit in its title row. */
 export function lightsCard(): { x: number; y: number } | null {
   const d = document.documentElement.dataset, area = document.querySelector("[data-pane-area]")
   if (!area || !("paneCards" in d) || "topTabs" in d) return null

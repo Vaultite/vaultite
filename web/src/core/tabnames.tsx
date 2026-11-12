@@ -1,5 +1,3 @@
-// Naming tabs and tab groups from the palette, which turns into a field as Rex's Rename Session does. A tab of one pane's
-// name belongs to what it shows: a file's is the file's, a terminal's its session's; anything else's (a split) is its own.
 import { PencilLine, Plus } from "lucide-react"
 import { askText, choose } from "@/components/Chooser"
 import { dotIcon } from "@/components/ColorDot"
@@ -13,16 +11,13 @@ import { activeTab, askRename, nameTab, selectTab, tabById } from "@/core/worksp
 import { COLOR_NAMES, colorVar } from "../../../core/colors.ts"
 import { isBlankTab, isSplit, vaultPath, type Tab } from "../../../core/layout.ts"
 
-/** The one place a tab shows (null: a split, named only as a tab). */
 const placeOf = (t: Tab) => (isSplit(t.root) ? null : t.root.to)
 
-/** The view a tab shows, when its name is its own (a terminal's session): its name now, and how to change it. */
 function ownName(t: Tab) {
   const to = placeOf(t), v = to?.startsWith("view:") ? viewFor(to, getPrefs().disabled) : null
   return v?.on && v.def.rename ? v.def.rename(v.arg) : null
 }
 
-/** Whether Rename tab… can name it: not a blank tab, a protected file, nor a view whose name isn't known yet. */
 export function canRenameTab(t: Tab | undefined) {
   if (!t || isBlankTab(t)) return false
   const to = placeOf(t), file = to && vaultPath(to)
@@ -30,8 +25,6 @@ export function canRenameTab(t: Tab | undefined) {
   return !to || !namesItself(to) || !!ownName(t)
 }
 
-/** The palette as a field holding its name (`typed`, else `name`), selected: Enter names it what's typed, an empty
- *  field gives the automatic name back, Esc leaves it. */
 function askName(o: { what: string; placeholder: string; name: string; typed?: string; auto: string; set: (name: string) => void }) {
   const typed = o.typed ?? o.name
   askText({
@@ -41,7 +34,6 @@ function askName(o: { what: string; placeholder: string; name: string; typed?: s
   })
 }
 
-/** Rename tab `id` (the current one): its file as Rename current file does, its terminal's session, or the tab. */
 export function renameTab(id = activeTab().id) {
   const t = tabById(id)
   if (!t || !canRenameTab(t)) return
@@ -56,7 +48,6 @@ export function renameTab(id = activeTab().id) {
   askName({ what: "tab", placeholder: "Name this tab…", name: tabLabel(t, store).label, auto: shownLabel(t, store), set: (n) => nameTab(t.id, n) })
 }
 
-/** Rename the current tab's group. */
 export function renameTabGroup() {
   const id = activeTab().group, g = id ? groupById(id) : null
   if (!id || !g) return
@@ -64,8 +55,6 @@ export function renameTabGroup() {
 }
 
 const NEW = "\u0000new:"
-/** Put the current tab in a group: one there is, or a new one named as typed (nothing typed: named for its tabs, its
- *  editor open, as "Add tab to new group" in its menu). */
 export function chooseTabGroup() {
   const t = activeTab()
   const sets = allGroups().filter((s) => s.id !== t.group)

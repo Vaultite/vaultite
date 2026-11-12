@@ -1,11 +1,9 @@
-// What a screen reader says without moving the user's focus: toasts (core/notify.ts) and agents' turns. Two regions
-// made at load, empty: one added together with its text is often not read.
+// Live regions are made empty at load: a screen reader often skips one added together with its text.
 const regions = new Map<"polite" | "assertive", HTMLElement>()
 if (typeof document !== "undefined") {
   for (const live of ["polite", "assertive"] as const) {
     const el = document.createElement("div")
     el.setAttribute("aria-live", live)
-    // (each line read as it's added, not the region again: several in a moment are each read once)
     el.setAttribute("aria-atomic", "false")
     el.setAttribute("aria-relevant", "additions")
     el.dataset.announce = live
@@ -28,7 +26,6 @@ export function announce(text: string, opts: { assertive?: boolean } = {}) {
   const p = document.createElement("p")
   p.textContent = line
   region.append(p)
-  // (gone again once read, so reading the page doesn't find old news at its end)
   setTimeout(() => p.remove(), 7000)
 }
 

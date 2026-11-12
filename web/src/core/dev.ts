@@ -1,5 +1,3 @@
-// What agents ask this window for through the server (core/live.ts ask; ops in core/coreops/dev.ts, the owner's only):
-// its palette's commands, and the dev tools: its console's last messages, its HTML, eval, a screenshot (desktop app).
 import { available, commandList, keysOf } from "@/core/commands"
 import { desktop } from "@/core/desktop"
 import { answerUi } from "@/core/askers"
@@ -9,7 +7,6 @@ type Line = { t: number; level: string; text: string }
 const MAX = 500, TEXT = 4000, HTML = 100_000
 const lines: Line[] = []
 
-/** A value as a line of text, the way the console would show it. */
 function shown(v: unknown): string {
   if (typeof v === "string") return v
   if (v instanceof Error) return v.stack ?? `${v.name}: ${v.message}`
@@ -23,7 +20,7 @@ function keep(level: string, args: unknown[]) {
   if (lines.length > MAX) lines.splice(0, lines.length - MAX)
 }
 
-// The console's messages and the uncaught errors, kept from as early as this module loads (main.tsx imports it first).
+// Kept from as early as this module loads: main.tsx imports it first.
 for (const level of ["log", "info", "warn", "error", "debug"] as const) {
   const original = console[level].bind(console)
   console[level] = (...args: unknown[]) => {
@@ -34,7 +31,6 @@ for (const level of ["log", "info", "warn", "error", "debug"] as const) {
 addEventListener("error", (e) => keep("error", [e.error ?? e.message]))
 addEventListener("unhandledrejection", (e) => keep("error", ["Unhandled rejection:", e.reason]))
 
-/** A value made JSON: DOM nodes as their HTML, errors as their message, cycles and depth cut. */
 function plain(v: unknown, seen = new WeakSet<object>(), depth = 0): unknown {
   if (v === undefined) return null
   if (v === null || typeof v === "string" || typeof v === "boolean") return v
@@ -56,17 +52,15 @@ function plain(v: unknown, seen = new WeakSet<object>(), depth = 0): unknown {
   return Object.fromEntries(Object.entries(v).slice(0, 1000).map(([k, x]) => [k, next(x)]))
 }
 
-/** Code run in the page's global scope (indirect eval): a statement list's last value, a promise's once it settles. With
- *  `await` at its top level, as an async function's body: an expression's value, else what it returns. */
 async function run(code: string): Promise<unknown> {
-  // eslint-disable-next-line no-eval
+  // eslint-disable-next-line no-eval -- dev tools run code agents send, in the page's global scope
   const indirect = eval
   if (!/\bawait\b/.test(code)) return await indirect(code)
   try {
     return await indirect(`(async () => (${code.replace(/;\s*$/, "")}\n))()`)
   } catch (e) {
     if (!(e instanceof SyntaxError)) throw e
-    return await indirect(`(async () => {${code}\n})()`) // (a SyntaxError is thrown before anything ran)
+    return await indirect(`(async () => {${code}\n})()`)
   }
 }
 

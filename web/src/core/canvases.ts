@@ -1,6 +1,3 @@
-// The canvases on screen (a drawing's whiteboard), registered by the format that draws one, so others can be there:
-// shown on it its own way (an agent's cursor), read it as items and change it with its typed actions.
-
 /** A thing on a canvas as others read it, in the canvas's units (x/y its top left): a shape, a text, an arrow joining
  *  `from` and `to` (items' ids). `text`: its words (a shape's label). */
 export type CanvasItem = { id: string; type: string; x: number; y: number; w: number; h: number; text?: string; from?: string; to?: string }

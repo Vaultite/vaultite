@@ -1,11 +1,7 @@
-// The bars above files fade (appearance `fileBarFade`). "typing": two keys in a file (not a shortcut's), back once the
-// pointer moves or at Escape. "always": out of sight, shown while the pointer is at its pane's top, beside the bar too.
 import { useEffect } from "react"
 import type { FileBarFade } from "@/core/prefs"
 
-/** How far (px) the pointer moves, and how long (ms) after a key, before it counts: a palm brushing the trackpad mid-sentence isn't a reach for the bar. */
 const MOVE = 16, AFTER_KEY = 500
-/** How far (px) under a hidden bar the pointer shows it: reaching for it shows it before it's there. */
 const NEAR = 12
 
 export function useBarFade(mode: FileBarFade | false) {
@@ -34,8 +30,7 @@ export function useBarFade(mode: FileBarFade | false) {
   }, [mode])
 }
 
-/** "always": every bar hidden but the one the pointer is at (`data-shown`), found by where the pointer is rather than
- *  by :hover, which a window's drag strip (a bar without the tab bar) doesn't get. */
+// Found by where the pointer is, not :hover: a window's drag strip gets no hover.
 function always(root: DOMStringMap) {
   root.barFade = "always"
   let shown: HTMLElement | null = null
@@ -45,8 +40,6 @@ function always(root: DOMStringMap) {
     shown = bar
     bar?.setAttribute("data-shown", "")
   }
-  /** The bar of the pane whose top (x, y) is at: its whole width, the margins beside the bar too, from the thin strip
-   *  or gap above it to just under it (a pane's tabs' strip isn't its top). */
   const barAt = (target: EventTarget | null, x: number, y: number) => {
     const el = target instanceof Element ? target : null
     if (!el || el.closest("[data-place-strip]")) return null
@@ -63,7 +56,6 @@ function always(root: DOMStringMap) {
     frame = 0
     const e = last!
     const t = e.target instanceof Element ? e.target : null
-    // (over a menu, a tooltip or a sheet, from the bar or not: as it was)
     if (t && !t.closest("[data-pane]") && t.closest("dialog, [role=menu], [role=tooltip]")) return
     show(barAt(t, e.clientX, e.clientY))
   }
@@ -72,7 +64,6 @@ function always(root: DOMStringMap) {
     last = e
     frame ||= requestAnimationFrame(decide)
   }
-  // Off into the window's drag strip or out of it: the bar it left by stays, when it left from one.
   const out = (e: PointerEvent) => { if (!e.relatedTarget && e.pointerType !== "touch") show(barAt(e.target, e.clientX, e.clientY) ?? shown) }
   const blur = () => show(null)
   addEventListener("pointermove", move, { passive: true })

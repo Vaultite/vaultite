@@ -1,5 +1,3 @@
-// The vault as files: the tree, opening files and changing them. Tabs (core/workspace.ts), splits and drops are
-// re-exported here, the one module the rest of the app opens and moves files and tabs with.
 import { refuse } from "@/core/animation"
 import { getStore, reload, type Store } from "@/core/data"
 import { del, get, post } from "@/core/http"
@@ -21,7 +19,6 @@ import { fileAt } from "@/core/pages"
 import { resolver } from "@/core/links"
 import { filesMoved, resolveView, webContainers } from "@/core/plugins"
 import { paneNamed } from "@/core/tabgroups"
-
 
 export type VaultFile = {
   /** type: the core's (its kind's when a kind owns it, else its frontmatter's; core/fileprops.ts); kind: that kind's
@@ -64,17 +61,12 @@ export function pastedFiles(d: DataTransfer | null | undefined): File[] {
   const names = new Set(files.map((f) => f.name))
   return text.split(/\r?\n/).every((l) => names.has(l.trim().split("/").pop()!)) ? files : []
 }
-/** `name` in `folder` ("" is the top of the vault). */
 export const joinPath = (folder: string, name: string) => (folder ? `${folder}/${name}` : name)
-/** Characters a file name can't have (the server refuses * " \ < > : | ?) or a [[link]] can't reach (# ^ [ ]). */
 const UNNAMEABLE = /[*"\\<>:|?#^[\]]/g
-/** A name as typed, made one a file can have, as the server's safeName: "/" makes folders, ":" a dash, other
- *  characters names can't have and runs of spaces one space; no dot at the end and no Windows device name (CON). */
+const WINDOWS_DEVICE = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\.|$)/i
 export const cleanName = (typed: string) => typed.split("/").map((p) => p.replaceAll(":", " -").replace(UNNAMEABLE, " ").replace(/\s+/g, " ")
   .replace(/[\s.]+$/, "").trim()).filter((p) => p && p !== "." && p !== "..")
-  .map((p) => (/^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\.|$)/i.test(p) ? `${p}_` : p)).join("/")
-/** Why `from` can't be renamed to what was `typed` (`to`: the path it makes), or null: characters names can't have
- *  ("/" too: a rename never moves), a dot first (hidden), over 255 bytes, a name already there in any case (a Mac's). */
+  .map((p) => (WINDOWS_DEVICE.test(p) ? `${p}_` : p)).join("/")
 export function nameProblem(typed: string, from: string, to: string): string | null {
   const bad = [...new Set(typed.match(/[/*"\\<>:|?#^[\]]/g) ?? [])]
   if (bad.length) return `A file name can't have ${bad.join(" ")}`
@@ -82,11 +74,11 @@ export function nameProblem(typed: string, from: string, to: string): string | n
   if (!cleanName(typed) || to === from) return null
   if (name.startsWith(".")) return "A name can't start with a dot: it would be hidden"
   if (new TextEncoder().encode(name).length > 255) return "That name is too long"
+  // A Mac's file system ignores case: a name taken in any case is taken.
   const low = to.toLowerCase(), t = getStore()?.files
   const taken = low !== from.toLowerCase() && !!t && ([...t.files, ...t.others].some((f) => f.path.toLowerCase() === low) || t.folders.some((f) => f.toLowerCase() === low))
   return taken ? `“${cleanName(typed)}” is already taken in this folder` : null
 }
-/** Says why a name was refused (as Obsidian's toast does), shaking the field it's still in. */
 export function refuseName(why: string, field?: Element | null) {
   notice(why, { kind: "error", id: "bad-name" })
   refuse(field)
@@ -97,19 +89,13 @@ export const homeOf = (s: Store | null | undefined, kind: string, fallback: stri
   s?.filing?.homes.find((h) => h.key === kind)?.folder ??
   homeFolder((s?.files.files ?? []).filter((f) => f.kind === kind).map((f) => f.path), fallback.split("/").pop(), kind === "logs") ?? fallback
 export const fileOf = (s: Store, path: string) => fileAt(s.files.files, path)
-/** Is there a file at `path` in the vault, Markdown or not. */
 export const inVault = (s: Store, path: string) => !!fileAt(s.files.files, path) || !!fileAt(s.files.others, path)
 export const isMd = (path: string) => /\.md$/i.test(path)
 export const isJson = (path: string) => /\.json$/i.test(path)
-/** A PDF, audio or video file, shown in a note by an embed like an artifact is. */
 export const isMediaEmbed = (path: string) => /\.(pdf|mp3|m4a|aac|wav|ogg|oga|opus|flac|mp4|m4v|mov|webm|ogv)$/i.test(path)
-/** The artifact, table, PDF,
- *  player or plugin-drawn file an embed names (`![[Spending.html]]`): by its path, or its file name. */
 export function findEmbed(s: Store, target: string, from?: string): string | null {
-  // (a part after the name, `![[Books.base#Reading]]`, is the file's to read: found by its name)
   const hash = target.indexOf("#")
   if (hash > 0) { const hit = findEmbed(s, target.slice(0, hash), from); return hit && !isMd(hit) ? hit : null }
-  // Found as a link is (the closest of its name); a hidden folder's file, which links don't name, by its path.
   const hit = resolver(s)(target, from)?.file
   if (hit) return isEmbeddable(hit) ? hit : null
   const low = target.trim().replace(/^\/+/, "").toLowerCase()
@@ -122,9 +108,7 @@ export const isDoc = (path: string) => isMd(path) || isJson(path) || !!pageExt(p
 export const isHidden = isHiddenPath
 export { inArchive }
 export const inTrash = (path: string) => path.startsWith(".trash/")
-/** The app's own: can't be renamed, moved or deleted (the settings folder, the trash, the generated copies; for a guest, all). */
 export const isProtected = (path: string) => path === ".vaultite" || path === ".trash" || path === ".vaultite/generated" || path.startsWith(".vaultite/generated/") || !!share
-/** Read-only in the editor: things in the trash (restore them to edit), the app's generated copies, all for a guest who reads. */
 export const isReadOnly = (path: string) => inTrash(path) || path.startsWith(".vaultite/generated/") || !guestEdits()
 
 /** Split a file into its frontmatter block ("---\n...\n---\n", plus the blank line after it, or "") and its body. */
@@ -132,11 +116,7 @@ export function splitFm(text: string): { fm: string; body: string } {
   const m = /^---\n(?:[\s\S]*?\n)?---[ \t]*(?:\n|$)\n?/.exec(text)
   return m ? { fm: m[0], body: text.slice(m[0].length) } : { fm: "", body: text }
 }
-/** A file's text from its frontmatter and body, splitFm's other way round: a file ending in its closing --- (no line
- *  break) gets one when a body is typed after it, so the text doesn't go onto the --- line and undo the frontmatter. */
 export const joinFm = (fm: string, body: string) => (fm && body && !fm.endsWith("\n") ? `${fm}\n${body}` : fm + body)
-
-// ---------- opening files ----------
 
 const enc = encodeURIComponent
 
@@ -151,7 +131,6 @@ setFileOpener((path) => openFile(path))
 
 /** A folder's page as a tab's target (the Files plugin's view; "" the vault's top). */
 export const folderTarget = (path: string) => (path ? `view:folder/${path}` : "view:folder")
-/** What a vault path opens as a tab: a folder's page, else the file. */
 export const pathTarget = (path: string) => { const t = getStore()?.files; return t && isFolder(t, path) ? folderTarget(path) : `file:${path}` }
 /** Open a folder's page, as openFile opens a file: in the current tab when it shows a folder, else beside it. */
 export function openFolder(path: string, opts: { newTab?: boolean; pane?: string } = {}) {
@@ -161,17 +140,13 @@ export function openFolder(path: string, opts: { newTab?: boolean; pane?: string
   go(to, opts.newTab)
 }
 
-// An agent's `vau open <path>` / `vau command <id>` / `vau notify <text>` (server.ts /api/ui), in the window the user
-// was in last. `container`: a web page's (an id or a name, "none"); `into`: the pane it opens in as a new tab (paneNamed).
 function openAsked(path: string, split?: "right" | "down" | null, newTab = false, background = false, container?: string | null, into?: string | null) {
   if (/^https?:\/\//i.test(path)) path = `view:web/${path}`
   if (container) path = inContainer(path, container)
-  // (a folder: its page)
   const t = getStore()?.files
   if (t && !path.startsWith("view:") && isFolder(t, path.replace(/^file:/, ""))) path = folderTarget(path.replace(/^file:/, ""))
   const view = path.startsWith("view:")
   const to = view ? path : `file:${path.replace(/^file:/, "")}`
-  // (behind the user's tab: agents never take the focus; one open already is left as it is)
   if (background) return void (findOpen(to) || openTab(to, { background: true }))
   if (!isDesktop()) return view ? afterSheets(() => go(to)) : openFile(to.slice(5))
   const at = into ? paneNamed(into) : null
@@ -181,7 +156,6 @@ function openAsked(path: string, split?: "right" | "down" | null, newTab = false
   if (!view) besideKept()
   go(to, newTab)
 }
-/** A web tab's target in the Browser's container named (its id or its name, any case; "none": in none). */
 function inContainer(to: string, said: string) {
   if (!to.startsWith("view:web/")) throw new Error("a container is for a web address (https://...)")
   const url = to.slice(9).replace(/^@[a-z0-9]{1,24}\//, ""), k = said.trim().toLowerCase(), list = webContainers()
@@ -190,8 +164,6 @@ function inContainer(to: string, said: string) {
   if (!c) throw new Error(list.length ? `no container is called ${said}: they're ${list.map((x) => x.name).join(", ")} (or none)` : "this window's browser has no containers")
   return `view:web/@${c.id}/${url}`
 }
-/** A file an agent opens from its terminal goes beside it, not over it: the focus moves to the first other pane of
- *  the tab on screen that isn't showing a view that keeps its own (ViewDef.keepsTab: a terminal), when there's one. */
 function besideKept() {
   const kept = (p: Pane) => keepsTab(p.to), cur = activePane()
   const other = cur && kept(cur) ? panes().find((p) => p.id !== cur.id && !kept(p)) : undefined
@@ -212,7 +184,6 @@ export function openView(to: string, opts: { newTab?: boolean; split?: boolean; 
   const target = resolveView(to.startsWith("view:") ? to : `view:${to}`)
   if (opts.another) return void openTab(target)
   if (findOpen(target)) {
-    // (shown once: ⌘- or middle-clicked, it stays where it is; ⌘⇧, it's shown)
     const how = clickOpening()
     if (opts.focus === false || (how && !how.front)) return
     setClickOpens(null)
@@ -232,14 +203,11 @@ export function closeView(to: string) {
   if (open) guarded([open.p], () => { for (let o = findOpen(target); o; o = findOpen(target)) closePane(o.p.id, true) })
 }
 
-/** A file just made with New note: it opens ready to type its name. */
 let fresh: string | null = null
 export const markNew = (path: string) => { fresh = path }
 export const takeNew = (path: string) => { if (fresh !== path) return false; fresh = null; return true }
 /** Open a file just made, in editing with its name ready to type. */
 export const openNew = (path: string, opts?: { newTab?: boolean }) => { markNew(path); openFile(path, opts) }
-
-// ---------- file operations ----------
 
 /** A file's text. One read ahead of time (prefetchFile) is taken by the first call for that file. */
 export function readFile(path: string) {
@@ -248,8 +216,6 @@ export function readFile(path: string) {
   return early?.p ?? get<FileText>(`file?path=${enc(path)}`)
 }
 
-// Files read before their view asks (the files on screen at start, before the store is here): kept for a moment, and
-// dropped when the file changes, so a view never starts from old text.
 const ahead = new Map<string, { p: Promise<FileText>; at: number }>()
 const AHEAD_MS = 30_000
 onVaultChange((paths) => { for (const p of [...ahead.keys()]) if (touches(paths, p)) ahead.delete(p) })
@@ -262,8 +228,6 @@ function prefetchFile(path: string) {
   ahead.set(path, { p, at: now })
 }
 
-/** Each open editor's way to save what's typed now and wait for it (autosave's `calm`: a conflict settled first), and
- *  the text the server has from it (`disk`), by its file. */
 type Settler = { settle: () => Promise<void>; disk: () => string }
 const settlers = new Map<string, Set<Settler>>()
 export function onSettle(path: string, settle: () => Promise<void>, disk: () => string) {
@@ -279,7 +243,6 @@ export async function settleFile(path: string): Promise<string | undefined> {
   return open[0]?.disk()
 }
 
-/** Each open editor's way to bring in another device's version of its file (autosave's `mergeIn`), by its file. */
 type MergeIn = (base: string | null, text: string, who: string) => Promise<"same" | "merged" | "settled" | "unsaved">
 const mergers = new Map<string, MergeIn>()
 export function onMergeIn(path: string, fn: MergeIn) {
@@ -293,8 +256,6 @@ export async function mergeIntoFile(path: string, base: string | null, text: str
   return fn ? await fn(base, text, who) : "closed" as const
 }
 
-/** A file about to be opened: the pointer resting on its row or link (read after a moment), or pressing it (read now),
- *  so its text is on its way before the click. null: the pointer left. */
 let intent = 0
 export function openingSoon(path: string | null, now = false) {
   clearTimeout(intent)
@@ -302,7 +263,6 @@ export function openingSoon(path: string | null, now = false) {
   else if (path) intent = window.setTimeout(() => prefetchFile(path), 80)
 }
 
-/** The note a row or link names: `data-preview` its path, `data-wiki` a link's target (from the file it's in). */
 function namedNote(el: HTMLElement): string | null {
   const store = getStore()
   if (el.dataset.preview) return /\.md$/i.test(el.dataset.preview) ? el.dataset.preview : null
@@ -312,8 +272,6 @@ function namedNote(el: HTMLElement): string | null {
   return hit && hit !== from ? hit : null
 }
 
-/** Every row and link that names a note (search results, the Links panel, links in notes) is openingSoon's too, as the
- *  tree's and Pinned's rows are by hand: one listener for them all (once, at start: main.tsx). */
 export function watchOpeningSoon() {
   const NAMED = "[data-preview], [data-wiki]"
   let over: Element | null = null
@@ -330,8 +288,6 @@ export function watchOpeningSoon() {
   }, { capture: true, passive: true })
 }
 
-/** Start reading the files on screen (the address's and its sheet's; on desktop each pane's), so they're drawn as soon
- *  as the store is here rather than asked for then (once, at start: main.tsx). */
 export function prefetchShown() {
   const { tab, detail } = route()
   const shown = [targetOf(tab), detail.startsWith("file/") ? targetOf(detail) : ""]
@@ -364,26 +320,22 @@ export async function createFolder(parent: string, name = "New folder") {
 /** A file or folder as the app names it: a note without .md, other files with their extension. */
 export const shownName = (path: string) => (isDoc(path) ? stem(path) : path.split("/").pop()!)
 
-// Moves, wherever they were made (this app, another device, an AI through the API: the live socket's `moved`): open
-// tabs and what plugins keep (`onMove`) follow them; what an editor still has to save goes where its file is now (whereNow).
 const moves: { n: number; from: string; to: string }[] = []
 let moveCount = 0
 function followMove(from: string, to: string | null) {
   if (from === to) return
-  if (to === null) { dropTabs(from); closeDetailOf(from) } // trashed
+  if (to === null) { dropTabs(from); closeDetailOf(from) }
   else {
     moves.push({ n: ++moveCount, from, to })
     if (moves.length > 100) moves.shift()
-    movePlaces(from, to) // (before the tabs follow: they look for their place under the new path)
+    movePlaces(from, to) // before the tabs follow: they look for their place under the new path
     retarget(from, to)
-    retargetDetail(from, to) // a phone's file sheet follows too, whatever moved it (the tree, Undo, a rename, an AI)
+    retargetDetail(from, to)
   }
   filesMoved(from, to)
 }
 onVaultMove(followMove)
-/** Now, as far as moves go: pass it to whereNow later. */
 export const moveMark = () => moveCount
-/** Where a file is now, after the moves made since `mark` (itself if it didn't move). */
 export function whereNow(path: string, mark: number) {
   let p = path
   for (const { n, from, to } of moves) {
@@ -394,11 +346,8 @@ export function whereNow(path: string, mark: number) {
   return p
 }
 
-/** A save or read failed because the file isn't there any more (the server's 404). */
 export const gone = (e: unknown) => /^Error: no file /.test(String(e))
 
-/** Rename or move a file or folder; what plugins keep follows on the server (onMove) and comes back with the reload, so
- *  the app never writes a stale copy back. A toast offers Undo (`undo: false` for that move itself). */
 export async function moveFile(from: string, to: string, opts: { undo?: boolean } = {}) {
   const r = await post<{ path: string; updated: string[] }>("file/move", { from, to })
   followMove(from, r.path)
@@ -411,7 +360,6 @@ export async function moveFile(from: string, to: string, opts: { undo?: boolean 
   return r
 }
 
-/** Undo a move: back where it was, unless something changed since (then it says why, and nothing moves). */
 async function undoMove(now: string, back: string) {
   try { await moveFile(now, back, { undo: false }) }
   catch (e) {
@@ -428,8 +376,6 @@ export async function restoreFile(path: string) {
   return r.path
 }
 
-// Deleted here, a moment ago: an editor of it losing its last keystrokes is what the user asked for (Undo brings the
-// file back), not something to warn about.
 const deleting = new Set<string>()
 export const deletedHere = (path: string) => [...deleting].some((d) => path === d || path.startsWith(`${d}/`))
 
@@ -441,7 +387,7 @@ export async function deleteFile(path: string, opts: { quiet?: boolean } = {}): 
   setTimeout(() => deleting.delete(path), 10_000)
   const { trashed } = await del<{ trashed?: string }>(`file?path=${enc(path)}`)
   dropTabs(path)
-  await reload()  // with what the server's plugins let go of (pins)
+  await reload()
   if (trashed && !opts.quiet) {
     notice(`Moved ${shownName(path)} to trash`, { action: { label: "Undo", run: async () => {
       let back: string
@@ -452,16 +398,13 @@ export async function deleteFile(path: string, opts: { quiet?: boolean } = {}): 
   return trashed ?? null
 }
 
-/** Duplicate a file next to it ("Name 1.md"); returns the copy's path. */
 export async function copyFile(path: string) {
   const r = await post<{ path: string }>("file/copy", { path })
   await reload()
   return r.path
 }
 
-/** Every folder that holds something, and the empty ones too, sorted (for the tree). */
 export function folderList(t: FileTree) {
-  // (a folder in the set has its own folders in it too, so each file stops at the first one already there)
   const set = new Set<string>()
   const add = (dir: string) => { for (let d = dir; d && !set.has(d); d = d.slice(0, Math.max(0, d.lastIndexOf("/")))) set.add(d) }
   for (const f of t.folders) add(f)
@@ -470,7 +413,6 @@ export function folderList(t: FileTree) {
   return [...set].sort()
 }
 
-/** Whether `path` is a folder of the vault (folderList's, kept once per file list: the sidebar asks on every draw). */
 const folderSets = new WeakMap<FileTree, Set<string>>()
 export function isFolder(t: FileTree, path: string) {
   let set = folderSets.get(t)

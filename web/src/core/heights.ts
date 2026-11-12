@@ -1,6 +1,3 @@
-// Remembered heights of blocks, embeds and cards, per width, so drawing one again starts at its size instead of a
-// "Loading…" line that grows: the page keeps its shape and the editor estimates off-screen blocks right.
-
 import { useLayoutEffect, useRef } from "react"
 import { trace } from "@/core/trace"
 import { trackSoon } from "@/core/unsaved"
@@ -8,7 +5,6 @@ import { trackSoon } from "@/core/unsaved"
 type Seen = { w: number; h: number }
 const KEPT = "vaultite.heights"
 const MAX = 800
-/** How close a width must be for a remembered height to hold an element (px). */
 const NEAR = 24
 let heights: Map<string, Seen[]> | null = null
 
@@ -32,10 +28,8 @@ addEventListener("pagehide", () => { if (saving) save() })
 function remember(key: string, w: number, h: number) {
   const m = all()
   const was = m.get(key) ?? []
-  // (the height as laid out, fractions too: held a rounded half pixel taller, a page of blocks shifts as they let go)
   const exact = Math.round(h * 100) / 100
   if (was[0] && Math.abs(was[0].w - w) < 1 && was[0].h === exact) return
-  // The latest first, three widths at most (a pane or two; a sheet).
   const next = [{ w: Math.round(w), h: exact }, ...was.filter((s) => Math.abs(s.w - w) >= NEAR)].slice(0, 3)
   m.delete(key)
   m.set(key, next)
@@ -43,7 +37,6 @@ function remember(key: string, w: number, h: number) {
   saving ??= setTimeout(save, 1000)
 }
 
-/** The height `key` had at about `width` (any width when left out), or undefined. */
 export function heightOf(key: string, width?: number): number | undefined {
   const seen = all().get(key)
   if (!seen?.length) return undefined
@@ -62,18 +55,12 @@ export function textKey(text: string): string {
  *  so one can guess the other's size. `n`: which of the same block it is. */
 export const blockHeightKey = (where: string, path: string, name: string, text: string, n = 1) => `${where}:${path}:block-${name}:${textKey(text)}:${n}`
 
-/** Anything inside still loading (the core's `Loading` line and other placeholders say so with aria-busy). */
 const busy = (el: HTMLElement) => !!el.querySelector("[aria-busy=true]")
 
-// Held elements are checked together, a few times a second, while any is held.
 type Held = { el: HTMLElement; key: string; held: number; since: number; release: (why: string, natural?: number) => void
-  /** Let go once nothing inside is loading, even if it's shorter (a page: it's all in once nothing's busy). */
   shrinks: boolean
-  /** Something inside changed since it was last measured. */
   changed: boolean }
 const holding = new Set<Held>()
-/** Let go once nothing inside is loading (`aria-busy`) and it's at
- *  least the remembered height, or after 4 s: rather room left for a moment than a card that shrinks and grows back. */
 const LONGEST = 4000
 let ticking: ReturnType<typeof setInterval> | null = null
 function tick() {
@@ -84,16 +71,13 @@ function tick() {
     else if (now - h.since > LONGEST) h.release("longest")
     else if (h.changed && h.el.getClientRects().length) { h.changed = false; shown.push(h) }
   }
-  // How tall each is without its hold (what's inside may fill it: h-full), measured all at once and put back before
-  // anything is drawn: one layout for all of them.
   for (const h of shown) h.el.style.height = ""
   const natural = shown.map((h) => h.el.getBoundingClientRect().height)
   shown.forEach((h, i) => { if ((h.shrinks || natural[i] >= h.held - 1) && !busy(h.el)) h.release("ready", natural[i]); else h.el.style.height = `${h.held}px` })
   if (!holding.size && ticking) { clearInterval(ticking); ticking = null }
 }
 
-// Layout reads before writes, batched in a microtask: held one by one (each card in its layout effect), they'd lay the
-// page out once each.
+// Reads before writes, batched in a microtask: one by one, each read after a write would lay the page out again.
 const reads: { read: () => number; write: (n: number) => void }[] = []
 function batched(read: () => number, write: (n: number) => void) {
   if (!reads.length) queueMicrotask(() => {
@@ -105,17 +89,15 @@ function batched(read: () => number, write: (n: number) => void) {
 }
 
 /** Hold `el` at `key`'s remembered height (at its width; `anyWidth`: the latest at once, then its width's) while its content comes in, then
- *  remember its height as it changes (`shrinks`: see Held; a function `key`: read at each, a height per fold). */
+ *  remember its height as it changes (`shrinks`: let go once nothing inside loads, shorter too; a function `key`: read at each, a height per fold). */
 export function holdHeight(el: HTMLElement, key: string | (() => string), anyWidth = false, shrinks = false): () => void {
   const at = typeof key === "string" ? () => key : key, first = at()
   let stopped = false
   let note: ReturnType<typeof setTimeout> | null = null
   let h: Held | null = null
-  // Its size as the ResizeObserver last saw it (no layout to read it again).
   let size: { w: number; h: number } | null = null
   const record = () => {
     note = null
-    // (a hidden tab measures nothing: not a height to come back to; a block that draws nothing is 0 tall, and is one)
     if (h || !size || size.w <= 0 || !el.isConnected || busy(el)) return
     remember(at(), size.w, size.h)
   }
@@ -124,13 +106,10 @@ export function holdHeight(el: HTMLElement, key: string | (() => string), anyWid
     el.style.height = `${held}px`
     el.style.overflow = "clip"
     const now = performance.now()
-    // (measured again only once something inside has changed: a measure lays the page out)
-    // (not its own style: holding and measuring it changes that)
     const changes = new MutationObserver((rs) => { if (h && rs.some((r) => r.target !== el)) h.changed = true })
     changes.observe(el, { childList: true, subtree: true, characterData: true, attributes: true })
     h = {
       el, key: first, held, since: now, changed: true, shrinks,
-      // (its new size comes to the ResizeObserver, which remembers it)
       release: (why, natural) => {
         if (!h) return
         trace("heights", { key: first, held, why, natural: natural === undefined ? undefined : Math.round(natural), after: Math.round(performance.now() - h.since) })
@@ -146,8 +125,6 @@ export function holdHeight(el: HTMLElement, key: string | (() => string), anyWid
   }
   if (anyWidth) {
     hold(heightOf(first))
-    // (then, laid out, the height it had at this width: the latest may be a split pane's; never seen at this width,
-    // the latest is only a guess, let go once nothing inside loads, shorter too: a video's height follows its width)
     batched(() => el.getBoundingClientRect().width, (w) => {
       if (!h || w <= 0) return
       const exact = heightOf(first, w)
@@ -167,8 +144,7 @@ export function holdHeight(el: HTMLElement, key: string | (() => string), anyWid
     note = setTimeout(record, 300)
   })
   sizes.observe(el)
-  // (a fold the user opens or shuts inside: what it holds now is its height, not what came in last time; a click,
-  // the keyboard's too, since a fold opened by code also says toggle)
+  // A summary's click (the keyboard's too), not `toggle`: a fold opened by code fires that as well.
   const toggled = (e: Event) => { if ((e.target as Element).closest?.("summary")) h?.release("toggle") }
   el.addEventListener("click", toggled, true)
   return () => {
@@ -188,7 +164,6 @@ export function useHeldHeight<T extends HTMLElement>(key: string | null, shrinks
   return ref
 }
 
-// How many rows each list had, so its skeleton draws as many (an empty list: none) and doesn't jump when it comes.
 const COUNTS = "vaultite.counts"
 let counts: Map<string, number> | null = null
 function allCounts() {

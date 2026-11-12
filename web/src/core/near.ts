@@ -1,11 +1,8 @@
-// Something heavy (a map: a WebGL context) is made once it comes near the screen, so a long dashboard or a hidden tab
-// doesn't make every one. Once made, it stays.
 import { useEffect, useRef, useState, type RefObject } from "react"
 import { scrollingBox } from "@/lib/utils"
 
 /** Whether `ref`'s element has come within `margin` of the screen (of what scrolls it); stays true after. */
 export function useNearScreen(ref: RefObject<Element | null>, margin = "600px"): boolean {
-  // (without IntersectionObserver: at once)
   const [near, setNear] = useState(() => typeof IntersectionObserver === "undefined")
   useEffect(() => {
     const el = ref.current
@@ -17,8 +14,6 @@ export function useNearScreen(ref: RefObject<Element | null>, margin = "600px"):
   return near
 }
 
-/** What scrolls `el` up and down (`self`: or it itself), else the window (null); kept per element while it holds, as
- *  looking reads each ancestor's style (scrollingBox), too much for each draw. */
 export function scrollerOf(el: Element, self = false): HTMLElement | null {
   const had = known.get(el)
   if (had?.isConnected && (had === el || had.contains(el)) && had.scrollHeight > had.clientHeight) return had
@@ -52,7 +47,6 @@ export function useNearEnd(ref: RefObject<Element | null>, onNear: () => void, s
   useEffect(() => {
     const el = ref.current
     if (!el || typeof IntersectionObserver === "undefined") return
-    // (the pane that scrolls it, so the margin reaches below what it clips)
     const o = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) near.current() }, { root: scrollerOf(el), rootMargin: margin })
     o.observe(el)
     return () => o.disconnect()

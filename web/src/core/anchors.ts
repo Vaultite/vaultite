@@ -1,5 +1,3 @@
-// Places in a file (`#Heading`, `#^id`), found in the text as it is on screen: every Markdown editor registers here.
-// Where a heading or block is: core/sections.ts, shared with the server.
 import type { Text } from "@codemirror/state"
 import type { ViewUpdate } from "@codemirror/view"
 import { useEffect, useMemo, useState } from "react"
@@ -15,16 +13,11 @@ import { trackSoon } from "@/core/unsaved"
 
 export type { Heading }
 
-/** A file shown in an editor. */
 export type DocView = {
   path: string
-  /** The text the editor has: the file's whole text, frontmatter too. */
   text: () => string
-  /** Scroll so this line (0-based, in `text`) is near the top, and flash it. */
   scrollTo: (line: number) => void
-  /** The line (0-based) at the top of what's on screen. */
   topLine: () => number
-  /** The editor's element (is it on screen? in the focused pane?). */
   dom: HTMLElement
 }
 
@@ -33,7 +26,6 @@ const subs = signal()
 let version = 0
 const changed = () => { version++; subs.notify() }
 
-/** An editor showing a file: registered until it goes (the returned function). */
 export function registerDoc(d: DocView) {
   docs.push(d)
   changed()
@@ -41,8 +33,6 @@ export function registerDoc(d: DocView) {
   return () => { const i = docs.indexOf(d); if (i >= 0) docs.splice(i, 1); changed() }
 }
 const OUTLINED = /^\s{0,3}(?:#{1,6}(?:\s|$)|=+\s*$|-+\s*$|`{3}|~{3})|^\s*(?:[-*+]|\d+[.)])(?:\s|$)/
-/** An editor's text changed: the outline (and the mind map's lists) follows it when they could have (a line added or
- *  taken away, or a heading, list item, underline or fence touched), not for each letter typed in a paragraph. */
 export function docChanged(u: ViewUpdate) {
   const a = u.startState.doc, b = u.state.doc
   let moved = a.lines !== b.lines
@@ -54,14 +44,12 @@ export function docChanged(u: ViewUpdate) {
   if (moved) changed()
 }
 
-/** The editor showing this file that's on screen, the focused pane's first; `within`: only one inside it. */
 function viewOf(path: string, within?: Element | null): DocView | null {
   const shown = docs.filter((d) => d.path === path && d.dom.isConnected && d.dom.getClientRects().length > 0 && (!within || within.contains(d.dom)))
   return shown.find((d) => d.dom.closest("#main-scroll")) ?? shown[shown.length - 1] ?? null
 }
 
 let pending: { path: string; anchor: string; until: number; within?: Element | null } | null = null
-/** A heading drawn outside an editor (a dashboard being read: the Markdown between its blocks), on screen. */
 function drawnHeading(path: string, anchor: string, within?: Element | null): HTMLElement | null {
   if (anchor.startsWith("^")) return null
   const want = anchorKey(anchor.split("#").pop() ?? "")
@@ -116,12 +104,7 @@ function awaitAnchor(p: { path: string; anchor: string; within?: Element }) {
   whileOnItsWay(tryPending, () => pending !== asked, () => { if (pending === asked) pending = null })
 }
 
-// ---------- editing a line: a block's "Edit source" ----------
-
-/** Where a line is drawn now: its top at `y` on screen (a block's Markdown goes where the block was). */
 export type DrawnLine = { line: number; y: number }
-/** A file's view on screen that can take the cursor to a line (FileView: into editing first), `find` on it selected,
- *  `from` kept where it's drawn, `col` the cursor's column. */
 type LineTaker = { path: string; dom: () => HTMLElement | null; take: (line: number, find?: string, from?: DrawnLine, col?: number) => void }
 const takers: LineTaker[] = []
 let wanted: { path: string; line: number; find?: string; from?: DrawnLine; col?: number; until: number } | null = null
@@ -146,7 +129,6 @@ export function editAt(path: string, line: number, opts: { newTab?: boolean; pan
   whileOnItsWay(deliver, () => wanted !== asked, () => { if (wanted === asked) wanted = null })
 }
 
-/** A file's view takes editAt's requests for its path while it's mounted. */
 export function useEditAt(path: string, dom: () => HTMLElement | null, take: LineTaker["take"]) {
   useEffect(() => {
     const t: LineTaker = { path, dom, take }
@@ -183,7 +165,7 @@ export function useOutline(path: string) {
       setCurrent(k)
     }
     at()
-    // Scrolling anywhere (each pane is its own scroller; phones scroll the window): scroll events don't bubble.
+    // scroll events don't bubble: each pane is its own scroller, and phones scroll the window.
     document.addEventListener("scroll", at, { capture: true, passive: true })
     return () => document.removeEventListener("scroll", at, { capture: true })
   }, [v, headings, setCurrent])

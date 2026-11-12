@@ -1,5 +1,3 @@
-// Commands, listed in the palette with their keys; a command's `keys` also bind it, so shortcut and entry can't drift.
-// Sequences ("Space F F") go first in capture; unmodified steps never start one while typing (`typingIn`).
 import { useEffect, type ComponentType } from "react"
 import { patch } from "@/core/http"
 import { noteActivity } from "@/core/activity"
@@ -48,29 +46,21 @@ export type Command = {
   unlisted?: boolean
 }
 
-/** A setting: drawn with a switch (palette) or a check (menus), not renamed by its state. */
 export const isSetting = (c: Pick<Command, "on" | "nameWhenOn">) => !!c.on && !c.nameWhenOn
-/** Whether what it switches is on now (false for a command that switches nothing). */
 export const isOn = (c: Pick<Command, "on">) => { try { return !!c.on?.() } catch { return false } }
-/** What a command says now: `nameWhenOn` while what it switches is on, else its name. */
 export const commandName = (c: Pick<Command, "name" | "on" | "nameWhenOn">) => (c.nameWhenOn && isOn(c) ? c.nameWhenOn : c.name)
 
 const reg = new Map<string, Command>()
-/** Every command registered since the page loaded, still there or not (Settings > Hotkeys lists them all: a file's
- *  commands come and go with its tab). */
 type Known = { id: string; name: string; keys?: string[]; nameWhenOn?: string; where?: string; icon?: Command["icon"] }
 const known = new Map<string, Known>()
 const commandsChanged = signal()
 let list: Command[] = []
 let knownList: Known[] = []
-/** Each command's place in `known`: first registered, first (a re-registered one keeps its place). */
 let firstSeen = new Map<string, number>()
 const changed = () => { list = [...reg.values()]; knownList = [...known.values()]; firstSeen = new Map(knownList.map((k, i) => [k.id, i])); byKeys = null; commandsChanged.notify() }
 
-/** Add commands (the same id replaces the older one); returns how to take them away again. */
 export function registerCommands(cs: Command[]) {
   cs = cs.filter((c) => guestCommand(c.id))
-  // (none: nothing to tell, as a file that isn't live registers none, redrawing every keys hint as tabs switch)
   if (!cs.length) return () => {}
   for (const c of cs) { reg.set(c.id, c); known.set(c.id, { id: c.id, name: c.name, keys: c.keys, nameWhenOn: c.nameWhenOn, where: c.place?.name, icon: c.icon }) }
   changed()
@@ -79,7 +69,7 @@ export function registerCommands(cs: Command[]) {
 
 /** Register commands while a component is mounted (again whenever `deps` change). */
 export function useCommands(make: () => Command[], deps: unknown[]) {
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the caller passes the deps
   useEffect(() => registerCommands(make()), deps)
 }
 
@@ -93,8 +83,6 @@ export function runCommandNamed(text: string) {
   return !!c
 }
 
-/** Run what a command or a menu item does, at once (it may need the click's user activation): one that throws or
- *  rejects says so in a toast rather than doing nothing (its error still reaches Errors through the console). */
 export function runOrSay(run: () => unknown, name: string): Promise<void> {
   const failed = (e: unknown) => { console.error(e); notifyError(e, `Couldn't ${name.replace(/…$/, "").replace(/^\w/, (c) => c.toLowerCase())}`) }
   try {
@@ -125,7 +113,6 @@ export const onCommandsChanged = commandsChanged.subscribe
 export const commandList = () => list
 
 export const useCommandList = () => commandsChanged.use(() => list)
-/** Every command seen since the page loaded (for Settings > Hotkeys). */
 export const useKnownCommands = () => commandsChanged.use(() => knownList)
 export const available = (cs: Command[]) => cs.filter((c) => {
   if (c.desktop && !isDesktop()) return false
@@ -135,8 +122,6 @@ export const available = (cs: Command[]) => cs.filter((c) => {
 const GLYPH: Record<string, string> = MAC
   ? { Mod: "⌘", Shift: "⇧", Alt: "⌥", Ctrl: "⌃", Enter: "↵", ArrowUp: "↑", ArrowDown: "↓", ArrowLeft: "←", ArrowRight: "→", Escape: "esc", Backspace: "⌫" }
   : { Mod: "Ctrl", Shift: "Shift", Alt: "Alt", Ctrl: "Ctrl", Enter: "Enter", ArrowUp: "↑", ArrowDown: "↓", ArrowLeft: "←", ArrowRight: "→", Escape: "Esc" }
-// What ⇧ types on the keys a shortcut names by their place (a US layout), for a step drawn as what it types; a digit
-// stays ⇧1, as drawing tools write it.
 const SHIFTED: Record<string, string> = {
   "/": "?", ";": ":", "'": "\"", ",": "<", ".": ">", "[": "{", "]": "}", "\\": "|", "`": "~", "-": "_", "=": "+",
 }
@@ -155,22 +140,18 @@ export const keyCaps = (keys: string) => stepsOf(canonical(keys)).flatMap((step)
 /** Keys as text: ⌘⇧F on a Mac, Ctrl+Shift+F elsewhere (caps run together would read "CtrlO"); a sequence's steps
  *  apart ("g g"). */
 export const keyHint = (keys: string) => stepsOf(canonical(keys)).map((step) => keyCaps(step).join(MAC ? "" : "+")).join(" ")
-/** A command's first keys in effect ("Mod+O": hotkeys.json's, else its defaults); undefined without any. */
 export const firstKeys = (id: string) => { const c = reg.get(id) ?? known.get(id); return c ? keysOf(c)[0] : undefined }
 /** Those keys as `keyHint` writes them, "" without any: for a button's tooltip, so it never names keys of its own. */
 export const commandKeys = (id: string) => { const k = firstKeys(id); return k ? keyHint(k) : "" }
 /** `commandKeys`, kept up to date as commands and hotkeys change; " (⌘O)" with `paren`, "" without keys. */
 export function useCommandKeys(id: string, paren = false) {
-  // (its own keys only: other commands coming and going draw nothing)
   const k = commandsChanged.use(() => commandKeys(id))
   return paren && k ? ` (${k})` : k
 }
 
-// ---------- hotkeys (.vaultite/hotkeys.json) ----------
 let hotkeys: Record<string, string[]> = {}
 let hotkeysJson = "[{},{}]"
 
-// Another app's keys for the commands it has too (an Obsidian vault's hotkeys.json): defaults under the vault's own.
 let seeded: Record<string, string[]> = {}
 
 const keyMap = (saved: unknown) => {
@@ -181,7 +162,6 @@ const keyMap = (saved: unknown) => {
   return out
 }
 
-/** The vault's hotkeys arrived (in /api/state, `config.hotkeys`), and another app's (`settingDefaults.hotkeys`). */
 export function hydrateHotkeys(saved: unknown, seeds?: unknown) {
   const next = keyMap(saved), nextSeeds = keyMap(seeds)
   const json = JSON.stringify([next, nextSeeds])
@@ -196,7 +176,6 @@ export function hydrateHotkeys(saved: unknown, seeds?: unknown) {
  *  own defaults and the keys plugins add to it (`addKeys`). */
 export const keysOf = (c: { id: string; keys?: string[] }) => hotkeys[c.id] ?? seeded[c.id] ?? (extra.has(c.id) ? [...(c.keys ?? []), ...extra.get(c.id)!] : c.keys ?? [])
 
-// Keys a plugin gives other commands while it's on (Vim: "Space F F" for Open quick switcher), on top of their own.
 let extra = new Map<string, string[]>()
 const adders = new Map<string, Record<string, string[]>>()
 /** Give commands more default keys, by command id, under `owner` (a plugin's id); null takes them away. The vault's
@@ -209,12 +188,9 @@ export function addKeys(owner: string, keys: Record<string, string[]> | null) {
   extra = next
   changed()
 }
-/** Whether hotkeys.json sets this command's keys. */
 export const isCustom = (id: string) => id in hotkeys
-/** Whether its keys are another app's (an Obsidian vault's hotkeys.json), hotkeys.json not setting them. */
 export const isSeeded = (id: string) => !(id in hotkeys) && id in seeded
 
-/** Set a command's keys (null: back to its defaults), in hotkeys.json: only that command's line changes (PATCH). */
 export function setHotkeys(id: string, keys: string[] | null) {
   const next = { ...hotkeys }
   if (keys === null) delete next[id]
@@ -233,7 +209,6 @@ const CODES: Record<string, string> = {
 const codeKey = (code: string) => (/^Key[A-Z]$/.test(code) ? code.slice(3) : /^Digit\d$/.test(code) ? code.slice(5) : CODES[code])
 const MODIFIERS = new Set(["Meta", "Control", "Alt", "Shift", "CapsLock", "Fn", "OS"])
 
-/** The key of a keydown, as a shortcut names it ("T", "/", "ArrowLeft", "Space"); "" for a modifier alone. */
 function keyName(e: KeyboardEvent) {
   if (MODIFIERS.has(e.key)) return ""
   if (e.key === " " || e.code === "Space") return "Space"
@@ -242,17 +217,12 @@ function keyName(e: KeyboardEvent) {
   return e.key.length === 1 ? e.key.toUpperCase() : e.key
 }
 
-// Other spellings a hand-written hotkeys.json may use.
 const ALIASES: Record<string, string> = { cmd: "Mod", command: "Mod", meta: "Mod", mod: "Mod", ctrl: "Ctrl", control: "Ctrl", alt: "Alt", option: "Alt", opt: "Alt", shift: "Shift" }
 
-/** A shortcut in one spelling, to compare two: modifiers in order (Mod, Ctrl, Alt, Shift), the key capitalised. Off a
- *  Mac, Ctrl is Mod; "Cmd" and "Option" are Mod and Alt. */
 export function canonical(keys: string) {
   return stepsOf(keys).map(canonicalStep).join(" ")
 }
-/** A sequence's steps: "Ctrl+W L" -> ["Ctrl+W", "L"]. */
 const stepsOf = (keys: string) => keys.trim().split(/ +/).filter(Boolean)
-// Keys with names, as a hand-written hotkeys.json (or a lower-cased sequence) may spell them.
 const NAMED = new Map(["Space", "Enter", "Escape", "Tab", "Backspace", "Delete", "Home", "End", "PageUp", "PageDown",
   "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].map((k) => [k.toLowerCase(), k]))
 function canonicalStep(keys: string) {
@@ -261,10 +231,8 @@ function canonicalStep(keys: string) {
   const mods = new Set(parts.map((m) => ALIASES[m.toLowerCase()] ?? m).map((m) => (!MAC && m === "Ctrl" ? "Mod" : m)))
   return [...["Mod", "Ctrl", "Alt", "Shift"].filter((m) => mods.has(m)), key.length === 1 ? key.toUpperCase() : NAMED.get(key.toLowerCase()) ?? key].join("+")
 }
-/** Two shortcuts are the same keys. */
 export const sameKeys = (a: string, b: string) => canonical(a).toLowerCase() === canonical(b).toLowerCase()
 
-/** The shortcut a keydown is ("Mod+Shift+T"), or "" while only modifiers are down. */
 export function shortcutOf(e: KeyboardEvent) {
   const key = keyName(e)
   // AltGr types (⌃⌥7 is "{" on a German layout): never a shortcut.
@@ -273,8 +241,6 @@ export function shortcutOf(e: KeyboardEvent) {
   return [...mods, key].join("+")
 }
 
-// ---------- pressing keys ----------
-/** Commands by their key steps, rebuilt when they or hotkeys change: every keystroke looks here before any `when`. */
 let byKeys: Map<string, { c: Command; steps: string[] }[]> | null = null
 function table() {
   if (!byKeys) {
@@ -288,9 +254,7 @@ function table() {
   return byKeys
 }
 
-// A command hotkeys.json binds that isn't here: its keys say why when its plugin is off or waits to be allowed.
 let whyMissing: ((id: string) => (() => void) | null) | null = null
-/** How to say why a bound command isn't here: a function that says it, or null (nothing to say: it comes with a tab). */
 export const setMissingCommand = (fn: typeof whyMissing) => { whyMissing = fn; byKeys = null }
 const standIns = new WeakSet<Command>()
 function standIn(id: string): Command {
@@ -301,7 +265,6 @@ function standIn(id: string): Command {
 
 const keysReach = (c: Command) => { try { return !c.keysWhen || c.keysWhen() } catch { return false } }
 
-/** The commands available now whose keys are these steps (`exact`) or start with them (`longer`). */
 function matching(steps: string[]) {
   const exact: Command[] = [], longer: { c: Command; steps: string[] }[] = []
   for (const b of table().get(steps[0]) ?? []) {
@@ -310,8 +273,6 @@ function matching(steps: string[]) {
     if (b.steps.length === steps.length) exact.push(b.c)
     else longer.push(b)
   }
-  // The same keys on two: the one offered only sometimes is the more particular (Vim's ? over Open hotkeys); else the
-  // first registered (the app's before a plugin's), not the last re-registered, which load timing decides.
   const seen = (c: Command) => firstSeen.get(c.id) ?? Infinity
   exact.sort((a, b) => Number(!a.when) - Number(!b.when) || seen(a) - seen(b))
   return { exact, longer }
@@ -324,15 +285,9 @@ export function typingIn(el: EventTarget | null) {
   if (el.isContentEditable || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.closest("[data-keeps-keys]")) return true
   return el.tagName === "INPUT" && !/^(checkbox|radio|button|submit|reset|range|color|file|image)$/i.test((el as HTMLInputElement).type)
 }
-/** A step that a text field, an editor or a terminal keeps: one without ⌘, ⌃ or ⌥ types (but a function key never
- *  does), and on a Mac ⌃ and a letter edits the line (a shell's ⌃W, ⌃U). */
 const typed = (step: string) => (!/(^|\+)(mod|ctrl|alt)\+/.test(step) && !/(^|\+)f\d\d?$/.test(step)) || (MAC && /^ctrl\+(shift\+)?[a-z]$/.test(step))
-/** Keys that edit what's typed in any field (⌘A selects it, ⌘⌫ and ⌥⌫ delete back): the field's, never a command's
- *  (a list's ⌘A selecting its rows while one of them is being renamed). */
 const FIELD_KEYS = new Set(["mod+a", "mod+backspace", "alt+backspace", "mod+delete", "alt+delete"])
 
-/** A sequence under way: its steps so far, and the command they already name when longer ones go on from it (run when
- *  nothing follows in time, like Vim's `timeoutlen`). */
 type Pending = { steps: string[]; exact: Command | null }
 let pending: Pending | null = null
 let pendingTimer = 0
@@ -358,7 +313,6 @@ export function beginKeys(keys: string) {
   setPending({ steps, exact: exact[0] ?? null })
   return true
 }
-/** What can follow the sequence under way: each next step, with the commands it leads to. */
 export function nextKeys(steps: string[]) {
   const out = new Map<string, Command[]>()
   for (const { c, steps: s } of matching(steps).longer) {
@@ -368,7 +322,6 @@ export function nextKeys(steps: string[]) {
   return [...out].map(([step, cs]) => ({ step, commands: cs, last: cs.every((c) => keysOf(c).some((k) => stepsOf(canonical(k).toLowerCase()).length === steps.length + 1)) }))
 }
 
-/** What this keydown would do: run a command, go on with a sequence, or nothing (null). */
 function intent(e: KeyboardEvent) {
   if (e.defaultPrevented || e.isComposing) return null
   const step = shortcutOf(e)
@@ -388,7 +341,6 @@ export const modifiedSteps = () => [...table().keys()].filter((s) => /(^|\+)(mod
 /** A command that's available now has these keys, or a sequence goes on with them: a key the app would take (a
  *  terminal lets these through to it). */
 export const appShortcut = (e: KeyboardEvent) => !!intent(e)
-/** This key alone runs a command now (not one that only starts a sequence, like G of "G I"). */
 export const runsCommand = (e: KeyboardEvent) => { const it = intent(e); return !!it && !("cancel" in it) && !!it.exact && !it.longer && !pending }
 
 /** Take a keydown if the app's keys have it (a command, or a sequence step): true if taken. Widgets that stop keys from
@@ -409,20 +361,13 @@ export function runShortcut(e: KeyboardEvent) {
   return true
 }
 
-// A sequence under way takes the next key before anything else (an editor would type it); otherwise keys come here
-// after the page had its turn.
 addEventListener("keydown", (e) => { if (pending) runShortcut(e) }, true)
 addEventListener("keydown", (e) => { runShortcut(e) })
-// Clicking elsewhere ends a sequence, like pressing a key no sequence takes.
 addEventListener("pointerdown", () => cancelKeys(), true)
 
-/** The user ran it from the palette or with its keys: for Activity. Commands run by code (runCommandById) and by id
- *  (runCommandId: the desktop app's menu, `vau command`, which the server hears itself) aren't noted. */
 const ran = (c: Command) => { if (!QUIET.has(c.id) && !standIns.has(c)) noteActivity("command", `Ran ${commandName(c)}`) }
-/** Opening the palettes is on the way to something else (what's run or opened from them is noted). */
 const QUIET = new Set(["palette:open", "switcher:open", "tab:search"])
 
-// The palette puts the commands used last on top.
 const RECENT = "vaultite.recentCommands"
 export function recentCommands(): string[] {
   try { const v = JSON.parse(localStorage.getItem(RECENT) ?? "[]"); return Array.isArray(v) ? v : [] } catch { return [] }
@@ -433,27 +378,21 @@ export function runCommand(c: Command) {
   runOrSay(c.run, commandName(c))
 }
 
-/** A command an agent runs (`vau command`): false when it isn't available now, else once its run settles (at most
- *  `ms`), the toasts it showed meanwhile, so the agent knows whether it did what it should. */
 export async function runCommandAsked(id: string, ms = 1500): Promise<false | { notices: Notice[] }> {
   const c = available(list).find((x) => x.id === id)
   if (!c) return false
   const from = Date.now()
   await Promise.race([runOrSay(c.run, commandName(c)), new Promise((done) => setTimeout(done, ms))])
-  // (a toast it shows as it ends comes a moment after)
   await new Promise((done) => setTimeout(done, 150))
   return { notices: noticesSince(from) }
 }
 
-/** Run a command by id, if it's offered now (the desktop app's menu sends these). */
 export function runCommandId(id: string) {
   const c = available(list).find((x) => x.id === id)
   if (c) runOrSay(c.run, commandName(c))
   return !!c
 }
 
-/** A command a link names (runCommandId otherwise): whoever wrote the link may not be the user, so one that does more
- *  than open something runs once they say so. False when there's no such command (yet). */
 export function runCommandLink(id: string) {
   const c = available(list).find((x) => x.id === id)
   if (!c) return false

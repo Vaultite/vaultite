@@ -1,5 +1,3 @@
-// The editors on screen, so a command acts on the one the user means: the one with the keyboard, else the sheet's,
-// else the focused pane's. Types only from CodeMirror: the editor is its own chunk.
 import type { EditorState } from "@codemirror/state"
 import type { EditorView } from "@codemirror/view"
 import { typingIn } from "@/core/commands"
@@ -29,7 +27,6 @@ export type OpenEditor = {
 
 const open: OpenEditor[] = []
 
-/** An editor came on screen: registered until it goes (the returned function). */
 export function registerEditor(e: OpenEditor) {
   open.push(e)
   return () => { const i = open.indexOf(e); if (i >= 0) open.splice(i, 1) }
@@ -47,7 +44,6 @@ export function currentEditor(): OpenEditor | null {
   const at = document.activeElement
   const own = at && shown.find((e) => e.view.dom.contains(at))
   if (own) return own
-  // A sheet (a <dialog>) open on top of the panes: its file.
   const sheets = [...document.querySelectorAll("dialog[open]")]
   for (const d of sheets.reverse()) {
     const hit = shown.find((e) => d.contains(e.view.dom))

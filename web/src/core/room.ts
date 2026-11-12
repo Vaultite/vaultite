@@ -1,5 +1,4 @@
-// The sidebars' sizes, on rules of their own: a custom property changed on an element restyles all under it (on <html>,
-// every element) per toggle and drag move, while a rule's declarations restyle only what it matches.
+// A custom property changed on an element restyles everything under it; a rule's declarations restyle only what it matches.
 import { signal } from "@/core/signal"
 
 let sheet: CSSStyleSheet | null = null
@@ -13,13 +12,10 @@ function liveRule(selector: string): CSSStyleDeclaration {
   return (sheet.cssRules[sheet.insertRule(`${selector} {}`, sheet.cssRules.length)] as CSSStyleRule).style
 }
 
-// ---------- the window's room beside the sidebars, for what's fixed to its edges (the status bar, corner cards)
-
 let now = { left: "0px", right: "0px" }
 let roomRule: CSSStyleDeclaration | null = null
 const changed = signal()
 
-/** --left-sidebar and --right-sidebar on `.vau-room`: CSS lengths (`calc()`s of the sidebars' widths). */
 export function setRoom(left: string, right: string) {
   if (left === now.left && right === now.right) return
   now = { left, right }
@@ -30,9 +26,6 @@ export function setRoom(left: string, right: string) {
 }
 export const room = () => now
 export const onRoom = changed.subscribe
-
-// ---------- an open sidebar's content at its open width while the sidebar opens: its edge uncovers it, nothing reflows
-// each frame (its padding and edge take 4 units; the vault's bar runs edge to edge)
 
 const open: Partial<Record<"left" | "right", { body: CSSStyleDeclaration; bar: CSSStyleDeclaration; px: number }>> = {}
 

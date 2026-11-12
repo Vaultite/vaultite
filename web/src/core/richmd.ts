@@ -1,5 +1,3 @@
-// What Markdown draws after it's HTML (math, mermaid, code copy and footnote buttons), lazily, for the editor and for
-// Markdown drawn outside it alike, so a note reads the same everywhere.
 import { isDark } from "@/lib/utils"
 import { onLook } from "@/core/appearance"
 import { haptic } from "@/core/haptics"
@@ -10,7 +8,6 @@ type Katex = typeof import("katex").default
 let katex: Promise<Katex> | null = null
 const loadKatex = () => (katex ??= Promise.all([import("katex"), import("katex/dist/katex.min.css")]).then(([k]) => k.default))
 
-/** TeX into `el` (display: a centred block of its own). Bad TeX shows as its source, in red. */
 export function renderMath(tex: string, el: HTMLElement, display: boolean) {
   el.classList.add("math", display ? "math-display" : "math-inline")
   if (!el.firstChild) el.textContent = tex
@@ -26,8 +23,6 @@ type Mermaid = typeof import("mermaid").default
 let mermaid: Promise<Mermaid> | null = null
 const loadMermaid = () => (mermaid ??= import("mermaid").then((m) => m.default))
 let seq = 0
-// Diagrams on screen: Pele draws them in the scheme's tokens (index.css), so they follow it with no redraw. `mounted` is
-// Pele's, until Mermaid drew one Pele couldn't (then `dark`: the look it was drawn in).
 type Diagram = { src: string; mounted?: Mounted; dark?: boolean }
 const diagrams = new Map<HTMLElement, Diagram>()
 let watching = false
@@ -36,13 +31,12 @@ async function drawPele(el: HTMLElement, d: Diagram) {
   const p = await loadPele()
   const src = d.src
   try { await p.load(p.detectType(src)) } catch { /* mount shows why */ }
-  if (diagrams.get(el) !== d || d.src !== src) return // redrawn with newer text meanwhile
+  if (diagrams.get(el) !== d || d.src !== src) return
   if (d.mounted) { d.mounted.update(src); return }
   el.textContent = ""
   d.mounted = p.mount(el, src, { fontSize: 14, onError: () => void drawMermaid(el, d) })
 }
 
-/** What Pele can't draw, drawn by Mermaid (loaded only then); if Mermaid can't either, Pele's error stays. */
 async function drawMermaid(el: HTMLElement, d: Diagram) {
   const src = d.src
   const m = await loadMermaid()
@@ -62,7 +56,6 @@ async function drawMermaid(el: HTMLElement, d: Diagram) {
   }
 }
 
-/** A mermaid diagram into `el` (its source shows until it's drawn), in the colour scheme's colours, light or dark. */
 export function renderMermaid(src: string, el: HTMLElement) {
   el.classList.add("mermaid-diagram")
   let d = diagrams.get(el)
@@ -72,7 +65,6 @@ export function renderMermaid(src: string, el: HTMLElement) {
   if (!el.firstChild) { const pre = document.createElement("pre"); pre.textContent = src; el.append(pre) }
   if (!watching) {
     watching = true
-    // Another font measures labels again; Mermaid's few are drawn again for light or dark.
     onLook(() => {
       for (const [e, x] of diagrams) {
         if (!e.isConnected) { x.mounted?.destroy(); diagrams.delete(e) }
@@ -84,7 +76,6 @@ export function renderMermaid(src: string, el: HTMLElement) {
   void drawPele(el, d)
 }
 
-/** Forget a diagram whose element went away (the editor's widget destroyed). */
 export const dropMermaid = (el: HTMLElement) => { diagrams.get(el)?.mounted?.destroy(); diagrams.delete(el) }
 
 /** Draw what core/markdown.ts left for later inside `root`: math, code's colours and mermaid diagrams. */
@@ -110,7 +101,6 @@ export function hydrate(root: HTMLElement) {
   }
 }
 
-/** Whether `el` is folded away in `root`: inside a shut <details>, not in its <summary> (a callout's title shows). */
 function folded(el: Element, root: HTMLElement) {
   for (let d = el.parentElement?.closest("details"); d && root.contains(d); d = d.parentElement?.closest("details")) {
     if (!d.open && !d.querySelector(":scope > summary")?.contains(el)) return true
@@ -118,8 +108,6 @@ function folded(el: Element, root: HTMLElement) {
   return false
 }
 
-/** `draw` each `![[x]]` left for its caller (`data-md-embed`) in `root` once it shows: at once, or in a folded callout
- *  when it's first opened, so a video folded away isn't loaded. Returns the way to undo them all (`draw`'s returns). */
 export function drawEmbeds(root: HTMLElement, draw: (el: HTMLElement, target: string) => (() => void) | void): () => void {
   const waiting = new Set(root.querySelectorAll<HTMLElement>("[data-md-embed]")), undo: (() => void)[] = []
   const pass = () => {
@@ -131,7 +119,7 @@ export function drawEmbeds(root: HTMLElement, draw: (el: HTMLElement, target: st
     }
     if (!waiting.size) root.removeEventListener("toggle", pass, true)
   }
-  // (toggle doesn't bubble: heard on the way down; a fold opened by code says it too)
+  // toggle doesn't bubble: heard on the way down.
   root.addEventListener("toggle", pass, true)
   pass()
   return () => { root.removeEventListener("toggle", pass, true); waiting.clear(); for (const u of undo.splice(0)) u() }
@@ -149,14 +137,13 @@ export function onMarkdownDrawn(fn: DrawnHook) {
   return () => { drawnHooks.delete(fn) }
 }
 export function markdownDrawn(el: HTMLElement, lines: DrawnLines | null = null) {
-  // (a block's first drawing, before the editor puts it in: its lines are known once it's there)
+  // CodeMirror draws a widget before it puts it in the page: its lines are known once it's there.
   if (lines && !el.isConnected) { queueMicrotask(() => tell(el, lines)); return }
   tell(el, lines)
 }
 function tell(el: HTMLElement, lines: DrawnLines | null) {
   for (const f of drawnHooks) { try { f(el, lines) } catch (e) { console.error(e) } }
 }
-/** The lines of a block whose first line is `line()` and whose text is `text()`, in `doc()`. */
 export const blockLines = (line: () => number | null, text: () => string, doc: () => string): DrawnLines => () => {
   const at = line()
   return at == null ? null : { lineStart: at, lineEnd: at + text().split("\n").length - 1, doc: doc() }
@@ -165,7 +152,6 @@ export const blockLines = (line: () => number | null, text: () => string, doc: (
 export const COPY_ICON = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>'
 const CHECK_ICON = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>'
 
-/** Copy a code block's text; the button shows a tick for a moment. */
 export function copyCode(button: HTMLElement, text: string) {
   const done = () => {
     button.innerHTML = CHECK_ICON
@@ -177,13 +163,12 @@ export function copyCode(button: HTMLElement, text: string) {
   else if (fallbackCopy(text)) done()
 }
 
-/** Copy text: the async clipboard, else the textarea way; false when neither could. */
 export async function copyText(text: string) {
   try { if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return true } } catch { /* the other way */ }
   return fallbackCopy(text)
 }
 
-// Clipboard without the async API (an http page on the tailnet): a hidden textarea and execCommand.
+// navigator.clipboard needs a secure context: an http page copies with a textarea and execCommand.
 function fallbackCopy(text: string) {
   const ta = document.createElement("textarea")
   ta.value = text
@@ -197,8 +182,6 @@ function fallbackCopy(text: string) {
   return ok
 }
 
-/** Clicks inside core/markdown.ts's HTML: a code block's copy button, a footnote (scrolls to its definition).
- *  True when it was one of them. */
 export function richClick(e: { target: EventTarget | null; preventDefault: () => void; stopPropagation: () => void }, root: HTMLElement) {
   const t = e.target as Element | null
   const copy = t?.closest?.<HTMLElement>("[data-copy]")
@@ -231,12 +214,9 @@ function flash(el: HTMLElement) {
   setTimeout(() => el.classList.remove("is-flash"), 1200)
 }
 
-// A task's line, as core/markdown.ts draws it a box: in a list, a quote or a callout (`> - [ ] `). Group 1: its mark.
 const TASK = /^(?:[ \t]*>[ \t]?)*[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[([ xX])\](?=[ \t]|$)/
 const FENCE = /^(?:[ \t]*>[ \t]?)*[ \t]{0,3}(`{3,}|~{3,})/
 
-/** Where each task's mark (the space or x between its brackets) is in Markdown `text`, in the order its boxes are drawn
- *  (none in code). */
 export function taskMarks(text: string): number[] {
   const out: number[] = []
   let fence = "", at = 0
@@ -249,8 +229,6 @@ export function taskMarks(text: string): number[] {
   return out
 }
 
-/** Makes the boxes Markdown drew in `root` tick (not those of a note embedded in it): `toggle` with which one (the nth
- *  of `taskMarks`) and its new state, or null to leave them as they are (they can't be changed). */
 export function wireTasks(root: HTMLElement, toggle: ((nth: number, on: boolean) => void) | null) {
   const boxes = [...root.querySelectorAll<HTMLInputElement>("input[type=checkbox]")].filter((b) => {
     const embed = b.closest("[data-md-embed], [data-embed]")
@@ -263,7 +241,6 @@ export function wireTasks(root: HTMLElement, toggle: ((nth: number, on: boolean)
   })
 }
 
-/** A Do it on each open task of what's drawn (the same boxes as wireTasks): `run` gets the box's nth. */
 export function wireDoIt(root: HTMLElement, run: (nth: number, button: HTMLButtonElement) => void) {
   const boxes = [...root.querySelectorAll<HTMLInputElement>("input[type=checkbox]")].filter((b) => {
     const embed = b.closest("[data-md-embed], [data-embed]")
@@ -282,7 +259,6 @@ export function wireDoIt(root: HTMLElement, run: (nth: number, button: HTMLButto
   })
 }
 
-/** `text` with its nth task ticked (or not), or null when it has no such task. */
 export function tickTask(text: string, nth: number, on: boolean): string | null {
   const at = taskMarks(text)[nth]
   return at === undefined ? null : text.slice(0, at) + (on ? "x" : " ") + text.slice(at + 1)

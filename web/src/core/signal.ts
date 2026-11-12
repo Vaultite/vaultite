@@ -1,4 +1,3 @@
-// What hooks redraw on when module state changes: who to tell and a counter, the useSyncExternalStore wiring once.
 import { useSyncExternalStore } from "react"
 
 export function signal() {
@@ -8,12 +7,9 @@ export function signal() {
   const current = () => version
   return {
     subscribe,
-    /** Tell everything that reads it: hooks redraw, subscribers run. One that throws (a plugin's) is reported, never
-     *  stopping the others or the change that told them (a tab switched with its address left behind). */
     notify: () => { version++; subs.forEach((f) => { try { f() } catch (e) { console.error(e) } }) },
     version: current,
-    /** A hook: `read()` (the counter when omitted), drawn again when it's notified. `read` returns the same value
-     *  until something changes (useSyncExternalStore's rule). */
+    // `read` returns the same value until something changes: useSyncExternalStore's rule.
     use: <T = number>(read?: () => T): T => useSyncExternalStore(subscribe, (read ?? current) as () => T),
   }
 }

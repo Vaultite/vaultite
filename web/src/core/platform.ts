@@ -1,6 +1,5 @@
 import { useSyncExternalStore } from "react"
 
-// Which computer the page runs on, asked once: keys, labels and gestures differ on a Mac (⌘, Finder, ⌃-click).
 const ua = typeof navigator === "undefined" ? "" : navigator.platform || navigator.userAgent
 
 /** A Mac, iPhone or iPad: ⌘ is the app's Mod key. */
@@ -30,8 +29,6 @@ export const isDesktop = () => matchMedia(DESKTOP).matches
 /** isDesktop that follows the window: a phone's width and a computer's swap as it's resized. */
 export const useDesktop = () => useSyncExternalStore((f) => { const m = matchMedia(DESKTOP); m.addEventListener("change", f); return () => m.removeEventListener("change", f) }, isDesktop)
 
-// Where the system's scrollbars take room and always show (Windows, Linux, a Mac with a mouse), the app draws its own
-// (index.css: data-classic-scrollbars), which show while scrolling; `--scrollbar-room` is their room, 0 when overlaid.
 let measuredAt = 0
 const probe = () => {
   const el = document.createElement("div")
@@ -42,7 +39,7 @@ function measureScrollbars(again = false) {
   if (!again && measuredAt === devicePixelRatio) return
   measuredAt = devicePixelRatio
   const html = document.documentElement
-  // the system's own bar, in a shadow root that the app's ::-webkit-scrollbar rules don't reach
+  // ::-webkit-scrollbar rules don't reach into a shadow root: the system's own bar
   const host = html.appendChild(document.createElement("div")), native = host.attachShadow({ mode: "open" }).appendChild(probe())
   const classic = native.offsetWidth > native.clientWidth
   host.remove()
@@ -53,7 +50,6 @@ function measureScrollbars(again = false) {
   if (classic) addEventListener("scroll", scrolled, { capture: true, passive: true })
   else removeEventListener("scroll", scrolled, { capture: true })
 }
-// A scroller is `data-scrolling` while it scrolls and a moment after, as a Mac's bars show and fade.
 const scrolling = new Map<Element, number>()
 function scrolled(e: Event) {
   const el = e.target
@@ -66,6 +62,6 @@ function scrolled(e: Event) {
 if (typeof document !== "undefined" && typeof devicePixelRatio === "number") {
   measureScrollbars()
   addEventListener("resize", () => measureScrollbars())
-  // System Settings' "Show scroll bars", or a mouse plugged in, change them while the app runs
+  // macOS's "Show scroll bars", or a mouse plugged in, changes them while the app runs
   addEventListener("focus", () => measureScrollbars(true))
 }

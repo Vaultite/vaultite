@@ -1,5 +1,3 @@
-// Coding agents in terminal tabs (the Terminal plugin runs them; a plugin brings one with `agents` in its definition
-// and the service "agent:<name>" in its backend): open a new session, or resume one in the folder it ran in.
 import { useEffect, useSyncExternalStore } from "react"
 import { SquareTerminal, type LucideIcon } from "lucide-react"
 import { choose } from "@/components/Chooser"
@@ -13,8 +11,6 @@ import { useStateFor } from "@/core/statefor"
 import { currentWorkspace, scopedState, useScopedState } from "@/core/scope"
 import { agentIn, newTerminalId, parseTerminal, resumeTerminalId } from "../../../core/terminalids.ts"
 
-/** The ids made on this page, with when they were asked for: their tabs start their session (an agent); any other tab
- *  only attaches (mintedHere). */
 const minted = new Map<string, number>()
 /** A new terminal session id: 8 letters and digits. `asked`: when the user asked for it (performance.now()). */
 export function terminalId(asked = performance.now()) {
@@ -31,7 +27,6 @@ export const mintedHere = (id: string) => minted.has(id.replace(/@.*$/, "").spli
 /** Whether agents can run here: the Terminal plugin is on. */
 export const canRunAgents = () => isEnabled("terminal", getPrefs().disabled)
 
-// ---------- where new ones open, per workspace ----------
 /** Where new terminals and agents (and Dispatch) open unasked: a machine (none: this one), an account per agent. */
 export type DefaultPlace = { machine?: string; accounts?: Record<string, string> }
 const NOWHERE: DefaultPlace = {}
@@ -89,7 +84,6 @@ export async function openTerminal(opts: { machine?: string | null; split?: bool
   return openView(`terminal/${onMachine(terminalId(asked), machine)}`, { newTab: !opts.split, split: opts.split })
 }
 
-// ---------- an agent's accounts ----------
 /** One of an agent's accounts, as its plugin lists them (`accounts` in its definition): the first is its bare name's. */
 export type AgentAccount = { id: string; label: string }
 const accountLists = new Map<string, { at: number; list: Promise<AgentAccount[]> }>()
@@ -104,11 +98,8 @@ export function accountsOf(a: Agent, machine: string, fresh = false): Promise<Ag
   return list
 }
 
-// Every agent's accounts by machine, read once each (again after five minutes), for rows that say whose they are.
 const names = new Map<string, { at: number; list: AgentAccount[] }>()
 const namesHeard = new Set<() => void>()
-/** The name of agent `agent`'s account `id` ("" or none: its first, its bare name's) on `machine`: "" while it isn't
- *  known yet, and for an agent with a single account (there's nothing to tell apart). */
 function accountName(agent: string, machine: string, id?: string) {
   const a = agentsOn().find((x) => x.name === agent)
   if (!a?.accounts) return ""
@@ -117,7 +108,6 @@ function accountName(agent: string, machine: string, id?: string) {
     names.set(key, { at: Date.now(), list: had?.list ?? [] })
     void accountsOf(a, machine, !!had).then((list) => {
       names.set(key, { at: Date.now(), list })
-      // (another function, so what was made from the last one is made again)
       named = (...args) => accountName(...args)
       namesHeard.forEach((f) => f())
     })
@@ -155,7 +145,6 @@ export type Place = { agent: Agent | null; machine: string; machineLabel: string
 /** Every place: a terminal, then each agent that's on (in each of its accounts), on this machine and on each other one
  *  that's online with the Terminal plugin on (and the agent's plugin, for an agent). */
 export function places(): Promise<Place[]> {
-  // (a menu of them opens at once from the last answer, asked again behind it: only the first one waits)
   asking ??= askPlaces().then((l) => (lastPlaces = l)).finally(() => { asking = null })
   return lastPlaces ? Promise.resolve(lastPlaces) : asking
 }
@@ -200,7 +189,6 @@ export async function choosePlace(opts: { agent?: string; split?: boolean; first
     },
   })
 }
-/** A choice listed before the places (Claude Code's chat, in the app rather than a terminal). */
 export type PlaceChoice = { label: string; detail?: string; icon?: LucideIcon; run: () => void }
 
 /** Choose where new terminals and agents open in the current workspace: a machine, and the agent's account there. */
@@ -209,7 +197,6 @@ export async function chooseDefaultPlace() {
   const h = getDefaultPlace(), desk = currentWorkspace()
   const isDefault = (p: Place) => {
     const at = defaultPlaceOf(p.agent?.name ?? null, ms, h)
-    // (an agent's bare name runs its account "default")
     return p.machine === at.machine && (!p.agent || !p.profile || p.profile === (at.profile || "default"))
   }
   choose({

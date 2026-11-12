@@ -1,5 +1,4 @@
-// JSON with where each value sits in the text: keys keep their order (a JS object would reorder numeric keys) and an
-// edit replaces only the value's characters, the same small-edit rule as Markdown.
+// Parsed by hand, not into a JS object: one would reorder numeric keys.
 
 type JScalar = { kind: "string"; value: string } | { kind: "number"; value: number } | { kind: "boolean"; value: boolean } | { kind: "null"; value: null }
 export type JNode = (
@@ -8,7 +7,6 @@ export type JNode = (
   | { kind: "array"; items: JNode[] }
 ) & { start: number; end: number }
 
-/** The tree of `text`, or the parse error. */
 export function parseJson(text: string): { node: JNode } | { error: string } {
   try { JSON.parse(text) } catch (e) { return { error: String((e as Error).message ?? e) } }
   let i = 0
@@ -29,7 +27,7 @@ export function parseJson(text: string): { node: JNode } | { error: string } {
       ws()
       while (text[i] !== "}") {
         const [key] = str()
-        ws(); i++ // :
+        ws(); i++
         entries.push({ key, value: value() })
         ws()
         if (text[i] === ",") { i++; ws() }
@@ -65,7 +63,6 @@ export function parseJson(text: string): { node: JNode } | { error: string } {
   return { node: value() }
 }
 
-/** `text` with one value replaced. Strings are escaped like the rest of the file (a file written with ASCII escapes, é, keeps them). */
 export function setJson(text: string, node: JNode, next: string | number | boolean | null): string {
   let raw = JSON.stringify(next)
   if (typeof next === "string" && /\\u[0-9a-fA-F]{4}/.test(text) && !/[^\x00-\x7f]/.test(text))

@@ -1,5 +1,3 @@
-// The vault as the web app sees it (GET /api/state), plus date helpers. Every item has a string id (its vault path
-// without .md) and `modified` (a local stamp, "YYYY-MM-DD HH:MM:SS").
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react"
 import { editCount, edited, type LiveMark, onKeptChange, onVaultChange, settled, startLive, type Paths } from "@/core/live"
 import { get, send } from "@/core/http"
@@ -116,20 +114,16 @@ export function useTick(ms = 30_000, on = true) {
   return n
 }
 
-/** Made-up live data for plugin previews: inside <PreviewLive>, useLive returns these instead of fetching. */
 export const PreviewLive = createContext<Record<string, unknown> | null>(null)
 /** Drawn in a plugin's preview (made-up data, nothing fetched or written). */
 export const usePreview = () => useContext(PreviewLive) !== null
-/** A preview's made-up answer for `path` (its own, or its address's without the query). */
 function mocked<T>(mock: Record<string, unknown>, path: string | null) {
   const key = path && Object.keys(mock).find((k) => path === k || path.startsWith(`${k}?`))
   return { data: (key ? mock[key] : null) as T | null, error: null, loading: false }
 }
 
-// Cards asking for the same live data at once share one request. Always no-cache at the same address, so over the
-// network an unchanged answer is a 304 with no body.
 const inflight = new Map<string, { at: number; n: number; p: Promise<unknown> }>()
-let changes = 0 // (`since`: a request made after that many changes, so the cards one touches share the new one)
+let changes = 0
 function fetchLive<T>(path: string, key = path, fresh = 10_000, since = 0): Promise<T> {
   const hit = inflight.get(key)
   if (hit && hit.n >= since && Date.now() - hit.at < fresh) return hit.p as Promise<T>
@@ -139,27 +133,22 @@ function fetchLive<T>(path: string, key = path, fresh = 10_000, since = 0): Prom
   return p
 }
 
-/** Does this change touch what a plugin's route answers from: its settings (.vaultite/plugins/<id>/)? (Its cache is kept
- *  by the server: keptData.) A route's plugin is its first part, by convention (`calendar?from=…`: calendar). */
 function liveData(paths: Paths, route: string) {
   if (paths === null) return true
   const id = route.split(/[/?]/)[0]
   return paths.some((p) => p === ".vaultite" || p === ".vaultite/plugins" || p === `.vaultite/plugins/${id}` || p.startsWith(`.vaultite/plugins/${id}/`))
 }
-/** Does a change to what the server keeps (core/kept.ts, "<plugin id>/<name>") touch a plugin's route? */
 const keptData = (names: string[] | null, route: string) => names === null || names.some((n) => n.slice(0, n.indexOf("/")) === route.split(/[/?]/)[0])
 onVaultChange((paths) => { changes++; for (const k of [...inflight.keys()]) if (liveData(paths, k)) inflight.delete(k) })
 onKeptChange((names) => { changes++; for (const k of [...inflight.keys()]) if (keptData(names, k)) inflight.delete(k) })
 
-// The last answer per address, so a card drawn again shows it at once while it asks again instead of jumping. Kept for
-// this visit (200) and in localStorage per vault (20, up to 16 KB each).
 const answers = new Map<string, { data: unknown; json: string }>()
 const KEPT = "vaultite.live"
-let keptFor: string | null = null // the vault whose answers are loaded
+let answersVault: string | null = null
 function recall(path: string) {
   const vault = loaded.store?.vault.path ?? ""
-  if (keptFor !== vault) {
-    keptFor = vault
+  if (answersVault !== vault) {
+    answersVault = vault
     answers.clear()
     try {
       const all = JSON.parse(localStorage.getItem(KEPT) ?? "null") as { vault: string; answers: [string, string][] } | null
@@ -178,12 +167,10 @@ function remember(path: string, data: unknown, json: string) {
   keeping ??= setTimeout(() => {
     keeping = null
     const recent = [...answers].filter(([, a]) => a.json.length <= 16_384).slice(-20).map(([k, a]) => [k, a.json])
-    try { localStorage.setItem(KEPT, JSON.stringify({ vault: keptFor, answers: recent })) } catch { /* private mode, full */ }
+    try { localStorage.setItem(KEPT, JSON.stringify({ vault: answersVault, answers: recent })) } catch { /* private mode, full */ }
   }, 1000)
 }
 
-// One timer per address and period, whatever polls it, stopped while the page is hidden (each tick woke it) and run
-// at once when it's shown again.
 const pollers = new Map<string, { every: number; subs: Set<() => void>; id: ReturnType<typeof setInterval> | null }>()
 const tick = (p: { subs: Set<() => void> }) => { for (const fn of [...p.subs]) fn() }
 const startPoller = (p: { every: number; subs: Set<() => void>; id: ReturnType<typeof setInterval> | null }) => { p.id ??= setInterval(() => tick(p), p.every) }
@@ -215,13 +202,11 @@ export function useLive<T>(path: string | null, version?: string | number, files
   const mock = useContext(PreviewLive)
   const [data, setData] = useState<T | null>(() => (path ? (recall(path)?.data as T | undefined) ?? null : null))
   const [error, setError] = useState<string | null>(null)
-  // An answer the same as the one shown keeps its object, so what's drawn from it isn't drawn again.
-  const last = useRef<string | null>(null)
-  last.current ??= path ? recall(path)?.json ?? "" : ""
+  const shownJson = useRef<string | null>(null)
+  shownJson.current ??= path ? recall(path)?.json ?? "" : ""
   const ask = path && version !== undefined ? `${path}\0${version}` : path
-  // (in a tab kept drawn behind another it doesn't poll, and asks once it's shown again)
-  const kept = useRef(false)
-  kept.current = !!usePane().hidden
+  const behind = useRef(false)
+  behind.current = !!usePane().hidden
   const again = useRef<((fresh: number) => void) | null>(null)
   useEffect(() => {
     if (!path || !ask || mock) return
@@ -230,7 +215,7 @@ export function useLive<T>(path: string | null, version?: string | number, files
       if (!on) return
       const json = JSON.stringify(d)
       remember(path, d, json)
-      if (json !== last.current) { last.current = json; setData(d) }
+      if (json !== shownJson.current) { shownJson.current = json; setData(d) }
       setError(null)
     }).catch((e) => on && setError(errorText(e)))
     load()
@@ -242,13 +227,12 @@ export function useLive<T>(path: string | null, version?: string | number, files
     const offKept = onKeptChange((names) => { if (keptData(names, path)) load() })
     const off = () => { offFiles(); offKept() }
     if (!every) return () => { on = false; off() }
-    // (cards polling the same address share a request made in the last half period, and a timer)
-    const poll = () => { if (!kept.current) void load(every / 2) }
+    const poll = () => { if (!behind.current) void load(every / 2) }
     again.current = (fresh) => void load(fresh)
     const stop = pollEvery(path, every, poll)
     return () => { on = false; again.current = null; off(); stop() }
   }, [path, ask, mock, every])
-  const shown = !kept.current
+  const shown = !behind.current
   useEffect(() => { if (shown && every) again.current?.(every / 2) }, [shown, every])
   if (mock) return mocked<T>(mock, path)
   return { data, error, loading: !!path && data === null && error === null }
@@ -289,17 +273,13 @@ export function usePatched<T>(path: string | null, version?: string | number) {
   return { data, error, loading: !!path && data === null && error === null }
 }
 
-// The one store: /api/state, loaded as soon as the app's code runs and again on every change in the vault. Plugins
-// change it optimistically with mutate() after a write, or reload().
 type Loaded = { store: Store | null; error: string | null }
 let loaded: Loaded = { store: null, error: null }
 const listeners = new Set<() => void>()
 const publish = (next: Partial<Loaded>) => { loaded = { ...loaded, ...next }; listeners.forEach((f) => f()) }
 /** The store as it is now (for code outside React). */
 export const getStore = () => loaded.store
-/** The vault's name as the app shows it: its folder's, Playground for a sandbox. */
 export const vaultName = (s: Store | null | undefined) => (s ? (s.vault.sandbox ? "Playground" : s.vault.path.split("/").filter(Boolean).pop() ?? "Vault") : "Vault")
-/** Call `fn` whenever the store changes (for code outside React); returns how to stop. */
 export const onStore = (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn) } }
 /** Change the store optimistically, after a write: f returns a new store, with new objects where it changed (never
  *  one changed in place: the store's objects are also the server's last state, which the next refresh patches). */
@@ -312,26 +292,18 @@ export function optimistic<T>(change: (s: Store) => Store, write: () => Promise<
   p.catch((e) => { void reload(); notifyError(e, failed) })
   return p
 }
-// Runs with each new state before it's drawn (the vault plugins' bundles load there: App.tsx sets it).
 let beforeState: ((s: State) => Promise<void>) | null = null
 export const onState = (fn: (s: State) => Promise<void>) => { beforeState = fn }
 
-/** The state as the server last gave it (`v`) and its store: what a refresh asks the server to patch, so only what
- *  changed comes. Optimistic changes (mutate) are dropped at each refresh, which starts from the server's. */
 let server: { v: string; state: State; store: Store } | null = null
-/** `here`: "connect" through Vaultite Connect without owner tools (core/here.ts). */
 type Answer = ({ v: string; state: State } | { v: string; since: string; patch: Patch | null }) & { live?: LiveMark; here?: "connect" }
 
-/** The state after the server's answer: the whole state, or the one it has patched; null when the patch isn't of the
- *  state this app has (it then asks for the whole state). */
 function stateOf(a: Answer): State | null {
   if ("state" in a) return a.state
   if (!server || a.since !== server.v) return null
   try { return a.patch ? applyPatch(server.state, a.patch) as State : server.state } catch (e) { console.error(e); return null }
 }
 
-/** The whole state from its chunks (core/statechunks.ts): the ones this browser kept come from its cache, so a load
- *  after a change fetches only what changed. Null when it can't (a chunk gone meanwhile): the whole state is asked. */
 async function fromChunks(): Promise<Answer | null> {
   try {
     const m = await get<Manifest | Answer>("state/manifest")
@@ -346,11 +318,8 @@ async function fromChunks(): Promise<Answer | null> {
   }
 }
 
-// One refresh at a time; asked again meanwhile, it runs once more after. It waits for this app's writes on their way,
-// and one that a write overtook is thrown away and run again, so an optimistic change never flickers back.
 let busy: Promise<void> | null = null
 let again = false
-// The page's first load, from its navigation to the vault's state drawn (core/spans.ts makes the app's launch of it).
 let loading: ReturnType<typeof span> | null = span("app.load", {}, 0)
 function load(): Promise<void> {
   if (busy) { again = true; return busy }
@@ -362,13 +331,12 @@ function load(): Promise<void> {
       try {
         const answer = (server ? null : await fromChunks()) ?? await get<Answer>(`state?since=${encodeURIComponent(server?.v ?? "0")}`)
         loading?.mark("state")
-        startLive(answer.live) // (the first answer: live updates start from where it stood)
+        startLive(answer.live)
         setHere(answer.here ?? "mac")
         if (editCount() !== gen) { again = true; continue }
         const all = stateOf(answer)
         if (!all) { server = null; again = true; continue }
         if (all === server?.state) {
-          // Nothing changed there: the server's store again, if an optimistic change is on top of it.
           if (loaded.store !== server.store || loaded.error) publish({ store: server.store, error: null })
           continue
         }
@@ -383,7 +351,7 @@ function load(): Promise<void> {
         if (loading) { const l = loading; loading = null; requestAnimationFrame(() => { l.mark("draw"); l.end() }) }
       } catch (e) {
         publish({ error: errorText(e, "Couldn't load the vault") })
-        startLive() // (no state: it listens anyway, and tries again when the server's back)
+        startLive()
       }
     } while (again)
   }
@@ -392,29 +360,24 @@ function load(): Promise<void> {
 }
 export const reload = () => load()
 
-
-// Changes in quick succession (an agent writing file after file) reload it at most once a second: the first at once,
-// the ones after it together, a moment later.
-const GAP = 1000
+const MIN_RELOAD_GAP = 1000
 let lastLoad = 0
 let soon: ReturnType<typeof setTimeout> | null = null
 trackSoon("store reload", () => soon !== null)
 function loadSoon() {
   if (soon) return
-  const wait = lastLoad + GAP - Date.now()
+  const wait = lastLoad + MIN_RELOAD_GAP - Date.now()
   const go = () => { soon = null; lastLoad = Date.now(); load() }
   if (wait <= 0) go()
   else soon = setTimeout(go, wait)
 }
 
-/** Load the store, and follow the vault: any change (Claude, another device, this app's own writes) refreshes it, as
- *  does a change to what the server keeps that the state shows (artifacts' storage isn't reported). Once, from main.tsx. */
 let started = false
 export function startStore() {
   if (started) return
   started = true
   loading?.mark("scripts")
-  load() // (it starts live updates once its answer came)
+  load()
   onVaultChange(() => loadSoon())
   onKeptChange((_names, state) => { if (state) loadSoon() })
 }
@@ -434,14 +397,13 @@ export const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${p
 export const parse = (s: string) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d) }
 export const today = () => iso(new Date())
 export const addDays = (s: string, n: number) => { const d = parse(s); d.setDate(d.getDate() + n); return iso(d) }
-export const dow = (s: string) => (parse(s).getDay() + 6) % 7 // 0 = Monday
+export const dow = (s: string) => (parse(s).getDay() + 6) % 7
 export const weekStart = (s: string) => addDays(s, -dow(s))
 export const range = (from: string, n: number) => Array.from({ length: n }, (_, i) => addDays(from, i))
 
-// Dates and numbers as text in the user's locale. toLocaleDateString(undefined, options) makes a new formatter on every
-// call (about a tenth of a millisecond, which a page's dates add up to); these keep one per set of options.
+// toLocaleDateString(undefined, options) makes a new formatter per call (about 0.1 ms): keep one per set of options.
 const dateFormats = new Map<string, Intl.DateTimeFormat>()
-const byOptions = new WeakMap<Intl.DateTimeFormatOptions, Intl.DateTimeFormat>() // (options kept in a constant: no key to make)
+const byOptions = new WeakMap<Intl.DateTimeFormatOptions, Intl.DateTimeFormat>()
 /** A date (or a time in ms) as text: `dateText(d, { day: "numeric", month: "short" })` is d.toLocaleString(undefined,
  *  { day: "numeric", month: "short" }), with the formatter kept. */
 export function dateText(d: Date | number, options: Intl.DateTimeFormatOptions) {

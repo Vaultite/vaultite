@@ -1,5 +1,3 @@
-// The file being edited in the focused pane, for commands that write into it (Insert template); null when the focused
-// tab isn't an editable Markdown file.
 export type ActiveFile = {
   path: string
   /** The whole file as it is in the editor now (frontmatter and body). */
@@ -14,7 +12,6 @@ export type ActiveFile = {
 
 let active: ActiveFile | null = null
 export const setActiveFile = (f: ActiveFile | null) => { active = f }
-/** Clear it only if it's still this one (a newer pane may have taken over). */
 export const dropActiveFile = (f: ActiveFile) => { if (active === f) active = null }
 export const activeFile = () => active
 
@@ -26,7 +23,6 @@ export function insertOnOwnLine(text: string, f = active) {
   const now = f.text()
   const at = now.indexOf(marked)
   if (at < 0) return true
-  // (no blank line before it at the start of a line, nor after it at a line's end; the file still ends with a line break)
   const before = at === 0 || now[at - 1] === "\n" ? 1 : 0
   const after = now[at + marked.length] === "\n" ? 1 : 0
   if (before || after) f.setText(now.slice(0, at) + marked.slice(before, marked.length - after) + now.slice(at + marked.length))

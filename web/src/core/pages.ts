@@ -1,5 +1,3 @@
-// Pages are files: the app's part is how a file looks where it's listed (`icon`, `tint`) and what makes it a page in
-// a tab (a plugin draws it as one). Pinning and dashboards are plugins'.
 import {
   AppWindow, Banknote, Calculator, ChartColumn, ChartLine, ChartPie, PiggyBank, Receipt, Sheet,
   Activity, Apple, Bike, BookOpen, Bot, Brain, Briefcase, Gem, Layers, Package, Server, SquareTerminal, CalendarDays, Camera, Code2, Coffee, Compass, Dumbbell, Flag, FolderGit2,
@@ -15,8 +13,6 @@ import type { VaultFile } from "@/core/files"
 import { fileViewFor, iconNamed, isEnabled, pluginById } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
 
-/** Icons a file can name in its frontmatter (`icon: sun`), lucide names; plugins add their own (`icons` in their
- *  definition: Claude Code's `claude`). */
 export const ICONS: Record<string, LucideIcon> = {
   activity: Activity, apple: Apple, bike: Bike, "book-open": BookOpen, book: BookOpen, brain: Brain, briefcase: Briefcase,
   calendar: CalendarDays, "calendar-days": CalendarDays, camera: Camera, code: Code2, coffee: Coffee, compass: Compass,
@@ -40,11 +36,9 @@ export const namedIcon = (name?: string | null): LucideIcon | null => {
   return ICONS[n.toLowerCase()] ?? iconNamed(n.toLowerCase()) ?? anyIcon(n.toLowerCase())
 }
 
-/** A plugin's icon as its manifest says it (core/pluginmeta.ts iconOf): a name, or its SVG mark as a data address. */
 export const pluginIcon = (icon?: string | null): LucideIcon | null =>
   icon?.startsWith("data:image/svg+xml,") ? markIcon(icon) : namedIcon(icon)
 
-/** A command's icon (core/commands.ts: a component or a name), or `named` over it (a new tab button's, newtab.json). */
 export const commandIcon = (c: { icon?: ComponentType<{ className?: string; strokeWidth?: number }> | string }, named?: string | null): ComponentType<{ className?: string; strokeWidth?: number }> | null =>
   namedIcon(named) ?? (typeof c.icon === "string" ? namedIcon(c.icon) : c.icon ?? null)
 
@@ -63,7 +57,6 @@ export function tintOf(t?: string | null) {
 /** Left out of lists of pages (the sidebar's): a page whose plugin (its `plugin:`, the one that brought it) is off. */
 export const offPlugin = (f: Pick<VaultFile, "plugin"> | undefined, disabled = getPrefs().disabled) => !!f?.plugin && !!pluginById(f.plugin) && !isEnabled(f.plugin, disabled)
 
-/** The vault's files by path, once per file list (the sidebar and the tabs ask on every draw). */
 const paths = new WeakMap<{ path: string }[], globalThis.Map<string, { path: string }>>()
 export function fileAt<F extends { path: string }>(files: F[], path: string): F | undefined {
   let byPath = paths.get(files)
@@ -71,7 +64,6 @@ export function fileAt<F extends { path: string }>(files: F[], path: string): F 
   return byPath.get(path) as F | undefined
 }
 
-/** How the plugin that's on draws this file as a page (FileView.page: a dashboard's grid), or null. */
 export function pageView(path: string, store: Store | null = getStore(), disabled = getPrefs().disabled) {
   const f = store ? fileAt(store.files.files, path) : undefined
   return f ? fileViewFor(f, disabled)?.view.page ?? null : null

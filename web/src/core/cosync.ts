@@ -1,15 +1,9 @@
-// Notes typed in together right now (a plugin's live session: the Companion's co-editing): one owner saves each, its
-// editors' autosave or, from joining, the session's server, which hands it back on the text it has (autosave's `rebase`).
-
-/** A session's hold on a note: `joining` (what was typed alone is saved, the session's text on its way: what's typed
- *  meanwhile goes into it once it's there), then `live` (typed in together: the server has what's typed). */
 type Owner = { kind: "joining" | "live" }
 const owners = new Map<string, Owner>()
 const backs = new Set<(path: string, base: string | null) => void>()
 
 /** Whether a live session keeps `path` now (joining it or typed in): its editors' autosave stands down. */
 export const keptLive = (path: string) => owners.has(path)
-/** Whether what's typed in `path` is the session's to save now (joining, it isn't the server's yet). */
 export const typedLive = (path: string) => owners.get(path)?.kind === "live"
 
 /** A live session takes `path`'s saving (joining it): `live` once typed in, `handBack` on `base` (the text the server
@@ -27,7 +21,6 @@ export function keepLive(path: string) {
   }
 }
 
-/** Hears each note handed back to its editors, with the base they save on from then. */
 export function onHandBack(fn: (path: string, base: string | null) => void) {
   backs.add(fn)
   return () => { backs.delete(fn) }

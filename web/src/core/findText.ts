@@ -1,7 +1,3 @@
-// Finding text in what's drawn (a page, a drawn table or callout in a note), for the finds that light it with CSS
-// highlights rather than marks in the DOM: Find and replace's in drawn blocks, Vim's / outside the editor.
-
-/** Where a paragraph or a cell starts: text on either side isn't one run (a match can't span two cells). */
 const BREAK = "p, li, td, th, tr, summary, h1, h2, h3, h4, h5, h6, pre, blockquote, div, dt, dd, figcaption"
 const SKIP = ".cm-block-bar, style, script, svg, [aria-hidden=true]"
 
@@ -23,7 +19,6 @@ export function textRanges(el: HTMLElement, re: RegExp, max = 1000, skip = ""): 
   }
   const out: Range[] = []
   if (!nodes.length) return out
-  // (the text node holding offset i: a match's start is in the node starting there, its end in the one before)
   const point = (i: number, end: boolean) => {
     let lo = 0, hi = nodes.length - 1
     while (lo < hi) {

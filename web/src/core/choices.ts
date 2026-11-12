@@ -1,5 +1,3 @@
-// Settings of a few values, declared once (a plugin's: its manifest's enums): Settings draws these values, and the palette
-// has "<Name>…", their picker (core/choicePicker.ts). On/off ones are core/switches.ts.
 import { AppWindow, ArrowDownWideNarrow, BookOpen, IndentIncrease, PanelTopDashed, PencilLine, RefreshCw, Sparkles, SunMoon, Tags, UnfoldVertical } from "lucide-react"
 import type { Command } from "@/core/commands"
 import { choose } from "@/components/Chooser"
@@ -23,7 +21,6 @@ export const THEMES: Options<Theme> = [{ value: "system", label: "System" }, { v
 export const DENSITIES: Options<Density> = [{ value: "compact", label: "Compact" }, { value: "comfortable", label: "Comfortable" }]
 export const ANIMATIONS: Options<Animation> = [{ value: "natural", label: "Natural" }, { value: "snappy", label: "Snappy" }, { value: "off", label: "Off" }]
 export const BAR_FADES: Options<FileBarFade> = [{ value: "off", label: "Never" }, { value: "typing", label: "While typing" }, { value: "always", label: "Always" }]
-/** What the file bar's fade is now: one of its three (a hand-edited value reads as off). */
 export const barFadeOf = (v: unknown): FileBarFade => (v === "typing" || v === "always" ? v : "off")
 export type Indent = "tab" | "2" | "4"
 export const INDENTS: Options<Indent> = [{ value: "tab", label: "Tab" }, { value: "2", label: "2 spaces" }, { value: "4", label: "4 spaces" }]
@@ -35,7 +32,7 @@ const editorValue = (k: "defaultView" | "editingMode" | "propertiesInDocument") 
   section: "editor", get: () => String(editorSettings()[k] ?? ""), set: (v: string) => setEditor({ [k]: v }),
 })
 
-// (`id` and `name` first, literal: the server lists commands from the source, core/appsource.ts.)
+// `id` and `name` first, literal: core/appsource.ts lists commands from the source.
 const CORE: ChoiceDef[] = [
   { id: "setting:theme", name: "Theme", section: "appearance", icon: SunMoon, words: "dark mode light mode", options: list(THEMES),
     get: () => getPrefs().theme, set: (v) => setPrefs({ theme: v as Theme }), preview: (v) => previewLook(v === null ? null : { theme: v as Theme }) },
@@ -58,34 +55,27 @@ const CORE: ChoiceDef[] = [
     get: () => indentOf(editorSettings()), set: (v) => setEditor(v === "tab" ? { useTab: true } : { useTab: false, tabSize: Number(v) }) },
   { id: "setting:plugin-updates", name: "Plugin updates", section: "plugins", icon: RefreshCw, words: "update automatically plugins", options: list(PLUGIN_UPDATE_POLICIES),
     sub: () => "Which plugins update on their own", get: () => getPrefs().updates, set: (v) => setPrefs({ updates: v as UpdatePolicy }) },
-  // File explorer's, kept in files.json (its sheet: components/FilesSettings.tsx).
   { id: "setting:file-sort", name: "Sort order", plugin: { id: "files", key: "fileSort" }, icon: ArrowDownWideNarrow, words: "file explorer tree sort by name modified created",
     sub: () => "Of the file tree; folders stay first, by name", options: () => SORTS.flat(), when: () => isEnabled("files", getPrefs().disabled),
     get: () => getPrefs().fileSort, set: (v) => setPrefs({ fileSort: v as FileSort }) },
 ]
 
-/** One of the app's choices, by its id ("setting:animation"). */
 export const coreChoice = (id: string) => CORE.find((c) => c.id === id)!
 
-/** A plugin's enum settings, while it's on. Not a `local` one (who may reach this machine: chosen in its settings,
- *  where what it does is read first). */
 function pluginChoices(disabled: string[]): ChoiceDef[] {
   return PLUGINS.filter((p) => settingsShown(p, disabled)).flatMap((p) => Object.entries(p.settingsDecls ?? {}).flatMap(([key, d]) =>
     d.type !== "enum" || !d.values?.length || d.local ? [] : [declChoice(p, key, d, settingDefault(p.id, key, d), pluginSettings<Record<string, unknown>>(p.id))]))
 }
 
-/** Every choice there is now: the app's, then the plugins' that are on. */
 export const allChoices = (disabled = getPrefs().disabled) => [...CORE, ...pluginChoices(disabled)]
 
 const said = (text: string, undo: () => void) => notify(text, { id: "switch", action: { label: "Undo", run: undo } })
 
-/** Its picker in the palette's place. */
 export function pickChoice(c: ChoiceDef) {
   const keep = (v: string) => Promise.resolve(c.set(v)).catch((e) => notifyError(e, "Couldn't change it"))
   choose(choicePicker({ ...c, set: keep }, said))
 }
 
-/** A choice as a command: "Animations…", its value at its row's end and its place in Settings. */
 export const choiceCommand = (c: ChoiceDef): Command => ({
   id: c.id, name: `${c.name}…`, icon: c.icon, when: c.when, run: () => pickChoice(c),
   words: [c.words, ...c.options().map((o) => o.label)].filter(Boolean).join(" "),

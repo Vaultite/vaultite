@@ -1,18 +1,11 @@
-// What's dragged in from outside (Finder's files, a screenshot's thumbnail, a browser's image or link), taken by the note
-// shown wherever in its place it lands (FileView: addDropSink), not opened beside the vault; a lone editor takes its own.
 import { hasFiles } from "@/core/desktop"
 import { notify } from "@/core/notify"
 
-/** Files, images by their address (a browser's: saved into the vault too) and links, dropped from outside. */
 export type Dropped = { files: File[]; images: string[]; links: string[] }
 
 export type DropSink = {
-  /** The note's element (FileView's article). */
   el: HTMLElement
-  /** Whether a `[data-file-drop]` the drop is in is the note's own (its editor), not something in it with drops of
-   *  its own (a canvas). */
   owns: (el: Element) => boolean
-  /** Dragged over at (x, y): show where it would go. */
   over: (x: number, y: number) => void
   leave: () => void
   drop: (d: Dropped, x: number, y: number) => void
@@ -26,8 +19,6 @@ export function addDropSink(s: DropSink) {
 }
 
 const shown = (el: HTMLElement) => el.isConnected && el.getClientRects().length > 0 && !el.closest("[data-kept], [data-beside], [inert]")
-/** The note that takes a drop on `target`: the one shown in the same place (a tab's scroller, the sheet, a phone's
- *  screen); none when the drop is on something in it that takes drops itself. */
 export function sinkAt(target: EventTarget | null): DropSink | null {
   if (!(target instanceof Element)) return null
   const own = target.closest("[data-file-drop]")
@@ -41,18 +32,14 @@ export function sinkAt(target: EventTarget | null): DropSink | null {
   return found
 }
 
-/** A drag that began in this window (a [[link]] dragged out of the text, an image in a note): never taken as one
- *  from outside. The app's own drags (core/drag.ts) aren't HTML5 ones at all. */
 let inside = false
-/** Whether `dt` comes from outside the app with something a note can take: files, or a web address. */
 export const fromOutside = (dt: DataTransfer | null) => !inside && (hasFiles(dt) || (!!dt && [...dt.types].includes("text/uri-list")))
 
 const IMAGE = /\.(png|jpe?g|gif|webp|avif|svg|heic|heif|bmp|tiff?)$/i
 const decode = (s: string) => s.replace(/&amp;/g, "&").replace(/&quot;/g, "\"").replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
 const isImageUrl = (u: string) => /^data:image\//i.test(u) || (() => { try { return IMAGE.test(new URL(u).pathname) } catch { return false } })()
 
-/** What a drop carries (read during the drop: after it, a DataTransfer is empty). Folders aren't files a note can
- *  take: dropped alone, a note says so, and it's null. */
+// Read during the drop: after it, a DataTransfer is empty.
 export function droppedFrom(dt: DataTransfer | null): Dropped | null {
   if (!dt) return null
   const items = [...dt.items].filter((i) => i.kind === "file"), all = [...dt.files]
@@ -60,8 +47,7 @@ export function droppedFrom(dt: DataTransfer | null): Dropped | null {
   const files = all.filter((_, i) => !folder(i))
   if (files.length) return { files, images: [], links: [] }
   if (all.length) { notify("A folder can't go into a note, only files", { id: "drop-folder" }); return null }
-  // A browser's image (its file only promised, which the page can't read): its <img> alone in the HTML (Chrome's,
-  // Safari's), else addresses that name an image
+  // A browser's image only promises its file, which the page can't read: Chrome's and Safari's HTML has its <img>.
   const html = dt.getData("text/html"), src = /<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["']/i.exec(html)?.[1]
   const words = html.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim()
   if (src && !words && /^(https?:|data:image\/)/i.test(decode(src))) return { files: [], images: [decode(src)], links: [] }
@@ -71,13 +57,10 @@ export function droppedFrom(dt: DataTransfer | null): Dropped | null {
 }
 
 let started = false
-/** Listen for drags from outside over the window (once, from main.tsx through startDesktop): one over a note's place
- *  is the note's, before anything else hears it. */
 export function startFileDrops() {
   if (started) return
   started = true
   addEventListener("dragstart", () => { inside = true }, true)
-  // (and after a drop anywhere, should its dragend not come: its element gone from the page)
   addEventListener("dragend", () => { inside = false }, true)
   addEventListener("drop", () => setTimeout(() => { inside = false }), true)
   let quiet = 0
@@ -102,7 +85,7 @@ export function startFileDrops() {
     const s = sinkAt(e.target)
     if (!s) return
     e.preventDefault()
-    e.stopImmediatePropagation() // (not opened outside the vault, nor read into the text by the editor)
+    e.stopImmediatePropagation() // else CodeMirror reads it into the text too
     const d = droppedFrom(e.dataTransfer)
     if (d) s.drop(d, e.clientX, e.clientY)
   }, true)

@@ -1,5 +1,3 @@
-// Keyboard lists (`data-keylist` of `data-keyrow` rows; a sidebar is one list): arrows, tree folding from
-// aria-expanded, Enter clicks. All commands, so hotkeys.json rebinds them and Vim's j/k/h/l call the same functions.
 import { ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, ArrowUpToLine, CornerDownLeft, FolderClosed, FolderOpen, LogOut, Menu, PanelLeft, PanelRight, SquareArrowOutUpRight, SquareMousePointer, StepBack, StepForward } from "lucide-react"
 import { registerCommands, typingIn } from "@/core/commands"
 import { byTab, focusPane } from "@/core/focus"
@@ -20,9 +18,7 @@ export function currentRow(): HTMLElement | null {
 /** The keyboard is on a row of a list. */
 export const inKeyList = () => !!currentRow()
 
-/** What a row moves among: its sidebar (every panel), else its list, else the page. */
 const scopeOf = (row: HTMLElement) => row.closest<HTMLElement>("[data-sidebar-body]") ?? row.closest<HTMLElement>("[data-keylist]") ?? document.body
-/** The rows in sight in a scope, in order (folded folders and panels draw none; hidden ones are left out). */
 const rowsIn = (scope: HTMLElement) => [...scope.querySelectorAll<HTMLElement>(ROW)].filter((r) => r.getClientRects().length > 0 && !(r as HTMLButtonElement).disabled)
 
 function focusRow(r: HTMLElement) {
@@ -42,8 +38,6 @@ export function moveInList(delta: number | "first" | "last") {
   return true
 }
 
-/** What opens or closes a row's children, and whether they're shown: the row itself (a folder, a group's heading), or
- *  a toggle beside it (a tag's chevron, a search result's lines). Null: it has none. */
 function toggleOf(row: HTMLElement): { el: HTMLElement; open: boolean } | null {
   if (row.hasAttribute("aria-expanded")) return { el: row, open: row.getAttribute("aria-expanded") === "true" }
   const item = row.parentElement
@@ -70,8 +64,6 @@ export function foldInList(open: boolean, activate = false) {
   return true
 }
 
-/** In a flat tree (its rows the treeitems, each its `aria-level`: a long one drawn in part), the row's folder: the
- *  nearest one before it a level up. */
 function treeParent(row: HTMLElement) {
   const level = Number(row.getAttribute("aria-level"))
   const tree = row.getAttribute("role") === "treeitem" ? row.closest("[role=tree]") : null
@@ -89,9 +81,7 @@ export function openInList(newTab = false) {
   return true
 }
 
-// ---------- the sidebars ----------
 type Side = "left" | "right"
-/** The sidebar the keyboard is in, if it is. */
 function sidebarOfFocus(): Side | null {
   const a = document.activeElement
   const body = a instanceof HTMLElement ? a.closest<HTMLElement>("[data-sidebar-body]") : null
@@ -99,7 +89,6 @@ function sidebarOfFocus(): Side | null {
   return s === "left" || s === "right" ? s : null
 }
 const bodyOf = (side: Side) => document.querySelector<HTMLElement>(`[data-sidebar-body="${side}"]`)
-// The row each sidebar's keyboard was on last.
 const last: Record<Side, HTMLElement | null> = { left: null, right: null }
 if (typeof window !== "undefined") {
   addEventListener("focusin", (e) => {
@@ -110,7 +99,6 @@ if (typeof window !== "undefined") {
 }
 
 const isOpen = (side: Side) => (side === "left" ? getPrefs().sidebar : getPrefs().rightSidebar)
-/** Whether a sidebar has panels to go to (open or folded to its rail). */
 const hasSidebar = (side: Side) => sidebars()[side].length > 0
 
 /** Put the keyboard in a sidebar (opening it): on the row it was on last there, else the open file's row in the tree,
@@ -128,7 +116,6 @@ export function focusSidebar(side: Side) {
   }
   go(30)
 }
-/** The tree row of the file in the focused tab, when it's in sight. */
 function activeFileRow(body: HTMLElement) {
   const sel = body.querySelector<HTMLElement>("[role=treeitem][aria-current=page]")
   return sel && sel.getClientRects().length ? sel : null
@@ -141,8 +128,6 @@ export function leaveList() {
   if (a instanceof HTMLElement) a.blur()
 }
 
-/** Moving between panes from the keyboard (Focus pane to the left...): out of a sidebar back to the pane, past
- *  the last pane on a side into that side's sidebar, else to the pane on that side. Whether it can go that way now. */
 export function canGoSide(side: "left" | "right" | "top" | "bottom") {
   const inSide = sidebarOfFocus()
   if (inSide) return (inSide === "left" && side === "right") || (inSide === "right" && side === "left")
@@ -156,18 +141,12 @@ export function goSide(side: "left" | "right" | "top" | "bottom") {
   if (side === "left" || side === "right") focusSidebar(side)
 }
 
-
-// ---------- Tab past a list ----------
-// A list is one Tab stop, as a tree or grid is: Tab leaves its rows (their menu has their buttons); back in, its row.
 const FOCUSABLE = "a[href], button:not(:disabled), input:not(:disabled):not([type=hidden]), select:not(:disabled), textarea:not(:disabled), [tabindex], [contenteditable=true]"
-/** The rows Tab passes over together: a list's, else a sidebar panel's. */
 const runOf = (row: HTMLElement) => row.closest<HTMLElement>("[data-keylist]") ?? row.closest<HTMLElement>("[data-panel]")
-/** A row, or a button beside one (the tree's More). */
 const ofRow = (el: HTMLElement) => !!el.closest(ROW) || !!el.parentElement?.querySelector(`:scope > ${ROW}`)
 const tabbable = (root: Element) => [...root.querySelectorAll<HTMLElement>(FOCUSABLE)]
   .filter((el) => el.tabIndex >= 0 && el.getClientRects().length > 0 && !el.closest("[inert], [data-kept]"))
 
-/** Move the keyboard past the rows of its list (`back`: before them). False when it isn't on a row of one. */
 function tabPastList(back: boolean) {
   const row = currentRow()
   const run = row && runOf(row)
@@ -176,8 +155,6 @@ function tabPastList(back: boolean) {
   tabPast(row!, rows, (el) => run!.contains(el) && ofRow(el), back)
   return true
 }
-/** Move the keyboard from `from` past a run of `items` that's one Tab stop (`back`: before them), over what `inRun`
- *  says is the run's. */
 function tabPast(from: HTMLElement, items: HTMLElement[], inRun: (el: HTMLElement) => boolean, back: boolean) {
   const all = tabbable(from.closest("dialog[open], [aria-modal=true]") ?? document.body)
   const edge = back ? items[0] : items[items.length - 1]
@@ -196,30 +173,24 @@ if (typeof window !== "undefined") {
     if (!run) return
     const was = lastIn.get(run)
     if (el!.closest(ROW)) lastIn.set(run, r!)
-    // Tabbed in from outside: back to its row, else the one that's chosen (the open file's). A field in a row (a
-    // table's cell being edited, Tab moving it along) keeps it.
     if ((e.relatedTarget instanceof Node && run.contains(e.relatedTarget)) || !byTab(e) || el!.matches("input, textarea")) return
     const back = was?.isConnected && was.getClientRects().length ? was : run.querySelector<HTMLElement>(`[aria-selected=true] ${ROW}, ${ROW}[aria-selected=true], ${ROW}[aria-current]:not([aria-current=false])`) ?? r!
     if (back !== el) focusRow(back)
   })
 }
 
-// ---------- radio groups ----------
-// A radiogroup is one Tab stop (its checked radio); arrows move, Space or Enter picks: passing over a choice isn't one.
 const RADIO = "[role=radiogroup] [role=radio]"
 const currentRadio = () => { const a = document.activeElement; return a instanceof HTMLElement && a.matches(RADIO) ? a : null }
 const groupOf = (r: HTMLElement) => r.closest<HTMLElement>("[role=radiogroup]")!
 const radiosIn = (g: HTMLElement) => [...g.querySelectorAll<HTMLElement>("[role=radio]")]
   .filter((r) => groupOf(r) === g && r.getClientRects().length > 0 && !(r as HTMLButtonElement).disabled && !r.closest("[inert]"))
 
-/** Move the keyboard to the next radio of its group (`by` -1: the one before), round from the end. */
 function moveInRadios(by: 1 | -1) {
   const r = currentRadio()
   const all = r ? radiosIn(groupOf(r)) : []
   if (!all.length) return
   all[(all.indexOf(r!) + by + all.length) % all.length].focus()
 }
-/** Move the keyboard past the radios of its group (`back`: before them). */
 function tabPastRadios(back: boolean) {
   const r = currentRadio()
   const all = r ? radiosIn(groupOf(r)) : []
@@ -236,15 +207,12 @@ if (typeof window !== "undefined") {
   })
 }
 
-// ---------- tab bars: one Tab stop, the arrows between tabs (a tab list's way) ----------
-// (a tab group's chip among them, as in a browser: Enter or Space folds it, the menu key or ⇧F10 has its menu)
 const TAB = "[role=tablist] :is([role=tab], [data-group-chip])"
 const currentTab = () => { const a = document.activeElement; return a instanceof HTMLElement && a.matches(TAB) ? a : null }
 const barOf = (t: HTMLElement) => t.closest<HTMLElement>("[role=tablist]")!
 const tabsIn = (bar: HTMLElement) => [...bar.querySelectorAll<HTMLElement>("[role=tab], [data-group-chip]")].filter((t) => barOf(t) === bar && t.getClientRects().length > 0 && !t.closest("[inert]"))
 const ofTabs = (bar: HTMLElement) => (el: HTMLElement) => el.matches("[role=tab], [data-group-chip]") && barOf(el) === bar
 
-/** Move the keyboard to another tab of its bar: `by` along (round from the end), or to the first or last. */
 function moveInTabs(by: 1 | -1 | "first" | "last") {
   const t = currentTab()
   const all = t ? tabsIn(barOf(t)) : []
@@ -257,7 +225,6 @@ function tabPastTabs(back: boolean) {
   if (t) tabPast(t, tabsIn(barOf(t)), ofTabs(barOf(t)), back)
 }
 if (typeof window !== "undefined") {
-  // Tabbed into (either way), a bar gives the keyboard to its shown tab.
   addEventListener("focusin", (e) => {
     const el = e.target instanceof HTMLElement ? e.target : null, bar = el?.closest<HTMLElement>("[role=tablist]")
     if (!el || !bar || !ofTabs(bar)(el) || !byTab(e)) return
@@ -267,30 +234,25 @@ if (typeof window !== "undefined") {
   })
 }
 
-// ---------- what has the keyboard ----------
-/** What has the keyboard, unless that's nothing. */
 const focused = () => { const a = document.activeElement; return a instanceof HTMLElement && a !== document.body ? a : null }
 
-/** Open the menu of what has the keyboard (its right-click), beside it; in an editor, at the cursor. */
 function openFocusedMenu(tries = 3) {
   const el = focused()
   if (!el) return
   const sel = window.getSelection(), at = el.isContentEditable && sel?.focusNode && el.contains(sel.focusNode) ? sel.focusNode : null
-  // (an editor given the keyboard back has its caret at its start, or still outside, until it puts it back a frame later)
+  // CodeMirror given the keyboard back puts its caret back a frame later.
   if (el.isContentEditable && (!at || at === el) && tries > 0) return void requestAnimationFrame(() => openFocusedMenu(tries - 1))
   const target = at ? (at instanceof Element ? at : at.parentElement) ?? el : el
   let caret: DOMRect | undefined
   if (at) { const r = document.createRange(); r.setStart(at, sel!.focusOffset); caret = r.getClientRects()[0] ?? target.getBoundingClientRect() }
   const r = caret ?? el.getBoundingClientRect()
-  // (just inside the caret's line: an editor puts its cursor where the right-click is)
+  // Just inside the caret's line: a right-click moves the caret to where it lands.
   target.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, view: window, button: 2,
     clientX: caret ? r.left : r.left + Math.min(r.width, 16), clientY: caret ? r.bottom - 1 : r.bottom }))
 }
 
-/** An element drawn as a button or link that isn't one (no Enter of its own). */
 const madeButton = () => { const el = focused(); return el && !el.matches("button, a[href], input, select, textarea, summary") && el.matches("[role=button], [role=link], [role=tab], [role=menuitem]") && !el.closest(ROW) ? el : null }
 
-// ---------- the areas: sidebars and panes (F6) ----------
 type Area = Side | string
 function areas(): Area[] {
   const shown = panes().map((p) => p.id).filter((id) => document.querySelector(`[data-pane="${CSS.escape(id)}"]`))
@@ -299,7 +261,6 @@ function areas(): Area[] {
 function areaOfFocus(): Area {
   return sidebarOfFocus() ?? document.activeElement?.closest<HTMLElement>("[data-pane]")?.dataset.pane ?? activePane().id
 }
-/** Move the keyboard to the next area (`by` -1: the one before): the left sidebar, each pane, the right sidebar. */
 function nextArea(by: 1 | -1) {
   const all = areas()
   if (!all.length) return
@@ -308,7 +269,6 @@ function nextArea(by: 1 | -1) {
   if (to === "left" || to === "right") return focusSidebar(to)
   focusArea(to)
 }
-/** Give the keyboard to a pane: its text, else the first thing in it to press. */
 export function focusArea(id = activePane().id) {
   setFocusedPane(id)
   if (focusPane(id)) return
@@ -316,9 +276,7 @@ export function focusArea(id = activePane().id) {
   ;(pane && tabbable(pane)[0])?.focus()
 }
 
-// ---------- the commands ----------
 const onRow = () => inKeyList()
-/** On a row, not of a view that moves its keyboard itself. */
 const moves = () => onRow() && !document.activeElement?.closest(OWN)
 const editableRow = () => { const r = moves() && currentRow(); return !!r && !/^(BUTTON|A)$/.test(r.tagName) && r.getAttribute("role") !== "button" }
 registerCommands([
@@ -328,7 +286,6 @@ registerCommands([
   { id: "list:last", name: "Move to the bottom of the list", keys: ["End"], when: moves, run: () => moveInList("last"), icon: ArrowDownToLine },
   { id: "list:expand", name: "Open the folder in the list", keys: ["ArrowRight"], when: moves, run: () => foldInList(true), icon: FolderOpen },
   { id: "list:collapse", name: "Close the folder in the list, or go to its parent", keys: ["ArrowLeft"], when: moves, run: () => foldInList(false), icon: FolderClosed },
-  // (Enter on a button or a link clicks it already; a table row needs this.)
   { id: "list:open", name: "Open the row", keys: ["Enter"], when: editableRow, run: () => openInList(false), icon: CornerDownLeft },
   { id: "list:open-tab", name: "Open the row in a new tab", keys: ["Mod+Enter"], when: moves, run: () => openInList(true), icon: SquareArrowOutUpRight },
   { id: "list:leave", name: "Leave the sidebar", keys: ["Escape"], when: () => onRow() && !!sidebarOfFocus() && !getSelection(), run: leaveList, icon: LogOut },
@@ -344,8 +301,7 @@ registerCommands([
   { id: "tabs:focus-last", name: "Move to the last tab in its bar", keys: ["End"], when: () => !!currentTab(), run: () => moveInTabs("last"), icon: ArrowDownToLine },
   { id: "tabs:tab-out", name: "Move past the tabs", keys: ["Tab"], when: () => !!currentTab(), run: () => tabPastTabs(false), icon: StepForward },
   { id: "tabs:tab-back", name: "Move before the tabs", keys: ["Shift+Tab"], when: () => !!currentTab(), run: () => tabPastTabs(true), icon: StepBack },
-  // (The menu key opens it by itself; Macs have none. A text field or a terminal keeps the key, and the browser's
-  // menu; from the palette it waits for the keyboard to be given back: core/focus.ts.)
+  // The menu key opens the menu by itself; Macs have none.
   { id: "focus:menu", name: "Open the menu of what has the keyboard", keys: ["Shift+F10"], words: "context menu right-click", when: () => !!focused(),
     keysWhen: () => { const a = document.activeElement; return !typingIn(a) || (a as HTMLElement).isContentEditable },
     run: () => { setTimeout(() => requestAnimationFrame(() => openFocusedMenu())) }, icon: Menu },

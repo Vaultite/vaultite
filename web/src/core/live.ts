@@ -1,5 +1,3 @@
-// Live updates: one WebSocket (/api/events) says which files changed, moved, which build is served (builds.ts) or what
-// an agent asks the window to do. It reconnects with backoff (refreshing once after a gap), holds changes while hidden.
 import { useEffect, useRef } from "react"
 import { heardBuild } from "@/core/builds"
 import { DEVICE } from "@/core/device"
@@ -7,7 +5,6 @@ import { notify } from "@/core/notify"
 import { share } from "@/core/share"
 import { askerOf } from "@/core/askers"
 
-/** Changed vault paths (a folder: anything in it), or null: anything may have changed. */
 export type Paths = string[] | null
 type Fn = (paths: Paths) => void
 
@@ -20,8 +17,6 @@ export function onVaultChange(fn: Fn) {
 }
 
 const moveSubs = new Set<(from: string, to: string | null) => void>()
-/** A file or folder moved or renamed through the API (by this app, another device, an AI): fn(from, to); to null:
- *  trashed. */
 export function onVaultMove(fn: (from: string, to: string | null) => void) {
   moveSubs.add(fn)
   return () => { moveSubs.delete(fn) }
@@ -40,8 +35,6 @@ export function useVaultChange(fn: Fn, paths?: string[] | ((p: string) => boolea
   }), [])
 }
 
-/** What the server keeps changed (core/kept.ts: another device's tabs, a workspace's layout): fn(names, state), names
- *  "<plugin id>/<name>" (null: any may have), `state` whether the store's state shows any of them. Held while hidden. */
 type KeptFn = (names: string[] | null, state: boolean) => void
 const keptSubs = new Set<KeptFn>()
 export function onKeptChange(fn: KeptFn) {
@@ -59,9 +52,8 @@ function emitKept(names: string[] | null, state: boolean) {
     try { fn(names, state) } catch (e) { console.error(e) }
   }
 }
-let keptSeen: string | null = null // the server's kept store and its last change ("<id>:<seq>")
-let keptState: number | null = null // the version of what of it the state shows
-/** The server's word on what it keeps: what changed (null: back after a while, anything that did). */
+let keptSeen: string | null = null
+let keptState: number | null = null
 function heardKept(names: string[] | null, kept: unknown, state: unknown) {
   if (typeof kept !== "string" || typeof state !== "number") return
   const stateMoved = keptState !== null && state !== keptState, moved = keptSeen !== null && kept !== keptSeen
@@ -71,7 +63,6 @@ function heardKept(names: string[] | null, kept: unknown, state: unknown) {
 }
 
 const backSubs = new Set<() => void>()
-/** The connection to the server is up (again): what failed for want of it may be sent now (autosave). */
 export function onReconnect(fn: () => void) {
   backSubs.add(fn)
   return () => { backSubs.delete(fn) }
@@ -87,8 +78,6 @@ function emit(paths: Paths) {
   }
 }
 
-// While the page is hidden (another tab in front, the phone locked, the window minimized), changes wait, merged, and
-// are told once when it's shown again: nothing refetches or redraws for a page nobody sees.
 let held: Paths | undefined
 function hold(paths: Paths) {
   held = held === undefined ? paths : held === null || paths === null ? null : [...new Set([...held, ...paths])]
@@ -104,41 +93,34 @@ function release() {
   emit(paths)
 }
 
-/** Something an agent asked this window to do (server.ts /api/ui): open a path, run a command or notify. The handler
- *  answers false for a command it couldn't run, else once it settled, with the toasts it showed. */
 export type UiAction = { action: string; path?: string; split?: "right" | "down" | null; newTab?: boolean; background?: boolean; container?: string | null; in?: string | null; id?: string; rid?: string
   text?: string; kind?: "error" | null; button?: { label: string; open: string } | null }
 let uiHandler: ((m: UiAction) => unknown) | null = null
 export const onUiAction = (fn: (m: UiAction) => unknown) => { uiHandler = fn }
 const asking = new Map<string, AbortController>()
 
-/** Tell the server this window is the one in use (so `ui` messages come here). */
 let said = 0
+const DOUBLE_CLICK_MS = 300
 const sayActive = (e?: Event) => {
-  if (e?.type === "pointerdown" && Date.now() - said < 300) return // a double click
+  if (e?.type === "pointerdown" && Date.now() - said < DOUBLE_CLICK_MS) return
   if (ws?.readyState !== WebSocket.OPEN) return
   said = Date.now()
   ws.send(JSON.stringify({ type: "active", answers: true, ...windowState() }))
 }
-/** What the window says about itself with `active` (the current workspace), set by the app: the server answers it to
- *  `vau` (GET /api/ui), so an agent changes the workspace the user is looking at. */
 let windowState: () => Record<string, unknown> = () => ({})
 export const setWindowState = (fn: () => Record<string, unknown>) => { windowState = fn }
-/** Say it again now (the workspace changed), if this window has the focus. */
 export const sayWindowState = () => { if (document.hasFocus()) { said = 0; sayActive() } }
 
-// ---------- the connection ----------
 let ws: WebSocket | null = null
-let seen: string | null = null // the server's "<boot>:<version>" last heard
-let heard: string | null = null // where the changes it told ended (`at`): back, it tells only those since
-let last = 0                  // when it last said anything (pings come every 25 s)
+let seen: string | null = null
+let heard: string | null = null
+let lastHeard = 0
 let tries = 0
 let retry: ReturnType<typeof setTimeout> | null = null
 let poll: ReturnType<typeof setInterval> | null = null
 let started = false
-let down: number | null = null // since when the connection's been lost while the page was in view
+let downSince: number | null = null
 
-/** While disconnected: check everything now and then. */
 const startPoll = () => { poll ??= setInterval(() => document.visibilityState === "visible" && emit(null), POLL) }
 
 function connect() {
@@ -146,28 +128,26 @@ function connect() {
   if (ws) return
   const url = new URL("api/events", location.href)
   if (heard) url.searchParams.set("at", heard)
-  if (DEVICE) url.searchParams.set("device", DEVICE) // (so other devices see this one is open now)
+  if (DEVICE) url.searchParams.set("device", DEVICE)
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
   const s = new WebSocket(url)
   ws = s
-  last = Date.now()
+  lastHeard = Date.now()
   s.onmessage = (e) => {
-    last = Date.now()
+    lastHeard = Date.now()
     let m: { type?: string; v?: string; at?: string; web?: string; role?: string; paths?: Paths; from?: string; to?: string | null; names?: string[]; kept?: string; state?: number } & Partial<UiAction>
     try { m = JSON.parse(String(e.data)) } catch { return }
     if (m.type === "hello") {
       tries = 0
       if (poll) { clearInterval(poll); poll = null }
-      if (down !== null && Date.now() - down > LOST) notify("Reconnected", { id: "live" })
-      down = null
-      // What changed while away: as the server says (paths since `heard`; null: anything), else anything if its version moved
+      if (downSince !== null && Date.now() - downSince > LOST) notify("Reconnected", { id: "live" })
+      downSince = null
       if (heard && m.paths !== undefined) { if (m.paths === null || m.paths.length) emit(m.paths) }
       else if (seen !== null && m.v !== seen) emit(null)
       seen = m.v ?? null
       heard = m.at ?? null
       heardKept(null, m.kept, m.state)
       for (const fn of [...backSubs]) { try { fn() } catch (e) { console.error(e) } }
-      // (a shared folder's guest whose access changed: the app draws what they may do from its page)
       if (share && m.role && m.role !== share.role)
         notify(m.role === "read" ? "You can now only view this folder" : m.role === "edit" ? "You can now edit this folder" : "You can now comment in this folder", { id: "share-role", duration: Infinity, action: { label: "Reload", run: () => location.reload() } })
       heardBuild(m.web)
@@ -196,9 +176,7 @@ function connect() {
         .then((result) => reply({ ran: true, result }), (e) => reply({ ran: false, error: e instanceof Error ? e.message : String(e) }))
     } else if (m.type === "ui" && m.action) {
       let r: unknown = true
-      // (what it couldn't do is told back: an open in a pane or container nobody has)
       try { r = uiHandler?.(m as UiAction) } catch (e) { r = Promise.reject(e) }
-      // (a command's answer waits for it to settle: whether it ran, and the toasts it showed)
       void Promise.resolve(r).then((v) => {
         if (!m.rid) return
         const notices = v && typeof v === "object" && Array.isArray((v as { notices?: unknown }).notices) ? (v as { notices: unknown[] }).notices : undefined
@@ -210,30 +188,27 @@ function connect() {
     }
   }
   s.onopen = () => {
-    s.send(JSON.stringify({ type: "caps", answers: true })) // it answers asks, focused or not
+    s.send(JSON.stringify({ type: "caps", answers: true }))
     if (document.hasFocus()) sayActive()
   }
   s.onclose = () => {
     if (ws !== s) return
     ws = null
-    if (document.visibilityState === "visible") down ??= Date.now()
+    if (document.visibilityState === "visible") downSince ??= Date.now()
     startPoll()
     retry = setTimeout(connect, Math.min(30_000, 1000 * 2 ** tries++))
   }
 }
 
-/** Drop a connection that went quiet (a phone waking up keeps a dead one "open") and connect again now. */
+// A phone waking up keeps a dead WebSocket "open".
 function revive() {
-  if (ws && Date.now() - last < PING + 10_000) return
-  if (ws) { const s = ws; ws = null; s.onclose = null; s.close(); startPoll(); down = null } // asleep, not lost
+  if (ws && Date.now() - lastHeard < PING + 10_000) return
+  if (ws) { const s = ws; ws = null; s.onclose = null; s.close(); startPoll(); downSince = null }
   tries = 0
   connect()
 }
 
-/** Where the page's view of the vault stands, as /api/state says it with the state (core/live.ts' mark). */
 export type LiveMark = { at?: string; kept?: string; state?: number }
-/** Start listening (once, from the store, once its first state came: `from`, where that stood). The socket starts from
- *  there as it does when back from away: its hello tells what changed between the read and the connect. */
 export function startLive(from?: LiveMark) {
   if (started || typeof WebSocket === "undefined") return
   started = true
@@ -241,9 +216,8 @@ export function startLive(from?: LiveMark) {
   if (typeof from?.kept === "string" && typeof from.state === "number") { keptSeen = from.kept; keptState = from.state }
   connect()
   document.addEventListener("visibilitychange", () => {
-    // Only time in view counts as lost: back in view while still down, it counts from now.
-    if (document.visibilityState === "visible") { if (!ws || ws.readyState !== WebSocket.OPEN) down = Date.now(); release(); revive() }
-    else down = null
+    if (document.visibilityState === "visible") { if (!ws || ws.readyState !== WebSocket.OPEN) downSince = Date.now(); release(); revive() }
+    else downSince = null
   })
   addEventListener("online", revive)
   addEventListener("pageshow", revive)
@@ -252,13 +226,10 @@ export function startLive(from?: LiveMark) {
   setInterval(() => document.visibilityState === "visible" && revive(), PING)
 }
 
-// ---------- writes on their way ---------- A
-// refresh started before one of this app's writes landed would flash old data (a tick undone, then back): it's dropped.
 let writing = 0
 let edits = 0
 const idle = new Set<() => void>()
 
-/** A write to the vault (or an optimistic change): counted until it settles. */
 export function tracked<T>(p: Promise<T>): Promise<T> {
   writing++
   edits++
@@ -270,14 +241,11 @@ export function tracked<T>(p: Promise<T>): Promise<T> {
     edits++
     if (--writing === 0) for (const f of [...idle]) { idle.delete(f); f() }
   }
-  // (one that never settles stops counting after a minute, or refreshes would wait on it for good)
   const late = setTimeout(done, 60_000)
   p.then(done, done)
   return p
 }
 
-/** Something changed locally (mutate): a refresh started before it is stale. */
 export const edited = () => { edits++ }
 export const editCount = () => edits
-/** Resolves when no write is on its way. */
 export const settled = () => (writing ? new Promise<void>((r) => idle.add(r)) : Promise.resolve())

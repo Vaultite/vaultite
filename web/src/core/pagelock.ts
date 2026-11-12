@@ -1,15 +1,12 @@
-// The page held still under overlays (counted, since they stack), by a touch guard rather than a fixed body: on iOS a
-// fixed body made WebKit hit-test overlays' scrollers in the wrong place. `--vvh`/`--vvtop` let overlays end above the keyboard.
+// A touch guard holds the page, not a fixed body: under a fixed body WebKit hit-tests overlays' scrollers in the wrong place.
 import { useLayoutEffect } from "react"
 import { keyboardUp } from "@/components/KeyBar"
-
 
 function trackViewport() {
   const vv = visualViewport
   if (!vv) return () => {}
   const st = document.documentElement.style
-  // Set only while the visual viewport differs (overlays fall back to 100dvh and 0): a custom property changed on the
-  // root restyles every element, which was most of what opening the palette cost on a desktop.
+  // A custom property changed on the root restyles every element: set only while the visual viewport differs.
   let set = false
   const put = () => {
     const differs = Math.abs(vv.height - innerHeight) > 1 || Math.abs(vv.offsetTop) > 1
@@ -26,8 +23,7 @@ function trackViewport() {
   }
 }
 
-/** The element from `el` up that scrolls along `axis` and can still move that way (`d` < 0: towards its start); at its
- *  end it doesn't count while the keyboard is up (iOS would pan the screen instead), else it does (its own bounce). */
+// At a scroller's end iOS pans the screen while the keyboard is up, so the end counts only with the keyboard down.
 function scrollerFor(el: Element | null, axis: "x" | "y", d: number): boolean {
   const kb = keyboardUp()
   for (let n = el; n && n !== document.body; n = n.parentElement) {
@@ -51,10 +47,8 @@ function guard() {
     if (Math.max(Math.abs(dx), Math.abs(dy)) < 3) return
     decided = true
     const el = e.target as Element
-    // What handles its own touches (a slider, a map, a drawing) and text being typed in (its caret's loupe) are left alone.
     if (el.closest?.("input, textarea, [contenteditable=true]") || getComputedStyle(el).touchAction === "none") return
     const axis = Math.abs(dy) >= Math.abs(dx) ? "y" : "x"
-    // A finger moving up scrolls towards the end.
     if (!scrollerFor(el, axis, axis === "y" ? -dy : -dx)) e.preventDefault()
   }
   document.addEventListener("touchstart", start, { passive: true })
@@ -64,7 +58,6 @@ function guard() {
 
 let held = 0
 let restore: (() => void) | null = null
-/** Where the page was scrolled when it was held: put back on release. */
 let heldAt = 0
 
 function hold() {
@@ -83,8 +76,8 @@ function hold() {
   }
 }
 
-/** A list whose first drag with the keyboard up is its own (iOS often moves the screen instead): the screen stays, the
- *  field gives up the keyboard and the list follows the finger itself. Returns the undo. */
+// iOS often moves the screen on a list's first drag with the keyboard up: the field gives up the keyboard and the list
+// follows the finger itself.
 export function dismissKeyboardOnDrag(list: HTMLElement) {
   let y = 0, mine = false, v = 0, t = 0, glide = 0
   const start = (e: TouchEvent) => { cancelAnimationFrame(glide); y = e.touches[0]?.clientY ?? 0; mine = false; v = 0; t = e.timeStamp }
@@ -106,7 +99,6 @@ export function dismissKeyboardOnDrag(list: HTMLElement) {
   const end = () => {
     if (!mine) return
     mine = false
-    // A flick glides on, slowing as a list does.
     let last = performance.now()
     const step = (now: number) => {
       const dt = now - last
@@ -129,13 +121,10 @@ export function dismissKeyboardOnDrag(list: HTMLElement) {
   }
 }
 
-/** The page under the overlays was changed for another (a tab picked in the tab list, shown under it): it keeps its
- *  own place on release, not the one before. */
 export function relockScroll() {
   if (held) heldAt = scrollY
 }
 
-/** Hold the page; returns the release (the page moves again once every hold is released). */
 export function lockPage() {
   if (held++ === 0) restore = hold()
   let done = false
@@ -146,7 +135,6 @@ export function lockPage() {
   }
 }
 
-/** Hold the page while `on`. Before the component's own layout effects that come after it (a field it focuses). */
 export function usePageLock(on = true) {
   useLayoutEffect(() => (on ? lockPage() : undefined), [on])
 }

@@ -1,5 +1,3 @@
-// Wikilinks and backlinks: every file is linked by its name, path and `aliases`; plugins add names (a person's) and
-// targets that aren't files.
 import { FilePlus } from "lucide-react"
 import type { Store } from "@/core/data"
 import { type Choice, choose } from "@/components/Chooser"
@@ -34,8 +32,6 @@ export function openTag(tag: string) {
   runCommandId("switcher:open")
 }
 
-/** A Markdown link's target as a wikilink's (`Some%20Note.md#Heading` -> `Some Note#Heading`); relative to `from`'s
- *  folder when such a file is there. */
 function mdTarget(s: Store, href: string, from?: string) {
   let t = href
   try { t = decodeURIComponent(href) } catch { /* not encoded */ }
@@ -60,7 +56,6 @@ export function linkClick(e: { metaKey: boolean; ctrlKey: boolean; shiftKey: boo
   return { newTab: mod || e.button === 1, ...(mod && e.shiftKey ? { front: true } : {}), ...(mod && e.altKey ? { out: true } : {}) }
 }
 
-/** A plugin that's on takes this web link (the Browser opens it in a tab): whether one did. */
 function takeWebLink(url: string, how: LinkClick) {
   const { disabled } = getPrefs()
   for (const p of active(disabled)) {
@@ -87,8 +82,6 @@ export function openWebLink(url: string, how?: LinkClick) {
   if (!takeWebLink(url, how)) window.open(url, "_blank", "noopener,noreferrer")
 }
 
-// Links drawn as <a href> anywhere in the app go the same way: a click on a web link or another app's (obsidian://) is
-// offered to the plugins first (⇧ or ⌥ alone aren't: Glance's ⌥-click); one no plugin takes does what it did.
 if (typeof window !== "undefined") {
   const clicked = (e: MouseEvent) => {
     if (e.defaultPrevented || (e.button !== 0 && e.button !== 1) || ((e.shiftKey || e.altKey) && !(e.metaKey || e.ctrlKey))) return
@@ -102,10 +95,7 @@ if (typeof window !== "undefined") {
   addEventListener("auxclick", clicked)
 }
 
-// ⌘-click and middle-click open in a new tab behind, as a browser's links do, on every in-app item (a row, a card, a
-// link): whatever its handler opens goes there (clickOpens); one that doesn't hear a middle click is clicked with it.
 const ITEM = "a[href], [data-keyrow], [role=link], [role=option], [data-opens]"
-/** An address's tab ("#file/Notes%2FIdea.md": "file:Notes/Idea.md"), as nav.ts' route reads the window's. */
 const hashTarget = (hash: string) => {
   const [tab, ...rest] = hash.slice(1).split("/")
   return targetOf((tab === "file" || tab === "view") && rest.length ? `${tab}/${rest[0]}` : tab)
@@ -119,7 +109,6 @@ if (typeof window !== "undefined") {
   const asks = (e: MouseEvent) => (e.type === "auxclick" ? e.button === 1 : e.button === 0 ? (isMac ? e.metaKey : e.ctrlKey) : e.type === "mousedown" && e.button === 1)
   addEventListener("click", start, true)
   addEventListener("auxclick", start, true)
-  // (the editor follows its links on the press: there, only what asks for a new tab)
   addEventListener("mousedown", start, true)
   function start(e: MouseEvent) {
     if (!asks(e)) return
@@ -133,7 +122,6 @@ if (typeof window !== "undefined") {
     if (!asks(e)) return
     const el = (e.target as Element | null)?.closest?.<HTMLElement>(ITEM)
     const hash = appHref(e.target as Element)
-    // (never the browser's own new tab of the app: it would open the app inside itself)
     if (!e.defaultPrevented && el && (hash !== null || !el.matches("a[href]"))) {
       e.preventDefault()
       const to = hash && hash.length > 1 ? hashTarget(hash) : null
@@ -146,19 +134,13 @@ if (typeof window !== "undefined") {
   addEventListener("auxclick", end)
 }
 
-/** A Markdown link that runs one of the app's commands: `[Open Claude Code](vaultite://command/terminal:claude-split)`.
- *  One that does more than open something asks first (runCommandLink): the note may not be the user's. */
 const COMMAND_LINK = /^vaultite:\/\/command\/([\w:.-]+)$/i
-/** Addresses that run code where they open: never followed. */
 const UNSAFE = /^(javascript|data|vbscript|blob):/i
 
-/** Open a link of any other scheme (mailto:, tel:, obsidian://, zotero://, file://) the system's way: a plugin's if one
- *  takes it, else the app it belongs to (the desktop app opens file:// with the Mac's app for it). */
 async function openOtherLink(url: string, mod = false) {
   if (UNSAFE.test(url)) return notify("That link can't be opened")
   if (takeSchemeLink(url, mod)) return
   if (/^file:/i.test(url) && !desktop) return notify("File links open in the desktop app")
-  // (another app does what the link says: asked first, as browsers do, whoever wrote the note; the desktop app asks itself)
   if (!desktop && !/^mailto:/i.test(url) && !(await confirmDialog({ title: "Open this link in another app?", body: url, confirm: "Open" }))) return
   window.open(url, "_blank", "noopener,noreferrer")
 }
@@ -173,7 +155,6 @@ export async function followLink(s: Store, link: { wiki?: string; url?: string; 
     const cmd = COMMAND_LINK.exec(link.url)
     if (cmd) { if (!runCommandLink(cmd[1])) notify("That isn't available here"); return }
     if (/^https?:/i.test(link.url)) {
-      // (a note's `container:` is where every web link followed from it opens, unless the link's menu chose)
       const note = from ? fileOf(s, from)?.container : undefined
       return openWebLink(link.url, click.container === undefined && note ? { ...click, container: note } : click)
     }
@@ -185,9 +166,7 @@ export async function followLink(s: Store, link: { wiki?: string; url?: string; 
   const open = (t: Target) => (t.file ? openAt(t.file, anchor, { newTab }) : t.detail ? openDetail(t.detail) : undefined)
   const t = resolver(s)(name, from)
   if (t) return open(t)
-  // (a file of another kind, `[pdf](a.pdf)`, isn't made as a note)
   const clean = /\.(?!md$)[A-Za-z][A-Za-z0-9]{0,9}$/i.test(name) ? "" : cleanName(name)
-  // (a plugin's own kind of note first: [[2026-10-08]] is that day's daily note, where they go and from their template)
   const create = async () => {
     try {
       const path = (await linkedNote(s, name, from)) ?? (await createNamed(newNoteFolder(s, from), name))?.path
@@ -231,8 +210,6 @@ export function linkPlace(s: Store, link: { wiki?: string; url?: string }, from?
   return t?.file ? { file: t.file, anchor } : t?.detail ? { detail: t.detail } : null
 }
 
-/** A file: linked by its name or path (a page's with or without its extension, `[[Report.html]]`) and aliases. Kept per
- *  file object: a refresh keeps unchanged files' objects, so their targets compare as the same at once. */
 const fileTargets = new WeakMap<VaultFile, Target>()
 const fileTarget = (f: VaultFile): Target => {
   let t = fileTargets.get(f)
@@ -240,21 +217,16 @@ const fileTarget = (f: VaultFile): Target => {
     names: f.aliases, ...(f.archived ? { archived: true } : {}) })
   return t
 }
-/** Any other file (an image, a PDF), linked by its name or path with its extension. */
 const otherTarget = (path: string): Target => ({ kind: "file", id: path, title: path.split("/").pop()!, detail: "", file: path, names: [] })
 
 type Resolve = (t: string, from?: string) => Target | null
 type Index = { resolve: Resolve; suggest: (t: string, from?: string) => Target[] }
 const cache = new WeakMap<Store, Index>()
-// The last index and its targets: a store with the same targets gets the same resolver, so what's memoized on it
-// (query tables' links, the editor's) stays.
 let made: { targets: Target[]; index: Index } | null = null
 const sameList = (a?: string[], b?: string[]) => a === b || (!!a && !!b && a.length === b.length && a.every((x, i) => x === b[i]))
 const sameTarget = (a: Target, b: Target) => a === b || (a.kind === b.kind && a.id === b.id && a.title === b.title &&
   a.detail === b.detail && a.file === b.file && sameList(a.names, b.names) && !a.archived === !b.archived)
 
-/** The vault's link index: files and plugins' targets (a person, a book), resolved as Obsidian does (core/links.ts). A
- *  plugin's target of a file stands for that file. */
 function linkIndexOf(s: Store): Index {
   const hit = cache.get(s)
   if (hit) return hit
@@ -264,7 +236,6 @@ function linkIndexOf(s: Store): Index {
     try { targets.push(...(p.links?.(s) ?? [])) } catch { /* a plugin's links failing must not break the rest */ }
   }
   const rows = new Map((s.files?.files ?? []).map((f) => [f.path.replace(/\.md$/i, ""), f]))
-  // A plugin's target of a file is that file's, archived with it.
   for (let i = 0; i < targets.length; i++) {
     const t = targets[i], row = rows.get(t.file ? t.file.replace(/\.md$/i, "") : t.id)
     if (row && (!t.file || (row.archived && !t.archived))) targets[i] = { ...t, file: row.path, ...(row.archived ? { archived: true } : {}) }
@@ -276,7 +247,6 @@ function linkIndexOf(s: Store): Index {
     cache.set(s, was.index)
     return was.index
   }
-  // One entry per file (its first target: a plugin's before the plain file's), with every target's names.
   const byFile = new Map<string, LinkEntry<Target>>(), entries: LinkEntry<Target>[] = []
   for (const t of targets) {
     const had = t.file ? byFile.get(t.file) : undefined
@@ -295,8 +265,6 @@ function linkIndexOf(s: Store): Index {
  *  and plugins' names), or null. */
 export const resolver = (s: Store): Resolve => linkIndexOf(s).resolve
 
-/** How a [[link]] in `from` writes `path`: the shortest end of its path that finds it (its name when that's enough, as
- *  Obsidian's "shortest path when possible"). A note or page without its extension. */
 export function shortestLink(s: Store, path: string, from?: string): string {
   const resolve = resolver(s)
   const parts = path.split("/"), named = stem(path)
@@ -308,7 +276,5 @@ export function shortestLink(s: Store, path: string, from?: string): string {
   return [...parts.slice(0, -1), last].join("/")
 }
 
-/** What a link to nothing may have meant: a name that starts with it ("Alice" for Alice Park), the file of that name in
- *  another folder. */
 const didYouMean = (s: Store, target: string, from?: string) => linkIndexOf(s).suggest(target, from)
 

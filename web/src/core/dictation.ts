@@ -1,5 +1,3 @@
-// Dictation: what's said goes where the cursor is, words not settled yet shown dimmed by it, never in the text. A source
-// tells the events (the desktop app's helper, electron/dictation.ts; an iPhone's would too); plugins hear `onDictation`.
 import type { EditorView } from "@codemirror/view"
 import { cell } from "@/core/signal"
 import { fnKey } from "../../../core/fnkey.ts"
@@ -97,9 +95,7 @@ const now = cell<Dictation | null>(null)
 export const dictation = () => now.get()
 /** Listening now: a session not told to stop. */
 export const listening = () => { const d = now.get(); return !!d && !d.stopping }
-// (its words would land nowhere: a reload into a new build or the app's restart waits for it to end)
 trackUnderway(() => !!now.get())
-/** The session told to stop, settled (its last words in, or a few seconds gone by). */
 async function settled() {
   for (let i = 0; i < 60 && now.get()?.stopping; i++) await new Promise((r) => setTimeout(r, 50))
   if (now.get()?.stopping) finish()
@@ -122,7 +118,6 @@ function tell(e: DictationEvent) {
   const where = { view: d.target.view, path: d.target.path }
   if (e.type === "level") return
   if (e.type === "pending") {
-    // (the last one always arrives: trailing)
     if (pendingTimer) clearTimeout(pendingTimer)
     const wait = 250 - (Date.now() - saidPending)
     const send = () => {
@@ -156,7 +151,6 @@ export async function startDictation(target: DictationTarget, o: { engine: Dicta
   const mine = ++session
   now.set({ target, hold: !!o.hold, speaking: false, spokeAt: 0, pending: "", level: 0, ready: false })
   unsub = src.on((e) => heard(e, mine, failed))
-  // (the window left, or another field took the keyboard: the session follows the user)
   refused = false
   addEventListener("blur", away)
   addEventListener("focusin", moved)
@@ -194,23 +188,17 @@ export async function stopDictation(cancel = false) {
   if (cancel) { tell({ type: "end", reason: "cancel" }); finish() }
   else {
     if (d.stopping) return
-    // (it shows stopped at once; the words still coming go in as they arrive, and a helper that never ends is let go)
     now.set({ ...d, stopping: true, speaking: false })
     indicator.hide()
     unlisten()
     const mine = session
     setTimeout(() => { if (session === mine && now.get()?.stopping) finish() }, 30_000)
   }
-  // (the end comes back as an event, after the last words)
   await (cancel ? dictationSource?.cancel() : dictationSource?.stop())?.catch(() => {})
 }
 
-// ---------- it follows the user: out of where it began, the helper has the session and the words wait in its box
-
-/** Where a session that left began, till its words have landed. */
 let left: DictationTarget | null = null
 let roaming = false, refused = false
-/** The session leaves here for the helper's box; `or`, what it does with no helper to take it. */
 async function roam(or: () => void) {
   const d = now.get(), src = dictationSource
   if (!d || d.stopping || roaming) return
@@ -228,7 +216,6 @@ async function roam(or: () => void) {
   finish(false)
 }
 const away = () => void roam(() => void stopDictation())
-/** Another place to type has the keyboard: the words go there when it stops, not where it began. */
 const moved = (e: FocusEvent) => {
   const el = e.target, d = now.get()
   if (d?.target.owns && el instanceof HTMLElement && !d.target.owns(el) && (typingIn(el) || !!el.closest(".cm-editor, [data-term-input]"))) void roam(() => {})
@@ -263,8 +250,6 @@ function finish(endTarget = true) {
   if (endTarget) d?.target.end()
 }
 
-// ---------- the pill: by where the words go, its bars following the voice (a click stops)
-
 const indicator = (() => {
   let pill: ReturnType<typeof makePill> | null = null, raf = 0
   const place = (t: number) => {
@@ -273,7 +258,6 @@ const indicator = (() => {
     if (!d || !pill || !el || d.stopping) return
     const r = d.target.rect()
     if (!r) { void roam(() => void stopDictation(true)); return }
-    // (its tab hidden: with no helper the words still go there, the pill waits)
     const shown = !!(r.x || r.y || r.width || r.height)
     if (!shown) void roam(() => {})
     el.style.visibility = shown ? "" : "hidden"
@@ -288,7 +272,7 @@ const indicator = (() => {
       hinted?.remove()
       if (pill) return
       pill = makePill()
-      // (pressed, not clicked: the editor keeps the keyboard)
+      // A pointerdown prevented leaves the keyboard in the editor.
       pill.el.addEventListener("pointerdown", (e) => { e.preventDefault(); void stopDictation() })
       document.body.append(pill.el)
       raf = requestAnimationFrame(place)
@@ -298,7 +282,7 @@ const indicator = (() => {
 })()
 
 /** Nowhere to dictate: `text` a moment in the pill's place, by what has the keyboard (else at the window's foot, where
- *  the helper says it over other apps), and to a screen reader. A toast in the window's corner went unseen. */
+ *  the helper says it over other apps), and to a screen reader. */
 export function hintDictation(text: string) {
   announce(text)
   hinted?.remove()
@@ -314,7 +298,6 @@ export function hintDictation(text: string) {
   document.body.append(el)
   const f = document.activeElement, w = el.offsetWidth, h = el.offsetHeight
   const r = f instanceof HTMLElement && f !== document.body && f.getClientRects().length ? f.getBoundingClientRect() : null
-  // (a whole pane focused is no spot: the foot, then)
   const by = r && r.height < innerHeight / 2 ? r : null
   const x = by ? Math.max(8, Math.min(innerWidth - w - 8, by.left)) : (innerWidth - w) / 2
   const y = !by ? innerHeight - h - 56 : by.bottom + 6 + h <= innerHeight - 8 ? by.bottom + 6 : Math.max(8, by.top - h - 6)
@@ -322,8 +305,6 @@ export function hintDictation(text: string) {
   setTimeout(() => { el.remove(); if (hinted === el) hinted = null }, 2600)
 }
 let hinted: HTMLElement | null = null
-
-// ---------- the key: a tap starts and the next one stops; held down, it listens until it's let go
 
 const HOLD_MS = 450
 let lastKey = { at: -1e9, repeat: false }
@@ -333,12 +314,10 @@ globalThis.addEventListener?.("keydown", (e) => { if (!["Meta", "Control", "Alt"
  *  when its key was pressed (not the palette, nor the menu) and held past a tap, stop when it's let go. */
 export async function pressDictation(begin: (hold: boolean) => Promise<boolean>) {
   const byKey = performance.now() - lastKey.at < 250
-  // (the key's own repeats while it's held)
   if (byKey && lastKey.repeat) return
   if (listening()) return void stopDictation()
   const down = performance.now()
   let released = byKey ? 0 : down, mine = -1
-  // (the key may come up before the session has started: the Ask box opening)
   const decide = () => {
     if (!released || mine < 0 || session !== mine || !listening()) return
     if (released - down >= HOLD_MS) void stopDictation()
@@ -368,7 +347,6 @@ export function fnDictation(begin: (hold: boolean) => Promise<boolean>) {
   }
   return dictationSource?.onKey?.((k) => {
     const t = performance.now()
-    // (Control's double tap: hands-free from the start, or the end of it)
     if (k.double) {
       if (starting) after = "stop"
       else if (listening()) end("stop")

@@ -1,5 +1,3 @@
-// A file's actions in the app (core/actions.ts): the ops that act on its kind, from the catalog (read again when the
-// plugins on change), run with the file filled in and the rest asked in the palette.
 import { actionsFor } from "../../../core/actions.ts"
 import type { OpEntry as Entry, Schema } from "../../../core/contracts/ops.ts"
 import { askText, choose } from "@/components/Chooser"
@@ -13,7 +11,6 @@ import { getPrefs } from "@/core/prefs"
 export type FileAction = ReturnType<typeof actionsFor<Entry>>[number]
 
 let catalog: Entry[] = [], loadedFor = ""
-/** Read the catalog again when the plugins on have changed since (menus are drawn at once: they show it next time). */
 export function loadActions() {
   const p = getPrefs(), key = `${p.disabled.join()}|${p.enabled.join()}|${p.ai}`
   if (key === loadedFor) return
@@ -21,14 +18,12 @@ export function loadActions() {
   get<Entry[]>("ops?actions=1").then((c) => { catalog = c }, () => { loadedFor = "" })
 }
 
-/** What can be done with the file at `path` (not `skip`'s: a plugin's own menu has its own). */
 export function fileActions(path: string, skip?: string): FileAction[] {
   loadActions()
   const s = getStore(), f = s ? fileAt(s.files.files, path) : undefined
   return actionsFor(catalog.filter((e) => e.plugin !== skip), { path, type: f?.type ?? null, archived: !!f?.archived })
 }
 
-/** A param's value asked in the palette: one of its values, or typed. null: dismissed. */
 function ask(label: string, name: string, s: Schema): Promise<unknown> {
   return new Promise((done) => {
     const heading = `${label}: ${s.description ?? name}`
@@ -43,7 +38,6 @@ function ask(label: string, name: string, s: Schema): Promise<unknown> {
   })
 }
 
-/** Run a file's action: the params it still needs asked first, its answer told. */
 export async function runAction(a: FileAction) {
   const params: Record<string, unknown> = { ...a.params }
   for (const k of a.needs) {

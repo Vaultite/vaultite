@@ -1,12 +1,9 @@
-// The desktop app's side of the page (`window.vaultite`; null in a browser), not its wiring (core/desktopapp.ts). Every
-// focus asks the main process for the keyboard back (`web.take`): Chromium moves it between native views silently.
 import type { DictationSource } from "@/core/dictation"
 import { notify } from "@/core/notify"
 import { isMac, showLabel } from "@/core/platform"
 
 export type DesktopApi = {
   desktop: true
-  /** The computer the app runs on, as Node names it ("darwin", "linux"). */
   platform?: string
   vaults: () => Promise<{ current?: string | null; home?: string; vaults: { path: string; name: string; open?: boolean; sandbox?: boolean; remote?: boolean }[] }>
   openVault: (path: string) => Promise<unknown>
@@ -15,101 +12,53 @@ export type DesktopApi = {
   pickFolder: () => Promise<string | null>
   revealVault: (path: string) => Promise<unknown>
   manageVaults: () => Promise<unknown>
-  /** Make the sandbox (a made-up vault to try the app in) afresh and open it. Older builds don't have it. */
   openSandbox?: () => Promise<unknown>
-  /** Open another machine's Vaultite server (its address, checked first) in a window. Older builds don't have it. */
   connectServer?: (address: string) => Promise<unknown>
-  /** Set up Vaultite (the first-run window, the vault): again, from the menu or the playground. Older builds don't have it. */
   setup?: () => Promise<unknown>
-  /** Whether Set up Vaultite opened this window: its welcome card goes on from the vault (true once). */
   welcome?: () => Promise<boolean>
-  /** Claude Code's computer use on for this vault, and Codex's, where they're installed: errors by agent. A Mac's only. */
   computerUse?: () => Promise<Record<string, string>>
-  /** The full path of a dropped file (Electron's webUtils). */
   pathOf: (file: File) => string
   copyIn: (paths: string[], folder: string, move: boolean) => Promise<string[]>
-  /** Files to open: returns the ones this window should open (a vault path or an outside file the server may now read). */
   openOutside: (paths: string[]) => Promise<string[]>
   pickOutside: () => Promise<string[]>
-  /** A native dialog on this window, the page waiting for it (Electron's sync dialogs; options as Electron's): "open"
-   *  answers the paths or null, "save" a path or null, "message" the button's index. Older builds don't have it. */
+  /** Electron's sync dialogs (its options): "open" answers the paths or null, "save" a path or null, "message" the
+   *  button's index. */
   dialogSync?: (kind: "open" | "save" | "message", options: Record<string, unknown>) => unknown
-  /** The page is ready: files waiting to open. */
   ready: () => Promise<string[]>
-  /** Quit, install the build that's ready and open again. */
   restartToUpdate: () => Promise<unknown>
-  /** How this Mac takes updates (automatic, notify, off; `available`: this build updates at all), and, automatic, this
-   *  page saying whether a restart would lose nothing now. Older builds don't have it. */
   updates?: { get: () => Promise<{ mode: UpdateMode; available: boolean }>; set: (mode: UpdateMode) => Promise<unknown>; safe: (safe: boolean) => Promise<unknown> }
-  /** Whether this computer opens the app at login (a Mac's, Windows'). Older builds don't have it. */
   login?: { get: () => Promise<{ on: boolean }>; set: (on: boolean) => Promise<unknown> }
-  /** The interface size (core/zoom.ts): the whole app's zoom, every window's, kept for this computer (vaults.json
-   *  `zoom`). `step` answers the size it came to; `on` hears every change. Older builds don't have it. */
   interfaceSize?: { get: () => Promise<number>; step: (step: -1 | 0 | 1) => Promise<number>; on: (fn: (zoom: number) => void) => void }
-  /** `spelling`: a right-click the page left to the system, with the misspelled word under it ("" none) and guesses. */
   on: (fn: (msg: { type: string; id?: string; bundle?: string; path?: string; url?: string; version?: string; name?: string; auto?: boolean; text?: string | null; label?: string; done?: boolean; restart?: boolean; word?: string; suggestions?: string[] }) => void) => void
-  /** Tell the menu bar this window's commands, pins and recent files (electron/menu.ts). Builds from before it don't
-   *  have it. */
   syncMenu?: (snap: MenuSnapshot) => Promise<unknown>
-  /** The window as it prints, saved as a PDF where the user picks (a save dialog): its path, or null (cancelled).
-   *  Builds of the app from before Export to PDF don't have it. */
   printToPDF?: (name: string) => Promise<string | null>
   revealPdf?: (path: string) => Promise<unknown>
-  /** Ask macOS for the microphone (once; later answers come from System Settings): whether it's allowed. */
+  /** macOS asks for the microphone once; later answers come from System Settings. */
   microphone?: () => Promise<boolean>
-  /** A macOS permission's button (core/permissions.ts' ids, or "vault"; pages use usePermissions): its prompt, the drag
-   *  helper, a folder read, or the pane after a no. A Mac's only; builds from before it don't have it. */
   permission?: (id: string) => Promise<unknown>
-  /** The Mac's notification: true once it's clicked (the window comes to the front), false when it's dismissed or can't
-   *  be shown. Builds of the app from before the Inbox don't have it. */
   notify?: (title: string, body: string) => Promise<boolean>
-  /** Another picture in the Dock (a PNG data: URL; null: the app's own again), whether one is set, and an image picked
-   *  anywhere on the Mac as a data: URL. Builds from before the Dock icon plugin don't have it. */
   dock?: { set: (png: string | null) => Promise<unknown>; custom: () => Promise<boolean>; pick: () => Promise<string | null> }
-  /** Web pages laid over a pane (the Browser's tabs; electron/web.ts). Builds from before it don't have it. */
   web?: WebPages
-  /** Other Mac apps' windows behind a pane (App windows' tabs; electron/apps.ts). Builds from before it don't have it. */
   apps?: AppWindows
-  /** Dictation from this Mac's microphone (electron/dictation.ts). Builds from before it don't have it. */
   dictation?: DictationSource
-  /** macOS's Look up (the dictionary's popover) for the page's selection. Builds from before it don't have it. */
   lookUp?: () => Promise<unknown>
-  /** Add a word to the spell checker's dictionary. With it come `spelling` messages (below). */
   learnWord?: (word: string) => Promise<unknown>
-  /** The window (or a rectangle of it, in CSS pixels) as a PNG, base64 (`vau dev screenshot`). Builds from before it don't have it. */
   capture?: (rect?: { x: number; y: number; width: number; height: number }) => Promise<{ png: string; width: number; height: number }>
-  /** A dragged tab's card (its box in CSS px, where the pointer holds it, its corners) shown following the pointer past
-   *  the window's edge, as it looks now; null hides it. Answers whether it shows. Builds from before it don't have it. */
   dragGhost?: (look: { x: number; y: number; width: number; height: number; grab: { x: number; y: number }; radius: number } | null) => Promise<boolean>
-  /** Bring another of this vault's windows to the front (`popout`: its id; null: the vault's window), the keyboard
-   *  left here unless `focus`. Answers whether it did. Builds from before it don't have it. */
   raiseWindow?: (popout: string | null, focus?: boolean) => Promise<boolean>
-  /** Show a Mac window's traffic lights at `at` (CSS px: `x` right of where they sit, centred on the line `mid` down),
-   *  or hide them (null); answers how they're drawn. Older builds lack it, show them in place, or answer nothing. */
   lights?: (at: Lights | null) => Promise<LightsFrame | undefined>
-  /** A pop-out's bars hidden (Hide window bars): its traffic lights shown only with the pointer at its top, which drags
-   *  it. Answers whether the window does it (a Mac's pop-outs; builds from before it don't have it). */
   bare?: (on: boolean) => Promise<boolean>
-  /** Keep the window on top of others' (`on`), or ask: answers whether it is. Builds from before it don't have it. */
   onTop?: (on?: boolean) => Promise<boolean>
-  /** Ask for the window's sidebars and bars see-through to the desktop, blurred (appearance `translucent`), and hear
-   *  whenever that changes. A Mac's and Windows'; builds from before it don't have it. */
   translucent?: { set: (on: boolean) => Promise<Translucency>; on: (fn: (t: Translucency) => void) => void }
 }
 
-/** Whether the window is translucent now, and why not while asked (electron/translucency.ts): this computer can't,
- *  Reduce transparency, another app's window in a tab, or a Mac window opened solid (it shows once reopened). */
 export type Translucency = { on: boolean; why?: "system" | "reduced" | "apps" | "reopen" }
 
 export type Lights = { x: number; mid: number }
-/** How the Mac draws the lights for an `at` (points): the first button `inset` right of `at.x` and centred on `mid`
- *  in a `width`×`height` frame, each a circle `size` across, `pitch` apart; `zoom` the page's. */
 export type LightsFrame = { zoom: number; inset: number; width: number; height: number; size: number; pitch: number }
 
 export type UpdateMode = "automatic" | "notify" | "off"
 
-
-/** What the menu bar shows of a window (electron/menu.ts's MenuSnapshot). */
 export type MenuSnapshot = {
   commands: { id: string; name: string; keys: string[]; custom: boolean; on: boolean; checked?: boolean }[]
   pinned: { path: string; title: string }[]
@@ -137,8 +86,6 @@ export type WebPageState = { url: string; title: string; back: boolean; forward:
   opened?: string
   /** The identity provider's site that flow went to sign in with (google.com): another site's sign-in it reached. */
   signIn?: string }
-/** A rectangle of the window, in the page's CSS pixels (getBoundingClientRect's); `radius`, a page's corners' (Electron
- *  rounds all four). */
 type WebRect = { x: number; y: number; width: number; height: number; radius?: number }
 /** Web pages in the desktop app: native views over this window in sessions of their own (logins apart from the app's),
  *  known by number, each a tab's: hidden while it's in the background, ended with it. Older builds ignore tabs. */
@@ -359,12 +306,10 @@ export const webPages: WebPages | null = desktop?.web ?? null
 export const appWindows: AppWindows | null = desktop?.apps ?? null
 
 let takes = 0, takenFrom: number | null = null
-/** How many times the keyboard was taken from a web page (to compare with `pageTakenSince`). */
 export const keyboardTakes = () => takes
-/** The web page the keyboard was last taken from, if it was taken since `n` (`keyboardTakes()` then). */
 export const pageTakenSince = (n: number) => (takes > n ? takenFrom : null)
 
-// (The keyboard goes where the app focuses: the header.)
+// Chromium moves the keyboard between native views silently: every focus asks the main process for it back.
 if (webPages?.take) {
   const take = webPages.take, focus = HTMLElement.prototype.focus
   HTMLElement.prototype.focus = function (this: HTMLElement, options?: FocusOptions) {
@@ -391,35 +336,26 @@ export const askMicrophone = async () => (desktop?.microphone ? desktop.micropho
 export const systemNotify = (title: string, body = ""): Promise<boolean> | null =>
   desktop?.notify ? desktop.notify(title, body).catch(() => false) : null
 
-/** The window as a PNG (base64), or null: a browser, or a build without it. */
-/** A dragged tab's card going on past the window's edge, over the screen (electron/dragghost.ts): the desktop app's. */
 export const floatGhost = desktop?.dragGhost ? (look: Parameters<NonNullable<DesktopApi["dragGhost"]>>[0]) => desktop!.dragGhost!(look).catch(() => false) : null
 
-/** Another of this vault's windows to the front (`popout`: its id; null: the vault's window): the desktop app's. */
 export const raiseWindow = desktop?.raiseWindow ? (popout: string | null, focus = false) => desktop!.raiseWindow!(popout, focus).catch(() => false) : null
 
+/** The window as a PNG (base64), or null: a browser, or a build without it. */
 export const captureWindow = (): Promise<{ png: string; width: number; height: number } | null> =>
   desktop?.capture ? desktop.capture().catch(() => null) : Promise.resolve(null)
 
-/** A Mac window's traffic lights, which the page can hide and move: the desktop app's, not a browser's. */
 export const hasLights = isMac && !!desktop?.lights
 let frame: LightsFrame | null = null
-/** How the window draws its lights, once it has said (builds from before it don't). */
 export const lightsFrame = () => frame
-/** The Mac window's traffic lights shown at `at` (the sidebar's top row they sit in, which may float over the page),
- *  or hidden (null: a sidebar hidden without its rail); nothing elsewhere. Resolves once the window has them so. */
 export const showLights = (at: Lights | null): Promise<void> => isMac && desktop?.lights
   ? desktop.lights(at).then((f) => { if (f && typeof f === "object" && f.zoom > 0) frame = f }, () => {}) : Promise.resolve()
 
-/** The desktop app's window with its bars hidden or back (a pop-out's, Hide window bars): its traffic lights and the strip
- *  that drags it come with the pointer at its top. Nothing in a browser or elsewhere. */
 export const bareWindow = (on: boolean) => { void desktop?.bare?.(on).catch(() => false) }
 
 /** The desktop app's Look up and spell checker (the editor's menu): null in a browser or a build without them. */
 export const lookUp = desktop?.lookUp && isMac ? desktop.lookUp : null
 type Spelled = { word: string; suggestions: string[] }
 let waiting: ((s: Spelled | null) => void)[] = []
-/** What the desktop app's spell checker said of the word under a right-click (core/desktopapp.ts hears it). */
 export const spellingHeard = (s: Spelled | null) => { const w = waiting; waiting = []; w.forEach((f) => f(s)) }
 /** The spell checker sees a right-click only once the page leaves it to the system (not prevented): `at` answers
  *  what it said of the word under it (null: nothing came), `learn` adds a word to its dictionary. */

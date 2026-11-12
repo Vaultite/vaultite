@@ -1,11 +1,7 @@
-// Line diffs and three-way merges for the editor, so a change on disk while you type keeps both. The server's code
-// (core/textedit.ts) in strict mode: a line both sides changed is a conflict.
 import { opcodes } from "../../../core/textedit.ts"
 
 export { hasEdits, merge3, opcodes } from "../../../core/textedit.ts"
 
-/** The changes that turn a into b, one per changed run, trimmed to the differing characters: one stretch over two
- *  distant changes would swallow the cursor, and the next letter typed would land wrong. */
 export function textChanges(a: string, b: string): { from: number; to: number; insert: string }[] {
   if (a === b) return []
   const A = a.split("\n"), B = b.split("\n")
@@ -14,8 +10,6 @@ export function textChanges(a: string, b: string): { from: number; to: number; i
   const out: { from: number; to: number; insert: string }[] = []
   for (const [tag, i1, i2, j1, j2] of opcodes(A, B)) {
     if (tag === "equal") continue
-    // Lines i1..i2 of a, with their line breaks, become lines j1..j2 of b. The last line has no break after it: lines
-    // added at the end go after the one before them, and the last lines removed take the break before them.
     let from = Math.min(sa[i1], a.length), to = Math.min(sa[i2], a.length), bf = sb[j1]
     const bt = Math.min(sb[j2], b.length)
     if (i1 === A.length) bf--
@@ -30,11 +24,8 @@ export function textChanges(a: string, b: string): { from: number; to: number; i
   return out
 }
 
-/** Where both sides changed the same lines: `at`, the first of `mine`'s lines in the merged text. */
 export type Clash = { at: number; mine: string[]; theirs: string[] }
 
-/** A three-way merge that keeps going past conflicts (diff3): every change one side made is applied, and lines both
- *  changed differently keep mine, listed as clashes. Adjacent edits clash when one is an insertion, as in merge3. */
 export function mergeClashes(base: string, mine: string, theirs: string): { text: string; clashes: Clash[] } {
   const B = base.split("\n")
   type Hunk = { i1: number; i2: number; lines: string[]; side: 0 | 1 }
@@ -70,7 +61,6 @@ export function mergeClashes(base: string, mine: string, theirs: string): { text
   return { text: out.join("\n"), clashes }
 }
 
-/** Two versions with no common one to merge from: `mine` as it is, every stretch where they differ a clash. */
 export function differences(mine: string, theirs: string): { text: string; clashes: Clash[] } {
   const A = mine.split("\n"), B = theirs.split("\n")
   const clashes = opcodes(A, B).filter((o) => o[0] !== "equal").map(([, i1, i2, j1, j2]) => ({ at: i1, mine: A.slice(i1, i2), theirs: B.slice(j1, j2) }))

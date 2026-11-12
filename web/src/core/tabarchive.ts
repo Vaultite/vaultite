@@ -1,5 +1,3 @@
-// Archived tabs: unpinned tabs unseen a while, closed into a list kept with the tabs (the workspace's, or this device's
-// without Workspaces), to reopen or find again. Not history: the tabs the user had. The rest is Tabs' (archived.tsx).
 import { useSyncExternalStore } from "react"
 import { clean, focusedPane, newPaneId, newTabId, mapPlaces, placesIn, tabOf, type Tab } from "../../../core/layout.ts"
 import { scopedState, subscribeScoped } from "@/core/scope"
@@ -11,7 +9,6 @@ export type ArchivedTab = { id: string; to: string; title: string; at: number; t
 
 const MAX = 200
 const kept = scopedState<unknown>("core:archived-tabs", [], "workspace")
-/** An entry as kept, checked; one from before tabs held panes (`{id, to, set}`) becomes a tab of one pane. */
 function okEntry(e: unknown): ArchivedTab[] {
   const x = e as Partial<ArchivedTab> & { set?: string } | null
   if (!x || typeof x !== "object" || typeof x.id !== "string" || typeof x.to !== "string" || typeof x.archived !== "number") return []
@@ -28,7 +25,6 @@ export function archivedTabs(): ArchivedTab[] {
   return list
 }
 export const useArchivedTabs = () => useSyncExternalStore(subscribeScoped, archivedTabs)
-/** Its list as written: the same place once, the latest kept. */
 const save = (next: ArchivedTab[]) => kept.set(next.filter((e, i) => next.findIndex((x) => x.to === e.to) === i).slice(0, MAX))
 
 /** Archive the tabs unseen for longer than the setting says (none while it's Never), named by `title` as their tab is.
@@ -53,14 +49,12 @@ export function reopenArchived(id: string, shown = true) {
   removeArchived([id])
   const open = findOpen(e.to)
   if (open) { if (shown) selectPane(open.p.id); return }
-  // (its ids taken meanwhile, on this device or another: new ones)
   const taken = !!tabById(e.tab.id) || placesIn(e.tab).some((p) => paneById(p.id))
   const ids = new Map(placesIn(e.tab).map((p) => [p.id, taken ? newPaneId() : p.id]))
   const tab = taken ? { ...e.tab, id: newTabId(), root: mapPlaces(e.tab.root, (p) => ({ ...p, id: ids.get(p.id)! })), focus: ids.get(e.tab.focus) ?? e.tab.focus } : e.tab
   restoreTab({ tab, at: e.at }, shown)
 }
 
-/** ⌘⇧T: the tab closed last or archived since, whichever was later (skipping `gone` ones), till both lists are empty. */
 export function reopenLatest(gone: (to: string) => boolean) {
   let a = archivedTabs()[0]
   while (a && gone(a.to)) { removeArchived([a.id]); a = archivedTabs()[0] }

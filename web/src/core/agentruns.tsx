@@ -1,5 +1,3 @@
-// Every coding agent on every machine in one list (the Agents panel): each plugin's `agentRuns` hook (terminals,
-// chats, cloud sessions), asked only while a list shows, merged and put in the panel's order (agentorder.ts).
 import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import type { AgentRun } from "@/core/define"
 import { orderRuns } from "@/core/agentorder"
@@ -7,7 +5,7 @@ import { active } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 
 type Use = () => AgentRun[] | null
-/** One plugin's hook, run in a component of its own so plugins coming and going never change a component's hooks. */
+// A component per plugin's hook: plugins coming and going would break the rules of hooks.
 const Feed = memo(function Feed({ id, use, report }: { id: string; use: Use; report: (id: string, runs: AgentRun[] | null | undefined) => void }) {
   const runs = use()
   useEffect(() => report(id, runs), [id, runs, report])

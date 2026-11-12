@@ -1,10 +1,8 @@
-// Where you left a place (scroll, cursor, Properties open), per place, device and vault, so coming back shows it as it
-// was. A text file's place is also its top line: the editor guesses unseen heights, so a scrollTop can drift.
+// A text file's place is also its top line: CodeMirror guesses unseen heights, so a scrollTop can drift.
 import { getStore } from "@/core/data"
 import { trackSoon } from "@/core/unsaved"
 
 type Place = { y?: number; props?: boolean; at?: [number, number]
-  /** The body's line at the top (0-based) and how far into it (a share of its height). */
   line?: number; into?: number }
 const KEPT = "vaultite.places"
 const MAX = 200
@@ -34,7 +32,7 @@ addEventListener("pagehide", () => { if (saving) save() })
 function update(key: string, change: Place) {
   const m = all()
   const next = { ...m.get(key), ...change }
-  m.delete(key) // the latest last, so the oldest go first
+  m.delete(key)
   m.set(key, next)
   while (m.size > MAX) m.delete(m.keys().next().value!)
   if (saving) clearTimeout(saving)
@@ -43,22 +41,18 @@ function update(key: string, change: Place) {
 
 type Line = { line: number; into: number }
 const readers = new Map<HTMLElement | null, () => Line | null>()
-/** What's drawn in `box` (null: the window) says which line is at its top, kept with each scroll. Returns a stop. */
 export function readPlace(box: HTMLElement | null, read: () => Line | null) {
   readers.set(box, read)
   return () => { if (readers.get(box) === read) readers.delete(box) }
 }
 
-/** How far `key` was scrolled when it was left (0: its top). */
 export const scrollOf = (key: string) => all().get(key)?.y ?? 0
-/** `key` scrolled to `y` in `box` (null: the window). */
 export const keepScroll = (key: string, y: number, box: HTMLElement | null = null) => {
   if (Math.abs((all().get(key)?.y ?? 0) - y) < 1) return
   const read = readers.get(box)
   const line = (at: Line | null): Place => ({ line: at?.line, into: at ? Math.round(at.into * 1000) / 1000 : undefined })
   update(key, { y: Math.round(y), ...line(read?.() ?? null) })
-  // Read again once the scrolling stops: an editor measures what came on screen after the scroll, and until then its
-  // line at the top is a guess from the heights it estimated.
+  // Read again once scrolling stops: until CodeMirror measures what came on screen, its top line is a guess.
   if (!read) return
   clearTimeout(settling.get(box))
   settling.set(box, setTimeout(() => {
@@ -69,8 +63,6 @@ export const keepScroll = (key: string, y: number, box: HTMLElement | null = nul
 const settling = new Map<HTMLElement | null, ReturnType<typeof setTimeout>>()
 trackSoon("places", () => saving !== null || settling.size > 0, true)
 
-/** A file or folder was renamed or moved: its places go with it, so a tab that follows it (a report archived by a reply
- *  sent from it) stays where it was read. */
 export function movePlaces(from: string, to: string) {
   const m = all()
   let changed = false
@@ -84,16 +76,13 @@ export function movePlaces(from: string, to: string) {
   if (changed) save()
 }
 
-/** Whether a file's Properties are open (folded unless they were opened). */
 export const propsOpen = (path: string) => all().get(`file:${path}`)?.props ?? false
 export const keepPropsOpen = (path: string, open: boolean) => update(`file:${path}`, { props: open })
-/** Show a file's Properties, open (its view goes to editing if it's being read): a block's "This file's properties". */
 export function revealProperties(path: string) {
   keepPropsOpen(path, true)
   dispatchEvent(new CustomEvent("vau:properties", { detail: path }))
 }
 
-/** Where a file's cursor was left: its body's line (0-based) and column, or null. */
 export const cursorOf = (path: string) => all().get(`file:${path}`)?.at ?? null
 export const keepCursor = (path: string, line: number, ch: number) => {
   const at = all().get(`file:${path}`)?.at
@@ -101,13 +90,9 @@ export const keepCursor = (path: string, line: number, ch: number) => {
 }
 
 const restores = new Set<() => void>()
-/** Stop scrolling back to where places were left: something else is taking the reader somewhere (a link to a heading). */
 export const cancelRestores = () => [...restores].forEach((stop) => stop())
-/** Another way of scrolling back to a place (an editor finding its line), stopped like the others. Returns a stop. */
 export function addRestore(stop: () => void) { restores.add(stop); return () => { restores.delete(stop) } }
 
-/** Places still being found (scrolled back to, or found by their line), and what waits for them to be (the cursor put
- *  into the text: the first line in sight then is the right one). */
 const finding = new Set<string>()
 const waiting = new Map<string, (() => void)[]>()
 const found = (key: string | undefined) => {
@@ -116,27 +101,20 @@ const found = (key: string | undefined) => {
   waiting.delete(key)
   fns?.forEach((f) => f())
 }
-/** Run `fn` once `key`'s place has been found (at once when it isn't being found). Returns a stop. */
 export function afterPlaced(key: string, fn: () => void): () => void {
   if (!finding.has(key)) { fn(); return () => {} }
   waiting.set(key, [...(waiting.get(key) ?? []), fn])
   return () => { const l = waiting.get(key); if (l) waiting.set(key, l.filter((f) => f !== fn)) }
 }
 
-/** Places being scrolled back to by restoreScroll, by key, while their line can still take over. */
 const pending = new Map<string, { box: HTMLElement | null; stop: (taken?: boolean) => void; show: () => void; hideToo: (el: HTMLElement) => void }>()
-/** What draws `key` can find its place itself now: it takes over a restore of it, now or when one starts (the file may
- *  draw before or after its tab starts scrolling back). Returns a stop. */
 const offers = new Map<string, () => void>()
 export function offerPlace(key: string, take: () => void): () => void {
   if (pending.has(key)) { take(); return () => {} }
   offers.set(key, take)
   return () => { if (offers.get(key) === take) offers.delete(key) }
 }
-/** `el` (a file that came while its place is being found: the app reloaded) stays hidden until the place is found. */
 export const hideUntilPlaced = (key: string, el: HTMLElement | null) => { if (el) pending.get(key)?.hideToo(el) }
-/** `key` is being scrolled back to a line: stop scrolling by pixels and say where to find that line instead. Null when
- *  it isn't (already there, the reader scrolled, no line kept). */
 export function takeRestore(key: string): { box: HTMLElement | null; line: number; into: number; show: () => void } | null {
   const p = pending.get(key)
   const at = all().get(key)
@@ -147,12 +125,9 @@ export function takeRestore(key: string): { box: HTMLElement | null; line: numbe
   return { box: p.box, line: at.line, into: at.into ?? 0, show }
 }
 
-/** Scroll `box` (or the window) back to `y` as its content loads, each frame for 1.5 s, until there or the user scrolls.
- *  A place kept at a line waits instead for what draws it to take over (box hidden up to 600 ms so the text doesn't jump). */
 export function restoreScroll(box: HTMLElement | null, y: number, done?: () => void, key?: string, hide: HTMLElement | null = box): () => void {
   const byLine = key !== undefined && all().get(key)?.line !== undefined
   const start = performance.now()
-  // (by its line: as long as its editor may take to load, shown after a moment meanwhile, at the top)
   const until = start + (byLine ? 3000 : 1500)
   let stopped = false
   let frame = 0
@@ -163,10 +138,7 @@ export function restoreScroll(box: HTMLElement | null, y: number, done?: () => v
   for (const el of hidden) el.style.visibility = "hidden"
   let shown = false
   const show = () => { shown = true; for (const el of hidden) el.style.visibility = "" }
-  /** Something that came on the page meanwhile (the file, once it's loaded) hidden with the rest. */
   const hideToo = (el: HTMLElement) => { if (byLine && !shown) { hidden.push(el); el.style.visibility = "hidden" } }
-  /** Stopped: by the user (or something else scrolling), when it's there, or taken over (`taken`: the box is shown
-   *  by whoever took it, once the place is found). */
   const stop = (taken = false) => {
     if (stopped) return
     stopped = true
@@ -181,7 +153,6 @@ export function restoreScroll(box: HTMLElement | null, y: number, done?: () => v
   restores.add(cancel)
   if (key !== undefined) { pending.set(key, { box, stop, show, hideToo }); finding.add(key) }
   addEventListener("touchstart", cancel, { passive: true }); addEventListener("wheel", cancel, { passive: true }); addEventListener("keydown", cancel)
-  // (what draws it already offered to find the place: it does)
   const offer = byLine && key !== undefined ? offers.get(key) : undefined
   if (offer) { offers.delete(key!); offer() }
   const step = () => {

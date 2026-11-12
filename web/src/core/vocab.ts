@@ -1,10 +1,6 @@
-// What suggestions offer from the vault: its tags, types and folders, each with how many files have it, most first.
-// Worked out once per file list (a new one comes with each change), the first time something asks.
 import { ranked, type QuerySuggestion, type QueryVocab } from "../../../core/searchquery.ts"
 import type { VaultFile } from "@/core/files"
 
-/** A tag's spelling, how many files have it, and the one file when only one does (an editor leaves out the tag its own
- *  file is still being typed into). */
 export type TagCount = { tag: string; count: number; only?: string }
 export type Vocab = QueryVocab & { tagFiles: TagCount[] }
 
@@ -12,7 +8,6 @@ const byCount = <T extends { count: number }>(a: T, b: T) => b.count - a.count
 
 const kept = new WeakMap<VaultFile[], Vocab>()
 
-/** The vault's vocabulary (excluded files left out); tags without case, the first spelling seen kept. */
 export function vocabOf(files: VaultFile[]): Vocab {
   let v = kept.get(files)
   if (v) return v
@@ -24,7 +19,6 @@ export function vocabOf(files: VaultFile[]): Vocab {
       if (had) { had.count++; had.only = undefined } else tags.set(k, { tag: t, count: 1, only: f.path })
     }
     if (f.type) types.set(f.type, (types.get(f.type) ?? 0) + 1)
-    // (folder: matches a folder or one above it, so a file counts for each)
     for (let at = f.path.indexOf("/"); at > 0; at = f.path.indexOf("/", at + 1)) {
       const dir = f.path.slice(0, at)
       folders.set(dir, (folders.get(dir) ?? 0) + 1)
@@ -37,8 +31,6 @@ export function vocabOf(files: VaultFile[]): Vocab {
   return v
 }
 
-/** What a whole field suggests for what's typed in it (Properties' names and values): the ones having it, those starting
- *  with it first, then the most used; `has` left out. Nothing once what's typed is one of them, so Enter keeps it. */
 export function fieldSuggestions(list: [string, number][], typed: string, has: string[] = [], max = 30): { from: number; to: number; items: QuerySuggestion[] } | null {
   const t = typed.trim().toLowerCase(), skip = new Set(has.map((h) => h.toLowerCase()))
   if (t && list.some(([v]) => v.toLowerCase() === t)) return null
@@ -46,8 +38,6 @@ export function fieldSuggestions(list: [string, number][], typed: string, has: s
   return items.length ? { from: 0, to: typed.length, items } : null
 }
 
-/** A property's values in the other files (`GET /api/properties?key=`: each file's), each once, a list's items each:
- *  the ones files like it have first (`near`: of its type), then the most used. Short text and numbers only. */
 export function valuesOf(rows: { path: string; value: unknown }[], except: string, near: (path: string) => boolean = () => false): [string, number][] {
   const counts = new Map<string, { v: string; n: number; near: number }>()
   for (const r of rows) {
@@ -65,7 +55,6 @@ export function valuesOf(rows: { path: string; value: unknown }[], except: strin
 }
 
 const typed = new WeakMap<VaultFile[], Map<string, string | null>>()
-/** Each file's type by its path (kept per file list). */
 export function typesOf(files: VaultFile[]): Map<string, string | null> {
   let m = typed.get(files)
   if (!m) typed.set(files, m = new Map(files.map((f) => [f.path, f.type])))

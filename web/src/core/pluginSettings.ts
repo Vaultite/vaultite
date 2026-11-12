@@ -1,5 +1,3 @@
-// A plugin's settings sheet: a plugin has one when it draws a panel, declares settings in its manifest, or has a
-// data.json. Only while it's on.
 import { getStore, type Store } from "@/core/data"
 import type { Plugin } from "@/core/define"
 import { openDetail } from "@/core/nav"
@@ -18,11 +16,9 @@ import { glide } from "@/core/animation"
 export const settingsFile = (id: string) => `.vaultite/plugins/${id}/data.json`
 type Data = Record<string, unknown>
 const EMPTY = {}
-// (a var: plugins call pluginSettings as their modules load, maybe before this module has run)
-// eslint-disable-next-line no-var
+// eslint-disable-next-line no-var -- plugins call pluginSettings as their modules load, maybe before this module has run
 var kept: Map<string, ReturnType<typeof keep>> | undefined
-// Plugins' reads in the same moment (as the app loads, after a reconnect) are one request. (A var, as `kept`.)
-// eslint-disable-next-line no-var
+// eslint-disable-next-line no-var -- read before this module has run, as `kept`
 var asking: Map<string, { ok: (d: unknown) => void; fail: (e: unknown) => void }> | null = null
 function readSoon(id: string) {
   return new Promise<unknown>((ok, fail) => {
@@ -39,14 +35,11 @@ function readSoon(id: string) {
 }
 
 function keep(id: string) {
-  // What's saved, and what's read: the same, but for a value a picker shows for now (`preview`).
   const saved = cell<Data | null>(null), value = cell<Data | null>(null)
   let over: Data | null = null
   const show = () => { const s = saved.get(); value.set(over ? { ...(s ?? {}), ...over } : s) }
   saved.subscribe(show)
   let reading: Promise<void> | null = null
-  // A read that a write overtook (asked before it, or answered while one is out) is older than what's shown: dropped,
-  // and read again once the writes are in. Writes go one at a time, so the server keeps the last one.
   let writes = 0, gen = 0, stale = false, queue: Promise<unknown> = Promise.resolve()
   const got = (g: number) => (d: unknown) => {
     if (writes || g !== gen) { stale = true; if (!writes) void read(); return }
@@ -59,7 +52,6 @@ function keep(id: string) {
     reading = read()
     onVaultChange((paths) => { if (touches(paths, settingsFile(id))) void read() })
   }
-  /** Write those keys (null removes one): shown at once, put back if the write fails. */
   const set = async (changes: Data) => {
     start()
     const was = saved.get() ?? {}, next = { ...was }
@@ -96,17 +88,13 @@ export function pluginSettings<T extends object = Data>(id: string) {
   }
 }
 
-/** What a declared setting is when its key is left out: its manifest's default, or one another app's settings make
- *  (.obsidian/templates.json's folder). */
 export function settingDefault(id: string, key: string, d: SettingDecl): unknown {
   const seeds = getStore()?.settingDefaults?.[`plugins/${id}/data`]
   return seeds && Object.hasOwn(seeds, key) ? seeds[key] : d.default
 }
 
-/** An enum's value as the form and the palette name it: its `labels`' name, else the value capitalized. */
 export const valueLabel = (d: SettingDecl, v: unknown) => d.labels?.[String(v)] ?? capitalize(String(v))
 
-/** A plugin's settings sheet's name: "Vim settings", but "Style settings" as it is. */
 export const settingsTitle = (name: string) => (/\bsettings$/i.test(name) ? name : `${name} settings`)
 
 /** Whether a plugin has anything to set (whether it's on or not). `files`: the ids with a settings file. */
@@ -115,12 +103,9 @@ export function hasSettings(p: Plugin, files: string[] = getStore()?.pluginSetti
     !!getStore()?.filing?.homes.some((h) => h.plugin === p.id) || !!getStore()?.writeGrants?.some((g) => g.plugin === p.id)
 }
 
-/** The plugins whose settings can be opened now: on, with something to set. */
 export const withSettings = (store: Store | null = getStore(), disabled = getPrefs().disabled) =>
   PLUGINS.filter((p) => settingsShown(p, disabled) && hasSettings(p, store?.pluginSettings ?? []))
 
-/** A plugin's settings are offered (its sheet, its switches and choices in the palette): it's on, and they aren't in
- *  Settings > AI while AI is off (that section is then only its switch: what's there serves AI). */
 export const settingsShown = (p: Plugin, disabled = getPrefs().disabled) => isEnabled(p.id, disabled) && (getPrefs().ai || settingsHome(p) !== "ai")
 
 let goingTo: { id: string; key: string } | null = null
@@ -132,14 +117,12 @@ export function openPluginSettings(id: string, key?: string) {
   openDetail(`plugin-settings/${encodeURIComponent(id)}`)
 }
 
-/** The setting the sheet just opened for `id` should go to (once: taken). */
 export function takeGoingTo(id: string) {
   const g = goingTo?.id === id ? goingTo.key : null
   goingTo = null
   return g
 }
 
-/** Scroll to the first element `selector` finds and flash it, waiting a moment for one drawn late (a form that loads). */
 export function revealRow(selector: string, within: ParentNode = document) {
   let tries = 0
   const go = () => {
@@ -151,8 +134,6 @@ export function revealRow(selector: string, within: ParentNode = document) {
   requestAnimationFrame(go)
 }
 
-/** "Open <Name> settings" in the command palette, for each plugin that has some, while it's on. Verb first, like every
- *  command: a name starting with the plugin's (Claude Code settings) would beat its "Open …" for the same word. */
 export const settingsCommands = (): Command[] =>
   PLUGINS.map((p) => ({
     id: `plugin-settings:${p.id}`, name: `Open ${settingsTitle(p.name)}`,
@@ -161,18 +142,12 @@ export const settingsCommands = (): Command[] =>
     icon: p.icon,
   }))
 
-/** Where Settings shows the settings of one of the app's own plugins (always on): in a section, by its category. The
- *  others' are a gear away on Plugins. */
 const HOMES: Record<string, string> = { writing: "editor", navigation: "files", formats: "files", life: "files", agents: "ai", "ai-apps": "ai", system: "about" }
-/** One whose section isn't its category's: Terminal's own, File history's Files (it keeps your files' versions). */
 const OWN: Record<string, string> = { terminal: "terminal", history: "files" }
 export const settingsHome = (p: Plugin): string | null => (p.alwaysOn ? OWN[p.id] ?? HOMES[p.category ?? ""] ?? "about" : null)
-/** The row of Settings' menu a section lights: its own; for a plugin's page (`plugin:<id>`), where it's listed: the section
- *  its switch is in (Vim keys: Editor), the app's section its settings are part of, or Plugins. */
 export function settingsLit(section: string) {
   const of = section.startsWith("plugin:") ? pluginById(section.slice(7)) : null
   if (!of) return section
   return of.switchIn?.section ?? settingsHome(of) ?? "plugins"
 }
-/** Its settings are a row in that section, opening their sheet, rather than drawn there: a long form (Graph view's). */
 export const settingsApart = (p: Plugin) => Object.keys(p.settingsDecls ?? {}).length > 10

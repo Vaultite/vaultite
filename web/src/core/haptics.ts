@@ -1,5 +1,3 @@
-// A tap under the finger (phones): the iPhone app's Taptic Engine (ShellPlugin.swift), else Android's vibrate, else
-// iOS 18's switch tick (flip). An older app plays any weight it doesn't know as light.
 import { phoneApp } from "@/core/phoneapp"
 
 /** iOS's kinds: impacts (light: a menu, a swipe past its mark, a tick; medium: picked up, put down, a row's action done),
@@ -8,7 +6,6 @@ export type Haptic = "light" | "medium" | "heavy" | "soft" | "rigid" | "selectio
 
 /** A finger is the pointer (phones, tablets): no hover, so what shows on hover is swiped or held for instead. */
 export const coarse = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches
-/** The native one answered once (it's there), or failed once (an older build: the switch from then on). */
 let native: boolean | null = phoneApp ? null : false
 const BUZZ: Partial<Record<Haptic, number | number[]>> = { selection: 5, medium: 14, heavy: 20, rigid: 12, success: [10, 60, 14], warning: [14, 80, 14], error: [14, 50, 14, 50, 14] }
 
@@ -36,7 +33,6 @@ export function haptic(weight: Haptic = "light") {
   else flip()
 }
 
-/** dnd-kit's handlers for a sortable list's feel: medium on pick-up and drop, a tick each time it passes another. */
 export function sortHaptics() {
   let last: unknown = null
   return {

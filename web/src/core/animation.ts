@@ -1,10 +1,7 @@
-// Motion (appearance `animation`, the CSS tokens in index.css): one timing for Web Animations and CSS alike, and one
-// check, `still()`, that every animation and smooth scroll asks, so Reduce motion and animations off act the same.
 import { getPrefs } from "@/core/prefs"
 
 export type Pace = "fast" | "base" | "spring"
 
-/** Whether the user wants things still: animations off in Settings, or the system asking for less motion. */
 export const still = () => getPrefs().animation === "off" || (typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches)
 
 /** Whether things move: nothing asks for stillness, and Web Animations are there. */
@@ -22,7 +19,6 @@ export const PACES = {
   snappy: { fast: [90, OUT], base: [150, OUT], spring: [200, OUT] },
 } as const
 
-/** A Web Animation's duration and easing for `pace` (duration 0 when nothing moves). */
 export function timing(pace: Pace = "base"): { duration: number; easing: string } {
   if (!moves()) return { duration: 0, easing: "linear" }
   const [duration, easing] = PACES[getPrefs().animation === "snappy" ? "snappy" : "natural"][pace]
@@ -40,28 +36,18 @@ export function slideFrom(el: HTMLElement, from: DOMRect, pace: Pace = "spring",
   return el.animate([{ transformOrigin: "0 0", transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})` }, { transformOrigin: "0 0", transform: "none" }], t)
 }
 
-/** How long a menu's chosen row blinks before the menu fades (a Mac's: off, then on, once). */
 const BLINK = 100
 
 export type Leaving = {
-  /** Its fade's pace ("fast": quicker than most things come in). */
   pace?: Pace
-  /** What it shrinks to as it fades (a card leaving: 0.98); 1, the menus: it only fades. */
   scale?: number
-  /** Only the part of it matching this shrinks (a palette's card, not the dim behind it). */
   scaled?: string
-  /** A dim behind it that fades with it (what a modal <dialog>'s ::backdrop drew). */
   backdrop?: string
-  /** What `dropLeaving` clears: one opening in its place (a palette swapped for another) takes over at once. */
   tag?: string
-  /** A part shown lit as it goes (the row the pointer or keyboard was on: a copy has no :hover or focus). */
   lit?: Element | null
-  /** The lit part blinks first: the choice made, as a Mac's menu shows it. */
   blink?: boolean
 }
 
-/** What closes leaves a picture of itself that fades, as a Mac's menus do: the thing itself is gone at once (its
- *  clicks, its focus, its state), only its look lingers. Called while it's still drawn. Still: nothing lingers. */
 export function fadeAway(els: readonly (Element | null | undefined)[], o: Leaving = {}) {
   const all = els.filter((e): e is HTMLElement => !!e?.isConnected && "style" in e)
   if (!all.length || !moves()) return
@@ -71,7 +57,7 @@ export function fadeAway(els: readonly (Element | null | undefined)[], o: Leavin
   host.dataset.fading = o.tag ?? ""
   host.inert = true
   host.setAttribute("aria-hidden", "true")
-  // Over a modal <dialog> (a sheet: the page under it is the top layer's), it goes in the top layer too, above it.
+  // Over a modal <dialog>, it goes in the top layer too: nothing else draws above one.
   const top = typeof host.showPopover === "function" && [...doc.querySelectorAll("dialog[open]")].some((d) => { try { return d.matches(":modal") } catch { return false } })
   if (top) host.popover = "manual"
   host.style.cssText = "position:fixed;inset:0;width:auto;height:auto;max-width:none;max-height:none;margin:0;padding:0;border:0;background:transparent;overflow:visible;pointer-events:none;color:inherit;z-index:2147483647"
@@ -94,7 +80,6 @@ export function fadeAway(els: readonly (Element | null | undefined)[], o: Leavin
       if (f.scrollTop || f.scrollLeft) scrolled.push([to[i], f.scrollTop, f.scrollLeft])
       if (f.tagName === "INPUT" || f.tagName === "TEXTAREA") (to[i] as HTMLInputElement).value = (f as HTMLInputElement).value
     })
-    // (a picture: no ids twice in the page, no roles that say it's still a menu or dialog)
     for (const t of to) { t.removeAttribute("id"); t.removeAttribute("role") }
     Object.assign(copy.style, { position: "fixed", left: `${r.left}px`, top: `${r.top}px`, right: "auto", bottom: "auto", width: `${r.width}px`,
       height: `${r.height}px`, margin: "0", transform: "none", translate: "none", scale: "none", visibility: "visible" })
@@ -119,12 +104,10 @@ export function fadeAway(els: readonly (Element | null | undefined)[], o: Leavin
   Promise.all(fades.map((f) => f.finished)).then(gone, gone)
 }
 
-/** Takes away at once what's still fading with `tag` (one opening in its place takes over). */
 export function dropLeaving(tag: string, doc: Document = document) {
   for (const el of doc.querySelectorAll(`[data-fading="${CSS.escape(tag)}"]`)) el.remove()
 }
 
-/** A field that won't take what was typed shakes, as a Mac's password field does; still, it doesn't. */
 export function refuse(el: Element | null | undefined) {
   if (!el || !moves()) return
   el.animate([{ translate: "0" }, { translate: "-7px" }, { translate: "6px" }, { translate: "-4px" }, { translate: "3px" }, { translate: "-1px" }, { translate: "0" }],

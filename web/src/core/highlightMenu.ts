@@ -1,4 +1,3 @@
-// Highlight colours as menu rows: the editor's Format ▸ Highlight submenu and the swatch on the highlight at the cursor.
 import { createElement } from "react"
 import type { LucideIcon } from "lucide-react"
 import type { MenuItem } from "@/components/ContextMenu"
@@ -8,7 +7,6 @@ import type { ChangeSpec } from "@codemirror/state"
 import type { EditorView } from "@codemirror/view"
 
 const dots = new Map<string, LucideIcon>()
-/** A colour's dot as a menu row's icon; ringed for the colour it has now (a menu row's check would take the dot's place). */
 export function highlightIcon(color: HighlightColor | null, now = false) {
   const key = `${color ?? ""}:${now}`
   let I = dots.get(key)
@@ -24,7 +22,6 @@ export function highlightIcon(color: HighlightColor | null, now = false) {
 export function highlightItems(view: EditorView, at?: number): MenuItem[] {
   const { main } = view.state.selection
   const h = at === undefined ? highlightAt(view.state, main.from, main.to) : highlightAt(view.state, at)
-  // (the one at `at` is found again when picked: the text may have changed while the menu was open)
   const act = (fn: (now: Highlight) => ChangeSpec, userEvent: string) => () => {
     view.focus()
     const now = at === undefined ? null : highlightAt(view.state, at)

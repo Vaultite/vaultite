@@ -1,5 +1,3 @@
-// The plugin registry: every folder in plugins/core/ with an index.tsx (found with import.meta.glob), plus the vault's
-// own once /api/state lists them. Which are on is plugins.json (prefs.ts); a plugin is off while one it `requires` is.
 import { useEffect, type ReactNode } from "react"
 import { signal } from "@/core/signal"
 import { share } from "@/core/share"
@@ -36,26 +34,22 @@ export type { Place, Side, Sidebars } from "../../../core/sidebars.ts"
 export { readSidebars, sameSidebars } from "../../../core/sidebars.ts"
 export type { DetailDef, FileCtx, FileFormat, FileView, FormatCtx, HeaderItem, PageCtx, PageView, SidebarSetup, LinkTarget, Manifest, Plugin, PluginDef, SearchDoc, SidebarCtx, SidebarPanel } from "@/core/define"
 
-// (the web demo's official plugins too, built in there: vite.demo.config.ts)
 const manifests = { ...import.meta.glob<Manifest>("../../../plugins/core/*/manifest.json", { eager: true, import: "default" }), ...official.manifests }
 const modules = { ...import.meta.glob<PluginDef>("../../../plugins/core/*/index.tsx", { eager: true, import: "default" }), ...official.modules }
-// The dashboards each plugin brings (the server copies them into the vault's Dashboards/; here for previews).
 const pages = { ...import.meta.glob<string>("../../../plugins/core/*/pages/*.md", { eager: true, query: "?raw", import: "default" }), ...official.pages }
 
-const folder = (path: string) => path.split("/").slice(-3, -1).join("/") // "core/people"
+const folder = (path: string) => path.split("/").slice(-3, -1).join("/")
 
-/** Settings' words as this computer names its keys (keysText): labels and descriptions. */
 const keyedDecls = <D extends Record<string, { label?: string; description?: string; labels?: Record<string, string> }>>(decls: D): D => isMac ? decls
   : Object.fromEntries(Object.entries(decls).map(([k, d]) => [k, { ...d, label: d.label && keysText(d.label), description: d.description && keysText(d.description),
     labels: d.labels && Object.fromEntries(Object.entries(d.labels).map(([v, l]) => [v, keysText(l)])) }])) as D
 
-/** Every plugin: the app's (fixed), then the vault's (setVaultPlugins). */
 export const PLUGINS: Plugin[] = Object.entries(manifests)
   .map(([path, { blocks: decls, settings, ...read }]) => {
     const m = { ...read, description: read.description && keysText(read.description) }
     const f = folder(path)
     const def = Object.entries(modules).find(([p]) => folder(p) === f)?.[1] ?? {}
-    const icon = BUILT_IN_ICONS[m.id] // (a name: one it adds itself)
+    const icon = BUILT_IN_ICONS[m.id]
     return { ...m, ...def, icon: (typeof icon === "string" ? def.icons?.[icon] : icon) ?? Puzzle, blockDecls: decls ?? {}, settingsDecls: keyedDecls(settings ?? {}), tier: "core" } as Plugin
   })
 
@@ -76,20 +70,14 @@ function writeTints() {
 }
 writeTints()
 
-// The vault's plugins arrive after the app's (and change while it runs): whatever reads the plugin list in a hook or
-// caches what it got (commands, panels, agents) follows this counter.
 const pluginsChanged = signal()
-// (its meta too: one waiting to be allowed again changes only that, and usePlugins hands out the same list until this moves)
 const signature = (ps: Plugin[]) => ps.map((p) => `${p.id}@${p.version ?? ""}:${(p.problems ?? []).join()}:${JSON.stringify(p.meta ?? null)}`).join("\n")
 
 const bump = pluginsChanged.notify
-// (each change to the list, told or not: what's cached from it, by id and what's on, is made again)
 let generation = 0
 let vaultIn = false
-/** Whether the vault's plugins came yet: before, what they draw is still to come, not gone. */
 export const vaultPluginsIn = () => vaultIn
 
-/** The vault's plugins now (core/vaultPlugins.ts): they replace the ones before. */
 export function setVaultPlugins(list: Plugin[]) {
   const app = PLUGINS.filter((p) => p.tier === "core"), hosted = PLUGINS.filter((p) => p.tier === "hosted")
   const was = signature(PLUGINS.filter((p) => p.tier === "vault"))
@@ -102,11 +90,9 @@ export function setVaultPlugins(list: Plugin[]) {
   if (first || signature(list) !== was) bump()
 }
 
-// Plugins other plugins run (an Obsidian plugin under plugin-compat), by host: their switches are the host's.
 const hosts = new Map<string, PluginHost>()
 const hostedOn = new Map<string, boolean>()
 export const hostOf = (p: Plugin) => (p.host ? hosts.get(p.host) ?? null : null)
-/** The hosts running now (an Obsidian plugins' host with none yet included), by the host plugin's id. */
 export const hostsNow = () => [...hosts]
 
 /** A host's plugins now (null: none, the host gone or off): they replace its ones before, and whatever they draw
@@ -125,7 +111,6 @@ export function hostPlugins(host: string, info: PluginHost | null, list: HostedP
   bump()
 }
 
-/** Re-render when the plugin list changes (the vault's plugins came, went or changed); returns a counter. */
 export const usePluginsVersion = () => pluginsChanged.use()
 
 let byId: { generation: number; map: Map<string, Plugin> } | null = null
@@ -146,24 +131,18 @@ export function askAbout(question: string, file?: string) {
 
 export const iconNamed = (name: string) => PLUGINS.find((p) => p.icons?.[name])?.icons![name] ?? null
 
-/** Off until turned on (`enabled`): the vault's plugins (they run code), and the app's that change how everything
- *  behaves or that few want (`offByDefault`: Vim, Finance). */
 const optIn = (p: Plugin) => p.tier === "vault" || !!p.offByDefault
 const hostedOwn = (p: Plugin, disabled: string[], seen: string[]) =>
   !!hostedOn.get(p.id) && !p.problems?.length && !p.meta?.approval && isEnabled(p.host!, disabled, [...seen, p.id])
 
-/** The vault's plugins (and Obsidian's) off for this visit (the crash screen's "Reload with vault plugins off"), so
- *  their code can't keep the app from opening. The app's own stay on; turnPluginsBackOn ends it. */
 export const safeMode = (() => { try { return sessionStorage.getItem("vaultite.safe") === "1" } catch { return false } })()
 export function turnPluginsBackOn() {
   try { sessionStorage.removeItem("vaultite.safe") } catch { /* none kept */ }
   location.reload()
 }
 
-/** On: not switched off (opt-in: switched on, and nothing wrong with it), not for AI while AI is off (core/ai.ts), and
- *  everything it requires is on too. `!<id>` in `disabled` draws an opt-in one as on (its preview while it's off). */
 export function isEnabled(id: string, disabled: string[], seen: string[] = []): boolean {
-  if (share) return share.plugins.includes(id) && !!pluginById(id) // (a guest's app: only theirs, core/share.ts)
+  if (share) return share.plugins.includes(id) && !!pluginById(id)
   const p = pluginById(id)
   if (!p || seen.includes(id) || (safeMode && (p.tier === "vault" || p.tier === "hosted")) || (p.ai && !getPrefs().ai)) return false
   const own = p.tier === "hosted" ? hostedOwn(p, disabled, seen)
@@ -172,24 +151,19 @@ export function isEnabled(id: string, disabled: string[], seen: string[] = []): 
   return own && (p.requires ?? []).every((r) => isEnabled(r, disabled, [...seen, id]))
 }
 
-/** Off because AI is (its manifest's `ai`, core/ai.ts): lists of plugins to switch leave it out meanwhile. */
 export const offWithAi = (p: Plugin, prefs = getPrefs()) => !!p.ai && !prefs.ai
 
-/** Its own switch (not what it requires): the app's plugins are on unless in `disabled` (`alwaysOn` ones always), opt-in
- *  ones (the vault's, `offByDefault`) are off unless in `enabled`. */
 export function switchedOn(p: Plugin, prefs = getPrefs()) {
   if (p.tier === "hosted") return !!hostedOn.get(p.id)
   if (p.alwaysOn) return true
   return optIn(p) ? prefs.enabled.includes(p.id) : !prefs.disabled.includes(p.id)
 }
 
-/** Let a vault plugin run on this machine as it was shown (its files' hash: refused if they changed since; core/trust.ts).
- *  Only this machine's owner may; false when it wasn't allowed (said in a toast). */
 export async function allowPlugin(p: Plugin, edits?: boolean) {
   try {
     if (p.tier === "hosted") { await hostOf(p)?.allow?.(p.id); return true }
     await op("plugin.allow", { id: p.id, ...(p.meta?.hash ? { hash: p.meta.hash } : {}), ...(edits === undefined ? {} : { edits }) })
-    void reload() // (this machine's yes isn't a vault file: no change comes to say it)
+    void reload()
     return true
   } catch (e) {
     notifyError(e, `Couldn't allow ${p.name} on this machine`)
@@ -197,13 +171,11 @@ export async function allowPlugin(p: Plugin, edits?: boolean) {
   }
 }
 
-/** Whether an installed plugin updates on its own (core/updates.ts: the vault's policy, or its own choice). */
 export function autoUpdating(p: Plugin, prefs = getPrefs()) {
   const src = p.meta?.source
   return !!src && autoUpdates(prefs, p.id, src.source)
 }
 
-/** Have it update on its own, or not: kept as its own choice only when it differs from the vault's policy. */
 export function setAutoUpdate(p: Plugin, on: boolean) {
   const src = p.meta?.source
   if (!src) return
@@ -213,8 +185,6 @@ export function setAutoUpdate(p: Plugin, on: boolean) {
     updatesOff: [...updatesOff.filter((id) => id !== p.id), ...(own && !on ? [p.id] : [])] })
 }
 
-/** Update an installed plugin now and let it run here (the user asked for it here), and say so: the version it went to,
- *  or null. One that says it does more beyond the vault than it did waits for its review, as auto-updates do. */
 export async function updatePlugin(p: Plugin) {
   try {
     const [row] = await op<{ applied?: boolean; to?: string; error?: string; disclosures?: string[] }[]>("plugin.update", { id: p.id, apply: true })
@@ -232,7 +202,6 @@ export async function updatePlugin(p: Plugin) {
   }
 }
 
-/** Put it back to the version before its last update (core/coreops/installs.ts plugin.rollback). */
 export async function rollbackPlugin(p: Plugin) {
   try {
     const r = await op<{ to: string; from: string }>("plugin.rollback", { id: p.id })
@@ -245,17 +214,12 @@ export async function rollbackPlugin(p: Plugin) {
   }
 }
 
-/** What it stands in for ("obsidian:dataview"), the runner's "*" left out. */
 const stands = (p: Plugin) => Object.entries(p.replaces ?? {}).flatMap(([a, ids]) => (Array.isArray(ids) ? ids : []).filter((x) => x !== "*").map((x) => `${a}:${x}`))
-/** Opt-in plugins switched on that stand in for the same as `p` (Vaultite's Dataview and Obsidian's): never both on.
- *  The app's own on by default (Search) stay. */
 function alternativesOf(p: Plugin, prefs = getPrefs()) {
   const mine = stands(p)
   if (!mine.length) return []
   return PLUGINS.filter((q) => q.id !== p.id && (optIn(q) || q.tier === "hosted") && switchedOn(q, prefs) && stands(q).some((k) => mine.includes(k)))
 }
-/** A hosted plugin's stand-in here, on or off (Vaultite's Excalidraw for Obsidian's): an opt-in one, so the two are
- *  never both on and the Plugins page draws them as one row. The app's own on by default (Search) aren't. */
 export function standInOf(h: Plugin) {
   const theirs = h.tier === "hosted" ? stands(h) : []
   return theirs.length ? PLUGINS.find((q) => q.tier !== "hosted" && optIn(q) && stands(q).some((k) => theirs.includes(k))) ?? null : null
@@ -267,8 +231,6 @@ export function standingIn(app: string, id: string) {
   return PLUGINS.filter((q) => q.tier !== "hosted" && optIn(q) && stands(q).includes(`${app}:${id}`) && isEnabled(q.id, disabled))
 }
 
-/** `quiet`: no word of the stand-ins it turned off (a swap the user asked for by name). */
-/** Resolves once it's saved (the first run's Use it waits for that before it asks for the agent's page). */
 export function setSwitch(p: Plugin, on: boolean, quiet = false): Promise<void> {
   if (p.alwaysOn) return Promise.resolve()
   if (on) {
@@ -278,8 +240,6 @@ export function setSwitch(p: Plugin, on: boolean, quiet = false): Promise<void> 
     if (others.length && !quiet) notify(`Turned off ${others.map(label).join(" and ")}: ${label(p)} does the same`)
   }
   if (p.tier === "hosted") return Promise.resolve(hostOf(p)?.setOn(p.id, on)).then(() => {}, (e) => { notifyError(e, `Couldn't turn ${p.name} ${on ? "on" : "off"}`) })
-  // A vault plugin turned on here is allowed to run here first (as it's shown), then turned on in the vault (refused,
-  // it's on and waits for this machine's owner).
   if (p.tier === "vault" && on) return allowPlugin(p).then(() => turn(p, true))
   return turn(p, on)
 }
@@ -287,7 +247,6 @@ export function setSwitch(p: Plugin, on: boolean, quiet = false): Promise<void> 
 function turn(p: Plugin, on: boolean) {
   const { disabled, enabled } = getPrefs()
   if (on) { showPanelsOf(p); showSectionsOf(p); showBarItemsOf(p); showHeaderItemsOf(p) }
-  // Turned on: what it writes on its own is asked now, once (core/grants.ts).
   if (on) void askGrant(p.id)
   const next = switched({ disabled, enabled }, p.id, on, optIn(p))
   return setPrefs({ ...(next.disabled.join() !== disabled.join() ? { disabled: next.disabled } : {}), ...(next.enabled.join() !== enabled.join() ? { enabled: next.enabled } : {}) })
@@ -310,8 +269,6 @@ export function offText(p: Plugin, disabled = getPrefs().disabled) {
   return `${p.name} ${why}`
 }
 
-// A shortcut for a command whose plugin is off, waits to be allowed here or failed to load says so (its id's prefix
-// names a vault plugin that isn't loaded).
 setMissingCommand((id) => {
   const p = PLUGINS.find((x) => x.commands?.some((c) => c.id === id)) ?? pluginById(id.split(":")[0])
   const { disabled } = getPrefs()
@@ -320,8 +277,6 @@ setMissingCommand((id) => {
   return () => notify(`${keys}: ${offText(p, disabled)}`, { id: `plugin:${p.id}`, action: { label: "Review", run: () => openDetail(`plugin/${p.id}`) } })
 })
 
-// The same list until the plugins change: a new one each render made what keys a memo on it (the command palette's
-// rows) redo its work every time it drew.
 let listed: { v: number; list: Plugin[] } | null = null
 export function usePlugins() {
   const v = usePluginsVersion()
@@ -329,7 +284,6 @@ export function usePlugins() {
   return listed.list
 }
 
-/** The enabled plugins, in order (the same list until the plugins or what turns them on change: don't change it). */
 let on: { generation: number; disabled: string[]; enabled: string[]; ai: boolean; list: Plugin[]; key: string } | null = null
 export function active(disabled: string[]) {
   const { enabled, ai } = getPrefs()
@@ -338,8 +292,6 @@ export function active(disabled: string[]) {
   on = { generation, disabled, enabled, ai, list, key: list.map((p) => p.id).join() }
   return on.list
 }
-/** Which plugins are on, as text: what's made from them (commands, backgrounds) is made again when it changes, whatever
- *  turned one on or off (its switch, what it requires, Use AI, being allowed here). */
 export function activeKey(disabled: string[]) {
   active(disabled)
   return on!.key
@@ -350,7 +302,6 @@ export function tabButtons(to: string, disabled = getPrefs().disabled): TabButto
   return active(disabled).flatMap((p) => { try { return p.tabButtons?.(to) ?? [] } catch { return [] } })
 }
 
-/** The file tree's marks from the plugins that are on (`fileMarks`), by path; the first plugin's wins. */
 export function fileMarks(store: Store, disabled: string[]): Record<string, FileMark> {
   const out: Record<string, FileMark> = {}
   for (const p of PLUGINS) {
@@ -360,8 +311,6 @@ export function fileMarks(store: Store, disabled: string[]): Record<string, File
   return out
 }
 
-/** Icons plugins that are on give files and folders (`fileIcons`), by path; the first plugin's wins. Worked out once per
- *  store and setup: the tree and the tabs ask for every row. */
 let icons: { key: unknown[]; out: Record<string, FileIcon> } | null = null
 export function fileIcons(store: Store, disabled: string[]): Record<string, FileIcon> {
   const key = [store, disabled, getPrefs().enabled, pluginsChanged.version()]
@@ -375,7 +324,6 @@ export function fileIcons(store: Store, disabled: string[]): Record<string, File
   return out
 }
 
-/** What plugins that are on draw into the file tree's rows (`fileRows`), by path; the first plugin's wins. */
 const rows = signal()
 export const fileRowsChanged = () => rows.notify()
 let rowsMemo: { key: unknown[]; out: Record<string, FileRow> } | null = null
@@ -391,13 +339,9 @@ export function useFileRows(disabled: string[]): Record<string, FileRow> {
   return out
 }
 
-/** A block's drawing while it's read, through the plugins that are on and have something to do (`reading`), each in
- *  turn over the same element: what they made, or null when none changed it (PreviewConfig.readBlock). */
 export type ReadBlock = (el: HTMLElement, block: ReadingBlock) => Promise<ReadingDrawn | null>
 const reading = signal()
 let readMemo: { key: unknown[]; out: ReadBlock | null } | null = null
-/** The plugins' ReadBlock now, a new one each time they change (so every block is offered again); null while none has
- *  anything to do, and reading costs nothing. */
 export function useReadBlock(disabled: string[]): ReadBlock | null {
   const key: unknown[] = [usePluginsVersion(), reading.use(), disabled, getPrefs().enabled]
   const list = PLUGINS.filter((p) => p.reading && isEnabled(p.id, disabled))
@@ -405,7 +349,7 @@ export function useReadBlock(disabled: string[]): ReadBlock | null {
   useEffect(() => {
     const stops = list.map((p) => { try { return p.reading!.subscribe(reading.notify) } catch { return () => {} } })
     return () => stops.forEach((s) => s())
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- list is new each render: keyed by its ids
   }, [ids])
   const on = list.filter((p) => { try { return p.reading!.active() } catch { return false } })
   key.push(on.map((p) => p.id).join())
@@ -421,13 +365,8 @@ export function useReadBlock(disabled: string[]): ReadBlock | null {
   return out
 }
 
-// ---------- the sidebars' panels: .vaultite/sidebars.json (core/sidebars.ts) ----------
-// sidebars.json, unless a plugin that's on keeps the setup itself (`sidebarSetup`: Workspaces).
-
-/** A panel of a plugin: its key ("terminal:sessions"), its plugin, its definition. */
 export type PanelOf = { key: string; plugin: Plugin; panel: SidebarPanel }
 
-/** The panels of the plugins that are on, by `sort` (then the plugins' order): the order of the Panels menu. */
 export function sidebarPanels(disabled: string[]): PanelOf[] {
   const named = [...sidebars().left, ...sidebars().right], ai = getPrefs().ai
   return active(disabled)
@@ -438,7 +377,6 @@ export function sidebarPanels(disabled: string[]): PanelOf[] {
     .sort((a, b) => (a.panel.sort ?? 100) - (b.panel.sort ?? 100) || a.i - b.i)
 }
 
-// (one object per key, so a redraw is the same panel)
 const argPanels = new Map<string, SidebarPanel>()
 function panelFor(key: string, name: string, p: Plugin, make: (arg: string) => SidebarPanel) {
   let panel = argPanels.get(key)
@@ -446,15 +384,11 @@ function panelFor(key: string, name: string, p: Plugin, make: (arg: string) => S
   return panel
 }
 
-/** The plugin that's on that hands tasks to a worker (Do it), if one is. */
 export const taskDoer = (disabled: string[]) => active(disabled).find((p) => p.doTask)?.doTask ?? null
 
-/** Every plugin's panels (on or off), for the default setup. */
 const panelInfo = () =>
   PLUGINS.flatMap((p) => Object.entries(p.sidebar ?? {}).map(([name, s]) => ({ key: `${p.id}:${name}`, sort: s.sort, hidden: s.hidden, side: s.side })))
 
-// A file's top bar items (FileBarItem) are panels too, hidden until docked: in a sidebar, one is drawn there for the
-// focused file and not in the bar. FileView.tsx draws them.
 let drawBarItem: ((item: FileBarItem, ctx: SidebarCtx) => ReactNode) | null = null
 export const setBarItemDrawer = (fn: typeof drawBarItem) => { drawBarItem = fn }
 const barPanels = new WeakMap<FileBarItem, SidebarPanel>()
@@ -467,15 +401,12 @@ function barPanel(key: string, p: Plugin, item: FileBarItem): SidebarPanel {
   }
   return panel
 }
-/** Whether a panel key is a file's top bar item. */
 export const isBarItem = (key: string) => { const { disabled } = getPrefs(); return fileBarItems(disabled).some((x) => x.key === key) }
-/** A top bar item put before `before` in the bar (null: last), out of a sidebar if it was docked in one. */
 export function moveBarItem(key: string, before: string | null) {
   const { disabled, fileBarHidden } = getPrefs()
   void setPrefs({ fileBar: placeKey(fileBarItems(disabled).map((x) => x.key), key, before), ...(fileBarHidden.includes(key) ? { fileBarHidden: fileBarHidden.filter((k) => k !== key) } : {}) })
   if (sideIn(sidebars(), key)) hidePanel(key)
 }
-/** A top bar item hidden: out of the bar and of a sidebar it was docked in. */
 export function hideBarItem(key: string) {
   const { fileBarHidden } = getPrefs()
   if (!fileBarHidden.includes(key)) void setPrefs({ fileBarHidden: [...fileBarHidden, key] })
@@ -499,8 +430,6 @@ export const savedSidebars = (prefs = getPrefs()) => prefs.sidebars
 export const vaultSidebars = (prefs = getPrefs()): Sidebars => prefs.sidebars ?? defaultSidebars(panelInfo())
 /** The sidebars' setup in effect: a plugin's own (the current workspace's), else sidebars.json's. */
 export const sidebars = (prefs = getPrefs()): Sidebars => provided(prefs)?.own ?? vaultSidebars(prefs)
-/** Change the setup where it's kept: the plugin that has it (the current workspace), else sidebars.json (written
- *  whole: the first change writes the default out). */
 function setSidebars(next: Sidebars) {
   if (sameSidebars(next, sidebars())) return
   const p = provided()
@@ -523,18 +452,15 @@ export function useSidebars() {
   })
 }
 
-/** A sidebar's panels as drawn, top to bottom: the ones whose plugin is on. */
 export function panelsIn(side: Side, s: Sidebars, disabled: string[]): PanelOf[] {
   const on = new Map(sidebarPanels(disabled).map((x) => [x.key, x]))
   return s[side].flatMap((k) => on.get(k) ?? [])
 }
 
-/** The panels a phone draws in its drawer's dock, in order: docked, shown, on and `dockable`. */
 export function phoneDock(s: Sidebars, disabled: string[]): PanelOf[] {
   const on = new Map(sidebarPanels(disabled).filter((x) => x.panel.dockable).map((x) => [x.key, x]))
   return (s.dock ?? []).filter((k) => sideIn(s, k)).flatMap((k) => on.get(k) ?? [])
 }
-/** A sidebar's panels as a phone's drawer stacks them: without the docked ones. */
 export function drawerPanels(side: Side, s: Sidebars, disabled: string[]): PanelOf[] {
   const docked = new Set(phoneDock(s, disabled).map((x) => x.key))
   return panelsIn(side, s, disabled).filter((x) => !docked.has(x.key))
@@ -543,7 +469,6 @@ export function drawerPanels(side: Side, s: Sidebars, disabled: string[]): Panel
 /** Which sidebar a panel is in (null: hidden). */
 export const sideOf = (key: string, s = sidebars()) => sideIn(s, key)
 
-/** The sidebar panel a view tab is (`view:files`, `view:search/query`: the panel whose `view` is its name), if any. */
 export function panelOfView(to: string | undefined) {
   if (!to?.startsWith("view:")) return null
   const name = to.slice(5).split("/")[0]
@@ -551,9 +476,7 @@ export function panelOfView(to: string | undefined) {
   return sidebarPanels(disabled).find((x) => x.panel.view === name)?.key ?? null
 }
 
-/** Put a panel somewhere (moved, or shown if it was hidden): see Place. */
 export const dockPanel = (key: string, to: Place) => { unhideBarItem(key); changeSidebars((s) => placePanel(s, key, to)) }
-/** A hidden top bar item docked again isn't hidden any more: taken out of the sidebar later, it's back in the bar. */
 function unhideBarItem(key: string) {
   const { fileBarHidden } = getPrefs()
   if (fileBarHidden.includes(key)) void setPrefs({ fileBarHidden: fileBarHidden.filter((k) => k !== key) })
@@ -570,45 +493,32 @@ export function dockAtEnd(key: string, side: Side) {
 export function offerPanel(key: string, side: Side, before: string | null = null) {
   changeSidebars((s) => setCollapsed(sideIn(s, key) ? s : placePanel(s, key, { side, before: before && s[side].includes(before) ? before : null }), key, false))
 }
-/** The sidebars as they come, each panel where its plugin puts it (folds and heights kept). Returns its undo. */
 export function restoreSidebars() {
   const was = sidebars(), d = defaultSidebars(panelInfo())
   setSidebars({ ...was, left: d.left, right: d.right })
   return () => setSidebars(was)
 }
-/** Every panel is where it comes (restoreSidebars would change nothing). */
 export function defaultPanels(s: Sidebars) {
   const d = defaultSidebars(panelInfo())
   return d.left.join() === s.left.join() && d.right.join() === s.right.join()
 }
 /** Hide a panel (out of both sidebars; its plugin stays on). */
 export const hidePanel = (key: string) => changeSidebars((s) => withoutPanel(s, key))
-/** Give a panel a height (null: as tall as what it draws); `at`: its sidebar's height now, so other screens draw the
- *  heights in proportion (core/sidebars.ts heightsAt). */
 export const setPanelHeight = (key: string, px: number | null, at?: number) => changeSidebars((s) => setHeight(s, key, px, at))
-/** Several panels' heights at once (a divider dragged: the panels on both sides of it), px or null for none. */
 export const setPanelHeights = (change: Record<string, number | null>, at?: number) => changeSidebars((s) => setHeights(s, change, at))
-/** Put a panel in the phone's dock, or back in its drawer. */
 export const setPanelDocked = (key: string, docked: boolean) => changeSidebars((s) => setDocked(s, key, docked))
-/** How a panel's heading shows: appearance.json's `panelHeadings`, but a panel that `needsHeading` keeps it shown.
- *  Folded, a panel always shows it: it's all that's left of it. */
 export type HeadingMode = "shown" | "quiet"
 export const headingMode = (panel: SidebarPanel, prefs = getPrefs()): HeadingMode =>
   prefs.panelHeadings === "quiet" && !panel.needsHeading ? "quiet" : "shown"
-/** Fold a panel to its heading, or open it again. */
 export const togglePanelCollapsed = (key: string) => changeSidebars((s) => setCollapsed(s, key, !s.collapsed.includes(key)))
 
-/** The panel that lists the open tabs (SidebarPanel.tabList), while its plugin is on. */
 export function tabListPanel(prefs = getPrefs()) {
   return sidebarPanels(prefs.disabled).find((x) => x.panel.tabList)?.key ?? null
 }
-/** The tabs are in a sidebar instead of above the panes: the tab bar off and the tab list in a sidebar. */
 export function tabsInSidebar(prefs = getPrefs()) {
   const key = tabListPanel(prefs)
   return !prefs.tabBar && !!key && !!sideIn(sidebars(prefs), key)
 }
-/** Vertical tabs or not, one switch as browsers have it: in the sidebar, the tab bar goes and the tab list shows at the
- *  top of the left sidebar (where it is, if it's in one already), the sidebar open; on top, the reverse. */
 export function showTabsIn(where: "sidebar" | "top") {
   const key = tabListPanel()
   if (!key) return
@@ -621,7 +531,6 @@ export function showTabsIn(where: "sidebar" | "top") {
   void setPrefs({ tabBar: false, ...(sideIn(sidebars(), key) === "left" && !getPrefs().sidebar ? { sidebar: true } : {}) })
 }
 
-// (a phone shows a sidebar as a drawer: components/PhoneDrawer.tsx opens it)
 let drawerOpener: ((side: Side) => void) | null = null
 export const setDrawerOpener = (fn: (side: Side) => void) => { drawerOpener = fn }
 
@@ -631,23 +540,18 @@ export function revealPanel(key: string) {
   const prefs = getPrefs(), s = sidebars(prefs), side = sideIn(s, key)
   if (!side || !sidebarPanels(prefs.disabled).some((x) => x.key === key)) return false
   if (drawerOpener && !isDesktop()) { setSidebars(setCollapsed(s, key, false)); drawerOpener(side); return true }
-  // Hidden without a rail (Zen): it slides in for this, and the setup keeps it hidden.
   if (isDesktop() && peekSidebar(side)) { setSidebars(setCollapsed(s, key, false)); return true }
   if (side === "left" ? !prefs.sidebar : !prefs.rightSidebar) void setPrefs(side === "left" ? { sidebar: true } : { rightSidebar: true })
   setSidebars(setCollapsed(s, key, false))
   return true
 }
 
-/** A plugin was turned on: its sections of a blank tab's page (not the ones it
- *  marks `hidden`) join the end of the page, when newtab.json lists the sections (the default lists them already). */
 function showSectionsOf(p: Plugin) {
   const { sections } = getPrefs().newTab
   const add = sectionsOf(p).filter((x) => !x.section.hidden).map((x) => x.key).filter((k) => !sections?.includes(k))
   if (sections && add.length) void setPrefs({ newTab: { ...getPrefs().newTab, sections: [...sections, ...add] } })
 }
 
-/** A plugin was turned on: its panels (not the ones it marks `hidden`) join the end of the left sidebar, where the
- *  setup is saved (the default lists them already). */
 function showPanelsOf(p: Plugin) {
   const s = sidebars()
   const add = Object.entries(p.sidebar ?? {}).filter(([, x]) => !x.hidden).map(([name, x]) => ({ key: `${p.id}:${name}`, side: x.side ?? "left" })).filter((x) => !sideIn(s, x.key))
@@ -655,8 +559,6 @@ function showPanelsOf(p: Plugin) {
   setSidebars(add.reduce((acc, x) => placePanel(acc, x.key, { side: x.side, before: null }), s))
 }
 
-/** A plugin was turned on: its status bar items (not ambient ones marked `hidden`) join a saved list: an ambient one
- *  before the file's items (in the left corner if it asks), a file's before the app's own (or last: `after`). */
 function showBarItemsOf(p: Plugin) {
   const { statusBar, statusBarLeft, disabled } = getPrefs()
   if (!statusBar) return
@@ -673,35 +575,29 @@ function showBarItemsOf(p: Plugin) {
   if (list !== statusBar) void setPrefs({ statusBar: list, ...(left !== statusBarLeft ? { statusBarLeft: left } : {}) })
 }
 
-/** What the plugins that are on draw in one place (`slot`: its items by name), left to right by their `sort`. */
 function slotItems<K extends "header" | "status" | "fileBar" | "noteTop">(slot: K, disabled: string[]) {
   return active(disabled)
     .flatMap((p) => Object.entries(p[slot] ?? {}).map(([name, item]) => ({ key: `${p.id}:${name}`, plugin: p, item: item as NonNullable<Plugin[K]>[string] })))
     .map((x, i) => ({ ...x, i }))
     .sort((a, b) => (a.item.sort ?? 100) - (b.item.sort ?? 100) || a.i - b.i)
 }
-/** The sidebar's header (see HeaderItem), the status bar (StatusItem) and a file's header (FileBarItem). */
 export const headerItems = (disabled: string[]) => slotItems("header", disabled)
-/** The header's items shown (appearance `sidebarHeader`, in its order; unset: every one). */
 export function shownHeaderItems(disabled: string[], saved = getPrefs().sidebarHeader) {
   const all = headerItems(disabled)
   if (!saved) return all
   return saved.flatMap((k) => all.find((x) => x.key === k) ?? [])
 }
-/** Show or hide a header item; shown again, before the next one shown after its default place. */
 export function setHeaderItemShown(key: string, on: boolean, before: string | null = null) {
   const { disabled } = getPrefs()
   const all = headerItems(disabled).map((x) => x.key), keys = shownHeaderItems(disabled).map((x) => x.key)
   const next = all.slice(all.indexOf(key) + 1).find((k) => keys.includes(k)) ?? null
   return setPrefs({ sidebarHeader: on ? placeKey(keys, key, before ?? next) : keys.filter((k) => k !== key) })
 }
-/** A plugin was turned on: its header items join a saved list, each at its default place. */
 function showHeaderItemsOf(p: Plugin) {
   if (!getPrefs().sidebarHeader) return
   for (const name of Object.keys(p.header ?? {})) void setHeaderItemShown(`${p.id}:${name}`, true)
 }
 export const statusItems = (disabled: string[]) => slotItems("status", disabled)
-/** A file's top bar items, in the user's order (appearance.json `fileBar`), the ones it doesn't name after by `sort`. */
 export function fileBarItems(disabled: string[], saved = getPrefs().fileBar) {
   const all = slotItems("fileBar", disabled)
   const at = (k: string) => { const i = saved?.indexOf(k) ?? -1; return i < 0 ? Infinity : i }
@@ -709,27 +605,22 @@ export function fileBarItems(disabled: string[], saved = getPrefs().fileBar) {
 }
 export const noteTopItems = (disabled: string[]) => slotItems("noteTop", disabled)
 
-/** What the plugins that are on can draw at the start of the status bar (see AmbientItem), as "<plugin>:<name>". */
 export function ambientItems(disabled: string[]) {
   const ai = getPrefs().ai
   return active(disabled).flatMap((p) => Object.entries(p.ambient ?? {}).filter(([, item]) => ai || !item.ai).map(([name, item]) => ({ key: `${p.id}:${name}`, item })))
 }
 
-/** The names the plugins that are on give the first steps of key sequences (see `keyGroups`), by canonical steps. */
 export function keyGroupNames(disabled: string[]) {
   const out = new Map<string, string>()
   for (const p of active(disabled)) for (const [k, name] of Object.entries(p.keyGroups ?? {})) out.set(canonical(k).toLowerCase(), name)
   return out
 }
 
-/** What the plugins that are on run in the background (see `background` in PluginDef). */
 export const backgrounds = (disabled: string[]) =>
   active(disabled).filter((p) => p.background).map((p) => ({ key: p.id, Run: p.background! }))
 
-/** The player of the first plugin that's on with one (see `player` in PluginDef), or null for the browser's. */
 export const playerFor = (disabled: string[]) => PLUGINS.find((p) => p.player && isEnabled(p.id, disabled))?.player ?? null
 
-/** Where a device's first tab goes (see `home` in PluginDef): the first plugin that's on and answers, or null. */
 export function homeTab(store: Store, disabled: string[]) {
   for (const p of active(disabled)) {
     try { const to = p.home?.(store); if (to) return to } catch { /* a plugin failing must not keep the app from starting */ }
@@ -737,18 +628,14 @@ export function homeTab(store: Store, disabled: string[]) {
   return null
 }
 
-/** A plugin's sections of a blank tab's page, keyed "<plugin id>:<name>". */
 function sectionsOf(p: Plugin): { key: string; section: NewTabSection }[] {
   const nt = p.newTab
   if (!nt) return []
   return Object.entries(nt).map(([name, section]) => ({ key: `${p.id}:${name}`, section }))
 }
 
-/** The sections the plugins that are on add to a blank tab's page (see `newTab` in PluginDef); the app's own are
- *  core/newtab.ts' CORE_SECTIONS. */
 export const newTabSections = (disabled: string[]) => active(disabled).flatMap(sectionsOf)
 
-/** A plugin's dashboards as it ships them (pages/Today.md): [{name, text}]. */
 export function templatesOf(id: string) {
   const p = pluginById(id)
   if (!p) return []
@@ -757,15 +644,12 @@ export function templatesOf(id: string) {
   return Object.entries(pages).filter(([path]) => path.includes(dir)).map(([path, text]) => ({ name: path.split("/").pop()!.replace(/\.md$/, ""), text }))
 }
 
-/** Plugins in sections by their manifest's `category` (core/categories.ts),
- *  in that order, Other (none or unknown) last; sections with none left out. The list's order is kept within each. */
 export function byCategory<T extends Pick<Plugin, "category">>(list: T[]) {
   return [...CATEGORIES, OTHER]
     .map((c) => ({ id: c.id as string, label: c.label as string, plugins: list.filter((p) => categoryOf(p.category).id === c.id) }))
     .filter((s) => s.plugins.length)
 }
 
-/** A plugin's colour: its dashboard's `tint` (People: var(--people)), else the app's accent. */
 export function tintOfPlugin(id: string) {
   const t = templatesOf(id)[0]?.text.match(/^tint:[ \t]*([a-z-]+)[ \t]*$/m)?.[1]
   return t ? `var(--${t})` : "var(--primary)"
@@ -774,16 +658,12 @@ export function tintOfPlugin(id: string) {
 const CATEGORY_TINTS: Record<string, string> = {
   navigation: "blue", writing: "orange", life: "green", health: "pink", "ai-apps": "purple", agents: "indigo", formats: "teal",
 }
-/** A plugin's colour on a tile (Settings' menu, its settings' head): its own, else its category's, so a list of them
- *  reads apart. */
 export function tileTint(id: string) {
   const own = tintOfPlugin(id)
   return own !== "var(--primary)" ? own : categoryTint(categoryOf(pluginById(id)?.category).id)
 }
-/** A plugin category's colour (core/categories.ts). */
 export const categoryTint = (category: string) => `var(--${CATEGORY_TINTS[category] ?? "gray"})`
 
-/** The detail sheet for a path ("person/People%2FAlice%20Park"), from whichever enabled plugin handles that kind. */
 export function detailFor(path: string, disabled: string[]) {
   const [kind, ...rest] = path.split("/")
   const args = rest.map((s) => { try { return decodeURIComponent(s) } catch { return s } })
@@ -791,8 +671,6 @@ export function detailFor(path: string, disabled: string[]) {
   return p ? { def: p.details![kind], args } : null
 }
 
-
-/** The file view of the enabled plugin that shows this file, by its type (core/fileprops.ts): never by its folder. */
 export function fileViewFor(file: { path: string; type?: string | null }, disabled: string[]) {
   if (!file.type) return null
   for (const p of PLUGINS) {
@@ -802,8 +680,6 @@ export function fileViewFor(file: { path: string; type?: string | null }, disabl
   return null
 }
 
-/** How files of a type are drawn
- *  as pages (FileView.page), by whichever plugin does, on or off: a plugin's preview shows its pages as they'd look. */
 export const pageViewOf = (type: string) => PLUGINS.find((p) => p.files?.page && p.files.types?.includes(type))?.files?.page ?? null
 /** Whether a plain Markdown file in `folder` would be a kind's (People/,
  *  Logs/Gym/): such a folder holds only that kind, so another sort of note goes where new notes go instead. */
@@ -812,10 +688,8 @@ export function kindFolder(folder: string, disabled = getPrefs().disabled) {
   return PLUGINS.some((p) => p.files?.folders && isEnabled(p.id, disabled) && p.files.folders.some((f) => parts.includes(f)))
 }
 
-/** Whether a file takes its whole pane in a tab (its format's `layout: "pane"`: a canvas, a drawing). */
 export const fillsPane = (path: string, disabled: string[]) => (fileFormatFor(path, disabled) ?? formatFor(path, disabled)?.format)?.layout === "pane"
 
-/** The format a plugin that's on gives this one Markdown file (`fileFormat`), or null. */
 export function fileFormatFor(path: string, disabled: string[]) {
   if (!/\.md$/i.test(path)) return null
   for (const p of PLUGINS) {
@@ -826,8 +700,6 @@ export function fileFormatFor(path: string, disabled: string[]) {
   return null
 }
 
-/** The plugin that's on and draws files like this one (by extension, the longest that fits: "excalidraw.md" before a
- *  plain "md"; see FileFormat), or null. */
 export function formatFor(path: string, disabled: string[]) {
   const name = path.slice(path.lastIndexOf("/") + 1).toLowerCase()
   let best: { plugin: Plugin; format: FileFormat; ext: string } | null = null
@@ -839,7 +711,6 @@ export function formatFor(path: string, disabled: string[]) {
   }
   return best && { plugin: best.plugin, format: best.format, ext: best.ext }
 }
-// (asked for every file's name, stem() in core/files.ts: remembered per name until the plugins or the switches change)
 let looked: { disabled: string[]; enabled: string[]; vault: Plugin[]; names: Map<string, Drawn | null> } | null = null
 setFormatLookup((path) => {
   const { disabled, enabled } = getPrefs(), vault = PLUGINS.filter((p) => p.tier === "vault")
@@ -882,21 +753,17 @@ export function blockFor(name: string, disabled: string[], options: Record<strin
   return { plugin: p, render: on ? on.blocks![name] : null, decl, unnamed: "" }
 }
 
-// Views' titles and icons can follow live data a plugin keeps (a terminal's session name and state): the plugin says
-// when it changed, and whatever draws tabs (useTabInfo) draws them again.
 const views = signal()
 /** Tell the tabs that a view's `title` or `iconClass` answers something else now. */
 export const viewsChanged = () => views.notify()
 /** Re-render when a view's title or icon changes (returns a counter). */
 export const useViewsVersion = () => views.use()
 
-/** A view as its tabs ask it: its title and icon hooks never throw (one that does would stop every tab bar drawing),
- *  the name and its plain icon instead, the error in Errors. */
+// A view's title and icon hooks never throw: one that did would stop every tab bar drawing.
 const safeViews = new WeakMap<ViewDef, ViewDef>()
 function safeView(name: string, def: ViewDef): ViewDef {
   let safe = safeViews.get(def)
   if (safe) return safe
-  // (the hooks that take a tab's id too get it: iconFor's)
   const guard = <T,>(f: ((arg: string, tab?: string) => T) | undefined, or: T) => f && ((arg: string, tab?: string) => {
     try { return f(arg, tab) } catch (e) { console.error(`view ${name}`, e); return or }
   })
@@ -906,7 +773,6 @@ function safeView(name: string, def: ViewDef): ViewDef {
   return safe
 }
 
-/** The view a tab's target names ("view:terminal/abc" -> the terminal plugin's `terminal` view, arg "abc"). */
 export function viewFor(to: string, disabled: string[]) {
   const [name, ...rest] = to.replace(/^view:/, "").split("/")
   for (const p of PLUGINS) {
@@ -965,7 +831,6 @@ export function resolveView(target: string, disabled = getPrefs().disabled): str
   return arg ? `view:${target.replace(/^view:/, "").split("/")[0]}/${arg}` : target
 }
 
-/** A file or folder moved or was trashed (`to` null): the plugins that are on hear it (`onMove`). */
 export function filesMoved(from: string, to: string | null) {
   const { disabled } = getPrefs()
   for (const p of PLUGINS) {
@@ -973,18 +838,14 @@ export function filesMoved(from: string, to: string | null) {
     try { p.onMove(from, to) } catch (e) { console.error(`${p.id}: onMove`, e) }
   }
 }
-// What plugins that are on answer their ops' asks of this window (`answers`: the action "<plugin id>:<name>").
 setPluginAsker((action) => {
   const i = action.indexOf(":"), p = i > 0 ? pluginById(action.slice(0, i)) : undefined
   return (p && isEnabled(p.id, getPrefs().disabled) && p.answers?.[action.slice(i + 1)]) || null
 })
 
-/** Whether a place is open in tabs a plugin that's on keeps off screen (`openElsewhere`: the other workspaces). */
 export const openElsewhere = (to: string, disabled: string[]) =>
   PLUGINS.some((p) => p.openElsewhere && isEnabled(p.id, disabled) && p.openElsewhere().includes(to))
 
-/** The editor extensions of the plugins that are on, for one editor (`editor` in their definitions), in their order. A
- *  plugin whose extension fails to load is left out (the editor still works). */
 export async function editorExtensions(ctx: EditorCtx, disabled: string[]): Promise<Extension[]> {
   const list = PLUGINS.filter((p) => p.editor && isEnabled(p.id, disabled))
   const got = await Promise.all(list.map((p) => Promise.resolve().then(() => p.editor!(ctx)).catch((e) => { console.error(`${p.id}: editor`, e); return [] })))
@@ -1015,8 +876,6 @@ export function webContainers(): WebContainer[] {
   })
 }
 
-/** The container a web link clicked plainly opens in (`webLinkOpensIn`): an id, null for none; undefined: not the
- *  in-app browser's. */
 export function webLinkOpensIn(url: string, container?: string | null): string | null | undefined {
   const { disabled } = getPrefs()
   for (const p of PLUGINS) {
@@ -1026,9 +885,7 @@ export function webLinkOpensIn(url: string, container?: string | null): string |
   return undefined
 }
 
-/** The kinds of files the plugins that are on make (NewFile): New canvas, New drawing... */
 export const pluginNewFiles = (disabled: string[]) => PLUGINS.filter((p) => p.newFiles && isEnabled(p.id, disabled)).flatMap((p) => p.newFiles!)
-/** Commands of the plugins that are on, each with its plugin's icon when it has none of its own. */
 export const pluginCommands = (disabled: string[]) => PLUGINS.filter((p) => p.commands && isEnabled(p.id, disabled))
   .flatMap((p) => p.commands!.map((c) => (c.icon || !p.icon ? c : { ...c, icon: p.icon })))
 
@@ -1037,7 +894,6 @@ export function timelineKinds(disabled: string[]) {
   for (const p of PLUGINS) if (p.timeline && isEnabled(p.id, disabled)) Object.assign(out, p.timeline)
   return out
 }
-
 
 /** A coding agent of a plugin that's on (see AgentDef): `name` is its key ("codex"), `plugin` the plugin's id. */
 export type Agent = AgentDef & { name: string; plugin: string }

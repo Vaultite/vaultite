@@ -409,6 +409,17 @@ const LOADERS: Record<string, string> = {
   for (const [name, v] of Object.entries(reviewed)) if (v !== false) problems.push(`package.json: allowScripts ${name} is ${JSON.stringify(v)}: the app runs no install scripts (.npmrc), so it's false`)
 }
 
+{
+  const core = (f: string) => fs.readFileSync(path.join(ROOT, "web", "src", "core", f), "utf8")
+  const imports = (src: string) => [...src.matchAll(/^\s*import\s+(type\s+)?[^"]*?\bfrom\s+"([^"]+)"|\bimport\(\s*"([^"]+)"/gm)]
+  for (const [f, why] of [["unsaved.ts", "errors.ts asks it before the app loads"], ["askers.ts", "modules register with it while they load, inside import cycles"]])
+    if (imports(core(f)).length) problems.push(`web/src/core/${f}: imports nothing (${why})`)
+  if (imports(core("paletterank.ts")).some((m) => /^react(-dom)?(\/|$)/.test(m[2] ?? m[3]))) problems.push("web/src/core/paletterank.ts: no React, so tools/test_web.ts ranks real lists in Node")
+  if (imports(core("editors.ts")).some((m) => !m[1] && (m[2] ?? m[3]).startsWith("@codemirror/"))) problems.push("web/src/core/editors.ts: only `import type` from CodeMirror, so the editor stays its own chunk")
+  const errorsKey = /const KEY = "([^"]+)"/.exec(core("errors.ts"))?.[1]
+  if (!errorsKey || !fs.readFileSync(path.join(ROOT, "web", "index.html"), "utf8").includes(`"${errorsKey}"`)) problems.push("web/src/core/errors.ts: KEY is the queue index.html writes before the app starts: the same key in both")
+}
+
 const ratchet = spawnSync(process.execPath, [path.join(ROOT, "tools", "ratchet.ts")], { cwd: ROOT, encoding: "utf8" })
 if (ratchet.status !== 0) problems.push((ratchet.stderr || ratchet.stdout).trim())
 

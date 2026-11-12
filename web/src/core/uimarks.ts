@@ -1,5 +1,3 @@
-// Marks a plugin puts on the app's own UI by its data-ui id (`tab:<id>`, `group:<id>`): a small button the element's
-// owner draws at its end (the companion's eye on a row it follows). Each plugin sets all of its marks at once.
 import { signal } from "@/core/signal"
 import type { LucideIcon } from "lucide-react"
 import type { MouseEvent } from "react"

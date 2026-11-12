@@ -1,5 +1,3 @@
-// What a plugin is made of (types) and definePlugin. No imports from the registry, so plugin modules can use this
-// while the registry (core/plugins.ts) is still loading them.
 import type { ComponentType, MouseEvent as ReactMouseEvent, ReactNode } from "react"
 import type { Extension } from "@codemirror/state"
 import type { EditorView } from "@codemirror/view"
@@ -913,7 +911,6 @@ export type BrowseEntry = { id: string; name: string; author?: string; descripti
   /** A plugin here that does its job (Vaultite's Excalidraw for another app's), offered before the original: `use`
    *  installs it if needed and turns it on; `id` shows it among the installed ones. */
   standIn?: { id: string; name: string; on: boolean; use: () => Promise<unknown> } }
-
 
 /** A detail path with its parts encoded (ids have slashes: "People/Alice Park"). */
 export const detailPath = (kind: string, ...args: string[]) => [kind, ...args.map(encodeURIComponent)].join("/")

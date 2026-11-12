@@ -1,5 +1,3 @@
-// Layouts a base's views can have besides the app's own (table, cards, list, board, map, calendar): a plugin's, as
-// Obsidian plugins' Bases views come through plugin-compat. Each draws a view's rows into an element of its own.
 import { useSyncExternalStore } from "react"
 
 /** A base's rows as a layout gets them: every match, in the view's groups (one, unnamed, when it has none). */

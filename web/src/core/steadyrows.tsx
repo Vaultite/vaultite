@@ -1,5 +1,3 @@
-// A live list the user reads and clicks (the Agents and Terminals panels): rows hold still while the user is in it,
-// glide to their new places once let go, and the ones that ask nothing fold under Earlier.
 import { type ButtonHTMLAttributes, type RefObject, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { ChevronRight } from "lucide-react"
 import { menuShowing, useMenuShowing } from "@/components/ContextMenu"
@@ -7,7 +5,6 @@ import { slideFrom } from "@/core/animation"
 import { useScopedState } from "@/core/scope"
 import { cn } from "@/lib/utils"
 
-/** How long rows hold still once nothing holds them: past a pointer brushing out, and a flick's glide on a phone. */
 const LINGER = 600, TOUCH_LINGER = 2000
 
 /** Whether the user is in the list, so nothing moves under them: the pointer over it, the keyboard in it, a menu opened
@@ -25,11 +22,10 @@ export function useHold(box: RefObject<HTMLElement | null>) {
     const settle = (after = LINGER) => {
       clearTimeout(timer)
       if (at.over || at.keys || at.menu || at.touch) { due = 0; return setHeld(true) }
-      // (the longest wait asked: a focus moving after a touch doesn't cut its linger short)
       due = Math.max(due, Date.now() + after)
       timer = window.setTimeout(() => {
         due = 0
-        // (a menu closing over the list leaves the pointer here without a pointerenter)
+        // A menu closing over the list leaves the pointer here without a pointerenter.
         if (hover.matches && el.matches(":hover")) at.over = true
         else setHeld(false)
       }, due - Date.now())
@@ -38,10 +34,8 @@ export function useHold(box: RefObject<HTMLElement | null>) {
     const mouse = (e: PointerEvent) => e.pointerType !== "touch"
     const enter = (e: PointerEvent) => { if (mouse(e)) { at.over = true; settle() } }
     const leave = (e: PointerEvent) => { if (mouse(e)) { at.over = false; settle() } }
-    // (keys pressed in it: not the focus a closing menu gives back to its row)
     const key = () => { at.keys = true; settle() }
     const focusOut = (e: FocusEvent) => { if (!el.contains(e.relatedTarget as Node | null)) { at.keys = false; settle() } }
-    // (no items, no menu: nothing to wait for)
     const menued = () => { at.menu = true; settle(); requestAnimationFrame(() => { if (!menuShowing()) { at.menu = false; settle() } }) }
     const down = () => { at.touch = true; settle() }
     const up = () => { at.touch = false; settle(TOUCH_LINGER) }

@@ -1,28 +1,20 @@
-// Phones: the bottom bar dragged up (Safari's): the page shrinks after the finger, and let go far or fast enough it
-// goes on into its card in the tab list (core/motion.ts carries it on from where it is), else it springs back.
 import { onAway } from "@/core/away"
 import { haptic } from "@/core/haptics"
 import { LIFT_RADIUS, pageRect } from "@/core/motion"
 import { openSwitcher, swipingSideways } from "@/core/phoneTabs"
 import { shootTab } from "@/core/tabShots"
 
-/** How far up (px) or how fast (px/ms) a let-go opens the tab list. */
 const FAR = 90, FAST = 0.45
 
-/** Where the page (between the header and the bar) shows at `s` scale, moved by `tx`, `ty`. */
 function shown(s: number, tx: number, ty: number) {
   const r = pageRect()
   return new DOMRect(innerWidth / 2 + (r.left - innerWidth / 2) * s + tx, innerHeight + (r.top - innerHeight) * s + ty, r.width * s, r.height * s)
 }
-/** The card at a drag of `dx`, `dy`: its bottom edge nearly keeps up with the finger, then holds back; it shrinks less and
- *  less as it goes, and leans a little after the finger sideways. */
 function pose(dx: number, dy: number) {
   const up = dy < 240 ? dy : 240 + (dy - 240) * 0.35
   return { s: 1 - 0.4 * (1 - Math.exp(-up / 210)), tx: dx * 0.25, ty: -up * 0.72 }
 }
 
-/** What moves with the finger, as one card: the header (fixed), the page under it cut to the screen (what's scrolled
- *  past would show above the header and below the bar), and the card's shadow, by one transform about the screen's bottom. */
 type Part = { el: HTMLElement; top: number }
 function lift(): Part[] {
   const header = document.querySelector<HTMLElement>("[data-phone-header]"), main = document.querySelector<HTMLElement>("#main-scroll > main")
@@ -59,15 +51,12 @@ function clear(ps: Part[]) {
   }
   delete document.documentElement.dataset.pageLift
 }
-/** The let-go of a drag isn't a tap on the button under it: the click that may follow is eaten. */
 function eatClick() {
   const eat = (c: Event) => { c.stopPropagation(); c.preventDefault() }
   addEventListener("click", eat, { capture: true, once: true })
   setTimeout(() => removeEventListener("click", eat, { capture: true }), 400)
 }
 
-/** Watch `bar` (touch-action: none) for an upward drag, unless `off()`. The page lifts only while held: its end is
- *  heard on the window, and an end that never came (the app went away mid-drag) or the next press puts it back. */
 export function liftFrom(bar: HTMLElement, off: () => boolean) {
   let g: { id: number; x: number; y: number; on: boolean; ready: boolean; dx: number; dy: number; t: number; v: number; els: Part[] } | null = null
   const to = (p: { s: number; tx: number; ty: number }, els: Part[], ms = 0) => place(els, p.s, p.tx, p.ty, ms)
@@ -75,20 +64,16 @@ export function liftFrom(bar: HTMLElement, off: () => boolean) {
     if (g && e.pointerId !== g.id) up(null)
     if (e.button || g || !bar.contains(e.target as Node) || off() || document.querySelector("dialog[open]")) return
     g = { id: e.pointerId, x: e.clientX, y: e.clientY, on: false, ready: false, dx: 0, dy: 0, t: e.timeStamp, v: 0, els: [] }
-    // The page's picture, for a drag or for what the press is about to do (the tab list, a new tab, Back): started now,
-    // it's usually there by the tap's end.
     void shootTab()
   }
   const move = (e: PointerEvent) => {
     if (!g || e.pointerId !== g.id) return
     const dy = Math.max(0, g.y - e.clientY), dx = Math.abs(e.clientX - g.x)
     if (!g.on) {
-      // (sideways it's the tabs' swipe, core/phoneTabs.ts)
       if ((dx > 12 && dx > dy) || swipingSideways()) { g = null; return }
       if (dy < 10) return
       g.on = true
       try { bar.setPointerCapture(e.pointerId) } catch { /* not a live pointer */ }
-      // The card's picture is of the page as it is, so it's taken before the page moves.
       const me = g
       void shootTab().then(() => { if (g !== me) return; me.ready = true; me.els = lift(); to(pose(me.dx, me.dy), me.els) })
     }
@@ -100,8 +85,6 @@ export function liftFrom(bar: HTMLElement, off: () => boolean) {
     g.dx = e.clientX - g.x
     if (g.ready) to(pose(g.dx, dy), g.els)
   }
-  /** The finger let go (pointerup), was taken (pointercancel), or is gone without a word (null): the page goes on into
-   *  the tab list or back to its place. */
   const up = (e: PointerEvent | null) => {
     if (!g || (e && e.pointerId !== g.id)) return
     const was = g
@@ -112,10 +95,8 @@ export function liftFrom(bar: HTMLElement, off: () => boolean) {
     if (go) {
       haptic()
       const p = pose(was.dx, was.dy)
-      // The card's picture flies on from here: its shadow goes rather than stay behind.
       for (const { el } of was.els) if (el.dataset.liftShadow !== undefined) Object.assign(el.style, { transition: "opacity 120ms", opacity: "0" })
       void openSwitcher({ page: was.ready ? shown(p.s, p.tx, p.ty) : shown(1, 0, 0), reset: () => clear(was.els) })
-      // The tab list's change puts the page back; should that change never run, it's put back anyway.
       setTimeout(() => { if (!g?.on) clear(was.els) }, 1000)
       return
     }
@@ -124,7 +105,7 @@ export function liftFrom(bar: HTMLElement, off: () => boolean) {
     setTimeout(() => { if (!g?.on) clear(was.els) }, 260)
   }
   const end = (e: PointerEvent) => up(e)
-  // The touch that carried it ended or was taken, and its pointer's end (which comes first) didn't: it's lost.
+  // The touch ended or was taken without its pointer's end, which comes first: the pointer is lost.
   const lost = (e: TouchEvent) => { const was = g; if (was && !e.touches.length) setTimeout(() => { if (g === was) up(null) }) }
   const quit = onAway(() => up(null))
   addEventListener("pointerdown", down, true)
