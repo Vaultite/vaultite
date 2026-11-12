@@ -187,6 +187,15 @@ await section("after a launch: the running server against the installed build", 
     && !afterUpdate({ installed: NEW, app: NEW, server: null, restarted: false }).restart)
 })
 
+await section("an automatic restart: what it waits on (electron/updatewait.ts)", async () => {
+  const { AWAY_S, restartWaitsOn } = await import("../electron/updatewait.ts")
+  const away = { othersOpen: false, pages: 2, safe: 2, idle: AWAY_S, busy: null }
+  check("every window safe, the user away, the browser idle: it restarts", restartWaitsOn(away) === null)
+  check("a window not safe yet, the user at the computer, another machine's window: it waits", !!restartWaitsOn({ ...away, safe: 1 })
+    && !!restartWaitsOn({ ...away, idle: AWAY_S - 1 }) && !!restartWaitsOn({ ...away, othersOpen: true }) && !!restartWaitsOn({ ...away, pages: 0, safe: 0 }))
+  check("agents at work in the browser: it waits, saying why", restartWaitsOn({ ...away, busy: "an agent's call is under way" }) === "an agent's call is under way")
+})
+
 await section("Main's updates through its code store: where, and its two policies (electron/storepolicy.ts)", async () => {
   const { pinOf, policyFor, storeWanted } = await import("../electron/storepolicy.ts")
   const main = { packaged: true, channel: "main", release: false, platform: "darwin", marker: true }

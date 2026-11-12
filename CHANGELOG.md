@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **An always-on Mac's app restarts into its update**: with automatic updates, a build that got ready while every
+  window was already idle no longer waits forever for one to be touched; it restarts once the Mac is quiet, and
+  update.log says what a restart is waiting on.
 - **Tries run on your own machines first**: `npm run verify -- --try` runs an OS's part of CI's tests on an idle machine
   of your Machines with that OS (or one reached by ssh only, a Windows VM), in a fresh worktree, and sends only the
   rest to GitHub's runners; `VAULTITE_TRY_MACHINES=off` turns it off, `"try": false` on a machine leaves it out.

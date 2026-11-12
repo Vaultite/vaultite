@@ -1390,7 +1390,7 @@ initUpdates({
   popouts: () => popouts,
   othersOpen: () => remoteWins.size > 0,
   mode: () => updates,
-  busy: () => !!engineBusy(),
+  busy: () => engineBusy(),
   quitting: () => quitting,
   beginQuit: () => { quitting = true },
   handOver,

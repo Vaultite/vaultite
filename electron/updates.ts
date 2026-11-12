@@ -10,6 +10,7 @@ import { BRANCH, CODE, DEV, SHELL, WORKTREE } from "./identity.ts"
 import { afterUpdate, installedCommit } from "./installed.ts"
 import { relaunchSoon, storeLook, storeOn, storeReady, storeStatus, type StoreHost } from "./storehost.ts"
 import { relaunchOptions } from "./argv.ts"
+import { restartWaitsOn } from "./updatewait.ts"
 /** As often as the service looks (core/update/updater.ts' LOOK_EVERY): a look where nothing moved is a fetch. */
 const LOOK_EVERY = 3 * 60_000
 
@@ -32,8 +33,8 @@ export type UpdatesHost = {
   /** Another machine's window is open (it can't say whether a restart is safe). */
   othersOpen(): boolean
   mode(): UpdateMode
-  /** Busy with something a restart would cut short (agents' browser). */
-  busy(): boolean
+  /** Why a restart would cut something short now (agents' browser), or null. */
+  busy(): string | null
   quitting(): boolean
   /** The app quits for good: its windows close without being forgotten. */
   beginQuit(): void
@@ -114,16 +115,17 @@ export function launchedFrom(r: NonNullable<typeof started>) { started = r }
 const storeHost = (): StoreHost => ({
   attached: attachedTo, servers: () => host.servers(), restartServers: () => host.restartServers(), adoptWeb: (d, c) => host.adoptWeb(d, c),
   offerRelaunch: (c, why) => { behind = why ?? null; offer(c, "relaunch") }, offerInstall: (c) => offer(c, "install"),
-  busy: async () => (host.busy() ? "an agent is at work in the browser" : null), path: () => host.path(),
+  busy: async () => host.busy(), path: () => host.path(),
   helper: () => host.helperCommit(), reloadHelper: (root, commit) => host.reloadHelper(root, commit), log: logUpdate,
 })
 /** A line in update.log (the store's updates, the helper's reloads). */
 export function logUpdate(line: string) {
   try { fs.mkdirSync(app.getPath("logs"), { recursive: true }); fs.appendFileSync(path.join(app.getPath("logs"), "update.log"), `${new Date().toISOString()} ${line}\n`) } catch { /* no log */ }
 }
-/** An update ready, offered in every window and the menu; automatic, made once it's safe. */
-function offer(commit: string, how: typeof readyHow) {
-  if (ready === commit && readyHow === how) return
+/** An update ready, offered in every window and the menu; automatic, made once it's safe. Every update that gets ready
+ *  comes through here: the restart's looks start only from it (`again`: offered anew, the same one asked by hand). */
+function offer(commit: string, how: typeof readyHow, again = false) {
+  if (!again && ready === commit && readyHow === how) return
   ready = commit
   readyHow = how
   for (const w of host.windows()) tell(w)
@@ -179,7 +181,8 @@ function checkForUpdate(byHand: boolean) {
   if (!byHand && host.mode() === "off") return
   if (RELEASE) return void checkRelease(byHand)
   if (storeOn()) return storeCheck(byHand)
-  if (!updatable() || checking || looking) return
+  // (nor while an install stages the build: a build's end replaces the folder it copies from)
+  if (!updatable() || checking || looking || installing) return
   // A build is minutes of compiling and a 20k-file app copied: on the timer, at most one an hour, however often main moves.
   if (!byHand && Date.now() - lastBuild() < BUILD_EVERY) return
   looking = true
@@ -219,7 +222,7 @@ export function checkInstalled(w: UpdateWindow) {
     const log = updateLog(), at = new Date().toISOString()
     if (stale) {
       fs.writeSync(log, `${at} this app runs ${CODE!.commit}, but ${installed} is installed: it started from the app an update replaced\n`)
-      if (!RELEASE && built() === installed && ready !== installed) { ready = installed; readyHow = "install"; for (const x of host.windows()) tell(x); host.buildMenu() }
+      if (!RELEASE && installed && built() === installed) offer(installed, "install")
     }
     if (restart && w.server?.exitCode === null) {
       restartedOnto.add(p)
@@ -262,9 +265,8 @@ function buildUpdate(byHand: boolean, want: string) {
     checking = null
     setStatus(null)
     const commit = out.trim().split("\n").pop()?.trim() ?? ""
-    if (code === 0 && commit === built()) {
-      if (ready !== commit || byHand) { ready = commit; readyHow = "install"; for (const w of host.windows()) tell(w) }
-    } else if (byHand && code === 3) {
+    if (code === 0 && commit === built()) offer(commit, "install", byHand)
+    else if (byHand && code === 3) {
       dialog.showMessageBox({ message: `${app.getName()} is up to date`, detail: `It runs ${CODE!.commit.slice(0, 7)}, ${want ? "the version its server runs" : `the newest on ${BRANCH}`}.` })
     } else if (byHand && !host.quitting()) {
       updateFailed(/^boot: \d+ failed/m.test(out) ? "The new version didn't pass its startup check."
@@ -309,14 +311,18 @@ function tell(w: UpdateWindow) {
 /** The pages that said a restart would lose nothing now (`app:update-safe`). */
 const safeNow = new WeakSet<WebContents>()
 let idleRetry: NodeJS.Timeout | undefined
-/** Automatic: restart into the update once every window (pop-outs too) said so, the user is away from the computer (not
- *  just this app) and the browser is idle (agents done); another machine's window can't say, so not while one is open. */
+/** What the restart last waited on (logged as it changes). */
+let waitedOn: string | null = null
+/** Automatic: restart into the update once nothing holds it (updatewait.ts), looked at each minute while it waits: a
+ *  page says only when its safety changes, and nothing tells when the user steps away or agents are done. */
 function restartIfSafe() {
-  if (host.mode() !== "automatic" || !ready || host.othersOpen()) return
+  if (host.mode() !== "automatic" || !ready || host.quitting()) return void (waitedOn = null)
   const pages = [...host.windows().map((w) => w.win.webContents), ...host.popouts().keys()].filter((wc) => !wc.isDestroyed())
-  if (!pages.length || !pages.every((wc) => safeNow.has(wc))) return
-  if (powerMonitor.getSystemIdleTime() >= 10 * 60 && !host.busy()) return restartToUpdate()
-  // (nothing tells when the user steps away or the busy window ends, so look again a little later)
+  const why = restartWaitsOn({ othersOpen: host.othersOpen(), pages: pages.length, safe: pages.filter((wc) => safeNow.has(wc)).length,
+    idle: powerMonitor.getSystemIdleTime(), busy: host.busy() })
+  if (!why) return void restartToUpdate()
+  if (why !== waitedOn) logUpdate(`the restart into ${ready.slice(0, 7)} waits: ${why}`)
+  waitedOn = why
   idleRetry ??= setTimeout(() => { idleRetry = undefined; restartIfSafe() }, 60_000)
 }
 
@@ -404,7 +410,11 @@ function install(reopen: boolean): Promise<boolean> | null {
   const said = child.stdio[3] as NodeJS.ReadableStream
   installing = new Promise<boolean>((done) => {
     // (a copy that stalls, say a disk gone: given up, the app untouched)
-    const stall = setTimeout(() => { try { process.kill(-child.pid!, "SIGTERM") } catch { /* gone */ } done(false) }, 10 * 60_000)
+    const stall = setTimeout(() => {
+      logUpdate(`not installed: staging ${ready?.slice(0, 7)} beside the app took over 10 minutes`)
+      try { process.kill(-child.pid!, "SIGTERM") } catch { /* gone */ }
+      done(false)
+    }, 10 * 60_000)
     said.on("data", (b: Buffer) => { if (/staged/.test(b.toString())) { clearTimeout(stall); done(true) } })
     said.on("error", () => {})
     child.once("exit", () => { clearTimeout(stall); done(false) })
@@ -437,12 +447,7 @@ async function releaseUpdater() {
   // electron-updater's update-downloaded comes before Squirrel.Mac has unpacked it (a quit then installs nothing): the
   // toast waits for Squirrel's own.
   let version = ""
-  const downloaded = () => {
-    ready = version || "new"
-    readyHow = "install"
-    for (const w of host.windows()) tell(w)
-    host.buildMenu()
-  }
+  const downloaded = () => offer(version || "new", "install")
   u.on("update-downloaded", (info) => { version = info.version; if (!MAC) downloaded() })
   // (Squirrel is a Mac's: on Linux electron-updater's own event is the one.)
   if (MAC) autoUpdater.on("update-downloaded", downloaded)
