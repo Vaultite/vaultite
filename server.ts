@@ -627,6 +627,11 @@ const server = http.createServer(async (req, res) => {
 // Plugins' WebSockets (plugin.socket): /api/<pattern>, refused when nothing matches, the plugin is off, or its accept
 // throws. 32 MB a message: a terminal's pasted file comes in pieces of 1 MB (base64'd), so this is room to spare.
 const sockets = new WebSocketServer({ noServer: true, maxPayload: 32 << 20 })
+// Over the network (a phone, another Mac), messages are deflated: a terminal's output and the live state are text that
+// shrinks several times; on this machine, as with HTTP, bytes cost nothing and the CPU is better spent.
+const deflating = new WebSocketServer({ noServer: true, maxPayload: 32 << 20,
+  perMessageDeflate: { threshold: 256, zlibDeflateOptions: { level: 6 } } })
+const socketsFor = (req: http.IncomingMessage) => (overNetwork(req) ? deflating : sockets)
 
 function refuse(socket: Duplex, status: number, message: string) {
   process.stderr.write(`WS refused: ${status} ${message}\n`)
@@ -653,7 +658,7 @@ server.on("upgrade", async (req: http.IncomingMessage, socket: Duplex, head: Buf
       return sockets.handleUpgrade(req, socket, head, (ws) => { ws.on("error", () => ws.terminate()); attach(ws) })
     }
     if (url.pathname === "/api/events") {
-      return sockets.handleUpgrade(req, socket, head, (ws) => {
+      return socketsFor(req).handleUpgrade(req, socket, head, (ws) => {
         ws.on("error", () => ws.terminate())
         live.client(ws, url.searchParams.get("at") ?? undefined, url.searchParams.get("device") ?? undefined)
       })
@@ -670,7 +675,7 @@ server.on("upgrade", async (req: http.IncomingMessage, socket: Duplex, head: Buf
     const query = queryOf(url.searchParams)
     const params = { wild, query }
     await sock.accept?.(req, params)
-    sockets.handleUpgrade(req, socket, head, (ws) => {
+    socketsFor(req).handleUpgrade(req, socket, head, (ws) => {
       // A bad frame (one over maxPayload) closes this socket, not the server: unheard, ws's error event throws.
       ws.on("error", (e) => { process.stderr.write(`WS ${url.pathname}: ${(e as Error).message}\n`); ws.terminate() })
       process.stderr.write(`"WS ${url.pathname} HTTP/${req.httpVersion}" 101 -\n`)
