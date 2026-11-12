@@ -266,6 +266,49 @@ export default async ($: VaultTest) => {
     }
   }
 
+  // A live site is the checkout whose deploy names its address, never a repo guessed from words on the page.
+  {
+    const { pageWins, namesRepo } = await import("../../../plugins/core/companion/workers.ts")
+    const make = (name: string, slug: string, files: Record<string, string>) => {
+      const dir = path.join(roots[0], name)
+      for (const [f, t] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true }); fs.writeFileSync(path.join(dir, f), t) }
+      const gg = (...a: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", ...a], { cwd: dir, stdio: "pipe", env: gitEnv() }).toString()
+      gg("init", "-q"); gg("remote", "add", "origin", `git@github.com:${slug}.git`); gg("add", "."); gg("commit", "-qm", "first")
+      return { dir: fs.realpathSync(dir), gg }
+    }
+    // (the app names its website as its homepage; the site's wrangler deploys it; the API owns one path of it)
+    make("harbor", "lighthouse/harbor", { "package.json": JSON.stringify({ name: "harbor", homepage: "https://harbor.example" }) })
+    const site = make("harbor-site", "lighthouse/harbor-site", { "wrangler.toml": '# harbor.example/api/* is harbor-api\'s route\nname = "harbor-site"\nroutes = [\n  { pattern = "harbor.example", custom_domain = true },\n]\n' })
+    const api_ = make("harbor-api", "lighthouse/harbor-api", { "wrangler.jsonc": '{ "routes": [{ "pattern": "harbor.example/api/*", "zone_name": "harbor.example" }], "vars": { "ZONE": "harbor.example" } }' })
+    const docs = make("beacon-docs", "lighthouse/beacon-docs", { "public/CNAME": "docs.beacon.example\n" })
+    make("beacon-a", "lighthouse/beacon-a", { "CNAME": "beacon.example" }); make("beacon-b", "lighthouse/beacon-b", { "wrangler.toml": 'route = "beacon.example/*"' })
+    site.gg("worktree", "add", "-q", path.join(roots[0], "harbor-site-j1"), "-b", "j1")
+    W.checkoutsIn()
+    const at = async (o: Any) => { const r = await W.resolveHere({ title: "Harbor - Private notes for you", ...o }, VAULT, [], roots); return { ...r, cwd: r.cwd === VAULT ? VAULT : fs.realpathSync(r.cwd) } }
+    const home = await at({ url: "https://harbor.example/" }), www = await at({ url: "https://www.harbor.example/download" }), apiPage = await at({ url: "https://harbor.example/api/status" })
+    check("where: a live site is the checkout its deploy config names (wrangler), not the app whose package.json names it its homepage, nor the site's worktree; www is its apex",
+      home.cwd === site.dir && home.from === "site" && /harbor\.example is deployed from .*harbor-site \(its wrangler\.toml names harbor\.example\)/.test(home.why) && www.cwd === site.dir, [home, www])
+    check("where: a path another repo's route claims is that repo's; a CNAME in public/ names its site", apiPage.cwd === api_.dir && (await at({ url: "https://docs.beacon.example/start" })).cwd === docs.dir, apiPage)
+    const bar = await at({ app: "com.example.browser", screen: "Address and search bar: harbor.example/pricing\nRun it with localhost:1 locally" })
+    check("where: a browser's address bar is the page's address, before a preview its text mentions", bar.cwd === site.dir, bar)
+    const both = await at({ url: "https://beacon.example/" }), none = await at({ url: "https://nowhere.example/" }), title = await at({ app: "com.example.browser" })
+    check("where: two repos deploying a site alike, or none, say so in why there and stay in the vault; a page's title alone names no repo",
+      both.cwd === VAULT && /beacon\.example is deployed from .*beacon-a and .*beacon-b alike, so which is unclear: the vault/.test(both.why) &&
+      none.cwd === VAULT && /no checkout here deploys nowhere\.example/.test(none.why) && title.cwd === VAULT && /nothing on screen named a project/.test(title.why), [both, none, title])
+    check("where: the routes a deploy names cover an address by host, wildcard and path, most closely",
+      W.routeCovers("harbor.example/api/*", new URL("https://harbor.example/api/x")) > W.routeCovers("harbor.example", new URL("https://harbor.example/api/x")) &&
+      W.routeCovers("*.harbor.example/*", new URL("https://a.harbor.example/")) > 0 && !W.routeCovers("*.harbor.example/*", new URL("https://harbor.example/")) &&
+      !W.routeCovers("harbor.example/api/*", new URL("https://harbor.example/")) && !W.routeCovers("harbor.examples", new URL("https://harbor.example/")))
+    const page = { cwd: site.dir, repo: "harbor-site", from: "site" as const }
+    check("handoff: over a page with its own checkout, a repo the handoff named from its title is set aside; one their words name as a repo, or the same repo, stays",
+      pageWins(page, "harbor", "try a serif font in the Harbor hero") && pageWins(page, "lighthouse/harbor", "make the harbor headline bigger") &&
+      !pageWins(page, "harbor", "do it in the harbor repo instead") && !pageWins(page, "lighthouse/harbor", "port this to lighthouse/harbor") && !pageWins(page, "harbor-site", "x") &&
+      !pageWins({ ...page, from: "vault" }, "harbor", "x") && namesRepo("in the repository harbor", "harbor") && !namesRepo("the harbor-site repo", "harbor"))
+    site.gg("worktree", "remove", "--force", path.join(roots[0], "harbor-site-j1"))
+    for (const d of ["harbor", "harbor-site", "harbor-api", "beacon-docs", "beacon-a", "beacon-b"]) fs.rmSync(path.join(roots[0], d), { recursive: true, force: true })
+    W.checkoutsIn()
+  }
+
   // End to end: a handoff starts a worker in a terminal (a stand-in for Claude Code speaking OSC 7501), its job moves as
   // its terminal tells, ends ready for review with its diff; a steer types into it, a stop ends it.
   if (process.platform !== "win32") {

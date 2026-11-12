@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Jobs over a live site run in the repo that deploys it**: work asked over a page like your website goes to the
+  checkout whose deploy config names its address (its wrangler route or CNAME), not a repo guessed from the page's
+  title; when no checkout or two of them deploy it, the job's "why there" says so.
 - Companion: a job that lands itself no longer records a demo video; Show me plays its demo live once it's in (the setting Jobs' demo videos: auto, always or never).
 - **Claude Code sessions the app starts read the vault's rules once**: a terminal's or chat's session no longer gets
   the plugins' lines again in its system prompt when its CLAUDE.md already has them, and its `vau mcp` server leaves

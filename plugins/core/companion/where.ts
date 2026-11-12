@@ -1,5 +1,5 @@
-// Where a job runs, derived on the spot from what the ask was over (no registry): a preview's address -> its port -> the
-// process listening -> its repo; a GitHub page -> its checkout; an editor's window -> its project; a note -> the vault.
+// Where a job runs, from what the ask was over (no registry): a preview -> the process serving it -> its repo; a live site
+// -> the checkout whose deploy names it; a GitHub page -> its checkout; an editor -> its project; a note -> the vault.
 import { execFile } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
@@ -9,7 +9,7 @@ import { gitEnv, type Machine } from "../../../core/plugins.ts"
 /** What an ask was over, as far as routing needs it (a Moment's). */
 export type Over = { url?: string; app?: string; title?: string; path?: string; screen?: string; under?: string }
 /** Where it resolved: the folder (a repo's top, else the vault), why, what led there, and the preview it came from. */
-export type Found = { cwd: string; why: string; from?: "note" | "github" | "preview" | "editor" | "vault"; preview?: string }
+export type Found = { cwd: string; why: string; from?: "note" | "github" | "preview" | "site" | "editor" | "vault"; preview?: string }
 
 const HOME = os.homedir()
 /** A command's output, null when it failed. */
@@ -30,6 +30,18 @@ export function urlsIn(o: Over): URL[] {
   const text = [o.url, o.title, o.under, o.screen?.slice(0, 6000)].filter(Boolean).join("\n")
   const found = text.match(/\b(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|0\.0\.0\.0|[\w-]+(?:\.[\w-]+)*\.ts\.net|github\.com)(?::\d{2,5})?(?:\/[^\s"'<>)]*)?/g) ?? []
   return [...new Set(found)].flatMap((s) => { try { return [new URL(/^https?:/.test(s) ? s : `http://${s}`)] } catch { return [] } })
+}
+
+/** A browser's address bar as Accessibility reads it: a line that is an address alone, or labelled as one. */
+const ADDRESS_LINE = /^\s*(?:(?:address(?: and search)? bar|url|location)\b[^:]{0,20}:\s*)?(?:https?:\/\/)?((?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:[/?#]\S*)?)\s*$/i
+/** A live site's address (not this machine's, a tailnet preview's or GitHub's). */
+const isLive = (u: URL) => /^https?:$/.test(u.protocol) && u.hostname.includes(".") && !LOCAL.test(u.hostname) && !u.hostname.endsWith(".ts.net") &&
+  u.hostname !== "github.com" && !/^[\d.]+$/.test(u.hostname)
+/** The live sites an ask is over: its page's address, else what a browser's address bar shows (never a link on the page). */
+export function sitesIn(o: Over): URL[] {
+  const lines = (o.screen ?? "").split("\n").slice(0, 60).flatMap((l) => { const m = ADDRESS_LINE.exec(l); return m ? [`https://${m[1]}`] : [] })
+  return [o.url ?? "", ...lines].flatMap((s) => { try { const u = new URL(s); return isLive(u) ? [u] : [] } catch { return [] } })
+    .filter((u, i, all) => all.findIndex((x) => x.href === u.href) === i)
 }
 
 /** What an ask is over, as one surface a job can work on: a note, else a page's site (a preview's address, the app's);
@@ -70,9 +82,9 @@ async function listenerDir(port: number) {
 /** The folders checkouts are looked for in: `roots` (~ for home), two levels down. */
 const DEFAULT_ROOTS = ["~/Projects", "~/Documents/personal/Projects", "~/Documents/Projects", "~/code", "~/src", "~/dev", "~/Developer", "~/Work", "~/repos", "~/git"]
 let ROOTS = DEFAULT_ROOTS
-/** Other folders to look for checkouts in (the tests'), or the usual ones again (none). */
-export const checkoutsIn = (roots?: string[]) => { ROOTS = roots ?? DEFAULT_ROOTS }
 let scanned: { at: number; key: string; repos: string[] } | null = null
+/** Other folders to look for checkouts in (the tests'), or the usual ones again (none); either looks afresh. */
+export const checkoutsIn = (roots?: string[]) => { ROOTS = roots ?? DEFAULT_ROOTS; scanned = null }
 function checkouts(roots: string[]) {
   const key = roots.join("\n")
   if (scanned && scanned.key === key && Date.now() - scanned.at < 60_000) return scanned.repos
@@ -112,6 +124,55 @@ export const checkoutsLine = (n = 30, roots: string[] = ROOTS) => { const all = 
 /** Where checkouts are looked for, in words ("~/Projects, ~/Documents/personal/Projects..."). */
 export const rootsLine = (roots: string[] = ROOTS) => roots.filter((r) => fs.existsSync(untilde(r))).join(", ") || "none of its usual project folders exist"
 
+/** The files a checkout's deploy names its domain in, and the addresses (route patterns) each names. */
+const nocomment = (t: string) => t.split("\n").filter((l) => !/^\s*(#|\/\/)/.test(l)).join("\n")
+const patterns = (t: string) => [...nocomment(t).matchAll(/["']?\b(?:pattern|route)["']?\s*[=:]\s*["']([^"']+)["']/g)].map((m) => m[1])
+const firstWord = (t: string) => nocomment(t).split(/\s+/).filter(Boolean).slice(0, 1)
+const siteKey = (t: string) => [...nocomment(t).matchAll(/\b(?:site|url)\s*:\s*["'`](https?:\/\/[^"'`]+)/g)].map((m) => m[1])
+/** (a host's routes and CNAMEs are what deploys there; a homepage or a site's own address in its config only says where
+ *  it lives (an app's package.json names its website): weaker, so a repo that deploys the site wins) */
+const DEPLOYS: [string, (text: string) => string[], number][] = [
+  ["wrangler.toml", patterns, 1], ["wrangler.json", patterns, 1], ["wrangler.jsonc", patterns, 1],
+  ["CNAME", firstWord, 1], ["public/CNAME", firstWord, 1], ["static/CNAME", firstWord, 1], ["docs/CNAME", firstWord, 1],
+  ["package.json", (t) => { try { const h = JSON.parse(t).homepage; return typeof h === "string" && /^https?:/.test(h) ? [h] : [] } catch { return [] } }, 0],
+  ...["astro.config.mjs", "astro.config.ts", "astro.config.js", "docusaurus.config.js", "docusaurus.config.ts"].map((f) => [f, siteKey, 0] as [string, (t: string) => string[], number]),
+]
+/** How closely a deploy's route pattern (Cloudflare's "example.com/*", "*.example.com", a CNAME's domain, a URL) covers
+ *  `u`: 0 not at all; a named host over a wildcard, a longer path over a shorter. A bare www. is its apex. */
+export function routeCovers(pattern: string, u: URL) {
+  const p = pattern.trim().replace(/^https?:\/\//i, ""), cut = p.indexOf("/")
+  const bare = (h: string) => h.toLowerCase().replace(/:\d+$/, "").replace(/^www\./, "")
+  const host = bare(cut < 0 ? p : p.slice(0, cut)), rest = cut < 0 ? "" : p.slice(cut), h = bare(u.hostname)
+  if (!host || !(host.startsWith("*") ? h.endsWith(host.slice(1)) : host === h)) return 0
+  const pathOk = !rest || rest === "/" || rest === "/*" ? true : rest.endsWith("*") ? u.pathname.startsWith(rest.slice(0, -1)) : u.pathname.replace(/\/$/, "") === rest.replace(/\/$/, "")
+  return pathOk ? (host.startsWith("*") ? 1000 : 2000) + rest.replace(/\*$/, "").replace(/\/$/, "").length : 0
+}
+/** A checkout's own git folder (a worktree's is its main checkout's): what tells two folders are one repo. */
+function gitHome(dir: string) {
+  try {
+    const git = path.join(dir, ".git")
+    return fs.realpathSync(fs.statSync(git).isFile() ? path.resolve(dir, /gitdir: (.+)/.exec(fs.readFileSync(git, "utf8"))?.[1]?.trim() ?? "", "../..") : git)
+  } catch { return dir }
+}
+/** The checkout here that deploys the live site `u`: the one whose deploy config names its address most closely (its
+ *  main checkout over a worktree, one clone of a GitHub repo); `both` when two repos name it alike, null when none does. */
+export function siteCheckout(u: URL, roots = ROOTS): { dir: string; file: string; pattern: string } | { both: string[] } | null {
+  const hits: { dir: string; file: string; pattern: string; score: number }[] = []
+  for (const dir of checkouts(roots)) for (const [file, read, deploys] of DEPLOYS) {
+    let text = ""
+    try { text = fs.readFileSync(path.join(dir, file), "utf8") } catch { continue }
+    for (const pattern of read(text)) { const score = routeCovers(pattern, u); if (score) hits.push({ dir, file, pattern, score: score + deploys * 10_000 }) }
+  }
+  const best = Math.max(0, ...hits.map((x) => x.score)), top = hits.filter((x) => x.score === best)
+  // (one repo by its git folder, then by its GitHub name: worktrees and clones of it aren't a second answer)
+  const repos = new Map<string, typeof top>()
+  for (const x of top) { const k = remotes(x.dir).find((r) => /github\.com/i.test(r))?.toLowerCase().replace(/\.git$/, "").replace(/^git@github\.com:/, "github.com/").replace(/^.*github\.com\//, "") || gitHome(x.dir); repos.set(k, [...(repos.get(k) ?? []), x]) }
+  if (!repos.size) return null
+  if (repos.size > 1) return { both: [...repos.values()].map((xs) => xs[0].dir).sort() }
+  const xs = [...repos.values()][0], main = xs.find((x) => { try { return fs.statSync(path.join(x.dir, ".git")).isDirectory() } catch { return false } }) ?? xs[0]
+  return { dir: main.dir, file: main.file, pattern: main.pattern }
+}
+
 /** Editors whose window title names the project (VS Code, Cursor, Zed, Xcode...: "file.ts — project"). */
 const EDITORS = /vscode|VSCode|cursor|zed|xcode|sublime|jetbrains|intellij|webstorm|nova|windsurf/i
 
@@ -119,7 +180,18 @@ const EDITORS = /vscode|VSCode|cursor|zed|xcode|sublime|jetbrains|intellij|webst
 export async function resolveHere(o: Over, vault: string, self: string[] = [], roots = ROOTS): Promise<Found> {
   if (o.path) return { cwd: vault, why: `the note ${o.path}`, from: "note" }
   let away = ""
-  for (const u of urlsIn(o)) {
+  // (the page's own address first (its url, else a browser's address bar): a live site's, before a preview its text mentions)
+  const sites = sitesIn(o), first = o.url ? sitesIn({ url: o.url }).slice(0, 1) : sites
+  for (const [u, live] of [...first.map((u) => [u, true] as const), ...urlsIn(o).map((u) => [u, false] as const), ...sites.slice(first.length).map((u) => [u, true] as const)]) {
+    if (live) {
+      if (away) continue
+      const hit = siteCheckout(u, roots), where = `${u.host}${u.pathname === "/" ? "" : u.pathname}`
+      if (hit && "dir" in hit) return { cwd: hit.dir, why: `${where} is deployed from ${tilde(hit.dir)} (its ${hit.file} names ${hit.pattern})`, from: "site" }
+      // (never a guess between two, nor from the page's title: said, so whoever asked can name the repo)
+      away = hit ? `${where} is deployed from ${hit.both.map((d) => tilde(d)).join(" and ")} alike, so which is unclear`
+        : `no checkout here deploys ${u.host} (no wrangler config, CNAME, package.json homepage or site config names it)`
+      continue
+    }
     if (u.hostname === "github.com") {
       const [owner, repo] = u.pathname.split("/").filter(Boolean)
       const dir = owner && repo ? checkoutOf(`${owner}/${repo}`, roots) : ""

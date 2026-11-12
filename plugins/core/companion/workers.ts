@@ -10,7 +10,7 @@ import { cardOf, choiceIn, commitsIn, endEvent, HANDED, inPlace, landedSaid, lan
   type ProofMode, step, terminalOf, type Waits, type Where, worktreeOf } from "./jobs.ts"
 import { requestWriter } from "../../../core/vault.ts"
 import type { Moment } from "./plugin.ts"
-import { branchOf, checkoutNamed, type Found, githubOf, headOf, machineOfUrl, onlyHere, type Over, preferredMachine, refusal, repoOf, resolveHere, checkoutsLine, rootsLine, surfaceOf, tilde, unpushed, urlsIn, watched } from "./where.ts"
+import { branchOf, checkoutNamed, type Found, githubOf, headOf, machineOfUrl, onlyHere, type Over, preferredMachine, refusal, repoOf, resolveHere, checkoutsLine, rootsLine, sitesIn, surfaceOf, tilde, unpushed, urlsIn, watched } from "./where.ts"
 
 /** What the plugin gives the jobs: the ask a handoff came from, whose a call is, its say, its action log, who an `as` names. */
 export type JobDeps = {
@@ -186,6 +186,22 @@ const NOT_THEIRS = "only on the user's own words: answer it while answering thei
 const newId = () => `j${Array.from({ length: 7 }, () => "abcdefghijklmnopqrstuvwxyz0123456789"[Math.floor(Math.random() * 36)]).join("")}`
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s)
 const sameDir = (a: string, b: string) => { try { return fs.realpathSync(a) === fs.realpathSync(b) } catch { return false } }
+/** Whether a place found is the repo `repo` names (GitHub's owner/name, a folder's name, a path): by its folder's name. */
+export const sameRepo = (at: { cwd: string; repo: string }, repo: string) => {
+  const name = repo.trim().replace(/\/+$/, "").replace(/\.git$/, "").split(/[/:]/).pop()!.toLowerCase()
+  return !!name && (at.repo.toLowerCase() === name || path.basename(at.cwd).toLowerCase() === name)
+}
+/** Whether the user's words name `repo` as a repo ("the vaultite repo", "in lighthouse/site"), not only a word in it. */
+export function namesRepo(text: string, repo: string) {
+  const r = repo.trim().replace(/\/+$/, ""), name = r.split("/").pop()!, esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  const word = "(?:repo|repository|checkout|codebase|project)"
+  return (r.includes("/") && new RegExp(`(?<![\\w.-])${esc(r)}(?![\\w-])`, "i").test(text)) ||
+    new RegExp(`(?<![\\w.-])${esc(name)}(?![\\w-])\\s+${word}\\b|\\b${word}\\s+(?:called\\s+|named\\s+)?${esc(name)}(?![\\w-])`, "i").test(text)
+}
+/** Whether the page's own place (`page`, routed with no repo) wins over the repo a handoff named: it maps to a checkout
+ *  (not the vault), another than that repo, and the user's words don't name that repo. */
+export const pageWins = (page: { cwd: string; repo: string; from?: Found["from"] }, repo: string, text: string) =>
+  !!page.from && page.from !== "vault" && !sameRepo(page, repo) && !namesRepo(text, repo)
 
 export function jobOps(plugin: Plugin, d: JobDeps) {
   const setting = (k: string) => str(plugin.settings()[k]).trim() || str(plugin.manifest.settings?.[k]?.default)
@@ -304,10 +320,25 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   /** Where a handoff runs: as asked (machine, cwd), else from the ask: an address another machine serves goes there; what
    *  nothing ties here (a note, research, a GitHub page or a pushed preview checked out there) goes to the machine jobs prefer. */
   async function route(m: Moment | undefined, p: Record<string, unknown>): Promise<Omit<Where, "agent" | "account" | "harness" | "model" | "effort">> {
+    const { from: _, ...r } = await routed(m, p)
+    return r
+  }
+  async function routed(m: Moment | undefined, p: Record<string, unknown>): Promise<Omit<Where, "agent" | "account" | "harness" | "model" | "effort"> & { from?: Found["from"] }> {
     const o: Over = m ? { url: m.url, app: m.app, title: m.title, path: m.path, screen: m.screen, under: m.under } : {}
     let machine = str(p.machine).trim()
     if (machine && (await plugin.ask<Machine | null>("machines:machine", null, machine))?.self) machine = ""
     const repo = str(p.repo).trim(), asked = !!machine || !!str(p.cwd) || !!repo
+    if (repo && !p.page && !machine && !str(p.cwd) && !o.path && (urlsIn(o).length || sitesIn(o).length)) {
+      // (over a page, its own checkout (a site's deploy, a preview's server, a GitHub page) wins over a repo the handoff
+      //  named, unless their words name that repo: one guessed from a page's title sent the site's work to the app)
+      const page = await routed(m, { ...p, repo: "" }).catch(() => null)
+      if (page && pageWins(page, repo, m?.text ?? ""))
+        return { ...page, why: `${page.why} (not ${repo}, which the handoff named: their words don't)` }
+      if (page?.from === "vault") {
+        const r = await routed(m, { ...p, page: true })
+        return { ...r, why: `${r.why}, as the handoff named (${page.why.replace(/: the vault.*$/, "")})` }
+      }
+    }
     if (!asked) {
       const hosts = Object.fromEntries((await machines()).filter((x) => !x.self && x.online).map((x) => [x.id, hostOf(x.url)]).filter(([, h]) => h))
       machine = machineOfUrl(o, hosts)?.machine ?? ""
@@ -323,7 +354,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     else if (repo && !machine && !str(p.cwd)) ({ machine, there } = await named(there))
     if (there.refused) throw new OpError(`it can't run there: ${there.refused}. Say so (where it would have run: ${tilde(there.cwd)})`, 403)
     return { machine, label: await labelOf(machine), cwd: there.cwd, repo: there.repo, why: there.why, ...(there.base ? { base: there.base } : {}), ...(there.preview ? { preview: there.preview } : {}),
-      ...(moved ? { moved } : {}), ...(there.live ? { live: true } : {}), ...(there.carried ? { carried: true } : {}) }
+      ...(moved ? { moved } : {}), ...(there.live ? { live: true } : {}), ...(there.carried ? { carried: true } : {}), ...(there.from ? { from: there.from } : {}) }
   }
   /** A repo named (no machine, no folder) and checked out here: to the machine jobs prefer when it has the repo too and
    *  the commit a job starts from is pushed (its worktree never takes uncommitted changes), else here, saying why. */
@@ -348,7 +379,8 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     const pick = preferredMachine(all, setting("jobs_machine"), await plugin.ask<string>("machines:vault", ""), self ? !!self.standalone : !inDesktop())
     if (!pick.machine) return pick.why ? stay(pick.why) : { machine: "", there: here, moved: "" }
     const m = pick.machine, local = watched(here)
-    let gh = urlsIn(o).find((u) => u.hostname === "github.com")?.href
+    // (a live site's address too: the machine there finds its own checkout that deploys it)
+    let gh = urlsIn(o).find((u) => u.hostname === "github.com")?.href ?? (here.from === "site" || here.from === "vault" ? sitesIn(o)[0]?.href : undefined)
     if (local) {
       // (a folder jobs never run in here isn't escaped by its copy elsewhere)
       if (here.refused) return { machine: "", there: here, moved: "" }
@@ -865,7 +897,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     summary: "Hand long work to a worker: a coding agent (Claude Code on Opus, or Codex) in a terminal of the app, where the ask was (its repo, here or on another machine); job: tell one more.",
     help: `For what takes more than a minute or two: code, research, a document, a long errand, writing in their notes. It
 runs where the ask was over, derived on the spot: a preview's address (localhost, a Tailscale name: the process
-serving it, its repo, on its machine), a GitHub page (its checkout here), an editor's window (its project), a note (the
+serving it, its repo, on its machine), a live site (the checkout whose deploy config names its address), a GitHub page (its checkout here), an editor's window (its project), a note (the
 vault); cwd and machine say it instead. A job is in the menu bar's Jobs (starting, working, needs you, ready for
 review, done, failed, stopped) with where it runs; opening it opens its terminal, where the user can type. A coding job
 works in its own git worktree and branch beside the checkout (repo-<job id>, branch job-<job id>), never in the
@@ -897,7 +929,7 @@ resumes), with land for their word to merge it, and ask false when their ask isn
       effort: { type: "string", description: "how hard it thinks (default: the setting jobs_effort for Claude Code)" },
       title: { type: "string", description: "its name in the menu bar's Jobs (default: the task's first words); with job, its new name, when the follow-up changes what it's about" },
       cwd: { type: "string", description: "the folder it works in (~ for home), instead of the one the ask was over; one not on that machine is its own checkout of that repo there" },
-      repo: { type: "string", description: "the repo it works in, by GitHub's owner/name or its folder's name (vaultite): each machine's own checkout of it (with machine: that one's)" },
+      repo: { type: "string", description: "the repo it works in, by GitHub's owner/name or its folder's name (vaultite): each machine's own checkout of it (with machine: that one's); only when their words name it: over a page, its own checkout (the one serving or deploying it) wins over a repo guessed from its title" },
       machine: { type: "string", description: "another of the Machines to run it on, by id (with cwd: that machine's folder)" },
       job: { type: "string", description: "a follow-up to this job of yours (its id): typed into its terminal" },
       land: { type: "boolean", description: "with job: their word to merge what it made (merge it, ship it): it's told to land it as its repo's rules say, and closes once merged" },
