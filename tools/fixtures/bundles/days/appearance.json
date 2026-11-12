@@ -2,6 +2,7 @@
   "density": "comfortable",
   "sidebarScroll": "panels",
   "panelDividers": false,
+  "panelHeadings": "shown",
   "snippets": [],
   "fileIcons": true,
   "tabBar": true,

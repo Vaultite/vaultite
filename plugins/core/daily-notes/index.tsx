@@ -53,7 +53,7 @@ export default definePlugin({
   // jot in.
   sidebar: {
     daily: {
-      title: "Daily note", names: ["daily note", "journal", "today's note", "scratchpad"], heading: false, sort: 38, hidden: true, view: "daily-note",
+      title: "Daily note", names: ["daily note", "journal", "today's note", "scratchpad"], heading: false, needsHeading: true, sort: 38, hidden: true, view: "daily-note",
       flyout: { icon: CalendarDays, width: 320 },
       // (opening the note makes it, as the commands do)
       tab: () => { const date = shownDay(); return { name: `${whose(date)} note`, open: () => openDay(date, true) } },

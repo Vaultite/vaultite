@@ -64,7 +64,7 @@ function OutlineView() {
 }
 
 export default definePlugin({
-  sidebar: { outline: { title: "Outline", heading: false, sort: 46, hidden: true, view: "outline", flyout: { icon: ListTree }, render: (ctx) => <OutlinePanel {...ctx} /> } },
+  sidebar: { outline: { title: "Outline", heading: false, needsHeading: true, sort: 46, hidden: true, view: "outline", flyout: { icon: ListTree }, render: (ctx) => <OutlinePanel {...ctx} /> } },
   views: { outline: { icon: ListTree, title: () => "Outline", render: () => <OutlineView /> } },
   commands: [
     { id: "outline:open-tab", name: "Open outline in a tab", run: () => openView("outline", { newTab: true }) },

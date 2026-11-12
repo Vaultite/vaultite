@@ -63,7 +63,7 @@ export default definePlugin({
   background: () => <Watch />,
   // The panel as a tab (drag its heading onto a pane, or the command).
   views: { cloud: { icon: Cloud, title: () => "Cloud sessions", render: () => <CloudView /> } },
-  sidebar: { cloud: { title: "Cloud", names: ["cloud", "cloud sessions", "claude code on the web"], heading: false, sort: 31, view: "cloud", render: (ctx) => <CloudPanel {...ctx} /> } },
+  sidebar: { cloud: { title: "Cloud", names: ["cloud", "cloud sessions", "claude code on the web"], heading: false, needsHeading: true, sort: 31, view: "cloud", render: (ctx) => <CloudPanel {...ctx} /> } },
   newTab: { cloud: { title: "Cloud sessions", sort: 6, hidden: true, render: () => <CloudList /> } },
   commands: [
     { id: "cloud-sessions:new", name: "New cloud session", when: reading, icon: Cloud, run: () => pickAccount((a) => newSession(a)) },

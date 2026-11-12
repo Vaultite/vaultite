@@ -5,11 +5,16 @@ import { coarse } from "@/core/haptics"
 import { HeadingButton } from "@/components/Button"
 import { rightClickBelow } from "@/components/ContextMenu"
 import { SwipeRow } from "@/components/SwipeRow"
+import { headingsPeek } from "@/core/headingpeek"
+import type { HeadingMode } from "@/core/plugins"
 import { cn } from "@/lib/utils"
 
 /** The panel a heading is in (SidebarPanels provides it, in the open sidebar): whether it's folded to its heading, and
  *  how to fold or open it. None (a heading outside the sidebar, the rail): the heading is only a label. */
 export const PanelFold = createContext<{ collapsed: boolean; toggle: (e?: { altKey: boolean }) => void; /** the id of what it folds */ controls?: string } | null>(null)
+
+/** How the heading of the panel it's in shows (core/plugins.ts headingMode); none (outside the sidebar): shown. */
+export const PanelHeading = createContext<HeadingMode>("shown")
 
 /** A panel shown alone in the left sidebar (its mode, core/sidebarmode.ts): how to bring the panels back, which its
  *  heading offers as an X that's always there. */
@@ -28,6 +33,9 @@ export function SidebarHeading({ title, open, children, aside, className }: {
 }) {
   const fold = useContext(PanelFold)
   const alone = useContext(PanelAlone)
+  // (folded, it's all that's left of the panel; a finger has no hover to show a quiet one)
+  const asked = useContext(PanelHeading)
+  const mode = fold?.collapsed ? "shown" : asked === "quiet" && coarse ? "hidden" : asked
   if (!open) return null
   const f = fold
   const label = (
@@ -41,7 +49,25 @@ export function SidebarHeading({ title, open, children, aside, className }: {
   )
   const head = {
     "data-panel-handle": "", "data-heading": title,
-    onClick: f ? (e: React.MouseEvent) => { if (!(e.target as HTMLElement).closest("button, a, input")) f.toggle(e) } : undefined,
+    // (a hidden one folds only while its name shows: a click in the gap between panels does nothing)
+    onClick: f ? (e: React.MouseEvent) => { if (!(e.target as HTMLElement).closest("button, a, input") && (mode !== "hidden" || headingsPeek())) f.toggle(e) } : undefined,
+  }
+  // Quiet or hidden: a slim gap, its name and buttons in it out of sight until pointed at (quiet) or ⌥ held; keyboard
+  // focus shows them too. Nothing moves when they show.
+  if (mode !== "shown") {
+    return (
+      <div {...head} data-heading-mode={mode} className={cn("group/head flex h-5 shrink-0 items-center pr-0.5 pl-1.5", className)}>
+        <div data-heading-name className={cn("pointer-events-none flex min-w-0 flex-1 items-center gap-0.5 opacity-0 transition-opacity duration-(--motion-fast)",
+          "group-focus-within/head:pointer-events-auto group-focus-within/head:opacity-100 [[data-headings-peek]_&]:pointer-events-auto [[data-headings-peek]_&]:opacity-100",
+          mode === "quiet" && "group-hover/head:pointer-events-auto group-hover/head:opacity-100")}>
+          {label}
+          <span className="flex-1" />
+          {children}
+          {f && <HeadingButton icon={Ellipsis} label={`More for ${title}`} tip="More" data-heading-more onClick={rightClickBelow} />}
+          {aside}
+        </div>
+      </div>
+    )
   }
   // In the open sidebar (one scroller), it stays at the top while its panel scrolls under it (the tree's buttons stay in
   // reach), and the next panel's pushes it away.

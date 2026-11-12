@@ -273,6 +273,20 @@ const panelDividers = (on: boolean) => (
   </Frame>
 )
 
+/** A sidebar close up: three panels under their headings, or quiet: only a little room between them. */
+const quietHeadings = (on: boolean) => (
+  <Frame>
+    <div className="flex w-[66%] shrink-0 flex-col bg-sidebar px-[6px] pt-[5px]">
+      {[["40%", "70%", "56%"], ["32%", "64%", "74%"], ["46%", "60%", "52%"]].map(([h, ...rows], i) => (
+        <div key={i} className={cn("flex flex-col gap-[4px]", on ? (i ? "pt-[7px]" : "") : "py-[4px]")}>
+          {!on && line(h, "bg-foreground/40")}{lines(rows)}
+        </div>
+      ))}
+    </div>
+    <Pane className="border-l-[0.5px] border-border"><Note className="px-[6px]" /></Pane>
+  </Frame>
+)
+
 /** Files in the sidebar and the tabs, with their icons or without. */
 const fileIcons = (on: boolean) => {
   const row = (Icon: typeof Folder, w: string, indent: number, tint?: string) => (
@@ -379,6 +393,7 @@ const PICTURES: Record<string, Pictures> = {
   "peek-shade": { text: "While a hidden sidebar is slid in, the page behind it dims.", draw: (on) => <Peek shade={on} pointer /> },
   "sidebar-scroll": { text: "On, each sidebar panel scrolls on its own; off, the whole sidebar scrolls as one.", draw: (on) => <SidebarScroll on={on} /> },
   "panel-dividers": { text: "A line between the panels of a sidebar.", draw: panelDividers },
+  "quiet-panel-headings": { text: "Panels without their headings, a little room between them; a name shows when you point there.", draw: quietHeadings },
   "readable-line-length": { text: "Notes keep their lines to a readable width, centred in a wide pane.", draw: readableLineLength },
   "show-inline-title": { text: "A note shows its name as a title above its text.", draw: inlineTitle },
 }

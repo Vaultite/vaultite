@@ -52,6 +52,7 @@ const APPEARANCE: Record<string, Setting> = {
   animation: { about: "natural (default: springy), snappy (quicker, no overshoot) or off: how panes, tabs, panels and sidebars move", parse: oneOf("natural", "snappy", "off") },
   sidebarScroll: { about: "panels (each sidebar panel scrolls in its own box, dividers set heights; the default) or sidebar (the whole sidebar scrolls as one)", parse: oneOf("panels", "sidebar") },
   sidebarButtons: { about: "true or false (default): on phones, buttons in the top bar open the sidebars; off, they're swiped in from the screen's edges (in a phone's browser they always show)", parse: bool("sidebarButtons") },
+  panelHeadings: { about: "shown (default) or quiet: the sidebars' panels without headings, a slim gap between them whose name shows while the pointer is in it or ⌥ is held (a folded panel keeps its heading; `vau panels heading` sets one panel's)", parse: oneOf("shown", "quiet") },
   panelDividers: { about: "true or false (default): a line between the sidebars' panels", parse: bool("panelDividers") },
   quickTextSize: { about: "true or false (default): ⌘/⌃ and the wheel, or a pinch, over a note or a terminal changes its text size", parse: bool("quickTextSize") },
   interfaceFont: { about: "the interface's font family (a font installed on the device; Settings lists them)", parse: (v) => v },

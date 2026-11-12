@@ -51,7 +51,7 @@ export default definePlugin({
   fileMarks: marks,
   sidebar: {
     context: {
-      title: "Agent context", names: ["agent context", "token limits", "long files", "context size"], heading: false, sort: 45, hidden: true,
+      title: "Agent context", names: ["agent context", "token limits", "long files", "context size"], heading: false, needsHeading: true, sort: 45, hidden: true,
       view: "agent-context", flyout: { icon: Gauge }, render: (ctx) => <ContextPanel {...ctx} />,
     },
   },

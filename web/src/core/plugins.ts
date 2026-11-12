@@ -12,7 +12,7 @@ import type { MenuItem } from "@/components/ContextMenu"
 import { editorOf } from "@/core/editors"
 import type { AgentDef, EditorCtx, FileBarItem, FileFormat, FileIcon, FileMark, FileRow, HostedPlugin, Manifest, NewTabSection, Plugin, PluginDef, PluginHost, ReadingBlock, ReadingDrawn, SidebarCtx, SidebarPanel, TabButton, TimelineKind, ViewDef, WebContainer, WebPageAction } from "@/core/define"
 import type { Store } from "@/core/data"
-import { defaultSidebars, placePanel, sameSidebars, setCollapsed, setDocked, setHeight, setHeights, sideOf as sideIn, withoutPanel, type Place, type Side, type Sidebars } from "../../../core/sidebars.ts"
+import { defaultSidebars, placePanel, sameSidebars, setCollapsed, setDocked, setHeadingMode, setHeight, setHeights, sideOf as sideIn, withoutPanel, type HeadingMode, type Place, type Side, type Sidebars } from "../../../core/sidebars.ts"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
 import { peekSidebar } from "@/core/peek"
 import { isDesktop, isMac, keysText } from "@/core/platform"
@@ -32,7 +32,7 @@ import { parseTerminal } from "../../../core/terminalids.ts"
 import { drawnBy } from "../../../core/blocks.ts"
 import { placeKey } from "../../../core/slots.ts"
 
-export type { Place, Side, Sidebars } from "../../../core/sidebars.ts"
+export type { HeadingMode, Place, Side, Sidebars } from "../../../core/sidebars.ts"
 export { readSidebars, sameSidebars } from "../../../core/sidebars.ts"
 export type { DetailDef, FileCtx, FileFormat, FileView, FormatCtx, HeaderItem, PageCtx, PageView, SidebarSetup, LinkTarget, Manifest, Plugin, PluginDef, SearchDoc, SidebarCtx, SidebarPanel } from "@/core/define"
 
@@ -590,6 +590,17 @@ export const setPanelHeight = (key: string, px: number | null, at?: number) => c
 export const setPanelHeights = (change: Record<string, number | null>, at?: number) => changeSidebars((s) => setHeights(s, change, at))
 /** Put a panel in the phone's dock, or back in its drawer. */
 export const setPanelDocked = (key: string, docked: boolean) => changeSidebars((s) => setDocked(s, key, docked))
+/** How a panel's heading shows (core/sidebars.ts HeadingMode): its own mode, else appearance.json's `panelHeadings`
+ *  (a panel that `needsHeading` keeps it shown). Folded, a panel always shows it: it's all that's left of it. */
+export const headingMode = ({ key, panel }: PanelOf, s = sidebars(), prefs = getPrefs()): HeadingMode =>
+  s.headings?.[key] ?? defaultHeading(panel, prefs)
+/** A panel's heading as appearance.json has them, without a mode of its own. */
+export const defaultHeading = (panel: SidebarPanel, prefs = getPrefs()): HeadingMode =>
+  prefs.panelHeadings === "quiet" && !panel.needsHeading ? "quiet" : "shown"
+/** Give a panel's heading a mode (the one appearance.json gives it: none of its own). */
+export function setPanelHeading(p: PanelOf, mode: HeadingMode) {
+  changeSidebars((s) => setHeadingMode(s, p.key, mode === defaultHeading(p.panel) ? null : mode))
+}
 /** Fold a panel to its heading, or open it again. */
 export const togglePanelCollapsed = (key: string) => changeSidebars((s) => setCollapsed(s, key, !s.collapsed.includes(key)))
 

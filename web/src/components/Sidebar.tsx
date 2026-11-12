@@ -2,14 +2,14 @@
 // turning them off empties it). The components here are exported to plugins.
 import { Children, createContext, Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { createPortal } from "react-dom"
-import { Ellipsis, EyeOff, Layers, PanelBottom, PanelBottomClose, PanelLeft, PanelRight, PanelTop, Search, SlidersHorizontal, SquareArrowOutUpRight, type LucideIcon } from "lucide-react"
+import { ChevronsDownUp, Ellipsis, EyeOff, Layers, PanelBottom, PanelBottomClose, PanelLeft, PanelRight, PanelTop, Search, SlidersHorizontal, SquareArrowOutUpRight, type LucideIcon } from "lucide-react"
 import type { SidebarCtx, SidebarPanel, TabMark } from "@/core/define"
 import { edgeScroller, getDrag, onDrag, startDrag, useDrag, useDragItem, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 import { openView } from "@/core/files"
 import { openDetail } from "@/core/nav"
-import { isDesktop } from "@/core/platform"
+import { isDesktop, keysText } from "@/core/platform"
 import { closeTab } from "@/core/workspace"
-import { dockAtEnd, dockPanel, drawerPanels, headerItems, hideBarItem, hidePanel, isBarItem, setHeaderItemShown, shownHeaderItems, panelOfView, panelsIn, setPanelDocked, setPanelHeight, sideOf, sidebarPanels, sidebars, togglePanelCollapsed, useSidebars, type PanelOf, type Side } from "@/core/plugins"
+import { dockAtEnd, dockPanel, drawerPanels, headerItems, headingMode, setPanelHeading, hideBarItem, hidePanel, isBarItem, setHeaderItemShown, shownHeaderItems, panelOfView, panelsIn, setPanelDocked, setPanelHeight, sideOf, sidebarPanels, sidebars, togglePanelCollapsed, useSidebars, type HeadingMode, type PanelOf, type Side } from "@/core/plugins"
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { firstKeys, keyCaps, runCommandById, useCommandKeys } from "@/core/commands"
 import { useDismiss } from "@/core/focus"
@@ -26,7 +26,8 @@ import { usePanelLayout } from "@/components/panelLayout"
 import { foldPanel, liftedHeight, settle } from "@/components/panelMotion"
 
 import { modeJustSwitched, useSidebarMode, setSidebarMode } from "@/core/sidebarmode"
-import { PanelAlone, PanelFold, SidebarHeading } from "@/components/SidebarHeading"
+import { PanelAlone, PanelFold, PanelHeading, SidebarHeading } from "@/components/SidebarHeading"
+import { watchHeadingPeek } from "@/core/headingpeek"
 import { SwipeRow, type SwipeAction } from "@/components/SwipeRow"
 export { PanelFold, SidebarHeading }
 
@@ -55,8 +56,10 @@ const intoHint = (side: Side) => {
 export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { head?: React.ReactNode
   /** The left sidebar or the right one: each draws its own panels, and takes panels dropped on it. */
   side?: Side }) {
-  const { disabled, sidebarScroll, panelDividers } = usePrefs()
+  const prefs = usePrefs()
+  const { disabled, sidebarScroll, panelDividers } = prefs
   const setup = useSidebars()
+  useEffect(watchHeadingPeek, [])
   const panels = (ctx.phone ? drawerPanels : panelsIn)(side, setup, disabled)
   // Each panel scrolls in its own box, under a divider that sets its height, or the sidebar scrolls them all as one
   // (appearance.json `sidebarScroll`: Settings > Appearance). Phones' drawers scroll as one: a finger has no divider to drag.
@@ -127,12 +130,13 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
     // units between any two panels; and the last one ends 2 units above the vault's bar.
     <SidebarSide.Provider value={side}>
     {rail}
-    <div ref={box} data-sidebar-body={ctx.open ? side : undefined} data-sidebar-kept={ctx.open ? undefined : side} inert={!ctx.open} data-mode-fade={fades || undefined} data-scroll={own ? "panels" : "sidebar"} onDoubleClick={(e) => { const key = emptyRoomOf(e.target, box.current); panels.find((p) => p.key === key)?.panel.emptyDoubleClick?.() }}
+    <div ref={box} data-sidebar-body={ctx.open ? side : undefined} data-sidebar-kept={ctx.open ? undefined : side} inert={!ctx.open} data-mode-fade={fades || undefined} data-headings-peek={item?.from === "panel" || undefined} data-scroll={own ? "panels" : "sidebar"} onDoubleClick={(e) => { const key = emptyRoomOf(e.target, box.current); panels.find((p) => p.key === key)?.panel.emptyDoubleClick?.() }}
       className={cn("edge-fade-b relative flex min-h-0 flex-1 flex-col pb-1", !ctx.open && "hidden", own ? "overflow-x-hidden overflow-y-auto" : "overflow-y-auto overscroll-contain",
         making && "[&>:not([data-slide])]:invisible")}>
       {panels.length ? panels.map((p, i) => {
         const { key, panel } = p
         const folded = setup.collapsed.includes(key)
+        const heading = headingMode(p, setup, prefs)
         // A divider under it while a panel below it is open (none under the last: nothing to give it room).
         const divider = own && !folded && panels.slice(i + 1).some((q) => !setup.collapsed.includes(q.key))
         return (
@@ -150,14 +154,18 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
                 startDrag(e, { from: "panel", panel: key, label: handle.dataset.heading || panel.heading || panel.title, to: panel.view ? `view:${panel.view}` : undefined, drawn: !ctx.phone }, { touch: true })
               }
             }}
-            className={cn("flex shrink-0 flex-col pb-1", item?.panel === key && (item.drawn ? "invisible" : "opacity-50"))}>
+            className={cn("flex shrink-0 flex-col pb-1", (heading !== "shown" || prefs.panelHeadings === "quiet") && !folded && "has-[[data-panel-empty]]:hidden", item?.panel === key && (item.drawn ? "invisible" : "opacity-50"))}>
+            {/* With quiet headings, a panel with nothing to show (marked `data-panel-empty`) takes no room;
+                a panel picked up shows every quiet heading's name (the body's data-headings-peek). */}
             {/* Its own box (each panel scrolling in its own: the height usePanelLayout gives it), around what it draws
                 (measured: the most it's given). Scrolling as one, both are plain. */}
             <div data-panel-scroll className={cn("flex min-h-0 flex-col", own && !folded && "edge-fade-b overflow-y-auto")}>
               <div data-panel-content className="flex shrink-0 flex-col">
                 <PanelFold.Provider value={{ collapsed: folded, toggle: () => foldPanel(box.current, key, () => togglePanelCollapsed(key)), controls: panelId(key) }}>
-                  {panel.heading !== false && <SidebarHeading title={panel.heading ?? panel.title} open>{panel.actions?.({ ...shown, panel: key })}</SidebarHeading>}
-                  <Guard what={`The ${panel.title} panel`}><Drawn draw={() => panel.render({ ...shown, panel: key })} /></Guard>
+                  <PanelHeading.Provider value={heading}>
+                    {panel.heading !== false && <SidebarHeading title={panel.heading ?? panel.title} open>{panel.actions?.({ ...shown, panel: key })}</SidebarHeading>}
+                    <Guard what={`The ${panel.title} panel`}><Drawn draw={() => panel.render({ ...shown, panel: key })} /></Guard>
+                  </PanelHeading.Provider>
                 </PanelFold.Provider>
               </div>
             </div>
@@ -346,9 +354,17 @@ export function panelMenu(key?: string, side?: Side): MenuItem[] {
   const open: MenuItem[] = tab ? [{ label: `Open ${tab.name} in a tab`, icon: SquareArrowOutUpRight, sep: !!own.length, run: tab.open }] : []
   // A phone's drawer: a `dockable` panel goes to its dock and back.
   const docked = !!s.dock?.includes(key)
+  // Its heading: shown, quiet or hidden; one that isn't shown can't be clicked to fold, so folding is here too.
+  const of = all.find((p) => p.key === key)!, mode = headingMode(of, s), placed = !!sideOf(key, s)
+  const head: MenuItem[] = !placed ? [] : [{ label: "Heading", run: () => {}, sep: !!(own.length || open.length),
+    segments: { value: mode, pick: (v) => setPanelHeading(of, v as HeadingMode), options: [
+      { value: "shown", label: "Shown" },
+      { value: "quiet", label: "Quiet", note: keysText("A gap: its name shows when you point there, or hold ⌥") },
+      { value: "hidden", label: "Hidden", note: keysText("A gap: its name shows while you hold ⌥") }] } },
+    ...(mode !== "shown" && !s.collapsed.includes(key) ? [{ label: `Fold ${me.title}`, icon: ChevronsDownUp, run: () => togglePanelCollapsed(key) }] : [])]
   const dock: MenuItem[] = me.dockable && !isDesktop() ? [{ label: docked ? "Take out of the dock" : "Put in the dock", icon: docked ? PanelBottomClose : PanelBottom, sep: !!(own.length || open.length), run: () => setPanelDocked(key, !docked) }] : []
-  return [...own, ...open, ...dock,
-    { label: "Panels", icon: Layers, sep: !!(own.length || open.length || dock.length), run: () => {}, items: list },
+  return [...own, ...open, ...head, ...dock,
+    { label: "Panels", icon: Layers, sep: !!(own.length || open.length || head.length || dock.length), run: () => {}, items: list },
     // Where it is, together: the tab list on top instead (the tab bar), in the other sidebar, nowhere.
     ...(me.tabList ? commandItems("tab:sidebar", "setting:pane-tab-bars").map((it, i) => ({ ...it, sep: i === 0 })) : []),
     { label: `Move to ${other} sidebar`, icon: other === "right" ? PanelRight : PanelLeft, sep: !me.tabList, run: () => dockAtEnd(key, other) },

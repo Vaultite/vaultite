@@ -192,7 +192,8 @@ export function Sessions({ open, tab }: SidebarCtx) {
     },
   }
   return (
-    <div className="flex shrink-0 flex-col" data-auto-folded={auto || undefined}>
+    // (folded for being empty, it takes no room while the sidebars' headings are quiet: Sidebar.tsx, data-panel-empty)
+    <div className="flex shrink-0 flex-col" data-auto-folded={auto || undefined} data-panel-empty={auto || undefined}>
       <PanelFold.Provider value={own}>
         <SidebarHeading title="Terminals" open={open}>
           {/* The first agent (Claude Code, when it's on) a click away; + for a terminal or any agent. */}

@@ -33,6 +33,9 @@ export type Prefs = {
   sidebarScroll: SidebarScroll
   /** A hairline between the sidebars' panels (off: only the space between them, a divider showing on hover). */
   panelDividers: boolean
+  /** Panels' headings as headings, or quiet: a slim gap whose name shows while pointed at or ⌥ is held (a panel can
+   *  say otherwise: sidebars.json `headings`, SidebarPanel.needsHeading). */
+  panelHeadings: "shown" | "quiet"
   /** ⌘/⌃ and the wheel, or a pinch, over a note or a terminal steps its text size (core/textsize.ts); off, they do
    *  what the browser does. */
   quickTextSize: boolean

@@ -6,7 +6,7 @@ import { LinksPanel, LinksView, openPageNote } from "./Links"
 // panes' file. The link index is the core's (core/links.ts); unlinked mentions and web pages' links are plugin.ts'.
 export default definePlugin({
   // Hidden until shown (the sidebar's right-click menu); in the rail, its icon opens it as a flyout.
-  sidebar: { links: { title: "Links", heading: false, sort: 40, hidden: true, view: "links", flyout: { icon: Link2 }, render: (ctx) => <LinksPanel {...ctx} /> } },
+  sidebar: { links: { title: "Links", heading: false, needsHeading: true, sort: 40, hidden: true, view: "links", flyout: { icon: Link2 }, render: (ctx) => <LinksPanel {...ctx} /> } },
   views: {
     links: { icon: Link2, title: () => "Links", render: ({ store }) => <LinksView store={store} /> },
   },

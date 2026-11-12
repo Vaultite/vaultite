@@ -2,6 +2,7 @@
   "density": "compact",
   "sidebarScroll": "panels",
   "panelDividers": false,
+  "panelHeadings": "shown",
   "snippets": [],
   "fileIcons": false,
   "tabBar": true,

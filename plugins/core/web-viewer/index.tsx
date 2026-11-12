@@ -354,7 +354,7 @@ export default definePlugin({
   // Its tabs, bookmarks, history and the web in the quick switcher, the browser's command bar (⌘T's, with newtab.json `opens`).
   ...switcherSearch(openPage),
   sidebar: {
-    "web-pages": { title: "Sites", names: ["logins", "cookies", "signed in"], heading: false, sort: 34, hidden: true, view: "web-pages",
+    "web-pages": { title: "Sites", names: ["logins", "cookies", "signed in"], heading: false, needsHeading: true, sort: 34, hidden: true, view: "web-pages",
       menu: sitesPanelMenu, render: (ctx) => <SitesPanel open={ctx.open} openPage={openPage} newTab={askAddress} /> },
   },
   // (a container chosen, the link's menu's or its note's, opens here even with links set to the system browser: only

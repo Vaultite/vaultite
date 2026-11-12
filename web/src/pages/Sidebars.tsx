@@ -64,7 +64,7 @@ export function SidebarsSheet() {
         sub="How they show, and their panels: drag a panel between them or down to hide it. Right-click one for more." />
       {/* How they behave first, the switches Settings finds under Sidebars; then what's in them. */}
       <div className="hairline mb-4">
-        {[...(desktop ? [] : ["sidebar-buttons"]), "rails", ...(rails ? [] : ["peek-shade"]), "sidebar-scroll", "panel-dividers"].map((k) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />)}
+        {[...(desktop ? [] : ["sidebar-buttons"]), "rails", ...(rails ? [] : ["peek-shade"]), "sidebar-scroll", "panel-dividers", "quiet-panel-headings"].map((k) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />)}
       </div>
       <FilterField value={query} onChange={setQuery} placeholder="Filter panels" className="mb-3" autoFocus />
       <div className="grid grid-cols-2 gap-3">

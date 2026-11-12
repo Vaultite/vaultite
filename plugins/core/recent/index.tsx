@@ -110,7 +110,7 @@ function RecentView({ store }: { store: Store }) {
 export default definePlugin({
   sidebar: {
     recent: {
-      title: "Recent files", names: ["recent", "recently opened", "recently changed", "recently edited"], heading: false, sort: 37, hidden: true,
+      title: "Recent files", names: ["recent", "recently opened", "recently changed", "recently edited"], heading: false, needsHeading: true, sort: 37, hidden: true,
       view: "recent", flyout: { icon: History }, render: (ctx) => <RecentPanel {...ctx} />,
     },
   },

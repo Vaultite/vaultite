@@ -396,6 +396,9 @@ export type SidebarPanel = {
   /** The heading the sidebar draws over it, its name and the handle to drag it by: `title` unless set ("Pinned").
    *  `false`: it has none (the search field) or draws its own, with buttons (`SidebarHeading`: Files, Terminals). */
   heading?: string | false
+  /** What it shows doesn't say what it is (Inbox, Links): its heading stays shown while headings are quiet (appearance
+   *  `panelHeadings`). Quiet, a panel whose root says `data-panel-empty` (an empty Inbox) takes no room. */
+  needsHeading?: true
   /** Buttons on the heading the sidebar draws, shown on hover (Pinned's: pin the current file). */
   actions?: (ctx: SidebarCtx) => ReactNode
   /** Its own items at the top of its right-click menu, above Open in a tab and Panels ▸ (the File explorer's: show

@@ -13,7 +13,7 @@ import { openPluginSettings, pluginSettings, revealRow, settingDefault, settings
 import { getPrefs, onPrefs, setPrefs, type Prefs } from "@/core/prefs"
 import { signal } from "@/core/signal"
 import { quickTextSizeSub } from "@/core/textsize"
-import { isDesktop, isMac } from "@/core/platform"
+import { isDesktop, isMac, keysText } from "@/core/platform"
 import { openSettings } from "@/core/apppages"
 import { capitalize } from "@/lib/utils"
 
@@ -49,6 +49,9 @@ const editor = (k: EditorFlag) => ({
 const files = (k: "showHidden" | "showArchived" | "autoReveal", sub: string) => ({ plugin: { id: "files", key: k }, sub: () => sub, ...pref(k) })
 
 /** What Translucent window does here, or why it can't. */
+/** (⌥ as this computer names it) */
+const quietHeadingsSub = () => keysText("Panels' names show when you point at the space above one, or hold ⌥")
+
 function translucentSub() {
   const { why } = getTranslucency()
   if (!canTranslucent || why === "system") return "In the desktop app on a Mac or Windows 11: the desktop shows through the sidebars and bars"
@@ -78,6 +81,9 @@ const CORE: SwitchDef[] = [
   { id: "setting:sidebar-scroll", name: "Scroll sidebar panels separately", section: "sidebars", icon: ArrowDownUp, words: "sidebars",
     get: () => getPrefs().sidebarScroll !== "sidebar", set: (on) => setPrefs({ sidebarScroll: on ? "panels" : "sidebar" }) },
   { id: "setting:panel-dividers", name: "Lines between sidebar panels", section: "sidebars", icon: SeparatorHorizontal, words: "dividers sidebars", ...pref("panelDividers") },
+  { id: "setting:quiet-panel-headings", name: "Quiet panel headings", section: "sidebars", icon: Heading, sub: quietHeadingsSub,
+    words: "panel names titles labels hide headings minimal clean sidebars hover",
+    get: () => getPrefs().panelHeadings === "quiet", set: (on) => setPrefs({ panelHeadings: on ? "quiet" : "shown" }) },
   { id: "setting:quick-text-size", name: "Pinch to resize text", section: "appearance", icon: MousePointer2, sub: quickTextSizeSub,
     words: "font size text size zoom scroll wheel bigger smaller", ...pref("quickTextSize") },
   { id: "setting:readable-line-length", name: "Readable line length", icon: WrapText, words: "width wide column", ...editor("readableLineLength") },

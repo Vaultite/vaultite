@@ -26,6 +26,8 @@ heights the user dragged (px) with the sidebar's height then (`heightsAt`, so an
  "collapsed": ["pages:pages"], "dock": ["buttons:buttons"], "heights": {"terminal:sessions": 180}, "heightsAt": 820}
 ```
 `dock`: panels a phone draws as icons at its drawer's bottom instead of in the drawer (`vau panels dock`).
+`headings`: panels whose heading isn't as appearance.json's `panelHeadings` has it, `shown`, `quiet` or `hidden`
+(`{"tabs:tabs": "hidden"}`; `vau panels heading tabs quiet`, or right-click a panel: Heading).
 A panel's key is `<plugin id>:<name>`; one in neither sidebar is hidden (its plugin stays on); a right sidebar with
 none takes no room. Without the file every panel is on the left in the app's order, but the ones a plugin hides until
 asked (Links, Outline, Local graph, Recent files...). With Workspaces on each workspace may have its own (its `sidebars`), so change
@@ -114,7 +116,7 @@ set is `.obsidian/appearance.json`'s when the vault has one (its base theme, the
 - `density`: `compact` (default) | `comfortable`. `animation`: `natural` (default, springy) | `snappy` | `off`.
   `sidebarScroll`: `panels` (default: each panel scrolls in its own
   box, dividers between them set heights) | `sidebar` (the whole sidebar scrolls as one; `heights` ignored).
-  `panelDividers`: true | false (default), a line between the sidebars' panels. `sidebarButtons`: true | false (default), on phones, buttons in the top bar that open the sidebars; off, they're swiped in from the screen's edges (in a phone's browser, where the edges are the browser's, they always show). `quickTextSize`: true | false
+  `panelDividers`: true | false (default), a line between the sidebars' panels. `panelHeadings`: `shown` (default) | `quiet`: the panels' headings become a slim gap whose name and buttons show while the pointer is in it or ⌥ is held (a panel picked up shows them all; a folded one keeps its heading; one whose content doesn't say what it is, like Inbox or Links, stays shown; a panel with nothing to show, like an empty Inbox, takes no room); one panel's own: sidebars.json `headings`, where `hidden` is a gap named only while ⌥ is held. Phones have no hover: quiet ones there are hidden, held for their menu. `sidebarButtons`: true | false (default), on phones, buttons in the top bar that open the sidebars; off, they're swiped in from the screen's edges (in a phone's browser, where the edges are the browser's, they always show). `quickTextSize`: true | false
   (default): ⌘/⌃ and the wheel, or a pinch, over a note or a terminal changes its text size.
 - `interfaceFont`, `textFont` (notes), `monoFont` (code): a font's name or a CSS font-family list; empty is the app's.
   `fileIcons`: true | false. `tabBar`: true (default) | false: the window's tabs in a bar above its panes (a split tab is

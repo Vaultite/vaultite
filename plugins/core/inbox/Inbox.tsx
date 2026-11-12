@@ -654,8 +654,10 @@ export function InboxPanel({ store, open, file }: SidebarCtx) {
       {!answerable(e) && <HeadingButton icon={MoreHorizontal} label="More" onClick={rightClickBelow} />}
     </PanelRow>
   )
+  const empty = !l.decisions.length && !l.pinned.events.length && !l.pinned.results.length && !l.needs.length && !l.review.length && !rest.length
   return (
-    <div className="flex shrink-0 flex-col" data-inbox-panel>
+    // (empty, it takes no room while the sidebars' headings are quiet: "Nothing needs you" alone says nothing there)
+    <div className="flex shrink-0 flex-col" data-inbox-panel data-panel-empty={empty || undefined}>
       <SidebarHeading title="Inbox" open={open}>
         {l.decisions.length > 1 && <HeadingButton icon={ListTodo} label="Accept all defaults" onClick={() => void acceptAll(l.decisions)} />}
         {unread > 0 && <HeadingButton icon={CheckCheck} label="Mark all read" onClick={() => markRead()} />}
@@ -682,7 +684,7 @@ export function InboxPanel({ store, open, file }: SidebarCtx) {
           </PanelRow>
         ))}
         {rest.map(row)}
-        {!l.decisions.length && !l.pinned.events.length && !l.pinned.results.length && !l.needs.length && !l.review.length && !rest.length && <p className="h-7 pl-1.5 text-[13px] leading-7 text-tertiary">Nothing needs you.</p>}
+        {empty && <p className="h-7 pl-1.5 text-[13px] leading-7 text-tertiary">Nothing needs you.</p>}
         <FoldButton more={more} all={all} toggle={toggle} className="h-7 rounded-[5px] pl-1.5 text-[13px] hover:bg-foreground/[0.04]" />
       </div>
     </div>

@@ -37,7 +37,7 @@ export default definePlugin({
   // The last few things done, one line each: hidden until the user shows it, a flyout in the rail, a tab (view:activity),
   // or the left sidebar's mode (activity:sidebar), filling it.
   sidebar: {
-    feed: { title: "Activity", names: ["activity"], heading: false, sort: 32, hidden: true, view: "activity", flyout: { icon: Activity }, render: (ctx) => <ActivityPanel {...ctx} /> },
+    feed: { title: "Activity", names: ["activity"], heading: false, needsHeading: true, sort: 32, hidden: true, view: "activity", flyout: { icon: Activity }, render: (ctx) => <ActivityPanel {...ctx} /> },
   },
   // The agents' sessions that changed the file ("2 sessions"): each shown again, or resumed.
   fileBar: { sessions: { title: "Sessions here", sort: 46, render: (file) => (sessionsHere(file.path) ? <SessionsChip file={file} /> : null) } },

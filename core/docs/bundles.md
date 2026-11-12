@@ -8,7 +8,7 @@ imports others' (Import…, or pasting or dropping one on the page: its preview 
 The app's own, layouts: Standard (`standard`, the app's defaults: notes and links, a terminal and Claude Code), Zen (`zen`: the
 sidebars hide until the pointer reaches the window's edge, no tab bar, Glance), Browser (`browser`: favourites and vertical
 tabs, ⌘T as an address bar, spaces, tabs archived on their own, a page's notes beside it). In the directory (Plugins' Get),
-packs: Life OS (days, people, health, books, and pages over them) and Agents (coding agents in terminals, their machines).
+packs: Life OS (days, people, health, books, and pages over them) and Agents (coding agents in terminals, their machines); a layout, Tab rail (the tabs and favourites down the right edge, quiet panel headings).
 - **Kinds** (bundle.json's `kind`): a `layout` (the user calls it that: the layout picker's), a `pack` (mostly plugins
   and pages: the store's) or a `look` (a restyle, Glass). Unsaid: a look when it holds only appearance.json, themes and
   snippets, else a layout. A pack or a look is applied over the layout in use, which stays the one in use.
