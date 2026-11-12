@@ -28,9 +28,12 @@ function updateError(host: Host, log: (line: string) => void, message: string) {
   for (const w of host.windows()) void fetch(`http://127.0.0.1:${w.port}/api/errors`, { method: "POST", headers: { "Content-Type": "application/json" }, body }).catch(() => {})
 }
 
-/** The commit the server on `port` runs (its app.version), "" when it doesn't say. */
 export const serverCommit = (port: number, log: (line: string) => void) => fetch(`http://127.0.0.1:${port}/api/ops/app.version`, { method: "POST",
-  headers: { "Content-Type": "application/json" }, body: "{}", signal: AbortSignal.timeout(5000) }).then((r) => r.json()).then((j: { commit?: unknown }) => String(j.commit ?? ""), (e) => {
+  headers: { "Content-Type": "application/json" }, body: "{}", signal: AbortSignal.timeout(5000) }).then(async (r) => {
+  const { VersionHere } = await import("../core/contracts/version.ts")
+  const v = VersionHere.pick({ commit: true }).safeParse(await r.json())
+  return v.success ? v.data.commit ?? "" : ""
+}, (e) => {
   log(`its server on port ${port} didn't say its commit: ${(e as Error).message}`)
   return ""
 })

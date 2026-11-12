@@ -2,7 +2,8 @@
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { gitEnv } from "../gitenv.ts"
-import type { CiResult, CiState } from "./ci.ts"
+import type { Judged } from "../contracts/version.ts"
+import type { CiResult } from "./ci.ts"
 import { githubRepo } from "./ci.ts"
 
 const exec = promisify(execFile)
@@ -59,7 +60,6 @@ export const commitsSince = async (git: Git, head: string, tip: string) =>
   (await git("rev-list", "--first-parent", "--max-count=40", `${head}..${tip}`)).split("\n").filter(Boolean)
 
 /** A commit CI was asked about, and its answer (no state: GitHub didn't say). */
-export type Judged = { commit: string; ok: boolean | null; state?: CiState }
 
 /** The commit to update to: the tip once CI passed it, else the newest after the checkout's that did, never the one that
  *  failed before nor older. Else why it waits, and what CI said of each commit asked, the tip first (first parents). */

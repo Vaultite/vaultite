@@ -1,7 +1,7 @@
 // app.update (vau update): a look now at the branch this server follows, the same look the timed ones are
 // (core/update/updater.ts), for whoever just pushed and doesn't want to wait for the next.
 import { defineOp, type Op } from "../ops.ts"
-import type { UpdateStatus } from "../update/updater.ts"
+import { UpdateStatus } from "../contracts/version.ts"
 import { checkNow, LOOK_EVERY, updateStatus } from "../update/updater.ts"
 import { desktopCall, inDesktop } from "../desktopapp.ts"
 import { running } from "../running.ts"
@@ -31,8 +31,8 @@ through its code store where that's on (only what it changed restarts), else sta
     // (a server that follows nothing in the desktop app: the app's own updates look now, Main's through its code store)
     // (this server's own commit told: the app can't ask it while this op runs)
     run: async () => updateStatus().branch || !inDesktop() ? checkNow()
-      : ((await desktopCall("app:update-look", [{ port: Number(process.env.PORT), commit: (await running()).commit }], 30 * 60_000).catch(() => null)) as UpdateStatus | null) ?? checkNow(),
-    text: (s: UpdateStatus) => [
+      : UpdateStatus.safeParse(await desktopCall("app:update-look", [{ port: Number(process.env.PORT), commit: (await running()).commit }], 30 * 60_000).catch(() => null)).data ?? checkNow(),
+    text: (s) => [
       s.branch ? `Following ${s.branch}, ${s.state}: ${s.why}` : `Updates ${s.state}: ${s.why}`,
       ...(s.running || s.origin ? [[s.running && `Runs ${short(s.running)}`, s.origin && `origin/${s.branch} is at ${short(s.origin)}`].filter(Boolean).join("; ")] : []),
       ...(s.blocked?.files?.length ? ["Not committed:", ...s.blocked.files.map((f) => `- ${f}`)] : []),

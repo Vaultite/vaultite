@@ -3,38 +3,17 @@
 import { type Machine, MACHINE_CLIENT } from "../plugins.ts"
 import { defineOp, type Op, OpError, type OpCtx, restarting } from "../ops.ts"
 import { desktopCall, inDesktop } from "../desktopapp.ts"
-import { ambiguousCommit, contains, isHash, type PartRuns, processes, type Process, resolveCommit, type Running, running, runsOf } from "../running.ts"
-import { type UpdateStatus, updateStatus } from "../update/updater.ts"
+import { z } from "zod"
+import { AppUpdates, isHere, type Process, Relayed, type UpdateStatus, type Verdict, type Version } from "../contracts/version.ts"
+import { ambiguousCommit, contains, isHash, type PartRuns, processes, resolveCommit, type Running, running, runsOf } from "../running.ts"
+import { updateStatus } from "../update/updater.ts"
 import { redRoute } from "../update/git.ts"
 import { API_VERSION, APP_VERSION } from "../version.ts"
-import type { Any } from "./common.ts"
 
 const short = (sha: unknown) => String(sha).slice(0, 7)
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 /** How often a wait looks again (each look is a few git commands). */
 const LOOK_MS = 3000
-
-type AppUpdates = { mode: "automatic" | "notify" | "off"; available: boolean; from: string; ready: string | null; doing: string | null; commit?: string | null
-  /** A Dev instance's: the worktree it runs (electron/devroot.ts). */
-  worktree?: { worktree: string; branch: string; commit: string; dirty: boolean }
-  /** Whether its menu-bar helper runs (electron/updates.ts). */
-  helper?: boolean
-  /** Main's updates through the root store (electron/storehost.ts): their state, and how the one ready goes in. */
-  store?: { state: string; why: string; running?: string; last?: { from: string; to: string; at: number } }
-  how?: "install" | "relaunch"
-  /** Why the main process runs older code, while its relaunch waits (the store's plan). */
-  behind?: string
-  /** The code root this launch runs (the shell's pick), and after a fallback the one it didn't and why. */
-  root?: { from: string; commit: string | null; fellBack?: { commit: string | null; why: string } } }
-/** Whether a commit is live, and when not, whether that can still change by itself (`final`: it can't). `why`, one
- *  sentence saying it: the output's last line. */
-export type Verdict = { commit: string; live: boolean; final: boolean; why: string
-  /** never: not by itself; pending: asked without waiting; timeout: waited all it may; unreachable: its server didn't answer. */
-  outcome: "live" | "never" | "pending" | "timeout" | "unreachable"
-  /** With wait: the seconds it waited, across the server's restarts. */
-  waited?: number
-  /** CI failed on this commit (it, or the newest commit with it): it goes live only with a fix. */
-  red?: string }
 
 /** Is `given` (`full`: null when this checkout lacks it) live: taken by the updates (`taken`), and each part its change
  *  reaches runs it or after it (`parts`)? `failed`: whether the update that failed has it. */
@@ -103,8 +82,11 @@ export async function waitFor(given: string, timeout: number, before = 0, lookNo
 }
 
 
+const Refusal = z.object({ error: z.string() })
+
 /** Another machine's answer to app.version, through this server; a wait outlasts its restarts (an update's). */
-async function elsewhere(ctx: OpCtx, id: string, body: Any): Promise<Any> {
+type Asked = { commit?: string; wait?: true; timeout?: number; waited?: number }
+async function elsewhere(ctx: OpCtx, id: string, body: Asked): Promise<Version | null> {
   if (ctx.who.client?.startsWith("machine/")) throw new OpError("a call passed on from another machine runs where it's sent", 409)
   const all = await ctx.api("GET", "machines").catch(() => []) as Machine[]
   const m = all.find((x) => x.id === id)
@@ -117,10 +99,12 @@ async function elsewhere(ctx: OpCtx, id: string, body: Any): Promise<Any> {
     const spent = Math.round((Date.now() - began) / 1000), left = Math.max(0, timeout - spent)
     const r = await fetch(`${m.url}/api/ops/app.version`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" },
       body: JSON.stringify(body.wait ? { ...body, timeout: left, waited: before + spent } : body), signal: AbortSignal.timeout((left + 30) * 1000) }).catch(() => null)
-    const out = r ? await r.json().catch(() => null) as Any : null
+    const out: unknown = r ? await r.json().catch(() => null) : null
     if (r && !restarting(r.status, out)) {
-      if (!r.ok) throw new OpError(`${m.label} refused it: ${out?.error || `it answered ${r.status}`}`, r.status)
-      return { ...out, machine: m.id }
+      if (!r.ok) throw new OpError(`${m.label} refused it: ${Refusal.safeParse(out).data?.error || `it answered ${r.status}`}`, r.status)
+      const v = Relayed.omit({ machine: true }).safeParse(out)
+      if (!v.success) throw new OpError(`${m.label} answered something that isn't its version: ${v.error.issues[0]?.message}`, 502)
+      return { ...v.data, machine: m.id }
     }
     // (restarting into an update, most likely: asked again till the wait's time is up)
     down ??= Date.now()
@@ -171,7 +155,7 @@ new build by themselves (at once when hidden; visible, they offer Reload). machi
       machine: { type: "string", description: "another of the Machines, by its id (studio): its version, asked through this server" },
     },
     args: ["commit"],
-    run: async ({ commit, wait, timeout, waited, machine }, ctx) => {
+    run: async ({ commit, wait, timeout, waited, machine }, ctx): Promise<Version> => {
       const given = typeof commit === "string" ? commit.trim() : ""
       if (wait && !given) throw new OpError("wait for which commit? give it (`commit`)")
       // (an older vau sends HEAD or a branch as typed: this server would read it in its own checkout)
@@ -187,9 +171,9 @@ new build by themselves (at once when hidden; visible, they offer Reload). machi
         updates: updateStatus(), app, processes: await processes(processList(startedOn, app)) }
     },
     // (the verdict last: an agent's output cut to its end, or its exit code lost to a pipe, still says it)
-    text: (r) => r.version === undefined ? String(r.live?.why ?? "") : [
+    text: (r) => !isHere(r) ? r.live?.why ?? "" : [
       `Vaultite ${r.version} (plugin API ${r.api})${r.commit ? `, ${short(r.commit)}${r.branch ? ` on ${r.branch}` : ""}` : ""}${r.machine ? ` on ${r.machine}` : ""}`,
-      ...(r.app?.worktree ? [`Worktree: ${r.app.worktree.worktree}, ${r.app.worktree.branch}@${short(r.app.worktree.commit)}${r.app.worktree.dirty ? ", with changes not committed" : ""}`] : []),
+      ...worktreeLine(r.app),
       ...(r.subject ? [`Commit: ${r.subject}${r.at ? ` (${new Date(r.at).toISOString()})` : ""}`] : []),
       // (out of step: a checkout pulled and built but not restarted, or restarted but not built)
       ...(r.web?.commit && r.commit && r.web.commit !== r.commit ? [`Web app: built from ${short(r.web.commit)}, not ${short(r.commit)}`] : []),
@@ -206,15 +190,20 @@ new build by themselves (at once when hidden; visible, they offer Reload). machi
 const processList = (startedOn: string | null, app: AppUpdates | "unknown" | null) => [{ id: "server", commit: startedOn },
   ...(app && app !== "unknown" ? [{ id: "desktop", commit: app.commit ?? null }, ...((app.helper ?? process.platform === "darwin") ? [{ id: "helper", commit: app.commit ?? null }] : [])] : [])]
 
+const worktreeLine = (app: AppUpdates | "unknown" | null) => {
+  const w = app && app !== "unknown" ? app.worktree : undefined
+  return w ? [`Worktree: ${w.worktree}, ${w.branch}@${short(w.commit)}${w.dirty ? ", with changes not committed" : ""}`] : []
+}
+
 /** A process's line: its commit, and whether what it runs changed since. */
 const processLine = (p: Process) => `${p.label}: ${p.commit ? `started on ${short(p.commit)}` : "commit unknown"}, ${p.stale === null ? `can't say if it runs the newest code (${p.why})`
   : p.stale ? `runs older code: ${p.first} changed since${p.why ? ` (${p.why})` : p.chain && p.chain.length > 1 ? ` (${p.chain.join(" > ")})` : ""}` : "nothing it runs changed since"}`
 
 /** The desktop app's updates, when it runs this server or is attached to it (null: none; unknown: it didn't say). */
 const appUpdates = (): Promise<AppUpdates | "unknown" | null> => !inDesktop() ? Promise.resolve(null)
-  : (desktopCall("app:updates", [], 5000) as Promise<AppUpdates | null>).then((a) => a ?? "unknown", () => "unknown" as const)
+  : desktopCall("app:updates", [], 5000).then((a) => { const r = AppUpdates.safeParse(a); return r.success ? r.data : "unknown" }, () => "unknown" as const)
 
-function updatesLine(u: Any, app: AppUpdates | "unknown" | null) {
+function updatesLine(u: UpdateStatus, app: AppUpdates | "unknown" | null) {
   if (u.branch) return `following ${u.branch}, ${u.state}: ${u.why}`
   if (!app) return "off (not a service install following a branch, nor in the desktop app)"
   if (app === "unknown") return "the desktop app's, which didn't say how they are (an older app)"

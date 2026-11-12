@@ -10,18 +10,8 @@ import { copyText } from "@/core/richmd"
 import { Button } from "@/components/Button"
 import { Group, Section, SettingRow } from "@/components/kit"
 import { capitalize } from "@/lib/utils"
+import type { VersionHere } from "../../../core/contracts/version.ts"
 
-type Version = {
-  commit: string | null; subject?: string; at?: number
-  web?: { entry: string | null; commit: string | null }
-  updates: { branch: string | null; state: "off" | "current" | "waiting" | "updating" | "failed"; why: string; checked: number | null
-    last?: { from: string; to: string; at: number; elsewhere?: string[] }; error?: { message: string } }
-  app: null | "unknown" | { mode: "automatic" | "notify" | "off"; available: boolean; ready: string | null; doing: string | null; commit?: string | null
-    worktree?: { worktree: string; branch: string; commit: string; dirty: boolean }
-    store?: { state: string; why: string }; how?: "install" | "relaunch"; behind?: string
-    root?: { from: string; commit: string | null; fellBack?: { commit: string | null; why: string } } }
-  processes?: { id: string; label: string; commit: string | null; stale: boolean | null; first?: string; why?: string }[]
-}
 const FROM: Record<string, string> = { current: "from its code store", good: "from its code store (the last that started)", bundle: "its own bundle", checkout: "this checkout", dev: "a worktree" }
 
 const short = (sha: string) => sha.slice(0, 7)
@@ -33,10 +23,10 @@ const Hash = ({ sha }: { sha: string }) => <span className="font-mono tabular-nu
 
 function useVersion() {
   const served = useServedBuild()
-  const [v, setV] = useState<Version | null>(null)
+  const [v, setV] = useState<VersionHere | null>(null)
   useEffect(() => {
     let live = true
-    const ask = () => { if (!document.hidden) op<Version>("app.version").then((r) => { if (live) setV(r) }, () => {}) }
+    const ask = () => { if (!document.hidden) op<VersionHere>("app.version").then((r) => { if (live) setV(r) }, () => {}) }
     ask()
     const timer = setInterval(ask, 30_000)
     document.addEventListener("visibilitychange", ask)

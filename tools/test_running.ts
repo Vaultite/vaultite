@@ -7,7 +7,7 @@ import { type Any, check, exit, section, sleep, summary, tempDir, waitFor } from
 import { stampIn, stampOf, stampText } from "../core/buildstamp.ts"
 import { gitEnv } from "../core/gitenv.ts"
 import { isHash, runningIn } from "../core/running.ts"
-import type { UpdateStatus } from "../core/update/updater.ts"
+import type { UpdateStatus } from "../core/contracts/version.ts"
 import { verdict, versionOps, waitFor as waitLive } from "../core/coreops/version.ts"
 import { Ctx, execute } from "../core/cli.ts"
 import { entryOf } from "../core/ops.ts"
@@ -194,7 +194,7 @@ check("off, or notify (someone must restart it): it won't be by itself", v({ upd
 
 section("vau version's text")
 {
-  const op = versionOps()[0], base = { version: "0.1.0", api: 9, commit: full, branch: null, updates: off, app: null }
+  const op = versionOps()[0], base = { version: "0.1.0", api: 9, commit: full, branch: null, updates: off, app: null, pid: 1, started: 0 }
   const dev = op.text!({ ...base, app: { mode: "notify", available: true, from: "worktree", ready: null, doing: null, commit: full, worktree: { worktree: "lighthouse-fix", branch: "fix", commit: full, dirty: true } } }, {})
   check("a Dev instance: its worktree, branch and commit, and whether it has changes", dev.split("\n")[1] === "Worktree: lighthouse-fix, fix@ccccccc, with changes not committed", dev)
   check("none otherwise", !op.text!(base, {}).includes("Worktree"))

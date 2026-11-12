@@ -4,38 +4,10 @@ import fs from "node:fs"
 import path from "node:path"
 import type { Ci } from "./ci.ts"
 import { githubCi } from "./ci.ts"
-import type { Judged, Relation } from "./git.ts"
+import type { Blocked, Judged, UpdateState, UpdateStatus } from "../contracts/version.ts"
+import type { Relation } from "./git.ts"
 import { capped, changedFiles, commitsNotIn, commitsSince, currentBranch, dirtyFiles, fetchBranch, gitIn, originRepo, pickTarget, relation, short } from "./git.ts"
 
-type UpdateState = "off" | "current" | "waiting" | "updating" | "failed"
-/** What in the checkout stops an update (what agents working in a server's checkout leave behind): changes not
- *  committed, commits not on the branch, the two diverged, another branch checked out. */
-export type Blocked = { by: "uncommitted" | "unpushed" | "diverged" | "branch"; files?: string[]; commits?: string[] }
-/** What `app.version` (vau version) and `app.update` (vau update) show: what runs and what the updates are doing. */
-export type UpdateStatus = {
-  /** The branch followed, null when off. */
-  branch: string | null
-  state: UpdateState
-  /** Why, in words. */
-  why: string
-  checked: number | null
-  /** A look is under way (`vau update` joins it). */
-  looking?: boolean
-  /** The commit this server runs: what it started on, moved on by an update needing no restart. */
-  running?: string
-  /** origin's commit of the branch at the last look. */
-  origin?: string
-  /** The branch's newer commit, while waiting for it. */
-  next?: string
-  /** What in the checkout stops it, when that's what does. */
-  blocked?: Blocked
-  /** While it waits on CI: what CI said of the commits it asked about, the tip first (git.ts' redRoute reads it). */
-  ci?: Judged[]
-  /** The last update; `elsewhere`: the CI jobs that had failed on it besides this OS's (which passed) when it was taken. */
-  last?: { from: string; to: string; at: number; restarted: boolean; elsewhere?: string[] }
-  /** The update that failed (it isn't tried again until the branch moves on). */
-  error?: { at: number; commit: string; message: string }
-}
 /** What lasts across restarts. */
 type Kept = Pick<UpdateStatus, "last" | "error">
 

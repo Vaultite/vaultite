@@ -6,7 +6,7 @@ import { promisify } from "node:util"
 const exec = promisify(execFile)
 
 /** Where CI is with a commit: none when it has no run (a commit pushed under a newer one never gets one). */
-export type CiState = "passed" | "failed" | "running" | "none" | "cancelled"
+import type { CiState } from "../contracts/version.ts"
 /** A commit's verdict; ok null is not yet (running, not run, cancelled, GitHub not answering: no `state`). `elsewhere`:
  *  the jobs that failed besides the ones it waits for (another OS's tests, the demo), as far as GitHub said. */
 export type CiResult = { ok: boolean | null; why: string; state?: CiState; elsewhere?: string[] }

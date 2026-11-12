@@ -5,6 +5,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { promisify } from "node:util"
+import type { Process } from "./contracts/version.ts"
 import { gitEnv } from "./gitenv.ts"
 import { backendChanged } from "./selfupdate.ts"
 import type { Graph, ParseCache } from "./update/closure.ts"
@@ -26,9 +27,6 @@ export type Running = {
   web: { entry: string | null; commit: string | null }
 }
 
-/** A process and whether it runs older code: what it reaches (core/update/closure.ts, `id` its entry) changed since the
- *  commit it started on (`first`: the changed file nearest it, `chain` how it reaches it). Null: can't say (`why`). */
-export type Process = { id: string; label: string; commit: string | null; stale: boolean | null; first?: string; chain?: string[]; why?: string }
 
 /** Whether a part (a process, or the web app) runs a commit: `it`, the commit or one after it; `untouched`, older code
  *  the commit's own change doesn't reach; `older`, code it does (`file`, the nearest); `unknown`, can't say (`why`). */

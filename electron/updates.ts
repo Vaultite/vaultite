@@ -5,6 +5,7 @@ import { spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { Readable } from "node:stream"
+import type { AppUpdates, UpdateStatus } from "../core/contracts/version.ts"
 import { plainError, sentence } from "../core/plainerror.ts"
 import { BRANCH, CODE, DEV, SHELL, WORKTREE } from "./identity.ts"
 import { relaunchSoon, storeLook, storeOn, storeReady, storeStatus, type StoreHost } from "./storehost.ts"
@@ -115,7 +116,7 @@ function run(fx: Effect) {
   }
 }
 
-export function appUpdates() {
+export function appUpdates(): AppUpdates {
   const store = storeOn() ? storeStatus() : null, o = state.offer
   return { mode: host.mode(), available: updatable(), from: worktree ? "worktree" : RELEASE ? "releases" : BRANCH, ready: o?.commit ?? null,
     doing: statusOf(state, app.getName())?.text ?? null, commit: worktree?.commit ?? CODE?.commit ?? null, helper: host.helper(), ...(worktree ? { worktree } : {}),
@@ -137,7 +138,7 @@ export function logUpdate(line: string) {
 function offer(commit: string, how: Exclude<How, "worktree">, behind?: string | null) {
   send({ type: "offered", commit, how: WORKTREE ? "worktree" : how, ...(behind !== undefined ? { behind } : {}) })
 }
-export async function lookNow(asking?: { port?: unknown; commit?: unknown }) {
+export async function lookNow(asking?: { port?: unknown; commit?: unknown }): Promise<UpdateStatus | null> {
   if (typeof asking?.port === "number" && typeof asking.commit === "string") told.set(asking.port, asking.commit)
   if (storeOn()) {
     send({ type: "check", byHand: false, via: "store", off: host.mode() === "off", recent: false })

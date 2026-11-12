@@ -913,7 +913,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `hookCommand(route, query, more?)`: A shell command that posts its stdin (a hook's JSON) to `route` here; `more` is appended to the query as the shell expands it ("&prev=$prev").
 - `hostOps(vault, host)`: The App gives its vault's plugins operations and events (core/app.ts).
 - `HTTPError`
-- `inDesktop()`: Whether this server has a desktop app on this machine to ask (its browser).
+- `inDesktop()`
 - `isColor(c)`
 - `isOutside`
 - `isTextKind(k)`: Kinds whose text the app reads (and writes); "other" is tried as text too.
