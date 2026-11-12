@@ -1,7 +1,7 @@
 // Settings: sections beside the one shown (narrow, in their place; a phone's, a sheet each). The app's own plugins'
 // settings are parts of their kind's section (Search field's in Files); the others' on their page, under Plugins.
 import { useContext, useMemo, useState, useEffect, type ReactNode } from "react"
-import { ChevronLeft, FolderOpen, Info, Keyboard, Palette, PenLine, Puzzle, ShieldCheck, SlidersHorizontal, Sparkles, SquareTerminal, Store as StoreIcon, type LucideIcon } from "lucide-react"
+import { Bot, ChevronLeft, FolderOpen, Info, Keyboard, Palette, PenLine, Puzzle, ShieldCheck, SlidersHorizontal, SquareTerminal, Store as StoreIcon, type LucideIcon } from "lucide-react"
 import type { Store } from "@/core/data"
 import { desktop as desktopApp, type UpdateMode } from "@/core/desktop"
 import { isDesktop } from "@/core/platform"
@@ -128,7 +128,7 @@ const CORE: Sec[] = [
   // (last of the app's own: looked for when something's wrong or new, not to set things up)
   headed("about", "About", Info, "var(--gray)", () => <About />, "Version, updates and errors"),
   // (the menu's AI group: the app's plugins' pages follow it)
-  headed("ai", "AI", Sparkles, "var(--purple)", (store) => <AiPanel store={store} />, "Agents, the apps you connect and what they read"),
+  headed("ai", "AI", Bot, "var(--purple)", (store) => <AiPanel store={store} />, "Agents, the apps you connect and what they read"),
   // (the menu's Plugins group: yours, then Get)
   { id: "plugins", label: "Plugins", icon: Puzzle, tint: "var(--blue)", render: (store) => <><PluginsPane store={store} tab="plugins" pick={pickSetup} /><PluginUpdates /></> },
   { id: "get", label: "Get plugins", icon: StoreIcon, tint: "var(--blue)", render: (store) => <PluginsPane store={store} tab="get" pick={pickSetup} /> },

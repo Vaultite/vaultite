@@ -6,6 +6,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Settings' AI section has a little robot for its icon** instead of sparkles.
 - **Remote access in Settings is now Share & sync**: its page says plainly that Vaultite Cloud and shared folders are
   optional, and that without them Vaultite stays on your own network.
 - **The desktop app's first-run window and screen sharing's pages open again**: since updates began downloading only
