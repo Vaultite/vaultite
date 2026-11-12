@@ -385,8 +385,7 @@ export class Plugin {
 
   /** `where`: the plugin's import.meta.url (or any file in its folder). */
   constructor(where: string) {
-    const file = where.startsWith("file:") ? fileURLToPath(where) : where
-    this.dir = fs.statSync(file).isDirectory() ? file : path.dirname(file)
+    this.dir = path.dirname(where.startsWith("file:") ? fileURLToPath(where) : where)
     this.manifest = JSON.parse(readText(path.join(this.dir, "manifest.json")))
     this.id = this.manifest.id
     // core (the app's built-in plugins) or vault (.vaultite/plugins/<id>/ in the vault: core/vaultplugins.ts)
