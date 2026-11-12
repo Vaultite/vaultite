@@ -3,7 +3,7 @@ import path from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import fs from 'node:fs'
-import { defineConfig, type Plugin } from 'vite'
+import { defineConfig, normalizePath, type Plugin } from 'vite'
 import { ICON_FILE, ICON_NAME, PLUGIN_MODULE, svgIcon } from './core/pluginmeta.ts'
 import { exportFile } from './core/rules.ts'
 import { STAMP_META, stampText } from './core/buildstamp.ts'
@@ -89,7 +89,8 @@ export function pluginModules(dirs: string[]): Plugin {
       for (const d of dirs) {
         if (!fs.existsSync(path.join(d, m[1], 'manifest.json'))) continue
         const f = exportFile(path.join(d, m[1]), m[2])
-        if (f) return f
+        // (Vite's ids use forward slashes: a native Windows path would be a second copy of a module others import)
+        if (f) return normalizePath(f)
         this.error(`${spec}: ${m[1]} doesn't export '${m[2]}' (its manifest's exports)`)
       }
       return this.error(`${spec}: there's no plugin ${m[1]}`)
@@ -132,6 +133,12 @@ export function bootChunks(): Plugin {
     name: 'vaultite-boot-chunks',
     apply: 'build',
     buildEnd() {
+      const ids = new Map<string, string>()
+      for (const id of this.getModuleIds()) {
+        const key = normalizePath(id).toLowerCase(), was = ids.get(key)
+        if (was) this.error(`${id} is bundled twice (also as ${was}): a plugin resolved it to a path of its own`)
+        ids.set(key, id)
+      }
       boot.pages.clear(); boot.libs.clear(); boot.editor.clear(); boot.terminal.clear(); boot.chat.clear()
       const pages = [...this.getModuleIds()].filter((id) => id.endsWith('.html') && this.getModuleInfo(id)?.isEntry).sort()
       const starts = new Set(pages.flatMap((p) => this.getModuleInfo(p)?.importedIds ?? []))
