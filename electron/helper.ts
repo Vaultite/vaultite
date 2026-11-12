@@ -21,7 +21,7 @@ import { macAddon } from "./macaddons.ts"
 import { type Call, callFrom, callSaid, callShown, type MicUser } from "./calllogic.ts"
 import { hideFromShares, overlayNumbers } from "./overlaywin.ts"
 import { icon } from "./menu.ts"
-import { answerAloud, openArgs, openedBundle, atOffset, badgeOf, dottedBitmap, beatsWait, besidePointer, bitmapsDiffer, dictationKeys, drawingHold, drawnShapes, floatingOver, type HeldClick, type HelperJob, THUMB, inkOf, jobNews, jobNote, menuNow, cursorBitmap, TINT_RGB, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, type ScreenWindow, liveInput, closeCrop, shotCrop, tappedKeys, trailStrokes } from "./helperlogic.ts"
+import { answerAloud, openArgs, openedBundle, badgeOf, dottedBitmap, beatsWait, besidePointer, bitmapsDiffer, dictationKeys, drawingHold, drawnShapes, floatingOver, type HeldClick, type HelperJob, THUMB, inkOf, jobNews, jobNote, menuNow, cursorBitmap, TINT_RGB, offsetIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, type ScreenWindow, liveInput, closeCrop, shotCrop, tappedKeys, trailStrokes } from "./helperlogic.ts"
 import { REAL as captureReal, captureHeard, captureHost, recordFor, recordingNow, regionAct, regionDrag, regionMoved, regionRect, regionScene, stopCapture } from "./capture.ts"
 import { quitRecorder } from "./recorder.ts"
 import { happened, keepTimeline, queryTimeline, timelineHost, timelineOn, timelineRefollow } from "./timeline.ts"
@@ -37,6 +37,7 @@ import { changedBoxes } from "../core/desktop/framediff.ts"
 import { type Press, pressLog } from "./presslog.ts"
 import { type Phase, pressMachine, type PressMachine } from "./pressmachine.ts"
 import { talkState } from "./talkstate.ts"
+import { cursorPlaces, onScreen, placeKey } from "./cursorplaces.ts"
 import { companionVoice } from "./voice.ts"
 import { realtimeFront } from "./realtimefront.ts"
 import { countText, type WalkPlace } from "../core/desktop/walks.ts"
@@ -249,7 +250,7 @@ export function helperBusy(): string | null {
 
 /** Its cursor off the screen: done there (its exchange over, idle, its words gone). */
 function leave(name: string) {
-  parks.delete(name)
+  places.unpark(name)
   live.say({ t: "home", agent: name })
 }
 
@@ -529,7 +530,7 @@ function heard(m: Record<string, unknown>) {
   if (m.event === "fn") return prefs.talk.includes("fn") ? talkHeard(m as FnEvent) : prefs.keys.includes("fn") ? fnHeard(m) : undefined
   if (m.event === "mod") return modHeard(m)
   if (m.event === "chord") return chordHeard(m)
-  if (m.event === "moved") return windowMoved(m)
+  if (m.event === "moved") return places.windowMoved(m)
   if (m.event === "ink") return inkHeard(m)
   // (its exchange on: a click elsewhere moves on, Esc ends it, its voice with it)
   // (one let go while the Talk key was held: it went on to the app, and goes with the ask)
@@ -546,8 +547,7 @@ function heard(m: Record<string, unknown>) {
     front = m as unknown as AppWindowInfo
     frontHappened()
     timelineRefollow()
-    // (another app in front may cover or uncover what the cursors point at: looked at again)
-    for (const e of placed.values()) e.at = 0
+    places.lookAgain()
     host?.event("screen:front", hidden(front) ? { bundle: front.bundle, name: front.name, private: true } : { bundle: front.bundle, name: front.name, title: front.title, window: front.window, vaultite: !!front.vaultite })
     return draw()
   }
@@ -2006,94 +2006,8 @@ function voiceLevel(on: boolean, v: number) {
 
 // ---------- the cursor over the screen
 
-/** Places on screen resolved to points (an element's frame by its text, a window's), kept a moment: windows move. Each
- *  knows its window and its frame then, so a move of it (told by the screen helper) moves the point at once. */
-type Placed = { at: number; p: Point | null; pending: boolean; win?: number; frame?: Rect | null; find?: boolean
-  /** The element found (`find`): its words never cover it. */
-  target?: Rect
-  /** Where in its window the user left it (parks): it moves with the window. */
-  off?: { dx: number; dy: number }
-  /** A window in front covers it (Vaultite's, another app's): it isn't drawn, pointing at nothing seen. */
-  covered?: boolean }
-const placed = new Map<string, Placed>()
-/** Where each agent's cursor was asked about in a window: that spot of it, not its title bar, as the window moves. */
-const parks = new Map<string, { window: number; dx: number; dy: number }>()
-function park(name: string, window: number, o: { dx: number; dy: number }) {
-  parks.set(name, { window, ...o })
-  for (const [k, e] of placed) if (k.startsWith(`${name}:`)) e.at = 0
-}
-const placeKey = (a: Agent) => `${a.name}:${a.app ?? ""}|${a.window ?? ""}|${a.find ?? ""}|${a.sx ?? ""}|${a.sy ?? ""}|${a.path ?? ""}|${a.line ?? ""}|${a.pane ?? ""}|${a.row ?? ""}|${a.ui ?? ""}`
-const onScreen = (a: Agent) => !a.path && (!!a.app || (typeof a.sx === "number" && typeof a.sy === "number"))
-/** `r` with whether a window in front of its own covers its point. */
-async function seen(r: Omit<Placed, "at" | "pending">): Promise<Omit<Placed, "at" | "pending">> {
-  if (!r.p) return r
-  const c = await screenAsk<{ covered?: boolean }>("covered", { window: r.win ?? 0, x: r.p.x, y: r.p.y }).catch(() => null)
-  return { ...r, covered: !!c?.covered }
-}
-async function resolve(a: Agent): Promise<Omit<Placed, "at" | "pending">> {
-  return seen(await find(a))
-}
-async function find(a: Agent): Promise<Omit<Placed, "at" | "pending">> {
-  if (typeof a.sx === "number" && typeof a.sy === "number") return { p: { x: a.sx, y: a.sy } }
-  if (!a.app || hidden({ bundle: a.app, name: a.app })) return { p: null }
-  if (a.find) {
-    const r = await screenAsk<{ ok?: boolean; found?: Rect | null; window?: number; frame?: Rect | null }>("find", { window: a.window ?? 0, bundle: a.app, text: a.find })
-    if (r.found) return { p: pointIn(r.found, true), win: r.window, frame: r.frame, find: true, target: r.found }
-  }
-  const w = await screenAsk<AppWindowInfo>("window", { window: a.window ?? 0, bundle: a.app })
-  if (!w.frame) return { p: null }
-  const pk = parks.get(a.name), off = pk && pk.window === w.window ? { dx: pk.dx, dy: pk.dy } : undefined
-  return { p: off ? atOffset(w.frame, off) : pointIn(w.frame, false), win: w.window, frame: w.frame, ...(off ? { off } : {}) }
-}
-function pointOf(a: Agent): Placed {
-  const k = placeKey(a), had = placed.get(k)
-  // (a plain point is there at once; whether it's covered comes a moment later)
-  if (typeof a.sx === "number" && typeof a.sy === "number" && !had) {
-    const p = { x: a.sx, y: a.sy }
-    placed.set(k, { p, at: Date.now(), pending: false })
-    void seen({ p }).then((r) => { placed.set(k, { ...r, at: Date.now(), pending: false }); draw() })
-    return placed.get(k)!
-  }
-  if (!had || (!had.pending && Date.now() - had.at > (a.find ? 3000 : 1000))) {
-    placed.set(k, { ...(had ?? { p: null }), at: Date.now(), pending: true })
-    const done = (r: Omit<Placed, "at" | "pending">) => { placed.set(k, { ...r, at: Date.now(), pending: false }); draw() }
-    void resolve(a).then(done, () => done({ p: null }))
-  }
-  return placed.get(k)!
-}
-
-/** The windows the cursors point at are watched for moves and resizes (screen.swift's AXObservers), only those. */
-let watched = ""
-function watchWindows() {
-  const used = new Set([...live.state.agents.values()].filter(onScreen).map(placeKey))
-  for (const [k, e] of placed) if (!used.has(k) && Date.now() - e.at > 60_000) placed.delete(k)
-  const wins = [...new Set([...placed].filter(([k, e]) => used.has(k) && e.win).map(([, e]) => e.win!))].sort()
-  if (wins.join() === watched) return
-  watched = wins.join()
-  void screenAsk("watch", { windows: wins }).catch(() => {})
-}
-const refinding = new Map<number, ReturnType<typeof setTimeout>>()
-/** A watched window moved or resized: its points move with it now; an element in a resized one is found again once it settles. */
-function windowMoved(m: Record<string, unknown>) {
-  const win = Number(m.window) || 0, f = m.frame as Rect | null
-  for (const e of placed.values()) {
-    if (win && e.win !== win) continue
-    if (m.gone || !f) { e.at = 0; continue }
-    if (!e.find) e.p = e.off ? atOffset(f, e.off) : pointIn(f, false)
-    else if (e.p && e.frame) {
-      const dx = f.x - e.frame.x, dy = f.y - e.frame.y
-      e.p = { x: e.p.x + dx, y: e.p.y + dy }
-      if (e.target) e.target = { ...e.target, x: e.target.x + dx, y: e.target.y + dy }
-    }
-    const resized = !!e.frame && (e.frame.width !== f.width || e.frame.height !== f.height)
-    e.frame = f
-    if (e.find && resized) {
-      clearTimeout(refinding.get(win))
-      refinding.set(win, setTimeout(() => { refinding.delete(win); for (const x of placed.values()) if (x.win === win) x.at = 0; draw() }, 300))
-    }
-  }
-  draw()
-}
+const places = cursorPlaces({ ask: screenAsk, hidden, agents: () => live.state.agents.values(), draw })
+const { pointOf, park } = places
 
 /** Where each cursor (`agent:<name>`, or `idle`: the companion waiting) was drawn last, and where it came from a
  *  moment ago: one new to a display glides in from there. */
@@ -2265,7 +2179,7 @@ function draw() {
   if (called && s && !s.cued) { s.cued = true; if (listening) cue("listen") }
   panelAvoid(aimed?.frame ? [aimed.frame] : [])
   for (const a of live.state.agents.values()) if (a.state !== "away") leaveWhenDone(a, says)
-  watchWindows()
+  places.watchWindows()
   const d = session
   const hintNow = hinted && hinted.until > Date.now() ? hinted : null
   const pill: Scene["pill"] = d && d.into === "field" ? { level: d.level, text: boxWords(d), pending: d.pending, ready: d.ready, ...(d.free ? { free: true } : {}) }
