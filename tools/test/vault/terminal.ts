@@ -562,8 +562,8 @@ export default async ($: VaultTest) => {
       typeof after === "string" && !/before/.test(after), [stuck, listed, failed, trouble, after])
   }
 
-  // A terminal server that stops answering (stuck): said once, its terminals' trouble told (missing from lists, frozen),
-  // what's asked of it failing at once rather than each after a wait; anything heard from it again ends that.
+  // A terminal server that stops answering (stuck): said once, its trouble told, what's asked then failing at once; heard
+  // again, that ends. A slow answer alone (a busy machine's capture) isn't that, nor this server's own loop held up.
   if (process.platform !== "win32") {
     const net = await import("node:net")
     const { serverFiles, termdBackend } = await import("../../../plugins/core/terminal/backend.ts")
@@ -578,31 +578,59 @@ export default async ($: VaultTest) => {
         buf += d
         for (let i = buf.indexOf("\n"); i >= 0; i = buf.indexOf("\n")) {
           const m = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1)
-          if (!answering || m.re === undefined) continue
+          if (!answering || m.re === undefined || m.op === "capture") continue
           sock.write(JSON.stringify({ re: m.re, ...(m.op === "list" ? { sessions: [] } : {}) }) + "\n")
         }
       })
     })
     await new Promise<void>((r) => fake.listen(socket, r))
     const said: string[] = []
-    const keeper = termdBackend(name, { daemon: "/nonexistent", log: (...a) => said.push(a.join(" ")) })
+    const keeper = termdBackend(name, { daemon: "/nonexistent", log: (...a) => said.push(a.join(" ")), probeMs: 800 })
     await keeper.list()
+
+    let slow = ""
+    await keeper.ask("capture", { id: "x1", format: "text" }, 600).catch((e: Error) => { slow = e.message })
+    await new Promise((r) => setTimeout(r, 1200))
+    const listed = await keeper.list().then(() => true, () => false)
+    check("terminal server: one slow answer while it answers the rest is that request's error, not a stalled server",
+      /didn.t answer capture in 1 s/.test(slow) && listed && keeper.trouble() === null && !said.some((l) => /didn't answer/.test(l)), [slow, listed, keeper.trouble(), said])
+
     answering = false
     const t0 = Date.now()
     const first = await keeper.list()
     const t1 = Date.now()
+    await new Promise((r) => setTimeout(r, 1000))
+    const t2 = Date.now()
     let failedFast = ""
     await keeper.kill("x1").catch((e: Error) => { failedFast = e.message })
-    const t2 = Date.now(), trouble = keeper.trouble()
+    const t3 = Date.now(), trouble = keeper.trouble()
     answering = true
     ctl!.write(JSON.stringify({ t: "event", type: "clients", id: "x1", clients: 0 }) + "\n")
     await new Promise((r) => setTimeout(r, 50))
     const cleared = keeper.trouble()
     fake.close(); ctl!.destroy()
     fs.rmSync(`${files}.pid`, { force: true })
-    check("terminal server: one that stops answering is said once, its trouble told, what's asked then fails at once; heard again, that ends",
-      first.length === 0 && t1 - t0 >= 4500 && t2 - t1 < 200 && /pid 4747\) hasn't answered since/.test(failedFast) && trouble?.pid === 4747 &&
-      said.filter((l) => /didn't answer list in 5 s/.test(l)).length === 1 && cleared === null, [t1 - t0, t2 - t1, failedFast, trouble, said, cleared])
+    check("terminal server: one that stops answering even a probe is said once, its trouble told, what's asked then fails at once; heard again, that ends",
+      first.length === 0 && t1 - t0 >= 4500 && t3 - t2 < 200 && /pid 4747\) hasn't answered since/.test(failedFast) && trouble?.pid === 4747 &&
+      said.filter((l) => /didn't answer list in 5 s, nor a check in 1 s/.test(l)).length === 1 && cleared === null, [t1 - t0, t3 - t2, failedFast, trouble, said, cleared])
+
+    const { spawn } = await import("node:child_process")
+    const name2 = `test-busy-${process.pid}`, { socket: socket2 } = serverFiles(name2)
+    const child = spawn(process.execPath, ["-e", `const net = require("node:net"); net.createServer((s) => { s.setEncoding("utf8"); let b = "";
+      s.on("data", (d) => { b += d; for (let i = b.indexOf("\\n"); i >= 0; i = b.indexOf("\\n")) { const m = JSON.parse(b.slice(0, i)); b = b.slice(i + 1);
+      if (m.re !== undefined) s.write(JSON.stringify({ re: m.re, sessions: [] }) + "\\n") } }) }).listen(process.argv[1], () => console.log("up"))`, socket2], { stdio: ["ignore", "pipe", "inherit"] })
+    await new Promise((r) => child.stdout!.once("data", r))
+    const said2: string[] = []
+    const keeper2 = termdBackend(name2, { daemon: "/nonexistent", log: (...a) => said2.push(a.join(" ")), probeMs: 800 })
+    await keeper2.list()
+    const asked = keeper2.ask("list", {}, 300).then(() => "", (e: Error) => e.message)
+    await new Promise((r) => setTimeout(r, 0))
+    await new Promise<void>((r) => setImmediate(() => { let spins = 0; for (const until = Date.now() + 1500; Date.now() < until;) spins++; r() }))
+    const missed = await asked
+    child.kill()
+    fs.rmSync(socket2, { force: true })
+    check("terminal server: an answer that came while this server's loop was held up is read, not taken for no answer",
+      missed === "" && keeper2.trouble() === null && said2.length === 0, [missed, said2])
   }
 
   // One it couldn't take over (its snapshot failed: too slow on a loaded machine) still runs there: it isn't told as

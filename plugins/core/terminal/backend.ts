@@ -356,6 +356,13 @@ type Msg = Record<string, unknown>
 /** Messages to and from a terminal server: over a socket, or to one in this process. */
 type Pipe = { write(m: Msg): void; onMessage(fn: (m: Msg) => void): void; onClose(fn: () => void): void; close(): void; pause(): void; resume(): void }
 
+// libuv runs expired timers before its next I/O poll: a loop held up past `ms` would miss an answer already there.
+function afterIO(fn: () => void, ms: number) {
+  let im: ReturnType<typeof setImmediate> | null = null
+  const t = setTimeout(() => { im = setImmediate(fn) }, ms)
+  return () => { clearTimeout(t); if (im) clearImmediate(im) }
+}
+
 /** One connection to a terminal server: requests with answers, and the messages it sends unasked. */
 class Wire {
   pipe: Pipe
@@ -364,16 +371,20 @@ class Wire {
   listeners = new Set<(m: Unasked) => void>()
   closed = false
   onClose: (() => void) | null = null
-  /** Since when a request went unanswered with nothing heard from the server after it (null: it answers), for a wire
-   *  with `onStall`: requests then fail at once with `stalled()`'s words, but hello (a probe). */
+  /** Since when it hasn't answered a probe (null: it answers), for a wire with `onStall`: requests then fail at once with
+   *  `stalled()`'s words, but hello (a probe). */
   stalledSince: number | null = null
-  onStall: ((op: string) => void) | null = null
+  onStall: ((op: string, waited: number) => void) | null = null
+  probeMs = 10_000
+  probing = false
+  heardAt = 0
   onAnswer: ((ms: number) => void) | null = null
   stalled: () => string = () => "the terminal server isn't answering"
   constructor(pipe: Pipe) {
     this.pipe = pipe
     // (what hears a message never ends the server by throwing: it's logged)
     pipe.onMessage((m) => {
+      this.heardAt = Date.now()
       if (this.stalledSince !== null) { const ms = Date.now() - this.stalledSince; this.stalledSince = null; this.onAnswer?.(ms) }
       try {
         if (typeof m.re === "number" && this.waiting.has(m.re)) {
@@ -405,16 +416,26 @@ class Wire {
   request<O extends Op>(op: O, params: Params<O>, ms = 5000): Promise<Answer<O>> {
     if (this.closed) return Promise.reject(new Error("the terminal server went away"))
     if (this.stalledSince !== null && op !== "hello") return Promise.reject(new Error(this.stalled()))
-    const re = ++this.seq, at = Date.now()
+    const re = ++this.seq
     return new Promise((ok, fail) => {
-      const timer = setTimeout(() => {
-        this.waiting.delete(re)
-        if (this.onStall && this.stalledSince === null) { this.stalledSince = at; this.onStall(op) }
-        fail(new Error(this.onStall ? this.stalled() : `the terminal server didn't answer ${op}`))
+      const cancel = afterIO(() => {
+        if (!this.waiting.delete(re)) return
+        if (op !== "hello") this.probe(op, ms)
+        fail(new Error(this.stalledSince !== null ? this.stalled() : `the terminal server didn't answer ${op} in ${Math.round(ms / 1000)} s`))
       }, ms)
-      this.waiting.set(re, { ok: (v) => { clearTimeout(timer); ok(v as Answer<O>) }, fail: (e) => { clearTimeout(timer); fail(e) } })
+      this.waiting.set(re, { ok: (v) => { cancel(); ok(v as Answer<O>) }, fail: (e) => { cancel(); fail(e) } })
       this.pipe.write({ op, re, ...params })
     })
+  }
+  probe(op: string, waited: number) {
+    if (!this.onStall || this.probing || this.stalledSince !== null || this.closed) return
+    this.probing = true
+    const at = Date.now()
+    this.request("hello", {}, this.probeMs).then(() => {}, () => {
+      if (this.stalledSince !== null || this.closed || this.heardAt >= at) return
+      this.stalledSince = at
+      this.onStall?.(op, waited)
+    }).finally(() => { this.probing = false })
   }
   close() { this.pipe.close() }
 }
@@ -571,7 +592,7 @@ function termdClient(o: { name: string; label: string; control: () => Promise<Wi
 
 /** The terminal server at `name` (backendName). Older ones' terminals (the keeper before it, ptyd) are taken over by it
  *  (termd/adopt.ts) once it runs, so none is left unseen after an upgrade. */
-export function termdBackend(name: string, o: { daemon: string; log?: (...a: unknown[]) => void; oldServers?: ServerFiles[] }) {
+export function termdBackend(name: string, o: { daemon: string; log?: (...a: unknown[]) => void; oldServers?: ServerFiles[]; probeMs?: number }) {
   const { files, socket } = serverFiles(name)
   const mark = markOf({ files, socket })
   let ctl: Promise<Wire> | null = null
@@ -633,16 +654,15 @@ export function termdBackend(name: string, o: { daemon: string; log?: (...a: unk
   const stallText = () => stall ? `the terminal server (pid ${stall.pid || "unknown"}) hasn't answered since ${clock(stall.since)}: the terminals it holds are frozen until it does` : ""
   function watch(w: Wire) {
     w.stalled = () => stallText() || "the terminal server isn't answering"
-    w.onStall = (op) => {
+    w.probeMs = o.probeMs ?? w.probeMs; w.onStall = (op, waited) => {
       const pid = pidOf()
       const probe = setInterval(() => {
         void w.request("hello", {}, 5000).catch(() => {})
-        // (a minute on: what it's doing, as the machine sees it, so it's clear whether it's busy or stuck)
         if (stall && !stall.looked && Date.now() - stall.since > 60_000) { stall.looked = true; void lookAt(stall.pid, stall.since) }
       }, 5000)
       probe.unref?.()
       stall = { since: w.stalledSince ?? Date.now(), pid, probe, looked: false }
-      o.log?.(`terminal: the terminal server (pid ${pid || "unknown"}) didn't answer ${op} in 5 s: the terminals it holds are frozen until it answers, and new ones run in this server (its log: ${files}.log)`)
+      o.log?.(`terminal: the terminal server (pid ${pid || "unknown"}) didn't answer ${op} in ${Math.round(waited / 1000)} s, nor a check in ${Math.round(w.probeMs / 1000)} s after it: the terminals it holds are frozen until it answers, and new ones run in this server (its log: ${files}.log)`)
     }
     w.onAnswer = (ms) => { if (!stall) return; answered(); console.log(`terminal: the terminal server answers again, after ${Math.round(ms / 1000)} s`) }
   }

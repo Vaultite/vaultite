@@ -218,6 +218,13 @@ export function appAsk(o: Over, about: string) {
 export const pageWins = (page: { cwd: string; repo: string; from?: Found["from"] }, repo: string, text: string) =>
   !!page.from && page.from !== "vault" && !sameRepo(page, repo) && !namesRepo(text, repo)
 
+const unanswered = new Map<string, number>()
+const AWAY = 30_000
+function lasted(seen: Map<string, number>, id: string, ms: number, now = Date.now()) {
+  if (!seen.has(id)) seen.set(id, now)
+  return now - (seen.get(id) ?? now) >= ms
+}
+
 export function jobOps(plugin: Plugin, d: JobDeps) {
   const setting = (k: string) => str(plugin.settings()[k]).trim() || str(plugin.manifest.settings?.[k]?.default)
   const lines = (k: string) => { const v = plugin.settings()[k] ?? plugin.manifest.settings?.[k]?.default; return Array.isArray(v) ? v.map(String).filter((x) => x.trim()) : [] }
@@ -603,9 +610,9 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
       const s = await seenOf(j, fresh, false).catch(() => null)
       // (a machine away or slow: not an end)
       if (!s) return
-      // (nor a terminal its server can't reach now: said on its card till it's read again)
-      if (s.unreachable) { if (j.unreachable !== s.unreachable) { j.unreachable = s.unreachable; changed() } return }
-      if (j.unreachable) { delete j.unreachable; marked.add(j.id) }
+      // (nor a terminal its server can't reach now: said on its card once that lasts AWAY, till it's read again)
+      if (s.unreachable) { if (lasted(unanswered, j.id, AWAY) && j.unreachable !== s.unreachable) { j.unreachable = s.unreachable; changed() } return }
+      unanswered.delete(j.id); if (j.unreachable) { delete j.unreachable; marked.add(j.id) }
       let moved = false, waited = false
       const was = j.now, said = j.last?.at
       if (fresh) { read.set(j.id, Date.now()); heard(j, s) }
