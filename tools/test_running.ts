@@ -138,7 +138,8 @@ const elsewhere = following("waiting", "the checkout is on fix, not main: it upd
 check("another branch checked out: it won't be, even before it has the commit", v({ updates: elsewhere }).final && v({ updates: elsewhere, full: null }).final)
 check("blocked before it has the commit: the next look decides", !v({ updates: dirty, full: null }).final)
 const red = (ci: UpdateStatus["ci"]) => following("waiting", "CI failed on it (ccccccc)", { ci })
-check("CI failed on it: it won't be", ((x) => x.final && /won't be live here: CI failed on it: it goes live with a fix CI passes/.test(x.why))(v({ updates: red([{ commit: full, ok: false, state: "failed" }]) })))
+check("CI failed on it: it won't be, naming the red commit", ((x) => x.final && x.red === full && /won't be live here: CI failed on it: it goes live with a fix CI passes/.test(x.why))(v({ updates: red([{ commit: full, ok: false, state: "failed" }]) })))
+check("blocked: it won't be, and no red", ((x) => x.final && !x.red)(v({ updates: dirty })))
 const tip = "e".repeat(40)
 check("CI failed on the newest commit with it, none between ran: it won't be, naming that commit", ((x) => x.final && /CI failed on eeeeeee, the newest commit with it/.test(x.why))(
   v({ updates: red([{ commit: tip, ok: false, state: "failed" }, { commit: full, ok: null, state: "none" }]) })))

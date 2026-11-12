@@ -19,6 +19,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   checkout whose deploy config names its address (its wrangler route or CNAME), not a repo guessed from the page's
   title; when no checkout or two of them deploy it, the job's "why there" says so.
 - **Windows: the app's shared plugin modules load once**: the tab list's devices, the web viewer's containers and settings, and the terminal's folding were each built in twice on Windows, so the two copies could disagree; the build now refuses a module bundled twice.
+- **Jobs that land themselves end when they push**: the server waits for the commit to go live, marks the job live
+  (or says why not), and sends CI's failures on it back to the job to fix forward.
 - Companion: a job that lands itself no longer records a demo video; Show me plays its demo live once it's in (the setting Jobs' demo videos: auto, always or never).
 - **Claude Code sessions the app starts read the vault's rules once**: a terminal's or chat's session no longer gets
   the plugins' lines again in its system prompt when its CLAUDE.md already has them, and its `vau mcp` server leaves

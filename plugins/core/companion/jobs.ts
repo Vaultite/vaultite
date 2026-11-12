@@ -41,9 +41,36 @@ export function landTask(w: Pick<Where, "cwd" | "tree" | "branch" | "live">) {
 /** How a change lands: from its worktree, as its repo's rules say, then cleaned up, said in its last message's first word. */
 function mergeSteps(w: Pick<Where, "cwd" | "tree" | "branch" | "live">) {
   const rules = "as this repo's own rules say (its CLAUDE.md, AGENTS.md or CONTRIBUTING: the checks to run first, how a branch lands, and whether to push or deploy; a step those rules keep for the user still waits for them)"
-  const end = "Start your last message with \"Merged:\" and where it landed, in a line, or with \"Not merged:\" and why."
+  const end = `Start your last message with "Merged:" and ${w.live && w.tree ? "its commit's hash on main" : "where it landed"}, in a line, or with "Not merged:" and why.`
   if (!w.tree) return `, ${rules}. ${end}`
-  return `, from your worktree ${w.tree} (branch ${w.branch}), ${rules}. Never switch or edit ${w.cwd}${w.live ? " (the running server's own checkout: nothing lands there)" : ""}: with a remote, rebase onto its main, squash it to one commit and git push origin HEAD:main (or its PR, when the rules land by one)${w.live ? " (the server takes main itself)" : ""}; with none, ${w.live ? "don't merge" : "squash-merge it into that checkout only if it's clean"}. Then git -C ${w.cwd} worktree remove ${w.tree}, and branch -D ${w.branch}. ${end}`
+  // (the server waits for it to go live, not the worker: that wait held a job's worker ~10 min)
+  const taken = " (the server takes main itself, and waits for it to go live: don't wait yourself, whatever its rules say for sessions run by hand (no vau version --wait); it sends CI's failures on it back to you)"
+  return `, from your worktree ${w.tree} (branch ${w.branch}), ${rules}. Never switch or edit ${w.cwd}${w.live ? " (the running server's own checkout: nothing lands there)" : ""}: with a remote, rebase onto its main, squash it to one commit and git push origin HEAD:main (or its PR, when the rules land by one)${w.live ? taken : ""}; with none, ${w.live ? "don't merge" : "squash-merge it into that checkout only if it's clean"}. Then git -C ${w.cwd} worktree remove ${w.tree}, and branch -D ${w.branch}. ${end}`
+}
+/** What its worker is told when CI failed on the commit it landed (`why`: the server's words): fix it forward, landed the
+ *  same way, in a worktree made again from main. */
+export function fixTask(w: Pick<Where, "cwd" | "tree" | "branch" | "live">, commit: string, why: string) {
+  const tree = w.tree ? `make your worktree again from main (git -C ${w.cwd} fetch origin, then git -C ${w.cwd} worktree add -B ${w.branch} ${w.tree} origin/main), ` : ""
+  return `CI failed on ${commit.slice(0, 12)}, the commit you landed, so it isn't live (${why}). Fix it forward: ${tree}find what failed (gh run list --commit ${commit}, then gh run view <its id> --log-failed), fix it, and land the fix${mergeSteps(w)}`
+}
+/** The commit a worker's "Merged:" names (its first hash after the word), else the first its words name; "" when none. */
+export function mergedCommit(text: string) {
+  const at = text.search(/\bmerged\b/i)
+  return (at >= 0 ? commitsIn(text.slice(at))[0] : undefined) ?? commitsIn(text)[0] ?? ""
+}
+/** A change a job landed where its own server takes main (Where.live): waited on by that server till it's live there,
+ *  never by its worker. Its commit, since when, how many times CI's red sent it back, and its card's line (`why`). */
+export type Going = { commit: string; since: number; fixes: number; state: "waiting" | "fixing" | "live" | "stuck"; why: string }
+/** How many times CI red on its landed commit sends a job back to fix it forward, before it needs the user. */
+export const FIXES = 2
+/** How long a landed commit is waited on before that's said on its job instead. */
+export const LIVE_WAIT = 60 * 60_000
+/** What app.version's verdict on a job's landed commit (null: none came) does: live; CI red, `fix` (FIXES times, then
+ *  `red`: the user's); `stuck`: it won't be live by itself (a blocked checkout), said, never retried; else `wait`. */
+export function liveStep(v: { live: boolean; final: boolean; red?: string } | null, g: Pick<Going, "fixes" | "since">, now = Date.now()): "live" | "fix" | "red" | "stuck" | "wait" {
+  if (v?.live) return "live"
+  if (v?.final) return v.red ? (g.fixes < FIXES ? "fix" : "red") : "stuck"
+  return now - g.since < LIVE_WAIT ? "wait" : "stuck"
 }
 /** Whether a worker's last message says it merged what they kept (true), says it didn't (false), or neither (null). */
 export function mergedSaid(text: string): boolean | null {
@@ -133,6 +160,8 @@ export type Job = {
   /** Kept, to be merged (Keep and merge, or their word to land it): when they said so, and once its turn ended, whether
    *  it said it merged (its last message starting "Merged:"). It closes as done only once merged. */
   land?: { asked: number; at?: number; merged?: boolean }
+  /** Its landed commit, waited on till it's live where its server takes main. */
+  going?: Going
   /** Its change's patch-ids, read from its branch while it existed: found on main, it landed (rebased, squashed). */
   marks?: Marks
   /** Opened since its last news. */
@@ -375,6 +404,7 @@ export function jobText(j: Job, now = Date.now()) {
     resultLine(r) ? `results: ${resultLine(r)}` : "", r?.files?.length ? `files: ${r.files.slice(0, 12).join(", ")}` : "",
     j.land ? (j.land.at === undefined ? "kept: told to merge it, merging now" : j.land.merged ? "kept and merged" : "kept, but it didn't say it merged: see what it said")
       : onMain(j) ? "landed on main: nothing left to merge" : "",
+    j.going ? `going live: ${j.going.why}` : "",
     j.closed ? "its terminal closed once it was done: a follow-up (handoff --job) or opening it resumes its conversation" : "",
     `open it: vau companion job-open ${j.id}`].filter(Boolean).join("\n")
 }

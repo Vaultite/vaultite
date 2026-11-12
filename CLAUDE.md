@@ -68,8 +68,8 @@ is its point.
   does: a few minutes). One that can't is started detached, then waited on with the bounded wait its tool offers, run
   again while it says it's still running (`node tools/try.ts`, then `node tools/try.ts --wait`). Never a `sleep` or `until` loop of your own; and a sub-agent never ends its
   turn to wait for a background command's notice: none wakes it.
-- Live: after the push, from the worktree, `bin/vau --url <server> version HEAD --wait --timeout 540` on the server
-  following main (`CLAUDE.local.md` names it; the worktree's vau, as an older one may not resolve `HEAD` or exit 1),
+- Live (a session run by hand; a companion job's task says how it lands): after the push, from the worktree,
+  `bin/vau --url <server> version HEAD --wait --timeout 540` on the server following main (`CLAUDE.local.md` names it; the worktree's vau, as an older one may not resolve `HEAD` or exit 1),
   in the foreground and unpiped (no `| tail`: its exit code is the answer). It ends when the commit is live, or exits 1
   saying why not: still waiting (run it again), CI red on it (fix forward), its checkout blocked (say so). That one
   command is the check: don't watch CI, as a queued run is dropped when newer pushes arrive and may never finish.

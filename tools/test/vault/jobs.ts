@@ -127,6 +127,18 @@ export default async ($: VaultTest) => {
         /merge it now, from your worktree \/Users\/alice\/Projects\/site-j3k9x2a \(branch job-j3k9x2a\), as this repo's own rules say/.test(land) && /git push origin HEAD:main/.test(land) &&
         land.includes("git -C /Users/alice/Projects/site worktree remove /Users/alice/Projects/site-j3k9x2a, and branch -D job-j3k9x2a") && /Never switch or edit \/Users\/alice\/Projects\/site:/.test(land) && !land.includes("\n") &&
         /nothing lands there/.test(liveLand) && /the server takes main itself/.test(liveLand) && /don't merge/.test(liveLand) && !/worktree/.test(old) && /^They watched your change and kept it: merge it now, as this repo's own rules say/.test(old), land)
+      const liveLands = J.jobTask("Fix the footer", undefined, { ...site, live: true }, "j3k9x2a", { land: true })
+      check("jobs: one landing where its server takes main pushes and ends saying its commit, never waiting for it to go live itself; fixed forward when CI is red",
+        /don't wait yourself[^]*no vau version --wait/.test(liveLands) && /"Merged:" and its commit's hash on main/.test(liveLands) && !/don't wait yourself/.test(lands) &&
+        /CI failed on 1a2b3c4d5e6f, the commit you landed[^]*worktree add -B job-j3k9x2a \/Users\/alice\/Projects\/site-j3k9x2a origin\/main[^]*gh run list --commit 1a2b3c4d5e6f7/.test(J.fixTask({ ...site, live: true }, "1a2b3c4d5e6f7", "CI failed on it")), liveLands)
+      check("jobs: the commit a worker's Merged names, before any other its words name", J.mergedCommit("Rebased onto 7fba84d0. Merged: `c09009af` is on main.") === "c09009af" &&
+        J.mergedCommit("Pushed as 98b7fcde.") === "98b7fcde" && J.mergedCommit("Merged.") === "")
+      {
+        const g = { fixes: 0, since: 0 }, at = (ms: number) => J.liveStep({ live: false, final: false }, g, ms)
+        check("jobs: its landed commit's verdict: live; CI red sent back twice, then the user; blocked said, never retried; else waited on, an hour at most",
+          J.liveStep({ live: true, final: true }, g) === "live" && J.liveStep({ live: false, final: true, red: "abc" }, g) === "fix" && J.liveStep({ live: false, final: true, red: "abc" }, { ...g, fixes: J.FIXES }) === "red" &&
+          J.liveStep({ live: false, final: true }, g) === "stuck" && at(1000) === "wait" && J.liveStep(null, g, 1000) === "wait" && at(J.LIVE_WAIT + 1) === "stuck")
+      }
       const first = J.lastOf({ text: "Fixed it. The links \"Why now?\" stay.\n\nShould I also change the header? Or keep it as is?", at: 5, final: true, prompt: jt })
       const told = J.lastOf({ text: "Looking at it.", at: 9, final: false, prompt: "Use the **darker** blue", background: 2 })
       check("jobs: its latest turn: what it said, the questions its answer ends with (quotes left out), what it was told after its task, its background tasks",
@@ -871,7 +883,8 @@ setTimeout(draw, 300)
   {
     const http = await import("node:http")
     const calls: Any[] = []
-    let stage = "working", farHas = true, landed = false
+    let stage = "working", farHas = true, landed = false, farLive = false
+    const verdicts: Any[] = []
     const server = http.createServer((req, res) => {
       const chunks: Buffer[] = []
       req.on("data", (d) => chunks.push(d))
@@ -879,14 +892,18 @@ setTimeout(draw, 300)
         const [op, qs] = req.url!.replace("/api/ops/", "").split("?"), raw = Buffer.concat(chunks), png = op === "companion.picture-take"
         const p = png ? { ...Object.fromEntries(new URLSearchParams(qs)), bytes: raw.length } : raw.length ? JSON.parse(String(raw)) : {}
         calls.push({ op, p, client: req.headers["x-vaultite-client"] })
-        const out: Any = png ? { path: `/home/alice/.vaultite/local/companion/screens/${p.name}` } : op === "companion.where" ? (farHas ? { cwd: "/home/alice/Projects/site", repo: "site", base: "abc123", why: "as asked", refused: "" }
+        // (its worker fixing forward once it's told CI failed: its next turn says the fix's commit)
+        if (op === "terminal.send" && stage === "merged") { stage = "fixed"; verdicts.splice(0, verdicts.length, { commit: "5e6f7a8b", live: true, final: true, outcome: "live", why: "5e6f7a8 is live here" }) }
+        const merged = stage === "merged" ? "1a2b3c4d" : "5e6f7a8b"
+        const out: Any = png ? { path: `/home/alice/.vaultite/local/companion/screens/${p.name}` } : op === "companion.where" ? (farHas ? { cwd: "/home/alice/Projects/site", repo: "site", base: "abc123", why: "as asked", refused: "", ...(farLive ? { live: true } : {}) }
             : { cwd: "/home/alice/Vault", repo: "", base: "", why: "nothing on screen named a project: the vault", from: "vault", refused: "" })
           : op === "terminal.start" ? { id: "claude-remote1" }
           : op === "companion.worker" ? (stage === "working" ? { running: true, state: "working", title: "✳ Editing the header", typed: Date.now(), ...(p.turn ? { turn: { text: "", files: [], at: 0, final: false, session: "rs1" } } : {}) }
             : stage === "gone" ? { running: false, exit: { code: 0, signal: 1 }, ...(p.turn ? { turn: { text: "Shipped the header.", files: ["/home/alice/Projects/site/a.ts"], at: Date.now(), final: false, session: "rs1" }, diff: "1 file changed, +2 -1" } : {}) }
             : stage === "landed" ? (p.cwd ? { running: false, onMain: landed, marks: { whole: "a".repeat(40), each: ["b".repeat(40)] } } : null)
+            : stage === "merged" || stage === "fixed" ? { running: true, state: "idle", ...(p.turn ? { turn: { text: `Merged: ${merged} pushed to main.`, files: ["/home/alice/Projects/site/a.ts"], at: Date.now(), final: true }, diff: "1 file changed, +2 -1" } : {}), ...(p.cwd ? { onMain: true } : {}) }
             : { running: true, state: "idle", ...(p.turn ? { turn: { text: "Header done. Try https://studio.tail1.ts.net:8450", files: ["/home/alice/Projects/site/a.ts"], at: Date.now(), final: true }, diff: "1 file changed, +2 -1" } : {}) })
-          : op === "terminal.end" ? { id: "claude-remote1" } : op === "terminal.send" ? { submitted: true } : {}
+          : op === "terminal.end" ? { id: "claude-remote1" } : op === "terminal.send" ? { submitted: true } : op === "app.version" ? { live: verdicts.length > 1 ? verdicts.shift() : verdicts[0] } : {}
         // (its machine failing to read its terminal)
         if (out === null) return void res.writeHead(500, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "no such terminal" }))
         const none = op === "claude-code.limits" && p.account === "nope"
@@ -1022,6 +1039,40 @@ setTimeout(draw, 300)
         check("jobs: one ready for review is done once its change is on main, its terminal unreadable on its machine", !!closed && closed.log.at(-1).ev === "landed" &&
           calls.some((c) => c.op === "companion.worker" && c.p.branch === `job-${job.id}` && c.p.cwd === "/home/alice/Projects/site"), [closed, calls.map((c) => c.p)])
       } finally { Wk.shipEvery(5 * 60_000) }
+      // Landing itself where its server takes main: it ends at its push, the server waits for its commit to go live there,
+      // sends CI's red back to it to fix forward, and marks it done once its fix is live.
+      {
+        Wk.liveEvery(200)
+        await api("PATCH", "config/plugin/companion", { jobs_land: true })
+        farLive = true; stage = "working"; farHas = true
+        calls.length = 0
+        const red = { commit: "1a2b3c4d", live: false, final: true, outcome: "never", red: "1a2b3c4d", why: "1a2b3c4 won't be live here: CI failed on it: it goes live with a fix CI passes" }
+        verdicts.push({ commit: "1a2b3c4d", live: false, final: false, outcome: "pending", why: "1a2b3c4 isn't live here yet: updates waiting: CI runs on it" })
+        try {
+          const [st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Fix the footer live", machine: "studio", cwd: "~/Projects/site" }, agent))
+          const told = calls.find((c) => c.op === "terminal.start")?.p.prompt ?? ""
+          check("jobs: one landing itself in its server's own checkout is told to end at its push, the server waiting for it to go live", st === 200 && /don't wait yourself/.test(told), [st, b, told.slice(-1500)])
+          await waitFor(async () => (await api("POST", "ops/companion.job", { id: b.id }))[1].state === "working", 10000, 100)
+          stage = "merged"
+          const waiting = await waitFor(async () => { const r = (await api("POST", "ops/companion.job", { id: b.id }))[1]; return r.going?.state === "waiting" && calls.some((c) => c.op === "app.version") && /CI runs on it/.test(r.now) && r }, 15000, 100)
+          check("jobs: its turn over saying Merged, it stays working while the server looks for that commit live on its machine (app.version there), saying so",
+            waiting?.state === "working" && waiting.going.commit === "1a2b3c4d" && waiting.now === "Merged 1a2b3c4: waiting for it to go live (updates waiting: CI runs on it)" &&
+            calls.find((c) => c.op === "app.version")?.p.commit === "1a2b3c4d", waiting)
+          verdicts.splice(0, verdicts.length, red)
+          const sent = await waitFor(() => calls.find((c) => c.op === "terminal.send"), 10000, 100)
+          check("jobs: CI red on its commit sends it back into its terminal to fix it forward", /^CI failed on 1a2b3c4d, the commit you landed[^]*Fix it forward/.test(sent?.p.text ?? ""), sent?.p)
+          const done = await waitFor(async () => { const r = (await api("POST", "ops/companion.job", { id: b.id }))[1]; return r.state === "done" && r }, 20000, 100)
+          const knock = (await api("POST", "ops/companion.knocks", {}))[1].knocks.find((k: Any) => k.line === "Live: Fix the footer live")
+          check("jobs: its fix's commit live there, it's done and live: its card says so, a short knock too",
+            done?.going?.state === "live" && done.going.commit === "5e6f7a8b" && done.going.fixes === 1 && done.now === "Live: 5e6f7a8 runs on Studio" && !!knock &&
+            calls.filter((c) => c.op === "app.version").at(-1)?.p.commit === "5e6f7a8b", { done, knock })
+          await asItsTool(() => api("POST", "ops/companion.job-stop", { id: b.id }, agent)).catch(() => {})
+        } finally {
+          Wk.liveEvery(20_000)
+          farLive = false
+          await api("PATCH", "config/plugin/companion", { jobs_land: false })
+        }
+      }
       // A preview served here: to the always-on machine when it has the repo and all of it is pushed, else here, saying why.
       if (process.platform !== "win32") {
         const cc = app.plugins.find((p) => p.id === "claude-code")!.services, wasC = { ...cc }, ours: string[] = []

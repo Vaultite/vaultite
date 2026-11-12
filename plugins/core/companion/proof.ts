@@ -18,8 +18,10 @@ export const readyNow = (j: Pick<Job, "state">, from: string) => live(from as Jo
 const lowerFirst = (s: string) => (/^[A-Z][a-z]/.test(s) && !/^[A-Z][a-z]+[A-Z]/.test(s) ? s[0].toLowerCase() + s.slice(1) : s)
 /** A job's ready knock, one line: what it shows (its proof's title, "the blue save button"), else its own title; one that
  *  was merging what they kept, how that went. */
-export function readyLine(j: Pick<Job, "title" | "state" | "land">, change?: string) {
+export function readyLine(j: Pick<Job, "title" | "state" | "land"> & Partial<Pick<Job, "going">>, change?: string) {
   const name = j.title.replace(/\s+/g, " ").trim().replace(/[.!]+$/, "")
+  if (j.going?.state === "live") return `Live: ${(change ?? "").replace(/\s+/g, " ").trim().replace(/[.!]+$/, "") || name}`
+  if (j.going?.state === "stuck" && j.state === "done") return `Merged, not live: ${name}`
   if (j.land?.at !== undefined) return j.land.merged ? `Merged: ${name}` : `Didn't merge: ${name}`
   const what = (change ?? "").replace(/\s+/g, " ").trim().replace(/[.!]+$/, "")
   if (what) return `Ready to show you ${lowerFirst(what)}`

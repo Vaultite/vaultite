@@ -185,7 +185,7 @@ above that), act, run it again, and never end your turn.
   told to land it itself is done once a commit it names, or its branch, is on main). The
   menu bar lists them, and opening one opens its terminal, where the user can type. Nothing ships, deploys or goes out
   unless they say so, except with the setting `jobs_land` on: a coding job then lands its own change once its checks
-  pass (done, not ready for review: working until its last message says Merged or Not merged), asking only on a real tradeoff. A done job's terminal closes by itself after two minutes (not while it's on their screen, they
+  pass (done, not ready for review: working until its last message says Merged or Not merged), asking only on a real tradeoff. One landed where its server takes main itself (that server's own checkout's repo) stays working till its commit is live there: the server waits on it, never its worker; CI red on it sends it back to fix forward (twice, then it needs you), and a checkout that blocks updates is said on the job. A done job's terminal closes by itself after two minutes (not while it's on their screen, they
   typed in it, or it runs something in the background); the job stays with its result, and opening it (`companion
   job-open`, `--split right` or `down` in a pane beside or below) or a follow-up resumes its conversation. `companion jobs` lists them, `companion job <id>` says how one goes
   now (what it said and was told last, what it asks, and who told it each thing: the companion, another agent's vau from its terminal, the user in its terminal), `handoff --job <id>` tells it more (typed into its terminal; a

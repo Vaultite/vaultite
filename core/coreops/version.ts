@@ -32,7 +32,9 @@ export type Verdict = { commit: string; live: boolean; final: boolean; why: stri
   /** never: not by itself; pending: asked without waiting; timeout: waited all it may; unreachable: its server didn't answer. */
   outcome: "live" | "never" | "pending" | "timeout" | "unreachable"
   /** With wait: the seconds it waited, across the server's restarts. */
-  waited?: number }
+  waited?: number
+  /** CI failed on this commit (it, or the newest commit with it): it goes live only with a fix. */
+  red?: string }
 
 /** Is `given` (`full` in full: null when this checkout doesn't have it) live in `runs`? `has`: whether `runs` has it
  *  (null: git can't say), `failed`: whether the update that failed has it. */
@@ -46,7 +48,7 @@ export function verdict(o: { given: string; full: string | null; runs: string | 
     if (u.blocked && (o.full || u.blocked.by === "branch")) return not(true, `its checkout blocks the updates: ${u.why}`)
     if (u.state === "failed" && o.failed) return not(true, `its update failed: ${u.error?.message ?? u.why}`)
     const red = o.full && u.state === "waiting" && u.ci ? redRoute(u.ci, o.full) : null
-    if (red) return not(true, `CI failed on ${red === o.full ? "it" : `${short(red)}, the newest commit with it, and passed on none between`}: it goes live with a fix CI passes`)
+    if (red) return { ...not(true, `CI failed on ${red === o.full ? "it" : `${short(red)}, the newest commit with it, and passed on none between`}: it goes live with a fix CI passes`), red }
     if (!o.full) return not(false, `this checkout doesn't have it yet (it fetches ${u.branch} each time its updates look: ${u.state}, ${u.why})`)
     return not(false, `updates ${u.state}: ${u.why}`)
   }

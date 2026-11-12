@@ -5,8 +5,8 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { agentModel, agentName, KNOWN_AGENTS, parseTerminal } from "../../../core/agents.ts"
-import { gitEnv, inDesktop, type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin, quoted, ROOT, userSurface, whoOf } from "../../../core/plugins.ts"
-import { cardOf, choiceIn, commitsIn, endEvent, HANDED, inPlace, landedSaid, landTask, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, type Marks, nowOf, restEvent, type Queued, queuedLine, toldBy, picturesIn, type Result, resumeOf,
+import { gitEnv, inDesktop, type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin, quoted, ROOT, userSurface, type Who, whoOf } from "../../../core/plugins.ts"
+import { cardOf, choiceIn, commitsIn, endEvent, fixTask, HANDED, inPlace, landedSaid, landTask, liveStep, mergedCommit, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, type Marks, nowOf, restEvent, type Queued, queuedLine, toldBy, picturesIn, type Result, resumeOf,
   type ProofMode, step, terminalOf, type Waits, type Where, worktreeOf } from "./jobs.ts"
 import { requestWriter } from "../../../core/vault.ts"
 import type { Moment } from "./plugin.ts"
@@ -52,6 +52,9 @@ const KEEP = 40, KEEP_DAYS = 7
 let SHIP_READ = 5 * 60_000
 /** Another interval (the tests'). */
 export const shipEvery = (ms: number) => { SHIP_READ = ms }
+/** How often a job's landed commit is looked for live where its server takes main; another (the tests'). */
+let LIVE_READ = 20_000
+export const liveEvery = (ms: number) => { LIVE_READ = ms }
 /** A picture of the screen handed on by another machine (a Retina display's PNG is a few MB), at most; its first bytes. */
 const PICTURE_MAX = 40 << 20, PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 /** How long after the user's ask the companion's handoff is still its answer (its words and place go with it). */
@@ -66,6 +69,7 @@ export const flushEvery = (ticks: number) => { flushTicks = ticks }
 const str = (v: unknown) => (typeof v === "string" ? v : "")
 /** Who tells a job what the app itself passes on (their talk, a capture, a live edit, their Needs changes). */
 const COMPANION = "the companion"
+const APP = whoOf("app/companion", null)
 /** Who a call from the app's own surfaces is, the user themselves. */
 const THEM = "you, in the app"
 /** Who a call telling a job something is, as whoever reads the job says it: the user in the app, the companion
@@ -508,7 +512,10 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
       let moved = false, waited = false
       const was = j.now, said = j.last?.at
       if (fresh) { read.set(j.id, Date.now()); heard(j, s) }
-      j.now = nowOf(j, s)
+      // (a turn after its change went live, or after it was told it isn't, is about something else)
+      if (s.state === "working" && j.going?.state === "live") delete j.going
+      else if (s.state === "working" && j.going?.state === "stuck") j.going.state = "fixing"
+      j.now = j.going && j.going.state !== "fixing" ? j.going.why : nowOf(j, s)
       const w = s.state === "blocked" ? s.waits : undefined
       if (JSON.stringify(w ?? null) !== JSON.stringify(j.waits ? { kind: j.waits.kind, question: j.waits.question, choices: j.waits.choices } : null)) {
         if (w) j.waits = { ...w, at: Date.now() }
@@ -525,7 +532,8 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
         const since = resting.get(j.id)
         if (sending.has(j.id)) resting.delete(j.id)
         else if (since === undefined) { resting.set(j.id, Date.now()); setTimeout(() => void refresh(j), HOLD + 100).unref?.() }
-        else if (Date.now() - since >= HOLD && Date.now() - (goingOn.get(j.id) ?? 0) >= READ) moved = await finish(j)
+        // (its change landed, waited on by golive: its turn's words read already)
+        else if (Date.now() - since >= HOLD && Date.now() - (goingOn.get(j.id) ?? 0) >= READ && !waitsLive(j)) moved = await finish(j)
       } else if (j.state === "done") moved = await tidy(j, s)
       if (j.state === "ready for review" && Date.now() - (shipRead.get(j.id) ?? 0) >= SHIP_READ) moved = await shippedSince(j) || moved
       if (moved || waited || j.now !== was || j.last?.at !== said || marked.delete(j.id)) changed()
@@ -566,7 +574,49 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     if (ev === "working") { goingOn.set(j.id, Date.now()); j.now = nowOf(j, s); return move(j, ev) }
     resting.delete(j.id); goingOn.delete(j.id)
     j.result = r.result
+    if (ev === "landed") return arrived(j, r.text)
+    if (j.going?.state === "fixing") delete j.going
     return move(j, ev)
+  }
+  /** Its change landed (`text`: its words): done, or where its own server takes main (Where.live), its commit waited on
+   *  there by golive (still working meanwhile), never by its worker. */
+  function arrived(j: Job, text: string) {
+    const commit = j.where.live ? mergedCommit(text) : ""
+    if (!commit) { delete j.going; return move(j, "landed") }
+    j.going = { commit, since: Date.now(), fixes: j.going?.fixes ?? 0, state: "waiting", why: `Merged ${commit.slice(0, 7)}: waiting for it to go live` }
+    j.now = j.going.why
+    move(j, "working")
+    return true
+  }
+  const waitsLive = (j: Job) => j.going?.state === "waiting" || j.going?.state === "stuck"
+  /** When each job's landed commit was last looked for live, and those being looked for now. */
+  const liveRead = new Map<string, number>(), looking = new Set<string>()
+  /** Job `j`'s landed commit looked for where it goes live (app.version on its machine): live, it's done; CI red on it,
+   *  its worker sent back to fix it forward (then the user); one that won't be live by itself, said on it; else waited on. */
+  async function golive(j: Job) {
+    const g = j.going
+    if (g?.state !== "waiting" || looking.has(j.id)) return
+    looking.add(j.id)
+    liveRead.set(j.id, Date.now())
+    try {
+      type V = { live: boolean; final: boolean; why: string; red?: string }
+      const out = await (j.where.machine ? atMachine(j.where.machine, "app.version", { commit: g.commit }, 30) : plugin.runOp("app.version", { commit: g.commit }, APP).then((r) => r.result))
+        .catch(() => null) as { live?: V } | null
+      // (told something meanwhile: its own turn decides)
+      if (j.going !== g || g.state !== "waiting") return
+      const v = out?.live ?? null, c = g.commit.slice(0, 7), next = liveStep(v, g), was = g.why
+      if (next === "wait") g.why = `Merged ${c}: waiting for it to go live${v ? ` (${v.why.replace(/^\S+ isn't live here yet: /, "")})` : ""}`
+      else if (next === "live") { g.state = "live"; g.why = `Live: ${c} runs on ${j.where.label || "its server"}`; move(j, "landed") }
+      else if (next === "stuck") { g.state = "stuck"; g.why = v ? `Merged ${c}, not live: ${v.why.replace(/^\S+ won't be live here: /, "")}` : `Merged ${c}, not live: ${j.where.label || "its server"} didn't say it is after ${Math.round((Date.now() - g.since) / 60_000)} min`; move(j, "landed") }
+      else if (next === "red") { g.state = "stuck"; g.why = `CI failed on ${c} after ${g.fixes} fix${g.fixes === 1 ? "" : "es"} forward: it needs you`; move(j, "asks") }
+      else {
+        g.state = "fixing"; g.fixes++
+        g.why = `CI failed on ${c}: sent back to fix it forward`
+        try { await steer(appCtx(), j, fixTask(j.where, g.commit, v!.why), g.why) } catch (e) { g.state = "stuck"; g.why = `CI failed on ${c}, and it couldn't be sent back: ${(e as Error).message}`; move(j, "asks") }
+      }
+      j.now = g.why
+      if (g.why !== was) changed()
+    } finally { looking.delete(j.id) }
   }
   /** Jobs at rest whose turn ended with work still going (finish's restEvent): when that was last read. */
   const goingOn = new Map<string, number>()
@@ -595,6 +645,8 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
    *  else as the lifecycle says. Read once per end. */
   async function ended(j: Job, s: Seen) {
     if (!live(j.state)) { j.exited = Date.now(); move(j, "ended"); resumable(j); return true }
+    // (its turn read already, its landed commit waited on: a worker ending itself once it merged)
+    if (waitsLive(j)) { j.exited = Date.now(); resumable(j); return true }
     const r = await seenOf(j, true).catch(() => null)
     if (!r) return false
     j.exited = Date.now()
@@ -603,7 +655,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     heard(j, r)
     // (a terminal ended on purpose, End session or vau terminal end, reads as a SIGHUP)
     const crashed = !!x && (!!x.lost || x.code !== 0 || (x.signal !== 0 && x.signal !== 1))
-    if (landed(j, done.text) || shipped(j, r, done.text)) move(j, "landed")
+    if (landed(j, done.text) || shipped(j, r, done.text)) arrived(j, done.text)
     else move(j, endEvent({ text: !!done.text.trim(), final: !!r.turn?.final && !!done.text, changes: done.changes, crashed }))
     resumable(j)
     return true
@@ -688,6 +740,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
       if (live(j.state) ? (j.where.machine || ticks % 2 === 0) : later && ticks % 10 === 0) void refresh(j).catch(() => {})
       // (its change landed by anyone, however long ago it went ready: never only through its terminal's read)
       if (j.state === "ready for review" && j.where.repo && Date.now() - (shipRead.get(j.id) ?? 0) >= SHIP_READ) void ship(j).catch(() => {})
+      if (j.going?.state === "waiting" && Date.now() - (liveRead.get(j.id) ?? 0) >= LIVE_READ) void golive(j).catch((e) => console.error("companion: jobs:", e))
     }
     // (what waits for a machine: looked at every 15 s, sent once it's back)
     if (ticks % flushTicks === 0) void flush().catch((e) => console.error("companion: jobs:", e))
@@ -721,8 +774,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
         const m = await plugin.ask<Machine | null>("machines:machine", null, j.where.machine).catch(() => null)
         if (!m?.online) continue
         while (j.queued?.length) {
-          const q = j.queued[0], by = q.by ?? whoOf("app/companion", null)
-          const ctx = { who: by, op: async (id: string, ps?: Record<string, unknown>) => (await plugin.runOp(id, ps ?? {}, by)).result } as unknown as OpCtx
+          const q = j.queued[0], ctx = appCtx(q.by)
           try {
             if (q.start) await startWaiting(ctx, j, q)
             else if (q.land) await land(ctx, j, q.text, q.shown, q.teller)
@@ -749,6 +801,10 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     await launch(ctx, j, q.text, q.ask, p)
   }
 
+  /** A call as the app's own companion (or `by`), outside any request: what's sent by itself later. */
+  function appCtx(by: Who = APP) {
+    return { who: by, op: async (id: string, ps?: Record<string, unknown>) => (await plugin.runOp(id, ps ?? {}, by)).result } as unknown as OpCtx
+  }
   const jobOf = (id: string) => {
     const want = id.trim(), j = all().find((x) => x.id === want) ?? all().find((x) => want.length >= 3 && x.id.endsWith(want))
     if (!j) throw new OpError(`no job ${want} (companion jobs lists them)`, 404)
