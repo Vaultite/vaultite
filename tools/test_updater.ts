@@ -2,7 +2,7 @@
 // network: the host's path end to end is test_selfupdate. In npm test.
 import { check, exit, section, summary } from "./test/lib.ts"
 import type { CiJob, CiResult, CiRun } from "../core/update/ci.ts"
-import { CI_CALLS_PER_HOUR, CI_CALLS_SIGNED_IN, CI_WORKFLOW, callBudget, ciCallsPerHour, ciOf, githubCi, githubRepo, osGate } from "../core/update/ci.ts"
+import { CI_CALLS_PER_HOUR, CI_CALLS_SIGNED_IN, CI_WORKFLOW, LOGIN_RECHECK, callBudget, ciCallsPerHour, ciOf, githubCi, githubClient, githubRepo, osGate, type RunGh } from "../core/update/ci.ts"
 import { capped, pickTarget, redRoute } from "../core/update/git.ts"
 import { LOOK_EVERY, placed } from "../core/update/updater.ts"
 const t0 = Date.now()
@@ -156,6 +156,56 @@ await section(`the request budget: at most ${CI_CALLS_PER_HOUR} calls to GitHub 
     clock += 3_600_000
     await ci("Alice/lighthouse", "t")
     check("…and asks again an hour on", calls === CI_CALLS_PER_HOUR + 1, calls)
+  }
+})
+
+await section("ci.ts: whether gh is signed in is gh's to say, never an API error's", async () => {
+  // (execFile's rejections: an exit code and stderr, killed on a timeout, ENOENT with no gh)
+  const fail = (o: object) => Object.assign(new Error("Command failed: gh"), o)
+  const NOT_FOUND = fail({ code: 1, stderr: "gh: Not Found (HTTP 404)\n" }), TIMED_OUT = fail({ code: null, killed: true, signal: "SIGTERM", stderr: "" })
+  const SIGNED_OUT = fail({ code: 1, stderr: "To get started with GitHub CLI, please run:  gh auth login\n" }), NO_GH = fail({ code: "ENOENT", stderr: "" })
+  const make = (answer: (args: string[]) => unknown) => {
+    let clock = 0, fetched = 0
+    const gh: RunGh = async (args) => { const a = answer(args); if (a instanceof Error) throw a; return { stdout: JSON.stringify(a) } }
+    const fetchFn = (async () => (fetched++, new Response("{}", { status: 200 }))) as unknown as typeof fetch
+    const c = githubClient({ gh, fetch: fetchFn, now: () => clock })
+    return { c, tick: (ms: number) => { clock += ms }, fetched: () => fetched, clock: () => clock }
+  }
+  for (const [name, err, why] of [["answers 404", NOT_FOUND, /answered 404/], ["times out", TIMED_OUT, /no answer in 30 s/]] as const) {
+    const t = make((args) => args[0] === "auth" ? "" : err)
+    const got = await t.c.api("repos/Alice/lighthouse/actions/runs?head_sha=abc")
+    check(`a signed-in gh that ${name}: says so, still signed in, not asked again anonymously`,
+      typeof got === "string" && why.test(got) && t.c.signedIn() === true && t.fetched() === 0 && ciCallsPerHour(t.c.signedIn()) === CI_CALLS_SIGNED_IN, [got, t.c.signedIn()])
+  }
+  {
+    const t = make((args) => args[0] === "auth" ? SIGNED_OUT : {})
+    await t.c.api("x")
+    check("a gh that says it isn't signed in: anonymously", t.c.signedIn() === false && t.fetched() === 1)
+    const n = make(() => NO_GH)
+    await n.c.api("x")
+    check("no gh at all: anonymously", n.c.signedIn() === false && n.fetched() === 1)
+  }
+  {
+    let revoked = false
+    const t = make((args) => args[0] === "auth" ? "" : revoked ? fail({ code: 1, stderr: "gh: Bad credentials (HTTP 401)" }) : { ok: 1 })
+    await t.c.api("x")
+    revoked = true
+    await t.c.api("x")
+    check("a token revoked since: anonymously from then on", t.c.signedIn() === false && t.fetched() === 1)
+  }
+  // The stall of 2026-11-11: an hour's budget used anonymously, then signed in; a refused call must not keep it at 20.
+  {
+    let signedIn = false, calls = 0
+    const t = make((args) => args[0] === "auth" ? (signedIn ? "" : SIGNED_OUT) : (calls++, NOT_FOUND))
+    const ci = githubCi("main", (api) => t.c.api(api), { budget: callBudget(() => ciCallsPerHour(t.c.signedIn()), t.clock), now: t.clock, gate: null, login: t.c.login })
+    for (let i = 0; i < CI_CALLS_PER_HOUR + 5; i++) { t.tick(LIST_GONE); await ci("Alice/lighthouse", `a${i}`) }
+    check("signed out: the budget holds it at the anonymous calls", t.fetched() === CI_CALLS_PER_HOUR, t.fetched())
+    signedIn = true
+    t.tick(LOGIN_RECHECK)
+    const r = await ci("Alice/lighthouse", "b")
+    check("signed in later: taken up at the next look within the hour, the budget grown", calls >= 1 && t.c.signedIn() === true && !/asked again later/.test(r.why), [calls, r.why])
+    for (let i = 0; i < 40; i++) { t.tick(LIST_GONE); await ci("Alice/lighthouse", `c${i}`) }
+    check("…and gh's 404s keep it signed in: no call refused under 300", t.c.signedIn() === true && calls >= 41, calls)
   }
 })
 

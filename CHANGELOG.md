@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Updates no longer stall on GitHub's hourly limit**: a server with a signed-in gh keeps its larger allowance of
+  calls to GitHub, whatever GitHub answers, so new commits reach it within minutes.
 - **A split's pane tabs stay put in the sidebar**: a split whose panes have tabs of their own lists them under its row
   until you click a cell's +n, which folds them into the row (and lists them again) with a motion; switching tabs no
   longer opens and closes them, and the +n steps aside for the X on hover instead of hiding under it.

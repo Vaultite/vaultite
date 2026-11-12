@@ -38,24 +38,71 @@ export const TRY_PREFIX = "try/"
 /** "owner/repo" of a GitHub remote's url, or null. */
 export const githubRepo = (url: string) => /github\.com[/:]([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/.exec(url.trim())?.[1] ?? null
 
-/** How githubApi last reached GitHub: through a signed-in gh, anonymously, or not yet (null). */
-let signedIn: boolean | null = null
+/** Runs gh with these arguments: its stdout, or rejects as execFile does (`code`: the exit code or ENOENT, `killed`,
+ *  `stderr`). */
+export type RunGh = (args: string[], timeout: number) => Promise<{ stdout: string }>
+// (a branch's 100 runs are over 1 MB: execFile's default buffer failed every list through gh)
+const runGh: RunGh = (args, timeout) => exec("gh", args, { timeout, maxBuffer: 64 * 1024 * 1024 })
 
-/** GitHub's API (the gh CLI when it's signed in, else anonymously: the repo is public): its answer, or why not. */
-export async function githubApi<T>(api: string, timeout = 30_000): Promise<T | string> {
-  try {
-    const body = JSON.parse((await exec("gh", ["api", api], { timeout })).stdout) as T
-    signedIn = true
-    return body
-  } catch { /* (not signed in, or no gh: anonymously) */ }
-  signedIn = false
-  try {
-    const r = await fetch(`https://api.github.com/${api}`, { headers: { accept: "application/vnd.github+json", "user-agent": "vaultite" }, signal: AbortSignal.timeout(timeout) })
-    return r.ok ? await r.json() as T : `GitHub answered ${r.status} about CI`
-  } catch (e) {
-    return `GitHub didn't answer about CI (${(e as Error).message})`
-  }
+/** Whether a gh failure says it can't serve at all (no gh, no login, a revoked token), not that GitHub answered an error. */
+export function ghUnusable(e: unknown): boolean {
+  const err = e as { code?: unknown; stderr?: unknown }
+  if (err?.code === "ENOENT") return true
+  return /gh auth login|not logged in|GH_TOKEN|HTTP 401|Bad credentials/i.test(String(err?.stderr ?? ""))
 }
+
+/** Why a gh call that could serve didn't answer, in githubApi's words. */
+function ghWhy(e: unknown, timeout: number): string {
+  const err = e as { killed?: boolean; signal?: string | null; stderr?: unknown; message?: string }
+  if (err?.killed || err?.signal) return `GitHub didn't answer about CI (gh got no answer in ${Math.round(timeout / 1000)} s)`
+  const status = /HTTP (\d{3})/.exec(String(err?.stderr ?? ""))?.[1]
+  if (status) return `GitHub answered ${status} about CI`
+  return `GitHub didn't answer about CI (gh: ${String(err?.stderr ?? "").trim().split("\n")[0] || err?.message || "failed"})`
+}
+
+/** A signed-out (or missing, or unknown) gh is asked again after this: one signed in later is taken up. */
+export const LOGIN_RECHECK = 10 * 60_000
+
+/** GitHub's API through gh while gh says it's signed in (`gh auth status`, or a call failing for want of a login), else
+ *  anonymously (the repo is public). An error GitHub answers (a 404, a 5xx) or a timeout never changes which. */
+export function githubClient(o: { gh?: RunGh; fetch?: typeof fetch; now?: () => number } = {}) {
+  const gh = o.gh ?? runGh, get = o.fetch ?? fetch, now = o.now ?? Date.now
+  let state: { signedIn: boolean | null; at: number } = { signedIn: null, at: -Infinity }
+  let asking: Promise<boolean | null> | null = null
+  const set = (signedIn: boolean | null) => { state = { signedIn, at: now() }; return signedIn }
+  /** Whether gh is signed in, as gh says: asked at the first call, then again only while it isn't (every 10 min). */
+  const login = (): Promise<boolean | null> => {
+    if (state.signedIn === true || now() - state.at < LOGIN_RECHECK) return Promise.resolve(state.signedIn)
+    return asking ??= gh(["auth", "status", "--hostname", "github.com"], 15_000)
+      .then(() => set(true), (e) => set(ghUnusable(e) || typeof (e as { code?: unknown })?.code === "number" ? false : state.signedIn))
+      .finally(() => { asking = null })
+  }
+  async function api<T>(path: string, timeout = 30_000): Promise<T | string> {
+    if (await login()) {
+      try {
+        const body = JSON.parse((await gh(["api", path], timeout)).stdout) as T
+        set(true)
+        return body
+      } catch (e) {
+        if (!ghUnusable(e)) return e instanceof SyntaxError ? "GitHub's answer about CI wasn't JSON" : ghWhy(e, timeout)
+        set(false) // (signed out or gone since: anonymously from now on, gh asked again in 10 min)
+      }
+    }
+    try {
+      const r = await get(`https://api.github.com/${path}`, { headers: { accept: "application/vnd.github+json", "user-agent": "vaultite" }, signal: AbortSignal.timeout(timeout) })
+      return r.ok ? await r.json() as T : `GitHub answered ${r.status} about CI`
+    } catch (e) {
+      return `GitHub didn't answer about CI (${(e as Error).message})`
+    }
+  }
+  return { api, login, signedIn: () => state.signedIn }
+}
+export type GithubClient = ReturnType<typeof githubClient>
+
+/** This process's. */
+const github = githubClient()
+/** GitHub's API (the gh CLI when it's signed in, else anonymously: the repo is public): its answer, or why not. */
+export const githubApi = <T>(api: string, timeout?: number) => github.api<T>(api, timeout)
 
 /** GitHub's API allows 60 calls an hour without a login, per address, shared by every machine behind it: the updates
  *  ask at most this many in any hour, whatever the looks or check-nows (two hosts on one network still leave a third). */
@@ -64,8 +111,8 @@ export const CI_CALLS_PER_HOUR = 20
 export const CI_CALLS_SIGNED_IN = 300
 const HOUR = 3_600_000
 
-/** The updates' calls an hour by how githubApi reaches GitHub: anonymous's until a signed-in gh answered. */
-export const ciCallsPerHour = (viaGh: boolean | null = signedIn) => viaGh ? CI_CALLS_SIGNED_IN : CI_CALLS_PER_HOUR
+/** The updates' calls an hour by how githubApi reaches GitHub: anonymous's until gh says it's signed in. */
+export const ciCallsPerHour = (viaGh: boolean | null = github.signedIn()) => viaGh ? CI_CALLS_SIGNED_IN : CI_CALLS_PER_HOUR
 
 /** At most `max` calls in any hour (a function: sized at each call): `take` says whether one more may go now. */
 export function callBudget(limit: number | (() => number) = CI_CALLS_PER_HOUR, now = Date.now) {
@@ -92,9 +139,14 @@ const LIST_FOR = 15_000
 
 /** CI's verdicts, asked as little as GitHub allows: the branch's latest runs in one call, a commit not among them on its
  *  own once, a run's jobs only while they may change (once all ended, never again), a pass never, a red every 10 min. */
-export function githubCi(branch: string, get: (api: string) => Promise<unknown> = githubApi, o: { budget?: CallBudget; now?: () => number; gate?: Gate | null } = {}): Ci {
+export function githubCi(branch: string, get: (api: string) => Promise<unknown> = githubApi, o: { budget?: CallBudget; now?: () => number; gate?: Gate | null; login?: () => Promise<unknown> } = {}): Ci {
   const budget = o.budget ?? hourly, now = o.now ?? Date.now, gate = o.gate === undefined ? osGate() : o.gate
-  const ask = <T>(api: string) => (budget.take() ? get(api) : Promise.resolve(`GitHub's API was asked ${budget.max()} times this hour, the most the updates ask: CI is asked again later`)) as Promise<T | string>
+  const login = o.login ?? (get === githubApi ? github.login : null)
+  // (the budget is sized by gh's login, asked before each call: a refused call can't keep a wrong size)
+  const ask = async <T>(api: string) => {
+    await login?.()
+    return (budget.take() ? get(api) : `GitHub's API was asked ${budget.max()} times this hour, the most the updates ask: CI is asked again later`) as T | string
+  }
   const runsOf = (body: { workflow_runs?: CiRun[] } | string) => typeof body === "string" ? body : body.workflow_runs ?? []
   const known = new Map<string, { r: CiResult; at: number }>(), seen = new Map<string, CiRun[]>(), ended = new Map<number, CiJob[]>()
   let list: { at: number; runs: Promise<CiRun[] | string> } | null = null
