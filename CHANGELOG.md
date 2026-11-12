@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A site's own full-screen button works in the video player's window on a busy Mac too**: the player no longer
+  takes the video back while the window is still turning full screen, which made the site's request fail.
 - **The app loads about 190 KB less script at start**: it bundles only the plugin modules vault plugins may import.
 - **An agent's browser ask no longer toasts over its own card** when the window wasn't in front as it came: the
   card says it, and away from the window the system notification does.
