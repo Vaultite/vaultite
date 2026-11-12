@@ -157,8 +157,10 @@ async function switchTo(p: string) {
 // The desktop app's main process: files from outside the vault its window may open.
 onHostMessage("allow", (m) => allow(m.paths))
 // (its app's next code root's web build, when only that changed: served from now on, the pages told; never an attached app's)
+const roots = (await import("./core/update/lease.ts")).rootsHeld(import.meta.filename, "server")
+void roots.take(web.dist)
 onHostMessage("adopt-web", (m) => {
-  if (DESKTOP && typeof m.dist === "string" && path.isAbsolute(m.dist) && fs.existsSync(path.join(m.dist, "index.html"))) web.adopt(m.dist)
+  if (DESKTOP && typeof m.dist === "string" && path.isAbsolute(m.dist) && fs.existsSync(path.join(m.dist, "index.html"))) { web.adopt(m.dist); void roots.take(m.dist) }
 })
 // Going (the app gone, even if it crashed; a stop): the vault's own plugins stop first (onUnload), so what they run does.
 // (listening the whole time: signal-exit kills the process at once when it's the only listener left)

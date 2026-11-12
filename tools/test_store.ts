@@ -5,6 +5,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { check, exit, section, skip, summary, tempDir } from "./test/lib.ts"
 import { gitEnv } from "../core/gitenv.ts"
+import { rootsHeld } from "../core/update/lease.ts"
 import { type Recipe, rootStore } from "../core/update/store.ts"
 import { fingerprint } from "../electron/shell/print.mjs"
 import * as roots from "../electron/shell/roots.mjs"
@@ -178,6 +179,24 @@ await section("gc: current, good and leased roots stay", async () => {
   check("the picker still runs current", pickIn(store, print).root === store.root(c2))
 })
 function c6Of() { return git(dev, "rev-parse", "HEAD") }
+
+await section("a server holds its root and the web build it serves, the one before let go", async () => {
+  const s = path.join(tmp, "held.noindex"), sha = (x: string) => x.repeat(40), at = (x: string, f: string) => path.join(s, "roots", sha(x), f)
+  fs.mkdirSync(path.join(s, "repo.git"), { recursive: true })
+  for (const x of "abc") fs.mkdirSync(at(x, "web/dist"), { recursive: true })
+  const held = rootStore({ dir: s, url: origin, recipe, install, log: () => {} })
+  const leased = async () => [...(await held.leased()).keys()].map((k) => k[0]).sort().join("")
+  const roots = rootsHeld(at("a", "server.ts"), "server")
+  await roots.ready
+  await roots.take(at("a", "web/dist"))
+  check("its own root, once", await leased() === "a")
+  await roots.take(at("b", "web/dist"))
+  check("…and the web build it adopted (an update's next root)", await leased() === "ab")
+  await roots.take(at("c", "web/dist"))
+  check("another adopted: the one before let go", await leased() === "ac")
+  await roots.take(at("a", "web/dist"))
+  check("its own again: only its own held", await leased() === "a")
+})
 
 await section("two stores of one folder in one process take turns (the app's look and its gc after a launch)", async () => {
   let release = () => {}, began = () => {}

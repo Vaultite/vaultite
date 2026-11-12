@@ -46,3 +46,19 @@ export async function holdRoot(self: string, what: string) {
     return release
   } catch { return () => {} }
 }
+
+export function rootsHeld(self: string, what: string) {
+  const own = storeRootOf(self)?.sha
+  const ready = holdRoot(self, what).then(() => {})
+  let other: { sha: string; held: Promise<() => void> } | null = null
+  return {
+    ready,
+    async take(file: string) {
+      const sha = storeRootOf(file)?.sha
+      if (sha === (other?.sha ?? own)) return
+      const was = other
+      other = sha && sha !== own ? { sha, held: holdRoot(file, what) } : null
+      await Promise.all([other?.held, was?.held.then((release) => release())])
+    },
+  }
+}

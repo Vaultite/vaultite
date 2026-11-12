@@ -39,7 +39,7 @@ export type Site = {
 /** Code and files the processes find by path. Where a read's caching wasn't plain, it's in `reads`: unknown is changed. */
 export const SITES: Site[] = [
   // ---------- the server
-  { file: "server.ts", why: "a test's server ends with its test, from a thread of code given as text", at: ["new Worker(`const pid"] },
+  { file: "server.ts", why: "a test's server ends with its test, from a thread of code given as text; its own file: the code root it holds from the store's gc", at: ["new Worker(`const pid"], anchors: true },
   { file: "core/plugins.ts", why: "the server imports every built-in plugin's plugin.ts (load); a Plugin reads its folder (PLUGIN_READS)",
     at: ["import(pathToFileURL(file).href)"], anchors: true, caller: "core/app.ts", loads: ["plugins/core/*/plugin.ts"], reads: ["plugins/core/*/manifest.json"] },
   { file: "core/vaultplugins.ts", why: "vault plugins' backends: from the vault, not the app, importing the core's API and app plugins' exports; the app's Tailwind setup compiles their classes",
