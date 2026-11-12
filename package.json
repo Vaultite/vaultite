@@ -23,6 +23,7 @@
     "verify": "node tools/verify.ts",
     "evals": "node tools/evals/run.ts",
     "lint": "oxlint",
+    "quality": "node tools/quality.ts",
     "preview": "vite preview",
     "app": "node electron/start.ts",
     "app:build": "VAULTITE_CLEAN_BUILD=1 npm run build && npm run smoke && VAULTITE_CHANNEL=main node electron/stamp.ts && node tools/build_helpers.ts && electron-builder --dir -c electron/source.cjs",
