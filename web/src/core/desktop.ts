@@ -179,6 +179,11 @@ export type WebPages = {
   keys: (steps: string[]) => Promise<unknown>
   /** Show a downloaded file in Finder. */
   reveal: (path: string) => Promise<unknown>
+  /** This Mac's downloads, newest first (electron/downloads.ts). Older builds don't have it. */
+  downloads?: () => Promise<WebDownload[]>
+  /** Do something to download `id` (cancel, pause, resume, retry, open, show, forget), or to them all (`null`: clear,
+   *  folder). Answers whether it could. */
+  download?: (id: number | null, what: string) => Promise<boolean>
   /** This window's pages: on screen in a tab (`shown`) or their tab's in the background. */
   list?: () => Promise<WebPageInfo[]>
   /** The sites a profile keeps cookies for, signed-in ones first, then the latest visited, with the account where the
@@ -249,7 +254,9 @@ export type WebEvent =
   | { type: "nav"; id: number; dir: -1 | 1 }
   /** What a find found so far: the match it's at (1-based; 0: none), of how many, `final` once it's done counting. */
   | { type: "found"; id: number; request: number; active: number; matches: number; final: boolean }
-  | { type: "download"; name: string; path: string; ok: boolean }
+  /** A download started, moved on or ended (`event`: this window shows its toast), or left the list (`gone`). Older
+   *  builds tell only its end, as `name`, `path` and `ok`. */
+  | { type: "download"; download?: WebDownload; event?: "started" | "done"; gone?: number; name?: string; path?: string; ok?: boolean }
   /** An image saved to the vault from a page's menu: its bytes (null: it couldn't be had), its name and type. */
   | { type: "image"; id: number; name: string; mime: string; data: Uint8Array | null; error?: string }
   | { type: "pages" }
@@ -275,6 +282,12 @@ export type CloudAccount = { id: string; label: string; profiles: string[] }
 /** `signedIn`: a profile named is signed in to claude.ai (from its cookies: nothing asked); the rest once read. `base`:
  *  claude.ai's address (a test's stand-in has its own; older builds don't say). */
 export type CloudState = { signedIn: boolean; accounts: CloudAccount[]; sessions: CloudSession[]; base?: string }
+/** A download in the browser (electron/downloads.ts): bytes so far of `total` (0: unknown). */
+export type WebDownload = {
+  id: number; name: string; path: string; url: string; profile: string
+  state: "progressing" | "paused" | "completed" | "cancelled" | "interrupted"
+  received: number; total: number; at: number; done?: number; resumable?: boolean; agent?: boolean; gone?: boolean
+}
 export type WebPageInfo = WebPageState & { id: number; profile: string; shown: boolean
   /** The id of the tab it's for ("": none, a glance). Older builds don't say. */
   tab?: string }

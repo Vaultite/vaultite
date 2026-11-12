@@ -43,6 +43,8 @@ export type MenuItem = {
   /** Not a choice: a few side by side (a segmented control), `value` on, with the `note` of the one on under it (what
    *  it does). Picking one keeps the menu open (redrawn). `label` names it. */
   segments?: { value: string; options: { value: string; label: string; note?: string }[]; pick: (v: string) => void }
+  /** A thin bar along the row's foot, filled this far (0 to 1; -1: going, how far unknown): a download's. */
+  progress?: number
 }
 /** Commands as menu rows (by id), those offered now, named and keyed as in the palette: a setting with its check
  *  ("Line numbers"), one that switches something else by what it does now ("Hide left sidebar"). */
@@ -529,7 +531,7 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
               if (it.keep && again) { runOrSay(it.run, it.label); if (openState()) set({ ...openState()!, items: redraw(again) }); return }
               closeMenu({ chosen: e.currentTarget, blink: (e.nativeEvent as PointerEvent).pointerType !== "touch" }); runOrSay(it.run, it.label)
             }}
-            className={cn("flex h-11 w-full cursor-pointer items-center gap-3 rounded-[8px] px-3 text-left text-[17px] whitespace-nowrap hover:bg-foreground/[0.07] focus-visible:bg-foreground/[0.07] focus-visible:outline-none disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent md:h-7 md:gap-2.5 md:rounded-[4px] md:px-2.5 md:text-[13px]",
+            className={cn("relative flex h-11 w-full cursor-pointer items-center gap-3 rounded-[8px] px-3 text-left text-[17px] whitespace-nowrap hover:bg-foreground/[0.07] focus-visible:bg-foreground/[0.07] focus-visible:outline-none disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent md:h-7 md:gap-2.5 md:rounded-[4px] md:px-2.5 md:text-[13px]",
               it.danger && "text-destructive", (subAt === i || (inField && query && i === bestAt)) && "bg-foreground/[0.07]")}>
             {!trailing && it.checked !== undefined && <Check className={cn(icon, !it.checked && "invisible")} strokeWidth={2.5} />}
             {(trailing || it.checked === undefined) && (it.icon ? <it.icon className={icon} strokeWidth={2} /> : lead && <span className={icon} />)}
@@ -542,6 +544,7 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
                   <ChevronRight className={cn(icon, "text-muted-foreground")} strokeWidth={2} />
                 </span>
               : <ChevronRight className={cn(icon, "-mr-1 text-muted-foreground")} strokeWidth={2} />)}
+            {it.progress !== undefined && <MenuProgress value={it.progress} />}
           </button>}
         </Fragment>
       ))}
@@ -557,6 +560,18 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
         document.querySelector("dialog[data-menu-layer]") ?? document.body,
       )}
     </div>
+  )
+}
+
+/** A row's progress (MenuItem `progress`), under its label. */
+function MenuProgress({ value }: { value: number }) {
+  const known = value >= 0
+  return (
+    <span aria-hidden data-menu-progress={known ? Math.round(value * 100) : "unknown"}
+      className="pointer-events-none absolute inset-x-3 bottom-1.5 h-[3px] overflow-hidden rounded-full bg-foreground/[0.1] md:inset-x-2.5 md:bottom-[3px] md:h-[2px]">
+      <span className={cn("block h-full rounded-full bg-primary [transition:width_var(--motion)_linear]", !known && "w-full animate-pulse opacity-60")}
+        style={known ? { width: `${Math.max(2, Math.min(100, value * 100))}%` } : undefined} />
+    </span>
   )
 }
 

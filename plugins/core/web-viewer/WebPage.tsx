@@ -12,6 +12,7 @@ import { floatCover, hitCover, matters, moved, overlap, painted, passPointer, po
 import { ExtensionButtons, extensionItems, useExtensionBar } from "./Extensions"
 import { AddressBar, type Go } from "./AddressBar"
 import { ContainerButton } from "./ContainerButton"
+import { DownloadsButton } from "./downloads"
 import { signInReached, watchTab } from "./linklogins"
 import { movedFrom } from "./where.ts"
 import { manageContainers } from "./Sites"
@@ -521,6 +522,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
         {(state.playing || state.muted) && (
           <BarButton icon={state.muted ? VolumeX : Volume2} label={state.muted ? "Unmute tab" : "Mute tab"} onClick={() => void web.go(id, state.muted ? "unmute" : "mute")} />
         )}
+        <DownloadsButton />
         <ExtensionButtons bar={ext} className="@max-md/bar:hidden" />
         <SaveButton disabled={!id || !onWeb} saving={saving} onSave={() => void clip()} actions={actions.filter((a) => a.kind === "save")} />
         <MoreButton disabled={!onWeb} items={(at) => [

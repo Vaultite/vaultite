@@ -109,6 +109,9 @@ const web = (u: string) => /^https?:\/\//i.test(u)
 const shows = (u: string) => web(u) || engineOpens(u) || /^(view-source|blob):https?:\/\//i.test(u)
 /** What window.open('') opens: a blank window its opener sends somewhere next (a sign-in's popup) or writes into. */
 const blankWindow = (u: string) => !u || /^about:blank([?#].*)?$/i.test(u)
+// Downloads (electron/downloads.ts): loaded with the first session, not at launch; it's in long before a page downloads.
+let dl: typeof import("./downloads.ts") | null = null
+const loadDownloads = async () => (dl ??= await import("./downloads.ts"))
 /** Images asked for with Save image to vault (their addresses), whose downloads go to the window instead. */
 const toVault = new Set<string>()
 const pageOf = (wc: WebContents) => [...pages.values()].find((p) => p.view.webContents === wc)
@@ -144,17 +147,15 @@ function webSession(profile: string) {
       })
       return
     }
-    const dir = app.getPath("downloads")
-    const file = path.join(dir, freeName(dir, item.getFilename() || "download"))
-    item.setSavePath(file)
+    const win = p && !p.win.isDestroyed() ? p.win : wc ? AppWindow.fromWebContents(wc) : null
+    if (dl) dl.track(item, s, { profile, win, agent: !!p?.agent })
+    else item.setSavePath(path.join(app.getPath("downloads"), `${Date.now()} ${path.basename(item.getFilename() || "download")}`))
     // (a tab opened for it, nothing of its own shown yet, closes, as Chrome's does: no empty tab left behind; one not
     // handed to its tab yet closes as it is)
     if (p && !p.agent && wc && !shows(wc.getURL())) { if (p.tab) tell(p.win, { type: "close", tab: p.tab }); else p.downloaded = true }
-    item.once("done", (_ev, state) => {
-      if (p && !p.win.isDestroyed()) tell(p.win, { type: "download", name: path.basename(file), path: file, ok: state === "completed" })
-    })
   })
   sessions.set(profile, s)
+  void loadDownloads().then((m) => m.downloadSession(profile, s))
   sessionMade(s, profile)
   return s
 }
@@ -234,15 +235,6 @@ async function askPermission(profile: string, wc: WebContents, perm: string, det
     for (const k of kinds) if (!(await systemPreferences.askForMediaAccess(k === "camera" ? "camera" : "microphone"))) return false
   }
   return yes
-}
-
-/** "name.pdf", else "name 1.pdf"... like Finder. */
-function freeName(dir: string, name: string) {
-  const clean = path.basename(name).replace(/^\.+/, "") || "download"
-  const ext = path.extname(clean), stem = ext ? clean.slice(0, -ext.length) : clean
-  let out = clean, n = 1
-  while (fs.existsSync(path.join(dir, out))) out = `${stem} ${n++}${ext}`
-  return out
 }
 
 /** How long a click or key lets a page open a tab or window (Chromium's user activation). */
@@ -1402,6 +1394,11 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
   "web:reveal": (_win, p) => {
     const file = path.resolve(str(p))
     if (path.dirname(file) === app.getPath("downloads") && fs.existsSync(file)) shell.showItemInFolder(file)
+  },
+  "web:downloads": async () => (await loadDownloads()).downloads(),
+  "web:download": async (_win, id, what) => {
+    const m = await loadDownloads()
+    return typeof id === "number" ? m.act(id, str(what)) : what === "clear" ? (m.clearDownloads(), true) : what === "folder" ? (m.openDownloadsFolder(), true) : false
   },
 }
 

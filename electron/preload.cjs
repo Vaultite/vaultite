@@ -136,6 +136,8 @@ contextBridge.exposeInMainWorld("vaultite", {
     external: call("web:external"),
     keys: call("web:keys"),
     reveal: call("web:reveal"),
+    downloads: call("web:downloads"),
+    download: call("web:download"),
     list: call("web:list"),
     sites: call("web:sites"),
     who: call("web:who"),

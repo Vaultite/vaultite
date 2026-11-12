@@ -844,6 +844,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `viewSurfaces(disabled?)`: The main view of each plugin that's on, as a pin (its first view pinned as itself, without an arg: Inbox, Graph view), in the plugins' order: what Pinned's menu offers.
 - `WebContainer`: Named logins web pages open in (the Browser's containers), for what picks one elsewhere: a workspace's.
 - `webContainers()`: The containers web pages open in, from the plugins that are on (the Browser's).
+- `WebDownload`: A download in the browser (electron/downloads.ts): bytes so far of `total` (0: unknown).
 - `WebEvent`
 - `WebPageAction`: What a plugin adds to a web page's bar in the Browser, also in its tab's menu: `kind: "save"` (Save video) goes in the bar's Save menu, under Save page to vault; any other in its … menu (Open in…
 - `webPageActions(page)`: What the plugins that are on add to a web page's bar (`webPageActions`).

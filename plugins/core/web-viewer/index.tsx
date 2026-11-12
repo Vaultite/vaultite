@@ -2,7 +2,7 @@
 // Links open here (⌥⌘-click: the browser); pages' notifications and Claude Code on the web's sessions reach the Inbox.
 import { lazy, memo, Suspense, useEffect } from "react"
 import { Bookmark, Bot, Box, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Code, CopyPlus, Download, Eraser, FileCode2, ExternalLink, Globe, Hand, History, KeyRound, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Paintbrush, PanelTopClose, PencilLine, Play, Printer, Puzzle, RectangleEllipsis, RotateCw, Scissors, Search, Volume2, VolumeX } from "lucide-react"
-import { choose, closePane, closeView, definePlugin, detailPath, setFocusedPane, getStore, getTabLayout, isMac, isViewOpen, isWindows, modKey, modifiedSteps, newTabId, notify, notifyError, openDetail, openInSplit, openTab, openView, openWebLink, Panel, allPanes, focusedPane, shownTab, post, runCommandById, runShortcut, typingIn, saveAttachments, selectPane, showLabel, systemNotify, selectedText, trace, useCommandList, useEnabled, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
+import { choose, closePane, closeView, definePlugin, detailPath, setFocusedPane, getStore, getTabLayout, isMac, isViewOpen, isWindows, modKey, modifiedSteps, newTabId, notify, notifyError, openDetail, openInSplit, openTab, openView, openWebLink, Panel, allPanes, focusedPane, shownTab, post, runCommandById, runShortcut, typingIn, saveAttachments, selectPane, systemNotify, selectedText, trace, useCommandList, useEnabled, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
 import { hostOf, searchUrl, siteName } from "./address"
 import { addContainer, argOf, chosenFor, colorOf, destination, keepOutside, openBehind, useContainers, containerById, containerOfProfile, containers, profileIn, splitArg, viewSource } from "./containers"
 import { iconCame, siteIcon, spinnerIcon } from "./icons"
@@ -22,6 +22,7 @@ import { AgentsCard, agentsCardShown, showAgentsCard } from "./AgentsCard"
 import { pickElement, useHiddenParts, watchShields } from "./shields"
 import { editStyle, useDarkPages, useLookBackground, useSiteStyles } from "./stylestate"
 import { Playing } from "./Playing"
+import { downloadCame, DownloadsChip, readDownloads, showDownloads } from "./downloads"
 import { muteItem, pauseItems, pauseSound, watchSoundMarks } from "./soundmarks"
 import { SoundCard, watchSoundCard } from "./SoundCard"
 import { barHidden, barItems, marksBarShown, setBarHidden, setMarksBarShown } from "./pagebar"
@@ -194,6 +195,7 @@ function Background() {
     return () => { off(); clearTimeout(timer) }
   }, [])
   // The pages agents are at work in: as the desktop app tells them, and as they are when this window loads.
+  useEffect(readDownloads, [])
   useEffect(() => { void Promise.resolve(webPages?.engine?.("agents:pages")).then((l) => { if (Array.isArray(l)) setAgentPages(l as AgentPage[]) }, () => {}) }, [])
   useEffect(() => webPages?.on((m) => {
     if (m.type === "state") stateCame(m.id, m.state)
@@ -243,10 +245,7 @@ function Background() {
     else if (m.type === "engine:ext:close" && typeof m.url === "string") closeView(`web/${argOf(m.url, containerOfProfile(String(m.profile ?? "")))}`)
     else if (m.type === "engine:ext:popup" && typeof m.ext === "string") popupChanged(m.ext, !!m.open)
     else if (m.type === "engine:ext:popup-ask" && typeof m.ext === "string") document.querySelector<HTMLElement>(`[data-ext-button="${CSS.escape(m.ext)}"]`)?.click()
-    else if (m.type === "download") {
-      if (m.ok) notify(`Downloaded ${m.name}`, { action: { label: showLabel, run: () => void webPages?.reveal(m.path) } })
-      else notify(`Couldn't download ${m.name}`, { kind: "error" })
-    }
+    else if (m.type === "download") downloadCame(m)
   }), [])
   return <><Card /><Sounds /></>
 }
@@ -410,6 +409,7 @@ export default definePlugin({
     { id: "web:sites-tab", name: "Show sites and logins", desktop: true, when: () => !!webPages?.sites, icon: Globe, run: manageContainers },
     { id: "web:passwords", name: "Show passwords", desktop: true, when: () => !!webPages?.engine, icon: RectangleEllipsis,
       run: () => openView("passwords", { newTab: !isViewOpen("view:passwords") }) },
+    { id: "web:downloads", name: "Show downloads", desktop: true, when: () => !!webPages?.download, run: () => showDownloads(), icon: Download },
     { id: "web:history", name: "Show history", keys: isMac ? ["Mod+Y"] : ["Mod+H"], desktop: true, when: () => !!webPages?.engine, run: () => openView("web-history", { newTab: !isViewOpen("view:web-history") }), icon: History },
     { id: "web:clear-history", name: "Clear browsing history…", desktop: true, when: () => !!webPages?.engine, run: askClear, icon: Eraser },
     { id: "web:block-element", name: "Block an element on this page", when: () => !!webPages?.engine && /^https?:\/\//i.test(focusedPage()?.url() ?? ""),
@@ -434,7 +434,7 @@ export default definePlugin({
     { id: "web:import-brave", name: "Import from Brave…", desktop: true, when: () => browsersHere().some((s) => s.browser === "brave"), run: () => void askImport("brave"), icon: Download },
     { id: "web:import-chrome", name: "Import from Chrome…", desktop: true, when: () => browsersHere().some((s) => s.browser === "chrome"), run: () => void askImport("chrome"), icon: Download },
   ],
-  ambient: { playing: { title: "Web pages playing", sort: 55, render: () => <Playing /> } },
+  ambient: { playing: { title: "Web pages playing", sort: 55, render: () => <Playing /> }, downloads: { title: "Downloads", sort: 56, render: () => <DownloadsChip /> } },
   settingsPanel: () => <><SitesSettings /><PasswordsSetting /></>,
   settingsSearch: [{ key: "sites", label: "Sites and logins", description: "the sites signed in to in each container's and workspace's logins: sign out, clear trackers" },
     { key: "passwords", label: "Passwords", description: "your KeePass file (KeePassXC's, Strongbox's), its passwords listed, edited and filled in pages" }],
