@@ -3,6 +3,7 @@
 import { app, globalShortcut, screen } from "electron"
 import { AppWindow } from "./appwindow.ts"
 import { coverTranslucent } from "./translucency.ts"
+import { takePointer } from "./quiet.ts"
 import { lineHelper } from "./linehelper.ts"
 import { appWindowsSwift } from "./swiftbuild.ts"
 import fs from "node:fs"
@@ -47,7 +48,7 @@ function setThrough(win: AppWindow, on: boolean, tell = false) {
   if (win.isDestroyed()) through.delete(win)
   else {
     if (tell && !on) win.webContents.send("vaultite:apps", { type: "through", on: false })
-    if ((through.get(win) ?? false) !== on) { through.set(win, on); win.setIgnoreMouseEvents(on, { forward: true }) }
+    if ((through.get(win) ?? false) !== on) { through.set(win, on); takePointer(win, !on) }
   }
   const any = [...through.values()].some(Boolean)
   if (any && !watching) watching = setInterval(() => {

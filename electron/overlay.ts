@@ -37,7 +37,7 @@ const LINGER = 4000
 function make(d: Display) {
   const w = overlayWindow({ ...d.bounds, focusable: false, enableLargerThanScreen: true,
     // (its soft cues play with no click on it: nothing ever clicks the overlay to allow them)
-    webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true, backgroundThrottling: false, autoplayPolicy: "no-user-gesture-required" } })
+    webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true, backgroundThrottling: false, autoplayPolicy: "no-user-gesture-required" } }, "screen")
   takesPointer(w)
   w.webContents.on("did-finish-load", () => { sent.delete(w); push(); if (layers.size) sendDrawing(); if (feed) feedPointer(true) })
   if (url) void w.loadURL(url).catch(() => {})
@@ -260,7 +260,7 @@ export function openPanel(base: string, at: Point, data: PanelData, focus = true
   const w = overlayWindow({ width: WIDTH + PAD * 2, height: 160,
     // (a click in it goes straight to its field: no first click spent bringing it forward)
     // (movable: its head drags it, Chat.tsx)
-    acceptFirstMouse: true, movable: true, webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true } }, 1)
+    acceptFirstMouse: true, movable: true, webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true } }, "panel")
   const mine: NonNullable<typeof panel> = { w, name: data.name, at, data, height: 0, menu: false, focus, travels, held: 0 }
   panel = mine
   // (a link in its words opens in the browser, never in this window)

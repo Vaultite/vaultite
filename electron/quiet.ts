@@ -14,11 +14,17 @@ export function quietPage(wc: WebContents) {
   wc.showDefinitionForSelection = () => { shownInstead().lookUps++ }
 }
 
+/** Window `w` takes the pointer, or lets it through to what's under it (its page still hears the moves). The one way a
+ *  window's pointer is set: a quiet copy never takes it nor hears the user's moves. */
+export function takePointer(w: BaseWindow, on: boolean) {
+  if (!w.isDestroyed()) w.setIgnoreMouseEvents(QUIET || !on, { forward: !QUIET })
+}
+
 /** Window `w` (its page `page`) quiet, under VAULTITE_QUIET. */
 export function quiet(w: BaseWindow, page?: WebContents) {
   if (!QUIET) return
   w.setOpacity(process.platform === "linux" ? 0.01 : 0) // (X11 stops painting a window at 0: screenshots of it then never come)
-  w.setIgnoreMouseEvents(true)
+  takePointer(w, false)
   w.show = () => w.showInactive()
   w.focus = () => {}
   page?.setBackgroundThrottling(false)

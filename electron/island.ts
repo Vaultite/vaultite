@@ -55,7 +55,7 @@ export function islandActs(a: IslandActs) {
 
 function make() {
   const w = overlayWindow({ width: W, height: H, focusable: false, enableLargerThanScreen: true, acceptFirstMouse: true,
-    webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true, backgroundThrottling: false } }, 2)
+    webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true, backgroundThrottling: false } }, "island")
   // (over its bar or card it takes the pointer, and a knock's time waits meanwhile)
   takesPointer(w, (on) => acts?.hover?.(on))
   quiet(w)

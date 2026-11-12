@@ -1,24 +1,25 @@
 // Every window the companion draws over the screen (its cursors and ink, its box, its cards, what comes next) is made
 // here: over every Space and full screen app, never in Mission Control, and kept out of screen shares and recordings.
 import { BrowserWindow, type BrowserWindowConstructorOptions, ipcMain, screen } from "electron"
-import { QUIET } from "./quiet.ts"
-import { type Box, holding } from "./overlayhold.ts"
+import { QUIET, takePointer } from "./quiet.ts"
+import { type Box, type Layer, LEVELS, overlayTakes } from "./stack.ts"
 import { listen, onFree } from "./helperscope.ts"
 
 /** Whether its windows stay out of screen shares, recordings and screenshots (the companion's `hide_from_shares`). */
 let hidden = true
 const made = new Set<BrowserWindow>()
 
-/** A see-through, frameless panel over everything (`level`: its place among the others at the screen saver's level);
- *  `o` adds to or overrides the defaults. Shown by its maker (`showInactive`). */
-export function overlayWindow(o: BrowserWindowConstructorOptions, level = 0) {
+/** A see-through, frameless panel over everything, at `layer`; `o` adds to or overrides the defaults. Shown by its maker
+ *  (`showInactive`). */
+export function overlayWindow(o: BrowserWindowConstructorOptions, layer: Layer) {
   const w = new BrowserWindow({ transparent: true, frame: false, hasShadow: false, resizable: false, movable: false, minimizable: false, maximizable: false,
     fullscreenable: false, skipTaskbar: true, show: false, type: "panel", backgroundColor: "#00000000", ...o })
   // (skipTransformProcessType: else macOS takes the app out of the Dock for it)
   w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
   // (not a window to the user: Mission Control leaves it out)
   w.setHiddenInMissionControl(true)
-  w.setAlwaysOnTop(true, "screen-saver", level)
+  const [level, at] = LEVELS[layer]
+  w.setAlwaysOnTop(true, level, at)
   // (sharingType none: macOS leaves it out of every capture, ScreenCaptureKit's too; the user still sees it)
   w.setContentProtection(hidden)
   made.add(w)
@@ -52,7 +53,7 @@ export function takesPointer(w: BrowserWindow, heard?: (on: boolean) => void) {
   wire()
   const h: Holds = { boxes: [], pressing: 0, on: false, stalled: false, heard }
   holds.set(w, h)
-  w.setIgnoreMouseEvents(true, { forward: true })
+  takePointer(w, false)
   const forget = () => { h.boxes = []; h.pressing = 0; check() }
   w.webContents.on("did-start-navigation", (d) => { if (d.isMainFrame && !d.isSameDocument) forget() })
   w.webContents.on("render-process-gone", forget)
@@ -87,12 +88,11 @@ function check() {
   let live = false
   for (const [w, h] of holds) {
     if (w.isDestroyed()) { holds.delete(w); continue }
-    const on = w.isVisible() && !h.stalled && holding(w.getBounds(), h.boxes, at, h.pressing > now)
+    const on = overlayTakes({ win: w.getBounds(), shown: w.isVisible(), stalled: h.stalled, boxes: h.boxes, at, pressing: h.pressing > now })
     if (on) live = true
     if (on === h.on) continue
     h.on = on
-    // (a test's window is never felt: quiet.ts)
-    if (!QUIET) w.setIgnoreMouseEvents(!on, { forward: true })
+    takePointer(w, on)
     h.heard?.(on)
   }
   if (live && !polling) polling = setInterval(check, POLL_MS)

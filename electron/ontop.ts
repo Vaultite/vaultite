@@ -1,6 +1,7 @@
 // Keep window on top (any of the app's windows), as a video call's pop-out: over other apps' windows, on every Space and
 // beside a full screen one; not full screen itself meanwhile (one that joins others' Spaces can't be one).
 import { BaseWindow } from "electron"
+import { LEVELS } from "./stack.ts"
 
 const MAC = process.platform === "darwin"
 const kept = new WeakSet<BaseWindow>()
@@ -14,7 +15,7 @@ export function setOnTop(w: BaseWindow, on: boolean) {
   const apply = () => {
     if (w.isDestroyed()) return
     const now = kept.has(w)
-    w.setAlwaysOnTop(now, "floating")
+    w.setAlwaysOnTop(now, ...LEVELS.onTop)
     // (skipTransformProcessType: else macOS takes the app out of the Dock and the menu bar meanwhile)
     if (MAC) { w.setFullScreenable(!now); w.setVisibleOnAllWorkspaces(now, { visibleOnFullScreen: now, skipTransformProcessType: true }) }
   }

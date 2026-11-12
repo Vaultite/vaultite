@@ -49,4 +49,19 @@ export default async ($: VaultTest) => {
       S.passedOf({ type: "mouseDown", keys: ["meta", "nope", "alt"] })?.keys.join() === "alt,meta" &&
       S.passedOf({ type: "mouseWheel", dx: "x" })?.dx === 0 && S.passedOf({ type: "click" }) === null && S.passedOf(null) === null)
   }
+
+  {
+    const win = { x: 400, y: 0, width: 700, height: 600 }, bar = { x: 300, y: 0, width: 120, height: 32 }
+    const takes = (at: { x: number; y: number }, o: Partial<{ boxes: typeof bar[]; pressing: boolean; shown: boolean; stalled: boolean }> = {}) =>
+      S.overlayTakes({ win, at, boxes: [bar], pressing: false, shown: true, stalled: false, ...o })
+    check("overlay: takes the pointer over a box its page marked", takes({ x: 760, y: 10 }))
+    check("overlay: lets it through over its see-through rest, with or without boxes",
+      !takes({ x: 700, y: 400 }) && !takes({ x: 760, y: 10 }, { boxes: [] }))
+    check("overlay: a press begun on one keeps it over the window, never off it",
+      takes({ x: 700, y: 400 }, { boxes: [], pressing: true }) && !takes({ x: 1200, y: 10 }, { pressing: true }) && !takes({ x: 760, y: 700 }, { pressing: true }))
+    check("overlay: hidden or not answering, it never takes it",
+      !takes({ x: 760, y: 10 }, { shown: false }) && !takes({ x: 760, y: 10 }, { stalled: true, pressing: true }))
+    check("levels: the island over a cursor's conversation over the companion's screen, a kept-on-top window under them all",
+      S.LEVELS.island[1] > S.LEVELS.panel[1] && S.LEVELS.panel[1] > S.LEVELS.screen[1] && S.LEVELS.panel[0] === S.LEVELS.screen[0] && S.LEVELS.onTop[0] === "floating")
+  }
 }

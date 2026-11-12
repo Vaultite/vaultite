@@ -90,3 +90,29 @@ export function pointerStep(s: Pointer, e: PointerEvent): { to: Pointer; do: Poi
     }
   }
 }
+
+/** Where each kind of window the app floats over others sits: macOS's level, and its place among that level's. */
+export const LEVELS = {
+  /** A window the user keeps on top (ontop.ts). */
+  onTop: ["floating", 0],
+  /** A tab's card dragged past its window (dragghost.ts). */
+  ghost: ["pop-up-menu", 0],
+  /** The companion over the whole screen, take-over's border and cards. */
+  screen: ["screen-saver", 0],
+  /** A cursor's conversation, over the companion's screen. */
+  panel: ["screen-saver", 1],
+  /** The notch's island, over everything of the app's. */
+  island: ["screen-saver", 2],
+} as const satisfies Record<string, readonly ["floating" | "pop-up-menu" | "screen-saver", number]>
+export type Layer = keyof typeof LEVELS
+
+/** A box in a window's points, from its corner. */
+export type Box = { x: number; y: number; width: number; height: number }
+
+/** Whether an overlay window (screen points) takes the pointer at `at`: shown, answering, and over one of the boxes its
+ *  page marks, or a press begun on one goes on (`pressing`) while it's over the window. Else it lets it through. */
+export function overlayTakes(o: { win: Box; shown: boolean; stalled: boolean; boxes: readonly Box[]; at: { x: number; y: number }; pressing: boolean }) {
+  const x = o.at.x - o.win.x, y = o.at.y - o.win.y
+  if (!o.shown || o.stalled || x < 0 || y < 0 || x >= o.win.width || y >= o.win.height) return false
+  return o.pressing || o.boxes.some((b) => x >= b.x && x < b.x + b.width && y >= b.y && y < b.y + b.height)
+}

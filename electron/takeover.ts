@@ -6,7 +6,7 @@ import { HEX } from "../core/desktop/screenmarks.ts"
 import { takeoverSwift } from "./swiftbuild.ts"
 import { lineHelper } from "./linehelper.ts"
 import { overlayWindow } from "./overlaywin.ts"
-import { quiet } from "./quiet.ts"
+import { quiet, takePointer } from "./quiet.ts"
 import { privateApp } from "../core/privateapps.ts"
 import { hostOf, siteIn } from "../core/desktop/places.ts"
 import { aimedAt, type Answer, type Call, cardSpot, declined, handGrace, intentOf, keepsYes, kindOf, OFFER_MS, outward, PAUSED_MS, pausedLine, plan, type Probe, type Rect, refusal, REST_MS,
@@ -73,8 +73,8 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`)
 const tintOf = (t: string) => HEX[t] ?? HEX.orange
 
 function floating(b: Electron.Rectangle, mouse: boolean, sized = false) {
-  const w = overlayWindow({ ...b, focusable: false, acceptFirstMouse: true, webPreferences: { sandbox: true, contextIsolation: true, javascript: false, enablePreferredSizeMode: sized } })
-  if (!mouse) w.setIgnoreMouseEvents(true)
+  const w = overlayWindow({ ...b, focusable: false, acceptFirstMouse: true, webPreferences: { sandbox: true, contextIsolation: true, javascript: false, enablePreferredSizeMode: sized } }, "screen")
+  if (!mouse) takePointer(w, false)
   return w
 }
 /** Shown without taking focus, then faded in. */
@@ -86,7 +86,7 @@ function appear(w: BrowserWindow) {
 function fadeAway(w: BrowserWindow | null) {
   if (!w || w.isDestroyed()) return
   if (!w.isVisible()) return void w.destroy()
-  w.setIgnoreMouseEvents(true)
+  takePointer(w, false)
   void w.webContents.insertCSS(OUT).catch(() => {})
   setTimeout(() => { if (!w.isDestroyed()) w.destroy() }, FADE_MS + 40)
 }

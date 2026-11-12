@@ -1,6 +1,8 @@
 /** A tab dragged past its window's edge (web Tabs.tsx' DragGhost): its card's picture follows the pointer over the screen
  *  in a see-through window it goes through. A BrowserWindow: AppWindows count as the app's windows. */
 import { BrowserWindow, screen, type WebContents } from "electron"
+import { takePointer } from "./quiet.ts"
+import { LEVELS } from "./stack.ts"
 
 /** The card as the page draws it: its box (CSS px of the page), where the pointer holds it, its corners. */
 export type GhostLook = { x: number; y: number; width: number; height: number; grab: { x: number; y: number }; radius: number }
@@ -17,11 +19,11 @@ function ghost() {
   win = new BrowserWindow({ width: 100, height: 100, transparent: true, frame: false, hasShadow: false, resizable: false, movable: false,
     minimizable: false, maximizable: false, fullscreenable: false, focusable: false, skipTaskbar: true, show: false, type: "panel",
     backgroundColor: "#00000000", webPreferences: { sandbox: true, contextIsolation: true, javascript: false, backgroundThrottling: false } })
-  win.setIgnoreMouseEvents(true)
+  takePointer(win, false)
   // (over a full screen window too; skipTransformProcessType: else macOS takes the app out of the Dock for it)
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
   win.setHiddenInMissionControl(true)
-  win.setAlwaysOnTop(true, "pop-up-menu")
+  win.setAlwaysOnTop(true, ...LEVELS.ghost)
   return win
 }
 
