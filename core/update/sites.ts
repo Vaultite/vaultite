@@ -73,7 +73,7 @@ export const SITES: Site[] = [
   { file: "plugins/core/genui/sandbox.ts", why: "a generated UI's program, in a worker made from its text in a page", at: ["new Worker(url)"] },
   { file: "plugins/core/codex/plugin.ts", why: "this Node's folder on Codex's PATH", spawns: [] },
   { file: "plugins/core/terminal/backend.ts", why: "the terminal keeper", spawns: ["termd"] },
-  { file: "plugins/core/terminal/plugin.ts", why: "vau shims for terminals; starter.ts runs once per terminal started", spawns: ["cli", "plugins/core/terminal/starter.ts, per terminal"] },
+  { file: "plugins/core/terminal/terms.ts", why: "vau shims for terminals; starter.ts runs once per terminal started", spawns: ["cli", "plugins/core/terminal/starter.ts, per terminal"] },
   { file: "plugins/core/terminal/starter.ts", why: "whether it's the script run", anchors: true },
   { file: "plugins/core/claude-code/chat.ts", why: "the chat keeper", spawns: ["chatd"] },
   // ---------- the keepers
