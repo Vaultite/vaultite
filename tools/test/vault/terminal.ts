@@ -468,8 +468,9 @@ export default async ($: VaultTest) => {
       cap?.text === "old screen\n$ after" && got.includes("ls\r") && exited?.exit?.code === 2, [cap, got, exited])
   }
 
-  // Protocols 2 (termd with xterm.js) and 3 (before pictures): its changes come as events once subscribed, its picture is xterm.js' serialize.
-  for (const v of [2, 3]) if (process.platform !== "win32") {
+  // Protocols 2 (termd with xterm.js), 3 (before pictures) and 4 (screens on its loop): its changes come as events once
+  // subscribed, its picture is its serialize.
+  for (const v of [2, 3, 4]) if (process.platform !== "win32") {
     const net = await import("node:net")
     const { host } = await import("../../../plugins/core/terminal/termd/host.ts")
     const { waitFor } = await import("../lib.ts")
@@ -503,12 +504,84 @@ export default async ($: VaultTest) => {
     await new Promise((r) => setTimeout(r, 150))
     c.take({ op: "capture", id: "two1", re: 2 })
     c.take({ op: "list", re: 3 })
-    const cap = msgs.find((m) => m.re === 2) as { text?: string } | undefined, info = (msgs.find((m) => m.re === 3) as { sessions: { said: unknown; title: string }[] }).sessions[0]
+    const cap = await waitFor(() => msgs.find((m) => m.re === 2), 2_000, 20) as { text?: string } | undefined
+    const info = (msgs.find((m) => m.re === 3) as { sessions: { said: unknown; title: string }[] }).sessions[0]
     const pasteOn = h.sessions.get("two1")?.term.mode(2004)
     oldServer.close()
     check(`terminal server: it takes over protocol ${v}'s terminals, their changes heard as events, their picture read (modes too)`, JSON.stringify(adopted?.adopted) === '["two1"]' &&
       ops.includes("subscribe") && !ops.includes("status") && cap?.text === "two screen\n>" && pasteOn === true && info.title === "Two, renamed" &&
       JSON.stringify(info.said) === JSON.stringify({ seen: true, status: { state: "blocked", kind: "permission" } }), [adopted, ops, cap, info, pasteOn])
+  }
+
+  // A screen stuck parsing (libghostty-vt never returning on some output) is that terminal's alone: the server answers
+  // meanwhile, and past HUNG the screen starts again blank, said as trouble; what comes after is parsed as before.
+  if (process.platform !== "win32") {
+    const { host } = await import("../../../plugins/core/terminal/termd/host.ts")
+    const { HUNG } = await import("../../../plugins/core/terminal/termd/screen.ts")
+    const { waitFor } = await import("../lib.ts")
+    const h = host({ log: () => {}, pid: process.pid, file: "test" })
+    const msgs: Record<string, unknown>[] = []
+    const c = h.connect({ session: null, ready: false, send: (m) => msgs.push(m as never), backlog: () => 0 })
+    c.take({ op: "subscribe" })
+    c.take({ op: "create", id: "stuck1", file: "/bin/sh", args: ["-c", "printf 'before\\n'; read x; printf 'after\\n'; sleep 5"], cwd: tmp, env: { PATH: "/usr/bin:/bin" }, re: 1 })
+    const s = h.sessions.get("stuck1")!
+    await waitFor(() => { c.take({ op: "capture", id: "stuck1", re: 2 }); return /before/.test(String(msgs.findLast((m) => m.re === 2)?.text ?? "")) || null }, 5_000, 50)
+    // (a capture asked while its screen has something it hasn't answered, then that taken as stuck)
+    c.take({ op: "capture", id: "stuck1", re: 3 })
+    const stuck = s.term.check(performance.now() + HUNG + 1)
+    c.take({ op: "list", re: 4 })
+    const listed = msgs.some((m) => m.re === 4)
+    const failed = await waitFor(() => msgs.find((m) => m.re === 3), 2_000, 20) as { error?: string } | undefined
+    const trouble = msgs.find((m) => m.type === "trouble") as { id?: string; text?: string } | undefined
+    c.take({ op: "input", id: "stuck1", b64: Buffer.from("\r").toString("base64") })
+    const after = await waitFor(async () => { c.take({ op: "capture", id: "stuck1", re: 5 }); await new Promise((r) => setTimeout(r, 50)); const t = String(msgs.findLast((m) => m.re === 5)?.text ?? ""); return /after/.test(t) ? t : null }, 5_000, 50)
+    s.driver.kill()
+    check("terminal server: a stuck screen is that terminal's alone (the server answers meanwhile), then it starts again blank, said as trouble",
+      stuck && listed && /stuck/.test(failed?.error ?? "") && trouble?.id === "stuck1" && /started again blank/.test(trouble?.text ?? "") &&
+      typeof after === "string" && !/before/.test(after), [stuck, listed, failed, trouble, after])
+  }
+
+  // A terminal server that stops answering (stuck): said once, its terminals' trouble told (missing from lists, frozen),
+  // what's asked of it failing at once rather than each after a wait; anything heard from it again ends that.
+  if (process.platform !== "win32") {
+    const net = await import("node:net")
+    const { serverFiles, termdBackend } = await import("../../../plugins/core/terminal/backend.ts")
+    const name = `test-stall-${process.pid}`, { socket, files } = serverFiles(name)
+    let answering = true, ctl: import("node:net").Socket | null = null
+    fs.writeFileSync(`${files}.pid`, "4747\n")
+    const fake = net.createServer((sock) => {
+      ctl ??= sock
+      sock.setEncoding("utf8")
+      let buf = ""
+      sock.on("data", (d: string) => {
+        buf += d
+        for (let i = buf.indexOf("\n"); i >= 0; i = buf.indexOf("\n")) {
+          const m = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1)
+          if (!answering || m.re === undefined) continue
+          sock.write(JSON.stringify({ re: m.re, ...(m.op === "list" ? { sessions: [] } : {}) }) + "\n")
+        }
+      })
+    })
+    await new Promise<void>((r) => fake.listen(socket, r))
+    const said: string[] = []
+    const keeper = termdBackend(name, { daemon: "/nonexistent", log: (...a) => said.push(a.join(" ")) })
+    await keeper.list()
+    answering = false
+    const t0 = Date.now()
+    const first = await keeper.list()
+    const t1 = Date.now()
+    let failedFast = ""
+    await keeper.kill("x1").catch((e: Error) => { failedFast = e.message })
+    const t2 = Date.now(), trouble = keeper.trouble()
+    answering = true
+    ctl!.write(JSON.stringify({ t: "event", type: "clients", id: "x1", clients: 0 }) + "\n")
+    await new Promise((r) => setTimeout(r, 50))
+    const cleared = keeper.trouble()
+    fake.close(); ctl!.destroy()
+    fs.rmSync(`${files}.pid`, { force: true })
+    check("terminal server: one that stops answering is said once, its trouble told, what's asked then fails at once; heard again, that ends",
+      first.length === 0 && t1 - t0 >= 4500 && t2 - t1 < 200 && /pid 4747\) hasn't answered since/.test(failedFast) && trouble?.pid === 4747 &&
+      said.filter((l) => /didn't answer list in 5 s/.test(l)).length === 1 && cleared === null, [t1 - t0, t2 - t1, failedFast, trouble, said, cleared])
   }
 
   // One it couldn't take over (its snapshot failed: too slow on a loaded machine) still runs there: it isn't told as

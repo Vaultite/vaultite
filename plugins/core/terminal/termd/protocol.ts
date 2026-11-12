@@ -3,8 +3,8 @@
 import type { Said } from "../osc7501.ts"
 
 /** The protocol, in its socket's name: a server speaking another takes over the older one's terminals (adopt.ts).
- *  1 ptyd.ts, the keeper before; 2 termd with xterm.js; 3 before pictures (a running one kept new terminals off them). */
-export const PROTOCOL = 4
+ *  1 ptyd.ts, the keeper before; 2 termd with xterm.js; 3 before pictures; 4 screens on its loop (one stuck froze all). */
+export const PROTOCOL = 5
 
 /** How a terminal's program ended: its exit code, or the signal that ended it (0: none). `lost`: the server holding it
  *  went away first, so how it ended is unknown. */
@@ -29,6 +29,8 @@ export type Event =
   | { type: "meta"; id: string; meta: Record<string, string> }
   | { type: "size"; id: string; cols: number; rows: number }
   | { type: "clients"; id: string; clients: number }
+  /** Something went wrong the app should hear of (its errors): one terminal's (a screen stuck), or ("") the server's. */
+  | { type: "trouble"; id: string; text: string }
 
 /** A capture's form: plain text (wrapped lines joined), the terminal's own sequences (colors, the cursor: replayed, it
  *  draws the screen again), or HTML. */

@@ -7,11 +7,10 @@ import path from "node:path"
 import { createRequire } from "node:module"
 import type { IPty } from "node-pty"
 import { keysBytes } from "../keys.ts"
-import { newVt } from "../vt/load.ts"
-import type { Vt } from "../vt/vt.ts"
 import { REPLY, watcher, type Said } from "../osc7501.ts"
 import { adopter } from "./adopt.ts"
-import { KittyFeed, remoteFront, withPictures } from "./kitty.ts"
+import { KittyFeed, remoteFront } from "./kitty.ts"
+import { Screen } from "./screen.ts"
 import { PROTOCOL, type Capture, type CaptureFormat, type Event, type Exit, type Info } from "./protocol.ts"
 
 const WIN = process.platform === "win32"
@@ -39,7 +38,9 @@ fixHelper()
 const pty = require("node-pty") as typeof import("node-pty")
 
 /** A client's connection: `send` a message to it, `backlog` what it hasn't read yet (bytes). */
-export type Conn = { send: (m: object) => void; backlog: () => number; session: Session | null; ready: boolean; events?: boolean }
+export type Conn = { send: (m: object) => void; backlog: () => number; session: Session | null; ready: boolean; events?: boolean
+  /** Output kept back while its snapshots are made (after their point: sent once they are), and how many are. */
+  held?: { data: string[]; bytes: number; snapshots: number } }
 
 /** What a terminal's program runs on: its own pty here, or one an older server holds (adopt.ts). */
 export type Driver = {
@@ -94,14 +95,16 @@ const noPty = (e: unknown) => /posix_openpt|openpty|forkpty/.test(String((e as E
 const lineCount = (v: unknown, max: number) => (v === "all" || v === null ? null : Math.max(1, Math.min(max, Math.trunc(Number(v)) || 0)))
 
 /** What a terminal's server does around one (host): tell its listeners, hold an ended one, log. */
-type Around = { emit(ev: Event): number; sessions: Map<string, Session>; keepEnded(s: Session, told: boolean): void; log(...a: unknown[]): void; changed?(): void }
+type Around = { emit(ev: Event): number; sessions: Map<string, Session>; keepEnded(s: Session, told: boolean): void; log(...a: unknown[]): void; changed?(): void
+  /** Something went wrong the app should hear of (its errors): `id` the terminal's, "" the server's. */
+  trouble?(id: string, text: string): void }
 
 export class Session {
   private h: Around
   id: string; driver: Driver; shell: string; cwd: string; command: string; created = Date.now(); activity = Date.now(); spare: boolean
   title = ""; meta: Record<string, string>; exit?: Exit
-  /** Its screen and history (libghostty-vt). */
-  term: Vt
+  /** Its screen and history (libghostty-vt, in a thread of its own: screen.ts). */
+  term: Screen
   attached = new Set<Conn>()
   /** Output read and not yet parsed and passed on (BATCH), when that was done last, and when input last went in. */
   queued = ""; flushing = false; flushed = 0; typed = 0
@@ -127,10 +130,11 @@ export class Session {
   }
 
   private screen(cols: number, rows: number, scrollback: number) {
-    return newVt({ cols, rows, scrollback,
+    return new Screen({ cols, rows, scrollback,
       onTitle: (t) => { if (t === this.title) return; this.title = t; if (!this.spare) this.h.emit({ type: "title", id: this.id, title: t }) },
       // Its answers to the programs' questions, only while no client is there to answer.
-      onReply: (d) => { if (!this.attached.size && !this.exit) this.driver.write(d) } })
+      onReply: (d) => { if (!this.attached.size && !this.exit) this.driver.write(d) },
+      onTrouble: (text) => { this.h.log("screen", this.id, text); if (!this.spare) this.h.trouble?.(this.id, text) } })
   }
 
   info(): Info {
@@ -159,13 +163,11 @@ export class Session {
     const d = this.queued
     if (!d || this.exit) return
     this.queued = ""
-    try { this.term.write(d) } catch (e) {
-      // (libghostty-vt failed on it: a blank screen from here, the output still passed on)
-      this.h.log("screen", this.id, "failed, starting a blank one:", e)
-      const t = this.term
-      this.term = this.screen(t.cols, t.rows, t.scrollback)
+    this.term.write(d)
+    for (const c of this.attached) {
+      if (!c.ready) continue
+      if (c.held) { c.held.data.push(d); c.held.bytes += d.length } else c.send({ t: "data", d })
     }
-    for (const c of this.attached) if (c.ready) c.send({ t: "data", d })
     this.flushed = performance.now()
     this.hold()
   }
@@ -173,7 +175,7 @@ export class Session {
   /** The pty is read only while what it said can go on: parsed here, and read by the clients (the app's server holds
    *  its connection while its pages catch up). */
   hold() {
-    const full = this.queued.length > HOLD || [...this.attached].some((c) => c.backlog() > HOLD)
+    const full = this.queued.length + this.term.inflight > HOLD || [...this.attached].some((c) => c.backlog() + (c.held?.bytes ?? 0) > HOLD)
     if (full === this.held) return
     this.held = full
     try { if (full) this.driver.pause(); else this.driver.resume() } catch { /* ended */ }
@@ -205,13 +207,24 @@ export class Session {
   }
 
   /** What it shows, `lines` from its bottom (its screen and history above it), or all of it (null). */
-  capture(format: CaptureFormat, lines: number | null): Capture {
-    const t = this.term, rows = t.rows
-    const above = Math.min(t.length, lines === null ? t.length : Math.max(0, lines - rows))
-    const head = { cols: t.cols, rows, cursor: t.cursor, alternate: t.alternate, input: t.inputLine() }
-    if (format === "vt") return { ...head, text: t.serialize(above) }
-    if (format === "html") return { ...head, text: t.html(above) }
-    return { ...head, text: t.text(lines) }
+  capture(format: CaptureFormat, lines: number | null): Promise<Capture> {
+    this.flush()
+    return this.term.capture(format, lines)
+  }
+
+  /** Its picture for `c` (its screen and history, pictures first), sent in answer to `re`: what's passed on after the
+   *  point it's made waits for it, so the picture and what follows meet exactly. */
+  snapshot(c: Conn, re: unknown) {
+    this.flush()
+    c.held ??= { data: [], bytes: 0, snapshots: 0 }
+    c.held.snapshots++
+    const done = (data: string) => {
+      c.send({ re, data })
+      const h = c.held
+      if (h && --h.snapshots <= 0) { c.held = undefined; for (const d of h.data) c.send({ t: "data", d }) }
+      this.hold()
+    }
+    this.term.snapshot().then(done, (e: Error) => { this.h.log("snapshot", this.id, "failed:", e.message); done("") })
   }
 }
 
@@ -233,7 +246,7 @@ export function host(o: HostOptions) {
   const sessions = new Map<string, Session>()
   const conns = new Set<Conn>()
   /** Terminals that ended, newest last: whole for a while (a capture still reads them), then their record. */
-  const endedOnes = new Map<string, { info: Info; session: Session | null; text: string; told: boolean }>()
+  const endedOnes = new Map<string, { info: Info; session: Session | null; text: string; told: boolean; trimming?: boolean }>()
   /** How each terminal's working and blocked records go (its program ended: the app sees its shell at the prompt). */
   const dropStatus = new WeakMap<Session, () => void>()
   // (VAULTITE_TRACE_7501: each report and probe in the log, to see what a program says)
@@ -255,16 +268,18 @@ export function host(o: HostOptions) {
   function trimEnded() {
     const now = Date.now(), whole = [...endedOnes.values()].filter((e) => e.session)
     for (const [i, e] of whole.entries()) {
-      if (whole.length - i > ENDED_WHOLE_MAX || now - (e.info.exit?.at ?? 0) > ENDED_WHOLE) {
-        e.text = e.session!.term.text(200)
-        e.session!.term.dispose()
-        e.session = null
-      }
+      if (e.trimming || !(whole.length - i > ENDED_WHOLE_MAX || now - (e.info.exit?.at ?? 0) > ENDED_WHOLE)) continue
+      e.trimming = true
+      const term = e.session!.term
+      const kept = (text: string) => { e.text = text; e.session = null; term.dispose() }
+      term.text(200).then(kept, () => kept(""))
     }
     for (const [id, e] of endedOnes) if (endedOnes.size > ENDED_MAX || now - (e.info.exit?.at ?? 0) > ENDED_KEPT) endedOnes.delete(id); else break
   }
 
-  const around: Around = { emit, sessions, keepEnded, log: o.log, changed: () => o.changed?.() }
+  /** Told to the app's server (its errors), and logged. */
+  function trouble(id: string, text: string) { emit({ type: "trouble", id, text }) }
+  const around: Around = { emit, sessions, keepEnded, log: o.log, changed: () => o.changed?.(), trouble }
 
   function outOfPtys(id: string, e: unknown) {
     o.log("create", id, `failed: no pseudo-terminal left (this server holds ${sessions.size} terminals)`, e)
@@ -394,8 +409,8 @@ export function host(o: HostOptions) {
           return { text: n === null ? e.text : e.text.split("\n").slice(-n).join("\n"), cols: e.info.cols, rows: e.info.rows, cursor: { x: 0, y: 0 }, alternate: false, ended: true }
         }
         const n = lineCount(m.lines ?? s.term.rows, s.term.scrollback + s.term.rows)
-        s.flush()
-        return { ...s.capture(format, n), ...(s.exit ? { ended: true } : {}) }
+        s.capture(format, n).then((r) => c.send({ re: m.re, ...r, ...(s.exit ? { ended: true } : {}) }), (e: Error) => c.send({ re: m.re, error: `its screen couldn't be read: ${e.message}` }))
+        return null
       }
       case "forget": endedOnes.delete(String(m.id ?? "")); return {}
       case "attach": {
@@ -411,7 +426,8 @@ export function host(o: HostOptions) {
       case "snapshot": {
         const s = c.session
         if (!s) throw new Error("not attached")
-        return { data: withPictures(s.term) }
+        s.snapshot(c, m.re)
+        return null
       }
       case "input": {
         // To the attached terminal, or (`id`: typing into one from outside, vau terminal send) that one.
@@ -479,7 +495,7 @@ export function host(o: HostOptions) {
   }
 
   return {
-    sessions, connect, trimEnded,
+    sessions, connect, trimEnded, trouble,
     get connections() { return conns.size },
     /** Ends every terminal (the server is stopping). */
     killAll() { for (const s of sessions.values()) s.driver.kill() },

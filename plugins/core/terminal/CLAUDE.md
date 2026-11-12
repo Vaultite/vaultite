@@ -27,6 +27,12 @@
   what its encoder leaves to the platform's text (Backspace, ⌥←) is in `input.ts`. WebGL's glyphs are drawn on their
   own ground (keyed by colours, shared between terminals): on a clear one text reads heavier. Gotchas: a `bool` the
   module reports is one byte (read `getUint8`); structs passed "by value" go by pointer in the wasm ABI.
+- termd's loop never waits on a screen: each terminal's libghostty-vt runs in a thread of its own (`termd/screen.ts`,
+  `screenworker.ts`), so its answers (capture, snapshot) are async, and output after a snapshot's point waits for it.
+  One that hasn't answered for HUNG (the module stuck on some output, 2026-11-11) starts again blank. termd says what
+  went wrong as a `trouble` event, and its loop held up 2 s or more too: the server logs it as an error (vau errors).
+  A server that stops answering is marked stalled (backend.ts `watch`): said once, `trouble()` in terminal.list, what's
+  asked of it failing at once (new terminals go to the fallback) until anything is heard from it.
 - When termd can't start, the same host runs in the server (`localBackend`: an in-process pipe), ending with it. Another
   plugin's `terminal:backend` (herdr, Rex) implements `Backend` (backend.ts); one without `capture` is from before and
   isn't used. Names follow the port (backendName), so a QA server's terminals stay out of the live list, and an app

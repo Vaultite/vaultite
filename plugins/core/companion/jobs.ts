@@ -112,6 +112,8 @@ export type Job = {
   queued?: Queued[]
   /** Its worker's terminal id, on where.machine. */
   terminal: string
+  /** Why its terminal can't be reached now (its terminal server not answering), till it's read again. */
+  unreachable?: string
   /** Who handed it off, and who told it each thing since (the last 8): so whoever reads it can say who sent what. */
   by?: string; tells?: Tell[]
   /** Its worker's session (its transcript, read after its terminal ends), when that end was read, and when its terminal
@@ -256,9 +258,11 @@ export type JobCard = { id: string; title: string; state: JobState; link: string
   /** Why it runs where it does (Where.why). */
   why?: string
   waits?: { question: string; choices: string[] } }
-export const cardOf = (j: Job, now = Date.now()): JobCard => ({ id: j.id, title: j.title, state: j.queued?.length ? "waiting" : j.state, link: j.terminal ? linkOf(j) : "", unseen: unseen(j), at: j.at, started: j.started,
+/** A live job whose terminal can't be reached now: what its card says instead of what it was doing. */
+const unreachableLine = (j: Pick<Job, "unreachable" | "state">) => (j.unreachable && live(j.state) ? `Can't be reached: ${j.unreachable}` : "")
+export const cardOf = (j: Job, now = Date.now()): JobCard => ({ id: j.id, title: j.title, state: j.queued?.length || unreachableLine(j) ? "waiting" : j.state, link: j.terminal ? linkOf(j) : "", unseen: unseen(j), at: j.at, started: j.started,
   ...(live(j.state) ? {} : { ended: j.at }), ...(j.state === "needs you" && j.waits ? { waits: { question: j.waits.question, choices: j.waits.choices } } : {}),
-  where: whereLine(j.where), ...(j.where.why ? { why: j.where.why } : {}), now: queuedLine(j) || j.now, took: took(j, now),
+  where: whereLine(j.where), ...(j.where.why ? { why: j.where.why } : {}), now: queuedLine(j) || unreachableLine(j) || j.now, took: took(j, now),
   result: resultLine(j.result) || cut((j.result?.text ?? "").replace(/\s+/g, " ").trim(), 200) })
 
 const YES = /^(yes|y|yeah|yep|approve|allow|ok|okay|trust|accept|sure)$/i, NO = /^(no|n|nope|deny|reject|refuse|exit|disable|don't|cancel)$/i
@@ -370,7 +374,7 @@ export function jobText(j: Job, now = Date.now()) {
 export function jobsText(jobs: Job[], now = Date.now()) {
   if (!jobs.length) return "No jobs: companion handoff starts one."
   return jobs.map((j) => `- ${j.id} · ${j.state}${unseen(j) ? " (new)" : ""} · ${j.title} · ${whereLine(j.where)} · ${took(j, now)}${toldLast(j) ? ` · ${toldLast(j)}` : ""}` +
-    (j.queued?.length ? `\n  ${queuedLine(j)}` : j.now && live(j.state) ? `\n  now: ${cut(j.now, 120)}` : "") + (j.state === "needs you" && j.waits ? `\n  waits on: ${waitsLine(j.waits)}` : "") + (j.last?.asks?.length ? `\n  asks: ${cut(j.last.asks.join(" | "), 200)}` : "") +
+    (j.queued?.length ? `\n  ${queuedLine(j)}` : unreachableLine(j) ? `\n  ${unreachableLine(j)}` : j.now && live(j.state) ? `\n  now: ${cut(j.now, 120)}` : "") + (j.state === "needs you" && j.waits ? `\n  waits on: ${waitsLine(j.waits)}` : "") + (j.last?.asks?.length ? `\n  asks: ${cut(j.last.asks.join(" | "), 200)}` : "") +
     (resultLine(j.result) ? `\n  ${resultLine(j.result)}` : "") +
     (j.result?.text && !live(j.state) ? `\n  ${cut(j.result.text.replace(/\s+/g, " "), 200)}` : "")).join("\n")
 }
@@ -381,7 +385,7 @@ export function jobsLine(jobs: Job[], now = Date.now()) {
   const newest = jobs.filter((j) => live(j.state) || (now - j.at < 6 * 3600_000 && j.state !== "stopped")).slice(0, 4)
   const recent = jobs.filter((j) => newest.includes(j) || j.state === "ready for review" || j.state === "needs you")
   return recent.length ? `Your jobs (to tell one more or correct it, and anything about one's result (merge it, try X too): handoff with its job, land for their word to merge it; to stop one: job-stop; how one goes, and who told it what: job; to show them one that's ready, on their screen: job-show; what one waits on, with the choice their words name: job-answer): ${recent.map((j) =>
-    `${j.id} "${cut(j.title, 60)}" (${j.state}${j.queued?.length ? `: ${queuedLine(j).toLowerCase()}, sent by itself then` : j.state === "needs you" && j.waits ? `: waits on ${waitsLine(j.waits)}` : j.now && live(j.state) ? `: ${cut(j.now.replace(/\.$/, ""), 80)}` : ""}${j.last?.asks?.length && !j.waits ? `; asks: ${cut(j.last.asks[0], 80)}` : ""}; ${whereLine(j.where)}; ${took(j, now)}${toldLast(j) ? `; ${toldLast(j)}` : ""})`).join(", ")}.` : ""
+    `${j.id} "${cut(j.title, 60)}" (${j.state}${j.queued?.length ? `: ${queuedLine(j).toLowerCase()}, sent by itself then` : unreachableLine(j) ? `: ${unreachableLine(j).toLowerCase()}` : j.state === "needs you" && j.waits ? `: waits on ${waitsLine(j.waits)}` : j.now && live(j.state) ? `: ${cut(j.now.replace(/\.$/, ""), 80)}` : ""}${j.last?.asks?.length && !j.waits ? `; asks: ${cut(j.last.asks[0], 80)}` : ""}; ${whereLine(j.where)}; ${took(j, now)}${toldLast(j) ? `; ${toldLast(j)}` : ""})`).join(", ")}.` : ""
 }
 
 /** How fast jobs got going (ms): from the ask to their card, and to their worker's first step. */

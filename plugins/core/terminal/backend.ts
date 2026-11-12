@@ -7,7 +7,7 @@ import { type Access, accessOf, outliving, runtimeDir, toWsl } from "../../../co
 import net from "node:net"
 import os from "node:os"
 import path from "node:path"
-import { spawn } from "node:child_process"
+import { execFile, spawn } from "node:child_process"
 import type { IPty } from "node-pty"
 import { lineReader } from "./lines.ts"
 import type { Said } from "./osc7501.ts"
@@ -81,6 +81,9 @@ export type Listed = { id: string; pid?: number; process: string; created: numbe
 /** What a backend tells as it happens (Backend.events): termd/protocol.ts' events, `info` as it lists it. */
 export type BackendEvent = Exclude<Event, { type: "started" }> | { type: "started"; id: string; info?: Listed }
 
+/** A backend's terminals out of reach: since when, its server's pid, and that said for the user. */
+export type Trouble = { since: number; pid: number; text: string }
+
 /** What goes into a terminal: text as typed (`paste`: as a bracketed paste, when its program asked for those), or keys
  *  by name (keys.ts: Enter, C-c, Up). */
 export type Input = { text: string; paste?: boolean } | { keys: string[] }
@@ -114,6 +117,8 @@ export interface Backend {
   setMeta?(id: string, patch: Record<string, string | null>): Promise<void>
   /** `fn` hears what changes as it happens (BackendEvent), from the first call on. Without it the app asks list(). */
   events?(fn: (ev: BackendEvent) => void): void
+  /** Why its terminals can't be reached now (its server stopped answering: they're frozen, and not listed), or null. */
+  trouble?(): Trouble | null
   /** Its program ended (the app saw its shell at the prompt again): the working and blocked OSC 7501 records go. */
   dropStatus?(id: string): Promise<void>
   /** Whether its terminals draw kitty graphics a program sends as Claude Code does (by file, or PNG: termd/kitty.ts makes
@@ -359,10 +364,17 @@ class Wire {
   listeners = new Set<(m: Msg) => void>()
   closed = false
   onClose: (() => void) | null = null
+  /** Since when a request went unanswered with nothing heard from the server after it (null: it answers), for a wire
+   *  with `onStall`: requests then fail at once with `stalled()`'s words, but hello (a probe). */
+  stalledSince: number | null = null
+  onStall: ((op: string) => void) | null = null
+  onAnswer: ((ms: number) => void) | null = null
+  stalled: () => string = () => "the terminal server isn't answering"
   constructor(pipe: Pipe) {
     this.pipe = pipe
     // (what hears a message never ends the server by throwing: it's logged)
     pipe.onMessage((m) => {
+      if (this.stalledSince !== null) { const ms = Date.now() - this.stalledSince; this.stalledSince = null; this.onAnswer?.(ms) }
       try {
         if (typeof m.re === "number" && this.waiting.has(m.re)) {
           const w = this.waiting.get(m.re)!
@@ -392,9 +404,14 @@ class Wire {
   }
   request(op: string, params: Msg = {}, ms = 5000): Promise<Msg> {
     if (this.closed) return Promise.reject(new Error("the terminal server went away"))
-    const re = ++this.seq
+    if (this.stalledSince !== null && op !== "hello") return Promise.reject(new Error(this.stalled()))
+    const re = ++this.seq, at = Date.now()
     return new Promise((ok, fail) => {
-      const timer = setTimeout(() => { this.waiting.delete(re); fail(new Error(`the terminal server didn't answer ${op}`)) }, ms)
+      const timer = setTimeout(() => {
+        this.waiting.delete(re)
+        if (this.onStall && this.stalledSince === null) { this.stalledSince = at; this.onStall(op) }
+        fail(new Error(this.onStall ? this.stalled() : `the terminal server didn't answer ${op}`))
+      }, ms)
       this.waiting.set(re, { ok: (v) => { clearTimeout(timer); ok(v) }, fail: (e) => { clearTimeout(timer); fail(e) } })
       this.pipe.write({ op, re, ...params })
     })
@@ -589,7 +606,8 @@ export function termdBackend(name: string, o: { daemon: string; log?: (...a: unk
         const at = Date.now()
         // (its events are heard only on a control connection: one that closed is made again while the server runs, or a
         // terminal's state and end would go unheard till some call made one; soon, unless it closed at once)
-        w.onClose = () => { if (ctl !== p) return; ctl = null; setTimeout(() => { if (!ctl) void running() }, Date.now() - at > 5000 ? 500 : 10_000).unref?.() }
+        w.onClose = () => { answered(); if (ctl !== p) return; ctl = null; setTimeout(() => { if (!ctl) void running() }, Date.now() - at > 5000 ? 500 : 10_000).unref?.() }
+        watch(w)
         client.follow(w)
         await takeOver(w, o.oldServers ?? [], o.log && ((...a) => o.log!("terminal:", ...a)))
         return w
@@ -605,10 +623,43 @@ export function termdBackend(name: string, o: { daemon: string; log?: (...a: unk
     if (!(await there(mark)) && !(await Promise.all((o.oldServers ?? []).map((f) => there(markOf(f))))).some(Boolean)) return null
     return control().catch(() => null)
   }
+
+  // A server that stops answering (its loop held up, or stuck): said once, in the errors, with what's known of it; asked
+  // every 5 s whether it answers again, and meanwhile what's asked of it fails at once (new terminals go to the fallback).
+  let stall: { since: number; pid: number; probe: ReturnType<typeof setInterval>; looked: boolean } | null = null
+  const pidOf = () => { try { return Number(fs.readFileSync(`${files}.pid`, "utf8").trim()) || 0 } catch { return 0 } }
+  const clock = (t: number) => new Date(t).toTimeString().slice(0, 8)
+  const stallText = () => stall ? `the terminal server (pid ${stall.pid || "unknown"}) hasn't answered since ${clock(stall.since)}: the terminals it holds are frozen until it does` : ""
+  function watch(w: Wire) {
+    w.stalled = () => stallText() || "the terminal server isn't answering"
+    w.onStall = (op) => {
+      const pid = pidOf()
+      const probe = setInterval(() => {
+        void w.request("hello", {}, 5000).catch(() => {})
+        // (a minute on: what it's doing, as the machine sees it, so it's clear whether it's busy or stuck)
+        if (stall && !stall.looked && Date.now() - stall.since > 60_000) { stall.looked = true; void lookAt(stall.pid, stall.since) }
+      }, 5000)
+      probe.unref?.()
+      stall = { since: w.stalledSince ?? Date.now(), pid, probe, looked: false }
+      o.log?.(`terminal: the terminal server (pid ${pid || "unknown"}) didn't answer ${op} in 5 s: the terminals it holds are frozen until it answers, and new ones run in this server (its log: ${files}.log)`)
+    }
+    w.onAnswer = (ms) => { if (!stall) return; answered(); console.log(`terminal: the terminal server answers again, after ${Math.round(ms / 1000)} s`) }
+  }
+  function answered() { if (stall) clearInterval(stall.probe); stall = null }
+  async function lookAt(pid: number, since: number) {
+    if (!pid || WIN) return
+    const cpu = await new Promise<string>((ok) => execFile("ps", ["-o", "%cpu=", "-p", String(pid)], { timeout: 3000 }, (e, out) => ok(e ? "" : String(out).trim())))
+    if (!stall || stall.since !== since) return
+    o.log?.(cpu
+      ? `terminal: the terminal server (pid ${pid}) still hasn't answered after ${Math.round((Date.now() - since) / 1000)} s, at ${cpu}% CPU${Number(cpu) > 80 ? ": stuck in a loop. Ending it (kill " + pid + ") ends its terminals, which can't go on anyway" : ""}`
+      : `terminal: the terminal server (pid ${pid}) still hasn't answered, and isn't running`)
+  }
+
   const client = termdClient({ name: "vaultite", label: "Vaultite", control, running, open })
   const b = client.backend
   return {
     ...b, socket, files,
+    trouble: (): Trouble | null => (stall ? { since: stall.since, pid: stall.pid, text: stallText() } : null),
     async create(id: string, spec: Spec, c?: Made) {
       try { await b.create(id, spec, c) } catch (e) {
         // A server whose files are gone (its checkout moved: termd.ts, stale) can't start terminals, and makes way when

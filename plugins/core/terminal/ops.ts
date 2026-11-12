@@ -3,6 +3,7 @@
 import { agentModel, MODEL_NAME, PERMISSION_MODES, startAgent, TERMINAL_AGENT, newTerminalId, parseTerminal, resumeTerminalId, type AgentHow } from "../../../core/agents.ts"
 import { byUser, fmtAgo, type Machine, MACHINE_CLIENT, OpError, type OpCtx, type Plugin, quoted, splitMachine } from "../../../core/plugins.ts"
 import { allPanes, clean } from "../../../core/layout.ts"
+import type { Trouble } from "./backend.ts"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any
@@ -16,7 +17,7 @@ type TabAt = { workspace: number; tab: string }
  *  starts it by itself. Plain shells (`k3j2h1g0`) start again; resumes resume. */
 const freshAgent = (id: string) => { const t = parseTerminal(id); return !!t && !t.resume && !t.machine }
 
-async function sessions(ctx: OpCtx, ended = false): Promise<{ sessions: Session[]; ended?: Ended[]; starting?: string[] }> {
+async function sessions(ctx: OpCtx, ended = false): Promise<{ sessions: Session[]; ended?: Ended[]; starting?: string[]; trouble?: Trouble }> {
   return await ctx.api("GET", `terminals/sessions${ended ? "?ended=1" : ""}`)
 }
 
@@ -188,8 +189,8 @@ terminal attach <terminal> shows one in the terminal you run it in (⌃\ detache
       const [ss, tabs] = await Promise.all([sessions(ctx, !!ended), tabsOf(ctx)])
       const live = new Set([...ss.sessions.map((s) => s.id), ...(ss.starting ?? [])])
       const gone = [...tabs].filter(([t]) => !t.includes("@") && !live.has(t)).map(([t, at]) => ({ id: t, tabs: at, agent: freshAgent(t) }))
-      const out: { sessions: (Session & { tabs: TabAt[] })[]; gone: typeof gone; ended?: Ended[]; machines?: Record<string, string> } =
-        { sessions: ss.sessions.map((s) => ({ ...s, tabs: tabs.get(s.id) ?? [] })), gone, ...(ended ? { ended: ss.ended ?? [] } : {}) }
+      const out: { sessions: (Session & { tabs: TabAt[] })[]; gone: typeof gone; ended?: Ended[]; machines?: Record<string, string>; trouble?: Trouble } =
+        { sessions: ss.sessions.map((s) => ({ ...s, tabs: tabs.get(s.id) ?? [] })), gone, ...(ended ? { ended: ss.ended ?? [] } : {}), ...(ss.trouble ? { trouble: ss.trouble } : {}) }
       if (machine === "all") {
         const all = await plugin.ask<Machine[]>("machines", [])
         const others = all.filter((x) => !x.self && x.online && x.plugins?.includes("terminal"))
@@ -197,7 +198,7 @@ terminal attach <terminal> shows one in the terminal you run it in (⌃\ detache
         out.machines = {}
         for (const l of lists) {
           if ("e" in l) { out.machines[l.x.id] = l.e.message; continue }
-          out.machines[l.x.id] = "ok"
+          out.machines[l.x.id] = (l.r.trouble as Trouble | undefined)?.text ?? "ok"
           out.sessions.push(...(l.r.sessions as Session[]).map((s) => ({ ...s, id: `${s.id}@${l.x.id}`, machine: l.x.id, machineLabel: l.x.label, tabs: tabs.get(`${s.id}@${l.x.id}`) ?? [] })))
         }
       }
@@ -208,7 +209,10 @@ terminal attach <terminal> shows one in the terminal you run it in (⌃\ detache
       const gone = (r.gone as { id: string; tabs: TabAt[]; agent: boolean }[]).map((o) => `${o.id}  gone, ${where(o.tabs)}${o.agent ? " (an agent's: vau terminal tidy closes it)" : " (a new shell when shown)"}`)
       const ended = ((r.ended ?? []) as Ended[]).map((e) => `${e.id}  ${e.command || "-"}${e.name ? `  named "${e.name}"` : ""}  ended ${ago(e.exit.at)} (${how(e.exit)})`)
       const away = Object.entries((r.machines ?? {}) as Record<string, string>).filter(([, v]) => v !== "ok").map(([k, v]) => `${k}: ${v}`)
-      return (rows.length ? rows.join("\n") : "(no terminal sessions)") + (gone.length ? `\n\nTabs with no session:\n${gone.join("\n")}` : "") +
+      const t = r.trouble as Trouble | undefined
+      // (said first: the terminals that server holds are missing below, and frozen)
+      const trouble = t ? `${t.text[0].toUpperCase()}${t.text.slice(1)} (${ago(t.since)}), so they aren't listed here. vau errors says more.\n\n` : ""
+      return trouble + (rows.length ? rows.join("\n") : "(no terminal sessions)") + (gone.length ? `\n\nTabs with no session:\n${gone.join("\n")}` : "") +
         (ended.length ? `\n\nEnded lately:\n${ended.join("\n")}` : "") + (away.length ? `\n\nNot listed:\n${away.join("\n")}` : "")
     },
   })

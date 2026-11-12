@@ -38,6 +38,8 @@ export type Seen = { running: boolean; state?: string; kind?: string; msg?: stri
   turn?: { text: string; files: string[]; at: number; final: boolean; session?: string; prompt?: string; background?: number } | null; diff?: string
   /** How its terminal ended, when it did and that's known. */
   exit?: { code: number; signal: number; lost?: boolean }
+  /** Why its terminal can't be reached (its terminal server not answering): not an end, nor working. */
+  unreachable?: string
   /** How full its agent's context is (its last request's tokens, its window), when asked and its agent says. */
   context?: { tokens: number; window: number }
   /** Whether a commit its words name (or its branch, or its change by its marks) is on its repo's main since base. */
@@ -389,6 +391,9 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     const st = await plugin.ask<{ state?: string; kind?: string; msg?: string } | null>("terminal:state", null, id)
     const info = running ? await plugin.ask<{ title?: string; typed?: number } | null>("terminal:info", null, id) : null
     const exit = running ? null : await plugin.ask<Seen["exit"] | null>("terminal:ended", null, id)
+    // (not listed because its terminal server doesn't answer: it may run on, frozen)
+    const unreachable = running || exit ? null : await plugin.ask<string | null>("terminal:trouble", null, id).catch(() => null)
+    if (unreachable) return { running: false, unreachable }
     const agent = parseTerminal(id)?.agent ?? ""
     type Turn = { text?: string; files?: string[]; at?: number; final?: boolean; session?: string; prompt?: string; background?: number }
     const turn = o.turn && agent ? await plugin.ask<Turn | null>(`agent-turn:${agent}`, null, id, o.session ?? "") : null
@@ -461,6 +466,9 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
       const s = await seenOf(j, fresh, false).catch(() => null)
       // (a machine away or slow: not an end)
       if (!s) return
+      // (nor a terminal its server can't reach now: said on its card till it's read again)
+      if (s.unreachable) { if (j.unreachable !== s.unreachable) { j.unreachable = s.unreachable; changed() } return }
+      if (j.unreachable) { delete j.unreachable; marked.add(j.id) }
       let moved = false, waited = false
       const was = j.now, said = j.last?.at
       if (fresh) { read.set(j.id, Date.now()); heard(j, s) }

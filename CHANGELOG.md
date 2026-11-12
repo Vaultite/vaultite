@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A stuck terminal no longer freezes the others**: each terminal's screen in the terminal server runs on its own, so
+  one stuck on some output starts again blank instead of stopping every terminal. A terminal server that stops
+  answering is said in `vau errors` and `vau terminal`, new terminals start at once rather than after 20 s, and a job
+  whose terminal it holds says it can't be reached rather than working.
 - **Agents open things where you say**: "in a new tab in the left pane", "beside the one showing the brief", or a web
   page "in my Personal container" (`vau open --in left`, `--container Personal`, and the companion's open); a pane or
   container that isn't there is an error naming the ones that are.

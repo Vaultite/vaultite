@@ -29,6 +29,11 @@ export default async ($: VaultTest) => {
     const a = run(["working", "asks", "working", "changed"]), b = run(["working", "stop", "working", "told"]), c = run(["working", "answered", "told", "changed", "stop"])
     check("jobs: the lifecycle moves by its table, each move logged (starting, working, needs you, ready for review), new once it needs the user",
       a.state === "ready for review" && a.log.map((x: Any) => x.to).join() === "working,needs you,working,ready for review" && a.seen === false && J.unseen(a), a.log)
+    {
+      const w = run(["working"]), card = J.cardOf({ ...w, unreachable: "the terminal server (pid 9) hasn't answered since 15:48:02" })
+      check("jobs: one whose terminal can't be reached shows waiting with why, not working", card.state === "waiting" && /^Can't be reached: the terminal server/.test(card.now) &&
+        J.cardOf(w).state === "working", card)
+    }
     check("jobs: nothing moves a stopped job; a reviewed one stopped is done", b.state === "stopped" && b.log.length === 2 && c.state === "done" && c.log.at(-1).ev === "stop", [b.log, c.log])
     check("jobs: a worker that ends while it works failed; one ready for review that ends is done",
       run(["working", "ended"]).state === "failed" && run(["working", "changed", "ended"]).state === "done" && run(["ended"]).state === "failed")

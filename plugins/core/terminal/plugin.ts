@@ -143,9 +143,11 @@ const UPLOADS_KEPT = 30 * 86_400_000
 const SPARE = "vauspare-" // a shell kept ready (below)
 
 // The terminal server (termd/), which takes over the keeper's terminals from before it (ptyd, protocol 1) once it runs.
-const keeper = termdBackend(NAME, { daemon: path.join(plugin.dir, "termd", "termd.ts"), log: console.error, oldServers: [serverFiles(NAME, 1), serverFiles(NAME, 2), serverFiles(NAME, 3)] })
+const OLD_SERVERS = [1, 2, 3, 4].map((v) => serverFiles(NAME, v))
+const keeper = termdBackend(NAME, { daemon: path.join(plugin.dir, "termd", "termd.ts"), log: console.error, oldServers: OLD_SERVERS })
 // (the keeper's terminals from before are taken over here when the terminal server can't start to take them)
-const fallback = localBackend({ log: (...a) => console.error("terminal (in this server):", ...a), oldServers: [serverFiles(NAME, 1), serverFiles(NAME, 2), serverFiles(NAME, 3)],
+// (its routine lines, a shell made or ended, aren't errors: what goes wrong comes as a "trouble" event, onEvent)
+const fallback = localBackend({ log: (...a) => console.log("terminal (in this server):", ...a), oldServers: OLD_SERVERS,
   adoptOld: async () => !(await keeper.ready().catch(() => false)) })
 /** Another plugin's backend, while it's on (the service "terminal:backend": herdr's, Rex's), or null. One made for the
  *  Backend before this one (no capture) isn't used: its plugin needs an update. */
@@ -977,6 +979,8 @@ async function endHere(b: Backend, id: string, keep = false) {
 /** What a backend tells as it happens: its programs' OSC 7501, terminals starting and ending, their meta. (A title is
  *  read with the next list: an agent's spinner retitles it many times a second.) */
 function onEvent(b: Backend, ev: BackendEvent) {
+  // (what went wrong where the terminals are kept: a screen stuck, its loop blocked; in vau errors)
+  if (ev.type === "trouble") { console.error(`terminal: ${b.label}'s terminal server${ev.id ? `, ${ev.id}` : ""}: ${ev.text}`); return }
   if (!TERMINAL_ID.test(ev.id) || ev.id.startsWith(SPARE)) return
   if (ev.type === "status") return oscSaid(ev.id, ev.said)
   if (ev.type === "exited") return exited(ev.id, ev.exit)
@@ -1496,7 +1500,7 @@ async function waitFor(id: string, wants: string[], o: { ms: number; quiet: numb
     if (!now || !want.has(now.state) || at < (lastInput.get(id) ?? 0)) return null
     return (now.state === "idle" || now.state === "done") && Date.now() - at < hold ? null : now.state
   }
-  if (!(await backendOf(id)) && !(await endedOf(id))) throw new HTTPError(404, `there's no terminal '${id}' (vau terminal lists them)`)
+  if (!(await backendOf(id)) && !(await endedOf(id))) throw new HTTPError(404, noTerminal(id))
   return await new Promise<ReturnType<typeof result>>((resolve) => {
     let over = false
     const finish = (r: ReturnType<typeof result>) => {
@@ -1551,7 +1555,7 @@ function localId(req: Request) {
 }
 async function mustRun(id: string): Promise<Backend> {
   const b = await backendOf(id)
-  if (!b) throw new HTTPError(404, `there's no terminal session '${id}' (vau terminal lists them)`)
+  if (!b) throw new HTTPError(404, noTerminal(id, "terminal session"))
   return b
 }
 
@@ -1580,10 +1584,21 @@ plugin.route("GET", "terminals/shells", async (req) => {
 plugin.route("GET", "terminals/instructions", () => ({ text: agentContext() }))
 
 /** This machine's terminals; `ended=1`: the ones that ended lately too (kept a while by their backend, with how). */
+/** Why terminals here can't be reached now (their server not answering: frozen, missing from lists), or null. */
+plugin.provide("terminal:trouble", () => backends().map((b) => b.trouble?.()).find(Boolean)?.text ?? null)
+/** No terminal `id` here, as far as can be seen: a server not answering may hold it (its trouble, said). */
+const noTerminal = (id: string, what = "terminal") => {
+  const t = backends().map((b) => b.trouble?.()).find(Boolean)
+  return `there's no ${what} '${id}' (vau terminal lists them)${t ? `, unless ${t.text}` : ""}`
+}
+
 plugin.route("GET", "terminals/sessions", async (req) => {
   await owner(req)
   // (`starting`: ones whose shell is on its way, not listed yet: their tabs aren't gone)
-  return { sessions: await localList(), backend: (await backendForNew()).name, ...(starting.size ? { starting: [...starting.keys()] } : {}), ...(req.query.ended ? { ended: await endedList() } : {}) }
+  // (`trouble`: a backend whose terminals can't be reached now, its server not answering: they're missing from the list)
+  const trouble = backends().map((b) => b.trouble?.()).find(Boolean)
+  return { sessions: await localList(), backend: (await backendForNew()).name, ...(starting.size ? { starting: [...starting.keys()] } : {}), ...(req.query.ended ? { ended: await endedList() } : {}),
+    ...(trouble ? { trouble } : {}) }
 })
 
 /** What a terminal shows: its last `lines` lines (its screen and the history above it; `all`: all it keeps), as text
@@ -1595,7 +1610,7 @@ plugin.route("GET", "terminals/*/capture", async (req) => {
   // (none given: its screen)
   const lines = req.query.lines === "all" ? null : req.query.lines ? clamp(req.query.lines, 1, scrollback() + 500, 50) : undefined
   const b = (await backendOf(id)) ?? (await endedOf(id))?.b
-  if (!b) throw new HTTPError(404, `there's no terminal '${id}' (vau terminal lists them)`)
+  if (!b) throw new HTTPError(404, noTerminal(id))
   const c = await b.capture(id, { format, lines }).catch((e: Error) => { throw new HTTPError(409, e.message) })
   return { id, format, ...c }
 })
