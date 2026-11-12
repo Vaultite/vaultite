@@ -308,7 +308,11 @@ export default async ($: VaultTest) => {
     await wait()
     const changes = ev.got.filter((m) => m.type === "change")
     check("share: live changes say only the folder's, by the guest's paths", ev.got[0]?.type === "hello" && changes.length === 1 && JSON.stringify(changes[0].paths) === JSON.stringify(["A.md"]), ev.got)
+    const hereNow = async () => (await op("share.list", { folder: "Shared" })).find((x: Any) => x.id === edit.id)?.here
+    const inIt = await hereNow()
     ev.ws.close()
+    await wait()
+    check("share: list says whose guest has the folder open now", inIt === true && (await hereNow()) === false, inIt)
 
     {
       // A folder's page's shared state (vau.shared()) through the gateway: as the guest, at their path; a reader watches.
@@ -364,8 +368,8 @@ export default async ($: VaultTest) => {
       const scope = await Promise.all(["Shared/duel.html", "Shared/Sub/duel.html", "Secret/page.html"].map(async (p) => (await $.api("GET", `artifact/scope?path=${p}`))[1].folder))
       check("share: a page's scope is the shared folder it's in, the innermost; none outside", JSON.stringify(scope) === JSON.stringify(["Shared", "Shared/Sub", null]), scope)
       const state = (await $.api("GET", "state"))[1]
-      check("share: the app's state says who each folder is shared with (no link, no hash)", state.sharedFolders?.Shared?.some((x: Any) => x.guest === "Alice Park" && x.role === "edit")
-        && state.sharedFolders?.["Shared/Sub"]?.[0]?.guest === "Dan" && state.shareLinks === true && !JSON.stringify(state.sharedFolders).includes(config().share.shares[edit.id].token), state.sharedFolders)
+      check("share: the app's state says who each folder is shared with (no link, no hash), and the guests' address", state.sharedFolders?.Shared?.some((x: Any) => x.guest === "Alice Park" && x.role === "edit")
+        && state.sharedFolders?.["Shared/Sub"]?.[0]?.guest === "Dan" && state.shareLinks === base && !JSON.stringify(state.sharedFolders).includes(config().share.shares[edit.id].token), state.sharedFolders)
 
       // A guest's access changed in place: the same link, their sockets come back with it.
       const live = await socket(c, "events") as Open
@@ -442,6 +446,49 @@ export default async ($: VaultTest) => {
     check("share: revoked or expired, nothing answers (the others still do)", after[0].status === 401 && after[1].status === 404 && after[2].status === 401 && after[3].status === 410 && after[4].status === 200, after.map((x) => x.status))
     const listed = await op("share.list", {})
     check("share: list says who has which folder, and what's expired", listed.length === 2 && listed.some((x: Any) => x.guest === "Dan" && x.expired) && !listed.some((x: Any) => x.guest === "Carol"), listed)
+
+    {
+      // A new link: the old one and its cookie stop and its pages close; the new one opens the same access.
+      const live = await socket(a, "events") as Exclude<Awaited<ReturnType<typeof socket>>, number>
+      const cut = new Promise<boolean>((ok) => { live.ws.on("close", () => ok(true)); setTimeout(() => ok(false), 1000) })
+      const fresh = await op("share.new-link", { id: edit.id })
+      const old = [await get(`/s/${token(edit)}`), await get(`${a.at}/api/state`, as(a))]
+      const a2 = await enter(fresh), now = await get(`${a2.at}/api/state`, { cookie: a2.cookie })
+      check("share: a new link ends the old one, its cookie and open pages; the new one opens, the access as it was", await cut && old[0].status === 404 && old[1].status === 401
+        && a2.res.status === 302 && now.status === 200 && fresh.id === edit.id && fresh.role === "edit" && fresh.expires === config().share.shares[edit.id].expires
+        && token(fresh) !== token(edit) && !JSON.stringify(config().share).includes(token(fresh)), [fresh, old.map((x) => x.status), now.status])
+      const none = await op("share.new-link", { id: "nope" }), theirs = await op("share.new-link", { id: edit.id }, remote)
+      check("share: a new link only for a share there, and only the owner's", none.status === 404 && theirs.status === 403, [none, theirs])
+    }
+    {
+      // Through Vaultite Cloud: links at the handle's guests' host, where only a request the relay marks a guest's (its
+      // frame's word, never a client's) reaches the gateway, and nothing else does.
+      const { RELAY_HEADER, RELAYED, RELAYED_GUEST } = await import("../../../plugins/core/mcp/public.ts")
+      fs.writeFileSync(CONFIG, JSON.stringify({ ...config(), mcp: { ...config().mcp, cloud: { token: "t", handle: "alice", url: "https://alice.vaultite.app" } } }))
+      const g = await op("share.create", { folder: "Shared", guest: "Grace", role: "read" })
+      check("share: signed in to Vaultite Cloud, links are at the handle's guests' host", String(g.link).startsWith("https://share-alice.vaultite.app/s/"), g)
+      const GUEST_HOST = "share-alice.vaultite.app", guestH = { [RELAY_HEADER]: RELAYED_GUEST, "x-forwarded-host": GUEST_HOST, "x-forwarded-proto": "https", "cf-connecting-ip": "203.0.113.7" }
+      const inv = await get(`/s/${token(g)}`, guestH), ck = String(inv.headers.get("set-cookie") ?? "")
+      const st = await get(`/s/${g.id}/api/state`, { ...guestH, cookie: ck.split(";")[0] })
+      check("share: a guest through Vaultite Cloud gets in (a Secure cookie for their share's path) and reads their folder",
+        inv.status === 302 && /Secure/.test(ck) && ck.includes(`Path=/s/${g.id}/`) && st.status === 200, [inv.status, ck, st.status])
+      const nots = [await fetch(`${base}/mcp`, { method: "POST", headers: { ...guestH, "content-type": "application/json" }, body: "{}" }), await get("/api/state", guestH),
+        await get("/.well-known/oauth-authorization-server", guestH), await get("/", { ...guestH, "x-vaultite-cloud": "forged.sig" })]
+      check("share: on the guests' host nothing of MCP's, the owner's app or Connect answers", nots.every((x) => x.status === 404), nots.map((x) => x.status))
+      const ownerHost = await get(`/s/${token(g)}`, { [RELAY_HEADER]: RELAYED, "x-forwarded-host": "alice.vaultite.app" })
+      const forged = await get("/.well-known/oauth-authorization-server", { [RELAY_HEADER]: "forged", "x-forwarded-host": GUEST_HOST })
+      check("share: a link doesn't open at the owner's Vaultite Cloud address, and a forged mark isn't a guest's", ownerHost.status === 404 && forged.status === 200, [ownerHost.status, forged.status])
+      const up = (p: string) => new Promise<number>((ok) => {
+        const s = new WebSocket(`ws://127.0.0.1:${port}${p}`, { headers: { ...guestH, cookie: ck.split(";")[0], origin: `https://${GUEST_HOST}` } })
+        s.on("open", () => { s.close(); ok(101) })
+        s.on("unexpected-response", (_q, res) => ok(res.statusCode ?? 0))
+        s.on("error", () => ok(0))
+      })
+      const sockets = [await up(`/s/${g.id}/api/events`), await up("/api/events")]
+      check("share: a guest's live socket through Vaultite Cloud opens; nothing else upgrades on the guests' host", sockets[0] === 101 && sockets[1] === 404, sockets)
+      await op("share.revoke", { id: g.id })
+      fs.writeFileSync(CONFIG, JSON.stringify({ ...config(), mcp: { public: config().mcp.public } }))
+    }
 
     // The owner's side is as it was: MCP's routes still ask for a sign-in, and the app's API isn't on this listener.
     const mcpRes = await fetch(`${base}/mcp`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })

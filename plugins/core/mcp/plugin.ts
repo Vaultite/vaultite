@@ -136,6 +136,10 @@ cloud.onChange = (s) => {
 }
 if (settings || cloud.stored()) publicMcp()
 
+/** This machine's addresses for shared folders' guests (plugins/core/share: its links, and the only hosts it answers
+ *  them at), the first where new links go: Vaultite Cloud's share-<handle> while signed in, an own tunnel's mcp.public.url. */
+plugin.provide("mcp:guest-urls", (): string[] => [cloud.guestUrl(), PublicMcp.settingsOf(plugin)?.url].filter((u): u is string => !!u))
+
 /** A one-time link an internet app's sandbox PUTs a file's bytes to (file.upload without the file), or null when the
  *  vault isn't on the internet. */
 plugin.provide("mcp:upload-link", (pending: Record<string, unknown>, who: Who) => pub?.uploadLink(pending, who) ?? null)

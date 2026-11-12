@@ -7,7 +7,7 @@ import { Button, backDetail, confirmDialog, copyText, del, detailPath, Empty, fm
 type Access = "read" | "write"
 /** `actor`: the name Activity gives what it does. */
 type Connection = { id: string; name: string; created: string; used: string | null; access: Access; actor: string }
-type Cloud = { state: "off" | "connecting" | "connected" | "reconnecting" | "offline" | "replaced"; handle: string | null; url: string | null; app?: string | null; connectUrl: string; message?: string }
+type Cloud = { state: "off" | "connecting" | "connected" | "reconnecting" | "offline" | "replaced"; handle: string | null; url: string | null; app?: string | null; guests?: string | null; connectUrl: string; message?: string }
 type State = { url: string | null; cloud: Cloud; connect?: { ownerTools: boolean }; connections: Connection[]; waiting: number
   /** The apps whose sign-in page waits for its code. */
   asking?: string[]
@@ -409,6 +409,12 @@ export function RemoteAccess() {
     <div className="flex flex-col gap-4" data-remote-access>
       {data.cloud.app && data.cloud.state === "connected" && <AppAddress app={data.cloud.app} ownerTools={!!data.connect?.ownerTools} onDone={reload} />}
       <CloudSection data={data} onDone={reload} />
+      <Section title="Shared folders">
+        <Group>
+          <SettingRow label="Shared folders" sub={data.cloud.guests ? `The people you share folders with open them at ${data.cloud.guests}` : "Who you share folders with, and where they open them"}
+            onClick={() => openView("shared", { newTab: true })} data-remote-shared />
+        </Group>
+      </Section>
     </div>
   )
 }

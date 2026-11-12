@@ -9,6 +9,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Downloads show as they go**: a download in the browser says it started, then the page bar's Downloads button fills
   a ring as it goes and the status bar names it; its list shows each one's progress and time left, with Open, Show in
   Finder, Pause, Cancel and Retry, and a toast says when it's done (Open) or failed.
+- **Sharing works through Vaultite Cloud**: signed in, the people you share a folder with open it at
+  `share-<you>.vaultite.app`, an address of its own, with no tunnel to set up. The new Shared page (the palette, or
+  Connections' Remote access) lists every share: who, what they may do, until when, when they were last there and who's
+  in one now, with the guests' address to copy; change access, extend it, remove it, or give someone a new link
+  (`vau share new-link`) when theirs is lost.
 - **Quiet panel headings**: Settings > Sidebars can make the sidebars' panel names a slim gap that shows its name only
   when you point there or hold ⌥, as browsers' vertical tabs look; right-click a panel for its own heading (shown,
   quiet or hidden) or to fold it. Inbox, Links and other panels whose content needs a name keep theirs, and an empty

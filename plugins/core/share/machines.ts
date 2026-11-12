@@ -5,13 +5,14 @@ import { type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin } from "
 /** Another machine with Sharing: the folders it shares (`same`: of this vault), its public address, and its shares a
  *  machine on the internet passes on (their links' hashes, to find them by). */
 export type Other = { m: Machine; same: boolean; folders: string[]; links: string | null; relayed: { id: string; hash: string }[] }
-/** Where this machine's links come from: here, the vault's machine on the internet (`host`: it keeps them), or one that
- *  passes them on (`via`, at its address `url`: they're kept here). */
-export type Where = { here: string } | { host: Machine } | { via: Machine; url: string }
+/** Where this machine's links come from: here (at its guests' address), the vault's machine on the internet (`host`, at
+ *  its address `url`: it keeps them), or one that passes them on (`via`, at its address `url`: they're kept here). */
+export type Where = { here: string } | { host: Machine; url: string } | { via: Machine; url: string }
 
 const strings = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && !!x) : [])
 
-export function machines(plugin: Plugin, publicUrl: () => string) {
+/** `guestUrl`: this machine's guests' address (MCP's), "" when it has none. */
+export function machines(plugin: Plugin, guestUrl: () => string) {
   let at = 0, others: Promise<Other[]> = Promise.resolve([])
 
   async function ask(): Promise<Other[]> {
@@ -38,12 +39,12 @@ export function machines(plugin: Plugin, publicUrl: () => string) {
   /** Where a link is made; null when nowhere can (no machine of the user's on the internet), or for a call another machine
    *  passed on (it runs here or not at all). */
   async function where(ctx?: OpCtx): Promise<Where | null> {
-    const url = publicUrl()
+    const url = guestUrl()
     if (url) return { here: url }
     if (ctx?.who.client?.startsWith("machine/")) return null
     const os = await othersNow(true)
     const host = os.find((o) => o.same && o.links)
-    if (host) return { host: host.m }
+    if (host) return { host: host.m, url: host.links! }
     const via = os.find((o) => o.links)
     return via ? { via: via.m, url: via.links! } : null
   }

@@ -1,4 +1,5 @@
-// Vaultite Cloud (plugins/core/mcp/cloud.ts) against a fake relay speaking its protocol: sign-in, the tunnel, Connect.
+// Vaultite Cloud (plugins/core/mcp/cloud.ts) against a fake relay speaking its protocol: sign-in, the tunnel, Connect,
+// and shared folders' guests at share-<handle> (plugins/core/share/gateway.ts).
 // Its own servers and temp folders; WRITES only to the vault copy given.
 //   node web/qa/mcpcloud.mjs <vault copy>
 import { spawnSync } from "node:child_process"
@@ -72,13 +73,13 @@ async function fakeRelay() {
   /** A code as /connect shows one after signing in. */
   r.newCode = () => { const c = `BCDF${String(++r.n).padStart(4, "0")}`; r.codes.add(c); return `${c.slice(0, 4)}-${c.slice(4)}` }
   /** A request through the tunnel: its status, headers, chunks as they came, and text. */
-  r.request = (method, p, { headers = [], body, onData } = {}) => {
+  r.request = (method, p, { headers = [], body, onData, guest } = {}) => {
     const id = `r${++r.n}`
     const out = { id, status: 0, headers: [], chunks: [], error: undefined, onData }
     const done = new Promise((res) => { out.done = res })
     r.pending.set(id, out)
     const host = headers.some(([k]) => k.toLowerCase() === "x-forwarded-host") ? [] : [["x-forwarded-host", "alice.vaultite.app"]]
-    r.conn?.send(JSON.stringify({ t: "req", id, method, path: p, headers: [["host", "alice.vaultite.app"], ["x-forwarded-proto", "https"], ...host, ...headers], ...(body ? { body: Buffer.from(body).toString("base64") } : {}) }))
+    r.conn?.send(JSON.stringify({ t: "req", id, method, path: p, headers: [["host", "alice.vaultite.app"], ["x-forwarded-proto", "https"], ...host, ...headers], ...(body ? { body: Buffer.from(body).toString("base64") } : {}), ...(guest ? { guest: true } : {}) }))
     out.finished = Promise.race([done, wait(10_000)]).then(() => ({ ...out, text: out.chunks.map((c) => c.text).join("") }))
     return out
   }
@@ -88,12 +89,13 @@ async function fakeRelay() {
     return `${body}.${crypto.createHmac("sha256", key).update(body).digest("base64url")}`
   }
   /** A WebSocket relayed to the Mac (Connect): its status once answered, its messages, its close code. */
-  r.socket = (p, headers = []) => {
+  r.socket = (p, headers = [], guest = false) => {
     const id = `w${++r.n}`
     const so = { id, status: 0, messages: [], closed: 0 }
     so.ready = new Promise((res) => { so.opened = res })
     r.sockets.set(id, so)
-    r.conn?.send(JSON.stringify({ t: "ws", id, path: p, headers: [["host", "alice.vaultite.app"], ["x-forwarded-host", "alice.vaultite.app"], ...headers] }))
+    const host = guest ? "share-alice.vaultite.app" : "alice.vaultite.app"
+    r.conn?.send(JSON.stringify({ t: "ws", id, path: p, headers: [["host", host], ["x-forwarded-host", host], ...headers], ...(guest ? { guest: true } : {}) }))
     so.send = (text) => r.conn?.send(JSON.stringify({ t: "wsmsg", id, text }))
     so.close = () => r.conn?.send(JSON.stringify({ t: "wsclose", id, code: 1000 }))
     return so
@@ -426,6 +428,34 @@ try {
   check("Connect: owner tools turned on from this Mac answer over the relay", on.status === 200 && termOn.status !== 403, [on.status, termOn.status, termOn.text.slice(0, 160)])
   await fetch(`${BASE}/api/mcp/connect`, { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"ownerTools":false}' })
   check("Connect: and off again", (await through("POST", "/api/ops/terminal.list", { headers: signed([origin, ["content-type", "application/json"]]), body: "{}" })).status === 403)
+
+  // --- shared folders' guests at share-alice.vaultite.app: the relay's frames say `guest`, and reach Sharing only
+  // (shared as the user's own vau, which needs no yes from the phone)
+  check("the Mac tells the relay it serves guests", relay.frames.some((f) => f.t === "hello" && f.features?.includes("share")))
+  fs.mkdirSync(path.join(VAULT, "Guest check"), { recursive: true })
+  fs.writeFileSync(path.join(VAULT, "Guest check", "Hello.md"), "# Hello\n")
+  let tried = null
+  const made = await until(async () => { tried = await opCall("share.create", { "X-Vaultite-Client": "cli" }, { folder: "Guest check", guest: "Grace", role: "read" }); return tried.status === 200 && tried.body }, 8000)
+  check("signed in, a share's link is at the guests' host", String(made?.link).startsWith("https://share-alice.vaultite.app/s/"), made ?? tried)
+  const GUEST = [["x-forwarded-host", "share-alice.vaultite.app"]], link = String(made?.link).split("/s/")[1]
+  const invite = await through("GET", `/s/${link}`, { headers: GUEST, guest: true })
+  const cookie = String(invite.headers.find(([k]) => k.toLowerCase() === "set-cookie")?.[1] ?? "").split(";")[0]
+  const theirs = await through("GET", `/s/${made?.id}/api/state`, { headers: [...GUEST, ["cookie", cookie]], guest: true })
+  check("a guest's link through the tunnel sets their cookie, and their folder answers", invite.status === 302 && cookie.startsWith(`vs_${made?.id}=`) && theirs.status === 200, [invite.status, cookie, theirs.status])
+  const notTheirs = [await through("POST", "/mcp", { headers: [...GUEST, ["content-type", "application/json"]], body: "{}", guest: true }),
+    await through("GET", "/api/state", { headers: signed(GUEST), guest: true }), await through("GET", "/", { headers: signed([...GUEST, ["accept", "text/html"]]), guest: true })]
+  check("a guest's frame never reaches MCP or Connect, signed or not", notTheirs.every((r) => r.status === 404), notTheirs.map((r) => r.status))
+  const guestOrigin = ["origin", "https://share-alice.vaultite.app"]
+  const theirLive = relay.socket(`/s/${made?.id}/api/events`, [guestOrigin, ["cookie", cookie]], true)
+  await Promise.race([theirLive.ready, wait(8000)])
+  await until(() => theirLive.messages.length > 0, 5000)
+  check("a guest's live WebSocket comes through the tunnel and says hello", theirLive.status === 101 && JSON.parse(theirLive.messages[0] ?? "{}").type === "hello", theirLive)
+  theirLive.close()
+  const appLive = relay.socket("/api/events", signed([guestOrigin]), true)
+  await Promise.race([appLive.ready, wait(8000)])
+  check("a guest's frame opens no app WebSocket, signed or not", appLive.status === 404, appLive)
+  await opCall("share.revoke", { "X-Vaultite-Client": "cli" }, { id: made?.id })
+  fs.rmSync(path.join(VAULT, "Guest check"), { recursive: true, force: true })
 
   relay.conn.close(4000, "replaced by this machine again")
   await page.waitForSelector("[data-cloud-state=replaced]", { timeout: 15_000 }).catch(() => {})

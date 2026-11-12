@@ -1,4 +1,4 @@
-// A shared folder for its guest, on MCP's public listener: /s/<token> lets them in (a cookie), /s/<id>/ is the app,
+// A shared folder for its guest, on MCP's public listener at this machine's guests' address: /s/<token> lets them in (a cookie), /s/<id>/ is the app,
 // /s/<id>/api/ the few routes a guest may use, on paths inside the folder only. Everything else is refused.
 import crypto from "node:crypto"
 import fs from "node:fs"
@@ -111,12 +111,16 @@ export class Gateway {
   keeper: (x: string) => Promise<Machine | null>
   /** Requests and sockets the machine on the internet passed on (share/relay): as at its address, their guest's IP. */
   passed = new WeakMap<IncomingMessage, string>()
+  /** This machine's guests' addresses (MCP's "mcp:guest-urls"): the only hosts shares answer at. */
+  addresses: () => string[]
 
-  constructor(plugin: Plugin, shares: () => Record<string, Share>, used: (id: string) => void, keeper: (x: string) => Promise<Machine | null> = async () => null) {
+  constructor(plugin: Plugin, shares: () => Record<string, Share>, used: (id: string) => void, keeper: (x: string) => Promise<Machine | null> = async () => null,
+    addresses: () => string[] = () => []) {
     this.plugin = plugin
     this.shares = shares
     this.used = used
     this.keeper = keeper
+    this.addresses = addresses
   }
 
   folderOf(g: Guest) {
@@ -521,6 +525,12 @@ export class Gateway {
     }
   }
 
+  /** Whether a share's guest has its folder open now (their app's live socket, here or passed on to here). */
+  here(id: string) {
+    for (const { g, kind } of this.sockets.values()) if (g.id === id && kind === "events") return true
+    return false
+  }
+
   /** A share turned off: its guests' sockets close. */
   close(id: string) {
     for (const [ws, { g }] of this.sockets) if (g.id === id) ws.terminate() // (at once: a close waits on the guest)
@@ -543,12 +553,12 @@ export class Gateway {
     try { return new URL(String(o)).host.toLowerCase() === String(req.headers.host ?? "").toLowerCase() } catch { return false }
   }
 
-  /** Asked at the vault's own public address (mcp.public.url), the one links name: shares answer only there (or as there,
-   *  passed on from the machine on the internet). */
+  /** Asked at one of this machine's guests' addresses, the ones links name (Vaultite Cloud's share-<handle>, an own
+   *  tunnel's): shares answer only there (or as there, passed on from the machine on the internet). */
   ours(req: IncomingMessage) {
     if (this.passed.has(req)) return true
-    const url = (this.plugin.secrets().mcp as { public?: { url?: string } } | undefined)?.public?.url
-    try { return !!url && new URL(String(url)).host.toLowerCase() === String(req.headers.host ?? "").toLowerCase() } catch { return false }
+    const host = String(req.headers.host ?? "").toLowerCase()
+    return !!host && this.addresses().some((u) => { try { return new URL(u).host.toLowerCase() === host } catch { return false } })
   }
 
   https(req: IncomingMessage) {

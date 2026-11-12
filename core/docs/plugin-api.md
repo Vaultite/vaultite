@@ -249,7 +249,7 @@ by its path.
 - `machines:desktop` (machines): What plugin.desktop does on a server with no desktop app attached.
 - `machines:browser` (machines): The machine whose browser this server's agents use (its tabs' numbers are that browser's): this one, or null.
 - `machines:fs` (machines)
-- `mcp:<…>` (tool, app-host, upload-link, apps): mcp; mcp-apps
+- `mcp:<…>` (tool, app-host, guest-urls, upload-link, apps): mcp; mcp-apps
 - `me:file` (me)
 - `note-dates:stamps` (note-dates): The dates it keeps in a file (path, fm): any edit moves them, so they're no one's change (Review leaves them out).
 - `now:file` (now)

@@ -1,12 +1,16 @@
 ## Sharing
 A folder shared with one person: `vau share create <folder> --guest "Alice Park" --role comment --days 30` prints their
 link, once (kept only as a hash in this machine's `data/config.json`, `share`). `vau share list`, `vau share update <id>
---role edit` (or `--days`: the same link), `vau share revoke <id>`; in the app, Share… (a folder's menu, its page's
-toolbar, the palette). Only the owner shares (not an app on the internet), from any machine: one not on the internet
+--role edit` (or `--days`: the same link), `vau share new-link <id>` (a lost link can't be shown again: this one replaces
+it, the old one stops), `vau share revoke <id>`; in the app, Share… (a folder's menu, its page's toolbar, the palette),
+and the Shared page (`view:shared`: every share, who's in one now, the guests' address; from the palette and
+Connections' Remote access). Only the owner shares (not an app on the internet), from any machine: one not on the internet
 passes the share to the vault's machine that is (it keeps it); one of another vault keeps it, its link at that
 machine's address, which passes its guests on (`share/relay`).
-- The guest opens it in a browser at MCP's public address (`mcp.public.url` behind a tunnel): the app, with that folder
-  as their whole vault. read: they read it; comment: and start and answer comments (margin threads); edit: and write its
+- The guest opens it in a browser at this machine's guests' address, which MCP gives (`mcp:guest-urls`, the first is
+  where links go): Vaultite Cloud's `https://share-<handle>.vaultite.app` while signed in (a host of its own, never the
+  owner's app's), or an own tunnel's `mcp.public.url`. Through Vaultite Cloud the relay marks guests' requests as
+  theirs, and they reach only the gateway, never MCP or Connect. There: the app, with that folder as their whole vault. read: they read it; comment: and start and answer comments (margin threads); edit: and write its
   notes (not a note's type, nor CLAUDE.md or AGENTS.md, nor YAML that reuses a value or Markdown too long or nested too
   deep to check at once). Nothing outside the folder (search, links, embeds, other
   plugins), no agents, terminals or settings.

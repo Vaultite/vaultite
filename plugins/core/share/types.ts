@@ -4,6 +4,7 @@ export type SharedFolders = Record<string, { guest: string; role: "read" | "comm
 declare module "@vaultite" {
   interface PluginState {
     sharedFolders?: SharedFolders
-    shareLinks?: boolean
+    /** The guests' address links are made at (this machine's, or another of the user's): "" when there's none. */
+    shareLinks?: string
   }
 }

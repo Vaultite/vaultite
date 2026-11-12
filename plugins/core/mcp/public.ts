@@ -105,9 +105,9 @@ const now = () => Math.floor(Date.now() / 1000)
 const same = (a: string, b: string) => a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b))
 
 /** Marks a request Vaultite Cloud's tunnel forwarded (cloud.ts): only this process knows it, so only then are the
- *  forwarded host and address believed. */
+ *  forwarded host and address believed. A guest's (one the relay's frame marks `guest`: share-<handle>) has its own. */
 export const RELAY_HEADER = "x-vaultite-relay"
-export const RELAYED = crypto.randomBytes(24).toString("base64url")
+export const RELAYED = crypto.randomBytes(24).toString("base64url"), RELAYED_GUEST = crypto.randomBytes(24).toString("base64url")
 
 export class PublicMcp {
   plugin: Plugin
@@ -118,8 +118,9 @@ export class PublicMcp {
   failed: Failed[] = []
   sessions = new Map<string, Session>()
   hits = new Map<string, { n: number; until: number }>()
-  /** Requests that came with this process's relay mark (cloud.ts). */
+  /** Requests that came with this process's relay mark (cloud.ts); `guests`: its guests' mark, for Sharing alone. */
   viaRelay = new WeakSet<IncomingMessage>()
+  guests = new WeakSet<IncomingMessage>()
   /** Upload links (file.upload without the file), by token: what to save the bytes as, for whom, until when. */
   uploads = new Map<string, { pending: Record<string, unknown>; who: Who; until: number }>()
   /** The address each tool call's app reached (base), for links it's given: an app may know only one of them. */
@@ -189,6 +190,10 @@ export class PublicMcp {
     server.on("upgrade", (req: IncomingMessage, socket, head: Buffer) => {
       socket.on("error", () => socket.destroy())
       void (async () => {
+        if (this.guestOf(req)) {
+          if (!(await this.plugin.ask("share:upgrade", false, req, socket, head))) socket.end("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+          return
+        }
         if (await this.plugin.ask("machines:upgrade", false, req, socket, head)) return
         if (!same(String(req.headers[RELAY_HEADER] ?? ""), RELAYED) && await this.plugin.ask("share:upgrade", false, req, socket, head)) return
         // Machines not loaded yet (a server starting): a file agent waits and dials again.
@@ -372,9 +377,25 @@ export class PublicMcp {
   /** What the request says of who sent it, believed only for what a tunnel can't forge: Tailscale's and the app's own
    *  headers go, and nothing that comes here is ever the owner (core/owner.ts). */
   untrusted(req: IncomingMessage) {
-    if (same(String(req.headers[RELAY_HEADER] ?? ""), RELAYED)) this.viaRelay.add(req)
+    const mark = String(req.headers[RELAY_HEADER] ?? "")
+    if (same(mark, RELAYED)) this.viaRelay.add(req)
+    else if (same(mark, RELAYED_GUEST)) {
+      this.viaRelay.add(req)
+      this.guests.add(req)
+      // (answered as at the address it came to, which the relay names: Sharing's links and Origin checks are by it)
+      const host = String(req.headers["x-forwarded-host"] ?? "").toLowerCase()
+      req.headers.host = /^[a-z0-9.-]+(:\d+)?$/.test(host) ? host : ""
+    }
     for (const k of Object.keys(req.headers)) if (/^(tailscale-|x-vaultite-)/.test(k)) delete req.headers[k]
     fromInternet(req)
+  }
+
+  /** A shared folder's guest through Vaultite Cloud (share-<handle>): marked so, then for Sharing only, never MCP, the
+   *  machines' routes or Connect. */
+  guestOf(req: IncomingMessage) {
+    if (!this.guests.has(req) && !same(String(req.headers[RELAY_HEADER] ?? ""), RELAYED_GUEST)) return false
+    this.untrusted(req)
+    return true
   }
 
   /** Connect: true when Vaultite Cloud's tunnel brought this signed by the owner (a path that isn't MCP's), "bad" when its
@@ -383,7 +404,7 @@ export class PublicMcp {
     const token = req.headers[SIGNED_HEADER]
     this.untrusted(req)
     const p = new URL(req.url ?? "/", "http://localhost").pathname
-    if (token === undefined || !this.relayed(req) || MCP_PATHS.test(p)) return null
+    if (token === undefined || !this.relayed(req) || this.guests.has(req) || MCP_PATHS.test(p)) return null
     return verifyConnect(this.connect.key(), token, this.connect.handle()) ? true : "bad"
   }
 
@@ -431,12 +452,16 @@ export class PublicMcp {
   }
 
   async handle(req: IncomingMessage, res: ServerResponse) {
+    if (this.guestOf(req)) {
+      if (!(await this.plugin.ask("share:public", false, req, res))) this.json(res, 404, { error: "not_found" })
+      return
+    }
     if (await this.plugin.ask("machines:public", false, req, res, this.base(req))) return
     const signed = this.signedOwner(req)
     if (signed === true) return serveApp(req, res, this.connectOptions())
     if (signed === "bad") return this.json(res, 401, { error: "sign_in", message: "Vaultite Cloud's sign-in for this Mac didn't check out: sign in again" })
-    // A shared folder's guest (plugins/core/share): its own routes, never MCP's nor the app's; not on Vaultite Cloud's
-    // address, where the owner's app answers.
+    // A shared folder's guest (plugins/core/share) at the owner's own tunnel: its own routes, never MCP's nor the app's;
+    // not on Vaultite Cloud's handle address, where the owner's app answers (its guests come to share-<handle>, above).
     if (!this.relayed(req) && await this.plugin.ask("share:public", false, req, res)) return
     const url = new URL(req.url ?? "/", "http://localhost")
     const p = url.pathname.replace(/\/+$/, "") || "/"

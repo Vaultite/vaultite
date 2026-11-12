@@ -1,18 +1,19 @@
-// Vaultite Cloud: this machine signed in to cloud.vaultite.com (a one-time code the user gets at /connect and types here), and
-// a tunnel to its relay that forwards https://<handle>.vaultite.app to the public listener (public.ts), never the app's port.
+// Vaultite Cloud: this machine signed in to cloud.vaultite.com (a one-time code from /connect, typed here), and a tunnel
+// forwarding <handle>.vaultite.app and its guests' share-<handle>.vaultite.app to the public listener, never the app's port.
 import { execFile } from "node:child_process"
 import http from "node:http"
 import os from "node:os"
 import WebSocket from "ws"
 import type { Plugin } from "../../../core/plugins.ts"
-import { RELAY_HEADER, RELAYED } from "./public.ts"
+import { RELAY_HEADER, RELAYED, RELAYED_GUEST } from "./public.ts"
 
 const RELAY = (process.env.VAULTITE_CLOUD || "https://cloud.vaultite.com").replace(/\/+$/, "")
 
 /** What's kept in data/config.json (mcp.cloud): never in the vault, never logged. */
 type Stored = { token: string; handle: string; url: string }
+/** `guest`: a request or socket to share-<handle>, for Sharing alone (the relay's word: no client sets it). */
 type Frame = { t: string; id?: string; method?: string; path?: string; headers?: [string, string][]; body?: string; key?: string
-  text?: string; data?: string; code?: number; reason?: string }
+  text?: string; data?: string; code?: number; reason?: string; guest?: boolean }
 
 type CloudState = "off" | "connecting" | "connected" | "reconnecting" | "offline" | "replaced"
 export type CloudStatus = {
@@ -22,6 +23,8 @@ export type CloudStatus = {
   url: string | null
   /** Where the owner opens the app from anywhere (Connect), once Vaultite Cloud handed this machine its key. */
   app: string | null
+  /** Where shared folders' guests open them (share-<handle>), while this machine has the address. */
+  guests: string | null
   /** Where the user signs in and gets a code to type here. */
   connectUrl: string
   /** Why it's off or down (revoked, replaced by another machine, the last error). */
@@ -92,9 +95,16 @@ export class Cloud {
     const s = this.stored()
     return {
       state: this.state, handle: s?.handle ?? null, url: s ? `${s.url.replace(/\/+$/, "")}/mcp` : null, connectUrl: `${this.relay}/connect`,
-      app: s && this.connectKey ? s.url.replace(/\/+$/, "") : null,
+      app: s && this.connectKey ? s.url.replace(/\/+$/, "") : null, guests: this.guestUrl(),
       ...(this.message ? { message: this.message } : {}),
     }
+  }
+
+  /** Its guests' address: share-<the handle's host>, the relay's (its README); none while another machine has the handle. */
+  guestUrl(): string | null {
+    const s = this.stored()
+    if (!s || this.state === "replaced") return null
+    try { const u = new URL(s.url); return `${u.protocol}//share-${u.host}` } catch { return null }
   }
 
   set(state: CloudState, message = "") {
@@ -197,7 +207,7 @@ export class Cloud {
       this.seen = Date.now()
       this.replacedBy = ""
       this.set("connected")
-      ws.send(JSON.stringify({ t: "hello", features: ["app"] })) // a relay with Connect answers with its key
+      ws.send(JSON.stringify({ t: "hello", features: ["app", "share"] })) // a relay with Connect answers with its key
       this.beat = setInterval(() => {
         if (Date.now() - this.seen > SILENT) ws.terminate() // a connection gone quiet: start again
         else ws.ping()
@@ -260,18 +270,18 @@ export class Cloud {
     if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(o), cb); else cb?.()
   }
 
-  /** The headers the relay sent, as the public listener gets them. */
+  /** The headers the relay sent, as the public listener gets them, marked as the relay's (a guest's: as theirs). */
   headersOf(f: Frame) {
     const headers: Record<string, string | string[]> = {}
     for (const [k, v] of Array.isArray(f.headers) ? f.headers : []) {
       const key = String(k).toLowerCase()
-      if (HOP.has(key) || OURS.test(key)) continue
+      if (HOP.has(key) || OURS.test(key) || (f.guest && key === "x-vaultite-cloud")) continue
       const prev = headers[key]
       headers[key] = prev === undefined ? String(v) : [prev, String(v)].flat()
     }
     headers["x-forwarded-host"] ||= new URL(this.stored()?.url ?? "https://localhost").host
     headers["x-forwarded-proto"] ||= "https"
-    headers[RELAY_HEADER] = RELAYED
+    headers[RELAY_HEADER] = f.guest === true ? RELAYED_GUEST : RELAYED
     return headers
   }
 
