@@ -70,6 +70,7 @@ const driven = !!process.env.VAULTITE_QUIET || app.commandLine.hasSwitch("remote
 if (driven && !process.env.VAULTITE_SOUND) app.commandLine.appendSwitch("mute-audio")
 // A keychain password prompt nobody's there to answer hangs the run.
 if (driven) { app.commandLine.appendSwitch("use-mock-keychain"); app.commandLine.appendSwitch("password-store", "basic") }
+app.commandLine.appendSwitch("enable-features", [app.commandLine.getSwitchValue("enable-features"), "DocumentPolicyIncludeJSCallStacksInCrashReports"].filter(Boolean).join(","))
 // Under Playwright, a page's frame swapped out as it navigates (RenderDocument) can crash its renderer turning off
 // Playwright's focus emulation (Blink's race: QA's "Target crashed"); no user page has it, so only there it's off.
 if (app.commandLine.hasSwitch("remote-debugging-port")) {
@@ -103,8 +104,11 @@ async function openLink(url: string) {
 function uncaught(kind: "uncaught" | "rejection", e: unknown) {
   const err = e instanceof Error ? e : new Error(String(e))
   console.error(`main process, ${kind}:`, err)
+  reportError(kind, `Main process: ${err.message}`, err.stack ?? "")
+}
+function reportError(kind: string, message: string, stack: string) {
   try {
-    const body = JSON.stringify({ device: "desktop", errors: [{ kind, t: Date.now(), message: `Main process: ${err.message}`, stack: err.stack ?? "", build: CODE?.commit ?? "" }] })
+    const body = JSON.stringify({ device: "desktop", errors: [{ kind, t: Date.now(), message, stack, build: CODE?.commit ?? "" }] })
     for (const w of wins.values()) void fetch(`http://127.0.0.1:${w.port}/api/errors`, { method: "POST", headers: { "Content-Type": "application/json" }, body }).catch(() => {})
   } catch {}
 }
@@ -360,6 +364,8 @@ function hangs(win: AppWindow, name: string) {
   win.webContents.on("unresponsive", async () => {
     if (asking || win.isDestroyed()) return
     const ask = (asking = new AbortController())
+    void Promise.race([win.webContents.mainFrame.collectJavaScriptCallStack(), new Promise<void>((r) => setTimeout(r, 5000))])
+      .then((stack) => reportError("hung", `${name}'s page stopped responding${stack ? "" : " (its script's stack unknown)"}`, stack ?? ""), () => {})
     const r = await dialog.showMessageBox(win, { type: "warning", message: `${name} isn't responding`, detail: "Wait for it, or reload its page.",
       buttons: ["Wait", "Reload"], defaultId: 0, cancelId: 0, signal: ask.signal }).catch(() => ({ response: 0 }))
     asking = null

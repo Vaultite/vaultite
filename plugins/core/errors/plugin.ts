@@ -114,7 +114,7 @@ plugin.onUnload(() => { if (flusher) clearInterval(flusher); for (const id of he
 
 /** A new error: a toast saying only where (its text stays here), kept in the inbox, once per kind while the server runs;
  *  not for an older build's file, one the user was already told of, or one that ended the server. */
-const TOLD = new Set(["stale", "shown", "plugin"])
+const TOLD = new Set(["stale", "shown", "plugin", "hung"])
 function tell(g: ErrorGroup) {
   if (!settings().notify || TOLD.has(g.kind) || g.latest.fatal && g.source === "server") return
   const where = g.source === "app" ? (g.kind === "stopped" ? "The app stopped" : "Something went wrong in the app") : "Something went wrong in the server"
@@ -136,7 +136,7 @@ plugin.onServerError((e: ServerError) => {
 
 // ---------- the app's
 
-const KINDS = new Set(["uncaught", "rejection", "boundary", "stopped", "boot", "stale", "shown", "plugin", "update"])
+const KINDS = new Set(["uncaught", "rejection", "boundary", "stopped", "boot", "stale", "shown", "plugin", "update", "hung"])
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "")
 
 plugin.route("POST", "errors", (req) => {

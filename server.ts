@@ -606,7 +606,8 @@ async function file(req: http.IncomingMessage, res: http.ServerResponse, url: UR
     : { "Last-Modified": modified, "Cache-Control": type.startsWith("text/html") ? "no-cache" : "public, max-age=3600" }
   if (COMPRESSIBLE.test(type)) headers.Vary = "Accept-Encoding"
   // (another site's page can't frame the app to steer clicks onto it: Allow, Turn on)
-  if (type.startsWith("text/html")) Object.assign(headers, { "Content-Security-Policy": "frame-ancestors 'self'", "X-Frame-Options": "SAMEORIGIN" })
+  if (type.startsWith("text/html")) Object.assign(headers, { "Content-Security-Policy": "frame-ancestors 'self'", "X-Frame-Options": "SAMEORIGIN",
+    "Document-Policy": "include-js-call-stacks-in-crash-reports" })
   const since = req.headers["if-modified-since"]
   if (since && Math.floor(st.mtimeMs / 1000) <= Math.floor(Date.parse(since) / 1000)) {
     res.writeHead(304, headers)
