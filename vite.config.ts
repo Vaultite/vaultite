@@ -201,6 +201,24 @@ export const appGroups = bootGroups.map((g) => typeof g.name !== 'function'
   : { ...g, name: (id: string) => { const n = (g.name as (id: string) => string)(id); return n === 'app' ? `app-${folderOf(id)}` : n } })
 const grouped = (name: string) => /^(app|vendor|editor|terminal|chat)([~-]|$)/.test(name)
 
+/** Vite's preload lists (`__vite__mapDeps`) in an order of their own: Vite's follows files' content hashes, so one file
+ *  changing would move it in the lists of every chunk that preloads it. Scripts by name; style sheets in their order. */
+const MAP_DEPS = /(const __vite__mapDeps=\(i,m=__vite__mapDeps,d=\(m\.f\|\|\(m\.f=)(\[[^\]]*\])/
+export function steadyDeps(code: string) {
+  const m = MAP_DEPS.exec(code)
+  if (!m) return code
+  const was = JSON.parse(m[2]) as string[], uses = new Map<string, number>()
+  for (const [, list] of code.matchAll(/__vite__mapDeps\(\[([\d,]*)\]\)/g)) for (const x of list.split(',').filter(Boolean)) uses.set(was[Number(x)], (uses.get(was[Number(x)]) ?? 0) + 1)
+  // (the most used first: their numbers are short, in every list)
+  const table = [...new Set(was)].sort((a, b) => (uses.get(b) ?? 0) - (uses.get(a) ?? 0) || (a < b ? -1 : 1)), at = new Map(table.map((f, i) => [f, i]))
+  code = code.slice(0, m.index) + m[1] + JSON.stringify(table) + code.slice(m.index + m[0].length)
+  return code.replace(/__vite__mapDeps\(\[([\d,]*)\]\)/g, (_, list: string) => {
+    const files = [...new Set(list.split(',').filter(Boolean).map((x) => was[Number(x)]))]
+    const ordered = [...files.filter((f) => !f.endsWith('.css')).sort(), ...files.filter((f) => f.endsWith('.css'))]
+    return `__vite__mapDeps([${ordered.map((f) => at.get(f)).join(',')}])`
+  })
+}
+
 /** A deploy re-downloads only the files that changed: each chunk imports the others by a name that stays (its group, or
  *  its entry module), which each page's import map points at the file of the moment, named by its content alone. */
 export function stableChunks(): Plugin {
@@ -242,7 +260,7 @@ export function stableChunks(): Plugin {
         // Each chunk imports by lasting names, so its content (and the name it's served by) moves only with its own code
         const real = new Map<string, string>()
         for (const c of chunks) {
-          c.code = toKeys(c.code)
+          c.code = steadyDeps(toKeys(c.code))
           const to = `${path.posix.dirname(c.fileName)}/${c.name}-${hash(c.code)}.js`
           real.set(c.fileName, to)
         }
