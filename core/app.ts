@@ -1,6 +1,7 @@
 // The app without the HTTP: the vault, the plugins, and the API as one function (run), so the backend test can call it
 // directly. Routes are in `run` below and each plugin's plugin.ts; `vau docs api` lists them for agents.
 import { AsyncLocalStorage } from "node:async_hooks"
+import crypto from "node:crypto"
 import fs from "node:fs"
 import type { IncomingMessage } from "node:http"
 import type { Readable } from "node:stream"
@@ -23,6 +24,7 @@ import { readTypes } from "./proptypes.ts"
 import { blockOn, blockSources, render } from "./render.ts"
 import { type BlockDecls, COMMON, drawnBy, drawsOf } from "./blocks.ts"
 import { topic, topics } from "./docs.ts"
+import * as SC from "./statechunks.ts"
 import * as SP from "./statepatch.ts"
 import { coreOps } from "./coreops.ts"
 import { SETTINGS } from "./coreops/settings.ts"
@@ -50,7 +52,9 @@ import { keepReads } from "./fmcache.ts"
 const KEEP = 32
 
 /** A state as the app was given it: its version, and its pieces (core/statepatch.ts). */
-type Snap = { v: string; state: Item; piece: SP.Piece; whole?: Buffer; patches: Map<string, string> }
+type Snap = { v: string; state: Item; piece: SP.Piece; whole?: Buffer; patches: Map<string, string>; tree?: SC.ChunkNode }
+/** The manifests whose chunks are kept to answer (a page may ask for one of the last as the state moves on). */
+const CHUNK_KEEP = 4
 
 
 /** The writer for a call made as `who`: the request's own (its terminal, session, model) when it's the same caller. */
@@ -68,6 +72,8 @@ export class App {
   index: PluginIndex
   private stated: { version: string; plugins: Plugin[]; state: Item } | null = null // the last state() and what it was of
   private snaps: Snap[] = [] // the last states the app was given, oldest first
+  private chunks = new Map<string, string>() // state chunks by name (GET /api/state/chunk/<name>), of the last manifests
+  private chunked: Set<string>[] = []
   private boot = Date.now().toString(36)
   private seq = 0
   private pagesOf = "" // the plugins that were on at the last look (onKey): those turned on since get their pages
@@ -379,6 +385,24 @@ export class App {
     return new Text(out, "application/json")
   }
 
+  /** GET /api/state/manifest: the state as chunks named by their content (statechunks.ts), which a page keeps for good,
+   *  and its version, from which it asks for patches as stateSince does; a small state, whole (stateSince's answer). */
+  async stateManifest(http?: IncomingMessage) {
+    const mark = this.liveMark?.()
+    const now = this.snap(await this.state())
+    if (SC.sizeOf(now.piece) < SC.WHOLE_UNDER) return this.stateSince("0", http)
+    if (!now.tree) {
+      const made = new Map<string, string>()
+      now.tree = SC.chunkState(now.piece, (t) => crypto.hash("sha256", t, "base64url").slice(0, 22), made)
+      for (const [h, t] of made) this.chunks.set(h, t)
+      this.chunked.push(new Set(made.keys()))
+      if (this.chunked.length > CHUNK_KEEP) for (const h of this.chunked.shift()!) if (!this.chunked.some((g) => g.has(h))) this.chunks.delete(h)
+    }
+    const m: SC.Manifest = { v: now.v, tree: now.tree, ...(mark ? { live: mark } : {}), ...(http && CONNECT_HEADER in http.headers ? { here: "connect" } : {}) }
+    // (said in a header too: index.html's early script reads only a manifest, never a whole state, to fetch its chunks)
+    return new Text(JSON.stringify(m), "application/json", { "X-Vaultite-Chunks": "1" })
+  }
+
   /** The state as pieces, with its version: the last one again while the state is the same (the same object, or one
    *  made again with nothing different in it: a settings file no plugin shows changed). */
   private snap(state: Item): Snap {
@@ -580,6 +604,13 @@ export class App {
     }
     const route = parts.join("/")
     if (route === "state" && method === "GET") return query.since !== undefined ? await this.stateSince(query.since, http) : await this.state()
+    if (route === "state/manifest" && method === "GET") return await this.stateManifest(http)
+    if (parts.length === 3 && route.startsWith("state/chunk/") && method === "GET") {
+      const text = this.chunks.get(parts[2])
+      if (text === undefined) throw new HTTPError(404, "no such chunk of the state (ask for the manifest again)")
+      // (named by its content: the same name is always the same text, so it's kept for good, by this browser only)
+      return new Text(text, "application/json", { "Cache-Control": "private, max-age=31536000, immutable" })
+    }
     if (route === "render" && method === "GET") return new Text(await render(this.vault, this.plugins, query.path))
     if (route === "render/block" && method === "GET") return new Text(await blockOn(this.vault, this.plugins, query))
     if (route === "vault" && method === "GET") return { path: this.vault.path, problems: this.vault.problemList() }

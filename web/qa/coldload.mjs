@@ -38,7 +38,7 @@ await page.goto(B)
 await drawn()
 await wait(1500)
 const assets = sent.filter((r) => r.path.startsWith("/assets/"))
-const state = sent.filter((r) => r.path === "/api/state")
+const state = sent.filter((r) => r.path === "/api/state/manifest") // (a small vault's state comes whole from it)
 check("the state is asked for by the page, before the app's code runs", state[0]?.from === B, state[0]?.from)
 check("and once", state.length === 1, state.length)
 const eager = [...(await (await fetch(B)).text()).matchAll(/<(?:script|link)\b[^>]*?(?:src|href)="\.?\/?(assets\/[^"]+\.js)"/g)].length

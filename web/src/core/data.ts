@@ -13,6 +13,7 @@ import { hydrateHotkeys } from "@/core/commands"
 import type { FileTree } from "@/core/files"
 import type { Grant } from "@/core/grants"
 import { applyPatch, type Patch } from "../../../core/statepatch.ts"
+import { assemble, chunksOf, type Manifest } from "../../../core/statechunks.ts"
 import type { BlockDecls, SettingDecls } from "../../../core/blocks.ts"
 import type { PropTypes } from "../../../core/proptypes.ts"
 import type { Disclosures } from "../../../core/pluginmeta.ts"
@@ -329,6 +330,22 @@ function stateOf(a: Answer): State | null {
   try { return a.patch ? applyPatch(server.state, a.patch) as State : server.state } catch (e) { console.error(e); return null }
 }
 
+/** The whole state from its chunks (core/statechunks.ts): the ones this browser kept come from its cache, so a load
+ *  after a change fetches only what changed. Null when it can't (a chunk gone meanwhile): the whole state is asked. */
+async function fromChunks(): Promise<Answer | null> {
+  try {
+    const m = await get<Manifest | Answer>("state/manifest")
+    if (!("tree" in m)) return m
+    await (window as { __vauEarlyChunks?: Promise<void> }).__vauEarlyChunks
+    const names = [...new Set(chunksOf(m.tree))]
+    const values = new Map(await Promise.all(names.map(async (c) => [c, await get<unknown>(`state/chunk/${c}`)] as const)))
+    return { v: m.v, state: assemble(m.tree, (c) => values.get(c)) as State, live: m.live as LiveMark | undefined, here: m.here as "connect" | undefined }
+  } catch (e) {
+    console.warn("the state's chunks", e)
+    return null
+  }
+}
+
 // One refresh at a time; asked again meanwhile, it runs once more after. It waits for this app's writes on their way,
 // and one that a write overtook is thrown away and run again, so an optimistic change never flickers back.
 let busy: Promise<void> | null = null
@@ -343,7 +360,7 @@ function load(): Promise<void> {
       await settled()
       const gen = editCount()
       try {
-        const answer = await get<Answer>(`state?since=${encodeURIComponent(server?.v ?? "0")}`)
+        const answer = (server ? null : await fromChunks()) ?? await get<Answer>(`state?since=${encodeURIComponent(server?.v ?? "0")}`)
         loading?.mark("state")
         startLive(answer.live) // (the first answer: live updates start from where it stood)
         setHere(answer.here ?? "mac")

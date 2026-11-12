@@ -18,7 +18,12 @@
     <script id="vau-early">
       try {
         const device = window.vaultite ? "desktop" : matchMedia("(pointer: coarse) and (max-width: 820px)").matches ? "phone" : "web"
-        window.__vauEarly = { "state?since=0": fetch("api/state?since=0", { headers: { "X-Vaultite-Client": `app/${device}` } }) }
+        const h = { headers: { "X-Vaultite-Client": `app/${device}` } }, early = window.__vauEarly = { "state/manifest": fetch("api/state/manifest", h) }
+        // (then its chunks: the ones this browser kept come from its cache, the others are on their way at once)
+        const names = (n) => (n.j ? [n.j] : n.a ? n.a : [...(n.r ? [n.r] : []), ...Object.values(n.o).flatMap(names)])
+        window.__vauEarlyChunks = early["state/manifest"].then((r) => (r.ok && r.headers.get("X-Vaultite-Chunks") ? r.clone().json() : null)).then((m) => {
+          for (const c of m?.tree ? names(m.tree) : []) early[`state/chunk/${c}`] = fetch(`api/state/chunk/${c}`, h)
+        }).catch(() => {})
       } catch {}
     </script>
     <!-- The look the app last had (core/appearance.ts keeps it), in place before its code loads: no flash of the other theme. -->

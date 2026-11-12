@@ -69,6 +69,33 @@ export default async ($: VaultTest) => {
     check("state since: a file gone", same(applyPatch(applyPatch(applyPatch(got, a3.patch), a4.patch), a5.patch), await full()))
   }
 
+  // The state as chunks named by their content (core/statechunks.ts): put back together they're the state, and a change
+  // renames only the chunks it's in, so a page fetches only those.
+  {
+    const SC = await import("../../../core/statechunks.ts"), SP = await import("../../../core/statepatch.ts")
+    const crypto = await import("node:crypto")
+    const name = (t: string) => crypto.hash("sha256", t, "base64url").slice(0, 22)
+    const made = (value: unknown) => { const chunks = new Map<string, string>(); const tree = SC.chunkState(SP.snapshot(value), name, chunks); return { tree, chunks } }
+    const back = (m: ReturnType<typeof made>) => SC.assemble(m.tree, (c) => JSON.parse(m.chunks.get(c)!))
+    await vault.synced()
+    const full = async () => JSON.parse(JSON.stringify(publicOf(await stateNow())))
+    const whole = await full()
+    check("state chunks: put back together, they're the state", same(back(made(whole)), whole))
+    const notes = Array.from({ length: 3000 }, (_, i) => ({ id: `Notes/Note ${i}.md`, title: `Note ${i}`, body: `Some words of note ${i}, `.repeat(8) }))
+    const big = { notes, files: { files: notes.map((n) => ({ path: n.id, size: 100 })), folders: ["Notes"] }, small: { a: 1 } }
+    const m0 = made(big), names0 = new Set(SC.chunksOf(m0.tree))
+    check("state chunks: a big state comes in many, each of tens of KB", names0.size > 10 && [...m0.chunks.values()].every((t) => t.length < 300_000), names0.size)
+    check("state chunks: a big one put back together is the state", same(back(m0), big))
+    const changed = { ...big, notes: notes.map((n, i) => (i === 1500 ? { ...n, body: "Changed." } : n)) }
+    const fresh = (m: ReturnType<typeof made>) => SC.chunksOf(m.tree).filter((c) => !names0.has(c))
+    check("state chunks: a note changed renames one chunk", fresh(made(changed)).length === 1, fresh(made(changed)).length)
+    const added = { ...big, notes: [...notes.slice(0, 700), { id: "Notes/New.md", title: "New", body: "New." }, ...notes.slice(700)] }
+    check("state chunks: a note added renames one chunk", fresh(made(added)).length === 1 && same(back(made(added)), added), fresh(made(added)).length)
+    const answer = await app.run("GET", ["state", "manifest"], {}, {})
+    check("state manifest: a small state comes whole, as since=0's", same(JSON.parse(String((answer.body as { text: string }).text)).state, await full()))
+    check("state chunk: one it doesn't have is a 404", (await app.run("GET", ["state", "chunk", "nope"], {}, {})).status === 404)
+  }
+
   // Reads arriving together share one sync (Vault.synced, what server.ts does for a GET), which still reads a file
   // written just before them.
   let syncs = 0

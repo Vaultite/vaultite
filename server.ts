@@ -217,7 +217,9 @@ async function send(res: http.ServerResponse, status: number, body: string | Buf
   }
   const enc = encodingFor(req, type, data.length)
   if (enc) {
-    data = data.length < BIG ? (enc === "br" ? brotli(data, 1) : zlib.gzipSync(data, { level: 1 })) : await packBig(data, enc, out.ETag)
+    // (an answer named by its content, kept for good: compressed well, once)
+    const lasting = /\bimmutable\b/.test(out["Cache-Control"] ?? "")
+    data = lasting ? await packLasting(data, enc) : data.length < BIG ? (enc === "br" ? brotli(data, 1) : zlib.gzipSync(data, { level: 1 })) : await packBig(data, enc, out.ETag)
     out["Content-Encoding"] = enc
     out.Vary = "Accept-Encoding"
   }
@@ -241,6 +243,34 @@ function packBig(data: Buffer, enc: "br" | "gzip", etag?: string) {
     if (bigPacked.size > 16) bigPacked.delete(bigPacked.keys().next().value!)
   }
   return out
+}
+
+/** Answers that never change (a state chunk, named by its content), compressed once: by their hash, the last 2000. */
+const lastingPacked = new Map<string, Promise<Buffer>>()
+function packLasting(data: Buffer, enc: "br" | "gzip") {
+  const key = `${crypto.hash("sha1", data, "base64url")}\0${enc}`, hit = lastingPacked.get(key)
+  if (hit) { lastingPacked.delete(key); lastingPacked.set(key, hit); return hit }
+  const out = enc === "br" ? compress.br(data, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 5, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: data.length } })
+    : compress.gzip(data, { level: 6 })
+  lastingPacked.set(key, out)
+  out.catch(() => lastingPacked.delete(key))
+  if (lastingPacked.size > 2000) lastingPacked.delete(lastingPacked.keys().next().value!)
+  // (then the best, a tenth smaller, in the background, one at a time: a phone's next cold load gets it)
+  if (enc === "br") { bettering.push([key, data]); void betterLasting() }
+  return out
+}
+const bettering: [string, Buffer][] = []
+let betterBusy = false
+async function betterLasting() {
+  if (betterBusy) return
+  betterBusy = true
+  for (let next; (next = bettering.shift());) {
+    const [key, data] = next
+    if (!lastingPacked.has(key)) continue
+    const best = await compress.br(data, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: data.length } }).catch(() => null)
+    if (best && lastingPacked.has(key)) lastingPacked.set(key, Promise.resolve(best))
+  }
+  betterBusy = false
 }
 
 const json = (res: http.ServerResponse, obj: unknown, status = 200) =>

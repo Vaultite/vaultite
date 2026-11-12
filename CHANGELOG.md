@@ -8,6 +8,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **A new vault's welcome card shows on a Mac even when it opens right after the vault is made**: it no longer
   depends on the very first view of the vault having heard the offer.
+- **A big vault opens again in a fraction of the bytes**: its state comes in pieces named by their content, which the
+  phone or browser keeps, so opening the app after an agent wrote a note fetches only the pieces that changed (a tenth
+  or less) instead of the whole vault's state again; a small vault's comes whole, as before.
 - **Terminals over a phone's network move a seventh of the bytes**: the app's live connections are compressed when they
   cross the network (a terminal's output, the live state); on the Mac itself nothing changes.
 - **Faster starts after an update, on a phone above all**: the app comes in a file per folder whose names last, so an
