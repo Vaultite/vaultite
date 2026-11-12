@@ -1,7 +1,6 @@
-// Vaultite as a desktop app (Electron): each vault a window with its server (its own, or one here: host.ts); see CLAUDE.md.
-// Env: VAULTITE_USER_DATA, _DEBUG_PORT, _LOCAL, _QUIET, _UPDATE_URL, _SETUP_HOME (tests); `--vault <path>` opens one.
-import "../core/winspawn.ts" // (first: on Windows no program the main process starts opens a console window)
-import "./dockenv.ts" // (before anything reads the environment)
+// Vaultite's desktop app (Electron): each vault a window with its server (electron/CLAUDE.md).
+import "../core/winspawn.ts"
+import "./dockenv.ts"
 import { app, BaseWindow, type BaseWindowConstructorOptions, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, session, shell, systemPreferences, type IpcMainInvokeEvent, type Rectangle, type WebContents, type WebPreferences } from "electron"
 import { AppWindow } from "./appwindow.ts"
 import { relaunchOptions, vaultArg } from "./argv.ts"
@@ -44,17 +43,12 @@ const PRELOAD = path.join(ROOT, "electron", "preload.cjs")
 const DIST = path.join(ROOT, "web", "dist")
 const ICON = path.join(ROOT, "web", "public", "icon-512.png")
 const MAC = process.platform === "darwin"
-// Where a Mac window's traffic lights sit (points from its top-left corner) until its page places them
-// (window:lights): web/src/index.css lays the sidebar's top row out around them.
 const LIGHTS = { x: 16, y: 14 }
-// Each button (points), to centre them on a row and for the page's stand-ins (core/peek.ts): macOS 26 draws a 14pt
-// circle filling its frame, 23pt apart; before it, a 12pt circle in a 14×16 frame, 20pt apart.
+// macOS 26 draws a 14pt circle filling its frame, 23pt apart; before it, a 12pt circle in a 14×16 frame, 20pt apart.
 const BUTTONS = MAC && Number(process.getSystemVersion().split(".")[0]) >= 26
   ? { width: 14, height: 14, size: 14, pitch: 23 } : { width: 14, height: 16, size: 12, pitch: 20 }
 const LINUX = process.platform === "linux"
 const WIN = process.platform === "win32"
-/** The window's own title bar: the Mac's traffic lights over the page; Windows' controls drawn over its top-right corner
- *  (titleBarOverlay, coloured as the page tells: window:controls); Linux keeps its system title bar. */
 const CONTROLS_HEIGHT = 40
 const chrome = (): BaseWindowConstructorOptions => WIN
   ? { titleBarStyle: "hidden", titleBarOverlay: { color: background(), symbolColor: nativeTheme.shouldUseDarkColors ? "#ffffff" : "#000000", height: CONTROLS_HEIGHT } }
@@ -63,7 +57,6 @@ const chrome = (): BaseWindowConstructorOptions => WIN
 // Under --no-sandbox (an AppImage under AppArmor, Playwright on Linux) renderers no window makes keep Electron's sandboxed
 // renderer, which runs service-worker preloads; not as root, where Chromium sandboxes nothing and each would die.
 if (app.commandLine.hasSwitch("no-sandbox") && process.getuid?.() !== 0) app.commandLine.appendSwitch("enable-sandbox")
-// VAULTITE_QUIET=1 (web/qa's desktop scripts): quiet.ts.
 if (QUIET) {
   app.commandLine.appendSwitch("disable-backgrounding-occluded-windows")
   app.commandLine.appendSwitch("disable-renderer-backgrounding")
@@ -73,11 +66,9 @@ if (QUIET) {
   app.focus = () => {}
   void app.whenReady().then(() => app.dock?.hide())
 }
-// A copy a script drives (VAULTITE_QUIET, or Playwright's launch, always with a debugging port; the app's own is added
-// below) plays nothing aloud, AirPods included: a test's YouTube page would. VAULTITE_SOUND=1 for a test that needs it.
 const driven = !!process.env.VAULTITE_QUIET || app.commandLine.hasSwitch("remote-debugging-port")
 if (driven && !process.env.VAULTITE_SOUND) app.commandLine.appendSwitch("mute-audio")
-// It never asks for the system's keychain either: a password prompt nobody's there to answer hangs the run.
+// A keychain password prompt nobody's there to answer hangs the run.
 if (driven) { app.commandLine.appendSwitch("use-mock-keychain"); app.commandLine.appendSwitch("password-store", "basic") }
 // Under Playwright, a page's frame swapped out as it navigates (RenderDocument) can crash its renderer turning off
 // Playwright's focus emulation (Blink's race: QA's "Target crashed"); no user page has it, so only there it's off.
@@ -87,45 +78,36 @@ if (app.commandLine.hasSwitch("remote-debugging-port")) {
 // A Mac takes a window's icon from the bundle, a packaged Windows app from its .exe; on Linux (and Windows from source)
 // each window carries it (the taskbar, Alt+Tab), else Electron's.
 if (LINUX || (WIN && !app.isPackaged)) { app.on("browser-window-created", (_e, w) => w.setIcon(ICON)); AppWindow.each((w) => w.setIcon(ICON)) }
-// VAULTITE_BEHIND=1 (npm run app:dev): the windows opened at launch wait to be shown until the user switches to the app,
-// rather than popping up over their work.
 let behind = !!process.env.VAULTITE_BEHIND
-// What macOS runs rather than shows when opened (an app, a script, a link to one): a vault file of these, which a
-// synced or shared vault may bring, is shown in Finder instead of opened.
+// What macOS runs rather than shows when opened (an app, a script, a link to one).
 function openVaultFile(abs: string) {
   let runs = runsCode(abs)
   try { runs ||= fs.statSync(abs).isDirectory() } catch { return }
   if (runs) shell.showItemInFolder(abs); else void shell.openPath(abs)
 }
-/** A link the app's page hands to the system, as Obsidian does: any app's scheme the Browser's pages may open too
- *  (obsidian://, tel:); a file:// one as a vault file opens (with the Mac's app for it, an app or a folder in Finder). */
 async function openLink(url: string) {
   if (/^file:/i.test(url)) {
     // (one on another computer, file://host/x, is a Windows network path: reaching it sends the user's login hash)
-    try { if (["", "localhost"].includes(new URL(url).hostname)) openVaultFile(fileURLToPath(url)) } catch { /* not a file address */ }
+    try { if (["", "localhost"].includes(new URL(url).hostname)) openVaultFile(fileURLToPath(url)) } catch {}
     return
   }
   const scheme = otherAppScheme(url)
   if (!scheme) return
-  // (another app does what the link says: asked first, as browsers do, whoever wrote the note and however it was clicked)
   if (!["http", "https", "mailto"].includes(scheme)) {
     const { response } = await dialog.showMessageBox({ type: "question", buttons: ["Open", "Cancel"], defaultId: 1, cancelId: 1, message: "Open this link in another app?", detail: url })
     if (response !== 0) return
   }
   shell.openExternal(url).catch((e) => console.error(`couldn't open ${url.split(":")[0]}: link`, e))
 }
-// An uncaught exception or rejection here goes to the open vaults' Errors, never Electron's error box, which stops
-// everything and shows even over the QA scripts' quiet windows.
+// Electron's error box for an uncaught exception stops everything and shows even over the QA scripts' quiet windows.
 function uncaught(kind: "uncaught" | "rejection", e: unknown) {
   const err = e instanceof Error ? e : new Error(String(e))
   console.error(`main process, ${kind}:`, err)
   try {
     const body = JSON.stringify({ device: "desktop", errors: [{ kind, t: Date.now(), message: `Main process: ${err.message}`, stack: err.stack ?? "", build: CODE?.commit ?? "" }] })
     for (const w of wins.values()) void fetch(`http://127.0.0.1:${w.port}/api/errors`, { method: "POST", headers: { "Content-Type": "application/json" }, body }).catch(() => {})
-  } catch { /* before the windows exist */ }
+  } catch {}
 }
-/** The shell's record (electron/shell/boot.mjs): this run is ready once the first vault window's page is up (its server
- *  answered), or the launch is done with none. What it recorded since then goes to that window's Errors (vau errors). */
 let shellTold = false, shellReported = false
 function shellReady(w: Win | null) {
   if (!shellTold) { shellTold = true; HOST?.ready(); updatesReady() }
@@ -141,10 +123,7 @@ function shellReady(w: Win | null) {
     body: JSON.stringify({ device: "desktop", errors }) }).catch(() => {})
 }
 const told = new WeakSet<object>()
-/** A failure told in a box: what happened in plain words (core/plainerror.ts), `why` when the error has none to give;
- *  the exact text behind Copy details, and a log when there is one. */
 function failedBox(title: string, e: unknown, o: { why?: string; log?: string } = {}) {
-  // (once: openVault tells its own and rethrows to its caller)
   if (typeof e === "object" && e) { if (told.has(e)) return; told.add(e) }
   const { reason, detail } = plainError(e)
   const box = { type: "warning" as const, message: title, detail: reason ? sentence(reason) : o.why ?? "Something went wrong.",
@@ -160,31 +139,22 @@ process.on("uncaughtException", (e) => uncaught("uncaught", e))
 process.on("unhandledRejection", (e) => uncaught("rejection", e))
 const LOCAL = process.env.VAULTITE_LOCAL || (app.isPackaged ? path.join(app.getPath("userData"), "local") : path.join(ROOT, "data"))
 
-// ---------- the vault list (this Mac's) ----------
 type Known = {
   path: string; port?: number; open?: boolean; last?: number
   bounds?: Rectangle; maximized?: boolean
-  /** Its page last hid the traffic lights (a sidebar hidden without rails): its window opens without them. */
   lightsOff?: boolean
-  /** Files from outside the vault opened in its window: allowed again when its server starts (tabs come back). */
   outside?: string[]
 }
 const LIST = () => path.join(app.getPath("userData"), "vaults.json")
-/** Zoom steps, like Chrome's. */
 const ZOOMS = [0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3]
 let known: Known[] = []
-/** Other machines' servers opened here (Set up Vaultite's "Another machine"), like the iPhone app's list. */
 type Remote = { url: string; name: string; open?: boolean; last?: number; bounds?: Rectangle }
 let remotes: Remote[] = []
-/** The interface size, the windows' zoom (web/src/core/zoom.ts), kept for the next launch. One for every window:
- *  Chromium zooms by host, and every vault's server is on 127.0.0.1. */
+// One for every window: Chromium zooms by host, and every vault's server is on 127.0.0.1.
 let zoom = 1
-/** Chromium's DevTools protocol on 127.0.0.1:<port> for agents (VAULTITE_DEBUG_PORT, else vaults.json's `debugPort`).
- *  Off unless set: any process on this Mac that reaches the port controls the app. */
+// Off unless set: any process on this Mac that reaches Chromium's DevTools port controls the app.
 let debugPort: number | undefined
-/** How this Mac takes updates (updates.ts). */
 let updates: UpdateMode = "notify"
-/** The menu-bar helper's, on this Mac (electron/helper.ts). */
 let helperPrefs: HelperPrefs = {}
 try {
   const v = JSON.parse(fs.readFileSync(LIST(), "utf8"))
@@ -194,7 +164,7 @@ try {
   if (Number.isInteger(v.debugPort) && v.debugPort > 1024 && v.debugPort < 65536) debugPort = v.debugPort
   if (UPDATE_MODES.includes(v.updates)) updates = v.updates
   if (v.helper && typeof v.helper === "object") helperPrefs = v.helper
-} catch { /* first launch */ }
+} catch {}
 const envPort = Number(process.env.VAULTITE_DEBUG_PORT)
 const devtools = Number.isInteger(envPort) && envPort > 1024 && envPort < 65536 ? envPort : debugPort
 if (devtools) {
@@ -212,7 +182,6 @@ function save(now = false) {
   if (now) write()
   else saveTimer = setTimeout(write, 500)
 }
-// (the sandbox is the playground wherever its name shows)
 const nameOf = (p: string) => (p === sandboxPath() ? "Playground" : path.basename(p) || p)
 const find = (p: string) => known.find((v) => v.path === p)
 function remember(p: string) {
@@ -230,7 +199,6 @@ const real = (p: string) => {
     return path.resolve(p)
   }
 }
-/** The known vault a path is in, and its path there. */
 function vaultOf(p: string): [Known, string] | null {
   const r = real(p)
   for (const v of known) {
@@ -240,8 +208,7 @@ function vaultOf(p: string): [Known, string] | null {
   return null
 }
 
-// ---------- servers ----------
-/** A vault's port: its last (localStorage is by origin), else new; never probed (slow at startup): PortTaken. */
+// Its last port: localStorage is by origin.
 function portFor(v: Known, taken = false) {
   if (v.port && !taken) return v.port
   let p: number
@@ -253,48 +220,31 @@ function portFor(v: Known, taken = false) {
 }
 class PortTaken extends Error {}
 
-/** `server`: the one it started; `link`: the server it attached to instead, one already serving the vault here. */
 type Win = { vault: Known; win: AppWindow; server: ChildProcess | null; link: Link | null; port: number; ready: boolean; queue: string[]
-  /** Its server goes with it, the helper on or not (it reopens with a new one: apps:reopen). */
   ending?: boolean
-  /** Its server was stopped to start again on purpose (a Dev instance's code changed, an update): not a crash. */
   restarting?: boolean
-  /** The commit of the web build its server serves, when that isn't its code's (the store's adopt-web). */
   web?: string
-  /** Opened by Set up Vaultite: its page shows the welcome card's next pages (asked once, `app:welcome`). */
   welcome?: boolean
-  /** What its page last told the menu bar (`menu:sync`): its commands, pins and recent files. */
   menu?: MenuSnapshot }
-const wins = new Map<string, Win>() // vault path -> its window
-/** Servers kept with no window, while the menu-bar helper runs (its home vault's, any closed since): reopening takes them. */
+const wins = new Map<string, Win>()
 type Kept = { server: ChildProcess | null; link: Link | null; port: number }
 const kept = new Map<string, Kept>()
-/** The vault window focused last: the helper's home. */
 let lastFocused: string | null = null
-/** macOS's permissions (electron/permissions.ts and its native addon's build), loaded when Settings first asks: not at launch. */
 const macPermissions = () => import("./permissions.ts")
 
-/** The menu-bar helper (electron/helper.ts), loaded once the app is ready when it's wanted: not at launch's cost. */
 let helper: typeof import("./helper.ts") | null = null
-/** The helper's code root, swapped by the store's updates (helperload.ts). */
 let helperAt: HelperSlot | null = null
 const helperOn = () => !!helper?.helperOn()
 const homeChanged = () => helper?.homeChanged()
-/** Pop-out windows (a tab moved out of a vault's window: the page opens `/?popout=<id>`), by their
- *  page, with the vault window they came from: its server, its IPC. */
 const popouts = new Map<WebContents, Win>()
 
-/** Servers on their way up or running, by vault path: each vault's is started once. */
 const booting = new Map<string, Promise<[ChildProcess, number]>>()
-/** The pids of the servers this app runs: forked, or taken over from its last launch (adopt). */
 const ownPids = new Set<number>()
 function ownServer(pid: number | undefined, s: { once(e: "exit", fn: () => void): unknown }) {
   if (!pid) return
   ownPids.add(pid)
   s.once("exit", () => ownPids.delete(pid))
 }
-/** The server serving `p` here to attach to (servedHere): never the one this launch started (at launch, before its
- *  window), which claims the vault too: attached, it would pin the app's updates to its own commit (storepolicy.ts). */
 const servedElsewhere = (p: string) => (booting.has(p) ? Promise.resolve(null) : servedHere(p))
 function serverFor(v: Known) {
   let b = booting.get(v.path)
@@ -310,13 +260,11 @@ function serverFor(v: Known) {
       }
     })()
     booting.set(v.path, b)
-    b.catch(() => booting.delete(v.path)) // a failed start is tried again next time
+    b.catch(() => booting.delete(v.path))
   }
   return b
 }
 
-/** Its server's calls to the browser engine (core/desktopapp.ts asks, electron/browser/engine.ts answers), macOS's
- *  permissions (core/coreops/permissions.ts), the app's updates (app.version), the Dictations list (plugins/core/dictation). */
 const answerCall = (v: Known, m: Call) => Promise.resolve().then(() => m.name === "app:permissions" ? (MAC ? macPermissions().then((p) => p.macPermissions()) : null)
   : m.name === "app:updates" ? appUpdates()
   : m.name === "app:update-look" ? lookNow(Array.isArray(m.args) ? m.args[0] as { port?: unknown; commit?: unknown } : undefined)
@@ -326,20 +274,15 @@ const answerCall = (v: Known, m: Call) => Promise.resolve().then(() => m.name ==
   : typeof m.name === "string" && m.name.startsWith("voice:") ? (helper ? helper.voiceCall(m.name, Array.isArray(m.args) ? m.args : []) : { said: false, why: "no menu-bar helper here" })
   : serverCall(wins.get(v.path)?.win, m.name, Array.isArray(m.args) ? m.args : []))
 
-/** Push an event to a vault's server unasked (core/desktopapp.ts onDesktopEvent): the one way the main process does. */
 function desktopEvent(w: Win, name: string, data: unknown) {
   const m = { type: "desktop:event", name, data }
   if (w.server?.connected) w.server.send(m); else w.link?.send(m)
 }
 setServerSink((win, name, data) => { for (const w of wins.values()) if (w.win === win) desktopEvent(w, name, data) })
 
-/** The root each own server runs (its code's commit: commitAt). */
 const rootOf = new WeakMap<ChildProcess, string>()
-/** Where each own server's log was when it started: what it said since. */
 const logFrom = new WeakMap<ChildProcess, number>()
-/** A server the last launch left, taken over (heir.ts: loaded only then). */
 const adopted = (s: ChildProcess | null): s is ChildProcess & Adopted => typeof (s as { release?: unknown } | null)?.release === "function"
-/** What a server wrote to its log since `from` (its start): the last 2000 characters. */
 function logSince(file: string, from: number) {
   try {
     const fd = fs.openSync(file, "r")
@@ -350,24 +293,19 @@ function logSince(file: string, from: number) {
     } finally { fs.closeSync(fd) }
   } catch { return "" }
 }
-/** Servers are left running through a relaunch (an update's: server.ts waits for the next launch to take them over). */
 let handingOver = false
 function startServer(v: Known, port: number, own = false): Promise<ChildProcess> {
   const logDir = app.getPath("logs")
   fs.mkdirSync(logDir, { recursive: true })
-  // (a file, not a pipe: a server outlives this process through a relaunch, and goes on writing)
   const logFile = serverLog(v.path), fd = fs.openSync(logFile, "a"), from = fs.fstatSync(fd).size
-  // (from the store's current root, Main's updates: storehost.ts; else its own)
   const root = own ? ROOT : codeRoot()
   const child = fork(path.join(root, "server.ts"), [], {
     cwd: root, stdio: ["ignore", fd, fd, "ipc"], detached: !WIN,
     env: {
       ...process.env, ELECTRON_RUN_AS_NODE: "1", VAULTITE_DESKTOP: "1", VAULTITE_VAULT: v.path, VAULTITE_LOCAL: LOCAL,
       HOST: "127.0.0.1", PORT: String(port),
-      // (Node's compile cache from its first module, kept with the app's data: the temp folder, emptied by restarts and
-      // cleanups, made the next launch strip every file's types again)
+      // (Node's compile cache out of the temp folder: restarts and cleanups empty it)
       NODE_COMPILE_CACHE: process.env.NODE_COMPILE_CACHE || path.join(app.getPath("userData"), "compile-cache"),
-      // (for its startup's span, core/spans.ts)
       VAULTITE_LAUNCHED_AT: String(Math.round(Date.now() - process.uptime() * 1000)), VAULTITE_FORKED_AT: String(Date.now()),
     },
   })
@@ -376,8 +314,6 @@ function startServer(v: Known, port: number, own = false): Promise<ChildProcess>
   logFrom.set(child, from)
   ownServer(child.pid, child)
   if (child.pid) hold(root, child.pid, "server")
-  // (one from another root than this process's may speak another protocol: it says first, and one that doesn't match
-  // gives way to one of this app's own code, the app offered its relaunch onto the newer)
   let spoke: unknown = root === ROOT ? DESKTOP_PROTOCOL : undefined
   child.on("message", (m: { type?: string; protocol?: unknown }) => { if (m?.type === "desktop:hello") spoke = m.protocol })
   child.on("message", (m: Call) => {
@@ -402,7 +338,6 @@ function startServer(v: Known, port: number, own = false): Promise<ChildProcess>
       child.once("exit", () => startServer(v, port, true).then(ok, fail))
       child.kill()
     }
-    // (it says so; one of an older root only logs it)
     child.on("message", (m: { type?: string }) => { if (m?.type === "desktop:listening") listening() })
     const look = setInterval(() => { if (/vaultite on http/.test(said())) listening() }, 500)
     child.once("exit", (code) => {
@@ -415,15 +350,11 @@ function startServer(v: Known, port: number, own = false): Promise<ChildProcess>
   })
 }
 
-// ---------- windows ----------
 const background = () => (nativeTheme.shouldUseDarkColors ? "#1e1e1e" : "#ffffff")
 let quitting = false
 let manager: AppWindow | null = null
-/** Files to open once a vault window is there (Open with, before anything was open). */
 const waiting: string[] = []
 
-/** A window whose page hangs (a plugin in a loop) offers to reload it, rather than freeze until the app is quit; the
- *  box goes if the page comes back on its own. Its crash is `revive`'s to reload. */
 function hangs(win: AppWindow, name: string) {
   let asking: AbortController | null = null
   win.webContents.on("unresponsive", async () => {
@@ -436,7 +367,6 @@ function hangs(win: AppWindow, name: string) {
   })
   win.webContents.on("responsive", () => asking?.abort())
 }
-/** A page `revive` gave up on (it kept crashing): say so, with Reload or Close window, never left blank. */
 function crashedFor(win: AppWindow, name: string) {
   return () => {
     if (win.isDestroyed()) return
@@ -457,33 +387,25 @@ async function openVault(p: string, file?: string) {
     return open
   }
   if (!fs.statSync(p, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`${p} isn't a folder`)
-  // (only a test run's app asks: core/testrun.ts stays out of the app's launch)
   const own = process.env.VAULTITE_TEST === "1" && (await import("../core/testrun.ts")).refuseOwnVault(p, "the desktop app")
   if (own) throw new Error(own)
   const v = remember(p)
-  // (its server kept by the helper: taken back; an attached one attaches again, for this window)
   const had = kept.get(p)
   kept.delete(p)
   had?.link?.stop()
-  // (served here already, by its service: the window attaches to that server)
   const there = had?.server && had.server.exitCode === null ? null : await servedElsewhere(p).catch((e) => { failedBox(`Couldn't open ${nameOf(p)}`, e, { why: "Its server didn't start." }); throw e })
   const starting = there ? null : serverFor(v)
-  // The window (and its renderer process) is made while the server starts; its page loads once the server listens.
   const b = v.bounds
   const apps = appsOn(p), glass = translucentAt(p), clear = apps || (MAC && glass)
   const win = new AppWindow({
     width: b?.width ?? 1280, height: b?.height ?? 820, x: b?.x, y: b?.y, minWidth: 800, minHeight: 480, show: false,
     title: dev?.titled(nameOf(p)) ?? nameOf(p), ...chrome(),
-    // (a click in a window that's behind acts too, as in a browser: a web page's field it lands on gets the keyboard,
-    // not whatever had it in the app before)
     acceptFirstMouse: true,
-    // (App windows on: transparent, the page paints itself and leaves app tabs see-through, electron/apps.ts; translucent:
-    // the system's blur shows only through a transparent window, electron/translucency.ts)
+    // (the system's blur shows only through a transparent window)
     ...(clear ? { transparent: true, backgroundColor: "#00000000" } : { backgroundColor: background() }),
-    // bypassHeatCheck: V8 caches the app's compiled scripts on the first launch, not the third (like VS Code).
+    // bypassHeatCheck: V8 caches compiled scripts on the first launch, not the third.
     webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true, spellcheck: true, v8CacheOptions: "bypassHeatCheck" },
   })
-  // (not shown where they sit by default while the page that hides them loads)
   if (MAC && v.lightsOff) setLights(win, null)
   let server: ChildProcess | null = null, link: Link | null = null, port: number, loadFailed = false
   const outside = () => (v.outside?.length ? [{ type: "allow", paths: v.outside }] : [])
@@ -491,7 +413,7 @@ async function openVault(p: string, file?: string) {
     if (there && heirHere(there)) [server, port] = [await adopt(v, there), there.port]
     else if (there) {
       port = there.port
-      // (a page that loaded while its server was down is Chromium's error page: loaded again once it's back)
+      // (a page that loaded while its server was down is Chromium's error page)
       link = await attach(p, there, (m) => answerCall(v, m), () => { if (loadFailed && !win.isDestroyed()) void win.loadURL(`http://127.0.0.1:${port}/`).catch(() => {}); return outside() })
     } else [server, port] = await starting!
   } catch (e) {
@@ -508,7 +430,6 @@ async function openVault(p: string, file?: string) {
   const show = () => { if (win.isDestroyed()) return; if (v.maximized) win.maximize(); win.show() }
   if (v.maximized && !behind) win.maximize()
   void win.ready.then(() => { if (behind) app.once("did-become-active", show); else win.show() })
-  // A swipe between pages (the trackpad's, when set to swipe that way): the tab's Back and Forward.
   win.on("swipe", (_e, dir) => { if (dir === "left" || dir === "right") win.webContents.send("vaultite", { type: "command", id: dir === "left" ? "nav:back" : "nav:forward" }) })
   const keep = () => {
     if (win.isDestroyed()) return
@@ -520,14 +441,13 @@ async function openVault(p: string, file?: string) {
   win.on("move", keep)
   win.on("close", () => {
     keep()
-    if (!quitting) v.open = false // closed by hand: not reopened next launch
+    if (!quitting) v.open = false
     save(true)
   })
   win.on("focus", () => { if (lastFocused !== p) { lastFocused = p; homeChanged() } })
   lastFocused = p
   win.on("closed", () => {
     wins.delete(p)
-    // (the menu-bar helper keeps it: the companion goes on, and the window reopens at once)
     if (helperOn() && !quitting && !w.ending && (w.link || w.server?.exitCode === null)) keepServer(p, { server: w.server, link: w.link, port: w.port })
     else {
       booting.delete(p)
@@ -538,8 +458,6 @@ async function openVault(p: string, file?: string) {
     homeChanged()
     buildMenu()
   })
-  // The server ends on its own only on failure: soon after start, a vault it can't open (say why, close the window);
-  // later, a crash: a new one on the same port, which the page reconnects to (errors.ts), three times a minute at most.
   let since = Date.now(), restarts: number[] = []
   const watchServer = (child: ChildProcess) => {
     child.on("exit", (code) => {
@@ -558,10 +476,9 @@ async function openVault(p: string, file?: string) {
       if (!meant && (now - since < 10_000 || restarts.length >= 3)) return fail(`the server stopped (exit ${code})\n${said}`)
       if (!meant) restarts.push(now)
       console.error(`vaultite: ${nameOf(p)}'s server stopped (${meant ? "to run new code" : `exit ${code}`}), starting it again`)
-      // (its own port, never another: the page's localStorage is kept by it)
       const at = w.port, started = startServer(v, at)
       const up = started.then((c): [ChildProcess, number] => [c, at])
-      up.catch(() => {}) // (said below)
+      up.catch(() => {})
       booting.set(p, up)
       started.then((next) => {
         if (win.isDestroyed()) return void next.kill()
@@ -577,7 +494,6 @@ async function openVault(p: string, file?: string) {
   win.webContents.on("did-fail-load", (_e, code, _d, _u, main) => { if (main && code !== -3) loadFailed = true })
   if (server) watchServer(server)
   win.webContents.on("did-finish-load", () => win.webContents.setZoomFactor(zoom))
-  // Its page's process killed or crashed: load the page again (files sent meanwhile wait for it, `app:ready`).
   revive(win.webContents, () => { w.ready = false }, crashedFor(win, nameOf(p)))
   hangs(win, nameOf(p))
   guard(win, `http://127.0.0.1:${port}`)
@@ -586,20 +502,17 @@ async function openVault(p: string, file?: string) {
   if (apps) appsWindow(win)
   await win.loadURL(`http://127.0.0.1:${port}/`)
   homeChanged()
-  if (manager && !manager.isDestroyed()) manager.close() // opening a vault closes the manager
+  if (manager && !manager.isDestroyed()) manager.close()
   buildMenu()
   return w
 }
 
-/** Whether `s` is a server this app's last launch left for this one (its relaunch: server.ts). */
 const heirHere = (s: Serving) => !!s.heir && s.app && s.heir.app === app.getPath("userData")
-/** Take over the server the last launch left (heirHere): this launch's own from now on, as one it forked. */
 async function adopt(v: Known, s: Serving): Promise<ChildProcess> {
   let a: Adopted | null = null
-  // (one speaking another protocol than this code's gives way to one of this code: watchServer starts it)
   const link = await attach(v.path, s, (m) => answerCall(v, m), () => (v.outside?.length ? [{ type: "allow", paths: v.outside }] : []), () => a?.kill())
   a = new (await import("./heir.ts")).Adopted(s.pid, link)
-  const child = a as unknown as ChildProcess // (it stands in for one: heir.ts)
+  const child = a as unknown as ChildProcess
   ownServer(s.pid, a)
   rootOf.set(child, s.heir!.root)
   logFrom.set(child, (() => { try { return fs.statSync(serverLog(v.path)).size } catch { return 0 } })())
@@ -607,21 +520,16 @@ async function adopt(v: Known, s: Serving): Promise<ChildProcess> {
   return child
 }
 
-/** Leave every server running for the next launch (an update's relaunch): each waits a while to be taken over. */
 function handOver() {
   handingOver = true
   const m = { type: "desktop:relaunching", app: app.getPath("userData") }
   for (const w of [...wins.values(), ...kept.values()]) if (w.server?.exitCode === null) w.server.send(m)
 }
 
-/** A vault's server kept with no window (the helper's): it ends with the app, or on its own (a crash: the next window
- *  starts another). */
 function keepServer(p: string, k: Kept) {
   kept.set(p, k)
   k.server?.once("exit", () => { if (kept.get(p) === k) { kept.delete(p); booting.delete(p) } })
 }
-/** The helper's home vault with no window (the app opened at login, every window closed before): its server started
- *  and kept. False when there's none to keep. */
 async function helperHome() {
   if (!helperOn()) return false
   const v = [...known].filter((x) => x.path !== sandboxPath() && fs.statSync(x.path, { throwIfNoEntry: false })?.isDirectory()).sort((a, b) => (b.last ?? 0) - (a.last ?? 0))[0]
@@ -637,29 +545,23 @@ async function helperHome() {
     return true
   } catch (e) { console.error("vaultite: the helper's vault didn't start:", e); return false }
 }
-/** The Dock icon, and the app clicked again: the helper's vault's window (the vaults list with none). */
 function openHome() {
   const p = (lastFocused && (wins.has(lastFocused) || kept.has(lastFocused)) ? lastFocused : null) ?? [...kept.keys()][0]
   if (p) void openVault(p).catch((e) => failedBox(`Couldn't open ${nameOf(p)}`, e))
   else showManager()
 }
-// With the helper, the app is in the Dock only while a window is open: else it's the menu bar's.
 AppWindow.each((w) => {
   if (!MAC || !helperOn()) return
   void app.dock?.show()
   w.on("closed", () => { if (helperOn() && !AppWindow.getAllWindows().some((x) => x !== w && !x.isDestroyed())) app.dock?.hide() })
 })
 
-/** The sandbox (electron/sandbox.ts): made fresh unless its window is open; a fresh one gets a new port, so its page
- *  starts on the tour rather than last time's tabs. */
 function sandbox() {
   return openSandbox((p) => openVault(p), (p) => wins.has(p), (p) => { const v = find(p); if (v) delete v.port })
 }
 
-/** Links leave for the browser; the window never navigates away from its app. A pop-out (`/?popout=<id>`) is a
- *  window of the vault's own. */
 function guard(win: AppWindow, origin: string) {
-  // Full screen hides the traffic lights: the page stops making room for them (data-fullscreen on <html>, index.css).
+  // Full screen hides the traffic lights.
   const lights = () => { if (!win.isDestroyed()) win.webContents.send("vaultite:fullscreen", win.isFullScreen()) }
   win.on("enter-full-screen", lights)
   win.on("leave-full-screen", lights)
@@ -667,11 +569,9 @@ function guard(win: AppWindow, origin: string) {
   // The Mac lays the title bar out again on these and may put the traffic lights back where they sit by default.
   const again = () => applyLights(win)
   if (MAC) { win.on("focus", again); win.on("blur", again); win.on("show", again); win.on("restore", again); win.on("resized", again); win.on("leave-full-screen", again) }
-  // Out of focus, the Mac greys the lights: so do the page's stand-ins for them (data-window-inactive, index.css).
+  // Out of focus, the Mac greys the lights.
   const key = () => { if (!win.isDestroyed()) win.webContents.send("vaultite:key", win.isFocused()) }
   if (MAC) { win.on("focus", key); win.on("blur", key); win.webContents.on("dom-ready", key) }
-  // A pop-out: the page window.open made, in a window of ours (its pages go over it as in the vault's), closed with it.
-  // `at`: where the page asked it to open (a tab dragged out of the window: core/workspace.ts popOut).
   const popOut = (w: Win, page: WebContents, webPreferences?: WebPreferences, at?: { x?: number; y?: number }) => {
     const glass = translucentAt(w.vault.path), clear = MAC && glass
     const place = at?.x !== undefined && at.y !== undefined ? { x: at.x, y: at.y } : {}
@@ -691,17 +591,13 @@ function guard(win: AppWindow, origin: string) {
     if (appsOn(w.vault.path)) appsWindow(child)
     return page
   }
-  // A right-click the page left to the system (the editor's): what the spell checker says of the word under it, for
-  // the page's own menu (plugins/core/editing/menu.ts). There's no menu of Electron's.
   win.webContents.on("context-menu", (_e, p) => win.webContents.send("vaultite", { type: "spelling", word: p.misspelledWord, suggestions: p.dictionarySuggestions }))
   win.webContents.on("will-navigate", (e, url) => {
-    // (the app's page only: a vault's own file served under its origin, /v/ or /api/raw, would get the bridge)
     if (appPage(url, origin)) return
     e.preventDefault()
     void openLink(url)
   })
   win.webContents.setWindowOpenHandler(({ url, frameName }) => {
-    // The presenter view (plugins/core/slides/Presenter.tsx): a blank window the page draws into itself.
     if ((url === "about:blank" || url === "") && frameName === "vaultite-presenter") {
       return { action: "allow", overrideBrowserWindowOptions: { backgroundColor: background(), autoHideMenuBar: true } }
     }
@@ -711,9 +607,8 @@ function guard(win: AppWindow, origin: string) {
       return { action: "allow", overrideBrowserWindowOptions: { webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true, spellcheck: true } },
         createWindow: (o) => popOut(w, (o as { webContents: WebContents }).webContents, o.webPreferences, o) } // (Electron puts the new page in its options)
     }
-    // (the app's own page in a new window, a link's browser default: never the app inside itself; the page opens it)
     if (appPage(url, origin)) return { action: "deny" }
-    if (url.startsWith(origin + "/api/raw?")) { // a vault file that isn't text (an image, a PDF): the Mac's app for it
+    if (url.startsWith(origin + "/api/raw?")) {
       const w = [...wins.values()].find((x) => x.win === win)
       const rel = new URL(url).searchParams.get("path"), abs = w && rel ? inVault(w.vault.path, rel) : null
       if (abs) openVaultFile(abs)
@@ -726,13 +621,11 @@ const appPage = (url: string, origin: string) => {
   try { const u = new URL(url); return u.origin === origin && (u.pathname === "/" || u.pathname === "/index.html") } catch { return false }
 }
 
-/** Tell a window to open a file (a vault path or an allowed outside file), once its page is listening. */
 function send(w: Win, file: string) {
   if (w.ready) w.win.webContents.send("vaultite", { type: "open", path: file })
   else w.queue.push(file)
 }
 
-/** A file from outside the vault may be opened in this window: its server may now read and write it. */
 function allowIn(w: Win, abs: string) {
   const list = w.vault.outside ?? []
   w.vault.outside = [abs, ...list.filter((x) => x !== abs)]
@@ -754,13 +647,9 @@ function showManager() {
   manager.loadFile(path.join(DIST, "vaults.html"))
 }
 
-// ---------- other machines' servers ----------
-const remoteWins = new Map<string, AppWindow>() // server address -> its window
-/** A server's name: its machine's (studio of studio.tailnet.ts.net), as on the iPhone. */
+const remoteWins = new Map<string, AppWindow>()
 const hostName = (url: string) => new URL(url).hostname.split(".")[0]
 
-/** Another machine's server in a window: its page as on the web (no preload, so no IPC into this Mac), the system's
- *  title bar. */
 function openRemote(url: string) {
   const open = remoteWins.get(url)
   if (open) return void open.focus()
@@ -779,9 +668,8 @@ function openRemote(url: string) {
   win.on("resize", keep)
   win.on("move", keep)
   win.on("close", () => { if (!quitting) it.open = false; save(true) })
-  // Its server unreachable (asleep, off the tailnet): tried again, from 5 s to a minute apart, until it answers.
   let retry: ReturnType<typeof setTimeout> | null = null, wait = 5000, failed = false
-  const load = () => void win.loadURL(`${url}/`).catch(() => { /* did-fail-load retries */ })
+  const load = () => void win.loadURL(`${url}/`).catch(() => {})
   win.webContents.on("did-start-loading", () => { failed = false })
   win.webContents.on("did-fail-load", (_e, code, _d, _u, main) => {
     if (!main || code === -3 || retry || win.isDestroyed()) return // -3: replaced by another load
@@ -799,7 +687,6 @@ function openRemote(url: string) {
   buildMenu()
 }
 
-/** Is a Vaultite server answering at this address? Its web app's manifest names it (the iPhone app asks the same). */
 async function probe(url: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const r = await fetch(`${url}/manifest.webmanifest`, { signal: AbortSignal.timeout(8000), cache: "no-store" })
@@ -812,21 +699,16 @@ async function probe(url: string): Promise<{ ok: boolean; error?: string }> {
   }
 }
 
-// ---------- Set up Vaultite ----------
-/** userData/setup.json: `done` once finished. */
 type SetupState = { done?: string }
 const SETUP = () => path.join(app.getPath("userData"), "setup.json")
 function setupState(): SetupState {
   try { const j = JSON.parse(fs.readFileSync(SETUP(), "utf8")); return j && typeof j === "object" ? j : {} } catch { return {} }
 }
 const saveSetup = (st: SetupState) => { fs.mkdirSync(path.dirname(SETUP()), { recursive: true }); fs.writeFileSync(SETUP(), JSON.stringify(st, null, 2) + "\n") }
-/** The first launch: never finished, and no vault of the user's yet (the sandbox isn't one). */
 const firstRun = () => !setupState().done && !known.some((v) => v.path !== sandboxPath()) && !remotes.length
 
 let setupWin: AppWindow | null = null
-/** The note a new vault opens on (core/start.ts writes it). */
 const START_HERE = "Start here.md"
-/** The vault the window chose (its server started), and what it changed. */
 let chosen: { path: string; made: boolean; added: boolean } | null = null
 
 const where = (): Setup.Where => {
@@ -839,16 +721,13 @@ const where = (): Setup.Where => {
     ...(!process.env.VAULTITE_SETUP_HOME && process.env.CODEX_HOME ? { codexHome: path.resolve(process.env.CODEX_HOME) } : {}),
   }
 }
-/** The user's PATH, asked of their shell once (it takes a moment). */
 let dirs: string[] | null = null
 const pathDirs = () => (dirs ??= process.env.VAULTITE_SETUP_HOME ? [] : Setup.shellPath(where()))
 
-// The vault, in a window of its own (no server yet); the rest of the first run is the welcome card in the vault's window
-// (web/src/components/Welcome.tsx), where the look it picks shows behind it.
 function showSetup() {
   if (setupWin && !setupWin.isDestroyed()) return setupWin.focus()
   setupWin = new AppWindow({
-    // (useContentSize: a Linux window frame is outside it, so the page gets its 560×520 as on a Mac)
+    // (useContentSize: a Linux window frame is outside it)
     width: 560, height: 520, useContentSize: true, resizable: false, maximizable: false, fullscreenable: false, show: false, title: "Set up Vaultite",
     ...chrome(), backgroundColor: background(),
     webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true },
@@ -862,7 +741,6 @@ function showSetup() {
   setupWin.loadFile(path.join(DIST, "onboarding.html"))
 }
 
-/** The chosen vault's server, when its window never opened: stopped, and the vault forgotten if setup added it. */
 function dropChosen() {
   const p = chosen?.path
   if (p && !wins.has(p)) {
@@ -873,7 +751,6 @@ function dropChosen() {
   chosen = null
 }
 
-/** The address typed as a server's: https unless it says, no path; null when it isn't one. */
 function serverUrl(typed: string) {
   const t = typed.trim()
   try {
@@ -882,7 +759,6 @@ function serverUrl(typed: string) {
   } catch { return null }
 }
 
-/** Only the setup window may ask these. */
 function setupHandle(name: string, fn: (...args: never[]) => unknown) {
   ipcMain.handle(name, (e, ...args) => {
     if (!setupWin || e.sender !== setupWin.webContents || !(e.senderFrame?.url ?? "").startsWith(pathToFileURL(DIST).href)) throw new Error("not the setup window")
@@ -898,8 +774,6 @@ setupHandle("setup:pick", async () => {
   const r = await dialog.showOpenDialog(setupWin!, { properties: ["openDirectory", "createDirectory"] })
   return r.canceled ? null : r.filePaths[0] ?? null
 })
-/** Choose the vault: a new folder (made now, empty) or a folder of the user's (none of its files change). Its server
- *  starts, and sets up a vault it has never opened (core/start.ts: Standard, and a new one's Start here). */
 setupHandle("setup:choose", async (c: { kind: "new"; parent: string; name: string; starter?: boolean } | { kind: "open"; path: string } | null) => {
   dropChosen()
   if (!c) return null
@@ -922,31 +796,25 @@ setupHandle("setup:choose", async (c: { kind: "new"; parent: string; name: strin
     const r = await fetch(`http://127.0.0.1:${port}/api/ops/${opId}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/desktop" }, body: JSON.stringify(body) })
     if (!r.ok) console.error(`${what}:`, r.status, await r.text())
   }
-  // A vault new to the app has AI off until the welcome card asks (nothing of it shows before a yes); one set up before
-  // keeps its own.
   if (fresh) await call("ai.set", { on: "off" }, "AI off until asked")
-  // Starter content only when the user asked for it (core/start.ts): opening a folder writes nothing outside .vaultite/.
   if (c.kind === "new" && c.starter) await call("vault.starter", {}, "starter content")
   return chosen
 })
 setupHandle("setup:vau", async (system: boolean) => {
   const r = Setup.installVau(where())
-  if (WIN) dirs = null // (Windows' PATH changed in the registry: read again)
+  if (WIN) dirs = null
   if (system) await Setup.linkSystem(r.path)
   return { did: system ? `Linked /usr/local/bin/vau to ${r.path}` : r.did, vau: Setup.vauStatus(where(), pathDirs()) }
 })
-// (the playground's window first: closing the last window quits off a Mac, and an AppWindow closes at once)
 setupHandle("setup:sandbox", async () => {
   await sandbox()
   setupWin?.close()
 })
-/** Done: open the vault chosen (a new one on its Start here note), its page going on with the welcome card, and never
- *  show this window by itself again. */
 setupHandle("setup:finish", async () => {
   saveSetup({ done: new Date().toISOString() })
-  dirs = null // (an agent installed meanwhile is on the PATH next time)
+  dirs = null
   const c = chosen
-  chosen = null // (kept: the window opening now takes its server)
+  chosen = null
   if (c) {
     const w = await openVault(c.path)
     w.welcome = true
@@ -960,18 +828,14 @@ const focusedVault = () => {
   return [...wins.values()].find((w) => w.win === f) ?? [...wins.values()].sort((a, b) => (b.vault.last ?? 0) - (a.vault.last ?? 0))[0] ?? null
 }
 
-/** An outside file's path as the page and the server know it: Windows' with forward slashes (the page splits on "/";
- *  Node takes either). */
 const slashed = (p: string) => (WIN ? p.replace(/\\/g, "/") : p)
 
-/** Open files (Finder, a drop, the picker): in their own vault's window if they're in one, else as outside files in
- *  `into` (the window asking, or the focused one; with none, the last vault used opens). Returns what `into` opens. */
 async function openFiles(paths: string[], into: Win | null): Promise<string[]> {
   const mine: string[] = []
   for (const p of paths) {
     const st = fs.statSync(p, { throwIfNoEntry: false })
     if (!st) continue
-    if (st.isDirectory()) { // a folder: open it as a vault
+    if (st.isDirectory()) {
       await openVault(p).catch(() => {})
       continue
     }
@@ -996,8 +860,6 @@ async function openFiles(paths: string[], into: Win | null): Promise<string[]> {
   return mine
 }
 
-// ---------- copying in (a drop on the file tree) ----------
-/** "Name", then "Name 1", "Name 2"... like Finder, for a name that's taken. */
 function freeIn(dir: string, name: string) {
   const ext = path.extname(name), stem = ext && ext !== name ? name.slice(0, -ext.length) : name
   let out = name, n = 1
@@ -1011,13 +873,12 @@ function copyIn(w: Win, paths: string[], folder: string, move: boolean) {
   const dir = path.join(w.vault.path, ...parts)
   if (!fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`no folder '${folder}'`)
   const made: string[] = [], failed: string[] = []
-  // (each on its own: one that fails doesn't keep the rest, or those already copied, from showing)
   for (const src of paths) {
     try {
       const st = fs.statSync(src, { throwIfNoEntry: false })
       if (!st || !path.isAbsolute(src)) continue
       const from = real(src), into = real(dir)
-      if (into === from || into.startsWith(from + path.sep) || path.dirname(from) === into) continue // itself, or already there
+      if (into === from || into.startsWith(from + path.sep) || path.dirname(from) === into) continue
       const name = freeIn(dir, path.basename(src))
       const dst = path.join(dir, name)
       if (move) {
@@ -1040,8 +901,6 @@ function copyIn(w: Win, paths: string[], folder: string, move: boolean) {
   return made
 }
 
-// ---------- IPC (the preload's window.vaultite) ----------
-/** The vault window a request came from (null: the manager), after checking it's our page asking. */
 function who(e: IpcMainInvokeEvent): Win | null {
   const url = e.senderFrame?.url ?? ""
   for (const w of wins.values()) if (w.win.webContents === e.sender && appPage(url, `http://127.0.0.1:${w.port}`)) return w
@@ -1050,7 +909,6 @@ function who(e: IpcMainInvokeEvent): Win | null {
   if (manager && e.sender === manager.webContents && url.startsWith(pathToFileURL(DIST).href)) return null
   throw new Error("not a Vaultite window")
 }
-/** What a pop-out's page doesn't do for its vault's window: take the files waiting for it, set its menu bar. */
 const MAIN_ONLY: Record<string, unknown> = { "app:ready": [], "menu:sync": undefined }
 function handle(name: string, fn: (w: Win | null, ...args: never[]) => unknown) {
   ipcMain.handle(name, (e, ...args) => {
@@ -1060,7 +918,6 @@ function handle(name: string, fn: (w: Win | null, ...args: never[]) => unknown) 
   })
 }
 const str = (x: unknown) => { if (typeof x !== "string") throw new Error("expected text"); return x }
-/** A new vault folder's name as typed, without the characters a file name can't have. */
 const folderName = (x: unknown) => str(x).replace(/[/\\:*?"<>|]/g, " ").replace(/\s+/g, " ").trim()
 
 handle("vaults:list", (w) => ({
@@ -1083,7 +940,6 @@ handle("vaults:create", async (_w, parent: string, name: string) => {
   await openVault(p)
 })
 handle("vaults:sandbox", async () => { await sandbox() })
-/** Another machine's server (Manage vaults' Connect): checked, then opened in a window and kept in the list. */
 handle("vaults:connect", async (_w, typed: string) => {
   const url = serverUrl(str(typed))
   if (!url) throw new Error("That isn't a web address")
@@ -1105,16 +961,12 @@ handle("vaults:pick", async (w) => {
 })
 handle("vaults:reveal", (_w, p: string) => { if (find(str(p))) shell.showItemInFolder(p) })
 handle("vaults:manage", () => showManager())
-/** Set up Vaultite again (the menu, the playground's notice). */
 handle("app:setup", () => showSetup())
-/** Whether Set up Vaultite opened this window, so its page goes on with the welcome card: once. */
 handle("app:welcome", (w) => {
   if (!w?.welcome) return false
   w.welcome = false
   return true
 })
-/** The welcome card's permissions, pressed: Claude Code's computer use on for this vault, and Codex's (it comes with
- *  the Codex app), where they're here and off. Their errors, by agent. */
 handle("app:computer-use", async (w) => {
   if (!w || !MAC) return {}
   const at = where(), vault = w.vault.path, failed: Record<string, string> = {}
@@ -1130,8 +982,6 @@ handle("files:copy-in", (w, paths: string[], folder: string, move: boolean) => {
 })
 handle("files:open", (w, paths: string[]) => openFiles(strings(paths), w))
 handle("files:pick", async (w) => pickOutside(w))
-// A page's own dialogs (an Obsidian plugin's open/save/message box), answered while it waits: Electron's sync dialogs,
-// on its window, with only the options that shape a dialog.
 const DIALOG_KEYS = ["title", "defaultPath", "buttonLabel", "filters", "properties", "message", "detail", "nameFieldLabel", "showsTagField", "buttons", "type", "defaultId", "cancelId", "checkboxLabel", "noLink"]
 ipcMain.on("dialog:sync", (e, kind: unknown, options: unknown) => {
   try {
@@ -1159,7 +1009,6 @@ handle("app:updates-set", (_w, mode: UpdateMode) => {
   save()
   modeChanged()
 })
-// (Open at login, Settings > About: this Mac's, kept with the helper's prefs so the helper doesn't turn it back)
 handle("app:login", () => ({ on: app.getLoginItemSettings().openAtLogin }))
 handle("app:login-set", (_w, on: boolean) => {
   if (typeof on !== "boolean") return
@@ -1171,7 +1020,6 @@ ipcMain.handle("app:update-safe", (e, safe: boolean) => {
   if (!who(e)) return
   pageSafe(e.sender, safe === true)
 })
-// The page's commands, pins and recent files for the menu bar (web/src/core/desktop.ts): kept, and shown while it's focused.
 handle("menu:sync", (w, snap: MenuSnapshot) => {
   if (!w || !snap || !Array.isArray(snap.commands)) return
   const list = <T,>(x: unknown, ok: (v: T) => boolean): T[] => (Array.isArray(x) ? (x as T[]).filter(ok) : [])
@@ -1183,8 +1031,6 @@ handle("menu:sync", (w, snap: MenuSnapshot) => {
   }
   if (focusedVault() === w) buildMenu()
 })
-// Export to PDF: the page as it prints (the app shows only the note while printing: plugins/core/export-pdf), saved
-// where the user picks. Answers the file's path, or null when they cancelled.
 handle("print:pdf", async (w, name: string) => {
   if (!w) throw new Error("no vault here")
   const file = `${str(name).replace(/[/\\:*?"<>|]/g, " ").trim() || "Untitled"}.pdf`
@@ -1195,20 +1041,16 @@ handle("print:pdf", async (w, name: string) => {
   fs.writeFileSync(r.filePath, pdf)
   return r.filePath
 })
-// The audio recorder: macOS asks once whether Vaultite may use the microphone (the page's getUserMedia then works).
+// macOS asks once whether Vaultite may use the microphone; the page's getUserMedia works only after.
 handle("media:microphone", async () => !MAC || systemPreferences.askForMediaAccess("microphone"))
-// Settings > Permissions' buttons (electron/permissions.ts): macOS's prompt, the drag helper, a folder read, or a pane.
 handle("app:permission", (_w, id: string) => { if (MAC) return macPermissions().then((p) => p.permissionAct(str(id))) })
 handle("print:reveal", (_w, p: string) => { if (str(p).endsWith(".pdf")) shell.showItemInFolder(p) })
-// The Mac's notification (the Inbox, window not in front): true once clicked, false when closed. Kept in `shown`
-// until then: one nothing refers to is collected, and its click lost.
+// A Notification nothing refers to is collected, and its click lost.
 const shown = new Set<Notification>()
-// ---------- Dock icon ----------
-// Another picture in the Dock (the Dock icon plugin), kept in userData; never the bundle's (its signature, updates).
+// Never the bundle's icon: changing the bundle breaks its signature and updates.
 const DOCK_ICON = () => path.join(app.getPath("userData"), "dock-icon.png")
 const IMAGE_TYPES: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
   webp: "image/webp", svg: "image/svg+xml", avif: "image/avif", bmp: "image/bmp" }
-/** The Dock's icon as set: the user's, else the app's (a checkout's own PNG; a packaged app's bundle icon). */
 function applyDockIcon() {
   if (!MAC || !app.dock) return
   if (fs.existsSync(DOCK_ICON())) app.dock.setIcon(DOCK_ICON())
@@ -1225,7 +1067,6 @@ handle("dock:set", (_w, png: string | null) => {
   applyDockIcon()
 })
 handle("dock:custom", () => fs.existsSync(DOCK_ICON()))
-/** Pick an image anywhere on the Mac: its bytes as a data: URL (the page draws it), or null. */
 handle("dock:pick", async (w) => {
   const opts = { properties: ["openFile"] as "openFile"[], filters: [{ name: "Images", extensions: Object.keys(IMAGE_TYPES) }] }
   const r = w ? await dialog.showOpenDialog(w.win, opts) : await dialog.showOpenDialog(opts)
@@ -1233,12 +1074,8 @@ handle("dock:pick", async (w) => {
   const type = file && IMAGE_TYPES[path.extname(file).slice(1).toLowerCase()]
   return file && type ? `data:${type};base64,${fs.readFileSync(file).toString("base64")}` : null
 })
-// ---------- the editor's menu ----------
-// The asking page's own window (a pop-out's too, which `handle` answers as its vault's).
 ipcMain.handle("text:look-up", (e) => { who(e); e.sender.showDefinitionForSelection() })
 ipcMain.handle("text:learn", (e, word: string) => { who(e); e.sender.session.addWordToSpellCheckerDictionary(str(word)) })
-// ---------- the traffic lights ----------
-/** Each window's traffic lights as its page last placed them (points; null: hidden), put back after the Mac moves them. */
 const lightsOf = new WeakMap<AppWindow, { x: number; y: number } | null>()
 function setLights(w: AppWindow, at: { x: number; y: number } | null) {
   lightsOf.set(w, at)
@@ -1247,15 +1084,12 @@ function setLights(w: AppWindow, at: { x: number; y: number } | null) {
 function applyLights(w: AppWindow) {
   const at = lightsOf.get(w)
   if (at === undefined || w.isDestroyed()) return
-  // (a pop-out with its bars hidden: only while the pointer is at its top, topstrip.ts)
   const shown = !!at && (bare.get(w)?.lightsShown(w) ?? true)
   if (at) w.setWindowButtonPosition(at)
   w.setWindowButtonVisibility(shown)
-  // (shown again, the Mac lays them out where they sit by default: placed once more)
+  // (shown again, the Mac lays them out where they sit by default)
   if (shown) w.setWindowButtonPosition(at)
 }
-// The traffic lights in the page's sidebar's top row (`at`, CSS px: `x` right of LIGHTS, centred on `mid` down), hidden
-// while it is (no rails); an older page sends a boolean. Answers how they're drawn, for the page's stand-ins.
 ipcMain.handle("window:lights", (e, at: boolean | { x: number; mid: number } | null) => {
   who(e)
   const w = AppWindow.fromWebContents(e.sender)
@@ -1269,8 +1103,6 @@ ipcMain.handle("window:lights", (e, at: boolean | { x: number; mid: number } | n
   if (v && !!v.lightsOff !== !at) { if (at) delete v.lightsOff; else v.lightsOff = true; save() }
   return { zoom: e.sender.getZoomFactor(), inset: LIGHTS.x, ...BUTTONS }
 })
-// A pop-out with its bars hidden (Hide window bars): its lights only with the pointer in its top strip, which drags it
-// (topstrip.ts). Keep window on top (core/ontop.ts keeps it): `on` sets it, else it's asked. Both answer whether it's on.
 const bare = new WeakMap<AppWindow, typeof import("./topstrip.ts")>()
 ipcMain.handle("window:bare", async (e, on: unknown) => {
   who(e)
@@ -1293,19 +1125,15 @@ ipcMain.handle("window:on-top", async (e, on: unknown) => {
   if (w && typeof on === "boolean") (await import("./ontop.ts")).setOnTop(w, on)
   return !!w?.isAlwaysOnTop()
 })
-// A drag held over a vault's window or pop-out brings it forward (raise.ts).
 ipcMain.handle("window:raise", (e, popout: unknown, focus: unknown) => {
   const w = who(e), pages = w ? [w.win.webContents, ...[...popouts].filter(([, of]) => of === w).map(([wc]) => wc)] : []
   return import("./raise.ts").then((m) => m.raise(pages, popout, focus === true))
 })
-// The page's appearance `translucent` (electron/translucency.ts): what the window can do of it, now.
 ipcMain.handle("window:translucent", (e, on: unknown) => {
   who(e)
   const w = AppWindow.fromWebContents(e.sender)
   return w ? setTranslucent(w, on === true) : { on: false }
 })
-// Windows' controls over the window's top-right corner (preload.cjs): the page's colours there and its title row's
-// height (CSS px); answers their width in CSS px, which the page keeps clear.
 const CONTROLS_WIDTH = 138 // (three caption buttons of 46 DIP)
 ipcMain.handle("window:controls", (e, o: { color?: unknown; symbol?: unknown; height?: unknown }) => {
   who(e)
@@ -1317,7 +1145,6 @@ ipcMain.handle("window:controls", (e, o: { color?: unknown; symbol?: unknown; he
   w.setTitleBarOverlay({ color: color(o.color), symbolColor: color(o.symbol), height })
   return { width: Math.ceil(CONTROLS_WIDTH / z) }
 })
-// `vau dev screenshot` (core/coreops/dev.ts, owner-only): the asking page as a PNG, halved while it's too big for the socket back.
 ipcMain.handle("page:capture", async (e, rect?: { x: number; y: number; width: number; height: number }) => {
   who(e)
   const r = rect && [rect.x, rect.y, rect.width, rect.height].every(Number.isFinite) && rect.width >= 1 && rect.height >= 1
@@ -1327,7 +1154,6 @@ ipcMain.handle("page:capture", async (e, rect?: { x: number; y: number; width: n
   return { png: img.toPNG().toString("base64"), ...img.getSize() }
 })
 
-// A tab dragged past its window's edge (electron/dragghost.ts): its card shown following the pointer, or (null) hidden.
 ipcMain.handle("drag:ghost", (e, look: GhostLook | null) => {
   who(e)
   const n = (x: unknown) => typeof x === "number" && Number.isFinite(x)
@@ -1352,8 +1178,6 @@ handle("app:notify", (w, title: string, body: string) => new Promise<boolean>((r
   shown.add(n)
   n.show()
 }))
-// The Browser's pages (electron/web.ts). App windows turned on after the window opened: it reopens once its
-// server is gone (the new one takes its port, so the tabs come back).
 handle("apps:reopen", (w) => {
   if (!w) throw new Error("no vault here")
   const p = w.vault.path, server = w.server
@@ -1362,7 +1186,6 @@ handle("apps:reopen", (w) => {
   w.win.once("closed", () => void gone.then(() => openVault(p)).catch((e) => console.error(e)))
   w.win.close()
 })
-// (the window asking, a pop-out's own: its pages and apps' windows go over its tabs, not its vault window's)
 for (const [name, fn] of Object.entries({ ...webHandlers, ...appHandlers, ...(MAC ? dictationHandlers : {}) })) {
   ipcMain.handle(name, (e, ...args) => {
     const w = who(e), win = AppWindow.fromWebContents(e.sender)
@@ -1384,7 +1207,6 @@ async function pickOutside(w: Win | null) {
   return []
 }
 
-// ---------- updates ----------
 initUpdates({
   windows: () => [...wins.values()],
   popouts: () => popouts,
@@ -1413,34 +1235,25 @@ initUpdates({
   path: () => [...pathDirs(), process.env.PATH].filter(Boolean).join(path.delimiter),
 })
 
-// (a scripted copy from source, QA's: an update's relaunch on a signal, web/qa/relaunch.mjs)
 if (!app.isPackaged && QUIET) process.on("SIGUSR2", () => { handOver(); quitting = true; app.relaunch(relaunchOptions()); app.quit() })
 
-// ---------- a Dev instance on a worktree (electron/devroot.ts) ----------
 let dev: typeof import("./devroot.ts") | null = null
 async function startWorktree() {
   dev = await import("./devroot.ts")
   await dev.startDev({
     root: WORKTREE!, userData: app.getPath("userData"), headless: QUIET, debugPort: devtools ?? null, shellPrint: HOST?.shell.fingerprint,
     info: worktreeNow,
-    // (headless, an agent's: it relaunches at once)
     changed: (what) => { worktreeChanged(what); if (QUIET) restartToUpdate() },
     restartServers: () => { for (const w of wins.values()) if (w.server?.exitCode === null) { w.restarting = true; w.server.kill() } },
     say: (text) => { for (const w of wins.values()) if (w.ready) w.win.webContents.send("vaultite", { type: "update-status", text, done: true }) },
   })
 }
 
-// ---------- quitting ----------
-
-/** Web pages unloaded before quitting, as closing their tabs would (sites save their sign-ins then): once, by whichever
- *  quit comes first. */
+// Sites save their sign-ins as their pages unload.
 let unloaded = false
 const unloadOnce = () => (unloaded ? Promise.resolve()
-  // (bounded: a page that never says it's gone must not keep the app from quitting)
   : Promise.race([unloadPages(), new Promise((done) => setTimeout(done, 5000))]).finally(() => { unloaded = true }))
 
-// ---------- the menu ----------
-/** Run one of the app's commands in the focused vault window (the manager just closes on ⌘W). */
 function command(id: string) {
   return (_item: unknown, from?: BaseWindow) => {
     const f = from ?? AppWindow.getFocusedWindow()
@@ -1452,7 +1265,6 @@ function command(id: string) {
   }
 }
 
-/** The interface size a step bigger (1), smaller (-1) or back to actual size (0), in every window; answers it. */
 function zoomBy(step: -1 | 0 | 1) {
   const i = ZOOMS.findIndex((z) => z >= zoom - 0.001)
   const to = step === 0 ? 1 : ZOOMS[Math.min(ZOOMS.length - 1, Math.max(0, (i < 0 ? ZOOMS.length - 1 : i) + step))]
@@ -1465,11 +1277,8 @@ function zoomBy(step: -1 | 0 | 1) {
 }
 handle("window:zoom", () => zoom)
 handle("window:zoom-step", (_w, step: unknown) => zoomBy(step === 1 || step === -1 ? step : 0))
-/** The menu's zoom items in a window with no page of ours to ask (another machine's): the interface size. */
 const ZOOM_STEPS: Record<string, -1 | 0 | 1> = { "zoom:in": 1, "zoom:out": -1, "zoom:reset": 0, "interface-size:increase": 1, "interface-size:decrease": -1, "interface-size:reset": 0 }
 
-/** Help's documents (README.md, CHANGELOG.md, shipped with the app) open in a tab of the focused vault's window, like
- *  a file from outside the vault. */
 async function openDoc(name: string) {
   const file = path.join(ROOT, name)
   if (!fs.existsSync(file)) return
@@ -1479,15 +1288,13 @@ async function openDoc(name: string) {
   w.win.focus()
 }
 
-/** The repo's issues page (its GitHub address: the build's, else the checkout's origin), or null. */
 const issues = (() => {
   let repo = CODE?.repo ?? ""
-  if (!repo) try { repo = execFileSync("git", ["-C", ROOT, "remote", "get-url", "origin"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], env: gitEnv() }).trim() } catch { /* not a checkout */ }
+  if (!repo) try { repo = execFileSync("git", ["-C", ROOT, "remote", "get-url", "origin"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], env: gitEnv() }).trim() } catch {}
   const m = /github\.com[/:]([^/]+\/[^/]+?)(\.git)?$/.exec(repo)
   return m ? `https://github.com/${m[1]}/issues` : null
 })()
 
-/** The menu bar (electron/menu.ts), for the focused vault window's commands (its last `menu:sync`). */
 let menuShown = ""
 function buildMenu() {
   const recent = [...known].sort((a, b) => (b.last ?? 0) - (a.last ?? 0))
@@ -1510,7 +1317,6 @@ function buildMenu() {
     maximize: () => { const f = AppWindow.getFocusedWindow(); if (f) { if (f.isMaximized()) f.unmaximize(); else f.maximize() } },
     showLogs: () => { fs.mkdirSync(app.getPath("logs"), { recursive: true }); void shell.openPath(app.getPath("logs")) },
     sandbox: () => { sandbox().catch(() => {}) },
-    // (an app window's page keeps it for that window: its command; another window, as it is)
     onTop: (_i, from) => {
       const f = from ?? BaseWindow.getFocusedWindow()
       if (f instanceof AppWindow && ([...wins.values()].some((x) => x.win === f) || popouts.has(f.webContents))) f.webContents.send("vaultite", { type: "command", id: "window:on-top" })
@@ -1522,13 +1328,10 @@ function buildMenu() {
   if (key === menuShown && Menu.getApplicationMenu()) return
   menuShown = key
   const menu = Menu.buildFromTemplate(template), top = menu.getMenuItemById("on-top")
-  // (checked as the window in front is when it opens)
   top?.menu?.on("menu-will-show", () => { top.checked = !!BaseWindow.getFocusedWindow()?.isAlwaysOnTop() })
   Menu.setApplicationMenu(menu)
 }
 AppWindow.each((w) => w.on("focus", () => buildMenu()))
-// Windows draws no menu bar (the title bar is the page's, with its controls): Alt pressed and let go alone opens its menus
-// where it would be, as apps that hide theirs do; their keys work either way.
 if (WIN) AppWindow.each((w) => {
   let alone = false
   w.webContents.on("before-input-event", (_e, i) => {
@@ -1536,16 +1339,14 @@ if (WIN) AppWindow.each((w) => {
     else if (i.type === "keyDown" && !i.isAutoRepeat) alone = true
     else if (i.type === "keyUp" && alone) { alone = false; Menu.getApplicationMenu()?.popup({ window: w, x: 8, y: CONTROLS_HEIGHT }) }
   })
-  // (Alt with a click: the editor's cursors, not the menu)
   w.webContents.on("input-event", (_e, i) => { if (i.type === "mouseDown") alone = false })
 })
 
-/** An AppImage on a system that keeps it from Chromium's sandbox (Ubuntu 24.04+'s AppArmor) runs without it (its AppRun
- *  adds --no-sandbox): said once, with the two ways to have it, the .deb or a profile for AppImages' mounts. */
+// Ubuntu 24.04+'s AppArmor keeps an AppImage from Chromium's sandbox: its AppRun adds --no-sandbox.
 function unsandboxedNotice() {
   const seen = path.join(app.getPath("userData"), "unsandboxed-notice")
   if (!process.env.APPIMAGE || !app.commandLine.hasSwitch("no-sandbox") || fs.existsSync(seen)) return
-  try { fs.writeFileSync(seen, new Date().toISOString() + "\n") } catch { /* said again next time */ }
+  try { fs.writeFileSync(seen, new Date().toISOString() + "\n") } catch {}
   const profile = `abi <abi/4.0>,\ninclude <tunables/global>\n\nprofile vaultite-appimage /tmp/.mount_Vault*/vaultite flags=(unconfined) {\n  userns,\n}\n`
   const command = `printf '${profile.replace(/\n/g, "\\n")}' | sudo tee /etc/apparmor.d/vaultite-appimage >/dev/null && sudo apparmor_parser -r /etc/apparmor.d/vaultite-appimage`
   void dialog.showMessageBox({ type: "warning", message: "Vaultite is running without its sandbox",
@@ -1554,10 +1355,7 @@ function unsandboxedNotice() {
     buttons: ["Copy the command", "OK"], defaultId: 1, cancelId: 1 }).then((r) => { if (r.response === 0) clipboard.writeText(command) })
 }
 
-// ---------- the app ----------
-/** The vault asked for on the command line (`--vault <path>`, a relaunch's `--vault=<path>`: argv.ts). */
 const asked = () => vaultArg(process.argv)
-/** A vault asked for that isn't there (a typo, a drive not connected) is made only once the user says so. */
 async function madeIfAsked(p: string) {
   if (fs.existsSync(p)) return true
   const r = await dialog.showMessageBox({ type: "question", message: `There's no folder ${p}`, detail: "Create a new vault there?",
@@ -1566,11 +1364,9 @@ async function madeIfAsked(p: string) {
   fs.mkdirSync(p, { recursive: true })
   return true
 }
-/** The vaults to open at launch: the one asked for, else those open when the app last quit. */
 const reopening = () => { const a = asked(); return a ? [a] : known.filter((v) => v.open).map((v) => v.path) }
 
-/** Files and folders named on a command line: Linux's Open with (the desktop file's %U: file:// URLs), Windows' (a
- *  path) and `vaultite <file>`, the app's own and a second launch's. A Mac sends open-file instead. */
+// Linux's Open with passes file:// URLs (the desktop file's %U), Windows' a path; a Mac sends open-file instead.
 function argFiles(argv: string[], cwd: string) {
   const out: string[] = []
   for (let i = app.isPackaged ? 1 : 2; i < argv.length; i++) {
@@ -1585,10 +1381,10 @@ function argFiles(argv: string[], cwd: string) {
   return out
 }
 
-/** vaultite:// links on a command line: how Windows and Linux hand the app one (a Mac sends open-url). */
+// Windows and Linux hand the app a vaultite:// link on its command line; a Mac sends open-url.
 const argLinks = (argv: string[]) => argv.slice(1).filter((a) => /^vaultite:/i.test(a))
 
-// Finder's Open with (and files dropped on the Dock icon): can come before the app is ready.
+// Finder's Open with (and a drop on the Dock icon) can come before the app is ready.
 const early: string[] = MAC ? [] : argFiles(process.argv, process.cwd())
 let started = false
 app.on("open-file", (e, p) => {
@@ -1597,8 +1393,6 @@ app.on("open-file", (e, p) => {
   else early.push(p)
 })
 
-// vaultite:// from another app or a link: the iPhone app's addresses (ios/App/Shared/Links.swift), `command/<id>`,
-// `open/<path>` and `bundle/<owner>/<name>` (a bundle's preview, never applied by the link), in the focused vault's window.
 const earlyLinks: string[] = MAC ? [] : argLinks(process.argv)
 app.on("open-url", (e, url) => {
   e.preventDefault()
@@ -1608,7 +1402,6 @@ app.on("open-url", (e, url) => {
 async function appLink(url: string) {
   let u: URL
   try { u = new URL(url) } catch { return }
-  // A web link from another app, Vaultite being the Mac's browser: a web tab in the focused vault's window.
   if (u.protocol === "http:" || u.protocol === "https:") {
     const w = focusedVault() ?? await (async () => { const last = [...known].sort((a, b) => (b.last ?? 0) - (a.last ?? 0))[0]; return last ? openVault(last.path).catch(() => null) : null })()
     if (!w) return showManager()
@@ -1629,7 +1422,6 @@ async function appLink(url: string) {
   }
   if (!w) return
   if (what === "open") {
-    // (a note named without its .md, as a [[link]] names it)
     const abs = inVault(w.vault.path, rest)
     if (!abs) return
     if (!path.extname(rest) && fs.existsSync(`${abs}.md`)) rest += ".md"
@@ -1637,7 +1429,6 @@ async function appLink(url: string) {
     send(w, rest)
   } else {
     const to = w
-    // (a window still loading takes it once its page listens; the page tries until the command is there)
     const msg = what === "bundle" ? { type: "link", bundle: rest } : { type: "link", id: rest }
     const go = (n = 0) => { if (to.win.isDestroyed()) return; if (to.ready) to.win.webContents.send("vaultite", msg); else if (n < 150) setTimeout(() => go(n + 1), 200) }
     go()
@@ -1646,12 +1437,9 @@ async function appLink(url: string) {
   w.win.focus()
 }
 
-/** The sandbox among the vaults reopening, made again first when stale (refreshSandbox): its window waits for it. */
 let refreshed: Promise<unknown> = Promise.resolve()
 if (!app.requestSingleInstanceLock()) app.quit()
 else {
-  // The vaults open last time start their servers now, before Electron is ready: a server takes longer to start than
-  // the app, and they start together. (A vault opened with --vault that isn't known yet starts when its window does.)
   const start = (p: string) => {
     const v = find(p)
     if (v && !attachable(p) && fs.statSync(p, { throwIfNoEntry: false })?.isDirectory()) serverFor(v).catch(() => {})
@@ -1661,8 +1449,6 @@ else {
     refreshed = refreshSandbox(p).then((made) => { const v = find(p); if (made && v) delete v.port }, (e) => console.error(e)).then(() => start(p))
   }
 }
-// Launched again (Linux and Windows: the app's icon, Open with, a vaultite:// link, `vaultite <file>`): this one opens
-// what it was given, else comes forward.
 app.on("second-instance", (_e, argv, cwd) => {
   const p = vaultArg(argv, cwd)
   const files = MAC ? [] : argFiles(argv, cwd), links = MAC ? [] : argLinks(argv)
@@ -1693,17 +1479,12 @@ app.on("will-quit", () => {
   stopDictation()
   quitUpdates()
 })
-/** The launch's windows are open (or failed): from then on, closing the last window quits off a Mac. */
 let launched = false
 app.on("window-all-closed", () => {
-  // As Mac apps do, the app stays there; the Dock icon brings back the manager. Elsewhere there's no Dock to: it quits
-  // (its terminals live on in their keeper).
   if (!MAC && launched) app.quit()
 })
 app.on("activate", () => { if (!wins.size && !manager && !setupWin && !remoteWins.size) openHome() })
 
-/** Opened from its disk image (or Downloads): offer to move into Applications (a copy there: movelogic.ts), never to a
- *  copy a script drives. True: it moved, and relaunches from there, which ejects the image it came from. */
 async function offerMove(): Promise<boolean> {
   const moved = path.join(app.getPath("userData"), "moved-from-dmg")
   if (fs.existsSync(moved)) {
@@ -1727,7 +1508,7 @@ async function offerMove(): Promise<boolean> {
     const there = path.join("/Applications", path.basename(path.resolve(app.getPath("exe"), "../../..")))
     const conflictHandler = (type: "exists" | "existsAndRunning") => {
       let plist = ""
-      try { plist = fs.readFileSync(path.join(there, "Contents", "Info.plist"), "utf8") } catch { /* unread: asked */ }
+      try { plist = fs.readFileSync(path.join(there, "Contents", "Info.plist"), "utf8") } catch {}
       const c = moveConflict(app.getName(), app.getVersion(), { version: plistVersion(plist), running: type === "existsAndRunning" })
       if (c.kind === "replace") return true
       if (c.kind === "say") { dialog.showMessageBoxSync({ type: "info", message: c.message, detail: c.detail }); return false }
@@ -1743,7 +1524,6 @@ async function offerMove(): Promise<boolean> {
   }
 }
 
-/** The disk images still holding a copy of this app (the one it was moved out of), ejected. */
 function ejectImages() {
   try {
     const info = JSON.parse(execFileSync("/bin/sh", ["-c", "hdiutil info -plist | plutil -convert json -o - -"], { encoding: "utf8", timeout: 10_000 }))
@@ -1758,15 +1538,11 @@ function ejectImages() {
   }
 }
 
-// A page that sets no window.open handler of its own opens nothing (one it sets later replaces this), and none attaches a
-// <webview> (the app has none).
 app.on("web-contents-created", (_e, wc) => {
   wc.setWindowOpenHandler(() => ({ action: "deny" }))
   wc.on("will-attach-webview", (e) => e.preventDefault())
 })
 
-/** The default session's permissions (the app's windows, another machine's, the frames a note shows): electron/apppermissions.ts.
- *  Another machine's window asks for the microphone, camera and location, once a launch per site. */
 const remoteAsked = new Map<string, Promise<boolean>>(), remoteYes = new Set<string>()
 function guardPermissions() {
   const s = session.defaultSession
@@ -1799,7 +1575,6 @@ app.whenReady().then(async () => {
   app.setAboutPanelOptions({ applicationName: app.getName(), applicationVersion: app.getVersion() })
   if (WORKTREE) await startWorktree()
   if (DEV) app.dock?.setBadge(dev?.badge() ?? "dev")
-  // (a Mac's, but for a copy a script drives or Vaultite Dev, unless VAULTITE_HELPER=1)
   if (process.env.VAULTITE_HELPER === "1" || (MAC && !driven && !DEV && process.env.VAULTITE_HELPER !== "0")) helper = await import("./helper.ts")
   const homePath = () => lastFocused && (wins.has(lastFocused) || kept.has(lastFocused)) ? lastFocused : [...wins.keys()][0] ?? [...kept.keys()][0]
   setDictationServer((win) => {
@@ -1831,7 +1606,7 @@ app.whenReady().then(async () => {
   buildMenu()
   const a = asked()
   started = true
-  const go = !a || await madeIfAsked(a) // (else the vaults list)
+  const go = !a || await madeIfAsked(a)
   await refreshed
   await Promise.all((go ? reopening() : []).map((p) => openVault(p).catch((e) => console.error(e))))
   if (!asked()) for (const r of remotes.filter((x) => x.open)) openRemote(r.url)
@@ -1843,7 +1618,7 @@ app.whenReady().then(async () => {
   behind = false
   launched = true
   setTimeout(() => { if (!wins.size) shellReady(null) }, 20_000)
-  if (!MAC && !AppWindow.getAllWindows().length) showManager() // (every window the launch opened failed)
+  if (!MAC && !AppWindow.getAllWindows().length) showManager()
   if (LINUX) unsandboxedNotice()
   scheduleUpdates()
 })

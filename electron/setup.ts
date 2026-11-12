@@ -1,5 +1,4 @@
-// Set up Vaultite's machine side (web/onboarding.html, tools/test_setup.ts): where vaults go, Obsidian's vaults, the
-// coding agents and their computer use, and `vau` (bin/vau with the app as Node) in ~/.local/bin or Windows' PATH.
+// Set up Vaultite's machine side (web/onboarding.html): vault places, coding agents, and `vau` on the PATH.
 import { execFile, execFileSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
@@ -7,21 +6,15 @@ import path from "node:path"
 import { agentName } from "../core/terminalids.ts"
 import { vauShims } from "../core/vaushims.ts"
 
-/** Where it looks and writes: a made-up home folder in tests and QA, never the user's. */
 export type Where = {
   home: string
-  /** The app's executable (run as Node) and the vau CLI's entry it runs (core/appentry.ts). */
   exe: string
   vau: string
-  /** The app's userData (a vau of the app's own when ~/.local/bin has someone else's). */
   userData: string
-  /** Variables the shim sets (VAULTITE_USER_DATA when the app runs with another). */
   env?: Record<string, string>
-  /** The system's Documents folder, when it isn't home's (Windows moves it into OneDrive): Electron's. */
+  // (Windows may move Documents into OneDrive)
   documents?: string
-  /** The platform it sets up for (tests: Windows' logic anywhere). */
   platform?: string
-  /** Claude Code's and Codex's folders when the app's environment moves them (CLAUDE_CONFIG_DIR, CODEX_HOME). */
   claudeDir?: string
   codexHome?: string
 }
@@ -29,7 +22,6 @@ export type Where = {
 const exists = (p: string) => fs.existsSync(p)
 const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
 
-/** A file replaced whole or not at all, its folder made: what vau reads while the app writes it is never half a file. */
 export function writeAtomic(p: string, text: string, mode?: number) {
   fs.mkdirSync(path.dirname(p), { recursive: true })
   const tmp = `${p}.vaultite-${process.pid}.tmp`
@@ -37,15 +29,11 @@ export function writeAtomic(p: string, text: string, mode?: number) {
   fs.renameSync(tmp, p)
 }
 
-// ---------- places ----------
-/** iCloud Drive's folder (null when it's off: a Mac's, or iCloud for Windows') and Documents: where a new vault may go. */
 export function places(w: Where) {
   const icloud = [path.join(w.home, "Library", "Mobile Documents", "com~apple~CloudDocs"), path.join(w.home, "iCloudDrive")].find(exists)
   return { icloud: icloud ?? null, documents: w.documents ?? path.join(w.home, "Documents"), home: w.home }
 }
 
-/** Where Obsidian keeps its obsidian.json: a Mac's, Windows' (%APPDATA%), then Linux's (its .deb or AppImage, Flatpak,
- *  Snap). */
 const obsidianJson = (home: string) => [
   path.join(home, "Library", "Application Support", "obsidian", "obsidian.json"),
   path.join(home, "AppData", "Roaming", "obsidian", "obsidian.json"),
@@ -54,7 +42,6 @@ const obsidianJson = (home: string) => [
   path.join(home, "snap", "obsidian", "current", ".config", "obsidian", "obsidian.json"),
 ].find(exists)
 
-/** Obsidian's vaults on this machine (its obsidian.json), last opened first; only folders that are there. */
 export function obsidianVaults(w: Where): { path: string; name: string }[] {
   try {
     const j = JSON.parse(fs.readFileSync(obsidianJson(w.home) ?? "", "utf8"))
@@ -65,8 +52,6 @@ export function obsidianVaults(w: Where): { path: string; name: string }[] {
   } catch { return [] }
 }
 
-// ---------- coding agents ----------
-/** What it looks for (KNOWN_AGENTS' ids): command, install line, and terminal name when the companion runs it. */
 const HARNESSES: { id: string; bin: string; install: string; installWin?: string; agent?: string }[] = [
   { id: "claude-code", bin: "claude", agent: "claude", install: "curl -fsSL https://claude.ai/install.sh | bash", installWin: "irm https://claude.ai/install.ps1 | iex" },
   { id: "codex", bin: "codex", agent: "codex", install: "npm i -g @openai/codex" },
@@ -76,11 +61,10 @@ const HARNESSES: { id: string; bin: string; install: string; installWin?: string
   { id: "opencode", bin: "opencode", install: "curl -fsSL https://opencode.ai/install | bash" },
 ]
 
-/** What makes a found agent more useful here, for the user to say yes to: computer use, or the vault's tools. */
 export type Extra = { kind: "computer-use" | "connect"; state: "on" | "off" | "unavailable" }
 export type Harness = { id: string; name: string; path: string | null; install: string; agent?: string; extra?: Extra }
 
-/** Where installers put agents' commands, besides the user's PATH (an app's PATH is launchd's). */
+// An app's PATH is launchd's, not the user's.
 const binDirs = (w: Where, dirs: string[]) => platformOf(w) === "win32"
   ? [...dirs, path.join(w.home, "AppData", "Roaming", "npm"), path.join(w.home, ".local", "bin")]
   : [...dirs, ...[".local/bin", ".npm-global/bin", ".bun/bin", ".opencode/bin", ".claude/local"].map((d) => path.join(w.home, d))]
@@ -89,7 +73,6 @@ function findBin(w: Where, dirs: string[], bin: string) {
   return binDirs(w, dirs).flatMap((d) => names.map((n) => path.join(d, n))).find((p) => fs.statSync(p, { throwIfNoEntry: false })?.isFile()) ?? null
 }
 
-/** The coding agents on this machine, and what's on for them (`vault`: the one being set up). */
 export function harnesses(w: Where, dirs: string[], vault: string | null): Harness[] {
   const mac = platformOf(w) === "darwin"
   return HARNESSES.map((h) => {
@@ -107,10 +90,9 @@ export function harnesses(w: Where, dirs: string[], vault: string | null): Harne
 // enabledMcpServers in its .claude.json (a project is the git repository a folder is in, else the folder).
 const CU = "computer-use"
 const claudeJson = (w: Where) => path.join(w.claudeDir ?? w.home, ".claude.json")
-/** The folder Claude Code keeps the vault's project settings under. */
 export function claudeProject(vault: string) {
   let real = vault
-  try { real = fs.realpathSync(vault) } catch { /* not there yet */ }
+  try { real = fs.realpathSync(vault) } catch {}
   for (let d = real; ; d = path.dirname(d)) {
     if (exists(path.join(d, ".git"))) return d
     if (path.dirname(d) === d) return real
@@ -121,7 +103,6 @@ export function claudeComputerUse(w: Where, vault: string) {
   const list = readJson(claudeJson(w))?.projects?.[claudeProject(vault)]?.enabledMcpServers
   return Array.isArray(list) && list.includes(CU)
 }
-/** Turns Claude Code's computer use on for the vault (its config edited under the lock Claude Code takes on it). */
 export async function setClaudeComputerUse(w: Where, vault: string) {
   const file = claudeJson(w), { editClaudeProject } = await import("../core/claudeconfig.ts")
   await editClaudeProject(file, claudeProject(vault), (project) => {
@@ -137,33 +118,28 @@ const codexHome = (w: Where) => w.codexHome ?? path.join(w.home, ".codex")
 export function codexComputerUse(w: Where): Extra["state"] {
   if (!exists(path.join(codexHome(w), "computer-use", "Codex Computer Use.app"))) return "unavailable"
   let toml = ""
-  try { toml = fs.readFileSync(path.join(codexHome(w), "config.toml"), "utf8") } catch { /* none yet */ }
+  try { toml = fs.readFileSync(path.join(codexHome(w), "config.toml"), "utf8") } catch {}
   const table = toml.split(/^(?=\s*\[)/m).find((t) => t.trimStart().startsWith(`[plugins."${CODEX_CU}"]`))
   return table && /^\s*enabled\s*=\s*true\s*$/m.test(table) ? "on" : "off"
 }
-/** `codex plugin add`, by its own CLI (its config is its own). */
 export function setCodexComputerUse(w: Where, codex: string): Promise<void> {
   const env = { ...process.env, HOME: w.home, CODEX_HOME: codexHome(w), PATH: [path.dirname(codex), process.env.PATH].filter(Boolean).join(path.delimiter) }
   return new Promise((ok, fail) => execFile(codex, ["plugin", "add", CODEX_CU], { env, timeout: 60_000 }, (e, _out, err) =>
     (e ? fail(new Error(`codex plugin add failed: ${(String(err).trim() || e.message).split("\n").slice(-2).join(" ")}`)) : ok())))
 }
 
-// ---------- vau ----------
-// (Windows: vau.cmd for cmd and PowerShell and the script for Git Bash, in a folder of ours added to the user's PATH)
 const MARK = "vau, the Vaultite command, written by Set up Vaultite"
 const shims = (w: Where) => vauShims({ exe: w.exe, script: w.vau, env: w.env,
   mark: `${MARK} (${path.basename(w.exe)} runs it as Node). Safe to delete.` }, platformOf(w))
 const platformOf = (w: Where) => w.platform ?? process.platform
 
 const ours = (p: string) => { try { return fs.readFileSync(p, "utf8").includes(MARK) } catch { return false } }
-/** ~/.local/bin/vau, and the app's own when someone else's is there. */
 const userBin = (w: Where) => path.join(w.home, ".local", "bin", "vau")
 const appBin = (w: Where) => path.join(w.userData, "bin", "vau")
-/** Windows: vau.cmd's folder (the local AppData: the shim names this machine's executable, so it mustn't roam). */
+// Local AppData, not roaming: the shim names this machine's executable.
 export const winBin = (w: Where) => path.join(w.home, "AppData", "Local", "Vaultite", "bin")
 
-/** The folders on the user's PATH, as their login shell has it (the app's own PATH is launchd's); on Windows the
- *  system's and the user's from the registry, as a new terminal gets them. */
+// The app's own PATH is launchd's; on Windows a new terminal gets the system's and the user's from the registry.
 export function shellPath(w: Where): string[] {
   if (platformOf(w) === "win32") return winPath().dirs
   try {
@@ -174,9 +150,7 @@ export function shellPath(w: Where): string[] {
 }
 
 export type VauStatus = { path: string | null; onPath: boolean; system: boolean
-  /** A `vau` that isn't ours in ~/.local/bin, left as it is. */
   other: string | null }
-/** Where our vau is (null: not installed) and whether typing `vau` in a terminal finds it. */
 export function vauStatus(w: Where, dirs = shellPath(w)): VauStatus {
   if (platformOf(w) === "win32") {
     const at = path.join(winBin(w), "vau.cmd")
@@ -185,18 +159,15 @@ export function vauStatus(w: Where, dirs = shellPath(w)): VauStatus {
   const user = userBin(w), sys = "/usr/local/bin/vau"
   const other = exists(user) && !ours(user) ? user : null
   const at = !other && exists(user) ? user : exists(appBin(w)) && ours(appBin(w)) ? appBin(w) : null
-  const system = ours(sys) // (a link to ours reads as ours)
+  const system = ours(sys)
   return { path: at, onPath: system || (!!at && dirs.includes(path.dirname(at))), system, other }
 }
 
-/** The folder installVau puts vau in, as the user knows it (~/.local/bin), for the setup window to say. */
 export function vauHome(w: Where) {
   const user = userBin(w), dir = path.dirname(platformOf(w) === "win32" ? path.join(winBin(w), "vau.cmd") : exists(user) && !ours(user) ? appBin(w) : user)
   return tilde(w, dir)
 }
 
-/** Write (or update) our vau. Returns where, and what was done. On Windows its folder goes on the user's PATH too
- *  (`userPath`, the registry's unless the home is made up: tests and QA never touch the real one). */
 export function installVau(w: Where, userPath: UserPath | null = w.home === os.homedir() ? registryPath : null): { path: string; did: string } {
   const files = shims(w)
   if (platformOf(w) === "win32") {
@@ -214,27 +185,22 @@ export function installVau(w: Where, userPath: UserPath | null = w.home === os.h
   return { path: target, did: same ? `vau is already at ${where}` : target === user ? `Wrote vau to ${where}` : `Wrote vau to ${where} (${tilde(w, user)} is another program's: left as it is)` }
 }
 const tilde = (w: Where, p: string) => (p.startsWith(w.home + "/") ? `~${p.slice(w.home.length)}` : p)
-/** Writes a file unless it already says that: whether it wrote. */
 const write = (p: string, text: string) => {
-  try { if (fs.readFileSync(p, "utf8") === text) return false } catch { /* not there yet */ }
+  try { if (fs.readFileSync(p, "utf8") === text) return false } catch {}
   writeAtomic(p, text, 0o755)
   return true
 }
 
-// ---------- Windows: the user's PATH ----------
-
-/** The user's PATH as Windows keeps it (HKCU\Environment), unexpanded: what a new terminal starts with, after the
- *  system's. `expand`: a REG_EXPAND_SZ (it has %VARS%), kept so. */
+// Windows keeps the user's PATH in HKCU\Environment, unexpanded; a REG_EXPAND_SZ one has %VARS%.
 export type UserPath = { read(): { value: string; expand: boolean } | null; write(value: string, expand: boolean): void }
 
 const dirKey = (d: string) => d.replace(/[\\/]+/g, "/").replace(/\/$/, "").toLowerCase()
 const sameDir = (a: string, b: string) => dirKey(a) === dirKey(b)
 const hasDir = (dirs: string[], dir: string) => dirs.some((d) => sameDir(d, dir))
-/** %VAR% in a PATH entry, from this process's environment (Windows' names ignore case). */
+// (Windows' variable names ignore case)
 export const expandVars = (s: string, env: Record<string, string | undefined> = process.env) =>
   s.replace(/%([^%]+)%/g, (m, k: string) => Object.entries(env).find(([n]) => n.toLowerCase() === k.toLowerCase())?.[1] ?? m)
 
-/** Adds `dir` at the end of the user's PATH unless it's there (as itself or through a %VAR%): whether it did. */
 export function addToPath(p: UserPath, dir: string, env: Record<string, string | undefined> = process.env): boolean {
   const was = p.read()
   const entries = (was?.value ?? "").split(";").filter((e) => e.trim())
@@ -243,8 +209,8 @@ export function addToPath(p: UserPath, dir: string, env: Record<string, string |
   return true
 }
 
-/** PowerShell on the registry: the value crosses as base64 (no quoting, any characters), and setting a variable that
- *  isn't there to nothing has .NET tell every window the environment changed (WM_SETTINGCHANGE), so new terminals see it. */
+// Base64 crosses into PowerShell with no quoting; setting a missing variable to nothing has .NET broadcast
+// WM_SETTINGCHANGE, so new terminals see the PATH.
 const ps = (script: string, env: Record<string, string> = {}) => execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script],
   { encoding: "utf8", timeout: 20000, windowsHide: true, env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "pipe"] })
 const KEY = "$k = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment');"
@@ -263,7 +229,6 @@ export const registryPath: UserPath = {
   },
 }
 
-/** PATH's folders as a new terminal gets them: the system's then the user's, expanded (none when it can't be read). */
 function winPath(): { dirs: string[] } {
   try {
     const out = ps("$m = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey('SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment').GetValue('Path', ''); " +
@@ -272,8 +237,6 @@ function winPath(): { dirs: string[] } {
   } catch { return { dirs: (process.env.PATH ?? "").split(";").filter(Boolean) } }
 }
 
-/** Link /usr/local/bin/vau to ours, as an administrator (macOS asks for the password; Linux, polkit's pkexec). Never
- *  over another program's. */
 export function linkSystem(shim: string): Promise<void> {
   const sys = "/usr/local/bin/vau"
   if (fs.lstatSync(sys, { throwIfNoEntry: false }) && !ours(sys)) return Promise.reject(new Error(`${sys} is another program's: left as it is`))

@@ -1,5 +1,3 @@
-// The Mac's menu bar: the focused window's commands as its page tells them (`MenuSnapshot`), never copies of them;
-// only keys the page left reach an accelerator. Icons: lucide's, rendered by tools/menu_icons.ts. electron/CLAUDE.md.
 import { nativeImage, type MenuItemConstructorOptions, type NativeImage } from "electron"
 import fs from "node:fs"
 import path from "node:path"
@@ -7,7 +5,7 @@ import { fileURLToPath } from "node:url"
 
 const ICONS = path.join(path.dirname(fileURLToPath(import.meta.url)), "menu-icons")
 const MAC = process.platform === "darwin"
-/** The command key in accelerators: ⌘ on a Mac, Ctrl elsewhere (Electron's Cmd is the Super key on Linux). */
+// (Electron's Cmd is the Super key on Linux)
 const MOD = MAC ? "Cmd" : "Ctrl"
 
 /** What a vault window tells the menu (web/src/core/desktop.ts). */
@@ -21,36 +19,24 @@ export type MenuSnapshot = {
 }
 
 export type MenuContext = {
-  /** The focused vault window's snapshot (null: none, or not told yet). */
   snap: MenuSnapshot | null
-  /** Run a command in the focused vault window. */
   run: (id: string) => MenuItemConstructorOptions["click"]
-  /** Open a vault file in the focused vault window's current tab. */
   go: (path: string) => void
-  /** The App menu's update item, if this build updates itself. */
   update: MenuItemConstructorOptions | null
   vaults: MenuItemConstructorOptions[]
   manageVaults: () => void
-  /** Set up Vaultite (the first-run window, again). */
   setup: () => void
   pickOutside: () => void
-  /** Help: one of the app's own documents (README.md, CHANGELOG.md) in a tab. */
   openDoc: (name: string) => void
-  /** Help: the repo's issues page, when the app knows its repo. */
   issues: string | null
   openExternal: (url: string) => void
   showLogs: () => void
-  /** Window ▸ Maximize (off a Mac, whose Zoom is a role): the focused window maximized, or back. */
   maximize: () => void
-  /** Window ▸ Keep window on top, for the window in front (ontop.ts). */
   onTop: MenuItemConstructorOptions["click"]
-  /** Help ▸ Open the playground (the sandbox), when the app has one. */
   sandbox?: () => void
 }
 
-// ---------- icons ----------
 const icons = new Map<string, NativeImage | null>()
-/** A lucide icon from menu-icons/ as a template image (tools/menu_icons.ts makes those named here and in helper.ts). */
 export function icon(name: string | undefined) {
   // Template images are a Mac's: GTK menus draw them black, unseen on a dark theme, and don't tint them.
   if (!name || !MAC) return undefined
@@ -67,14 +53,11 @@ export function icon(name: string | undefined) {
   return icons.get(name) ?? undefined
 }
 
-// ---------- keys ----------
 const KEY: Record<string, string> = {
   ArrowLeft: "Left", ArrowRight: "Right", ArrowUp: "Up", ArrowDown: "Down", Enter: "Return", Escape: "Esc", Space: "Space",
   Backspace: "Backspace", Delete: "Delete", Tab: "Tab", Home: "Home", End: "End", PageUp: "PageUp", PageDown: "PageDown",
   "+": "Plus",
 }
-/** A command's keys ("Mod+Shift+\\") as an Electron accelerator ("Cmd+Shift+\\", "Ctrl+Shift+\\" off a Mac), or null: a sequence, a plain key,
- *  or a key Electron can't name. */
 function accelerator(keys: string): string | null {
   const k = keys.trim()
   if (!k || /\s/.test(k)) return null
@@ -91,22 +74,17 @@ function accelerator(keys: string): string | null {
   if (mods.has("shift")) out.push("Shift")
   return [...out, name].join("+")
 }
-/** The system's own items' keys (Edit's, the App menu's, zoom's hidden ones, full screen, reload, dev tools): never a
- *  command's. */
 const SYSTEM_KEYS = new Set(MAC
   ? ["Cmd+Q", "Cmd+H", "Cmd+Alt+H", "Cmd+M", "Cmd+Z", "Cmd+Shift+Z", "Cmd+X", "Cmd+C", "Cmd+V", "Cmd+Alt+Shift+V", "Cmd+A",
     "Cmd+Plus", "Cmd+Ctrl+F", "Cmd+R", "Cmd+Shift+R", "Cmd+Alt+I", "Cmd+Shift+W"]
   : ["Ctrl+Q", "Ctrl+Z", "Ctrl+Shift+Z", "Ctrl+Y", "Ctrl+X", "Ctrl+C", "Ctrl+V", "Ctrl+Shift+V", "Ctrl+A",
     "Ctrl+Plus", "F11", "Ctrl+R", "Ctrl+Shift+R", "Ctrl+Shift+I", "Ctrl+Shift+W"])
 
-// ---------- the menu ----------
 export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
   const { snap } = ctx
   const byId = new Map((snap?.commands ?? []).map((c) => [c.id, c]))
   const used = new Set(SYSTEM_KEYS)
 
-  /** An item running command `id`: hidden while missing unless `always` (greyed, its default `key`), greyed while
-   *  unavailable. A setting is a checkbox; `named`: the command's name now ("Hide left sidebar"), else `label`. */
   const cmd = (id: string, label: string, ico?: string, o: { key?: string; always?: boolean; named?: boolean } = {}): MenuItemConstructorOptions | null => {
     const c = byId.get(id)
     if (!c && !(o.always && CORE.has(id))) return null
@@ -120,15 +98,12 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
     if (c?.checked !== undefined) return { label: text, type: "checkbox", checked: c.checked, accelerator: accel, enabled: c.on, click: ctx.run(id) }
     return { label: text, icon: icon(ico), accelerator: accel, enabled: !!c?.on, click: ctx.run(id) }
   }
-  /** The commands whose ids match, as items labelled by their names. */
   const all = (re: RegExp, ico?: string) => (snap?.commands ?? []).filter((c) => re.test(c.id)).map((c) => cmd(c.id, c.name, ico))
-  /** A radio item for a setting command: the one whose command isn't available is the setting in effect. */
   const radio = (id: string, label: string) => {
     const c = byId.get(id)
     return c ? { label, type: "radio" as const, checked: !c.on, click: ctx.run(id) } : null
   }
   const sep: MenuItemConstructorOptions = { type: "separator" }
-  /** A menu's items without the hidden ones, and without separators doubled or at either end. */
   const items = (...xs: (MenuItemConstructorOptions | null | false | undefined)[]) => {
     const out: MenuItemConstructorOptions[] = []
     for (const x of xs) {
@@ -151,7 +126,6 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
   ]
 
   return ([
-    // A Mac's App menu; elsewhere its items are File's (settings, quit) and Help's (about, updates), as Linux apps have them.
     MAC && { role: "appMenu", submenu: items(
       { role: "about" },
       ctx.update && { ...ctx.update, icon: icon("refresh-cw") },
@@ -257,7 +231,6 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
         cmd("interface-size:reset", "Actual size", "scan", { key: "Mod+Alt+0", always: true }),
       )),
       sep,
-      // What's focused (web/src/core/zoom.ts). ⌘= and ⌘+ (⇧⌘=, and the keypad's) both zoom in, as in Chrome.
       cmd("zoom:reset", "Actual size", "scan", { key: "Mod+0", always: true }),
       cmd("zoom:in", "Zoom in", "zoom-in", { key: "Mod+=", always: true }),
       { label: "Zoom in", accelerator: `${MOD}+Plus`, click: ctx.run("zoom:in"), visible: false, acceleratorWorksWhenHidden: true },
@@ -325,7 +298,6 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
   ] as (MenuItemConstructorOptions | false)[]).filter((x): x is MenuItemConstructorOptions => !!x)
 }
 
-/** Commands every vault window has (App.tsx's own, and the file's while one is open): shown greyed while unavailable. */
 const CORE = new Set(["page:settings", "page:setup", "hotkeys:open", "file:new", "tab:new", "switcher:open",
   "file:rename", "file:duplicate", "file:reveal-finder", "tab:close", "tab:close-others", "split:close", "tab:reopen", "find:open", "find:replace",
   "file:copy-link", "file:copy-path", "palette:open", "sidebar:toggle", "sidebar:toggle-right", "view:toggle",
