@@ -1,11 +1,11 @@
-// Cloud sessions for an account here, through Claude Code itself (no credential read): `claude --cloud` under `script`'s
-// terminal (it starts none without one), `-p --cloud` to tell one, its stream-json control requests to read them.
+// Cloud sessions for an account here, through Claude Code itself (no credential read): `claude --cloud` in a terminal
+// of the app's (it starts none without one), `-p --cloud` to tell one, its stream-json control requests to read them.
 import { type ChildProcessByStdio, execFile, spawn } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import type { Readable, Writable } from "node:stream"
 import { lastTurn } from "../../../core/agents.ts"
-import { gitEnv, OpError, type Plugin } from "../../../core/plugins.ts"
+import { gitEnv, OpError, type Plugin, whoOf } from "../../../core/plugins.ts"
 import { askingIn, Conversation, WANTED } from "./transcript.ts"
 
 type Account = { id: string; dir: string; label: string; private: boolean }
@@ -25,9 +25,9 @@ export function cloudSessions(plugin: Plugin, o: { accounts: () => Account[]; bi
     if (!a) throw new OpError(`no Claude Code account '${id}' here (vau limits lists them)`, 404)
     return a
   }
-  /** Why cloud sessions can't be started here, "" when they can: `script` gives `claude --cloud` the terminal it needs. */
+  /** Why cloud sessions can't be started here, "" when they can. */
   function unready(account: string) {
-    if (process.platform === "win32") return "Windows has no `script` to start one with"
+    if (process.platform === "win32") return "not from Windows yet"
     if (!o.bin()) return "Claude Code isn't installed here"
     try { accountOf(account) } catch (e) { return (e as Error).message }
     return ""
@@ -55,7 +55,7 @@ export function cloudSessions(plugin: Plugin, o: { accounts: () => Account[]; bi
       await git(dir, ["update-ref", `refs/remotes/origin/${s.branch}`, s.base])
       await git(dir, ["read-tree", "-mu", "HEAD"])
       await o.trust(a, fs.realpathSync(dir))
-      return await cloudStart(o.bin()!, { ...o.envOf(a), VAULTITE_TASK: s.prompt }, dir)
+      return await cloudStart(plugin, o.bin()!, o.envOf(a).CLAUDE_CONFIG_DIR, dir, s.prompt)
     })
     queue.set(dir, run)
     return await run
@@ -127,17 +127,20 @@ export function cloudSessions(plugin: Plugin, o: { accounts: () => Account[]; bi
   plugin.provide("cloud-read:claude", read)
 }
 
-/** `claude --cloud "$VAULTITE_TASK"` in `cwd`, in a terminal `script` makes (it starts none without one): the session it
+const sh = (s: string) => `'${s.replace(/'/g, "'\\''")}'`
+/** `claude --cloud <its task>` in `cwd`, run in a terminal of the app's (a command's, waited for): the session it
  *  printed, else why not, from its last words. */
-function cloudStart(bin: string, env: NodeJS.ProcessEnv, cwd: string): Promise<{ session: string; url: string; title: string; note?: string }> {
-  const args = process.platform === "darwin" ? ["-q", "/dev/null", bin, "--cloud", env.VAULTITE_TASK ?? ""]
-    : ["-qec", `exec "$VAULTITE_CLAUDE" --cloud "$VAULTITE_TASK"`, "/dev/null"]
-  return new Promise((ok, fail) => execFile("script", args, { cwd, env: { ...env, SHELL: "/bin/sh", VAULTITE_CLAUDE: bin }, timeout: 120_000, maxBuffer: 4 << 20 }, (e, so, se) => {
-    const text = plainText(`${so}\n${se}`), m = /View:\s*(https:\/\/claude\.ai\/code\/(session_\w{4,80})\S*)/.exec(text)
-    if (!m) return fail(new OpError(`claude --cloud started no session: ${text.trim().split("\n").filter(Boolean).slice(-3).join(" ").slice(0, 400) || e?.message || "it said nothing"}`, 502))
+async function cloudStart(plugin: Plugin, bin: string, config: string | undefined, cwd: string, prompt: string): Promise<{ session: string; url: string; title: string; note?: string }> {
+  const task = path.join(cwd, "..", `${path.basename(cwd)}.task`)
+  fs.writeFileSync(task, prompt)
+  try {
+    const command = `${config ? `CLAUDE_CONFIG_DIR=${sh(config)}` : "unset CLAUDE_CONFIG_DIR;"} ${sh(bin)} --cloud "$(cat ${sh(task)})"`
+    const r = await plugin.runOp("terminal.start", { command, cwd, name: "Starting a cloud job", wait: true, timeout: 120 }, whoOf("app/claude-code", null))
+    const text = plainText(String((r.result as { output?: string }).output ?? "")), m = /View:\s*(https:\/\/claude\.ai\/code\/(session_\w{4,80})\S*)/.exec(text)
+    if (!m) throw new OpError(`claude --cloud started no session: ${text.trim().split("\n").filter(Boolean).slice(-3).join(" ").slice(0, 400) || "it said nothing"}`, 502)
     const note = /Branch \S+ is not on GitHub[^\n]*/.exec(text)?.[0]
-    ok({ session: m[2], url: m[1].replace(/\?.*$/, ""), title: /Created cloud session:\s*(.+)/.exec(text)?.[1]?.trim() ?? "", ...(note ? { note } : {}) })
-  }))
+    return { session: m[2], url: m[1].replace(/\?.*$/, ""), title: /Created cloud session:\s*(.+)/.exec(text)?.[1]?.trim() ?? "", ...(note ? { note } : {}) }
+  } finally { fs.rmSync(task, { force: true }) }
 }
 
 /** A `claude -p` in stream-json kept open to ask control requests of, closed a minute after the last one. */
