@@ -106,6 +106,27 @@ await section("whether each process runs older code (the module graph)", async (
   git("checkout", "--", ".")
 })
 
+await section("whether each part runs a commit: it, or older code its change doesn't reach", async () => {
+  // (the graph given above, as server.ts does; server.ts reaches core/a.ts)
+  const base = commit({ "web/index.html": `<script type="module" src="./src/x.tsx"></script>`, "web/src/x.tsx": "1", "electron/shell/boot.mjs": "" }, "base")
+  const r = runningIn(repo, webBuilds(dist).read)
+  const web = commit({ "web/src/x.tsx": "2", "vite.config.ts": "export default {}", "CHANGELOG.md": "- two" }, "fix(web): two")
+  const server = commit({ "core/a.ts": "export const a = 3" }, "fix(server): three")
+  const of = async (sha: string, code: string, built: string) => Object.fromEntries((await r.runsOf(sha, [{ id: "server", commit: code }, { id: "web", commit: built },
+    { id: "desktop", commit: null }])).map((p) => [p.id, p]))
+  let x = await of(web, base, web)
+  check("a web-only commit taken in place: the web app runs it, the server older code it doesn't change, the desktop app too", x.web.runs === "it" && x.server.runs === "untouched" && x.desktop.runs === "untouched", x)
+  x = await of(web, base, base)
+  check("… a web app built before it: older, naming the file", x.web.runs === "older" && x.web.file === "vite.config.ts", x)
+  x = await of(server, base, server)
+  check("a server commit the server hasn't restarted onto: older, naming the file", x.server.runs === "older" && x.server.file === "core/a.ts" && x.web.runs === "it", x)
+  check("… once it has: it", (await of(server, server, server)).server.runs === "it")
+  const desk = commit({ "electron/shell/boot.mjs": "// one" }, "fix(desktop): one")
+  check("a desktop commit with a desktop app that didn't say its commit: can't say", (await of(desk, desk, desk)).desktop.runs === "unknown")
+  build("index-W.js", web, "fix(web): two")
+  check("running: built from a commit whose changes the server doesn't reach (vite.config.ts, by the graph), that commit", (await r.running()).commit === web, await r.running())
+})
+
 await section("app.version asks about a hash only", async () => {
   const op = versionOps()[0], ctx = { who: { client: "cli" } } as Parameters<typeof op.run>[1]
   const refused = async (p: Record<string, unknown>) => { try { await op.run(p, ctx); return "" } catch (e) { return String((e as Error).message) } }
@@ -121,9 +142,30 @@ section("is it live")
 const full = "c".repeat(40), runs = "d".repeat(40)
 const following = (state: UpdateStatus["state"], why: string, more: Partial<UpdateStatus> = {}): UpdateStatus => ({ branch: "main", state, why, checked: Date.now(), ...more })
 const off: UpdateStatus = { branch: null, state: "off", why: "", checked: null }
-const v = (o: Partial<Parameters<typeof verdict>[0]>) => verdict({ given: "ccccccc", full, runs, has: false, failed: false, updates: following("current", "up to date"), app: null, ...o })
-check("in what it runs: live", v({ has: true }).live && /is live here: it runs ddddddd, which has it/.test(v({ has: true }).why), v({ has: true }))
-check("what it runs itself: live", v({ runs: full, has: null }).live)
+type Part = Parameters<typeof verdict>[0]["parts"][number]
+const LABELS: Record<string, string> = { server: "Server", web: "Web app", desktop: "Desktop app", helper: "Menu-bar helper" }
+const part = (id: string, ran: Part["runs"], sha: string | null = runs, file?: string): Part => ({ id, label: LABELS[id], commit: sha, runs: ran, ...(file ? { file } : {}) })
+const v = (o: Partial<Parameters<typeof verdict>[0]>) => verdict({ given: "ccccccc", full, parts: [part("server", "older", runs, "core/a.ts")], taken: false, failed: false,
+  updates: following("current", "up to date"), app: null, ...o })
+check("in what it runs: live", v({ parts: [part("server", "it")], taken: true }).live && /is live here: server runs ddddddd, which has it/.test(v({ parts: [part("server", "it")], taken: true }).why))
+check("what it runs itself: live", v({ parts: [part("server", "it", full)], taken: true }).live)
+{
+  // (seen live: the web build taken in place, no restart, the server on the commit before; a desktop app far behind)
+  const desktop = { mode: "automatic" as const, available: true, from: "main", ready: "b".repeat(40), doing: null }
+  const webOnly = [part("server", "untouched"), part("web", "it", full), part("desktop", "untouched", "a".repeat(40)), part("helper", "untouched", "a".repeat(40))]
+  const x = v({ parts: webOnly, taken: true, app: desktop })
+  check("a web-only commit its web app runs, the server not restarted: live, saying the server's code is the same", x.live && x.outcome === "live"
+    && /is live here: server runs ddddddd, which it doesn't change; web app runs it; desktop app runs aaaaaaa, which it doesn't change/.test(x.why), x)
+  const server = v({ parts: [part("server", "older", runs, "core/a.ts"), part("web", "it", full)], taken: true, updates: following("updating", "ccccccc is built; the server restarts once the browser is quiet") })
+  check("a server commit built, its restart waiting: not yet, saying what the server runs", !server.live && !server.final && /updates updating: .*\(server runs ddddddd, before it, and it changes core\/a\.ts\)/.test(server.why), server)
+  const desk = v({ parts: [part("server", "untouched"), part("web", "untouched"), part("desktop", "older", "a".repeat(40), "electron/main.ts")], taken: true, app: desktop })
+  check("a desktop commit beside a service: not yet, the desktop app's updates saying why", !desk.live && !desk.final
+    && /isn't live here yet: desktop app runs aaaaaaa, before it, and it changes electron\/main\.ts; the desktop app updates by itself: bbbbbbb ready/.test(desk.why), desk)
+  check("… one that offers restarts: it won't be by itself", v({ parts: [part("desktop", "older", "a".repeat(40), "electron/main.ts")], taken: true, app: { ...desktop, mode: "notify" } }).final)
+  check("a commit reaching nothing that runs, not taken yet: not yet, the updates saying why", ((y) => !y.live && /updates waiting: CI is running/.test(y.why))(
+    v({ parts: [part("server", "untouched")], taken: false, updates: following("waiting", "CI is running on it") })))
+  check("… taken: live", v({ parts: [part("server", "untouched")], taken: true }).live)
+}
 check("waiting on CI: not yet, and why", ((x) => !x.live && !x.final && /isn't live here yet: updates waiting: CI hasn't passed/.test(x.why))(v({ updates: following("waiting", "CI hasn't passed (ccccccc)") })))
 check("not fetched yet: not yet", ((x) => !x.final && /doesn't have it yet/.test(x.why))(v({ full: null })))
 check("its update failed: it won't be", ((x) => !x.live && x.final && /won't be live here: its update failed: didn't build/.test(x.why))(v({ failed: true, updates: following("failed", "x", { error: { at: 1, commit: full, message: "didn't build" } }) })))

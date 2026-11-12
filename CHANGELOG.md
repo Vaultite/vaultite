@@ -9,6 +9,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Tries run on your own machines first**: `npm run verify -- --try` runs an OS's part of CI's tests on an idle machine
   of your Machines with that OS (or one reached by ssh only, a Windows VM), in a fresh worktree, and sends only the
   rest to GitHub's runners; `VAULTITE_TRY_MACHINES=off` turns it off, `"try": false` on a machine leaves it out.
+- **`vau version <commit>` counts a web-only update as live**: a commit is live once the updates took it and each part
+  its change reaches (the server, the web app, the desktop app) runs it or a later commit, so a web build taken without
+  a restart no longer waits for one, and a desktop app behind holds only a commit that changes it.
 - **Split panes move smoothly**: switching to another tab fades its panes in, a pane's other tab (a pinned page opened
   in a split) fades in under a bar that stays put, and opening or closing a split slides each page under its bar
   instead of jumping. Reduce motion and animations off keep it still.

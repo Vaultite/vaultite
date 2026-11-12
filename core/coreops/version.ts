@@ -3,7 +3,7 @@
 import { type Machine, MACHINE_CLIENT } from "../plugins.ts"
 import { type Op, OpError, type OpCtx, restarting } from "../ops.ts"
 import { desktopCall, inDesktop } from "../desktopapp.ts"
-import { ambiguousCommit, contains, isHash, processes, type Process, resolveCommit, running } from "../running.ts"
+import { ambiguousCommit, contains, isHash, type PartRuns, processes, type Process, resolveCommit, type Running, running, runsOf } from "../running.ts"
 import { type UpdateStatus, updateStatus } from "../update/updater.ts"
 import { redRoute } from "../update/git.ts"
 import { API_VERSION, APP_VERSION } from "../version.ts"
@@ -36,13 +36,31 @@ export type Verdict = { commit: string; live: boolean; final: boolean; why: stri
   /** CI failed on this commit (it, or the newest commit with it): it goes live only with a fix. */
   red?: string }
 
-/** Is `given` (`full` in full: null when this checkout doesn't have it) live in `runs`? `has`: whether `runs` has it
- *  (null: git can't say), `failed`: whether the update that failed has it. */
-export function verdict(o: { given: string; full: string | null; runs: string | null; has: boolean | null; failed: boolean; updates: UpdateStatus
+/** Is `given` (`full`: null when this checkout lacks it) live: taken by the updates (`taken`), and each part its change
+ *  reaches runs it or after it (`parts`)? `failed`: whether the update that failed has it. */
+export function verdict(o: { given: string; full: string | null; parts: PartRuns[]; taken: boolean; failed: boolean; updates: UpdateStatus
   app: AppUpdates | "unknown" | null }): Verdict {
   const { updates: u, app } = o, name = o.full ? short(o.full) : o.given, commit = o.full ?? o.given
-  if (o.has || (o.runs && o.full === o.runs)) return { commit, live: true, final: true, outcome: "live", why: `${name} is live here: it runs ${short(o.runs)}${o.full === o.runs ? "" : ", which has it"}` }
+  const lagging = o.parts.filter((p) => p.runs === "older" || p.runs === "unknown")
+  const said = (p: PartRuns) => p.label.replace(/^\w/, (c) => c.toLowerCase())
+  if (o.full && o.taken && !lagging.length) {
+    const how = o.parts.map((p) => `${said(p)} runs ${p.commit === o.full ? "it" : `${short(p.commit)}, which ${p.runs === "it" ? "has it" : "it doesn't change"}`}`)
+    return { commit, live: true, final: true, outcome: "live", why: `${name} is live here: ${how.join("; ")}` }
+  }
   const not = (final: boolean, why: string): Verdict => ({ commit, live: false, final, outcome: final ? "never" : "pending", why: `${name} ${final ? "won't be live here" : "isn't live here yet"}: ${why}` })
+  const fromApp = (pre = "") => {
+    if (!app) return not(true, `${pre}this server doesn't update itself (not a service install following a branch, nor in the desktop app)`)
+    if (app === "unknown") return not(true, `${pre}the desktop app runs it and didn't say how it updates (an older app)`)
+    if (!app.available || app.mode === "off") return not(true, `${pre}the desktop app's updates are off`)
+    if (app.mode === "notify") return not(true, `${pre}the desktop app ${app.ready ? `has ${short(app.ready)} ready` : "offers updates"}: it runs once someone restarts the app`)
+    return not(false, `${pre}the desktop app updates by itself${app.doing ? `: ${app.doing}` : app.ready ? `: ${short(app.ready)} ready, restarting when nobody's using it` : ""}`)
+  }
+  // (only the desktop app's own processes behind: theirs are the desktop app's updates, even beside a service's)
+  const app_ = lagging.filter((p) => p.id === "desktop" || p.id === "helper")
+  if (o.full && o.taken && app_.length === lagging.length) {
+    const p = app_[0]
+    return fromApp(`${said(p)} ${p.runs === "older" ? `runs ${short(p.commit)}, before it, and it changes ${p.file}` : `may not run it (${p.why})`}; `)
+  }
   if (u.branch) {
     // (what an agent left in the checkout doesn't go away by itself; before it has the commit, the next look decides)
     if (u.blocked && (o.full || u.blocked.by === "branch")) return not(true, `its checkout blocks the updates: ${u.why}`)
@@ -50,21 +68,26 @@ export function verdict(o: { given: string; full: string | null; runs: string | 
     const red = o.full && u.state === "waiting" && u.ci ? redRoute(u.ci, o.full) : null
     if (red) return { ...not(true, `CI failed on ${red === o.full ? "it" : `${short(red)}, the newest commit with it, and passed on none between`}: it goes live with a fix CI passes`), red }
     if (!o.full) return not(false, `this checkout doesn't have it yet (it fetches ${u.branch} each time its updates look: ${u.state}, ${u.why})`)
-    return not(false, `updates ${u.state}: ${u.why}`)
+    const behind = lagging.find((p) => p.runs === "older" && o.taken)
+    return not(false, `updates ${u.state}: ${u.why}${behind ? ` (${said(behind)} runs ${short(behind.commit)}, before it, and it changes ${behind.file})` : ""}`)
   }
-  if (!app) return not(true, "this server doesn't update itself (not a service install following a branch, nor in the desktop app)")
-  if (app === "unknown") return not(true, "the desktop app runs it and didn't say how it updates (an older app)")
-  if (!app.available || app.mode === "off") return not(true, "the desktop app's updates are off")
-  if (app.mode === "notify") return not(true, `the desktop app ${app.ready ? `has ${short(app.ready)} ready` : "offers updates"}: it runs once someone restarts the app`)
-  return not(false, `the desktop app updates by itself${app.doing ? `: ${app.doing}` : app.ready ? `: ${short(app.ready)} ready, restarting when nobody's using it` : ""}`)
+  return fromApp()
 }
+
+/** The parts a commit may reach here: this server's code (the commit it started on), the web app it serves, and the
+ *  desktop app's processes when there's one. */
+const partsOf = (now: Running, app: AppUpdates | "unknown" | null) =>
+  [{ id: "server", commit: now.startedOn }, { id: "web", commit: now.web.commit ?? now.startedOn }, ...processList(now.startedOn, app).slice(1)]
 
 /** Whether `given` is live here now. */
 async function look(given: string): Promise<Verdict> {
-  const [full, runs, u, app] = await Promise.all([resolveCommit(given), running(), updateStatus(), appUpdates()])
-  const has = full && runs.commit ? await contains(runs.commit, full) : null
-  const failed = !!full && !!u.error?.commit && !!(await contains(u.error.commit, full))
-  return verdict({ given, full, runs: runs.commit, has, failed, updates: u, app })
+  const [full, now, u, app] = await Promise.all([resolveCommit(given), running(), updateStatus(), appUpdates()])
+  if (!full) return verdict({ given, full, parts: [], taken: false, failed: false, updates: u, app })
+  // (the commit the updates run: a web-only update moves it too)
+  const took = u.running ?? (app && app !== "unknown" ? app.store?.running : undefined)
+  const [parts, taken, failed] = await Promise.all([runsOf(full, partsOf(now, app)), took ? contains(took, full) : false,
+    u.error?.commit ? contains(u.error.commit, full) : false])
+  return verdict({ given, full, parts, taken: !!taken || parts.some((p) => p.runs === "it"), failed: !!failed, updates: u, app })
 }
 
 /** Wait (`timeout` s at most) till it's live, or can't be by itself; `before`, the seconds a wait this one goes on
@@ -127,7 +150,8 @@ whether a file it runs (its imports, followed: core/update/closure.ts) changed s
 such file and how it's reached. In a checkout only.
 
 Is my commit live? Give it (a hash, short or full; in a checkout of the app, HEAD or a branch too): live says whether
-this server runs it or a commit after it, and why not. With wait it waits until it is, or until the updates say why it
+its updates took it and every part its change reaches (the server, the web app, the desktop app) runs it or a commit
+after it (a web-only commit needs no restart), and why not. With wait it waits until it is, or until the updates say why it
 won't be (a failed update, CI red on it, updates off, a checkout with uncommitted changes, commits not on the branch
 or another branch checked out: it names them), timeout seconds at most: no loop of your own needed. A restart
 meanwhile (an update's) is ridden out, the time spent counted once. The last line is the verdict (live: outcome live,
@@ -140,7 +164,7 @@ new build by themselves (at once when hidden; visible, they offer Reload). machi
   vau version HEAD --wait --machine studio`,
     kind: "read",
     params: {
-      commit: { type: "string", description: "a commit's hash, short or full (vau turns HEAD or a branch into one where it runs): whether it's live here (what this server runs is it, or after it)" },
+      commit: { type: "string", description: "a commit's hash, short or full (vau turns HEAD or a branch into one where it runs): whether it's live here (taken, and each part it changes runs it or after it)" },
       wait: { type: "boolean", description: "with commit: wait until it's live, or until the updates say why it won't be" },
       timeout: { type: "number", minimum: 0, maximum: 3600, default: 900, description: "with wait: seconds to wait at most" },
       waited: { type: "number", minimum: 0, default: 0, description: "with wait: seconds it already waited before this call (vau sends a wait again when the server's restart cut it)" },
