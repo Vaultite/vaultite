@@ -13,6 +13,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   large picture in it (Claude Code reading screenshots) could crash or loop forever on the next lines of output.
 - **The companion says a handoff once**: when its own words already said it handed something off, the app no longer
   adds its "Handed that off" line, and several jobs in one answer get one line.
+- **A job you talk with keeps its cursor** instead of losing it to the companion's minute check mid-talk.
 - **An agent's cursor stops showing it writing once its words are in the note**: after Put in note, taking a
   proposal's change or a kept highlight, it no longer stays on writing till the agent next does something.
 - **The app loads about 190 KB less script at start**: it bundles only the plugin modules vault plugins may import.

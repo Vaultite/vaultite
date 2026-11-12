@@ -60,6 +60,9 @@ export default async ($: VaultTest) => {
       turn = { text: "I wrote the plan [ring \"Jobs\"], in two parts.", files: [], at: Date.now() + 1000, final: true }
       const said = await waitFor(async () => (await says()).includes("Make a landing page: I wrote the plan, in two parts."), 10000, 100)
       check("talk: its turn's words are said by its own name, its tags out of them", !!said, await says())
+      await (await import("../../../plugins/core/companion/chatturns.ts")).tend()
+      const stays = (await api("POST", "ops/companion.status", {}))[1].agents.find((a: Any) => a.name === "Make a landing page")?.state
+      check("talk: the watchdog leaves a talking job's cursor, which never calls next", stays === "watching", stays)
 
       const m = cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "what's in part two?", ...over, voice: true }) as Any
       const next = await waitFor(() => /^Talk: they said this to you by voice[^\n]*what's in part two\?/m.test(told()), 8000, 50)

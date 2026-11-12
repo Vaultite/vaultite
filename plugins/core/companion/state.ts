@@ -363,7 +363,7 @@ export function writingAt(name: string, at: Partial<KeptAgent> | null) {
 }
 export function forget(name: string) {
   const k = key(name)
-  agents.delete(k); life.delete(k); atWork.delete(k); writes.delete(k); wrote.delete(k); asking.delete(k); handed.delete(k)
+  agents.delete(k); life.delete(k); atWork.delete(k); writes.delete(k); wrote.delete(k); asking.delete(k); handed.delete(k); seen.delete(k)
 }
 
 /** A new item's id: short to type, and random so one kept by another machine's server isn't taken. */

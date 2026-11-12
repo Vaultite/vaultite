@@ -20,7 +20,7 @@ import "./next.ts"
 import { plugin } from "./self.ts"
 import type { Note } from "./types.ts"
 import { sayMs, setting, mode, agentSetting, ownName } from "./settings.ts"
-import { moments, nextSeq, notes, said, did, windows, send, key, isMain, placeOf, handOut, agentOf, setAgent, putNote, dropNote, asking, life, forget } from "./state.ts"
+import { moments, nextSeq, notes, said, did, windows, send, key, isMain, placeOf, handOut, agentOf, setAgent, putNote, dropNote, asking, life, forget, seen } from "./state.ts"
 import { keepSaid } from "./comments.ts"
 import { screens, screenDrawing, tours, type ScreenRectLike, displaysOf, stopFlips, ownTour, screenOf, screenFind, lastScreen, toScreens, nearBy } from "./windows.ts"
 import { paneById } from "./windowpanes.ts"
@@ -78,12 +78,12 @@ export const talks = talkOps(plugin, {
   say: async (name, text, m) => {
     did(name, "say", undefined, text)
     keepSaid(putNote({ kind: "say", agent: name, text, ...(m ? placeOf(m) as Partial<Note> : {}), ...(m?.summoned ? { answers: answersOf(m) } : {}) }, sayMs(text)))
-    if (!isMain(name)) asking.delete(key(name))
+    if (!isMain(name)) { asking.delete(key(name)); seen.set(key(name), Date.now()) }
     setAgent(name, {})
   },
   tint: (name, tint) => { agentOf(name).tint = tint },
   show: (name, m) => {
-    if (m) { asking.add(key(name)); life.delete(key(name)); setAgent(name, placeOf(m)) }
+    if (m) { asking.add(key(name)); seen.set(key(name), Date.now()); life.delete(key(name)); setAgent(name, placeOf(m)) }
     else { asking.delete(key(name)); setAgent(name, {}) }
   },
   gone: (name) => {
