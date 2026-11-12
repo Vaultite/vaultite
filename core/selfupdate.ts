@@ -7,7 +7,7 @@ import { gitIn, isAncestor, short } from "./update/git.ts"
 import { fixSpawnHelper } from "./update/npm.ts"
 import type { Update, UpdaterOptions } from "./update/updater.ts"
 import { graphModule } from "./update/graph.ts"
-import { errText } from "./update/updater.ts"
+import { errText, toLog } from "./update/updater.ts"
 
 const exec = promisify(execFile)
 const MINUTE = 60_000
@@ -53,7 +53,7 @@ export function inPlace({ npm: npmIn, ...o }: InPlaceOptions): UpdaterOptions {
       return { failed: `${short(to)} didn't install or build: ${errText(e)}${back}`, cause: e }
     }
     const restart = backendChanged(files)
-    await shadow(o.root, files, restart, o.log ?? console.log)
+    await shadow(o.root, files, restart, o.log ?? toLog)
     return { restart }
   }
   return { ...o, apply, restarts: backendChanged }

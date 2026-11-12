@@ -2,6 +2,7 @@
 // acting on its own (`onItsOwn`: jobs, timers, hooks) writes outside .vaultite/ only where granted (core/grants.ts).
 import { AsyncLocalStorage } from "node:async_hooks"
 import path from "node:path"
+import { type Logger, logger } from "./log.ts"
 
 /** The plugin acting on its own now; null or unset: the user (whoever made the request being answered). */
 const acting = new AsyncLocalStorage<string | null>()
@@ -37,17 +38,17 @@ export const notHereYet = (e: unknown): boolean =>
 
 /** Log a failure: a refused write is a warning (the app asks the user; it isn't the server's error), and so is a file
  *  iCloud hasn't brought down yet (the job runs again), else an error. */
-export function logFailure(where: string, e: unknown) {
-  if (e instanceof WriteRefused || notHereYet(e)) console.warn(`${where} ${(e as Error).message}`)
-  else console.error(where, e)
+export function logFailure(log: Logger, what: string, e: unknown) {
+  if (e instanceof WriteRefused || notHereYet(e)) log.warn(`${what}: ${(e as Error).message}`)
+  else log.error(what, e)
 }
 
 /** Run plugin `id`'s hook on its own: what it throws, now or later (a promise), is logged as `<id>: <what>:`. */
 export function runHook(id: string, what: string, fn: () => unknown) {
   try {
     const out = onItsOwn(id, fn)
-    if (out instanceof Promise) out.catch((e) => logFailure(`${id}: ${what}:`, e))
-  } catch (e) { logFailure(`${id}: ${what}:`, e) }
+    if (out instanceof Promise) out.catch((e) => logFailure(logger(id), what, e))
+  } catch (e) { logFailure(logger(id), what, e) }
 }
 
 /** A vault's side of the gate (Vault sets it up): may `plugin` write `rel`, what to do when it may not, and what to

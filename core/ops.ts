@@ -6,6 +6,9 @@ import type { Readable } from "node:stream"
 import { KNOWN_AGENTS } from "./terminalids.ts"
 import { isHiddenPath, isOutside } from "./fileprops.ts"
 import type { Item, Vault } from "./vault.ts"
+import { logger } from "./log.ts"
+
+const log = logger("ops")
 
 type Any = any
 
@@ -160,7 +163,7 @@ export function didOf(op: Op, given: unknown): OpDid | null {
     const d = op.did(params)
     return d && typeof d.text === "string" && d.text ? d : null
   } catch (e) {
-    console.error(`${op.id}: did:`, e)
+    log.error(`${op.id}'s did failed`, e)
     return null
   }
 }

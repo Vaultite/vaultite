@@ -4,6 +4,9 @@ import type { Plugin } from "./plugins.ts"
 import { enabled } from "./plugins.ts"
 import type { Item, Vault } from "./vault.ts"
 import { isObj } from "./values.ts"
+import { logger } from "./log.ts"
+
+const log = logger("grants")
 
 /** One place a plugin writes on its own: a folder (and what's in it) or one file, and why, said to the user. */
 export type WriteDecl = { folder?: string; file?: string; why: string
@@ -108,7 +111,7 @@ export function refused(vault: Vault, plugins: Plugin[], id: string, rel: string
   const key = `${vault.path}\0${id}\0${w ? keyOf(w) : rel}`
   if (!told.has(key)) {
     told.add(key)
-    console.warn(w ? `write refused: ${id} may not write ${rel} on its own until you allow it (${id}'s settings, Writes on its own)`
+    log.warn(w ? `write refused: ${id} may not write ${rel} on its own until you allow it (${id}'s settings, Writes on its own)`
       : `write refused: ${id} wrote ${rel} on its own, which its manifest's writes doesn't declare`)
   }
   if (!p || !w || (answers(vault)[id] ?? {})[keyOf(w)]) return false
@@ -117,7 +120,7 @@ export function refused(vault: Vault, plugins: Plugin[], id: string, rel: string
     vault.patchConfig(GRANTS, { [id]: { ...cur, [keyOf(w)]: "ask" } })
     return true
   } catch (e) {
-    console.error("grants:", e)
+    log.error("couldn't mark the write as one to ask about", e, { plugin: id })
     return false
   }
 }

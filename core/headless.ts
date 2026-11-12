@@ -5,6 +5,9 @@ import fs from "node:fs"
 import { createRequire } from "node:module"
 import os from "node:os"
 import path from "node:path"
+import { logger } from "./log.ts"
+
+const log = logger("headless")
 
 /** Chrome to drive: VAULTITE_CHROME, Playwright's Chromium (a checkout's), Google Chrome, Linux's Chromium. Not the
  *  installed Chrome first: a headless one left running is what macOS brings forward when it's opened. */
@@ -56,7 +59,7 @@ async function launch(size: { width: number; height: number }, signal: AbortSign
     const gone = browser.exitCode !== null ? Promise.resolve() : new Promise<void>((ok) => browser.once("exit", () => ok()))
     stop()
     await Promise.race([gone, sleep(3000)])
-    try { fs.rmSync(profile, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }) } catch (e) { console.error(`headless: ${profile} stays: ${(e as Error).message}`) }
+    try { fs.rmSync(profile, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }) } catch (e) { log.error(`${profile} stays: ${(e as Error).message}`) }
   }
   signal?.addEventListener("abort", stop, { once: true })
   try {

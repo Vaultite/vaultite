@@ -20,6 +20,9 @@ import { addEntry, entryLine, entryProblem, type NewEntry, timelineKind } from "
 import { guard, notHereYet } from "./writegate.ts"
 import { byGuest, guestRefusal } from "./guests.ts"
 import { cmp, DEVICE_NAME, type Entry, linkKey, fetchFromICloud, iCloud, type Item, ms, newFile, newFileAt, readBytes, readSoon, readText, removeTree, renameFile, sameFile, sortBy, statFrom, stemOf, type Vault, writeAtomic, writeNew, writeText } from "./vault.ts"
+import { logger } from "./log.ts"
+
+const log = logger("files")
 
 const WIKI = () => /\[\[([^[\]\n|#^]+)((?:#[^[\]\n|]*)?)((?:\|[^[\]\n]*)?)\]\]/g
 const SKIP = new Set([".DS_Store", ".git", ".localized"]) // never shown, even with hidden files on
@@ -400,7 +403,7 @@ export async function emptyTrash(vault: Vault, now = Date.now()) {
       }
       const at = m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime() : st.ctimeMs
       if (at > cutoff) continue
-      try { removeTree(abs); gone.push(`.trash/${rel}`); removed = true } catch (e) { console.error("trash:", e) }
+      try { removeTree(abs); gone.push(`.trash/${rel}`); removed = true } catch (e) { log.error("couldn't empty an old file from the trash", e, { file: `.trash/${rel}` }) }
       if (gone.length % 20 === 0) await turn()
     }
     return removed
@@ -530,7 +533,7 @@ function refresh(vault: Vault): Promise<void> {
 
 /** Read the index ahead (the file tree was asked for: a search may follow), off any request. */
 function warmSearch(vault: Vault) {
-  refresh(vault).catch((e) => console.error(`search index: ${(e as Error).message}`))
+  refresh(vault).catch((e) => log.error(`reading the search index ahead failed: ${(e as Error).message}`))
 }
 
 /** A file the index didn't keep, a piece at a time (whole when it fits one), cut at line ends. */

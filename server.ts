@@ -2,6 +2,7 @@
 // its child (VAULTITE_DESKTOP=1, outside files over IPC: core/outside.ts); the web can switch vaults (core/vaults.ts).
 import "./core/winspawn.ts"
 import { errorContext, onServerError, startServerLog } from "./core/serverlog.ts"
+import { logger } from "./core/log.ts"
 import { execFile, spawn } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
@@ -26,6 +27,7 @@ module.enableCompileCache?.()
 // Vault files are read on libuv's threads (core/vault.ts, readSoon): one iCloud holds keeps its thread, so have many.
 process.env.UV_THREADPOOL_SIZE ??= "128"
 startServerLog() // the log's lines dated, its errors heard (plugin.onServerError: the Errors plugin)
+const log = logger("vaultite")
 // A test's server (VAULTITE_PARENT_PID: tools/test/lib.ts testServer) ends with its test however that ended, from a thread
 // of its own: a main thread held (a read that never returns) can't keep it alive.
 if (Number(process.env.VAULTITE_PARENT_PID) > 1) {
@@ -70,14 +72,14 @@ const VAULT_AT = DESKTOP ? VAULT_PATH : vaults.current(VAULT_PATH)
 const { TEST_HEADER, REFUSED_FILE, inTestRun, isOwnVault, keepRefusal, refuseOwnVault } = await import("./core/testrun.ts")
 const { runtimeDir } = await import("./core/runtime.ts")
 const ownVault = refuseOwnVault(VAULT_AT, "a test's server")
-if (ownVault) { console.error(`vaultite: ${ownVault}`); process.exit(1) }
+if (ownVault) { log.error(ownVault); process.exit(1) }
 // (the user's own server: a test run's vau is refused, and kept for that run's end to fail it: tools/test/isolate.ts)
 let refusesTests = !inTestRun() && isOwnVault(VAULT_AT)
 await vaultThere(VAULT_AT)
 let servedBy = claim(VAULT_AT, PORT, DESKTOP)
 if (servedBy && process.platform === "win32" && !(await answers(servedBy.port))) servedBy = reclaim(VAULT_AT, PORT, DESKTOP)
 if (servedBy) {
-  console.error(`vaultite: ${VAULT_AT} is served on this machine already (pid ${servedBy.pid}, port ${servedBy.port}): one server per vault`)
+  log.error(`${VAULT_AT} is served on this machine already (pid ${servedBy.pid}, port ${servedBy.port}): one server per vault`)
   process.exit(1)
 }
 let app: App, vault: Vault, live: LiveType
@@ -87,12 +89,12 @@ const ready = open(VAULT_AT, { timing: starting, watch: (v) => { live = new Live
   watch(live)
   a.scheduler.start()
   keepDownloaded(VAULT_AT, path.join(LOCAL, "icloud.json")) // (a vault in iCloud Drive: so iCloud stops evicting its files)
-  for (const p of vault.problemList()) console.log(`vault: ${p.file}: ${p.problem}`)
-  console.log(`vaultite: vault read, plugins: ${app.plugins.map((p) => p.id).join(", ")}`)
+  for (const p of vault.problemList()) log.info(`${p.file}: ${p.problem}`)
+  log.info(`vault read, plugins: ${app.plugins.map((p) => p.id).join(", ")}`)
   starting.end()
   module.flushCompileCache?.() // written now: a server usually ends by a signal, which doesn't write it
 }, (e) => {
-  console.error(e)
+  log.error("couldn't open the vault", e)
   process.exit(1)
 })
 onServerError((e) => app?.serverError(e)) // (one before the vault is read has nobody to hear it but the log)
@@ -107,7 +109,7 @@ async function vaultThere(p: string) {
     rl.close()
     if (yes) return
   } else if (fs.existsSync(path.dirname(p))) return
-  else console.error(`vaultite: there's no folder ${p} or the folder it would go in (a drive that isn't connected?)`)
+  else log.error(`there's no folder ${p} or the folder it would go in (a drive that isn't connected?)`)
   process.exit(1)
 }
 
@@ -151,7 +153,7 @@ async function switchTo(p: string) {
   })
   refusesTests = !inTestRun() && isOwnVault(p)
   keepDownloaded(p, path.join(LOCAL, "icloud.json"))
-  console.log(`vaultite: now serving ${p}`)
+  log.info(`now serving ${p}`)
 }
 
 // The desktop app's main process: files from outside the vault its window may open.
@@ -178,14 +180,14 @@ let heir: { app: string; until: number } | null = null, lingering: ReturnType<ty
 onHostMessage("desktop:relaunching", (m) => { if (DESKTOP && typeof m.app === "string") heir = { app: m.app, until: Date.now() + RELAUNCH_WAIT_MS } })
 if (DESKTOP) onHost(() => {
   if (lingering) { clearTimeout(lingering); lingering = null }
-  if (heir) { heir = null; bequeath(null); console.log("vaultite: its app is back: taken over") }
+  if (heir) { heir = null; bequeath(null); log.info("its app is back: taken over") }
 }, (how) => {
   if (inDesktop() || going) return
   const relaunch = !!heir && Date.now() < heir.until
   if (!relaunch && how === "ipc") return bye(0)
-  if (relaunch) { bequeath({ app: heir!.app, root: ROOT }); console.log("vaultite: its app is relaunching: waiting for it") }
+  if (relaunch) { bequeath({ app: heir!.app, root: ROOT }); log.info("its app is relaunching: waiting for it") }
   if (lingering) clearTimeout(lingering)
-  lingering = setTimeout(() => { if (!inDesktop()) { console.log("vaultite: no app came back for it: stopping"); bye(0) } }, relaunch ? RELAUNCH_WAIT_MS : SOCKET_WAIT_MS)
+  lingering = setTimeout(() => { if (!inDesktop()) { log.info("no app came back for it: stopping"); bye(0) } }, relaunch ? RELAUNCH_WAIT_MS : SOCKET_WAIT_MS)
 })
 process.on("SIGTERM", () => bye(143))
 process.on("SIGINT", () => bye(130))
@@ -651,7 +653,7 @@ const server = http.createServer(async (req, res) => {
     } else if (!(await served(req, res, url))) await file(req, res, url)
   } catch (e) {
     // (a client gone mid-request, its body cut off: ECONNRESET "aborted", not the server's error)
-    if (!(e instanceof HTTPError) && (e as NodeJS.ErrnoException).code !== "ECONNRESET") console.error(e)
+    if (!(e instanceof HTTPError) && (e as NodeJS.ErrnoException).code !== "ECONNRESET") log.error("a request failed", e)
     if (!res.headersSent) json(res, { error: String((e as Error).message ?? e) }, e instanceof HTTPError ? e.status : 500)
     else res.end()
   }
@@ -713,17 +715,18 @@ server.on("upgrade", async (req: http.IncomingMessage, socket: Duplex, head: Buf
       ws.on("error", (e) => { process.stderr.write(`WS ${url.pathname}: ${(e as Error).message}\n`); ws.terminate() })
       process.stderr.write(`"WS ${url.pathname} HTTP/${req.httpVersion}" 101 -\n`)
       // (a handler that throws, or whose promise fails, ends its socket, not the server)
-      errorContext.run(`WS ${url.pathname}`, () => Promise.resolve().then(() => sock.fn(ws, req, params))).catch((e) => { console.error(`WS ${url.pathname}:`, e); try { ws.close(1011, "error") } catch { ws.terminate() } })
+      errorContext.run(`WS ${url.pathname}`, () => Promise.resolve().then(() => sock.fn(ws, req, params))).catch((e) => { log.error(`WS ${url.pathname}`, e); try { ws.close(1011, "error") } catch { ws.terminate() } })
     })
   } catch (e) {
     if (e instanceof HTTPError) return refuse(socket, e.status, e.message)
-    console.error(e)
+    log.error("a socket's upgrade failed", e)
     refuse(socket, 500, String((e as Error).message ?? e))
   }
 })
 
 server.listen(PORT, HOST, () => {
   starting.mark("listen")
+  // (as it reads: the desktop app and tools/perf wait for "vaultite on http")
   console.log(`vaultite on http://${HOST}:${PORT}  vault=${VAULT_AT}`)
   // (the app that forked it: its stdout is a file, so it's told so)
   if (DESKTOP && process.connected) process.send!({ type: "desktop:listening" })
@@ -751,6 +754,6 @@ if (process.env.VAULTITE_UPDATES && !DESKTOP && fs.existsSync(path.join(ROOT, ".
       const [{ inStore }, { holdRoot }] = await Promise.all([import("./core/update/servicestore.ts"), import("./core/update/lease.ts")])
       void holdRoot(ROOT, "server")
       startUpdater(await inStore({ ...follow, checkout, store, root: ROOT, adoptWeb: (dist) => web.adopt(dist) }))
-    }).catch((e) => console.error("vaultite: updates from the code store didn't start:", e))
+    }).catch((e) => log.error("updates from the code store didn't start", e))
   } else startUpdater((await import("./core/selfupdate.ts")).inPlace({ root: ROOT, ...follow }))
 }

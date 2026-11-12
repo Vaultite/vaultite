@@ -4,6 +4,9 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { buildName, type Stamp, stampIn } from "./buildstamp.ts"
+import { logger } from "./log.ts"
+
+const log = logger("webbuild")
 
 export type WebBuild = { entry: string | null; eager: string[]; stamp: Stamp | null }
 const NONE: WebBuild = { entry: null, eager: [], stamp: null }
@@ -39,7 +42,7 @@ export function webBuilds(first: string, ms = 1000) {
       const b = read()
       if (!b.entry || b.entry === told) return
       told = b.entry
-      for (const f of [...subs]) try { f(b) } catch (e) { console.error(e) }
+      for (const f of [...subs]) try { f(b) } catch (e) { log.error("a listener of the new build failed", e) }
     }, 300)
     settle.unref?.()
   }

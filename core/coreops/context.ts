@@ -8,6 +8,9 @@ import { panelList, showPanels, sidebarsTarget } from "./panels.ts"
 import { onOff, pluginList } from "./plugins.ts"
 import { serverUrl } from "../plugins.ts"
 import { untyped } from "./types.ts"
+import { logger } from "../log.ts"
+
+const log = logger("context")
 
 
 export function contextOps(app: App): Op[] {
@@ -29,7 +32,7 @@ the window shows (and the hidden ones), which plugins are on or off, the appeara
       const workspace = await windowWorkspace(ctx)
       const extra: { data?: Any; text?: string }[] = []
       for (const fn of servicesOn(app, "context")) {
-        try { const r = await fn({ workspace }); if (r) extra.push(r) } catch (e) { console.error(e) }
+        try { const r = await fn({ workspace }); if (r) extra.push(r) } catch (e) { log.error("a plugin's context service failed", e) }
       }
       const target = await sidebarsTarget(app, ctx, {}).catch(() => null)
       const { panels } = panelList(app, target?.setup)

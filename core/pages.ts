@@ -5,6 +5,9 @@ import path from "node:path"
 import { enabled, type Plugin, service } from "./plugins.ts"
 import { readText, statFrom, type Vault, writeNew } from "./vault.ts"
 import { logFailure } from "./writegate.ts"
+import { logger } from "./log.ts"
+
+const log = logger("pages")
 
 /** [plugin id, file name (Today.md), text] for every plugin's pages/*.md, in plugin order. */
 export function templates(plugins: Plugin[]): [string, string, string][] {
@@ -40,7 +43,7 @@ export function writePages(vault: Vault, plugins: Plugin[], ids: Iterable<string
   for (const [id, name, text] of templates(plugins)) {
     if (!want.has(id)) continue
     const at = pageAt(vault, name)
-    try { if (add(vault, at, text)) made.push(at) } catch (e) { logFailure(`${id}'s page ${name}:`, e) }
+    try { if (add(vault, at, text)) made.push(at) } catch (e) { logFailure(log, `${id}'s page ${name}`, e) }
   }
   if (made.length && pin) installed(vault, plugins, made)
   return made
@@ -52,7 +55,7 @@ type Installed = { made: string[] }
 function installed(vault: Vault, plugins: Plugin[], made: string[]) {
   const on = enabled(vault, plugins)
   const fn = service(plugins.filter((p) => on.has(p.id)), "pages:installed")
-  try { fn?.({ made } satisfies Installed) } catch (e) { console.error(e) }
+  try { fn?.({ made } satisfies Installed) } catch (e) { log.error("a plugin's pages:installed service failed", e) }
 }
 
 /** Where the app kept read-only copies of the plugins' pages before they became the user's files. */

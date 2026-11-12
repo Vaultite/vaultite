@@ -5,7 +5,7 @@ import path from "node:path"
 import { promisify } from "node:util"
 import { gitEnv } from "../gitenv.ts"
 import type { Applied, Update, UpdaterOptions } from "./updater.ts"
-import { errText } from "./updater.ts"
+import { errText, toLog } from "./updater.ts"
 import { rootStore, serverRecipe, type Recipe, type RootStore } from "./store.ts"
 import { planUpdate } from "./plan.ts"
 import { graphModule } from "./graph.ts"
@@ -30,7 +30,7 @@ const git = (cwd: string, ...args: string[]) => exec("git", ["-C", cwd, ...args]
 
 /** The updater for a service on its code store: the store's clone followed, a commit prepared, current, and acted on. */
 export async function inStore({ checkout, store: dir, root, adoptWeb, install, recipe, ...o }: StoreServiceOptions): Promise<UpdaterOptions> {
-  const log = o.log ?? ((line: string) => console.log(line))
+  const log = o.log ?? toLog
   const url = await git(checkout, "remote", "get-url", "origin")
   const store: RootStore = rootStore({ dir, url, recipe: recipe ?? serverRecipe(), node: process.execPath, log, ...(install ? { install } : {}) })
   await store.init(checkout)

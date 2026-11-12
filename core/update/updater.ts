@@ -6,6 +6,7 @@ import type { Ci } from "./ci.ts"
 import { githubCi } from "./ci.ts"
 import type { Blocked, Judged, UpdateState, UpdateStatus } from "../contracts/version.ts"
 import type { Relation } from "./git.ts"
+import { logger } from "../log.ts"
 import { capped, changedFiles, commitsNotIn, commitsSince, currentBranch, dirtyFiles, fetchBranch, gitIn, originRepo, pickTarget, relation, short } from "./git.ts"
 
 /** What lasts across restarts. */
@@ -86,7 +87,11 @@ function note(s: UpdateStatus, log: NonNullable<UpdaterOptions["log"]>, error?: 
   const at = [s.running && `runs ${short(s.running)}`, s.origin && `origin/${s.branch} ${short(s.origin)}`, s.next && s.next !== s.origin && `next ${short(s.next)}`].filter(Boolean).join(", ")
   log(`vaultite: updates: ${s.state}, ${s.why}${at ? ` (${at})` : ""}`, error)
 }
-const toConsole = (line: string, error?: unknown) => error === undefined ? console.log(line) : console.error(line, ...(error instanceof Error ? [error] : []))
+export function toLog(line: string, error?: unknown) {
+  const area = /^([^:\s]+): /.exec(line), log = logger(area?.[1] ?? "updates"), message = area ? line.slice(area[0].length) : line
+  if (error === undefined) log.info(message)
+  else log.error(message, error instanceof Error ? error : undefined)
+}
 
 /** One look: fetch, and update when the branch is ahead, CI passed, the tree is clean and nobody's busy. One at a time:
  *  a caller while a look runs gets that look's answer. Never throws. */
@@ -95,7 +100,7 @@ export function checkForUpdate(o: UpdaterOptions): Promise<UpdateStatus> {
 }
 
 async function lookOnce(o: UpdaterOptions): Promise<UpdateStatus> {
-  const git = gitIn(o.root), log = o.log ?? toConsole
+  const git = gitIn(o.root), log = o.log ?? toLog
   let kept: Kept = {}, origin: string | undefined
   try { kept = JSON.parse(fs.readFileSync(o.stateFile, "utf8")) } catch { /* none yet */ }
   const keep = () => { try { fs.mkdirSync(path.dirname(o.stateFile), { recursive: true }); fs.writeFileSync(o.stateFile, JSON.stringify({ last: kept.last, error: kept.error })) } catch { /* shown, not kept */ } }

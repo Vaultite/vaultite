@@ -9,6 +9,9 @@ import { type Item, readSoon, stamp, type Vault, writeAtomic } from "./vault.ts"
 import { trustOf } from "./trust.ts"
 import { keptOf } from "./kept.ts"
 import { isObj, strings as strs } from "./values.ts"
+import { logger } from "./log.ts"
+
+const log = logger("migrations")
 
 const FILE = "migrations"
 
@@ -399,7 +402,7 @@ export async function migrate(v: Vault, fresh: boolean) {
         const left = await s.run(v, done.includes(s.id) ? later[s.id] : undefined)
         if (left?.length) later[s.id] = left
         else delete later[s.id]
-      } catch (e) { console.error(`bringing the vault's settings up to date (${s.id}):`, e); break }
+      } catch (e) { log.error(`bringing the vault's settings up to date (${s.id}) failed`, e); break }
     }
     if (!done.includes(s.id)) done = [...done, s.id]
   }
@@ -419,7 +422,7 @@ export async function migrateMoved(app: Installer) {
   for (const [id, source] of Object.entries(MOVED)) {
     if (done.includes(movedStep(id)) || app.has(id)) continue
     if (enabled.includes(id) && !disabled.includes(id) && !fs.existsSync(app.vault.abs(`.vaultite/plugins/${id}/manifest.json`))) {
-      try { await app.install(source) } catch (e) { console.error(`installing ${id}, which moved out of the app, from ${source}:`, e); continue }
+      try { await app.install(source) } catch (e) { log.error(`installing ${id}, which moved out of the app, from ${source} failed`, e); continue }
     }
     ran.push(movedStep(id))
   }

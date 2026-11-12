@@ -47,6 +47,9 @@ import { API_VERSION, APP_VERSION } from "./version.ts"
 import { ConfigError, ConflictError, type Item, type Kind, NotFound, publicOf, requestWriter, Vault, type Writer } from "./vault.ts"
 import { strings } from "./values.ts"
 import { keepReads } from "./fmcache.ts"
+import { logger } from "./log.ts"
+
+const log = logger("app")
 
 /** How many recent states the server keeps as pieces (a device that last loaded before them gets the whole state).
  *  Pieces that stayed the same are shared, so each one past the first costs little more than what changed. */
@@ -234,7 +237,7 @@ export class App {
           const u = l.history!.at(-1)!
           await this.tellUpdated([{ id: vp.id, name: typeof vp.manifest.name === "string" ? vp.manifest.name : vp.id, to: l.version, notes: u.to === l.version ? u.notes : [] }])
         } catch (e) {
-          console.error(`plugin updates: ${vp.id} couldn't be checked against its source:`, (e as Error).message)
+          log.error(`plugin updates: ${vp.id} couldn't be checked against its source: ${(e as Error).message}`)
         } finally {
           f?.done()
           vps.adopting.delete(vp.id)
@@ -486,10 +489,10 @@ export class App {
     const ends: ((end: RequestEnd) => void)[] = []
     for (const p of this.on()) {
       for (const fn of p.requestFns) {
-        try { const end = fn(start); if (end) ends.push(end) } catch (e) { console.error(e) }
+        try { const end = fn(start); if (end) ends.push(end) } catch (e) { log.error("a plugin's request hook failed", e) }
       }
     }
-    return (end) => { for (const fn of ends) { try { fn(end) } catch (e) { console.error(e) } } }
+    return (end) => { for (const fn of ends) { try { fn(end) } catch (e) { log.error("a plugin's request-end hook failed", e) } } }
   }
 
   /** The server logged an error (core/serverlog.ts): plugins that record them (plugin.onServerError) hear it. */
@@ -514,7 +517,7 @@ export class App {
       return asReply(await fn(req))
     } catch (e) {
       if (e instanceof HTTPError) return reply(e.status, new Text(e.message, "text/plain; charset=utf-8"))
-      console.error(e)
+      log.error(`a plugin's ${prefix} route failed`, e, { path: rest })
       return reply(500, new Text(String((e as Error).message ?? e), "text/plain; charset=utf-8"))
     }
   }
@@ -557,7 +560,7 @@ export class App {
       const via = <T>(fn: () => T) => (http && CONNECT_HEADER in http.headers ? overConnect(fn) : fn())
       return http ? await via(() => as(() => requestWriter.run(writer, go))) : await go()
     } catch (e) {
-      console.error(e)
+      log.error("a request failed", e)
       return reply(500, { error: String((e as Error).message ?? e) })
     }
   }
@@ -727,7 +730,7 @@ export class App {
         return await fn({ op: op.id, kind: op.kind, plugin, params: ps, who, ctx }, next)
       } catch (e) {
         if (called || e instanceof OpError) throw e
-        console.error(`${by}: around ${op.id}:`, e)
+        log.error(`${by}'s hook around ${op.id} failed`, e)
         return await next()
       }
     }
@@ -790,7 +793,7 @@ export class App {
         return await this.holding.run(token, async () => {
           if (!trusting || !this.vault.vouched()) await this.vault.sync() // (the app's writes trust the watcher: Vault.synced)
           this.pagesOf = this.onKey()
-          try { return await fn() } finally { await this.loadPlugins().then(() => this.followPlugins(), (e) => console.error("plugins:", e)) }
+          try { return await fn() } finally { await this.loadPlugins().then(() => this.followPlugins(), (e) => log.error("loading the plugins failed", e)) }
         })
       } finally {
         token.on = false
@@ -1018,10 +1021,10 @@ export async function open(vaultPath: string, { start = true, timing, watch }: {
     app.vault.startTexts = null
     kept?.done()
     timing?.mark("vault read")
-    if (fresh) await setUpNew(app.host()).catch((e) => console.error("setting up the new vault:", e))
+    if (fresh) await setUpNew(app.host()).catch((e) => log.error("setting up the new vault failed", e))
     // (in the background: it waits on the network)
     app.moving = migrateMoved({ vault: app.vault, has: (id) => app.app.some((p) => p.id === id),
-      install: (source) => installFrom(app, source, null, { moved: true }) }).catch((e) => console.error("installing the plugins that moved out of the app:", e))
+      install: (source) => installFrom(app, source, null, { moved: true }) }).catch((e) => log.error("installing the plugins that moved out of the app failed", e))
   }
   return app
 }

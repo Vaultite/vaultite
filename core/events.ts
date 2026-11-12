@@ -3,6 +3,9 @@
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { defineOp, type Op } from "./ops.ts"
 import type { Vault } from "./vault.ts"
+import { logger } from "./log.ts"
+
+const log = logger("events")
 
 export type VaultEvent = { type: string; seq: number; t: number; cursor: string; [k: string]: unknown }
 export type EventFilter = { types?: string[]; path?: string }
@@ -67,7 +70,7 @@ export class Events {
     for (const l of [...this.listeners]) {
       const seen = matching(ev, l.filter)
       if (!seen) continue
-      try { l.fn(seen) } catch (e) { console.error(`events: a listener of ${type} failed:`, e) }
+      try { l.fn(seen) } catch (e) { log.error(`a listener of ${type} failed`, e) }
     }
     return ev
   }

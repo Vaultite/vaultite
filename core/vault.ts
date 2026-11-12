@@ -19,6 +19,9 @@ import { errorContext } from "./serverlog.ts"
 import { noteRead, noteSource } from "./sources.ts"
 import { strings } from "./values.ts"
 import { guard, setGate, watching, written } from "./writegate.ts"
+import { logger } from "./log.ts"
+
+const log = logger("vault")
 // A file's tags (frontmatter `tags` and inline #tags) and whether a list has one (nested ones too), for plugins.
 export { extract, hasTag, tagName, tagsOf } from "./sections.ts"
 // A file's type (its kind's, else its frontmatter's), whether it's archived (`archived: true`) and archive folders:
@@ -314,7 +317,7 @@ export function fetchFromICloud(p: string, e: unknown) {
   // A file moved or archived meanwhile (an inbox item marked done) has nothing left to fetch: not an error.
   iCloud.download(p, (err) => {
     // (a warning: the next read asks again, a minute on)
-    if (err && fs.existsSync(p)) console.warn(`couldn't ask iCloud for ${p}: ${err.message}`)
+    if (err && fs.existsSync(p)) log.warn(`couldn't ask iCloud for ${p}: ${err.message}`)
   })
 }
 
@@ -329,14 +332,14 @@ export function keepDownloaded(vault: string, done: string) {
   try { const d = JSON.parse(fs.readFileSync(done, "utf8")).keptDownloaded; if (Array.isArray(d)) kept = d } catch { /* none yet */ }
   if (kept.includes(real)) return
   const mark = () => {
-    try { writeAtomic(done, JSON.stringify({ keptDownloaded: [...kept, real] }, null, 2) + "\n") } catch (e) { console.warn(`keep downloaded: ${(e as Error).message}`) }
+    try { writeAtomic(done, JSON.stringify({ keptDownloaded: [...kept, real] }, null, 2) + "\n") } catch (e) { log.warn(`couldn't note it's kept downloaded: ${(e as Error).message}`) }
   }
   // (the xattr Finder's Keep Downloaded sets; `xattr -d` with that name, or Finder, undoes it)
   execFile("/usr/bin/xattr", ["-p", PINNED, real], (no) => {
     if (!no) return mark()
     execFile("/usr/bin/xattr", ["-w", PINNED, "1", real], (err) => {
-      if (err) return console.warn(`couldn't keep ${real} downloaded: ${err.message}`)
-      console.log(`vault: iCloud keeps ${real} downloaded on this Mac (Keep Downloaded; Finder turns it off)`)
+      if (err) return log.warn(`couldn't keep ${real} downloaded: ${err.message}`)
+      log.info(`iCloud keeps ${real} downloaded on this Mac (Keep Downloaded; Finder turns it off)`)
       mark()
     })
   })
@@ -735,7 +738,7 @@ export class Vault {
   /** Whether this machine writes what plugins generate and runs the jobs (core/app.ts: the sync hub, else Machines' first). */
   writerHere = true
   /** Told of each write the gate refused (core/writegate.ts): the App logs it and asks the user. */
-  writeRefused: (plugin: string, rel: string) => void = (plugin, rel) => console.error(`write refused: ${plugin} may not write ${rel} on its own`)
+  writeRefused: (plugin: string, rel: string) => void = (plugin, rel) => log.error(`write refused: ${plugin} may not write ${rel} on its own`)
 
   constructor(p: string) {
     this.path = p
@@ -748,7 +751,7 @@ export class Vault {
     // (one turn that never ends wedges every request: it's at least said in the log, with what holds it)
     const watched = async () => {
       const t0 = Date.now(), by = errorContext.getStore() ?? "the server's own work"
-      const dog = setInterval(() => console.error(`vault: held ${Math.round((Date.now() - t0) / 1000)} s by ${by}`), HELD_LONG)
+      const dog = setInterval(() => log.error(`held ${Math.round((Date.now() - t0) / 1000)} s by ${by}`), HELD_LONG)
       dog.unref()
       try { return await fn() } finally { clearInterval(dog) }
     }
@@ -870,7 +873,7 @@ export class Vault {
     }
     if (changed) this.version++
     for (const fn of this.hooks) {
-      try { fn(this) } catch (e) { console.error(e) }
+      try { fn(this) } catch (e) { log.error("a plugin's after-sync hook failed", e) }
     }
     return changed
   }
@@ -892,7 +895,7 @@ export class Vault {
     if (drained && this.untold && !this.next) return this.drain().then((ok) => (ok ? false : this.synced()))
     if (trusting && !this.next && this.vouched(Infinity)) {
       // (a moment later: the answer goes out first)
-      this.rewalk ??= setTimeout(() => { this.rewalk = null; this.synced().catch((e) => console.error(e)) }, 100)
+      this.rewalk ??= setTimeout(() => { this.rewalk = null; this.synced().catch((e) => log.error("the walk after a trusted read failed", e)) }, 100)
       return Promise.resolve(false)
     }
     return this.next ??= turn().then(() => this.lock(() => {
@@ -977,7 +980,7 @@ export class Vault {
   }
   moved(from: string, to: string | null, trashed?: string) {
     for (const fn of this.movers) {
-      try { fn(from, to, trashed) } catch (e) { console.error(e) }
+      try { fn(from, to, trashed) } catch (e) { log.error("a plugin's move hook failed", e) }
     }
   }
 
@@ -1133,7 +1136,7 @@ export class Vault {
   /** Where the onArchive hooks move a file being archived (or not), or null. */
   private placed(rel: string, archived: boolean): string | null {
     for (const fn of this.on(this.placers)) {
-      try { const to = fn(rel, archived); if (typeof to === "string") return to } catch (e) { console.error(e) }
+      try { const to = fn(rel, archived); if (typeof to === "string") return to } catch (e) { log.error("a plugin's archive hook failed", e) }
     }
     return null
   }
@@ -1151,7 +1154,7 @@ export class Vault {
     for (const fn of this.on(this.creators)) {
       try {
         for (const [k, v] of Object.entries(fn(rel, fm, who) ?? {})) if (!(k in fm) && !(k in out) && !blank(v)) out[k] = v
-      } catch (e) { console.error(e) }
+      } catch (e) { log.error("a plugin's create hook failed", e) }
     }
     return out
   }
@@ -1178,7 +1181,7 @@ export class Vault {
     const fns = this.on(this.writers)
     if (!fns.length) return null
     return (before, after) => {
-      for (const fn of fns) try { fn(rel, before, after, who) } catch (e) { console.error(e) }
+      for (const fn of fns) try { fn(rel, before, after, who) } catch (e) { log.error("a plugin's write hook failed", e) }
     }
   }
 
@@ -1203,7 +1206,7 @@ export class Vault {
     for (const fn of this.on(this.savers)) {
       try {
         for (const [k, v] of Object.entries(fn(rel, now, before, who) ?? {})) if (!(k in set) && !blank(v) && norm(v) !== norm(now.fm[k])) set[k] = v
-      } catch (e) { console.error(e) }
+      } catch (e) { log.error("a plugin's save hook failed", e) }
     }
     return withKeys(text, m, now.fm, set)
   }
@@ -1219,7 +1222,7 @@ export class Vault {
     if (rel.toLowerCase().endsWith(".md")) return
     const who = requestWriter.getStore() ?? null
     for (const fn of this.on(this.fileCreators)) {
-      try { fn(rel, file, who) } catch (e) { console.error(e) }
+      try { fn(rel, file, who) } catch (e) { log.error("a plugin's new-file hook failed", e) }
     }
   }
 
@@ -1448,7 +1451,7 @@ export class Vault {
     try {
       const plain = this.plain().map((d) => d.replace(/^\/+|\/+$/g, "")).filter(Boolean)
       if (plain.join("\n") !== this.plainDirs.join("\n")) this.plainDirs = plain
-    } catch (e) { console.error(e) }
+    } catch (e) { log.error("couldn't ask which folders hold patterns", e) }
     const found = this.scan()
     // A file that couldn't be read is tried again every time (iCloud may have been downloading it); one that didn't
     // change, when its kind would now be another: asked only when kinds or settings changed, not at every sync.
@@ -1509,7 +1512,7 @@ export class Vault {
     changed = changed.filter((r) => !unchanged.has(r))
     if (changed.length || gone.length) this.version++
     for (const fn of this.hooks) {
-      try { fn(this) } catch (e) { console.error(e) } // a plugin's hook must never break reading the vault
+      try { fn(this) } catch (e) { log.error("a plugin's after-sync hook failed", e) }
     }
     return !!(changed.length || gone.length)
   }
@@ -1548,7 +1551,7 @@ export class Vault {
     } catch (ex) { // a plugin bug must not take the whole vault down
       item = null
       problems = [`${kind.plugin ?? "plugin"} couldn't read this file: ${(ex as Error).message}`]
-      console.error(ex)
+      log.error(`${kind.plugin ?? "a plugin"} couldn't read a file`, ex, { file: rel })
     }
     if (item !== null) {
       item.modified = stamp(new Date(Number(st.ns / 1000000n)))
@@ -1674,7 +1677,7 @@ export class Vault {
     } catch (ex) {
       const now = this.entries.get(rel)
       if (now) now.problems = [...now.problems, `${kind.plugin ?? "plugin"} couldn't fill in this file: ${(ex as Error).message}`]
-      console.error(ex)
+      log.error(`${kind.plugin ?? "a plugin"} couldn't fill in a file`, ex, { file: rel })
     }
   }
 
@@ -1845,7 +1848,7 @@ export class Vault {
   configWithDefaults(name: string): Item {
     if (this.seeds?.version !== this.settingsVersion) {
       let all: Record<string, Item> = {}
-      try { all = this.defaults() } catch (e) { console.error(e) }
+      try { all = this.defaults() } catch (e) { log.error("couldn't gather the plugins' setting defaults", e) }
       this.seeds = { version: this.settingsVersion, all }
     }
     return { ...this.seeds.all[name], ...this.config(name) }

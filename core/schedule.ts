@@ -5,6 +5,9 @@ import { defineOp, type Op, OpError } from "./ops.ts"
 import { writeAtomic } from "./vault.ts"
 import { errorContext } from "./serverlog.ts"
 import { logFailure, onItsOwn } from "./writegate.ts"
+import { logger } from "./log.ts"
+
+const log = logger("schedule")
 
 type Item = Record<string, any>
 
@@ -85,9 +88,9 @@ export class Scheduler {
   }
 
   start() {
-    this.timer ??= setInterval(() => void this.tick().catch((e) => console.error("schedule:", e)), TICK)
+    this.timer ??= setInterval(() => void this.tick().catch((e) => log.error("its tick failed", e)), TICK)
     this.timer.unref()
-    setTimeout(() => void this.tick().catch((e) => console.error("schedule:", e)), 5000).unref()
+    setTimeout(() => void this.tick().catch((e) => log.error("its tick failed", e)), 5000).unref()
   }
 
   stop() {
@@ -122,7 +125,7 @@ export class Scheduler {
       await errorContext.run(`job ${key}`, () => onItsOwn(plugin, () => job.run()))
     } catch (e) {
       error = String((e as Error)?.message ?? e).slice(0, 500)
-      logFailure(`schedule ${key}:`, e) // (a write the user hasn't allowed yet is a warning: the app asks them)
+      logFailure(log, key, e)
     } finally {
       this.running.delete(key)
     }
@@ -139,7 +142,7 @@ export class Scheduler {
       writeAtomic(this.file, json)
       this.saved = json
     } catch (e) {
-      console.error("schedule: couldn't keep its last runs:", e)
+      log.error("couldn't keep its last runs", e)
     }
   }
 

@@ -6,6 +6,9 @@ import path from "node:path"
 import { LOCAL } from "./plugins.ts"
 import { writeAtomic } from "./vault.ts"
 import { readBefore } from "./yaml.ts"
+import { logger } from "./log.ts"
+
+const log = logger("fmcache")
 
 const fileFor = (vault: string, what: string) => path.join(LOCAL, "cache", `${what}-${crypto.createHash("sha1").update(path.resolve(vault)).digest("hex").slice(0, 12)}.json`)
 
@@ -41,5 +44,5 @@ function keepHeaders(file: string) {
 }
 
 function write(file: string, value: unknown) {
-  try { writeAtomic(file, JSON.stringify(value)) } catch (e) { console.error("keeping the start's reads:", e) }
+  try { writeAtomic(file, JSON.stringify(value)) } catch (e) { log.error("keeping the start's reads failed", e) }
 }

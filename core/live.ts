@@ -9,6 +9,9 @@ import type { WebSocket } from "ws"
 import type { Vault } from "./vault.ts"
 import { type TreeWatcher, watchTree } from "./treewatch.ts"
 import { keptOf } from "./kept.ts"
+import { logger } from "./log.ts"
+
+const log = logger("live")
 
 const QUIET = 20, GAP = 100, PING = 25_000, RECENT = 500, UI_ANSWER_MS = 3000, ASK_MS = 10_000
 /** What a window answers (drive's asks: palette commands, dev tools, ui.choose, secret.ask, plugins' "<id>:<name>"),
@@ -114,7 +117,7 @@ export class Live {
   private restart(e: unknown) {
     // Out of inotify watches (Linux): said once, how to have more, then tried again now and then, not every 5 s.
     const full = (e as NodeJS.ErrnoException).code === "ENOSPC"
-    if (!full || !this.full) console.error(`live: watching the vault failed (${(e as Error).message ?? e}); trying again in ${full ? "a minute" : "5 s"}` +
+    if (!full || !this.full) log.error(`watching the vault failed (${(e as Error).message ?? e}); trying again in ${full ? "a minute" : "5 s"}` +
       (full ? ". Linux ran out of inotify watches: raise them with `sudo sysctl fs.inotify.max_user_watches=524288` (and in /etc/sysctl.d/)" : ""))
     this.full ||= full
     if (this.watcher) { this.watcher.close(); this.vault.watching(false) }
@@ -166,7 +169,7 @@ export class Live {
     try {
       await this.vault.hear(paths) // (notes edited on disk read again on their own, else a walk)
     } catch (e) {
-      console.error(e)
+      log.error("hearing the vault's changes failed", e)
     } finally {
       this.flushing = false
     }
@@ -185,7 +188,7 @@ export class Live {
     if (this.again || this.closed) return
     this.again = setTimeout(async () => {
       this.again = null
-      try { await this.vault.lock(() => this.vault.sync()) } catch (e) { console.error(e) }
+      try { await this.vault.lock(() => this.vault.sync()) } catch (e) { log.error("syncing the vault failed", e) }
       if (this.v !== this.sent) this.emit(null)
       if (this.vault.waiting()) this.recheck(delay < 4000 ? delay + 1000 : Math.min(delay * 2, 60000))
     }, delay)
