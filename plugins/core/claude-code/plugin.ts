@@ -17,6 +17,7 @@ import { type EditSpan, editSpans } from "./edits.ts"
 import { dialogOn } from "./dialog.ts"
 import { SAMPLE_DIR, sample } from "./sample.ts"
 import { teleports } from "./teleport.ts"
+import { cloudSessions } from "./cloud.ts"
 import { FAMILIES, modelId, modelName, notAModel } from "./models.ts"
 import { memoryLines, unsaid } from "./memory.ts"
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
@@ -942,6 +943,15 @@ const chat = chats(plugin, {
   },
 })
 plugin.exports.chat = chat.api
+
+// Cloud jobs: sessions started, told and read by Claude Code itself in the account asked for (none in a test run).
+cloudSessions(plugin, { accounts, bin: () => (process.env.VAULTITE_TEST === "1" ? null : findBin("claude")), trust: (a, dir) => trustClaudeProject(accountJson(a), dir),
+  envOf: (a) => {
+    const env: NodeJS.ProcessEnv = { ...process.env }
+    if (a.dir === path.join(HOME, ".claude")) delete env.CLAUDE_CONFIG_DIR
+    else env.CLAUDE_CONFIG_DIR = a.dir
+    return env
+  } })
 
 // A cloud session continued here: its account by its organization, its repository's checkout among every account's projects.
 teleports(plugin, { accounts, json: accountJson, roots: async () => {

@@ -74,6 +74,8 @@ is its point.
   saying why not: still waiting (run it again), CI red on it (fix forward), its checkout blocked (say so). That one
   command is the check: don't watch CI, as a queued run is dropped when newer pushes arrive and may never finish.
   `vau update` there looks now instead of at its next 3-minute look.
+- A cloud session (Claude Code on the web, a cloud job) sets itself up at its start: `tools/cloud-setup.sh`
+  (`.claude/settings.json`'s hook) installs CI's Node, runs `npm ci` and points QA at the VM's Chrome.
 - Try a branch in the desktop app: `npm run app:dev` in its worktree (Vaultite Dev beside Main, its windows behind until
   you switch to it; it follows the worktree's changes). An agent: `npm run app:dev -- --headless` (quiet, its pid,
   debug port and server printed), then `npm run app:dev -- --stop`.

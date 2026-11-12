@@ -221,6 +221,28 @@ export default async ($: VaultTest) => {
     check("placement: a repo's rules (.vaultite-jobs.json) say what its work needs by its words; bad ones are left out",
       rules.length === 2 && P.rulesNeed(rules, "Fix the Swift helper's crash").join() === "macos,desktop,vault" && P.rulesNeed(rules, "Fix the sidebar").join() === "vault" &&
       P.rulesIn("not json").length === 0, rules)
+    {
+      // The cloud: a session per job, no cap; after the always-on machines with room, before this one; only work needing nothing local.
+      const cloud: Any = { id: "cloud", label: "Cloud", self: false, online: true, standalone: false, cloud: true, platform: "linux", vault: false, display: false, app: false, agents: ["claude"], accounts: ["personal"] }
+      const all = [...ms, cloud], set = { has: [], repo: "lighthouse/site", cloud: true }
+      check("placement: auto is the always-on machines, then the cloud, then this one; cloud names it in a list",
+        P.orderOf("auto", all).ids.join() === "box,m1,pc,cloud,lap" && P.orderOf("cloud, m1", all).ids.join() === "cloud,m1,lap")
+      const full = all.map((m) => (m.standalone ? { ...m, jobs: 4 } : m))
+      check("placement: the cloud after the always-on machines with room, before this one and before a full one; why says it",
+        ids(P.place(all, set, "auto")) === "box,m1,pc,cloud,lap" && ids(P.place(full, set, "auto")) === "cloud,lap,box,m1,pc" &&
+        /^a cloud session of its own/.test(P.place(full, set, "auto").ranked[0].why) && ids(P.place(ms, coding, "auto")) === "box,m1,pc,lap", P.place(full, set, "auto").ranked.map((x) => x.why))
+      const why = (n: Any) => P.lacks(cloud, n)
+      check("placement: the cloud takes only work needing nothing of a machine, in a GitHub repo that says it runs there, in its account",
+        why(set) === "" && why({ ...set, has: ["vault"] }) === "can't have this vault" && why({ ...set, has: ["macos", "desktop"] }) === "can't have macOS" &&
+        why({ ...set, repo: "site" }) === "takes only a repo on GitHub" && /isn't set up for lighthouse\/site/.test(why({ ...set, cloud: false })) &&
+        why({ ...set, account: "agent" }) === "has no account agent" && why({ ...set, agent: "codex" }) === "has no codex" && why({ ...set, has: ["linux"] }) === "" &&
+        P.cloudIn('{"cloud": true}') && !P.cloudIn('{"needs": []}') && !P.cloudIn("nope"))
+      const told = J.jobTask("Fix the footer", undefined, { cwd: "/r/site", repo: "site", base: "abc", label: "Cloud", cloud: true }, "j1", { land: true })
+      check("jobs: a cloud job is told it has no vau nor vault, to ask through AskUserQuestion, to land from its branch and end Merged with its hash, never wait for live",
+        /Fix the footer/.test(told) && /no vau/.test(told) && /AskUserQuestion/.test(told) && /from your session's branch[^]*git push origin HEAD:main[^]*Don't wait for it to go live[^]*"Merged:" and its commit's hash on main/.test(told) &&
+        !/worktree|tour-save|vau inbox/.test(told) && !/git push/.test(J.jobTask("Fix it", undefined, { cwd: "/r/site", repo: "site", label: "Cloud", cloud: true }, "j1", { land: false }).replace(/don't push to main/, "")), told)
+      check("jobs: a cloud job's card links its session on claude.ai", J.linkOf({ terminal: "session_01abc", where: { cloud: true, machine: "" } as Any }) === "view:web/https://claude.ai/code/session_01abc")
+    }
     check("where: a preview or an editor's project is a copy the user watches here; a note, a GitHub page or nothing isn't",
       W.watched({ cwd: "/r", why: "", from: "preview" }) && W.watched({ cwd: "/r", why: "", from: "editor" }) && !W.watched({ cwd: "/r", why: "", from: "github" }) && !W.watched({ cwd: "/v", why: "", from: "vault" }))
     check("where: an address another machine serves goes to it", W.machineOfUrl({ url: "https://studio.tail1.ts.net:8450/x" }, { studio: "studio.tail1.ts.net" })?.machine === "studio" &&
@@ -1249,6 +1271,80 @@ setTimeout(draw, 300)
       Object.assign(ms, wasM)
       for (const k of Object.keys(ms)) if (!(k in wasM)) delete ms[k]
       server.close()
+    }
+  }
+  // A cloud job (a fake cloud: claude-code's cloud services): placed there when its repo allows it, all pushed; started
+  // from a checkout here, followed (its question, its landing found on main once fetched), told follow-ups, stopped.
+  if (process.platform !== "win32") {
+    const Wh = await import("../../../plugins/core/companion/where.ts")
+    const cc = app.plugins.find((p) => p.id === "claude-code")!.services, was = { ...cc }
+    const agent = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" } } as unknown as IncomingMessage
+    const asApp = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" } } as unknown as IncomingMessage
+    const dir = path.join(roots[0], "cloudy"), bare = path.join(tmp, "cloudy.git"), gh = "https://github.com/lighthouse/cloudy.git"
+    const c = (cwd: string, ...a: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", ...a], { cwd, stdio: "pipe", env: gitEnv() }).toString()
+    fs.mkdirSync(dir, { recursive: true })
+    c(tmp, "init", "-q", "--bare", bare)
+    // (GitHub's address, fetched from a folder here: its remote says GitHub, its fetch reaches the folder)
+    c(dir, "init", "-q", "-b", "main"); c(dir, "remote", "add", "origin", gh); c(dir, "config", `url.${bare}.insteadOf`, gh)
+    fs.writeFileSync(path.join(dir, ".vaultite-jobs.json"), JSON.stringify({ cloud: true })); c(dir, "add", "."); c(dir, "commit", "-qm", "first"); c(dir, "push", "-q", "origin", "main")
+    const base = c(dir, "rev-parse", "HEAD").trim()
+    const cloud: Any = { started: [], told: [], status: "running", turn: null, reads: [] }
+    cc["agent:claude"] = async () => ({ command: "sleep 60", cwd: null })
+    cc["cloud-ready:claude"] = (account: string) => (account === "personal" ? "" : `no Claude Code account '${account}' here`)
+    cc["cloud-start:claude"] = async (account: string, st: Any) => { cloud.started.push({ account, ...st }); return { session: "session_01cloudy", url: "https://claude.ai/code/session_01cloudy", title: "Footer" } }
+    cc["cloud-tell:claude"] = async (account: string, session: string, text: string) => { cloud.told.push({ account, session, text }); return { submitted: true } }
+    cc["cloud-read:claude"] = async (account: string, ids: string[], turns: string[]) => {
+      cloud.reads.push(account)
+      return { sessions: Object.fromEntries(ids.map((id) => [id, { status: cloud.status, title: "Footer", updated: Date.now() }])), turns: Object.fromEntries(turns.map((id) => [id, cloud.turn])) }
+    }
+    const job = async (id: string) => (await api("POST", "ops/companion.job", { id }))[1]
+    Wh.checkoutsIn(roots)
+    try {
+      await api("PATCH", "config/plugin/companion", { jobs_cloud: "personal", jobs_machine: "cloud", jobs_land: true })
+      fs.writeFileSync(path.join(dir, "local.txt"), "x"); c(dir, "add", "."); c(dir, "commit", "-qm", "local only")
+      let [st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Fix the footer", repo: "cloudy", say: "On it." }, agent))
+      check("cloud: a repo with a commit only here stays here, saying it would be missing in the cloud",
+        st === 200 && !b.where.startsWith("Cloud") && /the cloud: 1 unpushed commit it starts from would be missing in the cloud/.test(b.why) && !cloud.started.length, [st, b])
+      if (b.link) await api("DELETE", `terminals/${String(b.link).split("/").pop()}`).catch(() => {})
+      await asItsTool(() => api("POST", "ops/companion.job-stop", { id: b.id }, agent)).catch(() => {})
+      c(dir, "reset", "-q", "--hard", base)
+      ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Fix the footer", repo: "cloudy", say: "On it." }, agent))
+      const s0 = cloud.started[0]
+      check("cloud: a job its repo lets run in the cloud goes there (jobs_machine names it), started in the cloud account from this checkout's pushed commit, its card linking its session",
+        st === 200 && b.where.startsWith("Cloud, cloudy, Personal") && /all pushed: in the cloud/.test(b.why) && b.link === "view:web/https://claude.ai/code/session_01cloudy" &&
+        s0?.account === "personal" && s0.repo === "lighthouse/cloudy" && s0.branch === "main" && s0.base === base && fs.realpathSync(s0.from) === fs.realpathSync(dir) &&
+        /Fix the footer[^]*no vau[^]*git push origin HEAD:main/.test(s0.prompt) && !/worktree add/.test(s0.prompt), [st, b, s0])
+      const working = await waitFor(async () => { const r = await job(b.id); return r.state === "working" && r }, 10000, 200)
+      check("cloud: its session running, the job is working, read in its account", !!working && cloud.reads.every((a: string) => a === "personal"), working)
+      cloud.status = "requires_action"
+      cloud.turn = { prompt: "Fix the footer", text: "", at: Date.now(), final: false, files: [], asks: [{ question: "Which colour?", choices: ["Blue", "Red"] }] }
+      const asks = await waitFor(async () => { const r = await job(b.id); return r.state === "needs you" && r }, 10000, 200)
+      check("cloud: its question waits on them, with its choices", asks?.waits?.question === "Which colour?" && asks.waits.choices.join() === "Blue,Red", asks)
+      const [sa, ra] = await api("POST", "ops/companion.job-answer", { id: b.id, choice: "Red" }, asApp)
+      check("cloud: their answer goes to its session as its next message", sa === 200 && cloud.told.at(-1)?.text === "Red" && cloud.told.at(-1)?.session === "session_01cloudy", [sa, ra, cloud.told])
+      // (it lands from afar: its commit on GitHub's main, found here once fetched)
+      const other = path.join(tmp, "cloudy-far")
+      c(tmp, "clone", "-q", "-b", "main", bare, other); fs.writeFileSync(path.join(other, "footer.txt"), "red"); c(other, "add", "."); c(other, "commit", "-qm", "fix: footer"); c(other, "push", "-q", "origin", "HEAD:main")
+      const landed = c(other, "rev-parse", "HEAD").trim()
+      cloud.status = "idle"
+      cloud.turn = { prompt: "Red", text: `Merged: ${landed.slice(0, 10)} on main.`, at: Date.now(), final: true, files: ["/home/user/cloudy/footer.txt"] }
+      const done = await waitFor(async () => { const r = await job(b.id); return r.state === "done" && r }, 20000, 300)
+      check("cloud: its turn over saying Merged, its commit found on main once fetched: done", !!done && done.log.at(-1).ev === "landed" && /Merged/.test(done.result?.text ?? ""), done ?? await job(b.id))
+      ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Make it blue after all", job: b.id, ask: false }, agent))
+      check("cloud: a follow-up goes to its session", st === 200 && b.state === "working" && /^Make it blue after all/.test(cloud.told.at(-1)?.text ?? ""), [st, b, cloud.told.at(-1)])
+      cloud.status = "running"
+      await waitFor(async () => (await job(b.id)).state === "working", 5000, 200)
+      const n = cloud.told.length
+      ;[st] = await asItsTool(() => api("POST", "ops/companion.job-stop", { id: b.id }, agent))
+      check("cloud: stopped while it works, its session is told to stop", st === 200 && cloud.told.length === n + 1 && /^Stop here/.test(cloud.told.at(-1).text), cloud.told.slice(n))
+      await api("PATCH", "config/plugin/companion", { jobs_cloud: "nobody" })
+      const [sn, bn] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Fix the header", repo: "cloudy", machine: "cloud", say: "On it." }, agent))
+      check("cloud: asked for while it can't start sessions, refused saying why", sn === 409 && /can't run in the cloud: the cloud can't start sessions: no Claude Code account 'nobody'/.test(bn.error), [sn, bn])
+    } finally {
+      Wh.checkoutsIn()
+      await api("PATCH", "config/plugin/companion", { jobs_cloud: "", jobs_machine: "auto", jobs_land: false })
+      Object.assign(cc, was)
+      for (const k of Object.keys(cc)) if (!(k in was)) delete cc[k]
     }
   }
   fs.rmSync(tmp, { recursive: true, force: true })

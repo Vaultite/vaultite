@@ -226,8 +226,16 @@ export async function githubOf(dir: string) {
   for (const u of [(await run("git", ["remote", "get-url", "origin"], dir)).trim(), ...remotes(dir)]) {
     const m = /github\.com[:/]([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/i.exec(u)
     if (m) return `${m[1]}/${m[2]}`
+    // (an SSH host alias for GitHub, git@work:owner/repo.git: ssh's config says where it goes)
+    const a = /^(?:[\w.-]+@)?([\w.-]+):([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/.exec(u)
+    if (a && await sshHost(a[1]) === "github.com") return `${a[2]}/${a[3]}`
   }
   return ""
+}
+const hosts = new Map<string, Promise<string>>()
+const sshHost = (alias: string) => {
+  if (!hosts.has(alias)) hosts.set(alias, run("ssh", ["-G", alias]).then((out) => /^hostname (\S+)/m.exec(out)?.[1]?.toLowerCase() ?? ""))
+  return hosts.get(alias)!
 }
 /** What of a checkout exists only here, in words: its uncommitted changes and commits on no remote ("" when none). */
 export async function onlyHere(dir: string) {

@@ -1,14 +1,19 @@
-// How a job's home server reaches its worker: starts it, follows it, tells it (landing is a tell), ends it. One kind
-// per way a worker runs: `here` (this server's terminals) and `machine` (another server's, through its companion).
+// How a job's home server reaches its worker: starts, follows, tells (landing is a tell), ends it. One kind per way a
+// worker runs: `here` (this server's terminals), `machine` (another's, via its companion), `cloud` (claude-code's cloud.ts).
+import { execFile } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
-import { type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin } from "../../../core/plugins.ts"
-import { type Marks, picturesIn } from "./jobs.ts"
+import { parseTerminal } from "../../../core/agents.ts"
+import { gitEnv, type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin } from "../../../core/plugins.ts"
+import { commitsIn, type Marks, picturesIn } from "./jobs.ts"
+import { branchOf, githubOf, headOf } from "./where.ts"
 import type { Seen } from "./workers.ts"
 
 /** A worker to start: its agent (claude_personal: in that account), folder and name, its first words or the session
  *  it resumes, how it runs. */
-export type Start = { agent: string; cwd: string; name: string; prompt?: string; session?: string; model?: string; effort?: string; mode?: string }
+export type Start = { agent: string; cwd: string; name: string; prompt?: string; session?: string; model?: string; effort?: string; mode?: string
+  /** The commit it starts from (a cloud session's: pushed). */
+  base?: string }
 /** What reading a worker asks for (the op companion.worker's params): its last turn, its diff since base, its context. */
 export type Read = { turn?: boolean; session?: string; cwd?: string; base?: string; tree?: string; branch?: string; said?: string; context?: boolean; marks?: Marks }
 /** The server a worker tells the user through (its terminal's VAULTITE_HOME), and its machine as that server names it. */
@@ -16,7 +21,7 @@ export type Home = { url: string; as: string }
 
 /** One way home reaches workers. Terminal ids are the worker's own (bare: its machine's). */
 export type Link = {
-  kind: "here" | "machine"
+  kind: "here" | "machine" | "cloud"
   /** A worker started; its terminal's id. */
   start: (ctx: OpCtx, s: Start) => Promise<string>
   /** How it is now, as read where it runs. */
@@ -33,7 +38,9 @@ export type Link = {
 
 const str = (v: unknown) => (typeof v === "string" ? v : "")
 
-export function workerLinks(plugin: Plugin, o: { seenHere: (terminal: string, r: Read) => Promise<Seen> }) {
+export function workerLinks(plugin: Plugin, o: { seenHere: (terminal: string, r: Read) => Promise<Seen>
+  /** Whether its change is on main (and its branch's marks), as workers.ts reads it in a checkout here. */
+  landing: (cwd: string, base: string, text: string, branch: string, kept?: Marks) => Promise<Pick<Seen, "onMain" | "marks">> }) {
   /** Op `id` run on machine `machine` with `body`, its server checking its owner again. */
   async function atMachine(machine: string, id: string, body: object, seconds = 15) {
     const m = await plugin.ask<Machine | null>("machines:machine", null, machine)
@@ -116,9 +123,71 @@ export function workerLinks(plugin: Plugin, o: { seenHere: (terminal: string, r:
     return files.reduce((t, f, i) => t.split(f).join(there[i]), text)
   }
 
+  // ---------- a cloud session: its terminal is its id; started from a checkout here, its change found on main from here
+  const cloudSay = async <T>(name: string, ...args: unknown[]) => {
+    const fn = plugin.service(`cloud-${name}:claude`)
+    if (typeof fn !== "function") throw new OpError("cloud sessions need Claude Code's plugin on", 409)
+    return await fn(...args) as T
+  }
+  const accountOf = (agent: string) => parseTerminal(`${agent}-x`)?.profile || "default"
+  /** When each checkout last fetched its remote (a cloud session pushes from afar: nothing here moves its origin/main). */
+  const fetched = new Map<string, number>()
+  const fetchMain = (cwd: string) => {
+    if (Date.now() - (fetched.get(cwd) ?? 0) < 60_000) return Promise.resolve()
+    fetched.set(cwd, Date.now())
+    return new Promise<void>((ok) => execFile("git", ["fetch", "-q", "--no-tags", "origin"], { cwd, timeout: 60_000, env: gitEnv() }, () => ok()))
+  }
+  type Turn = { prompt: string; text: string; at: number; final: boolean; files: string[]; asks?: { question: string; choices: string[] }[] }
+  type CloudRead = { sessions: Record<string, { status: string; title: string } | null>; turns: Record<string, Turn | null> }
+  function cloudLink(agent: string): Link {
+    const account = accountOf(agent)
+    const link: Link = {
+      kind: "cloud",
+      start: async (_ctx, s) => {
+        const repo = await githubOf(s.cwd)
+        if (!repo) throw new OpError(`${s.cwd} isn't a checkout of a GitHub repo: a cloud session clones from GitHub`, 409)
+        const r = await cloudSay<{ session: string }>("start", account, { repo, branch: await branchOf(s.cwd) || "main", base: s.base || await headOf(s.cwd), from: s.cwd, prompt: s.prompt ?? "" })
+        return r.session
+      },
+      seen: async (session, r) => {
+        const got = await cloudSay<CloudRead>("read", account, [session], r.turn ? [session] : [])
+        const st = got.sessions[session], t = got.turns[session] ?? null
+        // (gone from its list, archived: ended on purpose, what it left read from its transcript)
+        if (!st || st.status === "archived") return { running: false, exit: { code: 0, signal: 1 }, ...(r.turn ? { turn: t } : {}) }
+        const ask = t?.asks?.[0], blocked = st.status === "requires_action"
+        const seen: Seen = { running: true, state: st.status === "failed" ? "error" : blocked ? "blocked" : st.status === "idle" ? "idle" : "working",
+          ...(blocked ? { kind: ask ? "question" : "permission", msg: ask?.question ?? "Waits on you in its session on claude.ai",
+            waits: ask ? { kind: "question" as const, question: ask.question, choices: t!.asks!.length === 1 ? ask.choices : [] } : { kind: "permission" as const, question: "Waits on a permission in its session on claude.ai", choices: [] } } : {}),
+          ...(r.turn ? { turn: t, ...(t?.asks?.length ? { asks: t.asks.map((x) => x.question) } : {}) } : {}) }
+        const said = [t?.text, r.said].filter(Boolean).join("\n")
+        if (r.cwd && r.base && (r.turn || r.said)) {
+          if (commitsIn(said).length) await fetchMain(r.cwd)
+          Object.assign(seen, await o.landing(r.cwd, r.base, said, "", r.marks))
+        }
+        return seen
+      },
+      tell: (_ctx, session, text) => cloudSay("tell", account, session, text),
+      land: (ctx, session, text) => link.tell(ctx, session, text),
+      // (a session can't be stopped from here: one still going is told to stop; at rest, it pauses by itself)
+      end: async (ctx, session) => {
+        const s = await link.seen(session, {}).catch(() => null)
+        if (s?.running && s.state !== "idle") await link.tell(ctx, session, "Stop here: they stopped this job. Do nothing more.").catch(() => {})
+      },
+      carry: async (text) => picturesIn(text).reduce((t, f) => t.split(f).join("(a picture of their screen, on their machine only)"), text),
+      there: (ctx, id, body) => ctx.op(id, body as Record<string, unknown>),
+    }
+    return link
+  }
+  const cloudLinks = new Map<string, Link>()
+
   return {
-    /** The link to a worker placed at `w` (its machine, "" for this one). */
-    of: (w: { machine: string }): Link => (w.machine ? machineLink(w.machine) : here),
+    /** The link to a worker placed at `w` (its machine, "" for this one; the cloud, in its agent's account). */
+    of: (w: { machine: string; cloud?: boolean; agent?: string }): Link => {
+      if (!w.cloud) return w.machine ? machineLink(w.machine) : here
+      const agent = w.agent ?? "claude"
+      if (!cloudLinks.has(agent)) cloudLinks.set(agent, cloudLink(agent))
+      return cloudLinks.get(agent)!
+    },
     atMachine, startHere, running,
   }
 }

@@ -195,7 +195,10 @@ above that), act, run it again, and never end your turn.
   asks, reports and proof reach the user here), the OS or desktop its repo's `.vaultite-jobs.json` asks for (`{"needs":
   [{"when": "swift|notch", "needs": ["macos", "desktop"]}]}`); the one with the most headroom first (load per core, free
   memory, its jobs against its cap, `companion capacity`), then the user's order (the setting `jobs_machine`: auto, the
-  always-on ones, then this one). So does a preview or an editor's project, all pushed, previewed there (its result says
+  always-on ones, then the cloud, then this one). The cloud, once `jobs_cloud` names the Claude Code account that starts
+  it: a session of Claude Code on the web per job (`machine: cloud` asks for it), for a coding job needing nothing of a
+  machine, its GitHub repo's rules file saying `"cloud": true` and all it starts from pushed; its card opens the session,
+  and it reports only through its messages. So does a preview or an editor's project, all pushed, previewed there (its result says
   so). With uncommitted or unpushed changes, or nowhere else to go, it stays where it's served; its `why` says why.
 - Knocks: sessions in the background (terminal agents, jobs, scripts) ask for the user with `companion knock "<line>"`
   (`--urgency low|normal|high`). The helper brings one up by the notch at a pause (never while you speak or they talk),

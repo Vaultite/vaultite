@@ -35,13 +35,15 @@ export const landable = (j: Pick<Job, "state" | "where" | "result" | "land"> & P
   (j.state === "ready for review" || j.state === "done") && !!j.where.repo && !!(j.result?.diff || j.result?.files?.length) && !onMain(j)
 /** What its worker is told when they keep its change: land it from its worktree as its repo says (never merging in the
  *  checkout it was asked over), clean that up, then say how it went in its first word. One line: it's typed in. */
-export function landTask(w: Pick<Where, "cwd" | "tree" | "branch" | "live">) {
+export function landTask(w: Pick<Where, "cwd" | "tree" | "branch" | "live" | "cloud">) {
   return `They watched your change and kept it: merge it now${mergeSteps(w)}`
 }
 /** How a change lands: from its worktree, as its repo's rules say, then cleaned up, said in its last message's first word. */
-function mergeSteps(w: Pick<Where, "cwd" | "tree" | "branch" | "live">) {
+function mergeSteps(w: Pick<Where, "cwd" | "tree" | "branch" | "live" | "cloud">) {
   const rules = "as this repo's own rules say (its CLAUDE.md, AGENTS.md or CONTRIBUTING: the checks to run first, how a branch lands, and whether to push or deploy; a step those rules keep for the user still waits for them)"
-  const end = `Start your last message with "Merged:" and ${w.live && w.tree ? "its commit's hash on main" : "where it landed"}, in a line, or with "Not merged:" and why.`
+  const end = `Start your last message with "Merged:" and ${(w.live && w.tree) || w.cloud ? "its commit's hash on main" : "where it landed"}, in a line, or with "Not merged:" and why.`
+  // (the server that follows it waits for it to go live: a cloud session can't reach it, and needn't)
+  if (w.cloud) return `, from your session's branch, ${rules}: rebase onto origin/main, squash it to one commit and git push origin HEAD:main (or its PR, when the rules land by one). Don't wait for it to go live, whatever its rules say for sessions run by hand (no vau version --wait): Vaultite, which follows this session, waits for that and sends CI's failures on it back to you. ${end}`
   if (!w.tree) return `, ${rules}. ${end}`
   // (the server waits for it to go live, not the worker: that wait held a job's worker ~10 min)
   const taken = " (the server takes main itself, and waits for it to go live: don't wait yourself, whatever its rules say for sessions run by hand (no vau version --wait); it sends CI's failures on it back to you)"
@@ -49,8 +51,9 @@ function mergeSteps(w: Pick<Where, "cwd" | "tree" | "branch" | "live">) {
 }
 /** What its worker is told when CI failed on the commit it landed (`why`: the server's words): fix it forward, landed the
  *  same way, in a worktree made again from main. */
-export function fixTask(w: Pick<Where, "cwd" | "tree" | "branch" | "live">, commit: string, why: string) {
-  const tree = w.tree ? `make your worktree again from main (git -C ${w.cwd} fetch origin, then git -C ${w.cwd} worktree add -B ${w.branch} ${w.tree} origin/main), ` : ""
+export function fixTask(w: Pick<Where, "cwd" | "tree" | "branch" | "live" | "cloud">, commit: string, why: string) {
+  const tree = w.tree ? `make your worktree again from main (git -C ${w.cwd} fetch origin, then git -C ${w.cwd} worktree add -B ${w.branch} ${w.tree} origin/main), `
+    : w.cloud ? "start your branch again from main (git fetch origin, then git checkout -B <your branch> origin/main), " : ""
   return `CI failed on ${commit.slice(0, 12)}, the commit you landed, so it isn't live (${why}). Fix it forward: ${tree}find what failed (gh run list --commit ${commit}, then gh run view <its id> --log-failed), fix it, and land the fix${mergeSteps(w)}`
 }
 /** The commit a worker's "Merged:" names (its first hash after the word), else the first its words name; "" when none. */
@@ -93,6 +96,8 @@ export function landedSaid(text: string): boolean {
 }
 /** A job's terminal as every machine's list names it (`<id>@<machine>` when it runs on another). */
 export const terminalOf = (j: Pick<Job, "terminal" | "where">) => `${j.terminal}${j.where.machine ? `@${j.where.machine}` : ""}`
+/** A cloud session's page on claude.ai, by its id. */
+export const cloudPage = (session: string) => `https://claude.ai/code/${session}`
 
 /** Where a job runs: the machine ("" this one) and its label, the folder and its repo, the account, the harness
  *  (agent id, its name, model, effort), why it went there, the commit a review's diff counts from, the preview asked over. */
@@ -108,7 +113,9 @@ export type Where = { machine: string; label: string; cwd: string; repo: string;
   /** It lands its own change once its checks pass (jobs_land, when it started): never ready for review before it says how that went. */
   lands?: boolean
   /** It edits the checkout serving the preview they asked over (inPlace): they watch it reload, so no worktree. */
-  watched?: boolean }
+  watched?: boolean
+  /** It runs in a cloud session (Claude Code on the web) started from `cwd`, here: its terminal is that session's id. */
+  cloud?: boolean }
 /** What a turn ended with: its last message, the files it changed, the diff since `base` (one line), a PR, a link to try. */
 export type Result = { text?: string; files?: string[]; diff?: string; pr?: string; link?: string }
 export type Transition = { t: number; ev: JobEvent; from: JobState; to: JobState }
@@ -217,7 +224,7 @@ export function resumeOf(j: Pick<Job, "session" | "where">) {
   const [name, profile] = j.where.agent.split("_")
   return j.session && parseTerminal(`${j.where.agent}-x`) ? resumeTerminalId(name, j.session, profile) : ""
 }
-export const linkOf = (j: Pick<Job, "terminal" | "where">) => `view:terminal/${j.terminal}${j.where.machine ? `@${j.where.machine}` : ""}`
+export const linkOf = (j: Pick<Job, "terminal" | "where">) => (j.where.cloud ? `view:web/${cloudPage(j.terminal)}` : `view:terminal/${j.terminal}${j.where.machine ? `@${j.where.machine}` : ""}`)
 const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s)
 const base = (p: string) => p.replace(/\/+$/, "").split("/").pop() || p
 /** Where, in a few words: "M4, personal-website, Personal, Claude Code". */
@@ -364,8 +371,9 @@ export function proofTask(id: string, video = true) {
 export const WRITING = `What you write for them (a report, a proposal, a note): plain, short sentences anyone could follow, each thing called by its full name, no clipped shorthand. Anything about a UI (a proposal, its options, an explanation of how something looks or moves) shows it rather than tells it: each option as a real, high-fidelity picture, a screenshot of a quick prototype of it running on your own copy or a polished HTML mockup in the vault (one element per option), made into PNGs with vau html picture and embedded in the note (![[...png]]) with a line under each saying what it is. Never ASCII art or a layout described in words. Look at each picture before you show it.`
 /** What a worker is told: the task, the ask it came from, where to work (a coding job: its own worktree), how to end
  *  (theirs to review, or `land`: merged by itself once its checks pass; nothing else outward unasked), its proof (`proof`). */
-export function jobTask(task: string, m: Moment | undefined, w?: Pick<Where, "cwd" | "repo" | "base" | "tree" | "branch" | "live" | "label" | "moved" | "carried" | "preview" | "watched">, id?: string,
+export function jobTask(task: string, m: Moment | undefined, w?: Pick<Where, "cwd" | "repo" | "base" | "tree" | "branch" | "live" | "label" | "moved" | "carried" | "preview" | "watched" | "cloud">, id?: string,
   o: { land?: boolean; proof?: ProofMode } = {}) {
+  if (w?.cloud) return cloudTask(task, m, w, o.land)
   const asked = askLines(m), coding = !!w?.repo, watching = coding && !!w.watched, lands = coding && !watching && !!o.land && !!w.tree
   const proof = o.proof ?? "auto", video = proof === "always" || !lands
   return [task.trim(), asked.length ? `The user asked for this through their companion in Vaultite:\n${asked.join("\n")}` : "",
@@ -376,6 +384,17 @@ export function jobTask(task: string, m: Moment | undefined, w?: Pick<Where, "cw
     watching ? "" : WRITING,
     // (they watched it change: no demo to record)
     id && !watching && proof !== "never" ? proofTask(id, video) : ""]
+    .filter(Boolean).join("\n\n")
+}
+
+/** What a job in a cloud session is told: no vau, vault or proof there (Vaultite follows the session from their machine:
+ *  its words are its report, its result the commit on main), and how it ends. */
+function cloudTask(task: string, m: Moment | undefined, w: Pick<Where, "cwd" | "tree" | "branch" | "live" | "cloud">, land?: boolean) {
+  const asked = askLines(m)
+  return [task.trim(), asked.length ? `The user asked for this through their companion in Vaultite:\n${asked.join("\n")}` : "",
+    "You're a job they handed off, run in a cloud session of Claude Code: Vaultite follows this session from their machine and tells them how it goes. You have no vau and no way into their vault or their screen: what you'd tell them goes in your messages, and a choice only they can make goes to AskUserQuestion (they answer it from Vaultite), only on a real tradeoff. Pictures or files their words name stay on their machine. Before your checks, set up as this repo's rules say for a cloud session.",
+    land ? `They want it done, not asked about. Once your checks pass, land it yourself${mergeSteps(w)} Nothing else outward (posts, messages, a publish) unless they say so. End with a few lines: what you did, the files you changed, and where it landed.`
+      : "Change the code freely and commit it on your session's branch, but don't push to main, merge, deploy, publish, post or message anyone unless they say so: it ends in their review (their Keep and merge lands it). End with a few lines: what you found or did, the files you changed, and how to try it."]
     .filter(Boolean).join("\n\n")
 }
 

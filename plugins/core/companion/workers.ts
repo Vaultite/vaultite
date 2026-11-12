@@ -12,7 +12,7 @@ import { requestWriter } from "../../../core/vault.ts"
 import type { Moment } from "./plugin.ts"
 import { branchOf, checkoutNamed, checkoutNames, type Found, githubOf, headOf, machineOfUrl, onlyHere, type Over, refusal, repoOf, resolveHere, checkoutsLine, rootsLine, sitesIn, surfaceOf, tilde, unpushed, urlsIn, watched } from "./where.ts"
 import { type Home, type Read, workerLinks } from "./links.ts"
-import { capOf, lacks, type Needs, place, type Ranked, type RepoRule, rulesIn, rulesNeed, RULES_FILE, type Traits } from "./placement.ts"
+import { capOf, CLOUD, cloudIn, lacks, type Needs, place, type Ranked, type RepoRule, rulesIn, rulesNeed, RULES_FILE, type Traits } from "./placement.ts"
 
 /** What the plugin gives the jobs: the ask a handoff came from, whose a call is, its say, its action log, who an `as` names. */
 export type JobDeps = {
@@ -243,7 +243,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   // ---------- another machine
 
   async function machines() { return await plugin.ask<Machine[]>("machines", []) }
-  const links = workerLinks(plugin, { seenHere: (id, r) => seenHere(id, r) }), atMachine = links.atMachine
+  const links = workerLinks(plugin, { seenHere: (id, r) => seenHere(id, r), landing: (cwd, base, text, branch, kept) => landing(cwd, base, text, branch, kept) }), atMachine = links.atMachine
   /** Whether `e`, from asking `machine`, was it being offline (it reads offline now): a handoff for it then waits. A
    *  machine that answered too slowly, maybe having done it, isn't. */
   async function away(machine: string, e: unknown) {
@@ -269,7 +269,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   /** Where an ask over `o` (or `cwd`, or `repo`, as given) runs here: its folder, repo and base, or why it never runs
    *  here. A folder or repo another machine names is this machine's own checkout of it (each keeps its repos in its place). */
   async function placeHere(o: Over, cwd: string, repo = ""): Promise<Found & { repo: string; base: string; refused: string; missing?: boolean; looked?: string; have?: string; live?: boolean; carried?: boolean
-    rules?: RepoRule[] }> {
+    rules?: RepoRule[]; cloudOk?: boolean; cloud?: boolean }> {
     const self = (await machines()).filter((m) => m.self).map((m) => hostOf(m.url)).filter(Boolean)
     const isDir = (d: string) => !!fs.statSync(d, { throwIfNoEntry: false })?.isDirectory()
     const asked = cwd.replace(/^~(?=$|\/)/, os.homedir())
@@ -285,13 +285,13 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     const top = found.cwd === plugin.vault.path ? "" : await repoOf(found.cwd)
     const at = top || found.cwd, rules = top ? rulesOf(top) : []
     return { ...found, cwd: at, repo: top ? at.split("/").pop()! : "", base: top ? await headOf(top) : "", refused: refusal(at, lines("jobs_never")) || refusal(found.cwd, lines("jobs_never")),
-      ...(top && sameDir(top, ROOT) ? { live: true } : {}), ...(rules.length ? { rules } : {}) }
+      ...(top && sameDir(top, ROOT) ? { live: true } : {}), ...(rules.length ? { rules } : {}), ...(top && cloudOf(top) ? { cloudOk: true } : {}) }
   }
   /** A folder or repo asked for with no machine, not here: on the first machine (placement's order) that has it, else
    *  refused with where it was looked for. */
   async function elsewhere(cwd: string, repo: string, here: Placed, base: Base): Promise<{ machine: string; there: Placed }> {
     const r = await ranking({ has: [], ...base.agent }), asked: string[] = []
-    for (const { t, why } of r.ranked.filter((x) => !x.t.self)) {
+    for (const { t, why } of r.ranked.filter((x) => !x.t.self && !x.t.cloud)) {
       const far = await atMachine(t.id, "companion.where", { ...(cwd ? { cwd } : {}), ...(repo ? { repo } : {}) }, 6).catch(() => null) as Placed | null
       const no = !far ? "it doesn't answer" : far.missing ? "" : ruled(t, far, base)
       asked.push(`${t.label}${no ? ` (${no})` : ""}`)
@@ -328,6 +328,17 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
       const hosts = Object.fromEntries((await machines()).filter((x) => !x.self && x.online).map((x) => [x.id, hostOf(x.url)]).filter(([, h]) => h))
       machine = machineOfUrl(o, hosts)?.machine ?? ""
     }
+    // (the cloud asked for: a session started from this machine's checkout, if it can be)
+    if (machine === CLOUD && !(await plugin.ask<Machine | null>("machines:machine", null, CLOUD))) {
+      const here = await placeHere(o, str(p.cwd), repo)
+      if (here.missing) throw new OpError(await missingLine(here, ""), 404)
+      const cloud = (await traitsOf()).find((t) => t.cloud)
+      const no = !cloud ? "jobs_cloud names no Claude Code account to start it" : lacks(cloud, { has: rulesNeed(here.rules ?? [], baseOf(m, p).words), repo: await githubOf(here.cwd) || here.repo, ...(here.cloudOk ? { cloud: true } : {}) })
+      const got = no ? `the cloud ${no}` : await inCloud(here, "as asked")
+      if (typeof got === "string") throw new OpError(`it can't run in the cloud: ${got}`, 409)
+      if (got.there.refused) throw new OpError(`it can't run there: ${got.there.refused}`, 403)
+      return { machine: "", label: "Cloud", cwd: got.there.cwd, repo: got.there.repo, why: got.there.why, cloud: true, ...(got.there.base ? { base: got.there.base } : {}), ...(got.there.live ? { live: true } : {}) }
+    }
     let there = machine
       ? await atMachine(machine, "companion.where", { ...(str(p.cwd) ? { cwd: str(p.cwd) } : {}), ...(repo ? { repo } : {}), ...(o.url ? { url: o.url } : urlsIn(o)[0] ? { url: urlsIn(o)[0].href } : {}),
         ...(o.app ? { app: o.app } : {}), ...(o.title ? { title: o.title } : {}), ...(o.path ? { path: o.path } : {}) }) as unknown as Placed
@@ -339,7 +350,8 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     if (!asked && !machine) ({ machine, there, moved } = await preferred(o, there, base))
     else if (repo && !machine && !str(p.cwd)) ({ machine, there } = await named(there, base))
     if (there.refused) throw new OpError(`it can't run there: ${there.refused}. Say so (where it would have run: ${tilde(there.cwd)})`, 403)
-    return { machine, label: await labelOf(machine), cwd: there.cwd, repo: there.repo, why: there.why, ...(there.base ? { base: there.base } : {}), ...(there.preview ? { preview: there.preview } : {}),
+    return { machine, label: there.cloud ? "Cloud" : await labelOf(machine), cwd: there.cwd, repo: there.repo, why: there.why, ...(there.base ? { base: there.base } : {}), ...(there.preview ? { preview: there.preview } : {}),
+      ...(there.cloud ? { cloud: true } : {}),
       ...(moved ? { moved } : {}), ...(there.live ? { live: true } : {}), ...(there.carried ? { carried: true } : {}), ...(there.from ? { from: there.from } : {}) }
   }
   /** What a handoff brings to placement besides where it's asked over: its words (a repo's rules match them), its agent
@@ -354,18 +366,29 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   const ruled = (t: Traits, far: Placed, base: Base) => lacks(t, { has: [...(far.repo ? [] : ["vault" as const]), ...rulesNeed(far.rules ?? [], base.words)] })
   /** A checkout's rules on what its work needs (placement.ts), none when it has no such file. */
   const rulesOf = (top: string) => { try { return rulesIn(fs.readFileSync(path.join(top, RULES_FILE), "utf8")) } catch { return [] } }
+  const cloudOf = (top: string) => { try { return cloudIn(fs.readFileSync(path.join(top, RULES_FILE), "utf8")) } catch { return false } }
+  /** Job place `here` (a checkout of this machine's) as a cloud session starts from it: its GitHub repo at the commit it
+   *  starts from, which must be pushed (`left`: what isn't, null when nothing need be); else why not. */
+  async function inCloud(here: Placed, why: string, left: string | null = null): Promise<{ there: Placed; moved?: string } | string> {
+    if (!(await githubOf(here.cwd))) return "its repo isn't on GitHub, so the cloud can't have it"
+    const missing = left ?? await unpushed(here.cwd)
+    if (missing) return `${missing} it starts from would be missing in the cloud`
+    return { there: { ...here, cloud: true, why: `${here.why}, all pushed: in the cloud (${why || "a cloud session of its own"})` } }
+  }
   /** Where job needs `n` place it among the machines (placement.ts): each other one tried in turn while `fits` says why
    *  not, till this one comes; here with why the others didn't take it, unless there's nothing else to say. */
-  async function placed(here: Placed, n: Needs, fits: (c: Ranked) => Promise<{ there: Placed; moved?: string } | string>): Promise<{ machine: string; there: Placed; moved: string }> {
+  async function placed(here: Placed, n: Needs, fits: (c: Ranked) => Promise<{ there: Placed; moved?: string } | string>, o: { cloud?: boolean } = {}): Promise<{ machine: string; there: Placed; moved: string }> {
     const r = await ranking(n), tried: string[] = []
     for (const c of r.ranked) {
+      // (what they watch here, a preview or an editor's project, has no preview of theirs in the cloud)
+      if (c.t.cloud && o.cloud === false) continue
       if (c.t.self) {
         const why = tried.length ? tried.join("; ") : r.ranked.length > 1 ? `${c.t.label}: ${c.why || "first in jobs_machine"}` : r.left.join("; ")
         return { machine: "", there: why ? { ...here, why: `${here.why} (${why}: here)` } : here, moved: "" }
       }
-      const got = await fits(c)
-      if (typeof got !== "string") return { machine: c.t.id, there: got.there, moved: got.moved ?? "" }
-      tried.push(got)
+      const got = c.t.cloud ? await inCloud(here, c.why) : await fits(c)
+      if (typeof got !== "string") return { machine: c.t.cloud ? "" : c.t.id, there: got.there, moved: got.moved ?? "" }
+      tried.push(c.t.cloud ? `the cloud: ${got}` : got)
     }
     // (this one lacks what it needs too: it runs here all the same, as nowhere else can)
     const why = [...tried, ...r.left].join("; ")
@@ -376,7 +399,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   async function named(here: Placed, base: Base): Promise<{ machine: string; there: Placed }> {
     if (here.refused) return { machine: "", there: here }
     const slug = await githubOf(here.cwd), left = slug ? await unpushed(here.cwd) : ""
-    return placed(here, { has: rulesNeed(here.rules ?? [], base.words), repo: slug || here.repo, ...base.agent }, async ({ t, why }) => {
+    return placed(here, { has: rulesNeed(here.rules ?? [], base.words), repo: slug || here.repo, ...base.agent, ...(here.cloudOk ? { cloud: true } : {}) }, async ({ t, why }) => {
       if (!slug) return `its repo isn't on GitHub, so ${t.label} can't have it`
       if (left) return `${left} it starts from would be missing on ${t.label}`
       const far = await atMachine(t.id, "companion.where", { url: `https://github.com/${slug}` }, 6).catch(() => null) as Placed | null
@@ -397,7 +420,8 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     let gh = urlsIn(o).find((u) => u.hostname === "github.com")?.href ?? (here.from === "site" || here.from === "vault" ? sitesIn(o)[0]?.href : undefined)
     const slug = here.repo ? await githubOf(here.cwd) : "", left = local && slug ? await onlyHere(here.cwd) : ""
     if (local && slug) gh = `https://github.com/${slug}`
-    const n: Needs = { has: [...(here.repo || gh ? [] : ["vault" as const]), ...rulesNeed(here.rules ?? [], base.words)], ...(here.repo ? { repo: slug || here.repo } : {}), ...base.agent }
+    const n: Needs = { has: [...(here.repo || gh ? [] : ["vault" as const]), ...rulesNeed(here.rules ?? [], base.words)], ...(here.repo ? { repo: slug || here.repo } : {}), ...base.agent,
+      ...(here.repo && here.cloudOk ? { cloud: true } : {}) }
     return placed(here, n, async ({ t, why }) => {
       if (local && !slug) return `its repo isn't on GitHub, so ${t.label} can't have it`
       if (left) return `${left}, not yet pushed, would be lost on ${t.label}`
@@ -411,7 +435,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
       // (its worktree there starts at the commit they watched here, which its diff counts from)
       return { there: { ...far, ...(here.base ? { base: here.base } : {}), why: `${here.why}, all pushed: ${far.why}, ${on}, previewed there` },
         moved: `${here.preview ? `the preview ${here.preview}` : `${tilde(here.cwd)}, open in their editor`} on ${await labelOf("")}${at ? ` (${at})` : ""}` }
-    })
+    }, { cloud: !local })
   }
 
   // ---------- the machines a job may go to
@@ -441,10 +465,18 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
       const c = await capacity()
       out.unshift({ id: "here", label: await labelOf(""), self: true, online: true, standalone: !inDesktop(), platform: process.platform, vault: true, app: inDesktop(), ...c, repos: undefined })
     }
+    const account = cloudAccount()
+    if (account && !out.some((t) => t.id === CLOUD)) {
+      const why = await plugin.ask<string>("cloud-ready:claude", "Claude Code's plugin is off", account)
+      out.push({ id: CLOUD, label: "Cloud", self: false, online: true, standalone: false, cloud: true, platform: "linux", vault: false, display: false, app: false,
+        agents: ["claude"], accounts: [account], ...(why ? { away: `can't start sessions: ${why}` } : {}) })
+    }
     return out
   }
   /** The machines a job needing `n` may go to, best first (this one among them), and why each other one can't. */
   const ranking = async (n: Needs) => place(await traitsOf(), n, plugin.settings().jobs_machine ?? plugin.manifest.settings?.jobs_machine?.default ?? "auto")
+  /** The Claude Code account here that starts cloud jobs (the setting jobs_cloud), "" for none. */
+  const cloudAccount = () => setting("jobs_cloud").toLowerCase()
   /** Whether coding jobs land their own change once its checks pass (the setting jobs_land), not waiting for Keep and merge. */
   const lands = () => plugin.settings().jobs_land === true
   /** When a job records its proof's video (the setting jobs_proof). */
@@ -462,6 +494,14 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     const { id: model, label } = await agentModel(plugin, agent.split("_")[0], str(p.model) || (claude ? setting("jobs_model") : ""))
     const effort = str(p.effort) || (claude ? setting("jobs_effort") : ""), profile = parseTerminal(`${agent}-x`)?.profile ?? ""
     return { agent, account: profile ? cap(profile) : "", model, effort, harness: [agentName(agent.split("_")[0]) ?? cap(agent), cap(label)].filter(Boolean).join(" ") }
+  }
+
+  /** Where a job runs with who works on it: in the cloud, Claude Code in the cloud's account (its model and effort the
+   *  session's own); else harnessOf's. */
+  async function placedWith(w: Awaited<ReturnType<typeof route>>, p: Record<string, unknown>): Promise<Where> {
+    if (!w.cloud) return { ...w, ...await harnessOf(p) }
+    const account = cloudAccount() || "default", agent = account === "default" ? "claude" : `claude_${account}`
+    return { ...w, agent, account: account === "default" ? "" : cap(account), model: "", effort: "", harness: "Claude Code on the web" }
   }
 
   // ---------- reading its worker
@@ -714,6 +754,8 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
    *  something in the background, was typed in by the user or is in front of them. Its conversation resumes. */
   async function tidy(j: Job, s: Seen) {
     if (!s.running || j.held || d.warm?.(j) || Date.now() - Math.max(j.at, opened.get(j.id) ?? 0) < grace || (s.state !== "idle" && s.state !== "done")) return false
+    // (a cloud session at rest pauses by itself: no longer followed, a follow-up still reaches it)
+    if (j.where.cloud) { j.exited = Date.now(); return true }
     const t = await seenOf(j, true, false).catch(() => null)
     if (t?.turn?.session) j.session ??= t.turn.session
     if (!t?.running || t.turn?.background || !resumeOf(j) || d.onScreen?.(linkOf(j))) return false
@@ -740,7 +782,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   /** How job `j`'s worker starts: its agent, folder, name and how it runs, with its first words or the session it resumes. */
   const startOf = (j: Job, o: { prompt?: string; session?: string }) => {
     const w = j.where, mode = w.agent.split("_")[0] === "claude" ? setting("jobs_mode") : ""
-    return { agent: w.agent, cwd: w.cwd, name: j.title, ...o, ...(w.model ? { model: w.model } : {}), ...(w.effort ? { effort: w.effort } : {}), ...(mode ? { mode } : {}) }
+    return { agent: w.agent, cwd: w.cwd, name: j.title, ...o, ...(w.model ? { model: w.model } : {}), ...(w.effort ? { effort: w.effort } : {}), ...(mode ? { mode } : {}), ...(w.cloud && w.base ? { base: w.base } : {}) }
   }
   /** Job `j`'s worker started over in a new conversation, told `text` first (its old one's context grown large: live
    *  editing's summary and next ask), then its old terminal ended. Its card shows `shown`. */
@@ -840,7 +882,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   /** Job `j`, waiting for its machine, placed there and started now that it's back (its ask `q.ask`, its handoff `q.start`). */
   async function startWaiting(ctx: OpCtx, j: Job, q: Queued) {
     const p = q.start ?? {}
-    j.where = { ...await route(q.ask, p), ...await harnessOf(p) }
+    j.where = await placedWith(await route(q.ask, p), p)
     await accountThere(ctx, j.where.machine, p)
     await launch(ctx, j, q.text, q.ask, p)
   }
@@ -898,7 +940,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
    *  checkouts there: Claude Code's "Trust this folder?" answered for it in the job's account, so it never waits on that. */
   async function trust(ctx: OpCtx, j: Job) {
     const w = j.where, by = j.by ?? ""
-    if (!w.repo || w.agent.split("_")[0] !== "claude" || !(by === COMPANION || by === THEM || by.startsWith(`${COMPANION} (`))) return
+    if (!w.repo || w.cloud || w.agent.split("_")[0] !== "claude" || !(by === COMPANION || by === THEM || by.startsWith(`${COMPANION} (`))) return
     const body = { cwd: w.cwd, account: parseTerminal(`${w.agent}-x`)?.profile || "default" }
     // (it can't: the job starts anyway, Claude Code asking as before)
     try { await links.of(w).there(ctx, "claude-code.trust", body, 10) } catch (e) { console.error(`companion: jobs: ${j.id}: trust:`, (e as Error).message) }
@@ -947,7 +989,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     const asked = str(p.machine).trim()
     let where: Where
     try {
-      where = { ...await route(m, p), ...await harnessOf(p) }
+      where = await placedWith(await route(m, p), p)
       await accountThere(ctx, where.machine, p)
     } catch (e) {
       if (typeof task === "string" && await away(asked, e)) return await waitFor(ctx, task, titleOf(task), m, p, asked, by)
@@ -983,8 +1025,9 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     if (on) j.on = on
     // (a coding job's own worktree, beside the checkout it was asked over: it lands only by their Keep and merge)
     // (one over a preview they watch edits what serves it, so the page reloads as it goes)
-    if (inPlace(where)) where.watched = true
-    else if (where.repo) Object.assign(where, worktreeOf(where.cwd, where.repo, j.id), lands() ? { lands: true } : {})
+    if (inPlace(where) && !where.cloud) where.watched = true
+    // (a cloud session works on a branch of its own there)
+    else if (where.repo) Object.assign(where, where.cloud ? {} : worktreeOf(where.cwd, where.repo, j.id), lands() ? { lands: true } : {})
     j.now = `starting in ${tilde(where.cwd)}`
     await trust(ctx, j)
     const task = jobTask(told, m, where, j.id, { land: lands(), proof: proofMode() })
@@ -1199,6 +1242,15 @@ its terminal (companion job-open).
         const word = await theirWord(ctx, m, plainWords(str(p.said)), { since: w.at })
         if ("why" in word) throw new OpError(`${NOT_THEIRS} (${word.why})`, 403)
         by = { ...BY_THEIR_WORD, label: word.by }
+      }
+      if (j.where.cloud) {
+        if (w.kind === "permission") throw new OpError(`a cloud session's permission is answered in its session: companion job-open ${j.id}`, 409)
+        await links.of(j.where).tell(ctx, j.terminal, w.choices[n - 1])
+        delete j.waits
+        j.now = `Answered: ${w.choices[n - 1]}`
+        changed()
+        d.did(d.who(p), "job-answer")
+        return { ...cardOf(j), answered: w.choices[n - 1] }
       }
       // (its row in the inbox, the answer's way in: a prompt just changed may take its terminal's next word to reopen it)
       type Row = { id: string; kind: string; state: string; terminal?: string }

@@ -1,12 +1,14 @@
-// Which machine a job goes to: those that have what it needs, then the one with the most headroom, then the user's order
-// (the setting jobs_machine). Plain functions: workers.ts gathers each machine's traits (Machines' list, its capacity).
+// Which machine (or the cloud, jobs_cloud) a job goes to: those that have what it needs, the most headroom first, then
+// the user's order (jobs_machine). Plain functions: workers.ts gathers each one's traits (Machines' list, its capacity).
 
 /** What a job may need of the machine it runs on, besides its repo and agent: this vault (a note, research), an OS, a
  *  desktop to show windows on, or Vaultite's desktop app running there. */
 export const NEEDS = ["vault", "macos", "linux", "windows", "desktop", "app"] as const
 export type Need = typeof NEEDS[number]
 /** A job's needs: those, a checkout of `repo` (GitHub's owner/name or a folder's name), its agent (claude, codex) and account. */
-export type Needs = { has: Need[]; repo?: string; agent?: string; account?: string }
+export type Needs = { has: Need[]; repo?: string; agent?: string; account?: string
+  /** Its repo says its work runs in the cloud (RULES_FILE's `cloud`). */
+  cloud?: boolean }
 
 /** A machine as placement sees it; a field it didn't say rules nothing out. `vault`: it has this vault; `app`: the
  *  desktop app runs there; `jobs` of `cap` the workers it runs now. */
@@ -17,7 +19,11 @@ export type Traits = {
   jobs?: number; cap?: number; repos?: string[]; agents?: string[]; accounts?: string[]
   /** Why it takes no jobs now, though it's on. */
   away?: string
+  /** The cloud: no cap, nothing of this machine's, only GitHub repos that say they run there. */
+  cloud?: boolean
 }
+/** The cloud's id among the machines (jobs_machine names it so). */
+export const CLOUD = "cloud"
 
 const OS: Partial<Record<Need, [string, string]>> = { macos: ["darwin", "macOS"], linux: ["linux", "Linux"], windows: ["win32", "Windows"] }
 const osName = (platform: string) => Object.values(OS).find(([p]) => p === platform)?.[1] ?? platform
@@ -33,6 +39,12 @@ export function hasRepo(t: Pick<Traits, "repos">, repo: string) {
 /** Why `t` can't take a job needing `n`, in a few words ("runs Linux", "hasn't site checked out"); "" when it can. */
 export function lacks(t: Traits, n: Needs): string {
   if (t.away) return t.away
+  if (t.cloud) {
+    const local = n.has.find((x) => x !== "linux")
+    if (local) return `can't have ${local === "vault" ? "this vault" : local === "app" ? "the desktop app" : local === "desktop" ? "a desktop" : OS[local]?.[1] ?? local}`
+    if (!n.repo?.includes("/")) return "takes only a repo on GitHub"
+    if (!n.cloud) return `isn't set up for ${n.repo} (its ${RULES_FILE} says no "cloud": true)`
+  }
   for (const need of n.has) {
     const os = OS[need]
     if (os && t.platform && t.platform !== os[0]) return `runs ${osName(t.platform)}, not ${os[1]}`
@@ -69,7 +81,8 @@ export function orderOf(setting: unknown, all: Pick<Traits, "id" | "label" | "se
   const self = all.find((m) => m.self), ids: string[] = [], unknown: string[] = []
   const add = (id?: string) => { if (id && !ids.includes(id)) ids.push(id) }
   for (const w of words.length ? words : ["auto"]) {
-    if (w === "auto") { if (self?.standalone) add(self.id); for (const m of all) if (m.standalone && !m.self) add(m.id) }
+    // (auto: the always-on machines, then the cloud, then this one)
+    if (w === "auto") { if (self?.standalone) add(self.id); for (const m of all) if (m.standalone && !m.self) add(m.id); if (all.some((m) => m.id === CLOUD)) add(CLOUD) }
     else if (w === "here") add(self?.id)
     else { const m = all.find((x) => x.id === w || x.label.toLowerCase() === w); if (m) add(m.id); else unknown.push(w) }
   }
@@ -93,20 +106,23 @@ export function place(all: Traits[], n: Needs, setting: unknown): { ranked: Rank
   }
   for (const t of all) if (!order.ids.includes(t.id) && !t.self) left.push(`${t.label} ${!t.online ? "is off" : order.auto ? "isn't always on (jobs_machine names it to use it)" : "isn't in jobs_machine"}`)
   const room = new Map(fits.map((t) => [t.id, headroom(t)]))
-  const ranked = [...fits].sort((a, b) => LEVEL[room.get(a.id)!.level] - LEVEL[room.get(b.id)!.level] || order.ids.indexOf(a.id) - order.ids.indexOf(b.id) || room.get(b.id)!.score - room.get(a.id)!.score)
+  // (auto with the cloud: the always-on machines with room first, then the cloud, then the rest)
+  const cloudy = order.auto && fits.some((t) => t.cloud)
+  const group = (t: Traits) => (!cloudy ? 0 : t.cloud ? 1 : t.standalone && room.get(t.id)!.level !== "full" ? 0 : 2)
+  const ranked = [...fits].sort((a, b) => group(a) - group(b) || LEVEL[room.get(a.id)!.level] - LEVEL[room.get(b.id)!.level] || order.ids.indexOf(a.id) - order.ids.indexOf(b.id) || room.get(b.id)!.score - room.get(a.id)!.score)
   return { ranked: ranked.map((t, i) => ({ t, why: whyOf(t, room.get(t.id)!, ranked.slice(i + 1).map((x) => room.get(x.id)!), ranked.slice(0, i), order.auto) })), left }
 }
 
 /** Why `t` ranks where it does: always on, its headroom against the next one's, or first in the user's order. */
 function whyOf(t: Traits, r: ReturnType<typeof headroom>, after: ReturnType<typeof headroom>[], before: Traits[], auto: boolean) {
   const roomier = after.some((x) => LEVEL[x.level] > LEVEL[r.level])
-  const reasons = [t.standalone && !before.length ? "always on" : "", roomier ? "the most headroom" : "", !roomier && after.length && !auto && !before.length ? "first in jobs_machine" : "",
+  const reasons = [t.cloud ? "a cloud session of its own" : "", t.standalone && !before.length ? "always on" : "", roomier ? "the most headroom" : "", !roomier && after.length && !auto && !before.length ? "first in jobs_machine" : "",
     r.level !== "free" ? r.level : ""].filter(Boolean)
   return [...reasons, r.line].filter(Boolean).join(", ")
 }
 
-/** A repo's own word on what its work needs (`.vaultite-jobs.json` at its top): `{"needs": [{"when": "<words, a
- *  regular expression>", "needs": ["macos"]}]}`, a rule without `when` holding for all its work. Unreadable: none. */
+/** A repo's own word on its work (`.vaultite-jobs.json`): `{"needs": [{"when": "<a regular expression>", "needs":
+ *  ["macos"]}], "cloud": true}`, a rule without `when` for all of it; `cloud`: it runs in a cloud session. */
 export type RepoRule = { when?: string; needs: Need[] }
 export const RULES_FILE = ".vaultite-jobs.json"
 export function rulesIn(text: string): RepoRule[] {
@@ -122,6 +138,8 @@ export function rulesIn(text: string): RepoRule[] {
     return [{ ...(when ? { when } : {}), needs }]
   })
 }
+/** Whether a repo's rules file says its work runs in the cloud. */
+export const cloudIn = (text: string) => { try { return (JSON.parse(text) as { cloud?: unknown })?.cloud === true } catch { return false } }
 /** What a repo's rules say work described by `words` (its task, their ask) needs. */
 export const rulesNeed = (rules: RepoRule[], words: string): Need[] =>
   [...new Set(rules.filter((r) => !r.when || new RegExp(r.when, "i").test(words)).flatMap((r) => r.needs))]
