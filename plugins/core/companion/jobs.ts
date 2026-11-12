@@ -52,10 +52,14 @@ function mergeSteps(w: Pick<Where, "cwd" | "tree" | "branch" | "live" | "cloud">
 /** What its worker is told when CI failed on the commit it landed (`why`: the server's words): fix it forward, landed the
  *  same way, in a worktree made again from main. */
 export function fixTask(w: Pick<Where, "cwd" | "tree" | "branch" | "live" | "cloud">, commit: string, why: string) {
-  const tree = w.tree ? `make your worktree again from main (git -C ${w.cwd} fetch origin, then git -C ${w.cwd} worktree add -B ${w.branch} ${w.tree} origin/main), `
+  const tree = w.tree ? `make your worktree again from main (${treeAgain(w)}), `
     : w.cloud ? "start your branch again from main (git fetch origin, then git checkout -B <your branch> origin/main), " : ""
   return `CI failed on ${commit.slice(0, 12)}, the commit you landed, so it isn't live (${why}). Fix it forward: ${tree}find what failed (gh run list --commit ${commit}, then gh run view <its id> --log-failed), fix it, and land the fix${mergeSteps(w)}`
 }
+const treeAgain = (w: Pick<Where, "cwd" | "tree" | "branch">) => `git -C ${w.cwd} fetch origin, then git -C ${w.cwd} worktree add -B ${w.branch} ${w.tree} origin/main`
+/** What a worker told again is told first when its worktree was removed once it was done. */
+export const prunedLine = (w: Pick<Where, "cwd" | "tree" | "branch">) =>
+  `(Your worktree ${w.tree} was removed once you were done, nothing in it lost: to change anything, make it again first: git -C ${w.cwd} worktree add ${w.tree} ${w.branch}, or with that branch gone (it was on main), ${treeAgain(w)}.)`
 /** The commit a worker's "Merged:" names (its first hash after the word), else the first its words name; "" when none. */
 export function mergedCommit(text: string) {
   const at = text.search(/\bmerged\b/i)
@@ -153,6 +157,8 @@ export type Job = {
   /** Its worker's session (its transcript, read after its terminal ends), when that end was read, and when its terminal
    *  was closed for being done (its conversation resumes from its card). */
   session?: string; exited?: number; closed?: number
+  /** When its worktree was removed, it being closed with nothing only there: a follow-up makes it again. */
+  pruned?: number
   /** The user typed in its terminal: theirs now, never closed by itself. */
   held?: boolean
   /** What the ask it came from was over (surfaceOf): asks there later go straight to it (liveedit.ts). */
@@ -419,7 +425,7 @@ export function jobText(j: Job, now = Date.now()) {
     j.by ? `handed off by ${j.by}` : "", tellsLine(j, now),
     l?.told ? `told last${l.by ? ` (by ${l.by})` : ""}: ${l.told}` : "",
     said ? `it said (${ago(said.at, now)}): ${cut(said.text.trim(), 1500)}` : "", l?.asks?.length ? `asks: ${l.asks.join(" | ")}` : "",
-    j.where.tree ? `its worktree: ${j.where.tree} (branch ${j.where.branch}), beside ${j.where.cwd}` : "",
+    j.where.tree ? `its worktree: ${j.where.tree} (branch ${j.where.branch}), beside ${j.where.cwd}${j.pruned ? ", removed once it was done" : ""}` : "",
     resultLine(r) ? `results: ${resultLine(r)}` : "", r?.files?.length ? `files: ${r.files.slice(0, 12).join(", ")}` : "",
     j.land ? (j.land.at === undefined ? "kept: told to merge it, merging now" : j.land.merged ? "kept and merged" : "kept, but it didn't say it merged: see what it said")
       : onMain(j) ? "landed on main: nothing left to merge" : "",

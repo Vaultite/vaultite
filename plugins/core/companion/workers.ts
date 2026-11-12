@@ -7,10 +7,10 @@ import path from "node:path"
 import { agentModel, agentName, KNOWN_AGENTS, parseTerminal } from "../../../core/agents.ts"
 import { gitEnv, inDesktop, type Machine, type OpCtx, OpError, type Plugin, quoted, ROOT, userSurface, type Who, whoOf } from "../../../core/plugins.ts"
 import { cardOf, choiceIn, commitsIn, endEvent, fixTask, HANDED, inPlace, landedSaid, landTask, liveStep, mergedCommit, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, type Marks, nowOf, restEvent, type Queued, queuedLine, toldBy, type Result, resumeOf,
-  type ProofMode, step, terminalOf, type Waits, type Where, worktreeOf } from "./jobs.ts"
+  type ProofMode, prunedLine, step, terminalOf, type Waits, type Where, worktreeOf } from "./jobs.ts"
 import { requestWriter } from "../../../core/vault.ts"
 import type { Moment } from "./plugin.ts"
-import { APP_REPO, appUiOf, branchOf, checkoutNamed, checkoutNames, type Found, githubOf, headOf, machineOfUrl, onlyHere, type Over, refusal, repoOf, resolveHere, checkoutsLine, rootsLine, sitesIn, surfaceOf, tilde, unpushed, urlsIn, watched } from "./where.ts"
+import { APP_REPO, appUiOf, branchOf, checkoutNamed, dropTree, checkoutNames, type Found, fileAt, githubOf, headOf, jobBase, machineOfUrl, onlyHere, type Over, refusal, repoOf, resolveHere, checkoutsLine, rootsLine, sitesIn, surfaceOf, tilde, unpushed, urlsIn, watched } from "./where.ts"
 import { type Home, type Read, workerLinks } from "./links.ts"
 import { capOf, CLOUD, cloudIn, lacks, type Needs, place, type Ranked, type RepoRule, rulesIn, rulesNeed, RULES_FILE, type Traits } from "./placement.ts"
 
@@ -275,7 +275,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
 
   /** Where an ask over `o` (or `cwd`, or `repo`, as given) runs here: its folder, repo and base, or why it never runs
    *  here. A folder or repo another machine names is this machine's own checkout of it (each keeps its repos in its place). */
-  async function placeHere(o: Over, cwd: string, repo = ""): Promise<Found & { repo: string; base: string; refused: string; missing?: boolean; looked?: string; have?: string; live?: boolean; carried?: boolean
+  async function placeHere(o: Over, cwd: string, repo = "", fresh = true): Promise<Found & { repo: string; base: string; refused: string; missing?: boolean; looked?: string; have?: string; live?: boolean; carried?: boolean
     rules?: RepoRule[]; cloudOk?: boolean; cloud?: boolean }> {
     const self = (await machines()).filter((m) => m.self).map((m) => hostOf(m.url)).filter(Boolean)
     const isDir = (d: string) => !!fs.statSync(d, { throwIfNoEntry: false })?.isDirectory()
@@ -290,9 +290,11 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
       found = { cwd: own, why: cwd ? `${tilde(asked)} is ${tilde(own)} here` : `${repo} is ${tilde(own)} here` }
     } else found = await resolveHere(o, plugin.vault.path, self)
     const top = found.cwd === plugin.vault.path ? "" : await repoOf(found.cwd)
-    const at = top || found.cwd, rules = top ? rulesOf(top) : []
-    return { ...found, cwd: at, repo: top ? at.split("/").pop()! : "", base: top ? await headOf(top) : "", refused: refusal(at, lines("jobs_never")) || refusal(found.cwd, lines("jobs_never")),
-      ...(top && sameDir(top, ROOT) ? { live: true } : {}), ...(rules.length ? { rules } : {}), ...(top && cloudOf(top) ? { cloudOk: true } : {}) }
+    // (what they watch, a preview or an editor's project, is its HEAD; else the newest pushed commit of its branch)
+    const base = !top ? "" : fresh && !watched(found) ? await jobBase(top) : await headOf(top), json = base ? await fileAt(top, base, RULES_FILE) ?? "" : ""
+    const at = top || found.cwd, rules = rulesIn(json)
+    return { ...found, cwd: at, repo: top ? at.split("/").pop()! : "", base, refused: refusal(at, lines("jobs_never")) || refusal(found.cwd, lines("jobs_never")),
+      ...(top && sameDir(top, ROOT) ? { live: true } : {}), ...(rules.length ? { rules } : {}), ...(cloudIn(json) ? { cloudOk: true } : {}) }
   }
   /** A folder or repo asked for with no machine, not here: on the first machine (placement's order) that has it, else
    *  refused with where it was looked for. */
@@ -380,9 +382,6 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   /** Why machine `t` can't take the job after all, now its place there is known (`far`): what its repo's rules say the
    *  work needs, or this vault when it works in a vault there; "" when it can. */
   const ruled = (t: Traits, far: Placed, base: Base) => lacks(t, { has: [...(far.repo ? [] : ["vault" as const]), ...rulesNeed(far.rules ?? [], base.words)] })
-  /** A checkout's rules on what its work needs (placement.ts), none when it has no such file. */
-  const rulesOf = (top: string) => { try { return rulesIn(fs.readFileSync(path.join(top, RULES_FILE), "utf8")) } catch { return [] } }
-  const cloudOf = (top: string) => { try { return cloudIn(fs.readFileSync(path.join(top, RULES_FILE), "utf8")) } catch { return false } }
   /** Job place `here` (a checkout of this machine's) as a cloud session starts from it: its GitHub repo at the commit it
    *  starts from, which must be pushed (`left`: what isn't, null when nothing need be); else why not. */
   async function inCloud(here: Placed, why: string, left: string | null = null): Promise<{ there: Placed; moved?: string } | string> {
@@ -780,6 +779,17 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     resumable(j)
     return true
   }
+  /** When each closed job's worktree was last looked at to remove. */
+  const pruneRead = new Map<string, number>()
+  /** Closed job `j`'s worktree removed on its machine, its terminal gone, when nothing in it exists only there. */
+  async function prune(j: Job) {
+    const w = j.where
+    if (!w.tree || w.cloud || w.watched || j.pruned || Date.now() - (pruneRead.get(j.id) ?? 0) < 3600_000) return
+    if (j.state !== "stopped" && !(j.state === "done" && j.exited)) return
+    pruneRead.set(j.id, Date.now())
+    const r = await links.of(w).there(appCtx(), "companion.worktree-drop", { cwd: w.cwd, tree: w.tree, branch: w.branch ?? "" }, 150) as { why?: string }
+    if (!r.why) { j.pruned = Date.now(); changed() }
+  }
   /** Job `j`'s conversation running again in a terminal when its own was closed or ended (told `prompt` first). */
   async function wake(ctx: OpCtx, j: Job, prompt = "") {
     const s = await seenOf(j).catch(() => null)
@@ -843,6 +853,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
       // (its change landed by anyone, however long ago it went ready: never only through its terminal's read)
       if (j.state === "ready for review" && j.where.repo && Date.now() - (shipRead.get(j.id) ?? 0) >= SHIP_READ) void ship(j).catch(() => {})
       if (j.going?.state === "waiting" && Date.now() - (liveRead.get(j.id) ?? 0) >= LIVE_READ) void golive(j).catch((e) => console.error("companion: jobs:", e))
+      if (ticks % 20 === 0) void prune(j).catch(() => {})
     }
     // (what waits for a machine: looked at every 15 s, sent once it's back)
     if (ticks % flushTicks === 0) void flush().catch((e) => console.error("companion: jobs:", e))
@@ -924,7 +935,8 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   async function steer(ctx: OpCtx, j: Job, text: string, shown = text, by = COMPANION, how: "tell" | "land" = "tell") {
     if (j.state === "stopped") throw new OpError(`${j.id} was stopped: hand it off again`, 409)
     const link = links.of(j.where)
-    text = await link.carry(text)
+    text = await link.carry(j.pruned ? `${prunedLine(j.where)} ${text}` : text)
+    delete j.pruned
     const s = await seenOf(j).catch(() => null)
     if (s && !s.running) {
       if (!j.exited) await ended(j, s)
@@ -1430,6 +1442,17 @@ a guess from a look at one machine's folders.
   })
 
   plugin.op({
+    id: "companion.worktree-drop",
+    owner: "the companion's jobs",
+    summary: "Remove a closed job's worktree on this machine (another machine's companion, its home, asks), and its branch once on the checkout's upstream; kept, saying why, while it has changes or commits no remote has.",
+    kind: "write",
+    lock: false,
+    params: { cwd: { type: "string", required: true, description: "the checkout it's beside" }, tree: { type: "string", required: true, description: "the job's worktree" },
+      branch: { type: "string", description: "its branch" } },
+    run: async (p) => ({ why: await dropTree(str(p.cwd), str(p.tree), str(p.branch)) }),
+  })
+
+  plugin.op({
     id: "companion.worker-start",
     owner: "the companion's jobs",
     summary: "Start a job's worker in a terminal on this machine for another machine's companion, its home: its vau tells the user through home (VAULTITE_HOME), and this machine counts it among its jobs.",
@@ -1542,7 +1565,7 @@ a guess from a look at one machine's folders.
     /** Why ask `m` may mean another job than `id` (its pane another job's terminal), "" when it can't. */
     unsure: (id: string, m: Moment | undefined, which = "") => unsure(jobOf(id), m, which),
     /** Where an ask over `o` would run here (its folder, repo, the preview it's on). */
-    placeHere: (o: Over) => placeHere(o, ""),
+    placeHere: (o: Over) => placeHere(o, "", "", false),
     line: () => jobsLine(all()),
     /** Op `id` run on another machine (a job's: where its worker's files are). */
     atMachine,

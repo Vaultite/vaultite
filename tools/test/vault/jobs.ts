@@ -296,6 +296,37 @@ export default async ($: VaultTest) => {
     g("checkout", "-q", "-f", on); g("branch", "-qD", "job-z", "job-w"); g("update-ref", "-d", "refs/remotes/origin/main"); g("reset", "-q", "--hard", base)
   }
   {
+    // A job's base: a checkout nothing pulls starts it from its branch's remote tip, fetched, its own files and branch untouched.
+    const up = path.join(tmp, "up.git"), co = path.join(tmp, "lag"), other = path.join(tmp, "other")
+    const gi = (cwd: string, ...a: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", ...a], { cwd, stdio: "pipe", env: gitEnv() }).toString().trim()
+    gi(tmp, "init", "-q", "--bare", "-b", "main", up); gi(tmp, "clone", "-q", up, other)
+    fs.writeFileSync(path.join(other, "a.txt"), "a\n"); gi(other, "add", "."); gi(other, "commit", "-qm", "first"); gi(other, "push", "-q", "origin", "HEAD:main")
+    gi(tmp, "clone", "-q", up, co)
+    const old = gi(co, "rev-parse", "HEAD")
+    fs.writeFileSync(path.join(other, ".vaultite-jobs.json"), JSON.stringify({ needs: [{ needs: ["linux"] }] })); gi(other, "add", "."); gi(other, "commit", "-qm", "rules"); gi(other, "push", "-q", "origin", "HEAD:main")
+    const tip = gi(other, "rev-parse", "HEAD")
+    fs.writeFileSync(path.join(co, "a.txt"), "edited\n")
+    const [st, b] = await api("POST", "ops/companion.where", { cwd: co })
+    check("jobs: a checkout with nothing of its own starts a job at its branch's remote tip, fetched; its HEAD, branch and files as they were",
+      st === 200 && b.base === tip && gi(co, "rev-parse", "HEAD") === old && gi(co, "rev-parse", "refs/heads/main") === old && fs.readFileSync(path.join(co, "a.txt"), "utf8") === "edited\n", [st, b, tip, old])
+    check("jobs: a repo's rules are read from the commit a job starts at, not the checkout's files", b.rules?.[0]?.needs?.[0] === "linux" && !fs.existsSync(path.join(co, ".vaultite-jobs.json")), b.rules)
+    gi(co, "checkout", "-q", "--", "a.txt"); gi(co, "merge", "-q", "--ff-only", "origin/main")
+    fs.writeFileSync(path.join(co, "b.txt"), "b\n"); gi(co, "add", "."); gi(co, "commit", "-qm", "theirs")
+    const mine = gi(co, "rev-parse", "HEAD")
+    check("jobs: a checkout with commits of its own starts a job at its HEAD", await W.jobBase(co) === mine)
+    gi(co, "reset", "-q", "--hard", tip)
+    // A closed job's worktree: removed (its branch too, once on main) unless it has what exists nowhere else.
+    const tree = (id: string) => { const t = path.join(tmp, `lag-${id}`); gi(co, "worktree", "add", "-q", t, "-b", `job-${id}`, tip); return t }
+    const clean = tree("a"), dirty = tree("b"), ahead = tree("c")
+    fs.writeFileSync(path.join(dirty, "new.txt"), "x\n")
+    fs.writeFileSync(path.join(ahead, "c.txt"), "c\n"); gi(ahead, "add", "."); gi(ahead, "commit", "-qm", "unpushed")
+    const why = [await W.dropTree(co, clean, "job-a"), await W.dropTree(co, dirty, "job-b"), await W.dropTree(co, ahead, "job-c")]
+    const branches = gi(co, "branch", "--format=%(refname:short)").split("\n")
+    check("jobs: a closed job's worktree is removed, and its branch once on main; one with changes or unpushed commits stays, saying why",
+      why[0] === "" && !fs.existsSync(clean) && !branches.includes("job-a") && /uncommitted/.test(why[1]) && fs.existsSync(dirty) && /unpushed/.test(why[2]) && fs.existsSync(ahead) && branches.includes("job-c"), [why, branches])
+    check("jobs: a worker told again after its worktree went is told how to make it again", /worktree add \S+lag-a job-a, or with that branch gone[^]*origin\/main/.test(J.prunedLine({ cwd: co, tree: clean, branch: "job-a" })))
+  }
+  {
     const gh = await W.resolveHere({ url: "https://github.com/lighthouse/site/issues/4" }, VAULT, [], roots)
     const note = await W.resolveHere({ path: "Notes/Plan.md", url: "http://localhost:1" }, VAULT, [], roots)
     check("where: a GitHub page is its checkout here; a note is the vault", fs.realpathSync(gh.cwd) === real && note.cwd === VAULT && gh.from === "github" && note.from === "note", [gh, note])

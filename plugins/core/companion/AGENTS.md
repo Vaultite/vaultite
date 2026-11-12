@@ -182,7 +182,8 @@ above that), act, run it again, and never end your turn.
   worker's turn ending with its background tasks still running (a verify, a subagent, a try) keeps it working until they end
   and its turn after them does. A
   coding job works in its own git worktree and branch beside the checkout it was asked over (`<repo>-<job id>`, branch
-  `job-<job id>`; `companion job` names it), never editing or switching that checkout (on the always-on machine it's the
+  `job-<job id>`; `companion job` names it), from its branch's remote tip (fetched) when that checkout has no commits of
+  its own, else from its HEAD (a closed job's worktree is removed once nothing in it exists only there), never editing or switching that checkout (on the always-on machine it's the
   live server's), except one over a preview they watch here (not the live server's): it edits the checkout serving it,
   so the page reloads as it goes, with no demo or ready knock; its change reaches main only by Keep and merge, landed from that worktree, which is then removed (one
   told to land it itself is done once a commit it names, or its branch, is on main). The

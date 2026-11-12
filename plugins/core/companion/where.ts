@@ -15,8 +15,8 @@ export type Found = { cwd: string; why: string; from?: "note" | "github" | "prev
 
 const HOME = os.homedir()
 /** A command's output, null when it failed. */
-const ran = (cmd: string, args: string[], cwd?: string) => new Promise<string | null>((ok) =>
-  execFile(cmd, args, { timeout: 3000, cwd, maxBuffer: 1 << 20, env: gitEnv() }, (e, out) => ok(e ? null : String(out))))
+const ran = (cmd: string, args: string[], cwd?: string, timeout = 3000) => new Promise<string | null>((ok) =>
+  execFile(cmd, args, { timeout, cwd, maxBuffer: 1 << 20, env: gitEnv({ GIT_TERMINAL_PROMPT: "0" }) }, (e, out) => ok(e ? null : String(out))))
 const run = async (cmd: string, args: string[], cwd?: string) => (await ran(cmd, args, cwd)) ?? ""
 export const tilde = (p: string, home = HOME) => (p === home ? "~" : p.startsWith(`${home}/`) ? `~${p.slice(home.length)}` : p)
 const untilde = (p: string) => p.replace(/^~(?=$|\/)/, HOME)
@@ -25,6 +25,23 @@ const untilde = (p: string) => p.replace(/^~(?=$|\/)/, HOME)
 export const repoOf = async (dir: string) => (await run("git", ["rev-parse", "--show-toplevel"], dir)).trim()
 /** Its commit now, the base a review's diff is counted from. */
 export const headOf = async (dir: string) => (await run("git", ["rev-parse", "HEAD"], dir)).trim()
+/** Checkouts fetched lately (several placements of one ask fetch once). */
+const fetched = new Map<string, { at: number; done: Promise<unknown> }>()
+/** The commit a job's worktree in checkout `dir` starts from: its branch's remote tip, fetched now, when the checkout has
+ *  no commits of its own (one nothing pulls lags days behind); else its HEAD, the branch work it continues. */
+export async function jobBase(dir: string) {
+  const head = await headOf(dir), ref = (await run("git", ["symbolic-ref", "-q", "HEAD"], dir)).trim()
+  const [remote, from, to] = ref ? (await run("git", ["for-each-ref", "--format=%(upstream:remotename)%00%(upstream:remoteref)%00%(upstream)", ref], dir)).trim().split("\0") : []
+  if (!head || !remote || remote === "." || !from || !to?.startsWith("refs/remotes/")) return head
+  const f = fetched.get(dir)
+  // (only its remote-tracking ref moves: its branch and files stay; short, as another machine's placement waits 6 s on it)
+  if (!f || Date.now() - f.at > 30_000) fetched.set(dir, { at: Date.now(), done: ran("git", ["-c", "gc.auto=0", "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--no-auto-maintenance", remote, `+${from}:${to}`], dir, 4000) })
+  await fetched.get(dir)!.done
+  const tip = (await run("git", ["rev-parse", "-q", "--verify", `${to}^{commit}`], dir)).trim()
+  return tip && tip !== head && await ran("git", ["merge-base", "--is-ancestor", head, tip], dir) !== null ? tip : head
+}
+/** File `file` of a repo as commit `base` has it, null when it hasn't. */
+export const fileAt = (dir: string, base: string, file: string) => ran("git", ["show", `${base}:${file}`], dir)
 
 const LOCAL = /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])$/
 /** The addresses an ask's words, title or screen show, the page's own first. */
@@ -267,6 +284,18 @@ export async function unpushed(dir: string) {
   if (ahead === null) return "commits git couldn't read"
   const c = Number(ahead.trim()) || 0
   return c ? `${c} unpushed commit${c > 1 ? "s" : ""}` : ""
+}
+/** Job worktree `tree` of checkout `dir` removed, and its branch once it's in the checkout's upstream: "" once gone,
+ *  else why it stays (what only it has: changes not committed, commits no remote has). */
+export async function dropTree(dir: string, tree: string, branch: string) {
+  if (fs.existsSync(tree)) {
+    if (path.resolve(tree) === path.resolve(dir)) return "it's the checkout itself"
+    const left = await onlyHere(tree)
+    if (left) return left
+    if (await ran("git", ["worktree", "remove", tree], dir, 120_000) === null) return "git wouldn't remove it"
+  }
+  if (branch && await ran("git", ["merge-base", "--is-ancestor", `refs/heads/${branch}`, "@{upstream}"], dir) !== null) await ran("git", ["branch", "-D", branch], dir)
+  return ""
 }
 /** Its branch now ("" when detached). */
 export const branchOf = async (dir: string) => { const b = (await run("git", ["rev-parse", "--abbrev-ref", "HEAD"], dir)).trim(); return b === "HEAD" ? "" : b }
