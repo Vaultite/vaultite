@@ -2,14 +2,14 @@
 // turning them off empties it). The components here are exported to plugins.
 import { Children, createContext, Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { createPortal } from "react-dom"
-import { ChevronsDownUp, Ellipsis, EyeOff, Layers, PanelBottom, PanelBottomClose, PanelLeft, PanelRight, PanelTop, Search, SlidersHorizontal, SquareArrowOutUpRight, type LucideIcon } from "lucide-react"
+import { ChevronsDownUp, Ellipsis, EyeOff, Heading, Layers, PanelBottom, PanelBottomClose, PanelLeft, PanelRight, PanelTop, Search, SlidersHorizontal, SquareArrowOutUpRight, type LucideIcon } from "lucide-react"
 import type { SidebarCtx, SidebarPanel, TabMark } from "@/core/define"
 import { edgeScroller, getDrag, onDrag, startDrag, useDrag, useDragItem, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 import { openView } from "@/core/files"
 import { openDetail } from "@/core/nav"
 import { isDesktop, keysText } from "@/core/platform"
 import { closeTab } from "@/core/workspace"
-import { dockAtEnd, dockPanel, drawerPanels, headerItems, headingMode, setPanelHeading, hideBarItem, hidePanel, isBarItem, setHeaderItemShown, shownHeaderItems, panelOfView, panelsIn, setPanelDocked, setPanelHeight, sideOf, sidebarPanels, sidebars, togglePanelCollapsed, useSidebars, type HeadingMode, type PanelOf, type Side } from "@/core/plugins"
+import { defaultHeading, dockAtEnd, dockPanel, drawerPanels, headerItems, headingMode, setPanelHeading, hideBarItem, hidePanel, isBarItem, setHeaderItemShown, shownHeaderItems, panelOfView, panelsIn, setPanelDocked, setPanelHeight, sideOf, sidebarPanels, sidebars, togglePanelCollapsed, useSidebars, type HeadingMode, type PanelOf, type Side } from "@/core/plugins"
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { firstKeys, keyCaps, runCommandById, useCommandKeys } from "@/core/commands"
 import { useDismiss } from "@/core/focus"
@@ -339,7 +339,9 @@ export function panelMenu(key?: string, side?: Side): MenuItem[] {
   const here: Side = side ?? (key ? sideOf(key, s) : null) ?? "left"
   const other: Side = here === "left" ? "right" : "left"
   const all = sidebarPanels(disabled)
-  const choice = (p: PanelOf, hint?: string): CheckItem => ({ key: p.key, label: p.panel.title, icon: panelIcon(p), hint })
+  // (on but out of sight: an empty one, with quiet headings, takes no room; ticking it again would seem to do nothing)
+  const away = (k: string) => { const el = document.querySelector(`[data-panel="${CSS.escape(k)}"]`); return !!el?.querySelector("[data-panel-empty]") && getComputedStyle(el).display === "none" }
+  const choice = (p: PanelOf, hint?: string): CheckItem => ({ key: p.key, label: p.panel.title, icon: panelIcon(p), hint: hint ?? (away(p.key) ? "Hidden while empty" : undefined) })
   const list = checklist(`panels:${here}`, {
     on: panelsIn(here, s, disabled).map((p) => choice(p)),
     off: [all.filter((p) => !sideOf(p.key, s)).map((p) => choice(p)), panelsIn(other, s, disabled).map((p) => choice(p, `${other === "left" ? "Left" : "Right"} sidebar`))],
@@ -354,13 +356,12 @@ export function panelMenu(key?: string, side?: Side): MenuItem[] {
   const open: MenuItem[] = tab ? [{ label: `Open ${tab.name} in a tab`, icon: SquareArrowOutUpRight, sep: !!own.length, run: tab.open }] : []
   // A phone's drawer: a `dockable` panel goes to its dock and back.
   const docked = !!s.dock?.includes(key)
-  // Its heading: shown, quiet or hidden; one that isn't shown can't be clicked to fold, so folding is here too.
+  // Its heading: shown, quiet or hidden (holding ⌥ shows either); one that isn't shown can't be clicked to fold, so folding is here too.
   const of = all.find((p) => p.key === key)!, mode = headingMode(of, s), placed = !!sideOf(key, s)
-  const head: MenuItem[] = !placed ? [] : [{ label: "Heading", run: () => {}, sep: !!(own.length || open.length),
-    segments: { value: mode, pick: (v) => setPanelHeading(of, v as HeadingMode), options: [
-      { value: "shown", label: "Shown" },
-      { value: "quiet", label: "Quiet", note: keysText("A gap: its name shows when you point there, or hold ⌥") },
-      { value: "hidden", label: "Hidden", note: keysText("A gap: its name shows while you hold ⌥") }] } },
+  // (the one Quiet panel headings gives every panel says Default: picking another is this panel's own)
+  const pick = (v: HeadingMode, label: string, hint?: string): MenuItem => ({ label, hint: v === defaultHeading(of.panel) ? "Default" : hint, checked: mode === v, run: () => setPanelHeading(of, v) })
+  const ways = [pick("shown", "Shown"), pick("quiet", "Shown when pointed at"), pick("hidden", "Hidden", keysText("hold ⌥ to see"))]
+  const head: MenuItem[] = !placed ? [] : [{ label: "Heading", icon: Heading, hint: ways.find((w) => w.checked)?.label, sep: !!(own.length || open.length), run: () => {}, items: ways },
     ...(mode !== "shown" && !s.collapsed.includes(key) ? [{ label: `Fold ${me.title}`, icon: ChevronsDownUp, run: () => togglePanelCollapsed(key) }] : [])]
   const dock: MenuItem[] = me.dockable && !isDesktop() ? [{ label: docked ? "Take out of the dock" : "Put in the dock", icon: docked ? PanelBottomClose : PanelBottom, sep: !!(own.length || open.length), run: () => setPanelDocked(key, !docked) }] : []
   return [...own, ...open, ...head, ...dock,

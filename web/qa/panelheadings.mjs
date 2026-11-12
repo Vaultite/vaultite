@@ -69,14 +69,28 @@ if (ai) {
   await until(async () => (await heading("pages:pages"))?.mode === "quiet", 5000)
 }
 
-// The panel's menu: Heading's three choices, and Fold while it isn't shown.
+// The panel's menu: Heading ▸ with its three choices, and Fold while it isn't shown.
 const menuText = () => page.$eval("[role=menu]", (e) => e.textContent).catch(() => "")
 await page.click(`${panel("files:files")} [data-panel-handle]`, { button: "right", position: { x: 60, y: 8 } })
 await until(() => page.$("[role=menu]"), 3000)
 const m = await menuText()
-check("menu: Heading with Shown, Quiet and Hidden", /Shown/.test(m) && /Quiet/.test(m) && /Hidden/.test(m), m)
+check("menu: Heading ▸ says the mode it's in", /HeadingShown when pointed at/.test(m), m)
 check("menu: Fold, its heading not being shown", /Fold File explorer/.test(m), m)
+// (no segmented row, nor the blank line under one: a submenu like the others)
+check("menu: no segmented control", !(await page.$("[role=menu] [data-menu-segments]")))
+const menus = () => page.$$eval("[role=menu]", (es) => es.map((e) => e.textContent))
+await page.getByRole("menuitem", { name: /^Heading/ }).hover()
+await until(async () => (await menus()).length > 1, 3000)
+const sub = (await menus()).at(-1)
+check("Heading ▸: its three choices, the one appearance gives every panel the Default", /^ShownShown when pointed atDefaultHidden/.test(sub), sub)
 await page.screenshot({ path: `${OUT}menu.png` })
+if (ai) {
+  await page.getByRole("menuitem", { name: /^Panels/ }).hover()
+  await until(async () => (await menus()).some((t) => /Inbox/.test(t)), 3000)
+  const list = (await menus()).find((t) => /Inbox/.test(t))
+  check("Panels ▸: the empty Inbox, on but out of sight, says so", /InboxHidden while empty/.test(list), list)
+  await page.getByRole("menuitem", { name: /^Heading/ }).hover()
+}
 await page.getByRole("menuitem", { name: /Fold File explorer/ }).click()
 await until(async () => (await sidebars()).collapsed?.includes("files:files"), 5000)
 await until(async () => (await heading("files:files"))?.mode === "shown", 5000)

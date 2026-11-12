@@ -619,8 +619,9 @@ function MenuSegments({ it, redraw }: { it: MenuItem; redraw?: () => MenuItem[] 
         requestAnimationFrame(() => el.querySelector<HTMLElement>("[aria-checked=true]")?.focus())
       }}>
       <Segmented big label={it.label} value={value} options={options.map((o) => ({ value: o.value, label: o.label }))} onChange={choose} className="[&>button]:px-3" />
-      {/* (every note in one cell, only the one on shown: the menu keeps its size as the choice changes) */}
-      {options.some((o) => o.note) && (
+      {/* (every note in one cell, only the one on shown: the menu keeps its size as the choice changes; none for one
+          without a note, else a blank line hangs under it) */}
+      {options.some((o) => o.value === value && o.note) && (
         <div className="grid max-w-80 px-2 pt-1.5 text-[15px] leading-5 text-muted-foreground md:max-w-72 md:px-1.5 md:pt-1 md:text-[12px] md:leading-4">
           {options.map((o) => <p key={o.value} aria-hidden={o.value !== value} className={cn("[grid-area:1/1]", o.value !== value && "invisible")}>{o.note}</p>)}
         </div>
