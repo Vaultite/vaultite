@@ -1,5 +1,5 @@
 // What reference flows move over an emulated network (netem.ts), per flow: bytes, requests, round trips, time to usable.
-// node tools/perf/transfer.ts [--root <checkout>]... [--from <checkout>] [--runs 3] [--profiles cellular,tailnet] [--flows a,b] [--idle 60] [--out r.json] [--print]
+// node tools/perf/transfer.ts [--root <checkout>]... [--from <checkout>] [--runs 3] [--scale 1] [--profiles cellular,tailnet] [--flows a,b] [--idle 60] [--out r.json] [--print]
 import "../test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { execFileSync, spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
@@ -19,9 +19,9 @@ const arg = (name: string, dflt: string) => { const i = args.indexOf(`--${name}`
 const spec = (s: string) => s.split("=").map((p) => path.resolve(p)).join("=")
 const roots = args.flatMap((a, i) => (a === "--root" ? [spec(args[i + 1])] : []))
 if (!roots.length) roots.push(path.join(import.meta.dirname, "..", ".."))
-const RUNS = Number(arg("runs", "3")), IDLE_S = Number(arg("idle", "60")), OUT = arg("out", ""), PRINT = args.includes("--print")
+const RUNS = Number(arg("runs", "3")), SCALE = Number(arg("scale", "1")), IDLE_S = Number(arg("idle", "60")), OUT = arg("out", ""), PRINT = args.includes("--print")
 const profiles = arg("profiles", "cellular,tailnet").split(",").map((p) => PROFILES[p] ?? (() => { throw new Error(`no profile ${p}`) })())
-export const FLOWS = ["cold", "warm", "open", "switch", "search", "today", "rich", "terminal", "idle", "phone-cold", "phone-resume", "update"] as const
+export const FLOWS = ["cold", "warm", "open", "switch", "search", "today", "rich", "terminal", "idle", "phone-cold", "phone-resume", "phone-reopen", "update"] as const
 type Flow = (typeof FLOWS)[number]
 const only = arg("flows", "").split(",").filter(Boolean) as Flow[]
 /** --from: the build a phone's cache holds before a deploy (update); without it, no update flow. */
@@ -88,8 +88,11 @@ async function serve(rootSpec: string, dir: string): Promise<Server> {
   }
   // (the page comes through a proxy, as a phone's does through Tailscale Serve, but has no tailnet login to be the owner
   // by: this throwaway server's terminals answer whoever reaches it, set from this machine)
-  await fetch(`http://127.0.0.1:${port}/api/config/plugin/terminal`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ allowRemote: true }) })
-  return { root, child, base: `http://127.0.0.1:${port}/`, port, dir }
+  const terminal = `http://127.0.0.1:${port}/api/config/plugin/terminal`
+  if ((await fetch(terminal).then((r) => r.json(), () => ({})) as { allowRemote?: boolean }).allowRemote !== true) {
+    await fetch(terminal, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ allowRemote: true }) })
+  }
+  return { root: rootSpec, child, base: `http://127.0.0.1:${port}/`, port, dir }
 }
 async function stop(s: Server) {
   await new Promise<void>((r) => { if (s.child.exitCode !== null) return r(); s.child.once("exit", () => r()); s.child.kill() })
@@ -199,7 +202,7 @@ async function switcher(page: Page, name: string, newTab = false) {
   await page.keyboard.press(newTab ? "ControlOrMeta+Enter" : "Enter")
 }
 
-type Ctx = { server: Server; browser: Browser; net: Netem; from?: Server }
+type Ctx = { server: Server; browser: Browser; net: Netem }
 const PHONE = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 }
 async function open(c: Ctx, phone: boolean) {
   const ctx = await c.browser.newContext(phone ? PHONE : { viewport: { width: 1440, height: 900 } })
@@ -304,16 +307,25 @@ async function phone(c: Ctx, want: Flow[], out: Partial<Record<Flow, Measure>>) 
       await wait(5000)
       out["phone-resume"] = await measure(t, "phone-resume", () => visible(page, true), undefined, 2500)
     }
+    if (want.includes("phone-reopen")) {
+      // The app opened again (from the phone's cache) after an agent wrote a note: the vault's state is asked anew
+      await quiet(t, 2000)
+      await fetch(new URL("api/file", c.server.base), { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/qa" },
+        body: JSON.stringify({ path: "Transfer/Written by an agent.md", text: "Written by an agent before the app was opened again.\n" }) })
+      await wait(1500)
+      out["phone-reopen"] = await measure(t, "phone-reopen", () => page.reload(), () => usable(page), 2500)
+    }
   } finally { await ctx.close() }
 }
 
 /** A deploy as a phone meets it: its cache holds the build before (`from`), and the page reloads into this one. */
-async function update(c: Ctx, out: Partial<Record<Flow, Measure>>) {
+async function update(c: Ctx, out: Partial<Record<Flow, Measure>>, restart: (root: string) => Promise<Server>) {
   const { ctx, page, t } = await open(c, true)
   try {
-    c.net.retarget(c.from!.base)
+    // (a deploy as the M1 does it: the same vault and local data, the server started again on the new code)
+    c.net.retarget((await restart(FROM)).base)
     await page.goto(c.net.url); await usable(page); await quiet(t, 2500)
-    c.net.retarget(c.server.base)
+    c.net.retarget((await restart(c.server.root)).base)
     out.update = await measure(t, "update", () => page.reload(), () => usable(page), 2500)
   } finally { await ctx.close() }
 }
@@ -359,12 +371,11 @@ async function main() {
       for (let run = 0; run < RUNS; run++) {
         for (let i = 0; i < roots.length; i++) {
           const dir = path.join(tmp, `${profile.name}-${run}-${i}`)
-          makeVault(path.join(dir, "vault"), 1)
+          makeVault(path.join(dir, "vault"), SCALE)
           fixture(path.join(dir, "vault"))
           const s0 = performance.now()
-          const server = await serve(roots[i], dir)
+          let server = await serve(roots[i], dir)
           if (process.env.VAULTITE_TRANSFER_TRACE) console.error(`server up: ${Math.round(performance.now() - s0)} ms`)
-          const from = FROM ? (fs.cpSync(path.join(dir, "vault"), path.join(dir, "from", "vault"), { recursive: true }), await serve(FROM, path.join(dir, "from"))) : undefined
           const net = await netem(server.base, profile)
           const browser = await chromium.launch({ executablePath: CHROME, headless: true,
             args: ["--mute-audio", `--ignore-certificate-errors-spki-list=${net.spki}`] })
@@ -372,15 +383,14 @@ async function main() {
           // (idling is the slowest flow and the steadiest: once)
           const flows = run === 0 ? FLOWS_ : FLOWS_.filter((f) => f !== "idle")
           try {
-            const c = { server, browser, net, from }
+            const c = { server, browser, net }
             if (flows.some((f) => !f.startsWith("phone") && f !== "update")) await desktop(c, flows, out)
             if (flows.some((f) => f.startsWith("phone"))) await phone(c, flows, out)
-            if (flows.includes("update")) await update(c, out)
+            if (flows.includes("update")) await update(c, out, async (root) => { await stop(server); return (server = await serve(root, dir)) })
           } finally {
             await browser.close()
             await net.close()
             await stop(server)
-            if (from) await stop(from)
           }
           all[i].push(out)
           const m = all[i].at(-1)!

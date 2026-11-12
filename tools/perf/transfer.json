@@ -50,6 +50,11 @@
       "wire": 1506304,
       "requests": 118,
       "serial": 6
+    },
+    "phone-reopen": {
+      "wire": 73728,
+      "requests": 11,
+      "serial": 5
     }
   }
 }

@@ -6,7 +6,8 @@ import path from "node:path"
 export const FLOWS: Record<string, string> = {
   "cold": "Cold load (computer)", "warm": "Reload", "open": "Open a note", "switch": "Switch notes", "search": "Search",
   "today": "Today's note", "rich": "Note with embeds", "terminal": "Terminal output", "idle": "Idle, per minute",
-  "phone-cold": "Phone: cold start", "phone-resume": "Phone: back from the background", "update": "Phone: start after a deploy",
+  "phone-cold": "Phone: cold start", "phone-resume": "Phone: back from the background", "phone-reopen": "Phone: opened after a change",
+  "update": "Phone: start after a deploy",
 }
 /** Metrics with a ceiling, and the room a ceiling leaves over what it was set from (--ratchet). */
 const METRICS = {
@@ -16,7 +17,7 @@ const METRICS = {
 } as const
 type Metric = keyof typeof METRICS
 /** Which flows' requests and round trips are worth a row (the rest are a request or two). */
-const LATENCY_FLOWS = new Set(["cold", "warm", "open", "today", "phone-cold", "phone-resume", "update"])
+const LATENCY_FLOWS = new Set(["cold", "warm", "open", "today", "phone-cold", "phone-resume", "phone-reopen", "update"])
 const KINDS = ["js", "css", "api", "html", "media", "other", "socket"] as const
 type Measure = { wire: number; down: number; up: number; requests: number; api: number; serial: number; socketMsgs: number; ms: number
   sent: Record<(typeof KINDS)[number], number>; decoded: Record<(typeof KINDS)[number], number> }
