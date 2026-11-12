@@ -15,6 +15,9 @@ export const MCP_PATHS = /^\/(mcp|register|token|authorize(\/status)?|\.well-kno
  *  too while ownerTools is off; the app's own owner checks (core/owner.ts) refuse them anyway. */
 const OWNER_PATHS = /^\/api\/(terminals?|dispatch|screens|herdr|bundles|machines|schedule|vaults|ui|file\/open|vaultite-cloud\/export|web-viewer\/(tabs|live))(\/|$)/
 const OWNER_OPS = /^(plugin|bundle|terminal|dispatch|screens|herdr|schedule|machines|vault-plugin|vaultite-cloud|settings)\.|^ui\.command$/
+/** CONNECT_HEADER's value on what Connect hands the app: only this process knows it, so a route can tell the owner
+ *  Vaultite Cloud signed in (viaConnect) from a client sending the header itself, which only takes its rights away. */
+const MARK = crypto.randomBytes(24).toString("base64url")
 const HOP = new Set(["connection", "keep-alive", "transfer-encoding", "te", "trailer", "upgrade", "proxy-authorization", "proxy-authenticate", "host", "forwarded", "x-real-ip"])
 const OURS = /^(x-vaultite-|tailscale-|x-forwarded-|cf-)/
 
@@ -41,6 +44,13 @@ export function ownerOnly(pathname: string): string {
   return ""
 }
 
+/** Brought by Connect with owner tools off: the handle's owner, signed in through Vaultite Cloud (connect.ts' own mark).
+ *  For the few routes that also answer there (seeing and ending connections); core/owner.ts refuses the rest. */
+export function viaConnect(req: IncomingMessage) {
+  const v = req.headers[CONNECT_HEADER]
+  return typeof v === "string" && v.length === MARK.length && crypto.timingSafeEqual(Buffer.from(v), Buffer.from(MARK))
+}
+
 export type ConnectOptions = { appPort: () => number; publicHost: () => string | null; ownerTools: () => boolean; from: (req: IncomingMessage) => string }
 
 /** The request's headers as the app gets them: ours, the tunnel's and hop-by-hop ones out; local Host. Without owner
@@ -49,7 +59,7 @@ function headersFor(req: IncomingMessage, o: ConnectOptions) {
   const out: Record<string, string | string[]> = {}
   for (const [k, v] of Object.entries(req.headers)) if (v !== undefined && !HOP.has(k) && !OURS.test(k) && k !== "origin") out[k] = v
   out.host = `127.0.0.1:${o.appPort()}`
-  if (!o.ownerTools()) { out["x-forwarded-for"] = o.from(req) || "unknown"; out[CONNECT_HEADER] = "1" }
+  if (!o.ownerTools()) { out["x-forwarded-for"] = o.from(req) || "unknown"; out[CONNECT_HEADER] = MARK }
   return out
 }
 

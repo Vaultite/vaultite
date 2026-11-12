@@ -8,7 +8,9 @@ type Access = "read" | "write"
 /** `actor`: the name Activity gives what it does. */
 type Connection = { id: string; name: string; created: string; used: string | null; access: Access; actor: string }
 type Cloud = { state: "off" | "connecting" | "connected" | "reconnecting" | "offline" | "replaced"; handle: string | null; url: string | null; app?: string | null; guests?: string | null; connectUrl: string; message?: string }
-type State = { url: string | null; cloud: Cloud; connect?: { ownerTools: boolean }; connections: Connection[]; waiting: number
+/** `here`: "connect" when the app is used through Vaultite Cloud (Connect, owner tools off): the connections can be seen
+ *  and ended there, and the rest is done on the Mac (plugin.ts seenOverConnect). */
+type State = { here?: "connect"; url: string | null; cloud: Cloud; connect?: { ownerTools: boolean }; connections: Connection[]; waiting: number
   /** The apps whose sign-in page waits for its code. */
   asking?: string[]
   /** Apps let in by their code that haven't finished signing in: a row each, till they're connections. */
@@ -160,6 +162,30 @@ function AppAddress({ app, ownerTools, onDone }: { app: string; ownerTools: bool
   )
 }
 
+/** A calm line under a section: what's done on the Mac itself, seen over Connect. */
+const OnTheMac = ({ children }: { children: ReactNode }) => <p className="pt-1.5 text-[13px] leading-[18px] text-muted-foreground" data-on-the-mac>{children}</p>
+
+const hostOf = (url: string | null | undefined) => { try { return url ? new URL(url).host : "" } catch { return "" } }
+
+/** Remote access over Connect: where the app is reached, the Vaultite account (devices, plan, sign out), and what
+ *  only the Mac sets. */
+function ThroughCloud({ cloud }: { cloud: Cloud }) {
+  let account = ""
+  try { account = new URL(cloud.connectUrl).origin } catch { /* no relay */ }
+  return (
+    <Section title="Vaultite Cloud">
+      <p className="pb-2 text-[15px] leading-[20px]" data-through-cloud>
+        You're using this Mac through Vaultite Cloud, at {hostOf(cloud.app) || hostOf(cloud.url) || "your address"}.
+      </p>
+      <Group>
+        {account && <SettingRow label="Vaultite account" sub="Devices, plan and sign out" chevron={ExternalLink} onClick={() => openWebLink(account)} data-cloud-account />}
+        {cloud.url && <SettingRow label="MCP address" sub={<code className="break-all text-[12px]">{cloud.url}</code>} chevron={Copy} onClick={() => void copyAddress(cloud.url!)} data-cloud-url />}
+      </Group>
+      <OnTheMac>Signing this Mac in or out of Vaultite Cloud, terminals and coding agents over this address, and your own tunnel are set on this Mac.</OnTheMac>
+    </Section>
+  )
+}
+
 const copyAddress = (url: string) => copyText(url).then(() => notify("Copied the address", { id: "copied" }), (e) => notifyError(e))
 
 export type AppId = "claude" | "chatgpt" | "grok-bot" | "muse" | "other"
@@ -271,7 +297,10 @@ export function SetupSheet({ id }: { id: AppId }) {
           {address ? (
             <>
               <Section title="Steps"><Guide id={id} address={address} /></Section>
-              <Section title="Code"><Connect waiting={data.waiting} onDone={reload} as={id === "other" ? undefined : g.name} /></Section>
+              <Section title="Code">
+                {data.here === "connect" ? <OnTheMac>Type the code its sign-in page shows in Connections on this Mac.</OnTheMac>
+                  : <Connect waiting={data.waiting} onDone={reload} as={id === "other" ? undefined : g.name} />}
+              </Section>
               {!!(data.finishing?.length || data.failed?.length) && <Group><SignInRows data={data} /></Group>}
             </>
           ) : (
@@ -379,6 +408,7 @@ export function AiApps({ bare }: { bare?: boolean }) {
   const others = data.connections.filter((c) => !taken.has(c.id))
   const open = (c: Connection) => openDetail(detailPath(CONNECTION_DETAIL, c.id))
   const connectedMeta = (c: Connection) => <><span className="text-ink-(--green)">Connected</span>{usedText(c) && ` · ${usedText(c)}`}</>
+  if (data.here === "connect") return <ConnectedApps data={data} intro={intro} leaving={leaving} />
   return (
     <div className="flex flex-col gap-3" data-ai-apps>
       {data.waiting > 0 && (data.url || data.cloud.url) && <Waiting data={data} onDone={reload} />}
@@ -401,14 +431,41 @@ export function AiApps({ bare }: { bare?: boolean }) {
   )
 }
 
+/** AI apps over Connect: the connected ones, each opening its page (seen and ended there); setting up a new one is the Mac's. */
+function ConnectedApps({ data, intro, leaving }: { data: State; intro: ReactNode; leaving: ReturnType<typeof useConnections>["leaving"] }) {
+  return (
+    <div className="flex flex-col gap-3" data-ai-apps data-over-connect>
+      {intro}
+      <div>
+        <Group>
+          <div data-app-list>
+            {!data.connections.length && <Row title="No AI apps connected yet" data-no-apps />}
+            {data.connections.map((c) => {
+              const app = appOf(c)
+              return <Row key={c.id} lead={<AppMark icon={app ? appIcon(app) : Bot} tint={app ? GUIDES[app].tint : undefined} />} title={c.name}
+                meta={<><span className="text-ink-(--green)">Connected</span>{usedText(c) && ` · ${usedText(c)}`}</>}
+                onOpen={() => openDetail(detailPath(CONNECTION_DETAIL, c.id))} data-connection={c.id} data-app-connected data-leaving={leaving(c.id)} />
+            })}
+          </div>
+        </Group>
+        <OnTheMac>Connect a new app, or let one write, on this Mac.</OnTheMac>
+      </div>
+    </div>
+  )
+}
+
 /** Vaultite Cloud and the addresses this machine is reached at: the whole app from anywhere, MCP's for apps. */
 export function RemoteAccess() {
   const { data, error, reload } = useConnections()
   if (!data) return <Loading error={error} />
   return (
     <div className="flex flex-col gap-4" data-remote-access>
-      {data.cloud.app && data.cloud.state === "connected" && <AppAddress app={data.cloud.app} ownerTools={!!data.connect?.ownerTools} onDone={reload} />}
-      <CloudSection data={data} onDone={reload} />
+      {data.here === "connect" ? <ThroughCloud cloud={data.cloud} /> : (
+        <>
+          {data.cloud.app && data.cloud.state === "connected" && <AppAddress app={data.cloud.app} ownerTools={!!data.connect?.ownerTools} onDone={reload} />}
+          <CloudSection data={data} onDone={reload} />
+        </>
+      )}
       <Section title="Shared folders">
         <Group>
           <SettingRow label="Shared folders" sub={data.cloud.guests ? `The people you share folders with open them at ${data.cloud.guests}` : "Who you share folders with, and where they open them"}
@@ -476,10 +533,11 @@ export function ConnectionSheet({ id }: { id: string }) {
       <Empty>This app isn't connected anymore.</Empty>
     </div>
   )
-  return <ConnectionPage key={c.id} c={c} onDone={reload} />
+  return <ConnectionPage key={c.id} c={c} onDone={reload} remote={data.here === "connect"} />
 }
 
-function ConnectionPage({ c, onDone }: { c: Connection; onDone: () => void }) {
+/** `remote`: over Connect, where it's seen and ended; its access and name are changed on the Mac. */
+function ConnectionPage({ c, onDone, remote }: { c: Connection; onDone: () => void; remote: boolean }) {
   const app = appOf(c)
   // (what was chosen shows at once; a change that fails goes back)
   const [chosen, setChosen] = useState<Access | null>(null)
@@ -505,10 +563,12 @@ function ConnectionPage({ c, onDone }: { c: Connection; onDone: () => void }) {
       <SheetHead icon={app ? appIcon(app) : Bot} tint={app ? GUIDES[app].tint ?? "var(--foreground)" : "var(--foreground)"} kicker="Connections" title={c.name}
         sub={`Connected ${fmtAgo(c.created)}${c.used ? ` · last used ${fmtAgo(c.used)}` : ""}`} />
       <Section title="Access">
-        <Segmented label="Access" value={access} onChange={(v) => void change(v)} className="w-full sm:w-fit"
-          options={[{ value: "write", label: "Read and write" }, { value: "read", label: "Read only" }]} />
+        {remote ? <p className="text-[15px] leading-[20px] font-medium" data-access>{access === "read" ? "Read only" : "Read and write"}</p>
+          : <Segmented label="Access" value={access} onChange={(v) => void change(v)} className="w-full sm:w-fit"
+            options={[{ value: "write", label: "Read and write" }, { value: "read", label: "Read only" }]} />}
         <p className="pt-1.5 text-[13px] leading-[18px] text-muted-foreground" data-access-sub>
           {access === "read" ? "It can search and read your vault; anything it tries to change is refused." : "It can read and change your vault. What could run code on this machine still waits for your yes."}
+          {remote && " Its access and name are changed on this Mac."}
         </p>
       </Section>
       {(gates.length > 0 || !!review) && (
@@ -529,11 +589,13 @@ function ConnectionPage({ c, onDone }: { c: Connection; onDone: () => void }) {
             })}</Group>}
         </Section>
       )}
-      <Group>
-        <SettingRow stack label="Name" sub="What Connections and Activity call it">
-          <NameField c={c} onDone={onDone} />
-        </SettingRow>
-      </Group>
+      {!remote && (
+        <Group>
+          <SettingRow stack label="Name" sub="What Connections and Activity call it">
+            <NameField c={c} onDone={onDone} />
+          </SettingRow>
+        </Group>
+      )}
       <Group>
         <button type="button" onClick={() => void disconnect()} className="flex min-h-11 w-full cursor-pointer items-center text-left text-[15px] text-destructive" data-connection-disconnect>
           Disconnect {c.name}

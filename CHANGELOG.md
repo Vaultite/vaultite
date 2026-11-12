@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Connections over Vaultite Cloud**: opened at `<you>.vaultite.app`, Connections and Remote access list the AI apps
+  connected (access, last used) and end any of them, link to your Vaultite account, and say calmly what's set on the
+  Mac itself (a new app's code, more access, owner tools, signing in or out) instead of an error.
 - **Downloads show as they go**: a download in the browser says it started, then the page bar's Downloads button fills
   a ring as it goes and the status bar names it; its list shows each one's progress and time left, with Open, Show in
   Finder, Pause, Cancel and Retry, and a toast says when it's done (Open) or failed.

@@ -249,6 +249,49 @@ export default async ($: VaultTest) => {
       check("machines: a request another machine passes on for a guest is refused what only the owner gets, even with allowRemote",
         ownerRefusal(fake({ "x-vaultite-guest": "1" }), { allowRemote: true, owner: "" }, "the terminal").includes("another machine"))
     }
+    {
+      // Connections over Connect with owner tools off: seen and ended there; letting an app in, giving one more access,
+      // owner tools and Vaultite Cloud's sign-in stay this Mac's. The request is the one Connect hands the app.
+      const http = await import("node:http")
+      const once = (s: Any) => new Promise((r) => s.once("listening", r))
+      const { serveApp } = await import("../../../plugins/core/mcp/connect.ts")
+      let handed: Any = null
+      const appSide = http.createServer((req, res) => { handed = req.headers; res.end("{}") }).listen(0, "127.0.0.1")
+      await once(appSide)
+      const port = (s: Any) => s.address().port as number
+      const front = http.createServer((req, res) => serveApp(req, res, { appPort: () => port(appSide), publicHost: () => "alice.vaultite.app", ownerTools: () => false, from: () => "203.0.113.9" })).listen(0, "127.0.0.1")
+      await once(front)
+      await fetch(`http://127.0.0.1:${port(front)}/api/mcp/connections`, { headers: { "x-vaultite-connect": "forged" } })
+      appSide.close(); front.close()
+      const as = (headers: Any) => ({ headers, socket: { remoteAddress: "127.0.0.1" } }) as Any
+      const over = as(handed), forged = as({ host: "127.0.0.1:8793", "x-vaultite-connect": "1", "x-forwarded-for": "203.0.113.9" }), mac = as({ host: "127.0.0.1:8793" })
+      check("connect: what Connect hands the app carries its own mark, never the client's", typeof handed?.["x-vaultite-connect"] === "string" && handed["x-vaultite-connect"] !== "forged" && handed["x-vaultite-connect"].length > 20, handed)
+      await app.callOp("mcp.cloud-sign-in", {}) // (the public listener, which keeps the connections; signed out, it reaches nothing)
+      const file = path.join(process.env.VAULTITE_LOCAL!, "config.json")
+      const config = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : {}
+      const at = new Date().toISOString()
+      config.mcp = { ...config.mcp, grants: { g1: { name: "Claude", client: "client-secret-id", created: at, used: at, refresh: "refresh-hash-x" }, g2: { name: "ChatGPT", client: "c2", created: at, access: "read", refresh: "refresh-hash-y" } } }
+      fs.writeFileSync(file, JSON.stringify(config))
+      const run = (method: string, parts: string[], body: unknown, who = over) => app.run(method, parts, {}, body, who)
+      const stored = () => JSON.parse(fs.readFileSync(file, "utf8")).mcp
+      const list = await run("GET", ["mcp", "connections"], undefined), seen = list.body as Any, text = JSON.stringify(seen)
+      check("connect: the connected apps are listed there (names, access, dates), with no token, client or sign-in waiting",
+        list.status === 200 && seen.here === "connect" && seen.connections.map((c: Any) => `${c.name}:${c.access}`).join() === "Claude:write,ChatGPT:read"
+        && !text.includes("refresh-hash") && !text.includes("client-secret-id") && !("asking" in seen), list)
+      check("connect: the header sent by anyone else lists nothing", (await run("GET", ["mcp", "connections"], undefined, forged)).status === 403)
+      const refused = [await run("POST", ["mcp", "connections"], { code: "BCDF-GHJK" }), await run("PATCH", ["mcp", "connections", "g2"], { access: "write" }),
+        await run("PATCH", ["mcp", "connections", "g2"], { name: "Mine" }), await run("POST", ["mcp", "connect"], { ownerTools: true }),
+        await run("POST", ["ops", "mcp.cloud-sign-in"], { code: "BCDF-GHJK" }), await run("POST", ["ops", "mcp.cloud-sign-out"], {}),
+        await run("DELETE", ["mcp", "connections", "g1"], undefined, forged)]
+      check("connect: approving a code, more access, renaming, owner tools and Vaultite Cloud's sign-in or out are refused there",
+        refused.every((r) => r.status === 403) && stored().grants.g2.access === "read" && stored().grants.g2.name === "ChatGPT" && !stored().connect && !!stored().grants.g1, refused.map((r) => r.status))
+      const ended = await run("DELETE", ["mcp", "connections", "g1"], undefined)
+      check("connect: a connection is ended there", ended.status === 200 && !stored().grants.g1 && !!stored().grants.g2, ended)
+      const here = await run("GET", ["mcp", "connections"], undefined, mac)
+      check("connect: on this Mac, the whole answer", here.status === 200 && !(here.body as Any).here && Array.isArray((here.body as Any).asking), here)
+      const { grants: _, ...rest } = stored()
+      fs.writeFileSync(file, JSON.stringify({ ...config, mcp: rest }))
+    }
     t = await tool("add_timeline", { person: "Sammy", kind: "call", text: "Talked about the show", date: "2026-09-29", duration_min: 30 })
     check("mcp add_timeline: by an alias, placed by date", !t.error && read("People/Sam Reyes.md").includes("- 2026-09-29 · call · 30 min · Talked about the show"), read("People/Sam Reyes.md"))
     t = await tool("add_timeline", { person: "Sam", kind: "call", text: "x" })

@@ -12,7 +12,8 @@ lines (`vau mcp` under VAULTITE_TOLD): it gets the intro and the tools' part onl
   Muse): `<url>/mcp` on a listener of its own that a tunnel makes public, set in this machine's `data/config.json`
   (`mcp.public`: `url`, `port`). Sign-in has no accounts: the app's sign-in page shows a code, typed in
   view:connections, where connections are also renamed, ended or made read only (it then gets only the tools that read;
-  `call` refuses the rest). The same tools, `ops` and `call` too, without what only this machine's owner may run
+  `call` refuses the rest). Over Vaultite Connect (owner tools off) they are only listed and ended: the rest
+  is done on the Mac. The same tools, `ops` and `call` too, without what only this machine's owner may run
   (terminals, the screen). What can run code on this machine or change what does (turning a plugin on or allowing it,
   writing under `.vaultite/`, bundles, settings, palette commands, clipping a local address) waits for the owner's yes:
   Approve and Deny in the Inbox and on the phone. Writing a vault plugin's code doesn't (`plugin.new` too): it runs only

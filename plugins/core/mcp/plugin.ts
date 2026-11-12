@@ -5,6 +5,7 @@ import { agentLines, APP_VERSION, HTTPError, OpError, Plugin, reply, type Reques
 import { appsFrom, contents, cspOf } from "./apps.ts"
 import { toolsOf } from "./catalog.ts"
 import { Cloud, type CloudStatus } from "./cloud.ts"
+import { viaConnect } from "./connect.ts"
 import { PublicMcp } from "./public.ts"
 import { callTool, type Client, declared, handleBody, initializes, instructionsOf, type Session, type ToolCtx, ToolError, toolsWithApps } from "./protocol.ts"
 
@@ -17,6 +18,15 @@ const sessions = new Map<string, Session>()
 async function allowed(req: Request) {
   if (plugin.isOff()) throw new HTTPError(404, "the MCP plugin is off (Plugins)")
   await plugin.ownerOnly(req, "Vaultite's MCP server")
+}
+
+/** allowed(), or the owner over Connect with owner tools off (true): for what only shows or takes access away (the
+ *  connections' list, ending one). What lets an app in or gives it more stays allowed()'s. */
+async function seenOverConnect(req: Request) {
+  if (plugin.isOff()) throw new HTTPError(404, "the MCP plugin is off (Plugins)")
+  if (req.http && viaConnect(req.http)) return true
+  await plugin.ownerOnly(req, "Vaultite's MCP server")
+  return false
 }
 
 /** A tool's context: ops in-process, as the client, for the request it came in (its owner checks apply: an op's
@@ -149,7 +159,9 @@ plugin.onUnload(() => { pub?.stop(); cloud.stop() })
 /** The apps connected from the internet, the sign-ins waiting for their code (how many, and their apps), those finishing
  *  and those that failed lately, and Vaultite Cloud. */
 plugin.route("GET", "mcp/connections", async (req) => {
-  await allowed(req)
+  // Over Connect: the connections (names, access, dates: list() holds no token or client id) and Vaultite Cloud's state;
+  // sign-ins waiting and the own tunnel are this Mac's (`here`: the app shows what's done there as such).
+  if (await seenOverConnect(req)) return { here: "connect", url: null, cloud: cloud.status(), connect: { ownerTools: false }, connections: pub?.list() ?? [], waiting: 0 }
   return { url: settings ? `${settings.url}/mcp` : null, cloud: cloud.status(), connect: { ownerTools: ownerTools() }, connections: pub?.list() ?? [],
     waiting: pub?.waiting() ?? 0, asking: pub?.asking() ?? [], finishing: pub?.finishing() ?? [], failed: pub?.failures() ?? [] }
 }, { lock: false })
@@ -188,8 +200,9 @@ plugin.route("PATCH", "mcp/connections/*", async (req) => {
   return { ok: true }
 }, { lock: false })
 
+/** End a connection: also over Connect, as it only takes access away. */
 plugin.route("DELETE", "mcp/connections/*", async (req) => {
-  await allowed(req)
+  await seenOverConnect(req)
   if (!pub?.disconnect(req.arg(0))) throw new HTTPError(404, "no such connection")
   return { ok: true }
 }, { lock: false })
