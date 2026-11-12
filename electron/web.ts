@@ -1,5 +1,4 @@
-// The Browser's pages: a WebContentsView over a tab's pane, which the page places and covers; sandboxed, a session
-// per profile, http(s) only. What it does and why: plugins/core/web-viewer/CLAUDE.md.
+// The Browser's pages, WebContentsViews over tabs' panes: plugins/core/web-viewer/CLAUDE.md says what and why.
 import { app, BaseWindow, clipboard, dialog, type Input, ipcMain, Menu, type MenuItemConstructorOptions, nativeImage, powerSaveBlocker, safeStorage, screen, session, shell, type Session, systemPreferences, type View, WebContentsView, type WebContents } from "electron"
 import { localUrl } from "../core/web.ts"
 import { AppWindow } from "./appwindow.ts"
@@ -28,51 +27,28 @@ export type WebRect = { x: number; y: number; width: number; height: number; rad
 export type WebState = { url: string; title: string; back: boolean; forward: boolean; loading: boolean; error?: string; playing?: boolean; muted?: boolean
   paused?: boolean; player?: boolean; zoom?: number; unsafe?: boolean; crashed?: boolean; typed?: boolean; painted?: boolean }
 type Page = Owned<AppWindow> & { view: WebContentsView; error?: string
-  /** Its address failed on a certificate it may choose to trust for this session (`allow-cert`). */
   cert?: { url: string; host: string; fp: string }
-  /** Its renderer kept dying: it shows "This page crashed" till a reload. */
   crashed?: boolean
-  /** The HTTP status its last load committed with (did-navigate). */
   status?: number
-  /** Its frames holding typed, unsent input (web-preload.cjs), by frame: its tab isn't archived meanwhile. */
   typed: Map<string, boolean>
-  /** Where its tab last asked it to be (null: hidden): where it goes back to from full screen. */
   want: WebRect | null
-  /** Its player: a window of its own it fills (see the player's section below), still its tab's. */
   player?: BaseWindow
-  /** It's full screen (the page asked: a video's button), filling its window or its player. */
   full?: boolean
-  /** Its full screen made the window full screen: leaving it, the window goes back. */
   madeFull?: boolean
-  /** The style its player added (its main video's fill), taken out as it's back. */
   fillCss?: string
   /** The address it was last sent to: what it shows until a load commits (getURL is "" till then). */
   target: string
-  /** The icon addresses it last told (page-favicon-updated), so the same list isn't fetched again. */
   icons?: string
-  /** It had the keyboard when it was last hidden. */
   hadFocus?: boolean
-  /** Its corners' radius now (window px). */
   radius?: number
-  /** Whether it plays sound, as its tab shows it (webpages.ts), the timer that ends a quiet stretch's, and the one that
-   *  looks again after a pause. */
   sound: Playback; hush?: NodeJS.Timeout; linger?: NodeJS.Timeout
-  /** The app paused its media (`pause`): `play` starts those again, till it plays or loads another page. */
   paused?: boolean
-  /** Its first load was a download, before a tab had it: the tab it's handed to closes. */
   downloaded?: boolean
-  /** Its history is being put back (a tab come back): what it shows is `target` till that's in. */
   restoring?: boolean
-  /** It's the spare's, its first load not in yet: the spare's about:blank is no page to go back to (gone once it is). */
   blankBehind?: boolean
-  /** No page of its own has painted yet: it shows the window's colour (`looks`) rather than white. */
   fresh: boolean
-  /** An agent's: out of sight it's parked rather than hidden, so it draws on. `drew`: when its document was last seen
-   *  drawing. */
   drawn?: boolean; spot: Spot; drew?: number; seeing?: Promise<void>
-  /** When the user last pressed a key or the pointer in it, any frame (Chromium's user activation, for its opens). */
   input: number
-  /** Where it was opened and the sign-in it reached, till the user moves it on (webpages.ts Flow). */
   flow: Flow }
 /** A site a profile keeps cookies for: whether it's signed in and who as, when we know how to ask, sites the same login covers (`with`),
  *  its last visit, and `other` when no page of it was opened (its cookies came with other sites' pages: trackers). */
@@ -80,21 +56,14 @@ export type WebSite = { site: string; signed?: boolean; account?: string; more?:
 
 const profileOf = (x: unknown) => (typeof x === "string" && /^[a-z0-9-]{1,32}$/.test(x) ? x : "")
 const MAC = process.platform === "darwin"
-/** The browser's keys a page may take first, as in Chrome (a doc's own find, a map's zoom): one it leaves alone is the
- *  app's (its preload says so, web-preload.cjs), never the menu bar's. */
 const BROWSER_KEYS = new Set(["f", "g", "shift+g", "=", "shift+=", "-", "0"].map((k) => `mod+${k}`))
-/** Keys a page keeps even when the app has a shortcut on them: editing text, a rich editor's marks, the browser's. */
 // (⌘Y isn't redo on a Mac: it's History there, as in Chrome)
 const PAGE_KEYS = new Set([...["a", "c", "v", "x", "z", "shift+z", ...(MAC ? [] : ["y"]), "b", "i", "u", "k", "shift+v", "arrowleft",
   "arrowright", "arrowup", "arrowdown", "backspace", "delete", "enter", "shift+enter", "tab"].map((k) => `mod+${k}`), ...BROWSER_KEYS])
-/** The page's own keys, as Chrome's: reload, reload past the cache, its DevTools. */
 const OWN_KEYS: Record<string, string> = { "mod+r": "reload", "mod+shift+r": "hard-reload", [MAC ? "mod+alt+i" : "mod+shift+i"]: "devtools", [MAC ? "mod+alt+u" : "mod+u"]: "source" }
 
 const pages = new Map<number, Page>()
-/** Each window's app shortcuts with ⌘, ⌃ or ⌥ (web:keys). */
 const keysOf = new WeakMap<AppWindow, Set<string>>()
-/** Pages' numbers, never one an earlier run of the app gave (userData web-next-id): an agent holding a number from
- *  before a restart hears "no tab", never someone else's page. */
 let next = 0
 function nextId() {
   const file = path.join(app.getPath("userData"), "web-next-id")
@@ -107,21 +76,14 @@ function nextId() {
 const sessions = new Map<string, Session>()
 
 const web = (u: string) => /^https?:\/\//i.test(u)
-/** What a page may show: the web (a blob: a page of it made too), and what a feature of the engine adds (an extension's
- *  own pages). */
 const shows = (u: string) => web(u) || engineOpens(u) || /^(view-source|blob):https?:\/\//i.test(u)
-/** What window.open('') opens: a blank window its opener sends somewhere next (a sign-in's popup) or writes into. */
 const blankWindow = (u: string) => !u || /^about:blank([?#].*)?$/i.test(u)
-// Downloads (electron/downloads.ts): loaded with the first session, not at launch; it's in long before a page downloads.
 let dl: typeof import("./downloads.ts") | null = null
 const loadDownloads = async () => (dl ??= await import("./downloads.ts"))
-/** Images asked for with Save image to vault (their addresses), whose downloads go to the window instead. */
 const toVault = new Set<string>()
 const pageOf = (wc: WebContents) => [...pages.values()].find((p) => p.view.webContents === wc)
 
-/** Each page's frames: its main frame tells when it first paints (`painted`). */
 const PRELOAD = fileURLToPath(new URL("./web-preload.cjs", import.meta.url))
-/** A profile's session, set up once. */
 function webSession(profile: string) {
   const had = sessions.get(profile)
   if (had) return had
@@ -142,7 +104,6 @@ function webSession(profile: string) {
       const tmp = path.join(app.getPath("temp"), `vaultite-image-${crypto.randomUUID()}`)
       item.setSavePath(tmp)
       item.once("done", (_ev, state) => {
-        // (any size; when there's none, the window says why)
         let data: Buffer | null = null, error = state === "completed" ? "" : `the download was ${state}`
         try { if (!error) data = fs.readFileSync(tmp) } catch (e) { error = (e as Error).message }
         fs.rm(tmp, { force: true }, () => {})
@@ -153,8 +114,6 @@ function webSession(profile: string) {
     const win = p && !p.win.isDestroyed() ? p.win : wc ? AppWindow.fromWebContents(wc) : null
     if (dl) dl.track(item, s, { profile, win, agent: !!p?.agent })
     else item.setSavePath(path.join(app.getPath("downloads"), `${Date.now()} ${path.basename(item.getFilename() || "download")}`))
-    // (a tab opened for it, nothing of its own shown yet, closes, as Chrome's does: no empty tab left behind; one not
-    // handed to its tab yet closes as it is)
     if (p && !p.agent && wc && !shows(wc.getURL())) { if (p.tab) tell(p.win, { type: "close", tab: p.tab }); else p.downloaded = true }
   })
   sessions.set(profile, s)
@@ -162,20 +121,15 @@ function webSession(profile: string) {
   sessionMade(s, profile)
   return s
 }
-/** A profile's session once the engine set it up (the cookies it keeps across restarts back in): before its first page
- *  opens, or its cookies are read. */
 async function readySession(profile: string) {
   const s = webSession(profile)
   await sessionReady(profile)
   return s
 }
 
-// ---------- what sites may use: asked once per site and profile, like a browser, kept in userData web-permissions.json
 
-/** Allowed without asking, as browsers do. */
 const FREE = new Set(["clipboard-sanitized-write", "notifications", "fullscreen", "pointerLock", "keyboardLock", "speaker-selection",
   "storage-access", "top-level-storage-access"])
-/** Asked: what the question says the site wants to do. Anything else is refused. */
 const ASKED: Record<string, string> = {
   camera: "use your camera", microphone: "use your microphone", geolocation: "know your location", "clipboard-read": "see what you copy",
   midi: "use your MIDI devices", midiSysex: "control your MIDI devices", "idle-detection": "know when you're away from the computer",
@@ -196,11 +150,9 @@ function answer(profile: string, site: string, kind: string, yes: boolean | null
   if (!Object.keys(at).length) delete of[site]
   try { fs.writeFileSync(answersFile(), JSON.stringify(all)) } catch { /* asked again next time */ }
 }
-/** Questions on screen, so a site asking twice at once gets one. */
 const asking = new Map<string, Promise<boolean>>()
 
-/** Whether a page may do `perm`: free, else its site's answer, else asked in a box over its window (Allow, Don't allow;
- *  remembered unless unticked). The camera and microphone then need macOS's yes too. */
+/** The camera and microphone also need macOS's yes. */
 async function askPermission(profile: string, wc: WebContents, perm: string, details: { mediaTypes?: string[]; requestingUrl?: string; externalURL?: string }) {
   if (FREE.has(perm)) return true
   // (another app by its scheme, said in the question: a yes to zoommtg: is none to ms-msdt:; a frame's link to another
@@ -226,7 +178,6 @@ async function askPermission(profile: string, wc: WebContents, perm: string, det
         checkboxLabel: "Remember for this site", checkboxChecked: true }
       q = (win ? dialog.showMessageBox(win, box) : dialog.showMessageBox(box)).then((r) => {
         const allow = r.response === 0
-        // (a no to opening another app isn't kept, as in Chrome: kept, the site's button would do nothing ever after)
         if (r.checkboxChecked && (allow || !scheme)) for (const k of kinds) answer(profile, site, k, allow)
         return allow
       }).finally(() => asking.delete(key))
@@ -240,14 +191,9 @@ async function askPermission(profile: string, wc: WebContents, perm: string, det
   return yes
 }
 
-/** How long a click or key lets a page open a tab or window (Chromium's user activation). */
 const ACTIVATION_MS = 5000
-/** How long a blank window a page opened waits for its opener to send it somewhere before it ends. */
 const BLANK_MS = 30_000
-/** How near the window's left or right edge (CSS px) a page's pointer is told to the window. */
 const EDGE = 12
-/** How near its own top (CSS px) a page's pointer is told to the window (a hidden page bar): wide enough that a quick
- *  move up lands in it, and told again every TOP_MS while it stays there. */
 const TOP = 8, TOP_MS = 100
 const tell = (win: AppWindow, msg: Record<string, unknown>) => { if (!win.isDestroyed()) win.webContents.send("vaultite:web", msg) }
 
@@ -256,7 +202,6 @@ const playingNow = (p: Page) => !p.view.webContents.isDestroyed() && playing(p.s
 function stateOf(p: Page): WebState {
   const wc = p.view.webContents
   const h = wc.navigationHistory
-  // (the spare's about:blank is no address: the one it's loading shows till it's in)
   const blank = p.blankBehind || p.restoring
   const zoom = wc.getZoomFactor()
   return { url: (!blank && wc.getURL()) || p.target, title: (!blank && wc.getTitle()) || "", back: canBack(p), forward: h.canGoForward(), loading: wc.isLoading(), ...(p.error ? { error: p.error } : {}),
@@ -265,7 +210,6 @@ function stateOf(p: Page): WebState {
     ...(p.fresh ? {} : { painted: true }),
     ...(p.flow.opened && p.flow.opened !== wc.getURL() ? { opened: p.flow.opened } : {}), ...(p.flow.signIn ? { signIn: p.flow.signIn } : {}) }
 }
-/** A page's notification, as its stand-in logs it (see the head of this file). */
 const NOTIFY = "__vaultite_notify__"
 const notifyShim = (mark: string) => `(() => {
   if (window.__vaultiteNotify) return
@@ -287,16 +231,12 @@ const notifyShim = (mark: string) => `(() => {
   window.Notification = Notification
   if (window.ServiceWorkerRegistration) ServiceWorkerRegistration.prototype.showNotification = function (title, o) { send(title, o); return Promise.resolve() }
 })()`
-/** Notifications a page sends a minute; more wait their turn (past QUEUED, they're told as one, with how many). */
 const RATE = 6
 const QUEUED = 200
 
 const sendState = (p: Page) => tell(p.win, { type: "state", id: p.id, state: stateOf(p) })
 
-/** Whether a page has nothing to show: no script that may still draw it, and a body with no element or text. */
 const EMPTY = `(() => { const b = document.body; return !document.querySelector("script") && (!b || (!b.children.length && !b.textContent.trim())) })()`
-/** A load an HTTP error answered with an empty page (a firewall's 403): the error view, with Try again, rather than a
- *  white tab, as Chrome's "HTTP ERROR 403". An error page with something in it (a site's 404) shows as it is. */
 async function emptyError(p: Page, status: number) {
   const wc = p.view.webContents, url = wc.getURL()
   const empty = await wc.executeJavaScriptInIsolatedWorld(1005, [{ code: EMPTY }]).catch(() => false)
@@ -304,10 +244,8 @@ async function emptyError(p: Page, status: number) {
   p.error = `HTTP ERROR ${status}`
   sendState(p)
 }
-/** The window's pages came or went, or one was hidden or shown again (the Web pages panel). */
 const pagesChanged = (win: AppWindow) => tell(win, { type: "pages" })
 
-/** A shortcut as the app's commands name it (web/src/core/commands.ts: canonical, lower case): "mod+shift+t". */
 function stepOf(i: Pick<Input, "key" | "code" | "meta" | "control" | "alt" | "shift">) {
   if (["Meta", "Control", "Alt", "Shift", "CapsLock", "Fn", "OS"].includes(i.key)) return ""
   const CODES: Record<string, string> = { Backquote: "`", Minus: "-", Equal: "=", BracketLeft: "[", BracketRight: "]", Backslash: "\\", Semicolon: ";", Quote: "'", Comma: ",", Period: ".", Slash: "/" }
@@ -319,8 +257,6 @@ function stepOf(i: Pick<Input, "key" | "code" | "meta" | "control" | "alt" | "sh
   return [mod && "mod", MAC && i.control && "ctrl", i.alt && "alt", i.shift && "shift", key].filter(Boolean).join("+").toLowerCase()
 }
 
-/** A page's link to another app (zoommtg://, slack://), opened once the site may (asked by scheme, as browsers do);
- *  mailto: opens Mail. Never file:, network shares or Windows' schemes that run code (otherAppScheme). */
 async function otherApp(p: Page, to: string) {
   const scheme = otherAppScheme(to)
   if (!scheme) return
@@ -330,12 +266,8 @@ async function otherApp(p: Page, to: string) {
   if (await askPermission(p.profile, wc, "openExternal", { requestingUrl: wc.getURL(), externalURL: to }).catch(() => false)) await shell.openExternal(to).catch(console.error)
 }
 
-/** Each window's colour as its page tells it (`web:look`: the app's background), shown by a new page till its site
- *  first paints rather than white, which flashed in a dark app while the site answered. */
 const looks = new WeakMap<AppWindow, string>()
 const lookOf = (win: AppWindow) => looks.get(win) ?? win.getBackgroundColor()
-/** Its site painted: its canvas from now on (white, what the web's pages expect under what they leave unpainted, unless
- *  the engine says otherwise). Not at commit: the page shows its colour from then till its first paint. */
 function painted(p: Page) {
   if (!p.fresh || p.view.webContents.isDestroyed()) return
   p.fresh = false
@@ -344,15 +276,12 @@ function painted(p: Page) {
 }
 setCanvasHandler((id) => { const p = pages.get(id); if (p && !p.fresh && !p.view.webContents.isDestroyed()) p.view.setBackgroundColor(canvasOf(id)) })
 ipcMain.on("vaultite:web:painted", (e) => { const p = pageOf(e.sender); if (p && shows(e.sender.getURL())) painted(p) })
-// One of the browser's keys a page left alone (BROWSER_KEYS), or the mouse's back or forward button in it: the app's,
-// as its other shortcuts are (Back walks the page's history first, then the tab's).
 ipcMain.on("vaultite:web:key", (e, k: { key?: unknown; code?: unknown; meta?: unknown; ctrl?: unknown; alt?: unknown; shift?: unknown }) => {
   const p = pageOf(e.sender)
   if (!p || p.agent || p.player || !k || typeof k.key !== "string" || typeof k.code !== "string") return
   const key = { key: k.key, code: k.code, meta: k.meta === true, ctrl: k.ctrl === true, alt: k.alt === true, shift: k.shift === true }
   if (BROWSER_KEYS.has(stepOf({ ...key, control: key.ctrl }))) tell(p.win, { type: "key", id: p.id, ...key })
 })
-// Typed input a frame holds, unsent (or none now): the tab isn't archived while it does, as Chrome doesn't discard it.
 ipcMain.on("vaultite:web:typed", (e, on) => {
   const p = pageOf(e.sender), key = `${e.processId}:${e.frameId}`
   if (!p || (p.typed.get(key) ?? false) === (on === true)) return
@@ -367,13 +296,10 @@ ipcMain.on("vaultite:web:nav", (e, dir) => { const p = pageOf(e.sender); if (p &
 // its full screen never resizes the window by itself (fit() fills its window or player).
 const prefsOf = (profile: string) => ({ session: webSession(profile), sandbox: true, contextIsolation: true, nodeIntegration: false, nodeIntegrationInSubFrames: true,
   webSecurity: true, spellcheck: true, disableHtmlFullscreenWindowResize: true })
-/** A page's view in a profile's session (`adopt`: the contents a page's window.open made, kept, so `window.opener` works). */
 const newView = (profile: string, adopt?: WebContents) => new WebContentsView({ ...(adopt ? { webContents: adopt } : {}), webPreferences: prefsOf(profile) })
 
-// ---------- a spare page: the next tab's renderer started ahead, as Chrome does (Electron turns Chrome's off) ----------
+// A spare page, the next tab's renderer started ahead: Electron turns Chrome's off.
 
-/** A view on about:blank in the last page's profile, its renderer running: the next page there takes it, saving the
- *  process's start (much of a new tab's wait). Made a moment after a page opens; `trim` ends it under memory pressure. */
 let spare: { profile: string; view: WebContentsView } | null = null
 let spareTimer: ReturnType<typeof setTimeout> | null = null
 const SPARE_MS = 1500
@@ -390,26 +316,22 @@ function makeSpare(profile: string) {
     endSpare()
     if (!mayOpen(profile) || !sessions.has(profile)) return
     const view = newView(profile)
-    // (its renderer gone, it's no spare)
     view.webContents.once("render-process-gone", () => { if (spare?.view === view) endSpare() })
     spare = { profile, view }
     void view.webContents.loadURL("about:blank").catch(() => { if (spare?.view === view) endSpare() })
   }, SPARE_MS)
   spareTimer.unref?.()
 }
-/** The spare, if it's for `profile` and alive: taken (the next is made a moment later). */
 function takeSpare(profile: string) {
   const s = spare
   if (!s || s.profile !== profile || s.view.webContents.isDestroyed() || s.view.webContents.isCrashed()) return null
   spare = null
   return s.view
 }
-/** A view for an agent's page with its renderer running, out of the window: the spare, else one made so now. On a Mac a
- *  view parked before its renderer starts never draws (Electron's unthrottled widget is left unshown), so no press lands. */
+/** On a Mac a view parked before its renderer starts never draws (Electron leaves its unthrottled widget unshown). */
 async function readyView(profile: string) {
   const view = takeSpare(profile) ?? newView(profile), wc = view.webContents
   if (!wc.getURL()) void wc.loadURL("about:blank").catch(() => {})
-  // (the 2 s up first: its listener taken off, not left on the view for good)
   if (wc.isLoading()) await new Promise<void>((done) => {
     const loaded = () => { clearTimeout(t); done() }
     const t = setTimeout(() => { wc.removeListener("did-stop-loading", loaded); done() }, 2000)
@@ -418,15 +340,11 @@ async function readyView(profile: string) {
   return view
 }
 
-/** `agent`: an agent's, in the background (no tab). `adopt`: the contents a page's window.open made (`opener`'s), already
- *  loading `url`. */
 function make(win: AppWindow, url: string, profile: string, tab: string, { agent = false, adopt, opener, ready }: { agent?: boolean; adopt?: WebContents; opener?: number; ready?: WebContentsView } = {}): Page {
   if (!popups) void import("./popup.ts").then((k) => { popups = k })
-  // (a tab whose page went, or moved to other logins, given its history back: Back and Forward as they were)
   const kept = tab && !adopt ? restoreMod?.pastOf(tab, profile, url) ?? null : null
   const taken = adopt || kept ? null : ready ?? takeSpare(profile), view = taken ?? newView(profile, adopt)
   makeSpare(profile)
-  // (see-through till it paints, over its last picture: `web:frame`)
   view.setBackgroundColor(kept && !kept.load && restoreMod?.frameFor(tab, url, profile) ? "#00000000" : lookOf(win))
   view.setVisible(false)
   // (a size before it's first shown: a page laid out at none has nothing an agent could click)
@@ -440,7 +358,6 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
   const wc = view.webContents
   if (taken) wc.once("did-navigate", () => { wc.navigationHistory.clear(); p.blankBehind = false })
   wc.on("did-navigate", () => { p.drew = undefined })
-  // (its address mid-restore is any of its entries': the tab mustn't follow it till it's at its own)
   let restored = () => {}
   if (kept) {
     p.restoring = true
@@ -448,12 +365,10 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
     const done = () => { if (wc.navigationHistory.getActiveIndex() >= kept.index) restored() }
     wc.on("did-navigate", done)
   }
-  // (its window as it is now: a tab moved to another window takes its page along, `moveTo`)
   pageMade({ id: p.id, wc, profile, get win() { return p.win }, url, opener, hide: () => place(p, null), visible: () => shown(p.spot), tab: () => p.tab,
     player: (on, fullScreen) => { if (on) void toPlayer(p, fullScreen); else fromPlayer(p) }, own: (to) => own(p, tabOf(to)), close: () => end(p),
     rest: () => move(p, { type: "rest" }), wake: () => wake(p), resting: () => p.spot.at === "resting", refit: () => fit(p) })
 
-  // Only to the web: another app's link (zoommtg://, slack://, mailto:) goes to that app, as a browser does.
   const refuse = (e: { preventDefault: () => void }, to: string) => {
     if (shows(to)) return
     e.preventDefault()
@@ -496,13 +411,11 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
     return { action: "allow", outlivesOpener: true, overrideBrowserWindowOptions: { webPreferences: prefsOf(profile) }, createWindow: (o) => {
       const child = make(p.win, blank ? "" : to, profile, "", { agent: agents, adopt: (o as { webContents: WebContents }).webContents, opener: p.id })
       pagesChanged(p.win)
-      // (the window hands it to the tab it opens for it, `web:adopt`, or it ends)
       const hand = (url: string) => {
         child.orphan = Date.now()
         setTimeout(() => { if (child.orphan !== undefined && pages.has(child.id)) end(child) }, RECLAIM_MS).unref()
         tell(p.win, { type: "open", id: p.id, tab: p.tab, url, profile, how, page: child.id })
       }
-      // (a blank one is a tab once its opener sends it somewhere: a tab's an address. Never sent, it ends)
       if (!agents && !blank) hand(to)
       else if (!agents) {
         const cw = child.view.webContents
@@ -517,7 +430,6 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
 
   // (its media pausing as it closes comes after its view let go of its contents)
   const changed = () => { if (p.view.webContents && !wc.isDestroyed()) sendState(p) }
-  // (a press in it just before is the user moving it on, as for its opens)
   const flowTo = (to: string) => {
     const was = p.flow
     p.flow = flowOn(was, to, Date.now() - p.input < ACTIVATION_MS, siteOf)
@@ -525,8 +437,6 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
   }
   revive(wc, undefined, () => { p.crashed = true; changed() })
   wc.on("did-start-loading", () => { p.error = undefined; p.crashed = false; changed() })
-  // A certificate this Mac doesn't trust: refused, as Chrome does, unless the user chose to go on to that host with that very
-  // certificate this session (`allow-cert`, from its tab's warning). Never trusted for them.
   wc.on("certificate-error", (e, to, error, cert, done, main) => {
     const host = hostOfUrl(to)
     if (unsafeOk.has(`${p.profile} ${host} ${cert.fingerprint}`)) { e.preventDefault(); done(true); return }
@@ -548,9 +458,7 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
   wc.on("did-navigate-in-page", (_e, to, main) => { if (main) { flowTo(to); changed(); keepPast(p) } })
   wc.on("page-title-updated", () => { changed(); keepPast(p) })
   wc.on("dom-ready", () => tellGlance(wc))
-  // (the window's page shows it while it's over this one, passing it the pointer: layers.ts)
   wc.on("cursor-changed", (_e, cursor) => tell(p.win, { type: "cursor", id: p.id, cursor }))
-  // (its sound changed: told now, and again when a quiet stretch ends it)
   const sounded = () => {
     clearTimeout(p.hush)
     const ends = quietEnds(p.sound)
@@ -572,8 +480,6 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
     changed()
   })
   wc.on("focus", () => { if (!p.player) tell(p.win, { type: "focus", id: p.id }) })
-  // Full screen (a video's button): it fills its window (made full screen, as Chrome does) or its player, over the rest.
-  // In a player the page's full screen and its window's are one: either brings the other, in and out.
   wc.on("enter-html-full-screen", () => {
     p.full = true
     const w = p.player
@@ -589,13 +495,11 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
     if (p.madeFull) { p.madeFull = false; if (!p.win.isDestroyed() && p.win.isFullScreen()) p.win.setFullScreen(false) }
     const w = p.player
     if (w && !w.isDestroyed() && w.isFullScreen()) w.setFullScreen(false)
-    // (back in its place among the window's pages: under the window's own while that's raised)
     if (!w) restack(p.win)
     fit(p)
   })
   wc.on("page-favicon-updated", (_e, urls) => void iconFrom(p, urls))
 
-  // Its notifications (see the head of this file).
   let mark = ""
   wc.on("dom-ready", () => {
     mark = `${NOTIFY}${crypto.randomUUID()}:`
@@ -634,15 +538,13 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
     drain()
   })
 
-  // The window doesn't hear the pointer over the page: near its edges and top it's told (peek.ts, pagebar.ts; the top as
-  // it comes in, again while it stays, on a click), and as it leaves; never from a page out of sight (an agent's).
+  // The window doesn't hear the pointer over a page: near its edges and top the page tells it; never one out of sight.
   let atEdge = false, atTop: boolean | null = null, toldTop = 0
   wc.on("before-mouse-event", (_e, m) => {
     if (m.type === "mouseLeave") { if (atTop) tell(p.win, { type: "top", id: p.id, at: false, left: true }); atTop = null }
     if (p.player) { if (m.type === "mouseMove") strips?.pointerAt(p.player, m.y); return }
     if ((m.type !== "mouseMove" && m.type !== "mouseDown") || p.full || p.win.isDestroyed() || !shown(p.spot)) return
     const z = p.win.webContents.getZoomFactor(), b = p.view.getBounds(), [w] = p.win.getContentSize()
-    // (a window with its bars hidden: its top strip, topstrip.ts)
     if (m.type === "mouseMove") strips?.pointerAt(p.win, b.y + m.y)
     const top = m.y / z <= TOP, down = m.type === "mouseDown", now = Date.now()
     if (top !== atTop || (top && (down || now - toldTop >= TOP_MS))) {
@@ -660,9 +562,7 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
     if (i.type !== "keyDown") return
     const step = stepOf(i)
     wc.setIgnoreMenuShortcuts(BROWSER_KEYS.has(step))
-    // In its player the page keeps every key; Esc leaves its window's full screen (the page's own Chromium leaves first).
     if (p.player) { if (step === "escape" && p.player.isFullScreen()) { e.preventDefault(); p.player.setFullScreen(false) } return }
-    // (Esc stops a load, and still reaches the page)
     if (step === "escape" && !p.full && wc.isLoadingMainFrame()) wc.stop()
     const own = OWN_KEYS[step]
     if (own) { e.preventDefault(); go(p, own); return }
@@ -674,7 +574,6 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
 
   wc.on("context-menu", (_e, c) => {
     const items: MenuItemConstructorOptions[] = []
-    // (what's opened from here opens in the page's container, unless one is picked)
     const open = (url: string, how: string, container?: string | null) => tell(p.win, { type: "open", id: p.id, tab: p.tab, url, profile: p.profile, how,
       ...(container !== undefined ? { container } : {}) })
     if (c.linkURL && web(c.linkURL)) {
@@ -705,7 +604,6 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
         { type: "separator" },
       )
     }
-    // (a misspelled word: its guesses first, as Chrome's)
     if (c.isEditable && c.misspelledWord) {
       const word = c.misspelledWord
       items.push(...c.dictionarySuggestions.slice(0, 5).map((g): MenuItemConstructorOptions => ({ label: g, click: () => wc.replaceMisspelling(g) })),
@@ -718,7 +616,6 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
     else if (said) items.push({ role: "copy" }, ...lookUp, { type: "separator" })
     const h = wc.navigationHistory
     if (p.player) items.push({ label: "Back to its tab", click: () => fromPlayer(p, true) }, { type: "separator" })
-    // (a window with its bars hidden, nothing else of the app's to right-click: the way back, the page's command)
     else if (strips?.hasStrip(p.win)) {
       const run = (id: string) => () => p.win.webContents.send("vaultite", { type: "command", id })
       items.push({ label: "Show window bars", click: run("window:bars") }, { label: "Keep window on top", type: "checkbox", checked: p.win.isAlwaysOnTop(), click: run("window:on-top") }, { type: "separator" })
@@ -750,8 +647,7 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
   return p
 }
 
-/** Where an agent's page is out of sight: off the window, shown and unthrottled, so it draws on in a desktop's viewport
- *  (live pictures, screenshots); a hidden view stops drawing at its next cross-site load. */
+/** Off the window but shown: a hidden view stops drawing at its next cross-site load. */
 const PARKED = { x: -40000, y: 0, width: 1280, height: 800 }
 /** Its spot now (read again after a `move`, which narrowing doesn't see). */
 const spotOf = (p: Page): Spot => p.spot
@@ -788,20 +684,16 @@ const SPOT_DOES: Record<SpotEffect, (p: Page) => void> = {
   },
   "see": (p) => void seeDraws(p),
 }
-/** Awake again: parked and drawing, settled once its first frame since is likely drawn. */
 async function wake(p: Page) {
   if (p.spot.at === "resting") move(p, { type: "park", now: Date.now() })
   const left = (p.spot.at === "parked" ? p.spot.woke : 0) + 100 - Date.now()
   if (left > 0) await new Promise<void>((done) => setTimeout(done, left))
   if (p.spot.at === "parked" && Date.now() - (p.drew ?? 0) > SEEN_MS) await seeDraws(p)
 }
-/** What page `p`'s document answers to `code` (null: nothing within `ms`). */
 const askPage = (p: Page, code: string, ms: number) => Promise.race([new Promise<null>((done) => setTimeout(done, ms, null)),
   p.view.webContents.executeJavaScriptInIsolatedWorld(1018, [{ code }]).catch(() => null)])
 const frameIn = async (p: Page, ms: number) => (await askPage(p, "new Promise((done) => requestAnimationFrame(() => done(true)))", ms)) === true
-/** How long a parked page seen drawing is taken to draw still: its window out of sight meanwhile may have stopped it. */
 const SEEN_MS = 5000
-/** An agent's page draws where it's shown, parked or in its tab (one call at a time). */
 const seeDraws = (p: Page) => (p.seeing ??= drawing(p).finally(() => { p.seeing = undefined }))
 /** An unthrottled page that stopped drawing for good (Electron on a Mac keeps its widget shown, not its compositor) takes
  *  no press: it's hidden and throttled, then, once its page is hidden, shown unthrottled again, which shows both. */
@@ -818,17 +710,13 @@ async function drawing(p: Page) {
     await new Promise((done) => setTimeout(done, 30))
   }
   if (wc.isDestroyed()) return
-  // (as it was, unless it moved meanwhile: parked or placed again, that's shown it)
   if (parked && spotOf(p).at === "resting") move(p, { type: "park", now: Date.now() })
   else if (!parked && shown(p.spot) && !p.view.getVisible() && !p.player) { wc.setBackgroundThrottling(false); p.view.setVisible(true) }
-  // (tried once a while at most, drawn or not: its window may be out of sight)
   await frameIn(p, 1000)
   p.drew = Date.now()
 }
 const stow = (p: Page) => move(p, { type: "stow", drawn: !!p.drawn, now: Date.now() })
 
-/** Page `p` into window `win`, its tab having moved there (a pop-out): the same page, live, not loaded again. (Not
- *  `web:adopt`, which gives a tab-less page its tab.) */
 function moveTo(p: Page, win: AppWindow) {
   const from = p.win
   run(from, { type: "gone", page: p.id })
@@ -840,7 +728,6 @@ function moveTo(p: Page, win: AppWindow) {
   if (!from.isDestroyed()) pagesChanged(from)
 }
 
-/** Page `p` to the app's tab `tab` (opened as a tab: it stays parked till the tab places it), or to the background. */
 function own(p: Page, tab: string) {
   if (!pages.has(p.id) || p.closing) return
   p.tab = tab
@@ -857,12 +744,10 @@ function end(p: Page) {
   clearTimeout(p.linger)
   fromPlayer(p)
   pagesChanged(p.win)
-  // (kept for its tab to come back with: ⌘⇧T, shown again after a discard)
   keepPast(p, true)
   const shot = keepFrame(p)
   move(p, { type: "hide" })
   const off = () => { if (!p.win.isDestroyed()) p.win.contentView.removeChildView(p.view) }
-  // (none once its contents are gone: closed by its own script)
   const wc = p.view.webContents
   if (!shot) { off(); if (wc) void unload(wc); return }
   void shot.finally(() => { off(); void unload(wc) })
@@ -880,9 +765,7 @@ function unload(wc: WebContents) {
   return gone.finally(() => clearTimeout(hard))
 }
 
-/** Contents closing as their tab closes (`unload`): they leave without asking. */
 const unloading = new WeakSet<WebContents>()
-/** Contents the app just reloaded (⌘R): asked "Reload site?" rather than "Leave site?". */
 const reloaded = new WeakMap<WebContents, number>()
 /** Whether a page asking to stay (its beforeunload) leaves: at once with nobody to ask (`quiet`, closing), else as the
  *  user answers Chrome's question, the page waiting (Electron takes the answer synchronously). */
@@ -893,18 +776,13 @@ function mayLeave(wc: WebContents, win: BaseWindow, quiet: boolean) {
     buttons: [reload ? "Reload" : "Leave", "Cancel"], defaultId: 0, cancelId: 1, noLink: true }) === 0
 }
 
-/** Before the app quits: every page unloaded, as its tab's close would, its tab kept (closing: not a close by its own
- *  script, which closes its tab too), so the tabs come back at the next launch, as a browser's do. */
 export const unloadPages = async () => {
-  // (each tab's history, and what's on screen as a picture, for the next launch to show at once)
   for (const p of pages.values()) keepPast(p, true)
   restoreMod?.savePasts()
   await Promise.race([Promise.all([...pages.values()].filter((p) => shown(p.spot)).map(keepFrame)), new Promise((done) => setTimeout(done, 800))])
   return Promise.all([...pages.values()].map((p) => { p.closing = true; return unload(p.view.webContents) })).then(() => {})
 }
 
-/** Background tabs' pages are kept (hidden, so Chromium throttles them) till memory runs short (webpages.ts discardable);
- *  one in a player is on screen, whatever its tab, and an agent's is never let go (browser/agent.ts). */
 async function trim() {
   const keep = (p: Page) => !!p.player || playingNow(p) || pageKept(p.id)
   if ((!spare && !discardable(pages.values(), keep).length) || !(await shortOfMemory())) return
@@ -913,8 +791,6 @@ async function trim() {
 }
 setInterval(() => void trim(), 60_000).unref()
 
-/** Whether the computer is short of memory: macOS's memory pressure (warn or critical), Linux's and Windows' available
- *  memory. */
 function shortOfMemory(): Promise<boolean> {
   if (process.platform === "win32") return Promise.resolve(os.freemem() / os.totalmem() < 0.1)
   if (MAC) return new Promise((done) => execFile("/usr/sbin/sysctl", ["-n", "kern.memorystatus_vm_pressure_level"], { timeout: 2000 }, (e, out) => done(!e && Number(out) >= 2)))
@@ -924,10 +800,8 @@ function shortOfMemory(): Promise<boolean> {
   } catch { return Promise.resolve(false) }
 }
 
-/** The page a window's keyboard last came from as it was hidden, till the window asks (`web:take`) or it's shown. */
 const keyboardFrom = new WeakMap<AppWindow, number>()
 
-/** Where its tab wants it (null: hidden); in its player or full screen it stays filling that till it's back. */
 function place(p: Page, rect: WebRect | null) {
   p.want = rect && rect.width >= 2 && rect.height >= 2 ? rect : null
   fit(p)
@@ -936,7 +810,6 @@ function place(p: Page, rect: WebRect | null) {
 function fit(p: Page) {
   const fill = p.player ?? (p.full ? p.win : null)
   if (fill?.isDestroyed()) return
-  // (one an agent holds stays where it draws for the agent, its tab showing a picture of it: browser/agent.ts)
   const held = pageHeld(p.id)
   if (held) p.drawn = true
   move(p, { type: "fit", fill: !!fill, rect: !p.agent && !held && !!p.want, drawn: !!p.drawn, now: Date.now() })
@@ -946,17 +819,11 @@ const round = (p: Page, r: number) => { if ((p.radius ?? 0) !== r) { p.radius = 
 function go(p: Page, action: string, url?: string): unknown {
   const wc = p.view.webContents
   const h = wc.navigationHistory
-  // (answering whether it went: the window's idea of where it is may be a move behind)
   if (action === "back") { if (!canBack(p)) return false; p.flow = {}; h.goBack(); return true }
   else if (action === "forward") { if (!h.canGoForward()) return false; p.flow = {}; h.goForward(); return true }
-  // (a page that crashed for good starts a renderer again)
   else if (action === "reload") { reloaded.set(wc, Date.now()); wc.reload() }
-  // The user chose to go on past its certificate warning: that host with that certificate, in these logins, this session.
   else if (action === "allow-cert" && p.cert && p.error) { unsafeOk.add(`${p.profile} ${p.cert.host} ${p.cert.fp}`); void wc.loadURL(p.cert.url).catch(() => {}) }
-  // (its source in a tab of its own: the window opens it, in its container)
   else if (action === "source") { if (web(wc.getURL())) tell(p.win, { type: "source", id: p.id, url: `view-source:${wc.getURL()}` }) }
-  // Tab `url` is to be its copy: Back and Forward too (taken as that tab's page is made, `web:open`).
-  // Tab `url` is to be its copy: its kept history is that tab's too, which its page starts from (`pastOf`).
   else if (action === "duplicate" && url && tabOf(url) && p.tab) {
     keepPast(p)
     restoreMod?.copyPast(p.tab, tabOf(url))
@@ -966,20 +833,15 @@ function go(p: Page, action: string, url?: string): unknown {
   else if (action === "devtools") { if (wc.isDevToolsOpened()) wc.closeDevTools(); else wc.openDevTools({ mode: "detach" }) }
   else if (action === "zoom-in" || action === "zoom-out" || action === "zoom-reset") return zoomSite(p, action === "zoom-reset" ? 0 : action === "zoom-in" ? 1 : -1)
   else if (action === "print") wc.print({}, () => {})
-  // Back's and Forward's lists: each place it can go, by its index (`go-to` goes there), `at` the one it's on.
   else if (action === "history") return { at: h.getActiveIndex(), entries: h.getAllEntries().map((x, i) => ({ i, url: x.url, title: x.title })).filter((x) => shows(x.url)) }
   else if (action === "go-to") { const i = Number(url); if (Number.isInteger(i) && i >= 0 && i < h.length() && shows(h.getEntryAtIndex(i)?.url ?? "")) { p.flow = {}; h.goToIndex(i) } }
-  // (where Back or Forward would go, for a tab of its own)
   else if (action === "back-address") return canBack(p) ? h.getEntryAtIndex(h.getActiveIndex() - 1)?.url : undefined
   else if (action === "forward-address") return h.canGoForward() ? h.getEntryAtIndex(h.getActiveIndex() + 1)?.url : undefined
   else if (action === "stop") wc.stop()
   else if (action === "mute" || action === "unmute") { wc.setAudioMuted(action === "mute"); sendState(p) }
-  // (a hidden page never has the keyboard: it gets it as it's shown, `web:place` answering `focused`)
   else if (action === "focus") { if (p.player) return; if (shown(p.spot)) wc.focus(); else p.hadFocus = true }
   else if (action === "load" && url && shows(url)) { p.target = url; if (!p.agent) p.flow = { opened: url }; void wc.loadURL(url).catch(() => {}) }
-  // (answers "none" when the page has no video)
   else if (action === "pip") return playerKit().then((k) => wc.executeJavaScriptInIsolatedWorld(1004, [{ code: k.PIP }], true)).catch(() => null)
-  // (answers how many it paused or started; kept in its own world, the site never sees them listed)
   else if (action === "pause" || action === "play") {
     return wc.executeJavaScriptInIsolatedWorld(1006, [{ code: action === "pause" ? PAUSE : PLAY }], true).then((n: unknown) => {
       p.paused = action === "pause" && Number(n) > 0
@@ -989,8 +851,6 @@ function go(p: Page, action: string, url?: string): unknown {
   }
 }
 
-/** Every video and audio playing in the page (its open shadow roots too) paused, kept to start again (PLAY). Its
- *  frames from other sites aren't reached: an embed plays on. */
 const PAUSE = `(() => {
   const all = [], walk = (root) => { all.push(...root.querySelectorAll("video, audio")); for (const e of root.querySelectorAll("*")) if (e.shadowRoot) walk(e.shadowRoot) }
   walk(document)
@@ -1006,10 +866,8 @@ const PLAY = `(() => {
   return on.length
 })()`
 
-/** Certificates the user went on past, by "<profile> <host> <fingerprint>": for this run of the app only. */
 const unsafeOk = new Set<string>()
 
-// ---------- zoom: a site's, as Chrome's, kept per host on this Mac (userData web-zoom.json), never the vault ----------
 
 const ZOOMS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5]
 let zooms: Record<string, number> | null = null
@@ -1020,8 +878,6 @@ function zoomsKept() {
 }
 const zoomOf = (host: string) => { const z = zoomsKept()[host]; return typeof z === "number" && z >= ZOOMS[0] && z <= ZOOMS[ZOOMS.length - 1] ? z : 1 }
 const zoomTo = (p: Page, z: number) => { const wc = p.view.webContents; if (!wc.isDestroyed() && Math.abs(wc.getZoomFactor() - z) > 0.001) wc.setZoomFactor(z) }
-/** Page `p`'s site a step in (1) or out (-1), or back to 100% (0): its other pages follow, in every container. Answers
- *  the site and its zoom now, for the app to say (null: no site). */
 function zoomSite(p: Page, step: -1 | 0 | 1) {
   const host = hostOfUrl(p.view.webContents.getURL()), now = p.view.webContents.getZoomFactor()
   if (!host) return null
@@ -1033,30 +889,23 @@ function zoomSite(p: Page, step: -1 | 0 | 1) {
   return { host, zoom: to }
 }
 
-// ---------- players: a page in a window of its own, to watch or share (a call's window picker finds it by its title) ----------
+// ---------- players: a call's window picker finds one by its title ----------
 
-// (its code, and its pages' scripts, load as the first player opens: not at every launch)
 let kit: typeof import("./player.ts") | undefined
 const playerKit = async () => { await stripKit(); return (kit ??= await import("./player.ts")) }
 let strips: typeof import("./topstrip.ts") | undefined, popups: typeof import("./popup.ts") | undefined
-/** The top strip's code (a player's, a window's with its bars hidden: topstrip.ts), loaded with the first. */
 export const stripKit = async () => (strips ??= await import("./topstrip.ts"))
-/** While a player is open, macOS doesn't nap the app (it's often in the background, shared in a call). */
 let napBlock: number | null = null
 const players = () => [...pages.values()].some((p) => p.player)
 
-/** Out of full screen (its player, or Esc, or the window leaving full screen). */
 function leaveFull(p: Page) {
   if (!p.view.webContents.isDestroyed()) void p.view.webContents.executeJavaScriptInIsolatedWorld(1004, [{ code: "document.fullscreenElement && void document.exitFullscreen().catch(() => {})" }]).catch(() => {})
 }
 
-/** Into its player: the page moves (playing on, not loaded again) into a window of its own at its video's aspect, which
- *  its video fills (`fullScreen`: on a Space of its own); never throttled while hidden, nor let go under memory pressure. */
 async function toPlayer(p: Page, fullScreen: boolean) {
   if (p.player) { if (!p.player.isDestroyed()) { p.player.show(); p.player.focus() } return }
   const wc = p.view.webContents
   if (wc.isDestroyed() || p.win.isDestroyed()) return
-  // (its video filled first, still in its tab, so the window opens at its aspect and shows it at once)
   if (p.full) leaveFull(p)
   const k = await playerKit()
   const [css, found] = await Promise.all([wc.insertCSS(k.FILL_CSS, { cssOrigin: "user" }).catch(() => undefined),
@@ -1072,7 +921,6 @@ async function toPlayer(p: Page, fullScreen: boolean) {
   wc.setBackgroundThrottling(false)
   // (as its content is laid out: on Linux its menu bar comes and goes with no resize)
   w.contentView.on("bounds-changed", () => fit(p))
-  // The window and the page leave full screen together (the page's own: see enter-html-full-screen).
   w.on("leave-full-screen", () => { if (p.full) leaveFull(p) })
   w.on("close", () => fromPlayer(p, true))
   fit(p)
@@ -1085,7 +933,6 @@ async function toPlayer(p: Page, fullScreen: boolean) {
   void follow(p, w)
 }
 
-/** Its player keeps its video's aspect as it changes (the next video, an ad), till it's back in its tab. */
 async function follow(p: Page, w: BaseWindow) {
   while (p.player === w) {
     const a = await p.view.webContents.executeJavaScriptInIsolatedWorld(1004, [{ code: "window.__vaultitePlayer?.next()" }]).catch(() => undefined)
@@ -1094,8 +941,6 @@ async function follow(p: Page, w: BaseWindow) {
   }
 }
 
-/** Back in its tab, still playing: hidden till the tab places it (shown or not), the player closed. `user`: they asked,
- *  so its window comes to the front. */
 function fromPlayer(p: Page, user = false) {
   const w = p.player
   if (!w) return
@@ -1108,7 +953,6 @@ function fromPlayer(p: Page, user = false) {
     if (p.fillCss) void wc.removeInsertedCSS(p.fillCss).catch(() => {})
   }
   p.fillCss = undefined
-  // (closed after this turn: this may be its own close)
   if (!w.isDestroyed()) { w.contentView.removeChildView(p.view); setImmediate(() => { if (!w.isDestroyed()) w.close() }) }
   if (pages.has(p.id) && !p.win.isDestroyed()) {
     move(p, { type: "hide" })
@@ -1123,7 +967,6 @@ function fromPlayer(p: Page, user = false) {
 }
 
 const str = (x: unknown) => { if (typeof x !== "string") throw new Error("expected text"); return x }
-/** A pane's id as the app's tabs make them (core/layout.ts newPaneId); anything else is no pane. */
 const tabOf = (x: unknown) => (typeof x === "string" && /^[\w-]{1,64}$/.test(x) ? x : "")
 const rectOf = (r: unknown): WebRect | null => {
   if (!r || typeof r !== "object") return null
@@ -1132,15 +975,12 @@ const rectOf = (r: unknown): WebRect | null => {
   const radius = typeof o.radius === "number" && Number.isFinite(o.radius) ? Math.max(0, Math.min(40, o.radius)) : 0
   return { x: o.x as number, y: o.y as number, width: o.width as number, height: o.height as number, radius }
 }
-/** A page of this window. */
 function mine(win: AppWindow, id: unknown) {
   const p = pages.get(Number(id))
   if (!p || p.win !== win) throw new Error("no such page")
   return p
 }
 
-/** A page whose renderer died (a stray `pkill -f`, memory, a crash) loads again, three times a minute at most so one
- *  dying as it loads doesn't loop. `gone` hears each death, `giveUp` the last (the window says so, not blank). */
 export function revive(wc: WebContents, gone?: () => void, giveUp?: () => void) {
   let times: number[] = []
   wc.on("render-process-gone", (_e, d) => {
@@ -1155,17 +995,12 @@ export function revive(wc: WebContents, gone?: () => void, giveUp?: () => void) 
   })
 }
 
-/** Wire a vault window: its pages end with it; as its page reloads, its tabs take their pages back or they end. */
 export function webWindow(win: AppWindow) {
-  // (a page full screen in it follows it as it goes full screen; the window leaving full screen takes the page out too)
   win.contentView.on("bounds-changed", () => { for (const p of pages.values()) if (p.win === win && p.full && !p.player) fit(p) })
   win.on("leave-full-screen", () => { for (const p of pages.values()) if (p.win === win && p.full && !p.player) leaveFull(p) })
-  // (back to the window: an agent's page in a tab may have stopped drawing while it was out of sight, `drawing`)
   win.on("focus", () => { for (const p of pages.values()) if (p.win === win && p.drawn && shown(p.spot)) void seeDraws(p) })
   win.on("closed", () => {
-    // (a page on its way to another window goes on: that window takes it, else it ends)
     for (const p of [...pages.values()]) if (p.win === win && p.moving === undefined) end(p)
-    // (no page left anywhere: no spare kept for one)
     if (!pages.size) endSpare()
   })
   win.webContents.on("did-start-navigation", (d) => {
@@ -1177,7 +1012,6 @@ export function webWindow(win: AppWindow) {
   })
 }
 
-// An agent's page in the background (browser/agent.ts): no tab, parked.
 setOpener(async (win, url, profile) => {
   await engineLoaded()
   if (!shows(url)) throw new Error("only http and https pages")
@@ -1188,8 +1022,6 @@ setOpener(async (win, url, profile) => {
   return allPages().find((x) => x.id === p.id)!
 })
 
-/** What a page's right-click offers besides its own: the containers to open a link in, and Glance (a plugin, when on),
- *  which ⌥-click on a link in a page also opens (web-preload.cjs). The window tells them as they change. */
 let menus: { containers: { id: string; name: string }[]; glance: boolean } = { containers: [], glance: false }
 const tellGlance = (wc: WebContents) => { if (!wc.isDestroyed()) wc.send("vaultite:web:glance", menus.glance) }
 handle("web:menus", (_win, m) => {
@@ -1206,7 +1038,6 @@ ipcMain.on("vaultite:web:glance", (e, url) => {
     tell(p.win, { type: "open", id: p.id, tab: p.tab, url, profile: p.profile, how: "glance" })
   }
 })
-// A page made for a tab the window opens after (a page's link to a new tab, a glance's page kept as a tab): the tab's now.
 handle("web:adopt", (win, id, tab) => {
   const p = pages.get(Number(id)), to = tabOf(tab)
   if (!p || p.win !== win || p.closing || !to || p.agent) throw new Error("that page is gone")
@@ -1215,12 +1046,9 @@ handle("web:adopt", (win, id, tab) => {
   if (p.downloaded) tell(p.win, { type: "close", tab: to })
 })
 
-// ---------- how a tab's page comes back (webrestore.ts): its history and its last picture ----------
 
 let restoreMod: typeof import("./webrestore.ts") | null = null
-/** Loaded with the first page (`web:open` awaits it), so any page has it. */
 const restore = async () => (restoreMod ??= await import("./webrestore.ts"))
-/** Page `p`'s history as it is now, kept for its tab (`settle`: its pages' state too, as it ends). */
 function keepPast(p: Page, settle = false) {
   const wc = p.view.webContents
   if (!p.tab || p.agent || !wc || wc.isDestroyed() || p.blankBehind || p.restoring || !restoreMod) return
@@ -1228,8 +1056,6 @@ function keepPast(p: Page, settle = false) {
   restoreMod.keepPast(p.tab, p.profile, h.getAllEntries(), h.getActiveIndex(), shows, settle)
 }
 const FRAME_MS = 1500
-/** Page `p` as drawn now, kept as its tab's picture (null: none, an agent's, unpainted, failed); asked at once, so it may
- *  be hidden right after. */
 function keepFrame(p: Page): Promise<void> | null {
   const wc = p.view.webContents
   if (!p.tab || p.agent || p.fresh || p.error || p.crashed || !wc || wc.isDestroyed() || p.win.isDestroyed() || !shows(wc.getURL()) || !mayPicture(p.profile)) return null
@@ -1241,7 +1067,6 @@ function keepFrame(p: Page): Promise<void> | null {
   return img.then(async (i) => { if (i) (await restore()).keepFrame(tab, i, f) }).catch(() => {})
 }
 
-// Claude Code on the web's sessions, read with the profiles' claude.ai logins (cloud.ts, loaded when first asked).
 let cloudLoaded: Promise<ReturnType<typeof import("./cloud.ts").cloudHandlers>> | null = null
 const cloudNow = () => (cloudLoaded ??= import("./cloud.ts").then(({ cloudHandlers }) => cloudHandlers({
   page: (profile, site) => [...pages.values()].find((p) => p.profile === profile && !p.view.webContents.isDestroyed() && siteOf(hostOfUrl(p.view.webContents.getURL())) === site)?.view.webContents,
@@ -1254,11 +1079,8 @@ const cloud = {
   "web:cloud-act": async (win: AppWindow, action: unknown, id: unknown, value: unknown) => (await cloudNow())["web:cloud-act"](win, action, id, value),
 }
 
-/** When each window's tabs closed (the last minute): a page asked for before, still opening, isn't made. */
 const closedTabs = new WeakMap<AppWindow, Map<string, number>>()
-/** The IPC handlers (main.ts checks the asking page is a vault window's and gives its AppWindow). */
 export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) => unknown> = {
-  // (a tab's page is the tab's: shown again, it's the same one, wherever it went since)
   "web:open": async (win, url, rect, profile, tab) => {
     const asked = Date.now()
     await Promise.all([engineLoaded(), restore()])
@@ -1266,39 +1088,32 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
     if (!shows(u)) throw new Error("only http and https pages")
     await readySession(prof)
     if (!mayOpen(prof)) throw new Error("this container is locked")
-    // (its tab closed while the browser was still loading: a page made now would live on hidden, with no tab)
     if (owner && (closedTabs.get(win)?.get(owner) ?? 0) >= asked) throw new Error("its tab closed")
     const { reuse, end: other } = claim(pages.values(), win, owner, prof)
-    // (the tab moved to another container: its history as it is now, for Back to go where it went before)
     for (const x of other) { keepPast(x); end(x) }
     const p = reuse ?? make(win, u, prof, owner)
     if (p.win !== win) moveTo(p, win)
     p.holds++
     p.orphan = undefined
     pagesChanged(win)
-    // (shown at once where its tab asks, a page shown again or a new one, rather than after the tab draws: as `web:place`)
     const r = rectOf(rect), wasHidden = !shown(p.spot)
     place(p, r)
     let focused = false
     if (r && wasHidden && shown(p.spot)) { focused = !!p.hadFocus; p.hadFocus = false }
     return { id: p.id, state: stateOf(p), focused }
   },
-  // Tab `tab`'s last picture of `url` (JPEG, its size), drawn while its page comes back; none while it's there.
   "web:frame": async (win, tab, url, profile) => {
     const m = await restore(), t = tabOf(tab), f = m.frameFor(t, str(url), profileOf(profile))
     if (!f || [...pages.values()].some((p) => p.win === win && p.tab === t && !p.closing && !p.fresh)) return null
     return m.readFrame(t, f)
   },
-  // The titles tabs' pages had, by address: a tab not loaded yet is named as it was.
   "web:titles": async () => (await restore()).pastTitles(),
   "web:place": (win, id, rect) => {
     const p = mine(win, id), r = rectOf(rect) && mayOpen(p.profile) ? rectOf(rect) : null, wasHidden = !shown(p.spot)
     place(p, r)
-    // (shown again: whether it had the keyboard when it was hidden)
     if (r && wasHidden && shown(p.spot)) { const had = !!p.hadFocus; p.hadFocus = false; return { focused: had, shown: true } }
     return { focused: false, shown: shown(p.spot) }
   },
-  // The window focused something of its own (desktop.ts): the keyboard comes to it from a page that has it.
   "web:take": (win) => {
     const p = [...pages.values()].find((x) => x.win === win && x.view.webContents.isFocused())
     if (p) win.webContents.focus()
@@ -1325,17 +1140,13 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
     void trim()
     pagesChanged(win)
   },
-  // Its player: on (`fullScreen`: on a Space of its own) or back in its tab.
   "web:player": (win, id, on, fullScreen) => { const p = mine(win, id); if (on) return toPlayer(p, fullScreen === true); fromPlayer(p, true) },
-  // (`moved`: its tab went on in another of this vault's windows, which takes its page as it shows it, `adopt`)
   "web:close": (win, tab, moved) => {
     if (moved !== true) {
       const closed = closedTabs.get(win) ?? new Map<string, number>()
       closedTabs.set(win, closed)
       if (tabOf(tab)) closed.set(tabOf(tab), Date.now())
       for (const [t, at] of closed) if (Date.now() - at > 60_000) closed.delete(t)
-      // (an agent's own page outlives its tab: back to the background, the agent's still, before the tab's pages end;
-      // the call runs at once, its feature loaded, and leaves a page that isn't an agent's in its tab)
       for (const p of pages.values()) if (p.win === win && p.tab && p.tab === tabOf(tab) && pageKept(p.id)) void engineCall(win, "agents:own", [p.id, ""]).catch(() => {})
       for (const p of tabGone(pages.values(), win, tabOf(tab))) end(p)
       return
@@ -1344,14 +1155,11 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
     setTimeout(() => { for (const p of unmoved(pages.values(), Date.now())) end(p) }, MOVE_MS + 100).unref()
   },
   "web:go": (win, id, action, url) => go(mine(win, id), str(action), typeof url === "string" ? url : undefined),
-  // Find in the page (`found` events answer): `next` goes on from the match it's at, else a new search; "" stops it, the
-  // match it was at left selected, as Chrome's Esc does.
   "web:find": (win, id, text, o) => {
     const wc = mine(win, id).view.webContents, t = str(text).slice(0, 1000), x = (o ?? {}) as { forward?: unknown; next?: unknown; matchCase?: unknown }
     if (!t) { wc.stopFindInPage("keepSelection"); return null }
     return wc.findInPage(t, { forward: x.forward !== false, findNext: x.next !== true, matchCase: x.matchCase === true })
   },
-  // A picture of it as shown (JPEG bytes), for its tab to show in its place while its pane moves (WebPage.tsx).
   "web:shot": async (win, id) => {
     const p = mine(win, id)
     if (!shown(p.spot)) return null
@@ -1375,14 +1183,11 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
     (Array.isArray(sites) ? sites : []).filter((x): x is string => typeof x === "string").map((x) => x.toLowerCase()).slice(0, 20), copy === true),
   "web:seal": (_win, from, sites, to, key) => sealLogin(profileOf(from), sitesList(sites), profileOf(to), str(key)),
   ...cloud,
-  // (anything but a host is answered "", never the whole list refused)
-  // A host with no icon of its own yet (a site only its cookies name, one kept before) is asked for its /favicon.ico.
   "web:icons": (_win, hosts) => {
     const all = loadIcons(), keys = (Array.isArray(hosts) ? hosts : []).slice(0, 500).filter((h): h is string => typeof h === "string")
     for (const h of keys) if (!h.includes("/") && /^[a-z0-9.-]+\.[a-z]{2,}(:\d+)?$|^localhost(:\d+)?$/i.test(h) && (!all.has(h) || staleIcons.has(h))) void hostIcon(webSession(""), h)
     return Object.fromEntries(keys.map((h) => [h, all.get(h) ?? ""]))
   },
-  // The browser engine's features (electron/browser/): each answers its own names.
   "web:engine": (win, name, ...args) => engineCall(win, name, args),
   "web:reveal": (_win, p) => {
     const file = path.resolve(str(p))
@@ -1395,10 +1200,7 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
   },
 }
 
-// ---------- the sites a profile keeps cookies for, and who's signed in ----------
 
-/** Hosts under a two-part public suffix ("co.uk"), for which a site is three labels. A short list: the panel only groups
- *  cookies by site, so an unknown suffix just shows one more label than it might. */
 const TWO_PART = /\.(co|com|net|org|gov|ac|edu)\.[a-z]{2}$/
 /** "chat.example.co.uk" → "example.co.uk", "auth.claude.ai" → "claude.ai". */
 function siteOf(host: string) {
@@ -1409,14 +1211,9 @@ function siteOf(host: string) {
 }
 const hostOfUrl = (u: string) => { try { return new URL(u).hostname } catch { return "" } }
 
-/** Accounts found lately, by "<profile> <site>": `login` the login they were found for (see loginOf). null: nobody
- *  signed in; an empty account: signed in, its name not had. */
 const accounts = new Map<string, { at: number; login: string; who: Who | null }>()
-/** How long a site isn't asked again for the same login: named, or not (it may say later); a page's look is free. */
 const ASK_NAMED = 6 * 3_600_000, ASK_UNNAMED = 30 * 60_000, ASK_LOOK = 60_000
 
-/** The last account named for each login (by profile, site, and a hash of its login, so another login asks again),
- *  for when its site won't say and so a restart doesn't ask again: in userData, never the vault. */
 type Known = Record<string, Record<string, { login: string; who: Who; at?: number }>>
 let known: Known | null = null
 const knownFile = () => path.join(app.getPath("userData"), "web-accounts.json")
@@ -1432,15 +1229,11 @@ function keepKnown(profile: string, site: string, login: string, who: Who | null
   try { writeAtomic(knownFile(), JSON.stringify(k)) } catch { /* asked again next time */ }
 }
 const loginHash = (value: string) => crypto.createHash("sha256").update(value).digest("hex").slice(0, 16)
-/** What says it's still the same login: its login cookie, else which cookies the site keeps (signing in or out changes
- *  them); a site only an open page tells, its last look. */
 function loginOf(how: Rule, mine: Electron.Cookie[], login?: Electron.Cookie) {
   if (login) return loginHash(login.value)
   return how.url || how.read ? loginHash(mine.map((c) => c.name).sort().join(" ")) : "look"
 }
 
-/** Who's signed in to `site` in a profile (its cookies given), asked as rarely as its rule allows. A site with a login
- *  cookie is signed in by it alone: its name is asked, else the one last named for that login. */
 async function accountOf(profile: string, site: string, cookies: Electron.Cookie[]): Promise<Who | null> {
   const how = ACCOUNTS[site]
   if (!how) return null
@@ -1466,7 +1259,6 @@ async function accountOf(profile: string, site: string, cookies: Electron.Cookie
     if (pic && isIcon(pic)) who.avatar = pic
     keepKnown(profile, site, id, who)
   }
-  // Not named now: the name last had for this login, else signed in when its cookie or page says so.
   else if (kept?.login === id && (!lookOnly || found === null)) who = kept.who
   else if (found || login) who = { account: "" }
   accounts.set(key, { at: now, login: id, who })
@@ -1485,7 +1277,6 @@ async function askWho(s: Electron.Session, how: Rule, open: Page | undefined): P
   let res: { url: string; body: unknown } | null = null
   if (how.url) {
     const as = how.text ? "text" : "json", headers = { accept: how.text ? "text/html,*/*" : "application/json", ...how.headers }
-    // (from its open page as its own scripts would, else, or when that page is on another of its hosts, from here)
     if (how.page && open && !how.method) res = await inPage(`fetch(${JSON.stringify(how.url)}, { credentials: "include", headers: ${JSON.stringify(headers)} })
       .then(async (r) => r.ok ? { url: r.url, body: await r.${as}() } : null).catch(() => null)`).catch(() => null) as typeof res
     res ??= await s.fetch(how.url, { method: how.method ?? "GET", credentials: "include", signal: AbortSignal.timeout(8000), headers } as RequestInit)
@@ -1508,7 +1299,6 @@ async function sitesOf(profile: string): Promise<WebSite[]> {
     const at = last.get(site)
     return { site, ...(who ? { signed: true, ...who, account: who.account || undefined } : {}), ...(at ? { last: at } : {}), ...(!who && !been.has(site) ? { other: true } : {}) }
   }))
-  // A login that signs in to other sites too (Google's: YouTube, google.<country>) is one row for them all.
   const joined = new Set<string>()
   for (const s of out) {
     const also = s.signed ? ACCOUNTS[s.site]?.with : undefined
@@ -1518,13 +1308,10 @@ async function sitesOf(profile: string): Promise<WebSite[]> {
     s.with = sites
     for (const x of sites) { joined.add(x); s.last = Math.max(s.last ?? 0, last.get(x) ?? 0) || undefined }
   }
-  // Signed in first, then the latest visited, then A to Z.
   return out.filter((s) => !joined.has(s.site))
     .sort((a, b) => Number(!b.signed) - Number(!a.signed) || (b.last ?? 0) - (a.last ?? 0) || a.site.localeCompare(b.site))
 }
 
-/** Who's signed in to `site` in each used profile of `profiles` (null: nobody, or no way to ask; a covered site is its
- *  login's: youtube.com is Google's), for a link to open where its account is. Each in WHO_MS, else as last named. */
 const WHO_MS = 1500
 async function whoIn(site: string, profiles: string[]): Promise<Record<string, { account: string; more?: string[] } | null>> {
   const name = ACCOUNTS[site] ? site : Object.keys(ACCOUNTS).find((k) => Object.keys(ACCOUNTS[k].with ?? {}).some((w) => covers(w, site)))
@@ -1540,7 +1327,6 @@ async function whoIn(site: string, profiles: string[]): Promise<Record<string, {
   return out
 }
 
-/** Sign out of a site in a profile: its cookies and storage go, its open pages reload. */
 async function forgetSite(prof: string, name: string) {
   const s = await readySession(prof)
   for (const c of await s.cookies.get({})) {
@@ -1577,8 +1363,6 @@ async function dropCookies(s: Session, names: string[]) {
   }
 }
 
-/** A login as it leaves a profile: its sites' cookies, who its site said it was (to check it there), what it was named
- *  as here and which of its sites were opened here. */
 type Leaving = { names: string[]; cookies: Electron.Cookie[]; account: string | null; known: Record<string, { login: string; who: Who }>; visited: string[] }
 
 async function loginOut(from: string, names: string[]): Promise<Leaving> {
@@ -1594,8 +1378,6 @@ async function loginOut(from: string, names: string[]): Promise<Leaving> {
   return { names, cookies, account: before?.account ?? null, known, visited: names.filter((n) => visitedOf(from).has(n)) }
 }
 
-/** A login into a profile: its sites' cookies, replacing any there; taken back when the site then names nobody, or
- *  someone else, where it named someone (its login kept in storage). */
 async function loginIn(to: string, l: Leaving): Promise<{ ok: boolean; account?: string }> {
   if (!mayOpen(to)) throw new Error("this container is locked")
   const { names } = l, dst = await readySession(to)
@@ -1611,7 +1393,6 @@ async function loginIn(to: string, l: Leaving): Promise<{ ok: boolean; account?:
       return { ok: false, account: l.account }
     }
   }
-  // Named there at once, as it was where it came from; not a tracker there, since it was opened there.
   for (const n of names) {
     accounts.delete(`${to} ${n}`)
     const k = l.known[n]
@@ -1622,7 +1403,6 @@ async function loginIn(to: string, l: Leaving): Promise<{ ok: boolean; account?:
   return { ok: true, account: l.account ?? undefined }
 }
 
-/** Move (or copy) a login to another profile; the source signs out only once it's in. */
 async function moveLogins(from: string, to: string, names: string[], copy: boolean): Promise<{ ok: boolean; account?: string }> {
   if (from === to) throw new Error("nothing to move")
   if (!mayOpen(to)) throw new Error("this container is locked")
@@ -1631,12 +1411,10 @@ async function moveLogins(from: string, to: string, names: string[], copy: boole
   return r
 }
 
-// ---------- another Mac's logins (Machines): who's signed in where, and a login copied there ----------
 
 // A login leaves only sealed for the other app (browser/sealed.ts), on the user's act in this window; taking one in
 // (remote:take) the server may ask: like an agent signing in, it adds a login of the sites named and reads none.
 
-/** How long a sealed login may take to arrive, and the boxes taken lately (none is taken twice). */
 const SEALED_MS = 5 * 60_000
 const taken = new Map<string, number>()
 
@@ -1656,7 +1434,6 @@ function keysForSealing() {
 }
 
 const SAME_SITE = new Set(["unspecified", "no_restriction", "lax", "strict"])
-/** A sealed login's cookies, each of one of its sites, as cookies.get gives them: anything else is left out. */
 function cookiesOf(list: unknown, names: string[]): Electron.Cookie[] {
   const ok = (c: Record<string, unknown>) => typeof c.name === "string" && typeof c.value === "string" && typeof c.domain === "string"
     && /^\.?[\w.-]+$/.test(c.domain) && names.includes(siteOf(c.domain)) && typeof c.path === "string" && c.path.startsWith("/")
@@ -1670,7 +1447,6 @@ const sitesList = (v: unknown) => (Array.isArray(v) ? v : []).filter((x): x is s
 const sealedFor = (to: string) => `vaultite login for ${to}`
 
 handle("remote:key", () => ({ key: keysForSealing().pub }))
-// Who's signed in where, in the profiles asked (a locked container's left out): names only, as the Sites tab shows them.
 handle("remote:sites", async (_win, profiles) => {
   const out: Record<string, WebSite[]> = {}
   for (const p of new Set((Array.isArray(profiles) ? profiles : []).slice(0, 50).map(profileOf))) {
@@ -1699,13 +1475,11 @@ handle("remote:take", async (_win, to, sealed) => {
   return loginIn(prof, { names, cookies, account: typeof d.account === "string" ? d.account : null, known, visited: sitesList(d.visited).filter((n) => names.includes(n)) })
 })
 
-/** A login sealed for another Mac's app (`key`, its remote:key), for its profile `to`: the user's act in this window. */
 async function sealLogin(from: string, names: string[], to: string, key: string) {
   const l = await loginOut(from, names)
   return seal(key, { ...l, at: Date.now() }, sealedFor(to))
 }
 
-/** The sites a page was opened at, by profile (this Mac's, in userData: never the vault). */
 type Visited = { sites: Record<string, string[]> }
 let visited: Visited | null = null
 const visitedFile = () => path.join(app.getPath("userData"), "web-sites.json")
@@ -1730,23 +1504,15 @@ function noteVisit(profile: string, url: string) {
   if (site) addVisited(profile, [site])
 }
 
-// ---------- sites' icons, for their tabs ----------
 
-/** Icons as data URLs, in userData: a site's by its host (no "www."), its home page's or /favicon.ico; a page's own by
- *  host and first path segment ("google.com/maps"), only where it differs from its host's. */
 let icons: Map<string, string> | null = null
-/** Hosts whose icon came from a build that kept any page's as its host's (Maps' pin as google.com's): asked again. */
 const staleIcons = new Set<string>()
-/** The address each key's icon came from (this run's), so a page telling the same one isn't fetched again. */
 const iconSrc = new Map<string, string>()
-/** Hosts whose /favicon.ico was asked for this run. */
 const iconAsked = new Set<string>()
 const ICON_MAX = 256 * 1024
 const ICONS_KEPT = 300
 const ICONS_VERSION = 2
 const iconsFile = () => path.join(app.getPath("userData"), "web-icons.json")
-/** As the app's tabs name it (web-viewer/icons.tsx iconKey): with its port, without "www."; `page` adds the first
- *  path segment. */
 function iconKey(u: string, page = false) {
   try {
     const x = new URL(u), host = x.host.replace(/^www\./, "")
@@ -1773,7 +1539,6 @@ function saveIcons() {
     try { writeAtomic(iconsFile(), JSON.stringify({ v: ICONS_VERSION, icons: Object.fromEntries(loadIcons()) })) } catch { /* kept in memory */ }
   }, 2000)
 }
-/** Keep `icon` as `key`'s (null: none of its own) and tell every window. */
 function setIcon(key: string, icon: string | null) {
   const all = loadIcons()
   staleIcons.delete(key)
@@ -1803,8 +1568,6 @@ function iconOf(buf: Buffer): string | null {
   return mime ? `data:image/${mime};base64,${buf.toString("base64")}` : null
 }
 
-/** An icon's bytes, in the page's session (a signed-in site's icon may need its cookies); null if it can't be had in
- *  a few seconds. */
 async function iconBytes(s: Session, url: string): Promise<Buffer | null> {
   const data = /^data:image\/[\w.+-]+(;[\w-]+=[\w-]+)*(;base64)?,/i.exec(url)
   if (data) {
@@ -1818,7 +1581,6 @@ async function iconBytes(s: Session, url: string): Promise<Buffer | null> {
     return Buffer.from(await r.arrayBuffer())
   } catch { return null }
 }
-/** The first of `urls` that's an image, as an icon. */
 async function firstIcon(s: Session, urls: string[], still = () => true) {
   for (const u of urls) {
     if (!still()) return null
@@ -1830,7 +1592,6 @@ async function firstIcon(s: Session, urls: string[], still = () => true) {
 }
 
 const LOCAL_HOST = /^(localhost|127(\.\d{1,3}){3}|\[::1\]|(\d{1,3}\.){3}\d{1,3})(:\d+)?$/i
-/** A host's own icon, its /favicon.ico (once a run; `fallback` when it has none), unless it has one already. */
 async function hostIcon(s: Session, host: string, fallback?: string) {
   if (!host || (loadIcons().has(host) && !staleIcons.has(host)) || iconAsked.has(host)) return
   iconAsked.add(host)
@@ -1839,13 +1600,10 @@ async function hostIcon(s: Session, host: string, fallback?: string) {
   else if (fallback && !loadIcons().has(host)) setIcon(host, fallback)
 }
 
-/** The page told its icons' addresses: the first that's an image is its own icon. At its site's home page it's its
- *  site's; elsewhere (Maps on google.com) it's kept for its path, when it differs from the site's. */
 async function iconFrom(p: Page, urls: unknown) {
   const list = (Array.isArray(urls) ? urls : []).filter((u): u is string => typeof u === "string" && (web(u) || /^data:image\//i.test(u))).slice(0, 4)
   const page = p.view.webContents.getURL(), host = iconKey(page), key = iconKey(page, true)
   if (!host || !web(page)) return
-  // (the site's own /favicon.ico last: a page that names none, or whose named ones fail)
   try { const fav = new URL("/favicon.ico", page).href; if (!list.includes(fav)) list.push(fav) } catch { /* no origin */ }
   const told = list.join(" ")
   if (p.icons === told) return
@@ -1860,15 +1618,13 @@ async function iconFrom(p: Page, urls: unknown) {
   setIcon(key, loadIcons().get(host) === got.icon ? null : got.icon)
 }
 
-// ---------- the window's page over its pages: stack.ts decides, this applies ----------
+// ---------- the window's page over its pages: stack.ts decides ----------
 
 const pointers = new WeakMap<AppWindow, Pointer>()
 const pointerOf = (win: AppWindow) => pointers.get(win) ?? NO_POINTER
 
-/** Every view that was a page's (one ending stays a while, hidden, its last frame taken). */
 const pageViews = new WeakSet<WebContentsView>()
 
-/** A page into the window, over its other pages. */
 function addPage(win: AppWindow, view: WebContentsView) {
   pageViews.add(view)
   restack(win, view)
@@ -1909,7 +1665,6 @@ function hover(win: AppWindow) {
 const CDP_TYPE = { mouseMove: "mouseMoved", mouseDown: "mousePressed", mouseUp: "mouseReleased", mouseWheel: "mouseWheel" } as const
 const KEY_BITS = { alt: 1, control: 2, meta: 4, shift: 8 }
 
-/** Event `m` to page `p` with `buttons` held after it (null: a leave), at the page's own CSS pixels. */
 function send(p: Page, m: Passed, buttons: number | null) {
   const wc = p.view.webContents, z = p.win.webContents.getZoomFactor()
   const x = Math.round(m.x * z), y = Math.round(m.y * z)
