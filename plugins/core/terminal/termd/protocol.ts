@@ -38,3 +38,39 @@ export type CaptureFormat = "text" | "vt" | "html"
 export type Capture = { text: string; cols: number; rows: number; cursor: { x: number; y: number }; alternate: boolean
   /** The cursor's line (an agent's input): all of it, what's drawn plainly, and what's dim or grey (a suggested reply). */
   input?: { line: string; typed: string; suggested: string } }
+
+/** What `create` starts: the program and its pty, and what the app keeps with it. */
+export type Create = { id: string; file: string; args: string[] | string; cwd: string; env: Record<string, string>; shell: string; cols: number; rows: number
+  scrollback: number; spare: boolean; command?: string; meta?: Record<string, string> }
+
+/** Each request's fields and its answer ({re, ...answer}; a failure answers {re, error} instead). */
+export type Requests = {
+  hello: [{}, { v: number; pid: number; file: string; stale: boolean; pictures?: boolean }]
+  subscribe: [{}, {}]
+  "status-drop": [{ id: string }, {}]
+  access: [{ path: string }, { ok: boolean; code?: string }]
+  create: [Create, { info: Info }]
+  rename: [{ id: string; to: string; command?: string; meta?: Record<string, string> }, { info: Info }]
+  set: [{ id: string; meta: Record<string, string | null> }, { info: Info }]
+  kill: [{ id: string; signal?: string }, {}]
+  list: [{ ended?: boolean }, { sessions: Info[]; ended?: Info[] }]
+  get: [{ id: string }, { info: Info }]
+  capture: [{ id: string; format: CaptureFormat; lines?: number | "all" }, Capture & { ended?: boolean }]
+  forget: [{ id: string }, {}]
+  attach: [{ id: string }, { cols: number; rows: number }]
+  snapshot: [{}, { data: string }]
+  input: [{ id?: string; b64: string; paste?: boolean }, {}]
+  keys: [{ id: string; keys: string[] }, {}]
+  resize: [{ cols: number; rows: number; cw?: number; ch?: number }, never]
+  adopt: [{ socket: string; scrollback: number }, { adopted: string[] }]
+}
+export type Op = keyof Requests
+export type Params<O extends Op> = Requests[O][0]
+export type Answer<O extends Op> = Requests[O][1]
+
+/** What the server sends a connection unasked: its attached terminal's output, size and end; events once subscribed. */
+export type Unasked =
+  | { t: "data"; d: string }
+  | { t: "size"; cols: number; rows: number }
+  | { t: "exit"; code: number; signal: number; lost?: boolean }
+  | ({ t: "event" } & Event)

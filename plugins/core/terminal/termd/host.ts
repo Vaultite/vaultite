@@ -11,7 +11,7 @@ import { REPLY, watcher, type Said } from "../osc7501.ts"
 import { adopter } from "./adopt.ts"
 import { KittyFeed, remoteFront } from "./kitty.ts"
 import { Screen } from "./screen.ts"
-import { PROTOCOL, type Capture, type CaptureFormat, type Event, type Exit, type Info } from "./protocol.ts"
+import { PROTOCOL, type Answer, type Capture, type CaptureFormat, type Event, type Exit, type Info } from "./protocol.ts"
 
 const WIN = process.platform === "win32"
 const SCROLLBACK = 10000 // lines a terminal keeps when the app doesn't say (its setting `scrollback`)
@@ -38,7 +38,7 @@ fixHelper()
 const pty = require("node-pty") as typeof import("node-pty")
 
 /** A client's connection: `send` a message to it, `backlog` what it hasn't read yet (bytes). */
-export type Conn = { send: (m: object) => void; backlog: () => number; session: Session | null; ready: boolean; events?: boolean
+export type Conn = { send: (m: Record<string, unknown>) => void; backlog: () => number; session: Session | null; ready: boolean; events?: boolean
   /** Output kept back while its snapshots are made (after their point: sent once they are), and how many are. */
   held?: { data: string[]; bytes: number; snapshots: number } }
 
@@ -350,7 +350,7 @@ export function host(o: HostOptions) {
     switch (m.op) {
       // (pictures: kitty graphics made whole here, kitty.ts; one running on from before them says nothing, and its
       // terminals aren't told to draw any: Claude Code's would leave their rows blank)
-      case "hello": return { v: PROTOCOL, pid: o.pid, file: o.file, stale: !!o.stale?.(), pictures: true }
+      case "hello": return { v: PROTOCOL, pid: o.pid, file: o.file, stale: !!o.stale?.(), pictures: true } satisfies Answer<"hello">
       // This connection hears every terminal's changes ({t: "event", type, id, ...}: protocol.ts).
       case "subscribe": {
         c.events = true
@@ -365,7 +365,7 @@ export function host(o: HostOptions) {
       case "access":
         fs.promises.readdir(String(m.path)).then(() => c.send({ re: m.re, ok: true }), (e: NodeJS.ErrnoException) => c.send({ re: m.re, ok: false, code: e.code ?? "" }))
         return null
-      case "create": return { info: create(m).info() }
+      case "create": return { info: create(m).info() } satisfies Answer<"create">
       // A spare taken (its id given, what it runs from now on), or a terminal given another id.
       case "rename": {
         const s = live(m.id), to = String(m.to ?? "")
@@ -391,11 +391,11 @@ export function host(o: HostOptions) {
       case "list": trimEnded(); return {
         sessions: [...sessions.values()].map((s) => s.info()),
         ...(m.ended ? { ended: [...endedOnes.values()].map((e) => e.info) } : {}),
-      }
+      } satisfies Answer<"list">
       case "get": {
         const id = String(m.id ?? ""), s = sessions.get(id), e = endedOnes.get(id)
         if (!s && !e) throw new Error(`there's no terminal '${id}'`)
-        return { info: s ? s.info() : e!.info }
+        return { info: s ? s.info() : e!.info } satisfies Answer<"get">
       }
       // The screen and the lines above it: `lines` from the bottom (default its screen) or "all", as text, vt or html.
       // An ended terminal's too, while it's kept whole (then only its last lines, as text).
@@ -406,7 +406,7 @@ export function host(o: HostOptions) {
           if (!e) throw new Error(`there's no terminal '${id}'`)
           if (format !== "text") throw new Error(`terminal '${id}' ended a while ago: only its last lines are kept, as text`)
           const n = lineCount(m.lines ?? e.info.rows, 200)
-          return { text: n === null ? e.text : e.text.split("\n").slice(-n).join("\n"), cols: e.info.cols, rows: e.info.rows, cursor: { x: 0, y: 0 }, alternate: false, ended: true }
+          return { text: n === null ? e.text : e.text.split("\n").slice(-n).join("\n"), cols: e.info.cols, rows: e.info.rows, cursor: { x: 0, y: 0 }, alternate: false, ended: true } satisfies Answer<"capture">
         }
         const n = lineCount(m.lines ?? s.term.rows, s.term.scrollback + s.term.rows)
         s.capture(format, n).then((r) => c.send({ re: m.re, ...r, ...(s.exit ? { ended: true } : {}) }), (e: Error) => c.send({ re: m.re, error: `its screen couldn't be read: ${e.message}` }))
@@ -421,7 +421,7 @@ export function host(o: HostOptions) {
         emit({ type: "clients", id: s.id, clients: s.attached.size })
         // (what's queued reaches it as data: its screen so far is what's parsed)
         c.ready = true
-        return { cols: s.term.cols, rows: s.term.rows }
+        return { cols: s.term.cols, rows: s.term.rows } satisfies Answer<"attach">
       }
       case "snapshot": {
         const s = c.session

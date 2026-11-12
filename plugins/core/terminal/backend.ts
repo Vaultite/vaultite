@@ -12,7 +12,7 @@ import type { IPty } from "node-pty"
 import { lineReader } from "./lines.ts"
 import type { Said } from "./osc7501.ts"
 import { distroOf, kindOf, progName, type ShellKind } from "./shells.ts"
-import { PROTOCOL, type Capture, type CaptureFormat, type Event, type Exit as Ended, type Info } from "./termd/protocol.ts"
+import { PROTOCOL, type Answer, type Capture, type CaptureFormat, type Event, type Exit as Ended, type Info, type Op, type Params, type Unasked } from "./termd/protocol.ts"
 
 export type { Capture, CaptureFormat, Ended }
 
@@ -361,7 +361,7 @@ class Wire {
   pipe: Pipe
   seq = 0
   waiting = new Map<number, { ok: (v: Msg) => void; fail: (e: Error) => void }>()
-  listeners = new Set<(m: Msg) => void>()
+  listeners = new Set<(m: Unasked) => void>()
   closed = false
   onClose: (() => void) | null = null
   /** Since when a request went unanswered with nothing heard from the server after it (null: it answers), for a wire
@@ -380,7 +380,7 @@ class Wire {
           const w = this.waiting.get(m.re)!
           this.waiting.delete(m.re)
           if (typeof m.error === "string") w.fail(new Error(m.error)); else w.ok(m)
-        } else for (const fn of this.listeners) fn(m)
+        } else if (typeof m.t === "string") for (const fn of this.listeners) fn(m as Unasked)
       } catch (e) { console.error("terminal: a message from the terminal server:", e) }
     })
     pipe.onClose(() => {
@@ -391,18 +391,18 @@ class Wire {
       this.onClose?.()
     })
   }
-  send(op: string, params: Msg = {}) {
+  send<O extends Op>(op: O, params: Params<O>) {
     if (!this.closed) this.pipe.write({ op, ...params })
   }
   /** A request whose answer `fn` gets as it arrives, between the messages around it (a promise's would come after the
    *  next ones in the same chunk). */
-  call(op: string, params: Msg, fn: (m: Msg) => void) {
+  call<O extends Op>(op: O, params: Params<O>, fn: (m: Answer<O>) => void) {
     if (this.closed) return
     const re = ++this.seq
-    this.waiting.set(re, { ok: fn, fail: () => {} })
+    this.waiting.set(re, { ok: (m) => fn(m as Answer<O>), fail: () => {} })
     this.pipe.write({ op, re, ...params })
   }
-  request(op: string, params: Msg = {}, ms = 5000): Promise<Msg> {
+  request<O extends Op>(op: O, params: Params<O>, ms = 5000): Promise<Answer<O>> {
     if (this.closed) return Promise.reject(new Error("the terminal server went away"))
     if (this.stalledSince !== null && op !== "hello") return Promise.reject(new Error(this.stalled()))
     const re = ++this.seq, at = Date.now()
@@ -412,7 +412,7 @@ class Wire {
         if (this.onStall && this.stalledSince === null) { this.stalledSince = at; this.onStall(op) }
         fail(new Error(this.onStall ? this.stalled() : `the terminal server didn't answer ${op}`))
       }, ms)
-      this.waiting.set(re, { ok: (v) => { clearTimeout(timer); ok(v) }, fail: (e) => { clearTimeout(timer); fail(e) } })
+      this.waiting.set(re, { ok: (v) => { clearTimeout(timer); ok(v as Answer<O>) }, fail: (e) => { clearTimeout(timer); fail(e) } })
       this.pipe.write({ op, re, ...params })
     })
   }
@@ -460,9 +460,9 @@ const there = (f: string) => new Promise<boolean>((ok) => fs.stat(f, (e) => ok(!
  *  user's live shells. */
 async function takeOver(w: Wire, olds: ServerFiles[], log?: (...a: unknown[]) => void) {
   for (const { socket: old } of olds) {
-    const r = await w.request("adopt", { socket: old, scrollback: limits.scrollback() }, 60_000).catch((e: Error) => ({ error: e.message }) as Msg)
-    if (Array.isArray(r.adopted) && r.adopted.length) log?.(`took over ${r.adopted.length} terminals from the older server at ${old}`)
-    else if (r.error) log?.(`couldn't take over the terminals at ${old}: ${r.error}`)
+    const r = await w.request("adopt", { socket: old, scrollback: limits.scrollback() }, 60_000).then((a) => a.adopted, (e: Error) => e.message)
+    if (typeof r === "string") log?.(`couldn't take over the terminals at ${old}: ${r}`)
+    else if (r.length) log?.(`took over ${r.length} terminals from the older server at ${old}`)
   }
 }
 
@@ -477,7 +477,7 @@ function listed(x: Info): Listed {
  *  events (made when first asked), `running`: it only if the server already runs, `open`: a new one for an attach. */
 function termdClient(o: { name: string; label: string; control: () => Promise<Wire>; running: () => Promise<Wire | null>; open: () => Promise<Wire> }) {
   const heard = new Set<(ev: BackendEvent) => void>()
-  const ask = async (op: string, params: Msg = {}, ms?: number) => (await o.control()).request(op, params, ms)
+  const ask = async <O extends Op>(op: O, params: Params<O>, ms?: number) => (await o.control()).request(op, params, ms)
   const hellos = new WeakMap<Wire, Promise<boolean>>()
   const backend = {
     name: o.name, label: o.label, spares: true,
@@ -494,7 +494,7 @@ function termdClient(o: { name: string; label: string; control: () => Promise<Wi
       if (!w) return []
       try {
         const r = await w.request("list", q?.ended ? { ended: true } : {})
-        return [...(r.sessions as Info[] ?? []), ...(r.ended as Info[] ?? [])].map(listed)
+        return [...r.sessions, ...(r.ended ?? [])].map(listed)
       } catch { return [] }
     },
     async create(id: string, spec: Spec, c?: Made) {
@@ -509,15 +509,15 @@ function termdClient(o: { name: string; label: string; control: () => Promise<Wi
       const data = new Set<(d: string) => void>(), exits = new Set<(e: Exit) => void>()
       let exit: Exit | undefined
       w.listeners.add((m) => {
-        if (m.t === "data" && typeof m.d === "string") for (const fn of data) fn(m.d)
-        else if (m.t === "size") size = { ...size, cols: Number(m.cols), rows: Number(m.rows) }
-        else if (m.t === "exit") { exit = { code: Number(m.code) || 0, signal: Number(m.signal) || 0, ...(m.lost ? { lost: true } : {}) }; w.close() }
+        if (m.t === "data") for (const fn of data) fn(m.d)
+        else if (m.t === "size") size = { ...size, cols: m.cols, rows: m.rows }
+        else if (m.t === "exit") { exit = { code: m.code || 0, signal: m.signal || 0, ...(m.lost ? { lost: true } : {}) }; w.close() }
       })
       // Ended, or the server went away (its terminals with it: there's nothing to reattach to then either).
       w.onClose = () => { for (const fn of exits) fn(exit ?? null) }
       try {
         const a = await w.request("attach", { id })
-        size = { cols: Number(a.cols) || cols, rows: Number(a.rows) || rows }
+        size = { cols: a.cols || cols, rows: a.rows || rows }
       } catch (e) { w.close(); throw e }
       if (size.cols !== cols || size.rows !== rows) { w.send("resize", { cols, rows }); size = { ...size, cols, rows } }
       return {
@@ -532,7 +532,7 @@ function termdClient(o: { name: string; label: string; control: () => Promise<Wi
         },
         onData: (fn) => { data.add(fn) },
         onExit: (fn) => { exits.add(fn) },
-        snapshot: (fn) => w.call("snapshot", {}, (m) => fn(String(m.data ?? ""))),
+        snapshot: (fn) => w.call("snapshot", {}, (m) => fn(m.data ?? "")),
         // (its connection stops being read: the server holds the pty once that's full)
         pause: () => w.pipe.pause(),
         resume: () => w.pipe.resume(),
@@ -544,8 +544,8 @@ function termdClient(o: { name: string; label: string; control: () => Promise<Wi
     setMeta: async (id: string, patch: Record<string, string | null>) => { await ask("set", { id, meta: patch }) },
     async capture(id: string, c: { format: CaptureFormat; lines?: number | null }) {
       const r = await ask("capture", { id, format: c.format, ...(c.lines === undefined ? {} : { lines: c.lines ?? "all" }) }, 15000)
-      return { text: String(r.text ?? ""), cols: Number(r.cols), rows: Number(r.rows), cursor: r.cursor as Capture["cursor"], alternate: !!r.alternate,
-        ...(r.input ? { input: r.input as Capture["input"] } : {}), ...(r.ended ? { ended: true } : {}) }
+      return { text: r.text ?? "", cols: r.cols, rows: r.rows, cursor: r.cursor, alternate: !!r.alternate,
+        ...(r.input ? { input: r.input } : {}), ...(r.ended ? { ended: true } : {}) }
     },
     async send(id: string, input: Input) {
       if ("keys" in input) await ask("keys", { id, keys: input.keys })
@@ -559,11 +559,12 @@ function termdClient(o: { name: string; label: string; control: () => Promise<Wi
   /** The control connection's events, to whoever hears them (a server from an older build gives none). */
   const follow = (w: Wire) => {
     w.listeners.add((m) => {
-      if (m.t !== "event" || typeof m.id !== "string" || typeof m.type !== "string") return
-      const ev = (m.type === "started" && m.info ? { ...m, info: listed(m.info as Info) } : m) as unknown as BackendEvent
+      if (m.t !== "event") return
+      const { t: _, ...e } = m
+      const ev: BackendEvent = e.type === "started" ? { ...e, info: listed(e.info) } : e
       for (const fn of heard) fn(ev)
     })
-    w.send("subscribe")
+    w.send("subscribe", {})
   }
   return { backend, follow, ask }
 }
@@ -701,8 +702,8 @@ export function localBackend(o: { log?: (...a: unknown[]) => void; oldServers?: 
       session: null, ready: false,
       send: (m) => {
         if (closed) return
-        if (paused) { held.push(m as Msg); queued += String((m as Msg).d ?? "").length; return }
-        queueMicrotask(() => { if (!closed) deliver(m as Msg) })
+        if (paused) { held.push(m); queued += typeof m.d === "string" ? m.d.length : 0; return }
+        queueMicrotask(() => { if (!closed) deliver(m) })
       },
       backlog: () => queued,
     })
