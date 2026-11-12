@@ -106,7 +106,7 @@ export function ShareSheet({ folder }: { folder: string }) {
     <div className="flex flex-col gap-5" data-share-sheet={folder}>
       {head}
       {online ? <NewLink folder={folder} made={(l) => { setFresh(l); reload() }} />
-        : <Empty>Links need a machine of yours on the internet: sign one in to Vaultite Cloud (Connections, Remote access).</Empty>}
+        : <Empty>Links need a machine of yours on the internet: sign one in to Vaultite Cloud (Settings, Share & sync).</Empty>}
       {fresh && <FreshLink link={fresh} />}
       <Section title="People with access">
         {!list ? <Loading error={error} />

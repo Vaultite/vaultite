@@ -4,7 +4,7 @@ link, once (kept only as a hash in this machine's `data/config.json`, `share`). 
 --role edit` (or `--days`: the same link), `vau share new-link <id>` (a lost link can't be shown again: this one replaces
 it, the old one stops), `vau share revoke <id>`; in the app, Share… (a folder's menu, its page's toolbar, the palette),
 and the Shared page (`view:shared`: every share, who's in one now, the guests' address; from the palette and
-Connections' Remote access). Only the owner shares (not an app on the internet), from any machine: one not on the internet
+Settings' Share & sync). Only the owner shares (not an app on the internet), from any machine: one not on the internet
 passes the share to the vault's machine that is (it keeps it); one of another vault keeps it, its link at that
 machine's address, which passes its guests on (`share/relay`).
 - The guest opens it in a browser at this machine's guests' address, which MCP gives (`mcp:guest-urls`, the first is

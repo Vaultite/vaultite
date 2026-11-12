@@ -48,10 +48,10 @@ export default definePlugin({
   },
   settingsPages: {
     apps: { label: "Connect an AI app", icon: Bot, sub: "They can read and write your notes.", in: "ai", render: () => <AiApps bare /> },
-    remote: { label: "Remote access", icon: Globe, sub: "Your vault from your phone, any browser and AI apps on the web", render: () => <RemoteAccess /> },
+    remote: { label: "Share & sync", icon: Globe, sub: "Optional: open your vault remotely from your phone or AI apps, and share folders", render: () => <RemoteAccess /> },
   },
   newTab: { connect: { title: "Connect your AI", sort: 5, heading: false, render: () => <ConnectSection /> } },
   views: { connections: { icon: Plug, title: () => "Connections", render: () => <ConnectionsView /> } },
-  // (AI apps first, then remote access: Settings has that one while AI is off)
+  // (AI apps first, then Share & sync: Settings has that one while AI is off)
   commands: [{ id: "mcp:connections", name: "Open connections", when: aiOn, run: () => openView("connections", { newTab: true }) }],
 })

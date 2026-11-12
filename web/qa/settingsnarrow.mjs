@@ -2,7 +2,7 @@
 // desktop app's first window, 1280×820 with both sidebars open. Each section the menu lists, Plugins and Get plugins too,
 // opens in the menu's place with a way back; so do the sidebar's Plugins button, the palette, search, an old #get tab
 // (pages/Setup.tsx) and core/apppages.ts' openSettings. A phone's Plugins stays its own page. What the menu's Plugins
-// counts, and Remote access (plugins/core/mcp/Connections.tsx) saying it's optional. The palette's way to where a
+// counts, and Share & sync (plugins/core/mcp/Connections.tsx) saying it's optional. The palette's way to where a
 // setting is (core/switches.ts' placeOf, ⌘↩): Settings at its row, in place, not a sheet. Settings itself (its button,
 // ⌘,) opens on its menu and search. Wide, the sidebar's two buttons are two places: each reopens on its own last
 // section, and the one lit is the one showing. Writes nothing.
@@ -48,7 +48,7 @@ try {
     if (id === "plugins") await page.screenshot({ path: `${OUT}plugins.png` })
     if (id === "mcp:remote") {
       const says = await until(async () => await shown(id).locator("[data-cloud-sign-in]").count() && shown(id).innerText(), 6000)
-      check("Remote access, signed out: what it's for, and that the rest works without it", /phone/.test(says) && /everything else works without it/.test(says), says)
+      check("Share & sync, signed out: what it's for, and that the rest works without it", /phone/.test(says) && /everything else works the same/.test(says), says)
     }
     await toMenu()
   }

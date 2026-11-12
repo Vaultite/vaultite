@@ -180,7 +180,7 @@ function Members({ store, section }: { store: Store; section: string }) {
   )
 }
 
-/** The pages plugins that are on add (MCP's Remote access; Apple Health), in plugin order; not those drawn in the AI
+/** The pages plugins that are on add (MCP's Share & sync; Apple Health), in plugin order; not those drawn in the AI
  *  section (AiSettings.tsx). */
 function pluginPages(disabled: string[]): (Sec & { plugin: Plugin })[] {
   return PLUGINS.filter((p) => p.settingsPages && isEnabled(p.id, disabled)).flatMap((p) =>

@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Remote access in Settings is now Share & sync**: its page says plainly that Vaultite Cloud and shared folders are
+  optional, and that without them Vaultite stays on your own network.
 - **The desktop app's first-run window and screen sharing's pages open again**: since updates began downloading only
   the files that changed, they stopped on an error as they started.
 - **A shared folder's link opens again for its guests**: since updates began downloading only the files that changed,

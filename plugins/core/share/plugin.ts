@@ -121,7 +121,7 @@ function reserved(name: string) {
 /** Where a link is made (machines.ts): here, the vault's machine on the internet, or one that passes it on. */
 async function where(ctx: OpCtx) {
   const w = await others.where(ctx)
-  if (!w) throw new OpError("sharing needs a machine of yours on the internet: sign it in to Vaultite Cloud (Connections, Remote access; vau cloud sign-in), or give it an own tunnel (mcp.public in data/config.json, vau docs mcp)", 409)
+  if (!w) throw new OpError("sharing needs a machine of yours on the internet: sign it in to Vaultite Cloud (Settings, Share & sync; vau cloud sign-in), or give it an own tunnel (mcp.public in data/config.json, vau docs mcp)", 409)
   return w
 }
 /** The address a link made through `w` starts with. */

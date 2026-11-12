@@ -111,7 +111,7 @@ function CloudSignIn({ cloud, onDone, intro }: { cloud: Cloud; onDone: () => voi
   )
 }
 
-const CLOUD_INTRO = "Gives your vault an address on vaultite.app, so your phone and AI apps on the web reach it while this machine is on. Free, with no tunnel to set up. Optional: everything else works without it."
+const CLOUD_INTRO = "Off until you sign in. It gives your vault an address on vaultite.app, so your phone and AI apps on the web can reach it while this machine is on. Your files stay on this machine. Leave it off and Vaultite stays on your own network: everything else works the same."
 
 /** Vaultite Cloud, last on the page: signed out, a sign-in; else its state, the addresses and sign out. */
 function CloudSection({ data, onDone }: { data: State; onDone: () => void }) {
@@ -164,7 +164,7 @@ function AppAddress({ app, ownerTools, onDone }: { app: string; ownerTools: bool
 
 const hostOf = (url: string | null | undefined) => { try { return url ? new URL(url).host : "" } catch { return "" } }
 
-/** Remote access over Connect: where the app is reached, the Vaultite account (devices, plan, sign out), and what
+/** Share & sync over Connect: where the app is reached, the Vaultite account (devices, plan, sign out), and what
  *  only the Mac sets. */
 function ThroughCloud({ cloud }: { cloud: Cloud }) {
   let account = ""
@@ -465,7 +465,7 @@ export function RemoteAccess() {
       )}
       <Section title="Shared folders">
         <Group>
-          <SettingRow label="Shared folders" sub={data.cloud.guests ? `The people you share folders with open them at ${data.cloud.guests}` : "Who you share folders with, and where they open them"}
+          <SettingRow label="Shared folders" sub={data.cloud.guests ? `The people you share folders with open them at ${data.cloud.guests}` : "Optional: who you share folders with, and where they open them"}
             onClick={() => openView("shared", { newTab: true })} data-remote-shared />
         </Group>
       </Section>
@@ -473,12 +473,12 @@ export function RemoteAccess() {
   )
 }
 
-/** view:connections: the apps, then remote access, each its own card. */
+/** view:connections: the apps, then Share & sync, each its own card. */
 export function ConnectionsView() {
   return (
     <div className="mx-auto flex w-full max-w-[640px] flex-col gap-4 p-4" data-connections>
       <Panel title="AI apps" icon={Plug}><AiApps /></Panel>
-      <Panel title="Remote access" icon={Globe}><RemoteAccess /></Panel>
+      <Panel title="Share & sync" icon={Globe}><RemoteAccess /></Panel>
     </div>
   )
 }
