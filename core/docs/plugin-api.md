@@ -231,7 +231,7 @@ by its path.
 - `inbox:session` (inbox): Tell the inbox a session's state (SessionState): the thread it's in, once worked out (a turn's end is judged first).
 - `inbox:handed` (inbox): Dispatch marks the terminals it starts.
 - `inbox:progress` (inbox): A session's latest progress, for the Agents panel's row (its terminal's or its chat's step): while it's on it.
-- `inbox:event` (inbox): Add an event from another plugin's backend or the core (what it would POST); returns it.
+- `inbox:event` (inbox): Add an event from another plugin's backend or the core (what it would POST); returns it. One asking the user, made in a session's request, says which session asked.
 - `inbox:drop` (inbox): Take away the event of this source and key (what it said isn't so anymore).
 - `inbox:done` (inbox): Mark the event of this source and key done (the core's notice of a paused plugin, once it's allowed again).
 - `inbox:ask` (inbox): Ask the user's permission for something the server would do: a waiting event with Approve and Deny (phone and watch too), answered by the owner only. Returns its id; "inbox:answer" waits for the answer.

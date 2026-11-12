@@ -145,6 +145,17 @@ export const answerable = (e: InboxEvent) => e.state === "open" && (e.gate ? !e.
 /** An agent's session's thread (not a server's question or news): its sheet shows it, and it's replied to. */
 export const isSession = (e: InboxEvent) => e.kind === "session"
 
+/** A session (one that asked, or delegated) as its thread is called now (it may have been named since), else as it was then. */
+export const threadTitle = (s: { title: string; terminal?: string; session?: string }, events = getEvents().events) => events.find((x) => x.kind === "session" && !x.machine &&
+  ((!!s.terminal && x.terminal === s.terminal) || (!!s.session && x.session === s.session)))?.title ?? s.title
+
+/** Go to the session that asked `e` (Go to session): its terminal, else it resumed, on the machine it asked on. */
+export const openAsker = (e: InboxEvent) => {
+  const f = e.from
+  if (!f) return
+  void openSession({ terminal: f.terminal, session: f.session, agent: f.agent, machine: e.machine, host: !f.terminal }).catch((err) => notifyError(err, "Couldn't open it"))
+}
+
 /** A session's terminal if it still runs, else its session resumed in a new one, or (`host`: run outside a terminal)
  *  its agent's session view: on the machine it ran on (a session is kept there). */
 export async function openSession({ terminal = "", session = "", agent = "", machine = "", host = false }: { terminal?: string; session?: string; agent?: string; machine?: string; host?: boolean }) {

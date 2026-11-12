@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react"
 import {
   AlarmClockOff, Bell, CalendarClock, Check, CheckCheck, ChevronRight, CircleAlert, CircleCheck, Clock, ExternalLink, FileText, FolderInput, Globe, Inbox as InboxIcon, ListTodo, Mail, MailOpen,
-  Maximize2, ListChecks, MessageCircleQuestion, MessageSquareReply, MoreHorizontal, Pin, PinOff, RotateCcw, ShieldAlert, Trash2, X,
+  Maximize2, ListChecks, MessageCircleQuestion, MessageSquareReply, MoreHorizontal, Pin, PinOff, RotateCcw, ShieldAlert, SquareTerminal, Trash2, X,
 } from "lucide-react"
 import {
   activePane, askMove, askMoveMany, backDetail, closePane, currentRow, moveInList, Badged, Button, cn, del, detailPath, DoIt, Empty, fmtAgo, getStore, haptic, HeadingButton, isViewOpen, Loading, LoadingRows, Markdown, menuBelow, menuFor,
@@ -11,7 +11,7 @@ import {
   SidebarHeading, startSelecting, typingIn, SwipeRow, useAgents, useKeptCount, useSelectable, useSelected, useSelecting, useSidebars, useStore, useStoreWith, useTick, type MenuItem,
   type FileHead, type SidebarCtx, type Store, type SwipeAction, type TabButton,
 } from "@vaultite"
-import { agentOf, answerable, answerAsk, focusedTarget, forget, getEvents, markEventsDone, markRead, markSeen, markUnread, openEvent, openSession, pinEvents, SESSION_DETAIL, unsettle, snoozable, snoozeEvents, targetOf, useEvents } from "./events"
+import { agentOf, answerable, answerAsk, focusedTarget, forget, getEvents, markEventsDone, markRead, markSeen, markUnread, openAsker, openEvent, openSession, pinEvents, SESSION_DETAIL, threadTitle, unsettle, snoozable, snoozeEvents, targetOf, useEvents } from "./events"
 import type { InboxEvent, InboxItem } from "./types"
 import { choices, snoozed, snoozeMs, stampOf, whenText } from "./snooze"
 import { countOf, latestOf, lists, reviewing } from "./threads"
@@ -418,6 +418,7 @@ const resultItemsMenu = (r: InboxItem) => () => [{ label: "Settle", icon: Check,
  *  or unread it here (the page stops drawing it as new). */
 const eventItems = (e: InboxEvent, shownNew: boolean, touched?: (id: string) => void) => (): MenuItem[] => [
   ...(targetOf(e) ? [{ label: "Open", icon: ExternalLink, run: () => { openEvent(e); touched?.(e.id) } }] : []),
+  ...(e.from ? [{ label: "Go to session", icon: SquareTerminal, run: () => openAsker(e) }] : []),
   shownNew
     ? { label: "Mark as read", icon: MailOpen, run: () => { markRead([e.id]); touched?.(e.id) } }
     : { label: "Mark as unread", icon: Mail, run: () => markUnread([e.id]) },
@@ -513,10 +514,6 @@ function EventIcon({ e, className }: { e: InboxEvent; className: string }) {
 const WHY: Record<string, string> = { permission: "Asks permission", question: "Asks you", auth: "Sign in", plan: "Plan to approve", report: "Report", error: "Failed" }
 const standing = (e: InboxEvent) => (e.state === "working" ? "Working on it" : e.state === "open" && e.kind !== "info" ? WHY[e.ask ?? ""] ?? "" : "")
 
-/** A subagent's parent as its own thread is called now (it may have been named since), else as it was then. */
-const parentTitle = (e: InboxEvent) => getEvents().events.find((x) => x.kind === "session" && !x.machine &&
-  ((!!e.parent!.terminal && x.terminal === e.parent!.terminal) || (!!e.parent!.session && x.session === e.parent!.session)))?.title ?? e.parent!.title
-
 const iconButton = "grid size-6 shrink-0 cursor-pointer place-items-center rounded-[5px] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground max-md:size-9"
 
 // ---------- the button in the sidebar's header
@@ -601,19 +598,26 @@ function GateButtons({ e, className, size }: { e: InboxEvent; className: string;
 }
 export const gateTitle = (id: string) => getEvents().events.find((e) => e.id === id)?.title ?? "Asks for your yes"
 
-/** A permission the server waits on, in a sheet: what it asks to run, whole, in a box that scrolls, and the answer. */
+/** A permission the server waits on, in a sheet: who asks (the session, and Go to session), what it asks to run, whole,
+ *  in a box that scrolls, and the answer. */
 export function GateSheet({ id }: { id: string }) {
-  const e = useEvents().events.find((x) => x.id === id)
+  const { events } = useEvents()
+  const e = events.find((x) => x.id === id)
   if (!e) return <Empty>This request is gone: asked again, it comes back.</Empty>
+  const from = e.from ? <>From <span data-gate-from className="font-medium text-foreground/80">{threadTitle(e.from, events)}</span>{e.machineLabel && ` on ${e.machineLabel}`}</> : null
+  const said = e.answer ? (e.answer === "approve" ? "Approved" : "Denied") : null
   return (
     <div data-gate-sheet={e.id}>
       <SheetHead icon={ShieldAlert} tint="var(--orange)" kicker="Inbox" title={e.title}
-        sub={e.answer ? (e.answer === "approve" ? "Approved" : "Denied") : undefined} />
+        sub={from || said ? <>{from}{from && said && " · "}{said}</> : undefined} />
       {e.body && <pre data-gate-body className="max-h-[60vh] overflow-auto rounded-[10px] bg-muted p-3 font-mono text-[12px] leading-[17px] break-words whitespace-pre-wrap">{e.body}</pre>}
-      {!e.answer && (
-        <div className="mt-3 flex gap-2">
-          <Button look="primary" data-gate="approve" onClick={() => void answer(e, "approve")}>Approve</Button>
-          <Button data-gate="deny" onClick={() => void answer(e, "deny")}>Deny</Button>
+      {(!e.answer || e.from) && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {!e.answer && <>
+            <Button look="primary" data-gate="approve" onClick={() => void answer(e, "approve")}>Approve</Button>
+            <Button data-gate="deny" onClick={() => void answer(e, "deny")}>Deny</Button>
+          </>}
+          {e.from && <Button look="quiet" className={cn(!e.answer && "ml-auto")} data-gate-session onClick={() => openAsker(e)}><SquareTerminal className="size-4" /> Go to session</Button>}
         </div>
       )}
     </div>
@@ -775,11 +779,11 @@ function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean; touch
         <EventIcon e={fresh ? { ...e, read: false } : e} className="size-[18px] shrink-0" />
         <span className="min-w-0 flex-1">
           <span className={cn("line-clamp-2 text-[15px] leading-[20px] max-md:text-[17px] max-md:leading-[22px]", !read && "font-semibold")}>{e.title}</span>
-          {(e.body || e.machineLabel || e.parent || draft || where) && <span data-tip={whole ? undefined : line} data-tip-trunc
+          {(e.body || e.machineLabel || e.parent || e.from || draft || where) && <span data-tip={whole ? undefined : line} data-tip-trunc
             className={cn("block text-[13px] text-muted-foreground max-md:text-[15px]", whole ? "whitespace-pre-wrap break-words" : "max-md:line-clamp-2 md:truncate")}><DraftTag to={draftKey(e)} className="mr-1.5 align-[1px]" />
-            {where && <span data-standing className={cn("font-medium", e.state === "working" ? "text-tertiary" : "text-foreground/80")}>{where}{((line && !replying) || e.machineLabel || e.parent) && " · "}</span>}
+            {where && <span data-standing className={cn("font-medium", e.state === "working" ? "text-tertiary" : "text-foreground/80")}>{where}{((line && !replying) || e.machineLabel || e.parent || e.from) && " · "}</span>}
             {/* (unfolded for a reply, its answer is whole under the row) */}
-            {[e.parent && `from ${parentTitle(e)}`, replying ? "" : whole ? e.body : line, e.machineLabel && `on ${e.machineLabel}`].filter(Boolean).join(" · ")}</span>}
+            {[e.parent && `from ${threadTitle(e.parent)}`, e.from && `from ${threadTitle(e.from)}`, replying ? "" : whole ? e.body : line, e.machineLabel && `on ${e.machineLabel}`].filter(Boolean).join(" · ")}</span>}
         </span>
         {!asks && <span className="shrink-0 text-[13px] text-muted-foreground tabular-nums max-md:text-[15px]">{fmtAgo(e.t, { short: true })}</span>}
       </button>

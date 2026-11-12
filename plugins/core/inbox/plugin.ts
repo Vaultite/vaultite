@@ -9,7 +9,7 @@ import {
   bullets, fmtAgo, stampMs, HTTPError, LOADED, localDate, localTime, MACHINE_CLIENT, machineSocket, OpError, Plugin, quoted, reply, splitMachine,
   type Machine, NOT_THE_USER, type OpCtx, type Request, userSurface, whoOf,
 } from "../../../core/plugins.ts"
-import { archiveTwin, inArchive, isArchived, type Item, Kind, localStamp, nowStamp, safeName, sortBy, str, truthy, writeAtomic } from "../../../core/vault.ts"
+import { archiveTwin, inArchive, isArchived, type Item, Kind, localStamp, nowStamp, requestWriter, safeName, sortBy, str, truthy, writeAtomic } from "../../../core/vault.ts"
 import { answerOf, type DecisionSpec, overlap, sameQuestion, specOf } from "./decisions.ts"
 import { judge, type Need, type Turn } from "./needs.ts"
 import * as push from "./push.ts"
@@ -180,6 +180,8 @@ export type InboxEvent = {
   pinned?: boolean
   /** The session that delegated this one its task (Delegation), by its name then: the thread says "from" it. */
   parent?: { title: string; agent: string; terminal?: string; session?: string }
+  /** The session that asked (a gate's, a waiting ask's made in its request), by its name then: "Go to session" opens it. */
+  from?: { title: string; agent: string; terminal?: string; session?: string }
   /** Its latest progress line (inbox.progress), each replacing the last: on its row, never told. */
   progress?: string
 }
@@ -954,7 +956,7 @@ function pushed(e: InboxEvent) {
   const mode = settings().push
   if (e.read || mode === "off" || (mode === "waiting" && !waitsOnYou(e)) || !push.devices().length) return
   void push.send(apns(), {
-    title: e.title, body: e.questions ? questionLine(e.questions, true) : e.preview || e.body, category: categoryOf(e),
+    title: e.title, body: e.questions ? questionLine(e.questions, true) : [e.from && `From ${e.from.title}`, e.preview || e.body].filter(Boolean).join("\n"), category: categoryOf(e),
     thread: e.terminal || e.session || e.source, urgent: e.kind === "session" && BLOCKED.has(str(e.ask)),
     data: { event: e.id },
   }).then((r) => { if (r.failed.length) console.error(`inbox: push failed: ${r.failed.join(", ")}`) }, (err) => console.error("inbox: push failed:", err))
@@ -2727,8 +2729,13 @@ it down, do it, or say what it would do; one past 1,500 words (a recording left 
   text: (r) => `In the inbox: ${r.path}${r.terminal ? `; ${cap(String(r.terminal).split(/[-_]/)[0])} has it in ${r.terminal}` : r.why ? ` (not dispatched: ${r.why})` : ""}.`,
 })
 
-/** Add an event from another plugin's backend or the core (what it would POST); returns it. */
-plugin.provide("inbox:event", (b: Item) => addEvent(eventOf(b)))
+/** Add an event from another plugin's backend or the core (what it would POST); returns it. One asking the user, made
+ *  in a session's request, says which session asked. */
+plugin.provide("inbox:event", async (b: Item) => {
+  const e = eventOf(b)
+  const from = e.kind === "waiting" && !(e.terminal || e.session) ? await askerOf() : undefined
+  return addEvent(from ? { ...e, from } : e)
+})
 /** Take away the event of this source and key (what it said isn't so anymore). */
 plugin.provide("inbox:drop", (source: string, key: string) => dropEvent(source, key))
 /** Mark the event of this source and key done (the core's notice of a paused plugin, once it's allowed again). */
@@ -2739,12 +2746,25 @@ const gates = new Map<string, Set<(answer: "approve" | "deny") => void>>()
 
 /** Ask the user's permission for something the server would do: a waiting event with Approve and Deny (phone and
  *  watch too), answered by the owner only. Returns its id; "inbox:answer" waits for the answer. */
-plugin.provide("inbox:ask", (b: Item) => {
+plugin.provide("inbox:ask", async (b: Item) => {
   const e = eventOf({ ...b, kind: "waiting", ask: "permission" })
   // (the same ask, by its key, is the one already waiting: answered there, it stays so until inbox:drop)
   const asked = e.key ? list().find((x) => x.gate && sameKey(x, e.source, e.key!)) : null
-  return asked?.id ?? addEvent({ ...e, session: `gate-${crypto.randomBytes(6).toString("hex")}`, gate: true }).id
+  if (asked) return asked.id
+  const from = await askerOf()
+  return addEvent({ ...e, session: `gate-${crypto.randomBytes(6).toString("hex")}`, gate: true, ...(from ? { from } : {}) }).id
 })
+
+/** The session whose request this is (its app terminal, its agent's session), by the name the user knows it by. */
+async function askerOf(): Promise<InboxEvent["from"]> {
+  const w = requestWriter.getStore()
+  if (!w || !(w.terminal || w.session)) return undefined
+  const agent = whoOf(w.client, w.agent).source
+  const k: Who = { agent, terminal: w.terminal ?? "", session: w.session ?? "" }
+  const row = list().find((x) => x.kind === "session" && !x.gate && !x.machine && ((!!k.terminal && x.terminal === k.terminal) || (!!k.session && x.session === k.session)))
+  const title = row?.title || await sessionTitle(k).catch(() => "") || `${agentLabel(row?.source ?? agent)} session`
+  return { title, agent: row?.source ?? agent, ...(k.terminal ? { terminal: k.terminal } : {}), ...(k.session ? { session: k.session } : {}) }
+}
 
 /** A gate's answer (approve, deny), or "waiting" once `ms` passed without one; "gone" when the event isn't kept. */
 plugin.provide("inbox:answer", (id: string, ms = 0): Promise<"approve" | "deny" | "waiting" | "gone"> => {

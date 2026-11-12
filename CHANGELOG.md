@@ -13,6 +13,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   last button bring it too, not only the bar itself.
 - **On Linux, a closed terminal's shell ends at once**: the terminal server no longer keeps open the ptys of
   shells the app's server ran itself when it started it.
+- **An Inbox request says which session asked, with Go to session**: a request for your yes (to share a folder, log in
+  to a site, run a tool) and a decision name the session that asked, and Go to session opens its terminal.
 - **The desktop app's first-run window and screen sharing's pages open again**: since updates began downloading only
   the files that changed, they stopped on an error as they started.
 - **A shared folder's link opens again for its guests**: since updates began downloading only the files that changed,

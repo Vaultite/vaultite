@@ -1,14 +1,14 @@
 // Decisions drawn: a question an agent asked, its options as buttons (the default marked), on the Inbox page, the
 // dashboard block and in its own file (```block-decisions```, a report's too). A tap answers it (inbox.decide).
 import { useState, type ReactNode } from "react"
-import { ArrowUp, Check, Circle, CircleCheck, FileText, MessageCircleQuestion, MoreHorizontal, RotateCcw, X } from "lucide-react"
+import { ArrowUp, Check, Circle, CircleCheck, FileText, MessageCircleQuestion, MoreHorizontal, RotateCcw, SquareTerminal, X } from "lucide-react"
 import {
   Button, cn, confirmDialog, fmtAgo, haptic, menuBelow, menuFor, notify, notifyError, op, openFile, optimistic, snippet, SwipeRow, useStore,
   type BlockCtx, type MenuItem, type Store, type SwipeAction,
 } from "@vaultite"
 import type { InboxItem } from "./types"
 import { snoozed } from "./snooze"
-import { useEvents } from "./events"
+import { openSession, useEvents } from "./events"
 
 const pathOf = (r: InboxItem) => `${r.id}.md`
 const baseOf = (p: string) => p.replace(/\.md$/i, "").split("/").pop() ?? p
@@ -29,6 +29,11 @@ function useWhere(r: InboxItem) {
   const e = (r.session || r.terminal) ? events.find((x) => x.kind === "session" && ((!!r.session && x.session === r.session) || (!!r.terminal && x.terminal === r.terminal))) : undefined
   return e?.title ?? ""
 }
+/** Go to the session that asked it: its terminal, else it resumed. */
+const goTo = (r: InboxItem) => void openSession({ terminal: r.terminal, session: r.session, agent: r.agent, machine: r.machine, host: !r.terminal })
+  .catch((err) => notifyError(err, "Couldn't open it"))
+const reachable = (r: InboxItem) => !!(r.terminal || (r.session && r.agent))
+
 /** Its context: the file's words besides its block, one plain line. */
 const whyOf = (r: InboxItem) => snippet((r.body ?? "").replace(/```[\s\S]*?```/g, " ")).trim()
 
@@ -129,6 +134,7 @@ const menuOf = (r: InboxItem, store: Store | null | undefined, snooze?: (r: Inbo
   return [
     { label: "Open", icon: FileText, run: () => openFile(pathOf(r)) },
     ...(rep ? [{ label: "Open its report", icon: FileText, run: () => openFile(pathOf(rep)) }] : []),
+    ...(reachable(r) ? [{ label: "Go to session", icon: SquareTerminal, run: () => goTo(r) }] : []),
     ...(r.default ? [{ label: `Accept the default (${r.default})`, icon: Check, sep: true, run: () => void keepDefault(r) }] : []),
     ...(snooze ? [snooze(r)] : []),
     { label: "Close without answering", icon: X, sep: true, run: () => void closeIt(r) },
@@ -156,6 +162,7 @@ export function DecisionRow({ r, snooze, swipe, lead, inReport }: { r: InboxItem
   const away = snoozed(r.snoozed)
   const Icon = r.blocking ? MessageCircleQuestion : CircleCheck
   const by = [r.from, where].filter(Boolean).join(" · ")
+  const go = reachable(r)
   const row = (
     <div data-decision={r.id} data-blocking={r.blocking || undefined} onContextMenu={menuFor(() => menuOf(r, store, snooze))}
       className="group/dec relative isolate flex gap-3 py-4 before:absolute before:inset-y-0 before:-inset-x-2 before:-z-10 before:rounded-[8px] hover:before:bg-foreground/[0.02]">
@@ -166,9 +173,12 @@ export function DecisionRow({ r, snooze, swipe, lead, inReport }: { r: InboxItem
           <div className="min-w-0 flex-1 text-[15px] leading-[21px] font-semibold text-pretty select-text max-md:text-[17px] max-md:leading-[23px]" data-question>{r.question}</div>
           {r.created && <span className="mt-[2px] shrink-0 text-[12px] leading-[18px] text-tertiary tabular-nums max-md:text-[13px]">{fmtAgo(r.created, { short: true })}</span>}
         </div>
-        {(r.blocking || by || away) && <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12px] leading-[17px] text-muted-foreground max-md:text-[14px] max-md:leading-[19px]">
+        {(r.blocking || by || go || away) && <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12px] leading-[17px] text-muted-foreground max-md:text-[14px] max-md:leading-[19px]">
           <Standing r={r} />
           {by && <span className="min-w-0" data-decision-where={where || undefined}>{by}</span>}
+          {go && <button type="button" data-decision-session onClick={(e) => { e.stopPropagation(); goTo(r) }}
+            className="flex shrink-0 cursor-pointer items-center gap-1 rounded-[5px] px-1 text-tertiary hover:bg-foreground/[0.06] hover:text-foreground max-md:h-9">
+            <SquareTerminal className="size-3" strokeWidth={2.5} />Go to session</button>}
           {away && <span className="text-tertiary">· snoozed</span>}
         </div>}
         {why && <p className="mt-2 max-w-[40rem] text-[14px] leading-[20px] text-foreground/75 text-pretty select-text max-md:text-[16px] max-md:leading-[23px]" data-decision-why>{why}</p>}

@@ -1032,12 +1032,12 @@ export default async ($: VaultTest) => {
 
   // A gate (a permission the server waits on: an MCP app's tool, inbox:ask) is the user's to answer, never an agent's.
   {
-    const ask = app.plugins.find((p) => p.id === "inbox")!.service("inbox:ask") as (b: Any) => string
+    const ask = app.plugins.find((p) => p.id === "inbox")!.service("inbox:ask") as (b: Any) => Promise<string>
     const answerOf = app.plugins.find((p) => p.id === "inbox")!.service("inbox:answer") as (id: string, ms?: number) => Promise<string>
     // (each from this machine, as its owner: what tells them apart is who they say they are)
     const from = (client: string, agent: string | null = null) => ({ socket: { remoteAddress: "127.0.0.1" },
       headers: { host: "127.0.0.1:8793", "x-vaultite-client": client, ...(agent ? { "x-vaultite-agent": agent } : {}) } }) as unknown as IncomingMessage
-    const gate = ask({ source: "mcp", key: "gate-agents", title: "Grok Bot asks to run file.delete", body: "file.delete {}" })
+    const gate = await ask({ source: "mcp", key: "gate-agents", title: "Grok Bot asks to run file.delete", body: "file.delete {}" })
     const tries = [
       await api("POST", "ops/inbox.answer", { id: gate, answer: "approve" }, from("mcp")),
       await api("POST", "ops/inbox.answer", { id: gate, answer: "approve" }, from("cli", "claude-code")),
@@ -1052,12 +1052,21 @@ export default async ($: VaultTest) => {
       && await answerOf(gate) === "waiting", tries)
     const [relayed] = await api("POST", "ops/inbox.answer", { id: gate, answer: "approve" }, from("machine/studio"))
     check("inbox gates: another machine passing on the user's answer answers it", relayed === 200 && await answerOf(gate) === "approve", relayed)
-    const gate2 = ask({ source: "mcp", key: "gate-phone", title: "Grok Bot asks to run file.move", body: "file.move {}" })
+    const gate2 = await ask({ source: "mcp", key: "gate-phone", title: "Grok Bot asks to run file.move", body: "file.move {}" })
     const [phone] = await api("POST", "ops/inbox.answer", { id: gate2, answer: "deny" }, from("iphone"))
     check("inbox gates: the phone's notification answers it", phone === 200 && await answerOf(gate2) === "deny", phone)
-    const gate3 = ask({ source: "mcp", key: "gate-app", title: "Grok Bot asks to run file.copy", body: "file.copy {}" })
+    const gate3 = await ask({ source: "mcp", key: "gate-app", title: "Grok Bot asks to run file.copy", body: "file.copy {}" })
     const [inApp] = await api("POST", `inbox/events/${gate3}/answer`, { answer: "approve" }, from("app/desktop"))
     check("inbox gates: the app's buttons answer it", inApp === 200 && await answerOf(gate3) === "approve", inApp)
+    // (asked in a session's request, it says which session: Go to session opens it)
+    const { requestWriter } = await import("../../../core/vault.ts")
+    const gate4 = await requestWriter.run({ client: "cli", agent: "claude-code", terminal: "claude-asker123", session: "sess-asker" },
+      () => ask({ source: "share", key: "gate-from", title: "Claude Code asks to share Lighthouse", body: "share.create {}" }))
+    const asker = (await api("GET", "inbox/events"))[1].events.find((e: Any) => e.id === gate4)?.from
+    check("inbox gates: one asked in a session's request names that session, its terminal and its agent",
+      asker?.terminal === "claude-asker123" && asker?.session === "sess-asker" && asker?.agent === "claude" && !!asker?.title, asker)
+    const loose = (await api("GET", "inbox/events"))[1].events.find((e: Any) => e.id === gate)
+    check("inbox gates: one asked outside a session's request names none", !!loose && !loose.from, loose)
 
     // An agent asking permission in a terminal: the same, by the op or the terminal's own route.
     const [, asked] = await api("POST", "inbox/events", { source: "claude", kind: "waiting", ask: "permission", title: "Beacon", body: "Run git push?", terminal: "claude-perm1234" })
