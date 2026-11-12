@@ -1,4 +1,5 @@
-// The Conversations panel's Talk: the day's talk with the companion as a chat, oldest first, kept at its end; an ask from
+// The Conversations panel's Talk: the day's talk with the companion as a chat, oldest first, kept at its end (among the
+// sidebar's panels its last few turns, scrolled by the panel's box: no scroller inside a scroller); an ask from
 // its line shows at once, reaches the companion, and its answer comes in live. A note with threads shows Comments (they
 // stay when the last is resolved), one without the talk. Desktop light and dark, a phone's right drawer, the panel's tab.
 // WRITES "QA talk/", the plugin's data.json and the vault's sidebars: throwaway server only.
@@ -41,7 +42,8 @@ await panel.waitFor({ timeout: 8000 })
 check("a note without threads shows the talk", (await panel.getAttribute("data-tab")) === "talk")
 
 // Asks from its line: each shows at once, reaches the companion, its answer comes in without a reload.
-const ASKS = ["What's on my plate today?", "Remind me what Alice said about the launch.", "How long is the Lisbon trip?", "Any notes on Thinking in Systems?", "Thanks, that's all."]
+const ASKS = ["What's on my plate today?", "Remind me what Alice said about the launch.", "How long is the Lisbon trip?", "Any notes on Thinking in Systems?", "What's due this week?", "Who is Ben?",
+  "Is the garden note done?", "Thanks, that's all."]
 const line = panel.locator("[data-ask-line] textarea")
 for (const [i, q] of ASKS.entries()) {
   await line.fill(q)
@@ -53,12 +55,19 @@ for (const [i, q] of ASKS.entries()) {
   await op("companion.next", { timeout: 0 })
   if (i === 0) check("its answer comes in live", await until(async () => (await panel.locator("[data-companion-turn]").last().innerText()).includes("Answer 1:"), 9000))
 }
-check("every answer comes in", await until(async () => (await panel.innerText()).includes("Answer 5:"), 9000))
+check("every answer comes in", await until(async () => (await panel.innerText()).includes(`Answer ${ASKS.length}:`), 9000))
 const texts = await panel.locator("[data-companion-turn]").allInnerTexts()
-check("oldest first, newest at the bottom", ASKS.every((q, i) => texts.findIndex((t) => t.includes(q)) === texts.length - ASKS.length + i), texts.map((t) => t.slice(0, 30)))
-const box = panel.locator("[data-companion-talk] > .overflow-y-auto")
-const at = await box.evaluate((el) => ({ over: el.scrollHeight > el.clientHeight, gap: el.scrollHeight - el.scrollTop - el.clientHeight }))
-check("its box scrolls, kept at its end", at.over && at.gap < 4, at)
+const recent = ASKS.slice(-6)
+check("its last few, oldest first, newest at the bottom", texts.length === recent.length && recent.every((q, i) => texts[i].includes(q)), texts.map((t) => t.slice(0, 30)))
+check("the earlier ones a click away", /2 earlier turns/.test(await panel.locator("[data-companion-earlier]").innerText()))
+/** The panel's scrollers: only its box, and the ask line's end in sight in it. */
+const scrolling = (p) => p.evaluate((el) => {
+  const box = el.closest("[data-panel-scroll]"), ask = el.querySelector("[data-ask-line]")
+  const inner = [...el.querySelectorAll("*")].filter((e) => /auto|scroll/.test(getComputedStyle(e).overflowY) && e.scrollHeight > e.clientHeight && !e.closest("[data-ask-line]"))
+  return { inner: inner.length, askShown: ask.getBoundingClientRect().bottom <= box.getBoundingClientRect().bottom + 1 }
+})
+const at = await scrolling(panel)
+check("one scroller: no box of its own inside the panel's, its ask line in sight", at.inner === 0 && at.askShown, at)
 await page.screenshot({ path: `${OUT}desktop-light.png` })
 await page.emulateMedia({ colorScheme: "dark" }); await page.evaluate(() => document.documentElement.classList.add("dark")); await wait(300)
 await page.screenshot({ path: `${OUT}desktop-dark.png` })
@@ -71,7 +80,7 @@ await page.locator(`.file-view[data-path="${THREADS}"]:visible .cm-content`).wai
 await panel.locator(`[data-companion-thread="${c.id}"]`).waitFor({ timeout: 6000 })
 check("a note with threads shows Comments, counted", (await panel.getAttribute("data-tab")) === "note" && /Comments\s*1/.test(await panel.locator('[data-option="note"]').innerText()))
 await panel.locator('[data-option="talk"]').click()
-check("Talk is a click away", await until(async () => (await panel.getAttribute("data-tab")) === "talk" && (await panel.locator("[data-companion-turn]").count()) >= ASKS.length))
+check("Talk is a click away", await until(async () => (await panel.getAttribute("data-tab")) === "talk" && (await panel.locator("[data-companion-turn]").count()) >= recent.length))
 await panel.locator('[data-option="note"]').click()
 await panel.locator(`[data-companion-thread="${c.id}"] [aria-label="Resolve"]`).click()
 check("resolving the last keeps Comments", await until(async () => !(await panel.locator(`[data-companion-thread="${c.id}"]`).count())) && (await panel.getAttribute("data-tab")) === "note")
@@ -83,7 +92,7 @@ check("its page a click away", await until(async () => !!(await page.$("[data-co
 await ctx.close()
 
 // A window too short for the talk: the panel keeps the room left (a panel that isn't rows was snapped to its heading,
-// drawing nothing), and the wheel over the talk, at its end, goes on to bring the ask line in.
+// drawing nothing), scrolled to its end, the ask line in sight.
 const sctx = await browser.newContext({ viewport: { width: 1280, height: 420 } })
 await sctx.addInitScript(() => { try { localStorage.setItem("vaultite.prefs", JSON.stringify({ ...JSON.parse(localStorage.getItem("vaultite.prefs") || "{}"), rightSidebar: true })) } catch { /* private */ } })
 const short = watch(await sctx.newPage(), { label: "short window" })
@@ -95,11 +104,8 @@ const sizes = () => sp.evaluate((p) => { const box = p.querySelector("[data-pane
   return { box: box.getBoundingClientRect().height, content: box.scrollHeight, askShown: ask.getBoundingClientRect().bottom <= box.getBoundingClientRect().bottom + 1 } })
 const sz = await sizes()
 check("short window: the panel keeps its room, not just its heading", sz.content > sz.box && sz.box > 150, sz)
-// (over the talk's top in view, clear of a toast in the corner)
-const tb = await sp.locator("[data-companion-talk] > .overflow-y-auto").boundingBox()
-await short.mouse.move(tb.x + tb.width / 2, tb.y + 30)
-for (let i = 0; i < 6; i++) { await short.mouse.wheel(0, 120); await wait(120) }
-check("short window: the wheel brings the ask line in", (await sizes()).askShown, await sizes())
+check("short window: kept at its end, the ask line in sight", await until(async () => (await sizes()).askShown, 3000), await sizes())
+check("short window: one scroller, the panel's box", (await scrolling(sp.locator("[data-companion-panel]"))).inner === 0)
 await short.screenshot({ path: `${OUT}short.png` })
 await sctx.close()
 
@@ -135,7 +141,7 @@ await pq.locator(`.file-view[data-path="${PLAIN}"]:visible .cm-content`).waitFor
 await pq.getByRole("button", { name: "Open right sidebar" }).tap()
 const pp = pq.locator("[data-companion-panel]:visible")
 await pp.waitFor({ timeout: 5000 })
-check("phone: the drawer shows the talk", await until(async () => (await pp.getAttribute("data-tab")) === "talk" && (await pp.locator("[data-companion-turn]").count()) >= ASKS.length, 8000))
+check("phone: the drawer shows the talk", await until(async () => (await pp.getAttribute("data-tab")) === "talk" && (await pp.locator("[data-companion-turn]").count()) >= recent.length, 8000))
 await wait(500) // (the drawer done sliding in)
 const send = await pp.locator("[data-ask-line] [data-send]").boundingBox(), seg = await pp.locator('[data-option="talk"]').boundingBox()
 check("phone: its targets fit a finger", !!send && send.width >= 40 && !!seg && seg.height >= 40, { send, seg })
