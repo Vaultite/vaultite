@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Split panes move smoothly**: switching to another tab fades its panes in, a pane's other tab (a pinned page opened
+  in a split) fades in under a bar that stays put, and opening or closing a split slides each page under its bar
+  instead of jumping. Reduce motion and animations off keep it still.
 - **Jobs no longer wait on "Trust this folder?" in your own repos**: a job you or the companion hand off in a checkout
   already on that machine is trusted in its Claude Code account before it starts; a folder that isn't a checkout, or a
   handoff from a script or another agent, still asks.

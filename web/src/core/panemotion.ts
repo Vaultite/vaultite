@@ -23,13 +23,15 @@ export const paneGap = (el: Element) => parseFloat(getComputedStyle(el).getPrope
 const keyOf = (panes: PaneBox[]) => panes.map((p) => `${p.id}:${r4(p.rect.x)},${r4(p.rect.y)},${r4(p.rect.w)},${r4(p.rect.h)},${p.layer}`).join("|")
 
 type Box = { x: number; y: number; w: number; h: number }
-/** Where each pane was (in `box` as it was then: its corner `at`), the one drawn over the others, copies of those going. */
-type Snap = { at: { x: number; y: number }; rects: Map<string, Box>; up: string | null; gone: { el: HTMLElement; at: Box; scrolls: [Element, number, number][] }[] }
+/** Where each pane was (in `box` as it was then: its corner `at`), the one drawn over the others, copies of those going,
+ *  the ones showing another of their tabs, and how far down each one's body was (under its bar, if it had one). */
+type Snap = { at: { x: number; y: number }; rects: Map<string, Box>; up: string | null; gone: { el: HTMLElement; at: Box; scrolls: [Element, number, number][] }[]; swapped?: Set<string>; tops?: Map<string, number> }
 
 const ID = "pane-motion"
 const near = (a: Box, b: Box) => Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) < 0.5 && Math.abs(a.w - b.w) < 0.5 && Math.abs(a.h - b.h) < 0.5
 const plateOf = (box: HTMLElement, id: string) => box.querySelector<HTMLElement>(`:scope > [data-plate="${CSS.escape(id)}"]`)
 const sectionOf = (box: HTMLElement, id: string) => box.querySelector<HTMLElement>(`:scope > [data-pane-frame="${CSS.escape(id)}"]`)
+const bodyOf = (sec: HTMLElement) => sec.querySelector<HTMLElement>(":scope > [data-pane-body]")
 const within = (r: DOMRect, b: DOMRect): Box => ({ x: r.left - b.left, y: r.top - b.top, w: r.width, h: r.height })
 
 /** Where panes dropped next start from (viewport px: the card dragged), instead of where they are (landFrom). */
@@ -72,10 +74,10 @@ function boxAt(box: HTMLElement, [left, right]: string[]) {
 }
 
 /** Moves `box`'s panes (`[data-pane-frame]`, each over its `[data-plate]`) when their places in tab `tab` or `area` (the
- *  box's left and right) change; `raise`: the one drawn on top (the user moved it). Another tab shows at once. */
+ *  box's left and right) change; `raise`: the one drawn on top (the user moved it). Another tab fades in. */
 export function usePaneMotion(box: RefObject<HTMLElement | null>, tab: string, panes: PaneBox[], raise: string, area: string[]) {
   const key = `${tab}|${keyOf(panes)}`, edges = area.join("|")
-  const snap = useRef<Snap | "quiet" | null>(null)
+  const snap = useRef<Snap | "quiet" | "switch" | null>(null)
   const run = useRef(0)
   /** The last move's animations: a pane closed mid-move takes its own out of the box, held paused at its start. */
   const going = useRef<Animation[]>([])
@@ -89,23 +91,27 @@ export function usePaneMotion(box: RefObject<HTMLElement | null>, tab: string, p
     const el = box.current
     const t = activeTab()
     if (snap.current || `${t.id}|${keyOf(paneBoxes(t))}` === drawn.current) return
-    if (layoutQuiet() || !moves() || !drawn.current.startsWith(`${t.id}|`)) snap.current = "quiet"
+    if (layoutQuiet() || !moves()) snap.current = "quiet"
+    // (another tab: its panes fade in where they are, nothing slides from the last one's places)
+    else if (!drawn.current.startsWith(`${t.id}|`)) snap.current = "switch"
     if (!el || snap.current) return
     const b = el.getBoundingClientRect(), ids = new Set(leaves(t.root).map((p) => p.id)), rects = new Map<string, Box>()
     for (const p of el.querySelectorAll<HTMLElement>(":scope > [data-plate]")) rects.set(p.dataset.plate!, within(p.getBoundingClientRect(), b))
     let up: string | null = null
     for (const [id, r] of landing) if (ids.has(id)) { rects.set(id, within(r, b)); up ??= id }
-    const instead = new Set<string>()
+    const instead = new Set<string>(), swapped = new Set<string>()
     for (const p of leaves(t.root)) {
       if (rects.has(p.id)) continue
       // (what it showed now behind it, or the pane it was behind: closed, or shown elsewhere)
       const was = placesOf(p).find((x) => x.id !== p.id && rects.has(x.id) && !ids.has(x.id))?.id ?? pane.current.get(p.id)
-      if (was && was !== p.id && rects.has(was) && !ids.has(was)) { rects.set(p.id, rects.get(was)!); instead.add(was) }
+      if (was && was !== p.id && rects.has(was) && !ids.has(was)) { rects.set(p.id, rects.get(was)!); instead.add(was); swapped.add(p.id) }
     }
     // (one leaving the tab on screen, closed or to another tab kept drawn hidden: a copy of it goes)
     const gone = [...el.querySelectorAll<HTMLElement>(":scope > [data-pane-frame]:not([data-away])")].filter((s) => !ids.has(s.dataset.paneFrame!) && rects.has(s.dataset.paneFrame!) && !instead.has(s.dataset.paneFrame!))
       .map((s) => ({ ...copyOf(s), at: rects.get(s.dataset.paneFrame!)! }))
-    snap.current = { at: { x: b.left, y: b.top }, rects, up: up ?? el.querySelector<HTMLElement>(":scope > [data-zoomed]")?.dataset.paneFrame ?? null, gone }
+    const tops = new Map<string, number>()
+    for (const sec of el.querySelectorAll<HTMLElement>(":scope > [data-pane-frame]:not([data-away])")) { const body = bodyOf(sec); if (body) tops.set(sec.dataset.paneFrame!, body.offsetTop) }
+    snap.current = { at: { x: b.left, y: b.top }, rects, up: up ?? el.querySelector<HTMLElement>(":scope > [data-zoomed]")?.dataset.paneFrame ?? null, gone, swapped, tops }
   }), [box])
   useLayoutEffect(() => {
     const el = box.current, was = drawnArea.current
@@ -139,6 +145,10 @@ export function usePaneMotion(box: RefObject<HTMLElement | null>, tab: string, p
       }
       s = { at: { x: b.left, y: b.top }, rects, up: null, gone: [] }
     }
+    if (s === "switch") {
+      for (const p of panes) { const sec = sectionOf(el, p.id); if (sec) fadeIn(sec, going.current) }
+      return
+    }
     if (!s || s === "quiet") return
     const mine = ++run.current, moving: HTMLElement[] = [], anims: Animation[] = []
     // (from where the box was then: a sidebar may have moved it meanwhile)
@@ -157,6 +167,15 @@ export function usePaneMotion(box: RefObject<HTMLElement | null>, tab: string, p
         sec.dataset.moving = "up"
         moving.push(sec)
         continue
+      }
+      // (one of a pane's own tabs shown in its stead: what it shows fades in, its bar stays put)
+      if (s.swapped?.has(p.id)) { fadeIn(bodyOf(sec) ?? sec, anims); continue }
+      // (its bar come or gone, split or back to one pane: what it shows slides to its new top, the bar fading in)
+      const body = bodyOf(sec), top = s.tops?.get(p.id)
+      if (body && top !== undefined && Math.abs(body.offsetTop - top) > 0.5) {
+        anims.push(body.animate([{ transform: `translateY(${top - body.offsetTop}px)` }, { transform: "translateY(0px)" }], { ...t, id: ID }))
+        const bar = sec.querySelector<HTMLElement>(":scope > [data-pane-bar]")
+        if (bar && body.offsetTop > top) fadeIn(bar, anims)
       }
       if (near(from, to) || to.w < 1 || to.h < 1) continue
       const dx = from.x - to.x, dy = from.y - to.y, round = p.round || cards ? " round 10px" : ""
@@ -195,6 +214,15 @@ export function usePaneMotion(box: RefObject<HTMLElement | null>, tab: string, p
       if (run.current === mine) for (const a of anims) if (a.playState === "paused") a.play()
     })
   })
+}
+
+/** What comes on screen in place (another tab, a pane's other tab) fades in, short and without moving: a web page's
+ *  native view over it can't follow a move. */
+function fadeIn(el: HTMLElement, into?: Animation[]) {
+  const t = timing("fast")
+  if (!t.duration) return
+  const a = el.animate([{ opacity: 0 }, { opacity: 1 }], { ...t, id: ID })
+  into?.push(a)
 }
 
 /** A still copy of a closing pane: nothing in it runs or loads (frames, players), nothing finds it as a pane, and its

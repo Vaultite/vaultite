@@ -1,10 +1,11 @@
-// Panes moving (core/panemotion.ts): a split grows in, a closed pane collapses, panes zoom and float (moved, resized,
-// kept over a reload) and dock back, without remounting. WRITES: throwaway server only.
+// Panes moving (core/panemotion.ts): a split grows in, another tab fades in, a closed pane collapses, panes zoom and
+// float (moved, resized, kept over a reload) and dock back, without remounting. WRITES: throwaway server only.
 //   node web/qa/panemotion.mjs <base url> <vault path> [out dir]
 import { mkdirSync, readdirSync } from "node:fs"
-import { command, qa, wait } from "./lib/qa.mjs"
+import { apiAt, command, qa, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT, OUT = "/tmp/panemotion-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
+const api = apiAt(B)
 const note = readdirSync(`${VAULT}/Notes`).filter((f) => f.endsWith(".md")).sort()[0]
 
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
@@ -40,6 +41,9 @@ await command(page, "Split right", 0)
 await wait(450)
 const mid = await panes()
 await shot("split-mid")
+// (the split pane's bar comes in: what it shows slides down under it, not jumping)
+const slid = await page.evaluate((ON) => { const b = document.querySelector(`${ON} > [data-pane-body]`); return { top: b.offsetTop, drawn: b.getBoundingClientRect().top - b.parentElement.getBoundingClientRect().top } }, ON)
+check("split: mid-move the first pane's page slides down under its new bar", slid.top > 0 && slid.drawn < slid.top - 2, slid)
 check("split: mid-move the new pane pops in at its place (a little small and clear), the old one springing narrower", mid.length === 2
   && mid[1].opacity < 0.95 && mid[1].w < W.w / 2 - 4 && mid[1].x > W.x + W.w / 2 && /inset/.test(mid[0].clip), mid)
 await slow(1); await still()
@@ -47,6 +51,20 @@ const after = await panes()
 const left = after[0]?.id
 check("split: then two halves", after.length === 2 && Math.abs(after[0].w - after[1].w) < 12 && after[1].x > after[0].x, after)
 await mark()
+
+// Switching tabs: the other tab's panes fade in at their places, nothing sliding; back to the split, both halves do.
+await page.locator("[data-tab-strip] button[aria-label=\"New tab\"]").first().click(); await still()
+const chips = page.locator("[data-tab-strip] [data-tab-id]")
+await slow(0.1)
+await chips.first().click()
+await wait(300)
+const fading = await panes()
+check("switch: back to the split, both panes fade in at their places", fading.length === 2 && fading.every((p) => p.opacity < 0.95 && (!p.clip || p.clip === "none")) && Math.abs(fading[0].w - fading[1].w) < 12, fading)
+await slow(1); await still()
+check("switch: then fully there", (await panes()).every((p) => p.opacity === 1))
+await chips.last().click(); await still()
+await command(page, "Close current tab"); await still()
+check("switch: the split is back on screen, kept", (await panes()).length === 2 && await marked(), await panes())
 
 // Zoom: the focused (new, right) pane fills the workspace, a badge says so and unzooms.
 await command(page, "Zoom pane"); await still()
@@ -146,10 +164,30 @@ await command(page, "Panes as cards"); await wait(300)
 cps = await panes()
 check("cards: off again, flat panes full width", (await gapOf()) === 0 && cps.length === 1 && Math.abs(cps[0].w - W.w) < 2, cps)
 
+// Without the tab bar, a pinned page opens as another of the pane's tabs: what it shows fades in, its bar stays put.
+const look = await api("GET", "config/appearance")
+await api("PUT", "config/appearance", { ...look, tabBar: false, paneTabBars: true }); await wait(800)
+await command(page, "Split right"); await still()
+const ON1 = `${ON}[data-focused]`
+// (one open in no tab: one that is shows where it is)
+const pinKey = await page.evaluate(() => { const open = localStorage.getItem("vaultite.tabs") ?? ""; return [...document.querySelectorAll("[data-pin]")].map((e) => e.dataset.pin).find((k) => !open.includes(JSON.stringify(k).slice(1, -1))) })
+const before = await page.evaluate((s) => document.querySelector(s)?.dataset.paneFrame, ON1)
+await slow(0.1)
+await page.locator(`[data-pin="${pinKey}"]`).first().click()
+await wait(300)
+const swap = await page.evaluate((s) => { const f = document.querySelector(s); return { id: f.dataset.paneFrame, body: Number(getComputedStyle(f.querySelector(":scope > [data-pane-body]")).opacity), pane: Number(getComputedStyle(f).opacity) } }, ON1)
+check("open here: the pane's new tab fades in what it shows, the pane itself doesn't", swap.id !== before && swap.body < 0.95 && swap.pane === 1, { pinKey, before, ...swap })
+await slow(1); await still()
+await command(page, "Close pane"); await still()
+await api("PUT", "config/appearance", { ...look, tabBar: look.tabBar ?? true }); await wait(800)
+
 // With animations off, a split is there at once.
 await page.evaluate(() => fetch("/api/prefs", { method: "GET" }).catch(() => {}))
 await page.evaluate(() => { document.documentElement.dataset.animation = "off" })
 await page.emulateMedia({ reducedMotion: "reduce" })
 await command(page, "Split right", 0)
 check("reduced motion: a split moves nothing", await page.evaluate(() => !document.getAnimations().some((a) => a.id === "pane-motion")))
+await page.locator("[data-tab-strip] button[aria-label=\"New tab\"]").first().click(); await wait(100)
+await page.locator("[data-tab-strip] [data-tab-id]").first().click()
+check("reduced motion: switching tabs fades nothing", await page.evaluate(() => !document.getAnimations().some((a) => a.id === "pane-motion")))
 await done()
