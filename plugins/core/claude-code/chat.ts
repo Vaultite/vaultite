@@ -15,6 +15,7 @@ import { byUser as asUser } from "../../../core/writegate.ts"
 import { type Entry, IMAGE_MAX, IMAGE_TYPES, IMAGES_MAX, type ImageType, imageType, Reader } from "./chatlog.ts"
 import { type Answer, codeOf, eachMessage, EFFORTS, type Effort, type Event, type Mode, MODES, type Spec, type Summary, type ToolDef } from "./chathost.ts"
 import { modelId, notAModel } from "./models.ts"
+import { memoryLines, unsaid } from "./memory.ts"
 
 type Account = { id: string; dir: string; label: string; private: boolean }
 /** What the chat takes from the rest of the plugin (plugin.ts). */
@@ -402,10 +403,11 @@ export function chats(plugin: Plugin, d: ChatDeps) {
    *  else the SDK's bundled one (none in the packaged app). */
   const claudeBin = () => findBin("claude") ?? undefined
 
-  function chatContext() {
+  /** What a session in `cwd` is told it runs in (chat.md), then the plugins' lines, less what its CLAUDE.md files say. */
+  function chatContext(cwd: string, a: Account) {
     let text = ""
     try { text = fs.readFileSync(path.join(plugin.dir, "chat.md"), "utf8").trim().replace(/\n(?!\n)/g, " ") } catch { /* none */ }
-    return [text, ...agentLines(plugin.vault).map((l) => `- ${l.text}`)].filter(Boolean).join("\n")
+    return unsaid([text, ...agentLines(plugin.vault).map((l) => `- ${l.text}`)].filter(Boolean).join("\n"), memoryLines(cwd, a.dir))
   }
 
   function accountOf(id?: string) {
@@ -428,10 +430,12 @@ export function chats(plugin: Plugin, d: ChatDeps) {
 
   async function specFor(id: string, o: ChatStart & { resume: boolean }, a: Account): Promise<Spec> {
     // (its own session and agent, so `vau inbox report` from it names them: it has no terminal)
-    const env = { ...await envFor(a), CLAUDE_CODE_SESSION_ID: id, VAULTITE_AGENT: "claude" }
-    return { id, resume: o.resume, cwd: o.cwd || plugin.vault.path, env, claude: claudeBin(), account: a.id, by: o.by ?? "app",
+    // (one told the vault's lines tells its MCP server so: VAULTITE_TOLD, so they reach it once)
+    const cwd = o.cwd || plugin.vault.path, lean = o.system !== undefined
+    const env = { ...await envFor(a), CLAUDE_CODE_SESSION_ID: id, VAULTITE_AGENT: "claude", ...(lean ? {} : { VAULTITE_TOLD: "1" }) }
+    return { id, resume: o.resume, cwd, env, claude: claudeBin(), account: a.id, by: o.by ?? "app",
       ...(o.model ? { model: o.model } : {}), ...(o.effort ? { effort: o.effort } : {}), mode: o.mode || modeDefault(a.id),
-      ...(o.system !== undefined ? { system: o.system, builtins: o.builtins ?? [] } : { append: [chatContext(), o.append].filter(Boolean).join("\n\n") }),
+      ...(lean ? { system: o.system, builtins: o.builtins ?? [] } : { append: [chatContext(cwd, a), o.append].filter(Boolean).join("\n\n") }),
       ...(o.onText ? { texts: true } : {}), ...(o.title ? { title: o.title } : {}),
       ...(o.tools?.length ? { tools: o.tools.map(({ name, description, schema, streams, ends, hidden }) => ({ name, description, schema, ...(streams ? { streams } : {}), ...(ends ? { ends } : {}), ...(hidden ? { hidden } : {}) })) } : {}),
       ...(o.confirm ? { confirm: o.confirm } : {}), ...(o.never?.length ? { never: o.never } : {}), ...(o.autoMode ? { autoMode: o.autoMode } : {}),

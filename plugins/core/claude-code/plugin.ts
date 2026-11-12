@@ -18,6 +18,7 @@ import { dialogOn } from "./dialog.ts"
 import { SAMPLE_DIR, sample } from "./sample.ts"
 import { teleports } from "./teleport.ts"
 import { FAMILIES, modelId, modelName, notAModel } from "./models.ts"
+import { memoryLines, unsaid } from "./memory.ts"
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 const int = (v: unknown) => Math.trunc(Number(v) || 0)
 
@@ -532,13 +533,17 @@ plugin.provide("agent:claude", async (start: AgentStart): Promise<AgentCommand> 
   if (cloud && profile && !a) return agentRefusal(`There's no Claude Code account "${profile}" on this machine to continue that cloud session in.`)
   const env: Record<string, string> = a && (a.dir !== path.join(HOME, ".claude") || process.env.CLAUDE_CONFIG_DIR) ? { CLAUDE_CONFIG_DIR: a.dir } : {}
   const cwd = found ? (await transcript(found.file))?.talk.head.cwd || null : null
+  // (what its CLAUDE.md files say, the vault's rules among them in the vault, it isn't told again; its MCP server is
+  // told it was told: VAULTITE_TOLD, so the vault's lines reach it once)
+  const append = context && !wsl && !cloud ? unsaid(context, memoryLines(cwd || start.cwd || plugin.vault.path, a?.dir ?? DEFAULT_DIR)) : context
+  if (context) env.VAULTITE_TOLD = "1"
   // Its ANSI themes draw in the terminal's 16 colours, which are the app's colour scheme.
   const theme = typeof dark === "boolean" ? { theme: dark ? "dark-ansi" : "light-ansi" } : null
   const told = hooks(start)
   const settings = told || theme ? { ...told, ...theme } : null
   // (Bash(...) and PowerShell(...): without Git Bash, Windows' Claude Code runs commands with its PowerShell tool)
   const allowed = allow?.flatMap((x) => [`Bash(${x}:*)`, ...(process.platform === "win32" && !wsl ? [`PowerShell(${x}:*)`] : [])])
-  const args = [...(resume ? [cloud ? "--teleport" : "--resume", resume] : []), ...(context ? ["--append-system-prompt", context] : []), ...(settings ? ["--settings", JSON.stringify(settings)] : []),
+  const args = [...(resume ? [cloud ? "--teleport" : "--resume", resume] : []), ...(append ? ["--append-system-prompt", append] : []), ...(settings ? ["--settings", JSON.stringify(settings)] : []),
     ...(allowed?.length ? ["--allowedTools", ...allowed] : []), ...(model ? ["--model", model] : []), ...(effort ? ["--effort", effort] : []),
     ...(mode ? ["--permission-mode", mode] : []), ...(prompt && !cloud ? ["--", prompt] : [])]
   return {

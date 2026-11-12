@@ -3,10 +3,10 @@
 import path from "node:path"
 
 /** A coding agent's own session: a Claude Code that inherits CLAUDECODE and CLAUDE_CODE_CHILD_SESSION takes itself for
- *  nested and saves no transcript, and `vau` takes the shell for that agent. */
+ *  nested and saves no transcript, and `vau` takes the shell for that agent (VAULTITE_TOLD: `vau mcp`'s, mcp/cli.ts). */
 const AGENT_SESSION = ["CLAUDECODE", "CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_SESSION_ATTENDED",
   "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_EXECPATH", "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_MESSAGING_TOKEN", "CLAUDE_CODE_SSE_PORT",
-  "CLAUDE_PID", "CLAUDE_EFFORT", "AI_AGENT"]
+  "CLAUDE_PID", "CLAUDE_EFFORT", "AI_AGENT", "VAULTITE_TOLD"]
 /** Whether variable `k` (=`v`) is a coding agent's own session's, which nothing it starts should inherit (Claude Code's
  *  tools also get GIT_EDITOR=true, so git never waits on an editor). */
 export const agentSession = (k: string, v?: string) => AGENT_SESSION.includes(k) || (k.startsWith("CODEX_") && k !== "CODEX_HOME")

@@ -29,15 +29,17 @@ function ctxFor(client: Who, tool: string, http: Request["http"]): ToolCtx {
 const apps = () => appsFrom(plugin.allServices("mcp:apps"))
 const appUrl = () => cloud.status().app
 
-/** What initialize tells a client: composed from the plugins that are on now (protocol.ts instructionsOf). */
-const instructions = () => instructionsOf(agentLines(plugin.vault).map((l) => l.text), plugin.host.catalog())
+/** What initialize tells a client: composed from the plugins that are on now (protocol.ts instructionsOf); `told`: its
+ *  session has their lines already (an agent the app started), so they're left out. */
+const instructions = (told = false) => instructionsOf(told ? [] : agentLines(plugin.vault).map((l) => l.text), plugin.host.catalog())
 
 plugin.op({
   id: "mcp.instructions",
   summary: "What the MCP server tells an AI when it connects: a line from each plugin that's on, then how to use the tools.",
-  help: "The instructions in MCP's initialize answer (vau mcp asks for them here). Each line comes from a plugin's manifest (`forAgents`), so turning a plugin off takes its line out.\n\n  vau mcp.instructions",
+  help: "The instructions in MCP's initialize answer (vau mcp asks for them here). Each line comes from a plugin's manifest (`forAgents`), so turning a plugin off takes its line out. A session the app started was told those lines in its system prompt (VAULTITE_TOLD in its environment): `told` leaves them out, so it reads them once.\n\n  vau mcp.instructions",
   kind: "read",
-  run: () => ({ text: instructions() }),
+  params: { told: { type: "boolean", description: "the client's session has the plugins' lines already: leave them out" } },
+  run: (p) => ({ text: instructions(p.told === true) }),
   text: (r) => r.text,
 })
 

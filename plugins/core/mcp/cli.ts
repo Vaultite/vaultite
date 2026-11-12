@@ -46,7 +46,8 @@ The same tools are served over HTTP at <server>/api/mcp (this machine and its ow
       }
       const server = {
         version: APP_VERSION,
-        instructions: async () => String(await as(session.client?.agent ?? null, "initialize")("POST", "ops/mcp.instructions?as=text", {}) ?? ""),
+        // (a session the app started has the plugins' lines in its system prompt: VAULTITE_TOLD, set by its agent plugin)
+        instructions: async () => String(await as(session.client?.agent ?? null, "initialize")("POST", "ops/mcp.instructions?as=text", c.env.VAULTITE_TOLD ? { told: true } : {}) ?? ""),
         // The catalog as the server has it now (plugins turned on or off change it).
         tools: async () => {
           const entries = await as(session.client?.agent ?? null, "tools/list")("GET", "ops") as import("../../../core/plugins.ts").OpEntry[]

@@ -7,6 +7,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 ## Unreleased
 
 - Companion: a job that lands itself no longer records a demo video; Show me plays its demo live once it's in (the setting Jobs' demo videos: auto, always or never).
+- **Claude Code sessions the app starts read the vault's rules once**: a terminal's or chat's session no longer gets
+  the plugins' lines again in its system prompt when its CLAUDE.md already has them, and its `vau mcp` server leaves
+  them out of its instructions.
 
 ## 0.13.0 (2026-11-11)
 

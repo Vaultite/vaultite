@@ -36,6 +36,8 @@ export default async ($: VaultTest) => {
       const ins = String(r.result.instructions)
       check("mcp: the instructions are the plugins' lines that are on, an op's id said as its tool", ins.includes("- `ME.md` is the user") && ins.includes("`remember`") && !ins.includes("people.remember") &&
         ins.includes("`.vaultite/AGENTS.md` is the vault's rules") && !ins.includes("People/") && ins.length < 1700, ins)
+      const told = String((await app.callOp("mcp.instructions", { told: true }, { client: "mcp" } as Any)).text)
+      check("mcp: a session told the plugins' lines already (VAULTITE_TOLD) isn't told them again", told.startsWith("This is the user's Vaultite vault") && !told.includes("ME.md") && told.includes("call runs one"), told)
       const was = vault.config("plugins")
       await api("PUT", "config/plugins", { ...was, enabled: was.enabled.filter((id: string) => id !== "activity") })
       const off = String((await rpc("initialize", { protocolVersion: "2025-06-18", clientInfo: { name: "claude-code" } })).result.instructions)

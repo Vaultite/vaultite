@@ -1,4 +1,5 @@
 import fs from "node:fs"
+import os from "node:os"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 import { waitFor } from "../lib.ts"
@@ -277,6 +278,19 @@ export default async ($: VaultTest) => {
       const thrown = await agentModel(cc.plugin, "claude", "gpt 5").then(() => null, (e: Error) => e.message)
       const codex = await agentModel(cc.plugin, "codex", "gpt-6.1-sol")
       check("agent models: one Claude Code can't run throws; another agent's (Codex's) passes as said", /isn't a model Claude Code runs/.test(thrown ?? "") && codex.id === "gpt-6.1-sol", [thrown, codex])
+    }
+    {
+      // What its CLAUDE.md files say (an import too) it isn't told again; its MCP server hears it was told.
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vt-memory-")), line = "- A focus block is time on one thing: vau docs focus-blocks"
+      fs.mkdirSync(path.join(dir, ".rules"))
+      fs.writeFileSync(path.join(dir, ".rules", "AGENTS.md"), `# Rules\n\n${line}\n`)
+      fs.writeFileSync(path.join(dir, "CLAUDE.md"), "Read `@nowhere.md` (code, not an import)\n\n@.rules/AGENTS.md\n")
+      const context = `You're running in a terminal inside Vaultite.\n${line}\n- Kanban boards are Markdown files with kanban-plugin: board`
+      const r = await start({ resume: null, context, state: null, profile: null, cwd: dir })
+      const elsewhere = await start({ resume: null, context, state: null, profile: null, cwd: os.tmpdir() })
+      check("claude: a session isn't told again what its CLAUDE.md files say, and its MCP server knows it was told", r.command.includes("Kanban boards") && !r.command.includes("focus block") &&
+        r.env?.VAULTITE_TOLD === "1" && elsewhere.command.includes("focus block"), [r.command, elsewhere.command])
+      fs.rmSync(dir, { recursive: true, force: true })
     }
     run = await start({ resume: sid, context: "", state: null, profile: null })
     check("claude accounts: resuming finds the session's account (a private one too) and its folder", run.command.startsWith(`CLAUDE_CONFIG_DIR='${WORK}' claude --resume`) &&

@@ -3,7 +3,8 @@ The vault's operations for AIs outside the app, as an MCP server (modelcontextpr
 MCP is a tool, named in its docs (`vau docs api`), plus `ops` (list the operations, or explain one) and `call` (run any
 by its id). Plugins that are on add theirs. Each runs as the client, so what it writes follows the formats in these
 docs, and Activity names the client that did it. Its instructions (initialize's, `mcp.instructions`) are a short intro,
-the `forAgents` line of each plugin that's on, and how to use the tools.
+the `forAgents` line of each plugin that's on, and how to use the tools. A session the app started already has those
+lines (`vau mcp` under VAULTITE_TOLD): it gets the intro and the tools' part only.
 - Over stdio: `vau mcp` (Claude Code: `claude mcp add vaultite -- vau mcp`). Over HTTP: `POST /api/mcp` on the
   server (Streamable HTTP, a JSON answer per message), for this machine and its owner through Tailscale Serve only, like
   Terminal (and the settings below).
