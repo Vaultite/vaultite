@@ -7,6 +7,7 @@ the main writers. Served on a private network (a tailnet), no accounts.
   install is set up (machines, deploy) is in the untracked `CLAUDE.local.md`.
 - Folder `CLAUDE.md` files load when you work there; for a feature spanning folders, read each. The code is the doc: a
   `CLAUDE.md` holds only what it can't show (rules, gotchas, the why), each once, in the nearest folder.
+- The domain's words are in `GLOSSARY.md`: use them in code, docs and UI text.
 
 ## How it's built
 - The vault is the only store of the user's data, no database. The core indexes files and loads plugins; every
