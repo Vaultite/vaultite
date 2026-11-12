@@ -6,7 +6,7 @@ import os from "node:os"
 import path from "node:path"
 import { agentModel, agentName, KNOWN_AGENTS, parseTerminal } from "../../../core/agents.ts"
 import { gitEnv, inDesktop, type Machine, type OpCtx, OpError, type Plugin, quoted, ROOT, userSurface, type Who, whoOf } from "../../../core/plugins.ts"
-import { cardOf, choiceIn, commitsIn, endEvent, fixTask, HANDED, inPlace, landedSaid, landTask, liveStep, mergedCommit, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, type Marks, nowOf, restEvent, type Queued, queuedLine, toldBy, type Result, resumeOf,
+import { cardOf, choiceIn, commitsIn, turnWord, endEvent, fixTask, HANDED, inPlace, landedSaid, landTask, liveStep, mergedCommit, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, type Marks, nowOf, restEvent, type Queued, queuedLine, toldBy, type Result, resumeOf,
   type ProofMode, prunedLine, step, terminalOf, type Waits, type Where, worktreeOf } from "./jobs.ts"
 import { requestWriter } from "../../../core/vault.ts"
 import type { Moment } from "./types.ts"
@@ -85,13 +85,22 @@ function tellerOf(ctx: OpCtx, companion: string) {
   return ctx.who.agent ? `another agent, not the companion: ${ctx.who.label}${t ? ` in terminal ${t}` : ""}` : `not the companion: ${ctx.who.label === "vau" ? "vau from a shell or script" : ctx.who.label}`
 }
 const git = (cwd: string, args: string[]) => new Promise<string>((ok) => execFile("git", args, { cwd, timeout: 5000, maxBuffer: 4 << 20, env: gitEnv() }, (e, out) => ok(e ? "" : String(out))))
-/** The changes since `base` in one line: files changed, lines in and out, new files, commits ("" when none). */
-export async function diffSince(cwd: string, base: string) {
-  if (!base) return ""
-  const [stat, fresh, commits] = await Promise.all([git(cwd, ["diff", "--shortstat", base]), git(cwd, ["ls-files", "--others", "--exclude-standard"]), git(cwd, ["rev-list", "--count", `${base}..HEAD`])])
+const statLine = (stat: string) => {
   const m = /(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?/.exec(stat)
+  return m ? `${m[1]} file${m[1] === "1" ? "" : "s"} changed, +${m[2] ?? 0} -${m[3] ?? 0}` : ""
+}
+export async function diffSince(cwd: string, base: string, landed = "", gone = false) {
+  if (landed && await gitOk(cwd, ["cat-file", "-e", `${landed}^{commit}`])) return statLine(await git(cwd, ["show", "--shortstat", "--format=", landed]))
+  if (!base || gone || !(await gitOk(cwd, ["merge-base", "--is-ancestor", base, "HEAD"]))) return ""
+  const from = await fromOf(cwd, base)
+  const [stat, fresh, commits] = await Promise.all([git(cwd, ["diff", "--shortstat", from]), git(cwd, ["ls-files", "--others", "--exclude-standard"]), git(cwd, ["rev-list", "--count", `${from}..HEAD`])])
   const n = fresh.split("\n").filter(Boolean).length, c = Number(commits.trim()) || 0
-  return [m ? `${m[1]} file${m[1] === "1" ? "" : "s"} changed, +${m[2] ?? 0} -${m[3] ?? 0}` : "", n ? `${n} new file${n > 1 ? "s" : ""}` : "", c ? `${c} commit${c > 1 ? "s" : ""}` : ""].filter(Boolean).join(", ")
+  return [statLine(stat), n ? `${n} new file${n > 1 ? "s" : ""}` : "", c ? `${c} commit${c > 1 ? "s" : ""}` : ""].filter(Boolean).join(", ")
+}
+/** Once rebased, main's own progress since its base isn't the job's. */
+async function fromOf(cwd: string, base: string) {
+  const main = await mainOf(cwd), on = main ? (await git(cwd, ["merge-base", main, "HEAD"])).trim() : ""
+  return on && on !== base && await gitOk(cwd, ["merge-base", "--is-ancestor", base, on]) ? on : base
 }
 /** Whether a commit `text` names (not one its branch was built on), or branch `branch`, came after `base` and is on
  *  `cwd`'s remote main: a job that landed its own change (pushing from a worktree moves the checkout's origin/main too). */
@@ -563,8 +572,13 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
       ...(o.turn ? { turn: turn ? { text: str(turn.text), files: turn.files ?? [], at: turn.at ?? 0, final: turn.final !== false && !!turn.text, ...(turn.session ? { session: turn.session } : {}),
         ...(turn.prompt ? { prompt: turn.prompt } : {}), ...(turn.background ? { background: turn.background } : {}) } : null } : {}),
       // (a coding job's changes are in its worktree once it made one, else wherever it worked)
-      ...(o.turn && o.cwd && o.base ? { diff: await diffSince(o.tree && fs.existsSync(o.tree) ? o.tree : o.cwd, o.base) } : {}),
+      ...(o.turn && o.cwd && o.base ? { diff: await changesOf(o.cwd, o.base, o.tree ?? "", [turn?.text, o.said].filter(Boolean).join("\n")) } : {}),
       ...(o.cwd && o.base && (o.turn || o.said || o.branch) ? await landing(o.cwd, o.base, [turn?.text, o.said].filter(Boolean).join("\n"), o.branch ?? "", o.marks) : {}) }
+  }
+  async function changesOf(cwd: string, base: string, tree: string, text: string) {
+    const commit = landedSaid(text) ? mergedCommit(text) : ""
+    const there = tree && fs.existsSync(tree)
+    return diffSince(there ? tree : cwd, base, commit, !!tree && !there && !sameDir(tree, cwd))
   }
   /** Whether its change is on main (onMainSince), and its branch's marks while it exists (else the ones it was given). */
   async function landing(cwd: string, base: string, text: string, branch: string, kept?: Marks) {
@@ -591,7 +605,9 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
       ...(j.where.branch ? { branch: j.where.branch } : {}), ...(said ? { said } : {}), ...(j.marks ? { marks: j.marks } : {}) } : {}) }
     return links.of(j.where).seen(j.terminal, o).then((s) => {
       if (s.marks && JSON.stringify(s.marks) !== JSON.stringify(j.marks)) { j.marks = s.marks; marked.add(j.id) }
-      return s
+      // (Claude Code speaking OSC 7501 mutes its hooks, yet may never say its state)
+      const w = turn && s.running && !s.state ? turnWord(s.turn, Date.now()) : undefined
+      return w ? { ...s, state: w } : s
     })
   }
   /** Jobs whose marks changed since they were last kept. */

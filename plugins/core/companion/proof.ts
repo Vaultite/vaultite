@@ -1,6 +1,6 @@
 // A job's proof: its change shown on the real UI, not claimed: its ready knock, Show me playing its worker's tour
 // (proofs.ts), then Keep and merge (its worker lands it; Keep when it's already on main), Needs changes or Not yet. No Node.
-import { gist, type Job, landable, live, onMain, resultLine } from "./jobs.ts"
+import { type Job, landable, live, onMain } from "./jobs.ts"
 import type { Step, Tour } from "./tour.ts"
 
 /** The layer a step's before picture is drawn on, beside its agent's own (each flips without the other). */
@@ -29,12 +29,32 @@ export function readyLine(j: Pick<Job, "title" | "state" | "land"> & Partial<Pic
   return j.state === "done" ? `Done: ${title}` : `Ready to show you: ${title}`
 }
 
-/** What it changed, said plainly when there's nothing to show (or a step couldn't be): its words' gist, then its diff. */
-export function summaryOf(j: Pick<Job, "result" | "last" | "title">) {
-  const said = j.result?.text || j.last?.text || ""
-  const line = resultLine(j.result ? { diff: j.result.diff } : undefined), files = j.result?.files ?? []
-  const parts = [said ? gist(said, 220) : "", line ? `${line}${files.length ? `: ${files.slice(0, 3).map((f) => f.split("/").pop()).join(", ")}${files.length > 3 ? "…" : ""}` : ""}.` : ""]
-  return parts.filter(Boolean).join(" ") || `It didn't say what changed for "${j.title}".`
+const NOT_CHANGE = /^(?:(?:not )?merged|landed|where it landed|files?(?: changed)?|changed files|commits?|checks?|tests?|verify)\b[^.\n]{0,40}:/i
+const COUNTS = /\(?\b\d+ files? changed\b(?:,? ?\+\d+ -\d+)?\)?|\(?\+\d+ -\d+\)?|\b\d+ (?:insertions?|deletions?)\([+-]\)|\b\d+ (?:new files?|commits?)\b/gi
+const ID = /(?:\b(?:as|at|now)\s+)?(?<![\w/.-])(?=[0-9a-f]*[a-f])(?=[0-9a-f]*\d)[0-9a-f]{7,40}(?![\w/-]|\.\w)/g
+const bare = (l: string) => l.replace(/\*\*|__|`/g, "").replace(/^\s*(?:#+|>|[-*•]|\d+[.)])\s+/, "").replace(/\s+/g, " ").trim()
+export function changeSaid(text: string, n = 260) {
+  const lines = text.replace(/```[\s\S]*?(?:```|$)/g, "").split("\n").map(bare)
+    .filter((l) => l && !NOT_CHANGE.test(l) && !l.endsWith(":") && !/^(?:remote:|\$ |[\w./-]+\.\w+(?:,\s*[\w./-]+\.\w+)*$)/i.test(l))
+  const sentences = lines.flatMap((l) => {
+    const said = l.replace(/\bhttps?:\/\/\S+/g, "").replace(COUNTS, "").replace(ID, "").replace(/\(\s*\)|\[\s*\]/g, "")
+      .replace(/\s+([,.;:!?])/g, "$1").replace(/([,;:])(?=[,.;:])/g, "").replace(/^[-,;:\s]+/, "").replace(/\s+/g, " ").trim()
+    return said.split(/(?<=[.!?])\s+(?=["“(]?[A-Z0-9])/).map((x) => (/[.!?]$/.test(x) ? x : `${x}.`))
+  }).filter((x) => /[A-Za-z]{3}/.test(x) && x.split(" ").length > 1)
+  let out = ""
+  for (const x of sentences) { if (out && out.length + x.length + 1 > n) break; out = out ? `${out} ${x}` : x }
+  return out.length > n ? `${out.slice(0, n - 1)}…` : out
+}
+export function seenAt(open = "") {
+  const o = open.trim()
+  if (/\.md$/i.test(o)) return `To see it, open the note ${o.split("/").pop()!.replace(/\.md$/i, "")}.`
+  const host = /^https?:\/\/([^/:]+)/i.exec(o)?.[1]
+  return host && !/^(?:127\.|localhost)/.test(host) ? `To see it, open ${host.replace(/^www\./, "")}.` : ""
+}
+export function summaryOf(j: Pick<Job, "result" | "last" | "title">, open = "") {
+  const said = changeSaid(j.result?.text || j.last?.text || ""), at = seenAt(open)
+  const title = j.title.replace(/\s+/g, " ").trim().replace(/[.!]+$/, "")
+  return [said || `It finished "${title}", but didn't say what changed.`, at].filter(Boolean).join(" ")
 }
 
 /** What they can answer after a proof: keep it (and merge it, when landable; one on main is said so), it needs changes,

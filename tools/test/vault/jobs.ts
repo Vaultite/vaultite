@@ -306,6 +306,23 @@ export default async ($: VaultTest) => {
     check("jobs: rebased onto main commit by commit, its branch still there, it's on main by its marks", await onMainSince(repo, base, "Done.", "job-w", await marksOf(repo, "job-w")))
     g("checkout", "-q", "-f", on); g("branch", "-qD", "job-z", "job-w"); g("update-ref", "-d", "refs/remotes/origin/main"); g("reset", "-q", "--hard", base)
   }
+  await (async () => {
+    const now = 100_000, w = (text: string, at: number, final: boolean) => J.turnWord({ text, at, final }, now)
+    check("jobs: with no word from its terminal, a turn with a tool call open is working, its last words standing 30 s at rest, else unknown",
+      w("", 0, false) === "working" && w("Checking.", now - 60_000, false) === "working" && w("Done.", now - 5000, true) === undefined &&
+      w("Done.", now - 31_000, true) === "idle" && J.turnWord(null, now) === undefined && w("", 0, true) === undefined)
+  })()
+  await (async () => {
+    const { diffSince } = await import("../../../plugins/core/companion/workers.ts")
+    const base = g("rev-parse", "HEAD").trim(), on = g("symbolic-ref", "--short", "HEAD").trim(), put = (f: string, t: string, msg: string) => { fs.writeFileSync(path.join(repo, f), t); g("add", "."); g("commit", "-qm", msg) }
+    put("m1.txt", "1\n2\n3\n", "chore: main moves on"); put("m2.txt", "x\n", "chore: and on"); g("update-ref", "refs/remotes/origin/main", "HEAD")
+    const main = g("rev-parse", "HEAD").trim()
+    g("checkout", "-qb", "job-v", main); put("v.txt", "v\n", "fix: the job's own")
+    const rebased = await diffSince(repo, base), landed = await diffSince(repo, base, g("rev-parse", "--short", "HEAD").trim()), gone = await diffSince(repo, base, "", true)
+    check("jobs: a rebased job's change count is against the main it's on now, a landed one's its commit's, none once its worktree is gone",
+      rebased === "1 file changed, +1 -0, 1 commit" && landed === "1 file changed, +1 -0" && gone === "", { rebased, landed, gone })
+    g("checkout", "-q", "-f", on); g("branch", "-qD", "job-v"); g("update-ref", "-d", "refs/remotes/origin/main"); g("reset", "-q", "--hard", base)
+  })()
   {
     // A job's base: a checkout nothing pulls starts it from its branch's remote tip, fetched, its own files and branch untouched.
     const up = path.join(tmp, "up.git"), co = path.join(tmp, "lag"), other = path.join(tmp, "other")

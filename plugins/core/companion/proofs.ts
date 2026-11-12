@@ -109,11 +109,11 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
     d.showing({ voice })
     try {
       if (!proof) return await plain(j, mine, `It didn't leave a demo to show you, so here's what it says it did. ${summaryOf(j)}`)
-      if (proof.problems.length) return await plain(j, mine, `Its tour doesn't play (${proof.problems[0]}), so here's what it says it did. ${summaryOf(j)}`)
+      if (proof.problems.length) return await plain(j, mine, `Its tour doesn't play (${proof.problems[0]}), so here's what it says it did. ${summaryOf(j, proof.tour.open)}`)
       const t = proof.tour
       // (its video by default: recorded on the worker's own copy, so it shows wherever the change is)
       if (!live && t.video && d.has(t.video)) {
-        if (!(await d.play(t.video, t.title, proof.path))) return await plain(j, mine, `I can't play its video here. ${summaryOf(j)}`)
+        if (!(await d.play(t.video, t.title, proof.path))) return await plain(j, mine, `I can't play its video here. ${summaryOf(j, proof.tour.open)}`)
         for (const [at, said] of narration(t)) {
           await new Promise((r) => setTimeout(r, Math.max(0, at - (Date.now() - began))))
           if (mine.stopped) return
@@ -125,7 +125,7 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
       const away = await d.notHere(j, t)
       // (a change that isn't in the app here has nothing on screen to find: say so, and offer to merge it first)
       if (away) {
-        if (!landable(j)) return await plain(j, mine, `I can't show it on this Mac: ${away}. ${summaryOf(j)}`)
+        if (!landable(j)) return await plain(j, mine, `I can't show it on this Mac: ${away}. ${summaryOf(j, proof.tour.open)}`)
         await d.say(`It isn't in the app on this Mac yet: ${away}.`)
         return await choose(j, mine, "offer")
       }
@@ -133,14 +133,14 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
       if (there) { await d.open(there).catch(() => {}); await new Promise((r) => setTimeout(r, SETTLE_MS)) }
       if (mine.stopped) return
       const s = d.screen(name, t)
-      if (!s) return await plain(j, mine, `I can't show it here: there's no window of yours to show it on. ${summaryOf(j)}`)
+      if (!s) return await plain(j, mine, `I can't show it here: there's no window of yours to show it on. ${summaryOf(j, proof.tour.open)}`)
       const r = await d.tours.show(name, s, t)
       // (stopped by another proof or a new ask: what's up now is theirs, not this one's to clear)
       if (mine.stopped || r.ended === "stopped") return
       d.clear()
       if (r.ended === "lost") {
         const why = r.steps.at(-1)?.why?.replace(/^not found: /, "") ?? "what it changed"
-        return await plain(j, mine, `I can't find ${why} on your screen now, so I can't show you that part. ${summaryOf(j)}`)
+        return await plain(j, mine, `I can't find ${why} on your screen now, so I can't show you that part. ${summaryOf(j, proof.tour.open)}`)
       }
       await choose(j, mine)
     } finally {

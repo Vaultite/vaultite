@@ -87,6 +87,11 @@ export function mergedSaid(text: string): boolean | null {
 }
 /** The commits a worker's message names ("pushed to main as 98b7fcde"), at most 8. */
 export const commitsIn = (text: string) => [...new Set(text.match(/(?<![\w/.-])[0-9a-f]{7,40}(?![\w/-]|\.\w)/g) ?? [])].filter((h) => /[a-f]/.test(h) && /\d/.test(h)).slice(0, 8)
+export const TURN_QUIET_MS = 30_000
+export function turnWord(t: { text: string; at: number; final: boolean } | null | undefined, now: number): "working" | "idle" | undefined {
+  if (!t || (!t.text && t.final)) return undefined
+  return !t.final ? "working" : now - t.at >= TURN_QUIET_MS ? "idle" : undefined
+}
 /** Whether a worker's message says it landed its change on main itself ("Merged:", "pushed to main", "it's on main"),
  *  a sentence that only might ("not pushed to main", "once it's on main") left out. */
 export function landedSaid(text: string): boolean {

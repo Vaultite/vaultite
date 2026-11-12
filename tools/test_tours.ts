@@ -301,8 +301,10 @@ Some words before the steps.
   check("proof: only words asking to see it show a job (never another ask)", ["show me", "let's see the header", "what did it do?", "can I look at it"].every(P.asksToSee) &&
     !["why didn't you answer my previous message?", "merge it", "keep it", "close that"].some(P.asksToSee))
   const said = P.summaryOf({ title: "x", result: { text: "Made the save button blue in the toolbar. Also tidied its hover.", diff: "2 files changed, +8 -3", files: ["web/src/a.tsx", "web/src/b.css"] } })
-  check("proof: nothing to show: its own words' gist and its diff, plainly", said === "Made the save button blue in the toolbar. 2 files changed, +8 -3: a.tsx, b.css." &&
-    P.summaryOf({ title: "Fix it" }) === `It didn't say what changed for "Fix it".`, said)
+  const report = P.summaryOf({ title: "Rename jobs", result: { text: "Merged: 6d8ad9de on main, 438 files changed, +706 -8402.\n\nRenamed the Jobs page to Work, so the sidebar says Work (8 files changed, +15 -13).\nFiles: plugins/core/jobs/index.tsx, web/src/a.tsx\nChecks: npm run verify passed.", diff: "438 files changed, +706 -8402" } }, "Notes/Work.md")
+  check("proof: nothing to show: what its report says it changed and where to see it, plainly; never commit ids or diff counts",
+    said === "Made the save button blue in the toolbar. Also tidied its hover." && report === "Renamed the Jobs page to Work, so the sidebar says Work. To see it, open the note Work." &&
+    P.summaryOf({ title: "Fix it" }) === `It finished "Fix it", but didn't say what changed.` && P.summaryOf({ title: "x", result: { text: "Merged: abc1234 (3 commits)." } }) === `It finished "x", but didn't say what changed.`, [said, report])
   const [nat] = parseTour({}, `1. The Jobs heading is bold now [ring "Jobs"], in the menu bar's Vaultite menu.\n2. And here [point "Settings"].`, "Bold jobs")
   const [site] = parseTour({ site: ["example.com"] }, `1. In the menu bar [ring "Jobs"].`, "x")
   check("proof: a step naming the Mac's own UI (the menu bar, the notch) is found, so tour-save warns; on a site it isn't", T.nativeSteps(nat).join() === "1" && !T.nativeSteps(site).length &&

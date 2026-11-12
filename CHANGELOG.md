@@ -13,6 +13,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   card says it, and away from the window the system notification does.
 - **Jobs no longer flip to waiting when a busy machine is slow**: a terminal server counts as unreachable only when it
   misses a quick check too, not after one slow screen capture, and a job's card says so only after 30 s of that.
+- **A job's card counts only its own changes**, not main's progress after it rebased or landed, and Show me with no
+  demo to play says in plain words what changed and where to see it, never commit ids or diff counts. A job whose
+  terminal never reports its state leaves Starting once its agent is at work.
 - **Settings' AI section has a little robot for its icon** instead of sparkles.
 - **Remote access in Settings is now Share & sync**: its page says plainly that Vaultite Cloud and shared folders are
   optional, and that without them Vaultite stays on your own network.
