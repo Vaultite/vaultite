@@ -1193,6 +1193,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Transcript`: A JSONL transcript read so far, read on from where it stopped when it grows.
 - `transcripts(make)`: The last few transcripts read, by file: `get` reads one on from where it was left, or null when it can't be read.
 - `truncate(s, n?)`: Long texts cut short: a view is for reading a conversation back, not for the raw data.
+- `trustClaudeProject(file, dir)`: Marks folder `dir` trusted (Claude Code's "Trust this folder?" answered yes) in config `file`; whether it wasn't yet.
 - `Turn`: How long a turn worked, as a JSONL agent's transcripts say.
 - `Usage`: What an agent's GET route answers: its tally, plan, limits and live sessions.
 - `usedFirst(accts, used)`: `accts` with what each is used for (`uses`), the ones in `used` first in its order: an agent's accounts for a plugin that runs them (agent-limits' `for:`).

@@ -66,10 +66,12 @@ export const flushEvery = (ticks: number) => { flushTicks = ticks }
 const str = (v: unknown) => (typeof v === "string" ? v : "")
 /** Who tells a job what the app itself passes on (their talk, a capture, a live edit, their Needs changes). */
 const COMPANION = "the companion"
+/** Who a call from the app's own surfaces is, the user themselves. */
+const THEM = "you, in the app"
 /** Who a call telling a job something is, as whoever reads the job says it: the user in the app, the companion
  *  `companion`'s own turn, else the caller (another agent's vau, from its terminal; a script), which isn't the companion. */
 function tellerOf(ctx: OpCtx, companion: string) {
-  if (userSurface(ctx.who)) return "you, in the app"
+  if (userSurface(ctx.who)) return THEM
   if (companion) return `the companion (${companion})`
   const t = requestWriter.getStore()?.terminal
   return ctx.who.agent ? `another agent, not the companion: ${ctx.who.label}${t ? ` in terminal ${t}` : ""}` : `not the companion: ${ctx.who.label === "vau" ? "vau from a shell or script" : ctx.who.label}`
@@ -637,6 +639,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   /** Job `j`'s worker in a new terminal, told `prompt` first: its conversation `session` resumed, else a new one. */
   async function startIn(ctx: OpCtx, j: Job, prompt: string, session?: string) {
     const w = j.where
+    await trust(ctx, j)
     const r = await ctx.op("terminal.start", { agent: w.agent, ...(session ? { session } : {}), ...(prompt ? { prompt } : {}), name: j.title, cwd: w.cwd, ...(w.model ? { model: w.model } : {}),
       ...(w.effort ? { effort: w.effort } : {}), ...(w.agent.split("_")[0] === "claude" && setting("jobs_mode") ? { mode: setting("jobs_mode") } : {}), ...(w.machine ? { machine: w.machine } : {}) }) as { id: string }
     j.terminal = r.id.split("@")[0]
@@ -791,6 +794,15 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     (j.tells ??= []).push({ at: Date.now(), by, text: text.replace(/\s+/g, " ").trim().slice(0, 300) })
     if (j.tells.length > 8) j.tells.splice(0, j.tells.length - 8)
   }
+  /** A job of theirs (the user's or the companion's, never one a script or another agent handed off) in one of their
+   *  checkouts there: Claude Code's "Trust this folder?" answered for it in the job's account, so it never waits on that. */
+  async function trust(ctx: OpCtx, j: Job) {
+    const w = j.where, by = j.by ?? ""
+    if (!w.repo || w.agent.split("_")[0] !== "claude" || !(by === COMPANION || by === THEM || by.startsWith(`${COMPANION} (`))) return
+    const body = { cwd: w.cwd, account: parseTerminal(`${w.agent}-x`)?.profile || "default" }
+    // (it can't: the job starts anyway, Claude Code asking as before)
+    try { await (w.machine ? atMachine(w.machine, "claude-code.trust", body, 10) : ctx.op("claude-code.trust", body)) } catch (e) { console.error(`companion: jobs: ${j.id}: trust:`, (e as Error).message) }
+  }
   /** Job `j` told `shown`: working on it, its turn from now. */
   function toldNow(j: Job, shown: string) {
     move(j, "told")
@@ -874,6 +886,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     if (inPlace(where)) where.watched = true
     else if (where.repo) Object.assign(where, worktreeOf(where.cwd, where.repo, j.id), lands() ? { lands: true } : {})
     j.now = `starting in ${tilde(where.cwd)}`
+    await trust(ctx, j)
     const task = jobTask(told, m, where, j.id, { land: lands(), proof: proofMode() })
     try {
       const r = await ctx.op("terminal.start", { agent: where.agent, prompt: where.machine ? await carry(where.machine, task) : task, name: j.title, cwd: where.cwd,

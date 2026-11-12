@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Jobs no longer wait on "Trust this folder?" in your own repos**: a job you or the companion hand off in a checkout
+  already on that machine is trusted in its Claude Code account before it starts; a folder that isn't a checkout, or a
+  handoff from a script or another agent, still asks.
 - **Jobs over a live site run in the repo that deploys it**: work asked over a page like your website goes to the
   checkout whose deploy config names its address (its wrangler route or CNAME), not a repo guessed from the page's
   title; when no checkout or two of them deploy it, the job's "why there" says so.

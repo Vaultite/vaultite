@@ -328,7 +328,12 @@ export default async ($: VaultTest) => {
     const script = (tree: string) => `stty -icanon 2>/dev/null; sleep 0.5; ${osc("working", `:msg=${b64("Editing index.html")}`)}; sleep 1; ${tree} -q; (cd ${tree.split(" ")[5]} && echo '<p>blue</p>' >> index.html); ${osc("idle")}; ` +
       `IFS= read -r k; ${osc("working")}; echo "$k" > landed.txt; sleep 1; ${osc("idle")}; ` +
       `IFS= read -r l; ${osc("working")}; echo "$l" > told.txt; sleep 1; ${osc("blocked", `:kind=permission:msg=${b64("Bash(rm -rf build)")}`)}; sleep 600`
-    cc["agent:claude"] = async (start: Any) => { said.push(start); return { command: script(/git -C \S+ worktree add \S+ -b \S+ [0-9a-f]+/.exec(start.prompt ?? "")?.[0] ?? "false x x x /nowhere"), cwd: null } }
+    // (the jobs' account, made up beside the test's own: what Claude Code's "Trust this folder?" is answered in)
+    const personal = path.join(path.dirname(process.env.CLAUDE_CONFIG_DIR!), "claude-personal"), pj = path.join(personal, ".claude.json")
+    fs.mkdirSync(personal, { recursive: true })
+    fs.writeFileSync(pj, JSON.stringify({ numStartups: 2, projects: { "/elsewhere": { allowedTools: ["Bash"] } } }))
+    const trusted = () => JSON.parse(fs.readFileSync(pj, "utf8")).projects?.[real]?.hasTrustDialogAccepted === true
+    cc["agent:claude"] = async (start: Any) => { said.push({ ...start, trusted: trusted() }); return { command: script(/git -C \S+ worktree add \S+ -b \S+ [0-9a-f]+/.exec(start.prompt ?? "")?.[0] ?? "false x x x /nowhere"), cwd: null } }
     let turn: Any = null
     cc["agent-turn:claude"] = async () => turn
     let card: Any = null
@@ -342,6 +347,9 @@ export default async ($: VaultTest) => {
         said[0]?.profile === "personal" && said[0]?.model === "opus" && said[0]?.effort === "high" && said[0]?.mode === "auto" &&
         /Make the heading blue[^]*They said: "make the heading blue"[^]*don't push/.test(said[0]?.prompt ?? "") &&
         !!(await waitFor(async () => (await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.kind === "say" && n.text === "On it: a session in site."), 3000, 50)), [st, b, said[0]])
+      const cj = JSON.parse(fs.readFileSync(pj, "utf8"))
+      check("handoff by the companion: its checkout is trusted in the job's account before Claude Code starts there, the rest of its config kept",
+        said[0]?.trusted === true && cj.numStartups === 2 && cj.projects["/elsewhere"].allowedTools[0] === "Bash" && cj.projects[real].allowedTools?.length === 0 && !fs.existsSync(`${pj}.lock`), [said[0]?.trusted, cj])
       const working = await waitFor(() => heard.findLast((m) => m.t === "jobs" && m.jobs.some((j: Any) => j.id === card.id && j.state === "working")), 10000, 50)
       check("jobs: its terminal working moves it to working, what it does now from its agent", !!working && working.jobs.find((j: Any) => j.id === card.id).now === "Editing index.html", heard.at(-1))
       // (its worker saves its proof before it ends, as it's told)
@@ -499,6 +507,8 @@ export default async ($: VaultTest) => {
         // (a handoff's line is held a moment for the turn's next one: an earlier one's said first)
         await new Promise((r) => setTimeout(r, 700))
         const from = Date.now(), ended: string[] = []
+        const untrust = () => { const j = JSON.parse(fs.readFileSync(pj, "utf8")); delete j.projects[real]; fs.writeFileSync(pj, JSON.stringify(j)) }
+        untrust()
         for (const [by, task] of [[agent, "Skip the pointer when unwatched"], [script, "Sync the design hub"]] as const) {
           const [st, b] = await api("POST", "ops/companion.handoff", { task, say: "Handed that off.", cwd: repo }, by)
           ended.push(b.id)
@@ -508,6 +518,19 @@ export default async ($: VaultTest) => {
           const j = (await api("POST", "ops/companion.job", { id: b.id }))[1]
           check(`handoff from ${by === agent ? "another agent's vau" : "a script"}: its job says who handed it off, never the companion`,
             j.by === (by === agent ? "another agent, not the companion: Claude Code" : "not the companion: vau from a shell or script"), j.by)
+        }
+        check("handoff from another agent's vau or a script: Claude Code still asks to trust its folder", !trusted() && said.slice(-2).every((x) => x.trusted === false), said.slice(-2).map((x) => x.trusted))
+        {
+          // (a worktree is trusted as its checkout, as Claude Code reads it; a folder in no checkout isn't trusted this way)
+          const wt = path.join(tmp, "site-trust")
+          g("worktree", "add", "-q", wt, "-b", "trust-wt")
+          const [tst, tb] = await api("POST", "ops/claude-code.trust", { cwd: wt, account: "personal" })
+          const [nst, nb] = await api("POST", "ops/claude-code.trust", { cwd: tmp, account: "personal" })
+          const [ast] = await api("POST", "ops/claude-code.trust", { cwd: repo, account: "nope" })
+          check("claude-code trust: a worktree's main checkout trusted in that account; no checkout, or no such account, refused",
+            tst === 200 && tb.checkout === real && tb.trusted === true && trusted() && nst === 404 && /isn't in a git checkout/.test(nb.error) && ast === 404, [tst, tb, nst, nb, ast])
+          g("worktree", "remove", "--force", wt)
+          g("branch", "-D", "trust-wt")
         }
         {
           // (another session's follow-up to a job, from its own terminal: the job says that one told it, not the companion)
@@ -615,6 +638,7 @@ export default async ($: VaultTest) => {
       await api("POST", "ops/companion.next", { timeout: 0 })
       await api("PATCH", "config/plugin/companion", { mode: "off", summoned_model: "haiku", jobs_agent: "claude", jobs_never: [] })
       if (card?.link) await api("DELETE", `terminals/${card.link.split("/").pop()}`).catch(() => {})
+      fs.rmSync(personal, { recursive: true, force: true })
     }
   }
 

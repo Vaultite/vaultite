@@ -121,36 +121,13 @@ export function claudeComputerUse(w: Where, vault: string) {
   const list = readJson(claudeJson(w))?.projects?.[claudeProject(vault)]?.enabledMcpServers
   return Array.isArray(list) && list.includes(CU)
 }
-/** A new project's settings as Claude Code makes them (it reads some without checking they're there). */
-const NEW_PROJECT = { allowedTools: [], mcpContextUris: [], mcpServers: {}, enabledMcpjsonServers: [], disabledMcpjsonServers: [], hasTrustDialogAccepted: false,
-  hasClaudeMdExternalIncludesApproved: false, hasClaudeMdExternalIncludesWarningShown: false }
-
-/** Turns Claude Code's computer use on for the vault, holding the lock Claude Code takes on its config (proper-lockfile's
- *  `<file>.lock` folder) so a running session's next write keeps it: it reads the file again under that lock. */
+/** Turns Claude Code's computer use on for the vault (its config edited under the lock Claude Code takes on it). */
 export async function setClaudeComputerUse(w: Where, vault: string) {
-  const file = claudeJson(w), lock = `${file}.lock`
-  fs.mkdirSync(path.dirname(file), { recursive: true })
-  for (let i = 0; ; i++) {
-    try { fs.mkdirSync(lock); break } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e
-      // (stale after 10 s without an update, as proper-lockfile has it: a Claude that died holding it)
-      if (Date.now() - (fs.statSync(lock, { throwIfNoEntry: false })?.mtimeMs ?? 0) > 10_000) { fs.rmSync(lock, { recursive: true, force: true }); continue }
-      if (i > 50) throw new Error("Claude Code is busy writing its settings: try again in a moment")
-      await new Promise((r) => setTimeout(r, 100))
-    }
-  }
-  try {
-    const text = exists(file) ? fs.readFileSync(file, "utf8") : ""
-    const j = text.trim() ? JSON.parse(text) : {}
-    if (!j || typeof j !== "object" || Array.isArray(j)) throw new Error(`${tilde(w, file)} isn't Claude Code's settings`)
-    const key = claudeProject(vault), project = j.projects?.[key] ?? NEW_PROJECT
+  const file = claudeJson(w), { editClaudeProject } = await import("../core/claudeconfig.ts")
+  await editClaudeProject(file, claudeProject(vault), (project) => {
     const list: unknown[] = Array.isArray(project.enabledMcpServers) ? project.enabledMcpServers : []
-    if (list.includes(CU)) return
-    j.projects = { ...j.projects, [key]: { ...project, enabledMcpServers: [...list, CU] } }
-    writeAtomic(file, JSON.stringify(j, null, 2), text ? fs.statSync(file).mode & 0o777 : 0o600)
-  } finally {
-    fs.rmSync(lock, { recursive: true, force: true })
-  }
+    return list.includes(CU) ? null : { ...project, enabledMcpServers: [...list, CU] }
+  }, tilde(w, file))
 }
 
 // Codex's computer use comes with the Codex app (its helper app in ~/.codex/computer-use), a plugin of its bundled

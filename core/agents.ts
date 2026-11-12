@@ -18,6 +18,7 @@ export { spawnBin, winCommand, withPath } from "./winbin.ts"
 export { agentIn, agentName, agentSite, KNOWN_AGENTS, MODEL_NAME, newTerminalId, parseTerminal, resumeTerminalId, TERMINAL_AGENT, type TerminalAgent } from "./terminalids.ts"
 /** An agent's own session's variables (core/sessionenv.ts). */
 export { agentSession, serversOwn } from "./sessionenv.ts"
+export { trustClaudeProject } from "./claudeconfig.ts"
 import { USAGE_BLOCKS } from "./rules.ts"
 import { type Item, sortBy, writeAtomic } from "./vault.ts"
 

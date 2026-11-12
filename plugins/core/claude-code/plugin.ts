@@ -7,8 +7,8 @@ import os from "node:os"
 import path from "node:path"
 import { type AgentAsk, type AgentCommand, type AgentMeter, type AgentModel, type AgentModels, type Asking, type Choice, type Question, type AgentStart, ago, codingAgent, dayOf, expandHome, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows,
   limitWindow, type Live, type SampleAsk, agentRefusal, notOnThisMachine, priceList, processes, projectName, projectOf, shellQuote, projectRoots, epochSeconds, Tally, terminalOf, Transcript, transcripts,
-  type Usage, lastTurn, parseTerminal, PERMISSION_MODES, type PermissionMode, usedFirst, when } from "../../../core/agents.ts"
-import { bullets, localDate, Plugin, section } from "../../../core/plugins.ts"
+  type Usage, lastTurn, parseTerminal, PERMISSION_MODES, type PermissionMode, trustClaudeProject, usedFirst, when } from "../../../core/agents.ts"
+import { bullets, gitEnv, localDate, OpError, Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
 import { askingIn, Conversation, WANTED } from "./transcript.ts"
 import { userSaid } from "./chatlog.ts"
@@ -872,6 +872,35 @@ session is spent goes last until it renews. for (a plugin) says what that plugin
   text: (r) => r.accounts.map((a: Item) => `${a.label} (${a.id})${a.uses ? `, ${a.uses.join(", ")}` : ""}: ` +
     (a.week_left === null ? "no limits read yet" : `${a.week_left}% of the week left` + (a.renews ? `, renews ${when(a.renews)}` : "") +
       (a.session_full ? `; its 5-hour session is spent${a.session_renews ? ` until ${when(a.session_renews)}` : ""}` : ""))).join("\n") || "No Claude Code accounts here.",
+})
+
+/** The checkout folder `cwd` is in, the main one when it's a worktree's (Claude Code trusts a worktree as its checkout):
+ *  "" when it's in none. */
+function checkoutOf(cwd: string) {
+  try {
+    const common = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd, env: gitEnv(), timeout: 5000, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim()
+    // (a bare repository's or a submodule's isn't a checkout's .git folder)
+    if (path.basename(common) !== ".git" || !fs.statSync(common).isDirectory()) return ""
+    return fs.realpathSync(path.dirname(common))
+  } catch { return "" }
+}
+
+plugin.op({
+  id: "claude-code.trust", owner: "Claude Code on this machine", kind: "write", lock: false,
+  summary: "Marks the checkout a folder is in (its main one for a worktree) trusted in a Claude Code account, so Claude Code started there doesn't ask \"Trust this folder?\". The companion's jobs use it for the user's own repos.",
+  params: {
+    cwd: { type: "string", required: true, description: "a folder in a git checkout on this machine" },
+    account: { type: "string", description: "the account, by its id (default, agent...); default: default" },
+  },
+  run: async (p) => {
+    const id = String(p.account ?? "").trim().toLowerCase() || "default", a = accounts().find((x) => x.id === id)
+    if (!a) throw new OpError(`no Claude Code account '${id}' here (vau limits lists them)`, 404)
+    const dir = checkoutOf(expandHome(String(p.cwd)))
+    if (!dir) throw new OpError(`${p.cwd} isn't in a git checkout here: only a checkout is trusted this way`, 404)
+    return { account: a.id, checkout: dir, trusted: await trustClaudeProject(accountJson(a), dir) }
+  },
+  text: (r) => `${r.checkout} is trusted in ${r.account}${r.trusted ? "" : " (it already was)"}.`,
+  did: (p) => ({ action: "settings", text: `Trusted ${p.cwd} for Claude Code${p.account ? ` (${p.account})` : ""}` }),
 })
 
 const agent = codingAgent(plugin, {
