@@ -1,10 +1,10 @@
 import { useEffect, useId, useRef, useState } from "react"
-import { AppWindow, Archive, ChevronDown, Ellipsis, Layers2, MonitorSmartphone, Pin, Plus, X } from "lucide-react"
+import { AppWindow, Archive, ChevronDown, Ellipsis, Layers2, ListCollapse, ListTree, MonitorSmartphone, Pin, Plus, X } from "lucide-react"
 import {
-  activePane, Badged, beforeStart, edgeScroller, canDropTab, closePane, closeTab, cn, coarse, colorVar, commandItems, definePlugin, DEVICE, dragTab, dropTab, fmtAgo, foldGroupMoving, groupMenu, groupName, GroupLabel,
+  activePane, Badged, beforeStart, edgeScroller, canDropTab, closePane, closeTab, cn, coarse, colorVar, commandItems, definePlugin, DEVICE, dragTab, dropTab, fmtAgo, foldGroupMoving, foldSplitMoving, groupMenu, groupName, GroupLabel,
   groupsAsDrawn, HeadingButton, IconAction, isPopout, menuFor, openNewTab, isViewOpen, notifyError, openView, paneById, paneMenuOf, panesOf, placeMenuOf, placesIn, placesOf, reorder, rightClickBelow, useArchivedTabs, useMenuShowing, pastEnd, put, rowMenu, RowKeys, selectClick,
   selectedAttr, selectPane, selectTab, SidebarHeading, SidebarRow, springing, springTabAt, startDrag, tabButtons, tabListDrop, tabMenuOf, tabPreview, tabPreviewOrder, TABS, tabSlot, tabSlotBeside, tabsMenu, useDrag, useDropHit,
-  useDropTarget, useGroupIn, useGroupLines, useGrowIn, useReflow, useShrinkOut, useSelectable, useSelected, useSlide, useTabLabels, useTabList, useUiMarks,
+  useDropTarget, useGroupIn, useGroupLines, useGrowIn, useListsIn, useReflow, useShrinkOut, useSelectable, useSelected, useSlide, useTabLabels, useTabList, useUiMarks,
   INCOMING, laidOut,
   type DragItem, type Pane, type SidebarCtx, type Store, type Tab, type TabDrop, type TabGroup, type TabInfo, type TabList,
 } from "@vaultite"
@@ -45,11 +45,11 @@ const MAX_LINES = 3
 const stacks = (n: Part, room = MAX_LINES): number => !isSplit(n) ? 1
   : n.dir === "col" && linesOf(n) <= room ? linesOf(n) : Math.max(1, ...tiledKids(n).map(({ k }) => stacks(k, room)))
 
-/** A split tab's panes in the shape of its split, a mini-map (a narrow one just its icon; floating ones after it, as
- *  icons). Click focuses one, a press drags it (onto another: they swap), X closes it, right-click is its pane's menu. */
-function SplitMap({ t, active, info, folded }: { t: Tab; active: boolean; info: (x: Tab | Pane) => TabInfo
-  /** Its panes' own tabs aren't listed under it: each cell says how many more it has. */
-  folded: boolean }) {
+/** A split tab's panes in the shape of its split, a mini-map (a narrow one just its icon; floating ones after it). Click
+ *  focuses one, a press drags it (onto another: they swap), X closes it, right-click is its menu, its +2 folds or lists. */
+function SplitMap({ t, active, info, listed }: { t: Tab; active: boolean; info: (x: Tab | Pane) => TabInfo
+  /** Its panes' own tabs are listed under it. */
+  listed: boolean }) {
   const floats = panesOf(t).filter((p) => p.float)
   // (the pane a dragged one would swap with)
   const into = useDrag((d) => {
@@ -58,12 +58,14 @@ function SplitMap({ t, active, info, folded }: { t: Tab; active: boolean; info: 
   })
   // (its frame and the lines between its cells, one weight: panes in a window)
   const line = active ? "border-foreground/20 ring-foreground/20" : "border-foreground/15 ring-foreground/15"
-  const menu = (p: Pane) => menuFor(() => [...paneMenuOf(p.id), { label: "Tab", icon: AppWindow, sep: true, run: () => {}, items: tabMenuOf(t.id) }])
+  const stacked = placesIn(t).length > panesOf(t).length
+  const fold = stacked ? [{ label: listed ? "Fold pane tabs" : "List pane tabs", icon: listed ? ListCollapse : ListTree, sep: true, run: () => foldSplitMoving(t.id) }] : []
+  const menu = (p: Pane) => menuFor(() => [...paneMenuOf(p.id), ...fold, { label: "Tab", icon: AppWindow, sep: !fold.length, run: () => {}, items: tabMenuOf(t.id) }])
   const cell = (p: Pane, size: number, icon = false) => {
     const pi = info(p), on = active && p.id === t.focus
     const mark = <Badged on={pi.badge}><pi.icon className={cn("size-4 shrink-0", pi.tint ? undefined : on ? "text-primary" : "text-muted-foreground", pi.iconClassName)} strokeWidth={2} style={pi.tint ? { color: pi.tint } : undefined} /></Badged>
     // (lit as a dragged pane's swap target, else under the pointer: the pane a press would grab)
-    const lit = into === p.id ? "bg-primary/15" : !into && "hover:bg-foreground/[0.06]", more = folded ? placesOf(p).length - 1 : 0
+    const lit = into === p.id ? "bg-primary/15" : !into && "hover:bg-foreground/[0.06]", more = placesOf(p).length - 1
     // (its mark, as a tab's row has it: a page playing in it, its speaker a click from muting it)
     const sign = pi.mark && <IconAction action={pi.mark} className={icon ? undefined : "-ml-1 @max-[52px]:ml-0"}><pi.mark.icon className={cn("size-3.5 shrink-0", !pi.mark.tint && "text-muted-foreground")} strokeWidth={2.25} style={pi.mark.tint ? { color: pi.mark.tint } : undefined} /></IconAction>
     if (icon) return <span key={p.id} data-pane-half={p.id} data-ui={`pane:${p.id}`} onContextMenu={menu(p)} className={cn("flex h-5.5 shrink-0 items-center gap-1 rounded-[5px] px-1 ring-1 ring-inset transition-colors", line, lit)}>{mark}
@@ -75,12 +77,16 @@ function SplitMap({ t, active, info, folded }: { t: Tab; active: boolean; info: 
           {mark}
           {sign}
           <span className={cn("min-w-0 flex-1 overflow-hidden fade-end @max-[52px]:hidden", active && !on && "font-normal text-muted-foreground")}>{pi.label}</span>
-          {/* (its count of the pane's other tabs gives its place to the X, as the name fades under it) */}
-          {more > 0 && <span data-cell-more className="shrink-0 pr-0.5 text-[11px] font-normal text-tertiary tabular-nums transition-opacity group-hover/cell:opacity-0 group-focus-within/cell:opacity-0 @max-[72px]:hidden">+{more}</span>}
+          {/* (its count of the pane's other tabs lists or folds them, beside the X's slot: nothing moves under the pointer) */}
+          {more > 0 && <button type="button" data-cell-more data-no-drag aria-expanded={listed} aria-label={listed ? "Fold pane tabs" : `List ${pi.label}'s ${more + 1} tabs`}
+            data-tip={listed ? "Fold tabs" : "Show tabs"} onClick={(e) => { e.preventDefault(); e.stopPropagation(); foldSplitMoving(t.id) }}
+            className={cn("mr-4.5 grid h-4.5 min-w-4.5 shrink-0 cursor-pointer place-items-center rounded-[4px] px-1 text-[11px] font-normal tabular-nums transition-colors",
+              "hover:bg-foreground/[0.08] hover:text-foreground @max-[72px]:hidden",
+              listed ? "bg-foreground/[0.08] text-muted-foreground" : "text-tertiary")}>+{more}</button>}
         </span>
         <button type="button" data-cell-close={p.id} data-no-drag aria-label={`Close ${pi.label}`} data-tip="Close pane"
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); closePane(p.id) }}
-          className="absolute inset-y-0 right-0.5 my-auto grid size-4.5 cursor-pointer place-items-center rounded-[4px] text-muted-foreground opacity-0 transition-opacity group-hover/cell:opacity-100 hover:bg-foreground/[0.08] hover:text-foreground focus-visible:opacity-100 @max-[40px]:hidden">
+          className="pointer-events-none absolute inset-y-0 right-0.5 my-auto grid size-4.5 cursor-pointer place-items-center rounded-[4px] text-muted-foreground opacity-0 transition-opacity group-hover/cell:pointer-events-auto group-hover/cell:opacity-100 hover:bg-foreground/[0.08] hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 @max-[40px]:hidden">
           <X className="size-3" strokeWidth={2.25} />
         </button>
       </span>
@@ -157,9 +163,9 @@ function Row({ t, l, info, only, line, hit }: { t: Tab; l: TabList; info: (x: Ta
     const half = split ? halfOf(e) : undefined, p = half ? paneById(half) : undefined
     if (p) startDrag(e, { from: "pane", pane: p.id, to: p.to, label: info(p).label }); else dragTab(e, t)
   }
-  // (on screen, a split whose panes have tabs of their own lists them under its row, a list a pane)
-  const lists = split && active && placesIn(t).length > ps.length
-  const map = split ? <SplitMap t={t} active={active} info={info} folded={!lists} /> : null
+  // (a split whose panes have tabs of their own lists them under its row, a list a pane, till the user folds them)
+  const lists = split && !t.folded && placesIn(t).length > ps.length
+  const map = split ? <SplitMap t={t} active={active} info={info} listed={lists} /> : null
   const buttons = split || item ? [] : tabButtons(ps[0].to)
   const dragging = item?.tab === t.id || (picked && item?.tabs) || (!!t.group && item?.group === t.group)
   return (
@@ -180,7 +186,7 @@ function Row({ t, l, info, only, line, hit }: { t: Tab; l: TabList; info: (x: Ta
         {t.pinned && <span className="grid size-5 shrink-0 place-items-center text-muted-foreground" aria-label="Pinned"><Pin className="size-3.5" strokeWidth={2} /></span>}
         {split && <SplitMore label={ps.map((p) => info(p).label).join(" | ")} held={!!dragging} />}
       </SidebarRow>
-      {lists && <div data-pane-lists className={cn("flex flex-col gap-1 pt-px pb-1", line && "ml-3.5")}>{ps.map((p) => <PaneList key={p.id} t={t} p={p} info={info} hit={hit} />)}</div>}
+      {lists && <PaneLists t={t} active={active} line={!!line} info={info} hit={hit} />}
     </div>
   )
 }
@@ -215,12 +221,19 @@ function PaneGlyph({ n, id, on }: { n: Part; id: string; on: boolean }) {
   return <span aria-hidden className="flex h-2.5 w-3.5 shrink-0">{draw(n, 1)}</span>
 }
 
-/** A split's pane's own tabs (Pane.stack), under the split's row: headed by where the pane sits (lit while focused), its
- *  places in their order. Dragged over, they make way for what would land among them. */
-function PaneList({ t, p, info, hit }: { t: Tab; p: Pane; info: (x: Tab | Pane) => TabInfo; hit: TabDrop | null }) {
+/** A split's panes' lists under its row, growing out of it when a +n lists them (and shrinking into it folded). */
+function PaneLists({ t, active, line, info, hit }: { t: Tab; active: boolean; line: boolean; info: (x: Tab | Pane) => TabInfo; hit: TabDrop | null }) {
+  const box = useRef<HTMLDivElement>(null)
+  useListsIn(box, t.id)
+  return <div ref={box} data-pane-lists={t.id} className={cn("flex flex-col gap-1 pt-px pb-1", line && "ml-3.5")}>{panesOf(t).map((p) => <PaneList key={p.id} t={t} p={p} active={active} info={info} hit={hit} />)}</div>
+}
+
+/** A split's pane's own tabs (Pane.stack), under the split's row: headed by where the pane sits (lit while focused on
+ *  screen), its places in their order. Dragged over, they make way for what would land among them. */
+function PaneList({ t, p, active, info, hit }: { t: Tab; p: Pane; active: boolean; info: (x: Tab | Pane) => TabInfo; hit: TabDrop | null }) {
   const item = useDrag((d) => d?.item)
   const box = useRef<HTMLDivElement>(null)
-  const places = placesOf(p), focused = t.focus === p.id
+  const places = placesOf(p), focused = active && t.focus === p.id
   const moving = item?.pane ?? item?.tab ?? item?.to
   const order = moving && hit?.kind === "places" && hit.pane === p.id ? reorder(places.map((x) => x.id), [moving], hit.index).order : null
   useSlide(box, order, "y")

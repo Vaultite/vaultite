@@ -261,6 +261,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `foldGroupMoving(id)`: Fold or open a tab group as the user does it (its chip or row clicked): its tabs shrink into it, then it folds; or they grow out of it.
 - `foldInList(open, activate?)`: Open (true) or close the row's children, or step into the first child / out to the parent, tree-style; `activate` opens a leaf on → (Vim's l).
 - `foldsAway(r, now, shown, after?)`: It folds under Earlier (the Agents and Terminals panels): it has asked nothing for `after` (null: never) since it came to rest (never when that's unknown: a terminal's `at` is its start) and no…
+- `foldSplitMoving(id)`: Fold split tab `id`'s panes' own tabs into its row, or list them under it, as the user does it (a cell's +n): they shrink into the row, then fold; or grow out of it.
 - `followLink(s, link, how, from?)`: Follow a link clicked in drawn Markdown (a file, heading or ^block, a detail, a #tag, a command, a web or app link).
 - `followMapTheme(map, onTheme)`: Follow light/dark and the colour scheme (data-scheme): reload the style so no old scheme colours linger.
 - `FormatCtx`
@@ -783,6 +784,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useHeldHeight(key, shrinks?, anyWidth?)`: holdHeight for a React element: put the ref on it.
 - `useHold(box)`: Whether the user is in the list, so nothing moves under them: the pointer over it, the keyboard in it, a menu opened from a row, a finger on it or its sidebar scrolling (a phone has no hover).
 - `useKeptCount(key, now, first?, most?)`: How many rows to draw while list `key` loads: `now` (how many it has; undefined while loading) is kept for next time, and while loading, what it had last time, at most `most` (`first`: never seen).
+- `useListsIn(ref, id)`: A split's lists, drawn: they grow out of its row when a click just listed them.
 - `useLive(path, version?, files?, every?)`: Live data from a plugin's route per mount (the last answer meanwhile), again when its cache or settings change, on a reconnect, `version`, vault files (`files`: any, or by path) and every `every`…
 - `useMachines()`: The machines, live (null until they're known; [] with the plugin off).
 - `useMenuShowing()`: A menu is showing, as a hook (what it was opened from holds still meanwhile).

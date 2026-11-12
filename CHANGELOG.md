@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A split's pane tabs stay put in the sidebar**: a split whose panes have tabs of their own lists them under its row
+  until you click a cell's +n, which folds them into the row (and lists them again) with a motion; switching tabs no
+  longer opens and closes them, and the +n steps aside for the X on hover instead of hiding under it.
 - **Jobs go to the machine with room for them**: a job goes to a machine that's on and has what it needs (its repo, this
   vault for notes, the macOS its repo's `.vaultite-jobs.json` asks for), the least loaded first, then your order in
   Jobs' machines; a coding job may run on a machine with another vault, its knocks, inbox asks and demo reaching you here.

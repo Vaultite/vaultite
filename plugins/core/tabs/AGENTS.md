@@ -15,11 +15,11 @@ focused (or that) pane's own tabs, shown, what it showed staying open behind it;
 terminal) opens its new tabs in the list, as the list's New tab row and a tab bar's + always do, and agents' tabs go
 there too. ⌘W closes the place a pane shows, its next showing (the pane goes with its last); Close pane (the palette, a
 pane's menu) closes it with all of them. ⌃Tab and ⇧⌘] go through the focused pane's tabs, then on to the next tab. While
-the split is on screen and a pane has more than one, the Tabs panel lists each pane's under its row, headed by where it
-sits: a click shows one, its X closes it, a drag moves it along its pane's list, into another's, onto a pane (an edge
+a pane has more than one, the Tabs panel lists each pane's under its row, headed by where it sits: a click shows one, its X closes it, a drag moves it along its pane's list, into another's, onto a pane (an edge
 splits it off, its own pane's too while that has others) or out to the list as a tab of its own, and a list's tab
-dropped on a pane's list joins it; another tab on screen, the row is its map again, each cell saying how many more its
-pane has (+2). With Pane tab bars (appearance `paneTabBars`, on by default; the tab bar on or off), every pane of a
+dropped on a pane's list joins it. Which tab is on screen never changes that: a cell's count of how many more its pane
+has (+2) folds the lists into the row and lists them again (`folded` on the tab, gone once no pane has more), so the
+rows under it never move as tabs switch. With Pane tab bars (appearance `paneTabBars`, on by default; the tab bar on or off), every pane of a
 split has a strip of its tabs on top, one too, its + opening one among them (a terminal's too: asked for there; none for
 a pinned tab's pane, whose new tabs go to the list); a tab dropped on a strip joins it. Off, a pane starts with what it
 shows (a note's bar its title row, with the pane's X and menu), and a tab dragged over a pane brings its strip back over

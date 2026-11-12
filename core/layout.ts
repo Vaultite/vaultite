@@ -31,7 +31,10 @@ export type Tab = { id: string; root: Layout; focus: string; zoom?: string
   /** Pinned: what's opened from it opens in a tab beside it, ⌘W and closing others leave it open. */
   pinned?: boolean
   /** The tab group it's in (one of its list's `groups`). */
-  group?: string }
+  group?: string
+  /** A split whose panes have tabs of their own, folded in the Tabs panel: its map says how many each has (+2), not
+   *  listing them under its row. Gone once no pane has others, so the next ones start listed. */
+  folded?: boolean }
 /** A tab group, as browsers have them: a named, coloured run of tabs side by side (those whose `group` is its id),
  *  folded to its name while `collapsed`. */
 export type Group = { id: string; name: string; color: Color; collapsed?: boolean }
@@ -189,7 +192,8 @@ function okTab(x: Obj): Tab | null {
   const root = cleanLayout(x.root)
   if (!root || !str(x.id)) return null
   return settledTab({ id: x.id, root, focus: String(x.focus ?? ""), ...(str(x.zoom) ? { zoom: x.zoom } : {}),
-    ...(str(x.name) ? { name: x.name.slice(0, 80) } : {}), ...(x.pinned === true ? { pinned: true } : {}), ...(str(x.group) ? { group: x.group } : {}) })
+    ...(str(x.name) ? { name: x.name.slice(0, 80) } : {}), ...(x.pinned === true ? { pinned: true } : {}), ...(str(x.group) ? { group: x.group } : {}),
+    ...(x.folded === true ? { folded: true } : {}) })
 }
 /** Tab `t` without the places seen already (in `taken`, or before in it): a place in two panes or tabs stays in the
  *  first. Null: none is left. */
@@ -612,9 +616,10 @@ export function settledTab(t: Tab): Tab {
   const ps = leaves(root), focus = ps.some((p) => p.id === t.focus) ? t.focus : ps[0].id
   const tiles = layout(root).panes
   const zoom = t.zoom && t.zoom === focus && tiles.length > 1 && tiles.some((p) => p.pane.id === t.zoom) ? t.zoom : undefined
-  if (root === t.root && zoom === t.zoom && focus === t.focus) return t
-  const { zoom: _, ...rest } = t
-  return { ...rest, root, focus, ...(zoom ? { zoom } : {}) }
+  const folded = !!t.folded && ps.some((p) => !!p.stack?.length)
+  if (root === t.root && zoom === t.zoom && focus === t.focus && folded === !!t.folded) return t
+  const { zoom: _, folded: _f, ...rest } = t
+  return { ...rest, root, focus, ...(zoom ? { zoom } : {}), ...(folded ? { folded } : {}) }
 }
 
 // ---------- a pane as the user names it (an agent's `vau open --in left`) ----------

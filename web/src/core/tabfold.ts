@@ -1,7 +1,7 @@
 // Tabs move as a browser's: a group folds by its tabs shrinking into its chip and opens by them growing out; new tabs
 // grow in (springing), closed ones shrink away. Only what the user does moves: an agent's fold or a workspace just shows.
 import { useLayoutEffect, useRef, type RefObject } from "react"
-import { closeTab, here, layoutQuiet, mayClose, onWorkspaceChange, replacingWorkspace, tabById } from "@/core/workspace"
+import { closeTab, foldSplit, here, layoutQuiet, mayClose, onWorkspaceChange, replacingWorkspace, tabById } from "@/core/workspace"
 import { placesIn, type TabList } from "../../../core/layout.ts"
 import { foldGroup, groupById, handOverFrom } from "@/core/tabgroups"
 import { moves, timing, type Pace } from "@/core/animation"
@@ -105,6 +105,44 @@ export function foldGroupMoving(id: string) {
     // (folded, React takes them away, whenever it draws: left shrunk till then. Not folded after all: put back)
     if (!groupById(id)?.collapsed) for (const e of els) running.get(e)?.cancel()
   }, () => {})
+}
+
+// ---------- a split's panes' own tabs, listed under its row (Tab.folded) ----------
+
+/** Splits whose lists are shrinking into their row, till they're folded; `token`: this fold, not a later one. */
+const splitFolding = new Map<string, number>()
+/** Splits whose lists were opened by a click, and when: they grow out of the row as they're drawn. */
+const listed = new Map<string, number>()
+const listsOf = (id: string) => document.querySelector<HTMLElement>(`[data-pane-lists="${id}"]`)
+
+/** Fold split tab `id`'s panes' own tabs into its row, or list them under it, as the user does it (a cell's +n): they
+ *  shrink into the row, then fold; or grow out of it. A click while they move turns them round. */
+export function foldSplitMoving(id: string) {
+  const t = tabById(id)
+  if (!t) return
+  const el = listsOf(id)
+  if (splitFolding.delete(id)) { if (el) turn([el], false); return }
+  if (t.folded || still() || !el) {
+    if (t.folded) listed.set(id, performance.now())
+    foldSplit(id, !t.folded)
+    return
+  }
+  const token = ++tokens
+  splitFolding.set(id, token)
+  turn([el], true)[0].finished.then(() => {
+    if (splitFolding.get(id) !== token) return
+    splitFolding.delete(id)
+    foldSplit(id, true)
+  }, () => {})
+}
+/** A split's lists, drawn: they grow out of its row when a click just listed them. */
+export function useListsIn(ref: RefObject<HTMLElement | null>, id: string) {
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el || still() || !recent(listed.get(id))) return
+    listed.delete(id)
+    grow(el, "base")
+  }, [])  // (on its first drawing only)
 }
 
 // ---------- tabs coming and going ----------

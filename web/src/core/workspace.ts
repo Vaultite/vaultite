@@ -691,6 +691,10 @@ export function togglePinTab(id: string) {
     return { ...t, pinned: true, root: mapPlaces(t.root, (p) => ({ ...p, home: p.to })) }
   }))
 }
+/** Fold a split's panes' own tabs into its row in the Tabs panel, or list them under it (Tab.folded). */
+export function foldSplit(id: string, folded: boolean) {
+  set(withTab(id, (t) => { const { folded: _, ...rest } = t; return folded ? { ...rest, folded: true } : rest }))
+}
 /** Name a tab (Tab.name: Rename tab), or "" to give it back the name of what it shows. */
 export function nameTab(id: string, name: string) {
   const clean = name.replace(/\s+/g, " ").trim().slice(0, 80)

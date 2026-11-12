@@ -1,8 +1,8 @@
 // A split's panes with tabs of their own (core/layout.ts Pane.stack), as the user has the app: the tab bar, pane tab bars
 // and rails off, panes as cards, file bars fading, the tabs in the sidebar. The Tabs panel lists each pane's tabs under
-// the split's row while it's on screen (plugins/core/tabs PaneList): a click shows one, its X closes it, a drag moves it
-// along its pane's list, into the other's or out to the list; a list's tab dragged onto a pane's list joins it; another
-// tab shown, the row folds to its map with +n per cell. ⌘W closes the place shown, the pane's next showing. The place a
+// the split's row (plugins/core/tabs PaneList): a click shows one, its X closes it, a drag moves it along its pane's
+// list, into the other's or out to the list; a list's tab dragged onto a pane's list joins it; another tab shown, they
+// stay; a cell's +n folds them into the row and lists them again, and steps aside for the X on hover. ⌘W closes the place shown, the pane's next showing. The place a
 // pane shows dragged onto its own pane's edge splits off; the tab on screen too. With the tab bar on, every pane's strip
 // of its tabs (components/Tabs.tsx PlaceStrip), one tab too: its +, a tab dropped on it. Pane tab bars off with the tab
 // bar on: no strips, a cell's +n lists its pane's tabs, a tab dragged over a pane brings its strip back to drop into.
@@ -143,24 +143,40 @@ try {
   check("a place dragged out to the list is a tab of its own", await until(async () => (await state()).tabs.length === 2 && same((await state()).tabs[0].panes, [D, E]), 3000), await state())
   check("…the split's row folds back to its map, no pane having more", await until(async () => (await lists.count()) === 0, 3000))
 
-  // ⌘T in a split; then folded while another tab shows: +n per cell.
+  // ⌘T in a split; another tab shown, its lists stay; a cell's +n folds them and lists them again.
   await page.locator(`[data-tabs-panel] [data-open-tab="${split}"]`).click(); await until(async () => (await state()).active === split)
   await command(page, "Open new tab")
   check("⌘T in a split opens a blank tab of the focused pane", await until(async () => (await shown())?.panes.some((p) => p.includes("^new")), 3000), await shown())
   await hash(c); await until(async () => (await shown())?.panes.some((p) => p.includes(`^${C}`)))
   const other = (await state()).tabs.find((t) => t.id !== split).id
   await page.locator(`[data-tabs-panel] [data-open-tab="${other}"]`).click(); await until(async () => (await state()).active === other)
-  check("another tab shown: the split's row is its map, a cell saying +1", await until(async () => (await lists.count()) === 0 && (await page.locator("[data-tabs-panel] [data-cell-more]").allInnerTexts()).join() === "+1", 3000),
-    await page.locator("[data-tabs-panel] [data-cell-more]").allInnerTexts())
-  await page.locator("[data-tabs-panel]").screenshot({ path: `${OUT}panetabs-folded.png` })
+  const moreBtn = page.locator("[data-tabs-panel] [data-cell-more]")
+  const otherRow = page.locator(`[data-tabs-panel] [data-open-tab="${other}"]`)
+  const otherY = async () => (await otherRow.boundingBox())?.y
+  check("another tab shown: the split's lists stay, a cell saying +1", await until(async () => (await lists.count()) === 2 && (await moreBtn.allInnerTexts()).join() === "+1", 3000),
+    [await lists.count(), await moreBtn.allInnerTexts()])
   {
-    // (hovered, its X shows over its end: the +1 steps aside, not drawn under it)
+    // (its +1 beside its X's slot, never under it: a click or tap on it, hovered or not, is the +1's)
+    const atMore = () => cell.locator("[data-cell-more]").evaluate((e) => { const r = e.getBoundingClientRect(); return !!document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.closest("[data-cell-more]") })
     const cell = page.locator("[data-tabs-panel] [data-pane-half]").filter({ has: page.locator("[data-cell-more]") }).first()
-    const op = async (sel) => cell.locator(sel).evaluate((e) => Number(getComputedStyle(e).opacity))
+    await page.mouse.move(0, 0)
+    check("not hovered, a click on a cell's +1 is the +1's, not its hidden X's", await atMore())
+    const box = async (sel) => cell.locator(sel).evaluate((e) => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, o: Number(getComputedStyle(e).opacity) } })
     await cell.hover()
-    check("hovered, a cell's +1 gives its place to its X", await until(async () => (await op("[data-cell-more]")) === 0 && (await op("[data-cell-close]")) === 1, 2000),
-      [await op("[data-cell-more]"), await op("[data-cell-close]")])
-    await page.locator("[data-tabs-panel]").screenshot({ path: `${OUT}panetabs-folded-hover.png` })
+    check("hovered, a cell's +1 and its X side by side, both shown and the +1 still the +1's", (await atMore()) && await until(async () => { const [m, x] = [await box("[data-cell-more]"), await box("[data-cell-close]")]; return m.o === 1 && x.o === 1 && m.r <= x.l + 0.5 }, 2000),
+      [await box("[data-cell-more]"), await box("[data-cell-close]")])
+    await page.locator("[data-tabs-panel]").screenshot({ path: `${OUT}panetabs-hover.png` })
+    const before = await otherY()
+    await moreBtn.click()
+    check("a click on +1 folds the lists into the row, the tab on screen as it was", await until(async () => (await lists.count()) === 0 && (await state()).active === other, 3000), await lists.count())
+    check("…the rows under it move up", (await otherY()) < before - 20, [before, await otherY()])
+    check("…the +1 still there, to list them again", (await moreBtn.allInnerTexts()).join() === "+1")
+    await page.locator("[data-tabs-panel]").screenshot({ path: `${OUT}panetabs-folded.png` })
+    await page.locator(`[data-tabs-panel] [data-open-tab="${split}"]`).click(); await until(async () => (await state()).active === split)
+    check("folded, showing the split keeps them folded", (await lists.count()) === 0)
+    await page.locator(`[data-tabs-panel] [data-open-tab="${other}"]`).click(); await until(async () => (await state()).active === other)
+    await moreBtn.click()
+    check("a click on +1 again lists them", await until(async () => (await lists.count()) === 2, 3000))
     await page.mouse.move(0, 0)
   }
 
