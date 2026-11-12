@@ -18,11 +18,12 @@ const REDIRECT = "https://app.example.com/callback"
 fs.writeFileSync(path.join(local, "config.json"), JSON.stringify({ mcp: { public: { url: PUB, port: pubPort, redirectHosts: ["app.example.com"], approvalWait: 3 } } }))
 const proc = testServer({ stdio: "ignore",
   env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", VAULTITE_VAULT: VAULT, VAULTITE_LOCAL: local } })
-const stop = () => {
-  if (proc.exitCode === null) proc.kill()
+// (the server gone first: one still exiting writes its last files into `local` as it's removed)
+const stop = async () => {
+  if (proc.exitCode === null && proc.signalCode === null) { const gone = new Promise((r) => proc.once("exit", r)); proc.kill(); await Promise.race([gone, wait(5000)]) }
   try { process.kill(Number(fs.readFileSync(path.join(os.tmpdir(), `vaultite-ptyd1-vaultite-${port}.sock.pid`), "utf8"))) } catch {}
   spawnSync("tmux", ["-L", `vaultite-${port}`, "kill-server"], { stdio: "ignore" })
-  fs.rmSync(local, { recursive: true, force: true })
+  fs.rmSync(local, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
 }
 
 try {
@@ -224,6 +225,6 @@ try {
   check("and its refresh token", ref2.status === 400, ref2.body)
   check("no secret in the vault", !fs.readdirSync(path.join(VAULT, ".vaultite"), { recursive: true }).map(String).some((f) => { try { return /refresh|"key"/.test(fs.readFileSync(path.join(VAULT, ".vaultite", f), "utf8")) && f.includes("mcp") } catch { return false } }))
 } finally {
-  stop()
+  await stop()
 }
 await done()

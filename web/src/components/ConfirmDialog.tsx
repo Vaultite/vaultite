@@ -6,7 +6,7 @@ import { fadeAway } from "@/core/animation"
 import { usePageLock } from "@/core/pagelock"
 import { cn } from "@/lib/utils"
 import { signal } from "@/core/signal"
-import { answerUi } from "@/core/live"
+import { answerUi } from "@/core/askers"
 
 export type ConfirmOptions = {
   title: string

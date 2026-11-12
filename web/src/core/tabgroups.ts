@@ -7,7 +7,7 @@ import {
 } from "../../../core/layout.ts"
 import { activePane, activeTab, closeTabIds, closePane, getWorkspace, here, paneById, paneTab, popoutId, selectPane, selectTab, set, show, showActive, tabById } from "@/core/workspace"
 import { canPaneIntoPane, canTabIntoPane, openInSplit, paneIntoPane, paneToTab, placeTab, splitPane, tabIntoPane, type Zone } from "@/core/splits"
-import { answerUi } from "@/core/live"
+import { answerUi } from "@/core/askers"
 
 /** A tab group of this window's. */
 export const groupById = (id: string): Group | undefined => here().groups?.find((g) => g.id === id)

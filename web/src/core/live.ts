@@ -5,6 +5,7 @@ import { heardBuild } from "@/core/builds"
 import { DEVICE } from "@/core/device"
 import { notify } from "@/core/notify"
 import { share } from "@/core/share"
+import { askerOf } from "@/core/askers"
 
 /** Changed vault paths (a folder: anything in it), or null: anything may have changed. */
 export type Paths = string[] | null
@@ -109,16 +110,7 @@ export type UiAction = { action: string; path?: string; split?: "right" | "down"
   text?: string; kind?: "error" | null; button?: { label: string; open: string } | null }
 let uiHandler: ((m: UiAction) => unknown) | null = null
 export const onUiAction = (fn: (m: UiAction) => unknown) => { uiHandler = fn }
-/** What the server asks this window for, by action (its commands, the dev tools: core/dev.ts): the result, sent back as
- *  the answer (an error's message if it throws). `ended` aborts when the server stops waiting (answered elsewhere). */
-type Asker = (m: Record<string, unknown>, ended: AbortSignal) => unknown
-const askers = new Map<string, Asker>()
 const asking = new Map<string, AbortController>()
-export const answerUi = (action: string, fn: Asker) => { askers.set(action, fn) }
-/** A plugin's answer to an ask ("<plugin id>:<name>", its `answers`). Set by the app, which knows the plugins. */
-let pluginAsker: (action: string) => Asker | null = () => null
-export const setPluginAsker = (fn: (action: string) => Asker | null) => { pluginAsker = fn }
-const askerOf = (action: string) => askers.get(action) ?? pluginAsker(action)
 
 /** Tell the server this window is the one in use (so `ui` messages come here). */
 let said = 0

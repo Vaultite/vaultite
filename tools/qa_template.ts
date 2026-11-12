@@ -62,7 +62,10 @@ export function template(v: Variant, boot: Boot): Promise<string> {
   const key = keyOf(v), dir = path.join(HOME, key)
   if (fs.existsSync(dir)) {
     try { fs.utimesSync(dir, new Date(), new Date()) } catch { /* removed meanwhile: made again below */ }
-    if (fs.existsSync(dir)) return Promise.resolve(dir)
+    if (whole(dir)) return Promise.resolve(dir)
+    // (moved aside first: a run copying it now keeps what it has, and the name is free for the new one)
+    const aside = `${dir}.making-broken-${process.pid}`
+    try { fs.renameSync(dir, aside); fs.rmSync(aside, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }) } catch { /* another run took it */ }
   }
   let p = making.get(key)
   if (!p) {
@@ -98,11 +101,21 @@ async function make(v: Variant, dir: string, boot: Boot): Promise<string> {
       if (fs.existsSync(path.join(local, "cache"))) fs.renameSync(path.join(local, "cache"), path.join(work, "cache"))
     }
     for (const n of ["local", "scratch"]) fs.rmSync(path.join(work, n), { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+    fs.writeFileSync(path.join(work, LIST), JSON.stringify(filesUnder(work)))
     try { fs.renameSync(work, dir) } catch (e) { if (!fs.existsSync(dir)) throw e }
     return dir
   } finally {
     fs.rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
   }
+}
+
+/** Every file a template was made with, kept in it: one missing since (a Mac's temp cleanup, dirhelper at 03:35, deletes
+ *  files dated over 3 days back, as the sandbox dates its notes) makes it again, as CI's fresh runner always has. */
+const LIST = "files.json"
+const filesUnder = (dir: string): string[] => (fs.readdirSync(dir, { recursive: true, withFileTypes: true }) as fs.Dirent[])
+  .filter((e) => !e.isDirectory()).map((e) => path.relative(dir, path.join(e.parentPath, e.name)))
+function whole(dir: string): boolean {
+  try { return (JSON.parse(fs.readFileSync(path.join(dir, LIST), "utf8")) as string[]).every((f) => fs.existsSync(path.join(dir, f))) } catch { return false }
 }
 
 /** Templates unused for UNUSED, and makings a stopped run left. */

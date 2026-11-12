@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The desktop app's first-run window and screen sharing's pages open again**: since updates began downloading only
+  the files that changed, they stopped on an error as they started.
+- **A shared folder's link opens again for its guests**: since updates began downloading only the files that changed,
+  a guest's page stopped at "Vaultite couldn't load".
 - **A new vault's welcome card shows on a Mac even when it opens right after the vault is made**: it no longer
   depends on the very first view of the vault having heard the offer.
 - **A big vault opens again in a fraction of the bytes**: its state comes in pieces named by their content, which the

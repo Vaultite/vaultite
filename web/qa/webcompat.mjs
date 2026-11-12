@@ -41,7 +41,7 @@ const server = http.createServer((req, res) => {
   if (u.startsWith("/room")) return send(page("Room", `<button id="share" onclick="navigator.mediaDevices.getDisplayMedia({ video: true, audio: true }).then(async (s) => {
   const c = new AudioContext(), a = c.createAnalyser(), d = new Float32Array(a.fftSize); let peak = 0
   if (s.getAudioTracks().length) c.createMediaStreamSource(s).connect(a)
-  for (let i = 0; i < 20; i++) { await new Promise((r) => setTimeout(r, 100)); a.getFloatTimeDomainData(d); for (const x of d) peak = Math.max(peak, Math.abs(x)) }
+  for (let i = 0; i < 40 && peak <= 0.01; i++) { await new Promise((r) => setTimeout(r, 100)); a.getFloatTimeDomainData(d); for (const x of d) peak = Math.max(peak, Math.abs(x)) }
   const v = document.createElement('video'); v.muted = true; v.srcObject = s; await v.play().catch(() => {}); await new Promise((r) => setTimeout(r, 500))
   document.title = 'shared video ' + s.getVideoTracks().length + ' sound ' + s.getAudioTracks().length + (peak > 0.01 ? ' heard' : ' silent') + ' ' + (v.videoWidth > 0 ? 'frames' : 'no frames'); setTimeout(() => s.getTracks().forEach((t) => t.stop()), 2000)
 }, (e) => { document.title = 'not shared ' + e.name })">Share</button>`))
@@ -217,6 +217,7 @@ await app.evaluate(() => { globalThis.__menu = null })
 await clickInPage("#share")
 check("a call's share offers the other tabs", await until(async () => (await shareMenu()).includes("Tone") && (await shareMenu())[1] === "A tab, with its sound", 5000), await shareMenu())
 await pickInMenu("Tone")
+// (the room listens till it hears it, up to 4 s: on a busy machine the tone reaches the share late)
 // (its tone starts once it's shared, in a tab muted (a call still hears a muted tab), and ends before the share does:
 // nothing reaches the speakers)
 await app.evaluate(({ webContents }) => { const w = webContents.getAllWebContents().find((x) => x.getTitle() === "Tone"); w?.setAudioMuted(true); return w?.executeJavaScript("tone()") })

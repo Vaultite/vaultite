@@ -18,7 +18,7 @@ const STUBS: Record<string, string> = {
   "@/core/prefs": "export const getPrefs = () => ({ disabled: [] })",
   "@/core/appearance": "export const onLook = () => () => {}",
   "@/core/desktop": "export const webPages = null; export const keyboardTakes = () => 0; export const pageTakenSince = () => null",
-  "@/core/live": "export const answerUi = (kind, fn) => { (globalThis.__answerUi ??= {})[kind] = fn }",
+  "@/core/askers": "export const answerUi = (kind, fn) => { (globalThis.__answerUi ??= {})[kind] = fn }",
   "@/core/pagelock": "export const relockScroll = () => {}",
 }
 // Autosave's server, reads, toasts and connection: the made-up ones its section sets on globalThis.__autosave.

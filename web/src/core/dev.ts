@@ -2,7 +2,7 @@
 // its palette's commands, and the dev tools: its console's last messages, its HTML, eval, a screenshot (desktop app).
 import { available, commandList, keysOf } from "@/core/commands"
 import { desktop } from "@/core/desktop"
-import { answerUi } from "@/core/live"
+import { answerUi } from "@/core/askers"
 import { trace } from "@/core/trace"
 
 type Line = { t: number; level: string; text: string }

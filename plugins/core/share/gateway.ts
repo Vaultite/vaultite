@@ -318,7 +318,8 @@ export class Gateway {
       // (the app knows it's a guest's before its code runs: web/src/core/share.ts)
       const said = JSON.stringify(this.guestInfo(g)).replace(/</g, "\\u003c")
       const page = html.replace("<head>", () => `<head>\n    <script>window.vaultiteShare = ${said}</script>`)
-      const scripts = [...page.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => `'sha256-${crypto.createHash("sha256").update(m[1]).digest("base64")}'`)
+      // (every inline one, the build's import map too: one left out is refused, and its files then never load)
+      const scripts = [...page.matchAll(/<script(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<\/script>/g)].map((m) => `'sha256-${crypto.createHash("sha256").update(m[1]).digest("base64")}'`)
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Content-Security-Policy": csp(scripts) })
       return res.end(page)
     }

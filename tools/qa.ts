@@ -94,7 +94,9 @@ function standIns() {
   const key = createHash("sha256").update(JSON.stringify([code, names, process.platform, process.arch])).digest("hex").slice(0, 12)
   // (built once per source, renamed in whole: two runs at once, or one stopped midway, never use half of it)
   const dir = path.join(sharedTmp(), `vaultite-qa-agents-${key}`)
-  if (fs.existsSync(dir)) return dir
+  // (each, not the folder: a Mac's temp cleanup deletes files over 3 days old, tools/qa_template.ts)
+  if (["claude", ...names].every((n) => fs.existsSync(path.join(dir, n)))) return dir
+  fs.rmSync(dir, { recursive: true, force: true })
   const work = fs.mkdtempSync(`${dir}.making-`), src = path.join(work, "agent.c")
   try {
     fs.writeFileSync(src, code)
