@@ -1,10 +1,11 @@
 // What's over what in a vault window, and where the pointer goes: one owner, pure, so every rule is tested on Node.
 // web.ts applies it; nothing else orders a window's views or passes the pointer to a page.
+import { z } from "zod"
 
 /** How the window's own page is over its pages: not (null), taking the pointer ("app": a menu, a drag), or letting it
  *  through to the page under it ("through": a toast, a sidebar peeking). */
-export type Raise = "app" | "through" | null
-export const raiseOf = (x: unknown): Raise => (x === "app" || x === "through" ? x : null)
+export const RAISE = z.enum(["app", "through"]).nullable().catch(null)
+export type Raise = z.infer<typeof RAISE>
 
 /** A view of a vault window: its own page, a page (`full`: full screen in the window), or chrome drawn over all of
  *  them (an extension's popup, a top strip). */
@@ -22,27 +23,20 @@ export function stackOrder<V>(views: readonly V[], roleOf: (v: V) => Role, raise
   return [...(raise ? [...pages, ...win] : [...win, ...pages]), ...group("full"), ...group("chrome")]
 }
 
-export type PointerKind = "mouseMove" | "mouseDown" | "mouseUp" | "mouseLeave" | "mouseWheel"
-export type Button = "left" | "middle" | "right"
-export type Key = "alt" | "control" | "meta" | "shift"
-/** The pointer over a page while the window's page lets it through, at the page's CSS pixels from its corner. */
-export type Passed = { kind: PointerKind; x: number; y: number; button: Button; clickCount: number; dx: number; dy: number; keys: Key[] }
-
-const KINDS: readonly PointerKind[] = ["mouseMove", "mouseDown", "mouseUp", "mouseLeave", "mouseWheel"]
-const KEYS: readonly Key[] = ["alt", "control", "meta", "shift"]
-const isKind = (x: unknown): x is PointerKind => KINDS.some((k) => k === x)
-const isKey = (x: unknown): x is Key => KEYS.some((k) => k === x)
-const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0)
-
-/** What the window's page sent (`web:pointer`), or null when it isn't a pointer event. */
-export function passedOf(m: unknown): Passed | null {
-  if (!m || typeof m !== "object" || !("type" in m) || !isKind(m.type)) return null
-  const field = (k: string): unknown => Reflect.get(m, k)
-  const button = field("button"), keys = field("keys")
-  return { kind: m.type, x: num(field("x")), y: num(field("y")), button: button === "right" || button === "middle" ? button : "left",
-    clickCount: Math.max(1, Math.min(3, num(field("clickCount")))), dx: num(field("dx")), dy: num(field("dy")),
-    keys: Array.isArray(keys) ? KEYS.filter((k) => keys.some((x) => isKey(x) && x === k)) : [] }
-}
+const KEYS = ["alt", "control", "meta", "shift"] as const
+const finite = (or: number) => z.number().catch(or)
+/** The pointer over a page while the window's page lets it through, as the window's page sends it (`web:pointer`), at
+ *  the page's CSS pixels from its corner. */
+export const PASSED = z.object({
+  type: z.enum(["mouseMove", "mouseDown", "mouseUp", "mouseLeave", "mouseWheel"]),
+  x: finite(0), y: finite(0), dx: finite(0), dy: finite(0),
+  button: z.enum(["left", "middle", "right"]).catch("left"),
+  clickCount: finite(1).transform((n) => Math.max(1, Math.min(3, n))),
+  keys: z.array(z.string()).catch([]).transform((ks) => KEYS.filter((k) => ks.includes(k))),
+}).transform(({ type, ...rest }) => ({ kind: type, ...rest }))
+export type Passed = z.infer<typeof PASSED>
+export type PointerKind = Passed["kind"]
+export type Button = Passed["button"]
 
 /** A window's pointer: how its page is raised, whether a pinch goes to the page under the pointer, and the buttons a
  *  passed press holds down in each page (by id), as the DevTools protocol's bits. */
@@ -66,7 +60,9 @@ export type PointerEffect =
 
 const BITS: Record<Button, number> = { left: 1, right: 2, middle: 4 }
 
-export function pointerStep(s: Pointer, e: PointerEvent): { to: Pointer; do: PointerEffect[] } {
+export type PointerMove = { to: Pointer; do: PointerEffect[] }
+
+export function pointerStep(s: Pointer, e: PointerEvent): PointerMove {
   const pinch = (on: boolean): PointerEffect[] => (s.pinch === on ? [] : [{ do: "pinch", on }])
   const holding = (page: number, buttons: number) => {
     const held = new Map(s.held)

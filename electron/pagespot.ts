@@ -22,27 +22,26 @@ export type SpotEffect = "show" | "hide" | "throttle" | "unthrottle" | "to-parke
 /** On screen, where the user sees it. */
 export const shown = (s: Spot) => s.at === "tab" || s.at === "fill"
 
-export function spotStep(s: Spot, e: SpotEvent): { to: Spot; do: SpotEffect[] } {
-  const stay = { to: s, do: [] }
-  const park = (now: number): { to: Spot; do: SpotEffect[] } => s.at === "parked" ? stay
-    : { to: { at: "parked", woke: s.at === "resting" ? now : 0 }, do: ["unfocus", "unthrottle", "to-parked", "show"] }
+export type SpotMove = { to: Spot; do: SpotEffect[] }
+
+const parkFrom = (s: Spot, now: number): SpotMove => s.at === "parked" ? { to: s, do: [] }
+  : { to: { at: "parked", woke: s.at === "resting" ? now : 0 }, do: ["unfocus", "unthrottle", "to-parked", "show"] }
+
+function fitFrom(s: Spot, e: Extract<SpotEvent, { type: "fit" }>): SpotMove {
+  if (e.fill) return { to: { at: "fill" }, do: ["to-fill", "show"] }
+  const see: SpotEffect[] = e.drawn ? ["see"] : []
+  if (e.rect && (s.at === "parked" || s.at === "resting")) return { to: { at: "tab" }, do: ["hide", "raise", "to-tab", "show", ...see] }
+  if (e.rect) return { to: { at: "tab" }, do: ["to-tab", "show", ...(s.at === "hidden" ? see : [])] }
+  if (e.drawn) return parkFrom(s, e.now)
+  return s.at === "hidden" || s.at === "resting" ? { to: s, do: [] } : { to: HIDDEN, do: ["keys-out", "hide"] }
+}
+
+export function spotStep(s: Spot, e: SpotEvent): SpotMove {
   switch (e.type) {
-    case "fit":
-      if (e.fill) return { to: { at: "fill" }, do: ["to-fill", "show"] }
-      if (e.rect) {
-        if (s.at === "parked" || s.at === "resting") return { to: { at: "tab" }, do: ["hide", "raise", "to-tab", "show", ...(e.drawn ? ["see" as const] : [])] }
-        if (s.at === "hidden") return { to: { at: "tab" }, do: ["to-tab", "show", ...(e.drawn ? ["see" as const] : [])] }
-        return { to: { at: "tab" }, do: ["to-tab", "show"] }
-      }
-      if (e.drawn) return park(e.now)
-      return s.at === "hidden" || s.at === "resting" ? stay : { to: HIDDEN, do: ["keys-out", "hide"] }
-    case "stow":
-      return e.drawn ? park(e.now) : { to: HIDDEN, do: ["hide"] }
-    case "park":
-      return park(e.now)
-    case "rest":
-      return s.at === "parked" ? { to: { at: "resting" }, do: ["hide", "throttle"] } : stay
-    case "hide":
-      return { to: HIDDEN, do: ["hide"] }
+    case "fit": return fitFrom(s, e)
+    case "stow": return e.drawn ? parkFrom(s, e.now) : { to: HIDDEN, do: ["hide"] }
+    case "park": return parkFrom(s, e.now)
+    case "rest": return s.at === "parked" ? { to: { at: "resting" }, do: ["hide", "throttle"] } : { to: s, do: [] }
+    case "hide": return { to: HIDDEN, do: ["hide"] }
   }
 }

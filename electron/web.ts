@@ -11,8 +11,8 @@ import { ACCOUNTS, covers, nonempty, type Rule, type Who } from "./siteaccounts.
 import { writeAtomic } from "./setup.ts"
 import { otherAppScheme } from "../core/opening.ts"
 import { QUIET } from "./quiet.ts"
-import { HIDDEN, shown, type Spot, type SpotEvent, spotStep } from "./pagespot.ts"
-import { NO_POINTER, type Passed, type Pointer, type PointerEvent, pointerStep, passedOf, type Raise, raiseOf, type Role, stackOrder } from "./stack.ts"
+import { HIDDEN, shown, type Spot, type SpotEffect, type SpotEvent, spotStep } from "./pagespot.ts"
+import { NO_POINTER, PASSED, type Passed, type Pointer, type PointerEvent, pointerStep, RAISE, type Raise, type Role, stackOrder } from "./stack.ts"
 import { claim, discardable, flowOn, hear, letGo, LINGER_MS, media, MOVE_MS, outlasted, playback, playing, quietEnds, RECLAIM_MS, tabGone, tabMoved, unclaimed, unmoved, windowReloaded, type Flow, type Owned, type Playback } from "./webpages.ts"
 import { execFile } from "node:child_process"
 import crypto from "node:crypto"
@@ -756,31 +756,37 @@ const PARKED = { x: -40000, y: 0, width: 1280, height: 800 }
 /** Its spot now (read again after a `move`, which narrowing doesn't see). */
 const spotOf = (p: Page): Spot => p.spot
 function move(p: Page, e: SpotEvent) {
-  const wc = p.view.webContents
-  if (e.type !== "hide" && wc.isDestroyed()) return
+  if (e.type !== "hide" && p.view.webContents.isDestroyed()) return
   const r = spotStep(p.spot, e)
   p.spot = r.to
-  for (const d of r.do) {
-    if (d === "show" || d === "hide") p.view.setVisible(d === "show")
-    else if (d === "throttle" || d === "unthrottle") wc.setBackgroundThrottling(d === "throttle")
-    else if (d === "to-parked") p.view.setBounds(PARKED)
-    else if (d === "to-fill") {
-      const [width, height] = (p.player ?? p.win).getContentSize()
-      round(p, 0)
-      p.view.setBounds({ x: 0, y: 0, width, height })
-    } else if (d === "to-tab" && p.want) {
-      if (keyboardFrom.get(p.win) === p.id) keyboardFrom.delete(p.win)
-      // The window's page may be zoomed (⌘+): its CSS pixels are that many of the window's.
-      const z = p.win.webContents.getZoomFactor(), rect = p.want
-      round(p, Math.round((rect.radius ?? 0) * z))
-      p.view.setBounds({ x: Math.round(rect.x * z), y: Math.round(rect.y * z), width: Math.round(rect.width * z), height: Math.round(rect.height * z) })
-    } else if (d === "raise") addPage(p.win, p.view)
-    else if (d === "unfocus") { if (wc.isFocused() && !p.win.isDestroyed()) p.win.webContents.focus() }
-    else if (d === "keys-out") {
-      p.hadFocus = wc.isFocused()
-      if (p.hadFocus) { p.win.webContents.focus(); keyboardFrom.set(p.win, p.id) }
-    } else if (d === "see") void seeDraws(p)
-  }
+  for (const d of r.do) SPOT_DOES[d](p)
+}
+const SPOT_DOES: Record<SpotEffect, (p: Page) => void> = {
+  "show": (p) => p.view.setVisible(true),
+  "hide": (p) => p.view.setVisible(false),
+  "throttle": (p) => p.view.webContents.setBackgroundThrottling(true),
+  "unthrottle": (p) => p.view.webContents.setBackgroundThrottling(false),
+  "to-parked": (p) => p.view.setBounds(PARKED),
+  "to-fill": (p) => {
+    const [width, height] = (p.player ?? p.win).getContentSize()
+    round(p, 0)
+    p.view.setBounds({ x: 0, y: 0, width, height })
+  },
+  "to-tab": (p) => {
+    if (!p.want) return
+    if (keyboardFrom.get(p.win) === p.id) keyboardFrom.delete(p.win)
+    // (the window's page may be zoomed, ⌘+: its CSS pixels are that many of the window's)
+    const z = p.win.webContents.getZoomFactor(), rect = p.want
+    round(p, Math.round((rect.radius ?? 0) * z))
+    p.view.setBounds({ x: Math.round(rect.x * z), y: Math.round(rect.y * z), width: Math.round(rect.width * z), height: Math.round(rect.height * z) })
+  },
+  "raise": (p) => addPage(p.win, p.view),
+  "unfocus": (p) => { if (p.view.webContents.isFocused() && !p.win.isDestroyed()) p.win.webContents.focus() },
+  "keys-out": (p) => {
+    p.hadFocus = p.view.webContents.isFocused()
+    if (p.hadFocus) { p.win.webContents.focus(); keyboardFrom.set(p.win, p.id) }
+  },
+  "see": (p) => void seeDraws(p),
 }
 /** Awake again: parked and drawing, settled once its first frame since is likely drawn. */
 async function wake(p: Page) {
@@ -1306,8 +1312,8 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
     looks.set(win, c)
     for (const p of pages.values()) if (p.win === win && p.fresh) p.view.setBackgroundColor(c)
   },
-  "web:raise": (win, how) => raise(win, raiseOf(how)),
-  "web:pointer": (win, id, m) => pointer(mine(win, id), m),
+  "web:raise": (win, how) => raise(win, RAISE.parse(how)),
+  "web:pointer": (win, id, m) => { const e = PASSED.safeParse(m); if (e.success) pointer(mine(win, id), e.data) },
   "web:release": (win, id) => {
     const p = pages.get(Number(id))
     if (!p || p.win !== win) return
@@ -1879,10 +1885,7 @@ function restack(win: AppWindow, top?: WebContentsView) {
 
 const raise = (win: AppWindow, how: Raise) => { if (!win.isDestroyed()) run(win, { type: "raise", how }) }
 
-function pointer(p: Page, m: unknown) {
-  const e = passedOf(m)
-  if (e) run(p.win, { type: "pass", page: p.id, kind: e.kind, button: e.button }, p, e)
-}
+const pointer = (p: Page, e: Passed) => run(p.win, { type: "pass", page: p.id, kind: e.kind, button: e.button }, p, e)
 
 function run(win: AppWindow, e: PointerEvent, p?: Page, m?: Passed) {
   const r = pointerStep(pointerOf(win), e)
