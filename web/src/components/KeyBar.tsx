@@ -10,14 +10,14 @@ export function useVisibleArea(on: boolean) {
   const [area, setArea] = useState<{ top: number; height: number; keyboard: boolean } | null>(null)
   useLayoutEffect(() => {
     const vv = visualViewport
-    if (!on || !vv) return setArea(null)
+    if (!on || !vv) return
     const read = () => setArea({ top: vv.offsetTop, height: vv.height, keyboard: keyboardUp() })
     read()
     vv.addEventListener("resize", read)
     vv.addEventListener("scroll", read)
     return () => { vv.removeEventListener("resize", read); vv.removeEventListener("scroll", read) }
   }, [on])
-  return area
+  return on ? area : null
 }
 
 export type BarKey = { name: string; label: ReactNode; run: () => void }

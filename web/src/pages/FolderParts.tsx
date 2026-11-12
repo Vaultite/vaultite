@@ -101,21 +101,25 @@ const untitled = (md: string, path: string) => md.replace(/^#{1,6}[ \t]+([^\n]*)
 const previews = new Map<string, { sig: string; text: Record<string, string> }>()
 export function usePreviews(folder: string, items: FolderItem[], on = true) {
   const sig = on ? items.filter((n) => n.file).map((n) => `${n.path}\0${n.mtime}`).join("\n") : ""
-  const [text, setText] = useState<Record<string, string>>(() => previews.get(folder)?.text ?? {})
+  const [shown, setShown] = useState(() => ({ folder, sig, text: previews.get(folder)?.text ?? {} }))
+  if (shown.folder !== folder || shown.sig !== sig) {
+    const had = previews.get(folder)
+    setShown({ folder, sig, text: had?.sig === sig || !sig ? had?.text ?? {} : shown.text })
+  }
   useEffect(() => {
     const had = previews.get(folder)
-    if (had?.sig === sig || !sig) { setText(had?.text ?? {}); return }
+    if (had?.sig === sig || !sig) return
     let live = true
     get<{ previews: Record<string, string> }>(`files/previews?folder=${encodeURIComponent(folder)}`).then((r) => {
       const t = Object.fromEntries(Object.entries(r.previews).map(([p, md]) => [p, snippet(untitled(md, p))]))
       previews.delete(folder)
       previews.set(folder, { sig, text: t })
       if (previews.size > 30) previews.delete(previews.keys().next().value!)
-      if (live) setText(t)
+      if (live) setShown({ folder, sig, text: t })
     }, () => {})
     return () => { live = false }
   }, [folder, sig])
-  return text
+  return shown.text
 }
 
 // ---------- a file's picture ----------

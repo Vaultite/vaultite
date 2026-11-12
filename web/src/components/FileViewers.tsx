@@ -8,6 +8,7 @@ import { openFile } from "@/core/files"
 import { isDesktop } from "@/core/platform"
 import { useVaultChange } from "@/core/live"
 import { playerFor } from "@/core/plugins"
+import { useStateFor } from "@/core/statefor"
 import { usePrefs } from "@/core/prefs"
 import { canOpenHere, openOnComputer } from "@/components/FileActions"
 import { cn, plural } from "@/lib/utils"
@@ -91,9 +92,8 @@ export function FileCard({ path, info, note, children }: { path: string; info: F
 
 export function ImageView({ path, info, v, page, onSize }: { path: string; info: FileInfo | null; v: number; page: boolean; onSize: (w: number, h: number) => void }) {
   const [zoom, setZoom] = useState(false)
-  const [failed, setFailed] = useState(false)
+  const [failed, setFailed] = useStateFor([v], () => false)
   const [ref, h] = useFill(page)
-  useEffect(() => setFailed(false), [v])
   if (failed) return <FileCard path={path} info={info} note="This browser can't show this image." />
   return (
     <div ref={ref} className={cn("flex rounded-[10px]", zoom ? "overflow-auto" : "items-center justify-center overflow-hidden", !page && "max-h-[75vh]")}
@@ -124,8 +124,7 @@ export function PdfView({ path, info, v, page }: { path: string; info: FileInfo 
 }
 
 function useSoundOnly(path: string) {
-  const [sound, setSound] = useState(false)
-  useEffect(() => setSound(false), [path])
+  const [sound, setSound] = useStateFor([path], () => false)
   const check = (e: SyntheticEvent<HTMLMediaElement>) => {
     const el = e.currentTarget
     if (el instanceof HTMLVideoElement && el.videoWidth === 0 && el.videoHeight === 0) setSound(true)
@@ -134,10 +133,9 @@ function useSoundOnly(path: string) {
 }
 
 export function PlayerView({ path, info, v, video, onDuration }: { path: string; info: FileInfo | null; v: number; video: boolean; onDuration: (s: number) => void }) {
-  const [failed, setFailed] = useState(false)
+  const [failed, setFailed] = useStateFor([path, v], () => false)
   const [sound, check] = useSoundOnly(path)
   const Player = playerFor(usePrefs().disabled)
-  useEffect(() => setFailed(false), [path, v])
   if (failed) return <FileCard path={path} info={info} note="This browser can't play this file." />
   if (Player) return <Player path={path} video={video} place="page" v={v} onDuration={onDuration} onFail={() => setFailed(true)} />
   const common = { src: rawUrl(path, { v }), controls: true, preload: "metadata", onError: () => setFailed(true),

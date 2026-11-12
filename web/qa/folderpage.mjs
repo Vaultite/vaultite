@@ -93,6 +93,12 @@ await W.locator("[data-folder-page] header [data-folder-view=columns]:visible").
 check("desktop: Columns: the vault's top, then it", await until(async () => (await W.locator("[data-folder-column]:visible").evaluateAll((els) => els.map((e) => e.dataset.folderColumn))).join("|") === `|${D}`))
 await W.locator(`[data-folder-column="${D}"] [data-folder-item="${D}/Alpha.md"]`).click()
 check("desktop: Columns: a file picked shows its preview, the tab stays", await until(async () => (await W.locator(`[data-folder-preview="${D}/Alpha.md"]:visible`).count()) === 1) && (await shown(W)) === D)
+const previewText = () => W.locator(`[data-folder-preview="${D}/Alpha.md"]:visible`).innerText().catch(() => "")
+check("desktop: Columns: the preview is the note's start", !!(await until(async () => (await previewText()).includes("The first lines of Alpha"))), await previewText())
+const alpha = (await api("GET", `file?path=${encodeURIComponent(`${D}/Alpha.md`)}`)).text
+await api("PUT", "file", { path: `${D}/Alpha.md`, text: alpha.replace("The first lines", "The rewritten lines") })
+check("...changed elsewhere, the preview follows", !!(await until(async () => (await previewText()).includes("The rewritten lines of Alpha"))), await previewText())
+await api("PUT", "file", { path: `${D}/Alpha.md`, text: alpha })
 await W.screenshot({ path: `${OUT}desktop-columns.png` })
 await W.locator(`[data-folder-column="${D}"] [data-folder-item="${D}/Sub"]`).click()
 check("desktop: Columns: a folder picked shows its things beside it", await until(async () => (await W.locator(`[data-folder-column="${D}/Sub"]:visible`).count()) === 1))

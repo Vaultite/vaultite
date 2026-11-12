@@ -219,6 +219,14 @@ await fetch(`${B}api/bundles/days`, { method: "DELETE" }) // (none of the user's
   await wait(300)
   const copied = await page.evaluate(() => navigator.clipboard.readText())
   check("Copy: the bundle's JSON", JSON.parse(copied).vaultite === "bundle")
+  const part = page.locator("dialog[open] [data-share-part] [role=switch]").first()
+  await part.click()
+  check("a part switched off: Copy sends the bundle made again", !!(await until(async () => {
+    if (!(await page.locator("dialog[open] [data-bundle-copy]:not([disabled])").count())) return false
+    await page.locator("dialog[open] [data-bundle-copy]").click()
+    return (await page.evaluate(() => navigator.clipboard.readText())) !== copied
+  }, 6000)))
+  await part.click()
   await page.keyboard.press("Escape")
   await until(async () => !(await page.locator("dialog[open] [data-bundle-share-sheet]").count()), 6000)
   await dismissAll(page)

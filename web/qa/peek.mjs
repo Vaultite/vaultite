@@ -58,6 +58,7 @@ try {
   // over its page, yet each edge slides its sidebar in, and back on the frame it slides out.
   for (const side of ["left", "right"]) await page.click(side === "left" ? "[data-sidebar-toggle='']" : "[data-sidebar-toggle=right]")
   await page.mouse.move(W / 2, 450)
+  check("hidden again after pinning: neither stays slid in", !!(await until(async () => (await at("left")).peek === "false" && (await at("right")).peek === "false", 2000)), [await at("left"), await at("right")])
   await page.evaluate(() => {
     const f = Object.assign(document.createElement("iframe"), { srcdoc: "<body style='margin:0;height:100vh;background:#cde'>Frame", title: "QA frame" })
     f.style.cssText = "position:fixed;inset:0;width:100vw;height:100vh;border:0;z-index:30"

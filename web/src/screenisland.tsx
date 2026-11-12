@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Undo2, X } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useStateFor } from "@/core/statefor"
 import { HOLD } from "./screendraw/hold"
 import { type Knock, type Presence, PRESENCE_GROUPS } from "../../core/desktop/knocks"
 import { countText, type WalkScene } from "../../core/desktop/walks"
@@ -131,7 +132,7 @@ function Row({ p }: { p: Presence }) {
 export function Island() {
   const [d, setD] = useState<IslandData | null>(null)
   const [open, setOpen] = useState(false)
-  const [done, setDone] = useState(false)
+  const [done, setDone] = useStateFor([open], () => false)
   const hold = useRef<ReturnType<typeof setTimeout>>(undefined)
   useEffect(() => api?.on(setD), [])
   // (its width follows what it holds, on a spring: the mark, a knock's line)
@@ -157,7 +158,7 @@ export function Island() {
   useEffect(() => () => clearTimeout(hold.current), [])
   // (the list's "2m"s, kept true while it's open; the done ones fold again once it closes)
   const [, tick] = useState(0)
-  useEffect(() => { if (!open) { setDone(false); return } const t = setInterval(() => tick((n) => n + 1), 30_000); return () => clearInterval(t) }, [open])
+  useEffect(() => { if (!open) return; const t = setInterval(() => tick((n) => n + 1), 30_000); return () => clearInterval(t) }, [open])
   if (!d) return null
   const { spot, presences, knock } = d, walk = d.walk && d.walk.state !== "told" ? d.walk : null
   // (a word from the walk: as an item is noted, or where it went once it's over)

@@ -1,6 +1,6 @@
 // Coding agents in terminal tabs (the Terminal plugin runs them; a plugin brings one with `agents` in its definition
 // and the service "agent:<name>" in its backend): open a new session, or resume one in the folder it ran in.
-import { useEffect, useState, useSyncExternalStore } from "react"
+import { useEffect, useSyncExternalStore } from "react"
 import { SquareTerminal, type LucideIcon } from "lucide-react"
 import { choose } from "@/components/Chooser"
 import { get } from "@/core/http"
@@ -9,6 +9,7 @@ import { fetchMachines, machinePath, onMachine, otherMachines, type Machine } fr
 import { notify } from "@/core/notify"
 import { agentsOn, isEnabled, type Agent } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
+import { useStateFor } from "@/core/statefor"
 import { currentWorkspace, scopedState, useScopedState } from "@/core/scope"
 import { agentIn, newTerminalId, parseTerminal, resumeTerminalId } from "../../../core/terminalids.ts"
 
@@ -129,20 +130,22 @@ const hearNames = (f: () => void) => { namesHeard.add(f); return () => { namesHe
 /** Agents' accounts' names (accountName): another function each time more are read. */
 export const useAccountNames = () => useSyncExternalStore(hearNames, () => named)
 
+const withAccounts = (id: string, a: Agent | null) => { const t = parseTerminal(id); return a?.accounts && t && !t.resume && t.agent === a.name ? { a, t } : null }
 /** The account terminal `id` runs agent `a` in, by label, when it has several (else ""): the one its id names, or the
  *  first (its bare name's). A resumed session's isn't in its id: "". */
 export function useTerminalAccount(id: string, a: Agent | null) {
-  const [label, setLabel] = useState("")
+  const [label, setLabel] = useStateFor([!!withAccounts(id, a)], () => "")
   useEffect(() => {
-    const t = parseTerminal(id)
-    if (!a?.accounts || !t || t.resume || t.agent !== a.name) return setLabel("")
+    const known = withAccounts(id, a)
+    if (!known) return
+    const { t } = known
     let live = true
-    void accountsOf(a, t.machine ?? "").then((list) => {
+    void accountsOf(known.a, t.machine ?? "").then((list) => {
       const acc = list.length > 1 ? (t.profile ? list.find((x) => x.id === t.profile) : list[0]) : undefined
       if (live) setLabel(acc?.label ?? "")
     })
     return () => { live = false }
-  }, [id, a])
+  }, [id, a, setLabel])
   return label
 }
 

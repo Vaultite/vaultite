@@ -87,9 +87,7 @@ export function useChosen<T>(value: T): [T, (v: T, write: () => Promise<unknown>
   const [chosen, setChosen] = useState<{ v: T; from: T } | null>(null)
   const alive = useRef(true)
   useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
-  useEffect(() => {
-    if (chosen && (Object.is(value, chosen.v) || !Object.is(value, chosen.from))) setChosen(null)
-  }, [value, chosen])
+  if (chosen && (Object.is(value, chosen.v) || !Object.is(value, chosen.from))) setChosen(null)
   const choose = useCallback((v: T, write: () => Promise<unknown>, failed: string) => {
     const mine = { v, from: value }
     setChosen(mine)

@@ -3,7 +3,7 @@
 //   node web/qa/formats.mjs <base url> <vault path> [fixtures dir] [out dir]
 import { execFileSync } from "node:child_process"
 import { copyFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
-import { SHOTS, qa, wait } from "./lib/qa.mjs"
+import { SHOTS, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT, FIX, OUT = SHOTS], browser, check, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const DIR = "Qa formats"
@@ -95,6 +95,12 @@ const ok = (k, v) => { out[k] = v }
     await shot("heic")
   }
 
+  writeFileSync(`${VAULT}/${DIR}/Broken.png`, "not a picture")
+  await open("Broken.png")
+  ok("brokenImageCard", await page.locator("[data-file-card]", { hasText: "can't show this image" }).count())
+  writeFileSync(`${VAULT}/${DIR}/Broken.png`, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64"))
+  ok("fixedImageDrawn", await until(() => page.evaluate(() => document.querySelector("[data-image-view] img")?.naturalWidth ?? 0), 8000))
+
   await open("Embeds.md", 5000)
   ok("embedSheet", await page.locator("[data-format-embed] [data-sheet-grid]").count())
   ok("embedDocx", await page.locator("[data-format-embed] [data-docx]").count())
@@ -120,6 +126,8 @@ await browser.close()
 rmSync(`${VAULT}/${DIR}`, { recursive: true, force: true })
 
 // What it saw, checked.
+check("an image the browser can't draw: a card", out.brokenImageCard === 1, out.brokenImageCard)
+check("...the file fixed, the image is drawn", out.fixedImageDrawn > 0, out.fixedImageDrawn)
 check("workbook: its grid is drawn", out.xlsxCells >= 6, out.xlsxCells)
 check("workbook: a money number in its format", out.xlsxMoney >= 1, out.xlsxMoney)
 check("workbook: its sheets are tabs", out.xlsxTabs.length >= 2, out.xlsxTabs)

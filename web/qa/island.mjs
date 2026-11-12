@@ -117,6 +117,10 @@ if (PNG) { await wait(400); fs.writeFileSync(PNG.replace(/\.png$/, "-list.png"),
 await island.locator("[data-island-done]").click()
 check("…the done ones unfold", await until(() => island.evaluate(() => !!document.querySelector('[data-island-row="qa-d"]')), 2000))
 await island.mouse.move(600, 330)
+await until(() => island.evaluate(() => !document.querySelector("[data-island-row]")), 3000)
+await island.locator("[data-island]").hover({ position: { x: 30, y: 10 } })
+check("…closed and hovered again, they're folded again", await until(() => island.evaluate(() => !!document.querySelector("[data-island-row]") && !document.querySelector('[data-island-row="qa-d"]')), 3000))
+await island.mouse.move(600, 330)
 
 // ---------- the menu bar's menu: the way in, who waits on them, one row of how many work, the companion's few controls
 const menu = () => helper((h) => h.menu().map((i) => ({ label: i.label ?? "", type: i.type ?? "", checked: !!i.checked, sub: i.sublabel ?? "" })))

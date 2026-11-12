@@ -17,6 +17,7 @@ import { errorText, notify, notifyError } from "@/core/notify"
 import { namedIcon, tintOf } from "@/core/pages"
 import { pluginById, tintOfPlugin } from "@/core/plugins"
 import { useKeptCount } from "@/core/heights"
+import { useStateFor } from "@/core/statefor"
 import { menuBelow } from "@/components/ContextMenu"
 import { useSheetGuard } from "@/components/DetailSheet"
 import { Bar as Line, Panel, SheetHead, Switch } from "@/components/kit"
@@ -595,7 +596,7 @@ export function ShareBundle({ id }: { id: string }) {
   const b = useBundles()?.bundles.find((x) => x.id === id)
   const [parts, setParts] = useState<{ items: ShareItem[]; dropped: string[] } | null>(null)
   const [on, setOn] = useState<Record<string, boolean>>({})
-  const [text, setText] = useState<string | null>(null)
+  const [text, setText] = useStateFor<string | null>([parts, on, b?.id], () => null)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
     shareOf(id).then((p) => { setParts(p); setOn(Object.fromEntries(p.items.map((x) => [x.path, x.on]))) }, (e) => setError(errorText(e)))
@@ -604,7 +605,6 @@ export function ShareBundle({ id }: { id: string }) {
   useEffect(() => {
     if (!parts || !b) return
     let live = true
-    setText(null)
     const include = parts.items.filter((x) => !x.on && on[x.path]).map((x) => x.path), leave = parts.items.filter((x) => x.on && !on[x.path]).map((x) => x.path)
     bundleText(b, { include, leave }).then((t) => { if (live) setText(t) }, (e) => { if (live) setError(errorText(e)) })
     return () => { live = false }

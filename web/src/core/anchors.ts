@@ -3,6 +3,7 @@
 import type { Text } from "@codemirror/state"
 import type { ViewUpdate } from "@codemirror/view"
 import { useEffect, useMemo, useState } from "react"
+import { useStateFor } from "@/core/statefor"
 import { anchorKey, anchorLine, headingsOf, type Heading } from "../../../core/sections.ts"
 import { openFile, readFile, stem } from "@/core/files"
 import { useVaultChange } from "@/core/live"
@@ -163,9 +164,9 @@ export function useOutline(path: string) {
   }, [path, !!v, seen])
   const text = v ? v.text() : file.path === path ? file.text : ""
   const headings = useMemo(() => headingsOf(text), [text])
-  const [current, setCurrent] = useState(-1)
+  const [current, setCurrent] = useStateFor([!!v], () => -1)
   useEffect(() => {
-    if (!v) { setCurrent(-1); return }
+    if (!v) return
     const at = () => {
       const top = v.topLine()
       let k = -1
@@ -176,7 +177,7 @@ export function useOutline(path: string) {
     // Scrolling anywhere (each pane is its own scroller; phones scroll the window): scroll events don't bubble.
     document.addEventListener("scroll", at, { capture: true, passive: true })
     return () => document.removeEventListener("scroll", at, { capture: true })
-  }, [v, headings])
+  }, [v, headings, setCurrent])
   return {
     headings,
     /** Its text is on its way (neither its editor nor the file is here yet): a list drawn now would grow. */

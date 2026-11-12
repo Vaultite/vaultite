@@ -146,7 +146,7 @@ export function usePeek(left: boolean, right: boolean): Peek {
   const [peek, setPeek] = useState<Peek>(null)
   // Summoned, it stays until the pointer has been in it and left (it wasn't brought by the pointer), a click or Escape.
   const summoned = useRef(false)
-  useEffect(() => { if ((peek === "left" && !left) || (peek === "right" && !right)) setPeek(null) }, [left, right, peek])
+  if ((peek === "left" && !left) || (peek === "right" && !right)) setPeek(null)
   useEffect(() => { if (!peek) summoned.current = false }, [peek])
   useEffect(() => {
     const summon = (side: Side) => {

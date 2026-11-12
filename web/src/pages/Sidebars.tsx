@@ -1,6 +1,6 @@
 // Customize sidebars: both sidebars side by side as they sit in the window, and the hidden panels under them. Arranging
 // lives here, in a sheet that stays open, rather than in menus that close as the pointer lets go.
-import { useEffect, useRef, useState, type RefObject } from "react"
+import { useRef, useState, type RefObject } from "react"
 import { createPortal } from "react-dom"
 import { ArrowDown, ArrowUp, Ellipsis, EyeOff, PanelLeft, PanelRight, SlidersHorizontal } from "lucide-react"
 import { edgeScroller, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
@@ -44,10 +44,8 @@ export function SidebarsSheet() {
   // Restored: the button undoes it until the panels move again (a toast's Undo would be under the sheet, out of reach).
   const [undo, setUndo] = useState<{ run: () => void; landed: boolean } | null>(null)
   const stock = defaultPanels(setup)
-  useEffect(() => {
-    if (undo && stock && !undo.landed) setUndo({ ...undo, landed: true })
-    else if (undo?.landed && !stock) setUndo(null)
-  }, [undo, stock])
+  if (undo && stock && !undo.landed) setUndo({ ...undo, landed: true })
+  else if (undo?.landed && !stock) setUndo(null)
   const restore = () => setUndo({ run: restoreSidebars(), landed: false })
   const root = useRef<HTMLDivElement>(null)
   // A panel held near the sheet's top or bottom scrolls it, so every list can be reached (a phone's sheet is long).
