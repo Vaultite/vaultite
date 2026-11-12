@@ -5,7 +5,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { pipeline } from "node:stream/promises"
-import { type Conflict, type Entry, FileAnswer, HTTPError, LOCAL, localDate, localTime, MACHINE_CLIENT, Plugin, Replica, sha256hex as sha, SYNC_PROTOCOL as PROTOCOL, unsynced, type Vector } from "../../../core/plugins.ts"
+import { type Conflict, type Entry, FileAnswer, HTTPError, LOCAL, localDate, localTime, MACHINE_CLIENT, onTailnet, Plugin, Replica, sha256hex as sha, SYNC_PROTOCOL as PROTOCOL, unsynced, type Vector } from "../../../core/plugins.ts"
 import { DiskFolder, DiskStore } from "./disk.ts"
 import { Mailbox } from "./mailbox.ts"
 import { Mirror, snapshot } from "./hub.ts"
@@ -58,14 +58,6 @@ export function syncedByOthers(folder: string): string {
   if (SYNCED_BY_OTHERS.some((re) => re.test(p))) return `${folder} is synced by another tool (iCloud Drive, Dropbox, OneDrive or Google Drive): one sync per folder`
   for (let d = path.resolve(folder); ; d = path.dirname(d)) { if (fs.existsSync(path.join(d, ".stfolder"))) return `${folder} is in a Syncthing folder: one sync per folder`; if (d === path.dirname(d)) break }
   return ""
-}
-/** A tailnet address or this machine's (as Machines checks): a synced file never sends the vault to a host its writer picks. */
-function onTailnet(url: string) {
-  let h: string
-  try { const u = new URL(url); if (!/^https?:$/.test(u.protocol) || u.username || u.password) return false; h = u.hostname.toLowerCase().replace(/^\[|\]$/g, "") } catch { return false }
-  const v4 = /^(\d+)\.(\d+)\.\d+\.\d+$/.exec(h)
-  if (v4) return v4[1] === "127" || (v4[1] === "100" && Number(v4[2]) >= 64 && Number(v4[2]) <= 127)
-  return h.endsWith(".ts.net") || h === "localhost" || h === "::1" || h.startsWith("fd7a:115c:a1e0:")
 }
 const readJson = (p: string) => { try { return JSON.parse(fs.readFileSync(p, "utf8")) } catch { return null } }
 /** A plugin's settings in a synced folder (not the served vault: a shadow copy's, another vault's). */

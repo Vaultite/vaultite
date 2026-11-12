@@ -204,6 +204,7 @@ there now; with none, the ones in the app's source. filter keeps ids and names w
       (r.from === "source" ? "\n(from the app's source: no app window is open)" : ""),
   }, {
     id: "ui.notify",
+    home: true,
     cli: "notify",
     summary: "Tell the user something happened: a toast in their window, kept in their inbox.",
     help: `Tells the user something finished or changed ("Imported 12 meals", "Wrote the weekly review"), not every step.

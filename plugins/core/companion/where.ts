@@ -4,7 +4,7 @@ import { execFile } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { gitEnv, type Machine } from "../../../core/plugins.ts"
+import { gitEnv } from "../../../core/plugins.ts"
 
 /** What an ask was over, as far as routing needs it (a Moment's). */
 export type Over = { url?: string; app?: string; title?: string; path?: string; screen?: string; under?: string }
@@ -119,6 +119,9 @@ export function checkoutNamed(repo: string, roots: string[] = ROOTS) {
   if (slug) return checkoutOf(slug, roots) || namedCheckout(slug.split("/")[1], roots)
   return namedCheckout(path.basename(r), roots)
 }
+/** This machine's checkouts as a job's needs name them (placement.ts): their folders' names and GitHub's owner/name, lowercase. */
+export const checkoutNames = (roots: string[] = ROOTS) => [...new Set(checkouts(roots).flatMap((d) => [path.basename(d).toLowerCase(),
+  ...remotes(d).flatMap((u) => { const m = /github\.com[:/]([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/i.exec(u); return m ? [m[1].toLowerCase()] : [] })]))]
 /** The checkouts this machine has, by their folders' names (~ for home), at most `n`: what's there when a repo isn't. */
 export const checkoutsLine = (n = 30, roots: string[] = ROOTS) => { const all = checkouts(roots).map((d) => tilde(d)); return all.length ? `${all.slice(0, n).join(", ")}${all.length > n ? `, and ${all.length - n} more` : ""}` : "none" }
 /** Where checkouts are looked for, in words ("~/Projects, ~/Documents/personal/Projects..."). */
@@ -216,21 +219,6 @@ export async function resolveHere(o: Over, vault: string, self: string[] = [], r
   return { cwd: vault, why: `${away || "nothing on screen named a project"}: the vault`, from: "vault" }
 }
 
-/** Where jobs with nothing tying them here go (the setting jobs_machine: auto, here or a machine's id), of the machines
- *  listed: auto is an always-on one (its server on its own, not in a laptop's app) unless this one is (`here`). */
-export function preferredMachine(all: Machine[], want: string, vault: string, here: boolean): { machine: Machine | null; why: string } {
-  const w = want.trim() || "auto", none = { machine: null, why: "" }
-  // (it runs there in its copy of this vault, through its companion: companion.where, companion.worker)
-  const fits = (m: Machine) => m.online && !m.self && !!vault && m.vault === vault && !!m.plugins?.includes("companion")
-  if (w === "here") return none
-  if (w !== "auto") {
-    const m = all.find((x) => x.id === w)
-    return !m || m.self ? none : fits(m) ? { machine: m, why: "the machine jobs prefer" }
-      : { machine: null, why: `${m.label}, where jobs go, ${!m.online ? "is offline" : m.vault !== vault ? "has another vault" : "runs no companion"}` }
-  }
-  const m = here ? null : all.find((x) => x.standalone && fits(x))
-  return m ? { machine: m, why: "always on" } : none
-}
 /** Whether an ask placed here is over a copy the user watches here: a preview served here, an editor's project open here. */
 export const watched = (f: Found) => f.from === "preview" || f.from === "editor"
 /** A checkout's GitHub `owner/repo` (origin's first, else any remote's), or "". */

@@ -1,6 +1,6 @@
 // `vau mcp`: the MCP server over stdio, its tools the running server's ops called as the client. Nothing else goes to
 // stdout; the MCP modules load only when it runs, since every vau command loads this file.
-import { CliError, Ctx, done, type PluginCli } from "../../../core/cli.ts"
+import { CliError, Ctx, done, homeEnv, type PluginCli } from "../../../core/cli.ts"
 
 export const cli: PluginCli = {
   commands: [{
@@ -29,10 +29,12 @@ The same tools are served over HTTP at <server>/api/mcp (this machine and its ow
       let envs = new Map<string, [string, string][]>()
       /** Each op's kind: what reads may be sent again after a restart cut it. */
       let kinds = new Map<string, string>()
+      /** Ops that reach the user: a job's worker on another machine sends them home (homeEnv). */
+      let homes = new Set<string>()
       /** The server's API as the client, each call told to Activity as `mcp <tool>`; its errors are the tool's. Unless one
        *  was named, each call finds the server again: the desktop app's vault may open after the client started this. */
-      const as = (agent: string | null, tool: string) => {
-        const t = new Ctx({ url: c.fixed ? c.url : undefined, env: c.env, client: "mcp", agent: agent ?? undefined })
+      const as = (agent: string | null, tool: string, env = c.env) => {
+        const t = new Ctx({ url: env !== c.env ? env.VAULTITE_URL : c.fixed ? c.url : undefined, env, client: "mcp", agent: agent ?? undefined })
         t.command = `mcp ${tool}`
         const asTool = async <T>(fn: () => Promise<T>) => {
           try { return await fn() } catch (e) {
@@ -53,14 +55,16 @@ The same tools are served over HTTP at <server>/api/mcp (this machine and its ow
           const entries = await as(session.client?.agent ?? null, "tools/list")("GET", "ops") as import("../../../core/plugins.ts").OpEntry[]
           pictured = new Set(entries.filter((e) => e.image).map((e) => e.id))
           kinds = new Map(entries.map((e) => [e.id, e.kind]))
+          homes = new Set(entries.filter((e) => e.home).map((e) => e.id))
           envs = new Map(entries.map((e) => [e.id, Object.entries(e.params.properties ?? {}).flatMap(([k, s]) => (s.env ? [[k, s.env] as [string, string]] : []))]))
           return toolsOf(entries)
         },
         ctx: (client: Client, tool: string) => {
-          const call = as(client.agent, tool)
+          const here = as(client.agent, tool)
           return { client, op: async (id: string, given: Record<string, unknown>) => {
-            const params = { ...given }
-            for (const [k, v] of envs.get(id) ?? []) if (params[k] === undefined && c.env[v]) params[k] = c.env[v]
+            const params = { ...given }, home = homes.has(id) ? homeEnv(c.env, { home: true }) : null, env = home ?? c.env
+            const call = home ? as(client.agent, tool, home) : here
+            for (const [k, v] of envs.get(id) ?? []) if (params[k] === undefined && env[v]) params[k] = env[v]
             // (an op whose answer is a picture too, a screenshot: both)
             if (!pictured.has(id)) return String(await call.op(id, "?as=text", params) ?? "")
             const r = await call.op(id, "?as=answer", params) as { text?: unknown; image?: { data: string; mimeType: string } } | null

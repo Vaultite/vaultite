@@ -476,8 +476,8 @@ export type SampleAnswer = { text: string; truncated: boolean; model?: string }
 
 /** Start terminal `id` running its agent (Terminal's route, as `ctx`'s caller), told `prompt` first: its answer. Throws
  *  when no plugin that's on brings that agent (the terminal goes again). */
-export async function startAgent(ctx: OpCtx, id: string, prompt?: string, how: AgentHow = {}) {
-  const body = { prompt, ...how }
+export async function startAgent(ctx: OpCtx, id: string, prompt?: string, how: AgentHow = {}, home?: { url: string; as: string }) {
+  const body = { prompt, ...how, ...(home ? { home } : {}) }
   const r = await ctx.api("POST", `terminals/${encodeURIComponent(id)}`, Object.values(body).some((v) => v) ? body : undefined) as Record<string, unknown>
   if (!r.agent) {
     await ctx.api("DELETE", `terminals/${encodeURIComponent(id)}`).catch(() => {})

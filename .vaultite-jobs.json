@@ -1,0 +1,5 @@
+{
+  "needs": [
+    { "when": "\\b(swift|electron|desktop app|the helper|menu ?bar|notch|island|overlay|talk key|dictation|app:dev)\\b", "needs": ["macos", "desktop"] }
+  ]
+}

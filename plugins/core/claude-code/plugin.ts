@@ -555,6 +555,8 @@ plugin.provide("agent:claude", async (start: AgentStart): Promise<AgentCommand> 
 /** The models a session may run, by the aliases --model takes (each its family's latest), and its efforts. */
 const models = (): AgentModels => ({ models: FAMILIES.map((id) => ({ id, label: modelName(id) })),
   efforts: ["low", "medium", "high", "xhigh", "max"], modes: [...PERMISSION_MODES] })
+/** Its accounts' ids (vau limits'): what a job may ask to run in on this machine. */
+plugin.provide("agent-accounts:claude", () => accounts().map((a) => a.id))
 plugin.provide("agent-models:claude", models)
 /** A model as people say it ("Fable 5.2", "opus 55") as --model takes it (claude-fable-5-2, opus), and its name. */
 plugin.provide("agent-model-id:claude", (said: string): AgentModel => {

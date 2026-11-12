@@ -86,6 +86,18 @@ export async function sample(): Promise<Sample | null> {
   return { t, load: os.loadavg().map((x) => Math.round(x * 100) / 100), ...mem, procs }
 }
 
+/** This machine now, as it tells the others (where a job goes): its cores, its load over the last minute, its memory (MB,
+ *  % free: the last sample's while fresh, else read now) and whether it has a desktop to show windows on. */
+export type Now = { cores: number; load: number; memory: { total: number; free: number }; display: boolean }
+export function machineNow(last: Sample | null, at = Date.now()): Now {
+  let memory = last && at - last.t < 3 * EVERY ? { total: last.mem.total, free: last.mem.free } : null
+  if (!memory && process.platform === "linux") { try { memory = parseMeminfo(fs.readFileSync("/proc/meminfo", "utf8")).mem } catch { /* none */ } }
+  memory ??= { total: Math.round(os.totalmem() / 1048576), free: Math.round(os.freemem() / os.totalmem() * 100) }
+  // (a Linux server's desktop is the session it runs in: a headless box has none)
+  const display = process.platform !== "linux" || !!(process.env.DISPLAY || process.env.WAYLAND_DISPLAY)
+  return { cores: os.cpus().length, load: Math.round(os.loadavg()[0] * 100) / 100, memory: { total: memory.total, free: memory.free }, display }
+}
+
 /** What's held this machine over the samples: processes busy (CPU) or big (memory) through many of them, each with when
  *  it was first and last seen so, and how often memory was under pressure. */
 export type Hog = { name: string; pid: number; samples: number; cpu: number; rss: number; first: number; last: number }

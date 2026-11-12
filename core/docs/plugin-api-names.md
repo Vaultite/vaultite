@@ -936,6 +936,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `noDesktop()`
 - `NOT_THE_USER`: Why a caller may not answer for the user, as its refusal says.
 - `noteLinks(text)`: Every link in a note's Markdown, outside code (fences and inline), as Obsidian counts them: [[links]], ![[embeds]] and Markdown links to files in the vault ([text](path), ![](path); not URLs, nor…
+- `onTailnet(url)`: An address on the tailnet (a .ts.net name, a 100.64/10 or fd7a:115c:a1e0:: address) or this machine's loopback: one a vault file or a caller names, so never a host its writer picks.
 - `OpCall`: An op being run, as plugin.around sees it: `plugin` is the op's (null: the core's).
 - `opcodes(a, b)`: How to turn a into b: equal runs and changed runs (replace / delete / insert).
 - `OpError`: What an op can't do, with what to do instead: a 400 over HTTP (`status`), the tool's error over MCP.
@@ -1184,7 +1185,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `shellQuote(s)`: `s` as one word of a shell command.
 - `spawnBin(bin, args, o)`: spawn() talking over stdin and stdout, but on Windows a program found as its shells would (a .cmd included).
 - `SqliteFile`: A database file opened read only, again when it was replaced; a query answers no rows rather than fail (no file, an older schema, busy).
-- `startAgent(ctx, id, prompt?, how?)`: Start terminal `id` running its agent (Terminal's route, as `ctx`'s caller), told `prompt` first: its answer.
+- `startAgent(ctx, id, prompt?, how?, home?)`: Start terminal `id` running its agent (Terminal's route, as `ctx`'s caller), told `prompt` first: its answer.
 - `Tally`: Usage over the last `days`, by day, project, model and session, as the agents' GET routes answer it.
 - `TERMINAL_AGENT`: An agent as a terminal names it: its name ("claude"), or its name and one of its accounts ("claude_personal").
 - `terminalOf(plugin, pid)`: The app's terminal a process runs in (Terminal's, while it's on): its session id, or null.

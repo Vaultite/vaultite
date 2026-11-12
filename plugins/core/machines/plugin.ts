@@ -2,10 +2,10 @@
 // user's). No accounts: whoever reaches one machine reaches the others through it, but shells stay the owner's.
 import crypto from "node:crypto"
 import os from "node:os"
-import { API_VERSION, APP_VERSION, bullets, HTTPError, inDesktop, LOADED, localDate, noDesktop, MACHINE_CLIENT, Plugin, replyWithin, reply, running, section, Text } from "../../../core/plugins.ts"
+import { API_VERSION, APP_VERSION, bullets, HTTPError, inDesktop, LOADED, localDate, noDesktop, MACHINE_CLIENT, onTailnet, Plugin, replyWithin, reply, running, section, Text } from "../../../core/plugins.ts"
 import { dialIn, type DialEntry } from "./dial.ts"
 import { shareKept } from "./kept.ts"
-import { alerts, duration, EVERY, KEEP_DAYS, report, reportText, sample, watch, type Report, type Sample } from "./health.ts"
+import { alerts, duration, EVERY, KEEP_DAYS, machineNow, type Now, report, reportText, sample, watch, type Report, type Sample } from "./health.ts"
 import type { Item } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -20,7 +20,7 @@ export type Machine = {
   standalone?: boolean
   /** Its last probe timed out, but it answered within the last two minutes: online, as it said then (a loaded server). */
   slow?: boolean
-}
+} & Partial<Now>
 
 const INSTANCE = crypto.randomUUID()
 const STANDALONE = process.env.VAULTITE_DESKTOP !== "1"
@@ -29,16 +29,6 @@ const ID = /^[a-z0-9][a-z0-9-]{0,62}$/
 
 /** A host name as a machine id: "Studio-Mac.local" -> "studio-mac". */
 export const slug = (s: string) => s.toLowerCase().replace(/\.local$/, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 63)
-
-/** An address on the tailnet (a .ts.net name, a 100.64/10 or fd7a:115c:a1e0:: address) or this machine's loopback: the
- *  settings are a vault file, and the server asks what's there as its owner, so never a host its writer picks. */
-export function onTailnet(url: string) {
-  let h: string
-  try { const u = new URL(url); if (!/^https?:$/.test(u.protocol) || u.username || u.password) return false; h = u.hostname.toLowerCase().replace(/^\[|\]$/g, "") } catch { return false }
-  const v4 = /^(\d+)\.(\d+)\.\d+\.\d+$/.exec(h)
-  if (v4) return v4[1] === "127" || (v4[1] === "100" && Number(v4[2]) >= 64 && Number(v4[2]) <= 127)
-  return h.endsWith(".ts.net") || h === "localhost" || h === "::1" || h.startsWith("fd7a:115c:a1e0:")
-}
 
 /** The machines in the settings, checked: a usable id and a tailnet url (onTailnet), each id once. */
 function listed(): DialEntry[] {
@@ -72,7 +62,7 @@ function vaultId(): string {
 
 async function self() {
   return { instance: INSTANCE, host: HOST, platform: process.platform, version: APP_VERSION, api: API_VERSION,
-    commit: (await running()).commit?.slice(0, 7) ?? "", plugins: enabledPlugins(), vault: vaultId(), desktop: inDesktop(), standalone: STANDALONE,
+    commit: (await running()).commit?.slice(0, 7) ?? "", plugins: enabledPlugins(), vault: vaultId(), desktop: inDesktop(), standalone: STANDALONE, ...machineNow(latest),
     // (the agent machines listed, as connected here: whoever asks has those that dial in here without asking again)
     dialed: Object.fromEntries(listed().filter((m) => m.via).map((m) => [m.id, dial.summary(m.id)])) }
 }
@@ -99,7 +89,7 @@ async function probeDirect(m: DialEntry, own: string): Promise<Probed> {
   if (isOwn(m.url, own)) {
     const s = await self()
     return { machine: { ...m, online: true, self: true, host: s.host, platform: s.platform, version: s.version, commit: s.commit || undefined, plugins: s.plugins,
-      vault: s.vault || undefined, desktop: s.desktop, standalone: s.standalone } }
+      vault: s.vault || undefined, desktop: s.desktop, standalone: s.standalone, cores: s.cores, load: s.load, memory: s.memory, display: s.display } }
   }
   try {
     const r = await fetch(`${m.url}/api/machines/self`, { headers: MACHINE_CLIENT, signal: AbortSignal.timeout(3000) })
@@ -108,7 +98,7 @@ async function probeDirect(m: DialEntry, own: string): Promise<Probed> {
     if (s.instance === INSTANCE) knownOwn.add(m.url)
     const probed: Probed = { machine: { ...m, online: true, self: s.instance === INSTANCE, host: s.host, platform: s.platform, version: s.version,
       commit: s.commit || undefined, plugins: Array.isArray(s.plugins) ? s.plugins : [], vault: typeof s.vault === "string" && s.vault ? s.vault : undefined,
-      desktop: s.desktop === true, standalone: s.standalone === true }, dialed: s.dialed && typeof s.dialed === "object" ? s.dialed as Record<string, Item> : undefined }
+      desktop: s.desktop === true, standalone: s.standalone === true, ...nowOf(s) }, dialed: s.dialed && typeof s.dialed === "object" ? s.dialed as Record<string, Item> : undefined }
     answered.set(m.url, { at: Date.now(), probed })
     return probed
   } catch (e) {
@@ -118,6 +108,13 @@ async function probeDirect(m: DialEntry, own: string): Promise<Probed> {
     answered.delete(m.url)
     return { machine: { ...m, online: false, self: false, error: unreachable(e) } }
   }
+}
+
+/** What another machine said of itself now (machineNow), as far as it said it (an older one says none). */
+function nowOf(s: Item): Partial<Now> {
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : undefined), mem = s.memory as Item | undefined
+  const memory = mem && n(mem.total) !== undefined && n(mem.free) !== undefined ? { total: n(mem.total)!, free: n(mem.free)! } : undefined
+  return { ...(n(s.cores) ? { cores: n(s.cores) } : {}), ...(n(s.load) !== undefined ? { load: n(s.load) } : {}), ...(memory ? { memory } : {}), ...(typeof s.display === "boolean" ? { display: s.display } : {}) }
 }
 
 /** Why a machine didn't answer, in words: its name not found (DNS: Tailscale's off, or its DNS is) reads apart from a
@@ -323,6 +320,8 @@ plugin.onUnload(() => { clearTimeout(first); clearInterval(hourly) })
 
 const healthLog = plugin.dayLog<Sample>("health")
 const watching = watch()
+/** The last sample (machineNow's memory). */
+let latest: Sample | null = null
 function health(span: string): Report {
   let since: number
   try { since = Date.now() - duration(span) } catch (e) { throw new HTTPError(400, (e as Error).message) }
@@ -334,6 +333,7 @@ async function sampleHealth() {
   if (!plugin.loaded || plugin.isOff()) return
   const s = await sample()
   if (!s) return
+  latest = s
   healthLog.append(s.t, [s])
   healthLog.prune(KEEP_DAYS)
   for (const a of alerts(watching, s, HOST))

@@ -298,8 +298,9 @@ its tab too (as vau terminal open does). With machine, on another of the Machine
       wait: { type: "boolean", description: "a command's: wait for it to end, and answer its exit code and last lines" },
       timeout: { type: "number", minimum: 0, maximum: 3600, default: 600, description: "with wait, seconds to wait at most" },
       open: { type: "boolean", description: "show its tab in the user's window too" },
+      home: { type: "object", description: "another server its vau tells the user through ({url, as}: a job's home, and this machine's id there): VAULTITE_HOME" },
     },
-    run: async ({ command, agent, prompt, session, name, cwd, machine, wait, timeout, open, model, effort, mode, allow }, ctx) => {
+    run: async ({ command, agent, prompt, session, name, cwd, machine, wait, timeout, open, model, effort, mode, allow, home }, ctx) => {
       const how = await howOf(plugin, agent, { model, effort, mode, allow, cwd })
       if (session && (!agent || !/^[\w.-]{4,100}$/.test(session))) throw new OpError(agent ? `'${session}' isn't a session's id` : "a `session` is an agent's: name the `agent` (claude, codex...)")
       if (!agent && (model || effort || mode || allow?.length)) throw new OpError("`model`, `effort`, `mode` and `allow` are an agent's: name the `agent`")
@@ -310,14 +311,14 @@ its tab too (as vau terminal open does). With machine, on another of the Machine
       const m = await elsewhere(plugin, machine ?? "")
       if (m) {
         const out = await there(plugin, ctx, m, "terminal.start", { ...(command ? { command } : {}), ...(agent ? { agent } : {}), ...(prompt ? { prompt } : {}), ...(session ? { session } : {}),
-          ...(name ? { name } : {}), ...how, ...(wait ? { wait, timeout } : {}) }, wait ? Number(timeout) + 30 : 30)
+          ...(name ? { name } : {}), ...how, ...(home ? { home } : {}), ...(wait ? { wait, timeout } : {}) }, wait ? Number(timeout) + 30 : 30)
         return { ...out, shown: open ? await shown(ctx, out.id) : false }
       }
       const [who, profile] = (agent ?? "").split("_")
       const id = session ? resumeTerminalId(who, session, profile) : newTerminalId(agent)
-      const body = { ...(command ? { command } : {}), ...(name ? { name } : {}), ...(cwd ? { cwd } : {}) }
+      const body = { ...(command ? { command } : {}), ...(name ? { name } : {}), ...(cwd ? { cwd } : {}), ...(home ? { home } : {}) }
       if (agent) {
-        await startAgent(ctx, id, prompt?.trim() || undefined, how)
+        await startAgent(ctx, id, prompt?.trim() || undefined, how, home)
         if (name) await ctx.api("POST", `terminals/${id}/name`, { name })
       } else await ctx.api("POST", `terminals/${id}`, Object.keys(body).length ? body : undefined)
       const isShown = open ? await shown(ctx, id) : false

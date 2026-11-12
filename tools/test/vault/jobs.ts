@@ -185,14 +185,42 @@ export default async ($: VaultTest) => {
     const home = "/Users/alice"
     check("where: a folder a rule names is refused with its why, others not", W.refusal("/Users/alice/Work/Acme/api", ["~/Work/Acme: Acme's work runs on its own machine"], home) === "Acme's work runs on its own machine" &&
       W.refusal("/Users/alice/Work/AcmeX", ["~/Work/Acme: no"], home) === "" && W.refusal("/Users/alice/Projects/site", ["~/Work/Acme"], home) === "")
-    const mac = (id: string, o: Any = {}): Any => ({ id, label: id.toUpperCase(), url: `https://${id}.tail1.ts.net`, online: true, self: false, plugins: ["terminal", "companion"], vault: "v1", ...o })
-    const ms = [mac("lap", { self: true }), mac("box", { standalone: true, vault: "v2" }), mac("old", { standalone: true, plugins: ["terminal"] }), mac("m1", { standalone: true }), mac("pc", { standalone: true })]
-    const pick = (want: string, here = false, all = ms) => W.preferredMachine(all, want, "v1", here)
-    check("where: jobs prefer the first always-on machine online with this vault and a companion; none when this one is always on, or set to here",
-      pick("auto").machine?.id === "m1" && pick("").machine?.id === "m1" && pick("auto", true).machine === null && pick("here").machine === null &&
-      pick("auto", false, ms.map((m) => (m.id === "m1" ? { ...m, online: false } : m))).machine?.id === "pc", [pick("auto"), pick("auto", true)])
-    check("where: a machine named for jobs is used while it can be, else here, saying why", pick("pc").machine?.id === "pc" && pick("lap").machine === null &&
-      pick("box").machine === null && /another vault/.test(pick("box").why) && pick("nope").machine === null)
+    const P = await import("../../../plugins/core/companion/placement.ts")
+    const mac = (id: string, o: Any = {}): Any => ({ id, label: id.toUpperCase(), online: true, self: false, standalone: false, platform: "darwin", vault: true, cores: 8, load: 1,
+      memory: { total: 16384, free: 60 }, jobs: 0, cap: 4, repos: ["site", "lighthouse/site"], agents: ["claude", "codex"], accounts: ["default", "personal"], ...o })
+    const ms = [mac("lap", { self: true }), mac("box", { standalone: true, vault: false, platform: "linux" }), mac("m1", { standalone: true }), mac("pc", { standalone: true, platform: "win32" })]
+    const ids = (r: { ranked: { t: Any }[] }) => r.ranked.map((x) => x.t.id).join()
+    const vaultJob = { has: ["vault" as const] }, coding = { has: [], repo: "lighthouse/site" }
+    check("placement: auto is the always-on machines in their order, then this one; here first when it's always on; a list in its order, here closing it",
+      P.orderOf("auto", ms).ids.join() === "box,m1,pc,lap" && P.orderOf("", ms).ids.join() === "box,m1,pc,lap" && P.orderOf("auto", ms.map((m) => (m.self ? { ...m, standalone: true } : m))).ids.join() === "lap,box,m1,pc" &&
+      P.orderOf("pc, here", ms).ids.join() === "pc,lap" && P.orderOf(["M1", "nope"], ms).ids.join() === "m1,lap" && P.orderOf("m1,nope", ms).unknown.join() === "nope" && P.orderOf("here", ms).ids.join() === "lap")
+    const plain = P.place(ms, vaultJob, "auto"), code = P.place(ms, coding, "auto")
+    check("placement: a vault's job only where this vault is, a coding job on another vault's machine too; each left out says why",
+      ids(plain) === "m1,pc,lap" && plain.left.includes("BOX has another vault") && ids(code) === "box,m1,pc,lap" && /^always on/.test(code.ranked[0].why), [plain, code])
+    check("placement: a machine that's off is skipped, saying so; one that doesn't say what jobs it takes too",
+      ids(P.place(ms.map((m) => (m.id === "m1" ? { ...m, online: false } : m)), vaultJob, "auto")) === "pc,lap" && P.place(ms.map((m) => (m.id === "m1" ? { ...m, online: false } : m)), vaultJob, "auto").left.includes("M1 is off") &&
+      ids(P.place(ms.map((m) => (m.id === "box" ? { ...m, away: "doesn't say" } : m)), coding, "auto")) === "m1,pc,lap")
+    check("placement: needs filter the machines (an OS, a desktop, the app, its repo, its agent and account)",
+      ids(P.place(ms, { has: ["macos"] }, "auto")) === "m1,lap" && ids(P.place(ms, { has: ["linux"] }, "auto")) === "box" && P.place(ms, { has: ["linux"] }, "auto").left.includes("LAP runs macOS, not Linux") &&
+      ids(P.place(ms.map((m) => (m.id === "m1" ? { ...m, display: false } : m)), { has: ["desktop"] }, "auto")) === "box,pc,lap" &&
+      ids(P.place(ms.map((m) => (m.id === "m1" ? { ...m, repos: ["other"] } : m)), coding, "auto")) === "box,pc,lap" &&
+      ids(P.place(ms.map((m) => (m.id === "box" ? { ...m, agents: ["claude"] } : m)), { has: [], agent: "codex" }, "auto")) === "m1,pc,lap" &&
+      ids(P.place(ms.map((m) => (m.id === "pc" ? { ...m, accounts: ["default"] } : m)), { has: [], account: "personal" }, "auto")) === "box,m1,lap" &&
+      ids(P.place(ms.map((m) => ({ ...m, repos: undefined, agents: undefined })), { has: [], repo: "x", agent: "y" }, "auto")) === "box,m1,pc,lap")
+    const loaded = ms.map((m) => (m.id === "box" ? { ...m, load: 6 } : m.id === "m1" ? { ...m, jobs: 4 } : m))
+    const busy = P.place(loaded, coding, "auto")
+    check("placement: the most headroom first (a busy machine after a free one, a full one last), then the order; why says so",
+      ids(busy) === "pc,lap,box,m1" && /^always on, the most headroom, load 0\.13 per core, 60% memory free, 0 of 4 jobs$/.test(busy.ranked[0].why) && /busy/.test(busy.ranked[2].why) &&
+      /full/.test(busy.ranked[3].why) && ids(P.place(loaded, coding, "m1, box")) === "lap,box,m1", busy.ranked.map((x) => x.why))
+    check("placement: a one-laptop setup runs everything here",
+      ids(P.place([mac("lap", { self: true })], coding, "auto")) === "lap" && !P.place([mac("lap", { self: true })], coding, "auto").left.length)
+    check("placement: headroom from load per core, free memory and jobs against its cap; unknown is room; a cap from cores and memory",
+      P.headroom(mac("a")).level === "free" && P.headroom(mac("a", { memory: { total: 8192, free: 5 } })).level === "full" && P.headroom(mac("a", { load: 6 })).level === "busy" &&
+      P.headroom({ id: "x", label: "X", self: false, online: true, standalone: false }).level === "free" && P.capOf(8, 16384) === 4 && P.capOf(2, 4096) === 1 && P.capOf(64, 262144) === 8)
+    const rules = P.rulesIn(JSON.stringify({ needs: [{ when: "\\b(swift|helper|desktop app)\\b", needs: ["macos", "desktop"] }, { needs: ["nope"] }, { when: "(", needs: ["linux"] }, { needs: ["vault"] }] }))
+    check("placement: a repo's rules (.vaultite-jobs.json) say what its work needs by its words; bad ones are left out",
+      rules.length === 2 && P.rulesNeed(rules, "Fix the Swift helper's crash").join() === "macos,desktop,vault" && P.rulesNeed(rules, "Fix the sidebar").join() === "vault" &&
+      P.rulesIn("not json").length === 0, rules)
     check("where: a preview or an editor's project is a copy the user watches here; a note, a GitHub page or nothing isn't",
       W.watched({ cwd: "/r", why: "", from: "preview" }) && W.watched({ cwd: "/r", why: "", from: "editor" }) && !W.watched({ cwd: "/r", why: "", from: "github" }) && !W.watched({ cwd: "/v", why: "", from: "vault" }))
     check("where: an address another machine serves goes to it", W.machineOfUrl({ url: "https://studio.tail1.ts.net:8450/x" }, { studio: "studio.tail1.ts.net" })?.machine === "studio" &&
@@ -879,6 +907,57 @@ setTimeout(draw, 300)
       /isn't a picture of the screen's name/.test(bad) && /isn't a PNG/.test(notPng), [got, bad, notPng])
   }
 
+  // A job's worker on another machine reports home: vau sends what reaches the user there, a proof's files and its save too.
+  {
+    const http = await import("node:http")
+    const got: Any[] = []
+    const home = http.createServer((req, res) => {
+      const chunks: Buffer[] = []
+      req.on("data", (d) => chunks.push(d))
+      req.on("end", () => {
+        const [route, qs] = req.url!.split("?"), raw = Buffer.concat(chunks), q = Object.fromEntries(new URLSearchParams(qs))
+        const file = route.endsWith("/companion.job-file")
+        got.push({ route, q, terminal: req.headers["x-vaultite-terminal"], client: req.headers["x-vaultite-client"], ...(file ? { bytes: raw.length } : { p: raw.length ? JSON.parse(String(raw)) : {} }) })
+        const out = file ? { path: `/home/alice/job-files/${q.job}/${q.name}` } : route.endsWith("/companion.tour-save") ? { path: "Guides/Proofs/The blue button.md", steps: 1, job: "jabc123" } : "Knocked."
+        res.writeHead(200, { "Content-Type": typeof out === "string" ? "text/plain" : "application/json" }).end(typeof out === "string" ? out : JSON.stringify(out))
+      })
+    }).listen(0, "127.0.0.1")
+    await new Promise((r) => home.once("listening", r))
+    const url = `http://127.0.0.1:${(home.address() as Any).port}`
+    try {
+      const { execute, cliApi } = $.vars, { homeEnv } = await import("../../../core/cli.ts")
+      const env = { VAULTITE_HOME: url, VAULTITE_HOME_AS: "box", VAULTITE_TERMINAL: "claude-abc", CLAUDECODE: "1" }
+      const r = await execute(["companion", "knock", "Ready to look"], { api: cliApi, env, stdin: async () => "" })
+      const k = got.find((x) => x.route === "/api/ops/companion.knock")
+      check("vau from a job's worker on another machine: what reaches the user goes to its home, its terminal named as home knows it",
+        r.code === 0 && r.out === "Knocked." && k?.p.line === "Ready to look" && k.p.terminal === "claude-abc@box" && k.terminal === "claude-abc@box", [r, got])
+      const n = got.length, local = await execute(["companion", "jobs"], { api: cliApi, env, stdin: async () => "" })
+      check("vau from a job's worker: the rest stays with its own server; the same server, or no home, is its own",
+        local.code === 0 && got.length === n && homeEnv({ ...env, VAULTITE_URL: url }, { home: true }) === null && homeEnv({}, { home: true }) === null && homeEnv(env, {}) === null, [local, got.slice(n)])
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "proof-")), video = path.join(dir, "demo.mp4"), before = path.join(dir, "before.png")
+      fs.writeFileSync(video, Buffer.alloc(2048, 1)); fs.writeFileSync(before, Buffer.alloc(300, 2))
+      try {
+        got.length = 0
+        const saved = await app.runOp("companion.tour-save", { title: "The blue button", job: "jabc123", home: url, video, times: [0, 1500], open: "Notes/Idea.md",
+          text: `1. Save is blue now [ring "Save"]. (before: ${before})` }).then((x) => x.result as Any, (e: Error) => e.message)
+        const files = got.filter((x) => x.route === "/api/ops/companion.job-file"), save = got.find((x) => x.route === "/api/ops/companion.tour-save")
+        check("tour-save --job from a worker away from home: its video and pictures sent there, then saved there naming their paths there, nothing in this vault",
+          saved?.path === "Guides/Proofs/The blue button.md" && saved.home === url && files.map((x) => `${x.q.name}:${x.bytes}`).sort().join() === "The blue button.mp4:2048,before 1.png:300" &&
+          save?.p.video === "/home/alice/job-files/jabc123/The blue button.mp4" && JSON.stringify(save.p.times) === "[0,1500]" && save.p.text.includes("(before: /home/alice/job-files/jabc123/before 1.png)") &&
+          save.p.job === "jabc123" && save.p.open === "Notes/Idea.md" && files.every((x) => x.client?.startsWith("machine/")) && !fs.existsSync(path.join(VAULT, "Guides", "Proofs", "The blue button.md")), [save?.p, files.length])
+      } finally { fs.rmSync(dir, { recursive: true, force: true }) }
+      const cap = (await app.runOp("companion.capacity", {})).result as Any
+      check("companion.capacity: the jobs this machine runs, how many it takes, its agents and checkouts", typeof cap.jobs === "number" && cap.cap >= 1 && cap.agents.includes("claude") && Array.isArray(cap.repos), cap)
+      if (process.platform !== "win32") {
+        const t = (await app.runOp("terminal.start", { command: `${JSON.stringify(process.execPath)} -e "console.log('home=' + process.env.VAULTITE_HOME + ' as=' + process.env.VAULTITE_HOME_AS)"`, wait: true, timeout: 30,
+          home: { url, as: "box" } })).result as Any
+        check("terminal.start --home: its programs get the job's home server and this machine's id there", t.output?.includes(`home=${url} as=box`), t)
+        const bad = await app.runOp("terminal.start", { command: "true", home: { url: "https://evil.example.com", as: "box" } }).then(() => "", (e: Error) => e.message)
+        check("terminal.start --home: only a server on the tailnet", /home: \{url, as\}/.test(bad), bad)
+      }
+    } finally { home.close() }
+  }
+
   // Another machine's job: where and its worker asked of that machine's companion, its terminal started and ended there.
   {
     const http = await import("node:http")
@@ -897,7 +976,8 @@ setTimeout(draw, 300)
         const merged = stage === "merged" ? "1a2b3c4d" : "5e6f7a8b"
         const out: Any = png ? { path: `/home/alice/.vaultite/local/companion/screens/${p.name}` } : op === "companion.where" ? (farHas ? { cwd: "/home/alice/Projects/site", repo: "site", base: "abc123", why: "as asked", refused: "", ...(farLive ? { live: true } : {}) }
             : { cwd: "/home/alice/Vault", repo: "", base: "", why: "nothing on screen named a project: the vault", from: "vault", refused: "" })
-          : op === "terminal.start" ? { id: "claude-remote1" }
+          : op === "companion.worker-start" ? { id: "claude-remote1" }
+          : op === "companion.capacity" ? { jobs: 0, cap: 4, agents: ["claude"], accounts: ["default", "personal"] }
           : op === "companion.worker" ? (stage === "working" ? { running: true, state: "working", title: "✳ Editing the header", typed: Date.now(), ...(p.turn ? { turn: { text: "", files: [], at: 0, final: false, session: "rs1" } } : {}) }
             : stage === "gone" ? { running: false, exit: { code: 0, signal: 1 }, ...(p.turn ? { turn: { text: "Shipped the header.", files: ["/home/alice/Projects/site/a.ts"], at: Date.now(), final: false, session: "rs1" }, diff: "1 file changed, +2 -1" } : {}) }
             : stage === "landed" ? (p.cwd ? { running: false, onMain: landed, marks: { whole: "a".repeat(40), each: ["b".repeat(40)] } } : null)
@@ -921,7 +1001,7 @@ setTimeout(draw, 300)
     try {
       let [st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Fix the header", machine: "studio", cwd: "~/Projects/site" }, agent))
       job = b
-      const start = calls.find((c) => c.op === "terminal.start")
+      const start = calls.find((c) => c.op === "companion.worker-start")
       check("handoff: a routine one (no say) still announces itself in one short line",
         !!(await waitFor(async () => (await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.kind === "say" && n.text === "Handed that off to a background agent."), 3000, 50)))
       check("handoff on another machine: its where asked there, its terminal started there in that folder, the card says so",
@@ -950,7 +1030,7 @@ setTimeout(draw, 300)
         ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Fix the footer", machine: "studio", cwd: "~/Projects/site", account: "personal" }, agent))
         const waiting = b
         check("handoff to a machine that's offline: kept as a job waiting for it, in that account, said so; nothing started",
-          st === 200 && b.state === "waiting" && b.queued === true && /Waiting for Studio to come back/.test(b.now) && /Personal/.test(b.where) && !calls.some((c) => c.op === "terminal.start") &&
+          st === 200 && b.state === "waiting" && b.queued === true && /Waiting for Studio to come back/.test(b.now) && /Personal/.test(b.where) && !calls.some((c) => c.op === "companion.worker-start") &&
           !!(await waitFor(async () => (await says()).includes("Studio is offline: the job starts there once it's back."), 3000, 50)), [st, b, calls])
         ;(await import("../../../plugins/core/companion/plugin.ts")).screenMoment({ kind: "ask", agent: "Claude", text: "and make it red. Also, can you run things on my personal account?", app: "com.example.browser", title: "Site", sx: 10, sy: 20 })
         ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Make it red", job: waiting.id, ask: false }, agent))
@@ -958,7 +1038,7 @@ setTimeout(draw, 300)
         ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Make it red", job: waiting.id }, agent))
         check("handoff --job: the same follow-up again isn't kept twice", st === 200 && !!(await waitFor(async () => (await says()).at(-1) === "That's already waiting for Studio.", 3000, 50)), [st, b])
         studio.online = true
-        const begun = await waitFor(() => calls.find((c) => c.op === "terminal.start"), 15000, 200)
+        const begun = await waitFor(() => calls.find((c) => c.op === "companion.worker-start"), 15000, 200)
         check("a job waiting for its machine starts there once it's back: in its account and folder, told its follow-up, never their words a follow-up left out",
           begun?.p.agent === "claude_personal" && begun.p.cwd === "/home/alice/Projects/site" && /Fix the footer/.test(begun.p.prompt) && /Also: Make it red/.test(begun.p.prompt) &&
           !/personal account\?/.test(begun.p.prompt), begun?.p)
@@ -1010,9 +1090,11 @@ setTimeout(draw, 300)
         shot, shotAt: { x: 0, y: 0, width: 800, height: 600 }, closeUp: { shot: close, at: { x: 0, y: 0, width: 100, height: 60 }, scale: 3, mark: "pointer" } })
       ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Research the header", say: "On it." }, agent))
       job = b
-      check("handoff with nothing tying it here (the ask's GitHub page): on the always-on machine, only the page passed on", st === 200 && b.where.startsWith("Studio") && /Studio \(always on\)/.test(b.why) &&
+      check("handoff with nothing tying it here (the ask's GitHub page): on the always-on machine, only the page passed on", st === 200 && b.where.startsWith("Studio") && /on Studio \(always on\b/.test(b.why) &&
         JSON.stringify(calls.find((c) => c.op === "companion.where")?.p) === JSON.stringify({ url: "https://github.com/lighthouse/site" }), [st, b, calls])
-      const told = calls.find((c) => c.op === "terminal.start")?.p.prompt ?? "", took = calls.filter((c) => c.op === "companion.picture-take")
+      check("handoff on another machine: its worker started there through that machine's companion, told its home (this server, and that machine's id here)",
+        JSON.stringify(calls.find((c) => c.op === "companion.worker-start")?.p.home) === JSON.stringify({ url: "http://127.0.0.1:1", as: "studio" }), calls.find((c) => c.op === "companion.worker-start")?.p)
+      const told = calls.find((c) => c.op === "companion.worker-start")?.p.prompt ?? "", took = calls.filter((c) => c.op === "companion.picture-take")
       check("handoff on another machine: the ask's picture and close-up copied there (machine to machine), the worker told their paths there, never this one's",
         took.map((c) => `${c.p.name}:${c.p.bytes}`).sort().join() === "close-7-1002.png:1200,display-7-1001.png:3008" && took.every((c) => c.client?.startsWith("machine/")) &&
         told.includes("Their screen then (a picture): /home/alice/.vaultite/local/companion/screens/display-7-1001.png") &&
@@ -1050,7 +1132,7 @@ setTimeout(draw, 300)
         verdicts.push({ commit: "1a2b3c4d", live: false, final: false, outcome: "pending", why: "1a2b3c4 isn't live here yet: updates waiting: CI runs on it" })
         try {
           const [st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Fix the footer live", machine: "studio", cwd: "~/Projects/site" }, agent))
-          const told = calls.find((c) => c.op === "terminal.start")?.p.prompt ?? ""
+          const told = calls.find((c) => c.op === "companion.worker-start")?.p.prompt ?? ""
           check("jobs: one landing itself in its server's own checkout is told to end at its push, the server waiting for it to go live", st === 200 && /don't wait yourself/.test(told), [st, b, told.slice(-1500)])
           await waitFor(async () => (await api("POST", "ops/companion.job", { id: b.id }))[1].state === "working", 10000, 100)
           stage = "merged"
@@ -1093,9 +1175,9 @@ setTimeout(draw, 300)
       await waitFor(async () => (await api("POST", "ops/companion.status", {}))[1].mode !== "off", 5000, 50)
           stage = "working"
           ;[st, b] = await ask()
-          const start = calls.find((c) => c.op === "terminal.start")
+          const start = calls.find((c) => c.op === "companion.worker-start")
           check("handoff over a preview here, its repo pushed and checked out on the always-on machine: it runs there, in that checkout, told to preview there",
-            st === 200 && b.link.endsWith("@studio") && /all pushed: as asked, on Studio \(always on\), previewed there/.test(b.why) &&
+            st === 200 && b.link.endsWith("@studio") && /all pushed: as asked, on Studio \(always on[^)]*\), previewed there/.test(b.why) &&
             JSON.stringify(calls.find((c) => c.op === "companion.where")?.p) === JSON.stringify({ url: "https://github.com/lighthouse/site" }) && start?.p.cwd === "/home/alice/Projects/site" &&
             new RegExp(`asked over the preview http://localhost:${port} on [^]*Studio's own preview[^]*say it's on Studio`).test(start?.p.prompt ?? ""), [st, b, start?.p])
           await asItsTool(() => api("POST", "ops/companion.job-stop", { id: b.id }, agent))
@@ -1124,9 +1206,9 @@ setTimeout(draw, 300)
             const head = g("rev-parse", "HEAD").trim()
             fs.appendFileSync(path.join(repo, "index.html"), "<p>wip</p>\n")
             ;[st, b] = await byName()
-            const start = calls.find((c) => c.op === "terminal.start")
+            const start = calls.find((c) => c.op === "companion.worker-start")
             check("handoff naming a repo checked out here, its commits pushed: on the always-on machine (uncommitted changes a worktree never takes don't tie it), from this commit, saying why",
-              st === 200 && b.link.endsWith("@studio") && /^site is .*site here, all pushed: as asked, on Studio \(always on\)$/.test(b.why) &&
+              st === 200 && b.link.endsWith("@studio") && /^site is .*site here, all pushed: as asked, on Studio \(always on[^)]*\)$/.test(b.why) &&
               JSON.stringify(calls.find((c) => c.op === "companion.where")?.p) === JSON.stringify({ url: "https://github.com/lighthouse/site" }) &&
               start?.p.cwd === "/home/alice/Projects/site" && (start?.p.prompt ?? "").includes(`${head.slice(0, 12)} (fetch that commit first if need be)`), [st, b, start?.p])
             g("checkout", "--", "index.html")
@@ -1137,8 +1219,19 @@ setTimeout(draw, 300)
             g("reset", "-q", "--hard", head)
             await api("PATCH", "config/plugin/companion", { jobs_machine: "here" })
             ;[st, b] = await byName()
-            check("handoff naming a repo with jobs_machine here: it stays here, saying so", st === 200 && !b.link.includes("@") && /jobs_machine is here: here\)$/.test(b.why), [st, b])
+            check("handoff naming a repo with jobs_machine here: it stays here, saying so", st === 200 && !b.link.includes("@") && /Studio isn't in jobs_machine: here\)$/.test(b.why), [st, b])
             await api("PATCH", "config/plugin/companion", { jobs_machine: "auto" })
+            // (a machine with a vault of its own: a coding job reports home, so it may go; the vault's own work may not)
+            Object.assign(studio, { vault: "v2" })
+            try {
+              ;[st, b] = await byName()
+              check("handoff naming a repo, the always-on machine on another vault: the coding job goes there all the same", st === 200 && b.link.endsWith("@studio"), [st, b])
+              ;(await import("../../../plugins/core/companion/plugin.ts")).screenMoment({ kind: "ask", agent: "Claude", text: "write up the week", app: "com.example.notes", title: "Notes", sx: 10, sy: 20 })
+              calls.length = 0
+              ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Write up the week in a note", say: "On it." }, agent))
+              if (!String(b.link ?? "").includes("@")) ours.push(String(b.link ?? "").split("/").pop()!)
+              check("handoff of the vault's own work, the always-on machine on another vault: it stays here, saying why", st === 200 && !String(b.link).includes("@") && /Studio has another vault: here\)$/.test(b.why), [st, b])
+            } finally { Object.assign(studio, { vault: "v1" }) }
             farHas = false
             ;[st, b] = await byName()
             check("handoff naming a repo the always-on machine hasn't checked out: it stays here, saying so", st === 200 && !b.link.includes("@") && /not checked out on Studio: here\)$/.test(b.why), [st, b])

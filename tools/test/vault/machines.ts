@@ -11,6 +11,7 @@ export default async ($: VaultTest) => {
       seen.push(`${req.url} ${req.headers["x-vaultite-client"]}`)
       const json = (status: number, body: unknown) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(body)) }
       if (req.url === "/api/machines/self") return json(200, { instance: "peer-1", host: "box", platform: "linux", version: "0.1.0", commit: "abc1234", plugins: ["terminal", "harbor"],
+        cores: 16, load: 3.5, memory: { total: 65536, free: 70 }, display: false,
         vault: JSON.parse(fs.readFileSync(path.join(VAULT, ".vaultite/plugins/machines/vault.json"), "utf8")).id })
       if (req.url?.startsWith("/api/harbor/tides")) return json(200, [{ at: "06:10", label: "High" }])
       if (req.url?.startsWith("/api/raw?")) { res.writeHead(200, { "Content-Type": "text/html" }); return res.end("<script>parent.x = 1</script>") }
@@ -32,11 +33,13 @@ export default async ($: VaultTest) => {
     check("machines: the listed ones (a usable id and url, each id once), each asked what it is", c === 200 && ms.length === 2 &&
       box?.online && box.label === "Box" && box.host === "box" && box.platform === "linux" && box.commit === "abc1234" && !box.self &&
       box.plugins.includes("terminal") && gone && !gone.online && gone.label === "gone" && gone.error, ms)
+    check("machines: each says its cores, load, memory and whether it has a desktop", box?.cores === 16 && box.load === 3.5 && box.memory.free === 70 && box.display === false && gone.cores === undefined, box)
     check("machines: asked as a machine", seen.some((x) => x.startsWith("/api/machines/self machine/")), seen)
     const vid = JSON.parse(read(".vaultite/plugins/machines/vault.json")).id
     check("machines: this vault's id, made once, and each machine's", /^[\w-]{36}$/.test(vid) && box?.vault === vid, [vid, box?.vault])
     const [, me] = await api("GET", "machines/self")
-    check("machines: what this one says of itself", typeof me.instance === "string" && me.host && me.version && me.plugins.includes("machines"), me)
+    check("machines: what this one says of itself", typeof me.instance === "string" && me.host && me.version && me.plugins.includes("machines") &&
+      me.cores >= 1 && typeof me.load === "number" && me.memory.total > 0 && me.memory.free >= 0 && me.memory.free <= 100 && typeof me.display === "boolean", me)
     let body: Any
     ;[c, body] = await api("GET", "machines/box/harbor/tides")
     check("machines: another machine's API through this one", c === 200 && JSON.parse(String(body))[0].label === "High", [c, body])
@@ -49,7 +52,7 @@ export default async ($: VaultTest) => {
       // (the list is a vault file, and the server asks a machine as its owner: only the owner, only the tailnet)
       const stranger = { headers: { host: "vault.example.ts.net", "tailscale-user-login": "stranger@example.com" }, socket: { remoteAddress: "100.64.0.9" } } as Any
       const r = await app.run("GET", ["machines", "box", "harbor", "tides"], {}, {}, stranger)
-      const { onTailnet } = await import("../../../plugins/core/machines/plugin.ts")
+      const { onTailnet } = await import("../../../core/owner.ts")
       check("machines: another machine's API only for this one's owner", r.status === 403, r.status)
       check("machines: only addresses on the tailnet (or this machine's)", ["https://studio.tail1234.ts.net:8447", "http://100.101.2.3:8793", "http://127.0.0.1:8794", "http://[fd7a:115c:a1e0::1]:8793"].every(onTailnet) &&
         !["https://evil.example.com", "http://192.168.1.5", "http://100.200.1.1", "https://ts.net.evil.example", "https://a@studio.tail1234.ts.net", "file:///etc"].some(onTailnet))

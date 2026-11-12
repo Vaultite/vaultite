@@ -3,7 +3,7 @@
 import fs from "node:fs"
 import os from "node:os"
 import nodePath from "node:path"
-import { type OpCtx, OpError, type Plugin } from "../../../core/plugins.ts"
+import { type Machine, MACHINE_CLIENT, type OpCtx, OpError, onTailnet, type Plugin, serverUrl } from "../../../core/plugins.ts"
 import { joinPath, Kind, parseText, safeName } from "../../../core/vault.ts"
 import { type Anchor, anchorOf, anchorText, keepAnchor, refind, type Seen, type Where } from "../../../core/desktop/anchor.ts"
 import { type Condition, conditionText, type Input, parseCondition, watch } from "./condition.ts"
@@ -270,6 +270,8 @@ no browser shows, as a before and after slide. --video keeps an mp4 you recorded
       open: { type: "string", description: "with job: where the change shows (a note's path or a page's address), which Show me opens before it plays, and a recording opens on its server" },
       record: { type: "string", description: "with job: the address of your own copy of the change (http://127.0.0.1:<port>: your dev server or a sandbox server) to record its video on, headless" },
       video: { type: "string", description: "with job: an mp4 of it you recorded yourself (a file here), kept as its video" },
+      times: { type: "array", items: { type: "number" }, description: "with video: when each step starts in it (ms)" },
+      home: { type: "string", env: "VAULTITE_HOME", description: "with job: the job's home server (filled in from VAULTITE_HOME in a job's terminal on another machine): it's recorded here and saved there" },
       as: { type: "string", description: "the agent (another than the companion)" },
     },
     args: ["title"],
@@ -295,6 +297,8 @@ no browser shows, as a before and after slide. --video keeps an mp4 you recorded
       if (record && given) throw new OpError("record or video, not both")
       if (record) recordable(record)
       if (given && (!/\.(mp4|m4v|mov|webm)$/i.test(given) || !fs.existsSync(given))) throw new OpError(`video: ${p.video} isn't a video here (an mp4, mov or webm file)`)
+      const home = typeof p.home === "string" ? p.home.trim().replace(/\/+$/, "") : ""
+      if (job && home && !(await isHere(home))) return await saveHome(home, { title, job, tour, record, given, open, text: typeof p.text === "string" ? p.text : "", app: p.app, site: p.site, times: p.times })
       // (a proof of another job by that title is left alone; this job's own is saved over, its pictures too)
       const theirs = (rel: string) => { try { return !new RegExp(`^job: ${job}$`, "m").test(fs.readFileSync(plugin.vault.abs(rel), "utf8")) } catch { return false } }
       let base = job ? `Guides/Proofs/${title}` : `Guides/${title}`
@@ -323,11 +327,13 @@ no browser shows, as a before and after slide. --video keeps an mp4 you recorded
         if (record) {
           const tmp = fs.mkdtempSync(nodePath.join(os.tmpdir(), "vaultite-proof-out-")), out = nodePath.join(tmp, file)
           try {
-            const r = await recordProof({ url: proofUrl(record, open), tour: { title, steps }, out, pic: (src) => (nodePath.isAbsolute(src) ? src : plugin.vault.abs(src)) })
-              .catch((e) => { throw new OpError(`couldn't record it: ${(e as Error).message}`, 409) })
+            const r = await recording(record, open, title, steps, out)
             video = { path: await keep(out, file), times: r.times, bytes: r.bytes, ms: r.ms }
           } finally { fs.rmSync(tmp, { recursive: true, force: true }) }
-        } else video = { path: await keep(given, file), bytes: fs.statSync(given).size }
+        } else {
+          const times = Array.isArray(p.times) ? p.times.map(Number).filter((t: number) => Number.isFinite(t) && t >= 0) : []
+          video = { path: await keep(given, file), bytes: fs.statSync(given).size, ...(times.length ? { times } : {}) }
+        }
       }
       await ctx.api("PUT", "file", { path, text: tourText({ ...tour, steps, ...(job ? { job } : {}), ...(video ? { video: video.path, ...(video.times ? { times: video.times } : {}) } : {}) }) })
       // (a tour finds its things in Vaultite's window or another app's: the Mac's menu bar or notch it never finds)
@@ -337,7 +343,7 @@ no browser shows, as a before and after slide. --video keeps an mp4 you recorded
         video && video.bytes > 12 << 20 ? `its video is ${Math.round(video.bytes / (1 << 20))} MB: keep a proof short (fewer, shorter steps)` : ""].filter(Boolean).join("; ")
       return { path, steps: tour.steps.length, ...(job ? { job } : {}), ...(video ? { video: video.path, size: video.bytes < 1 << 20 ? `${Math.max(1, Math.round(video.bytes / 1024))} KB` : `${Math.round(video.bytes / 104857.6) / 10} MB`, ...(video.ms ? { seconds: Math.round(video.ms / 1000) } : {}) } : {}), ...(warning ? { warning } : {}) }
     },
-    text: (r) => `${r.job ? `Saved ${r.path} (${r.steps} steps), the proof of ${r.job}${r.video ? `, with its video ${r.video} (${r.seconds ? `${r.seconds} s, ` : ""}${r.size}: embed it in your report, --video)` : ""}: Show me plays it once the job is ready.` : `Saved ${r.path} (${r.steps} steps): play it with companion tour "${r.path}".`}${r.warning ? ` Warning: ${r.warning}.` : ""}`,
+    text: (r) => `${r.job ? `Saved ${r.path}${r.home ? ` on its home, ${r.home}` : ""} (${r.steps} steps), the proof of ${r.job}${r.video ? `, with its video ${r.video} (${r.seconds ? `${r.seconds} s, ` : ""}${r.size}: embed it in your report, --video)` : ""}: Show me plays it once the job is ready.` : `Saved ${r.path} (${r.steps} steps): play it with companion tour "${r.path}".`}${r.warning ? ` Warning: ${r.warning}.` : ""}`,
   })
 
   plugin.op({
@@ -400,6 +406,43 @@ scroll, a move or a relabel; gone, it says so. Kept ones (k1, k2: what you point
     },
     text: (r) => (r.met ? `Met after ${Math.round(r.ms / 100) / 10} s: ${r.by}.` : `Not met (${r.why}) after ${Math.round(r.ms / 100) / 10} s: ${r.condition}.`),
   })
+
+  /** A proof's video recorded here, on the worker's own copy at `record`. */
+  const recording = (record: string, open: string, title: string, steps: Step[], out: string) =>
+    recordProof({ url: proofUrl(record, open), tour: { title, steps }, out, pic: (src) => (nodePath.isAbsolute(src) ? src : plugin.vault.abs(src)) })
+      .catch((e) => { throw new OpError(`couldn't record it: ${(e as Error).message}`, 409) })
+  /** Whether `url` is this server (the home a worker on this machine names, when it's this one's job). */
+  const isHere = async (url: string) => url === serverUrl() || url === ((await plugin.ask<Machine[]>("machines", [])).find((m) => m.self)?.url ?? "").replace(/\/+$/, "")
+  /** A job's proof from its worker here, for its home on another machine (the job and the user are there): its video
+   *  recorded here, then it and the pictures its steps name sent home, where tour-save keeps them beside the proof. */
+  async function saveHome(home: string, o: { title: string; job: string; tour: Tour; record: string; given: string; open: string; text: string; app?: unknown; site?: unknown; times?: unknown }) {
+    if (!onTailnet(home)) throw new OpError(`home: a server on the tailnet, not ${home}`)
+    if (!o.text.trim()) throw new OpError("text: a proof saved on its job's home names its steps (your last answer here isn't theirs)")
+    const send = async (from: string, name: string) => {
+      const r = await fetch(`${home}/api/ops/companion.job-file?${new URLSearchParams({ job: o.job, name })}`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/octet-stream" },
+        body: fs.readFileSync(from), signal: AbortSignal.timeout(120_000) }).catch((e) => { throw new OpError(`its home (${home}) doesn't answer: ${(e as Error).message}`, 502) })
+      const a = await r.json().catch(() => ({})) as { path?: string; error?: string }
+      if (!r.ok || !a.path) throw new OpError(`its home couldn't keep ${name}: ${a.error ?? r.status}`, r.status >= 400 ? r.status : 502)
+      return a.path
+    }
+    let text = o.text
+    for (const st of o.tour.steps) for (const [which, src] of [["before", st.before], ["after", st.after]] as const) {
+      if (!src || !nodePath.isAbsolute(local(src))) continue
+      if (!fs.existsSync(local(src))) throw new OpError(`step ${st.n}: ${which}: ${src} isn't a picture here`)
+      text = text.split(src).join(await send(local(src), `${which} ${st.n}${nodePath.extname(src).toLowerCase()}`))
+    }
+    let video = "", times = Array.isArray(o.times) ? o.times.map(Number) : undefined
+    if (o.record) {
+      const tmp = fs.mkdtempSync(nodePath.join(os.tmpdir(), "vaultite-proof-out-")), out = nodePath.join(tmp, `${safeName(o.title)}.mp4`)
+      try { times = (await recording(o.record, o.open, o.title, o.tour.steps, out)).times; video = await send(out, nodePath.basename(out)) } finally { fs.rmSync(tmp, { recursive: true, force: true }) }
+    } else if (o.given) video = await send(o.given, `${safeName(o.title)}${nodePath.extname(o.given).toLowerCase()}`)
+    const r = await fetch(`${home}/api/ops/companion.tour-save`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" }, signal: AbortSignal.timeout(60_000),
+      body: JSON.stringify({ title: o.title, text, job: o.job, ...(o.open ? { open: o.open } : {}), ...(typeof o.app === "string" ? { app: o.app } : {}), ...(typeof o.site === "string" ? { site: o.site } : {}),
+        ...(video ? { video, ...(times?.length ? { times } : {}) } : {}) }) }).catch((e) => { throw new OpError(`its home (${home}) doesn't answer: ${(e as Error).message}`, 502) })
+    const a = await r.json().catch(() => ({})) as Record<string, unknown>
+    if (!r.ok) throw new OpError(`its home: ${String(a.error ?? r.status)}`, r.status)
+    return { ...a, home }
+  }
 
   /** Each agent's last answer on screen (its words with their tags) and where it was: what "save that as a tour" saves. */
   const lastAnswer = new Map<string, { text: string; ctx: Parameters<typeof tourFromAnswer>[2] & {} }>()

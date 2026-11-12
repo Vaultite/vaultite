@@ -1383,6 +1383,7 @@ inbox.snooze take it). done: the latest done ones too.
 
 plugin.op({
   id: "inbox.add",
+  home: true,
   cli: "inbox add",
   mcp: "inbox_add",
   summary: "Leave something in the user's inbox to review later: research you did, a summary, a draft, links worth reading.",
@@ -1733,6 +1734,7 @@ closed ones too. The companion walks the user through these by voice.
 
 plugin.op({
   id: "inbox.ask",
+  home: true,
   cli: "inbox ask",
   owner: "files on this machine",
   lock: false,
@@ -1882,6 +1884,7 @@ plugin.provide("inbox:progress", (terminal: string, session?: string) =>
 
 plugin.op({
   id: "inbox.progress",
+  home: true,
   cli: "inbox progress",
   owner: "files on this machine",
   lock: false,
@@ -1916,6 +1919,7 @@ is vau inbox ask, the end of a task vau inbox report.
 
 plugin.op({
   id: "inbox.report",
+  home: true,
   cli: "inbox report",
   owner: "files on this machine",
   lock: false,

@@ -107,6 +107,9 @@ export type Op = {
   /** It also takes bytes of any size (what they are: "the file"), as `ctx.input`: the raw body of POST /api/ops/<id>
    *  (any type but JSON; the parameters then in the query), or an in-process caller's (call's `input`). */
   input?: string
+  /** It reaches the user (a knock, an inbox ask, a report): from a job's worker on another machine, vau runs it on the
+   *  job's home server (VAULTITE_HOME, core/cli.ts' homeEnv), where the user and the job are. */
+  home?: boolean
 }
 
 export type OpImage = { data: string; mimeType: string }
@@ -155,6 +158,8 @@ export type OpEntry = {
   input?: string
   /** Op.image: its answer comes with a picture (`?as=answer`). */
   image?: true
+  /** Op.home: a job's worker runs it on its home server. */
+  home?: true
   action: OpAction | null
 }
 
@@ -212,7 +217,7 @@ export const toolName = (op: Op): string | null => (op.mcp ? (typeof op.mcp === 
 export function entryOf(op: Op, plugin: string | null): OpEntry {
   return { id: op.id, plugin, summary: op.summary, help: op.help ?? "", kind: op.kind, params: paramsSchema(op), args: op.args ?? [],
     cli: op.cli ?? null, mcp: toolName(op), result: op.result ?? null, owner: op.owner ?? null, action: op.action ?? null, ...(op.exact ? { exact: true } : {}),
-    ...(op.input ? { input: op.input } : {}), ...(op.image ? { image: true as const } : {}) }
+    ...(op.input ? { input: op.input } : {}), ...(op.image ? { image: true as const } : {}), ...(op.home ? { home: true as const } : {}) }
 }
 
 // ---------- checking and converting parameters ----------

@@ -6,7 +6,8 @@ served through Tailscale Serve adds itself once (with the Tailscale plugin on; `
 stays removed); edit the labels freely. A machine without Vaultite that tries run on (a Windows VM) is `{"id": "lab",
 "label": "Lab VM", "ssh": "lab"}` (`ssh`: a host or an ssh config's Host, key login, Node and git there), which the app doesn't
 list. `"try": false` on any entry: `npm run verify -- --try` never runs there.
-- `GET /api/machines` says which answer and what each runs (`self`: this one); `GET /api/machines/<id>/<path>` is
+- `GET /api/machines` says which answer and what each runs (`self`: this one), with what each says of itself now: its
+  OS, cores, load over the last minute, memory (MB, % free) and whether it has a desktop (where jobs go); `GET /api/machines/<id>/<path>` is
   `GET /api/<path>` on that machine (read-only, for this machine's owner).
 - The browser's agents (`vau docs web-viewer`) on a server that isn't a desktop app's go to the first machine listed
   whose desktop app has this vault open (`desktop` in `/api/machines`), through its `POST /api/machines/desktop` (the

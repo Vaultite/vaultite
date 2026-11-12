@@ -8,7 +8,7 @@ import path from "node:path"
 import { type RawData, WebSocket } from "ws"
 import { type AgentAsk, type AgentCommand, agentModel, askLabel, type AgentHow, type AgentMeter, type AgentStart, type AgentState, agentName, agentSession, agentSite, MODEL_NAME, serversOwn, PERMISSION_MODES, shellQuote, parseTerminal, repoName } from "../../../core/agents.ts"
 import {
-  agentLines, HTTPError, LOCAL as LOCAL_DIR, readableImage, vauDir, writeWslVau, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, span, splitMachine, type Machine,
+  agentLines, HTTPError, LOCAL as LOCAL_DIR, onTailnet, readableImage, vauDir, writeWslVau, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, span, splitMachine, type Machine,
   type Request, type Access, accessOf, NOT_THE_USER, userSurface, whoOf,
 } from "../../../core/plugins.ts"
 import {
@@ -318,9 +318,19 @@ function fromReq(req: IncomingMessage): From {
  *  agents, so QA never starts a real one. */
 const AGENT_BIN = process.env.VAULTITE_AGENT_BIN ?? ""
 
+/** Another server a terminal's vau tells the user through (a job's home: VAULTITE_HOME, core/cli.ts' homeEnv), and
+ *  this machine as that one names it. */
+type Home = { url: string; as: string }
+const homeOf = (v: unknown): Home | undefined => {
+  const h = v && typeof v === "object" ? v as Record<string, unknown> : null, url = typeof h?.url === "string" ? h.url.replace(/\/+$/, "") : "", as = typeof h?.as === "string" ? h.as : ""
+  if (!h) return undefined
+  if (!onTailnet(url) || !/^[a-z0-9][a-z0-9-]{0,62}$/.test(as)) throw new HTTPError(400, "home: {url, as}, a server on the tailnet and this machine's id there")
+  return { url, as }
+}
+
 /** What a shell is told about where it runs (see the docstring): Vaultite's variables, and PATH with the app's bin/.
  *  A WSL distro's get them through WSLENV, paths made its own (/p), with its own vau. */
-function context(id: string | null, from: From, sh = shell()): Record<string, string> {
+function context(id: string | null, from: From, sh = shell(), home?: Home): Record<string, string> {
   // (the folder whose vau a terminal finds first: core/appentry.ts)
   const bin = vauDir(LOCAL_DIR), kind = kindOf(sh)
   shellFiles()
@@ -331,6 +341,7 @@ function context(id: string | null, from: From, sh = shell()): Record<string, st
     VAULTITE_CLIENT: from.client,
     ...(id ? { VAULTITE_TERMINAL: id } : {}),
     VAULTITE_BIN: bin,
+    ...(home ? { VAULTITE_HOME: home.url, VAULTITE_HOME_AS: home.as } : {}),
     ...(AGENT_BIN ? { VAULTITE_AGENT_BIN: AGENT_BIN } : {}),
     [PATH]: [bin, AGENT_BIN, env()[PATH]].filter(Boolean).join(path.delimiter),
   }
@@ -819,7 +830,7 @@ async function takeSpare(b: Backend, id: string, from: From, run: AgentRun | nul
 
 /** Starts a session (in the backend new ones go to), or reattaches to its shell if one runs (`fresh` says which). */
 async function start(id: string, cols: number, rows: number, from = LOCAL, prompt: string | null = null, dark: boolean | null = null,
-  how: AgentHow = {}, o: { command?: string; name?: string } = {}): Promise<{ s: Session; fresh: boolean }> {
+  how: AgentHow = {}, o: { command?: string; name?: string; home?: Home } = {}): Promise<{ s: Session; fresh: boolean }> {
   const agent = agentOf(id), timing = span("terminal.start", { agent: agent?.name ?? "shell", how: "running" })
   let b = await backendOf(id)
   timing.mark("find")
@@ -831,12 +842,13 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
     const sh = shell(), command = o.command ? { command: o.command, cwd: how.cwd || null } : null
     const run = command ?? await agentRun(id, prompt, dark, how, sh)
     if (agent) timing.mark("agent")
-    const spec: Spec = { shell: sh, run, only: !!command, cwd: how.cwd || vaultDir(), env: await termEnv(b), ctx: context(id, from, sh), cols, rows, scrollback: scrollback() }
+    const spec: Spec = { shell: sh, run, only: !!command, cwd: how.cwd || vaultDir(), env: await termEnv(b), ctx: context(id, from, sh, o.home), cols, rows, scrollback: scrollback() }
     if (run) cwd = run.cwd || spec.cwd
     // (what its list says it runs, and the name it's given)
     const made: Made = { command: o.command ?? agent?.name ?? progName(sh), ...(o.name ? { meta: { name: o.name } } : {}) }
     timing.tags.how = "spare"
-    if (command || !(b.spares && (await takeSpare(b, id, from, run, sh, made)))) {
+    // (a spare shell was told this server's variables: one with a home starts its own)
+    if (command || o.home || !(b.spares && (await takeSpare(b, id, from, run, sh, made)))) {
       timing.tags.how = "new"
       try { await b.create(id, spec, made) } catch (e) {
         // (out of ptys, the server couldn't start one either: the keeper's message says why)
@@ -1627,12 +1639,12 @@ plugin.route("POST", "terminals/*", async (req) => {
   const command = typeof req.body?.command === "string" && req.body.command.trim() ? req.body.command.trim() : undefined
   const name = typeof req.body?.name === "string" ? cleanName(req.body.name) : ""
   if (command && agentOf(id)) throw new HTTPError(400, "a terminal runs an agent or a command, not both")
-  const cols = clamp(req.body?.cols, 2, 1000, 120), rows = clamp(req.body?.rows, 1, 500, 40)
+  const cols = clamp(req.body?.cols, 2, 1000, 120), rows = clamp(req.body?.rows, 1, 500, 40), home = homeOf(req.body?.home)
   // (a model as people say it, "Fable 5.2", as its agent takes it: one it can't run is refused now, not a terminal that dies)
   const said = typeof req.body?.model === "string" ? req.body.model : "", agent = agentOf(id)?.name
   const model = said.trim() && agent ? (await agentModel(plugin, agent, said)).id : word(said)
   if (!starting.has(id)) starting.set(id, start(id, cols, rows, LOCAL, prompt, savedDark(), { allow, model: model || null, effort: word(req.body?.effort), mode, cwd },
-    { command, ...(name ? { name } : {}) })
+    { command, ...(name ? { name } : {}), ...(home ? { home } : {}) })
     .finally(() => starting.delete(id)))
   try { await starting.get(id)! } catch (e) {
     // (a command that ended within ms has nothing left to attach to: how it ended is the answer)

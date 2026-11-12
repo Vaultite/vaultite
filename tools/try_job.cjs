@@ -108,9 +108,7 @@ async function main() {
 }
 
 main().catch((e) => ({ setup: String(e && e.message || e) })).then((r) => {
-  // (not `git worktree remove`: Windows' 44,000 files of node_modules outlast its time there; Node's rm takes seconds)
-  try { fs.rmSync(wt, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 }) } catch (e) { out(`couldn't remove ${wt}: ${e.message}\n`) }
-  git(["worktree", "prune"]); git(["update-ref", "-d", `refs/try/${short}`])
+  git(["worktree", "remove", "--force", wt]); git(["worktree", "prune"]); git(["update-ref", "-d", `refs/try/${short}`])
   fs.rmSync(mark, { force: true })
   // (the summary last, short lines: a terminal's capture reads its end)
   say("summary")

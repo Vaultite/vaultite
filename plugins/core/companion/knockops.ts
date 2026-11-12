@@ -107,6 +107,7 @@ export function knockOps(plugin: Plugin, d: Deps) {
 
   plugin.op({
     id: "companion.knock",
+    home: true,
     cli: "companion knock",
     summary: "Ask for the user's attention from a background session, in one line, without interrupting them: it comes up by the notch at their next pause.",
     help: `For a session working in the background (a terminal's agent, a job, a script) with something for the user: done

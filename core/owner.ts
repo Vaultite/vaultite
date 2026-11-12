@@ -28,6 +28,16 @@ function tailscale() {
 /** Tests: Tailscale's status as given (null: ask Tailscale again). */
 export function setTailscaleStatus(st: Awaited<NonNullable<typeof status>> | null) { status = st ? Promise.resolve(st) : null }
 
+/** An address on the tailnet (a .ts.net name, a 100.64/10 or fd7a:115c:a1e0:: address) or this machine's loopback: one a
+ *  vault file or a caller names, so never a host its writer picks. */
+export function onTailnet(url: string) {
+  let h: string
+  try { const u = new URL(url); if (!/^https?:$/.test(u.protocol) || u.username || u.password) return false; h = u.hostname.toLowerCase().replace(/^\[|\]$/g, "") } catch { return false }
+  const v4 = /^(\d+)\.(\d+)\.\d+\.\d+$/.exec(h)
+  if (v4) return v4[1] === "127" || (v4[1] === "100" && Number(v4[2]) >= 64 && Number(v4[2]) <= 127)
+  return h.endsWith(".ts.net") || h === "localhost" || h === "::1" || h.startsWith("fd7a:115c:a1e0:")
+}
+
 /** The tailnet login of this machine's owner ("" if Tailscale isn't there or doesn't say). */
 async function ownerLogin(): Promise<string> {
   const st = await tailscale()

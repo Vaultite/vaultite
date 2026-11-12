@@ -5,12 +5,14 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { agentModel, agentName, KNOWN_AGENTS, parseTerminal } from "../../../core/agents.ts"
-import { gitEnv, inDesktop, type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin, quoted, ROOT, userSurface, type Who, whoOf } from "../../../core/plugins.ts"
-import { cardOf, choiceIn, commitsIn, endEvent, fixTask, HANDED, inPlace, landedSaid, landTask, liveStep, mergedCommit, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, type Marks, nowOf, restEvent, type Queued, queuedLine, toldBy, picturesIn, type Result, resumeOf,
+import { gitEnv, inDesktop, type Machine, type OpCtx, OpError, type Plugin, quoted, ROOT, userSurface, type Who, whoOf } from "../../../core/plugins.ts"
+import { cardOf, choiceIn, commitsIn, endEvent, fixTask, HANDED, inPlace, landedSaid, landTask, liveStep, mergedCommit, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, type Marks, nowOf, restEvent, type Queued, queuedLine, toldBy, type Result, resumeOf,
   type ProofMode, step, terminalOf, type Waits, type Where, worktreeOf } from "./jobs.ts"
 import { requestWriter } from "../../../core/vault.ts"
 import type { Moment } from "./plugin.ts"
-import { branchOf, checkoutNamed, type Found, githubOf, headOf, machineOfUrl, onlyHere, type Over, preferredMachine, refusal, repoOf, resolveHere, checkoutsLine, rootsLine, sitesIn, surfaceOf, tilde, unpushed, urlsIn, watched } from "./where.ts"
+import { branchOf, checkoutNamed, checkoutNames, type Found, githubOf, headOf, machineOfUrl, onlyHere, type Over, refusal, repoOf, resolveHere, checkoutsLine, rootsLine, sitesIn, surfaceOf, tilde, unpushed, urlsIn, watched } from "./where.ts"
+import { type Home, type Read, workerLinks } from "./links.ts"
+import { capOf, lacks, type Needs, place, type Ranked, type RepoRule, rulesIn, rulesNeed, RULES_FILE, type Traits } from "./placement.ts"
 
 /** What the plugin gives the jobs: the ask a handoff came from, whose a call is, its say, its action log, who an `as` names. */
 export type JobDeps = {
@@ -56,7 +58,7 @@ export const shipEvery = (ms: number) => { SHIP_READ = ms }
 let LIVE_READ = 20_000
 export const liveEvery = (ms: number) => { LIVE_READ = ms }
 /** A picture of the screen handed on by another machine (a Retina display's PNG is a few MB), at most; its first bytes. */
-const PICTURE_MAX = 40 << 20, PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+const PICTURE_MAX = 40 << 20, PROOF_MAX = 200 << 20, PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 /** How long after the user's ask the companion's handoff is still its answer (its words and place go with it). */
 const ANSWERING_MS = 10 * 60_000
 /** How long a job done keeps its terminal: follow-ups mostly come within a minute or two, and still find it running. */
@@ -241,33 +243,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   // ---------- another machine
 
   async function machines() { return await plugin.ask<Machine[]>("machines", []) }
-  /** Op `id` run on machine `machine` with `body`, its server checking its owner again. */
-  async function atMachine(machine: string, id: string, body: object, seconds = 15) {
-    const m = await plugin.ask<Machine | null>("machines:machine", null, machine)
-    if (!m || m.self) throw new OpError(`no machine '${machine}' (Machines lists them)`, 404)
-    if (!m.online) throw new OpError(`${m.label} is offline`, 502)
-    const r = await fetch(`${m.url}/api/ops/${id}`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" }, body: JSON.stringify(body),
-      signal: AbortSignal.timeout(seconds * 1000) }).catch(() => null)
-    if (!r) throw new OpError(`${m.label} doesn't answer`, 502)
-    const out = await r.json().catch(() => ({})) as Record<string, unknown>
-    if (!r.ok) throw new OpError(`${m.label}: ${str(out.error) || `answered ${r.status}`}`, r.status)
-    return out
-  }
-  /** `text` with the pictures of the user's screen it names copied to `machine` (its worker can't read this one's files),
-   *  named by their paths there; one that couldn't be copied keeps its path here. */
-  async function carry(machine: string, text: string) {
-    const here = picturesIn(text).filter((f) => fs.existsSync(f))
-    const m = here.length ? await plugin.ask<Machine | null>("machines:machine", null, machine) : null
-    if (!m || m.self || !m.online) return text
-    const there = await Promise.all(here.map(async (f) => {
-      const r = await fetch(`${m.url}/api/ops/companion.picture-take?name=${encodeURIComponent(path.basename(f))}`, { method: "POST",
-        headers: { ...MACHINE_CLIENT, "Content-Type": "image/png" }, body: fs.readFileSync(f), signal: AbortSignal.timeout(15_000) }).catch(() => null)
-      const to = str((r?.ok ? await r.json().catch(() => null) : null)?.path)
-      if (!to) console.error(`companion: jobs: couldn't copy ${path.basename(f)} to ${m.label}${r ? ` (${r.status})` : ""}`)
-      return to || f
-    }))
-    return here.reduce((t, f, i) => t.split(f).join(there[i]), text)
-  }
+  const links = workerLinks(plugin, { seenHere: (id, r) => seenHere(id, r) }), atMachine = links.atMachine
   /** Whether `e`, from asking `machine`, was it being offline (it reads offline now): a handoff for it then waits. A
    *  machine that answered too slowly, maybe having done it, isn't. */
   async function away(machine: string, e: unknown) {
@@ -279,8 +255,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   async function accountThere(ctx: OpCtx, machine: string, p: Record<string, unknown>) {
     const account = str(p.account).trim().toLowerCase()
     if (!account || account === "default") return
-    if (machine) await atMachine(machine, "claude-code.limits", { account }, 10)
-    else await ctx.op("claude-code.limits", { account })
+    await links.of({ machine }).there(ctx, "claude-code.limits", { account }, 10)
   }
   const hostOf = (u: string) => { try { return new URL(u).hostname } catch { return "" } }
   async function labelOf(machine: string) {
@@ -293,7 +268,8 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
 
   /** Where an ask over `o` (or `cwd`, or `repo`, as given) runs here: its folder, repo and base, or why it never runs
    *  here. A folder or repo another machine names is this machine's own checkout of it (each keeps its repos in its place). */
-  async function placeHere(o: Over, cwd: string, repo = ""): Promise<Found & { repo: string; base: string; refused: string; missing?: boolean; looked?: string; have?: string; live?: boolean; carried?: boolean }> {
+  async function placeHere(o: Over, cwd: string, repo = ""): Promise<Found & { repo: string; base: string; refused: string; missing?: boolean; looked?: string; have?: string; live?: boolean; carried?: boolean
+    rules?: RepoRule[] }> {
     const self = (await machines()).filter((m) => m.self).map((m) => hostOf(m.url)).filter(Boolean)
     const isDir = (d: string) => !!fs.statSync(d, { throwIfNoEntry: false })?.isDirectory()
     const asked = cwd.replace(/^~(?=$|\/)/, os.homedir())
@@ -307,18 +283,21 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
       found = { cwd: own, why: cwd ? `${tilde(asked)} is ${tilde(own)} here` : `${repo} is ${tilde(own)} here` }
     } else found = await resolveHere(o, plugin.vault.path, self)
     const top = found.cwd === plugin.vault.path ? "" : await repoOf(found.cwd)
-    const at = top || found.cwd
+    const at = top || found.cwd, rules = top ? rulesOf(top) : []
     return { ...found, cwd: at, repo: top ? at.split("/").pop()! : "", base: top ? await headOf(top) : "", refused: refusal(at, lines("jobs_never")) || refusal(found.cwd, lines("jobs_never")),
-      ...(top && sameDir(top, ROOT) ? { live: true } : {}) }
+      ...(top && sameDir(top, ROOT) ? { live: true } : {}), ...(rules.length ? { rules } : {}) }
   }
-  /** A folder asked for with no machine, not here: on the machine jobs prefer (where the user's repos often are), else
+  /** A folder or repo asked for with no machine, not here: on the first machine (placement's order) that has it, else
    *  refused with where it was looked for. */
-  async function elsewhere(cwd: string, repo: string, here: Placed): Promise<{ machine: string; there: Placed }> {
-    const all = await machines(), self = all.find((x) => x.self)
-    const pick = preferredMachine(all, setting("jobs_machine"), await plugin.ask<string>("machines:vault", ""), self ? !!self.standalone : !inDesktop())
-    const far = pick.machine ? await atMachine(pick.machine.id, "companion.where", { ...(cwd ? { cwd } : {}), ...(repo ? { repo } : {}) }, 6).catch(() => null) as Placed | null : null
-    if (pick.machine && far && !far.missing) return { machine: pick.machine.id, there: { ...far, why: `${far.why}, on ${pick.machine.label} (none on ${await labelOf("")})` } }
-    throw new OpError(`${await missingLine(here, "")}${pick.machine ? `, nor on ${pick.machine.label}${far ? "" : ` (it doesn't answer)`}` : ""}. Leave cwd out (it runs where the ask was), or name the repo (repo: each machine finds its own checkout) with machine`, 404)
+  async function elsewhere(cwd: string, repo: string, here: Placed, base: Base): Promise<{ machine: string; there: Placed }> {
+    const r = await ranking({ has: [], ...base.agent }), asked: string[] = []
+    for (const { t, why } of r.ranked.filter((x) => !x.t.self)) {
+      const far = await atMachine(t.id, "companion.where", { ...(cwd ? { cwd } : {}), ...(repo ? { repo } : {}) }, 6).catch(() => null) as Placed | null
+      const no = !far ? "it doesn't answer" : far.missing ? "" : ruled(t, far, base)
+      asked.push(`${t.label}${no ? ` (${no})` : ""}`)
+      if (far && !far.missing && !no) return { machine: t.id, there: { ...far, why: `${far.why}, on ${t.label} (none on ${await labelOf("")}${why ? `; ${why}` : ""})` } }
+    }
+    throw new OpError(`${await missingLine(here, "")}${asked.length ? `, nor on ${asked.join(", ")}` : ""}. Leave cwd out (it runs where the ask was), or name the repo (repo: each machine finds its own checkout) with machine`, 404)
   }
   /** Why a folder or repo asked for isn't on `machine`, from what it looked at: never a guess. */
   const missingLine = async (there: Placed, machine: string) => `on ${await labelOf(machine)}, ${there.why}${there.looked ? ` (looked in ${there.looked}; its checkouts: ${there.have || "none"})` : ""}`
@@ -354,55 +333,118 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
         ...(o.app ? { app: o.app } : {}), ...(o.title ? { title: o.title } : {}), ...(o.path ? { path: o.path } : {}) }) as unknown as Placed
       : await placeHere(o, str(p.cwd), repo)
     if (there.missing && machine) throw new OpError(await missingLine(there, machine), 404)
-    if (there.missing) ({ machine, there } = await elsewhere(str(p.cwd), repo, there))
+    const base = baseOf(m, p)
+    if (there.missing) ({ machine, there } = await elsewhere(str(p.cwd), repo, there, base))
     let moved = ""
-    if (!asked && !machine) ({ machine, there, moved } = await preferred(o, there))
-    else if (repo && !machine && !str(p.cwd)) ({ machine, there } = await named(there))
+    if (!asked && !machine) ({ machine, there, moved } = await preferred(o, there, base))
+    else if (repo && !machine && !str(p.cwd)) ({ machine, there } = await named(there, base))
     if (there.refused) throw new OpError(`it can't run there: ${there.refused}. Say so (where it would have run: ${tilde(there.cwd)})`, 403)
     return { machine, label: await labelOf(machine), cwd: there.cwd, repo: there.repo, why: there.why, ...(there.base ? { base: there.base } : {}), ...(there.preview ? { preview: there.preview } : {}),
       ...(moved ? { moved } : {}), ...(there.live ? { live: true } : {}), ...(there.carried ? { carried: true } : {}), ...(there.from ? { from: there.from } : {}) }
   }
-  /** A repo named (no machine, no folder) and checked out here: to the machine jobs prefer when it has the repo too and
-   *  the commit a job starts from is pushed (its worktree never takes uncommitted changes), else here, saying why. */
-  async function named(here: Placed): Promise<{ machine: string; there: Placed }> {
-    const all = await machines(), self = all.find((x) => x.self), stay = (why: string) => ({ machine: "", there: { ...here, why: `${here.why} (${why}: here)` } })
-    const want = setting("jobs_machine").trim() || "auto", standalone = self ? !!self.standalone : !inDesktop()
-    const pick = preferredMachine(all, want, await plugin.ask<string>("machines:vault", ""), standalone)
-    if (here.refused) return { machine: "", there: here }
-    if (!pick.machine) return stay(pick.why || (want === "here" ? "jobs_machine is here" : standalone ? "this machine is the always-on one" : want === "auto" ? "no always-on machine with this vault is online" : "jobs_machine names this machine"))
-    const m = pick.machine, slug = await githubOf(here.cwd), left = slug ? await unpushed(here.cwd) : ""
-    if (!slug) return stay(`its repo isn't on GitHub, so ${m.label} can't have it`)
-    if (left) return stay(`${left} it starts from would be missing on ${m.label}`)
-    const far = await atMachine(m.id, "companion.where", { url: `https://github.com/${slug}` }, 6).catch(() => null) as Placed | null
-    if (!far || far.missing || !far.repo) return stay(far ? `not checked out on ${m.label}` : `${m.label} doesn't answer`)
-    // (its worktree there starts at the commit it would have here, pushed)
-    return { machine: m.id, there: { ...far, ...(here.base ? { base: here.base, carried: true } : {}), why: `${here.why}, all pushed: ${far.why}, on ${m.label} (${pick.why})` } }
+  /** What a handoff brings to placement besides where it's asked over: its words (a repo's rules match them), its agent
+   *  and account. */
+  type Base = { words: string; agent: Pick<Needs, "agent" | "account"> }
+  const baseOf = (m: Moment | undefined, p: Record<string, unknown>): Base => {
+    const account = str(p.account).trim().toLowerCase()
+    return { words: [str(p.task), m?.text ?? ""].join("\n"), agent: { agent: str(p.agent) || "claude", ...(account && account !== "default" ? { account } : {}) } }
   }
-  /** An ask placed `here` moved to the machine jobs prefer: its checkout of the GitHub page's repo or of a pushed preview's
-   *  (an editor project's), else its vault unless the repo is only here. `moved`: what the user watched here. */
-  async function preferred(o: Over, here: Placed): Promise<{ machine: string; there: Placed; moved: string }> {
-    const all = await machines(), self = all.find((x) => x.self), stay = (why: string) => ({ machine: "", there: { ...here, why: `${here.why} (${why}: here)` }, moved: "" })
-    const pick = preferredMachine(all, setting("jobs_machine"), await plugin.ask<string>("machines:vault", ""), self ? !!self.standalone : !inDesktop())
-    if (!pick.machine) return pick.why ? stay(pick.why) : { machine: "", there: here, moved: "" }
-    const m = pick.machine, local = watched(here)
+  /** Why machine `t` can't take the job after all, now its place there is known (`far`): what its repo's rules say the
+   *  work needs, or this vault when it works in a vault there; "" when it can. */
+  const ruled = (t: Traits, far: Placed, base: Base) => lacks(t, { has: [...(far.repo ? [] : ["vault" as const]), ...rulesNeed(far.rules ?? [], base.words)] })
+  /** A checkout's rules on what its work needs (placement.ts), none when it has no such file. */
+  const rulesOf = (top: string) => { try { return rulesIn(fs.readFileSync(path.join(top, RULES_FILE), "utf8")) } catch { return [] } }
+  /** Where job needs `n` place it among the machines (placement.ts): each other one tried in turn while `fits` says why
+   *  not, till this one comes; here with why the others didn't take it, unless there's nothing else to say. */
+  async function placed(here: Placed, n: Needs, fits: (c: Ranked) => Promise<{ there: Placed; moved?: string } | string>): Promise<{ machine: string; there: Placed; moved: string }> {
+    const r = await ranking(n), tried: string[] = []
+    for (const c of r.ranked) {
+      if (c.t.self) {
+        const why = tried.length ? tried.join("; ") : r.ranked.length > 1 ? `${c.t.label}: ${c.why || "first in jobs_machine"}` : r.left.join("; ")
+        return { machine: "", there: why ? { ...here, why: `${here.why} (${why}: here)` } : here, moved: "" }
+      }
+      const got = await fits(c)
+      if (typeof got !== "string") return { machine: c.t.id, there: got.there, moved: got.moved ?? "" }
+      tried.push(got)
+    }
+    // (this one lacks what it needs too: it runs here all the same, as nowhere else can)
+    const why = [...tried, ...r.left].join("; ")
+    return { machine: "", there: why ? { ...here, why: `${here.why} (${why}: here)` } : here, moved: "" }
+  }
+  /** A repo named (no machine, no folder) and checked out here: to the machine placement picks when it has the repo too
+   *  and the commit a job starts from is pushed (its worktree never takes uncommitted changes), else here, saying why. */
+  async function named(here: Placed, base: Base): Promise<{ machine: string; there: Placed }> {
+    if (here.refused) return { machine: "", there: here }
+    const slug = await githubOf(here.cwd), left = slug ? await unpushed(here.cwd) : ""
+    return placed(here, { has: rulesNeed(here.rules ?? [], base.words), repo: slug || here.repo, ...base.agent }, async ({ t, why }) => {
+      if (!slug) return `its repo isn't on GitHub, so ${t.label} can't have it`
+      if (left) return `${left} it starts from would be missing on ${t.label}`
+      const far = await atMachine(t.id, "companion.where", { url: `https://github.com/${slug}` }, 6).catch(() => null) as Placed | null
+      if (!far || far.missing || !far.repo) return far ? `not checked out on ${t.label}` : `${t.label} doesn't answer`
+      const no = ruled(t, far, base)
+      if (no) return `${t.label} ${no}`
+      // (its worktree there starts at the commit it would have here, pushed)
+      return { there: { ...far, ...(here.base ? { base: here.base, carried: true } : {}), why: `${here.why}, all pushed: ${far.why}, on ${t.label}${why ? ` (${why})` : ""}` } }
+    })
+  }
+  /** An ask placed `here` moved to the machine placement picks: its checkout of the GitHub page's or a pushed preview's
+   *  repo, else its vault (the vault's work needs this vault there), unless only here. `moved`: what they watched here. */
+  async function preferred(o: Over, here: Placed, base: Base): Promise<{ machine: string; there: Placed; moved: string }> {
+    const local = watched(here)
+    // (a folder jobs never run in here isn't escaped by its copy elsewhere)
+    if (local && here.refused) return { machine: "", there: here, moved: "" }
     // (a live site's address too: the machine there finds its own checkout that deploys it)
     let gh = urlsIn(o).find((u) => u.hostname === "github.com")?.href ?? (here.from === "site" || here.from === "vault" ? sitesIn(o)[0]?.href : undefined)
-    if (local) {
-      // (a folder jobs never run in here isn't escaped by its copy elsewhere)
-      if (here.refused) return { machine: "", there: here, moved: "" }
-      const slug = await githubOf(here.cwd), left = slug ? await onlyHere(here.cwd) : ""
-      if (!slug) return stay(`its repo isn't on GitHub, so ${m.label} can't have it`)
-      if (left) return stay(`${left}, not yet pushed, would be lost on ${m.label}`)
-      gh = `https://github.com/${slug}`
-    }
-    const far = await atMachine(m.id, "companion.where", { ...(gh ? { url: gh } : {}), ...(o.path ? { path: o.path } : {}) }, 6).catch(() => null) as Placed | null
-    if (!far || (!far.repo && here.repo)) return stay(far ? `not checked out on ${m.label}` : `${m.label} doesn't answer`)
-    if (!local) return { machine: m.id, there: { ...far, why: `${far.why}, on ${m.label} (${pick.why})` }, moved: "" }
-    const branch = await branchOf(here.cwd), at = [branch, here.base.slice(0, 7)].filter(Boolean).join(" at ")
-    // (its worktree there starts at the commit they watched here, which its diff counts from)
-    return { machine: m.id, there: { ...far, ...(here.base ? { base: here.base } : {}), why: `${here.why}, all pushed: ${far.why}, on ${m.label} (${pick.why}), previewed there` },
-      moved: `${here.preview ? `the preview ${here.preview}` : `${tilde(here.cwd)}, open in their editor`} on ${await labelOf("")}${at ? ` (${at})` : ""}` }
+    const slug = here.repo ? await githubOf(here.cwd) : "", left = local && slug ? await onlyHere(here.cwd) : ""
+    if (local && slug) gh = `https://github.com/${slug}`
+    const n: Needs = { has: [...(here.repo || gh ? [] : ["vault" as const]), ...rulesNeed(here.rules ?? [], base.words)], ...(here.repo ? { repo: slug || here.repo } : {}), ...base.agent }
+    return placed(here, n, async ({ t, why }) => {
+      if (local && !slug) return `its repo isn't on GitHub, so ${t.label} can't have it`
+      if (left) return `${left}, not yet pushed, would be lost on ${t.label}`
+      const far = await atMachine(t.id, "companion.where", { ...(gh ? { url: gh } : {}), ...(o.path ? { path: o.path } : {}) }, 6).catch(() => null) as Placed | null
+      if (!far || (!far.repo && here.repo)) return far ? `not checked out on ${t.label}` : `${t.label} doesn't answer`
+      const no = ruled(t, far, base)
+      if (no) return `${t.label} ${no}`
+      const on = `on ${t.label}${why ? ` (${why})` : ""}`
+      if (!local) return { there: { ...far, why: `${far.why}, ${on}` } }
+      const branch = await branchOf(here.cwd), at = [branch, here.base.slice(0, 7)].filter(Boolean).join(" at ")
+      // (its worktree there starts at the commit they watched here, which its diff counts from)
+      return { there: { ...far, ...(here.base ? { base: here.base } : {}), why: `${here.why}, all pushed: ${far.why}, ${on}, previewed there` },
+        moved: `${here.preview ? `the preview ${here.preview}` : `${tilde(here.cwd)}, open in their editor`} on ${await labelOf("")}${at ? ` (${at})` : ""}` }
+    })
   }
+
+  // ---------- the machines a job may go to
+
+  /** What this machine says of its jobs (companion.capacity): the workers it runs now and how many it takes, the repos
+   *  it has checked out, the agents it runs and their accounts. */
+  async function capacity() {
+    const set = Number(plugin.settings().jobs_cap) || 0
+    const agents = [...new Set(KNOWN_AGENTS.map((a) => a.terminal ?? a.id))].filter((a) => typeof plugin.service(`agent:${a}`) === "function")
+    const accounts = await plugin.ask<string[] | null>("agent-accounts:claude", null).catch(() => null)
+    return { jobs: await links.running(), cap: set > 0 ? Math.round(set) : capOf(os.cpus().length, os.totalmem() / 1048576), repos: checkoutNames(), agents, ...(accounts ? { accounts } : {}) }
+  }
+  type Capacity = Awaited<ReturnType<typeof capacity>>
+  /** Each machine as placement sees it: Machines' list with what each one's companion says of its jobs (this one's read
+   *  here). One that doesn't say (no companion, an older Vaultite) takes no jobs placed for it. */
+  async function traitsOf(): Promise<Traits[]> {
+    const vault = await plugin.ask<string>("machines:vault", ""), all = (await machines()).filter((m) => m.self || m.plugins?.includes("companion"))
+    const out = await Promise.all(all.map(async (m): Promise<Traits> => {
+      const c = m.self ? await capacity() : m.online ? await atMachine(m.id, "companion.capacity", {}, 4).catch(() => null) as Capacity | null : null
+      return { id: m.id, label: m.label, self: m.self, online: m.online, standalone: !!m.standalone, platform: m.self ? process.platform : m.platform, vault: m.self || (!!vault && m.vault === vault),
+        app: !!m.desktop, ...(m.display !== undefined ? { display: m.display } : {}), ...(m.cores ? { cores: m.cores } : {}), ...(m.load !== undefined ? { load: m.load } : {}),
+        // (this one's place is found already, its repo with it)
+        ...(m.memory ? { memory: m.memory } : {}), ...(c ? { jobs: c.jobs, cap: c.cap, ...(m.self ? {} : { repos: c.repos }), agents: c.agents, ...(c.accounts ? { accounts: c.accounts } : {}) } : {}),
+        ...(!m.self && m.online && !c ? { away: "doesn't say what jobs it takes (an older Vaultite, or its companion is off)" } : {}) }
+    }))
+    if (!out.some((t) => t.self)) {
+      const c = await capacity()
+      out.unshift({ id: "here", label: await labelOf(""), self: true, online: true, standalone: !inDesktop(), platform: process.platform, vault: true, app: inDesktop(), ...c, repos: undefined })
+    }
+    return out
+  }
+  /** The machines a job needing `n` may go to, best first (this one among them), and why each other one can't. */
+  const ranking = async (n: Needs) => place(await traitsOf(), n, plugin.settings().jobs_machine ?? plugin.manifest.settings?.jobs_machine?.default ?? "auto")
   /** Whether coding jobs land their own change once its checks pass (the setting jobs_land), not waiting for Keep and merge. */
   const lands = () => plugin.settings().jobs_land === true
   /** When a job records its proof's video (the setting jobs_proof). */
@@ -426,7 +468,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
 
   /** Its terminal here as it is: running (else how it ended), its state, title, and with `turn` its last turn (its
    *  `session`'s, which outlives the terminal) and the diff since `base`. */
-  async function seenHere(id: string, o: { turn?: boolean; session?: string; cwd?: string; base?: string; tree?: string; branch?: string; said?: string; context?: boolean; marks?: Marks } = {}): Promise<Seen> {
+  async function seenHere(id: string, o: Read = {}): Promise<Seen> {
     const running = await plugin.ask<boolean>("terminal:runs", false, id)
     const st = await plugin.ask<{ state?: string; kind?: string; msg?: string } | null>("terminal:state", null, id)
     const info = running ? await plugin.ask<{ title?: string; typed?: number } | null>("terminal:info", null, id) : null
@@ -475,7 +517,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     const said = [j.result?.text, j.last?.text].filter(Boolean).join("\n").slice(0, 8000)
     const o = { ...(turn ? { turn, ...(j.session ? { session: j.session } : {}) } : {}), ...(diff ? { cwd: j.where.cwd, ...(j.where.base ? { base: j.where.base } : {}), ...(j.where.tree ? { tree: j.where.tree } : {}),
       ...(j.where.branch ? { branch: j.where.branch } : {}), ...(said ? { said } : {}), ...(j.marks ? { marks: j.marks } : {}) } : {}) }
-    return (j.where.machine ? atMachine(j.where.machine, "companion.worker", { id: j.terminal, ...o }, 10) as Promise<Seen> : seenHere(j.terminal, o)).then((s) => {
+    return links.of(j.where).seen(j.terminal, o).then((s) => {
       if (s.marks && JSON.stringify(s.marks) !== JSON.stringify(j.marks)) { j.marks = s.marks; marked.add(j.id) }
       return s
     })
@@ -600,7 +642,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     liveRead.set(j.id, Date.now())
     try {
       type V = { live: boolean; final: boolean; why: string; red?: string }
-      const out = await (j.where.machine ? atMachine(j.where.machine, "app.version", { commit: g.commit }, 30) : plugin.runOp("app.version", { commit: g.commit }, APP).then((r) => r.result))
+      const out = await links.of(j.where).there(appCtx(), "app.version", { commit: g.commit }, 30)
         .catch(() => null) as { live?: V } | null
       // (told something meanwhile: its own turn decides)
       if (j.going !== g || g.state !== "waiting") return
@@ -675,7 +717,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     const t = await seenOf(j, true, false).catch(() => null)
     if (t?.turn?.session) j.session ??= t.turn.session
     if (!t?.running || t.turn?.background || !resumeOf(j) || d.onScreen?.(linkOf(j))) return false
-    await plugin.runOp("terminal.end", { id: terminalOf(j) })
+    await links.of(j.where).end(appCtx(), j.terminal)
     j.exited = j.closed = Date.now()
     resumable(j)
     return true
@@ -690,24 +732,26 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   }
   /** Job `j`'s worker in a new terminal, told `prompt` first: its conversation `session` resumed, else a new one. */
   async function startIn(ctx: OpCtx, j: Job, prompt: string, session?: string) {
-    const w = j.where
     await trust(ctx, j)
-    const r = await ctx.op("terminal.start", { agent: w.agent, ...(session ? { session } : {}), ...(prompt ? { prompt } : {}), name: j.title, cwd: w.cwd, ...(w.model ? { model: w.model } : {}),
-      ...(w.effort ? { effort: w.effort } : {}), ...(w.agent.split("_")[0] === "claude" && setting("jobs_mode") ? { mode: setting("jobs_mode") } : {}), ...(w.machine ? { machine: w.machine } : {}) }) as { id: string }
-    j.terminal = r.id.split("@")[0]
+    j.terminal = await links.of(j.where).start(ctx, startOf(j, { ...(prompt ? { prompt } : {}), ...(session ? { session } : {}) }))
     delete j.exited; delete j.closed
     opened.set(j.id, Date.now())
+  }
+  /** How job `j`'s worker starts: its agent, folder, name and how it runs, with its first words or the session it resumes. */
+  const startOf = (j: Job, o: { prompt?: string; session?: string }) => {
+    const w = j.where, mode = w.agent.split("_")[0] === "claude" ? setting("jobs_mode") : ""
+    return { agent: w.agent, cwd: w.cwd, name: j.title, ...o, ...(w.model ? { model: w.model } : {}), ...(w.effort ? { effort: w.effort } : {}), ...(mode ? { mode } : {}) }
   }
   /** Job `j`'s worker started over in a new conversation, told `text` first (its old one's context grown large: live
    *  editing's summary and next ask), then its old terminal ended. Its card shows `shown`. */
   async function fresh(ctx: OpCtx, j: Job, text: string, shown = text, by = COMPANION) {
     if (j.state === "stopped") throw new OpError(`${j.id} was stopped: hand it off again`, 409)
-    if (j.where.machine) text = await carry(j.where.machine, text)
-    const old = terminalOf(j), was = await seenOf(j).catch(() => null)
+    const link = links.of(j.where), old = j.terminal, was = await seenOf(j).catch(() => null)
+    text = await link.carry(text)
     // (the new one's first: the old one's end then finds no job of its, so it can't move this one or claim its terminal)
     await startIn(ctx, j, text)
     delete j.session
-    if (was?.running) await ctx.op("terminal.end", { id: old }).catch(() => {})
+    if (was?.running) await link.end(ctx, old).catch(() => {})
     toldFrom(j, by, text)
     move(j, "told")
     j.turn = Date.now()
@@ -819,9 +863,10 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   }
   /** A follow-up or correction to job `j`, typed into its worker's terminal (the user's own words, as if they typed);
    *  its terminal closed or ended, its conversation resumed with it. */
-  async function steer(ctx: OpCtx, j: Job, text: string, shown = text, by = COMPANION) {
+  async function steer(ctx: OpCtx, j: Job, text: string, shown = text, by = COMPANION, how: "tell" | "land" = "tell") {
     if (j.state === "stopped") throw new OpError(`${j.id} was stopped: hand it off again`, 409)
-    if (j.where.machine) text = await carry(j.where.machine, text)
+    const link = links.of(j.where)
+    text = await link.carry(text)
     const s = await seenOf(j).catch(() => null)
     if (s && !s.running) {
       if (!j.exited) await ended(j, s)
@@ -836,8 +881,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
       toldNow(j, shown)
       sending.add(j.id)
       const back = () => { Object.assign(j, was); changed() }
-      const r = await (ctx.op("terminal.send", { id: terminalOf(j), text }) as Promise<{ submitted?: boolean | null; why?: string }>)
-        .catch((e) => { back(); throw e }).finally(() => sending.delete(j.id))
+      const r = await link[how](ctx, j.terminal, text).catch((e) => { back(); throw e }).finally(() => sending.delete(j.id))
       if (r.submitted === false) { back(); throw new OpError(`it didn't take it: ${r.why ?? "its input kept the text"} (${linkOf(j)})`, 409) }
       toldFrom(j, by, text)
       void refresh(j).catch((e) => console.error("companion: jobs:", e))
@@ -857,7 +901,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     if (!w.repo || w.agent.split("_")[0] !== "claude" || !(by === COMPANION || by === THEM || by.startsWith(`${COMPANION} (`))) return
     const body = { cwd: w.cwd, account: parseTerminal(`${w.agent}-x`)?.profile || "default" }
     // (it can't: the job starts anyway, Claude Code asking as before)
-    try { await (w.machine ? atMachine(w.machine, "claude-code.trust", body, 10) : ctx.op("claude-code.trust", body)) } catch (e) { console.error(`companion: jobs: ${j.id}: trust:`, (e as Error).message) }
+    try { await links.of(w).there(ctx, "claude-code.trust", body, 10) } catch (e) { console.error(`companion: jobs: ${j.id}: trust:`, (e as Error).message) }
   }
   /** Job `j` told `shown`: working on it, its turn from now. */
   function toldNow(j: Job, shown: string) {
@@ -872,7 +916,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   async function land(ctx: OpCtx, j: Job, note = "", shown?: string, by = COMPANION) {
     const was = j.land
     j.land = { asked: Date.now() }
-    try { await steer(ctx, j, [landTask(j.where), note].filter(Boolean).join(" "), shown ?? "Kept: merge it", by) } catch (e) { j.land = was; throw e }
+    try { await steer(ctx, j, [landTask(j.where), note].filter(Boolean).join(" "), shown ?? "Kept: merge it", by, "land") } catch (e) { j.land = was; throw e }
   }
   /** Closed by the user (their stop, their Keep): one ready for review is done, else stopped; its terminal ends. */
   async function close(ctx: OpCtx, j: Job) {
@@ -880,7 +924,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     if (move(j, "stop")) { j.seen = true; changed() }
     // (one still waiting for its machine has no terminal yet)
     if (!j.terminal) return
-    await ctx.op("terminal.end", { id: terminalOf(j) }).catch((e: unknown) => { if (!(e instanceof OpError && (e.status === 404 || e.status === 502))) throw e })
+    await links.of(j.where).end(ctx, j.terminal).catch((e: unknown) => { if (!(e instanceof OpError && (e.status === 404 || e.status === 502))) throw e })
   }
   /** The job whose terminal ask `m` was over (the pane they held the Talk key on), if any. */
   const jobOver = (m: Moment | undefined) => { const to = m?.pane ? d.paneTo?.(m.pane) ?? "" : ""; return to ? all().find((x) => linkOf(x) === to) : undefined }
@@ -945,10 +989,8 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     await trust(ctx, j)
     const task = jobTask(told, m, where, j.id, { land: lands(), proof: proofMode() })
     try {
-      const r = await ctx.op("terminal.start", { agent: where.agent, prompt: where.machine ? await carry(where.machine, task) : task, name: j.title, cwd: where.cwd,
-        ...(where.model ? { model: where.model } : {}), ...(where.effort ? { effort: where.effort } : {}),
-        ...(where.agent.split("_")[0] === "claude" && setting("jobs_mode") ? { mode: setting("jobs_mode") } : {}), ...(where.machine ? { machine: where.machine } : {}) }) as { id: string }
-      j.terminal = r.id.split("@")[0]
+      const link = links.of(where)
+      j.terminal = await link.start(ctx, startOf(j, { prompt: await link.carry(task) }))
     } catch (e) {
       // (its machine gone offline: it waits for it, so no failure)
       if (!await away(where.machine, e)) { j.now = (e as Error).message; move(j, "error"); changed() }
@@ -1316,6 +1358,61 @@ a guess from a look at one machine's folders.
       ...(marksIn(p.marks) ? { marks: marksIn(p.marks)! } : {}) }),
   })
 
+  plugin.op({
+    id: "companion.worker-start",
+    owner: "the companion's jobs",
+    summary: "Start a job's worker in a terminal on this machine for another machine's companion, its home: its vau tells the user through home (VAULTITE_HOME), and this machine counts it among its jobs.",
+    kind: "write",
+    lock: false,
+    params: { agent: { type: "string", required: true, description: "its agent (claude, codex; claude_personal: in that account)" },
+      cwd: { type: "string", required: true, description: "its folder here" }, name: { type: "string", required: true, description: "its name (the job's title)" },
+      prompt: { type: "string", description: "its first words: the task" }, session: { type: "string", description: "its conversation to resume instead" },
+      model: { type: "string", description: "its model" }, effort: { type: "string", description: "its effort" }, mode: { type: "string", description: "its permission mode" },
+      home: { type: "object", description: "its home ({url, as}: the server that handed it, and this machine's id there)" } },
+    run: async (p, ctx) => {
+      const h = p.home as Partial<Home> | undefined
+      const home = h && typeof h.url === "string" && typeof h.as === "string" ? { url: h.url, as: h.as } : undefined
+      return { id: await links.startHere(ctx, { agent: str(p.agent), cwd: str(p.cwd), name: str(p.name), ...(str(p.prompt) ? { prompt: str(p.prompt) } : {}), ...(str(p.session) ? { session: str(p.session) } : {}),
+        ...(str(p.model) ? { model: str(p.model) } : {}), ...(str(p.effort) ? { effort: str(p.effort) } : {}), ...(str(p.mode) ? { mode: str(p.mode) } : {}) }, home) }
+    },
+  })
+
+  plugin.op({
+    id: "companion.capacity",
+    cli: "companion capacity",
+    owner: "the companion's jobs",
+    summary: "What this machine says of its jobs, where they're placed: the workers it runs now and how many it takes (the setting jobs_cap), the repos it has checked out, the agents it runs and their accounts.",
+    kind: "read",
+    run: () => capacity(),
+    text: (r) => `${r.jobs} of ${r.cap} jobs running. Agents: ${r.agents.join(", ") || "none"}${r.accounts ? ` (accounts: ${r.accounts.join(", ")})` : ""}. Repos: ${r.repos.join(", ") || "none"}.`,
+  })
+
+  /** A file a job's worker on another machine hands home for its proof (its video, its pictures): kept a day, out of the
+   *  vault, till its tour-save here copies it beside the proof. */
+  plugin.op({
+    id: "companion.job-file",
+    owner: "the companion's jobs",
+    summary: "Keep a file a job's worker on another machine sends for its proof (a video, a picture) on this machine, its home: answers its path here.",
+    kind: "write",
+    lock: false,
+    input: "the file",
+    params: { job: { type: "string", required: true, description: "the job's id" }, name: { type: "string", required: true, description: "its file name (demo.mp4, before 1.png)" } },
+    run: async (p, ctx) => {
+      const job = str(p.job), name = path.basename(str(p.name))
+      if (!/^[\w-]{1,40}$/.test(job)) throw new OpError(`job: a job's id, not ${job}`)
+      if (!/\.(mp4|m4v|mov|webm|png|jpe?g|gif|webp|heic)$/i.test(name)) throw new OpError(`'${name}' isn't a video or a picture`)
+      if (!ctx.input) throw new OpError("send the file's bytes as the request's body")
+      const root = path.join(plugin.localDir(), "job-files"), dir = path.join(root, job)
+      fs.mkdirSync(dir, { recursive: true })
+      for (const d of fs.readdirSync(root)) { try { if (Date.now() - fs.statSync(path.join(root, d)).mtimeMs > 86_400_000) fs.rmSync(path.join(root, d), { recursive: true }) } catch { /* gone */ } }
+      const to = path.join(dir, name), chunks: Buffer[] = []
+      let n = 0
+      for await (const c of ctx.input) { n += c.length; if (n > PROOF_MAX) throw new OpError("the file is too large", 413); chunks.push(c) }
+      fs.writeFileSync(to, Buffer.concat(chunks))
+      return { path: to }
+    },
+  })
+
   /** A picture of the user's screen another machine's companion hands on with an ask, for a job here: kept a day, out of
    *  the vault (its worker reads it by the path answered). */
   plugin.op({
@@ -1359,8 +1456,7 @@ a guess from a look at one machine's folders.
     /** Job `id`'s worker in a new conversation, told `text` first; its old terminal ended. */
     fresh: (ctx: OpCtx, id: string, text: string, shown?: string, by?: string) => fresh(ctx, jobOf(id), text, shown, by),
     /** How full job `j`'s worker's context is now, null when its agent doesn't say or its terminal is gone. */
-    context: async (j: Job) => (await (j.where.machine ? atMachine(j.where.machine, "companion.worker", { id: j.terminal, context: true, ...(j.session ? { session: j.session } : {}) }, 10) as Promise<Seen>
-      : seenHere(j.terminal, { context: true, ...(j.session ? { session: j.session } : {}) })).catch(() => null))?.context ?? null,
+    context: async (j: Job) => (await links.of(j.where).seen(j.terminal, { context: true, ...(j.session ? { session: j.session } : {}) }).catch(() => null))?.context ?? null,
     /** They kept job `id`'s change: its worker told to merge it, the job closed once it says it merged. */
     land: (ctx: OpCtx, id: string) => land(ctx, jobOf(id), "", undefined, "you, by Keep and merge"),
     /** Job `id` ready for review looked for on main now (its proof's choice is about to ask): done when it landed. */

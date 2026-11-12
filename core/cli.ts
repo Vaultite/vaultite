@@ -125,6 +125,14 @@ export function servers(env: Record<string, string | undefined> = process.env, c
   return [...new Set([...served, ...mine.map(url), DEFAULT_URL, ...others.map(url)])]
 }
 
+/** The environment op `e` runs with: one reaching the user (Op.home), from a job's worker on another machine, goes to
+ *  its home (VAULTITE_HOME; VAULTITE_HOME_AS: this machine's id there, naming its terminal). null: this server's. */
+export function homeEnv(env: Record<string, string | undefined>, e: { home?: true }): Record<string, string | undefined> | null {
+  const home = env.VAULTITE_HOME?.trim().replace(/\/+$/, "") ?? "", as = env.VAULTITE_HOME_AS?.trim() ?? "", t = env.VAULTITE_TERMINAL ?? ""
+  if (!e.home || !/^https?:\/\//.test(home) || home === env.VAULTITE_URL?.replace(/\/+$/, "")) return null
+  return { ...env, VAULTITE_URL: home, ...(t && as && !t.includes("@") ? { VAULTITE_TERMINAL: `${t}@${as}` } : {}) }
+}
+
 /** stdin's text; `implicit`: read unasked (a body piped in), so "" rather than an error from a terminal. */
 export type Stdin = (implicit?: boolean) => Promise<string>
 export type CtxOptions = { url?: string; api?: Api; env?: Record<string, string | undefined>; stdin?: Stdin
@@ -635,7 +643,8 @@ Options: --json (machine-readable output), --count (how many a list answer holds
 is a prompt (Tab completes, with history).
 Exit status: 0 done, 1 it failed, 2 the command line was wrong (an unknown command, a missing or bad argument).
 Environment: VAULTITE_URL (else the server for the vault you're in, then ${DEFAULT_URL}, then the
-app's other open vaults: the first that answers), VAULTITE_CLIENT (desktop, iphone or web: set by the app's terminal).
+app's other open vaults: the first that answers), VAULTITE_CLIENT (desktop, iphone or web: set by the app's terminal),
+VAULTITE_HOME (a job's terminal on another machine: what reaches the user, a knock or an inbox ask, goes to that server).
 Windows: vau runs in PowerShell, cmd and Git Bash (there cmd expands %VAR% in arguments: such text goes by --from or
 stdin). In WSL (\`vau wsl install\` from Windows) it's Windows' vau: paths it prints are WSL's.
 Settings and data both go through the server (settings key by key, the rest of each file kept); the app follows
@@ -827,7 +836,7 @@ export async function execute(argv: string[], opts: CtxOptions = {}): Promise<{ 
       throw e
     }
   }
-  const c = ctx()
+  let c = ctx()
   const ops = await catalog(c, which)
   // An op by its id, or by its CLI name, which may be several words (`plugin on`): the longest the words start with.
   const said = (e: OpEntry) => (e.cli ?? "").split(" ").filter(Boolean)
@@ -849,6 +858,9 @@ export async function execute(argv: string[], opts: CtxOptions = {}): Promise<{ 
     return { code: 2, out: "", err: `vau: no command '${which}'.${near.length ? ` Did you mean ${near.join(" or ")}?` : ""} See vau --help${ops ? " (a plugin's commands are there while it's on: vau plugins)" : ` (and ${c.down()})`}.` }
   }
   if (help || a.flags.help) return { code: 0, out: opDoc(op, "#").replace(/^# .*/, `vau ${op.cli ? `${op.cli} (${op.id})` : op.id}`), err: "" }
+  // (a job's worker telling the user something: to the job's home server, unless --url names one)
+  const home = flag(a, "url") ?? opts.url ? null : homeEnv(c.env, op)
+  if (home) c = new Ctx({ ...opts, api: undefined, env: home })
   c.command = op.cli ?? op.id
   // The words that named it are left out of its arguments.
   const rest = [...argv]

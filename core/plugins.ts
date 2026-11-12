@@ -18,7 +18,7 @@ import { type Job, type When, whenProblems } from "./schedule.ts"
 import { ownerRefusal } from "./owner.ts"
 export { gitEnv } from "./gitenv.ts"
 export { readableImage } from "./heic.ts"
-export { CONNECT_HEADER, fromInternet, GUEST_HEADER, servedAt } from "./owner.ts"
+export { CONNECT_HEADER, fromInternet, GUEST_HEADER, onTailnet, servedAt } from "./owner.ts"
 export { outliving, runtimeDir } from "./runtime.ts"
 export { vauDir, vauEntry } from "./appentry.ts"
 export { vauShims } from "./vaushims.ts"
@@ -259,7 +259,10 @@ async function windowsProcesses() {
 /** One of the vault's machines, as the Machines plugin's services ("machines", "machines:machine") answer it. */
 export type Machine = { id: string; label: string; url: string; online: boolean; self: boolean; plugins?: string[]; vault?: string; desktop?: boolean
   /** Its server runs on its own (an always-on machine), not in a laptop's desktop app. */
-  standalone?: boolean }
+  standalone?: boolean
+  /** What it said of itself when last asked: its OS (process.platform), cores, load over the last minute, memory (MB, %
+   *  free), whether it has a desktop to show windows on. */
+  platform?: string; cores?: number; load?: number; memory?: { total: number; free: number }; display?: boolean }
 /** How this server says who it is when it asks another machine (Activity shows it). */
 export const MACHINE_CLIENT = { "X-Vaultite-Client": `machine/${os.hostname().replace(/\.local$/, "")}` }
 /** "claude-k3j2@studio" -> ["claude-k3j2", "studio"]; an id of this machine's -> [id, ""]. */
