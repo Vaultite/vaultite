@@ -26,3 +26,4 @@ export function focusedBoard(): BoardKeys | null {
 }
 /** How far one press pans: a fifth of the board's height, at least 60px. */
 export const panStep = (b: BoardKeys) => Math.max(60, Math.round((b.box?.clientHeight ?? 400) / 5))
+export const typing = (t: EventTarget | null) => t instanceof Element && !!t.closest("textarea, input, [contenteditable=''], [contenteditable='true'], .cm-editor")

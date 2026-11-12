@@ -257,6 +257,14 @@ await wait(800)
 check("scrolling, zooming and panning don't write the file", readFileSync(`${VAULT}/${BOARD}`, "utf8") === before)
 check("the space bar pans rather than selecting", !(await page.$("[data-canvas-marquee]")))
 
+// Presenting: each group a slide; Escape ends it.
+await page.click("[data-canvas-tool='Present its groups']")
+await page.waitForFunction(() => document.querySelector("[data-canvas-slide]")?.textContent === "1 / 1", null, { timeout: 3000 })
+  .then(() => check("Present shows its group as the first slide", true), () => check("Present shows its group as the first slide", false))
+await page.keyboard.press("Escape")
+await page.waitForSelector("[data-canvas-toolbar=present]", { state: "detached", timeout: 3000 })
+  .then(() => check("Escape ends presenting", true), () => check("Escape ends presenting", false))
+
 // A big board: only what's near the screen is drawn, and zoomed far out cards are names.
 await page.goto(`${B}#file/${encodeURIComponent(BIG)}`)
 await page.waitForSelector("[data-canvas-board=page]", { timeout: 15000 })

@@ -5,6 +5,8 @@ import { anchor, center, curve, facing } from "./geometry"
 
 const IMAGE = /\.(png|jpe?g|gif|webp|svg|avif|bmp)$/i
 export const isImage = (p: string) => IMAGE.test(p)
+export const isNote = (n: CanvasNode | undefined) => n?.type === "file" && /\.md$/i.test(String(n.file ?? ""))
+export const fileSize = (p: string) => (isImage(p) ? { width: 400, height: 300 } : /\.(mp3|m4a|wav|ogg|flac|aac)$/i.test(p) ? { width: 400, height: 120 } : { width: 400, height: 400 })
 export const fileName = (p: string) => p.slice(p.lastIndexOf("/") + 1)
 /** A colour mixed into the card's (`pct` of it), or the card's own. */
 export const tint = (c: string | null, pct: number, base = "var(--card)") => (c ? `color-mix(in srgb, ${c} ${pct}%, ${base})` : base)

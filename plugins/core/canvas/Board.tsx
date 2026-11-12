@@ -7,24 +7,23 @@ import {
   ChevronLeft, ChevronRight, Palette, Pencil, Plus, Presentation, Redo2, Scan, Scissors, Shapes, Spline, StickyNote, Trash2, Type, Undo2, Ungroup, X,
 } from "lucide-react"
 import { choose, cn, plainError, createFile, useCommandKeys, dropHighlightEmoji, fileMenu, isDesktop, menuBelow, newNoteFolder, openFile, openMenu, pastedFiles, pluginSettings, saveAttachments, useDropTarget, useZoomTarget, type FormatCtx, type MenuItem } from "@vaultite"
-import { BORDERS, colorOf, COLLAPSED_H, hiddenIn, LINES, newId, parseCanvas, PRESET_NAMES, SHAPES, styleOf, unfoldOnDrop, withStyle, type CanvasDoc, type CanvasEdge, type CanvasNode, type Side, writeCanvas } from "./codec"
-import { align, copyText, directionOf, duplicate, insert, nameFromText, pastedCanvas, remove, reverse, setDirection, slice, ungroup, withContents, type Align, type Direction } from "./edit"
-import { anchor, bounds, fitView, GRID, nearestSide, overlaps, placeFrom, resizeBox, snapMove, within, zoomAbout, type Box, type Dir, type Guide, type Pt, type View } from "./geometry"
+import { BORDERS, colorOf, COLLAPSED_H, hiddenIn, LINES, newId, parseCanvas, PRESET_NAMES, SHAPES, styleOf, withStyle, type CanvasDoc, type CanvasEdge, type CanvasNode, type Side } from "./codec"
+import { align, copyText, directionOf, duplicate, insert, isUrl, nameFromText, pastedCanvas, remove, reverse, setDirection, slice, ungroup, withContents, type Align, type Direction } from "./edit"
+import { anchor, bounds, fitView, nearestSide, overlaps, placeFrom, resizeBox, snapMove, within, zoomAbout, type Box, type Dir, type Guide, type Pt, type View } from "./geometry"
 import { Card, Group, type CardEvents } from "./Card"
-import { Edge } from "./Edges"
-import { edgePath, isImage, px } from "./look"
-import { registerBoard, type BoardKeys } from "./keys"
-import { slidesOf } from "./present"
+import { Edge, Preview } from "./Edges"
+import { edgePath, fileSize, isImage, isNote, px } from "./look"
+import { registerBoard, typing, type BoardKeys } from "./keys"
+import { useBoardDoc } from "./doc"
+import { LabelEditor, Tool } from "./parts"
+import { usePresenting } from "./presenting"
+import { useView, useWheel } from "./view"
 
-/** Zoomed out past this, cards are drawn as their colour and name. */
-const FAR_K = 0.3
-const DOTS = "radial-gradient(circle, color-mix(in srgb, var(--muted-foreground) 28%, transparent) 1px, transparent 1px)"
 /** How near (screen px) a card's edge must come to another's to snap to it. */
 const SNAP_PX = 6
 
 type Settings = { snapToGrid?: boolean; snapToObjects?: boolean }
 const canvasSettings = pluginSettings<Settings>("canvas")
-type Rect = { x0: number; y0: number; x1: number; y1: number }
 
 type Drag =
   | { kind: "pan"; sx: number; sy: number; view: View; moved: boolean }
@@ -36,24 +35,13 @@ type Drag =
 
 type Editing = { kind: "text" | "file" | "label" | "edge"; id: string } | null
 
-const typing = (t: EventTarget | null) => t instanceof Element && !!t.closest("textarea, input, [contenteditable=''], [contenteditable='true'], .cm-editor")
-const isUrl = (s: string) => /^https?:\/\/\S+$/i.test(s.trim())
 const NEW = Symbol("new card")
-const isNote = (n: CanvasNode | undefined) => n?.type === "file" && /\.md$/i.test(String(n.file ?? ""))
 
 export default function Board({ store, text, editable, onChange, place, path }: FormatCtx) {
   const embed = place === "embed"
   const interactive = !embed
-  const box = useRef<HTMLDivElement>(null)
-  const stage = useRef<HTMLDivElement>(null)
-  const zoomLabel = useRef<HTMLSpanElement>(null)
   const fitKeys = useCommandKeys("canvas:fit", true), zoom100Keys = useCommandKeys("canvas:zoom-100", true)
-  const [doc, setDoc] = useState<CanvasDoc>(() => { try { return parseCanvas(text) } catch { return { nodes: [], edges: [] } } })
-  const [error, setError] = useState<string | null>(() => { try { parseCanvas(text); return null } catch (e) { return plainError(e).reason ?? "" } })
-  const docRef = useRef(doc)
-  docRef.current = doc
-  const last = useRef(text)
-  const viewRef = useRef<View>({ x: 0, y: 0, k: 1 })
+  const { doc, setDoc, error, setError, docRef, last, undo, redo, setHistory, live, commit } = useBoardDoc(text, editable, onChange)
   const [sel, setSel] = useState<Set<string>>(new Set())
   const [selEdge, setSelEdge] = useState<string | null>(null)
   const [editing, setEditingState] = useState<Editing>(null)
@@ -63,16 +51,11 @@ export default function Board({ store, text, editable, onChange, place, path }: 
   const dragRef = useRef<Drag | null>(null)
   const [guides, setGuides] = useState<Guide[]>([])
   const [spacePan, setSpacePan] = useState(false)
-  const undo = useRef<CanvasDoc[]>([])
-  const redo = useRef<CanvasDoc[]>([])
-  const [, setHistory] = useState(0)
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const fitted = useRef(false)
   /** The canvas before the edit going on (one undo when it ends), or NEW: a card just added, its text part of that. */
   const editBase = useRef<CanvasDoc | typeof NEW | null>(null)
   const lastPointer = useRef<Pt | null>(null)
 
-  // Snapping: the plugin's settings (.vaultite/plugins/canvas/data.json), changed here at once.
   const settings = canvasSettings.use()
   const snapToGrid = settings.snapToGrid !== false, snapToObjects = settings.snapToObjects !== false
   const setSetting = (patch: Settings) => void canvasSettings.set(patch).catch(() => {})
@@ -89,34 +72,8 @@ export default function Board({ store, text, editable, onChange, place, path }: 
       setSel((s) => new Set([...s].filter((id) => next.nodes.some((n) => n.id === id))))
       if (embed) fitted.current = false
     } catch (e) { setError(plainError(e).reason ?? "") }
-  }, [text, embed])
+  }, [text, embed, last, setDoc, setError, docRef])
 
-  const flush = useRef<() => void>(() => {})
-  const save = useCallback((next: CanvasDoc) => {
-    flush.current = () => {
-      timer.current = null
-      const out = writeCanvas(next, last.current)
-      if (out === last.current) return
-      last.current = out
-      onChange(out)
-    }
-    if (timer.current) clearTimeout(timer.current)
-    timer.current = setTimeout(() => flush.current(), 300)
-  }, [onChange])
-  useEffect(() => () => { if (timer.current) { clearTimeout(timer.current); flush.current() } }, [])
-
-  /** A change drawn and saved, not undoable by itself (typing in a card: the edit is one undo when it ends). */
-  const live = (next: CanvasDoc) => { docRef.current = next; setDoc(next); save(next) }
-  /** A change the user made: drawn, undoable, saved. `before`: the canvas it started from (a drag's start). */
-  const commit = (next: CanvasDoc, before: CanvasDoc = docRef.current) => {
-    if (!editable || next === before) return
-    next = unfoldOnDrop(before, next)
-    undo.current.push(before)
-    if (undo.current.length > 200) undo.current.shift()
-    redo.current = []
-    live(next)
-    setHistory((h) => h + 1)
-  }
   const step = (back: boolean) => {
     endEdit()
     const from = back ? undo.current : redo.current, to = back ? redo.current : undo.current
@@ -127,79 +84,7 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     setHistory((h) => h + 1)
   }
 
-  // ---- the view: written to the DOM, not drawn by React
-  const [win, setWin] = useState<(Rect & { far: boolean }) | null>(null)
-  const winRef = useRef(win)
-  winRef.current = win
-  const cullFrame = useRef(0)
-  const cull = () => {
-    cullFrame.current = 0
-    const el = box.current
-    if (!el) return
-    const v = viewRef.current, w = el.clientWidth / v.k, h = el.clientHeight / v.k
-    const seen = { x0: -v.x / v.k, y0: -v.y / v.k, x1: -v.x / v.k + w, y1: -v.y / v.k + h }
-    const far = v.k < FAR_K
-    const cur = winRef.current
-    // (kept while what's seen is inside it and it isn't much bigger than needed: zooming in from far out shrinks it)
-    if (cur && cur.far === far && seen.x0 >= cur.x0 && seen.y0 >= cur.y0 && seen.x1 <= cur.x1 && seen.y1 <= cur.y1 && cur.x1 - cur.x0 < 4 * w) return
-    // A screen's worth around what's seen, so a pan draws again only once it has gone that far.
-    const next = { x0: seen.x0 - w, y0: seen.y0 - h, x1: seen.x1 + w, y1: seen.y1 + h, far }
-    winRef.current = next
-    setWin(next)
-  }
-  // The bar over the selection, in screen space (its size never follows the zoom): above what's selected, under it when
-  // there's no room above, always inside the board.
-  const bar = useRef<HTMLDivElement>(null)
-  const barAt = useRef<{ x: number; top: number; bottom: number } | null>(null)
-  const placeBar = () => {
-    const el = bar.current, at = barAt.current, root = box.current
-    if (!el || !at || !root) return
-    const v = viewRef.current, w = el.offsetWidth, h = el.offsetHeight, gap = 10
-    let y = at.top * v.k + v.y - h - gap
-    if (y < gap) y = at.bottom * v.k + v.y + gap
-    if (y + h > root.clientHeight - gap) y = gap
-    const x = Math.max(gap, Math.min(root.clientWidth - w - gap, at.x * v.k + v.x - w / 2))
-    el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`
-  }
-  const paint = () => {
-    const v = viewRef.current, el = box.current, st = stage.current
-    if (!el || !st) return
-    st.style.transform = `translate(${v.x}px, ${v.y}px) scale(${v.k})`
-    // The zoom only when it changes: every card's styles read --k, and even the label's text set again (the same text)
-    // makes the browser restyle the whole page; panning changes neither.
-    if (el.style.getPropertyValue("--k") !== String(v.k)) {
-      el.style.setProperty("--k", String(v.k))
-      if (zoomLabel.current) zoomLabel.current.textContent = `${Math.round(v.k * 100)}%`
-    }
-    // The dot grid, gone when it would be a haze (zoomed far out).
-    const dots = GRID * v.k >= 8 ? "on" : "off"
-    if (el.dataset.dots !== dots) { el.dataset.dots = dots; el.style.backgroundImage = dots === "on" ? DOTS : "none" }
-    el.style.backgroundSize = `${GRID * v.k}px ${GRID * v.k}px`
-    el.style.backgroundPosition = `${v.x}px ${v.y}px`
-    placeBar()
-    if (!cullFrame.current) cullFrame.current = requestAnimationFrame(cull)
-  }
-  const anim = useRef(0)
-  const setView = (v: View) => { if (anim.current) { cancelAnimationFrame(anim.current); anim.current = 0 } viewRef.current = v; paint() }
-  /** The view eased to `to` (fit, the zoom buttons), the point in the middle moving straight. */
-  const animateTo = (to: View) => {
-    const el = box.current
-    if (!el) return
-    if (anim.current) cancelAnimationFrame(anim.current)
-    const from = viewRef.current, w = el.clientWidth / 2, h = el.clientHeight / 2
-    const c0 = { x: (w - from.x) / from.k, y: (h - from.y) / from.k }, c1 = { x: (w - to.x) / to.k, y: (h - to.y) / to.k }
-    const t0 = performance.now()
-    const tick = (t: number) => {
-      const p = Math.min(1, (t - t0) / 240), e = 1 - Math.pow(1 - p, 3)
-      const k = from.k * Math.pow(to.k / from.k, e)
-      const cx = c0.x + (c1.x - c0.x) * e, cy = c0.y + (c1.y - c0.y) * e
-      viewRef.current = p >= 1 ? to : { k, x: w - cx * k, y: h - cy * k }
-      paint()
-      anim.current = p < 1 ? requestAnimationFrame(tick) : 0
-    }
-    anim.current = requestAnimationFrame(tick)
-  }
-  useEffect(() => () => { cancelAnimationFrame(anim.current); cancelAnimationFrame(cullFrame.current) }, [])
+  const { box, stage, zoomLabel, viewRef, win, winRef, cull, bar, barAt, placeBar, paint, anim, setView, animateTo } = useView()
 
   // Fit it in its box when it's first drawn (and an embed whenever it changes size or content).
   const fitKey = embed ? doc : null
@@ -233,32 +118,8 @@ export default function Board({ store, text, editable, onChange, place, path }: 
   }
   const zoomBy = (f: number) => { const { w, h } = size(); animateTo(zoomAbout(viewRef.current, viewRef.current.k * f, w / 2, h / 2)) }
   const zoomTo100 = () => { const { w, h } = size(); animateTo(zoomAbout(viewRef.current, 1, w / 2, h / 2)) }
-  // Presenting: each group a slide, shown whole (slidesOf's order); the arrow keys step, Escape ends it.
-  const slides = useMemo(() => slidesOf(doc), [doc])
-  const [slide, setSlide] = useState<number | null>(null)
-  const showSlide = (i: number) => {
-    const g = slides[Math.max(0, Math.min(slides.length - 1, i))]
-    if (!g) return setSlide(null)
-    setSlide(slides.indexOf(g))
-    const { w, h } = size()
-    animateTo(fitView([g], w, h, 40, 4))
-  }
+  const { slides, slide, showSlide, endPresenting } = usePresenting(doc, size, animateTo, fitAll)
   const present = () => { setSel(new Set()); setSelEdge(null); setEditing(null); showSlide(0); box.current?.focus() }
-  const endPresenting = () => { setSlide(null); fitAll() }
-  useEffect(() => {
-    if (slide === null) return
-    const key = (e: globalThis.KeyboardEvent) => {
-      if (typing(e.target) || e.metaKey || e.ctrlKey || e.altKey) return
-      const go = ["ArrowRight", "ArrowDown", "PageDown", " "].includes(e.key) ? 1 : ["ArrowLeft", "ArrowUp", "PageUp"].includes(e.key) ? -1 : 0
-      if (!go && e.key !== "Escape") return
-      e.preventDefault()
-      e.stopPropagation()
-      if (e.key === "Escape") endPresenting(); else showSlide(slide + go)
-    }
-    window.addEventListener("keydown", key, true)
-    return () => window.removeEventListener("keydown", key, true)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slide, slides])
   // The keyboard's pan and zoom commands (keys.ts) reach this board through these, the latest of them.
   const keyed = useRef<BoardKeys | null>(null)
   keyed.current = {
@@ -266,7 +127,7 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     pan: (dx, dy) => { const v = viewRef.current; setView({ ...v, x: v.x - dx, y: v.y - dy }) },
     zoom: zoomBy, fit: fitAll, fitSelection, zoom100: zoomTo100, selected: () => sel.size > 0 || !!selEdge,
   }
-  useEffect(() => registerBoard(() => ({ ...keyed.current!, box: box.current })), [])
+  useEffect(() => registerBoard(() => ({ ...keyed.current!, box: box.current })), [box])
   // ⌘+ ⌘- ⌘0 in its pane zoom the board as = - ⇧0 do (its own label says how far: nothing more to say).
   useZoomTarget(box, (step) => { if (step) zoomBy(step > 0 ? 1.25 : 0.8); else zoomTo100(); return null })
 
@@ -290,7 +151,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
   const focusBoard = () => box.current?.focus({ preventScroll: true })
   const select = (ids: Iterable<string>) => { setSel(new Set(ids)); setSelEdge(null) }
 
-  // ---- editing a card's text, a note, a label
   /** Stop editing: a text card grows to fit what was written, and the whole edit is one undo. */
   function endEdit() {
     const ed = editingRef.current
@@ -342,7 +202,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
   }
   const onGroupToggle = useCallback((id: string) => toggleGroup.current(id), [])
 
-  // ---- adding things
   const addNode = (node: Omit<CanvasNode, "id">, opts: { edit?: boolean; from?: { id: string; side: Side; toSide: Side } } = {}) => {
     const n = { id: newId(taken()), ...node } as CanvasNode
     // Groups go first: they're drawn behind the cards.
@@ -361,7 +220,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     const c = at ?? viewCentre()
     addNode({ type: "text", text: "", x: Math.round(c.x - 125), y: Math.round(c.y - 30), width: 250, height: 60 }, { edit: true })
   }
-  const fileSize = (p: string) => (isImage(p) ? { width: 400, height: 300 } : /\.(mp3|m4a|wav|ogg|flac|aac)$/i.test(p) ? { width: 400, height: 120 } : { width: 400, height: 400 })
   const addFileAt = (file: string, c: Pt, from?: { id: string; side: Side; anchor: Pt }) => {
     const s = fileSize(file)
     if (from) {
@@ -406,7 +264,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     ])
   }
 
-  // ---- changing what's selected
   const removeSelected = () => {
     const d = docRef.current
     if (selEdge) { commit({ ...d, edges: d.edges.filter((e) => e.id !== selEdge) }); setSelEdge(null); return }
@@ -477,7 +334,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
   const doUngroup = () => { commit(ungroup(docRef.current, sel)); setSel(new Set()) }
   const convertToFile = async (n: CanvasNode) => {
     try {
-      // (where new notes go: Notes, unless the vault says otherwise)
       const f = await createFile(newNoteFolder(store, path), nameFromText(dropHighlightEmoji(String(n.text ?? ""))), String(n.text ?? ""))
       const d = docRef.current
       commit({ ...d, nodes: d.nodes.map((x) => { if (x.id !== n.id) return x; const { text: _t, ...rest } = x; return { ...rest, type: "file", file: f.path } as CanvasNode }) })
@@ -488,7 +344,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     else if (n.type === "link" && n.url && /^https?:/i.test(String(n.url))) window.open(String(n.url), "_blank", "noopener,noreferrer")
   }
 
-  // ---- copy and paste
   const selectionText = () => copyText(slice(docRef.current, withContents(docRef.current, sel)))
   const cutSelection = () => { commit(remove(docRef.current, withContents(docRef.current, sel))); setSel(new Set()) }
   const pasteText = (t: string, at = pastePoint()) => {
@@ -539,9 +394,8 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     const copy = on("copy"), cut = on("cut"), paste = on("paste")
     document.addEventListener("copy", copy); document.addEventListener("cut", cut); document.addEventListener("paste", paste)
     return () => { document.removeEventListener("copy", copy); document.removeEventListener("cut", cut); document.removeEventListener("paste", paste) }
-  }, [embed])
+  }, [embed, box])
 
-  // ---- drops: files from the tree (the app's drag), and from the computer or a browser (HTML5)
   const dropId = `canvas:${useId()}`
   useDropTarget<Pt>(dropId, (item, x, y, el) => (editable && !embed && item.path && !item.folder && item.path !== path && el && box.current?.contains(el) ? { x, y } : null),
     (item, at) => { if (item.path) addFileAt(item.path, toWorld(at.x, at.y)) }, { hint: () => "Add to canvas" })
@@ -559,7 +413,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     if (uri) { e.preventDefault(); addLinkAt(uri, at) }
   }
 
-  // ---- pointers: pan, pinch, select, move, resize, connect
   const pts = useRef(new Map<number, Pt>())
   const pinch = useRef<{ d: number; c: Pt } | null>(null)
   const setD = (d: Drag | null) => { dragRef.current = d; setDrag(d) }
@@ -591,7 +444,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     }
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
     const pan = () => setD({ kind: "pan", sx: e.clientX, sy: e.clientY, view: viewRef.current, moved: false })
-    // The middle button, or the space bar held: pan, whatever is under the pointer.
     if (e.button === 1 || spacePan) { e.preventDefault(); pan(); return } // (no autoscroll from the middle button)
     const handle = target.closest<HTMLElement>("[data-handle]")
     if (editable && handle) {
@@ -632,7 +484,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
         next = copy.ids
       }
       setSel(next)
-      // What moves: the selection, and what's inside a group that moves.
       const now = docRef.current
       const ids = withContents(now, next)
       const moving = new Map<string, Pt>()
@@ -648,7 +499,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
       pan()
       return
     }
-    // The background with a mouse: a selection box.
     const p = toWorld(e.clientX, e.clientY)
     const add = e.shiftKey ? new Set(sel) : new Set<string>()
     if (!e.shiftKey) { setSel(new Set()); setSelEdge(null) }
@@ -723,7 +573,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
         const n = docRef.current.nodes.find((x) => x.id === d.id)
         // A tap on a card that was already selected edits it (phones have no double-click).
         if (n && d.touch && d.wasSelected && (n.type === "text" || n.type === "group" || isNote(n))) beginEdit(n)
-        // A click (no drag) on one of several selected cards selects only it.
         else if (n && !e.shiftKey && d.wasSelected && sel.size > 1) select([n.id])
       }
     } else if (d.kind === "resize") {
@@ -777,27 +626,7 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     if (editable) addCard(p)
   }
 
-  // Wheel: scroll pans (Shift: sideways, with a mouse), a pinch or ⌘ + scroll zooms.
-  useEffect(() => {
-    const el = box.current
-    if (!el || embed) return
-    const wheel = (e: WheelEvent) => {
-      if ((e.target as HTMLElement).closest("[data-scrolls], [data-editing]") && !e.ctrlKey && !e.metaKey) return
-      e.preventDefault()
-      const v = viewRef.current
-      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight : 1
-      if (!e.ctrlKey && !e.metaKey) {
-        const side = e.shiftKey && !e.deltaX
-        setView({ ...v, x: v.x - (side ? e.deltaY : e.deltaX) * unit, y: v.y - (side ? 0 : e.deltaY) * unit })
-        return
-      }
-      const r = el.getBoundingClientRect()
-      setView(zoomAbout(v, v.k * Math.exp(-e.deltaY * unit * (e.ctrlKey ? 0.01 : 0.002)), e.clientX - r.left, e.clientY - r.top))
-    }
-    el.addEventListener("wheel", wheel, { passive: false })
-    return () => el.removeEventListener("wheel", wheel)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [embed])
+  useWheel(box, embed, viewRef, setView)
 
   const onKey = (e: KeyboardEvent) => {
     if (typing(e.target)) return
@@ -838,7 +667,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
   }
   const onKeyUp = (e: KeyboardEvent) => { if (e.key === " ") setSpacePan(false) }
 
-  // ---- menus
   const nodeMenu = (n: CanvasNode): MenuItem[] => {
     const many = sel.size > 1
     const items: MenuItem[] = []
@@ -1100,39 +928,5 @@ export default function Board({ store, text, editable, onChange, place, path }: 
         </div>
       )}
     </div>
-  )
-}
-
-/** The arrow being drawn: dashed, from where it starts to the pointer (or the side of the card under it). */
-function Preview({ pa, sa, pb, sb }: { pa: Pt; sa: Side; pb: Pt; sb: Side | null }) {
-  const d = Math.max(30, Math.min(220, Math.hypot(pb.x - pa.x, pb.y - pa.y) / 2))
-  const dir = { top: [0, -1], right: [1, 0], bottom: [0, 1], left: [-1, 0] } as const
-  const c1 = { x: pa.x + dir[sa][0] * d, y: pa.y + dir[sa][1] * d }
-  const c2 = sb ? { x: pb.x + dir[sb][0] * d, y: pb.y + dir[sb][1] * d } : c1
-  const a = Math.atan2(pb.y - c2.y, pb.x - c2.x)
-  const h = (t: number) => `${pb.x - 12 * Math.cos(a + t)},${pb.y - 12 * Math.sin(a + t)}`
-  return <g><path d={`M ${pa.x} ${pa.y} C ${c1.x} ${c1.y} ${c2.x} ${c2.y} ${pb.x} ${pb.y}`} fill="none" stroke="var(--primary)" strokeWidth={2} strokeDasharray="6 5" />
-    <polygon points={`${pb.x},${pb.y} ${h(0.45)} ${h(-0.45)}`} fill="var(--primary)" /></g>
-}
-
-function Tool({ icon: Icon, label, keys = "", onClick, disabled, swatch }: { icon: typeof StickyNote; label: string; keys?: string; onClick: (e: MouseEvent) => void; disabled?: boolean; swatch?: string | null }) {
-  return (
-    <button type="button" onClick={onClick} disabled={disabled} aria-label={label} data-tip={label + keys} data-canvas-tool={label}
-      className="relative grid size-8 shrink-0 cursor-pointer place-items-center rounded-[8px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent max-md:size-10">
-      <Icon className="size-4" strokeWidth={2.25} />
-      {swatch && <span className="absolute right-1 bottom-1 size-2 rounded-full" style={{ background: swatch }} />}
-    </button>
-  )
-}
-
-function LabelEditor({ value, className, onDone }: { value: string; className: string; onDone: (text: string) => void }) {
-  const ref = useRef<HTMLInputElement>(null)
-  const done = useRef(false)
-  useEffect(() => { ref.current?.focus({ preventScroll: true }); ref.current?.select() }, [])
-  const finish = () => { if (done.current) return; done.current = true; onDone(ref.current!.value.trim()) }
-  return (
-    <input ref={ref} defaultValue={value} onBlur={finish} className={cn("outline-none", className)} data-canvas-label-editor
-      onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter" || e.key === "Escape") { e.preventDefault(); finish() } }}
-      onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()} />
   )
 }

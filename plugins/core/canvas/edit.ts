@@ -3,6 +3,7 @@
 import { inside, newId, type CanvasDoc, type CanvasEdge, type CanvasNode } from "./codec.ts"
 
 const taken = (doc: CanvasDoc) => new Set([...doc.nodes.map((n) => n.id), ...doc.edges.map((e) => e.id)])
+export const isUrl = (s: string) => /^https?:\/\/\S+$/i.test(s.trim())
 
 /** The nodes `ids` names, with the cards inside a group named (a group goes with what's in it). */
 export function withContents(doc: CanvasDoc, ids: Set<string>): Set<string> {

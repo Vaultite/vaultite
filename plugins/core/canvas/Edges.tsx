@@ -1,8 +1,8 @@
 // A canvas's arrows, each memoized on its two cards so moving a card redraws only its own arrows.
 import { memo } from "react"
 import { cn } from "@vaultite"
-import { colorOf, styleOf, type CanvasEdge, type CanvasNode } from "./codec"
-import { head } from "./geometry"
+import { colorOf, styleOf, type CanvasEdge, type CanvasNode, type Side } from "./codec"
+import { head, type Pt } from "./geometry"
 import { edgePath, px } from "./look"
 
 /** A line style's dashes (round caps make "0 n" dots). */
@@ -37,3 +37,15 @@ export const Edge = memo(function Edge({ edge: e, from, to, selected, editingLab
     </g>
   )
 })
+
+/** The arrow being drawn: dashed, from where it starts to the pointer (or the side of the card under it). */
+export function Preview({ pa, sa, pb, sb }: { pa: Pt; sa: Side; pb: Pt; sb: Side | null }) {
+  const d = Math.max(30, Math.min(220, Math.hypot(pb.x - pa.x, pb.y - pa.y) / 2))
+  const dir = { top: [0, -1], right: [1, 0], bottom: [0, 1], left: [-1, 0] } as const
+  const c1 = { x: pa.x + dir[sa][0] * d, y: pa.y + dir[sa][1] * d }
+  const c2 = sb ? { x: pb.x + dir[sb][0] * d, y: pb.y + dir[sb][1] * d } : c1
+  const a = Math.atan2(pb.y - c2.y, pb.x - c2.x)
+  const h = (t: number) => `${pb.x - 12 * Math.cos(a + t)},${pb.y - 12 * Math.sin(a + t)}`
+  return <g><path d={`M ${pa.x} ${pa.y} C ${c1.x} ${c1.y} ${c2.x} ${c2.y} ${pb.x} ${pb.y}`} fill="none" stroke="var(--primary)" strokeWidth={2} strokeDasharray="6 5" />
+    <polygon points={`${pb.x},${pb.y} ${h(0.45)} ${h(-0.45)}`} fill="var(--primary)" /></g>
+}
