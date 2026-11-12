@@ -13,6 +13,7 @@ import { openDetail } from "@/core/nav"
 import { completeTyped, launcherText, search, suggestions, typedHits, typedOwned, typedTurns, useQueried, useSearchIndex, type Hit } from "@/core/search"
 import { useRecentFiles } from "@/core/scope"
 import { usePrefs } from "@/core/prefs"
+import { useStateFor } from "@/core/statefor"
 import { marked, NoMatches, Palette, useFinderQuery } from "@/components/Palette"
 import { excerpt, explain, highlighter, isPlain, marksOf, parse, type Node } from "../../../core/searchquery.ts"
 
@@ -51,16 +52,16 @@ export function SearchPalette({ store, onClose, launcher = false }: { store: Sto
   const plain = !node || isPlain(node)
   const opened = useRecentFiles()
   const { fileIcons, disabled } = usePrefs()
-  const [limit, setLimit] = useState(PAGE)
-  useEffect(() => setLimit(PAGE), [q])
+  const [limit, setLimit] = useStateFor([q], () => PAGE)
   const named = useMemo(() => (!q.trim() ? suggestions(docs, opened) : plain && !error ? search(docs, q, Infinity) : []), [docs, q, plain, error, opened])
   const local = q.trim() ? named.slice(0, limit) : named
   // Words inside files: the server searches every file's text (with operators, it's all there is). From two letters,
   // as the search tab: the server reads every file for one letter or two alike.
-  const [text, setText] = useState<{ hits: Hit[]; files: number }>({ hits: [], files: 0 })
+  const short = !node || (plain && q.trim().length < 2)
+  const [text, setText] = useStateFor<{ hits: Hit[]; files: number }>([short], () => ({ hits: [], files: 0 }))
   useEffect(() => {
     const query = q.trim()
-    if (!node || (plain && query.length < 2)) { setText({ hits: [], files: 0 }); return }
+    if (!node || short) return
     let on = true
     const t = setTimeout(() => {
       get<{ results: Found[]; files: number }>(`search?q=${encodeURIComponent(query)}&limit=${limit}&total=1`)
@@ -68,7 +69,7 @@ export function SearchPalette({ store, onClose, launcher = false }: { store: Sto
         .catch(() => on && setText({ hits: [], files: 0 }))
     }, limit > PAGE ? 0 : 150)
     return () => { on = false; clearTimeout(t) }
-  }, [q, node, plain, limit])
+  }, [q, node, plain, limit, short, setText])
   const queried = useQueried(plain && !error ? q : "")
   // (a launcher whose plugin opens nothing here, the web app's Browser, is the switcher with a new tab's picks)
   const lead = launcher ? launcherText(disabled) : null

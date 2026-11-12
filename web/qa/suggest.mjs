@@ -3,7 +3,7 @@
 // the graph's settings (put back): throwaway only.
 //   node web/qa/suggest.mjs <base url> <vault path> [out dir]
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs"
-import { SHOTS, qa, wait } from "./lib/qa.mjs"
+import { SHOTS, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT, OUT = SHOTS], browser, check, watch, noErrors, done } = await qa(import.meta.url)
 const DIR = "Qa suggest", NOTE = `${DIR}/Typing here.md`, BOARD = `${DIR}/Board.canvas`
 const put = (path, text) => fetch(`${B}api/file`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path, text, base: null }) })
@@ -156,6 +156,11 @@ await wait(800)
   await sugg.first().waitFor({ timeout: 5000 }).catch(() => {})
   const ops = await sugg.allTextContents()
   check("graph: the empty filter box offers the operators", ops[0]?.startsWith("tag:") && ops.some((o) => o.startsWith("type:")), ops)
+  await page.keyboard.press("ArrowDown")
+  check("graph: an arrow moves the choice", !!(await until(async () => (await sugg.nth(1).getAttribute("aria-selected")) === "true", 2000)))
+  await page.keyboard.type("t")
+  check("...typing on starts it again at the first", !!(await until(async () => (await sugg.first().getAttribute("aria-selected")) === "true", 2000)), await sugg.allTextContents())
+  await page.keyboard.press("Backspace")
   await page.keyboard.type("ty"); await page.keyboard.press("Enter"); await wait(300)
   const types = await sugg.allTextContents()
   check("graph: picking type: lists the vault's types", await box.inputValue() === "type:" && types.some((t) => t.startsWith("project")), [await box.inputValue(), types])

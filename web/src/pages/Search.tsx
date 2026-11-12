@@ -14,6 +14,7 @@ import { editAt } from "@/core/anchors"
 import { kindOf } from "@/core/filekinds"
 import { useNearEnd } from "@/core/near"
 import { usePrefs } from "@/core/prefs"
+import { useStateFor } from "@/core/statefor"
 import { search, useSearchIndex, type Hit } from "@/core/search"
 import { marked } from "@/components/Palette"
 import { menuBelow } from "@/components/ContextMenu"
@@ -94,15 +95,10 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
   // Names: the quick switcher's index (pages, people, files, terminals, what plugins index), for plain words.
   const docs = useSearchIndex(store)
   const allNames = useMemo(() => (plain && !matchCase ? search(docs, q, Infinity) : []), [docs, q, plain, matchCase])
-  const [allShown, setAllShown] = useState(false)
-  useEffect(() => setAllShown(false), [q])
+  const [allShown, setAllShown] = useStateFor([q], () => false)
   const names = allShown ? allNames : allNames.slice(0, 8)
 
   // Inside files: the server's search, every matching line, a page of files at a time.
-  const [found, setFound] = useState<Found | null>(null)
-  const results = found?.results ?? null
-  const [failed, setFailed] = useState("")
-  const [busy, setBusy] = useState(false)
   const context = settings.context ?? 0
   const params = useMemo(() => {
     const text = q.trim()
@@ -114,8 +110,12 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
     if (context) p.set("context", String(context))
     return p.toString()
   }, [q, node, plain, folder, matchCase, settings.sort, context])
+  const [found, setFound] = useStateFor<Found | null>([!params], () => null)
+  const results = found?.results ?? null
+  const [failed, setFailed] = useStateFor([!params], () => "")
+  const [busy, setBusy] = useState(false)
   // A file's every line, once "more in this file" is clicked; asked again with the rest when the vault changes.
-  const [whole, setWhole] = useState<Record<string, Match[]>>({})
+  const [whole, setWhole] = useStateFor<Record<string, Match[]>>([!params], () => ({}))
   const shownNow = useRef({ params, n: 0, whole, of: "" })
   shownNow.current = { ...shownNow.current, params, n: results?.length ?? 0, whole }
   const wholeOf = useCallback(async (path: string) => {
@@ -123,7 +123,7 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
     return rs[0]?.matches ?? []
   }, [params])
   useEffect(() => {
-    if (!params) { setFound(null); setWhole({}); setFailed(""); return }
+    if (!params) return
     let on = true
     setBusy(true)
     // (the vault changed: as many as were shown, again; a new query: its first page)
@@ -143,7 +143,7 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
         .catch((e) => { if (on) { setFound({ results: [], files: 0, lines: 0 }); setFailed(errorText(e)); setBusy(false) } })
     }, 200)
     return () => { on = false; clearTimeout(t) }
-  }, [params, wholeOf, store])
+  }, [params, wholeOf, store, setFound, setFailed, setWhole])
   // The next page, as the end of the list comes near.
   const loading = useRef("")
   const more = () => {
@@ -162,8 +162,7 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
     wholeOf(path).then((ms) => { if (shownNow.current.params === params) setWhole((w) => ({ ...w, [path]: ms })) }, () => {})
   }
   // Folded files: the ones toggled, or, with "Collapse results" on, every one but those.
-  const [toggled, setToggled] = useState<Set<string>>(new Set())
-  useEffect(() => setToggled(new Set()), [settings.collapse])
+  const [toggled, setToggled] = useStateFor<Set<string>>([settings.collapse], () => new Set())
 
   // Files open beside this tab: in the pane of the file focused last when that's another pane (like the links tab).
   const focused = useFocusedFile()

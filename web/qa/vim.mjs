@@ -123,6 +123,12 @@ await page.screenshot({ path: `${OUT}vim-leader.png` })
 await page.keyboard.type("ff"); await wait(600)
 check("Space F F opens the quick switcher", await page.locator("[role=dialog] input").count() > 0)
 await page.keyboard.press("Escape"); await wait(400)
+await lineEl("The other page").click(); await page.keyboard.press("Escape")
+await page.keyboard.press("Space")
+check("...Space again: the hint waits before it shows", await page.locator('[role=status][aria-label="Keys"]').count() === 0)
+check("...then shows", !!(await until(async () => (await page.locator('[role=status][aria-label="Keys"]').count()) === 1, 3000)))
+await page.keyboard.press("Escape")
+check("...Escape cancels the keys", !!(await until(async () => (await page.locator('[role=status][aria-label="Keys"]').count()) === 0, 3000)))
 
 // Ctrl+W L: the pane on the right.
 await page.keyboard.type(":vs"); await page.keyboard.press("Enter"); await wait(1500)

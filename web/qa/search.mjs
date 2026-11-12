@@ -17,6 +17,8 @@ const shot = async (page, name) => { const f = `${OUT}${name}.png`; await page.s
 const DIR = "Qa search"
 const put = (rel, text) => { mkdirSync(path.dirname(path.join(VAULT, rel)), { recursive: true }); writeFileSync(path.join(VAULT, rel), text) }
 put(`${DIR}/Budget plan.md`, "---\ntags: [qa-search]\nstatus: seed\n---\n# Rent\nPay the rent and buy food.\n- [ ] call the **landlord** about [[Heating|the heating]]\n\nSomething else entirely.\n")
+put(`${DIR}/Heating log.md`, "The landlord came about the heating.\n")
+for (let i = 1; i <= 9; i++) put(`${DIR}/Ledger ${i}.md`, "A page of the ledger.\n")
 put("Notes/Qa airship.md", "---\ntype: note\nkind: idea\nstatus: seed\nid: qa-airship\n---\nA long opening that goes on about weather, maps, routes, fuel, crews and the price of tickets before it finally names the zeppelin we want.\n")
 const SETTINGS = path.join(VAULT, ".vaultite/plugins/search/data.json")
 const before = existsSync(SETTINGS) ? readFileSync(SETTINGS, "utf8") : null
@@ -49,6 +51,8 @@ try {
   const budget = r.findIndex((x) => x.text.startsWith("Budget plan"))
   check("words inside files come under In files", head >= 0 && budget > head, r)
   check("with the word marked in the line", r[budget]?.marks.includes("landlord"), r[budget])
+  r = await palette("l")
+  check("...one letter: nothing from inside files", !r.some((x) => x.heading && x.text === "In files"), r)
   await shot(page, "palette-in-files")
   // Title marks and meta marks together.
   r = await palette("budget rent")
@@ -92,6 +96,22 @@ try {
   const asRead = await until(() => page.$$eval('[data-search-file="Qa search/Budget plan.md"] li button', (els) => els.map((e) => e.textContent.trim()).find((t) => t.includes("landlord"))), 8000)
   check("… a line reads as text, marked there: no task box, stars or brackets", asRead === "call the landlord about the heating"
     && await page.$eval('[data-search-file="Qa search/Budget plan.md"] li mark', (m) => m.textContent) === "landlord", asRead)
+  const chevron = (name) => page.$eval(`[data-search-file="Qa search/${name}.md"] button[aria-expanded]`, (b) => b.getAttribute("aria-expanded")).catch(() => null)
+  await page.click('[data-search-file="Qa search/Budget plan.md"] button[aria-expanded]')
+  check("a click folds a file's lines", await until(async () => (await chevron("Budget plan")) === "false", 3000))
+  await page.click('[aria-label="Search options"]'); await page.click('text="Collapse results"')
+  await until(async () => (await chevron("Heating log")) === "false", 5000)
+  check("...Collapse results folds every file, the click forgotten", await chevron("Budget plan") === "false")
+  await page.click('[aria-label="Search options"]'); await page.click('text="Collapse results"')
+  await until(async () => (await chevron("Heating log")) === "true", 5000)
+  check("...and off, every file unfolds", await chevron("Budget plan") === "true")
+  const showAll = () => page.locator('section[aria-label="Names"] button', { hasText: /^Show all/ })
+  await page.fill('[aria-label="Search the vault"]', "ledger")
+  check("names past eight: Show all", !!(await until(async () => (await showAll().count()) === 1, 8000)))
+  await showAll().click()
+  check("...a click shows them all", !!(await until(async () => (await showAll().count()) === 0, 3000)))
+  await page.fill('[aria-label="Search the vault"]', "ledge")
+  check("...another query: eight again", !!(await until(async () => (await showAll().count()) === 1, 8000)))
   await page.fill('[aria-label="Search the vault"]', "rent food")
   await wait(700)
   await shot(page, "tab-plain")

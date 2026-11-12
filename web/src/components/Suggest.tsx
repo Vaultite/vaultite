@@ -5,6 +5,7 @@ import { createPortal } from "react-dom"
 import { suggestQuery, type QuerySuggestion } from "../../../core/searchquery.ts"
 import { useStoreWith } from "@/core/data"
 import { vocabOf } from "@/core/vocab"
+import { useStateFor } from "@/core/statefor"
 import { cn } from "@/lib/utils"
 
 type Field = HTMLInputElement
@@ -28,17 +29,16 @@ type Suggest = { input: Own & { ref: (el: Field | null) => void; onSelect: () =>
 export function useSuggest(value: string, set: (v: string) => void, find: (value: string, caret: number) => Found | null, o: Options = {}): Suggest {
   const field = useRef<Field | null>(null)
   const [caret, setCaret] = useState<number | null>(null)
-  const [at, setAt] = useState<number | null>(null)
   const [closed, setClosed] = useState<string | null>(null)
   const [box, setBox] = useState<DOMRect | null>(null)
   const found = caret !== null && closed !== value ? find(value, Math.min(caret, value.length)) : null
+  const [at, setAt] = useStateFor<number | null>([value, found?.from], () => null)
   const items = found?.items ?? []
   const typed = found ? value.slice(found.from, found.to).toLowerCase() : ""
   const first = !o.completesOnly || (!!typed && !!items[0]?.text.toLowerCase().startsWith(typed)) ? 0 : -1
   const sel = Math.min(at ?? first, items.length - 1)
 
   useLayoutEffect(() => { if (found) setBox(field.current?.getBoundingClientRect() ?? null) }, [!!found, value]) // eslint-disable-line react-hooks/exhaustive-deps
-  useLayoutEffect(() => setAt(null), [value, found?.from])
 
   const read = () => setCaret(field.current && document.activeElement === field.current ? field.current.selectionEnd ?? value.length : null)
   const pick = (i: number) => {
