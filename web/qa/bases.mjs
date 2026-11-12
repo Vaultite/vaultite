@@ -466,7 +466,8 @@ await page.screenshot({ path: `${OUT}base-filter-menu-desktop-dark.png` })
 await page.keyboard.press("Escape")
 
 // Every row (no cap): 700 notes, drawn as they come near the screen, every one reached by scrolling.
-await Promise.all(Array.from({ length: 700 }, (_, i) => put(`${F}/Many/Row ${String(i + 1).padStart(3, "0")}.md`, `---\ntype: qa-row\nn: ${i + 1}\n---\n`)))
+// (32 at a time: 700 connections at once overflow macOS's accept queue of 128, and one dropped fails the run)
+for (let i = 0; i < 700; i += 32) await Promise.all(Array.from({ length: Math.min(32, 700 - i) }, (_, k) => put(`${F}/Many/Row ${String(i + k + 1).padStart(3, "0")}.md`, `---\ntype: qa-row\nn: ${i + k + 1}\n---\n`)))
 await put(`${F}/Many.base`, `filters: file.inFolder("${F}/Many")\nviews:\n  - type: table\n    name: All\n    order: [file.name, n]\n    summaries:\n      n: Sum\n`)
 await page.goto(url(`${F}/Many.base`)); await page.waitForTimeout(2500)
 const many = page.locator(`[data-pane] [data-base="${F}/Many.base"]`)

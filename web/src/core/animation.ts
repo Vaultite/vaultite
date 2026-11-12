@@ -94,7 +94,8 @@ export function fadeAway(els: readonly (Element | null | undefined)[], o: Leavin
       if (f.scrollTop || f.scrollLeft) scrolled.push([to[i], f.scrollTop, f.scrollLeft])
       if (f.tagName === "INPUT" || f.tagName === "TEXTAREA") (to[i] as HTMLInputElement).value = (f as HTMLInputElement).value
     })
-    copy.removeAttribute("id")
+    // (a picture: no ids twice in the page, no roles that say it's still a menu or dialog)
+    for (const t of to) { t.removeAttribute("id"); t.removeAttribute("role") }
     Object.assign(copy.style, { position: "fixed", left: `${r.left}px`, top: `${r.top}px`, right: "auto", bottom: "auto", width: `${r.width}px`,
       height: `${r.height}px`, margin: "0", transform: "none", translate: "none", scale: "none", visibility: "visible" })
     host.append(copy); parts.push(copy); copies.push(copy)

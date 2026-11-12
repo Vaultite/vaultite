@@ -10,6 +10,7 @@ import { newKeys, open as openSealed, seal } from "./browser/sealed.ts"
 import { ACCOUNTS, covers, nonempty, type Rule, type Who } from "./siteaccounts.ts"
 import { writeAtomic } from "./setup.ts"
 import { otherAppScheme } from "../core/opening.ts"
+import { QUIET } from "./quiet.ts"
 import { claim, discardable, flowOn, hear, letGo, LINGER_MS, media, MOVE_MS, outlasted, playback, playing, quietEnds, RECLAIM_MS, tabGone, tabMoved, unclaimed, unmoved, windowReloaded, type Flow, type Owned, type Playback } from "./webpages.ts"
 import { execFile } from "node:child_process"
 import crypto from "node:crypto"
@@ -1906,8 +1907,8 @@ function raise(win: AppWindow, how: Raise) {
   restack(win)
   passPinch(win, false)
   // (a pointer resting over a page as the window goes over it, as fingers on the trackpad leave it, is told to the
-  // window's page: it then says whether it's over the page there, `pointer`)
-  if (!MAC || how !== "through") return
+  // window's page: it then says whether it's over the page there, `pointer`). A quiet copy's isn't the user's (quiet.ts).
+  if (!MAC || how !== "through" || QUIET) return
   const at = screen.getCursorScreenPoint(), b = win.getContentBounds()
   if (at.x >= b.x && at.y >= b.y && at.x < b.x + b.width && at.y < b.y + b.height) win.webContents.sendInputEvent({ type: "mouseMove", x: at.x - b.x, y: at.y - b.y })
 }

@@ -149,7 +149,8 @@ check("desktop: Rename in place", await until(async () => (await order(W)).inclu
 
 // A long folder draws only what's near the screen.
 await api("POST", "folder", { path: `${D}/Renamed/Long` })
-await Promise.all(Array.from({ length: 300 }, (_, i) => api("POST", "file", { path: `${D}/Renamed/Long/Note ${String(i).padStart(3, "0")}.md`, text: `Note ${i}.\n` })))
+// (32 at a time: 300 connections at once can overflow macOS's accept queue of 128)
+for (let i = 0; i < 300; i += 32) await Promise.all(Array.from({ length: Math.min(32, 300 - i) }, (_, k) => api("POST", "file", { path: `${D}/Renamed/Long/Note ${String(i + k).padStart(3, "0")}.md`, text: `Note ${i + k}.\n` })))
 await W.locator(`[data-folder-item="${D}/Renamed"] a`).click()
 await until(async () => (await shown(W)) === `${D}/Renamed`)
 await W.locator(`[data-folder-item="${D}/Renamed/Long"] a`).click()
