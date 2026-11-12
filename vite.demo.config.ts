@@ -173,8 +173,8 @@ const PIN_THEME = `(() => {
   })
 })()`
 
-// (the base's resolvers know only the app's own plugins)
-const own = new Set(['vaultite-plugin-modules', 'vaultite-plugin-icons'])
+// (the base's resolvers know only the app's own plugins; the demo isn't deployed to phones, so its files keep Vite's names)
+const own = new Set(['vaultite-plugin-modules', 'vaultite-plugin-icons', 'vaultite-stable-chunks'])
 export default defineConfig({
   ...base,
   plugins: [officialPlugins(), pluginModules(MODULES), pluginIcons(Object.fromEntries(official.map((o) => [o.id, o.dir]))),

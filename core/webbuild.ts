@@ -3,12 +3,13 @@
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { type Stamp, stampIn } from "./buildstamp.ts"
+import { buildName, type Stamp, stampIn } from "./buildstamp.ts"
 
 export type WebBuild = { entry: string | null; eager: string[]; stamp: Stamp | null }
 const NONE: WebBuild = { entry: null, eager: [], stamp: null }
 
 const ENTRY = /<script type="module"[^>]*\ssrc="[^"]*\/([^"/]+\.js)"/
+const IMPORT_MAP = /<script type="importmap"[^>]*>([\s\S]*?)<\/script>/
 const EAGER = /<(?:script|link)\b[^>]*?(?:src|href)="\.?\/?(assets\/[^"]+\.(?:js|css))"/g
 
 /** A build folder's: `read` its index.html (again once changed), `on` hears a new entry once it held still (polled: a
@@ -21,7 +22,8 @@ export function webBuilds(first: string, ms = 1000) {
       const st = fs.statSync(index), key = `${st.mtimeMs}:${st.size}`
       if (key !== seen) {
         const html = fs.readFileSync(index, "utf8")
-        built = { entry: ENTRY.exec(html)?.[1] ?? null, eager: [...html.matchAll(EAGER)].map((e) => path.join(dist, e[1])), stamp: stampIn(html) }
+        const entry = ENTRY.exec(html)?.[1]
+        built = { entry: entry ? buildName(entry, IMPORT_MAP.exec(html)?.[1]) : null, eager: [...html.matchAll(EAGER)].map((e) => path.join(dist, e[1])), stamp: stampIn(html) }
         seen = key
       }
     } catch { seen = ""; built = NONE }

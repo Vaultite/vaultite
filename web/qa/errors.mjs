@@ -63,7 +63,7 @@ try {
   check("an uncaught error and a rejection reach the server, from this device", got?.some((g) => g.message === "qa: an uncaught error" && g.kind === "uncaught" && g.devices.includes("web")) &&
     got?.some((g) => g.message === "qa: a rejection" && g.kind === "rejection"), got)
   const one = got?.find((g) => g.message === "qa: an uncaught error")
-  check("with its stack, address and build", !!one?.latest.stack && typeof one?.latest.url === "string" && /\.js$/.test(one?.latest.build ?? ""), one?.latest)
+  check("with its stack, address and build", !!one?.latest.stack && typeof one?.latest.url === "string" && /\.js(#\w+)?$/.test(one?.latest.build ?? ""), one?.latest)
 
   // One from before the app started (index.html keeps it in the queue): sent once the app is up.
   await page.evaluate(() => localStorage.setItem("vaultite.errors", JSON.stringify([{ t: Date.now(), kind: "boot", fatal: true, message: "qa: before it started", url: "/" }])))

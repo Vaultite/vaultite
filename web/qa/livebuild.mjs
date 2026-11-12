@@ -8,6 +8,7 @@ import os from "node:os"
 import path from "node:path"
 import { ROOT, freePort, launch, qa, until, wait } from "./lib/qa.mjs"
 import { testServer } from "../../tools/test/lib.ts"
+import { buildName } from "../../core/buildstamp.ts"
 const { check, done } = await qa(import.meta.url, { chrome: false })
 
 const DIST = path.join(ROOT, "web", "dist")
@@ -26,7 +27,8 @@ let builds = 0
 const rebuild = () => {
   const name = entry.replace(/-[^-]+\.js$/, `-QaNewer${++builds}.js`)
   fs.copyFileSync(path.join(DIST, "assets", entry), path.join(dist, "assets", name))
-  fs.writeFileSync(path.join(dist, "index.html"), html.replace(`./assets/${entry}`, `./assets/${name}`))
+  // (its script, not the import map's line for it)
+  fs.writeFileSync(path.join(dist, "index.html"), html.replace(`src="./assets/${entry}"`, `src="./assets/${name}"`))
   return name
 }
 
@@ -109,7 +111,7 @@ try {
 
   // Once a build: one it reloaded for already (a reload that didn't bring it: a cache in the way) is offered, no loop.
   const stuck = await open()
-  const third = entry.replace(/-[^-]+\.js$/, `-QaNewer${builds + 1}.js`)
+  const third = buildName(entry.replace(/-[^-]+\.js$/, `-QaNewer${builds + 1}.js`), /<script type="importmap"[^>]*>([\s\S]*?)<\/script>/.exec(html)?.[1])
   await stuck.evaluate((b) => { sessionStorage.setItem("vaultite.reloadedInto", b); window.__show(false) }, third)
   const stuckLoads = reloads(stuck)
   rebuild()

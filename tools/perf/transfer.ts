@@ -15,7 +15,9 @@ import { freePort, isolated, makeVault } from "./vault.ts"
 
 const args = process.argv.slice(2)
 const arg = (name: string, dflt: string) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : dflt }
-const roots = args.flatMap((a, i) => (a === "--root" ? [path.resolve(args[i + 1])] : []))
+// (a root may name the build it serves: <checkout>=<web dist>, to try builds made another way on one checkout)
+const spec = (s: string) => s.split("=").map((p) => path.resolve(p)).join("=")
+const roots = args.flatMap((a, i) => (a === "--root" ? [spec(args[i + 1])] : []))
 if (!roots.length) roots.push(path.join(import.meta.dirname, "..", ".."))
 const RUNS = Number(arg("runs", "3")), IDLE_S = Number(arg("idle", "60")), OUT = arg("out", ""), PRINT = args.includes("--print")
 const profiles = arg("profiles", "cellular,tailnet").split(",").map((p) => PROFILES[p] ?? (() => { throw new Error(`no profile ${p}`) })())
@@ -23,7 +25,7 @@ export const FLOWS = ["cold", "warm", "open", "switch", "search", "today", "rich
 type Flow = (typeof FLOWS)[number]
 const only = arg("flows", "").split(",").filter(Boolean) as Flow[]
 /** --from: the build a phone's cache holds before a deploy (update); without it, no update flow. */
-const FROM = arg("from", "") && path.resolve(arg("from", ""))
+const FROM = arg("from", "") && spec(arg("from", ""))
 const FLOWS_ = (only.length ? only : [...FLOWS]).filter((f) => f !== "update" || FROM), flows = FLOWS_
 const CHROME = [process.env.VAULTITE_CHROME, chromium.executablePath(), "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/chromium"]
   .find((p) => p && fs.existsSync(p))!
@@ -65,12 +67,13 @@ function fixture(vault: string) {
 // ---- a server per root, with the network in front of it
 
 type Server = { root: string; child: ChildProcess; base: string; port: number; dir: string }
-async function serve(root: string, dir: string): Promise<Server> {
+async function serve(rootSpec: string, dir: string): Promise<Server> {
+  const [root, dist] = rootSpec.split("=")
   const port = await freePort()
   const child = spawn(process.execPath, ["server.ts"], {
     cwd: root, stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, ...isolated(path.join(dir, "home")), VAULTITE_VAULT: path.join(dir, "vault"), VAULTITE_LOCAL: path.join(dir, "local"),
-      PORT: String(port), HOST: "127.0.0.1" },
+      PORT: String(port), HOST: "127.0.0.1", ...(dist ? { VAULTITE_WEB_DIST: dist } : {}) },
   })
   let log = ""
   await new Promise<void>((resolve, reject) => {
@@ -201,7 +204,7 @@ const PHONE = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch:
 async function open(c: Ctx, phone: boolean) {
   const ctx = await c.browser.newContext(phone ? PHONE : { viewport: { width: 1440, height: 900 } })
   const page = await ctx.newPage()
-  page.on("pageerror", (e) => { errors.push(e.message); if (errors.length < 5) console.error(`page error: ${e.message}`) })
+  page.on("pageerror", (e) => { errors.push(`${flowNow}: ${e.message}`); if (errors.length < 5) console.error(`page error in ${flowNow}: ${e.message}`) })
   const t = await Tally.attach(page, c.net)
   // (a phone's CPU: a few times slower than this machine's)
   if (phone) await t.cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 })
@@ -210,7 +213,9 @@ async function open(c: Ctx, phone: boolean) {
 
 /** Runs `act` and measures from its start until `ready` resolves (or, without one, until the last request ends), then
  *  until the network is quiet. */
+let flowNow = "start"
 async function measure(t: Tally, name: string, act: () => Promise<unknown>, ready?: () => Promise<unknown>, settle = 1500) {
+  flowNow = name
   t.reset()
   const t0 = performance.now()
   try {
@@ -400,7 +405,8 @@ async function main() {
   if (errors.length) { console.error(`the pages threw ${errors.length} errors:\n${[...new Set(errors)].slice(0, 5).join("\n")}`); process.exitCode = 1 }
 }
 
-function commitOf(root: string) {
+function commitOf(rootSpec: string) {
+  const root = rootSpec.split("=")[0]
   try { return execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8", env: gitEnv() }).trim() } catch { return "" }
 }
 

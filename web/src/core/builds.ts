@@ -3,13 +3,14 @@
 import { useSyncExternalStore } from "react"
 import { notify } from "@/core/notify"
 import { safeToReload } from "@/core/unsaved"
-import { STAMP_META, stampOf, type Stamp } from "../../../core/buildstamp.ts"
+import { buildName, STAMP_META, stampOf, type Stamp } from "../../../core/buildstamp.ts"
 
-/** This page's build: its entry script's name (named by content; in development there's none). */
+/** This page's build: its entry script's name and its import map's hash, as the server names it (core/webbuild.ts; in
+ *  development there's none). */
 export const BUILD: string | null = (() => {
   try {
     const src = document.querySelector<HTMLScriptElement>('script[type="module"][src*="assets/"]')?.src
-    return src ? src.slice(src.lastIndexOf("/") + 1) : null
+    return src ? buildName(src.slice(src.lastIndexOf("/") + 1), document.querySelector('script[type="importmap"]')?.textContent ?? undefined) : null
   } catch { return null }
 })()
 /** The commit this page was built from (vite.config.ts stamps it). */

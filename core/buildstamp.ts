@@ -1,5 +1,10 @@
 // The commit a web build was made from, in its index.html (vite.config.ts writes it): the page reads its own, the
 // server the one it serves (core/webbuild.ts). No Node: the web imports it.
+import { textHash } from "./texthash.ts"
+
+/** A build's name: its entry script's, and its import map's hash, since a chunk changing changes only the map (vite.config.ts
+ *  chunkImportMap: each file imports the others by a name that stays). The page names its own the same way (builds.ts). */
+export const buildName = (entry: string, importMap: string | undefined) => (importMap ? `${entry}#${textHash(importMap).split(":").slice(1).join("")}` : entry)
 
 export type Stamp = { commit: string; subject: string; /** When it was committed (ms). */ at: number }
 

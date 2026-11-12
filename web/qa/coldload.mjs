@@ -1,5 +1,5 @@
 // A phone's first and later loads, through the tailnet's proxy: the vault's state asked for before the app's code, which
-// comes in a few files, compressed and kept for good; a reload asks only for the page; a new build on the server is
+// comes in a file per folder, compressed and kept for good; a reload asks only for the page; a new build on the server is
 // fetched before the reload into it. WRITES: nothing.
 //   node web/qa/coldload.mjs <base url>
 import { qa, until, wait } from "./lib/qa.mjs"
@@ -42,7 +42,7 @@ const state = sent.filter((r) => r.path === "/api/state")
 check("the state is asked for by the page, before the app's code runs", state[0]?.from === B, state[0]?.from)
 check("and once", state.length === 1, state.length)
 const eager = [...(await (await fetch(B)).text()).matchAll(/<(?:script|link)\b[^>]*?(?:src|href)="\.?\/?(assets\/[^"]+\.js)"/g)].length
-check("the app's code comes in a few files", eager > 0 && eager <= 16, eager)
+check("the app's code comes in a file per folder, not one per module", eager > 0 && eager <= 120, eager)
 const header = (r, name) => Object.entries(answers.get(r.id)?.headers ?? {}).find(([k]) => k.toLowerCase() === name)?.[1] ?? ""
 const js = assets.filter((r) => r.path.endsWith(".js"))
 const big = js.filter((r) => Number(header(r, "content-length") || 2048) >= 1024)

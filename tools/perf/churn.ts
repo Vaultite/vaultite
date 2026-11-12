@@ -13,6 +13,8 @@ const args = process.argv.slice(2)
 const arg = (name: string, dflt: string) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : dflt }
 const N = Number(arg("commits", "20")), FROM = arg("from", "origin/main")
 const variants = ["", ...args.flatMap((a, i) => (a === "--variant" ? [path.resolve(args[i + 1])] : []))]
+/** --config: a vite.config.ts each commit is built with instead of its own (a new way of building, on main's commits). */
+const CONFIG = arg("config", "") && path.resolve(arg("config", ""))
 const git = (...a: string[]) => execFileSync("git", a, { cwd: ROOT, encoding: "utf8", env: gitEnv() }).trim()
 
 // Commits that changed what the web build is made from, oldest first (one more: the first's baseline)
@@ -54,6 +56,7 @@ function build(commit: string, variant: string) {
   execFileSync("sh", ["-c", `git -C "${ROOT}" archive ${commit} | tar -x -C "${dir}"`])
   fs.symlinkSync(path.join(ROOT, "node_modules"), path.join(dir, "node_modules"))
   const out = path.join(tmp, "out", `${commit.slice(0, 9)}-${variants.indexOf(variant)}`)
+  if (CONFIG) fs.copyFileSync(CONFIG, path.join(dir, "vite.config.ts"))
   let config = "vite.config.ts"
   if (variant) {
     fs.copyFileSync(variant, path.join(dir, "variant.ts"))

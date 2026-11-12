@@ -8,6 +8,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **Terminals over a phone's network move a seventh of the bytes**: the app's live connections are compressed when they
   cross the network (a terminal's output, the live state); on the Mac itself nothing changes.
+- **Faster starts after an update, on a phone above all**: the app comes in a file per folder whose names last, so an
+  update downloads only the files it changed (about a fifth of the app, often much less) instead of all of it again.
 - **Connections over Vaultite Cloud**: opened at `<you>.vaultite.app`, Connections and Remote access list the AI apps
   connected (access, last used) and end any of them, link to your Vaultite account, and say calmly what's set on the
   Mac itself (a new app's code, more access, owner tools, signing in or out) instead of an error; so do Settings'

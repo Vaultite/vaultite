@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process'
+import crypto from 'node:crypto'
 import path from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import fs from 'node:fs'
-import { defineConfig, normalizePath, type Plugin } from 'vite'
+import { defineConfig, normalizePath, type Plugin, type Rollup } from 'vite'
 import { ICON_FILE, ICON_NAME, PLUGIN_MODULE, svgIcon } from './core/pluginmeta.ts'
 import { exportFile } from './core/rules.ts'
 import { STAMP_META, stampText } from './core/buildstamp.ts'
@@ -124,8 +125,8 @@ export function lucideByFile(): Plugin {
   }
 }
 
-/** What a window runs as it starts comes in a few files rather than a hundred (a phone fetched them 6 at a time): a
- *  module goes with the others the same pages (index.html and its siblings) import, big libraries apart from the app. */
+/** What a window runs as it starts is grouped by the pages (index.html and its siblings) that import it, big libraries
+ *  apart from the app; appGroups then splits the app's own by folder. */
 const boot = { pages: new Map<string, string>(), libs: new Set<string>(), editor: new Set<string>(), terminal: new Set<string>(), chat: new Set<string>() }
 const isLib = (id: string) => /[\\/]node_modules[\\/]/.test(id)
 export function bootChunks(): Plugin {
@@ -188,6 +189,90 @@ export const bootGroups = [...Array.from({ length: PAGES * 2 }, (_, i) => {
   }
 }), { name: 'editor', test: (id: string) => boot.editor.has(id) }, { name: 'terminal', test: (id: string) => boot.terminal.has(id) }, { name: 'chat', test: (id: string) => boot.chat.has(id) }]
 
+/** The app's own code in a file per folder (a plugin's, a core folder's; a view's libraries apart from its code), so a
+ *  deploy changes a few small files, not one of 2 MB (stableChunks keeps the others' names). Over HTTP/2: many files are cheap. */
+const folderOf = (id: string) => {
+  const p = normalizePath(id)
+  const m = /\/plugins\/core\/([^/]+)\//.exec(p) ?? /\/web\/src\/([^/]+)\//.exec(p)
+  return m ? `${p.includes('/plugins/core/') ? 'p' : 'w'}-${m[1]}` : isLib(id) ? 'lib' : 'w'
+}
+export const appGroups = bootGroups.map((g) => typeof g.name !== 'function'
+  ? { ...g, name: (id: string) => `${g.name}-${isLib(id) ? 'lib' : folderOf(id)}` }
+  : { ...g, name: (id: string) => { const n = (g.name as (id: string) => string)(id); return n === 'app' ? `app-${folderOf(id)}` : n } })
+const grouped = (name: string) => /^(app|vendor|editor|terminal|chat)([~-]|$)/.test(name)
+
+/** A deploy re-downloads only the files that changed: each chunk imports the others by a name that stays (its group, or
+ *  its entry module), which each page's import map points at the file of the moment, named by its content alone. */
+export function stableChunks(): Plugin {
+  const hash = (s: string) => crypto.createHash('sha256').update(s).digest('base64url').slice(0, 8)
+  const rel = (id: string) => normalizePath(path.relative(import.meta.dirname, id))
+  return {
+    name: 'vaultite-stable-chunks',
+    apply: 'build',
+    enforce: 'post',
+    generateBundle: {
+      order: 'post',
+      handler(_, bundle) {
+        const chunks = Object.values(bundle).filter((c): c is Rollup.OutputChunk => c.type === 'chunk')
+        // A chunk's lasting name: a group's is unique; another's, its entry module or else its modules
+        const keys = new Map<string, string>(), taken = new Set<string>()
+        for (const c of chunks) {
+          const dir = path.posix.dirname(c.fileName)
+          const basis = (by: 'name' | 'modules') => (by === 'name' && !c.facadeModuleId && grouped(c.name) ? `group:${c.name}`
+            : c.facadeModuleId && by === 'name' ? `facade:${rel(c.facadeModuleId)}` : `modules:${c.moduleIds.map(rel).sort().join('\n')}`)
+          let key = `${dir}/${c.name}-${hash(basis('name'))}.js`
+          if (taken.has(key)) key = `${dir}/${c.name}-${hash(basis('modules'))}.js`
+          if (taken.has(key)) this.error(`two chunks would share the name ${key}`)
+          taken.add(key)
+          keys.set(c.fileName, key)
+        }
+        // A chunk's styles too (the preload helper loads them through the map, import.meta.resolve): a new class in the
+        // app's sheet would otherwise change every chunk that loads it
+        const sheets = new Map<string, string>()
+        for (const a of Object.values(bundle)) {
+          if (a.type !== 'asset' || !a.fileName.endsWith('.css')) continue
+          const key = `${path.posix.dirname(a.fileName)}/${path.posix.basename(a.names[0] ?? a.fileName, '.css')}-${hash(`sheet:${a.names[0] ?? a.fileName}`)}.css`
+          if (taken.has(key)) this.error(`two files would share the name ${key}`)
+          taken.add(key)
+          sheets.set(a.fileName, key)
+        }
+        const byBase = new Map([...keys, ...sheets].map(([f, k]) => [path.posix.basename(f), path.posix.basename(k)]))
+        const toKeys = (code: string) => code.replace(/(?<=["'`/])([^"'`/\s]+\.(?:js|css))(?=["'`])/g, (m) => byBase.get(m) ?? m)
+        // Each chunk imports by lasting names, so its content (and the name it's served by) moves only with its own code
+        const real = new Map<string, string>()
+        for (const c of chunks) {
+          c.code = toKeys(c.code)
+          const to = `${path.posix.dirname(c.fileName)}/${c.name}-${hash(c.code)}.js`
+          real.set(c.fileName, to)
+        }
+        // (rolldown keeps no chunk renamed here: each is written anew under its name, as a file)
+        const links = new Map(chunks.map((c) => [real.get(c.fileName)!, [...c.imports, ...c.dynamicImports].map((f) => real.get(f) ?? f)]))
+        for (const c of chunks) {
+          delete bundle[c.fileName]
+          this.emitFile({ type: 'asset', fileName: real.get(c.fileName)!, source: c.code })
+        }
+        const was = new Map([...real].map(([w, t]) => [t, w]))
+        for (const a of Object.values(bundle)) {
+          if (a.type !== 'asset' || !a.fileName.endsWith('.html')) continue
+          let html = String(a.source)
+          for (const [was, to] of real) html = html.split(path.posix.basename(was)).join(path.posix.basename(to))
+          // The page's map: every chunk its entry reaches, now or later
+          const entry = /<script type="module"[^>]*\ssrc="\.?\/?([^"]+\.js)"/.exec(html)?.[1]
+          const map: Record<string, string> = {}
+          for (const todo = entry && links.has(entry) ? [entry] : [], seen = new Set(todo); todo.length;) {
+            const f = todo.pop()!
+            map[`./${keys.get(was.get(f)!)}`] = `./${f}`
+            for (const to of links.get(f)!) if (links.has(to) && !seen.has(to)) { seen.add(to); todo.push(to) }
+          }
+          for (const [f, k] of sheets) map[`./${k}`] = `./${f}`
+          const sorted = Object.fromEntries(Object.entries(map).sort(([x], [y]) => (x < y ? -1 : 1)))
+          a.source = html.replace(/<head>/, `<head>\n    <script type="importmap">${JSON.stringify({ imports: sorted })}</script>`)
+        }
+      },
+    },
+  }
+}
+
 /** virtual:official-plugins: Vaultite's own plugins the demo builds in as the app's (vite.demo.config.ts); none here. */
 export function noOfficialPlugins(): Plugin {
   const ID = 'virtual:official-plugins'
@@ -201,7 +286,7 @@ export function noOfficialPlugins(): Plugin {
 // The app is in web/ (the core) and plugins/ (every feature, one folder each); both are bundled together.
 export default defineConfig({
   root: 'web',
-  plugins: [pluginModules([path.resolve(import.meta.dirname, 'plugins/core')]), react(), tailwindcss(), keepRecentBuilds(), buildStamp(), pluginIcons(), noOfficialPlugins(), lucideByFile(), bootChunks()],
+  plugins: [pluginModules([path.resolve(import.meta.dirname, 'plugins/core')]), react(), tailwindcss(), keepRecentBuilds(), buildStamp(), pluginIcons(), noOfficialPlugins(), lucideByFile(), bootChunks(), stableChunks()],
   resolve: {
     alias: {
       // What plugins import: the plugin API (web/src/api.ts). Core code uses @/.
@@ -225,7 +310,9 @@ export default defineConfig({
       },
       // Vault plugins may import the app's plugins' modules (web/src/core/vaultPlugins.ts globs them, lazily); most are
       // in the main chunk anyway, which is fine.
-      output: { codeSplitting: { groups: bootGroups } },
+      // (split across files, modules run in their source order: a cycle between two files is safe; export names stay put,
+      // so a file importing another changes only when its own code does)
+      output: { codeSplitting: { includeDependenciesRecursively: false, groups: appGroups }, strictExecutionOrder: true, minifyInternalExports: false },
       onwarn(warning, warn) {
         if (warning.code === 'INEFFECTIVE_DYNAMIC_IMPORT' && warning.message.includes('vaultPlugins.ts')) return
         warn(warning)
