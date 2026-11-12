@@ -12,6 +12,7 @@ export default async ($: VaultTest) => {
   const { asItsTool } = await import("../../../plugins/core/companion/chat.ts")
   const { VAULT, api, app, check, read, write } = $
   const J = await import("../../../plugins/core/companion/jobs.ts")
+  const L = await import("../../../plugins/core/companion/joblife.ts")
   const { jobTold } = await import("../../../core/desktop/jobnews.ts")
   const W = await import("../../../plugins/core/companion/where.ts")
 
@@ -19,7 +20,7 @@ export default async ($: VaultTest) => {
   {
     const job = (): Any => ({ id: "j1", title: "t", state: "starting", where: { machine: "", label: "M", cwd: "/r", repo: "r", agent: "claude", account: "", harness: "Claude Code", model: "", effort: "", why: "" },
       terminal: "claude-x", now: "", started: 0, turn: 0, at: 0, seen: true, log: [] })
-    const run = (evs: string[]) => { const j = job(); for (const e of evs) J.step(j, e as Any, 1); return j }
+    const run = (evs: string[]) => { const j = job(); for (const e of evs) L.step(j, e as Any, 1); return j }
     {
       // (what each summoned ask is told of its jobs: the newest few, and every one waiting on them however old)
       const now = 10 * 3600_000, at = (id: string, state: string, h: number) => ({ ...job(), id, title: id, state, at: now - h * 3600_000, started: now - h * 3600_000 })
@@ -34,6 +35,13 @@ export default async ($: VaultTest) => {
       check("jobs: one whose terminal can't be reached shows waiting with why, not working", card.state === "waiting" && /^Can't be reached: the terminal server/.test(card.now) &&
         J.cardOf(w).state === "working", card)
     }
+    {
+      const d = run(["working", "answered"]), was = { state: d.state, turn: d.turn, now: d.now, at: d.at }, x = L.step(d, "told", 5)!
+      const back = L.untell(d, x, was), e = run(["working", "answered"]), y = L.step(e, "told", 5)!
+      L.step(e, "asks", 6)
+      check("jobs: a told its terminal didn't take is taken back, its log too; one moved since stays as it moved",
+        back?.from === "working" && back.to === "done" && d.state === "done" && d.log.at(-1).ev === "answered" && L.untell(e, y, was) === null && e.state === "needs you", [d.log, e.log])
+    }
     check("jobs: nothing moves a stopped job; a reviewed one stopped is done", b.state === "stopped" && b.log.length === 2 && c.state === "done" && c.log.at(-1).ev === "stop", [b.log, c.log])
     check("jobs: a worker that ends while it works failed; one ready for review that ends is done",
       run(["working", "ended"]).state === "failed" && run(["working", "changed", "ended"]).state === "done" && run(["ended"]).state === "failed")
@@ -47,12 +55,12 @@ export default async ($: VaultTest) => {
     check("jobs: the commits a message names", J.commitsIn("pushed as 7493dcf6 (`c09009afa67159e`), see #12345678 and abcdefgh, deadbeef").join() === "7493dcf6,c09009afa67159e", J.commitsIn("pushed as 7493dcf6 (`c09009afa67159e`), see #12345678 and abcdefgh, deadbeef"))
     {
       // (a turn at rest: its background tasks running hold it working, and one landing itself until it says how that went)
-      const R = (o: Any) => J.restEvent({ landed: false, changes: true, text: "Fixed it.", at: 0, now: 1000, ...o })
+      const R = (o: Any) => L.restEvent({ landed: false, changes: true, text: "Fixed it.", at: 0, now: 1000, ...o })
       check("jobs: a turn ending with its background tasks running stays working; one landing itself is never ready for review before it says Merged or Not merged",
         R({ background: 1 }) === "working" && R({ background: 2, changes: false }) === "working" && R({ background: 1, landed: true }) === "landed" &&
         R({}) === "changed" && R({ changes: false }) === "answered" && R({ landed: true }) === "landed" &&
         R({ lands: true, text: "Verify is still running in the background. When it's done I'll land the fix." }) === "working" &&
-        R({ lands: true, text: "Not merged: verify fails on main too." }) === "changed" && R({ lands: true, now: J.LAND_WAIT + 1 }) === "changed" &&
+        R({ lands: true, text: "Not merged: verify fails on main too." }) === "changed" && R({ lands: true, now: L.LAND_WAIT + 1 }) === "changed" &&
         R({ lands: true, changes: false, text: "Nothing to change." }) === "answered")
       const j = { title: "t", turn: 0, now: "", last: { text: "Still running local verify before the try.", at: 5, background: 1 } }
       check("jobs: at rest with a background task, its now-line says it waits on that; working, what it says",
@@ -60,12 +68,12 @@ export default async ($: VaultTest) => {
         J.nowOf({ ...j, last: { ...j.last, background: 3 } }, { state: "done" }).startsWith("waits on its 3 tasks in the background") &&
         J.nowOf(j, { state: "working" }) === "Still running local verify before the try.", J.nowOf(j, { state: "idle" }))
     }
-    const E = (text: boolean, final: boolean, changes: boolean, crashed: boolean) => J.endEvent({ text, final, changes, crashed })
+    const E = (text: boolean, final: boolean, changes: boolean, crashed: boolean) => L.endEvent({ text, final, changes, crashed })
     check("jobs: a terminal ending after its worker left an answer is done (with changes, ready for review), mid-turn too unless it crashed; with nothing, failed",
       E(true, false, false, false) === "answered" && E(true, true, true, true) === "changed" && E(false, false, true, false) === "changed" &&
       E(true, false, false, true) === "ended" && E(false, false, false, false) === "ended")
-    check("jobs: every state is in the table, and each one reached is one of them", J.JOB_STATES.every((s) => s in J.JOB_NEXT) &&
-      Object.values(J.JOB_NEXT).every((m) => Object.values(m).every((s) => (J.JOB_STATES as readonly string[]).includes(s!))))
+    check("jobs: every state is in the table, and each one reached is one of them", J.JOB_STATES.every((s) => s in L.JOB_NEXT) &&
+      Object.values(L.JOB_NEXT).every((m) => Object.values(m).every((s) => (J.JOB_STATES as readonly string[]).includes(s!))))
     check("jobs: its news in a line said aloud: needs you, ready for review, done, failed; a reviewed job done isn't news again",
       J.jobSpoken({ title: "Make the header blue on the about page please", state: "ready for review" }, "working") === 'The job "Make the header blue" is ready for review.' &&
       J.jobSpoken({ title: "x", state: "needs you" }, "working") === 'The job "x" needs you.' && J.jobSpoken({ title: "", state: "failed" }, "working") === "A job failed." &&
@@ -133,12 +141,6 @@ export default async ($: VaultTest) => {
         /CI failed on 1a2b3c4d5e6f, the commit you landed[^]*worktree add -B job-j3k9x2a \/Users\/alice\/Projects\/site-j3k9x2a origin\/main[^]*gh run list --commit 1a2b3c4d5e6f7/.test(J.fixTask({ ...site, live: true }, "1a2b3c4d5e6f7", "CI failed on it")), liveLands)
       check("jobs: the commit a worker's Merged names, before any other its words name", J.mergedCommit("Rebased onto 7fba84d0. Merged: `c09009af` is on main.") === "c09009af" &&
         J.mergedCommit("Pushed as 98b7fcde.") === "98b7fcde" && J.mergedCommit("Merged.") === "")
-      {
-        const g = { fixes: 0, since: 0 }, at = (ms: number) => J.liveStep({ live: false, final: false }, g, ms)
-        check("jobs: its landed commit's verdict: live; CI red sent back twice, then the user; blocked said, never retried; else waited on, an hour at most",
-          J.liveStep({ live: true, final: true }, g) === "live" && J.liveStep({ live: false, final: true, red: "abc" }, g) === "fix" && J.liveStep({ live: false, final: true, red: "abc" }, { ...g, fixes: J.FIXES }) === "red" &&
-          J.liveStep({ live: false, final: true }, g) === "stuck" && at(1000) === "wait" && J.liveStep(null, g, 1000) === "wait" && at(J.LIVE_WAIT + 1) === "stuck")
-      }
       const first = J.lastOf({ text: "Fixed it. The links \"Why now?\" stay.\n\nShould I also change the header? Or keep it as is?", at: 5, final: true, prompt: jt })
       const told = J.lastOf({ text: "Looking at it.", at: 9, final: false, prompt: "Use the **darker** blue", background: 2 })
       check("jobs: its latest turn: what it said, the questions its answer ends with (quotes left out), what it was told after its task, its background tasks",
@@ -873,7 +875,7 @@ export default async ($: VaultTest) => {
     const job = async (id: string) => (await api("POST", "ops/companion.job", { id }))[1]
     const runs = async (id: string) => (await api("GET", "terminals/sessions"))[1].sessions.some((x: Any) => x.id === id)
     let first = ""
-    Wk.tidyAfter(0)
+    Wk.paced({ grace: 0 })
     try {
       const [st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Write the summary", cwd: plain }, agent))
       first = b.link.split("/").pop()
@@ -893,7 +895,7 @@ export default async ($: VaultTest) => {
         st2 === 200 && b2.state === "working" && b2.title === "Summary on Today" && b2.link === "view:terminal/resume-claude-sess-tidy" && resumed?.resume === "sess-tidy" &&
         resumed?.prompt === "Yes, add it" && !!(await waitFor(() => runs("resume-claude-sess-tidy"), 5000, 100)), [st2, b2, resumed])
     } finally {
-      Wk.tidyAfter(120_000)
+      Wk.paced({ grace: L.PACE.grace })
       Object.assign(cc, was)
       for (const k of Object.keys(cc)) if (!(k in was)) delete cc[k]
       for (const id of [first, "resume-claude-sess-tidy"]) if (id) await api("DELETE", `terminals/${id}`).catch(() => {})
@@ -1108,7 +1110,7 @@ setTimeout(draw, 300)
   {
     const http = await import("node:http")
     const calls: Any[] = []
-    let stage = "working", farHas = true, landed = false, farLive = false
+    let stage = "working", farHas = true, landed = false, farLive = false, takes = true
     const verdicts: Any[] = []
     const server = http.createServer((req, res) => {
       const chunks: Buffer[] = []
@@ -1129,7 +1131,7 @@ setTimeout(draw, 300)
             : stage === "landed" ? (p.cwd ? { running: false, onMain: landed, marks: { whole: "a".repeat(40), each: ["b".repeat(40)] } } : null)
             : stage === "merged" || stage === "fixed" ? { running: true, state: "idle", ...(p.turn ? { turn: { text: `Merged: ${merged} pushed to main.`, files: ["/home/alice/Projects/site/a.ts"], at: Date.now(), final: true }, diff: "1 file changed, +2 -1" } : {}), ...(p.cwd ? { onMain: true } : {}) }
             : { running: true, state: "idle", ...(p.turn ? { turn: { text: "Header done. Try https://studio.tail1.ts.net:8450", files: ["/home/alice/Projects/site/a.ts"], at: Date.now(), final: true }, diff: "1 file changed, +2 -1" } : {}) })
-          : op === "terminal.end" ? { id: "claude-remote1" } : op === "terminal.send" ? { submitted: true } : op === "app.version" ? { live: verdicts.length > 1 ? verdicts.shift() : verdicts[0] } : {}
+          : op === "terminal.end" ? { id: "claude-remote1" } : op === "terminal.send" ? (takes ? { submitted: true } : { submitted: false, why: "its input kept the text" }) : op === "app.version" ? { live: verdicts.length > 1 ? verdicts.shift() : verdicts[0] } : {}
         // (its machine failing to read its terminal)
         if (out === null) return void res.writeHead(500, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "no such terminal" }))
         const none = op === "claude-code.limits" && p.account === "nope"
@@ -1164,7 +1166,7 @@ setTimeout(draw, 300)
       // Its machine offline: a new job waits for it (shown so), a follow-up waits on its job, each sent once it's back.
       {
         const Wk = await import("../../../plugins/core/companion/workers.ts")
-        Wk.flushEvery(1)
+        Wk.paced({ flush: 1 })
         await api("PATCH", "config/plugin/companion", { mode: "quiet" })
         await waitFor(async () => (await api("POST", "ops/companion.status", {}))[1].mode !== "off", 5000, 50)
         const says = async () => (await api("POST", "ops/companion.status", {}))[1].notes.filter((n: Any) => n.kind === "say").map((n: Any) => n.text)
@@ -1199,7 +1201,7 @@ setTimeout(draw, 300)
         const sent = await waitFor(() => calls.find((c) => c.op === "terminal.send"), 15000, 200)
         check("a follow-up kept for its machine is typed in once it's back, and its card no longer waits",
           sent?.p.id === "claude-remote1" && /^Use bigger text/.test(sent.p.text) && !!(await waitFor(async () => !(await card(waiting.id))?.queued, 5000, 200)), sent?.p)
-        Wk.flushEvery(5)
+        Wk.paced({ flush: L.PACE.flush })
         // Several handoffs in one turn (one tool call each, at once): one line naming the jobs, never the default line per call.
         const more: string[] = []
         for (const task of ["Ship the video card", "Fix dictation dropping words"]) {
@@ -1257,7 +1259,7 @@ setTimeout(draw, 300)
       const Wk = await import("../../../plugins/core/companion/workers.ts")
       stage = "landed"
       calls.length = 0
-      Wk.shipEvery(300)
+      Wk.paced({ ship: 300 })
       try {
         const jobs = async () => (await api("POST", "ops/companion.jobs", {}))[1].jobs.find((x: Any) => x.id === job.id)
         const kept = await waitFor(async () => calls.some((c) => c.op === "companion.worker" && c.p.marks?.whole === "a".repeat(40)) && await jobs(), 10000, 100)
@@ -1266,11 +1268,16 @@ setTimeout(draw, 300)
         const closed = await waitFor(async () => { const r = await jobs(); return r?.state === "done" && r }, 10000, 100)
         check("jobs: one ready for review is done once its change is on main, its terminal unreadable on its machine", !!closed && closed.log.at(-1).ev === "landed" &&
           calls.some((c) => c.op === "companion.worker" && c.p.branch === `job-${job.id}` && c.p.cwd === "/home/alice/Projects/site"), [closed, calls.map((c) => c.p)])
-      } finally { Wk.shipEvery(5 * 60_000) }
+        takes = false
+        const [st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Make the header darker", job: job.id, ask: false }, agent))
+        const after = (await api("POST", "ops/companion.job", { id: job.id }))[1]
+        check("jobs: a follow-up its terminal didn't take leaves it as it was, its landing still its last move: nothing to merge",
+          st === 409 && /didn't take it/.test(b.error) && after.state === "done" && after.log.at(-1).ev === "landed" && after.at === closed.at && !J.landable(after) && J.onMain(after), [st, b, after.log.slice(-2)])
+      } finally { Wk.paced({ ship: L.PACE.ship }); takes = true }
       // Landing itself where its server takes main: it ends at its push, the server waits for its commit to go live there,
       // sends CI's red back to it to fix forward, and marks it done once its fix is live.
       {
-        Wk.liveEvery(200)
+        Wk.paced({ live: 200 })
         await api("PATCH", "config/plugin/companion", { jobs_land: true })
         farLive = true; stage = "working"; farHas = true
         calls.length = 0
@@ -1295,8 +1302,24 @@ setTimeout(draw, 300)
             done?.going?.state === "live" && done.going.commit === "5e6f7a8b" && done.going.fixes === 1 && done.now === "Live: 5e6f7a8 runs on Studio" && !!knock &&
             calls.filter((c) => c.op === "app.version").at(-1)?.p.commit === "5e6f7a8b", { done, knock })
           await asItsTool(() => api("POST", "ops/companion.job-stop", { id: b.id }, agent)).catch(() => {})
+          stage = "working"
+          calls.length = 0
+          verdicts.splice(0, verdicts.length, { commit: "1a2b3c4d", live: false, final: true, outcome: "blocked", why: "1a2b3c4 won't be live here: its checkout has uncommitted changes" })
+          const [, s] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Fix the header live", machine: "studio", cwd: "~/Projects/site" }, agent))
+          const job2 = async () => (await api("POST", "ops/companion.job", { id: s.id }))[1]
+          await waitFor(async () => (await job2()).state === "working", 10000, 100)
+          stage = "merged"
+          const stuck = await waitFor(async () => { const r = await job2(); return r.state === "done" && r }, 15000, 100)
+          check("jobs: its landed commit that won't be live by itself (a blocked checkout): done, said so on it, never sent back",
+            stuck?.going?.state === "stuck" && stuck.now === "Merged 1a2b3c4, not live: its checkout has uncommitted changes" && stuck.log.at(-1).ev === "landed" &&
+            !calls.some((c) => c.op === "terminal.send"), stuck)
+          stage = "working"
+          const fixing = await waitFor(async () => { const r = await job2(); return r.state === "working" && r }, 10000, 100)
+          check("jobs: its worker working again after its commit wasn't live is fixing that, its card saying what it does",
+            fixing?.going?.state === "fixing" && fixing.now === "Editing the header", fixing)
+          await asItsTool(() => api("POST", "ops/companion.job-stop", { id: s.id }, agent)).catch(() => {})
         } finally {
-          Wk.liveEvery(20_000)
+          Wk.paced({ live: L.PACE.live })
           farLive = false
           await api("PATCH", "config/plugin/companion", { jobs_land: false })
         }

@@ -23,6 +23,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   terminal never reports its state leaves Starting once its agent is at work.
 - **The Talk key's companion answers each ask once, and never leaves one unanswered**: no words said twice, no late
   mark over a retry, and asks behind a failure are answered or told why.
+- **A follow-up a job's terminal didn't take leaves the job as it was**: one already on main no longer offers Keep and
+  merge again.
 - **Settings' AI section has a little robot for its icon** instead of sparkles.
 - **Remote access in Settings is now Share & sync**: its page says plainly that Vaultite Cloud and shared folders are
   optional, and that without them Vaultite stays on your own network.

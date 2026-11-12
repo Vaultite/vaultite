@@ -6,8 +6,9 @@ import os from "node:os"
 import path from "node:path"
 import { agentModel, agentName, KNOWN_AGENTS, parseTerminal } from "../../../core/agents.ts"
 import { gitEnv, inDesktop, type Machine, type OpCtx, OpError, type Plugin, quoted, ROOT, userSurface, type Who, whoOf } from "../../../core/plugins.ts"
-import { cardOf, choiceIn, commitsIn, turnWord, endEvent, fixTask, HANDED, inPlace, landedSaid, landTask, liveStep, mergedCommit, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, type Marks, nowOf, restEvent, type Queued, queuedLine, toldBy, type Result, resumeOf,
-  type ProofMode, prunedLine, step, terminalOf, type Waits, type Where, worktreeOf } from "./jobs.ts"
+import { cardOf, choiceIn, commitsIn, turnWord, fixTask, HANDED, inPlace, landedSaid, landTask, mergedCommit, mergedSaid, followTask, gist, type Job, type JobCard, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, type Marks, nowOf, type Queued, queuedLine, toldBy, type Result, resumeOf,
+  type ProofMode, prunedLine, terminalOf, type Waits, type Where, worktreeOf } from "./jobs.ts"
+import { type Clock, due, endEvent, type Going, type GoingEvent, going, goingLine, type JobEvent, PACE, type Pace, read, readTurn, restEvent, shipDue, step, turnOver, untell, type Verdict, waitsLive } from "./joblife.ts"
 import { requestWriter } from "../../../core/vault.ts"
 import type { Moment } from "./types.ts"
 import { APP_REPO, appUiOf, branchOf, checkoutNamed, dropTree, checkoutNames, type Found, fileAt, githubOf, headOf, jobBase, machineOfUrl, onlyHere, type Over, refusal, repoOf, resolveHere, checkoutsLine, rootsLine, sitesIn, surfaceOf, tilde, unpushed, urlsIn, watched } from "./where.ts"
@@ -52,24 +53,15 @@ export type Seen = { running: boolean; state?: string; kind?: string; msg?: stri
   marks?: Marks }
 
 const KEEP = 40, KEEP_DAYS = 7
-/** How often a job ready for review is looked for on main. */
-let SHIP_READ = 5 * 60_000
-/** Another interval (the tests'). */
-export const shipEvery = (ms: number) => { SHIP_READ = ms }
-/** How often a job's landed commit is looked for live where its server takes main; another (the tests'). */
-let LIVE_READ = 20_000
-export const liveEvery = (ms: number) => { LIVE_READ = ms }
+// A terminal ended on purpose (End session, vau terminal end) reads as a SIGHUP.
+const crashed = (x: Seen["exit"]) => !!x && (!!x.lost || x.code !== 0 || (x.signal !== 0 && x.signal !== 1))
+const pace: Pace = { ...PACE }
+/** Other paces (the tests'). */
+export const paced = (p: Partial<Pace>) => void Object.assign(pace, p)
 /** A picture of the screen handed on by another machine (a Retina display's PNG is a few MB), at most; its first bytes. */
 const PICTURE_MAX = 40 << 20, PROOF_MAX = 200 << 20, PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 /** How long after the user's ask the companion's handoff is still its answer (its words and place go with it). */
 const ANSWERING_MS = 10 * 60_000
-/** How long a job done keeps its terminal: follow-ups mostly come within a minute or two, and still find it running. */
-let grace = 120_000
-/** Another grace (the tests'). */
-export const tidyAfter = (ms: number) => { grace = ms }
-/** How often (in the jobs' 3 s ticks) what waits for a machine is looked at; another (the tests'). */
-let flushTicks = 5
-export const flushEvery = (ticks: number) => { flushTicks = ticks }
 const str = (v: unknown) => (typeof v === "string" ? v : "")
 /** Who tells a job what the app itself passes on (their talk, a capture, a live edit, their Needs changes). */
 const COMPANION = "the companion"
@@ -250,7 +242,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
 
   // ---------- the jobs, kept on this machine (runtime state: what's running), newest first
   let held: { vault: string; jobs: Job[] } | null = null
-  const log = plugin.dayLog<{ t: number; job: string; ev: JobEvent; from: string; to: string }>("jobs")
+  const log = plugin.dayLog<{ t: number; job: string; ev: JobEvent | "untold" | `going ${GoingEvent["type"]}`; from: string; to: string }>("jobs")
   function all(): Job[] {
     if (held?.vault === plugin.vault.path) return held.jobs
     held = { vault: plugin.vault.path, jobs: plugin.kept<{ jobs: Job[] }>("jobs", { jobs: [] }).jobs ?? [] }
@@ -264,8 +256,8 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   }
   const cards = () => all().map((j) => cardOf(j))
   /** Event `ev` on job `j`: its move logged (the day's log too) and told; false when it doesn't move. */
-  function move(j: Job, ev: JobEvent) {
-    const x = step(j, ev)
+  function move(j: Job, ev: JobEvent, t = Date.now()) {
+    const x = step(j, ev, t)
     if (!x) return false
     log.append(x.t, [{ t: x.t, job: j.id, ev, from: x.from, to: x.to }])
     log.prune(30)
@@ -613,26 +605,21 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   /** Jobs whose marks changed since they were last kept. */
   const marked = new Set<string>()
 
-  /** When each job's worker was first seen at rest (its turn may be over once that holds). */
-  const resting = new Map<string, number>()
+  const clocks = new Map<string, Clock>()
+  const clockOf = (j: Job) => { let c = clocks.get(j.id); if (!c) clocks.set(j.id, c = {}); return c }
   const busy = new Set<string>()
   /** Jobs being typed into (steer): their worker at rest meanwhile hasn't begun yet. */
   const sending = new Set<string>()
   /** Jobs whose terminal moved (or whose rest ended) while they were being read: read once more after. */
   const again = new Map<string, boolean>()
-  const HOLD = 1500
-  /** When each live job's latest turn was read: what it says, read again at most every READ. */
-  const read = new Map<string, number>()
-  const READ = 15_000
-  /** Job `j` read again: its worker's state moves it (a rest that holds is its turn's end: its results read then); a
-   *  done one may have its terminal closed (tidy). */
+  /** Job `j`'s worker read again, moving it as joblife's read says. */
   async function refresh(j: Job, now = false) {
     if (j.state === "stopped" || !j.terminal) return
     // (dropped, its turn's end would wait for the next poll: seconds more before its news or its ring)
     if (busy.has(j.id)) return void again.set(j.id, now || !!again.get(j.id))
     busy.add(j.id)
     try {
-      const fresh = now || (live(j.state) && Date.now() - (read.get(j.id) ?? 0) >= READ)
+      const fresh = now || readTurn(j, clockOf(j), Date.now(), pace)
       const s = await seenOf(j, fresh, false).catch(() => null)
       // (a machine away or slow: not an end)
       if (!s) return
@@ -640,38 +627,42 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
       if (s.unreachable) { if (lasted(unanswered, j.id, AWAY) && j.unreachable !== s.unreachable) { j.unreachable = s.unreachable; changed() } return }
       unanswered.delete(j.id); if (j.unreachable) { delete j.unreachable; marked.add(j.id) }
       let moved = false, waited = false
-      const was = j.now, said = j.last?.at
-      if (fresh) { read.set(j.id, Date.now()); heard(j, s) }
-      // (a turn after its change went live, or after it was told it isn't, is about something else)
-      if (s.state === "working" && j.going?.state === "live") delete j.going
-      else if (s.state === "working" && j.going?.state === "stuck") j.going.state = "fixing"
-      j.now = j.going && j.going.state !== "fixing" ? j.going.why : nowOf(j, s)
+      const was = j.now, said = j.last?.at, t = Date.now()
+      if (fresh) { clockOf(j).read = t; heard(j, s) }
+      const r = read(j, clockOf(j), s, t, { sending: sending.has(j.id), pace })
+      clocks.set(j.id, r.clock)
+      setGoing(j, r.going, "worked", t)
+      j.now = goingLine(j.going) || nowOf(j, s)
       const w = s.state === "blocked" ? s.waits : undefined
       if (JSON.stringify(w ?? null) !== JSON.stringify(j.waits ? { kind: j.waits.kind, question: j.waits.question, choices: j.waits.choices } : null)) {
-        if (w) j.waits = { ...w, at: Date.now() }
+        if (w) j.waits = { ...w, at: t }
         else delete j.waits
         waited = true
       }
       if (s.running && j.exited) { delete j.exited; delete j.closed; moved = true }
       if ((s.typed ?? 0) > j.started && !j.held) { j.held = true; moved = true }
-      if (!s.running) { resting.delete(j.id); if (!j.exited) moved = await ended(j, s) }
-      else if (s.state === "working") { j.stepped ??= Date.now(); moved = move(j, "working"); resting.delete(j.id); goingOn.delete(j.id); if (!j.session) moved = await learn(j) || moved }
-      else if (s.state === "blocked") { moved = move(j, "asks"); resting.delete(j.id) }
-      else if (s.state === "error") { moved = move(j, "error"); resting.delete(j.id) }
-      else if ((s.state === "idle" || s.state === "done") && (j.state === "working" || j.state === "needs you" || j.state === "starting")) {
-        const since = resting.get(j.id)
-        if (sending.has(j.id)) resting.delete(j.id)
-        else if (since === undefined) { resting.set(j.id, Date.now()); setTimeout(() => void refresh(j), HOLD + 100).unref?.() }
-        // (its change landed, waited on by golive: its turn's words read already)
-        else if (Date.now() - since >= HOLD && Date.now() - (goingOn.get(j.id) ?? 0) >= READ && !waitsLive(j)) moved = await finish(j)
-      } else if (j.state === "done") moved = await tidy(j, s)
-      if (j.state === "ready for review" && Date.now() - (shipRead.get(j.id) ?? 0) >= SHIP_READ) moved = await shippedSince(j) || moved
+      if (r.ev === "working") j.stepped ??= t
+      if (r.ev) moved = move(j, r.ev, t) || moved
+      for (const x of r.next) {
+        if (x.do === "again") setTimeout(() => void refresh(j), x.ms).unref?.()
+        else if (x.do === "end") moved = await ended(j, s) || moved
+        else if (x.do === "finish") moved = await finish(j) || moved
+        else if (x.do === "tidy") moved = await tidy(j) || moved
+        else moved = await learn(j) || moved
+      }
+      if (shipDue(j, clockOf(j), Date.now(), pace)) moved = await shippedSince(j) || moved
       if (moved || waited || j.now !== was || j.last?.at !== said || marked.delete(j.id)) changed()
     } finally {
       busy.delete(j.id)
       const next = again.get(j.id)
       if (next !== undefined) { again.delete(j.id); void refresh(j, next).catch((e) => console.error("companion: jobs:", e)) }
     }
+  }
+  function setGoing(j: Job, g: Going | undefined, ev: GoingEvent["type"], t = Date.now()) {
+    const from = j.going?.state ?? "none", to = g?.state ?? "none"
+    if (g) j.going = g
+    else delete j.going
+    if (from !== to) log.append(t, [{ t, job: j.id, ev: `going ${ev}`, from: `going ${from}`, to: `going ${to}` }])
   }
   /** What its worker's latest turn (`s`, read with it) says: what it said and was told last, what it asks. */
   function heard(j: Job, s: Seen) {
@@ -697,66 +688,53 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     if (!s) return false
     const t = s.turn
     if (j.state === "starting" && !(t?.final && t.at >= j.turn - 1000)) return false
-    const r = resultOf(j, s)
+    const r = resultOf(j, s), now = Date.now()
     heard(j, s)
-    const ev = restEvent({ background: t?.background, landed: landed(j, r.text) || shipped(j, s, r.text), changes: r.changes, lands: j.where.lands, text: r.text, at: t?.at || j.turn })
+    const ev = restEvent({ background: t?.background, landed: landed(j, r.text) || shipped(j, s, r.text), changes: r.changes, lands: j.where.lands, text: r.text, at: t?.at || j.turn, now })
     // (it goes on: read again at its next rest, its now-line saying what it waits on)
-    if (ev === "working") { goingOn.set(j.id, Date.now()); j.now = nowOf(j, s); return move(j, ev) }
-    resting.delete(j.id); goingOn.delete(j.id)
-    j.result = r.result
-    if (ev === "landed") return arrived(j, r.text)
-    if (j.going?.state === "fixing") delete j.going
-    return move(j, ev)
+    if (ev === "working") j.now = nowOf(j, s)
+    else j.result = r.result
+    return over(j, turnOver(j, clockOf(j), ev, j.where.live ? mergedCommit(r.text) : "", now), now)
   }
-  /** Its change landed (`text`: its words): done, or where its own server takes main (Where.live), its commit waited on
-   *  there by golive (still working meanwhile), never by its worker. */
-  function arrived(j: Job, text: string) {
-    const commit = j.where.live ? mergedCommit(text) : ""
-    if (!commit) { delete j.going; return move(j, "landed") }
-    j.going = { commit, since: Date.now(), fixes: j.going?.fixes ?? 0, state: "waiting", why: `Merged ${commit.slice(0, 7)}: waiting for it to go live` }
-    j.now = j.going.why
-    move(j, "working")
-    return true
+  /** A commit it landed where its own server takes main (Where.live) is waited on there by golive, never by its worker. */
+  function over(j: Job, x: ReturnType<typeof turnOver>, t: number) {
+    clocks.set(j.id, x.clock)
+    if (x.by) setGoing(j, x.going, x.by, t)
+    if (x.going?.state === "waiting") j.now = x.going.why
+    return move(j, x.ev, t)
   }
-  const waitsLive = (j: Job) => j.going?.state === "waiting" || j.going?.state === "stuck"
-  /** When each job's landed commit was last looked for live, and those being looked for now. */
-  const liveRead = new Map<string, number>(), looking = new Set<string>()
+  const looking = new Set<string>()
   /** Job `j`'s landed commit looked for where it goes live (app.version on its machine): live, it's done; CI red on it,
    *  its worker sent back to fix it forward (then the user); one that won't be live by itself, said on it; else waited on. */
   async function golive(j: Job) {
     const g = j.going
     if (g?.state !== "waiting" || looking.has(j.id)) return
     looking.add(j.id)
-    liveRead.set(j.id, Date.now())
+    clockOf(j).live = Date.now()
     try {
-      type V = { live: boolean; final: boolean; why: string; red?: string }
-      const out = await links.of(j.where).there(appCtx(), "app.version", { commit: g.commit }, 30)
-        .catch(() => null) as { live?: V } | null
+      const out = await links.of(j.where).there(appCtx(), "app.version", { commit: g.commit }, 30).catch(() => null) as { live?: Verdict } | null
+      const was = j.going?.why
+      const x = going(j.going, { type: "verdict", commit: g.commit, since: g.since, v: out?.live ?? null, where: j.where.label || "its server" }, Date.now())
       // (told something meanwhile: its own turn decides)
-      if (j.going !== g || g.state !== "waiting") return
-      const v = out?.live ?? null, c = g.commit.slice(0, 7), next = liveStep(v, g), was = g.why
-      if (next === "wait") g.why = `Merged ${c}: waiting for it to go live${v ? ` (${v.why.replace(/^\S+ isn't live here yet: /, "")})` : ""}`
-      else if (next === "live") { g.state = "live"; g.why = `Live: ${c} runs on ${j.where.label || "its server"}`; move(j, "landed") }
-      else if (next === "stuck") { g.state = "stuck"; g.why = v ? `Merged ${c}, not live: ${v.why.replace(/^\S+ won't be live here: /, "")}` : `Merged ${c}, not live: ${j.where.label || "its server"} didn't say it is after ${Math.round((Date.now() - g.since) / 60_000)} min`; move(j, "landed") }
-      else if (next === "red") { g.state = "stuck"; g.why = `CI failed on ${c} after ${g.fixes} fix${g.fixes === 1 ? "" : "es"} forward: it needs you`; move(j, "asks") }
-      else {
-        g.state = "fixing"; g.fixes++
-        g.why = `CI failed on ${c}: sent back to fix it forward`
-        try { await steer(appCtx(), j, fixTask(j.where, g.commit, v!.why), g.why) } catch (e) { g.state = "stuck"; g.why = `CI failed on ${c}, and it couldn't be sent back: ${(e as Error).message}`; move(j, "asks") }
+      if (x.going === j.going) return
+      setGoing(j, x.going, "verdict")
+      if (x.ev) move(j, x.ev)
+      if (x.fix !== undefined) {
+        try { await steer(appCtx(), j, fixTask(j.where, g.commit, x.fix), x.going.why) } catch (e) {
+          const y = going(j.going, { type: "unsent", commit: g.commit, why: (e as Error).message }, Date.now())
+          setGoing(j, y.going, "unsent")
+          if (y.ev) move(j, y.ev)
+        }
       }
-      j.now = g.why
-      if (g.why !== was) changed()
+      j.now = j.going?.why ?? j.now
+      if (j.going?.why !== was) changed()
     } finally { looking.delete(j.id) }
   }
-  /** Jobs at rest whose turn ended with work still going (finish's restEvent): when that was last read. */
-  const goingOn = new Map<string, number>()
   /** Whether job `j` landed its own change (`s` read with its diff, `text` its words): a commit it names, or its branch,
    *  on main since it began, else its words saying so when they name none. Never one merging what they kept (landed). */
   const shipped = (j: Job, s: Seen, text: string) => !!j.where.repo && !(j.land && j.land.at === undefined) && (s.onMain === true || (!commitsIn(text).length && landedSaid(text)))
-  /** When each job ready for review was last looked for on main (its change landed by itself, or by anyone later). */
-  const shipRead = new Map<string, number>()
   async function shippedSince(j: Job) {
-    shipRead.set(j.id, Date.now())
+    clockOf(j).ship = Date.now()
     const s = await seenOf(j, false, true).catch(() => null)
     return !!s && shipped(j, s, [j.result?.text, j.last?.text].filter(Boolean).join("\n")) && move(j, "landed")
   }
@@ -776,17 +754,15 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   async function ended(j: Job, s: Seen) {
     if (!live(j.state)) { j.exited = Date.now(); move(j, "ended"); resumable(j); return true }
     // (its turn read already, its landed commit waited on: a worker ending itself once it merged)
-    if (waitsLive(j)) { j.exited = Date.now(); resumable(j); return true }
+    if (waitsLive(j.going)) { j.exited = Date.now(); resumable(j); return true }
     const r = await seenOf(j, true).catch(() => null)
     if (!r) return false
-    j.exited = Date.now()
+    const t = j.exited = Date.now()
     const x = s.exit, done = resultOf(j, r)
     if (done.text || done.result.files?.length) j.result = done.result
     heard(j, r)
-    // (a terminal ended on purpose, End session or vau terminal end, reads as a SIGHUP)
-    const crashed = !!x && (!!x.lost || x.code !== 0 || (x.signal !== 0 && x.signal !== 1))
-    if (landed(j, done.text) || shipped(j, r, done.text)) arrived(j, done.text)
-    else move(j, endEvent({ text: !!done.text.trim(), final: !!r.turn?.final && !!done.text, changes: done.changes, crashed }))
+    if (landed(j, done.text) || shipped(j, r, done.text)) over(j, turnOver(j, clockOf(j), "landed", j.where.live ? mergedCommit(done.text) : "", t), t)
+    else move(j, endEvent({ text: !!done.text.trim(), final: !!r.turn?.final && !!done.text, changes: done.changes, crashed: crashed(x) }))
     resumable(j)
     return true
   }
@@ -796,12 +772,10 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     if (to) j.terminal = to
   }
 
-  /** When the user last opened a job (its grace starts again). */
-  const opened = new Map<string, number>()
-  /** Job `j` done a while (`s`: its worker now): its terminal closed, unless its worker isn't at rest, still runs
-   *  something in the background, was typed in by the user or is in front of them. Its conversation resumes. */
-  async function tidy(j: Job, s: Seen) {
-    if (!s.running || j.held || d.warm?.(j) || Date.now() - Math.max(j.at, opened.get(j.id) ?? 0) < grace || (s.state !== "idle" && s.state !== "done")) return false
+  /** Job `j` done a while: its terminal closed, unless its worker still runs something in the background, was typed in
+   *  by the user or is in front of them. Its conversation resumes. */
+  async function tidy(j: Job) {
+    if (j.held || d.warm?.(j)) return false
     // (a cloud session at rest pauses by itself: no longer followed, a follow-up still reaches it)
     if (j.where.cloud) { j.exited = Date.now(); return true }
     const t = await seenOf(j, true, false).catch(() => null)
@@ -812,14 +786,10 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     resumable(j)
     return true
   }
-  /** When each closed job's worktree was last looked at to remove. */
-  const pruneRead = new Map<string, number>()
-  /** Closed job `j`'s worktree removed on its machine, its terminal gone, when nothing in it exists only there. */
+  /** Closed job `j`'s worktree removed on its machine, when nothing in it exists only there. */
   async function prune(j: Job) {
     const w = j.where
-    if (!w.tree || w.cloud || w.watched || j.pruned || Date.now() - (pruneRead.get(j.id) ?? 0) < 3600_000) return
-    if (j.state !== "stopped" && !(j.state === "done" && j.exited)) return
-    pruneRead.set(j.id, Date.now())
+    clockOf(j).prune = Date.now()
     const r = await links.of(w).there(appCtx(), "companion.worktree-drop", { cwd: w.cwd, tree: w.tree, branch: w.branch ?? "" }, 150) as { why?: string }
     if (!r.why) { j.pruned = Date.now(); changed() }
   }
@@ -836,7 +806,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     await trust(ctx, j)
     j.terminal = await links.of(j.where).start(ctx, startOf(j, { ...(prompt ? { prompt } : {}), ...(session ? { session } : {}) }))
     delete j.exited; delete j.closed
-    opened.set(j.id, Date.now())
+    clockOf(j).opened = Date.now()
   }
   /** How job `j`'s worker starts: its agent, folder, name and how it runs, with its first words or the session it resumes. */
   const startOf = (j: Job, o: { prompt?: string; session?: string }) => {
@@ -854,19 +824,12 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     delete j.session
     if (was?.running) await link.end(ctx, old).catch(() => {})
     toldFrom(j, by, text)
-    move(j, "told")
-    j.turn = Date.now()
-    j.now = `Started fresh: ${gist(shown, 120)}`
-    resting.delete(j.id)
-    changed()
+    toldNow(j, `Started fresh: ${gist(shown, 120)}`)
   }
   /** Its worker's session, once it says (its transcript is what's read after its terminal ends). */
-  const tried = new Map<string, number>()
   async function learn(j: Job) {
-    if (Date.now() - (tried.get(j.id) ?? 0) < 30_000) return false
-    tried.set(j.id, Date.now())
     const s = await seenOf(j, true, false).catch(() => null)
-    if (s?.turn?.session) { j.session = s.turn.session; tried.delete(j.id) }
+    if (s?.turn?.session) j.session = s.turn.session
     return !!j.session
   }
 
@@ -879,18 +842,16 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   const timer = setInterval(() => {
     ticks++
     for (const j of all()) {
-      const recent = Date.now() - j.at < 6 * 3600_000
-      // (one done whose terminal runs: looked at for tidy; one ready for review: its terminal gone is its end, its change on main)
-      const later = (j.where.machine && j.state !== "stopped" && recent) || (j.state === "done" && !j.exited) || (j.state === "ready for review" && recent)
-      if (live(j.state) ? (j.where.machine || ticks % 2 === 0) : later && ticks % 10 === 0) void refresh(j).catch(() => {})
+      const n = due(j, clockOf(j), ticks, Date.now(), pace)
+      if (n.read) void refresh(j).catch(() => {})
       // (its change landed by anyone, however long ago it went ready: never only through its terminal's read)
-      if (j.state === "ready for review" && j.where.repo && Date.now() - (shipRead.get(j.id) ?? 0) >= SHIP_READ) void ship(j).catch(() => {})
-      if (j.going?.state === "waiting" && Date.now() - (liveRead.get(j.id) ?? 0) >= LIVE_READ) void golive(j).catch((e) => console.error("companion: jobs:", e))
-      if (ticks % 20 === 0) void prune(j).catch(() => {})
+      if (n.ship) void ship(j).catch(() => {})
+      if (n.live) void golive(j).catch((e) => console.error("companion: jobs:", e))
+      if (n.prune) void prune(j).catch(() => {})
     }
     // (what waits for a machine: looked at every 15 s, sent once it's back)
-    if (ticks % flushTicks === 0) void flush().catch((e) => console.error("companion: jobs:", e))
-  }, 3000)
+    if (ticks % pace.flush === 0) void flush().catch((e) => console.error("companion: jobs:", e))
+  }, pace.tick)
   timer.unref?.()
   plugin.onUnload(() => clearInterval(timer))
 
@@ -980,17 +941,22 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
       if (s?.state === "blocked" && s.kind === "permission") throw new OpError(`${j.id} waits on a permission in its terminal (${s.msg ?? "open it"}): only the user answers it (its notification, or job-answer on their words; ${linkOf(j)})`, 409)
       // (told before it's typed, its rest not its turn's end till the terminal took the words, which takes a while: a
       // quick turn ending meanwhile is this one's, never followed by a told that comes after it)
-      const was = { state: j.state, turn: j.turn, now: j.now }
-      toldNow(j, shown)
+      const was = { state: j.state, turn: j.turn, now: j.now, at: j.at }
+      toldNow(j, `Told: ${gist(shown, 120)}`)
+      const x = j.state === was.state ? undefined : j.log.at(-1)
       sending.add(j.id)
-      const back = () => { Object.assign(j, was); changed() }
+      const back = () => {
+        const b = untell(j, x, was), t = Date.now()
+        if (b) log.append(t, [{ t, job: j.id, ev: "untold", ...b }])
+        changed()
+      }
       const r = await link[how](ctx, j.terminal, text).catch((e) => { back(); throw e }).finally(() => sending.delete(j.id))
       if (r.submitted === false) { back(); throw new OpError(`it didn't take it: ${r.why ?? "its input kept the text"} (${linkOf(j)})`, 409) }
       toldFrom(j, by, text)
       void refresh(j).catch((e) => console.error("companion: jobs:", e))
       return
     }
-    toldNow(j, shown)
+    toldNow(j, `Told: ${gist(shown, 120)}`)
   }
   /** Job `j` told `text` by `by` (tellerOf), kept with it: the last 8. */
   function toldFrom(j: Job, by: string, text: string) {
@@ -1006,12 +972,12 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     // (it can't: the job starts anyway, Claude Code asking as before)
     try { await links.of(w).there(ctx, "claude-code.trust", body, 10) } catch (e) { console.error(`companion: jobs: ${j.id}: trust:`, (e as Error).message) }
   }
-  /** Job `j` told `shown`: working on it, its turn from now. */
-  function toldNow(j: Job, shown: string) {
+  /** Job `j` told something: working on it, its turn from now. */
+  function toldNow(j: Job, line: string) {
     move(j, "told")
     j.turn = Date.now()
-    j.now = `Told: ${gist(shown, 120)}`
-    resting.delete(j.id)
+    j.now = line
+    delete clockOf(j).rest
     changed()
   }
 
@@ -1388,7 +1354,7 @@ its terminal (companion job-open).
       const j = jobOf(str(p.id))
       if (j.state === "waiting") throw new OpError(`"${j.title}" ${queuedLine(j).toLowerCase()}: it has no terminal yet`, 409)
       if (j.state !== "stopped" && await wake(ctx, j)) changed()
-      opened.set(j.id, Date.now())
+      clockOf(j).opened = Date.now()
       seen([j.id])
       await ctx.op("ui.open", { path: linkOf(j), ...(p.split ? { split: p.split } : {}) })
       return cardOf(j)

@@ -1,30 +1,14 @@
-// Jobs: long work the companion hands to a worker in one of the app's terminals. One lifecycle (JOB_NEXT) everywhere:
+// Jobs: long work the companion hands to a worker in one of the app's terminals. One lifecycle (joblife.ts) everywhere:
 // menu bar, `companion jobs`, the summoned session, ops; each move logged. Plain functions: workers.ts runs them.
 import type { Who } from "../../../core/ops.ts"
 import { parseTerminal, resumeTerminalId } from "../../../core/terminalids.ts"
+import type { Going, JobEvent } from "./joblife.ts"
 import type { Moment } from "./types.ts"
 
 export const JOB_STATES = ["waiting", "starting", "working", "needs you", "ready for review", "done", "failed", "stopped"] as const
 export type JobState = typeof JOB_STATES[number]
-/** What moves a job: its machine back (start: one waiting for it starts), its worker as read (working, asks, error), its turn's end (changed: to review; answered: none;
- *  landed: what they kept, merged), its terminal's end with nothing to show (endEvent), their steer (told) and stop. */
-export type JobEvent = "start" | "working" | "asks" | "changed" | "answered" | "landed" | "error" | "ended" | "told" | "stop"
-
-/** The lifecycle: from each state, where each event goes; an event not listed changes nothing. */
-export const JOB_NEXT: Record<JobState, Partial<Record<JobEvent, JobState>>> = {
-  // (handed to a machine that's offline: it starts once that machine is back)
-  waiting: { start: "starting", error: "failed", stop: "stopped" },
-  starting: { working: "working", asks: "needs you", changed: "ready for review", answered: "done", landed: "done", error: "failed", ended: "failed", stop: "stopped" },
-  working: { asks: "needs you", changed: "ready for review", answered: "done", landed: "done", error: "failed", ended: "failed", stop: "stopped" },
-  "needs you": { working: "working", told: "working", changed: "ready for review", answered: "done", landed: "done", error: "failed", ended: "failed", stop: "stopped" },
-  // (reviewed: closing it, its terminal ending, or its change found on main, is done; a steer or the user typing in it goes on)
-  "ready for review": { working: "working", told: "working", asks: "needs you", ended: "done", landed: "done", stop: "done" },
-  done: { working: "working", told: "working", asks: "needs you" },
-  failed: { working: "working", told: "working" },
-  stopped: {},
-}
 /** States the user hears about, a badge until they open the job. */
-const NEWS = new Set<JobState>(["needs you", "ready for review", "done", "failed"])
+export const NEWS = new Set<JobState>(["needs you", "ready for review", "done", "failed"])
 export const live = (s: JobState) => s === "waiting" || s === "starting" || s === "working" || s === "needs you"
 /** Whether job `j`'s change is already on main: merged when they kept it, or its last move its own landing (its commit
  *  or branch found on main, or its words saying it pushed there). */
@@ -64,20 +48,6 @@ export const prunedLine = (w: Pick<Where, "cwd" | "tree" | "branch">) =>
 export function mergedCommit(text: string) {
   const at = text.search(/\bmerged\b/i)
   return (at >= 0 ? commitsIn(text.slice(at))[0] : undefined) ?? commitsIn(text)[0] ?? ""
-}
-/** A change a job landed where its own server takes main (Where.live): waited on by that server till it's live there,
- *  never by its worker. Its commit, since when, how many times CI's red sent it back, and its card's line (`why`). */
-export type Going = { commit: string; since: number; fixes: number; state: "waiting" | "fixing" | "live" | "stuck"; why: string }
-/** How many times CI red on its landed commit sends a job back to fix it forward, before it needs the user. */
-export const FIXES = 2
-/** How long a landed commit is waited on before that's said on its job instead. */
-export const LIVE_WAIT = 60 * 60_000
-/** What app.version's verdict on a job's landed commit (null: none came) does: live; CI red, `fix` (FIXES times, then
- *  `red`: the user's); `stuck`: it won't be live by itself (a blocked checkout), said, never retried; else `wait`. */
-export function liveStep(v: { live: boolean; final: boolean; red?: string } | null, g: Pick<Going, "fixes" | "since">, now = Date.now()): "live" | "fix" | "red" | "stuck" | "wait" {
-  if (v?.live) return "live"
-  if (v?.final) return v.red ? (g.fixes < FIXES ? "fix" : "red") : "stuck"
-  return now - g.since < LIVE_WAIT ? "wait" : "stuck"
 }
 /** Whether a worker's last message says it merged what they kept (true), says it didn't (false), or neither (null). */
 export function mergedSaid(text: string): boolean | null {
@@ -197,36 +167,6 @@ export function jobSpoken(j: Pick<Job, "title" | "state">, from: string) {
   const job = what ? `The job "${what}"` : "A job"
   return j.state === "needs you" ? `${job} needs you.` : j.state === "ready for review" ? `${job} is ready for review.`
     : j.state === "done" && from !== "ready for review" ? `${job} is done.` : j.state === "failed" ? `${job} failed.` : ""
-}
-
-/** Job `j` after event `ev` (at `t`): the move, logged with it, or null when it doesn't move. */
-export function step(j: Job, ev: JobEvent, t = Date.now()): Transition | null {
-  const to = JOB_NEXT[j.state][ev]
-  if (!to || to === j.state) return null
-  const x = { t, ev, from: j.state, to }
-  j.log.push(x)
-  if (j.log.length > 40) j.log.splice(0, j.log.length - 40)
-  Object.assign(j, { state: to, at: t }, NEWS.has(to) ? { seen: false } : {})
-  if (to === "working" && ev === "told") j.turn = t
-  return x
-}
-
-/** How long a job landing itself may rest, its change neither landed nor said not to be, before it's ready for review. */
-export const LAND_WAIT = 10 * 60_000
-/** A worker's turn at rest: still `working` while its background tasks run (their end starts its next turn), or while
- *  one landing itself hasn't said "Merged:" or "Not merged:" (LAND_WAIT since `at`); else landed, changed or answered. */
-export function restEvent(o: { background?: number; landed: boolean; changes: boolean; lands?: boolean; text: string; at: number; now?: number }): JobEvent {
-  if (o.landed) return "landed"
-  if (o.background) return "working"
-  if (o.lands && o.changes && mergedSaid(o.text) === null && (o.now ?? Date.now()) - o.at < LAND_WAIT) return "working"
-  return o.changes ? "changed" : "answered"
-}
-
-/** How a worker's terminal ending moves its job, by what it left: an answer in its turn since the job's began (`final`:
- *  that turn over), changes to review, and whether it crashed (lost, killed, an error code) rather than was ended. */
-export function endEvent(o: { text: boolean; final: boolean; changes: boolean; crashed: boolean }): JobEvent {
-  // (a worker closing itself, as one that ships all the way does, ends mid-turn: on purpose, so what it left stands)
-  return (o.text || o.changes) && (o.final || !o.crashed) ? (o.changes ? "changed" : "answered") : "ended"
 }
 
 export const unseen = (j: Job) => NEWS.has(j.state) && !j.seen
