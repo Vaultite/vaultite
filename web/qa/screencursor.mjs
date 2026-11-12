@@ -164,6 +164,19 @@ check("summoned, its caption shows too, no dots with it", JSON.stringify((await 
 if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, "doing.png") })
 await scene([])
 
+// a word for a moment ("Saved in Captures") and dictation's box: at the top right under the menu bar, never its top left
+const pillAt = (pill) => page.evaluate(async (pill) => {
+  window.__scene({ width: 1200, height: 800, top: 25, agents: [], summon: null, pill })
+  await new Promise((r) => setTimeout(r, 400))
+  const r = document.querySelector(".dictation-pill")?.getBoundingClientRect()
+  return r && { left: Math.round(r.left), right: Math.round(r.right), top: Math.round(r.top) }
+}, pill)
+for (const [what, pill] of [["a hint", { level: 0, text: "Saved in Captures", ready: true, hint: true }], ["dictation's box", { level: 0.3, text: "", ready: true }]]) {
+  const at = await pillAt(pill)
+  check(`${what} sits at the top right, under the menu bar`, !!at && at.right > 1100 && at.left > 600 && at.top >= 25 && at.top < 60, at)
+}
+await pillAt(null)
+
 // the conversation (#panel): the window's own look, a box that takes the keyboard, words said into it
 const panel = watch(await browser.newPage({ viewport: { width: 400, height: 600 } }))
 await panel.route("http://screen.test/**", (r) => {

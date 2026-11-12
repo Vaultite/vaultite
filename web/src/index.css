@@ -1468,6 +1468,8 @@ html.dark[data-translucent][data-demo-desk=own] { background: linear-gradient(rg
   box-shadow: 0 2px 12px rgb(0 0 0 / 0.22); font-size: 13.5px; line-height: 19px; }
 .dictation-box[data-said] { width: 340px; padding: 6px 10px 8px; }
 .dictation-box .dictation-pill { box-shadow: none; padding: 0; background: none; color: inherit; }
+/* (over the screen a pill sits in its box under the menu bar: fixed, as in the app, it went to the screen's top left) */
+.screen-box .dictation-pill { position: static; }
 .dictation-box:not([data-said]) { padding: 0 9px; }
 .dictation-free { font-size: 11.5px; opacity: 0.65; }
 .dictation-words { display: flex; flex-direction: column-reverse; max-height: calc(19px * 7); overflow: hidden; overflow-wrap: anywhere; }

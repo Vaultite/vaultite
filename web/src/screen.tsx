@@ -510,7 +510,7 @@ function BehindCard({ b, gone }: { b: Behind; gone?: boolean }) {
 }
 
 /** Under the menu bar: dictation's box, a word for a moment, where they stay put as you move between apps. */
-const BOX_AT = "fixed right-3 flex max-w-[380px] justify-end"
+const BOX_AT = "screen-box fixed right-3 flex max-w-[380px] justify-end"
 function Hint({ text, top }: { text: string; top: number }) {
   return <div className={cn("screen-in pointer-events-none", BOX_AT)} style={{ top: top + 8 }}><div className="dictation-pill" data-ready><span className="dictation-pending">{text}</span></div></div>
 }
@@ -521,7 +521,6 @@ function Pill({ p, top }: { p: NonNullable<Shown["pill"]>; top: number }) {
   now.current = p
   useEffect(() => {
     const pill = makePill()
-    pill.el.style.position = "static"
     bars.current!.append(pill.el)
     let raf = requestAnimationFrame(function frame(t) { raf = requestAnimationFrame(frame); pill.set(now.current.level, now.current.ready, "", t) })
     return () => { cancelAnimationFrame(raf); pill.el.remove() }
