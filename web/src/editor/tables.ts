@@ -1,5 +1,3 @@
-// Tables in live preview, edited a cell at a time as in Obsidian (grips, +, cells selected to copy and paste as a
-// spreadsheet's). Each change rewrites only what changed (tableText.ts), so undo, merges and other views see Markdown.
 import { isolateHistory, redo, undo } from "@codemirror/commands"
 import { syntaxTree } from "@codemirror/language"
 import { EditorSelection } from "@codemirror/state"
@@ -16,18 +14,13 @@ import { clipCells, htmlText, markdownTable, pastedTable, tsvText } from "./tabl
 import { clearCells, columnShares, deleteColumn, deleteRow, duplicateRow, edgeFrom, escape, fillCells, fillDown, insertColumn, insertRow, moveColumn, moveRow,
   NARROWEST, parseTable, setWidths, sharedMinWidth, shownText, sortRows, unescape, widen, writeTable, type Align, type Cell, type Table } from "./tableText"
 
-/** What a drawn table needs from the editor around it. */
 export type TableEnv = {
   render: (md: string) => string
-  /** Its cells can be edited now (editing, and the file can be changed). */
   canEdit: () => boolean
-  /** Its first line in the text (0-based), null once it's gone. */
   line: () => number | null
-  /** Its Markdown shown, the cursor in it. */
   source: () => void
 }
 
-/** Entering a drawn table: from the line above or below (↓ and ↑ in the editor), or at a cell (a table just put in). */
 const entries = new WeakMap<HTMLElement, (to: "top" | "bottom" | Cell) => boolean>()
 export const enterTable = (body: HTMLElement, to: "top" | "bottom" | Cell) => entries.get(body)?.(to) ?? false
 
@@ -35,10 +28,8 @@ const svg = (paths: string) => `<svg viewBox="0 0 24 24" width="14" height="14" 
 const dots = (xs: number[], ys: number[]) => svg(xs.flatMap((x) => ys.map((y) => `<circle cx="${x}" cy="${y}" r="1"/>`)).join(""))
 const PLUS = svg('<path d="M5 12h14"/><path d="M12 5v14"/>')
 const STEPS: Record<string, [number, number]> = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }
-/** After a change: a cell edited, or cells selected (a row or column moved by its grip stays picked). */
 type Then = { open?: Cell; pick?: [Cell, Cell] }
 let made = 0
-/** A table drawn as wide as the text, its columns in these shares (a `<col>` each); `box` scrolls it sideways. */
 function shareColumns(box: HTMLElement, t: HTMLTableElement, shares: number[]) {
   box.classList.add("is-shared")
   t.classList.add("has-widths")
@@ -49,25 +40,17 @@ function shareColumns(box: HTMLElement, t: HTMLTableElement, shares: number[]) {
 }
 
 export function drawTable(el: HTMLElement, text: string, view: EditorView, env: TableEnv) {
-  // What the file has (as last drawn or written), its rows, and the cell being edited.
   let shown = text
   let table = parseTable(text)
   let grid: HTMLTableCellElement[][] | null = null
   let editing: { r: number; c: number; input: HTMLTextAreaElement } | null = null
-  // Its columns' widths while a cell in it is edited: moving between cells moves nothing, they settle once it's left.
   let frozen: { table: number; cols: number[] } | null = null
-  /** Cells selected together, from `a` to `h` (where ⇧ and an arrow go on from); the keyboard is then `keeper`'s. */
   let sel: { a: Cell; h: Cell } | null = null
-  /** The cell the pointer is over: the grips are on its row and column. */
   let over: Cell | null = null
-  /** A row or column being dragged by its grip; `shown`: picked out, once it moved. */
   let dragging: { row: boolean; from: number; shown?: boolean } | null = null
-  /** Cells drawn selected: mark() walks them only then, not a long table's every cell each time it's drawn. */
   let marked = false
   const id = `table:${++made}`
 
-  // The table drawn; its grips and + (aria-hidden: not what Find searches); and the keyboard while cells are selected, a
-  // field, so copy, cut and paste come to it (inputmode none: no keyboard pops up on a phone).
   const drawn = document.createElement("div")
   drawn.className = "cm-table-view"
   drawn.addEventListener("scroll", () => place(), { passive: true })
@@ -86,13 +69,13 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
   const rowGrip = tool("cm-table-grip is-row", dots([9, 15], [5, 12, 19]))
   const addCol = tool("cm-table-add is-col", PLUS, "Add column")
   const addRow = tool("cm-table-add is-row", PLUS, "Add row")
-  // A column's right edge in the header, dragged to set the widths (in the separator's dashes); a double-click, as wide as
-  // their text again. One per edge between columns, made as they're needed.
   const edges: HTMLButtonElement[] = []
   const line = document.createElement("div")
   line.className = "cm-table-drop"
   line.hidden = true
   tools.append(line)
+  // The keyboard while cells are selected is a field, so copy, cut and paste reach it; inputmode none keeps a phone's
+  // keyboard down.
   const keeper = document.createElement("textarea")
   keeper.className = "cm-table-keys"
   keeper.tabIndex = -1
@@ -103,7 +86,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
   const paint = () => {
     drawn.classList.remove("is-shared")
     drawn.innerHTML = env.render(shown)
-    // (a table with set widths comes in core/markdown.ts' box: drawn is its box here)
     const box = drawn.firstElementChild
     if (box?.classList.contains("md-table-view")) box.replaceWith(...box.childNodes)
     marked = false
@@ -117,7 +99,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
       if (rows.length === table.rows.length && rows.every((r) => r.cells.length === table!.align.length)) {
         grid = rows.map((r) => [...r.cells] as HTMLTableCellElement[])
         pin()
-        // (a click in it edits a cell, not the table's Markdown; a held finger is its menu)
         t.dataset.noEdit = ""
         t.dataset.holdMenu = ""
         t.addEventListener("scroll", place, { passive: true })
@@ -141,7 +122,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     pin()
   }
 
-  /** Where it is in the file now, if that's still what was drawn. */
   const range = () => {
     const l = env.line()
     if (l === null) return null
@@ -149,8 +129,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     return view.state.sliceDoc(from, to) === shown ? { from, to } : null
   }
 
-  /** The rows written into the file: only the part that changed. `own`: a step of its own in the history (a row added,
-   *  a sort), not merged with typing around it. */
   const write = (userEvent = "input.type", own = false) => {
     if (!table) return
     const next = writeTable(table), at = range()
@@ -168,7 +146,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
   const bounds = () => sel && { r0: Math.min(sel.a.r, sel.h.r), r1: Math.max(sel.a.r, sel.h.r), c0: Math.min(sel.a.c, sel.h.c), c1: Math.max(sel.a.c, sel.h.c) }
   const inSel = (r: number, c: number) => { const b = bounds(); return !!b && r >= b.r0 && r <= b.r1 && c >= b.c0 && c <= b.c1 }
   const mark = () => { if (!sel && !marked) return; marked = !!sel; grid?.forEach((row, r) => row.forEach((cell, c) => cell.classList.toggle("is-selected", inSel(r, c)))) }
-  /** The selected cells' text, as edited. */
   const picked = () => { const b = bounds()!; return table!.rows.slice(b.r0, b.r1 + 1).map((row) => row.cells.slice(b.c0, b.c1 + 1).map(shownText)) }
 
   function open(r: number, c: number, caret: number | "end" = "end") {
@@ -199,7 +176,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
       place()
     })
     input.addEventListener("keydown", (e) => cellKeys(e, r, c, input))
-    // (cells from a spreadsheet fill the table from here; a line of text is typed in as it is)
     input.addEventListener("paste", (e) => { if (pasteCells(e.clipboardData, { r, c })) { e.preventDefault(); e.stopPropagation() } })
     input.addEventListener("blur", () => setTimeout(() => {
       if (editing?.input === input && document.activeElement !== input && !menuShowing()) close()
@@ -208,8 +184,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     return true
   }
 
-  /** `staying`: another of its cells opens next, so its columns stay as they are, and only the cell left is drawn
-   *  again (the whole table drawn per move took 200 ms at 2,000 rows). */
   function close(staying = false) {
     if (!editing) return
     const { r, c } = editing
@@ -217,7 +191,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     if (!staying) frozen = null
     if (!staying || !redraw(r, c)) paint()
   }
-  /** One cell drawn again from its text (as the header of a table of one, so its Markdown draws as in the table). */
   function redraw(r: number, c: number) {
     const cell = grid?.[r]?.[c], src = table?.rows[r]?.cells[c]
     if (!cell || src === undefined) return false
@@ -227,19 +200,16 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     if (!th) return false
     cell.classList.remove("is-editing")
     cell.replaceChildren(...th.childNodes)
-    // (what plugins add to drawn Markdown, an icon for a shortcode, as the whole table gets it)
     markdownDrawn(cell, blockLines(env.line, () => shown, () => view.state.doc.toString()))
     return true
   }
 
-  /** Cells a to h selected together: the cell being edited closes, the keyboard goes to `keeper`. */
   function select(a: Cell, h: Cell) {
     if (!table || !grid || !env.canEdit()) return
     freeze()
     if (editing) close(true)
     sel = { a: clamp(a), h: clamp(h) }
     mark()
-    // (its text in the field, so even the browser's own copy has it)
     keeper.value = tsvText(picked())
     if (document.activeElement !== keeper) keeper.focus({ preventScroll: true })
     keeper.select()
@@ -247,7 +217,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
   }
   const unselect = () => { if (!sel) return; sel = null; if (!editing) { frozen = null; paint() } else mark() }
 
-  /** The cursor back in the editor's text, on the line above or below the table. */
   function leave(down: boolean) {
     const at = range()
     close()
@@ -265,8 +234,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     view.focus()
   }
 
-  /** Changed more than one cell's text (its shape, cells pasted or cleared): written as a step of its own, drawn again,
-   *  then a cell edited or cells selected. A row wider than its header first makes its extra cells columns. */
   function change(fn: (t: Table) => void, userEvent: string, then: Then | (() => Then) = {}) {
     if (!table) return
     widen(table)
@@ -284,8 +251,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
   const wholeRow = (r: number): [Cell, Cell] => [{ r, c: 0 }, { r, c: cols() - 1 }]
   const wholeCol = (c: number): [Cell, Cell] => [{ r: 0, c }, { r: rows() - 1, c }]
 
-  /** Cells from the clipboard into the table from `at` on, rows and columns added as needed; with cells selected, one
-   *  value goes into each. False for text pasted into a cell (typed in as it is). */
   function pasteCells(d: DataTransfer | null, at: Cell) {
     if (!d || !table) return false
     const cells = clipCells(d.getData("text/plain"), d.getData("text/html"))
@@ -307,19 +272,14 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     const doc = view.state.doc, start = doc.lineAt(at.from), end = doc.lineAt(at.to)
     const next = end.number < doc.lines ? doc.line(end.number + 1) : null
     let from = at.from, to = next ? next.from : at.to
-    // (and a blank line around it, so no two are left)
     if (next && !next.text.trim() && start.number > 1 && !doc.line(start.number - 1).text.trim()) to = next.number < doc.lines ? next.to + 1 : next.to
     else if (!next && start.number > 1) from = at.from - 1
     view.dispatch({ changes: { from, to }, selection: EditorSelection.cursor(from), userEvent: "delete", annotations: isolateHistory.of("full"), scrollIntoView: true })
     view.focus()
   }
 
-  // ---------- menus ----------
-
-  /** A row's items (`pick`: from its grip, so a moved row stays picked; else the cell `c` in it opens). */
   function rowItems(r: number, c: number, pick: boolean) {
     const then = (to: number): Then => (pick ? { pick: wholeRow(to) } : { open: { r: to, c } })
-    // (rows selected together, this one among them, the header not: all of them deleted)
     const b = bounds(), many = b && b.r1 > b.r0 && r >= b.r0 && r <= b.r1 && b.r0 > 0 ? b : null
     return {
       above: { label: "Add row above", icon: BetweenHorizontalStart, disabled: r === 0, run: () => change((t) => insertRow(t, r), "input.table", { open: { r, c } }) },
@@ -333,12 +293,10 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
         : { label: "Delete row", icon: Trash2, danger: true, disabled: r === 0, run: () => change((t) => deleteRow(t, r), "delete", { open: { r, c } }) },
     } satisfies Record<string, MenuItem>
   }
-  /** A column's items (`pick`: from its grip, so it stays picked; else the cell in row `r` opens). */
   function colItems(c: number, r: number, pick: boolean) {
     const then = (to: number): Then => (pick ? { pick: wholeCol(to) } : { open: { r, c: to } })
     const align = (a: Align) => change((t) => { t.align[c] = a }, "input.table", then(c))
     const sort = (desc: boolean) => change((t) => sortRows(t, c, desc), "input.table", then(c))
-    // (columns selected together, this one among them, not every column: all of them deleted)
     const b = bounds(), many = b && b.c1 > b.c0 && c >= b.c0 && c <= b.c1 && b.c1 - b.c0 + 1 < cols() ? b : null
     return {
       left: { label: "Add column left", icon: BetweenVerticalStart, run: () => change((t) => insertColumn(t, c), "input.table", { open: { r, c } }) },
@@ -361,7 +319,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     } satisfies Record<string, MenuItem>
   }
   const sep = (i: MenuItem): MenuItem => ({ ...i, sep: true })
-  /** Fit columns to text, when there are widths to undo (set by dragging a column's edge). */
   const widthItems = (fit: MenuItem) => (table?.widths ? [fit] : [])
   const rowMenu = (r: number) => { const x = rowItems(r, 0, true); return [x.above, x.below, x.dup, sep(x.up), x.down, sep(x.clear), sep(x.remove)] }
   const colMenu = (c: number) => {
@@ -383,8 +340,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     ]
   }
 
-  // ---------- the keyboard ----------
-
   const undoKeys = (e: KeyboardEvent, mod: boolean) => {
     if (!mod || !(e.key === "z" || e.key === "Z" || (!isMac && e.key === "y"))) return false
     e.preventDefault()
@@ -401,7 +356,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     const oneLine = input.scrollHeight <= parseFloat(getComputedStyle(input).lineHeight) * 1.5
     if (undoKeys(e, mod)) return
     const all = s === 0 && f === value.length
-    // ⇧ and an arrow at the cell's edge (or with all its text selected) selects cells, as a spreadsheet does.
     if (e.shiftKey && !mod && STEPS[e.key]) {
       const edge = e.key === "ArrowLeft" ? s === 0 && (f === 0 || all) : e.key === "ArrowRight" ? f === value.length && (s === f || all)
         : oneLine || all || (s === f && (e.key === "ArrowUp" ? s === 0 : f === value.length))
@@ -409,7 +363,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
       if (edge && (to.r !== r || to.c !== c)) { e.preventDefault(); select({ r, c }, to) }
       return
     }
-    // ⌘ or Ctrl and an arrow with the caret already at that end of the text: to the end of the filled cells (⇧ selects).
     if (mod && !e.altKey && STEPS[e.key]) {
       const edge = e.key === "ArrowLeft" ? s === 0 && f === 0 : e.key === "ArrowRight" ? s === f && f === value.length
         : s === f && (oneLine || (e.key === "ArrowUp" ? s === 0 : f === value.length))
@@ -417,7 +370,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
       if (edge && (to.r !== r || to.c !== c)) { if (e.shiftKey) { e.preventDefault(); select({ r, c }, to) } else go(to.r, to.c) }
       return
     }
-    // (⌘A again, all its text already selected: every cell)
     if (mod && e.key === "a" && all && value) { e.preventDefault(); select({ r: 0, c: 0 }, { r: rs - 1, c: cs - 1 }); return }
     switch (e.key) {
       case "Tab":
@@ -425,7 +377,7 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
         if (c < cs - 1) go(r, c + 1); else if (r < rs - 1) go(r + 1, 0); else { e.preventDefault(); change((t) => insertRow(t, rs), "input.table", { open: { r: rs, c: 0 } }) }
         return
       case "Enter":
-        if (e.shiftKey) return // (a line break in the cell: written as <br>)
+        if (e.shiftKey) return
         e.preventDefault()
         if (mod || r === rs - 1) change((t) => insertRow(t, r + 1), "input.table", { open: { r: r + 1, c } })
         else open(r + 1, c)
@@ -448,25 +400,21 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     }
   }
 
-  // Cells selected: arrows move (⇧ grows the selection), Delete clears them, Escape or Enter edits the one at its end.
   keeper.addEventListener("keydown", (e) => {
     if (!sel || !table || e.isComposing) return
     const mod = isMac ? e.metaKey : e.ctrlKey
     if (undoKeys(e, mod)) return
     const step = STEPS[e.key]
-    // ⌘ or Ctrl and an arrow: to the end of the filled cells (edgeFrom); Home and End: the row's ends (⌘: the table's).
     const to = step ? (mod ? edgeFrom(table, sel.h, step[0], step[1]) : clamp({ r: sel.h.r + step[0], c: sel.h.c + step[1] }))
       : e.key === "Home" ? { r: mod ? 0 : sel.h.r, c: 0 } : e.key === "End" ? { r: mod ? rows() - 1 : sel.h.r, c: cols() - 1 } : null
     if (to && !e.altKey) {
       e.preventDefault()
       if (e.shiftKey) select(sel.a, to); else open(to.r, to.c)
     } else if (mod && e.key === "a") { e.preventDefault(); select({ r: 0, c: 0 }, { r: rows() - 1, c: cols() - 1 }) }
-    // (⌘D fills down, as in a spreadsheet: the selection's top row into the rest, one row from the row above)
     else if (mod && !e.shiftKey && e.key.toLowerCase() === "d") { e.preventDefault(); const { a, h } = sel; change((t) => { fillDown(t, a, h) }, "input.paste", { pick: [a, h] }) }
     else if (!mod && (e.key === "Backspace" || e.key === "Delete")) { e.preventDefault(); const { a, h } = sel; change((t) => clearCells(t, a, h), "delete", { pick: [a, h] }) }
     else if (!mod && (e.key === "Escape" || e.key === "Enter" || e.key === "Tab" || e.key === "F2")) { e.preventDefault(); open(sel.h.r, sel.h.c) }
   })
-  // Typing replaces the cell at the selection's end with what's typed, as in a spreadsheet (Enter edits it as it is).
   keeper.addEventListener("beforeinput", (e) => {
     e.preventDefault()
     if (!sel || !table || e.inputType !== "insertText" || !e.data) return
@@ -488,9 +436,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
   keeper.addEventListener("paste", (e) => { const b = bounds(); e.preventDefault(); if (b) pasteCells(e.clipboardData, { r: b.r0, c: b.c0 }) })
   keeper.addEventListener("blur", () => setTimeout(() => { if (document.activeElement !== keeper && !menuShowing()) unselect() }))
 
-  // ---------- the pointer ----------
-
-  /** Where in its cell's Markdown a click landed, when the cell shows its Markdown as it is (plain text). */
   function caretAt(cell: HTMLElement, e: MouseEvent, raw: string): number | "end" {
     if (cell.textContent !== raw) return "end"
     const doc = document as Document & { caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null }
@@ -511,12 +456,10 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     return null
   }
 
-  // A press opens the cell (⇧: selects from the one open to it); dragging on over others selects them.
   el.addEventListener("mousedown", (e) => {
     if (e.button !== 0 || e.ctrlKey && isMac) return
     const at = cellOf(e.target)
     const inField = !!(e.target as Element).closest(".cm-cell-input")
-    // (a link in a cell is followed, as anywhere else in the text)
     if (!at || !env.canEdit() || (!inField && (e.target as Element).closest("a, [data-wiki], [data-tag]"))) return
     const from = e.shiftKey && (sel || editing) ? sel?.a ?? { r: editing!.r, c: editing!.c } : { r: at.r, c: at.c }
     if (!inField) {
@@ -550,14 +493,12 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
   })
   el.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse" && !dragging) { over = null; place() } })
 
-  /** The grips on the row and column pointed at (by touch: of the cell being edited or selected), + by its edges. */
   function place() {
     const t = drawn.querySelector("table")
     const on = !!t && !!grid && !!table && env.canEdit()
     tools.hidden = !on
     if (!on) return
     tools.toggleAttribute("data-active", !!editing || !!sel)
-    // (`tb`: the table as far as it's in sight, a table with set widths scrolling in its box)
     const box = el.getBoundingClientRect(), whole = t!.getBoundingClientRect(), seen = drawn.getBoundingClientRect()
     const tb = { top: whole.top, bottom: whole.bottom, height: whole.height, left: Math.max(whole.left, seen.left), right: Math.min(whole.right, seen.right), width: 0 }
     tb.width = tb.right - tb.left
@@ -569,7 +510,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     edges.forEach((h, i) => {
       const b = i < heads.length - 1 ? heads[i].getBoundingClientRect() : null
       h.hidden = !b || b.right < tb.left + 4 || b.right > tb.right - 4
-      // (dragged, its line runs down the whole table)
       if (b) Object.assign(h.style, { left: px(b.right - box.left), top: px(b.top - box.top), height: px(h.classList.contains("is-active") ? tb.bottom - b.top : b.height) })
     })
     const at = over ?? (editing && { r: editing.r, c: editing.c }) ?? sel?.h ?? null
@@ -577,7 +517,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     colGrip.hidden = rowGrip.hidden = !cell
     if (!at || !cell) return
     const head = grid![0][at.c].getBoundingClientRect(), row = cell.getBoundingClientRect()
-    // (a column scrolled out of the table's sight has no grip)
     colGrip.hidden = head.right < tb.left + 12 || head.left > tb.right - 12
     Object.assign(colGrip.style, { left: px((head.left + head.right) / 2 - box.left), top: px(tb.top - box.top) })
     Object.assign(rowGrip.style, { left: px(tb.left - box.left), top: px((row.top + row.bottom) / 2 - box.top) })
@@ -585,7 +524,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     rowGrip.dataset.r = String(at.r)
   }
 
-  // A grip: a click picks its row or column and opens its menu; dragged, it moves it (the header row stays first).
   const gripMenu = (row: boolean, g: HTMLElement) => {
     if (!table || !env.canEdit()) return
     const i = Number(row ? g.dataset.r : g.dataset.c)
@@ -595,7 +533,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     openMenu({ x: b.left, y: b.bottom + 4, flip: b.top - 4 }, row ? rowMenu(i) : colMenu(i))
   }
   for (const [g, row] of [[rowGrip, true], [colGrip, false]] as const) {
-    // (the cell being edited keeps the keyboard until the grip's click picks)
     g.addEventListener("mousedown", (e) => e.preventDefault())
     g.addEventListener("click", (e) => { e.stopPropagation(); gripMenu(row, g) })
     g.addEventListener("contextmenu", (e) => { e.preventDefault(); e.stopPropagation(); gripMenu(row, g) })
@@ -629,8 +566,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
         if (ev.pointerId !== id) return
         if (!shares) {
           if (Math.abs(ev.clientX - x0) < 3 || !grid) return
-          // (a table as wide as its text takes the widths it's drawn at, made as wide as the text; the edge then follows
-          // the pointer from where it's drawn now)
           close(); unselect()
           const t = drawn.querySelector("table")
           if (!t || !grid) return
@@ -659,7 +594,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
         end()
         if (shares) { const s = shares; change((t) => setWidths(t, s), "input.table") }
       }
-      // (Escape puts the widths back as they were)
       const key = (ev: KeyboardEvent) => {
         if (ev.key !== "Escape") return
         ev.preventDefault(); ev.stopPropagation()
@@ -680,8 +614,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     return h
   }
 
-  /** Where a row or column held at x, y would go: the gap before row or column `gap` (the line drawn there). Held near
-   *  the edge of a table wider than the note, or of the pane, it scrolls that way. */
   const sideways = edgeScroller("x"), down = edgeScroller()
   const untarget = addDropTarget(id, {
     at: (item, x, y) => {
@@ -699,7 +631,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
       const to = (row ? gap + 1 : gap) > from ? (row ? gap : gap - 1) : row ? gap + 1 : gap
       line.hidden = to === from
       if (to === from) return null
-      // (kept within the table's sight: a column scrolled out of it has its edge off to the side)
       const at = gap < edges.length ? (row ? edges[gap].top : edges[gap].left) : (row ? edges[gap - 1].bottom : edges[gap - 1].right)
       const edge = row ? at : Math.min(Math.max(at, tb.left), tb.right)
       line.className = `cm-table-drop ${row ? "is-row" : "is-col"}`
@@ -715,7 +646,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     end: () => { dragging = null; line.hidden = true; sideways.stop(); down.stop() },
   })
 
-  // Its size changed (the pane, a font): the grips and + follow.
   const resized = new ResizeObserver(() => place())
   resized.observe(drawn)
 
@@ -724,7 +654,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
   return {
     update: (t: string) => {
       if (t === shown) return
-      // Changed elsewhere (undo, a merge, its Markdown edited): drawn again, the same cell still open (or cells picked).
       shown = t
       table = parseTable(t)
       const was = editing && { r: editing.r, c: editing.c, at: editing.input.selectionStart, focused: document.activeElement === editing.input }
@@ -733,7 +662,6 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
       sel = null
       if (!was?.focused && !kept) frozen = null
       paint()
-      // (the nearest cell when its row or column went: an added row undone)
       if (was?.focused && table) open(Math.min(was.r, table.rows.length - 1), Math.min(was.c, table.align.length - 1), was.at)
       else if (kept && table) select(kept.a, kept.h)
     },
@@ -741,11 +669,8 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
   }
 }
 
-/** Where a pasted table can't go: code, the frontmatter, or a table's Markdown. */
 const NOT_HERE = /^(FencedCode|CodeBlock|InlineCode|Frontmatter|Table)$/
 
-/** A table pasted into a note's text (a spreadsheet's cells, a page's table, lines of tab-separated values): put in as a
- *  Markdown table on lines of its own, the cursor on the line after it, so it's drawn at once. */
 export function pasteTable(e: ClipboardEvent, view: EditorView) {
   const d = e.clipboardData
   if (!d || !view.state.facet(EditorView.editable)) return false
@@ -757,7 +682,7 @@ export function pasteTable(e: ClipboardEvent, view: EditorView) {
   const doc = state.doc, line = doc.lineAt(r.from), end = doc.lineAt(r.to)
   const before = state.sliceDoc(line.from, r.from), after = state.sliceDoc(r.to, end.to)
   const next = end.number < doc.lines ? doc.line(end.number + 1).text : null
-  // (a blank line above and below: a line of text right after it would be read as one of its rows)
+    // GFM reads a line of text right after a table as one of its rows.
   const lead = before.trim() ? "\n\n" : line.number > 1 && doc.line(line.number - 1).text.trim() ? "\n" : ""
   const tail = !after.trim() && next !== null && !next.trim() ? "\n" : "\n\n"
   const md = markdownTable(rows)

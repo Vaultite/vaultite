@@ -1,5 +1,3 @@
-// A Jupyter notebook (.ipynb), read-only: Markdown cells like notes, code highlighted, and their outputs (HTML ones in a
-// frame that can't run script or load anything). Its source view is the JSON. Lazy chunk (with the editor).
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { classHighlighter, highlightCode } from "@lezer/highlight"
 import type { LanguageSupport } from "@codemirror/language"
@@ -26,7 +24,6 @@ function Code({ code, lang }: { code: string; lang: LanguageSupport | null }) {
   return <pre className="nb-code overflow-x-auto rounded-[8px] bg-foreground/[0.04] px-3 py-2 text-[13px] leading-[20px]"><code>{html ?? code}</code></pre>
 }
 
-/** A cell's HTML output, in a frame with no script and no network, as tall as its content. */
 function HtmlOutput({ html }: { html: string }) {
   const ref = useRef<HTMLIFrameElement>(null)
   const [h, setH] = useState(40)

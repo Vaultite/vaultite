@@ -1,16 +1,12 @@
-// Suggestions inside a ```block-<name> fence from its declaration (core/blocks.ts): the options it doesn't have yet at a
-// line's start, an option's values after `key: `. Live preview shows a block's text while the cursor is in it, so both.
 import type { Completion, CompletionContext } from "@codemirror/autocomplete"
 import type { EditorView } from "@codemirror/view"
 import { allOptions, typeText, type BlockDecl, type OptionDecl } from "../../../core/blocks.ts"
 import { blockOpening, FENCE } from "../../../core/sections.ts"
 
-/** How far up a block's opening fence is looked for (a block's options are a few lines). */
 const REACH = 100
 
 const types = (d: OptionDecl) => (Array.isArray(d.type) ? d.type : [d.type])
 
-/** The block the cursor is in, by its fence (```block-<name> above it, no ``` between), and the keys it has. */
 function blockAt(ctx: CompletionContext): { name: string; keys: Set<string> } | null {
   const doc = ctx.state.doc, at = doc.lineAt(ctx.pos).number
   if (FENCE.test(doc.line(at).text)) return null
@@ -29,7 +25,6 @@ function blockAt(ctx: CompletionContext): { name: string; keys: Set<string> } | 
   return null
 }
 
-/** The completion source; `declFor`: a block's declaration by its name (null: none, nothing suggested). */
 export function blockOptionSource(declFor: (name: string) => BlockDecl | null) {
   return (ctx: CompletionContext) => {
     const block = blockAt(ctx)
@@ -40,7 +35,6 @@ export function blockOptionSource(declFor: (name: string) => BlockDecl | null) {
     const all = allOptions(decl)
     const key = /^[\w-]*$/.exec(before)
     if (key) {
-      // (on an empty line only when asked: Ctrl-Space)
       if (!before && !ctx.explicit) return null
       const options: Completion[] = Object.entries(all).filter(([k]) => !block.keys.has(k)).map(([k, d], i) => ({
         label: k, detail: typeText(d), info: d.description, type: "property", boost: -i,

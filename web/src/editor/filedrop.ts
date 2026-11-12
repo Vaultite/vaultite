@@ -1,10 +1,7 @@
-// Files dropped on a note (from Finder, a screenshot's thumbnail, a browser's image): where they go and the line that
-// shows it while they're dragged. They go between lines, on a line of their own, as an image is a block of its own.
 import { StateEffect, StateField, type EditorState, type Extension } from "@codemirror/state"
 import { EditorView, layer, RectangleMarker } from "@codemirror/view"
 import { bodyStart, shownStart } from "./frontmatter"
 
-/** Before or after the line at `pos`, or in it (an empty line). */
 export type DropSpot = { pos: number; where: "before" | "after" | "in" }
 
 const showSpot = StateEffect.define<DropSpot | null>()
@@ -12,12 +9,10 @@ const holdSpot = StateEffect.define<{ id: number; spot: DropSpot | null }>()
 const mapSpot = (s: DropSpot, tr: { changes: { mapPos: (p: number, assoc?: number) => number } }) =>
   ({ ...s, pos: tr.changes.mapPos(s.pos, s.where === "before" ? -1 : 1) })
 
-/** The line shown while files are dragged over. */
 const shown = StateField.define<DropSpot | null>({
   create: () => null,
   update: (s, tr) => tr.effects.reduce((v, e) => (e.is(showSpot) ? e.value : v), s && tr.docChanged ? mapSpot(s, tr) : s),
 })
-/** Where drops still being saved go, kept up with typing meanwhile. */
 const held = StateField.define<ReadonlyMap<number, DropSpot>>({
   create: () => new Map(),
   update(m, tr) {
@@ -33,8 +28,6 @@ const held = StateField.define<ReadonlyMap<number, DropSpot>>({
   },
 })
 
-/** Where something dropped at (x, y) goes: between the lines nearest it, never in the frontmatter (nor a hidden title); below the text, at
- *  its end. */
 export function spotAt(view: EditorView, at: { x: number; y: number }): DropSpot {
   const doc = view.state.doc, floor = Math.max(bodyStart(doc), shownStart(view.state))
   const r = view.contentDOM.getBoundingClientRect()
@@ -50,8 +43,7 @@ export function spotAt(view: EditorView, at: { x: number; y: number }): DropSpot
   return h < (b.top + b.bottom) / 2 ? { pos: Math.max(b.from, floor), where: "before" } : { pos: b.to, where: "after" }
 }
 
-/** Show where a drop would go (null: nowhere). It goes by itself a moment after the drag stops coming over, as a drag
- *  that leaves the window or is called off says nothing to what it was over. */
+// A drag that leaves the window or is called off tells nothing to what it was over, so the line times out.
 export function markDrop(view: EditorView, spot: DropSpot | null) {
   clearTimeout(timers.get(view))
   const was = view.state.field(shown, false)
@@ -62,8 +54,6 @@ export function markDrop(view: EditorView, spot: DropSpot | null) {
 const timers = new WeakMap<EditorView, ReturnType<typeof setTimeout>>()
 
 let ids = 0
-/** Put in what `text` answers at `spot` once it comes (files are saved first), on a line of its own; the cursor after
- *  it, and the editor focused when it's being edited. False when there's nothing to put in. */
 export async function dropInto(view: EditorView, spot: DropSpot, text: Promise<string | null>) {
   const id = ++ids
   view.dispatch({ effects: holdSpot.of({ id, spot }) })
@@ -77,15 +67,12 @@ export async function dropInto(view: EditorView, spot: DropSpot, text: Promise<s
   return true
 }
 
-/** `text` as put in at `spot`: a line break between it and the line it goes before or after. */
 function placed(state: EditorState, spot: DropSpot, text: string) {
   if (spot.where === "before") return { pos: state.doc.lineAt(spot.pos).from, insert: `${text}\n` }
   if (spot.where === "after") return { pos: state.doc.lineAt(spot.pos).to, insert: `\n${text}` }
   return { pos: spot.pos, insert: text }
 }
 
-/** The line where a drop goes: across the text, at the edge of the line it goes before or after (an empty line: its
- *  middle). */
 const dropLine = layer({
   above: true,
   class: "cm-file-drop-layer",

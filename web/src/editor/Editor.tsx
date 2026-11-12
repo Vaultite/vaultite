@@ -1,5 +1,3 @@
-// The Markdown editor (CodeMirror 6): live preview, [[link]] and block-option suggestions, a file's whole text with its
-// frontmatter hidden (drawn as Properties) or shown (source mode; YAML, JSON, code). Plugins' extensions first. Lazy chunk.
 import { useEffect, useRef } from "react"
 import { autocompletion, closeBrackets, closeBracketsKeymap, closeCompletion, completionStatus, type CompletionContext } from "@codemirror/autocomplete"
 import { defaultKeymap, history, historyKeymap, indentLess, indentMore, isolateHistory, redo, undo } from "@codemirror/commands"
@@ -47,29 +45,15 @@ import { sightOf } from "@/core/sight"
 import { trace } from "@/core/trace"
 
 export type EditorApi = {
-  /** Put in text that changed elsewhere (on disk), keeping the cursor where it was as far as possible. */
   replace: (text: string) => void
-  /** Put in a change the user made around the text (Properties, a header's chip, a command): one step in its history,
-   *  so ⌘Z undoes it as it does typing. */
   change: (text: string) => void
   focus: (at?: "start" | "end") => void
-  /** Scroll so that this line (0-based) is at the top of what scrolls it (measured on the way, unlike a guess from the
-   *  heights of lines not drawn yet). */
   reveal: (line: number) => void
-  /** Where the app can put the cursor near `pos` without opening a drawn block (livePreview's offBlocks), at its line's
-   *  text. */
   offBlocks: (pos: number) => number | null
-  /** Put in `text` with its clashes shown in place (editor/conflicts.ts); false if one can't be shown, and nothing changed.
-   *  `open` hears how many are left as the user settles them; `note`, what the bars say instead of "edited while you typed". */
   conflict: (text: string, clashes: Clash[], who: string | undefined, open: Open, note?: string) => boolean
-  /** Scroll to the first conflict left. */
   revealConflict: () => void
-  /** Something dragged from outside is over (x, y) on the page: show where in the text it would go (null: nowhere). */
   dropMark: (at: { x: number; y: number } | null) => void
-  /** Dropped at (x, y): saved (`onAttach`) and put in between the lines nearest it, being read too. False if it takes
-   *  no files. */
   drop: (d: Dropped, at: { x: number; y: number }) => boolean
-  /** It came back as its tab's editor was left (editor/kept.ts), selection included: that's where its cursor goes. */
   restored: boolean
   view: EditorView
 }
@@ -78,64 +62,35 @@ type Props = {
   doc: string
   editable: boolean
   config: PreviewConfig
-  /** The text, and where its body starts (after the hidden frontmatter; 0 without `frontmatter`), on every change but
-   *  the host's own (`replace`); `remote`: none of it typed here (others typing in it together), so not this one's to save. */
   onChange: (doc: string, start: number, remote: boolean) => void
-  /** An undo or redo changed the hidden frontmatter (Properties show it). */
   onUndoFrontmatter?: () => void
   onOpen: (link: { wiki?: string; url?: string }, how: boolean | LinkClick) => void
-  /** Names to suggest after [[ (file names, people), with the file's path when it's one and what picking it writes; an
-   *  alias with the link to what it stands for (`link`), put in as [[link|alias]]. */
   names: () => { label: string; detail?: string; path?: string; insert?: string; link?: string }[]
-  /** Tags to suggest after # (the vault's, most used first). */
   tags?: () => { tag: string; count: number }[]
-  /** Headings to suggest after [[Name# (a note's; "" is this file's). */
   headings?: (name: string) => Promise<string[]>
-  /** Write links as Markdown, [name](Folder/Name.md), instead of [[name]] (.obsidian/app.json's useMarkdownLinks). */
   markdownLinks?: () => boolean
-  /** Files pasted or dropped into it (a screenshot), or a browser's image or link dropped: saved somewhere, and what to
-   *  type for them (an embed), or null. */
   onAttach?: (d: Dropped) => Promise<string | null>
-  /** The file it shows (Markdown), so links to a heading or a block in it scroll there (core/anchors.ts). */
   docPath?: string
-  /** What the slash menu offers (Markdown only). */
   slash?: () => SlashItem[]
-  /** Drawn; what it returns runs as the editor goes (after its conflicts are handed back). */
   onReady?: (api: EditorApi) => void | (() => void)
   placeholderText?: string
   label?: string
-  /** Source mode: the whole file, frontmatter included, as plain text. */
   source?: boolean
-  /** A Markdown file's whole text with its frontmatter hidden (live preview and reading): positions are the file's. */
   frontmatter?: boolean
-  /** The title drawn above it (with `frontmatter`): a first heading that only says it again is hidden too. */
   title?: string
-  /** Not Markdown (source only): JSON, HTML (an artifact) or plain text (CSV). */
   code?: "json" | "html" | "text"
-  /** A code file (source only): its name, for its language. */
   language?: string
-  /** Escape (or ⌘Enter): the caller ends editing. An open suggestion list closes first; the next Escape calls it. */
   onEscape?: () => void
-  /** The focus left the editor for something else on the page (not for another window, nor for a field drawn inside
-   *  the editor). */
   onBlur?: () => void
-  /** Draw [[ suggestions and the slash menu over the page (in <body>), at their own size: for an editor inside a box
-   *  that clips (`overflow: hidden`) or is scaled (a canvas card under `transform: scale()`). */
   floatingTooltips?: boolean
-  /** A file's own editor (not a canvas card's): line numbers beside it while the user has them on (appearance.json
-   *  `lineNumbers`). Code files have them anyway. */
   numbered?: boolean
-  /** The file it shows, whose history and selection are kept while its tab isn't drawn (editor/kept.ts). */
   keep?: string
 }
 
-/** The host's own text put in (`replace`): it has it already, so it isn't told back. */
 const hosts = Annotation.define<boolean>()
-/** Whether an update changed the text in a way the host doesn't know, and whether it was all from elsewhere. */
 const news = (u: ViewUpdate) => u.docChanged && !u.transactions.every((t) => !t.docChanged || t.annotation(hosts))
 const fromElsewhere = (u: ViewUpdate) => u.transactions.every((t) => !t.docChanged || t.annotation(Transaction.remote))
 
-/** Where floating suggestions go: one layer on <body> (styled like the editor's own: index.css, `.vau-tooltips`). */
 let tooltipLayer: HTMLElement | null = null
 function tooltipHost() {
   if (!tooltipLayer?.isConnected) {
@@ -146,11 +101,9 @@ function tooltipHost() {
   return tooltipLayer
 }
 
-// The frontmatter in source mode: keys and the --- lines muted, values as text.
 const fmStyle = HighlightStyle.define([
   { tag: [tags.definition(tags.propertyName), tags.meta, tags.separator], color: "var(--muted-foreground)" },
 ])
-// JSON: the scheme's colours, so every scheme recolours it.
 const jsonStyle = HighlightStyle.define([
   { tag: tags.propertyName, color: ink("var(--blue)") },
   { tag: tags.string, color: ink("var(--green)") },
@@ -158,7 +111,6 @@ const jsonStyle = HighlightStyle.define([
   { tag: [tags.bool, tags.null], color: ink("var(--purple)") },
   { tag: [tags.brace, tags.squareBracket, tags.separator, tags.punctuation], color: ink("var(--muted-foreground)") },
 ])
-// HTML (an artifact's source): the same idea.
 const htmlStyle = HighlightStyle.define([
   { tag: [tags.tagName, tags.angleBracket], color: ink("var(--blue)") },
   { tag: tags.attributeName, color: ink("var(--orange)") },
@@ -169,8 +121,6 @@ const htmlStyle = HighlightStyle.define([
   { tag: [tags.propertyName, tags.function(tags.variableName)], color: ink("var(--teal)") },
 ])
 
-/** Code inside ```fences: each language's parser (loaded when a fence names it) and the scheme's code colours, but only
- *  inside the fences: Markdown itself (and, in source mode, the frontmatter's YAML) keeps the editor's own look. */
 function fencedCode(source: boolean) {
   const md = markdown({ base: markdownLanguage, codeLanguages: languages, extensions: frontmatterSyntax })
   const fm = source ? yamlFrontmatter({ content: md }) : null
@@ -182,7 +132,6 @@ function fencedCode(source: boolean) {
   ]
 }
 
-/** Wrap the selection in a marker (**, *), or take it off. */
 const wrap = (m: string) => (view: EditorView) => {
   view.dispatch(view.state.changeByRange((r) => {
     const text = view.state.sliceDoc(r.from, r.to)
@@ -196,7 +145,6 @@ const wrap = (m: string) => (view: EditorView) => {
   return true
 }
 
-/** Markdown's marks a selection is wrapped in when one is typed over it (autoPairMarkdown). */
 const MD_PAIRS = new Set(["*", "_", "~", "=", "`"])
 const wrapTyped = EditorView.inputHandler.of((view, _from, _to, text) => {
   if (!MD_PAIRS.has(text) || view.state.selection.ranges.every((r) => r.empty) || view.state.readOnly) return false
@@ -207,8 +155,6 @@ const wrapTyped = EditorView.inputHandler.of((view, _from, _to, text) => {
   return true
 })
 
-/** A note's editor as its settings say (editorPrefs.ts): spelling, indent (the note's own, if it has any, as VS Code
- *  does; else the setting's), what typed characters close or wrap. */
 function writing(e: EditorSettings, doc: string) {
   const brackets = [...(e.autoPairBrackets ? ["(", "[", "{", "'", '"'] : []), ...(e.autoPairMarkdown ? ["`"] : [])]
   return [
@@ -219,10 +165,8 @@ function writing(e: EditorSettings, doc: string) {
   ]
 }
 
-/** A path in a Markdown link: spaces and parentheses escaped. */
 const linkPath = (p: string) => p.replace(/%/g, "%25").replace(/ /g, "%20").replace(/\(/g, "%28").replace(/\)/g, "%29")
 
-/** Scroll the pane (or the page) so a line is near the top, and flash it. */
 function scrollToLine(v: EditorView, line: number) {
   const n = Math.min(Math.max(line + 1, 1), v.state.doc.lines)
   const pos = v.state.doc.line(n).from
@@ -239,10 +183,8 @@ function scrollToLine(v: EditorView, line: number) {
 }
 
 
-/** Whether drops from outside go into it: a Markdown editor being edited that saves files (its host says so). */
 const takesDrops = (view: EditorView) => view.state.facet(EditorView.editable) && !!view.dom.parentElement?.hasAttribute("data-file-drop")
 
-/** Pasted files saved as attachments through `attach` and the embeds it answers put in where the selection was. */
 function pasteFiles(e: Event, view: EditorView, files: File[], attach?: (d: Dropped) => Promise<string | null>) {
   if (!files.length || !attach || !view.state.facet(EditorView.editable)) return false
   e.preventDefault()
@@ -255,7 +197,6 @@ function pasteFiles(e: Event, view: EditorView, files: File[], attach?: (d: Drop
   return true
 }
 
-/** An editor's changes and cursor jumps for the trace: where and by whom, never the text. */
 function traceUpdate(u: ViewUpdate, path: string) {
   const was = u.startState.selection.main.head, head = u.state.selection.main.head
   const lines = Math.abs(u.state.doc.lineAt(head).number - u.startState.doc.lineAt(was).number)
@@ -264,7 +205,6 @@ function traceUpdate(u: ViewUpdate, path: string) {
   const by = [...new Set(u.transactions.map((t) => (t.annotation(Transaction.remote) ? "remote" : t.annotation(Transaction.userEvent) ?? "app")))]
   const changes: [number, number, number][] = []
   u.changes.iterChanges((from, to, _f, _t, ins) => { if (changes.length < 3) changes.push([from, to, ins.length]) })
-  // The app moving the cursor or rewriting most of the text: who did it (a plugin's file is in its stack)
   const jump = by.includes("app") && (lines > 1 || changes.some(([f, t]) => t - f > u.startState.doc.length / 2))
   trace("editor", { ev: "update", path, by: by.join(","), was, head, ...(changes.length ? { changes } : {}),
     ...(editable ? { editable: u.state.facet(EditorView.editable) } : {}), focus: u.view.hasFocus, ...(jump ? { stack: callers() } : {}) })
@@ -286,10 +226,8 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
   const plugins = usePluginsVersion()
   const { tab } = usePane()
   const showNumbers = !!numbered && numbersOn && language === undefined
-  // Callbacks change every render; the editor reads the latest through refs.
   const cb = useRef({ onChange, onOpen, names, tags, headings, slash, markdownLinks, onAttach, onEscape, onBlur, onUndoFrontmatter })
   cb.current = { onChange, onOpen, names, tags, headings, slash, markdownLinks, onAttach, onEscape, onBlur, onUndoFrontmatter }
-  // (its frontmatter hidden: the body always has a line, even in a file that ends with its closing ---)
   const fill = (text: string) => (hides ? withBodyLine(text) : text)
 
   useEffect(() => {
@@ -297,7 +235,6 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
       const m = ctx.matchBefore(/\[\[[^[\]\n]*/)
       if (!m) return null
       const md = !!cb.current.markdownLinks?.()
-      // [[Note# (or [[# in this file): its headings.
       const hash = m.text.indexOf("#")
       if (hash >= 0) {
         const rest = m.text.slice(hash + 1)
@@ -314,7 +251,6 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
         from: m.from + 2,
         options: cb.current.names().map((n) => ({
           label: n.label, detail: n.detail,
-          // Markdown links: the whole [[… becomes [name](path.md)
           apply: md && n.path
             ? (view: EditorView, _c: unknown, from: number, to: number) => {
               const insert = `[${n.label}](${linkPath(n.path!)})`
@@ -323,12 +259,10 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
             }
             : pickLink(n.link ? `${n.link}|${n.label}` : n.insert ?? n.label),
         })),
-        // (a # asks again: the note's headings)
         validFor: /^[^[\]\n|#]*$/,
       }
     }
-    // Ending editing (a caller that has one): Escape, ⌘Enter, the focus leaving. An open suggestion list closes first;
-    // ones still being looked up don't take Escape, or it would only cancel them.
+    // Only an open list takes Escape: one still being looked up would just be cancelled by it.
     const end = (view: EditorView) => {
       const f = cb.current.onEscape
       if (!f || completionStatus(view.state) === "active") return false
@@ -338,8 +272,6 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
     }
     const leaving = [
       Prec.highest(keymap.of([{ key: "Escape", run: end }, { key: "Mod-Enter", run: end }])),
-      // The app's ⌘/⌃/⌥ shortcuts win over the editor's keys (⌘L), as in a terminal, so any key can be rebound;
-      // plugins' extensions (Vim, Find's ⌘G) still come first.
       Prec.high(EditorView.domEventHandlers({ keydown: (e) => runShortcut(e) })),
       EditorView.domEventHandlers({
         blur(e, view) {
@@ -353,7 +285,6 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
       EditorView.updateListener.of((u) => { traceUpdate(u, docPath ?? label ?? ""); if (u.docChanged) textChanged(u.view, u.changes) }),
     ]
     const sight = [sightMargins, followReader]
-    // (what a file's raw editor and a code editor share: plain text, Tab indents)
     const plain = [
       edit.current.of([EditorView.editable.of(editable), EditorState.readOnly.of(!editable)]),
       keymap.of([{ key: "Tab", run: indentMore }, { key: "Shift-Tab", run: indentLess }, ...defaultKeymap, ...historyKeymap]),
@@ -362,7 +293,6 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
         if (news(u)) cb.current.onChange(u.state.doc.toString(), 0, fromElsewhere(u))
       }),
     ]
-    // (as this tab's editor of the file was left, its history with it, when it went: editor/kept.ts)
     const keepAs = keep ? keptKey(tab, keep) : null
     let restored = false
     const start = (c: { doc: string; selection?: EditorSelection | SelectionRange; extensions: Extension }) => {
@@ -375,8 +305,6 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
       parent: host.current!,
       state: start({
         doc: fill(doc),
-        // (a new editor's cursor starts at what's shown, never inside the hidden frontmatter: typing there went before `---`;
-        // past a list's bullet or checkbox there, which shows as typed with the cursor in front of it)
         selection: hides ? EditorSelection.cursor(((t) => textStartIn(t, titleEnd(t, bodyStart(t), title ?? "")))(Text.of(fill(doc).split(/\r\n?|\n/)))) : undefined,
         extensions: language !== undefined ? [
           Prec.highest(plugged.current.of([])),
@@ -399,8 +327,6 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
           edit.current.of([EditorView.editable.of(editable), EditorState.readOnly.of(!editable)]),
           livePreview,
           linkHandler((l, t) => cb.current.onOpen(l, t)),
-          // Files pasted or dropped from outside: saved as attachments, embedded where they went, not read in as text (a
-          // note in its tab or sheet takes drops around it too: core/filedrop.ts, through `api.drop`).
           fileDrops,
           EditorView.domEventHandlers({
             paste: (e, view) => pasteFiles(e, view, pastedFiles(e.clipboardData), cb.current.onAttach) || pasteTable(e, view),
@@ -443,8 +369,6 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
     })
     view.current = v
     if (language) languageFor(language).then((l) => { if (l && view.current === v) v.dispatch({ effects: lang.current.reconfigure(l) }) })
-    // Where the app puts the cursor: at a line's text, past a heading's #s, a quote's > or a list's bullet or box (in
-    // front of them they show as typed, as if the user had gone there).
     const placed = (pos: number | null) => (pos !== null && pos === v.state.doc.lineAt(pos).from ? textStart(v.state, pos) : pos)
     const api: EditorApi = {
       view: v,
@@ -452,8 +376,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
       replace: (text) => {
         const changes = textChanges(v.state.doc.toString(), fill(text))
         if (!changes.length) return
-        // What's read stays put when lines come or go above it: the top line is found again and the pane scrolled by
-        // as much as it moved (CodeMirror does this only while focused).
+        // CodeMirror keeps what's read in place only while focused, so the pane is scrolled by as much as the top line moved.
         const sc = scrollingBox(v.dom)
         const h = (sc ? sc.getBoundingClientRect().top : 0) - v.documentTop
         const anchor = !v.hasFocus && h > 0 && h < v.contentHeight ? v.lineBlockAtHeight(h) : null
@@ -497,31 +420,25 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
       },
     }
     const unready = onReady?.(api)
-    // A Markdown file: others find its headings and blocks here (links to them, the Outline panel).
     const unregister = docPath && language === undefined && !code ? registerDoc({
       path: docPath,
       text: () => v.state.doc.toString(),
       scrollTo: (line) => scrollToLine(v, line),
       topLine: () => {
-        // (from under the bars drawn over it, as scrollToLine's margin counts from there: a heading gone to is the one)
         const top = sightOf(v.dom).top + 80
         const h = top - v.documentTop
-        // (never above what's shown: a hidden frontmatter's and title's lines aren't on screen)
         const first = v.state.doc.lineAt(shownStart(v.state)).number - 1
         return Math.max(first, h <= 0 ? 0 : v.state.doc.lineAt(v.lineBlockAtHeight(Math.min(h, v.contentHeight)).from).number - 1)
       },
       dom: v.dom,
     }) : null
-    // Every editor: commands find the one the user means (Find, folding: core/editors.ts).
     const unlist = registerEditor({ view: v, kind: language !== undefined ? "code" : code ? "text" : "markdown", path: docPath ?? (language || undefined), source: !!source,
       start: shownStart, undo: () => undo(v), redo: () => redo(v), findable, blocks: () => drawnBlocks(v) })
     trace("editor", { ev: "mount", path: docPath ?? label, head: v.state.selection.main.head, editable, source: !!source })
     return () => { trace("editor", { ev: "destroy", path: docPath ?? label, head: v.state.selection.main.head }); leaveConflicts(v); unready?.(); unregister?.(); unlist(); if (keepAs) keepState(keepAs, v.state, !!source); v.destroy(); view.current = null }
-    // One editor per file: the parent keys this component by path.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one editor per file: the parent keys it by path
   }, [])
 
-  // Plugins' extensions, again whenever a plugin is turned on or off, or a vault plugin's code arrives.
   useEffect(() => {
     let live = true
     const kind = language !== undefined ? "code" : code ? "text" : "markdown"
@@ -529,7 +446,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
       if (live) view.current?.dispatch({ effects: plugged.current.reconfigure(ext) })
     })
     return () => { live = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- kind, path and source are fixed for an editor's life
   }, [disabled, enabled, plugins])
 
   useEffect(() => {
@@ -538,26 +455,24 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
   useEffect(() => {
     const v = view.current
     if (v && language === undefined && !code) v.dispatch({ effects: prose.current.reconfigure(writing(settings, v.state.doc.toString())) })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- language and code are fixed for an editor's life
   }, [settings])
   useEffect(() => {
     if (language === undefined) view.current?.dispatch({ effects: nums.current.reconfigure(showNumbers ? numberGutter() : []) })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- language is fixed for an editor's life
   }, [showNumbers])
   useEffect(() => {
     view.current?.dispatch({ effects: edit.current.reconfigure([EditorView.editable.of(editable), EditorState.readOnly.of(!editable)]) })
   }, [editable])
-  // The title drawn above it or not (Settings > Editor > Show inline title): a first heading that's it hides or shows.
   useEffect(() => {
     const v = view.current
     if (!v || !hides) return
     v.dispatch({ effects: naming.current.reconfigure(titled.of(title ?? "")) })
     const start = shownStart(v.state)
     if (v.state.selection.main.from < start) v.dispatch({ selection: EditorSelection.cursor(start) })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- whether it hides the frontmatter is fixed for an editor's life
   }, [title])
 
-  // (the desktop app opens files dropped elsewhere; here they're attachments)
   return <div ref={host} data-file-drop={editable && onAttach && language === undefined && !code ? "" : undefined}
     className={language !== undefined ? "vau-editor is-source is-code" : cn("vau-editor", source && "is-source", showNumbers && "has-numbers")} />
 }

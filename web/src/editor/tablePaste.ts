@@ -1,8 +1,5 @@
-// Cells on the clipboard, both ways: what a spreadsheet, a web page's table or a CSV puts there read as rows of cells,
-// and cells written as a spreadsheet reads them (tab-separated text and an HTML table). No DOM: tests run it in Node.
 import { escape, NUMBER } from "./tableText.ts"
 
-/** Delimited text as rows (Excel's quoting: a field in quotes may hold the delimiter, line breaks and "" for a quote). */
 export function delimited(text: string, sep: string, quotes = true): string[][] {
   text = text.replace(/\r\n?/g, "\n").replace(/\n$/, "")
   const rows: string[][] = []
@@ -15,7 +12,6 @@ export function delimited(text: string, sep: string, quotes = true): string[][] 
     else if (ch === "\n") { row.push(cur); rows.push(row); row = []; cur = "" }
     else cur += ch
   }
-  // (a quote never closed was text: read again without quoting)
   if (q) return delimited(text, sep, false)
   row.push(cur); rows.push(row)
   return rows
@@ -25,9 +21,8 @@ const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"'
 const decode = (s: string) => s.replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (m, e: string) => e[0] === "#"
   ? String.fromCodePoint(e[1].toLowerCase() === "x" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10)) : ENTITIES[e.toLowerCase()] ?? m)
 const NOISE = /<!--[\s\S]*?-->|<(style|script|head|title)\b[\s\S]*?<\/\1>/gi
-/** Emphasis, strikethrough, code and links in a cell's HTML as Markdown (a web page's table, a spreadsheet's links). */
 function inline(h: string): string {
-  // (spaces kept outside the marks: `** x**` isn't emphasis)
+  // CommonMark: `** x**` isn't emphasis, so spaces stay outside the marks.
   const wrap = (mark: string, t: string) => { const m = /^(\s*)([\s\S]*?)(\s*)$/.exec(t)!; return m[2] ? `${m[1]}${mark}${m[2]}${mark}${m[3]}` : t }
   return h
     .replace(/<a\b[^>]*?href\s*=\s*["']((?:https?:|mailto:)[^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi, (_, href: string, t: string) => {
@@ -41,8 +36,6 @@ function inline(h: string): string {
     .replace(/<code\b[^>]*>([\s\S]*?)<\/code>/gi, (_, t: string) => (t.includes("`") ? t : wrap("`", t)))
 }
 
-/** The rows of an HTML table, when the table is all there is (a spreadsheet's copy, a table selected on a page); not
- *  for a page copied with a table somewhere in it. `md`: its cells' formatting and links as Markdown. */
 export function htmlTable(html: string, md = false): string[][] | null {
   const clean = html.replace(NOISE, "")
   const m = /<table\b[\s\S]*<\/table>/i.exec(clean)
@@ -53,10 +46,9 @@ export function htmlTable(html: string, md = false): string[][] | null {
     for (const td of tr[1].matchAll(/<t([hd])\b([^>]*)>([\s\S]*?)<\/t\1>/gi)) {
       const h = td[3].replace(/\s+/g, " ").replace(/<br\s*\/?>/gi, "\n").replace(/<\/(p|div)>\s*<(p|div)\b/gi, "\n<$2")
       let text = decode((md ? inline(h) : h).replace(/<[^>]*>/g, "")).split("\n").map((l) => l.trim()).join("\n").trim()
-      // (a spreadsheet's bold cell is bold by its style, a header by being one; its bold first row is the header)
+      // Spreadsheets mark a bold cell by its style, not a <b>.
       if (md && text && rows.length && td[1] === "d" && /font-weight\s*:\s*(?:bold|[6-9]00)/i.test(td[2]) && !/^\*\*[\s\S]*\*\*$/.test(text)) text = `**${text}**`
       row.push(text)
-      // (a cell spanning columns leaves the ones it covers empty, so the rest stay under their headings)
       const span = Number(/colspan\s*=\s*["']?(\d+)/i.exec(td[2])?.[1] ?? 1)
       for (let k = 1; k < Math.min(span, 50); k++) row.push("")
     }
@@ -65,8 +57,6 @@ export function htmlTable(html: string, md = false): string[][] | null {
   return rows.length ? square(rows) : null
 }
 
-/** An HTML table's cells as Markdown (its formatting and links), unless the clipboard's text is other cells of the
- *  same shape: the app's own copy, whose Markdown the HTML drew, so that text. */
 function fromHtml(plain: string[][] | null, html: string): string[][] | null {
   const table = htmlTable(html)
   if (!table) return null
@@ -74,13 +64,10 @@ function fromHtml(plain: string[][] | null, html: string): string[][] | null {
   return htmlTable(html, true)
 }
 
-/** Every row as long as the longest. */
 const square = (rows: string[][]) => { const n = Math.max(...rows.map((r) => r.length)); return rows.map((r) => [...r, ...Array(n - r.length).fill("")]) }
 const sameShape = (a: string[][], b: string[][]) => a.length === b.length && a.every((r, i) => r.length === b[i].length)
 const even = (rows: string[][]) => rows.every((r) => r.length === rows[0].length)
 
-/** Cells pasted into a table's cell: a spreadsheet's (tab-separated, or its HTML table), a web page's table, or CSV
- *  lines; null for text (a line, a paragraph), which goes into the cell as it is. */
 export function clipCells(plain: string, html = ""): string[][] | null {
   const tsv = plain.includes("\t") || /<table\b/i.test(html) ? delimited(plain, "\t") : null
   const table = fromHtml(tsv, html)
@@ -89,26 +76,20 @@ export function clipCells(plain: string, html = ""): string[][] | null {
   return cells && (cells.length > 1 || cells[0].length > 1) ? cells : null
 }
 
-/** A table pasted in a note's text: a spreadsheet's or a web page's (its HTML table), or lines with the same number of
- *  tabs in each; at least two rows of two. Not tab-indented lines (code), nor a page with a table somewhere in it. */
 export function pastedTable(plain: string, html = ""): string[][] | null {
   const tsv = plain.includes("\t") ? delimited(plain, "\t") : null
   const table = fromHtml(tsv, html)
   const rows = table ?? (tsv && even(tsv) ? tsv : null)
   if (!rows || rows.length < 2 || rows[0].length < 2) return null
-  // (a column empty all the way down: indentation, not a table)
   return rows[0].some((_, c) => rows.every((r) => !r[c].trim())) ? null : rows
 }
 
-/** Rows as a Markdown table, the first its header; a column of numbers aligned right, as a spreadsheet shows it. */
 export function markdownTable(rows: string[][]) {
   const line = (r: string[]) => `| ${r.map((x) => escape(x.trim())).join(" | ")} |`
   const numbers = (c: number) => { const xs = rows.slice(1).map((r) => r[c].trim()).filter(Boolean); return xs.length > 0 && xs.every((x) => NUMBER.test(x)) }
   return [line(rows[0]), `| ${rows[0].map((_, c) => (numbers(c) ? "--:" : "---")).join(" | ")} |`, ...rows.slice(1).map(line)].join("\n")
 }
 
-/** Cells as tab-separated lines, quoted where a cell holds a tab, a line break or a quote (as spreadsheets read it). */
 export const tsvText = (rows: string[][]) =>
   rows.map((r) => r.map((x) => (/[\t\n"]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x)).join("\t")).join("\n")
-/** Cells (each already HTML) as an HTML table. */
 export const htmlText = (rows: string[][]) => `<table>${rows.map((r) => `<tr>${r.map((x) => `<td>${x}</td>`).join("")}</tr>`).join("")}</table>`

@@ -1,5 +1,3 @@
-// A conflict shown in place: where the file changed elsewhere in the lines being typed, the user's lines stay editable
-// under a "Yours" bar, the other version below them, each with Keep, and Keep both. Saving waits until none is left.
 import { invertedEffects, undo } from "@codemirror/commands"
 import { StateEffect, StateField, type ChangeSpec, type EditorState, type Extension, type Text } from "@codemirror/state"
 import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view"
@@ -9,11 +7,8 @@ import { notify } from "@/core/notify"
 import { capitalize } from "@/lib/utils"
 import { shownStart } from "./frontmatter"
 
-/** One clash in the doc: the user's lines are `from`..`to` (whole lines, no break after; empty if they deleted them). */
 type Chunk = { id: number; from: number; to: number; theirs: string[] }
-/** `note`: what the bar over the user's lines says instead of "edited while you typed" (another device's version). */
 type Conflicts = { chunks: Chunk[]; who?: string; note?: string; open?: Open }
-/** How many are left as each is settled; with `rest`, the editor is going and these are left (for the next one). */
 export type Open = (left: number, rest?: Clash[]) => void
 
 const mapChunk = (c: Chunk, ch: { mapPos: (pos: number, assoc?: number) => number }): Chunk =>
@@ -74,7 +69,7 @@ class Bar extends WidgetType {
       b.type = "button"
       b.textContent = label
       b.setAttribute("aria-label", aria)
-      b.addEventListener("mousedown", (e) => e.preventDefault()) // (the keyboard stays where it was)
+      b.addEventListener("mousedown", (e) => e.preventDefault())
       b.addEventListener("click", (e) => { e.preventDefault(); keep(view, this.c.id, which) })
       return b
     }
@@ -110,7 +105,6 @@ class Bar extends WidgetType {
 
 type Which = "mine" | "theirs" | "both"
 
-/** The change that puts `lines` where the chunk's lines are. */
 function put(doc: Text, c: Chunk, lines: string[]): ChangeSpec | null {
   const text = lines.join("\n")
   if (c.from < c.to) {
@@ -138,7 +132,6 @@ function keep(view: EditorView, id: number, which: Which) {
   } } })
 }
 
-/** The editor's conflicts: drawn in place, undone with the text (⌘Z puts a chunk back), told to `open` as they go. */
 export const conflicts: Extension = [
   conflictField,
   EditorView.updateListener.of((u) => {
@@ -152,8 +145,6 @@ export const conflicts: Extension = [
   }),
 ]
 
-/** Show `clashes` (lines of `text`, now the doc) in place; false when one is where it can't be shown (a hidden
- *  frontmatter or title). `open` hears how many are left as each is settled (or undone); `note` is the bars' (Conflicts). */
 export function showConflicts(view: EditorView, clashes: Clash[], who: string | undefined, open: Open, note?: string): boolean {
   const doc = view.state.doc, body = shownStart(view.state)
   let id = Date.now()
@@ -172,13 +163,11 @@ export function showConflicts(view: EditorView, clashes: Clash[], who: string | 
   return true
 }
 
-/** Scroll to the first conflict left. */
 export function revealConflict(view: EditorView) {
   const c = view.state.field(conflictField, false)?.chunks[0]
   if (c) view.dispatch({ effects: EditorView.scrollIntoView(c.from, { y: "center" }) })
 }
 
-/** The editor going: the conflicts left, as clashes in its text, handed to whoever showed them. */
 export function leaveConflicts(view: EditorView) {
   const { chunks, open } = view.state.field(conflictField, false) ?? { chunks: [] }
   if (!chunks.length || !open) return

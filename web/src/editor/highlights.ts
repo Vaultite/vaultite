@@ -1,4 +1,3 @@
-// Typing == suggests the highlight colours (core/highlights.ts), each with its dot.
 import type { Completion, CompletionContext, CompletionResult } from "@codemirror/autocomplete"
 import { syntaxTree } from "@codemirror/language"
 import type { EditorView } from "@codemirror/view"
@@ -9,7 +8,6 @@ import { inFrontmatter } from "./slash"
 const CODE = /^(FencedCode|CodeBlock|CodeText|InlineCode|CodeInfo|CodeMark)$/
 
 type ColorOption = Completion & { highlight: HighlightColor }
-/** A suggestion's dot (autocompletion's addToOptions). */
 export const optionDot = (c: Completion) => {
   const color = (c as ColorOption).highlight
   if (!color) return null
@@ -18,12 +16,9 @@ export const optionDot = (c: Completion) => {
   return el
 }
 
-/** == typed (an opening one, not in code): the colours, narrowed by a name typed after it. The pick goes in after the
- *  ==, with the closing == after the cursor unless text follows. */
 export function highlightSource(ctx: CompletionContext): CompletionResult | null {
   const m = ctx.matchBefore(/(?<![=\\])==[a-z]*$/i)
   if (!m) return null
-  // (a highlight open since an earlier line of the paragraph: this == closes it)
   if (closesHighlight(ctx.state.sliceDoc(paragraphAt(ctx.state.doc, m.from).from, m.from))) return null
   for (let n: ReturnType<ReturnType<typeof syntaxTree>["resolveInner"]> | null = syntaxTree(ctx.state).resolveInner(m.from, 1); n; n = n.parent) {
     if (CODE.test(n.name)) return null

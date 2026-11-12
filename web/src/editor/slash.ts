@@ -1,5 +1,3 @@
-// The slash menu (what's in it: core/slash.ts): "/" at a line's start or after a space, narrowed by what follows, Enter
-// puts the pick in place of "/query". Not in code, nor in the frontmatter.
 import { startCompletion, type Completion, type CompletionContext } from "@codemirror/autocomplete"
 import { syntaxTree } from "@codemirror/language"
 import type { EditorView } from "@codemirror/view"
@@ -8,7 +6,6 @@ import { fuzzy, startsWords } from "@/core/fuzzy"
 
 const CODE = /^(FencedCode|CodeBlock|CodeText|InlineCode|CodeInfo|CodeMark)$/
 
-/** Type `text` at the cursor ("$|" is where the cursor goes). `line`: on a line of its own. */
 function putText(view: EditorView, text: string, line = false) {
   const at = view.state.selection.main.head
   const before = view.state.doc.lineAt(at)
@@ -17,7 +14,6 @@ function putText(view: EditorView, text: string, line = false) {
   const insert = text.replace("$|", "")
   view.dispatch({ changes: { from: at, insert }, selection: { anchor: at + (mark < 0 ? insert.length : mark) }, scrollIntoView: true, userEvent: "input" })
   view.focus()
-  // A link was started: suggest names right away.
   if (/\[\[$/.test(view.state.sliceDoc(Math.max(0, at + (mark < 0 ? insert.length : mark) - 2), at + (mark < 0 ? insert.length : mark)))) startCompletion(view)
 }
 

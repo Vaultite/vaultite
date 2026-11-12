@@ -1,10 +1,8 @@
-// What every suggestion list in the editor does the same way: Enter, Tab or a click picks (the cursor after what went
-// in, past a link's `]]`), Escape closes the list, and it stays closed while typing on in what it was suggesting for.
 import { acceptCompletion, closeCompletion, completionStatus, type Completion, type CompletionContext, type CompletionResult, type CompletionSource } from "@codemirror/autocomplete"
 import { type EditorState, Prec, StateEffect, StateField } from "@codemirror/state"
 import { keymap, type EditorView } from "@codemirror/view"
 
-/** Puts `text` and the link's `]]` in place of from..to (and of the `]]` already after it, as auto-pair typed it). */
+// Replaces the `]]` that closeBrackets already typed after the cursor.
 export const pickLink = (text: string) => (view: EditorView, _c: Completion, from: number, to: number) => {
   const end = view.state.sliceDoc(to, to + 2) === "]]" ? to + 2 : to
   const insert = `${text}]]`
@@ -12,7 +10,6 @@ export const pickLink = (text: string) => (view: EditorView, _c: Completion, fro
 }
 
 const dismiss = StateEffect.define<number>()
-/** Where the list closed with Escape started (its `from`), until the cursor leaves it (goes before it or off its line). */
 const dismissed = StateField.define<number | null>({
   create: () => null,
   update(at, tr) {
@@ -24,11 +21,10 @@ const dismissed = StateField.define<number | null>({
   },
 })
 
-/** Lists a plugin's editor extension adds (`EditorState.languageData.of(() => [{ suggest: source }])`): the editor's own
- *  sources override CodeMirror's `autocomplete` data. */
+// The editor's `override` makes CodeMirror ignore `autocomplete` language data, so plugins add theirs as `suggest`.
 export const pluginSuggest: CompletionSource = (ctx) => {
   const sources = ctx.state.languageDataAt<CompletionSource>("suggest", ctx.pos)
-  // (at once when the sources answer at once: a list still waiting lets Enter through as a new line)
+  // Stays sync when the sources are: while a result is pending, CodeMirror lets Enter through as a new line.
   const next = (i: number): ReturnType<CompletionSource> => {
     if (i >= sources.length) return null
     const r = sources[i](ctx)
@@ -38,7 +34,6 @@ export const pluginSuggest: CompletionSource = (ctx) => {
 }
 
 const starts = new WeakMap<EditorView, number>()
-/** A source that stays quiet where its list was closed with Escape (Ctrl-Space still asks it). */
 export function quiet(source: CompletionSource): CompletionSource {
   return (ctx: CompletionContext) => {
     const check = (r: CompletionResult | null) => {
@@ -59,11 +54,7 @@ const close = (view: EditorView) => {
   return true
 }
 
-/** Goes before `autocompletion()`, so its Escape and Tab come first (Tab otherwise indents). */
 export const suggestKeys = [dismissed, Prec.highest(keymap.of([{ key: "Escape", run: close }, { key: "Tab", run: acceptCompletion }]))]
 
-/** A suggestion's picture before its label (an emoji, an icon): its option's `glyph` (autocompletion's addToOptions). */
 export const optionGlyph = (c: Completion) => (c as Completion & { glyph?: () => Node }).glyph?.() ?? null
-/** A control at a suggestion's end, its own tap target (a split button's other half): its option's `trail`, which takes
- *  its own clicks (addToOptions). */
 export const optionTrail = (c: Completion, _s: EditorState, view: EditorView) => (c as Completion & { trail?: (view: EditorView) => Node | null }).trail?.(view) ?? null

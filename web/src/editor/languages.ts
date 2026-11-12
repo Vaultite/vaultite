@@ -1,12 +1,9 @@
-// Code files in the editor: the language for a file name (@codemirror/language-data: each language's parser is its own
-// chunk, loaded when a file needs it) and the colours, from the scheme's tokens so every scheme recolours code.
 import { LanguageDescription, HighlightStyle, type LanguageSupport } from "@codemirror/language"
 import { languages } from "@codemirror/language-data"
 import { highlightTree, tags as t } from "@lezer/highlight"
 import { StyleModule } from "style-mod"
 import { ink } from "../lib/ink.ts"
 
-/** Names language-data doesn't know by their extension. */
 const ALIAS: Record<string, string> = { env: "properties", conf: "properties", cfg: "properties", plist: "xml", jsonl: "json", ndjson: "json",
   geojson: "json", webmanifest: "json", map: "json", zsh: "sh", fish: "sh", mdx: "markdown", tsv: "", txt: "", log: "" }
 
@@ -19,7 +16,6 @@ function describe(name: string): LanguageDescription | null {
 }
 
 const loaded = new Map<string, Promise<LanguageSupport | null>>()
-/** The language for a file (null: plain text). */
 export function languageFor(name: string): Promise<LanguageSupport | null> {
   const d = describe(name)
   if (!d) return Promise.resolve(null)
@@ -28,7 +24,6 @@ export function languageFor(name: string): Promise<LanguageSupport | null> {
   return p
 }
 
-/** A language by its name (a notebook's kernel: "python", "julia", "r"). */
 export function languageNamed(name: string): Promise<LanguageSupport | null> {
   const d = LanguageDescription.matchLanguageName(languages, name, true)
   return d ? languageFor(`x.${d.extensions[0] ?? name}`) : Promise.resolve(null)
@@ -55,8 +50,6 @@ export const codeStyle = HighlightStyle.define([
 ])
 
 let mounted = false
-/** Code in a language, coloured as the editor colours it, into `el` (Markdown drawn outside an editor); as it is when
- *  the language is unknown. */
 export async function highlightInto(el: HTMLElement, lang: string) {
   const support = await languageNamed(lang)
   if (!support) return
@@ -76,11 +69,8 @@ export async function highlightInto(el: HTMLElement, lang: string) {
   if (el.textContent === text) el.replaceChildren(out)
 }
 
-/** The file's own indentation: a tab, or the smallest run of leading spaces (2 or 4...). */
 export const indentOf = (doc: string) => ownIndent(doc) ?? "  "
 
-/** The indentation a file already uses (a tab, or the smallest run of leading spaces), or null when no line is
- *  indented. A note's frontmatter and code blocks don't count: they're YAML's and the code's, not the writer's. */
 export function ownIndent(doc: string, note = false): string | null {
   let tabs = 0, min = 0, fence = "", i = 0
   for (const line of doc.split("\n", 2000)) {
