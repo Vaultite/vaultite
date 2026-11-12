@@ -1,5 +1,3 @@
-// The welcome card (core/welcome.ts), over the app so what it sets shows behind it: the look, AI (the agents here, or
-// none), the Mac's permissions they use (once said yes), then a key learnt by pressing it. Skip or Esc ends it.
 import { memo, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { Check, Feather, Monitor, Moon, MousePointerClick, ScanEye, Sun } from "lucide-react"
@@ -25,9 +23,7 @@ import { cn } from "@/lib/utils"
 import type { Permission, PermissionReport } from "../../../core/permissions.ts"
 
 type Page = "look" | "ai" | "permissions" | "done"
-/** Each page's dot (permissions follows on from AI, under its dot). */
 const DOT: Record<Page, number> = { look: 0, ai: 1, permissions: 1, done: 2 }
-/** The key Done teaches: the quick switcher's, whatever it's bound to. */
 const LEARN = "switcher:open"
 const computer = isMac ? "Mac" : "computer"
 const listed = (names: string[]) => new Intl.ListFormat("en", { type: "conjunction" }).format(names)
@@ -38,7 +34,6 @@ export const WelcomeCards = memo(function WelcomeCards() {
 })
 
 function Welcome({ ask }: { ask: WelcomeAsk }) {
-  // (pages visited, for Back: Permissions only if it was shown)
   const [trail, setTrail] = useState<Page[]>(["look"])
   const [dir, setDir] = useState<1 | -1>(1)
   const [agents, setAgents] = useState<CodingAgent[] | null>(null)
@@ -50,28 +45,20 @@ function Welcome({ ask }: { ask: WelcomeAsk }) {
   const found = usable(agents ?? [])
   usePageLock()
 
-  // Asked as it opens, so the AI page has its answer by the time it's reached.
   useEffect(() => { codingAgents().then(setAgents, () => setAgents([])) }, [])
-  // The app behind takes no clicks or focus while it's up (what's picked still shows there at once).
   useLayoutEffect(() => {
     const root = document.getElementById("root"), back = document.activeElement as HTMLElement | null
     root?.setAttribute("inert", "")
     return () => { root?.removeAttribute("inert"); back?.focus?.({ preventScroll: true }) }
   }, [])
-  // Each page's main answer has the focus (Enter), else the card (the arrows).
-  // (no ring till a key moves it: the pointer's users see a button, the keyboard's find it there)
   useEffect(() => { (card.current?.querySelector<HTMLElement>("[data-primary]") ?? card.current)?.focus({ preventScroll: true, focusVisible: false } as FocusOptions) }, [page, agents])
 
   const go = (to: Page) => { setDir(1); setTrail((t) => [...t, to]) }
   const back = trail.length > 1 ? () => { setDir(-1); setTrail((t) => t.slice(0, -1)) } : undefined
 
-  // A new vault still offered a layout starts on Standard once the look is left (applying it turns AI on: before AI is
-  // answered, so the answer stands).
   const ending = useRef<Promise<unknown> | null>(null)
   const endOffer = () => (ending.current ??= getStore()?.bundles?.onboarding
     ? skipOnboarding().catch((e) => notifyError(e, "Couldn't set up the vault")) : Promise.resolve())
-  /** Closed. Skipped before AI was answered, a vault new here is as after Not now: AI off until a yes (the desktop's
-   *  first run starts one so: electron/main.ts); one set up before stays as it is. */
   const finish = (how: "done" | "skip") => {
     closeWelcome()
     const off = how === "skip" && ask.newVault && !answer
@@ -85,28 +72,23 @@ function Welcome({ ask }: { ask: WelcomeAsk }) {
       await endOffer()
       if (!aiOn()) await setAi(true)
       await Promise.all(found.map((a) => { const p = pluginById(a.id); return p && !switchedOn(p, getPrefs()) ? setSwitch(p, true, true) : null }))
-      // The first one found is the one you talk to (the companion), when it can be.
       const lead = found.find((a) => Object.keys(pluginById(a.id)?.agents ?? {})[0]) ?? found[0]
       const first = Object.keys(pluginById(lead.id)?.agents ?? {})[0]
       if (first && pluginById("companion")) await setCompanion(first)
-      // A new vault's starter notes, if it has them, say now what the agent can do, and its page and pointers come.
       if (ask.firstRun || ask.newVault) await op("vault.starter", { agent: lead.id })
       go(await permissionsWanted() ? "permissions" : "done")
     } catch (e) { notifyError(e, "Couldn't turn on the agents") } finally { setBusy(false) }
   }
   const notNow = () => { setAnswer("not-now"); void endOffer().then(() => { if (aiOn()) return setAi(false) }); go("done") }
-  // None here: a new vault starts without AI (connected later in Settings); seen again, it's left as it is.
   const without = () => { if (ask.firstRun || ask.newVault) notNow(); else go("done") }
 
   const count = 3, at = DOT[page]
   const next = page === "look" ? () => { void endOffer(); go("ai") } : page === "permissions" ? () => go("done") : page === "done" ? () => finish("done") : null
 
   const keys = (e: KeyboardEvent) => {
-    // The app's keys wait while it's up (theirs listen on the window): only the card's own work here.
     e.stopPropagation()
     const n = e.nativeEvent
     if (e.key === "Escape") { e.preventDefault(); return finish("skip") }
-    // Done's key, pressed: it lights up, then the card goes and what it opens opens.
     const learn = firstKeys(LEARN)
     if (page === "done" && learn && sameKeys(shortcutOf(n), learn)) {
       e.preventDefault()
@@ -126,7 +108,6 @@ function Welcome({ ask }: { ask: WelcomeAsk }) {
         {page !== "done" && (
           <Button size="small" look="quiet" className="absolute top-3 right-3 z-[1] h-6.5 px-2 text-[12.5px]" onClick={() => finish("skip")} data-welcome-skip>Skip</Button>
         )}
-        {/* (its sides in px: a comfortable density mustn't push the layouts' tiles onto two rows) */}
         <div key={page} className={cn("flex min-h-[300px] flex-col justify-center px-[32px] pt-9 pb-3 animate-in fade-in duration-200", dir > 0 ? "slide-in-from-right-3" : "slide-in-from-left-3")} data-welcome-body={page}>
           {page === "look" && <LookPage />}
           {page === "ai" && <AiPage agents={agents} />}
@@ -163,7 +144,6 @@ function Head({ title, children, art }: { title: string; children?: ReactNode; a
   )
 }
 
-// ---------- the look ----------
 const THEMES: { value: Theme; label: string; icon: typeof Sun }[] = [{ value: "light", label: "Light", icon: Sun }, { value: "dark", label: "Dark", icon: Moon }, { value: "system", label: "System", icon: Monitor }]
 
 function LookPage() {
@@ -178,8 +158,6 @@ function LookPage() {
   )
 }
 
-// ---------- AI ----------
-/** The agents found whose plugin is here, so a yes can turn them on. */
 const usable = (agents: CodingAgent[]) => agents.filter((a) => a.path && a.plugin)
 
 function AiPage({ agents }: { agents: CodingAgent[] | null }) {
@@ -191,7 +169,6 @@ function AiPage({ agents }: { agents: CodingAgent[] | null }) {
     </div>
   )
   const found = usable(agents)
-  // (on this computer, its plugin not here yet: getting one runs code, so that's Settings > AI's Get, not a yes here)
   const more = agents.filter((a) => a.path && !a.plugin).map((a) => a.name)
   const also = more.length ? `${listed(more)} ${more.length === 1 ? "is" : "are"} here too: Settings > AI can add ${more.length === 1 ? "it" : "them"}.` : ""
   if (!found.length) return (
@@ -212,7 +189,6 @@ function AiPage({ agents }: { agents: CodingAgent[] | null }) {
   )
 }
 
-/** A big soft square holding a page's picture. */
 const Art = ({ children }: { children: ReactNode }) => (
   <span className="mb-4 grid size-11 place-items-center rounded-[12px] bg-foreground/[0.05] text-muted-foreground shadow-[inset_0_0_0_0.5px_var(--border)]">{children}</span>
 )
@@ -222,7 +198,6 @@ function AgentMark({ a }: { a: CodingAgent }) {
   return <Art>{Icon ? <Icon className="size-5.5 text-foreground" strokeWidth={1.75} /> : <span className="text-[15px] font-semibold text-foreground">{a.name[0]}</span>}</Art>
 }
 
-// ---------- the Mac's permissions ----------
 const WANT: Record<string, { icon: typeof Sun; why: string }> = {
   accessibility: { icon: MousePointerClick, why: "To click and type in your apps" },
   screen: { icon: ScanEye, why: "To see what's on your screen" },
@@ -231,7 +206,6 @@ const readReport = () => op<PermissionReport>("app.permissions")
 const press = (id: string) => desktop!.permission!(id)
 const listOf = (r: PermissionReport) => r.mac?.permissions
 
-/** Whether the permissions page has anything to ask: the desktop app on a Mac, one of its two not allowed yet. */
 async function permissionsWanted() {
   if (!isMac || !desktop?.permission) return false
   try { return !!(await readReport()).mac?.permissions.some((p) => WANT[p.id] && p.state !== "allowed") } catch { return false }
@@ -240,7 +214,6 @@ async function permissionsWanted() {
 function PermissionsPage() {
   const { report, grant, pending } = usePermissions(readReport, press, listOf)
   const rows = report?.mac?.permissions.filter((p) => WANT[p.id]) ?? null
-  // Their computer use turned on at the first Allow: what these permissions are for.
   const asked = useRef(false)
   const allow = (id: string) => {
     if (!asked.current && desktop?.computerUse) {
@@ -281,7 +254,6 @@ function PermissionRow({ p, busy, onAllow }: { p: Permission; busy: boolean; onA
   )
 }
 
-// ---------- done ----------
 function DonePage({ pressed, finish }: { pressed: boolean; finish: () => void }) {
   const keys = firstKeys(LEARN)
   const settings = () => { finish(); openSettings("appearance") }

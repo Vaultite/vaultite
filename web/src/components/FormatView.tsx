@@ -1,5 +1,3 @@
-// A file a plugin draws (`formats`), in its tab laid out as its `layout` says, or embedded and redrawn when it changes.
-// A `binary` format is drawn from its bytes' address, never read as text.
 import { useEffect, useState, type ReactNode } from "react"
 import { Catch } from "@/components/Guard"
 import type { Store } from "@/core/data"
@@ -13,8 +11,6 @@ import { cn } from "@/lib/utils"
 import { errorText } from "@/core/notify"
 import { Loading } from "@/components/kit"
 
-/** Where a drawn file goes: in a tab on desktop, the rest of the pane's height; on phones (a tab or the sheet), most of
- *  the screen, clear of the tab bar. */
 export function FormatBox({ place, children }: { place: "page" | "sheet"; children: ReactNode }) {
   const fill = place === "page" && isDesktop()
   const [ref, h] = useFill(fill)
@@ -26,8 +22,6 @@ export function FormatBox({ place, children }: { place: "page" | "sheet"; childr
   )
 }
 
-/** `![[Diagram.excalidraw|400]]` embedded: a 360px box (or the embed's height), or as tall as it draws, under a bar with
- *  its name. `fill`: no bar, filling its parent (a canvas card); `sub`: what follows its name; `from`: its file. */
 export function FormatEmbed({ store, path, height, fill, sub, from }: { store: Store; path: string; height?: number; fill?: boolean; sub?: string; from?: string }) {
   const { disabled } = usePrefs()
   const format = formatFor(path, disabled)?.format
@@ -35,7 +29,7 @@ export function FormatEmbed({ store, path, height, fill, sub, from }: { store: S
   const [text, setText] = useState<string | null>(null)
   const [n, setN] = useState(0)
   useEffect(() => {
-    if (binary) return // (drawn from its bytes: `url`)
+    if (binary) return
     let on = true
     readFile(path).then((f) => on && setText(f.text)).catch(() => on && setText(null))
     return () => { on = false }
@@ -55,7 +49,6 @@ export function FormatEmbed({ store, path, height, fill, sub, from }: { store: S
   )
 }
 
-/** A drawing that fails (a file it can't read) says so instead of breaking the page. */
 export const FormatGuard = ({ children }: { children: ReactNode }) => (
   <Catch fallback={(e) => <p className="p-4 text-[15px] text-muted-foreground">{errorText(e, "This file couldn't be drawn")} Source mode shows its text.</p>}>
     {children}

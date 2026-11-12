@@ -1,5 +1,3 @@
-// Blocks: what every block shows besides its plugin's drawing, the same for all: plugin off, loading, a failure (each
-// block its own error boundary), and while editing, option notes against its declaration.
 import { Suspense, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { Blocks, Ellipsis, SlidersHorizontal } from "lucide-react"
@@ -29,15 +27,12 @@ export function blockOptions(text: string): Record<string, unknown> {
 }
 
 const NONE: string[] = []
-/** The `## ` sections a file's kind draws (a person's Timeline), the same array while they're the same; none in any
- *  other file. */
 export function useKindSections(store: Store, path: string): string[] {
   const kind = store.files.files.find((f) => f.path === path)?.kind
   const key = (kind && store.kinds?.[kind]?.sections.join(",")) || ""
   return useMemo(() => (key ? key.split(",") : NONE), [key])
 }
 
-/** The times a file's kind keeps (a note's created), or a plain note's the app keeps: shown, not edited. */
 export function kindStamps(store: Store, path: string): string[] {
   const kind = store.files.files.find((f) => f.path === path)?.kind
   return (kind ? store.kinds?.[kind]?.stamps : /\.md$/i.test(path) && store.noteStamps) || NONE
@@ -58,7 +53,6 @@ export function segments(body: string): Segment[] {
   }
   for (let i = 0; i < lines.length; i++) {
     const f = opens.get(i)
-    // (or a fence a plugin draws: ```base)
     const name = f && f.close !== null ? blockName(f.info) ?? fenceBlock(f.info) : null
     if (f && name) {
       flush()
@@ -66,10 +60,7 @@ export function segments(body: string): Segment[] {
       i = f.close!
       continue
     }
-    // A code fence is Markdown as it is, embeds and all.
     if (f) { if (!md.length) mdAt = i; const end = f.close ?? lines.length - 1; md.push(...lines.slice(i, end + 1)); i = end; continue }
-    // An artifact or a table shown in the file: `![[Finance/Spending.html]]` (or a .csv, a PDF, audio, video, or a
-    // file a plugin draws) on a line of its own, with an optional height (`![[Spending.html|600]]`).
     const e = prose[i] ? embedOf(lines[i]) : null
     if (e) { flush(); out.push({ embed: e.target, height: e.height, line: i }); continue }
     if (!md.length) mdAt = i
@@ -94,14 +85,11 @@ export function BlockView(props: { name: string; text: string; ctx: FileCtx; dis
   const { name, text, ctx, edit } = props
   const [form, setForm] = useState(false)
   const { decl, plugin } = blockFor(name, props.disabled, parseOptions(text).options)
-  // (a fence a plugin draws, ```base, is named by its plugin)
   const label = name.startsWith("```") && plugin ? plugin.name : capitalize(name.replace(/-/g, " "))
-  // In an editor its fence changes there; drawn on a page (a dashboard), in its file, when that can be changed.
   const write = edit?.setText ?? (ctx.setProperty && props.nth !== undefined && !ctx.host
     ? (t: string) => void setBlockText(ctx.path, name, props.nth!, t).catch((e) => notifyError(e, "Couldn't change its options")) : null)
   const options = !!decl?.options && Object.keys(decl.options).length > 0 && !!write
   const menu = (at: { x: number; y: number }, el?: HTMLElement) => openBlockMenu(at, { name, text, path: ctx.path, nth: props.nth, edit, el, options: options ? () => setForm(true) : undefined })
-  // Right-click (or a held finger): where its data comes from, and editing it (components/BlockSource.tsx).
   return (
     <BlockSource name={name} menu={menu}>
       <Block {...props} write={write} />
@@ -111,7 +99,6 @@ export function BlockView(props: { name: string; text: string; ctx: FileCtx; dis
   )
 }
 
-/** What a block adds to its bar in the editor: its name, Options, and its menu (the editor adds </>). */
 function BlockBar({ name, options, form, setForm, menu }: { name: string; options: boolean; form: boolean; setForm: (f: boolean) => void; menu: (at: { x: number; y: number }) => void }) {
   const hold = (e: ReactMouseEvent) => e.preventDefault()
   return (
@@ -130,14 +117,12 @@ function BlockBar({ name, options, form, setForm, menu }: { name: string; option
   )
 }
 
-/** A block's options as a form, from its declaration: each change written into its fence as YAML, like typing it. */
 function BlockOptions({ decl, text, set, close, source }: { decl: BlockDecl; text: string; set: (text: string) => void; close: () => void; source: (() => void) | null }) {
   const { options: now, error } = parseOptions(text)
   const put = (key: string, value: unknown) => {
     const empty = value === undefined || value === "" || (Array.isArray(value) && !value.length)
     set(innerOf(setProp(`---\n${text}\n---\n`, key, empty ? undefined : value)))
   }
-  // (a map, a Bases filter, is written in its source)
   const all = Object.entries(decl.options ?? {})
   const rows = all.filter(([, d]) => !(Array.isArray(d.type) ? d.type : [d.type]).includes("map"))
   return (
@@ -160,7 +145,6 @@ function BlockOptions({ decl, text, set, close, source }: { decl: BlockDecl; tex
 
 const listOf = (v: unknown) => (Array.isArray(v) ? v.map(String) : typeof v === "string" ? v.split(",") : []).map((x) => x.trim()).filter(Boolean)
 
-/** One option's value, as its type takes it: a switch, a choice, a number, a comma list, a text. */
 function OptionInput({ d, value, set }: { d: OptionDecl; value: unknown; set: (v: unknown) => void }) {
   const ts = Array.isArray(d.type) ? d.type : [d.type]
   const shown = value === undefined || value === null ? "" : Array.isArray(value) ? value.join(", ") : String(value)
@@ -203,10 +187,7 @@ function Block({ name, text, ctx, disabled, quiet, editing, write }: { name: str
     )
   }
   const options = resolveOptions(decl, parsed.options)
-  // A plugin's fence (```tasks) is written in its own language, not as options: nothing to note.
   const notes = editing && !name.startsWith("```") ? optionNotes(decl, parsed.options, parsed.error) : []
-  // (keyed by a vault plugin's version: a block drawn by an older one starts afresh; one that failed is tried again
-  // when its text changes)
   const drawn = typeof options.file === "string" && options.file.trim()
     ? <OtherFile name={name} text={text} options={options} ctx={ctx} render={render} editing={editing} />
     : <Island key={plugin?.version} retry={text} name={name} editing={editing}><Drawn render={render} ctx={{ ...ctx, text, options, setText: write ?? undefined }} /></Island>
@@ -216,14 +197,10 @@ function Block({ name, text, ctx, disabled, quiet, editing, write }: { name: str
 
 type Render = NonNullable<ReturnType<typeof blockFor>["render"]>
 
-/** The plugin's render, called inside the block's own boundaries (an error in it, or its code still loading, stays
- *  this block's), with the core's loading line while it suspends. */
 function Drawn({ render, ctx }: { render: Render; ctx: Parameters<Render>[0] }) {
   return <Suspense fallback={<Loading />}>{render(ctx)}</Suspense>
 }
 
-/** What's wrong with a block's options, under it while editing: one quiet line ("Unknown option isues: did you mean
- *  issues?"), the option names in code. */
 function BlockNotes({ name, notes }: { name: string; notes: string[] }) {
   const text = notes.join("; ")
   return (
@@ -235,8 +212,6 @@ function BlockNotes({ name, notes }: { name: string; notes: string[] }) {
   )
 }
 
-/** `file:` in any block's options draws it for another file: a name or path like a [[link]], or a folder ending in /
- *  for its newest file; `from`, the file it is in (the closest of a name wins). Server: otherFile in core/render.ts. */
 function fileFor(store: Store, target: string, from?: string): string | null {
   const t = target.trim().replace(/^\[\[|\]\]$/g, "")
   if (t.endsWith("/")) {
@@ -274,8 +249,6 @@ export function FileBlocks({ store, path, fm = {}, fallback = [] }: { store: Sto
   return <>{blocks.map(([name, text], i) => <BlockView key={i} name={name} text={text} ctx={ctx} disabled={disabled} quiet />)}</>
 }
 
-/** A block drawn on its own: a failing one shows a note instead of breaking the page, retried when `retry` (its text)
- *  changes; `editing` shows the error's message. */
 function Island({ children, name, editing, retry }: { children: ReactNode; name?: string; editing?: boolean; retry?: string }) {
   const what = name ? `This ${name} block` : "This block"
   const failed = (e: unknown) => (

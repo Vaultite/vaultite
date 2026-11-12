@@ -1,5 +1,3 @@
-// The one drag-to-resize primitive (sidebar edge, split dividers). While dragging, <body data-resizing> (core/resizing.ts)
-// stops size animations and keeps the cursor over iframes; Escape puts it back. Keys: the arrows drag it a step, Enter resets it.
 import { useLayoutEffect, useRef, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react"
 import { cn } from "@/lib/utils"
 import { resizing, startResizing, stopResizing } from "@/core/resizing"
@@ -20,7 +18,6 @@ export function Resizer({ label, horizontal, onStart, onDrag, onEnd, onCancel, o
   className?: string; style?: CSSProperties
 }) {
   const unEscape = useRef<(() => void) | null>(null), self = useRef<HTMLDivElement>(null)
-  // Where the line sits, as a share of what it divides, for a screen reader (sizes may change without a render).
   const place = () => {
     const el = self.current, box = el?.offsetParent ?? document.documentElement
     if (!el) return
@@ -30,8 +27,6 @@ export function Resizer({ label, horizontal, onStart, onDrag, onEnd, onCancel, o
   }
   useLayoutEffect(place, [])
   const end = () => { unEscape.current?.(); unEscape.current = null; if (!resizing()) return; onEnd?.(); stopResizing(); requestAnimationFrame(place) }
-  // The drag is heard on the window, not the line: a drag that hides what the line is on (a sidebar dragged shut) takes
-  // the line away mid-drag, and its end, never heard, left the app resizing (the cursor stuck, terminals waiting).
   const down = (e: PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
     e.preventDefault()
@@ -41,13 +36,12 @@ export function Resizer({ label, horizontal, onStart, onDrag, onEnd, onCancel, o
     onStart?.(x, y)
     const move = (m: globalThis.PointerEvent) => { if (m.pointerId === id) onDrag(m.clientX, m.clientY) }
     const up = (m: globalThis.PointerEvent) => { if (m.pointerId === id) end() }
-    // Escape puts it back where it was and ends the drag, as it does any other.
     const escape = (k: globalThis.KeyboardEvent) => {
       if (k.key !== "Escape") return
       k.preventDefault(); k.stopPropagation()
       if (onCancel) onCancel()
       else onDrag(x, y)
-      try { el.releasePointerCapture(id) } catch { /* already gone */ }
+      try { el.releasePointerCapture(id) } catch {}
       end()
     }
     addEventListener("pointermove", move)
@@ -60,7 +54,6 @@ export function Resizer({ label, horizontal, onStart, onDrag, onEnd, onCancel, o
       removeEventListener("blur", end); removeEventListener("keydown", escape, true)
     }
   }
-  // A key is a whole drag, from the line's middle to a step along.
   const key = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === "Enter" && onReset) { e.preventDefault(); onReset(); return }
     const step = e.shiftKey ? 48 : 12
@@ -77,7 +70,6 @@ export function Resizer({ label, horizontal, onStart, onDrag, onEnd, onCancel, o
       data-tip={onReset ? `Drag to resize, double-click to ${resetTip}` : "Drag to resize"}
       onPointerDown={down} onDoubleClick={onReset} style={style}
       className={cn("group z-10 focus-visible:outline-none", horizontal ? "cursor-row-resize" : "cursor-col-resize", className)}>
-      {/* A slim bar in the middle of its wider grip; on hover a beat late, so brushing past doesn't flash it. */}
       <div className={cn("absolute transition-colors duration-(--motion-fast) group-hover:bg-primary/45 group-hover:delay-100 group-focus-visible:bg-primary/60 group-active:bg-primary/60 group-active:delay-0",
         horizontal ? "inset-x-0 top-1/2 h-[3px] -translate-y-1/2" : "inset-y-0 left-1/2 w-[3px] -translate-x-1/2")} />
     </div>

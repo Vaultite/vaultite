@@ -1,5 +1,3 @@
-// A coding agent's usage, drawn alike for every agent plugin (its route answers an AgentUsage). Blocks on a page share
-// one request every 15 s; `machine:` and `account:` pick another machine or account.
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react"
 import type { LucideIcon } from "lucide-react"
 import { BarChart3, Boxes, ChevronRight, FolderGit2, Gauge, RefreshCw, Terminal } from "lucide-react"
@@ -47,7 +45,6 @@ export type AgentSource = {
 }
 
 export type Window = { id: string; label: string; minutes: number; used: number; resets_at: string | null }
-/** Which account a session is in (a plugin with several), and whether it's private (no title, folder or conversation). */
 type OfAccount = { account?: string; accountLabel?: string; private?: boolean }
 export type Session = OfAccount & {
   id: string; title: string; project: string; root: string; cwd?: string; first: string; last: string
@@ -62,7 +59,6 @@ export type LiveSession = OfAccount & {
 }
 export type Day = { date: string; cost: number; tokens: number; active_min: number; sessions: number }
 export type Share = { name: string; cost: number; tokens: number; root?: string; sessions?: number; active_min?: number; last?: string }
-/** An account's plan and limits; `uses`: what the block's `for:` plugin runs in it ("Companion chat"), those first. */
 type AccountPlan = { id: string; label: string; private?: boolean; uses?: string[]; plan: AgentUsage["plan"]; limits: AgentUsage["limits"] }
 export type AgentUsage = {
   plan: { name: string; monthly: number | null } | null
@@ -89,8 +85,6 @@ export function useAgentRoute<T>(route: string, options: Record<string, unknown>
   return { data, error: data ? null : error, on: there ? ` on ${m?.label ?? machine}` : "", machine: there }
 }
 
-/** A block's usage: the same path at the same moment for every block (so they share one request), again every 15 s
- *  while visible; `refresh` has the plugin ask again what it remembers (the account's limits) and fetches it. */
 function useAgentUsage(src: AgentSource, options: Record<string, unknown>, days = 30) {
   const [tick, setTick] = useState(() => Math.floor(Date.now() / EVERY))
   useEffect(() => {
@@ -107,7 +101,6 @@ function useAgentUsage(src: AgentSource, options: Record<string, unknown>, days 
   return { ...got, refresh }
 }
 
-/** Sessions' titles seen so far, by "<view>/<id>", for their tabs' labels (sessionTitle). */
 const titles = new Map<string, string>()
 /** A session tab's label: its title once a block has seen it, else "<label> session". */
 export const sessionTitle = (src: AgentSource, id: string) => titles.get(`${src.view}/${id}`) || `${src.label} session`
@@ -126,7 +119,6 @@ export function openSession(src: AgentSource, s: { id: string; terminal?: string
 const titleOf = (s: { title: string; private?: boolean }, untitled: string) => (s.private ? "Private session" : s.title || untitled)
 
 const daysOf = (o: Record<string, unknown>) => Math.min(Math.max(typeof o.days === "number" ? Math.round(o.days) : 30, 1), 3650)
-/** What a cost is: an estimate at list prices, unless the source says otherwise. */
 const costNote = (src: AgentSource) => src.costNote ?? "Estimated at list prices"
 export const money = (v: number) => (v < 100 ? `$${v.toFixed(2)}` : `$${numberText(Math.round(v))}`)
 export const tokens = (n: number) =>
@@ -134,12 +126,10 @@ export const tokens = (n: number) =>
 const minsSince = (s: string | null) => (s ? Math.max((Date.now() - new Date(s).getTime()) / 60000, 0) : 0)
 const status = (s: string) => (s === "busy" ? "Working" : s ? s[0].toUpperCase() + s.slice(1) : "Open")
 
-/** Until its data comes where its shape isn't known: "Loading…", or why it didn't. */
 function Waiting({ src, error, on = "" }: { src: AgentSource; error: string | null; on?: string }) {
   return <Loading error={error && `Couldn't read ${src.label}${on || " on this machine"}.`} />
 }
 
-/** When a window renews: "in 2h 10m, 21:00" (a weekday when it's further than today). */
 function renews(at: string) {
   const d = new Date(at)
   const left = (d.getTime() - Date.now()) / 60000
@@ -147,7 +137,6 @@ function renews(at: string) {
   return `Renews in ${left < 48 * 60 ? fmtMin(Math.max(Math.round(left), 1)) : `${Math.round(left / 1440)} days`}, ${clock}`
 }
 
-/** A meter while the limits come: its lines as bars, its track empty (each bar in a span, which takes the line's height). */
 function MeterSkeleton() {
   return (
     <div>
@@ -160,7 +149,6 @@ function MeterSkeleton() {
 
 function Meter({ w, tint }: { w: Window; tint: string }) {
   const left = w.resets_at ? new Date(w.resets_at).getTime() - Date.now() : null
-  // How much of the window's time has passed: spending faster than that runs out before it renews.
   const passed = left != null ? Math.min(Math.max(1 - left / (w.minutes * 60000), 0), 1) : null
   const ahead = passed != null && w.used / 100 > passed + 0.1
   return (
@@ -187,7 +175,6 @@ function Meter({ w, tint }: { w: Window; tint: string }) {
   )
 }
 
-/** Its plan's allowances (a session, a week, a month), used and when they renew. */
 function Limits({ src, lim }: { src: AgentSource; lim: AgentUsage["limits"] }) {
   if (!lim) return <Empty>{src.noLimits ?? "No limits yet."}</Empty>
   return (
@@ -198,12 +185,9 @@ function Limits({ src, lim }: { src: AgentSource; lim: AgentUsage["limits"] }) {
   )
 }
 
-/** Its logo off its own page (the Agents dashboard mixes agents), else what the panel shows. */
 const iconFor = (src: AgentSource, fm: Record<string, unknown>, icon: LucideIcon) =>
   namedIcon(typeof fm.icon === "string" ? fm.icon : null) === src.icon ? icon : src.icon
 
-/** Asked once, where the account's usage would show: yes reads it from now on, Not now leaves it off (both kept in the
- *  plugin's settings, where it can be changed). */
 function Consent({ src, consent }: { src: AgentSource; consent: NonNullable<AgentSource["consent"]> }) {
   const [, set] = usePluginSettings(src.path)
   const answer = (yes: boolean) => void set({ [consent.setting]: yes }).catch(() => notify(`Couldn't save ${src.label}'s setting`))
@@ -221,7 +205,6 @@ function Consent({ src, consent }: { src: AgentSource; consent: NonNullable<Agen
 
 /** Its plan's limits in the status bar (AmbientItem): each account's tightest window, a click to `open`. */
 export function AgentLimitsChip({ src, open }: { src: AgentSource; open: () => void }) {
-  // (no limits known to show: asked again every two minutes, not every 15 s)
   const [unknown, setUnknown] = useState(false)
   const tick = useTick(unknown ? 8 * EVERY : EVERY)
   const { data } = useLive<Pick<AgentUsage, "limits" | "accounts">>(`${src.path}/limits`, tick)
@@ -245,7 +228,6 @@ export function AgentLimits({ src, options, fm }: BlockCtx & { src: AgentSource 
     refresh().catch(() => notify(`Couldn't ask ${src.label} again`)).finally(() => setAsking(false))
   }
   const each = data?.accounts && data.accounts.length > 1 ? data.accounts : null
-  // (another machine's account is that machine's to allow)
   const ask = !on && src.consent && settings && settings[src.consent.setting] === undefined ? src.consent : null
   const meters = useKeptCount(`agent:${src.path}:limits${on}`,
     data ? (each ? each.reduce((n, a) => n + (a.limits?.windows.length ?? 0), 0) : data.limits?.windows.length ?? 0) : undefined, 2, 6)
@@ -274,7 +256,6 @@ export function AgentLimits({ src, options, fm }: BlockCtx & { src: AgentSource 
 
 const accountTitle = (a: AccountPlan) => (a.plan ? `${a.label} · ${a.plan.name}` : a.label)
 
-/** Each account's limits under its name; the ones the block's `for:` plugin uses first, tinted and saying for what. */
 function Accounts({ src, each }: { src: AgentSource; each: AccountPlan[] }) {
   const used = each.filter((a) => a.uses?.length), rest = each.filter((a) => !a.uses?.length)
   const plain = (xs: AccountPlan[]) => xs.map((a) => <Section key={a.id} title={accountTitle(a)}><Limits src={src} lim={a.limits} /></Section>)
@@ -399,7 +380,6 @@ export function AgentUsageBlock({ src, options, fm }: BlockCtx & { src: AgentSou
           <div className="mb-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
             {["Today", "Working today", `Last ${days} days`, "Cache hits"].map((l) => <Stat key={l} label={l} value={<Bar w="2.5em" />} hint={<Bar w="5em" />} />)}
           </div>
-          {/* (where Bars' value line and its 96px of bars go) */}
           <div className="skeleton mt-7 h-[96px]" />
           <div className="flex justify-between text-[11px] text-muted-foreground"><span><Bar w="4em" /></span><span>Today</span></div>
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
@@ -455,7 +435,6 @@ function ShareRow({ name, meta, value, share, tint }: { name: ReactNode; meta?: 
 const share = (x: Share) => x.cost || x.tokens / 1e6
 const top = (xs: Share[]) => Math.max(...xs.map(share), 1e-9)
 
-/** Its usage by project (the first 10) or by model over `days` (30). */
 function Shares({ src, options, fm, by }: BlockCtx & { src: AgentSource; by: "projects" | "models" }) {
   const days = daysOf(options)
   const { data, error, on } = useAgentUsage(src, options, days)
@@ -486,7 +465,6 @@ function Shares({ src, options, fm, by }: BlockCtx & { src: AgentSource; by: "pr
 export const AgentProjects = (ctx: BlockCtx & { src: AgentSource }) => <Shares {...ctx} by="projects" />
 export const AgentModels = (ctx: BlockCtx & { src: AgentSource }) => <Shares {...ctx} by="models" />
 
-/** The names a project file answers to: its path's folder, its repo, its name (the plugins' keysFor, on the server). */
 function keysFor(ctx: BlockCtx) {
   if (typeof ctx.options.project === "string") return new Set([ctx.options.project.toLowerCase()])
   const ks = new Set([(ctx.path.split("/").pop() ?? "").replace(/\.md$/, "").toLowerCase()])
@@ -525,7 +503,6 @@ export function AgentProject({ src, ...ctx }: BlockCtx & { src: AgentSource }) {
 }
 
 type Named = { id: string; desktop?: boolean; name: string }
-/** Which of the agent blocks a plugin's block draws (agentPlugin). */
 type AgentBlock = "limits" | "sessions" | "usage" | "projects" | "models" | "project"
 const BLOCKS: Record<AgentBlock, (ctx: BlockCtx & { src: AgentSource }) => ReactNode> = {
   limits: AgentLimits, sessions: AgentSessions, usage: AgentUsageBlock, projects: AgentProjects, models: AgentModels, project: AgentProject,
@@ -551,10 +528,7 @@ export function agentPlugin(src: AgentSource, o: Omit<PluginDef, "blocks"> & {
       const Block = BLOCKS[b]
       return <Block src={src} {...ctx} />
     } : b])),
-    // A session read back (view:<view>/<id>, <id>@<machine> for another machine's): opened by clicking one that isn't
-    // in one of the app's terminals.
     views: { [src.view]: { icon: src.icon, title: (id) => sessionTitle(src, id), pinAs: (id) => id || null, render: ({ arg }) => <AgentSession key={arg} src={src} id={arg} />, ...sessionView } },
-    // (Terminal runs it: the service "agent:<agent>" in its plugin.ts says how)
     ...(process && opens ? {
       agents: { [src.agent]: { label: src.label, icon: src.icon, tint: src.tint, process, session: src.view, ...(src.speaker ? { speaker: src.speaker } : {}), ...(accounts ? { accounts } : {}) } },
       commands: [

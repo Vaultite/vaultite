@@ -1,5 +1,3 @@
-// A group of plugins as one row on the Plugins page (a manifest's `group`: the coding agents), saying which are on; it
-// opens their sheet (pages/Plugins.tsx PluginGroupSheet), where each has its own switch and gear.
 import { ChevronRight, Puzzle, SquareTerminal, type LucideIcon } from "lucide-react"
 import { groupOf } from "../../../core/categories.ts"
 import { isEnabled, offWithAi, PLUGINS, switchedOn, tileTint, usePlugins, type Plugin } from "@/core/plugins"
@@ -13,10 +11,8 @@ export const groupIcon = (id: string) => ICONS[id] ?? Puzzle
 
 const byName = new Intl.Collator(undefined, { sensitivity: "base" })
 
-/** The plugins in a group, by name. */
 export const groupMembers = (id: string, all: Plugin[] = PLUGINS) => all.filter((p) => p.group === id && !offWithAi(p)).sort((a, b) => byName.compare(a.name, b.name))
 
-/** What a search finds a member by besides its own name: its group's ("coding agents"). */
 export const groupWords = (p: Plugin) => groupOf(p.group)?.label ?? ""
 
 export function GroupRow({ id }: { id: string }) {

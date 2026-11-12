@@ -1,5 +1,3 @@
-// The File explorer's settings, kept in files.json (not a data.json) because the server reads showHidden: hidden
-// folders are out of reach while it's off, and the attachment folder and excluded files.
 import { useStore } from "@/core/data"
 import { patch } from "@/core/http"
 import { notifyError } from "@/core/notify"
@@ -14,7 +12,6 @@ import type { SettingDecl } from "../../../core/blocks.ts"
 const sorts = SORTS.flat()
 const FOLDER_VIEWS: FolderView[] = ["grid", "list", "columns", "gallery"]
 const FOLDER_GROUPS: FolderGroup[] = ["none", "kind", "modified"]
-// (its switches are core/switches.ts', which Settings' search finds by themselves; read late: that module imports this)
 const switchOf = (row: string) => coreSwitch(`setting:${row}`)
 const DECLS: Record<"fileSort" | "folderView" | "folderGroup" | "folderLimit" | "attachmentFolder" | "excluded" | "samples", SettingDecl> = {
   fileSort: { type: "enum", default: "name", label: "Sort order", values: sorts.map((s) => s.value),
@@ -37,8 +34,6 @@ const DECLS: Record<"fileSort" | "folderView" | "folderGroup" | "folderLimit" | 
 /** What the sheet has, for the Settings page's search (the plugin's `settingsSearch`). */
 export const filesSettingsSearch = Object.entries(DECLS).map(([key, d]) => ({ key, label: d.label, description: d.description }))
 
-/** A files.json key the server reads (another app's value when unset: `seed`): its default again removes it, and a
- *  list emptied over a seed stays, empty. */
 function saveFiles(key: string, v: unknown, seed: unknown) {
   const unset = v === null || v === undefined || v === ""
   const empty = unset && Array.isArray(seed) && seed.length > 0
@@ -64,7 +59,6 @@ export function FilesSettings() {
         set={(v) => void setPrefs({ folderLimit: typeof v === "number" && v >= 0 ? Math.floor(v) : 0 })} />
       <SwitchRow s={switchOf("auto-reveal")} />
       {filing && <Field k="attachmentFolder" d={at} value={own(filing.attachments, at.default)} set={(v) => saveFiles("attachmentFolder", v, seeds.attachmentFolder)} />}
-      {/* (the list as it applies, another app's included, so it's edited rather than typed again) */}
       {filing && <Field k="excluded" d={ex} value={filing.excluded} set={(v) => saveFiles("excluded", v, seeds.excluded)} />}
       {filing && <Field k="samples" d={DECLS.samples} value={filing.samples ?? []} set={(v) => saveFiles("samples", v, undefined)} />}
     </Group>

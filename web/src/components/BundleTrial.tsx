@@ -1,5 +1,3 @@
-// A bundle being tried (core/bundles.ts trial.json, in /api/state: every window, and after a restart): a slim bar over
-// the bottom of the window until it's kept or reverted. It floats, so nothing moves; toasts sit above it (index.css).
 import { useEffect, useState } from "react"
 import { FlaskConical } from "lucide-react"
 import type { Store } from "@/core/data"
@@ -12,7 +10,6 @@ const ACTION = "h-7 shrink-0 cursor-pointer rounded-[6px] px-2.5 text-[13px] fon
 export function BundleTrial({ store }: { store: Store | null }) {
   const trial = store?.bundles?.trial
   const [busy, setBusy] = useState(false)
-  // (the root's mark lifts toasts and page ends above the bar: index.css --trial-bar)
   const on = !!trial
   useEffect(() => {
     if (!on) return

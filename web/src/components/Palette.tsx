@@ -1,5 +1,3 @@
-// The overlay the quick switcher (⌘O) and command palette (⌘P) share: arrows or ⌃N/⌃P move, Enter
-// picks (⌘ or ⇧ when the caller says), Esc closes. Its frame (PaletteFrame) is any palette-like box's (the Ask box).
 import { Fragment, memo, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react"
 import { X } from "lucide-react"
 import { dropLeaving, fadeAway } from "@/core/animation"
@@ -11,14 +9,9 @@ import { dismissKeyboardOnDrag, usePageLock } from "@/core/pagelock"
 import { cn } from "@/lib/utils"
 
 export type Pick = { mod: boolean; shift: boolean }
-/** Rows drawn at first, and how many more each time the list is scrolled near its end (within NEAR): past the tallest
- *  list's foot, as each keystroke draws every one again (60 was four screens of rows a key on a phone). */
 const ROWS = 30, NEAR = "400px"
 
-/** What was typed in ⌘O, ⌘P or the new tab's finder: the other opened over it goes on with it; one opened in the two
- *  minutes after leaving without a pick shows it selected, so typing starts afresh. */
 const KEEP_MS = 2 * 60_000
-/** (kept as it's typed: the finder opened instead renders before the one it replaces is gone) */
 let left: { text: string; at: number; open: boolean } | null = null
 export function useFinderQuery() {
   const [first] = useState(() => {
@@ -32,12 +25,9 @@ export function useFinderQuery() {
   return { query, setQuery, select: first.select, picked: () => { picked.current = true } }
 }
 
-/** Matched characters (indexes into `text`, as JavaScript counts them) drawn in the accent colour. A function, not a
- *  component: each row of a palette draws two each keystroke. */
 export function marked(text: string, marks: number[]): ReactNode {
   if (!marks.length) return text
   const on = new Set(marks)
-  // Runs of marked and plain text, so a word is one <mark>.
   const runs: [string, boolean][] = []
   for (let i = 0; i < text.length; i++) {
     const m = on.has(i), last = runs[runs.length - 1]
@@ -47,7 +37,6 @@ export function marked(text: string, marks: number[]): ReactNode {
   return <>{runs.map(([t, m], i) => (m ? <mark key={i} className="bg-transparent font-semibold text-primary">{t}</mark> : t))}</>
 }
 
-/** Keycaps for a shortcut ("Mod+E"), drawn small at the end of a row; `small` in a line of text (the hints below). */
 export function Keys({ keys, small = false }: { keys: string; small?: boolean }) {
   return (
     <span className={cn("hidden shrink-0 md:flex", small ? "gap-0.5" : "gap-1")}>
@@ -59,8 +48,6 @@ export function Keys({ keys, small = false }: { keys: string; small?: boolean })
   )
 }
 
-/** A palette's `empty` when nothing matches what was typed ("No command matches “foo”"), as Settings' search says it;
- *  `then` is what Enter does instead, on a line below. */
 export function NoMatches({ what, query, then }: { what: string; query: string; then?: string }) {
   return (
     <p className="px-3 py-6 text-center text-[15px] text-muted-foreground" data-no-matches>
@@ -74,8 +61,6 @@ type RowProps<T> = {
   id: string; item: T; i: number; selected: boolean; look: unknown; draw: (item: T, selected: boolean) => ReactNode
   onHover: (i: number) => void; onPick: (i: number, e: Pointer) => void
 }
-/** A row, redrawn only when its item, place, selection or `look` changes (a pointer move redrew hundreds), so it
- *  draws from its item alone. Off screen it isn't laid out: a font picker's row loads its font once scrolled to. */
 const PaletteRow = memo(function PaletteRow({ id, item, i, selected, draw, onHover, onPick }: RowProps<unknown>) {
   return (
     <button id={`palette-${id}`} data-i={i} type="button" role="option" aria-selected={selected} tabIndex={-1}
@@ -86,7 +71,6 @@ const PaletteRow = memo(function PaletteRow({ id, item, i, selected, draw, onHov
   )
 }, (a, b) => a.id === b.id && a.i === b.i && a.selected === b.selected && a.look === b.look && a.item === b.item) as <T>(p: RowProps<T>) => ReactNode
 
-/** The keys along the bottom, the same through typing (callers make the list anew each render). */
 const Hints = memo(function Hints({ hints }: { hints: [string, string][] }) {
   return (
     <div className="hidden flex-wrap items-center gap-x-3 gap-y-1.5 border-t-[0.5px] border-border px-5 py-2.5 text-[12px] text-muted-foreground md:flex [@media(pointer:coarse)_and_(max-height:500px)]:hidden">
@@ -97,8 +81,6 @@ const Hints = memo(function Hints({ hints }: { hints: [string, string][] }) {
   )
 }, (a, b) => a.hints.join("\n") === b.hints.join("\n"))
 
-/** The field's clear button, the same through typing: a finger's size on a phone; on a desktop a small circle, as a
- *  Mac's search field draws it, in as large a target. */
 const Clear = memo(function Clear({ onClear }: { onClear: () => void }) {
   return (
     <button type="button" aria-label="Clear" onClick={onClear}
@@ -112,34 +94,21 @@ const Clear = memo(function Clear({ onClear }: { onClear: () => void }) {
 
 export function Palette<T extends { id: string }>({ label, placeholder, query, setQuery, select = false, items, row, onPick, onClose, hints, heading, section, empty, start = 0, onEnd, onSelect, look, complete, onKey: ownKey }: {
   label: string; placeholder: string
-  /** `deleting`: the change took text away (an inline completion isn't offered then). */
   query: string; setQuery: (q: string, how?: { deleting: boolean }) => void
-  /** What the query is completed to inline (a new tab's site, "github.com" for "gith"): the rest shown selected after
-   *  what's typed, as a browser's address bar does; → takes it. */
   complete?: string | null
-  /** Keys of the caller's, before the palette's: true when it took one. */
   onKey?: (e: KeyboardEvent) => boolean
-  /** Open with the query selected (a kept one: useFinderQuery), else the caret after it. */
   select?: boolean
   items: T[]
   row: (item: T, selected: boolean) => ReactNode
-  /** Enter or a click on `item` (null: Enter with nothing listed). */
   onPick: (item: T | null, how: Pick) => void
-  /** The selected row changed (the keys, the pointer, typing): to show what picking it would do. */
   onSelect?: (item: T | null) => void
   onClose: () => void
-  /** The keys along the bottom: [keys, what they do], e.g. ["Mod+Enter", "to open in new tab"]. */
   hints: [string, string][]
-  /** A line above the list (with an empty query: "Recent files"). */
   heading?: string
-  /** The section a row is in ("In files"): its name is drawn above the first row of each run of rows in one. */
   section?: (item: T) => string | undefined
   empty?: ReactNode
-  /** The row selected while nothing is typed (the current value), scrolled into view. */
   start?: number
-  /** The list was scrolled (or arrowed) near its end: the caller lists more, if it has them. */
   onEnd?: () => void
-  /** What rows are drawn with besides their item (a setting): a change redraws them. */
   look?: unknown
 }) {
   const [sel, setSel] = useState(query ? 0 : start)
@@ -152,38 +121,29 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
     const f = input.current
     if (suffix && f && document.activeElement === f) f.setSelectionRange(query.length, query.length + suffix.length, "forward")
   }, [query, suffix])
-  // The page under it held still (PaletteFrame), then the field focused.
   useLayoutEffect(() => {
     const f = input.current
     f?.focus({ preventScroll: true })
     f?.setSelectionRange(select ? 0 : f.value.length, f.value.length)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-  // On a phone, dragging the results puts the keyboard away (core/pagelock.ts).
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- focuses once, on open
   useEffect(() => (list.current ? dismissKeyboardOnDrag(list.current) : undefined), [])
-  // Typing selects the first row in that same render: an effect left a frame where Enter picked a row no longer listed.
   const [selFor, setSelFor] = useState(query)
-  // (rows taken off the list under it: the last one stays selected; not as typing resets it, or the stale row wins)
   if (selFor !== query) { setSelFor(query); setSel(query ? 0 : start) }
   else if (sel > 0 && sel >= items.length) setSel(Math.max(0, items.length - 1))
   useEffect(() => { list.current?.querySelector(`[data-i="${sel}"]`)?.scrollIntoView({ block: "nearest" }) }, [sel])
   const selected = items[sel] ?? null
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fires when the selected row changes, by id
   useEffect(() => onSelect?.(selected), [selected?.id])
-  // A page of rows (and down to the selected one), another as it's scrolled near their end: opening drew every
-  // command's row, ~700 on a big vault.
   const [limit, setLimit] = useState(ROWS)
   const [limitFor, setLimitFor] = useState(query)
   if (limitFor !== query) { setLimitFor(query); setLimit(ROWS) }
   const drawn = Math.min(items.length, Math.max(limit, sel + ROWS / 3))
-  // (watched again whenever either mark is swapped in: more rows arriving with as many drawn swap the end for more)
   const marks = `${drawn}/${items.length}`
   const more = useRef<HTMLDivElement>(null)
   useNearEnd(more, () => setLimit(drawn + ROWS), marks, NEAR)
   const end = useRef<HTMLDivElement>(null)
   useNearEnd(end, () => onEnd?.(), marks, "200px")
-  // (a middle click is a ⌘-click: a new tab)
   const pick = (i: number, e: Pointer) => onPick(items[i] ?? null, { mod: e.metaKey || e.ctrlKey || ("button" in e && e.button === 1), shift: e.shiftKey })
-  // The rows' handlers stay the same (so a row's memo holds), calling the latest.
   const picks = useRef(pick)
   useLayoutEffect(() => { picks.current = pick })
   const [rowPick] = useState(() => (i: number, e: Pointer) => picks.current(i, e))
@@ -191,7 +151,6 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
   const onKey = (e: KeyboardEvent) => {
     if (e.nativeEvent.isComposing || ownKey?.(e)) return
     if ((e.key === "ArrowRight" || e.key === "End") && suffix) { setQuery(query + suffix); return }
-    // ⌃J/⌃K (Vim's) move too, and on a Mac ⌃N/⌃P (Emacs'); elsewhere those are the app's Mod+N and Mod+P.
     if (e.key === "ArrowDown" || (e.ctrlKey && (e.key === "j" || (isMac && e.key === "n")))) { e.preventDefault(); setSel((s) => Math.min(s + 1, items.length - 1)) }
     else if (e.key === "ArrowUp" || (e.ctrlKey && (e.key === "k" || (isMac && e.key === "p")))) { e.preventDefault(); setSel((s) => Math.max(s - 1, 0)) }
     else if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); pick(sel, e) }
@@ -199,9 +158,7 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
   const clears = useRef(setQuery)
   clears.current = setQuery
   const [clear] = useState(() => () => { clears.current(""); input.current?.focus() })
-  // Tab stays in its field (its rows are chosen with the arrows).
   const onDialogKey = (e: KeyboardEvent) => { if (e.key === "Tab") { e.preventDefault(); input.current?.focus() } }
-  // The heading names the list and each section's name its run of rows (WAI-ARIA's listbox with grouped options).
   const ids = useId()
   const runs: { name?: string; start: number; rows: T[] }[] = []
   items.slice(0, drawn).forEach((it, i) => {
@@ -221,10 +178,8 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
           className="h-14 min-w-0 flex-1 bg-transparent text-[17px] outline-none placeholder:text-muted-foreground" />
         {query && <Clear onClear={clear} />}
       </div>
-      {/* (phones: the rows a size up, 15px to 17px, 44px tall) */}
       <div ref={list} id="palette-results" role="listbox" aria-labelledby={heading ? `${ids}h` : undefined} aria-label={heading ? undefined : label}
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1.5 max-md:[zoom:1.1333]">
-        {/* (hidden as text: it's read as the list's name) */}
         {heading && <div id={`${ids}h`} role="presentation" aria-hidden className="px-3 pt-1.5 pb-1 text-[12px] font-semibold text-muted-foreground">{heading}</div>}
         {!items.length && empty}
         {runs.map((r, k) => {
@@ -247,18 +202,13 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
 }
 
 let frameClosed = -Infinity
-/** The palette-like box open now. One at a time: a newer one (⌘P over a picker, an agent's question) takes its place,
- *  so the box on top is always the one typed into. */
 let current: { close: () => void } | null = null
-/** Close the palette-like box that's open, if one is (a sheet opening in its place). */
 export const closePalette = () => current?.close()
 
 /** The palette's overlay without its list, for any palette-like box (the Ask box): a card near the top, the page held
  *  still under it; Escape or a click outside closes it, and the keyboard goes back. Its children focus their field. */
 export function PaletteFrame({ label, onClose, onKeyDown, children }: { label: string; onClose: () => void; onKeyDown?: (e: KeyboardEvent) => void; children: ReactNode }) {
   useHeldFocus()
-  // One opened as another closed (a command's picker), or in another's place, swaps in place: no fade or zoom, the
-  // overlay stays as it was.
   const [swapped] = useState(() => !!current || performance.now() - frameClosed < 50)
   const closes = useRef(onClose)
   useLayoutEffect(() => { closes.current = onClose })
@@ -269,7 +219,6 @@ export function PaletteFrame({ label, onClose, onKeyDown, children }: { label: s
     current = self
     was?.close()
     if (swapped) dropLeaving("palette")
-    // Closed (not swapped for another): it fades and shrinks a little, quicker than it came in.
     const el = box.current
     return () => {
       frameClosed = performance.now()
@@ -278,8 +227,7 @@ export function PaletteFrame({ label, onClose, onKeyDown, children }: { label: s
       fadeAway([el], { tag: "palette", scale: 0.98, scaled: "[role=dialog]" })
     }
   }, [self])
-  // Over an open sheet (a modal <dialog>: the rest of the page is inert), it's a modal dialog of its own above it, as
-  // ContextMenu's menus are; opened before the field is focused.
+  // A modal <dialog> makes the rest of the page inert, so over one the palette opens a modal dialog of its own.
   const [over] = useState(() => [...document.querySelectorAll("dialog[open]")].some((d) => { try { return d.matches(":modal") } catch { return false } }))
   const layer = useRef<HTMLDialogElement>(null)
   useLayoutEffect(() => { if (over) layer.current?.showModal() }, [over])
@@ -289,8 +237,6 @@ export function PaletteFrame({ label, onClose, onKeyDown, children }: { label: s
     else onKeyDown?.(e)
   }
   const overlay = (
-    // On the part of the screen the keyboard leaves (core/pagelock.ts' --vvh, --vvtop), so the list ends above it and
-    // a finger on it scrolls it.
     <div ref={box} data-overlay data-palette className="fixed inset-x-0 z-50 flex items-start justify-center px-3 pt-[max(env(safe-area-inset-top),0.75rem)] md:pt-[12vh]"
       style={{ top: "var(--vvtop, 0px)", height: "var(--vvh, 100dvh)" }}>
       <button type="button" aria-label={`Close ${label.toLowerCase()}`} tabIndex={-1} onClick={onClose}

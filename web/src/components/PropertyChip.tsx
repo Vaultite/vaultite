@@ -1,5 +1,3 @@
-// A property as a chip in a file's header (and status bar): one frontmatter key from a plugin's list of values, each
-// with label, icon, colour; a click picks one as a one-key edit. A value the list doesn't have still shows as written.
 import { useState, type MouseEvent } from "react"
 import { refuse } from "@/core/animation"
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, CircleDashed, CircleHelp, Plus, X, type LucideIcon } from "lucide-react"
@@ -39,8 +37,6 @@ export const chipLabel = (v: ChipValue) => v.label || capitalize(v.value)
 
 type Shown = { value: string | null; label: string; hint: string; icon: LucideIcon; color?: string }
 
-/** What the file says, as one of `values`: null when it doesn't have the key, or the text it says when that's not one
- *  of them. */
 function shownOf(fm: Record<string, unknown>, prop: string, values: ChipValue[]): Shown | null {
   const raw = fm[prop]
   if (raw === undefined || raw === null || raw === "") return null
@@ -106,7 +102,6 @@ export function PropertyChip(p: ChipProps) {
     <button {...attrs}
       className={cn("flex shrink-0 cursor-pointer items-center gap-1 font-medium",
         bar ? "h-7 rounded-[5px] px-1.5 text-[12px] hover:bg-foreground/[0.06]"
-          // (a phone's 44px target, laid out in the line's 32px)
           : "-my-1.5 h-11 px-1 text-[13px] active:opacity-50 md:h-8 md:my-0 md:rounded-[6px] md:px-1.5 md:hover:bg-foreground/[0.06]",
         o ? "" : "justify-center text-muted-foreground hover:text-foreground", !o && (bar ? "w-7 px-0" : "w-11 md:w-8"))}
       style={o ? { color: o.color } : undefined}>
@@ -116,9 +111,6 @@ export function PropertyChip(p: ChipProps) {
   )
 }
 
-// ---------- editing the values (a plugin's settings sheet: no menus there, so choices unfold in place)
-
-/** Every icon a value can name: the app's and the ones plugins add, by name. */
 function iconChoices(): [string, LucideIcon][] {
   const seen = new Set<LucideIcon>(), out: [string, LucideIcon][] = []
   const all = [...Object.entries(ICONS), ...PLUGINS.flatMap((p) => Object.entries(p.icons ?? {}))]
@@ -149,8 +141,6 @@ function Text({ value, placeholder, label, set, className, check }: {
  *  a value doesn't change the files that have it. */
 export function ChipValuesEditor({ values: saved, onChange: save, label = "Values" }: { values: ChipValue[]; onChange: (v: ChipValue[]) => void; label?: string }) {
   const [open, setOpen] = useState<number | null>(null)
-  // The list as last edited here until the store brings the save back, so a quick second edit builds
-  // on the first instead of undoing it. Dropped after a few seconds, so a save that never came back shows as it is.
   const [mine, setMine] = useState<{ list: ChipValue[]; at: number } | null>(null)
   const values = mine && Date.now() - mine.at < 5000 && JSON.stringify(mine.list) !== JSON.stringify(saved) ? mine.list : saved
   const onChange = (next: ChipValue[]) => { setMine({ list: next, at: Date.now() }); save(next) }

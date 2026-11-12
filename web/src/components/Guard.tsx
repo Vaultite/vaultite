@@ -1,5 +1,3 @@
-// One part of the app that fails to draw (a tab, a panel, a header item, a sheet) fails alone, with a way on (Try again,
-// Close tab); without it React unmounts the whole app. A file that didn't load is errors.ts's: it reloads.
 import { Component, Fragment, type ReactNode } from "react"
 import { Button } from "@/components/ui/button"
 import { ErrorDetails } from "@/components/kit"
@@ -7,13 +5,9 @@ import { isStaleBuild, recoverFromStaleBuild } from "@/core/errors"
 
 type Props = {
   children: ReactNode
-  /** What it is, as the message names it: "This tab", "The Terminals panel". */
   what: string
-  /** A tab's (the pane's room, with Close tab) or a small one's (a line, in a sidebar or the header). */
   size?: "tab" | "small"
-  /** It changed (another file, another view): draw it again. */
   reset?: string
-  /** Close what failed (a tab's). */
   close?: () => void
 }
 type State = { failed: boolean; error: unknown; reset?: string; tries: number; stale: "waiting" | "failed" | null }
@@ -22,7 +16,6 @@ type State = { failed: boolean; error: unknown; reset?: string; tries: number; s
  *  pass the Guard by). */
 export function Drawn({ draw }: { draw: () => ReactNode }) { return <>{draw()}</> }
 
-/** What fails to draw inside shows `fallback` (given what was thrown) in its place, again drawn when `reset` changes. */
 export class Catch extends Component<{ children: ReactNode; fallback: (error: unknown) => ReactNode; reset?: string; onError?: (e: unknown) => void },
   { failed: boolean; error: unknown; reset?: string }> {
   state = { failed: false, error: null as unknown, reset: this.props.reset }

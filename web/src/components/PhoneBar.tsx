@@ -1,5 +1,3 @@
-// Phones: the bottom bar, five buttons always in the same place (Back, Forward, new tab, tabs, menu). Back is the
-// app's own, since an installed web app has none and Safari's edge swipe would leave it. Dragged up, it opens the tabs.
 import { useEffect, useRef, useState, useSyncExternalStore } from "react"
 import { Check, ChevronLeft, ChevronRight, Command, FilePlus, Menu, Plus, Search } from "lucide-react"
 import { tabCount, useWorkspace } from "@/core/workspace"
@@ -13,7 +11,6 @@ import { hrefOf, openAppPage, type AppPage } from "@/core/apppages"
 import { cn } from "@/lib/utils"
 
 type Item = "back" | "forward" | "new" | "tabs" | "menu"
-/** The bar, left to right. */
 const BAR: Item[] = ["back", "forward", "new", "tabs", "menu"]
 const slot = "flex h-11 min-w-0 flex-1 items-center justify-center rounded-[12px] transition-colors"
 const idle = "text-muted-foreground active:bg-foreground/[0.06]"
@@ -26,7 +23,6 @@ const onHistory = (f: () => void) => {
 const useCanGoBack = () => useSyncExternalStore(onHistory, canGoBack)
 const useCanGoForward = () => useSyncExternalStore(onHistory, canGoForward)
 
-/** The count of open tabs, in a small rounded square: the tab list. */
 function TabsButton({ listOpen }: { listOpen: boolean }) {
   const n = tabCount(useWorkspace())
   return (
@@ -44,7 +40,6 @@ export function PhoneBar({ system, active, listOpen, onSearch, onCommands, onNew
   onSearch: () => void; onCommands: () => void; onNewNote: () => void
 }) {
   const back = useCanGoBack(), forward = useCanGoForward()
-  // The menu, open for the page on screen: showing another page, or the tab list, closes it.
   const here = `${active?.id}|${listOpen}|${location.hash}`
   const [menuAt, setMenuAt] = useState<string | null>(null)
   const menu = menuAt === here
@@ -118,8 +113,6 @@ export function PhoneBar({ system, active, listOpen, onSearch, onCommands, onNew
           </div>
         </>
       )}
-      {/* Its own group in the browser-like transitions (core/motion.ts), so it stays put while the page moves; the tab
-          list's bar takes the name while it's open (one at a time). */}
       <nav ref={nav} data-phone-bar aria-label="Navigation" style={{ viewTransitionName: listOpen ? undefined : "phone-bar", touchAction: "none" }}
         className="sight-foot glass-strong fixed inset-x-0 bottom-0 z-30 px-2 pt-1 pb-[max(env(safe-area-inset-bottom),0.25rem)] md:hidden">
         <div className="mx-auto flex max-w-md items-stretch gap-0.5">{BAR.map(button)}</div>

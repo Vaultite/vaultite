@@ -1,4 +1,3 @@
-// Do it: a task handed to a worker, one tap, wherever a task is drawn (a query's row, a table's cell, an inbox item).
 import { useState } from "react"
 import { Play } from "lucide-react"
 import type { DoTask } from "@/core/define"

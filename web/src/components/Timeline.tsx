@@ -1,5 +1,3 @@
-// A `## Timeline` section drawn newest first. Add writes a line through the server (placed by date, as an AI's would
-// be), and the change comes back into the editor like any other.
 import { useState, type FormEvent } from "react"
 import { Circle, Ellipsis, Plus, StickyNote } from "lucide-react"
 import type { TimelineKind } from "@/core/define"
@@ -13,13 +11,10 @@ import { Markdown } from "@/components/Markdown"
 import { capitalize, cn } from "@/lib/utils"
 
 const NOTE: TimelineKind = { label: "Note", icon: StickyNote }
-/** The kind chip that asks for a kind of the user's own. */
 const OTHER = " other"
 
-/** `path`: the file it's in, which Add writes to (left out, or read-only: no Add). */
 export function TimelineSection({ text, title, kinds, path }: { text: string; title: string; kinds: Record<string, TimelineKind>; path?: string }) {
   const items = parseTimeline(text).sort((a, b) => b.date.localeCompare(a.date))
-  // Lines that aren't entries (no date) are drawn as they are, after them: nothing typed there is hidden.
   const stray = strayLines(text)
   const [shown, setShown] = useState(25)
   const [adding, setAdding] = useState(false)
@@ -63,8 +58,6 @@ export function AddToTimeline({ path, kinds }: { path: string; kinds: Record<str
 
 const field = "h-11 min-w-0 rounded-[8px] border-[0.5px] border-border bg-card px-2.5 text-[16px] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/40 md:h-7.5 md:text-[13px]"
 
-/** The form Add opens: a kind (the known ones, or Other: one of the user's own), the day (today), minutes and what it
- *  was about. Enter adds, Escape closes. */
 function AddEntry({ path, kinds, close }: { path: string; kinds: Record<string, TimelineKind>; close: () => void }) {
   const [picked, setKind] = useState("call")
   const [own, setOwn] = useState("")
@@ -128,7 +121,6 @@ function AddEntry({ path, kinds, close }: { path: string; kinds: Record<string, 
   )
 }
 
-/** One entry: a known kind (tinted icon), a note (grey) or anything else (a dot). Full text, no truncation. */
 function EntryRow({ i, kinds }: { i: Entry; kinds: Record<string, TimelineKind> }) {
   const note = i.kind === "note"
   const k = kinds[i.kind] ?? (note ? NOTE : { label: capitalize(i.kind), icon: Circle })

@@ -1,5 +1,3 @@
-// Embeds: `![[x]]` on its own line shows that file there, a note (or its section, or block) as read-only
-// text under a line that opens it. Nested at most DEPTH deep, never itself. The server's text: core/render.ts.
 import { useEffect, useRef, useState, type MouseEvent } from "react"
 import { SquareArrowOutUpRight } from "lucide-react"
 import { anchorKey, extract, splitAnchor } from "../../../core/sections.ts"
@@ -21,7 +19,6 @@ import { Loading } from "@/components/kit"
 import type { EmbedEdit } from "@/editor/livePreview"
 import { cn, scrollingBox } from "@/lib/utils"
 
-/** How deep embeds go inside embeds: only a guard, loops are caught by `seen` (as core/render.ts). */
 const DEPTH = 20
 
 /** The note an embed names, or null (not a note, or no such file). `from`: the file it's in (`![[#Heading]]`). */
@@ -35,7 +32,7 @@ export function noteFor(store: Store, target: string, from: string): string | nu
 /** Whatever `![[target]]` names, drawn: a file's view, or a note's text; with its menu (`edit`: in the editor, what
  *  changes it in the note). */
 export function EmbedView({ store, target, height, from, seen = [], edit }: { store: Store; target: string; height?: number; from: string; seen?: string[]; edit?: () => EmbedEdit | null }) {
-  usePrefs() // (what's embeddable follows the plugins that are on)
+  usePrefs()
   const path = findEmbed(store, target, from)
   return (
     <EmbedMenu store={store} target={target} from={from} edit={edit}>
@@ -46,7 +43,6 @@ export function EmbedView({ store, target, height, from, seen = [], edit }: { st
   )
 }
 
-/** A note's text, read again when `mtime` changes ("" if it can't be read); null until it comes. */
 function useNoteText(path: string | null, mtime?: number) {
   const [file, setFile] = useState<{ path: string; text: string } | null>(null)
   useEffect(() => {
@@ -58,8 +54,6 @@ function useNoteText(path: string | null, mtime?: number) {
   return file
 }
 
-/** A note's text (or a section or a block of it), read-only, with a line naming it that opens it at that place. `fill`:
- *  no line, and the text fills its parent's box, scrolling inside it (a canvas card, which names the file itself). */
 export function NoteEmbed({ store, target, from, seen = [], fill }: { store: Store; target: string; from: string; seen?: string[]; fill?: boolean }) {
   const { disabled } = usePrefs()
   usePluginsVersion()
@@ -71,7 +65,6 @@ export function NoteEmbed({ store, target, from, seen = [], fill }: { store: Sto
   const box = fill ? "note-embed is-fill size-full overflow-auto" : "note-embed"
   const name = `${stem(path)}${anchor ? ` › ${anchor.replace(/^\^/, "^")}` : ""}`
   const key = anchor ? `${path}#${anchor}` : path
-  // A note can show a section of itself, never itself whole (or a section inside that same section): that never ends.
   const loop = seen.includes(key) || (!anchor && seen.some((k) => k === path || k.startsWith(`${path}#`)))
   const open = (e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); openAt(path, anchor, { newTab: e.metaKey || e.ctrlKey }) }
   const head = (
@@ -84,7 +77,6 @@ export function NoteEmbed({ store, target, from, seen = [], fill }: { store: Sto
     return <div className={box} data-embed={path}>{!fill && head}<p className="note-embed-missing">{loop ? "It embeds itself, so it isn't shown again here." : "Embedded too deep to show here."}</p></div>
   }
   if (!file || file.path !== path) return <div className={cn(box, "min-h-16")} data-embed={path}>{!fill && head}<Loading /></div>
-  // (a note a plugin draws its own way, as it opens: embedded as that plugin draws it)
   const own = !anchor && !fill ? fileFormatFor(path, disabled) : null
   if (own) {
     const draw = own.embed ?? own.render
@@ -124,7 +116,7 @@ export function NotePreview({ store, target, from }: { store: Store; target: str
     const want = anchorKey(anchor.split("#").pop() ?? "")
     const h = [...ref.current.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6")].find((x) => anchorKey(x.textContent ?? "") === want)
     if (!h) return
-    // (its own scroller only, never the page under the popover)
+    // Not scrollIntoView: that scrolls every ancestor, the page under the popover too.
     const p = scrollingBox(h)
     if (p) p.scrollTop += h.getBoundingClientRect().top - p.getBoundingClientRect().top - 8
   }, [ready, anchor])

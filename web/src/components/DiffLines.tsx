@@ -1,5 +1,3 @@
-// A line diff of two texts as the app draws one (File history's versions, Provenance's review): green for lines only in
-// the second text, red struck through for lines only in the first, long unchanged runs folded when asked.
 import { useLayoutEffect, useRef, useState } from "react"
 import { cn, plural } from "@/lib/utils"
 import { diffLines } from "@/core/diff"
@@ -9,7 +7,7 @@ export type DiffLine = { kind: "same" | "add" | "del" | "gap"; text: string; n?:
 
 /** `before` against `after`, line by line; with `context`, unchanged runs further than that from a change are folded. */
 export async function textDiff(before: string, after: string, context?: number): Promise<DiffLine[]> {
-  const lines = (t: string) => (t ? t.replace(/\n$/, "").split("\n") : [])  // a file's last newline isn't a line of its own
+  const lines = (t: string) => (t ? t.replace(/\n$/, "").split("\n") : [])
   const a = lines(before), b = lines(after)
   const out: DiffLine[] = []
   for (const [tag, i1, i2, j1, j2] of await diffLines(a, b)) {
@@ -31,7 +29,7 @@ export async function textDiff(before: string, after: string, context?: number):
   return folded
 }
 
-const ROW = 19 // px: a diff line's height (leading-[19px], never wrapped)
+const ROW = 19
 /** The diff's lines, only those in sight drawn (a file of a million lines scrolls like a short one), wherever it scrolls. */
 export function DiffRows({ lines }: { lines: DiffLine[] }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -49,7 +47,6 @@ export function DiffRows({ lines }: { lines: DiffLine[] }) {
     window.addEventListener("resize", look)
     return () => { document.removeEventListener("scroll", look, { capture: true }); window.removeEventListener("resize", look) }
   }, [lines])
-  // As wide as the longest line, so scrolling sideways doesn't change with the lines in sight.
   const wide = lines.reduce((n, l) => Math.max(n, l.text.length), 0)
   return (
     <div ref={ref} className="relative select-text" style={{ height: lines.length * ROW, minWidth: `calc(${wide}ch + 2.25rem)` }}>

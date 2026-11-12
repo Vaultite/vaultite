@@ -1,20 +1,15 @@
-// Every bundle's picture (Settings' layouts, Get's cards, a bundle's preview): a window in the theme's colours, drawn
-// as shapes. The built-in layouts are drawn by hand, each showing what sets it apart; others from their sketch.
 import { useId, type CSSProperties, type ReactNode } from "react"
 import type { Sketch } from "../../../core/bundlesketch.ts"
 import { onlyMode } from "@/core/appearance"
 import { cn } from "@/lib/utils"
 
-/** What a picture is drawn from: a bundle (core/bundles.ts Info), or a listed one's sketch. */
 export type Drawable = Pick<Sketch, "theme" | "scheme" | "panels" | "home"> & { id: string; source: "app" | "vault"; shape: Partial<Sketch["shape"]> | null }
 
-// The drawing's box: 16:10, as a window.
 const W = 160, H = 100
 
 const ink = (p: number) => `color-mix(in oklab, var(--foreground) ${p}%, transparent)`
 const tint = (c: string, p: number) => `color-mix(in oklab, ${c} ${p}%, transparent)`
 const BG = "var(--background)", SIDE = "var(--sidebar)", LINE = "var(--border)", ACCENT = "var(--primary)"
-// A floating pane's edge: a shade over the border, so it holds where the page and the sidebar are close (dark schemes).
 const PANE = "color-mix(in oklab, var(--foreground) 16%, transparent)"
 const DOTS = ["var(--red)", "var(--blue)", "var(--green)", "var(--orange)", "var(--purple)", "var(--teal)"]
 
@@ -22,25 +17,20 @@ const fill = (c: string): CSSProperties => ({ fill: c })
 const R = ({ x, y, w, h, r = 0, c }: { x: number; y: number; w: number; h: number; r?: number; c: string }) =>
   <rect x={x} y={y} width={w} height={h} rx={r} style={fill(c)} />
 const Dot = ({ x, y, r = 1.6, c }: { x: number; y: number; r?: number; c: string }) => <circle cx={x} cy={y} r={r} style={fill(c)} />
-/** A hairline: vertical at x (from y to y2), or horizontal at y. */
 const VLine = ({ x, y = 0, y2 = H }: { x: number; y?: number; y2?: number }) => <rect x={x - 0.25} y={y} width={0.5} height={y2 - y} style={fill(LINE)} />
 const HLine = ({ y, x = 0, x2 = W }: { y: number; x?: number; x2?: number }) => <rect x={x} y={y - 0.25} width={x2 - x} height={0.5} style={fill(LINE)} />
 
-/** The window's buttons. */
 const Lights = ({ x = 6, y = 6 }: { x?: number; y?: number }) => <>{["var(--red)", "var(--yellow)", "var(--green)"].map((c, i) => <Dot key={c} x={x + i * 4.6} y={y} r={1.5} c={c} />)}</>
 
-/** A sidebar, its colour (`c`: glass's) and its edge. */
 function Side({ x, w, c = SIDE, children }: { x: number; w: number; c?: string; children?: ReactNode }) {
   return <g><R x={x} y={0} w={w} h={H} c={c} /><VLine x={x === 0 ? w : x} />{children}</g>
 }
 
-/** A row: a mark (`c`) and a bar. */
 const Row = ({ x, y, w, c = ink(22), bar = ink(14), square }: { x: number; y: number; w: number; c?: string; bar?: string; square?: boolean }) => <>
   {square ? <R x={x} y={y - 2} w={4} h={4} r={1.2} c={c} /> : <Dot x={x + 1.6} y={y} c={c} />}
   <R x={x + 7} y={y - 1.5} w={w} h={3} r={1.5} c={bar} />
 </>
 
-/** A note: its heading and a few lines, `x` to `x + w`. */
 function Note({ x, y, w, n = 4 }: { x: number; y: number; w: number; n?: number }) {
   const ws = [0.94, 0.82, 0.9, 0.58, 0.86, 0.72]
   return <>
@@ -49,7 +39,6 @@ function Note({ x, y, w, n = 4 }: { x: number; y: number; w: number; n?: number 
   </>
 }
 
-/** A dashboard: a few cards, `x` to `x + w`. */
 function Cards({ x, y, w, h }: { x: number; y: number; w: number; h: number }) {
   const g = 4, cw = (w - g) / 2, ch = (h - 9 - g) / 2
   return <>
@@ -61,7 +50,6 @@ function Cards({ x, y, w, h }: { x: number; y: number; w: number; h: number }) {
   </>
 }
 
-/** A terminal pane from `y` down, `x` to `x + w`: a prompt and the cursor. */
 function Terminal({ x, y, w }: { x: number; y: number; w: number }) {
   return <g>
     <R x={x} y={y} w={w} h={H - y} c={SIDE} />
@@ -77,7 +65,6 @@ function Terminal({ x, y, w }: { x: number; y: number; w: number }) {
   </g>
 }
 
-/** Tabs over a page, `x` to `x + w`: the one shown a card. */
 function TabBar({ x, w }: { x: number; w: number }) {
   return <g>
     <HLine y={12} x={x} x2={x + w} />
@@ -88,12 +75,8 @@ function TabBar({ x, w }: { x: number; w: number }) {
   </g>
 }
 
-/** The hint of a sidebar hidden at the window's edge. */
 const Edge = ({ side }: { side: "left" | "right" }) => <R x={side === "left" ? 2 : W - 4.5} y={38} w={2.5} h={24} r={1.25} c={ink(22)} />
 
-// ---------- the built-ins ----------
-
-/** Standard: sidebars both sides with their panels, the page under its tabs, a terminal below it. */
 function Standard() {
   return <>
     <R x={0} y={0} w={W} h={H} c={BG} />
@@ -115,7 +98,6 @@ function Standard() {
   </>
 }
 
-/** Zen: nothing but the page, floating on the window; the sidebars wait at its edges and there's no tab bar. */
 function Zen({ shadow }: { shadow: string }) {
   return <>
     <R x={0} y={0} w={W} h={H} c={SIDE} />
@@ -127,7 +109,6 @@ function Zen({ shadow }: { shadow: string }) {
   </>
 }
 
-/** Browser: favourites over vertical tabs, an address bar, a web page. */
 function Browser() {
   const tabs = [20, 15, 22, 17, 12]
   return <>
@@ -161,10 +142,6 @@ function Browser() {
   </>
 }
 
-// ---------- the user's own ----------
-
-/** What a sidebar's panel looks like at this size, by its kind (search, pages, tabs, files, terminal: else a list);
- *  `folded`: its heading only. Returns how tall it drew. */
 function panel(key: string, x: number, y: number, w: number, folded: boolean, out: ReactNode[]): number {
   const kind = key.split(":")[0], k = out.length
   if (kind === "search") { out.push(<R key={k} x={x} y={y} w={w} h={6} r={3} c={ink(8)} />); return 6 }
@@ -191,7 +168,6 @@ function panel(key: string, x: number, y: number, w: number, folded: boolean, ou
   return rows * 6.5
 }
 
-/** A sidebar's panels, stacked from the top while they fit. */
 function Panels({ keys, folded, x, w, top }: { keys: string[]; folded: string[]; x: number; w: number; top: number }) {
   const out: ReactNode[] = []
   let y = top
@@ -202,21 +178,16 @@ function Panels({ keys, folded, x, w, top }: { keys: string[]; folded: string[];
   return <>{out}</>
 }
 
-/** Any other, from what it sets: which sidebars and their panels, the tab bar, panes floating, sidebars hidden at the
- *  edges (rails off with floating panes: drawn as Zen is), glass (the desktop through it), a dashboard or a note. */
 function Drawn({ b, shadow, desk }: { b: Drawable; shadow: string; desk: string }) {
   const s = b.shape ?? {}
   const left = b.panels?.left ?? ["search:search", "pages:pages", "files:files"], right = b.panels?.right ?? []
   const folded = b.panels?.collapsed ?? []
   const floating = !!s.floating, hidden = floating && s.rails === false, tabs = s.tabBar !== false
   const lw = !hidden && left.length ? 40 : 0, rw = !hidden && right.length ? 32 : 0
-  // (the page: inset as a card when panes float)
   const inset = floating ? 5 : 0
   const px = lw + inset + (hidden ? 17 : 0), pw = W - lw - rw - inset * 2 - (hidden ? 34 : 0)
   const py = inset + (hidden ? 8 : 0), ph = H - py - inset - (hidden ? 2 : 0)
-  // (no sidebar or tabs at the top left: the page starts under the window's buttons)
   const body = tabs ? 14 : !lw && !floating ? 8 : 0
-  // (glass: the desktop shows through the sidebars, and the pages too when they're glass)
   const glass = s.glass ?? null, side = glass ? tint(SIDE, 40) : SIDE, bg = glass === "pages" ? tint(BG, 55) : BG
   const page = b.home && b.home.length ? <Cards x={px + 8} y={py + body + 8} w={pw - 16} h={ph - body - 12} /> : <Note x={px + 9} y={py + body + 8} w={pw - 18} n={pw > 90 ? 5 : 4} />
   return <>
@@ -240,8 +211,6 @@ const BUILT_IN: Record<string, (shadow: string) => ReactNode> = {
   standard: () => <Standard />, zen: (s) => <Zen shadow={s} />, browser: () => <Browser />,
 }
 
-/** A bundle's drawing, filling its box (16:10): the app's layouts by hand, others from their sketch; in the colour
- *  scheme and light or dark it sets, else the app's. */
 export function LayoutDrawing({ b, className }: { b: Drawable; className?: string }) {
   const id = useId().replace(/[^\w-]/g, ""), shadow = `ld${id}`, desk = `ldd${id}`
   const own = b.source === "app" ? BUILT_IN[b.id] : undefined
@@ -255,7 +224,6 @@ export function LayoutDrawing({ b, className }: { b: Drawable; className?: strin
         <filter id={shadow} x="-20%" y="-20%" width="140%" height="150%">
           <feDropShadow dx={0} dy={1.5} stdDeviation={2.2} floodColor="black" floodOpacity={0.14} />
         </filter>
-        {/* (a desktop behind glass: two of the scheme's colours) */}
         <linearGradient id={desk} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" style={{ stopColor: "var(--teal)" }} /><stop offset="0.5" style={{ stopColor: "var(--blue)" }} /><stop offset="1" style={{ stopColor: "var(--purple)" }} />
         </linearGradient>

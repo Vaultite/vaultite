@@ -1,5 +1,3 @@
-// Markdown drawn read-only outside the editor (a book's notes, a timeline entry, an embed), looking like a read note.
-// One-line previews use `snippet` instead.
 import { useEffect, useMemo, useRef, type MouseEvent } from "react"
 import { createRoot } from "react-dom/client"
 import { getStore, type Store } from "@/core/data"
@@ -21,7 +19,6 @@ import { copyText, grouped } from "@/components/FileActions"
 import { linkItems } from "@/components/LinkMenu"
 import { cn } from "@/lib/utils"
 
-/** What Markdown from `from` needs of the vault: its links resolved as written there, its images' addresses. */
 function vaultOpts(s: Store | null, from?: string): MarkdownOpts {
   if (!s) return {}
   const resolve = resolver(s)
@@ -31,7 +28,6 @@ function vaultOpts(s: Store | null, from?: string): MarkdownOpts {
   }
 }
 
-/** Ticks the nth task of `text`, a part of the file `path` as written there (read again: it may have changed since). */
 async function tickIn(path: string, text: string, nth: number, on: boolean) {
   try {
     const f = await readFile(path)
@@ -42,7 +38,6 @@ async function tickIn(path: string, text: string, nth: number, on: boolean) {
   } catch (e) { notifyError(e, "Couldn't tick it") }
 }
 
-/** Hands the nth task of `text`, as it's in `path` now, to a worker. */
 async function doIn(path: string, text: string, nth: number, button: HTMLButtonElement) {
   const doer = taskDoer(getPrefs().disabled)
   if (!doer) return
@@ -74,10 +69,7 @@ export function Markdown({ text, store, inline, full, className, from, plain, se
     wireTasks(ref.current, tasks && from && !isReadOnly(from) ? (nth, on) => void tickIn(from, text, nth, on) : null)
     if (tasks && from && !isReadOnly(from) && taskDoer(getPrefs().disabled)) wireDoIt(ref.current, (nth, button) => void doIn(from, text, nth, button))
     markdownDrawn(ref.current)
-    // Its links have no address (a click follows them): Tab reaches them, and Enter presses them (core/keylist.ts).
     for (const a of ref.current.querySelectorAll<HTMLElement>("a[data-wiki], a[data-tag], a[data-url]")) { a.tabIndex = 0; a.setAttribute("role", "link") }
-    // `![[x]]` anywhere in the text: what it names, drawn in its place as on a line of its own (its own root), once
-    // it shows (a folded callout's: when it's opened).
     if (!s) return
     return drawEmbeds(ref.current, (el, target) => {
       const root = createRoot(el)
@@ -85,7 +77,6 @@ export function Markdown({ text, store, inline, full, className, from, plain, se
       return () => { setTimeout(() => root.unmount(), 0) }
     })
   }, [html, s, from, seenKey, tasks, text])
-  // Its diagrams let go when its HTML does (each holds a live drawing: observers, zoom).
   useEffect(() => {
     const drawn = [...ref.current?.querySelectorAll<HTMLElement>("[data-mermaid]") ?? []]
     return () => { for (const el of drawn) dropMermaid(el) }
@@ -93,7 +84,6 @@ export function Markdown({ text, store, inline, full, className, from, plain, se
   const follow = (e: MouseEvent) => {
     if (e.button === 0 && ref.current && richClick(e, ref.current)) return
     const a = (e.target as Element).closest<HTMLElement>("[data-wiki], [data-tag], [data-url]")
-    // (a web link in a note with a `container:` opens there, which the app's own link handler can't know; ⇧ or ⌥ alone: Glance's)
     const web = !a && s && from && fileOf(s, from)?.container && !((e.shiftKey || e.altKey) && !(e.metaKey || e.ctrlKey))
       ? (e.target as Element).closest<HTMLAnchorElement>("a[href]") : null
     if (web && s && /^https?:/i.test(web.href)) {
@@ -103,11 +93,8 @@ export function Markdown({ text, store, inline, full, className, from, plain, se
     if (!a || !s) return
     e.preventDefault()
     e.stopPropagation()
-    // ⌘-click or a middle-click: a new tab, as in the editor.
     followLink(s, a.dataset.tag ? { tag: a.dataset.tag } : a.dataset.url ? { url: a.dataset.url } : { wiki: a.dataset.wiki }, linkClick(e), from)
   }
-  // An image in the text: its menu, as in a note (a `![[x]]` drawn in its place answers with its own first); a link:
-  // its menu; text selected in it: Copy, under a link's items.
   const menu = (e: MouseEvent) => {
     if (!s || e.defaultPrevented) return
     const img = (e.target as Element).closest("img"), at = { x: e.clientX, y: e.clientY }
@@ -115,7 +102,7 @@ export function Markdown({ text, store, inline, full, className, from, plain, se
       e.preventDefault(); e.stopPropagation()
       const src = img.getAttribute("src") ?? ""
       let target = src
-      try { target = new URL(src, document.baseURI).searchParams.get("path") ?? src } catch { /* as written */ }
+      try { target = new URL(src, document.baseURI).searchParams.get("path") ?? src } catch {}
       openEmbedMenu(s, target, at, null, from)
       return
     }

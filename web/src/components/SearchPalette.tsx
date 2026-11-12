@@ -1,5 +1,3 @@
-// The quick switcher (⌘O): fuzzy matches, plugins' finds (searchQuery), "In files" (the server's search), rows for the text itself. A query with
-// operators is the server's alone. ⇧Enter makes a note with the name typed. A new tab's (`launcher`) opens picks in new tabs. Rows with their kind's icon, muted as ⌘P's (with File icons on).
 import { useEffect, useMemo, useState } from "react"
 import { Search, TextSearch } from "lucide-react"
 import { getStore, type Store } from "@/core/data"
@@ -19,13 +17,11 @@ import { excerpt, explain, highlighter, isPlain, marksOf, parse, type Node } fro
 
 type Found = { path: string; title: string; context: string; mtime: number; archived?: boolean }
 
-/** A query as the search syntax reads it, or why it can't be read. */
 function readQuery(q: string): { node: Node | null; error?: string } {
   if (!q.trim()) return { node: null }
   try { return { node: parse(q.trim()) } } catch (e) { return { node: null, error: (e as Error).message } }
 }
 
-/** A file the server found, as a row: its name and the part of the line that matched, both marked. */
 function foundHit(r: Found, node: Node): Hit {
   const title = stem(r.path)
   const line = snippet(r.context)
@@ -37,15 +33,12 @@ function foundHit(r: Found, node: Node): Hit {
   }
 }
 
-/** Rows listed at first, and how many more each time the list is scrolled to its end. */
 const PAGE = 40
 
 export function SearchPalette({ store, onClose, launcher = false }: { store: Store; onClose: () => void
-  /** A new tab's (newtab.json `opens`): what's picked opens in a new tab. */
   launcher?: boolean }) {
   const docs = useSearchIndex(store)
   const { query: q, setQuery: setQ, select, picked } = useFinderQuery()
-  // (opened by the Tabs panel's New tab row: its picks go at the pane's end, where the row is)
   const [at] = useState(() => (launcher ? launcherAt() : undefined))
   useEffect(() => (launcher ? launcherClosed : undefined), [launcher])
   const { node, error } = useMemo(() => readQuery(q), [q])
@@ -55,8 +48,6 @@ export function SearchPalette({ store, onClose, launcher = false }: { store: Sto
   const [limit, setLimit] = useStateFor([q], () => PAGE)
   const named = useMemo(() => (!q.trim() ? suggestions(docs, opened) : plain && !error ? search(docs, q, Infinity) : []), [docs, q, plain, error, opened])
   const local = q.trim() ? named.slice(0, limit) : named
-  // Words inside files: the server searches every file's text (with operators, it's all there is). From two letters,
-  // as the search tab: the server reads every file for one letter or two alike.
   const short = !node || (plain && q.trim().length < 2)
   const [text, setText] = useStateFor<{ hits: Hit[]; files: number }>([short], () => ({ hits: [], files: 0 }))
   useEffect(() => {
@@ -71,9 +62,7 @@ export function SearchPalette({ store, onClose, launcher = false }: { store: Sto
     return () => { on = false; clearTimeout(t) }
   }, [q, node, plain, limit, short, setText])
   const queried = useQueried(plain && !error ? q : "")
-  // (a launcher whose plugin opens nothing here, the web app's Browser, is the switcher with a new tab's picks)
   const lead = launcher ? launcherText(disabled) : null
-  // A launcher's text completed inline as a browser's address bar does (a site visited before), unless just deleted.
   const [auto, setAuto] = useState(true)
   const [done, setDone] = useState<{ for: string; text: string } | null>(null)
   useEffect(() => {
@@ -83,18 +72,14 @@ export function SearchPalette({ store, onClose, launcher = false }: { store: Sto
     return () => { on = false }
   }, [lead, plain, error, q, auto, disabled])
   const complete = lead && auto && q.trim() && done && done.text.toLowerCase().startsWith(q.toLowerCase()) && q.toLowerCase().startsWith(done.for.toLowerCase().slice(0, q.length)) ? done.text : null
-  // ⌥↓/⌥↑: where the typed rows open (the Browser's container), another.
   const [turn, setTurn] = useState(0)
   const typed = useMemo(() => (plain && !error ? typedHits(q, disabled, { complete: complete && complete.length > q.length ? complete : null, turn }) : []), [q, plain, error, disabled, complete, turn])
   const turns = typed.some((h) => h.tag) ? typedTurns(disabled) : null
-  // The search tab with everything, the same row while the query is (results arriving don't draw it again).
   const everything = useMemo<Hit>(() => {
     const query = q.trim()
     return { id: "search-tab", title: `Search for "${query}" in every file`, meta: "", kind: "Search", icon: Search, tint: "var(--muted-foreground)",
       text: "", recent: 0, marks: [], score: 0, run: () => openView(`search/${query}`, { newTab: true }) }
   }, [q])
-  // Plugins' finds, words inside files, archived files after everything (core/search.ts); then the typed rows (first in a
-  // launcher) and the search tab.
   const { hits, sections } = useMemo(() => {
     const have = new Set(local.map((h) => h.file).filter(Boolean))
     const inFiles = text.hits.filter((h) => !have.has(h.file))
@@ -119,7 +104,6 @@ export function SearchPalette({ store, onClose, launcher = false }: { store: Sto
       else if (h.detail) openDetail(h.detail)
     }), 0)
   }
-  // ⇧Enter: a note named what was typed, where every new note goes (newNoteFolder).
   const create = async (newTab: boolean) => {
     if (!cleanName(q)) return
     picked()

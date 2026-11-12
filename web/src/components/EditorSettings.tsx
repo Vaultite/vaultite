@@ -1,5 +1,3 @@
-// Settings > Editor: how notes are written and laid out (.vaultite/editor.json; core/editorPrefs.ts), Obsidian's settings
-// of the same names. A setting the file doesn't have follows the vault's .obsidian/app.json, else Obsidian's default.
 import type { Store } from "@/core/data"
 import { EDITING_MODES, editorSet, NOTE_VIEWS, PROPERTIES_SHOWN, setEditor, useEditorSettings, type EditingMode, type NoteView, type PropertiesShown } from "@/core/editorPrefs"
 import { useDesktop } from "@/core/platform"
@@ -10,9 +8,7 @@ import { SwitchRow } from "@/components/SwitchRow"
 import { PluginSwitches } from "@/components/PluginSwitches"
 import { propertiesPreview } from "@/components/SettingPictures"
 
-/** A switch, with its way back to what the vault or Obsidian says (core/switches.ts). */
 const FlagRow = ({ row }: { row: string }) => <SwitchRow s={coreSwitch(`setting:${row}`)} />
-
 
 export function EditorPanel({ store }: { store: Store }) {
   const e = useEditorSettings(store)

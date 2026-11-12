@@ -1,5 +1,3 @@
-// One right-click menu for whatever `![[x]]` shows: what fits its kind (copy, its size, the embed taken out, open), then
-// its file's menu (FileActions' fileMenu, the plugins' items too). A file's own tab has the same (mediaItems).
 import type { ReactNode } from "react"
 import { AppWindow, Copy, Download, Eraser, Scaling } from "lucide-react"
 import type { Store } from "@/core/data"
@@ -19,28 +17,22 @@ import { noteFor } from "@/components/NoteEmbed"
 import type { EmbedEdit } from "@/editor/livePreview"
 import { splitAnchor } from "../../../core/sections.ts"
 
-/** The vault file an image embed names (`![[photo.png]]`, `![](Attachments/photo.png)`), or null. */
 export function assetPath(store: Store, name: string, from?: string): string | null {
   let t = name.trim()
-  try { t = decodeURIComponent(t) } catch { /* as written */ }
-  // Found as a link is (the closest of its name); a hidden folder's file, which links don't name, by its path.
+  try { t = decodeURIComponent(t) } catch {}
   const hit = resolver(store)(t, from)?.file
   if (hit) return store.files.others.some((o) => o.path === hit) ? hit : null
   const low = t.toLowerCase().replace(/^(\.\.?\/)+|^\/+/, "")
   return store.files.others.find((o) => o.path.toLowerCase() === low)?.path ?? null
 }
 
-/** The file `![[target]]` shows (`from`: the note it's in, for `![[#Heading]]`), or null (a web image, nothing). */
 const embedPath = (store: Store, target: string, from = "") =>
   findEmbed(store, target, from) ?? assetPath(store, target, from) ?? noteFor(store, target, from)
 
-/** The menu for `![[target]]` (or an image's `![](target)`): what's about the embed, then its file's own menu.
- *  `edit`: what changes it in the note it's in. */
 function embedItems(store: Store, target: string, edit?: EmbedEdit | null, from = ""): MenuItem[] {
   const path = embedPath(store, target, from)
   const image = path ? kindOf(path) === "image" : true
   const note = !!path && isMd(path) && !formatFor(path, getPrefs().disabled)
-  // (an audio player or a note has no size to reset)
   const sized = image || (!!path && !note && kindOf(path) !== "audio")
   const anchor = note ? splitAnchor(target)[1] : ""
   const own: MenuItem[] = [
@@ -58,8 +50,6 @@ function embedItems(store: Store, target: string, edit?: EmbedEdit | null, from 
   ]] })
 }
 
-/** The menu of an image, PDF or other file shown in its own tab (FileView's MediaFile): copy it, open it elsewhere,
- *  then its file's own menu; one from outside the vault: copy it, Copy to vault, Reveal in Finder. */
 export function mediaItems(path: string, outside: boolean): MenuItem[] {
   const copy: MenuItem[] = kindOf(path) === "image" ? [{ label: "Copy image", icon: Copy, run: () => void copyImage(rawUrl(path)) }] : []
   if (outside) return grouped([copy, [copyToVaultItem(path), ...openHereItem(path), ...revealItem(path)]])
@@ -71,8 +61,6 @@ const openHereItem = (path: string): MenuItem[] => (canOpenHere() ? [{ label: "O
 export const openEmbedMenu = (store: Store, target: string, at: { x: number; y: number }, edit?: EmbedEdit | null, from = "") =>
   openMenu(at, embedItems(store, target, edit, from))
 
-/** Around an embed drawn with React: its menu on right-click, unless something in it answered first (a drawing's own
- *  menu) or it's in a note's text, where the text's menu stays. `display: contents`: no box of its own. */
 export function EmbedMenu({ store, target, from, edit, children }: { store: Store; target: string; from: string; edit?: () => EmbedEdit | null; children: ReactNode }) {
   return (
     <div className="contents" data-embed-menu
@@ -86,7 +74,6 @@ export function EmbedMenu({ store, target, from, edit, children }: { store: Stor
   )
 }
 
-/** Save a file from the vault (on a phone: to Files or Photos). */
 function download(path: string) {
   const a = document.createElement("a")
   a.href = rawUrl(path, { download: true })
@@ -94,7 +81,6 @@ function download(path: string) {
   a.click()
 }
 
-/** Put an image on the clipboard, as a PNG (the one kind every app takes). */
 async function copyImage(url: string) {
   try {
     const png = fetch(url).then((r) => r.blob()).then(async (b) => {

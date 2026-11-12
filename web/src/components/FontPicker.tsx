@@ -1,5 +1,3 @@
-// A font setting: a button in its own font that opens the Chooser with this device's fonts; a name not listed can
-// still be used.
 import { ChevronsUpDown, HardDrive } from "lucide-react"
 import { choose, type Choice } from "@/components/Chooser"
 import { marked } from "@/components/Palette"
@@ -10,23 +8,16 @@ import { cn } from "@/lib/utils"
 type FontChoice = Choice & { family?: string; all?: boolean }
 
 export type FontPickerProps = {
-  /** The setting: a family name, or "" for the default. */
   value: string
   onChange: (value: string) => void
-  /** The setting's name ("Text font"): the button's label and the palette's. */
   label: string
-  /** The default: its name ("System font") and the CSS font-family it draws with. */
   fallback: { name: string; css: string }
-  /** Code: monospace fonts listed first, and the stack falls back to a monospace one. */
   mono?: boolean
-  /** A line above the list: what the font is used for. */
   heading?: string
-  /** The selected font as the selection moves ("" the default), shown for now; null once the picker closes. */
   preview?: (value: string | null) => void
   className?: string
 }
 
-/** The picker in the palette: this device's fonts, each in itself. */
 export async function pickFont(props: FontPickerProps) {
   const { value, onChange, label, fallback, mono, heading, preview } = props
   if (!listedAll() && await listAllowed()) await loadAll()
@@ -55,7 +46,6 @@ export async function pickFont(props: FontPickerProps) {
   })
 }
 
-/** The setting's control: the current font, drawn in itself; click for the picker. */
 export function FontPicker(props: FontPickerProps) {
   const { value, label, fallback, mono, className } = props
   return (

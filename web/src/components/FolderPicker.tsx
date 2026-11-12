@@ -1,5 +1,3 @@
-// A folder from the vault's, fuzzy, in the palette overlay ("/" first when it's one): "Move file to…" and a folder
-// setting. A folder typed that isn't there is offered as new; the move (or the setting) makes it. Mounted once.
 import { memo, useMemo, useState } from "react"
 import { Folder, FolderPlus } from "lucide-react"
 import { getStore } from "@/core/data"
@@ -12,13 +10,9 @@ import { signal } from "@/core/signal"
 import { ARCHIVE_DIR } from "../../../core/fileprops.ts"
 
 export type FolderPick = {
-  /** The palette's name, its field's placeholder, and what Enter does ("move"). */
   label: string; placeholder: string; verb: string
-  /** A folder that can't be typed, nor one inside it (what moves). */
   not?: string
-  /** The folders offered ("" is the top level), and every folder there is. */
   folders: string[]; all: string[]
-  /** `made`: typed, not there yet. */
   onPick: (folder: string, made: boolean) => void
 }
 let picking: FolderPick | null = null
@@ -51,7 +45,7 @@ function Picker({ p, onClose }: { p: FolderPick; onClose: () => void }) {
     const all = p.folders.map((f) => ({ id: `f-${f}`, path: f, label: f || "/", marks: [] as number[], score: 0, create: false }))
     if (!query) return all
     const out: Item[] = all.flatMap((h) => { const m = fuzzy(query, h.label); return m ? [{ ...h, ...m }] : [] }).sort((a, b) => b.score - a.score)
-    const name = cleanName(query) // ("a/b:c" -> "a/b c")
+    const name = cleanName(query)
     const taken = new Set(p.all.map((f) => f.toLowerCase()))
     if (name && !taken.has(name.toLowerCase()) && !isHidden(name) && (!p.not || (name !== p.not && !name.startsWith(`${p.not}/`)))) {
       out.push({ id: `new-${name}`, path: name, label: name, marks: [], create: true })
@@ -62,7 +56,6 @@ function Picker({ p, onClose }: { p: FolderPick; onClose: () => void }) {
   return (
     <Palette label={p.label} placeholder={p.placeholder} query={q} setQuery={setQ} items={items} onClose={onClose}
       onPick={(it, { shift }) => {
-        // ⇧Enter: make the folder typed.
         const h = shift ? items.find((x) => x.create) : it
         if (h) pick(h)
       }}

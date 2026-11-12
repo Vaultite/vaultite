@@ -1,5 +1,3 @@
-// Phones selecting (core/select.ts): a bar at the bottom, over the page and the drawers, saying how many are picked,
-// with what they can do together (the list's menu, above it) and Done at the right, where the thumb is.
 import type { MouseEvent } from "react"
 import { createPortal } from "react-dom"
 import { Ellipsis } from "lucide-react"

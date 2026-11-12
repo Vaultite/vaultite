@@ -1,5 +1,3 @@
-// Read-only presence grid: recent weeks as rows, Mon–Sun as columns, a dot on days that count.
-// `tip(d)` returns a description for filled days (null for empty ones); filled dots open `onOpen(d)`.
 import { addDays, dateText, parse, range, today, weekStart } from "@/core/data"
 import { cn } from "@/lib/utils"
 

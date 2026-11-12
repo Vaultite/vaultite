@@ -1,5 +1,3 @@
-// Search tabs (⌘⇧A, Chrome's tab search): this window's open tabs, the last focused first, then the ones closed lately
-// and the archived ones, to reopen. Enter on the one before shows it again, as ⌘Tab; ⌘⌫ closes the selected tab here.
 import { useRef, useState, type KeyboardEvent } from "react"
 import { fmtAgo, type Store } from "@/core/data"
 import { inVault } from "@/core/files"
@@ -16,17 +14,13 @@ import { Badged } from "@/components/kit"
 import { cn, plural } from "@/lib/utils"
 
 const OPEN = "Open tabs", CLOSED = "Recently closed", ARCHIVED = "Archived tabs"
-/** Closed and archived tabs listed while nothing is typed: the latest few, as a browser's tab search. */
 const FEW = 5
 const CLOSE = "Mod+Backspace"
 
 type Row = {
   id: string; section: string; tab: Tab; info: TabInfo; label: string
-  /** What else finds it: its address (a file's path, a page's URL) and its group's name. */
   text: string
-  /** Muted after the label: a web page's site. */
   host?: string
-  /** At its end: "Current tab", "Pinned", or when it closed. */
   meta?: string
   group?: Group
   current?: boolean
@@ -39,7 +33,6 @@ const hostOf = (to: string) => {
   try { return url ? new URL(url).host.replace(/^www\./, "") : undefined } catch { return undefined }
 }
 
-/** Rows matching `q`: by the label (fuzzy, best first), then by their address or group (words as typed, in their order). */
 function matching(rows: Row[], q: string): Row[] {
   if (!q) return rows
   const hits = rows.flatMap((r, i) => {
@@ -56,9 +49,7 @@ export function TabSearch({ store, onClose }: { store: Store; onClose: () => voi
   const archived = useArchivedTabs()
   const info = useTabLabels(store)
   const cur = l.active
-  /** What else finds a tab: what each of its panes shows. */
   const places = (t: Tab) => placesIn(t).map((p) => p.to)
-  // (a file deleted since isn't offered back, nor what's open again)
   const there = (to: string) => { const p = vaultPath(to); return p === null || inVault(store, p) }
   const away = (to: string) => there(to) && !findOpen(to)
 
@@ -70,7 +61,6 @@ export function TabSearch({ store, onClose }: { store: Store; onClose: () => voi
   })
   const seen = new Set<string>()
   const once = (to: string) => !seen.has(to) && !!seen.add(to)
-  // (what closed together is one row, reopened together: a tab group, Close others, a window)
   const closed = closedTabs().flatMap((c): Row[] => {
     const tabs = c.tabs.filter((t) => places(t).every(away))
     if (!tabs.length || !once(tabs.flatMap(places).join("\n"))) return []
@@ -93,7 +83,6 @@ export function TabSearch({ store, onClose }: { store: Store; onClose: () => voi
     onClose()
     setTimeout(r.pick, 0)
   }
-  // ⌘⌫: the selected open tab closes as its row folds away (asking first where closing it would, as everywhere).
   const onKey = (e: KeyboardEvent) => {
     if (!sameKeys(shortcutOf(e.nativeEvent), CLOSE)) return false
     const r = rows.find((x) => x.id === selected.current)
@@ -114,16 +103,13 @@ export function TabSearch({ store, onClose }: { store: Store; onClose: () => voi
   )
 }
 
-/** The tab group a closed entry's tabs were all in, if they were. */
 export const closedGroup = (e: ClosedEntry): Group | undefined =>
   e.groups.length === 1 && e.tabs.every((t) => t.group === e.groups[0].id) ? e.groups[0] : undefined
-/** A closed entry's name: its tab's, its group's, or its first tab's and how many more ("Lighthouse and 2 more"). */
 export function closedName(e: ClosedEntry, label: (t: Tab) => string) {
   const g = closedGroup(e)
   if (e.tabs.length === 1) return label(e.tabs[0])
   return g ? groupName(g) : `${label(e.tabs[0])} and ${e.tabs.length - 1} more`
 }
-/** What else a closed entry says: a window, how many tabs, when it closed. */
 export const closedMeta = (e: ClosedEntry) =>
   [e.window && "Window", e.tabs.length > 1 && plural(e.tabs.length, "tab"), e.closed && fmtAgo(e.closed)].filter(Boolean).join(" · ") || undefined
 

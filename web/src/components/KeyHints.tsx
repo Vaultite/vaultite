@@ -1,5 +1,3 @@
-// The keys hint, like Vim's which-key: while a sequence is under way, what each next key does. It waits a moment so
-// a sequence typed quickly never flashes it.
 import { memo, useEffect, useMemo } from "react"
 import { Keys } from "@/components/Palette"
 import { nextKeys, usePendingKeys } from "@/core/commands"

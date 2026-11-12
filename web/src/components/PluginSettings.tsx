@@ -1,5 +1,3 @@
-// A plugin's settings sheet, the one place its options live: a form of its declared settings (the default removes the
-// key), then its `settingsPanel` (or first), or its settings file drawn. No menus inside: choices unfold.
 import { type KeyboardEvent, useEffect, useMemo, useState } from "react"
 import { refuse } from "@/core/animation"
 import { Check, ChevronDown, ChevronRight, FileJson, Folder, Plus, X, type LucideIcon } from "lucide-react"
@@ -25,7 +23,6 @@ const panelFailed = () => <p className="text-[15px] text-muted-foreground">Its s
 
 type Data = Record<string, unknown>
 const types = (d: SettingDecl) => (Array.isArray(d.type) ? d.type : [d.type])
-/** A description is a lowercase fragment (for AIs, like a block option's); under a label it starts a sentence. */
 
 /** A plugin's settings (its data.json), followed live: null while they load, {} when there are none; `set` writes
  *  those keys (null removes one), shown at once and put back if the write fails. */
@@ -34,20 +31,15 @@ export function usePluginSettings(id: string): [Data | null, (changes: Data) => 
   return [s.use(true), s.set]
 }
 
-/** `embedded`: one part of a Settings section (Files, AI…), under its name: no head, no file line. */
 export function PluginSettings({ store, plugin, embedded = false }: { store: Store; plugin: Plugin; embedded?: boolean }) {
   const { disabled } = usePrefs()
   const on = isEnabled(plugin.id, disabled)
-  // (those its panel draws itself, while it's drawn)
   const drawn = on && plugin.settingsPanel ? plugin.settingsPanelDraws ?? [] : []
   const decls = Object.fromEntries(Object.entries(plugin.settingsDecls ?? {}).filter(([k]) => !drawn.includes(k)))
   const declared = Object.keys(decls).length > 0
   const hasFile = (store.pluginSettings ?? []).includes(plugin.id)
   const blocked = (plugin.requires ?? []).filter((r) => !isEnabled(r, disabled))
-  // Its own panel: after the short options it declares (a list that grows can't push them out of sight), unless it's
-  // what the sheet is for.
   const panel = on && plugin.settingsPanel && <Catch fallback={panelFailed}>{plugin.settingsPanel({ store })}</Catch>
-  // Opened for one setting (the Settings page's search): go to it.
   useEffect(() => {
     const key = takeGoingTo(plugin.id)
     if (key) revealRow(`[data-plugin-settings-sheet="${CSS.escape(plugin.id)}"] [data-setting="${CSS.escape(key)}"]`)
@@ -77,7 +69,6 @@ export function PluginSettings({ store, plugin, embedded = false }: { store: Sto
   )
 }
 
-/** Where something of a plugin's is kept, and Open (the sheet closed first). */
 export function Where({ path, lead, icon: Icon = FileJson, open }: { path: string; lead: string; icon?: LucideIcon; open?: () => void }) {
   return (
     <div className="flex items-center gap-2 text-[13px] leading-[18px] text-muted-foreground" data-settings-where>
@@ -93,17 +84,13 @@ export function Where({ path, lead, icon: Icon = FileJson, open }: { path: strin
   )
 }
 
-// ---------- the form of declared settings
-
 function SettingsForm({ id, decls, titled, offers }: { id: string; decls: SettingDecls; titled: boolean; offers?: Record<string, Offer> }) {
   const [data, save] = usePluginSettings(id)
-  // (another app's settings make some defaults: .obsidian/templates.json's folder)
   const seeds = useStore().store?.settingDefaults?.[`plugins/${id}/data`]
   const declOf = (k: string): SettingDecl => (seeds && Object.hasOwn(seeds, k) ? { ...decls[k], default: seeds[k] as SettingDecl["default"] } : decls[k])
   if (!data) return <Group><div className="min-h-12" aria-busy /></Group>
   const set = (k: string, v: unknown) => {
     const d = declOf(k)
-    // The default again: the key goes (null), so the vault keeps only what was chosen.
     const next = v === undefined || v === null || v === "" || JSON.stringify(v) === JSON.stringify(d.default) ? null : v
     save({ [k]: next }).catch((e) => notifyError(e, "Couldn't save it"))
   }
@@ -115,8 +102,6 @@ function SettingsForm({ id, decls, titled, offers }: { id: string; decls: Settin
   return titled ? <Section title="Options">{form}</Section> : form
 }
 
-/** The folders new files of the plugin's kinds go in (and its pages, for Dashboards): each shows the one that applies
- *  (set in .vaultite/folders.json, else another app's or where most of them are); clearing it goes back to that. */
 function Homes({ store, plugin }: { store: Store; plugin: string }) {
   const homes = (store.filing?.homes ?? []).filter((h) => h.plugin === plugin)
   if (!homes.length) return null
@@ -135,7 +120,6 @@ function Homes({ store, plugin }: { store: Store; plugin: string }) {
   )
 }
 
-/** Where it writes outside .vaultite/ on its own (core/grants.ts): each place, allowed or not, to change. */
 function Writes({ store, plugin }: { store: Store; plugin: string }) {
   const list = grantsOf(plugin, store)
   if (!list.length) return null
@@ -176,17 +160,13 @@ export function Field({ k, d, value, set, offer }: { k: string; d: SettingDecl; 
   if (ts.length === 1 && ts[0] === "list" && d.values?.length) return <Chips k={k} d={d} value={shown} set={set} />
   if (d.folder && ts.length === 1 && ts[0] === "list") return <Folders k={k} d={d} value={value} set={set} />
   if (d.folder && ts.length === 1 && ts[0] === "string") return <FolderField k={k} d={d} value={value} set={set} />
-  // (a list of records, not of words: its file says it best)
   const words = !Array.isArray(value) || value.every((x) => typeof x === "string" || typeof x === "number")
   if (ts.every((t) => t === "string" || t === "list") && words) return <TextField k={k} d={d} value={value} set={set} list={ts.includes("list")} />
-  // A map (or several shapes): its file says it best.
   return <SettingRow label={d.label} sub={`${sub}. Edit it in the file below`} {...attrs} />
 }
 
 
 type Offer = () => SettingChoice[] | null
-/** A text whose choices the app lists (a plugin's `settingChoices`: this Mac's microphones), live: the one set stays
- *  among them while it isn't there (a mic unplugged); where they can't be listed, the form it has without them. */
 function OfferedChoice({ k, d, value, set, offer }: { k: string; d: SettingDecl; value: unknown; set: (v: unknown) => void; offer: Offer }) {
   const list = offer()
   if (!list) return <Field k={k} d={d} value={value} set={set} />
@@ -196,7 +176,6 @@ function OfferedChoice({ k, d, value, set, offer }: { k: string; d: SettingDecl;
   return <Choice k={k} d={enumOf} value={shown} set={set} />
 }
 
-/** A text the server offers choices for (`choices`: its route): as an enum of them once they come, "" the default. */
 function ServerChoice({ k, d, value, set }: { k: string; d: SettingDecl; value: unknown; set: (v: unknown) => void }) {
   const { data } = useLive<{ choices: { value: string; label: string }[] }>(d.choices!)
   const list = data?.choices ?? []
@@ -205,7 +184,6 @@ function ServerChoice({ k, d, value, set }: { k: string; d: SettingDecl; value: 
   return <Choice k={k} d={enumOf} value={typeof value === "string" ? value : String(d.default ?? "")} set={set} />
 }
 
-/** A text with ones to pick from (a search engine's address): one of them, or Custom, typed in. */
 function Presets({ k, d, value, set }: { k: string; d: SettingDecl; value: unknown; set: (v: unknown) => void }) {
   const values = (d.values ?? []).map(String), shown = typeof value === "string" ? value : String(d.default ?? "")
   const [own, setOwn] = useState(false)
@@ -220,7 +198,6 @@ function Presets({ k, d, value, set }: { k: string; d: SettingDecl; value: unkno
 }
 const CUSTOM = "\0custom"
 
-/** One of a few short values: segmented; more, a row that unfolds into the choices (a menu can't open over a sheet). */
 function Choice({ k, d, value, set }: { k: string; d: SettingDecl; value: unknown; set: (v: unknown) => void }) {
   const [open, setOpen] = useState(false)
   const values = d.values ?? []
@@ -256,7 +233,6 @@ function Choice({ k, d, value, set }: { k: string; d: SettingDecl; value: unknow
   )
 }
 
-/** Typed, saved on Enter or leaving the field; what doesn't fit (not a number, out of range) says why and isn't saved. */
 function NumberField({ k, d, value, set }: { k: string; d: SettingDecl; value: unknown; set: (v: unknown) => void }) {
   const [typed, setTyped] = useState<string | null>(null)
   const text = typed ?? (typeof value === "number" ? String(value) : "")
@@ -273,10 +249,8 @@ function NumberField({ k, d, value, set }: { k: string; d: SettingDecl; value: u
   )
 }
 
-/** A text, or a list written as one (comma-separated). Saved on Enter or leaving it; emptied, it's the default again. */
 function TextField({ k, d, value, set, list }: { k: string; d: SettingDecl; value: unknown; set: (v: unknown) => void; list: boolean }) {
   const [typed, setTyped] = useState<string | null>(null)
-  // (a list is comma-separated, or one item per line when its items may hold commas: `lines`)
   const lines = list && d.lines === true, sep = lines ? "\n" : ", "
   const asText = (v: unknown) => (Array.isArray(v) ? v.join(sep) : typeof v === "string" || typeof v === "number" ? String(v) : "")
   const text = typed ?? asText(value)
@@ -300,14 +274,12 @@ function TextField({ k, d, value, set, list }: { k: string; d: SettingDecl; valu
   )
 }
 
-/** The vault's folders, followed live. */
 function useFolders() {
   const files = useStore().store?.files
   return useMemo(() => new Set(files ? folderList(files) : []), [files])
 }
 const missing = (f: string) => <span className="text-ink-(--red)">There's no folder {f}</span>
 
-/** A folder, chosen from the vault's (or a new one, made); one set that isn't there says so. Cleared, the default. */
 function FolderField({ k, d, value, set }: { k: string; d: SettingDecl; value: unknown; set: (v: unknown) => void }) {
   const folders = useFolders()
   const v = typeof value === "string" ? value.replace(/^\/+|\/+$/g, "") : ""
@@ -330,7 +302,6 @@ function FolderField({ k, d, value, set }: { k: string; d: SettingDecl; value: u
   )
 }
 
-/** Folders, one chip each (one that isn't there in red), and one more chosen like FolderField's. */
 function Folders({ k, d, value, set }: { k: string; d: SettingDecl; value: unknown; set: (v: unknown) => void }) {
   const folders = useFolders()
   const list = (Array.isArray(value) ? value : []).map((x) => String(x).replace(/^\/+|\/+$/g, "")).filter(Boolean)
@@ -357,7 +328,6 @@ function Folders({ k, d, value, set }: { k: string; d: SettingDecl; value: unkno
   )
 }
 
-/** A list of some of its values: one chip each, on or off. */
 function Chips({ k, d, value, set }: { k: string; d: SettingDecl; value: unknown; set: (v: unknown) => void }) {
   const list = Array.isArray(value) ? value : []
   return (
@@ -378,10 +348,6 @@ function Chips({ k, d, value, set }: { k: string; d: SettingDecl; value: unknown
   )
 }
 
-// ---------- no form: the file itself
-
-/** A settings file drawn like a .json file in live preview: values edited in place, saved as a small edit (with the
- *  text it built on, so a change on disk meanwhile is merged or refused); the shape is changed in the file (Open). */
 function SettingsJson({ path }: { path: string }) {
   const [file, setFile] = useState<{ text: string } | null>(null)
   const read = () => { readFile(path).then((f) => setFile({ text: f.text }), () => setFile({ text: "{}" })) }

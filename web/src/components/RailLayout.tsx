@@ -1,5 +1,3 @@
-// Settings' shell, as System Settings is: a menu (or what its search finds) beside what's picked, each scrolling on its
-// own. Narrow, the page is the menu, or what's picked in its place (a phone's: a sheet). Plugins scrolls the same.
 import { Fragment, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type UIEvent } from "react"
 import { ChevronRight, type LucideIcon } from "lucide-react"
 import { usePane } from "@/core/pane"
@@ -11,21 +9,15 @@ type Attrs = Record<`data-${string}`, string | undefined>
 
 export type RailItem = {
   id: string; label: string; icon?: LucideIcon; tint?: string
-  /** At its right end: what it holds, said in words (Plugins' "7 on"). */
   value?: string
-  /** Above it: a heading (Features), or only some space. */
   heading?: string; gap?: boolean
-  /** Its heading folds what's under it, to the next heading or space. */
   fold?: { open: boolean; toggle: () => void }
   attrs?: Attrs
 }
 
-/** Wide enough for the menu beside what's picked: Tailwind's @3xl (48rem). Only in a pane: a phone's page is narrower.
- *  A callback ref: the page may draw another layout in its place and come back. */
 export function useRail(): Rail {
   const [el, setEl] = useState<HTMLDivElement | null>(null)
   const [wide, setWide] = useState(false)
-  // (before the first paint, so a wide pane never shows the narrow layout first; a hidden tab measures 0 and keeps its)
   useLayoutEffect(() => {
     if (!el) return
     const measure = () => { if (el.clientWidth) setWide(el.clientWidth >= 48 * parseFloat(getComputedStyle(document.documentElement).fontSize)) }
@@ -40,7 +32,6 @@ type Rail = [(el: HTMLDivElement | null) => void, boolean]
 
 const heading = (t: string) => <div className="px-1.5 pt-4 pb-1 text-[12px] font-semibold text-muted-foreground">{t}</div>
 
-/** A heading that folds its rows, saying how many it holds. */
 function FoldHeading({ label, fold, count }: { label: string; fold: NonNullable<RailItem["fold"]>; count: number }) {
   return (
     <button type="button" aria-expanded={fold.open} onClick={fold.toggle} data-rail-fold={label}
@@ -52,14 +43,12 @@ function FoldHeading({ label, fold, count }: { label: string; fold: NonNullable<
   )
 }
 
-/** How many rows a heading at `i` holds: to the next heading or space. */
 function rowsFrom(items: RailItem[], i: number) {
   let n = 1
   while (i + n < items.length && !items[i + n].heading && !items[i + n].gap) n++
   return n
 }
 
-/** Icons on tiles of their colour (Settings' menu), memoised per icon and colour so rows keep their component. */
 const tiles = new Map<string, LucideIcon>()
 const tileOf = (icon: LucideIcon, tint: string): LucideIcon => {
   const key = `${icon.displayName ?? icon.name}|${tint}`
@@ -68,8 +57,6 @@ const tileOf = (icon: LucideIcon, tint: string): LucideIcon => {
   return t
 }
 
-/** The menu's rows, at the sidebar's sizes: the rail where wide, Settings' page where narrow. `tiles`: each icon on a
- *  tile of its colour, as System Settings' menu. `chevrons`: each row goes somewhere else (a sheet, a page). */
 export function RailMenu({ label, items, active, pick, tiles: tiled, chevrons, ...rest }: { label: string; items: RailItem[]; active: string | null; pick: (id: string) => void; tiles?: boolean; chevrons?: boolean } & Attrs) {
   let folded = false
   return (
@@ -97,8 +84,7 @@ export function RailMenu({ label, items, active, pick, tiles: tiled, chevrons, .
   )
 }
 
-/** A box that scrolls itself; a tab kept drawn while hidden (display: none) loses its scroll, put back as it shows.
- *  `page`: a new one starts at the top. */
+// display: none drops an element's scroll position, so a hidden tab's is kept and put back.
 function Scroller({ page, className, children, ...rest }: { page?: string; className?: string; children: ReactNode } & Attrs) {
   const { hidden } = usePane()
   const el = useRef<HTMLDivElement>(null), kept = useRef(0)
@@ -108,8 +94,6 @@ function Scroller({ page, className, children, ...rest }: { page?: string; class
   return <div ref={el} onScroll={keep} className={cn("overflow-y-auto overscroll-contain", className)} {...rest}>{children}</div>
 }
 
-/** The narrow layout in a pane scrolls itself (a phone's, the window does), at the reading width. `page`: a new one
- *  starts at the top. */
 function PageScroller({ page, children, ...rest }: { page?: string; children: ReactNode } & Attrs) {
   const { pane: own } = usePane()
   if (!own) return <div {...rest}>{children}</div>
@@ -122,15 +106,11 @@ function PageScroller({ page, children, ...rest }: { page?: string; children: Re
 
 type Search = {
   value: string; onChange: (v: string) => void; placeholder: string
-  /** Enter: the result picked (else the first). */
   onSubmit?: () => void
-  /** The arrow keys: the next or previous result. */
   onMove?: (by: 1 | -1) => void
   attrs?: Attrs
 }
 
-/** `side`: under the search where wide (the menu, or what it found). `page`: what's picked (a new one starts at its top).
- *  Narrow: `title`, the search, then `children` alone (the page draws the menu as its list, or what's picked). */
 export function RailLayout({ rail: [ref, wide], search, side, page, title, children }: {
   rail: Rail; search?: Search; side: ReactNode; page: string; title?: string; children: ReactNode
 }) {
@@ -141,12 +121,10 @@ export function RailLayout({ rail: [ref, wide], search, side, page, title, child
     search.onMove(e.key === "ArrowDown" ? 1 : -1)
   }
   const field = search && (
-    // Enter goes to the result picked; the arrows move between them. (Named: a page in it may have a search of its own.)
     <form role="search" aria-label={search.placeholder} className="flex" onKeyDown={keys} onSubmit={(e) => { e.preventDefault(); search.onSubmit?.() }} {...search.attrs}>
       <FilterField value={search.value} onChange={search.onChange} placeholder={search.placeholder} />
     </form>
   )
-  // In a pane (not a phone's page, which the window scrolls): the layout scrolls itself.
   if (wide && own) {
     return (
       <div ref={ref} className="flex h-full" data-rail-layout="wide">
@@ -155,7 +133,6 @@ export function RailLayout({ rail: [ref, wide], search, side, page, title, child
           <Scroller className="min-h-0 flex-1 pb-6">{side}</Scroller>
         </div>
         <Scroller page={page} className="min-w-0 flex-1 [scrollbar-gutter:stable]" data-rail-pane="">
-          {/* (beside the menu, not centred away from it: one block with it, the room left over on the right) */}
           <div className="max-w-[800px] pr-8 pb-6 pl-6">{children}</div>
         </Scroller>
       </div>

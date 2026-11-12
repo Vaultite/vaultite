@@ -1,5 +1,3 @@
-// Pick an icon in the palette overlay: Lucide's by name or tag ("music" finds guitar), or an emoji. Mounted once;
-// `pickIcon` asks.
 import { memo, useEffect, useMemo, useState } from "react"
 import { Check } from "lucide-react"
 import { isEmoji, loadIconTags } from "@/core/icons"
@@ -24,7 +22,6 @@ export const IconPicker = memo(function IconPicker() {
 type Row = { id: string; marks: number[]; about?: string }
 const LIMIT = 120
 
-/** The icons on their way: the palette's rows with a bar for each name, enough to fill it as the whole list will. */
 function Skeleton() {
   return (
     <div className="loading-in" aria-busy>
@@ -49,12 +46,10 @@ function Picker({ a, onClose }: { a: IconAsk; onClose: () => void }) {
     const names = Object.keys(tags)
     if (!query) {
       const cur = a.current && (tags[a.current] || isEmoji(a.current)) ? [a.current] : []
-      // (the app's own icons first, the ones a page or a workspace most likely wants, each once; then A to Z)
       const drawn = new Set(), common = Object.entries(ICONS).flatMap(([n, c]) => (tags[n] && !drawn.has(c) && drawn.add(c) ? [n] : []))
       return [...new Set([...cur, ...common, ...names])].slice(0, LIMIT).map((id) => ({ id, marks: [] }))
     }
     const w = query.toLowerCase()
-    // In its name first (the closest first), then what it's about, then names that only match loosely.
     const named = names.flatMap((n) => {
       const m = fuzzy(query, n)
       return m && n.includes(w.split(" ")[0]) ? [{ id: n, marks: m.marks, rank: n === w ? 0 : n.startsWith(w) ? 1 : 2, score: m.score }] : []
@@ -76,7 +71,7 @@ function Picker({ a, onClose }: { a: IconAsk; onClose: () => void }) {
       empty={tags ? <NoMatches what="No icon matches" query={q} /> : <Skeleton />}
       hints={[["ArrowUp ArrowDown", "to navigate"], ["Enter", "to pick"], ...(isMac ? [["Ctrl+Mod+Space", "for an emoji"] as [string, string]] : []), ["Escape", "to dismiss"]]}
       row={(r) => {
-        const Icon = namedIcon(r.id) // (as it will be drawn once picked: an app's own icon over Lucide's of that name)
+        const Icon = namedIcon(r.id)
         return (
           <>
             <span className="grid size-6 shrink-0 place-items-center">{Icon && <Icon className="size-[18px]" />}</span>

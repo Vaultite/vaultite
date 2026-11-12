@@ -1,5 +1,3 @@
-// One right-click menu for a link wherever drawn Markdown has one (a note, read or edited; a sheet, a timeline): open
-// it, copy it, change it where it's written; a link to a file has the file's own menu too, as Obsidian's does.
 import { Box, Copy, Ellipsis, ExternalLink, FilePlus, Globe, Hash, Link, Mail, Pencil, Pin, SquareArrowOutUpRight, Unlink } from "lucide-react"
 import { openAt } from "@/core/anchors"
 import { getStore, type Store } from "@/core/data"
@@ -34,14 +32,12 @@ export function linkItems(link: Linked, opts: { from?: string; text?: string; ed
   }
   const change: MenuItem[] = edit ? [{ label: "Edit link", icon: Pencil, run: edit.edit }, ...(edit.unlink ? [{ label: "Remove link", icon: Unlink, run: edit.unlink }] : [])] : []
   const written = link.url ?? link.wiki ?? ""
-  // (a [[link]] shows its target: its text is worth copying only when it says something else, an alias)
   const copyText: MenuItem[] = text && text !== written && text !== link.wiki?.replace(/#/g, " › ") ? [{ label: "Copy link text", icon: Copy, run: () => copied(text, "text") }] : []
   const url = link.url && /^[a-z][a-z0-9+.-]*:/i.test(link.url) ? link.url : null
   if (url) {
     const mail = /^mailto:/i.test(url) ? url.slice(7).split("?")[0] : ""
     let address = mail
-    try { address = decodeURIComponent(mail) } catch { /* as written */ }
-    // (in the desktop app a web link opens in its Browser: the system's on asking)
+    try { address = decodeURIComponent(mail) } catch {}
     const web = !!desktop?.web && /^https?:/i.test(url)
     const out: MenuItem[] = web ? [{ label: "Open link in another browser", icon: Globe, run: () => openWebLink(url, { newTab: false, out: true }) }] : []
     return grouped([
@@ -60,8 +56,6 @@ export function linkItems(link: Linked, opts: { from?: string; text?: string; ed
       [{ label: "More file actions", icon: Ellipsis, run: () => {}, items: fileMenu(file, { inside: true, phone: !desk }) }],
     ])
   }
-  // A plugin's page (a person with no file), or a note that isn't there yet: a click's way, and the link as written.
-  // (a missing file of another kind, `[pdf](a.pdf)`, isn't made as a note: a click says it isn't there)
   const name = splitAnchor(link.wiki ?? link.url ?? "")[0].replace(/\.md$/i, ""), other = /\.[A-Za-z][A-Za-z0-9]{0,9}$/.test(name)
   return grouped([
     [place || other ? { label: "Open", icon: SquareArrowOutUpRight, run: () => follow(false) } : { label: `Create note “${name}”`, icon: FilePlus, run: () => follow(false) }],
@@ -70,8 +64,6 @@ export function linkItems(link: Linked, opts: { from?: string; text?: string; ed
   ])
 }
 
-/** Open link in container ▸: in front, in the one picked (the check: where a click opens it now), and, for a link in a
- *  note, always opening that note's web links in one (its `container:`, an id or a name: matched as the Browser does). */
 function inContainer(s: Store, url: string, from?: string): MenuItem[] {
   const list = webContainers()
   if (!list.length) return []

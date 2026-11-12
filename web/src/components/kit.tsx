@@ -1,4 +1,3 @@
-// Small building blocks shared by every page.
 import { createContext, useContext, useEffect, useId, useRef, useState, type CSSProperties, type HTMLAttributes, type MouseEvent as ReactMouseEvent, type ReactNode, type Ref } from "react"
 import { ChevronRight, RotateCcw, Search, X, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -19,13 +18,11 @@ export function usePortalHost(id: string | null) {
   return host
 }
 
-/** A view drawn under a title of its phone page's own (TabSwitcher's PaneBody): a PageHeader in it leaves its title out. */
 export const TitledAbove = createContext(false)
 
 /** A page's large title, on desktop right under its tab's bar (ViewBar), like a file's. `section`: at a Settings
  *  section's size. `tabs`: the page's tabs under it (a Segmented), `children` (what it does) in line with them. */
 export function PageHeader({ title, subtitle, section, tabs, children, className }: { title: string; subtitle?: ReactNode; section?: boolean; tabs?: ReactNode; children?: ReactNode; className?: string }) {
-  // On phones a size down: the header above names the page too (PhoneHeader).
   const above = useContext(TitledAbove)
   if (above && !subtitle && !tabs && !children) return null
   return (
@@ -69,7 +66,6 @@ export function Badged({ on, tag, children }: { on?: Dot; tag?: string; children
   return (
     <span className="relative inline-grid shrink-0 place-items-center" data-badged>
       {children}
-      {/* (keyed by its kind, so a new state pops in) */}
       {kind && <span key={kind} aria-hidden data-dot={kind} className={cn("dot-in absolute -top-[3px] -right-[3px] size-[7px] rounded-full ring-[1.5px] ring-background", DOTS[kind])} />}
       {tag && <span aria-hidden data-tag className="absolute -right-[6px] -bottom-[2px] rounded-[2px] bg-background px-[1.5px] text-[7px] leading-[8px] font-semibold tracking-tight text-muted-foreground">{tag}</span>}
     </span>
@@ -78,7 +74,6 @@ export function Badged({ on, tag, children }: { on?: Dot; tag?: string; children
 
 export const Logo = ({ className }: { className?: string; strokeWidth?: number }) => <img src="icon.svg" alt="" className={className} />
 
-/** A vault's icon: Vaultite's gem in the text's colour (electron/tray/stone.svg's shape). Never lucide's Vault, a safe. */
 export function Stone({ className }: { className?: string; strokeWidth?: number }) {
   // (React's ids carry : or «», which a url(#…) may not take)
   const id = `stone${useId().replace(/[^\w-]/g, "")}`
@@ -97,10 +92,8 @@ export function Stone({ className }: { className?: string; strokeWidth?: number 
   )
 }
 
-/** Rows at the size of the desktop's own settings windows (13px), from md up: Settings' pages beside its menu. */
 export const DenseRows = createContext(false)
 
-/** An icon on a rounded square of its colour, as System Settings draws its sections. */
 export function IconTile({ icon: Icon, tint, className, iconClassName }: { icon: LucideIcon | typeof Logo; tint: string; className?: string; iconClassName?: string }) {
   if (Icon === Logo) return <Logo className={cn("size-5 shrink-0", className)} />
   return (
@@ -186,8 +179,6 @@ export function OnThisMac({ children, className }: { children: ReactNode; classN
   return <p className={cn("text-[13px] leading-[18px] text-muted-foreground max-md:text-[15px] max-md:leading-[20px]", className)} data-on-this-mac>{children}</p>
 }
 
-/** The exact text of an error, for whoever fixes it: shut behind Show details, with Copy details. The page says what
- *  happened in plain words; this is never the headline. */
 export function ErrorDetails({ text, className }: { text: string; className?: string }) {
   const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -327,9 +318,8 @@ export function List({ children }: { children: ReactNode }) {
   return <div className="hairline">{children}</div>
 }
 
-/** A labelled group inside a card ("Up next", "Lifts"). */
-/** Inside a section: a section in it is headed a size down (a plugin's Folders, under its name in Settings' Files). */
 const InSection = createContext(false)
+/** A labelled group inside a card ("Up next", "Lifts"). */
 export function Section({ title, children, className }: { title: ReactNode; children: ReactNode; className?: string }) {
   const dense = useContext(DenseRows), inner = useContext(InSection)
   return (
@@ -400,7 +390,7 @@ export function Switch({ on, onChange, label, disabled }: { on: boolean; onChang
       onClick={(e) => { e.stopPropagation(); haptic(); onChange(!on) }}
       className={cn(
         "relative h-[22px] w-[36px] shrink-0 cursor-pointer rounded-full transition-colors duration-200 disabled:cursor-default disabled:opacity-50",
-        "after:absolute after:-inset-2.5 after:content-['']", // 42 pt hit area
+        "after:absolute after:-inset-2.5 after:content-['']",
         on ? "bg-primary" : "bg-foreground/[0.18]",
       )}>
       <span className={cn(
@@ -417,7 +407,7 @@ export function Foldable({ title, count, big, keep, dflt = true, children, ...re
 } & Record<`data-${string}`, unknown>) {
   const key = keep && `vaultite.${keep}`
   const [open, set] = useState(() => { try { const v = key ? localStorage.getItem(key) : null; return v === null ? dflt : v === "1" } catch { return dflt } })
-  const setOpen = (v: boolean) => { set(v); try { if (key) localStorage.setItem(key, v ? "1" : "0") } catch { /* private mode */ } }
+  const setOpen = (v: boolean) => { set(v); try { if (key) localStorage.setItem(key, v ? "1" : "0") } catch {} }
   return (
     <div {...rest}>
       <button type="button" data-keyrow onClick={() => setOpen(!open)} aria-expanded={open}
@@ -432,8 +422,6 @@ export function Foldable({ title, count, big, keep, dflt = true, children, ...re
   )
 }
 
-/** A setting's way back to its default: a small arrow before its control, no taller than a switch. While the setting is
- *  its default (`on` false) it keeps its place but can't be seen or reached, so the control beside it never moves. */
 export function ResetButton({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
   return (
     <button type="button" aria-label={label} data-tip={on ? "Restore default" : undefined} data-reset-default={on || undefined}
@@ -506,7 +494,7 @@ export function Editable({ value, set, placeholder, className, children }: {
   }
   const look = cn("-mx-1 cursor-text rounded-[6px] px-1 hover:bg-foreground/[0.04] max-md:relative max-md:after:absolute max-md:after:inset-x-0 max-md:after:-inset-y-2", !value && "text-tertiary", className)
   const change = `Change ${placeholder.replace(/^Add /, "")}`
-  // What it draws may hold links, which can't sit inside a button: the keyboard's way in is a button of its own.
+  // Links can't sit inside a button: the keyboard's way in is a button of its own.
   if (value && children) return (
     <span data-no-edit data-tip={change} onClick={(e) => { if (!(e.target as Element).closest("a, button")) setEditing(true) }} className={look}>
       {children}
@@ -532,7 +520,6 @@ export function FilterField({ value, onChange, placeholder, className, autoFocus
   autoFocus?: boolean
 }) {
   const field = useRef<HTMLInputElement>(null)
-  // (a frame on: after the sheet it's in has opened and focused itself)
   useEffect(() => {
     if (!autoFocus || !isDesktop()) return
     const f = requestAnimationFrame(() => { if (field.current?.closest("dialog[open]")) field.current.focus({ preventScroll: true }) })

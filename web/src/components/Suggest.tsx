@@ -1,5 +1,3 @@
-// Suggestions under a text field, drawn over the page: a search query's (operators, then the vault's tags, types and
-// folders), a property's name or value. Keys as in the editor's list: arrows move, Enter or Tab picks, Escape closes it.
 import { useLayoutEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { suggestQuery, type QuerySuggestion } from "../../../core/searchquery.ts"
@@ -9,9 +7,7 @@ import { useStateFor } from "@/core/statefor"
 import { cn } from "@/lib/utils"
 
 type Field = HTMLInputElement
-/** What the field passes on: the hook's handlers run first, and the field's own only when the list didn't take the key. */
 type Own = { onKeyDown?: (e: KeyboardEvent<Field>) => void; onFocus?: (e: FocusEvent<Field>) => void; onBlur?: (e: FocusEvent<Field>) => void }
-/** What's suggested for the text and its caret: each item's `text` goes in place of from..to. */
 export type Found = { from: number; to: number; items: QuerySuggestion[] }
 type Options = Own & {
   /** A space after a pick (not after an item that's `more`: an operator, its values next). */
@@ -38,7 +34,7 @@ export function useSuggest(value: string, set: (v: string) => void, find: (value
   const first = !o.completesOnly || (!!typed && !!items[0]?.text.toLowerCase().startsWith(typed)) ? 0 : -1
   const sel = Math.min(at ?? first, items.length - 1)
 
-  useLayoutEffect(() => { if (found) setBox(field.current?.getBoundingClientRect() ?? null) }, [!!found, value]) // eslint-disable-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => { if (found) setBox(field.current?.getBoundingClientRect() ?? null) }, [!!found, value]) // eslint-disable-line react-hooks/exhaustive-deps -- measured as the list opens or the text changes
 
   const read = () => setCaret(field.current && document.activeElement === field.current ? field.current.selectionEnd ?? value.length : null)
   const pick = (i: number) => {
@@ -61,7 +57,7 @@ export function useSuggest(value: string, set: (v: string) => void, find: (value
       if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setClosed(value); return }
     }
     o.onKeyDown?.(e)
-    // (the caret after the key: arrows, Home, End)
+    // keydown fires before the caret moves, so it's read a frame later.
     requestAnimationFrame(read)
   }
 

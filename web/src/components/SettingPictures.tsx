@@ -1,5 +1,3 @@
-// Settings' previews (components/SettingPreview.tsx): what each setting changes, as small windows in the colour scheme
-// in use. Each exaggerates the one thing that differs and mutes the rest; behaviours play a calm loop where things move.
 import { useEffect, useRef, type CSSProperties, type ReactNode } from "react"
 import { FileText, Folder, MousePointer2 } from "lucide-react"
 import { moves, PACES } from "@/core/animation"
@@ -9,7 +7,6 @@ import { switchPreview, type Preview } from "@/components/SettingPreview"
 import { Frame, Lights, line } from "@/components/ChoicePictures"
 import { cn } from "@/lib/utils"
 
-/** An element playing `frames` over `ms`, over and over; still (its own style, the telling frame) while nothing moves. */
 function Moving({ frames, ms, className, style, children }: { frames: Keyframe[]; ms: number; className?: string; style?: CSSProperties; children?: ReactNode }) {
   const el = useRef<HTMLDivElement>(null)
   const { animation } = usePrefs()
@@ -17,18 +14,15 @@ function Moving({ frames, ms, className, style, children }: { frames: Keyframe[]
     if (!el.current || !moves()) return
     const a = el.current.animate(frames, { duration: ms, iterations: Infinity })
     return () => a.cancel()
-    // (frames are written in place each draw; the loop restarts only when animations are turned on or off)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- frames are new each draw; restart only when animation is toggled
   }, [animation, ms])
   return <div ref={el} className={className} style={style}>{children}</div>
 }
-/** A keyframe at `t` ms of a loop `ms` long. */
 const kf = (ms: number) => (t: number, k: Keyframe): Keyframe => ({ ...k, offset: Math.min(1, t / ms) })
 
 const MUTED = "bg-foreground/12"
 const lines = (ws: string[], cls = MUTED) => ws.map((w, i) => <span key={i} className="contents">{line(w, cls)}</span>)
 
-/** The left sidebar: the window's buttons and a few rows (`children`: others). */
 function Side({ w = "26%", className, style, children }: { w?: string; className?: string; style?: CSSProperties; children?: ReactNode }) {
   return (
     <div className={cn("relative flex shrink-0 flex-col gap-[4px] bg-sidebar px-[5px] pt-[5px]", className)} style={{ width: w, ...style }}>
@@ -38,7 +32,6 @@ function Side({ w = "26%", className, style, children }: { w?: string; className
   )
 }
 
-/** A note's text: its first line a heading. */
 const Note = ({ className, heading = true }: { className?: string; heading?: boolean }) => (
   <div className={cn("flex flex-col gap-[4px] px-[8px] pt-[7px]", className)}>
     {heading && line("42%", "bg-foreground/30")}{lines(["88%", "80%", "84%", "56%", "76%"])}
@@ -47,7 +40,6 @@ const Note = ({ className, heading = true }: { className?: string; heading?: boo
 
 const Pane = ({ className, children }: { className?: string; children: ReactNode }) => <div className={cn("relative flex min-w-0 flex-1 flex-col", className)}>{children}</div>
 
-/** The window's tabs over its panes: the active one a card. `icons`: files' icons. */
 function TabBar({ icons = true, n = 3, className }: { icons?: boolean; n?: number; className?: string }) {
   return (
     <div className={cn("flex h-[15px] shrink-0 items-center gap-[2px] border-b-[0.5px] border-border px-[3px]", className)}>
@@ -65,7 +57,6 @@ function TabBar({ icons = true, n = 3, className }: { icons?: boolean; n?: numbe
   )
 }
 
-/** The pointer, moving through `at` ([ms, left %, top %, opacity?]) in a loop `ms` long; still at `rest`. */
 function Pointer({ ms, path, rest }: { ms: number; path: [number, number, number, number?][]; rest: [number, number, number?] }) {
   const pos = (x: number, y: number, o = 1) => ({ left: `${x}%`, top: `${y}%`, opacity: o })
   return (
@@ -76,11 +67,8 @@ function Pointer({ ms, path, rest }: { ms: number; path: [number, number, number
   )
 }
 
-// ---------- Tabs ----------
-
 const tabBar = (on: boolean) => <Frame><Side w="22%" /><Pane>{on ? <TabBar /> : <div className="h-[4px]" />}<Note /></Pane></Frame>
 
-/** Two panes split; on, each has a strip of its own tabs above it (the left one two, the one it shows raised) and a +. */
 const paneTabBars = (on: boolean) => (
   <Frame>
     <Side w="20%" />
@@ -104,14 +92,9 @@ const paneTabBars = (on: boolean) => (
   </Frame>
 )
 
-// ---------- Window ----------
-
-/** Split, the pane without the focus fades; the pointer clicks into the other and the fade follows. */
 function DimPanes({ on }: { on: boolean }) {
   const ms = 4800, at = kf(ms), fast = PACES.natural.fast[0]
-  // (the page's own colour over it, a shade darker; in dark the page itself: black over a dark page hardly shows)
   const dim = "absolute inset-0 bg-[color-mix(in_srgb,var(--background)_82%,black)] dark:bg-background"
-  // (left focused first: the right one dim, then the other way round)
   const fade = (first: boolean) => [at(0, { opacity: first ? 0 : 0.7 }), at(1500, { opacity: first ? 0 : 0.7 }), at(1500 + fast, { opacity: first ? 0.7 : 0 }),
     at(3900, { opacity: first ? 0.7 : 0 }), at(3900 + fast, { opacity: first ? 0 : 0.7 }), at(ms, { opacity: first ? 0 : 0.7 })]
   return (
@@ -128,8 +111,6 @@ function DimPanes({ on }: { on: boolean }) {
   )
 }
 
-/** Two panes split: flat, a line between them, or as cards inset on the sidebar's colour (the tab bar's too), rounded,
- *  room between them (exaggerated a little, to read at this size). */
 const paneCards = (on: boolean) => (
   <Frame>
     <Side w="20%" />
@@ -146,8 +127,6 @@ const paneCards = (on: boolean) => (
   </Frame>
 )
 
-/** A hidden sidebar: as an icon rail (`rail`), or sliding in over the page when the pointer reaches the window's edge.
- *  `shade`: the page dims behind it. `pace`: how it moves (Animations). */
 function Peek({ rail, shade, pace = "natural", pointer }: { rail?: boolean; shade?: boolean; pace?: Animation; pointer?: boolean }) {
   if (rail) return (
     <Frame>
@@ -176,8 +155,6 @@ function Peek({ rail, shade, pace = "natural", pointer }: { rail?: boolean; shad
   )
 }
 
-/** The file bar above a note: never fading; typing, it fades, the pointer moved, it's back; always, it's out of sight
- *  until the pointer goes up to it. */
 function BarFade({ mode }: { mode: FileBarFade }) {
   const ms = 5600, at = kf(ms), dim = 0.12
   const bar = mode === "typing" ? [at(0, { opacity: 1 }), at(900, { opacity: 1 }), at(1400, { opacity: dim }), at(3900, { opacity: dim }), at(4060, { opacity: 1 }), at(ms, { opacity: 1 })]
@@ -207,8 +184,6 @@ function BarFade({ mode }: { mode: FileBarFade }) {
   )
 }
 
-/** Glass: the window inset over the desktop, its sidebar and tab bar letting it through; `pages`: its note too, more
- *  lightly. */
 function Translucent({ pages }: { pages: boolean }) {
   const through = (k: number, v: string) => ({ background: `color-mix(in srgb, var(${v}) ${k}%, transparent)`, backdropFilter: "blur(3px)" })
   return (
@@ -225,7 +200,6 @@ function Translucent({ pages }: { pages: boolean }) {
   )
 }
 
-/** A sidebar close up: two panels, scrolled as one (one scroll bar) or each on its own (one each). */
 function SidebarScroll({ on }: { on: boolean }) {
   const ms = 4800, at = kf(ms)
   const panel = (k: number) => (
@@ -258,7 +232,6 @@ function SidebarScroll({ on }: { on: boolean }) {
   )
 }
 
-/** A sidebar close up: three panels, a line between each (exaggerated) or only room. */
 const panelDividers = (on: boolean) => (
   <Frame>
     <div className="flex w-[66%] shrink-0 flex-col bg-sidebar px-[6px] pt-[5px]">
@@ -273,7 +246,6 @@ const panelDividers = (on: boolean) => (
   </Frame>
 )
 
-/** A sidebar close up: three panels under their headings, or quiet: only a little room between them. */
 const quietHeadings = (on: boolean) => (
   <Frame>
     <div className="flex w-[66%] shrink-0 flex-col bg-sidebar px-[6px] pt-[5px]">
@@ -287,7 +259,6 @@ const quietHeadings = (on: boolean) => (
   </Frame>
 )
 
-/** Files in the sidebar and the tabs, with their icons or without. */
 const fileIcons = (on: boolean) => {
   const row = (Icon: typeof Folder, w: string, indent: number, tint?: string) => (
     <span className="flex items-center gap-[3px]" style={{ paddingLeft: indent }}>
@@ -304,7 +275,6 @@ const fileIcons = (on: boolean) => {
   )
 }
 
-/** A note with its lines numbered in a gutter, or not. */
 const lineNumbers = (on: boolean) => (
   <Frame>
     <Side w="22%" />
@@ -321,9 +291,6 @@ const lineNumbers = (on: boolean) => (
     </Pane>
   </Frame>
 )
-
-
-// ---------- Editor ----------
 
 const readableLineLength = (on: boolean) => (
   <Frame>
@@ -350,7 +317,6 @@ const inlineTitle = (on: boolean) => (
   </Frame>
 )
 
-/** Properties in document: a table of them, nothing, or their YAML as text. */
 function propertiesPicture(how: string) {
   const mono = "font-mono text-[5.5px] leading-[7px] text-foreground/55"
   return (
@@ -378,8 +344,6 @@ function propertiesPicture(how: string) {
   )
 }
 
-// ---------- the switches' ----------
-
 type Pictures = { text: string; draw: (on: boolean) => ReactNode }
 const PICTURES: Record<string, Pictures> = {
   "tab-bar": { text: "On, the window's tabs show in one bar across its top; off, only what's open, without tabs.", draw: tabBar },
@@ -398,26 +362,21 @@ const PICTURES: Record<string, Pictures> = {
   "show-inline-title": { text: "A note shows its name as a title above its text.", draw: inlineTitle },
 }
 
-/** A switch's preview by its Settings row ("tab-bar"), if it has pictures. */
 export function switchPictures(row: string, value: boolean, set: (on: boolean) => unknown): Preview | undefined {
   const p = PICTURES[row]
   return p && switchPreview(p.text, [p.draw(false), p.draw(true)], value, set)
 }
 
-/** Animations' preview: each pace, its sidebar moving at that pace. */
 export const animationPreview = (value: Animation): Preview => ({
   text: "How panes, tabs and sidebars move: with a soft spring, quickly, or not at all.", value, set: (v) => setPrefs({ animation: v as Animation }),
   options: [{ value: "natural", label: "Natural" }, { value: "snappy", label: "Snappy" }, { value: "off", label: "Off" }].map((o) => ({ ...o, picture: <Peek pace={o.value as Animation} /> })),
 })
 
-/** Fade the file bar's preview: never, while typing (back when the pointer moves), or always (back while it's at it);
- *  `options` are its choice's (core/choices.ts BAR_FADES, which imports what imports this). */
 export const barFadePreview = (value: FileBarFade, options: { value: FileBarFade; label: string }[]): Preview => ({
   text: "The bar above a file: always there, fading while you type, or out of sight until the pointer goes up to it.", value, set: (v) => setPrefs({ fileBarFade: v as FileBarFade }),
   options: options.map((o) => ({ ...o, picture: <BarFade mode={o.value} /> })),
 })
 
-/** Properties in document's preview: shown as a table, hidden, or as their YAML. */
 export const propertiesPreview = (value: PropertiesShown): Preview => ({
   text: "A note's properties above its text: as a table, hidden, or as their YAML while editing.", value, set: (v) => setEditor({ propertiesInDocument: v as PropertiesShown }),
   options: PROPERTIES_SHOWN.map((o) => ({ ...o, picture: propertiesPicture(o.value) })),

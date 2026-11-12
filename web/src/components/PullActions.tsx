@@ -1,5 +1,3 @@
-// Phones: a page pulled down past its top shows three commands (appearance.json's `pullActions`), left or right picks one.
-// As Chrome's on iOS: first only the page moves, the icons come in, a ring fills; full, a disc lands with its name.
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Command as CommandIcon } from "lucide-react"
 import { available, runCommandById, useCommandList, type Command } from "@/core/commands"
@@ -9,26 +7,17 @@ import { commandIcon } from "@/core/pages"
 import { usePrefs, type Prefs } from "@/core/prefs"
 import { cn } from "@/lib/utils"
 
-/** Where the finger went: left, straight down (the one a plain pull runs) or right. */
 export type Slot = 0 | 1 | 2
 export const PULL_SLOTS = ["Pull down and left", "Pull straight down", "Pull down and right"] as const
 export const DEFAULT_PULL = ["file:new", "switcher:open", "tab:close"]
-/** The three commands' ids, left to right (a slot a saved list leaves out keeps its default). */
 export const pullActions = (p: Pick<Prefs, "pullActions">) => DEFAULT_PULL.map((d, i) => p.pullActions?.[i] || d)
 export const pullLabel = (c: Command) => c.label ?? c.name
-/** Its stages by how far (px) the finger went down: nothing before SHOW, the middle icon in by SIDES, all three by SHOWN,
- *  the ring full at FAR (ready). SIDE px sideways picks the left or right one. */
 const SHOW = 40, SIDES = 72, SHOWN = 104, FAR = 150, SIDE = 48
-/** How long (ms) it must have been ready at the let-go: a flick through it is no pull. */
 const HELD = 90
-/** A touch this soon (ms) after the page scrolled is the reading going on, not a pull (Chrome's 150 ms, and a bit). */
 const SETTLE = 250
-/** Centre to centre (px) of the icons once they're in, and from the middle when the side ones come in. */
 const GAP = 100, GAP_FROM = 52
-/** How far the page moves down for a pull of `dy`: with the finger at first, then less and less (a rubber band). */
 const BAND = 200
 const shift = (dy: number) => BAND * (1 - Math.exp(-Math.max(0, dy) / BAND))
-/** `v` from [a, b] onto [0, 1], held at the ends. */
 const along = (v: number, a: number, b: number) => Math.min(1, Math.max(0, (v - a) / (b - a)))
 const EASE = "cubic-bezier(.2, 0, 0, 1)"
 const page = () => document.querySelector<HTMLElement>("#main-scroll > main")
@@ -39,7 +28,6 @@ function moveTo(dy: number, ms = 0) {
   el.style.transform = dy ? `translateY(${shift(dy)}px)` : ""
 }
 
-/** Where a pull mustn't start: what scrolls or drags on its own, and anything over the page. */
 const busy = (t: EventTarget | null) =>
   !!(t as Element | null)?.closest?.("dialog, [data-phone-drawer], [data-phone-bar], .phone-fill, [data-keeps-touch], input, textarea")
 
@@ -48,7 +36,6 @@ type Pull = { dy: number; pick: Slot; ready: boolean; gone?: "ran" | "let" }
 export function PullActions() {
   const prefs = usePrefs()
   const byId = new Map(useCommandList().map((c) => [c.id, c]))
-  // One not there now (its plugin off, or only on computers) leaves its place empty, so the others stay where the finger expects.
   const slots = pullActions(prefs).map((id) => { const c = byId.get(id); return c && available([c]).length ? c : null })
   const [pull, setPull] = useState<Pull | null>(null)
   const g = useRef<{ x: number; y: number; dy: number; pick: Slot; on: boolean; ready: number } | null>(null)
@@ -56,7 +43,6 @@ export function PullActions() {
   slotsRef.current = slots
   const box = useRef<HTMLDivElement>(null), disc = useRef<HTMLSpanElement>(null)
   useEffect(() => {
-    // When the page last scrolled (towards the top or away from it).
     let scrolled = -Infinity, was = scrollY
     const scroll = (e: Event) => { if (was > 0 || scrollY > 0) scrolled = e.timeStamp; was = scrollY }
     const start = (e: TouchEvent) => {
@@ -67,11 +53,9 @@ export function PullActions() {
     const move = (e: TouchEvent) => {
       const p = g.current
       if (!p) return
-      // A finger that held something picked it up (core/drag.ts): it's moving that, not pulling the page.
       if (fingerHolding()) { g.current = null; return }
       const t = e.touches[0], dy = Math.max(0, t.clientY - p.y), dx = t.clientX - p.x
       if (!p.on) {
-        // Down first, from the top: a page scrolled since, or going sideways, isn't a pull.
         if (scrollY > 0 || Math.abs(dx) > Math.abs(t.clientY - p.y) + 4 || t.clientY - p.y < -4) { g.current = null; return }
         if (dy < 12) return
         p.on = true
@@ -105,7 +89,6 @@ export function PullActions() {
       removeEventListener("touchend", end); removeEventListener("touchcancel", end)
     }
   }, [])
-  // Let go: it folds away with the page; what ran, its disc grows out as it fades (Chrome's).
   const gone = pull?.gone
   useLayoutEffect(() => {
     const el = box.current
@@ -123,7 +106,6 @@ export function PullActions() {
     <div ref={box} data-pull-actions aria-hidden className="pointer-events-none fixed inset-x-0 z-20 overflow-hidden md:hidden"
       style={{ top: document.querySelector<HTMLElement>("[data-phone-header]")?.offsetHeight ?? 0, height: shift(dy) }}>
       <div className="absolute inset-x-0 top-1/2">
-        {/* What's ready: one disc, sliding from one to another as the finger goes sideways */}
         <span ref={disc} className={cn("absolute top-0 left-1/2 -mt-[22px] -ml-[22px] size-11 rounded-full bg-primary transition-[translate,scale,opacity]",
           ready ? "scale-100 opacity-100 duration-200 ease-[cubic-bezier(.3,1.4,.6,1)]" : "scale-50 opacity-0 duration-150")}
           style={{ translate: `${at(pick)}px 0` }} />
@@ -139,7 +121,6 @@ export function PullActions() {
                 {picked && !ready && ring > 0 && <Ring k={ring} />}
                 <Icon className="size-[21px]" strokeWidth={2} />
               </span>
-              {/* Only what a let-go would run is named, and only once it would */}
               <span className={cn("absolute top-[28px] left-0 w-max max-w-[112px] -translate-x-1/2 truncate text-[13px] leading-[16px] font-medium text-foreground transition-opacity",
                 on ? "opacity-100 duration-150" : "opacity-0 duration-100")}>{pullLabel(c)}</span>
             </span>
@@ -150,7 +131,6 @@ export function PullActions() {
   )
 }
 
-/** The picked one's ring, `k` of the way round from the top. */
 function Ring({ k }: { k: number }) {
   const r = 20.5, c = 2 * Math.PI * r
   return (

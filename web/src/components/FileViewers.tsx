@@ -1,5 +1,3 @@
-// Files that aren't text: images, PDFs (phones get a card, since mobile browsers draw only a picture of a PDF in a
-// frame), players, and a card for anything else. MediaEmbed shows them in notes.
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type SyntheticEvent } from "react"
 import { ArrowUpRight, Download, SquareArrowOutUpRight, type LucideIcon } from "lucide-react"
 import { dateText } from "@/core/data"
@@ -17,7 +15,7 @@ import { Button, buttonClass } from "@/components/Button"
 
 export type FileInfo = { path: string; kind: FileKind; size: number; mtime: number; ctime: number; pages?: number | null }
 
-/** Whether this browser draws HEIC photos itself (Safari does; Chrome, so the desktop app, doesn't). */
+// Safari draws HEIC photos itself; Chrome, and so Electron, doesn't.
 const drawsHeic = /AppleWebKit/.test(navigator.userAgent) && !/Chrome|Chromium|Edg\/|Electron|Android/.test(navigator.userAgent)
 
 /** The address of a file's bytes (a vault path, or an outside file's absolute path). An iPhone photo (HEIC) a browser
@@ -26,12 +24,9 @@ export const rawUrl = (path: string, opts: { download?: boolean; v?: number } = 
   (!opts.download && !opts.v && localCopy(path)) ||
   `api/raw/${encodeURIComponent(path.split("/").pop()!)}?path=${encodeURIComponent(path)}${opts.download ? "&download=1" : !drawsHeic && /\.(heic|heif)$/i.test(path) ? "&as=jpeg" : ""}${opts.v ? `&v=${opts.v}` : ""}`
 
-/** The address of a picture of a file (core/thumbs.ts: a PDF's first page, a video's frame, a web page), its longer side
- *  at most `px`; `v`, its modified time, makes a changed file a new address (the server lets browsers keep each). */
 export const thumbUrl = (path: string, px: number, v: number) =>
   `api/raw/${encodeURIComponent(path.split("/").pop()!)}?path=${encodeURIComponent(path)}&thumb=${px}&v=${Math.round(v)}`
 
-/** Size, dates and a PDF's pages, read again when the file changes (`n` counts the changes); `missing` once it's gone. */
 export function useFileInfo(path: string) {
   const [info, setInfo] = useState<FileInfo | null>(null)
   const [missing, setMissing] = useState(false)
@@ -46,7 +41,6 @@ export function useFileInfo(path: string) {
   return [info, n, missing] as const
 }
 
-/** Opened as a page on desktop: as tall as what's left of the window. */
 export function useFill(on: boolean) {
   const ref = useRef<HTMLDivElement>(null)
   const [h, setH] = useState<number | null>(null)
@@ -67,7 +61,6 @@ export function useFill(on: boolean) {
 
 const primary = buttonClass({ look: "primary" }), secondary = buttonClass()
 
-/** Any file: what it is, its size and date, and what can be done with it. */
 export function FileCard({ path, info, note, children }: { path: string; info: FileInfo | null; note?: ReactNode; children?: ReactNode }) {
   const Icon = kindIcon(path)
   const name = path.split("/").pop()!
@@ -96,8 +89,6 @@ export function FileCard({ path, info, note, children }: { path: string; info: F
   )
 }
 
-/** An image: fit to the pane, click for its real size (and back). The browser can't draw it (a HEIC on a server that
- *  can't convert it, a broken file): a card. */
 export function ImageView({ path, info, v, page, onSize }: { path: string; info: FileInfo | null; v: number; page: boolean; onSize: (w: number, h: number) => void }) {
   const [zoom, setZoom] = useState(false)
   const [failed, setFailed] = useState(false)
@@ -115,7 +106,7 @@ export function ImageView({ path, info, v, page, onSize }: { path: string; info:
   )
 }
 
-/** A PDF: the browser's viewer on desktop; on phones a card that opens it full screen. */
+// Mobile browsers draw only a picture of a PDF's first page in a frame.
 export function PdfView({ path, info, v, page }: { path: string; info: FileInfo | null; v: number; page: boolean }) {
   const [ref, h] = useFill(page)
   if (!isDesktop()) {
@@ -132,8 +123,6 @@ export function PdfView({ path, info, v, page }: { path: string; info: FileInfo 
   )
 }
 
-/** A .webm or .mp4 can be sound only (a recording from the browser's audio recorder): a video that turns out to have no
- *  picture is drawn as audio. */
 function useSoundOnly(path: string) {
   const [sound, setSound] = useState(false)
   useEffect(() => setSound(false), [path])
@@ -144,7 +133,6 @@ function useSoundOnly(path: string) {
   return [sound, check] as const
 }
 
-/** Audio or video, in a plugin's player or the browser's. One it can't play: a card. */
 export function PlayerView({ path, info, v, video, onDuration }: { path: string; info: FileInfo | null; v: number; video: boolean; onDuration: (s: number) => void }) {
   const [failed, setFailed] = useState(false)
   const [sound, check] = useSoundOnly(path)
@@ -165,7 +153,6 @@ export function PlayerView({ path, info, v, video, onDuration }: { path: string;
   )
 }
 
-/** An embed's header: its name, opening it; held on a phone, its menu (components/EmbedMenu.tsx). */
 export function EmbedHead({ path, icon: Icon, name }: { path: string; icon: LucideIcon; name: string }) {
   return (
     <button type="button" onClick={(e) => openFile(path, { newTab: e.metaKey || e.ctrlKey })} data-hold-menu
@@ -177,8 +164,6 @@ export function EmbedHead({ path, icon: Icon, name }: { path: string; icon: Luci
   )
 }
 
-/** `![[Statement.pdf]]`, `![[memo.m4a]]` in a note, with a header that opens it. `fill`: no header, filling its parent
- *  (a canvas card). */
 export function MediaEmbed({ path, height, fill }: { path: string; height?: number; fill?: boolean }) {
   const [sound, check] = useSoundOnly(path)
   const pdf = /\.pdf$/i.test(path), video = !sound && /\.(mp4|m4v|mov|webm|ogv)$/i.test(path)

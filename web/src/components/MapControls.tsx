@@ -1,5 +1,3 @@
-// A map's buttons
-// (fit everyone, where you are, zoom). Only MapLibre's types are imported, so this stays out of the map's chunk.
 import type { RefObject } from "react"
 import type { Map as MLMap } from "maplibre-gl"
 import { Minus, Plus, type LucideIcon } from "lucide-react"

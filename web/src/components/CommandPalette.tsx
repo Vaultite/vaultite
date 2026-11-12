@@ -1,5 +1,3 @@
-// The command palette (⌘P): commands offered now, fuzzy by name (core/paletterank.ts), the used last first; a setting
-// shows its switch or value. A plugin that's off whose name is typed is offered to turn on ("turn off" and a name, to turn off).
 import { useMemo, useState } from "react"
 import { flushSync } from "react-dom"
 import { available, commandName, isOn, isSetting, keysOf, recentCommands, runCommand, runOrSay, useCommandList, type Command } from "@/core/commands"
@@ -13,15 +11,11 @@ import { rankCommands } from "@/core/paletterank"
 import { Keys, marked, NoMatches, Palette, useFinderQuery } from "@/components/Palette"
 import { cn } from "@/lib/utils"
 
-/** `plugin`: a row that switches a plugin, which is now on or off. */
 type Row = Command & { marks: number[]; plugin?: "on" | "off" }
 
 const TURN_ON = "Turn on ", TURN_OFF = "Turn off "
-/** Plugins' names as a list: "Code stats, GitHub, and Reddit". */
 const listed = (ids: string[]) => new Intl.ListFormat("en", { type: "conjunction" }).format(ids.map((i) => names([i])))
 
-/** What turning `p` on switches: it, and what it needs that's switched off (all the way down). A vault plugin turned on
- *  here is allowed here, as its switch does. */
 function toSwitch(p: Plugin, seen: string[] = []): Plugin[] | null {
   if (p.tier === "hosted" || p.problems?.length || seen.includes(p.id)) return null
   const out = switchedOn(p) ? [] : [p]
@@ -36,25 +30,20 @@ function toSwitch(p: Plugin, seen: string[] = []): Plugin[] | null {
   return out
 }
 
-/** Turn them on, saying so with Undo (which turns them off again). */
 function turnOn(p: Plugin, list: Plugin[]) {
   for (const x of list) setSwitch(x, true)
   const also = list.filter((x) => x !== p).map((x) => x.id)
   notify(`${p.name} is on${also.length ? `, and ${listed(also)}` : ""}`, { action: { label: "Undo", run: () => { for (const x of list) setSwitch(x, false) } } })
 }
 
-/** Turn one off, saying so (and what goes off with it: what needs it) with Undo. */
 function turnOff(p: Plugin, all: Plugin[], disabled: string[]) {
   const gone = all.filter((x) => x !== p && isEnabled(x.id, disabled) && needs(x, p.id)).map((x) => x.id)
   setSwitch(p, false)
   notify(`${p.name} is off${gone.length ? `, and ${listed(gone)} with it` : ""}`, { action: { label: "Undo", run: () => setSwitch(p, true) } })
 }
-/** `x` requires `id`, all the way down. */
 const needs = (x: Plugin, id: string, seen: string[] = []): boolean =>
   !seen.includes(x.id) && (x.requires ?? []).some((r) => r === id || (!!pluginById(r) && needs(pluginById(r)!, id, [...seen, x.id])))
 
-/** Plugins to switch whose names match what's typed: off ones to turn on, on ones to turn off only after "turn off" or
- *  "disable" (a plain name mustn't offer that next to its commands). "Turn on" alone lists every one that's off. */
 function pluginRows(all: Plugin[], disabled: string[], typed: string): Row[] {
   const verb = /^(turn on|enable|turn off|disable)\b\s*/i.exec(typed)
   const off = !!verb && /off|disable/i.test(verb[1])
@@ -62,9 +51,7 @@ function pluginRows(all: Plugin[], disabled: string[], typed: string): Row[] {
   if (!verb && q.length < 2) return []
   const say = off ? TURN_OFF : TURN_ON
   return all.flatMap((p) => {
-    // (one switched in a Settings section is a switch there, as it's named: Vim keys)
     if (p.alwaysOn || p.switchIn || offWithAi(p) || isEnabled(p.id, disabled) !== off) return []
-    // Only where the name has the words as typed (a fuzzy hit across a long name would offer every plugin).
     const m = q ? hasWords(q, p.name) && fuzzy(q, p.name) : { score: 0, marks: [] }
     if (!m) return []
     const list = off ? null : toSwitch(p)
@@ -74,8 +61,6 @@ function pluginRows(all: Plugin[], disabled: string[], typed: string): Row[] {
   }).sort((a, b) => b.score - a.score || a.name.localeCompare(b.name)).map(({ score: _, ...r }) => r)
 }
 
-/** One row per name: a plugin's command and a pinned page's "Open …" can say the same (Open activity), and so can two
- *  plugins. The one with keys wins, then one that isn't a page's. */
 function once(cs: Command[]) {
   const by = new Map<string, Command>()
   const rank = (c: Command) => (c.keys?.length ? 0 : c.id.startsWith("page:") ? 2 : 1)
@@ -91,15 +76,11 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const plugins = usePlugins()
   const { disabled } = usePrefs()
   const { query: q, setQuery: setQ, select, picked } = useFinderQuery()
-  // (only what kind of setting it is: the hints change with it, and keeping the row itself redrew every row each move)
   const [setting, setSetting] = useState<"switch" | "choice" | null>(null)
   const switched = useSwitches()
-  // Switches change a few times as it opens (plugins' settings arriving): it lists again only when a command's name
-  // changes with them ("Hide left sidebar"); a row's switch or value redraws itself (SwitchMark, ChoiceValue).
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- switched only triggers a recount
   const names = useMemo(() => all.filter((c) => c.nameWhenOn).map(commandName).join("\n"), [all, switched])
   const rows = useMemo((): Row[] => {
-    // Named as they are now ("Hide left sidebar"), found by either name.
     const cs = once(available(all).filter((c) => !c.unlisted).map((c) => (c.nameWhenOn ? { ...c, name: commandName(c), words: [c.words, c.name, c.nameWhenOn].filter(Boolean).join(" ") } : c)))
     if (!q.trim()) {
       const recent = recentCommands()
@@ -107,16 +88,14 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       return [...cs].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name)).map((c) => ({ ...c, marks: [] }))
     }
     return [...rankCommands(cs, q), ...pluginRows(plugins, disabled, q.trim())]
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- names only triggers a relist
   }, [all, q, plugins, disabled, names])
 
   return (
     <Palette label="Command palette" placeholder="Select a command…" query={q} setQuery={setQ} select={select} items={rows} onClose={onClose}
-      // Switching a plugin isn't a command: it's left out of the recent ones.
       onPick={(c, how) => {
         if (!c) return
         picked()
-        // Closed and run in one task: a picker the command opens takes its place with no frame between (PaletteFrame).
         setTimeout(() => { flushSync(onClose); void (how.mod && c.place ? c.place.open() : c.plugin ? runOrSay(c.run, c.name) : runCommand(c)) }, 0)
       }}
       onSelect={(c) => setSetting(!c ? null : isSetting(c) ? "switch" : c.value ? "choice" : null)}
@@ -139,14 +118,11 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   )
 }
 
-/** A choice's value at the end of its row, drawn again as switches and choices change. */
 function ChoiceValue({ value }: { value: () => string }) {
   useSwitches()
   return <span className="shrink-0 rounded-[5px] bg-muted px-1.5 text-[12px] leading-[18px] text-foreground/75" data-choice-value>{value()}</span>
 }
 
-/** A setting's state at the end of its row: the switch Settings draws, small, to look at (Enter flips it); drawn again
- *  as switches change (its row isn't). */
 function SwitchMark({ c }: { c: Command }) {
   useSwitches()
   const on = isOn(c)

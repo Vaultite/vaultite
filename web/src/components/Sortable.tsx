@@ -1,5 +1,3 @@
-// Drag to reorder with dnd-kit (Plugins, the phone's Pages): 5px to start so clicks still open, a 250ms hold on touch
-// so scrolling works, locked to the list's box so nothing scrolls away.
 import { useMemo, type ReactNode } from "react"
 import { DndContext, MouseSensor, TouchSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable"
@@ -8,8 +6,6 @@ import { CSS } from "@dnd-kit/utilities"
 import { sortHaptics } from "@/core/haptics"
 import { cn } from "@/lib/utils"
 
-// The click that ends a drag would open the dragged item: one landing a few pixels from its press is swallowed, in
-// capture on the document so it runs before the link reacts.
 let down = { x: 0, y: 0 }
 document.addEventListener("pointerdown", (e) => { down = { x: e.clientX, y: e.clientY } }, true)
 document.addEventListener("click", (e) => {
@@ -17,11 +13,8 @@ document.addEventListener("click", (e) => {
   if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) { e.preventDefault(); e.stopPropagation() }
 }, true)
 
-/** How the lifted item looks: a card behind it, sized to match the item's own hover background. */
 const LIFT = {
-  // Links whose highlight is their own box.
   fill: "rounded-[7px] bg-card shadow-lg ring-[0.5px] ring-border",
-  // List rows whose hover background reaches 8px past each side (Plugins).
   wide: "before:absolute before:inset-y-0 before:-inset-x-2 before:rounded-[8px] before:bg-card before:shadow-lg before:ring-[0.5px] before:ring-border before:content-['']",
 }
 

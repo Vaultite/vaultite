@@ -1,5 +1,3 @@
-// The one sheet for every detail view: don't add other modals; open things with openDetail(). A native modal <dialog>;
-// on phones a bottom bar with Done, which asks first when the content has unsaved input (useSheetGuard).
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { ChevronLeft, X } from "lucide-react"
@@ -13,17 +11,14 @@ import { isDesktop } from "@/core/platform"
 import { trackUnsaved } from "@/core/unsaved"
 import { cn } from "@/lib/utils"
 
-/** The open sheet's content that would be lost, as lines ("Name: My setup"), from each form's guard. */
 const guards = new Set<{ current: () => string[] }>()
 const InSheet = createContext(false)
 const Wide = createContext(false)
 
-/** Whether this is drawn in a wide sheet (a glance): a page there lays out as in a pane, in its column. */
 export const useWideSheet = () => useContext(Wide)
 
 /** Buttons for the sheet's header, left of Close (a glance's Open in tab). */
 export function SheetActions({ children }: { children: ReactNode }) {
-  // (the sheet's header is drawn from the start, open or not: its content finds it as it draws)
   const host = document.getElementById("sheet-actions")
   return host ? createPortal(children, host) : null
 }
@@ -33,7 +28,6 @@ export function useSheetGuard(lost: () => string[]) {
   const ref = useRef(lost)
   ref.current = lost
   const inSheet = useContext(InSheet)
-  // (and a reload into a new build, or the app's restart, waits for it too)
   useEffect(() => {
     if (!inSheet) return
     guards.add(ref)
@@ -42,7 +36,6 @@ export function useSheetGuard(lost: () => string[]) {
   }, [inSheet])
 }
 
-/** Run `go` (close, back) unless the content has something unsaved and the user keeps it. */
 async function leave(go: () => void) {
   const lost = [...guards].flatMap((g) => g.current())
   if (lost.length && !(await confirmDialog({ title: "Discard what you wrote?", body: lost.join("\n"), confirm: "Discard", danger: true }))) return
@@ -50,7 +43,6 @@ async function leave(go: () => void) {
   go()
 }
 
-/** Where a sheet's file ("file/<path>") is now, after the moves the app followed. */
 function movedTo(detail: string) {
   if (!detail.startsWith("file/")) return detail
   try { return `file/${encodeURIComponent(whereNow(decodeURIComponent(detail.slice(5)), 0))}` } catch { return detail }
@@ -58,17 +50,11 @@ function movedTo(detail: string) {
 
 export function DetailSheet({ open, onClose, onBack, backLabel, title, path, depth, still, own, wide, children }: {
   open: boolean; onClose: () => void
-  /** Computers: most of the window, as tall as it allows, its title in a bar (a glance: a page, not a form). */
   wide?: boolean
-  /** Phones: its content draws its own top line (the tab list), so the floating header takes no taps. */
   own?: boolean
-  /** Phones: it doesn't slide up (the tab list: the page shrinks into it instead, core/motion.ts). */
   still?: boolean
-  /** Set when this sheet sits on top of another one. */
   onBack?: () => void; backLabel?: string
-  /** Shown small in the header once the sheet's own title has scrolled away. */
   title?: string
-  /** The open detail and its stack depth: together they key scroll memory and the content transition. */
   path: string; depth: number
   children: ReactNode
 }) {
@@ -79,18 +65,15 @@ export function DetailSheet({ open, onClose, onBack, backLabel, title, path, dep
   const drag = useRef<{ y: number; t: number; quit: () => void } | null>(null)
   const [dy, setDy] = useState(0)
   const [compact, setCompact] = useState(false)
-  // A long-press opens the sheet while the finger is still down; lifting it then "clicks" the backdrop.
-  // Ignore backdrop clicks right after opening so that doesn't close it again.
+  // A long-press opens it with the finger still down, and lifting it then clicks the backdrop.
   const openedAt = useRef(0)
 
   useEffect(() => {
     const d = ref.current
     if (!d || !open) return
-    // A palette open as a sheet opens (a hotkey's Settings over ⌘P) gives way to it: one thing on top, typed into.
     closePalette()
-    // Desktop: closed, the keyboard goes back where it was (the editor: core/focus.ts). Phones: blur first: closing a
-    // dialog refocuses what had focus, and refocusing the Notes search field would pop the keyboard.
     const release = isDesktop() ? holdFocus() : null
+    // Phones: closing a dialog refocuses what had focus, which would pop the keyboard, so blur first.
     ;(document.activeElement as HTMLElement | null)?.blur?.()
     const unlock = lockPage()
     if (!d.open) {
@@ -101,7 +84,6 @@ export function DetailSheet({ open, onClose, onBack, backLabel, title, path, dep
     return () => { if (d.open) { if (typeof d.close === "function") d.close(); else d.removeAttribute("open") } unlock(); release?.() }
   }, [open])
 
-  // Scroll memory per history entry ("depth:path").
   const key = `${depth}:${path}`
   const pos = useRef(new Map<string, number>())
   const shown = useRef<{ key: string; depth: number; path: string } | null>(null)
@@ -116,17 +98,13 @@ export function DetailSheet({ open, onClose, onBack, backLabel, title, path, dep
     const sc = scroller.current
     if (!open || !sc) { shown.current = null; return }
     const was = shown.current
-    // A new sheet (or a fresh open) forgets positions at its depth and deeper: those entries are gone from history.
     if (!was || depth > was.depth) for (const k of [...pos.current.keys()]) if (Number(k.split(":")[0]) >= depth) pos.current.delete(k)
-    // (the same entry, its file moved: a report archived by a reply sent from it is still being read)
     const moved = was && was.depth === depth && was.key !== key && movedTo(was.path) === path
     const want = pos.current.get(key) ?? (moved ? pos.current.get(was.key) : 0) ?? 0
     sc.scrollTop = want
     shown.current = { key, depth, path }
     setAnim(dir)
     syncCompact()
-    // Content that draws after it opens (a file loading into the editor) may not be tall enough yet: keep putting the
-    // reading position back as it grows, for a moment, unless you start scrolling yourself.
     if (want && Math.abs(sc.scrollTop - want) > 2 && sc.firstElementChild) {
       const ro = new ResizeObserver(() => {
         sc.scrollTop = want
@@ -140,10 +118,9 @@ export function DetailSheet({ open, onClose, onBack, backLabel, title, path, dep
       ro.observe(sc.firstElementChild)
       return stop
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- restores scroll only when the entry or open changes
   }, [key, open])
 
-  // (wide, on a computer: a window's bar, with the title, the content's buttons and Close)
   const bar = !!wide && isDesktop()
   const floating = !onBack && !bar
   const letGo = () => { drag.current?.quit(); drag.current = null; setDy(0) }
@@ -151,16 +128,15 @@ export function DetailSheet({ open, onClose, onBack, backLabel, title, path, dep
     onPointerDown: (e: PointerEvent) => {
       if (e.pointerType === "mouse" || (e.target as Element).closest("button")) return
       drag.current?.quit()
-      // The app sent away mid-drag (core/away.ts): the sheet goes back up.
       drag.current = { y: e.clientY, t: e.timeStamp, quit: onAway(letGo) }
       ;(e.currentTarget as Element).setPointerCapture(e.pointerId)
     },
     onPointerMove: (e: PointerEvent) => { if (drag.current) setDy(Math.max(0, e.clientY - drag.current.y)) },
     onPointerUp: (e: PointerEvent) => {
       if (!drag.current) return
-      const fast = dy > 24 && dy / Math.max(e.timeStamp - drag.current.t, 1) > 0.6 // a flick
+      const flick = dy > 24 && dy / Math.max(e.timeStamp - drag.current.t, 1) > 0.6
       letGo()
-      if (dy > 90 || fast) close()
+      if (dy > 90 || flick) close()
     },
     onPointerCancel: () => letGo(),
   }
@@ -186,8 +162,6 @@ export function DetailSheet({ open, onClose, onBack, backLabel, title, path, dep
         "md:open:fade-in md:open:zoom-in-95 md:open:slide-in-from-bottom-0 md:open:duration-200",
         "[&:not([open])]:hidden",
       )}>
-      {/* Without Back, the header floats over the content (no empty strip on top): the X lines up with the sheet's first
-          line, and the bar only gets a background once the title scrolls away. With Back, it's a normal bar. */}
       <header className={cn(
         "z-10 shrink-0 touch-none select-none",
         floating ? "absolute inset-x-0 top-0" : "relative", own && "max-md:pointer-events-none",
@@ -210,19 +184,14 @@ export function DetailSheet({ open, onClose, onBack, backLabel, title, path, dep
               compact ? "opacity-100" : "opacity-0",
             )}>{title}</div>
           )}
-          {/* Buttons the content puts in the header (a file's view toggle: FileView's ViewToggle), left of Close. */}
           <div id="sheet-actions" className="ml-auto flex items-center empty:hidden" />
-          {/* A plain X in a 44pt hit area; the glyph's right edge lines up with the content's (20px phone, 24px desktop). */}
           <button type="button" aria-label="Close" onClick={close}
             className="hidden size-11 cursor-pointer md:grid place-items-center text-muted-foreground transition-colors hover:text-foreground active:opacity-50">
             <X className="size-[18px]" strokeWidth={2.25} />
           </button>
         </div>
       </header>
-      {/* flex-auto, not flex-1: the sheet has no height of its own (its content's, up to sheet-h), and iOS WebKit sizes
-          a 0% basis in it as 0, which left only the header showing. Sized from its content, it shrinks to fit instead. */}
-      {/* Its scrollbar's room comes out of its right padding, kept whether one shows or not: a list growing under a drag
-          (Customize sidebars) doesn't reflow it where scrollbars take room. */}
+      {/* flex-auto, not flex-1: the sheet has no height of its own, and iOS WebKit sizes a 0% basis in it as 0. */}
       <div ref={scroller} onScroll={(e) => { pos.current.set(key, e.currentTarget.scrollTop); syncCompact() }}
         className={cn(
           "relative min-h-0 flex-auto overflow-x-hidden overflow-y-auto overscroll-contain px-5 pb-7 [scrollbar-gutter:stable] md:px-6",
@@ -235,7 +204,6 @@ export function DetailSheet({ open, onClose, onBack, backLabel, title, path, dep
           </div>
         )}
       </div>
-      {/* Phones: the bottom bar. The content's own buttons go in #sheet-bar (a portal), Done closes the sheet. */}
       <footer data-sheet-bar className="relative mt-auto flex shrink-0 items-center gap-1 border-t-[0.5px] border-border px-2 pt-1 pb-[max(env(safe-area-inset-bottom),0.25rem)] md:hidden">
         <div id="sheet-bar" className="flex h-11 min-w-0 flex-1 items-center" />
         <button type="button" data-sheet-done onClick={close}

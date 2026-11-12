@@ -1,5 +1,3 @@
-// A setting's preview (SettingRow's `preview`): small pictures of what it changes, in a card at its control on hover or
-// keyboard focus, under the row on a touch screen. Never by applying it: that would move the page under the pointer.
 import { createContext, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react"
 import { createPortal } from "react-dom"
 import { Check, Info } from "lucide-react"
@@ -24,31 +22,22 @@ export function switchPreview(text: string, [off, on]: [ReactNode, ReactNode], v
   return { text, value: value ? "on" : "off", set: (v) => set(v === "on"), options: [{ value: "off", label: "Off", picture: off }, { value: "on", label: "On", picture: on }] }
 }
 
-/** The id of the sentence a row's control is described by (Switch, Segmented). */
 export const Described = createContext<string | undefined>(undefined)
 
-// As the app's tooltips: a wait before the first, then the next at once (warm), until a moment after the last.
 const DELAY = 350, WARM = 500, LINGER = 120
-/** `up`: it goes above its row, out of the way of a pointer moving down the rows (below for one moving up). */
-/** `glide`: it came from another row's card, open as the pointer moved on: it glides over from there. */
 type Open = { id: string; option: string | null; cold: boolean; up: boolean; glide?: boolean }
 const open = cell<Open | null>(null)
 let warmUntil = 0, opening = 0, closing = 0
 let pending: Omit<Open, "cold"> | null = null
-/** Esc closed one: no card from the pointer until it moves (the page under it is hovered again as the card goes). */
 let shushed = false
-/** When a pointer last pressed (a tap or a click focuses too), and where it last was (which way it's going). */
 let pressed = 0, lastY = 0
 if (typeof window !== "undefined") {
   addEventListener("pointerdown", () => { pressed = Date.now() }, true)
   addEventListener("pointermove", (e) => { lastY = e.clientY; if (e.movementX || e.movementY) shushed = false })
 }
 
-/** Where the pointer left the open card's row: heading from there to the card, it may cross other rows (as a menu's
- *  pointer crosses items on its way to a submenu), which then don't take the card. */
 let leftAt: { x: number; y: number; t: number } | null = null
 let aiming = 0
-/** The row the pointer is on (its preview's id). */
 let over: string | null = null
 const AIM = 400
 const side = (a: number[], b: number[], c: number[]) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
@@ -56,7 +45,6 @@ const inTriangle = (p: number[], a: number[], b: number[], c: number[]) => {
   const d1 = side(p, a, b), d2 = side(p, b, c), d3 = side(p, c, a)
   return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0))
 }
-/** The pointer, at `p`, is on its way from the row it left to the open card. */
 function headingToCard(p: [number, number]) {
   const el = document.querySelector("[data-setting-preview] .preview-card")
   if (!leftAt || Date.now() - leftAt.t > AIM || !el) return false
@@ -66,12 +54,10 @@ function headingToCard(p: [number, number]) {
 }
 
 function want(id: string, option: string | null, up: boolean, byPointer = true, at?: [number, number]) {
-  // (a touch screen has its own way: the button beside the name)
   if ((byPointer && shushed) || !matchMedia("(any-hover: hover)").matches) return
   clearTimeout(aiming)
   const cur = open.get()
   if (cur && cur.id !== id && at && headingToCard(at)) {
-    // (not there a moment later, it wasn't on its way: the row it's on takes it, or none)
     clearTimeout(closing)
     aiming = window.setTimeout(() => { leftAt = null; if (over === id) want(id, option, up, byPointer); else hide() }, 120)
     return
@@ -90,10 +76,8 @@ function hide() {
 
 const later = () => { clearTimeout(closing); closing = window.setTimeout(hide, LINGER) }
 const keep = () => { clearTimeout(closing); clearTimeout(aiming); leftAt = null }
-/** The option under the pointer or focused: a Segmented's button (`data-option`). */
 const optionAt = (t: EventTarget | null) => (t instanceof Element && t.closest("[data-option]")?.getAttribute("data-option")) || null
 
-/** A row's side of it: the handlers its element takes, the card while it's open, and the touch screen's way to it. */
 export function usePreview(preview: Preview | undefined, row: RefObject<HTMLElement | null>, { said }: { said?: boolean } = {}) {
   const id = useId()
   const shown = open.use((o) => (o?.id === id ? o : null))
@@ -101,7 +85,6 @@ export function usePreview(preview: Preview | undefined, row: RefObject<HTMLElem
   useEffect(() => () => { if (open.get()?.id === id) hide() }, [id])
   if (!preview) return null
   const mouse = (e: ReactPointerEvent) => e.pointerType === "mouse" && !e.buttons
-  // (coming in lower than it was, the pointer is going down the rows)
   const down = (e: ReactPointerEvent) => e.clientY >= lastY
   return {
     desc: `${id}-what`,
@@ -120,7 +103,6 @@ export function usePreview(preview: Preview | undefined, row: RefObject<HTMLElem
         if (over === id) over = null
         if (pending?.id === id) { clearTimeout(opening); pending = null }
         if (shown) leftAt = { x: e.clientX, y: e.clientY, t: Date.now() }
-        // (crossing a row on its way to the card: the card waits for it)
         else if (leftAt && headingToCard([e.clientX, e.clientY])) return
         later()
       },
@@ -136,14 +118,10 @@ export function usePreview(preview: Preview | undefined, row: RefObject<HTMLElem
 
 const PIC_W = 148, PIC_H = 93, GAP = 12, AWAY = 6
 
-/** What the card is about, on screen: the option under the pointer, else the row's control (its switch, its choice),
- *  else the row. The card sits at it, as a popover at its button: that's where the eye and the pointer are. */
 function anchorOf(row: HTMLElement, option: string | null) {
   return (option && row.querySelector<HTMLElement>(`[data-option="${CSS.escape(option)}"]`)) || row.querySelector<HTMLElement>("[role=switch], [role=radiogroup]") || row
 }
 
-/** At its row's control: beside the column, level with it, where there's room; else above (`up`) or under the row, its
- *  end at the control's, clear of the rows ahead. `x`, `y`: the control's middle in the card (it grows from there). */
 function place(row: HTMLElement, anchor: HTMLElement, w: number, h: number, up: boolean) {
   const r = row.getBoundingClientRect(), a = anchor.getBoundingClientRect()
   const pane = row.closest("[data-pane]")?.getBoundingClientRect()
@@ -154,7 +132,6 @@ function place(row: HTMLElement, anchor: HTMLElement, w: number, h: number, up: 
     const top = Math.min(Math.max(b.top, ay - h / 2), b.bottom - h)
     return { side: "right" as const, left: column.right, top, x: 0, y: ay - top }
   }
-  // (its far end a little past the control's, so the control sits under the card's corner, not its edge)
   const left = Math.max(b.left, Math.min(a.right + 10 - w, b.right - w))
   const fitsAbove = r.top - h - AWAY >= b.top, fitsBelow = r.bottom + h + AWAY <= b.bottom
   const x = Math.min(Math.max(ax - left, 0), w)
@@ -163,10 +140,8 @@ function place(row: HTMLElement, anchor: HTMLElement, w: number, h: number, up: 
     : { side: "below" as const, left, top: r.bottom, x, y: 0 }
 }
 
-/** Where the last card was: the next one, taking over from it, glides over from there to its row. */
 let last: { left: number; top: number } | null = null
 
-/** The card: pictures over their names; of a switch both, the current one ringed. A picture clicked sets it. */
 function Card({ preview, row, option, cold, up, glide }: { preview: Preview; row: RefObject<HTMLElement | null>; option: string | null; cold: boolean; up: boolean; glide: boolean }) {
   const el = useRef<HTMLDivElement>(null), box = useRef<HTMLDivElement>(null)
   const [at, setAt] = useState<(ReturnType<typeof place> & { glide?: boolean }) | null>(null)
@@ -177,16 +152,13 @@ function Card({ preview, row, option, cold, up, glide }: { preview: Preview; row
     if (el.current && !el.current.matches(":popover-open")) el.current.showPopover?.()
     if (!row.current || !box.current) return
     const to = place(row.current, anchorOf(row.current, option), box.current.offsetWidth, box.current.offsetHeight, up)
-    // Warm, from row to row, it glides from where the last one was (or, moving along a choice, from where it is), as
-    // one card going with the pointer, not one going and another coming: on the spring, so never chasing it.
     const from = at ?? (glide ? last : null)
     if (!from || (Math.abs(from.left - to.left) < 1 && Math.abs(from.top - to.top) < 1)) { setAt(to); return }
     if (at) { setAt({ ...to, glide: true }); return }
     setAt({ ...to, left: from.left, top: from.top })
     const f = requestAnimationFrame(() => setAt({ ...to, glide: true }))
     return () => cancelAnimationFrame(f)
-    // (not `at`: it's where it is, not why it moves)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- not `at`: it is where the card is, not why it moves
   }, [row, shownOptions.length, up, option, glide])
   useEffect(() => { if (at) last = { left: at.left, top: at.top } }, [at])
   useEffect(() => {
@@ -201,9 +173,7 @@ function Card({ preview, row, option, cold, up, glide }: { preview: Preview; row
     }
   }, [row])
   const current = shownOptions.findIndex((o) => o.value === preview.value)
-  // (its padding toward the row is a bridge: the pointer crossing to it never leaves both)
   const pad = { right: "pl-1.5", below: "pt-1.5", above: "pb-1.5" }[at?.side ?? "below"]
-  // (it grows out of the control)
   const origin = at ? `${at.x}px ${at.y}px` : "top left"
   return createPortal(
     <div ref={el} popover="manual" aria-hidden data-setting-preview={row.current?.getAttribute("data-settings-row") ?? row.current?.getAttribute("data-setting") ?? ""} data-side={at?.side} data-cold={cold || undefined}
@@ -211,7 +181,6 @@ function Card({ preview, row, option, cold, up, glide }: { preview: Preview; row
       className={cn("fixed inset-auto m-0 overflow-visible border-0 bg-transparent p-0 text-foreground", pad, !at && "invisible")} style={{ left: at?.left ?? 0, top: at?.top ?? 0, transition: at?.glide ? "left var(--motion-spring) var(--spring), top var(--motion-spring) var(--spring)" : undefined }}>
       <div ref={box} className="preview-card glass-strong rounded-[12px] p-2.5 shadow-xl" style={{ transformOrigin: origin }}>
         <div className="relative flex gap-3">
-          {/* The ring, one for the card, so flipping the switch slides it to the other picture. */}
           {current >= 0 && <span aria-hidden data-preview-ring className={cn("pointer-events-none absolute -top-[3px] -left-[3px] rounded-[10px] border-2 border-primary", both && "transition-transform duration-[var(--motion-spring)] ease-[var(--spring)]")}
             style={{ width: PIC_W + 6, height: PIC_H + 6, transform: `translateX(${current * (PIC_W + GAP)}px)` }} />}
           {shownOptions.map((o) => {
@@ -236,7 +205,6 @@ const Name = ({ label, on, big }: { label: string; on: boolean; big?: boolean })
   </span>
 )
 
-/** On a touch screen, beside the setting's name: shows the pictures under its row. */
 function InlineButton({ on, toggle }: { on: boolean; toggle: () => void }) {
   return (
     <button type="button" aria-expanded={on} aria-label="Show what it changes" data-preview-button onClick={toggle}
@@ -247,8 +215,6 @@ function InlineButton({ on, toggle }: { on: boolean; toggle: () => void }) {
   )
 }
 
-/** Under the row: every state, the current one ringed (a tap picks one), and what changes in words unless the row's
- *  line under its name says it (`said`). */
 function Inline({ preview, said }: { preview: Preview; said?: boolean }) {
   return (
     <div data-preview-inline className="basis-full pb-1.5">

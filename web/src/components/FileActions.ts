@@ -1,4 +1,3 @@
-// What the file menus do (the tree's, a tab's, the phone's), in one place so they say and do the same thing.
 import { Columns2, Copy, Ellipsis, FileInput, FilePlus, FileSymlink, FolderInput, FolderOpen, FolderPlus, FolderSearch, FolderTree, Link, Pencil, RotateCcw, Smile, SquareArrowOutUpRight, Trash2, type LucideIcon } from "lucide-react"
 import { actionIcon, fileActions, runAction } from "@/core/actions"
 import { getStore } from "@/core/data"
@@ -26,12 +25,12 @@ export async function copyText(text: string) {
   try {
     await navigator.clipboard.writeText(text)
     return
-  } catch { /* not a secure page, or no permission: the old way */ }
+  } catch {}
   const ta = document.createElement("textarea")
   ta.value = text
   ta.setAttribute("readonly", "")
   Object.assign(ta.style, { position: "fixed", top: "0", left: "0", opacity: "0", pointerEvents: "none" })
-  // Inside an open dialog (the sheet) when there is one: outside it, the page is inert and can't take the selection.
+  // A modal dialog makes the rest of the page inert, so the field must be inside it to take the selection.
   ;(document.querySelector("dialog[open]") ?? document.body).appendChild(ta)
   ta.select()
   ta.setSelectionRange(0, text.length)
@@ -40,11 +39,8 @@ export async function copyText(text: string) {
   if (!ok) throw new Error("Couldn't copy to the clipboard")
 }
 
-/** Put text on the clipboard and say what was copied ("Copied the link"). */
 export const copied = (text: string, what: string) => copyText(text).then(() => { notify(`Copied the ${what}`, { id: "copied" }) }, (e) => notifyError(e))
-/** Copy a file's path in the vault ("People/Alice Park.md"). */
 export const copyPath = (path: string) => copied(path, "path")
-/** Copy a [[link]] to a file. */
 export const copyLink = (path: string) => copied(linkTo(path), "link")
 
 /** A [[link]] to a file (written in `from`), as short as the app's links allow: the shortest path that finds it. */
@@ -53,11 +49,8 @@ export function linkTo(path: string, from?: string) {
   return `[[${s ? shortestLink(s, path, from) : path.replace(/\.md$/i, "")}]]`
 }
 
-/** The vault's folder on the server's machine (for "From system root"). */
 const vaultRoot = () => getStore()?.vault.path.replace(/\/+$/, "") ?? ""
 
-/** "Copy path": a click copies it from the vault's folder; its submenu has that, from the system root, and (a file) a
- *  link. */
 export function copyPathItem(path: string, opts: { folder?: boolean; sep?: boolean } = {}): MenuItem {
   const items: MenuItem[] = [
     { label: "From vault folder", run: () => copyPath(path) },
@@ -73,7 +66,6 @@ export function openItem(newTab: () => void, right?: () => void): MenuItem {
   return right ? { ...tab, split: true, items: [tab, { label: "Open to the right", icon: Columns2, run: right }] } : tab
 }
 
-/** "Open" for a folder (its page), with Open in new tab and, on a computer, Open to the right in its submenu. */
 export function openFolderItem(folder: string, opts: { pane?: string } = {}): MenuItem {
   const open: MenuItem = { label: "Open", icon: FolderOpen, run: () => openFolder(folder, { pane: opts.pane }) }
   return { ...open, split: true, items: [open,
@@ -82,32 +74,24 @@ export function openFolderItem(folder: string, opts: { pane?: string } = {}): Me
   ] }
 }
 
-/** "Rename", with Change icon in its submenu for a Markdown file in the vault. */
 export function renameItem(path: string, rename: () => void): MenuItem {
   const it: MenuItem = { label: "Rename", icon: Pencil, run: rename }
   const icon = iconItem(path)
   return icon.length ? { ...it, split: true, items: [it, ...icon] } : it
 }
 
-/** Finder or the file manager only answers this computer: the desktop app, or a browser on the server's own machine
- *  (the server checks too: POST /api/file/open). */
 export const canReveal = () => /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && (isMac || isLinux || isWindows)
 
-/** Open a vault file or folder in this computer's own app (`reveal`: show it in Finder); what fails is an error notice. */
 export const openOnComputer = (path: string, reveal?: boolean) =>
   post("file/open", { path, ...(reveal ? { reveal } : {}) }).then(() => {}, (e) => notifyError(e))
 export const revealInFinder = (path: string) => openOnComputer(path, true)
 
-/** "Reveal in Finder" ("Show in folder" off a Mac), where it works (none elsewhere). */
 export const revealItem = (path: string, sep = false): MenuItem[] =>
   canReveal() ? [{ label: revealLabel, icon: FolderSearch, sep, run: () => revealInFinder(path) }] : []
 
-/** "Open in Finder" for the folder a page shows (its window, not its parent's), where it works. */
 export const openFolderHereItem = (folder: string): MenuItem[] =>
   canReveal() ? [{ label: isMac ? "Open in Finder" : isWindows ? "Open in Explorer" : "Open in file manager", icon: FolderSearch, run: () => openOnComputer(folder) }] : []
 
-/** A file from outside the vault (desktop app) copied in, Markdown where new files go and the rest where attachments
- *  do, then shown instead of the outside one. */
 export async function copyToVault(abs: string) {
   const s = getStore()
   if (!s) return
@@ -122,11 +106,9 @@ export async function copyToVault(abs: string) {
 export const copyToVaultItem = (abs: string, before?: () => void): MenuItem =>
   ({ label: "Copy to vault", icon: FolderInput, run: () => { before?.(); copyToVault(abs) } })
 
-/** In the desktop app, on the Mac the server runs on: files can open in their own app (a workbook in Numbers). */
 export const canOpenHere = () =>
   document.documentElement.dataset.electron !== undefined && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)
 
-/** Duplicate a file next to it ("Name 1.md"), then open the copy, ready to be renamed like a new note. */
 export async function duplicate(path: string) {
   try {
     const to = await copyFile(path)
@@ -136,30 +118,22 @@ export async function duplicate(path: string) {
 }
 export const duplicateItem = (path: string, sep = false): MenuItem => ({ label: "Duplicate", icon: FileSymlink, sep, run: () => duplicate(path) })
 
-/** Pick a Markdown file's icon (its `icon` key: a Lucide name or an emoji). `set`: how to write it (an open editor's own);
- *  `onClose`: once the picker is gone, picked or not. */
 export function changeIcon(path: string, set: (n: string) => unknown = (n) => setProperty(path, "icon", n), onClose?: () => void) {
   const s = getStore()
   pickIcon({ title: "Change icon", current: (s && fileOf(s, path)?.icon) || undefined, onPick: (n) => { Promise.resolve(set(n)).catch((e) => notifyError(e)) }, onClose })
 }
-/** A Markdown file in the vault, whose icon can be changed (where it can be changed at all). */
 export const iconChangeable = (path: string) => isMd(path) && !isHidden(path) && !inTrash(path)
-/** "Change icon", for a Markdown file in the vault. */
 const iconItem = (path: string): MenuItem[] => iconChangeable(path) ? [{ label: "Change icon", icon: Smile, run: () => changeIcon(path) }] : []
 
-/** A file's name as the tree shows it (in the trash, without the time trashing added). */
 const nameOf = (path: string) => {
   const name = shownName(path)
   return inTrash(path) ? name.replace(/ \d{4}-\d{2}-\d{2} \d{6}(?=\.[^.]*$|$)/, "") : name
 }
 
-/** Move a file or folder to the vault's trash at once; deleteFile offers Undo (it comes back where it was, and opens
- *  again if it was open). */
 async function trash(path: string) {
   try { await deleteFile(path) } catch (e) { notifyError(e) }
 }
 
-/** Delete something in the trash for good (or empty it: `.trash`), after asking: that can't be undone. */
 async function deleteForGood(path: string) {
   const all = path === ".trash"
   const ok = await confirmDialog(all
@@ -169,7 +143,6 @@ async function deleteForGood(path: string) {
   try { await deleteFile(path) } catch (e) { notifyError(e) }
 }
 
-/** Delete, the right way for where it is: to the trash with Undo, or for good (asking) in the trash. */
 export const remove = (path: string) => (path === ".trash" || inTrash(path) ? deleteForGood(path) : trash(path))
 
 export type PluginGroups = { navigate: MenuItem[]; share: MenuItem[]; more: MenuItem[]; away: MenuItem[]; rest: MenuItem[][] }
@@ -188,16 +161,13 @@ export function pluginFileGroups(path: string, skip?: string, folder = false): P
         if (!by.has(section)) by.set(section, [])
         by.get(section)!.push({ ...it, icon: it.icon as LucideIcon | undefined })
       }
-    } catch { /* a plugin's menu failing must not break the rest */ }
+    } catch {}
   }
-  // The ops that act on its kind (core/actions.ts) whose plugin has no item of its own for them
   for (const a of fileActions(path, skip)) if (a.menu) by.get("actions")!.push({ label: a.label, icon: actionIcon(a), run: () => void runAction(a) })
   const { navigate, share, more, away, ...rest } = Object.fromEntries(by)
   return { navigate, share, more, away, rest: Object.values(rest) }
 }
 
-/** The plugins' "more" items as More ▸ (the menu's last before Delete), by name (they come from several plugins: an order to find them by), or one
- *  alone as an item of its own (a submenu of one is a click for nothing). */
 export const moreItem = (items: MenuItem[]): MenuItem[] =>
   items.length > 1 ? [{ label: "More", icon: Ellipsis, run: () => {}, items: [...items].sort((x, y) => x.label.localeCompare(y.label)) }] : items
 
@@ -207,13 +177,10 @@ export function fileMenu(file: string, opts: { rename?: () => void; phone?: bool
   const ro = isReadOnly(file), locked = ro || isProtected(file)
   const plug = pluginFileGroups(file)
   const rename = renameItem(file, opts.rename ?? (() => { openFile(file, { newTab: opts.inside }); askRename(file) }))
-  // (a pop-out window has no sidebars, so no tree)
   const reveal: MenuItem[] = isPopout() ? [] : [{ label: "Reveal in file tree", icon: FolderTree, run: () => revealInTree(file, { scroll: true, flash: true }) }]
   const noun = !opts.inside || ro ? "" : kindOf(file) === "image" ? " image" : isMd(file) ? " note" : " file"
   const del: MenuItem[] = !isProtected(file) ? [{ label: ro ? "Delete permanently" : `Delete${noun}`, icon: Trash2, danger: true, run: () => remove(file) }] : []
   const change: MenuItem[] = locked ? [] : [{ label: "Move file to…", icon: FileInput, run: () => askMove(file) }, ...(opts.inside ? [] : [duplicateItem(file)])]
-  // `short` (a desktop tab's, the tree at hand): what's about the file where it is, the rest in More file actions ▸
-  // (Delete too: not a misclick away from Close)
   if (opts.short) {
     const more = grouped([change, plug.navigate, ...plug.rest, plug.more, [...plug.away, ...del]])
     return grouped([...(opts.top ?? []), plug.share, [...(locked ? [] : [rename]), copyPathItem(file), ...reveal, ...revealItem(file),
@@ -221,7 +188,6 @@ export function fileMenu(file: string, opts: { rename?: () => void; phone?: bool
   }
   return grouped([
     ...(opts.top ?? []),
-    // (a phone renames in its title, so Change icon is an item of its own there)
     locked ? [] : [...(opts.phone ? iconItem(file) : [rename]), ...change],
     plug.navigate,
     plug.share,
@@ -240,10 +206,8 @@ export const rowFileMenu = (path: string): MenuItem[] => fileMenu(path, { phone:
 export function folderMenu(folder: string, opts: { skip?: string; open?: boolean; pane?: string; rename?: () => void; newFolder?: () => void; inside?: boolean; short?: boolean } = {}): MenuItem[] {
   const locked = isProtected(folder) || inTrash(folder)
   const plug = pluginFileGroups(folder, opts.skip, true)
-  // `inside`: the folder a page shows, so Finder opens it rather than its parent
   const computer = opts.inside ? openFolderHereItem(folder) : revealItem(folder)
   const del: MenuItem[] = locked ? [] : [{ label: "Delete", icon: Trash2, danger: true, run: () => remove(folder) }]
-  // `short` (its tab's, as a file's tab has it): making things in it and finding it, the rest in More folder actions ▸
   if (opts.short) {
     const more = grouped([locked ? [] : [{ label: "Move folder to…", icon: FolderInput, run: () => askMove(folder) }], plug.navigate, ...plug.rest, plug.more, [...plug.away, ...del]])
     return grouped([
@@ -275,12 +239,8 @@ export function grouped(groups: MenuItem[][]): MenuItem[] {
   return groups.filter((g) => g.length).flatMap((g, i) => g.map((it, j) => (j === 0 ? { ...it, sep: i > 0 } : { ...it, sep: false })))
 }
 
-// ---------- several files at once (selected together: core/select.ts) ----------
-
-/** The paths not inside another of them (a folder selected with what's in it moves or goes as one). */
 export const topmost = (paths: string[]) => paths.filter((p) => !paths.some((q) => q !== p && p.startsWith(`${q}/`)))
 
-/** Move several to the trash, then one toast with Undo for all of them. */
 async function trashMany(paths: string[]) {
   const back: string[] = []
   for (const p of topmost(paths)) {
@@ -288,14 +248,11 @@ async function trashMany(paths: string[]) {
   }
   if (back.length) notify(`Moved ${plural(back.length, "item")} to trash`, { action: { label: "Undo", run: async () => { for (const t of back) await restoreFile(t) } } })
 }
-/** Delete several in the trash for good, asking once. */
 async function deleteManyForGood(paths: string[]) {
   const ok = await confirmDialog({ title: `Delete ${plural(paths.length, "item")} permanently?`, body: "They're deleted for good. This can't be undone.", confirm: "Delete", danger: true })
   if (!ok) return
   for (const p of topmost(paths)) { try { await deleteFile(p) } catch (e) { notifyError(e) } }
 }
-/** Delete several, the right way for where they are (`remove`'s): from the trash for good, asking once, else to it with
- *  one Undo; nothing while the app's own folders are among them. */
 export function removeMany(paths: string[]) {
   const roots = topmost(paths)
   if (roots.every(inTrash)) return deleteManyForGood(roots)
@@ -306,8 +263,6 @@ async function restoreMany(paths: string[]) {
   for (const p of topmost(paths)) { try { await restoreFile(p) } catch (e) { notifyError(e, "Couldn't restore") } }
 }
 
-/** The plugins' items every one of these files and folders has and that can be done to several at once (`many`): Pin,
- *  Archive; the away ones (Archive) apart, to go with Delete. */
 function pluginManyItems(paths: string[], folders: Set<string>): { items: MenuItem[]; away: MenuItem[] } {
   const disabled = getPrefs().disabled
   const items: MenuItem[] = [], away: MenuItem[] = []
@@ -320,7 +275,7 @@ function pluginManyItems(paths: string[], folders: Set<string>): { items: MenuIt
         const run = it.many
         ;(it.section === "away" ? away : items).push({ label: it.label, icon: it.icon as LucideIcon | undefined, run: () => run(paths) })
       }
-    } catch { /* a plugin's menu failing must not break the rest */ }
+    } catch {}
   }
   return { items, away }
 }
@@ -351,7 +306,6 @@ export function filesMenu(paths: string[], opts: { newTab?: (path: string) => vo
   ])
 }
 
-/** Everything the plugins can do with a file (its menus' plugin items, its kind's actions among them), in the palette. */
 export function chooseAction(path: string) {
   const g = pluginFileGroups(path)
   const flat = (its: MenuItem[], pre = ""): MenuItem[] => its.flatMap((it) => (it.items ? flat(it.items, `${pre}${it.label}: `) : it.disabled ? [] : [{ ...it, label: pre + it.label }]))

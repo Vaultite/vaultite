@@ -1,5 +1,3 @@
-// Where the vault's name goes (the sidebar's foot, a phone's drawer), a guest sees the folder shared with them and what
-// they may do in it, as shared documents say it (Can view, Can comment, Can edit).
 import { Users } from "lucide-react"
 import { dateText } from "@/core/data"
 import { share } from "@/core/share"

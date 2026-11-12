@@ -1,5 +1,3 @@
-// What the Markdown editor draws with React and asks the vault for, wherever it edits: blocks and embeds as islands
-// (each its own root), images, [[ and # suggestions.
 import { useCallback, useMemo, type ReactNode } from "react"
 import { createRoot } from "react-dom/client"
 import type { Store } from "@/core/data"
@@ -19,8 +17,6 @@ import { headingsOf, linkText } from "../../../core/sections.ts"
 
 const failed = () => <p className="text-[15px] text-muted-foreground">This section couldn't be drawn. Click to edit its Markdown.</p>
 
-/** Draw something into an element of the editor (a block, a section, an embed) as its own React root, redrawn with its
- *  new text; a failing one shows a note instead of breaking the editor. */
 export function island<T = string>(draw: (t: T) => ReactNode, text: T, el: HTMLElement): { update: (t: T) => void; destroy: () => void } {
   const root = createRoot(el)
   const paint = (t: T) => root.render(<Catch fallback={failed}><div className="cm-island">{draw(t)}</div></Catch>)
@@ -28,14 +24,11 @@ export function island<T = string>(draw: (t: T) => ReactNode, text: T, el: HTMLE
   return { update: paint, destroy: () => setTimeout(() => root.unmount(), 0) }
 }
 
-/** A vault file an image embed in `from` names (`![[photo.png]]`, `![](Attachments/photo.png)`), as a URL; null if
- *  there's none. */
 export function assetUrl(store: Store, name: string, from?: string): string | null {
   const path = assetPath(store, name, from)
   return path ? rawUrl(path) : null
 }
 
-/** An image drawn in the editor: its open button and its menu (components/EmbedMenu.tsx). */
 export function imageActions(store: Store): Pick<PreviewConfig, "embedMenu" | "openImage"> {
   return {
     openImage: (target) => {
@@ -47,22 +40,17 @@ export function imageActions(store: Store): Pick<PreviewConfig, "embedMenu" | "o
   }
 }
 
-/** `![[x]]` on a line of its own in a file (`from`): a note's text (read-only), or an artifact, a table, a PDF, a
- *  player or a file a plugin draws, with its menu (`edit`: what changes it in the note); false when it names nothing. */
 export function drawEmbed(store: Store, target: string, height: number | undefined, el: HTMLElement, from: string, edit?: () => EmbedEdit | null): Drawn | false {
   if (!findEmbed(store, target, from) && !noteFor(store, target, from)) return false
   return island(() => <EmbedView store={store} target={target} height={height} from={from} seen={[from]} edit={edit} />, "", el)
 }
 
-/** What a [[link]] goes to, for the editor's colours: null for nothing (grey), else its kind ("" a note or a file). */
 export function linkKind(resolve: (t: string) => Target | null, target: string): string | null {
   if (target.trim().startsWith("#")) return ""
   const hit = resolve(target)
   return !hit ? null : hit.kind === "file" || hit.kind === "note" ? "" : hit.kind
 }
 
-/** What [[ suggests in `from`: every file by its name (and folder), and its aliases; attachments (images, PDFs) by name.
- *  Picking one writes the shortest path that finds it from there (its name, unless another file closer has it). */
 function linkNames(store: Store, from: string) {
   const out: { label: string; detail?: string; path?: string; insert?: string; link?: string }[] = []
   for (const f of store.files.files) {
@@ -73,16 +61,11 @@ function linkNames(store: Store, from: string) {
   return out
 }
 
-/** What an editor of `from` asks the vault for (the Editor's props): links to suggest and follow, the slash menu, pasted
- *  files and dropped ones saved as attachments. `own` is the text as typed, for [[# headings. */
 export function useVaultEditing(store: Store, from: string, own: () => string) {
-  // (links as written in `from`: the closest file of a name wins; the index made at the first link, not per store)
   const resolve = useMemo(() => { let r: ReturnType<typeof resolver> | null = null; return (t: string) => (r ??= resolver(store))(t, from) }, [store, from])
-  // (worked out when [[ is first typed, then kept while the files are the same)
   const names = useMemo(() => { let list: ReturnType<typeof linkNames> | null = null; return () => (list ??= linkNames(store, from)) }, [store, from])
-  // (# suggests the vault's tags, but not one only this file has: it's the one being typed)
   const tags = useCallback(() => vocabOf(store.files.files).tagFiles.filter((t) => t.only !== from), [store, from])
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- own is a getter, read at each call
   const headings = useCallback((name: string) => headingsIn(resolve, name, from, own), [resolve, from])
   const onOpen = useCallback((link: { wiki?: string; url?: string; tag?: string }, how: boolean | LinkClick) => followLink(store, link, how, from), [store, from])
   const mdLinks = useCallback(() => markdownLinks(store), [store])
@@ -94,7 +77,6 @@ export function useVaultEditing(store: Store, from: string, own: () => string) {
   return { resolve, names, tags, headings, onOpen, markdownLinks: mdLinks, slash, attach }
 }
 
-/** [[Note#: that note's headings ("" is the text being edited, `own`, as typed so far; so is the file it's in, `from`). */
 async function headingsIn(resolve: (t: string) => Target | null, name: string, from: string, own: () => string) {
   let text = ""
   if (!name.trim()) text = own()
@@ -102,7 +84,6 @@ async function headingsIn(resolve: (t: string) => Target | null, name: string, f
     const file = resolve(name)?.file
     if (file && isMd(file)) text = file === from ? own() : await readFile(file).then((f) => f.text, () => "")
   }
-  // (as a link can hold them: a [[link]] in a heading by its text, no [ ] | # ^; links match headings loosely)
   const plain = (h: string) => linkText(h).replace(/[[\]|#^]/g, " ").replace(/\s+/g, " ").trim()
   return [...new Set(headingsOf(text).map((h) => plain(h.text)).filter(Boolean))]
 }

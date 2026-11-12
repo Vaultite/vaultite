@@ -1,13 +1,9 @@
-// The command "Colour scheme…": every scheme in the palette, the whole app shown in the selected one as the
-// selection moves; Enter keeps it, Esc goes back. Settings' gallery (Appearance.tsx) is the other way in.
 import { choose } from "@/components/Chooser"
 import { getVaultAppearance, onlyMode, previewLook } from "@/core/appearance"
 import { getPrefs, setPrefs } from "@/core/prefs"
 import { SCHEMES, schemeId } from "@/themes/schemes"
 import { cn, isDark } from "@/lib/utils"
 
-/** A scheme's accent and colours as four dots in a tile of its background, drawn in its own CSS (its data-scheme) in
- *  the mode it would show in. */
 function Dots({ id }: { id: string }) {
   const only = onlyMode(id)
   return (
@@ -18,7 +14,6 @@ function Dots({ id }: { id: string }) {
   )
 }
 
-/** A scheme's name ("Gruvbox"; a vault theme's own), the one in use by default. */
 export const schemeName = (scheme = schemeId(getPrefs().scheme)) => scheme.startsWith("theme:") ? scheme.slice(6) : SCHEMES.find((s) => s.id === scheme)?.name ?? scheme
 
 export function chooseScheme() {

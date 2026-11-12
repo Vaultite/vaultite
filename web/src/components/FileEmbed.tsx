@@ -1,5 +1,3 @@
-// Any vault file drawn as `![[file]]` draws it in a note, for plugins (a canvas's file cards). `fill`: no header,
-// filling its parent's box.
 import type { Store } from "@/core/data"
 import { inVault, isMd, isMediaEmbed, stem } from "@/core/files"
 import { kindOf } from "@/core/filekinds"
@@ -23,7 +21,6 @@ export function FileEmbed({ store, path, from = "", height, fill }: { store: Sto
   const { disabled } = usePrefs()
   const there = inVault(store, path)
   if (!there) return <p className={cn("text-[13px] text-muted-foreground", fill && "p-3")}>No file {stem(path)} in the vault.</p>
-  // A Markdown file a plugin draws (Plan.excalidraw.md) is its drawing, not its text.
   if (formatFor(path, disabled)) return <FormatEmbed store={store} path={path} height={height} fill={fill} />
   if (isMd(path)) return <NoteEmbed store={store} target={path} from={from} seen={from ? [from] : []} fill={fill} />
   if (kindOf(path) === "image") return <ImageEmbed path={path} height={height} fill={fill} />
@@ -31,7 +28,6 @@ export function FileEmbed({ store, path, from = "", height, fill }: { store: Sto
   return <OtherEmbed path={path} fill={fill} />
 }
 
-/** An image, redrawn when it changes; contained in the box with `fill`. */
 function ImageEmbed({ path, height, fill }: { path: string; height?: number; fill?: boolean }) {
   const [, v] = useFileInfo(path)
   const img = <img src={rawUrl(path, { v })} alt={path.split("/").pop()} draggable={false} loading="lazy"
@@ -39,7 +35,6 @@ function ImageEmbed({ path, height, fill }: { path: string; height?: number; fil
   return fill ? <div className="size-full overflow-hidden" data-image-embed={path}>{img}</div> : img
 }
 
-/** Anything else (code, an archive, a document): its card. */
 function OtherEmbed({ path, fill }: { path: string; fill?: boolean }) {
   const [info] = useFileInfo(path)
   return <div className={cn(fill && "grid size-full place-items-center overflow-auto")}><FileCard path={path} info={info} /></div>

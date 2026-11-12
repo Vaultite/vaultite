@@ -1,12 +1,8 @@
-// A card floating in a corner of the room between the sidebars, like picture in picture (the mini player, agents'
-// pages, pages playing out of sight): where each corner is, dragging it to another, and cards sharing one stacked.
 import { useLayoutEffect, useRef, type CSSProperties, type MouseEvent, type PointerEvent as ReactPointerEvent, type RefObject } from "react"
 import { moves } from "@/core/animation"
 import { cell } from "@/core/signal"
 
 export type Corner = "tl" | "tr" | "bl" | "br"
-// Top corners sit under the pane's tab bar and file bar (back, forward), bottom ones over the status bar; vau-room
-// gives them the sidebars' room (core/room.ts).
 export const CORNERS: Record<Corner, string> = {
   tl: "vau-room top-22 left-[calc(var(--left-sidebar,0px)+1rem)]",
   tr: "vau-room top-22 right-[calc(var(--right-sidebar,0px)+1rem)]",
@@ -20,7 +16,6 @@ export function useCornerDrag(corner: Corner, setCorner: (c: Corner) => void) {
   const card = useRef<HTMLDivElement>(null)
   const dragged = useRef(false)
   const from = useRef<{ x: number; y: number } | null>(null)
-  // Glides from where it was let go to its corner (drawn there already, so the corner's own place is measured).
   const settle = (el: HTMLElement, at: { x: number; y: number }) => {
     const r = el.getBoundingClientRect()
     if (!moves()) return
@@ -43,7 +38,7 @@ export function useCornerDrag(corner: Corner, setCorner: (c: Corner) => void) {
       if (!moving) {
         if (Math.hypot(dx, dy) < 4) return
         moving = dragged.current = true
-        try { el.setPointerCapture(id) } catch { /* not a live pointer */ }
+        try { el.setPointerCapture(id) } catch {}
         el.dataset.dragging = ""
         getSelection()?.removeAllRanges()
       }
@@ -61,7 +56,6 @@ export function useCornerDrag(corner: Corner, setCorner: (c: Corner) => void) {
       delete el.dataset.dragging
       const r = el.getBoundingClientRect()
       el.style.transform = ""
-      // Where it would coast to: a flick throws it to the far corner of the room between the sidebars.
       const room = (side: string) => document.querySelector(`aside[data-side="${side}"]:not([data-peek])`)?.getBoundingClientRect().width ?? 0
       const left = room("left"), right = room("right")
       const still = u.timeStamp - last.t > 80
@@ -74,17 +68,12 @@ export function useCornerDrag(corner: Corner, setCorner: (c: Corner) => void) {
     addEventListener("pointerup", up)
     addEventListener("pointercancel", up)
   }
-  // A drag isn't a click on what it started on (the note, a button).
   const onClickCapture = (e: MouseEvent) => { if (dragged.current) { dragged.current = false; e.stopPropagation(); e.preventDefault() } }
-  // (over a Browser page it takes only its own clicks: the page gets the rest, web-viewer's layers.ts)
   return { ref: card, onPointerDown, onClickCapture, "data-floats": "" }
 }
 
-
-/** The cards drawn now, by id: their corner, height and place in its stack. */
 const stacked = cell(new Map<string, { corner: Corner; height: number; rank: number }>())
 const GAP = 8
-/** The room the cards in the bottom right corner take, for what's drawn there too (toasts: --corner-cards). */
 function roomChanged() {
   let px = 0
   for (const c of stacked.get().values()) if (c.corner === "br") px += c.height + GAP

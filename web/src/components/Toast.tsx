@@ -1,5 +1,3 @@
-// Toasts drawn by sonner in the app's tokens, so every scheme recolours them: bottom right on desktop, above the tab
-// bar on phones, three at most. No icons but an error's.
 import { useEffect } from "react"
 import { CircleAlert } from "lucide-react"
 import { Toaster as Sonner } from "sonner"
@@ -14,12 +12,9 @@ if (typeof window !== "undefined") {
     const to = e.relatedTarget
     if (to instanceof Element ? !to.closest("[data-sonner-toaster]") : byTab(e)) e.stopPropagation()
   }, true)
-  // Only a Tab in, or sonner's key (TOAST_KEYS: the list itself), is kept to undo: a clicked toast's button goes with
-  // it, and sonner gave the keyboard back at its next draw, out of a palette opened since.
   addEventListener("focusin", (e) => {
     if (!(e.target instanceof Element) || !e.target.closest("[data-sonner-toaster]") || byTab(e)) return
     if (!e.target.matches("[data-sonner-toaster]")) return e.stopPropagation()
-    // (on to the newest toast's button, the one its announcement named)
     const front = e.target.querySelector<HTMLElement>("[data-front=true]")
     const to = front?.querySelector<HTMLElement>("[data-button]") ?? front
     to?.focus()
@@ -31,7 +26,6 @@ if (typeof window !== "undefined") {
 const quiet = (el: HTMLElement | null) => { el?.setAttribute("aria-live", "off") }
 
 export function Toaster({ desktop }: { desktop: boolean }) {
-  // Phones: above the bar (components/PhoneBar.tsx, its height: --phone-bar); both: above a bundle's trial bar.
   const phone = { bottom: "calc(var(--phone-bar) + var(--mini-player) + var(--trial-bar) + 0.75rem)", left: 16, right: 16 }
   useEffect(toasterDrawn, []) // (after sonner's own: it listens from then)
   return (

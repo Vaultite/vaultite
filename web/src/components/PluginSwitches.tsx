@@ -1,5 +1,3 @@
-// The switches of plugins turned on and off in a Settings section rather than on the Plugins page (a manifest's
-// `switchIn`: Vim keys, in Editor), each with its settings a gear away while it's on.
 import { Settings2 } from "lucide-react"
 import { PLUGINS, setSwitch, switchedOn, usePlugins } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
@@ -7,9 +5,7 @@ import { hasSettings, openPluginSettings, settingsTitle } from "@/core/pluginSet
 import { switchRow } from "@/core/switches"
 import { SettingRow, Switch } from "@/components/kit"
 
-/** The plugins whose switch is in this section. */
 const switchesIn = (section: string) => PLUGINS.filter((p) => p.switchIn?.section === section)
-
 
 export function PluginSwitches({ section }: { section: string }) {
   const prefs = usePrefs()

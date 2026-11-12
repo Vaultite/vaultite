@@ -1,5 +1,3 @@
-// Phones: one pane on screen; the last few file panes stay drawn (hidden), as a computer's do, so going back to one
-// shows it at once, as it was left. A split's panes either side are drawn off the page's edges, for the swipe.
 import { useEffect, useLayoutEffect, useState } from "react"
 import { FileView } from "@/components/FileView"
 import { useTabLabels } from "@/components/Tabs"
@@ -14,10 +12,8 @@ const KEEP = 4
 
 type Slot = { key: string; pane: string; path: string }
 let reshown = false
-/** The file pane just shown was kept drawn: its page is as it was left (App puts the window back by pixels). */
 export const keptShown = () => reshown
 
-/** Each pane's context, one object per value (a new one each draw would draw every view in it again). */
 const contexts = new Map<string, { pane: string; tab: string; focused: boolean; hidden?: boolean }>()
 function contextOf(pane: string, tab: string, shown: boolean) {
   const k = `${pane}\n${tab}\n${shown}`
@@ -30,14 +26,11 @@ function contextOf(pane: string, tab: string, shown: boolean) {
   return c
 }
 
-/** The file panes drawn: `pane` showing `path`, or (null) none shown, the others kept hidden in the order they were
- *  drawn (one that moved would draw again what's in it: an iframe). */
 export function PhoneFiles({ store, pane, path }: { store: Store; pane: string; path: string | null }) {
   useWorkspace()
   const open = new Set(allPanes(here()).map((p) => p.id))
   const [state, setState] = useState<{ slots: Slot[]; recent: string[]; near: string }>({ slots: [], recent: [], near: "" })
   const key = path === null ? null : `${pane}\n${path}`
-  // The panes either side of the one shown (-1, 1): a split's, or the tabs' while the bar is swiped; files as slots too.
   const beside = besideOf(useSwipe()).map((b) => [b.pane, b.side] as const)
   const near = new Map(beside.filter(([p]) => p.to.startsWith("file:")).map(([p, k]) => [`${p.id}\n${p.to.slice(5)}`, k]))
   let next = state
@@ -53,17 +46,14 @@ export function PhoneFiles({ store, pane, path }: { store: Store; pane: string; 
     reshown = !!key && state.slots.some((s) => s.key === key)
     setState(next)
   }
-  // (what was being typed in a pane now hidden lets go: the keyboard mustn't stay up for a page that isn't there)
   useLayoutEffect(() => {
     const a = document.activeElement
     if (a instanceof HTMLElement && a.closest("[data-kept]")) a.blur()
   }, [key])
-  // (a split's panes swiped between, and the tabs by the bar)
   useEffect(swipeSideways, [])
   return <>
     {next.slots.map((s) => {
       const shown = s.key === key, side = shown ? undefined : near.get(s.key)
-      // (one shape however it's drawn: a slot moving between shown, beside and hidden isn't drawn again)
       return (
         <PaneContext.Provider key={s.key} value={contextOf(s.pane, paneTab(s.pane)?.id ?? "", shown)}>
           <div data-ui={`pane:${s.pane}`} data-kept={shown ? undefined : ""} data-beside={side} data-to={side ? `file:${s.path}` : undefined}
@@ -77,8 +67,6 @@ export function PhoneFiles({ store, pane, path }: { store: Store; pane: string; 
   </>
 }
 
-/** A pane beside that isn't a file (a view, a new tab), till it's swiped to: its last picture (the iPhone app's), else
- *  its icon and name. */
 function StandIn({ store, pane, side }: { store: Store; pane: Pane; side: -1 | 1 }) {
   const shot = useTabShot(pane.id, pane.to)
   const info = useTabLabels(store)(pane), Icon = info.icon

@@ -1,5 +1,3 @@
-// A file's properties: a row per key edited in place, each change rewriting only its own line; a key's input is its
-// vault-wide type's (core/proptypes.ts) when it has one. Nested values are shown and edited in source mode.
 import { memo, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react"
 import { Braces, Calendar, CalendarClock, ChevronRight, Forward, Hash, Link, List, Plus, SquareCheck, Tags, Text, X, type LucideIcon } from "lucide-react"
 import { PROP_TYPES, typeOf, typeProblem, type PropType, type PropTypes } from "../../../core/proptypes.ts"
@@ -17,11 +15,8 @@ import { useDraft, useStateFor } from "@/core/statefor"
 import { cn, plural } from "@/lib/utils"
 import { glide } from "@/core/animation"
 
-/** What a field suggests: names or values with how many files have each (`list`, read as it's typed), `has` left out;
- *  `load` asks for them as it's focused. */
 type Suggestions = { list: () => [string, number][]; has?: string[]; load?: () => void }
 
-// A value's links (`[[Alice Park]]`, a web address) are drawn as links, as in a note; the rest of it as it's written.
 const LINKS = /\[\[[^\]\n]+\]\]|https?:\/\/[^\s<>"'\])]+/g
 const hasLinks = (s: string) => s.search(LINKS) >= 0
 function Linked({ text, from }: { text: string; from?: string }) {
@@ -38,14 +33,11 @@ function Linked({ text, from }: { text: string; from?: string }) {
 function Field({ value, onCommit, readOnly, placeholder, className, inputMode, autoFocus, type, step, suggest, from }: {
   value: string; onCommit: (v: string) => void; readOnly: boolean; placeholder?: string; className?: string
   inputMode?: "text" | "decimal"; autoFocus?: boolean; type?: "date" | "datetime-local"; step?: number; suggest?: Suggestions
-  /** The file it's in, for a value's links (none: a key, drawn as typed). */
   from?: string
 }) {
   const [v, setV] = useDraft(value)
-  // (a value with links is drawn with them until it's clicked, beside them, to edit)
   const [editing, setEditing] = useState(false)
   const commit = () => { setEditing(false); if (v !== value) onCommit(v) }
-  // (none for the value as it is, unless empty: Enter keeps it)
   const s = useSuggest(v, setV, (t) => (suggest && (t !== value || !t) ? fieldSuggestions(suggest.list(), t, suggest.has) : null), {
     completesOnly: true,
     onPick: (next) => { setV(next); if (next !== value) onCommit(next) },
@@ -54,7 +46,6 @@ function Field({ value, onCommit, readOnly, placeholder, className, inputMode, a
     onKeyDown: (e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur() } if (e.key === "Escape") { setV(value); e.currentTarget.blur() } },
   })
   const linked = from !== undefined && !type && hasLinks(value)
-  // Read-only (reading, or a file that can't be changed): the whole value as text, wrapped, never cut off mid-word.
   if (readOnly) {
     return <div className={cn("min-h-8 px-1.5 py-1.5 text-[15px] leading-5 break-words", !value && "text-muted-foreground", className)}>{linked ? <Linked text={value} from={from} /> : value || placeholder}</div>
   }
@@ -88,7 +79,6 @@ function Chips({ items, onChange, readOnly, suggest, from }: { items: unknown[];
     if (e.key === "Enter" || e.key === ",") { e.preventDefault(); add() }
     if (e.key === "Backspace" && !draft && items.length) onChange(items.slice(0, -1))
   }
-  // (a pick is the list's new item at once)
   const s = useSuggest(draft, setDraft, (t) => (suggest ? fieldSuggestions(suggest.list(), t, [...items.map(String), ...(suggest.has ?? [])]) : null), {
     completesOnly: true, onPick: (next) => { onChange([...items, next]); setDraft("") }, onFocus: () => suggest?.load?.(), onBlur: add, onKeyDown: onKey,
   })
@@ -122,11 +112,8 @@ function summary(v: unknown): string {
   return String(v ?? "")
 }
 
-/** A time the file's kind keeps (its `stamps`: a note's created), shown as a date with what's stored in the tooltip;
- *  the app keeps it, so it isn't edited here. Any other key's value is the user's, whatever its name. */
-const kept = (stamps: string[], k: string, v: unknown) => stamps.includes(k) && typeof v === "string" && /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/.test(v)
+const isKeptStamp = (stamps: string[], k: string, v: unknown) => stamps.includes(k) && typeof v === "string" && /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/.test(v)
 
-/** Each type's icon, and a value's own when the key has none. */
 const ICONS: Record<PropType | PropKind, LucideIcon> = {
   text: Text, list: List, number: Hash, checkbox: SquareCheck, date: Calendar, datetime: CalendarClock, tags: Tags, aliases: Forward,
   link: Link, complex: Braces,
@@ -135,7 +122,6 @@ const LABELS: Record<PropType, string> = {
   text: "Text", list: "List", number: "Number", checkbox: "Checkbox", date: "Date", datetime: "Date and time", tags: "Tags", aliases: "Aliases", link: "Link",
 }
 
-/** The input a declared type draws, when the value is empty or of it; else null (the value's own, with a note). */
 function typedKind(type: PropType | null, v: unknown): PropKind | "datetime" | null {
   if (!type || (v !== null && v !== undefined && v !== "" && typeProblem(type, v))) return null
   switch (type) {
@@ -148,13 +134,11 @@ function typedKind(type: PropType | null, v: unknown): PropKind | "datetime" | n
   }
 }
 
-/** The icon before a key: its type (declared, else its value's); editable, a click sets the key's type for the vault. */
 function TypeButton({ k, v, types, readOnly, stamp }: { k: string; v: unknown; types?: { types: PropTypes; own: string[] }; readOnly: boolean; stamp?: boolean }) {
   const declared = typeOf(types?.types, k)
   const Icon = ICONS[declared ?? (stamp ? "datetime" : propKind(v))]
   const label = declared ? `${k}: ${LABELS[declared].toLowerCase()}` : `${k}: no type set`
   if (readOnly) return <span className="grid size-8 shrink-0 place-items-center text-tertiary" aria-hidden><Icon className="size-4" strokeWidth={2} /></span>
-  // (the icon changes at once: the store, which the next refresh replaces)
   const set = (type: PropType | "none") => optimistic((s) => {
     const was = s.propertyTypes ?? { types: {}, own: [] }, other = (x: string) => x.toLowerCase() !== k.toLowerCase()
     const types: PropTypes = Object.fromEntries(Object.entries(was.types).filter(([x]) => other(x)))
@@ -178,7 +162,7 @@ function TypeButton({ k, v, types, readOnly, stamp }: { k: string; v: unknown; t
 function Value({ k, v, set, readOnly, autoFocus, type, stamps, suggest, from }: {
   k: string; v: unknown; set: (v: unknown) => void; readOnly: boolean; autoFocus?: boolean; type: PropType | null; stamps: string[]; suggest?: Suggestions; from: string
 }) {
-  if (kept(stamps, k, v)) {
+  if (isKeptStamp(stamps, k, v)) {
     const d = new Date(stampMs(v as string))
     return (
       <div className="truncate px-1.5 py-1.5 text-[15px] leading-5 text-muted-foreground tabular-nums" data-tip={v as string}>
@@ -210,21 +194,15 @@ function Value({ k, v, set, readOnly, autoFocus, type, stamps, suggest, from }: 
     onCommit={(s) => set(s)} suggest={suggest} from={from} />
 }
 
-// What Properties suggest. Names and values come from All properties (its state and API: none while it's off), read
-// from the store as they're typed so a file's change elsewhere doesn't draw them again; tags are the vault's.
 const vaultNames = (): [string, number][] =>
   ((getStore() as { properties?: { key: string; count: number }[] } | null)?.properties ?? []).map((p) => [p.key, p.count])
 const vaultTags = (): [string, number][] => { const files = getStore()?.files.files; return files ? vocabOf(files).tags : [] }
-// A key's values in every file, asked for once per list of files (a new one comes with each change).
 const asked = new Map<string, { files: unknown; rows: { path: string; value: unknown }[] }>()
 
-/** Each key's values in the other files: `load` asks the server for them (as a field is focused), drawn when they come;
- *  the ones files of its type have first. */
 function useVaultValues(path: string) {
   const [, redraw] = useState(0)
   return (k: string): Suggestions => ({
     list: () => {
-      // (what files of its type have first: a project's status from other projects)
       const files = getStore()?.files.files, types = files ? typesOf(files) : null, mine = types?.get(path)
       return valuesOf(asked.get(k)?.rows ?? [], path, (p) => !!mine && types!.get(p) === mine)
     },
@@ -238,7 +216,6 @@ function useVaultValues(path: string) {
   })
 }
 
-/** A new property's name, the vault's names suggested (not the file's own); a pick adds it. */
 function NewKey({ has, add, cancel }: { has: string[]; add: (k: string) => void; cancel: () => void }) {
   const [v, setV] = useState("")
   const s = useSuggest(v, setV, (t) => fieldSuggestions(vaultNames(), t, has), {
@@ -254,7 +231,6 @@ function NewKey({ has, add, cancel }: { has: string[]; add: (k: string) => void;
   )
 }
 
-// The header's menu: how every note shows its properties (Settings' "Properties in document"), from where they show.
 const shownMenu = (): MenuItem[] => {
   const now = editorSettings().propertiesInDocument
   return [
@@ -264,21 +240,15 @@ const shownMenu = (): MenuItem[] => {
 }
 
 export const Properties = memo(function Properties({ path, block, onChange, readOnly, types, stamps = [] }: {
-  /** The file they're of: whether they're open is remembered for it (core/viewstate.ts). */
   path: string
-  /** The frontmatter block ("---\n...\n---\n", or ""). */
   block: string; onChange: (block: string) => void; readOnly: boolean
-  /** The vault's property types (the store's `propertyTypes`). */
   types?: { types: PropTypes; own: string[] }
-  /** The times its kind keeps (KindSpec stamps): shown, not edited. */
   stamps?: string[]
 }) {
   const { props, error } = readProps(block)
   const keys = Object.keys(props)
-  // Folded by default; open them and that file keeps them open (on this device).
   const [open, setOpenState] = useStateFor([path], () => propsOpen(path))
   const setOpen = (o: boolean) => { setOpenState(o); keepPropsOpen(path, o) }
-  // A block's "This file's properties": open, and in view.
   const box = useRef<HTMLElement>(null)
   useEffect(() => {
     const on = (e: Event) => {
@@ -290,7 +260,6 @@ export const Properties = memo(function Properties({ path, block, onChange, read
     return () => removeEventListener("vau:properties", on)
   }, [path, setOpenState])
   const [adding, setAdding] = useState(false)
-  // A property just added: its value is typed next.
   const [added, setAdded] = useState<string | null>(null)
   const values = useVaultValues(path)
   if (!keys.length && !error && readOnly) return null
@@ -320,7 +289,7 @@ export const Properties = memo(function Properties({ path, block, onChange, read
                 return (
                 <div role="row" key={k} className="group contents">
                   <div role="rowheader" className="flex min-w-0 items-start">
-                    <TypeButton k={k} v={props[k]} types={types} readOnly={readOnly} stamp={kept(stamps, k, props[k])} />
+                    <TypeButton k={k} v={props[k]} types={types} readOnly={readOnly} stamp={isKeptStamp(stamps, k, props[k])} />
                     {readOnly ? (
                       <span className="truncate px-1.5 py-1.5 text-[15px] leading-5 text-muted-foreground">{k}</span>
                     ) : (

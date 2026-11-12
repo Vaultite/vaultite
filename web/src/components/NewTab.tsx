@@ -1,5 +1,3 @@
-// A blank tab's page: newtab.json's sections, reordered by drag and changed from its menu (like `vau newtab`), all drawn at
-// the sidebar's sizes (SidebarRow) and the page a size up as one (`data-size-up`). A button is its command.
 import { useId, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react"
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Command as CommandIcon, EyeOff, Layers, LayoutDashboard, MousePointerClick, Plus, RotateCcw, Smile, SquarePlus, Trash2 } from "lucide-react"
 import type { Store } from "@/core/data"
@@ -28,8 +26,6 @@ import { HeadingButton } from "@/components/Button"
 
 type Section = SectionInfo & { heading?: string | false; render?: NewTabSection["render"]; sidebar?: SidebarPanel }
 
-/** Every section there is now: the app's, those of the plugins that are on, then their sidebar panels (drawn as in the
- *  sidebar: core/newtab.ts withPanels). */
 function allSections(disabled: string[]): Section[] {
   return withPanels<Section, Section>(
     [...CORE_SECTIONS, ...newTabSections(disabled).map(({ key, section: s }) => ({ key, title: s.title, sort: s.sort, hidden: s.hidden, only: s.only, heading: s.heading, render: s.render }))],
@@ -39,7 +35,6 @@ function allSections(disabled: string[]): Section[] {
 
 const fits = (s: Section, phone: boolean) => !s.only || s.only === (phone ? "phone" : "desktop")
 
-/** The file a blank tab draws instead of its sections (newtab.json's `page`), while it's in the vault; else null. */
 export function useNewTabPage(store: Store | null): string | null {
   const { page } = usePrefs().newTab
   return page && store && fileAt(store.files.files, page) ? page : null
@@ -51,8 +46,6 @@ export function NewTab({ store, phone }: { store: Store; phone?: boolean }) {
   const all = allSections(disabled)
   const byKey = new Map(all.map((s) => [s.key, s]))
   const shown = shownSections(newTab, all).flatMap((k) => byKey.get(k) ?? []).filter((s) => fits(s, !!phone))
-  // Opened lately in this workspace (core/scope.ts), then the vault's recently changed files (without those, while
-  // both are shown).
   const opened = useOpenedFiles(store, 6)
   const both = shown.some((s) => s.key === "core:opened") && opened.length
   const recent = changedFiles(store, both ? 5 : 8, both ? opened : [])
@@ -61,14 +54,12 @@ export function NewTab({ store, phone }: { store: Store; phone?: boolean }) {
     if (s.key === "core:opened") return opened.length ? <RecentList store={store} files={opened} phone={phone} /> : null
     if (s.key === "core:changed") return recent.length ? <RecentList store={store} files={recent} phone={phone} /> : null
     if (s.sidebar) return <PanelSection panel={s.sidebar} id={s.key} store={store} phone={phone} />
-    // (one that throws is drawn as a line saying so, by the Guard below: a blank tab is where a stopped app reopens)
     try { return s.render?.({ store, phone: !!phone }) ?? null } catch (e) { return <Drawn draw={() => { throw e }} /> }
   }
   const drawn = shown.map((s) => ({ s, el: body(s) })).filter((x) => x.el !== null)
   const list = useRef<HTMLDivElement>(null)
   useReorder(list, "sections")
   const item = useDragItem()
-  // Right-click: change the page (on a section or a button, that one first).
   const onMenu = (e: MouseEvent) => {
     const t = e.target as HTMLElement
     const action = t.closest<HTMLElement>("[data-newtab-action]")?.dataset.newtabAction
@@ -77,23 +68,18 @@ export function NewTab({ store, phone }: { store: Store; phone?: boolean }) {
   }
   const sections = (
     <div className="size-up-bleed">
-    {/* A panel's own heading (SidebarHeading) without the sidebar's room above it: the sections' gap is the page's. */}
     <div ref={list} data-size-up className="relative flex flex-col gap-3 [&_[data-panel-handle]]:mt-0">
       {drawn.map(({ s, el }) => {
         const heading = s.heading === false ? null : s.heading ?? s.title
         return (
-          // Dragged by its heading (the page's, or the one a sidebar panel draws: data-panel-handle) to reorder.
           <section key={s.key} data-newtab-section={s.key} data-slide={s.key} aria-label={s.title} className={cn(item?.newtab?.key === s.key && "opacity-50")}
             onPointerDown={(e) => {
               const t = e.target as HTMLElement
-              // A button that is itself the handle (the search field: a panel that's one control) drags too, as in the
-              // sidebar; a click on it still works (a drag starts only once the pointer moves).
               const handle = t.closest<HTMLElement>("[data-panel-handle]")
               const control = t.closest("button, a, input")
               if (!handle || (control && !control.hasAttribute("data-panel-handle"))) return
               startDrag(e, { from: "newtab", newtab: { list: "sections", key: s.key }, label: s.title }, { touch: !!phone })
             }}>
-            {/* A panel's heading, with what its sidebar heading offers (a finger swipes to it). */}
             {heading && <SidebarHeading title={heading} open>{s.key === "core:actions" ? <AddButton /> : s.sidebar?.actions && <Catch fallback={() => null}><Drawn draw={() => s.sidebar!.actions!({ store, open: true, file: "", tab: "", phone: !!phone })} /></Catch>}</SidebarHeading>}
             <Guard what="This section">{el}</Guard>
           </section>
@@ -108,8 +94,6 @@ export function NewTab({ store, phone }: { store: Store; phone?: boolean }) {
     </div>
   )
   if (phone) return <div onContextMenu={onMenu} className="pt-2">{sections}</div>
-  // Above the sections, room that's there while they're few (up to 14vh) and goes as they fill the pane, so a long page
-  // starts at the top and a short one doesn't sit against it; below, the rest.
   return (
     <div onContextMenu={onMenu} className="mx-auto flex min-h-full max-w-[520px] flex-col">
       <div aria-hidden className="min-h-6 shrink-0 grow basis-0 max-h-[14vh]" />
@@ -119,37 +103,29 @@ export function NewTab({ store, phone }: { store: Store; phone?: boolean }) {
   )
 }
 
-/** Where a section or a button dragged (by its heading; a button itself) would go: before `before` (null: the end), and
- *  the list's `order` that leaves, which it makes way for (core/slide.ts). */
 type Reorder = { before: string | null; order: string[] }
 
-/** A list of sections or of buttons as a drop target for its own (core/drag.ts), making way while one is dragged over
- *  it: a drop puts it there (newtab.json's `sections` or `actions`). `across`: a row of icons that wraps (a phone's dock). */
 function useReorder(box: RefObject<HTMLDivElement | null>, list: "sections" | "actions", across = false) {
   const target = `newtab:${useId()}`
   const [edge] = useState(() => edgeScroller())
   useDropTarget<Reorder>(target, (item, x, y) => {
     const n = item.newtab, root = box.current
     if (n?.list !== list || !root) return null
-    // (held near the page's top or bottom, it scrolls: a long new tab)
     edge.over(root, x, y)
     const r = root.getBoundingClientRect()
     if (!r.width || x < r.left - 48 || x > r.right + 48 || y < r.top - 24 || y > r.bottom + 24) return null
     const rows = [...root.children].filter((el): el is HTMLElement => el instanceof HTMLElement && !!el.dataset.slide)
     if (!rows.length) return null
     const { order, before, same } = reorder(rows.map((el) => el.dataset.slide!), [n.key], slotAt(root, rows, x, y, across ? "wrap" : "y"))
-    // (its own place: nothing to do)
     return same ? null : { before, order }
   }, (item, h) => {
     const key = item.newtab!.key
     const now = list === "sections" ? sectionsNow() : shownActions(getPrefs().newTab)
-    // A key that isn't in the list (a section shown but not saved) is placed by the one after it too.
     void setNewTab({ [list]: placeKey(now, key, h.before && now.includes(h.before) ? h.before : null) })
   }, { end: edge.stop })
   useSlide(box, useDropHit<Reorder>(target)?.order ?? null, across ? "wrap" : "y")
 }
 
-/** A sidebar panel as a section: drawn as in the open sidebar (its own heading, if it draws one), its menu the page's. */
 function PanelSection({ panel, id, store, phone }: { panel: SidebarPanel; id: string; store: Store; phone?: boolean }) {
   return <div className="flex flex-col" data-newtab-panel={id}><Drawn draw={() => panel.render({ store, open: true, file: "", tab: "", phone })} /></div>
 }
@@ -164,14 +140,12 @@ export function ActionButtons({ phone, open = true, panel, dock }: { phone?: boo
   useReorder(box, "actions", dock)
   const item = useDragItem()
   const dragged = item?.newtab?.list === "actions" ? item.newtab.key : null
-  // (docked, the panel has no heading: its icons carry its menu, Take out of the dock among it)
   const menu = (id: string) => [...buttonMenu(id, dock), ...(dock && panel ? panelMenu(panel).map((it, i) => (i ? it : { ...it, sep: true })) : [])]
   if (dock) return (
     <div ref={box} className="relative flex flex-wrap" data-newtab-actions>
       {cmds.map((c) => {
         const Icon = commandIcon(c, newTab.icons?.[c.id]) ?? CommandIcon
         return (
-          // Only its icon: held, its menu names it first.
           <button key={c.id} type="button" data-newtab-action={c.id} data-slide={c.id} aria-label={labelOf(c)} onClick={() => runCommand(c)}
             onPointerDown={(e) => startDrag(e, { from: "newtab", newtab: { list: "actions", key: c.id }, label: labelOf(c) }, { touch: true })}
             onContextMenu={menuFor(() => [{ label: labelOf(c), caption: true, run: () => {} }, ...menu(c.id).map((it, i) => (i ? it : { ...it, sep: true }))])}
@@ -194,7 +168,6 @@ export function ActionButtons({ phone, open = true, panel, dock }: { phone?: boo
         const Icon = commandIcon(c, newTab.icons?.[c.id]) ?? CommandIcon
         const keys = keysOf(c)[0]
         return (
-          // Dragged to reorder the buttons (the click that ends a drag runs nothing). A row like the others, in the accent.
           <div key={c.id} data-slide={c.id} onPointerDown={(e) => startDrag(e, { from: "newtab", newtab: { list: "actions", key: c.id }, label: labelOf(c) }, { touch: !!phone })}
             onContextMenu={panel ? menuFor(() => menu(c.id)) : undefined} className={cn(dragged === c.id && "opacity-50")}>
             <SidebarRow data-newtab-action={c.id} icon={Icon} tint="var(--primary)" label={labelOf(c)} open={open} className="text-primary" onClick={() => runCommand(c)}>
@@ -214,11 +187,8 @@ export function AddButton() {
   )
 }
 
-// ---------- changing the page (newtab.json, a key at a time: prefs.ts) ----------
-
 const setNewTab = (patch: Partial<NewTabSetup>) => setPrefs({ newTab: { ...getPrefs().newTab, ...patch } })
 
-/** Pick the page a blank tab draws instead of its sections: one of the vault's dashboards (any file, with vau newtab page). */
 export function chooseNewTabPage() {
   const store = getStore()
   if (!store) return
@@ -233,19 +203,15 @@ export function chooseNewTabPage() {
   })
 }
 
-/** Back to the sections, with Undo. */
 export function showNewTabSections() {
   const was = getPrefs().newTab.page
   if (!was) return
   void setNewTab({ page: null })
   notify("New tabs show their sections", { action: { label: "Undo", run: () => void setNewTab({ page: was }) } })
 }
-/** The sections shown now, every device's (phone-only ones too), in order. */
 const sectionsNow = () => { const { disabled, newTab } = getPrefs(); return shownSections(newTab, allSections(disabled)) }
 const moved = (list: string[], key: string, where: "up" | "down") => placeKey(list, key, anchorFor(list, key, where) ?? null)
 
-/** The page's right-click menu: for the button or section right-clicked (move it, change a button's icon, take it off;
- *  the buttons' own items only on the buttons), then every section to tick (Sections ▸), and Reset when the page isn't the default. */
 function customizeMenu(phone: boolean, hit: { action?: string; section?: string }): MenuItem[] {
   const { disabled, newTab } = getPrefs()
   const all = allSections(disabled)
@@ -263,7 +229,6 @@ function customizeMenu(phone: boolean, hit: { action?: string; section?: string 
       { label: `Hide ${title}`, icon: EyeOff, run: () => setNewTab({ sections: shown.filter((k) => k !== key) }) },
     )
   }
-  // Ticked: shown, in the page's order; More ▸ has the hidden ones, then the sidebar panels not shown (a checklist).
   const choice = (s: SectionInfo): CheckItem => ({ key: s.key, label: s.title, hint: s.panel ? "Panel" : fits(s, phone) ? undefined : s.only === "phone" ? "Phones" : "Computers" })
   const hidden = all.filter((s) => !shown.includes(s.key))
   const sections = checklist("newtab:sections", {
@@ -292,7 +257,6 @@ function customizeMenu(phone: boolean, hit: { action?: string; section?: string 
   return out
 }
 
-/** A button's own items: move it (`across`: in a row of icons), change its icon, take it off. */
 function buttonItems(id: string, across = false): MenuItem[] {
   const { newTab } = getPrefs()
   const buttons = shownActions(newTab), i = buttons.indexOf(id), own = newTab.icons?.[id]
@@ -306,17 +270,14 @@ function buttonItems(id: string, across = false): MenuItem[] {
   ]
 }
 
-/** A button's menu outside the new tab (the Buttons panel): its own items, then Add a button. */
 const buttonMenu = (id: string, across = false): MenuItem[] => [...buttonItems(id, across), { label: "Add a button…", icon: Plus, sep: true, run: () => addButton() }]
 
-/** Pick a button's icon (newtab.json's `icons`), the one it has now ticked. */
 function changeIcon(id: string) {
   const c = commandList().find((x) => x.id === id)
   const current = getPrefs().newTab.icons?.[id] ?? (typeof c?.icon === "string" ? c.icon : undefined)
   pickIcon({ title: `${c ? labelOf(c) : id}'s icon`, current, onPick: (n) => setNewTab({ icons: withIcon(getPrefs().newTab.icons, id, n) }) })
 }
 
-/** Pick a command (the palette's, available now) to add as a button at the end. */
 function addButton() {
   const have = shownActions(getPrefs().newTab)
   const items = available(commandList()).filter((c) => !have.includes(c.id)).sort((a, b) => a.name.localeCompare(b.name))

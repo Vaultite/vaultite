@@ -1,5 +1,3 @@
-// The mark beside a plugin Vaultite makes (built in, or one of Vaultite's in the directory): the trust signal at a
-// glance, in place of stars and bylines.
 import { BadgeCheck } from "lucide-react"
 import { cn } from "@/lib/utils"
 

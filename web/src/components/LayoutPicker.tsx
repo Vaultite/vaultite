@@ -1,5 +1,3 @@
-// The layout picker (Settings > Appearance, the welcome card): a click applies one at once, with Undo (the window
-// is the preview); a tile's menu has the rest. A layout is a bundle (core/bundles.ts); packs and looks are in Plugins' Get.
 import { useEffect, useRef, type KeyboardEvent } from "react"
 import { Check, Copy, Info, MoreHorizontal, RefreshCw, RotateCcw, Share, Trash2 } from "lucide-react"
 import {
@@ -17,7 +15,6 @@ import { askText } from "@/components/Chooser"
 import { LayoutDrawing } from "@/components/LayoutDrawings"
 import { cn } from "@/lib/utils"
 
-/** Applying runs code from it: ask first (Vaultite's own plugins, said so: they come from Vaultite's plugins). */
 export const askToRun = (b: BundleInfo, plan: Plan, trial = false) => plan.code.every((c) => c.source && official(c.source)) ? confirmDialog({
   title: `Install ${AND.format(plan.code.map((c) => c.name))}?`,
   body: `${b.name} installs Vaultite's own plugins from its plugin directory. Like any plugin, they run on the machine that serves this app, with your files.`,
@@ -28,8 +25,6 @@ export const askToRun = (b: BundleInfo, plan: Plan, trial = false) => plan.code.
   confirm: trial ? "Try and run them" : "Apply and run them", danger: true,
 })
 
-/** Apply a layout as it is now (asking first when it runs code); false when the user said no. `fresh`: without the
- *  changes kept from its last use (Reset). */
 export async function pickLayout(b: BundleInfo, o: Pick<ApplyOptions, "open" | "fresh" | "silent"> = {}) {
   const { plan } = await previewOf(b.id)
   const code = runsCode(plan)
@@ -38,8 +33,6 @@ export async function pickLayout(b: BundleInfo, o: Pick<ApplyOptions, "open" | "
   return true
 }
 
-/** The layouts in the picker's order (the app's, then the user's), and the one in use: the one applied last, else the
- *  one the setup is already (a new vault's Standard). */
 export function useLayouts() {
   const l = useBundles()
   const list = (l?.bundles.filter(isLayout) ?? []) as BundleInfo[]
@@ -47,11 +40,9 @@ export function useLayouts() {
   return { loaded: !!l, list, current: current?.id ?? null }
 }
 
-/** What a layout's Changed mark says: changed since it was applied (the one in use), or changes it keeps for next time. */
 const changedOf = (b: BundleInfo, current: boolean) =>
   current && b.modified ? `Changed since you picked it: ${fewOf(b.differs?.map(changeName) ?? [])}` : b.tweaked ? "Your changes to it come back when you pick it" : null
 
-/** Save the setup as a new layout, named first ("My Zen", after the one in use). */
 export function saveAsNew(from: BundleInfo | null) {
   const names = new Set(bundlesNow().map((b) => b.name.toLowerCase()))
   let typed = saveNameNow() ?? (from ? `My ${from.name.replace(/^My /, "")}` : "My layout")
@@ -66,11 +57,8 @@ export function saveAsNew(from: BundleInfo | null) {
   })
 }
 
-/** Where a bundle came from, without the commit an import from the directory pinned. */
 const place = (from: string) => from.replace(/@[0-9a-f]{40}$/, "")
 
-/** A tile's menu: Details (what it sets, ticked), Reset when it's changed, Save as new for the one in use, and for the
- *  user's own Share, updates and Delete. */
 function menuOf(b: BundleInfo, current: boolean, open: ApplyOptions["open"]): MenuItem[] {
   const changed = !!changedOf(b, current)
   return [
@@ -85,7 +73,6 @@ function menuOf(b: BundleInfo, current: boolean, open: ApplyOptions["open"]): Me
   ]
 }
 
-/** One layout: its drawing over its name, a check on the one in use; a quiet Changed mark when it's changed. */
 function Tile({ b, on, changed, onPick, menu }: { b: BundleInfo; on: boolean; changed: string | null; onPick: () => void; menu: (() => MenuItem[]) | null }) {
   return (
     <div className="group/tile relative w-[132px] shrink-0 max-md:w-auto" onContextMenu={menu ? menuFor(menu) : undefined} data-layout={b.id}>
@@ -108,7 +95,6 @@ function Tile({ b, on, changed, onPick, menu }: { b: BundleInfo; on: boolean; ch
           {on && <Check className="size-3.5 shrink-0 text-primary max-md:size-4" strokeWidth={2.75} aria-hidden />}
         </span>
       </button>
-      {/* (beside the name, off the drawing: shown on hover, always to a finger) */}
       {menu && (
         <button type="button" aria-label={`${b.name}: more`} data-tip="More" data-layout-more={b.id} onClick={(e) => menuBelow(e, menu())}
           className="absolute right-0 bottom-0 grid h-4 w-5.5 cursor-pointer place-items-center rounded-[5px] text-muted-foreground opacity-0 transition-opacity group-hover/tile:opacity-100 hover:bg-foreground/[0.07] hover:text-foreground focus-visible:opacity-100 [@media(hover:none)]:opacity-100 max-md:h-5 max-md:w-7 max-md:after:absolute max-md:after:-inset-2.5">
@@ -119,7 +105,6 @@ function Tile({ b, on, changed, onPick, menu }: { b: BundleInfo; on: boolean; ch
   )
 }
 
-/** A tile's shape while the layouts load: three, as the app has. */
 const Placeholder = () => (
   <div className="w-[132px] shrink-0 max-md:w-auto">
     <div className="skeleton aspect-[16/10] w-full rounded-[8px]" />
@@ -128,30 +113,21 @@ const Placeholder = () => (
 )
 
 export type LayoutPickerProps = {
-  /** The tiles' menus (⋯ and right-click: Details, Reset, Save as new, Share, Delete). Off: a click picks, nothing else. */
   menus?: boolean
-  /** What picking one shows after (ApplyOptions `open`): a guide it just added, in a tab behind, by default. */
   open?: ApplyOptions["open"]
-  /** Only the app's own (Standard, Zen, Browser). */
   builtInOnly?: boolean
-  /** No toasts as one applies (the welcome card). */
   silent?: boolean
-  /** After a pick is applied. */
   onPicked?: (b: BundleInfo) => void
-  /** What the one picked is, a line under the tiles (centred, as the welcome card's). */
   describe?: "start" | "center"
   className?: string
 }
 
-/** The layouts as tiles, the app's then the user's: a click applies one, with Undo in its toast. */
 export function LayoutPicker({ menus = true, open = "behind", builtInOnly, silent, onPicked, describe, className }: LayoutPickerProps) {
   const { loaded, list, current } = useLayouts()
   const [shown, choose] = useChosen(current)
   const shownList = builtInOnly ? list.filter((b) => b.source === "app") : list
-  // Listed afresh as it opens (a layout saved since by an agent, or on another device).
   useEffect(() => { if (bundlesNow().length) void refreshBundles() }, [])
   const group = useRef<HTMLDivElement>(null)
-  // Arrows move between the tiles, as in any radio group.
   const keys = (e: KeyboardEvent) => {
     const by = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0
     if (!by) return
@@ -161,7 +137,6 @@ export function LayoutPicker({ menus = true, open = "behind", builtInOnly, silen
     e.preventDefault()
     all[(i + by + all.length) % all.length]?.focus()
   }
-  // What the one picked is, said under the tiles (never a tooltip: nobody hovers a picture to read it).
   const about = shownList.find((b) => b.id === shown)?.description
   const tiles = (
     <div ref={group} role="radiogroup" aria-label="Layout" onKeyDown={keys} data-layout-picker className={cn("flex flex-wrap gap-x-3 gap-y-3.5 py-[5px] pl-[5px] max-md:grid max-md:grid-cols-2 max-md:gap-x-4 max-md:gap-y-4 max-md:pl-0", className)}>
@@ -178,7 +153,6 @@ export function LayoutPicker({ menus = true, open = "behind", builtInOnly, silen
   return (
     <div data-layout-picker-wrap>
       {tiles}
-      {/* (its lines' room kept, so picking a shorter one moves nothing under it; none picked yet, the welcome card's only) */}
       {(about || describe === "center") && <p aria-live="polite" data-layout-about className={cn("mt-2 text-[13px] leading-[18px] text-pretty text-muted-foreground max-md:text-[15px] max-md:leading-[20px]",
         describe === "center" ? "mx-auto min-h-[54px] max-w-[400px] text-center max-md:min-h-[60px]" : "line-clamp-2 min-h-[36px] max-w-[600px] pl-[5px] max-md:min-h-[40px] max-md:pl-0")}>{about}</p>}
     </div>

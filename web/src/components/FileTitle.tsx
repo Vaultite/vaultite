@@ -1,37 +1,27 @@
-// A file's title, the same on every page (a note, a dashboard, a sheet, a phone): its own icon, then its name. On a
-// phone the header's name stays hidden while this one is in sight (iOS large titles).
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react"
 import { namedIcon, tintOf } from "@/core/pages"
 import { cell } from "@/core/signal"
 import { usePane } from "@/core/pane"
 import { cn } from "@/lib/utils"
 
-/** The title's text. A phone's is a size down: its header names the file too, once the title scrolls away. */
 export const TITLE = "title-font block w-full text-[24px] leading-[30px] font-bold text-balance break-words md:text-[28px] md:leading-[34px]"
 
-/** Whether the page's own title is in sight below the phone's header (PhoneHeader hides its name meanwhile). */
 export const titleInSight = cell(false)
 /** A page with no name to say yet (a chat while it loads): the phone's header shows none meanwhile, not a stand-in. */
 export function useNoPhoneTitle(on: boolean) {
   useEffect(() => { if (!on) return; titleInSight.set(true); return () => titleInSight.set(false) }, [on])
 }
 
-/** An icon that changes the file's icon: its hover is drawn around it, so it sits where the plain icon would. */
 export const ICON_BUTTON = "relative isolate grid shrink-0 cursor-pointer before:absolute before:-inset-1 before:-z-10 before:rounded-[6px] " +
   "before:transition-colors hover:before:bg-foreground/[0.06] active:before:bg-foreground/[0.09]"
 
-/** The title's line: the file's `icon:` (in its `tint`) before it, a button where `onIcon` changes it. `phone`: a
- *  phone's tab, whose header follows it. */
 export function TitleRow({ icon, tint, phone, onIcon, children }: { icon?: unknown; tint?: unknown; phone?: boolean; onIcon?: () => void; children: ReactNode }) {
   const Icon = typeof icon === "string" ? namedIcon(icon) : null
   const row = useRef<HTMLDivElement>(null)
-  // (a tab kept drawn behind the shown one says nothing about the header)
   const { hidden } = usePane()
   useLayoutEffect(() => {
     const el = row.current
     if (!phone || hidden || !el) return
-    // In sight: any of it below the header (fixed, over the window that scrolls). Only up and down: a swipe's slide
-    // sideways isn't a scroll, so the header's name doesn't flash in while a page settles.
     const top = document.querySelector<HTMLElement>("[data-phone-header]")?.offsetHeight ?? 0
     const see = (r: DOMRectReadOnly) => titleInSight.set(r.bottom > top && r.top < innerHeight)
     const io = new IntersectionObserver(([e]) => see(e.boundingClientRect), { rootMargin: `-${top}px 0px 0px 0px` })
@@ -45,7 +35,6 @@ export function TitleRow({ icon, tint, phone, onIcon, children }: { icon?: unkno
   return (
     <div ref={row} data-title-row className="flex items-start gap-2">
       {Icon && (onIcon ? (
-        // (a finger's 44pt target is the hover's box, around the icon)
         <button type="button" onClick={onIcon} aria-label="Change icon" data-tip="Change icon" className={cn(ICON_BUTTON, at, "max-md:before:-inset-2.5")}>{drawn}</button>
       ) : drawn)}
       <div className="min-w-0 flex-1">{children}</div>

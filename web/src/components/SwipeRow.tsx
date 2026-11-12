@@ -1,5 +1,3 @@
-// Swipe a row sideways to show its actions behind it, like Mail's: away from its drawer, so the drawer's own swipe
-// still closes it. Vertical swipes, mice and holds are left to others.
 import { useCallback, useEffect, useRef, useState, type HTMLAttributes, type ReactNode } from "react"
 import type { LucideIcon } from "lucide-react"
 import { onAway } from "@/core/away"
@@ -11,9 +9,7 @@ import { cn } from "@/lib/utils"
  *  gets the row's box, for a menu it opens (Snooze ▸). */
 export type SwipeAction = { label: string; icon: LucideIcon; run: (row?: DOMRect) => unknown; danger?: boolean; removes?: boolean }
 
-/** How wide each button is (px). */
 const BUTTON = 74
-/** The row that's open, by how to close it. */
 let shut: (() => void) | null = null
 
 /** `actions`: asked for when a swipe starts (none: the row doesn't swipe), so rows that are never swiped make no buttons.
@@ -24,19 +20,16 @@ export function SwipeRow({ actions, under: behind, children, className, ...rest 
   const row = useRef<HTMLDivElement>(null), under = useRef<HTMLDivElement>(null), own = useRef<HTMLSpanElement>(null)
   const g = useRef<{ x: number; y: number; from: number; axis: "x" | "y" | "pass" | null; full: boolean; room: number; quit?: () => void } | null>(null)
   const at = useRef(0)
-  /** 1: the row slides right (its buttons on the left), -1: left. */
   const way = useRef<1 | -1>(-1)
-  /** A swipe just ended (or a tap closed it): the click it makes opens nothing. */
   const swiped = useRef(false)
-  /** The buttons, from the swipe's start until it's closed again; on a short row (a drawer's) icons only. */
   const [shown, setShown] = useState<SwipeAction[]>([])
   const [short, setShort] = useState(false)
   const box = useRef<HTMLDivElement>(null)
   const alive = useRef(true)
   useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
 
-  // Stable (refs only): `shut` knows the open row by its close, which a redraw while open mustn't change, or a press on
-  // its own button closes it first (and iOS drops a click whose press changed the page).
+  // Stable (refs only): a redraw while open mustn't change `shut`, or a press on its own button closes it first, and iOS
+  // drops a click whose press changed the page.
   const place = useCallback((x: number, animate = false) => {
     at.current = x
     const r = row.current, u = under.current
@@ -58,7 +51,6 @@ export function SwipeRow({ actions, under: behind, children, className, ...rest 
     setTimeout(() => { if (!at.current && !g.current) setShown([]) }, 240)
   }, [place])
 
-  /** A button pressed: felt at once; one that removes the row slides it out and folds it away before it runs. */
   const act = (a: SwipeAction) => {
     haptic("medium")
     const el = box.current, r = row.current
@@ -76,12 +68,11 @@ export function SwipeRow({ actions, under: behind, children, className, ...rest 
       el.style.height = el.style.opacity = el.style.transition = ""
       place(0)
       setShown([])
-    }, 250) // (past a removal's fold, core/leaving.ts: a row taken off is gone by then)
+    }, 250)
     setTimeout(() => { Promise.resolve().then(() => a.run()).then(back, back) }, 200)
   }
 
   const down = (e: React.PointerEvent) => {
-    // (Selecting, a tap picks a row: nothing slides.)
     if (e.pointerType !== "touch" || selecting()) return
     swiped.current = false
     if (shut && shut !== close) shut()
@@ -98,7 +89,6 @@ export function SwipeRow({ actions, under: behind, children, className, ...rest 
     const mx = e.clientX - s.x, my = e.clientY - s.y
     if (!s.axis) {
       if (Math.abs(mx) > 8 && Math.abs(mx) > Math.abs(my)) {
-        // Open already (either way back), or the way this row slides; the other way is the drawer's.
         if (!s.from && Math.sign(mx) !== way.current) { s.axis = "pass"; return }
         if (!s.from && behind) {
           s.room = own.current?.scrollWidth ?? 0
@@ -111,15 +101,13 @@ export function SwipeRow({ actions, under: behind, children, className, ...rest 
           s.room = list.length * BUTTON
         }
         s.axis = "x"
-        try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* gone */ }
-        // The app sent away mid-swipe (core/away.ts): it settles as if let go there.
+        try { e.currentTarget.setPointerCapture(e.pointerId) } catch {}
         s.quit = onAway(() => { if (g.current === s) { g.current = null; settle(s) } })
       } else if (Math.abs(my) > 8) { s.axis = "y"; return }
       else return
     }
     e.stopPropagation()
     swiped.current = true
-    // Its way only, and past its buttons with resistance (a third of the finger's move).
     let x = way.current * Math.max(0, way.current * (s.from + mx))
     if (Math.abs(x) > s.room) x = way.current * (s.room + (Math.abs(x) - s.room) / 3)
     const full = Math.abs(x) >= s.room
@@ -134,7 +122,6 @@ export function SwipeRow({ actions, under: behind, children, className, ...rest 
     e.stopPropagation()
     settle(s)
   }
-  /** Let go: open on its buttons past half of them, else closed. */
   const settle = (s: { room: number; quit?: () => void }) => {
     s.quit?.()
     if (Math.abs(at.current) > s.room / 2) { place(way.current * s.room, true); shut = close }
@@ -145,15 +132,12 @@ export function SwipeRow({ actions, under: behind, children, className, ...rest 
     <div {...rest} ref={box} className={cn("relative overflow-hidden", className)} style={{ touchAction: "pan-y" }}
       onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
       onClickCapture={(e) => {
-        // Open, a tap on the row closes it (and opens nothing); the click a swipe ends with is no tap. Its buttons act.
         if (under.current?.contains(e.target as Node)) return
         if (swiped.current || at.current) { e.preventDefault(); e.stopPropagation(); swiped.current = false; if (at.current) close() }
       }}>
       <div ref={under} aria-hidden={!at.current} data-swipe-under
-        // A finger held on a button is its press, not the menu of what holds the row.
         onContextMenu={(e) => e.stopPropagation()} className={cn("absolute inset-y-0 flex w-0 overflow-hidden", behind && "bg-foreground/[0.07]")} style={{ right: 0 }}>
         {behind ? (
-          // As they are, a finger's size; one acts, then the row closes (after: a menu it opens is placed by it first).
           <span ref={own} onClickCapture={() => setTimeout(close)} className="absolute inset-y-0 flex text-foreground [&_button]:h-full [&_button]:w-10 [&_button]:rounded-none" style={{ right: 0 }}>
             {behind}
           </span>

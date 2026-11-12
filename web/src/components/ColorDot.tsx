@@ -1,4 +1,3 @@
-// A colour of the shared palette (core/colors.ts) as a menu row's icon, and the Colour submenu's rows.
 import { forwardRef } from "react"
 import type { LucideIcon, LucideProps } from "lucide-react"
 import { COLOR_NAMES, COLORS, colorVar, type Color } from "../../../core/colors.ts"

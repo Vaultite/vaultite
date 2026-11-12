@@ -1,5 +1,3 @@
-// Hover tooltips from `data-tip` (no wrapper; `data-tip-side`, `data-tip-trunc`, `data-tip-cut`: what it says instead
-// while its label is cut off). Mouse only, and never while a button is held (a drag: what it would say is under way).
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { fadeAway } from "@/core/animation"
@@ -7,7 +5,7 @@ import { fadeAway } from "@/core/animation"
 type Tip = { text: string; x: number; y: number; side: "top" | "bottom" | "left" | "right" }
 
 const DELAY = 450
-const WARM = 500 // after one hides, the next shows without waiting for this long
+const WARM = 500
 
 /** The tooltips of `data-tip` in window `win`: the app's, or a popup's it draws in from here (a presenter view). */
 export const Tooltips = memo(function Tooltips({ win = window }: { win?: Window }) {
@@ -17,7 +15,6 @@ export const Tooltips = memo(function Tooltips({ win = window }: { win?: Window 
     let cur: Element | null = null
     let shown = false
     let warmUntil = 0
-    /** `fade`: the pointer left it for nothing with a tip, and it fades as a Mac's does (a click or key: gone at once). */
     const hide = (fade = false) => {
       if (fade && shown) fadeAway([win.document.querySelector(".tooltip[role=tooltip]")])
       clearTimeout(timer)
@@ -26,13 +23,10 @@ export const Tooltips = memo(function Tooltips({ win = window }: { win?: Window 
       cur = null
       setTip(null)
     }
-    /** Its label, or any part of it (a site and its account), cut off; a label hidden altogether, like a narrow tab's,
-     *  counts as cut off. */
     const cut = (el: Element) => {
       const ts = [...el.querySelectorAll<HTMLElement>(".truncate, .fade-end")], t = ts[0] ?? (el as HTMLElement)
       return !t.getClientRects().length || (ts.length ? ts : [t]).some((x) => x.scrollWidth > x.clientWidth || under(x))
     }
-    /** Its text runs under what's drawn over its end (`--fade-reserve`: a sidebar row's buttons on hover). */
     const under = (x: HTMLElement) => {
       const kept = parseFloat(getComputedStyle(x).getPropertyValue("--fade-reserve")) || 0
       if (!kept) return false
@@ -40,7 +34,6 @@ export const Tooltips = memo(function Tooltips({ win = window }: { win?: Window 
       r.selectNodeContents(x)
       return r.getBoundingClientRect().width > x.clientWidth - kept
     }
-    /** Something's being dragged or resized (core/drag.ts, Resizer.tsx). */
     const busy = () => "resizing" in document.body.dataset || "dragging" in document.documentElement.dataset
     const show = (el: Element) => {
       if (cur !== el || !el.isConnected || busy()) return
@@ -65,7 +58,7 @@ export const Tooltips = memo(function Tooltips({ win = window }: { win?: Window 
       if (Date.now() < warmUntil) show(el)
       else timer = setTimeout(() => show(el), DELAY)
     }
-    const out = (e: PointerEvent) => { if (!e.relatedTarget) hide(true) } // left the window
+    const out = (e: PointerEvent) => { if (!e.relatedTarget) hide(true) }
     const now = () => hide()
     win.addEventListener("pointerover", over)
     win.document.addEventListener("pointerout", out)
@@ -89,7 +82,6 @@ export const Tooltips = memo(function Tooltips({ win = window }: { win?: Window 
 function Bubble({ tip, win }: { tip: Tip; win: Window }) {
   const ref = useRef<HTMLDivElement>(null)
   const [shift, setShift] = useState(0)
-  // Keep it on screen: slide the label, not the arrow.
   useLayoutEffect(() => {
     const el = ref.current
     if (!el || tip.side === "right" || tip.side === "left") return setShift(0)

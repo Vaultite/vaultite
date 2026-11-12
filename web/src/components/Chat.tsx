@@ -1,5 +1,3 @@
-// A cursor's conversation, clicked open: its last words and what the user asked it, above a box to ask it more. One look
-// in the window (the companion's Popover) and over the screen (screen.tsx's panel); each gives its own words' drawing.
 import { useLayoutEffect, useRef, type ReactNode } from "react"
 import { Ellipsis, X } from "lucide-react"
 
@@ -38,7 +36,6 @@ export function Chat({ name, tint, items, draft, setDraft, send, close, more, wo
     <div data-companion-popover={name} data-floats className={`companion-pop flex w-[300px] max-w-[calc(100vw-8px)] flex-col overflow-hidden rounded-[12px] border border-border/60 bg-background text-[13px] leading-snug text-foreground shadow-lg ${className ?? ""}`}
       style={{ boxShadow: `0 0 0 1.5px color-mix(in srgb, ${tint} 45%, transparent), 0 8px 24px rgba(0,0,0,.14)`, ...style }}>
       <div data-swipe={phone || undefined} data-companion-head={windowed || undefined} className={`flex items-center gap-1 pt-1 pr-1 pl-3 ${phone ? "touch-none" : ""} ${windowed ? "[-webkit-app-region:drag] [&_button]:[-webkit-app-region:no-drag]" : ""}`}>
-        {/* (its name alone: what it runs, its More menu in the app says) */}
         <div data-companion-name className="min-w-0 flex-1 truncate text-[11.5px] font-medium text-muted-foreground">{name}</div>
         <button type="button" aria-label={`More for ${name}`} data-tip="More" className={ICON} onClick={more}><Ellipsis className="size-3.5 [@media(pointer:coarse)]:size-4.5" /></button>
         {phone && <button type="button" aria-label="Close" className={ICON} onClick={close}><X className="size-4.5" /></button>}
@@ -47,7 +44,6 @@ export function Chat({ name, tint, items, draft, setDraft, send, close, more, wo
       {(items.length > 0 || busy) && (
         <div ref={list} className="edge-fade-y max-h-[280px] overflow-y-auto overscroll-contain px-2.5 pt-2 [scrollbar-width:none] [@media(pointer:coarse)]:max-h-[45vh] [&::-webkit-scrollbar]:hidden">
           {items.map((n) => n.kind === "ask" ? (
-            // (what the user asked it: theirs, on the right, as in any conversation)
             <div key={n.id} data-asked={n.id} className="flex justify-end pb-2 pl-8">
               <div className="min-w-0 rounded-[10px] rounded-br-[4px] bg-foreground/[0.07] px-2.5 py-1.5 break-words whitespace-pre-wrap">{n.text}</div>
             </div>

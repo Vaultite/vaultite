@@ -1,5 +1,3 @@
-// A setting chosen by its picture (Settings > Appearance: theme, style, colour scheme, density, what new tabs open):
-// small windows drawn in a colour scheme, light or dark, each showing what choosing it looks like.
 import { useLayoutEffect, useRef, type ReactNode } from "react"
 import { Globe } from "lucide-react"
 import { haptic } from "@/core/haptics"
@@ -7,13 +5,10 @@ import { usePrefs } from "@/core/prefs"
 import { onlyMode } from "@/core/appearance"
 import { cn, isDark } from "@/lib/utils"
 
-/** What a window shows: a note, the rows at a density, a new tab's page, the quick switcher over a note, another view. */
 export type Scene = "note" | "compact" | "comfortable" | "page" | "switcher" | "view"
 
-/** A line of text, `w` wide. */
 export const line = (w: string, cls = "bg-foreground/15") => <span className={cn("block h-[3px] shrink-0 rounded-full", cls)} style={{ width: w }} />
 
-/** A window's three buttons. */
 export const Lights = ({ className }: { className?: string }) => (
   <span className={cn("flex shrink-0 gap-[2px]", className)}>
     {["red", "yellow", "green"].map((c) => <span key={c} className="size-[4px] rounded-full" style={{ background: `var(--${c})` }} />)}
@@ -69,8 +64,6 @@ export function Frame({ mode, className, children }: { mode?: "light" | "dark"; 
   )
 }
 
-/** A small window in a colour scheme (`scheme`, else the one in use; `mode`: light or dark, else the scheme's only one
- *  or the app's). `glass`: the desktop shows through its sidebar, and through its page too with `pages`. */
 export function WindowPicture({ scene, mode, scheme, glass, className }: {
   scene: Scene; mode?: "light" | "dark"; scheme?: string; glass?: "window" | "pages"; className?: string
 }) {
@@ -89,7 +82,6 @@ export function WindowPicture({ scene, mode, scheme, glass, className }: {
   )
 }
 
-/** Light and dark, split corner to corner: following the system. */
 export function SystemPicture({ scene }: { scene: Scene }) {
   return (
     <div className="relative h-full w-full">
@@ -101,21 +93,18 @@ export function SystemPicture({ scene }: { scene: Scene }) {
 
 export type PictureOption<T extends string> = { value: T; label: string; picture: ReactNode; tip?: string }
 
-/** The choices side by side, each its picture over its name; the one chosen ringed in the accent. `scroll`: one row
- *  that scrolls sideways, faded where there's more, opening on the one chosen (many choices: the colour schemes). */
 export function PictureChoice<T extends string>({ value, options, onChange, label, scroll }: {
   value: T; options: PictureOption<T>[]; onChange: (v: T) => void; label: string; scroll?: boolean
 }) {
   const ref = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
-    // (once, as it opens: the chosen one in sight without moving the page; after that only the user scrolls it)
+    // Not scrollIntoView: that would scroll the page too.
     const el = ref.current, on = el?.querySelector<HTMLElement>('[aria-checked="true"]')
     if (!scroll || !el || !on) return
     const end = on.offsetLeft + on.offsetWidth + 24
     if (end > el.clientWidth) el.scrollLeft = end - el.clientWidth
   }, [scroll])
   return (
-    // (scrolling, its padding keeps the rings unclipped; the negative margins put the first picture where it would be)
     <div ref={ref} role="radiogroup" aria-label={label} data-picture-choice={label}
       className={cn("flex gap-3", scroll ? "edge-fade-x -mx-3 -my-[6px] overflow-x-auto px-3 py-[6px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "flex-wrap")}>
       {options.map((o) => {

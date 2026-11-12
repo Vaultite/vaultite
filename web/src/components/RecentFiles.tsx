@@ -1,4 +1,3 @@
-// Recent files, one source for every list of them: opened lately in the workspace, and changed lately on disk.
 import type { Store } from "@/core/data"
 import { openFile, stem, type VaultFile } from "@/core/files"
 import { usePrefs } from "@/core/prefs"
@@ -10,7 +9,6 @@ import { filesMenu, rowFileMenu } from "@/components/FileActions"
 import { menuFor } from "@/components/ContextMenu"
 import { rowMenu, selectClick, selectedAttr, useSelectable, useSelectedKeys } from "@/core/select"
 
-/** The recent files' selection (core/select.ts), by path: open several, move, pin or delete them together. */
 const SELECT = "recent"
 
 export type RecentKind = "opened" | "changed"
@@ -21,8 +19,6 @@ export function useOpenedFiles(store: Store, n: number): string[] {
   return useRecentFiles().filter((p) => exists.has(p)).slice(0, n)
 }
 
-// The store's files
-// by when they changed, newest first: sorted once per list (the store keeps a list's object while it's unchanged).
 let sortedFor: VaultFile[] | null = null
 let sorted: VaultFile[] = []
 function byChange(files: VaultFile[]) {
@@ -64,8 +60,6 @@ export function RecentList({ store, files }: { store: Store; files: string[]
         const { icon, tint } = iconOf(p)
         const folder = p.split("/").slice(0, -1).join(" / ")
         return (
-          // A middle-click (⌘↵ from the keyboard): a new tab here, as everywhere in the app (never the browser's); ⌘- and
-          // ⇧-click select.
           <SidebarRow key={p} data-recent={p} data-select-key={p} {...selectedAttr(picks.has(p))} href={`#file/${encodeURIComponent(p)}`} icon={fileIcons ? icon : undefined} tint={tint} label={stem(p)} open
             className="active:bg-foreground/[0.06]" onContextMenu={menuFor(rowMenu(SELECT, p, () => rowFileMenu(p)))}
             onClick={(e) => { if (!selectClick(e, SELECT, p)) openFile(p, { newTab: e.metaKey || e.ctrlKey || e.button === 1 }) }}>

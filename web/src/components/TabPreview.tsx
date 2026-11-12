@@ -1,5 +1,3 @@
-// A tab's small picture on its card, of its focused pane: the iPhone app's real snapshot while still current, else a
-// cheap static stand-in (only the pane on screen is mounted, so there's nothing else to picture).
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react"
 import type { Store } from "@/core/data"
 import { get } from "@/core/http"
@@ -17,11 +15,7 @@ import { cn } from "@/lib/utils"
 import { blockName } from "../../../core/sections.ts"
 import { fenceLayout } from "../../../core/blocks.ts"
 
-// ---------- the text, read lazily ----------
-
-/** The start of each file read so far, by path, with the store's mtime it was read at. */
 const texts = new Map<string, { mtime: number; text: string }>()
-/** At most this many reads at once: a list of twenty notes doesn't ask for twenty files together. */
 const LIMIT = 3
 let running = 0
 const waiting: (() => void)[] = []
@@ -35,7 +29,6 @@ function limited<T>(fn: () => Promise<T>): Promise<T> {
   })
 }
 
-/** A file's text (its first few KB), or null until it's read. Read again when the file changes. */
 function useText(path: string, mtime: number) {
   const [, redraw] = useState(0)
   const hit = texts.get(path)
@@ -46,21 +39,17 @@ function useText(path: string, mtime: number) {
     limited(() => get<FileText>(`file?path=${encodeURIComponent(path)}`))
       .then((f) => {
         texts.delete(path); texts.set(path, { mtime, text: f.text.slice(0, 6000) })
-        if (texts.size > 200) texts.delete(texts.keys().next().value!) // (the most recent ones, not every file previewed all day)
+        if (texts.size > 200) texts.delete(texts.keys().next().value!)
         if (on) redraw((n) => n + 1)
       })
-      .catch(() => { /* gone or unreadable: the card keeps its placeholder */ })
+      .catch(() => {})
     return () => { on = false }
   }, [path, mtime, fresh])
   return hit?.text ?? null
 }
 
-// ---------- a note's first lines ----------
-
-/** A piece of the excerpt: Markdown, or something drawn in the file (a block, an embed, a diagram) as a placeholder. */
 type Part = { md: string } | { block: string; wide: boolean }
 
-/** The body's first `max` lines, in parts. A fence counts as one line; frontmatter is already gone. */
 function excerpt(body: string, max: number): Part[] {
   const out: Part[] = []
   const lines = body.split("\n")
@@ -75,14 +64,12 @@ function excerpt(body: string, max: number): Part[] {
       const end = close < 0 ? lines.length - 1 : close
       const name = blockName(fence[2]) ?? (fence[2].split(/\s/)[0] === "mermaid" ? "diagram" : null)
       if (name) {
-        // Blocks and diagrams draw themselves in the app: here, a bar (a wide block takes the whole row).
         flush()
         out.push({ block: name, wide: fenceLayout(fence[2], lines.slice(i + 1, end).join("\n")).wide })
       } else md.push(...lines.slice(i, end + 1).slice(0, 8), ...(end - i > 7 ? [fence[1]] : []))
       i = end
       n++
     } else if (embed) {
-      // An embed would load the file it shows (an artifact, a note): a bar named after it.
       flush()
       out.push({ block: stem(embed[1].trim()), wide: true })
       n++
@@ -95,7 +82,6 @@ function excerpt(body: string, max: number): Part[] {
   return out
 }
 
-/** A placeholder for what the app draws (a block on a dashboard, a block or embed in a note), named faintly. */
 function Placeholder({ name, dashboard, wide }: { name: string; dashboard: boolean; wide: boolean }) {
   return (
     <div className={cn("mb-3 rounded-[14px] p-3 text-[15px] text-muted-foreground", dashboard ? "h-[104px] bg-card" : "h-[64px] bg-muted", wide && "col-span-2")}>
@@ -104,16 +90,12 @@ function Placeholder({ name, dashboard, wide }: { name: string; dashboard: boole
   )
 }
 
-/** A Markdown file: its name, then (a note) its first lines or (a dashboard) its blocks as cards. Drawn at twice its
- *  size, then scaled to half: the card's text is a picture of the page, too small to read in full but shaped like it. */
 function DocPreview({ store, path }: { store: Store; path: string }) {
   const f = fileOf(store, path)
   const text = useText(path, f?.mtime ?? 0)
-  // A page a plugin draws (a dashboard): its title and blocks as cards, like the page.
   const dashboard = !!pageView(path, store)
   const { body } = splitFm(text ?? "")
   const parts = text === null ? [] : excerpt(body, dashboard ? 10 : 12)
-  // Runs of blocks in a dashboard sit in a grid of two, like its cards; everywhere else one under another.
   const runs: Part[][] = []
   for (const p of parts) {
     const last = runs.at(-1)
@@ -134,8 +116,6 @@ function DocPreview({ store, path }: { store: Store; path: string }) {
   )
 }
 
-/** The tab's icon, large, on a muted ground, with its name and what it is: views, the app's pages, other files. */
-// An icon and its words, near the top: a card shows only the top of its page-shaped box (padding follows its width).
 const PLACED = "absolute inset-0 flex flex-col items-center gap-2 pt-[32%]"
 
 function IconPreview({ info, meta }: { info: TabInfo; meta: string }) {
@@ -148,7 +128,6 @@ function IconPreview({ info, meta }: { info: TabInfo; meta: string }) {
   )
 }
 
-/** `children` drawn as the page draws them, at its width, shrunk to the card's (a picture of it, nothing in it to tap). */
 function AtPageSize({ children }: { children: ReactNode }) {
   const box = useRef<HTMLDivElement>(null)
   const [k, setK] = useState(0)
@@ -169,13 +148,11 @@ function AtPageSize({ children }: { children: ReactNode }) {
   )
 }
 
-/** A new tab: what it opens to (the page chosen for new tabs, or the new tab page's sections), like any other tab. */
 function NewTabPreview({ store }: { store: Store }) {
   const page = useNewTabPage(store)
   return page ? <DocPreview store={store} path={page} /> : <AtPageSize><NewTab store={store} phone /></AtPageSize>
 }
 
-/** The preview inside a tab's card (it fills a positioned box): what `pane` (its focused one) shows. */
 export function TabPreview({ store, pane: p, info }: { store: Store; pane: Pane; info: TabInfo }) {
   const to = p.to
   const shot = useTabShot(p.id, to)

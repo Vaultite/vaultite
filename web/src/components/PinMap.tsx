@@ -1,5 +1,3 @@
-// A lazy map of pins (MapLibre is big), same base map and controls as People → Map. Overlapping pins merge into a
-// count; if the style can't load (offline, no WebGL) it calls onFail and the caller shows a list.
 import { useEffect, useRef } from "react"
 import { useNearScreen } from "@/core/near"
 import { createRoot } from "react-dom/client"
@@ -18,11 +16,10 @@ maplibregl.setWorkerUrl(workerUrl)
 export type MapPin = { id: string; title: string; lat: number; lon: number; color?: string; icon?: string; meta?: string }
 type Item = { key: string; lat: number; lon: number; pins: MapPin[] }
 
-const R = 34 // px: pins closer than this merge
+const R = 34
 const PAD = { top: 56, bottom: 40, left: 40, right: 72 }
 const DEFAULT_COLOR = "var(--indigo)"
 
-/** Greedy screen-space grouping, densest spots first. */
 function cluster(map: MLMap, pins: MapPin[]): Item[] {
   type Pt = { p: MapPin; x: number; y: number }
   const pts: Pt[] = pins.map((p) => ({ p, ...map.project([p.lon, p.lat]) }))
@@ -104,7 +101,6 @@ export default function PinMap({ pins, onOpen, onFail, zoom }: {
     else map.fitBounds(boundsOf(ps), { padding: PAD, maxZoom: max, animate, duration: 700 })
   }
 
-  // (made once it comes near the screen: core/near.ts)
   const near = useNearScreen(box)
   useEffect(() => {
     if (!box.current || !near) return
@@ -113,7 +109,6 @@ export default function PinMap({ pins, onOpen, onFail, zoom }: {
     const { map } = started
     mapRef.current = map
 
-    // Markers, diffed by group key so pins don't flash when the zoom changes.
     const markers = new Map<string, Marker>()
     let popup: maplibregl.Popup | null = null
     const closePopup = () => { popup?.remove(); popup = null }
@@ -144,10 +139,9 @@ export default function PinMap({ pins, onOpen, onFail, zoom }: {
     map.on("zoomend", render)
     map.on("resize", render)
     return () => { started.stop(); mapRef.current = null; redraw.current = null }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the map is made once; it reads pins and callbacks through live
   }, [near])
 
-  // Pins change (a file was edited while the map was open): redraw them.
   useEffect(() => { redraw.current?.() }, [pins])
 
   return (

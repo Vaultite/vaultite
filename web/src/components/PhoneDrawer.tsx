@@ -1,5 +1,3 @@
-// Phones: the sidebars as drawers, with the same panels a size up. Screen edges are always the
-// drawers' (Back and Forward are the bar's buttons); panels draw only while a drawer is out.
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { ChevronsUpDown } from "lucide-react"
 import { APP_PAGES, appPageOf, hrefOf, openAppPage } from "@/core/apppages"
@@ -24,17 +22,13 @@ let out: Side | null = null
 const subs = signal()
 setDrawerOpener((side) => openDrawer(side))
 
-/** Open a drawer (null: close the one that's out). */
 export function openDrawer(side: Side | null) {
   if (out === side) return
   out = side
   subs.notify()
 }
-/** The drawer that's out, if one is. */
 export const drawerOut = () => out
 const useDrawer = () => subs.use(() => out)
-/** Whether a sidebar has panels to show (the right one often has none: then there's no right drawer); the left one
- *  has the dock too. */
 export function useHasDrawer(side: Side) {
   const { disabled } = usePrefs()
   const s = useSidebars()
@@ -42,32 +36,26 @@ export function useHasDrawer(side: Side) {
 }
 
 const EASE = "cubic-bezier(.2,.8,.2,1)"
-/** How wide a drawer is: most of the screen, never wider than a sidebar needs. */
 const width = () => Math.min(innerWidth * 0.86, 360)
-/** The strip along each edge a swipe starts in (px). */
 const EDGE = 18
 
 export function PhoneDrawers({ store, file, tab, vaultName, vaultMenu }: { store: Store; file: string; tab: string; vaultName: string
-  /** The vault menu (App's), when it has items. */
   vaultMenu: (e: React.MouseEvent) => void }) {
   const side = useDrawer()
   usePageLock(!!side)
-  // (what's drawn over the page, an agent's cursor, steps aside while one is out: `html[data-drawer]`)
   useEffect(() => { if (side) document.documentElement.dataset.drawer = side; else delete document.documentElement.dataset.drawer }, [side])
   const has = { left: useHasDrawer("left"), right: useHasDrawer("right") }
-  // Which drawer is drawn: the one out, or the one a finger is pulling, until it has slid away.
   const [drawn, setDrawn] = useState<Side | null>(null)
   const panel = useRef<HTMLDivElement>(null), shade = useRef<HTMLDivElement>(null)
   const drag = useRef<{ side: Side; x: number; y: number; axis: "x" | "y" | null; from: number; p: number; t: number; v: number; quit?: () => void } | null>(null)
   const pos = useRef(0)
 
-  /** Put the drawer `p` of the way out (0 in, 1 out), animated over `ms`. */
   const place = (s: Side, p: number, ms = 0) => {
     pos.current = p
     const el = panel.current, bg = shade.current
     if (!el || !bg) return
     const t = ms ? `${ms}ms ${EASE}` : ""
-    // Put there at once: a slide still running (or one a layout read started) would carry on from where it was.
+    // Put there at once: a running slide would carry on from where it was.
     if (!ms) for (const a of [...el.getAnimations(), ...bg.getAnimations()]) a.cancel()
     el.style.transition = t && `transform ${t}`
     el.style.transform = `translateX(${(s === "left" ? -1 : 1) * (1 - p) * 100}%)`
@@ -76,28 +64,24 @@ export function PhoneDrawers({ store, file, tab, vaultName, vaultMenu }: { store
     bg.style.pointerEvents = p > 0 ? "auto" : "none"
   }
 
-  // The drawer changed sides (one element): place it on its edge before paint with no leftover transition, or the right
-  // one slides in from the left. Panels' layout effects run first and may start a slide, so this cancels it.
+  // Before paint, layout forced: a leftover transition would slide the right drawer in from the left.
   useLayoutEffect(() => {
     const s = side ?? drawn
     if (!s) return
     place(s, pos.current)
     panel.current?.getBoundingClientRect()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs only when the drawn side changes
   }, [side ?? drawn])
 
-  // Opened or closed (a button, a swipe let go, something opened from it): slide there; once in, stop drawing it.
   useEffect(() => {
     if (side) { setDrawn(side); requestAnimationFrame(() => place(side, 1, 280)); return }
     if (!drawn) return
     place(drawn, 0, 240)
     const t = setTimeout(() => { if (!out && !drag.current) { place(drawn, 0); setDrawn(null) } }, 260)
     return () => clearTimeout(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs only when a drawer opens or closes
   }, [side])
 
-  // Something opened from it (a file, a page, a terminal) or Back: it closes. Typing in it (its search field may
-  // change the address as it goes) doesn't.
   useEffect(() => {
     let was = route().tab
     const on = () => {
@@ -113,7 +97,6 @@ export function PhoneDrawers({ store, file, tab, vaultName, vaultMenu }: { store
     return () => { removeEventListener("hashchange", on); removeEventListener("keydown", esc) }
   }, [])
 
-  // ---------- the finger ----------
   const start = (e: React.PointerEvent, s: Side, from: number) => {
     if (e.pointerType === "mouse" && e.button) return
     drag.current?.quit?.()
@@ -122,14 +105,12 @@ export function PhoneDrawers({ store, file, tab, vaultName, vaultMenu }: { store
   const move = (e: React.PointerEvent) => {
     const d = drag.current
     if (!d) return
-    // A finger that held a row picked it up (core/drag.ts): it's moving that, not the drawer.
     if (fingerHolding()) { drag.current = null; return }
     const mx = e.clientX - d.x, my = e.clientY - d.y
     if (!d.axis) {
       if (Math.abs(mx) > 8 && Math.abs(mx) > Math.abs(my)) {
         d.axis = "x"
-        try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* not a live pointer */ }
-        // The app sent away mid-swipe (core/away.ts): it settles as if let go there.
+        try { e.currentTarget.setPointerCapture(e.pointerId) } catch {}
         d.quit = onAway(end)
         if (drawn !== d.side) setDrawn(d.side)
       } else if (Math.abs(my) > 8) { d.axis = "y"; drag.current = null; return }
@@ -146,7 +127,6 @@ export function PhoneDrawers({ store, file, tab, vaultName, vaultMenu }: { store
     drag.current = null
     d?.quit?.()
     if (!d || d.axis !== "x") return
-    // A flick decides; otherwise where it was let go: past a third out from the edge, past two thirds in from open.
     const open = Math.abs(d.v) > 0.0015 ? d.v > 0 : d.from ? d.p > 0.66 : d.p > 0.33
     if (open !== (out === d.side)) haptic("soft")
     if (open && out === d.side) place(d.side, 1, 220)
@@ -158,7 +138,6 @@ export function PhoneDrawers({ store, file, tab, vaultName, vaultMenu }: { store
   const shown = side ?? drawn
   return (
     <>
-      {/* The edges a swipe starts from, while no drawer is out (vertical scrolling passes through: pan-y). */}
       {!side && (["left", "right"] as const).filter((s) => has[s]).map((s) => (
         <div key={s} aria-hidden data-drawer-edge={s} onPointerDown={(e) => start(e, s, 0)} {...handlers}
           className={cn("fixed inset-y-0 z-20 md:hidden", s === "left" ? "left-0" : "right-0")} style={{ width: EDGE, touchAction: "pan-y" }} />
@@ -168,10 +147,8 @@ export function PhoneDrawers({ store, file, tab, vaultName, vaultMenu }: { store
         className="fixed inset-0 z-40 bg-black/40 md:hidden" style={{ opacity: 0, pointerEvents: "none", touchAction: "pan-y" }} />
       <div ref={panel} data-phone-drawer={shown ?? undefined} role="dialog" aria-label={shown === "right" ? "Right sidebar" : "Sidebar"} aria-hidden={!side}
         onPointerDown={(e) => shown && start(e, shown, 1)} {...handlers}
-        // A page or a file tapped closes it even when it's the one on screen already (the address doesn't change).
         onClick={(e) => {
           const t = e.target as Element
-          // (Selecting, a tap picks a row: it stays out.)
           if (e.defaultPrevented || selecting()) return
           if (t.closest("[data-tree-path]:not([data-tree-folder]), a[href^='#']") && !t.closest("[aria-haspopup], [data-no-drag]")) setTimeout(() => openDrawer(null))
         }}
@@ -183,7 +160,6 @@ export function PhoneDrawers({ store, file, tab, vaultName, vaultMenu }: { store
   )
 }
 
-/** A drawer's panels, as the desktop sidebar draws them (a stack, each panel under its heading), a size up. */
 function DrawerBody({ side, store, file, tab, vaultName, vaultMenu }: { side: Side; store: Store; file: string; tab: string; vaultName: string
   vaultMenu: (e: React.MouseEvent) => void }) {
   const { tab: on } = route()
@@ -218,13 +194,11 @@ function DrawerBody({ side, store, file, tab, vaultName, vaultMenu }: { side: Si
   )
 }
 
-/** The dock: the docked panels' icons above the vault's row, where a thumb reaches them without scrolling the drawer. */
 function Dock({ store, file, tab }: { store: Store; file: string; tab: string }) {
   const { disabled } = usePrefs()
   const docked = phoneDock(useSidebars(), disabled)
   if (!docked.length) return null
   return (
-    // Its icons in line with the vault's name.
     <div aria-label="Dock" role="toolbar" data-phone-dock className="flex flex-col px-0.5">
       {docked.map(({ key, panel }) => (
         <div key={key} data-panel={key} data-ui={`panel:${key}`} onContextMenu={menuFor(() => panelMenu(key))}>

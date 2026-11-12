@@ -1,5 +1,3 @@
-// A coding agent's session read back in a tab, re-read every 10 s while shown so a running one keeps up; Resume in
-// terminal when Terminal is on. `@<machine>` ids are another machine's.
 import { useEffect, useState } from "react"
 import { ChevronRight, CircleAlert, History, SquareTerminal, User } from "lucide-react"
 import { Bar, Empty } from "@/components/kit"
@@ -37,7 +35,6 @@ function useSession(src: AgentSource, full: string, want: number) {
   return { data, error }
 }
 
-/** "Tue 29 Sep, 10:04" (today: just the time). */
 function when(at: string) {
   if (!at) return ""
   const day = iso(new Date(at))
@@ -99,7 +96,6 @@ export function AgentSession({ src, id }: { src: AgentSource; id: string }) {
   if (!data) {
     const gone = machine ? "This session isn't on that machine any more, or it's private." : "This session isn't on this machine any more, or it's private."
     if (error) return <div className="pt-4"><Empty>{/404/.test(error) ? gone : /502/.test(error) ? "That machine isn't answering." : "Couldn't read this session."}</Empty></div>
-    // (its header, the title and details as bars; how much was said can't be known)
     return (
       <article className="pb-10" aria-busy>
         <header className="mb-6 pt-2">
@@ -112,7 +108,6 @@ export function AgentSession({ src, id }: { src: AgentSource; id: string }) {
       </article>
     )
   }
-  // Tool calls in a row are drawn together, tight; messages get room around them.
   const groups: { at: number; entries: Entry[] }[] = []
   data.entries.forEach((e, i) => {
     const last = groups[groups.length - 1]

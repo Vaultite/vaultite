@@ -1,5 +1,3 @@
-// Settings > Permissions (the desktop app on a Mac): what macOS lets Vaultite do, as app.permissions reads it (core/
-// coreops/permissions.ts), with a button only where it does something (core/permissions.ts' actionOf).
 import { useCallback } from "react"
 import { desktop } from "@/core/desktop"
 import { op } from "@/core/http"
@@ -12,7 +10,6 @@ import { ACTION_TEXT, signingText, stateText, STATE_TEXT, type Access, type Perm
 const DOT: Record<PermissionState, string> = { allowed: "var(--green)", denied: "var(--orange)", "not-asked": "var(--gray)", unknown: "var(--gray)" }
 const GROUPS: [PermissionKind, string][] = [["list", "Agents and apps"], ["prompt", "Media and location"], ["on-use", "Asked when used"]]
 
-// A row's end: its way to allow it, then the state in a column of its own width, so every row's dot lines up.
 function State({ state, children }: { state: PermissionState; children?: string }) {
   return (
     <span className="flex w-28 shrink-0 items-center gap-1.5 text-[14px] text-muted-foreground" data-permission-state={state}>
@@ -23,7 +20,6 @@ function State({ state, children }: { state: PermissionState; children?: string 
 
 const stateOf = (a: Access): PermissionState => (a.ok ? "allowed" : a.ok === false ? "denied" : "unknown")
 
-/** The vault folder: the app's read and a new terminal's (its keeper outlives the app, so macOS may treat it apart). */
 function vaultLine({ app, terminals }: PermissionReport["vault"]) {
   if (app.ok === false) return `The app can't read it: ${app.why}`
   if (terminals.ok === false) return `Its terminals can't read it (${terminals.why}), so agents stop as they start`
@@ -49,7 +45,6 @@ export function PermissionsPanel() {
             {vaultState === "denied" && <Button size="small" onClick={() => void press("vault")}>Open Settings</Button>}
             <State state={vaultState} />
           </SettingRow>
-          {/* (only when it costs them: a signed build keeps them, one from source has Electron's) */}
           {mac && (mac.signing.kind === "adhoc" || mac.signing.kind === "unsigned") && (
             <SettingRow label="Signature" sub={signingText(mac.signing)} data-settings-row="permission-signing">
               <State state="denied">Asked again</State>
@@ -77,7 +72,6 @@ export function PermissionsPanel() {
   )
 }
 
-/** What it's for, and once macOS was told no, what to switch in System Settings. */
 function Sub({ p }: { p: Permission }) {
   return <>{p.use}{p.fix && <span className="block text-foreground">{p.fix}</span>}</>
 }

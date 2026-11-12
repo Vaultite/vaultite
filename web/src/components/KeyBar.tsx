@@ -1,5 +1,3 @@
-// Phones: a row of keys above the on-screen keyboard (the terminal's esc and arrows, a note's undo and bold), and the
-// part of the window the keyboard leaves visible.
 import { useLayoutEffect, useState, type MouseEvent as ReactMouseEvent, type PointerEvent, type ReactNode, type TouchEvent as ReactTouchEvent } from "react"
 import { KeyboardOff } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -27,7 +25,6 @@ export type BarKey = { name: string; label: ReactNode; run: () => void }
 /** The row above the keyboard. Its buttons never take focus (on iOS the keyboard would go) and act as the finger
  *  lifts. `scroll`: keys a finger wide, the row scrolling sideways when they don't fit. */
 export function KeyBar({ label, keys, hide, scroll, className }: { label: string; keys: BarKey[]; hide: () => void; scroll?: boolean; className?: string }) {
-  // (each key's tap reaches through the bar's padding: the row's whole height, 48px)
   const key = cn("relative grid h-9 cursor-pointer place-items-center rounded-[8px] bg-card font-mono text-[13px] text-foreground after:absolute after:inset-x-0 after:-inset-y-1.5 active:bg-foreground/[0.12]",
     scroll ? "min-w-11 shrink-0 flex-1 px-1" : "min-w-0 flex-1")
   const tap = (run: () => void) => ({

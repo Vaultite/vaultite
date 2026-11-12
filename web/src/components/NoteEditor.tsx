@@ -1,5 +1,3 @@
-// The note editor for plugins outside a file's view: NoteEditor edits Markdown the caller keeps, FileEditor a vault
-// file's body in place (saving and merging like a tab). Suggestions float in <body> so clipping or scaling can't cut them.
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useStore, type Store } from "@/core/data"
 import type { FileCtx } from "@/core/define"
@@ -54,7 +52,6 @@ export function NoteEditor(props: NoteEditorProps) {
 }
 
 function TextEditor({ text, onChange, store, from = "", autoFocus, onEscape, onBlur, placeholder, className }: NoteEditorProps & { store: Store }) {
-  // What the editor has: what it said last, or what was put in.
   const last = useRef(text)
   const api = useRef<EditorApi | null>(null)
   useEffect(() => {
@@ -71,24 +68,18 @@ function TextEditor({ text, onChange, store, from = "", autoFocus, onEscape, onB
   )
 }
 
-/** The editor itself, wired to the vault like a note's (FileView's): what both editors here draw. */
 function Wired({ store, from, doc, editable, autoFocus, onEscape, onBlur, placeholder, className, ctx, text, fm = "", whole, onReady, onChange }: {
   store: Store; from: string; doc: string; editable: boolean; autoFocus?: boolean; onEscape?: () => void; onBlur?: () => void
   placeholder?: string; className?: string
-  /** What blocks are drawn with (the file's fields and body). */
   ctx: () => FileCtx
-  /** The text as typed so far ([[# suggests its headings). */
   text: () => string
-  /** The file's frontmatter: blocks draw again when it changes. */
   fm?: string
-  /** `doc` is a file's whole text, its frontmatter hidden. */
   whole?: boolean
   onReady: (api: EditorApi) => void; onChange: (text: string, start: number) => void }) {
   const { disabled } = usePrefs()
   const { resolve, attach, ...wiring } = useVaultEditing(store, from, text)
-  // Blocks and sections draw again when what they show changes (the store reloaded, the fields, plugins on or off).
   const [version, setVersion] = useState(0)
-  const plugins = usePluginsVersion() // (a plugin's fences arriving)
+  const plugins = usePluginsVersion()
   useEffect(() => setVersion((v) => v + 1), [store, fm, disabled, plugins])
   const sections = useKindSections(store, from)
   const config = useMemo<PreviewConfig>(() => ({
@@ -106,8 +97,7 @@ function Wired({ store, from, doc, editable, autoFocus, onEscape, onBlur, placeh
     linkMenu: (link, at, text) => openLinkMenu(link, at, { from, text }),
     version,
   }), [editable, resolve, store, disabled, version, from, ctx, sections])
-  // Gone (ended with Escape, say): a blur as the editor is taken off the page isn't the user leaving it. (Layout
-  // effects end before React takes the elements away.)
+  // Layout effect cleanups run before React removes the DOM, so a blur after that is the unmount's, not the user's.
   const over = useRef(false)
   useLayoutEffect(() => { over.current = false; return () => { over.current = true } }, [])
   const blur = useMemo(() => onBlur && (() => { if (!over.current) onBlur() }), [onBlur])
@@ -148,7 +138,6 @@ function FileLoad({ path, store, editable = true, autoFocus, onEscape, className
       .catch((e) => on && setFile((cur) => (gone(e) ? "missing" : cur && typeof cur === "object" ? cur : "failed")))
     return () => { on = false }
   }, [path, tries])
-  // Not there (or not read): tried again once it changes on disk. An open file follows its own changes (FileBody).
   useVaultChange(() => { if (typeof file === "string") setTries((n) => n + 1) }, [path])
   if (typeof file === "string") {
     return <p className={cn("text-[13px] text-muted-foreground", className)}>{file === "missing" ? `No file ${stem(path)} in the vault.` : `Couldn't read ${stem(path)}.`}</p>
@@ -162,10 +151,7 @@ function FileLoad({ path, store, editable = true, autoFocus, onEscape, className
     className={className} onGone={() => setFile("missing")} />
 }
 
-/** The editors whose save said it failed (its toast up): a later save that works takes it down. */
 const toasted = new WeakSet<Autosave>()
-/** No banner here: a conflict not shown in the text or a failed save is a toast, saved again from it. `above`: the
- *  file's lines the editor doesn't show above its own. */
 function saveToast(s: SaveStatus, path: string, above: number, saver: Autosave) {
   if (s.kind === "ok") { if (toasted.delete(saver)) dismissNotice(`unsaved:${path}`); return }
   if (s.kind === "conflict" || s.kind === "error") toasted.add(saver)
@@ -207,8 +193,6 @@ function FileBody({ store, initial, editable, autoFocus, onEscape, className, on
   )
 }
 
-/** One section of a file, edited alone: its lines spliced back into the file as it is on disk. A conflict is a toast
- *  (its clashes are the file's lines, not the section's). */
 function SectionBody({ store, initial, section, noSection, editable, autoFocus, onEscape, className, onGone }: {
   store: Store; initial: FileText; section: string; noSection?: ReactNode; editable: boolean; autoFocus?: boolean; onEscape?: () => void
   className?: string; onGone: () => void }) {

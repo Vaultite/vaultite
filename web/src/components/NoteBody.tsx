@@ -1,5 +1,3 @@
-// A note's text drawn read-only as reading it looks, for slides and PDF export: Markdown (with its images and inline
-// embeds), embeds and blocks.
 import { useMemo } from "react"
 import type { Store } from "@/core/data"
 import type { FileCtx } from "@/core/define"

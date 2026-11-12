@@ -1,5 +1,3 @@
-// A plugin's detail sheet: what it does, its switch and settings, a vault plugin's approval on this machine (what changed,
-// what it says it does, Allow), and an inert live preview of its dashboards with made-up data (core/mock.ts).
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { Folder, Laptop, RefreshCw, Server, ShieldAlert } from "lucide-react"
 import { dateText, PreviewLive, reload, type Store } from "@/core/data"
@@ -34,9 +32,7 @@ function preview(p: Plugin, s: Store, disabled: string[]): ReactNode {
   if (typeof p.preview === "function") return p.preview(s)
   const pages = templatesOf(typeof p.preview === "string" ? p.preview : p.id)
   if (!pages.length) return null
-  // Shown even while it's off (that's what the switch above would bring).
   const on = [...disabled.filter((id) => id !== p.id && !(p.requires ?? []).includes(id)), ...[p.id, ...(p.requires ?? [])].map((id) => `!${id}`)]
-  // Drawn as the page it would be (Dashboards' grid, even while that's off).
   const view = pageViewOf("dashboard")
   if (!view) return null
   return pages.map(({ name, text }) => {
@@ -50,10 +46,8 @@ function preview(p: Plugin, s: Store, disabled: string[]): ReactNode {
   })
 }
 
-// Every plugin's made-up live data, so a page that shows another plugin's cards (Today's calendar) previews fully.
 const mockLive = () => Object.assign({}, ...PLUGINS.map((p) => p.mockLive?.() ?? {}))
 
-/** A small window onto the page: laid out at phone or desktop width, then zoomed to fit the sheet. */
 function Frame({ children }: { children: ReactNode }) {
   const box = useRef<HTMLDivElement>(null)
   const [w, setW] = useState(0)
@@ -65,8 +59,8 @@ function Frame({ children }: { children: ReactNode }) {
     return () => ro.disconnect()
   }, [])
   return (
-    // The scrollbar's room is kept either way, and nothing scrolls sideways (the zoom rounds): else a scrollbar coming
-    // narrows the frame, the zoom shrinks the page, the scrollbar goes, and round again (a flicker).
+    // A scrollbar coming narrows the frame, shrinks the zoomed page and goes again, a flicker: its room is always kept.
+    // The zoom rounds, so nothing may scroll sideways.
     <div ref={box} className="h-[440px] overflow-x-hidden overflow-y-auto overscroll-contain rounded-[12px] border-[0.5px] border-border bg-background [scrollbar-gutter:stable]">
       {w > 0 && (
         // translateZ(0) keeps position: fixed parts (the phone's compact title bar) inside the frame.
@@ -78,7 +72,6 @@ function Frame({ children }: { children: ReactNode }) {
   )
 }
 
-/** Where it's kept in the vault: a vault plugin's folder; an app plugin only has its settings file there, once set. */
 function Kept({ plugin, files }: { plugin: Plugin; files: string[] }) {
   const folder = plugin.folder
   if (folder) return <div className="mt-5"><Where path={folder} lead="Kept in" icon={Folder} open={() => showInTree(folder)} /></div>
@@ -88,7 +81,6 @@ function Kept({ plugin, files }: { plugin: Plugin; files: string[] }) {
 }
 
 
-/** Updated on its own on another machine: checked against its source before it runs here, nothing to do. */
 function Updating({ plugin }: { plugin: Plugin }) {
   const m = plugin.meta!
   return (
@@ -101,9 +93,8 @@ function Updating({ plugin }: { plugin: Plugin }) {
   )
 }
 
-/** On in the vault but not allowed on this machine at this version: why, what changed, what it says it does, and Allow. */
 function Approval({ plugin }: { plugin: Plugin }) {
-  // its own component: the state can turn to or from updating while shown, and Waiting's hooks must not come and go
+  // Its own component: the state can change while shown, and Waiting's hooks must not come and go.
   return plugin.meta!.approval!.state === "updating" ? <Updating plugin={plugin} /> : <Waiting plugin={plugin} />
 }
 
@@ -143,7 +134,6 @@ function Waiting({ plugin }: { plugin: Plugin }) {
   )
 }
 
-/** A vault plugin's version, author, repository, support link, where it was installed from, and what it says it does. */
 function About({ plugin }: { plugin: Plugin }) {
   const m = plugin.meta!
   const says = disclosed(m.disclosures)
@@ -172,8 +162,6 @@ function About({ plugin }: { plugin: Plugin }) {
 
 const HOW = { auto: "on its own", manual: "by hand", rollback: "rolled back" } as const
 
-/** An installed plugin's updates: whether it updates on its own, a check for a newer version, and what each update
- *  brought, newest first (the last one can be rolled back). */
 function Updates({ plugin }: { plugin: Plugin }) {
   const prefs = usePrefs()
   const src = plugin.meta!.source!
@@ -247,8 +235,6 @@ function Updates({ plugin }: { plugin: Plugin }) {
   )
 }
 
-/** Remove a vault plugin (core/coreops/installs.ts plugin.uninstall): one installed keeps its settings, one made here goes
- *  whole, its code with it. */
 async function uninstall(p: Plugin) {
   const installed = !!p.meta?.source
   if (!(await confirmDialog(installed
@@ -262,11 +248,8 @@ async function uninstall(p: Plugin) {
   } catch (e) { notifyError(e, `Couldn't remove ${p.name}`) }
 }
 
-/** Why a plugin couldn't start: in plain words, with what to do (turn it off, tell its author); what its code or
- *  manifest said, for whoever fixes it, behind Show details. */
 function Problems({ plugin }: { plugin: Plugin }) {
   const problems = plugin.problems ?? []
-  // (a line written for people, like a manifest's or a block's, is said; an exception's text is only in the details)
   const plain = problems.map((p) => plainError(p).reason)
   const said = plain.filter((r): r is string => !!r)
   const mine = plugin.tier === "vault" && !plugin.meta?.source
@@ -278,24 +261,19 @@ function Problems({ plugin }: { plugin: Plugin }) {
         {mine ? "Its code or manifest has a problem: fix it and it starts again." : `The rest of the app works without it. Turn it off, or send the details to ${author}.`}
       </p>
       {!!said.length && <ul className="mt-2 list-disc space-y-1 pl-5 text-[13px] leading-[18px]">{said.map((r, i) => <li key={i}>{r}</li>)}</ul>}
-      {/* (Turn off is its switch, above) */}
       {plain.includes(null) && <ErrorDetails className="mt-2" text={problems.join("\n\n")} />}
     </div>
   )
 }
 
-// (what it is, not where it came from: its Author row says who made a vault plugin)
 const kickerOf = (p: Plugin) => categoryOf(p.category).label
 
-/** `kicker`: its category over its name, as a sheet's head; off, Settings' head (its page beside Settings' menu). */
 export function PluginPreview({ store, plugin: given, kicker = true }: { store: Store; plugin: Plugin; kicker?: boolean }) {
   usePluginsVersion()
-  // (as it is now: a vault plugin changes while its sheet is open, allowed or edited)
   const plugin = pluginById(given.id) ?? given
   const prefs = usePrefs(), { disabled } = prefs
   const waiting = switchedOn(plugin, prefs) && !plugin.problems?.length && !!plugin.meta?.approval
   const on = switchedOn(plugin, prefs) && !plugin.problems?.length && !waiting
-  // (one that couldn't start is still switched on: its switch says so, and turns it off)
   const switched = switchedOn(plugin, prefs) && !waiting
   const mock = useMemo(() => mockStore(store), [store])
   const live = useMemo(mockLive, [])
@@ -306,7 +284,6 @@ export function PluginPreview({ store, plugin: given, kicker = true }: { store: 
       <SheetHead icon={plugin.icon} tint={kicker ? tintOfPlugin(plugin.id) : tileTint(plugin.id)} kicker={!kicker ? undefined : plugin.tier === "hosted" ? capitalize(hostOf(plugin)?.kind) : kickerOf(plugin)}
         title={plugin.name} sub={plugin.description} />
       {waiting ? <Approval plugin={plugin} /> : !plugin.alwaysOn && !kicker ? (
-        // (on its page in Settings: a row as Settings' others are)
         <div className="mb-5"><Group><SettingRow label={switched && !blocked.length ? "On" : "Off"} sub="Off keeps its files and settings" data-plugin-switch>
           <Switch on={switched && !blocked.length} onChange={toggle} label={`${plugin.name} plugin`} disabled={!!blocked.length} />
         </SettingRow></Group></div>
@@ -314,13 +291,11 @@ export function PluginPreview({ store, plugin: given, kicker = true }: { store: 
         <div className="mb-5 flex min-h-11 items-center gap-3 rounded-[10px] bg-muted px-3.5 py-2" data-plugin-switch>
           <span className="min-w-0 flex-1">
             <span className="block text-[15px]">{switched && !blocked.length ? "On" : "Off"}</span>
-            {/* (removing it is Uninstall, below: off is only a switch) */}
             <span className="block text-[13px] leading-[18px] text-muted-foreground">Off keeps its files and settings: turn it on again any time.</span>
           </span>
           <Switch on={switched && !blocked.length} onChange={toggle} label={`${plugin.name} plugin`} disabled={!!blocked.length} />
         </div>
       )}
-      {/* A plugin its owner writes here: its edits may run without asking each time (never one installed from elsewhere). */}
       {plugin.tier === "vault" && on && !plugin.meta?.source && (
         <div className="-mt-3 mb-5 flex min-h-11 items-center gap-3 rounded-[10px] bg-muted px-3.5" data-plugin-edits={plugin.id}>
           <span className="min-w-0 flex-1">
@@ -330,7 +305,6 @@ export function PluginPreview({ store, plugin: given, kicker = true }: { store: 
           <Switch on={!!plugin.meta?.edits} onChange={(v) => void allowPlugin(plugin, v)} label={`Run ${plugin.name}'s edits without asking`} />
         </div>
       )}
-      {/* Its settings right here, under its switch: not a sheet away. */}
       {on && !blocked.length && hasSettings(plugin, store.pluginSettings ?? []) && (
         <section aria-label={`${plugin.name} settings`} className="mb-6" data-plugin-settings-inline={plugin.id}>
           <Section title="Settings">
@@ -342,7 +316,6 @@ export function PluginPreview({ store, plugin: given, kicker = true }: { store: 
       )}
       {plugin.meta?.source && <Updates plugin={plugin} />}
       {plugin.meta && <About plugin={plugin} />}
-      {/* Only what this plugin builds on, like VS Code's Dependencies tab (never what builds on it). */}
       {(plugin.requires || plugin.enhances || plugin.runsOnServer || plugin.desktopApp) && (
         <Section title="Works with" className="mb-5">
           <List>
@@ -356,7 +329,6 @@ export function PluginPreview({ store, plugin: given, kicker = true }: { store: 
         </Section>
       )}
       {!!plugin.problems?.length && <Problems plugin={plugin} />}
-      {/* A vault plugin's blocks without a declaration or a text side (core/rules.ts blockProblems): it runs anyway. */}
       {!!plugin.warnings?.length && (
         <Section title="To fix" className="mb-5">
           <div className="space-y-2" data-plugin-warnings>

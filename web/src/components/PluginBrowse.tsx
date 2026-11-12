@@ -1,5 +1,3 @@
-// The Plugins page's Get plugins: the plugin directory (core/pluginindex.ts) or a host's source (PluginHost.browse), as
-// the page's Filter picks (GetFilters); each row with Install, tapped its sheet (GetPluginSheet), the way to its web page.
 import { useEffect, useState, type ReactNode } from "react"
 import { ChevronRight, Download, ExternalLink, MoreHorizontal, Puzzle, RefreshCw, type LucideIcon } from "lucide-react"
 import { dateText, fmtAgo, numberText, reload } from "@/core/data"
@@ -29,9 +27,7 @@ type Sort = "stars" | "new" | "updated"
 type Entry = {
   id: string; name: string; description: string; author: string; repo: string; dir: string | null; source: string; version: string; stars: number; released: string | null
   pushed: string | null; created: string | null; disclosures: Disclosures; installed: string | null; ours: boolean; update: boolean; blocked: string | null
-  /** Its readme's start (the directory keeps 600 characters), and where to support its author. */
   readme: string; fundingUrl?: string
-  /** Its manifest's icon (a name, or its SVG mark as a data address) and colour: as it looks once installed. */
   icon?: string; tint?: string; category?: string
   desktopApp?: boolean
 }
@@ -39,42 +35,32 @@ type Found = { url: string; available: boolean; error?: string; plugins: Entry[]
 
 const SORTS: { value: Sort; label: string }[] = [{ value: "stars", label: "Top" }, { value: "new", label: "New" }, { value: "updated", label: "Updated" }]
 
-/** Get plugins' choices, in the page's Filter menu: where from ("" the directory, else a host), the order ("" the
- *  source's first), installed or not, and a category (the directory's only: hosts' plugins have none). */
 export type GetShow = "all" | "not" | "installed"
 export type GetFilters = { source: string; sort: string; show: GetShow; cat: string }
 export const GET_NONE: GetFilters = { source: "", sort: "", show: "all", cat: "" }
 export const SHOWS: Record<GetShow, string> = { all: "All", not: "Not installed", installed: "Installed" }
-/** What the source's list holds, before Show and Category: the menu counts with it. */
 export type Listed = { installed: boolean; category?: string }[]
 
-/** The sources to get plugins from: the directory, then each host's. */
 export const getSources = () => [{ value: "", label: "Vaultite directory" }, ...hostsNow().filter(([, h]) => h.browse).map(([h, info]) => ({ value: h, label: info.browse!.title }))]
 const hostSource = (source: string) => hostsNow().find(([h, info]) => h === source && info.browse)?.[1].browse
-/** A source's orders, and the one picked (else its first). */
 export const sortsOf = (source: string) => (source ? hostSource(source)?.sorts ?? [] : SORTS)
 export const sortOf = (f: GetFilters) => { const all = sortsOf(f.source); return all.find((s) => s.value === f.sort)?.value ?? all[0]?.value ?? "" }
 export const passesGet = (e: { installed: boolean; category?: string }, f: GetFilters) =>
   (f.show === "all" || e.installed === (f.show === "installed")) && (!f.cat || categoryOf(e.category).id === f.cat)
 
-/** The categories a source's list has, in the order of the Plugins page's (none for a host's: its plugins have none). */
 export function categoriesIn(l: Listed | null) {
   if (!l?.some((e) => e.category)) return []
   const ids = new Set(l.map((e) => categoryOf(e.category).id))
   return [...CATEGORIES, OTHER].filter((c) => ids.has(c.id))
 }
 
-/** Get's category, picked in the menu beside the page (pages/Setup.tsx) or in Filter: one value for both. */
 export const getCategory = cell("")
 export type GetCategory = { id: string; label: string; count: number }
-/** The directory's categories with how many plugins each has (the whole list, not a search's), kept while the app runs
- *  so the menu beside Get draws the same rows each time it opens. */
 export const getCategories = cell<GetCategory[]>([])
 function noteCategories(l: Listed) {
   const next = categoriesIn(l).map((c) => ({ ...c, count: l.filter((e) => categoryOf(e.category).id === c.id).length }))
   if (JSON.stringify(next) !== JSON.stringify(getCategories.get())) getCategories.set(next)
 }
-/** Asked once, before Get is first shown: its menu has its categories as it opens. */
 let primed = false
 export function primeCategories() {
   if (primed || getCategories.get().length || overConnect()) return
@@ -82,21 +68,16 @@ export function primeCategories() {
   op<Found>("plugin.search", { q: "", sort: SORTS[0].value }).then((f) => { if (f.available) noteCategories(f.plugins.map((e) => ({ installed: e.installed !== null, category: e.category }))) }, () => {})
 }
 
-/** Its repository (and its folder in it) on GitHub. */
 const githubOf = (e: Entry) => `https://github.com/${e.repo}${e.dir ? `/tree/HEAD/${e.dir}` : ""}`
 
-/** Entries the lists showed, by sheet key (an id, a host's `<host>:<id>`): its sheet draws at once, then asks again. */
 const seen = new Map<string, Entry>()
 const seenHosted = new Map<string, BrowseEntry>()
 
-/** A row tapped: an installed one's own sheet, else its Get plugins sheet. */
 function openEntry(e: Entry) {
   seen.set(e.id, e)
   openDetail(e.installed !== null && pluginById(e.id) ? `plugin/${e.id}` : `plugin-get/${e.id}`)
 }
 
-/** A row that opens its sheet anywhere but on its own buttons, as Your plugins' rows (Plugins.tsx PluginRow): a button
- *  under the row, the text letting taps through. */
 function Tappable({ id, name, open, children }: { id: string; name: string; open: () => void; children: ReactNode }) {
   return (
     <div className="group/prow relative isolate flex items-start gap-3 py-2.5" data-browse-row={id}>
@@ -108,8 +89,6 @@ function Tappable({ id, name, open, children }: { id: string; name: string; open
   )
 }
 
-/** A row's first line: its name (and Vaultite's mark), then the small facts (author, version, date, Installed); they go
- *  under it together on a phone, or where the line is too narrow. */
 function TitleLine({ name, mark, children }: { name: string; mark?: ReactNode; children: ReactNode }) {
   return (
     <div className="flex flex-wrap items-baseline gap-x-2">
@@ -121,20 +100,17 @@ function TitleLine({ name, mark, children }: { name: string; mark?: ReactNode; c
   )
 }
 
-/** What it does, in one line (two on a phone), as Your plugins' rows. */
 const Description = ({ text }: { text?: string }) =>
   text ? <p className="text-[14px] leading-[19px] text-muted-foreground max-md:line-clamp-2 md:truncate md:text-[13px] md:leading-[18px]">{text}</p> : null
 
 function EntryRow({ e, busy, act }: { e: Entry; busy: boolean; act: (e: Entry) => void }) {
   const updated = e.released ?? e.pushed
-  // (Vaultite's mark, from its GitHub organisation, says enough; another's says what it does beyond the vault)
   const ours = official(e.source)
   const says = ours ? [] : disclosed(e.disclosures)
   const button = e.blocked ? null : e.update ? "Update" : e.installed !== null ? null : "Install"
   const Icon = pluginIcon(e.icon) ?? Puzzle
   return (
     <Tappable id={e.id} name={e.name} open={() => openEntry(e)}>
-      {/* (the tile of its row once installed: Plugins.tsx) */}
       <span className="pointer-events-none mt-0.5 grid size-9 shrink-0 place-items-center rounded-[9px] bg-muted md:size-8 md:rounded-[8px]" style={{ color: e.tint && `var(--${e.tint})` }} data-browse-icon>
         <Icon className="size-[20px] md:size-[18px]" strokeWidth={2} />
       </span>
@@ -164,7 +140,6 @@ function EntryRow({ e, busy, act }: { e: Entry; busy: boolean; act: (e: Entry) =
   )
 }
 
-/** The list on its way: EntryRow's and HostRow's shape (`tile`: EntryRow's icon), a line of each as a bar. */
 function RowSkeletons({ count, tile }: { count: number; tile?: boolean }) {
   return (
     <Panel className="loading-in py-0.5">
@@ -187,8 +162,6 @@ function RowSkeletons({ count, tile }: { count: number; tile?: boolean }) {
 const TONES = { green: "text-ink-(--green)", orange: "text-ink-(--orange)", red: "text-ink-(--red)" }
 
 
-/** A host's entry. One a plugin here does the job of offers that first (installing the original too would only draw the
- *  same twice), the original under its … menu. */
 function HostRow({ host, e, busy, install, use, show, more }: { host: string; e: BrowseEntry; busy: boolean; install: (e: BrowseEntry) => void; use: (e: BrowseEntry) => void; show: (id: string) => void; more: boolean }) {
   const alt = !e.installed ? e.standIn : undefined
   const open = () => {
@@ -227,7 +200,6 @@ function HostRow({ host, e, busy, install, use, show, more }: { host: string; e:
   )
 }
 
-/** Install a host's plugin (`show`: the toast's Show): whether it went in. */
 async function installHosted(src: BrowseSource, e: BrowseEntry, show?: (id: string) => void) {
   try {
     await src.install(e.id)
@@ -235,7 +207,6 @@ async function installHosted(src: BrowseSource, e: BrowseEntry, show?: (id: stri
     return true
   } catch (err) { notifyError(err, `Couldn't install ${e.name}`); return false }
 }
-/** Turn on (installing if needed) the plugin of Vaultite's that does a host's plugin's job: whether it did. */
 async function turnOnStandIn(e: BrowseEntry, show?: (id: string) => void) {
   const s = e.standIn!
   try {
@@ -245,7 +216,6 @@ async function turnOnStandIn(e: BrowseEntry, show?: (id: string) => void) {
   } catch (err) { notifyError(err, `Couldn't turn on ${s.name}`); return false }
 }
 
-/** A host's source (Obsidian's community plugins): its list as it answers, and Install. */
 function HostBrowse({ host, src, query, filters, showInstalled, onListed }: { host: string; src: BrowseSource; query: string; filters: GetFilters; showInstalled: (id: string) => void; onListed: (l: Listed | null) => void }) {
   const sort = sortOf(filters)
   const [found, setFound] = useState<Awaited<ReturnType<BrowseSource["search"]>> | null>(null)
@@ -269,7 +239,6 @@ function HostBrowse({ host, src, query, filters, showInstalled, onListed }: { ho
   }
   useEffect(() => { onListed(found?.available ? found.entries.map((e) => ({ installed: !!e.installed })) : null) }, [found, onListed])
   const entries = found?.entries.filter((e) => passesGet({ installed: !!e.installed }, filters)) ?? []
-  // (any row with a … menu keeps its slot in every row, so the buttons line up)
   const more = entries.some((e) => !e.installed && e.standIn)
   const rows = useKeptCount(`plugins:browse:${src.title}`, found ? entries.length : undefined)
   return (
@@ -297,7 +266,6 @@ function HostBrowse({ host, src, query, filters, showInstalled, onListed }: { ho
   )
 }
 
-/** Above the list: where it's from, and anything about the whole list (Fetch again). */
 function ListHead({ title, children }: { title: string; children?: ReactNode }) {
   return (
     <div className="mb-1.5 flex min-h-7 items-center gap-2 px-1" data-browse-head>
@@ -307,12 +275,9 @@ function ListHead({ title, children }: { title: string; children?: ReactNode }) 
   )
 }
 
-/** Nothing to show: none match the search, or (`some`: the list has plugins) none match the filters. */
 const emptyText = (query: string, some: boolean, none: string) =>
   some ? "No plugins match these filters." : query.trim() ? `No plugins match "${query.trim()}".` : none
 
-/** `query`: the page's search field. `filters`: the page's Filter menu (its source, order and which show); `onListed`:
- *  what the source's list holds, for the menu's counts. `showInstalled`: back to the installed plugins, at this one. */
 export function PluginBrowse({ query, filters, showInstalled, onListed }: { query: string; filters: GetFilters; showInstalled: (id: string) => void; onListed: (l: Listed | null) => void }) {
   usePluginsVersion()
   const src = filters.source ? hostSource(filters.source) : undefined
@@ -324,12 +289,10 @@ export function PluginBrowse({ query, filters, showInstalled, onListed }: { quer
   )
 }
 
-/** The directory's plugins matching a search on the Plugins page that aren't installed: nothing when there are none. */
 export function DirectoryMatches({ query, showInstalled }: { query: string; showInstalled: (id: string) => void }) {
   return <Directory query={query} showInstalled={showInstalled} compact />
 }
 
-/** Install a directory plugin and turn it on, or update it (`show`: the toast's Show): whether it did. */
 async function installEntry(e: Entry, show?: (id: string) => void) {
   try {
     if (e.update) {
@@ -337,7 +300,6 @@ async function installEntry(e: Entry, show?: (id: string) => void) {
       if (p) await updatePlugin(p)
       return true
     }
-    // Installing here is the yes to run it: one not Vaultite's asks first, saying what it does beyond the vault.
     const says = official(e.source) ? [] : disclosed(e.disclosures)
     if (!official(e.source) && !(await confirmDialog({
       title: `Install and turn on ${e.name}?`,
@@ -346,7 +308,6 @@ async function installEntry(e: Entry, show?: (id: string) => void) {
     }))) return false
     await op("plugin.install", { source: e.source })
     await reload()
-    // (as its switch does: allowed here as installed, its panels shown, what it writes on its own asked)
     const p = pluginById(e.id)
     if (p) setSwitch(p, true); else await op("plugin.enable", { id: e.id })
     notify(`${e.name} is installed and on`, show ? { action: { label: "Show", run: () => show(e.id) } } : {})
@@ -357,14 +318,12 @@ async function installEntry(e: Entry, show?: (id: string) => void) {
   }
 }
 
-/** `compact`: only those not installed, without the sort and the note (DirectoryMatches). */
 function Directory({ query, filters = GET_NONE, showInstalled, onListed, compact }: { query: string; filters?: GetFilters; showInstalled: (id: string) => void; onListed?: (l: Listed | null) => void; compact?: boolean }) {
   const sort = sortOf(filters) as Sort
   const [found, setFound] = useState<Found | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
-  const [n, setN] = useState(0) // asked again after an install, or fetched again (`fresh`)
+  const [n, setN] = useState(0)
   const [fresh, setFresh] = useState(false)
-  // (and when the plugins change: one installed from its sheet says Installed here too)
   const v = usePluginsVersion()
   useEffect(() => {
     let live = true
@@ -378,7 +337,7 @@ function Directory({ query, filters = GET_NONE, showInstalled, onListed, compact
     const l = found?.available ? found.plugins.map((e) => ({ installed: e.installed !== null, category: e.category })) : null
     onListed?.(l)
     if (l && !compact && !query.trim()) noteCategories(l)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- noted only when a new list comes
   }, [found, onListed])
   const shown = found?.plugins.filter((e) => passesGet({ installed: e.installed !== null, category: e.category }, filters)) ?? []
   const rows = useKeptCount(compact ? "plugins:matches" : "plugins:directory", found ? shown.length : undefined)
@@ -427,9 +386,6 @@ function Directory({ query, filters = GET_NONE, showInstalled, onListed, compact
   )
 }
 
-// ---------- a plugin's sheet before it's installed ----------
-
-/** The way to its page on the web: a small GitHub mark (another site's: an arrow). */
 function WebLink({ url }: { url: string }) {
   const github = /^https:\/\/github\.com\//.test(url)
   const Icon: LucideIcon = github ? GitHubIcon : ExternalLink
@@ -444,8 +400,6 @@ function WebLink({ url }: { url: string }) {
 const BIG = "h-11 min-w-32 px-5 text-[17px] md:h-9 md:min-w-28 md:text-[14px]"
 const NOTE = "text-[15px] leading-[20px] text-muted-foreground md:text-[13px] md:leading-[18px]"
 
-/** `plugin-get/<id>` (the directory's) or `plugin-get/<host>:<id>` (a host's source): what it is, what it says it does,
- *  and Install; once installed, its own sheet. */
 export function GetPluginSheet({ id }: { id: string }) {
   const at = id.indexOf(":")
   return at < 0 ? <DirectorySheet key={id} id={id} /> : <HostedSheet key={id} host={id.slice(0, at)} id={id.slice(at + 1)} />
@@ -455,10 +409,8 @@ const notFound = (what: string) => <SheetHead icon={Puzzle} tint="var(--muted-fo
 
 function DirectorySheet({ id }: { id: string }) {
   const v = usePluginsVersion()
-  // undefined: asking; null: not in the directory (or it can't be reached)
   const [e, setE] = useState<Entry | null | undefined>(() => seen.get(id))
   const [busy, setBusy] = useState(false)
-  // Installed (here, or before its code arrived, the row tapped meanwhile): its own sheet once its code is here.
   const [goOn, setGoOn] = useState(() => { const s = seen.get(id); return !!s && s.installed !== null && !s.update && !pluginById(id) })
   useEffect(() => { if (goOn && pluginById(id)) replaceDetail(`plugin/${id}`) }, [goOn, id, v])
   useEffect(() => {
@@ -482,7 +434,6 @@ function DirectorySheet({ id }: { id: string }) {
     setBusy(true)
     const ok = await installEntry(e)
     setBusy(false)
-    // (installed: its own sheet, with its switch and settings)
     if (ok) setGoOn(true)
   }
   return (
@@ -524,7 +475,6 @@ function DirectorySheet({ id }: { id: string }) {
           <p className="px-1 text-[15px] leading-[21px] md:text-[14px] md:leading-[20px]" data-browse-readme>{snippet(e.readme)}</p>
         </Section>
       )}
-      {/* (as a vault plugin's sheet says while it's off: PluginPreview.tsx) */}
       {!here && <p className={cn(NOTE, "px-1")}>Its preview shows once it's installed and on: nothing of a plugin from GitHub runs before then.</p>}
     </div>
   )

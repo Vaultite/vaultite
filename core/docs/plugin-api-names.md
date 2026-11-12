@@ -604,7 +604,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `SearchPage({ store, query, setQuery })`
 - `secretDialog(opts, ended?)`: Ask for a secret (opts.field: hidden text, or a file); null when cancelled or `ended` (the asker stopped waiting).
 - `SecretKeeper`: The user's passwords (the desktop app's, web-viewer's passwords.ts), for an agent's ask: what's set up there.
-- `Section({ title, children, className })`
+- `Section({ title, children, className })`: A labelled group inside a card ("Up next", "Lifts").
 - `seenArea(el)`: Where on screen a row can be seen: the window, cut by every box around it that clips, below the sticky heading of its panel (rows pass under it), clear of a fading edge.
 - `Segment`: A body in pieces: blocks, embeds and the Markdown between (blank-only text dropped).
 - `Segmented({ value, options, onChange, label, big, className })`: A choice of a few, side by side.

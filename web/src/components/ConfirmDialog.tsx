@@ -1,5 +1,3 @@
-// The confirm dialog for destructive actions that can't be undone; never the browser's confirm(). Anything undoable
-// doesn't ask: it acts, then offers Undo in a toast. With a field, it asks for a secret (an agent's `vau secret`).
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { fadeAway } from "@/core/animation"
@@ -31,7 +29,6 @@ export type SecretKeeper = {
 }
 let keeper: SecretKeeper | null = null
 export const setSecretKeeper = (k: SecretKeeper | null) => { keeper = k }
-/** A secret given: text, or a file's contents (base64 when it isn't text). */
 export type Given = { value: string; base64: boolean }
 type Ask = ConfirmOptions & { done: (ok: boolean, given?: Given) => void }
 
@@ -56,16 +53,14 @@ export function secretDialog(opts: ConfirmOptions & { field: "secret" | "file" }
   })
 }
 
-// An agent's `vau secret` (core/coreops/secret.ts): the value given, or null.
 answerUi("secret", (m, ended) => secretDialog({
   title: typeof m.prompt === "string" ? m.prompt : "A secret", confirm: "Send", field: m.file ? "file" : "secret", keepable: true,
   body: `${typeof m.from === "string" && m.from ? m.from : "An agent"} asks for this. It goes to that machine only, never into the vault.`,
 }, ended))
 
-/** A file's contents as text, else base64. */
 async function readGiven(f: File): Promise<Given> {
   const bytes = new Uint8Array(await f.arrayBuffer())
-  try { return { value: new TextDecoder("utf-8", { fatal: true }).decode(bytes), base64: false } } catch { /* binary */ }
+  try { return { value: new TextDecoder("utf-8", { fatal: true }).decode(bytes), base64: false } } catch {}
   let bin = ""
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
   return { value: btoa(bin), base64: true }
@@ -110,7 +105,7 @@ function Dialog({ a }: { a: Ask }) {
   const q = query.trim().toLowerCase()
   const shown = picking?.filter((e) => !q || e.title.toLowerCase().includes(q) || e.username.toLowerCase().includes(q)).slice(0, 6)
   usePageLock()
-  // Answered, it fades and shrinks a little, its dim with it (while it's still drawn: a layout effect's cleanup).
+  // A layout effect's cleanup runs while the dialog is still in the DOM, so it can fade from there.
   useLayoutEffect(() => { const d = ref.current; return () => fadeAway([d], { scale: 0.98, backdrop: "rgb(0 0 0 / 0.3)" }) }, [])
   useEffect(() => {
     const d = ref.current
@@ -125,9 +120,7 @@ function Dialog({ a }: { a: Ask }) {
       data-confirm
       onCancel={(e) => { e.preventDefault(); finish(false) }}
       onKeyDown={(e) => {
-        // Enter confirms (unless Cancel has the focus: then it's that button's own Enter).
         if (e.key === "Enter" && !e.nativeEvent.isComposing && document.activeElement?.getAttribute("data-cancel") === null) { e.preventDefault(); finish(true) }
-        // The focus stays on the two buttons.
         if (e.key === "Tab") {
           const all = [...e.currentTarget.querySelectorAll<HTMLElement>("button, input")]
           const i = all.indexOf(document.activeElement as HTMLElement)
@@ -196,7 +189,6 @@ function Dialog({ a }: { a: Ask }) {
           className="h-11 flex-1 cursor-pointer text-[17px] text-primary focus-visible:outline-none max-md:hover:bg-foreground/[0.05] max-md:focus-visible:bg-foreground/[0.07] md:h-7 md:flex-none md:rounded-[6px] md:bg-foreground/[0.06] md:px-3 md:text-[13px] md:font-medium md:text-foreground md:hover:bg-foreground/[0.1] md:focus-visible:ring-2 md:focus-visible:ring-ring">
           {a.cancel ?? "Cancel"}
         </button>
-        {/* The phone's fills only there: on a desktop they covered the button's own colour while it had the focus. */}
         <button ref={ok} type="button" data-confirm-ok onClick={() => finish(true)} disabled={!!a.field && !given}
           className={cn("h-11 flex-1 cursor-pointer border-l-[0.5px] border-border text-[17px] font-semibold focus-visible:outline-none max-md:hover:bg-foreground/[0.05] max-md:focus-visible:bg-foreground/[0.07]",
             "md:h-7 md:flex-none md:rounded-[6px] md:border-0 md:px-3 md:text-[13px] md:font-medium md:text-white md:focus-visible:ring-2 md:focus-visible:ring-ring md:focus-visible:ring-offset-1 md:focus-visible:ring-offset-card disabled:cursor-default disabled:opacity-50",

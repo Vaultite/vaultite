@@ -1,5 +1,3 @@
-// Phones: the top bar: the sidebars' buttons, the pane's title (once the page's own has scrolled away) over the page's
-// line (#phone-subtitle) or a split's dots, the page's buttons (#phone-actions), the … menu.
 import { useLayoutEffect, useRef } from "react"
 import { Ellipsis, PanelLeft, PanelRight } from "lucide-react"
 import { focusedPane, panesOf, type Pane, type Tab } from "../../../core/layout.ts"
@@ -14,8 +12,6 @@ import { selectPane } from "@/core/workspace"
 import { phoneApp } from "@/core/phoneapp"
 import { cn } from "@/lib/utils"
 
-/** Whether the screen's edges are the drawers' (the iPhone app, a Home Screen web app on an iPhone or iPad), not the
- *  browser's or the system's. */
 const edgesOurs = typeof navigator !== "undefined" && (!!phoneApp
   || (/iPhone|iPad|iPod/.test(navigator.userAgent) && (matchMedia("(display-mode: standalone)").matches || (navigator as { standalone?: boolean }).standalone === true)))
 
@@ -24,23 +20,17 @@ const button = "grid size-11 shrink-0 cursor-pointer place-items-center text-pri
 export function PhoneHeader({ title, tab }: { title: string; tab: Tab }) {
   const buttons = usePrefs().sidebarButtons || !edgesOurs
   const left = useHasDrawer("left") && buttons, right = useHasDrawer("right") && buttons
-  // iOS large titles: the name shows here once the page's own title (FileTitle.tsx) has scrolled away, or if it has none.
   const inSight = titleInSight.use()
   const ps = panesOf(tab), at = ps.findIndex((p) => p.id === tab.focus)
-  // (a split tab's title is its panes' joined: the header names the one on screen)
   const label = useTabLabels(useStore().store)
   const name = ps.length > 1 ? label(focusedPane(tab)).label : title
-  // While swiped (core/phoneTabs.ts), the neighbour's name comes in as the finger brings its page, this one's goes.
   const swipe = useSwipe()
   const near = swipe ? besideOf(swipe) : []
   const nameOf = (t: Tab, p: Pane) => (swipe === "panes" || panesOf(t).length > 1 ? label(p).label : label(t).label)
   const row = useSides()
   return (
     <header data-phone-header className="sight-top glass-strong fixed inset-x-0 top-0 z-30 pt-[env(safe-area-inset-top)] md:hidden">
-      {/* Three columns, the outer two as wide as the wider one's buttons (--side), so the name stays centred whatever
-          buttons there are, and a long one doesn't move as a swipe brings it. */}
       <div ref={row} className="relative grid h-11 grid-cols-[1fr_minmax(0,auto)_1fr] items-center px-1">
-        {/* (the screen's centre, not the title's: a long name or the buttons don't move them; first, so a button wins its taps) */}
         {ps.length > 1 && <PaneDots ids={ps.map((p) => p.id)} at={at} tabs={swipe === "tabs"} alone={inSight} />}
         <div className="flex min-w-(--side) items-center">
           <div data-side className="flex w-max items-center">
@@ -79,7 +69,6 @@ export function PhoneHeader({ title, tab }: { title: string; tab: Tab }) {
   )
 }
 
-/** The header row's --side: its wider side's buttons, as they come and go (a page's own in #phone-actions). */
 function useSides() {
   const row = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
@@ -95,17 +84,13 @@ function useSides() {
   return row
 }
 
-/** How far the next (or previous) page has come in, of the header's --swipe-next, --swipe-prev; what's on screen, the rest. */
 const COME = { 1: "var(--swipe-next, 0)", [-1]: "var(--swipe-prev, 0)", 0: "(1 - var(--swipe-next, 0) - var(--swipe-prev, 0))" } as const
-/** The name on screen goes the way its page does, a neighbour's comes in from its side. */
 const NOW = { opacity: `calc${COME[0]}`, transform: "translateX(calc((var(--swipe-prev, 0) - var(--swipe-next, 0)) * 40px))" }
 const SIDE = {
   1: { opacity: COME[1], translate: "calc(-50% + (1 - var(--swipe-next, 0)) * 40px) 0" },
   [-1]: { opacity: COME[-1], translate: "calc(-50% - (1 - var(--swipe-prev, 0)) * 40px) 0" },
 } as const
 
-/** A split tab's panes, a dot each under the title (in the bar's middle while it has none), the shown one darker (and,
- *  swiped, the one coming in darkening as it comes; swiped to another tab, they fade): each a 44px-wide button. */
 function PaneDots({ ids, at, tabs, alone }: { ids: string[]; at: number; tabs: boolean; alone: boolean }) {
   const n = ids.length, k = Math.max(16 / 44, 1 - 19 / ((n - 1) * 22))
   const lit = (i: number) => (i === at ? `calc${COME[0]}` : i === at + 1 ? COME[1] : i === at - 1 ? COME[-1] : "0")

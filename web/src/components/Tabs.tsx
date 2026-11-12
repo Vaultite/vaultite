@@ -1,5 +1,3 @@
-// Tabs (desktop): one bar of the window's tabs above its panes, a split tab one chip of its panes; drag a tab to
-// reorder, onto a pane (an edge splits, the middle replaces it), or let go outside the window. A pane drags by its bar.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import {
@@ -49,19 +47,12 @@ export type TabInfo = { label: string; icon: LucideIcon; tint?: string; iconClas
   /** A small button at its end (a view's `tabMark`: a page playing sound, its speaker). */
   mark?: TabMark }
 
-/** `it`, with `other` (its variant: moving instead of copying) in its submenu, or alone when that can't be done now. */
 const withVariant = (it: MenuItem, other: MenuItem): MenuItem => (other.disabled ? it : { ...it, split: true, items: [it, other] })
-/** `items` with a line before the first. */
 const after = (items: MenuItem[]) => items.map((it, i) => (i ? it : { ...it, sep: true }))
-/** The tab on screen: a card on the bar; in a dark scheme, where a card is barely lighter than the bar, lifted toward the
- *  text's colour (the same step in every scheme, its text still clear), with an edge of the text's colour. */
 const ON_TAB = "bg-card shadow-[0_1px_3px_rgb(0_0_0/0.14)] ring-[0.5px] ring-foreground/15 dark:bg-[color-mix(in_srgb,var(--foreground)_14%,var(--card))] dark:ring-foreground/20"
 
-/** Whether the window's tabs are drawn in a bar above its panes: the tab bar on (appearance `tabBar`), or a pop-out's
- *  when they'd be in a sidebar, which it hasn't got; never in a pop-out with its bars hidden. */
 export const tabBarOn = (prefs = getPrefs()) => (prefs.tabBar || (isPopout() && tabsInSidebar(prefs))) && !barsHidden()
 
-/** Right-click on a tab: the tab's own (closing, splits, where it shows), then what its focused pane shows. */
 function tabMenu(tab: Tab): MenuItem[] {
   const l = here(), i = l.tabs.findIndex((t) => t.id === tab.id), ps = panesOf(tab)
   const shown = tab.id === l.active, split = ps.length > 1, blank = isBlankTab(tab), only = ps.length === 1 ? ps[0] : null
@@ -70,12 +61,9 @@ function tabMenu(tab: Tab): MenuItem[] {
     { label: "Close others", run: () => closeTabs("others", tab.id), disabled: l.tabs.length < 2 },
     { label: "Close tabs to the right", run: () => closeTabs("right", tab.id), disabled: i === l.tabs.length - 1 },
     { label: "Close all", run: () => closeTabs("all", tab.id) },
-    // ("Pin tab", as its command: the file's own Pin, under More file actions, pins it to the sidebar)
     tab.pinned ? { label: "Unpin tab", icon: PinOff, sep: true, run: () => togglePinTab(tab.id) } : { label: "Pin tab", icon: Pin, sep: true, run: () => togglePinTab(tab.id) },
-    // (a file's Rename is with its own items, below)
     ...(!(only && vaultPath(only.to)) && canRenameTab(tab) ? [{ label: "Rename tab…", icon: PencilLine, run: () => renameTab(tab.id) }] : []),
     ...groupItems([tab.id]),
-    // On screen, its focused pane splits; another tab joins it, beside its focused pane.
     ...(shown ? [
       { label: "Split right", icon: Columns2, sep: true, run: () => splitPane("right", tab.focus) },
       { label: "Split down", icon: Rows2, run: () => splitPane("bottom", tab.focus) },
@@ -91,8 +79,6 @@ function tabMenu(tab: Tab): MenuItem[] {
   ]
 }
 
-/** A split tab's panes each a tab of its own, and their own tabs too, in their order; the focused pane keeps the tab
- *  (shown, if it was). */
 export function separatePanes(id: string) {
   const tab = tabById(id), l = here(), at = l.tabs.findIndex((t) => t.id === id)
   if (!tab || panesOf(tab).length < 2) return
@@ -101,8 +87,6 @@ export function separatePanes(id: string) {
   showActiveUnder()
 }
 
-/** Right-click on a pane's bar: splitting it, taking it out of its tab, floating, zooming, closing; then what it
- *  shows. */
 function paneMenu(id: string): MenuItem[] {
   const p = paneById(id), t = paneTab(id)
   if (!p || !t) return []
@@ -114,13 +98,11 @@ function paneMenu(id: string): MenuItem[] {
     ...(p.float ? [{ label: "Dock pane", icon: PictureInPicture2, run: () => dockPane(id) }]
       : canFloat(id) ? [{ label: "Float pane", icon: PictureInPicture2, run: () => floatPane(id) }] : []),
     ...(zoomed || (canZoom(id) && !p.float) ? [{ label: zoomed ? "Unzoom pane" : "Zoom pane", icon: zoomed ? Minimize2 : Maximize2, run: () => zoomPane(id) }] : []),
-    // (a pane with tabs of its own: its X closes the one it shows, as a tab's would)
     ...(stackOf(id) > 1 ? [{ label: "Close tab", icon: X, sep: true, run: () => closePane(id) }, { label: "Close pane", run: () => closeWholePane(id) }]
       : [several ? { label: "Close pane", icon: X, sep: true, run: () => closePane(id) } : { label: "Close tab", icon: X, sep: true, run: () => closeTab(t.id) }]),
     ...placeItems(p),
   ]
 }
-/** How many tabs of its own pane `id`'s pane has (Pane.stack; 1: just what it shows). */
 const stackOf = (id: string) => { const t = paneTab(id), p = t && paneWith(t.root, id); return p ? placesOf(p).length : 0 }
 
 /** Right-click on one of a split's pane's own tabs (the Tabs panel's list under the split, a pane's strip): closing it or
@@ -139,8 +121,6 @@ export function placeMenuOf(id: string): MenuItem[] {
   ]
 }
 
-/** Right-click on a pane's bar (or the view's top bar that's its title row): a split's pane's own menu; a tab's only
- *  pane's is the tab's, as its chip has it (with the tab bar off, nothing else is the tab's). Then how they show. */
 export function barMenuOf(id: string): MenuItem[] {
   const t = paneTab(id), p = paneById(id)
   if (!t || panesOf(t).length > 1) return [...paneMenu(id), ...shownItems(p)]
@@ -148,31 +128,24 @@ export function barMenuOf(id: string): MenuItem[] {
     ...after([{ label: "New tab", icon: Plus, run: () => openNewTab({ at: "end" }) }, ...commandItems("tab:reopen", "tab:search")]), ...shownItems(p)]
 }
 
-/** How the view in a pane shows (its `paneMenu`: the Browser's Hide page bar), with the rest of how things show. */
 function viewPaneItems(p: Pane): MenuItem[] {
   const v = p.to.startsWith("view:") ? viewFor(p.to, getPrefs().disabled) : null
   if (!v?.on || !v.def.paneMenu) return []
   try { return v.def.paneMenu(v.arg, p.id) } catch { return [] }
 }
 
-/** How the tabs and panes show, outside in: in the sidebar or on top, the tab bar, pane tab bars, then how pane `p`'s
- *  view shows (the Browser's page bar), the same group in every menu that has it. */
 function shownItems(p?: Pane): MenuItem[] {
   const tabBar = tabBarOn()
-  // With the tabs in the sidebar, the way back is to put them on top (the tab bar on, the list gone). (A pop-out's
-  // bar is drawn for want of a sidebar: nothing to switch there.)
   const vertical = tabsInSidebar()
   return after([
     ...commandItems("tab:sidebar"),
     ...(vertical ? [] : [{ label: tabBar ? "Hide tab bar" : "Show tab bar", icon: PanelTop, run: () => setPrefs({ tabBar: !tabBar }) }]),
     ...commandItems("setting:pane-tab-bars"),
     ...(p ? viewPaneItems(p).map((it) => ({ ...it, sep: false })) : []),
-    // (a pop-out: all of them at once, the window only what it shows)
     ...commandItems("window:bars"),
   ])
 }
 
-/** Right-click on the tab bar's empty space: then how things show, the tab on screen's view too. */
 function barMenu(): MenuItem[] {
   return [
     { label: "New tab", icon: Plus, run: () => openNewTab({ at: "end" }) },
@@ -186,13 +159,9 @@ function barMenu(): MenuItem[] {
 /** The tabs' selection (core/select.ts): by tab id, the bar's, the Tabs panel's and the phone's cards alike. */
 export const TABS = "tabs"
 
-// ---------- tab groups (core/tabgroups.ts) ----------
-
 /** What a tab group is called: its name, or its colour's ("Blue group"). */
 export const groupName = (g: Group) => g.name || `${COLOR_NAMES[g.color]} group`
 
-/** A tab menu's tab group rows, for one tab or several selected, as a browser's: into a new group (its editor opening
- *  on it), or with other groups to join, Add to group ▸ with New group first; then out of theirs. */
 export function groupItems(ids: string[]): MenuItem[] {
   const tabs = here().tabs.filter((t) => ids.includes(t.id))
   if (!tabs.length) return []
@@ -222,8 +191,6 @@ export function groupMenu(id: string, at: "bar" | "panel" | "phone"): MenuItem[]
   ]
 }
 
-/** Open a tab group's editor under its chip (the tab bar) or its row (the Tabs panel), as a new group's opens: once
- *  it's drawn, within a few frames. */
 export function editGroup(id: string) {
   let tries = 12
   const look = () => {
@@ -235,10 +202,7 @@ export function editGroup(id: string) {
   requestAnimationFrame(look)
 }
 
-/** A tab group's chip in the tab bar, before its tabs: a click (Enter, Space) folds it, right-click (the menu key,
- *  ⇧F10) has its editor, dragging it moves the whole group. The arrows reach it as they do the tabs (core/keylist.ts). */
 function GroupChip({ g, n, target }: { g: Group; n: number
-  /** A tab dragged onto it (folded) would join it. */
   target: boolean }) {
   const item = useDragItem()
   const c = colorVar(g.color)
@@ -252,16 +216,12 @@ function GroupChip({ g, n, target }: { g: Group; n: number
       onClick={() => foldGroupMoving(g.id)}
       data-tip={item ? undefined : g.collapsed ? `Expand ${groupName(g)}` : `Collapse ${groupName(g)}`}
       className={cn("relative flex h-7 shrink-0 cursor-pointer items-center", item?.group === g.id && "opacity-50")}>
-      {/* (as tall as a tab, the chip inside: the line under it then lines up with the tabs') */}
-      {/* (a long name cut off, as a browser's chip: the tabs keep their room; the tip says it whole) */}
-      {/* (the line under the group's tabs starts under it: core/tabline.ts) */}
       <GroupLabel g={g} n={n} target={target} className="max-w-40" />
       <GroupMarks id={g.id} />
     </button>
   )
 }
 
-/** What other plugins mark a tab group with (a page playing in it, folded): a small button each after its chip. */
 function GroupMarks({ id }: { id: string }) {
   const marks = useUiMarks(`group:${id}`)
   return <>{marks.map((m, k) => (
@@ -304,8 +264,6 @@ export function tabsMenu(ids: string[], phone = false): MenuItem[] {
   ]
 }
 
-/** What a pane shows offers: a view's own items, or a file's as in the tree. `phone` leaves out what a phone hasn't got
- *  (reveal in tree; renaming is the title). */
 function placeItems(p: Pane, phone = false): MenuItem[] {
   const out: MenuItem[] = []
   const file = vaultPath(p.to)
@@ -317,8 +275,6 @@ function placeItems(p: Pane, phone = false): MenuItem[] {
   return out
 }
 
-/** The phone's … menu (its header, components/PhoneHeader.tsx) for the tab on screen: what its focused pane shows, then
- *  Close (a split's pane on its own too). */
 export function phoneTabMenu(tab: Tab): MenuItem[] {
   const items = placeItems(focusedPane(tab), true).map((it, i) => (i === 0 ? { ...it, sep: false } : it))
   const split = panesOf(tab).length > 1
@@ -330,8 +286,6 @@ export function phoneTabMenu(tab: Tab): MenuItem[] {
   { label: "Close tab", icon: X, sep: !split && items.length > 0, run: () => closeTab(tab.id) }]
 }
 
-/** A tab card's menu in the phone's tab list (held, or right-clicked): closing, its panes (`panes` shows them), joining
- *  the tab on screen, then what it shows. */
 export function tabCardMenu(tab: Tab, count: number, groups: MenuItem[] = [], panes?: () => void): MenuItem[] {
   const n = panesOf(tab).length, shown = here().active
   return [
@@ -344,13 +298,11 @@ export function tabCardMenu(tab: Tab, count: number, groups: MenuItem[] = [], pa
       ...(n === 2 ? [{ label: "Swap panes", icon: ArrowLeftRight, sep: !panes, run: () => { const [a, b] = panesOf(tab); paneIntoPane(a.id, b.id, "center"); keepShown(shown) } }] : []),
       { label: "Separate panes", icon: UnfoldHorizontal, sep: !panes && n !== 2, run: () => separatePanes(tab.id) },
     ] : []),
-    // (another tab joins the one on screen, beside its focused pane: the computer's Open in split right)
     ...(tab.id !== shown ? [{ label: "Open in split", icon: Columns2, sep: n < 2, run: () => moveToSplit("right", tab.id), disabled: !canJoin(tab.id) }] : []),
     ...placeItems(focusedPane(tab), true),
   ]
 }
 
-/** A pane's card in a split tab's page of the phone's tab list: taking it out, closing it, then what it shows. */
 export function paneCardMenu(p: Pane): MenuItem[] {
   const t = paneTab(p.id)
   if (!t) return []
@@ -362,26 +314,14 @@ export function paneCardMenu(p: Pane): MenuItem[] {
   ]
 }
 
-// ---------- dragging tabs and panes (and files from the sidebar: the same drops) ----------
-
-/** One pane of a tab's picture on its card: where it sits (shares of the card) and, drawn somewhere (on screen, or kept
- *  hidden), its page and the size it has. */
 type Mini = { pane: Pane; rect: Rect; page?: { el: HTMLElement; w: number; h: number } }
-/** How the dragged thing is drawn: a tab lifted out of its bar (its own look, held where it was grabbed), a pane as a
- *  small card of itself, or a label by the pointer (a file, a panel). It lifts `from` a place, goes back `home`. */
 type Look = { kind: "tab" | "pane" | "pill"; grab: { x: number; y: number }; w: number; h: number; from?: DOMRect; home?: DOMRect; k?: number; section?: HTMLElement
-  /** A tab's layout in miniature (Rex's card: every pane of it), and its height for the card's width. */
   minis?: Mini[]; thumb?: number }
-/** A pane's card at most this big (px); held where it would become a pane (a pane's edge), anything is a small page. */
 const CARD = { w: 340, h: 230 }, PAGE = { w: 216, h: 136 }
-/** A tab pulled off the bar: a card this wide, its title over a picture of its panes (at most this tall). */
 const TAB_CARD = { w: 240, h: 170 }
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n))
-/** A pane's section on screen (not one kept drawn for a tab that isn't). */
 const frameOf = (id: string) => document.querySelector<HTMLElement>(`section[data-pane-frame="${CSS.escape(id)}"]:not([data-away])`)
 
-/** Tab `t`'s panes in miniature: each where it is in its layout (floating ones over the tiled), with its page if it's
- *  drawn (a page too big to copy at once, a long note read whole, is a sketch of one). */
 function minisOf(t: Tab, area: DOMRect | undefined): Mini[] {
   const { panes, floats } = layout(t.root)
   const tiles = t.zoom ? panes.filter((p) => p.pane.id === t.zoom).map((p) => ({ ...p, rect: { x: 0, y: 0, w: 1, h: 1 } })) : panes
@@ -412,17 +352,13 @@ function lookOf(item: DragItem | null, d: Drag | null): Look {
   return { kind: "pill", grab: { x: -10, y: -10 }, w: 0, h: 0, home: o.rect }
 }
 
-/** A dropped tab slides into its slot in `list` (the tab bar's, the Tabs panel's) from where its picture was let go
- *  (`from`), once it's drawn there. */
 function landTab(list: Element, id: string, from: DOMRect) {
   requestAnimationFrame(() => {
     const t = [...list.querySelectorAll<HTMLElement>(`[data-slide="${CSS.escape(id)}"]`)].find((e) => e.offsetParent)
     if (t && slideFrom(t, from, "spring")) stir(t)
   })
 }
-/** The list of tabs making way for a drop of tab `id` (useSlide marks it): where it lands, let go there. */
 const listShowing = (id: string) => [...document.querySelectorAll("[data-drop-preview]")].find((e) => e.querySelector(`[data-slide="${CSS.escape(id)}"]`)) ?? null
-/** Tab `id` drawn in a list now (the tab bar's chip, the Tabs panel's row): the one nearest `near`, where it was. */
 function tabDrawn(id: string, near?: DOMRect) {
   const q = CSS.escape(id), at = (e: Element) => e.getBoundingClientRect()
   const all = [...document.querySelectorAll<HTMLElement>(`[data-tab-bar] [data-tab-id="${q}"], [data-open-tabs] > [data-slide="${q}"]`)].filter((e) => e.offsetParent)
@@ -430,16 +366,12 @@ function tabDrawn(id: string, near?: DOMRect) {
   return all.sort((a, b) => far(a) - far(b))[0] ?? null
 }
 
-/** A sketch of a page: a few lines, for a pane whose page isn't drawn. */
 const Sketch = () => (
   <div className="space-y-1.5 p-2"><div className="h-1.5 w-3/4 rounded-full bg-foreground/[0.08]" /><div className="h-1.5 w-11/12 rounded-full bg-foreground/[0.08]" /><div className="h-1.5 w-1/2 rounded-full bg-foreground/[0.08]" /></div>
 )
 
-/** The dragged tab, pane or file, following the pointer (drawn above the sidebar): drawn again when what it shows
- *  changes, moved without React on every move. Let go somewhere it can't go, it springs back where it came from. */
 export function DragGhost({ info }: { info: (t: Tab | Pane) => TabInfo }) {
   const live = useDragItem()
-  // (after the drag, still drawn while it goes back where it came from)
   const [back, setBack] = useState<{ item: DragItem } | null>(null)
   const item = live ?? back?.item ?? null
   const hint = useDrag((d) => d?.hit?.hint), hit = useDrag((d) => !!d?.hit), finger = useDrag((d) => !!d?.finger)
@@ -447,25 +379,17 @@ export function DragGhost({ info }: { info: (t: Tab | Pane) => TabInfo }) {
   const zone = useDrag((d) => (d?.hit?.target === PANES && (d.hit.data as Drop).kind === "pane" ? (d.hit.data as Drop & { kind: "pane" }).zone : null))
   const { fileIcons } = usePrefs()
   const el = useRef<HTMLDivElement>(null), card = useRef<HTMLDivElement>(null), shot = useRef<HTMLDivElement>(null)
-  // (where the pointer holds the card, as it follows: past the window's edge, where it's held over the screen)
   const held = useRef({ x: 0, y: 0 })
-  // (measured once a drag, as it lifts)
   const look = useMemo(() => lookOf(item, getDrag()), [item]), lookRef = useRef(look)
   useEffect(() => { lookRef.current = look }, [look])
-  // A tab pulled off the bar (over a pane, or nothing) is a card of its panes; anything else held where it would
-  // become a pane (a pane's edge) is a small page.
   const shape = finger || back ? null : look.kind === "tab" ? (!hit || zone ? "card" : null) : look.kind === "pill" && zone && zone !== "center" ? "page" : null
   const size = shape === "card" ? { w: TAB_CARD.w, h: 28 + (look.thumb ?? 0) } : shape === "page" ? PAGE : null
-  // (what it was over as it was let go: what drop.ts answered last)
   const last = useRef<{ over: Drop["kind"] | null; split: boolean }>({ over: null, split: false })
   useEffect(() => { if (live) last.current = { over, split: !!zone && zone !== "center" } }, [live, over, zone])
-  // Over an open sheet (a modal <dialog>) it's placed inside it.
   const sheet = item ? [...document.querySelectorAll<HTMLElement>("dialog[open]")].pop() ?? null : null
   useLayoutEffect(() => {
     const g = el.current
     if (!g || !live) return
-    // A label goes by the pointer: near the window's right edge left of it, a finger's above it (a finger covers
-    // what's under). A tab or a pane stays held where it was grabbed. (moved by a transform: no layout a move)
     const follow = () => {
       const d = getDrag()
       if (!d) return
@@ -473,7 +397,6 @@ export function DragGhost({ info }: { info: (t: Tab | Pane) => TabInfo }) {
       let x = look.kind !== "pill" ? d.x - look.grab.x : d.finger ? Math.max(8, Math.min(d.x - 32, innerWidth - 268)) : d.x > innerWidth - 280 ? d.x - 10 - g.offsetWidth : d.x + 10
       let y = look.kind !== "pill" ? d.y - look.grab.y : d.finger ? d.y - 64 : d.y + 10
       held.current = { x: d.x - x, y: d.y - y }
-      // (a card kept in the window, as big as it's becoming)
       if (look.kind !== "pill" || size) {
         x = clamp(x, 4, innerWidth - (size ?? look).w - 4)
         y = clamp(y, 4, innerHeight - (size ?? look).h - 4)
@@ -483,8 +406,6 @@ export function DragGhost({ info }: { info: (t: Tab | Pane) => TabInfo }) {
     follow()
     return onDrag(follow)
   }, [live, look, sheet, finger, hint, size?.w, size?.h, overPanes])
-  // Past the window's edge, where a tab goes on in another window, its card goes on over the screen (the desktop app's:
-  // electron/dragghost.ts), a picture of it as it is then, and leaves the page; back in, it's the page's again.
   useLayoutEffect(() => {
     const g = el.current, c = card.current, float = floatGhost
     if (!g || !c || !live || !float || !(live.tab || live.tabs?.length || live.group || live.pane)) return
@@ -492,12 +413,11 @@ export function DragGhost({ info }: { info: (t: Tab | Pane) => TabInfo }) {
     const restore = () => { g.style.removeProperty("visibility"); g.style.removeProperty("opacity"); g.style.removeProperty("transition") }
     const check = () => {
       const d = getDrag()
-      if (!d) return // (ended: the cleanup's)
+      if (!d) return
       const out = pastEdge(d.x, d.y, d.finger)
       if (!out && state !== "in") { if (state !== "failed") void float(null); state = "in"; restore() }
       if (!out || state !== "in") return
       state = "asking"
-      // (its picture whole, not faded as it is over nothing)
       g.style.transition = "none"; g.style.opacity = "1"
       requestAnimationFrame(() => requestAnimationFrame(() => {
         if (state !== "asking") return
@@ -514,8 +434,6 @@ export function DragGhost({ info }: { info: (t: Tab | Pane) => TabInfo }) {
     const off = onDrag(check)
     return () => { off(); if (state === "asking" || state === "out") void float(null); restore() }
   }, [live, look])
-  // Lifted: a pane shrinks from its place into its card (a copy of it), a tab rises out of its bar with its panes'
-  // pictures.
   useLayoutEffect(() => {
     const c = card.current
     if (!live || !c) return
@@ -534,17 +452,13 @@ export function DragGhost({ info }: { info: (t: Tab | Pane) => TabInfo }) {
     }
     if (look.from) slideFrom(c, look.from, "spring", true)
   }, [live, look])
-  // Let go (told just before the drop is done): on a pane, the pane (a tab's focused one) grows from its card into its
-  // place; into the tab bar, a tab slides into its slot; nowhere, back it goes.
   useEffect(() => onDragEnd((e) => {
     const c = card.current, { item: it } = e
     if (!c || !e.origin || it.drawn || e.away) return
     if (!e.dropped) { setBack({ item: it }); return }
     const from = c.getBoundingClientRect(), { over } = last.current
-    // (into a list of tabs: the bar, or the Tabs panel, which makes way as the bar does)
     const list = over !== "pane" && it.tab ? listShowing(it.tab) : null
     if (!over && !list) return
-    // (back to itself before it moves: what's drawn of it on the way isn't faded)
     lookRef.current.section?.removeAttribute("data-lifted")
     const t = it.tab ? tabById(it.tab) : undefined
     if (over === "pane") { if (it.pane) landFrom(it.pane, from); else if (t) landFrom(t.focus, from) }
@@ -556,14 +470,12 @@ export function DragGhost({ info }: { info: (t: Tab | Pane) => TabInfo }) {
     const tab = look.kind === "tab" && it.tab ? tabDrawn(it.tab, look.home) : null
     const home = tab?.getBoundingClientRect() ?? (look.kind === "pane" ? look.section?.getBoundingClientRect() : look.home)
     if (!c || !home || !t.duration) { setBack(null); return }
-    // (back home whole, a label just fading there)
     const now = c.getBoundingClientRect(), scale = look.kind !== "pill"
     const to = `translate(${home.left - now.left}px, ${home.top - now.top}px) scale(${scale ? home.width / now.width : 1}, ${scale ? home.height / now.height : 1})`
     const a = c.animate([{ transformOrigin: "0 0", transform: "none", opacity: 1 }, { transformOrigin: "0 0", transform: to, opacity: scale ? 1 : 0 }], { ...t, fill: "forwards" })
     a.finished.then(() => setBack(null), () => {})
     return () => a.cancel()
   }, [back, look])
-  // (a sidebar panel draws its own card, but over the panes it shows as the tab it would open)
   if (!item || item.elsewhere || (item.drawn && !(item.to && overPanes))) return null
   const dragged = item.tab ? tabById(item.tab) : undefined, pane = item.pane ? paneById(item.pane) : undefined
   const i: TabInfo = item.paths || item.tabs ? { label: item.label ?? "", icon: item.tabs ? Layers : Files }
@@ -584,10 +496,8 @@ export function DragGhost({ info }: { info: (t: Tab | Pane) => TabInfo }) {
       className={cn("pointer-events-none fixed top-0 left-0 transition-opacity duration-(--motion-fast) will-change-transform", finger ? "z-[70]" : "z-50", !hit && (!back || look.kind === "pill") && "opacity-60")}>
       {look.kind === "pane" ? (
         <div ref={card} className="relative overflow-hidden rounded-[10px] bg-background shadow-2xl ring-[0.5px] ring-border" style={{ width: look.w, height: look.h }}>
-          {/* The pane as it looks, scaled down into its card. */}
           <div ref={shot} className="absolute top-0 left-0 origin-top-left" style={{ width: look.from!.width, height: look.from!.height, transform: `scale(${look.k})` }} />
           <span className="sr-only">{i.label}</span>
-          {/* What a drop there does that isn't seen in a pane ("Move pane to workspace 3"), on the card. */}
           {hint && <span className="absolute inset-x-2 bottom-2 mx-auto w-fit max-w-full truncate rounded-[6px] bg-card px-2 py-1 text-[12px] font-medium shadow-md ring-[0.5px] ring-border">{hint}</span>}
         </div>
       ) : (
@@ -599,8 +509,6 @@ export function DragGhost({ info }: { info: (t: Tab | Pane) => TabInfo }) {
             <span className="min-w-0 truncate font-medium">{i.label}</span>
             {hint && <span className="shrink-0 text-muted-foreground">{hint}</span>}
           </div>
-          {/* Under its title, the tab's whole layout in miniature (Rex's): each pane's page scaled down into its place, or a
-              sketch of one. */}
           <div aria-hidden className="relative flex-1 overflow-hidden border-t-[0.5px] border-border bg-background">
             {look.minis?.length ? look.minis.map((m) => (
               <div key={m.pane.id} data-mini={m.pane.id} className={cn("absolute overflow-hidden bg-background", m.pane.float ? "rounded-[4px] shadow-md ring-[0.5px] ring-border" : "ring-[0.5px] ring-border")}
@@ -617,7 +525,6 @@ export function DragGhost({ info }: { info: (t: Tab | Pane) => TabInfo }) {
   )
 }
 
-/** A pane in a dragged tab's picture whose page isn't drawn: its icon and name over a sketch. */
 function MiniSketch({ info: i, icons }: { info: TabInfo; icons: boolean }) {
   return (
     <div className="flex h-full flex-col">
@@ -637,7 +544,6 @@ export function springTabAt(item: DragItem, x: number, y: number): string | null
   const own = item.pane ? paneTab(item.pane)?.id : item.tab, shown = here().active
   for (const e of document.querySelectorAll<HTMLElement>("[data-spring-tab]")) {
     const id = e.dataset.springTab!
-    // (one this drag opened by holding on it goes on holding still: nothing moves when it opens)
     if (id === own || item.tabs?.includes(id) || (id === shown && !sprangOpen(item, id)) || !e.offsetParent) continue
     const r = laidOut(e), across = !!e.closest("[data-tab-strip]")
     if (x < r.left || x > r.right || y < r.top || y > r.bottom) continue
@@ -654,41 +560,30 @@ export function dragTab(e: React.PointerEvent<HTMLElement>, tab: Tab, opts?: { t
   const item: DragItem = { from: "tab", tab: tab.id, to, path: panesOf(tab).length === 1 ? vaultPath(to) ?? undefined : undefined, drawn: opts?.drawn }
   startDrag(e, ids && ids.length > 1 ? { ...item, tabs: ids, label: `${ids.length} tabs` } : item, { touch: opts?.touch })
 }
-/** Press on a pane's bar, or a half of a split tab's row: the pane drags (out of its tab, into another's, or to a tab of
- *  its own in the list). */
 export function dragPane(e: React.PointerEvent<HTMLElement>, id: string, label?: string) {
   const p = paneById(id)
   if (p) startDrag(e, { from: "pane", pane: id, to: p.to, label })
 }
 
-/** A tab's place in the tab bar: its icon and name, a split tab its panes' side by side (each half its own, a click
- *  there focuses it). */
 function TabChip({ tab, info, active, icons, menu, width, settling, close, line, hole, only }: { tab: Tab; info: (t: Tab | Pane) => TabInfo; active: boolean; icons: boolean
   menu: () => MenuItem[]
-  /** The tab group whose line runs under it (core/tabline.ts): its own, or the one a drag's preview puts it in. */
   line?: string
-  /** Held at this width after a close (TabStrip). */
   width?: number; settling: boolean; close: (e: React.MouseEvent<HTMLElement>) => void
-  /** Dragged over the bar: lifted out, it leaves its slot empty where it would land. */
   hole: boolean
-  /** The window's only tab, blank: nothing to close. */
   only: boolean }) {
   const item = useDragItem()
   const picked = useSelected(TABS, tab.id)
   const { paneTabBars } = usePrefs()
-  // (a dragged pane or tab held on it: lit, about to open it, as Rex's rows)
   const lit = useDrag((d) => !!d && springing() === tab.id)
   const el = useRef<HTMLDivElement>(null)
   useGrowIn(el, tab)
   useShrinkOut(el, { tab: tab.id })
   const ps = panesOf(tab), split = ps.length > 1, own = info(tab)
   const dragging = item?.tab === tab.id || (picked && !!item?.tabs) || (!!tab.group && item?.group === tab.group)
-  // (away from the bar, the tab held shows where it goes back to)
   const away = dragging && !hole && (item?.tab === tab.id || picked)
   const tip = split ? ps.map((p) => info(p).label).join(" | ") : own.label
   const buttons = split || dragging ? [] : tabButtons(ps[0].to)
   const click = (e: React.MouseEvent<HTMLElement>) => {
-    // ⌥-click: it takes the focused pane's place, what was there going back to the list as a tab.
     if (e.altKey && !active && canTabIntoPane(tab.id, activePane().id, "center")) { e.preventDefault(); return replaceWithTab(tab.id) }
     if (selectClick(e, TABS, tab.id, active ? null : here().active)) return
     const half = (e.target as Element).closest<HTMLElement>("[data-pane-half]")?.dataset.paneHalf
@@ -697,7 +592,6 @@ function TabChip({ tab, info, active, icons, menu, width, settling, close, line,
   return (
     <div ref={el} data-tab-id={tab.id} data-ui={`tab:${tab.id}`} data-spring-tab={tab.id} data-in-group={tab.group} data-line-of={line} data-slide={tab.id} data-select-key={tab.id} data-split={split || undefined}
       {...selectedAttr(picked)} role="presentation" onContextMenu={(e) => {
-        // (a split's cell: the tab's menu, its pane's first, under Pane; several picked: theirs)
         const half = (e.target as Element).closest<HTMLElement>("[data-pane-half]")?.dataset.paneHalf
         menuFor(half && !picked ? () => cellMenu(half, menu) : rowMenu(TABS, tab.id, menu))(e)
       }}
@@ -712,7 +606,6 @@ function TabChip({ tab, info, active, icons, menu, width, settling, close, line,
         {split && !(tab.name && own.label === tab.name) ? ps.map((p, k) => (
           <span key={p.id} data-pane-half={p.id} data-ui={`pane:${p.id}`} className={cn("flex h-full min-w-0 flex-1 basis-0 items-center gap-1.5", k && "ml-1.5 border-l-[0.5px] border-border pl-1.5")}>
             <ChipLabel i={info(p)} icons={icons} strong={active && p.id === tab.focus} muted={!active || p.id !== tab.focus} />
-            {/* (its pane's other tabs, where no strip shows them: a click lists them) */}
             {(!paneTabBars || !active) && <CellMore tab={tab} pane={p} info={info} />}
           </span>
         )) : (
@@ -722,8 +615,7 @@ function TabChip({ tab, info, active, icons, menu, width, settling, close, line,
           </span>
         )}
       </button>
-      {/* A pinned tab's pin, where the X goes: a click unpins it. Both are the mouse's: a tablist holds only tabs, so the
-          keyboard closes the tab with Delete (tab:close-focused) and unpins it from its menu. */}
+      {/* Mouse only: an ARIA tablist may hold only tabs, so the keyboard closes with Delete and unpins from the menu. */}
       {tab.pinned ? (
         <button type="button" data-tab-pin data-no-drag tabIndex={-1} aria-hidden aria-label={`Unpin ${own.label}`} data-tip="Unpin tab" onClick={(e) => { e.stopPropagation(); togglePinTab(tab.id) }}
           className="absolute right-1 grid size-5 cursor-pointer place-items-center rounded-[4px] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground">
@@ -736,7 +628,6 @@ function TabChip({ tab, info, active, icons, menu, width, settling, close, line,
           <X className="size-3.5" strokeWidth={2} />
         </button>
       )}
-      {/* (what plugins put on it, on hover, before its X: the label fades under them, so nothing moves) */}
       {buttons.length > 0 && (
         <span data-tab-buttons className={cn("invisible absolute flex gap-0.5 group-hover/tab:visible @max-[140px]/tab:hidden", tab.pinned || !only ? "right-6.5" : "right-1")}>
           {buttons.map((b) => (
@@ -748,20 +639,16 @@ function TabChip({ tab, info, active, icons, menu, width, settling, close, line,
         </span>
       )}
       {away && <Undo2 aria-hidden data-tab-return className="pointer-events-none absolute right-1.5 size-3.5 text-muted-foreground" strokeWidth={2} />}
-      {/* (along the top: a tab group's line runs under) */}
       {own.color && !split && !(dragging && hole) && <span aria-hidden data-tab-color className="pointer-events-none absolute inset-x-2 top-0 h-[2px] rounded-b-full transition-colors duration-(--motion)" style={{ background: own.color }} />}
     </div>
   )
 }
 
-/** Right-click on a split's cell in the tab bar: the tab's menu (`menu`), after its pane's, under Pane (its own bar's,
- *  which with pane tab bars off is its view's bar). */
 const cellMenu = (pane: string, menu: () => MenuItem[]): MenuItem[] => {
   const [first, ...rest] = menu()
   return [{ label: "Pane", icon: Columns2, run: () => {}, items: paneMenuOf(pane) }, ...(first ? [{ ...first, sep: true }, ...rest] : [])]
 }
 
-/** How many more tabs a split's cell's pane has (+2): a click lists them, each shown by a click, its menu beside it. */
 function CellMore({ tab, pane, info }: { tab: Tab; pane: Pane; info: (t: Tab | Pane) => TabInfo }) {
   const own = paneWith(tab.root, pane.id), places = own ? placesOf(own) : []
   if (places.length < 2) return null
@@ -781,7 +668,6 @@ function CellMore({ tab, pane, info }: { tab: Tab; pane: Pane; info: (t: Tab | P
   )
 }
 
-/** A pane's icon, as a tab shows it. */
 function PaneIcon({ i, className }: { i: TabInfo; className?: string }) {
   return (
     <Badged on={i.badge}>
@@ -790,27 +676,19 @@ function PaneIcon({ i, className }: { i: TabInfo; className?: string }) {
   )
 }
 
-/** A tab's (or a split's half's) icon, name and mark. */
 function ChipLabel({ i, icons, strong, muted, mark = true, reserve }: { i: TabInfo; icons: boolean; strong: boolean; muted: boolean; mark?: boolean
-  /** Its tab has buttons on hover (tabButtons): the label fades before them. */
   reserve?: boolean }) {
   return (
     <>
-      {/* (too narrow for both, the mark stands in for the icon: a browser's speaker does) */}
       {icons && <PaneIcon i={i} className={cn(i.mark && mark && "@max-[80px]/tab:hidden")} />}
-      {/* Too narrow for more than a letter or two: only the icon (the tooltip has the name). */}
       <span className={cn("min-w-0 flex-1 fade-end", reserve && "group-hover/tab:[--fade-reserve:var(--tab-buttons)]", icons && "@max-[80px]/tab:hidden", strong ? "font-medium text-foreground" : muted ? "text-muted-foreground" : "font-medium text-muted-foreground")}>{i.label}</span>
       {mark && i.mark && <IconAction action={i.mark} className="ml-auto @max-[80px]/tab:ml-0"><i.mark.icon className={cn("size-3.5 shrink-0", !i.mark.tint && "text-muted-foreground")} strokeWidth={2.25} style={i.mark.tint ? { color: i.mark.tint } : undefined} /></IconAction>}
     </>
   )
 }
 
-// ---------- what tabs and panes show ----------
-
 const isTab = (x: Tab | Pane): x is Tab => "root" in x
 
-/** What a tab or pane shows: its label and icon, drawn again when a view's plugin says so (viewsChanged). A tab's is its
- *  focused pane's, named as it was named (Rename tab); a split's without a name, its panes' names together. */
 export function useTabInfo(store: Store | null, pageInfo: (id: string) => TabInfo | null) {
   const { disabled } = usePrefs()
   useViewsVersion()
@@ -822,8 +700,6 @@ function infoOf(x: Tab | Pane, store: Store | null, disabled: string[], pageInfo
   if (x.name && (ps.length > 1 || !namesItself(ps[0].to, disabled))) return { ...own, label: x.name }
   return ps.length > 1 ? { ...own, label: ps.map((p) => placeInfo(p, store, disabled, pageInfo).label).join(" · ") } : own
 }
-/** What a place names itself, so a name the tab was given doesn't show: a vault file, a view with a name of its own (a
- *  terminal's session). */
 export const namesItself = (to: string, disabled = getPrefs().disabled) =>
   !!vaultPath(to) || (to.startsWith("view:") && !!viewFor(to, disabled)?.def.rename)
 function placeInfo(p: Pane, store: Store | null, disabled: string[], pageInfo: (id: string) => TabInfo | null): TabInfo {
@@ -848,14 +724,12 @@ export function viewInfo(to: string, disabled = getPrefs().disabled, pane?: stri
     : { label: to.slice(5), icon: SquareDashed }
 }
 
-/** The app's own pages' names and icons (App's `pageInfo`), for what draws tabs outside the workspace (the Tabs panel). */
 let pageInfoOf: (id: string) => TabInfo | null = () => null
 export const setPageInfo = (fn: (id: string) => TabInfo | null) => { pageInfoOf = fn }
 /** What each tab or pane shows (its label and icon), as the bar does: for plugins (the Tabs panel). */
 export const useTabLabels = (store: Store | null) => useTabInfo(store, (id) => pageInfoOf(id))
 /** The same outside a render (what the quick switcher finds). */
 export const tabLabel = (t: Tab | Pane, store: Store | null) => infoOf(t, store, getPrefs().disabled, pageInfoOf)
-/** Its label without the name it was given: what it shows calls itself (a split, its panes together). */
 export const shownLabel = (t: Tab, store: Store | null) => panesOf(t).map((p) => placeInfo(p, store, getPrefs().disabled, pageInfoOf).label).join(" · ")
 /** A tab's right-click menu, the one its chip has. */
 export function tabMenuOf(id: string): MenuItem[] {
@@ -865,23 +739,17 @@ export function tabMenuOf(id: string): MenuItem[] {
 /** A pane's right-click menu, the one its bar has (a half of a split tab's row). */
 export const paneMenuOf = (id: string): MenuItem[] => paneMenu(id)
 
-// ---------- the bars ----------
-
-/** The window's tab bar, across the top of its panes (appearance `tabBar`): a chip per tab, a split tab's panes in one
- *  chip, tab groups' chips before their tabs, + after the last. It never moves when a tab's page is narrower or wider. */
 export function TabStrip({ info }: { info: (t: Tab | Pane) => TabInfo }) {
   const l = useTabList(), { tabs, active } = l
   const { fileIcons } = usePrefs()
   useSelectable(TABS, { menu: (ids) => tabsMenu(ids), noun: ["tab", "tabs"] })
   const hit = useDropHit<Drop>(PANES)
   const item = useDragItem()
-  // Dragged over it, the tabs make way for what's dragged, in the tab group it would join (its line under it).
   const preview = item ? previewIn(l, item, hit) : null
   const drawn = groupsAsDrawn(preview?.tabs ?? tabs)
   const lineOf = (id: string) => drawn.get(id)
   const row = useRef<HTMLDivElement>(null)
   useSlide(row, preview && [...previewOrder(l, preview), "new"], "x")
-  // (after useSlide: a drop's preview is taken off first, so they slide from where it drew them)
   useReflow(row, l)
   useGroupLines(row, "x")
   useEffect(() => {
@@ -894,13 +762,10 @@ export function TabStrip({ info }: { info: (t: Tab | Pane) => TabInfo }) {
       else if (t.offsetLeft + t.offsetWidth > r.scrollLeft + r.clientWidth) r.scrollLeft = t.offsetLeft + t.offsetWidth - r.clientWidth + 36
     }
     reveal()
-    // The window made narrower (a sidebar opened, a divider dragged) keeps it in view too.
     const ro = new ResizeObserver(reveal)
     ro.observe(r)
     return () => ro.disconnect()
   }, [active, tabs.length])
-  // Something dragged near either end of the row while it scrolls: it scrolls that way (faster the closer), like the
-  // file tree near its edges, so every place in it can take the drop.
   useEffect(() => {
     const r = row.current
     if (!item || !r) return
@@ -912,8 +777,6 @@ export function TabStrip({ info }: { info: (t: Tab | Pane) => TabInfo }) {
     })
     return () => { off(); edge.stop() }
   }, [item])
-  // Closed with the mouse, the tabs keep their width so the next one's X comes under the pointer, as browsers do; they
-  // fill the bar again once it leaves (or a tab opens, or one closes another way).
   const [held, setHeld] = useState<{ width: number; count: number } | null>(null)
   const [settling, setSettling] = useState(false)
   const pointer = useRef("")
@@ -932,7 +795,6 @@ export function TabStrip({ info }: { info: (t: Tab | Pane) => TabInfo }) {
     let width = 0
     if (mouse) {
       width = el.getBoundingClientRect().width
-      // The last one closed: the rest widen to end where it did, so the new last one's X comes under the pointer.
       const n = tabs.length - 1, first = r.querySelector<HTMLElement>("[data-tab-id]")
       if (tab.id === tabs.at(-1)?.id && n > 0 && first && r.scrollWidth <= r.clientWidth) {
         const gap = parseFloat(getComputedStyle(r).columnGap) || 0
@@ -946,13 +808,9 @@ export function TabStrip({ info }: { info: (t: Tab | Pane) => TabInfo }) {
     <div data-tab-bar data-title-row data-tab-strip onContextMenu={menuFor(barMenu)}
       onPointerDownCapture={(e) => { pointer.current = e.pointerType }} onPointerLeave={() => { if (held) release() }}
       className="group/bar relative flex h-10 shrink-0 items-center gap-1 border-b-[0.5px] border-border bg-background pr-1.5 pl-2">
-      {/* Tabs shrink down to their icon and close button, then the row scrolls (a mouse wheel scrolls it sideways),
-          keeping the active tab in view. */}
       <div ref={row} data-tab-row data-select-list={TABS} onWheel={(e) => { if (!e.deltaX && e.currentTarget.scrollWidth > e.currentTarget.clientWidth) e.currentTarget.scrollLeft += e.deltaY }}
         className="edge-fade-x relative flex min-w-0 flex-1 items-start gap-1 self-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {/* Only the tabs are the tablist (New tab is beside them, not one); laid out as if it weren't there. */}
         <div role="tablist" aria-label="Open tabs" className="contents">
-        {/* (one flat list, so a chip keeps its element as its group folds and opens: its count and line move) */}
         {tabs.flatMap((t, i) => {
           const g = t.group && t.group !== tabs[i - 1]?.group ? l.groups?.find((x) => x.id === t.group) : undefined
           const own = t.group ? l.groups?.find((x) => x.id === t.group) : undefined
@@ -964,12 +822,10 @@ export function TabStrip({ info }: { info: (t: Tab | Pane) => TabInfo }) {
           return chip ? [chip, it] : [it]
         })}
         </div>
-        {/* Right after the last tab (not pinned to the bar's end); its tab opens there, as in a browser. */}
         <button type="button" onClick={() => openNewTab({ at: "end" })} aria-label="New tab" data-ui="button:tab:new" data-tip="New tab" data-slide="new" data-slide-fixed
           className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-[5px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground">
           <Plus className="size-4" strokeWidth={2} />
         </button>
-        {/* Where something from elsewhere would open. */}
         {preview?.tabs.some((t) => t.id === INCOMING) && (
           <div aria-hidden data-slide={INCOMING} data-line-of={lineOf(INCOMING)} className="pointer-events-none absolute left-0 h-7 rounded-control bg-foreground/[0.06] ring-[0.5px] ring-border" />
         )}
@@ -978,7 +834,6 @@ export function TabStrip({ info }: { info: (t: Tab | Pane) => TabInfo }) {
   )
 }
 
-/** A zoomed pane's unzoom or a floating pane's dock, accent-tinted as Rex's, each a click away. */
 function PaneState({ id, float, zoomed }: { id: string; float: boolean; zoomed: boolean }) {
   const zoomKeys = useCommandKeys("pane:zoom", true), floatKeys = useCommandKeys("pane:float", true)
   if (!zoomed && !float) return null
@@ -992,18 +847,14 @@ function PaneState({ id, float, zoomed }: { id: string; float: boolean; zoomed: 
   )
 }
 
-/** A pane's own buttons at its bar's end, the same on every kind of pane: its state (zoomed, floating), its X and its
- *  handle, the last two shown while the pointer is on the bar (`group/bar`; a fading file bar shown: `data-shown`). */
 function PaneButtons({ id, tab, several, only, float, zoomed, label }: { id: string; tab: string; several: boolean; only: boolean; float: boolean; zoomed: boolean; label: () => string }) {
   const tabKeys = useCommandKeys("tab:close", true), paneKeys = useCommandKeys("pane:close", true)
   const item = useDragItem()
   const hover = item?.pane === id ? "opacity-100" : "opacity-0 group-hover/bar:opacity-100 group-data-[shown]/bar:opacity-100"
-  // (a pane with tabs of its own closes the one it shows, as ⌘W does)
   const stacked = stackOf(id) > 1, what = several && !stacked ? "Close pane" : "Close tab", closeKeys = stacked ? tabKeys : tabKeys || paneKeys
   return (
     <>
       <PaneState id={id} float={float} zoomed={zoomed} />
-      {/* Closes the pane (its tab's last: the tab), pinned too (⌘⇧T brings it back). Not the window's only one. */}
       {!only && (
         <button type="button" data-pane-close={id} aria-label={what} data-tip={item ? undefined : `${what}${closeKeys}`}
           onClick={() => (several ? closePane(id) : closeTab(tab))}
@@ -1020,7 +871,6 @@ function PaneButtons({ id, tab, several, only, float, zoomed, label }: { id: str
   )
 }
 
-/** How pane `id` is drawn now: in the tab on screen beside others ("split", "zoomed", "float"), else "". */
 const splitState = (id: string) => {
   const t = shownTab(here()), ps = t ? panesOf(t) : [], p = ps.find((x) => x.id === id)
   return !t || !p || ps.length < 2 ? "" : t.zoom === id ? "zoomed" : p.float ? "float" : "split"
@@ -1040,19 +890,14 @@ export function PaneControls() {
   )
 }
 
-/** A pane's bar: in a split, its tabs' strip (`paneTabBars`); else a thin one, its view's top bar its title row with its
- *  menu and buttons (PaneControls), the strip shown over it while a tab is dragged over the pane, to drop among them. */
 export function PaneBar({ pane, tab, focused, info, only, float, zoomed }: { pane: Pane; tab: Tab; focused: boolean; info: (t: Tab | Pane) => TabInfo
-  /** The window's only pane: nothing to close. */
   only: boolean
-  /** Its state, a button at the bar's end, before its X. */
   float: boolean; zoomed: boolean }) {
   const { paneTabBars } = usePrefs()
   const hasTopBar = usePaneHasTopBar(pane.id), split = panesOf(tab).length > 1, strip = paneTabBars && split
   const merged = !strip && hasTopBar
   const bare = useRef<HTMLDivElement>(null)
   const id = pane.id
-  // (dragged over it, the strip it would have: what's dragged can join its tabs)
   const over = useDrag((d) => { const x = d?.hit?.target === PANES ? (d.hit.data as Drop) : null; return !!x && x.kind !== "list" && x.pane === id })
   const dropping = split && !strip && over
   useEffect(() => {
@@ -1068,14 +913,11 @@ export function PaneBar({ pane, tab, focused, info, only, float, zoomed }: { pan
   const buttons = <PaneButtons id={id} tab={tab.id} several={split} only={only} float={float} zoomed={zoomed} label={() => i.label} />
   const menu = menuFor(() => barMenuOf(id))
   const own = paneWith(tab.root, id), places = own ? placesOf(own) : [pane]
-  // (its + opens one among them, a terminal's too: asked for here; a pinned tab's new tabs go to the list)
   if (strip) return <PlaceStrip id={id} places={places} focused={focused} info={info} menu={menu} adds={!tab.pinned}>{buttons}</PlaceStrip>
   return (
     <div ref={bare} data-pane-bar={id} data-title-row data-bare data-merged={merged || undefined} onContextMenu={menu}
       className="group/bar relative flex h-2.5 shrink-0 bg-background pr-1.5">
-      {/* In flow, so the drag strip (its first child, index.css) keeps out of the corner padding the toggles sit in. */}
       <div className="h-full min-w-0 flex-1" />
-      {/* (merged, they're the view's bar's: PaneControls) */}
       {!merged && <div className="relative z-10 mt-0.5 flex self-start">{buttons}</div>}
       {dropping && (
         <div data-drop-strip={id} className="absolute inset-x-0 top-0 z-30 shadow-sm animate-in fade-in slide-in-from-top-1 duration-150">
@@ -1086,11 +928,8 @@ export function PaneBar({ pane, tab, focused, info, only, float, zoomed }: { pan
   )
 }
 
-/** With the tab bar on, a split's pane has its own tabs (Pane.stack) in a strip, its tab bar: a click shows one, its X
- *  closes it, a press drags it (along the strip, onto a pane, to the tab bar); dragged over, chips make way. */
 function PlaceStrip({ id, places, focused, info, menu, adds, children }: { id: string; places: Pane[]; focused: boolean; info: (t: Tab | Pane) => TabInfo
   menu: (e: React.MouseEvent) => void
-  /** Its + (a new tab among them). */
   adds: boolean; children: React.ReactNode }) {
   const item = useDragItem(), hit = useDropHit<Drop>(PANES)
   const row = useRef<HTMLDivElement>(null)
@@ -1102,7 +941,6 @@ function PlaceStrip({ id, places, focused, info, menu, adds, children }: { id: s
       className="group/bar relative flex h-10 shrink-0 items-center gap-1 border-b-[0.5px] border-border bg-background pr-1.5 pl-2">
       <div ref={row} data-place-chips className="relative flex min-w-0 flex-1 items-center gap-1 self-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {places.map((p) => <PlaceChip key={p.id} p={p} shown={p.id === id} focused={focused} info={info} />)}
-        {/* (right after its last tab, as the tab bar's) */}
         {adds && (
           <button type="button" data-place-new={id} data-no-drag data-slide="new" data-slide-fixed aria-label="New tab" data-tip={item ? undefined : "New tab"}
             onClick={() => { selectPane(id); openNewTab({ at: "pane" }) }}
@@ -1117,7 +955,6 @@ function PlaceStrip({ id, places, focused, info, menu, adds, children }: { id: s
   )
 }
 
-/** One of a pane's own tabs in its strip. */
 function PlaceChip({ p, shown, focused, info }: { p: Pane; shown: boolean; focused: boolean; info: (t: Tab | Pane) => TabInfo }) {
   const item = useDragItem()
   const { fileIcons } = usePrefs()

@@ -1,5 +1,3 @@
-// Set up Vaultite, the desktop app's first-run window (web/onboarding.html; electron/setup.ts): the vault, made or
-// opened. Its window then opens, and the welcome card there goes on with the look and AI (components/Welcome.tsx).
 import { useEffect, useState, type ReactNode } from "react"
 import { CircleAlert, FlaskConical, FolderOpen, FolderPlus, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -13,18 +11,15 @@ type Chosen = { path?: string; made?: boolean; added?: boolean } | null
 type VaultChoice = { kind: "new"; name: string; parent: string; starter: boolean } | { kind: "open"; path: string }
 type Info = { places: { icloud: string | null; documents: string; home: string }; obsidian: { path: string; name: string }[]; vau: Vau; vauHome: string; mac: boolean }
 
-/** The preload's window.vaultite.onboarding (electron/preload.cjs): answered only for this window. */
 export type SetupApi = {
   info: () => Promise<Info>
   pick: () => Promise<string | null>
   choose: (c: VaultChoice | null) => Promise<Chosen>
   vau: (system: boolean) => Promise<{ did: string; vau: Vau }>
   sandbox: () => Promise<void>
-  /** Open the vault chosen, and close this window. */
   finish: () => Promise<void>
 }
 
-/** A path as the user knows it: iCloud Drive/…, ~/… */
 const short = (p: string, home: string) => {
   const icloud = `${home}/Library/Mobile Documents/com~apple~CloudDocs`
   return p === icloud || p.startsWith(icloud + "/") ? `iCloud Drive${p.slice(icloud.length)}` : p.startsWith(home + "/") ? `~${p.slice(home.length)}` : p
@@ -47,7 +42,6 @@ export function Onboarding({ setup }: { setup: SetupApi }) {
   )
 }
 
-/** The page's own shape while this machine is read (its folders, Obsidian's vaults: a moment). */
 function Waiting({ error }: { error: string }) {
   if (error) return <p role="alert" className="m-auto max-w-[360px] text-center text-muted-foreground">{error}</p>
   return (
@@ -73,11 +67,8 @@ function VaultPage({ setup, info }: { setup: SetupApi; info: Info }) {
   const ready = kind === "new" ? !!name.trim() && !!parent : !!folder
   const run = async (what: "go" | "sandbox", fn: () => Promise<unknown>) => {
     setBusy(what); setError("")
-    // (done: the window closes; until then it says it's working)
     try { await fn() } catch (e) { setError(plainText(e)); setBusy(null) }
   }
-  // vau comes installed, like Obsidian's CLI: in ~/.local/bin, no password (what agents in the terminal use). Said
-  // under the page, done as the user goes on.
   const vau = () => (info.vau.path ? Promise.resolve() : setup.vau(false).then(() => {}, (e) => console.error("vau:", e)))
   const go = () => run("go", async () => {
     await vau()
@@ -115,7 +106,6 @@ function VaultPage({ setup, info }: { setup: SetupApi; info: Info }) {
                 </Chip>
               </div>
             </Field>
-            {/* Nothing outside .vaultite/ unless asked: a Start here note, and AGENTS.md and CLAUDE.md pointing agents at the rules. */}
             <Field label="">
               <label className="flex cursor-pointer items-center gap-2">
                 <input type="checkbox" checked={starter} onChange={(e) => setStarter(e.target.checked)} data-starter className="size-3.5 accent-[var(--primary)]" />
@@ -153,7 +143,6 @@ function VaultPage({ setup, info }: { setup: SetupApi; info: Info }) {
   )
 }
 
-// ---------- pieces ----------
 const field = "h-7 rounded-[6px] border-[0.5px] border-border bg-background px-2 text-[13px] outline-none focus:ring-2 focus:ring-primary/40"
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
@@ -175,7 +164,6 @@ function Chip({ on, children, onClick, tip, ...p }: { on: boolean; children: Rea
   )
 }
 
-/** Cards to pick one of: radio buttons, so the arrows move between them. */
 function Options({ name, value, options, onChange }: { name: string; value: string; onChange: (v: string) => void
   options: { value: string; icon: LucideIcon; title: string; sub: string }[] }) {
   return (
@@ -199,7 +187,6 @@ function Options({ name, value, options, onChange }: { name: string; value: stri
   )
 }
 
-/** A folder to open: its name (its path on hover); picked, a tick. Without `on`, an action (Choose a folder…). */
 function Row({ icon: Icon, title, tip, on, onClick, ...p }: { icon?: LucideIcon; title: string; tip?: string; on?: boolean; onClick: () => void }
   & Record<`data-${string}`, unknown>) {
   const action = on === undefined
@@ -214,5 +201,4 @@ function Row({ icon: Icon, title, tip, on, onClick, ...p }: { icon?: LucideIcon;
   )
 }
 
-/** A vault's mark in the list: a folder, the accent's when picked. */
 const VaultMark = ({ on }: { on: boolean }) => <FolderOpen className={cn("size-4 shrink-0", on ? "text-primary" : "text-muted-foreground")} strokeWidth={2} />

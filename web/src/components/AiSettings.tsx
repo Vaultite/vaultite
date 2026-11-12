@@ -1,5 +1,3 @@
-// Settings > AI: the Use AI switch, then, while it's on, the coding agents on the server's machine (their paths only on
-// hover) with the companion's, and the parts plugins add here (`settingsPages` with `in: "ai"`: Connections' apps).
 import { Fragment, useRef, type ReactNode } from "react"
 import type { Store } from "@/core/data"
 import { hasCompanion, setCompanion, useAi, useCodingAgents, useCompanionAgent, type CodingAgent } from "@/core/ai"
@@ -11,13 +9,11 @@ import { openMenu } from "@/components/ContextMenu"
 import { Group, LoadingRows, Section, SettingRow, Switch } from "@/components/kit"
 import { SwitchRow } from "@/components/SwitchRow"
 
-/** The parts plugins that are on add to the AI section, in plugin order. */
 export function aiParts(disabled: string[]) {
   return PLUGINS.filter((p) => p.settingsPages && isEnabled(p.id, disabled)).flatMap((p) =>
     Object.entries(p.settingsPages!).filter(([, d]) => d.in === "ai").map(([k, d]) => ({ ...d, id: `${p.id}:${k}` })))
 }
 
-/** A line under a section's title. */
 const Sub = ({ children }: { children: string }) => (
   <p className="mb-1.5 text-[13px] leading-[18px] text-muted-foreground md:px-1 md:text-[12px] md:leading-[16px]">{children}</p>
 )
@@ -41,10 +37,8 @@ export function AiPanel({ store }: { store: Store }) {
   )
 }
 
-/** A path on the server's machine as its owner reads it: the home folder as ~. */
 const shortPath = (p: string) => p.replace(/^(\/Users|\/home)\/[^/]+(?=\/|$)/, "~").replace(/^[A-Z]:\\Users\\[^\\]+(?=\\|$)/i, "~")
 
-/** "A", "A and B", "A, B and C" of the names, each its own node. */
 function spoken(nodes: ReactNode[]) {
   return nodes.map((n, i) => <Fragment key={i}>{i === 0 ? "" : i === nodes.length - 1 ? " and " : ", "}{n}</Fragment>)
 }
@@ -73,7 +67,6 @@ function CodingAgents() {
   )
 }
 
-/** One found: its switch (its plugin's), or Get when its plugin is in Vaultite's directory and not here yet. */
 function AgentRow({ a, on }: { a: CodingAgent; on: boolean }) {
   const p = pluginById(a.id)
   const tip = shortPath(a.path!)
@@ -85,12 +78,10 @@ function AgentRow({ a, on }: { a: CodingAgent; on: boolean }) {
   )
 }
 
-/** Which of the agents on is the companion (when there's one): a choice once there are two. */
 function CompanionRow({ running }: { running: Agent[] }) {
   const current = useCompanionAgent(), ref = useRef<HTMLDivElement>(null)
   if (!hasCompanion() || !running.length) return null
   const mine = running.find((a) => a.name === current.split("_")[0])
-  // (under the row's value, at its right)
   const choose = () => {
     const r = ref.current?.getBoundingClientRect()
     if (r) openMenu({ x: r.right - 180, y: r.bottom - 4, flip: r.top + 4 }, running.map((a) => ({ label: a.label, icon: a.icon, checked: a === mine, run: () => { if (a !== mine) void setCompanion(a.name) } })))

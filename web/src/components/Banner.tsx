@@ -1,5 +1,3 @@
-// A note over a file's text (it changed elsewhere, it's in the trash, iCloud kept another version), with what can be
-// done about it: the file view's and plugins' (a NoteTopItem).
 import type { ReactNode } from "react"
 import { AlertTriangle, type LucideIcon } from "lucide-react"
 

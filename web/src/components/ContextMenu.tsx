@@ -1,5 +1,3 @@
-// The app's own menus (openMenu, menuFor), never the browser's, except in text fields where its menu keeps copy, paste
-// and spelling. On touch a finger held still is the right-click (watchHolds), so every menu works on phones.
 import { memo, Fragment, useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react"
 import { createPortal } from "react-dom"
 import { Check, ChevronLeft, ChevronRight, Ellipsis, Search, type LucideIcon } from "lucide-react"
@@ -54,29 +52,23 @@ export function commandItems(...ids: string[]): MenuItem[] {
     if (!c) return []
     const keys = keysOf(c)[0]
     return [{ label: commandName(c), icon: typeof c.icon === "string" ? undefined : c.icon as LucideIcon | undefined, hint: keys ? keyHint(keys) : undefined,
-      // (`keep`: a checkbox, not a choice among several; a menu that can redraw shows it flipped)
       ...(isSetting(c) ? { checked: isOn(c), keep: true } : {}), run: () => c.run() }]
   })
 }
 
-/** Where a menu opens: `y` its top (bottom when `up`); `flip`, from a button: its bottom (top when `up`) on the button's
- *  other side, where it goes when it doesn't fit, not pushed over the button. */
 export type MenuAt = { x: number; y: number; flip?: number }
-/** `up`: the menu's bottom sits at `at` (above a button at the bottom of the window). */
 type Open = { at: MenuAt; items: MenuItem[]; up?: boolean
-  /** The items again (after a `keep` item changed something). */
   again?: () => MenuItem[] } | null
 
 let open: Open = null
 const subs = signal()
 const set = (o: Open) => { open = o; subs.notify() }
-/** Phones: rows, text and icons like the phone's More menu (44px, 17px, 20px); desktop: 28px, 13px, 16px. */
 const icon = "size-5 shrink-0 md:size-4"
 
 export function openMenu(at: MenuAt, items: MenuItem[], up = false, again?: () => MenuItem[]) {
   if (!items.length) return
   if (!open) release = holdFocus()
-  // Opened while a mouse button is still down (a Mac's right button opens it as it goes down): letting go on a row picks it.
+  // A Mac opens the menu as the right button goes down: letting go on a row picks it.
   armed = pressed ? { ...pressed, at: performance.now() } : null
   set({ at, items, up, again })
 }
@@ -89,10 +81,7 @@ export function replaceMenu(was: MenuItem[], items: MenuItem[]) {
 export const menuShowing = () => open !== null
 /** A menu is showing, as a hook (what it was opened from holds still meanwhile). */
 export const useMenuShowing = () => subs.use(() => open !== null)
-/** The open menu's items are being asked for again (after a `keep` click), not for a new menu. */
 let redrawing = false
-/** Closes the menu, which fades as a Mac's does: `chosen`, the row picked, blinks first (not from a finger: a phone's
- *  menu doesn't); `now`: gone at once (the window resized, a drag began). */
 const closeMenu = ({ chosen, blink = true, now = false }: { chosen?: HTMLElement; blink?: boolean; now?: boolean } = {}) => {
   if (open && !now) {
     const lists = [...document.querySelectorAll<HTMLElement>("[data-menu-list]")]
@@ -102,20 +91,16 @@ const closeMenu = ({ chosen, blink = true, now = false }: { chosen?: HTMLElement
   armed = null
   set(null); if (release) { const r = release; release = null; r() }
 }
-/** The keyboard goes back where it was when the menu closes (core/focus.ts). */
 let release: (() => void) | null = null
 const openState = () => open
-/** Where a mouse button went down, while it's held; `armed`: the menu opened during that press, and when. */
 let pressed: { x: number; y: number } | null = null
 let armed: { x: number; y: number; at: number } | null = null
-/** Let go this far from where it went down, or this long after the menu opened, the press was aimed at a row. */
 const AIMED_PX = 5, AIMED_MS = 300
 /** For onContextMenu: the menu at the pointer (nothing if there are no items; never the browser's). */
 export const menuFor = (items: () => MenuItem[]) => (e: MouseEvent) => {
   e.preventDefault(); e.stopPropagation()
   openMenu({ x: e.clientX, y: e.clientY }, items(), false, items)
 }
-/** For a card (a phone's tab card): the menu under it, or over it when it's low on the screen, not at the finger. */
 export const menuOnCard = (items: () => MenuItem[]) => (e: MouseEvent) => {
   e.preventDefault(); e.stopPropagation()
   const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
@@ -124,11 +109,8 @@ export const menuOnCard = (items: () => MenuItem[]) => (e: MouseEvent) => {
 }
 const redraw = (items: () => MenuItem[]) => { redrawing = true; try { return items() } finally { redrawing = false } }
 
-// ---------- checklists ----------
-
 /** One thing a checklist turns on or off; `icon`: what it is (a panel's, as the rail shows it), beside its check. */
 export type CheckItem = { key: string; label: string; hint?: string; disabled?: boolean; icon?: LucideIcon }
-/** The rows each checklist of the open menu showed when it opened (its ticked ones, More's groups), by its id. */
 const listed = new Map<string, { rows: CheckItem[]; more: CheckItem[][] }>()
 
 /** Which things are on, as menu rows: on ones ticked, in order, then More ▸ with `off`. Each is a checkbox keeping the
@@ -137,7 +119,6 @@ export function checklist(id: string, { on, off = [], set }: {
   on: CheckItem[]; off?: CheckItem[][]; set: (key: string, on: boolean, before: string | null) => void
 }): MenuItem[] {
   const was = redrawing ? listed.get(id) : undefined
-  // Labels and hints as they are now; what came on elsewhere since the menu opened joins the ticked ones.
   const now = (c: CheckItem) => on.find((o) => o.key === c.key) ?? off.flat().find((o) => o.key === c.key) ?? c
   const placed = (k: string) => !!was && (was.rows.some((c) => c.key === k) || was.more.some((g) => g.some((c) => c.key === k)))
   const rows = was ? [...was.rows.map(now), ...on.filter((o) => !placed(o.key))] : on
@@ -148,37 +129,28 @@ export function checklist(id: string, { on, off = [], set }: {
     label: c.label, hint: c.hint, icon: c.icon, disabled: c.disabled, checked: isOn(c.key), keep: true, sep,
     run: () => (isOn(c.key) ? set(c.key, false, null) : set(c.key, true, before())),
   })
-  // Ticked again: before the next of the menu's rows that's still on.
   const list = rows.map((c, i) => row(c, () => rows.slice(i + 1).find((r) => isOn(r.key))?.key ?? null))
   const extra = more.filter((g) => g.length).flatMap((g, gi) => g.map((c, i) => row(c, () => null, gi > 0 && i === 0)))
   if (extra.length) list.push({ label: "More", icon: Ellipsis, sep: list.length > 0, run: () => {}, items: extra })
   return list
 }
 
-// ---------- a held finger is a right-click ----------
-
-/** How long a finger rests still before it's a right-click: under iOS's own hold (~500ms: text selection, a link's
- *  preview), so the menu comes first. */
+// Under iOS's own hold (~500ms: text selection, a link's preview), so the menu comes first.
 const HOLD_MS = 450
-/** Where a hold stays the system's (text selection, editor, terminal) or something holds for itself (`data-own-hold`).
- *  `data-hold-menu` inside one opts back in (an image or a block in a note), unless a field in it is closer. */
 const OWN_HOLD = "input, textarea, select, [contenteditable=''], [contenteditable='true'], .cm-editor, [data-term], [data-own-hold]"
 const ownHold = (el: Element) => {
   if (el.closest("[data-own-hold]")) return true
   const own = el.closest(OWN_HOLD), menu = el.closest("[data-hold-menu]")
   return !!own && !(menu && own.contains(menu))
 }
-/** The contextmenu events a hold sent (ContextMenus' blocker leaves them, so `defaultPrevented` says a handler took one). */
 const held = new WeakSet<Event>()
 
-/** iOS never sends contextmenu, so a finger held still sends one to what's under it. Taken (preventDefault or a drag
- *  pickup), the phone taps and the lifting click is swallowed; a move or early lift calls it off. Returns a stop. */
+// iOS never sends contextmenu, so a finger held still dispatches one.
 function watchHolds() {
   let timer = 0, from = { x: 0, y: 0 }, target: Element | null = null
   const root = document.documentElement
   const stop = () => { clearTimeout(timer); timer = 0 }
-  // A hold taken: the page selects nothing till the finger lifts (index.css), since iOS's own selection begins just
-  // after it, on what's under the finger. What iOS selects anyway (it judges the text as the finger lands) is dropped.
+  // iOS's own selection begins just after a hold: data-held stops it (index.css), and what it selects anyway is dropped.
   const marked = () => root.hasAttribute("data-held")
   const mark = (on: boolean) => { if (marked() !== on) root.toggleAttribute("data-held", on) }
   const selecting = () => { const s = getSelection(); if (s && !s.isCollapsed && marked()) s.removeAllRanges() }
@@ -191,19 +163,17 @@ function watchHolds() {
     if (ownHold(t)) return
     from = { x: e.clientX, y: e.clientY }
     target = t
-    // A hold here is a menu: marked as the finger lands, when WebKit judges whether the text under it is selectable.
+    // Marked as the finger lands: that's when WebKit judges whether the text under it is selectable.
     if (t.closest("[data-hold-menu]")) mark(true)
     timer = window.setTimeout(() => {
       timer = 0
-      // What's under the finger now: the press may have begun on a picture of the screen (a tab growing out of its +,
-      // a view transition: core/motion.ts), whose target is the page itself.
+      // A press during a view transition targets the document itself: look again at what's under the finger.
       const now = document.elementFromPoint(from.x, from.y)
       const at = now && now !== document.documentElement ? now : target
       if (!at?.isConnected || ownHold(at)) { mark(false); return }
       const ev = new globalThis.MouseEvent("contextmenu", { bubbles: true, cancelable: true, composed: true, view: window, clientX: from.x, clientY: from.y, button: 2, buttons: 2 })
       held.add(ev)
       at.dispatchEvent(ev)
-      // A menu opened, or the finger picked something up (core/drag.ts): a tap, as iOS answers a hold.
       if (!ev.defaultPrevented && !fingerHolding()) { mark(false); return }
       mark(true)
       haptic(fingerHolding() ? "medium" : "light")
@@ -211,19 +181,19 @@ function watchHolds() {
       const swallow = (c: Event) => { c.preventDefault(); c.stopPropagation() }
       const unswallow = () => { removeEventListener("click", swallow, { capture: true }); removeEventListener("pointerdown", unswallow, { capture: true }) }
       addEventListener("click", swallow, { capture: true, once: true })
-      // Only this finger's lifting click: Chrome on Android sends none after a hold, and the next tap's must land.
+      // Only this finger's lifting click: Chrome on Android sends none after a hold.
       addEventListener("pointerdown", unswallow, { capture: true, once: true })
       setTimeout(unswallow, 800)
     }, HOLD_MS)
   }
   const move = (e: globalThis.PointerEvent) => { if (timer && Math.hypot(e.clientX - from.x, e.clientY - from.y) > 10) stop() }
-  // The system's own contextmenu (Android's hold, a mouse's right button): not a second one.
+  // Android's hold and a mouse send their own contextmenu: no second one.
   const native = (e: Event) => { if (!held.has(e)) stop() }
   const opts = { capture: true, passive: true }
   addEventListener("pointerdown", down, opts)
   addEventListener("pointermove", move, opts)
   addEventListener("pointerup", lift, opts)
-  // (a scroll or a drag took the pointer, but the finger is still down: the mark stays till touchend)
+  // pointercancel comes while the finger is still down: the mark stays till touchend.
   addEventListener("pointercancel", stop, opts)
   addEventListener("touchend", lift, opts)
   addEventListener("touchcancel", lift, opts)
@@ -265,15 +235,12 @@ export const menuAbove = (e: MouseEvent, items: MenuItem[]) => {
 const typing = (t: EventTarget | null) =>
   t instanceof Element && !!t.closest("input, textarea, [contenteditable=''], [contenteditable='true'], .cm-content")
 
-/** Mounted once (App): draws the open menu, keeps the browser's menu away and makes a held finger a right-click. */
 export const ContextMenus = memo(function ContextMenus() {
   const o = subs.use(() => open)
-  // A drag began (a finger that held a row, opening its menu, then moved): the menu goes.
   const dragging = useDragging()
   useEffect(() => { if (dragging) closeMenu({ now: true }) }, [dragging])
   useEffect(() => {
-    // Bubble phase: React's handlers (which open a menu) run first.
-    // (a hold's own event is left alone: it has no browser menu, and whether a handler took it is what it asks)
+    // Bubble phase on document: React's handlers, at its root, run first.
     const block = (e: globalThis.MouseEvent) => { if (!e.defaultPrevented && !typing(e.target) && !held.has(e)) e.preventDefault() }
     document.addEventListener("contextmenu", block)
     const unhold = watchHolds()
@@ -283,7 +250,6 @@ export const ContextMenus = memo(function ContextMenus() {
       const a = armed
       armed = null
       if (!a || e.pointerType !== "mouse" || (Math.hypot(e.clientX - a.x, e.clientY - a.y) < AIMED_PX && performance.now() - a.at < AIMED_MS)) return
-      // Let go on a row: it's picked (not one that only opens a submenu: hovering did that).
       const at = document.elementFromPoint(e.clientX, e.clientY)
       const row = at?.closest<HTMLButtonElement>("[data-menu-list] > button[data-index]")
       if (!row || row.disabled || (row.hasAttribute("aria-haspopup") && (!row.hasAttribute("data-split") || at!.closest("[data-menu-more]")))) return
@@ -301,18 +267,17 @@ export const ContextMenus = memo(function ContextMenus() {
 function Menu({ at, items, up, again }: { at: MenuAt; items: MenuItem[]; up?: boolean; again?: () => MenuItem[] }) {
   usePageLock()
   useEffect(() => {
-    // Escape closes the menu (a submenu handles its own first); so does the window changing size. Only the menu: the
-    // key's own close request would reach the sheet under it once the menu's layer is gone.
+    // preventDefault: else Escape's close request reaches the sheet's <dialog> once the menu's is gone.
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); closeMenu() } }
     const onResize = () => closeMenu({ now: true })
     addEventListener("keydown", onKey)
     addEventListener("resize", onResize)
     return () => { removeEventListener("keydown", onKey); removeEventListener("resize", onResize) }
   }, [at])
-  // Over an open sheet (a modal <dialog>: the rest of the page is inert), the menu is a modal dialog of its own above it.
+  // Over a modal <dialog> the rest of the page is inert: the menu needs a modal dialog of its own.
   const [over] = useState(() => [...document.querySelectorAll("dialog[open]")].some((d) => { try { return d.matches(":modal") } catch { return false } }))
   const layer = useRef<HTMLDialogElement>(null)
-  // The list goes in once the layer is open: a shut <dialog> has no size, so it couldn't keep itself on screen.
+  // After showModal: a shut <dialog> has no size to place the list in.
   const [ready, setReady] = useState(!over)
   useLayoutEffect(() => { if (over) { layer.current?.showModal(); setReady(true) } }, [over])
   const body = (
@@ -331,18 +296,10 @@ function Menu({ at, items, up, again }: { at: MenuAt; items: MenuItem[]; up?: bo
   )
 }
 
-// ---------- typing to filter ----------
-
-/** A long list of like rows (no groups: Panels ▸ More) says it can be typed into, on a computer (a phone has no keys).
- *  A grouped menu of commands doesn't: it's read, not searched. */
 const LONG = 10
-/** A row found by typing, and where it is: its indices down from the level typed in (a phone drills in through them). */
 type Found = { it: MenuItem; at: number[] }
-/** The rows whose label matches `q`, best first, those of submenus too (Panels ▸ More ▸ Daily note). Two that read the
- *  same say which submenu each is in. */
 function found(items: MenuItem[], q: string): Found[] {
   const out: (Found & { score: number; where: string })[] = []
-  // (a split row's submenu repeats its choice first: found once)
   const walk = (its: MenuItem[], at: number[], where: string, skip?: string) => its.forEach((it, i) => {
     if (it.caption || it.field || it.colors || it.segments || it.label === skip) return
     const m = fuzzy(q, it.label)
@@ -355,32 +312,21 @@ function found(items: MenuItem[], q: string): Found[] {
     .map(({ it, at, where }) => ({ at, it: { ...it, sep: false, hint: it.hint ?? (where && twice(it.label) ? where : undefined) } }))
 }
 
-/** One level of a menu, at a point or beside the item that opened it. Phones have no room beside: a submenu takes the
- *  menu's place, with a Back row. Arrows move; → opens a submenu, ← or Escape closes one. */
 function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
   items: MenuItem[]; at?: MenuAt; up?: boolean
-  /** A submenu: the rect of the item it belongs to. */
   beside?: DOMRect
-  /** The whole menu's items again (the top level's), after a `keep` item changed something: a `keep` item in a
-   *  submenu redraws the whole menu too, the submenu staying open (the sidebar's Panels ▸). */
   again?: () => MenuItem[]
-  /** Focus its first item when it opens (the top level, or a submenu opened from the keyboard). */
   focus?: boolean
-  /** Close this submenu (and give its item the focus back). */
   onBack?: (refocus: boolean) => void
-  /** The pointer reached this submenu: its item's menu keeps it open. */
   onHover?: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
   const timer = useRef(0)
   const [drill] = useState(() => !beside && !isDesktop())
-  // Phones: the submenus opened in place, outermost first.
   const [trail, setTrail] = useState<number[]>([])
   const shown = trail.reduce<MenuItem[]>((its, i) => its[i]?.items ?? its, items)
   const parent = trail.length ? trail.slice(0, -1).reduce<MenuItem[]>((its, i) => its[i]?.items ?? its, items)[trail[trail.length - 1]] : null
-  // Typed while it's open: only the rows that match, its submenus' too. Its width stays as it was (the rows don't jump).
-  // The filter is a real field once typed into (⌘A, ⌥⌫, paste and dictation work in it), its best match the one Enter picks.
   const [query, setQuery] = useState("")
   const field = useRef<HTMLInputElement>(null)
   const [inField, setInField] = useState(false)
@@ -389,16 +335,11 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
   const rows = hits ? hits.map((f) => f.it) : shown
   const lead = rows.some((it) => it.icon || it.items)
   const bestAt = rows.findIndex((it) => !it.caption && !it.field && !it.colors && !it.segments && !it.disabled)
-  // Rows with an icon of their own and a check (a container, a panel): the check goes at the end, so no row keeps two
-  // empty columns at its start.
   const trailing = rows.some((it) => it.checked !== undefined && it.icon)
-  // The open submenu, by its row's label: a menu drawn again (a `keep` click) can have rows come and go above it.
   const [sub, setSub] = useState<{ label: string; rect: DOMRect; focus: boolean } | null>(null)
   const subAt = sub ? rows.findIndex((it) => it.label === sub.label) : -1
-  /** A phone opens a submenu in place: a found one through the submenus it's in. */
   const into = (i: number) => { setTrail([...trail, ...(hits ? hits[i].at : [i])]); setQuery("") }
   const back = () => { setTrail(trail.slice(0, -1)); setQuery("") }
-  // Placed (kept on screen) before the first paint, and no animation: it's there at once, like a native menu.
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
@@ -406,22 +347,20 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
     let x: number, y: number
     if (beside) {
       x = beside.right + r.width + 8 <= innerWidth ? beside.right - 2 : beside.left - r.width + 2
-      y = beside.top - 5  // its first item level with the item that opened it
+      y = beside.top - 5
     } else {
       x = at!.x
       y = up ? at!.y - r.height : at!.y
-      // (no room on its side and room on the other: it opens there, as a native menu does, not over what opened it)
       const f = at!.flip
       if (f !== undefined && (up ? y < 8 && f + r.height <= innerHeight - 8 : y + r.height > innerHeight - 8 && f - r.height >= 8)) y = up ? f : f - r.height
     }
     setPos({ x: Math.max(8, Math.min(x, innerWidth - r.width - 8)), y: Math.max(8, Math.min(y, innerHeight - r.height - 8)) })
   }, [at, up, beside, items, trail])
-  // Once it's placed (a hidden element can't take the focus).
+  // After placing: a visibility:hidden list can't take focus.
   const placed = pos !== null
   useLayoutEffect(() => {
     if (placed && (focus || trail.length)) ref.current?.querySelector<HTMLElement>(`${drill ? "" : ":scope > [data-menu-field] input, "}:scope > button:not(:disabled)`)?.focus({ preventScroll: true })
   }, [placed, focus, trail])
-  // A key typed on a row goes on in the field; the field gone (its text cleared), the keyboard is back on the first row.
   const toField = useRef(false)
   useLayoutEffect(() => {
     if (toField.current && field.current) { const n = query.length; field.current.focus({ preventScroll: true }); field.current.setSelectionRange(n, n) }
@@ -435,7 +374,6 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
     toField.current = focusField
     setQuery(q)
   }
-  /** The row Enter picks from the field: the best match. */
   const best = () => ref.current?.querySelector<HTMLElement>(":scope > button[data-index]:not(:disabled)")
   const onFieldKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
     e.stopPropagation()
@@ -453,17 +391,15 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
   const onKey = (e: React.KeyboardEvent) => {
     const all = [...(ref.current?.querySelectorAll<HTMLElement>(":scope > button:not(:disabled)") ?? [])]
     const cur = document.activeElement as HTMLElement
-    if (!all.includes(cur) && e.target !== ref.current) return  // a key inside a submenu: it handles its own
+    if (!all.includes(cur) && e.target !== ref.current) return
     e.stopPropagation()
     if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey && (e.key !== " " || query)) { e.preventDefault(); type(query + e.key, true); return }
     if (e.key === "Backspace" && query) { e.preventDefault(); type(query.slice(0, -1), true); return }
     if (e.key === "Escape" && query) { e.preventDefault(); type(""); return }
-    // ⌘A selects what was typed, never the page under the menu.
     if (e.key.toLowerCase() === "a" && (isMac ? e.metaKey : e.ctrlKey)) { e.preventDefault(); field.current?.focus(); field.current?.select(); return }
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault()
       const i = all.indexOf(cur)
-      // (↑ from the first row goes up to what's atop it: a tab group's colours, else its name)
       const above = e.key === "ArrowUp" && i === 0 && ["[data-menu-segments] [aria-checked=true]", "[data-menu-colors] [aria-checked=true]", "[data-menu-colors] button", "[data-menu-field] input"]
         .map((q) => ref.current?.querySelector<HTMLElement>(q)).find(Boolean)
       ;(above || all[(i + (e.key === "ArrowDown" ? 1 : -1) + all.length) % all.length])?.focus()
@@ -513,18 +449,17 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
             </p>
           ) : <button type="button" data-index={i}
             role={it.checked === undefined ? "menuitem" : it.keep ? "menuitemcheckbox" : "menuitemradio"} aria-checked={it.checked}
-            data-tip={it.label} data-tip-trunc data-tip-side="right" /* (a label too long for the screen, cut off: whole on hover) */
+            data-tip={it.label} data-tip-trunc data-tip-side="right"
             aria-haspopup={it.items ? "menu" : undefined} aria-expanded={it.items ? subAt === i : undefined} data-split={it.split || undefined}
             disabled={it.disabled}
             onPointerEnter={(e) => {
-              // A finger has no hover: its tap is the click (a hover's timer would close what the tap opened).
+              // A tap fires pointerenter too: its hover timer would close what the click opens.
               if (drill || e.pointerType === "touch") return
               const el = e.currentTarget
               if (it.items && !it.disabled) { if (subAt === i) clearTimeout(timer.current); else later(() => open(i, el, false)) }
               else if (sub) later(() => setSub(null))
             }}
             onClick={(e) => {
-              // A split row runs its own choice unless the click was on its chevron (the keyboard's Enter runs it too).
               const more = it.items && (!it.split || !!(e.target as Element).closest("[data-menu-more]"))
               if (it.items && more && drill) { into(i); return }
               if (more) { if (subAt === i) setSub(null); else open(i, e.currentTarget, e.detail === 0); return }
@@ -539,7 +474,6 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
             {it.hint && <span className="shrink-0 pl-4 text-muted-foreground">{it.hint}</span>}
             {trailing && it.checked !== undefined && <Check className={cn(icon, "-mr-1", !it.checked && "invisible")} strokeWidth={2.5} />}
             {it.items && (it.split
-              // A finger's target of its own on phones (44px, a line before it); on desktop hovering opens it anyway.
               ? <span data-menu-more className="-mr-3 flex h-11 w-11 shrink-0 items-center justify-center border-l-[0.5px] border-border md:-mr-2.5 md:h-7 md:w-7 md:border-l-0">
                   <ChevronRight className={cn(icon, "text-muted-foreground")} strokeWidth={2} />
                 </span>
@@ -548,8 +482,8 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
           </button>}
         </Fragment>
       ))}
-      {/* Beside it, not in it: its backdrop blur would make it the submenu's containing block (and a long menu scrolls).
-          In its layer: over a sheet that's the menu's own modal dialog, and anything outside it is inert. */}
+      {/* Portalled: the list's backdrop-filter would be the fixed submenu's containing block. Into the menu's
+          dialog when there is one: outside it is inert. */}
       {sub && !drill && rows[subAt]?.items && createPortal(
         <MenuList key={sub.label} items={rows[subAt].items!} beside={sub.rect} focus={sub.focus} again={again} onHover={() => clearTimeout(timer.current)}
           onBack={(refocus) => {
@@ -563,7 +497,6 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
   )
 }
 
-/** A row's progress (MenuItem `progress`), under its label. */
 function MenuProgress({ value }: { value: number }) {
   const known = value >= 0
   return (
@@ -575,7 +508,6 @@ function MenuProgress({ value }: { value: number }) {
   )
 }
 
-/** A menu's text field (MenuItem `field`): changes go out as typed. */
 function MenuField({ it, first }: { it: MenuItem; first: () => HTMLElement | null | undefined }) {
   const f = it.field!
   const [v, setV] = useState(f.value)
@@ -585,7 +517,6 @@ function MenuField({ it, first }: { it: MenuItem; first: () => HTMLElement | nul
         onFocus={(e) => e.currentTarget.select()}
         onChange={(e) => { setV(e.target.value); f.set(e.target.value) }}
         onKeyDown={(e) => {
-          // (its keys are its own: a letter isn't the menu's typing to filter, Tab goes on to the swatches)
           e.stopPropagation()
           if (e.nativeEvent.isComposing) return
           if (e.key === "Enter" || e.key === "Escape") { e.preventDefault(); closeMenu() }
@@ -596,10 +527,8 @@ function MenuField({ it, first }: { it: MenuItem; first: () => HTMLElement | nul
   )
 }
 
-/** A menu's segmented control (MenuItem `segments`): ← and → move along it, ↓ and ↑ leave it. */
 function MenuSegments({ it, redraw }: { it: MenuItem; redraw?: () => MenuItem[] }) {
   const { options, pick } = it.segments!
-  // (its own: a menu opened without `again` can't be drawn anew)
   const [value, setValue] = useState(it.segments!.value)
   const choose = (v: string) => {
     if (v === value) return
@@ -619,8 +548,6 @@ function MenuSegments({ it, redraw }: { it: MenuItem; redraw?: () => MenuItem[] 
         requestAnimationFrame(() => el.querySelector<HTMLElement>("[aria-checked=true]")?.focus())
       }}>
       <Segmented big label={it.label} value={value} options={options.map((o) => ({ value: o.value, label: o.label }))} onChange={choose} className="[&>button]:px-3" />
-      {/* (every note in one cell, only the one on shown: the menu keeps its size as the choice changes; none for one
-          without a note, else a blank line hangs under it) */}
       {options.some((o) => o.value === value && o.note) && (
         <div className="grid max-w-80 px-2 pt-1.5 text-[15px] leading-5 text-muted-foreground md:max-w-72 md:px-1.5 md:pt-1 md:text-[12px] md:leading-4">
           {options.map((o) => <p key={o.value} aria-hidden={o.value !== value} className={cn("[grid-area:1/1]", o.value !== value && "invisible")}>{o.note}</p>)}
@@ -630,7 +557,6 @@ function MenuSegments({ it, redraw }: { it: MenuItem; redraw?: () => MenuItem[] 
   )
 }
 
-/** A menu's row of colours (MenuItem `colors`): ← and → move along it. */
 function MenuColors({ it, redraw }: { it: MenuItem; redraw?: () => MenuItem[] }) {
   const { value, pick } = it.colors!
   const choose = (c: Color) => {
@@ -640,7 +566,6 @@ function MenuColors({ it, redraw }: { it: MenuItem; redraw?: () => MenuItem[] })
   return (
     <div role="radiogroup" aria-label={it.label} data-menu-colors
       onKeyDown={(e) => {
-        // ↓ and ↑ leave the row, as from any row: to the menu's first row, or back to its name's field.
         if (e.key === "ArrowDown" || e.key === "ArrowUp") {
           const menu = e.currentTarget.closest("[role=menu]"), rows = [...menu?.querySelectorAll<HTMLElement>(":scope > button:not(:disabled)") ?? []]
           e.preventDefault(); e.stopPropagation()
@@ -655,7 +580,7 @@ function MenuColors({ it, redraw }: { it: MenuItem; redraw?: () => MenuItem[] })
       className="grid grid-cols-5 justify-items-center gap-1 px-1 pb-1 md:flex md:gap-0.5 md:px-1 md:pb-0.5">
       {COLORS.map((c) => (
         <button key={c} type="button" role="radio" aria-checked={c === value} aria-label={COLOR_NAMES[c]} data-tip={COLOR_NAMES[c]} data-color={c}
-          tabIndex={c === (COLORS.includes(value as Color) ? value : COLORS[0]) ? 0 : -1 /* one stop for the row, its arrows within */}
+          tabIndex={c === (COLORS.includes(value as Color) ? value : COLORS[0]) ? 0 : -1}
           onClick={() => choose(c)}
           className="group/swatch grid size-11 cursor-pointer place-items-center rounded-full outline-none md:size-6">
           <span className="on-tint grid size-7 place-items-center rounded-full transition-transform duration-150 group-hover/swatch:scale-110 group-active/swatch:scale-95 group-focus-visible/swatch:outline-2 group-focus-visible/swatch:outline-offset-2 group-focus-visible/swatch:outline-primary/60 md:size-[18px]"

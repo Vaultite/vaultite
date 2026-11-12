@@ -1,4 +1,3 @@
-// What a tab shows (Workspace's TabContent), drawn outside the panes.
 import type { Store } from "@/core/data"
 import { tabPath } from "../../../core/layout.ts"
 import { offText, viewFor } from "@/core/plugins"
@@ -7,7 +6,6 @@ import type { ReactNode } from "react"
 import { Drawn } from "@/components/Guard"
 
 let fileView: ((store: Store, path: string) => ReactNode) | null = null
-/** How a file is drawn in a sheet, from App (importing FileView here would loop: it imports the plugins, which import this). */
 export const setSheetFile = (fn: (store: Store, path: string) => ReactNode) => { fileView = fn }
 
 /** A tab's target drawn outside the panes, in a sheet (a glance): a file as a sheet shows one, a plugin's view as its

@@ -1,5 +1,3 @@
-// Settings > About's Running: what the server runs (its commit, copied with a tap), whether this window runs the same
-// build, the server's updates when it follows a branch, and the desktop app's own (app.version, vau version's op).
 import { useEffect, useState } from "react"
 import { Copy } from "lucide-react"
 import { BUILD, PAGE_STAMP, useServedBuild } from "@/core/builds"
@@ -19,15 +17,11 @@ type Version = {
   updates: { branch: string | null; state: "off" | "current" | "waiting" | "updating" | "failed"; why: string; checked: number | null
     last?: { from: string; to: string; at: number; elsewhere?: string[] }; error?: { message: string } }
   app: null | "unknown" | { mode: "automatic" | "notify" | "off"; available: boolean; ready: string | null; doing: string | null; commit?: string | null
-    /** A Vaultite Dev instance's worktree (electron/devroot.ts). */
     worktree?: { worktree: string; branch: string; commit: string; dirty: boolean }
-    /** Main's updates through its code store (electron/storehost.ts): how the one ready goes in, and the root it runs. */
     store?: { state: string; why: string }; how?: "install" | "relaunch"; behind?: string
     root?: { from: string; commit: string | null; fellBack?: { commit: string | null; why: string } } }
-  /** Each process and whether it runs older code (core/running.ts). */
   processes?: { id: string; label: string; commit: string | null; stale: boolean | null; first?: string; why?: string }[]
 }
-/** Where a launch's code came from, as the shell says (electron/shell/roots.mjs). */
 const FROM: Record<string, string> = { current: "from its code store", good: "from its code store (the last that started)", bundle: "its own bundle", checkout: "this checkout", dev: "a worktree" }
 
 const short = (sha: string) => sha.slice(0, 7)
@@ -35,10 +29,8 @@ const STATE = { current: "Up to date", waiting: "Waiting", updating: "Updating",
 const copy = (sha: string) => copyText(sha).then((ok) => { if (ok) notify("Copied the commit", { id: "copied" }); else notify("Couldn't copy it", { kind: "error" }) })
 const here = desktopApp ? "This window" : phoneApp ? "This app" : "This page"
 
-/** A commit, short, in the row's value; a tap copies it whole. */
 const Hash = ({ sha }: { sha: string }) => <span className="font-mono tabular-nums">{short(sha)}</span>
 
-/** The server's version, asked again when it serves another build, now and then while shown (its updates move on). */
 function useVersion() {
   const served = useServedBuild()
   const [v, setV] = useState<Version | null>(null)
@@ -58,7 +50,6 @@ export function Running() {
   const served = useServedBuild()
   if (!v?.commit) return null
   const u = v.updates, app = v.app && v.app !== "unknown" && desktopApp ? v.app : null
-  // (this window's build: the one the server serves, or an older one it reloads out of when it's away)
   const behind = !!BUILD && !!served && served !== BUILD
   const mine = PAGE_STAMP?.commit
   const last = u.last ? `last update ${fmtAgo(u.last.at)}${u.last.elsewhere?.length ? ` (CI red on it elsewhere: ${u.last.elsewhere.join(", ")})` : ""}` : ""
@@ -88,7 +79,6 @@ export function Running() {
             sub={capitalize(FROM[app.root.from] ?? app.root.from) + (app.root.fellBack ? `: ${app.root.fellBack.commit ? short(app.root.fellBack.commit) : "the newest"} didn't start (${app.root.fellBack.why})` : "")} />
         )}
         {(v.processes ?? []).filter((p) => p.id !== "server" || p.stale).map((p) => {
-          // (the app's own word, from its store's plan, when its server runs a root older than the one it waits to relaunch onto)
           const behind = (p.id === "desktop" || p.id === "helper") && app?.behind
           const stale = behind ? true : p.stale
           return (

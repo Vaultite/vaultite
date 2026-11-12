@@ -1,5 +1,3 @@
-// A file, opened: title (rename), properties and the live-preview editor; saves as you type and
-// merges changes made on disk meanwhile. Pages, plugin formats, media and outside-the-vault files each have their view.
 import { Fragment, lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type MouseEvent, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { BookOpen, Folder, FolderInput, Smile, Trash2, type LucideIcon } from "lucide-react"
@@ -67,17 +65,12 @@ import { beforeMode, CODE_VIEWS, MODES, opensReading, SOURCE_VIEWS, useMode, use
 import { fmLines, keepPlace, lineAtTop, partLineAt, revealProps, spotOf, useTextFocus, type Spot } from "@/components/filePlace"
 import { share } from "@/core/share"
 
-// The editor is its own chunk (editor/lazy.ts: one chunk for FileView and the editors in a canvas's cards).
 const Notebook = lazy(() => import("@/editor/Notebook"))
 
-/** A file's `aliases`, as a list. */
 const aliasesOf = (fm: Record<string, unknown>) => (Array.isArray(fm.aliases) ? fm.aliases : fm.aliases ? [fm.aliases] : []).map(String).filter((a) => a.trim())
 
-/** While it's drawn (a rename field), the keyboard is held: renamed or not, it goes back where it was (core/focus.ts). */
 function HeldFocus() { useHeldFocus(); return null }
 
-/** Last text seen per file, so reopening one shows it at once (then refreshes): the most recent few, not every file
- *  opened since the app started. */
 const seen = new Map<string, FileText>()
 const SEEN = 100
 const remember = (path: string, f: FileText) => {
@@ -85,27 +78,21 @@ const remember = (path: string, f: FileText) => {
   if (seen.size > SEEN) seen.delete(seen.keys().next().value!)
 }
 
-/** A file renamed from its title while editing, so its view at the new path (a new mount) keeps editing and takes the
- *  cursor: New note, type its name, Enter, write. */
 let renamed: { path: string; mode: Mode; write: boolean } | null = null
 const takeRenamed = (path: string) => { const r = renamed?.path === path ? renamed : null; if (r) renamed = null; return r }
 
 const Title = memo(function Title({ path, editable, sheet, focus, settle, mode, onEnter }: { path: string; editable: boolean; sheet: boolean; focus: boolean
-  /** Save what's typed before the file moves. */
   settle: () => Promise<void>
-  /** The view it's in (a rename keeps it). */
   mode?: Mode
-  /** Enter: on to the text (when the name didn't change; a rename does it in the file's new view). */
   onEnter?: () => void }) {
   const name = stem(path)
   const [v, setV] = useDraft(name)
   const ref = useRef<HTMLTextAreaElement>(null)
   const enter = useRef(false)
   useEffect(() => { if (focus && editable) { ref.current?.focus(); ref.current?.select() } }, [focus, editable])
-  // (not while its tab is kept hidden: measured there it'd be 0 high, and shown again the page under it jumps a frame later)
+  // A hidden tab's textarea measures 0 high: fitting it there would jump the page when it's shown.
   const fit = () => { const t = ref.current; if (t?.offsetWidth) { t.style.height = "0"; t.style.height = `${t.scrollHeight}px` } }
   useEffect(fit, [v, editable])
-  // Its pane can get narrower or wider without the window changing (a split, a divider dragged).
   useEffect(() => {
     const t = ref.current
     if (!t) return
@@ -115,18 +102,15 @@ const Title = memo(function Title({ path, editable, sheet, focus, settle, mode, 
     return () => ro.disconnect()
   }, [editable])
   if (!editable) return <h1 id={sheet ? "sheet-title" : undefined} className={TITLE}>{name}</h1>
-  // Naming a note just made (its title selected) isn't a rename to undo: no toast.
   const commit = () => {
     const write = enter.current
     enter.current = false
     rename(path, v, settle, !focus, mode && { mode, write }).then((ok) => { if (!ok) { setV(name); if (write) onEnter?.() } })
   }
-  // (still the page's heading while it's a field: a screen reader lists it, and reads its text)
   return (
     <h1 className={TITLE}><textarea ref={ref} id={sheet ? "sheet-title" : undefined} value={v} rows={1} spellCheck={false} aria-label="File name"
       onChange={(e) => setV(e.target.value)} onBlur={commit}
       onKeyDown={(e) => {
-        // (a name it can't have: refused, the field keeping what was typed to fix; leaving it puts the name back)
         if (e.key === "Enter") { e.preventDefault(); const { why } = renaming(path, v); if (why) return refuseName(why, e.currentTarget); enter.current = true; e.currentTarget.blur() }
         if (e.key === "Escape") { setV(name); (e.target as HTMLTextAreaElement).blur() }
       }}
@@ -134,23 +118,21 @@ const Title = memo(function Title({ path, editable, sheet, focus, settle, mode, 
   )
 })
 
-/** Where renaming a file to what was typed takes it, and why it can't go there (core/files.ts' nameProblem). */
 function renaming(path: string, typed: string) {
-  const ext = path.split("/").pop()!.slice(stem(path).length)  // (.md, a page's .html or .csv; other files show theirs in the name)
+  const ext = path.split("/").pop()!.slice(stem(path).length)
   const to = joinPath(folderOf(path), cleanName(typed) + ext)
   return { to, why: nameProblem(typed, path, to) }
 }
 
-/** Rename a file to what was typed (a name it can't have is refused, saying why). False if it stayed as it was. */
 async function rename(path: string, typed: string, settle: () => Promise<void>, undo = true, after?: { mode: Mode; write: boolean }) {
   const { to, why } = renaming(path, typed)
   if (why) { refuseName(why); return false }
   if (!cleanName(typed) || to === path) return false
   try {
     await settle()
-    if (after) renamed = { path: to, ...after }  // before the move: its tab follows it (a new mount) while it finishes
+    if (after) renamed = { path: to, ...after }
     const had = seen.get(path)
-    if (had) remember(to, { ...had, path: to })  // which shows the text at once, not a blank while it loads
+    if (had) remember(to, { ...had, path: to })
     const r = await moveFile(path, to, { undo })
     if (after && r.path !== to) renamed = { path: r.path, ...after }
     return true
@@ -158,24 +140,16 @@ async function rename(path: string, typed: string, settle: () => Promise<void>, 
   catch (e) { notifyError(e, "Couldn't rename"); return false }
 }
 
-/** Desktop: the bar on top of a file. Where it is (each folder finds itself in the tree; the name renames the file
- *  when clicked), and one button showing the view, which switches between reading and editing. */
 const PathBar = memo(function PathBar({ path, mode, setMode, edit, views, settle, locked, head, className }: { path: string; settle: () => Promise<void>
-  /** The file as plugins' items in the bar get it (FileBarItem); none: they draw nothing. */
   head?: FileHead
-  /** The bar's own classes (a pane-filling file: no room under it, its drawing starts right there). */
   className?: string
-  /** The view, the editing view it switches to and the file's views (its right-click); none (an image, code): no view
-   *  button. */
   mode?: Mode; setMode?: (m: Mode) => void; edit?: Mode; views?: typeof VIEWS
-  /** Can't be renamed (read-only). */
   locked: boolean }) {
   const outside = isOutside(path)
   const folders = folderOf(path) && !outside ? folderOf(path).split("/") : []
   const name = stem(path)
   const [editing, setEditing] = useState(false)
   const [v, setV] = useDraft(name)
-  // Rename from the tab menu.
   useEffect(() => {
     const check = () => { if (takeRename(path)) setEditing(true) }
     check()
@@ -193,7 +167,6 @@ const PathBar = memo(function PathBar({ path, mode, setMode, edit, views, settle
         </button>
       )}
     </>} className={className}>
-      {/* As wide as the path, not the bar: past it is the bar's empty part, which as the title row drags and has its menu. */}
       <nav aria-label="File path" className="flex min-w-0 items-center">
         {outside && (
           <>
@@ -207,7 +180,6 @@ const PathBar = memo(function PathBar({ path, mode, setMode, edit, views, settle
             <Fragment key={at}>
               <button type="button" onClick={() => openFolder(at)} onContextMenu={menuFor(() => folderMenu(at))}
                 data-tip="Open folder" data-tip-cut={`${f}\nOpen folder`} className={cn(crumb, "shrink-[1000] text-muted-foreground hover:text-foreground",
-                  // (squeezed, a letter and its ellipsis stay, never a clipped sliver; a name of two fits anyway)
                   f.length > 2 && "min-w-[2.5em]")}>{f}</button>
               <span aria-hidden className="shrink-0 px-px text-tertiary">/</span>
             </Fragment>
@@ -236,7 +208,6 @@ const PathBar = memo(function PathBar({ path, mode, setMode, edit, views, settle
   )
 })
 
-/** What plugins draw at the top of a note (NoteTopItem), under its properties. */
 function NoteTop({ head, place }: { head: FileHead; place: "page" | "sheet" }) {
   const { disabled, enabled } = usePrefs()
   const plugins = usePluginsVersion()
@@ -245,16 +216,12 @@ function NoteTop({ head, place }: { head: FileHead; place: "page" | "sheet" }) {
   return <>{items.map(({ key, item }) => <Guard key={key} what="This part" reset={head.path}><Drawn draw={() => item.render(ctx)} /></Guard>)}</>
 }
 
-/** Where a file is, above its title: "Notes / Ideas", "Vault". */
 const folderLine = (path: string) => (folderOf(path) ? folderOf(path).split("/").join(" / ") : share?.folder ?? "Vault")
 
-/** The line above a file's title where there's no path bar (sheets, phones): its folder, and what plugins put at its
- *  end. In a sheet its header floats over it (Close, the view toggle): the line stops short of them. */
 function TitleLine({ icon: Icon, tint = "var(--muted-foreground)", text, head, pane, toggle }: {
   icon: LucideIcon; tint?: string; text: ReactNode; head: FileHead; pane: boolean; toggle?: ReactNode }) {
   return (
     <div className={cn("mb-1 flex min-h-8 flex-wrap items-center gap-x-2", !pane && (toggle ? "pr-[75px]" : "pr-[31px]"))}>
-      {/* (its folder gives way to the items down to a few letters; past that they wrap, never cut off) */}
       <span className="flex min-w-16 flex-[1_1_0] items-center gap-1.5 text-[15px] font-semibold" style={{ color: tint && ink(tint) }}>
         <Icon className="size-[18px] shrink-0" strokeWidth={2.25} />
         <span className="truncate">{text}</span>
@@ -265,15 +232,11 @@ function TitleLine({ icon: Icon, tint = "var(--muted-foreground)", text, head, p
   )
 }
 
-/** The view button (⌘E): reading <-> editing, showing what a tap does; a right-click (a hold on phones) picks any of the
- *  file's views, source mode too. Small in the desktop path bar, 44pt on phones in the sheet's or the phone's header. */
 const ViewToggle = memo(function ViewToggle({ mode, setMode, edit, views, phone }: { mode: Mode; setMode: (m: Mode) => void; edit: Mode; views: typeof VIEWS; phone?: "sheet" | "header" }) {
-  // (a tab kept drawn behind the shown one puts nothing in the header)
   const { hidden } = usePane()
   const host = usePortalHost(phone && !hidden ? (phone === "sheet" ? "sheet-actions" : "phone-actions") : null)
   const toggleKeys = useCommandKeys("view:toggle", true)
   const reading = mode === "read"
-  // It shows what a click does: a pencil while reading, a book while editing.
   const Icon = MODES[reading ? "live" : "read"].icon
   const label = reading ? "Edit" : "Read"
   const menu = menuOnCard(() => viewItems(views, mode, setMode))
@@ -310,23 +273,17 @@ function TextFile({ store, path, pane }: { store: Store; path: string; pane: boo
         : cur && typeof cur === "object" && !gone(e) ? cur : "missing")))
     return () => { on = false }
   }, [path, tries])
-  // Not there: open it as soon as it's made (or moved back) on disk. An open file follows its own changes (Loaded).
   useVaultChange(() => { if (typeof file === "string") setTries((n) => n + 1) }, [path])
-  // (a file that fills its pane, not read as its drawing: padded like any file)
   const { disabled } = usePrefs()
   const padded = (node: ReactNode) => (pane && fillsPane(path, disabled) ? <PaneScroll>{node}</PaneScroll> : node)
   if (file === "missing") return padded(<Missing path={path} pane={pane} />)
-  // Not text after all (a binary file with a name like text), or too big to read as text: a card.
   if (file === "binary" || file === "big") return padded(<MediaFile store={store} path={path} pane={pane} kind="binary" note={file === "big" ? "Too big to open here." : undefined} />)
   if (!file) return <div className="min-h-[50vh]" aria-busy />
   return <Loaded key={path} store={store} initial={file} pane={pane} onGone={() => setFile("missing")} />
 }
 
-/** "Move current file to another folder", for a file that can move. */
 const moveCommand = (path: string) => (isReadOnly(path) || isOutside(path) ? [] : [{ id: "file:move", name: "Move current file to another folder", run: () => askMove(path), icon: FolderInput }])
 
-/** A file that isn't text: a viewer, a plugin's `binary` format, else a card; with the bar and status bar on desktop,
- *  its name in the sheet. */
 function MediaFile({ store, path, pane, kind, note }: { store: Store; path: string; pane: boolean; kind: FileKind; note?: string }) {
   const [info, v, missing] = useFileInfo(path)
   const { disabled } = usePrefs()
@@ -338,7 +295,6 @@ function MediaFile({ store, path, pane, kind, note }: { store: Store; path: stri
   const facts = useMemo(() => [extra, info?.pages ? plural(info.pages, "page") : null, info ? formatSize(info.size) : null]
     .filter((x): x is string => !!x), [extra, info])
   const noop = useCallback(() => {}, [])
-  // What plugins' items in its header and the status bar get: no frontmatter to change (Provenance keeps its own).
   const head = useMemo<FileHead>(() => ({ path, fm: {}, type: null }), [path])
   usePublish(pane, () => ({ path, mode: "read", setMode: noop, body: "", views: [], info: facts, head }), [path, facts, noop, head])
   useCommands(() => (live ? moveCommand(path) : []), [live, path])
@@ -349,7 +305,6 @@ function MediaFile({ store, path, pane, kind, note }: { store: Store; path: stri
     const t = Math.round(secs), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = String(t % 60).padStart(2, "0")
     setExtra(h ? `${h}:${String(m).padStart(2, "0")}:${sec}` : `${m}:${sec}`)
   }
-  // Right-click it (the image, around it): its menu, unless what's drawn answered first (a plugin's own menu).
   const onMenu = (e: MouseEvent) => {
     if (e.defaultPrevented || (e.target as Element).closest("input, textarea, [contenteditable]")) return
     menuFor(() => mediaItems(path, isOutside(path)))(e)
@@ -375,18 +330,13 @@ function MediaFile({ store, path, pane, kind, note }: { store: Store; path: stri
   )
 }
 
-/** A file a plugin draws from its bytes (a `binary` format): in a box as tall as what's left of the pane, or inline
- *  (its `layout`), redrawn from a new address when the file changes (`v`). */
 function BinaryFormat({ store, format, path, v, pane }: { store: Store; format: FileFormat; path: string; v: number; pane: boolean }) {
   const ctx = { store, path, text: "", url: rawUrl(path, { v }), editable: false, place: pane ? "page" as const : "sheet" as const, onChange: () => {} }
   return framed(format.layout, pane, format.render(ctx))
 }
-/** What a format draws, in a box as tall as what's left of the pane (`box`, `pane`) or inline. */
 const framed = (layout: FileFormat["layout"], pane: boolean, node: ReactNode) =>
   !layout || layout === "box" || layout === "pane" ? <FormatBox place={pane ? "page" : "sheet"}>{node}</FormatBox> : <FormatGuard>{node}</FormatGuard>
 
-/** A file that's gone (deleted or moved while open, or a stale link): laid out like the file was, so the tab doesn't
- *  jump; on desktop under the path bar (back and forward still work there), not renameable. */
 function Missing({ path, pane }: { path: string; pane: boolean }) {
   const bar = pane && isDesktop()
   return (
@@ -402,57 +352,39 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   const path = initial.path
   const [saved, setSaved, tabId, tabEdit] = useMode()
   const wideSheet = useWideSheet()
-  // A note just made with New note opens in editing (its tab's: live preview or source), with its name selected.
   const [fresh] = useState(() => takeNew(path))
-  // Just renamed from its title: still editing (and on to the text if Enter did it).
   const [kept] = useState(() => takeRenamed(path))
   const [override, setOverride] = useState<Mode | null>(fresh && saved === "read" ? tabEdit : kept?.mode ?? null)
   const first = splitFm(initial.text)
   const [fm, setFm] = useState(first.fm)
   const { disabled: off, enabled } = usePrefs()
-  // (an opt-in plugin turned off changes `enabled` only: what's drawn from `disabled` redraws on either)
   const disabled = useMemo(() => [...off], [off, enabled])
   const { props } = useMemo(() => readProps(fm), [fm])
-  // Its type, the core's one rule (core/fileprops.ts): its kind's when a kind owns it (the server's row says), else the
-  // frontmatter being edited (typing `type: dashboard` shows it at once).
   const files = store.files.files
   const row = useMemo(() => files.find((f) => f.path === path), [files, path])
   const type = effectiveType(row?.kind ? row.type : null, props)
   const pv = isHidden(path) || !isMd(path) ? null : fileViewFor({ path, type }, disabled)
   const view = pv?.view
-  // A file a plugin draws as a page (a dashboard: FileView.page) opens in reading; editing one doesn't change how
-  // other files open.
   const pageView = view?.page ?? null
   const dash = !!pageView
-  // A plugin's drawing opens editing on desktop; formats whose editing is their source (a table, an HTML page) and
-  // notebooks open drawn. Code and other text is only its source.
   const kind = kindOf(path)
   const outside = isOutside(path)
-  usePluginsVersion() // (a plugin taking this file as it comes)
+  usePluginsVersion()
   const taken = isHidden(path) || !isMd(path) || outside ? null : fileFormatFor(path, disabled)
   const drawer = isHidden(path) ? null : taken ?? formatFor(path, disabled)?.format ?? null
-  // (one that runs from the vault, opened from outside it, is its text)
   const format = drawer && !(outside && drawer.vaultOnly) ? drawer : null
   const notebook = kind === "notebook"
-  // Drawn for reading, edited as source.
   const readOnlyDrawn = format?.edit === "source" || notebook
-  // (a drawing whose plugin is off is JSON text: code)
   const code = !format && (kind === "code" || kind === "other" || (kind === "json" && !isJson(path)))
   const drawn = dash || readOnlyDrawn
   const [opensRead] = useState(opensReading)
   const mode = override ?? (drawn ? "read" : format ? (opensRead ? "read" : "live") : saved)
   const pick = useCallback((m: Mode) => { if (drawn || code || format) { setOverride(m); return } setOverride(null); setSaved(m) }, [setSaved, drawn, code, format])
-  // Hidden files are nobody's notes, so no plugin draws them; the trash and the app's generated copies can be read, not
-  // changed.
   const json = isJson(path), hidden = isHidden(path), ro = isReadOnly(path)
-  // Their editing is their source: no live preview to pick (it would only glitch into source).
   const shown: Mode = code ? "source" : readOnlyDrawn && mode === "live" ? "source" : mode
   const views = code ? CODE_VIEWS : readOnlyDrawn ? SOURCE_VIEWS : VIEWS
   const edit: Mode = code || readOnlyDrawn ? "source" : format ? "live" : tabEdit
-  // JSON (a plugin's settings, a notebook, a canvas) saves as typed, with a note while it doesn't parse.
   const strict = json || notebook || !!format?.json
-  // The body is `cur`: typing redraws nothing here (the status bar and the JSON check follow it: onTyped); a change
-  // that comes from elsewhere (the server, a drawing) redraws with `redraw`.
   const [tick, redraw] = useReducer((n: number) => n + 1, 0)
   const [status, setStatus] = useState<SaveStatus>({ kind: "ok" })
   const [problems, setProblems] = useState(initial.problems)
@@ -460,14 +392,12 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   const onTyped = useRef(() => {})
   const full = () => joinFm(cur.current.fm, cur.current.body)
   const editor = useRef<{ api: EditorApi; source: boolean } | null>(null)
-  /** The cursor at the end of the text (Enter in the title). */
   const toText = () => {
     const v = editor.current?.api.view
     if (!v || v.state.readOnly) return
     v.dispatch({ selection: { anchor: v.state.doc.length }, scrollIntoView: true })
     v.focus()
   }
-  // A change of view (⌘E, the status bar) keeps the reader where they were (keepPlace).
   const article = useRef<HTMLElement>(null)
   const spot = useRef<Spot | null>(null)
   const shownNow = useRef(shown)
@@ -481,24 +411,18 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     const head = v.state.selection.main.head, line = v.state.doc.lineAt(head)
     keepCursor(path, line.number - 1 - above, head - line.from)
   }
-  // Switched to editing from here (⌘E, the view button, the status bar): the cursor goes back where it was if that's in
-  // sight, else where you're reading.
   const intoText = useRef(false)
   const setMode = useCallback((m: Mode) => {
     if (m !== shownNow.current) {
       noteSpot()
-      // (the cursor kept now: a dashboard's editor goes away while its grid is read, and comes back to it)
       if (editor.current?.api.view.hasFocus) keepAt()
       trace("editor", { ev: "view", path, from: shownNow.current, to: m, at: cursorOf(path) })
       intoText.current = m !== "read"
-      // Back to reading: the keys are the app's again (j and k scroll, with Vim).
       if (m === "read" && article.current?.contains(document.activeElement)) (document.activeElement as HTMLElement).blur()
     }
     pick(m)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- noteSpot and keepAt read refs; path is fixed per mount
   }, [pick])
-  // The new view is hidden until it's at the place (a few frames; 400 ms at most), so it isn't seen getting there;
-  // `landed` once it's there (the cursor goes into the text then, where the reader is).
   const placing = useRef<{ s: Spot; stop: (() => void) | null; landed?: () => void } | null>(null)
   const placeAt = (s: Spot, ed: { api: EditorApi; source: boolean } | null, landed?: () => void) => {
     const art = article.current
@@ -508,7 +432,6 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     const late = setTimeout(show, 400)
     return keepPlace(s, ed?.api ?? null, fmLines(cur.current), art, show, show)
   }
-  // Switched from elsewhere (another window showing this tab): it keeps its place too.
   const follows = override === null && !drawn && !code && !format
   const followsNow = useRef(follows)
   followsNow.current = follows
@@ -516,13 +439,11 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     const before = (m: Mode, tab: string) => { if (tab === tabId && followsNow.current && m !== shownNow.current && !spot.current) noteSpot() }
     beforeMode.add(before)
     return () => { beforeMode.delete(before) }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- noteSpot reads refs
   }, [tabId])
   const canFocus = !ro && !hidden && isDesktop() && !(format && shown !== "source")
   const focusText = useTextFocus(editor, article, shownNow, cur)
-  // A block's "Edit source" (editAt in core/anchors.ts): into editing, the cursor on that line of the file, scrolled to.
   const revealing = useRef(false)
-  // (the cursor put back where it was left, as the file opens: a line asked for wins over it, before or after)
   const putBack = useRef<(() => void) | null>(null)
   const tookLine = useRef(false)
   const toLine = useCallback((line: number, find?: string, from?: DrawnLine, col = 0) => {
@@ -530,8 +451,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     tookLine.current = true
     putBack.current?.(); putBack.current = null
     cancelRestores()
-    // (from reading, the editor is unseen until the line is in place, so it isn't seen getting there; 600 ms at most;
-    // not `visibility`, which would keep the cursor out of the text, its block's Markdown with it)
+    // opacity, not visibility: a visibility:hidden editor can't take the cursor.
     let there: (() => void) | undefined
     const art = article.current
     if (shownNow.current === "read") {
@@ -548,8 +468,6 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   }, [ro, hidden, pick, edit, focusText])
   const articleEl = useCallback(() => article.current, [])
   useEditAt(path, articleEl, toLine)
-  // A block's "This file's properties": where they're edited (into editing from reading; source mode while the setting
-  // hides them).
   const { propertiesInDocument: propsIn, readableLineLength: readable, showInlineTitle } = useEditorSettings(store)
   useEffect(() => {
     const on = (e: Event) => {
@@ -561,7 +479,6 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     return () => removeEventListener("vau:properties", on)
   }, [path, ro, hidden, pick, edit, propsIn])
   useLayoutEffect(() => {
-    // (going to a line: the place being read isn't kept)
     if (revealing.current) { revealing.current = false; spot.current = null }
     const s = spot.current
     spot.current = null
@@ -571,8 +488,6 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     const landed = into ? () => { trace("editor", { ev: "land", path, at: cursorOf(path) }); stopFocus = focusText(cursorOf(path)) } : undefined
     if (!s) { landed?.(); return () => stopFocus?.() }
     const ed = editor.current?.api.view.dom.isConnected ? editor.current : null
-    // The new view is an editor not made yet: it finds the place
-    // once ready (onReady), hidden until then (800 ms at most), or by how far down if none comes after a few seconds.
     const coming = !ed && !board && !drawing && !(notebook && !source) && !(json && !source)
     if (!coming) {
       const stopPlace = placeAt(s, ed, landed)
@@ -582,7 +497,6 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     placing.current = p
     const art = article.current
     if (art) art.style.visibility = "hidden"
-    // (shown after a moment even so; by how far down it was if no editor has come after a few seconds)
     const shownLate = setTimeout(() => { if (art) art.style.visibility = "" }, 800)
     const late = setTimeout(() => { if (placing.current === p) { placing.current = null; p.stop = placeAt(s, null, landed) } }, 5000)
     return () => {
@@ -593,16 +507,13 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
       stopFocus?.()
       if (art) art.style.visibility = ""
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs on a change of view only
   }, [shown])
-  /** An editor came: the place a change of view is waiting for (above), or where its tab was left (core/viewstate.ts). */
   const ready = (api: EditorApi, source: boolean) => {
     const p = placing.current
     if (p) { placing.current = null; p.stop = placeAt(p.s, { api, source }, p.landed); return }
     resume(api)
   }
-  // Where a tab's file was left is its line too (core/viewstate.ts): said with each scroll of its tab, and found again
-  // when it's drawn anew (opened again in its tab, the app reloaded), once its editor is ready to say where lines are.
   useEffect(() => {
     if (!pane || behind || !article.current) return
     const box = article.current.closest<HTMLElement>("[data-pane], [data-kept], [data-stacked]")
@@ -611,21 +522,17 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
       const ed = editor.current
       const top = box ? box.getBoundingClientRect().top : 0
       if (ed?.api.view.dom.isConnected) return lineAtTop(ed.api.view, top, fmLines(cur.current))
-      // (a drawn page whose parts say their lines: a dashboard's cards)
       return article.current ? partLineAt(article.current, top) : null
     })
   }, [pane, path, behind])
-  // A dashboard's grid drawn while its place is being found: its card found again, as an editor finds its line.
   const grid = dash && shown === "read"
   useLayoutEffect(() => {
     const art = article.current
     if (!pane || !grid || !art?.querySelector("[data-line]")) return
     return offerPlace(`file:${path}`, () => resume(null))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- resume is new each render
   }, [pane, grid, path])
-  // (a file drawn while its place is being found, the app reloaded on a phone: not seen before it's there)
   useLayoutEffect(() => { if (pane) hideUntilPlaced(`file:${path}`, article.current) }, [pane, path])
-  /** Back where its tab was left (core/viewstate.ts): by its editor's lines, or (none) a dashboard's cards. */
   const resume = (api: EditorApi | null) => {
     const r = pane ? takeRestore(`file:${path}`) : null
     if (!r) return
@@ -634,8 +541,6 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
       () => { drop(); r.show() }, r.show)
     drop = addRestore(stop)
   }
-  // Opened in editing in the focused pane: the cursor goes where it was left once
-  // the place is found, unless the keys are being typed elsewhere (`vau open` from a terminal mustn't take its keys).
   useEffect(() => {
     if (!pane || !focused || fresh || kept || shown === "read" || !canFocus) return
     let stop: (() => void) | undefined
@@ -645,7 +550,6 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
         if (a && a !== document.body && typingIn(a) && !article.current?.contains(a)) return
         let stopFocus: (() => void) | undefined
         if (tookLine.current) return
-        // (a click while the place is still being found put the keyboard where the user wanted it: a table's cell, a line)
         const press = () => stop?.()
         addEventListener("pointerdown", press, true)
         const unwait = afterPlaced(`file:${path}`, () => { removeEventListener("pointerdown", press, true); if (!tookLine.current) stopFocus = focusText(cursorOf(path)) })
@@ -653,9 +557,8 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
       })
     })
     return () => { cancelAnimationFrame(frame); stop?.() }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as the file opens
   }, [])
-  // Where the cursor was left, for the next time the file opens and back from reading.
   useEffect(() => {
     const el = article.current
     if (!el) return
@@ -665,12 +568,10 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     el.addEventListener("focusin", into)
     el.addEventListener("focusout", keep)
     return () => { el.removeEventListener("focusin", into); el.removeEventListener("focusout", keep); keep() }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keepAt reads refs
   }, [path])
-  /** Show text that came from the server (merged or filled in), keeping the cursor. */
   const apply = useCallback((text: string) => {
     const { fm: f, body: b } = splitFm(text)
-    // (blocks read the body when drawn: one whose own text didn't change, a review list's count, draws again)
     if (b !== cur.current.body) setVersion((v) => v + 1)
     cur.current = { fm: f, body: b }
     setFm(f)
@@ -680,7 +581,6 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
 
   const saver = useAutosave(path, initial.text, {
     text: full, apply, onStatus: setStatus, readOnly: ro,
-    // (in the editor when it's the one drawn: a plugin's drawing, a notebook or the reading view gets the banner's choice)
     conflict: (text, clashes, who, left, note) => {
       const ed = editor.current
       return !!ed?.api.view.dom.isConnected && !ed.api.view.state.readOnly && ed.api.conflict(text, clashes, who, left, note) && (apply(text), true)
@@ -690,27 +590,21 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   })
   const changed = saver.changed, save = saver.save, settle = saver.settle
 
-  /** A change the user made around the text (Properties, a header's chip, a command): through the editor, so ⌘Z
-   *  undoes it like typing (without one, saved as is). */
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- changed is the saver's, made once a mount
   const editAround = useCallback((text: string) => {
     const ed = editor.current
     if (!ed?.api.view.dom.isConnected) { apply(text); changed(); return }
     ed.api.change(text)
   }, [apply])
-  /** What the editor has now: its frontmatter (to `start`; source mode reads it from the text) and body; `remote`, others
-   *  typed it (in together): kept here all the same, as what's saved once this one saves alone again is on it. */
   const typed = useCallback((text: string, start: number | null, remote = false) => {
     const s = start === null ? splitFm(text) : { fm: text.slice(0, start), body: text.slice(start) }
     cur.current = s
     setFm(s.fm)
     onTyped.current()
     if (!remote) changed()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- changed is the saver's, made once a mount
   }, [])
-  // Stable so what's drawn around the text isn't redrawn per keystroke (`editAround` only reads refs and `save`).
   const setProps = useCallback((b: string) => editAround(joinFm(b, cur.current.body)), [editAround])
-  // One frontmatter key for plugins (FileHead), through the editors and autosave like typing it.
   const setProperty = useCallback((key: string, value: unknown) => {
     const { fm: f, body: b } = cur.current
     const block = setProp(f || (b.trim() ? "---\n---\n\n" : "---\n---\n"), key, value)
@@ -731,15 +625,14 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     }, 600)
   }
   useEffect(() => { checkJson(); return () => clearTimeout(jsonCheck.current) },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- checkJson is new each render; these are what it reads
     [strict, fm, tick])
-  // Edits a closed window didn't get saved (core/drafts.ts), offered back while nothing typed here is pending.
   const [leftover, setLeftover] = useState<Draft | null>(null)
   useEffect(() => {
     let live = true
     if (!ro && full() === saver.disk) void draftOf(path, initial.text).then((d) => { if (live && full() === saver.disk) setLeftover(d) })
     return () => { live = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- full reads refs
   }, [path, initial, ro, saver])
   const restoreUnsaved = (u: Draft) => {
     setLeftover(null)
@@ -751,33 +644,25 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     notify("Discarded the unsaved edits", { action: { label: "Undo", run: () => { keepDraft(path, u.text, u.base); setLeftover(u) } } })
   }
 
-  // A file from outside the vault isn't watched: check it now and then.
   useEffect(() => {
     if (!outside) return
     const t = setInterval(() => document.visibilityState === "visible" && saver.check(), 5000)
     return () => clearInterval(t)
   }, [outside, saver])
-  // Opened from the last text seen: the fresh read (FileView's) arrives as `initial`.
   useEffect(() => { if (initial.text !== saver.disk) void saver.check(initial) }, [initial, saver])
 
-  // (a guest who edits changes a note's properties and what its views write, checked as all they write; not its name)
   const changeable = !ro && (!!share || !isProtected(path)) && !inTrash(path) && !outside && isMd(path)
   const ctx: FileCtx = { store, path, fm: props, get body() { return cur.current.body }, setProperty: changeable ? setProperty : undefined }
   const ctxRef = useRef(ctx)
   ctxRef.current = ctx
-  // (read when a block is drawn again: a block keeps the function that first drew it)
   const editingRef = useRef(shown === "live")
   editingRef.current = shown === "live"
   const { resolve, attach, ...wiring } = useVaultEditing(store, path, full)
 
-  // What the editor draws itself (each with React, into the editor): blocks, its kind's sections (a person's
-  // `## Timeline`), tables, [[links]].
   const [version, setVersion] = useState(0)
-  const plugins = usePluginsVersion() // (a plugin's fences arriving)
-  // (and when the view changes: a block's option notes show while editing only)
+  const plugins = usePluginsVersion()
   useEffect(() => setVersion((v) => v + 1), [store, fm, disabled, shown, plugins])
   const sections = useKindSections(store, path)
-  // A page edited as it's read (a dashboard: PageView.editGrid): its blocks side by side in the editor, as read.
   const editGrid = dash && shown === "live" ? pageView?.editGrid ?? null : null
   const pageRef = useRef<PageCtx | null>(null)
   const readBlock = useReadBlock(disabled)
@@ -792,7 +677,6 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     renderBlock: (name, text, el, edit) => island((t) => <BlockView name={name} text={t} ctx={ctxRef.current} disabled={disabled} editing={editingRef.current} edit={edit} />, text, el),
     blockMenu: (name, text, at, edit) => openBlockMenu(at, { name, text, path, edit, showing: true }),
     blockNotes: (name, text) => {
-      // (a fence a plugin draws, ```dataview, has its own language inside, not options)
       if (name.startsWith("```")) return { notes: [] }
       const { options, error } = parseOptions(text), { decl } = blockFor(name, disabled, options)
       return { notes: optionNotes(decl, options, error), about: decl?.description }
@@ -808,11 +692,8 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   }), [shown, ro, resolve, store, disabled, version, path, sections, editGrid, readBlock])
 
 
-  // ⌘E switches between reading and editing; the palette also offers each view.
-  // Only the focused pane's file (splits: the other side's file is just shown).
   const live = pane && focused
   useCommands(() => (live ? [
-    // (named as the view it goes to: the palette keeps it, with its keys, over that view's own command)
     ...(views.length > 1 ? [{ id: "view:toggle", name: "Switch to reading view", keys: ["Mod+E"], run: () => setMode(shown === "read" ? edit : "read"), icon: BookOpen,
       nameWhenOn: `Switch to ${(views.find((v) => v.value === edit)?.label ?? "editing view").toLowerCase()}`, on: () => shown === "read" }] : []),
     ...views.filter((v) => v.value !== shown).map((v) => ({ id: `view:${v.value}`, name: `Switch to ${v.label.toLowerCase()}`, run: () => setMode(v.value), icon: MODES[v.value].icon })),
@@ -820,7 +701,6 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     ...(isReadOnly(path) || isOutside(path) || !isMd(path) ? [] : [{ id: "file:icon", name: "Change icon of current file", run: () => changeIcon(path, (n) => setProperty("icon", n)), icon: Smile }]),
   ] : []), [live, shown, setMode, path, edit, views, setProperty])
 
-  // Text put in at the cursor while editing, else at the end (Insert template, a file dropped beside the text).
   const insertText = (text: string) => {
     const ed = editor.current
     if (ed && !ed.api.view.state.readOnly) {
@@ -833,7 +713,6 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     apply(joinFm(cur.current.fm, b + (b && !b.endsWith("\n") ? "\n" : "") + text))
     changed()
   }
-  // Commands that write into the file being edited (Insert template) find it here.
   const writable = live && isMd(path) && !ro && !hidden && !outside && !format
   useEffect(() => {
     if (!writable) return
@@ -846,58 +725,37 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     }
     setActiveFile(f)
     return () => dropActiveFile(f)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- insertText and full read refs
   }, [writable, path, apply, editAround, settle])
 
-  // The status bar follows the file in the active tab.
   const says = format?.status
-  // What plugins' items in the header and the status bar get: a change to the frontmatter redraws them, typing doesn't.
   const fileHead = useMemo<FileHead>(() => ({ path, fm: props, type, setProperty: changeable ? setProperty : undefined }), [path, props, type, changeable, setProperty])
   const republish = usePublish(pane, () => ({ path, mode: shown, setMode, body: cur.current.body, fm, head: fileHead, views, says }), [path, shown, setMode, tick, fm, fileHead, views, says])
   onTyped.current = () => { republish(); checkJson() }
 
-  // Source mode is the file as it is: no Properties (the frontmatter is in the text), blocks as their text.
   const source = shown === "source"
-  // Properties above the text, as the editor's setting says (Obsidian's "Properties in document"): visible (read-only
-  // while reading), hidden, or the frontmatter as text while editing (`fmText`). The same in a tab, a sheet or a phone.
   const fmText = propsIn === "source" && shown === "live"
-  // (a dashboard being read is its blocks: no Properties)
   const showProps = !source && !json && !notebook && !format && !(dash && shown === "read") && (shown === "read" ? propsIn !== "hidden" : propsIn === "visible")
 
-  // On desktop the bar shows where the file is, so nothing is above the title; phones have no path bar, so a file in a
-  // tab says where it is, like in the sheet.
   const phoneTab = pane && !isDesktop()
-  // A file a plugin draws as a page, being read: its title, then the page (a dashboard's grid).
   const board = dash && shown === "read"
-  // A drawn file that's the whole page (an artifact) being read, in a tab: the page is all it draws (its own title
-  // included), under the path bar.
   const layout = format?.layout ?? "box"
   const page = layout === "full" && shown === "read" && pane
-  // The name drawn as the title (Settings > Editor's inline title: off, it's only in the tab and the path bar; a sheet,
-  // having neither, keeps it). A note whose text opens with it as a heading shows it once: the editor hides that one.
   const titled = showInlineTitle || !pane
   const pageCtx: PageCtx = { store, path, fm: props, get body() { return cur.current.body }, setProperty: ctx.setProperty, title: stem(path), place: pane ? "page" : "sheet", disabled }
   pageRef.current = pageCtx
-  // A page read, or edited as it's read, is as wide as its cards; one of only text reads as a note does, in the same
-  // column whether it's read or edited.
   const wide = (board || !!editGrid) && !pageView?.narrow?.(pageCtx)
-  // In a tab, or a sheet as wide as one (a glance): the page's column, centred.
   const column = pane || wideSheet
-  // A drawn file that takes its whole pane in a tab (`layout: "pane"`: a canvas): the bar, then the drawing edge to edge.
   const fills = pane && layout === "pane"
   const pathBar = (className?: string) => pane && isDesktop() && <PathBar path={path} mode={views.length > 1 ? shown : undefined} setMode={setMode} edit={edit} views={views}
     settle={settle} locked={isReadOnly(path) || isProtected(path) || outside} head={fileHead} className={className} />
   const phoneToggle = phoneTab && !ro && views.length > 1 && <ViewToggle mode={shown} setMode={setMode} edit={edit} views={views} phone="header" />
-  // A note in a tab has its own text size (core/textsize.ts: ⌘+scroll over it, the commands, Settings > Appearance):
-  // everything under the path bar is zoomed, and its column widens with it, so the lines keep their length.
   const note = pane && isMd(path) && !dash && !format && !json && !notebook && !code
   const size = useTextSize("note")
   useTextSizeWheel(article, note ? "note" : null)
   const zoom = note && size !== 100 ? size / 100 : 0
-  // (a guest's writes are Markdown text only: a drawing or another format is theirs to look at)
   const drawing = format && !source ? format.render({ store, path, text: full(), editable: shown === "live" && !ro && !share, place: pane ? "page" : "sheet",
     onChange: (text) => { if (text === full()) return; const s = splitFm(text); cur.current = s; setFm(s.fm); redraw(); changed() } }) : null
-  // Aliases another file has too: [[Alias]] goes to one of them only.
   const clashes = useMemo(() => {
     const own = path.replace(/\.md$/i, "")
     return aliasesOf(props).flatMap((alias) => {
@@ -925,8 +783,6 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     {!!problems.length && <Banner tone="info"><Markdown inline text={problems.length === 1 ? sentence(problems[0])
       : `${problems.length} things in this file couldn't be read: ${problems.slice(0, 3).join("; ")}`} /></Banner>}
   </>
-  // Files and a browser's images dropped anywhere on the note's place (its margins, the space below it): attachments
-  // embedded where they land (core/filedrop.ts), being read too, not a tab outside the vault.
   const droppable = isMd(path) && !ro && !outside && !format && !board && !isProtected(path) && !inTrash(path)
   const drops = useRef({ attach, insertText })
   drops.current = { attach, insertText }
@@ -947,7 +803,6 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
       },
     })
   }, [droppable])
-  // A file from outside the vault: right-click it (around its text, on an image) to copy it in.
   const outsideMenu = outside ? (e: MouseEvent) => {
     if (!(e.target as Element).closest(".cm-content, input, textarea")) menuFor(() => [copyToVaultItem(path), ...revealItem(path, true)])(e)
   } : undefined
@@ -1004,8 +859,6 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   return fills ? <PaneScroll>{fileArticle}</PaneScroll> : fileArticle
 }
 
-/** A file that takes its whole pane (`layout: "pane"`), edge to
- *  edge: path bar, notices, then the drawing; on a phone, the screen between header and bar. */
 function PaneFile({ path, kind, bar, toggle, notices, children, onContextMenu }: { path: string; kind: FileKind; bar: ReactNode; toggle: ReactNode; notices: ReactNode; children: ReactNode
   onContextMenu?: (e: MouseEvent) => void }) {
   return (
@@ -1020,8 +873,6 @@ function PaneFile({ path, kind, bar, toggle, notices, children, onContextMenu }:
   )
 }
 
-/** A pane-filling file shown as text (its source, or not there): padded and scrolled the way Workspace does any file's
- *  tab (its `padded` and scroller). */
 function PaneScroll({ children }: { children: ReactNode }) {
   return (
     <div className="h-full min-h-0 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]">
@@ -1040,5 +891,4 @@ function InTrash({ path, note = "" }: { path: string; note?: string }) {
 
 const sentence = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
 
-/** A read that failed because the file isn't text (415) or is too big to read as text (413). */
 const NOT_TEXT = /isn't text'?$|too big to open as text$/

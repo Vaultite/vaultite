@@ -1,5 +1,3 @@
-// Pick one of a list in the palette overlay (`choose` in the plugin API; an agent's `vau choose`, through the server's
-// ask). Mounted once.
 import { memo, isValidElement, useEffect, useMemo, useState, type ReactNode } from "react"
 import { Check, type LucideIcon } from "lucide-react"
 import { anyIcon } from "@/core/icons"
@@ -41,14 +39,14 @@ export type Choose<C extends Choice = Choice> = {
   preview?: (item: C | null) => void
 }
 const iconOf = (i: LucideIcon | ReactNode) => {
-  // (a component: Lucide's are objects, an app's own icon a plain function)
+  // Lucide's icons are objects (forwardRef), an app's own a plain function: both are components.
   if (isValidElement(i) || (typeof i !== "object" && typeof i !== "function") || i === null) return i as ReactNode
   const Icon = i as unknown as LucideIcon
   return <Icon className="size-4 text-muted-foreground" strokeWidth={2} />
 }
 let asking: Choose<never> | null = null
 const subs = signal()
-let shown = 0 // each ask its own picker, so a second list with the same title starts afresh
+let shown = 0
 const show = (c: Choose<never> | null) => { asking = c; shown++; subs.notify() }
 /** Ask the user to pick one of `items`. */
 export function choose<C extends Choice>(c: Choose<C> | null) {
@@ -71,8 +69,6 @@ export const Chooser = memo(function Chooser() {
   return c ? <Picker key={shown} c={c} onClose={() => choose(null)} /> : null
 })
 
-// An agent's list (ui.choose, core/coreops.ts): the index picked, what was typed ({typed}), or null when dismissed or
-// when its time is up (the server has stopped waiting).
 const TYPED = "\u0000typed"
 answerUi("choose", (m, ended) => new Promise((done) => {
   const items = (Array.isArray(m.items) ? m.items : []) as { label?: unknown; detail?: unknown; icon?: unknown }[]
@@ -108,7 +104,6 @@ function Picker({ c, onClose }: { c: Choose; onClose: () => void }) {
     return extra ? [...hits, { ...extra, marks: [] as number[] }] : hits
   }, [c, q])
   const start = Math.max(0, c.items.findIndex((it) => it.id === c.current))
-  // (nothing to pick from, only what's typed: a field, with no list to move in)
   const field = !c.items.length && !!c.other
   return (
     <Palette label={c.title} placeholder={c.placeholder} query={q} setQuery={setQ} items={items} onClose={onClose} start={start} onSelect={c.preview} select={!!c.typed}

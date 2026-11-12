@@ -1,4 +1,3 @@
-// dnd-kit comes with the first list that can be reordered, not with the app: until then its rows are drawn as they are.
 import { lazy, Suspense, type ComponentProps } from "react"
 
 const Sortable = lazy(() => import("@/components/Sortable").then((m) => ({ default: m.SortableList })))

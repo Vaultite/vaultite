@@ -1,5 +1,3 @@
-// A .json file drawn: fields as rows, nested values folding, lists of records as tables. In live preview a value is
-// edited in place, changing only its characters (core/json.ts); the file's shape is edited in source.
 import { useMemo, useState, type KeyboardEvent, type ReactNode } from "react"
 import { ChevronRight, ExternalLink } from "lucide-react"
 import { parseJson, setJson, type JNode } from "@/core/json"
@@ -41,7 +39,6 @@ function Faint({ children }: { children: ReactNode }) {
   return <span className="text-tertiary italic">{children}</span>
 }
 
-/** An object's fields: key on the left, value on the right; objects and lists fold open under their key. */
 function Fields({ node, depth, edit }: { node: JObject; depth: number; edit: Edit }) {
   return (
     <div className="hairline">
@@ -57,7 +54,6 @@ function Fields({ node, depth, edit }: { node: JObject; depth: number; edit: Edi
   )
 }
 
-/** A nested object or list: its key and size, open to start with near the top. */
 function Branch({ label, node, depth, edit }: { label: ReactNode; node: JNode; depth: number; edit: Edit }) {
   const [open, setOpen] = useState(depth < 3)
   const empty = node.kind === "object" ? !node.entries.length : node.kind === "array" && !node.items.length
@@ -78,7 +74,6 @@ function Branch({ label, node, depth, edit }: { label: ReactNode; node: JNode; d
   )
 }
 
-/** What names a record in a list: its title, name, label or id. */
 function nameOf(n: JNode, i: number): ReactNode {
   if (n.kind === "object") {
     for (const k of ["title", "name", "label", "id"]) {
@@ -89,7 +84,6 @@ function nameOf(n: JNode, i: number): ReactNode {
   return <span className="text-muted-foreground tabular-nums">{i + 1}</span>
 }
 
-/** A list: records (objects of mostly plain values) as a table, anything else one row each. */
 function Items({ node, depth, edit }: { node: JArray; depth: number; edit: Edit }) {
   const columns = useMemo(() => {
     if (!node.items.length || node.items.some((n) => n.kind !== "object")) return null
@@ -121,7 +115,6 @@ function Items({ node, depth, edit }: { node: JArray; depth: number; edit: Edit 
 }
 
 function Table({ rows, columns, edit }: { rows: JObject[]; columns: string[]; edit: Edit }) {
-  // Long text (a title) gets a wide column that wraps; everything else stays on one line.
   const wide = useMemo(() => new Set(columns.filter((c) => rows.some((r) => {
     const v = r.entries.find((e) => e.key === c)?.value
     return v?.kind === "string" && v.value.length > 40 && !URL_RE.test(v.value)
@@ -155,12 +148,9 @@ function Table({ rows, columns, edit }: { rows: JObject[]; columns: string[]; ed
   )
 }
 
-// ---------- one value ----------
-
 const URL_RE = /^https?:\/\/\S+$/
 const DATE_RE = /^(\d{4})-(\d\d)-(\d\d)(?:[T ](\d\d):(\d\d)(?::\d\d(?:\.\d+)?)?(Z|[+-]\d\d:?\d\d)?)?$/
 
-/** A date or time written as text, read the way the rest of the app shows dates (in tables, only the day). */
 function readDate(s: string, short?: boolean): string | null {
   const m = DATE_RE.exec(s)
   if (!m) return null
@@ -170,7 +160,6 @@ function readDate(s: string, short?: boolean): string | null {
   return m[4] && !short ? dateText(d, { ...day, hour: "numeric", minute: "2-digit" }) : dateText(d, day)
 }
 
-/** A link without its scheme; in tables only an icon (the link in its tooltip), so the other columns fit. */
 function linkText(url: string, short?: boolean): ReactNode {
   if (short) return <ExternalLink className="inline size-4 align-[-3px]" strokeWidth={2} aria-label={url} />
   return url.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")
@@ -199,7 +188,6 @@ function Value({ node, edit, short }: { node: JNode; edit: Edit; short?: boolean
       setEditing(false)
       if (typed === null || typed === initial) return
       if (node.kind === "number") {
-        // A number stays a number: anything else is dropped.
         if (/^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(typed.trim())) edit(node, Number(typed.trim()))
         return
       }
@@ -207,7 +195,7 @@ function Value({ node, edit, short }: { node: JNode; edit: Edit; short?: boolean
         const t = typed.trim()
         if (!t) return
         let v: unknown = t
-        try { v = JSON.parse(t) } catch { /* text */ }
+        try { v = JSON.parse(t) } catch {}
         edit(node, v === null || ["string", "number", "boolean"].includes(typeof v) ? (v as string | number | boolean | null) : t)
         return
       }
@@ -247,7 +235,6 @@ function Value({ node, edit, short }: { node: JNode; edit: Edit; short?: boolean
       <a href={url} target="_blank" rel="noopener noreferrer" data-tip={tip} className={cn(text, "text-primary", !short && "underline decoration-1 underline-offset-[3px]")}>{shown}</a>
     ) : <span className={text} data-tip={tip}>{shown}</span>
   }
-  // Live preview: click to change it; a link opens with ⌘-click.
   return (
     <span role="button" tabIndex={0} data-tip={url ? `${short ? `${url}\n` : ""}${modKey}-click to open` : tip}
       onClick={(e) => { if (url && (e.metaKey || e.ctrlKey)) window.open(url, "_blank", "noopener,noreferrer"); else setEditing(true) }}

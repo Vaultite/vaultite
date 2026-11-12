@@ -1,5 +1,3 @@
-// What plugins draw in a file's header (FileBarItem), in the user's order: dragged along the bar, or into a sidebar,
-// where it's a panel drawn for the focused file (and dragged back); right-click moves one too.
 import { useId, useMemo, useRef } from "react"
 import { ArrowLeft, ArrowRight, EyeOff, PanelLeft, PanelRight } from "lucide-react"
 import { menuFor, type MenuItem } from "@/components/ContextMenu"
@@ -12,14 +10,11 @@ import { usePrefs } from "@/core/prefs"
 import { cn } from "@/lib/utils"
 import { INCOMING, reorder, slotAt, useSlide } from "@/core/slide"
 
-/** Where a dropped item goes: before `before` (null: last), and the bar's `order` that leaves, which it makes way for
- *  (core/slide.ts). */
 type Gap = { before: string | null; order: string[] }
 
-/** In the desktop path bar (`bar`), or at the end of the line above the title in a sheet or on a phone (`line`). */
 export function FileBar({ head, place }: { head: FileHead; place: "bar" | "line" }) {
   const { disabled, enabled, fileBar, fileBarHidden } = usePrefs()
-  const plugins = usePluginsVersion() // (a vault plugin's code arriving)
+  const plugins = usePluginsVersion()
   const setup = useSidebars()
   const items = useMemo(() => fileBarItems(disabled, fileBar).filter((x) => !sideOf(x.key, setup) && !fileBarHidden.includes(x.key)), [disabled, enabled, plugins, fileBar, fileBarHidden, setup])
   const ctx = useMemo(() => ({ ...head, place }), [head, place])
@@ -35,7 +30,6 @@ export function FileBar({ head, place }: { head: FileHead; place: "bar" | "line"
     if (x < b.left - 24 || x > b.right + 24 || y < b.top - 12 || y > b.bottom + 12) return null
     const slots = [...el.querySelectorAll<HTMLElement>(":scope > [data-file-bar-key]")].filter((s) => s.offsetWidth)
     const { order, before, same } = reorder(slots.map((s) => s.dataset.fileBarKey!), [key], slotAt(el, slots, x, y, place === "bar" ? "x" : "wrap"))
-    // (its own place, in the bar: nothing to do)
     return same ? null : { before, order }
   }, (item, g) => moveBarItem(item.panel!, g.before), { hint: () => (sideOf(getDrag()?.item.panel ?? "") ? "To the top bar" : undefined) })
   useSlide(box, hit?.order ?? null, place === "bar" ? "x" : "wrap")
@@ -49,10 +43,8 @@ export function FileBar({ head, place }: { head: FileHead; place: "bar" | "line"
     { label: "Move to left sidebar", icon: PanelLeft, run: () => dockAtEnd(key, "left") },
     { label: `Hide ${title}`, icon: EyeOff, sep: true, run: () => hideBarItem(key) },
   ]
-  // (one that throws is left out, its error in Errors: it's in every file's header)
   return (
     <div ref={box} data-file-bar={place} className={cn("relative flex items-center empty:hidden", dragging && "min-h-6 min-w-6 empty:flex",
-      // (a line's items are 44px targets, their room the gap between them)
       place === "bar" ? "shrink-0 gap-2" : "ml-auto min-w-0 flex-wrap justify-end md:gap-1")}>
       {items.map(({ key, plugin, item }, i) => (
         <span key={key} data-file-bar-key={key} data-slide={key} onContextMenu={menuFor(() => rows(key, i, item.title ?? plugin.name))} className={cn("flex shrink-0 items-center empty:hidden", lifted?.panel === key && "opacity-50")}
@@ -60,14 +52,11 @@ export function FileBar({ head, place }: { head: FileHead; place: "bar" | "line"
           <Catch reset={head.path} fallback={() => null}><Drawn draw={() => item.render({ ...ctx, menu: () => rows(key, i, item.title ?? plugin.name) })} /></Catch>
         </span>
       ))}
-      {/* Where one from a sidebar would go: its room kept from the drag's start, so the path beside it doesn't narrow
-          and widen again as it comes and goes. */}
       {coming && <span aria-hidden data-slide={hit?.order.includes(INCOMING) ? INCOMING : undefined} className="h-6 w-6 shrink-0" />}
     </div>
   )
 }
 
-/** A top bar item docked in a sidebar: drawn for the file in the focused tab, as in the bar (a size up on a phone). */
 function Docked({ item, ctx }: { item: FileBarItem; ctx: SidebarCtx }) {
   const head = statusSubs.use(() => status_?.head ?? null)
   const place = ctx.phone ? "line" : "bar"

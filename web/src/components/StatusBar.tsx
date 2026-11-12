@@ -1,5 +1,3 @@
-// The status bar (desktop): Vim-like corners, left the user's (Vim's mode, the companion), right the file's (core/statusbar.ts);
-// split, along the panes (statusColumns.ts): the focused file's items under its pane, the others' word counts under theirs.
 import { memo, startTransition, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react"
 import { Ellipsis, PanelBottom } from "lucide-react"
 import { checklist, menuAbove, menuFor } from "@/components/ContextMenu"
@@ -20,17 +18,11 @@ import { barShown, barShows, type BarItem, type BarPlace, moveBarItem, showAllBa
 import { INCOMING, reorder, slotAt, useSlide } from "@/core/slide"
 import { cn } from "@/lib/utils"
 
-/** Past this, a file's counts and plugins' items wait for typing to pause: a long note's (100 KB) words and tokens took
- *  ~20 ms a keystroke. */
-const LONG = 32 * 1024
-/** Past this, the counts are made in a worker: a 16 MB note's take seconds. */
-const BIG = 1 << 20
-/** The right corner and its tray stop short of the left corner (`--status-left`, its width) and the left sidebar; the
- *  left corner takes at most half the room. As cards, each is inset a gap in a card a gap in (index.css): 4 gaps less. */
+const WAIT_FOR_PAUSE_PAST = 32 * 1024
+const WORKER_PAST = 1 << 20
 const MAX_WIDTH = "calc(100vw - var(--left-sidebar, 0px) - var(--right-sidebar, 0px) - var(--status-left, 0px) - 12px - var(--pane-gap, 0px) * 4)"
 const LEFT_MAX_WIDTH = "calc((100vw - var(--left-sidebar, 0px) - var(--right-sidebar, 0px)) / 2 - 6px - var(--pane-gap, 0px) * 2)"
 
-/** Right-click on the bar: which items it shows (a hidden one ticked again goes back to its default place). */
 const barMenu = () => {
   const { disabled, statusBar } = getPrefs()
   const { all, shown } = barShown(disabled, statusBar)
@@ -42,24 +34,17 @@ const barMenu = () => {
   ]
 }
 
-/** Where an item dropped would go: before `before` in the bar's order (null: last), and the bar's or the tray's `order`
- *  that leaves, which it makes way for (core/slide.ts; none: onto the more button). */
 type Gap = { before: string | null; order?: string[] }
 
-/** What the bar leaves out to the tray to stop short of the left sidebar, least needed (`data-fit`) and widest first, then
- *  back what fits again. Each pass starts from everything, before a paint. Returns those in the tray. */
 function useFit(bar: RefObject<HTMLElement | null>, keys: string[], pinned: boolean) {
   const [over, setOver] = useState<string[]>([])
   const run = useRef(() => {})
   run.current = () => {
     const b = bar.current
-    // (not drawn: a pane's part of the bar while the focused pane is at the right)
     if (!b?.offsetWidth) return setOver((was) => (was.length ? [] : was))
-    // (the gap an item dragged in from the tray opens isn't taken yet: measured without it)
     const coming = b.querySelector<HTMLElement>(`[data-slide="${INCOMING}"]`)
     if (coming) coming.style.display = "none"
     const out = (els: Iterable<Element>, gone = true) => { for (const el of els) el.toggleAttribute("data-fit-out", gone) }
-    // (by its parts' laid-out widths: items making way for a drag are moved, and moved ones overflow it)
     const gap = parseFloat(getComputedStyle(b).columnGap) || 0
     const fits = () => {
       const parts = [...b.children].filter((el) => (el as HTMLElement).offsetWidth) as HTMLElement[]
@@ -69,7 +54,6 @@ function useFit(bar: RefObject<HTMLElement | null>, keys: string[], pinned: bool
     const more = b.querySelector<HTMLElement>("[data-status-more]")
     if (more && !("pinned" in more.dataset)) out([more])
     if (!fits()) {
-      // (the counts' held room goes first: none is kept while the bar is cramped)
       b.dataset.cramped = ""
       for (const el of b.querySelectorAll<HTMLElement>("[data-steady]")) el.style.minWidth = ""
       const slots = [...b.querySelectorAll<HTMLElement>("[data-status-key], [data-status-coming]")]
@@ -86,17 +70,13 @@ function useFit(bar: RefObject<HTMLElement | null>, keys: string[], pinned: bool
     setOver((was) => (was.join() === left.join() ? was : left))
   }
   const joined = keys.join()
-  // (when its items change, before the paint; their sizes changing is the observer's: measuring on every render forced
-  // the whole app's layout each time, seconds of it while the app loads)
   useLayoutEffect(() => run.current(), [joined, pinned])
   useEffect(() => {
     const b = bar.current
     if (!b) return
     let frame = 0
     const soon = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; run.current() }) }
-    // (its parts come and go with the file and the plugins: each watched as it comes)
     const ro = new ResizeObserver(soon), watch = () => { ro.observe(b); for (const el of b.querySelectorAll("[data-status-key], [data-status-items]")) ro.observe(el) }
-    // (an element coming or going, not a count's text: that changes a size, which the observer sees)
     const mo = new MutationObserver((rs) => { if (rs.some((r) => [...r.addedNodes, ...r.removedNodes].some((n) => n.nodeType === 1))) { watch(); soon() } })
     watch()
     mo.observe(b, { childList: true, subtree: true })
@@ -107,15 +87,9 @@ function useFit(bar: RefObject<HTMLElement | null>, keys: string[], pinned: bool
 }
 
 const KEPT_ITEMS = "vaultite.statusbar.items", KEPT_SETUP = "vaultite.statusbar.setup"
-/** The more button's entry among the kept widths (a file's, as what fills its tray is): shown last load, it shows
- *  while the file's items come. */
 const MORE = "core:more"
-/** How long at most the app's load holds the bar's room for what's still to come. */
 const LOAD_HOLD = 8000
-/** The items' widths at the last load, in the bar's order; a file's own marked (older loads': unknown, so held). */
 type Kept = [key: string, width: number, file?: 1][]
-/** Last load's room, held while the app loads so nothing moves: each item's until it draws (a file's until the file
- *  comes). Ends for good at another file, a new `setup` (a bundle) or LOAD_HOLD. Null: nothing held. */
 function useLoadHolds(bars: RefObject<HTMLElement | null>[], rows: RefObject<HTMLElement | null>[], path: string, setup: string): Kept | null {
   const [drawn, redraw] = useState(0)
   const st = useRef<{ kept: Kept; setup: string; first: string | null; done: boolean; drawn: Set<string> } | null>(null)
@@ -125,7 +99,7 @@ function useLoadHolds(bars: RefObject<HTMLElement | null>[], rows: RefObject<HTM
       const k = JSON.parse(localStorage.getItem(KEPT_ITEMS) ?? "[]")
       kept = Array.isArray(k) ? k : []
       saved = localStorage.getItem(KEPT_SETUP) ?? ""
-    } catch { /* none */ }
+    } catch {}
     st.current = { kept, setup: saved, first: null, done: false, drawn: new Set() }
   }
   const h = st.current
@@ -134,7 +108,6 @@ function useLoadHolds(bars: RefObject<HTMLElement | null>[], rows: RefObject<HTM
   useEffect(() => {
     if (h.done) return
     const t = setTimeout(() => { h.done = true; redraw((n) => n + 1) }, LOAD_HOLD)
-    // An item lets go of its room once it draws.
     const rs = rows.flatMap((r) => (r.current ? [r.current] : [])), mo = new MutationObserver(() => {
       const now = h.kept.filter(([k]) => !h.drawn.has(k) && rs.some((r) => r.querySelector(`[data-status-key="${CSS.escape(k)}"]:not(:empty)`)))
       if (!now.length) return
@@ -143,7 +116,7 @@ function useLoadHolds(bars: RefObject<HTMLElement | null>[], rows: RefObject<HTM
     })
     for (const r of rs) mo.observe(r, { childList: true, subtree: true, characterData: true })
     return () => { clearTimeout(t); mo.disconnect() }
-  }, [h, h.done]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [h, h.done]) // eslint-disable-line react-hooks/exhaustive-deps -- rows are refs
   useEffect(() => {
     const els = bars.flatMap((b) => (b.current ? [b.current] : [])), rs = rows.flatMap((r) => (r.current ? [r.current] : []))
     if (!els.length || !rs.length) return
@@ -151,11 +124,8 @@ function useLoadHolds(bars: RefObject<HTMLElement | null>[], rows: RefObject<HTM
     const save = () => {
       clearTimeout(saving)
       saving = setTimeout(() => {
-        // (not before the vault's plugins came: their items aren't drawn yet)
         if (!vaultPluginsIn()) return save()
-        // (nor while a corner is off, over a terminal: its items measure nothing)
         if (els.some((b) => b.hasAttribute("data-off"))) return
-        // (as drawn without what's held: an item drawing nothing is kept as 0, holding no room)
         const slots = rs.flatMap((r) => [...r.querySelectorAll<HTMLElement>("[data-status-key]")]), mins = slots.map((x) => x.style.minWidth)
         for (const x of slots) x.style.minWidth = ""
         const items: Kept = slots.map((x) => {
@@ -169,20 +139,17 @@ function useLoadHolds(bars: RefObject<HTMLElement | null>[], rows: RefObject<HTM
           localStorage.setItem(KEPT_ITEMS, JSON.stringify(items))
           localStorage.setItem(KEPT_SETUP, setup)
           localStorage.removeItem("vaultite.statusbar.file")
-        } catch { /* full */ }
+        } catch {}
       }, 2000)
     }
     const ro = new ResizeObserver(save)
     for (const c of [...els, ...rs]) ro.observe(c)
     save()
     return () => { clearTimeout(saving); ro.disconnect() }
-  }, [path, setup]) // eslint-disable-line react-hooks/exhaustive-deps
-  // (the same list until an item draws: the bar's items are drawn again only when it changes)
+  }, [path, setup]) // eslint-disable-line react-hooks/exhaustive-deps -- bars and rows are refs
   return useMemo(() => (h.done ? null : h.kept.filter(([k]) => !h.drawn.has(k))), [h, h.done, drawn])
 }
 
-/** The bar's ambient items with the room of those still to come (a vault plugin's, before the vault's plugins came)
- *  where they were last time. */
 function withComing<T extends { key: string }>(shown: T[], kept: Kept | null, known: string[]): (T | { key: string; coming: number })[] {
   if (!kept?.length || vaultPluginsIn()) return shown
   const rank = new Map(kept.map(([k], i) => [k, i]))
@@ -198,31 +165,22 @@ function withComing<T extends { key: string }>(shown: T[], kept: Kept | null, kn
   return out
 }
 
-/** Which items the bar leaves out first when it's cramped (useFit), low first: the word count last, so a narrow pane's
- *  part says at least that. */
 const fitRank = (x: BarItem) => (x.key === "core:characters" ? 1 : x.ambient ? 2 : x.status && !x.status.after ? 3 : x.key === "core:words" ? 5 : 4)
-/** Whose room never narrows while one file is open (useSteady): the counts, and plugins' items after them. */
 const steady = (x: BarItem) => x.key === "core:words" || x.key === "core:characters" || !!x.status?.after
 
 export const StatusBar = memo(function StatusBar() {
   const { disabled, enabled, statusBar, statusBarMore, statusBarLeft, density, interfaceFont, snippets } = usePrefs()
-  // What the bar's width depends on but the file: a change lets go of the widths held for the setup before.
   const setup = JSON.stringify([statusBar, statusBarMore, statusBarLeft, disabled, enabled, density, interfaceFont, snippets])
-  const plugins = usePluginsVersion() // (a vault plugin's code arriving)
+  const plugins = usePluginsVersion()
   const bar = useMemo(() => barShown(disabled, statusBar, statusBarLeft), [disabled, enabled, statusBar, statusBarLeft, plugins])
   const leftKeys = useMemo(() => new Set(bar.left), [bar])
   useBarCommands(bar.all)
   const { cols: footCols, focus: focusCol, focused } = useColumns()
-  // (a pane drawn edge to edge, a terminal or a chat, has its foot to itself: the bar spans the others; none, it's off)
   const cols = footCols.length ? footCols : WHOLE, room = cols.filter((c) => !c.full), off = !room.length
-  // Counted after the keystroke is on screen: a long note's count takes a few milliseconds. The file comes late with
-  // its text, so a file just opened is never measured (useSteady) with the last one's counts.
   const settled = useSettled()
-  // (only the focused pane's file: focused elsewhere, it says its word under its pane; none above a terminal)
   const late = settled && (!settled.pane || settled.pane === focused) && !cols.find((c) => c.pane === focusCol)?.full ? settled : null
   const body = late?.body ?? "", fm = late?.fm ?? ""
   const head = late?.head, path = late?.path ?? ""
-  // What plugins' items get: the file as typed (theirs are drawn after the keystroke too).
   const fileHead = useMemo(() => head ?? { path, fm: {}, type: null }, [head, path])
   const fileText = useMemo(() => (head ? joinFm(fm, body) : ""), [head, fm, body])
   const reads = useRef(new Map<string, { text: boolean }>())
@@ -230,20 +188,14 @@ export const StatusBar = memo(function StatusBar() {
   const code = !!late && /^(code|other|notebook)$/.test(kindOf(path))
   const nb = !!late && /\.ipynb$/i.test(path)
   const counts = useCounts(path, body, text, code, nb)
-  // (a plugin's item that throws is left out, its error in Errors: the bar is on every desktop tab, so it'd stop the app)
   const item_ = (key: string, draw: () => ReactNode) => <Catch key={key} reset={path} fallback={() => null}><Drawn draw={draw} /></Catch>
   const open = !!late
 
-  // The items: the tucked ones in the tray, the rest in the bar, but those that don't fit, which the tray shows too.
-  // A file's are there only while one is focused.
   const barRef = useRef<HTMLDivElement>(null), rowRef = useRef<HTMLDivElement>(null), itemsRef = useRef<HTMLDivElement>(null), trayRef = useRef<HTMLDivElement>(null)
   const leftRef = useRef<HTMLDivElement>(null), leftRowRef = useRef<HTMLDivElement>(null), leftItemsRef = useRef<HTMLDivElement>(null)
-  // The focused pane's part, when it isn't the one at the right (whose part is the right corner's): its file's items
-  // and the more button, right under it.
   const paneRef = useRef<HTMLDivElement>(null), paneRowRef = useRef<HTMLDivElement>(null), paneItemsRef = useRef<HTMLDivElement>(null)
   const first = room[0] ?? cols[0], last = room.at(-1) ?? cols.at(-1)!, fc = room.find((c) => c.pane === focusCol) ?? null
   const apart = !!fc && fc !== last
-  // (a file's items are held only on a file's tab: on a view or a new tab no file comes, and their room stayed empty)
   const loading = useLoadHolds([barRef, leftRef, paneRef], [rowRef, leftRowRef, paneRowRef], path, setup), fileTab = useFileTab()
   const held = useMemo(() => (fileTab ? loading : loading?.filter(([, , file]) => !file) ?? null), [loading, fileTab])
   const drawable = useMemo(() => bar.shown.filter((x) => x.ambient || open || held?.some(([k, w]) => k === x.key && w > 0)), [bar, open, held])
@@ -253,13 +205,9 @@ export const StatusBar = memo(function StatusBar() {
   const inPane = useMemo(() => (apart ? inBar.filter((x) => !leftKeys.has(x.key) && !x.ambient) : []), [inBar, leftKeys, apart])
   const [tray, setTray] = useState(false)
   const dragged = useDrag((d) => d?.item.status)
-  // (what the left corner leaves out goes in the right one's tray; its more button shows while one is tucked, dragged or
-  // left out of either corner)
   const overLeft = useFit(leftRowRef, inLeft.map((x) => x.key), false)
-  // (shown last load, it holds its place until the file's items come and the fit says)
   const moreHeld = !open && !!held?.some(([k]) => k === MORE)
   const pinned = statusBarMore.some((k) => drawable.some((x) => x.key === k)) || !!dragged || overLeft.length > 0 || moreHeld
-  // (the more button goes with the file's items: under the focused pane when that's apart)
   const moreApart = apart && open
   const overRight = useFit(rowRef, inRight.map((x) => x.key), !moreApart && pinned)
   const overPane = useFit(paneRowRef, inPane.map((x) => x.key), moreApart && (pinned || overRight.length > 0))
@@ -278,7 +226,6 @@ export const StatusBar = memo(function StatusBar() {
   useSteady(rowRef, `${path}\n${setup}`)
   useSteady(paneRowRef, `${path}\n${setup}`)
 
-  // What a file's own items draw: the plugins', its view, its counts (all as of the settled file: late).
   const fileDraw = (x: BarItem): ReactNode => {
     if (!late) return null
     const { mode, views, setMode } = late
@@ -306,15 +253,11 @@ export const StatusBar = memo(function StatusBar() {
     </span>
   )
   const holdOf = (k: string) => held?.find(([key]) => key === k)?.[1] ?? 0
-  // The ambient items, drawn again only when the bar's own layout changes: none takes the file, so a keystroke redraws
-  // none; a file's, with each change to it (a keystroke's own render has the old one).
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- slot and item_ are new each render; these are what they read
   const ambientSlots = useMemo(() => new Map(inBar.filter((x) => x.ambient).map((x) => [x.key, slot(x, item_(x.key, () => x.ambient!.render()), "bar", holdOf(x.key))])), [inBar, held, dragged, path])
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fileDraw and slot are new each render; these are what they read
   const fileSlots = useMemo(() => new Map(inBar.filter((x) => !x.ambient).map((x) => [x.key, open ? slot(x, fileDraw(x), "bar", holdOf(x.key))
     : <span key={x.key} aria-hidden data-status-coming data-fit={fitRank(x)} className="shrink-0" style={{ width: holdOf(x.key) }} />])), [inBar, held, dragged, open, late, counts, fileHead, fileText])
-  // In each corner's row, a line where the ambient items meet the file's (shown only between two that show something:
-  // index.css). Those still to come go where they were, in their corner.
   const known = [...bar.all.map((a) => a.key), MORE]
   const row = (items: BarItem[], kept: Kept | null) => {
     const els: ReactNode[] = [], seps: string[] = []
@@ -332,8 +275,6 @@ export const StatusBar = memo(function StatusBar() {
   }
   const right = row(inRight, held && held.filter(([k, , file]) => !leftKeys.has(k) && !(apart && file))), left = row(inLeft, held && held.filter(([k]) => leftKeys.has(k)))
   const mid = row(inPane, apart && held ? held.filter(([k, , file]) => !leftKeys.has(k) && file) : null)
-  // Dragged over, a corner's items and the tray's make way for the one dragged; its lines go where the kinds meet then
-  // (left out, one would give up its room and the items past it would shift).
   const ambient = (key: string) => !!bar.all.find((x) => x.key === (key === INCOMING ? dragged : key))?.ambient
   const withSeps = (hit: Gap | null, seps: string[]) => hit?.order?.flatMap((key, i, all) => (i && ambient(key) !== ambient(all[i - 1]) ? [seps.shift() ?? "", key] : [key])).filter(Boolean) ?? null
   useSlide(itemsRef, withSeps(barHit, [...right.seps]), "x")
@@ -341,7 +282,6 @@ export const StatusBar = memo(function StatusBar() {
   useSlide(paneItemsRef, withSeps(paneHit, [...mid.seps]), "x")
   useSlide(trayRef, trayHit?.order ?? null, "wrap")
   const gap = (g: Gap | null) => g?.order?.includes(INCOMING) && <span aria-hidden data-slide={INCOMING} className="h-5 shrink-0" />
-  // (always there, the fit showing it: drawn again only when it changes, not on each keystroke)
   const any = drawable.length > 0, ring = !!trayHit && !trayHit.order
   const more = useMemo(() => any && (
     <button type="button" data-status-more data-pinned={pinned || undefined} onClick={() => setTray((t) => !t)} aria-label="More status items" aria-expanded={trayOpen} data-tip="More" data-tip-side="top"
@@ -357,17 +297,13 @@ export const StatusBar = memo(function StatusBar() {
       {gap(trayHit)}
     </div>
   )
-  // (a row holds what's in line, so what it leaves out is measured without the tray over it; with nothing to show, the
-  // right corner is a faint one to right-click, the left one gone but as a place to drop: index.css)
   const split = cols.length > 1
-  // The other panes' files, each in a word under its pane (the one at the right's in the right corner).
   const others = room.filter((c) => c !== fc)
-  // (less the left corner, under the same pane)
   const width = (c: Column, ...less: string[]) => (!split ? MAX_WIDTH : columnWidth(c, ...(c === first ? ["var(--status-left, 0px)"] : []), ...less))
   const lastWord = others.includes(last) && <PaneWord col={last} />
   return (
     <>
-      {/* (not live: a status is polite by default, and a screen reader would read the counts at every keystroke) */}
+      {/* role="status" is polite by default: a screen reader would read the counts at every keystroke */}
       <div ref={leftRef} role="status" aria-live="off" aria-label="Status bar, left" data-status-bar data-status-left data-dragging={dragged ? "" : undefined} data-drop={leftHit ? "" : undefined}
         data-off={off || undefined} style={off ? { display: "none" } : { left: columnLeft(first), maxWidth: split ? `calc(${columnWidth(first)} / 2 - 6px - var(--pane-gap, 0px))` : LEFT_MAX_WIDTH }} onContextMenu={menuFor(barMenu)}
         className="vau-room sight-foot fixed bottom-0 z-20 transition-[left] duration-(--motion-spring) ease-(--spring) hidden h-7 box-content pb-[env(safe-area-inset-bottom)] items-center rounded-tr-[8px] border-t-[0.5px] border-r-[0.5px] border-border bg-sidebar pr-2 pl-1 text-[12px] whitespace-nowrap text-muted-foreground tabular-nums md:flex">
@@ -407,16 +343,10 @@ export const StatusBar = memo(function StatusBar() {
   )
 })
 
-/** No panes at the foot (each floating): the bar as for one pane. */
 const WHOLE: Column[] = [{ pane: "", x: 0, w: 1, full: false }]
-/** A part's padding and edge (its width is its content's: box-content), and a little room, kept inside its pane; as
- *  cards, its inset on both sides too. */
 const PAD = "calc(18px + var(--pane-gap, 0px) * 2)"
-/** A right-hand part of the bar: the right corner, or a pane's. */
 const FOOT = "vau-room sight-foot fixed bottom-0 z-20 transition-[right] duration-(--motion-spring) ease-(--spring) hidden h-7 box-content pb-[env(safe-area-inset-bottom)] items-center rounded-tl-[8px] border-t-[0.5px] border-l-[0.5px] border-border bg-sidebar pr-3 pl-1 text-[12px] whitespace-nowrap text-muted-foreground tabular-nums md:flex"
 
-/** A pane's file that isn't focused, in a word under it (its count, or what its viewer says), fainter than the focused
- *  one's items: a click focuses the pane. With `maxWidth`, its own part of the bar, else in the right corner's. */
 const PaneWord = memo(function PaneWord({ col, maxWidth }: { col: Column; maxWidth?: string }) {
   const s = paneStatusSubs.use(() => paneStatus.get(col.pane) ?? null)
   const path = s?.path ?? "", body = s?.body ?? "", text = !!s && !s.info && !s.says
@@ -440,8 +370,6 @@ const PaneWord = memo(function PaneWord({ col, maxWidth }: { col: Column; maxWid
   )
 })
 
-/** A pane's part of the bar jumps to the pane focused next, rather than gliding across the others: it glides only with
- *  the sidebars. */
 function useJumps(el: RefObject<HTMLElement | null>, at: string) {
   const was = useRef(at)
   useLayoutEffect(() => {
@@ -455,8 +383,6 @@ function useJumps(el: RefObject<HTMLElement | null>, at: string) {
   }, [el, at])
 }
 
-/** The left corner's width on the right one (`--status-left`), which stops short of it: set as the page lays itself out,
- *  never drawn again for it. */
 function useLeftWidth(left: RefObject<HTMLElement | null>, ...right: RefObject<HTMLElement | null>[]) {
   useLayoutEffect(() => {
     const l = left.current, rs = right.flatMap((r) => (r.current ? [r.current] : []))
@@ -466,10 +392,9 @@ function useLeftWidth(left: RefObject<HTMLElement | null>, ...right: RefObject<H
     const ro = new ResizeObserver(([e]) => set(e.borderBoxSize[0]?.inlineSize ?? 0))
     ro.observe(l)
     return () => ro.disconnect()
-  }, [left, ...right]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [left, ...right]) // eslint-disable-line react-hooks/exhaustive-deps -- a fixed list of refs
 }
 
-/** Each item's palette commands: show or hide it, and show them all. */
 function useBarCommands(all: BarItem[]) {
   useCommands(() => [
     ...all.map((x) => ({
@@ -483,32 +408,24 @@ function useBarCommands(all: BarItem[]) {
 
 type Refs = Record<"barRef" | "itemsRef" | "leftRef" | "leftItemsRef" | "paneRef" | "paneItemsRef" | "trayRef", RefObject<HTMLElement | null>>
 
-/** The bar's corners (and the focused pane's part) and its tray (with the more button) as drop targets for its items:
- *  in a corner, where it lands among them; in the tray or onto the button, tucked there (onto the button: last). */
 function useBarDrops({ barRef, itemsRef, leftRef, leftItemsRef, paneRef, paneItemsRef, trayRef }: Refs, keys: string[], trayKeys: string[], tucked: string[]) {
-  // A drop after the tray's last item goes before what follows that one in the bar's order.
   const afterTray = (key: string) => {
     const rest = keys.filter((k) => k !== key), end = trayKeys.filter((k) => k !== key).at(-1)
     return end ? rest[rest.indexOf(end) + 1] ?? null : rest[0] ?? null
   }
   const slots = (box: HTMLElement) => [...box.querySelectorAll<HTMLElement>(":scope > [data-status-key]")].filter((el) => el.offsetWidth)
-  // A corner: over it, or just past its open end (it grows that way for the one dragged in).
   const corner = (side: "left" | "right" | "pane") => (item: { status?: string }, x: number, y: number, el: Element | null): Gap | null => {
     const bar = (side === "left" ? leftRef : side === "pane" ? paneRef : barRef).current, box = (side === "left" ? leftItemsRef : side === "pane" ? paneItemsRef : itemsRef).current
     if (!item.status || !bar?.offsetWidth || !box || el?.closest("[data-status-tray], [data-status-more]")) return null
     const b = bar.getBoundingClientRect(), f = box.getBoundingClientRect()
     if (side !== "left" ? x < f.left - 24 || x > b.right : x < b.left || x > Math.max(b.right, f.right + 24)) return null
     if (y < b.top - 24 || y > b.bottom) return null
-    // (measured without the gap one from elsewhere opens: the corner grows for it, so its items would move under a still
-    // pointer and the slot be the next one)
     const coming = box.querySelector<HTMLElement>(`:scope > [data-slide="${INCOMING}"]`)
     if (coming) coming.style.display = "none"
     const at = slots(box), { order, before, same } = reorder(at.map((el) => el.dataset.statusKey!), [item.status], slotAt(box, at, x, y, "x"))
     if (coming) coming.style.display = ""
-    // (where it is already: nothing to do; `before` is in the corner's order, so its end is just after its last)
     return same ? null : { before: before ?? afterLast(at.map((el) => el.dataset.statusKey!), item.status), order }
   }
-  // The end of a corner: before what follows its last item in the bar's order (the other corner's items don't matter).
   const afterLast = (corner: string[], key: string) => {
     const rest = keys.filter((k) => k !== key), end = corner.filter((k) => k !== key).at(-1)
     return end ? rest[rest.indexOf(end) + 1] ?? null : null
@@ -522,7 +439,6 @@ function useBarDrops({ barRef, itemsRef, leftRef, leftItemsRef, paneRef, paneIte
     const tray = trayRef.current
     if (tray && el && tray.contains(el)) {
       const at = slots(tray), { order, before, same } = reorder(at.map((el) => el.dataset.statusKey!), [item.status], slotAt(tray, at, x, y, "wrap"))
-      // (tucked there already, in its place: nothing to do; one there because the bar is full is tucked for good)
       return same && tucked.includes(item.status) ? null : { before: before ?? afterTray(item.status), order }
     }
     return el?.closest("[data-status-more]") ? { before: afterTray(item.status) } : null
@@ -530,7 +446,6 @@ function useBarDrops({ barRef, itemsRef, leftRef, leftItemsRef, paneRef, paneIte
   return { barHit: useDropHit<Gap>("status:bar"), leftHit: useDropHit<Gap>("status:left"), paneHit: useDropHit<Gap>("status:pane"), trayHit: useDropHit<Gap>("status:more") }
 }
 
-/** The file's view; clicked, its views (three, or reading and source), the current one checked. */
 const ViewButton = memo(function ViewButton({ mode, views, setMode }: { mode: Mode; views: typeof VIEWS; setMode: (m: Mode) => void }) {
   const cur = MODES[mode], tip = `Current view: ${VIEWS.find((v) => v.value === mode)!.label.toLowerCase()}`
   const menu = (e: MouseEvent) => menuAbove(e, viewItems(views, mode, setMode))
@@ -542,15 +457,11 @@ const ViewButton = memo(function ViewButton({ mode, views, setMode }: { mode: Mo
   )
 })
 
-/** A plugin's item for the file, drawn again as the text changes only once it has read it (`file.text`): most read only
- *  the file's head (its properties, where it came from). */
 const FileItem = memo(function FileItem({ item, head, text, reads }: { item: StatusItem; head: FileHead; text: string; reads: { text: boolean } }) {
   const file = useMemo(() => Object.defineProperty({ ...head }, "text", { enumerable: true, get: () => { reads.text = true; return text } }) as OpenFile, [head, text, reads])
   return <Catch reset={head.path} fallback={() => null}><Drawn draw={() => item.render(file)} /></Catch>
 }, (a, b) => a.item === b.item && a.head === b.head && a.reads === b.reads && (a.text === b.text || !b.reads.text))
 
-/** The file as it is, a moment after each keystroke; a long one's once typing pauses (another file's at once). Drawn
- *  as a transition, once a keystroke: a deferred value drew the bar twice, the first time for nothing. */
 function useSettled() {
   const [settled, setSettled] = useState(() => status_)
   useEffect(() => {
@@ -558,7 +469,7 @@ function useSettled() {
     const on = () => {
       const s = status_, go = () => startTransition(() => setSettled(s))
       clearTimeout(t)
-      if ((s?.body.length ?? 0) > LONG && s?.path === last?.path) t = setTimeout(go, 500)
+      if ((s?.body.length ?? 0) > WAIT_FOR_PAUSE_PAST && s?.path === last?.path) t = setTimeout(go, 500)
       else go()
       last = s
     }
@@ -570,9 +481,8 @@ function useSettled() {
 }
 
 let worker: Worker | null = null, asked = 0
-/** The counts of the file's text: a big file's from the worker, none until it answers. */
 function useCounts(path: string, body: string, text: boolean, code: boolean, nb: boolean): Counts | null {
-  const big = body.length > BIG
+  const big = body.length > WORKER_PAST
   const now = useMemo(() => (text && !big ? countText(body, code, nb) : null), [body, text, big, code, nb])
   const [late, setLate] = useState<{ path: string; counts: Counts } | null>(null)
   useEffect(() => {
@@ -587,12 +497,9 @@ function useCounts(path: string, body: string, text: boolean, code: boolean, nb:
   return !text ? null : big ? (late?.path === path ? late.counts : null) : now
 }
 
-/** The steady items' room (`data-steady`), which never narrows while one file is open: as you type, what's left of
- *  them stays put. None kept while the bar is cramped (useFit). */
 function useSteady(row: RefObject<HTMLElement | null>, reset: string) {
   const widest = useRef(new Map<string, number>())
   const watched = useRef(new Set<HTMLElement>())
-  // (measured as the page lays itself out, not by asking: a keystroke's redraw forces no layout)
   const [ro] = useState(() => new ResizeObserver((entries) => {
     if (row.current?.hasAttribute("data-cramped")) return
     for (const e of entries) {
@@ -605,7 +512,6 @@ function useSteady(row: RefObject<HTMLElement | null>, reset: string) {
   useLayoutEffect(() => {
     const r = row.current
     if (!r) return
-    // Another file or setup, or cramped (or no longer): the room let go of, measured again.
     const now = `${reset}\n${r.hasAttribute("data-cramped")}`, fresh = now !== was.current
     was.current = now
     if (fresh) widest.current.clear()

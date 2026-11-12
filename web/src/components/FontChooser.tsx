@@ -1,5 +1,3 @@
-// The commands "Text font…", "Interface font…" and "Monospace font…": the font picker in the
-// palette, the whole app shown in the selected font as the selection moves. Settings' Fonts rows open the same one.
 import { pickFont } from "@/components/FontPicker"
 import { DEFAULT_FONTS, previewLook } from "@/core/appearance"
 import { getPrefs, setPrefs } from "@/core/prefs"
@@ -12,7 +10,6 @@ export const FONTS = {
 }
 export type FontKey = keyof typeof FONTS
 
-/** A font's picker, Settings' and the palette's: the whole app shows the selected font until one is picked. */
 export const fontPicker = (k: FontKey, value: string) => {
   const f = FONTS[k]
   return { value, onChange: (v: string) => void setPrefs({ [k]: v }), label: f.label, heading: f.sub, fallback: f.fallback, mono: "mono" in f,
@@ -20,10 +17,8 @@ export const fontPicker = (k: FontKey, value: string) => {
 }
 
 const fontOf = (k: FontKey) => { const raw = getPrefs()[k]; return typeof raw === "string" ? raw.trim() : "" }
-/** Its command's value (the font in use, by name) and place in Settings, as a setting's (core/choices.ts). */
 export const fontSetting = (k: FontKey) => ({ value: () => fontOf(k) || FONTS[k].fallback.name, place: { name: "Appearance", open: () => openDetail("fonts") } })
 
-/** The commands "Text font…" and the like. */
 export function chooseFont(k: FontKey) {
   void pickFont(fontPicker(k, fontOf(k)))
 }

@@ -1,5 +1,3 @@
-// The app's buttons: text ones (Button, or buttonClass for a link drawn as one) and the small icon ones of a panel's
-// heading. Only React here: the setup window (onboarding.html) draws them without the app.
 import type { ButtonHTMLAttributes, ComponentType } from "react"
 import { cn } from "@/lib/utils"
 

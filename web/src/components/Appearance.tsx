@@ -1,5 +1,3 @@
-// Settings > Appearance, in groups: the layout (LayoutPicker.tsx), colours (theme, style, the schemes in a strip), the
-// window, tabs, text (this device's sizes), a phone's pull-down actions, snippets. Saved in appearance.json.
 import { useRef, useState, type ReactNode } from "react"
 import { refuse } from "@/core/animation"
 import { Check, FolderOpen, Minus, Palette, Plus, Type } from "lucide-react"
@@ -33,8 +31,6 @@ import { choose } from "@/components/Chooser"
 import { DEFAULT_PULL, PULL_SLOTS, pullActions, pullLabel } from "@/components/PullActions"
 
 
-/** A scheme's swatches drawn in its own colours (the tile carries its data-scheme, so its CSS gives the tokens), in the
- *  app's mode or `mode`. */
 export function Swatches({ id, mode, className }: { id: string; mode?: "light" | "dark"; className?: string }) {
   const only = onlyMode(id)
   const dark = only ? only === "dark" : mode ? mode === "dark" : isDark()
@@ -42,7 +38,6 @@ export function Swatches({ id, mode, className }: { id: string; mode?: "light" |
     <div data-scheme={id === "default" ? undefined : id} aria-hidden
       className={cn("scheme-preview flex h-10 items-center gap-1.5 overflow-hidden rounded-[7px] border-[0.5px] border-border bg-background px-2 text-foreground", dark && "dark", className)}>
       <span className="shrink-0 text-[14px] leading-none font-semibold">Aa</span>
-      {/* (narrow, the last dots go, never over the Aa) */}
       <span className="flex min-w-0 flex-1 justify-end-safe gap-[3px] overflow-hidden">
         {["primary", "red", "yellow", "green", "blue"].map((c) => <span key={c} className="size-2 shrink-0 rounded-full" style={{ background: `var(--${c})` }} />)}
       </span>
@@ -50,7 +45,6 @@ export function Swatches({ id, mode, className }: { id: string; mode?: "light" |
   )
 }
 
-/** A scheme in the gallery: its swatches and its name; the one in use has a ring and a check. */
 function Tile({ id, name, tip, on, onClick }: { id: string; name: string; tip?: string; on: boolean; onClick: () => void }) {
   return (
     <button type="button" role="radio" aria-checked={on} aria-label={name} onClick={onClick} data-tip={tip}
@@ -65,8 +59,6 @@ function Tile({ id, name, tip, on, onClick }: { id: string; name: string; tip?: 
 
 const modeTip = (only?: string) => only ? `${only === "dark" ? "Dark" : "Light"} only` : undefined
 
-/** Every colour scheme: the app's, then the vault's Obsidian themes (an unreadable one a dashed tile saying why), and a
- *  button to their folder on this machine. */
 function SchemeGrid() {
   const { scheme } = usePrefs()
   const { themes } = useVaultAppearance()
@@ -93,8 +85,6 @@ function SchemeGrid() {
   )
 }
 
-/** Every colour scheme as a window drawn in it, in a row that scrolls sideways (the app's, then the vault's themes);
- *  Show all opens them as a grid, with the themes folder. */
 function SchemeStrip() {
   const { scheme } = usePrefs()
   const { themes } = useVaultAppearance()
@@ -105,7 +95,6 @@ function SchemeStrip() {
   return <PictureChoice<string> scroll label="Colour scheme" value={scheme} onChange={(id) => setPrefs({ scheme: id })} options={options} />
 }
 
-/** The gallery as a sheet (Settings' More…; the command "Colour scheme…" is the palette's, SchemeChooser.tsx). */
 export function SchemeGallery() {
   return (
     <>
@@ -124,11 +113,9 @@ function FolderButton({ folder, label, className }: { folder: string; label: str
 }
 
 
-/** A stacked row's control with its reset before it: the pair fills the line on a phone, sits at the end from sm up. */
 function WithReset({ on, onReset, label, children }: { on: boolean; onReset: () => void; label: string; children: ReactNode }) {
   return (
     <div className="flex w-full min-w-0 items-center gap-1 sm:w-auto sm:shrink-0">
-      {/* (its room always kept, so nothing moves; stacked under its label on a phone, at the end: the control flush with it) */}
       <div className="shrink-0 max-sm:order-last"><ResetButton on={on} onClick={onReset} label={label} /></div>
       {children}
     </div>
@@ -148,7 +135,6 @@ function FontRow({ k }: { k: FontKey }) {
   )
 }
 
-/** The three fonts as one "Fonts" row saying which are set; it opens their pickers in a sheet. */
 function Fonts() {
   const prefs = usePrefs()
   const names = [...new Set((Object.keys(FONTS) as FontKey[]).map((k) => (typeof prefs[k] === "string" ? prefs[k].trim() : "")).filter(Boolean))]
@@ -158,7 +144,6 @@ function Fonts() {
   )
 }
 
-/** The sheet: the interface, text and monospace fonts' pickers. */
 export function FontsSheet() {
   return (
     <>
@@ -172,7 +157,6 @@ export function FontsSheet() {
   )
 }
 
-/** A size's row: a reset back to actual size, then smaller, how big it is, bigger (each off at its end). */
 function SizeRow({ id, name, sub, text, actual, step, canStep, mark }: { id: string; name: string; sub?: string; text: string; actual: boolean
   step: (step: -1 | 0 | 1) => unknown; canStep: (step: -1 | 1) => boolean; mark: Record<`data-${string}`, string> }) {
   const btn = "flex size-8 cursor-pointer items-center justify-center rounded-[7px] text-foreground/80 hover:bg-card disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
@@ -194,14 +178,12 @@ function SizeRow({ id, name, sub, text, actual, step, canStep, mark }: { id: str
   )
 }
 
-/** A kind's text size (notes, terminals), in percent or, for a kind in points, points. */
 function TextSizeRow({ kind, label, points, sub }: { kind: string; label: string; points?: number; sub?: string }) {
   const size = useTextSize(kind)
   return <SizeRow id={`text-size-${kind}`} name={`${label} text size`} sub={sub} text={textSizeText(kind, size)} actual={size === 100}
     step={(step) => stepTextSize(kind, step)} canStep={(step) => nextTextSize(size, step, points) !== undefined} mark={{ "data-text-size-row": kind }} />
 }
 
-/** The desktop app's interface size (core/zoom.ts): every window's zoom, this computer's. */
 function InterfaceSizeRow() {
   const size = useInterfaceSize()
   if (size === null) return null
@@ -220,13 +202,10 @@ export function AppearancePanel() {
   return (
     <div className="flex flex-col gap-6">
       <Section title="Layout">
-        {/* (applying one can run code: the Mac's, refused through Vaultite Connect) */}
         {over ? <OnThisMac className="px-1">Layouts are picked on this Mac.</OnThisMac> : <Group><div className="py-3"><LayoutPicker describe="start" /></div></Group>}
       </Section>
       <Section title="Colours">
         <Group>
-          {/* Theme and style side by side, the style wrapping under the theme where they don't fit. A scheme with one mode
-              says so beside the label, on its line: it changes what the row says, never the layout. */}
           <div className="flex flex-wrap gap-x-10 gap-y-3 py-2">
             <SettingRow below data-settings-row="theme" className="min-h-0 w-auto py-0" label={<>Theme{only && <span className="ml-2 text-[13px] leading-none text-muted-foreground">{schemeName(prefs.scheme)} is {only} only</span>}</>}>
               <PictureChoice<Theme> label="Theme" value={prefs.theme} onChange={(theme) => setPrefs({ theme })}
@@ -287,7 +266,6 @@ export function AppearancePanel() {
   )
 }
 
-/** Rows that unfold under a choice while it's chosen (Glass's): kept drawn, so they fold away again as smoothly. */
 function Fold({ open, children }: { open: boolean; children: ReactNode }) {
   return (
     <div inert={!open} className={cn("grid transition-[grid-template-rows,opacity] duration-[var(--motion)] ease-[var(--ease-out)]", open ? "grid-rows-[1fr]" : "grid-rows-[0fr] opacity-0")}>
@@ -296,8 +274,6 @@ function Fold({ open, children }: { open: boolean; children: ReactNode }) {
   )
 }
 
-/** Fade the file bar: never, while typing, or always (back while the pointer is at it). Desktop only: a phone has no
- *  pointer to bring it back. */
 function BarFadeRow() {
   const value = barFadeOf(usePrefs().fileBarFade), c = coreChoice("setting:file-bar-fade")
   return (
@@ -308,8 +284,6 @@ function BarFadeRow() {
   )
 }
 
-/** Glass's own rows: why the window stays solid here, if it does, how see-through it is, and translucent pages (how
- *  see-through they are). */
 function GlassRows() {
   useSwitches()
   const prefs = usePrefs()
@@ -324,7 +298,6 @@ function GlassRows() {
   )
 }
 
-/** How much of the desktop glass lets through, 0 (solid) to 100; shown on the window as it's dragged, saved once let go. */
 function GlassSlider({ k, label, sub }: { k: "translucency" | "pageTranslucency"; label: string; sub: string }) {
   const raw = usePrefs()[k], value = Number.isFinite(raw) ? Math.min(100, Math.max(0, raw)) : 50
   return (
@@ -337,7 +310,6 @@ function GlassSlider({ k, label, sub }: { k: "translucency" | "pageTranslucency"
   )
 }
 
-/** What ⌘T and the + buttons open (newtab.json's `opens`): a blank tab's page, the quick switcher, or a view (a web page). */
 function NewTabsRow() {
   const { newTab } = usePrefs()
   const choices = opensChoices()
@@ -350,8 +322,6 @@ function NewTabsRow() {
   )
 }
 
-/** The commands a page pulled down on a phone offers (appearance.json's `pullActions`): a row for each way, its command
- *  picked from the palette's. Only at a phone's width, where pulling does it. */
 function PullRows() {
   const prefs = usePrefs()
   const desktop = useDesktop()
@@ -380,7 +350,6 @@ function PullRows() {
   )
 }
 
-/** CSS snippets, the end of Appearance: the vault's .vaultite/snippets/*.css (and an Obsidian vault's), a switch each, and New snippet. */
 function Snippets() {
   const { snippets: on } = usePrefs()
   const { snippets } = useVaultAppearance()
@@ -405,7 +374,6 @@ function Snippets() {
           {snippets.map((s) => (
             <SettingRow key={s.name} label={s.path.startsWith(`${SNIPPETS_FOLDER}/`)
               ? <button type="button" onClick={() => openFile(s.path)} data-tip="Edit" className="max-w-full cursor-pointer truncate text-left hover:text-primary">{s.name}</button>
-              // (Obsidian's, in .obsidian/snippets: the app never writes there)
               : <span className="truncate">{s.name} <span className="text-muted-foreground">· Obsidian</span></span>}>
               <Switch on={enabled.includes(s.name)} onChange={(v) => toggle(s.name, v)} label={`${s.name} snippet`} />
             </SettingRow>

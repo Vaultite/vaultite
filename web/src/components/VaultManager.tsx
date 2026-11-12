@@ -1,5 +1,3 @@
-// Manage vaults: known vaults, create one, open a folder, or (desktop) connect to another machine's server. The desktop app
-// shows it in its own window with the native picker; the web in a sheet, switching which vault the server serves.
 import { useEffect, useState, type ReactNode } from "react"
 import { ChevronLeft, ChevronRight, Ellipsis, FlaskConical, Folder, FolderOpen, FolderPlus, Server, type LucideIcon } from "lucide-react"
 import { menuBelow } from "@/components/ContextMenu"
@@ -12,9 +10,7 @@ import { useKeptCount } from "@/core/heights"
 import { plainText } from "../../../core/plainerror.ts"
 
 type KnownVault = { path: string; name: string; open?: boolean
-  /** The playground (desktop; the sandbox in code): made up, made afresh each time it opens. */
   sandbox?: boolean
-  /** Another machine's server (desktop; `path` is its address). */
   remote?: boolean }
 export type VaultList = { current?: string | null; home?: string; vaults: KnownVault[] }
 type FolderList = { path: string; home: string; parent: string | null; folders: { name: string; vault: boolean }[] }
@@ -23,18 +19,13 @@ export type VaultBackend = {
   open: (path: string) => Promise<unknown>
   create: (parent: string, name: string) => Promise<unknown>
   remove: (path: string) => Promise<unknown>
-  /** The native folder picker (desktop). Without it, the server's folders are browsed here. */
   pick?: () => Promise<string | null>
   folders?: (path?: string) => Promise<FolderList>
-  /** Show a vault's folder in Finder (desktop). */
   reveal?: (path: string) => void
-  /** Open another machine's server by its address (desktop). */
   connect?: (address: string) => Promise<unknown>
-  /** Make the playground (the sandbox: a made-up vault) afresh and open it (desktop). */
   playground?: () => Promise<unknown>
 }
 
-/** The web's: the server's list, and its folders. Opening one reloads the app on the new vault. */
 export const webVaults: VaultBackend = {
   list: () => api("GET", "vaults"),
   open: (path) => api("POST", "vaults/open", { path }).then(switched),
@@ -43,16 +34,14 @@ export const webVaults: VaultBackend = {
   folders: (path) => api("GET", `vaults/folders${path ? `?path=${encodeURIComponent(path)}` : ""}`),
 }
 
-/** Another vault: the tabs of this one mean nothing there. */
 function switched() {
-  try { localStorage.removeItem("vaultite.tabs") } catch { /* private mode */ }
+  try { localStorage.removeItem("vaultite.tabs") } catch {}
   location.replace(location.pathname)
 }
 
 const short = (p: string, home?: string) => (home && p.startsWith(home + "/") ? `~${p.slice(home.length)}` : p)
 
 export function VaultManager({ backend, wide }: { backend: VaultBackend
-  /** Two columns (its own window); in the sheet the list sits above the actions. */
   wide?: boolean }) {
   const [list, setList] = useState<VaultList | null>(null)
   const [error, setError] = useState("")
@@ -63,7 +52,7 @@ export function VaultManager({ backend, wide }: { backend: VaultBackend
   const [busy, setBusy] = useState(false)
   const [home, setHome] = useState<string | undefined>()
   const load = () => backend.list().then((l) => { setList(l); if (l.home) setHome(l.home) }, (e) => setError(plainText(e)))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the list loads once, as it opens
   useEffect(() => { load() }, [])
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true); setError("")
@@ -157,7 +146,7 @@ export function VaultManager({ backend, wide }: { backend: VaultBackend
   } else {
     right = (
       <div className="flex flex-col gap-4">
-        {wide && ( // the sheet has it in its head
+        {wide && (
           <div className="flex flex-col items-center gap-2 py-4">
             <img src="icon.svg" alt="" className="size-16" />
             <h2 className="text-[20px] font-semibold">Vaultite</h2>
@@ -208,20 +197,18 @@ function Setting({ icon: Icon, title, sub, children }: { icon?: LucideIcon; titl
   )
 }
 
-
 const BackButton = ({ onClick }: { onClick: () => void }) => (
   <button type="button" onClick={onClick} className="flex h-7 w-fit cursor-pointer items-center gap-0.5 rounded-[6px] pr-2 text-[13px] text-primary hover:bg-foreground/[0.05]">
     <ChevronLeft className="size-4" strokeWidth={2.25} />Back
   </button>
 )
 
-/** The server's folders, from the home folder (web only; the desktop app has the native picker). */
 function FolderBrowser({ backend, label, onPick, onCancel, onHome }: { backend: VaultBackend; label: string
   onPick: (path: string) => void; onCancel: () => void; onHome: (home: string) => void }) {
   const [at, setAt] = useState<FolderList | null>(null)
   const [error, setError] = useState("")
   const go = (p?: string) => backend.folders!(p).then((l) => { setAt(l); onHome(l.home); setError("") }, (e) => setError(plainText(e)))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- starts at the home folder, once
   useEffect(() => { go() }, [])
   return (
     <div className="flex flex-col gap-3">

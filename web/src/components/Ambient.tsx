@@ -1,4 +1,3 @@
-// What a plugin's ambient item draws in the status bar (AmbientItem): a small button, an icon and a few words.
 import type { ComponentType, CSSProperties, MouseEvent, ReactNode } from "react"
 import { cn } from "@/lib/utils"
 
@@ -6,7 +5,6 @@ export function AmbientButton({ icon: Icon, text, tip, tint, onClick, className 
   icon: ComponentType<{ className?: string; strokeWidth?: number; style?: CSSProperties }>
   text?: ReactNode; tip: string; tint?: string; onClick: (e: MouseEvent<HTMLButtonElement>) => void; className?: string
 }) {
-  // (a name must hold the words shown: when the tip doesn't, they're the name and the tip describes them)
   const shown = typeof text === "string" || typeof text === "number" ? String(text) : null
   const named = shown === null || tip.includes(shown)
   return (
