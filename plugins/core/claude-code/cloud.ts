@@ -13,7 +13,7 @@ const SESSION = /^session_\w{4,80}$/, REPO = /^[\w.-]{1,100}\/[\w.-]{1,100}$/, B
 /** A cloud session as its list says: running, idle, requires_action, archived, pending or failed. */
 export type CloudSeen = { status: string; title: string; updated: number; branch?: string }
 /** Its latest turn, from its transcript: as agent-turn's, with the question it waits on. */
-export type CloudTurn = { prompt: string; text: string; at: number; final: boolean; files: string[]; asks?: { question: string; choices: string[] }[] }
+export type CloudTurn = { prompt: string; text: string; at: number; final: boolean; files: string[]; background?: number; asks?: { question: string; choices: string[] }[] }
 
 const git = (cwd: string, args: string[]) => new Promise<string>((ok, fail) =>
   execFile("git", ["-C", cwd, ...args], { env: gitEnv(), timeout: 60_000, maxBuffer: 4 << 20 }, (e, out, err) => (e ? fail(new Error(String(err || e.message).trim().slice(0, 300))) : ok(String(out)))))
@@ -118,7 +118,7 @@ export function cloudSessions(plugin: Plugin, o: { accounts: () => Account[]; bi
     for (const l of all) c.line(l)
     const t = lastTurn(c.entries), asking = askingIn(all.slice(-200).join("\n"))
     const asks = asking?.kind === "question" ? asking.questions.map((q) => ({ question: q.question, choices: q.multi ? [] : q.options.map((x) => x.label) })) : undefined
-    return { ...t, ...(asks?.length ? { asks } : {}) }
+    return { ...t, ...(c.background.size ? { background: c.background.size } : {}), ...(asks?.length ? { asks } : {}) }
   }
 
   plugin.provide("cloud-ready:claude", (account: string) => unready(account))

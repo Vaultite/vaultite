@@ -1,5 +1,5 @@
 #!/bin/bash
-# A cloud session's setup (Claude Code on the web): Node 26 as CI has it, the packages, Chrome for QA. Run by
+# A cloud session's setup (Claude Code on the web): CI's Node, rsync, the packages, Chrome for QA. Run by
 # .claude/settings.json's SessionStart hook; outside the cloud it does nothing.
 [ "$CLAUDE_CODE_REMOTE" = true ] || exit 0
 cd "${CLAUDE_PROJECT_DIR:-$(dirname "$0")/..}" || exit 1
@@ -10,6 +10,8 @@ if [ ! -x "$dir/bin/node" ]; then
   curl -fsSL "https://nodejs.org/dist/$v/node-$v-linux-x64.tar.xz" | tar -xJ -C /opt && mv "/opt/node-$v-linux-x64" "$dir" || { echo "cloud-setup: no Node $v" >&2; exit 1; }
 fi
 export PATH="$dir/bin:$PATH"
+# (the update tests copy with rsync, which the VM lacks)
+command -v rsync > /dev/null || { apt-get install -y -qq rsync || { apt-get update -qq && apt-get install -y -qq rsync; }; } > /dev/null 2>&1
 # (every command Claude runs after this: this Node first, and QA's Chrome the VM has)
 [ -n "$CLAUDE_ENV_FILE" ] && printf 'export PATH="%s/bin:$PATH"\nexport VAULTITE_CHROME="%s"\n' "$dir" "${CHROME_PATH:-/usr/bin/google-chrome}" >> "$CLAUDE_ENV_FILE"
 # (npm ci again only when the lock or .npmrc changed)

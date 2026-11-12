@@ -137,7 +137,7 @@ export function workerLinks(plugin: Plugin, o: { seenHere: (terminal: string, r:
     fetched.set(cwd, Date.now())
     return new Promise<void>((ok) => execFile("git", ["fetch", "-q", "--no-tags", "origin"], { cwd, timeout: 60_000, env: gitEnv() }, () => ok()))
   }
-  type Turn = { prompt: string; text: string; at: number; final: boolean; files: string[]; asks?: { question: string; choices: string[] }[] }
+  type Turn = { prompt: string; text: string; at: number; final: boolean; files: string[]; background?: number; asks?: { question: string; choices: string[] }[] }
   type CloudRead = { sessions: Record<string, { status: string; title: string } | null>; turns: Record<string, Turn | null> }
   function cloudLink(agent: string): Link {
     const account = accountOf(agent)
