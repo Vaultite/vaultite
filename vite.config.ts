@@ -205,7 +205,8 @@ const grouped = (name: string) => /^(app|vendor|editor|terminal|chat)([~-]|$)/.t
  *  its entry module), which each page's import map points at the file of the moment, named by its content alone. */
 export function stableChunks(): Plugin {
   const hash = (s: string) => crypto.createHash('sha256').update(s).digest('base64url').slice(0, 8)
-  const rel = (id: string) => normalizePath(path.relative(import.meta.dirname, id))
+  // (a package's module by its path in node_modules: a code root's packages are a folder shared with others, elsewhere)
+  const rel = (id: string) => { const p = normalizePath(id), lib = p.lastIndexOf('/node_modules/'); return lib >= 0 ? p.slice(lib + 1) : normalizePath(path.relative(import.meta.dirname, id)) }
   return {
     name: 'vaultite-stable-chunks',
     apply: 'build',
