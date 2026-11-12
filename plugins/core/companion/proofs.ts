@@ -28,7 +28,7 @@ export type ProofDeps = {
   screen: (name: string, tour: Tour) => Screen | null
   /** Why job `j`'s change isn't in what tour `t` plays on here (it ran on another machine, it's on a branch not merged
    *  into the app running here), "" when it is. */
-  notHere: (j: Job, t: Tour) => string
+  notHere: (j: Job, t: Tour) => Promise<string>
   /** Its words in a bubble (said aloud while a proof shows), at a place of Vaultite's when given. */
   say: (text: string, o?: { ask?: boolean }) => Promise<unknown>
   /** The choice's buttons on the screen (the helper's), or false when there's no screen to draw on. */
@@ -122,7 +122,7 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
         return await choose(j, mine)
       }
       await mainRead
-      const away = d.notHere(j, t)
+      const away = await d.notHere(j, t)
       // (a change that isn't in the app here has nothing on screen to find: say so, and offer to merge it first)
       if (away) {
         if (!landable(j)) return await plain(j, mine, `I can't show it on this Mac: ${away}. ${summaryOf(j)}`)
@@ -207,7 +207,8 @@ they ask to see it live: a change not in the app on this Mac yet is said so, wit
 one that can't play or a thing it names gone: it says so plainly, with what the job says it changed. The choice is their click or word, the app's: Keep and
 merge (its own worker lands it as its repo says; the job closes once merged; with no change of its own, or one
 already on main, said so: Keep closes it, nothing merged), Needs changes (a clip of what they show and say, sent back to that job), Not yet (it waits in Jobs). Its worker
-saves it: companion tour-save "<the change>" --job <its id> --record <its own server>.
+saves it: companion tour-save "<the change>" --job <its id> --record <its own server> (one landing itself, by default no
+--record: its tour plays live once the change is in the app here).
 
   vau companion job-show j3k9x2a --said "show me the header"
   vau companion job-show j3k9x2a --live --said "show me it live"

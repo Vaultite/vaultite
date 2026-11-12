@@ -7,7 +7,7 @@ import path from "node:path"
 import { agentModel, agentName, KNOWN_AGENTS, parseTerminal } from "../../../core/agents.ts"
 import { gitEnv, inDesktop, type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin, quoted, ROOT, userSurface, whoOf } from "../../../core/plugins.ts"
 import { cardOf, choiceIn, commitsIn, endEvent, HANDED, inPlace, landedSaid, landTask, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, type Marks, nowOf, restEvent, type Queued, queuedLine, toldBy, picturesIn, type Result, resumeOf,
-  step, terminalOf, type Waits, type Where, worktreeOf } from "./jobs.ts"
+  type ProofMode, step, terminalOf, type Waits, type Where, worktreeOf } from "./jobs.ts"
 import { requestWriter } from "../../../core/vault.ts"
 import type { Moment } from "./plugin.ts"
 import { branchOf, checkoutNamed, type Found, githubOf, headOf, machineOfUrl, onlyHere, type Over, preferredMachine, refusal, repoOf, resolveHere, checkoutsLine, rootsLine, surfaceOf, tilde, unpushed, urlsIn, watched } from "./where.ts"
@@ -367,6 +367,8 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   }
   /** Whether coding jobs land their own change once its checks pass (the setting jobs_land), not waiting for Keep and merge. */
   const lands = () => plugin.settings().jobs_land === true
+  /** When a job records its proof's video (the setting jobs_proof). */
+  const proofMode = (): ProofMode => { const v = plugin.settings().jobs_proof; return v === "always" || v === "never" ? v : "auto" }
   /** The Claude Code a job runs as when the handoff names none: the setting, with its account (claude_personal). */
   const jobsAgent = () => { const own = setting("jobs_agent") || "claude"; return own.split("_")[0] === "claude" ? own : "claude" }
   /** Who works on it: the harness asked (Claude Code in the jobs' account by default, else the account asked), its model
@@ -840,8 +842,9 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     if (inPlace(where)) where.watched = true
     else if (where.repo) Object.assign(where, worktreeOf(where.cwd, where.repo, j.id), lands() ? { lands: true } : {})
     j.now = `starting in ${tilde(where.cwd)}`
+    const task = jobTask(told, m, where, j.id, { land: lands(), proof: proofMode() })
     try {
-      const r = await ctx.op("terminal.start", { agent: where.agent, prompt: where.machine ? await carry(where.machine, jobTask(told, m, where, j.id, lands())) : jobTask(told, m, where, j.id, lands()), name: j.title, cwd: where.cwd,
+      const r = await ctx.op("terminal.start", { agent: where.agent, prompt: where.machine ? await carry(where.machine, task) : task, name: j.title, cwd: where.cwd,
         ...(where.model ? { model: where.model } : {}), ...(where.effort ? { effort: where.effort } : {}),
         ...(where.agent.split("_")[0] === "claude" && setting("jobs_mode") ? { mode: setting("jobs_mode") } : {}), ...(where.machine ? { machine: where.machine } : {}) }) as { id: string }
       j.terminal = r.id.split("@")[0]

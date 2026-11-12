@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Companion: a job that lands itself no longer records a demo video; Show me plays its demo live once it's in (the setting Jobs' demo videos: auto, always or never).
+
 ## 0.13.0 (2026-11-11)
 
 A first run made for anyone: a new vault asks before any AI and writes only what you chose, AI off really is off at

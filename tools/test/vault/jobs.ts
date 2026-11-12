@@ -101,10 +101,18 @@ export default async ($: VaultTest) => {
         site.tree === "/Users/alice/Projects/site-j3k9x2a" && site.branch === "job-j3k9x2a" &&
         jt.includes("git -C /Users/alice/Projects/site worktree add /Users/alice/Projects/site-j3k9x2a -b job-j3k9x2a 0123456789ab") && /never in \/Users\/alice\/Projects\/site itself/.test(jt) &&
         /install them there/.test(jt) && /Keep and merge lands it/.test(jt) && /running server's own checkout/.test(live) && !/worktree/.test(note) && !/They asked over/.test(jt), jt)
-      const lands = J.jobTask("Fix the footer", undefined, site, "j3k9x2a", true), watchedLand = J.jobTask("x", undefined, { ...site, watched: true }, "j3k9x2a", true)
+      const lands = J.jobTask("Fix the footer", undefined, site, "j3k9x2a", { land: true }), watchedLand = J.jobTask("x", undefined, { ...site, watched: true }, "j3k9x2a", { land: true })
       check("jobs: with jobs_land, a coding job lands itself once its checks pass, from its worktree, cleaned up; it asks only on a real tradeoff; one over a watched preview doesn't",
         /land it yourself, from your worktree \/Users\/alice\/Projects\/site-j3k9x2a/.test(lands) && /worktree remove/.test(lands) && /"Merged:"/.test(lands) && /only on a real tradeoff/.test(lands) &&
         !/Keep and merge lands it/.test(lands) && lands.includes("tour-save") && !/land it yourself/.test(watchedLand) && !/land it yourself/.test(note), lands)
+      const always = J.jobTask("Fix the footer", undefined, site, "j3k9x2a", { land: true, proof: "always" }), never = J.jobTask("Fix the footer", undefined, site, "j3k9x2a", { land: true, proof: "never" })
+      const reviewNever = J.jobTask("Fix the footer", undefined, site, "j3k9x2a", { proof: "never" }), noteAuto = J.jobTask("Tidy my note", undefined, { ...site, repo: "", tree: undefined, branch: undefined }, "j3k9x2a", { land: true })
+      check("jobs: jobs_proof auto records a video only for a job ending in review; one landing itself saves its tour unrecorded, played live once on main (a video if it doesn't land); always records; never, no proof",
+        lands.includes("--job j3k9x2a --open") && !lands.includes("--record <your own copy's address>") && /with no --record/.test(lands) && /Should it not land[^]*record its video/.test(lands) &&
+        !lands.includes("--video") && /checks pass and its tour is saved, land it yourself/.test(lands) &&
+        jt.includes("--record <your own copy's address>") && noteAuto.includes("--record <your own copy's address>") &&
+        always.includes("--record <your own copy's address>") && /checks pass and your demo is recorded, land it yourself/.test(always) && always.includes("vau inbox report ... --video") &&
+        !never.includes("tour-save") && /checks pass, land it yourself/.test(never) && !reviewNever.includes("tour-save") && /Keep and merge lands it/.test(reviewNever), lands)
       check("jobs: a worker writes plain sentences and shows a UI as real pictures (vau html picture, embedded), never ASCII; one over a watched preview isn't told",
         [jt, note].every((t) => /plain, short sentences/.test(t) && t.includes("vau html picture") && /Never ASCII art/.test(t)) && !J.jobTask("x", undefined, { ...site, watched: true }, "j3k9x2a").includes("vau html picture"), note)
       const moved = J.jobTask("Fix the footer", undefined, { ...site, moved: "the preview http://localhost:5173 on M4" }, "j3k9x2a")

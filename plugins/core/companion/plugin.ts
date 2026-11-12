@@ -24,7 +24,7 @@ import { bestFound, byLabel, checkMarks, type Found, isAnswer, type Mark, type R
 import { anchorsOf, inPicture, inSummoned, type Lane, screenNear, SUMMONED_PROMPT, summonedLane } from "./summoned.ts"
 import { languageIn } from "../../../core/desktop/spoken.ts"
 import { elevenUsage, voiceHere, voiceHereText, voiceOps } from "./voice.ts"
-import { type Job, type JobState, jobSpoken, jobTimingsText, landable, terminalOf } from "./jobs.ts"
+import { commitsIn, type Job, type JobState, jobSpoken, jobTimingsText, landable, onMain, terminalOf } from "./jobs.ts"
 import { jobTold } from "../../../core/desktop/jobnews.ts"
 import { knockOps } from "./knockops.ts"
 import { beforeLayer, FLIPS, layerOwner, readyNow } from "./proof.ts"
@@ -2909,8 +2909,10 @@ const proofs = proofOps(plugin, {
     return s && { ...s, fallback: async () => false }
   },
   say: (text, o = {}) => plugin.host.call("companion.say", { text, ...(o.ask ? { ask: true } : {}) }, AS_TOOL, { report: "companion job-show" }),
-  notHere: (j, t) => {
+  notHere: async (j, t) => {
     if (!ownTour(t) || !j.where.repo) return ""
+    // (on main, wherever it ran: here once this app runs a commit it names, as far as git can tell)
+    if (onMain(j)) return ownCode(j) ? await notLive(j) : ""
     if (j.where.machine) return `it ran on ${j.where.label || j.where.machine}, not here`
     return landable(j) && ownCode(j) ? "it's on a branch, not merged into the app you're running" : ""
   },
@@ -2951,6 +2953,17 @@ const proofs = proofOps(plugin, {
   asked: () => askOf(ownName()),
   shown: (j, by) => did(ownName(), "shown", undefined, JSON.stringify({ job: j.id, title: j.title, by })),
 })
+/** Why job `j`'s change, on main, isn't in the app running here yet ("" when it is, or no commit it names says). */
+async function notLive(j: Job) {
+  const named = commitsIn([j.result?.text, j.last?.text].filter(Boolean).join("\n"))
+  for (const commit of named) {
+    const r = await plugin.host.call("app.version", { commit }, AS_TOOL).catch(() => null)
+    const v = (r?.result as { live?: { live: boolean; why: string } } | undefined)?.live
+    if (v?.live) return ""
+    if (v && named.length === 1) return `it's merged, but the app here doesn't run it yet (${v.why.replace(/^[^:]*: /, "")})`
+  }
+  return ""
+}
 /** Whether job `j` works on this app's own code (its repo's package is the one running): its change shows here once merged. */
 function ownCode(j: Job) {
   const name = (dir: string) => { try { return String(JSON.parse(fs.readFileSync(`${dir}/package.json`, "utf8")).name ?? "") } catch { return "" } }
