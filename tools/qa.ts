@@ -8,8 +8,8 @@ import { createRequire } from "node:module"
 import os from "node:os"
 import path from "node:path"
 import { freePort, killTree, record, sleep, stopTerminals, testServer } from "./test/lib.ts"
-import { front, slot } from "./qa_slots.ts"
-import { FRONT, QA, SKIP, allScripts, head } from "./qa_scripts.ts"
+import { alone, front, slot } from "./qa_slots.ts"
+import { FRONT, MEASURES, QA, SKIP, allScripts, head } from "./qa_scripts.ts"
 import { type Boot, copyTemplate, template, type Variant } from "./qa_template.ts"
 import { asInteractiveJob, throttled } from "./qa_job.ts"
 import { officialBundles, officialRepos } from "./test/official.ts"
@@ -254,20 +254,19 @@ await Promise.all(Array.from({ length: jobs }, async () => {
     const name = next()
     if (!name) { await sleep(1000); continue }
     running.add(name)
-    // (this machine's QA slot, shared with other agents' runs, held for the script and its servers)
-    // (and on a Mac the front window, for one that brings its own forward: after the slot, so no two wait on each other)
-    const asked = Date.now(), release = await slot(name), out = process.platform === "darwin" && FRONT.has(name) ? await front(name) : () => {}
-    const waited = Date.now() - asked
+    // (on a Mac the front window, for one that brings its own forward: after the slot, so no two wait on each other)
+    const asked = Date.now(), held = MEASURES.has(name) ? await alone(name) : { release: await slot(name), busy: undefined }
+    const release = held.release, waited = Date.now() - asked
+    if (held.busy) { release(); running.delete(name); console.log(`skip ${name} (${held.busy})`); continue }
+    const out = process.platform === "darwin" && FRONT.has(name) ? await front(name) : () => {}
     const r = await run(name).finally(() => { out(); release() })
     running.delete(name)
     Object.assign(spent, { setup: spent.setup + r.setup, script: spent.script + r.script, waited: spent.waited + waited, waits: spent.waits + (waited >= 1000 ? 1 : 0) })
     if (r.skipped) { console.log(`skip ${name} (${r.skipped})`); continue }
     runs.set(name, [...runs.get(name) ?? [], r.ok])
     times.set(name, r.setup + r.script)
-    // (where its time went: setting up, the script, and waiting for this machine's slot or for the template to be made)
     const more = [(r.template ?? 0) >= 1000 && `template ${sec(r.template!)}`, waited >= 1000 && `slot wait ${sec(waited)}`].filter(Boolean)
     console.log(`${r.ok ? "ok  " : "FAIL"} ${name} (${sec(r.setup + r.script)}: setup ${sec(r.setup)}, script ${sec(r.script)}${more.length ? `; ${more.join(", ")}` : ""})`)
-    // (what failed, and the last check that passed: where a script that threw got to)
     const lines = r.out.trim().split("\n"), lastOk = lines.findLastIndex((l) => l.startsWith("ok"))
     if (!r.ok) fails.push(`--- ${name}\n${lines.filter((l, i) => i === lastOk || !l.startsWith("ok")).slice(-25).join("\n")}`)
     // (on GitHub, each failed script an annotation, its first failed check: what main's red notice names, tools/mainci.ts)

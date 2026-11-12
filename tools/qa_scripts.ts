@@ -12,6 +12,11 @@ export const SKIP = new Set(["boot", "perf", "stability", "termperf", "shots", "
  *  (lights' hover peek): one at a time on a machine (tools/qa_slots.ts' front). */
 export const FRONT = new Set(["agentpages", "desktop", "lights", "webpanes", "webrestore", "webviewer"])
 
+/** Scripts that measure time, each run with the machine to itself (tools/qa_slots.ts' alone), and why. */
+export const MEASURES = new Map([
+  ["paneswipe", "asserts frame timings: other scripts' CPU makes long tasks"],
+])
+
 /** Every script's name, the skipped ones too. */
 export const allScripts = () => fs.readdirSync(QA).filter((f) => f.endsWith(".mjs")).map((f) => f.slice(0, -4)).sort()
 

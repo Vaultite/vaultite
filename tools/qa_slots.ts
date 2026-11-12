@@ -53,6 +53,19 @@ async function take(dir: string, count: number, label: string, what: string): Pr
   }
 }
 
+/** Every QA slot on this machine, then a calm machine (the minute's load under half its cores, `wait` at most): what
+ *  measures time can't share it, and other agents' builds and tests load it without a slot. `busy` says why not. */
+export async function alone(label: string, wait = 180_000): Promise<{ release: () => void; busy?: string }> {
+  const lock = await take(path.join(sharedTmp(), "vaultite-qa-alone"), 1, label, "the machine (another script that measures time has it)")
+  const all: (() => void)[] = []
+  for (let i = 0; i < SLOTS; i++) all.push(await take(DIR, SLOTS, label, `every QA slot (to run alone)`))
+  const release = () => { for (const r of all) r(); lock() }
+  const cores = os.cpus().length, end = Date.now() + wait
+  while (os.loadavg()[0] >= cores / 2 && Date.now() < end) await new Promise((r) => setTimeout(r, 2000))
+  const load = os.loadavg()[0]
+  return { release, busy: load >= cores / 2 ? `the machine never calmed to measure on: load ${load.toFixed(1)} on ${cores} cores for ${wait / 60_000} min` : undefined }
+}
+
 let held: Promise<() => void> | undefined
 /** One slot for this whole process, held to its exit. */
 export const hold = () => (held ??= slot())
