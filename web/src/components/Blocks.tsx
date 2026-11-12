@@ -16,6 +16,7 @@ import { resolver } from "@/core/links"
 import { blockFor, offText } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 import { slashItems } from "@/core/slash"
+import { useDraft } from "@/core/statefor"
 import { Loading, Switch } from "@/components/kit"
 import { BlockSource, openBlockMenu } from "@/components/BlockSource"
 import type { BlockEdit } from "@/editor/livePreview"
@@ -163,8 +164,7 @@ const listOf = (v: unknown) => (Array.isArray(v) ? v.map(String) : typeof v === 
 function OptionInput({ d, value, set }: { d: OptionDecl; value: unknown; set: (v: unknown) => void }) {
   const ts = Array.isArray(d.type) ? d.type : [d.type]
   const shown = value === undefined || value === null ? "" : Array.isArray(value) ? value.join(", ") : String(value)
-  const [v, setV] = useState(shown)
-  useEffect(() => setV(shown), [shown])
+  const [v, setV] = useDraft(shown)
   const hint = d.default === undefined ? "" : Array.isArray(d.default) ? d.default.join(", ") : String(d.default)
   if (ts.length === 1 && ts[0] === "boolean") return <Switch on={value === undefined ? d.default === true : value === true} onChange={set} label={d.description} />
   if (ts.includes("enum") && d.values?.length) {

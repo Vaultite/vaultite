@@ -9,12 +9,12 @@ const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.
 mkdirSync(OUT, { recursive: true })
 const api = apiAt(B)
 const NOTE = "Qa links/Lighthouse.md", PERSON = "Qa links/Alice Park.md"
-await api("POST", "file", { path: PERSON, text: "# Alice Park\n" })
+await api("POST", "file", { path: PERSON, text: "---\nrole: designer\n---\n\n# Alice Park\n" })
 await api("POST", "file", { path: NOTE, text: "---\nowner: \"[[Alice Park]]\"\nrelated: [\"[[Alice Park|Alice]]\", \"[[Nowhere yet]]\"]\nsite: See https://example.com first\nstatus: active\n---\n\nA small app.\n" })
 
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
 const page = watch(await ctx.newPage())
-const props = () => page.locator('section[aria-label="Properties"]').first()
+const props = () => page.locator('.file-view:not([data-kept] *) section[aria-label="Properties"]').first()
 async function openNote() {
   await page.goto("about:blank"); await page.goto(`${B}#file/${encodeURIComponent(NOTE)}`)
   await page.waitForSelector('section[aria-label="Properties"]', { timeout: 30000 })
@@ -30,10 +30,13 @@ check("...a link to no note yet is still one", links.some((l) => l.startsWith("N
 check("...a web address in text is a link, the words around it as written", await props().locator('a[href="https://example.com"], a[data-url="https://example.com"]').count() === 1 &&
   (await props().innerText()).includes("See ") && (await props().innerText()).includes(" first"))
 check("...a value with no link is its field as before", await props().locator("input").evaluateAll((els) => els.some((e) => e.value === "active")))
+await api("PUT", "file", { path: NOTE, text: (await api("GET", `file?path=${encodeURIComponent(NOTE)}`)).text.replace("status: active", "status: done") })
+check("...changed elsewhere, the field shows it", await until(() => props().locator("input").evaluateAll((els) => els.some((e) => e.value === "done")), 5000))
 await page.screenshot({ path: `${OUT}proplinks.png`, clip: { x: 240, y: 0, width: 820, height: 420 } })
 
 await props().locator("a[data-wiki]").first().click()
 check("a click on the link opens its note", !!(await until(() => decodeURIComponent(page.url()).includes(PERSON), 4000)), page.url())
+check("...its properties folded, as that file keeps them", !!(await until(async () => (await props().locator("button[aria-expanded]").first().getAttribute("aria-expanded").catch(() => null)) === "false", 4000)))
 await openNote()
 const field = props().locator("[data-prop-linked]").first(), box = await field.boundingBox()
 await page.mouse.click(box.x + box.width - 8, box.y + box.height / 2)

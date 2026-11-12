@@ -20,6 +20,7 @@ import { drawEmbed, island, linkKind, useVaultEditing } from "@/components/editi
 import { cleanName, folderOf, gone, inTrash, isHidden, isJson, isMd, isProtected, isReadOnly, joinFm, joinPath, moveFile, nameProblem, onMergeIn, onSettle, openFile, openFolder, readFile, refuseName, restoreFile, splitFm, stem, takeNew, type FileText } from "@/core/files"
 import { isDesktop } from "@/core/platform"
 import { takeRename } from "@/core/workspace"
+import { useDraft } from "@/core/statefor"
 import { formatSize, isMedia, kindOf, type FileKind } from "@/core/filekinds"
 import { FileCard, ImageView, PdfView, PlayerView, rawUrl, useFileInfo } from "@/components/FileViewers"
 import { assetUrl, imageActions } from "@/components/editing"
@@ -97,11 +98,10 @@ const Title = memo(function Title({ path, editable, sheet, focus, settle, mode, 
   /** Enter: on to the text (when the name didn't change; a rename does it in the file's new view). */
   onEnter?: () => void }) {
   const name = stem(path)
-  const [v, setV] = useState(name)
+  const [v, setV] = useDraft(name)
   const ref = useRef<HTMLTextAreaElement>(null)
   const enter = useRef(false)
   useEffect(() => { if (focus && editable) { ref.current?.focus(); ref.current?.select() } }, [focus, editable])
-  useEffect(() => setV(name), [name])
   // (not while its tab is kept hidden: measured there it'd be 0 high, and shown again the page under it jumps a frame later)
   const fit = () => { const t = ref.current; if (t?.offsetWidth) { t.style.height = "0"; t.style.height = `${t.scrollHeight}px` } }
   useEffect(fit, [v, editable])
@@ -174,8 +174,7 @@ const PathBar = memo(function PathBar({ path, mode, setMode, edit, views, settle
   const folders = folderOf(path) && !outside ? folderOf(path).split("/") : []
   const name = stem(path)
   const [editing, setEditing] = useState(false)
-  const [v, setV] = useState(name)
-  useEffect(() => setV(name), [name])
+  const [v, setV] = useDraft(name)
   // Rename from the tab menu.
   useEffect(() => {
     const check = () => { if (takeRename(path)) setEditing(true) }

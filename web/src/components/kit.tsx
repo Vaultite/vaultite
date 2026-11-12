@@ -7,6 +7,7 @@ import { plain } from "@/core/data"
 import { haptic } from "@/core/haptics"
 import { isDesktop } from "@/core/platform"
 import { copyText } from "@/core/richmd"
+import { useDraft } from "@/core/statefor"
 import { Described, usePreview, type Preview } from "@/components/SettingPreview"
 
 /** The element with id `id` (a bar left for a portal: #sheet-bar), found as it renders so the portal is there in the
@@ -488,8 +489,7 @@ export function Editable({ value, set, placeholder, className, children }: {
   value: string; set?: (v: string | undefined) => void; placeholder: string; className?: string; children?: ReactNode
 }) {
   const [editing, setEditing] = useState(false)
-  const [v, setV] = useState(value)
-  useEffect(() => setV(value), [value])
+  const [v, setV] = useDraft(value)
   if (!set) return value ? <span className={className}>{children ?? value}</span> : null
   if (editing) {
     const commit = () => { setEditing(false); if (v.trim() !== value) set(v.trim() || undefined) }

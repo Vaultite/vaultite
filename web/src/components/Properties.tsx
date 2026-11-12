@@ -13,6 +13,7 @@ import { fromLocal, propKind, readProps, renameProp, setProp, toLocal, typedNumb
 import { menuBelow, menuFor, type MenuItem } from "@/components/ContextMenu"
 import { Switch } from "@/components/kit"
 import { keepPropsOpen, propsOpen } from "@/core/viewstate"
+import { useDraft, useStateFor } from "@/core/statefor"
 import { cn, plural } from "@/lib/utils"
 import { glide } from "@/core/animation"
 
@@ -40,10 +41,9 @@ function Field({ value, onCommit, readOnly, placeholder, className, inputMode, a
   /** The file it's in, for a value's links (none: a key, drawn as typed). */
   from?: string
 }) {
-  const [v, setV] = useState(value)
+  const [v, setV] = useDraft(value)
   // (a value with links is drawn with them until it's clicked, beside them, to edit)
   const [editing, setEditing] = useState(false)
-  useEffect(() => setV(value), [value])
   const commit = () => { setEditing(false); if (v !== value) onCommit(v) }
   // (none for the value as it is, unless empty: Enter keeps it)
   const s = useSuggest(v, setV, (t) => (suggest && (t !== value || !t) ? fieldSuggestions(suggest.list(), t, suggest.has) : null), {
@@ -276,8 +276,7 @@ export const Properties = memo(function Properties({ path, block, onChange, read
   const { props, error } = readProps(block)
   const keys = Object.keys(props)
   // Folded by default; open them and that file keeps them open (on this device).
-  const [open, setOpenState] = useState(() => propsOpen(path))
-  useEffect(() => setOpenState(propsOpen(path)), [path])
+  const [open, setOpenState] = useStateFor([path], () => propsOpen(path))
   const setOpen = (o: boolean) => { setOpenState(o); keepPropsOpen(path, o) }
   // A block's "This file's properties": open, and in view.
   const box = useRef<HTMLElement>(null)
@@ -289,7 +288,7 @@ export const Properties = memo(function Properties({ path, block, onChange, read
     }
     addEventListener("vau:properties", on)
     return () => removeEventListener("vau:properties", on)
-  }, [path])
+  }, [path, setOpenState])
   const [adding, setAdding] = useState(false)
   // A property just added: its value is typed next.
   const [added, setAdded] = useState<string | null>(null)

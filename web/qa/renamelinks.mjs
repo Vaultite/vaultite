@@ -126,6 +126,7 @@ await follows("renamed in the tree", "Qa links/Lighthouse brief.md", {
   [typed]: { has: "Typed [[Lighthouse brief]]" },
 })
 check("…its tab follows", await until(async () => (await panes().nth(1).getAttribute("aria-label")) === "Lighthouse brief", 3000))
+check("…and its title says the new name", await until(async () => (await title.inputValue()) === "Lighthouse brief", 3000), await title.inputValue())
 
 // 3. Move file to…, into another folder: relative links climb out to it.
 await row(at).click({ button: "right" })

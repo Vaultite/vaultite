@@ -162,6 +162,7 @@ for (const dark of [false, true]) {
     await shot("tab-menu")
     await page.locator("[role=menu] button", { hasText: /^Rename$/ }).click(); await wait(300)
     check("tab menu Rename: the name becomes a field", await bar.locator("input[aria-label='File name']").count() === 1)
+    check("...holding its new name", await bar.locator("input[aria-label='File name']").inputValue() === `${note} renamed`)
     await page.keyboard.press("Escape")
     await page.locator("[data-tab-bar] button[aria-label='New tab']").click(); await wait(300)
     await page.locator("[data-tab-bar] [role=tab]").first().click({ button: "right" }); await wait(200)
