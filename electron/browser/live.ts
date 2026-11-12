@@ -1,31 +1,23 @@
-// A page watched and driven by its owner from the app's web client (a phone, another Mac: plugins/core/web-viewer's
-// live routes, owner only, never ops), or watched by the app's window (the agents' panel): its frames sent while watched.
+// A page watched, and driven by its owner, from the app's web client or its window: its frames sent while watched.
 import type { NativeImage } from "electron"
 import { agentState, helped, press, setPaused, setTaken, setWatched } from "./agent.ts"
 import { scrub } from "./pagesecrets.ts"
 import { allPages, appWindows, busyWhen, cdp, eachPage, handle, mayOpen, tell, tellServer, type EngineWindow, type EnginePage } from "./engine.ts"
 
-/** At most this many frames a second reach the server (a window here: LOCAL_FPS), at most this big (device pixels);
- *  twice that while a viewer zooms in (`sharp`), a Retina page having the pixels. */
 const FPS = 8, LOCAL_FPS = 15
 const MAX_W = 1280, MAX_H = 1600
 const maxOf = (sharp: boolean) => (sharp ? { maxWidth: MAX_W * 2, maxHeight: MAX_H * 2 } : { maxWidth: MAX_W, maxHeight: MAX_H })
-/** A watch the server stopped renewing (it went away) ends after this. */
 const RENEW_MS = 30_000
-/** Without a frame this long (a hidden page doesn't paint, a still one sends none), the page is drawn for it. */
+// Chromium paints nothing for a hidden page and its screencast sends nothing while a page is still.
 const STILL_MS = 1000
 
-/** `cast` and `drawn`: the last frame each way (a drawing makes the page paint a frame too: each is sent once). `by`: who
- *  watches, the server (SERVER) or a view of a window's (`<window id>:<its key>`), and when each last renewed. */
 type Watch = { p: EnginePage; css: { w: number; h: number }; frame: string; cast: string; drawn: string; sent: number; checked: number
   sharp: boolean; trailing: ReturnType<typeof setTimeout> | null
   tick: ReturnType<typeof setInterval>; by: Map<string, number>; state: string; onMessage: (...a: unknown[]) => void }
 const watches = new Map<number, Watch>()
 const SERVER = "server"
-/** Window `id`'s view `key` watching (the corner card, a tab's picture: each its own, so one going leaves the other). */
 const viewOf = (id: number, key: unknown) => `${id}:${typeof key === "string" ? key.slice(0, 40) : ""}`
 const watchedBy = (w: Watch, win: number) => [...w.by.keys()].some((k) => k.startsWith(`${win}:`))
-// (an update's restart waits while the user watches or drives a tab from another device)
 busyWhen(() => [...watches.values()].some((w) => w.by.has(SERVER)) ? "the user is watching a tab live" : null)
 const opened = new Map<number, number>()
 const queues = new Map<number, Promise<unknown>>()
@@ -34,7 +26,6 @@ eachPage((p) => {
   p.wc.once("destroyed", () => { opened.delete(p.id); queues.delete(p.id); stop(p.id, true) })
 })
 
-/** Page `tab`, if its owner may watch it: a web page, its container not locked. */
 function pageOf(tab: unknown): EnginePage {
   const p = allPages().find((x) => x.id === Number(tab))
   if (!p || p.wc.isDestroyed()) throw new Error(`no tab ${String(tab)}: it was closed`)
@@ -57,7 +48,6 @@ function send(w: Watch, jpeg: string) {
   if (w.by.has(SERVER)) tellServer(w.p.win, "live:frame", frame)
   for (const win of appWindows()) if (watchedBy(w, win.id)) tell(win, { type: "engine:live:frame", ...frame })
 }
-/** A frame, throttled: one coming too soon waits, the newest replacing it, so the last one always arrives. */
 function offer(w: Watch, jpeg: string) {
   const wait = w.sent + 1000 / ([...w.by.keys()].some((k) => k !== SERVER) ? LOCAL_FPS : FPS) - Date.now()
   if (wait <= 0 && !w.trailing) return send(w, jpeg)
@@ -95,7 +85,6 @@ async function start(p: EnginePage) {
   return w
 }
 
-/** No frame came for a while: the page drawn as it is (it stays hidden), sent only if it changed. */
 async function still(w: Watch) {
   w.checked = Date.now()
   const img = await w.p.wc.capturePage(undefined, { stayHidden: true }).catch(() => null)
@@ -127,7 +116,6 @@ function stop(id: number, gone = false) {
   void cdp(w.p.wc, "Page.stopScreencast").catch(() => {})
 }
 
-/** One input after another per page: a press and its release never cross. */
 function queued(id: number, fn: () => Promise<unknown>) {
   const run = (queues.get(id) ?? Promise.resolve()).then(fn, fn)
   queues.set(id, run.catch(() => {}))
@@ -139,7 +127,6 @@ type Input = { type?: unknown; x?: unknown; y?: unknown; action?: unknown; butto
 const BUTTONS: Record<string, number> = { none: 0, left: 1, right: 2, middle: 4 }
 const MOUSE: Record<string, string> = { down: "mousePressed", up: "mouseReleased", move: "mouseMoved" }
 
-/** The viewer's input on page `p`: x and y are where on its picture, 0 to 1, made the page's own CSS pixels here. */
 async function input(p: EnginePage, e: Input) {
   const w = watches.get(p.id)
   if (w && !w.css.w) await measure(w)
@@ -150,7 +137,6 @@ async function input(p: EnginePage, e: Input) {
   const button = typeof e.button === "string" && e.button in BUTTONS ? e.button : "left"
   switch (e.type) {
     case "tap": {
-      // (count 2: a double tap's second, a double click)
       const clickCount = Math.min(3, Math.max(1, Number(e.count) || 1))
       await cdp(p.wc, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y })
       await cdp(p.wc, "Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", buttons: 1, clickCount })
@@ -166,7 +152,6 @@ async function input(p: EnginePage, e: Input) {
       return
     }
     case "wheel":
-      // (by how much of the picture, as x and y)
       await cdp(p.wc, "Input.dispatchMouseEvent", { type: "mouseWheel", x, y, modifiers, deltaX: Math.max(-5, Math.min(5, Number(e.dx) || 0)) * css.w,
         deltaY: Math.max(-5, Math.min(5, Number(e.dy) || 0)) * css.h })
       return
@@ -180,24 +165,18 @@ async function input(p: EnginePage, e: Input) {
   }
 }
 
-// ---------- the server's, from its owner-only live routes ----------
-
-/** A page as the owner's list shows it: whose (an agent's, its task), its container, paused, what's asked there. */
 function entryOf(p: EnginePage) {
   const by = agentState(p.id).by
   return { ...stateOf(p), container: containerOf(p), by: by ? by.name || "An agent" : null, task: by?.task ?? "", summary: by?.summary ?? "",
     shown: p.visible(), opened: opened.get(p.id) ?? null, appTab: p.tab() }
 }
 handle("agent:live:tabs", () => allPages().filter((p) => !p.wc.isDestroyed() && /^https?:/i.test(p.wc.getURL() || p.url) && mayOpen(p.profile)).map(entryOf))
-// (renewed by the server while anyone watches: what it answers is the page now, its last frame among it)
-/** Page `p` watched by `who` (SERVER, or a window's view, viewOf) from now, renewed within RENEW_MS. */
 async function watch(p: EnginePage, who: string) {
   const w = watches.get(p.id) ?? await start(p)
   w.by.set(who, Date.now())
   watchedAs(w)
   return w
 }
-/** Tells agent.ts who watches: another device's viewer (the server's) always sees it, this window's only with someone here. */
 const watchedAs = (w: Watch) => setWatched(w.p.id, w.by.has(SERVER) ? "elsewhere" : "here")
 function unwatch(id: number, who: string) {
   const w = watches.get(id)
@@ -211,7 +190,6 @@ handle("agent:live:watch", async (_win, tab) => {
   const w = await watch(p, SERVER)
   return { ...entryOf(p), frame: w.frame, w: w.css.w, h: w.css.h }
 })
-// (a viewer zoomed in: frames at twice the size till it zooms out; the screencast restarted at the new size)
 handle("agent:live:sharp", async (_win, tab, on) => {
   const w = watches.get(pageOf(tab).id)
   if (!w || w.sharp === (on === true)) return null
@@ -223,7 +201,6 @@ handle("agent:live:sharp", async (_win, tab, on) => {
   return null
 })
 handle("agent:live:unwatch", (_win, tab) => unwatch(Number(tab), SERVER))
-// The app's window watching a page of its own (the agents' panel): frames come as engine:live:frame, renewed as here.
 handle("agents:watch", async (win: EngineWindow, tab, key) => {
   const p = pageOf(tab)
   if (p.win !== win) throw new Error("that page is another window's")
@@ -233,23 +210,18 @@ handle("agents:watch", async (win: EngineWindow, tab, key) => {
 handle("agents:unwatch", (win: EngineWindow, tab, key) => unwatch(Number(tab), viewOf(win.id, key)))
 handle("agent:live:input", (_win, tab, e) => {
   const p = pageOf(tab)
-  // (the owner's input in an agent's page takes it over: the agent pauses rather than acting on a page that moves under it;
-  // a pointer only passing over the picture doesn't)
   const a = agentState(p.id), m = (e && typeof e === "object" ? e : {}) as Input
   const meant = m.type !== "mouse" || m.action === "down"
   if (meant && a.by && !a.paused && !a.ask) {
     setTaken(p.id, true)
-    // (the viewer hears it now, not at the next tick: its Stop button is Resume at once)
     const w = watches.get(p.id)
     if (w) void tick(w)
   }
   return queued(p.id, () => input(p, (e && typeof e === "object" ? e : {}) as Input)).then(() => null)
 })
-/** What's selected in the page: in its focused field (never a password's), else its text. */
 const SELECTION = `(() => { const e = document.activeElement
   if (e && (e.tagName === "TEXTAREA" || (e.tagName === "INPUT" && e.type !== "password")) && e.selectionEnd > e.selectionStart) return e.value.slice(e.selectionStart, e.selectionEnd)
   return String(getSelection() || "") })()`
-// (the owner copying to the device they watch from: a login the app filled stays •••)
 handle("agent:live:selection", async (_win, tab) => {
   const p = pageOf(tab)
   const text = String(await p.wc.executeJavaScriptInIsolatedWorld(1016, [{ code: SELECTION }]).catch(() => "") ?? "")

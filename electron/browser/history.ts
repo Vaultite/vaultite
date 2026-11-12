@@ -1,23 +1,18 @@
-// Browsing history: every page's visits, kept on this Mac (userData/web-history.sqlite, never the vault), ranked by
-// frecency for the address bar's suggestions and listed by day for the History tab.
+// Browsing history: every page's visits, ranked by frecency for the address bar and listed by day.
 import { app } from "electron"
 import { DatabaseSync, type StatementSync } from "node:sqlite"
 import path from "node:path"
 import { eachPage, handle, tellAll } from "./engine.ts"
 import { hasSecret, literal, scrub } from "./pagesecrets.ts"
 
-/** How a visit came: typed in the address (or picked from its suggestions), a link, a bookmark, a form, or the app
- *  (a link in a note, back and forward). */
 export type How = "typed" | "link" | "bookmark" | "form" | "other"
 const HOWS = new Set<string>(["typed", "link", "bookmark", "form", "other"])
 export type Visit = { id: number; url: string; title: string; host: string; at: number; profile: string; how: How }
-/** A visit as deleting it answers it, to put back (Undo). */
 export type Removed = { url: string; title: string; at: number; profile: string; how: How; source: string }
 export type Suggestion = { url: string; title: string; host: string; visits: number; typed: number; last: number }
 
 let db: DatabaseSync | null = null
 const q = new Map<string, StatementSync>()
-/** A statement, prepared once. */
 const sql = (text: string) => { let s = q.get(text); if (!s) q.set(text, s = open().prepare(text)); return s }
 
 function open() {
@@ -38,21 +33,16 @@ function open() {
   return db
 }
 
-/** Runs `fn` in one transaction (a page's visit, an import's thousands). */
 function tx<T>(fn: () => T): T {
   const d = open()
   d.exec("BEGIN")
   try { const r = fn(); d.exec("COMMIT"); return r } catch (e) { d.exec("ROLLBACK"); throw e }
 }
 
-// ---------- frecency: Firefox's, as Chrome's omnibox ranks by visits, typed visits and recency ----------
-
 const DAY = 86_400_000
 const today = () => Math.floor(Date.now() / DAY)
-/** A visit's worth by its age, and by how it came (a reload is worth nothing, a typed address double). */
 const ageWeight = (age: number) => (age <= 4 * DAY ? 100 : age <= 14 * DAY ? 70 : age <= 31 * DAY ? 50 : age <= 90 * DAY ? 30 : 10)
 const HOW_BONUS: Record<string, number> = { typed: 2, bookmark: 1.4, link: 1, other: 1, form: 0.6 }
-/** Its last ten visits' worth, as an average, times how many visits it has. */
 function frecencyOf(count: number, recent: { at: number; how: string }[]) {
   if (!count || !recent.length) return 0
   const now = Date.now()
@@ -60,7 +50,6 @@ function frecencyOf(count: number, recent: { at: number; how: string }[]) {
   return Math.ceil((count * points) / recent.length)
 }
 
-/** One address's counts and frecency from its visits; gone when it has none left. */
 function rescore(urlId: number) {
   const n = sql("SELECT count(*) AS n, sum(how = 'typed') AS typed, max(at) AS last FROM visits WHERE url = ?").get(urlId) as { n: number; typed: number | null; last: number | null }
   if (!n.n) { sql("DELETE FROM urls WHERE id = ?").run(urlId); return }
@@ -68,20 +57,15 @@ function rescore(urlId: number) {
   sql("UPDATE urls SET visits = ?, typed = ?, last = ?, frecency = ?, scored = ? WHERE id = ?").run(n.n, n.typed ?? 0, n.last ?? 0, frecencyOf(n.n, recent), today(), urlId)
 }
 
-/** Frecency drops as days pass: what wasn't scored today is scored again (at start, then every few hours). */
 function rescoreStale() {
   const stale = sql("SELECT id FROM urls WHERE scored < ?").all(today()) as { id: number }[]
   if (!stale.length) return
   tx(() => { for (const { id } of stale) rescore(id) })
 }
 
-// ---------- recording ----------
-
 const web = (u: string) => /^https?:\/\//i.test(u)
-/** The host as sites are matched and deleted: lower case, without "www.". */
 export const hostKey = (u: string) => { try { return new URL(u).hostname.toLowerCase().replace(/^www\./, "") } catch { return "" } }
 
-/** A visit to `url`: its address kept (or its title updated), the visit added, its score again. */
 function addVisit(url: string, title: string, at: number, profile: string, how: How, source = "") {
   sql("INSERT INTO urls (url, title, host) VALUES (?, ?, ?) ON CONFLICT(url) DO UPDATE SET title = CASE WHEN excluded.title <> '' THEN excluded.title ELSE title END")
     .run(url, title, hostKey(url))
@@ -90,11 +74,9 @@ function addVisit(url: string, title: string, at: number, profile: string, how: 
   return { id, added: Number(r.changes) > 0 }
 }
 
-/** Addresses the app is about to open from the address bar, and how (typed, a bookmark), till their page starts it. */
 const asked = new Map<string, { how: How; at: number }>()
 const ASKED_FOR = 15_000
 
-/** Windows are told the history changed (the History tab, the bar's suggestions), at most once a second. */
 let telling: ReturnType<typeof setTimeout> | null = null
 function changed() {
   telling ??= setTimeout(() => {
@@ -103,7 +85,6 @@ function changed() {
   }, 1000)
 }
 
-// (an address a login the app filled put its password in, a GET form's, is never kept: nor a title showing one)
 function record(url: string, title: string, profile: string, how: How) {
   if (!web(url) || hasSecret(url)) return
   try {
@@ -112,20 +93,17 @@ function record(url: string, title: string, profile: string, how: How) {
   } catch (e) { console.error("vaultite: a visit wasn't kept in the history:", e) }
 }
 
-/** A page's title, as it changes (a visit's title is its page's last). */
 function retitle(url: string, title: string) {
   if (!web(url) || !title || hasSecret(url)) return
   const t = scrub(title)
-  try { if (Number(sql("UPDATE urls SET title = ? WHERE url = ? AND title <> ?").run(t, url, t).changes)) changed() } catch { /* kept as it was */ }
+  try { if (Number(sql("UPDATE urls SET title = ? WHERE url = ? AND title <> ?").run(t, url, t).changes)) changed() } catch {}
 }
 
 const noHash = (u: string) => u.replace(/#.*$/, "")
 
 eachPage(({ wc, profile }) => {
-  // (agents' pages aren't the user's history: their runs are kept for replay instead, agent.ts)
   if (profile === "c-agents") return
-  // What started the navigation under way (Chromium may start one twice): the address bar (typed, a bookmark), the
-  // page (will-navigate, after it starts: a link, a form), or neither (the app, back and forward).
+  // Chromium may start one navigation twice, and tells will-navigate only after did-start-navigation.
   let starting = "", byPage = false, last = ""
   wc.on("did-start-navigation", (d) => {
     if (!d.isMainFrame || d.isSameDocument || d.url === starting) return
@@ -139,12 +117,10 @@ eachPage(({ wc, profile }) => {
     asked.delete(starting)
     starting = ""
     byPage = false
-    // (a reload isn't a visit: Chrome keeps it, but worth nothing)
     if (url === last && how === "other") return
     last = url
     record(url, wc.getTitle(), profile, how)
   })
-  // A page's own route change (a single-page app) is a visit; a jump within the page (#section) isn't.
   wc.on("did-navigate-in-page", (_e, url, main) => {
     if (!main || noHash(url) === noHash(last)) return
     last = url
@@ -153,9 +129,6 @@ eachPage(({ wc, profile }) => {
   wc.on("page-title-updated", (_e, title) => retitle(wc.getURL(), title))
 })
 
-// ---------- reading ----------
-
-/** When each host was last visited in a profile's logins (the Sites panel's order). */
 export function lastVisits(profile: string): Map<string, number> {
   try {
     const rows = sql("SELECT u.host AS host, max(v.at) AS at FROM visits v JOIN urls u ON u.id = v.url WHERE v.profile = ? GROUP BY u.host").all(profile) as { host: string; at: number }[]
@@ -163,14 +136,10 @@ export function lastVisits(profile: string): Map<string, number> {
   } catch { return new Map() }
 }
 
-/** "https://www.youtube.com/watch" -> "youtube.com/watch": what the address bar completes and matches against. */
 export const bare = (u: string) => u.replace(/^https?:\/\//i, "").replace(/^www\./i, "")
 const words = (text: string) => text.toLowerCase().split(/\s+/).filter(Boolean).slice(0, 8)
-/** Whether `w` starts a word of `hay` ("tube" doesn't in "youtube", "you" does). */
 const startsWord = (hay: string, w: string) => new RegExp(`(^|[^\\p{L}\\p{N}])${literal(w)}`, "u").test(hay)
 
-/** Matches for what's typed in the address bar, best first, and the address to complete it to inline: a site visited
- *  while what's typed is part of its name (as Firefox), a deeper address only once typed or visited often (as Chrome). */
 export function search(text: string, limit = 8): { complete: { text: string; url: string } | null; rows: (Suggestion & { score: number })[] } {
   const t = text.trim().toLowerCase(), ws = words(t)
   if (!ws.length) return { complete: null, rows: [] }
@@ -179,14 +148,12 @@ export function search(text: string, limit = 8): { complete: { text: string; url
     .all(...ws.flatMap((w) => [w, w])) as (Suggestion & { frecency: number })[]
   const scored = found.flatMap((r) => {
     const b = bare(r.url).toLowerCase(), title = r.title.toLowerCase()
-    // A word matched only in the middle of another (a short one, "ub" in "youtube") doesn't count, as Chrome has it.
     if (!ws.every((w) => w.length >= 3 || startsWord(b, w) || startsWord(title, w))) return []
     const q = b.startsWith(t) ? 4 : ws.some((w) => startsWord(r.host, w)) ? 2.5 : ws.every((w) => startsWord(title, w) || startsWord(b, w)) ? 1.5 : 1
     return [{ r, score: r.frecency * q }]
   }).sort((a, b) => b.score - a.score)
   const complete = completion(t, found)
   if (complete) { const i = scored.findIndex((x) => x.r.url === complete.url); if (i > 0) scored.unshift(...scored.splice(i, 1)) }
-  // (`score`: how well it matches, so the address bar can rank its open tabs and bookmarks among these)
   return { complete, rows: scored.slice(0, limit).map(({ r: { frecency: _f, ...r }, score }) => ({ ...r, score: Math.round(score * 100) / 100 })) }
 }
 
@@ -195,7 +162,6 @@ function completion(t: string, rows: (Suggestion & { frecency: number })[]) {
   const fit = rows.filter((r) => bare(r.url).toLowerCase().startsWith(t))
   if (!fit.length) return null
   if (!t.includes("/")) {
-    // The site: the host with the most worth among those starting so, its front page if it has one.
     const byHost = new Map<string, { worth: number; best: Suggestion & { frecency: number } }>()
     for (const r of fit) {
       const h = bare(r.url).split("/")[0].toLowerCase(), had = byHost.get(h)
@@ -211,7 +177,6 @@ function completion(t: string, rows: (Suggestion & { frecency: number })[]) {
   return best ? { text: bare(best.url).replace(/\/$/, ""), url: best.url } : null
 }
 
-/** The sites visited most, one address each (a new tab's). */
 export function top(limit = 8): Suggestion[] {
   const rows = sql("SELECT url, title, host, visits, typed, last FROM urls WHERE frecency > 0 ORDER BY frecency DESC LIMIT 200").all() as Suggestion[]
   const seen = new Set<string>(), out: Suggestion[] = []
@@ -219,7 +184,6 @@ export function top(limit = 8): Suggestion[] {
   return out
 }
 
-/** Visits, newest first, before `before` (ms; a page's last `at`), matching `text` when given. */
 export function list(opts: { before?: number; text?: string; limit?: number }) {
   const ws = words(opts.text ?? ""), limit = Math.min(Math.max(1, opts.limit ?? 200), 1000)
   const where = ["v.at < ?", ...ws.map(() => "(instr(lower(u.url), ?) > 0 OR instr(lower(u.title), ?) > 0)")].join(" AND ")
@@ -228,9 +192,6 @@ export function list(opts: { before?: number; text?: string; limit?: number }) {
   return { visits: rows.slice(0, limit), more: rows.length > limit }
 }
 
-// ---------- deleting ----------
-
-/** Visits (by id) and addresses (every visit of each) taken out of the history: what was taken, to put back. */
 export function remove(o: { visits?: number[]; urls?: string[] }): Removed[] {
   const ids = (o.visits ?? []).filter((n) => Number.isInteger(n)).slice(0, 100_000)
   const urls = (o.urls ?? []).filter((u) => typeof u === "string").slice(0, 10_000)
@@ -247,7 +208,6 @@ export function remove(o: { visits?: number[]; urls?: string[] }): Removed[] {
   return out
 }
 
-/** Every visit to a site ("example.com": its subdomains too). */
 export function removeSite(site: string): Removed[] {
   const s = site.toLowerCase().replace(/^www\./, "")
   if (!s) return []
@@ -271,7 +231,6 @@ function takeOut(gone: (Removed & { urlId: number; id: number })[]): Removed[] {
   return out
 }
 
-/** Visits from `from` up to `to` (ms; either open). How many went. */
 export function clear(from?: number | null, to?: number | null): number {
   const lo = typeof from === "number" ? from : 0, hi = typeof to === "number" ? to : Number.MAX_SAFE_INTEGER
   const n = tx(() => {
@@ -285,7 +244,6 @@ export function clear(from?: number | null, to?: number | null): number {
   return n
 }
 
-/** Visits put back (Undo), or brought in (an import): how many were new. */
 export function add(visits: Removed[]): number {
   const n = tx(() => {
     const touched = new Set<number>()
@@ -303,8 +261,6 @@ export function add(visits: Removed[]): number {
   return n
 }
 
-// ---------- the app's calls ----------
-
 const text = (x: unknown, n = 2000) => (typeof x === "string" ? x.slice(0, n) : "")
 const num = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x : undefined)
 
@@ -314,7 +270,6 @@ handle("history:list", (_w, o) => {
   const x = (o && typeof o === "object" ? o : {}) as Record<string, unknown>
   return list({ before: num(x.before), text: text(x.text, 500), limit: num(x.limit) })
 })
-// The address bar is opening `url` (typed, or a suggestion: a bookmark's is a bookmark visit).
 handle("history:typed", (_w, url, how) => {
   const u = text(url)
   if (!web(u)) return

@@ -1,10 +1,7 @@
-// FIDO's hybrid transport ("caBLE v2", Chromium's device/fido/cable), the computer's side: QR code, Bluetooth advert,
-// tunnel, Noise handshake, one CTAP2 command. No Electron here (passkeys.ts is the feature): tools/test_web.ts runs it.
+// FIDO's hybrid transport ("caBLE v2", as Chromium's device/fido/cable), the computer's side.
 import crypto from "node:crypto"
 import WebSocket from "ws"
 import { decode, encode, type Cbor } from "./cbor.ts"
-
-// ---------- the QR code ----------
 
 /** Tunnel servers by the number a phone's advert names: Google's, Apple's. Above 255 a name is derived (`domainOf`). */
 export const ASSIGNED = ["cable.ua5v.com", "cable.auth.com"]
@@ -62,8 +59,6 @@ export function parseQr(text: string) {
   return m
 }
 
-// ---------- keys from the secret ----------
-
 const KEY = { eid: 1, tunnel: 2, psk: 3 } as const
 /** HKDF-SHA256 of the QR secret, named by `type` (little-endian, as Chromium's info). */
 export function derive(secret: Uint8Array, salt: Uint8Array, type: number, length: number) {
@@ -75,9 +70,6 @@ export const tunnelId = (secret: Uint8Array) => derive(secret, Buffer.alloc(0), 
 /** The handshake's pre-shared key: the secret salted with the advert the phone sent. */
 export const pskOf = (secret: Uint8Array, eid: Uint8Array) => derive(secret, eid, KEY.psk, 32)
 
-// ---------- the phone's Bluetooth advert ----------
-
-/** What a phone's advert says once decrypted: where its tunnel is and the nonce the handshake's key is salted with. */
 export type Eid = { plain: Buffer; nonce: Buffer; routingId: Buffer; domain: number }
 
 /** The advert's service data (20 bytes: one AES block and 4 bytes of HMAC), if it's for this QR code's key. */
@@ -93,14 +85,12 @@ export function readAdvert(advert: Uint8Array, key: Uint8Array): Eid | null {
   return domainOf(eid.domain) ? eid : null
 }
 
-/** A phone's advert for `eid` (what the tests' phone sends). */
 export function makeAdvert(eid: Uint8Array, key: Uint8Array) {
   const c = crypto.createCipheriv("aes-256-ecb", key.subarray(0, 32), null).setAutoPadding(false)
   const block = Buffer.concat([c.update(eid), c.final()])
   return Buffer.concat([block, crypto.createHmac("sha256", key.subarray(32, 64)).update(block).digest().subarray(0, 4)])
 }
 
-/** The tunnel server a phone named (null: none is). */
 export function domainOf(id: number): string | null {
   if (id < 256) return ASSIGNED[id] ?? null
   const input = Buffer.from("caBLEv2 tunnel server domain\0\0\0", "latin1")
@@ -115,11 +105,10 @@ export function domainOf(id: number): string | null {
 export const connectUrl = (domain: string, routingId: Uint8Array, tunnel: Uint8Array) =>
   `wss://${domain}/cable/connect/${Buffer.from(routingId).toString("hex").toUpperCase()}/${Buffer.from(tunnel).toString("hex").toUpperCase()}`
 
-// ---------- the handshake: Noise KNpsk0 over P-256, AES-GCM and SHA-256 ----------
+// The handshake: Noise KNpsk0 over P-256, AES-GCM and SHA-256.
 
 const sha256 = (...parts: Uint8Array[]) => crypto.createHash("sha256").update(Buffer.concat(parts)).digest()
 const hkdf = (salt: Uint8Array, ikm: Uint8Array, length: number) => Buffer.from(crypto.hkdfSync("sha256", ikm, salt, Buffer.alloc(0), length))
-/** An ECDH key on P-256: its public point uncompressed (65 bytes) and the shared x with another. */
 export type P256 = crypto.ECDH
 export const newKey = (): P256 => { const k = crypto.createECDH("prime256v1"); k.generateKeys(); return k }
 export const publicOf = (k: P256, compressed = false) => k.getPublicKey(undefined, compressed ? "compressed" : "uncompressed")
@@ -162,7 +151,6 @@ export class Noise {
   split() { const o = hkdf(this.ck, Buffer.alloc(0), 64); return [o.subarray(0, 32), o.subarray(32, 64)] as const }
 }
 
-/** The computer's first handshake message, and what reads the phone's answer into the session's keys. */
 export function initiate(identity: P256, psk: Uint8Array) {
   const noise = new Noise(true)
   noise.mixHash(Buffer.from([1]))
@@ -186,7 +174,6 @@ export function initiate(identity: P256, psk: Uint8Array) {
   return { message, finish }
 }
 
-/** The phone's side of the handshake (what the tests' phone does). */
 export function respond(identityPublic: Uint8Array, psk: Uint8Array, message: Uint8Array) {
   const noise = new Noise(true)
   noise.mixHash(Buffer.from([1]))
@@ -250,11 +237,7 @@ export class Crypter {
   }
 }
 
-// ---------- a request over the tunnel ----------
-
-/** CTAP2's commands sent over it. */
 export const CTAP = { makeCredential: 0x01, getAssertion: 0x02 } as const
-/** A message's first byte: what it is. */
 const FRAME = { shutdown: 0, ctap: 1, update: 2 } as const
 
 export type Progress = "scan" | "connecting" | "phone"
@@ -299,7 +282,7 @@ export async function run(o: {
     const hs = initiate(o.identity, pskOf(o.secret, eid.plain))
     ws.send(hs.message)
     const crypter = hs.finish(await next())
-    // (its first message: a map with its getInfo, which a single command doesn't need)
+    // The phone's first message is a map with its getInfo, which one command doesn't need.
     if (!(decode(crypter.decrypt(await next())) instanceof Map)) throw new Error("the phone's first message wasn't a map")
     o.progress?.("phone")
     ws.send(crypter.encrypt(Buffer.concat([Buffer.from([FRAME.ctap]), o.command])))
@@ -307,11 +290,11 @@ export async function run(o: {
       const m = crypter.decrypt(await next())
       if (!m.length) continue
       if (m[0] === FRAME.ctap) {
-        try { ws.send(crypter.encrypt(Buffer.from([FRAME.shutdown]))) } catch { /* gone */ }
+        try { ws.send(crypter.encrypt(Buffer.from([FRAME.shutdown]))) } catch {}
         return m.subarray(1)
       }
       if (m[0] === FRAME.shutdown) throw new Error("the phone ended the request")
-      // (an update: linking info, which isn't kept)
+      // Else an update: linking info, not kept.
     }
   } finally {
     o.signal.removeEventListener("abort", abort)

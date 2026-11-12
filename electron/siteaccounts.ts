@@ -1,22 +1,16 @@
-// Who's signed in to a site, as its own pages ask it (electron/web.ts reads it with a set of logins' cookies): no
-// Electron here, so tools/test_web.ts reads made-up answers with it.
+// Who's signed in to a site, as its own pages ask it.
 
-/** Who's signed in to a site: the account's name, the others signed in beside it (Google's), its picture's address. */
 export type Who = { account: string; more?: string[]; avatar?: string }
 type Json = Record<string, unknown>
 const obj = (v: unknown): Json => (v && typeof v === "object" ? v as Json : {})
 export const nonempty = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : "")
 
-/** X's sidebar in an open page: the profile link's handle and the account button's picture. */
 const X_LOOK = `(() => { const a = document.querySelector('a[data-testid="AppTabBar_Profile_Link"]'); const img = document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"] img')
   return a ? { handle: (a.getAttribute("href") || "").slice(1), avatar: img ? img.src : "" } : null })()`
 
-/** One site's way to say who's signed in, with a set of logins' own cookies. Only a name, handle or email: never a
- *  token or a cookie's secret. */
 export type Rule = {
   /** A "who am I" address its own pages ask, read by `read`; `text`: a page, not JSON. */
   url?: string; text?: true; method?: "POST"
-  /** The fixed headers its pages send with it (an app id), never a secret. */
   headers?: Record<string, string>
   /** Asked from an open page of the site when there is one, as its own scripts would. */
   page?: true
@@ -26,21 +20,15 @@ export type Rule = {
   with?: Record<string, string>
   /** Read off an open page instead (`code` in a world of its own): who, false when plainly signed out, null unsure. */
   look?: { code: string; read: (v: unknown) => Who | false | null }
-  /** Who the answer names (given the address it ended at), null for nobody. */
   read?: (body: unknown, cookie: (domain: string, name: string) => Promise<string>, url: string) => Who | string | null | Promise<Who | string | null>
 }
 
-/** A string at a dotted path of a JSON answer ("user.email"), or "". */
 export const at = (v: unknown, path: string) => nonempty(path.split(".").reduce((o, k) => obj(o)[k], v))
-/** "alice" → "@alice"; nothing for anything but a handle. */
 const handle = (v: string, max = 30) => (new RegExp(`^[\\w.]{1,${max}}$`).test(v) ? `@${v}` : null)
 
-/** WhatsApp Web: its chats (the number it's linked to, as it keeps it), or the QR code to link it. */
 const WHATSAPP_LOOK = `(() => { if (document.querySelector("#pane-side")) return { phone: String(localStorage.getItem("last-wid-md") || "") }
   return document.querySelector("[data-ref] canvas") ? { out: true } : null })()`
 
-/** Sites whose account we know how to ask for, by site ("ycombinator.com" for news.ycombinator.com), each tested in
- *  tools/test_web.ts. */
 export const ACCOUNTS: Record<string, Rule> = {
   "claude.ai": { url: "https://claude.ai/api/account", page: true, signed: "sessionKey", read: (b) => at(b, "email_address") || at(b, "account.email_address") || at(b, "full_name") },
   "chatgpt.com": { url: "https://chatgpt.com/api/auth/session", page: true, read: (b) => ({ account: at(b, "user.email") || at(b, "user.name"), avatar: at(b, "user.image") }) },
@@ -59,13 +47,11 @@ export const ACCOUNTS: Record<string, Rule> = {
   // (its API takes the web session's cookie)
   "gitlab.com": { url: "https://gitlab.com/api/v4/user", read: (b) => ({ account: at(b, "username"), avatar: at(b, "avatar_url") }) },
   // (its page names the signed-in user among others: theirs is the one whose id the twid cookie has; its bot check
-  // often turns that away, so an open page's sidebar says it too)
   "x.com": { url: "https://x.com/home", text: true, signed: "auth_token", look: { code: X_LOOK, read: xLooked }, read: async (b, cookie) => {
     const id = /u%3D(\d+)|u=(\d+)/.exec(decodeURIComponent(await cookie("x.com", "twid")))?.slice(1).find(Boolean)
     if (!id) return null
     const html = String(b), i = html.indexOf(`"id_str":"${id}"`)
     if (i < 0) return null
-    // (its fields, up to the next user's)
     const rest = html.slice(i + 10, i + 6000), own = rest.slice(0, (rest.indexOf('"id_str":"') + 1 || rest.length + 1) - 1)
     const name = /"screen_name":"(\w{1,15})"/.exec(own)?.[1]
     const pic = /"profile_image_url_https":"([^"]+)"/.exec(own)?.[1]?.replace(/\\\//g, "/")
@@ -99,7 +85,6 @@ export const ACCOUNTS: Record<string, Rule> = {
   "ycombinator.com": { signed: "user", read: async (_b, cookie) => /^[\w-]{2,15}(?=&)/.exec(await cookie("news.ycombinator.com", "user"))?.[0] ?? null },
 }
 
-/** What a look found: signed out, can't tell, or who (its name as `name` makes it, "" when it doesn't say). */
 function looked(v: unknown, name: (o: Json) => string | null): Who | false | null {
   if (!v || typeof v !== "object") return null
   const o = v as Json
@@ -112,7 +97,6 @@ export function phoneOf(wid: string) {
   return n ? `+${n}` : ""
 }
 
-/** Facebook's page: the name of the user it's for, if that's `id` (its c_user cookie). */
 export function facebookName(html: string, id: string) {
   const i = html.indexOf('"CurrentUserInitialData"')
   if (i < 0 || !/^\d+$/.test(id)) return null
@@ -122,10 +106,8 @@ export function facebookName(html: string, id: string) {
   try { return name ? nonempty(JSON.parse(`"${name}"`)) || null : null } catch { return null }
 }
 
-/** Whether `site` is one a `with` key names. */
 export const covers = (key: string, site: string) => key.endsWith(".*") ? site.startsWith(key.slice(0, -1)) && site !== `${key.slice(0, -2)}.com` : site === key
 
-/** What X_LOOK found. */
 export function xLooked(v: unknown): Who | null {
   const o = obj(v), handle = nonempty(o.handle)
   return /^\w{1,15}$/.test(handle) ? { account: `@${handle}`, avatar: nonempty(o.avatar) } : null
@@ -148,7 +130,6 @@ export function googleAccounts(text: string): Who | null {
   if (!found.length) return null
   return { account: found[0].email, more: found.slice(1).map((f) => f.email), avatar: found[0].photo }
 }
-/** The JSON array starting at `at`, to its closing bracket. */
 function jsonEnd(t: string, at: number) {
   let depth = 0, str = false
   for (let i = at; i < t.length; i++) {
