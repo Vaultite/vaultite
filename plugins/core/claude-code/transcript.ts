@@ -13,12 +13,15 @@ export const WANTED = ['"type":"user"', '"type":"assistant"', '"ai-title"', '"cu
 export class Conversation {
   entries: Entry[] = []
   head: Head = { title: "", cwd: "", model: "", first: "", last: "", branch: "" }
-  /** Its background tasks still running (a Bash or Agent call run_in_background), by tool_use id: done once told. */
+  /** Its background tasks still running (a call run in the background or moved there, a Monitor, an async agent), by
+   *  tool_use id: done once a notice with a status names it. */
   background = new Set<string>()
   /** What started its latest turn when that wasn't the user: its own background task's notice, a schedule it set
    *  (a meta prompt), another session's message. Null once the user writes. */
   auto: { text: string; at: string } | null = null
   private promptId = ""
+  /** Each background task's id (as its notices name it) to the tool_use that started it. */
+  private tasks = new Map<string, string>()
   private titleKind = ""
   private lastMsg = ""
   private firstPrompt = ""
@@ -55,8 +58,11 @@ export class Conversation {
     if (d.type === "custom-title" && d.customTitle) { this.head.title = String(d.customTitle); this.titleKind = "custom"; return }
     if (d.type === "ai-title" && d.aiTitle) { if (this.titleKind !== "custom") { this.head.title = String(d.aiTitle); this.titleKind = "ai" } return }
     if (d.type === "queue-operation") {
-      const done = /<task-notification>[\s\S]*?<tool-use-id>([^<]+)<\/tool-use-id>/.exec(String(d.content ?? ""))?.[1]
-      if (done) this.background.delete(done)
+      // (a Monitor's events come without a status: only one with a status ends the tasks it names)
+      const n = String(d.content ?? "")
+      if (!/<task-notification>/.test(n) || !/<status>/.test(n)) return
+      for (const [, id] of n.matchAll(/<tool-use-id>([^<]+)<\/tool-use-id>/g)) this.background.delete(id)
+      for (const [, id] of n.matchAll(/<task-id>([^<]+)<\/task-id>/g)) { const u = this.tasks.get(id); if (u) this.background.delete(u) }
       return
     }
     if ((d.type !== "user" && d.type !== "assistant") || d.isSidechain) return
@@ -74,8 +80,12 @@ export class Conversation {
           if (c?.type !== "tool_result") continue
           const t = this.tools.get(String(c.tool_use_id))
           if (t) { t.result = truncate(resultText(c.content)); t.error = !!c.is_error }
-          if (c.is_error) this.background.delete(String(c.tool_use_id))
-          else if (/^Async agent launched/.test(t?.result ?? "")) this.background.add(String(c.tool_use_id))
+          const id = String(c.tool_use_id)
+          if (c.is_error) { this.background.delete(id); continue }
+          // (TaskStop ends one with no notice after it)
+          if (t?.name === "TaskStop" || t?.name === "KillShell") { const u = this.tasks.get(/"(?:task|shell)_id": "([^"]+)"/.exec(t.input)?.[1] ?? ""); if (u) this.background.delete(u); continue }
+          const task = backgroundTask(resultText(c.content))
+          if (task && !(t?.name === "Monitor" && /"persistent": true/.test(t.input))) { this.background.add(id); this.tasks.set(task, id) }
         }
         return
       }
@@ -106,6 +116,12 @@ export class Conversation {
       }
     }
   }
+}
+
+/** The task a tool result says it left running in the background (its id), however it got there: run in the
+ *  background, moved there by its timeout or by the user, a Monitor, an async agent. */
+export function backgroundTask(result: string) {
+  return /^(?:Command (?:running in background|was manually backgrounded[^\n]*?) with ID: |Command [^\n]*?moved to the background \(ID: |Monitor started \(task |Async agent launched[\s\S]*?agentId: )([\w-]+)/m.exec(result)?.[1] ?? null
 }
 
 /** What a transcript's tail waits on: its last tool call still without a result, when that's AskUserQuestion (its

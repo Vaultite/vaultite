@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Jobs wait on every kind of background work**: a job also stays working, not ready for review, while its agent waits
+  on a Monitor or on a command its timeout moved to the background, and until a stopped task ends.
 - **A kept drawing looks in Excalidraw as it did on the screen**: Keep saves a video card as its first frame with a
   play badge, linked to the video, a picture as itself, and copy, open and choice buttons as buttons; every label
   wraps inside its box, and a box grows to fit its words.

@@ -113,6 +113,29 @@ export default async ($: VaultTest) => {
       check("transcript: a turn the session started itself (its task's notice, a schedule, another session) is told apart from the user's",
         byUser === null && /^<task-notification>/.test(byTask ?? "") && back === null && bySchedule === "Nightly sweep: check the Lighthouse deploys" &&
         !!turns.auto && turns.entries.filter((e) => e.kind === "user").length === 4, [byUser, byTask, back, bySchedule, turns.auto])
+      // (as the two jobs on 2026-11-11 left them: a verify its timeout moved to the background, a Monitor; neither run_in_background)
+      const res = (id: string, content: unknown) => feed({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: id, content }] } })
+      const use = (id: string, name: string, input: unknown) => feed({ type: "assistant", message: { content: [{ type: "tool_use", id, name, input }] } })
+      const note = (x: string) => feed({ type: "queue-operation", operation: "enqueue", content: `<task-notification>\n${x}\n</task-notification>` })
+      use("v1", "Bash", { command: "npm run verify 2>&1 | tail -8", timeout: 600000 })
+      res("v1", "## job-x\nd36e07f0 feat: x\nCommand did not complete within its 600s timeout and was moved to the background (ID: b8tz1efy9). Output is being written to: /tmp/t/b8tz1efy9.output")
+      use("m1", "Monitor", { description: "verify finishing", command: "tail -f x" })
+      res("m1", [{ type: "text", text: "Monitor started (task b61s2gqwo, expires in 20m unless the source ends first; you get one notice at expiry)." }])
+      use("m2", "Monitor", { description: "forever", command: "tail -f y", persistent: true })
+      res("m2", "Monitor started (task bpersist1, persistent).")
+      use("l1", "Bash", { command: "ls" })
+      res("l1", "README.md\nCommand line tools in the background folder, ID: nope")
+      use("v2", "Bash", { command: "npm run build", timeout: 120000 })
+      res("v2", "Command did not complete within its 120s timeout and was moved to the background (ID: bqjugm8w2). Output is being written to: /tmp/t/bqjugm8w2.output")
+      use("s1", "TaskStop", { task_id: "bqjugm8w2" })
+      res("s1", '{"message":"Successfully stopped task: bqjugm8w2 (npm run build)"}')
+      const started = [...cv.background].sort().join()
+      note("<task-id>b61s2gqwo</task-id>\n<summary>Monitor event: \"verify finishing\"</summary>\n<event>still running</event>")
+      const evented = [...cv.background].sort().join()
+      note("<task-id>b61s2gqwo</task-id>\n<status>completed</status>\n<summary>Monitor \"verify finishing\" ended</summary>")
+      note("<task-id>b8tz1efy9</task-id>\n<tool-use-id>v1</tool-use-id>\n<status>completed</status>")
+      check("transcript: a command moved to the background, or a Monitor, runs till a notice with a status (not a Monitor's event), named by its tool use or task id, or a TaskStop; a persistent Monitor or a command's own words never count",
+        started === "a1,m1,v1" && evented === "a1,m1,v1" && [...cv.background].join() === "a1", [started, evented, [...cv.background]])
       const keys = (await import("../../../plugins/core/claude-code/plugin.ts")).plugin.services["agent-pick:claude"] as (q: Any, c: Any) => string[]
       const one = [{ question: "Q", options: [{ label: "A" }, { label: "B" }, { label: "C" }] }]
       check("pick keys: a digit; typed: the one after the options, the text, Enter; several or a multi-select end with 1 on the review",
