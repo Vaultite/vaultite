@@ -187,13 +187,135 @@ await section("after a launch: the running server against the installed build", 
     && !afterUpdate({ installed: NEW, app: NEW, server: null, restarted: false }).restart)
 })
 
-await section("an automatic restart: what it waits on (electron/updatewait.ts)", async () => {
-  const { AWAY_S, restartWaitsOn } = await import("../electron/updatewait.ts")
+await section("an automatic restart: what it waits on (electron/updatelogic.ts)", async () => {
+  const { AWAY_S, restartWaitsOn } = await import("../electron/updatelogic.ts")
   const away = { othersOpen: false, pages: 2, safe: 2, idle: AWAY_S, busy: null }
   check("every window safe, the user away, the browser idle: it restarts", restartWaitsOn(away) === null)
   check("a window not safe yet, the user at the computer, another machine's window: it waits", !!restartWaitsOn({ ...away, safe: 1 })
     && !!restartWaitsOn({ ...away, idle: AWAY_S - 1 }) && !!restartWaitsOn({ ...away, othersOpen: true }) && !!restartWaitsOn({ ...away, pages: 0, safe: 0 }))
   check("agents at work in the browser: it waits, saying why", restartWaitsOn({ ...away, busy: "an agent's call is under way" }) === "an agent's call is under way")
+})
+
+await section("the app's updates as one machine: each event's move and effects (electron/updatelogic.ts)", async () => {
+  const { START, step, statusOf, menuItem, offerMessage, buildFailure, describe } = await import("../electron/updatelogic.ts")
+  type U = typeof START
+  type E = Parameters<typeof step>[1]
+  type Of<T extends E["type"]> = Extract<E, { type: T }>
+  const C = "c".repeat(40), D = "d".repeat(40)
+  const play = (events: E[], from: U = START) => {
+    let s = from
+    const fx: string[] = [], ignored: string[] = []
+    for (const e of events) {
+      const r = step(s, e)
+      s = r.to
+      fx.push(...r.do.map((d) => d.kind === "leave" ? `leave:${d.then}` : d.kind === "stage" ? `stage:${d.reopen ? "reopen" : "stay"}` : d.kind))
+      if (r.ignored) ignored.push(e.type)
+    }
+    return { s, fx: fx.join(" "), ignored }
+  }
+  const fxOf = (from: U, e: E) => step(from, e).do
+  const timer: Of<"check"> = { type: "check", byHand: false, via: "build", off: false, recent: false }
+  const byHand: Of<"check"> = { type: "check", byHand: true, via: "build", off: false, recent: false }
+  const built = (code: number, out = `${C}\n`, at: string | null = C): Of<"built"> => ({ type: "built", code, out, built: at, quitting: false })
+  const offered = (how: "install" | "release" | "relaunch" = "install", commit = C): Of<"offered"> => ({ type: "offered", commit, how })
+  const stageable: Of<"restart"> = { type: "restart", byHand: true, built: C, replaceable: true, releases: true }
+
+  const quiet = play([timer, { type: "pinned", want: "" }, { type: "building", commit: C }, built(0)])
+  check("on the timer: its servers' commit asked, then a build, its toast once it says what it builds, then offered",
+    quiet.fx === "pin build menu status status tell menu weigh menu" && quiet.s.offer?.commit === C && quiet.s.offer.how === "install" && quiet.s.look.kind === "idle", quiet.fx)
+  const said = step(step(step(START, timer).to, { type: "pinned", want: "" }).to, { type: "building", commit: C }).to
+  check("...its toast says what it updates to", statusOf(said, "Lighthouse")?.text === `Updating Lighthouse to ${C.slice(0, 7)}…`)
+  const asked = step(step(START, byHand).to, { type: "pinned", want: D }).to
+  check("by hand: Checking for updates… from the build's start", statusOf(asked, "Lighthouse")?.text === "Checking for updates…" && statusOf(step(START, byHand).to, "L") === null)
+  const current = fxOf(asked, built(3))
+  check("by hand, nothing newer: up to date, saying it runs its server's version", current.some((d) => d.kind === "current" && d.current.via === "build" && d.current.pinned))
+  const failed = fxOf(asked, built(1, "boot: 2 failed\n", null)).find((d) => d.kind === "failed")
+  check("by hand, a failed build: why in a line", failed?.kind === "failed" && failed.why === "The new version didn't pass its startup check.", failed)
+  check("...on the timer, or quitting: no dialog", !fxOf(step(step(START, timer).to, { type: "pinned", want: "" }).to, built(1, "x", null)).some((d) => d.kind === "failed")
+    && !fxOf(asked, { ...built(1, "x", null), quitting: true }).some((d) => d.kind === "failed"))
+  check("its failures, told apart", buildFailure("no code signing identity in the keychain: not building").startsWith("This Mac has no code signing identity")
+    && buildFailure("not building an update signed ad hoc").startsWith("The new version couldn't be signed") && buildFailure("from before cookie encryption").startsWith("Its server runs")
+    && buildFailure("npm ERR!") === "The new version didn't build.")
+  check("a timer's check while off or after a recent build: nothing; by hand: it goes", play([{ ...timer, off: true }]).s === START && play([{ ...timer, recent: true }]).s === START
+    && step(START, { ...byHand, off: true, recent: true }).to.look.kind === "pinning")
+  check("its servers' commit not had: back to idle, the next check builds", step(step(START, byHand).to, { type: "pin-failed" }).to.look.kind === "idle")
+  check("nothing to look through (not updatable): nothing", play([{ ...byHand, via: null }]).s === START)
+  check("one look at a time: a check while one runs is ignored", step(asked, byHand).ignored === true && step(step(START, byHand).to, timer).ignored === true)
+
+  const waiting = play([offered()]).s
+  const dropped = play([timer, { type: "pinned", want: "" }, built(1, "x", D)], waiting).s
+  check("a build that fails and leaves another in its folder takes the offer down", dropped.offer === null && dropped.look.kind === "idle")
+  check("...one that leaves it there keeps it", play([timer, { type: "pinned", want: "" }, built(1, "x", C)], waiting).s.offer?.commit === C)
+  check("the same build again on the timer: not offered twice; by hand: offered anew", play([timer, { type: "pinned", want: "" }, built(0)], waiting).fx === "pin build menu status menu"
+    && play([byHand, { type: "pinned", want: "" }, built(0)], waiting).fx.includes("tell menu weigh"))
+
+  const store = step(START, { ...byHand, via: "store" })
+  check("the store's look by hand: Checking for updates…, the menu busy", store.do.map((d) => d.kind).join(" ") === "status menu store-look"
+    && statusOf(store.to, "L")?.text === "Checking for updates…" && menuItem(store.to, { worktree: false, updatable: true })?.enabled === false)
+  const upToDate = fxOf(store.to, { type: "looked", state: "current", why: "it runs the newest", quitting: false })
+  check("...up to date: said, with why", upToDate.some((d) => d.kind === "current" && d.current.via === "store" && d.current.why === "it runs the newest"))
+  const mid = play([{ ...byHand, via: "store" }, offered("relaunch"), { type: "looked", state: "current", why: "", quitting: false }])
+  check("...an update offered while it looked: no up-to-date dialog", mid.s.offer?.how === "relaunch" && !mid.fx.includes("current"), mid.fx)
+  check("...failed: why said, not while quitting", fxOf(store.to, { type: "looked", state: "failed", why: "no network", quitting: false }).some((d) => d.kind === "failed" && d.why === "No network.")
+    && !fxOf(store.to, { type: "looked", state: "failed", why: "x", quitting: true }).some((d) => d.kind === "failed"))
+  check("...on the timer: no toast at its start nor its end", play([{ ...timer, via: "store" }, { type: "looked", state: "current", why: "", quitting: false }]).fx === "menu store-look menu")
+
+  const release = play([{ ...timer, via: "release" }, { type: "release-found", version: "1.2.3" }])
+  check("a release: its download's toast, on the timer too", statusOf(release.s, "Lighthouse")?.text === "Downloading Lighthouse 1.2.3…")
+  check("...its end always takes the toast down; by hand up to date, said", play([{ ...byHand, via: "release" }, { type: "release-looked", outcome: { kind: "current" }, quitting: false }]).fx === "menu status release-look current status menu"
+    && play([{ ...timer, via: "release" }, { type: "release-looked", outcome: { kind: "current" }, quitting: false }]).fx === "menu release-look status menu")
+
+  check("an offer: told in every window and the menu, then weighed; the same one again: nothing", play([offered()]).fx === "tell menu weigh" && play([offered(), offered()]).fx === "tell menu weigh"
+    && play([offered(), { ...offered(), again: true }]).fx === "tell menu weigh tell menu weigh" && play([offered(), offered("relaunch")]).fx === "tell menu weigh tell menu weigh")
+  const behind = play([{ ...offered("relaunch"), behind: "electron/main.ts changed" }, offered("relaunch")]).s
+  check("why the main process is behind: kept when the same offer comes without it, replaced when said", behind.offer?.behind === "electron/main.ts changed"
+    && play([{ type: "offered", commit: C, how: "relaunch", behind: null }], behind).s.offer?.behind === null)
+
+  const wait = play([offered(), { type: "weighed", auto: true, why: "the user is at the computer" }])
+  check("automatic, not safe yet: it waits, saying on what, looked at again in a minute", wait.s.offer?.restart.kind === "waiting" && wait.fx.endsWith("arm")
+    && describe(wait.s).includes("waits: the user is at the computer"))
+  check("...a new reason: still waiting, on it", (({ s }) => s.offer?.restart.kind === "waiting" && s.offer.restart.on === "no window is open")(play([{ type: "weighed", auto: true, why: "no window is open" }], wait.s)))
+  check("...no longer automatic: it stops waiting, its minute's look dropped", play([{ type: "weighed", auto: false, why: null }], wait.s).fx === "disarm"
+    && play([{ type: "weighed", auto: false, why: null }], wait.s).s.offer?.restart.kind === "offered")
+  check("...safe: it restarts", play([{ type: "weighed", auto: true, why: null }], wait.s).fx === "restart")
+  check("not automatic, or nothing offered: weighing does nothing", play([offered(), { type: "weighed", auto: false, why: null }]).fx === "tell menu weigh"
+    && play([{ type: "weighed", auto: true, why: null }]).fx === "")
+
+  const staging = play([offered(), stageable])
+  check("restart into a build: staged beside the app, the toast says it restarts", staging.fx === "tell menu weigh stop-build stage:reopen note status"
+    && statusOf(staging.s, "L")?.text === "Restarting to update…" && statusOf(staging.s, "L")?.restart === true)
+  check("...not its build in the folder, or the app can't be replaced: nothing", play([offered(), { ...stageable, built: D }]).ignored.join() === "restart"
+    && play([offered(), { ...stageable, replaceable: false }]).ignored.join() === "restart")
+  check("...pressed twice: once", play([stageable], staging.s).ignored.join() === "restart" && play([stageable], staging.s).fx === "")
+  check("...while it stages: no build starts, no new offer, the toast stays", play([byHand, offered("install", D)], staging.s).ignored.join() === "check,offered"
+    && statusOf(play([{ type: "looked", state: "current", why: "", quitting: false }], { ...staging.s, look: { kind: "store", byHand: true } }).s, "L")?.text === "Restarting to update…")
+  check("...staged: it quits", play([{ type: "staged", ok: true }], staging.s).fx === "leave:quit")
+  const unstaged = play([{ type: "staged", ok: false }], staging.s)
+  check("...not staged: the offer dropped (not again until the next check), the toast down, said when by hand", unstaged.s.offer === null && unstaged.fx === "unnote status menu failed"
+    && statusOf(unstaged.s, "L") === null && play([{ type: "weighed", auto: true, why: null }], unstaged.s).fx === "")
+  check("a relaunch onto a root it has: its servers handed over, the note, a relaunch", play([offered("relaunch"), stageable]).fx === "tell menu weigh hand-over begin-quit note status leave:relaunch-soon")
+  check("a release: installed as it quits, once electron-updater is loaded", play([offered("release"), stageable]).fx === "tell menu weigh begin-quit note status leave:release"
+    && play([offered("release"), { ...stageable, releases: false }]).ignored.join() === "restart")
+  const dev = play([{ type: "changed", what: "web/src changed" }, { type: "changed", what: "web/src changed" }, stageable])
+  check("a Dev instance's changes: offered without weighing, once each, a relaunch with no note", dev.fx === "tell menu hand-over begin-quit status leave:relaunch")
+
+  const quit = (from: U, o: Partial<Of<"quit">> = {}) => play([{ type: "quit", off: false, updatable: true, built: C, replaceable: true, ...o }], from).fx
+  check("quitting: a build stops; one offered goes in as it quits", quit(START) === "stop-build" && quit(waiting) === "stop-build stage:stay")
+  check("...not when off, not updatable, its folder holds another, a relaunch's or a release's, or one already staging", quit(waiting, { off: true }) === "stop-build" && quit(waiting, { updatable: false }) === "stop-build"
+    && quit(waiting, { built: D }) === "stop-build" && quit(play([offered("relaunch")]).s) === "stop-build" && quit(play([offered("release")]).s) === "stop-build" && quit(staging.s) === "stop-build")
+
+  check("the mode changed: every window told; a check unless off or one is offered", play([{ type: "mode-changed", off: false }]).fx === "tell check"
+    && play([{ type: "mode-changed", off: true }]).fx === "tell" && play([{ type: "mode-changed", off: false }], waiting).fx === "tell")
+
+  const item = (s: U, worktree = false, updatable = true) => menuItem(s, { worktree, updatable })?.label ?? null
+  check("the menu: Check for updates…, Restart or Relaunch to update, a Dev instance's Relaunch, none when not updatable", item(START) === "Check for updates…"
+    && item(waiting) === "Restart to update" && item(play([offered("relaunch")]).s) === "Relaunch to update" && item(dev.s, true) === "Relaunch to run your changes"
+    && item(START, true) === null && item(START, false, false) === null)
+  const msg = (how: "install" | "release" | "relaunch", auto: boolean) => offerMessage({ commit: how === "release" ? "1.2.3" : C, how, behind: null, restart: { kind: "offered" } }, "Lighthouse", auto)
+  check("the toast: a build's short commit, a release's version, a relaunch's words", JSON.stringify(msg("install", false)) === JSON.stringify({ type: "update", name: "Lighthouse", version: C.slice(0, 7), auto: false })
+    && JSON.stringify(msg("release", true)) === JSON.stringify({ type: "update", name: "Lighthouse", version: "1.2.3", auto: true })
+    && JSON.stringify(msg("relaunch", true)) === JSON.stringify({ type: "update", text: `Lighthouse ${C.slice(0, 7)} is ready: relaunching takes a couple of seconds, and it does so while you're away`, label: "Relaunch", auto: true })
+    && JSON.stringify(offerMessage({ commit: "web/src changed", how: "worktree", behind: null, restart: { kind: "offered" } }, "L", false)) === JSON.stringify({ type: "update", text: "web/src changed: relaunch to run them", label: "Relaunch" }))
 })
 
 await section("Main's updates through its code store: where, and its two policies (electron/storepolicy.ts)", async () => {
