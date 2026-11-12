@@ -23,6 +23,7 @@
     "vaultite/disable-reason": "warn",
     "vaultite/comment-lines": "warn",
     "vaultite/comment-length": "warn",
+    "vaultite/git-env": "warn",
     "vaultite/no-node-module-mock": "warn",
     "vaultite/no-unchecked-json": "warn",
     "typescript/no-explicit-any": "warn",
@@ -54,6 +55,10 @@
     {
       "files": ["core/**", "web/src/**", "plugins/**", "electron/**", "bin/**", "server.ts"],
       "rules": { "no-console": "warn" }
+    },
+    {
+      "files": ["web/src/**/*.tsx", "plugins/**/*.tsx"],
+      "rules": { "vaultite/no-title-attr": "warn" }
     },
     {
       "files": ["web/qa/**"],

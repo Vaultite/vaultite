@@ -57,7 +57,6 @@ const picked: Stage[] = [
 const stages: Stage[] = [
   { name: "build", cmd: ["npm", "run", "build"], why: "always" },
   { name: "check", cmd: ["npm", "run", "check"], why: "always" },
-  { name: "ratchet", cmd: ["node", "tools/ratchet.ts", ...(argv.includes("--base") ? ["--base", base] : [])], why: "always" },
   ...(all ? [{ name: "test", cmd: ["npm", "test"], why: "--all" }, { name: "smoke", cmd: ["npm", "run", "smoke"], why: "--all" }] : picked),
 ]
 

@@ -25,8 +25,8 @@ the main writers. Served on a private network (a tailnet), no accounts.
   iCloud upload and a watcher event on every machine. All three reach agents through ops. Only per-device values go in
   localStorage. Defaults stay in code, never written into a vault.
 - No compatibility shims: migrate data and every caller, and delete the old API in the same change.
-- Backend code runs with Node's type stripping, so it's erasable TS: no enums, no parameter properties, `import type`,
-  imports name the `.ts` file. Files in `core/` that the web imports use no Node.
+- Backend code runs with Node's type stripping: erasable TS, imports naming the `.ts` file. Files in `core/` that the
+  web imports use no Node.
 - Which process a file reaches is its imports' graph (`core/update/closure.ts`; `node tools/closure.ts <commit>` says
   why). Code loaded or a file read by a computed path (`import(x)`, a path from `import.meta` or `ROOT`, a process
   started from a file) is declared in `core/update/sites.ts`: `tools/test_closure.ts` fails on one that isn't.
@@ -36,14 +36,12 @@ the main writers. Served on a private network (a tailnet), no accounts.
 - The core (`core/`, `electron/`, `web/src/`) never imports a plugin, only loads them: what both use is the core's, the
   desktop app's contracts with plugins (the overlay's marks, the UI model, knocks, walks) in `core/desktop/` (`npm run check`).
 - The packaged app ships only `dependencies` (vault plugins import some: `plugins/CLAUDE.md`, rule 5): keep backend deps few.
-- npm runs no install scripts and takes only versions a week old (`.npmrc`): a dep that needs a script (a native build)
-  gets its own step (`npm rebuild <name>`); an urgent security fix, `--min-release-age=0`. Pin new deps exactly. One
-  with an install script is listed in `allowScripts` once reviewed; every package comes from the registry (`npm run check`).
+- npm runs no install scripts and takes only versions a week old: a dep that needs a script gets its own step
+  (`npm rebuild <name>`), an urgent security fix `--min-release-age=0`. Pin new deps exactly.
 
 ## UI
 Read `web/CLAUDE.md` first. UI text: sentence case, no emojis, no all caps.
-A vault's icon is Vaultite's stone (the gem: kit's `Stone`, a menu's `icon("stone")`), never lucide's `Vault` (a safe),
-anywhere: the user dislikes it (a check in tools/test_web.ts and tools/menu_icons.ts refuse it).
+A vault's icon is Vaultite's stone (kit's `Stone`, a menu's `icon("stone")`), never lucide's `Vault`.
 Agents never take the user's focus: what an op opens for one (not `byUser`) goes behind their tab
 (`openTab(to, { background: true })`), with a toast to show it. `vau open` is the exception: showing the user something
 is its point.
@@ -102,14 +100,30 @@ is its point.
   `git stash` is shared by every worktree.
 - A live server's checkout is its updater's alone, even on that machine: never edit, commit, pull or cherry-pick
   there. A file left uncommitted or a commit not on main blocks its updates, and ships what CI never passed.
-- Comments: the code says what it does, so a comment keeps only what it can't: a constraint from outside we can't
-  change (a platform, a vendor, a protocol), a license, the plugin API's doc comments. A surprise in our own code gets a
-  name, a type or a test instead, and a "do not remove" becomes a check. At most 2 lines; they never grow in number.
+- Comments keep only what the code can't say: a constraint from outside we can't change (a platform, a vendor, a
+  protocol), a license, the plugin API's doc comments. A surprise in our own code gets a name, a type or a test.
 - CHANGELOG.md: one user-facing line per change (edit an Unreleased line rather than add another).
 - **Commits**: Conventional Commits, `type(scope): summary` in at most 72 chars, saying what changed for the user
   (`fix(phone): tab list zoom no longer stretches the page`); a body only when the why isn't in the diff. Scope is the
-  area (`phone`, `desktop`, `editor`, `plugins`, `server`, `cli`...). `.githooks/commit-msg` checks the shape.
-  `.githooks/pre-push` runs tsc, `npm run check` and the desktop main process's launch budget
-  (`node tools/perf/startup.ts --main`) before a push to main, and says when main's CI is red (the job, the test, since
-  which commit, never blocking). Over a launch budget (`tools/perf/startup.json`), load the new code lazily; a limit
+  area (`phone`, `desktop`, `editor`, `plugins`, `server`, `cli`...). `.githooks/pre-push` says when main's CI is red
+  (the job, the test, since which commit, never blocking). Over a launch budget (`tools/perf/startup.json`), load the new code lazily; a limit
   is never raised inside a feature's commit, only by a commit of its own saying what the growth buys.
+
+## Rules and what enforces them
+When an agent is corrected, fix the class at the highest level that works: the design, then a type, then a check whose
+error names what to use instead, and a line here last, only for judgment calls. A rule a check enforces stays one line.
+
+| Rule | Enforced by |
+| --- | --- |
+| Code patterns: no `as` casts, `any`, `console.*` in shipped code, JSON typed by hand, sleeps in `web/qa`, `title=` tooltips, git without `gitEnv()`, lint disables without a reason, comments over 2 lines or more of them; new files over 300 lines, functions over 50 or complexity 15; anti-slop | the lint ratchet: `.oxlintrc.json`, `tools/ratchet.ts` fails a change that adds more than its files had; in `npm run check` and CI |
+| Strict, erasable TypeScript | `tsc -b` (`strict`, `erasableSyntaxOnly`), in pre-push and the build |
+| Every TypeScript file in a tsconfig project | `npm run check` |
+| The core never imports a plugin; the app imports only `dependencies` | `npm run check` |
+| npm: no install scripts unless reviewed, week-old versions, registry only, hashes | `.npmrc`, `npm run check` |
+| Code loaded by a computed path is declared in `core/update/sites.ts` | `tools/test_closure.ts` |
+| Ops, blocks, manifests, bundles, skills follow their rules | `npm run check` |
+| Commit subjects: conventional, at most 72 chars | `.githooks/commit-msg` |
+| Main passes tsc and check; an OS-sensitive change was tried on 3 OSes | `.githooks/pre-push` |
+| The desktop main process's launch budget | `.githooks/pre-push` (`tools/perf/startup.ts --main`) |
+| No vault icon but the stone | `tools/test_web.ts`, `tools/menu_icons.ts` |
+| Comments say only what code can't; no shims; secrets only in `data/config.json`; agents never take focus; UI text sentence case; work in a worktree | judgment: nothing fails |

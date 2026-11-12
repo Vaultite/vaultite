@@ -9,8 +9,15 @@ const args = process.argv.slice(2)
 const option = (name: string) => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined)
 const commit = option("--commit") ? git(["rev-parse", `${option("--commit")}^{commit}`]).trim() : null
 const explicit = option("--base") ?? process.env.VAULTITE_RATCHET_BASE
-const base = commit ? git(["rev-parse", `${commit}^`]).trim()
-  : git(["merge-base", "HEAD", explicit ?? "origin/main"]).trim()
+function baseOf() {
+  if (commit) return git(["rev-parse", `${commit}^`]).trim()
+  try { return git(["merge-base", "HEAD", explicit ?? "origin/main"]).trim() } catch (e) {
+    if (explicit) throw e
+    process.stdout.write("ratchet: skipped, no merge base with origin/main (a shallow clone): CI's ratchet job passes --base\n")
+    process.exit(0)
+  }
+}
+const base = baseOf()
 
 /** Every path the change touches, on each side: a rename's old path counts on the base side only. */
 function changed() {

@@ -200,8 +200,48 @@ const commentLength = defineRule({
   },
 })
 
+const OWN_TITLE = new Set(["svg", "title", "iframe", "abbr", "webview"])
+
+const noTitleAttr = defineRule({
+  meta: {
+    type: "problem",
+    docs: { description: "Disallow the browser's title= tooltip on an element." },
+    messages: { title: "`title=` is the browser's tooltip: slow, unstyled, unlike the app's. Use data-tip (data-tip-trunc for cut-off text), components/Tooltip.tsx." },
+  },
+  createOnce(context) {
+    return {
+      JSXOpeningElement(node) {
+        if (node.name.type !== "JSXIdentifier" || !/^[a-z]/.test(node.name.name) || OWN_TITLE.has(node.name.name)) return
+        for (const a of node.attributes) {
+          if (a.type === "JSXAttribute" && a.name.type === "JSXIdentifier" && a.name.name === "title") context.report({ node: a, messageId: "title" })
+        }
+      },
+    }
+  },
+})
+
+const SPAWNS = new Set(["execFileSync", "execFile", "spawnSync", "spawn", "exec"])
+
+const gitEnv = defineRule({
+  meta: {
+    type: "problem",
+    docs: { description: "Require gitEnv() on every git the code runs." },
+    messages: { env: "git without gitEnv() (core/gitenv.ts): a GIT_DIR it inherits from a hook or `git bisect run` points it at the wrong repository. Pass `env: gitEnv()`." },
+  },
+  createOnce(context) {
+    return {
+      CallExpression(node) {
+        if (node.callee.type !== "Identifier" || !SPAWNS.has(node.callee.name)) return
+        const first = node.arguments[0]
+        if (first?.type !== "Literal" || first.value !== "git") return
+        if (!context.sourceCode.getText(node).includes("gitEnv(")) context.report({ node, messageId: "env" })
+      },
+    }
+  },
+})
+
 export default eslintCompatPlugin({
   meta: { name: "vaultite" },
   rules: { "no-cast": noCast, "no-sleep": noSleep, "no-node-module-mock": noNodeModuleMock, "no-unchecked-json": noUncheckedJson, "disable-reason": disableReason,
-    "comment-lines": commentLines, "comment-length": commentLength },
+    "comment-lines": commentLines, "comment-length": commentLength, "no-title-attr": noTitleAttr, "git-env": gitEnv },
 })

@@ -1,5 +1,6 @@
 // node tools/check_plugins.ts [vault] | --plugin <folder> [--tag v1.2.0] [--installable]   (npm run check)
 import { isUtf8 } from "node:buffer"
+import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
@@ -128,30 +129,6 @@ for (const [tier, d] of found.values()) {
   if (tier === "vault") continue
   for (const f of walk(d)) if (/\.tsx?$/.test(f) && !f.endsWith(".d.ts") && !nodeSide(f)) problems.push(...loadTimeProblems(f, path.relative(ROOT, f)))
 }
-
-// Tooltips are the app's (`data-tip`, components/Tooltip.tsx), never the browser's `title=` (web/CLAUDE.md): slow,
-// unstyled, the one hover that looked different. A component's own `title` prop is fine.
-const OWN_TITLE = new Set(["svg", "title", "iframe", "abbr", "webview"])
-function titleProblems(file: string, rel: string): string[] {
-  const src = fs.readFileSync(file, "utf8")
-  if (!/\btitle=/.test(src)) return []
-  let ast: unknown
-  try { ast = parseAst(src, { lang: "tsx" }, file) } catch { return [] } // (a plugin's said above; the core's, by the build)
-  const out: string[] = []
-  const visit = (n: unknown): void => {
-    if (!n || typeof n !== "object") return
-    if (Array.isArray(n)) return n.forEach(visit)
-    const node = n as Node
-    const name = node.type === "JSXOpeningElement" ? node.name as Node & { name?: string } : null
-    if (name?.type === "JSXIdentifier" && /^[a-z]/.test(name.name!) && !OWN_TITLE.has(name.name!))
-      for (const a of node.attributes as Node[]) if (a.type === "JSXAttribute" && (a.name as { name?: string }).name === "title")
-        out.push(`${rel}:${src.slice(0, a.start).split("\n").length}: <${name.name} title=…> is the browser's tooltip: use data-tip (data-tip-trunc for cut-off text)`)
-    for (const [k, v] of Object.entries(node)) if (k !== "type" && k !== "start" && k !== "end") visit(v)
-  }
-  visit(ast)
-  return out
-}
-for (const d of [path.join(ROOT, "web", "src"), PLUGINS]) for (const f of walk(d)) if (f.endsWith(".tsx")) problems.push(...titleProblems(f, path.relative(ROOT, f)))
 
 // A command named by id (a key map's, the menu bar's, runCommandById) is one: a typo'd id binds nothing, silently. Only
 // ids of a namespace the app has (a vault plugin's are its own); an id made from a template matches it.
@@ -373,23 +350,6 @@ for (const f of sources.filter((f) => /\.(tsx|css)$/.test(f))) {
   })
 }
 
-// git run by the app or a test gets gitEnv() (core/gitenv.ts): a GIT_DIR it inherits (a hook, `git bisect run`) never
-// points it at the repository it was started in.
-for (const f of sources.concat(walk(path.join(ROOT, "web", "qa"))).filter((f) => /\.(ts|mjs|cjs)$/.test(f))) {
-  const text = fs.readFileSync(f, "utf8")
-  for (const m of text.matchAll(/\b(?:execFileSync|execFile|spawnSync|spawn|exec)\(\s*["']git["']/g)) {
-    let depth = 0, end = m.index, quote = ""
-    for (; end < text.length; end++) {
-      const c = text[end]
-      if (quote) { if (c === "\\") end++; else if (c === quote) quote = "" }
-      else if (c === '"' || c === "'" || c === "`") quote = c
-      else if (c === "(") depth++
-      else if (c === ")" && !--depth) break
-    }
-    if (!text.slice(m.index, end).includes("gitEnv(")) problems.push(`${path.relative(ROOT, f)}:${text.slice(0, m.index).split("\n").length}: git without env: gitEnv() (core/gitenv.ts)`)
-  }
-}
-
 // What the browser builds (the web app, and the demo: the core against web/demo/node's stubs) never carry: the module
 // graph's parser comes from the server (core/update/graph.ts). Bundled, it broke the demo's build (CI's demo job).
 {
@@ -495,6 +455,9 @@ const LOADERS: Record<string, string> = {
   }
   for (const [name, v] of Object.entries(reviewed)) if (v !== false) problems.push(`package.json: allowScripts ${name} is ${JSON.stringify(v)}: the app runs no install scripts (.npmrc), so it's false`)
 }
+
+const ratchet = spawnSync(process.execPath, [path.join(ROOT, "tools", "ratchet.ts")], { cwd: ROOT, encoding: "utf8" })
+if (ratchet.status !== 0) problems.push((ratchet.stderr || ratchet.stdout).trim())
 
 if (warnings.length) console.log(`Warnings (vault plugins: they still load):\n${warnings.join("\n")}\n`)
 console.log(problems.join("\n") || `ok: ${found.size} plugins, every block declared and drawn as text; every operation checked`)
