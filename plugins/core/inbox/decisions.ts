@@ -1,5 +1,5 @@
 // Decisions: a question an agent asks the user, a file each (Inbox/<title>.md with `question`): its options, the default
-// it takes unanswered, whether it waits on it (blocking). Pure: plugin.ts keeps the files.
+// it takes unanswered, whether it waits on it (blocking). Pure: asked.ts keeps the files.
 
 /** `effects`: what each option causes, a few words shown under its button; `warn`: what to fix in how it's asked, said
  *  back to the asker (a question that doesn't name its subject). */

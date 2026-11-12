@@ -2,7 +2,7 @@
 // shared by the server (vau inbox, the block's text) and the app (panel, page, badge): every surface lists the same.
 import { snoozed, snoozeMs } from "./snooze.ts"
 
-/** An event as the lists read it (plugin.ts' InboxEvent). */
+/** An event as the lists read it (model.ts' InboxEvent). */
 type Ev = { id: string; t: number; kind: string; state: string; read?: boolean; snoozed?: number; link?: string; pinned?: boolean }
 /** A result as the lists read it (an Inbox/ file). */
 type Result = { id: string; status: string; archived?: unknown; snoozed?: string | null; created?: string | null; updated?: string | null; pinned?: boolean
