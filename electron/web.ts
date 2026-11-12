@@ -892,8 +892,8 @@ function zoomSite(p: Page, step: -1 | 0 | 1) {
 
 // ---------- players: a call's window picker finds one by its title ----------
 
-let kit: typeof import("./player.ts") | undefined
-const playerKit = async () => { await stripKit(); return (kit ??= await import("./player.ts")) }
+let kit: typeof import("./player.ts") | undefined, pageKit: typeof import("./playerpage.ts") | undefined
+const playerKit = async () => { await stripKit(); pageKit ??= await import("./playerpage.ts"); return (kit ??= await import("./player.ts")) }
 let strips: typeof import("./topstrip.ts") | undefined, popups: typeof import("./popup.ts") | undefined
 export const stripKit = async () => (strips ??= await import("./topstrip.ts"))
 let napBlock: number | null = null
@@ -908,9 +908,9 @@ async function toPlayer(p: Page, fullScreen: boolean) {
   const wc = p.view.webContents
   if (wc.isDestroyed() || p.win.isDestroyed()) return
   if (p.full) leaveFull(p)
-  const k = await playerKit()
-  const [css, found] = await Promise.all([wc.insertCSS(k.FILL_CSS, { cssOrigin: "user" }).catch(() => undefined),
-    wc.executeJavaScriptInIsolatedWorld(1004, [{ code: k.FILL }], true).catch(() => null), wc.executeJavaScript(k.FULL_GUARD).catch(() => {})])
+  const k = await playerKit(), pg = pageKit!
+  const [css, found] = await Promise.all([wc.insertCSS(pg.FILL_CSS, { cssOrigin: "user" }).catch(() => undefined),
+    wc.executeJavaScriptInIsolatedWorld(1004, [{ code: pg.FILL }], true).catch(() => null), wc.executeJavaScript(pg.FULL_GUARD).catch(() => {})])
   const aspect = typeof found === "number" && found > 0.2 && found < 5 ? found : null
   if (p.player || wc.isDestroyed() || p.win.isDestroyed() || !pages.has(p.id)) { if (css && !p.player) void wc.removeInsertedCSS(css).catch(() => {}); return }
   const w = k.playerWindow(k.placeFor(aspect ?? 16 / 9, p.win.getBounds()), () => [{ label: "Back to its tab", click: () => fromPlayer(p, true) }])
@@ -950,7 +950,7 @@ function fromPlayer(p: Page, user = false) {
   const wc = p.view.webContents
   if (wc && !wc.isDestroyed()) {
     wc.setBackgroundThrottling(!p.drawn)
-    if (kit) void wc.executeJavaScriptInIsolatedWorld(1004, [{ code: kit.UNFILL }]).catch(() => {})
+    if (pageKit) void wc.executeJavaScriptInIsolatedWorld(1004, [{ code: pageKit.UNFILL }]).catch(() => {})
     if (p.fillCss) void wc.removeInsertedCSS(p.fillCss).catch(() => {})
   }
   p.fillCss = undefined

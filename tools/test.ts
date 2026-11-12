@@ -4,7 +4,7 @@ import "./test/isolate.ts" // (first: a run of its own, kept off the user's vaul
 import { spawn } from "node:child_process"
 import path from "node:path"
 
-const ALL = ["test_web", "test_vault", "test_vt", "test_pictures", "test_kdbx", "test_sandbox", "test_setup", "test_shell", "test_selfupdate", "test_running", "test_updater", "test_store", "test_servicestore", "test_plan", "test_ci", "test_update", "test_closure", "test_lint", "test_stall", "test_desktophost", "test_serverwatch", "test_machines", "test_shared", "test_sync", "test_sync_live", "test_tours", "test_isolate", "perf/startup"]
+const ALL = ["test_web", "test_vault", "test_vt", "test_pictures", "test_player", "test_kdbx", "test_sandbox", "test_setup", "test_shell", "test_selfupdate", "test_running", "test_updater", "test_store", "test_servicestore", "test_plan", "test_ci", "test_update", "test_closure", "test_lint", "test_stall", "test_desktophost", "test_serverwatch", "test_machines", "test_shared", "test_sync", "test_sync_live", "test_tours", "test_isolate", "perf/startup"]
 const want = process.argv.slice(2)
 const unknown = want.filter((s) => !ALL.includes(s))
 if (unknown.length) { console.error(`no suite ${unknown.join(", ")}: ${ALL.join(" ")}`); process.exit(2) }

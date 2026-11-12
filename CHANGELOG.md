@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A site's own full-screen button works in the video player's window on a busy Mac too**: the player no longer
+  takes the video back while the window is still turning full screen, which made the site's request fail.
 - **A busy Mac no longer cuts the end of what the cloud voice says**: a piece whose last audio came while the app was
   held up ended before saying it.
 - **The app loads 84 KB less JavaScript before it draws**: its files no longer list, for each feature loaded later,

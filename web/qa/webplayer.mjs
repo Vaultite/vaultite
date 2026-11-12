@@ -216,7 +216,8 @@ check("… the video letterboxed in black, centred", f2 && boxed(f2.colours), f2
 const r0 = await player((w) => w.getContentBounds())
 
 // ---------- the page's full screen and the window's are one ----------
-await inPage("document.getElementById('player').requestFullscreen()")
+check("the player holds the site's box over the page", await until(() => inPage("!!document.querySelector('[data-vaultite-player]:popover-open')"), 4000))
+await inPage("document.querySelector('[data-vaultite-player]').requestFullscreen()")
 const pf = await until(async () => { const w = await where(); return w.full && fills(w) && w.content.width > 800 ? w : null }, 4000)
 check("the site's full screen takes the window full screen, the page filling it", pf, await where())
 check("… its controls not shown there", pf && !pf.bar?.shown)
