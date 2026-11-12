@@ -82,7 +82,8 @@ export function useRewrap(box: RefObject<HTMLElement | null>, on: boolean) {
     const ro = new ResizeObserver(() => {
       const els = kids(), now = rowsOf(els), w = root.clientWidth, h = root.offsetHeight
       const t = timing("spring")
-      if (w !== width && now !== rows && t.duration) {
+      // (hidden or shown again, a panel folding or opening: not a resize, and its fold moves the panels after it)
+      if (w && width && w !== width && now !== rows && t.duration) {
         for (const e of els) {
           const p = was.get(e), dx = p ? p.x - e.offsetLeft : 0, dy = p ? p.y - e.offsetTop : 0
           if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) e.animate([{ translate: `${dx}px ${dy}px` }, { translate: "0 0" }], { ...t, id: "rewrap", composite: "add" })

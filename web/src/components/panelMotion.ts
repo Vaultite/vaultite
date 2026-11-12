@@ -24,8 +24,16 @@ function copyOf(el: HTMLElement) {
   for (const e of c.querySelectorAll("[id], [data-keyrow], [data-tip]")) { e.removeAttribute("id"); e.removeAttribute("data-keyrow"); e.removeAttribute("data-tip") }
   return c
 }
-/** Once the copy is in the page: scrolled as the panel is, its canvases drawn. */
+/** What `el` draws as it was: entrances its CSS plays again once shown (a copy, a panel opened) jump to their end. */
+function entered(el: HTMLElement) {
+  for (const a of el.getAnimations({ subtree: true })) {
+    if (a instanceof CSSAnimation && a.timeline === document.timeline && Number.isFinite(a.effect?.getComputedTiming().endTime)) a.finish()
+  }
+}
+
+/** Once the copy is in the page: scrolled as the panel is, its canvases drawn, its entrances done. */
 function likeIt(c: HTMLElement, el: HTMLElement) {
+  entered(c)
   const from = [el, ...el.querySelectorAll("*")], to = [c, ...c.querySelectorAll("*")]
   if (from.length !== to.length) return
   from.forEach((f, i) => {
@@ -220,6 +228,7 @@ export function foldPanel(body: HTMLElement | null, key: string, toggle: () => v
     const a = shade.animate([{ transform: "none", clipPath: `inset(0 0 ${full - seen}px 0)`, opacity: 1 }, { transform: `translateY(${top1 - top0}px)`, clipPath: `inset(0 0 ${full - h1}px 0)`, opacity: 0 }], { ...t, id: FOLD, fill: "forwards" })
     a.finished.then(() => shade.remove(), () => {})
   } else {
+    entered(el)
     el.animate([{ transform: `translateY(${top0 - top1}px)`, clipPath: `inset(0 0 ${Math.max(0, el.offsetHeight - seen)}px 0)` }, { transform: "none", clipPath: "inset(0 0 0 0)" }], { ...t, id: FOLD })
   }
 }

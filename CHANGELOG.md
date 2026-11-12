@@ -14,6 +14,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Jobs go to the machine with room for them**: a job goes to a machine that's on and has what it needs (its repo, this
   vault for notes, the macOS its repo's `.vaultite-jobs.json` asks for), the least loaded first, then your order in
   Jobs' machines; a coding job may run on a machine with another vault, its knocks, inbox asks and demo reaching you here.
+- **Sidebar panels fold and open smoothly**: Pinned's tiles stay in place as it opens, the panels below no longer jump,
+  and Inbox's unread dots don't pop in again each time.
 - **Jobs wait on every kind of background work**: a job also stays working, not ready for review, while its agent waits
   on a Monitor or on a command its timeout moved to the background, and until a stopped task ends.
 - **A kept drawing looks in Excalidraw as it did on the screen**: Keep saves a video card as its first frame with a
