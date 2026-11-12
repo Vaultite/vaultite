@@ -2,9 +2,10 @@
 // moving and closing one; and what agents ask of the tabs (`vau tabs`). Each change is one `set`.
 import { COLORS, isColor, type Color } from "../../../core/colors.ts"
 import {
-  focusedPane, inGroup, isBlankTab, nextShown, newGroupId, outsideGroups, panesOf, placesIn, runOf, tabOf, vaultPath, type Group, type Pane, type Tab, type TabList,
+  focusedPane, inGroup, isBlankTab, isSplit, nextShown, newGroupId, outsideGroups, panesAt, panesOf, placesIn, placesOf, runOf, spotWords, tabOf, vaultPath,
+  type Group, type Pane, type Tab, type TabList,
 } from "../../../core/layout.ts"
-import { activePane, closeTabIds, closePane, getWorkspace, here, paneById, paneTab, popoutId, selectPane, selectTab, set, show, showActive, tabById } from "@/core/workspace"
+import { activePane, activeTab, closeTabIds, closePane, getWorkspace, here, paneById, paneTab, popoutId, selectPane, selectTab, set, show, showActive, tabById } from "@/core/workspace"
 import { canPaneIntoPane, canTabIntoPane, openInSplit, paneIntoPane, paneToTab, placeTab, splitPane, tabIntoPane, type Zone } from "@/core/splits"
 import { answerUi } from "@/core/live"
 
@@ -233,6 +234,43 @@ function namedPane(q: unknown, what = "pane"): Pane {
   const ps = [...f.tabs.map(focusedPane), ...f.panes]
   if (ps.length > 1) throw new Error(`${q} is open in ${ps.length} panes: name one by its id (vau tabs lists them)`)
   return ps[0]
+}
+/** What a pane's tab says it shows (a note's name, a page's title). Set by the app, which draws the tabs. */
+let paneLabel: (p: Pane) => string = (p) => p.to
+export const setPaneLabeler = (fn: (p: Pane) => string) => { paneLabel = fn }
+const THIS = /^(this|here|current|focused|active)( one| pane| panel| tab)?$|^the (current|focused|active)( one| pane| panel| tab)?$/i
+const host = (to: string) => { try { return to.startsWith("view:web/") ? new URL(to.slice(9).replace(/^@[a-z0-9]+\//, "")).host.replace(/^www\./, "") : "" } catch { return "" } }
+/** What a pane is called by: its places' targets, paths, names, tab labels and sites, in lower case. */
+const namesOf = (p: Pane) => placesOf(p).flatMap((x) => { const f = vaultPath(x.to); return [x.to, f, f?.split("/").pop()?.replace(/\.md$/, ""), paneLabel(x), host(x.to)] })
+  .filter((n): n is string => !!n).map((n) => n.toLowerCase())
+const named = (p: Pane) => `${p.id} (${paneLabel(p)})`
+/** The pane the user names, to open something in it (vau open --in): its id, where it is in the tab on screen ("left",
+ *  "the top right one"), "this" (the one focused), or what it shows (a file, a site, words of its tab's title). */
+export function paneNamed(said: string): Pane {
+  const q = said.trim(), t = activeTab()
+  if (!q) throw new Error("say which pane")
+  const byId = paneById(q)
+  if (byId) return byId
+  if (THIS.test(q)) return activePane()
+  const spots = spotWords(q)
+  if (spots) {
+    if (!isSplit(t.root)) return focusedPane(t)
+    const at = panesAt(t.root, spots), where = spots.join(" ")
+    if (at.length === 1) return at[0]
+    if (!at.length) throw new Error(`no pane is at the ${where} of the tab on screen: its panes are ${panesOf(t).map(named).join(", ")}`)
+    const more = spots.some((x) => x === "top" || x === "bottom") ? `${where} left` : `top ${where}`
+    throw new Error(`${at.length} panes are at the ${where}: ${at.map(named).join(", ")}; name one (by its id, or more of where it is: ${more})`)
+  }
+  const w = q.toLowerCase().replace(/^(the\s+)?((one|pane|panel|tab|split)\s+)?(showing|with|that shows|that has|where|of|on)\s+/, "").replace(/^the\s+/, "").replace(/\.md$/, "").trim()
+  const i = q.toLowerCase().indexOf(w), as = i >= 0 && w ? q.slice(i, i + w.length) : q // (as said: its case)
+  for (const ps of [panesOf(t), here().tabs.filter((x) => x.id !== t.id).flatMap(panesOf)]) {
+    const exact = ps.filter((p) => namesOf(p).includes(w))
+    const word = new RegExp(`(^|[^a-z0-9])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`)
+    const hit = exact.length ? exact : ps.filter((p) => namesOf(p).some((n) => word.test(n)))
+    if (hit.length === 1) return hit[0]
+    if (hit.length > 1) throw new Error(`${hit.length} panes show ${as}: ${hit.map(named).join(", ")}; name one by its id or where it is (left, top right)`)
+  }
+  throw new Error(`no pane shows ${as}: the tab on screen has ${panesOf(t).map(named).join(", ")} (or name one by where it is: left, top right, this)`)
 }
 const SIDES = ["left", "right", "top", "bottom"]
 const zoneOf = (z: unknown, fallback: Zone): Zone => {

@@ -616,3 +616,24 @@ export function settledTab(t: Tab): Tab {
   const { zoom: _, ...rest } = t
   return { ...rest, root, focus, ...(zoom ? { zoom } : {}) }
 }
+
+// ---------- a pane as the user names it (an agent's `vau open --in left`) ----------
+
+const SPOT_WORDS: Record<string, Side | "middle"> = { left: "left", right: "right", top: "top", upper: "top", bottom: "bottom", lower: "bottom",
+  middle: "middle", center: "middle", centre: "middle" }
+const FILLER = new Set(["the", "a", "on", "in", "at", "to", "of", "one", "pane", "panel", "panes", "side", "split", "tab", "half", "column", "row", "part", "hand", "same", "there"])
+/** The spots words name ("the left side panel": left; "top right": top, right), or null when they say something else. */
+export function spotWords(said: string): (Side | "middle")[] | null {
+  const words = said.toLowerCase().split(/[\s,.-]+/).filter((w) => w && !FILLER.has(w))
+  if (!words.length || words.some((w) => !SPOT_WORDS[w])) return null
+  return [...new Set(words.map((w) => SPOT_WORDS[w]))]
+}
+/** The tiled panes of `root` at those spots: each side one touching that edge (two named on one axis, both), middle one
+ *  touching neither edge of the axis no side names (both when none is named). */
+export function panesAt(root: Layout, spots: (Side | "middle")[]): Pane[] {
+  const e = 1e-6, across = spots.some((s) => s === "left" || s === "right"), down = spots.some((s) => s === "top" || s === "bottom")
+  const midX = (r: Rect) => r.x > e && r.x + r.w < 1 - e, midY = (r: Rect) => r.y > e && r.y + r.h < 1 - e
+  const at = (r: Rect, s: Side | "middle") => s === "left" ? r.x < e : s === "right" ? r.x + r.w > 1 - e : s === "top" ? r.y < e : s === "bottom" ? r.y + r.h > 1 - e
+    : across && !down ? midY(r) : down && !across ? midX(r) : across ? false : midX(r) || midY(r)
+  return layout(root).panes.filter(({ rect }) => spots.every((s) => at(rect, s))).map((p) => p.pane)
+}

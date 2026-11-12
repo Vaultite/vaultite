@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Agents open things where you say**: "in a new tab in the left pane", "beside the one showing the brief", or a web
+  page "in my Personal container" (`vau open --in left`, `--container Personal`, and the companion's open); a pane or
+  container that isn't there is an error naming the ones that are.
 - **Linux: a relaunch reopens its vault**: the desktop app run from a checkout with `--vault <folder>` comes back on
   that vault after an update's relaunch, not on its own code folder.
 - **Long browser waits last**: `vau browser wait --helped --timeout 600` (and other waits) waits as long as asked,

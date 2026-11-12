@@ -333,14 +333,16 @@ export class Live {
     if (message?.action === "ask-cancel") { this.keyed.get(String(message.key))?.(); return { ok: true } }
     // A command says whether the window could run it (one that needs an open note may not); an older app never says.
     const to = this.last()
-    const rid = message?.action === "command" && to && this.answering.has(to) ? crypto.randomUUID() : null
+    // (an open says what it couldn't do too: no pane or container by that name)
+    const rid = (message?.action === "command" || message?.action === "open") && to && this.answering.has(to) ? crypto.randomUUID() : null
     // (its answer: whether it ran, once it settled, and the toasts it showed meanwhile: "isn't running" means it didn't)
     const ran = rid ? new Promise<Answer | null>((done) => { this.answers.set(rid, (a) => done(a)); setTimeout(() => done(null), UI_ANSWER_MS) }) : null
     try {
       const [out, status] = this.handle(message ? "POST" : "GET", rid ? { ...message, rid } : message)
       if (status >= 400) throw new OpError(String((out as { error?: unknown }).error ?? status), status)
       const a = ran ? await ran : null
-      if (a && a.ran === false) throw new OpError(`the command ${String(message!.id)} isn't available in the user's window right now (it may need a note open there): nothing ran`, 422)
+      if (a && a.ran === false && typeof a.error === "string") throw new OpError(a.error, 422)
+      if (a && a.ran === false && message!.action === "command") throw new OpError(`the command ${String(message!.id)} isn't available in the user's window right now (it may need a note open there): nothing ran`, 422)
       if (!a) return out
       const notices = Array.isArray(a.notices) ? a.notices.slice(-5).flatMap((n) => { const x = n as { text?: unknown; kind?: unknown }; return typeof x?.text === "string" ? [{ text: x.text.slice(0, 300), ...(x.kind === "error" ? { kind: "error" } : {}) }] : [] }) : []
       return { ...(out as object), ran: true, ...(notices.length ? { notices } : {}) }
@@ -390,7 +392,9 @@ export class Live {
     let msg: Record<string, unknown>
     if (b.action === "open" && typeof b.path === "string" && b.path.trim()) {
       if (b.split != null && b.split !== "right" && b.split !== "down") return [{ error: "split is right or down" }, 400]
-      msg = { action: "open", path: b.path.trim(), split: b.split ?? null, newTab: !!b.newTab, ...(b.background ? { background: true } : {}) }
+      for (const k of ["container", "in"]) { const v = b[k]; if (v != null && (typeof v !== "string" || !v.trim())) return [{ error: `${k} is a name (a string)` }, 400] }
+      msg = { action: "open", path: b.path.trim(), split: b.split ?? null, newTab: !!b.newTab, ...(b.background ? { background: true } : {}),
+        ...(b.container ? { container: (b.container as string).trim() } : {}), ...(b.in ? { in: (b.in as string).trim() } : {}), ...(typeof b.rid === "string" ? { rid: b.rid } : {}) }
     } else if (b.action === "command" && typeof b.id === "string" && b.id) msg = { action: "command", id: b.id, ...(typeof b.rid === "string" ? { rid: b.rid } : {}) }
     else if (b.action === "notify") {
       const text = typeof b.text === "string" ? b.text.trim() : ""

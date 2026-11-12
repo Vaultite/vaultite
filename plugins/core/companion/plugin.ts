@@ -3653,7 +3653,8 @@ function companionAsking(): string | null {
 /** What a pane shows that `path` opens (a note, a folder's page, a view, a web address). */
 function shows(p: Pane, path: string) {
   const x = path.replace(/^file:/, "")
-  return /^https?:\/\//i.test(x) ? p.to === `view:web/${x}` || p.to.startsWith(`view:web/${x.replace(/\/$/, "")}`)
+  const to = p.to.replace(/^view:web\/@[a-z0-9]{1,24}\//, "view:web/")
+  return /^https?:\/\//i.test(x) ? to === `view:web/${x}` || to.startsWith(`view:web/${x.replace(/\/$/, "")}`)
     : x.startsWith("view:") ? p.to === x : p.to === `file:${x}` || p.to === `file:${x}.md` || p.to === `view:folder/${x}`
 }
 /** Open `path` with its cursor there: on its tab first when it's open already, then on what opened. */
@@ -3701,6 +3702,8 @@ work there), or the Mac's window in front and what's in it by id (point, ring an
 
   vau companion open Personal/Dashboards/Today.md
   vau companion open https://example.com --split right
+  vau companion open https://www.linkedin.com/in/alice-park --container Personal
+  vau companion open http://localhost:5173 --in left
   vau companion open "x-apple.systempreferences:com.apple.Keyboard-Settings.extension"
   vau companion open ~/Downloads
   vau companion open --app Calculator`,
@@ -3709,6 +3712,8 @@ work there), or the Mac's window in front and what's in it by id (point, ring an
   params: { path: { type: "string", description: "a vault path (or as they say it: Today), a folder, a view (view:graph), a web address, any other address (x-apple.systempreferences:..., mailto:...), or a path on their Mac (~/Downloads)" },
     app: { type: "string", description: "an app on their Mac to open (its name, Calculator, or bundle id), with path or the address in it if given" },
     split: { type: "string", enum: ["right", "down"], description: "in a pane beside (right) or below (down)" }, newTab: { type: "boolean", description: "in a new tab" },
+    in: { type: "string", description: "the pane to open it in as a new tab, as they name it: where it is (left, top right), this, what it shows (a note, a site, its title's words) or its id" },
+    container: { type: "string", description: "a web page's browser container (its own logins), by its name as they say it: Personal, Work, Agents, or none" },
     vaultite: { type: "boolean", description: "a web page in Vaultite even when they asked from their browser (where it opens, a new tab, by default)" }, as: AS },
   args: ["path"],
   run: async (p, ctx) => {
@@ -3716,7 +3721,7 @@ work there), or the Mac's window in front and what's in it by id (point, ring an
     if (!path && !app) throw new OpError("give a path or an app")
     did(name, "open")
     // (asked from their browser: a page opens there, where they are, not in a pane of Vaultite's behind it)
-    const browser = /^https?:\/\/\S+$/i.test(path) && !app && p.vaultite !== true && m?.summoned && m.app && isBrowser(m.app) ? m.app : ""
+    const browser = /^https?:\/\/\S+$/i.test(path) && !app && p.vaultite !== true && !p.container && !p.in && m?.summoned && m.app && isBrowser(m.app) ? m.app : ""
     const mac = browser ? { url: path, app: browser } : macOpen(path, app, plugin.vault.path, os.homedir())
     if (mac) {
       const r = await takeover.open(mac)
@@ -3725,7 +3730,8 @@ work there), or the Mac's window in front and what's in it by id (point, ring an
       if (r.frame) { const f = r.frame; void resolve(target({ sx: Math.round(f.x + f.width / 2), sy: Math.round(f.y + Math.min(f.height / 2, 120)) }, true), name).then((t) => setAgent(name, { ...t, state: acting(name), pointed: Date.now() }), () => {}) }
       return { path: path || app, pane: null, in: r.app || mac.app || "", title: r.title ?? "", near: r.near ?? [], browser: !!browser }
     }
-    const r = await openSeen(name, path, () => ctx.op("ui.open", { path, ...(p.split ? { split: p.split } : {}), ...(p.newTab ? { newTab: true } : {}) }))
+    const r = await openSeen(name, path, () => ctx.op("ui.open", { path, ...(p.split ? { split: p.split } : {}), ...(p.newTab ? { newTab: true } : {}),
+      ...(p.in ? { in: p.in } : {}), ...(p.container ? { container: p.container } : {}) }))
     return { path, pane: r.pane ?? null }
   },
   text: (r) => (r.browser ? `Opened ${r.path} in ${r.in}, a new tab there in front of them.`

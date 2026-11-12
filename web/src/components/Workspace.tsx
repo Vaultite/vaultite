@@ -1,7 +1,7 @@
 // Desktop: the window's tab bar over the shown tab's panes. Every pane is drawn in one flat list, the last few tabs' kept
 // hidden, so switching tabs, splitting or moving a pane between tabs never remounts the others (an editor keeps its cursor).
 import { Fragment, memo, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import type { Store } from "@/core/data"
+import { getStore, type Store } from "@/core/data"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import type { ViewDef } from "@/core/define"
 import { useHeldHeight } from "@/core/heights"
@@ -9,7 +9,7 @@ import { barsHidden, closePane, paneById, quietly, replaceTabTarget, setArchivab
 import { dropAt, dropOn, PANES, springOver, type Drop } from "@/core/drop"
 import { evenOut, placeFloat, resize } from "@/core/splits"
 import { paneBoxes, paneGap, usePaneMotion } from "@/core/panemotion"
-import { setGroupNamer } from "@/core/tabgroups"
+import { setGroupNamer, setPaneLabeler } from "@/core/tabgroups"
 import { layout, panesOf, placesIn, shownTab, tabOfPane, tabPath, type Divider as DividerAt, type Pane, type Rect, type Tab, type TabList } from "../../../core/layout.ts"
 import { PaneContext } from "@/core/pane"
 import { VaultLoading } from "@/components/VaultLoading"
@@ -42,6 +42,7 @@ setOpenElsewhere((to) => openElsewhere(to, getPrefs().disabled))
 setWorkspaceOf(() => currentWorkspace()?.n ?? 0)
 setTabKeeper((to) => !!viewFor(to, getPrefs().disabled)?.def.keepsTab)
 setPathView((to) => !!viewFor(to, getPrefs().disabled)?.def.pathArg)
+setPaneLabeler((p) => tabLabel(p, getStore()).label)
 setGroupNamer((to) => { const v = viewFor(to, getPrefs().disabled); return (v?.on && v.def.groupName?.(v.arg)) || null })
 setOpener((to) => { const v = viewFor(to, getPrefs().disabled); return (v?.on && v.def.opensBeside?.(v.arg)) || null })
 setOwnHistory((p, dir) => { const v = viewFor(p.to, getPrefs().disabled); return (v?.on && v.def.history?.(v.arg, p.id, dir)) || null })

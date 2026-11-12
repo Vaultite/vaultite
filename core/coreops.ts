@@ -110,31 +110,46 @@ function uiOps(app: App): Op[] {
     id: "ui.open",
     cli: "open",
     mcp: "open",
-    summary: "Open a file (or a view) in the user's app window, optionally in a split.",
+    summary: "Open a file, a view or a web page in the user's app window: where they say (a pane they name, as a new tab there; a split), a web page in the browser container they name.",
     help: `Shows something in the app the user has open: a file in a tab, a folder as its page (a list or a grid of what
 it holds), a view ("view:terminal/<id>", "view:graph") or a web address in a web tab.
-Only the window the user was in last acts. split right|down opens it in a pane beside or below; newTab keeps the
-current tab. On a phone it opens in the sheet. For something the user should look at now (a file you wrote).
+Only the window the user was in last acts. On a phone it opens in the sheet. For something the user should look at now
+(a file you wrote).
+Where, as the user says it:
+- in: the pane it opens in, as a new tab there. By where it is in the tab on screen (left, right, top, bottom, middle,
+  "top right", "the left side panel"), "this" (the one focused), what it shows (a note's name, a site: github.com,
+  words of its tab's title: "the one showing Squad") or its id (vau tabs). With split, the split is beside that pane.
+- split right|down: in a new pane beside or below (the current one, or the one in names).
+- newTab: a new tab, keeping the current one.
+- container: a web address in that browser container (each its own logins): its name as the user says it (Personal,
+  Work, Agents; "my personal one": personal), its id, or none. Left out, the site's rule or the workspace's picks.
+A pane or container nobody has is an error that lists the ones there are.
 
   vau open Dashboards/People.md
   vau open "People/Alice Park.md" --split right
   vau open People
   vau open Notes/Idea.md --new-tab
-  vau open https://example.com`,
+  vau open https://example.com
+  vau open https://www.linkedin.com/in/alice-park --container Personal
+  vau open http://localhost:5173 --in left
+  vau open Notes/Plan.md --in "the one showing Lighthouse"
+  vau open https://github.com --in "top right" --container work`,
     kind: "write",
     params: {
       path: { type: "string", format: "path", required: true, description: "the vault path (Notes/Idea.md, or as the user says it: Today), a folder, a view (view:graph) or a web address" },
-      split: { type: "string", enum: ["right", "down"], description: "open it in a pane beside (right) or below (down) the current one" },
+      split: { type: "string", enum: ["right", "down"], description: "open it in a pane beside (right) or below (down) the current one (or the one `in` names)" },
       newTab: { type: "boolean", description: "in a new tab, keeping the current one" },
+      in: { type: "string", description: "the pane to open it in, as a new tab there, as the user names it: where it is (left, right, top right, bottom), this (the focused one), what it shows (a note, a site, its title's words) or its id" },
+      container: { type: "string", description: "a web address's browser container, by its name as the user says it (Personal, Work, Agents), its id, or none" },
     },
     args: ["path"],
-    run: async ({ path, split, newTab }, ctx) => {
+    run: async ({ path, split, newTab, in: into, container }, ctx) => {
       // (showing a terminal tab starts its shell or agent, which only the owner may)
       const why = typeof path === "string" && path.startsWith("view:terminal/") ? await ctx.refusal?.("the terminal") : ""
       if (why) throw new OpError(why, 403)
-      return ctx.ui({ action: "open", path, split: split ?? null, newTab: !!newTab }).catch(noWindow)
+      return ctx.ui({ action: "open", path, split: split ?? null, newTab: !!newTab, ...(into ? { in: into } : {}), ...(container ? { container } : {}) }).catch(noWindow)
     },
-    text: (_r, p) => `Opened ${p.path}${p.split ? ` in a split ${p.split}` : ""}.`,
+    text: (_r, p) => `Opened ${p.path}${p.in ? ` as a new tab in the pane "${p.in}"` : ""}${p.split ? ` in a split ${p.split}` : ""}${p.container ? ` in the container ${p.container}` : ""}.`,
     did: ({ path, split }) => ({ action: "ui", text: `Opened ${path} in the app${split ? ` (split ${split})` : ""}`, paths: path && !path.startsWith("view:") ? [path] : [] }),
   }, {
     id: "ui.command",

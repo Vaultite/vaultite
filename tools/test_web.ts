@@ -1114,6 +1114,16 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
     same(savedFloat({ x: 0.9, y: -1, w: 0.5, h: 2 }), { x: 0.5, y: 0, w: 0.5, h: 1 }) && savedFloat({ x: "1" }) === undefined)
   check("float: directional focus from it goes to the tiled pane past its edge", lay.neighbourOf(row3({ ...fl, x: 0.1 }), "b", "right")?.id === "c"
     && lay.neighbourOf(row3(fl), "b", "left") === null)
+  // A pane as the user names it (vau open --in): where it is in the tab.
+  const idsOf = (ps: Any[]) => ps.map((p: Any) => p.id).join()
+  const lr = row("s0", [col("s1", [pane("a"), pane("b")]), pane("c")]), row3x = row("s0", [pane("a"), pane("b"), pane("c")])
+  check("named: position words, filler and synonyms dropped; other words aren't a place",
+    same(lay.spotWords("the left side panel"), ["left"]) && same(lay.spotWords("Top-right one"), ["top", "right"]) && same(lay.spotWords("lower half"), ["bottom"])
+    && lay.spotWords("the one showing Squad") === null && lay.spotWords("the pane") === null)
+  check("named: a side is the panes touching that edge, two sides both; middle what touches neither edge of the axis",
+    idsOf(lay.panesAt(lr, ["left"])) === "a,b" && idsOf(lay.panesAt(lr, ["top", "left"])) === "a" && idsOf(lay.panesAt(lr, ["right"])) === "c"
+    && idsOf(lay.panesAt(lr, ["bottom", "right"])) === "c" && idsOf(lay.panesAt(row3x, ["middle"])) === "b" && idsOf(lay.panesAt(lr, ["middle"])) === ""
+    && idsOf(lay.panesAt(col("s0", [pane("a"), pane("b"), pane("c")]), ["middle"])) === "b" && idsOf(lay.panesAt(row3x, ["top"])) === "a,b,c", [idsOf(lay.panesAt(lr, ["middle"]))])
   const st = (root: Any, f: string, zoom?: string) => lay.settledTab({ id: "tx", root, focus: f, ...(zoom ? { zoom } : {}) })
   check("settled: with every pane floating they dock; the focus on one of its panes; a zoom only on the focused pane, tiled, beside others",
     !lay.leaves(st({ ...pane("a"), float: fl }, "a").root).some((p: Any) => p.float) && st(row3(), "gone").focus === "a"
@@ -1620,6 +1630,25 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   off()
   ws.selectTab("ta")
   check("events: unsubscribed, nothing heard", said() === "")
+
+  // A pane named as the user says it (vau open --in), and something opened there as a new tab of its own.
+  put([S("tx", row("s0", [col("s1", [a, b]), c]), "c"), T("d")], "tx")
+  gr.setPaneLabeler((p: Any) => (p.to === "file:c.md" ? "Squad: a team of agents" : p.to))
+  const nm = (q: string) => { try { return gr.paneNamed(q).id } catch (e) { return (e as Error).message } }
+  check("vau open --in: a pane by where it is, by this, by what it shows (another tab's too), by its title's words, by id",
+    nm("top left") === "a" && nm("the bottom-left one") === "b" && nm("the right side panel") === "c" && nm("this") === "c" && nm("b.md") === "b"
+    && nm("the one showing d") === "d" && nm("the one showing squad") === "c" && nm("a") === "a",
+    ["top left", "the right side panel", "this", "b.md", "the one showing d", "the one showing squad"].map(nm))
+  check("vau open --in: two at the place named, or none showing it, says which there are",
+    /^2 panes are at the left: a \(file:a\.md\), b \(file:b\.md\)/.test(nm("left")) && /^no pane shows Lighthouse: the tab on screen has a/.test(nm("Lighthouse")), [nm("left"), nm("Lighthouse")])
+  const inA = ws.openInPane("a", "view:web/https://x.test/")
+  const leafA = () => lay.paneWith(ws.activeTab().root, inA)
+  check("vau open --in: in a split, a new tab of that pane's own, shown and focused; the split as it was",
+    tabs() === "[[view:web/https://x.test//b]|c]*,d" && focus() === inA && lay.placesOf(leafA()).map((p: Any) => p.to).join() === "file:a.md,view:web/https://x.test/", tabs())
+  ws.selectPane("a"); ws.setFocusedPane("c"); const twice = ws.openInPane("a", "view:web/https://x.test/")
+  check("vau open --in: one that pane has already is shown, not opened twice", twice === inA && focus() === inA && lay.placesOf(leafA()).length === 2, tabs())
+  ws.openInPane("d", "file:z.md")
+  check("vau open --in: a tab of one pane gets a tab after it", tabs() === "[[view:web/https://x.test//b]|c],d,z*", tabs())
 
   // ---- what agents ask (vau tabs) ----
   const ask = (m: Props) => { try { return g.__answerUi.tabs(m) } catch (e) { return { error: (e as Error).message } } }

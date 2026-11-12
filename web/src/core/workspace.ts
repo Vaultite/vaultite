@@ -418,6 +418,23 @@ const intoPane = (t: Tab, from = focusedPane(t).id) => isSplit(t.root) && !t.pin
 function withNewPlace(tab: string, at: string, p: Pane, show = true): TabList {
   return withTab(tab, (t) => { const x = withPlace(t, at, p, { show }); return show ? { ...x, focus: p.id } : x }, show ? { active: tab } : {})
 }
+/** `to` as a new tab in pane `pane` (one of its own in a split; a tab of one pane's, a tab after it), shown and focused:
+ *  an agent's open `in` a pane the user named. One of that pane's tabs showing it already is shown. Returns its pane. */
+export function openInPane(pane: string, to: string): string {
+  const t = tabOfPane(here(), pane), p = t && paneWith(t.root, pane)
+  if (!t || !p) throw new Error(`no pane ${pane} (vau tabs lists them)`)
+  const had = placesOf(p).find((x) => x.to === to)
+  if (had) { selectPane(had.id); return had.id }
+  if (!isSplit(t.root)) {
+    set(withTabAfter(here(), t.id, to))
+    show(to, true)
+    return activePane().id
+  }
+  const id = newPaneId()
+  set(withNewPlace(t.id, p.id, { id, to }))
+  show(to, true)
+  return id
+}
 /** The place opened last behind `opener` (a pane's place), while it stays focused: the next opened from it goes after
  *  it, as Chrome's do. */
 let lastPlace: { opener: string; place: string } | null = null

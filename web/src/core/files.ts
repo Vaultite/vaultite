@@ -14,11 +14,12 @@ import { notify as notice } from "@/core/notify"
 import { allPanes, tabPath, type Pane } from "../../../core/layout.ts"
 import { isDesktop } from "@/core/platform"
 import { guestEdits, share } from "@/core/share"
-import { clickOpening, closePane, setClickOpens, dropTabs, findOpen, go, guarded, here, keepsTab, openTab, panes, activePane, retarget, setFocusedPane, targetOf } from "@/core/workspace"
+import { clickOpening, closePane, setClickOpens, dropTabs, findOpen, go, guarded, here, keepsTab, openInPane, openTab, panes, activePane, retarget, selectPane, setFocusedPane, targetOf } from "@/core/workspace"
 import { openInSplit } from "@/core/splits"
 import { fileAt } from "@/core/pages"
 import { resolver } from "@/core/links"
-import { filesMoved, resolveView } from "@/core/plugins"
+import { filesMoved, resolveView, webContainers } from "@/core/plugins"
+import { paneNamed } from "@/core/tabgroups"
 
 
 export type VaultFile = {
@@ -149,9 +150,10 @@ export function openFolder(path: string, opts: { newTab?: boolean; pane?: string
 }
 
 // An agent's `vau open <path>` / `vau command <id>` / `vau notify <text>` (server.ts /api/ui), in the window the user
-// was in last.
-function openAsked(path: string, split?: "right" | "down" | null, newTab = false, background = false) {
+// was in last. `container`: a web page's (an id or a name, "none"); `into`: the pane it opens in as a new tab (paneNamed).
+function openAsked(path: string, split?: "right" | "down" | null, newTab = false, background = false, container?: string | null, into?: string | null) {
   if (/^https?:\/\//i.test(path)) path = `view:web/${path}`
+  if (container) path = inContainer(path, container)
   // (a folder: its page)
   const t = getStore()?.files
   if (t && !path.startsWith("view:") && isFolder(t, path.replace(/^file:/, ""))) path = folderTarget(path.replace(/^file:/, ""))
@@ -160,9 +162,21 @@ function openAsked(path: string, split?: "right" | "down" | null, newTab = false
   // (behind the user's tab: agents never take the focus; one open already is left as it is)
   if (background) return void (findOpen(to) || openTab(to, { background: true }))
   if (!isDesktop()) return view ? afterSheets(() => go(to)) : openFile(to.slice(5))
+  const at = into ? paneNamed(into) : null
+  if (at && split) { selectPane(at.id); return void openInSplit(to, split === "down" ? "bottom" : "right") }
+  if (at) return void openInPane(at.id, to)
   if (split) return openInSplit(to, split === "down" ? "bottom" : "right")
   if (!view) besideKept()
   go(to, newTab)
+}
+/** A web tab's target in the Browser's container named (its id or its name, any case; "none": in none). */
+function inContainer(to: string, said: string) {
+  if (!to.startsWith("view:web/")) throw new Error("a container is for a web address (https://...)")
+  const url = to.slice(9).replace(/^@[a-z0-9]{1,24}\//, ""), k = said.trim().toLowerCase(), list = webContainers()
+  if (k === "none") return `view:web/${url}`
+  const c = list.find((x) => x.id === k) ?? list.find((x) => x.name.toLowerCase() === k) ?? list.find((x) => x.name.toLowerCase().includes(k) || k.includes(x.name.toLowerCase()))
+  if (!c) throw new Error(list.length ? `no container is called ${said}: they're ${list.map((x) => x.name).join(", ")} (or none)` : "this window's browser has no containers")
+  return `view:web/@${c.id}/${url}`
 }
 /** A file an agent opens from its terminal goes beside it, not over it: the focus moves to the first other pane of
  *  the tab on screen that isn't showing a view that keeps its own (ViewDef.keepsTab: a terminal), when there's one. */
@@ -177,7 +191,7 @@ onUiAction((m) => {
     const b = m.button
     return void notice(m.text, { kind: m.kind === "error" ? "error" : undefined, action: b ? { label: b.label, run: () => openAsked(b.open) } : undefined })
   }
-  if (m.action === "open" && m.path) openAsked(m.path, m.split, !!m.newTab, !!m.background)
+  if (m.action === "open" && m.path) openAsked(m.path, m.split, !!m.newTab, !!m.background, m.container, m.in)
 })
 
 /** Open a plugin's view, shown once: a pane that has it shows it (no two terminal panes fighting over its size), else a

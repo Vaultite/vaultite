@@ -15,7 +15,7 @@ page: Save image to vault (into the attachments folder, like a pasted one), Down
 address. Commands: "Open web page…", "Clip current web page", "Open web pages in a tab". Pages keep their own logins,
 apart from the app's, on the Mac running the desktop app; nothing about them is kept in the vault.
 - Containers: a tab can open in a container (Personal, Work, or ones you add), each with logins of its own, so one site
-  has several accounts side by side. `view:web/@<container id>/<address>` opens one in a container; the page's bar
+  has several accounts side by side. `view:web/@<container id>/<address>` opens one in a container (an agent: `vau open <address> --container Personal`, by its name); the page's bar
   shows it (its colour, under the tab's icon too) and its menu moves the tab, always opens its site there or adds a
   container. Containers are managed in Sites (Manage containers…): add one, and a container's options (rename, colour,
   Touch ID, agent access, delete: deleting clears its logins) on its heading's … or right-click. They're the plugin's `containers` setting:
