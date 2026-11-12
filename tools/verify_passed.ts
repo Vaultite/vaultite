@@ -21,8 +21,10 @@ export function workTree(root: string): string | null {
   if (!dir) return null
   const index = path.join(dir, `verify-index-${process.pid}`)
   try {
-    // (a copy of the index keeps its file stats: only what changed is read again)
-    if (fs.existsSync(path.join(dir, "index"))) fs.copyFileSync(path.join(dir, "index"), index)
+    // (a copy of the index keeps its file stats, so only what changed is read again; and its own time, or git would
+    // trust the stats of a file edited in the second the index was written: racy git)
+    const own = path.join(dir, "index")
+    if (fs.existsSync(own)) { fs.copyFileSync(own, index); const st = fs.statSync(own); fs.utimesSync(index, st.atime, st.mtime) }
     const env = { GIT_INDEX_FILE: index }
     return git(root, ["add", "-A"], env) === null ? null : git(root, ["write-tree"], env)
   } finally {
