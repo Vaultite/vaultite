@@ -47,8 +47,8 @@
       "serial": 2
     },
     "update": {
-      "wire": 1506304,
-      "requests": 118,
+      "wire": 716800,
+      "requests": 60,
       "serial": 6
     },
     "phone-reopen": {

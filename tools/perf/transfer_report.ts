@@ -129,7 +129,8 @@ export function ratchet(data: ReturnType<typeof read>, was: Ceilings | null, pro
     for (const m of Object.keys(METRICS) as Metric[]) {
       if (m !== "wire" && !LATENCY_FLOWS.has(flow)) continue
       const now = METRICS[m].room(h[m], flow), before = was?.flows[flow]?.[m]
-      ;(flows[flow] ??= {})[m] = before === undefined ? now : Math.min(before, now)
+      // (a deploy's is set by hand, about half the app's start: what one commit changes varies, a cascade doesn't)
+      ;(flows[flow] ??= {})[m] = before === undefined ? now : flow === "update" ? before : Math.min(before, now)
     }
   }
   return { profile, flows }
