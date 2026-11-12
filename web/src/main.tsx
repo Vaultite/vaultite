@@ -5,6 +5,7 @@ import "./index.css"
 import "./core/shifts" // traces layout shifts the user didn't cause
 import "./core/appearance" // applies the theme, scheme, density and fonts before the first paint
 import "./core/selectAll" // ⌘A selects the text the user is in, never the whole window
+import "./core/windowfocus" // a browser window out of focus greys what's selected, as the desktop app does
 import App from "./App.tsx"
 import { startStore } from "./core/data"
 import { startDesktop } from "./core/desktopapp"

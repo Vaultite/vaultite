@@ -17,7 +17,7 @@ import { useVaultChange } from "@/core/live"
 import { followLink } from "@/core/links"
 import { openLinkMenu } from "@/components/LinkMenu"
 import { drawEmbed, island, linkKind, useVaultEditing } from "@/components/editing"
-import { cleanName, folderOf, gone, inTrash, isHidden, isJson, isMd, isProtected, isReadOnly, joinFm, joinPath, moveFile, nameable, onMergeIn, onSettle, openFile, openFolder, readFile, restoreFile, splitFm, stem, takeNew, type FileText } from "@/core/files"
+import { cleanName, folderOf, gone, inTrash, isHidden, isJson, isMd, isProtected, isReadOnly, joinFm, joinPath, moveFile, nameProblem, onMergeIn, onSettle, openFile, openFolder, readFile, refuseName, restoreFile, splitFm, stem, takeNew, type FileText } from "@/core/files"
 import { isDesktop } from "@/core/platform"
 import { takeRename } from "@/core/workspace"
 import { formatSize, isMedia, kindOf, type FileKind } from "@/core/filekinds"
@@ -126,21 +126,26 @@ const Title = memo(function Title({ path, editable, sheet, focus, settle, mode, 
     <h1 className={TITLE}><textarea ref={ref} id={sheet ? "sheet-title" : undefined} value={v} rows={1} spellCheck={false} aria-label="File name"
       onChange={(e) => setV(e.target.value)} onBlur={commit}
       onKeyDown={(e) => {
-        if (e.key === "Enter") { e.preventDefault(); enter.current = true; (e.target as HTMLTextAreaElement).blur() }
+        // (a name it can't have: refused, the field keeping what was typed to fix; leaving it puts the name back)
+        if (e.key === "Enter") { e.preventDefault(); const { why } = renaming(path, v); if (why) return refuseName(why, e.currentTarget); enter.current = true; e.currentTarget.blur() }
         if (e.key === "Escape") { setV(name); (e.target as HTMLTextAreaElement).blur() }
       }}
       className="block w-full resize-none overflow-hidden bg-transparent outline-none placeholder:text-muted-foreground" /></h1>
   )
 })
 
-/** Rename a file to what was typed (characters names can't have, "/" too, are refused, as Obsidian does). False if it
- *  stayed as it was. */
-async function rename(path: string, typed: string, settle: () => Promise<void>, undo = true, after?: { mode: Mode; write: boolean }) {
-  if (!nameable(typed)) return false
-  const next = cleanName(typed)
-  if (!next || next === stem(path)) return false
+/** Where renaming a file to what was typed takes it, and why it can't go there (core/files.ts' nameProblem). */
+function renaming(path: string, typed: string) {
   const ext = path.split("/").pop()!.slice(stem(path).length)  // (.md, a page's .html or .csv; other files show theirs in the name)
-  const to = joinPath(folderOf(path), next + ext)
+  const to = joinPath(folderOf(path), cleanName(typed) + ext)
+  return { to, why: nameProblem(typed, path, to) }
+}
+
+/** Rename a file to what was typed (a name it can't have is refused, saying why). False if it stayed as it was. */
+async function rename(path: string, typed: string, settle: () => Promise<void>, undo = true, after?: { mode: Mode; write: boolean }) {
+  const { to, why } = renaming(path, typed)
+  if (why) { refuseName(why); return false }
+  if (!cleanName(typed) || to === path) return false
   try {
     await settle()
     if (after) renamed = { path: to, ...after }  // before the move: its tab follows it (a new mount) while it finishes

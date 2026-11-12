@@ -9,6 +9,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Jobs can run in the cloud**: set Jobs' cloud account and a coding job in a repo whose `.vaultite-jobs.json` says
   `"cloud": true` may run as its own Claude Code on the web session (after the always-on machines with room), followed
   from here: its questions, follow-ups and landing as any job's, its card opening the session.
+- **Menus, the palette and dialogs close the way a Mac's do**: they fade out instead of vanishing, a menu's chosen row
+  blinks first, and a right press slid onto a row and let go picks it. The focus ring settles in, what's selected
+  greys while the window is in the background, and a name a file can't take (already there, a dot first, too long)
+  shakes its field and keeps what you typed.
 - **The companion's short notices sit at the top right again**: "Saved in Captures" and every other word it shows for a
   moment (Noted, Sent to, Couldn't save it) no longer land in the screen's top left corner, over the menu bar.
 - **Updates no longer stall on GitHub's hourly limit**: a server with a signed-in gh keeps its larger allowance of

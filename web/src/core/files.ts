@@ -1,5 +1,6 @@
 // The vault as files: the tree, opening files and changing them. Tabs (core/workspace.ts), splits and drops are
 // re-exported here, the one module the rest of the app opens and moves files and tabs with.
+import { refuse } from "@/core/animation"
 import { getStore, reload, type Store } from "@/core/data"
 import { del, get, post } from "@/core/http"
 import { isEmbeddable, pageExt } from "@/core/formats"
@@ -72,12 +73,23 @@ const UNNAMEABLE = /[*"\\<>:|?#^[\]]/g
 export const cleanName = (typed: string) => typed.split("/").map((p) => p.replaceAll(":", " -").replace(UNNAMEABLE, " ").replace(/\s+/g, " ")
   .replace(/[\s.]+$/, "").trim()).filter((p) => p && p !== "." && p !== "..")
   .map((p) => (/^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\.|$)/i.test(p) ? `${p}_` : p)).join("/")
-/** Whether a file or folder can be renamed to what was typed; if not, a toast says which characters it can't have, as
- *  Obsidian's does. "/" too: a rename never moves (that's drag or Move to). */
-export function nameable(typed: string) {
+/** Why `from` can't be renamed to what was `typed` (`to`: the path it makes), or null: characters names can't have
+ *  ("/" too: a rename never moves), a dot first (hidden), over 255 bytes, a name already there in any case (a Mac's). */
+export function nameProblem(typed: string, from: string, to: string): string | null {
   const bad = [...new Set(typed.match(/[/*"\\<>:|?#^[\]]/g) ?? [])]
-  if (bad.length) notice(`A file name can't have ${bad.join(" ")}`, { kind: "error", id: "bad-name" })
-  return !bad.length
+  if (bad.length) return `A file name can't have ${bad.join(" ")}`
+  const name = to.slice(to.lastIndexOf("/") + 1)
+  if (!cleanName(typed) || to === from) return null
+  if (name.startsWith(".")) return "A name can't start with a dot: it would be hidden"
+  if (new TextEncoder().encode(name).length > 255) return "That name is too long"
+  const low = to.toLowerCase(), t = getStore()?.files
+  const taken = low !== from.toLowerCase() && !!t && ([...t.files, ...t.others].some((f) => f.path.toLowerCase() === low) || t.folders.some((f) => f.toLowerCase() === low))
+  return taken ? `“${cleanName(typed)}” is already taken in this folder` : null
+}
+/** Says why a name was refused (as Obsidian's toast does), shaking the field it's still in. */
+export function refuseName(why: string, field?: Element | null) {
+  notice(why, { kind: "error", id: "bad-name" })
+  refuse(field)
 }
 /** Where new files of a kind (its collection: "notes", "days") go: the folder its settings show (the server's: one set,
  *  else where most of its files are), else `fallback`. Folders are the user's (core/fileprops.ts). */

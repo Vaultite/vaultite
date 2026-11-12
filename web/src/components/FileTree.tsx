@@ -10,7 +10,7 @@ import { edgeScroller, getDrag, startDrag, useDragItem, useDropHit, useDropTarge
 import { desktop, hasFiles } from "@/core/desktop"
 import { dropInto } from "@/core/desktopapp"
 import { isMac, isDesktop } from "@/core/platform"
-import { cleanName, createFile, createFolder, folderList, folderOf, freeName, inArchive, inTrash, isDoc, isFolder, isHidden, isJson, isProtected, joinPath, moveFile, nameable, openFile, openFolder, openingSoon, openNew, openView, pathTarget, restoreFile, shownName, stem, type VaultFile } from "@/core/files"
+import { cleanName, createFile, createFolder, folderList, folderOf, freeName, inArchive, inTrash, isDoc, isFolder, isHidden, isJson, isProtected, joinPath, moveFile, nameProblem, openFile, openFolder, openingSoon, openNew, openView, pathTarget, refuseName, restoreFile, shownName, stem, type VaultFile } from "@/core/files"
 import { currentFile, getWorkspace, onWorkspaceChange } from "@/core/workspace"
 import { allPanes, type Workspace } from "../../../core/layout.ts"
 import { useVirtual } from "@/core/virtual"
@@ -552,13 +552,17 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
   const restore = async (n: Node) => {
     try { const to = await restoreFile(n.path); revealInTree(to, { scroll: true, flash: true }) } catch (e) { notifyError(e, "Couldn't restore") }
   }
+  /** Where renaming a row to what was typed takes it, and why it can't go there (core/files.ts' nameProblem). */
+  const renamingTo = (n: Node, typed: string) => {
+    const ext = n.folder || n.other ? "" : n.path.slice(n.path.lastIndexOf("."))
+    const to = joinPath(folderOf(n.path), cleanName(typed) + ext)
+    return { to, why: nameProblem(typed, n.path, to) }
+  }
   const rename = async (n: Node, name: string) => {
     setRenaming(null)
-    if (!nameable(name)) return focusRow(n.path)
-    const clean = cleanName(name)
-    if (!clean || clean === n.name) return focusRow(n.path)
-    const ext = n.folder || n.other ? "" : n.path.slice(n.path.lastIndexOf("."))
-    const to = joinPath(folderOf(n.path), clean + ext)
+    const { to, why } = renamingTo(n, name)
+    if (why) { refuseName(why); return focusRow(n.path) }
+    if (!cleanName(name) || to === n.path) return focusRow(n.path)
     const naming = fresh.current === n.path
     fresh.current = null
     try { await moveFile(n.path, to, { undo: !naming }); focusRow(to) } catch (e) { notifyError(e, "Couldn't rename") }
@@ -719,7 +723,8 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
   // What every row shares: the tree's settings, and its handlers, read through a ref (a row is drawn again only when
   // something it shows changed: TreeRow).
   const on = useRef<RowHandlers>(null!)
-  on.current = { press, menu: onMenu, more: (e, n) => menuBelow(e, menuOf(n)()), rename, cancelRename: (n) => { setRenaming(null); focusRow(n.path) }, swipe }
+  on.current = { press, menu: onMenu, more: (e, n) => menuBelow(e, menuOf(n)()), rename, cancelRename: (n) => { setRenaming(null); focusRow(n.path) },
+    nameProblem: (n, name) => renamingTo(n, name).why, swipe }
   const { marks, icons } = usePluginRows(store, disabled)
   const decor = useFileRows(disabled)
   const limit = Math.max(0, Math.floor(Number(folderLimit) || 0))
@@ -782,7 +787,7 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
 
 type RowHandlers = {
   press: (e: PointerEvent<HTMLElement>, n: Node) => void; menu: (e: MouseEvent, n: Node) => void; more: (e: MouseEvent, n: Node) => void
-  rename: (n: Node, name: string) => void; cancelRename: (n: Node) => void; swipe: (n: Node) => SwipeAction[]
+  rename: (n: Node, name: string) => void; cancelRename: (n: Node) => void; nameProblem: (n: Node, name: string) => string | null; swipe: (n: Node) => SwipeAction[]
 }
 type Rows = { compact: boolean; fileIcons: boolean; disabled: string[]; pane?: string; on: { current: RowHandlers }; marks: Record<string, FileMark>
   icons: Record<string, FileIcon>; decor: Record<string, FileRow>; opened: OpenSet; pinned: boolean }
@@ -907,7 +912,11 @@ const TreeRow = memo(function TreeRow({ n, depth, pos, size, index, rows, isOpen
           <input ref={field} autoFocus defaultValue={n.name} aria-label="New name" spellCheck={false}
             onFocus={(e) => { if (!picking.current) e.target.select(); picking.current = false }}
             onBlur={(e) => { if (!picking.current) on.current.rename(n, e.target.value) }}
-            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") on.current.cancelRename(n) }}
+            onKeyDown={(e) => {
+              // (a name it can't have: refused, the field keeping what was typed to fix; leaving it puts the name back)
+              if (e.key === "Enter") { const why = on.current.nameProblem(n, e.currentTarget.value); if (why) refuseName(why, e.currentTarget); else e.currentTarget.blur() }
+              if (e.key === "Escape") on.current.cancelRename(n)
+            }}
             className="h-6 min-w-0 flex-1 rounded-[4px] bg-card px-1 outline-none ring-1 ring-primary/60" />
         </div>
       ) : (

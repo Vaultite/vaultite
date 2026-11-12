@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from "react"
 import { Play } from "lucide-react"
 import { dateText, fmtDay, iso } from "@/core/data"
-import { cleanName, folderOf, folderTarget, joinPath, moveFile, nameable, stem } from "@/core/files"
+import { cleanName, folderOf, folderTarget, joinPath, moveFile, nameProblem, refuseName, stem } from "@/core/files"
 import { formatSize, kindName, kindOf } from "@/core/filekinds"
 import { get } from "@/core/http"
 import { notifyError } from "@/core/notify"
@@ -72,16 +72,25 @@ export function NameField({ n, className }: { n: FolderItem; className?: string 
   return (
     <input autoFocus defaultValue={n.name} aria-label="New name" spellCheck={false} onFocus={(e) => e.target.select()}
       onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}
-      onBlur={(e) => finish(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") finish(null) }}
+      onBlur={(e) => finish(e.target.value)} onKeyDown={(e) => {
+        // (a name it can't have: refused, the field keeping what was typed to fix; leaving it puts the name back)
+        if (e.key === "Enter") { const why = renamingTo(n, e.currentTarget.value).why; if (why) refuseName(why, e.currentTarget); else e.currentTarget.blur() }
+        if (e.key === "Escape") finish(null)
+      }}
       className={cn("min-w-0 rounded-[4px] bg-card px-1 outline-none ring-1 ring-primary/60", className)} />
   )
 }
-async function renameTo(n: FolderItem, typed: string, fresh: boolean) {
-  if (!nameable(typed)) return
-  const name = cleanName(typed)
-  if (!name || name === n.name) return
+/** Where renaming a row to what was typed takes it, and why it can't go there (core/files.ts' nameProblem). */
+function renamingTo(n: FolderItem, typed: string) {
   const ext = n.folder || n.other ? "" : n.path.slice(n.path.lastIndexOf("."))
-  try { await moveFile(n.path, joinPath(folderOf(n.path), name + ext), { undo: !fresh }) } catch (e) { notifyError(e, "Couldn't rename") }
+  const to = joinPath(folderOf(n.path), cleanName(typed) + ext)
+  return { to, why: nameProblem(typed, n.path, to) }
+}
+async function renameTo(n: FolderItem, typed: string, fresh: boolean) {
+  const { to, why } = renamingTo(n, typed)
+  if (why) return refuseName(why)
+  if (!cleanName(typed) || to === n.path) return
+  try { await moveFile(n.path, to, { undo: !fresh }) } catch (e) { notifyError(e, "Couldn't rename") }
 }
 
 // ---------- what's in a note ----------

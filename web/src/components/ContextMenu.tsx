@@ -4,6 +4,7 @@ import { memo, Fragment, useEffect, useLayoutEffect, useRef, useState, type Mous
 import { createPortal } from "react-dom"
 import { Check, ChevronLeft, ChevronRight, Ellipsis, Search, type LucideIcon } from "lucide-react"
 import { commandName, isOn, isSetting, keyHint, keysOf, offeredCommand, runOrSay } from "@/core/commands"
+import { fadeAway } from "@/core/animation"
 import { fingerHolding, useDragging } from "@/core/drag"
 import { fuzzy } from "@/core/fuzzy"
 import { holdFocus } from "@/core/focus"
@@ -73,6 +74,8 @@ const icon = "size-5 shrink-0 md:size-4"
 export function openMenu(at: MenuAt, items: MenuItem[], up = false, again?: () => MenuItem[]) {
   if (!items.length) return
   if (!open) release = holdFocus()
+  // Opened while a mouse button is still down (a Mac's right button opens it as it goes down): letting go on a row picks it.
+  armed = pressed ? { ...pressed, at: performance.now() } : null
   set({ at, items, up, again })
 }
 /** The open menu's items swapped for others, if it's still the one showing `was` (what came in after it opened: a
@@ -86,10 +89,25 @@ export const menuShowing = () => open !== null
 export const useMenuShowing = () => subs.use(() => open !== null)
 /** The open menu's items are being asked for again (after a `keep` click), not for a new menu. */
 let redrawing = false
-const closeMenu = () => { set(null); if (release) { const r = release; release = null; r() } }
+/** Closes the menu, which fades as a Mac's does: `chosen`, the row picked, blinks first (not from a finger: a phone's
+ *  menu doesn't); `now`: gone at once (the window resized, a drag began). */
+const closeMenu = ({ chosen, blink = true, now = false }: { chosen?: HTMLElement; blink?: boolean; now?: boolean } = {}) => {
+  if (open && !now) {
+    const lists = [...document.querySelectorAll<HTMLElement>("[data-menu-list]")]
+    const lit = chosen ?? lists.flatMap((l) => [...l.querySelectorAll<HTMLElement>(":scope > button")]).find((b) => b.matches(":hover, :focus-visible"))
+    fadeAway(lists, { lit, blink: !!chosen && blink })
+  }
+  armed = null
+  set(null); if (release) { const r = release; release = null; r() }
+}
 /** The keyboard goes back where it was when the menu closes (core/focus.ts). */
 let release: (() => void) | null = null
 const openState = () => open
+/** Where a mouse button went down, while it's held; `armed`: the menu opened during that press, and when. */
+let pressed: { x: number; y: number } | null = null
+let armed: { x: number; y: number; at: number } | null = null
+/** Let go this far from where it went down, or this long after the menu opened, the press was aimed at a row. */
+const AIMED_PX = 5, AIMED_MS = 300
 /** For onContextMenu: the menu at the pointer (nothing if there are no items; never the browser's). */
 export const menuFor = (items: () => MenuItem[]) => (e: MouseEvent) => {
   e.preventDefault(); e.stopPropagation()
@@ -250,14 +268,30 @@ export const ContextMenus = memo(function ContextMenus() {
   const o = subs.use(() => open)
   // A drag began (a finger that held a row, opening its menu, then moved): the menu goes.
   const dragging = useDragging()
-  useEffect(() => { if (dragging) closeMenu() }, [dragging])
+  useEffect(() => { if (dragging) closeMenu({ now: true }) }, [dragging])
   useEffect(() => {
     // Bubble phase: React's handlers (which open a menu) run first.
     // (a hold's own event is left alone: it has no browser menu, and whether a handler took it is what it asks)
     const block = (e: globalThis.MouseEvent) => { if (!e.defaultPrevented && !typing(e.target) && !held.has(e)) e.preventDefault() }
     document.addEventListener("contextmenu", block)
     const unhold = watchHolds()
-    return () => { document.removeEventListener("contextmenu", block); unhold() }
+    const down = (e: globalThis.PointerEvent) => { if (e.pointerType === "mouse") pressed = { x: e.clientX, y: e.clientY } }
+    const up = (e: globalThis.PointerEvent) => {
+      pressed = null
+      const a = armed
+      armed = null
+      if (!a || e.pointerType !== "mouse" || (Math.hypot(e.clientX - a.x, e.clientY - a.y) < AIMED_PX && performance.now() - a.at < AIMED_MS)) return
+      // Let go on a row: it's picked (not one that only opens a submenu: hovering did that).
+      const at = document.elementFromPoint(e.clientX, e.clientY)
+      const row = at?.closest<HTMLButtonElement>("[data-menu-list] > button[data-index]")
+      if (!row || row.disabled || (row.hasAttribute("aria-haspopup") && (!row.hasAttribute("data-split") || at!.closest("[data-menu-more]")))) return
+      e.preventDefault(); e.stopPropagation()
+      row.click()
+    }
+    const opts = { capture: true }
+    addEventListener("pointerdown", down, opts)
+    addEventListener("pointerup", up, opts)
+    return () => { document.removeEventListener("contextmenu", block); unhold(); removeEventListener("pointerdown", down, opts); removeEventListener("pointerup", up, opts) }
   }, [])
   return o ? createPortal(<Menu key={`${o.at.x},${o.at.y}`} at={o.at} items={o.items} up={o.up} again={o.again} />, document.body) : null
 })
@@ -268,9 +302,10 @@ function Menu({ at, items, up, again }: { at: MenuAt; items: MenuItem[]; up?: bo
     // Escape closes the menu (a submenu handles its own first); so does the window changing size. Only the menu: the
     // key's own close request would reach the sheet under it once the menu's layer is gone.
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); closeMenu() } }
+    const onResize = () => closeMenu({ now: true })
     addEventListener("keydown", onKey)
-    addEventListener("resize", closeMenu)
-    return () => { removeEventListener("keydown", onKey); removeEventListener("resize", closeMenu) }
+    addEventListener("resize", onResize)
+    return () => { removeEventListener("keydown", onKey); removeEventListener("resize", onResize) }
   }, [at])
   // Over an open sheet (a modal <dialog>: the rest of the page is inert), the menu is a modal dialog of its own above it.
   const [over] = useState(() => [...document.querySelectorAll("dialog[open]")].some((d) => { try { return d.matches(":modal") } catch { return false } }))
@@ -280,7 +315,7 @@ function Menu({ at, items, up, again }: { at: MenuAt; items: MenuItem[]; up?: bo
   useLayoutEffect(() => { if (over) { layer.current?.showModal(); setReady(true) } }, [over])
   const body = (
     <>
-      <button type="button" aria-label="Close menu" tabIndex={-1} className="fixed inset-0 z-[60] cursor-default" onClick={closeMenu}
+      <button type="button" aria-label="Close menu" tabIndex={-1} className="fixed inset-0 z-[60] cursor-default" onClick={() => closeMenu()}
         onContextMenu={(e) => { e.preventDefault(); closeMenu() }} />
       <MenuList items={items} at={at} up={up} again={again} focus />
     </>
@@ -442,7 +477,7 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
     } else if (e.key === "Escape" || e.key === "Tab") { e.preventDefault(); closeMenu() }
   }
   return (
-    <div ref={ref} role="menu" tabIndex={-1} onKeyDown={onKey} style={{ ...(pos ? { left: pos.x, top: pos.y } : { left: 0, top: 0, visibility: "hidden" }), minWidth: width }}
+    <div ref={ref} role="menu" data-menu-list tabIndex={-1} onKeyDown={onKey} style={{ ...(pos ? { left: pos.x, top: pos.y } : { left: 0, top: 0, visibility: "hidden" }), minWidth: width }}
       onPointerEnter={() => { clearTimeout(timer.current); onHover?.() }}
       className="glass-strong fixed z-[61] max-h-[calc(100dvh-1rem)] max-w-[calc(100vw-1rem)] min-w-56 overflow-y-auto overscroll-contain rounded-[12px] p-1 shadow-xl outline-none md:min-w-48 md:rounded-[10px]">
       {parent && (
@@ -477,7 +512,7 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
           ) : <button type="button" data-index={i}
             role={it.checked === undefined ? "menuitem" : it.keep ? "menuitemcheckbox" : "menuitemradio"} aria-checked={it.checked}
             data-tip={it.label} data-tip-trunc data-tip-side="right" /* (a label too long for the screen, cut off: whole on hover) */
-            aria-haspopup={it.items ? "menu" : undefined} aria-expanded={it.items ? subAt === i : undefined}
+            aria-haspopup={it.items ? "menu" : undefined} aria-expanded={it.items ? subAt === i : undefined} data-split={it.split || undefined}
             disabled={it.disabled}
             onPointerEnter={(e) => {
               // A finger has no hover: its tap is the click (a hover's timer would close what the tap opened).
@@ -492,7 +527,7 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
               if (it.items && more && drill) { into(i); return }
               if (more) { if (subAt === i) setSub(null); else open(i, e.currentTarget, e.detail === 0); return }
               if (it.keep && again) { runOrSay(it.run, it.label); if (openState()) set({ ...openState()!, items: redraw(again) }); return }
-              closeMenu(); runOrSay(it.run, it.label)
+              closeMenu({ chosen: e.currentTarget, blink: (e.nativeEvent as PointerEvent).pointerType !== "touch" }); runOrSay(it.run, it.label)
             }}
             className={cn("flex h-11 w-full cursor-pointer items-center gap-3 rounded-[8px] px-3 text-left text-[17px] whitespace-nowrap hover:bg-foreground/[0.07] focus-visible:bg-foreground/[0.07] focus-visible:outline-none disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent md:h-7 md:gap-2.5 md:rounded-[4px] md:px-2.5 md:text-[13px]",
               it.danger && "text-destructive", (subAt === i || (inField && query && i === bestAt)) && "bg-foreground/[0.07]")}>

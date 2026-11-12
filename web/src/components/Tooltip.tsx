@@ -2,6 +2,7 @@
 // while its label is cut off). Mouse only, and never while a button is held (a drag: what it would say is under way).
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
+import { fadeAway } from "@/core/animation"
 
 type Tip = { text: string; x: number; y: number; side: "top" | "bottom" | "left" | "right" }
 
@@ -16,7 +17,9 @@ export const Tooltips = memo(function Tooltips({ win = window }: { win?: Window 
     let cur: Element | null = null
     let shown = false
     let warmUntil = 0
-    const hide = () => {
+    /** `fade`: the pointer left it for nothing with a tip, and it fades as a Mac's does (a click or key: gone at once). */
+    const hide = (fade = false) => {
+      if (fade && shown) fadeAway([win.document.querySelector(".tooltip[role=tooltip]")])
       clearTimeout(timer)
       if (shown) warmUntil = Date.now() + WARM
       shown = false
@@ -56,27 +59,28 @@ export const Tooltips = memo(function Tooltips({ win = window }: { win?: Window 
       if (e.pointerType !== "mouse" || e.buttons) return
       const el = (e.target as Element | null)?.closest?.("[data-tip]") ?? null
       if (el === cur) return
-      hide()
+      hide(!el)
       if (!el) return
       cur = el
       if (Date.now() < warmUntil) show(el)
       else timer = setTimeout(() => show(el), DELAY)
     }
-    const out = (e: PointerEvent) => { if (!e.relatedTarget) hide() } // left the window
+    const out = (e: PointerEvent) => { if (!e.relatedTarget) hide(true) } // left the window
+    const now = () => hide()
     win.addEventListener("pointerover", over)
     win.document.addEventListener("pointerout", out)
-    win.addEventListener("pointerdown", hide, true)
-    win.addEventListener("keydown", hide, true)
-    win.addEventListener("scroll", hide, true)
-    win.addEventListener("blur", hide)
+    win.addEventListener("pointerdown", now, true)
+    win.addEventListener("keydown", now, true)
+    win.addEventListener("scroll", now, true)
+    win.addEventListener("blur", now)
     return () => {
       clearTimeout(timer)
       win.removeEventListener("pointerover", over)
       win.document.removeEventListener("pointerout", out)
-      win.removeEventListener("pointerdown", hide, true)
-      win.removeEventListener("keydown", hide, true)
-      win.removeEventListener("scroll", hide, true)
-      win.removeEventListener("blur", hide)
+      win.removeEventListener("pointerdown", now, true)
+      win.removeEventListener("keydown", now, true)
+      win.removeEventListener("scroll", now, true)
+      win.removeEventListener("blur", now)
     }
   }, [win])
   return tip ? createPortal(<Bubble tip={tip} win={win} />, win.document.body) : null

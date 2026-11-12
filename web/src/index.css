@@ -242,6 +242,10 @@
   /* Loading (main.tsx, App.tsx): what the vault's state moves goes there at once, not with the transitions clicks get. */
   body[data-arriving] * { transition: none !important; }
   :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  /* The ring settles onto what has the keyboard from a little out, as a Mac's does (not a list's rows: theirs is the
+     row's own light, and arrowing down a list would ripple). Anything with its own animation keeps it (this is base). */
+  :focus-visible:not([data-keyrow]) { animation: focus-ring var(--motion) var(--ease-out); }
+  @keyframes focus-ring { from { outline-offset: 6px; outline-color: transparent; } }
   /* A row of a keyboard list with the keyboard (core/keylist.ts): highlighted like a hovered row, ringed inside in the
      ring's colour, which every scheme keeps at 3:1 or more on its sidebar, page and cards. */
   [data-keyrow]:focus-visible { outline: 1.5px solid var(--ring); outline-offset: -1.5px; border-radius: 5px; background-color: color-mix(in srgb, var(--foreground) 6%, transparent); }
@@ -628,6 +632,14 @@ aside[data-collapsed] [data-rail-section]:has(> :not([data-header-item]:empty)) 
 
 /* Rows selected together (core/select.ts): the accent, over a row's own hover and open-file shades. */
 [data-selected] { background-color: color-mix(in srgb, var(--primary) 16%, transparent) !important; }
+/* The window out of focus (desktop: electron/preload.cjs; a browser: core/windowfocus.ts): what's selected goes grey, as
+   a Mac greys its selections, so the accent says where the keyboard is. */
+html[data-window-inactive] [data-selected] { background-color: color-mix(in srgb, var(--foreground) 9%, transparent) !important; }
+html[data-window-inactive] .vau-editor .cm-selectionBackground, html[data-window-inactive] .vau-editor .cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground,
+html[data-window-inactive] .vau-editor .cm-content ::selection {
+  background: color-mix(in srgb, var(--foreground) 13%, transparent); }
+/* A closed thing's picture as it fades (core/animation.ts' fadeAway): only its fade moves, not the animations it came in with. */
+[data-fading], [data-fading] * { animation: none !important; transition: none !important; }
 
 /* Hover tooltips (components/Tooltip.tsx): dark in both themes. */
 .tooltip, .tooltip-arrow { background: var(--foreground); color: var(--background); }

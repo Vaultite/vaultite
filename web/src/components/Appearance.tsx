@@ -1,6 +1,7 @@
 // Settings > Appearance, in groups: the layout (LayoutPicker.tsx), colours (theme, style, the schemes in a strip), the
 // window, tabs, text (this device's sizes), a phone's pull-down actions, snippets. Saved in appearance.json.
-import { useState, type ReactNode } from "react"
+import { useRef, useState, type ReactNode } from "react"
+import { refuse } from "@/core/animation"
 import { Check, FolderOpen, Minus, Palette, Plus, Type } from "lucide-react"
 import { canTranslucent, getTranslucency, onlyMode, previewLook, SNIPPETS_FOLDER, THEMES_FOLDER, useVaultAppearance } from "@/core/appearance"
 import { openFile } from "@/core/files"
@@ -382,13 +383,14 @@ function Snippets() {
   const { snippets } = useVaultAppearance()
   const [name, setName] = useState("")
   const [error, setError] = useState("")
+  const nameField = useRef<HTMLInputElement>(null)
   const enabled = Array.isArray(on) ? on : []
   const toggle = (n: string, v: boolean) => setPrefs({ snippets: v ? [...enabled.filter((x) => x !== n), n] : enabled.filter((x) => x !== n) })
   const create = async () => {
     const n = name.trim()
     if (!n) return
     let out: { name: string; path: string }
-    try { out = await post("snippets", { name: n }) } catch (e) { return setError(errorText(e)) }
+    try { out = await post("snippets", { name: n }) } catch (e) { refuse(nameField.current); return setError(errorText(e)) }
     setName(""); setError("")
     await setPrefs({ snippets: [...getPrefs().snippets.filter((x) => x !== out.name), out.name] })
     openFile(out.path)
@@ -406,7 +408,7 @@ function Snippets() {
             </SettingRow>
           ))}
           <form className="flex min-h-10 items-center gap-2 py-1.5" onSubmit={(e) => { e.preventDefault(); create() }}>
-            <input value={name} onChange={(e) => { setName(e.target.value); setError("") }} placeholder={snippets.length ? "New snippet name" : "No snippets yet: name a new one"} aria-label="New snippet name" spellCheck={false}
+            <input ref={nameField} value={name} onChange={(e) => { setName(e.target.value); setError("") }} placeholder={snippets.length ? "New snippet name" : "No snippets yet: name a new one"} aria-label="New snippet name" spellCheck={false}
               className="h-8 min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-muted-foreground md:text-[13px]" />
             <button type="submit" disabled={!name.trim()} className="flex h-7 shrink-0 cursor-pointer items-center gap-1 rounded-[7px] px-2 text-[13px] text-primary hover:bg-foreground/[0.05] disabled:cursor-default disabled:opacity-40">
               <Plus className="size-4" strokeWidth={2} />New snippet

@@ -1,6 +1,7 @@
 // A property as a chip in a file's header (and status bar): one frontmatter key from a plugin's list of values, each
 // with label, icon, colour; a click picks one as a one-key edit. A value the list doesn't have still shows as written.
 import { useState, type MouseEvent } from "react"
+import { refuse } from "@/core/animation"
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, CircleDashed, CircleHelp, Plus, X, type LucideIcon } from "lucide-react"
 import type { FileHead } from "@/core/define"
 import { ICONS, namedIcon, tintOf } from "@/core/pages"
@@ -139,7 +140,7 @@ function Text({ value, placeholder, label, set, className, check }: {
     <input value={typed ?? value} placeholder={placeholder} aria-label={label} spellCheck={false} aria-invalid={!!why || undefined}
       data-tip={why || undefined} onChange={(e) => setTyped(e.target.value)}
       onBlur={() => { if (typed !== null && !why && typed.trim() !== value) set(typed.trim()); setTyped(null) }}
-      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur() } else if (e.key === "Escape") { e.stopPropagation(); setTyped(null) } }}
+      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (why) refuse(e.currentTarget); else e.currentTarget.blur() } else if (e.key === "Escape") { e.stopPropagation(); setTyped(null) } }}
       className={cn(field, why && "border-[var(--red)]", className)} />
   )
 }

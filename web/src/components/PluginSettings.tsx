@@ -1,6 +1,7 @@
 // A plugin's settings sheet, the one place its options live: a form of its declared settings (the default removes the
 // key), then its `settingsPanel` (or first), or its settings file drawn. No menus inside: choices unfold.
 import { type KeyboardEvent, useEffect, useMemo, useState } from "react"
+import { refuse } from "@/core/animation"
 import { Check, ChevronDown, ChevronRight, FileJson, Folder, Plus, X, type LucideIcon } from "lucide-react"
 import { type Store, useLive, useStore } from "@/core/data"
 import { patch, put } from "@/core/http"
@@ -266,7 +267,7 @@ function NumberField({ k, d, value, set }: { k: string; d: SettingDecl; value: u
     <SettingRow label={d.label} sub={why ? <span className="text-ink-(--red)">{capitalize(why)}</span> : capitalize(d.description)} data-setting={k}>
       <input inputMode="decimal" aria-label={d.label} value={text} placeholder={d.default !== undefined ? String(d.default) : ""}
         aria-invalid={!!why || undefined} onChange={(e) => setTyped(e.target.value)} onBlur={save}
-        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur() } else if (e.key === "Escape") { e.stopPropagation(); setTyped(null) } }}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (why) refuse(e.currentTarget); else e.currentTarget.blur() } else if (e.key === "Escape") { e.stopPropagation(); setTyped(null) } }}
         className={cn(field, "w-20 text-right tabular-nums", why && "border-[var(--red)]")} />
     </SettingRow>
   )

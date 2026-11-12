@@ -1,7 +1,8 @@
 // The confirm dialog for destructive actions that can't be undone; never the browser's confirm(). Anything undoable
 // doesn't ask: it acts, then offers Undo in a toast. With a field, it asks for a secret (an agent's `vau secret`).
-import { memo, useEffect, useRef, useState } from "react"
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
+import { fadeAway } from "@/core/animation"
 import { usePageLock } from "@/core/pagelock"
 import { cn } from "@/lib/utils"
 import { signal } from "@/core/signal"
@@ -109,6 +110,8 @@ function Dialog({ a }: { a: Ask }) {
   const q = query.trim().toLowerCase()
   const shown = picking?.filter((e) => !q || e.title.toLowerCase().includes(q) || e.username.toLowerCase().includes(q)).slice(0, 6)
   usePageLock()
+  // Answered, it fades and shrinks a little, its dim with it (while it's still drawn: a layout effect's cleanup).
+  useLayoutEffect(() => { const d = ref.current; return () => fadeAway([d], { scale: 0.98, backdrop: "rgb(0 0 0 / 0.3)" }) }, [])
   useEffect(() => {
     const d = ref.current
     if (!d) return

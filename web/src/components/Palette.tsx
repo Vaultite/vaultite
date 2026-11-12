@@ -2,6 +2,7 @@
 // picks (⌘ or ⇧ when the caller says), Esc closes. Its frame (PaletteFrame) is any palette-like box's (the Ask box).
 import { Fragment, memo, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react"
 import { X } from "lucide-react"
+import { dropLeaving, fadeAway } from "@/core/animation"
 import { keyCaps } from "@/core/commands"
 import { isMac } from "@/core/platform"
 import { useHeldFocus } from "@/core/focus"
@@ -262,11 +263,20 @@ export function PaletteFrame({ label, onClose, onKeyDown, children }: { label: s
   const closes = useRef(onClose)
   useLayoutEffect(() => { closes.current = onClose })
   const [self] = useState(() => ({ close: () => closes.current() }))
+  const box = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
     const was = current
     current = self
     was?.close()
-    return () => { frameClosed = performance.now(); if (current === self) current = null }
+    if (swapped) dropLeaving("palette")
+    // Closed (not swapped for another): it fades and shrinks a little, quicker than it came in.
+    const el = box.current
+    return () => {
+      frameClosed = performance.now()
+      if (current !== self) return
+      current = null
+      fadeAway([el], { tag: "palette", scale: 0.98, scaled: "[role=dialog]" })
+    }
   }, [self])
   // Over an open sheet (a modal <dialog>: the rest of the page is inert), it's a modal dialog of its own above it, as
   // ContextMenu's menus are; opened before the field is focused.
@@ -281,7 +291,7 @@ export function PaletteFrame({ label, onClose, onKeyDown, children }: { label: s
   const overlay = (
     // On the part of the screen the keyboard leaves (core/pagelock.ts' --vvh, --vvtop), so the list ends above it and
     // a finger on it scrolls it.
-    <div data-overlay data-palette className="fixed inset-x-0 z-50 flex items-start justify-center px-3 pt-[max(env(safe-area-inset-top),0.75rem)] md:pt-[12vh]"
+    <div ref={box} data-overlay data-palette className="fixed inset-x-0 z-50 flex items-start justify-center px-3 pt-[max(env(safe-area-inset-top),0.75rem)] md:pt-[12vh]"
       style={{ top: "var(--vvtop, 0px)", height: "var(--vvh, 100dvh)" }}>
       <button type="button" aria-label={`Close ${label.toLowerCase()}`} tabIndex={-1} onClick={onClose}
         className={cn("absolute inset-0 cursor-default bg-black/30", !swapped && "animate-in fade-in duration-150")} />

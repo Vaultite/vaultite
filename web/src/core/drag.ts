@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react"
 import { noteActivity } from "@/core/activity"
 import { onAway } from "@/core/away"
 import { haptic } from "@/core/haptics"
+import { isMac } from "@/core/platform"
 import { scrollerOf } from "@/core/near"
 import { signal } from "@/core/signal"
 
@@ -304,7 +305,8 @@ export const pastEdge = (x: number, y: number, finger = false) => !finger && (x 
 /** Press on something draggable: a mouse or pen, or a finger where `touch` says a phone has somewhere to drop it (else
  *  a finger scrolls or taps). `data-no-drag` children stay plain buttons. */
 export function startDrag(e: React.PointerEvent<HTMLElement> | PointerEvent, item: DragItem, { touch = false }: { touch?: boolean } = {}) {
-  if (e.button !== 0 || (e.target as Element).closest("[data-no-drag]")) return
+  // (a Mac's Control-click is a right-click: it opens a menu, and moving on to pick from it isn't a drag)
+  if (e.button !== 0 || (isMac && e.ctrlKey) || (e.target as Element).closest("[data-no-drag]")) return
   if (e.pointerType === "touch") { if (touch) pickUp(e, item); return }
   const el = e.currentTarget as HTMLElement, x0 = e.clientX, y0 = e.clientY, id = e.pointerId
   let end: ReturnType<typeof lift> | null = null
