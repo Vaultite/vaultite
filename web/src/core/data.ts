@@ -6,6 +6,7 @@ import { get, send } from "@/core/http"
 import { hydratePrefs } from "@/core/prefs"
 import { errorText, notifyError } from "@/core/notify"
 import { span } from "@/core/spans"
+import { setHere } from "@/core/here"
 import { usePane } from "@/core/pane"
 import { setVaultAppearance, type VaultAppearance } from "@/core/appearance"
 import { hydrateHotkeys } from "@/core/commands"
@@ -317,7 +318,8 @@ export const onState = (fn: (s: State) => Promise<void>) => { beforeState = fn }
 /** The state as the server last gave it (`v`) and its store: what a refresh asks the server to patch, so only what
  *  changed comes. Optimistic changes (mutate) are dropped at each refresh, which starts from the server's. */
 let server: { v: string; state: State; store: Store } | null = null
-type Answer = ({ v: string; state: State } | { v: string; since: string; patch: Patch | null }) & { live?: LiveMark }
+/** `here`: "connect" through Vaultite Connect without owner tools (core/here.ts). */
+type Answer = ({ v: string; state: State } | { v: string; since: string; patch: Patch | null }) & { live?: LiveMark; here?: "connect" }
 
 /** The state after the server's answer: the whole state, or the one it has patched; null when the patch isn't of the
  *  state this app has (it then asks for the whole state). */
@@ -344,6 +346,7 @@ function load(): Promise<void> {
         const answer = await get<Answer>(`state?since=${encodeURIComponent(server?.v ?? "0")}`)
         loading?.mark("state")
         startLive(answer.live) // (the first answer: live updates start from where it stood)
+        setHere(answer.here ?? "mac")
         if (editCount() !== gen) { again = true; continue }
         const all = stateOf(answer)
         if (!all) { server = null; again = true; continue }

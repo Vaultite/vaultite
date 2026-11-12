@@ -22,8 +22,9 @@ import { canOpenHere, openOnComputer } from "@/components/FileActions"
 import { post } from "@/core/http"
 import { FontPicker } from "@/components/FontPicker"
 import { FONTS, fontPicker, type FontKey } from "@/components/FontChooser"
-import { Group, ResetButton, Section, Segmented, SettingRow, SheetHead, Slider, Switch } from "@/components/kit"
+import { Group, OnThisMac, ResetButton, Section, Segmented, SettingRow, SheetHead, Slider, Switch } from "@/components/kit"
 import { LayoutPicker } from "@/components/LayoutPicker"
+import { useOverConnect } from "@/core/here"
 import { PictureChoice, SystemPicture, WindowPicture, type Scene } from "@/components/ChoicePictures"
 import { animationPreview, barFadePreview } from "@/components/SettingPictures"
 import { errorText } from "@/core/notify"
@@ -214,11 +215,13 @@ export function AppearancePanel() {
   const prefs = usePrefs()
   const only = onlyMode(prefs.scheme)
   const desktop = useDesktop()
+  const over = useOverConnect()
   const row = (k: string) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />
   return (
     <div className="flex flex-col gap-6">
       <Section title="Layout">
-        <Group><div className="py-3"><LayoutPicker describe="start" /></div></Group>
+        {/* (applying one can run code: the Mac's, refused through Vaultite Connect) */}
+        {over ? <OnThisMac className="px-1">Layouts are picked on this Mac.</OnThisMac> : <Group><div className="py-3"><LayoutPicker describe="start" /></div></Group>}
       </Section>
       <Section title="Colours">
         <Group>

@@ -23,6 +23,7 @@ import type { BrowseEntry, BrowseSource } from "@/core/define"
 import { hostsNow, pluginById, setSwitch, updatePlugin, usePluginsVersion } from "@/core/plugins"
 import { Button } from "@/components/Button"
 import { Certified } from "@/components/Certified"
+import { overConnect } from "@/core/here"
 
 type Sort = "stars" | "new" | "updated"
 type Entry = {
@@ -76,7 +77,7 @@ function noteCategories(l: Listed) {
 /** Asked once, before Get is first shown: its menu has its categories as it opens. */
 let primed = false
 export function primeCategories() {
-  if (primed || getCategories.get().length) return
+  if (primed || getCategories.get().length || overConnect()) return
   primed = true
   op<Found>("plugin.search", { q: "", sort: SORTS[0].value }).then((f) => { if (f.available) noteCategories(f.plugins.map((e) => ({ installed: e.installed !== null, category: e.category }))) }, () => {})
 }

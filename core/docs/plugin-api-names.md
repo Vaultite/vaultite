@@ -438,6 +438,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `onResized(f)`: Run `f` each time a resize drag ends; returns its undo.
 - `onTabLayoutChange`: Run fn whenever the tabs or splits change (a tab opened, moved, navigated; a divider dragged).
 - `onTabsEvent(fn)`: Hear every change of this window's tabs as events; returns the unsubscribe.
+- `OnThisMac({ children, className })`: What's done on the Mac itself, said calmly where it's asked for through Vaultite Connect (useOverConnect): a note, not an error.
 - `onTrace(fn)`: Hear every traced event from now on; returns how to stop.
 - `onVaultChange(fn)`
 - `op(id, params?)`: Run an operation of the API (core/ops.ts: `POST /api/ops/<id>`): its result.
@@ -473,6 +474,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `optimistic(change, write, failed)`: A tap answered at once: change the store now, then write; a failed write brings the server's back and says so.
 - `orderRuns(list)`: The panel's order: needs you, then working, then at rest; the ones at rest newest first, the others oldest first (as they started: a new one doesn't push the rest down).
 - `otherMachines(list, plugin?)`: The other machines that are online and have `plugin` on (all online ones without it).
+- `overConnect()`: Used through Vaultite Connect, without owner tools.
 - `PageCtx`: What a page view gets: the file as it is in the editor, the page's name, where it's drawn, and which plugins are off.
 - `PageHeader({ title, subtitle, section, tabs, children, className })`: A page's large title, on desktop right under its tab's bar (ViewBar), like a file's.
 - `pageOf(store, plugin, name)`: A page a plugin brought, by its file name ("Activity"), wherever the user keeps it, or undefined.
@@ -793,6 +795,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useNoPhoneTitle(on)`: A page with no name to say yet (a chat while it loads): the phone's header shows none meanwhile, not a stand-in.
 - `useOpenedFiles(store, n)`: The files opened lately in this workspace that are still there (not archived), newest first, at most `n`.
 - `useOutline(path)`: A file's headings (from its editor when it's on screen, else from the file), the one at the top of the screen, and going to one.
+- `useOverConnect()`: overConnect(), as a hook.
 - `usePane()`
 - `usePaneTopBar(ref, title?)`: A view's top bar (ViewBar, the Browser's): without a pane tab bar its pane's title row (Tabs.tsx; not with `title` false, one sliding over the view), clear of what's fixed over the window's…
 - `usePatched(path, version?)`: useLive for an answer the server keeps frozen (the graph), asked again on `version` and its plugin's changes as a patch of the one it has (?patch=<v>, core/app.ts patched): only what changed…

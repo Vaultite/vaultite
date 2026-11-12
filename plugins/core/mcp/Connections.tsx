@@ -2,7 +2,7 @@
 // (access, activity, rename, disconnect); RemoteAccess is Vaultite Cloud and the addresses. Polls, faster while connecting.
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react"
 import { Bot, Check, Copy, ExternalLink, Globe, KeyRound, Plug, Plus, type LucideIcon } from "lucide-react"
-import { Button, backDetail, confirmDialog, copyText, del, detailPath, Empty, fmtAgo, Group, iconNamed, Loading, LoadingRows, notify, notifyError, op, openDetail, openFile, openView, openWebLink, Panel, patch, plural, post, removals, Row, Section, Segmented, SettingRow, SheetHead, Switch, useAi, useChosen, useEnabled, useKeptCount, useLive } from "@vaultite"
+import { Button, backDetail, confirmDialog, copyText, del, detailPath, Empty, fmtAgo, Group, iconNamed, Loading, LoadingRows, notify, notifyError, OnThisMac, op, openDetail, openFile, openView, openWebLink, Panel, patch, plural, post, removals, Row, Section, Segmented, SettingRow, SheetHead, Switch, useAi, useChosen, useEnabled, useKeptCount, useLive } from "@vaultite"
 
 type Access = "read" | "write"
 /** `actor`: the name Activity gives what it does. */
@@ -162,9 +162,6 @@ function AppAddress({ app, ownerTools, onDone }: { app: string; ownerTools: bool
   )
 }
 
-/** A calm line under a section: what's done on the Mac itself, seen over Connect. */
-const OnTheMac = ({ children }: { children: ReactNode }) => <p className="pt-1.5 text-[13px] leading-[18px] text-muted-foreground" data-on-the-mac>{children}</p>
-
 const hostOf = (url: string | null | undefined) => { try { return url ? new URL(url).host : "" } catch { return "" } }
 
 /** Remote access over Connect: where the app is reached, the Vaultite account (devices, plan, sign out), and what
@@ -181,7 +178,7 @@ function ThroughCloud({ cloud }: { cloud: Cloud }) {
         {account && <SettingRow label="Vaultite account" sub="Devices, plan and sign out" chevron={ExternalLink} onClick={() => openWebLink(account)} data-cloud-account />}
         {cloud.url && <SettingRow label="MCP address" sub={<code className="break-all text-[12px]">{cloud.url}</code>} chevron={Copy} onClick={() => void copyAddress(cloud.url!)} data-cloud-url />}
       </Group>
-      <OnTheMac>Signing this Mac in or out of Vaultite Cloud, terminals and coding agents over this address, and your own tunnel are set on this Mac.</OnTheMac>
+      <OnThisMac className="pt-1.5">Signing this Mac in or out of Vaultite Cloud, terminals and coding agents over this address, and your own tunnel are set on this Mac.</OnThisMac>
     </Section>
   )
 }
@@ -298,7 +295,7 @@ export function SetupSheet({ id }: { id: AppId }) {
             <>
               <Section title="Steps"><Guide id={id} address={address} /></Section>
               <Section title="Code">
-                {data.here === "connect" ? <OnTheMac>Type the code its sign-in page shows in Connections on this Mac.</OnTheMac>
+                {data.here === "connect" ? <OnThisMac className="pt-1.5">Type the code its sign-in page shows in Connections on this Mac.</OnThisMac>
                   : <Connect waiting={data.waiting} onDone={reload} as={id === "other" ? undefined : g.name} />}
               </Section>
               {!!(data.finishing?.length || data.failed?.length) && <Group><SignInRows data={data} /></Group>}
@@ -448,7 +445,7 @@ function ConnectedApps({ data, intro, leaving }: { data: State; intro: ReactNode
             })}
           </div>
         </Group>
-        <OnTheMac>Connect a new app, or let one write, on this Mac.</OnTheMac>
+        <OnThisMac className="pt-1.5">Connect a new app, or let one write, on this Mac.</OnThisMac>
       </div>
     </div>
   )

@@ -2,7 +2,7 @@
 // change or remove; the Shared page (view:shared) has every share at once, with the guests' address.
 import { useEffect, useState } from "react"
 import { CalendarPlus, Check, ChevronDown, Copy, Globe, Link2, Share2, UserMinus } from "lucide-react"
-import { Button, confirmDialog, copyText, dateText, Empty, fmtAgo, Group, Loading, menuBelow, notify, notifyError, op, openFolder, openView, Panel, Row, Section, Segmented, SettingRow, SheetHead, useStoreWith, useTick, type MenuItem } from "@vaultite"
+import { Button, confirmDialog, copyText, dateText, Empty, fmtAgo, Group, Loading, menuBelow, notify, notifyError, OnThisMac, op, openFolder, openView, Panel, Row, Section, Segmented, SettingRow, SheetHead, useOverConnect, useStoreWith, useTick, type MenuItem } from "@vaultite"
 
 type Role = "read" | "comment" | "edit"
 /** A share as share.list gives it; `here`: its guest has the folder open now. */
@@ -14,18 +14,21 @@ const DAYS = [{ value: "7", label: "7 days" }, { value: "30", label: "30 days" }
 const DAY = { day: "numeric", month: "short" } as const
 const name = (folder: string) => folder.split("/").pop() ?? folder
 
-/** The shares (one folder's, or all), asked again after a change and, for who's in one now, every 20 seconds in sight. */
+/** The shares (one folder's, or all), asked again after a change and, for who's in one now, every 20 seconds in sight.
+ *  Not through Vaultite Connect, where sharing is the Mac's (`over`). */
 function useShares(folder?: string) {
+  const over = useOverConnect()
   const [list, setList] = useState<Shared[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [again, setAgain] = useState(0)
   const tick = useTick(20_000)
   useEffect(() => {
+    if (over) return
     let on = true
     op<Shared[]>("share.list", folder ? { folder } : {}).then((r) => on && setList(r), (e) => on && setError(String((e as Error).message)))
     return () => { on = false }
-  }, [folder, again, tick])
-  return { list, error, reload: () => setAgain((n) => n + 1) }
+  }, [folder, again, tick, over])
+  return { list, error, over, reload: () => setAgain((n) => n + 1) }
 }
 
 /** What a person's access is: until when, and whether they're in it now or when they last were. */
@@ -93,13 +96,15 @@ function FreshLink({ link }: { link: Fresh }) {
 const useGuestAddress = () => useStoreWith((st) => st?.shareLinks)
 
 export function ShareSheet({ folder }: { folder: string }) {
-  const { list, error, reload } = useShares(folder)
+  const { list, error, over, reload } = useShares(folder)
   const [fresh, setFresh] = useState<Fresh | null>(null)
   const online = useGuestAddress() !== ""
+  const head = <SheetHead icon={Share2} tint="var(--primary)" title={`Share ${name(folder)}`}
+    sub="Each person gets a link of their own: they see this folder and nothing else of your vault, and no agent works for them." />
+  if (over) return <div className="flex flex-col gap-5" data-share-sheet={folder}>{head}<OnThisMac>Folders are shared on this Mac.</OnThisMac></div>
   return (
     <div className="flex flex-col gap-5" data-share-sheet={folder}>
-      <SheetHead icon={Share2} tint="var(--primary)" title={`Share ${name(folder)}`}
-        sub="Each person gets a link of their own: they see this folder and nothing else of your vault, and no agent works for them." />
+      {head}
       {online ? <NewLink folder={folder} made={(l) => { setFresh(l); reload() }} />
         : <Empty>Links need a machine of yours on the internet: sign one in to Vaultite Cloud (Connections, Remote access).</Empty>}
       {fresh && <FreshLink link={fresh} />}
@@ -145,7 +150,7 @@ function NewLink({ folder, made }: { folder: string; made: (l: Fresh) => void })
 
 /** view:shared: every folder shared and with whom, by folder (its name opens it), and the guests' address. */
 export function SharedView() {
-  const { list, error, reload } = useShares()
+  const { list, error, over, reload } = useShares()
   const [fresh, setFresh] = useState<Fresh | null>(null)
   const address = useGuestAddress()
   const folders = [...new Set((list ?? []).map((s) => s.folder))]
@@ -155,7 +160,8 @@ export function SharedView() {
       <Panel title="Shared folders" icon={Share2}>
         <div className="flex flex-col gap-4">
           {fresh && <FreshLink link={fresh} />}
-          {!list ? <Loading error={error} />
+          {over ? <OnThisMac>Who you share folders with is seen and changed on this Mac.</OnThisMac>
+            : !list ? <Loading error={error} />
             : !list.length ? <Empty>Nothing is shared yet. To share a folder, open its menu and choose Share…</Empty>
             : folders.map((f) => (
               <Section key={f} title={<button type="button" onClick={() => openFolder(f)} data-shared-folder={f} className="cursor-pointer hover:text-foreground">{f}</button>}>

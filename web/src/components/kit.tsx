@@ -179,6 +179,12 @@ export function Empty({ children }: { children: ReactNode }) {
   return <p className="text-[15px] leading-[20px] text-muted-foreground">{children}</p>
 }
 
+/** What's done on the Mac itself, said calmly where it's asked for through Vaultite Connect (useOverConnect): a note,
+ *  not an error. */
+export function OnThisMac({ children, className }: { children: ReactNode; className?: string }) {
+  return <p className={cn("text-[13px] leading-[18px] text-muted-foreground max-md:text-[15px] max-md:leading-[20px]", className)} data-on-this-mac>{children}</p>
+}
+
 /** The exact text of an error, for whoever fixes it: shut behind Show details, with Copy details. The page says what
  *  happened in plain words; this is never the headline. */
 export function ErrorDetails({ text, className }: { text: string; className?: string }) {

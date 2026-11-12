@@ -40,6 +40,12 @@ export default async ($: VaultTest) => {
     check("state since 0: the whole state, with its version", typeof a0.v === "string" && same(a0.state, await full()), Object.keys(a0))
     const a1 = await since(a0.v)
     check("state since now: nothing changed", a1.v === a0.v && a1.patch === null, a1)
+    {
+      // (through Vaultite Connect without owner tools, the app says what's the Mac's instead of asking: core/here.ts)
+      const asked = async (headers: Record<string, string>) => JSON.parse(String(((await app.run("GET", ["state"], { since: a0.v }, {}, { headers: { host: "127.0.0.1:8793", ...headers }, socket: { remoteAddress: "127.0.0.1" } } as Any)).body as { text: string }).text))
+      const over = await asked({ "x-vaultite-connect": "1", "x-forwarded-for": "203.0.113.9" }), mac = await asked({})
+      check("state since: says it's used through Vaultite Connect there, and only there", over.here === "connect" && over.v === a0.v && !("here" in mac) && !("here" in a1), [over, mac])
+    }
     write("Notes/Patch check.md", "---\ntype: note\n---\n\nFirst [[Alice Park]].\n")
     const a2 = await since(a0.v)
     const had = a0.state, got = applyPatch(had, a2.patch) as Any

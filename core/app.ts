@@ -359,7 +359,7 @@ export class App {
 
   /** GET /api/state?since=<v>: the state as a patch of state v (the one the app has), when it's still kept; else whole.
    *  The answer is JSON made from the pieces, so nothing is serialized twice. */
-  async stateSince(since: string) {
+  async stateSince(since: string, http?: IncomingMessage) {
     // (read before the state: what changes after it, the window's socket tells it again, at worst twice)
     const mark = this.liveMark?.()
     const now = this.snap(await this.state())
@@ -372,7 +372,10 @@ export class App {
       out = `{"v":${v},"since":${JSON.stringify(since)},"patch":${patch}}`
     // (kept as UTF-8 bytes: half a string's size when a character outside Latin-1 makes it two bytes a character)
     } else out = now.whole ??= Buffer.from(`{"v":${v},"state":${SP.jsonOf(now.piece)}}`)
-    if (mark) out = Buffer.concat([Buffer.from(`{"live":${JSON.stringify(mark)},`), (typeof out === "string" ? Buffer.from(out) : out).subarray(1)])
+    // `here`: used through Vaultite Connect without owner tools, where what's this Mac's is refused: the app says so
+    // instead of asking (a client sending the header itself only hides things from itself).
+    const extra = [mark ? `"live":${JSON.stringify(mark)}` : "", http && CONNECT_HEADER in http.headers ? `"here":"connect"` : ""].filter(Boolean)
+    if (extra.length) out = Buffer.concat([Buffer.from(`{${extra.join(",")},`), (typeof out === "string" ? Buffer.from(out) : out).subarray(1)])
     return new Text(out, "application/json")
   }
 
@@ -576,7 +579,7 @@ export class App {
       return await hit[0](req)
     }
     const route = parts.join("/")
-    if (route === "state" && method === "GET") return query.since !== undefined ? await this.stateSince(query.since) : await this.state()
+    if (route === "state" && method === "GET") return query.since !== undefined ? await this.stateSince(query.since, http) : await this.state()
     if (route === "render" && method === "GET") return new Text(await render(this.vault, this.plugins, query.path))
     if (route === "render/block" && method === "GET") return new Text(await blockOn(this.vault, this.plugins, query))
     if (route === "vault" && method === "GET") return { path: this.vault.path, problems: this.vault.problemList() }

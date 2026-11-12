@@ -145,6 +145,8 @@ export type { Sidebars } from "@/core/plugins"
 export { useViewsVersion, viewsChanged } from "@/core/plugins"
 export { devicePref } from "@/core/prefs"
 export { aiOn, setAi, useAi } from "@/core/ai"
+// Used through Vaultite Connect without owner tools: what's the Mac's is refused there (OnThisMac says so).
+export { overConnect, useOverConnect } from "@/core/here"
 // Every coding agent on every machine, merged from the plugins' `agentRuns` (the Agents panel).
 export { asksNothing, foldsAway, orderRuns, QUIET_AFTER } from "@/core/agentorder"
 export { useAgentRuns } from "@/core/agentruns"
@@ -212,7 +214,7 @@ export { Button, buttonClass, HeadingButton } from "@/components/Button"
 export { Banner } from "@/components/Banner"
 // A cursor's conversation: its last words and what the user asked, above a box to ask more (the window's and the screen's).
 export { Chat, type ChatItem } from "@/components/Chat"
-export { Badged, Bar, Bars, Editable, IconAction, Empty, FilterField, Foldable, Group, KV, List, Loading, LoadingRows, PageHeader, Panel, Ring, Row, Section, Segmented, SettingRow, SheetHead, Slider, Stat, Switch, type Dot } from "@/components/kit"
+export { Badged, Bar, Bars, Editable, IconAction, Empty, FilterField, Foldable, Group, KV, List, Loading, LoadingRows, OnThisMac, PageHeader, Panel, Ring, Row, Section, Segmented, SettingRow, SheetHead, Slider, Stat, Switch, type Dot } from "@/components/kit"
 // A place in the app's chrome a view draws into (a portal's host: #phone-actions, #phone-subtitle), once it's there.
 export { usePortalHost } from "@/components/kit"
 export { useQuerySuggest, useSuggest } from "@/components/Suggest"

@@ -8,7 +8,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **Connections over Vaultite Cloud**: opened at `<you>.vaultite.app`, Connections and Remote access list the AI apps
   connected (access, last used) and end any of them, link to your Vaultite account, and say calmly what's set on the
-  Mac itself (a new app's code, more access, owner tools, signing in or out) instead of an error.
+  Mac itself (a new app's code, more access, owner tools, signing in or out) instead of an error; so do Settings'
+  layouts, Get plugins and Shared folders there, with no "Couldn't list the bundles" toast.
 - **A note open in two windows no longer loses what others wrote**: when a window that had only watched (yours, or a
   guest's) was left alone in a note, it saved its old text over what the other window typed and what an agent or vau
   wrote meanwhile.

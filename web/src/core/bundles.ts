@@ -12,6 +12,7 @@ import type { Info as BundleInfo, Plan, PlanChange, ShareItem } from "../../../c
 import type { Sketch } from "../../../core/bundlesketch.ts"
 import { parseRepo, repoText } from "../../../core/bundlelinks.ts"
 import { signal } from "@/core/signal"
+import { overConnect } from "@/core/here"
 import { registerCommands } from "@/core/commands"
 
 export type { BundleInfo, Plan, PlanChange, ShareItem }
@@ -40,6 +41,7 @@ const emit = () => subs.notify()
 
 /** Fetch the list again (after a save, an import, a delete, an apply; the page shown: what's in use may have changed). */
 export function refreshBundles() {
+  if (overConnect()) return Promise.resolve() // (they run code: the Mac's, refused there; the pickers say so)
   loading = get<Listing>(`bundles${whereQuery()}`).then((l) => { listing = l; emit() }, (e) => { notifyError(e, "Couldn't list the bundles") }).finally(() => { loading = null })
   return loading
 }

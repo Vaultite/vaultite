@@ -6,7 +6,8 @@ import type { Store } from "@/core/data"
 import { openSetup, showSettingsSection, type SetupTab } from "@/core/apppages"
 import { useDesktop } from "@/core/platform"
 import { replaceTabTarget } from "@/core/workspace"
-import { PageHeader, Segmented, SheetHead } from "@/components/kit"
+import { OnThisMac, PageHeader, Segmented, SheetHead } from "@/components/kit"
+import { useOverConnect } from "@/core/here"
 import { RailLayout, useRail } from "@/components/RailLayout"
 import { getCategories, getCategory, primeCategories } from "@/components/PluginBrowse"
 import { StoreBundles } from "@/pages/Bundles"
@@ -41,6 +42,9 @@ export function Setup({ store, tab, at }: { store: Store; tab: SetupTab; at?: st
 
 /** The list a tab shows: yours, or Get's (the store's layouts and packs over its plugins, while nothing narrows them). */
 function PluginsList({ store, tab, pick }: { store: Store; tab: Tab; pick: (to: Tab) => void }) {
+  // (getting one runs code: the Mac's, refused through Vaultite Connect)
+  const over = useOverConnect()
+  if (tab === "get" && over) return <OnThisMac className="px-1">Plugins, layouts and packs are added on this Mac.</OnThisMac>
   return <Plugins store={store} view={tab === "get" ? "get" : "installed"} onView={(v) => pick(v === "get" ? "get" : "plugins")}
     above={tab === "get" ? (query, filters) => !filters.source && !filters.cat && <StoreBundles query={query} /> : undefined} />
 }
