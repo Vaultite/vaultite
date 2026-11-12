@@ -67,21 +67,42 @@ export type OpCtx = {
   input?: Readable
 }
 
-export type Op = {
+/** An op's parameters, by name. */
+export type Params = Record<string, Param>
+
+/** The value a schema describes: what checkParams gives for it. */
+export type Infer<S> = S extends { format: "json" } ? unknown
+  : S extends { enum: readonly (infer E)[] } ? E
+  : S extends { type: "string" } ? string
+  : S extends { type: "number" | "integer" } ? number
+  : S extends { type: "boolean" } ? boolean
+  : S extends { type: "array"; items: infer I } ? Infer<I>[]
+  : S extends { type: "array" } ? unknown[]
+  : S extends { type: "object"; properties: infer P } ? ObjectOf<P, S extends { required: readonly (infer R)[] } ? R : never>
+  : S extends { type: "object" } ? Item
+  : unknown
+type Flat<T> = { -readonly [K in keyof T]: T[K] } & {}
+type ObjectOf<P, R> = Flat<{ [K in keyof P as K extends R ? K : never]: Infer<P[K]> } & { [K in keyof P as K extends R ? never : K]?: Infer<P[K]> }>
+type Given<P> = P extends { required: true } ? true : P extends { default: infer D } ? ([D] extends [undefined] ? false : true) : false
+/** An op's checked parameters: a required one or one with a default is always there. */
+export type ParamsOf<P> = Flat<{ [K in keyof P as Given<P[K]> extends true ? K : never]: Infer<P[K]> } & { [K in keyof P as Given<P[K]> extends true ? never : K]?: Infer<P[K]> }>
+
+/** An op: its parameters' types read from `params`, its result's from what `run` returns (defineOp). */
+export type OpDef<P = Params, R = unknown> = {
   id: string
   /** One line: what it does. */
   summary: string
   /** More: when to use it, what it answers, examples (`vau <id> --help`, the tool's description). */
   help?: string
   kind: OpKind
-  params?: Record<string, Param>
+  params?: P
   /** An object parameter that keeps parameters it doesn't name (log.create's `data`), text read as JSON when it is one.
    *  Without it, an unknown parameter is an error. */
   rest?: string
   /** The parameters given by position (CLI: `vau note.create "Title"`), in order; the last may be an array (the rest). */
   args?: string[]
   /** Its name in the CLI (`note`: `vau note "Title"`), one or more words (`inbox add`: `vau inbox add ...`; `vau inbox`
-   *  then lists the ops under it). Old commands keep their names and flags this way. */
+   *  then lists the ops under it). */
   cli?: string
   /** An MCP tool: true (named after the id: `note_create`), or the tool's name. */
   mcp?: boolean | string
@@ -93,17 +114,17 @@ export type Op = {
   owner?: string
   /** It acts on a kind of file, which fills one of its params: one of that file's actions (core/actions.ts). */
   action?: OpAction
-  run: (params: Any, ctx: OpCtx) => Promise<unknown> | unknown
+  run(params: ParamsOf<P>, ctx: OpCtx): Promise<R> | R
   /** The result as Markdown, for an agent or a terminal (else JSON). `who` asked: an answer may read differently for an
    *  MCP client (`who.client` "mcp": a file's path before its text) than for vau, which prints a file exactly. */
-  text?: (result: Any, params: Any, who?: Who) => string
+  text?(result: Awaited<R>, params: ParamsOf<P>, who?: Who): string
   /** What a call did, for Activity ("Left "Idea" in the inbox"), from its checked params; without it Activity says "Ran
    *  <id> (what it was about)". */
-  did?: (params: Any) => OpDid
+  did?(params: ParamsOf<P>): OpDid
   /** Its text is printed as is when piped, no newline added (a secret going into another command). */
   exact?: boolean
   /** A picture the answer is (a screenshot), base64: sent beside its text to a client that shows pictures (MCP). */
-  image?: (result: Any) => OpImage | null
+  image?(result: Awaited<R>): OpImage | null
   /** It also takes bytes of any size (what they are: "the file"), as `ctx.input`: the raw body of POST /api/ops/<id>
    *  (any type but JSON; the parameters then in the query), or an in-process caller's (call's `input`). */
   input?: string
@@ -111,6 +132,18 @@ export type Op = {
    *  job's home server (VAULTITE_HOME, core/cli.ts' homeEnv), where the user and the job are. */
   home?: boolean
 }
+
+/** Any op, as the catalog keeps them: its own types erased (a plugin's op until Plugin.op infers like defineOp). */
+export type Op = Omit<OpDef, "run" | "text" | "did" | "image"> & {
+  run(params: Any, ctx: OpCtx): unknown
+  text?(result: Any, params: Any, who?: Who): string
+  did?(params: Any): OpDid
+  image?(result: Any): OpImage | null
+}
+
+/** An op with its parameters' and result's types inferred: `params` written in place, or constants that
+ *  `satisfies Param`. */
+export const defineOp = <const P extends Params = {}, R = unknown>(def: OpDef<P, R>): Op => def
 
 export type OpImage = { data: string; mimeType: string }
 

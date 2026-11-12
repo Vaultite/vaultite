@@ -1,7 +1,7 @@
 // app.version: what this server runs and what its updates (core/selfupdate.ts, or the desktop app's) are doing; given a
 // commit, whether it's live, waiting for it when asked. Another machine's through this one.
 import { type Machine, MACHINE_CLIENT } from "../plugins.ts"
-import { type Op, OpError, type OpCtx, restarting } from "../ops.ts"
+import { defineOp, type Op, OpError, type OpCtx, restarting } from "../ops.ts"
 import { desktopCall, inDesktop } from "../desktopapp.ts"
 import { ambiguousCommit, contains, isHash, type PartRuns, processes, type Process, resolveCommit, type Running, running, runsOf } from "../running.ts"
 import { type UpdateStatus, updateStatus } from "../update/updater.ts"
@@ -136,7 +136,7 @@ async function elsewhere(ctx: OpCtx, id: string, body: Any): Promise<Any> {
 }
 
 export function versionOps(): Op[] {
-  return [{
+  return [defineOp({
     id: "app.version",
     cli: "version",
     summary: "What this server runs: Vaultite's version, the plugin API's, its commit and branch, and its updates' state.",
@@ -187,7 +187,7 @@ new build by themselves (at once when hidden; visible, they offer Reload). machi
         updates: updateStatus(), app, processes: await processes(processList(startedOn, app)) }
     },
     // (the verdict last: an agent's output cut to its end, or its exit code lost to a pipe, still says it)
-    text: (r: Any) => r.version === undefined ? String(r.live?.why ?? "") : [
+    text: (r) => r.version === undefined ? String(r.live?.why ?? "") : [
       `Vaultite ${r.version} (plugin API ${r.api})${r.commit ? `, ${short(r.commit)}${r.branch ? ` on ${r.branch}` : ""}` : ""}${r.machine ? ` on ${r.machine}` : ""}`,
       ...(r.app?.worktree ? [`Worktree: ${r.app.worktree.worktree}, ${r.app.worktree.branch}@${short(r.app.worktree.commit)}${r.app.worktree.dirty ? ", with changes not committed" : ""}`] : []),
       ...(r.subject ? [`Commit: ${r.subject}${r.at ? ` (${new Date(r.at).toISOString()})` : ""}`] : []),
@@ -198,7 +198,7 @@ new build by themselves (at once when hidden; visible, they offer Reload). machi
       ...(r.updates.last ? [`Last update: ${short(r.updates.last.from)} to ${short(r.updates.last.to)}, ${new Date(r.updates.last.at).toISOString()}${r.updates.last.elsewhere?.length ? ` (CI red on it elsewhere: ${r.updates.last.elsewhere.join(", ")})` : ""}`] : []),
       ...(r.updates.error ? [`Failed: ${r.updates.error.message}`] : []),
       ...(r.live ? [r.live.why] : [])].join("\n"),
-  }]
+  })]
 }
 
 /** The processes this server knows the commits of: itself (the one it started on), and the desktop app it's in or

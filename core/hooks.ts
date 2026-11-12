@@ -5,7 +5,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { vauDir, vauEntry } from "./appentry.ts"
 import { matching, typeMatches, type VaultEvent } from "./events.ts"
-import { ID, type Op, OpError, opProblems, type Param, whoOf } from "./ops.ts"
+import { defineOp, ID, type Op, OpError, opProblems, type Param, whoOf } from "./ops.ts"
 import { LOCAL, type Plugin, serverUrl, vaultHere } from "./plugins.ts"
 import { hashed, inside } from "./rules.ts"
 import { type Job, type When, whenProblems } from "./schedule.ts"
@@ -219,7 +219,7 @@ export class Hooks {
   /** A manifest's `ops` as operations (their `run` is the command). */
   opsOf(p: Declared): Op[] {
     const ops = Array.isArray(p.manifest.ops) ? p.manifest.ops as Item[] : []
-    return ops.map((d): Op => ({
+    return ops.map((d): Op => (defineOp({
       id: d.id, summary: d.summary, help: d.help, kind: d.kind, params: d.params as Record<string, Param> | undefined, args: d.args,
       cli: d.cli, mcp: d.mcp, result: d.result, owner: d.owner, action: d.action, lock: false,
       ...(typeof d.did === "string" ? { did: (params: Item) => ({ text: fillIn(d.did, params) }) } : {}),
@@ -233,7 +233,7 @@ export class Hooks {
         const out = r.stdout.trim()
         try { return out ? JSON.parse(out) : null } catch { return out }
       },
-    }))
+    })))
   }
 
   /** A manifest's `schedule` as jobs of `plugin` (core/schedule.ts): a command, or an op run as "schedule". */
@@ -310,7 +310,7 @@ export class Hooks {
 
 /** The hooks' own operation: a vault plugin's command log. */
 export function hookOps(hooks: () => Hooks): Op[] {
-  return [{
+  return [defineOp({
     id: "vault-plugin.log",
     summary: "What a vault plugin's commands did lately (its manifest's ops, events, startup and schedule): each run's command, exit, time and stderr.",
     help: "Without an id, every vault plugin's. Kept in memory since the server started, the last 50 runs a plugin.",
@@ -328,5 +328,5 @@ export function hookOps(hooks: () => Hooks): Op[] {
     text: (rows: { id: string; runs: Run[] }[]) => rows.length ? rows.map((r) => [`## ${r.id}`, ...(r.runs.length ? r.runs.map((x) =>
       `- ${x.t} ${x.what}: \`${x.command.join(" ")}\` ${x.error ? x.error : `exit ${x.exit}`} (${x.ms} ms)${x.stderr ? `\n  ${x.stderr.split("\n").join("\n  ")}` : ""}`) : ["No runs yet."])].join("\n")).join("\n\n")
       : "No vault plugin has run a command yet.",
-  }]
+  })]
 }

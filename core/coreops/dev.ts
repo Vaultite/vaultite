@@ -3,7 +3,7 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { type Op, OpError, type OpCtx } from "../ops.ts"
+import { defineOp, type Op, OpError, type OpCtx } from "../ops.ts"
 import type { Any } from "./common.ts"
 
 const OWNER = "the app's window"
@@ -18,7 +18,7 @@ const ask = (ctx: OpCtx, what: string, params: Record<string, unknown>, timeout?
 const time = (t: number) => new Date(t).toTimeString().slice(0, 8)
 
 export function devOps(): Op[] {
-  return [{
+  return [defineOp({
     id: "dev.screenshot",
     cli: "dev screenshot",
     summary: "A screenshot of the user's app window (or one element of it), saved as a PNG: its path.",
@@ -41,8 +41,8 @@ it with dev dom or dev eval there). selector captures one element. Saved on the 
       fs.writeFileSync(file, Buffer.from(r.png, "base64"))
       return { path: file, width: r.width ?? null, height: r.height ?? null }
     },
-    text: (r: Any) => r.path,
-  }, {
+    text: (r) => r.path,
+  }), defineOp({
     id: "dev.dom",
     cli: "dev dom",
     summary: "The user's app window's HTML: what a CSS selector matches (outer HTML, text, an attribute), and how many.",
@@ -63,8 +63,8 @@ its text or inner HTML, attr for one attribute; all for every match. Long HTML i
     },
     args: ["selector"],
     run: ({ selector, text, inner, attr, all }, ctx) => ask(ctx, "dom", { selector, text: !!text, inner: !!inner, attr: attr ?? null, all: !!all }),
-    text: (r: Any) => (r.count ? `${r.count} match${r.count === 1 ? "" : "es"}${r.matches.length < r.count ? ` (the first shown)` : ""}:\n\n${r.matches.map((m: unknown) => m ?? "(none)").join("\n\n")}` : `Nothing matches ${r.selector}.`),
-  }, {
+    text: (r) => (r.count ? `${r.count} match${r.count === 1 ? "" : "es"}${r.matches.length < r.count ? ` (the first shown)` : ""}:\n\n${r.matches.map((m: unknown) => m ?? "(none)").join("\n\n")}` : `Nothing matches ${r.selector}.`),
+  }), defineOp({
     id: "dev.console",
     cli: "dev console",
     summary: "The user's app window's last console messages and uncaught errors (kept since it loaded, the last 500).",
@@ -82,8 +82,8 @@ after reading. The errors the app keeps across reloads are \`vau errors\`.
       clear: { type: "boolean", description: "forget them after reading" },
     },
     run: ({ limit, level, clear }, ctx) => ask(ctx, "console", { limit, level: level ?? null, clear: !!clear }),
-    text: (r: Any) => (r.entries.length ? r.entries.map((e: Any) => `${time(e.t)} ${e.level.padEnd(5)} ${e.text}`).join("\n") : "Nothing logged."),
-  }, {
+    text: (r) => (r.entries.length ? r.entries.map((e: Any) => `${time(e.t)} ${e.level.padEnd(5)} ${e.text}`).join("\n") : "Nothing logged."),
+  }), defineOp({
     id: "dev.eval",
     cli: "dev eval",
     summary: "Run JavaScript in the user's app window (its global scope) and get the value, as JSON.",
@@ -103,6 +103,6 @@ stdin: --code -.
     },
     args: ["code"],
     run: ({ code, timeout }, ctx) => ask(ctx, "eval", { code }, timeout),
-    text: (r: Any) => JSON.stringify(r.value, null, 2) ?? "null",
-  }]
+    text: (r) => JSON.stringify(r.value, null, 2) ?? "null",
+  })]
 }

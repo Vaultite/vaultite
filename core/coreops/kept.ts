@@ -2,14 +2,14 @@
 // plugins' caches), read and changed as entries. Plugins' own ops say more (vau tabs devices, vau workspace tabs).
 import type { App } from "../app.ts"
 import { keptOf } from "../kept.ts"
-import { jsonBlock, type Op, OpError } from "../ops.ts"
+import { defineOp, jsonBlock, type Op, OpError } from "../ops.ts"
 import { lines } from "./common.ts"
 
 const size = (n: number) => (n < 1024 ? `${n} B` : n < 1 << 20 ? `${(n / 1024).toFixed(1)} KB` : `${(n / (1 << 20)).toFixed(1)} MB`)
 
 export function keptOps(app: App): Op[] {
   const kept = () => keptOf(app.vault.path)
-  return [{
+  return [defineOp({
     id: "kept.list",
     cli: "kept",
     summary: "What the server keeps out of the vault (runtime state and caches: each device's tabs, workspaces' tabs, plugins' caches), entry by entry.",
@@ -29,7 +29,7 @@ machines' (Machines) too, the latest write winning. Each entry is "<plugin>/<nam
     },
     text: (r: { entries: { name: string; at: string; shared: boolean; size: number }[] }) =>
       lines(r.entries.map((e) => `${e.name}  ${size(e.size)}, changed ${e.at}${e.shared ? ", shared" : ""}`), "Nothing kept."),
-  }, {
+  }), defineOp({
     id: "kept.get",
     cli: "kept get",
     summary: "One entry the server keeps (vau kept lists them), as JSON.",
@@ -42,7 +42,7 @@ machines' (Machines) too, the latest write winning. Each entry is "<plugin>/<nam
       return v
     },
     text: jsonBlock,
-  }, {
+  }), defineOp({
     id: "kept.set",
     cli: "kept set",
     summary: "Replace one entry the server keeps (null forgets it). Prefer the plugin's own ops, which check what they write.",
@@ -65,5 +65,5 @@ they don't do.
     },
     text: (r) => (r.changed ? `Changed ${r.name}.` : `${r.name} was that already.`),
     did: (p) => ({ action: "ui", text: `Changed what's kept as ${p.name}` }),
-  }]
+  })]
 }

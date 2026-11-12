@@ -4,7 +4,7 @@ import { listSnippets, listThemes } from "../appearance.ts"
 import type { App } from "../app.ts"
 import { commandList, pageIcons, schemes } from "../appsource.ts"
 import { closest, COMMON, optionText } from "../blocks.ts"
-import { jsonBlock, type Op, OpError } from "../ops.ts"
+import { defineOp, jsonBlock, type Op, OpError } from "../ops.ts"
 import { type Any, lines } from "./common.ts"
 import { strings } from "../values.ts"
 import { pluginList } from "./plugins.ts"
@@ -133,7 +133,7 @@ function settingsRoute(name: string) {
 
 export function settingsOps(app: App): Op[] {
   const vaultPlugins = () => pluginList(app).filter((p) => p.tier === "vault")
-  return [{
+  return [defineOp({
     id: "settings.get",
     cli: "settings",
     summary: "A settings file of the app (appearance, editor, plugins, sidebars, newtab, files, folders, pages, hotkeys) or a plugin's (plugin/<id>), as JSON.",
@@ -147,7 +147,7 @@ export function settingsOps(app: App): Op[] {
     args: ["name"],
     run: ({ name }, ctx) => ctx.api("GET", settingsRoute(name)),
     text: jsonBlock,
-  }, {
+  }), defineOp({
     id: "settings.set",
     cli: "settings set",
     summary: "Change some keys of a settings file (the others stay; null removes one, back to the default).",
@@ -165,7 +165,7 @@ checked here: vau appearance and vau hotkey check theirs.
     args: ["name", "values"],
     run: ({ name, values }, ctx) => ctx.api("PATCH", settingsRoute(name), values),
     text: jsonBlock,
-  }, {
+  }), defineOp({
     id: "appearance.get",
     summary: "The appearance settings (theme, scheme, density, fonts, snippets...): appearance.json, unset keys default.",
     kind: "read",
@@ -176,7 +176,7 @@ checked here: vau appearance and vau hotkey check theirs.
       return key ? { [key]: cur[key] ?? null } : cur
     },
     text: (r, p) => (p.key ? (r[p.key] === null ? `${p.key}: (default)` : `${p.key}: ${JSON.stringify(r[p.key])}`) : showLook(r)),
-  }, {
+  }), defineOp({
     id: "appearance.set",
     cli: "appearance",
     summary: "Get or set appearance settings: theme, scheme, density, fonts, snippets, file icons, the tab bar.",
@@ -218,7 +218,7 @@ parses, else text). There's no font size setting: ⌘+ and ⌘- (Ctrl off a Mac)
       return { appearance: app.vault.patchConfig("appearance", { [key]: parsed }) }
     },
     text: (r) => ("appearance" in r ? showLook(r.appearance) : r.value === null ? `${r.key}: (default)` : `${r.key}: ${JSON.stringify(r.value)}`),
-  }, {
+  }), defineOp({
     id: "hotkey.list",
     cli: "hotkeys",
     summary: "The app's commands with their shortcuts (changed ones from .vaultite/hotkeys.json).",
@@ -243,7 +243,7 @@ so commands made while it runs (one per view) aren't in it. Without all, only co
     text: (rows: Any[], p) => (p.all ? rows : rows.filter((r) => r.keys.length || r.changed))
       .map((r) => `${r.id.padEnd(24)} ${(r.keys.join(", ") || "-").padEnd(22)} ${r.name}${r.changed ? "  (changed)" : ""}${r.note ? `  (${r.note})` : ""}`).join("\n") +
       (p.all ? "" : "\n(vau hotkeys --all lists every command)"),
-  }, {
+  }), defineOp({
     id: "hotkey.set",
     cli: "hotkey",
     summary: "Set a command's shortcut(s), remove it (none), or go back to the default (reset).",
@@ -272,7 +272,7 @@ Ids: vau hotkeys --all.
     },
     text: (r) => (r.reset ? `${r.id}: back to the default (${r.keys.join(", ") || "none"})` : `${r.id}: ${r.keys.join(", ") || "no shortcut"}`) +
       (r.known ? "" : `\n(no command '${r.id}' in the app's source: check vau hotkeys --all)`),
-  }, {
+  }), defineOp({
     id: "block.list",
     cli: "blocks",
     summary: "Every block a page can be made of, with what it shows and its options; or one block's options.",
@@ -298,7 +298,7 @@ and after its text in vau render. See them all, written as a page: vau docs desi
       }
       return { ...b, common: COMMON }
     },
-    text: (r: Any) => {
+    text: (r) => {
       if (!Array.isArray(r)) {
         const opts = Object.entries(r.options as Record<string, Any>)
         return [`${r.name} (${r.pluginName}${r.on ? "" : ", off"}): ${r.description || "not declared in its manifest.json"}`,
@@ -314,11 +314,11 @@ and after its text in vau render. See them all, written as a page: vau docs desi
       }
       return out.join("\n")
     },
-  }, {
+  }), defineOp({
     id: "icon.list",
     summary: "The icons a page's `icon:` can name (lucide names: the app's and its plugins').",
     kind: "read",
     run: () => pageIcons(vaultPlugins()),
     text: (r: string[]) => r.join(", ") || "(the app's list isn't known here: any lucide name may work)",
-  }]
+  })]
 }

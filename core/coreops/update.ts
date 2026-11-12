@@ -1,6 +1,6 @@
 // app.update (vau update): a look now at the branch this server follows, the same look the timed ones are
 // (core/update/updater.ts), for whoever just pushed and doesn't want to wait for the next.
-import type { Op } from "../ops.ts"
+import { defineOp, type Op } from "../ops.ts"
 import type { UpdateStatus } from "../update/updater.ts"
 import { checkNow, LOOK_EVERY, updateStatus } from "../update/updater.ts"
 import { desktopCall, inDesktop } from "../desktopapp.ts"
@@ -9,7 +9,7 @@ import { running } from "../running.ts"
 const short = (sha?: string) => String(sha ?? "").slice(0, 7)
 
 export function updateOps(): Op[] {
-  return [{
+  return [defineOp({
     id: "app.update",
     cli: "update",
     summary: "Look now for a newer commit of the branch this server follows, and take it as a timed look would.",
@@ -40,5 +40,5 @@ through its code store where that's on (only what it changed restarts), else sta
       ...(s.last ? [`Last update: ${short(s.last.from)} to ${short(s.last.to)}, ${new Date(s.last.at).toISOString()}${s.last.elsewhere?.length ? ` (CI red on it elsewhere: ${s.last.elsewhere.join(", ")})` : ""}`] : []),
     ].join("\n"),
     did: () => ({ action: "run", text: "Looked for an update of the server" }),
-  }]
+  })]
 }

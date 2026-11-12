@@ -4,9 +4,8 @@ import fs from "node:fs"
 import path from "node:path"
 import type { App } from "../app.ts"
 import { findBin, HOME } from "../agents.ts"
-import type { Op } from "../ops.ts"
+import { defineOp, type Op } from "../ops.ts"
 import { agentName, agentSite } from "../terminalids.ts"
-import type { Any } from "./common.ts"
 import { onOff, pluginList } from "./plugins.ts"
 
 /** The coding agents Vaultite runs (each its plugin: the app's, or one from Vaultite's directory) and their command;
@@ -34,7 +33,7 @@ export type CodingAgent = { id: string; name: string; path: string | null; site:
   on: boolean }
 
 export function aiOps(app: App): Op[] {
-  return [{
+  return [defineOp({
     id: "ai.set",
     cli: "ai",
     summary: "Use AI or not: on (the default), off (no coding agents, companion or AI apps in the app), or as it is now.",
@@ -54,9 +53,9 @@ change, so an agent the user runs can still use the vault. Without a value, it s
       const ps = pluginList(app), { own, aiOff } = onOff(ps, app.vault.config("plugins"))
       return { ai: !aiOff, kept: ps.filter((p) => p.ai && own(p)).map((p) => p.name) }
     },
-    text: (r: Any) => (r.ai ? "AI is on." : `AI is off${r.kept.length ? `: ${r.kept.join(", ")} stay off until it's on again` : ""}.`),
+    text: (r) => (r.ai ? "AI is on." : `AI is off${r.kept.length ? `: ${r.kept.join(", ")} stay off until it's on again` : ""}.`),
     did: (p) => ({ action: "settings", text: p.on ? `Turned AI ${p.on}` : "Read whether AI is on" }),
-  }, {
+  }), defineOp({
     id: "ai.agents",
     cli: "ai agents",
     summary: "The coding agents Vaultite can run in its terminals: which are on this machine (where), and whether their plugin is on.",
@@ -74,5 +73,5 @@ installed), its site, and its plugin (the app's, or one to install from Vaultite
     },
     text: (rows: CodingAgent[]) => rows.map((a) => `${a.path ? "found" : "  -  "}  ${a.name.padEnd(12)} ${a.path ?? a.site}` +
       (a.path ? (a.plugin ? (a.on ? "  (on)" : `  (off: vau plugin on ${a.id})`) : `  (its plugin: vau plugin install Vaultite/plugins/${a.id})`) : "")).join("\n"),
-  }]
+  })]
 }

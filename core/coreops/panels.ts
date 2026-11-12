@@ -4,7 +4,7 @@ import fs from "node:fs"
 import path from "node:path"
 import type { App } from "../app.ts"
 import { panelsOf, type PanelDef } from "../appsource.ts"
-import { type Op, OpError, type Param } from "../ops.ts"
+import { defineOp, type Op, OpError, type Param } from "../ops.ts"
 import { anchorFor } from "../slots.ts"
 import { defaultSidebars, filePanelKey, filePanelPath, HEADING_MODES, type HeadingMode, placePanel, readSidebars, setCollapsed, setDocked, setHeadingMode, type Side, sideOf, type Sidebars, withoutPanel } from "../sidebars.ts"
 import { type Any, lines, serviceOn, windowWorkspace } from "./common.ts"
@@ -91,9 +91,9 @@ function namedPanel(app: App, list: Panel[], q: string) {
   return hit
 }
 
-const WORKSPACE: Param = { type: "integer", minimum: 1, maximum: 5, description: "the workspace (1 to 5) whose panels to use; the user's window's when left out (Workspaces on)" }
-const VAULT: Param = { type: "boolean", description: "sidebars.json itself (the default for workspaces without panels of their own), not a workspace's" }
-const PANEL: Param = { type: "string", required: true, description: "the panel: its key (files:files), title or a plain name (terminals, file tree, pinned, search), or a file of the vault to draw as one (Apps/Weather.html)" }
+const WORKSPACE = { type: "integer", minimum: 1, maximum: 5, description: "the workspace (1 to 5) whose panels to use; the user's window's when left out (Workspaces on)" } satisfies Param
+const VAULT = { type: "boolean", description: "sidebars.json itself (the default for workspaces without panels of their own), not a workspace's" } satisfies Param
+const PANEL = { type: "string", required: true, description: "the panel: its key (files:files), title or a plain name (terminals, file tree, pinned, search), or a file of the vault to draw as one (Apps/Weather.html)" } satisfies Param
 
 const HELP = `The desktop app's two sidebars are stacks of plugins' panels (Search field, Pinned pages, File explorer,
 Terminals...), kept in .vaultite/sidebars.json: {"left": [panels], "right": [panels], "collapsed": [panels]}, top to
@@ -126,7 +126,7 @@ count from 1, in the panel's sidebar.
 
 export function panelOps(app: App): Op[] {
   /** A change to one panel, saved where it belongs; the panels after it. */
-  const change = (id: string, cli: string, summary: string, args: string[], params: Record<string, Param>, fn: (s: Sidebars, p: Panel, given: Any) => Sidebars): Op => ({
+  const change = (id: string, cli: string, summary: string, args: string[], params: Record<string, Param>, fn: (s: Sidebars, p: Panel, given: Any) => Sidebars): Op => (defineOp({
     id, cli, summary, help: `${summary} See vau panels --help.`, kind: "write",
     params: { panel: PANEL, ...params, workspace: WORKSPACE, vault: VAULT }, args: ["panel", ...args],
     run: async (given, ctx) => {
@@ -139,12 +139,12 @@ export function panelOps(app: App): Op[] {
       return { sidebars: after.setup, panels: after.panels, ...(target ? { workspace: target.label } : {}) }
     },
     text: (r) => `${r.workspace ? `${r.workspace}:\n` : ""}${showPanels(r.panels)}`,
-  })
+  }))
   /** To the end of one sidebar, unfolded. */
   const dock = (side: Side) => (s: Sidebars, p: Panel) => setCollapsed(placePanel(s, p.key, { side, before: null }), p.key, false)
   const shown = (s: Sidebars, p: Panel) => { if (!sideOf(s, p.key)) throw new OpError(`${p.title} is hidden: vau panels show ${p.key}`) }
 
-  return [{
+  return [defineOp({
     id: "panel.list",
     cli: "panels",
     summary: "The sidebars' panels, in order, and the hidden ones (the user's window's workspace's with Workspaces on).",
@@ -157,7 +157,7 @@ export function panelOps(app: App): Op[] {
       return { sidebars: setup, panels, ...(target ? { workspace: target.label, own: !!target.setup } : {}) }
     },
     text: (r) => `${r.workspace ? `${r.workspace}${r.own ? "" : " (the default panels: none of its own yet)"}:\n` : ""}${showPanels(r.panels)}`,
-  },
+  }),
   change("panel.move", "panels move", "Move a panel within its sidebar: to a position (from 1), up, down, top or bottom.", ["to"],
     { to: { type: "string", required: true, description: "where: a position from 1, up, down, top or bottom" } },
     (s, p, { to: where }) => {

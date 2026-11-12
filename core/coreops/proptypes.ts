@@ -3,9 +3,8 @@
 import type { App } from "../app.ts"
 import { propertyTypes } from "../plugins.ts"
 import { PROP_TYPES, type PropType, readTypes, typeName, typeNotes, typeOf } from "../proptypes.ts"
-import { type Op, OpError } from "../ops.ts"
+import { defineOp, type Op, OpError } from "../ops.ts"
 import { isHiddenPath, type Item } from "../vault.ts"
-import type { Any } from "./common.ts"
 
 type Listed = { key: string; type: PropType; from: "vaultite" | "other" }
 
@@ -29,7 +28,7 @@ function problems(app: App) {
 }
 
 export function propTypeOps(app: App): Op[] {
-  return [{
+  return [defineOp({
     id: "property.types",
     cli: "properties types",
     summary: "The vault's property types: which keys are dates, numbers, lists, checkboxes... (.vaultite/types.json, and another app's types.json).",
@@ -42,7 +41,7 @@ values aren't of their type.
     kind: "read",
     params: { check: { type: "boolean", default: false, description: "also list the files whose values aren't of their type" } },
     run: ({ check }) => ({ types: listed(app), ...(check ? { problems: problems(app) } : {}) }),
-    text: (r: Any) => {
+    text: (r) => {
       const ts = r.types as Listed[]
       const w = Math.max(4, ...ts.map((t) => t.key.length))
       const list = ts.length ? ts.map((t) => `${t.key.padEnd(w)}  ${t.type}${t.from === "other" ? "  (.obsidian/types.json)" : ""}`).join("\n") : "No types declared: each property is its value's type."
@@ -50,7 +49,7 @@ values aren't of their type.
       const bad = (r.problems as { path: string; notes: string[] }[]).map((p) => `- ${p.path}: ${p.notes.join("; ")}`)
       return `${list}\n\n${bad.length ? `Not of their type:\n${bad.join("\n")}` : "Every value is of its type."}`
     },
-  }, {
+  }), defineOp({
     id: "property.type",
     cli: "properties type",
     summary: "Set a property's type for the whole vault (text, list, number, checkbox, date, datetime, tags, aliases, link), or none.",
@@ -86,6 +85,6 @@ their values too: vau properties retype). none removes the line, so the key is i
       }
       return { key: at, type: typeOf(propertyTypes(app.vault, app.plugins), at), types: listed(app) }
     },
-    text: (r: Any) => (r.type ? `${r.key}: ${r.type}, in every file.` : `${r.key} has no type now: each file's value is its own.`),
-  }]
+    text: (r) => (r.type ? `${r.key}: ${r.type}, in every file.` : `${r.key} has no type now: each file's value is its own.`),
+  })]
 }

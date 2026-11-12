@@ -3,14 +3,14 @@
 import type { App } from "../app.ts"
 import { DEFAULT_BUNDLE, status } from "../bundles.ts"
 import { starter } from "../start.ts"
-import { type Op, OpError, type Param } from "../ops.ts"
+import { defineOp, type Op, OpError, type Param } from "../ops.ts"
 import { type Any, enc, lines, windowWorkspace } from "./common.ts"
 
-const ID: Param = { type: "string", required: true, description: "the bundle's id (zen, my-desk)" }
-const WORKSPACE: Param = { type: "integer", minimum: 1, maximum: 5, description: "the workspace (1 to 5) whose panels and pins follow; the user's window's when left out" }
-const SKIP: Param = { type: "array", items: { type: "string" }, commas: false,
-  description: "changes to leave out, by the ids bundle.show lists (setting:pages.show, pin:Dashboards/Today.md, panels)" }
-const FRESH: Param = { type: "boolean", description: "clean: without the tweaks remembered for it (Reset), which applying forgets" }
+const ID = { type: "string", required: true, description: "the bundle's id (zen, my-desk)" } satisfies Param
+const WORKSPACE = { type: "integer", minimum: 1, maximum: 5, description: "the workspace (1 to 5) whose panels and pins follow; the user's window's when left out" } satisfies Param
+const SKIP = { type: "array", items: { type: "string" }, commas: false,
+  description: "changes to leave out, by the ids bundle.show lists (setting:pages.show, pin:Dashboards/Today.md, panels)" } satisfies Param
+const FRESH = { type: "boolean", description: "clean: without the tweaks remembered for it (Reset), which applying forgets" } satisfies Param
 const where = (b: Any) => (b.source === "app" ? "built-in" : "yours")
 
 const HELP = `A bundle is a setup of the app, in the shapes the vault already uses (a folder like .vaultite/: plugins.json,
@@ -69,7 +69,7 @@ leaves the user's theme, colours and fonts alone. \`vau docs bundles\` has the f
   vau bundle import alice/writing-desk`
 
 export function bundleOps(app: App): Op[] {
-  return [{
+  return [defineOp({
     id: "vault.starter",
     cli: "vault starter",
     summary: "Give a new vault its starter content: a Start here note (pinned) and How this vault works; with `agent`, once the user said to use that coding agent, its page and pointers for agents.",
@@ -87,7 +87,7 @@ user first.
     params: { agent: { type: "string", description: "the coding agent's plugin the user said to use (claude-code, codex)" } },
     run: async ({ agent }) => ({ wrote: await starter(app.host(), { agent: typeof agent === "string" && agent ? agent : null }) }),
     text: (r) => (r.wrote.length ? `Wrote ${r.wrote.join(", ")}.` : "Nothing to write."),
-  }, {
+  }), defineOp({
     id: "bundle.list",
     cli: "bundle list",
     summary: "Bundles: setups of the app (plugins, settings, panels, pins, look) to apply, save, export and import.",
@@ -104,7 +104,7 @@ user first.
         (r.trial ? `\nTrying ${r.trial.name}: \`vau bundle keep\` keeps it, \`vau bundle restore\` puts back the setup from before.` :
           r.previous ? `\nApplied ${r.previous.name} at ${r.previous.at}: \`vau bundle restore\` puts back the setup from before.` : "")
     },
-  }, {
+  }), defineOp({
     id: "bundle.browse",
     cli: "bundle browse",
     summary: "Search the bundle directory (GitHub repos with the topic vaultite-bundle): each with its import address, pinned at a commit.",
@@ -122,7 +122,7 @@ user first.
         `${b.runsCode ? `, runs code${b.installs.length ? ` (installs ${b.installs.map((x: Any) => x.name).join(", ")})` : ""}` : ""}` +
         `${b.imported ? `, imported as ${b.imported}${b.current ? "" : " (a newer commit is listed)"}` : ""}: ${b.description}\n  vau bundle import ${b.address}`), "No bundles match.")
     },
-  }, {
+  }), defineOp({
     id: "bundle.show",
     cli: "bundle show",
     summary: "What applying a bundle would change here: plugins on and off, panels, pins, the look, settings, files added.",
@@ -148,7 +148,7 @@ user first.
       for (const x of p.skipped) out.push(`Skipped ${x.plugin} ${x.key}: ${x.why}`)
       return out.join("\n")
     },
-  }, {
+  }), defineOp({
     id: "bundle.apply",
     cli: "bundle apply",
     summary: "Apply a bundle: its plugins, settings, panels, pins and look (the setup from before is kept for restore).",
@@ -164,7 +164,7 @@ user first.
         fresh: !!fresh, quiet: !!quiet }),
     text: (r) => r.trial ? `Trying ${r.applied}: \`vau bundle keep\` keeps it, \`vau bundle restore\` puts back the setup from before.`
       : `Applied ${r.applied}${r.plan.omitted.length ? ` without ${r.plan.omitted.join(", ")}` : ""}. \`vau bundle restore\` puts back the setup from before.`,
-  }, {
+  }), defineOp({
     id: "bundle.standard",
     cli: "bundle standard",
     summary: "Back to the Standard layout, with its tweaks (clean when it's in use already): the way back when a layout hides the sidebars (Zen).",
@@ -175,7 +175,7 @@ user first.
     run: async ({ workspace }, ctx) => ctx.api("POST", `bundles/${DEFAULT_BUNDLE}/apply`, { workspace: workspace ?? await windowWorkspace(ctx), quiet: true,
       fresh: status(app.vault).applied?.id === DEFAULT_BUNDLE }),
     text: (r) => `Back to ${r.applied}. \`vau bundle restore\` puts back the setup from before.`,
-  }, {
+  }), defineOp({
     id: "bundle.restore",
     cli: "bundle restore",
     summary: "Put back the setup from before the last bundle applied (files it added go to the trash).",
@@ -183,7 +183,7 @@ user first.
     kind: "destructive",
     run: (_p, ctx) => ctx.api("POST", "bundles/restore", {}),
     text: (r) => `Restored the setup from before ${r.restored}.${r.trashed?.length ? ` Files it added went to the trash: ${r.trashed.join(", ")}.` : ""}`,
-  }, {
+  }), defineOp({
     id: "bundle.keep",
     cli: "bundle keep",
     summary: "End trying a bundle, keeping its setup (bundle.restore still puts back the one from before).",
@@ -191,7 +191,7 @@ user first.
     kind: "write",
     run: (_p, ctx) => ctx.api("POST", "bundles/keep", {}),
     text: (r) => `Kept ${r.kept}.`,
-  }, {
+  }), defineOp({
     id: "bundle.fork",
     cli: "bundle fork",
     summary: "Copy a bundle as the user's \"My <Name>\", leaving out the changes skipped (their values this setup's).",
@@ -201,7 +201,7 @@ user first.
     args: ["id"],
     run: async ({ id, skip, workspace }, ctx) => ctx.api("POST", `bundles/${enc(id)}/fork`, { skip: skip ?? [], workspace: workspace ?? await windowWorkspace(ctx) }),
     text: (r) => `Saved ${r.bundle.name} as .vaultite/bundles/${r.bundle.id}/ (not applied).`,
-  }, {
+  }), defineOp({
     id: "bundle.save",
     cli: "bundle save",
     summary: "Save the current setup as one of the user's bundles (.vaultite/bundles/<id>/).",
@@ -221,7 +221,7 @@ user first.
       ctx.api("POST", "bundles", { ...over ? { over, ...name ? { name } : {} } : name ? { name, replace: true } : {}, description, ...hotkeys !== undefined ? { hotkeys } : {},
         ...vaultPlugins !== undefined ? { vaultPlugins } : {}, ...look !== undefined ? { look } : {}, workspace: workspace ?? await windowWorkspace(ctx) }),
     text: (r) => `Saved ${r.bundle.name} as .vaultite/bundles/${r.bundle.id}/.`,
-  }, {
+  }), defineOp({
     id: "bundle.export",
     cli: "bundle export",
     summary: "One bundle as a single JSON file, to share (vau writes <id>.bundle.json; - prints it).",
@@ -242,7 +242,7 @@ Over the API the answer is the bundle's JSON; vau writes it to <id>.bundle.json,
       return typeof r === "string" ? JSON.parse(r) : r
     },
     text: (r) => JSON.stringify(r, null, 2),
-  }, {
+  }), defineOp({
     id: "bundle.import",
     cli: "bundle import",
     summary: "Add a bundle from its JSON (an export): it's added, not applied.",
@@ -266,7 +266,7 @@ reads it from a file, or a folder shaped like a bundle.`,
       return ctx.api("POST", "bundles/import", { ...b, replace: !!replace })
     },
     text: (r) => `Imported ${r.bundle.name} as ${r.bundle.id} (not applied: \`vau bundle show ${r.bundle.id}\`).`,
-  }, {
+  }), defineOp({
     id: "bundle.delete",
     cli: "bundle delete",
     summary: "Delete one of the user's bundles (to the trash).",
@@ -276,5 +276,5 @@ reads it from a file, or a folder shaped like a bundle.`,
     args: ["id"],
     run: ({ id }, ctx) => ctx.api("DELETE", `bundles/${enc(id)}`),
     text: (r) => `Deleted ${r.deleted} (in ${r.trashed}).`,
-  }]
+  })]
 }

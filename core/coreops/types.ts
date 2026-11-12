@@ -3,7 +3,7 @@
 import type { App } from "../app.ts"
 import { unplaced, withKindBlocks } from "../blocks.ts"
 import { unarchived } from "../fileprops.ts"
-import { type Op, OpError } from "../ops.ts"
+import { defineOp, type Op, OpError } from "../ops.ts"
 import { dirOf, type Entry, type Kind, readText, stemOf, writeAtomic } from "../vault.ts"
 import { FM, setPropertyText } from "../frontmatter.ts"
 import { type Any, enc } from "./common.ts"
@@ -63,7 +63,7 @@ function lostNames(e: Entry): string[] {
 }
 
 export function typeOps(app: App): Op[] {
-  return [{
+  return [defineOp({
     id: "file.type",
     cli: "type",
     summary: "Give Markdown files without a `type:` one (a folder brought in from another app): lists them, writes with apply.",
@@ -112,7 +112,7 @@ until --apply.
       }
       return { apply: !!apply, groups, written, failed }
     },
-    text: (r: Any) => {
+    text: (r) => {
       const n = r.groups.reduce((a: number, g: Group) => a + g.files.length, 0)
       if (!n) return "Every Markdown file there has a type (or isn't in a folder named like a kind's)."
       const list = r.groups.map((g: Group) => `${g.folder || "(top)"}/: type: ${g.type}\n${g.files.map((f) => `- ${f}`).join("\n")}`).join("\n\n")
@@ -120,7 +120,7 @@ until --apply.
       const bad = r.failed.map((f: Any) => `- ${f.path}: ${f.why}`).join("\n")
       return `Gave ${r.written} file${r.written === 1 ? "" : "s"} a type.${bad ? `\n\nNot changed:\n${bad}` : ""}`
     },
-  }, {
+  }), defineOp({
     id: "file.migrate",
     cli: "migrate",
     summary: "Bring files from before up to date (kinds' blocks as fences, titles as aliases): lists them, writes with apply.",
@@ -164,12 +164,12 @@ It only lists them until --apply; with a folder, only the files under it.
       if (apply && files.length) await app.vault.sync()
       return { apply: !!apply, files, failed }
     },
-    text: (r: Any) => {
+    text: (r) => {
       const bad = r.failed.map((f: Any) => `- ${f.path}: ${f.why}`).join("\n")
       if (!r.files.length) return `Every file is up to date.${bad ? `\n\nNot changed:\n${bad}` : ""}`
       const n = r.files.length, rows = r.files.map((f: Any) => `- ${f.path}: ${[f.blocks.length ? `blocks ${f.blocks.join(", ")}` : "",
         f.aliases.length ? `aliases ${f.aliases.join(", ")}` : ""].filter(Boolean).join("; ")}`).join("\n")
       return `${r.apply ? "Changed" : "Would change"} ${n} file${n === 1 ? "" : "s"}:\n${rows}${r.apply ? "" : "\n\nWith --apply they're written."}${bad ? `\n\nNot changed:\n${bad}` : ""}`
     },
-  }]
+  })]
 }

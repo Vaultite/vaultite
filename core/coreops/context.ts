@@ -1,7 +1,7 @@
 // app.context (`vau context`): where an agent is before it changes anything: server, windows, vault, sidebars,
 // plugins, appearance, and what plugins add (the service "context").
 import type { App } from "../app.ts"
-import type { Op } from "../ops.ts"
+import { defineOp, type Op } from "../ops.ts"
 import { type Any, servicesOn, windowCount, windowWorkspace } from "./common.ts"
 import { strings } from "../values.ts"
 import { panelList, showPanels, sidebarsTarget } from "./panels.ts"
@@ -11,7 +11,7 @@ import { untyped } from "./types.ts"
 
 
 export function contextOps(app: App): Op[] {
-  return [{
+  return [defineOp({
     id: "app.context",
     cli: "context",
     summary: "Where am I: server, vault, client, workspace, pinned pages, sidebar panels, plugins, appearance. Run this first.",
@@ -64,5 +64,5 @@ the window shows (and the hidden ones), which plugins are on or off, the appeara
         "Next: vau today, vau render <file>, vau open <file>, vau docs, vau --help",
       ].join("\n")
     },
-  }]
+  })]
 }

@@ -1,7 +1,7 @@
 // Jobs on a timer: plugin.every's and a vault plugin's manifest `schedule` (a command or any op: a note handed to
 // Claude each morning). One machine runs each (Machines' first unless it names one); when they last ran stays on it.
 import fs from "node:fs"
-import { type Op, OpError } from "./ops.ts"
+import { defineOp, type Op, OpError } from "./ops.ts"
 import { writeAtomic } from "./vault.ts"
 import { errorContext } from "./serverlog.ts"
 import { logFailure, onItsOwn } from "./writegate.ts"
@@ -166,7 +166,7 @@ export class Scheduler {
 
 export function scheduleOps(scheduler: () => Scheduler): Op[] {
   const when = (r: Row) => `every ${r.every}${r.at ? ` at ${r.at}` : ""}`
-  return [{
+  return [defineOp({
     id: "schedule.list",
     cli: "schedule list",
     summary: "The jobs on a timer (plugins' schedules): when each runs, on which machine, when it last ran and how, and why one is paused.",
@@ -175,7 +175,7 @@ export function scheduleOps(scheduler: () => Scheduler): Op[] {
     text: (rows: Row[]) => rows.length ? rows.map((r) => `- ${r.id}: ${when(r)}${r.machine ? ` on ${r.machine}` : ""}; ${r.running ? "running"
       : r.paused ? `paused: ${r.paused}` : r.here ? `next ${r.next}` : "another machine runs it"}${r.ran ? `; last ${r.ran} (${r.error ? `failed: ${r.error}` : `${r.ms} ms`})` : ""}`).join("\n")
       : "No plugin has a schedule.",
-  }, {
+  }), defineOp({
     id: "schedule.run",
     cli: "schedule run",
     summary: "Run a job of the schedule now, on this machine (to try it): its error, or null.",
@@ -186,5 +186,5 @@ export function scheduleOps(scheduler: () => Scheduler): Op[] {
     args: ["id"],
     run: ({ id }) => scheduler().runNow(id),
     text: (error: string | null, { id }) => (error ? `${id} failed: ${error}` : `Ran ${id}.`),
-  }]
+  })]
 }

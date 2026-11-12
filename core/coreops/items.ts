@@ -1,12 +1,12 @@
 // Items of any kind through the API's generic routes (a plugin's own route answers first, as over HTTP). A kind's
 // own ops (note.create, log.add) say more about its fields; these work for all.
 import type { App } from "../app.ts"
-import { jsonBlock, type Op, OpError, type Param } from "../ops.ts"
+import { defineOp, jsonBlock, type Op, OpError, type Param } from "../ops.ts"
 import type { Kind } from "../vault.ts"
 import { type Any, enc } from "./common.ts"
 
-const KIND: Param = { type: "string", required: true, description: "the kind: its type (person, note, log, book) or collection (people, notes, logs, books)" }
-const ID: Param = { type: "string", required: true, description: "the item: its id (People/Alice Park), file name (Alice Park) or key" }
+const KIND = { type: "string", required: true, description: "the kind: its type (person, note, log, book) or collection (people, notes, logs, books)" } satisfies Param
+const ID = { type: "string", required: true, description: "the item: its id (People/Alice Park), file name (Alice Park) or key" } satisfies Param
 
 export function itemOps(app: App): Op[] {
   const kindOf = (q: string): Kind => {
@@ -17,7 +17,7 @@ export function itemOps(app: App): Op[] {
   }
   /** The route of an item, or of the kind's one file (ME.md) when it's a single file. */
   const route = (k: Kind, id?: string) => (k.file || !id ? k.collection : `${k.collection}/${enc(id)}`)
-  return [{
+  return [defineOp({
     id: "item.list",
     summary: "Every item of a kind (people, notes, logs...), as JSON: what the API's GET /api/<collection> answers.",
     help: "Each item is its file's frontmatter and body, read the kind's way (vau docs <kind's plugin> has its fields). For files matching conditions, query.run is quicker to read.",
@@ -28,8 +28,8 @@ export function itemOps(app: App): Op[] {
       const r = await ctx.api("GET", route(kindOf(kind)))
       return Array.isArray(r) && limit ? r.slice(0, limit) : r
     },
-    text: (r: Any) => (Array.isArray(r) ? (r.length ? r.map((i) => `- ${i.id}${i.title && !String(i.id).endsWith(i.title) ? ` (${i.title})` : ""}`).join("\n") : "None.") : jsonBlock(r)),
-  }, {
+    text: (r) => (Array.isArray(r) ? (r.length ? r.map((i) => `- ${i.id}${i.title && !String(i.id).endsWith(i.title) ? ` (${i.title})` : ""}`).join("\n") : "None.") : jsonBlock(r)),
+  }), defineOp({
     id: "item.get",
     summary: "One item of a kind by its id, file name or key, as JSON.",
     kind: "read",
@@ -41,7 +41,7 @@ export function itemOps(app: App): Op[] {
       return ctx.api("GET", route(k, id))
     },
     text: jsonBlock,
-  }, {
+  }), defineOp({
     id: "item.create",
     summary: "Make an item of a kind, or update the one with the same key (the kind's: a note's ext_id, a person's name).",
     help: "The fields are the kind's (vau docs <its plugin>); the server fills what it can (ids, dates, coordinates). Sent again with the same key, it updates that item: safe to repeat.",
@@ -50,7 +50,7 @@ export function itemOps(app: App): Op[] {
     args: ["kind", "item"],
     run: ({ kind, item }, ctx) => ctx.api("POST", route(kindOf(kind)), item),
     text: (r) => `Saved ${r?.id ?? "it"}.`,
-  }, {
+  }), defineOp({
     id: "item.update",
     summary: "Change some fields of an item (the others stay; `archived: true` archives it).",
     kind: "write",
@@ -58,7 +58,7 @@ export function itemOps(app: App): Op[] {
     args: ["kind", "id", "fields"],
     run: ({ kind, id, fields }, ctx) => ctx.api("PUT", route(kindOf(kind), id), fields),
     text: (r) => `Saved ${r?.id ?? "it"}.`,
-  }, {
+  }), defineOp({
     id: "item.delete",
     summary: "Delete an item: its file goes to the vault's .trash.",
     kind: "destructive",
@@ -70,5 +70,5 @@ export function itemOps(app: App): Op[] {
       return { ...(await ctx.api("DELETE", route(k, id)) as Any), id }
     },
     text: (r) => (r.ok ? `Deleted ${r.id} (to the trash).` : `Nothing deleted: no ${r.id}.`),
-  }]
+  })]
 }

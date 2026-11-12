@@ -5,7 +5,7 @@ import path from "node:path"
 import type { Readable } from "node:stream"
 import { pipeline } from "node:stream/promises"
 import type { App } from "../app.ts"
-import { type Op, type OpCtx, OpError } from "../ops.ts"
+import { defineOp, type Op, type OpCtx, OpError } from "../ops.ts"
 import { attachmentDir, unarchived } from "../fileprops.ts"
 import { filing } from "../filing.ts"
 import { localStamp, safeName } from "../vault.ts"
@@ -34,7 +34,7 @@ const saved = new Map<string, { path: string; until: number }>()
 type Pending = { name?: string; folder?: string; note?: string }
 
 export function uploadOps(app: App): Op[] {
-  return [{
+  return [defineOp({
     id: "file.upload",
     cli: "upload",
     mcp: "upload_file",
@@ -114,10 +114,10 @@ that can reach it; claude.ai's code sandbox sees the chat's files in /mnt/user-d
         if (dir) fs.rmSync(dir, { recursive: true, force: true })
       }
     },
-    text: (r) => r.link
+    text: (r) => "link" in r
       ? `Upload link (one use, until ${r.expires}): PUT the file's bytes to ${r.link}, e.g. curl -sS -T <file> '${r.link}'. It's saved as an attachment${r.note ? ` and embedded in ${r.note}` : ""} once it arrives; the answer says where.`
-      : `Saved ${r.path}${r.bytes ? ` (${Math.max(1, Math.round(r.bytes / 1024))} KB)` : ""}${r.again ? " (already, from before)" : ""}${r.note ? `, embedded at the end of ${r.note}` : `: embed it with ${r.embed}`}.`,
-  }]
+      : `Saved ${r.path}${"bytes" in r && r.bytes ? ` (${Math.max(1, Math.round(r.bytes / 1024))} KB)` : ""}${"again" in r && r.again ? " (already, from before)" : ""}${r.note ? `, embedded at the end of ${r.note}` : `: embed it with ${r.embed}`}.`,
+  })]
 }
 
 const embedOf = (p: string) => `![[${path.posix.basename(p)}]]`

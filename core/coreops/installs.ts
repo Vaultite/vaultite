@@ -4,7 +4,7 @@ import fs from "node:fs"
 import path from "node:path"
 import type { App } from "../app.ts"
 import { asLocked, diff, fetchSource, type Locked, newer, parseSource, place, readLock, releaseNotes, tagOf, unlock } from "../installs.ts"
-import { type Op, OpError } from "../ops.ts"
+import { defineOp, type Op, OpError, type Param } from "../ops.ts"
 import { localDate, localTime } from "../plugins.ts"
 import type { Entry } from "../pluginindex.ts"
 import { disclosed, disclosuresOf } from "../pluginmeta.ts"
@@ -16,7 +16,7 @@ import { notHereYet } from "../writegate.ts"
 import { type Any } from "./common.ts"
 import { strings } from "../values.ts"
 
-const SOURCE = { type: "string" as const, required: true, description: "owner/name on GitHub (owner/name/folder for one of several in it; with @tag), a git URL, a folder on this machine, or a zip's https address with #sha256=<hex>" }
+const SOURCE = { type: "string", required: true, description: "owner/name on GitHub (owner/name/folder for one of several in it; with @tag), a git URL, a folder on this machine, or a zip's https address with #sha256=<hex>" } satisfies Param
 
 /** Install a plugin from `source` (at `commit`, else `tag`, else its newest; refused unless its files hash to `hash`):
  *  off, unless plugins.json has it on; `moved`, one of the app's plugins that moved to it (core/migrations.ts MOVED). */
@@ -112,7 +112,7 @@ export function installOps(app: App): Op[] {
     return out
   }
 
-  return [{
+  return [defineOp({
     id: "plugin.install",
     cli: "plugin install",
     summary: "Install a vault plugin from a git repository (GitHub's owner/name) at its newest version: off until turned on.",
@@ -149,7 +149,7 @@ another address.
       ...(r.untagged ? ["It has no version tags: it's the default branch as it is now (updates follow its commits)."] : []),
       ...disclosed(r.disclosures).map((d) => `It says it ${d}.`),
       `It's off until turned on (it runs code on this machine: ask the user first): vau plugin on ${r.id}`].join("\n"),
-  }, {
+  }), defineOp({
     id: "plugin.update",
     cli: "plugin update",
     summary: "Check installed plugins for newer versions and what they'd change; --apply installs them (to be allowed again).",
@@ -192,7 +192,7 @@ here, one that says it does more beyond the vault than it did, nor a version rol
         return lines.join("\n")
       }).join("\n") + (rows.some((r) => !r.current && !r.error && !r.applied) ? "\nvau plugin update <id> --apply installs one (ask the user first)." : "")
     },
-  }, {
+  }), defineOp({
     id: "plugin.rollback",
     cli: "plugin rollback",
     summary: "Put an installed plugin back to the version it had before its last update; it doesn't update to that one on its own again.",
@@ -228,7 +228,7 @@ update by hand takes it. Allowed on this machine if it was before.
       }
     },
     text: (r) => `${r.name} is back to ${r.to} (${r.tag})${r.allowed ? ", and running" : ""}. It won't update to ${r.from} on its own again.`,
-  }, {
+  }), defineOp({
     id: "plugin.history",
     cli: "plugin history",
     summary: "What updated the installed plugins: each update's versions, when, how (on its own, by hand, rolled back) and what's new.",
@@ -256,7 +256,7 @@ update by hand takes it. Allowed on this machine if it was before.
     text: (rows: Any[]) => rows.length ? rows.map((u) => `- ${localDate(Date.parse(u.at))} ${localTime(Date.parse(u.at))} ${u.name} ${u.from} -> ${u.to}` +
       ` (${u.how === "auto" ? "on its own" : u.how === "rollback" ? "rolled back" : "by hand"})${u.notes.map((n: string) => `\n  ${n}`).join("")}`).join("\n")
       : "No plugin has been updated yet.",
-  }, {
+  }), defineOp({
     id: "plugin.uninstall",
     cli: "plugin uninstall",
     summary: "Remove a vault plugin: turned off, its folder to the trash, its lock entry and this machine's approval gone.",
@@ -286,7 +286,7 @@ update by hand takes it. Allowed on this machine if it was before.
       return { id, trashed: to, kept: kept.length ? `${rel}/` : null }
     },
     text: (r) => `Removed ${r.id}: its folder is in ${r.trashed}.${r.kept ? ` Its settings stay in ${r.kept}.` : ""}`,
-  }, {
+  }), defineOp({
     id: "plugin.search",
     cli: "plugin search",
     summary: "Search the plugin directory (GitHub repos with the topic vaultite-plugin): stars, version, what each discloses.",
@@ -329,5 +329,5 @@ with \`vau plugin install <source>\` (its repository, and its folder in it when 
         `${e.installed !== null ? (e.update ? `, installed ${e.installed} (update out)` : ", installed") : ""}${e.blocked ? ", blocked" : ""}: ${e.description}` +
         (disclosed(e.disclosures).length ? `\n  says it ${disclosed(e.disclosures).join("; ")}` : "")).join("\n")
     },
-  }]
+  })]
 }

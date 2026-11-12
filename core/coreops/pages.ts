@@ -1,11 +1,11 @@
 // Plugins' pages (core/pages.ts): each plugin writes its own once when it's turned on; this writes them again.
 import type { App } from "../app.ts"
-import { type Op, OpError } from "../ops.ts"
+import { defineOp, type Op, OpError } from "../ops.ts"
 import { restorePages } from "../pages.ts"
 import { enabled } from "../plugins.ts"
 
 export function pageOps(app: App): Op[] {
-  return [{
+  return [defineOp({
     id: "dashboard.restore",
     cli: "dashboard restore",
     summary: "Write the pages of the plugins that are on that the pages folder has no file for (one deleted comes back).",
@@ -31,5 +31,5 @@ links, the new tab's page) to the user's files, the old folder going. Running it
     },
     text: (r) => [r.made.length ? `Wrote ${r.made.join(", ")}.` : "Every page is there already.",
       ...(r.moved.length ? [`The old copies in .vaultite/pages are gone: pins and links to them go to ${r.moved.map(([, to]: string[]) => to).join(", ")}.`] : [])].join("\n"),
-  }]
+  })]
 }

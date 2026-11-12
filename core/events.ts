@@ -1,7 +1,7 @@
 // Events: what happens in the vault as one typed stream for agents, scripts and plugins (types: core/docs/events.md).
 // Kept in memory only (the last KEEP), so a waiter passing its last cursor misses nothing; a restart starts from now.
 import type { IncomingMessage, ServerResponse } from "node:http"
-import type { Op } from "./ops.ts"
+import { defineOp, type Op } from "./ops.ts"
 import type { Vault } from "./vault.ts"
 
 export type VaultEvent = { type: string; seq: number; t: number; cursor: string; [k: string]: unknown }
@@ -166,7 +166,7 @@ export function eventOps(): Op[] {
   const text = (r: { events: VaultEvent[]; cursor?: string; missed?: boolean }) =>
     (r.events.length ? r.events.map((e) => JSON.stringify(e)).join("\n") : "No events.") +
     (r.missed ? "\n(Some events after the cursor were already let go of.)" : "") + (r.cursor ? `\nCursor: ${r.cursor}` : "")
-  return [{
+  return [defineOp({
     id: "events.wait",
     mcp: true,
     summary: "Wait for the next events in the vault (files changed or moved, operations done), at most a timeout.",
@@ -185,7 +185,7 @@ and plugins' own (<plugin id>.<name>); \`vau docs events\` describes each.
     },
     run: ({ types, path, after, timeout }, ctx) => eventsOf(ctx.vault).wait(filterOf(types, path), after ?? null, Number(timeout) * 1000),
     text,
-  }, {
+  }), defineOp({
     id: "events.list",
     summary: "The recent events in the vault (kept in memory: since the server started, the last 500).",
     kind: "read",
@@ -195,5 +195,5 @@ and plugins' own (<plugin id>.<name>); \`vau docs events\` describes each.
       return { events: bus.last(filterOf(types, path), Number(limit)), cursor: bus.cursor }
     },
     text,
-  }]
+  })]
 }

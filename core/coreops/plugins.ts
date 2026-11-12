@@ -5,7 +5,7 @@ import path from "node:path"
 import type { App } from "../app.ts"
 import { panelsOf, sectionsOf, type PluginDir } from "../appsource.ts"
 import { readNewTab } from "../newtab.ts"
-import { checkParams, type Op, type OpCtx, OpError } from "../ops.ts"
+import { defineOp, checkParams, type Op, type OpCtx, OpError, type Param } from "../ops.ts"
 import { switched } from "../pluginmeta.ts"
 import { checkVaultPlugin, digestOf } from "../vaultplugins.ts"
 import { placePanel, readSidebars, sideOf } from "../sidebars.ts"
@@ -72,7 +72,7 @@ function findPlugin(list: PluginInfo[], q: string) {
   return p
 }
 
-const ID = { type: "string" as const, required: true, description: "the plugin's id (reddit) or name (Reddit)" }
+const ID = { type: "string", required: true, description: "the plugin's id (reddit) or name (Reddit)" } satisfies Param
 
 /** Let a vault plugin run on this machine as its files are now (`hash`: only if they're still what the caller was shown). */
 async function allowPlugin(app: App, q: string, hash?: string, edits?: boolean) {
@@ -140,7 +140,7 @@ export function pluginOps(app: App): Op[] {
   const turned = (r: Any) => `${r.name} is ${r.switched ? "on" : "off"}.${r.needsAi ? " It stays off while AI is off: vau ai on." : r.blockedBy.length ? ` It stays off until ${r.blockedBy.join(", ")} is on.` : ""}` +
     (r.waiting ? ` It waits for this machine's owner to allow it: vau plugin allow ${r.id}` : "")
 
-  return [{
+  return [defineOp({
     id: "plugin.list",
     cli: "plugins",
     summary: "List plugins, on or off (the app's built-in ones and the vault's own).",
@@ -160,7 +160,7 @@ off until turned on (they run code). Those marked "app" are part of the app: alw
     // (the "core" tier is the app's built-in plugins: "core" alone is the app itself)
     text: (rows: Any[]) => rows.map((p) => `${p.on ? "on " : "off"}  ${p.id.padEnd(14)} ${(p.alwaysOn ? "app" : p.tier === "core" ? "built-in" : p.tier).padEnd(9)} ${p.name}` +
       (p.waiting ? `  (waits to be allowed on this machine: vau plugin allow ${p.id})` : p.switchedOn && p.aiOff ? "  (AI is off: vau ai on)" : p.switchedOn && !p.on ? `  (needs ${p.requires.join(", ")})` : "")).join("\n"),
-  }, {
+  }), defineOp({
     id: "plugin.check",
     cli: "plugins check",
     summary: "What's wrong with the vault's own plugins (or one plugin's folder): broken rules, code that didn't load or build, blocks to fix.",
@@ -195,7 +195,7 @@ with a vault plugin's id, that one.
         (p.warnings?.length ? `\n  to fix (it runs anyway):\n${p.warnings.map((x: string) => `  - ${x}`).join("\n")}` : "")).join("\n")
       return text + (vps.some((p) => p.problems?.length) ? "" : "\nNo problems.")
     },
-  }, {
+  }), defineOp({
     id: "plugin.enable",
     cli: "plugin on",
     summary: "Turn a plugin on (the app follows live).",
@@ -210,7 +210,7 @@ machine: ask the user first. One that requires another stays off until that one 
     args: ["id"],
     run: ({ id }, ctx) => turn(id, true, ctx),
     text: turned,
-  }, {
+  }), defineOp({
     id: "plugin.allow",
     cli: "plugin allow",
     summary: "Let a vault plugin run on this machine as its files are now (one that arrived by sync, a shared vault or a bundle, or changed).",
@@ -234,7 +234,7 @@ can then run code here through it: never for one from elsewhere).
     run: ({ id, hash, edits }) => allowPlugin(app, id, hash, edits),
     text: (r) => (r.edits ? "Later edits to it run without asking on this machine. " : "") + (r.on ? (r.loaded ? `${r.name} is allowed on this machine, and running.` : `${r.name} is allowed on this machine, but doesn't load: ${r.problems[0] ?? "vau plugins check"}`)
       : `${r.name} is allowed on this machine; it runs once it's on (vau plugin on ${r.id}).`),
-  }, {
+  }), defineOp({
     id: "plugin.writes",
     cli: "plugin writes",
     summary: "Where plugins write outside .vaultite/ on their own (timers, schedules, hooks), and whether the user allowed it.",
@@ -253,7 +253,7 @@ logged. answer: allowed, not now (asked, not given), ask (a write wanted it: the
     },
     text: (r) => r.writes.length ? r.writes.map((g: G.Grant) => `${g.name}: ${g.at}${g.folder ? "/" : ""} (${g.why}): ${g.answer ?? "never asked"}${g.on ? "" : ", off"}`).join("\n")
       : "No plugin writes outside .vaultite/ on its own.",
-  }, {
+  }), defineOp({
     id: "plugin.grant",
     cli: "plugin grant",
     summary: "Allow a plugin to write where its manifest says, on its own (or take that back with allow: false).",
@@ -277,7 +277,7 @@ it's their yes. allow: false is "Not now" (also how a grant is taken back). plac
       return { id: info.id, name: info.name, allowed: allow !== false, places }
     },
     text: (r) => `${r.name} ${r.allowed ? "may now write" : "won't write"} ${r.places.join(", ")} on its own.`,
-  }, {
+  }), defineOp({
     id: "plugin.disable",
     cli: "plugin off",
     summary: "Turn a plugin off (its files and settings stay; the app follows live).",
@@ -290,7 +290,7 @@ turning it on again brings it back as it was.
     args: ["id"],
     run: ({ id }) => turn(id, false),
     text: turned,
-  }, {
+  }), defineOp({
     id: "plugin.new",
     cli: "plugin new",
     summary: "Write a new vault plugin to start from (off until turned on).",
@@ -329,7 +329,7 @@ vau docs vault-plugins, and vau docs plugin-api for everything it can use.
       (r.edits ? "It's allowed on this machine with its edits (made by its owner): once on, editing it reloads it.\n"
         : `It waits for this machine's owner to allow it: vau plugin allow ${r.id} --edits\n`) +
       `Then: vau plugins check, and vau render "Dashboards/${r.name}.md" (its page, pinned when it's on).`,
-  }]
+  })]
 }
 
 /** A vault plugin's files to start from (vau plugin new). */

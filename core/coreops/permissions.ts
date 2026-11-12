@@ -3,14 +3,14 @@
 import fs from "node:fs"
 import type { App } from "../app.ts"
 import { inDesktop, desktopCall } from "../desktopapp.ts"
-import type { Op } from "../ops.ts"
+import { defineOp, type Op } from "../ops.ts"
 import { accessOf, keepsPermissions, signingText, stateText, type Access, type PermissionReport } from "../permissions.ts"
 import { serviceOn } from "./common.ts"
 
 const line = (a: Access) => (a.ok ? "can read it" : a.ok === false ? `can't read it: ${a.why}` : `unknown: ${a.why}`)
 
 export function permissionOps(app: App): Op[] {
-  return [{
+  return [defineOp({
     id: "app.permissions",
     cli: "permissions",
     summary: "What macOS lets the desktop app do: the vault folder (the app and its terminals), privacy permissions, how it's signed.",
@@ -44,5 +44,5 @@ without asking) and how the app is signed: ad hoc, macOS asks for every permissi
         "The user changes these in Vaultite's Settings > Permissions, or System Settings > Privacy & Security.",
       ] : ["macOS's privacy permissions are read by the desktop app on a Mac: run this in its terminals."]),
     ].join("\n"),
-  }]
+  })]
 }

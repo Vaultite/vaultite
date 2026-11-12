@@ -25,7 +25,7 @@ import { updateOps } from "./coreops/update.ts"
 import { commandList } from "./appsource.ts"
 import { propTypeOps } from "./coreops/proptypes.ts"
 import { topic, topics } from "./docs.ts"
-import { type Op, OpError, quoted } from "./ops.ts"
+import { defineOp, type Op, OpError, quoted } from "./ops.ts"
 import { isOutside } from "./fileprops.ts"
 
 /** Every op of the core, in the order the catalog lists them (and `vau --help` its commands): where am I first. */
@@ -37,7 +37,7 @@ export function coreOps(app: App): Op[] {
 // ---------- ops: the catalog itself ----------
 
 function opsOps(app: App): Op[] {
-  return [{
+  return [defineOp({
     id: "ops.list",
     cli: "ops",
     summary: "List the operations: everything the API, vau and MCP can do with this vault (its plugins' too, while they're on).",
@@ -53,19 +53,19 @@ function opsOps(app: App): Op[] {
     text: (rows: Any[]) => rows.length
       ? rows.map((r) => `- \`${r.id}\`${r.cli ? ` (vau ${r.cli})` : ""}: ${r.summary}`).join("\n") + "\n\n`vau <id> --help` explains one."
       : "No operation matches.",
-  }]
+  })]
 }
 
 // ---------- docs: the docs for AIs (core/docs.ts) ----------
 
 function docsOps(app: App): Op[] {
-  return [{
+  return [defineOp({
     id: "docs.list",
     summary: "List the docs topics: the vault in full, the app's settings, each plugin's file formats.",
     kind: "read",
     run: () => [{ id: "api", title: "Operations (the API)", plugin: null }, ...topics(app.plugins).map(({ id, title, plugin }) => ({ id, title, plugin }))],
     text: (rows: Any[]) => rows.map((t) => `- \`${t.id}\`: ${t.title}`).join("\n"),
-  }, {
+  }), defineOp({
     id: "docs.read",
     cli: "docs",
     mcp: "docs",
@@ -89,8 +89,8 @@ or one of the app's (vault, app, vault-plugins, from-other-apps, api: every oper
         throw new OpError((e as Error).message, 404)
       }
     },
-    text: (r: Any) => (r.topics ? r.topics.map((t: Any) => `- \`${t.id}\`: ${t.title}`).join("\n") : r.text),
-  }]
+    text: (r) => (r.topics ? r.topics.map((t: Any) => `- \`${t.id}\`: ${t.title}`).join("\n") : r.text),
+  })]
 }
 
 // ---------- ui: the user's open window (core/live.ts) ----------
@@ -101,12 +101,12 @@ function uiOps(app: App): Op[] {
     if (e instanceof OpError && e.status === 409) throw new OpError("no app window is open on this server: open the app (browser or desktop) first", 409)
     throw e
   }
-  return [{
+  return [defineOp({
     id: "ui.windows",
     summary: "Which app windows are open on this server, and the workspace they show.",
     kind: "read",
     run: (_p, ctx) => ctx.ui(null),
-  }, {
+  }), defineOp({
     id: "ui.open",
     cli: "open",
     mcp: "open",
@@ -151,7 +151,7 @@ A pane or container nobody has is an error that lists the ones there are.
     },
     text: (_r, p) => `Opened ${p.path}${p.in ? ` as a new tab in the pane "${p.in}"` : ""}${p.split ? ` in a split ${p.split}` : ""}${p.container ? ` in the container ${p.container}` : ""}.`,
     did: ({ path, split }) => ({ action: "ui", text: `Opened ${path} in the app${split ? ` (split ${split})` : ""}`, paths: path && !path.startsWith("view:") ? [path] : [] }),
-  }, {
+  }), defineOp({
     id: "ui.command",
     cli: "command",
     summary: "Run a command from the app's palette in the user's window (by id).",
@@ -168,9 +168,9 @@ has the toasts it showed (notices): one saying it couldn't means it didn't do it
     args: ["id"],
     run: ({ id }, ctx) => ctx.ui({ action: "command", id }).catch(noWindow),
     // (what it showed is how an agent knows it didn't work: "Claude isn't running")
-    text: (r: Any, p) => !r?.ran ? `Sent ${p.id}.` : `Ran ${p.id}.${r.notices?.length ? ` The app then showed: ${r.notices.map((n: Any) => `${JSON.stringify(n.text)}${n.kind === "error" ? " (an error)" : ""}`).join(", ")}.` : ""}`,
+    text: (r, p) => !r?.ran ? `Sent ${p.id}.` : `Ran ${p.id}.${r.notices?.length ? ` The app then showed: ${r.notices.map((n: Any) => `${JSON.stringify(n.text)}${n.kind === "error" ? " (an error)" : ""}`).join(", ")}.` : ""}`,
     did: ({ id }) => ({ action: "ui", text: `Ran the command ${id} in the app` }),
-  }, {
+  }), defineOp({
     id: "ui.commands",
     cli: "commands",
     summary: "The palette's commands, by id (for vau command): the user's window's, with which can run now, else the app's.",
@@ -200,9 +200,9 @@ there now; with none, the ones in the app's source. filter keeps ids and names w
         .sort((a, b) => a.id.localeCompare(b.id))
       return { from, commands }
     },
-    text: (r: Any) => (r.commands.length ? r.commands.map((c: Any) => `${c.id.padEnd(28)} ${c.name}${c.available === false ? "  (not now)" : ""}`).join("\n") : "No command matches.") +
+    text: (r) => (r.commands.length ? r.commands.map((c: Any) => `${c.id.padEnd(28)} ${c.name}${c.available === false ? "  (not now)" : ""}`).join("\n") : "No command matches.") +
       (r.from === "source" ? "\n(from the app's source: no app window is open)" : ""),
-  }, {
+  }), defineOp({
     id: "ui.notify",
     home: true,
     cli: "notify",
@@ -239,9 +239,9 @@ it as an error (a red icon).
         ...(actionOpen ? { link: actionOpen } : {}), ...(terminal ? { terminal } : {}) })
       return { event }
     },
-    text: (r: Any, p) => `Shown: ${p.text}${p.actionOpen ? ` [Open: ${p.actionOpen}]` : ""}${r.event ? " (kept in the inbox)" : ""}`,
+    text: (r, p) => `Shown: ${p.text}${p.actionOpen ? ` [Open: ${p.actionOpen}]` : ""}${r.event ? " (kept in the inbox)" : ""}`,
     did: ({ text }) => ({ action: "ui", text: `Showed ${quoted(text)}` }),
-  }, {
+  }), defineOp({
     id: "ui.choose",
     cli: "choose",
     mcp: "choose",
@@ -278,8 +278,8 @@ id, or nothing.
       const i = typeof r?.index === "number" ? r.index : -1
       return { picked: list[i] ? { index: i, ...list[i] } : null, typed: null }
     },
-    text: (r: Any) => r.picked?.id ?? r.typed ?? "",
-  }]
+    text: (r) => r.picked?.id ?? r.typed ?? "",
+  })]
 }
 
 type ChoiceItem = { id: string; label: string; detail?: string; icon?: string }

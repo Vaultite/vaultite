@@ -2,7 +2,7 @@
 import { actionsFor } from "../actions.ts"
 import { keepExt } from "../filetypes.ts"
 import type { App } from "../app.ts"
-import { type Op, OpError, type Who } from "../ops.ts"
+import { defineOp, type Op, OpError, type Who, type Param } from "../ops.ts"
 import { type Any, enc } from "./common.ts"
 
 /** How much of a file an MCP answer carries (an agent's context is precious; vau prints it whole): more is a page. */
@@ -34,16 +34,16 @@ function paged(p: ReturnType<typeof linesOf>, who: Who | undefined, edit = "") {
 /** What read gave an agent ended with the note `paged` adds: written back, the rest of the file would be lost. */
 const PAGE_NOTE = /\n\((lines \d+-\d+ of \d+|line \d+ (of \d+|is cut at \d+))[^\n]*\)\s*$/
 const PAGE = {
-  offset: { type: "integer" as const, minimum: 1, description: "the line to start at (1: the first)" },
-  limit: { type: "integer" as const, minimum: 1, description: "at most this many lines (all when left out; over MCP a page is at most 100k characters)" },
-}
+  offset: { type: "integer", minimum: 1, description: "the line to start at (1: the first)" },
+  limit: { type: "integer", minimum: 1, description: "at most this many lines (all when left out; over MCP a page is at most 100k characters)" },
+} satisfies Record<string, Param>
 const EDIT = "; to change it: edit_file, or write_file with base"
 
-const PATH = { type: "string" as const, format: "path", required: true, description: "a vault path (Notes/Idea.md, People/Alice Park.md) or a file's name (Today, Alice Park)" }
+const PATH = { type: "string", format: "path", required: true, description: "a vault path (Notes/Idea.md, People/Alice Park.md) or a file's name (Today, Alice Park)" } satisfies Param
 const SORTS = ["relevance", "name", "name-desc", "modified", "modified-old", "created", "created-old"]
 
 export function fileOps(app: App): Op[] {
-  return [{
+  return [defineOp({
     id: "file.render",
     cli: "render",
     mcp: "render",
@@ -66,7 +66,7 @@ Today) or "how's my week". Saves nothing. A name works too ("Today", "Alice Park
       const out = paged({ text: r.text, from: r.from, to: r.to, total: r.lines }, who)
       return out === r.text ? out.trimEnd() : out
     },
-  }, {
+  }), defineOp({
     id: "file.search",
     cli: "search",
     mcp: "search",
@@ -113,7 +113,7 @@ file:, path:, content:, tag:#x, line:(a b), block:(a b), section:(a b), task:, t
       }).join("\n")
       return r.next ? `${out}\n(more files match: offset ${r.next})` : out
     },
-  }, {
+  }), defineOp({
     id: "file.read",
     cli: "read",
     mcp: "read",
@@ -137,7 +137,7 @@ blocks filled in, use vau render. Over MCP the answer starts with the file's pat
       const out = paged({ text: String(f.text ?? ""), from: f.from, to: f.to, total: f.lines }, who, mcp(who) ? EDIT : "; to change it: vau edit, or vau write with --base")
       return mcp(who) ? `${f.path}\n\n${out}` : out === f.text ? out.replace(/\n$/, "") : out
     },
-  }, {
+  }), defineOp({
     id: "file.write",
     cli: "write",
     mcp: "write_file",
@@ -176,7 +176,7 @@ From vau, the text comes from --from <file> or stdin, and --base <file> is the f
       return { path: p, bytes: Buffer.byteLength(text) }
     },
     text: (r) => `Wrote ${r.path} (${r.bytes} bytes).`,
-  }, {
+  }), defineOp({
     id: "file.edit",
     cli: "edit",
     mcp: "edit_file",
@@ -213,7 +213,7 @@ every time. A change made meanwhile elsewhere in the file is kept.
       return { path: f.path, replaced: all ? n : 1 }
     },
     text: (r) => `Edited ${r.path}${r.replaced > 1 ? ` (${r.replaced} places)` : ""}.`,
-  }, {
+  }), defineOp({
     id: "file.move",
     cli: "move",
     summary: "Rename or move a file or folder; links to it across the vault are updated.",
@@ -234,7 +234,7 @@ Markdown link to what moved is pointed at its new path, and open tabs follow it.
       return await ctx.api("POST", "file/move", { from: f, to: file ? keepExt(f, t) : t })
     },
     text: (r) => `Moved to ${r.path}${r.updated?.length ? `; links updated in ${r.updated.join(", ")}` : ""}.`,
-  }, {
+  }), defineOp({
     id: "file.actions",
     cli: "actions",
     mcp: "actions",
@@ -261,7 +261,7 @@ give. The app's menus show the same list. Run one with the op's id (vau <id>, th
         return `- ${a.label}: ${a.op} ${given}${a.needs.length ? `, needs ${a.needs.join(", ")}` : ""}`
       }).join("\n")
     },
-  }, {
+  }), defineOp({
     id: "file.list",
     cli: "files",
     mcp: "list",
@@ -295,5 +295,5 @@ the start of paths ("Dash").
       const end = r.offset + shown.length
       return shown.join("\n") + (r.offset || r.total > end ? `\n(files ${r.offset + 1}-${end} of ${r.total}${r.total > end ? `; more: offset ${end}, or narrow it with a folder` : ""})` : "")
     },
-  }]
+  })]
 }

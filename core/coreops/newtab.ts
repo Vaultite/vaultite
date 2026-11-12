@@ -3,7 +3,7 @@
 import type { App } from "../app.ts"
 import { commandList, type CommandDef, panelsOf, sectionsOf } from "../appsource.ts"
 import { CORE_SECTIONS, isOpens, readNewTab, type SectionInfo, shownActions, shownSections, withIcon, withPanels } from "../newtab.ts"
-import { type Op, OpError, type Param } from "../ops.ts"
+import { defineOp, type Op, OpError, type Param } from "../ops.ts"
 import { anchorFor, placeKey } from "../slots.ts"
 import { type Any, lines } from "./common.ts"
 import { onOff, pluginList } from "./plugins.ts"
@@ -68,9 +68,9 @@ function namedCommand(cmds: CommandDef[], q: string) {
   throw new OpError(`no command '${q}': give its id or its name (vau hotkeys --all lists them)`, 404)
 }
 
-const SECTION: Param = { type: "string", required: true, description: "the section: its key (core:actions), title or a plain name (buttons, terminals)" }
-const COMMAND: Param = { type: "string", required: true, description: "the command: its id (file:new) or its name in the palette (Create new note)" }
-const TO: Param = { type: "string", description: "where: a position from 1, up, down, top or bottom (left out: the end)" }
+const SECTION = { type: "string", required: true, description: "the section: its key (core:actions), title or a plain name (buttons, terminals)" } satisfies Param
+const COMMAND = { type: "string", required: true, description: "the command: its id (file:new) or its name in the palette (Create new note)" } satisfies Param
+const TO = { type: "string", description: "where: a position from 1, up, down, top or bottom (left out: the end)" } satisfies Param
 
 const HELP = `A blank tab (a new tab, ⌘T) shows sections, top to bottom, kept in .vaultite/newtab.json:
 {"sections": [keys], "actions": [command ids]}. A section is the app's (core:actions the buttons, core:opened the files
@@ -110,8 +110,8 @@ export function newTabOps(app: App): Op[] {
     app.vault.patchConfig("newtab", { [key]: list })
     return sectionList(app)
   }
-  const result = { text: (r: Any) => showList(r) }
-  const section = (id: string, cli: string, summary: string, args: string[], params: Record<string, Param>, fn: (shown: string[], s: Section, given: Any) => string[]): Op => ({
+  const result = { text: showList }
+  const section = (id: string, cli: string, summary: string, args: string[], params: Record<string, Param>, fn: (shown: string[], s: Section, given: Any) => string[]): Op => (defineOp({
     id, cli, summary, help: `${summary} See vau newtab --help.`, kind: "write", params: { section: SECTION, ...params }, args: ["section", ...args],
     run: (given) => {
       const { sections } = sectionList(app)
@@ -119,12 +119,12 @@ export function newTabOps(app: App): Op[] {
       return write("sections", fn(shown, namedSection(sections, given.section), given))
     },
     ...result,
-  })
-  const button = (id: string, cli: string, summary: string, args: string[], params: Record<string, Param>, fn: (list: string[], cmd: string, given: Any) => string[]): Op => ({
+  }))
+  const button = (id: string, cli: string, summary: string, args: string[], params: Record<string, Param>, fn: (list: string[], cmd: string, given: Any) => string[]): Op => (defineOp({
     id, cli, summary, help: `${summary} See vau newtab --help.`, kind: "write", params: { command: COMMAND, ...params }, args: ["command", ...args],
     run: (given) => write("actions", fn(sectionList(app).buttons.map((b) => b.id), namedCommand(cmds(), given.command), given)),
     ...result,
-  })
+  }))
   /** `key` put at `where` in `list` (left out: the end). */
   const at = (list: string[], key: string, where: string | undefined) => {
     const before = where === undefined ? null : anchorFor(list, key, where)
@@ -135,7 +135,7 @@ export function newTabOps(app: App): Op[] {
     if (!list.includes(key)) throw new OpError(`${what} isn't on the page: show or add it first`)
   }
 
-  return [{
+  return [defineOp({
     id: "newtab.list",
     cli: "newtab",
     summary: "A new tab's page: its sections in order, the hidden ones, and its buttons.",
@@ -144,7 +144,7 @@ export function newTabOps(app: App): Op[] {
     params: {},
     run: () => sectionList(app),
     ...result,
-  },
+  }),
   section("newtab.show", "newtab show", "Show a section on a new tab's page (at the end, or at a position).", ["to"], { to: TO },
     (shown, s, { to }) => (shown.includes(s.key) && to === undefined ? shown : at(shown, s.key, to))),
   section("newtab.hide", "newtab hide", "Hide a section of a new tab's page.", [], {}, (shown, s) => shown.filter((k) => k !== s.key)),
@@ -152,7 +152,7 @@ export function newTabOps(app: App): Op[] {
     (shown, s, { to }) => { shownOnly(shown, s.key, s.title); return at(shown, s.key, to) }),
   button("newtab.button.add", "newtab button add", "Add a button (a palette command) to a new tab's page (at the end, or at a position).", ["to"], { to: TO },
     (list, cmd, { to }) => (list.includes(cmd) && to === undefined ? list : at(list, cmd, to))),
-  {
+  defineOp({
     id: "newtab.button.icon", cli: "newtab button icon", kind: "write",
     summary: "Give a button of a new tab's page an icon of its own (a Lucide name or an emoji; empty: its command's again).",
     help: "Give a button of a new tab's page an icon of its own, kept in newtab.json's icons. See vau newtab --help.",
@@ -168,8 +168,8 @@ export function newTabOps(app: App): Op[] {
       return write("icons", withIcon(setup.icons, cmd, name))
     },
     ...result,
-  },
-  {
+  }),
+  defineOp({
     id: "newtab.page", cli: "newtab page", kind: "write",
     summary: "Draw a file (a dashboard) on new tabs instead of the sections; empty for the sections again.",
     help: "Draw a file on a blank tab instead of its sections: a start page made of any blocks. See vau newtab --help.",
@@ -183,8 +183,8 @@ export function newTabOps(app: App): Op[] {
       return write("page", file)
     },
     ...result,
-  },
-  {
+  }),
+  defineOp({
     id: "newtab.opens", cli: "newtab opens", kind: "write",
     summary: "What a new tab (⌘T, the + buttons) opens: its page, the quick switcher as a launcher, or a view's tab (view:web, a web page).",
     help: "What a new tab opens: page (the default), switcher or a view's tab (view:web). See vau newtab --help.",
@@ -197,7 +197,7 @@ export function newTabOps(app: App): Op[] {
       return write("opens", what === "page" ? null : what)
     },
     ...result,
-  },
+  }),
   button("newtab.button.remove", "newtab button remove", "Remove a button from a new tab's page.", [], {}, (list, cmd) => list.filter((k) => k !== cmd)),
   button("newtab.button.move", "newtab button move", "Move a button of a new tab's page: to a position (from 1), up, down, top or bottom.", ["to"], { to: { ...TO, required: true } },
     (list, cmd, { to }) => { shownOnly(list, cmd, cmd); return at(list, cmd, to) })]
