@@ -9,7 +9,7 @@ import { openSetup, settingsSection, settingsSectionOpen, showSettingsSection } 
 import { usePane } from "@/core/pane"
 import { openDetail } from "@/core/nav"
 import { isEnabled, offWithAi, PLUGINS, pluginById, switchedOn, tileTint, type Plugin } from "@/core/plugins"
-import { hasSettings, openPluginSettings, revealRow, settingsApart, settingsHome, settingsTitle, withSettings } from "@/core/pluginSettings"
+import { hasSettings, openPluginSettings, revealRow, settingsApart, settingsHome, settingsLit, settingsTitle, withSettings } from "@/core/pluginSettings"
 import { PluginPreview } from "@/components/PluginPreview"
 import { OpenPlugin } from "@/pages/Plugins"
 import { PluginsPane } from "@/pages/Setup"
@@ -195,7 +195,7 @@ const pluginSec = (id: string): Sec | null => {
 
 /** Back to the section a plugin's page belongs to (Plugins, or the app's section its settings are part of). */
 function Crumb({ plugin }: { plugin: Plugin }) {
-  const to = litOf(`plugin:${plugin.id}`) ?? "plugins"
+  const to = settingsLit(`plugin:${plugin.id}`)
   return <Back label={CORE.find((s) => s.id === to)?.label ?? "Plugins"} onClick={() => settingsSection.set(to)} data-settings-crumb={to} />
 }
 
@@ -244,14 +244,6 @@ function menu(prefs: Prefs): RailItem[] {
     ...CORE.filter((s) => PLUGINS_GROUP.includes(s.id)).map((s, i) => item(s, { gap: i === 0, value: s.id === "plugins" ? `${on} on` : undefined, attrs: setupAttrs(s.id) })),
     ...pages.filter((s) => !s.plugin.alwaysOn).sort((a, b) => byName.compare(a.label, b.label)).map((s) => item(s)),
   ]
-}
-
-/** What the menu lights: for a plugin's page, where it's listed: the section its switch is in (Vim keys: Editor), the
- *  app's section its settings are part of, or Plugins. */
-function litOf(active: string) {
-  const of = active.startsWith("plugin:") ? pluginById(active.slice(7)) : null
-  if (!of) return active
-  return of.switchIn?.section ?? settingsHome(of) ?? "plugins"
 }
 
 // ---------- search
@@ -452,7 +444,7 @@ export function Settings({ store }: { store: Store }) {
     <div data-settings>
       {/* (in the menu's place, the section's own heading names it: no title or search above it) */}
       <RailLayout rail={rail} page={wide || inPlace ? sec.id : ""} title={inPlace ? undefined : "Settings"}
-        side={q ? <Results found={found} query={q} picked={picked} choose={choose} /> : menuOf(litOf(sec.id))}
+        side={q ? <Results found={found} query={q} picked={picked} choose={choose} /> : menuOf(settingsLit(sec.id))}
         search={inPlace ? undefined : { value: query, onChange: typed, placeholder: "Search settings", attrs: { "data-settings-search": "" },
           onSubmit: () => { const f = lit ?? found[0]; if (!f) return; if (wide) choose(f); else f.run() }, onMove: wide ? move : undefined }}>
         {wide ? section

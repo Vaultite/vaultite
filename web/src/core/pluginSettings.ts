@@ -3,7 +3,7 @@
 import { getStore, type Store } from "@/core/data"
 import type { Plugin } from "@/core/define"
 import { openDetail } from "@/core/nav"
-import { isEnabled, PLUGINS } from "@/core/plugins"
+import { isEnabled, pluginById, PLUGINS } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
 import type { Command } from "@/core/commands"
 import { get as fetchJson, patch } from "@/core/http"
@@ -167,5 +167,12 @@ const HOMES: Record<string, string> = { writing: "editor", navigation: "files", 
 /** One whose section isn't its category's: Terminal's own, File history's Files (it keeps your files' versions). */
 const OWN: Record<string, string> = { terminal: "terminal", history: "files" }
 export const settingsHome = (p: Plugin): string | null => (p.alwaysOn ? OWN[p.id] ?? HOMES[p.category ?? ""] ?? "about" : null)
+/** The row of Settings' menu a section lights: its own; for a plugin's page (`plugin:<id>`), where it's listed: the section
+ *  its switch is in (Vim keys: Editor), the app's section its settings are part of, or Plugins. */
+export function settingsLit(section: string) {
+  const of = section.startsWith("plugin:") ? pluginById(section.slice(7)) : null
+  if (!of) return section
+  return of.switchIn?.section ?? settingsHome(of) ?? "plugins"
+}
 /** Its settings are a row in that section, opening their sheet, rather than drawn there: a long form (Graph view's). */
 export const settingsApart = (p: Plugin) => Object.keys(p.settingsDecls ?? {}).length > 10

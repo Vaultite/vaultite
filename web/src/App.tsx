@@ -59,7 +59,7 @@ import { settingsCommands, settingsTitle } from "@/core/pluginSettings"
 import { currentLayout, openImport, previousSetup, restoreSetup } from "@/core/bundles"
 import { startWelcome } from "@/core/welcome"
 import { saveAsNew } from "@/components/LayoutPicker"
-import { APP_PAGES, appPageOf, hrefOf, isSetupTab, openAppPage, openSettings, openSetup, type AppPage } from "@/core/apppages"
+import { APP_PAGES, appPageOf, hrefOf, isSetupTab, openAppPage, openSettings, openSetup, pageShownAt, useSettingsOwner, type AppPage } from "@/core/apppages"
 import { CommandPalette } from "@/components/CommandPalette"
 import { FolderPicker } from "@/components/FolderPicker"
 import { Chooser } from "@/components/Chooser"
@@ -343,7 +343,9 @@ export default function App() {
     if (!location.hash) replaceHash(hashOf(activePane().to))
   }, [])
   const filePath = isFileTab ? targetOf(tab).slice(5) : ""
-  const active = appPageOf(tab)
+  // (Settings on one of Plugins' sections is Plugins: lit, and its tab named so)
+  useSettingsOwner()
+  const active = pageShownAt(tab)
   // A file's sheet in the address (#<tab>/file/…, a phone's): on desktop, the file's tab.
   useEffect(() => {
     if (!desktop || !store || !detail) return
@@ -353,7 +355,7 @@ export default function App() {
     try { f = decodeURIComponent(arg ?? "") } catch { f = null }
     if (f) { history.replaceState(null, "", `#${hashOf(activePane().to)}`); go(`file:${f}`, false, false) }
   }, [desktop, store, detail])
-  const pageInfo = (id: string) => { const p = appPageOf(hashOf(id)); return p ? { label: p.label, icon: p.icon, tint: p.tint } : null }
+  const pageInfo = (id: string) => { const p = pageShownAt(hashOf(id)); return p ? { label: p.label, icon: p.icon, tint: p.tint } : null }
   const tabInfo = useTabInfo(store, pageInfo)
   setPageInfo(pageInfo)
   // Back when this sheet was opened from another sheet.
@@ -652,7 +654,7 @@ export default function App() {
             </button>
           )}
           {APP_PAGES.map((t) => (
-            <a key={t.id} href={hrefOf(t)} aria-label={t.label} data-tip={t.label} data-tip-side={leftOpen ? "top" : "right"} data-app-page={t.id}
+            <a key={t.id} href={hrefOf(t)} aria-label={t.label} aria-current={t.id === active?.id ? "page" : undefined} data-tip={t.label} data-tip-side={leftOpen ? "top" : "right"} data-app-page={t.id}
               onClick={(e) => { if (!desktop) return; e.preventDefault(); openAppPage(t, e.metaKey || e.ctrlKey) }}
               className={cn("grid size-7 shrink-0 place-items-center rounded-[5px] transition-colors",
                 t.id === active?.id ? "bg-foreground/[0.08] text-primary" : "text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground")}>

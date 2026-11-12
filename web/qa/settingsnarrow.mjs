@@ -4,7 +4,8 @@
 // (pages/Setup.tsx) and core/apppages.ts' openSettings. A phone's Plugins stays its own page. What the menu's Plugins
 // counts, and Remote access (plugins/core/mcp/Connections.tsx) saying it's optional. The palette's way to where a
 // setting is (core/switches.ts' placeOf, ⌘↩): Settings at its row, in place, not a sheet. Settings itself (its button,
-// ⌘,) opens on its menu and search. Writes nothing.
+// ⌘,) opens on its menu and search. Wide, the sidebar's two buttons are two places: each reopens on its own last
+// section, and the one lit is the one showing. Writes nothing.
 //   node web/qa/settingsnarrow.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { openPalette, palette, qa, until, wait } from "./lib/qa.mjs"
@@ -92,6 +93,14 @@ try {
   await menu.locator('[data-settings-nav="get"]').click(); await inPlace("get")
   await rightSidebar(false)
   check("wide: the section beside the menu", await layout() === "wide" && await shown("get").isVisible() && !(await back.count()))
+  const lit = () => page.locator("[data-app-page][aria-current=page]").getAttribute("data-app-page")
+  check("Settings on Get plugins: the sidebar lights Plugins", await lit() === "setup", await lit())
+  await page.locator("[data-app-page=settings]").click()
+  const own = await until(async () => { const s = await page.locator("[data-settings] [data-settings-section]").first().getAttribute("data-settings-section"); return s && s !== "get" && s !== "plugins" && s }, 3000)
+  check("Settings' button from Plugins: its own last section, not Plugins'", !!own, own)
+  check("…and it's Settings that's lit", await lit() === "settings", await lit())
+  await page.locator("[data-app-page=setup]").click()
+  check("Plugins' button: back where Plugins was", !!(await until(() => shown("get").isVisible(), 3000)) && await lit() === "setup")
   await rightSidebar(true)
   check("narrow again: still that section, in place", await inPlace("get"))
   await toMenu()
