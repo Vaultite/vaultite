@@ -23,7 +23,7 @@ const OFFICIAL = officialPlugins()
 const TIMEOUT = 8 * 60_000
 /** Scripts on the sample as written, whatever the day: counts that only go down need the same files every run, and a
  *  sandbox dated to today has that day's logs. */
-const UNDATED = new Set(["counts", "requests", "a11y"])
+const UNDATED = new Set(["counts", "requests", "a11y", "visual"])
 /** Budgets of the app alone: without Vaultite/plugins' own (its bundles, renders and polls, dispatch's every 5 s, aren't
  *  this repo's to pin). */
 const ALONE = new Set(["counts", "requests"])
@@ -35,7 +35,6 @@ if (argv.includes("--lint")) process.exit(lint())
  *  itself counts as drawn, and data-fence (plugin-compat's, a vault plugin of its own), and one it asserts is gone. */
 function lint() {
   const walk = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? (e.name === "node_modules" ? [] : walk(path.join(d, e.name))) : [path.join(d, e.name)])
-  // (and the toasts' library, which draws its own)
   const src = ["web/src", "web/index.html", "plugins", "core", "electron", "tools/fixtures", "node_modules/sonner/dist/index.mjs"].flatMap((d) => fs.statSync(path.join(ROOT, d)).isDirectory() ? walk(path.join(ROOT, d)) : [path.join(ROOT, d)])
     .filter((f) => /\.(tsx?|css|html|mjs|cjs|js)$/.test(f)).map((f) => fs.readFileSync(f, "utf8")).join("\n")
   const camel = (s: string) => s.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase())
@@ -78,7 +77,6 @@ if (names.some(desktop) && own) {
   if (!r.error) process.exit(r.status ?? 1)
   console.error("qa: no xvfb-run (apt install xvfb): the desktop scripts run on this display, among its windows")
 }
-// On a Mac, from a background job, the run again as an interactive one (tools/qa_job.ts)
 if (process.platform === "darwin" && !process.env.VAULTITE_QA_JOB && await throttled()) {
   console.log("qa: this Mac holds back this job's timers (a background launchd job): running as an interactive one")
   const code = await asInteractiveJob(process.argv.slice(1))
@@ -87,7 +85,6 @@ if (process.platform === "darwin" && !process.env.VAULTITE_QA_JOB && await throt
 }
 
 
-/** The usage line's arguments, after `node web/qa/<name>.mjs`. */
 function usage(name: string) {
   const m = new RegExp(`node web/qa/${name}\\.mjs([^\\n(]*)`).exec(head(name))
   return (m?.[1] ?? "").match(/<[^>]+>|\[[^\]]+\]/g) ?? []
@@ -150,7 +147,6 @@ function envFor(claude: string, repos: string): Record<string, string> {
 }
 const claudeHome = (dir: string) => { fs.cpSync(path.join(ROOT, "tools/fixtures/claude"), dir, { recursive: true }); return dir }
 
-/** The template's server: a script's, on the template's folders. */
 const boot: Boot = async (at, scratch) => {
   const s = await serve(at.vault, at.local, envFor(claudeHome(path.join(scratch, "claude")), at.repos))
   return { base: s.base, stop: () => stop(s) }
@@ -242,7 +238,6 @@ async function setUpAndRun(name: string, mark: string): Promise<Ran> {
   }
 }
 
-// One copy of a script at a time: some use fixed ports or session names.
 const queue = Array.from({ length: repeat }, () => names).flat()
 const running = new Set<string>()
 const next = () => { const i = queue.findIndex((n) => !running.has(n)); return i < 0 ? null : queue.splice(i, 1)[0] }

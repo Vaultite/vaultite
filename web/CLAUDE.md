@@ -87,6 +87,9 @@
   write to the vault, `menu`, `pane`, `toast`.
 - QA is still (Reduce motion, desktop copies too): a script about motion says `qa(url, { motion: true })`. A desktop
   copy's pointer is `globalThis.qaPointer`, never the user's.
+- `visual.mjs` holds the main screens against a machine's own pictures (OS and fonts draw text differently): one with
+  none draws them and skips. A change meant to look different redraws this machine's (`--update`, by hand) and deletes
+  the other machines' folders, which redraw on their next run.
 - QA reads Vaultite/plugins at `tools/qa_plugins.json`'s commit (`node tools/qa_plugins.ts --bump` moves it).
 - QA runs on Playwright's Chromium (`CHROME` in `web/qa/lib/qa.mjs`): a headless Google Chrome left running hides the
   user's Chrome.
