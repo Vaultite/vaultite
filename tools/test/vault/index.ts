@@ -90,6 +90,7 @@ export const AREAS: { name: string; deps: string[] }[] = [
   { name: "companion", deps: ["pages"] },
   { name: "uimodel", deps: [] },
   { name: "takeover", deps: ["pages"] },
+  { name: "stack", deps: [] },
   { name: "helper", deps: ["pages"] },
   { name: "voice", deps: ["pages", "cli"] },
   { name: "realtime", deps: ["pages", "cli"] },

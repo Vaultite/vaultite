@@ -1,6 +1,6 @@
 // The Browser's pages: a WebContentsView over a tab's pane, which the page places and covers; sandboxed, a session
 // per profile, http(s) only. What it does and why: plugins/core/web-viewer/CLAUDE.md.
-import { app, BaseWindow, clipboard, dialog, type Input, ipcMain, Menu, type MenuItemConstructorOptions, nativeImage, powerSaveBlocker, safeStorage, screen, session, shell, type Session, systemPreferences, WebContentsView, type WebContents } from "electron"
+import { app, BaseWindow, clipboard, dialog, type Input, ipcMain, Menu, type MenuItemConstructorOptions, nativeImage, powerSaveBlocker, safeStorage, screen, session, shell, type Session, systemPreferences, type View, WebContentsView, type WebContents } from "electron"
 import { localUrl } from "../core/web.ts"
 import { AppWindow } from "./appwindow.ts"
 import { allPages, canvasOf, cdp, engineCall, engineLoaded, engineOpens, handle, mayOpen, mayPicture, openedByAgent, pageHeld, pageKept, pageMade, partitionOf, sessionMade, sessionReady, setCanvasHandler, setEngineHost, setOpener } from "./browser/engine.ts"
@@ -11,6 +11,7 @@ import { ACCOUNTS, covers, nonempty, type Rule, type Who } from "./siteaccounts.
 import { writeAtomic } from "./setup.ts"
 import { otherAppScheme } from "../core/opening.ts"
 import { QUIET } from "./quiet.ts"
+import { NO_POINTER, type Passed, type Pointer, type PointerEvent, pointerStep, passedOf, type Raise, raiseOf, type Role, stackOrder } from "./stack.ts"
 import { claim, discardable, flowOn, hear, letGo, LINGER_MS, media, MOVE_MS, outlasted, playback, playing, quietEnds, RECLAIM_MS, tabGone, tabMoved, unclaimed, unmoved, windowReloaded, type Flow, type Owned, type Playback } from "./webpages.ts"
 import { execFile } from "node:child_process"
 import crypto from "node:crypto"
@@ -814,6 +815,7 @@ const stow = (p: Page) => { if (p.drawn) park(p); else p.view.setVisible(false) 
  *  `web:adopt`, which gives a tab-less page its tab.) */
 function moveTo(p: Page, win: AppWindow) {
   const from = p.win
+  run(from, { type: "gone", page: p.id })
   if (!from.isDestroyed() && !p.player) from.contentView.removeChildView(p.view)
   if (p.full && !p.player) leaveFull(p)
   p.win = win
@@ -834,6 +836,7 @@ function own(p: Page, tab: string) {
 
 function end(p: Page) {
   pages.delete(p.id)
+  run(p.win, { type: "gone", page: p.id })
   clearTimeout(p.hush)
   clearTimeout(p.linger)
   fromPlayer(p)
@@ -1320,7 +1323,7 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
     looks.set(win, c)
     for (const p of pages.values()) if (p.win === win && p.fresh) p.view.setBackgroundColor(c)
   },
-  "web:raise": (win, how) => raise(win, how === "app" || how === "through" ? how : null),
+  "web:raise": (win, how) => raise(win, raiseOf(how)),
   "web:pointer": (win, id, m) => pointer(mine(win, id), m),
   "web:release": (win, id) => {
     const p = pages.get(Number(id))
@@ -1868,94 +1871,75 @@ async function iconFrom(p: Page, urls: unknown) {
   setIcon(key, loadIcons().get(host) === got.icon ? null : got.icon)
 }
 
-// ---------- the window's page over its pages ----------
+// ---------- the window's page over its pages: stack.ts decides, this applies ----------
 
-/** How the window's page is over its pages: not (null), taking the pointer (a menu, the palette, a drag), or letting it
- *  through to them (a toast, a tooltip: `pointer` passes on what it gets there). */
-type Raise = "app" | "through" | null
-const raised = new WeakMap<AppWindow, Raise>()
+const pointers = new WeakMap<AppWindow, Pointer>()
+const pointerOf = (win: AppWindow) => pointers.get(win) ?? NO_POINTER
 
 /** Every view that was a page's (one ending stays a while, hidden, its last frame taken). */
 const pageViews = new WeakSet<WebContentsView>()
 
-/** A page into the window, over its other pages (`restack`). */
+/** A page into the window, over its other pages. */
 function addPage(win: AppWindow, view: WebContentsView) {
   pageViews.add(view)
   restack(win, view)
 }
 
-/** The window's views in the order its state makes, whatever came before: its pages (`top` over the others), its own
- *  page while raised, pages in full screen, then what's meant to be on top (an extension's popup, a top strip). */
 function restack(win: AppWindow, top?: WebContentsView) {
   if (win.isDestroyed()) return
-  const kids = win.contentView.children, full = new Set<WebContentsView>()
+  const full = new Set<WebContentsView>()
   for (const p of pages.values()) if (p.win === win && p.full && !p.player) full.add(p.view)
-  const page = (v: unknown): v is WebContentsView => v instanceof WebContentsView && v !== win.view && pageViews.has(v)
-  const group = (inFull: boolean) => {
-    const vs = kids.filter((v) => page(v) && v !== top && full.has(v) === inFull)
-    if (top && full.has(top) === inFull) vs.push(top)
-    return vs
-  }
-  const below = group(false), rest = kids.filter((v) => v !== win.view && !page(v) && v !== top)
-  const want = [...(raised.get(win) ? [...below, win.view] : [win.view, ...below]), ...group(true), ...rest]
+  const roleOf = (v: View): Role => v === win.view ? "window" : v instanceof WebContentsView && pageViews.has(v) ? (full.has(v) ? "full" : "page") : "chrome"
+  const want = stackOrder(win.contentView.children, roleOf, pointerOf(win).raise, top)
   for (const [i, v] of want.entries()) if (win.contentView.children[i] !== v) win.contentView.addChildView(v, i)
 }
 
-function raise(win: AppWindow, how: Raise) {
-  if (win.isDestroyed()) return
-  raised.set(win, how)
-  restack(win)
-  passPinch(win, false)
-  // (a pointer resting over a page as the window goes over it, as fingers on the trackpad leave it, is told to the
-  // window's page: it then says whether it's over the page there, `pointer`). A quiet copy's isn't the user's (quiet.ts).
-  if (!MAC || how !== "through" || QUIET) return
+const raise = (win: AppWindow, how: Raise) => { if (!win.isDestroyed()) run(win, { type: "raise", how }) }
+
+function pointer(p: Page, m: unknown) {
+  const e = passedOf(m)
+  if (e) run(p.win, { type: "pass", page: p.id, kind: e.kind, button: e.button }, p, e)
+}
+
+function run(win: AppWindow, e: PointerEvent, p?: Page, m?: Passed) {
+  const r = pointerStep(pointerOf(win), e)
+  pointers.set(win, r.to)
+  for (const x of r.do) {
+    if (x.do === "restack") restack(win)
+    else if (x.do === "pinch") { if (MAC && !win.isDestroyed()) void import("./gestures.ts").then((g) => g.passPinch(win, x.on)) }
+    else if (x.do === "hover") hover(win)
+    else if (p && m) send(p, m, x.do === "send" ? x.buttons : null)
+  }
+}
+
+/** The pointer resting over a page as the window goes over it (fingers leaving the trackpad) is told to the window's
+ *  page, which then says what's under it. A quiet copy's pointer isn't the user's (quiet.ts). */
+function hover(win: AppWindow) {
+  if (!MAC || QUIET) return
   const at = screen.getCursorScreenPoint(), b = win.getContentBounds()
   if (at.x >= b.x && at.y >= b.y && at.x < b.x + b.width && at.y < b.y + b.height) win.webContents.sendInputEvent({ type: "mouseMove", x: at.x - b.x, y: at.y - b.y })
 }
 
-/** Whether a pinch in each window goes to the page under the pointer now, the window's page letting it through there. */
-const pinchPassed = new WeakMap<AppWindow, boolean>()
-function passPinch(win: AppWindow, on: boolean) {
-  if (!MAC || win.isDestroyed() || (pinchPassed.get(win) ?? false) === on) return
-  pinchPassed.set(win, on)
-  void import("./gestures.ts").then((g) => g.passPinch(win, on))
-}
+const CDP_TYPE = { mouseMove: "mouseMoved", mouseDown: "mousePressed", mouseUp: "mouseReleased", mouseWheel: "mouseWheel" } as const
+const KEY_BITS = { alt: 1, control: 2, meta: 4, shift: 8 }
 
-/** The pointer over a page while the window's page lets it through, at the page's own CSS pixels from its corner. */
-function pointer(p: Page, m: unknown) {
-  if (!m || typeof m !== "object") return
-  const e = m as { type?: unknown; x?: unknown; y?: unknown; button?: unknown; clickCount?: unknown; dx?: unknown; dy?: unknown; keys?: unknown }
-  // (a press passed while through is let go here even once the window dropped under the page: else it's held for good)
-  if (raised.get(p.win) !== "through" && !((held.get(p.view.webContents) ?? 0) && (e.type === "mouseUp" || e.type === "mouseMove"))) return
-  // (while it's over the page, a pinch is the page's too: gestures.m)
-  if (raised.get(p.win) === "through") passPinch(p.win, e.type !== "mouseLeave")
-  const z = p.win.webContents.getZoomFactor(), num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0)
-  const x = Math.round(num(e.x) * z), y = Math.round(num(e.y) * z)
-  const button = e.button === "right" || e.button === "middle" ? e.button : "left", clickCount = Math.max(1, Math.min(3, num(e.clickCount)))
-  const keys = (Object.keys(KEY_BITS) as (keyof typeof KEY_BITS)[]).filter((k) => Array.isArray(e.keys) && e.keys.includes(k))
-  const modifiers = keys.reduce((n, k) => n | KEY_BITS[k], 0)
-  const wc = p.view.webContents
+/** Event `m` to page `p` with `buttons` held after it (null: a leave), at the page's own CSS pixels. */
+function send(p: Page, m: Passed, buttons: number | null) {
+  const wc = p.view.webContents, z = p.win.webContents.getZoomFactor()
+  const x = Math.round(m.x * z), y = Math.round(m.y * z)
   // (the click landed on the window's view, which macOS gave the keyboard: a press in the page takes it, as a real one does)
-  if (e.type === "mouseDown" && !wc.isFocused()) wc.focus()
+  if (m.kind === "mouseDown" && !wc.isFocused()) wc.focus()
   const direct = () => {
-    if (e.type === "mouseWheel") wc.sendInputEvent({ type: "mouseWheel", x, y, deltaX: -num(e.dx), deltaY: -num(e.dy), canScroll: true, modifiers: keys })
-    else if (e.type === "mouseMove" || e.type === "mouseDown" || e.type === "mouseUp" || e.type === "mouseLeave") wc.sendInputEvent({ type: e.type, x, y, button, clickCount, modifiers: keys })
+    if (m.kind === "mouseWheel") wc.sendInputEvent({ type: "mouseWheel", x, y, deltaX: -m.dx, deltaY: -m.dy, canScroll: true, modifiers: m.keys })
+    else wc.sendInputEvent({ type: m.kind, x, y, button: m.button, clickCount: m.clickCount, modifiers: m.keys })
   }
+  if (buttons === null || m.kind === "mouseLeave") return direct()
   // Over the DevTools protocol, which finds the frame under the pointer as the Mac's input does: sendInputEvent never
-  // reaches a frame from another site (a captcha, "Sign in with Google"). At the page's CSS pixels; a leave has none.
-  const type = ({ mouseMove: "mouseMoved", mouseDown: "mousePressed", mouseUp: "mouseReleased", mouseWheel: "mouseWheel" } as const)[e.type as string]
-  if (!type) { if (e.type === "mouseLeave") { held.delete(wc); direct() } return }
-  const bit = { left: 1, right: 2, middle: 4 }[button]
-  const was = held.get(wc) ?? 0, now = type === "mousePressed" ? was | bit : type === "mouseReleased" ? was & ~bit : was
-  held.set(wc, now)
-  const pz = wc.getZoomFactor() || 1
-  const at = { x: Math.round(num(e.x) * z / pz), y: Math.round(num(e.y) * z / pz) }
-  const params = type === "mouseWheel" ? { type, ...at, modifiers, deltaX: num(e.dx) * z / pz, deltaY: num(e.dy) * z / pz }
-    : type === "mouseMoved" ? { type, ...at, modifiers, button: now ? (now & 1 ? "left" : now & 2 ? "right" : "middle") : "none", buttons: now }
-    : { type, ...at, modifiers, button, buttons: now, clickCount }
+  // reaches a frame from another site (a captcha, "Sign in with Google").
+  const type = CDP_TYPE[m.kind], pz = wc.getZoomFactor() || 1, modifiers = m.keys.reduce((n, k) => n | KEY_BITS[k], 0)
+  const at = { x: Math.round(m.x * z / pz), y: Math.round(m.y * z / pz) }
+  const params = type === "mouseWheel" ? { type, ...at, modifiers, deltaX: m.dx * z / pz, deltaY: m.dy * z / pz }
+    : type === "mouseMoved" ? { type, ...at, modifiers, button: buttons ? (buttons & 1 ? "left" : buttons & 2 ? "right" : "middle") : "none", buttons }
+    : { type, ...at, modifiers, button: m.button, buttons, clickCount: m.clickCount }
   void cdp(wc, "Input.dispatchMouseEvent", params).catch(direct)
 }
-/** The buttons held in each page, by the window's passed pointer. */
-const held = new WeakMap<WebContents, number>()
-/** The keys a passed pointer's event holds, by Electron's names, as the DevTools protocol's bits. */
-const KEY_BITS = { alt: 1, control: 2, meta: 4, shift: 8 }
