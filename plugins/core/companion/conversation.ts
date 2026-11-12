@@ -22,6 +22,8 @@ const DOES: Record<string, string> = { look: "pointed", draw: "drew", highlight:
   edit: "wrote", comment: "commented", suggest: "suggested", propose: "proposed", follow: "followed", see: "looked at a pane", clear: "cleared" }
 const NOT_SHOWN = new Set(["next", "handed", "sent", "done", "again", "word", "say", "pass", "stopped", "result", "withdrawn", "talked"])
 const ASKS = new Set(["ask", "point", "reply"])
+/** Acts whose text says where they landed on the screen. */
+const WHERE = new Set(["look", "draw"])
 /** A job's proof shown (`shown`, its JSON): its own exchange, so its words never read as the answer to the ask before. */
 const proofOf = (a: Act) => { try { const x = JSON.parse(a.text ?? ""); return { t: a.t, seq: -1, kind: "shown", text: `Show me: ${String(x.title ?? x.job ?? "a job")}`, summoned: false, voice: true as const } } catch { return null } }
 
@@ -58,7 +60,8 @@ export function exchanges(ms: Moment[], allActs: Act[], presses: PressLine[], na
       t: m.t, seq: m.seq, kind: m.kind, text: m.text ?? "", summoned: !!m.summoned, voice: !!m.voice,
       where: w.title ? `${w.title}${w.app ? ` (${w.app})` : ""}` : "path" in m && m.path ? `${m.path.replace(/\.md$/, "")}${m.line ? `, line ${m.line}` : ""}` : "",
       said: "talked" in m ? [m.talked ?? ""] : mine.filter((a) => a.op === "say" && a.text).map((a) => a.text!),
-      did: [...new Set(mine.filter((a) => !NOT_SHOWN.has(a.op)).map((a) => DOES[a.op] ?? a.op))],
+      // (a look's or a draw's text says where it landed: "pointed at 1006,60 on the screen")
+      did: [...new Set(mine.filter((a) => !NOT_SHOWN.has(a.op)).map((a) => `${DOES[a.op] ?? a.op}${WHERE.has(a.op) && a.text ? ` ${a.text}` : ""}`))],
       ...(results.length ? { results } : {}),
       ...(handed && word ? { word: Math.max(0, (word.t - m.t) / 1000) } : {}), ...(done ? { total: (done.t - m.t) / 1000 } : {}),
       ...(p ? { press: { id: p.end.press, steps: p.steps, ...(costOf(p.steps) ? { cost: costOf(p.steps) } : {}) } } : {}),

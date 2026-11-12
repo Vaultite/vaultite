@@ -410,7 +410,7 @@ export function inPicture(m: Moment): Moment {
   const at = m.shotAt
   if (!at || (!at.x && !at.y)) return m
   const r = <T extends { x: number; y: number }>(b: T): T => ({ ...b, x: b.x - at.x, y: b.y - at.y })
-  return { ...m, shotAt: r(at), ...(m.sx !== undefined && m.sy !== undefined ? { sx: m.sx - at.x, sy: m.sy - at.y } : {}),
+  return { ...m, shotAt: r(at), origin: { x: at.x, y: at.y }, ...(m.sx !== undefined && m.sy !== undefined ? { sx: m.sx - at.x, sy: m.sy - at.y } : {}),
     ...(m.shotDownAt ? { shotDownAt: r(m.shotDownAt) } : {}), ...(m.closeUp ? { closeUp: { ...m.closeUp, at: r(m.closeUp.at) } } : {}), ...(m.near ? { near: m.near.map((e) => ({ ...e, frame: r(e.frame) })) } : {}),
     ...(m.ink ? { ink: m.ink.map((k) => ({ ...k, box: r(k.box), points: k.points.map(([x, y]) => [x - at.x, y - at.y] as [number, number]) })) } : {}) }
 }

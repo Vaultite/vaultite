@@ -41,6 +41,7 @@ import { type Screen, toursOf } from "./tours.ts"
 import type { Tour } from "./tour.ts"
 import type { Seen } from "../../../core/desktop/anchor.ts"
 import { beatOf, markOf, placeOf as tagPlace, type Spot, type Tag } from "./tags.ts"
+import { keepShown, type Shown as ShownMark, shownText } from "./shown.ts"
 import { doneText, effectOf, isBrowser, macOpen, nearText, stepOf, takeovers } from "./takeover.ts"
 import { check as checkOn, listView, parseCondition, thingFrom, thingText, type Verdict } from "../../../core/desktop/uimodel.ts"
 export { nearest } // (its tests reach it through the plugin)
@@ -102,6 +103,8 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
   /** What was under their pointer, in words; on screen, that point (sx, sy), the picture's frame (`shotAt`: a pixel a
    *  point), what Accessibility found near it (`near`, ids for --ax) and what they drew (`ink`). */
   under?: string; sx?: number; sy?: number; shotAt?: Rect; near?: Near[]; ink?: Ink[]
+  /** Where its picture's top left was on the screen, once its points are the picture's (summoned.ts' inPicture). */
+  origin?: { x: number; y: number }
   /** The box they drew on screen and keep there (a drag with the Talk key held: what they record), screen points. */
   region?: Rect
   /** What they clicked as they spoke, the Talk key held (each went on to the app as a click): where, and what was there. */
@@ -285,6 +288,9 @@ const did = (as: string, op: string, seqs?: number[], text?: string) => {
   if (quick) lane().acted(op)
   else handed.delete(key(as))
 }
+/** What each agent showed on the screen lately, where it landed (shown.ts): its next asks carry it. */
+const shownBy = new Map<string, ShownMark[]>()
+const showed = (as: string, add: ShownMark[]) => { if (add.length) shownBy.set(key(as), keepShown(shownBy.get(key(as)) ?? [], add)) }
 /** An agent's state once it acted: still thinking while busy on an ask (until its next `next`), else watching. */
 // (a tour asked for by name answers as a turn would: at work till it ends, so the press it answers ends with it)
 const acting = (name: string): Agent["state"] => ((inSummoned.getStore() ? lane().asking() : asking.has(key(name)) || touredAsk.has(key(name))) ? "thinking" : "watching")
@@ -2747,7 +2753,11 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
     }
   }
   // (what its last answer left on their screen: a follow-up changes it in place)
-  for (const a of new Set(ms.flatMap((m) => (m.for && (m.kind === "ask" || m.kind === "point") ? [m.for] : [])))) { const up = screenDrawing.text(a); if (up) out.push(up) }
+  for (const a of new Set(ms.flatMap((m) => (m.for && (m.kind === "ask" || m.kind === "point") ? [m.for] : [])))) {
+    const up = screenDrawing.text(a), was = shownText(shownBy.get(key(a)) ?? [], Date.now(), ms.findLast((m) => m.origin)?.origin)
+    if (up) out.push(up)
+    if (was) out.push(was)
+  }
   for (const e of notes) {
     if (e.pane) { out.push(`"${e.title ?? e.pane}" (pane ${e.pane}), what it shows now${e.text?.includes("[ref=") || /\be\d+\b/.test(e.text ?? "") ? " (refs for look --el, act)" : ""}:`, e.text ?? ""); continue }
     if (e.scene) { out.push(`${e.path}, the drawing (ids for companion draw, say --find):`, e.scene); continue }
@@ -2771,7 +2781,10 @@ plugin.op({
   params: { ...PLACE, as: AS },
   run: async (p) => {
     const name = who(p), t = await resolve(target(p, true), name)
-    did(name, "look")
+    const at = t.frame ? { x: t.frame.x, y: t.frame.y, w: t.frame.width, h: t.frame.height } : t.sx !== undefined && t.sy !== undefined ? { x: t.sx, y: t.sy } : undefined
+    const on = at ? undefined : placeText(t, t.pane ? paneById(t.pane)?.title : undefined)
+    showed(name, [{ t: Date.now(), what: "your cursor pointed", ...(at ? { at } : { on }) }])
+    did(name, "look", undefined, at ? `at ${Math.round(at.x)},${Math.round(at.y)} on the screen` : `at ${on}`)
     setAgent(name, { ...t, state: acting(name), pointed: Date.now() })
     return t
   },
@@ -3908,18 +3921,28 @@ drawing's text (next, vau render). Only in pair mode or when they asked you to.
 /** Marks over the screen, its cursor at the first and its words said with them. */
 async function drawOnScreen(p: Record<string, unknown>, ctx: OpCtx) {
   const name = who(p)
-  did(name, "draw")
-  const { drawing: d, unshown } = await screenDrawing.draw(name, p.marks, str(p.say) || undefined, str(p.hint).trim() || undefined).catch((e) => {
+  const { drawing: d, unshown, added } = await screenDrawing.draw(name, p.marks, str(p.say) || undefined, str(p.hint).trim() || undefined).catch((e) => {
+    did(name, "draw")
     const use = toolUse.getStore(), n = use ? streams.get(use)?.note : undefined, ask = askOf(name)?.t
     if (n && ask !== undefined) saidUndrawn.set(key(name), { note: n, text: notes.get(n)?.text ?? str(p.say), ask })
     throw e
   })
+  // (where each landed, a bare point snapped to what's there: what they saw)
+  const landed = added.map((m) => ({ t: Date.now(), what: `your ${m.type}`, ...landing(m, d.places) }))
+  showed(name, landed)
+  did(name, "draw", undefined, `${landed.map((x) => `${/^[aeiou]/.test(x.what.slice(5)) ? "an" : "a"} ${x.what.slice(5)}${x.at ? ` at ${Math.round(x.at.x)},${Math.round(x.at.y)}` : ""}`).join(", ")} on the screen`)
   const r = spots(d.marks).map((s) => rectOf(s, d.places)).find(Boolean)
   const at = r ? { sx: Math.round(r.x + r.w / 2), sy: Math.round(r.y + r.h / 2) } : {}
   // (a choice's question: asked, as a question is)
   if (str(p.say)) await ctx.op("companion.say", { text: str(p.say), ...at, ...(d.marks.some(isAnswer) ? { ask: true } : {}), ...(p.as ? { as: p.as } : {}) })
   else if (r) setAgent(name, { ...at, state: acting(name) })
   return { screen: d.id, marks: (p.marks as unknown[]).length - unshown.length, ...(unshown.length ? { unshown } : {}) }
+}
+
+/** Where mark `m` landed on the screen (its first spot's box), or its area in words; a card on calm space has neither. */
+function landing(m: Mark, places: Record<string, ScreenRect> = {}): Pick<ShownMark, "at" | "on"> {
+  const s = spots([m])[0], r = s && rectOf(s, places)
+  return r ? { at: { x: r.x, y: r.y, w: r.w, h: r.h } } : s && "area" in s ? { on: `the ${s.area} of the screen` } : {}
 }
 
 /** The drawing up changed in place by id, its words said with it. */

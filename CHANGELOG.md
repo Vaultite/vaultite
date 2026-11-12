@@ -19,6 +19,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Claude Code sessions the app starts read the vault's rules once**: a terminal's or chat's session no longer gets
   the plugins' lines again in its system prompt when its CLAUDE.md already has them, and its `vau mcp` server leaves
   them out of its instructions.
+- **The companion remembers where its marks landed**: each ask tells it what it pointed at or drew on your screen in
+  the last few minutes and where each landed, so asked "why did you draw there?" it answers from what you saw. A mark at
+  a pane lands on the pane you see, never a hidden copy of it.
 
 ## 0.13.0 (2026-11-11)
 

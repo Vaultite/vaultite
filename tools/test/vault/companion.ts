@@ -28,16 +28,29 @@ export default async ($: VaultTest) => {
       { t: now - 40 * 60_000 + 900, as: "Claude (summoned)", op: "result", text: "open: Opened https://github.com/x/y/pull/3 (pane p7)." },
       { t: now - 5 * 60_000 + 400, as: "Claude (summoned)", op: "say", text: "Let me look at the whole screen" },
       { t: now - 5 * 60_000 + 600, as: "Claude", op: "withdrawn", seqs: [2] }, { t: now - 5 * 60_000 + 600, as: "Claude", op: "say", text: "Good, thanks!" },
+      { t: now - 5 * 60_000 + 700, as: "Claude (summoned)", op: "look", text: "at 1006,60 on the screen" },
       { t: now - 60_000, as: "Claude", op: "talked", text: JSON.stringify({ heard: "thanks", said: "Anytime." }) },
     ], [], "Claude")
     const said = v.talkSoFar(xs, now)
     check("companion: the talk keeps what it did with its ids, the realtime voice's words over a withdrawn answer, and small talk",
       xs.length === 3 && /40 min ago.*open the pr\n  you: Opening it\.\n  you did: open: Opened https:\/\/github\.com\/x\/y\/pull\/3 \(pane p7\)/.test(said) &&
-      /you: Good, thanks!/.test(said) && !/whole screen/.test(said) && /1 min ago, they said: thanks\n  you: Anytime\./.test(said), said)
+      /you: Good, thanks!\n  you did: pointed at 1006,60 on the screen/.test(said) && !/whole screen/.test(said) && /1 min ago, they said: thanks\n  you: Anytime\./.test(said), said)
     const many = Array.from({ length: 200 }, (_, i) => ask(i, now - (200 - i) * 60_000, `ask number ${i} ${"word ".repeat(40)}`))
     const long = v.talkSoFar(v.exchanges(many, [], [], "Claude"), now, 3000)
     check("companion: a long talk is told within its budget, its newest asks whole and the oldest left out",
       long.length <= 3000 && /ask number 199/.test(long) && !/ask number 0 /.test(long) && long.split("\n").at(-1)!.length > 160, long.length)
+  }
+
+  {
+    // What it showed on the screen, kept a while: the oldest and the stale go, and none is no line.
+    const sh = await import("../../../plugins/core/companion/shown.ts")
+    const t0 = 50_000_000, ring = { t: t0, what: "your ring", at: { x: 10, y: 20, w: 30, h: 40 } }
+    const kept = sh.keepShown(sh.keepShown([], [ring], t0), Array.from({ length: 9 }, (_, i) => ({ t: t0 + i, what: `your num ${i}`, at: { x: i, y: i } })), t0 + 10)
+    const stale = sh.keepShown(kept, [{ t: t0 + 11 * 60_000, what: "your cursor pointed", on: "Notes/A.md:3" }], t0 + 11 * 60_000)
+    check("companion: what it showed is kept, at most a few and only lately; told in words with where",
+      kept.length === sh.SHOWN_KEEP.most && kept[0].what === "your num 1" && stale.length === 1 && sh.shownText([], t0) === "" &&
+      /12 s ago: your ring at 10,20 30×40/.test(sh.shownText([ring], t0 + 12_000)) && /your cursor pointed at Notes\/A\.md:3/.test(sh.shownText(stale, t0 + 11 * 60_000)) &&
+      sh.shownText([ring], t0 + 11 * 60_000) === "", [kept, stale])
   }
 
   {
@@ -1015,6 +1028,13 @@ export default async ($: VaultTest) => {
       st3 === 200 && r3.marks === 2 && r3.unshown?.length === 1 && /check at 5000,100 is off their screen/.test(r3.unshown[0]) && shownNow.length === 2 && !shownNow.some((m: Any) => m.type === "check"), [r3, shownNow])
     ;[st3, r3] = await api("POST", "ops/companion.draw", { marks: [{ type: "frame", at: [-900, -900, 40, 20] }] })
     check("companion: a drawing with every mark off their screen is refused: nothing drawn, they saw no mark", st3 === 409 && /off their screen.*saw no mark/.test(r3.error), r3)
+    // (what it showed is in its next asks, where it landed, in the ask's own points: it never denies a mark they saw)
+    await api("POST", "ops/companion.look", { sx: 700, sy: 40 })
+    const next = { kind: "ask", text: "why did you draw up there?", for: "Claude", seq: 900, t: Date.now() } as Any
+    const was = c.momentsText([next], "pair", null), inPic = c.momentsText([{ ...next, origin: { x: 100, y: 20 } }], "pair", null)
+    check("companion: its next ask says what it showed lately and where each landed, a mark left out not among them, in the picture's pixels when its points are",
+      /What you showed on their screen lately[^\n]*\n(.*\n)*.*your ring at 100,100 40×20\n(.*\n)*.*your cursor pointed at 700,40/.test(was) && !/your check at 5000/.test(was) &&
+      /your ring at 0,80 40×20/.test(inPic) && /your cursor pointed at 600,20/.test(inPic), [was, inPic])
     await api("POST", "ops/companion.clear", {})
     helper.emit("close"); win.emit("close")
     ;[st3, r3] = await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: [1, 1] }] })
@@ -1033,7 +1053,7 @@ export default async ($: VaultTest) => {
     check("guides: a summoned ask in an app (or on its site, by the address its window shows) carries the user's guide to it",
       /their guide to it \(Guides\/Figma\.md\):\n {4}Frames are on the left/.test(figma) && /Guides\/Figma\.md/.test(web), [figma, web])
     check("guides: a long one is cut, saying where the rest is; none, the ask says so (it may offer to write one)",
-      mail.length < 2200 && /… \(the rest: vau read "Guides\/Mail\.md"\)/.test(mail) && /no guide to com\.example\.notes yet/.test(none) &&
+      mail.split("\nWhat you showed")[0].length < 2200 && /… \(the rest: vau read "Guides\/Mail\.md"\)/.test(mail) && /no guide to com\.example\.notes yet/.test(none) &&
       !/guide/.test(c.momentsText([{ seq: 2, t: 0, kind: "ask", for: "Claude", text: "x", app: "com.figma.Desktop" }], "quiet", null)), [mail.length, none])
     check("guides: one naming no app nor site says so", JSON.stringify(vault).includes("a guide names its app"), vault)
     const [, doc] = await api("POST", "ops/docs.read", { topic: "guides" })

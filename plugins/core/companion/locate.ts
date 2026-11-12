@@ -35,9 +35,10 @@ export function locate(places: unknown, near?: unknown): Record<string, Rect> {
   }
   return out
 }
-/** The element with data-ui `id` shown: the one nearest `near`, else the first. */
+/** The element with data-ui `id` shown: the one nearest `near`, else the first. Only one in the window's view and
+ *  visible: a pane's copy kept out of sight (mid-move, a hidden strip's) put its marks off the screen. */
 function box(id: string | null, near?: { x: number; y: number }) {
-  const all = id ? [...document.querySelectorAll<HTMLElement>(`[data-ui="${CSS.escape(id)}"]`)].map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0 || r.height > 0) : []
+  const all = id ? [...document.querySelectorAll<HTMLElement>(`[data-ui="${CSS.escape(id)}"]`)].flatMap((e) => { const r = e.getBoundingClientRect(); return shown(r) && e.checkVisibility() ? [r] : [] }) : []
   const gap = (r: DOMRect) => (near ? Math.hypot(Math.max(r.left - near.x, 0, near.x - r.right), Math.max(r.top - near.y, 0, near.y - r.bottom)) : 0)
   return all.sort((a, b) => gap(a) - gap(b))[0] ?? null
 }

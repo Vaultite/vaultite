@@ -105,6 +105,20 @@ check("words not all shown in a row aren't drawn, though one of them is by the p
   missing.res.status === 409 && !missing.at && /nothing on the user's screen says "9:31 PM · Lantern"/.test(missing.res.error ?? ""), missing)
 const stacked = await findAt("lamp at dusk", 60, 740), own = await findAt("Quiet harbor 12", 520, 740), apart = await findAt("Cedar Ridge", 300, 800)
 check("words split across rows, across panels far apart, or in the companion's talk aren't found", stacked.res.status === 409 && own.res.status === 409 && apart.res.status === 409, { stacked, own, apart })
+
+// (a pane named twice, its first copy out of sight: a mark at it lands on the one shown; none shown, it isn't drawn)
+const shownPane = await page.evaluate(() => {
+  const add = (css) => { const d = document.createElement("div"); (window.qaFind ??= []).push(d); d.dataset.ui = "pane:qaghost"; d.style.cssText = `position:fixed;z-index:99999;width:200px;height:120px;${css}`; document.body.append(d); return d }
+  add("left:-700px;top:-500px"); const shown = add("left:300px;top:200px")
+  add("left:600px;top:200px;display:none").dataset.ui = "pane:qaaway"
+  const ox = window.screenX, oy = window.screenY + Math.max(0, window.outerHeight - window.innerHeight), b = shown.getBoundingClientRect()
+  return { x: Math.round(ox + b.left), y: Math.round(oy + b.top), w: Math.round(b.width), h: Math.round(b.height) }
+})
+r = await op("companion.draw", { marks: [{ type: "ring", at: { pane: "qaghost" } }] })
+await until(() => !!drawing()?.places?.["pane:qaghost"], 3000)
+const away = await op("companion.draw", { marks: [{ type: "ring", at: { pane: "qaaway" } }] })
+check("a mark at a pane lands on its copy shown, never one kept out of sight; one not shown isn't drawn",
+  r.status === 200 && near(drawing()?.places?.["pane:qaghost"], shownPane) && away.status === 409, { r, shownPane, places: drawing()?.places, away })
 await page.evaluate(() => window.qaFind?.forEach((e) => e.remove()))
 
 // (a web page's own finder, electron/browser/findwords.ts, run as agent:find runs it: in the page)

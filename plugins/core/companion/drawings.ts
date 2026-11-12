@@ -102,7 +102,7 @@ export function screenDrawings(plugin: Plugin, o: {
   }
 
   /** `marks` drawn by `agent`: added to its drawing up (one from an exchange before, or kept, is replaced), timed with
-   *  `say` or its words; `unshown`, why each mark left out couldn't show. */
+   *  `say` or its words; `unshown`, why each mark left out couldn't show; `added`, those drawn, as placed. */
   async function draw(agent: string, marks: unknown, say?: string, hint?: string) {
     let ms: Mark[]
     try { ms = checkMarks(marks) } catch (e) { throw new OpError((e as Error).message) }
@@ -117,7 +117,7 @@ export function screenDrawings(plugin: Plugin, o: {
     const caption = say ?? o.words(agent), asked = asking(ms, caption), q = { ...asked, ...(asked.question && hint ? { hint: hint.slice(0, 160) } : {}) }
     if (adding) up({ ...now!, marks: pruned([...now!.marks, ...ms]).slice(-40), places: { ...now!.places, ...got.places }, hidden: undefined, ...(caption ? { caption } : {}), ...q })
     else up({ id: `d${Date.now().toString(36)}${++n}`, agent, tint: o.tint(agent), t: Date.now(), marks: ms, places: got.places, ...(caption ? { caption } : {}), ...q })
-    return { drawing: layers.get(agent)!, unshown: got.left }
+    return { drawing: layers.get(agent)!, unshown: got.left, added: ms }
   }
 
   /** `agent`'s drawing up changed in place by id (draw --actions without a path): marks and pad items added, moved,
