@@ -126,5 +126,5 @@ error names what to use instead, and a line here last, only for judgment calls. 
 | Commit subjects: conventional, at most 72 chars | `.githooks/commit-msg` |
 | Main passes tsc and check; an OS-sensitive change was tried on 3 OSes | `.githooks/pre-push` |
 | The desktop main process's launch budget | `.githooks/pre-push` (`tools/perf/startup.ts --main`) |
-| No vault icon but the stone | `tools/test_web.ts`, `tools/menu_icons.ts` |
+| No vault icon but the stone | `tools/test/web/vault-icon.ts`, `tools/menu_icons.ts` |
 | Comments say only what code can't; no shims; secrets only in `data/config.json`; agents never take focus; UI text sentence case; work in a worktree | judgment: nothing fails |
