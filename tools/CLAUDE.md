@@ -31,5 +31,10 @@
 - Performance: `tools/perf/` (moving around the app, step by step: `motion.mjs`) and `web/qa/perf.mjs`; compare before
   and after on servers run alternately. A real vault (one brought from Obsidian): `node tools/perf/bigvault.ts --vault
   <dir> --root <before checkout>`, on a copy; never commit one.
+- Transfer (bytes, requests and round trips over an emulated phone network): `tools/perf/transfer.ts`, through
+  `netem.ts` (a TLS, HTTP/2 proxy as Tailscale Serve is, behind a link with its round trip and bandwidth); CI's transfer
+  job runs it on each push and pull request against the base and fails over `transfer.json`'s ceilings (lower them
+  after a win: `transfer_report.ts <result> --ratchet`, commit it). What a deploy costs a phone's cache over main's last
+  commits, and another way of splitting the app tried on them: `churn.ts`.
 - `build_helpers.ts --cache <dir>` (the root store's) reuses a native helper by its name, its sources' hash: anything
   a helper is built from goes into that hash (a `salt`), or a root gets a stale one from the cache.

@@ -154,3 +154,60 @@ jobs:
         run: node tools/perf/serversoak.ts --minutes 12 --scale 10 --idle 3 --budget
       - if: ${{ !cancelled() && !inputs.scripts }}
         run: node tools/perf/soak.ts --minutes 10 --scale 3 --idle 1 --phases still,hidden --budget
+  # Transfer impact (tools/perf/transfer.ts): what reference flows move over an emulated phone network, this commit
+  # against its base (the push's previous main, a pull request's merge base) taking turns on one runner; the table in
+  # the run's summary, and on a pull request as one comment (transfer-report.yml). Fails on a metric over its ceiling
+  # (tools/perf/transfer.json).
+  transfer:
+    if: ${{ !startsWith(github.ref, 'refs/heads/try/') && github.event_name != 'schedule' && github.event_name != 'workflow_dispatch' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('node_modules/playwright-core/package.json') }}
+      - uses: ./.github/actions/apt-cache
+        with:
+          name: transfer
+      - run: npx playwright-core install --with-deps chromium
+      - uses: ./.github/actions/apt-cache
+        with:
+          name: transfer
+          save: "true"
+      # (the base built beside this checkout; its own packages only when its lockfile differs)
+      - id: base
+        env:
+          BEFORE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          base=$(git merge-base "$BEFORE" HEAD 2>/dev/null || true)
+          if [ -z "$base" ] || [ "$base" = "$(git rev-parse HEAD)" ]; then echo "none"; exit 0; fi
+          git worktree add --detach ../base "$base"
+          if cmp -s package-lock.json ../base/package-lock.json; then ln -s "$PWD/node_modules" ../base/node_modules; else (cd ../base && npm ci); fi
+          (cd ../base && node node_modules/vite/bin/vite.js build --logLevel warn)
+          echo "root=--root ../base --from ../base" >> "$GITHUB_OUTPUT"
+      - run: node node_modules/vite/bin/vite.js build --logLevel warn
+      - run: node tools/perf/transfer.ts ${{ steps.base.outputs.root }} --root . --runs 2 --profiles cellular --idle 30 --out transfer.json
+      - run: |
+          set +e
+          node tools/perf/transfer_report.ts transfer.json --out transfer.md --repo "${{ github.repository }}" --check; status=$?
+          cat transfer.md >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+      # (for the pull request's comment: transfer-report.yml reads it as data, from main's code)
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: transfer
+          path: transfer.json
+          if-no-files-found: ignore
+          retention-days: 30
