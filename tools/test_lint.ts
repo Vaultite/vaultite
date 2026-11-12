@@ -32,6 +32,12 @@ await section("rules on past mistakes", () => {
     "try { await go() } catch (e) { log.error(\"companion: jobs: trust\", { error: e }) }")
   check("console stays allowed in tools", !rulesOf("tools/x.ts", "console.log(1)").includes("eslint(no-console)"))
   fires("vaultite(no-node-module-mock)", "tools/test/x.ts", "mock.module(\"node:fs\", {})", "const fs = fakeFs()")
+  // 48f09102 cut paragraphs like this one to 2 lines by hand, across 100 files.
+  fires("vaultite(comment-length)", "core/grants.ts",
+    "// What a plugin may write outside .vaultite/ on its own (core/writegate.ts): its manifest's `writes` declares where and\n// why, and the user answers once per plugin, kept in .vaultite/grants.json ({\"activity\": {\"Recaps\": \"allowed\"}}).\n// \"ask\": a write wanted it before the user was asked, so the app asks; \"not now\": asked, and not given.\nexport const a = 1",
+    "// A plugin's writes outside .vaultite/ need the user's yes, once per plugin (core/writegate.ts).\nexport const a = 1")
+  check("comment-lines counts each line, not directives", rulesOf("core/x.ts", "// a\n// b\n// oxlint-disable-next-line no-console -- why\nconst a = 1").filter((r) => r === "vaultite(comment-lines)").length === 2)
+  check("a trailing comment doesn't join the lines above", !rulesOf("core/x.ts", "// a\n// b\nconst a = 1 // c").includes("vaultite(comment-length)"))
   fires("typescript(no-explicit-any)", "core/x.ts", "let a: any = 1", "let a: number = 1")
 })
 

@@ -102,7 +102,9 @@ is its point.
   `git stash` is shared by every worktree.
 - A live server's checkout is its updater's alone, even on that machine: never edit, commit, pull or cherry-pick
   there. A file left uncommitted or a commit not on main blocks its updates, and ships what CI never passed.
-- Comments: at most 2 lines, saying why, not what.
+- Comments: the code says what it does, so a comment keeps only what it can't: a constraint from outside we can't
+  change (a platform, a vendor, a protocol), a license, the plugin API's doc comments. A surprise in our own code gets a
+  name, a type or a test instead, and a "do not remove" becomes a check. At most 2 lines; they never grow in number.
 - CHANGELOG.md: one user-facing line per change (edit an Unreleased line rather than add another).
 - **Commits**: Conventional Commits, `type(scope): summary` in at most 72 chars, saying what changed for the user
   (`fix(phone): tab list zoom no longer stretches the page`); a body only when the why isn't in the diff. Scope is the

@@ -21,6 +21,8 @@
 
     "vaultite/no-cast": "warn",
     "vaultite/disable-reason": "warn",
+    "vaultite/comment-lines": "warn",
+    "vaultite/comment-length": "warn",
     "vaultite/no-node-module-mock": "warn",
     "vaultite/no-unchecked-json": "warn",
     "typescript/no-explicit-any": "warn",
@@ -56,6 +58,10 @@
     {
       "files": ["web/qa/**"],
       "rules": { "vaultite/no-sleep": "warn" }
+    },
+    {
+      "files": ["core/plugins.ts", "web/src/core/define.ts", "web/src/api.ts"],
+      "rules": { "vaultite/comment-lines": "off" }
     },
     {
       "files": ["web/qa/**", "tools/test/**", "tools/test_*.ts", "**/*.test.ts"],

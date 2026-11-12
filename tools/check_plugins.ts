@@ -1,4 +1,3 @@
-// Every plugin follows the rules (core/rules.ts, plugins/CLAUDE.md), and so do the ops, bundles, skills and block fences.
 // node tools/check_plugins.ts [vault] | --plugin <folder> [--tag v1.2.0] [--installable]   (npm run check)
 import { isUtf8 } from "node:buffer"
 import fs from "node:fs"
@@ -362,31 +361,9 @@ for (const [f, text] of Object.entries(generate())) {
 }
 fs.rmSync(SCRATCH, { recursive: true, force: true })
 
-// Comments are at most 2 lines (CLAUDE.md): consecutive `//` lines or one `/* */` block; directives don't count.
-const DIRECTIVE = /^\/\/\s*(eslint-|@ts-|prettier-|#region|#endregion)|^\/\/\//
-// (third-party code kept as released, its PROVENANCE.md beside it: not ours to restyle; .oxlintrc.json skips it too)
 const VENDORED = new Set(["plugins/core/spreadsheets/xlsx/xlsx.mjs"].map((f) => path.join(ROOT, f)))
 const sources = ["core", "web/src", "plugins", "electron", "bin", "tools/test", "tools/evals", "tools/perf"].flatMap((d) => walk(path.join(ROOT, d)))
   .concat(path.join(ROOT, "server.ts"), fs.readdirSync(path.join(ROOT, "tools")).map((n) => path.join(ROOT, "tools", n))).filter((f) => !VENDORED.has(f))
-for (const f of sources.filter((f) => /\.(ts|tsx|mjs)$/.test(f))) {
-  const lines = fs.readFileSync(f, "utf8").split("\n")
-  let start = 0, n = 0, block = false
-  const flush = () => {
-    if (n > 2) problems.push(`${path.relative(ROOT, f)}:${start + 1}: a comment of ${n} lines (at most 2: CLAUDE.md)`)
-    n = 0
-  }
-  lines.forEach((l, i) => {
-    const t = l.trim()
-    let comment = block
-    if (block) block = !t.includes("*/")
-    else if (t.startsWith("/*")) { comment = true; block = !t.includes("*/") }
-    else comment = t.startsWith("//") && !DIRECTIVE.test(t)
-    if (!comment) return flush()
-    if (!n) start = i
-    n++
-  })
-  flush()
-}
 
 // `X > * + *` restyles all of X's subtree each time a child comes or goes (an editor's lines, a long list's rows, as
 // they scroll): `X > :where(:not(:first-child))` matches the same, at the same specificity.

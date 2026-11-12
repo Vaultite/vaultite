@@ -142,7 +142,66 @@ const disableReason = defineRule({
   },
 })
 
+const isDirective = (value: string) => DIRECTIVE.test(value) || /^\s*@ts-|^\s*prettier-|^\/ </.test(value)
+
+const commentLines = defineRule({
+  meta: {
+    type: "suggestion",
+    docs: { description: "Count comment lines, so a change can't add more than it removes." },
+    messages: {
+      line: "A comment the code could say instead goes stale. Rename, extract or type it so the code says it, and keep only what it can't: a constraint from outside we can't change. Adding one? Delete a narrating one in the files you touch.",
+    },
+  },
+  createOnce(context) {
+    return {
+      Program() {
+        for (const comment of context.sourceCode.getAllComments()) {
+          if (isDirective(comment.value)) continue
+          for (let line = comment.loc.start.line; line <= comment.loc.end.line; line++) {
+            context.report({ loc: { start: { line, column: 0 }, end: { line, column: 1 } }, messageId: "line" })
+          }
+        }
+      },
+    }
+  },
+})
+
+function longComments(comments: ESTree.Comment[], lines: string[]) {
+  const out: ESTree.Comment[] = []
+  let run: ESTree.Comment[] = []
+  const flush = () => {
+    const lines = run.length ? run[run.length - 1].loc.end.line - run[0].loc.start.line + 1 : 0
+    if (lines > 2) out.push(run[0])
+    run = []
+  }
+  for (const c of comments) {
+    const trailing = lines[c.loc.start.line - 1]?.slice(0, c.loc.start.column).trim() !== ""
+    if (isDirective(c.value) || trailing) { flush(); continue }
+    const last = run[run.length - 1]
+    if (last && (c.type === "Block" || last.type === "Block" || c.loc.start.line !== last.loc.end.line + 1)) flush()
+    run.push(c)
+  }
+  flush()
+  return out
+}
+
+const commentLength = defineRule({
+  meta: {
+    type: "suggestion",
+    docs: { description: "Disallow comments over two lines." },
+    messages: { long: "A comment of more than 2 lines is a paragraph: say it in at most 2, or move it into the code (a name, a type, a test)." },
+  },
+  createOnce(context) {
+    return {
+      Program() {
+        for (const c of longComments(context.sourceCode.getAllComments(), context.sourceCode.lines)) context.report({ loc: c.loc, messageId: "long" })
+      },
+    }
+  },
+})
+
 export default eslintCompatPlugin({
   meta: { name: "vaultite" },
-  rules: { "no-cast": noCast, "no-sleep": noSleep, "no-node-module-mock": noNodeModuleMock, "no-unchecked-json": noUncheckedJson, "disable-reason": disableReason },
+  rules: { "no-cast": noCast, "no-sleep": noSleep, "no-node-module-mock": noNodeModuleMock, "no-unchecked-json": noUncheckedJson, "disable-reason": disableReason,
+    "comment-lines": commentLines, "comment-length": commentLength },
 })
