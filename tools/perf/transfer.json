@@ -2,12 +2,12 @@
   "profile": "cellular",
   "flows": {
     "cold": {
-      "wire": 1895424,
+      "wire": 1901568,
       "requests": 46,
-      "serial": 5
+      "serial": 6
     },
     "warm": {
-      "wire": 26624,
+      "wire": 25600,
       "requests": 12,
       "serial": 4
     },
@@ -17,24 +17,24 @@
       "serial": 4
     },
     "switch": {
-      "wire": 3072
+      "wire": 4096
     },
     "search": {
-      "wire": 4096
+      "wire": 5120
     },
     "today": {
       "wire": 147456,
       "requests": 29,
-      "serial": 4
+      "serial": 6
     },
     "rich": {
       "wire": 5120
     },
     "terminal": {
-      "wire": 197632
+      "wire": 194560
     },
     "idle": {
-      "wire": 4096
+      "wire": 3072
     },
     "phone-cold": {
       "wire": 1232896,
@@ -42,14 +42,14 @@
       "serial": 5
     },
     "phone-resume": {
-      "wire": 12288,
+      "wire": 11264,
       "requests": 6,
       "serial": 2
     },
     "update": {
-      "wire": 73728,
-      "requests": 12,
-      "serial": 5
+      "wire": 1031168,
+      "requests": 22,
+      "serial": 6
     }
   }
 }

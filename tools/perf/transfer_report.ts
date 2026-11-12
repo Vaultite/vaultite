@@ -74,7 +74,8 @@ export function render(data: ReturnType<typeof read>, ceilings: Ceilings | null,
     if (!h) continue
     for (const m of Object.keys(METRICS) as Metric[]) {
       if (m !== "wire" && !LATENCY_FLOWS.has(flow)) continue
-      const b = base?.flows[flow]?.[m], v = h[m], cap = ceilings?.flows[flow]?.[m]
+      // (main's own "deploy" is a reload into the same build: no baseline for it)
+      const b = flow === "update" ? undefined : base?.flows[flow]?.[m], v = h[m], cap = ceilings?.flows[flow]?.[m]
       const ok = cap === undefined || v <= cap
       if (!ok) over.push(`${label}: ${METRICS[m].name.toLowerCase()}`)
       rows.push(`| ${label} | ${METRICS[m].name} | ${b === undefined ? "–" : fmt(m, b)} | ${fmt(m, v)} | ${impact(m, b, v)} | ${cap === undefined ? "–" : fmt(m, cap)} | ${cap === undefined ? "" : ok ? "✅" : "❌"} |`)
@@ -82,11 +83,11 @@ export function render(data: ReturnType<typeof read>, ceilings: Ceilings | null,
   }
   const short = (c: string) => opts.repo ? `[\`${c.slice(0, 9)}\`](https://github.com/${opts.repo}/commit/${c})` : `\`${c.slice(0, 9)}\``
   const times = Object.entries(FLOWS).filter(([f]) => head.flows[f] && f !== "idle" && f !== "switch").map(([f, label]) => {
-    const b = base?.flows[f]?.ms, v = head.flows[f].ms
+    const b = f === "update" ? undefined : base?.flows[f]?.ms, v = head.flows[f].ms
     return `| ${label} | ${b === undefined ? "–" : `${b} ms`} | ${v} ms | ${b === undefined ? "–" : `${v - b > 0 ? "+" : v - b < 0 ? "−" : ""}${Math.abs(v - b)} ms`} |`
   })
   const kinds = ["cold", "phone-cold", "update"].filter((f) => head.flows[f]).map((f) => {
-    const cell = (k: (typeof KINDS)[number]) => `${base?.flows[f] ? `${kib(base.flows[f].sent[k])} → ` : ""}${kib(head.flows[f].sent[k])}`
+    const cell = (k: (typeof KINDS)[number]) => `${base?.flows[f] && f !== "update" ? `${kib(base.flows[f].sent[k])} → ` : ""}${kib(head.flows[f].sent[k])}`
     return `| ${FLOWS[f]} | ${cell("js")} | ${cell("css")} | ${cell("api")} | ${cell("socket")} | ${kib(Object.values(head.flows[f].decoded).reduce((a, x) => a + x, 0))} |`
   })
   return [
