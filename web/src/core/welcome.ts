@@ -27,15 +27,17 @@ export function closeWelcome() {
   subs.notify()
 }
 
-/** As the vault loads (once): the card if it's new here or the first run brought it, else nothing. */
-let started = false
+/** As each state comes: the card if the first run brought it (asked once) or once the vault says it's new here. Not
+ *  just the first state's word: the server's watcher may hear an offer written just before the page loaded later. */
+let asked: Promise<boolean> | null = null
 export async function startWelcome() {
-  if (started || share) return
-  started = true
+  if (share) return
+  const first = !asked
+  asked ??= desktop?.welcome?.().then((r) => !!r, () => false) ?? Promise.resolve(false)
+  const firstRun = first && await asked
   const offered = offerWelcome()
-  const firstRun = !!(await desktop?.welcome?.().catch(() => false))
   if (!offered && !firstRun) return
-  if (isDesktop()) return openWelcome({ firstRun, newVault: offered })
+  if (isDesktop()) return openWelcome({ firstRun: firstRun || !!shown?.firstRun, newVault: offered || !!shown?.newVault })
   if (offered) await skipOnboarding().catch((e) => notifyError(e, "Couldn't set up the vault"))
 }
 

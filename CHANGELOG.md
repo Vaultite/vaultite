@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A new vault's welcome card shows on a Mac even when it opens right after the vault is made**: it no longer
+  depends on the very first view of the vault having heard the offer.
 - **Terminals over a phone's network move a seventh of the bytes**: the app's live connections are compressed when they
   cross the network (a terminal's output, the live state); on the Mac itself nothing changes.
 - **Faster starts after an update, on a phone above all**: the app comes in a file per folder whose names last, so an
