@@ -156,6 +156,6 @@ no browser shows, as a before and after slide. --video keeps an mp4 you recorded
         video && video.bytes > 12 << 20 ? `its video is ${Math.round(video.bytes / (1 << 20))} MB: keep a proof short (fewer, shorter steps)` : ""].filter(Boolean).join("; ")
       return { path, steps: tour.steps.length, ...(job ? { job } : {}), ...(video ? { video: video.path, size: video.bytes < 1 << 20 ? `${Math.max(1, Math.round(video.bytes / 1024))} KB` : `${Math.round(video.bytes / 104857.6) / 10} MB`, ...(video.ms ? { seconds: Math.round(video.ms / 1000) } : {}) } : {}), ...(warning ? { warning } : {}) }
     },
-    text: (r) => `${r.job ? `Saved ${r.path}${r.home ? ` on its home, ${r.home}` : ""} (${r.steps} steps), the proof of ${r.job}${r.video ? `, with its video ${r.video} (${r.seconds ? `${r.seconds} s, ` : ""}${r.size}: embed it in your report, --video)` : ""}: Show me plays it once the job is ready.` : `Saved ${r.path} (${r.steps} steps): play it with companion tour "${r.path}".`}${r.warning ? ` Warning: ${r.warning}.` : ""}`,
+    text: (r) => `${r.job ? `Saved ${r.path}${"home" in r && r.home ? ` on its home, ${r.home}` : ""} (${r.steps} steps), the proof of ${r.job}${r.video ? `, with its video ${r.video} (${r.seconds ? `${r.seconds} s, ` : ""}${r.size}: embed it in your report, --video)` : ""}: Show me plays it once the job is ready.` : `Saved ${r.path} (${r.steps} steps): play it with companion tour "${r.path}".`}${r.warning ? ` Warning: ${r.warning}.` : ""}`,
   })
 }

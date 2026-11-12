@@ -213,7 +213,7 @@ saves it: companion tour-save "<the change>" --job <its id> --record <its own se
       const video = proof && !proof.problems.length && p.live !== true && proof.tour.video && d.has(proof.tour.video) ? proof.tour.video : null
       return { job: j.id, title: j.title, proof: proof && !proof.problems.length ? proof.path : null, ...(video ? { video } : {}) }
     },
-    text: (r) => r.landing ? "Kept: its job is merging it, and closes once it says it merged." : r.kept ? "Kept: closed as done." : r.later ? "Not yet: it waits in Jobs."
+    text: (r) => "landing" in r ? "Kept: its job is merging it, and closes once it says it merged." : "kept" in r ? "Kept: closed as done." : "later" in r ? "Not yet: it waits in Jobs."
       : "recording" in r ? (r.recording ? "Recording what they show: it goes to the job when they say stop." : "Waiting for their words on what to change.")
       : r.video ? `Playing "${r.title}"'s video (${r.video}), narrated; their choice follows.` : r.proof ? `Showing "${r.title}" (${r.proof}) live; their choice follows.` : `"${r.title}" left no proof: saying what it changed, then their choice.`,
   })

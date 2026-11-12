@@ -686,19 +686,19 @@ plugin.op({
     if (p.remove) {
       let removed = 0
       const r = await changeNote((b) => { const x = removeFolder(b, folder); removed = x.removed; return { body: x.body, did: x.found } })
-      return { ...r, folder, removed, did: "removed" }
+      return { ...r, folder, removed, did: "removed" as const }
     }
     if (typeof p.rename === "string") {
       const name = clean(p.rename, 200)
       if (!name) throw new OpError("give the folder a name")
       const r = renameFolder(body, folder, name)
       if (r.taken) throw new OpError(`there's a folder named ${name} there already`)
-      return { ...(await changeNote(() => ({ body: r.body, did: r.changed }))), folder, did: "renamed", name }
+      return { ...(await changeNote(() => ({ body: r.body, did: r.changed }))), folder, did: "renamed" as const, name }
     }
     const r = addFolder(body, folder)
-    if (!r.added) return { path: old ? `${old.id}.md` : null, changed: false, folder, did: "made" }
+    if (!r.added) return { path: old ? `${old.id}.md` : null, changed: false, folder, did: "made" as const }
     const saved = await plugin.vault.save("bookmarks", { body: r.body }, old?.id ?? null)
-    return { path: saved ? `${saved.id}.md` : null, changed: true, folder, did: "made" }
+    return { path: saved ? `${saved.id}.md` : null, changed: true, folder, did: "made" as const }
   },
   text: (r) => (r.did === "removed" ? `Removed the folder ${r.folder}${r.removed ? ` and its ${r.removed} bookmark${r.removed === 1 ? "" : "s"}` : ""} from ${r.path}.`
     : r.did === "renamed" ? (r.changed ? `Renamed the folder ${r.folder} to ${r.name} in ${r.path}.` : "The folder was already so named.")
@@ -843,7 +843,7 @@ mid-light box (#ccc) light under text it made light. A style that makes the page
     }
     return { site, path: rel, css: had ? textOf(v, rel) : null, template: had ? undefined : template(site) }
   },
-  text: (r) => "sites" in r ? (r.sites.length ? r.sites.join("\n") : "No site has a style.")
+  text: (r) => r.sites ? (r.sites.length ? r.sites.join("\n") : "No site has a style.")
     : r.removed !== undefined ? (r.removed ? `Removed ${r.site}'s style.` : `${r.site} has no style.`)
     : r.written ? `Wrote ${r.site}'s style (${r.path}): its pages show it now.`
     : r.css !== null ? `${r.path}\n\n${r.css}` : `${r.site} has no style yet. A new one starts as:\n\n${r.template}`,

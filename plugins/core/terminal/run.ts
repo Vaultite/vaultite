@@ -184,7 +184,7 @@ accounts (Claude Code: its config folders). A vault plugin's schedule runs a not
       return { id: r.id, path: rel, ...(w.agent ? { agent: w.agent } : { command: w.command }), shown, handed: r.handed, ...(r.running ? { running: true } : {}),
         ...(m ? { machine: m.id } : {}), ...(account ? { account } : {}) }
     },
-    text: (r) => `${r.running ? "Already running:" : "Started"} ${r.path} ${r.agent ? `with ${r.agent}` : "in a shell"}${r.account ? ` (${r.account})` : ""}${r.machine ? ` on ${r.machine}` : ""} in ${r.id}${r.shown ? "" : ` (${r.handed
+    text: (r) => `${r.running ? "Already running:" : "Started"} ${r.path} ${"agent" in r ? `with ${r.agent}` : "in a shell"}${r.account ? ` (${r.account})` : ""}${r.machine ? ` on ${r.machine}` : ""} in ${r.id}${r.shown ? "" : ` (${r.handed
       ? "in the background: its report comes to the inbox" : "no tab open"}; vau terminal capture ${r.id})`}.`,
     did: ({ path: rel, agent, command }) => ({ action: "run", text: `Handed ${rel} to ${command ? "a shell command" : agent || "claude"}` }),
   })

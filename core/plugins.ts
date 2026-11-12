@@ -15,7 +15,7 @@ import { type BlockDecls, blocksDoc, declsOf, drawsOf, settingsDoc, settingsOf, 
 import type { EventFilter, VaultEvent } from "./events.ts"
 import type { Present } from "./live.ts"
 import type { OpEntry, OpKind } from "./contracts/ops.ts"
-import { entryOf, type Op, type OpCtx, type OpDid, type OpImage, pluginOpsDoc, type Who } from "./ops.ts"
+import { defineOp, entryOf, type Op, type OpDef, type Params, type OpCtx, type OpDid, type OpImage, pluginOpsDoc, type Who } from "./ops.ts"
 import { type Job, type When, whenProblems } from "./schedule.ts"
 import { ownerRefusal } from "./owner.ts"
 export { gitEnv } from "./gitenv.ts"
@@ -439,9 +439,10 @@ export class Plugin {
 
   /** An operation, served as `POST /api/ops/<id>`, `vau <id>`, MCP and the docs (core/ops.ts). Its id starts with the
    *  plugin's id or a kind it owns. Only while the plugin is on. */
-  op(def: Op) {
-    this.ops.push(def)
-    return def
+  op<const P extends Params = {}, R = unknown>(def: OpDef<P, R>): Op {
+    const op = defineOp(def)
+    this.ops.push(op)
+    return op
   }
 
   /** GET /<prefix>/<rest> outside /api/, for what a browser loads by address (an artifact's sandboxed frame at /v/...).

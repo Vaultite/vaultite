@@ -1,6 +1,7 @@
 import { agentModel, MODEL_NAME, PERMISSION_MODES, startAgent, TERMINAL_AGENT, newTerminalId, resumeTerminalId, type AgentHow } from "../../../core/agents.ts"
 import { fmtAgo, type Machine, OpError, type Plugin, quoted } from "../../../core/plugins.ts"
 import type { Trouble } from "./backend.ts"
+import { homeOf } from "./backends.ts"
 import { type Any, closeTabs, elsewhere, type Ended, freshAgent, passOn, type Session, sessions, show, shown, type TabAt, tabsOf, target, there } from "./targets.ts"
 
 const where = (tabs: TabAt[] | undefined) => (tabs?.length ? `tab in workspace ${[...new Set(tabs.map((t) => t.workspace))].join(", ")}` : "no tab")
@@ -193,7 +194,7 @@ its tab too (as vau terminal open does). With machine, on another of the Machine
       const id = session ? resumeTerminalId(who, session, profile) : newTerminalId(agent)
       const body = { ...(command ? { command } : {}), ...(name ? { name } : {}), ...(cwd ? { cwd } : {}), ...(home ? { home } : {}) }
       if (agent) {
-        await startAgent(ctx, id, prompt?.trim() || undefined, how, home)
+        await startAgent(ctx, id, prompt?.trim() || undefined, how, homeOf(home))
         if (name) await ctx.api("POST", `terminals/${id}/name`, { name })
       } else await ctx.api("POST", `terminals/${id}`, Object.keys(body).length ? body : undefined)
       const isShown = open ? await shown(ctx, id) : false

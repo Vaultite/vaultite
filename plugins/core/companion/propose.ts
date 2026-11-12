@@ -241,6 +241,6 @@ plugin.op({
     await applyEdit(ctx, a, { path: t.path!, find: t.find, line: t.line, text: `==${EMOJI[a.tint] ?? ""}${t.find}==` }, false)
     return { path: t.path, kept: true }
   },
-  text: (r) => (r.kept ? `Highlighted in ${r.path}.` : `Highlighted (${r.id}).`),
+  text: (r) => ("kept" in r ? `Highlighted in ${r.path}.` : `Highlighted (${r.id}).`),
   did: (p) => (p.keep ? edited(p) : { action: "ui", text: `Highlighted text in ${str(p.path) || focus()?.path || "a note"}`, paths: [] }),
 })

@@ -65,10 +65,10 @@ drawing's text (next, vau render). Only in pair mode or when they asked you to.
     actions: { type: "array", items: { type: "object" }, description: "what to change, in order, by id: {\"op\": \"add\" | \"move\" | \"change\" | \"delete\", ...}; without path the drawing on the screen, with path that drawing file" },
     path: PATH, as: AS },
   run: async (p, ctx) => {
-    if (p.marks !== undefined) return drawOnScreen(p, ctx)
+    if (p.marks !== undefined) return drawOnScreen({ ...p, marks: p.marks }, ctx)
     if (p.actions === undefined) throw new OpError("marks (on the screen) or actions (on the screen's drawing, or a drawing's with path)")
     if (p.path === undefined) return editOnScreen(p, ctx)
-    const name = who(p), t = target(p), apply = drawer(t.path!)
+    const name = who(p), t = target(p), apply = drawer(t.path!), actions = p.actions
     if (!apply) throw new OpError(`${t.path} isn't a drawing (a .excalidraw file, its plugin on): companion edit writes in notes`)
     did(name, "draw")
     const done = writingAt(name, { path: t.path, line: undefined, find: undefined, x: undefined, y: undefined })
@@ -76,9 +76,9 @@ drawing's text (next, vau render). Only in pair mode or when they asked you to.
       return await inTurn(t.path!, async () => {
         const f = await ctx.api("GET", `file?path=${encodeURIComponent(t.path!)}`), cur = String(f.text ?? "")
         let made: ReturnType<Draw>
-        try { made = apply(cur, p.actions) } catch (e) { throw new OpError(messageOf(e)) }
+        try { made = apply(cur, actions) } catch (e) { throw new OpError(messageOf(e)) }
         const ws = editorFor(t.path!), reply: { touched?: unknown } = {}
-        const drawn = !!ws && await askWindow(ws, { t: "draw", agent: agentOf(name).name, path: t.path, actions: p.actions }, EDIT_WAIT + p.actions.length * 300, reply)
+        const drawn = !!ws && await askWindow(ws, { t: "draw", agent: agentOf(name).name, path: t.path, actions }, EDIT_WAIT + actions.length * 300, reply)
         if (!drawn) await ctx.api("PUT", "file", { path: f.path, text: made.text, base: cur })
         const touched = drawn && Array.isArray(reply.touched) ? reply.touched.map(String) : made.touched
         if (touched.length) setAgent(name, { find: touched.at(-1) })
@@ -86,7 +86,7 @@ drawing's text (next, vau render). Only in pair mode or when they asked you to.
       })
     } finally { done() }
   },
-  text: (r) => (r.changed ? `Changed the drawing on the screen (${r.changed.join(", ") || "nothing named"}).` : r.screen ? `Drew ${r.marks} on the screen (${r.screen}).${r.unshown ? ` Not drawn, they saw no mark: ${r.unshown.join("; ")}.` : ""}` : `${r.how === "drawn" ? "Drew on" : "Wrote"} ${r.path}${r.touched.length ? ` (${r.touched.join(", ")})` : ""}.`),
+  text: (r) => ("changed" in r ? `Changed the drawing on the screen (${r.changed.join(", ") || "nothing named"}).` : "screen" in r ? `Drew ${r.marks} on the screen (${r.screen}).${r.unshown ? ` Not drawn, they saw no mark: ${r.unshown.join("; ")}.` : ""}` : `${r.how === "drawn" ? "Drew on" : "Wrote"} ${r.path}${r.touched.length ? ` (${r.touched.join(", ")})` : ""}.`),
   did: (p) => (p.marks !== undefined ? { action: "ui", text: "Drew on the screen", paths: [], by: who(p) } : edited(p)),
 })
 

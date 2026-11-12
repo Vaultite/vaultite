@@ -112,7 +112,7 @@ function runOpts(vault: Vault, o: Opts, self?: string, thisPath?: string, now = 
 
 // Answers kept by query until the vault's files change, the Templates or sample folders do, the day does (a calendar's month)
 // or other files' properties do: the same object, frozen, so the server serializes it once.
-const answers = new WeakMap<Vault, { when: string; byQuery: Map<string, unknown> }>()
+const answers = new WeakMap<Vault, { when: string; byQuery: Map<string, Readonly<Result>> }>()
 
 export function query(vault: Vault, o: Opts, self?: string, thisPath?: string) {
   const types = plugin.propertyTypes()
@@ -215,7 +215,7 @@ whole; as text it's a Markdown table (one per group), a long cell cut with "…"
   },
   run: (p) => {
     const options: Item = {}
-    for (const k of ["from", "type", "tags", "where", "columns", "sort", "group", "limit", "offset", "archived"]) if (p[k] !== undefined && p[k] !== "") options[k] = p[k]
+    for (const k of ["from", "type", "tags", "where", "columns", "sort", "group", "limit", "offset", "archived"] as const) if (p[k] !== undefined && p[k] !== "") options[k] = p[k]
     const here = typeof p.this === "string" && p.this ? plugin.vault.relocated(p.this) : undefined
     if (here && !plugin.vault.entries.has(here) && !plugin.vault.others.has(here)) throw new HTTPError(404, `this: no file '${p.this}'`)
     return query(plugin.vault, options as Opts, here, here)

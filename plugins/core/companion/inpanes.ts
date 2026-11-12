@@ -158,7 +158,7 @@ or keys pause a step that needs them, a click or Esc stops it. Answers the eleme
     if (p.action === "expand" || p.action === "collapse") throw new OpError(`in a web page, click what opens or folds it`)
     const id = str(p.pane) || paneFocus()?.id
     if (!id) throw new OpError("give `pane` (a web page) or `ui` (the app's own UI): the user isn't in a web page")
-    if (p.action === "scroll" && !p.direction && /^(up|down)$/i.test(str(p.value))) p = { ...p, direction: str(p.value).toLowerCase(), value: undefined }
+    if (p.action === "scroll" && !p.direction && /^(up|down)$/i.test(str(p.value))) p = { ...p, direction: str(p.value).toLowerCase() === "up" ? "up" : "down", value: undefined }
     const t = await pageFor(id, "act", name)
     did(name, "act")
     const done = writingAt(name, str(p.el) ? await resolve({ pane: id, el: str(p.el) }, name).catch(() => ({ pane: id })) : null)

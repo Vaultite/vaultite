@@ -103,7 +103,7 @@ under the pointer, or box: screen points) is saved as an MP4 on this Mac with a 
       ...(clip ? { clip: clip.file, frames: clip.frames } : r.clipWhy ? { clipWhy: r.clipWhy } : {}) }
   },
   text: (r) => [`From ${r.from} to ${r.to}:`, ...(r.lines.length ? r.lines : ["(nothing happened)"]),
-    ...(r.clip ? [`Its clip: ${r.clip}`, `Frames: ${r.frames.map((f: { t: number; file: string }) => `${(f.t / 1000).toFixed(1)} s ${f.file}`).join(", ")}`] : r.clipWhy ? [`No clip: ${r.clipWhy}`] : [])].join("\n"),
+    ...("clip" in r && r.clip ? [`Its clip: ${r.clip}`, `Frames: ${r.frames.map((f: { t: number; file: string }) => `${(f.t / 1000).toFixed(1)} s ${f.file}`).join(", ")}`] : "clipWhy" in r && r.clipWhy ? [`No clip: ${r.clipWhy}`] : [])].join("\n"),
 })
 
 plugin.op({

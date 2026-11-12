@@ -150,7 +150,7 @@ say back (the app's, as are their words to it meanwhile), so end your turn with 
       const m = d.askOf(d.main())
       return await begin(ctx, d.jobs.find(id), m && Date.now() - m.t < 120_000 && m.summoned ? m : undefined)
     },
-    text: (r) => (r.ended ? `The talk with ${r.name} is over: the floor is yours again.` : `Handing you to ${r.name}. It (${r.job}) has the floor and answers them aloud: end your turn with no words.`),
+    text: (r) => ("ended" in r ? `The talk with ${r.name} is over: the floor is yours again.` : `Handing you to ${r.name}. It (${r.job}) has the floor and answers them aloud: end your turn with no words.`),
     did: (p) => ({ action: "run", text: p.off ? "Ended a talk with a job" : `Handed the floor to the job ${p.job}`, by: "companion" }),
   })
 

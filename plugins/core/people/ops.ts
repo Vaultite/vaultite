@@ -86,7 +86,7 @@ the file stays as it was.
       const [name] = personNamed(p.person)
       const date = p.date || today()
       const body: Item = { person: name, date, kind: p.kind, notes: p.text.trim().replace(/\s*\n\s*/g, " ") }
-      for (const k of ["subject", "url"]) if (str(p[k]).trim()) body[k] = str(p[k]).trim()
+      for (const k of ["subject", "url"] as const) if (str(p[k]).trim()) body[k] = str(p[k]).trim()
       if (p.duration_min !== undefined) body.duration_min = p.duration_min
       const r = await ctx.api("POST", "interactions", body)
       return { person: name, path: `${r.person}.md`, date, kind: timelineKind(p.kind) ?? p.kind, text: body.notes }

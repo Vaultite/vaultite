@@ -33,7 +33,7 @@ plugin.op({
       sessions: all.filter((s) => s.running).map(({ name, id }) => ({ name, id, ...(isChat(id) ? { chat: true } : {}) })), summoned: lane().on() ? { id: lane().id(), model: summonedModel(), ...(lane().trouble() ? { trouble: lane().trouble() } : {}) } : null,
       agents: [...agents.values()].map(shown).map((a) => ({ ...a, live: a.state !== "away" && live(a.name), watch: isMain(a.name) || watching.has(key(a.name)) })),
       notes: [...notes.values()], moments: moments.slice(-10), follows: followed.list(),
-      realtime: pausedNow() ? { state: "paused", ...pausedNow()! } : realtimePaused.size ? { state: "on" } : null, voice: voiceHere(plugin, setting, [...mics.values()].at(-1)), ...(calls.size ? { call: [...calls.values()].at(-1) } : {}) }
+      realtime: pausedNow() ? { state: "paused" as const, ...pausedNow()! } : realtimePaused.size ? { state: "on" as const } : null, voice: voiceHere(plugin, setting, [...mics.values()].at(-1)), ...(calls.size ? { call: [...calls.values()].at(-1) } : {}) }
   },
   text: (r) => [`Mode: ${r.mode}. Session: ${r.session ?? "not running"}.${r.summoned ? ` Summoned asks: ${r.summoned.model}${r.summoned.id ? `, session ${r.summoned.id}` : ""}${r.summoned.trouble ? ` (its last trouble, at ${new Date(r.summoned.trouble.t).toTimeString().slice(0, 5)}: ${cut(r.summoned.trouble.why, 160)})` : ""}.` : ""} Windows: ${r.windows}.`,
     voiceHereText(r.voice),
@@ -73,7 +73,7 @@ names run the settings' agent, model and effort.
     const at = str(p.path) ? { path: str(p.path), ...(p.line ? { line: Number(p.line) } : {}) } : {}
     return await start(ctx, str(p.as), str(p.agent), str(p.model), str(p.effort), at, p.after)
   },
-  text: (r) => `${r.running ? "Already running" : "Started"}: ${r.name}${r.agent ? ` (${[agentName(r.agent.split("_")[0]) ?? r.agent, r.model, r.effort].filter(Boolean).join(", ")})` : ""} in ${r.id} (${isChat(r.id) ? `vau chat read ${r.id}` : `vau terminal capture ${r.id}`}).`,
+  text: (r) => `${r.running ? "Already running" : "Started"}: ${r.name}${"agent" in r && r.agent ? ` (${[agentName(r.agent.split("_")[0]) ?? r.agent, r.model, r.effort].filter(Boolean).join(", ")})` : ""} in ${r.id} (${isChat(r.id) ? `vau chat read ${r.id}` : `vau terminal capture ${r.id}`}).`,
 })
 
 plugin.op({

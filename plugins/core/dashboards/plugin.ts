@@ -49,6 +49,6 @@ orange, purple, today, people...).
     return { path: rel, pinned: pinnedTo !== null, ...(icon && icons.length && !icons.includes(icon) ? { unknownIcon: icon, icons } : {}) }
   },
   text: (r) => `Made ${r.path}${r.pinned ? " and pinned it" : ""}.` +
-    (r.unknownIcon ? `\n(the app has no icon '${r.unknownIcon}' for pages; it shows the default. Icons: ${r.icons.join(", ")})` : "") +
+    (r.unknownIcon && r.icons ? `\n(the app has no icon '${r.unknownIcon}' for pages; it shows the default. Icons: ${r.icons.join(", ")})` : "") +
     `\nAdd blocks by editing it; see them with: vau render "${r.path}"`,
 })

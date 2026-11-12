@@ -72,7 +72,7 @@ resumes), with land for their word to merge it, and ask false when their ask isn
       try { return await handoff(p, ctx, task, ask, by, async (t: Told) => { d.did(name, "handoff"); heldTold(name, { ...t, say: str(p.say).trim() }) }) }
       finally { release(name) }
     },
-    text: (r) => r.queued ? `Kept for later (${r.id}): "${r.title}". ${r.now}: it's sent by itself then, shown waiting in Jobs; nothing for them to retry. End your turn.`
+    text: (r) => "queued" in r ? `Kept for later (${r.id}): "${r.title}". ${r.now}: it's sent by itself then, shown waiting in Jobs; nothing for them to retry. End your turn.`
       : `Handed off (${r.id}): "${r.title}", ${r.state}, on ${r.where}${r.why ? ` (${r.why})` : ""}. The user sees it in Jobs: end your turn.`,
     did: (p) => ({ action: "run", text: p.job ? `Told the job ${p.job} ${quoted(p.task, 60)}` : `Handed off ${quoted(p.task, 60)}`, by: d.who(p) }),
   })

@@ -75,7 +75,7 @@ asks to its @name and answers to its items; edit and open go to the companion, o
     if (got.length) got = hand(name, got)
     return { mode: mode(), focus: focus(), moments: got, cursor: delivered.get(k) ?? after, notes: await excerpts(ctx, got), ...(got.length && headAware(name) ? { aware: headAware(name) } : {}) }
   },
-  text: (r) => (r.ended ? "Your session has ended: stop here, without running next again." : r.handover ? handoverAsk(r.as) : momentsText(r.moments, r.mode, r.focus, r.notes, r.aware)),
+  text: (r) => ("ended" in r ? "Your session has ended: stop here, without running next again." : "handover" in r ? handoverAsk(r.as) : momentsText(r.moments, r.mode, r.focus, r.notes, r.aware)),
 })
 
 export const pendingFor = (name: string, after = delivered.get(key(name)) ?? Math.max(0, seq - 20)) =>

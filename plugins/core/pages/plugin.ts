@@ -138,8 +138,8 @@ const FLAGS = `With Workspaces on, each workspace has its own list (the sidebar 
 window is on, --workspace <n> on another's. A workspace that has no list of its own shows .vaultite/pages.json's,
 which is also what new workspaces start with; its first change makes it its own (a copy, changed). --vault acts on
 pages.json itself (the default; without Workspaces, the only list).`
-const WORKSPACE: Param = { type: "integer", minimum: 1, maximum: 5, description: "the workspace (1 to 5) whose list to use; the user's window's when left out (Workspaces on)" }
-const VAULT: Param = { type: "boolean", description: "pages.json itself (the default for workspaces without a list of their own)" }
+const WORKSPACE = { type: "integer", minimum: 1, maximum: 5, description: "the workspace (1 to 5) whose list to use; the user's window's when left out (Workspaces on)" } satisfies Param
+const VAULT = { type: "boolean", description: "pages.json itself (the default for workspaces without a list of their own)" } satisfies Param
 
 plugin.op({
   id: "page.list",
