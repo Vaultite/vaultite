@@ -21,10 +21,9 @@ export const serversOwn = (k: string) => k.startsWith("npm_") || (k.startsWith("
 const ACCOUNT = ["CLAUDE_CONFIG_DIR", "CODEX_HOME"]
 
 /** What a Vaultite terminal tells its shell (plugins/core/terminal: context, backend's startup script) and a plugin's
- *  command (core/hooks.ts). */
-const TERMINAL = ["VAULTITE", "VAULTITE_URL", "VAULTITE_VAULT", "VAULTITE_CLIENT", "VAULTITE_TERMINAL", "VAULTITE_BIN",
-  "VAULTITE_AGENT_BIN", "VAULTITE_ZDOTDIR", "VAULTITE_USER_ZDOTDIR", "VAULTITE_REMOTE", "VAULTITE_RUN",
-  "VAULTITE_PLUGIN_ID", "VAULTITE_PLUGIN_DIR", "VAULTITE_PLUGIN_STATE"]
+ *  command (core/hooks.ts), all of them: a test run drops them. */
+const TERMINAL = ["VAULTITE", ...`URL VAULT CLIENT TERMINAL BIN AGENT_BIN ZDOTDIR USER_ZDOTDIR REMOTE RUN HOME HOME_AS PLUGIN_ID PLUGIN_DIR
+  PLUGIN_STATE PLUGIN_EVENT ACTOR OP PARAMS_JSON SCHEDULE EVENT_JSON`.split(/\s+/).map((k) => `VAULTITE_${k}`)]
 
 /** `env`, in place, as if opened from the Dock when an agent's session or a Vaultite terminal started it: their variables,
  *  vau's folders on PATH and the session's account (`keepAccount`: set on purpose) dropped. The names it dropped. */

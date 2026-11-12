@@ -1043,6 +1043,13 @@ setTimeout(draw, 300)
         const t = (await app.runOp("terminal.start", { command: `${JSON.stringify(process.execPath)} -e "console.log('home=' + process.env.VAULTITE_HOME + ' as=' + process.env.VAULTITE_HOME_AS)"`, wait: true, timeout: 30,
           home: { url, as: "box" } })).result as Any
         check("terminal.start --home: its programs get the job's home server and this machine's id there", t.output?.includes(`home=${url} as=box`), t)
+        const { asFromDock } = await import("../../../core/sessionenv.ts")
+        const said = await app.runOp("terminal.start", { command: `${JSON.stringify(process.execPath)} -e "console.log('names=' + Object.keys(process.env).join(' '))"`, wait: true, timeout: 30, home: { url, as: "box" } })
+        const { z } = await import("zod")
+        const env = Object.fromEntries((/names=([^\r\n]*)/.exec(z.object({ output: z.string() }).parse(said.result).output)?.[1] ?? "").split(" ").filter(Boolean).map((k) => [k, "1"]))
+        asFromDock(env)
+        const left = Object.keys(env).filter((k) => k.startsWith("VAULTITE") && !/^VAULTITE_TEST(_RUN|_HOME|_TMPDIR)?$/.test(k))
+        check("a test run in a job's terminal drops every variable that terminal sets (core/sessionenv.ts)", "PATH" in env && left.length === 0, left)
         const bad = await app.runOp("terminal.start", { command: "true", home: { url: "https://evil.example.com", as: "box" } }).then(() => "", (e: Error) => e.message)
         check("terminal.start --home: only a server on the tailnet", /home: \{url, as\}/.test(bad), bad)
       }
