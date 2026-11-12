@@ -2,12 +2,13 @@
 // crash screen's Reload with a new tab. Writes nothing but its tabs: a throwaway server.
 //   node web/qa/crashguard.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
-import { qa, until, wait } from "./lib/qa.mjs"
+import { apiAt, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = "/tmp/crashguard-shots/"], browser, check, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
 const tabs = () => page.$$eval("[data-tab-id]", (els) => els.map((e) => e.textContent.trim()))
+const tabIds = () => page.$$eval("[data-tab-id]", (els) => els.map((e) => e.dataset.tabId))
 const stopped = () => page.$("#vau-boot-error").then((e) => !!e)
 const go = (hash) => page.evaluate((h) => { location.hash = h }, hash)
 
@@ -46,15 +47,18 @@ try {
   await page.unrouteAll({ behavior: "ignoreErrors" })
 
   // 3. The crash screen's Reload with a new tab: a new tab shown, the others still there.
-  await go("#plugins"); await wait(1500)
-  const had = (await tabs()).filter((t) => t !== "New tab")
+  await go("#plugins")
+  const kept = async () => (await apiAt(B.endsWith("/") ? B : `${B}/`)("POST", "ops/tabs.list", {})).tabs?.find((t) => t.active)?.panes?.find((p) => p.focused)?.to
+  check("...the server keeps its tab at Plugins", await until(async () => (await kept()) === "plugins", 15000), await kept())
+  const had = await tabIds()
   await page.evaluate(() => window.showBootError(new Error("qa: stopped"), "Vaultite stopped", { fresh: true }))
   const again = page.waitForEvent("load", { timeout: 15000 })
   await page.getByRole("button", { name: "Reload with a new tab" }).click()
   await again; await wait(2500)
   const active = await page.$eval("[data-tab-id] [role=tab][aria-selected=true], [data-tab-id][role=tab][aria-selected=true]", (e) => e.closest("[data-tab-id]").textContent.trim()).catch(() => null)
   check("Reload with a new tab: a new tab shown", active === "New tab", active)
-  check("...the tabs it had still in its bar", (await tabs()).filter((t) => had.includes(t)).length === had.length, { had, now: await tabs() })
+  const now = await tabIds()
+  check("...the tabs it had still in its bar", had.every((id) => now.includes(id)) && now.length === had.length + 1, { had, now })
   check("...the address isn't the tab it had", !/plugins/.test(await page.evaluate(() => location.hash)), await page.evaluate(() => location.hash))
 } catch (e) {
   check(String(e), false)
