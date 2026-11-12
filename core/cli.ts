@@ -4,7 +4,8 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
-import { camel, flagOf, kebab, opDoc, type OpEntry, restarting, usage as opUsage } from "./ops.ts"
+import { catalogOf, type OpEntry } from "./contracts/ops.ts"
+import { camel, flagOf, kebab, opDoc, restarting, usage as opUsage } from "./ops.ts"
 import { distance } from "./blocks.ts"
 import { EVENT_TYPES } from "./events.ts"
 import { gitEnv } from "./gitenv.ts"
@@ -667,7 +668,7 @@ async function catalog(c: Ctx, word?: string): Promise<OpEntry[] | null> {
   }
   // (refused, not missing: say why, e.g. a test run's call to the user's own server)
   if (r.status === 403) throw new CliError(String((r.body as Obj | null)?.error ?? "the server refused"))
-  return r.status === 200 && Array.isArray(r.body) ? r.body as OpEntry[] : null
+  return r.status === 200 ? catalogOf(r.body) : null
 }
 
 

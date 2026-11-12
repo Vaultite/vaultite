@@ -1,7 +1,8 @@
 // Operations: everything an agent, script or plugin can do, each defined once; the HTTP API (/api/ops), vau, MCP and
 // `vau docs api` are generated from the catalog so none can drift. `kind` decides locking and MCP hints.
 import { distance } from "./blocks.ts"
-import { actionProblems, type OpAction } from "./actions.ts"
+import { actionProblems } from "./actions.ts"
+import type { OpAction, OpEntry, OpKind, Schema } from "./contracts/ops.ts"
 import type { Readable } from "node:stream"
 import { KNOWN_AGENTS } from "./terminalids.ts"
 import { isHiddenPath, isOutside } from "./fileprops.ts"
@@ -12,35 +13,8 @@ const log = logger("ops")
 
 type Any = any
 
-/** A parameter's or a result's schema: the JSON Schema words the catalog uses. */
-export type Schema = {
-  type?: "string" | "number" | "integer" | "boolean" | "array" | "object"
-  description?: string
-  enum?: readonly unknown[]
-  default?: unknown
-  items?: Schema
-  properties?: Record<string, Schema>
-  required?: string[]
-  additionalProperties?: boolean | Schema
-  minimum?: number
-  maximum?: number
-  /** "date" (YYYY-MM-DD), "path" (a vault path, as the user would say it), "json" (any JSON value) */
-  format?: string
-  examples?: unknown[]
-  /** A CLI fills it from this environment variable when it isn't given (VAULTITE_TERMINAL: the app terminal it runs in). */
-  env?: string
-  /** A CLI fills it from stdin when text is piped in and it isn't given (a note's body: `echo text | vau note Title`). */
-  stdin?: boolean
-  /** A list given as text is one item, not split at its commas (questions, sentences). */
-  commas?: false
-  /** A "path" that may be a file outside the vault: an absolute one outside it is kept whole (pathAsSaid). */
-  outside?: true
-}
-
 /** A parameter: its schema, and whether it must be given. */
 export type Param = Omit<Schema, "required"> & { required?: boolean }
-
-export type OpKind = "read" | "write" | "destructive"
 
 /** Who asked: the client (X-Vaultite-Client: "cli", "mcp", "app"...), the agent it works for (X-Vaultite-Agent:
  *  "claude-code"), how to name that agent to the user, and what a note or a log it writes says as its `source`. */
@@ -172,31 +146,6 @@ export function didOf(op: Op, given: unknown): OpDid | null {
 export function quoted(v: unknown, n = 80) {
   const t = (typeof v === "string" ? v : "").trim().replace(/\s+/g, " ")
   return t.length > n ? `"${t.slice(0, n)}…"` : `"${t}"`
-}
-
-/** An op as the catalog lists it (no functions). */
-export type OpEntry = {
-  id: string
-  plugin: string | null
-  summary: string
-  help: string
-  kind: OpKind
-  params: Schema
-  args: string[]
-  cli: string | null
-  mcp: string | null
-  result: Schema | null
-  /** Only this machine's owner may run it (Op.owner): what it is, else null. */
-  owner: string | null
-  /** Op.exact: printed as is when piped. */
-  exact?: boolean
-  /** Op.input: the bytes it takes as a raw body. */
-  input?: string
-  /** Op.image: its answer comes with a picture (`?as=answer`). */
-  image?: true
-  /** Op.home: a job's worker runs it on its home server. */
-  home?: true
-  action: OpAction | null
 }
 
 /** What an op can't do, with what to do instead: a 400 over HTTP (`status`), the tool's error over MCP. */

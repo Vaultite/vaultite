@@ -1,6 +1,7 @@
 // A file's actions in the app (core/actions.ts): the ops that act on its kind, from the catalog (read again when the
 // plugins on change), run with the file filled in and the rest asked in the palette.
-import { actionsFor, type OpAction } from "../../../core/actions.ts"
+import { actionsFor } from "../../../core/actions.ts"
+import type { OpEntry as Entry, Schema } from "../../../core/contracts/ops.ts"
 import { askText, choose } from "@/components/Chooser"
 import { getStore } from "@/core/data"
 import { get, request } from "@/core/http"
@@ -9,8 +10,6 @@ import { notify, notifyError } from "@/core/notify"
 import { fileAt } from "@/core/pages"
 import { getPrefs } from "@/core/prefs"
 
-type Schema = { type?: string; description?: string; enum?: unknown[] }
-type Entry = { id: string; kind: string; plugin: string | null; action: OpAction | null; params: { properties?: Record<string, Schema>; required?: string[] } }
 export type FileAction = ReturnType<typeof actionsFor<Entry>>[number]
 
 let catalog: Entry[] = [], loadedFor = ""

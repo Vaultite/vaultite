@@ -4,7 +4,8 @@ import fs from "node:fs"
 import path from "node:path"
 import readline from "node:readline"
 import { commands, Ctx, CliError, execute, parseArgs, print, userData, type Obj } from "./cli.ts"
-import { camel, flagOf, type OpEntry, type Schema } from "./ops.ts"
+import type { OpEntry, Schema } from "./contracts/ops.ts"
+import { camel, flagOf } from "./ops.ts"
 
 const GLOBAL_FLAGS = ["--json", "--copy", "--count", "--paths", "--help"]
 

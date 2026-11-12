@@ -1,30 +1,12 @@
 // An object's actions: the ops that act on a kind of file (a person's timeline, a book's progress), the file filling one
 // of their params. One list for the app's menus, the palette, `vau actions` and MCP. Pure, no Node: both sides use it.
-
-/** How an op acts on a file (Op.action). */
-export type OpAction = {
-  /** The types it acts on (a file's `type:`, its kind's), or "*" for any file. */
-  on: string[]
-  /** The param the file fills, with its path or its name (the file name without its extension). */
-  param: string
-  from?: "path" | "name"
-  /** How it reads in a menu, in sentence case ("Add to timeline"). */
-  label: string
-  /** Params the app asks for besides the required ones (a book's page). */
-  ask?: string[]
-  /** A lucide icon's name. */
-  icon?: string
-  /** Only archived files (true); without it, only files that aren't. */
-  archived?: boolean
-  /** false: the app's menus have their own item for it (Archive), so they leave it out. */
-  menu?: boolean
-}
+import type { OpAction } from "./contracts/ops.ts"
 
 /** The file an action is asked about. */
 export type ActionFile = { path: string; type: string | null; archived?: boolean }
 
 /** What an op with `action` needs to say about it (an OpEntry is one). */
-type Acting = { id: string; kind: string; action: OpAction | null; params: { properties?: Record<string, unknown>; required?: string[] } }
+type Acting = { id: string; kind: string; action: OpAction | null; params: { properties?: Record<string, unknown>; required?: readonly string[] } }
 
 const actsOn = (a: OpAction, f: ActionFile) =>
   (a.on.includes("*") || (!!f.type && a.on.includes(f.type))) && !!a.archived === !!f.archived
