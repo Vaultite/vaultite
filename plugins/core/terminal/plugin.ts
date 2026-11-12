@@ -17,7 +17,7 @@ import {
 } from "./backend.ts"
 import { defaultShell, gitBash, kindOf, progName, shellsHere, type ShellKind } from "./shells.ts"
 import type { Kind, Said, SessionState } from "./osc7501.ts"
-import { fresh, label, moved, nowOf, step, type Event, type From as Source, type Now, type Term } from "./state.ts"
+import { byUs, closes, fresh, label, moved, nowOf, step, type Event, type From as Source, type Now, type Term } from "./state.ts"
 import { runOps } from "./run.ts"
 import type { Job } from "./starter.ts"
 import { terminalOps } from "./ops.ts"
@@ -80,8 +80,6 @@ const BLOCKED = JSON.stringify({ t: "blocked" })
 /** A shell this server shows: its backend's link to it, and the pages' sockets on it. */
 type Session = {
   id: string; backend: Backend; link: Link; clients: Set<WebSocket>; started: number
-  ended: boolean // ended by us (a tab's close, End session): reported as SIGHUP, like a shell killed directly
-  kept?: boolean // ended by us, its tabs kept (end's `keep`)
   pending: Set<WebSocket> // sockets waiting for their picture (they get no output before it: it's in it)
   opened?: string // how its start went, for its first tab's span: "spare 12ms", "new 95ms"
   blocked?: boolean // macOS keeps its shell from the folder its agent runs in: its tabs say so
@@ -417,25 +415,28 @@ function endOf(id: string) {
 
 /** Feeds terminal `id`'s state an event (state.ts' step): a transition is logged once, heard by terminal.wait at once,
  *  and told (tellState). `quiet`: taken as it is (a terminal from before this server), not told. */
-function apply(id: string, ev: Event, o: { quiet?: boolean } = {}) {
-  if (!TERMINAL_ID.test(id) || id.startsWith(SPARE)) return
+function apply(id: string, ev: Event, o: { quiet?: boolean } = {}): Term | null {
+  if (!TERMINAL_ID.test(id) || id.startsWith(SPARE)) return null
   const was = terms.get(id) ?? fresh(agentOf(id)?.name ?? ""), t = step(was, ev, Date.now())
-  if (t === was) return
+  if (t === was) return t
   terms.set(id, t)
+  if (closes(t) !== closes(was)) keepClosed()
   if (terms.size > 500) {
-    const old = [...terms].find(([, x]) => x.phase.state === "ended")?.[0] ?? terms.keys().next().value!
+    const old = [...terms].find(([k, x]) => k !== id && x.phase.state === "ended")?.[0] ?? terms.keys().next().value!
+    if (closes(terms.get(old)!)) closedEarlier().add(old)
     terms.delete(old)
   }
-  if (t.phase === was.phase) { if (t.starting !== was.starting) listChanged(); return }
+  if (t.phase === was.phase) { if (t.starting !== was.starting) listChanged(); return t }
   listChanged()
   if (o.quiet) {
     const now = nowOf(t)
     if (now) told.set(id, { now, at: Date.now() })
-    return
+    return t
   }
   if (moved(was.phase, t.phase)) console.log(`terminal: ${id} ${label(was.phase)} -> ${label(t.phase)}`)
   for (const fn of stateHeard) fn(id)
   tellState(id)
+  return t
 }
 
 /** What was told last about each terminal, and a change waiting its turn. */
@@ -521,6 +522,7 @@ async function askShown(id: string, agent: string, said: Said) {
 /** Terminal `id` starts anew (its agent's command about to run): what was kept of its state goes. */
 function resetState(id: string) {
   for (const f of [stateFile(id), oscMark(id), ...Object.values(oldMetaFiles(id))]) try { fs.rmSync(f, { force: true }) } catch { /* none */ }
+  reopened(id)
   terms.delete(id); held.delete(id); metas.delete(id)
   clearTimeout(told.get(id)?.timer)
   told.delete(id)
@@ -653,7 +655,7 @@ function frontSeen(b: Backend, id: string, program: boolean, seen: number) {
  *  its backend's own word on its agent. */
 function sight(x: Shell) {
   const p = terms.get(x.id)?.phase
-  if (p?.state === "ended" && p.lost) { terms.delete(x.id); toldEnded.delete(x.id) } // (running after all: lost wrongly)
+  if (p?.state === "ended" && p.lost) terms.delete(x.id) // (running after all: lost wrongly)
   if (!sighted.has(x.id)) {
     sighted.add(x.id)
     if (sighted.size > 2000) sighted.delete(sighted.values().next().value!)
@@ -869,7 +871,7 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
   const backend = b
   const link = await backend.attach(id, cols, rows)
   timing.mark("attach")
-  const s: Session = { id, backend, link, clients: new Set(), started: Date.now(), pending: new Set(), ended: false,
+  const s: Session = { id, backend, link, clients: new Set(), started: Date.now(), pending: new Set(),
     opened: `${timing.tags.how} ${Math.round(timing.end())}ms`, queued: "", owed: new Map(), acks: new Set(), held: false }
   link.onData((data) => {
     // (a burst comes as many messages in one read: the microtask runs once that read's are all in)
@@ -882,7 +884,8 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
     if (sessions.get(id) === s) sessions.delete(id)
     listChanged()
     let gone = exit
-    if (!exit && !s.ended) {
+    const t = terms.get(id), by = t ? byUs(t) : null
+    if (!exit && !by) {
       const x = (await backend.list({ ended: true }).catch(() => [] as Shell[])).find((y) => y.id === id)
       // Only our hold on it ended (a plugin backend's attach client was killed): the clients reconnect, which reattaches.
       if (x && !x.exit) {
@@ -894,17 +897,17 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
       else if (ours(backend)) gone = { code: 0, signal: 0, lost: true }
     }
     // Ended by us: a SIGHUP, as when a shell is killed directly.
-    const { code, signal, lost } = s.ended ? { code: 0, signal: 1, lost: false } : gone ?? { code: 0, signal: 0, lost: false }
+    const { code, signal, lost } = by ? { code: 0, signal: 1, lost: false } : gone ?? { code: 0, signal: 0, lost: false }
     // (a backend that tells its terminals' ends tells this one, onEvent, unless it's gone)
-    if (!backend.events || (!exit && !s.ended)) exited(id, { code, signal, lost })
+    if (!backend.events || (!exit && !by)) exited(id, { code, signal, lost })
     for (const ws of s.clients) {
       if (ws.readyState !== ws.OPEN) continue
-      ws.send(JSON.stringify({ t: "exit", code, signal, ...(lost ? { lost: true } : {}), ...(s.ended && !s.kept ? { ended: true } : {}) }))
+      ws.send(JSON.stringify({ t: "exit", code, signal, ...(lost ? { lost: true } : {}), ...(by && !by.keep ? { ended: true } : {}) }))
       ws.close(EXITED, "exited")
     }
   })
   sessions.set(id, s)
-  if (endedOnPurpose().delete(id)) keepEnded()
+  reopened(id)
   // (its agent may have written its state file before it was ours: the watcher let that one go)
   const hooks = hooksText(id)
   if (hooks) apply(id, { type: "hooks", text: hooks })
@@ -920,68 +923,57 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
   return { s, fresh }
 }
 
-/** Sessions ended for good here (End session, x, a clean exit), lately: their tabs close, now or when put back (even
- *  after a restart: kept on this machine, or a finished agent's would start again), on any device. */
-const endedFile = () => path.join(plugin.localDir(), "ended.json")
-let endedSet: Set<string> | null = null
-/** Read from its file the first time (the plugin's folder is known once it's loaded). */
-function endedOnPurpose() {
-  if (!endedSet) { try { const v = JSON.parse(fs.readFileSync(endedFile(), "utf8")); endedSet = new Set(Array.isArray(v) ? v.filter((x) => typeof x === "string") : []) } catch { endedSet = new Set() } }
-  return endedSet
+/** The terminals whose tabs close (state.ts' closes), kept on this machine so a tab put back after a restart closes too
+ *  rather than starting a finished agent again: the ones this server knows, and before them the ones it doesn't. */
+const closedFile = () => path.join(plugin.localDir(), "ended.json")
+let earlier: Set<string> | null = null
+/** The ones whose Term isn't kept here (from before this server, or dropped), read the first time (the plugin's folder
+ *  is known once it's loaded). */
+function closedEarlier() {
+  if (!earlier) { try { const v = JSON.parse(fs.readFileSync(closedFile(), "utf8")); earlier = new Set(Array.isArray(v) ? v.filter((x) => typeof x === "string") : []) } catch { earlier = new Set() } }
+  return earlier
 }
-let endedWrite: ReturnType<typeof setTimeout> | null = null
-const keepEnded = () => { endedWrite ??= setTimeout(() => { endedWrite = null; try { fs.mkdirSync(plugin.localDir(), { recursive: true }); fs.writeFileSync(endedFile(), JSON.stringify([...endedOnPurpose()])) } catch { /* next time */ } }, 1000) }
-function markEnded(id: string) {
-  const all = endedOnPurpose()
-  all.delete(id)
-  all.add(id)
-  if (all.size > 500) all.delete(all.values().next().value!)
-  keepEnded()
+const closesTabs = (id: string) => { const t = terms.get(id); return t ? closes(t) : closedEarlier().has(id) }
+let closedWrite: ReturnType<typeof setTimeout> | null = null
+function keepClosed() {
+  closedWrite ??= setTimeout(() => {
+    closedWrite = null
+    const ids = [...closedEarlier()].filter((id) => !terms.has(id)).concat([...terms].filter(([, t]) => closes(t)).map(([id]) => id)).slice(-500)
+    try { fs.mkdirSync(plugin.localDir(), { recursive: true }); fs.writeFileSync(closedFile(), JSON.stringify(ids)) } catch { /* next time */ }
+  }, 1000)
 }
-
-/** The terminals ended on purpose (End session, x, vau terminal end) whose end isn't told yet; `keep`: their tabs stay,
- *  saying it ended (an agent's handed session after its report). */
-const purposeful = new Map<string, { keep: boolean }>()
-/** The terminals whose end was told (by id, till one starts again with it). */
-const toldEnded = new Set<string>()
+/** A session of terminal `id` runs here: its tabs no longer close. */
+function reopened(id: string) {
+  const t = terms.get(id)
+  if (t?.phase.state === "ended") terms.delete(id)
+  if (closedEarlier().delete(id) || (t && closes(t))) keepClosed()
+}
 
 /** Terminal `id` ended (its backend tells, else its link here): the Inbox and the rest hear "terminal.ended", once. */
 function exited(id: string, exit: { code: number; signal: number; lost?: boolean }) {
-  if (toldEnded.has(id)) return
-  toldEnded.add(id)
-  if (toldEnded.size > 500) toldEnded.delete(toldEnded.values().next().value!)
-  const p = purposeful.get(id)
-  purposeful.delete(id)
-  // Ended by us: a SIGHUP, as when a shell is killed directly.
-  const { code, signal } = p ? { code: 0, signal: 1 } : exit
-  const lost = !p && !!exit.lost
-  // A clean exit (an agent's too: the shell after it) closes its tabs, the ones away now once they're put back; an
-  // agent's session that died, or one lost with its terminal server, keeps its tabs, saying so, with Restart.
-  if (!code && !signal && !lost) markEnded(id)
+  if (terms.get(id)?.phase.state === "ended") return
+  const p = apply(id, { type: "exit", code: exit.code, signal: exit.signal, lost: !!exit.lost })?.phase
+  if (p?.state !== "ended") return
   // (what was kept of its state goes; how it ended stays, for a wait that comes after)
   for (const f of [stateFile(id), oscMark(id), ...Object.values(oldMetaFiles(id))]) try { fs.rmSync(f, { force: true }) } catch { /* none */ }
   metas.delete(id); held.delete(id)
   clearTimeout(told.get(id)?.timer)
   told.delete(id)
-  apply(id, { type: "exit", code, signal, lost })
   // (onPurpose: the user ended it, End session or vau terminal end: the Inbox takes its row as dealt with)
-  tell("terminal.ended", { id, code, signal, ...(lost ? { lost: true } : {}), ...(p && !p.keep ? { onPurpose: true } : {}) })
+  tell("terminal.ended", { id, code: p.code, signal: p.signal, ...(p.lost ? { lost: true } : {}), ...(p.by && !p.by.keep ? { onPurpose: true } : {}) })
   for (const fn of exitHeard) fn(id)
   listChanged()
 }
 
-/** Ends a session for good: its shell, not just this server's hold on it. `keep`: see purposeful. */
+/** Ends a session for good: its shell, not just this server's hold on it. `keep`: its tabs stay, saying it ended (an
+ *  agent's handed session after its report). */
 function end(s: Session, keep = false) {
-  s.ended = true
-  s.kept = keep
-  purposeful.set(s.id, { keep })
-  if (!keep) markEnded(s.id)
+  apply(s.id, { type: "end", keep })
   void s.backend.kill(s.id).catch(() => {})
 }
 /** The same, for one this server holds no session of (a tab closed after a restart, vau terminal end). */
 async function endHere(b: Backend, id: string, keep = false) {
-  purposeful.set(id, { keep })
-  if (!keep) markEnded(id)
+  apply(id, { type: "end", keep })
   await b.kill(id)
   if (!b.events) exited(id, { code: 0, signal: 1 })
 }
@@ -996,9 +988,8 @@ function onEvent(b: Backend, ev: BackendEvent) {
   if (ev.type === "exited") return exited(ev.id, ev.exit)
   if (ev.type === "title") return
   if (ev.type === "started") {
-    toldEnded.delete(ev.id)
     sighted.add(ev.id)
-    if (terms.get(ev.id)?.phase.state === "ended") terms.delete(ev.id)
+    reopened(ev.id)
     const meta = ev.info?.meta ?? {}
     tell("terminal.started", { id: ev.id, agent: agentOf(ev.id)?.name ?? null, ...(ev.info?.command ? { command: ev.info.command } : {}), ...(meta.name ? { name: meta.name } : {}) })
   }
@@ -1180,7 +1171,7 @@ plugin.socket("terminal/*", async (ws, req, { wild, query }) => {
   }
   // A tab put back asks only to attach: an agent's new session that ended (or was lost) isn't started again, nor
   // a session ended for good (its tab closes).
-  const agent = agentOf(id), ended = endedOnPurpose().has(id)
+  const agent = agentOf(id), ended = closesTabs(id)
   if (query.attach && (ended || (agent && !agent.resume)) && !starting.has(id) && !(await runsHere(id))) {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: "gone", ...(ended ? { ended: true } : {}) }))
     return ws.close(GONE, "gone")

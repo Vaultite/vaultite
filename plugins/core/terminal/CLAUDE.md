@@ -45,7 +45,8 @@
 - A terminal's state (the list's `state`, the service "inbox:state", the event `terminal.state`, `terminal.wait`, for
   plugins the service "terminal:wait") is one value, `state.ts`' Term: every source is an event into its `step`, each
   transition a line in the server's log, and everything reads only its output (no source read again elsewhere). It
-  comes from OSC 7501 (`osc7501.ts`) when its program speaks it, else its agent's hooks, else a question its agent declares
+  holds how its shell's life ends too (ended on purpose, ended, whether its tabs close: `ended.json` is `closes`' copy
+  kept for after a restart). It comes from OSC 7501 (`osc7501.ts`) when its program speaks it, else its agent's hooks, else a question its agent declares
   seen on its screen. Its program seen gone from in front of its shell, after it last spoke, ends what any of them said
   (idle, `from: "shell"`): the server looks itself while one works or waits (`lookAtBusy`), page or no page. Its agent's own word that it waits ("terminal:agent-waits": Claude Code's session file) blocks it
   whatever those say: Claude Code has dialogs no hook tells. A blocked report without a kind (Codex's, which never

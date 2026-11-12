@@ -1,5 +1,5 @@
-// A terminal's agent state, one value per terminal (plugin.ts keeps them): every source's word comes in as an event, and
-// `step` alone says what the terminal is then. No clock and no Node of its own: the caller says when.
+// A terminal's agent state and how its shell's life ends, one value per terminal (plugin.ts keeps them): every source's
+// word comes in as an event, and `step` alone says what the terminal is then. No clock and no Node: the caller says when.
 import { shown, type Kind, type Said, type SessionState } from "./osc7501.ts"
 
 /** Where a state came from: `shell` is its program gone from in front of its shell (back at its prompt). */
@@ -13,7 +13,10 @@ export type Word =
 
 /** What a terminal's agent is doing: `quiet` while nothing has said, `missing` when its shell found no such program,
  *  `ended` once the terminal ended (and how); else what its sources say. */
-export type Phase = { state: "quiet" } | { state: "missing" } | Word | { state: "ended"; code: number; signal: number; lost: boolean }
+export type Phase = { state: "quiet" } | { state: "missing" } | Word | Ended
+
+/** How a terminal ended; `by`: ended by us on purpose (its tabs kept with `keep`), told as a SIGHUP. */
+export type Ended = { state: "ended"; code: number; signal: number; lost: boolean; by: { keep: boolean } | null }
 
 /** What its agent's hooks wrote in its state file (plugin.ts' stateCommand): working, idle, waiting[:kind] or missing. */
 export type Hooks = { state: "working" | "idle" | "missing" } | { state: "blocked"; kind?: Kind }
@@ -39,6 +42,8 @@ export type Term = {
   /** When a source last said something: a program seen gone before then left nothing it said. */
   heard: number
   phase: Phase
+  /** Ended by us on purpose, its end not heard yet (its phase ended: null). */
+  ending: { keep: boolean } | null
   /** When its phase last changed (terminal.wait counts one after the last input), and when it last began working. */
   at: number
   since: number
@@ -56,6 +61,7 @@ export type Event =
   | { type: "waits"; kind: Kind | null }
   | { type: "backend"; state: string | undefined }
   | { type: "front"; program: boolean; seen: number }
+  | { type: "end"; keep: boolean }
   | { type: "exit"; code: number; signal: number; lost: boolean }
 
 /** What reads a terminal's state gets: a Word with its agent, or null when nothing says (or it ended). */
@@ -65,7 +71,7 @@ export type Now = { agent: string; state: SessionState; kind?: Kind; msg?: strin
 const AGENT_APPS: Record<string, string> = { "claude-code": "claude" }
 
 export const fresh = (agent: string): Term => ({ agent, osc: null, hooks: null, ask: null, waits: null, backend: null, front: null, starting: false, heard: 0,
-  phase: { state: "quiet" }, at: 0, since: 0 })
+  phase: { state: "quiet" }, ending: null, at: 0, since: 0 })
 
 const isWord = (p: Phase): p is Word => "from" in p
 
@@ -165,9 +171,12 @@ export function step(t: Term, ev: Event, now: number): Term {
       if (ev.program) { n.starting = false; return n }
       // (a shell at its prompt while its agent starts, or seen before its program last spoke, ends nothing)
       return n.starting || ev.seen < n.heard ? n : left(n, t, now)
-    case "exit":
-      return { ...n, osc: null, hooks: null, ask: null, waits: null, backend: null, starting: false, at: now,
-        phase: { state: "ended", code: ev.code, signal: ev.signal, lost: ev.lost } }
+    case "end": return { ...n, ending: { keep: ev.keep } }
+    case "exit": {
+      const by = n.ending, how = by ? { code: 0, signal: 1, lost: false } : { code: ev.code, signal: ev.signal, lost: ev.lost }
+      return { ...n, osc: null, hooks: null, ask: null, waits: null, backend: null, starting: false, ending: null, at: now,
+        phase: { state: "ended", ...how, by } }
+    }
   }
   return settle(n, t, now)
 }
@@ -189,3 +198,13 @@ export function label(p: Phase) {
 
 /** Whether a change is a transition (its state or what it waits on), as the log tells it: a new message isn't one. */
 export const moved = (a: Phase, b: Phase) => a.state !== b.state || (a as { kind?: Kind }).kind !== (b as { kind?: Kind }).kind
+
+/** Whether its tabs close, now or when put back: ended on purpose without `keep`, or a clean exit. */
+export function closes(t: Term) {
+  const p = t.phase
+  if (p.state !== "ended") return !!t.ending && !t.ending.keep
+  return p.by ? !p.by.keep : !p.code && !p.signal && !p.lost
+}
+
+/** Ended by us on purpose, as asked (null: not, or not known). */
+export const byUs = (t: Term) => (t.phase.state === "ended" ? t.phase.by : t.ending)
