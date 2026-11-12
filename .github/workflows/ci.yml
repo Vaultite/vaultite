@@ -80,6 +80,27 @@ jobs:
         run: npm run smoke
   # The web demo as the site builds it (Vaultite's own plugins at their main), in Chrome and WebKit: a demo that can't
   # start is caught on the push that broke it, not at a release.
+  # A change adds no more of a lint rule's patterns than its files had before it (tools/ratchet.ts): against the push's
+  # previous tip on main, else a pull request's base (a try's is verify's: it runs the ratchet too).
+  ratchet:
+    if: (github.event_name == 'push' && !startsWith(github.ref, 'refs/heads/try/')) || github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+      BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.ref == 'refs/heads/main' && github.event.before || '' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: |
+          if [ -n "$BASE" ] && [ "${BASE//0/}" != "" ]; then node tools/ratchet.ts --base "$BASE"
+          else git fetch -q origin main && node tools/ratchet.ts; fi
   demo:
     if: ${{ !startsWith(github.ref, 'refs/heads/try/') }}
     runs-on: ubuntu-24.04

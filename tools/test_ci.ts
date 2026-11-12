@@ -209,7 +209,7 @@ check("try --wait with none started: says so, with what to run", (await waitTry(
 section("try on machines")
 {
   const yml = fs.readFileSync(path.join(import.meta.dirname, "..", ".github/workflows/ci.yml"), "utf8")
-  const job = yml.slice(yml.indexOf("\n  test:"), yml.indexOf("\n  demo:"))
+  const job = /\n {2}test:\n(?:(?! {2}[\w-]+:\n).*\n)*/.exec(yml)?.[0] ?? ""
   const runs = [...job.matchAll(/^\s+(?:- )?run: (.+)$/gm)].map((m) => m[1].replace(/\$\{\{[^}]*\}\}\s*/g, "").trim()).filter((r) => !r.startsWith("sudo "))
   check("a machine runs ci.yml's test job, step by step (but what needs sudo on a runner)", runs.join() === STEPS.map((x) => x.cmd).join(), { runs, steps: STEPS.map((x) => x.cmd) })
   const r = parseJob(["== npm test", "try-job: step FAIL 3.0 npm test", "try-job: summary", "try-job: result ok 20.5 npm ci", "try-job: result FAIL 61.2 npm test",

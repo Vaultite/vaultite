@@ -98,7 +98,13 @@ async function api(method: string, p: string, body?: unknown): Promise<[number, 
   const res = await app.run(method, parts, query, body ?? {})
   return [res.status, res.body instanceof Text ? res.body.text : publicOf(res.body)]
 }
-const [, v] = await api("GET", "vault")
+const onlyStillReading = (x: Any) => x.problems.length > 0 && x.problems.every((p: Any) => p.problem === "iCloud is still downloading it")
+async function vaultOnceSlowReadsArrive() {
+  let [, v] = await api("GET", "vault")
+  for (const t0 = Date.now(); onlyStillReading(v) && Date.now() - t0 < 60_000;) { await new Promise((r) => setTimeout(r, 500)); [, v] = await api("GET", "vault") }
+  return v
+}
+const v = await vaultOnceSlowReadsArrive()
 check("sandbox: the app reads every file", v.problems.length === 0, v.problems)
 const BUILT = "Dashboards" // (its plugins' pages, as they wrote them when turned on: core/sandbox.ts)
 const pages = ["Start here.md", ...fs.readdirSync(path.join(C, BUILT)).filter((f) => f.endsWith(".md")).map((f) => `${BUILT}/${f}`)]
