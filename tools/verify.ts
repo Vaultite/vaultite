@@ -47,6 +47,7 @@ const picked: Stage[] = [
   ...(changed.some((f) => f.startsWith("web/src/") || f === "tools/test_web.ts") ? [{ name: "test_web", cmd: ["node", "tools/test_web.ts"], why: "web/src or its test changed" }] : []),
   ...(changed.some((f) => /^(electron\/browser\/(kdbx\/|keepass\.ts|kdbxedit\.ts)|tools\/test\/kdbx\/|tools\/test_kdbx\.ts)/.test(f)) ? [{ name: "test_kdbx", cmd: ["node", "tools/test_kdbx.ts"], why: "the KeePass reader changed" }] : []),
   ...(changed.some((f) => /^(plugins\/core\/terminal\/claude-pictures\/|tools\/test\/pictures\/|tools\/fixtures\/pictures\/|tools\/test_pictures\.ts)/.test(f)) ? [{ name: "test_pictures", cmd: ["node", "tools/test_pictures.ts"], why: "the pictures mod's decoders changed" }] : []),
+  ...(changed.some((f) => /^(\.oxlintrc\.json$|tools\/(oxlint|ratchet)\/|tools\/(ratchet|test_lint)\.ts$)/.test(f)) ? [{ name: "test_lint", cmd: ["node", "tools/test_lint.ts"], why: "the lint rules or the ratchet changed" }] : []),
   ...(areas.length ? [{ name: "test_vault", cmd: ["node", "tools/test_vault.ts", ...(areas.length === AREAS.length ? [] : areas)],
     why: areas.length === AREAS.length ? "all areas" : areas.join(" ") }] : []),
   ...(changed.some((f) => f.startsWith("web/qa/") || f.startsWith("web/src/")) ? [{ name: "qa lint", cmd: ["node", "tools/qa.ts", "--lint"], why: "QA selectors" }] : []),
@@ -56,6 +57,7 @@ const picked: Stage[] = [
 const stages: Stage[] = [
   { name: "build", cmd: ["npm", "run", "build"], why: "always" },
   { name: "check", cmd: ["npm", "run", "check"], why: "always" },
+  { name: "ratchet", cmd: ["node", "tools/ratchet.ts", ...(argv.includes("--base") ? ["--base", base] : [])], why: "always" },
   ...(all ? [{ name: "test", cmd: ["npm", "test"], why: "--all" }, { name: "smoke", cmd: ["npm", "run", "smoke"], why: "--all" }] : picked),
 ]
 

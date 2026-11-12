@@ -1,11 +1,65 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "ignorePatterns": ["plugins/core/spreadsheets/xlsx/xlsx.mjs"],
+  "plugins": ["react", "typescript", "oxc", "unicorn"],
+  "jsPlugins": [
+    { "name": "anti-slop", "specifier": "./tools/oxlint/anti-slop/index.ts" },
+    { "name": "vaultite", "specifier": "./tools/oxlint/vaultite.ts" }
+  ],
+  "ignorePatterns": [
+    "plugins/core/spreadsheets/xlsx/**",
+    "plugins/core/terminal/vt/**",
+    "electron/browser/kdbx/**",
+    "tools/test/kdbx/upstream/**",
+    "tools/oxlint/anti-slop/**",
+    "**/*.d.ts"
+  ],
   "rules": {
     "react/rules-of-hooks": "error",
     "react/only-export-components": ["warn", { "allowConstantExport": true }],
     "no-unused-vars": ["warn", { "ignoreRestSiblings": true, "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
-    "no-control-regex": "off"
-  }
+    "no-control-regex": "off",
+
+    "vaultite/no-cast": "warn",
+    "vaultite/disable-reason": "warn",
+    "vaultite/no-node-module-mock": "warn",
+    "vaultite/no-unchecked-json": "warn",
+    "typescript/no-explicit-any": "warn",
+    "typescript/ban-ts-comment": ["warn", { "ts-expect-error": "allow-with-description", "minimumDescriptionLength": 10 }],
+    "unicorn/no-abusive-eslint-disable": "warn",
+    "max-lines": ["warn", { "max": 300 }],
+    "max-lines-per-function": ["warn", { "max": 50 }],
+    "complexity": ["warn", { "max": 15 }],
+
+    "oxc/no-accumulating-spread": "warn",
+    "anti-slop/no-array-filter-map": "warn",
+    "anti-slop/no-reduce-accumulator-copy": "warn",
+    "anti-slop/no-chained-type-assertions": "warn",
+    "anti-slop/no-conditional-empty-object-spread": "warn",
+    "anti-slop/no-known-value-widening": "warn",
+    "anti-slop/no-module-mocking": "warn",
+    "anti-slop/no-object-parameters": "warn",
+    "anti-slop/no-reflect-apply": "warn",
+    "anti-slop/no-reflect-get": "warn",
+    "anti-slop/no-runtime-typeof": "warn",
+    "anti-slop/no-shape-in-symbol-names": "warn",
+    "anti-slop/no-unknown-parameters": "warn",
+    "anti-slop/no-unknown-returns": "warn",
+    "anti-slop/no-unknown-type-aliases": "warn",
+    "anti-slop/no-unsafe-dictionary-type": "warn",
+    "anti-slop/no-widen-then-assert": "warn"
+  },
+  "overrides": [
+    {
+      "files": ["core/**", "web/src/**", "plugins/**", "electron/**", "bin/**", "server.ts"],
+      "rules": { "no-console": "warn" }
+    },
+    {
+      "files": ["web/qa/**"],
+      "rules": { "vaultite/no-sleep": "warn" }
+    },
+    {
+      "files": ["web/qa/**", "tools/test/**", "tools/test_*.ts", "**/*.test.ts"],
+      "rules": { "max-lines-per-function": "off" }
+    }
+  ]
 }
