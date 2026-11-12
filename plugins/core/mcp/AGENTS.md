@@ -25,7 +25,9 @@ lines (`vau mcp` under VAULTITE_TOLD): it gets the intro and the tools' part onl
 - **Vaultite Cloud** gives that listener an address without a tunnel of one's own: `https://<handle>.vaultite.app/mcp`.
   Signing in: the user gets a one-time code at https://cloud.vaultite.com/connect and types it in Connections or
   `vau cloud sign-in <code>` (ops `mcp.cloud-sign-in`, `mcp.cloud-status`, `mcp.cloud-sign-out`); never use a code from
-  someone else. The machine then keeps a tunnel to the relay, which reaches only the public listener. Its shared
+  someone else. The machine then keeps a tunnel to the relay, which reaches only the public listener. When the
+  account changes its handle (on cloud.vaultite.com), the relay tells the machine over the tunnel; it keeps the new
+  address and says so, and AI apps must add the new MCP address again. Its shared
   folders' guests (Sharing) come to `https://share-<handle>.vaultite.app`, marked by the relay as theirs: the listener
   sends them to Sharing's gateway only. MCP gives Sharing its guests' address (`mcp:guest-urls`: that one while signed
   in, then an own tunnel's `mcp.public.url`).

@@ -138,9 +138,13 @@ const cloud = new Cloud(plugin, () => publicMcp().ready)
 /** Connect: whether terminals, coding agents and the like answer the owner over the relay (data/config.json, this Mac's). */
 const ownerTools = () => (plugin.secrets().mcp as { connect?: { ownerTools?: boolean } } | undefined)?.connect?.ownerTools === true
 let signedIn = false
+let handle = cloud.stored()?.handle ?? null
 cloud.onChange = (s) => {
-  // Told once signed in, and when it stops on its own (revoked, another machine): not every reconnect.
-  const text = s.state === "connected" && signedIn ? `Your vault's MCP server is at ${s.url}` : s.state === "replaced" || (s.state === "off" && s.message) ? s.message : ""
+  // Told once signed in, when the account's handle changed, and when it stops on its own (revoked, another machine):
+  // not every reconnect.
+  const renamed = !!handle && !!s.handle && s.handle !== handle && !signedIn
+  handle = s.handle
+  const text = renamed ? `Your vault's MCP server moved to ${s.url}: add it again in your AI apps` : s.state === "connected" && signedIn ? `Your vault's MCP server is at ${s.url}` : s.state === "replaced" || (s.state === "off" && s.message) ? s.message : ""
   if (s.state !== "connecting") signedIn = false
   if (text) try { void plugin.runOp("ui.notify", { text, actionOpen: "view:connections" }).catch(() => {}) } catch { /* still starting */ }
 }

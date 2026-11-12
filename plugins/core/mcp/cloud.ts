@@ -11,9 +11,10 @@ const RELAY = (process.env.VAULTITE_CLOUD || "https://cloud.vaultite.com").repla
 
 /** What's kept in data/config.json (mcp.cloud): never in the vault, never logged. */
 type Stored = { token: string; handle: string; url: string }
-/** `guest`: a request or socket to share-<handle>, for Sharing alone (the relay's word: no client sets it). */
+/** `guest`: a request or socket to share-<handle>, for Sharing alone (the relay's word: no client sets it). `handle`,
+ *  `url`: the account's handle and its address (`t: "handle"`), as the relay says on hello and when the account changes it. */
 type Frame = { t: string; id?: string; method?: string; path?: string; headers?: [string, string][]; body?: string; key?: string
-  text?: string; data?: string; code?: number; reason?: string; guest?: boolean }
+  text?: string; data?: string; code?: number; reason?: string; guest?: boolean; handle?: string; url?: string }
 
 type CloudState = "off" | "connecting" | "connected" | "reconnecting" | "offline" | "replaced"
 export type CloudStatus = {
@@ -112,6 +113,19 @@ export class Cloud {
     this.state = state
     this.message = message
     if (changed) this.onChange(this.status())
+  }
+
+  /** The account's handle and address, as the relay says them (it answers hello so, and says so when the account changes
+   *  its handle): kept in place of redeem's, so the MCP address, Connect's checks and the guests' address follow. */
+  moved(f: Frame) {
+    const s = this.stored()
+    if (!s || typeof f.handle !== "string" || typeof f.url !== "string" || !/^[a-z0-9-]{3,30}$/.test(f.handle)) return
+    // (the same zone as before: <handle>.vaultite.app)
+    let u: URL, zone: string
+    try { u = new URL(f.url); zone = new URL(s.url).hostname.slice(s.handle.length + 1) } catch { return }
+    if (u.protocol !== "https:" || u.hostname !== `${f.handle}.${zone}` || (f.handle === s.handle && f.url === s.url)) return
+    this.save({ ...s, handle: f.handle, url: f.url })
+    this.onChange(this.status())
   }
 
   /** Connects when this machine is signed in. */
@@ -227,6 +241,7 @@ export class Cloud {
       let f: Frame
       try { f = JSON.parse(String(data)) } catch { return }
       if (f.t === "ping") ws.send(JSON.stringify({ t: "pong" }))
+      else if (f.t === "handle") this.moved(f)
       else if (f.t === "connect" && typeof f.key === "string" && f.key) { const was = this.connectKey; this.connectKey = f.key; if (!was) this.onChange(this.status()) }
       else if (f.t === "ws") this.openSocket(ws, f).catch((e) => this.send(ws, { t: "wsno", id: String(f.id), status: 502, message: (e as Error).message }))
       else if (f.t === "wsmsg") { const s = this.sockets.get(String(f.id)); if (s?.readyState === WebSocket.OPEN) s.send(typeof f.data === "string" ? Buffer.from(f.data, "base64") : String(f.text ?? ""), { binary: typeof f.data === "string" }) }
@@ -252,6 +267,8 @@ export class Cloud {
         return this.set("replaced", this.replacedBy)
       }
       if (code === 4001) return this.revoked()
+      // The account changed its handle (it said the new one first): the relay that answers there takes this connection.
+      if (code === 4002) { this.attempt = 0; return this.connect() }
       this.retry(this.message)
     })
   }

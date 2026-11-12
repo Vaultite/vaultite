@@ -201,6 +201,13 @@ try {
   relay.conn.terminate()
   check("a dropped tunnel reconnects", !!(await until(() => relay.conns > conns && cloud.status().state === "connected", 6000)) && notices.includes("reconnecting"), notices)
 
+  const beforeMove = relay.conns
+  relay.conn.send(JSON.stringify({ t: "handle", handle: "Evil!", url: "https://evil.example" }))
+  relay.conn.send(JSON.stringify({ t: "handle", handle: "alice-new", url: "https://alice-new.evil.example" }))
+  relay.conn.send(JSON.stringify({ t: "handle", handle: "alice-new", url: "https://alice-new.vaultite.app" }))
+  relay.conn.close(4002, "handle changed")
+  check("the account's new handle (the relay's word): kept, and it reconnects at once", !!(await until(() => relay.conns > beforeMove && cloud.status().state === "connected", 4000))
+    && cfg.mcp.cloud.handle === "alice-new" && cloud.status().url === "https://alice-new.vaultite.app/mcp" && cloud.guestUrl() === "https://share-alice-new.vaultite.app" && !!cfg.mcp.cloud.token, cloud.status())
   relay.conn.close(4000, "replaced by Bob's MacBook")
   await wait(2500)
   const before = relay.conns
