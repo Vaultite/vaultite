@@ -10,7 +10,7 @@ import { type ChatTool, chat, onChat, ALLOWED, apiCtx, toolsFor } from "./chat.t
 import { plugin } from "./self.ts"
 import type { Moment } from "./types.ts"
 import { sayMs, setting, mode, agentSetting, ownName } from "./settings.ts"
-import { agents, log, acts, did, key, focus, agentOf, setAgent, putNote } from "./state.ts"
+import { agents, log, acts, did, key, focus, agentOf, setAgent, putNote, life, restate, stateOf } from "./state.ts"
 import { keepSaid } from "./comments.ts"
 import { takeover, screenDrawing, tours, screenFind, nearBy } from "./windows.ts"
 import { answering } from "./edits.ts"
@@ -66,8 +66,8 @@ export const lane = (): Lane => {
     options: (model) => ({ cwd: plugin.vault.path, account: agentSetting().split("_")[1] || undefined, model, effort: "low", quick: true, system: SUMMONED_PROMPT,
       builtins: SUMMONED_BUILTINS, title: "Companion: summoned", by: "companion", inbox: false, mode: "auto", allowed: SUMMONED_ALLOWED,
       denied: ["Bash(vau companion:*)", ...READ_ONLY.denied], dirs: READ_ONLY.dirs, confirm: "confirm", never: [...NEVER_RUN, escaped(path.resolve(LOCAL))], autoMode: AUTO_RULES,
-      tools: [...toolsFor(ownName(), SUMMONED_TOOLS, () => lane().busy()), confirmTool(ownName)] }),
-    acts: () => { const [say, look, draw] = toolsFor(ownName(), SUMMONED_ACTS, () => lane().busy()); return { say, look, draw } },
+      tools: [...toolsFor(ownName(), SUMMONED_TOOLS), confirmTool(ownName)] }),
+    acts: () => { const [say, look, draw] = toolsFor(ownName(), SUMMONED_ACTS); return { say, look, draw } },
     found: async (text) => {
       if (askOf(ownName())?.path) return null
       const r = await screenFind(ownName(), text).catch(() => null)
@@ -91,7 +91,9 @@ export const lane = (): Lane => {
         .split(`at what they pointed at: ${f}`).join("at what they pointed at, attached after its picture"), text)
       return { text: named.replace(/\(point at one: --ax <id>\)/g, "(tag one by id: [point a1], [ring a1])"), images }
     },
-    agent: (name) => agents.get(key(name)), setAgent, did,
+    thinking: (name) => restate(name, () => { if (agents.has(key(name)) && stateOf(name) === "away") life.delete(key(name)) }),
+    watching: (name, seen) => { life.delete(key(name)); setAgent(name, seen ? { seen: true } : {}) },
+    did,
     talk: (t) => talkBefore(t),
     say: (name, text) => { const a = agents.get(key(name)), answers = inSummoned.run(true, () => answering(name))
       keepSaid(putNote({ kind: "say", agent: name, text, ...(a?.path ? { path: a.path, line: a.line } : {}), ...(answers ? { answers } : {}) }, sayMs(text))) },

@@ -5,7 +5,7 @@ import { OpError } from "../../../core/plugins.ts"
 import { readText, requestWriter, type Writer, writeAtomic } from "../../../core/vault.ts"
 import { nearest } from "./text.ts"
 import type { Target } from "../../../core/desktop/places.ts"
-import { waiters, agents, notes, said, setSaid, SAID, timers, acting, windows, MAX_TEXT, broadcast, key, focus, addMoment, agentOf, setAgent, putNote, dropNote } from "./state.ts"
+import { waiters, agents, notes, said, setSaid, SAID, timers, windows, MAX_TEXT, broadcast, key, focus, addMoment, agentOf, acted, setAgent, putNote, dropNote } from "./state.ts"
 import { plugin } from "./self.ts"
 import type { Moment, Note } from "./types.ts"
 import { sayMs } from "./settings.ts"
@@ -250,7 +250,8 @@ export async function place(id: string) {
 export function fold(name: string, path: string, line: number, text: string) {
   const a = agents.get(key(name))
   if (!a || !text.trim()) throw new OpError(`${name} isn't here to say it`, 404)
-  setAgent(a.name, { path, line, find: undefined, x: undefined, y: undefined, state: acting(a.name) })
+  acted(a.name)
+  setAgent(a.name, { path, line, find: undefined, x: undefined, y: undefined })
   const n = putNote({ kind: "say", agent: a.name, text: text.trim(), path, line }, sayMs(text))
   keepSaid(n)
   addMoment({ kind: "move", into: "bubble", for: a.name, item: n.id, path, line, text: text.trim() })

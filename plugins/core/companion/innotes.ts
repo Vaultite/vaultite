@@ -3,7 +3,7 @@ import { byUser, OpError } from "../../../core/plugins.ts"
 import "./wiring.ts"
 import { plugin } from "./self.ts"
 import { str } from "./settings.ts"
-import { asking, notes, did, acting, MAX_TEXT, broadcast, key, focus, setAgent, putNote, dropNote } from "./state.ts"
+import { asking, notes, did, MAX_TEXT, broadcast, key, focus, setAgent, putNote, dropNote } from "./state.ts"
 import { past, save, place, fold, reopen } from "./comments.ts"
 import { streams, toolUse, cut, lineText } from "./edits.ts"
 import { AS, PATH, LINE, FIND, target, notOnDrawing, who } from "./args.ts"
@@ -87,7 +87,7 @@ plugin.op({
     const name = who(p), why = cut(str(p.reason).trim().replace(/[.\s]+$/, ""), 40)
     did(name, "pass")
     asking.delete(key(name))
-    setAgent(name, { state: "watching", seen: true, ...(why ? { why } : {}) })
+    setAgent(name, { seen: true, ...(why ? { why } : {}) })
     return { why }
   },
   text: () => "Passed: end your turn.",
@@ -178,12 +178,12 @@ it: with id (the comment's), your words join its thread.
       n.replies = [...(n.replies ?? []), { by: "agent", text: str(p.text), t: Date.now(), ...(n.by ? { name } : {}) }]
       broadcast({ t: "note", note: n })
       save(n.path!)
-      setAgent(name, { path: n.path, line: n.line, find: n.find, state: acting(name) })
+      setAgent(name, { path: n.path, line: n.line, find: n.find })
       return n
     }
     const t = target(p)
     notOnDrawing(t, "say it by an element (companion say --find <id>), or draw a text (companion draw)")
-    setAgent(name, { ...t, state: acting(name) })
+    setAgent(name, t)
     const anchor = !t.find && t.line ? lineText(t.path!, t.line) : ""
     return putNote({ kind: "comment", agent: name, text: str(p.text), ...t, ...(anchor ? { anchor } : {}) })
   },
@@ -209,7 +209,7 @@ moment tells you what they chose.
     const name = who(p), t = target(p)
     notOnDrawing(t, "change it with companion draw")
     did(name, "suggest")
-    setAgent(name, { ...t, state: acting(name) })
+    setAgent(name, t)
     return putNote({ kind: "suggestion", agent: name, ...t, replace: str(p.replace), ...(str(p.why) ? { text: str(p.why) } : {}) })
   },
   text: (r) => `Suggested (${r.id}).`,

@@ -1074,6 +1074,123 @@ export default async ($: VaultTest) => {
     check("guides: vau docs guides has their format", /type: guide/.test(JSON.stringify(doc)), doc)
   }
 
+  {
+    await api("PATCH", "config/plugin/companion", { mode: "pair" })
+    const { EventEmitter } = await import("node:events")
+    const cPropose = await import("../../../plugins/core/companion/propose.ts")
+    const live = c.plugin.sockets.find((x: Any) => x.pattern.join("/") === "companion/live")!
+    const req: Any = { headers: {}, socket: { remoteAddress: "127.0.0.1" } }
+    const fake = (answer?: (m: Any, ws: Any) => void) => {
+      const got: Any[] = []
+      const ws: Any = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, got, close() {}, send(t: string) { const m = JSON.parse(t); got.push(m); answer?.(m, ws) } })
+      return ws
+    }
+    const win = fake((m, ws) => { if (m.t === "edit") setImmediate(() => ws.emit("message", JSON.stringify({ t: "done", rid: m.rid, ok: true }))) })
+    live.fn(win, req, { query: {}, wild: [] })
+    const helper = fake()
+    live.fn(helper, req, { query: { screen: "1" }, wild: [] })
+    write("Notes/K.md", "# K\n\nCall Alice friday\nBuy basil\n")
+    write("Notes/K2.md", "# K2\n\nUnshown\n")
+    win.emit("message", JSON.stringify({ t: "where", open: ["Notes/K.md"], shown: ["Notes/K.md"], focus: { path: "Notes/K.md", line: 3 }, active: true }))
+    const kit = { as: "Kit" }, next = () => api("POST", "ops/companion.next", { timeout: 0, watch: true, ...kit })
+    const shown = async (f: () => void) => {
+      const from = win.got.length
+      await f()
+      await $.sleep(20)
+      const s = win.got.slice(from).flatMap((m: Any) => (m.t === "agent" && m.agent.name === "Kit" ? [`${m.agent.state}${m.agent.seen ? " seen" : ""}${m.agent.rests ? " rests" : ""}`] : []))
+      return s.filter((x: string, i: number) => x !== s[i - 1]).join(", ")
+    }
+    const got: Record<string, string> = {}
+    got.joins = await shown(() => api("POST", "ops/companion.next", { timeout: 0, watch: true, after: cState.seq, ...kit }))
+    got.asked = await shown(() => cState.addMoment({ kind: "ask", for: "Kit", path: "Notes/K.md", line: 3, text: "what's this?" }))
+    got.handed = await shown(next)
+    got.says = await shown(() => api("POST", "ops/companion.say", { text: "On it", ...kit }))
+    got.looks = await shown(() => api("POST", "ops/companion.look", { path: "Notes/K.md", line: 4, ...kit }))
+    got.backForMore = await shown(next)
+    cState.addMoment({ kind: "edit", path: "Notes/K.md", line: 4, hunks: [{ line: 4, removed: ["Buy basil"], added: ["Buy basil today"] }] })
+    got.readsEdit = await shown(next)
+    got.letItPass = await shown(next)
+    got.passes = await shown(() => api("POST", "ops/companion.pass", { reason: "not mine", ...kit }))
+    got.editsShown = await shown(() => api("POST", "ops/companion.edit", { path: "Notes/K.md", find: "Buy basil today", text: "Buy basil and mint", ...kit }))
+    got.editsUnshown = await shown(() => api("POST", "ops/companion.edit", { path: "Notes/K2.md", find: "Unshown", text: "Written", ...kit }))
+    got.pending = await shown(() => api("POST", "ops/companion.propose", { path: "Notes/K.md", find: "Call Alice friday", pending: "More to come", ...kit }))
+    got.afterPending = await shown(next)
+    got.keepsHighlight = await shown(() => api("POST", "ops/companion.highlight", { path: "Notes/K.md", find: "Call Alice", keep: true, ...kit }))
+    got.afterHighlight = await shown(next)
+    got.comments = await shown(() => api("POST", "ops/companion.comment", { path: "Notes/K.md", find: "Alice", text: "Hm", ...kit }))
+    got.suggests = await shown(() => api("POST", "ops/companion.suggest", { path: "Notes/K.md", find: "mint", replace: "Mint", ...kit }))
+    const [, bubble] = await api("POST", "ops/companion.say", { text: "Words to keep", path: "Notes/K.md", line: 3, ...kit })
+    await next()
+    got.userPlaces = await shown(() => cComments.place(bubble.id))
+    got.afterPlace = await shown(next)
+    got.userFolds = await shown(() => cComments.fold("Kit", "Notes/K.md", 3, "Folded words"))
+    const [, proposal] = await api("POST", "ops/companion.propose", { path: "Notes/K.md", find: "# K", replace: "# Kay", ...kit })
+    await next()
+    got.userTakes = await shown(() => cPropose.review(proposal.id, "accept"))
+    await next()
+    got.helperFlies = await shown(async () => { helper.emit("message", JSON.stringify({ t: "takeover-at", agent: "Kit", sx: 300, sy: 200 })); await $.sleep(50) })
+    got.afterFly = await shown(next)
+    got.follows = await shown(() => cState.addMoment({ kind: "open", path: "Notes/K.md", line: 2 }))
+    got.stops = await shown(() => api("POST", "ops/companion.stop", kit))
+    got.backAtNext = await shown(next)
+    got.starts = await shown(() => cAlwayson.starting("Kit"))
+    got.askedStarting = await shown(() => cState.addMoment({ kind: "ask", for: "Kit", path: "Notes/K.md", line: 3, text: "still there?" }))
+    got.upAtNext = await shown(next)
+    await next()
+    cState.seen.set("kit", Date.now() - 11 * 60_000)
+    got.quietAway = await shown(() => cChatturns.tend())
+    const want = {
+      joins: "watching",
+      asked: "thinking",
+      handed: "watching, thinking",
+      says: "thinking",
+      looks: "thinking",
+      backForMore: "watching",
+      readsEdit: "reading",
+      letItPass: "watching seen",
+      passes: "watching seen",
+      editsShown: "writing, watching",
+      editsUnshown: "writing, watching",
+      pending: "writing",
+      afterPending: "watching",
+      keepsHighlight: "watching, writing, watching",
+      afterHighlight: "",
+      comments: "watching",
+      suggests: "watching",
+      userPlaces: "writing, watching",
+      afterPlace: "reading",
+      userFolds: "watching",
+      userTakes: "writing, watching",
+      helperFlies: "writing",
+      afterFly: "watching",
+      follows: "watching rests",
+      stops: "away",
+      backAtNext: "watching, reading",
+      starts: "starting",
+      askedStarting: "",
+      upAtNext: "watching, thinking",
+      quietAway: "away",
+    }
+    check("companion: its cursor's state, as each thing that moves it leaves it", JSON.stringify(got) === JSON.stringify(want), Object.fromEntries(Object.entries(want).flatMap(([k, v]) => (got[k] === v ? [] : [[k, got[k]]]))))
+    helper.emit("close"); win.emit("close")
+  }
+  {
+    const n = "Una", k = "una", now: string[] = [], at = () => now.push(cState.stateOf(n))
+    at()
+    cState.atWork.add(k); at()
+    cState.handed.add(k); at()
+    cState.asking.add(k); at()
+    cState.life.set(k, "starting"); at()
+    cState.handed.delete(k); at()
+    cState.life.set(k, "away"); at()
+    const done = cState.writingAt(n, {}); at()
+    done(); at()
+    cState.asking.delete(k); at()
+    cState.forget(n)
+    check("companion: its state from what it's doing: busy, handed, asked, booting, gone, at an act (which ends gone and busy)",
+      now.join() === "watching,thinking,reading,thinking,thinking,starting,away,writing,thinking,watching", now)
+  }
+
   await api("PATCH", "config/plugin/companion", { mode: "off" })
   check("companion: off hears nothing", cState.addMoment({ kind: "ask", text: "hello?" }) === null)
 }

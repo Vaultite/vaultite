@@ -10,7 +10,7 @@ import { inSummoned } from "./summoned.ts"
 import { keepShown, type Shown as ShownMark } from "./shown.ts"
 import { TINTS, KEEP, SAY_MS, wakes, setting, mode, agentSetting, hidden, howOf, ownName, nameOf, profiles, inAccount, harnesses } from "./settings.ts"
 import { plugin } from "./self.ts"
-import type { Moment, Agent, Note, Act } from "./types.ts"
+import type { Moment, Agent, KeptAgent, Note, Act } from "./types.ts"
 import { KEPT, save, anchorLine, keepAsked } from "./comments.ts"
 import { screens, screenDrawing, tours, SCREEN_NEWS, riding } from "./windows.ts"
 import { followed } from "./windowpanes.ts"
@@ -31,7 +31,11 @@ export const delivered = new Map<string, number>() // agent -> last seq it was g
 export const handed = new Set<string>() // agents given moments they haven't acted on yet
 export const asking = new Set<string>() // agents handed an ask or a reply, busy on it until their next `next`
 export const waiters = new Map<string, (m: Moment[]) => void>() // agent -> its waiting `next`
-export const agents = new Map<string, Agent>()
+export const agents = new Map<string, KeptAgent>()
+export const life = new Map<string, "starting" | "away">()
+export const atWork = new Set<string>()
+const writes = new Map<string, number>()
+const wrote = new Set<string>()
 export const seen = new Map<string, number>() // agent -> when it last ran `next`
 export const ends = new Map<string, number>() // agent -> how many times its session ended (a `next` waiting through one returns)
 export const dead = new Set<string>() // terminals whose session ended: a call still on its way from one brings no one back
@@ -61,15 +65,13 @@ export const did = (as: string, op: string, seqs?: number[], text?: string) => {
   else if (op === "pass") passedAt.set(key(as), t)
   acts.append(t, [{ t, as: quick ? lane().as(as) : as, op, ...(seqs ? { seqs } : {}), ...(text ? { text: text.slice(0, 2000) } : {}) }])
   if (BOOKKEEPING.has(op)) return
-  if (quick) lane().acted(op)
-  else handed.delete(key(as))
+  if (quick) { life.delete(key(as)); lane().acted(op) }
+  else acted(as)
 }
+export function acted(name: string) { const k = key(name); life.delete(k); handed.delete(k); atWork.delete(k) }
 /** What each agent showed on the screen lately, where it landed (shown.ts): its next asks carry it. */
 export const shownBy = new Map<string, ShownMark[]>()
 export const showed = (as: string, add: ShownMark[]) => { if (add.length) shownBy.set(key(as), keepShown(shownBy.get(key(as)) ?? [], add)) }
-/** An agent's state once it acted: still thinking while busy on an ask (until its next `next`), else watching. */
-// (a tour asked for by name answers as a turn would: at work till it ends, so the press it answers ends with it)
-export const acting = (name: string): Agent["state"] => ((inSummoned.getStore() ? lane().asking() : asking.has(key(name)) || touredAsk.has(key(name))) ? "thinking" : "watching")
 
 /** The app's windows: which files each has open (`shown`: on screen, where an edit can be typed in), where its user is,
  *  when they last did anything. */
@@ -103,7 +105,7 @@ export const broadcast = (m: object) => {
   for (const [ws, g] of guests) if (ws.readyState === ws.OPEN) toGuest(ws, g, m as { t: string; note?: Note; id?: string })
 }
 // (fresh: what a new agent started from the app runs, profiles what the names that pick one start, harnesses what can run)
-export const snapshot = () => ({ t: "state", mode: mode(), name: ownName(), agents: [...agents.values()], notes: [...notes.values()], said, follows: followed.list(), riding: riding(), ...offers() })
+export const snapshot = () => ({ t: "state", mode: mode(), name: ownName(), agents: [...agents.values()].map(shown), notes: [...notes.values()], said, follows: followed.list(), riding: riding(), ...offers() })
 export function offers() {
   const named = Object.entries(offered()).map(([name, p]) => [name, { agent: p.agent, ...howOf(p.agent, p.model, p.effort) }])
   return { fresh: { agent: agentSetting(), ...howOf(agentSetting()) }, profiles: Object.fromEntries(named), harnesses: harnesses() }
@@ -122,7 +124,7 @@ export const live = (name: string) => waiters.has(key(name)) || Date.now() - (se
  *  runs Claude Code); one with a profile (@opus-review) or a session before, itself, to start; else the companion. */
 export function addressee(name?: string) {
   const a = name ? agents.get(key(name)) : undefined
-  if (!name || (a && a.state !== "away" && live(a.name))) return a?.name ?? ownName()
+  if (!name || (a && stateOf(a.name) !== "away" && live(a.name))) return a?.name ?? ownName()
   if (isMain(name) || key(name) === "companion" || key(name) === key(nameOf(agentSetting()))) return ownName()
   return session(name) || profileOf(name, offered()) ? a?.name ?? nameOf(key(name)) : ownName()
 }
@@ -134,7 +136,7 @@ export const meantFor = (m: Moment, name: string) => !m.live && (m.for ? key(m.f
 export const focus = () => [...windows.values()].sort((a, b) => b.at - a.at).find((w) => w.focus)?.focus ?? null
 
 /** Where a moment's agent looks: an app's window, its note's line, its pane's row, or the app's UI (a watch's, nowhere new). */
-export const placeOf = (m: Partial<Moment>): Partial<Agent> => (m.app || m.sx !== undefined ? { ...(m.app ? { app: m.app } : {}), ...(m.window ? { window: m.window } : m.sx !== undefined && m.sy !== undefined ? { sx: m.sx, sy: m.sy } : {}) } : m.path ? { path: m.path, line: m.line, find: m.find }
+export const placeOf = (m: Partial<Moment>): Partial<KeptAgent> => (m.app || m.sx !== undefined ? { ...(m.app ? { app: m.app } : {}), ...(m.window ? { window: m.window } : m.sx !== undefined && m.sy !== undefined ? { sx: m.sx, sy: m.sy } : {}) } : m.path ? { path: m.path, line: m.line, find: m.find }
   : m.pane ? { pane: m.pane, ...(m.row ? { row: m.row } : {}) } : m.ui ? { ui: m.ui } : {})
 
 /** Take in a moment from the app: kept (and logged), and given to the agents waiting. `from`: the window's request, which
@@ -182,8 +184,8 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
   if (full.summoned && full.for && isMain(full.for) && talks.take(full, from)) return full
   // (a tour's ask phrase, "what's new?": the tour plays, without the model)
   if (full.summoned && full.for && isMain(full.for) && m.kind === "ask" && !m.tour && full.text) {
-    const name = full.for, ended = () => { if (touredAsk.get(key(name)) === full) touredAsk.delete(key(name)); setAgent(name, { state: acting(name) }) }
-    if (tours.asked(name, full.text, ended)) { touredAsk.set(key(name), full); setAgent(name, { state: "thinking" }); return full }
+    const name = full.for, ended = () => { if (touredAsk.get(key(name)) === full) touredAsk.delete(key(name)); setAgent(name, {}) }
+    if (tours.asked(name, full.text, ended)) { touredAsk.set(key(name), full); life.delete(key(name)); setAgent(name, {}); return full }
   }
   // (a Talk key's ask over a page a job works on: straight to that job, live editing)
   if (full.summoned && full.for && isMain(full.for) && liveEditing.take(full, from)) return full
@@ -196,23 +198,29 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
 export function handOut(m: Moment, from?: IncomingMessage) {
   // (its Talk key's: the summoned session's, which runs warm apart from the long one)
   if (lane().takes(m)) {
-    setAgent(m.for!, { state: "thinking", ...placeOf(m) })
+    life.delete(key(m.for!))
     lane().take(m)
+    setAgent(m.for!, placeOf(m))
     return m
   }
   // (an open wakes no one: it rides along with the next moment, and the cursors free to follow go there now; so do the
   // user's corrections, a bubble closed or words moved)
   if (m.kind === "open") {
-    for (const a of agents.values()) if (meantFor(m, a.name) && a.state === "watching" && live(a.name) && !handed.has(key(a.name)))
-      setAgent(a.name, { path: m.path, line: m.line, x: m.x, y: m.y, find: undefined, state: "watching" }, true)
+    for (const a of agents.values()) if (meantFor(m, a.name) && stateOf(a.name) === "watching" && live(a.name) && !handed.has(key(a.name)))
+      setAgent(a.name, { path: m.path, line: m.line, x: m.x, y: m.y, find: undefined }, true)
   } else if (wakes(m)) {
     for (const [k, wake] of waiters) if (meantFor(m, k)) { waiters.delete(k); wake([m]) }
     for (const s of sessions()) if (isChat(s.id) && meantFor(m, s.name)) void pump(s.name)
   }
   // (one starting shows that until its first `next` takes it)
-  if (m.for && (m.kind === "ask" || m.kind === "point" || m.kind === "reply") && agents.get(key(m.for))?.state !== "starting") {
-    setAgent(m.for, { state: "thinking", ...placeOf(m) })
-    if (from) void wake(m, from)
+  if (m.for && (m.kind === "ask" || m.kind === "point" || m.kind === "reply")) {
+    const k = key(m.for), booting = agents.has(k) && stateOf(m.for) === "starting"
+    asking.add(k)
+    if (!booting) {
+      life.delete(k)
+      setAgent(m.for, placeOf(m))
+      if (from) void wake(m, from)
+    }
   }
   return m
 }
@@ -228,7 +236,8 @@ async function wake(m: Moment, from: IncomingMessage) {
   waking.add(k)
   try { await plugin.runOp("companion.start", { ...(isMain(name) ? {} : { as: name }), ...(m.path ? { path: m.path, line: m.line } : {}), after: m.seq - 1 }, undefined, from) }
   catch (e) {
-    setAgent(name, { state: "watching" })
+    asking.delete(k); life.delete(k)
+    setAgent(name, {})
     putNote({ kind: "say", agent: name, text: `I couldn't start: ${(e as Error).message}`, ...(m.path ? { path: m.path, line: m.line } : {}), ...(m.summoned ? { answers: answersOf(m) } : {}) }, SAY_MS)
   } finally { waking.delete(k) }
 }
@@ -290,7 +299,7 @@ const tintsFile = () => `${plugin.localDir()}/tints.json`
 let tints: Record<string, string> | null = null
 /** The agent named `name`, made the first time it acts (its tint its own from before, else the next free one: Claude
  *  Code's orange, Codex's blue, which the others take last). */
-export function agentOf(name: string): Agent {
+export function agentOf(name: string): KeptAgent {
   let a = agents.get(key(name))
   if (!a) {
     if (!tints) try { tints = JSON.parse(fs.readFileSync(tintsFile(), "utf8")) } catch { tints = {} }
@@ -299,7 +308,7 @@ export function agentOf(name: string): Agent {
     const want = tints![key(name)] ?? ({ claude: "orange", codex: "blue" } as Record<string, string>)[runs.split("_")[0]] ?? null
     const tint = want && !used.has(want) ? want : TINTS.find((t) => !used.has(t) && t !== "orange" && t !== "blue") ?? TINTS.find((t) => !used.has(t)) ?? TINTS[agents.size % TINTS.length]
     if (tints![key(name)] !== tint) { tints![key(name)] = tint; try { fs.writeFileSync(tintsFile(), JSON.stringify(tints)) } catch { /* as it was */ } }
-    a = { name, tint, state: "watching", t: Date.now(), ...(runs ? { runs } : {}), ...(s?.model ? { model: s.model } : {}), ...(s?.effort ? { effort: s.effort } : {}) }
+    a = { name, tint, t: Date.now(), ...(runs ? { runs } : {}), ...(s?.model ? { model: s.model } : {}), ...(s?.effort ? { effort: s.effort } : {}) }
     agents.set(key(name), a)
   }
   return a
@@ -315,13 +324,46 @@ plugin.provide("companion:who", (terminal: string) => {
 
 /** What anchors a place: given one, the rest of the agent's old place goes (a pane's row isn't a note's line). */
 export const ROOTS = ["path", "pane", "ui", "app", "sx"] as const
+export function stateOf(name: string): Agent["state"] {
+  const k = key(name), session = life.get(k)
+  if (writes.has(k) || wrote.has(k)) return "writing"
+  if (session === "away") return "away"
+  if (isMain(name) && (lane().owes() || touredAsk.has(k))) return "thinking"
+  if (session === "starting" && !handed.has(k)) return "starting"
+  if (asking.has(k) || resend.has(k)) return "thinking"
+  if (handed.has(k)) return "reading"
+  return atWork.has(k) ? "thinking" : "watching"
+}
+export const shown = (a: KeptAgent): Agent => ({ ...a, state: stateOf(a.name) })
+
 /** `moved`: a new place, not an act (`t` stays when it last acted), so its cursor doesn't show for it. */
-export function setAgent(name: string, change: Partial<Agent>, moved = false) {
-  if (change.state === "watching" || change.state === "writing" || change.state === "away") handed.delete(key(name))
+export const setAgent = (name: string, change: Partial<KeptAgent>, moved = false) => put(name, change, moved ? "moved" : "act")
+export const wroteAt = (name: string, at: Partial<KeptAgent>) => { acted(name); return put(name, at, "wrote") }
+function put(name: string, change: Partial<KeptAgent>, how: "act" | "moved" | "wrote") {
+  if (how === "wrote") wrote.add(key(name))
+  else if (how === "act") wrote.delete(key(name))
   if (ROOTS.some((k) => change[k] !== undefined)) change = { ...Object.fromEntries([...PLACE_KEYS, "box"].map((k) => [k, undefined])), ...change }
-  const a = Object.assign(agentOf(name), { seen: undefined, why: undefined, rests: undefined }, change, moved ? { rests: true } : { t: Date.now() })
-  broadcast({ t: "agent", agent: a })
+  const a = Object.assign(agentOf(name), { seen: undefined, why: undefined, rests: undefined }, change, how === "moved" ? { rests: true } : { t: Date.now() })
+  broadcast({ t: "agent", agent: shown(a) })
   return a
+}
+export function restate(name: string, f: () => void) {
+  const was = agents.has(key(name)) ? stateOf(name) : null
+  f()
+  if (stateOf(name) !== was) setAgent(name, {})
+}
+export function writingAt(name: string, at: Partial<KeptAgent> | null) {
+  const k = key(name)
+  let open = !!at
+  if (at) { writes.set(k, (writes.get(k) ?? 0) + 1); acted(name); setAgent(name, at) }
+  return (then: Partial<KeptAgent> = {}) => {
+    if (open) { open = false; const n = (writes.get(k) ?? 1) - 1; if (n > 0) writes.set(k, n); else writes.delete(k) }
+    return setAgent(name, then)
+  }
+}
+export function forget(name: string) {
+  const k = key(name)
+  agents.delete(k); life.delete(k); atWork.delete(k); writes.delete(k); wrote.delete(k); asking.delete(k); handed.delete(k)
 }
 
 /** A new item's id: short to type, and random so one kept by another machine's server isn't taken. */

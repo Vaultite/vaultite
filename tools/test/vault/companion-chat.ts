@@ -245,6 +245,26 @@ export default async ($: VaultTest) => {
     check("companion chat: a window that closes as a streamed edit is typed fails its call at once", !!failed, await said(id).then((x) => x.slice(-2)))
     await idle(id)
 
+    {
+      const traced = async (f: () => void) => {
+        const from = w.got.length
+        await f()
+        await $.sleep(100)
+        await idle(id)
+        await $.sleep(50)
+        const s = w.got.slice(from).flatMap((m) => (m.t === "agent" && m.agent.name === "Claude" ? [`${m.agent.state}${m.agent.seen ? " seen" : ""}`] : []))
+        return s.filter((x: string, i: number) => x !== s[i - 1]).join(", ")
+      }
+      const turns: Record<string, string> = {}
+      turns.ask = await traced(() => cState.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: 'call say {"text":"First"}\ncall say {"text":"Second","done":true}' }))
+      turns.change = await traced(() => cState.addMoment({ kind: "change", pane: "t9", title: "zsh", what: "a command ended", changes: ['call say {"text":"Seen it"}', 'call say {"text":"Bye","done":true}'] }))
+      turns.passes = await traced(() => cState.addMoment({ kind: "change", pane: "t9", title: "zsh", what: "a command ended", changes: ['call pass {"reason":"not mine"}'] }))
+      turns.idles = await traced(() => cState.addMoment({ kind: "change", pane: "t9", title: "zsh", what: "it changed", changes: ["nothing to call"] }))
+      turns.streams = await traced(() => cState.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: 'stream edit {"path":"Notes/Chat.md","after":"Call Alice friday","text":"Traced line"}' }))
+      const want = { ask: "thinking, watching", change: "reading, watching, thinking, watching", passes: "reading, watching seen", idles: "reading, watching seen", streams: "thinking, writing, thinking, watching" }
+      check("companion chat: its cursor's state through a turn (busy between its calls, not while one shows)", JSON.stringify(turns) === JSON.stringify(want), turns)
+    }
+
     // Closed as it was written: a bubble or a comment the user dismissed mid-stream stays gone once its call comes. Its
     // stream waits half way for the dismissal: a runner that stalls would otherwise get its last words before it.
     const long = (what: string) => `${what} with a long answer that keeps going for a while, word after word, so it can be closed before it ends, and a little more to be sure`
@@ -407,6 +427,23 @@ export default async ($: VaultTest) => {
         /they never saw: your \[ring "Nowhere at all"\] wasn't drawn[^.]*\(what else you drew for it did show\)/.test(toldOf), toldOf.slice(0, 400))
       check("summoned: its Talk key's next ask takes the last answer's drawing down (a corrected mark replaces it, never stacks)",
         screen1.got.some((m: Any) => m.t === "drawing" && m.drawing === null), screen1.got.map((m: Any) => m.t))
+      {
+        const traced = async (f: () => void) => {
+          const from = screen1.got.length
+          await f()
+          await $.sleep(100)
+          await idle(quick!)
+          await $.sleep(100)
+          const s = screen1.got.slice(from).flatMap((m: Any) => (m.t === "agent" && m.agent.name === "Claude" ? [`${m.agent.state}${m.agent.seen ? " seen" : ""}`] : []))
+          return s.filter((x: string, i: number) => x !== s[i - 1]).join(", ")
+        }
+        const turns: Record<string, string> = {}
+        turns.words = await traced(() => cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "words Sure thing.", app: "com.example.mail", window: 9, sx: 150, sy: 90 }))
+        turns.calls = await traced(() => cWindows.screenMoment({ kind: "ask", agent: "Claude", text: 'call look {"sx":200,"sy":100}\ncall say {"text":"There.","done":true}', app: "com.example.mail", window: 9, sx: 150, sy: 90 }))
+        turns.passes = await traced(() => cWindows.screenMoment({ kind: "ask", agent: "Claude", text: 'call pass {"reason":"not for me"}', app: "com.example.mail", window: 9, sx: 150, sy: 90 }))
+        check("summoned: its cursor thinks through a Talk key's turn, then watches (a seen tick when it passed)",
+          JSON.stringify(turns) === JSON.stringify({ words: "thinking, watching", calls: "thinking, watching", passes: "thinking, watching seen" }), turns)
+      }
       // (its draw tool's points are the same pixels, mapped the same way: the same box lands on the same spot, and a
       // wordless answer that shows is an answer, nothing said for it)
       const drawCalls = () => screen1.got.filter((m: Any) => m.t === "drawing" && m.drawing).length

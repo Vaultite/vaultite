@@ -20,7 +20,7 @@ import "./next.ts"
 import { plugin } from "./self.ts"
 import type { Note } from "./types.ts"
 import { sayMs, setting, mode, agentSetting, ownName } from "./settings.ts"
-import { moments, nextSeq, agents, notes, said, did, windows, send, key, isMain, placeOf, handOut, agentOf, setAgent, putNote, dropNote } from "./state.ts"
+import { moments, nextSeq, notes, said, did, windows, send, key, isMain, placeOf, handOut, agentOf, setAgent, putNote, dropNote, asking, life, forget } from "./state.ts"
 import { keepSaid } from "./comments.ts"
 import { screens, screenDrawing, tours, type ScreenRectLike, displaysOf, stopFlips, ownTour, screenOf, screenFind, lastScreen, toScreens, nearBy } from "./windows.ts"
 import { paneById } from "./windowpanes.ts"
@@ -63,9 +63,9 @@ export const liveEditing = liveEdits(plugin, {
   say: async (name, text, m) => {
     did(name, "say", undefined, text)
     keepSaid(putNote({ kind: "say", agent: name, text, ...placeOf(m) as Partial<Note>, ...(m.summoned ? { answers: answersOf(m) } : {}) }, sayMs(text)))
-    setAgent(name, { state: "watching" })
+    setAgent(name, {})
   },
-  seen: (name, why, m) => setAgent(name, { state: "watching", seen: true, why, ...placeOf(m) }),
+  seen: (name, why, m) => { life.delete(key(name)); setAgent(name, { seen: true, why, ...placeOf(m) }) },
   ring: (name, boxes) => screenDrawing.draw(name, boxes.map((b) => ({ type: "ring", at: [b.x, b.y, b.w, b.h] }))),
   fallback: (m) => void handOut(m),
   desktop: (name, args) => plugin.desktop(name, args),
@@ -78,14 +78,19 @@ export const talks = talkOps(plugin, {
   say: async (name, text, m) => {
     did(name, "say", undefined, text)
     keepSaid(putNote({ kind: "say", agent: name, text, ...(m ? placeOf(m) as Partial<Note> : {}), ...(m?.summoned ? { answers: answersOf(m) } : {}) }, sayMs(text)))
-    setAgent(name, { state: "watching" })
+    if (!isMain(name)) asking.delete(key(name))
+    setAgent(name, {})
   },
   tint: (name, tint) => { agentOf(name).tint = tint },
-  show: (name, m) => void setAgent(name, m ? { state: "thinking", ...placeOf(m) } : { state: "watching" }),
+  show: (name, m) => {
+    if (m) { asking.add(key(name)); life.delete(key(name)); setAgent(name, placeOf(m)) }
+    else { asking.delete(key(name)); setAgent(name, {}) }
+  },
   gone: (name) => {
     for (const n of [...notes.values()]) if (n.agent === name && !n.by) dropNote(n.id)
-    setAgent(name, { state: "away" })
-    agents.delete(key(name))
+    asking.delete(key(name)); life.set(key(name), "away")
+    setAgent(name, {})
+    forget(name)
   },
   sees: (name, m) => {
     nearBy.set(key(name), nearBy.get(key(ownName())) ?? [])

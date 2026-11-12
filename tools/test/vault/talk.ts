@@ -70,6 +70,8 @@ export default async ($: VaultTest) => {
       const back = cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "Thanks, back to Claude.", ...over, voice: true }) as Any
       const ended = await waitFor(async () => (await says()).includes("Claude: Back.") && /^Talk over: they're back/m.test(told()), 8000, 50)
       check("talk: back is the app's: the companion says so, and the job is told to end with a line for its thread", !!ended && back?.live === job, [await says(), told()])
+      const jobStates = heard.flatMap((x) => (x.t === "agent" && x.agent.name === "Make a landing page" ? [x.agent.state] : [])).filter((x, i, xs) => x !== xs[i - 1]).join(", ")
+      check("talk: the job's cursor thinks on their words, watches once it said its turn, and goes when they're back", jobStates === "thinking, watching, thinking, watching, away", jobStates)
       const left = (await api("POST", "ops/companion.status", {}))[1]
       check("talk: once back, the job's cursor and words are gone", !left.agents.some((a: Any) => a.name === "Make a landing page") && !(await says()).some((t: string) => t.startsWith("Make a landing page:")), left.agents)
       const after = cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "what's on my calendar?", ...over }) as Any

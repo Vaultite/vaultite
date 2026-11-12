@@ -21,7 +21,7 @@ import { drawing, point, answer, saw, hide, keepSaid, reopen, pin } from "./comm
 import { plugin } from "./self.ts"
 import type { Moment, Rect, Near, Note } from "./types.ts"
 import { sayMs, str, mode, hidden, privatePage, ownName } from "./settings.ts"
-import { moments, agents, notes, said, setSaid, acts, passedAt, showedAt, did, windows, asked, send, broadcast, snapshot, key, isMain, addMoment, agentOf, setAgent, putNote, dropNote } from "./state.ts"
+import { moments, agents, notes, said, setSaid, acts, passedAt, showedAt, did, windows, asked, send, broadcast, snapshot, key, isMain, addMoment, agentOf, setAgent, wroteAt, putNote, dropNote } from "./state.ts"
 import { panesFrom, privatePane, screenUnheard, type BrowserTab, resolve, paneMoment } from "./windowpanes.ts"
 import { askWindow, stopStreams } from "./edits.ts"
 import { AS_TOOL } from "./chat.ts"
@@ -52,7 +52,7 @@ const roomMessage = (m: Record<string, unknown>) => typeof m.t === "string" && (
  *  points at on screen; it opens no notes. */
 export const screens = new Set<WebSocket>()
 /** Its steps in other apps (takeover.ts): sent to the helper the ask came from. */
-export const takeover = takeovers(send, (name, sx, sy) => void resolve(target({ sx, sy }, true), name).then((t) => setAgent(name, { ...t, state: "writing", pointed: Date.now() }), () => {}))
+export const takeover = takeovers(send, (name, sx, sy) => void resolve(target({ sx, sy }, true), name).then((t) => wroteAt(name, { ...t, pointed: Date.now() }), () => {}))
 /** The companion's drawing over the screen (drawings.ts). */
 export const screenDrawing = screenDrawings(plugin, {
   send: (m) => { for (const ws of screens) send(ws, m) },

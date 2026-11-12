@@ -7,7 +7,7 @@ import "./innotes.ts"
 import { plugin } from "./self.ts"
 import type { Note } from "./types.ts"
 import { EMOJI, HIGHLIGHT_MS, str } from "./settings.ts"
-import { notes, did, acting, broadcast, key, focus, addMoment, agentOf, setAgent, putNote, dropNote } from "./state.ts"
+import { notes, did, broadcast, key, focus, addMoment, agentOf, setAgent, writingAt, wroteAt, putNote, dropNote } from "./state.ts"
 import { save } from "./comments.ts"
 import { resolve } from "./windowpanes.ts"
 import { applyEdit, editText, streams, toolUse, finishStream, cut } from "./edits.ts"
@@ -51,7 +51,7 @@ function proposeText(ctx: OpCtx, name: string, p: string, next: string, cur: str
   const changes = changesOf(cur, next, changeId)
   if (!changes.length) throw new OpError("it's the note as it is: nothing to propose")
   did(name, "propose")
-  setAgent(name, { path: p, line: changes[0].line, state: acting(name) })
+  setAgent(name, { path: p, line: changes[0].line })
   const writer = { client: ctx.who.client, agent: ctx.who.agent }
   if (!into) return putNote({ kind: "proposal", agent: name, path: p, line: changes[0].line, ...(firstLine(changes[0].find) ? { find: firstLine(changes[0].find) } : {}), changes, writer, ...(why ? { text: why } : {}) })
   Object.assign(into, { changes, writer, t: Date.now() }, why ? { text: why } : {})
@@ -132,7 +132,7 @@ becomes a proposal by itself. An accept or reject moment says what they took ("t
       const line = at >= 0 ? cur.slice(0, at).split("\n").length : Math.max(1, Math.min(t.line!, cur.split("\n").length))
       const c: Change = { id: changeId(), find: at >= 0 ? t.find! : cur.split("\n")[line - 1] ?? "", text: "", line, intent: cut(str(p.pending), 200) }
       did(name, "propose")
-      setAgent(name, { path, line, find: firstLine(c.find), state: "writing" })
+      wroteAt(name, { path, line, find: firstLine(c.find) })
       if (!into) return putNote({ kind: "proposal", agent: name, path, line, ...(firstLine(c.find) ? { find: firstLine(c.find) } : {}), changes: [c], writer: { client: ctx.who.client, agent: ctx.who.agent } })
       into.changes = [...(into.changes ?? []), c]
       placeAt(into)
@@ -213,13 +213,13 @@ typed in as you write them, its place first; your cursor stays at their end.
         if (how === "stopped") throw new OpError("the user stopped you (Esc) as you wrote it: what you had typed by then stays", 409)
         // (no window could show it as it came: made like any edit, written to the file)
         return { path: x.e.path, how: how === "typed" ? how : await applyEdit(ctx, agentOf(name), x.e) }
-      } finally { setAgent(name, { state: acting(name) }) }
+      } finally { setAgent(name, {}) }
     }
-    const a = setAgent(name, { ...t, ...(after ? { find: after } : {}), state: "writing" })
+    const done = writingAt(name, { ...t, ...(after ? { find: after } : {}) })
     try {
-      const how = await applyEdit(ctx, a, { path: t.path!, find: t.find, after, line: t.line, text: str(p.text), append: !!p.append })
+      const how = await applyEdit(ctx, agentOf(name), { path: t.path!, find: t.find, after, line: t.line, text: str(p.text), append: !!p.append })
       return { path: t.path, how }
-    } finally { setAgent(name, { state: acting(name) }) }
+    } finally { done() }
   },
   text: (r) => (r.how === "proposed" ? `Proposed it in ${r.path} instead (${r.id}): it replaces more than ${BIG_EDIT} lines, so the user takes it or not.`
     : `${r.how === "typed" ? "Typed into" : "Wrote"} ${r.path}.`),
@@ -248,7 +248,7 @@ plugin.op({
     if (!t.path && p.keep) throw new OpError("keep is for notes")
     did(name, "highlight")
     if (p.keep) notOnDrawing(t, "keep is for notes; its highlight is your selection there for a while")
-    const a = setAgent(name, { ...t, state: acting(name), pointed: Date.now() })
+    const a = setAgent(name, { ...t, pointed: Date.now() })
     if (!p.keep) return putNote({ kind: "highlight", agent: name, ...t }, HIGHLIGHT_MS)
     await applyEdit(ctx, a, { path: t.path!, find: t.find, line: t.line, text: `==${EMOJI[a.tint] ?? ""}${t.find}==` }, false)
     return { path: t.path, kept: true }

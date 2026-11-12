@@ -4,10 +4,10 @@ import { AsyncLocalStorage } from "node:async_hooks"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import type { Chat, ChatHow, ChatState as State, ChatTool } from "./chat.ts"
-import type { Agent, Moment } from "./types.ts"
+import type { Moment } from "./types.ts"
 import { readableText } from "./reach.ts"
 import { beatOf, markOf, parseTags, placeOf, type Tag } from "./tags.ts"
-import { drops, type Effect, type EffectKind, handed, label, type News, start, step, turning, type TurnEvent, withdrawing } from "./talkturn.ts"
+import { drops, type Effect, type EffectKind, handed, label, type News, owes, start, step, turning, type TurnEvent, withdrawing } from "./talkturn.ts"
 
 type Tool = ChatTool
 type Start = ChatHow & { prompt?: string }
@@ -81,7 +81,7 @@ export function summonedLane(o: {
   caption: (name: string, text: string) => void
   /** A text block of its answer ended: its words with their tags (what "save that as a tour" saves). */
   answered?: (name: string, text: string) => void
-  agent: (name: string) => Agent | undefined; setAgent: (name: string, a: Partial<Agent>) => void
+  thinking: (name: string) => void; watching: (name: string, seen: boolean) => void
   did: (as: string, op: string, seqs?: number[], text?: string) => void; say: (name: string, text: string) => void
   /** What a fresh session is told first: who they are (their ME.md), what they're on (their Now note, when they keep
    *  one) and the talk before `t` (conversation.ts). */
@@ -132,8 +132,8 @@ export function summonedLane(o: {
     say: (x) => { own(() => o.did(o.name(), "say", undefined, x.text)); o.say(o.name(), x.text) },
     tags: (x) => { for (const t of x.tags) then(() => tagged(t, x.said)) },
     judge: (x) => then(async () => { go({ type: "settled", n: x.n }) }),
-    thinking: () => { const a = o.agent(o.name()); if (!a || a.state === "watching" || a.state === "away") o.setAgent(o.name(), { state: "thinking" }) },
-    watching: (x) => o.setAgent(o.name(), x.seen ? { state: "watching", seen: true } : { state: "watching" }),
+    thinking: () => o.thinking(o.name()),
+    watching: (x) => o.watching(o.name(), x.seen),
     done: () => own(() => o.did(o.name(), "done")),
     note: (x) => { trouble = { t: Date.now(), why: x.why.slice(0, 300) }; console.error(`companion: its summoned session: ${x.why}`) },
     lose: () => { if (kept) { const old = kept.id; keep(null); void o.chat()?.stop(old).catch(() => {}) } },
@@ -288,6 +288,7 @@ export function summonedLane(o: {
     busy: () => turning(talk),
     asking: () => handed(talk),
     turnEnd: () => (handed(talk) ? new Promise<void>((r) => turnWaiters.push(r)) : null),
+    owes: () => owes(talk),
     /** It did `op` on an ask: its words (a say, their first word) are an answer. */
     acted(op?: string) { go({ type: "acted", op }) },
     id: () => kept?.id ?? null,

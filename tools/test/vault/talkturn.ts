@@ -1,5 +1,5 @@
 import type { VaultTest } from "./harness.ts"
-import { type Effect, type EffectKind, handed, NOT_SHOWN, start, step, type Turn, type TurnEvent, type TurnState, withdrawing } from "../../../plugins/core/companion/talkturn.ts"
+import { type Effect, type EffectKind, handed, NOT_SHOWN, owes, start, step, type Turn, type TurnEvent, type TurnState, withdrawing } from "../../../plugins/core/companion/talkturn.ts"
 import fc from "fast-check"
 
 type Ask = { id: number; tour?: boolean }
@@ -214,6 +214,14 @@ const REPLAYS: [string, Move[], (w: ReturnType<typeof world>) => boolean][] = [
 export default async ($: VaultTest) => {
   const { check } = $
   for (const [name, moves, ok] of REPLAYS) { const w = world(moves); check(`talkturn machine: ${name}`, !invariants(w).length && ok(w), { why: invariants(w), says: w.says, effects: w.effects }) }
+  {
+    const ask: Ask = { id: 1 }, on = { on: () => true, fresh: () => false }, cold = { on: () => true, fresh: () => true }
+    const run = (w: typeof on, ...es: TurnEvent<Ask, string>[]) => { let s = start<Ask>(); const out = [owes(s)]; for (const e of es) { s = step(s, e, w).to; out.push(owes(s)) } return out.join() }
+    const ended: TurnEvent<Ask, string> = { type: "ended", error: "", words: null, acting: false }
+    const runs = [run(on, { type: "asked", ask }, { type: "busy" }, { type: "acted", op: "say" }, ended), run(on, { type: "asked", ask }, { type: "acted", op: "pass" }, ended), run(cold, { type: "asked", ask }, { type: "made" }, { type: "started", news: null }, ended)]
+    check("talkturn: it owes an answer from the ask till it's passed or its turn is over, a fresh session's too",
+      runs.join("|") === "false,true,true,true,false|false,true,false,false|false,true,true,true,false", runs)
+  }
   const found = counterexample(3000)
   check("talkturn machine: whatever happens around it, every ask is answered, passed, told it failed or taken back, none twice; a lost one is tried once more", !found, found)
 }

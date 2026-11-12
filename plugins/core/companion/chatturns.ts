@@ -4,10 +4,10 @@ import type { Target } from "../../../core/desktop/places.ts"
 import { lane, nowNote } from "./lane.ts"
 import { plugin } from "./self.ts"
 import { SAY_MS, wakes, str, mode, ownName } from "./settings.ts"
-import { handed, asking, waiters, agents, seen, loaded, did, key, isMain, live, focus, waking, batches, resend, setAgent, putNote } from "./state.ts"
+import { handed, asking, waiters, agents, seen, loaded, did, key, isMain, live, focus, waking, batches, resend, setAgent, putNote, life, atWork, restate, stateOf } from "./state.ts"
 import { headAware } from "./windowpanes.ts"
 import { cut } from "./edits.ts"
-import { sessionFile, type Session, session, writeSession, sessionId, sessions, running, isChat, nextCmd, starting, ASK_AGAIN, HANDOVER_WAIT, handing, fresh, due, ended } from "./alwayson.ts"
+import { sessionFile, type Session, session, writeSession, sessionId, sessions, running, isChat, nextCmd, starting, unstarted, ASK_AGAIN, HANDOVER_WAIT, handing, fresh, due, ended } from "./alwayson.ts"
 import { type ChatState, chat, apiCtx, chatOptions } from "./chat.ts"
 import { pendingFor, hand, handoverAsk, excerpts, momentsText } from "./next.ts"
 
@@ -33,7 +33,7 @@ export async function startChat(name: string, how: { agent: string; model: strin
   let s: ChatState
   try { s = await c.start({ ...chatOptions(name, how), prompt: first }) } catch (e) {
     turning.delete(k); seen.delete(k)
-    setAgent(name, { state: isMain(name) ? "watching" : "away" })
+    unstarted(name)
     throw e
   }
   writeSession({ id: s.id, name, t: Date.now(), runs: how.agent, ...(how.model ? { model: how.model } : {}), ...(how.effort ? { effort: how.effort } : {}), handed: given.length })
@@ -68,8 +68,8 @@ export async function pump(name: string) {
     text = handoverAsk(isMain(name) ? "" : name, true)
   } else return
   try { await c.send(s.id, text, chatOptions(name, s)) } catch (e) {
-    turning.delete(k)
-    setAgent(name, { state: "watching" })
+    turning.delete(k); asking.delete(k); handed.delete(k); atWork.delete(k)
+    setAgent(name, {})
     const a = agents.get(k)
     putNote({ kind: "say", agent: name, text: `I couldn't take that in: ${(e as Error).message}`, ...(a?.path ? { path: a.path, line: a.line } : {}) }, SAY_MS)
     // (its conversation is gone: the next ask starts another)
@@ -103,7 +103,7 @@ function heard(id: string, s: ChatState | null) {
   if (s.state === "working" || s.state === "waiting" || s.state === "starting") {
     newsOf.delete(id)
     turning.add(k)
-    if (!a || a.state === "watching" || a.state === "away") setAgent(name, { state: "thinking" })
+    restate(name, () => { if (a && stateOf(name) === "away") life.delete(k); atWork.add(k) })
     return
   }
   // (the same turn's end told again, as a send applies its model first: not the end of the turn just sent)
@@ -111,13 +111,13 @@ function heard(id: string, s: ChatState | null) {
     if (newsOf.get(id) === s.seq) return
     newsOf.set(id, s.seq)
   }
-  const was = turning.delete(k)
-  asking.delete(k)
+  const before = a ? stateOf(name) : null, was = turning.delete(k)
+  asking.delete(k); atWork.delete(k); life.delete(k)
   batches.delete(k)
   seen.set(k, Date.now())
-  if (resend.has(k)) setAgent(name, { state: "thinking" })
-  else if (handed.has(k)) setAgent(name, { state: "watching", seen: true })
-  else if (!a || a.state !== "watching") setAgent(name, { state: "watching" })
+  if (resend.has(k)) setAgent(name, {})
+  else if (handed.delete(k)) setAgent(name, { seen: true })
+  else if (before !== "watching") setAgent(name, {})
   if (was) did(name, "done")
   if (s.state === "error" && s.error) putNote({ kind: "say", agent: name, text: `I stopped: ${cut(s.error, 300)}`, ...(a?.path ? { path: a.path, line: a.line } : {}) }, SAY_MS)
   void pump(name)
@@ -173,18 +173,23 @@ export async function tend() {
   // (the companion stays while its session runs, but not starting forever)
   // (an agent told something while a session was asked about, a next or its end, is as that said: newer than this look)
   for (const a of [...agents.values()]) {
-    if (a.state === "away" || live(a.name) || waking.has(key(a.name))) continue
+    if (stateOf(a.name) === "away" || live(a.name) || waking.has(key(a.name))) continue
     const t = a.t, runs = isMain(a.name) && await running(sessionId())
-    if (a.t === t && (!runs || a.state === "starting")) setAgent(a.name, { state: runs ? "watching" : "away" })
+    if (a.t === t && (!runs || stateOf(a.name) === "starting")) { if (runs) life.delete(key(a.name)); else quiet(a.name); setAgent(a.name, {}) }
   }
   // (a session that ended without telling us, as terminal.ended does: its cursor goes too)
   for (const s of sessions()) {
-    const a = agents.get(key(s.name)), t = a?.t
-    if (a && a.state !== "away" && a.state !== "starting" && !waiters.has(key(s.name)) && !waking.has(key(s.name)) && !(await running(s.id)) && a.t === t) ended(s.name, s.id)
+    const a = agents.get(key(s.name)), t = a?.t, now = a && stateOf(a.name)
+    if (a && now !== "away" && now !== "starting" && !waiters.has(key(s.name)) && !waking.has(key(s.name)) && !(await running(s.id)) && a.t === t) ended(s.name, s.id)
   }
   // (nor thinking with no session to think: it ended mid-ask)
-  const main = agents.get(key(ownName())), was = main?.t
-  if (main && (main.state === "thinking" || main.state === "reading") && !waking.has(key(main.name)) && !(await running(sessionId())) && main.t === was) setAgent(main.name, { state: live(main.name) ? "watching" : "away" })
+  const main = agents.get(key(ownName())), k = key(ownName()), was = main?.t
+  const onAsk = () => (stateOf(ownName()) === "thinking" || stateOf(ownName()) === "reading") && (asking.has(k) || handed.has(k) || atWork.has(k))
+  if (main && onAsk() && !waking.has(k) && !(await running(sessionId())) && main.t === was) {
+    asking.delete(k); handed.delete(k); atWork.delete(k)
+    if (!live(main.name)) quiet(main.name)
+    setAgent(main.name, {})
+  }
   // (asked to hand over and it didn't: a fresh one without its summary)
   for (const [k, t] of handing) {
     if (Date.now() - t < HANDOVER_WAIT) continue
@@ -200,6 +205,7 @@ export async function tend() {
     await nudge(s.name, s.id)
   }
 }
+function quiet(name: string) { life.set(key(name), "away"); handed.delete(key(name)) }
 export async function nudge(name: string, id: string) {
   seen.set(key(name), Date.now())
   await plugin.runOp("terminal.send", { id, text: `Keep watching: run \`${nextCmd(name)}\` again, and never end your turn.` }).catch(() => {})

@@ -19,7 +19,7 @@ async function rejoin() {
     if (isChat(x.id)) { const s = session(x.name); if (s) chat()?.serve(s.id, chatOptions(s.name, s)) }
     if (agents.has(key(x.name)) || !(await running(x.id).catch(() => false))) continue
     seen.set(key(x.name), Date.now())
-    setAgent(x.name, { state: "watching" })
+    setAgent(x.name, {})
   }
 }
 

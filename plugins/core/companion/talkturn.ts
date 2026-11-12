@@ -4,7 +4,7 @@
 export type Waiting<A> = { ask: A; again: boolean }
 export type Cut = "withdrawn" | "stopped" | "lost"
 export type Turn<A> = { n: number; asks: A[]; again: boolean; acted: boolean; said: boolean; shown: boolean; missed: boolean; did: string
-  wrote: boolean; cut: Cut | null }
+  wrote: boolean; passed: boolean; cut: Cut | null }
 
 export type Phase<A> =
   | { kind: "idle" }
@@ -68,11 +68,12 @@ export const NOT_SHOWN = "I couldn't mark that on your screen. Ask me again?"
 const LOST = "I lost my session there, ask me again?", OFF = "My session's off right now, so I couldn't answer that."
 
 const blank = <A>(n: number, asks: A[] = [], again = false): Turn<A> =>
-  ({ n, asks, again, acted: false, said: false, shown: false, missed: false, did: "", wrote: false, cut: null })
+  ({ n, asks, again, acted: false, said: false, shown: false, missed: false, did: "", wrote: false, passed: false, cut: null })
 export const start = <A>(): TurnState<A> => ({ phase: { kind: "idle" }, waiting: [], turn: blank(0), round: 0 })
 
 export const handed = (s: TurnState<unknown>) => s.phase.kind === "turn" || (s.phase.kind === "starting" && s.phase.handed)
 export const turning = (s: TurnState<unknown>) => handed(s) || s.phase.kind === "busy"
+export const owes = (s: TurnState<unknown>) => s.waiting.length > 0 || s.phase.kind === "making" || (handed(s) && !s.turn.passed)
 const unanswered = (t: Turn<unknown>) => !t.acted && !t.shown && !t.cut
 const silent = (t: Turn<unknown>) => (!t.acted || (t.missed && !t.said)) && !t.shown && !t.cut
 export const withdrawing = <A>(s: TurnState<A>): A[] => (s.waiting.length ? [s.waiting.at(-1)!.ask] : s.turn.asks)
@@ -201,7 +202,7 @@ const ON: Handlers = {
   settled: (s, e) => (e.n === s.turn.n && silent(s.turn) ? say(s, quietly(s.turn.did)) : go(s)),
   acted: (s, e) => {
     const op = e.op ?? "", t = s.turn
-    return go({ ...s, turn: { ...t, acted: true, said: t.said || op === "say" || op === "word", shown: t.shown || SHOWS.has(op) } })
+    return go({ ...s, turn: { ...t, acted: true, said: t.said || op === "say" || op === "word", shown: t.shown || SHOWS.has(op), passed: t.passed || op === "pass" } })
   },
   wrote: (s, e) => go({ ...s, turn: { ...s.turn, wrote: true, acted: s.turn.acted || e.said, said: s.turn.said || e.said } }),
   drew,

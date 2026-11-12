@@ -50,7 +50,8 @@ export function laneRig(make: typeof summonedLane = summonedLane, store: typeof 
     acts: () => ({ say: { ...tool("say", (a) => { log.push(`said:${a.text}`); did("Claude", "say") }), stream: () => {} },
       look: tool("look", () => { did("Claude", "look"); return { content: [{ type: "text", text: "Looked." }] } }), draw: tool("draw", () => { did("Claude", "draw"); return marked() }) }),
     found: async () => null, caption: () => {}, answered: () => {},
-    agent: () => r.agent, setAgent: (_n, a) => { r.agent = { ...r.agent, ...a }; log.push(`agent:${a.state}${a.seen ? "+seen" : ""}`) },
+    thinking: () => { if (r.agent !== "thinking") { r.agent = "thinking"; log.push("agent:thinking") } },
+    watching: (_n, seen) => { r.agent = "watching"; log.push(`agent:watching${seen ? "+seen" : ""}`) },
     did, say: (_n, text) => log.push(`say:${text}`), talk: () => ({ me: "", now: null, said: "" }),
   })
   r.lane = lane

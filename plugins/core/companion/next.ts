@@ -8,7 +8,7 @@ import { AS, PLACE, target, who } from "./args.ts"
 import { plugin } from "./self.ts"
 import type { Mode, Moment, Note, Excerpt } from "./types.ts"
 import { guides, sayMs, wakes, str, mode } from "./settings.ts"
-import { moments, seq, delivered, handed, asking, waiters, agents, seen, ends, dead, watching, notes, said, timers, did, shownBy, showed, acting, broadcast, key, isMain, meantFor, focus, placeOf, batches, agentOf, ROOTS, setAgent, putNote, personThread, dropNote } from "./state.ts"
+import { moments, seq, delivered, handed, asking, waiters, agents, seen, ends, dead, watching, notes, said, timers, did, shownBy, showed, broadcast, key, isMain, meantFor, focus, placeOf, batches, ROOTS, setAgent, putNote, personThread, dropNote, life, atWork, stateOf } from "./state.ts"
 import { keepSaid } from "./comments.ts"
 import { screenDrawing, tours } from "./windows.ts"
 import { paneById, headAware, pageFor, resolve } from "./windowpanes.ts"
@@ -53,11 +53,11 @@ asks to its @name and answers to its items; edit and open go to the companion, o
     if (p.watch) watching.add(k)
     else watching.delete(k)
     did(name, "next")
-    const joined = !agents.has(k), a = agentOf(name)
+    const joined = !agents.has(k), was = joined ? null : stateOf(name)
     // (back without acting on what it was handed: it let it pass, which the user sees as a tick)
-    asking.delete(k)
-    if (handed.has(k)) setAgent(name, { state: "watching", seen: true })
-    else if (joined || a.state === "away" || a.state === "writing" || a.state === "thinking" || a.state === "starting") setAgent(name, { state: "watching" })
+    asking.delete(k); life.delete(k); atWork.delete(k)
+    if (handed.delete(k)) setAgent(name, { seen: true })
+    else if (joined || stateOf(name) !== was || was === "writing") setAgent(name, {})
     const after = p.after ?? delivered.get(k) ?? Math.max(0, seq - 20)
     const pending = () => pendingFor(name, after)
     let got = pending()
@@ -107,8 +107,8 @@ export function hand(name: string, got: Moment[]) {
   batches.set(k, got.map((m) => m.seq))
   const at = [...got].reverse().find((m) => m.path || m.pane || m.ui), asked = got.some((m) => m.kind === "ask" || m.kind === "point" || m.kind === "reply")
   if (asked) asking.add(k)
-  setAgent(name, { state: asked ? "thinking" : "reading", ...(at ? placeOf(at) : {}) })
   handed.add(k)
+  setAgent(name, at ? placeOf(at) : {})
   return got
 }
 
@@ -336,7 +336,7 @@ plugin.op({
     const on = at ? undefined : placeText(t, t.pane ? paneById(t.pane)?.title : undefined)
     showed(name, [{ t: Date.now(), what: "your cursor pointed", ...(at ? { at } : { on }) }])
     did(name, "look", undefined, at ? `at ${Math.round(at.x)},${Math.round(at.y)} on the screen` : `at ${on}`)
-    setAgent(name, { ...t, state: acting(name), pointed: Date.now() })
+    setAgent(name, { ...t, pointed: Date.now() })
     return t
   },
   text: (r) => `Looking at ${placeText(r, paneById(r.pane)?.title)}.`,
@@ -366,7 +366,7 @@ fades, which means "stay quiet". What they'd want in the note tomorrow goes in i
     did(name, "say", undefined, str(p.text))
     const given = ROOTS.some((k) => p[k] !== undefined) || p.line !== undefined || p.find || p.x !== undefined
     const t = given ? await resolve(target(p, true), name) : {}
-    setAgent(name, { ...t, state: acting(name), ...(given ? { pointed: Date.now() } : {}) })
+    setAgent(name, { ...t, ...(given ? { pointed: Date.now() } : {}) })
     // (shown as it was written: its bubble, with its words and place as the call has them)
     const use = toolUse.getStore(), shown = use ? streams.get(use)?.note : undefined, was = shown ? notes.get(shown) : undefined
     // (its bubble closed as it was written: it stays closed, its words in its history)

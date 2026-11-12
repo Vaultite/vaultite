@@ -4,7 +4,7 @@ import type { Shown as ShownMark } from "./shown.ts"
 import "./opening.ts"
 import { plugin } from "./self.ts"
 import { EDIT_WAIT, str } from "./settings.ts"
-import { notes, did, showed, acting, key, setAgent, dropNote } from "./state.ts"
+import { notes, did, showed, key, agentOf, setAgent, writingAt, dropNote } from "./state.ts"
 import { type Draw, drawer } from "./comments.ts"
 import { screenDrawing } from "./windows.ts"
 import { editorFor, inTurn, askWindow, streams, toolUse, saidUndrawn } from "./edits.ts"
@@ -64,20 +64,20 @@ drawing's text (next, vau render). Only in pair mode or when they asked you to.
     const name = who(p), t = target(p), apply = drawer(t.path!)
     if (!apply) throw new OpError(`${t.path} isn't a drawing (a .excalidraw file, its plugin on): companion edit writes in notes`)
     did(name, "draw")
-    const a = setAgent(name, { path: t.path, line: undefined, find: undefined, x: undefined, y: undefined, state: "writing" })
+    const done = writingAt(name, { path: t.path, line: undefined, find: undefined, x: undefined, y: undefined })
     try {
       return await inTurn(t.path!, async () => {
         const f = await ctx.api("GET", `file?path=${encodeURIComponent(t.path!)}`), cur = String(f.text ?? "")
         let made: ReturnType<Draw>
         try { made = apply(cur, p.actions) } catch (e) { throw new OpError((e as Error).message) }
         const ws = editorFor(t.path!), reply: { touched?: unknown } = {}
-        const drawn = !!ws && await askWindow(ws, { t: "draw", agent: a.name, path: t.path, actions: p.actions }, EDIT_WAIT + p.actions.length * 300, reply)
+        const drawn = !!ws && await askWindow(ws, { t: "draw", agent: agentOf(name).name, path: t.path, actions: p.actions }, EDIT_WAIT + p.actions.length * 300, reply)
         if (!drawn) await ctx.api("PUT", "file", { path: f.path, text: made.text, base: cur })
         const touched = drawn && Array.isArray(reply.touched) ? reply.touched.map(String) : made.touched
         if (touched.length) setAgent(name, { find: touched.at(-1) })
         return { path: t.path, how: drawn ? "drawn" : "written", touched }
       })
-    } finally { setAgent(name, { state: acting(name) }) }
+    } finally { done() }
   },
   text: (r) => (r.changed ? `Changed the drawing on the screen (${r.changed.join(", ") || "nothing named"}).` : r.screen ? `Drew ${r.marks} on the screen (${r.screen}).${r.unshown ? ` Not drawn, they saw no mark: ${r.unshown.join("; ")}.` : ""}` : `${r.how === "drawn" ? "Drew on" : "Wrote"} ${r.path}${r.touched.length ? ` (${r.touched.join(", ")})` : ""}.`),
   did: (p) => (p.marks !== undefined ? { action: "ui", text: "Drew on the screen", paths: [], by: who(p) } : edited(p)),
@@ -100,7 +100,7 @@ async function drawOnScreen(p: Record<string, unknown>, ctx: OpCtx) {
   const at = r ? { sx: Math.round(r.x + r.w / 2), sy: Math.round(r.y + r.h / 2) } : {}
   // (a choice's question: asked, as a question is)
   if (str(p.say)) await ctx.op("companion.say", { text: str(p.say), ...at, ...(d.marks.some(isAnswer) ? { ask: true } : {}), ...(p.as ? { as: p.as } : {}) })
-  else if (r) setAgent(name, { ...at, state: acting(name) })
+  else if (r) setAgent(name, at)
   return { screen: d.id, marks: (p.marks as unknown[]).length - unshown.length, ...(unshown.length ? { unshown } : {}) }
 }
 

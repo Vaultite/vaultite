@@ -7,7 +7,7 @@ import "./propose.ts"
 import { plugin } from "./self.ts"
 import type { Near } from "./types.ts"
 import { str } from "./settings.ts"
-import { moments, did, acting, key, agentOf, setAgent } from "./state.ts"
+import { moments, did, key, agentOf, writingAt } from "./state.ts"
 import { takeover, nearBy } from "./windows.ts"
 import { paneById, privatePane, paneFocus, pageFor, resolve } from "./windowpanes.ts"
 import { cut } from "./edits.ts"
@@ -77,16 +77,16 @@ async function actInApp(ctx: OpCtx, name: string, ui: string, find: string, acti
   if (!IN_APP.includes(action)) throw new OpError(`in the app's own UI it does ${IN_APP.join(", ")}: to write in a note, edit; in a page, give its pane`, 400)
   did(name, "act")
   // (words anywhere in the window: no place to fly to first, as find alone would mean their note's words)
-  setAgent(name, { ...(ui ? { ui, ...(find ? { find } : {}) } : {}), state: "writing", pointed: Date.now() })
-  await new Promise((done) => setTimeout(done, LAND_MS))
+  const done = writingAt(name, { ...(ui ? { ui, ...(find ? { find } : {}) } : {}), pointed: Date.now() })
   try {
+    await new Promise((done) => setTimeout(done, LAND_MS))
     const r = await ctx.ui({ action: "companion:click", ui, find, role, how: action }).catch((e) => {
       throw e instanceof OpError && e.status === 409 ? new OpError("no app window is open on this server: open the app first", 409) : e
     }) as ({ found: boolean; label?: string } & Omit<InApp, "ui" | "clicked">) | null
     if (r?.found) { const { found: _f, label, ...rest } = r; return { ui, clicked: label ?? "", ...rest } }
     throw new OpError(find ? `no ${role ? `${role} ` : ""}"${find}" in ${ui || "the app's window"} on the user's screen (use its words as shown)`
       : `${ui} isn't on the user's screen, and the app can't show it (vau tabs lists tabs and panes)`, 404)
-  } finally { setAgent(name, { state: acting(name) }) }
+  } finally { done() }
 }
 
 const ACTS = ["click", "dblclick", "rightclick", "hover", "fill", "type", "press", "check", "uncheck", "select", "scroll", "focus", "expand", "collapse"]
@@ -104,15 +104,15 @@ async function screenAct(p: Record<string, unknown>, name: string) {
     app: str(p.app) || undefined, find: str(p.find) || undefined, role: str(p.role) || undefined }, nearBy.get(key(name)) ?? []) } catch (e) { throw new OpError((e as Error).message, 404) }
   did(name, "act")
   // (its cursor flies there first: the helper waits for it; behind their windows, its card shows where instead)
-  if ((step.el || step.at) && !step.app) setAgent(name, { ...await resolve(target(p, true), name), state: "writing", pointed: Date.now() })
+  const done = writingAt(name, (step.el || step.at) && !step.app ? { ...await resolve(target(p, true), name), pointed: Date.now() } : null)
   try {
     const r = await takeover.act(step, { agent: name, tint: agentOf(name).tint, ask: str(p.ask) || undefined }), was = nearBy.get(key(name)) ?? []
     // (helper's ids are fresh each step: what's near now is what the next points at)
     const near = (r.near ?? []).flatMap((e) => { const t = thingFrom(e); return t?.id ? [t as Near] : [] }), read = { ...r, ...(r.near ? { near } : {}) }
     if (near.length) nearBy.set(key(name), near)
-    const effect = effectOf(str(p.action), read, was), done = effect ? { ...read, effect } : read
-    return { screen: true, ...done, text: doneText(done) }
-  } finally { setAgent(name, { state: acting(name) }) }
+    const effect = effectOf(str(p.action), read, was), effected = effect ? { ...read, effect } : read
+    return { screen: true, ...effected, text: doneText(effected) }
+  } finally { done() }
 }
 plugin.op({
   id: "companion.act",
@@ -165,12 +165,12 @@ or keys pause a step that needs them, a click or Esc stops it. Answers the eleme
     if (p.action === "scroll" && !p.direction && /^(up|down)$/i.test(str(p.value))) p = { ...p, direction: str(p.value).toLowerCase(), value: undefined }
     const t = await pageFor(id, "act", name)
     did(name, "act")
-    if (str(p.el)) setAgent(name, { ...await resolve({ pane: id, el: str(p.el) }, name).catch(() => ({ pane: id })), state: "writing" })
+    const done = writingAt(name, str(p.el) ? await resolve({ pane: id, el: str(p.el) }, name).catch(() => ({ pane: id })) : null)
     try {
       const r = await plugin.desktop("agent:act", t.tab, { action: p.action, ref: str(p.el) || undefined, value: p.value, key: p.key, direction: p.direction, diff: "summary" },
         { name, session: "", task: "", summary: "", remote: false }).catch((e) => { throw new OpError((e as Error).message, 409) }) as Acted
       return { pane: id, ...r }
-    } finally { setAgent(name, { state: acting(name) }) }
+    } finally { done() }
   },
   text: (r, p) => ("screen" in r ? r.text : "clicked" in r ? actInAppText(r, String(p.action)) : actText(r, String(p.action))),
   did: (p) => ({ action: "ui", text: `${String(p.action)} in ${p.ui ? `the app (${String(p.ui)}${p.find ? ` "${String(p.find)}"` : ""})` : p.app ? `${String(p.app)}, behind their window${p.find ? ` ("${String(p.find)}")` : ""}` : p.ax || p.sx !== undefined ? "another app" : "the user's page"}${p.el || p.ax ? ` (${String(p.el || p.ax)})` : ""}`, paths: [], by: who(p) }),

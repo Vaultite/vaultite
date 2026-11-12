@@ -10,9 +10,9 @@ import { inSummoned } from "./summoned.ts"
 import { languageIn } from "../../../core/desktop/spoken.ts"
 import "./windowpanes.ts"
 import { plugin } from "./self.ts"
-import type { Moment, Agent, Note } from "./types.ts"
+import type { Moment, KeptAgent, Note } from "./types.ts"
 import { EDIT_WAIT, SAVED_MS, sayMs, str } from "./settings.ts"
-import { moments, agents, notes, timers, did, acting, windows, asked, send, broadcast, key, isMain, meantFor, setAgent, newId, putNote, dropNote } from "./state.ts"
+import { moments, agents, notes, timers, did, windows, asked, send, broadcast, key, isMain, meantFor, setAgent, wroteAt, writingAt, newId, putNote, dropNote } from "./state.ts"
 import { drawing, save, keepSaid } from "./comments.ts"
 import { AS_TOOL } from "./chat.ts"
 import { lane } from "./lane.ts"
@@ -51,7 +51,7 @@ export async function askWindow(ws: WebSocket, m: object, wait: number, reply: R
 
 // Its edits are its in History and Review: the text before is kept as a version, and the app's save of what it typed
 // is Activity's as that agent's (the op's own event names it too: `did`'s by).
-export const applyEdit = (ctx: OpCtx, agent: Agent, e: Edit, animate = true) => inTurn(e.path, async (): Promise<"typed" | "written"> => {
+export const applyEdit = (ctx: OpCtx, agent: KeptAgent, e: Edit, animate = true) => inTurn(e.path, async (): Promise<"typed" | "written"> => {
   await plugin.ask("history:keep", false, e.path)
   const ws = editorFor(e.path)
   if (ws) {
@@ -59,13 +59,14 @@ export const applyEdit = (ctx: OpCtx, agent: Agent, e: Edit, animate = true) => 
     try { was = readText(plugin.vault.abs(e.path)) } catch { /* a drawing's, or gone */ }
     // (its cursor waits at the end of what it types, once it's typed)
     const end = was !== null ? endOf(was, e) : null
-    if (end) setAgent(agent.name, { path: e.path, line: end.line, find: end.find, state: "writing" })
     const wait = EDIT_WAIT + e.text.length * 20
     await plugin.ask("activity:typing", false, e.path, agent.name, wait + SAVED_MS)
+    const done = writingAt(agent.name, end ? { path: e.path, line: end.line, find: end.find } : null)
     let typed = false, late = false
     try { typed = await askWindow(ws, { t: "edit", agent: agent.name, animate, ...e }, wait) } catch (err) { late = (err as OpError).status === 504; throw err } finally {
       // (typed, or maybe still typing: its save lands within a moment of the window's autosave)
       await plugin.ask("activity:typing", false, e.path, agent.name, typed || late ? SAVED_MS : 0)
+      if (end) done()
     }
     if (typed) {
       // (the app saves what it typed, as the user's: who wrote those lines is said here, for Provenance)
@@ -208,12 +209,12 @@ function noteStream(s: Streamed, given: Record<string, unknown>, keys: string[],
       if (to?.kind !== "comment") { s.whole = true; return }
       to.replies = [...(to.replies ?? []), { by: "agent", text, t: Date.now(), ...(to.by ? { name: s.agent } : {}) }]
       s.reply = { id: to.id, at: to.replies.length - 1 }
-      setAgent(s.agent, { path: to.path, line: to.line, find: to.find, state: acting(s.agent) })
+      setAgent(s.agent, { path: to.path, line: to.line, find: to.find })
       broadcast({ t: "note", note: to })
     } else {
       const t = target(given)
       if (drawing(t.path!)) { s.whole = true; return }
-      setAgent(s.agent, { ...t, state: acting(s.agent) })
+      setAgent(s.agent, t)
       const note: Note = { kind: "comment", agent: s.agent, text, ...t, id: newId(), t: Date.now() }
       notes.set(note.id, note)
       broadcast({ t: "note", note })
@@ -226,7 +227,7 @@ function noteStream(s: Streamed, given: Record<string, unknown>, keys: string[],
       return noteStream(s, given, keys, text)
     }
     const t = placed ? target(given) : {}
-    setAgent(s.agent, { ...t, ...("path" in t ? { find: t.find, x: t.x, y: t.y } : {}), state: acting(s.agent) })
+    setAgent(s.agent, { ...t, ...("path" in t ? { find: t.find, x: t.x, y: t.y } : {}) })
     const answers = answering(s.agent)
     s.note = putNote({ kind: "say", agent: s.agent, text, ...t, ...(given.ask === true ? { question: true } : {}), ...(answers ? { answers } : {}), writer: { client: AS_TOOL.client, agent: AS_TOOL.agent } }).id
   }
@@ -254,7 +255,7 @@ async function typeIn(s: Streamed, x: NonNullable<Streamed["edit"]>): Promise<"t
   await plugin.ask("history:keep", false, path)
   try { x.was = readText(plugin.vault.abs(path)) } catch { /* gone */ }
   await plugin.ask("activity:typing", false, path, s.agent, STREAM_MS)
-  setAgent(s.agent, { path, line: x.e.line, find: x.e.after ?? x.e.find, x: undefined, y: undefined, state: "writing" })
+  wroteAt(s.agent, { path, line: x.e.line, find: x.e.after ?? x.e.find, x: undefined, y: undefined })
   did(s.agent, "word")
   const reply: Record<string, unknown> = {}
   let ok = false
@@ -281,7 +282,7 @@ function flushEdit(s: Streamed) {
 function endEdit(s: Streamed, x: NonNullable<Streamed["edit"]>) {
   flushEdit(s)
   const end = x.was !== null ? endOf(x.was, { ...x.e, text: x.text }) : null
-  if (end) setAgent(s.agent, { path: x.e.path, line: end.line, find: end.find, state: "writing" })
+  if (end) wroteAt(s.agent, { path: x.e.path, line: end.line, find: end.find })
   send(x.ws, { t: "stream-end", rid: x.rid, text: x.text })
 }
 /** A stream ends: a say's bubble goes after a while like any, a comment is kept as far as it got, an edit ends with

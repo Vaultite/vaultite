@@ -83,6 +83,7 @@ export type Agent = Target & Boxed & { name: string; tint: string; state: "watch
   /** Moved there without acting (after the user's note, back from the screen): its cursor rests at home till it acts. */
   rests?: boolean
   runs?: string; model?: string; effort?: string; asks?: { event: string; text: string } }
+export type KeptAgent = Omit<Agent, "state">
 /** Where a page's element is in its page (CSS px, at its zoom), for the window to draw at: the engine's answer for `el`. */
 export type Boxed = { box?: { x: number; y: number; w: number; h: number; zoom: number } }
 /** What an agent leaves in the app: words by its cursor and highlights (gone after a while), a margin comment, a

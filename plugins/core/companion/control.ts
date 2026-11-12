@@ -7,7 +7,7 @@ import "./draw.ts"
 import { plugin } from "./self.ts"
 import type { Moment, Agent, Note } from "./types.ts"
 import { str, setting, mode, ownName } from "./settings.ts"
-import { moments, waiters, agents, watching, notes, log, did, windows, broadcast, key, isMain, live, focus, addMoment, batches, resend } from "./state.ts"
+import { moments, waiters, agents, watching, notes, log, did, windows, broadcast, key, isMain, live, focus, addMoment, batches, resend, shown } from "./state.ts"
 import { realtimePaused, pausedNow, mics, calls } from "./windows.ts"
 import { followed } from "./windowpanes.ts"
 import { stopStreams, cut } from "./edits.ts"
@@ -30,7 +30,7 @@ plugin.op({
     const all = await Promise.all(sessions().map(async (s) => ({ ...s, running: await running(s.id) })))
     return { mode: mode(), name: ownName(), session: (await running(id)) ? id : null, windows: windows.size, focus: focus(),
       sessions: all.filter((s) => s.running).map(({ name, id }) => ({ name, id, ...(isChat(id) ? { chat: true } : {}) })), summoned: lane().on() ? { id: lane().id(), model: summonedModel(), ...(lane().trouble() ? { trouble: lane().trouble() } : {}) } : null,
-      agents: [...agents.values()].map((a) => ({ ...a, live: a.state !== "away" && live(a.name), watch: isMain(a.name) || watching.has(key(a.name)) })),
+      agents: [...agents.values()].map(shown).map((a) => ({ ...a, live: a.state !== "away" && live(a.name), watch: isMain(a.name) || watching.has(key(a.name)) })),
       notes: [...notes.values()], moments: moments.slice(-10), follows: followed.list(),
       realtime: pausedNow() ? { state: "paused", ...pausedNow()! } : realtimePaused.size ? { state: "on" } : null, voice: voiceHere(plugin, setting, [...mics.values()].at(-1)), ...(calls.size ? { call: [...calls.values()].at(-1) } : {}) }
   },

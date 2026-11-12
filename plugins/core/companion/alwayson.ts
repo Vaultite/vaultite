@@ -4,9 +4,9 @@ import { type OpCtx, OpError } from "../../../core/plugins.ts"
 import type { Target } from "../../../core/desktop/places.ts"
 import { cut } from "./edits.ts"
 import { plugin } from "./self.ts"
-import type { Moment, Agent, Note } from "./types.ts"
+import type { Moment, KeptAgent, Note } from "./types.ts"
 import { str, setting, agentSetting, ownName, howFor } from "./settings.ts"
-import { moments, seq, delivered, handed, asking, waiters, agents, seen, ends, dead, watching, notes, did, key, isMain, setAgent } from "./state.ts"
+import { moments, seq, delivered, handed, asking, waiters, agents, seen, ends, dead, watching, notes, did, key, isMain, setAgent, life, atWork } from "./state.ts"
 import { KEPT } from "./comments.ts"
 import { followed } from "./windowpanes.ts"
 import { chat, onChat } from "./chat.ts"
@@ -63,17 +63,23 @@ export async function start(ctx: OpCtx, as?: string, agent?: string, model?: str
   starting(name, { ...at, runs, model: how.model || undefined, effort: how.effort || undefined }, after)
   try {
     await startAgent(ctx, id, prompt, { allow: ALLOW, model: how.model || null, effort: how.effort || null })
-  } catch (e) { seen.delete(key(name)); setAgent(name, { state: isMain(name) ? "watching" : "away" }); throw e }
+  } catch (e) { seen.delete(key(name)); unstarted(name); throw e }
   writeSession({ id, name, t: Date.now(), ...(how.model ? { model: how.model } : {}), ...(how.effort ? { effort: how.effort } : {}), handed: 0 })
   return { id, running: false, name, ...how }
 }
 
 /** Agent `name`'s session boots: asks to it from now on (or after moment `after`) wait for its first `next`, its cursor
  *  showing it starting. */
-export function starting(name: string, a: Partial<Agent> = {}, after = seq) {
+export function starting(name: string, a: Partial<KeptAgent> = {}, after = seq) {
   const k = key(name)
   seen.set(k, Date.now()); delivered.set(k, Math.min(after, seq)); handed.delete(k); asking.delete(k)
-  return setAgent(name, { ...a, state: "starting" })
+  life.set(k, "starting")
+  return setAgent(name, a)
+}
+export function unstarted(name: string) {
+  if (isMain(name)) life.delete(key(name))
+  else life.set(key(name), "away")
+  setAgent(name, {})
 }
 
 /** What a session is told it is: the setting's prompt, how moments reach it (a chat session's messages, a terminal's
@@ -154,12 +160,13 @@ export async function stop(as?: string, all = false) {
  *  the companion wakes it), its waiting `next` answered. `id`: its terminal, whose late calls are let go. */
 export function ended(name: string, id?: string) {
   const k = key(name)
-  asking.delete(k); handing.delete(k); fresh.delete(k); seen.delete(k); watching.delete(k)
+  asking.delete(k); handing.delete(k); fresh.delete(k); seen.delete(k); watching.delete(k); handed.delete(k); atWork.delete(k)
   ends.set(k, (ends.get(k) ?? 0) + 1)
   if (id) dead.add(id)
   const wait = waiters.get(k)
   if (wait) { waiters.delete(k); wait([]) }
-  setAgent(name, { state: "away", asks: undefined })
+  life.set(k, "away")
+  setAgent(name, { asks: undefined })
   followed.remove(null, name)
 }
 plugin.onEvent({ types: ["terminal.ended"] }, (ev) => {

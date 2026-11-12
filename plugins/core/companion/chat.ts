@@ -5,9 +5,10 @@ import { requestWriter } from "../../../core/vault.ts"
 import { ALLOW, sessions, promptFor } from "./alwayson.ts"
 import { plugin } from "./self.ts"
 import { ownName } from "./settings.ts"
-import { agents, did, key, isMain, setAgent } from "./state.ts"
+import { atWork, did, key, isMain, restate } from "./state.ts"
 import { toolUse, type Streaming, streamed, streamDone } from "./edits.ts"
 import { turning } from "./chatturns.ts"
+import { inSummoned } from "./summoned.ts"
 
 /** A tool served to a chat session, run here: claude-code's chat relays its calls. */
 export type ChatTool = { name: string; description: string; schema: { properties?: Record<string, unknown>; required?: string[] }; run: (args: unknown, use?: string) => Promise<unknown>
@@ -69,9 +70,8 @@ export const apiCtx = { api: (method: string, route: string, body?: unknown) => 
 /** An ops context for work the app does itself, as request `from` would (live edits, a proof's Keep). */
 export const liveCtx = (from?: IncomingMessage) => ({ ...apiCtx, op: async (id: string, p?: Record<string, unknown>) => (await plugin.runOp(id, p ?? {}, undefined, from)).result }) as unknown as OpCtx
 
-/** Agent `name`'s tools, each op's parameters (but `as`, which is it) and words (but its vau examples); `busy`: its turn
- *  runs (the summoned session's own). */
-export function toolsFor(name: string, list = TOOLS, busy = () => turning.has(key(name))): ChatTool[] {
+/** Agent `name`'s tools, each op's parameters (but `as`, which is it) and words (but its vau examples). */
+export function toolsFor(name: string, list = TOOLS): ChatTool[] {
   return list.flatMap((short) => {
     const op = plugin.ops.find((o) => o.id === `companion.${short}`)
     if (!op) return []
@@ -93,7 +93,7 @@ export function toolsFor(name: string, list = TOOLS, busy = () => turning.has(ke
           // (what it answered, ids and all, for the talk a fresh session is told: "the one you just opened")
           if (!QUIET_RESULTS.has(short) && r.text) did(name, "result", undefined, `${short}: ${String(r.text).slice(0, 400)}`)
           // (not its last call: its turn goes on, and its cursor shows it busy, a bubble or not, until it ends)
-          if (ends && done !== true && busy() && agents.get(key(name))?.state === "watching") setAgent(name, { state: "thinking" })
+          if (ends && done !== true && turning.has(key(name)) && !inSummoned.getStore()) restate(name, () => atWork.add(key(name)))
           return { content: [{ type: "text", text: r.text }], ...((ends && done === true) || LAST.has(short) ? { endsTurn: true } : {}) }
         } catch (e) {
           did(name, "result", undefined, `${short} failed: ${(e as Error).message.slice(0, 300)}`)

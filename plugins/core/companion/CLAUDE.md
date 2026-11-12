@@ -13,3 +13,7 @@ kit's components first), never with a case here.
 ## Its backend's parts
 `plugin.ts` imports the last of its parts, and each part imports the one before it first, so they run in one order
 (self.ts, settings.ts, state.ts ... people.ts) and its ops, hooks and services register in it. A new part joins that chain.
+
+## Its cursor's state
+Never set: `stateOf` (state.ts) works it out from what each agent is doing, kept where it's known (handed, asking, `life`,
+`atWork`, the lane's turn, an act's `writingAt`). Something new for the cursor to show is a new fact there, not a write.

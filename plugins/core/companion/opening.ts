@@ -9,7 +9,7 @@ import { LAND_MS } from "./inpanes.ts"
 import { plugin } from "./self.ts"
 import type { Moment, Note } from "./types.ts"
 import { str, ownName } from "./settings.ts"
-import { agents, did, acting, key, setAgent } from "./state.ts"
+import { agents, acted, did, key, setAgent, writingAt, wroteAt } from "./state.ts"
 import { past, kept } from "./comments.ts"
 import { takeover, nearBy } from "./windows.ts"
 import { allPanes, paneById, privatePane, paneFocus, resolve, followed, sourceOf } from "./windowpanes.ts"
@@ -39,20 +39,25 @@ function shows(p: Pane, path: string) {
 /** Open `path` with its cursor there: on its tab first when it's open already, then on what opened. */
 async function openSeen(name: string, path: string, open: () => Promise<unknown>) {
   const was = allPanes().find((p) => shows(p, path) && p.tab)
-  if (was) { setAgent(name, { ui: `tab:${was.tab}`, state: "writing", pointed: Date.now() }); await new Promise((done) => setTimeout(done, LAND_MS)) }
-  const focused = paneFocus()?.id
-  const r = await opening.run(true, open)
-  // (the window says what it shows a moment after)
+  acted(name)
+  const done = writingAt(name, was ? { ui: `tab:${was.tab}`, pointed: Date.now() } : null)
   let p: Pane | undefined
-  for (const until = Date.now() + 1500; !p && Date.now() < until;) {
-    await new Promise((done) => setTimeout(done, 100))
-    const f = paneFocus()
-    p = allPanes().find((x) => shows(x, path)) ?? (f && f.id !== focused ? f : undefined)
+  try {
+    if (was) await new Promise((done) => setTimeout(done, LAND_MS))
+    const focused = paneFocus()?.id
+    const r = await opening.run(true, open)
+    // (the window says what it shows a moment after)
+    for (const until = Date.now() + 1500; !p && Date.now() < until;) {
+      await new Promise((done) => setTimeout(done, 100))
+      const f = paneFocus()
+      p = allPanes().find((x) => shows(x, path)) ?? (f && f.id !== focused ? f : undefined)
+    }
+    p ??= paneFocus() ?? undefined
+    return { result: r, pane: p?.id }
+  } finally {
+    const at = p && !privatePane(p) ? p : null
+    done(at ? { ...await resolve({ pane: at.id }, name).catch(() => ({ pane: at.id })), pointed: Date.now() } : {})
   }
-  p ??= paneFocus() ?? undefined
-  if (p && !privatePane(p)) setAgent(name, { ...await resolve({ pane: p.id }, name).catch(() => ({ pane: p!.id })), state: acting(name), pointed: Date.now() })
-  else setAgent(name, { state: acting(name) })
-  return { result: r, pane: p?.id }
 }
 plugin.around("ui.open", async (call, next) => {
   const name = opening.getStore() ? null : companionAsking()
@@ -61,12 +66,13 @@ plugin.around("ui.open", async (call, next) => {
 plugin.around("ui.command", async (call, next) => {
   const name = companionAsking(), id = str(call.params.id)
   // (its button, where the window shows one: the cursor goes there as it runs)
-  if (name && id) setAgent(name, { ui: `button:${id}`, state: "writing", pointed: Date.now() })
-  try { return await next() } finally { if (name) setAgent(name, { state: acting(name) }) }
+  if (name) acted(name)
+  const done = name ? writingAt(name, id ? { ui: `button:${id}`, pointed: Date.now() } : null) : null
+  try { return await next() } finally { done?.() }
 })
 plugin.around("tabs.focus", async (call, next) => {
   const name = companionAsking(), what = str(call.params.what), tab = name && allPanes().find((p) => p.id === what || p.tab === what || shows(p, what))?.tab
-  if (name && tab) { setAgent(name, { ui: `tab:${tab}`, state: "writing", pointed: Date.now() }); await new Promise((done) => setTimeout(done, LAND_MS)) }
+  if (name && tab) { wroteAt(name, { ui: `tab:${tab}`, pointed: Date.now() }); await new Promise((done) => setTimeout(done, LAND_MS)) }
   return next()
 })
 /** The ask a Mac open answered, by agent: its words name what's in that window now (screenFind looks there). */
@@ -106,7 +112,7 @@ work there), or the Mac's window in front and what's in it by id (point, ring an
       const r = await takeover.open(mac)
       if (!r.ok) throw new OpError(`it didn't open${mac.app ? ` in ${mac.app}` : ""}: ${r.text ?? r.why ?? "no answer"}${browser ? " (vaultite: true opens it in Vaultite)" : ""}`, 409)
       if (r.near?.length) { nearBy.set(key(name), r.near); if (m) openedFor.set(key(name), m) }
-      if (r.frame) { const f = r.frame; void resolve(target({ sx: Math.round(f.x + f.width / 2), sy: Math.round(f.y + Math.min(f.height / 2, 120)) }, true), name).then((t) => setAgent(name, { ...t, state: acting(name), pointed: Date.now() }), () => {}) }
+      if (r.frame) { const f = r.frame; void resolve(target({ sx: Math.round(f.x + f.width / 2), sy: Math.round(f.y + Math.min(f.height / 2, 120)) }, true), name).then((t) => setAgent(name, { ...t, pointed: Date.now() }), () => {}) }
       return { path: path || app, pane: null, in: r.app || mac.app || "", title: r.title ?? "", near: r.near ?? [], browser: !!browser }
     }
     const r = await openSeen(name, path, () => ctx.op("ui.open", { path, ...(p.split ? { split: p.split } : {}), ...(p.newTab ? { newTab: true } : {}),

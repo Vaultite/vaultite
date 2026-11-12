@@ -175,6 +175,8 @@ export default async ($: VaultTest) => {
       const ready = await waitFor(async () => { const r = (await api("POST", "ops/companion.job", { id: job }))[1]; return !["starting", "working"].includes(r.state) && r }, 10000, 100)
       check("live edit: a job handed off over a preview is on that page", st === 200 && !!ready && (await api("POST", "ops/companion.jobs", {}))[1].jobs[0].on === "site:http://localhost:5199", [st, b, ready])
 
+      await api("POST", "ops/companion.next", { timeout: 0 }); await api("POST", "ops/companion.next", { timeout: 0 })
+      const heardFrom = heard.length
       const m = cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "make the title say Hi", ...over }) as Any
       const typed = await waitFor(() => /Live edit L1: [^\n]*make the title say Hi/.test(told()) && fs.readFileSync(page, "utf8").includes("Hi") && told(), 8000, 50)
       check("live edit: the next ask over that page goes straight into its worker's terminal, tagged, no turn of the companion's first",
@@ -184,6 +186,8 @@ export default async ($: VaultTest) => {
       await end({ text: "Title says Hi now.", files: [page], at: Date.now(), final: true })
       const said = await waitFor(async () => (await says()).includes("Title says Hi now."), 10000, 100)
       check("live edit: its turn over with nothing to ring (no screen here), its few words are said", !!said, await says())
+      const liveStates = heard.slice(heardFrom).flatMap((x) => (x.t === "agent" && x.agent.name === "Claude" ? [`${x.agent.state}${x.agent.seen ? " seen" : ""}`] : [])).filter((x, i, xs) => x !== xs[i - 1]).join(", ")
+      check("live edit: the companion's cursor shows it sent the ask on (a seen tick), then watches once the job's words are said", liveStates === "watching seen, watching", liveStates)
 
       fs.appendFileSync(page, "<p>mine</p>\n")
       cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "Undo that.", ...over })
