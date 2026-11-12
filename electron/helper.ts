@@ -36,6 +36,7 @@ import { thingFrom, type Thing } from "../core/desktop/uimodel.ts"
 import { changedBoxes } from "../core/desktop/framediff.ts"
 import { type Press, pressLog } from "./presslog.ts"
 import { type Phase, pressMachine, type PressMachine } from "./pressmachine.ts"
+import { talkState } from "./talkstate.ts"
 import { companionVoice } from "./voice.ts"
 import { realtimeFront } from "./realtimefront.ts"
 import { countText, type WalkPlace } from "../core/desktop/walks.ts"
@@ -170,7 +171,7 @@ export async function startHelper(h: HelperHost) {
     deliver: async (l) => String((await op("companion.teach", l)).said ?? "Saved") })
   drawingActs((a) => live.say({ t: "drawing-act", ...a }))
   watchLayers(layersChanged)
-  knockHost({ say: (m) => live.say(m), talking: () => !!session || !!panelOpen() || !!speakingNow || speaker.saying() || voiceFront.speaking() || (!!summon && ACTIVE.has(summon.m.phase)) || (!!exchange && going(exchange)),
+  knockHost({ say: (m) => live.say(m), talking: () => { const t = talkNow(); return t.listening || t.box || t.speaking || t.pressing || t.answering },
     base: () => (live.state.mode === "off" && !walkOn() && !watching() ? null : based || null), ask: (o, r) => screenAsk(o, r ?? {}), cue: (n) => cue(n),
     walk: (what) => (watching() ? lessonAct(what) : walkAct(what)),
     speak: (text) => { if (prefs.voice.mode !== "off" && !quietForCall()) void voiceCall("voice:sample", [{ text, after: true }]).catch(() => {}) },
@@ -232,11 +233,12 @@ export function stopHelper() {
 /** What a reload onto another code root would cut short now (a press, a dictation, its voice, a walk...), or null. */
 export function helperBusy(): string | null {
   if (!host) return null
-  if (session || starting) return "it's dictating"
-  if (summon && ACTIVE.has(summon.m.phase)) return "a Talk key's press is under way"
-  if (exchange && going(exchange)) return "an exchange with the companion is on"
-  if (speakingNow || speaker.saying() || voiceFront.speaking()) return "the companion is speaking"
-  if (panelOpen()) return "the companion's box is open"
+  const t = talkNow()
+  if (t.listening || t.starting) return "it's dictating"
+  if (t.pressing) return "a Talk key's press is under way"
+  if (t.answering) return "an exchange with the companion is on"
+  if (t.speaking) return "the companion is speaking"
+  if (t.box) return "the companion's box is open"
   if (walkOn()) return "a QA walk is on"
   if (watching()) return "a lesson is being taught"
   if (recordingNow()) return "a replay is being kept"
@@ -1042,20 +1044,12 @@ function endExchange(stop = true) {
   if (panelOpen()) closePanel()
   draw()
 }
-/** Its spoken answer still going: being said (or still to be), its turn still at work on it, or an offer of it up
- *  (the turn waits on their answer: settling then took the card away under their hand). */
-function going(x: Exchange) {
-  if (!x.spoken) return false
-  const a = live.state.agents.get(x.name), s = summon?.name === x.name ? summon : null
-  return !!speakingNow || speaker.saying() || (!!a && BUSY.has(a.state)) || (!!s && waiting(s)) || takeoverOffering()
-}
 /** They clicked elsewhere, went to another app, or its box closed: the box goes, but a spoken answer goes on to its end
  *  (only the Talk key, Esc or a new ask stop it), its cursor leaving once it's said (settle). */
 function moveOn() {
-  const x = exchange
   // (held: the press is theirs, a drag its trail)
   if (summon && HELD.has(summon.m.phase)) return
-  if (x && going(x)) { if (panelOpen()) closePanel(); return draw() }
+  if (talkNow().answering) { if (panelOpen()) closePanel(); return draw() }
   endExchange(false)
 }
 /** How long its cursor stays once its spoken answer is said, before it leaves. */
@@ -1064,7 +1058,7 @@ let settleTimer: ReturnType<typeof setTimeout> | null = null
 /** A spoken exchange done (its words said to their end, its turn over), its box not open: a moment on, its cursor leaves. */
 function settle() {
   const x = exchange
-  const done = (): boolean => !!x && exchange === x && !going(x) && panelOpen() !== x.name && !(summon && HELD.has(summon.m.phase)) && (x.arrived || !!summon?.begun) &&
+  const done = (): boolean => !!x && exchange === x && !talkNow().answering && panelOpen() !== x.name && !(summon && HELD.has(summon.m.phase)) && (x.arrived || !!summon?.begun) &&
     !(drawn?.agent === x.name && drawingUp(drawn.id) && Date.now() < drawingSeen)
   if (!x?.spoken || settleTimer || !done()) return
   settleTimer = setTimeout(() => { settleTimer = null; if (done()) endExchange(false); else settle() }, LINGER_MS)
@@ -1374,7 +1368,7 @@ function freeTick() {
     return
   }
   freeTimer ??= setInterval(freeTick, 700)
-  const talking = !!speakingNow || speaker.saying() || voiceFront.speaking() || (!!summon && !["open", "missed", "closed"].includes(summon.m.phase))
+  const t = talkNow(), talking = t.speaking || t.pressing
   if (session?.into === "free") { if (talking) stopFor(session.sink); return }
   if (talking || session || dictating() || starting || Date.now() < freeRetry) return
   void listenFree(want)
@@ -1909,7 +1903,7 @@ function callChanged(next: Call | null) {
   if (!quietForCall()) return
   // (a call began while it spoke: it stops, and its answer shows)
   const x = exchange
-  if (speaker.saying() || voiceFront.speaking()) { const v = voiced; stopVoice(); if (v) { quietHeld = { name: v.name, asked: v.asked }; unheard(v.name, v.asked, "call", callSaid(call)) } }
+  if (talkNow().speaking) { const v = voiced; stopVoice(); if (v) { quietHeld = { name: v.name, asked: v.asked }; unheard(v.name, v.asked, "call", callSaid(call)) } }
   if (x?.spoken) { x.spoken = false; answerBox() }
   // (hands-free talk in its box would hear the call: it stops, its words so far kept; their own press still works)
   if (session?.into === "panel" && session.talk) stopFor(session.sink)
@@ -1977,8 +1971,7 @@ function holdMic(press?: Press) {
   const since = Date.now()
   let quietFrom = 0
   holding = setInterval(() => {
-    const x = exchange
-    const busy = !!session || (!!summon && ACTIVE.has(summon.m.phase)) || (!!x && going(x)) || speaker.saying() || voiceFront.speaking()
+    const t = talkNow(), busy = t.listening || t.pressing || t.answering || t.speaking
     if (busy) quietFrom = 0
     else quietFrom ||= Date.now()
     if (Date.now() - since < HOLD_MOST_MS && (busy || Date.now() - quietFrom < HOLD_TAIL_MS)) return
@@ -2194,11 +2187,15 @@ function handOff(agents: ScreenAgent[], called: Scene["summon"]): { agents: Scre
 }
 
 const BUSY = new Set(["thinking", "reading", "writing", "starting"])
-/** A press's phases: held; let go with nothing come yet; anything still to hear or say. */
-const HELD = new Set<Phase>(["listening", "failed"]), WAITING = new Set<Phase>(["sending", "thinking"])
-/** Let go and its turn not seen yet: words may have come before the agent's state says it's at work. */
-const waiting = (s: Summon) => WAITING.has(s.m.phase) || (s.m.phase === "answering" && !s.begun)
-const ACTIVE = new Set<Phase>(["listening", "failed", "sending", "thinking", "working", "answering"])
+/** A press's phases while it's held. */
+const HELD = new Set<Phase>(["listening", "failed"])
+/** Whether it's talking with the user now (talkstate.ts), from what the helper keeps. */
+function talkNow() {
+  const x = exchange, s = summon, a = x ? live.state.agents.get(x.name) : undefined
+  return talkState({ session: !!session, starting, box: !!panelOpen(), level: !!speakingNow, saying: speaker.saying(), realtime: voiceFront.speaking(),
+    press: s ? { phase: s.m.phase, begun: !!s.begun, ofExchange: s.name === x?.name } : null,
+    exchange: x ? { spoken: !!x.spoken, working: !!a && BUSY.has(a.state) } : null, offering: takeoverOffering() })
+}
 /** Whether its own place, in the exchange of summon `s`, points at something (an element, a found text, another spot,
  *  a place in Vaultite's window): not where it was summoned nor where the ask parked it. */
 const pointing = (a: Agent, s: Summon) => placeKey(a) !== s.was && (!onScreen(a) || !!a.frame || !!a.find || (typeof a.sx === "number" && typeof a.sy === "number" && Math.hypot(a.sx - s.p.x, a.sy! - s.p.y) > 4))
@@ -2257,9 +2254,9 @@ function draw() {
   const own = s ? live.state.agents.get(s.name) : undefined, busy = !!own && BUSY.has(own.state)
   if (s && busy && (ph === "thinking" || ph === "answering")) { s.begun = true; s.m.send("busy") }
   // (its turn over and nothing still said: answered, its exchange open)
-  else if (s?.begun && (ph === "working" || ph === "answering") && !busy && !speakingNow && !speaker.saying() && !voiceFront.speaking()) s.m.send("done")
+  else if (s?.begun && (ph === "working" || ph === "answering") && !busy && !talkNow().speaking) s.m.send("done")
   // (once its turn is seen at work, it's as busy as the agent is)
-  const state = !s ? "watching" : listening ? "listening" : ph === "missed" || ph === "failed" ? "missed" : busy || (s && waiting(s)) ? "thinking" : "watching"
+  const state = !s ? "watching" : listening ? "listening" : ph === "missed" || ph === "failed" ? "missed" : busy || talkNow().waiting ? "thinking" : "watching"
   const home = s && besidePointer(s.p, screen.getDisplayNearestPoint(s.p).bounds)
   const called: Scene["summon"] = s && home && (!listening || s.appeared)
     ? { name: s.name, tint: s.tint, state, sx: home.x, sy: home.y, follow: true, ...(words ? { words } : {}), ...doing(s.name), ...(state === "missed" && s.missed ? { missed: s.missed } : {}), ...(listening && session?.into === "summon" ? { level: Math.round(session.level * 20) / 20 } : {}), ...(aimed && !listening ? { aim: { id: aimed.id, x: Math.round(aimed.x), y: Math.round(aimed.y) } } : {}), ...(inkDown && listening ? { drag: true } : {}) } : null
@@ -2329,7 +2326,7 @@ const boxWords = (s: Session) => s.finals.reduce((all, t) => all + joinText(all,
 
 /** Whether its voice and the Talk key's exchange went quiet within `ms`: nothing said, listened for or worked on. */
 async function quiet(ms: number) {
-  const busy = () => speaker.saying() || voiceFront.speaking() || (!!summon && ACTIVE.has(summon.m.phase)) || (!!exchange && going(exchange))
+  const busy = () => { const t = talkNow(); return t.speaking || t.pressing || t.answering }
   for (const end = Date.now() + ms; busy(); await new Promise((r) => setTimeout(r, 250))) if (Date.now() > end) return false
   return true
 }

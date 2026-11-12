@@ -466,6 +466,46 @@ export default async ($: VaultTest) => {
     held.send("fail")
     const notSent = !held.send("sent"), was = held.phase
     check("press machine: held after the recognizer stopped, nothing is sent till it's let go", notSent && was === "failed" && held.send("up") && held.send("sent"), [was, held.phase])
+    {
+    // Whether the helper is talking (electron/talkstate.ts): each place that asks reads its facets, the same answer as
+    // the mix of facts each used to OR, for every fact (the voice's level is on only while it says something: voice.ts).
+    const { talkState } = await import("../../../electron/talkstate.ts")
+    type Facts = Parameters<typeof talkState>[0]
+    const PHASES = ["listening", "failed", "sending", "thinking", "working", "answering", "open", "missed", "closed"] as const
+    const bools = [false, true]
+    const pressFacts = [null, ...PHASES.flatMap((phase) => bools.flatMap((begun) => bools.map((ofExchange) => ({ phase, begun, ofExchange }))))]
+    const exchangeFacts = [null, ...bools.flatMap((spoken) => bools.map((working) => ({ spoken, working })))]
+    const all: Facts[] = []
+    for (let n = 0; n < 128; n++) {
+      const [session, starting, box, level, saying, realtime, offering] = [0, 1, 2, 3, 4, 5, 6].map((i) => !!(n & (1 << i)))
+      if (level && !saying) continue
+      for (const press of pressFacts) for (const exchange of exchangeFacts) all.push({ session, starting, box, level, saying, realtime, press, exchange, offering })
+    }
+    const ACTIVE = ["listening", "failed", "sending", "thinking", "working", "answering"]
+    const waitingWas = (f: Facts) => !!f.press && (f.press.phase === "sending" || f.press.phase === "thinking" || (f.press.phase === "answering" && !f.press.begun))
+    const goingWas = (f: Facts) => !!f.exchange && f.exchange.spoken && (f.level || f.saying || f.exchange.working || (!!f.press?.ofExchange && waitingWas(f)) || f.offering)
+    const activeWas = (f: Facts) => !!f.press && ACTIVE.includes(f.press.phase)
+    const busyWas = (f: Facts) => (f.session || f.starting ? "dictating" : activeWas(f) ? "press" : goingWas(f) ? "exchange" : f.level || f.saying || f.realtime ? "speaking" : f.box ? "box" : null)
+    const SITES: [string, (f: Facts) => unknown, (t: ReturnType<typeof talkState>) => unknown][] = [
+      ["knocks wait while it talks", (f) => f.session || f.box || f.level || f.saying || f.realtime || activeWas(f) || goingWas(f), (t) => t.listening || t.box || t.speaking || t.pressing || t.answering],
+      ["a reload waits while it's busy", busyWas, (t) => (t.listening || t.starting ? "dictating" : t.pressing ? "press" : t.answering ? "exchange" : t.speaking ? "speaking" : t.box ? "box" : null)],
+      ["a spoken exchange goes on", goingWas, (t) => t.answering],
+      ["hands-free gives way", (f) => f.level || f.saying || f.realtime || (!!f.press && !["open", "missed", "closed"].includes(f.press.phase)), (t) => t.speaking || t.pressing],
+      ["a Bluetooth mic stays held", (f) => f.session || activeWas(f) || goingWas(f) || f.saying || f.realtime, (t) => t.listening || t.pressing || t.answering || t.speaking],
+      ["news waits till it's quiet", (f) => f.saying || f.realtime || activeWas(f) || goingWas(f), (t) => t.speaking || t.pressing || t.answering],
+      ["a call stops its voice", (f) => f.saying || f.realtime, (t) => t.speaking],
+      ["its press done once nothing's said", (f) => !(f.level || f.saying || f.realtime), (t) => !t.speaking],
+      ["its cursor thinks while a press waits", waitingWas, (t) => t.waiting],
+    ]
+    for (const [site, was, now] of SITES) {
+      const off = all.filter((f) => was(f) !== now(talkState(f)))
+      check(`talk state: ${site}, as it did, for all ${all.length} facts`, !off.length, off.slice(0, 3))
+    }
+    const quiet: Facts = { session: false, starting: false, box: false, level: false, saying: false, realtime: false, press: null, exchange: null, offering: false }
+    const typed = talkState({ ...quiet, exchange: { spoken: false, working: true } }), spokenAtWork = talkState({ ...quiet, exchange: { spoken: true, working: true } })
+    const answered = talkState({ ...quiet, press: { phase: "open", begun: true, ofExchange: true } })
+    check("talk state: a typed exchange's turn at work isn't talking, a spoken one's is; an answered press is no press", !typed.answering && spokenAtWork.answering && !answered.pressing && !answered.waiting)
+    }
     const { liveInput } = await import("../../../electron/helperlogic.ts")
     check("helper: only the app the user runs hears their keys and takes the one lock; never a copy a script drives or one run from source, unless asked",
       liveInput({}, true) && !liveInput({ VAULTITE_QUIET: "1" }, true) && !liveInput({}, false) && liveInput({ VAULTITE_HELPER_TAP: "1" }, false) && !liveInput({ VAULTITE_QUIET: "1", VAULTITE_HELPER_TAP: "1" }, false))
