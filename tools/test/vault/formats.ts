@@ -152,5 +152,24 @@ export default async ($: VaultTest) => {
     check("outside: an editor's edit-only save is written", code === 200 && fs.readFileSync(note, "utf8") === "Written outside.\nEdited.\n", [code, saved])
     ;[code] = await api("PUT", "file", { path: note, edit: { at: 0, cut: 0, add: "x" }, baseHash: textHash("something else") })
     check("outside: an edit of a base that changed on disk asks for the base (412)", code === 412, code)
+    const base = "One\nTwo\nThree\n", disk = "One\nTwo by them\nThree\n"
+    const saves: [string, (p: string) => object][] = [
+      ["an edit of the base on disk", (p) => ({ path: p, edit: { at: 0, cut: 3, add: "Uno" }, baseHash: textHash(disk), lean: true })],
+      ["an edit of a base that changed", (p) => ({ path: p, edit: { at: 0, cut: 3, add: "Uno" }, baseHash: textHash(base), lean: true })],
+      ["a bad edit", (p) => ({ path: p, edit: { at: -1, cut: 0, add: "x" }, baseHash: textHash(disk) })],
+      ["text with a base that merges", (p) => ({ path: p, text: base.replace("Three", "Three by me"), base })],
+      ["text with a base that conflicts", (p) => ({ path: p, text: base.replace("Two", "Two by me"), base })],
+      ["text that isn't text", (p) => ({ path: p, text: 3 })],
+    ]
+    const inVault = "Notes/Saved alike.md", outFile = path.join(tmp, "elsewhere", "Saved alike.md")
+    fs.writeFileSync(outFile, disk)
+    O.allow([outFile])
+    for (const [what, body] of saves) {
+      fs.mkdirSync(path.join(VAULT, "Notes"), { recursive: true })
+      fs.writeFileSync(path.join(VAULT, inVault), disk); fs.writeFileSync(outFile, disk)
+      const [a] = await api("PUT", "file", body(inVault)), [b] = await api("PUT", "file", body(outFile))
+      const same = fs.readFileSync(path.join(VAULT, inVault), "utf8") === fs.readFileSync(outFile, "utf8")
+      check(`save: ${what} gets the same answer in the vault and outside it`, a === b && same, [a, b, same])
+    }
   }
 }

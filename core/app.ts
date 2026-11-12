@@ -14,6 +14,7 @@ import { MARKER as SANDBOX_MARKER, newSandbox } from "./sandbox.ts"
 import { accessToMachine, allDone, cachesToKept, migrate, migrateMoved } from "./migrations.ts"
 import { installFrom } from "./coreops/installs.ts"
 import * as F from "./files.ts"
+import { saveBody } from "./contracts/save.ts"
 import * as O from "./outside.ts"
 import * as pages from "./pages.ts"
 import { setUpNew } from "./start.ts"
@@ -565,7 +566,7 @@ export class App {
     const obj = (body && typeof body === "object" && !Array.isArray(body) ? body : {}) as Item
     if (parts[0] === "ops") return await this.opsRoute(method, parts.slice(1), query, body, http)
     // A file from outside the vault, opened in the desktop app (core/outside.ts)
-    if (parts.join("/") === "file" && O.isOutside(method === "GET" ? query.path : obj.path)) return O.handle(method, method === "GET" ? query.path : obj.path, obj)
+    if (parts.join("/") === "file" && O.isOutside(method === "GET" ? query.path : obj.path)) return O.handle(method, method === "GET" ? query.path : obj.path, saveBody(obj))
     if (parts.join("/") === "file/info" && method === "GET" && O.isOutside(query.path)) return O.info(query.path)
     if (method === "POST" && parts.join("/") === "upload") return await F.upload(this.vault, query, obj, http, (fn) => this.hold(fn))
     const res = (await F.handle(this.vault, method, parts, query, obj)) ?? Look.handle(this.vault, method, parts, obj)

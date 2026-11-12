@@ -10,9 +10,9 @@ import { HTTPError, LOADED, type Plugin, reply, serviceFor } from "./plugins.ts"
 import { ARCHIVE_DIR, inArchive } from "./fileprops.ts"
 import { extOf, isTextKind, kindOf, tooBig } from "./filetypes.ts"
 import { highlighter, matches, type Node, parse, type SearchDoc, SearchError } from "./searchquery.ts"
-import { merge3 } from "./textedit.ts"
 import { xmlDecode } from "./unzip.ts"
-import { applyEdit, editOf, textHash } from "./texthash.ts"
+import { editOf } from "./texthash.ts"
+import { planSave, saveBody } from "./contracts/save.ts"
 import { blocksIn } from "./sections.ts"
 import { prose } from "./frontmatter.ts"
 import { linkResolver, noteLinks } from "./links.ts"
@@ -833,8 +833,9 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
     if (method === "PUT" && rel.startsWith(".") && !showHidden(vault) && !fs.existsSync(vault.abs(rel))) throw new HTTPError(404, `no file '${rel}'`)
     if (!writable(vault, rel)) throw new HTTPError(400, `${rel} isn't a text file, so it can't be written here`)
     if (locked(rel)) throw new HTTPError(403, `${rel} is read-only`)
-    let text = body.text ?? ""
-    if (typeof text !== "string") throw new HTTPError(400, "text must be a string")
+    const said = saveBody(body)
+    if (!said.ok) throw new HTTPError(400, said.why)
+    let text = said.body.text ?? ""
     if (method === "POST") {
       let target = rel
       if (fs.existsSync(vault.abs(target))) {
@@ -857,25 +858,13 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
         if (notHereYet(e)) throw e // (there, not down yet: never written over as a new file)
         cur = null
       }
-      const base = body.base ?? null, baseHash = typeof body.baseHash === "string" ? body.baseHash : null
-      // An editor saving a file that was deleted or moved meanwhile: don't bring it back.
-      if (cur === null && (base !== null || baseHash !== null)) throw new HTTPError(404, `${rel} isn't in the vault any more (moved or deleted)`)
-      // An editor's save sends its base's fingerprint (and only its edit of it, `edit`): the base itself only when the
-      // file changed on disk, to merge.
-      if (cur !== null && base === null && baseHash !== null && (body.edit !== undefined || cur !== text) && textHash(cur) !== baseHash) {
-        return reply(412, { error: "the file changed on disk: send its base to merge" })
-      }
-      if (body.edit !== undefined) {
-        const made = cur !== null && baseHash !== null ? applyEdit(cur, body.edit) : null
-        if (made === null) throw new HTTPError(400, "edit is {at, cut, add}, an edit of the text whose baseHash is sent")
-        text = made
-      }
-      const sent = text
-      if (cur !== null && base !== null && cur !== base && cur !== text) {
-        const merged = merge3(base, text, cur)
-        if (merged === null) return reply(409, { error: "the file changed on disk in the same place", ...read(vault, rel) })
-        text = merged
-      }
+      const plan = planSave(cur, { ...said.body, text })
+      if (plan.kind === "gone") throw new HTTPError(404, `${rel} isn't in the vault any more (moved or deleted)`)
+      if (plan.kind === "changed") return reply(412, { error: "the file changed on disk: send its base to merge" })
+      if (plan.kind === "bad") throw new HTTPError(400, plan.why)
+      if (plan.kind === "conflict") return reply(409, { error: "the file changed on disk in the same place", ...read(vault, rel) })
+      const sent = plan.sent
+      text = plan.text
       // (a guest's write as it would land: merged, at its own name)
       const why = byGuest() && cur !== text ? guestRefusal(vault, rel, cur, text) : ""
       if (why) throw new HTTPError(403, why)
@@ -888,7 +877,7 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
       if (cur !== text) await vault.fillIn(rel, before)
       const f = read(vault, rel)
       // (an editor's save gets back only how the file differs from what it sent)
-      if (body.lean) { const { text: _, ...rest } = f; return f.text === sent ? { ...rest, same: true } : { ...rest, edit: editOf(sent, f.text) } }
+      if (said.body.lean) { const { text: _, ...rest } = f; return f.text === sent ? { ...rest, same: true } : { ...rest, edit: editOf(sent, f.text) } }
       return f
     }
   }

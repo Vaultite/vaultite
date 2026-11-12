@@ -8,6 +8,7 @@ import { differences, merge3, mergeClashes, type Clash } from "@/core/merge"
 import { errorReason, notify } from "@/core/notify"
 import { dropDraft, keepDraft } from "@/core/drafts"
 import { trackUnsaved } from "@/core/unsaved"
+import type { SaveBody } from "../../../core/contracts/save.ts"
 import { applyEdit, editOf, LEAN_PAST, textHash } from "../../../core/texthash.ts"
 import { keptLive, onHandBack, typedLive } from "@/core/cosync"
 import { trace } from "@/core/trace"
@@ -242,10 +243,10 @@ export function makeAutosave(path: string, initial: string, options: Options) {
    *  changed on disk); it gets back how the file differs from what it sent. (keepalive takes 64 KB at most) */
   const put = async (text: string, base: string | null, init?: RequestInit) => {
     const fits = (n: number) => (init?.keepalive && n > 60_000 ? { ...init, keepalive: false } : init)
-    if (base === null) return request("PUT", "file", { path: where(), text, base }, fits(text.length))
+    if (base === null) return request("PUT", "file", { path: where(), text, base } satisfies SaveBody, fits(text.length))
     const edit = editOf(base, text)
-    const r = await request("PUT", "file", { path: where(), edit, baseHash: textHash(base), lean: true }, fits(edit.add.length + 200))
-    return r.status === 412 ? request("PUT", "file", { path: where(), text, base, lean: true }, fits(text.length + base.length)) : r
+    const r = await request("PUT", "file", { path: where(), edit, baseHash: textHash(base), lean: true } satisfies SaveBody, fits(edit.add.length + 200))
+    return r.status === 412 ? request("PUT", "file", { path: where(), text, base, lean: true } satisfies SaveBody, fits(text.length + base.length)) : r
   }
   /** The server's answer, with its text made from what was sent. */
   const answer = async (r: Response, sent: string): Promise<FileText & { error?: string }> => {
@@ -547,7 +548,7 @@ export function makeAutosave(path: string, initial: string, options: Options) {
         const disk = await kept
         if (s.disk !== disk || now() !== disk) throw new Error("Couldn't undo: the text changed since. Both versions are in the note's history.")
         // (the file back as it was, the text as typed, and the choice again)
-        if ((side === "mine" || c.version) && s.disk !== disk) await putJson("file", { path: where(), text: disk, base: s.disk })
+        if ((side === "mine" || c.version) && s.disk !== disk) await putJson("file", { path: where(), text: disk, base: s.disk } satisfies SaveBody)
         s.disk = was
         show(typed)
         tell(c)
