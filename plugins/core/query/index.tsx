@@ -2,9 +2,6 @@ import { Database, Table2 } from "lucide-react"
 import { besideActive, currentFile, definePlugin, freeName, getStore, kindFolder, newNoteFolder, openNew, post, reload, type FileFormat } from "@vaultite"
 import { BaseFence, BaseFile } from "./BaseView"
 
-// Obsidian Bases (.base files, embeds, ```base fences), drawn here; the server runs them. "New database" (a note with
-// a ```base fence) in a kind's folder goes where new notes go, since that folder holds only that kind.
-
 async function newDatabase(from: string) {
   const s = getStore()
   const folder = kindFolder(from) ? newNoteFolder(s, currentFile()) : from
@@ -16,14 +13,11 @@ async function newDatabase(from: string) {
   return f.path
 }
 
-/** A new base's YAML: every file in `folder` (the whole vault when none), as a table named `name`. */
 const baseText = (folder: string, name = "Table") =>
   `${folder ? `filters:\n  and:\n    - file.inFolder(${JSON.stringify(folder)})\n` : ""}views:\n  - type: table\n    name: ${/^\w[\w .-]*$/.test(name) ? name : JSON.stringify(name)}\n`
 
-/** Where a new base goes from the palette: next to the note being written, else the vault's top. */
 const whereNew = () => besideActive("")
 
-/** A new .base in `folder`, listing that folder (New base), named after it ("Recipes.base"). */
 async function newBase(folder = whereNew()) {
   const s = getStore()
   const base = folder ? folder.split("/").pop()! : "Base"

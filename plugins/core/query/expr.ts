@@ -1,64 +1,44 @@
-// Obsidian Bases' expression language (filters, formulas, summaries), no Node. Lenient where a vault has only text:
-// "[[x]]" is a link and date-looking text acts as a date. Parse errors throw ExprError when compiled.
 import { formatDate as formatAt } from "../../../core/dates.ts"
 import type { Rec } from "./query.ts"
 
 export class ExprError extends Error {}
 
-// ---------- values
-
-/** A date (ms, this machine's time); `time`: it has a time of day (now(), file.mtime), not only a day (today()). */
 class BDate {
   ms: number; time: boolean
   constructor(ms: number, time: boolean) { this.ms = ms; this.time = time }
 }
-/** A link: to a file (a name, a path) or a URL, with the text it shows. */
 class BLink {
   target: string; display?: string
   constructor(target: string, display?: string) { this.target = target; this.display = display }
 }
-/** A file of the vault (the one tested, `this`, or one a link names). */
 class BFile {
   rec: Rec
   constructor(rec: Rec) { this.rec = rec }
 }
-/** A length of time: ms, plus months (a month or a year isn't a fixed number of ms). */
 class BDuration {
   ms: number; months: number
   constructor(ms: number, months = 0) { this.ms = ms; this.months = months }
 }
-/** `formula`: its fields are the base's formulas, worked out for the file being tested. */
 class FormulaRef {}
 const FORMULAS = new FormulaRef()
-/** `note`: the tested file's properties. */
 class NoteRef {}
 const NOTE = new NoteRef()
 
 export type V = null | number | string | boolean | BDate | BLink | BFile | BDuration | RegExp | FormulaRef | NoteRef | V[] | { [k: string]: V }
 
-/** What an evaluation can reach beyond the file it tests. */
 export type Env = {
-  /** The file a link written in `from` names (a name, a path, an alias), or null. */
   resolve: (target: string, from?: string) => Rec | null
-  /** `this`: the file the base is shown for (the base itself, or the note embedding it). */
   self: Rec | null
-  /** A formula's value for a file (the caller keeps them, and stops a formula that refers to itself). */
   formula: (rec: Rec, name: string) => V
-  /** The paths of the files that link to a file (file.backlinks; worked out once, when first asked). */
   backlinks: (rec: Rec) => string[]
   now: number
-  /** A where's key as written for a file (`file`, `folder`, frontmatter...: query.ts), and a value as its key's
-   *  declared type compares it (undefined: as it is). */
   key: (rec: Rec, key: string) => unknown
   typed: (key: string, v: unknown) => unknown
 }
 
 type Scope = { rec: Rec | null; env: Env; vars?: Record<string, V> }
 
-// ---------- dates and durations
-
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?(Z|[+-]\d{2}:?\d{2})?$/
-/** Text as a date ("2026-09-27", "2026-09-27 18:00:00", ISO with a zone), or null. */
 export function parseDate(s: string): BDate | null {
   const m = DATE_RE.exec(s.trim())
   if (!m) return null
@@ -73,22 +53,19 @@ export function parseDate(s: string): BDate | null {
 }
 const asDate = (v: V): BDate | null => (v instanceof BDate ? v : typeof v === "string" ? parseDate(v) : null)
 
-const UNITS: Record<string, [number, number]> = {} // unit -> [ms, months]
+const UNITS: Record<string, [number, number]> = {}
 for (const [names, ms, months] of [
   [["y", "year", "years"], 0, 12], [["M", "month", "months"], 0, 1], [["w", "week", "weeks"], 7 * 864e5, 0],
   [["d", "day", "days"], 864e5, 0], [["h", "hour", "hours"], 36e5, 0], [["m", "minute", "minutes"], 6e4, 0],
   [["s", "second", "seconds"], 1e3, 0],
 ] as [string[], number, number][]) for (const n of names) UNITS[n] = [ms, months]
 
-/** "1d", "2 weeks", "1M 4h", "-3 days" as a duration, or null. ("m" is minutes, "M" months.) */
 export function parseDuration(s: string): BDuration | null {
   const t = s.trim()
   const parts = [...t.matchAll(/(-?\d+(?:\.\d+)?)\s*([A-Za-z]+)\s*/gy)]
-  // (the scan must cover the whole text: "1d" is a duration, "1d later" isn't)
   if (!parts.length || parts.reduce((n, p) => n + p[0].length, 0) !== t.length) return null
   let ms = 0, months = 0
   for (const p of parts) {
-    // One letter: as written ("m" minutes, "M" months); words in any case.
     const u = p[2].length === 1 ? UNITS[p[2]] : UNITS[p[2].toLowerCase()]
     if (!u) return null
     ms += Number(p[1]) * u[0]; months += Number(p[1]) * u[1]
@@ -107,9 +84,7 @@ function shift(d: BDate, dur: BDuration, sign: number): BDate {
   return new BDate(ms + sign * dur.ms, d.time || dur.ms % 864e5 !== 0)
 }
 
-/** A date in a format (YYYY-MM-DD, dddd, MMM Do...: core/dates.ts), in this machine's time. */
 export const formatDate = (d: BDate, fmt: string) => formatAt(new Date(d.ms), fmt)
-/** A date as the app writes one: "2026-09-27", or "2026-09-27 18:00" when it has a time. */
 export const dateText = (d: BDate) => formatDate(d, d.time ? "YYYY-MM-DD HH:mm" : "YYYY-MM-DD")
 
 function relative(d: BDate, now: number) {
@@ -121,7 +96,6 @@ function relative(d: BDate, now: number) {
   return "now"
 }
 
-/** A duration as words ("3 days", "2 hours"). */
 export function durationText(ms: number) {
   const abs = Math.abs(ms)
   for (const [n, unit] of [[864e5, "day"], [36e5, "hour"], [6e4, "minute"], [1e3, "second"]] as [number, string][]) {
@@ -129,8 +103,6 @@ export function durationText(ms: number) {
   }
   return `${ms} ms`
 }
-
-// ---------- the language
 
 type Tok = { t: "num" | "str" | "re" | "id" | "op" | "p"; v: string; at: number; re?: RegExp }
 export type Node =
@@ -143,7 +115,6 @@ export type Node =
   | { k: "bin"; op: string; a: Node; b: Node }
   | { k: "list"; items: Node[] }
   | { k: "obj"; entries: [string, Node][] }
-  // A where compiles to these (query.ts), never parsed: a key's value as written (`self`: this note's), and its tests.
   | { k: "key"; name: string; self?: boolean }
   | { k: "has"; a: Node }
   | { k: "loose"; op: string; a: Node; b: Node }
@@ -186,7 +157,6 @@ function lex(src: string): Tok[] {
     }
     if (ID_START.test(c)) {
       let j = i + 1
-      // (a dash between letters is part of the name: `due-date`; `a - b` is a minus)
       while (j < src.length && (ID_PART.test(src[j]) || (src[j] === "-" && j + 1 < src.length && ID_START.test(src[j + 1]) && ID_PART.test(src[j - 1])))) j++
       out.push({ t: "id", v: src.slice(i, j), at: i }); i = j; continue
     }
@@ -198,13 +168,11 @@ function lex(src: string): Tok[] {
   return out
 }
 
-/** Global functions, and how many arguments each takes at least. */
 const GLOBALS: Record<string, number> = {
   date: 1, duration: 1, file: 1, if: 2, image: 1, icon: 1, link: 1, list: 1, max: 0, min: 0, now: 0, number: 1, today: 0,
   random: 0, escapeHTML: 1, html: 1,
 }
 
-/** An expression parsed. Throws ExprError saying what's wrong. */
 export function parse(src: string): Node {
   if (typeof src !== "string") src = String(src ?? "")
   if (src.length > 4000) throw new ExprError("the expression is too long")
@@ -300,10 +268,7 @@ export function parse(src: string): Node {
   return e
 }
 
-// ---------- evaluating
-
 const WIKI = /^\[\[([^[\]|#]+)(#[^[\]|]*)?(?:\|([^[\]]*))?\]\]$/
-/** A property's value as the language sees it: "[[Alice Park]]" is a link; lists likewise. */
 export function wrap(v: unknown): V {
   if (v === undefined || v === null) return null
   if (typeof v === "string") {
@@ -338,7 +303,6 @@ export function typeOf(v: V): string {
 const stem = (p: string) => p.slice(p.lastIndexOf("/") + 1).replace(/\.md$/i, "")
 const fileName = (p: string) => p.slice(p.lastIndexOf("/") + 1)
 
-/** A value as text (for `+` with text, join, toString, a table cell). */
 export function show(v: V): string {
   if (v === null || v === undefined) return ""
   if (Array.isArray(v)) return v.map(show).join(", ")
@@ -352,8 +316,6 @@ export function show(v: V): string {
   return String(v)
 }
 
-/** A value as plain data for the app and Markdown: a date as "2026-09-27 18:00", a link or a file as "[[Name]]" (or
- *  "[[Name|text]]"), a URL link as its address, a duration as words. */
 export function plainOf(v: V): unknown {
   if (v === null || v === undefined) return null
   if (Array.isArray(v)) return v.map(plainOf)
@@ -368,7 +330,6 @@ export function plainOf(v: V): unknown {
   return v
 }
 
-/** The path a link, a file or a name points to, or null. */
 function pathOf(v: V, env: Env): string | null {
   if (v instanceof BFile) return v.rec.path
   if (v instanceof BLink) return env.resolve(v.target)?.path ?? null
@@ -377,8 +338,6 @@ function pathOf(v: V, env: Env): string | null {
 }
 const linkName = (t: string) => t.split("#")[0].trim().replace(/\.md$/i, "").toLowerCase()
 
-/** Equality as Bases has it: a link equals the file it points to (or a link with the same text), dates by time,
- *  lists item by item, a number its text. */
 export function equal(a: V, b: V, env: Env): boolean {
   if (a === null || a === undefined || b === null || b === undefined) return (a ?? null) === (b ?? null)
   if (a instanceof BLink || b instanceof BLink || a instanceof BFile || b instanceof BFile) {
@@ -400,7 +359,6 @@ export function equal(a: V, b: V, env: Env): boolean {
   return a === b
 }
 
-/** Order of two values (numbers, dates, text, durations), or null when they can't be compared. */
 export function order(a: V, b: V): number | null {
   if (a === null || b === null) return null
   if (typeof a === "number" && typeof b === "number") return a - b
@@ -463,7 +421,6 @@ function num(v: V): number | null {
   return null
 }
 
-/** A property of the tested file (its frontmatter, case-insensitive when not exact). */
 function prop(rec: Rec | null, name: string): V {
   if (!rec) return null
   if (name in rec.fm) return wrap(rec.fm[name])
@@ -472,8 +429,6 @@ function prop(rec: Rec | null, name: string): V {
   return k ? wrap(rec.fm[k]) : null
 }
 
-/** Links written in `rec` as links that mean the same anywhere: a path (a Markdown link's: `../Idea.md`) as the file
- *  it finds from there. */
 function linksOf(rec: Rec, targets: string[] | undefined, env: Env): BLink[] {
   return (targets ?? []).map((t) => {
     if (!/^\.{0,2}\//.test(t)) return new BLink(t)
@@ -482,7 +437,6 @@ function linksOf(rec: Rec, targets: string[] | undefined, env: Env): BLink[] {
   })
 }
 
-/** A file's field (file.name, file.mtime...); other names are its properties. */
 function fileField(f: BFile, name: string, s: Scope): V {
   const r = f.rec
   switch (name) {
@@ -520,7 +474,6 @@ function member(obj: V, name: string, s: Scope): V {
     if (typeof obj === "string" || Array.isArray(obj)) return obj.length
   }
   if (obj instanceof BLink) {
-    // (a link's file's fields, like Obsidian's link.asFile().x, for the common case)
     const r = s.env.resolve(obj.target, s.rec?.path)
     return r ? fileField(new BFile(r), name, s) : null
   }
@@ -544,7 +497,6 @@ function index(obj: V, idx: V, s: Scope): V {
   return member(obj, show(idx), s)
 }
 
-/** Evaluate an expression for a file (rec: the file tested; null in a summary). */
 export function evaluate(n: Node, rec: Rec | null, env: Env, vars?: Record<string, V>): V {
   return ev(n, { rec, env, vars })
 }
@@ -641,9 +593,7 @@ function stats(xs: V[]) {
   return xs.map(num).filter((x): x is number => x !== null)
 }
 
-/** Functions on a value (`"hello".contains("ell")`, `file.hasTag("book")`, `[1, 2].map(value + 1)`). */
 function method(obj: V, name: string, args: Node[], s: Scope): V {
-  // Lazy ones first (their argument runs per item).
   if (Array.isArray(obj) && (name === "filter" || name === "map" || name === "reduce" || name === "find" || name === "some" || name === "every")) {
     const run = (value: V, i: number, acc?: V) => ev(args[0], { ...s, vars: { ...s.vars, value, index: i, ...(acc !== undefined ? { acc } : {}) } })
     if (!args[0]) throw new ExprError(`${name}() needs an expression`)
@@ -657,7 +607,6 @@ function method(obj: V, name: string, args: Node[], s: Scope): V {
     return acc
   }
   const a = args.map((x) => ev(x, s))
-  // Any value.
   switch (name) {
     case "isTruthy": return truthy(obj)
     case "isType": return typeOf(obj) === show(a[0]).toLowerCase() || (show(a[0]).toLowerCase() === "string" && typeof obj === "string")
@@ -698,7 +647,6 @@ function method(obj: V, name: string, args: Node[], s: Scope): V {
     }
   }
   if (obj instanceof RegExp && name === "matches") { obj.lastIndex = 0; return obj.test(show(a[0])) }
-  // A date (or text that is one).
   const d = asDate(obj)
   if (d && (obj instanceof BDate || ["date", "format", "time", "relative"].includes(name))) {
     switch (name) {
@@ -756,7 +704,6 @@ function method(obj: V, name: string, args: Node[], s: Scope): V {
       case "unique": return obj.filter((x, i) => obj.findIndex((y) => equal(x, y, s.env)) === i)
       case "first": return obj[0] ?? null
       case "last": return obj[obj.length - 1] ?? null
-      // (for summaries: `values.mean().round(3)`)
       case "sum": return stats(obj).reduce((t, x) => t + x, 0)
       case "mean": case "average": { const xs = stats(obj); return xs.length ? xs.reduce((t, x) => t + x, 0) / xs.length : null }
       case "min": { const xs = stats(obj); return xs.length ? Math.min(...xs) : null }
@@ -779,13 +726,9 @@ function median(xs: number[]) {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
 }
 
-// ---------- summaries
-
-/** The summaries every view offers (Obsidian's names; any case). `values`: the column's values in the rows shown. */
 export const SUMMARIES = ["Average", "Min", "Max", "Sum", "Range", "Median", "Stddev", "Earliest", "Latest", "Checked", "Unchecked", "Empty", "Filled", "Unique", "Count"]
 const ALIASES: Record<string, string> = { mean: "average", avg: "average", total: "sum", count: "count" }
 
-/** A built-in summary of values, or undefined when `name` isn't one. */
 export function summary(name: string, values: V[]): V | undefined {
   const key = ALIASES[name.toLowerCase()] ?? name.toLowerCase()
   const numbers = values.filter((v) => typeof v === "number" || (typeof v === "string" && v.trim() !== "" && !isNaN(Number(v)))).map(Number)
@@ -818,16 +761,11 @@ export function summary(name: string, values: V[]): V | undefined {
   return undefined
 }
 
-// ---------- a where's lenient tests (query.ts compiles a where to them; AGENTS.md has the rules)
-
-/** "[[Alice Park|Alice]]" -> "Alice Park"; anything else as it is. */
 export const unlink = (v: unknown) => (typeof v === "string" ? v.trim().replace(WIKI, "$1").trim() : v)
 export const blank = (v: unknown) => v === undefined || v === null || v === "" || (Array.isArray(v) && !v.length)
 const isNum = (v: unknown) => typeof v === "number" || (typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v.trim()))
-/** Text without case, "2" before "10" (one collator: localeCompare with options makes one per comparison). */
 export const byText = new Intl.Collator("en", { sensitivity: "base", numeric: true })
 
-/** Two values in order: numbers as numbers, text without case (and 2 before 10), blanks last. */
 export function compare(a: unknown, b: unknown): number {
   if (blank(a) || blank(b)) return blank(a) && blank(b) ? 0 : blank(a) ? 1 : -1
   if (Array.isArray(a)) a = a[0]
@@ -837,7 +775,6 @@ export function compare(a: unknown, b: unknown): number {
   return byText.compare(String(unlink(a)), String(unlink(b)))
 }
 
-/** The same value, leniently: text without case, "[[A]]" is "A", 7 is "7", blanks alike. */
 export const same = (a: unknown, b: unknown) => {
   if (a === null || b === null) return blank(a) && blank(b)
   if (typeof a === "boolean" || typeof b === "boolean") return String(a).toLowerCase() === String(b).toLowerCase()
@@ -845,8 +782,6 @@ export const same = (a: unknown, b: unknown) => {
   return String(unlink(a)).toLowerCase() === String(unlink(b)).toLowerCase()
 }
 
-/** A where's comparison of a key with a value, `this` (whether it names the note) or `this.<key>` (any of its values;
- *  all, for !=). */
 function loose(n: { op: string; a: Node; b: Node }, s: Scope): boolean {
   const v: unknown = ev(n.a, s), key = n.a.k === "key" ? n.a.name : "", self = s.env.self
   if (n.b.k === "id" && n.b.name === "this") {
@@ -858,7 +793,6 @@ function loose(n: { op: string; a: Node; b: Node }, s: Scope): boolean {
   return ws[n.op === "!=" ? "every" : "some"]((x) => one(key, n.op, v, x, s.env))
 }
 
-/** One comparison of a file's value with one wanted value, both as the key's declared type (if any). */
 function one(key: string, op: string, v: unknown, w: unknown, env: Env): boolean {
   const vs = Array.isArray(v) ? v : [v]
   const as = (x: unknown) => { const t = env.typed(key, x); return t === undefined ? x : t }

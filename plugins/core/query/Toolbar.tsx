@@ -1,5 +1,3 @@
-// A base's toolbar menus, as Obsidian's: Sort, Filter and Properties, each a popover that changes the view in the
-// base's YAML (baseedit.ts) as it's used, the results following.
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react"
 import { createPortal } from "react-dom"
 import { ArrowUpDown, Code, Copy, Eye, EyeOff, PencilLine, Sigma, Ellipsis, FileSpreadsheet, GripVertical, Layers, List, ListFilter, Plus, Trash2, X } from "lucide-react"
@@ -11,17 +9,14 @@ import { removeProperty, setDisplayName, setFilters, setFormula, setGroupBy, set
 import { obj, viewsOf, type BaseConfig } from "./bases"
 import { condOf, countOf, exprOf, FILE_OPS, NO_VALUE, treeOf, valueOf, type Cond, type Group, type Item, type Op } from "./filters"
 
-/** What a menu changes: the base as it is now (`cfg`), its view `at`, the answer shown, and `edit` (a change to its text). */
 export type BaseEdit = { cfg: BaseConfig; at: number; res: Result | null; columns: string[]; edit: (fn: (t: string) => string) => void }
 
-/** The file's own properties, as Obsidian lists them (engine keys: query.ts keyOf). */
 const FILE_PROPS: [string, string][] = [
   ["file", "File name"], ["path", "File path"], ["folder", "Folder"], ["file.ext", "File extension"], ["file.size", "File size"],
   ["file.ctime", "Created time"], ["file.mtime", "Modified time"], ["file.tags", "File tags"], ["file.links", "Links"],
   ["file.backlinks", "Backlinks"], ["file.embeds", "Embeds"],
 ]
 
-/** A property's display name in the base, when it has one. */
 export function named(cfg: BaseConfig, key: string): string | null {
   for (const [k, v] of Object.entries(obj(cfg.properties) ?? {})) {
     const d = obj(v)?.displayName
@@ -30,19 +25,16 @@ export function named(cfg: BaseConfig, key: string): string | null {
   return null
 }
 
-/** A property's name in the menus: the base's display name, else its own. */
 export function propLabel(cfg: BaseConfig, key: string): string {
   if (key === "file.self") return "File"
   return named(cfg, key) ?? FILE_PROPS.find(([k]) => k === key)?.[1] ?? label(key)
 }
 
-/** Every property a view could show: the matches' frontmatter keys, the file's, the base's formulas (engine keys). */
 function allProps(cfg: BaseConfig, res: Result | null, shown: string[]): string[] {
   const formulas = Object.keys(obj(cfg.formulas) ?? {}).map((f) => `formula.${f}`)
   return [...new Set([...shown, ...(res?.keys ?? []), ...formulas, ...FILE_PROPS.map(([k]) => k)])]
 }
 
-/** Pick a property (the palette: a long list, found by typing); `other`: a name nobody has yet. */
 function pickProp(title: string, keys: string[], cfg: BaseConfig, pick: (key: string) => void, current?: string) {
   choose({
     title, placeholder: "Find a property…", current,
@@ -52,9 +44,6 @@ function pickProp(title: string, keys: string[], cfg: BaseConfig, pick: (key: st
   })
 }
 
-// ---------- the popover
-
-/** A box under its button (as wide as a phone allows), closed by Escape or a press outside it. */
 export function Popover({ anchor, label: name, close, children, wide }: {
   anchor: RefObject<HTMLElement | null>; label: string; close: () => void; children: ReactNode; wide?: boolean
 }) {
@@ -66,8 +55,6 @@ export function Popover({ anchor, label: name, close, children, wide }: {
     const width = Math.min(wide ? 520 : 360, innerWidth - 16)
     setAt({ left: Math.max(8, Math.min(r.right - width, innerWidth - 8 - width)), top: r.bottom + 6, width })
   }, [anchor, wide])
-  // (the palette a property is picked in, and menus opened from inside, are part of it; Escape in a field closes it too,
-  // but a search with text in it is cleared first)
   useDismiss(true, close, { inside: "[data-base-pop], [role=menu], [data-overlay]", anchor,
     escape: (e) => !(e.target instanceof HTMLInputElement && e.target.type === "search" && e.target.value) })
   return createPortal(
@@ -86,7 +73,6 @@ const iconBtn = "grid size-7 shrink-0 cursor-pointer place-items-center rounded-
 const addBtn = "inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-[6px] px-2 text-[13px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground pointer-coarse:h-10 pointer-coarse:text-[15px]"
 const field = "h-7 min-w-0 rounded-[6px] border-[0.5px] border-border bg-background px-2 text-[13px] outline-none focus:border-primary pointer-coarse:h-9 pointer-coarse:text-[16px]"
 
-/** A toolbar button: its icon, and how many it holds when any (2 sorts); `on`: in use, with nothing to count. */
 export function BarButton({ refTo, icon: Icon, name, count, on, open, onClick }: {
   refTo: RefObject<HTMLButtonElement | null>; icon: typeof List; name: string; count?: number; on?: boolean; open: boolean; onClick: () => void
 }) {
@@ -102,10 +88,7 @@ export function BarButton({ refTo, icon: Icon, name, count, on, open, onClick }:
 }
 export const BUTTONS = { group: Layers, sort: ArrowUpDown, filter: ListFilter, properties: List }
 
-// ---------- Sort
-
 const TYPE_DIRS: Record<string, [string, string]> = { number: ["0 → 1", "1 → 0"], date: ["Old → new", "New → old"], datetime: ["Old → new", "New → old"] }
-/** A sort's two directions in words, by the property's type (Obsidian's: A → Z, 0 → 1, old → new). */
 const dirs = (res: Result | null, key: string): [string, string] =>
   TYPE_DIRS[res?.types?.[key] ?? ""] ?? (["file.ctime", "file.mtime"].includes(key) ? TYPE_DIRS.date : ["A → Z", "Z → A"])
 
@@ -150,19 +133,14 @@ export function SortMenu({ e }: { e: BaseEdit }) {
   )
 }
 
-// ---------- Group
-
-/** The property a view's rows are grouped by (`groupBy`), each group under its value, in one direction. */
 export const groupOf = (v: Record<string, unknown>): { key: string; desc: boolean } | null => {
   const g = obj(v.groupBy)
   return g && typeof g.property === "string" && g.property.trim()
     ? { key: keyOf(g.property), desc: String(g.direction ?? "").toUpperCase() === "DESC" } : null
 }
 
-/** A group's row in the Group menu: its value as written in `groupOrder` (null: no value), its name, its count. */
 type GroupRow = { id: string; value: unknown; name: string | null; n: number }
 const NONE_ID = "\0none"
-/** What `groupOrder` holds for a group: its value when that's plain (a number stays a number), else its name. */
 const stored = (r: { value: unknown; name: string | null }) =>
   r.name === null ? null : r.value !== null && typeof r.value !== "object" ? r.value : r.name
 
@@ -170,12 +148,10 @@ export function GroupMenu({ e }: { e: BaseEdit }) {
   const v = viewsOf(e.cfg)[e.at] ?? {}
   const g = groupOf(v)
   const order = g && Array.isArray(v.groupOrder) ? v.groupOrder as unknown[] : null
-  // (a manual order turned back to automatic while the menu is open comes back as it was, as in Obsidian)
   const [removed, setRemoved] = useState<unknown[] | null>(null)
   const [adding, setAdding] = useState(false)
   const set = (next: typeof g) => e.edit((t) => setGroupBy(t, e.at, next))
   const props = allProps(e.cfg, e.res, e.columns)
-  // (a board's columns are its groups: it can change them, not lose them)
   const board = e.res?.view === "board"
   if (!g) {
     return (
@@ -189,7 +165,6 @@ export function GroupMenu({ e }: { e: BaseEdit }) {
     )
   }
   const [up, down] = dirs(e.res, g.key)
-  // The groups: those groupOrder lists, in its order (from the YAML, so a change shows at once), then the rest by name.
   const known = e.res?.group === g.key ? e.res.allGroups ?? [] : []
   const nameOf = (x: unknown) => (x === null || x === undefined || x === "" ? null : groupName(x))
   const match = (a: string | null, b: string | null) => (a === null || b === null ? a === b : same(a, b))
@@ -207,7 +182,6 @@ export function GroupMenu({ e }: { e: BaseEdit }) {
   const manual = (on: boolean) => {
     if (on === !!order) return
     if (on) {
-      // (every group shown, in the order they're in now: turning manual changes nothing until a group is moved or hidden)
       write(removed ?? known.map(stored))
       setRemoved(null)
     } else { setRemoved(order); write(null) }
@@ -235,7 +209,6 @@ export function GroupMenu({ e }: { e: BaseEdit }) {
       <div className={row} data-base-group-by={g.key}>
         <span className="shrink-0 px-1 text-[13px] text-muted-foreground pointer-coarse:text-[15px]">Group by</span>
         <button type="button" className={cn(pill, "flex-1")} onClick={() => pickProp("Group by", props, e.cfg, (k) => {
-          // (another property's groups are other values: its groups all show, in order)
           if (k !== g.key) e.edit((t) => setGroupOrder(setGroupBy(t, e.at, { ...g, key: k }), e.at, null))
         }, g.key)}>
           <span className="truncate">{propLabel(e.cfg, g.key)}</span>
@@ -285,9 +258,6 @@ export function GroupMenu({ e }: { e: BaseEdit }) {
   )
 }
 
-// ---------- Results
-
-/** The results' count, a button opening their menu (a narrow bar: the number alone). */
 export function ResultsButton({ refTo, res, open, onClick }: { refTo: RefObject<HTMLButtonElement | null>; res: Result; open: boolean; onClick: () => void }) {
   return (
     <button ref={refTo} type="button" aria-label="Results" aria-haspopup="dialog" aria-expanded={open} data-base-button="Results" data-base-count onClick={onClick}
@@ -299,7 +269,6 @@ export function ResultsButton({ refTo, res, open, onClick }: { refTo: RefObject<
   )
 }
 
-/** How many results a view shows (`limit`), and its results copied as a table or saved as a CSV beside its base. */
 export function ResultsMenu({ e, path, title }: { e: BaseEdit; path: string; title: string }) {
   const v = viewsOf(e.cfg)[e.at] ?? {}
   const limit = typeof v.limit === "number" && v.limit > 0 ? v.limit : null
@@ -341,11 +310,8 @@ export function ResultsMenu({ e, path, title }: { e: BaseEdit; path: string; tit
   )
 }
 
-// ---------- Properties
-
 export function PropertiesMenu({ e }: { e: BaseEdit }) {
   const [q, setQ] = useState("")
-  // (a formula being added (""), or edited (its name))
   const [formula, setFormulaOpen] = useState<string | null>(null)
   if (formula !== null) return <FormulaForm e={e} name={formula} done={() => setFormulaOpen(null)} />
   const shown = e.columns
@@ -389,18 +355,15 @@ export function PropertiesMenu({ e }: { e: BaseEdit }) {
   )
 }
 
-/** A formula's name (the base's key, its display name when it isn't one) and expression, checked as it's typed. */
 const keyName = (n: string) => n.trim().toLowerCase().replace(/[^\p{L}\p{N}_]+/gu, "_").replace(/^_+|_+$/g, "").replace(/^(\p{N})/u, "_$1")
 
 function FormulaForm({ e, name, done }: { e: BaseEdit; name: string; done: () => void }) {
   const formulas = obj(e.cfg.formulas) ?? {}
   const editing = name !== ""
-  // (its display name as written, else its key: a name it was never given isn't written when only the formula changes)
   const [first] = useState(() => (editing ? named(e.cfg, `formula.${name}`) ?? name : ""))
   const [title, setTitle] = useState(first)
   const [src, setSrc] = useState(editing ? String(formulas[name] ?? "") : "")
   const key = editing ? name : keyName(title)
-  // (a mistake is said once the formula is left or saved, not while it's typed)
   const [tried, setTried] = useState(editing)
   let error = ""
   try { if (src.trim()) parseExpr(src) } catch (err) { error = (err as Error).message }
@@ -445,8 +408,6 @@ function FormulaForm({ e, name, done }: { e: BaseEdit; name: string; done: () =>
   )
 }
 
-// ---------- Filter
-
 const OP_LABELS: Record<Op, string> = {
   "==": "is", "!=": "is not", ">": "is greater than", "<": "is less than", ">=": "is at least", "<=": "is at most",
   contains: "contains", "!contains": "does not contain", startsWith: "starts with", endsWith: "ends with", isEmpty: "is empty", "!isEmpty": "is not empty",
@@ -457,14 +418,11 @@ const PROP_OPS: Op[] = ["==", "!=", "contains", "!contains", "startsWith", "ends
 const KINDS: { kind: Group["kind"]; label: string }[] = [
   { kind: "and", label: "All the following are true" }, { kind: "or", label: "Any of the following are true" }, { kind: "not", label: "None of the following are true" },
 ]
-/** A filter's property as the engine names it (for its label): `status`, `file`, `file.ext`, `formula.x`. */
 const keyOfProp = (p: string) => (p === "file" ? "file.self" : keyOf(p))
-/** An engine key as a filter writes it: `file.name`, `status`, `formula.x`. */
 const propOfKey = (k: string) => (k === "file" ? "file.name" : k === "path" || k === "folder" ? `file.${k}` : k)
 
 export function FilterMenu({ e }: { e: BaseEdit }) {
   const v = viewsOf(e.cfg)[e.at] ?? {}
-  // (the groups as edited here: a condition still missing its value stays while it isn't written)
   const [base, setBase] = useState(() => treeOf(e.cfg.filters))
   const [own, setOwn] = useState(() => treeOf(v.filters))
   const props = useMemo(() => ["file", ...allProps(e.cfg, e.res, e.columns).map(propOfKey)], [e.cfg, e.res, e.columns])
@@ -523,7 +481,6 @@ function GroupEditor({ g, set, ctx, top, remove }: { g: Group; set: (g: Group) =
   )
 }
 
-/** A condition: its property, operator and value (what's typed is written when it's left, or on Enter). */
 function CondRow({ c, set, ctx }: { c: Cond; set: (c: Cond | Item | null) => void; ctx: Ctx }) {
   const file = c.prop === "file"
   const ops = file ? FILE_OPS : PROP_OPS
@@ -557,7 +514,6 @@ function CondRow({ c, set, ctx }: { c: Cond; set: (c: Cond | Item | null) => voi
   )
 }
 
-/** An expression the builder can't show: its text, written when it's left (nothing: the filter goes). */
 function RawRow({ src, set }: { src: string; set: (src: string | null) => void }) {
   return (
     <div className={cn(row, "gap-1")} data-base-raw>

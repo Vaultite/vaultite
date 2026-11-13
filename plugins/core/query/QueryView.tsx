@@ -1,5 +1,3 @@
-// A base's views: the files a query matches as a table, cards, list, board or calendar. Changing a value or moving a
-// card writes that one property as a small edit; the table's header changes the view (sort, columns, widths).
 import { memo, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Ellipsis, Info, Plus } from "lucide-react"
 import {
@@ -12,7 +10,6 @@ export const TINT = "var(--indigo)"
 type Resolve = ReturnType<typeof resolver>
 const WIKI = /^\[\[([^[\]|#]+)(?:#[^[\]|]*)?(?:\|([^[\]]*))?\]\]$/
 const DAY = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/
-/** "2026-09-27" -> "27 Sep" (the year when it isn't this one); with a time, the time too. */
 function fmtDate(s: string) {
   const m = DAY.exec(s)!
   const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4] ?? 0), Number(m[5] ?? 0))
@@ -20,8 +17,6 @@ function fmtDate(s: string) {
   return m[4] ? `${date}, ${dateText(d, { hour: "numeric", minute: "2-digit" })}` : date
 }
 
-/** A value drawn: a [[link]] as a link, a date as a date, a list as chips, yes/no, a URL. */
-/** A cell's value; a [[link]] in it resolved from its row's file (`from`), so the closest file of a name wins. */
 function Value({ v, resolve, from }: { v: unknown; resolve: Resolve; from: string }): ReactNode {
   if (v === null || v === undefined || v === "") return <span className="text-tertiary">–</span>
   if (Array.isArray(v)) {
@@ -51,11 +46,9 @@ function Value({ v, resolve, from }: { v: unknown; resolve: Resolve; from: strin
   return <>{v}</>
 }
 
-/** Which values can be changed in place: plain text, numbers and yes/no of a frontmatter key (not links or lists). */
 const editable = (key: string, v: unknown) =>
   !!propKey(key) && (v === null || typeof v === "number" || typeof v === "boolean" || (typeof v === "string" && !WIKI.test(v.trim()) && !v.includes("\n")))
 
-/** What was typed, as the value to write: a number stays a number, yes/no a boolean, nothing removes the key. */
 function typed(s: string, was: unknown): unknown {
   const t = s.trim()
   if (!t) return undefined
@@ -67,16 +60,10 @@ function typed(s: string, was: unknown): unknown {
 export type SortKey = { key: string; desc: boolean }
 type Save = (r: Row, key: string, v: unknown) => void
 
-/** A database view's answer, live (asked again whenever a note changes), values written from here shown at once until
- *  the files say the same (`save` writes one). `sort`: the view's sort, the rows in its order before the answer to it. */
 export function useQueryResult(url: string, sort?: SortKey[] | null) {
-  // (Hidden files aren't the data, but Templates' settings (its folder is left out) and property types (they sort). A
-  // moment, not a counter: live requests of the same path are shared for 10 s, so a remount must ask afresh.)
   const [v, setV] = useState(() => Date.now())
   useVaultChange(() => setV(Date.now()), (p) => !p.startsWith(".") || p === ".vaultite" || p === ".vaultite/plugins" || p.startsWith(".vaultite/plugins/templates") || /^\.(vaultite|obsidian)\/types\.json$/.test(p))
   const { data, error } = useLive<Result>(url, v)
-  // (useLive keeps the last answer while the next loads: no flicker on every change; drawn again, a view starts from
-  // its last answer.)
   const res = data
   const [edits, setEdits] = useState<Record<string, unknown>>({})
   useEffect(() => {
@@ -98,7 +85,6 @@ export function useQueryResult(url: string, sort?: SortKey[] | null) {
   const groups = useMemo(() => {
     if (!res) return []
     const val = (r: Row, k: string) => (`${r.path}\0${k}` in edits ? edits[`${r.path}\0${k}`] : r.values[k])
-    // (a sort by a key the rows don't carry yet waits for the answer)
     const first = res.groups.find((g) => g.rows.length)?.rows[0]
     const by = want && first && want.every((s) => s.key in first.values) ? byKeys<Row>(want, val, res.types, typedValue) : null
     return res.groups.map((g) => ({
@@ -108,7 +94,6 @@ export function useQueryResult(url: string, sort?: SortKey[] | null) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [res, JSON.stringify(want), edits])
 
-  // (The views are memoized: drawn again when what they show changes, not for every change in the vault.)
   const save = useCallback<Save>(async (r, key, value) => {
     const prop = propKey(key)
     if (!prop) return
@@ -125,8 +110,6 @@ export function useQueryResult(url: string, sort?: SortKey[] | null) {
 }
 
 const widths = ["42%", "30%", "55%", "36%", "48%"]
-/** A result on its way, where its view's shape is known (a table, a list): its rows as bars, as many as last time
- *  (`rows`); else, or none last time, the Loading line (as tall as "Nothing matches."). */
 export function ResultSkeleton({ view, rows }: { view: string; rows: number }) {
   if (!rows || (view !== "table" && view !== "list")) return <Loading />
   const each = Array.from({ length: rows }, (_, i) => i)
@@ -140,7 +123,6 @@ export function ResultSkeleton({ view, rows }: { view: string; rows: number }) {
       ))}
     </div>
   )
-  // (Table's rows and heading, three columns standing in for the ones to come)
   return (
     <table className="loading-in w-full border-collapse text-[14px]" aria-busy>
       <thead>
@@ -159,41 +141,30 @@ export function ResultSkeleton({ view, rows }: { view: string; rows: number }) {
   )
 }
 
-/** "12 files", "50 of 120 files", "12 files · 3 archived hidden". */
 export const countText = (res: Result) => `${res.total > res.shown ? `${res.shown} of ${res.total}` : res.total} ${res.total === 1 ? "file" : "files"}`
   + (res.archivedHidden ? ` · ${res.archivedHidden} archived hidden` : "")
 
-/** What a table's header changes in its view (BaseView writes it to the base). */
 export type TableCtl = {
-  /** The view's sort, and its columns' widths by key. */
   sort: SortKey[]; sizes: Record<string, number>
-  /** A column's header menu. */
   menu: (c: Result["columns"][number]) => MenuItem[]
-  /** A column moved before another (null: to the end); resized (null: as wide as it draws). */
   move: (key: string, before: string | null) => void
   resize: (key: string, px: number | null) => void
-  /** The column whose name is being changed, and its new name (null: left as it was). */
   renaming: string | null
   rename: (key: string, name: string | null) => void
 }
 
-/** A result's right-click (every layout): its file's menu, as everywhere it's listed. */
 const rowMenu = (e: React.MouseEvent) => {
   const row = (e.target as Element).closest<HTMLElement>("[data-query-row]")
   if (!row || e.defaultPrevented || (e.target as Element).closest("input, textarea, [contenteditable]")) return
   menuFor(() => rowFileMenu(row.dataset.queryRow!))(e)
 }
 
-/** What a database view draws, by its view: notes on what was left out, then the table, cards, list, board, calendar
- *  or map. `fill`: it has a box of its own to fill (a .base in its tab), so a map takes the height it's given. */
 export function ResultBody({ res, groups, resolve, ctl, save, month, setMonth, fill, add }: {
   res: Result; groups: Result["groups"]; resolve: Resolve; ctl?: TableCtl; save: Save
   month: string; setMonth: (m: string) => void; fill?: boolean
-  /** A new file in the view with these properties (a board's column's +); absent: none is made here. */
   add?: (props: Record<string, unknown>) => void
 }) {
   const special = res.view === "board" || res.view === "calendar" || res.view === "map"
-  // Groups folded under their headings (a table's, cards', a list's): for now only, as in Obsidian; the file's untouched.
   const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set())
   const fold = (g: Group) => setFolded((was) => { const next = new Set(was), k = g.name ?? "\0"; if (!next.delete(k)) next.add(k); return next })
   const shown = useMemo(() => (special || !folded.size ? groups
@@ -222,8 +193,6 @@ export function ResultBody({ res, groups, resolve, ctl, save, month, setMonth, f
   )
 }
 
-/** A click opens the row's file. On a value that can be edited it waits a moment: a double-click edits it instead.
- *  (One timer for every table: a block drawn again between the two clicks still cancels the open.) */
 let pending = 0
 const opener = {
   open: (r: Row, e: React.MouseEvent, wait: boolean) => {
@@ -236,9 +205,7 @@ const opener = {
   cancel: () => window.clearTimeout(pending),
 }
 
-/** A group as drawn: folded, it has no rows and `n` says how many it has. */
 type Shown = Group & { n?: number }
-/** A group's heading, a click folding or unfolding it. */
 const GroupHead = ({ g, fold }: { g: Shown; fold?: (g: Group) => void }) => {
   const folded = g.n !== undefined
   return (
@@ -251,27 +218,23 @@ const GroupHead = ({ g, fold }: { g: Shown; fold?: (g: Group) => void }) => {
   )
 }
 
-/** A column at least this wide, when resized (Obsidian's least). */
+// Obsidian's narrowest column.
 const MIN_WIDTH = 40
 
-/** The cell the keyboard is on, and its row's place (where the cursor stays if its row leaves). */
 type Cursor = { path: string; key: string; i: number }
 
-/** One table for every group (so the columns line up), each group under a heading row. Its header (`ctl`): a click
- *  opens a column's menu, dragging one moves it, its right edge resizes it. Focused, a spreadsheet's cell cursor. */
 const Table = memo(function Table({ groups, res, resolve, ctl, save, fold }: {
   groups: Shown[]; res: Result; resolve: Resolve; ctl?: TableCtl
   save: (r: Row, key: string, v: unknown) => void; fold?: (g: Group) => void
 }) {
   const [editing, setEditing] = useState<string | null>(null)
-  const dropped = useRef(false) // Escape: the blur that follows doesn't save
-  const seed = useRef<string | null>(null) // the key typed on the cursor, replacing the cell's value
+  const dropped = useRef(false)
+  const seed = useRef<string | null>(null)
   const { open, cancel } = opener
   const flat = useMemo(() => groups.flatMap((g) => g.rows), [groups])
   const [at, setAt] = useState<Cursor | null>(null)
   const row = !at || !flat.length ? -1 : (() => { const j = flat.findIndex((r) => r.path === at.path); return j >= 0 ? j : Math.min(at.i, flat.length - 1) })()
   const col = at ? Math.max(0, res.columns.findIndex((c) => c.key === at.key)) : 0
-  // (every row, drawn as it comes near the screen: the groups take theirs in turn; the cursor's row always)
   const total = flat.length
   const [near, mark] = useRowsNear(total)
   const drawn = Math.max(near, row + 1)
@@ -283,7 +246,6 @@ const Table = memo(function Table({ groups, res, resolve, ctl, save, fold }: {
   const [sideways] = useState(() => edgeScroller("x"))
   useDropTarget<string>(id, (item, x, y, el) => {
     if (item.from !== "column" || item.column?.table !== id) return null
-    // (a table wider than its pane scrolls along while a column is held near its edge)
     const wide = table.current?.closest<HTMLElement>("[data-query-scroll]")
     if (wide) sideways.over(wide, x, y)
     if (!el || !table.current?.contains(el)) return null
@@ -292,12 +254,10 @@ const Table = memo(function Table({ groups, res, resolve, ctl, save, fold }: {
     const keys = res.columns.map((c) => c.key), from = keys.indexOf(item.column.key), to = before ? keys.indexOf(before) : keys.length
     return to === from || to === from + 1 ? null : before
   }, (item, before) => ctl?.move(item.column!.key, before || null), { end: sideways.stop })
-  // A width being dragged, drawn at once and written when let go.
   const [live, setLive] = useState<{ key: string; px: number } | null>(null)
   const from = useRef({ x: 0, w: 0 })
   const width = (k: string) => (live?.key === k ? live.px : ctl?.sizes[k])
   const sized = res.columns.some((c) => width(c.key))
-  // (a sized cell's content is a box that wide less the gap after it, so the column is that wide whatever it holds)
   const box = (k: string, last: boolean) => { const w = width(k); return w ? { width: Math.max(w - (last ? 0 : 16), 8) } : undefined }
   const gid = useId()
   const cellId = (i: number, ci: number) => `${gid}c${i}-${ci}`
@@ -306,7 +266,6 @@ const Table = memo(function Table({ groups, res, resolve, ctl, save, fold }: {
     const r = Math.max(0, Math.min(flat.length - 1, i)), c = Math.max(0, Math.min(res.columns.length - 1, ci))
     setAt({ path: flat[r].path, key: res.columns[c].key, i: r })
   }
-  // (Tab and Shift-Tab: along the row, on to the next one's start)
   const along = (i: number, ci: number, by: number) => {
     const n = res.columns.length, to = Math.max(0, Math.min(flat.length * n - 1, i * n + ci + by))
     go(Math.floor(to / n), to % n)
@@ -406,7 +365,6 @@ const Table = memo(function Table({ groups, res, resolve, ctl, save, fold }: {
                     className={cn("h-7 w-full rounded-[5px] border-[0.5px] border-border bg-background px-1.5 text-[14px] outline-none focus:border-primary", !w && "min-w-[120px]")}
                     onKeyDown={(e) => {
                       if (e.nativeEvent.isComposing) return
-                      // (back to the cursor, which goes on as in a spreadsheet: Enter down, Tab along; Escape drops the change)
                       if (e.key === "Escape") { dropped.current = true; go(i, ci) }
                       else if (e.key === "Enter") go(e.shiftKey ? i - 1 : i + 1, ci)
                       else if (e.key === "Tab") along(i, ci, e.shiftKey ? -1 : 1)
@@ -447,7 +405,6 @@ const Table = memo(function Table({ groups, res, resolve, ctl, save, fold }: {
   )
 })
 
-/** Summaries under a table's columns (a group's: after its rows): the summary's name, then its value. */
 function SummaryRow({ res, values, group }: { res: Result; values: Record<string, unknown>; group?: boolean }) {
   return (
     <tr className={cn(!group && "border-t-[0.5px] border-border")} data-query-summaries={group ? "group" : "all"}>
@@ -464,10 +421,6 @@ function SummaryRow({ res, values, group }: { res: Result; values: Record<string
 }
 const summaryValue = (v: unknown) => (typeof v === "number" ? numberText(Math.round(v * 100) / 100) : DAY.test(String(v ?? "")) ? fmtDate(String(v)) : summaryText(v) || "–")
 
-// ---------- map
-
-/** The files with a place (`coordinates`, or the key the view names) as pins on a map (a tap opens one); those without
- *  one listed under it. Offline (the map can't load), every file is a list. */
 const MapResult = memo(function MapResult({ groups, res, resolve, fill }: { groups: Result["groups"]; res: Result; resolve: Resolve; fill?: boolean }) {
   const rows = useMemo(() => groups.flatMap((g) => g.rows), [groups])
   const meta = others(res).filter((c) => c.key !== res.coordinates)
@@ -504,7 +457,6 @@ const MapResult = memo(function MapResult({ groups, res, resolve, fill }: { grou
 
 const others = (res: Result) => res.columns.filter((c) => c.key !== "file")
 
-/** A card's picture from its `image` value: a colour (#hex), a web address, or a vault picture by [[link]] or path. */
 function cardPicture(v: string, from: string, resolve: Resolve): { color: string } | { src: string } | null {
   if (/^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(v)) return { color: v }
   if (/^https?:\/\/\S+$/.test(v)) return { src: v }
@@ -516,7 +468,6 @@ function cardPicture(v: string, from: string, resolve: Resolve): { color: string
 const Cards = memo(function Cards({ rows, res, resolve }: { rows: Row[]; res: Result; resolve: Resolve }) {
   const [drawn, mark] = useRowsNear(rows.length)
   const look = res.cards ?? {}
-  // (Obsidian's: a picture as tall as half its width, filling it)
   const ratio = look.ratio ?? 0.5
   const pictured = rows.some((r) => r.image)
   return (
@@ -577,16 +528,12 @@ const Lines = memo(function Lines({ rows, res, resolve }: { rows: Row[]; res: Re
   )
 })
 
-// ---------- board
-
-/** A card's move menu: every other column (the one it's in checked). */
 function moveItems(cols: Col[], at: string, move: (c: Col) => void): MenuItem[] {
   return cols.map((c) => ({ label: `Move to ${c.name ?? "No value"}`, checked: c.key === at, run: () => { if (c.key !== at) move(c) } }))
 }
 
 type Col = { key: string; name: string | null; value: unknown; rows: Row[] }
 
-/** Columns of the `group` key's values; moving a card (drag, or its menu on phones) writes that key. */
 const Board = memo(function Board({ groups, res, resolve, save, add }: {
   groups: { name: string | null; value?: unknown; rows: Row[] }[]; res: Result; resolve: Resolve; save: (r: Row, key: string, v: unknown) => void
   add?: (props: Record<string, unknown>) => void
@@ -602,11 +549,9 @@ const Board = memo(function Board({ groups, res, resolve, save, add }: {
     for (const r of groups.flatMap((g) => g.rows)) {
       const name = groupName(r.values[key]), k = name.toLowerCase()
       let col = out.find((c) => c.key === k)
-      // A value no column has yet (written elsewhere, or just now): a column before "No value".
       if (!col) out.splice(out.findIndex((c) => !c.key), 0, col = { key: k, name, value: r.values[key], rows: [] })
       col.rows.push(r)
     }
-    // A moved card goes where the query's order puts it, as it will be once the file is read again.
     for (const c of out) c.rows.sort(byKeys<Row>(res.sort ?? [], (x, k) => x.values[k], res.types, typedValue))
     return out
   }, [groups, key, res.sort])
@@ -616,10 +561,8 @@ const Board = memo(function Board({ groups, res, resolve, save, add }: {
   const [edge] = useState(() => edgeScroller("x")), [down] = useState(() => edgeScroller())
   useDropTarget<string>(id, (item, x, y, el) => {
     if (item.from !== "row" || !item.path || !el || !box.current?.contains(el)) { edge.stop(); down.stop(); return null }
-    // (sideways along a board wider than its pane, down a column longer than it)
     edge.near(box.current, x)
     if (box.current.parentElement) down.over(box.current.parentElement, x, y)
-    // Over the gap between two columns, the nearer one: the ring doesn't flicker off between them.
     const near = (c: Element) => { const r = c.getBoundingClientRect(); return Math.max(r.left - x, 0, x - r.right) }
     const col = el.closest<HTMLElement>("[data-board-col]") ?? [...box.current.querySelectorAll<HTMLElement>("[data-board-col]")].sort((a, b) => near(a) - near(b))[0]
     const to = col?.dataset.boardCol
@@ -629,7 +572,6 @@ const Board = memo(function Board({ groups, res, resolve, save, add }: {
     if (r && c) move(r, c)
   }, { end: () => { edge.stop(); down.stop() } })
   const fields = others(res).filter((c) => c.key !== key)
-  // (every card, drawn as the board's end comes near the screen: each column's next ones at once)
   const longest = Math.max(0, ...cols.map((c) => c.rows.length))
   const [drawn, mark] = useRowsNear(longest)
   return (
@@ -641,7 +583,6 @@ const Board = memo(function Board({ groups, res, resolve, save, add }: {
               hit === c.key && "ring-2 ring-primary")}>
             <div className="flex items-baseline gap-1.5 px-1.5 pt-0.5 pb-1.5 text-[13px] font-semibold text-muted-foreground" data-query-group>
               <span className="truncate">{c.name ?? "No value"}</span><span className="flex-1 font-normal tabular-nums">{c.rows.length}</span>
-              {/* (a new card in this column: a file with its value, as New makes one) */}
               {add && propKey(key) && (
                 <button type="button" aria-label={`New in ${c.name ?? "No value"}`} data-tip="New" data-board-add={c.key}
                   onClick={() => add(c.value === null || c.value === "" ? {} : { [propKey(key)!]: c.value })}
@@ -695,17 +636,11 @@ const Board = memo(function Board({ groups, res, resolve, save, add }: {
   )
 })
 
-// ---------- calendar
-
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-/** "2026-09-27" -> "Sun 27 Sep". */
 const dayLabel = (d: string) => dateText(parse(d), { weekday: "short", day: "numeric", month: "short" })
 
-/** How many files a day of the month grid shows before "N more". */
 const DAY_ROWS = 3
 
-/** A month by the query's date key: a grid of weeks (Monday first) with each file on its day, or, in a narrow card
- *  (a phone), the days that have files as a list. Drag an item to another day (desktop) to move its date there. */
 const Calendar = memo(function Calendar({ groups, res, resolve, month, setMonth, save }: {
   groups: { name: string | null; rows: Row[] }[]; res: Result; resolve: Resolve; month: string; setMonth: (m: string) => void
   save: (r: Row, key: string, v: unknown) => void
@@ -716,7 +651,6 @@ const Calendar = memo(function Calendar({ groups, res, resolve, month, setMonth,
   const lifted = useDrag((d) => d?.item)
   const hit = useDropHit<string>(id)
   const now = today()
-  // The files by day, as edited here (a moved item shows on its new day at once).
   const byDay = useMemo(() => {
     const m = new Map<string, Row[]>()
     for (const r of groups.flatMap((g) => g.rows)) {
@@ -739,7 +673,6 @@ const Calendar = memo(function Calendar({ groups, res, resolve, month, setMonth,
   }, (item, d) => {
     const r = [...byDay.values()].flat().find((x) => x.path === item.path)
     if (!r) return
-    // The day changes; a time after it stays ("2026-09-27 18:00" -> "2026-09-30 18:00").
     const was = r.values[key]
     save(r, key, typeof was === "string" && dayOf(was) ? d + was.trim().slice(10) : d)
   })
@@ -754,7 +687,6 @@ const Calendar = memo(function Calendar({ groups, res, resolve, month, setMonth,
     </button>
   )
   const agenda = [...byDay].sort(([a], [b]) => a.localeCompare(b))
-  // A busy day shows its first few, and opens to all of them, so one day doesn't stretch the month.
   const [open, setOpen] = useState<string | null>(null)
   return (
     <div ref={box} className="@container" data-query-calendar={month} data-no-edit>
@@ -773,7 +705,6 @@ const Calendar = memo(function Calendar({ groups, res, resolve, month, setMonth,
           <ChevronRight className="size-4" strokeWidth={2} />
         </button>
       </div>
-      {/* Wide enough: the month as a grid. */}
       <div className="hidden @md:block" data-cal-grid>
         <div className="grid grid-cols-7 text-[11px] font-semibold text-muted-foreground">
           {WEEKDAYS.map((w) => <div key={w} className="px-1 pb-1">{w}</div>)}
@@ -807,7 +738,6 @@ const Calendar = memo(function Calendar({ groups, res, resolve, month, setMonth,
           })}
         </div>
       </div>
-      {/* Narrow (a phone): the days that have files. */}
       <div className="@md:hidden" data-cal-agenda>
         {!agenda.length ? <p className="text-[15px] text-muted-foreground">Nothing this month.</p> : agenda.map(([d, rows]) => (
           <div key={d} className="mb-3 last:mb-0">

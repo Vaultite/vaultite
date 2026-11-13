@@ -1,5 +1,3 @@
-// The query engine bases and `vau query` run on: the vault's files and frontmatter (options: AGENTS.md). No Node; a
-// where compiles to Bases' expressions (expr.ts), with its lenient comparisons.
 
 import { linkIndex } from "../../../core/links.ts"
 import {
@@ -7,56 +5,31 @@ import {
 } from "./expr.ts"
 
 export type Opts = Record<string, unknown>
-/** A file to query: path, frontmatter, mtime, created (lazy), tags (frontmatter and inline), type (core/fileprops.ts)
- *  and whether it's archived. */
 export type Rec = { path: string; fm: Record<string, unknown>; mtime: number; created?: () => number; tags?: string[]; type?: string | null; archived?: boolean
-  /** Its size in bytes, and the links and embeds in it (body and properties; core/links.ts' noteLinks), for Bases'
-   *  `file.size`, `file.links`... */
   size?: number; links?: () => string[]; embeds?: () => string[] }
 export type Column = { key: string; label: string }
-/** A file on a map: where, and its pin's colour (CSS: an app colour's name is var(--name)) and lucide icon. */
 export type Pin = { lat: number; lon: number; color?: string; icon?: string }
 export type Row = { path: string; title: string; values: Record<string, unknown>; pin?: Pin
-  /** Cards: its picture, as its `image` property says (a [[file]], a path, an address or a #colour). */
   image?: string }
-/** A group: its name as text (null: no value), and `value`, the value a file in it has (what moving a card into its
- *  column writes; a listed group nobody has yet: its name). A calendar's groups are its days ("2026-09-27"). */
 export type Group = { name: string | null; value?: unknown; rows: Row[]
-  /** Its summaries, by column key (when the view has some and it's one of several groups). */
   summaries?: Record<string, unknown> }
-/** A column's summary: which (its name) and its value over the rows shown. */
 export type Summary = { key: string; name: string; value: unknown }
 type SortKey = { key: string; desc: boolean }
 export type View = "table" | "cards" | "list" | "board" | "calendar" | "map"
 export type Result = {
   title: string; view: View; columns: Column[]; groups: Group[]; total: number; shown: number
-  /** How many matches come before the rows shown (a page past the first: `offset`). */
   offset?: number
-  /** The order the rows are in (their `values` have these keys too), so the app can place a moved one. */
   sort: SortKey[]
-  /** The key rows are grouped by (a board's columns). */
   group?: string | null
-  /** Every group the rows make, shown or not, in the view's own order, with its count: what the Group menu lists.
-   *  `shown`: `groupOrder` lists it (only when the view has one). */
   allGroups?: { name: string | null; value: unknown; n: number; shown?: boolean }[]
-  /** A calendar's date key and month ("2026-09"). */
   date?: string; month?: string
-  /** Summaries under the columns (the rows shown). */
   summaries?: Summary[]
-  /** What was left out or couldn't be worked out (a filter that doesn't parse, a formula that fails), in words. */
   notes?: string[]
-  /** How many archived files match but are hidden (the options don't ask for archived ones). */
   archivedHidden?: number
-  /** A map: the key the pins come from, and how many matches have no place on it. */
   coordinates?: string; unplaced?: number
-  /** Cards: how wide each is at least (px), and how their pictures sit (`cover` fills, `contain` fits) at what height
-   *  for their width. */
   cards?: { size?: number; fit?: "cover" | "contain"; ratio?: number }
-  /** A Bases file's views (bases.ts), and which one this is. */
   views?: { name: string; type: string }[]; current?: number
-  /** The declared types of its keys that have one (the vault's property types), so the app sorts them alike. */
   types?: Record<string, string>
-  /** Every frontmatter key the matches have, the commonest first (`allKeys`: a base's Properties menu). */
   keys?: string[]
 }
 
@@ -66,15 +39,12 @@ const SPECIAL = ["file", "folder", "path", "updated", "created"]
 export const VIEWS: View[] = ["table", "cards", "list", "board", "calendar", "map"]
 const MONTH = /^(\d{4})-(\d{2})$/
 
-// ---------- the expression language
-
 type Tok = { t: "word" | "str" | "num" | "op" | "(" | ")"; v: string }
 type Node =
   | { k: "and" | "or"; a: Node; b: Node }
   | { k: "not"; a: Node }
   | { k: "has"; key: string }
   | { k: "cmp"; key: string; op: string; value: string | number | boolean | null
-      /** `this` (""), or `this.<key>`: the note the view is in, or its value of a key, in place of `value`. */
       ref?: string }
 
 const OPS = ["<=", ">=", "!=", "==", "=", "<", ">"]
@@ -104,7 +74,6 @@ function lex(src: string): Tok[] {
   return out
 }
 
-/** Parse a where expression. Throws QueryError with what's wrong. */
 export function parseWhere(src: string): Node | null {
   if (src.length > 2000) throw new QueryError("the where is too long")
   const toks = lex(src)
@@ -164,11 +133,8 @@ export function parseWhere(src: string): Node | null {
   return e
 }
 
-/** `this` -> "" and `this.status` -> "status" (the note the view is in, or its key), else undefined: plain text. */
 const refOf = (w: string) => { const m = /^this(?:\.(.+))?$/i.exec(w.trim()); return m ? m[1] ?? "" : undefined }
 
-/** A where as Bases' expression: and / or / not as theirs, each comparison its lenient one; `this` is Bases' `this`, and
- *  `this.<key>` that note's value of the key. */
 function exprOf(n: Node): Expr {
   switch (n.k) {
     case "and": case "or": return { k: "bin", op: n.k === "and" ? "&&" : "||", a: exprOf(n.a), b: exprOf(n.b) }
@@ -180,26 +146,20 @@ function exprOf(n: Node): Expr {
 const wantOf = (value: unknown, ref?: string): Expr =>
   ref === undefined ? { k: "lit", v: (value ?? null) as V } : ref === "" ? { k: "id", name: "this" } : { k: "key", name: keyOf(ref), self: true }
 
-/** A `where` map ({relation: friend, tags: [a, b]}): every key must match (a list: any of its values; `this` and
- *  `this.<key>` as in a where's text). */
 function mapExpr(m: Record<string, unknown>): Expr {
   const all = (xs: Expr[], op: "&&" | "||"): Expr => (xs.length ? xs.reduce((a, b) => ({ k: "bin", op, a, b })) : { k: "lit", v: op === "&&" })
   return all(Object.entries(m).map(([k, want]) => all((Array.isArray(want) ? want : [want]).map((w) =>
     ({ k: "loose", op: "=", a: { k: "key", name: keyOf(k) }, b: wantOf(w, typeof w === "string" ? refOf(w) : undefined) })), "||")), "&&")
 }
 
-// ---------- values
-
 const stemOf = (p: string) => p.split("/").pop()!.replace(/\.md$/i, "")
 const folderOf = (p: string) => p.split("/").slice(0, -1).join("/")
 const pad = (n: number) => String(n).padStart(2, "0")
-/** ms -> "2026-09-29 18:00" (this machine's time). */
 export function stampOf(ms: number) {
   const d = new Date(ms)
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-/** A key's value for a file: a frontmatter key, or file / folder / path / updated / created (and `type`, the file's). */
 export function valueOf(r: Rec, key: string): unknown {
   switch (key) {
     case "type": if (r.type !== undefined) return r.type; break
@@ -216,18 +176,13 @@ export function valueOf(r: Rec, key: string): unknown {
   return k ? r.fm[k] : undefined
 }
 
-// ---------- options
-
 const list = (v: unknown): string[] =>
   (Array.isArray(v) ? v : typeof v === "string" ? v.split(",") : v === undefined || v === null ? [] : [v])
     .map((x) => String(x).trim()).filter(Boolean)
 
-/** A column's name when the base gives it none: "Name", "Status", "Pages left" (formula.pages_left). */
 export const label = (k: string) => k === "file" ? "Name"
   : (k.replace(/^(formula|file)\./, "").charAt(0).toUpperCase() + k.replace(/^(formula|file)\./, "").slice(1)).replaceAll("_", " ")
 
-/** A key written the Bases way, as this engine names it: `file.name` is `file` (the name), `file.path` `path`,
- *  `file.folder` `folder`, `note.status` `status`; `formula.x` and other `file.` keys stay as they are. */
 export function keyOf(k: string): string {
   const t = k.trim()
   if (t === "file.name" || t === "file.basename" || t === "file.file") return "file"
@@ -236,12 +191,9 @@ export function keyOf(k: string): string {
   if (t.startsWith("note.") && t.length > 5) return t.slice(5)
   return t
 }
-/** The frontmatter key a column writes (moving a card, editing a value), or null when it's computed (a formula, a file
- *  property, the name). */
 export const propKey = (k: string): string | null =>
   SPECIAL.includes(k) || k.startsWith("formula.") || k.startsWith("file.") ? null : k
 
-/** A sort given as text ("-updated", "file") or the Bases way ({property: file.mtime, direction: DESC}). */
 export function sortOf(v: unknown): SortKey[] {
   const items = Array.isArray(v) ? v : v === undefined || v === null ? [] : typeof v === "string" ? v.split(",") : [v]
   return items.flatMap((s): SortKey[] => {
@@ -256,7 +208,6 @@ export function sortOf(v: unknown): SortKey[] {
   })
 }
 
-/** The options checked: throws QueryError on a bad `where`, sort or view. */
 export function compile(o: Opts) {
   if (!o || typeof o !== "object" || Array.isArray(o)) throw new QueryError("the query's options must be a map of key: value lines")
   const from = list(o.from).map((f) => f.replace(/^\/+/, "").toLowerCase())
@@ -271,11 +222,9 @@ export function compile(o: Opts) {
   const sort = sortOf(o.sort)
   const view = (o.view === undefined ? "table" : String(o.view)) as View
   if (!VIEWS.includes(view)) throw new QueryError(`view is table, cards, list, board, calendar or map, not '${view}'`)
-  // Every match unless a limit is given (the app draws rows as they near the screen); offset: a page past the first.
   const n = Number(o.limit), at = Number(o.offset)
   const limit = o.limit === undefined || o.limit === null || o.limit === "" || !Number.isFinite(n) ? Infinity : Math.max(Math.trunc(n), 1)
   const offset = Number.isFinite(at) ? Math.max(Math.trunc(at), 0) : 0
-  // group: a key, or the Bases way ({property: status, direction: DESC}).
   const g = o.group && typeof o.group === "object" && !Array.isArray(o.group) ? o.group as Record<string, unknown> : null
   const groupKey = g ? (typeof g.property === "string" ? g.property : "") : typeof o.group === "string" ? o.group : ""
   const group = groupKey.trim() ? keyOf(groupKey) : null
@@ -291,15 +240,12 @@ export function compile(o: Opts) {
   const arch = o.archived === undefined || o.archived === null ? false : o.archived === "only" ? "only" : o.archived === true || o.archived === "true" ? true
     : o.archived === false || o.archived === "false" ? false : null
   if (arch === null) throw new QueryError(`archived is true, false or only, not '${String(o.archived)}'`)
-  /** Left out for being archived (or, with `only`, for not being). */
   const outByArchive = (r: Rec) => (arch === "only" ? !r.archived : !arch && !!r.archived)
-  /** Where it is (from, type, tags): the where is evaluated with the run's Env. */
   const inScope = (r: Rec) => {
     const low = r.path.toLowerCase()
     if (from.length && !from.some((f) => low.startsWith(f.endsWith("/") ? f : `${f}/`) || low === f)) return false
     if (types.length && !types.includes(String(valueOf(r, "type") ?? "").toLowerCase())) return false
     if (tags.length) {
-      // Nested tags count for their parents (`project` matches `project/lighthouse`).
       const has = (r.tags ?? list(r.fm.tags)).map((t) => t.replace(/^#/, "").toLowerCase())
       if (!tags.every((t) => has.some((h) => h === t || h.startsWith(`${t}/`)))) return false
     }
@@ -314,7 +260,6 @@ export function compile(o: Opts) {
   }
 }
 
-/** A cards view's look, as Obsidian's settings say it (cardSize, imageFit, imageAspectRatio), each when it makes sense. */
 function cardLook(o: Opts): { size?: number; fit?: "cover" | "contain"; ratio?: number } | undefined {
   const size = Number(o.cardSize), ratio = Number(o.imageAspectRatio)
   const out = {
@@ -325,23 +270,18 @@ function cardLook(o: Opts): { size?: number; fit?: "cover" | "contain"; ratio?: 
   return Object.keys(out).length ? out : undefined
 }
 
-/** The day a value names ("2026-09-27", "2026-09-27 18:00", "2026-09-27T18:00:00Z"), or null. */
 export function dayOf(v: unknown): string | null {
   if (Array.isArray(v)) v = v[0]
   const m = typeof v === "string" ? /^(\d{4}-\d{2}-\d{2})(?=$|[ T])/.exec(v.trim()) : null
   return m ? m[1] : null
 }
 
-/** Bases' `groupOrder`: the groups shown, in order (null: no value); absent, every group in `groupBy`'s direction. */
 const orderOf = (v: unknown): { name: string | null; value: unknown }[] | null =>
   Array.isArray(v) ? v.map((x) => (blank(x) ? { name: null, value: null } : { name: groupName(x), value: x })) : null
 
-/** A group's name for a value: its text ("" when it has none; a list's values joined). */
 export const groupName = (v: unknown) =>
   blank(v) ? "" : Array.isArray(v) ? v.map((x) => String(unlink(x))).join(", ") : String(unlink(v))
 
-/** An order by these keys (blanks last either way), then by path. `types`: the keys' declared types, and `typed` a value
- *  as its type compares it (core/proptypes.ts typedValue). */
 export function byKeys<T extends { path: string }>(sort: SortKey[], get: (x: T, key: string) => unknown, types?: Record<string, string>, typed?: Typed) {
   const cmps = sort.map((s) => comparer(types?.[s.key], typed))
   return (a: T, b: T) => {
@@ -354,10 +294,7 @@ export function byKeys<T extends { path: string }>(sort: SortKey[], get: (x: T, 
   }
 }
 
-/** A value as its declared type compares it (core/proptypes.ts typedValue): undefined leaves it as it is. */
 export type Typed = (type: string, v: unknown) => unknown
-/** How two values of a key with this declared type compare: as their type has them (dates by time, numbers as
- *  numbers; one that isn't of its type after those that are), text as text (`1.10` after `1.9`), else `compare`. */
 export function comparer(type: string | null | undefined, typed?: Typed): (a: unknown, b: unknown) => number {
   if (!type) return compare
   if (type === "text") return (a, b) => (blank(a) || blank(b) ? compare(a, b) : byText.compare(text(unlink(a)), text(unlink(b))))
@@ -368,7 +305,6 @@ export function comparer(type: string | null | undefined, typed?: Typed): (a: un
   }
 }
 
-/** [lat, lon] from a value: a list of two numbers (or numeric texts), "lat, lon", or {lat, lon | lng}; null if none. */
 function coordsOf(v: unknown): [number, number] | null {
   let lat: unknown, lon: unknown
   if (Array.isArray(v) && v.length >= 2) [lat, lon] = v
@@ -380,8 +316,6 @@ function coordsOf(v: unknown): [number, number] | null {
 }
 
 const TINTS = ["red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink", "gray", "grey"]
-/** A pin's colour from a value: an app colour's name (`red`: var(--red), so schemes recolour it), else a CSS colour
- *  (hex, rgb(), hsl(), var(--x), a named one); anything else none. */
 export function colorOf(v: unknown): string | undefined {
   if (typeof v !== "string") return undefined
   const t = v.trim()
@@ -389,22 +323,16 @@ export function colorOf(v: unknown): string | undefined {
   return /^(#[0-9a-f]{3,8}|(rgb|hsl)a?\([\d\s.,%a-z/-]+\)|var\(--[\w-]+\)|[a-z]{3,20})$/i.test(t) ? t : undefined
 }
 
-/** Extras for a run: the file `this` is (the base, or the note the view is drawn in: AGENTS.md), and the vault's
- *  property types (`of`: a key's, null for none; `value`: core/proptypes.ts typedValue). */
 export type RunCtx = { self?: Rec | null; types?: { of: (key: string) => string | null; value: Typed } }
 
-/** Run a query over the files. `now` decides a calendar's default month and Bases' now() and today(). */
 export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx = {}): Result {
   const all = [...recs]
   const notes: string[] = []
   const note = (s: string) => { if (!notes.includes(s) && notes.length < 20) notes.push(s) }
 
-  // Bases: links to files, formulas (each worked out once per file), backlinks when asked.
-  // (like the vault's links, core/links.ts: a name several files have goes to the closest to the file it's written in)
   const linkable = ctx.self && !all.some((r) => r.path === ctx.self!.path) ? [...all, ctx.self] : all
   const index = linkIndex(linkable.map((r) => ({ value: r, path: r.path, labels: list(r.fm.aliases).map(String) })))
   const resolve = (t: string, from?: string) => index.resolve(t.split("|")[0], from)
-  // A key's declared type (frontmatter keys only: file, folder, formulas... are the engine's), and `this` for a where.
   const typeMemo = new Map<string, string | null>()
   const typeOfKey = (k: string) => {
     if (!ctx.types || SPECIAL.includes(k) || k.startsWith("formula.") || k.startsWith("file.")) return null
@@ -426,7 +354,6 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
     }
     return back.get(r.path) ?? []
   }
-  // (a formula that doesn't parse is said so when a view uses it)
   const formulas = new Map<string, ReturnType<typeof parseExpr> | string>()
   const fo = o.formulas && typeof o.formulas === "object" && !Array.isArray(o.formulas) ? o.formulas as Record<string, unknown> : {}
   for (const [name, src] of Object.entries(fo)) {
@@ -458,7 +385,6 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
       return v
     },
   }
-  // A key's value as the language has it (for summaries), and as plain data (the rows, sorting, grouping).
   const parsed = new Map<string, ReturnType<typeof parseExpr> | null>()
   const raw = (r: Rec, key: string): V => {
     if (key.startsWith("formula.")) return env.formula(r, key.slice(8))
@@ -471,17 +397,14 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
   }
   const get = (r: Rec, key: string): unknown => (key.startsWith("formula.") || key.startsWith("file.") ? plainOf(raw(r, key)) : valueOf(r, key))
 
-  // Bases filters: the file is in when they're true; one that can't be read is left out (and said so).
   let filter: ((r: Rec) => boolean) | null = null
   if (o.filters !== undefined && o.filters !== null) {
     filter = filterOf(o.filters, env, note) ?? null
   }
   const where = q.where
   let hits = all.filter((r) => q.inScope(r) && (!where || truthy(evaluate(where, r, env))) && (!filter || filter(r)))
-  // Archived files matching are hidden (archived: true shows them); how many is said, so nothing goes missing unseen.
   let archived = q.hidesArchived ? hits.filter((r) => r.archived) : []
   hits = hits.filter((r) => !q.outByArchive(r))
-  // A calendar: the files whose date falls in its month.
   let date: string | undefined, month: string | undefined
   if (q.view === "calendar") {
     date = q.date ?? (hits.some((r) => dayOf(get(r, "date"))) ? "date" : "created")
@@ -489,7 +412,6 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
     hits = hits.filter((r) => dayOf(get(r, date!))?.startsWith(`${month}-`))
     archived = archived.filter((r) => dayOf(get(r, date!))?.startsWith(`${month}-`))
   }
-  // No columns asked: the name and the keys most of the matches have (up to 4).
   let cols = q.columns
   if (!cols.length) {
     const count = new Map<string, number>()
@@ -534,7 +456,6 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
   const groups: Group[] = []
   let allGroups: Result["allGroups"]
   if (date) {
-    // A calendar: a group per day, in order.
     const by = new Map<string, Row[]>()
     for (const r of rows) {
       const d = dayOf(r.values[date])!
@@ -550,8 +471,6 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
       g.rows.push(r)
       by.set(name, g)
     }
-    // In groupBy's direction, no value last; a groupOrder shows only what it lists, in its order (a board each column
-    // it lists, even empty; elsewhere a group with nothing in it isn't drawn). Without one a board always has No value.
     const dir = q.groupDesc ? -1 : 1
     const auto = [...by.keys()].sort((a, b) => (!a || !b ? compare(a, b) : compare(a, b) * dir))
     const order = q.groupOrder
@@ -575,7 +494,6 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
     }
   } else groups.push({ name: null, rows })
 
-  // Summaries: a column's values in the rows shown (and in each group's, when there are several).
   let summaries: Summary[] | undefined
   const so = o.summaries && typeof o.summaries === "object" && !Array.isArray(o.summaries) ? o.summaries as Record<string, unknown> : {}
   const custom = o.summaryFormulas && typeof o.summaryFormulas === "object" ? o.summaryFormulas as Record<string, unknown> : {}
@@ -604,14 +522,12 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
     if (groups.length > 1) for (const g of groups) g.summaries = sum(g.rows)
   }
 
-  // Labels: Bases' display names (properties: {key: {displayName}}), else the key's.
   const props = o.properties && typeof o.properties === "object" && !Array.isArray(o.properties) ? o.properties as Record<string, unknown> : {}
   const labels = new Map<string, string>()
   for (const [k, v] of Object.entries(props)) {
     const d = v && typeof v === "object" ? (v as Record<string, unknown>).displayName : undefined
     if (typeof d === "string" && d.trim()) labels.set(keyOf(k), d.trim())
   }
-  // (what a base could show: its Properties menu)
   let allKeys: string[] | undefined
   if (o.allKeys) {
     const n = new Map<string, number>()
@@ -626,8 +542,6 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
   }
 }
 
-/** A Bases filter (an expression, or {and | or | not: [filters]}) as a test; one that can't be read is left out of its
- *  group, and `note` says why. null: nothing to test. */
 function filterOf(f: unknown, env: Env, note: (s: string) => void, depth = 0): ((r: Rec) => boolean) | null {
   if (depth > 32) { note("The filters nest too deeply"); return null }
   if (typeof f === "string" || typeof f === "number" || typeof f === "boolean") {
@@ -658,9 +572,6 @@ function filterOf(f: unknown, env: Env, note: (s: string) => void, depth = 0): (
   return null
 }
 
-// ---------- as text
-
-/** A value as plain text, for a Markdown table cell or a card line. */
 export function text(v: unknown): string {
   if (blank(v)) return ""
   if (Array.isArray(v)) return v.map(text).filter(Boolean).join(", ")
@@ -672,31 +583,23 @@ export function text(v: unknown): string {
 const cell = (s: string) => s.replaceAll("|", "\\|").replace(/\s*\n\s*/g, " ")
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
-/** "2026-09" -> "September 2026". */
 export const monthName = (m: string) => `${MONTHS[Number(m.slice(5)) - 1]} ${m.slice(0, 4)}`
 
-/** A summary's value as text: a number to two decimals at most. */
 export function summaryText(v: unknown): string {
   if (typeof v === "number") return String(Math.round(v * 100) / 100)
   return text(v)
 }
 
-/** Every row shown as one table, its cells as text (a file by its name, `links`: as [[its name]]): what a view's results copy
- *  and export. */
 export function rowsOf(res: Result, links = false): string[][] {
   const name = (r: Row) => (links ? `[[${r.title}]]` : r.title)
   return [res.columns.map((c) => c.label), ...res.groups.flatMap((g) => g.rows.map((r) => res.columns.map((c) => (c.key === "file" ? name(r) : text(r.values[c.key])))))]
 }
 
-/** Rows as CSV (RFC 4180: a cell with a comma, quote or line break quoted). */
 export const csvText = (rows: string[][]) => rows.map((r) => r.map((v) => (/[",\r\n]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v)).join(",")).join("\r\n") + "\r\n"
 
-/** Rows as a Markdown table, the first its header. */
 export const markdownRows = (rows: string[][]) =>
   [rows[0], rows[0].map(() => "---"), ...rows.slice(1)].map((r) => `| ${r.map(cell).join(" | ")} |`).join("\n")
 
-/** The result as Markdown for agents: a table per group, a section per board column, bullets by date or place. What was
- *  left out (a filter that doesn't parse) comes first, in italics. */
 export function markdown(res: Result, level = 2): string {
   const h = (n: number) => "#".repeat(Math.min(level + n, 6))
   const sumRow = (by: Record<string, unknown> | undefined) => {
@@ -712,7 +615,6 @@ export function markdown(res: Result, level = 2): string {
     const foot = sumRow(sums)
     return [head, ...rows.map((r) => `| ${res.columns.map((c) => cell(c.key === "file" ? `[[${r.title}]]` : text(r.values[c.key]))).join(" | ")} |`), ...(foot ? [foot] : [])].join("\n")
   }
-  // A file on one line: its [[name]], then its other columns' values (not the one its place already says).
   const line = (r: Row, skip?: string) =>
     [`[[${r.title}]]`, ...res.columns.filter((c) => c.key !== "file" && c.key !== skip).map((c) => cell(text(r.values[c.key]))).filter(Boolean)].join(" · ")
   const parts = [`${h(0)} ${res.title || "Query"}`]

@@ -1,5 +1,3 @@
-// Obsidian Bases and `vau query` on one engine (query.ts; bases.ts turns a view into options), served at /api/query.
-// Nothing is stored: the files are the data; edits are the app's small edits to frontmatter or the .base.
 import { HTTPError, Plugin, frontmatterTargets, noteLinks, source, type PropTypes, typedValue, typeOf } from "../../../core/plugins.ts"
 import { type Entry, type Item, loadFm, readText, type Vault } from "../../../core/vault.ts"
 import { baseOptions } from "./bases.ts"
@@ -9,15 +7,12 @@ export const plugin = new Plugin(import.meta.url)
 
 type Stat = Vault["others"] extends Map<string, infer S> ? S : never
 
-/** The Templates plugin's folder (its settings), whose notes are patterns, not things: a query leaves them out unless
- *  its `from` (or a base's filters) names that folder. */
 function templatesFolder() {
   const f = plugin.peer("templates")?.seeded().folder
   if (typeof f === "string" && f.trim()) return f.trim().replace(/^\/+|\/+$/g, "")
   return "Templates"
 }
 
-// A file's links and embeds (its text's, as Obsidian counts them, and its properties' [[links]]), read once per read of it.
 const linkCache = new WeakMap<Entry, { body: string; fm: Item; links: string[]; embeds: string[] }>()
 function linksOf(e: Entry) {
   let c = linkCache.get(e)
@@ -37,13 +32,9 @@ const otherRec = (rel: string, st: Stat, props?: FileProps | null): Rec => ({
   path: rel, fm: props?.of(rel) ?? {}, mtime: Number(st.ns / 1000000n), created: () => st.born, type: null, archived: false, size: st.size,
 })
 
-/** Properties a plugin keeps for files that aren't Markdown (Provenance's `origin`), the service `file-props`;
- *  `version` changes when any does. */
 type FileProps = { version: string | number; of: (rel: string) => Item }
 const fileProps = () => (plugin.service("file-props")?.() ?? null) as FileProps | null
 
-/** Every Markdown file as something to query (a base: every file, templates too, none in a hidden folder like .archive/
- *  unless a view's `archived` lets them in), but `self`, the view's file; samples only for a view in their folder. */
 const HIDDEN = /(^|\/)\./
 function* records(vault: Vault, o: Opts, self?: string, base = false): Generator<Rec> {
   const skip = `${templatesFolder()}/`.toLowerCase()
@@ -61,7 +52,6 @@ function* records(vault: Vault, o: Opts, self?: string, base = false): Generator
   for (const [rel, st] of vault.others) if (rel !== self && !hidden(rel) && !sample(rel)) yield otherRec(rel, st, props)
 }
 
-/** The file a base's `this` is, by path. */
 function thisRec(vault: Vault, path?: string): Rec | null {
   if (!path) return null
   const e = vault.entries.get(path)
@@ -70,7 +60,6 @@ function thisRec(vault: Vault, path?: string): Rec | null {
   return st ? otherRec(path, st, fileProps()) : null
 }
 
-/** Options from the route: a JSON or YAML text. */
 function optionsOf(q: unknown): Opts {
   if (q && typeof q === "object" && !Array.isArray(q)) return q as Opts
   const s = String(q ?? "").trim()
@@ -86,7 +75,6 @@ function optionsOf(q: unknown): Opts {
   }
 }
 
-/** A base's YAML (text, or already read) as its config. Throws QueryError. */
 function baseConfig(src: unknown): Record<string, unknown> {
   if (src && typeof src === "object" && !Array.isArray(src)) return src as Record<string, unknown>
   const text = String(src ?? "")
@@ -94,24 +82,19 @@ function baseConfig(src: unknown): Record<string, unknown> {
   try { return loadFm(text) } catch (e) { throw new QueryError(`the base isn't valid YAML: ${(e as Error).message.split("\n")[0]}`) }
 }
 
-/** The vault's property types as a run wants them (core/proptypes.ts). */
 const typesCtx = (types: PropTypes): RunCtx["types"] => ({ of: (k) => typeOf(types, k), value: typedValue })
 
-/** Run options; a base's (`base`: its YAML, `show`: a view's name) through bases.ts. `thisPath`: the file `this` is. */
 function runOpts(vault: Vault, o: Opts, self?: string, thisPath?: string, now = new Date(), types = plugin.propertyTypes()): Result {
   const ctx: RunCtx = { self: thisRec(vault, thisPath ?? self), types: typesCtx(types) }
   if (o.base === undefined) return run(o, records(vault, o, self), now, ctx)
   let b: ReturnType<typeof baseOptions>
   try { b = baseOptions(baseConfig(o.base), typeof o.show === "string" ? o.show : null) } catch (e) { throw new QueryError((e as Error).message) }
-  // (a calendar's month, as the app's arrows have it)
   if (typeof o.month === "string" && b.opts.view === "calendar") b.opts.month = o.month
   const res = run(b.opts, records(vault, b.opts, self, true), now, ctx)
   const notes = [...b.notes, ...(res.notes ?? [])]
   return { ...res, views: b.views, current: b.index, ...(notes.length ? { notes } : {}) }
 }
 
-// Answers kept by query until the vault's files change, the Templates or sample folders do, the day does (a calendar's month)
-// or other files' properties do: the same object, frozen, so the server serializes it once.
 const answers = new WeakMap<Vault, { when: string; byQuery: Map<string, Readonly<Result>> }>()
 
 export function query(vault: Vault, o: Opts, self?: string, thisPath?: string) {
@@ -131,13 +114,11 @@ export function query(vault: Vault, o: Opts, self?: string, thisPath?: string) {
   }
 }
 
-/** A .base file's text, by path. */
 function baseText(vault: Vault, path: string) {
   if (!/\.base$/i.test(path) || !vault.others.has(path)) throw new HTTPError(404, `no base '${path}'`)
   return readText(vault.abs(path))
 }
 
-// `self`: the file the view is in, left out of what it lists.
 const selfOf = (v: unknown) => (typeof v === "string" && v ? v : undefined)
 plugin.route("GET", "query", (req) => {
   const base = selfOf(req.query.base)
@@ -149,7 +130,6 @@ plugin.route("GET", "query", (req) => {
 })
 plugin.route("POST", "query", (req) => query(plugin.vault, optionsOf((req.body as Item)?.options ?? req.body)))
 
-/** A base as Markdown: every view (or the one asked for), each under its name. `level`: its views' heading level. */
 function baseMarkdown(vault: Vault, text: string, at: { path?: string; view?: string; this?: string; level?: number } = {}) {
   let cfg: Record<string, unknown>, names: string[]
   try {
@@ -168,14 +148,10 @@ function baseMarkdown(vault: Vault, text: string, at: { path?: string; view?: st
   }).join("\n\n")
 }
 
-// A .base file as text (GET /api/render; `![[Books.base]]` and `![[Books.base#Reading]]` in a note, where core/render.ts
-// passes the file it's in, `this`, and the view).
 plugin.provide("text:base", (text: string, rel: string, at?: { sub?: string; host?: string }) =>
   baseMarkdown(plugin.vault, text, { path: rel, view: at?.sub || undefined, this: at?.host ?? rel, level: at?.host ? 3 : 2 }))
-// A ```base fence in a note: its YAML is a base, `this` the note (the one embedding it, when it's embedded).
 plugin.provide("fence:base", (ctx: { path: string; text: string; host?: string }) => baseMarkdown(plugin.vault, ctx.text, { path: ctx.path, this: ctx.host ?? ctx.path, level: 3 }))
 
-/** A cell of a Markdown table: one line, pipes escaped, at most CELL characters (then "…", counted in `cut`). */
 const CELL = 200
 const cell = (v: unknown, cut?: { n: number }) => {
   const s = (v === null || v === undefined ? "" : Array.isArray(v) ? v.map((x) => (typeof x === "object" ? JSON.stringify(x) : String(x))).join(", ")

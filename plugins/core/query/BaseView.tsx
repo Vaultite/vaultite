@@ -1,5 +1,3 @@
-// An Obsidian base (its tab, an embed, a ```base fence) with QueryView's pieces, views as tabs, Obsidian's toolbar. A change
-// here is a small edit to its YAML (baseedit.ts), shown at once, written to its file (an embed's too) or its fence.
 import { useEffect, useMemo, useRef, useState } from "react"
 import { ArrowDown, ArrowUp, Blocks, Calculator, CalendarDays, Columns3, Ellipsis, EyeOff, LayoutGrid, List, Map as MapIcon, PencilLine, Plus, Search, Table2, X, type LucideIcon } from "lucide-react"
 import { baseLayoutOf, cn, freeName, getStore, menuBelow, newNoteFolder, notify, notifyError, openNew, Panel, post, put, readFile, reload, resolver, today, useBaseLayouts, type BaseLayout, type BaseLayoutCtx, type BaseLayoutDrawn, type BlockCtx, type FormatCtx, type MenuItem } from "@vaultite"
@@ -14,34 +12,24 @@ import { BarButton, BUTTONS, filterCount, FilterMenu, groupOf, GroupMenu, named,
 
 const ICONS: Record<string, LucideIcon> = { table: Table2, cards: LayoutGrid, list: List, map: MapIcon, kanban: Columns3, board: Columns3, calendar: CalendarDays }
 const iconOf = (type: string) => ICONS[type.toLowerCase()] ?? (pluginLayout(type) ? Blocks : Table2)
-/** The layouts a view can have, as Obsidian names them (calendar is this app's). */
 const LAYOUTS: { type: string; label: string }[] = [
   { type: "table", label: "Table" }, { type: "cards", label: "Cards" }, { type: "list", label: "List" },
   { type: "kanban", label: "Board" }, { type: "map", label: "Map" }, { type: "calendar", label: "Calendar" },
 ]
-/** A plugin's layout for a view's type (an Obsidian plugin's Bases view): never one of the app's own, which it draws. */
 const OWN = new Set([...LAYOUTS.map((l) => l.type), "board"])
 const pluginLayout = (type: string) => (OWN.has(type.toLowerCase()) ? null : baseLayoutOf(type))
-/** The summaries a column's menu offers (Obsidian's; Count is this app's). */
 const SUMMARY_NAMES = SUMMARIES.filter((s) => s !== "Count")
 
 type Props = {
   store: BlockCtx["store"]; text: string
-  /** The file it's in: the .base itself, or the note with the fence (left out of what it lists). */
   path: string
-  /** The file `this` is (embedded: the note embedding it). */
   host?: string
-  /** The view to start on (an embed's #View). */
   view?: string
-  /** Where it's drawn: its tab (fills its box), embedded, or a fence in a note. */
   place: "page" | "sheet" | "embed" | "fence"
-  /** Its own tab, editing: the file's text changed (saved by its editor). */
   onChange?: (text: string) => void
-  /** A fence: its text in the note changed (absent: the note can't be, and changes here are only shown). */
   setText?: (text: string) => void
 }
 
-/** A .base's text changed on disk as a small edit of what's there now (an embed, or its tab while it's read). */
 async function writeFile(path: string, fn: (t: string) => string) {
   const f = await readFile(path)
   const text = fn(f.text)
@@ -51,32 +39,23 @@ async function writeFile(path: string, fn: (t: string) => string) {
 export function BaseView({ store, text, path, host, view, place, onChange, setText }: Props) {
   const extra = useBaseLayouts().filter((l) => !OWN.has(l.type.toLowerCase()))
   const [picked, setShow] = useState<string | null>(view ?? null)
-  // (a calendar's month: its arrows', else the view's `month`, else this one; the arrows don't change the file)
   const [moved, setMonth] = useState<string | null>(null)
-  // A change made here, shown until the text it was written to comes back (or for good, where it can't be written).
   const [draft, setDraft] = useState<string | null>(null)
   useEffect(() => setDraft(null), [text])
   const cur = draft ?? text
-  // (an Undo, or a width let go, changes the text as it is by then)
   const latest = useRef(cur)
   latest.current = cur
-  // Once changed here, the answer is asked for by its text: the file may not be saved yet.
   const [byText, setByText] = useState(place === "fence")
-  // The views, from the text as it is now (a view just added has its tab at once); the server's when it doesn't parse.
   const cfg = useMemo<BaseConfig | null>(() => {
     try { const c = parseYaml(cur || "{}", { uniqueKeys: false }); return c && typeof c === "object" && !Array.isArray(c) ? c : {} } catch { return null }
   }, [cur])
-  // (a view picked here that's gone, renamed or removed in the source: the first)
   const show = picked && cfg && !view && !pickView(cfg, picked).found ? null : picked
   const local = cfg ? viewNames(cfg) : null
   const at = cfg ? pickView(cfg, show).index : null
   const vcfg = cfg && at !== null ? viewsOf(cfg)[at] : null
-  // (a calendar's month, as its arrows have it)
   const calendar = local !== null && at !== null && local[at]?.type.toLowerCase() === "calendar"
   const own = calendar ? vcfg?.month : null
   const month = moved ?? (typeof own === "string" && /^\d{4}-\d{2}$/.test(own) ? own : today().slice(0, 7))
-  // A .base is asked for by its path (the server reads the file: a short address, whatever its size); a fence, or one
-  // changed here, by its text.
   const url = useMemo(() => {
     const at = `&this=${encodeURIComponent(host ?? path)}${show ? `&view=${encodeURIComponent(show)}` : ""}${calendar ? `&month=${month}` : ""}`
     if (!byText) return `query?base=${encodeURIComponent(path)}${at}`
@@ -84,12 +63,10 @@ export function BaseView({ store, text, path, host, view, place, onChange, setTe
   }, [byText, path, host, cur, show, month, calendar])
   const sort = useMemo(() => (vcfg ? sortOf(vcfg.sort) : null), [vcfg])
   const { res: answer, error, groups: all, save, rows } = useQueryResult(url, sort)
-  // Search (null: closed): the rows whose name or shown values have every word typed; the file is left as it is.
   const [q, setQ] = useState<string | null>(null)
   const resolve = resolver(store)
   const views = local ?? answer?.views ?? []
   const current = at ?? answer?.current ?? 0
-  // The columns as the view now says (an order or a name just changed), while its answer is on its way.
   const res = useMemo<Result | null>(() => {
     if (!answer || !cfg || !vcfg) return answer
     const have = new Map(answer.columns.map((c) => [c.key, c]))
@@ -107,16 +84,12 @@ export function BaseView({ store, text, path, host, view, place, onChange, setTe
       const hay = [r.title, ...res.columns.map((c) => shownText(r.values[c.key]))].join(" ").toLowerCase()
       return words.every((w) => hay.includes(w))
     }
-    // (a board keeps its columns, a calendar its days; elsewhere a group nothing's left in goes, and its summaries
-    // (worked out over every row) with it)
     const keep = res.view === "board" || res.view === "calendar"
     return all.map((g) => ({ ...g, rows: g.rows.filter(hit), summaries: undefined })).filter((g) => keep || g.rows.length)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [all, res, q])
   const searched = words.length && res ? { ...res, summaries: undefined, shown: groups.reduce((n, g) => n + g.rows.length, 0) } : res
 
-  // Where a change goes: the tab's editor, the fence in its note, else the file itself; a fence that can't be
-  // changed keeps it here only.
   const lasting = !!onChange || place !== "fence" || !!setText
   const edit = (fn: (t: string) => string, done?: string) => {
     const was = latest.current
@@ -134,7 +107,6 @@ export function BaseView({ store, text, path, host, view, place, onChange, setTe
   }
 
   const [renaming, setRenaming] = useState<string | null>(null)
-  // (the view's columns: its order as just changed, else the ones drawn)
   const columns = useMemo(() => {
     const order = Array.isArray(vcfg?.order) ? vcfg.order.map((k) => keyOf(String(k))) : []
     return order.length ? [...new Set(order)] : res?.columns.map((c) => c.key) ?? []
@@ -191,7 +163,6 @@ export function BaseView({ store, text, path, host, view, place, onChange, setTe
     menuBelow(e, items)
   }
 
-  // The toolbar's menus: one open at a time, under its button.
   type Menu = "results" | "group" | "sort" | "filter" | "properties"
   const [open, setOpen] = useState<Menu | null>(null)
   const refs = { results: useRef<HTMLButtonElement>(null), group: useRef<HTMLButtonElement>(null), sort: useRef<HTMLButtonElement>(null),
@@ -199,7 +170,6 @@ export function BaseView({ store, text, path, host, view, place, onChange, setTe
   const be: BaseEdit | null = cfg && at !== null ? { cfg, at, res, columns, edit } : null
   const NAMES = { results: "Results", group: "Group", sort: "Sort", filter: "Filter", properties: "Properties" } as const
   const counts = { group: 0, sort: sort?.length ?? 0, filter: cfg && at !== null ? filterCount(cfg, at) : 0, properties: 0 }
-  // (a calendar's days and a map's places are its own layout: neither groups, a calendar has no columns)
   const bar = (["group", "sort", "filter", "properties"] as const).filter((k) => !(k === "group" && (res?.view === "calendar" || res?.view === "map")) && !(k === "properties" && res?.view === "calendar"))
   const searchRef = useRef<HTMLButtonElement>(null)
   const tools = be && res && (
@@ -232,7 +202,6 @@ export function BaseView({ store, text, path, host, view, place, onChange, setTe
     </div>
   )
 
-  // New: a file the view will list (its folder, properties and tags from the filters), opened beside it to fill in.
   const newFile = async (more: Record<string, unknown> = {}) => {
     if (!cfg || at === null) return
     try {
@@ -248,7 +217,6 @@ export function BaseView({ store, text, path, host, view, place, onChange, setTe
 
   const fill = place === "page" || place === "sheet"
   const tabs = views.length > 1 && (
-    // (the tabs scroll sideways; their right edge fades, so one cut off there reads as more to scroll to)
     <div className="-ml-1 flex min-w-0 flex-1 gap-0.5 edge-fade-x overflow-x-auto pr-4 pl-1 [scrollbar-width:none]" role="tablist" data-base-views>
       {views.map((v, i) => {
         const Icon = iconOf(v.type)
@@ -263,7 +231,6 @@ export function BaseView({ store, text, path, host, view, place, onChange, setTe
       })}
     </div>
   )
-  // (a view an Obsidian plugin draws: its rows go to it, filtered by the search as the app's own are)
   const drawnBy = res ? pluginLayout(views[current]?.type ?? "") : null
   const body = error ? <p className="text-[15px] text-muted-foreground" data-base-error>Base: {error.replace(/^Error: /, "")}</p>
     : !res ? <ResultSkeleton view={views[current]?.type.toLowerCase() ?? "table"} rows={rows} />
@@ -277,7 +244,6 @@ export function BaseView({ store, text, path, host, view, place, onChange, setTe
     </button>
   )
 
-  // A fence in a note: a card like a database view's, titled by its view.
   if (place === "fence") {
     return (
       <Panel title={views[current]?.name ?? "Base"} icon={iconOf(views[current]?.type ?? "table")} tint={TINT} className="@container min-w-0"
@@ -301,7 +267,6 @@ export function BaseView({ store, text, path, host, view, place, onChange, setTe
   )
 }
 
-/** A view a plugin's layout draws: mounted in its own element, told when its rows or options change. */
 function PluginLayout({ layout, ctx }: { layout: BaseLayout; ctx: BaseLayoutCtx }) {
   const ref = useRef<HTMLDivElement>(null)
   const drawn = useRef<BaseLayoutDrawn | null>(null)
@@ -313,7 +278,6 @@ function PluginLayout({ layout, ctx }: { layout: BaseLayout; ctx: BaseLayoutCtx 
     try { drawn.current = layout.mount(el, latest.current) || null } catch (e) { notifyError(e, `${layout.name} couldn't draw this view`) }
     return () => { try { drawn.current?.destroy?.() } catch (e) { console.error(e) } drawn.current = null; el.replaceChildren() }
   }, [layout])
-  // (the view's options and its groups are kept while they don't change: a new answer, an edit or a search does)
   const first = useRef(true)
   useEffect(() => {
     if (first.current) { first.current = false; return }
@@ -322,13 +286,11 @@ function PluginLayout({ layout, ctx }: { layout: BaseLayout; ctx: BaseLayoutCtx 
   return <div ref={ref} className="min-h-40 min-w-0 flex-1" data-base-plugin-layout={layout.type} />
 }
 
-/** A .base file, as the app draws files a plugin owns (FormatCtx). */
 export function BaseFile(ctx: FormatCtx) {
   return <BaseView store={ctx.store} text={ctx.text} path={ctx.path} host={ctx.host} view={ctx.subpath}
     place={ctx.place} onChange={ctx.editable && ctx.place !== "embed" ? ctx.onChange : undefined} />
 }
 
-/** A ```base fence: its text is a base; `this` is the note (the one embedding it, when it's embedded). */
 export function BaseFence(ctx: BlockCtx) {
   return <BaseView store={ctx.store} text={ctx.text} path={ctx.path} host={ctx.host} place="fence" setText={ctx.setText} />
 }

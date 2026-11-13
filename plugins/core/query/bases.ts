@@ -1,22 +1,17 @@
-// Obsidian Bases: each view of a .base (or a ```base fence) becomes the query engine's options. A view type this app
-// doesn't draw is a table with a note; unknown keys are kept. No Node.
 import type { Opts } from "./query.ts"
 
 export type BaseView = { name: string; type: string }
 export type BaseConfig = Record<string, unknown>
 
-/** What Obsidian calls a view's type -> what this app draws. */
 const TYPES: Record<string, string> = { table: "table", cards: "cards", list: "list", map: "map", kanban: "board", board: "board", calendar: "calendar" }
 
 export const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : null)
 
-/** A base's views (a base without any has one table, "Table", like a new one in Obsidian). */
 export function viewsOf(cfg: BaseConfig): Record<string, unknown>[] {
   const vs = Array.isArray(cfg.views) ? cfg.views.map(obj).filter((v): v is Record<string, unknown> => !!v) : []
   return vs.length ? vs : [{ type: "table", name: "Table" }]
 }
 
-/** A view's name: its `name`, else its type's ("Table"), numbered when two have the same. */
 export function viewNames(cfg: BaseConfig): BaseView[] {
   const seen = new Map<string, number>()
   return viewsOf(cfg).map((v) => {
@@ -29,7 +24,6 @@ export function viewNames(cfg: BaseConfig): BaseView[] {
   })
 }
 
-/** Which view a name picks (any case; a number is its place), else the first. */
 export function pickView(cfg: BaseConfig, want?: string | null): { index: number; found: boolean } {
   const names = viewNames(cfg)
   const w = String(want ?? "").trim().toLowerCase()
@@ -38,7 +32,6 @@ export function pickView(cfg: BaseConfig, want?: string | null): { index: number
   return i >= 0 ? { index: i, found: true } : { index: 0, found: false }
 }
 
-/** One view of a base as a database view's options, with what couldn't be carried over in `notes`. */
 export function baseOptions(cfg: BaseConfig, want?: string | null): { opts: Opts; views: BaseView[]; index: number; notes: string[] } {
   const notes: string[] = []
   if (!obj(cfg)) throw new Error("a base is YAML keys: filters, formulas, properties, summaries, views")
@@ -55,7 +48,6 @@ export function baseOptions(cfg: BaseConfig, want?: string | null): { opts: Opts
     notes.push("A kanban view needs a group (groupBy): shown as a table")
   }
   const filters = [cfg.filters, v.filters].filter((f) => f !== undefined && f !== null && f !== "")
-  // (Obsidian has no archive: every file is in a base but archive folders, which `archived` lets in: this app's key)
   const arch = v.archived === "only" ? "only" : v.archived === true
   const opts: Opts = {
     title: views[index].name, view, allKeys: true, archived: arch || true, ...(arch ? { archiveFolders: true } : {}),
