@@ -468,8 +468,10 @@ html[data-classic-scrollbars] ::-webkit-scrollbar-corner { background: transpare
 }
 
 /* The search field has no heading: under another panel it takes a heading's room above it (2 units), so the panels
-   keep one rhythm; first in the sidebar, the header is above it. */
+   keep one rhythm. First in the sidebar, it sits as far under the header's icons as it's in from the sidebar's edge
+   (2 units): the header's row is the tab bar's height, which left it 3 units under them. */
 [data-sidebar-body] > [data-panel]:not(:first-child) [data-sidebar-search] { margin-top: calc(var(--spacing) * 2); }
+[data-sidebar-body]:has(> [data-panel]:first-child [data-sidebar-search]) { margin-top: calc(var(--spacing) * -1); }
 /* Each panel in its own box (`sidebarScroll: panels`, Sidebar.tsx): the room above its heading is outside the box that
    scrolls, so the heading sits at the box's top from the start and stays there, sticky, while the panel scrolls under it
    (inside the box, its margin would scroll away first and the heading jump up by it). */
