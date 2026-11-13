@@ -1,4 +1,5 @@
 import { notify, openFile, post, readFile, notifyError } from "@vaultite"
+import type { CodeMirrorV } from "@replit/codemirror-vim"
 import type { CM, Vim } from "./editor"
 import { VIMRC } from "./state"
 
@@ -27,6 +28,8 @@ async function fetchText() {
   try { return (await readFile(VIMRC)).text } catch { return "" }
 }
 
+const hasVim = (cm: CM): cm is CM & CodeMirrorV => !!cm.state.vim
+
 function run(cm: CM, vim: Vim, src: string) {
   const problems: string[] = []
   let leader = "\\"
@@ -46,7 +49,8 @@ function run(cm: CM, vim: Vim, src: string) {
         const cmdline = m[2]
         vim.defineEx(m[1], m[1], (c) => vim.handleEx(c, cmdline))
       } else if (MAP.test(word) || UNMAP.test(word) || CLEAR.test(word) || SET.test(word)) {
-        vim.handleEx(cm as never, line.replaceAll(/<leader>/gi, leader))
+        if (!hasVim(cm)) throw new Error("Vim is off in this editor")
+        vim.handleEx(cm, line.replaceAll(/<leader>/gi, leader))
       } else throw new Error(`not a vimrc command: ${word}`)
     } catch (e) {
       problems.push(`line ${i + 1}: ${e instanceof Error ? e.message : String(e)}`)

@@ -7,7 +7,7 @@ const LINE = 60
 // (The sizes first: they're cheap, the styles aren't.)
 const scrollsY = (el: Element) => el.scrollHeight > el.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(el).overflowY)
 const scrollsX = (el: Element) => el.scrollWidth > el.clientWidth + 1 && /(auto|scroll)/.test(getComputedStyle(el).overflowX)
-const shown = (el: Element) => (el as HTMLElement).offsetParent !== null || getComputedStyle(el).position === "fixed"
+const shown = (el: Element) => !(el instanceof HTMLElement) || el.offsetParent !== null || getComputedStyle(el).position === "fixed"
 
 export const openSheet = () => [...document.querySelectorAll<HTMLElement>("dialog[open]")].find(shown) ?? null
 

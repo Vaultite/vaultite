@@ -6,21 +6,16 @@ import { EX } from "./ex"
 import { applyVimrc, editorOpen } from "./vimrc"
 import { deviceOn, leaderOn, leftEditor, onState, peekPath, setEditorMode, setPeek, settings } from "./state"
 
+import type { ActionFn, CodeMirror, CodeMirrorV, MotionFn } from "@replit/codemirror-vim"
+
 type VimModule = typeof import("@replit/codemirror-vim")
 export type Vim = VimModule["Vim"]
-/** The CodeMirror 5-like editor the package drives (its `cm`), as much of it as this plugin uses. */
-export type CM = {
-  state: { vim?: { insertMode: boolean; visualMode: boolean; mode?: string; status?: string; inputState?: { keyBuffer: string[]; operator?: string | null } } }
-  cm6: EditorView
-  on: (event: string, fn: (e: { mode: string; subMode?: string }) => void) => void
-  indexFromPos: (p: { line: number; ch: number }) => number
-  posFromIndex: (i: number) => { line: number; ch: number }
-}
+export type CM = CodeMirror
 
 let loading: Promise<VimModule> | null = null
 export const loadVim = () => loading ??= import("@replit/codemirror-vim").then((m) => { setUp(m.Vim); return m })
 
-const viewOf = (cm: CM) => cm.cm6
+const viewOf = (cm: CM | CodeMirrorV): EditorView => cm.cm6
 const paths = new WeakMap<EditorView, string | undefined>()
 
 function linkAtCursor(view: EditorView) {
@@ -29,7 +24,7 @@ function linkAtCursor(view: EditorView) {
   const links = linksIn(line.text, line.from)
   return links.find((l) => pos >= l.from && pos < l.to) ?? links.find((l) => l.from >= pos) ?? null
 }
-function follow(cm: CM, how: "here" | "tab" | "split" | "browser") {
+function follow(cm: CodeMirrorV, how: "here" | "tab" | "split" | "browser") {
   const view = viewOf(cm)
   const l = linkAtCursor(view)
   if (!l) return
@@ -98,12 +93,11 @@ function setUp(Vim: Vim) {
 }
 
 export function installKeys(Vim: Vim) {
-  type MotionFn = Parameters<Vim["defineMotion"]>[1]
-  const motion = (fn: (view: EditorView, pos: number, forward: boolean, count: number) => number | null) =>
-    ((cm: CM, head: { line: number; ch: number }, args: { forward?: boolean; repeat?: number }) => {
+  const motion = (fn: (view: EditorView, pos: number, forward: boolean, count: number) => number | null): MotionFn =>
+    (cm, head, args) => {
       const to = fn(viewOf(cm), cm.indexFromPos(head), !!args.forward, args.repeat ?? 1)
       return to === null ? head : cm.posFromIndex(to)
-    }) as unknown as MotionFn
+    }
   Vim.defineMotion("vauHeading", motion(headingFrom))
   Vim.defineMotion("vauLink", motion(linkFrom))
   Vim.mapCommand("]]", "motion", "vauHeading", { forward: true, toJumplist: true }, {})
@@ -111,8 +105,7 @@ export function installKeys(Vim: Vim) {
   Vim.mapCommand("gl", "motion", "vauLink", { forward: true }, {})
   Vim.mapCommand("gL", "motion", "vauLink", { forward: false }, {})
 
-  type ActionFn = Parameters<Vim["defineAction"]>[1]
-  const action = (fn: (cm: CM) => void) => ((cm: CM) => fn(cm)) as unknown as ActionFn
+  const action = (fn: (cm: CodeMirrorV) => void): ActionFn => (cm) => fn(cm)
   const normal = { context: "normal" }
   Vim.defineAction("vauFollow", action((cm) => follow(cm, "here")))
   Vim.defineAction("vauFollowTab", action((cm) => follow(cm, "tab")))
@@ -138,7 +131,7 @@ export function installKeys(Vim: Vim) {
 
   Vim.defineAction("vauLeader", action((cm) => {
     if (leaderOn() && beginKeys("Space")) return
-    Vim.handleKey(cm as never, "l", "mapping")
+    Vim.handleKey(cm, "l", "mapping")
   }))
   Vim.defineAction("vauWindow", action(() => { beginKeys("Ctrl+W") }))
   Vim.defineAction("vauTabNext", action(() => runCommandById("tab:next")))
@@ -160,10 +153,7 @@ export function installKeys(Vim: Vim) {
 
 let wrote = ""
 function installClipboard(Vim: Vim) {
-  const rc = Vim.getRegisterController() as unknown as {
-    pushText: (name: string | null | undefined, op: string, text: string, linewise?: boolean, blockwise?: boolean) => void
-    unnamedRegister: { setText: (t: string, linewise?: boolean) => void; toString: () => string }
-  }
+  const rc = Vim.getRegisterController()
   const push = rc.pushText.bind(rc)
   rc.pushText = (name, op, text, linewise, blockwise) => {
     push(name, op, text, linewise, blockwise)
@@ -189,7 +179,7 @@ function installClipboard(Vim: Vim) {
     } catch {}
   }
   addEventListener("focus", () => void pull())
-  document.addEventListener("focusin", (e) => { if ((e.target as Element | null)?.closest?.(".cm-editor")) void pull() })
+  document.addEventListener("focusin", (e) => { if (e.target instanceof Element && e.target.closest(".cm-editor")) void pull() })
   const copied = () => setTimeout(() => {
     const sel = document.getSelection()?.toString()
     if (sel && !document.activeElement?.closest(".cm-editor")) take(sel)
@@ -216,7 +206,7 @@ function tracker(cm: CM) {
     const v = cm.state.vim
     setEditorMode(v ? (v.mode ?? (v.insertMode ? "insert" : v.visualMode ? "visual" : "normal")) : "normal", v?.status ?? "")
   }
-  cm.on("vim-mode-change", (e) => {
+  cm.on("vim-mode-change", (e: { mode: string; subMode?: string }) => {
     if (cm.state.vim) cm.state.vim.mode = e.mode + (e.subMode ? (e.subMode === "linewise" ? " line" : " block") : "")
     tell()
   })
@@ -225,11 +215,11 @@ function tracker(cm: CM) {
   return tell
 }
 
-function peekBack(view: EditorView, e: KeyboardEvent) {
+function peekBack(view: EditorView, e: KeyboardEvent, getCM: VimModule["getCM"]) {
   if (e.key !== "Escape" || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return false
   const path = paths.get(view)
   if (!path || peekPath() !== path) return false
-  const v = (view as unknown as { cm?: CM }).cm?.state.vim
+  const v = getCM(view)?.state.vim
   if (!v || v.insertMode || v.visualMode || v.inputState?.keyBuffer.length || v.inputState?.operator) return false
   setPeek(null)
   runCommandById("view:toggle")
@@ -238,9 +228,9 @@ function peekBack(view: EditorView, e: KeyboardEvent) {
 
 const VIM_CTRL = new Set(["KeyW", "KeyD", "KeyU", "KeyF", "KeyB", "KeyV", "KeyR", "KeyA", "KeyX", "KeyI", "KeyC"])
 
-function appKey(view: EditorView, e: KeyboardEvent) {
+function appKey(view: EditorView, e: KeyboardEvent, getCM: VimModule["getCM"]) {
   if (isMac || !e.ctrlKey || e.metaKey || e.altKey || !/^Key[A-Z]$/.test(e.code) || VIM_CTRL.has(e.code)) return false
-  const v = (view as unknown as { cm?: CM }).cm?.state.vim
+  const v = getCM(view)?.state.vim
   if (!v || v.insertMode || v.visualMode || v.inputState?.keyBuffer.length || v.inputState?.operator) return false
   return runShortcut(e)
 }
@@ -251,8 +241,8 @@ async function vimParts(): Promise<Extension> {
   const { vim, getCM } = await loadVim()
   parts = [
     Prec.highest(EditorView.domEventHandlers({ keydown: (e, view) => {
-      if (appKey(view, e)) return true
-      if (!peekBack(view, e)) return false
+      if (appKey(view, e, getCM)) return true
+      if (!peekBack(view, e, getCM)) return false
       e.preventDefault(); return true
     } })),
     vim({ status: false }),
@@ -260,7 +250,7 @@ async function vimParts(): Promise<Extension> {
     drawSelection(),
     theme,
     ViewPlugin.define((view) => {
-      const cm = getCM(view) as unknown as CM | null
+      const cm = getCM(view)
       const track = cm ? tracker(cm) : () => {}
       const tell = () => { lastView = view; track() }
       if (cm) { editorOpen(cm, true); void applyVimrc(cm) }
