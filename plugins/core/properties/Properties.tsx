@@ -10,6 +10,7 @@ export const ICONS: Record<PropType, LucideIcon> = {
 const NAMES: Record<PropType, string> = {
   text: "Text", number: "Number", checkbox: "Checkbox", date: "Date", datetime: "Date & time", list: "List", object: "Object", empty: "Empty",
 }
+const NAME_OF = new Map<string, string>(Object.entries(NAMES))
 const RETYPES: PropType[] = ["text", "number", "checkbox", "date", "list"]
 
 const plural = (n: number, one: string) => `${numberText(n)} ${one}${n === 1 ? "" : "s"}`
@@ -92,7 +93,7 @@ function Row({ p, big }: { p: PropSummary; big?: boolean }) {
   const Icon = ICONS[p.type]
   const mixed = Object.keys(p.types).filter((k) => k !== "empty").length > 1
   const menu = (e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); openMenu({ x: e.clientX, y: e.clientY }, menuOf(p)) }
-  const tip = `${NAMES[p.type]}${mixed ? ` (mixed: ${Object.entries(p.types).filter(([k]) => k !== "empty").map(([k, n]) => `${n} ${NAMES[k as PropType].toLowerCase()}`).join(", ")})` : ""}, in ${plural(p.count, "file")}`
+  const tip = `${NAMES[p.type]}${mixed ? ` (mixed: ${Object.entries(p.types).filter(([k]) => k !== "empty").map(([k, n]) => `${n} ${NAME_OF.get(k)?.toLowerCase()}`).join(", ")})` : ""}, in ${plural(p.count, "file")}`
   return (
     <div className={cn("group/row flex min-w-0 items-center gap-1.5 rounded-[5px] pr-1 pl-1.5 hover:bg-foreground/[0.04]", big ? "h-8 text-[15px] max-md:h-11 max-md:text-[17px]" : "h-7 text-[13px]")}
       data-property={p.key} onContextMenu={menu}>

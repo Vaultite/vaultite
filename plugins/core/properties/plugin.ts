@@ -1,3 +1,4 @@
+import { z } from "zod"
 import { HTTPError, Plugin } from "../../../core/plugins.ts"
 import { type Entry, readText, renameProperty, setPropertyText, sortBy, writeAtomic, type Vault } from "../../../core/vault.ts"
 
@@ -59,7 +60,8 @@ export function summary(vault: Vault): Summary[] {
   if (seen !== of.size) for (const [rel, e] of of) if (!vault.entries.has(rel)) { count(e, -1); of.delete(rel) }
   const byKey = new Map<string, Summary>()
   for (const [key, c] of counts) {
-    const types = Object.fromEntries(c) as Partial<Record<PropType, number>>
+    const types: Partial<Record<PropType, number>> = {}
+    for (const [t, n] of c) types[t] = n
     const known = [...c].filter(([t]) => t !== "empty").sort((a, b) => b[1] - a[1])
     byKey.set(key, { key, count: [...c.values()].reduce((a, b) => a + b, 0), type: known[0]?.[0] ?? "empty", types })
   }
@@ -99,7 +101,7 @@ plugin.route("GET", "properties", (req) => {
   return sortBy(files(plugin.vault).filter(([, e]) => e.fm && key in e.fm).map(([path, e]) => ({ path, value: e.fm[key] })), (r) => r.path.toLowerCase())
 })
 
-async function each(key: string, edit: (text: string, path: string, value: unknown, fm: Record<string, unknown>) => string | { skip: string } | null) {
+async function each(key: string, edit: (text: string, path: string, value: unknown, fm: Entry["fm"]) => string | { skip: string } | null) {
   const changed: string[] = [], skipped: { path: string; reason: string }[] = []
   for (const [path, e] of files(plugin.vault)) {
     if (!e.fm || !(key in e.fm)) continue
@@ -136,12 +138,13 @@ export function convert(v: unknown, type: (typeof TYPES)[number]): unknown {
   if (t === "empty") return undefined
   switch (type) {
     case "text":
-      if (t === "list") return (v as unknown[]).every((x) => x === null || typeof x !== "object") ? (v as unknown[]).join(", ") : undefined
+      if (Array.isArray(v)) return v.every((x) => x === null || typeof x !== "object") ? v.join(", ") : undefined
       return t === "object" ? undefined : String(v)
     case "number": {
       if (t === "number") return v
-      const n = typeof v === "string" && v.trim() !== "" ? Number(v) : NaN
-      return Number.isFinite(n) && String(n) === (v as string).trim() ? n : undefined
+      if (typeof v !== "string" || v.trim() === "") return undefined
+      const n = Number(v)
+      return Number.isFinite(n) && String(n) === v.trim() ? n : undefined
     }
     case "checkbox":
       if (t === "checkbox") return v
@@ -157,11 +160,11 @@ export function convert(v: unknown, type: (typeof TYPES)[number]): unknown {
 
 plugin.route("POST", "properties/retype", async (req) => {
   const key = keyOf(req.body?.key, "key")
-  const type = String(req.body?.type ?? "")
-  if (!(TYPES as readonly string[]).includes(type)) throw new HTTPError(400, `type: one of ${TYPES.join(", ")}`)
+  const type = TYPES.find((t) => t === String(req.body?.type ?? ""))
+  if (!type) throw new HTTPError(400, `type: one of ${TYPES.join(", ")}`)
   const before: { path: string; value: unknown }[] = []
   const r = await each(key, (text, path, value) => {
-    const neu = convert(value, type as (typeof TYPES)[number])
+    const neu = convert(value, type)
     if (neu === undefined) return typeOf(value) === "empty" ? null : { skip: `${JSON.stringify(value)} isn't a ${type}` }
     if (JSON.stringify(neu) === JSON.stringify(value)) return null
     const out = setPropertyText(text, key, neu)
@@ -172,12 +175,14 @@ plugin.route("POST", "properties/retype", async (req) => {
   return { changed: before.filter((b) => r.changed.includes(b.path)), skipped: r.skipped }
 })
 
+const Restore = z.array(z.object({ path: z.string(), value: z.unknown().optional() }).nullable().catch(null)).catch([])
+
 plugin.route("POST", "properties/restore", async (req) => {
   const key = keyOf(req.body?.key, "key")
-  const values = Array.isArray(req.body?.values) ? req.body.values as { path: string; value: unknown }[] : []
   const changed: string[] = []
-  for (const { path, value } of values) {
-    if (typeof path !== "string" || !plugin.vault.entries.has(path)) continue
+  for (const v of Restore.parse(req.body?.values)) {
+    if (!v || !plugin.vault.entries.has(v.path)) continue
+    const { path, value } = v
     const text = readText(plugin.vault.abs(path))
     const out = setPropertyText(text, key, value === null ? undefined : value)
     if (out !== null && out !== text) { writeAtomic(plugin.vault.abs(path), out); changed.push(path) }
@@ -205,7 +210,7 @@ the files that have it and its value in each.
     : { properties: await ctx.api("GET", "properties") }),
   text: (r) => {
     if (r.key) return r.files.length ? r.files.map((x: { path: string; value: unknown }) => `${x.path}  ${JSON.stringify(x.value)}`).join("\n") : `No file has ${r.key}.`
-    const ps = r.properties as Summary[]
+    const ps: Summary[] = r.properties
     const w = Math.max(4, ...ps.map((p) => p.key.length))
     return ps.length ? ps.map((p) => `${p.key.padEnd(w)}  ${String(p.count).padStart(5)}  ${p.type}${Object.keys(p.types).filter((t) => t !== "empty").length > 1 ? " (mixed)" : ""}`).join("\n") : "No properties yet."
   },
