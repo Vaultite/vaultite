@@ -62,9 +62,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   in one now, with the guests' address to copy; change access, extend it, remove it, or give someone a new link
   (`vau share new-link`) when theirs is lost.
 - **Quiet panel headings**: Settings > Sidebars can make the sidebars' panel names a slim gap that shows its name only
-  when you point there or hold ⌥, as browsers' vertical tabs look; right-click a panel for its own Heading ▸ (shown,
-  shown when pointed at, or hidden) or to fold it. Panels ▸ says which ticked panel is hidden while empty. Inbox, Links and other panels whose content needs a name keep theirs, and an empty
-  Inbox takes no room.
+  when you point there or hold ⌥, as browsers' vertical tabs look, one look for every panel; right-click a panel to
+  fold it. Panels ▸ says which ticked panel is hidden while empty. Inbox, Links and other panels whose content needs a
+  name keep theirs, and an empty Inbox takes no room.
 - **Jobs can run in the cloud**: set Jobs' cloud account and a coding job in a repo whose `.vaultite-jobs.json` says
   `"cloud": true` may run as its own Claude Code on the web session (after the always-on machines with room), followed
   from here: its questions, follow-ups and landing as any job's, its card opening the session.

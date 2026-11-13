@@ -1,13 +1,13 @@
 import { Children, createContext, Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { createPortal } from "react-dom"
-import { ChevronsDownUp, Ellipsis, EyeOff, Heading, Layers, PanelBottom, PanelBottomClose, PanelLeft, PanelRight, PanelTop, Search, SlidersHorizontal, SquareArrowOutUpRight, type LucideIcon } from "lucide-react"
+import { ChevronsDownUp, Ellipsis, EyeOff, Layers, PanelBottom, PanelBottomClose, PanelLeft, PanelRight, PanelTop, Search, SlidersHorizontal, SquareArrowOutUpRight, type LucideIcon } from "lucide-react"
 import type { SidebarCtx, SidebarPanel, TabMark } from "@/core/define"
 import { edgeScroller, getDrag, onDrag, startDrag, useDrag, useDragItem, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 import { openView } from "@/core/files"
 import { openDetail } from "@/core/nav"
-import { isDesktop, keysText } from "@/core/platform"
+import { isDesktop } from "@/core/platform"
 import { closeTab } from "@/core/workspace"
-import { defaultHeading, dockAtEnd, dockPanel, drawerPanels, headerItems, headingMode, setPanelHeading, hideBarItem, hidePanel, isBarItem, setHeaderItemShown, shownHeaderItems, panelOfView, panelsIn, setPanelDocked, setPanelHeight, sideOf, sidebarPanels, sidebars, togglePanelCollapsed, useSidebars, type HeadingMode, type PanelOf, type Side } from "@/core/plugins"
+import { dockAtEnd, dockPanel, drawerPanels, headerItems, headingMode, hideBarItem, hidePanel, isBarItem, setHeaderItemShown, shownHeaderItems, panelOfView, panelsIn, setPanelDocked, setPanelHeight, sideOf, sidebarPanels, sidebars, togglePanelCollapsed, useSidebars, type PanelOf, type Side } from "@/core/plugins"
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { firstKeys, keyCaps, runCommandById, useCommandKeys } from "@/core/commands"
 import { useDismiss } from "@/core/focus"
@@ -112,7 +112,7 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
       {panels.length ? panels.map((p, i) => {
         const { key, panel } = p
         const folded = setup.collapsed.includes(key)
-        const heading = headingMode(p, setup, prefs)
+        const heading = headingMode(panel, prefs)
         const divider = own && !folded && panels.slice(i + 1).some((q) => !setup.collapsed.includes(q.key))
         return (
           <Fragment key={key}>
@@ -125,7 +125,7 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
                 startDrag(e, { from: "panel", panel: key, label: handle.dataset.heading || panel.heading || panel.title, to: panel.view ? `view:${panel.view}` : undefined, drawn: !ctx.phone }, { touch: true })
               }
             }}
-            className={cn("flex shrink-0 flex-col pb-1", (heading !== "shown" || prefs.panelHeadings === "quiet") && !folded && "has-[[data-panel-empty]]:hidden", item?.panel === key && (item.drawn ? "invisible" : "opacity-50"))}>
+            className={cn("flex shrink-0 flex-col pb-1", prefs.panelHeadings === "quiet" && !folded && "has-[[data-panel-empty]]:hidden", item?.panel === key && (item.drawn ? "invisible" : "opacity-50"))}>
             <div data-panel-scroll className={cn("flex min-h-0 flex-col", own && !folded && "edge-fade-b overflow-y-auto")}>
               <div data-panel-content className="flex shrink-0 flex-col">
                 <PanelFold.Provider value={{ collapsed: folded, toggle: () => foldPanel(box.current, key, () => togglePanelCollapsed(key)), controls: panelId(key) }}>
@@ -298,14 +298,11 @@ export function panelMenu(key?: string, side?: Side): MenuItem[] {
   const tab = me.tab?.() ?? (view ? { name: me.title, open: () => openView(view, { newTab: true }) } : null)
   const open: MenuItem[] = tab ? [{ label: `Open ${tab.name} in a tab`, icon: SquareArrowOutUpRight, sep: !!own.length, run: tab.open }] : []
   const docked = !!s.dock?.includes(key)
-  const of = all.find((p) => p.key === key)!, mode = headingMode(of, s), placed = !!sideOf(key, s)
-  const pick = (v: HeadingMode, label: string, hint?: string): MenuItem => ({ label, hint: v === defaultHeading(of.panel) ? "Default" : hint, checked: mode === v, run: () => setPanelHeading(of, v) })
-  const ways = [pick("shown", "Shown"), pick("quiet", "Shown when pointed at"), pick("hidden", "Hidden", keysText("hold ⌥ to see"))]
-  const head: MenuItem[] = !placed ? [] : [{ label: "Heading", icon: Heading, hint: ways.find((w) => w.checked)?.label, sep: !!(own.length || open.length), run: () => {}, items: ways },
-    ...(mode !== "shown" && !s.collapsed.includes(key) ? [{ label: `Fold ${me.title}`, icon: ChevronsDownUp, run: () => togglePanelCollapsed(key) }] : [])]
+  // (a quiet heading can't be clicked to fold on touch, where nothing points at it)
+  const fold: MenuItem[] = sideOf(key, s) && headingMode(me) !== "shown" && !s.collapsed.includes(key) ? [{ label: `Fold ${me.title}`, icon: ChevronsDownUp, sep: !!(own.length || open.length), run: () => togglePanelCollapsed(key) }] : []
   const dock: MenuItem[] = me.dockable && !isDesktop() ? [{ label: docked ? "Take out of the dock" : "Put in the dock", icon: docked ? PanelBottomClose : PanelBottom, sep: !!(own.length || open.length), run: () => setPanelDocked(key, !docked) }] : []
-  return [...own, ...open, ...head, ...dock,
-    { label: "Panels", icon: Layers, sep: !!(own.length || open.length || head.length || dock.length), run: () => {}, items: list },
+  return [...own, ...open, ...fold, ...dock,
+    { label: "Panels", icon: Layers, sep: !!(own.length || open.length || fold.length || dock.length), run: () => {}, items: list },
     ...(me.tabList ? commandItems("tab:sidebar", "setting:pane-tab-bars").map((it, i) => ({ ...it, sep: i === 0 })) : []),
     { label: `Move to ${other} sidebar`, icon: other === "right" ? PanelRight : PanelLeft, sep: !me.tabList, run: () => dockAtEnd(key, other) },
     { label: `Hide ${me.title}`, icon: EyeOff, run: () => (isBarItem(key) ? hideBarItem(key) : hidePanel(key)) },

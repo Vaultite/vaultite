@@ -6,7 +6,7 @@ import type { App } from "../app.ts"
 import { panelsOf, type PanelDef } from "../appsource.ts"
 import { defineOp, type Op, OpError, type Param } from "../ops.ts"
 import { anchorFor } from "../slots.ts"
-import { defaultSidebars, filePanelKey, filePanelPath, HEADING_MODES, type HeadingMode, placePanel, readSidebars, setCollapsed, setDocked, setHeadingMode, type Side, sideOf, type Sidebars, withoutPanel } from "../sidebars.ts"
+import { defaultSidebars, filePanelKey, filePanelPath, placePanel, readSidebars, setCollapsed, setDocked, type Side, sideOf, type Sidebars, withoutPanel } from "../sidebars.ts"
 import { type Any, lines, serviceOn, windowWorkspace } from "./common.ts"
 import { onOff, pluginList } from "./plugins.ts"
 
@@ -14,9 +14,7 @@ export type Panel = { key: string; title: string; plugin: string; on: boolean
   /** Its sidebar (null: hidden), its place there (from 1), and whether it's folded to its heading. */
   side: Side | null; place: number | null; collapsed: boolean
   /** In a phone's dock (drawn there, not in its drawer). */
-  docked: boolean
-  /** Its heading's own mode (none: as appearance.json's `panelHeadings` has them). */
-  heading?: HeadingMode }
+  docked: boolean }
 
 /** Sidebars kept by a plugin (Workspaces: a workspace's), the service "sidebars:of"(n): what to call them, their setup
  *  (null: none of their own, sidebars.json's applies) and how to save a change. */
@@ -36,7 +34,7 @@ export function panelList(app: App, own?: Sidebars | null): { setup: Sidebars; p
   const panel = (d: PanelDef): Panel => {
     const side = sideOf(setup, d.key)
     return { key: d.key, title: d.title, plugin: d.plugin, on: on(d.plugin), side, place: side ? setup[side].indexOf(d.key) + 1 : null,
-      collapsed: setup.collapsed.includes(d.key), docked: !!setup.dock?.includes(d.key), ...(setup.headings?.[d.key] ? { heading: setup.headings[d.key] } : {}) }
+      collapsed: setup.collapsed.includes(d.key), docked: !!setup.dock?.includes(d.key) }
   }
   const byKey = new Map(defs.map((d) => [d.key, d]))
   const shown = [...setup.left, ...setup.right].flatMap((k) => byKey.get(k) ?? [])
@@ -50,7 +48,7 @@ const fileDef = (file: string): PanelDef => ({ key: filePanelKey(file), plugin: 
 /** The sidebars as text: each sidebar's panels in order, then the hidden ones. */
 export function showPanels(ps: Panel[]) {
   const side = (s: Side) => ps.filter((p) => p.side === s)
-    .map((p) => `  ${p.place}. ${p.key} (${p.title})${p.collapsed ? "  (collapsed)" : ""}${p.docked ? "  (phone dock)" : ""}${p.heading ? `  (heading ${p.heading})` : ""}${p.on ? "" : "  (plugin off)"}`)
+    .map((p) => `  ${p.place}. ${p.key} (${p.title})${p.collapsed ? "  (collapsed)" : ""}${p.docked ? "  (phone dock)" : ""}${p.on ? "" : "  (plugin off)"}`)
   const hidden = ps.filter((p) => !p.side)
   return [
     "Left sidebar:", lines(side("left"), "  (empty)"),
@@ -97,12 +95,10 @@ const PANEL = { type: "string", required: true, description: "the panel: its key
 
 const HELP = `The desktop app's two sidebars are stacks of plugins' panels (Search field, Pinned pages, File explorer,
 Terminals...), kept in .vaultite/sidebars.json: {"left": [panels], "right": [panels], "collapsed": [panels]}, top to
-bottom; \`collapsed\` are the ones folded to their heading; \`headings\`, panels whose heading is shown, quiet (a slim gap,
-its name showing when pointed at or ⌥ held) or hidden (only while ⌥ is held) otherwise than appearance.json's
-\`panelHeadings\` has them (shown, or quiet: then a panel whose content doesn't say what it is, like Inbox, stays shown); \`dock\`, the ones a phone draws as icons in its drawer's
-dock instead (Buttons). A panel in neither sidebar is hidden (its plugin stays
-on). Without the file, every panel its plugin doesn't hide is on the left, by its sort. With Workspaces on there's
-always a current workspace, and each has its own panels (\`sidebars\` in its entry; none of its own: sidebars.json's,
+bottom; \`collapsed\` are the ones folded to their heading; \`dock\`, the ones a phone draws as icons in its drawer's
+dock instead (Buttons); how every panel's heading looks is appearance.json's \`panelHeadings\` (vau settings).
+A panel in neither sidebar is hidden (its plugin stays on). Without the file, every panel its plugin doesn't hide is
+on the left, by its sort. With Workspaces on there's always a current workspace, and each has its own panels (\`sidebars\` in its entry; none of its own: sidebars.json's,
 which is also what new workspaces start with): these read and change the workspace the user's window is on
 (--workspace <n> for another, --vault for sidebars.json itself). A panel is named by its key, its title or a plain
 name: "terminals", "file tree" (or "files"), "pinned", "search". A file of the vault is a panel too, drawn there (a
@@ -118,7 +114,6 @@ count from 1, in the panel's sidebar.
   vau panels right Apps/Weather.html   (that file, drawn in the right sidebar)
   vau panels left "local graph"
   vau panels collapse pinned
-  vau panels heading tabs quiet        (shown, quiet or hidden; \`default\`: as appearance.json's panelHeadings)
   vau panels expand pinned
   vau panels dock buttons              (on phones, icons at the drawer's bottom; \`undock\` puts it back)
   vau panels hide terminals --workspace 2
@@ -134,7 +129,7 @@ export function panelOps(app: App): Op[] {
       const { setup, panels } = panelList(app, target?.setup)
       const next = fn(setup, namedPanel(app, panels, given.panel), given)
       if (target) await target.save(next)
-      else app.vault.patchConfig("sidebars", { left: next.left, right: next.right, collapsed: next.collapsed, heights: next.heights, heightsAt: next.heightsAt ?? null, dock: next.dock ?? null, headings: next.headings ?? null })
+      else app.vault.patchConfig("sidebars", { left: next.left, right: next.right, collapsed: next.collapsed, heights: next.heights, heightsAt: next.heightsAt ?? null, dock: next.dock ?? null })
       const after = panelList(app, target ? next : undefined)
       return { sidebars: after.setup, panels: after.panels, ...(target ? { workspace: target.label } : {}) }
     },
@@ -180,12 +175,6 @@ export function panelOps(app: App): Op[] {
     shown(s, p)
     return setCollapsed(s, p.key, false)
   }),
-  change("panel.heading", "panels heading", "Show a panel's heading, make it quiet (a slim gap, its name showing when pointed at or ⌥ held) or hide it (only while ⌥ is held); default: as appearance.json's panelHeadings.", ["mode"],
-    { mode: { type: "string", required: true, enum: [...HEADING_MODES, "default"], description: "shown, quiet, hidden, or default (as appearance.json's panelHeadings has them)" } },
-    (s, p, { mode }) => {
-      shown(s, p)
-      return setHeadingMode(s, p.key, mode === "default" ? null : mode as HeadingMode)
-    }),
   change("panel.dock", "panels dock", "On phones, draw a panel as icons in the drawer's dock, not in its drawer (Buttons).", [], {}, (s, p) => {
     shown(s, p)
     if (!panelDefs(app).find((d) => d.key === p.key)?.dockable) throw new OpError(`${p.title} has no dock form: ${panelDefs(app).filter((d) => d.dockable).map((d) => d.key).join(", ") || "no panel"} can be docked`)

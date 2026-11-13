@@ -1,7 +1,7 @@
-// Quiet panel headings (appearance.json `panelHeadings`, sidebars.json `headings`): a slim gap named on hover or ⌥,
-// folded panels and needsHeading ones shown, an empty Inbox gone, the panel menu's Heading and Fold, vau panels heading.
+// Quiet panel headings (appearance.json `panelHeadings`): a slim gap named on hover or ⌥, one look for every panel,
+// folded panels and needsHeading ones shown, an empty Inbox gone, the panel menu's Fold (no Heading of its own).
 // Exercises web/src/components/SidebarHeading.tsx, web/src/components/Sidebar.tsx, web/src/core/headingpeek.ts,
-// core/sidebars.ts, core/coreops/panels.ts. Writes sidebars.json and appearance.json: throwaway only.
+// core/coreops/panels.ts. Writes sidebars.json and appearance.json: throwaway only.
 //   node web/qa/panelheadings.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"
@@ -69,27 +69,21 @@ if (ai) {
   await until(async () => (await heading("pages:pages"))?.mode === "quiet", 5000)
 }
 
-// The panel's menu: Heading ▸ with its three choices, and Fold while it isn't shown.
+// The panel's menu: Fold while its heading isn't shown, and no Heading of its own (one look for every panel).
 const menuText = () => page.$eval("[role=menu]", (e) => e.textContent).catch(() => "")
 await page.click(`${panel("files:files")} [data-panel-handle]`, { button: "right", position: { x: 60, y: 8 } })
 await until(() => page.$("[role=menu]"), 3000)
 const m = await menuText()
-check("menu: Heading ▸ says the mode it's in", /HeadingShown when pointed at/.test(m), m)
+check("menu: no Heading ▸, every panel's being appearance's", !/Heading/.test(m), m)
 check("menu: Fold, its heading not being shown", /Fold File explorer/.test(m), m)
-// (no segmented row, nor the blank line under one: a submenu like the others)
-check("menu: no segmented control", !(await page.$("[role=menu] [data-menu-segments]")))
 const menus = () => page.$$eval("[role=menu]", (es) => es.map((e) => e.textContent))
-await page.getByRole("menuitem", { name: /^Heading/ }).hover()
-await until(async () => (await menus()).length > 1, 3000)
-const sub = (await menus()).at(-1)
-check("Heading ▸: its three choices, the one appearance gives every panel the Default", /^ShownShown when pointed atDefaultHidden/.test(sub), sub)
 await page.screenshot({ path: `${OUT}menu.png` })
 if (ai) {
   await page.getByRole("menuitem", { name: /^Panels/ }).hover()
   await until(async () => (await menus()).some((t) => /Inbox/.test(t)), 3000)
   const list = (await menus()).find((t) => /Inbox/.test(t))
   check("Panels ▸: the empty Inbox, on but out of sight, says so", /InboxHidden while empty/.test(list), list)
-  await page.getByRole("menuitem", { name: /^Heading/ }).hover()
+  await page.getByRole("menuitem", { name: /^Move to/ }).hover()
 }
 await page.getByRole("menuitem", { name: /Fold File explorer/ }).click()
 await until(async () => (await sidebars()).collapsed?.includes("files:files"), 5000)
@@ -97,20 +91,8 @@ await until(async () => (await heading("files:files"))?.mode === "shown", 5000)
 check("folded: its heading is shown, the only thing left of it", (await heading("files:files"))?.mode === "shown", await heading("files:files"))
 await page.screenshot({ path: `${OUT}folded.png` })
 
-// vau panels heading: one panel's own mode, saved in sidebars.json's `headings`, drawn at once; `default` takes it back.
-const op = (id, body) => fetch(new URL(`/api/ops/${id}`, B), { method: "POST", headers: json, body: JSON.stringify(body) }).then((r) => r.json())
-await op("panel.heading", { panel: "tabs", mode: "hidden" })
-check("op: saved in headings", (await sidebars()).headings?.["tabs:tabs"] === "hidden", await sidebars())
-await until(async () => (await heading("tabs:tabs"))?.mode === "hidden", 5000)
-const tabs = await (await page.$(`${panel("tabs:tabs")} [data-panel-handle]`)).boundingBox()
-await page.mouse.move(tabs.x + 40, tabs.y + tabs.height / 2); await settle()
-check("hidden: pointing doesn't name it", (await heading("tabs:tabs"))?.name === 0, await heading("tabs:tabs"))
-await page.mouse.move(900, 400)
-await op("panel.heading", { panel: "tabs", mode: "default" })
-check("op: default takes its own away", !(await sidebars()).headings, await sidebars())
-await op("panel.heading", { panel: "pinned", mode: "shown" })
-await until(async () => (await heading("pages:pages"))?.mode === "shown", 5000)
-check("op: one panel shown among quiet ones", (await heading("pages:pages"))?.mode === "shown" && (await heading("tabs:tabs"))?.mode === "quiet")
+// sidebars.json has no say in it: a panel isn't given a look of its own.
+check("no headings in sidebars.json", !("headings" in (await sidebars())), await sidebars())
 
 await appearance({ panelHeadings: null, tabBar: null })
 await done()

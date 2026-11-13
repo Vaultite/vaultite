@@ -3,16 +3,10 @@
 import { defaultOrder, placeKey, type SlotInfo } from "./slots.ts"
 
 export type Side = "left" | "right"
-/** How a panel's heading shows: as a heading, a slim gap whose name shows while pointed at (or ⌥ held), or a gap whose
- *  name shows only while ⌥ is held. A folded panel always shows its heading. */
-export type HeadingMode = "shown" | "quiet" | "hidden"
-export const HEADING_MODES: readonly HeadingMode[] = ["shown", "quiet", "hidden"]
 /** Panel keys are "<plugin id>:<name>" ("files:files"). */
 export type Sidebars = { left: string[]; right: string[]; collapsed: string[]; heights: Record<string, number>
   /** Shown panels a phone draws in its drawer's dock (icons only, at the thumb) instead of in their drawer. */
   dock?: string[]
-  /** Panels whose heading isn't as appearance.json's `panelHeadings` has it (HeadingMode). */
-  headings?: Record<string, HeadingMode>
   /** The sidebar's height (px) when `heights` were set: drawn at heights[k] * (its height now / heightsAt). */
   heightsAt?: number }
 /** What a panel needs to be in the default setup: its key, its plugin's `sort`, whether it's `hidden` until shown and
@@ -35,9 +29,7 @@ export function readSidebars(raw: unknown): Sidebars | null {
   const heights = Object.fromEntries(Object.entries(h).filter(([k, v]) => seen.has(k) && typeof v === "number" && v > 0).map(([k, v]) => [k, Math.round(v as number)]))
   const at = typeof o.heightsAt === "number" && o.heightsAt > 0 && Object.keys(heights).length ? { heightsAt: Math.round(o.heightsAt) } : {}
   const dock = [...new Set(keys(o.dock))].filter((k) => seen.has(k))
-  const hd = o.headings && typeof o.headings === "object" && !Array.isArray(o.headings) ? o.headings as Record<string, unknown> : {}
-  const headings = Object.fromEntries(Object.entries(hd).filter(([k, v]) => seen.has(k) && HEADING_MODES.includes(v as HeadingMode))) as Record<string, HeadingMode>
-  return { left, right, collapsed: [...new Set(keys(o.collapsed))].filter((k) => seen.has(k)), heights, ...at, ...(dock.length ? { dock } : {}), ...(Object.keys(headings).length ? { headings } : {}) }
+  return { left, right, collapsed: [...new Set(keys(o.collapsed))].filter((k) => seen.has(k)), heights, ...at, ...(dock.length ? { dock } : {}) }
 }
 
 /** The sidebars where nothing's saved: every panel not marked `hidden`, in its `side` (the left), by `sort` (then the
@@ -58,8 +50,7 @@ export function withoutPanel(s: Sidebars, key: string): Sidebars {
   const { [key]: _gone, ...heights } = s.heights
   const at = s.heightsAt && Object.keys(heights).length ? { heightsAt: s.heightsAt } : {}
   const dock = s.dock?.filter((k) => k !== key)
-  const { [key]: _was, ...headings } = s.headings ?? {}
-  return { left: s.left.filter((k) => k !== key), right: s.right.filter((k) => k !== key), collapsed: s.collapsed.filter((k) => k !== key), heights, ...at, ...(dock?.length ? { dock } : {}), ...(Object.keys(headings).length ? { headings } : {}) }
+  return { left: s.left.filter((k) => k !== key), right: s.right.filter((k) => k !== key), collapsed: s.collapsed.filter((k) => k !== key), heights, ...at, ...(dock?.length ? { dock } : {}) }
 }
 
 /** A panel that draws a file of the vault (a mini-app): its key ("pages:file/Apps/Weather.html"), and the file a key
@@ -77,28 +68,19 @@ export function movedFilePanels(s: Sidebars, src: string, dst: string | null): S
   }
   const all = (l: string[]) => l.flatMap((k) => moved(k) ?? [])
   const heights = Object.fromEntries(Object.entries(s.heights).flatMap(([k, v]) => { const to = moved(k); return to ? [[to, v]] : [] }))
-  const headings = s.headings && Object.fromEntries(Object.entries(s.headings).flatMap(([k, v]) => { const to = moved(k); return to ? [[to, v]] : [] }))
-  return { ...s, left: all(s.left), right: all(s.right), collapsed: all(s.collapsed), heights, ...(s.dock ? { dock: all(s.dock) } : {}), ...(headings ? { headings } : {}) }
+  return { ...s, left: all(s.left), right: all(s.right), collapsed: all(s.collapsed), heights, ...(s.dock ? { dock: all(s.dock) } : {}) }
 }
 
 /** Put a panel at a place: moved there (folded or not, as it was), or shown there if it was hidden. An anchor that isn't
  *  in that sidebar puts it at the end. */
 export function placePanel(s: Sidebars, key: string, to: Place): Sidebars {
-  const next = { ...withoutPanel(s, key), collapsed: s.collapsed, heights: s.heights, ...(s.heightsAt ? { heightsAt: s.heightsAt } : {}), ...(s.dock ? { dock: s.dock } : {}), ...(s.headings ? { headings: s.headings } : {}) }
+  const next = { ...withoutPanel(s, key), collapsed: s.collapsed, heights: s.heights, ...(s.heightsAt ? { heightsAt: s.heightsAt } : {}), ...(s.dock ? { dock: s.dock } : {}) }
   return { ...next, [to.side]: placeKey(next[to.side], key, to.before) }
 }
 
 /** Fold a panel to its heading, or open it. */
 export const setCollapsed = (s: Sidebars, key: string, collapsed: boolean): Sidebars =>
   ({ ...s, collapsed: collapsed ? [...s.collapsed.filter((k) => k !== key), key] : s.collapsed.filter((k) => k !== key) })
-
-/** Give a panel's heading a mode of its own, or none (null: as appearance.json's `panelHeadings` has them). */
-export function setHeadingMode(s: Sidebars, key: string, mode: HeadingMode | null): Sidebars {
-  const { headings: was = {}, ...rest } = s
-  const { [key]: _old, ...headings } = was
-  if (mode) headings[key] = mode
-  return { ...rest, ...(Object.keys(headings).length ? { headings } : {}) }
-}
 
 /** Put a panel in the phone's dock, or back in its drawer. */
 export function setDocked(s: Sidebars, key: string, docked: boolean): Sidebars {
