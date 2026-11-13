@@ -1,6 +1,6 @@
 // Reopen closed tab (core/workspace.ts reopenTab): what closed comes back as it was, what closed together together.
 // A pane back in its split at its size, a split tab whole, Close others undone by one ⌘⇧T, a tab group with its name,
-// its toast's Undo, Search tabs' and the phone's Recently closed. Writes workspaces (set aside, put back): throwaway only.
+// its toast (core/closedoffer.ts), Search tabs' and the phone's Recently closed. Writes workspaces: throwaway only.
 //   node web/qa/reopentab.mjs <base url> <vault path>
 import { readdirSync } from "node:fs"
 import path from "node:path"

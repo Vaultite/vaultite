@@ -52,6 +52,8 @@ import { KeyHints } from "@/components/KeyHints"
 import { preloadEditor } from "@/editor/lazy"
 import { Logo, SheetHead, Stone } from "@/components/kit"
 import { dismissNotice, notify, notifyError } from "@/core/notify"
+import { QUIET, stepOffer, type OfferEvent } from "@/core/closedoffer"
+import { trace } from "@/core/trace"
 import { editorSettings, showPropertiesAs } from "@/core/editorPrefs"
 import { PluginPreview } from "@/components/PluginPreview"
 import { PluginSettings } from "@/components/PluginSettings"
@@ -238,15 +240,23 @@ const fileGone = (to: string) => {
 }
 // Several tabs closed at once (Close others, a group): a toast offers them back, naming ⌘⇧T where it's bound, and goes
 // once they're open again by any way (its Undo, the keys, tab search).
-let closedToast = () => {}
-setClosedTogether((id, n) => {
-  closedToast()
-  const keys = commandKeys("tab:reopen"), toast = notify(`Closed ${n} tabs${keys ? ` · Reopen with ${keys}` : ""}`,
-    { id: "tabs-closed", action: { label: "Undo", run: () => reopenClosed(id, fileGone) } })
-  const back = () => { if (!closedTabs().some((e) => e.id === id)) { dismissNotice(toast); closedToast() } }
-  const off = onWorkspaceChange(back)
-  closedToast = () => { off(); closedToast = () => {} }
-})
+const CLOSED_TOAST = "tabs-closed"
+let offer = QUIET, unwatch = () => {}
+const tellOffer = (e: OfferEvent) => {
+  const { state, effects } = stepOffer(offer, e)
+  if (effects.length) trace("tabs", { ev: "closed-toast", from: offer.kind, on: e.type, to: state.kind })
+  offer = state
+  for (const fx of effects) {
+    if (fx.do === "unwatch") { unwatch(); unwatch = () => {} }
+    else if (fx.do === "dismiss") dismissNotice(CLOSED_TOAST)
+    else if (fx.do === "watch") unwatch = onWorkspaceChange(() => tellOffer({ type: "changed", closed: closedTabs().map((c) => c.id) }))
+    else {
+      const keys = commandKeys("tab:reopen"), { id } = fx
+      notify(`Closed ${fx.n} tabs${keys ? ` · Reopen with ${keys}` : ""}`, { id: CLOSED_TOAST, action: { label: "Undo", run: () => reopenClosed(id, fileGone) } })
+    }
+  }
+}
+setClosedTogether((id, n) => tellOffer({ type: "closed", id, n }))
 
 setSheetFile((store, path) => <FileView store={store} path={path} pane={false} />)
 
