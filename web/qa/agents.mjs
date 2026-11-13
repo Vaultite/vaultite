@@ -280,7 +280,7 @@ const up = await mcp.tool("browser_act", { tab: t2, action: "upload", ref: fileR
 check("MCP: a vault file uploaded into a file input", !up.isError && await until(async () => /Picked cv\.txt, 20 bytes/.test(text(await mcp.tool("browser_read", { tab: t2 }))), 5000), [text(up), snap3])
 const ev = await mcp.tool("browser_evaluate", { tab: t2, expression: "({ title: document.title, page: typeof window.secretOfThePage })" })
 check("MCP: an expression in its own world: the DOM, not the page's scripts", text(ev) === '{"title":"Upload","page":"undefined"}', text(ev))
-const linkRef = /link "The log book" \[ref=(e\d+)\]/.exec(text(await mcp.tool("browser_snapshot", { tab: t2 })))?.[1]
+const linkRef = /link "The log book"(?: \(→ [^)]*\))? \[ref=(e\d+)\]/.exec(text(await mcp.tool("browser_snapshot", { tab: t2 })))?.[1]
 const dl = text(await mcp.tool("browser_act", { tab: t2, action: "click", ref: linkRef }))
 check("MCP: a click that downloads says where it went", dl.includes(`Downloaded log book.txt to ${path.join(DOWNLOADS, "log book.txt")}`), dl)
 const asked = await mcp.tool("browser_ask_user", { tab: t1, reason: "Sign in to the made-up site" })
