@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { plainError, type FormatCtx } from "@vaultite"
+import { plainError, trackSoon, type FormatCtx } from "@vaultite"
 import { parseCanvas, unfoldOnDrop, writeCanvas, type CanvasDoc } from "./codec"
 
 export function useBoardDoc(text: string, editable: boolean, onChange: FormatCtx["onChange"]) {
@@ -25,7 +25,10 @@ export function useBoardDoc(text: string, editable: boolean, onChange: FormatCtx
     if (timer.current) clearTimeout(timer.current)
     timer.current = setTimeout(() => flush.current(), 300)
   }, [onChange])
-  useEffect(() => () => { if (timer.current) { clearTimeout(timer.current); flush.current() } }, [])
+  useEffect(() => {
+    const off = trackSoon("the board's save", () => timer.current !== null, true)
+    return () => { off(); if (timer.current) { clearTimeout(timer.current); flush.current() } }
+  }, [])
 
   const live = (next: CanvasDoc) => { docRef.current = next; setDoc(next); save(next) }
   const commit = (next: CanvasDoc, before: CanvasDoc = docRef.current) => {

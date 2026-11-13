@@ -2,13 +2,14 @@
 // lands where it should, paused mid-way too. Sets appearance.json's pullActions (then unsets it): throwaway server.
 //   node web/qa/tabmotion.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
-import { apiAt, qa, wait } from "./lib/qa.mjs"
+import { apiAt, qa, until, wait } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
 const { args: [B, OUT = "/tmp/tabmotion-shots/"], browser, check, watch, done } = await qa(import.meta.url, { motion: true })
 mkdirSync(OUT, { recursive: true })
 // Frames mid-way only when asked (QA_FRAMES=1): a screenshot during a transition can hold up headless Chrome's next
 // frame past the transition's 4s limit, which then fails it.
 const FRAMES = !!process.env.QA_FRAMES
-const shot = (o) => (FRAMES ? P.screenshot(o) : null)
+const shot = async (o) => { if (FRAMES) { await P.waitForFunction(() => document.getAnimations().some((a) => a.playState === "running")); await P.screenshot(o) } }
 
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true })
 await ctx.addInitScript(() => {
@@ -43,26 +44,27 @@ await ctx.addInitScript(() => {
     return a
   }
 })
-const P = watch(await ctx.newPage(), { console: true, ignore: null })
+const P = watch(await ctx.newPage(), { console: true, ignore: null }), ui = app(P)
+const frame = () => P.evaluate(() => new Promise((r) => requestAnimationFrame(() => r())))
 
 const files = await fetch(`${B}api/state`).then((r) => r.json()).then((s) => s.files.files.filter((f) => f.path.startsWith("Notes/") && f.path.endsWith(".md")).map((f) => f.path))
 const [a, b] = files
 await P.goto(`${B}#file/${encodeURIComponent(a)}`)
 await P.waitForSelector("[data-phone-bar]")
-await wait(800)
+await ui.idle()
 // A second tab: a blank one, then the file opened in it.
 await P.click("[data-bar=new]")
-await wait(800)
+await ui.idle()
 await P.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent(b)}`)
-await wait(800)
+await ui.idle()
 const last = () => P.evaluate(() => window.__vt.at(-1))
 const zoomed = () => P.evaluate(() => window.__zooms.at(-1))
 const zooms = () => P.evaluate(() => window.__zooms.length)
-// Until every transition started has ended (finished or failed; 5s at most), then a moment for the page.
+// Until every transition started has ended (finished or failed; 5s at most), and the page is idle.
 const settled = async () => {
-  await wait(150)
-  for (let i = 0; i < 50 && await P.evaluate(() => [...window.__vt, ...window.__zooms].some((r) => r.ok === null)); i++) await wait(100)
-  await wait(400)
+  await ui.idle()
+  await until(() => P.evaluate(() => [...window.__vt, ...window.__zooms].every((r) => r.ok !== null)))
+  await ui.idle()
   return P.evaluate(() => ({ motion: document.documentElement.dataset.motion ?? null, zoom: "tabZoom" in document.documentElement.dataset,
     vars: document.documentElement.style.cssText, running: document.getAnimations().filter((a) => a.playState === "running").length,
     moved: [...document.querySelectorAll("#main-scroll > main, [data-phone-header], [data-tabs-pager]")].some((e) => e.style.transform || e.getAnimations().length),
@@ -100,13 +102,13 @@ await P.click("[data-tabs-button]")
 await P.waitForSelector("[data-tab-hero]")
 let frames = await stepped("out")
 check("tab list opening, stepped: the picture stays in its card, unstretched, inside the list", frames.every((x) => x.ok), frames.filter((x) => !x.ok))
-await wait(600)
+await settled()
 await P.evaluate(() => { window.__hold = true })
 await P.click("[data-sheet-done]")
 await P.waitForSelector("[data-tab-hero]")
 frames = await stepped("in")
 check("Done, stepped: the picture stays in its card, unstretched, inside the list", frames.every((x) => x.ok), frames.filter((x) => !x.ok))
-await wait(800)
+await settled()
 
 // Done tapped while the list is still opening: the page turns around from where it had got to, not from its card.
 const win = () => P.evaluate(() => { const r = document.querySelector("[data-tab-hero] [data-hero-window]")?.getBoundingClientRect(); return r && [r.left, r.top, r.width, r.height] })
@@ -125,7 +127,7 @@ check("Done mid-opening: list closed, nothing left behind", !(await P.isVisible(
 
 // Tabs: open the list.
 await P.click("[data-tabs-button]")
-await wait(150); await shot({ path: `${OUT}open-mid.png` })
+await shot({ path: `${OUT}open-mid.png` })
 let s = await settled()
 check("tab list: zoomed", (await zoomed())?.ok === true && (await zoomed()).kind === "hero", await zoomed())
 check("tab list: open", await P.isVisible("[data-tab-card]"), null)
@@ -139,7 +141,7 @@ await P.screenshot({ path: `${OUT}open-end.png` })
 // Pick the other card.
 const other = await P.evaluate(() => { const r = [...document.querySelectorAll("[data-tab-row]")].find((r) => !r.querySelector("[aria-current]")); return r?.dataset.tabRow })
 await P.click(`[data-tab-row="${other}"] button[aria-label]:not([aria-label^=Close])`)
-await wait(150); await shot({ path: `${OUT}pick-mid.png` })
+await shot({ path: `${OUT}pick-mid.png` })
 s = await settled()
 check("pick: zoomed", (await zoomed())?.ok === true && (await zoomed()).kind === "hero", await zoomed())
 check("pick: list closed", !(await P.isVisible("[data-tab-card]")), null)
@@ -158,7 +160,7 @@ check("done: list closed, same tab", !(await P.isVisible("[data-tab-card]")) && 
 // Back and Forward.
 check("forward off before going back", await P.isDisabled("[data-bar=forward]"), null)
 await P.click("[data-bar=back]")
-await wait(120); await shot({ path: `${OUT}back-mid.png` })
+await shot({ path: `${OUT}back-mid.png` })
 s = await settled()
 check("back: transition ran", (await last())?.ok === true && (await last()).kind === "back", await last())
 check("back: the tab before", (await title()) === stem(b), await title())
@@ -174,7 +176,7 @@ check("forward: nothing left behind", clean(s), s)
 const cdp = await P.context().newCDPSession(P)
 const swipe = async (x0, x1) => {
   await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: x0, y: 400 }] })
-  for (let i = 1; i <= 10; i++) { await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x0 + ((x1 - x0) * i) / 10, y: 402 }] }); await wait(16) }
+  for (let i = 1; i <= 10; i++) { await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x0 + ((x1 - x0) * i) / 10, y: 402 }] }); await frame() }
   await P.screenshot({ path: `${OUT}swipe-${x0}-${x1}.png` })
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
 }
@@ -183,13 +185,14 @@ await swipe(6, 260)
 s = await settled()
 check("left edge swipe: the drawer, not back", (await title()) === stem(a) && (await P.evaluate(() => window.__vt.length)) === before
   && (await P.locator("[data-phone-drawer=left][aria-hidden=false]").count()) === 1, { t: await title(), s })
-await P.keyboard.press("Escape"); await wait(400)
+await P.keyboard.press("Escape"); await ui.idle()
 
 // A finger's drag: from (x0, y0) to (x1, y1) in steps, let go at the end.
 const drag = async (x0, y0, x1, y1, mid) => {
   await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: x0, y: y0 }] })
-  for (let i = 1; i <= 12; i++) { await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x0 + ((x1 - x0) * i) / 12, y: y0 + ((y1 - y0) * i) / 12 }] }); await wait(20) }
-  await wait(200)
+  for (let i = 1; i <= 12; i++) { await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x0 + ((x1 - x0) * i) / 12, y: y0 + ((y1 - y0) * i) / 12 }] }); await frame() }
+  await ui.idle()
+  await wait(100) // held still: a pull runs only once held 90 ms (PullActions' HELD)
   const seen = await mid?.()
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
   return seen
@@ -216,39 +219,40 @@ check("bar dragged a little: springs back, no tab list", (await zooms()) === n &
 // The page pulled down from its top: New note, Open a file, Close tab (the default pullActions), picked by going sideways.
 const t0 = await title(), c0 = await count()
 const pulled = await drag(195, 300, 195, 470, () => P.evaluate(() => [...document.querySelectorAll("[data-pull][data-on]")].map((e) => e.dataset.pull)))
-await wait(400)
+await ui.idle()
 check("pull down: Open a file picked in the middle opens the quick switcher, the tab stays", pulled.join() === "switcher:open" && (await P.locator("[role=dialog][aria-label=\"Search\"]").count()) > 0 && (await title()) === t0 && (await count()) === c0, { pulled, t: await title() })
-await P.keyboard.press("Escape"); await wait(300)
+await P.keyboard.press("Escape"); await ui.idle()
 check("pull down: the page back in place", !(await P.evaluate(() => document.querySelector("#main-scroll > main")?.style.transform)) && !(await P.locator("[data-pull-actions]").count()))
 // A short pull fills only part of the ring and runs nothing; a flick right through it runs nothing either.
 const early = await drag(195, 300, 195, 330, () => P.evaluate(() => [...document.querySelectorAll("[data-pull] > span:first-child")].map((e) => Number(e.style.opacity))))
-await wait(400)
+await ui.idle()
 check("pull down a bit: only the page moves, no icons yet", early.length === 3 && early.every((o) => o === 0), early)
 const searchOpen = () => P.locator("[role=dialog][aria-label=\"Search\"]").count()
 const short = await drag(195, 300, 195, 430, () => P.evaluate(() => ({ ring: !!document.querySelector("[data-pull-ring]"), on: document.querySelectorAll("[data-pull][data-on]").length })))
-await wait(400)
+await ui.idle()
 check("pull down a little: the ring shows, nothing runs", short.ring && !short.on && !(await searchOpen()) && (await title()) === t0, short)
-await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: 195, y: 300 }] })
-for (let i = 1; i <= 4; i++) await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: 195, y: 300 + i * 50 }] })
-await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
-await wait(400)
+// (stamped a frame apart: sent as they come, a busy machine can space them past PullActions' HELD, which runs it)
+const flickAt = Date.now() / 1000, at = (i) => flickAt + i * 0.016
+await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: 195, y: 300 }], timestamp: at(0) })
+for (let i = 1; i <= 4; i++) await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: 195, y: 300 + i * 50 }], timestamp: at(i) })
+await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [], timestamp: at(5) })
+await ui.idle()
 check("pull down: a flick through it runs nothing", !(await searchOpen()) && (await title()) === t0)
 const right = await drag(195, 300, 300, 470, () => P.evaluate(() => [...document.querySelectorAll("[data-pull][data-on]")].map((e) => e.dataset.pull)))
-await wait(600)
+await ui.idle()
 check("pull down and right: Close tab", right.join() === "tab:close" && (await count()) === c0 - 1, { right, n: await count() })
 // Its commands are appearance.json's pullActions: the app follows a change at once.
 const api = apiAt(B)
-await api("PATCH", "config/appearance", { pullActions: ["palette:open", "file:new", "tab:close"] })
-await wait(1200)
+await ui.sees(".vaultite/appearance.json", () => api("PATCH", "config/appearance", { pullActions: ["palette:open", "file:new", "tab:close"] }))
 const offered = await drag(195, 300, 90, 470, () => P.evaluate(() => [...document.querySelectorAll("[data-pull]")].map((e) => `${e.dataset.pull}${e.dataset.on ? "*" : ""}`)))
-await wait(400)
+await ui.idle()
 check("pull down and left: the commands pullActions names, its left one run", offered.join() === "palette:open*,file:new,tab:close" && (await P.locator("[role=dialog][aria-label=\"Command palette\"]").count()) > 0, offered)
-await P.keyboard.press("Escape"); await wait(300)
+await P.keyboard.press("Escape"); await ui.idle()
 await api("PATCH", "config/appearance", { pullActions: null })
 
 // A new tab from the bar's +.
 await P.click("[data-bar=new]")
-await wait(120); await shot({ path: `${OUT}new-mid.png` })
+await shot({ path: `${OUT}new-mid.png` })
 s = await settled()
 check("new tab: zoomed", (await zoomed())?.ok === true && (await zoomed()).kind === "new", await zoomed())
 check("new tab: nothing left behind", clean(s), s)

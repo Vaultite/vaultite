@@ -4,7 +4,8 @@
 // What moves it most, so verify runs it on them: web/src/App.tsx, web/src/core/plugins.ts (plugins' backgrounds, redrawn on
 // every change), web/src/core/data.ts, web/src/editor/Editor.tsx; the nightly run has the rest.
 import fs from "node:fs"
-import { qa, until, wait } from "./lib/qa.mjs"
+import { qa, until } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
 const { args: [B0], browser, check, done } = await qa(import.meta.url)
 const B = B0.endsWith("/") ? B0 : `${B0}/`
 const RATCHET = process.argv.includes("--ratchet"), CENSUS = process.argv.includes("--census")
@@ -37,19 +38,11 @@ const HOOK = () => {
 
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
 await ctx.addInitScript(HOOK)
-const page = await ctx.newPage()
+const page = await ctx.newPage(), ui = app(page)
 const put = (path, text) => fetch(new URL("/api/file", B), { method: "PUT", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/qa" }, body: JSON.stringify({ path, text }) })
 await put(OTHER, "A note no tab shows.\n")
 const reset = () => page.evaluate(() => Object.assign(window.__counts, { commits: 0, rendered: 0, byName: {} }))
 const read = () => page.evaluate(() => window.__counts)
-/** The page done with what came before: nothing committed for a while. */
-const quiet = async (ms = 600) => {
-  for (let i = 0; i < 40; i++) {
-    const a = (await read()).commits
-    await wait(ms)
-    if ((await read()).commits === a) return
-  }
-}
 const busiest = (c) => Object.entries(c.byName).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([n, k]) => `${n} ${k}`).join(", ")
 
 await page.goto(`${B}#file/${encodeURIComponent(NOTE)}`)
@@ -57,7 +50,7 @@ await until(() => page.evaluate(() => document.querySelectorAll(".cm-content .cm
 await page.click(".cm-content")
 await page.keyboard.press("ControlOrMeta+End")
 await page.keyboard.press("End")
-await quiet()
+await ui.idle()
 
 const now = {}, why = {}
 // Per keystroke, the components rendered before the autosave (held till the keys are counted), keys 200 ms apart so
@@ -65,15 +58,16 @@ const now = {}, why = {}
 const typeCounted = async (name, typed) => {
   for (const words of [typed, typed.split("").reverse().join("")]) {
     const saves = []
-    await page.route("**/api/file", (r) => (r.request().method() === "PUT" ? saves.push(r) : r.continue()))
+    let holding = true
+    await page.route("**/api/file", (r) => (holding && r.request().method() === "PUT" ? saves.push(r) : r.continue()))
     await reset()
     await page.keyboard.type(words, { delay: 200 })
     const c = await read(), k = `${name}.renderedPerKey`
     if (!(c.rendered / words.length >= now[k])) { now[k] = c.rendered / words.length; why[name] = `${busiest(c)}${saves.length ? `; ${saves.length} saves held` : ""}` }
-    await page.unroute("**/api/file")
+    holding = false
     for (const r of saves) await r.continue()
-    await wait(1500)
-    await quiet()
+    await page.unroute("**/api/file")
+    await ui.idle()
   }
 }
 await typeCounted("typing", " the quick brown fox jumps")
@@ -86,19 +80,18 @@ await op("companion.comment", { path: NOTE, find: SPOT, text: "A comment the key
 await until(() => page.evaluate(() => !!document.querySelector(".companion-cursor") && !!document.querySelector("[data-companion-note], [data-companion-gutter]")), 8000)
 await page.click(".cm-content")
 await page.keyboard.press("ControlOrMeta+End")
-await quiet()
+await ui.idle()
 await typeCounted("companion", " over the lazy dog")
 await op("companion.clear")
-await quiet()
+await page.waitForFunction(() => !document.querySelector("[data-companion-note], [data-companion-gutter]"))
+await ui.idle()
 let c
 
 // A note no tab shows, changed behind the app: what redraws for it. The fewest of three (what else the page was doing
 // only adds: the least is the change's own).
 for (let i = 0; i < 3; i++) {
   await reset()
-  await put(OTHER, `A note no tab shows, changed ${Date.now()}.\n`)
-  await wait(1500)
-  await quiet()
+  await ui.sees(OTHER, () => put(OTHER, `A note no tab shows, changed ${Date.now()}.\n`))
   c = await read()
   if (!(c.rendered >= now["elsewhere.rendered"])) { now["elsewhere.rendered"] = c.rendered; why.elsewhere = busiest(c) }
 }
@@ -106,13 +99,13 @@ for (let i = 0; i < 3; i++) {
 // The quick switcher, then a name typed into it: per keystroke.
 await page.keyboard.press("ControlOrMeta+o")
 await until(() => page.evaluate(() => !!document.querySelector("[role=dialog] input[role=combobox]")), 5000)
-await quiet()
+await ui.idle()
 // (words inside files held till the keys are counted: on a busy machine they'd land between two keys, or not)
 const query = "vault", found = []
 await page.route("**/api/search?*", (r) => found.push(r))
 await reset()
 await page.keyboard.type(query, { delay: 120 })
-await wait(300)
+await ui.idle({ held: (r) => r.url().includes("/api/search?") })
 c = await read()
 now["switcher.renderedPerKey"] = c.rendered / query.length
 why.switcher = busiest(c)
@@ -121,12 +114,11 @@ for (const r of found) await r.continue().catch(() => {})
 await page.keyboard.press("Escape")
 
 // The command palette opened: it draws the rows near the screen, not one per command (~700 on a big vault).
-await quiet()
+await ui.idle()
 await reset()
 await page.keyboard.press("ControlOrMeta+p")
 await until(() => page.evaluate(() => !!document.querySelector("[role=dialog] [role=option]")), 5000)
-await wait(300)
-await quiet()
+await ui.idle()
 c = await read()
 now["palette.rendered"] = c.rendered
 why.palette = busiest(c)

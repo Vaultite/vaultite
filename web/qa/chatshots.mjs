@@ -3,7 +3,8 @@
 //   node web/qa/chatshots.mjs <base url> [out dir] [scene,scene...] [size,size...]
 import { mkdirSync } from "node:fs"
 import { deflateSync } from "node:zlib"
-import { qa, wait } from "./lib/qa.mjs"
+import { qa } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
 const { args: [B, OUT = "/tmp/chatshots/", ONLY = "", SIZES_ONLY = ""], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 
@@ -102,7 +103,6 @@ const SCENES = {
   queued: { hello: { s: S("working"), live: DONE.slice(0, 5) }, then: async (page) => {
     await page.locator("[data-composer] textarea").fill("Also update the changelog when you're done.")
     await page.keyboard.press("Enter")
-    await wait(400)
   } },
   // a turn as it streams: thinking, words written a few at a time, a call running, then more words
   streaming: { hello: { s: S("working"), live: [DONE[0]], asked: 4000 }, stream: true },
@@ -121,30 +121,31 @@ const hello = (h) => JSON.stringify({ t: "hello", found: true, s: h.s, title: "R
   tui: null, driven: "", history: { entries: h.asked ? [{ ...h.live[0], at: new Date(Date.now() - h.asked).toISOString() }, ...h.live.slice(1)] : h.live, start: 0 } })
 
 /** `end`: told as the turn is about to end (its result, then idle), so a video can mark where its work folds away. */
-async function stream(ws, page, shot, end = () => {}) {
+async function stream(ws, page, ui, shot, end = () => {}) {
   const put = (e) => ws.send(JSON.stringify({ t: "put", e }))
+  const frame = () => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r())))
   const words = LONG.split(/(?<=\s)/)
   put({ k: "thinking", id: "m1:0", text: "Finding where", at: at(2), live: true })
-  await wait(700); await shot("01-thinking")
+  await ui.idle(); await shot("01-thinking")
   put({ k: "thinking", id: "m1:0", text: "Finding where the date is set.", at: at(2) })
   let said = ""
   for (const [n, w] of "I'll find where the date is set, then read it from the front matter.".split(/(?<=\s)/).entries()) {
-    said += w; put(text("m1:1", said, 3, true)); await wait(40)
+    said += w; put(text("m1:1", said, 3, true)); await frame()
     if (n === 6) await shot("02-text-streaming")
   }
   put(text("m1:1", said, 3))
   put(tool("t1", "Grep", "2026-12-01 in site", { pattern: "2026-12-01", path: "site" }, undefined, 4, { live: true }))
-  await wait(300); await shot("03-tool-running")
+  await ui.idle(); await shot("03-tool-running")
   put(tool("t1", "Grep", "2026-12-01 in site", { pattern: "2026-12-01", path: "site" }, "site/build.ts:14", 4))
   put(tool("t3", "Edit", "site/build.ts", EDIT, undefined, 7, { live: true }))
-  await wait(300); await shot("04-second-tool")
+  await ui.idle(); await shot("04-second-tool")
   put(tool("t3", "Edit", "site/build.ts", EDIT, "updated", 7))
   put(tool("t4", "Bash", "Run the tests", { command: "npm test -- site" }, undefined, 9))
-  await wait(400); await shot("05-bash-running")
+  await ui.idle(); await shot("05-bash-running")
   put(tool("t4", "Bash", "Run the tests", { command: "npm test -- site" }, "ℹ tests 42\nℹ pass 42", 9))
   said = ""
   for (const [n, w] of words.entries()) {
-    said += w; put(text("m2:0", said, 12, true)); await wait(25)
+    said += w; put(text("m2:0", said, 12, true)); await frame()
     if (n === 20) await shot("06-answer-streaming")
     if (n === 60) await shot("07-answer-streaming-more")
   }
@@ -152,14 +153,14 @@ async function stream(ws, page, shot, end = () => {}) {
   end()
   put({ k: "result", id: "r-stream", ok: true, ms: 14_000, at: at(13) })
   ws.send(JSON.stringify({ t: "state", s: S("idle") }))
-  await wait(500); await shot("08-done")
+  await ui.idle(); await shot("08-done")
 }
 
 for (const size of SIZES) {
   const ctx = await browser.newContext({ viewport: size.viewport, colorScheme: size.scheme, deviceScaleFactor: size.phone ? 2 : 1, ...(size.phone ? { isMobile: true, hasTouch: true } : {}) })
   for (const [name, sc] of Object.entries(SCENES)) {
     if (ONLY && !ONLY.split(",").includes(name)) continue
-    const page = watch(await ctx.newPage(), { label: `${size.name} ${name}`, ignore: /favicon|Failed to load resource|WebSocket/ })
+    const page = watch(await ctx.newPage(), { label: `${size.name} ${name}`, ignore: /favicon|Failed to load resource|WebSocket/ }), ui = app(page)
     let sock = null
     await page.routeWebSocket(/\/api\/claude-code\/chat\/qa-chat$/, (ws) => { sock = ws; if (!sc.silent) ws.send(hello(sc.hello)) })
     await page.route("**/api/ops/claude-code.chat-*", (r) => r.fulfill({ json: { id: "qa-chat", state: "working" } }))
@@ -169,16 +170,15 @@ for (const size of SIZES) {
     const drawn = await page.locator(sc.silent ? "[data-composer]" : "[data-chat=qa-chat] [data-entries]").waitFor({ timeout: 20000 }).then(() => true, () => false)
     check(`${size.name} ${name}: drawn`, drawn)
     await page.addStyleTag({ content: "[data-sonner-toaster]{display:none!important}" })
-    await wait(900)
-    for (const sel of sc.open ?? []) { await page.locator(sel).first().click().catch(() => {}); await wait(350) }
-    if (sc.open) await wait(500)
-    if (sc.then) { await sc.then(page, sock); await wait(400) }
+    await ui.idle()
+    for (const sel of sc.open ?? []) { await page.locator(sel).first().click().catch(() => {}); await ui.idle() }
+    if (sc.then) { await sc.then(page, sock); await ui.idle() }
     const file = (n) => `${OUT}${size.name}-${name}${n ? `-${n}` : ""}.png`
-    if (sc.stream) await stream(sock, page, (n) => page.screenshot({ path: file(n) }))
+    if (sc.stream) await stream(sock, page, ui, (n) => page.screenshot({ path: file(n) }))
     else {
       if (name === "done" || name === "expanded" || name === "images") {
         await page.evaluate((top) => { const s = document.querySelector("[data-chat] .overflow-y-auto"); if (s) s.scrollTop = top ? 0 : s.scrollHeight }, name !== "done")
-        await wait(500) // (what fades as it scrolls, Jump to latest, at rest)
+        await ui.idle()
       }
       await page.screenshot({ path: file() })
     }
@@ -186,12 +186,12 @@ for (const size of SIZES) {
   }
   // a new chat, as the tab opens
   if (!ONLY || ONLY.split(",").includes("new")) {
-    const page = watch(await ctx.newPage(), { label: `${size.name} new` })
+    const page = watch(await ctx.newPage(), { label: `${size.name} new` }), ui = app(page)
     await page.goto("about:blank")
     await page.goto(`${B}#view/claude-session%2Fnew`)
     check(`${size.name} new: drawn`, await page.locator("[data-composer]").waitFor({ timeout: 20000 }).then(() => true, () => false))
     await page.addStyleTag({ content: "[data-sonner-toaster]{display:none!important}" })
-    await wait(900)
+    await ui.idle()
     await page.screenshot({ path: `${OUT}${size.name}-new.png` })
     await page.close()
   }
@@ -206,7 +206,7 @@ if (!ONLY || ONLY.split(",").includes("motion")) {
     const vdir = `${OUT}video-${size.name}/`
     const ctx = await browser.newContext({ viewport: size.viewport, colorScheme: size.scheme, ...(size.phone ? { isMobile: true, hasTouch: true } : {}),
       recordVideo: { dir: vdir, size: size.viewport } })
-    const page = watch(await ctx.newPage(), { label: `${size.name} motion`, ignore: /favicon|Failed to load resource|WebSocket/ })
+    const page = watch(await ctx.newPage(), { label: `${size.name} motion`, ignore: /favicon|Failed to load resource|WebSocket/ }), ui = app(page)
     // (the video starts once the page is made: marks count from then, so each sheet starts as its action does)
     const t0 = Date.now()
     let sock = null
@@ -215,29 +215,29 @@ if (!ONLY || ONLY.split(",").includes("motion")) {
     await page.goto(`${B}#view/claude-session%2Fqa-chat`)
     await page.locator("[data-chat=qa-chat] [data-entries]").waitFor({ timeout: 20000 })
     await page.addStyleTag({ content: "[data-sonner-toaster]{display:none!important}" })
-    await wait(1000)
+    await ui.idle()
     const marks = []
     const mark = (name) => marks.push([name, (Date.now() - t0) / 1000])
     mark("stream")
     sock.send(JSON.stringify({ t: "state", s: S("working") }))
-    await stream(sock, page, async () => {}, () => mark("collapse"))
-    await wait(1000)
+    await stream(sock, page, ui, async () => {}, () => mark("collapse"))
+    await ui.idle()
     mark("open-tool")
     await page.locator("[data-work] button[aria-expanded]").first().click().catch(() => {})
-    await wait(700)
+    await ui.idle()
     await page.locator("[data-tool=Edit] button").first().click().catch(() => {})
-    await wait(700)
+    await ui.idle()
     await page.locator("[data-tool=Edit] button").first().click().catch(() => {})
-    await wait(700)
+    await ui.idle()
     await page.locator("[data-work] button[aria-expanded]").first().click().catch(() => {})
-    await wait(700)
+    await ui.idle()
     mark("send")
     await page.locator("[data-composer] textarea").fill("Ship it to the preview, please.")
     await page.keyboard.press("Enter")
-    await wait(150)
+    await ui.idle()
     sock.send(JSON.stringify({ t: "put", e: { ...user("u9", "Ship it to the preview, please.", 0), at: new Date().toISOString() } }))
     sock.send(JSON.stringify({ t: "state", s: S("working") }))
-    await wait(1500)
+    await ui.idle()
     mark("end")
     await ctx.close()
     const video = readdirSync(vdir).find((f) => f.endsWith(".webm"))

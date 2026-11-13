@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { ArrowDown, History } from "lucide-react"
-import { glide, moves, notifyError, useDesktop } from "@vaultite"
+import { glide, moves, notifyError, trackSoon, useDesktop } from "@vaultite"
 import "./chat.css"
 import { type Driven, drivenOf } from "./driven"
 import { nameTab, NEW } from "./titles"
@@ -66,7 +66,12 @@ function ChatOf({ id, setArg, c, d, back }: { id: string; setArg: (arg: string) 
   const askedAt = turns.at(-1)?.user?.at
   const lastEnded = !!turns.at(-1)?.ended
   const [late, setLate] = useState(false)
-  useEffect(() => { setLate(false); if (!live || !lastEnded) return; const t = setTimeout(() => setLate(true), 1500); return () => clearTimeout(t) }, [live, lastEnded])
+  useEffect(() => {
+    setLate(false)
+    if (!live || !lastEnded) return
+    const off = trackSoon("the turn's status", () => true), t = setTimeout(() => { off(); setLate(true) }, 1500)
+    return () => { off(); clearTimeout(t) }
+  }, [live, lastEnded])
   const going = live && (!lastEnded || late)
   const status = going && c.s ? <Status entries={c.entries} since={askedAt ? Date.parse(askedAt) : c.s.at} state={c.s.state} asking={pending.length > 0} /> : null
   const composer = <Composer id={id} fresh={fresh} c={c} o={o} asks={pending} working={working} queued={queued} setArg={setArg}

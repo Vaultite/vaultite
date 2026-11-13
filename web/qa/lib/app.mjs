@@ -33,12 +33,14 @@ function changedPaths(url, payload) {
 
 export function app(page) {
   const out = requestsOut(page), heard = framesHeard(page)
-  /** Nothing out, unsaved, due or moving for `quiet` ms: a request a timer starts comes a moment after the last. */
-  async function idle({ timeout = 10_000, quiet = 150, saves = false } = {}) {
+  /** Nothing out, unsaved, due or moving for `quiet` ms: a request a timer starts comes a moment after the last.
+   *  `held`: requests the script holds itself (page.route), not waited for. */
+  async function idle({ timeout = 10_000, quiet = 150, saves = false, held = () => false } = {}) {
     const end = Date.now() + timeout
     let since = 0, last = []
     for (;;) {
-      last = [...(out.size ? [`${out.size} requests: ${[...out].slice(0, 3).map((r) => new URL(r.url()).pathname).join(", ")}`] : []),
+      const waiting = [...out].filter((r) => !held(r))
+      last = [...(waiting.length ? [`${waiting.length} requests: ${waiting.slice(0, 3).map((r) => new URL(r.url()).pathname).join(", ")}`] : []),
         ...await pageBusy(page, saves).catch((e) => [`no answer: ${e.message.split("\n")[0]}`])]
       if (last.length) since = 0
       else if (!since) since = Date.now()

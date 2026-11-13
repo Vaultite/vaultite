@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Search, TextSearch } from "lucide-react"
 import { getStore, type Store } from "@/core/data"
 import { get } from "@/core/http"
+import { trackSoon } from "@/core/unsaved"
 import { cleanName, createNamed, folderOf, openFile, openNew, openView, stem } from "@/core/files"
 import { currentFile, newTabsAt } from "@/core/workspace"
 import { launcherAt, launcherClosed } from "@/core/launcher"
@@ -54,12 +55,14 @@ export function SearchPalette({ store, onClose, launcher = false }: { store: Sto
     const query = q.trim()
     if (!node || short) return
     let on = true
+    const off = trackSoon("the switcher's search", () => true)
     const t = setTimeout(() => {
+      off()
       get<{ results: Found[]; files: number }>(`search?q=${encodeURIComponent(query)}&limit=${limit}&total=1`)
         .then((f) => on && setText({ hits: f.results.map((r) => foundHit(r, node)), files: f.files }))
         .catch(() => on && setText({ hits: [], files: 0 }))
     }, limit > PAGE ? 0 : 150)
-    return () => { on = false; clearTimeout(t) }
+    return () => { on = false; off(); clearTimeout(t) }
   }, [q, node, plain, limit, short, setText])
   const queried = useQueried(plain && !error ? q : "")
   const lead = launcher ? launcherText(disabled) : null
