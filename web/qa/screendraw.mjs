@@ -553,7 +553,7 @@ for (const pointer of [{ x: 640, y: 740 }, null]) {
   await page.screenshot({ path: path.join(SHOTS, "screendraw-rings.png") })
   const moved = { ...ELEMENTS, "el:row1": { ...ELEMENTS["el:row1"], y: ELEMENTS["el:row1"].y + 200 } }
   await show(page, layer(moved))
-  const mid = await until(async () => { const b = await box("[data-mark-i='0']"); return b && b.y > ring.y + 2 && b }, 2000, 10) || await box("[data-mark-i='0']")
+  const mid = await until(async () => { const b = await box("[data-mark-i='0']"); return b && b.y > ring.y + 2 && b }, 10_000, 10) || await box("[data-mark-i='0']")
   await idle(page)
   const end = await box("[data-mark-i='0']")
   const drawn = await page.evaluate(() => [...document.querySelectorAll("[data-mark-i='0'] .sd-pen")].every((p) => Math.abs(parseFloat(getComputedStyle(p).strokeDashoffset)) < 0.01))
