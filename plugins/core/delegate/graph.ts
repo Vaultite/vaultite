@@ -1,22 +1,26 @@
-import type { PermissionMode, Question } from "../../../core/agents.ts"
+import { z } from "zod"
+import { PERMISSION_MODES, type PermissionMode, type Question } from "../../../core/agents.ts"
 
-export type Party = { agent: string; terminal?: string; session?: string }
+const Party = z.object({ agent: z.string(), terminal: z.string().optional(), session: z.string().optional() })
+export type Party = z.infer<typeof Party>
 
-export type TaskState = "working" | "waiting" | "done" | "error" | "cancelled"
+export type TaskState = Task["state"]
 
-export type Task = {
-  id: string
-  parent: Party | null
-  child: Party
-  task: string; title: string; cwd: string
-  model?: string; effort?: string
-  mode: PermissionMode | null
-  state: TaskState
-  ask?: string; questions?: Question[]
-  result?: string; files?: string[]; error?: string
-  started: number; at: number
-  turn: number
-}
+export const Task = z.object({
+  id: z.string(),
+  parent: Party.nullable(),
+  child: Party,
+  task: z.string(), title: z.string(), cwd: z.string(),
+  model: z.string().optional(), effort: z.string().optional(),
+  mode: z.enum(PERMISSION_MODES).nullable(),
+  state: z.enum(["working", "waiting", "done", "error", "cancelled"]),
+  ask: z.string().optional(), questions: z.array(z.custom<Question>()).optional(),
+  result: z.string().optional(), files: z.array(z.string()).optional(), error: z.string().optional(),
+  started: z.number(), at: z.number(),
+  turn: z.number(),
+})
+export type Task = z.infer<typeof Task>
+export const TasksFile = z.object({ tasks: z.array(Task).default([]) })
 
 export const same = (a: Party, b: Party) => (!!a.terminal && a.terminal === b.terminal) || (!!a.session && a.session === b.session)
 

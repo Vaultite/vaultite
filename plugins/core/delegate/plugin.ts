@@ -4,7 +4,7 @@ import { agentModel, type AgentModels, type Asking, type Choice, agentName, HOME
   startAgent } from "../../../core/agents.ts"
 import { byUser, type OpCtx, OpError, Plugin, quoted, userSurface } from "../../../core/plugins.ts"
 import { type Item, writeAtomic } from "../../../core/vault.ts"
-import { cascade, childrenOf, clampMode, ended, known, type Party, same, type Task, taskOf, titleOf } from "./graph.ts"
+import { cascade, childrenOf, clampMode, ended, known, type Party, same, type Task, TasksFile, taskOf, titleOf } from "./graph.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -22,7 +22,7 @@ let tasks: Task[] | null = null
 let saving: ReturnType<typeof setTimeout> | null = null
 export function all(): Task[] {
   if (tasks) return tasks
-  try { tasks = (JSON.parse(fs.readFileSync(file(), "utf8")).tasks ?? []) as Task[] } catch { tasks = [] }
+  try { tasks = TasksFile.parse(JSON.parse(fs.readFileSync(file(), "utf8"))).tasks } catch { tasks = [] }
   return tasks
 }
 function save() {
@@ -305,8 +305,8 @@ it's done (vau delegate status <id> to look, --wait to wait).
   run: async (p, ctx) => {
     const said = str(p.task).trim()
     if (!said) throw new OpError("task: what to do")
-    const parent = callerOf(p, ctx), agent = str(p.agent)
-    const { mode, clamped } = clampMode(await ceilingOf(parent), p.permissions as PermissionMode | undefined, !parent)
+    const parent = callerOf(p, ctx), agent = str(p.agent), asked: PermissionMode | undefined = p.permissions
+    const { mode, clamped } = clampMode(await ceilingOf(parent), asked, !parent)
     const how = await plugin.ask<AgentModels | null>(`agent-models:${agent}`, null)
     if (!how) throw new OpError(`${nameOf(agent)} isn't here: its plugin is off (vau plugin on ${agent === "claude" ? "claude-code" : agent})`, 409)
     if (mode && !how.modes?.includes(mode)) throw new OpError(`${nameOf(agent)} can't be held to a permission mode here (its plugin is older): delegate to another agent`, 409)
@@ -370,7 +370,8 @@ user may have set that only they answer (then it waits for them, in their inbox)
       throw new OpError(t.state === "waiting" ? `it waits on the user for ${WAITS[t.ask ?? ""] ?? "something"}: only they answer that` : "it doesn't ask anything now", 409)
     }
     const qs = t.questions
-    const picks: Choice[] = (p.picks as string[]).map((x, i) => {
+    const given: string[] = p.picks
+    const picks: Choice[] = given.map((x, i) => {
       const ns = x.split(",").map((n) => Number(n.trim()))
       return ns.every((n) => Number.isInteger(n) && n >= 1 && n <= (qs[i]?.options.length ?? 0)) ? ns : x
     })
