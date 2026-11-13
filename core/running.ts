@@ -33,7 +33,7 @@ export type PartRuns = { id: string; label: string; commit: string | null; runs:
 export function runningIn(root: string, web: () => WebBuild) {
   const git = (...args: string[]) => exec("git", ["-C", root, ...args], { timeout: 5000, env: gitEnv() }).then((r) => r.stdout.trim(), () => null)
   const label = (id: string) => ENTRIES.find((e) => e.id === id)?.label ?? id
-  const start = (async () => {
+  const look = async () => {
     const commit = await git("rev-parse", "HEAD")
     if (commit) {
       const [at, ...subject] = (await git("log", "-1", "--format=%ct%n%s", commit) ?? "").split("\n")
@@ -41,7 +41,8 @@ export function runningIn(root: string, web: () => WebBuild) {
     }
     try { return { commit: String(JSON.parse(fs.readFileSync(path.join(root, "electron", "build.json"), "utf8")).commit ?? "") || null, branch: null } }
     catch { return { commit: null, branch: null } }
-  })()
+  }
+  let start = look()
   let parses: ParseCache | undefined
   const graphNow = async (): Promise<{ graph: Graph } | { why: string }> => {
     const mod = graphModule()
@@ -63,7 +64,9 @@ export function runningIn(root: string, web: () => WebBuild) {
   }
 
   async function running(): Promise<Running> {
-    const s = await start, b = web(), w = b.stamp
+    let s = await start
+    if (!s.commit) s = await (start = look())
+    const b = web(), w = b.stamp
     const base: Running = { commit: s.commit, ...(s.subject ? { subject: s.subject } : {}), ...(s.at ? { at: s.at } : {}), branch: s.branch,
       startedOn: s.commit, web: { entry: b.entry, commit: w?.commit ?? null } }
     if (w && s.commit && w.commit !== s.commit && await sameServer(s.commit, w.commit)) return { ...base, commit: w.commit, subject: w.subject, at: w.at }
