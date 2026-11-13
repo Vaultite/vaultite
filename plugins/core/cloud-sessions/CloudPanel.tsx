@@ -137,8 +137,8 @@ export function Picker({ big }: { big?: boolean }) {
 function useGroups() {
   const { s, shown, picked } = usePicked()
   const { list } = useShown(s, shown, picked)
-  const groups = picked || shown.length < 2 ? [{ account: picked ?? shown[0], list: list ?? [] }]
-    : shown.map((a) => ({ account: a as CloudAccount | undefined, list: (list ?? []).filter((c) => c.account === a.id) }))
+  const groups: { account: CloudAccount | undefined; list: CloudSession[] }[] = picked || shown.length < 2 ? [{ account: picked ?? shown[0], list: list ?? [] }]
+    : shown.map((a) => ({ account: a, list: (list ?? []).filter((c) => c.account === a.id) }))
   const loose = !picked && shown.length > 1 ? (list ?? []).filter((c) => !c.account || !s.accounts.some((a) => a.id === c.account)) : []
   if (loose.length) groups.push({ account: undefined, list: loose })
   return { s, shown, picked, groups, named: groups.length > 1 }
