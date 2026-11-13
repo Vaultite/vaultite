@@ -1,12 +1,13 @@
 import fs from "node:fs"
 import path from "node:path"
-import { byUser, localDate, localTime, opcodes, OpError, Plugin, vaultPath, whoOf } from "../../../core/plugins.ts"
+import { byUser, localDate, localTime, logger, opcodes, OpError, Plugin, vaultPath, whoOf } from "../../../core/plugins.ts"
 import { isHiddenPath, type Item, readText, requestWriter, setPropertyText, type Vault, writeAtomic, type Writer } from "../../../core/vault.ts"
 import { type Author, authorText, MAX_SPANS, type Mark, resolve, type Span, written } from "./authorship.ts"
 import { saysAi } from "./xmp.ts"
 import { z } from "zod"
 
 export const plugin = new Plugin(import.meta.url)
+const log = logger("provenance")
 
 export const DEFAULT_VALUES = [
   { value: "human", label: "Human", icon: "user", tint: "green", hint: "You wrote it" },
@@ -87,7 +88,7 @@ plugin.onCreateFile((rel, file, writer) => {
   const label = agent ? agentValue() : says() ? "" : userValue()
   try {
     relist((l) => { if (label) l[rel] = label; else delete l[rel] })
-  } catch (e) { console.error(`provenance: couldn't label ${rel}: ${e instanceof Error ? e.message : String(e)}`) }
+  } catch (e) { log.error("couldn't label a file", undefined, { path: rel, error: e instanceof Error ? e.message : String(e) }) }
 })
 
 plugin.onMove((from, to, trashed) => {
@@ -170,10 +171,10 @@ async function readAll(vault: Vault) {
       if (readVersion !== before && ++n % 200 === 0) keep(vault)
     }
   } catch (e) {
-    console.error("provenance: reading files:", e)
+    log.error("reading files", e)
   } finally {
     busy = false
-    if (n) try { keep(vault) } catch (e) { console.error("provenance:", e) }
+    if (n) try { keep(vault) } catch (e) { log.error("keeping authorship", e) }
   }
 }
 
@@ -323,7 +324,7 @@ async function authorOf(w: Writer, t: number): Promise<Author> {
 
 const turns = new Map<string, Promise<void>>()
 function inTurn(rel: string, fn: () => Promise<void>) {
-  const run = (turns.get(rel) ?? Promise.resolve()).then(fn).catch((e) => console.error(`provenance: authorship of ${rel}:`, e))
+  const run = (turns.get(rel) ?? Promise.resolve()).then(fn).catch((e) => log.error("authorship", e, { path: rel }))
   turns.set(rel, run)
   void run.then(() => { if (turns.get(rel) === run) turns.delete(rel) })
   return run

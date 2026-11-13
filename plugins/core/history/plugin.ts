@@ -3,10 +3,11 @@ import { once } from "node:events"
 import fs from "node:fs"
 import path from "node:path"
 import { z } from "zod"
-import { HTTPError, isTextKind, kindOf, LOADED, LOCAL, localDate, localTime, Plugin, Text, vaultHere } from "../../../core/plugins.ts"
+import { HTTPError, isTextKind, kindOf, LOADED, LOCAL, localDate, localTime, logger, Plugin, Text, vaultHere } from "../../../core/plugins.ts"
 import { fetchFromICloud, READ_WAIT, type Vault, writeAtomic } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
+const log = logger("history")
 
 const HOUR = 3600_000
 
@@ -61,7 +62,7 @@ function current(s: State, rel: string): Meta | undefined {
 function saveIndex(s: State) {
   if (s.saving) clearTimeout(s.saving)
   s.saving = null
-  try { writeAtomic(path.join(s.root, INDEX), JSON.stringify([...s.heads.values()])) } catch (e) { console.error("history:", e) }
+  try { writeAtomic(path.join(s.root, INDEX), JSON.stringify([...s.heads.values()])) } catch (e) { log.error("writing the index", e) }
 }
 
 /** undefined: unreadable now (iCloud may give it at its next sync). */
@@ -252,9 +253,9 @@ plugin.onSync((vault) => {
   if (following) { again = true; return }
   following = (async () => {
     do { again = false; await follow(vault) } while (again)
-  })().catch((e) => { states.get(vault)?.seen.clear(); console.error("history:", e) }).finally(() => { following = null })
+  })().catch((e) => { states.get(vault)?.seen.clear(); log.error("following changes", e) }).finally(() => { following = null })
 })
-const timer = setInterval(() => { try { if (plugin.loaded) prune(plugin.vault) } catch (e) { console.error(e) } }, HOUR)
+const timer = setInterval(() => { try { if (plugin.loaded) prune(plugin.vault) } catch (e) { log.error("pruning", e) } }, HOUR)
 timer.unref()
 plugin.onUnload(() => {
   clearInterval(timer)

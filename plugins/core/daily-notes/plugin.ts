@@ -1,7 +1,8 @@
-import { formatDate, OpError, parseDate, Plugin, section, today } from "../../../core/plugins.ts"
+import { formatDate, logger, OpError, parseDate, Plugin, section, today } from "../../../core/plugins.ts"
 import { type Entry, extract, fetchFromICloud, joinPath, Kind, readText, setPropertyText, stemOf, str, writeNew } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
+const log = logger("daily-notes")
 
 const ISO = /^\d{4}-\d\d-\d\d$/
 let spec: { version: number; format: string; template: string; folder: string | null; named: Map<string, boolean> } | null = null
@@ -86,7 +87,7 @@ async function mergeCopies(rel: string) {
       if (next === null) continue
       if (next !== text) await plugin.host.api("PUT", "file", { path: rel, text: next, base: text })
       await plugin.runOp("archive.add", { path: copy.rel })
-    } catch (err) { console.error(`daily-notes: couldn't merge ${copy.rel} into ${rel}: ${err instanceof Error ? err.message : String(err)}`) }
+    } catch (err) { log.error("couldn't merge a copy into its note", undefined, { copy: copy.rel, note: rel, error: err instanceof Error ? err.message : String(err) }) }
   }
 }
 function merged(text: string, e: Entry, copy: Entry): string | null {

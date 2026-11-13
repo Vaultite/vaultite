@@ -1,5 +1,6 @@
-import { HTTPError, keptOf, MACHINE_CLIENT, type Plugin, type SharedKept as Shared } from "../../../core/plugins.ts"
+import { HTTPError, keptOf, logger, MACHINE_CLIENT, type Plugin, type SharedKept as Shared } from "../../../core/plugins.ts"
 import { z } from "zod"
+const log = logger("machines")
 
 type Peer = { id: string; label: string; url: string; online: boolean; self: boolean; via?: string; vault?: string }
 const PUSH_MS = 300, PULL_MS = 30_000
@@ -39,7 +40,7 @@ export function shareKept(plugin: Plugin, machines: () => Promise<Peer[]>, vault
       try {
         const r = await fetch(`${m.url}/api/machines/kept`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" }, body, signal: AbortSignal.timeout(5000) })
         if (r.ok || r.status === 404) return true
-        console.warn(`machines: ${m.label} didn't take what's kept here (${r.status} ${(await r.text()).slice(0, 200)})`)
+        log.warn("a machine didn't take what's kept here", { machine: m.label, status: r.status, body: (await r.text()).slice(0, 200) })
       } catch {}
       return false
     }

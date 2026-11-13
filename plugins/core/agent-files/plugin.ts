@@ -1,10 +1,11 @@
 import fs from "node:fs"
 import { z } from "zod"
 import path from "node:path"
-import { agentLines, LOADED, Plugin, ROOT, WriteRefused } from "../../../core/plugins.ts"
+import { agentLines, LOADED, logger, Plugin, ROOT, WriteRefused } from "../../../core/plugins.ts"
 import { fetchFromICloud, writeAtomic } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
+const log = logger("agent-files")
 
 const ERRNO = z.object({ errno: z.number() })
 const MADE = z.array(z.string()).catch([])
@@ -97,6 +98,6 @@ plugin.onSync(() => {
     if (notHereYet(e)) { retryAt = Date.now() + 10_000; return }
     if (e instanceof WriteRefused) { refusedAt = plugin.vault.settingsVersion; return }
     retryAt = Date.now() + Math.min(5 * 60_000, 2_000 * 2 ** failures++)
-    console.error("agent-files:", e)
+    log.error("writing agent files", e, { failures })
   }
 })

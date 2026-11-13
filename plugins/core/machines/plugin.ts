@@ -1,13 +1,14 @@
 import crypto from "node:crypto"
 import { z } from "zod"
 import os from "node:os"
-import { API_VERSION, APP_VERSION, bullets, HTTPError, inDesktop, LOADED, localDate, noDesktop, MACHINE_CLIENT, onTailnet, Plugin, replyWithin, reply, running, section, Text } from "../../../core/plugins.ts"
+import { API_VERSION, APP_VERSION, bullets, HTTPError, inDesktop, LOADED, localDate, logger, noDesktop, MACHINE_CLIENT, onTailnet, Plugin, replyWithin, reply, running, section, Text } from "../../../core/plugins.ts"
 import { dialIn, type DialEntry } from "./dial.ts"
 import { shareKept } from "./kept.ts"
 import { alerts, duration, EVERY, KEEP_DAYS, machineNow, type Now, report, reportText, sample, SampleRow, watch, type Report, type Sample } from "./health.ts"
 import type { Item } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
+const log = logger("machines")
 
 export type Machine = {
   id: string; label: string; url: string; online: boolean; self: boolean
@@ -302,7 +303,7 @@ async function sampleHealth() {
     await plugin.ask("inbox:event", null, { source: "machines", kind: "error", key: `health-${HOST}-${a.key}`, title: a.title, body: a.body })
 }
 if (process.env.VAULTITE_TEST !== "1") {
-  const sampler = setInterval(() => void sampleHealth().catch((e) => console.error("machines: health sample:", e)), EVERY)
+  const sampler = setInterval(() => void sampleHealth().catch((e) => log.error("health sample", e)), EVERY)
   sampler.unref?.()
   plugin.onUnload(() => clearInterval(sampler))
 }

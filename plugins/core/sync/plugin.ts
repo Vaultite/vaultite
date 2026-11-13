@@ -3,13 +3,14 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { pipeline } from "node:stream/promises"
-import { type Conflict, type Entry, FileAnswer, HTTPError, LOCAL, localDate, localTime, MACHINE_CLIENT, onTailnet, Plugin, Replica, sha256hex as sha, SYNC_PROTOCOL as PROTOCOL, unsynced, type Vector } from "../../../core/plugins.ts"
+import { type Conflict, type Entry, FileAnswer, HTTPError, LOCAL, localDate, localTime, logger, MACHINE_CLIENT, onTailnet, Plugin, Replica, sha256hex as sha, SYNC_PROTOCOL as PROTOCOL, unsynced, type Vector } from "../../../core/plugins.ts"
 import { DiskFolder, DiskStore } from "./disk.ts"
 import { Mailbox } from "./mailbox.ts"
 import { Mirror, snapshot } from "./hub.ts"
 import { BlobsAsk, type Compare, CompareRun, DeviceSettings, ExchangeAnswer, ExchangeAsk, SavedExtra } from "./wire.ts"
 
 export const plugin = new Plugin(import.meta.url)
+const log = logger("sync")
 
 export type SetConfig = {
   id: string
@@ -374,12 +375,12 @@ async function load() {
   for (const [id, s] of running) if (!want.some((w) => w.id === id && w.folder === s.cfg.folder && w.input === s.cfg.input)) { s.close(); running.delete(id) }
   for (const cfg of want) {
     if (running.has(cfg.id)) continue
-    if (!cfg.input && syncedByOthers(cfg.folder)) { console.warn(`sync: ${syncedByOthers(cfg.folder)}`); continue }
+    if (!cfg.input && syncedByOthers(cfg.folder)) { log.warn(syncedByOthers(cfg.folder), { id: cfg.id, folder: cfg.folder }); continue }
     try {
       const s = new SyncSet(cfg, cfg.device ?? await selfId())
       running.set(cfg.id, s)
       s.start()
-    } catch (e) { console.warn(`sync: ${cfg.id}: ${e instanceof Error ? e.message : String(e)}`) }
+    } catch (e) { log.warn("a sync failed", { id: cfg.id, error: e instanceof Error ? e.message : String(e) }) }
   }
 }
 const boot = setTimeout(() => { if (plugin.loaded) void load() }, FAST ? 200 : 4000)

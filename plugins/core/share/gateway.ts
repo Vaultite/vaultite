@@ -5,8 +5,9 @@ import path from "node:path"
 import { type Duplex, Readable, Writable } from "node:stream"
 import { WebSocket, WebSocketServer } from "ws"
 import { z } from "zod"
-import { contentType, guestRefusal, HTTPError, type Machine, MACHINE_CLIENT, OpError, parseSearch, pipeSockets, type Plugin, reply, ROOT, Text, type Who, linkTargets } from "../../../core/plugins.ts"
+import { contentType, guestRefusal, HTTPError, logger, type Machine, MACHINE_CLIENT, OpError, parseSearch, pipeSockets, type Plugin, reply, ROOT, Text, type Who, linkTargets } from "../../../core/plugins.ts"
 import type { Item } from "../../../core/vault.ts"
+const log = logger("share")
 
 export const ROLES = ["read", "comment", "edit"] as const
 export type Role = typeof ROLES[number]
@@ -135,7 +136,7 @@ export class Gateway {
       await this.api(req, res, g, rest.slice(5), url)
     } catch (e) {
       const known = e instanceof HTTPError || e instanceof OpError ? e : null
-      if (!known) console.error("share:", e)
+      if (!known) log.error("a guest's request failed", e)
       const said = known ? known.message : "something went wrong"
       if (!res.headersSent) this.json(res, known?.status ?? 500, { error: g ? this.folderOf(g).scrub(said) : said })
     }

@@ -4,9 +4,10 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { z } from "zod"
-import { HTTPError, LOCAL, localDate, localTime, merge3, Plugin } from "../../../core/plugins.ts"
+import { HTTPError, LOCAL, localDate, localTime, logger, merge3, Plugin } from "../../../core/plugins.ts"
 
 export const plugin = new Plugin(import.meta.url)
+const log = logger("sync-conflicts")
 
 export type Version = { id: string; at: number; from: string }
 export type VersionText = Version & { text: string | null }
@@ -110,7 +111,7 @@ function scanAll(fresh = false): Promise<void> {
       for (const [abs, vs] of await store.scan([from])) { const rel = relOf(abs, from); if (!skipped(rel)) next[rel] = vs }
       plugin.keep("found", Object.keys(next).length ? next : null)
       lastScan = Date.now()
-    } catch (e) { console.warn(`sync-conflicts: ${e instanceof Error ? e.message : String(e)}`) }
+    } catch (e) { log.warn(e instanceof Error ? e.message : String(e)) }
   })()
   void s.finally(() => { if (scanning === s) scanning = null })
   return s
@@ -136,7 +137,7 @@ plugin.onChange((paths) => {
     pending = new Set()
     if (rels.length > MANY) return void scanAll()
     recheck(rels.filter((r) => fs.statSync(plugin.vault.abs(r), { throwIfNoEntry: false })?.isFile() || found()[r]))
-      .catch((e) => console.warn(`sync-conflicts: ${e instanceof Error ? e.message : String(e)}`))
+      .catch((e) => log.warn(e instanceof Error ? e.message : String(e)))
   }, RECHECK_MS)
   timer.unref?.()
 })

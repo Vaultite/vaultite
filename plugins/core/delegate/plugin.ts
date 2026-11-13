@@ -2,11 +2,12 @@ import fs from "node:fs"
 import path from "node:path"
 import { agentModel, type AgentModels, type Asking, type Choice, agentName, HOME, KNOWN_AGENTS, newTerminalId, parseTerminal, PERMISSION_MODES, type PermissionMode,
   startAgent } from "../../../core/agents.ts"
-import { byUser, type OpCtx, OpError, Plugin, quoted, userSurface } from "../../../core/plugins.ts"
+import { byUser, logger, type OpCtx, OpError, Plugin, quoted, userSurface } from "../../../core/plugins.ts"
 import { type Item, writeAtomic } from "../../../core/vault.ts"
 import { cascade, childrenOf, clampMode, ended, known, type Party, same, type Task, TasksFile, taskOf, titleOf } from "./graph.ts"
 
 export const plugin = new Plugin(import.meta.url)
+const log = logger("delegate")
 
 const TARGETS = ["claude", "codex", "opencode"]
 const BLOCKED = new Set(["permission", "question", "auth", "plan"])
@@ -31,7 +32,7 @@ function save() {
     saving = null
     const since = Date.now() - KEEP_DAYS * 86_400_000
     tasks = all().filter((t, i) => !ended(t) || (t.at >= since && i < KEEP))
-    try { writeAtomic(file(), JSON.stringify({ tasks })) } catch (e) { console.error("delegate:", e) }
+    try { writeAtomic(file(), JSON.stringify({ tasks })) } catch (e) { log.error("keeping tasks", e) }
   }, 200)
 }
 plugin.onUnload(() => { if (saving) { clearTimeout(saving); saving = null } })
@@ -60,7 +61,7 @@ plugin.onEvent({ types: ["inbox.event"] }, (ev) => {
   if (ev.kind !== "session" || ev.machine) return
   const p: Party = { agent: str(ev.source), ...(str(ev.terminal) ? { terminal: str(ev.terminal) } : {}), ...(str(ev.session) ? { session: str(ev.session) } : {}) }
   const t = known(p) ? taskOf(all(), p) : null
-  if (t && t.state !== "cancelled") void heard(t, p, str(ev.state), str(ev.ask)).catch((e) => console.error("delegate:", e))
+  if (t && t.state !== "cancelled") void heard(t, p, str(ev.state), str(ev.ask)).catch((e) => log.error("hearing a task", e, { task: t.id }))
 })
 
 // Codex before 0.163 tells nothing as its turn ends (no OSC 7501, no hooks): its transcript says, read once it's quiet.
@@ -86,7 +87,7 @@ function watch(t: Task) {
       await turnOver(t)
       quiet = r.waited > quiet + 1 ? 3 : Math.min(quiet * 2, 60)
     }
-  })().catch((e) => console.error("delegate:", e)).finally(() => { if (watching.get(t.id) === stop) watching.delete(t.id) })
+  })().catch((e) => log.error("watching a task", e, { task: t.id })).finally(() => { if (watching.get(t.id) === stop) watching.delete(t.id) })
 }
 async function turnOver(t: Task) {
   const turn = await plugin.ask<{ done?: boolean; at?: number; text?: string; prompt?: string; session?: string } | null>(`agent-turn:${t.child.agent}`, null,
@@ -136,7 +137,7 @@ async function wake(t: Task) {
   try {
     if (p.terminal && await plugin.ask<boolean>("terminal:runs", false, p.terminal)) await typeInto(p.terminal, text)
     else if (p.session) await (plugin.service(`agent-reply:${p.agent}`) as ((s: string, text: string) => Promise<boolean>) | null)?.(p.session, text)
-  } catch (e) { console.error(`delegate: couldn't tell ${p.terminal || p.session} that ${t.id} ended:`, e) }
+  } catch (e) { log.error("couldn't tell the parent its task ended", e, { parent: p.terminal || p.session, task: t.id }) }
 }
 
 type Sent = { submitted?: boolean | null; why?: string }
@@ -147,10 +148,10 @@ async function typeInto(id: string, text: string) {
   if (await blocked()) throw new Error("it still waits on the user")
   const r = await plugin.runOp("terminal.send", { id, text }) as Sent
   if (r.submitted !== false) return
-  if (await blocked()) return void console.error(`delegate: ${id} took the result as its answer to what it asked: ${r.why}`)
+  if (await blocked()) return void log.error("the parent took the result as its answer to what it asked", undefined, { terminal: id, why: r.why })
   await plugin.runOp("terminal.key", { id, keys: ["Enter"] })
   const again = wait ? await wait(id, { for: ["working", "blocked"], timeout: 6 }).catch(() => null) : null
-  if (!again?.met) console.error(`delegate: ${id} may not have taken the result (${r.why}): it's in vau delegate status`)
+  if (!again?.met) log.error("the parent may not have taken the result: it's in vau delegate status", undefined, { terminal: id, why: r.why })
 }
 
 const wakeable = (p: Party) => !!p.terminal || (!!p.session && !!plugin.service(`agent-reply:${p.agent}`))
