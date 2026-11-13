@@ -36,7 +36,7 @@ const known = new Map<number, Fake>()
 const isUp = (pid: number) => !!known.get(pid)?.alive
 
 type Seen = { log: string[]; took: Fake[]; failed: { why: string; starting: boolean }[]; started: number }
-function rig(first: Fake, starts: (n: number) => Fake | Error = () => new Fake(), o: { answers?: () => boolean; over?: () => string | null } = {}) {
+function rig(first: Fake, starts: (n: number) => Fake | Error = () => new Fake(), o: { answers?: () => boolean; over?: () => string | null; timing?: WatchTiming } = {}) {
   known.set(first.pid, first)
   const r: Seen = { log: [], took: [], failed: [], started: 0 }
   const later: Promise<Fake>[] = []
@@ -55,7 +55,7 @@ function rig(first: Fake, starts: (n: number) => Fake | Error = () => new Fake()
     over: () => o.over?.() ?? null,
     log: (line) => r.log.push(line),
   }
-  const watch = new ServerWatch(first, host, T, isUp)
+  const watch = new ServerWatch(first, host, o.timing ?? T, isUp)
   return { r, watch, later }
 }
 const settled = (w: ServerWatch<Fake>, r: { log: string[] }) => waitFor(() => w.status === "up" && r.log.some((l) => l.endsWith("answers")), 3000, 10)
@@ -85,6 +85,12 @@ const settled = (w: ServerWatch<Fake>, r: { log: string[] }) => waitFor(() => w.
   x.watch.restart("an update")
   await waitFor(() => x.r.took.length === 1, 3000, 10)
   check("a server that won't stop is killed, then started again", first.kills.join() === "SIGTERM,SIGKILL" && x.r.took.length === 1, [first.kills, x.r.log])
+}
+{
+  const first = new Fake({ stubborn: true }), x = rig(first, () => new Fake(), { timing: { ...T, checkMs: 150 } })
+  x.watch.restart("an update")
+  await waitFor(() => x.r.took.length === 1, 3000, 10)
+  check("…killed even when its look comes late (a slow machine's timers), never left running", first.kills.join() === "SIGTERM,SIGKILL" && x.r.took.length === 1, [first.kills, x.r.log])
 }
 {
   const x = rig(new Fake(), (n) => (n === 1 ? new Error("spawn EAGAIN") : new Fake()))

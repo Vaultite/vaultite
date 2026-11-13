@@ -39,6 +39,7 @@ export class ServerWatch<P extends ServerProc = ServerProc> {
   private tries = 0
   private misses = 0
   private stopAt = 0
+  private killedAt = 0
   private check: ReturnType<typeof setTimeout> | undefined
   private heard = new WeakSet<P>()
   private readonly ticker: ReturnType<typeof setInterval>
@@ -78,6 +79,7 @@ export class ServerWatch<P extends ServerProc = ServerProc> {
     this.meant = true
     this.state = "stopping"
     this.stopAt = Date.now()
+    this.killedAt = 0
     this.cur.kill()
     this.arm()
   }
@@ -185,13 +187,17 @@ export class ServerWatch<P extends ServerProc = ServerProc> {
   }
 
   private stopping() {
-    const waited = Date.now() - this.stopAt
-    if (waited >= 2 * this.t.stopMs) {
+    const now = Date.now(), waited = now - this.stopAt
+    if (this.killedAt && now - this.killedAt >= this.t.stopMs) {
       this.h.log(`server pid ${this.cur.pid} still there ${Math.round(waited / 1000)} s after it was told to stop: started again all the same`)
       this.exited(this.cur, "never stopped")
       return
     }
-    if (waited >= this.t.stopMs) { this.h.log(`server pid ${this.cur.pid} didn't stop in ${Math.round(waited / 1000)} s: killed`); this.cur.kill("SIGKILL") }
+    if (!this.killedAt && waited >= this.t.stopMs) {
+      this.h.log(`server pid ${this.cur.pid} didn't stop in ${Math.round(waited / 1000)} s: killed`)
+      this.cur.kill("SIGKILL")
+      this.killedAt = now
+    }
     this.arm()
   }
 }
