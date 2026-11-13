@@ -1,5 +1,3 @@
-// Player: where you stopped in each audio or video file (kept, shared: any device picks up there) and its bookmarks
-// (the user's: .vaultite/plugins/player/marks.json), what a file says about itself (chapters, cover), the queue's text.
 import fs from "node:fs"
 import { bullets, HTTPError, Plugin, section, Text, vaultPath } from "../../../core/plugins.ts"
 import { isArchived, str, type Item } from "../../../core/vault.ts"
@@ -11,13 +9,11 @@ export const plugin = new Plugin(import.meta.url)
 const MAX = 500
 type Marks = Record<string, Mark[]>
 const marksNow = () => (plugin.settings({}, "marks").marks ?? {}) as Marks
-/** Each file's place, with its bookmarks. */
 function places(): Record<string, Place> {
   const all = { ...(plugin.kept<{ places?: Record<string, Place> }>("places", {}).places ?? {}) }, marks = marksNow()
   for (const [p, m] of Object.entries(marks)) if (Array.isArray(m) && m.length) all[p] = { ...(all[p] ?? { t: 0, at: 0 }), marks: m }
   return all
 }
-/** Keep the places (the last MAX), and write the bookmarks when they changed. */
 function save(all: Record<string, Place>) {
   const kept = Object.entries(all).sort((a, b) => b[1].at - a[1].at).slice(0, MAX)
   plugin.keep("places", kept.length ? { places: Object.fromEntries(kept.map(([p, { marks: _m, ...at }]) => [p, at])) } : null, { shared: true })
@@ -25,15 +21,13 @@ function save(all: Record<string, Place>) {
   if (JSON.stringify(marks) !== JSON.stringify(marksNow())) plugin.saveSettings(Object.keys(marks).length ? { marks } : null, "marks")
 }
 
-// places.json from before (positions and bookmarks, which iCloud carried between machines): the positions taken in, the
-// newer of each winning, the bookmarks into marks.json, then it's removed. Looked for whenever the settings change.
 let lookedAt = ""
 plugin.onSync((vault) => {
   const key = `${vault.path}:${vault.settingsVersion}`
   if (lookedAt === key) return
   lookedAt = key
   let old: Item | null
-  try { old = plugin.readSettings("places") } catch { return } // (mid-sync: the next change)
+  try { old = plugin.readSettings("places") } catch { return }
   if (!old) return
   const had = places(), next = { ...had }
   for (const [p, x] of Object.entries((old.places ?? {}) as Record<string, Place>)) {
@@ -47,7 +41,6 @@ plugin.onSync((vault) => {
 
 plugin.route("GET", "player/places", () => ({ places: places() }))
 
-// The app's own: a place as it plays (on pause, every so often, on leaving), or `done` set by hand.
 plugin.route("PUT", "player/places", (req) => {
   const { path, t, d, done } = req.body as { path?: string; t?: number; d?: number; done?: boolean }
   if (!path || typeof path !== "string") return { ok: false }
@@ -55,14 +48,12 @@ plugin.route("PUT", "player/places", (req) => {
   const was = all[path]
   const len = Number.isFinite(d) && d! > 0 ? d! : was?.d
   const at = Number.isFinite(t) ? Math.max(0, t!) : was?.t ?? 0
-  // The last bit (credits, a sign-off) counts as finished; starting over un-finishes it.
   const finished = done ?? (len ? at >= len - Math.min(30, len * 0.05) : was?.done)
   all[path] = { t: finished && done === undefined ? 0 : at, ...(len ? { d: Math.round(len) } : {}), at: Date.now(), ...(finished ? { done: true } : {}), ...(was?.marks ? { marks: was.marks } : {}) }
   save(all)
   return { place: all[path] }
 })
 
-// Its bookmarks, all of them (the app sends the list it shows).
 plugin.route("PUT", "player/marks", (req) => {
   const { path, marks } = req.body as { path?: string; marks?: Mark[] }
   if (!path || typeof path !== "string" || !Array.isArray(marks)) return { ok: false }
@@ -77,7 +68,6 @@ plugin.route("PUT", "player/marks", (req) => {
   return { place: all[path] }
 })
 
-// Read once per version of the file (its size and time), kept while the server runs.
 function meta(rel: string, _version: string) { return readMeta(plugin.vault.abs(rel)) }
 const metaOf = (rel: string) => {
   const st = fs.statSync(plugin.vault.abs(rel))
@@ -95,7 +85,7 @@ plugin.route("GET", "player/meta", async (req) => {
   try {
     const m = await metaOf(rel)
     return { title: m.title ?? null, artist: m.artist ?? null, chapters: m.chapters, cover: !!m.cover }
-  } catch { return { title: null, artist: null, chapters: [], cover: false } } // (a file it can't make out)
+  } catch { return { title: null, artist: null, chapters: [], cover: false } }
 })
 
 plugin.route("GET", "player/cover", async (req) => {

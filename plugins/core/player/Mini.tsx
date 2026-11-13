@@ -1,5 +1,3 @@
-// The mini player: what's playing while no view of it is in sight, above the phone's bar or in a corner between the
-// sidebars (dragged to another, like picture in picture). A video plays in it; a tap opens the full player.
 import { useEffect, useLayoutEffect, useRef } from "react"
 import { Pause, Play, X } from "lucide-react"
 import { CORNERS, cn, kindIcon, openFile, useCornerDrag, useCornerStack, useDesktop, useScopedState, type Corner } from "@vaultite"
@@ -13,7 +11,6 @@ export function MiniPlayer() {
   const [corner, setCorner] = useScopedState<Corner>("player:corner", "br", "device")
   const showing = !!now && !shown(now.el)
   useEffect(() => { loadPlaces(true); sendOfflinePlaces(); return watchAway() }, [])
-  // What's drawn at the bottom (toasts, a page's last lines) keeps clear of it while it's in a bottom corner.
   const room = !showing ? "0px" : !desktop ? "68px" : corner[0] === "t" ? "0px" : now!.video ? "236px" : "84px"
   useEffect(() => {
     document.documentElement.style.setProperty("--mini-player", room)
@@ -29,16 +26,14 @@ function Bar({ desktop, corner, setCorner }: { desktop: boolean; corner: Corner;
   useTick(el)
   const cs = useMeta(path)?.chapters ?? []
   const box = useRef<HTMLDivElement>(null)
-  // A video nothing else draws plays here; a view of it that comes back takes it again (Player.tsx).
   useLayoutEffect(() => {
     if (video && box.current && !homeOf(el) && !presenting(el) && el.parentElement !== box.current) {
-      el.controls = false // (the bar has them; the picture's own can't be reached under the drag)
+      el.controls = false
       box.current.append(el)
     }
   })
   const drag = useCornerDrag(corner, setCorner)
   const none = useRef<HTMLDivElement>(null)
-  // (first in its corner: the agents' card and pages playing stack above it)
   const place = useCornerStack("player", corner, 0, desktop ? drag.ref : none)
   const pic = artOf(path)
   const Icon = kindIcon(path)

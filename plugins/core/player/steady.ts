@@ -1,20 +1,17 @@
-// Playing on through a bad connection and a reload: a stream that dropped or got stuck starts again where it was, and
-// what played when the page reloaded (iOS ends a background page it wants the memory of) plays on from there.
+// iOS ends a background page it wants the memory of.
 import { useEffect } from "react"
 import { adoptNative, isNative } from "./native"
 import { getNow, isVideo, parkEl, take } from "./now"
 
 type Playing = { path: string; t: number; from?: string; at: number }
-// Per window, and kept through a reload: a closed window or another one doesn't start anything.
 const KEY = "vaultite.player.playing"
 const read = (): Playing | null => { try { return JSON.parse(sessionStorage.getItem(KEY) ?? "null") } catch { return null } }
-const write = (p: Playing | null) => { try { if (p) sessionStorage.setItem(KEY, JSON.stringify(p)); else sessionStorage.removeItem(KEY) } catch { /* none kept */ } }
+const write = (p: Playing | null) => { try { if (p) sessionStorage.setItem(KEY, JSON.stringify(p)); else sessionStorage.removeItem(KEY) } catch {} }
 
 const STUCK = 20_000, TRIES = 10
 
-/** Watch an element (now.ts' wire): start it again after a network error or 20 s without moving, and keep what plays. */
 export function steady(el: HTMLMediaElement, path: string) {
-  if (isNative(el)) return // (the shell does both: native.ts)
+  if (isNative(el)) return
   let wanted = false, tries = 0, waiting = false, kept = 0, last = -1, still = 0
   let timer: ReturnType<typeof setInterval> | null = null
   const keep = () => { kept = Date.now(); write({ path, t: el.currentTime, from: el.dataset.from, at: kept }) }
@@ -32,7 +29,7 @@ export function steady(el: HTMLMediaElement, path: string) {
       waiting = false
       if (!wanted || !src) return
       el.addEventListener("loadedmetadata", () => { el.currentTime = at; void el.play().catch(() => {}) }, { once: true })
-      el.src = src // (the same address: a fresh connection)
+      el.src = src
     }, Math.min(30_000, 1000 * 2 ** tries++))
   }
   el.addEventListener("play", () => {
@@ -45,14 +42,13 @@ export function steady(el: HTMLMediaElement, path: string) {
   })
   el.addEventListener("playing", () => { tries = 0 })
   el.addEventListener("timeupdate", () => { if (wanted && Date.now() - kept > 5000) keep() })
-  // (a pause the network caused comes with an error: it isn't the user's)
+  // A pause the network caused comes with an error.
   el.addEventListener("pause", () => setTimeout(() => { if (el.paused && !el.error && !waiting) quit() }))
   el.addEventListener("ended", quit)
   el.addEventListener("error", () => { if (el.error?.code === MediaError.MEDIA_ERR_NETWORK) restart() })
 }
 
-/** After a reload in the middle of playing: on from where it was, at once, or when the app is seen again if the
- *  browser won't start it unseen. */
+// A browser may refuse to start media in a page out of sight.
 function resume() {
   const p = read()
   if (!p) return
@@ -73,13 +69,12 @@ function resume() {
   if (el.readyState >= 1) go(); else el.addEventListener("loadedmetadata", go, { once: true })
 }
 
-// A reload that says so: the exact spot (iOS ending the page doesn't: the last kept, at most 5 s back).
+// iOS ending the page runs no handler: then the place kept last (at most 5 s back) is where it goes on.
 function leaving() {
   const now = getNow()
   if (now && !now.el.paused) write({ path: now.path, t: now.el.currentTime, from: now.el.dataset.from ?? now.from, at: Date.now() })
 }
 
-/** In the plugin's background: once, as the app starts. */
 export function Resume() {
   useEffect(() => {
     adoptNative()

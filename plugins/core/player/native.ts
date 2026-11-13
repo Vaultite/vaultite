@@ -1,20 +1,18 @@
-// In the iPhone app, sound plays in the shell (ios/App/App/Audio.swift), not the page: this element stands in for an
-// <audio>, so the rest of the player moves and drives it as one, and a reload or iOS ending the page can't stop it.
+// iOS ends a page in the background: in the iPhone app the shell plays the sound (ios/App/App/Audio.swift).
 import { phoneAudio, type PhoneAudioState } from "@vaultite"
 import { clock, parkEl, take } from "./now"
 
-/** The element the shell plays for: one at a time, as the shell has one player. */
 let owner: NativeAudio | null = null
 type Err = { code: number; message: string }
 
 class NativeAudio extends HTMLElement {
   private url = ""
   private t = 0
-  private sampled = 0 // (performance.now() when t was so)
+  private sampled = 0
   private d = NaN
   private rate = 1
   private stopped = true
-  private moving = false // playing, not waiting for data
+  private moving = false
   private done = false
   private err: Err | null = null
   private ready = 0
@@ -43,7 +41,7 @@ class NativeAudio extends HTMLElement {
     return Number.isFinite(this.d) ? Math.min(t, this.d) : t
   }
   set currentTime(v: number) {
-    if (this.adopting || !Number.isFinite(v)) return // (the shell's time is the truth while a reloaded page takes it back)
+    if (this.adopting || !Number.isFinite(v)) return
     this.t = Math.max(0, v)
     this.sampled = performance.now()
     this.done = false
@@ -72,7 +70,6 @@ class NativeAudio extends HTMLElement {
     if (was && was !== this) was.letGo()
     this.stopped = false
     this.done = false
-    // (asked of the shell first: what the play event sets off, the lock screen's names, comes after it)
     const path = this.dataset.playerFor ?? ""
     const start = was === this ? Promise.resolve() : phoneAudio!.load({ path, url: this.url, t: this.t, rate: this.rate, from: this.dataset.from,
       title: path.split("/").pop()!.replace(/\.[^.]+$/, ""), artist: "", album: "Vaultite", chapters: [] }).then(() => {})
@@ -87,7 +84,6 @@ class NativeAudio extends HTMLElement {
     this.fire("pause")
     if (owner === this) void phoneAudio!.pause()
   }
-  /** With no address (release(): `removeAttribute("src")`, then this), it lets the shell go. */
   load() {
     if (this.url) return this.probe()
     if (owner === this) { owner = null; void phoneAudio!.stop() }
@@ -98,7 +94,6 @@ class NativeAudio extends HTMLElement {
   }
   canPlayType(type: string) { return /^audio\//.test(type) ? "maybe" : "" }
 
-  /** What the shell says it does now: the state, and the events an <audio> would fire for the change. */
   apply(s: PhoneAudioState) {
     const was = { d: this.d, rate: this.rate, stopped: this.stopped, moving: this.moving, done: this.done }
     if (typeof s.t === "number") { this.t = s.t; this.sampled = performance.now() }
@@ -121,7 +116,6 @@ class NativeAudio extends HTMLElement {
     if (this.moving) this.ticker = setInterval(() => this.fire("timeupdate"), 250)
   }
 
-  /** A reloaded page: this element takes back what the shell plays, as it is there. */
   adopt(s: PhoneAudioState) {
     owner = this
     this.adopting = true
@@ -129,14 +123,12 @@ class NativeAudio extends HTMLElement {
     if (!s.paused) this.apply(s)
   }
 
-  /** Another element plays now: this one stops, as far as anyone watching it knows. */
   private letGo() {
     clearInterval(this.ticker)
     this.moving = false
     if (!this.stopped) { this.stopped = true; this.fire("pause") }
   }
 
-  /** Its length before it ever plays (a view shows it): the page's own <audio> reads the start of the file, and goes. */
   private probe() {
     if (Number.isFinite(this.d)) return
     const a = new Audio()
@@ -155,7 +147,6 @@ class NativeAudio extends HTMLElement {
     if (this.bar && (type === "timeupdate" || type === "play" || type === "pause" || type === "durationchange")) this.redraw()
   }
 
-  // The browser's own controls, as a view shows them in a note: play, the time and a scrubber.
   private drawBar() {
     const root = this.attachShadow({ mode: "open" })
     root.innerHTML = `<style>
@@ -189,11 +180,9 @@ class NativeAudio extends HTMLElement {
 
 if (phoneAudio && !customElements.get("vaultite-audio")) customElements.define("vaultite-audio", NativeAudio)
 
-/** An element for a sound in the iPhone app; null elsewhere (the page plays it). */
 export const nativeAudio = () => (phoneAudio ? (document.createElement("vaultite-audio") as unknown as HTMLMediaElement) : null)
 export const isNative = (el: HTMLMediaElement) => el.localName === "vaultite-audio"
 
-// What the shell does (the lock screen, headphones, a stall, the end) comes here, for the element it plays for.
 if (phoneAudio) addEventListener("vaultite:audio", (e) => {
   const s = (e as CustomEvent<PhoneAudioState>).detail
   if (!owner) return
@@ -201,12 +190,10 @@ if (phoneAudio) addEventListener("vaultite:audio", (e) => {
   owner.apply(s)
 })
 
-/** As the app starts: what the shell still plays (the page reloaded, or iOS ended it) is taken back, playing on. */
 export function adoptNative() {
   if (!phoneAudio) return
   phoneAudio.state().then((s) => {
     if (!s.path || owner?.dataset.playerFor === s.path) return
-    // (a view of it drawn before this asked, the note the page reopened, is the one)
     const el = (document.querySelector(`vaultite-audio[data-player-for="${CSS.escape(s.path)}"]`) ?? take(s.path, false)) as unknown as NativeAudio
     if (!isNative(el as unknown as HTMLMediaElement)) return
     if (s.from && !el.dataset.from) el.dataset.from = s.from
@@ -215,6 +202,5 @@ export function adoptNative() {
   }, () => {})
 }
 
-/** The shell's lock screen and sleep timer, kept in step (now.ts' session and setSleep). */
 export const describeNative = (info: Parameters<NonNullable<typeof phoneAudio>["info"]>[0]) => { void phoneAudio?.info(info) }
 export const sleepNative = (s: { until?: number; chapter?: boolean }) => { void phoneAudio?.sleep(s) }

@@ -1,5 +1,3 @@
-// Player: audio and video that keep playing as you move around the app (a mini player), on the lock screen, from where
-// you stopped on any device, with skips, speed and captions; times in a note play from there; and the queue block.
 import { definePlugin } from "@vaultite"
 import { Player } from "./Player"
 import { MiniPlayer } from "./Mini"
@@ -9,7 +7,6 @@ import { Resume } from "./steady"
 export default definePlugin({
   player: Player,
   background: () => <><Resume /><MiniPlayer /></>,
-  // (with the first editor, not at launch: CodeMirror comes with it)
   editor: (ctx) => import("./timestamps").then((m) => m.timestamps(ctx)),
   blocks: { queue: ({ store, options }) => <QueueBlock store={store} options={options} /> },
 })

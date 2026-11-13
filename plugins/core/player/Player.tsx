@@ -1,5 +1,3 @@
-// The player in a file's tab and in notes, on the one element now.ts hands around: a sound's tab is Full.tsx; elsewhere
-// the browser's own controls, with what they lack under them (skips, speed, captions, picture in picture, bookmarks).
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react"
 import { Captions, FileText, PictureInPicture2 } from "lucide-react"
 import { cn, openFile, phoneFiles, type PlayerProps } from "@vaultite"
@@ -7,7 +5,6 @@ import { btn, icon, Keep, MarkButton, Skip, SpeedButton } from "./Buttons"
 import { Book, Full } from "./Full"
 import { artOf, BACK, captionsOf, FORWARD, getNow, homeOf, presenting, release, setSlot, take, useMeta, useTick } from "./now"
 
-// A view shows the browser's own controls on it (the mini player hides them). `home`: a view, holding it in its slot.
 const hold = (home: HTMLElement, m: HTMLMediaElement) => {
   m.controls = true
   ;(home.querySelector<HTMLElement>("[data-player-slot]") ?? home).append(m)
@@ -36,10 +33,9 @@ export function Player({ path, video, place, height, v, onDuration, onFail }: Pl
     m.addEventListener("loadedmetadata", meta)
     m.addEventListener("error", error)
     if (m.readyState >= 1) meta()
-    // On screen or not: the mini player shows while it's playing and no view of it is in sight.
     const io = new IntersectionObserver(([e]) => {
       setSlot(div, m, e.isIntersecting)
-      if (e.isIntersecting && !div.contains(m) && !presenting(m)) hold(div, m) // back from the mini player
+      if (e.isIntersecting && !div.contains(m) && !presenting(m)) hold(div, m)
     }, { threshold: 0.2 })
     io.observe(div)
     setSlot(div, m)
@@ -48,7 +44,7 @@ export function Player({ path, video, place, height, v, onDuration, onFail }: Pl
       setSlot(div, null)
       m.removeEventListener("loadedmetadata", meta)
       m.removeEventListener("error", error)
-      if (!div.contains(m)) return // (another view, or the mini player, has it now)
+      if (!div.contains(m)) return
       const other = homeOf(m)
       if (other) hold(other, m); else release(m)
     }
@@ -58,7 +54,6 @@ export function Player({ path, video, place, height, v, onDuration, onFail }: Pl
   const full = sound && place === "page"
   const art = artOf(path)
   const box = place === "fill" ? "size-full" : place === "page" ? "max-h-[75vh]" : ""
-  // (one tree whatever it shows, so the slot holding the element is never remade)
   return (
     <div ref={root} className={cn("flex flex-col", place === "fill" ? "size-full justify-center" : place === "page" && "mx-auto w-full max-w-3xl", full && "max-w-none")} data-player={path}>
       {full ? el && <Full el={el} path={path} />

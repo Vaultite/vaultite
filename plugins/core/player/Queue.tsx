@@ -1,5 +1,3 @@
-// The queue block: what the inbox holds to watch, listen to or read, with how far you got. Play starts it in the mini
-// player; Done files it away as the inbox's Done does.
 import { useState, type MouseEvent } from "react"
 import { BookOpen, Check, CheckCheck, Globe, ListVideo, Pause, Play, RotateCcw } from "lucide-react"
 import { cn, Empty, fmtAgo, isArchived, List, menuFor, op, openFile, optimistic, Panel, rawUrl, resolver, Row, Segmented, SwipeRow, type Store, type SwipeAction } from "@vaultite"
@@ -20,7 +18,6 @@ function entries(store: Store): Entry[] {
   })
 }
 
-/** Books being read (the Books plugin's, when it's on): the Read shelf's too. */
 function books(store: Store) {
   const list = (store as { books?: { id: string; title: string; author: string; status: string; current_page: number | null; total_pages: number | null; archived?: boolean }[] }).books ?? []
   return list.filter((b) => b.status === "reading" && !isArchived(b))
@@ -36,7 +33,6 @@ export function QueueBlock({ store, options }: { store: Store; options: Record<s
   useNow()
   const all = entries(store)
   const reading = books(store)
-  // Started first (most recent first), then the newest.
   const started = (e: Entry) => (e.media && places[e.media] && !places[e.media].done && places[e.media].t > 5 ? places[e.media].at : 0)
   const list = all.filter((e) => show === "all" || e.shelf === show)
     .sort((a, b) => started(b) - started(a) || String(b.created ?? "").localeCompare(String(a.created ?? "")))
@@ -86,7 +82,6 @@ function QueueRow({ e, place }: { e: Entry; place?: Place }) {
   const d = playing && Number.isFinite(now!.el.duration) ? now!.el.duration : place?.d
   const live: Place | undefined = playing ? { t, d, at: Date.now() } : place
   const pct = d && t > 5 && !place?.done ? Math.min(100, (t / d) * 100) : null
-  // (it leaves the queue at once: the store, which the next refresh replaces)
   const done = () => optimistic((s) => (s.inbox ? { ...s, inbox: s.inbox.map((r) => (r.id === e.id ? { ...r, status: "done" } : r)) } : s),
     () => op("inbox.settle", { item: e.note }), "Couldn't settle it").catch(() => {})
   const toggle = () => {

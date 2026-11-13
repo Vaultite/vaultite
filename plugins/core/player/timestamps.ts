@@ -1,5 +1,3 @@
-// Times in a note that embeds audio or video (a chapter's "2:35", a transcript's "**12:04**") play it from there; the
-// one it's playing through is lit, so a transcript follows along.
 import { RangeSetBuilder, StateEffect, StateField, type Extension, type Transaction } from "@codemirror/state"
 import { Decoration, EditorView, ViewPlugin, type DecorationSet } from "@codemirror/view"
 import { getStore, resolver, type EditorCtx } from "@vaultite"
@@ -21,14 +19,12 @@ const again = StateEffect.define<null>()
 const mark = Decoration.mark({ class: "cm-timestamp" })
 const litMark = Decoration.mark({ class: "cm-timestamp cm-timestamp-now" })
 
-/** The media the note plays, as a vault path: its first audio or video embed. */
 function mediaOf(text: string, path: string) {
   const target = mediaIn(text)
   const store = getStore()
   return target && store ? resolver(store)(target, path)?.file ?? null : null
 }
 
-/** Whether the lines a change made hold an embed's start or end. */
 function touchesEmbed(tr: Transaction) {
   let hit = false
   tr.changes.iterChangedRanges((_fa, _ta, from, to) => {
@@ -48,7 +44,6 @@ export function timestamps(ctx: EditorCtx): Extension {
       let now = v.now, redo = false
       for (const e of tr.effects) { if (e.is(lit)) now = e.value; if (e.is(again)) redo = true }
       if (!tr.docChanged && !redo && now === v.now) return v
-      // (a note with no media stays so unless a change touches an embed: a keystroke reads only its own lines)
       if (!v.media && !redo && now === v.now && !touchesEmbed(tr)) return v
       return build(tr.newDoc.toString(), now)
     },
@@ -61,9 +56,7 @@ export function timestamps(ctx: EditorCtx): Extension {
     list.forEach((s, i) => b.add(s.from, s.to, i === now ? litMark : mark))
     return { media, list, now, deco: b.finish() }
   }
-  // While its media plays: light the last time it has passed (in a transcript, the paragraph being said).
   const follow = ViewPlugin.define((view) => {
-    // (opened before the vault's files are known: its media is found once they are)
     let tries = 0
     const find = setInterval(() => {
       const v = view.state.field(field)

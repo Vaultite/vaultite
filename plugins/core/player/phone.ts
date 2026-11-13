@@ -1,5 +1,3 @@
-// Files kept on the iPhone (the app's Downloads), to play without the server: what's kept, polled while one is on its
-// way, and where offline playback stopped, sent to the server once it's back.
 import { useSyncExternalStore } from "react"
 import { notifyError, phoneFiles, put, rawUrl, type PhoneDownload } from "@vaultite"
 import { loadPlaces, titleOf } from "./now"
@@ -25,7 +23,6 @@ export function keep(path: string) {
 }
 export const unkeep = (path: string) => phoneFiles!.remove({ path }).then(refresh, () => {})
 
-/** Where offline playback stopped (the first screen's), to the server. */
 export function sendOfflinePlaces() {
   phoneFiles?.takePlaces().then(async ({ places }) => {
     for (const p of places ?? []) await put("player/places", { path: p.path, t: p.t, d: p.d }).catch(() => {})

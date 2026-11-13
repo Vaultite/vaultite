@@ -1,5 +1,3 @@
-// The player's buttons, shared by the full player and the one under a video: skips, speed, the sleep timer, a bookmark,
-// and keeping the file on the iPhone.
 import { useEffect, useState, type MouseEvent } from "react"
 import { ArrowDownToLine, BookmarkPlus, Check, CircleCheck, Moon, RotateCcw, RotateCw } from "lucide-react"
 import { cn, menuBelow, notify } from "@vaultite"
@@ -19,7 +17,6 @@ export function SpeedButton({ el }: { el: HTMLMediaElement }) {
 const SLEEPS = [5, 10, 15, 30, 45, 60]
 export function SleepButton({ el, cs }: { el: HTMLMediaElement; cs: Chapter[] }) {
   const sleep = useSleep()
-  // (the minutes left count down on the button)
   const [, redraw] = useState(0)
   useEffect(() => { if (!sleep || !("until" in sleep)) return; const t = setInterval(() => redraw((n) => n + 1), 1000); return () => clearInterval(t) }, [sleep])
   const i = chapterAt(cs, el.currentTime)
@@ -37,7 +34,6 @@ export function SleepButton({ el, cs }: { el: HTMLMediaElement; cs: Chapter[] })
   )
 }
 
-/** A bookmark here, now (with Undo). */
 export function MarkButton({ el, path, cs }: { el: HTMLMediaElement; path: string; cs: Chapter[] }) {
   const places = usePlaces()
   const add = () => {
@@ -50,7 +46,6 @@ export function MarkButton({ el, path, cs }: { el: HTMLMediaElement; path: strin
   return <button type="button" className={btn} onClick={add} aria-label="Add bookmark" data-tip="Add bookmark"><BookmarkPlus className={icon} strokeWidth={2} /></button>
 }
 
-/** Download to this iPhone, to play without the server; how far it's got; kept. */
 export function Keep({ path }: { path: string }) {
   const k = keptOf(useKept(), path)
   if (k?.done) return (
@@ -67,7 +62,6 @@ export function Keep({ path }: { path: string }) {
   )
 }
 
-/** The skip icons with their seconds in them, as podcast apps draw them. */
 export function Skip({ back, big }: { back?: boolean; big?: boolean }) {
   const Icon = back ? RotateCcw : RotateCw
   return (

@@ -1,5 +1,3 @@
-// The full player, as audiobook apps draw it: artwork, a scrubber, big controls, speed, sleep timer, bookmarks and
-// chapters. A sound's own tab is this (the mini player opens it); under a video in its tab, only Book.
 import { useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react"
 import { Airplay, Bookmark, FileText, Pause, Play, SkipBack, SkipForward, Trash2 } from "lucide-react"
 import { cn, kindIcon, List, menuFor, notify, openFile, phoneFiles, Segmented, SwipeRow, type SwipeAction } from "@vaultite"
@@ -45,7 +43,6 @@ export function Full({ el, path }: { el: HTMLMediaElement; path: string }) {
   )
 }
 
-/** Where it is: dragged or tapped to anywhere, with the chapters marked on it. */
 function Scrubber({ el, cs, className }: { el: HTMLMediaElement; cs: Chapter[]; className?: string }) {
   const bar = useRef<HTMLDivElement>(null)
   const [drag, setDrag] = useState<number | null>(null)
@@ -102,11 +99,10 @@ function Transport({ el, cs, className }: { el: HTMLMediaElement; cs: Chapter[];
 }
 
 type Shelf = "chapters" | "marks"
-/** Its chapters and bookmarks: a tap plays from there. Nothing for a file with neither. */
 export function Book({ el, path, cs, className }: { el: HTMLMediaElement; path: string; cs: Chapter[]; className?: string }) {
   const marks = usePlaces()[path]?.marks ?? []
   const [pick, setPick] = useState<Shelf | null>(null)
-  const show: Shelf = cs.length > 1 ? pick ?? "chapters" : "marks" // (the chapters come a moment after the first draw)
+  const show: Shelf = cs.length > 1 ? pick ?? "chapters" : "marks"
   if (cs.length < 2 && !marks.length) return null
   const go = (t: number) => { el.currentTime = t; if (el.paused) void el.play().catch(() => {}) }
   return (
