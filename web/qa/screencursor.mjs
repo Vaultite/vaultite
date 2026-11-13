@@ -5,11 +5,12 @@
 // node web/qa/screencursor.mjs
 import fs from "node:fs"
 import path from "node:path"
-import { ROOT, qa } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
+import { ROOT, qa, until } from "./lib/qa.mjs"
 
 const { browser, check, watch, done } = await qa(import.meta.url)
 const DIST = path.join(ROOT, "web/dist")
-const page = watch(await browser.newPage({ viewport: { width: 1200, height: 800 } }))
+const page = watch(await browser.newPage({ viewport: { width: 1200, height: 800 } })), ui = app(page)
 const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".woff2": "font/woff2", ".svg": "image/svg+xml" }
 await page.route("http://screen.test/**", (r) => {
   const f = path.join(DIST, new URL(r.request().url()).pathname)
@@ -38,9 +39,14 @@ const sample = (ms) => page.evaluate((ms) => new Promise((done) => {
   const f = () => { const el = [...document.querySelectorAll('#root > div[style*="translate"]')].find((e) => e.style.transform.startsWith("translate")); const m = el && /translate\(([-\d.]+)px, ([-\d.]+)px\)/.exec(el.style.transform); out.push(m ? [+m[1], +m[2]] : null); if (performance.now() - t0 < ms) requestAnimationFrame(f); else done(out) }
   requestAnimationFrame(f)
 }), ms)
+const eachFrameTillIdle = async (fn) => {
+  await page.evaluate((src) => { const f = new Function(`return (${src})()`); window.__seen = []; const go = () => { if (!window.__seen) return; window.__seen.push(f()); requestAnimationFrame(go) }; go() }, fn.toString())
+  await ui.idle()
+  return page.evaluate(() => { const s = window.__seen; window.__seen = null; return s })
+}
 
 await scene([A(100, 100)])
-await page.waitForTimeout(100)
+await ui.idle()
 check("a new cursor appears where it is (tip at the point)", JSON.stringify(await pos()) === "[97,98]", await pos())
 await scene([A(700, 400)])
 const run = await sample(700)
@@ -49,6 +55,7 @@ const steps = xs.slice(1).map((x, i) => x - xs[i])
 check("it glides there over many frames, never back, never past", xs.length > 20 && steps.every((d) => d >= -0.01) && Math.max(...xs) <= 697.01 && new Set(xs).size > 15, { n: xs.length, xs: xs.slice(0, 30) })
 check("it settles exactly there", JSON.stringify(run.at(-1)) === "[697,398]", run.at(-1))
 const before = await page.evaluate(() => window.__frames)
+// (a still moment's frames: the check is that it asks for none)
 await page.waitForTimeout(700)
 const after = await page.evaluate(() => window.__frames)
 check("still, it asks for no frames (the loop sleeps)", after - before === 0, { before, after })
@@ -76,15 +83,14 @@ check("a cursor new here with `from` starts there and glides in", !!ada && /tran
 
 // gone: it fades (FADE, screen.tsx), then it's taken away
 await scene([])
-await page.waitForTimeout(50)
-const fading = await page.evaluate(() => document.querySelectorAll("[data-gone]").length)
-await page.waitForTimeout(700)
+const fading = await until(async () => { const n = await page.evaluate(() => document.querySelectorAll("[data-gone]").length); return n === 2 && n }, 2000) || await page.evaluate(() => document.querySelectorAll("[data-gone]").length)
+await ui.idle()
 const left = await page.evaluate(() => document.querySelectorAll('#root > div[style*="translate"]').length)
 check("a cursor that goes fades out, then is gone", fading === 2 && left === 0, { fading, left })
 
 // as the window draws it: its flag (name, mark), its bubble beside, ringed in its colour
 await scene([A(200, 300, { t: Date.now(), say: { id: "s1", text: "The **build** failed on line 12." } }), { ...A(1100, 760), name: "Ada", tint: "blue", state: "listening", t: Date.now() }])
-await page.waitForTimeout(700)
+await ui.idle()
 const look = await page.evaluate(() => {
   const [c, ada] = [...document.querySelectorAll('#root > div[style*="translate"]')]
   return { flag: c.textContent, dots: !!c.querySelector(".companion-dots"), bob: !!c.querySelector(".companion-bob"), bubble: c.querySelector(".companion-pop")?.textContent,
@@ -97,28 +103,26 @@ if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT })
 
 // into the window: it glides to where the window draws it, fading as it lands
 await scene([A(200, 300, { t: Date.now(), leaving: true }), { ...A(900, 760), name: "Ada", tint: "blue", state: "listening" }])
-await page.waitForTimeout(30)
-const going = await page.evaluate(() => document.querySelector("#root > div[data-leaving]")?.hasAttribute("data-gone"))
+const going = await until(() => page.evaluate(() => document.querySelector("#root > div[data-leaving]")?.hasAttribute("data-gone")), 2000)
 check("one going into the window fades on its way", going === true)
 // (those gone, faded out before the next)
 await scene([])
-await page.waitForTimeout(700)
+await ui.idle()
 
 // summoned: at the pointer, listening with its words by it, then thinking; its own cursor takes over, no ghost
 const S = (state, extra = {}) => ({ name: "Claude", tint: "orange", state, sx: 600, sy: 400, ...extra })
 await scene([], S("listening", { words: "what's this button" }))
-await page.waitForTimeout(300)
+await ui.idle()
 const heard = await page.evaluate(() => { const c = document.querySelector("[data-companion-summoned]"); return c && { state: c.dataset.companionSummoned, wave: !!c.querySelector(".companion-wave"), words: c.querySelector("[data-bubble]")?.textContent } })
 check("summoned, listening: its cursor with a wave, its words by it as they come", heard?.state === "listening" && heard.wave && heard.words === "what's this button", heard)
 await scene([], S("thinking"))
-await page.waitForTimeout(100)
+await ui.idle()
 check("let go, it thinks there (dots), the words gone", await page.evaluate(() => { const c = document.querySelector("[data-companion-summoned]"); return c?.dataset.companionSummoned === "thinking" && !!c.querySelector(".companion-dots") && !c.querySelector("[data-bubble]") }))
 await scene([A(600, 400, { from: { x: 600, y: 400 } })])
-await page.waitForTimeout(30)
-const swapped = await page.evaluate(() => ({ cursors: document.querySelectorAll('#root > div[style*="translate"]').length, ghost: document.querySelectorAll("[data-gone]").length }))
-check("its own cursor takes over: one, no fading copy behind", swapped.cursors === 1 && swapped.ghost === 0, swapped)
+const swaps = await eachFrameTillIdle(() => ({ cursors: document.querySelectorAll('#root > div[style*="translate"]').length, ghost: document.querySelectorAll("[data-gone]").length }))
+check("its own cursor takes over: one, no fading copy behind", swaps.length > 0 && swaps.every((x) => x.cursors <= 1 && x.ghost === 0) && swaps.at(-1).cursors === 1, swaps.filter((x) => x.cursors !== 1 || x.ghost).slice(0, 3))
 await scene([])
-await page.waitForTimeout(700)
+await ui.idle()
 
 // its words never cover its arrow, its name or what it points at, anywhere on screen (the bug: its box over its name)
 const long = "Here's what this row is: an invoice from Lighthouse, due Friday. Want me to add a task for it, or draft a reply?"
@@ -126,7 +130,7 @@ const meets = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y 
 const covered = []
 for (const [x, y] of [[400, 40], [400, 500], [400, 790], [1190, 400], [1190, 790], [8, 790], [8, 40]]) {
   await scene([A(x, y, { t: Date.now(), say: { id: `s${x}${y}`, text: long }, target: { x: x - 10, y: y - 10, width: 120, height: 20 } })])
-  await page.waitForTimeout(1000)
+  await ui.idle()
   const r = await page.evaluate(() => { const c = document.querySelector('#root > div[style*="translate"]'), box = (e) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } }
     return { flag: box(c.querySelector("[data-flag]")), words: box(c.querySelector("[data-bubble]")), arrow: box(c.querySelector("svg")) } })
   const target = { x: x - 10, y: y - 10, width: 120, height: 20 }
@@ -138,39 +142,37 @@ check("its bubble never covers its arrow, its name or what it points at, and sta
 
 // its bubble clicked opens its conversation at once, by its tip; the cursor itself takes no click (nothing to drag)
 await scene([A(400, 500, { t: Date.now(), say: { id: "s2", text: long } })])
-await page.waitForTimeout(500)
+await ui.idle()
 await page.mouse.click(400, 500)
-await page.waitForTimeout(700)
+await ui.idle()
 check("its cursor clicked: nothing (it isn't a button)", !(await calls("open")).length, await calls("open"))
 const bub = await page.evaluate(() => { const r = document.querySelector("[data-bubble-text]").getBoundingClientRect(); return [r.x + 20, r.y + 8] })
 await page.mouse.click(bub[0], bub[1])
-await page.waitForTimeout(50)
 const opened = await calls("open")
 check("its bubble clicked opens the conversation at once, by its tip", opened.length === 1 && opened[0][1] === "Claude" && opened[0][2] === 400 && opened[0][3] === 500, opened)
 await scene([])
 
 // driving another app: its caption by its name, and a pause said as one (electron/takeover.ts' takeoverCaption)
 await scene([A(300, 300, { state: "writing", doing: "Clicking Files" })])
-await page.waitForTimeout(80)
+await ui.idle()
 const doing = () => page.evaluate(() => [...document.querySelectorAll("[data-companion-doing]")].map((e) => [e.dataset.companionDoing, e.textContent, getComputedStyle(e.closest("[data-flag]")).opacity]))
 check("driving, its flag says what it does", JSON.stringify(await doing()) === '[["doing","Clicking Files","1"]]', await doing())
 await scene([A(300, 300, { state: "writing", doing: "Paused, you're using the mouse", paused: true })])
-await page.waitForTimeout(80)
+await ui.idle()
 check("their hands on the mouse, it says it's paused", JSON.stringify((await doing()).map((d) => d.slice(0, 2))) === `[["paused","Paused, you're using the mouse"]]`, await doing())
 await scene([], { name: "Claude", tint: "orange", state: "thinking", sx: 400, sy: 300, follow: false, doing: "Typing the title" })
-await page.waitForTimeout(80)
+await ui.idle()
 check("summoned, its caption shows too, no dots with it", JSON.stringify((await doing()).map((d) => d.slice(0, 2))) === '[["doing","Typing the title"]]' &&
   !(await page.evaluate(() => !!document.querySelector("[data-companion-summoned] .companion-dots"))), await doing())
 if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, "doing.png") })
 await scene([])
 
 // a word for a moment ("Saved in Captures") and dictation's box: at the top right under the menu bar, never its top left
-const pillAt = (pill) => page.evaluate(async (pill) => {
-  window.__scene({ width: 1200, height: 800, top: 25, agents: [], summon: null, pill })
-  await new Promise((r) => setTimeout(r, 400))
-  const r = document.querySelector(".dictation-pill")?.getBoundingClientRect()
-  return r && { left: Math.round(r.left), right: Math.round(r.right), top: Math.round(r.top) }
-}, pill)
+const pillAt = async (pill) => {
+  await page.evaluate((pill) => window.__scene({ width: 1200, height: 800, top: 25, agents: [], summon: null, pill }), pill)
+  await ui.idle()
+  return page.evaluate(() => { const r = document.querySelector(".dictation-pill")?.getBoundingClientRect(); return r && { left: Math.round(r.left), right: Math.round(r.right), top: Math.round(r.top) } })
+}
 for (const [what, pill] of [["a hint", { level: 0, text: "Saved in Captures", ready: true, hint: true }], ["dictation's box", { level: 0.3, text: "", ready: true }]]) {
   const at = await pillAt(pill)
   check(`${what} sits at the top right, under the menu bar`, !!at && at.right > 1100 && at.left > 600 && at.top >= 25 && at.top < 60, at)
@@ -178,7 +180,7 @@ for (const [what, pill] of [["a hint", { level: 0, text: "Saved in Captures", re
 await pillAt(null)
 
 // the conversation (#panel): the window's own look, a box that takes the keyboard, words said into it
-const panel = watch(await browser.newPage({ viewport: { width: 400, height: 600 } }))
+const panel = watch(await browser.newPage({ viewport: { width: 400, height: 600 } })), panelUi = app(panel)
 await panel.route("http://screen.test/**", (r) => {
   const f = path.join(DIST, new URL(r.request().url()).pathname)
   if (!fs.existsSync(f)) return r.fulfill({ status: 404 })
@@ -201,12 +203,12 @@ const sizes = await panel.evaluate(() => window.__calls.filter((c) => c[0] === "
 check("it tells its height, for its window to fit it", sizes.length > 0 && sizes.at(-1) > 120 && sizes.at(-1) < 400, sizes)
 if (process.env.SHOTS) await panel.screenshot({ path: path.join(process.env.SHOTS, "panel.png") })
 await panel.evaluate((d) => window.__panel({ ...d, words: { text: "and the one below", listening: true } }), data)
-await panel.waitForTimeout(50)
+await panelUi.idle()
 check("words being said show in the box as they come", await panel.evaluate(() => document.querySelector("input").value) === "and the one below")
 if (process.env.SHOTS) await panel.screenshot({ path: path.join(process.env.SHOTS, "panel-listening.png") })
 await panel.evaluate((d) => window.__panel({ ...d, words: { text: "and the one below?", listening: false, done: true, id: 1 } }), data)
 await panel.evaluate((d) => window.__panel({ ...d, words: { text: "and the one below?", listening: false, done: true, id: 1 } }), data)
-await panel.waitForTimeout(50)
+await panelUi.idle()
 check("said, they stay in the box once", await panel.evaluate(() => document.querySelector("input").value) === "and the one below?")
 await panel.keyboard.press("Enter")
 check("Enter sends it", JSON.stringify(await panel.evaluate(() => window.__calls.filter((c) => c[0] === "send"))) === '[["send","and the one below?"]]')

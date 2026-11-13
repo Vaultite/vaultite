@@ -6,7 +6,8 @@ import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, SELECT_WORD, desktopApp, qa, terminalText, until, wait } from "./lib/qa.mjs"
+import { app as appOf } from "./lib/app.mjs"
+import { PROMPT, ROOT, SELECT_WORD, desktopApp, qa, terminalText, until } from "./lib/qa.mjs"
 import { pathToFileURL } from "node:url"
 import { gitEnv } from "../../core/gitenv.ts"
 
@@ -24,7 +25,7 @@ const app = await _electron.launch({
   executablePath: DESKTOP.executablePath, args: [...DESKTOP.args, "--vault", VAULT],
   env: { ...process.env, ...DESKTOP.env, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_USER_DATA: path.join(TMP, "userData"), VAULTITE_LOCAL: path.join(TMP, "local") },
 })
-const win = await app.firstWindow()
+const win = await app.firstWindow(), ui = appOf(win)
 watch(win, { console: true })
 await win.waitForSelector("[role=tree]", { timeout: 60000 })
 const origin = new URL(win.url()).origin
@@ -49,7 +50,7 @@ check("the window serves the vault from its own server", /^http:\/\/127\.0\.0\.1
     await row.click()
     check("… a tap copies the whole commit", await until(() => win.evaluate((sha) => window.__copied.includes(sha), app_.commit), 4000), await win.evaluate(() => window.__copied))
   } else {
-    await wait(500)
+    await ui.idle()
     check("About's App row: none when the app isn't a build", (await row.count()) === 0)
   }
   await win.evaluate(() => { history.back() })
@@ -91,7 +92,7 @@ await menuClick("Close tab")
 check("File > Close tab (⌘W) closes it", await until(async () => (await tabs()) === before, 10000), await tabs())
 await win.keyboard.press("ControlOrMeta+P")
 await win.keyboard.type("Close current tab")
-await wait(300)
+await ui.idle()
 const listed = await win.evaluate(() => document.querySelector("[role=dialog], [role=listbox]")?.closest("div")?.textContent ?? document.body.textContent)
 check(`the palette shows ${MAC ? "⌘W" : "Ctrl W"} on Close current tab`, (MAC ? /Close current tab\s*⌘\s*W/ : /Close current tab\s*Ctrl\s*W/).test(listed), listed.slice(0, 200))
 await win.keyboard.press("Escape")
@@ -100,9 +101,9 @@ await win.keyboard.press("Escape")
 // own tabs; the menu's commands go to it while it's in front; closing its last tab closes it.
 {
   const note = fs.readdirSync(path.join(VAULT, "Notes")).find((f) => f.endsWith(".md"))
-  await win.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent(`Notes/${note}`)}`); await wait(600)
+  await win.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent(`Notes/${note}`)}`); await ui.idle()
   const made = app.waitForEvent("window")
-  await win.keyboard.press("ControlOrMeta+P"); await win.keyboard.type("Move current tab to new window"); await wait(300); await win.keyboard.press("Enter")
+  await win.keyboard.press("ControlOrMeta+P"); await win.keyboard.type("Move current tab to new window"); await ui.idle(); await win.keyboard.press("Enter")
   const pop = await made
   watch(pop, { label: "popout" })
   await pop.waitForSelector("[data-tab-id]", { timeout: 20000 })
@@ -120,32 +121,32 @@ await win.keyboard.press("Escape")
     find(Menu.getApplicationMenu().items).click(undefined, w)
   })
   check("pop-out: the menu's New tab opens one there", await until(async () => (await popTabs()) === 2, 10000), await popTabs())
-  const gone = new Promise((r) => pop.once("close", () => r(true)))
+  const gone = pop.waitForEvent("close", { timeout: 15000 }).then(() => true, () => false)
   await pop.keyboard.press("ControlOrMeta+W")
   check("pop-out: ⌘W closes a tab there", await until(async () => (await popTabs()) === 1, 10000), await popTabs())
   // (the window goes while the key is down)
   await pop.keyboard.press("ControlOrMeta+W").catch(() => {})
-  check("pop-out: closing its last tab closes it", await Promise.race([gone, wait(5000).then(() => false)]))
+  check("pop-out: closing its last tab closes it", await gone)
   if (process.env.SHOW) await win.bringToFront() // (quiet, it would take the user's front window)
   await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0].focus())
 
   // A pop-out closed as a window (its tabs in it): ⇧⌘T opens it again, as a browser's closed window.
-  await win.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent(`Notes/${note}`)}`); await wait(600)
+  await win.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent(`Notes/${note}`)}`); await ui.idle()
   const made2 = app.waitForEvent("window")
-  await win.keyboard.press("ControlOrMeta+P"); await win.keyboard.type("Move current tab to new window"); await wait(300); await win.keyboard.press("Enter")
+  await win.keyboard.press("ControlOrMeta+P"); await win.keyboard.type("Move current tab to new window"); await ui.idle(); await win.keyboard.press("Enter")
   const pop2 = await made2
   await pop2.waitForSelector("[data-tab-id]", { timeout: 20000 })
-  const shut = new Promise((r) => pop2.once("close", () => r(true)))
+  const shut = pop2.waitForEvent("close", { timeout: 5000 }).catch(() => {})
   await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows().find((x) => x.webContents.getURL().includes("?popout="))?.close())
-  await Promise.race([shut, wait(5000)])
-  await wait(1500) // (the main window notices within a second)
+  await shut
+  await ui.idle()
   await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0].focus())
   const made3 = app.waitForEvent("window", { timeout: 10000 }).catch(() => null)
   await win.keyboard.press("ControlOrMeta+Shift+T")
   const pop3 = await made3
   check("pop-out: closed as a window, ⇧⌘T opens it again with its tab", !!pop3 && await pop3.waitForSelector("[data-tab-id]", { timeout: 20000 }).then(() => true, () => false)
     && decodeURIComponent(pop3.url()).includes(note), pop3?.url())
-  if (pop3) { const end = new Promise((r) => pop3.once("close", r)); await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows().find((x) => x.webContents.getURL().includes("?popout="))?.close()); await Promise.race([end, wait(5000)]) }
+  if (pop3) { const end = pop3.waitForEvent("close", { timeout: 5000 }).catch(() => {}); await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows().find((x) => x.webContents.getURL().includes("?popout="))?.close()); await end }
   await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0].focus())
 }
 
@@ -154,7 +155,7 @@ await win.keyboard.press("Escape")
 {
   fs.writeFileSync(path.join(VAULT, "Notes/Qa spelling.md"), "Look this up please.\n")
   await win.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent("Notes/Qa spelling.md")}`)
-  await win.waitForSelector("[data-pane] .cm-content"); await wait(800)
+  await win.waitForSelector("[data-pane] .cm-content"); await ui.idle()
   const said = []
   await app.evaluate(({ BaseWindow }) => { globalThis.__said = 0; BaseWindow.getAllWindows()[0].webContents.on("context-menu", () => { globalThis.__said++ }) })
   const first = win.locator("[data-pane] .cm-line").first()
@@ -168,14 +169,15 @@ await win.keyboard.press("Escape")
     check("editor: Look up the selection", items.some((i) => i.startsWith("Look up “Look”")), items)
     const looked = () => app.evaluate(() => globalThis.vaultiteQuiet?.lookUps ?? 0)
     const was = await looked()
-    await win.getByRole("menuitem", { name: /^Look up/ }).click(); await wait(300)
-    check("editor: Look up asks the window without an error", !errs.length, errs)
+    await win.getByRole("menuitem", { name: /^Look up/ }).click()
     // (quiet, macOS's popover isn't shown over the user's work: noted instead, quiet.ts)
-    if (!process.env.SHOW) check("editor: … and a quiet copy doesn't show macOS's popover", (await looked()) === was + 1, await looked())
+    if (!process.env.SHOW) check("editor: … and a quiet copy doesn't show macOS's popover", await until(async () => (await looked()) === was + 1, 4000), await looked())
+    else await ui.idle()
+    check("editor: Look up asks the window without an error", !errs.length, errs)
   } else check("editor: no Look up off a Mac", !items.some((i) => i.startsWith("Look up")), items)
   await win.keyboard.press("Escape")
   // (what follows drops files on a blank pane)
-  await menuClick("Close tab"); await wait(300)
+  await menuClick("Close tab"); await ui.idle()
 }
 
 // Zoom (web/src/core/zoom.ts): View > Zoom in / out / Actual size, on ⌘= and ⌘+ (⇧⌘=) alike, zoom what's focused; with
@@ -205,7 +207,7 @@ check("Zoom in from Settings (no pane content to zoom): the interface", await un
 await menuClick("Actual size")
 check("Actual size", await until(async () => (await factor()) === 1, 4000), await factor())
 await win.evaluate(() => { history.back() })
-await wait(500)
+await ui.idle()
 
 // The menu bar is the window's commands (electron/menu.ts): its menus, their icons, the keys in effect (hotkeys.json's
 // too, live), the pinned pages.
@@ -240,8 +242,8 @@ if (pins.length) check("Go > Pinned lists the pinned pages", await until(async (
 
 // The sidebar folded to its rail: the top-left tab bar makes room for the traffic lights and the toggle.
 await menuClick("Hide left sidebar")
-await wait(400)
-const firstTab = await win.locator("[data-corner] [role=tablist] [role=tab]").first().boundingBox()
+const tabAt = () => win.locator("[data-corner] [role=tablist] [role=tab]").first().boundingBox()
+const firstTab = await until(async () => { const b = await tabAt(); return b && b.x >= (MAC ? 110 : 40) ? b : null }, 4000) ?? await tabAt()
 check("folded sidebar: the first tab clears the traffic lights (a Mac's) and the toggle", firstTab && firstTab.x >= (MAC ? 110 : 40), firstTab)
 await win.screenshot({ path: path.join(OUT, "rail.png") })
 // ...and without a tab bar or pane tab bars, a note's bar is the pane's title row: no strip above it, clear of the toggle.
@@ -264,9 +266,9 @@ await menuClick("Show left sidebar")
 const cdp = await win.context().newCDPSession(win)
 async function drop(files, x, y, modifiers = 0) {
   const data = { items: [], files, dragOperationsMask: 1 | 16 }
-  // (A beat between the events, like a real drag: a busy page may not have handled the enter before the drop.)
-  for (const type of ["dragEnter", "dragOver", "drop"]) { await cdp.send("Input.dispatchDragEvent", { type, x, y, data, modifiers }); await wait(100) }
+  for (const type of ["dragEnter", "dragOver", "drop"]) { await cdp.send("Input.dispatchDragEvent", { type, x, y, data, modifiers }); await ui.idle() }
 }
+const blank = async () => { await win.locator("#main-scroll [data-newtab-section]").first().waitFor(); await ui.idle() }
 // A 1×1 PNG, for image drops.
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64")
 
@@ -276,7 +278,7 @@ await win.keyboard.type("Open terminal")
 await win.keyboard.press("Enter")
 const term = () => terminalText(win)
 await until(async () => (await win.locator("[data-term]").count()) > 0, 15000)
-await wait(1500)
+await until(async () => PROMPT.test(await terminalText(win)), 10000)
 await win.locator("[data-term]").first().click()
 await win.keyboard.type("echo vau-$((6*7)) && pwd\n")
 check("the terminal runs a shell in the vault", await until(async () => (await term()).includes("vau-42") && (await term()).includes(path.basename(VAULT)), 15000), (await term()).slice(-300))
@@ -334,7 +336,7 @@ await win.getByRole("menuitem", { name: "Copy to vault" }).click()
 check("Copy to vault copies it in", await until(() => fs.existsSync(path.join(VAULT, "Outside note.md")) && fs.readFileSync(path.join(VAULT, "Outside note.md"), "utf8").includes("Edited in the app."), 10000))
 check("…and the tab shows the vault's copy", await until(async () => decodeURIComponent(win.url()).endsWith("#file/Outside note.md"), 10000), win.url())
 await menuClick("New tab") // (a vault note takes drops: attachments)
-await wait(500)
+await blank()
 
 // Any file dropped from outside opens in its viewer (a PDF), or drawn by its plugin (a workbook), its bytes served.
 const pdfOut = path.join(TMP, "Outside statement.pdf")
@@ -347,7 +349,7 @@ check("in the PDF viewer, its bytes served", await until(async () => (await win.
 const imgOut = path.join(TMP, "Outside photo.png")
 fs.writeFileSync(imgOut, png)
 await menuClick("New tab")
-await wait(500)
+await blank()
 await drop([imgOut], main.x + main.width / 2, main.y + 200)
 check("an image dropped from outside opens in a tab", await until(async () => decodeURIComponent(win.url()).includes(`#file/${imgOut}`), 10000), win.url())
 check("its path bar has Copy to vault", await until(async () => (await win.locator('[data-pane] button[aria-label="Copy to vault"]').count()) > 0, 10000))
@@ -365,7 +367,7 @@ await win.keyboard.press("Escape")
 const xlsxOut = path.join(TMP, "Outside budget.xlsx")
 fs.writeFileSync(xlsxOut, (await import(pathToFileURL(path.join(ROOT, "tools/fixtures/formats/make.ts")).href)).xlsx())
 await menuClick("New tab") // (a PDF's viewer takes drops itself)
-await wait(500)
+await blank()
 await drop([xlsxOut], main.x + main.width / 2, main.y + 200)
 check("a workbook dropped from outside opens as a grid", await until(async () => (await win.locator("[data-sheet-grid] td", { hasText: "Lamp oil" }).count()) > 0, 15000))
 check("the server refuses bytes nobody allowed", (await fetch(`${origin}/api/raw?path=${encodeURIComponent("/etc/hosts")}`)).status === 404)
@@ -378,7 +380,7 @@ fs.writeFileSync(htmlOut, `<!doctype html><html><head><title>Outside chart</titl
   vau.read("/Welcome.md").then(() => { document.getElementById("out").textContent += ", read the vault" }, () => { document.getElementById("out").textContent += ", vault refused" })
 </script></body></html>`)
 await menuClick("New tab")
-await wait(500)
+await blank()
 await drop([htmlOut], main.x + main.width / 2, main.y + 200)
 const htmlText = async () => { for (const f of win.frames()) { try { const t = await f.evaluate(() => document.getElementById("out")?.textContent ?? ""); if (t) return t } catch { /* not it */ } } return "" }
 check("an HTML page dropped from outside runs", await until(async () => (await htmlText()).startsWith("script ran"), 15000), await htmlText())
@@ -431,9 +433,8 @@ check("a file of another known vault opens in that vault's window", await until(
 const port2 = new URL(second.url()).port
 await app.evaluate(({ BaseWindow }, port) => BaseWindow.getAllWindows().find((w) => w.webContents.getURL().includes(`:${port}/`)).close(), port2)
 check("closing a window stops its server", await until(async () => { try { await fetch(`http://127.0.0.1:${port2}/api/vault`); return false } catch { return true } }, 10000))
-await wait(1000)
-const saved = JSON.parse(fs.readFileSync(path.join(TMP, "userData", "vaults.json"), "utf8"))
-check("the vault list is kept in userData", saved.vaults.length === 2 && saved.vaults.find((v) => v.path === VAULT).open === true && saved.vaults.find((v) => v.path !== VAULT).open === false, saved)
+const kept = () => { const s = JSON.parse(fs.readFileSync(path.join(TMP, "userData", "vaults.json"), "utf8")); return s.vaults.length === 2 && s.vaults.find((v) => v.path === VAULT).open === true && s.vaults.find((v) => v.path !== VAULT).open === false }
+check("the vault list is kept in userData", await until(kept, 5000), fs.readFileSync(path.join(TMP, "userData", "vaults.json"), "utf8"))
 
 noErrors()
 const port1 = new URL(origin).port

@@ -249,6 +249,7 @@ function repaint(key: string) {
 type View = { s: Shown | null; gone: Agent[]; summonGone: Summoned | null; behindGone: Behind | null }
 let view: View = { s: null, gone: [], summonGone: null, behindGone: null }
 const fading = new Map<string, ReturnType<typeof setTimeout>>()
+trackSoon("a cursor fading out", () => fading.size > 0)
 const listeners = new Set<() => void>()
 const set = (v: Partial<View>) => { view = { ...view, ...v }; for (const l of listeners) l() }
 const FADE = 560

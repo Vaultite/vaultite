@@ -14,6 +14,7 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
+import { app as appOf } from "./lib/app.mjs"
 import { ROOT, qa, until, wait, keepAwake, uiAt } from "./lib/qa.mjs"
 import { stopTerminals } from "../../tools/test/lib.ts"
 
@@ -57,7 +58,7 @@ const app = await _electron.launch({
   executablePath: path.join(ROOT, "node_modules/.bin/electron"), args: [ROOT, "--vault", VAULT],
   env: { ...process.env, VAULTITE_QUIET: "1", VAULTITE_USER_DATA: path.join(TMP, "userData"), VAULTITE_LOCAL: path.join(TMP, "local") },
 })
-const win = await app.firstWindow()
+const win = await app.firstWindow(), vault = appOf(win)
 watch(win, { console: true, fail: false })
 await win.waitForSelector("[role=tree]", { timeout: 60000 })
 const origin = new URL(win.url()).origin
@@ -97,7 +98,7 @@ const inPage = (code) => app.evaluate(({ webContents }, [code, src]) => {
 /** Whether the test's page is still open (asked of the main process: a page being closed may never answer a script). */
 const pageOpen = () => app.evaluate(({ webContents }, src) => webContents.getAllWebContents().some((w) => !w.isDestroyed() && new RegExp(src).test(w.getURL())), OURS.source)
 const fills = (w) => w?.bounds && w.bounds.x === 0 && w.bounds.y === 0 && w.bounds.width === w.content.width && w.bounds.height === w.content.height
-const playing = async () => { const a = await inPage("document.querySelector('video').currentTime"); await wait(600); const b = await inPage("document.querySelector('video').currentTime"); return b > a }
+const playing = async () => { const a = await inPage("document.querySelector('video').currentTime"); return !!await until(async () => (await inPage("document.querySelector('video').currentTime")) > a, 3000) }
 const send = (events) => app.evaluate(({ webContents }, [events, src]) => {
   const wc = webContents.getAllWebContents().find((w) => new RegExp(src).test(w.getURL()))
   for (const e of events) wc.sendInputEvent(e)
@@ -139,8 +140,8 @@ const steady = async (sel) => {
   return true
 }
 const more = async (label) => {
-  await win.locator("[data-web-more]:visible").first().click(); await wait(300)
-  await win.getByRole("menuitem", { name: label }).click(); await wait(300)
+  await win.locator("[data-web-more]:visible").first().click()
+  await win.getByRole("menuitem", { name: label }).click(); await vault.idle()
 }
 const back = async () => {
   await app.evaluate(({ BaseWindow, Menu }) => {
@@ -152,7 +153,7 @@ const back = async () => {
 
 await ui({ action: "open", path: `view:web/${SITE}/movie`, newTab: true })
 await until(async () => (await where()).in === "vault", 15000)
-await inPage("new Promise((r) => setTimeout(r, 500))")
+await until(() => inPage("document.querySelector('video')?.currentTime > 0"), 5000)
 const token = await inPage("window.__token")
 const pane = await where()
 check("the film plays in its tab", await playing())
@@ -164,7 +165,7 @@ check("a page's full screen fills the window, full screen", full, await where())
 await key("Escape")
 const home0 = await until(async () => { const w = await where(); return !w.full && w.bounds?.width === pane.bounds.width && w.bounds?.height === pane.bounds.height ? w : null }, 6000)
 check("Esc: back in its pane, the window as it was", home0, { now: await where(), pane })
-await wait(500)
+await vault.idle()
 
 // ---------- Open as player: a window at its video's aspect, the video filling it ----------
 const t0 = Date.now()
@@ -230,13 +231,14 @@ check("the window's full screen (its green button)", await until(async () => { c
 await key("Escape")
 const pe = await until(async () => { const w = await where(); return !w.full && w.in === "player" ? w : null }, 4000)
 check("… Esc leaves it, the window as it was, still a player", pe && pe.at.width === r0.width && pe.at.height === r0.height, pe?.at)
-await key("Escape"); await wait(500)
+await inPage("window.__escs = 0; addEventListener('keydown', (e) => { if (e.key === 'Escape') window.__escs++ }, true)")
+await key("Escape")
+await until(() => inPage("window.__escs > 0"), 3000)
 check("Esc in a window does nothing to it", (await where()).in === "player")
-await player((w) => w.setFullScreen(true)); await wait(200)
-await inPage("document.getElementById('player').requestFullscreen()"); await wait(300)
+await player((w) => w.setFullScreen(true)); await until(async () => (await where()).full, 3000)
+await inPage("document.getElementById('player').requestFullscreen()"); await until(() => inPage("!!document.fullscreenElement"), 3000)
 await player((w) => w.setFullScreen(false))
 check("the window leaving full screen takes the page's out too", await until(() => inPage("!document.fullscreenElement"), 3000) && !(await where()).full)
-await wait(300)
 check("the site's own full screen button, from the window: full screen and back", await (async () => {
   await inPage("document.getElementById('full').click()") // (the page's button: inside the player, under the fill)
   // (the window goes full screen before the page is told it is: exitFullscreen before that throws)
@@ -246,7 +248,7 @@ check("the site's own full screen button, from the window: full screen and back"
 })())
 
 // ---------- its aspect follows the video ----------
-await player((w) => w.setContentSize(960, 540)); await wait(300)
+await player((w) => w.setContentSize(960, 540)); await until(async () => { const w = await where(); return w.content.width === 960 && w.content.height === 540 }, 3000)
 await inPage("document.getElementById('c').width = 240")
 check("the video turning 4:3, the window follows, keeping its width", await until(async () => { const w = await where(); return w.content.width === 960 && near(w.content.height, 720) }, 4000), (await where()).content)
 
@@ -254,7 +256,7 @@ await inPage("(() => { const o = document.getElementById('v'), n = document.crea
 check("its site replacing the video, the new one fills it", await until(() => inPage("(() => { const r = document.getElementById('v').getBoundingClientRect(); return r.width === innerWidth && r.height === innerHeight })()"), 4000))
 
 // ---------- closing it: back in its tab; the next opens where it was ----------
-await player((w) => w.setContentBounds({ x: 200, y: 160, width: 640, height: 480 })); await wait(300)
+await player((w) => w.setContentBounds({ x: 200, y: 160, width: 640, height: 480 })); await until(async () => JSON.stringify((await where()).at) === JSON.stringify({ x: 200, y: 160, width: 640, height: 480 }), 3000)
 check("closing the player (⌘W) brings the page back to its tab", await back(), await where())
 check("… the same page, playing on, its video back in the page", (await inPage("window.__token")) === token && await playing() && await inPage("!document.getElementById('player').hasAttribute('popover') && !document.querySelector('[data-vaultite-player]')"))
 await more("Open as player")
@@ -268,10 +270,11 @@ await inPage("document.getElementById('c').width = 320")
 const tab = (await op("tabs")).find?.((t) => t.url.includes("/movie"))?.tab
 await op("player", { tab })
 await until(async () => (await where()).in === "player", 5000)
-await player((w) => w.minimize()); await wait(1500)
+await player((w) => w.minimize()); await until(() => player((w) => w.isMinimized()), 3000)
+// (the frames drawn in a second: the check is its frame rate)
 const fr0 = await inPage("window.__frames"); await wait(1000); const fr1 = await inPage("window.__frames")
 check("minimized, the page still draws (never throttled: a call keeps sharing it)", fr1 - fr0 > 20 && (await inPage("document.visibilityState")) === "visible", { frames: fr1 - fr0 })
-await player((w) => w.restore()); await wait(300)
+await player((w) => w.restore()); await until(async () => !(await player((w) => w.isMinimized())), 5000)
 await op("player", { tab, off: true })
 check("browser player --off brings it back", await until(async () => { const w = await where(); return w.in === "vault" && w.players === 0 }, 5000), await where())
 
@@ -286,11 +289,11 @@ check("… its page back in its tab, still playing", await until(async () => (aw
 await op("player", { tab, fullScreen: true })
 check("browser player --full-screen opens it full screen", await until(async () => { const w = await where(); return w.in === "player" && w.full && fills(w) }, 5000), await where())
 await back()
-await setting({ playerFullScreen: true }); await wait(1000)
+await setting({ playerFullScreen: true })
 await op("player", { tab })
 check("playerFullScreen on: full screen", await until(async () => { const w = await where(); return w.in === "player" && w.full }, 5000), await where())
 await back()
-await setting({ playerFullScreen: false }); await wait(500)
+await setting({ playerFullScreen: false })
 
 // ---------- picture in picture ----------
 // (quiet, the video is marked rather than put in the system's window over the user's work: electron/player.ts' PIP)
@@ -315,25 +318,29 @@ check("a video file: a player at its aspect (4:3)", clip && near(clip.content.wi
 const f3 = await settled("4-file", [[0.01, 0.01], [0.99, 0.01], [0.5, 0.5], [0.01, 0.99], [0.99, 0.99]], (c) => c.every((x) => !black(x)))
 check("… drawn edge to edge", f3 && f3.colours.every((c) => !black(c)), f3?.colours)
 await back()
-await ui({ action: "command", id: "tab:close" }); await wait(500)
+await ui({ action: "command", id: "tab:close" }); await until(async () => !(await pageOpen()), 6000)
 
 // ---------- a video in an embedded player of another site ----------
 await ui({ action: "open", path: `view:web/${SITE}/framed`, newTab: true })
 await until(async () => (await where()).in === "vault", 15000)
-await wait(1500)
+await until(() => app.evaluate(({ webContents }, src) => {
+  const wc = webContents.getAllWebContents().find((w) => new RegExp(src).test(w.getURL()))
+  const f = wc?.mainFrame.framesInSubtree.find((x) => x.url.startsWith("http://localhost"))
+  return f ? f.executeJavaScript("document.querySelector('video')?.readyState >= 2") : false
+}, OURS.source), 10000)
 await more("Open as player")
 check("an embedded player fills the player", await until(() => inPage("(() => { const f = document.getElementById('f'), r = f.getBoundingClientRect(); return f.matches(':popover-open') && r.width === innerWidth && r.height === innerHeight })()"), 5000))
 await back()
-await ui({ action: "command", id: "tab:close" }); await wait(500)
+await ui({ action: "command", id: "tab:close" }); await until(async () => !(await pageOpen()), 6000)
 
 // ---------- no video: the page itself ----------
 await ui({ action: "open", path: `view:web/${SITE}/text`, newTab: true })
-await until(async () => (await where()).in === "vault", 15000)
-await wait(1000)
+await until(async () => (await where()).in === "vault" && await inPage("document.readyState === 'complete'"), 15000)
+await vault.idle()
 await more("Open as player")
 check("no video: the page itself fills the player", await until(async () => { const w = await where(); return w.in === "player" && fills(w) }, 5000) && (await inPage("!document.fullscreenElement")))
 await back()
-await ui({ action: "command", id: "tab:close" }); await wait(500)
+await ui({ action: "command", id: "tab:close" }); await until(async () => !(await pageOpen()), 6000)
 
 // ---------- YouTube (YOUTUBE=1: the network) ----------
 if (process.env.YOUTUBE) {
@@ -347,33 +354,29 @@ if (process.env.YOUTUBE) {
     return wc.loadURL(to).catch(() => {})
   }, [gated, YT])
   const ready = await until(() => inPage("(() => { const v = document.querySelector('#movie_player video'); return !!v && v.readyState >= 2 && !v.paused })()"), 40000, 500)
-  check("YouTube: its video plays in its tab", ready, await app.evaluate(({ webContents }) => webContents.getAllWebContents().map((w) => w.getURL())))
-  await wait(1500)
+  check("YouTube: its video plays in its tab", ready && await playing(), await app.evaluate(({ webContents }) => webContents.getAllWebContents().map((w) => w.getURL())))
   const ytab = (await op("tabs")).find?.((t) => t.url.includes("youtube.com"))?.tab
   const y0 = Date.now()
   await op("player", { tab: ytab })
   const yt = await until(async () => { const w = await where(); return w.in === "player" && fills(w) ? w : null }, 8000)
   console.log(`  (YouTube as player: ${Date.now() - y0} ms)`)
   check("YouTube: a player at its aspect", yt && near(yt.content.width / yt.content.height, 16 / 9, 0.03), yt?.content)
-  await wait(1500)
-  const fy = await frame("5-youtube", [[0.02, 0.1], [0.98, 0.1], [0.5, 0.5], [0.02, 0.9], [0.98, 0.9]])
+  const fy = await settled("5-youtube", [[0.02, 0.1], [0.98, 0.1], [0.5, 0.5], [0.02, 0.9], [0.98, 0.9]], (c) => c.filter((x) => !black(x)).length >= 4)
   check("… its video filling it", await until(() => inPage("(() => { const r = document.querySelector('#movie_player video').getBoundingClientRect(); return Math.abs(r.width - innerWidth) < 2 && Math.abs(r.height - innerHeight) < 2 && r.top === 0 })()"), 3000), await inPage("JSON.stringify([document.querySelector('#movie_player video').getBoundingClientRect(), innerWidth, innerHeight, document.querySelectorAll('#movie_player video').length])"))
   check("… drawn edge to edge", fy && fy.colours.filter((c) => !black(c)).length >= 4, fy?.colours)
     check("… resized step by step, its video fills it at every step, never waiting on YouTube's own layout", await steady("#movie_player video"))
   const ybox = (await where()).at
-  await wait(2500) // (YouTube settling after the resizes)
+  await wait(2500) // (YouTube's keys answer a while after the resizes, by no sign it gives)
   await key("F")
   const fOk = await until(async () => (await where()).full, 4000) && await inPage("!!document.fullscreenElement")
   if (!fOk) console.log("  DIAG", await inPage("JSON.stringify({ act: document.activeElement?.tagName + '#' + document.activeElement?.id, fs: document.fullscreenElement?.tagName, ad: !!document.querySelector('.ad-showing'), paused: document.querySelector('#movie_player video').paused, state: document.getElementById('movie_player')?.getPlayerState?.() })"))
   check("… F: YouTube's full screen, the window's too", fOk)
-  await wait(800)
-  await frame("6-youtube-full", [[0.5, 0.5]])
-  check("… its video filling the screen", await inPage("(() => { const r = document.querySelector('#movie_player video').getBoundingClientRect(); return Math.abs(r.width - innerWidth) < 2 || Math.abs(r.height - innerHeight) < 2 })()"))
+  check("… its video filling the screen", await until(() => inPage("(() => { const r = document.querySelector('#movie_player video').getBoundingClientRect(); return Math.abs(r.width - innerWidth) < 2 || Math.abs(r.height - innerHeight) < 2 })()"), 3000))
+  await settled("6-youtube-full", [[0.5, 0.5]], (c) => !black(c[0]))
   await key("F")
   const yb = await until(async () => { const w = await where(); return !w.full ? w : null }, 4000)
   check("… F again: the window as it was, its video filling it", yb && yb.at.width === ybox.width && yb.at.height === ybox.height && await until(() => inPage("document.querySelector('[data-vaultite-player]')?.matches(':popover-open')"), 2000), yb?.at)
-  await wait(500)
-  await frame("7-youtube-back", [[0.5, 0.5]])
+  await settled("7-youtube-back", [[0.5, 0.5]], (c) => !black(c[0]))
   await back()
 }
 

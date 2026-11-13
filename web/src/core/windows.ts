@@ -4,6 +4,7 @@ import { raiseWindow } from "@/core/desktop"
 import { clean, focusedPane, panesOf, type Tab } from "../../../core/layout.ts"
 import { isDesktop } from "@/core/platform"
 import { paneToTab, takeTabs } from "@/core/splits"
+import { trackSoon } from "@/core/unsaved"
 import { here, isPopout, openedWindows, paneById, paneTab, popOut, tabById, tabCount, takeOut } from "@/core/workspace"
 
 const MESSAGE = "vaultite:tabs"
@@ -89,6 +90,7 @@ if (typeof window !== "undefined") {
   window.vaultiteWindows = openedWindows
   const self: Peer = { w: window, pid: new URLSearchParams(location.search).get("popout") }
   const held: { over: Peer | null; front: Window; want: Window | null; timer: number } = { over: null, front: window, want: null, timer: 0 }
+  trackSoon("a window coming forward", () => held.want !== null)
   const raiseSoon = (p: Peer | null) => {
     if (p && p.w === held.want) return
     clearTimeout(held.timer)

@@ -7,6 +7,7 @@ import {
 } from "../../../core/layout.ts"
 import { signal } from "@/core/signal"
 import { tabsChanged } from "@/core/tabevents"
+import { trackSoon } from "@/core/unsaved"
 
 const enc = encodeURIComponent
 const POPOUT = new URLSearchParams(location.search).get("popout")
@@ -507,6 +508,7 @@ export function hideBars(on: boolean) {
 }
 
 const opened = new Map<string, globalThis.Window>()
+trackSoon("a closed window's tabs", () => [...opened.values()].some((w) => w.closed))
 export const openedWindows = () => [...opened].filter(([, w]) => !w.closed)
 export function popOut(ids: string | string[], move = false, at?: { x: number; y: number }) {
   const want = [ids].flat()

@@ -5,24 +5,32 @@ import { _electron } from "playwright-core"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, command, qa, until, wait } from "./lib/qa.mjs"
+import { app as appOf } from "./lib/app.mjs"
+import { ROOT, command, qa, until } from "./lib/qa.mjs"
 
 const { args: [VAULT], check, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-popoutraise-"))
 const app = await _electron.launch({ executablePath: path.join(ROOT, "node_modules/.bin/electron"), args: [ROOT, "--vault", VAULT],
   env: { ...process.env, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_USER_DATA: path.join(TMP, "userData"), VAULTITE_LOCAL: path.join(TMP, "local") } })
 try {
+  const uis = new Map()
+  app.on("window", (p) => uis.set(p, appOf(p)))
   const win = watch(await app.firstWindow())
+  if (!uis.has(win)) uis.set(win, appOf(win))
+  const idle = (...ps) => Promise.all(ps.map((p) => uis.get(p).idle()))
   await win.waitForSelector("[role=tree]", { timeout: 60000 })
-  const hash = (p, f) => p.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent(f)}`)
-  await command(win, "Close all other tabs"); await hash(win, "Start here.md"); await wait(500)
-  await command(win, "Open new tab"); await hash(win, "ME.md"); await wait(500)
-  await command(win, "Open new tab"); await hash(win, "Notes"); await wait(500)
+  const hash = async (p, f) => { await p.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent(f)}`); await idle(p) }
+  const cmd = async (p, name) => { await command(p, name, 0); await idle(p) }
+  const placed = (p, x, y) => until(() => p.evaluate(([x, y]) => screenX === x && screenY === y, [x, y]), 5000)
+  await cmd(win, "Close all other tabs"); await hash(win, "Start here.md")
+  await cmd(win, "Open new tab"); await hash(win, "ME.md")
+  await cmd(win, "Open new tab"); await hash(win, "Notes")
   const popped = app.waitForEvent("window")
-  await command(win, "Move current tab to new window")
-  await popped; await wait(1500)
+  await command(win, "Move current tab to new window", 0)
+  await popped
   const pop = app.windows().find((w) => /popout=/.test(w.url()))
   await pop.waitForSelector("[data-tab-strip] [data-tab-id]", { timeout: 15000 })
+  await idle(win, pop)
   // The pop-out right of the main window, over its right edge; each window's raises and focus logged.
   await app.evaluate(({ BaseWindow }) => {
     globalThis.__log = []
@@ -34,35 +42,33 @@ try {
     const main = pages.find(([, u]) => u.startsWith("http") && !/popout=/.test(u))[0], p = pages.find(([, u]) => /popout=/.test(u))[0]
     main.setBounds({ x: 40, y: 40, width: 1100, height: 760 }); p.setBounds({ x: 900, y: 140, width: 900, height: 600 })
   })
-  await wait(500)
+  await placed(win, 40, 40); await placed(pop, 900, 140)
   const mb = await win.evaluate(() => ({ x: screenX, y: screenY, top: outerHeight - innerHeight }))
   const pb = await pop.evaluate(() => ({ x: screenX, y: screenY, top: outerHeight - innerHeight }))
   const t = await pop.locator("[data-tab-id]").first().boundingBox()
   await pop.mouse.move(t.x + 20, t.y + t.height / 2); await pop.mouse.down()
   await pop.mouse.move(t.x + 40, t.y + t.height / 2, { steps: 3 })
-  // over the main window's pane, left of the pop-out: (screen 500, 400) as the pop-out's page sees it
   const body = await win.locator("[data-pane-body]:visible").first().boundingBox()
   const sx = mb.x + body.x + body.width / 3, sy = mb.y + mb.top + body.y + body.height / 2
   const px = sx - pb.x, py = sy - pb.y - pb.top
   const t0 = await app.evaluate(() => { globalThis.__log = []; return Date.now() })
   await pop.mouse.move(px, py, { steps: 6 })
-  await wait(150)
-  const early = await app.evaluate((t0) => globalThis.__log.filter((x) => x.m === "moveTop" && x.name === "main" && x.at < t0 + 300), t0)
-  check("not raised at once (a drag passing over doesn't shuffle windows)", early.length === 0, early)
   check("the main window shows where it would land", await until(() => win.locator("[data-drop-zone]").count(), 3000))
-  await wait(450)
+  await idle(pop, win)
   const log = await app.evaluate(() => globalThis.__log)
+  const early = log.filter((x) => x.m === "moveTop" && x.name === "main" && x.at < t0 + 300)
+  check("not raised at once (a drag passing over doesn't shuffle windows)", early.length === 0, early)
   check("held a moment over the main window, it comes to the front", log.some((x) => x.m === "moveTop" && x.name === "main"), log)
   check("…without taking the keyboard (the drag goes on in the pop-out)", !log.some((x) => x.m === "focus"), log)
   const back = await pop.locator("[data-pane-body]:visible").first().boundingBox()
-  await pop.mouse.move(back.x + back.width - 120, back.y + 100, { steps: 4 }); await wait(500)
+  await pop.mouse.move(back.x + back.width - 120, back.y + 100, { steps: 4 }); await idle(pop, win)
   const log2 = await app.evaluate(() => globalThis.__log)
   check("back over the pop-out, it comes forward again", log2.some((x) => x.m === "moveTop" && x.name === "popout"), log2)
   check("…and the main window's drop zone goes", await until(async () => (await win.locator("[data-drop-zone]").count()) === 0, 2000))
   // over the main window again till it's in front, then onto its part over the pop-out: let go there, it lands in it
-  await pop.mouse.move(px, py, { steps: 4 }); await wait(500)
+  await pop.mouse.move(px, py, { steps: 4 }); await idle(pop, win)
   const cx = 1000 - pb.x, cy = sy - pb.y - pb.top
-  await pop.mouse.move(cx, cy, { steps: 3 }); await wait(200)
+  await pop.mouse.move(cx, cy, { steps: 3 }); await idle(pop, win)
   check("(held inside the pop-out's bounds, where the main window is in front of it)", cx > 0 && cx < 900)
   check("…the main window still shows where it would land", (await win.locator("[data-drop-zone]").count()) > 0)
   check("…and the pop-out none of its own", (await pop.locator("[data-drop-zone]").count()) === 0)
@@ -71,13 +77,14 @@ try {
   check("let go there, it lands in the main window (on its pane's right edge: a split)", await until(async () => (await win.locator("[data-pane-body]:visible").count()) === 2, 4000))
   check("…and the emptied pop-out closes", await gone)
   // The other way: a main window's tab held over a pop-out, it comes forward, shows where it'd land, and takes it.
-  await command(win, "Close pane"); await wait(400)
-  await command(win, "Close all other tabs"); await wait(300)
-  await command(win, "Open new tab"); await hash(win, "Notes"); await wait(500)
+  await cmd(win, "Close pane")
+  await cmd(win, "Close all other tabs")
+  await cmd(win, "Open new tab"); await hash(win, "Notes")
   const popped2 = app.waitForEvent("window")
-  await command(win, "Move current tab to new window"); await popped2; await wait(1500)
+  await command(win, "Move current tab to new window", 0); await popped2
   const pop2 = app.windows().find((w) => /popout=/.test(w.url()))
   await pop2.waitForSelector("[data-tab-strip] [data-tab-id]", { timeout: 15000 })
+  await idle(win, pop2)
   await app.evaluate(({ BaseWindow }) => {
     globalThis.__log = []
     for (const w of BaseWindow.getAllWindows()) {
@@ -86,10 +93,10 @@ try {
       w.setBounds({ x: 900, y: 140, width: 900, height: 600 })
     }
   })
-  await wait(500)
+  await placed(pop2, 900, 140)
   const pb2 = await pop2.evaluate(() => ({ x: screenX, y: screenY, top: outerHeight - innerHeight }))
   const body2 = await pop2.locator("[data-pane-body]:visible").first().boundingBox()
-  await wait(800); await command(win, "Open new tab"); await wait(400); await hash(win, "Start here.md"); await wait(500)
+  await cmd(win, "Open new tab"); await hash(win, "Start here.md")
   const t2 = await win.locator("[data-tab-id]").nth(1).boundingBox()
   await win.mouse.move(t2.x + 20, t2.y + t2.height / 2); await win.mouse.down()
   await win.mouse.move(t2.x + 40, t2.y + t2.height / 2, { steps: 3 })
@@ -97,12 +104,12 @@ try {
   const qx = pb2.x + body2.x + body2.width - 20 - mb.x, qy = pb2.y + pb2.top + body2.y + body2.height / 2 - mb.y - mb.top
   await win.mouse.move(qx, qy, { steps: 6 })
   check("held over a pop-out, a main window's tab shows there where it'd land (a split on the right)", await until(() => pop2.locator("[data-drop-zone='right']").count(), 3000))
-  await wait(450)
+  await idle(win, pop2)
   const log3 = await app.evaluate(() => globalThis.__log)
   check("…the pop-out comes to the front", log3.some((x) => x.m === "moveTop" && x.name === "popout"), log3)
-  await win.mouse.up(); await wait(800)
+  await win.mouse.up()
   check("let go, it lands there: the pop-out's tab split", await until(async () => (await pop2.locator("[data-pane-body]:visible").count()) === 2, 4000))
   check("…and it left the main window", (await win.locator("[data-tab-id]").count()) === 1)
-  check("…and the pop-out gets the keyboard", (await app.evaluate(() => globalThis.__log)).some((x) => x.m === "focus" && x.name === "popout"))
+  check("…and the pop-out gets the keyboard", await until(async () => (await app.evaluate(() => globalThis.__log)).some((x) => x.m === "focus" && x.name === "popout"), 4000))
 } finally { await app.close() }
 await done()

@@ -10,6 +10,7 @@ import { _electron } from "playwright-core"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { app as appOf } from "./lib/app.mjs"
 import { ROOT, qa, until, wait } from "./lib/qa.mjs"
 const { args: [BASE, VAULT], browser, check, watch, done } = await qa(import.meta.url)
 const B = BASE.replace(/\/+$/, "")
@@ -57,12 +58,12 @@ await api("PATCH", "config/plugin/companion", { mode: "pair", pause: 1 })
     }
     window.__play = (m) => window.__companion.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(m) }))
   })
-  const page = watch(await ctx.newPage(), { label: L })
+  const page = watch(await ctx.newPage(), { label: L }), ui = appOf(page)
   await page.goto(`${B}/#file/${enc(NOTE)}`)
   const editor = page.locator(`.file-view[data-path="${NOTE}"]:visible .cm-content`)
   await editor.waitFor({ timeout: 15000 })
   await until(() => page.evaluate(() => window.__companion?.readyState === 1), 10000)
-  await wait(1000)
+  await ui.idle()
   const away = () => page.mouse.move(2, 2)
   const at = (text) => editor.locator(".cm-line", { hasText: text }).click({ position: { x: 2, y: 4 } })
   await op("companion.look", { path: NOTE, find: "Basil" })
@@ -93,14 +94,14 @@ await api("PATCH", "config/plugin/companion", { mode: "pair", pause: 1 })
 
   // Its words: a bubble with them, its dots on while it's still on the ask.
   await op("companion.say", { text: "About a foot apart." })
-  c = await until(async () => { const x = await cursorOf(page); return x?.bubble ? x : null }, 4000).then(async (x) => (x ? (await wait(400), cursorOf(page)) : x))
+  c = await until(async () => { const x = await cursorOf(page); return x?.bubble ? x : null }, 4000).then(async (x) => (x ? (await ui.idle(), cursorOf(page)) : x))
   check(`${L}: a say shows its words in a bubble, its flag up, still thinking`, c?.bubble === "About a foot apart." && shows(c, "dots"), c)
   await op("companion.next", { timeout: 0 })
   await op("companion.clear")
 
   // Each state as the server says it, long after it began: nothing hovered, each shows.
   const base = { name: "Claude", tint: "orange", path: NOTE, line: 5, find: "Basil", t: Date.now() - 20_000 }
-  const played = async (a) => { await page.evaluate((x) => window.__play({ t: "agent", agent: x }), { ...base, ...a }); await wait(450); return cursorOf(page) }
+  const played = async (a) => { await page.evaluate((x) => window.__play({ t: "agent", agent: x }), { ...base, ...a }); await ui.idle(); return cursorOf(page) }
   c = await played({ state: "starting" })
   check(`${L}: starting, its flag, word and dots show`, shows(c, "dots") && c.words.includes("starting"), c)
   c = await played({ state: "listening" })
@@ -114,11 +115,11 @@ await api("PATCH", "config/plugin/companion", { mode: "pair", pause: 1 })
 
   // A bubble with no words yet is none; its words come, it shows them.
   await page.evaluate((p) => window.__play({ t: "note", note: { id: "qempty", kind: "say", agent: "Claude", text: " ", path: p, line: 5, t: Date.now() } }), NOTE)
-  await wait(400)
+  await ui.idle()
   c = await cursorOf(page)
   check(`${L}: a say with no words draws no bubble`, c?.bubbles === 0, c)
   await page.evaluate((p) => window.__play({ t: "note", note: { id: "qempty", kind: "say", agent: "Claude", text: "Here.", path: p, line: 5, t: Date.now() } }), NOTE)
-  c = await until(async () => { const x = await cursorOf(page); return x?.bubble ? x : null }, 3000).then(async (x) => (x ? (await wait(400), cursorOf(page)) : x))
+  c = await until(async () => { const x = await cursorOf(page); return x?.bubble ? x : null }, 3000).then(async (x) => (x ? (await ui.idle(), cursorOf(page)) : x))
   check(`${L}: its words come, the bubble shows them`, c?.bubble === "Here." && shows(c, "tick"), c)
   await page.screenshot({ path: `/tmp/companion-presence-${L}-said.png` })
   await page.evaluate(() => window.__play({ t: "drop", id: "qempty" }))
