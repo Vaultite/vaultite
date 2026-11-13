@@ -106,15 +106,21 @@ export default async ($: VaultTest) => {
       'plugin.provide("log-areas", () => [{ slug: "water", name: "Water", icon: "waves", tint: "blue" }, { slug: "sailing", name: "Sailing", icon: "sailboat", tint: "teal",\n' +
       '  parent: "water", blocks: ["race"], fields: [{ key: "distance_nm", label: "Distance", type: "number", unit: "nm" }] }])\n')
     fs.rmSync(path.join(VAULT, ".vaultite/plugins/logs/data.json"), { force: true }) // (the areas logs above added)
+    write(".vaultite/plugins/squall/manifest.json", JSON.stringify({ id: "squall", name: "Squall", description: "Made up: areas that fail.", version: "1.0.0", disclosures: {} }))
+    write(".vaultite/plugins/squall/plugin.ts", 'import { Plugin } from "@vaultite/core/plugins.ts"\nexport const plugin = new Plugin(import.meta.url)\n' +
+      'plugin.provide("log-areas", () => { throw new Error("made up") })\n')
     const was: string[] = vault.config("plugins").enabled, without = was.filter((id) => id !== "regatta")
-    vault.setConfig("plugins", { ...vault.config("plugins"), enabled: [...was, "regatta"] })
+    vault.setConfig("plugins", { ...vault.config("plugins"), enabled: [...was, "squall", "regatta"] })
     await $.app.syncPlugins()
-    const hash = ((await api("GET", "plugins"))[1] as Any[]).find((p) => p.id === "regatta")?.hash
-    await api("POST", "ops/plugin.allow", { id: "regatta", hash })
+    for (const id of ["squall", "regatta"]) {
+      const hash = ((await api("GET", "plugins"))[1] as Any[]).find((p) => p.id === id)?.hash
+      await api("POST", "ops/plugin.allow", { id, hash })
+    }
     let areas = (await api("GET", "state"))[1].areas
     const sail = areas.find((a: Any) => a.slug === "sailing")
     check("areas come from the plugins that draw them", sail?.tint === "teal" && sail.icon === "sailboat" && sail.parent === "water" && areas.some((a: Any) => a.slug === "water"),
       areas.map((a: Any) => a.slug))
+    check("a plugin whose log-areas throws takes no other plugin's areas with it", areas.some((a: Any) => a.slug === "sailing"))
     await api("POST", "logs", [{ area: "sailing", date: "2026-09-28", source: "claude", ext_id: "block-sail", title: "Around the bay", data: { distance_nm: 12 } }])
     const sailed = (await api("GET", "state"))[1].logs.find((x: Any) => x.ext_id === "block-sail")
     check("a new log's fences are its area's blocks too", read(sailed.id + ".md").includes("```block-log\n```\n\n```block-race\n```"), read(sailed.id + ".md"))
