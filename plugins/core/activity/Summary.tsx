@@ -69,7 +69,7 @@ function Skeleton({ who, files }: { who: number; files: number }) {
   )
 }
 
-export function SummaryBlock({ store, options }: { store: Store; options: Record<string, unknown> }) {
+export function SummaryBlock({ store, options }: { store: Store; options: { days?: unknown; title?: unknown } }) {
   const days = Math.min(Math.max(typeof options.days === "number" ? Math.round(options.days) : 1, 1), 31)
   const { data, error } = useLive<ActivitySummary>(`activity/summary?days=${days}`, undefined, undefined, 15_000)
   const exists = useExists(store)

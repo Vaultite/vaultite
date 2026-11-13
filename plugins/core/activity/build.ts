@@ -91,7 +91,7 @@ function captureOf(s: Sources, rel: string, fm: Item, evs: ActivityEvent[] | nul
   if (idKey) { const n = idKey.slice(0, -3); return n[0].toUpperCase() + n.slice(1) }
   const folder = s.captureFolders.find((f) => f && (rel === f || rel.startsWith(`${f.replace(/\/+$/, "")}/`)))
   if (folder) return folder.replace(/\/+$/, "").split("/").pop()!
-  const url = ["source", "link", "url"].map((k) => fm[k]).find((v) => typeof v === "string" && /^https?:\/\//.test(v)) as string | undefined
+  const url = ["source", "link", "url"].map((k) => fm[k]).find((v): v is string => typeof v === "string" && /^https?:\/\//.test(v))
   if (!url || !evs) return null
   if (evs.some((e) => /^(clip|ops\/clipper\.)/.test(e.route ?? "") || /^Clipped /.test(e.text))) return "Web clipper"
   try { return new URL(url).hostname.replace(/^www\./, "") } catch { return "the web" }

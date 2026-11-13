@@ -63,7 +63,7 @@ export function Chips<T extends string>({ name, opts, value, onChange }: { name:
   )
 }
 const WHO = KINDS.map((k) => ({ v: k, label: kindLabel(k) }))
-const WHAT = ACTION_KINDS.map((k) => ({ v: k.id as ActionKind, label: k.label }))
+const WHAT = ACTION_KINDS.map((k) => ({ v: k.id, label: k.label }))
 
 const rowButton = "relative isolate cursor-pointer text-left before:absolute before:inset-y-0 before:-inset-x-2 before:-z-10 before:rounded-[8px] " +
   "before:transition-colors hover:before:bg-foreground/[0.04] active:before:bg-foreground/[0.07]"
@@ -193,9 +193,9 @@ export function FeedList({ store, opts, empty }: { store: Store; opts: FeedOpts;
   )
 }
 
-export function FeedBlock({ store, path: file, options }: { store: Store; path: string; options: Record<string, unknown> }) {
+export function FeedBlock({ store, path: file, options }: { store: Store; path: string; options: { limit?: unknown; actor?: unknown; path?: unknown; title?: unknown } }) {
   const limit = Math.min(Math.max(typeof options.limit === "number" ? Math.round(options.limit) : 30, 1), 200)
-  const actor = typeof options.actor === "string" && (KINDS as string[]).includes(options.actor) ? options.actor as ActorKind : ""
+  const actor = KINDS.find((k) => k === options.actor) ?? ""
   const path = pathOption(options.path, file)
   const title = typeof options.title === "string" ? options.title : path && options.path === "this" ? "This file's activity" : "Activity"
   return (

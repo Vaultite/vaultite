@@ -32,11 +32,16 @@ plugin.provide("activity:report", (agent: string, terminal: string) => {
 /** The same as a URL the hook POSTs its JSON to (Claude Code's http hooks on Windows). */
 plugin.provide("activity:report-url", (agent: string, terminal: string) => `${serverUrl()}/api/activity/hook?${new URLSearchParams({ agent, terminal })}`)
 
+type HookBody = { tool_name?: unknown; tool_input?: { file_path?: unknown; notebook_path?: unknown; command?: unknown } | null
+  session_id?: unknown; thread_id?: unknown; "thread-id"?: unknown; sessionID?: unknown }
+type Reported = { text?: unknown; action?: unknown; t?: unknown; paths?: unknown }
+type PerfBody = Partial<Record<keyof ClientPerf, unknown>> & { spans?: unknown }
+
 plugin.route("POST", "activity/hook", async (req) => {
-  const b = (req.body ?? {}) as Record<string, unknown>
+  const b: HookBody = req.body ?? {}
   const agent = str(req.query.agent) || "claude-code"
   const tool = str(b.tool_name)
-  const input = (b.tool_input ?? {}) as Record<string, unknown>
+  const input = b.tool_input ?? {}
   const terminal = str(req.query.terminal)
   const term = terminal ? await terminalInfo(terminal) : str(req.query.session) ? { session: str(req.query.session).slice(0, 120) } : {}
   const sid = (str(b.session_id) || str(b.thread_id) || str(b["thread-id"]) || str(b.sessionID)).slice(0, 120) || parseTerminal(terminal)?.resume
@@ -61,17 +66,17 @@ async function terminalInfo(id: string): Promise<{ terminal?: string; session?: 
   return { terminal: id, ...(t?.title ? { session: t.title } : {}), ...(t?.session ? { sessionId: t.session } : {}) }
 }
 
-const ACTIONS = new Set<Action>(["edit", "create", "delete", "move", "save", "settings", "pin", "ui", "read", "search", "run", "open", "command", "drop", "change", "request"])
+const ACTIONS: Action[] = ["edit", "create", "delete", "move", "save", "settings", "pin", "ui", "read", "search", "run", "open", "command", "drop", "change", "request"]
 
 plugin.route("POST", "activity", (req) => {
-  const b = (req.body ?? {}) as Record<string, unknown>
-  const list = Array.isArray(b.events) ? b.events.slice(0, 200) : []
+  const b: { events?: unknown; device?: unknown } = req.body ?? {}
+  const list: Reported[] = Array.isArray(b.events) ? b.events.slice(0, 200) : []
   const device = str(b.device) || "web"
   let n = 0
-  for (const x of list as Record<string, unknown>[]) {
+  for (const x of list) {
     const text = str(x.text).slice(0, 300)
     if (!text) continue
-    const action = ACTIONS.has(x.action as Action) ? x.action as Action : "request"
+    const action = ACTIONS.find((a) => a === x.action) ?? "request"
     const t = typeof x.t === "number" && Math.abs(x.t - Date.now()) < DAY ? x.t : Date.now()
     const paths = Array.isArray(x.paths) ? x.paths.filter((p): p is string => typeof p === "string").slice(0, 20) : []
     record({ t, actor: { kind: "you", name: "You", device }, action, text, paths })
@@ -81,9 +86,10 @@ plugin.route("POST", "activity", (req) => {
 }, { sync: false })
 
 plugin.route("POST", "activity/perf", (req) => {
-  const b = (req.body ?? {}) as ClientPerf & { spans?: unknown }
+  const b: PerfBody = req.body ?? {}
   const device = str(b.device) || "web"
-  for (const s of Array.isArray(b.spans) ? b.spans.slice(0, 100) as Span[] : []) {
+  const spans: Span[] = Array.isArray(b.spans) ? b.spans.slice(0, 100) : []
+  for (const s of spans) {
     const ok = s && typeof s.name === "string" && typeof s.t === "number" && typeof s.ms === "number" && s.parts && typeof s.parts === "object"
     if (ok) recordSpan({ name: s.name.slice(0, 40), t: s.t, ms: s.ms, parts: s.parts, tags: { ...(s.tags ?? {}), device } })
   }

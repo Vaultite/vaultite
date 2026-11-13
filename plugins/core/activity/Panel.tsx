@@ -56,7 +56,7 @@ function Lines({ events, exists, mode }: { events: ActivityEvent[]; exists: Set<
 
 export function ActivityPanel({ store, open, mode }: SidebarCtx) {
   const [filter, setFilter] = useScopedState<Filter>("activity:filter", ALL)
-  const actor = KINDS.includes(filter.actor as ActorKind) ? filter.actor! : ""
+  const actor = KINDS.find((k) => k === filter.actor) ?? ""
   const action = ACTION_KINDS.some((k) => k.id === filter.action) ? filter.action! : ""
   const { q, data, error, events, more, loadMore, busy } = useFeed({ limit: mode ? 50 : 10, actor, action })
   const exists = useExists(store)

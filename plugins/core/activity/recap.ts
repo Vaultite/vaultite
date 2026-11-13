@@ -19,7 +19,7 @@ export const RECAP_GROUPS = [
   { id: "plugins", label: "Plugins", kinds: ["updated"] },
 ] as const satisfies readonly { id: string; label: string; kinds: readonly RecapKind[] }[]
 export type RecapGroup = typeof RECAP_GROUPS[number]["id"]
-export const groupOf = (k: RecapKind): RecapGroup | null => RECAP_GROUPS.find((g) => (g.kinds as readonly string[]).includes(k))?.id ?? null
+export const groupOf = (k: RecapKind): RecapGroup | null => RECAP_GROUPS.find((g) => g.kinds.some((x) => x === k))?.id ?? null
 
 const VERBS: [RecapKind, string][] = [["created", "Created"], ["edited", "Edited"], ["moved", "Moved"], ["deleted", "Deleted"],
   ["captured", "Captured"], ["logged", "Logged"], ["done", "Completed"], ["cancelled", "Cancelled"], ["started", "Started"],

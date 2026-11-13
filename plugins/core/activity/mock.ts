@@ -3,7 +3,7 @@ import { parseRecap } from "./recap"
 
 const MIN = 60_000, HOUR = 3_600_000
 
-export function mockLive(): Record<string, unknown> {
+export function mockLive() {
   const now = Date.now()
   const you = { kind: "you" as const, name: "You", device: "desktop" }
   const claude = { kind: "agent" as const, name: "Claude Code", session: "Plan the Lighthouse launch" }

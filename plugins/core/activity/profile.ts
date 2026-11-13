@@ -5,7 +5,7 @@ import { HTTPError, LOCAL, localDate, ROOT } from "../../../core/plugins.ts"
 
 type Frame = { functionName: string; url: string; lineNumber: number }
 type Node = { id: number; callFrame: Frame; children?: number[] }
-type CpuProfile = { nodes: Node[]; samples: number[]; timeDeltas: number[] }
+type CpuProfile = { nodes: Node[]; samples?: number[]; timeDeltas?: number[] }
 export type Hot = { fn: string; at: string; self: number; total: number }
 export type Profiled = { file: string; seconds: number; busy: number; hot: Hot[] }
 
@@ -24,7 +24,7 @@ export async function profile(seconds: number, top: number): Promise<Profiled> {
     await session.post("Profiler.setSamplingInterval", { interval: 500 }) // µs
     await session.post("Profiler.start")
     await new Promise((r) => setTimeout(r, seconds * 1000))
-    cpu = (await session.post("Profiler.stop")).profile as CpuProfile
+    cpu = (await session.post("Profiler.stop")).profile
   } finally {
     session.disconnect()
     taking = false
@@ -42,7 +42,7 @@ export function summary(cpu: CpuProfile, top: number) {
   const parent = new Map<number, number>()
   for (const n of cpu.nodes) for (const c of n.children ?? []) parent.set(c, n.id)
   const own = new Map<number, number>()
-  cpu.samples.forEach((id, i) => own.set(id, (own.get(id) ?? 0) + (cpu.timeDeltas[i] ?? 0)))
+  cpu.samples?.forEach((id, i) => own.set(id, (own.get(id) ?? 0) + (cpu.timeDeltas?.[i] ?? 0)))
   const root = ROOT.endsWith("/") ? ROOT : ROOT + "/"
   const keyOf = (f: Frame) => `${f.functionName || "(anonymous)"}\0${f.url.replace(/^file:\/\//, "").replace(root, "")}${f.url ? `:${f.lineNumber + 1}` : ""}`
   const self = new Map<string, number>(), total = new Map<string, number>()

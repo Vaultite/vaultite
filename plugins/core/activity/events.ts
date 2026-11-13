@@ -1,6 +1,6 @@
 import { localDate } from "../../../core/plugins.ts"
 import { ACTION_KINDS, type ActivityEvent } from "./model.ts"
-import { append, DAY, logs, plugin, prune, readDay, settings } from "./store.ts"
+import { DAY, logs, plugin, prune, settings } from "./store.ts"
 
 const KEEP = 5000
 const MERGE = 90_000
@@ -21,7 +21,7 @@ function latest(rows: ActivityEvent[]) {
 function loaded() {
   if (events) return events
   const now = Date.now()
-  events = latest([...readDay("events", localDate(now - DAY)), ...readDay("events", localDate(now))] as ActivityEvent[])
+  events = latest([...logs.events.read(localDate(now - DAY)), ...logs.events.read(localDate(now))])
   events.sort((a, b) => a.t - b.t)
   if (events.length > KEEP) events = events.slice(-KEEP)
   return events
@@ -70,7 +70,7 @@ export function flush() {
     const d = localDate(e.t)
     byDay.set(d, [...(byDay.get(d) ?? []), e])
   }
-  for (const rows of byDay.values()) append("events", rows[0].t, rows)
+  for (const rows of byDay.values()) logs.events.append(rows[0].t, rows)
   prune()
 }
 
@@ -90,7 +90,7 @@ export function between(since: number): ActivityEvent[] {
   if (since >= memFrom) return list.filter((e) => e.t >= since)
   const older: ActivityEvent[] = []
   for (let d = since; localDate(d) <= localDate(memFrom); d += DAY) {
-    for (const e of latest(readDay("events", localDate(d)) as ActivityEvent[])) if (e.t >= since && e.t < memFrom) older.push(e)
+    for (const e of latest(logs.events.read(localDate(d)))) if (e.t >= since && e.t < memFrom) older.push(e)
   }
   return [...older.sort((a, b) => a.t - b.t), ...list]
 }

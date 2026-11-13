@@ -5,6 +5,7 @@ import { plugin, settings } from "./store.ts"
 type Did = { action: Action; text: string; paths: string[]; by?: string } | null
 export const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : "")
 export const strip = (p: string) => p.replace(/\.md$/, "")
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v)
 
 export function failed(method: string, route: string, end: RequestEnd): Did {
   const what = route.startsWith("ops/") ? route.slice(4) : `${method} /api/${route}`
@@ -13,7 +14,7 @@ export function failed(method: string, route: string, end: RequestEnd): Did {
 
 export function describe(method: string, route: string, query: Record<string, string>, body: unknown, byApp: boolean): Did {
   const parts = route.split("/")
-  const b = (body && typeof body === "object" && !Array.isArray(body) ? body : {}) as Record<string, unknown>
+  const b = isObj(body) ? body : {}
   const p = str(b.path) || str(query.path)
   if (parts[0] === "activity" || parts[0] === "events" || parts[0] === "mcp") return null
   if (parts[0] === "ops" && parts[1] && method === "POST") return describeOp(parts[1], b, byApp)
@@ -63,7 +64,7 @@ export function describe(method: string, route: string, query: Record<string, st
   if (route === "calendar/refresh") return { action: "request", text: "Refreshed the calendar", paths: [] }
   if (plugin.vault.has(parts[0])) {
     const kind = plugin.vault.kind(parts[0]).type
-    const items = Array.isArray(body) ? body as Record<string, unknown>[] : [b]
+    const items = Array.isArray(body) ? body.filter(isObj) : [b]
     const name = (x: Record<string, unknown>) => str(x.title) || str(x.name) || str(x.ext_id)
     const ref = parts.slice(1).join("/")
     const names = items.map(name).filter(Boolean)

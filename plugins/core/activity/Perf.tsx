@@ -6,7 +6,8 @@ import { Columns } from "./Columns"
 import { TINT } from "./Feed"
 import { clock, count, mb, ms, uptime } from "./shared"
 
-const minutesOf = (o: Record<string, unknown>) => Math.min(Math.max(typeof o.minutes === "number" ? Math.round(o.minutes) : 1440, 10), 1440 * 7)
+type Options = { minutes?: unknown }
+const minutesOf = (o: Options) => Math.min(Math.max(typeof o.minutes === "number" ? Math.round(o.minutes) : 1440, 10), 1440 * 7)
 const usePerf = (minutes: number) => useLive<Perf>(`activity/perf?minutes=${minutes}`, undefined, undefined, 15_000)
 const span = (m: number) => (m % 1440 === 0 ? (m === 1440 ? "Last 24 h" : `Last ${m / 1440} days`) : m % 60 === 0 ? `Last ${m / 60} h` : `Last ${m} min`)
 const Waiting = ({ error }: { error: string | null }) => <Loading error={error && "Couldn't read the timings."} />
@@ -26,7 +27,7 @@ function bucket(list: Minute[], minutes: number, now: number, n = 72) {
   return { out, size }
 }
 
-export function PerfServer({ options }: { options: Record<string, unknown> }) {
+export function PerfServer({ options }: { options: Options }) {
   const minutes = minutesOf(options)
   const { data, error } = usePerf(minutes)
   if (!data) return <Panel title="Server" icon={Server} tint={TINT}><Waiting error={error} /></Panel>
@@ -79,7 +80,7 @@ function RouteRows({ routes }: { routes: RouteStat[] }) {
   )
 }
 
-export function PerfRoutes({ options }: { options: Record<string, unknown> }) {
+export function PerfRoutes({ options }: { options: Options }) {
   const minutes = minutesOf(options)
   const { data, error } = usePerf(minutes)
   const [all, setAll] = useState(false)
@@ -174,7 +175,7 @@ function Client({ c }: { c: ClientPerf }) {
   )
 }
 
-export function PerfApp({ options }: { options: Record<string, unknown> }) {
+export function PerfApp({ options }: { options: Options }) {
   const { data, error } = usePerf(minutesOf(options))
   useTick()
   return (

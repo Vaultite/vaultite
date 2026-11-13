@@ -1,7 +1,7 @@
 import { monitorEventLoopDelay } from "node:perf_hooks"
 import { localDate, spans, type RequestEnd, type RequestStart, type Span } from "../../../core/plugins.ts"
 import type { Actor, ClientPerf, Minute, Perf, RouteStat, SlowRequest, Timing } from "./model.ts"
-import { append, DAY, MINUTE, plugin, readDay } from "./store.ts"
+import { DAY, logs, MINUTE, plugin } from "./store.ts"
 
 export const SLOW = 300
 
@@ -53,7 +53,7 @@ export function timing(s: RequestStart, end: RequestEnd, actor: Actor): SlowRequ
 function loadMinutes() {
   if (minutes) return minutes
   const now = Date.now()
-  minutes = [...readDay("perf", localDate(now - DAY)), ...readDay("perf", localDate(now))] as Minute[]
+  minutes = [...logs.perf.read(localDate(now - DAY)), ...logs.perf.read(localDate(now))]
   minutes = minutes.filter((m) => m && now - m.t < DAY).sort((a, b) => a.t - b.t)
   return minutes
 }
@@ -72,7 +72,7 @@ export function rollMinute(force = false) {
   const list = loadMinutes()
   list.push(m)
   while (list.length && Date.now() - list[0].t > DAY) list.shift()
-  append("perf", m.t, [m])
+  logs.perf.append(m.t, [m])
 }
 const roller = setInterval(() => { if (plugin.loaded) rollMinute() }, 15_000)
 roller.unref()

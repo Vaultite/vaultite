@@ -117,7 +117,7 @@ export function Timeline({ days, store, group }: { days: { date: string; entries
 function useGroups(days: { entries: RecapEntry[] }[]) {
   return useMemo(() => {
     const have = new Set(days.flatMap((d) => d.entries.map((e) => groupOf(e.kind))))
-    return RECAP_GROUPS.filter((g) => have.has(g.id)).map((g) => ({ v: g.id as RecapGroup, label: g.label }))
+    return RECAP_GROUPS.filter((g) => have.has(g.id)).map((g) => ({ v: g.id, label: g.label }))
   }, [days])
 }
 
@@ -127,7 +127,7 @@ type RecapAnswer = { days: { date: string; entries: RecapEntry[]; live: boolean;
 
 const dateOfFile = (p: string) => { const stem = p.split("/").pop()!.replace(/\.md$/, ""); return /^\d{4}-\d\d-\d\d$/.test(stem) ? stem : "" }
 
-export function RecapBlock({ store, path, options }: { store: Store; path: string; options: Record<string, unknown> }) {
+export function RecapBlock({ store, path, options }: { store: Store; path: string; options: { date?: unknown; days?: unknown; title?: unknown } }) {
   const said = typeof options.date === "string" ? options.date.trim().toLowerCase() : ""
   const base = (/^\d{4}-\d\d-\d\d$/.test(said) ? said : said === "yesterday" ? addDays(today(), -1) : said === "today" ? today() : "") || dateOfFile(path) || today()
   const n = Math.min(Math.max(typeof options.days === "number" ? Math.round(options.days) : 1, 1), 31)
@@ -202,7 +202,7 @@ function StatsSkeleton({ weeks, kinds }: { weeks: number; kinds: number }) {
 
 type Counts = { from: string; to: string; days: Record<string, Partial<Record<RecapGroup, number>>> }
 
-export function RecapStats({ store, options }: { store: Store; options: Record<string, unknown> }) {
+export function RecapStats({ store, options }: { store: Store; options: { weeks?: unknown } }) {
   const weeks = Math.min(Math.max(typeof options.weeks === "number" ? Math.round(options.weeks) : 10, 1), 53)
   const { data, error } = useLive<Counts>(`activity/recap/counts?weeks=${weeks}`, undefined, undefined, 60_000)
   const recaps = useMemo(() => new Map((store.files?.files ?? []).filter((f) => f.kind === "recaps").map((f) => [dateOfFile(f.path), f.path])), [store.files])

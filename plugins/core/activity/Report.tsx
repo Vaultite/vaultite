@@ -1,6 +1,8 @@
 import { useEffect } from "react"
 import { appDevice as DEVICE, focusedPane, getTabLayout, shownTab, onActivity, onTabLayoutChange, onTrace, takeSpans, type TabLayout } from "@vaultite"
 
+import type { ClientPerf } from "./model"
+
 type Note = { action: string; text: string; paths?: string[]; t: number }
 
 const SEND_EVERY = 3000
@@ -90,7 +92,8 @@ function start(): () => void {
     } catch { /* not in this browser */ }
   }
   observe("resource", (e) => {
-    const r = e as PerformanceResourceTiming
+    if (!(e instanceof PerformanceResourceTiming)) return
+    const r = e
     if (r.initiatorType !== "fetch" && r.initiatorType !== "xmlhttprequest") return
     const route = routeOf(r.name)
     if (!route || route === "activity" || route.startsWith("activity/")) return
@@ -101,18 +104,17 @@ function start(): () => void {
   })
   observe("longtask", (e) => { longTasks++; longMs += e.duration })
   observe("layout-shift", (e) => {
-    const s = e as PerformanceEntry & { value: number; hadRecentInput: boolean }
-    if (s.hadRecentInput || s.value < 0.001) return
-    shift += s.value; shifts++
+    if (!("value" in e) || typeof e.value !== "number" || ("hadRecentInput" in e && e.hadRecentInput) || e.value < 0.001) return
+    shift += e.value; shifts++
   })
 
   let first = true
   const report = () => {
     if (document.hidden && !first) return
-    const body: Record<string, unknown> = { device: DEVICE, longTasks, longMs: r1(longMs), shift: Math.round(shift * 1000) / 1000, shifts }
+    const body: Partial<ClientPerf> = { device: DEVICE, longTasks, longMs: r1(longMs), shift: Math.round(shift * 1000) / 1000, shifts }
     if (first) {
-      const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined
-      if (nav) {
+      const nav = performance.getEntriesByType("navigation")[0]
+      if (nav instanceof PerformanceNavigationTiming) {
         body.ttfb = r1(nav.responseStart - nav.startTime)
         if (nav.domContentLoadedEventEnd) body.ready = r1(nav.domContentLoadedEventEnd - nav.startTime)
         if (nav.loadEventEnd) body.load = r1(nav.loadEventEnd - nav.startTime)
@@ -123,8 +125,9 @@ function start(): () => void {
       body.api = [...calls].map(([route, xs]) => ({ route, n: xs.length, p50: r1(median(xs)), max: r1(Math.max(...xs)) }))
         .sort((a, b) => b.max - a.max).slice(0, 40)
     }
-    const mem = (performance as { memory?: { usedJSHeapSize?: number } }).memory
-    if (mem?.usedJSHeapSize) body.heap = r1(mem.usedJSHeapSize / 1048576)
+    const mem = "memory" in performance ? performance.memory : null
+    const used = mem && typeof mem === "object" && "usedJSHeapSize" in mem ? mem.usedJSHeapSize : 0
+    if (typeof used === "number" && used) body.heap = r1(used / 1048576)
     first = false
     calls.clear(); longTasks = 0; longMs = 0; shift = 0; shifts = 0
     void send("activity/perf", body)

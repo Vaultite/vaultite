@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import * as z from "zod"
 import { bullets, HTTPError, LOADED, localDate, MACHINE_CLIENT, type Machine, OpError, section } from "../../../core/plugins.ts"
 import { joinPath, Kind } from "../../../core/vault.ts"
 import { buildRecap, type Read, type Sources } from "./build.ts"
@@ -36,14 +37,23 @@ function lifeTypes() {
   return new Set(LOADED.filter((p) => p.manifest.category === "life" || p.manifest.category === "health").flatMap((p) => p.kinds.map((k) => k.type)))
 }
 
-function taskStatuses(): Record<string, "todo" | "doing" | "done" | "cancelled"> {
-  const map = { TODO: "todo", ON_HOLD: "todo", NON_TASK: "todo", IN_PROGRESS: "doing", DONE: "done", CANCELLED: "cancelled" } as const
+type TaskStatus = "todo" | "doing" | "done" | "cancelled"
+const STATUS_OF = new Map<string, TaskStatus>([["TODO", "todo"], ["ON_HOLD", "todo"], ["NON_TASK", "todo"], ["IN_PROGRESS", "doing"], ["DONE", "done"], ["CANCELLED", "cancelled"]])
+const TaskStatuses = z.array(z.object({ symbol: z.string().optional(), type: z.string().optional() }).catch({})).catch([])
+const TasksData = z.object({ statusSettings: z.object({ coreStatuses: TaskStatuses.optional(), customStatuses: TaskStatuses.optional() }).optional() })
+const LockEntry = z.object({ history: z.array(z.unknown()).catch([]) }).catch({ history: [] })
+const Update = z.object({ at: z.string(), from: z.unknown(), to: z.unknown(), how: z.unknown(), notes: z.unknown() })
+
+function taskStatuses(): Record<string, TaskStatus> {
   for (const dir of [".obsidian", ".vaultite/obsidian"]) {
-    try {
-      const d = JSON.parse(fs.readFileSync(plugin.vault.abs(`${dir}/plugins/obsidian-tasks-plugin/data.json`), "utf8"))
-      const all = [...(d?.statusSettings?.coreStatuses ?? []), ...(d?.statusSettings?.customStatuses ?? [])] as { symbol?: string; type?: string }[]
-      return Object.fromEntries(all.filter((x) => typeof x.symbol === "string" && x.type && x.type in map).map((x) => [x.symbol!, map[x.type as keyof typeof map]]))
-    } catch {}
+    let text: string
+    try { text = fs.readFileSync(plugin.vault.abs(`${dir}/plugins/obsidian-tasks-plugin/data.json`), "utf8") } catch { continue }
+    let raw: unknown
+    try { raw = JSON.parse(text) } catch { continue }
+    const d = TasksData.safeParse(raw)
+    if (!d.success) continue
+    const all = [...(d.data.statusSettings?.coreStatuses ?? []), ...(d.data.statusSettings?.customStatuses ?? [])]
+    return Object.fromEntries(all.flatMap((x) => { const s = STATUS_OF.get(x.type ?? ""); return x.symbol !== undefined && s ? [[x.symbol, s]] : [] }))
   }
   return {}
 }
@@ -74,10 +84,10 @@ async function sourcesOf(date: string): Promise<Sources> {
 function pluginUpdates(): NonNullable<Sources["updates"]> {
   const lock = plugin.vault.config("plugins-lock")
   return Object.entries(lock).flatMap(([id, l]) => {
-    const history = l && typeof l === "object" && Array.isArray((l as { history?: unknown }).history) ? (l as { history: Record<string, unknown>[] }).history : []
+    const history = LockEntry.parse(l).history.flatMap((u) => { const p = Update.safeParse(u); return p.success ? [p.data] : [] })
     const m = LOADED.find((p) => p.id === id)?.manifest
     const name = typeof m?.name === "string" && m.name ? m.name : id
-    return history.filter((u) => u && typeof u.at === "string").map((u) => ({ t: Date.parse(u.at as string), name, from: String(u.from), to: String(u.to),
+    return history.map((u) => ({ t: Date.parse(u.at), name, from: String(u.from), to: String(u.to),
       how: u.how === "auto" || u.how === "rollback" ? u.how : "manual" as const, notes: Array.isArray(u.notes) ? u.notes.map(String) : [] }))
   })
 }
@@ -129,9 +139,11 @@ async function writeThere({ id, m }: { id: string; m: Machine | null }, client: 
     r = await fetch(`${m.url}/api/ops/activity.recap`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" },
       body: JSON.stringify(params), signal: AbortSignal.timeout(60_000) })
   } catch { throw new OpError(`${why} and doesn't answer`, 502) }
-  const out = await r.json().catch(() => ({})) as { error?: unknown; days?: RecapDay[] }
-  if (!r.ok) throw new OpError(`${name}: ${typeof out.error === "string" ? out.error : `answered ${r.status}`}`, r.status)
-  return out as { days: RecapDay[] }
+  const out = RecapReply.safeParse(await r.json().catch(() => ({})))
+  const error = out.success ? out.data.error : undefined
+  if (!r.ok) throw new OpError(`${name}: ${typeof error === "string" ? error : `answered ${r.status}`}`, r.status)
+  if (!out.success) throw new OpError(`${name} answered with recaps this server can't read`, 502)
+  return { days: out.data.days ?? [] }
 }
 
 function written(): Set<string> {
@@ -157,6 +169,10 @@ export async function recapsDue() {
 plugin.every("recaps", { every: "5m" }, recapsDue)
 
 type RecapDay = { date: string; entries: RecapEntry[]; live: boolean; path?: string }
+const RECAP_KINDS = ["created", "edited", "moved", "deleted", "captured", "logged", "done", "cancelled", "started", "reopened", "agent", "updated", "other"] as const
+const Entry: z.ZodType<RecapEntry> = z.object({ time: z.string(), kind: z.enum(RECAP_KINDS), text: z.string(), quote: z.array(z.string()), items: z.array(z.string()) })
+const Day: z.ZodType<RecapDay> = z.object({ date: z.string(), entries: z.array(Entry), live: z.boolean(), path: z.string().optional() })
+const RecapReply = z.object({ error: z.unknown().optional(), days: z.array(Day).optional() })
 async function recapDay(date: string): Promise<RecapDay> {
   const today = localDate(Date.now())
   const f = recapOf(date)
