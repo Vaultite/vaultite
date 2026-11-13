@@ -215,6 +215,7 @@ const folderOf = (id: string) => {
 export const appGroups = bootGroups.map((g) => typeof g.name !== 'function'
   ? { ...g, name: (id: string) => `${g.name}-${isLib(id) ? 'lib' : folderOf(id)}` }
   : { ...g, name: (id: string) => { const n = (g.name as (id: string) => string)(id); return n === 'app' ? `app-${folderOf(id)}` : n } })
+const indexBoot = (file: string) => /^(app|vendor)-/.test(path.basename(file))
 const grouped = (name: string) => /^(app|vendor|editor|terminal|chat)([~-]|$)/.test(name)
 
 /** Vite's preload lists (`__vite__mapDeps`) in an order of their own: Vite's follows files' content hashes, so one file
@@ -335,6 +336,7 @@ export default defineConfig({
   // the People map chunk (MapLibre) is ~280 kB gzipped and only loads when the Map view opens
   build: {
     chunkSizeWarningLimit: 1100, outDir: 'dist', emptyOutDir: false, // (keepRecentBuilds, above)
+    modulePreload: { resolveDependencies: (_file, deps, { hostId }) => (indexBoot(hostId) ? deps.filter((d) => !indexBoot(d)) : deps) },
     rollupOptions: {
       // vaults.html: the desktop app's Manage vaults window; onboarding.html: its Set up Vaultite window; phone.html: the
       // iPhone app's first screen (its servers); screen.html: the companion over the whole screen (electron/overlay.ts)
