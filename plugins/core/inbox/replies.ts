@@ -1,5 +1,6 @@
+import { z } from "zod"
 import { agentIn, type Choice, choiceOf, newTerminalId, parseTerminal, type Question, resumeTerminalId, startAgent } from "../../../core/agents.ts"
-import { localDate, localTime, type Machine, MACHINE_CLIENT, NOT_THE_USER, type Op, type OpCtx, OpError, splitMachine, userSurface } from "../../../core/plugins.ts"
+import { defineOp, localDate, localTime, type Machine, MACHINE_CLIENT, NOT_THE_USER, type OpCtx, OpError, splitMachine, userSurface } from "../../../core/plugins.ts"
 import { type Item, str } from "../../../core/vault.ts"
 import { hand, keepHanded } from "./handed.ts"
 import { clip, type InboxEvent } from "./model.ts"
@@ -7,8 +8,8 @@ import { REPLY_BLOCK } from "./reports.ts"
 import { editBody, resultAt } from "./results.ts"
 import { agentOfTerminal, plugin, selfMachine } from "./server.ts"
 import { fileOf, list, moveOn, resolve } from "./store.ts"
+import { Captured, Event, Events, type Live, Passed, Saved, Sessions } from "./wire.ts"
 
-type Live = { id: string; agent?: string | null; busy?: boolean; state?: string }
 type AgentReply = (session: string, text: string) => Promise<boolean>
 
 /** Never a shell at its prompt, which would run the line: a report names its terminal, and anyone who writes the vault
@@ -59,13 +60,13 @@ async function onSessionMachine(ctx: OpCtx, at: { id: string; m: Machine | null 
   } catch {
     throw new OpError(`its session runs on ${name}, which doesn't answer`, 502)
   }
-  let out: Item = {}
-  try { out = await r.json() } catch { /* not JSON */ }
+  let out: z.infer<typeof Passed> = {}
+  try { out = Passed.parse(await r.json()) } catch { /* not JSON, or not an object */ }
   if (!r.ok) throw new OpError(`${name}: ${str(out.error) || `answered ${r.status}`}`, r.status)
   return out
 }
 
-export function findEvent(events: InboxEvent[], id: string, self: string | null): InboxEvent | undefined {
+export function findEvent<E extends { id: string }>(events: E[], id: string, self: string | null): E | undefined {
   const exact = events.find((e) => e.id === id)
   if (exact) return exact
   const [bare, at] = splitMachine(id)
@@ -75,10 +76,10 @@ export function findEvent(events: InboxEvent[], id: string, self: string | null)
 }
 
 export async function eventFor(ctx: OpCtx, id: string) {
-  const { events } = await ctx.api("GET", "inbox/events?all=1") as { events: InboxEvent[] }
+  const { events } = Events.parse(await ctx.api("GET", "inbox/events?all=1"))
   const e = findEvent(events, id.trim(), await selfMachine())
   if (!e) throw new OpError(`no event ${id} (vau inbox lists them)`, 404)
-  return e
+  return Event.parse(e)
 }
 
 export async function onOwner(ctx: OpCtx, e: InboxEvent, op: string, params: Item) {
@@ -93,7 +94,7 @@ async function replyToRow(ctx: OpCtx, e: InboxEvent, text: string, how = "") {
   const line = text.trim().replace(/\s*\n\s*/g, " ")
   if (!line) throw new OpError("`text`: the reply")
   if (!e.terminal && !e.session) throw new OpError("it isn't an agent's session: nothing to reply to", 409)
-  const { sessions } = await ctx.api("GET", "terminals/sessions") as { sessions: Live[] }
+  const { sessions } = Sessions.parse(await ctx.api("GET", "terminals/sessions"))
   const asks = !!e.terminal && sessions.find((s) => s.id === e.terminal)?.state === "blocked"
   const one = e.questions?.length === 1 && !e.questions[0].multi ? e.questions[0] : null
   if (asks && one && (!one.closed || typeof choiceOf(one, line, "", false) !== "string")) {
@@ -140,7 +141,7 @@ export async function pickIn(ctx: Pick<OpCtx, "api">, e: InboxEvent, picks: stri
   const choices = picks === "chat" ? picks : qs.map((q, i) => choiceOf(q, picks[i], typed[i]))
   const t = `terminals/${encodeURIComponent(e.terminal)}`
   const squash = (s: string) => s.replace(/\s+/g, "")
-  const { text } = await ctx.api("GET", `${t}/capture?lines=40`).catch(() => ({ text: "" })) as { text: string }
+  const { text } = Captured.parse(await ctx.api("GET", `${t}/capture?lines=40`).catch(() => ({ text: "" })))
   if (!squash(text).includes(squash(qs[0].question).slice(0, 80))) throw new OpError("its terminal doesn't show that question any more", 409)
   for (const [i, k] of pick(qs, choices).entries()) {
     if (i) await new Promise((r) => setTimeout(r, 200))
@@ -160,13 +161,13 @@ export async function submit(ctx: Pick<OpCtx, "api">, id: string, text: string, 
   const working = async () => {
     for (let i = 0; i < 8; i++) {
       await new Promise((res) => setTimeout(res, tick))
-      const { sessions } = await ctx.api("GET", "terminals/sessions") as { sessions: { id: string; state?: string }[] }
+      const { sessions } = Sessions.parse(await ctx.api("GET", "terminals/sessions"))
       if (busy(sessions.find((s) => s.id === id)?.state)) return true
     }
     return false
   }
   // (shown: its end in the lines that changed, spaces aside as the agent wraps it, or a long one as a paste's marker)
-  const screen = async () => String(((await ctx.api("GET", `terminals/${t}/capture?lines=200`)) as { text: string }).text).split("\n")
+  const screen = async () => Captured.parse(await ctx.api("GET", `terminals/${t}/capture?lines=200`)).text.split("\n")
   const squash = (s: string) => s.replace(/\s+/g, "")
   const end = squash(text).slice(-24)
   const before = new Set(await screen())
@@ -187,7 +188,9 @@ export async function submit(ctx: Pick<OpCtx, "api">, id: string, text: string, 
   throw new OpError(`the agent didn't start on it (${id} is still at its prompt): open its session to see why, then send it again`, 409)
 }
 
-const replyPlanOp: Op = {
+const Planned = z.looseObject({ how: z.string().nullable(), ago: z.number().nullable(), ttl: z.number().nullable() })
+
+const replyPlanOp = defineOp({
   id: "inbox.reply-plan",
   owner: "the terminal",
   lock: false,
@@ -197,18 +200,18 @@ const replyPlanOp: Op = {
   args: ["to"],
   run: async (p, ctx) => {
     const to = str(p.to).trim()
-    const { sessions } = await ctx.api("GET", "terminals/sessions") as { sessions: Live[] }
+    const { sessions } = Sessions.parse(await ctx.api("GET", "terminals/sessions"))
     const alive = (id: string) => sessions.some((s) => s.id === id)
     let plan: Plan | null
     if (EVENT_ID.test(to)) {
       const e = await eventFor(ctx, to)
-      if (e.machine) return onOwner(ctx, e, "inbox.reply-plan", { to: splitMachine(e.id)[0] })
+      if (e.machine) return Planned.parse(await onOwner(ctx, e, "inbox.reply-plan", { to: splitMachine(e.id)[0] }))
       plan = await replyPlan(sessionOfRow(e), typable(sessions))
     } else {
       const r = resultAt(to)
       if (!r) throw new OpError(`no report ${to} in the inbox`, 404)
       const at = await elsewhere(r, alive)
-      if (at) return onSessionMachine(ctx, at, "inbox.reply-plan", { to: `${r.id}.md` })
+      if (at) return Planned.parse(await onSessionMachine(ctx, at, "inbox.reply-plan", { to: `${r.id}.md` }))
       plan = await replyPlan(r, typable(sessions))
     }
     return { how: plan?.how ?? null, ago: plan?.ago ?? null, ttl: plan?.ttl ?? null }
@@ -216,9 +219,9 @@ const replyPlanOp: Op = {
   text: (r) => r.how === "type" ? "Typed into its terminal, still running." : r.how === "resume" ? "Its session resumed" +
     (r.ago !== null && r.ttl ? ` (its context is cached for ${Math.max(0, Math.round((r.ttl - r.ago) / 60))} min more).` : ".")
     : r.how === "new" ? "A new session, told what it's about (its old context is no longer cached)." : "Nowhere: it names no session.",
-}
+})
 
-const replyOp: Op = {
+const replyOp = defineOp({
   id: "inbox.reply",
   cli: "inbox reply",
   owner: "the terminal",
@@ -263,7 +266,7 @@ same way. A session on another of the Machines gets it through the app there.
     const terminal = str(r.terminal), session = str(r.session), agent = str(r.agent) || agentOfTerminal(terminal)
     if (!terminal && !(session && agent)) throw new OpError("this result doesn't say which session wrote it (only inbox.report's do)", 409)
     if (terminal) keepHanded(terminal)
-    const { sessions } = await ctx.api("GET", "terminals/sessions") as { sessions: Live[] }
+    const { sessions } = Sessions.parse(await ctx.api("GET", "terminals/sessions"))
     const alive = (id: string) => !!id && sessions.some((s) => s.id === id)
     const at = await elsewhere(r, alive)
     if (at) return onSessionMachine(ctx, at, "inbox.reply", { to: `${r.id}.md`, text: str(p.text), ...(how ? { how } : {}), ...(p.keep ? { keep: true } : {}) })
@@ -298,14 +301,14 @@ same way. A session on another of the Machines gets it through the app there.
     const next = { ...(answering !== terminal ? { terminal: answering } : {}), ...(plan.how === "new" ? { session: started?.session ?? "" } : {}) }
     let id = r.id
     if ((!p.keep && r.status !== "done") || Object.keys(next).length) {
-      id = str(((await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { ...next, ...(!p.keep ? { status: "done" } : {}) })) as Item)?.id) || id
+      id = Saved.nullable().parse(await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { ...next, ...(!p.keep ? { status: "done" } : {}) }))?.id || id
     }
     moveOn(list().filter((e) => [`${r.id}.md`, `${id}.md`].includes(fileOf(e.link) ?? "")), "working",
       started ?? { terminal: plan.to, ...(plan.how === "new" ? { session: undefined } : {}) })
     return { to: `${r.id}.md`, terminal: answering || null, how: plan.how, done: !p.keep }
   },
   text: (r) => `${r.how === "resume" ? "Resumed its session" : r.how === "new" ? "Started a new session" : r.how === "host" ? "Sent to its session" : "Sent"}${r.terminal ? ` in ${r.terminal}` : ""}${r.done ? "; the report is archived, its thread working" : "; its thread is working"}.`,
-}
+})
 
 export function register() {
   plugin.op(replyPlanOp)

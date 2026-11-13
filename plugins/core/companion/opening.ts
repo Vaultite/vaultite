@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import os from "node:os"
+import { z } from "zod"
 import { type OpCtx, OpError } from "../../../core/plugins.ts"
 import { requestWriter } from "../../../core/vault.ts"
 import type { Follow } from "./follows.ts"
@@ -21,6 +22,8 @@ import { AS, PATH, PANE, UI, target, who } from "./args.ts"
 import { askOf } from "./wiring.ts"
 import { messageOf } from "./errors.ts"
 import { byText } from "./people.ts"
+
+const Watch = z.looseObject({ id: z.string(), source: z.string() })
 
 const opening = new AsyncLocalStorage<boolean>()
 function companionAsking(): string | null {
@@ -207,8 +210,8 @@ waits for happens (vau docs watches). The follow ends: the watch tells you inste
     const source = str(p.group) ? `group:${str(p.group)}` : pn ? sourceOf(pn) : null
     if (!source) throw new OpError(str(p.pane) ? `pane ${str(p.pane)} shows nothing to watch (a terminal, a page or a note)` : "give `pane` or `group`")
     if (pn && privatePane(pn)) throw new OpError("that pane is private: the companion never sees it", 403)
-    const r = await ctx.op("watches.add", { source, every: str(p.every) || "live", ...(str(p.until) ? { until: str(p.until) } : {}), ...(str(p.why) ? { why: str(p.why) } : {}),
-      ...(str(p.title) ? { title: str(p.title) } : pn ? { title: `Watch ${pn.title}`.slice(0, 80) } : {}), by: who(p) })
+    const r = Watch.parse(await ctx.op("watches.add", { source, every: str(p.every) || "live", ...(str(p.until) ? { until: str(p.until) } : {}), ...(str(p.why) ? { why: str(p.why) } : {}),
+      ...(str(p.title) ? { title: str(p.title) } : pn ? { title: `Watch ${pn.title}`.slice(0, 80) } : {}), by: who(p) }))
     followed.remove(str(p.group) || str(p.pane))
     return r
   },

@@ -95,11 +95,10 @@ plugin.route("GET", "properties/chippable", () => {
   return list
 })
 
-plugin.route("GET", "properties", (req) => {
-  const key = req.query.key === undefined ? null : String(req.query.key)
-  if (key === null) return summary(plugin.vault)
-  return sortBy(files(plugin.vault).filter(([, e]) => e.fm && key in e.fm).map(([path, e]) => ({ path, value: e.fm[key] })), (r) => r.path.toLowerCase())
-})
+const valuesOf = (vault: Vault, key: string) =>
+  sortBy(files(vault).filter(([, e]) => e.fm && key in e.fm).map(([path, e]) => ({ path, value: e.fm[key] })), (r) => r.path.toLowerCase())
+
+plugin.route("GET", "properties", (req) => (req.query.key === undefined ? summary(plugin.vault) : valuesOf(plugin.vault, String(req.query.key))))
 
 async function each(key: string, edit: (text: string, path: string, value: unknown, fm: Entry["fm"]) => string | { skip: string } | null) {
   const changed: string[] = [], skipped: { path: string; reason: string }[] = []
@@ -205,12 +204,10 @@ the files that have it and its value in each.
   kind: "read",
   params: { key: { type: "string", description: "one key: the files that have it, and their values" } },
   args: ["key"],
-  run: async ({ key }, ctx) => (key
-    ? { key, files: await ctx.api("GET", `properties?key=${encodeURIComponent(key)}`) }
-    : { properties: await ctx.api("GET", "properties") }),
+  run: ({ key }, ctx) => (key ? { key, files: valuesOf(ctx.vault, key) } : { properties: summary(ctx.vault) }),
   text: (r) => {
-    if (r.key) return r.files.length ? r.files.map((x: { path: string; value: unknown }) => `${x.path}  ${JSON.stringify(x.value)}`).join("\n") : `No file has ${r.key}.`
-    const ps: Summary[] = r.properties
+    if (r.files) return r.files.length ? r.files.map((x) => `${x.path}  ${JSON.stringify(x.value)}`).join("\n") : `No file has ${r.key}.`
+    const ps = r.properties ?? []
     const w = Math.max(4, ...ps.map((p) => p.key.length))
     return ps.length ? ps.map((p) => `${p.key.padEnd(w)}  ${String(p.count).padStart(5)}  ${p.type}${Object.keys(p.types).filter((t) => t !== "empty").length > 1 ? " (mixed)" : ""}`).join("\n") : "No properties yet."
   },

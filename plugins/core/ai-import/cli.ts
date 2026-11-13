@@ -1,6 +1,9 @@
 import fs from "node:fs"
 import path from "node:path"
-import { type Any, CliError, done, flag, need, type PluginCli } from "../../../core/cli.ts"
+import { z } from "zod"
+import { CliError, done, flag, need, type PluginCli } from "../../../core/cli.ts"
+
+const Job = z.looseObject({ id: z.string(), name: z.string(), state: z.string(), chats: z.number(), read: z.number(), total: z.number(), error: z.string().nullish() })
 
 async function upload(url: string, file: string, headers: Record<string, string>) {
   const u = new URL(url)
@@ -58,12 +61,12 @@ in the vault: vau ai-import.run <path>.
       }
       if (r.status === 404 && !r.body.error) throw new CliError("the server has no /api/ai-import (an older version? restart it)")
       if (r.status >= 400) throw new CliError(String(r.body.error ?? r.status))
-      let job: Any = r.body
+      let job = Job.parse(r.body)
       if (a.flags["no-wait"]) return done(job, `Importing ${job.name} (job ${job.id}): vau ai-import.job ${job.id} --wait follows it.`)
       let last = ""
       while (job.state === "queued" || job.state === "running") {
         await new Promise((ok) => setTimeout(ok, 700))
-        job = await c.call("GET", `ai-import/jobs/${job.id}`)
+        job = Job.parse(await c.call("GET", `ai-import/jobs/${job.id}`))
         const line = job.state === "running" ? `${job.chats} chats, ${Math.floor((job.read / Math.max(1, job.total)) * 100)}%` : ""
         if (line && line !== last && process.stderr.isTTY) process.stderr.write(`\r${line}   `)
         last = line

@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { type OpCtx, OpError } from "../../../core/plugins.ts"
+import { type OpCtx, OpError, readFile } from "../../../core/plugins.ts"
 import { isAnswer, type Mark, type Rect as ScreenRect, rectOf, spots, VOCABULARY } from "../../../core/desktop/screenmarks.ts"
 import type { Shown as ShownMark } from "./shown.ts"
 import "./opening.ts"
@@ -74,7 +74,7 @@ drawing's text (next, vau render). Only in pair mode or when they asked you to.
     const done = writingAt(name, { path: t.path, line: undefined, find: undefined, x: undefined, y: undefined })
     try {
       return await inTurn(t.path!, async () => {
-        const f = await ctx.api("GET", `file?path=${encodeURIComponent(t.path!)}`), cur = String(f.text ?? "")
+        const f = await readFile(ctx, t.path!), cur = f.text
         let made: ReturnType<Draw>
         try { made = apply(cur, actions) } catch (e) { throw new OpError(messageOf(e)) }
         const ws = editorFor(t.path!), reply: { touched?: unknown } = {}

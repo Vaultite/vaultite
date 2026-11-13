@@ -901,6 +901,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `entryStream(file, e)`: One entry's bytes as a stream (inflated as they're read).
 - `fetchPublic(raw, options?)`: GET a public page (publicUrl: else it throws, saying why), following redirects to public addresses too.
 - `FileAnswer`: A route's answer as a file of this machine, sent as /api/raw sends one: by its type, in ranges (a video seeks), never read whole.
+- `FileMoved`
+- `fileTree(ctx)`
 - `fmtAgo(t, { short }?)`: How long ago `t` was (ms, or a stamp: stampMs): "just now", "5 min ago", "3 h ago", "2 d ago", "4 mo ago"; `short` for a one-line row: "now", "5m", "3h", "2d", "4mo".
 - `fmtMin(m)`: 90 -> "1 h 30 min".
 - `formatDate(d, fmt?, opts?)`: `d` in a moment.js format (`YYYY-MM-DD`, `dddd, MMMM Do`, `gggg-[W]ww`, `h:mm A`, `LL`); text in [brackets] as it is.
@@ -941,6 +943,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `mergeJson(base, a, b, aWins)`: 3-way merge by key (arrays whole), or null when one side isn't JSON.
 - `mergeText(base, a, b, aWins, aFirst?)`: 3-way merge by line.
 - `movedFilePanels(s, src, dst)`: The setup with file (or folder) `src`'s panels following its move; `dst` null: it's gone, and they with it.
+- `moveFile(ctx, from, to)`
 - `nodeId(n)`: The id a version has: a hash of everything else in it, so two devices that make the same merge agree on it.
 - `noDesktop()`
 - `NOT_THE_USER`: Why a caller may not answer for the user, as its refusal says.
@@ -970,6 +973,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `publicUrl(raw)`: A web address the server may fetch: http(s) only, no user or password, on a public host (by its name; its addresses are checked as it's fetched).
 - `quoted(v, n?)`: Text in quotes on one line, cut at `n` characters: a description's way to cite what a call was given.
 - `readableImage(file)`: A file an agent can read: a HEIC photo (a phone's screenshot pasted into a terminal) as a JPEG beside it, the same size, the original kept; any other file, or one that can't be converted here, as…
+- `readFile(ctx, path)`
 - `readSidebars(raw)`: sidebars.json as it's saved (or a workspace's copy), checked; null when it has neither sidebar (unset: the default).
 - `readTypes(file)`: A types file's `types` ({"due": "date"}), read leniently: unknown types and odd keys are left out.
 - `recordSpan(s)`: Keep a finished span (the app's arrive through POST activity/perf).
@@ -988,6 +992,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `running`: What this server runs now.
 - `runtimeDir()`: A folder only this user can use: a Mac's $TMPDIR is that already; Linux's /tmp is shared (another user could make the folder first and swap a script a shell runs), so $XDG_RUNTIME_DIR/vaultite,…
 - `sameSidebars(a, b)`: The same setup (what Workspaces compares to tell an unused workspace).
+- `saveFile(ctx, body)`
 - `SearchError`
 - `searchMatches(n, d)`: Whether a file matches.
 - `section(title, ...parts)`: ## Title, then the parts (blank ones left out).
@@ -1020,6 +1025,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `typeProblem(type, v)`: Why a value isn't a `type` (a short phrase after its key), or null when it is or it's empty.
 - `unsynced(rel)`: What isn't synced: the folder's own machinery, the OS's litter, sync's temporary files.
 - `unzip(buf, max?)`: The entries of the zip in `buf`, by name (folders left out); each one's bytes, inflated when read (one past `max` bytes throws).
+- `uploadName(ctx, folder, name)`
 - `userSurface(w)`: Who may answer for the user (approve or deny a permission: a gate, a terminal's question): the app, their phone's and watch's notifications, or a machine passing one on; never vau, since a…
 - `vauDir(local)`: A folder with a `vau` that runs (and vau.cmd on Windows), for a PATH: bin/ itself when plain Node runs this code's; else shims in `local`/bin running the entry with this process's runtime as Node…
 - `vauEntry(env?)`: The `vau` CLI's entry (a script run by Node, or by the app's executable as Node).
@@ -1195,7 +1201,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `shellQuote(s)`: `s` as one word of a shell command.
 - `spawnBin(bin, args, o)`: spawn() talking over stdin and stdout, but on Windows a program found as its shells would (a .cmd included).
 - `SqliteFile`: A database file opened read only, again when it was replaced; a query answers no rows rather than fail (no file, an older schema, busy).
-- `startAgent(ctx, id, prompt?, how?, home?)`: Start terminal `id` running its agent (Terminal's route, as `ctx`'s caller), told `prompt` first: its answer.
+- `startAgent(ctx, id, prompt?, how?, home?)`
 - `Tally`: Usage over the last `days`, by day, project, model and session, as the agents' GET routes answer it.
 - `TERMINAL_AGENT`: An agent as a terminal names it: its name ("claude"), or its name and one of its accounts ("claude_personal").
 - `terminalOf(plugin, pid)`: The app's terminal a process runs in (Terminal's, while it's on): its session id, or null.

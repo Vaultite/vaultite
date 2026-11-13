@@ -22,8 +22,7 @@ const RESTART_RETRY_MS = 60_000
  *  its restart (an update, the app relaunching) isn't an error; elsewhere nothing up is said at once. */
 const COMING_BACK_MS = 30_000
 
-export type Any = any
-export type Obj = Record<string, Any>
+export type Obj = Record<string, unknown>
 export type Args = { _: string[]; flags: Record<string, string | true>
   /** The command line's words as given, after the command's name (a plugin's command handing them to an op as they are). */
   raw?: string[] }
@@ -74,7 +73,8 @@ export const need = (v: string | undefined, what: string, usage: string) => {
   return v
 }
 
-function parseJson(s: string): Any {
+// oxlint-disable-next-line anti-slop/no-unknown-returns -- a JSON text's value, for the caller's schema to parse
+function parseJson(s: string): unknown {
   try {
     return JSON.parse(s)
   } catch (e) {
@@ -263,16 +263,19 @@ export class Ctx {
   }
 
   /** An op's answer through op(); a failure (4xx, 5xx) is an error with the server's message. */
-  async callOp(e: { id: string; kind: string }, query: string, params: unknown): Promise<Any> {
+  // oxlint-disable-next-line anti-slop/no-unknown-returns, anti-slop/no-unknown-parameters -- the server's answer, for the caller to parse; params are JSON
+  async callOp(e: { id: string; kind: string }, query: string, params: unknown): Promise<unknown> {
     return this.answer(await this.op(e, query, params), `ops/${e.id}`)
   }
 
   /** An API call's body; a failure (4xx, 5xx) is an error with the server's message. */
-  async call(method: string, route: string, body?: unknown): Promise<Any> {
+  // oxlint-disable-next-line anti-slop/no-unknown-returns, anti-slop/no-unknown-parameters -- the server's answer, for the caller to parse; a body is JSON
+  async call(method: string, route: string, body?: unknown): Promise<unknown> {
     return this.answer(await this.api(method, route, body), route)
   }
 
-  private answer(r: { status: number; body: unknown }, route: string): Any {
+  // oxlint-disable-next-line anti-slop/no-unknown-returns -- the server's answer, for the caller to parse
+  private answer(r: { status: number; body: unknown }, route: string): unknown {
     if (r.status >= 400) {
       const msg = (isObj(r.body) && "error" in r.body ? r.body.error : String(r.body).slice(0, 300)) || `the server answered ${r.status}, with no reason`
       if (r.status === 404 && msg === "not found") throw new CliError(`the server has no /api/${route.split("?")[0]} (an older version? restart it)`)
@@ -459,7 +462,7 @@ vau events | while read -r ev; do echo "$ev" | jq -r .type; done`,
     const kept: unknown[] = []
     for (;;) {
       const left = Math.max(0, Math.min(60, (end - Date.now()) / 1000))
-      const r = await c.call("POST", "ops/events.wait", { types: flag(a, "type") ?? flag(a, "types"), path: flag(a, "path"), after, timeout: left })
+      const r = Waited.parse(await c.call("POST", "ops/events.wait", { types: flag(a, "type") ?? flag(a, "types"), path: flag(a, "path"), after, timeout: left }))
       after = r.cursor ?? after
       if (r.missed) process.stderr.write("vau events: some events were let go of before they could be printed\n")
       for (const ev of r.events ?? []) {
@@ -479,11 +482,13 @@ const local = (p: string) => path.resolve(String(p).replace(/^~(?=[\\/]|$)/, os.
 
 /** What vau does around an op with what only this computer has: `params` turns paths into text, `extra` takes more words,
  *  `out` prints the answer, `code` its exit code (else 0). */
-export type Local = { params?: (p: Obj, c: Ctx) => Promise<Obj>; extra?: number; out?: (result: Any, p: Obj, extra: string[]) => string; code?: (result: Any) => number
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- out and code read the server's answer, each parsing what it reads
+export type Local = { params?: (p: Obj, c: Ctx) => Promise<Obj>; extra?: number; out?: (result: unknown, p: Obj, extra: string[]) => string; code?: (result: unknown) => number
   /** A long call the server's restart cut, `ms` into it: the parameters to send again (null: none). */
   again?: (p: Obj, ms: number) => Obj | null
   /** The answer once it's given up on (`why`: how the server stayed silent), or null for an error. */
-  gone?: (p: Obj, why: string, ms: number) => { result: Any; text: string } | null }
+  gone?: (p: Obj, why: string, ms: number) => { result: unknown; text: string } | null }
+const Live = z.looseObject({ live: z.looseObject({ live: z.unknown().optional() }) })
 const LOCAL: Record<string, Local> = {
   // vau version <commit>: HEAD or a branch named as this checkout knows it, in full; exit 1 when it isn't live; a wait
   // goes on through the server's restart (an update's).
@@ -495,7 +500,7 @@ const LOCAL: Record<string, Local> = {
       try { return { ...p, commit: execFileSync("git", ["rev-parse", "--verify", "--quiet", `${given}^{commit}`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], env: gitEnv() }).trim() || given } }
       catch { return p } // (not a checkout, or one without it: the server's to find)
     },
-    code: (r) => (r?.live && !r.live.live ? 1 : 0),
+    code: (r) => { const l = Live.safeParse(r); return l.success && !l.data.live.live ? 1 : 0 },
     // (sent again with the time left, saying the time spent: the wait's timeout counts once, across restarts)
     again: (p, ms) => {
       const left = Math.round(Number(p.timeout ?? 900) - ms / 1000)
@@ -728,6 +733,7 @@ function listOf(r: unknown): unknown[] | null {
 
 /** What --paths reads of a listed thing, and of the vault's files (GET /api/files). */
 const OptionalText = z.string().optional().catch(undefined)
+const Waited = z.looseObject({ cursor: z.string().optional(), missed: z.boolean().optional(), events: z.array(z.unknown()).optional() })
 const Named = z.object({ path: OptionalText, file: OptionalText, id: OptionalText }).catch({})
 const Rows = z.array(z.looseObject({ path: z.unknown() })).optional().catch([]).transform((x) => x ?? [])
 const Tree = z.object({ files: Rows, others: Rows }).catch({ files: [], others: [] })

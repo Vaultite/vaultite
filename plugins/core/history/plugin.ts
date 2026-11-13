@@ -366,6 +366,11 @@ plugin.provide("history:changed", async (since: number) => {
   return [...state(plugin.vault).heads.values()].filter((m) => m.mtime >= since).map((m) => m.path)
 })
 
+const Kept = z.union([
+  z.array(z.looseObject({ path: z.string(), versions: z.number(), latest: z.number(), gone: z.boolean() })),
+  z.looseObject({ path: z.string(), versions: z.array(z.looseObject({ t: z.number(), size: z.number() })) }),
+])
+
 plugin.route("GET", "history", async (req) => {
   await following
   const s = state(plugin.vault)
@@ -427,10 +432,10 @@ time. Restoring is writing that text back (an ordinary edit, kept here too). A d
   kind: "read",
   params: { path: { type: "string", format: "path", description: "the file (Notes/Idea.md, or its name)" } },
   args: ["path"],
-  run: async ({ path: p }, ctx) => await ctx.api("GET", p ? `history?path=${encodeURIComponent(p)}` : "history"),
+  run: async ({ path: p }, ctx) => Kept.parse(await ctx.api("GET", p ? `history?path=${encodeURIComponent(p)}` : "history")),
   text: (r) => (Array.isArray(r)
-    ? (r.length ? r.map((f: { path: string; versions: number; latest: number; gone: boolean }) => `- ${f.path}: ${f.versions} version${f.versions === 1 ? "" : "s"}, the latest ${when(f.latest)}${f.gone ? " (deleted)" : ""}`).join("\n") : "No earlier versions kept yet.")
-    : (r.versions.length ? [`${r.path}, newest first (history.read with its t):`, ...r.versions.map((v: { t: number; size: number }) => `- ${when(v.t)} (t ${v.t}, ${v.size} bytes)`)].join("\n") : `No earlier versions of ${r.path}.`)),
+    ? (r.length ? r.map((f) => `- ${f.path}: ${f.versions} version${f.versions === 1 ? "" : "s"}, the latest ${when(f.latest)}${f.gone ? " (deleted)" : ""}`).join("\n") : "No earlier versions kept yet.")
+    : (r.versions.length ? [`${r.path}, newest first (history.read with its t):`, ...r.versions.map((v) => `- ${when(v.t)} (t ${v.t}, ${v.size} bytes)`)].join("\n") : `No earlier versions of ${r.path}.`)),
 })
 
 plugin.op({

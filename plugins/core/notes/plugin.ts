@@ -1,6 +1,9 @@
 import fs from "node:fs"
+import { z } from "zod"
 import { OpError, Plugin } from "../../../core/plugins.ts"
 import { hasTag, isArchived, type Item, Kind, nowStamp, safeName, slug, sortBy, splitTags, str, tagsOf, truthy } from "../../../core/vault.ts"
+
+const Saved = z.looseObject({ id: z.string(), ext_id: z.unknown().optional(), title: z.unknown().optional() })
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -164,7 +167,7 @@ codex...). The API's JSON as the one argument works too.
     if (g.body !== undefined) note.body = str(g.body)
     if (tags.length) note.tags = tags.join(", ")
     else delete note.tags
-    const r = await ctx.api("POST", "notes", note)
+    const r = Saved.parse(await ctx.api("POST", "notes", note))
     return { path: `${r.id}.md`, id: r.ext_id ?? note.ext_id, title: r.title ?? title }
   },
   text: (r) => `Saved ${r.path} (id: ${r.id}).`,

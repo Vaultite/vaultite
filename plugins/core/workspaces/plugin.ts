@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
-import { HTTPError, type OpCtx, OpError, type Param, pathAsSaid, pinProblem, placePin, Plugin, readSidebars, relocatedPin, repinList, sameSidebars } from "../../../core/plugins.ts"
+import { z } from "zod"
+import { fileTree, HTTPError, type OpCtx, OpError, type Param, pathAsSaid, pinProblem, placePin, Plugin, readSidebars, relocatedPin, repinList, sameSidebars } from "../../../core/plugins.ts"
 import { ConfigError, type Item } from "../../../core/vault.ts"
 import { allPanes, blankList, clean, mapPlaces, newPaneId, newTabId, panesOf, placesIn, placesOf, tabWith, tabWithout, withoutPanes, withoutTabs, type Pane, type Tab, type TabList, type Workspace } from "../../../core/layout.ts"
 import { blankLayout, isBlank } from "./blank.ts"
@@ -439,7 +440,7 @@ Closing a terminal's pane doesn't end its session (vau terminal end does both).
 
 async function tabNamed(ctx: OpCtx, what: string, ids: Set<string>) {
   if (ids.has(what)) return { id: what, target: null }
-  const target = what.startsWith("view:") || what === "new" ? what : pathAsSaid(await ctx.api("GET", "files"), what)
+  const target = what.startsWith("view:") || what === "new" ? what : pathAsSaid(await fileTree(ctx), what)
   return { id: null, target }
 }
 
@@ -449,9 +450,14 @@ plugin.op({
   summary: "The workspaces (1 to 5): each one's panels, pinned pages and how many tabs; unused ones say so.",
   help: HELP,
   kind: "read",
-  run: async (_p, ctx) => ({ workspaces: shown(), window: await windowOn(ctx) }),
+  run: (_p, ctx) => listed(ctx),
   text: (r) => listText(r),
 })
+
+const listed = async (ctx: OpCtx) => ({ workspaces: shown(), window: await windowOn(ctx) })
+const TabRef = z.looseObject({ id: z.string() })
+const Moved = z.looseObject({ from: z.number().optional(), to: z.number(), tabs: z.array(TabRef), tab: TabRef.optional() })
+const Closed = z.looseObject({ closed: z.array(z.looseObject({ workspace: z.number(), id: z.string(), to: z.string() })) })
 
 function listText(r: { workspaces: (Item | null)[]; window: number | null }) {
   const rows = r.workspaces.map((w, i) => {
@@ -476,7 +482,7 @@ plugin.op({
   params: { n: N("the workspace to switch to; left out: the list (vau workspace list)", false) },
   args: ["n"],
   run: async ({ n }, ctx) => {
-    if (!n) return await ctx.op("workspace.list")
+    if (!n) return await listed(ctx)
     try {
       return { switched: n, window: await ctx.ui({ action: "command", id: `workspace:${n}` }) }
     } catch (e) {
@@ -484,7 +490,7 @@ plugin.op({
       throw e
     }
   },
-  text: (r, p) => (p.n ? `Sent workspace:${p.n}.` : listText(r)),
+  text: (r) => ("switched" in r ? `Sent workspace:${r.switched}.` : listText(r)),
 })
 
 plugin.op({
@@ -539,7 +545,7 @@ plugin.op({
     if (where.length > 1 && !from) throw new OpError(`${id ?? target} is open in workspaces ${where.join(" and ")}: say which with \`from\``, 409)
     const p = found[0], at = from ?? p.workspace
     const byTab = id === p.tab || whole || p.alone
-    const r = await ctx.api("POST", "workspaces/move", { from: at, to, ...(byTab ? { tab: p.tab } : { pane: p.id }) })
+    const r = Moved.parse(await ctx.api("POST", "workspaces/move", { from: at, to, ...(byTab ? { tab: p.tab } : { pane: p.id }) }))
     return { ...r, moved: byTab ? `tab ${p.tab}` : `pane ${p.id}`, ...(r.tab?.id && r.tab.id !== p.tab ? { as: r.tab.id } : {}) }
   },
   text: (r) => `Moved ${r.moved} from workspace ${r.from} to workspace ${r.to}${r.as ? ` (tab ${r.as} there)` : ""}.`,
@@ -556,7 +562,7 @@ plugin.op({
     to: N("the workspace to open it in"),
   },
   args: ["path", "to"],
-  run: async ({ path: file, to }, ctx) => ({ ...await ctx.api("POST", "workspaces/move", { to, open: [file] }), path: file }),
+  run: async ({ path: file, to }, ctx) => ({ ...Moved.parse(await ctx.api("POST", "workspaces/move", { to, open: [file] })), path: file }),
   text: (r) => (r.tabs.length ? `Opened ${r.path} in workspace ${r.to}.` : `${r.path} is already open in workspace ${r.to}.`),
 })
 
@@ -574,10 +580,10 @@ plugin.op({
   run: async ({ tab: what, from }, ctx) => {
     const ids = new Set(allPanesIn().flatMap((p) => [p.id, p.tab]))
     const { id, target } = await tabNamed(ctx, what, ids)
-    return { ...await ctx.api("POST", "workspaces/close", { ...(from ? { from } : {}), ...(id ? { tab: id } : { path: target }) }), what }
+    return { ...Closed.parse(await ctx.api("POST", "workspaces/close", { ...(from ? { from } : {}), ...(id ? { tab: id } : { path: target }) })), what }
   },
   text: (r) => {
-    const closed = r.closed as { workspace: number; id: string; to: string }[]
+    const closed = r.closed
     const at = [...new Set(closed.map((t) => t.workspace))].join(", ")
     return `Closed ${closed.length === 1 ? closed[0].to.replace(/^file:/, "") : `${closed.length} panes of ${r.what}`} in workspace ${at}.`
   },

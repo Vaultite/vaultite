@@ -1,4 +1,5 @@
 import fs from "node:fs"
+import { z } from "zod"
 import { byUser, OpError } from "../../../core/plugins.ts"
 import "./wiring.ts"
 import { plugin } from "./self.ts"
@@ -7,6 +8,8 @@ import { asking, notes, did, MAX_TEXT, broadcast, key, focus, setAgent, putNote,
 import { past, save, place, fold, reopen } from "./comments.ts"
 import { streams, toolUse, cut, lineText } from "./edits.ts"
 import { AS, PATH, LINE, FIND, target, notOnDrawing, who } from "./args.ts"
+
+const Card = z.looseObject({ id: z.string(), title: z.string(), state: z.string() })
 
 export function openTaskLine(src: string, line: number, text: string) {
   const lines = src.split("\n"), open = (l: string | undefined) => !!l && /^\s*(?:[-*+]|\d+[.)])\s+\[ \]\s/.test(l) && (!text || l.includes(text))
@@ -55,7 +58,7 @@ starts at once through companion handoff.
       ? [`Do this task from the note ${rel} (line ${at}): ${said}`, "Read the note first: it's the context. When it's fully done, mark the line done (tasks_complete, or `[x]` with vau edit). If it needs the user (a decision, a sign-in, anything outward like a post or a message), leave it open and say what you need."].join("\n\n")
       : [`Do this: ${said}`, "If it needs the user (a decision, a sign-in, anything outward like a post or a message), stop and say what you need."].join("\n\n")
     try {
-      return await ctx.op("companion.handoff", { task, say: `On it: ${cut(said, 60)}`, title: cut(said, 80) })
+      return Card.parse(await ctx.op("companion.handoff", { task, say: `On it: ${cut(said, 60)}`, title: cut(said, 80) }))
     } catch (e) {
       if (mark) await ctx.op("file.edit", { path: rel, old: mark.new, new: mark.old }).catch(() => {})
       throw e

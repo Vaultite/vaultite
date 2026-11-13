@@ -1,11 +1,14 @@
 // Items of any kind through the API's generic routes (a plugin's own route answers first, as over HTTP). A kind's
 // own ops (note.create, log.add) say more about its fields; these work for all.
+import { z } from "zod"
 import type { App } from "../app.ts"
 import { defineOp, jsonBlock, type Op, OpError, type Param } from "../ops.ts"
 import type { Kind } from "../vault.ts"
 import { enc } from "./common.ts"
 
 const KIND = { type: "string", required: true, description: "the kind: its type (person, note, log, book) or collection (people, notes, logs, books)" } satisfies Param
+const Deleted = z.looseObject({ ok: z.boolean() })
+const Saved = z.looseObject({ id: z.unknown().optional() }).nullish().catch(null)
 const ID = { type: "string", required: true, description: "the item: its id (People/Alice Park), file name (Alice Park) or key" } satisfies Param
 
 export function itemOps(app: App): Op[] {
@@ -49,7 +52,7 @@ export function itemOps(app: App): Op[] {
     params: { kind: KIND, item: { type: "object", required: true, description: "its fields" } },
     args: ["kind", "item"],
     run: ({ kind, item }, ctx) => ctx.api("POST", route(kindOf(kind)), item),
-    text: (r) => `Saved ${r?.id ?? "it"}.`,
+    text: (r) => `Saved ${Saved.parse(r)?.id ?? "it"}.`,
   }), defineOp({
     id: "item.update",
     summary: "Change some fields of an item (the others stay; `archived: true` archives it).",
@@ -57,7 +60,7 @@ export function itemOps(app: App): Op[] {
     params: { kind: KIND, id: ID, fields: { type: "object", required: true, description: "the fields to change" } },
     args: ["kind", "id", "fields"],
     run: ({ kind, id, fields }, ctx) => ctx.api("PUT", route(kindOf(kind), id), fields),
-    text: (r) => `Saved ${r?.id ?? "it"}.`,
+    text: (r) => `Saved ${Saved.parse(r)?.id ?? "it"}.`,
   }), defineOp({
     id: "item.delete",
     summary: "Delete an item: its file goes to the vault's .trash.",
@@ -67,7 +70,7 @@ export function itemOps(app: App): Op[] {
     run: async ({ kind, id }, ctx) => {
       const k = kindOf(kind)
       if (k.file) throw new OpError(`${k.file} is the kind's one file: it isn't deleted this way`)
-      const deleted: { ok: boolean } = await ctx.api("DELETE", route(k, id))
+      const deleted = Deleted.parse(await ctx.api("DELETE", route(k, id)))
       return { ...deleted, id }
     },
     text: (r) => (r.ok ? `Deleted ${r.id} (to the trash).` : `Nothing deleted: no ${r.id}.`),

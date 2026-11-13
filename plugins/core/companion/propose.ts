@@ -1,5 +1,5 @@
 import type { IncomingMessage } from "node:http"
-import { byUser, type OpCtx, OpError } from "../../../core/plugins.ts"
+import { byUser, type OpCtx, OpError, readFile } from "../../../core/plugins.ts"
 import { requestWriter, type Writer } from "../../../core/vault.ts"
 import { BIG_EDIT, changesOf, linesIn, tally } from "./proposals.ts"
 import { type Change, changeAt, nearest } from "./text.ts"
@@ -17,7 +17,7 @@ import { AS, PATH, LINE, FIND, PANE, UI, ROW, EL, target, notOnDrawing, who, typ
 
 const changeId = () => `c${Math.random().toString(36).slice(2, 6)}`
 const firstLine = (s: string) => s.split("\n")[0] || undefined
-export const textOf = async (ctx: OpCtx, p: string) => String((await ctx.api("GET", `file?path=${encodeURIComponent(p)}`)).text ?? "")
+export const textOf = async (ctx: OpCtx, p: string) => (await readFile(ctx, p)).text
 
 function placeAt(n: Note) {
   const c = n.changes?.find((x) => !x.stale && !x.intent) ?? n.changes?.[0]

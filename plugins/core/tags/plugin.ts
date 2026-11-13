@@ -1,14 +1,17 @@
 import { HTTPError, Plugin } from "../../../core/plugins.ts"
-import { hasTag, readText, renameTagText, sortBy, tagName, writeAtomic } from "../../../core/vault.ts"
+import { hasTag, readText, renameTagText, sortBy, tagName, type Vault, writeAtomic } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
-plugin.route("GET", "tags", (req) => {
-  const files = [...plugin.vault.entries].filter(([, e]) => e.tags.length)
-  const want = String(req.query.tag ?? "").trim().replace(/^#/, "")
-  if (want) {
-    return sortBy(files.filter(([, e]) => hasTag(e.tags, want)), ([, e]) => -Number(e.stat.ns / 1000000n)).map(([path, e]) => ({ path, tags: e.tags }))
-  }
+const tagged = (vault: Vault) => [...vault.entries].filter(([, e]) => e.tags.length)
+
+function filesTagged(vault: Vault, tag: string) {
+  const want = tag.trim().replace(/^#/, "")
+  return sortBy(tagged(vault).filter(([, e]) => hasTag(e.tags, want)), ([, e]) => -Number(e.stat.ns / 1000000n)).map(([path, e]) => ({ path, tags: e.tags }))
+}
+
+function tagCounts(vault: Vault) {
+  const files = tagged(vault)
   const counts = new Map<string, { tag: string; files: Set<string> }>()
   for (const [path, e] of files) {
     for (const t of e.tags) {
@@ -22,6 +25,11 @@ plugin.route("GET", "tags", (req) => {
     }
   }
   return sortBy([...counts.values()].map((c) => ({ tag: c.tag, count: c.files.size })), (c) => [-c.count, c.tag.toLowerCase()])
+}
+
+plugin.route("GET", "tags", (req) => {
+  const want = String(req.query.tag ?? "").trim().replace(/^#/, "")
+  return want ? filesTagged(plugin.vault, want) : tagCounts(plugin.vault)
 })
 
 plugin.op({
@@ -37,10 +45,10 @@ plugin.op({
   kind: "read",
   params: { tag: { type: "string", description: "one tag (with or without #): the files that have it" } },
   args: ["tag"],
-  run: async ({ tag }, ctx) => (tag ? { tag, files: await ctx.api("GET", `tags?tag=${encodeURIComponent(tag)}`) } : { tags: await ctx.api("GET", "tags") }),
-  text: (r) => (r.tag
-    ? (r.files.length ? r.files.map((f: { path: string; tags: string[] }) => `- ${f.path} (${f.tags.map((t) => `#${t}`).join(" ")})`).join("\n") : `No file has #${String(r.tag).replace(/^#/, "")}.`)
-    : (r.tags.length ? r.tags.map((t: { tag: string; count: number }) => `- #${t.tag}: ${t.count}`).join("\n") : "No tags yet.")),
+  run: ({ tag }, ctx) => (tag?.trim().replace(/^#/, "") ? { tag, files: filesTagged(ctx.vault, tag) } : { tags: tagCounts(ctx.vault) }),
+  text: (r) => (r.files
+    ? (r.files.length ? r.files.map((f) => `- ${f.path} (${f.tags.map((t) => `#${t}`).join(" ")})`).join("\n") : `No file has #${String(r.tag).replace(/^#/, "")}.`)
+    : (r.tags?.length ? r.tags.map((t) => `- #${t.tag}: ${t.count}`).join("\n") : "No tags yet.")),
 })
 
 const TAG_NAME = /^[\p{L}\p{N}_\-/]*[\p{L}_\-/][\p{L}\p{N}_\-/]*$/u

@@ -1,4 +1,5 @@
-import { defineOp, localTime, type Op, quoted } from "../../../core/plugins.ts"
+import { z } from "zod"
+import { defineOp, localTime, quoted } from "../../../core/plugins.ts"
 import { type Item, str } from "../../../core/vault.ts"
 import { decisionRow } from "./asked.ts"
 import { clip, type InboxEvent } from "./model.ts"
@@ -9,6 +10,7 @@ import { plugin } from "./server.ts"
 import { NEEDS } from "./rows.ts"
 import { stampOf } from "./snooze.ts"
 import { lists } from "./threads.ts"
+import { Saved } from "./wire.ts"
 
 const listOp = defineOp({
   id: "inbox.list",
@@ -30,8 +32,8 @@ inbox.snooze take it). done: the latest done ones too.
     done: { type: "boolean", description: "the latest done events too" },
   },
   run: async ({ limit, done }, ctx) => {
-    const [, items] = await Promise.all([others(), ctx.api("GET", "inbox")])
-    const l = lists(shown(), asResults(items ?? []))
+    const [, items] = await Promise.all([others(), ctx.api("GET", "inbox").then((v) => z.array(Saved).parse(v))])
+    const l = lists(shown(), asResults(items))
     const row = (r: Item) => ({ path: `${r.id}.md`, title: r.title, from: r.from ?? null, created: r.created ?? null, updated: r.updated ?? null })
     const cut = <T>(xs: T[]) => xs.slice(0, limit)
     return { decisions: cut(l.decisions.map(decisionRow)), pinned: [...l.pinned.events, ...l.pinned.results.map(row)], needs: cut(l.needs), results: cut(l.review.map(row)), working: cut(l.working), messages: cut(l.messages),
@@ -44,13 +46,13 @@ inbox.snooze take it). done: the latest done ones too.
     const line = (e: InboxEvent) => `  ${localTime(e.t)}  ${e.read ? " " : "*"} ${e.title}${e.state === "open" && e.ask ? ` [${NEEDS[e.ask] ?? e.ask}]` : ""}` +
       `${e.preview || e.body ? `: ${clip(e.preview || e.body, 160)}` : ""}${e.machineLabel ? ` (on ${e.machineLabel})` : ""}  (${e.id})`
     const list = (title: string, xs: string[]) => { if (xs.length) out.push(`${out.length ? "\n" : ""}${title}:`, ...xs) }
-    list("Decisions", r.decisions.map((d: Item) => `  ${d.blocking ? "[waits on you]" : `[went with ${d.default}]`} ${d.question}  (${d.path})`))
+    list("Decisions", r.decisions.map((d) => `  ${d.blocking ? "[waits on you]" : `[went with ${d.default}]`} ${d.question}  (${d.path})`))
     list("Pinned", r.pinned.map((x) => ("path" in x ? `  ${x.path}${x.from ? `  (from ${x.from})` : ""}` : line(x))))
     list("Needs you", r.needs.map(line))
-    list("To review", r.results.map((x: Item) => `  ${x.path}${x.from ? `  (from ${x.from})` : ""}`))
-    list("Working on it", r.working.map((e: InboxEvent) => (e.progress ? line({ ...e, preview: e.progress }) : line(e))))
+    list("To review", r.results.map((x) => `  ${x.path}${x.from ? `  (from ${x.from})` : ""}`))
+    list("Working on it", r.working.map((e) => (e.progress ? line({ ...e, preview: e.progress }) : line(e))))
     list("Messages", r.messages.map(line))
-    list("Snoozed", r.snoozed.map((x: Item) => `  until ${x.until}  ${x.path ?? `${x.title}  (${x.id})`}`))
+    list("Snoozed", r.snoozed.map((x) => `  until ${x.until}  ${"path" in x ? x.path : `${x.title}  (${x.id})`}`))
     if (Array.isArray(r.done)) list("Settled", r.done.map(line))
     else if (r.done) out.push(`${out.length ? "\n" : ""}Settled: ${r.done} (vau inbox --done lists them).`)
     if (r.decisions.length) out.push(`\nAnswer one: vau inbox decide <path> <answer> (vau inbox decisions has their options).`)
@@ -58,7 +60,7 @@ inbox.snooze take it). done: the latest done ones too.
   },
 })
 
-const addOp: Op = {
+const addOp = defineOp({
   id: "inbox.add",
   home: true,
   cli: "inbox add",
@@ -82,13 +84,13 @@ tldr goes on top, so the user knows what it says before reading it: two or three
   },
   args: ["title"],
   run: async (p, ctx) => {
-    const r = await ctx.api("POST", "inbox", { title: p.title.trim(), body: withTldr(str(p.tldr), str(p.body).trim()), from: str(p.from).trim() || ctx.who.label,
-      ...(str(p.source).trim() ? { source: str(p.source).trim() } : {}), ...(str(p.do).trim() ? { do: str(p.do).trim() } : {}) })
+    const r = Saved.parse(await ctx.api("POST", "inbox", { title: p.title.trim(), body: withTldr(str(p.tldr), str(p.body).trim()), from: str(p.from).trim() || ctx.who.label,
+      ...(str(p.source).trim() ? { source: str(p.source).trim() } : {}), ...(str(p.do).trim() ? { do: str(p.do).trim() } : {}) }))
     return { path: `${r.id}.md`, title: r.title }
   },
   text: (r) => `In the user's inbox: ${r.path} (they'll see it marked new).`,
   did: (p) => ({ action: "create", text: `Left ${quoted(p.title)} in the inbox` }),
-}
+})
 
 export function register() {
   plugin.op(listOp)

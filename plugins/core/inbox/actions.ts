@@ -1,3 +1,4 @@
+import { z } from "zod"
 import { choiceOf } from "../../../core/agents.ts"
 import { defineOp, NOT_THE_USER, type Op, OpError, quoted, splitMachine, userSurface } from "../../../core/plugins.ts"
 import { isArchived, type Item, str } from "../../../core/vault.ts"
@@ -8,6 +9,7 @@ import { resultAt } from "./results.ts"
 import { DAY, holdNow, plugin } from "./server.ts"
 import { parseUntil, snoozed, snoozeMs, stampOf, whenText } from "./snooze.ts"
 import { fileOf, list, moveOn } from "./store.ts"
+import { Passed, Saved, Unread } from "./wire.ts"
 
 const settle = defineOp({
   id: "inbox.settle",
@@ -43,7 +45,7 @@ undo brings it back: a result to review, a thread open again. (inbox.done, vau i
     const r = resultAt(item)
     if (!r) throw new OpError(`no ${item} in the inbox`, 404)
     const title = str(p.title).replace(/\s+/g, " ").trim()
-    const done: Item = await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: back ? "new" : "done", ...(title ? { title } : {}) })
+    const done = Saved.parse(await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: back ? "new" : "done", ...(title ? { title } : {}) }))
     return { path: `${done.id}.md`, done: !back }
   },
   text: (r) => (r.done ? `Settled: ${r.path ?? r.title}.` : `Back in the inbox: ${r.path ?? r.title}.`),
@@ -52,6 +54,8 @@ undo brings it back: a result to review, a thread open again. (inbox.done, vau i
 
 // (the old name: scripts, hooks and saved prompts call it)
 const doneOp: Op = { ...settle, id: "inbox.done", cli: "inbox done", summary: "inbox.settle's old name: settle something in the inbox.", action: undefined }
+
+const Snoozed = z.looseObject({ item: z.string(), until: z.string().nullable(), when: z.string().nullable() })
 
 const wakeOp = defineOp({
   id: "inbox.wake",
@@ -63,7 +67,7 @@ const wakeOp = defineOp({
   run: async (p, ctx) => {
     const item = str(p.item).trim()
     const was = EVENT_ID.test(item) ? !!(await eventFor(ctx, item)).snoozed : (await plugin.vault.sync(), snoozed(resultAt(item)?.snoozed))
-    const woken: { item: string; until: string | null; when: string | null } = await ctx.op("inbox.snooze", { item, until: "now" })
+    const woken = Snoozed.parse(await ctx.op("inbox.snooze", { item, until: "now" }))
     return { ...woken, woke: was }
   },
   text: (r) => (r.woke ? `Woken, back on top: ${r.item}.` : `Not snoozed: ${r.item}.`),
@@ -178,7 +182,7 @@ const readOp = defineOp({
   kind: "write",
   params: { ids: { type: "array", items: { type: "string" }, description: "the events' ids; none: every event" } },
   args: ["ids"],
-  run: async ({ ids }, ctx) => ({ ...(await ctx.api("POST", "inbox/events/read", ids?.length ? { ids } : {})), all: !ids?.length }),
+  run: async ({ ids }, ctx) => ({ ...Unread.parse(await ctx.api("POST", "inbox/events/read", ids?.length ? { ids } : {})), all: !ids?.length }),
   text: (r) => (r.all ? "Every event is read." : `Read. ${r.unread} unread.`),
   did: ({ ids }) => ({ action: "save", text: ids?.length ? `Marked ${ids.length} inbox event${ids.length === 1 ? "" : "s"} read` : "Marked the inbox read" }),
 })
@@ -192,7 +196,7 @@ const unreadOp = defineOp({
   args: ["ids"],
   run: async ({ ids }, ctx) => {
     if (!ids.length) throw new OpError("which events: their ids (vau inbox lists them)")
-    return await ctx.api("POST", "inbox/events/unread", { ids })
+    return Unread.parse(await ctx.api("POST", "inbox/events/unread", { ids }))
   },
   text: (r) => `Unread. ${r.unread} unread.`,
   did: ({ ids }) => ({ action: "save", text: `Marked ${ids.length || "some"} inbox event${ids.length === 1 ? "" : "s"} unread` }),
@@ -204,7 +208,7 @@ const clearOp = defineOp({
   summary: "Forget the inbox's events: every one, or only the settled ones (results in Inbox/ stay).",
   kind: "destructive",
   params: { done: { type: "boolean", description: "only the settled ones" } },
-  run: async ({ done }, ctx) => ({ ...(await ctx.api("DELETE", `inbox/events${done ? "?done=1" : ""}`)), done: !!done }),
+  run: async ({ done }, ctx) => ({ ...Passed.parse(await ctx.api("DELETE", `inbox/events${done ? "?done=1" : ""}`)), done: !!done }),
   text: (r) => (r.done ? "Forgot the settled events." : "Forgot every event."),
   did: ({ done }) => ({ action: "delete", text: done ? "Cleared the inbox's settled events" : "Cleared the inbox's events" }),
 })
@@ -245,9 +249,9 @@ id from a notification another machine sent is found too.
     const e = await eventFor(ctx, id)
     if (((answer === "approve" || answer === "deny") && (e.gate || e.ask === "permission") || answer === "pick" || answer === "chat") && !userSurface(ctx.who)) throw new OpError(NOT_THE_USER, 403)
     const bare = splitMachine(e.id)[0]
-    if (e.machine) return onOwner(ctx, e, "inbox.answer", { id: bare, answer, ...(text ? { text } : {}), ...(picks?.length ? { picks } : {}), ...(typed?.length ? { typed } : {}) })
-    if (answer === "reply") return { id: e.id, answer, title: e.title, ...(await ctx.op("inbox.reply", { to: e.id, text: str(text) })) }
-    if (answer === "settle" || answer === "done") return { id: e.id, answer, title: e.title, ...(await ctx.op("inbox.settle", { item: e.id })) }
+    if (e.machine) return await onOwner(ctx, e, "inbox.answer", { id: bare, answer, ...(text ? { text } : {}), ...(picks?.length ? { picks } : {}), ...(typed?.length ? { typed } : {}) })
+    if (answer === "reply") return { id: e.id, answer, title: e.title, ...Passed.parse(await ctx.op("inbox.reply", { to: e.id, text: str(text) })) }
+    if (answer === "settle" || answer === "done") return { id: e.id, answer, title: e.title, ...Passed.parse(await ctx.op("inbox.settle", { item: e.id })) }
     if (answer === "read") {
       await ctx.api("POST", "inbox/events/read", { ids: [e.id] })
       return { id: e.id, answer, title: e.title, terminal: e.terminal ?? null }
@@ -280,6 +284,8 @@ id from a notification another machine sent is found too.
     : `${r.answer === "approve" ? "Approved" : "Denied"}${r.terminal ? ` in ${r.terminal}` : `: ${r.title}`}.`),
 })
 
+const Pushed = z.looseObject({ sent: z.number(), failed: z.array(z.string()) })
+
 const pushOp = defineOp({
   id: "inbox.push",
   cli: "inbox push",
@@ -294,7 +300,7 @@ const pushOp = defineOp({
     body: { type: "string", description: "a line or two more" },
   },
   args: ["title"],
-  run: async ({ title, body }, ctx) => await ctx.api("POST", "inbox/push", { title, body }),
+  run: async ({ title, body }, ctx) => Pushed.parse(await ctx.api("POST", "inbox/push", { title, body })),
   text: (r) => (!r.sent && !r.failed.length ? "Nothing sent: no phone has signed up for notifications on this machine yet (the iPhone app does, once it connects; the watch shows the phone's)."
     : `Sent to ${r.sent} device${r.sent === 1 ? "" : "s"}${r.failed.length ? `; failed: ${r.failed.join(", ")}` : ""}.`),
 })

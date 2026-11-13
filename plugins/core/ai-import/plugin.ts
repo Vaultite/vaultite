@@ -2,6 +2,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { pipeline } from "node:stream/promises"
+import { z } from "zod"
 import { HTTPError, OpError, Plugin, reply, type Request, vaultPath } from "../../../core/plugins.ts"
 import { str, writeAtomic } from "../../../core/vault.ts"
 import { DEFAULTS, type Job, newJob, type Options, runImport } from "./importer.ts"
@@ -126,7 +127,9 @@ plugin.route("GET", "ai-import/jobs/*", (req) => {
   return job
 })
 
-type Remembered = string | { person?: string | null; already?: boolean; path?: string }
+const Remembered = z.union([z.string(), z.looseObject({ person: z.string().nullish(), already: z.boolean().optional(), path: z.string().optional() })])
+type Remembered = z.infer<typeof Remembered>
+const Started = z.looseObject({ id: z.string() })
 function answerOf(said: Remembered) {
   if (typeof said === "string") {
     return { person: /^Remembered in People\/(.+?)\.md/.exec(said)?.[1] ?? (/^People\/(.+?)\.md already/.exec(said)?.[1]), already: /already says that/.test(said), mine: "ME.md" }
@@ -203,7 +206,7 @@ computer you're on: vau import <file> (it uploads it). wait: answer once it's do
     if (p.minMessages !== undefined) q.set("minMessages", String(p.minMessages))
     if (p.images !== undefined) q.set("images", String(p.images))
     if (p.folder) q.set("folder", p.folder)
-    const job = await ctx.api("POST", `ai-import${q.size ? `?${q}` : ""}`, p.path ? { path: p.path } : { upload: p.upload })
+    const job = Started.parse(await ctx.api("POST", `ai-import${q.size ? `?${q}` : ""}`, p.path ? { path: p.path } : { upload: p.upload }))
     return p.wait ? await jobOf(job.id, true) : job
   },
   text: (job: Job) => jobText(job),
@@ -250,7 +253,7 @@ under it. Don't tick memories for the user: this adds what they ticked.
     const source = LABELS[fmSource as keyof typeof LABELS] ?? "an AI's export"
     const results = await applyReview(text, source, async (args) => {
       try {
-        return await ctx.op("people.remember", args)
+        return Remembered.parse(await ctx.op("people.remember", args))
       } catch (e) {
         if (e instanceof OpError && e.status === 404 && /no operation/.test(e.message)) throw new OpError("adding memories needs the People plugin (people.remember): turn it on (Plugins)", 409)
         throw e

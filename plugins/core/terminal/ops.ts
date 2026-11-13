@@ -2,7 +2,7 @@ import { agentModel, MODEL_NAME, PERMISSION_MODES, startAgent, TERMINAL_AGENT, n
 import { fmtAgo, type Machine, OpError, type Plugin, quoted } from "../../../core/plugins.ts"
 import { z } from "zod"
 import { homeOf } from "./backends.ts"
-import { type Any, closeTabs, elsewhere, Ended, freshAgent, passOn, Session, sessions, show, shown, TabAt, tabsOf, target, there, Trouble } from "./targets.ts"
+import { Answer, type Any, closeTabs, SessionsTitled, elsewhere, Ended, freshAgent, passOn, Session, sessions, show, shown, TabAt, tabsOf, target, there, Trouble } from "./targets.ts"
 
 const Shown = Session.extend({ tabs: z.array(TabAt) })
 const Listing = z.looseObject({ sessions: z.array(Shown), gone: z.array(z.object({ id: z.string(), tabs: z.array(TabAt), agent: z.boolean() })).default([]),
@@ -124,7 +124,7 @@ terminal attach <terminal> shows one in the terminal you run it in (⌃\ detache
       if (machine) return Got.parse(await there(plugin, ctx, machine, "terminal.get", { id: t }))
       const [r, tabs] = await Promise.all([sessions(ctx, true), tabsOf(ctx)])
       const s = r.sessions.find((x) => x.id === t)
-      if (s) return Got.parse({ ...s, tabs: tabs.get(t) ?? [], inputs: (await ctx.api("GET", `terminals/${encodeURIComponent(t)}/inputs`).catch(() => ({ inputs: [] }))).inputs })
+      if (s) return Got.parse({ ...s, tabs: tabs.get(t) ?? [], inputs: Answer.parse(await ctx.api("GET", `terminals/${encodeURIComponent(t)}/inputs`).catch(() => ({ inputs: [] }))).inputs })
       const e = r.ended?.find((x) => x.id === t)
       if (e) return Got.parse({ ...e, ended: true })
       throw new OpError(`there's no terminal '${t}' (vau terminal lists them)`, 404)
@@ -148,7 +148,7 @@ it runs inside Vaultite, then each plugin's line for agents. The vault's rules, 
 
   vau terminal instructions`,
     kind: "read",
-    run: async (_p, ctx) => ctx.api("GET", "terminals/instructions"),
+    run: async (_p, ctx) => Answer.parse(await ctx.api("GET", "terminals/instructions")),
     text: (r) => String(r.text ?? ""),
   })
 
@@ -207,8 +207,8 @@ its tab too (as vau terminal open does). With machine, on another of the Machine
       } else await ctx.api("POST", `terminals/${id}`, Object.keys(body).length ? body : undefined)
       const isShown = open ? await shown(ctx, id) : false
       if (!wait) return { id, ...(agent ? { agent } : {}), ...(command ? { command } : {}), ...(name ? { name } : {}), shown: isShown }
-      const w = await ctx.api("POST", `terminals/${encodeURIComponent(id)}/wait`, { for: ["exit"], timeout })
-      const c = await ctx.api("GET", `terminals/${encodeURIComponent(id)}/capture?lines=60`).catch(() => ({ text: "" }))
+      const w = Answer.parse(await ctx.api("POST", `terminals/${encodeURIComponent(id)}/wait`, { for: ["exit"], timeout }))
+      const c = Answer.parse(await ctx.api("GET", `terminals/${encodeURIComponent(id)}/capture?lines=60`).catch(() => ({ text: "" })))
       return { id, command, ...(name ? { name } : {}), shown: isShown, ...w, output: String(c.text ?? "") }
     },
     text: (r) => r.met === undefined && !r.timedOut
@@ -245,7 +245,7 @@ id (--json). In the background, without a tab: vau terminal start.
       if (said && !agent) throw new OpError("a prompt is an agent's: name the agent (claude, codex...)")
       if (!agent && (model || effort || mode || allow?.length)) throw new OpError("`model`, `effort`, `mode` and `allow` are an agent's: name the `agent`")
       const t = newTerminalId(agent)
-      const r = agent ? await startAgent(ctx, t, said || undefined, how) : await ctx.api("POST", `terminals/${t}`, cwd ? { cwd } : undefined)
+      const r = agent ? await startAgent(ctx, t, said || undefined, how) : Answer.parse(await ctx.api("POST", `terminals/${t}`, cwd ? { cwd } : undefined))
       return { ...r, id: t, shown: await shown(ctx, t, split ?? null) }
     },
     text: (r, p) => `Opened ${r.id}${p.agent ? ` (${p.agent})` : ""}${r.shown ? "" : ` in the background: no app window is open, so no tab (vau terminal capture ${r.id} reads it)`}.`,
@@ -276,13 +276,13 @@ days); several are listed. Other agents: their session's id.
       let sid = q, title = ""
       if (!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(q)) {
         if (agent !== "claude") throw new OpError(`give ${agent}'s session id: titles are looked up for Claude Code only`)
-        const all: Any[] = (await ctx.api("GET", "claude-code?days=30")).sessions ?? []
+        const all = SessionsTitled.parse(await ctx.api("GET", "claude-code?days=30")).sessions ?? []
         const low = q.toLowerCase(), words: string[] = low.split(/\s+/)
         const exact = all.filter((s) => (s.title ?? "").toLowerCase() === low)
         const hits = exact.length ? exact : all.filter((s) => words.every((w) => (s.title ?? "").toLowerCase().includes(w)))
         if (!hits.length) throw new OpError(`no Claude Code session of the last 30 days is titled like '${q}'`)
         if (hits.length > 1) throw new OpError(`'${q}' is ${hits.length} sessions: ${hits.slice(0, 8).map((s) => `${s.id} "${s.title}"`).join(", ")}`)
-        sid = hits[0].id; title = hits[0].title
+        sid = hits[0].id; title = hits[0].title ?? ""
       }
       const t = resumeTerminalId(agent, sid)
       await ctx.api("POST", `terminals/${t}`)
@@ -358,7 +358,7 @@ code when it waited for that (1 when it was lost: its terminal server went away)
       const [t, machine] = await target(plugin, ctx, id, { ended: true })
       const body = { ...(wants?.length ? { for: wants } : {}), timeout, quiet, ...(match ? { match } : {}), ...(hold !== undefined ? { hold } : {}) }
       if (machine) return await there(plugin, ctx, machine, "terminal.wait", { id: t, ...body }, Number(timeout) + 30)
-      return { id: t, ...await ctx.api("POST", `terminals/${encodeURIComponent(t)}/wait`, body) }
+      return { id: t, ...Answer.parse(await ctx.api("POST", `terminals/${encodeURIComponent(t)}/wait`, body)) }
     },
     text: waited,
   })
@@ -391,8 +391,8 @@ done or error, told after this text; else the terminal's end), at most timeout s
       const [t, machine] = await target(plugin, ctx, id)
       if (!text && !enter) throw new OpError("give the text to type")
       if (machine) return await there(plugin, ctx, machine, "terminal.send", { id: t, text: text ?? "", enter, ...(wait ? { wait, timeout } : {}) }, wait ? Number(timeout) + 30 : 15)
-      const r = await ctx.api("POST", `terminals/${encodeURIComponent(t)}/send`, { text: text ?? "", enter, confirm: true })
-      return wait ? { ...r, ...await ctx.api("POST", `terminals/${encodeURIComponent(t)}/wait`, { timeout }) } : r
+      const r = Answer.parse(await ctx.api("POST", `terminals/${encodeURIComponent(t)}/send`, { text: text ?? "", enter, confirm: true }))
+      return wait ? { ...r, ...Answer.parse(await ctx.api("POST", `terminals/${encodeURIComponent(t)}/wait`, { timeout })) } : r
     },
     text: (r, p) => `Typed into ${r.id}${p.text ? `: ${p.text.length > 60 ? `${p.text.slice(0, 60)}…` : p.text}` : ""}${r.enter ? " (Enter)" : ""}.` +
       (r.submitted === true ? " It took it." : r.submitted === false ? ` It didn't take it: ${r.why}.` : r.why ? ` (${r.why}.)` : "") + (p.wait ? ` ${waited(r)}` : ""),
@@ -479,7 +479,7 @@ what you did first: the tab and what's in it go).
         const r = await there(plugin, ctx, machine, "terminal.end", { id: t, ...(keepTabs ? { keepTabs } : {}) })
         return { ...r, closedTabs: (r.closedTabs ?? 0) + (keepTabs ? 0 : await closeTabs(ctx, r.id)) }
       }
-      const r = await ctx.api("DELETE", `terminals/${encodeURIComponent(t)}${keepTabs ? "?keep=1" : ""}`)
+      const r = Answer.parse(await ctx.api("DELETE", `terminals/${encodeURIComponent(t)}${keepTabs ? "?keep=1" : ""}`))
       return { ...r, closedTabs: keepTabs ? 0 : await closeTabs(ctx, t) }
     },
     text: (r) => `Ended ${r.id}${r.closedTabs ? `, closed its tab${r.closedTabs === 1 ? "" : "s"}` : ""}.`,

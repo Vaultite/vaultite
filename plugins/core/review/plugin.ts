@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { byUser, diffLines, fmtAgo, HTTPError, type OpCtx, OpError, Plugin, type Who, whoOf } from "../../../core/plugins.ts"
+import { byUser, diffLines, FileMoved, fmtAgo, HTTPError, type OpCtx, OpError, Plugin, type Who, whoOf } from "../../../core/plugins.ts"
 import { isHiddenPath, type Item, parseText, readText, setPropertyText, type Vault } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -162,8 +162,8 @@ async function keep(ctx: OpCtx, files: Found[]) {
   for (const f of files) {
     was[f.path] = m[f.path] ?? null
     try {
-      const o = await ctx.op("provenance.get", { path: f.path })
-      if (o?.origin !== ai) continue
+      const o = z.looseObject({ origin: z.string().nullish() }).parse(await ctx.op("provenance.get", { path: f.path }))
+      if (o.origin !== ai) continue
       await ctx.op("provenance.set", { path: f.path, origin: "reviewed" })
       relabeled.push({ path: f.path, was: ai })
     } catch { /* Provenance off, or a vault without that value */ }
@@ -235,7 +235,7 @@ vau review revert "People/Alice Park.md"`,
     for (const f of files) {
       if (!f.base) { skipped.push({ path: f.path, why: "no version from just before the change is kept" }); continue }
       if (f.created) {
-        const r = await ctx.op("archive.add", { path: f.path })
+        const r = FileMoved.parse(await ctx.op("archive.add", { path: f.path }))
         reverted.push({ path: f.path, archived: r.path })
         continue
       }

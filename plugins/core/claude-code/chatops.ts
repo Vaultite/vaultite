@@ -2,7 +2,7 @@ import crypto from "node:crypto"
 import path from "node:path"
 import { z } from "zod"
 import { choiceOf, HOME, repoName } from "../../../core/agents.ts"
-import { byUser, type Machine, MACHINE_CLIENT, NOT_THE_USER, type Op, type OpCtx, OpError, type Plugin, splitMachine, userSurface } from "../../../core/plugins.ts"
+import { byUser, defineOp, type Machine, MACHINE_CLIENT, NOT_THE_USER, type Op, type OpCtx, OpError, type Plugin, splitMachine, userSurface } from "../../../core/plugins.ts"
 import type { ChatCore } from "./chat.ts"
 import { entryText } from "./chatentries.ts"
 import type { Entry } from "./chatlog.ts"
@@ -18,6 +18,10 @@ export function chatOps(plugin: Plugin, c: Needs) {
   const ID = { type: "string", required: true, description: "the session's id (vau chat list; <id>@<machine>: another machine's)" } as const
 
   const ANSWER = z.record(z.string(), z.unknown()).catch({})
+  const Listed = z.looseObject({ id: z.string(), state: z.string(), asks: z.array(z.string()), cwd: z.string(), account: z.string(), model: z.string(), mode: z.string(),
+    title: z.string().optional(), project: z.string().optional(), turn: z.looseObject({ prompt: z.string(), text: z.string(), error: z.string().optional() }).nullable() })
+  type Listed = z.infer<typeof Listed>
+  const Chats = z.looseObject({ sessions: z.array(Listed) })
 
 function onMachines(def: Op) {
     plugin.op({ ...def, run: async (p, ctx) => {
@@ -42,8 +46,8 @@ function onMachines(def: Op) {
     return out
   }
   const OWNER = "Claude Code's chat"
-  type Listed = Summary & { title?: string; project?: string }
-  const line = (s: Listed) => `- ${s.id} · ${s.state}${s.asks.length ? " (asks)" : ""} · ${s.title || titleOf(s.id) || path.basename(s.cwd)} · ${d.modelName(s.model) || "default model"} · ${MODE_LABELS[s.mode] ?? s.mode}${s.account ? ` · ${s.account}` : ""}`
+  const modeLabel = (mode: string) => { const m = modeOf(mode); return m ? MODE_LABELS[m] : mode }
+  const line = (s: Listed) => `- ${s.id} · ${s.state}${s.asks.length ? " (asks)" : ""} · ${s.title || titleOf(s.id) || path.basename(s.cwd)} · ${d.modelName(s.model) || "default model"} · ${modeLabel(s.mode)}${s.account ? ` · ${s.account}` : ""}`
   const theUser = (ctx: OpCtx) => { if (!userSurface(ctx.who)) throw new OpError(NOT_THE_USER, 403) }
 
   async function show(ctx: OpCtx, id: string) {
@@ -91,7 +95,7 @@ auto, dontAsk, bypassPermissions; none: the account's permissions.defaultMode, e
     did: ({ prompt }) => ({ action: "run", text: prompt ? `Started a chat: ${String(prompt).slice(0, 60)}` : "Started a chat" }),
   })
 
-  onMachines({
+  onMachines(defineOp({
     id: "claude-code.chat-send", cli: "chat send", mcp: "chat_send", owner: OWNER, kind: "write", lock: false,
     summary: "Tell a Claude Code session something: straight into it while it runs in the app (queued during a turn), else it's resumed with it.",
     help: `While it asks something (a permission, a plan), the message is the answer: no, and do this instead; to questions,
@@ -106,10 +110,10 @@ a reply in their place. A session running in a terminal is answered there, not h
       const uuid = crypto.randomUUID(), images = picturesFor(uuid, p.images)
       return { id: p.id, ...(await send(p.id, String(p.text ?? ""), { model: p.model, effort: p.effort, mode: p.mode, ...(images.length ? { images, uuid } : {}) })) }
     },
-    text: (r) => (r.answered ? "It was asking: that's its answer." : r.resumed ? "Resumed it with that." : "Sent."),
-  })
+    text: (r) => ("answered" in r && r.answered ? "It was asking: that's its answer." : "resumed" in r && r.resumed ? "Resumed it with that." : "Sent."),
+  }))
 
-  onMachines({
+  onMachines(defineOp({
     id: "claude-code.chat-interrupt", cli: "chat interrupt", mcp: "chat_interrupt", owner: OWNER, kind: "write", lock: false,
     summary: "Stop a Claude Code chat session's turn, as Esc does in the terminal: what it was doing stops, the session stays.",
     help: `Messages sent while it worked that it hadn't started on are taken back (taken: each one's id, text and pictures, to
@@ -120,10 +124,10 @@ send again), as Esc gives them back in a terminal.`,
       const r = await ask("interrupt", { id: p.id }) as { taken?: Extract<Entry, { k: "user" }>[] }
       return { id: p.id, taken: r.taken ?? [] }
     },
-    text: (r) => `Interrupted.${r.taken.length ? ` Taken back, not sent: ${r.taken.map((e: Entry) => (e.k === "user" ? JSON.stringify(e.text) : "")).join(", ")}.` : ""}`,
-  })
+    text: (r) => `Interrupted.${r.taken.length ? ` Taken back, not sent: ${r.taken.map((e) => (e.k === "user" ? JSON.stringify(e.text) : "")).join(", ")}.` : ""}`,
+  }))
 
-  onMachines({
+  onMachines(defineOp({
     id: "claude-code.chat-answer", cli: "chat answer", owner: OWNER, kind: "write", lock: false,
     summary: "Answer what a Claude Code chat session asks: allow or deny a permission (always: and its rule), pick answers to its questions (or Chat about this), approve its plan or keep planning.",
     help: `The user's alone: from the app or their phone, never an agent nor vau. picks: one per question, an option's number
@@ -154,9 +158,9 @@ after an approved plan (acceptEdits, default...).`,
       return { id: p.id, state: s.state }
     },
     text: () => "Answered.",
-  })
+  }))
 
-  onMachines({
+  onMachines(defineOp({
     id: "claude-code.chat-set", cli: "chat set", mcp: "chat_set", owner: OWNER, kind: "write", lock: false,
     summary: "Change how a Claude Code chat session runs from its next step: its model, effort or permission mode.",
     params: { id: ID, model: { type: "string", description: "sonnet, opus, haiku, fable, or a full id" },
@@ -168,8 +172,8 @@ after an approved plan (acceptEdits, default...).`,
       const { s } = await ask("set", { id: p.id, ...(p.model ? { model: runsAs(p.model) } : {}), ...(p.effort ? { effort: p.effort } : {}), ...(p.mode ? { mode: p.mode } : {}) }) as { s: Summary }
       return { id: p.id, model: s.model, effort: s.effort, mode: s.mode }
     },
-    text: (r) => { const m = modeOf(r.mode); return `Now ${d.modelName(r.model) || "its model"}${r.effort ? `, ${r.effort} effort` : ""}, ${m ? MODE_LABELS[m] : r.mode}.` },
-  })
+    text: (r) => `Now ${d.modelName(r.model) || "its model"}${r.effort ? `, ${r.effort} effort` : ""}, ${modeLabel(r.mode)}.`,
+  }))
 
   async function chatList(at: string, ctx: { who: { client: string | null } }): Promise<{ sessions: Listed[]; away?: Record<string, string> }> {
     const here = async () => {
@@ -180,7 +184,7 @@ after an approved plan (acceptEdits, default...).`,
       const m = await plugin.ask<Machine | null>("machines:machine", null, at)
       if (!m) throw new OpError(`no machine '${at}' (Machines lists them)`, 404)
       if (m.self) return { sessions: await here() }
-      const r = await onMachine(ctx, m, "claude-code.chat-list", {}) as { sessions: Listed[] }
+      const r = Chats.parse(await onMachine(ctx, m, "claude-code.chat-list", {}))
       return { sessions: r.sessions.map((s) => ({ ...s, id: `${s.id}@${m.id}` })) }
     }
     const sessions: Listed[] = await here()
@@ -188,7 +192,7 @@ after an approved plan (acceptEdits, default...).`,
     const others = (await plugin.ask<Machine[]>("machines", [])).filter((m) => !m.self && m.online && m.plugins?.includes("claude-code"))
     const away: Record<string, string> = {}
     await Promise.all(others.map((m) => onMachine(ctx, m, "claude-code.chat-list", {}).then(
-      (r) => { sessions.push(...(r.sessions as Listed[]).map((s) => ({ ...s, id: `${s.id}@${m.id}` }))) },
+      (r) => { sessions.push(...Chats.parse(r).sessions.map((s) => ({ ...s, id: `${s.id}@${m.id}` }))) },
       (e: Error) => { away[m.id] = e.message })))
     return { sessions, ...(Object.keys(away).length ? { away } : {}) }
   }
@@ -220,7 +224,7 @@ Machines (its sessions are <id>@<machine>), all every machine's.
       Object.entries(r.away ?? {}).map(([k, v]) => `\n${k}: ${v}`).join(""),
   })
 
-  onMachines({
+  onMachines(defineOp({
     id: "claude-code.chat-read", cli: "chat read", mcp: "chat_read", owner: OWNER, kind: "read", lock: false,
     summary: "A Claude Code session's conversation as the chat tab shows it: what was said, each tool call, what it asks now.",
     params: { id: ID, limit: { type: "number", description: "how many of the newest entries (default 30)" } },
@@ -231,9 +235,9 @@ Machines (its sessions are <id>@<machine>), all every machine's.
       return { id: p.id, title: h.title, cwd: h.cwd, state: h.s?.state ?? (h.tui !== null ? "in a terminal" : "ended"), entries: h.history.entries.slice(-(Number(p.limit) || 30)) }
     },
     text: (r) => [`# ${r.title || "Chat"} (${r.state})`, ...r.entries.map(entryText).filter(Boolean)].join("\n\n"),
-  })
+  }))
 
-  onMachines({
+  onMachines(defineOp({
     id: "claude-code.chat-stop", cli: "chat stop", mcp: "chat_stop", owner: OWNER, kind: "write", lock: false,
     summary: "End a Claude Code chat session's process (what it was doing stops); the conversation stays, to resume with a message or in a terminal.",
     params: { id: ID }, args: ["id"],
@@ -245,5 +249,5 @@ Machines (its sessions are <id>@<machine>), all every machine's.
       return { id: p.id, stopped: true }
     },
     text: (r) => (r.stopped ? "Stopped; claude --resume " + r.id + " opens it in a terminal." : "It wasn't running."),
-  })
+  }))
 }

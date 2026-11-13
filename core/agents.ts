@@ -5,6 +5,7 @@ import os from "node:os"
 import path from "node:path"
 import { promisify } from "node:util"
 import type { DatabaseSync } from "node:sqlite"
+import { z } from "zod"
 import { bullets, fmtMin, HTTPError, localDate, OpError, type OpCtx, type Plugin, processTable, type Request, section, serverUrl } from "./plugins.ts"
 import { stableNode } from "./service.ts"
 import { vauEntry } from "./appentry.ts"
@@ -458,9 +459,11 @@ export type SampleAnswer = { text: string; truncated: boolean; model?: string }
 
 /** Start terminal `id` running its agent (Terminal's route, as `ctx`'s caller), told `prompt` first: its answer. Throws
  *  when no plugin that's on brings that agent (the terminal goes again). */
+const Opened = z.looseObject({ agent: z.unknown().optional() })
+
 export async function startAgent(ctx: OpCtx, id: string, prompt?: string, how: AgentHow = {}, home?: { url: string; as: string }) {
   const body = { prompt, ...how, ...(home ? { home } : {}) }
-  const r = await ctx.api("POST", `terminals/${encodeURIComponent(id)}`, Object.values(body).some((v) => v) ? body : undefined) as Record<string, unknown>
+  const r = Opened.parse(await ctx.api("POST", `terminals/${encodeURIComponent(id)}`, Object.values(body).some((v) => v) ? body : undefined))
   if (!r.agent) {
     await ctx.api("DELETE", `terminals/${encodeURIComponent(id)}`).catch(() => {})
     throw new OpError(`no agent '${parseTerminal(id)?.agent ?? id}' here: its plugin is off, or there's none by that name`, 409)

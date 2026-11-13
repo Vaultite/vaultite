@@ -1,3 +1,4 @@
+import { z } from "zod"
 import { OpError, Plugin } from "../../../core/plugins.ts"
 import { type Item, joinPath, Kind, nowStamp, safeName, stemOf, str, truthy } from "../../../core/vault.ts"
 import { changes, type Context, happened, hash, parseSource, read, type Read, type Source, sourceText } from "./sources.ts"
@@ -39,6 +40,7 @@ const context = (): Context => ({
   private: (url, container) => !!plugin.service("companion:private")?.(url, container),
 })
 export const watches = () => plugin.vault.shared("watches")
+const Made = z.looseObject({ id: z.string() })
 
 export type Hit = { id: string; title: string; source: string; why: string; until: string; done: boolean; changes: string[]; url?: string; title_now: string }
 
@@ -127,7 +129,7 @@ watch moment, or to the inbox when it isn't running; with until, only a change t
     if (!src || src.kind === "pane") throw new OpError("give `source` as note:<path>, terminal:<id>, site:<url> or group:<id>")
     if (periodOf(p.every) === null) throw new OpError("`every` is live, or a number and m, h, d or w (5m, 2h)")
     const title = str(p.title).trim() || defaultTitle(src)
-    const r = await ctx.api("POST", "watches", { title, source: sourceText(src), every: str(p.every) || "live", until: str(p.until).trim(), status: "active", by: str(p.by).trim() || ctx.who.label, body: str(p.why).trim() })
+    const r = Made.parse(await ctx.api("POST", "watches", { title, source: sourceText(src), every: str(p.every) || "live", until: str(p.until).trim(), status: "active", by: str(p.by).trim() || ctx.who.label, body: str(p.why).trim() }))
     void tick()
     return { id: str(r.id), title, source: sourceText(src) }
   },

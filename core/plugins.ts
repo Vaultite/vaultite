@@ -109,6 +109,7 @@ export { clean as vaultPath } from "./files.ts"
 export { guestRefusal, liveIn as liveMarkdown } from "./guests.ts"
 /** The files a block shows, from a helper that has no ctx (ctx.source in a block): see core/sources.ts. */
 export { source } from "./sources.ts"
+export { FileMoved, fileTree, moveFile, readFile, saveFile, uploadName } from "./coreops/routes.ts"
 export { byUser, defineOp, NOT_THE_USER, userSurface, type Op, type OpCtx, type OpDid, OpError, type Param, quoted, type Who, whoOf } from "./ops.ts"
 export type { OpEntry, Schema } from "./contracts/ops.ts"
 export type { EventFilter, VaultEvent } from "./events.ts"
@@ -747,8 +748,10 @@ export class Plugin {
       read: (date: string): T[] => {
         let text: string
         try { text = fs.readFileSync(file(date), "utf8") } catch { return [] }
-        return text.split("\n").flatMap((l) => { try { return l ? [JSON.parse(l)] : [] } catch { return [] } }) // (a torn line)
+        return log.parse(text)
       },
+      /** Its rows from a file's text, one JSON per line. */
+      parse: (text: string): T[] => text.split("\n").flatMap((l) => { try { return l ? [JSON.parse(l)] : [] } catch { return [] } }), // (a torn line)
       /** The days it has, oldest first. */
       days: (): string[] => { try { return fs.readdirSync(this.localDir()).flatMap((f) => re.exec(f)?.[1] ?? []).sort() } catch { return [] } },
       rewrite: (date: string, rows: T[]) => { try { if (rows.length) fs.writeFileSync(file(date), lines(rows)); else fs.rmSync(file(date), { force: true }) } catch { /* gone */ } },

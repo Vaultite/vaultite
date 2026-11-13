@@ -1,4 +1,7 @@
+import { z } from "zod"
 import { OpError, Plugin } from "../../../core/plugins.ts"
+
+const Pinned = z.looseObject({ label: z.string() })
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -40,8 +43,8 @@ orange, purple, today, people...).
       if (e instanceof OpError && e.status === 409) throw new OpError(`${rel} already exists: edit it (vau read / vau write), or pick another name`, 409)
       throw e
     }
-    const icons: string[] = icon ? await ctx.op("icon.list") : []
-    const pinnedTo = noPin ? null : await ctx.op("page.pin", { path: rel }).then((r: { label: string }) => r.label, () => null)
+    const icons = icon ? z.array(z.string()).parse(await ctx.op("icon.list")) : []
+    const pinnedTo = noPin ? null : await ctx.op("page.pin", { path: rel }).then((r) => Pinned.parse(r).label, () => null)
     return { path: rel, pinned: pinnedTo !== null, ...(icon && icons.length && !icons.includes(icon) ? { unknownIcon: icon, icons } : {}) }
   },
   text: (r) => `Made ${r.path}${r.pinned ? " and pinned it" : ""}.` +

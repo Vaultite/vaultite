@@ -23,3 +23,5 @@ defineOp({ id: "t.wrong", summary: "s", kind: "read", params: { kind: KIND }, ru
 // @ts-expect-error text reads only what run returns
 defineOp({ id: "t.result", summary: "s", kind: "read", run: () => ({ a: 1 }), text: (r) => r.b })
 
+// @ts-expect-error what another op, a route or the window answers is unknown until parsed
+defineOp({ id: "t.answer", summary: "s", kind: "read", run: async (_p, ctx) => (await ctx.api("GET", "files")).files })

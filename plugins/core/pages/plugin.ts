@@ -1,7 +1,9 @@
+import { z } from "zod"
 import { HTTPError, movedFilePanels, type OpCtx, OpError, type Param, pinProblem, placePin, Plugin, readSidebars, relocatedPin, repinList, sameSidebars } from "../../../core/plugins.ts"
 import { ConfigError, type Vault } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
+const Shown = z.looseObject({ workspace: z.unknown().optional() }).nullish()
 
 export function pinned(vault: Vault): string[] {
   const p = vault.config("pages").pinned
@@ -95,7 +97,7 @@ async function target(ctx: OpCtx, { workspace, vault }: { workspace?: number; va
   if (!of && workspace) throw new OpError("Workspaces is off: there's one list of pinned pages (leave out `workspace`)")
   let n: number | null = null
   if (of && !vault) {
-    try { const w: unknown = workspace ?? (await ctx.ui(null))?.workspace; n = Number.isInteger(w) ? Number(w) : null } catch { n = workspace ?? null }
+    try { const w = workspace ?? Shown.parse(await ctx.ui(null))?.workspace; n = Number.isInteger(w) ? Number(w) : null } catch { n = workspace ?? null }
   }
   const t = n ? of!(n) : null
   return { t, pinned: t ? t.pinned ?? own : own, label: t ? t.label : "pages.json" }

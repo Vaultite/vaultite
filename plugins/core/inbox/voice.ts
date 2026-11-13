@@ -1,10 +1,11 @@
 import path from "node:path"
 import { newTerminalId, parseTerminal } from "../../../core/agents.ts"
-import { type OpCtx, OpError } from "../../../core/plugins.ts"
+import { defineOp, type OpCtx, OpError } from "../../../core/plugins.ts"
 import { localStamp, str } from "../../../core/vault.ts"
 import { hand } from "./handed.ts"
 import { startNew } from "./replies.ts"
 import { plugin, settings } from "./server.ts"
+import { Saved, Uploaded } from "./wire.ts"
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
@@ -24,7 +25,7 @@ async function dispatch(ctx: OpCtx, agent: string, file: string, text: string): 
 }
 
 export function register() {
-  plugin.op({
+  plugin.op(defineOp({
     id: "inbox.voice",
     cli: "inbox voice",
     summary: "What the user said into their watch, phone or the app: kept in the inbox, and handed to the front-door agent when the setting dispatch names one.",
@@ -56,10 +57,10 @@ it down, do it, or say what it would do; one past 1,500 words (a recording left 
       if ((audio || ctx.input) && settings().audio) {
         const kind = /^[a-z0-9]{1,5}$/i.test(str(ext)) ? str(ext).toLowerCase() : "m4a"
         const name = `Voice note ${localStamp().replace(/(\d\d)(\d\d)(\d\d)$/, "$1.$2.$3")}.${kind}`
-        const up = ctx.input ? await ctx.op("file.upload", { name }, ctx.input) : await ctx.op("file.upload", { data: audio, name })
-        body = `![[${path.posix.basename(str(up.path))}]]\n\n${said}`
+        const up = Uploaded.parse(ctx.input ? await ctx.op("file.upload", { name }, ctx.input) : await ctx.op("file.upload", { data: audio, name }))
+        body = `![[${path.posix.basename(up.path)}]]\n\n${said}`
       }
-      const r = await ctx.api("POST", "inbox", { title, body, from: str(from).trim() || ctx.who.label, origin })
+      const r = Saved.parse(await ctx.api("POST", "inbox", { title, body, from: str(from).trim() || ctx.who.label, origin }))
       const file = `${r.id}.md`
       const agent = keep ? "" : settings().dispatch
       let terminal: string | null = null, why = ""
@@ -70,5 +71,5 @@ it down, do it, or say what it would do; one past 1,500 words (a recording left 
       return { path: file, terminal, why }
     },
     text: (r) => `In the inbox: ${r.path}${r.terminal ? `; ${cap(String(r.terminal).split(/[-_]/)[0])} has it in ${r.terminal}` : r.why ? ` (not dispatched: ${r.why})` : ""}.`,
-  })
+  }))
 }

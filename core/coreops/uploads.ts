@@ -11,7 +11,7 @@ import { filing } from "../filing.ts"
 import { localStamp, safeName } from "../vault.ts"
 import { fetchPublic } from "../web.ts"
 import { serviceOn } from "./common.ts"
-import { readFile, saveFile } from "./routes.ts"
+import { readFile, saveFile, uploadName } from "./routes.ts"
 
 const EXT: Record<string, string> = {
   "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp", "image/heic": "heic", "image/heif": "heif",
@@ -140,8 +140,7 @@ async function save(app: App, ctx: OpCtx, bytes: Buffer | Readable, named: strin
   const dir = folder !== undefined ? String(folder).replace(/^\/+|\/+$/g, "") : attachmentDir(filing(app.vault).attachments, unarchived(note ?? ""))
   const f = note ? await readFile(ctx, note) : null // (before saving: a wrong note saves nothing)
   if (dir) await ctx.api("POST", "folder", { path: dir }).catch(() => {}) // (there already: fine)
-  const free: { path: string } = await ctx.api("POST", "upload/name", { folder: dir, name })
-  const rel = free.path
+  const rel = await uploadName(ctx, dir, name)
   await ctx.api("POST", "upload", { path: rel, bytes })
   if (f) await saveFile(ctx, { path: f.path, text: `${f.text.replace(/\s*$/, "")}\n\n${embedOf(rel)}\n`, base: f.text })
   return { path: rel, bytes: fs.statSync(app.vault.abs(rel)).size, type: mime || null, embed: embedOf(rel), note: note ?? null }

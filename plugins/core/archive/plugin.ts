@@ -1,5 +1,5 @@
 import fs from "node:fs"
-import { type OpCtx, OpError, Plugin } from "../../../core/plugins.ts"
+import { FileMoved, type OpCtx, OpError, Plugin } from "../../../core/plugins.ts"
 import { ARCHIVE_DIR, archiveTwin, dirOf, inArchive, isArchived, isHiddenPath, readText, setPropertyText, unarchived, type Vault } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -37,7 +37,7 @@ const isFolder = (ctx: OpCtx, rel: string) => fs.statSync(ctx.vault.abs(rel)).is
 export async function archive(ctx: OpCtx, rel: string): Promise<Moved> {
   let at = rel, updated: string[] = []
   const folder = isFolder(ctx, rel)
-  if (!inArchive(rel)) ({ path: at, updated } = await ctx.op("file.move", { from: rel, to: free(ctx.vault, archiveTwin(rel), folder) }))
+  if (!inArchive(rel)) ({ path: at, updated } = FileMoved.parse(await ctx.op("file.move", { from: rel, to: free(ctx.vault, archiveTwin(rel), folder) })))
   if (!folder) await mark(ctx, at, true)
   return { from: rel, path: at, updated }
 }
@@ -45,7 +45,7 @@ export async function archive(ctx: OpCtx, rel: string): Promise<Moved> {
 export async function unarchive(ctx: OpCtx, rel: string): Promise<Moved> {
   let at = rel, updated: string[] = []
   const folder = isFolder(ctx, rel)
-  if (inArchive(rel)) ({ path: at, updated } = await ctx.op("file.move", { from: rel, to: free(ctx.vault, unarchived(rel), folder) }))
+  if (inArchive(rel)) ({ path: at, updated } = FileMoved.parse(await ctx.op("file.move", { from: rel, to: free(ctx.vault, unarchived(rel), folder) })))
   if (!folder) await mark(ctx, at, false)
   return { from: rel, path: at, updated }
 }

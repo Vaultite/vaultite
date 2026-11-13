@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import { WebSocket } from "ws"
-import { type OpCtx, OpError } from "../../../core/plugins.ts"
+import { type OpCtx, OpError, readFile } from "../../../core/plugins.ts"
 import { readText } from "../../../core/vault.ts"
 import { partialArgs } from "./partial.ts"
 import { BIG_EDIT, linesIn } from "./proposals.ts"
@@ -66,8 +66,8 @@ export const applyEdit = (ctx: OpCtx, agent: KeptAgent, e: Edit, animate = true)
       return "typed"
     }
   }
-  const f = await ctx.api("GET", `file?path=${encodeURIComponent(e.path)}`)
-  const cur = String(f.text ?? "")
+  const f = await readFile(ctx, e.path)
+  const cur = f.text
   await ctx.api("PUT", "file", { path: f.path, text: editText(cur, e), base: cur })
   const end = endOf(cur, e)
   if (end) setAgent(agent.name, { path: e.path, line: end.line, find: end.find })

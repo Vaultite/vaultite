@@ -1,8 +1,11 @@
+import { z } from "zod"
 import { CliError, done, type PluginCli } from "../../../core/cli.ts"
 
-type Waited = { met?: string | null; timedOut?: boolean; exit?: { code: number; signal: number; lost?: boolean } }
+const Waited = z.looseObject({ met: z.string().nullish(), timedOut: z.boolean().optional(),
+  exit: z.looseObject({ code: z.number(), signal: z.number(), lost: z.boolean().optional() }).nullish() })
+const Got = z.looseObject({ id: z.string().optional(), ended: z.boolean().optional(), exit: Waited.shape.exit })
 // 124 when the time ran out, as timeout(1) exits; 128 + a signal's number, as a shell reports one.
-const waitCode = (r: Waited | null) => {
+const waitCode = (r: z.infer<typeof Waited> | undefined) => {
   if (!r || r.met === undefined) return 0
   if (r.met === "exit" && r.exit) return r.exit.lost ? 1 : r.exit.signal ? 128 + r.exit.signal : r.exit.code & 255
   if (r.timedOut) return 124
@@ -13,9 +16,9 @@ const DETACH = 0x1c
 
 export const cli: PluginCli = {
   ops: {
-    "terminal.wait": { code: waitCode },
-    "terminal.start": { code: (r: Waited) => (r && "met" in r ? waitCode(r) : 0) },
-    "terminal.send": { code: (r: Waited) => (r && "met" in r ? waitCode(r) : 0) },
+    "terminal.wait": { code: (r) => waitCode(Waited.safeParse(r).data) },
+    "terminal.start": { code: (r) => waitCode(Waited.safeParse(r).data) },
+    "terminal.send": { code: (r) => waitCode(Waited.safeParse(r).data) },
   },
   commands: [{
     name: "terminal",
@@ -34,8 +37,8 @@ id, its name or the end of its id, <id>@<machine> for another machine's (through
       const given = a._[0]
       if (!given) throw new CliError("which terminal? vau terminal attach <id or name> (vau terminal lists them)", true)
       if (!process.stdin.isTTY || !process.stdout.isTTY) throw new CliError("attach needs a terminal: run it in one, not piped")
-      const got = await c.call("POST", "ops/terminal.get", { id: given }) as { id?: string; ended?: boolean; exit?: Waited["exit"] }
-      if (!got?.id) throw new CliError(`no terminal '${given}'`)
+      const got = Got.parse(await c.call("POST", "ops/terminal.get", { id: given }))
+      if (!got.id) throw new CliError(`no terminal '${given}'`)
       if (got.ended) throw new CliError(`${got.id} ended${got.exit ? ` (exit code ${got.exit.code})` : ""}: vau terminal capture ${got.id} shows what it left`)
       const id = got.id
       const { WebSocket } = await import("ws")

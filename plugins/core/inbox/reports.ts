@@ -1,7 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
-import { localDate, type Op, OpError } from "../../../core/plugins.ts"
-import { isArchived, type Item, nowStamp, safeName, sortBy, str, truthy } from "../../../core/vault.ts"
+import { defineOp, localDate, OpError } from "../../../core/plugins.ts"
+import { isArchived, nowStamp, safeName, sortBy, str, truthy } from "../../../core/vault.ts"
 import { askAll, type Asker, baseOf, closeSettled, decisionAt, specsOf } from "./asked.ts"
 import { ending, handed } from "./handed.ts"
 import { clip, TERMINAL } from "./model.ts"
@@ -11,6 +11,7 @@ import { rowOf } from "./rows.ts"
 import { agentLabel, sessionRow, track } from "./sessions.ts"
 import { stampOf } from "./snooze.ts"
 import { addEvent, list } from "./store.ts"
+import { Saved, Uploaded } from "./wire.ts"
 
 const WORK: Record<string, string> = { feature: "Feature", fix: "Fix", change: "Change", research: "Research", plan: "Plan", answer: "Answer" }
 const STATE: Record<string, string> = { done: "done", waiting: "needs you", stuck: "stuck" }
@@ -26,7 +27,7 @@ const DECISIONS_BLOCK = "```block-decisions\n```"
 const SUMMARY_MAX = 10_000
 const folded = (title: string, md: string) => `> [!info]- ${title}\n${md.trim().split(/\r?\n/).map((l) => `> ${l}`.trimEnd()).join("\n")}`
 
-const reportsOp: Op = {
+const reportsOp = defineOp({
   id: "inbox.reports",
   cli: "inbox reports",
   summary: "The reports agents filed lately, one line each linking the whole report: what the morning brief's digest lists (results go there, not in the inbox).",
@@ -48,11 +49,11 @@ publicly, stayed in the inbox and says so.
     return { since: from, reports: rs.map((r) => ({ path: `${r.id}.md`, title: str(r.title), tldr: str(r.tldr) || null, at: latest(r), inbox: str(r.status) === "new" && !isArchived(r) })) }
   },
   text: (r) => r.reports.length
-    ? r.reports.map((x: Item) => `- [[${baseOf(str(x.path))}]]${x.tldr ? `: ${x.tldr}` : ""}${x.inbox ? " (in the inbox)" : ""}`).join("\n")
+    ? r.reports.map((x) => `- [[${baseOf(str(x.path))}]]${x.tldr ? `: ${x.tldr}` : ""}${x.inbox ? " (in the inbox)" : ""}`).join("\n")
     : `No reports since ${r.since}.`,
-}
+})
 
-const progressOp: Op = {
+const progressOp = defineOp({
   id: "inbox.progress",
   home: true,
   cli: "inbox progress",
@@ -84,9 +85,9 @@ is vau inbox ask, the end of a task vau inbox report.
     return { ok: true, progress: text }
   },
   text: () => "Shown on your row.",
-}
+})
 
-const reportOp: Op = {
+const reportOp = defineOp({
   id: "inbox.report",
   home: true,
   cli: "inbox report",
@@ -144,14 +145,14 @@ A job with a proof embeds its demo video: --video <the path tour-save gave> (Gui
     if (tldr.length > 400) throw new OpError(`\`tldr\`: one line, at most about 60 words (it's ${tldr.split(" ").length}): the rest goes in summary`)
     if (summary.length > SUMMARY_MAX * (p.digest === true ? 3 : 1)) throw new OpError(`\`summary\`: at most about 1,500 words (it's ${summary.split(/\s+/).length}): keep what a new session needs, link files for the rest`)
     const specs = specsOf(p.decision, p.state === "waiting")
-    const settles = ((p.settles ?? []) as string[]).map((x) => str(x).trim()).filter(Boolean)
+    const settles = (p.settles ?? []).map((x) => str(x).trim()).filter(Boolean)
     const missing = settles.filter((x) => !decisionAt(x))
     if (missing.length) throw new OpError(`settles: no decision ${missing.join(", ")} (vau inbox decisions lists them)`, 404)
     const state = str(p.state) || (specs.some((d) => d.blocking) ? "waiting" : "done")
     const title = reportTitle(str(p.work), state, str(p.title).trim())
     const told = state === "stuck" || p.public === true || p.digest === true
     const images: string[] = []
-    for (const given of (p.images ?? []) as string[]) {
+    for (const given of p.images ?? []) {
       const f = given.trim()
       if (!IMAGE.test(f)) throw new OpError(`${f}: a screenshot is a png, jpg, gif or webp`)
       if (!path.isAbsolute(f)) {
@@ -162,7 +163,7 @@ A job with a proof embeds its demo video: --video <the path tour-save gave> (Gui
       let data: Buffer
       try { data = fs.readFileSync(f) } catch { throw new OpError(`can't read ${f}`) }
       const name = `${localDate(Date.now())} ${safeName(str(p.title).trim()).slice(0, 50).trim()} - ${path.basename(f)}`
-      const up = await ctx.op("file.upload", { data: data.toString("base64"), name }) as { path: string }
+      const up = Uploaded.parse(await ctx.op("file.upload", { data: data.toString("base64"), name }))
       images.push(up.path)
     }
     let video = str(p.video).trim()
@@ -172,7 +173,7 @@ A job with a proof embeds its demo video: --video <the path tour-save gave> (Gui
       else {
         let data: Buffer
         try { data = fs.readFileSync(video) } catch { throw new OpError(`can't read ${video}`) }
-        video = (await ctx.op("file.upload", { data: data.toString("base64"), name: `${localDate(Date.now())} ${safeName(str(p.title).trim()).slice(0, 50).trim()} - ${path.basename(video)}` }) as { path: string }).path
+        video = Uploaded.parse(await ctx.op("file.upload", { data: data.toString("base64"), name: `${localDate(Date.now())} ${safeName(str(p.title).trim()).slice(0, 50).trim()} - ${path.basename(video)}` })).path
       }
     }
     const terminal = TERMINAL.test(str(p.terminal).trim()) ? str(p.terminal).trim() : ""
@@ -187,17 +188,17 @@ A job with a proof embeds its demo video: --video <the path tour-save gave> (Gui
     const decisions = specs.length && !(prior && str(prior.body).includes(DECISIONS_BLOCK)) ? DECISIONS_BLOCK : ""
     const round = (head: string) => [withTldr(tldr, ""), head, decisions, video ? `![[${video}]]` : "",
       images.length ? images.map((i) => `![[${path.posix.basename(i)}]]`).join("\n") : "", folded("Details", summary)].filter(Boolean).join("\n\n")
-    let r: Item
+    let r: Saved
     if (prior) {
       await editBody(prior.id, (body) => {
         const next = `## ${title}\n\n${round("")}\n\n`
         const at = body.lastIndexOf(REPLY_BLOCK)
         return at < 0 ? `${body.replace(/\n*$/, "")}\n\n${next}${REPLY_BLOCK}\n` : body.slice(0, at) + next + body.slice(at)
       })
-      r = await ctx.api("PUT", `inbox/${encodeURIComponent(prior.id)}`, { status: told ? "new" : "done", updated: nowStamp(), snoozed: null, title: reportTitle(str(p.work), state, subjectOf(str(prior.title))), ...who }) as Item
+      r = Saved.parse(await ctx.api("PUT", `inbox/${encodeURIComponent(prior.id)}`, { status: told ? "new" : "done", updated: nowStamp(), snoozed: null, title: reportTitle(str(p.work), state, subjectOf(str(prior.title))), ...who }))
     } else {
-      r = await ctx.api("POST", "inbox", { title, work: str(p.work), body: [round(""), terminal || session ? REPLY_BLOCK : ""].filter(Boolean).join("\n\n"), from: agent ? agentLabel(agent) : ctx.who.label, ...who }) as Item
-      if (!told) r = await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: "done" }) as Item
+      r = Saved.parse(await ctx.api("POST", "inbox", { title, work: str(p.work), body: [round(""), terminal || session ? REPLY_BLOCK : ""].filter(Boolean).join("\n\n"), from: agent ? agentLabel(agent) : ctx.who.label, ...who }))
+      if (!told) r = Saved.parse(await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: "done" }))
     }
     const file = `${r.id}.md`
     const w: Asker = { agent, session, terminal, machine, from: agent ? agentLabel(agent) : ctx.who.label }
@@ -219,11 +220,11 @@ A job with a proof embeds its demo video: --video <the path tour-save gave> (Gui
     return { path: file, title: r.title, inbox: told, decisions: asked, closed, ...(warn.length ? { warn } : {}), images, ...(video ? { video } : {}), terminal: terminal || null, session: session || null, ...(prior ? { thread: true } : {}) }
   },
   text: (r) => [`Reported: ${r.path}${r.thread ? " (added to this session's report before)" : ""}, ${r.inbox ? "in the user's inbox" : "archived (the morning brief lists it)"}.`,
-    ...r.decisions.map((d: Item) => `  ${d.merged ? "Same as one open already" : d.blocking ? "Asked, waiting on it" : "Asked"}: ${d.question} (${d.path})`),
-    ...((r.warn ?? []) as string[]).map((w) => `Warning: ${w}`),
-    ...r.closed.map((c: string) => `  Closed: ${c}`),
+    ...r.decisions.map((d) => `  ${d.merged ? "Same as one open already" : d.blocking ? "Asked, waiting on it" : "Asked"}: ${d.question} (${d.path})`),
+    ...(r.warn ?? []).map((w) => `Warning: ${w}`),
+    ...r.closed.map((c) => `  Closed: ${c}`),
     r.terminal || r.session ? `Their answers come back to this session${r.terminal && ending.has(r.terminal) ? "; this terminal ends when this turn does." : "."}` : ""].filter(Boolean).join("\n"),
-}
+})
 
 export function register() {
   plugin.op(reportsOp)

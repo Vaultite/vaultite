@@ -4,6 +4,7 @@ import path from "node:path"
 import { COLORS, HTTPError, MACHINE_CLIENT, type OpCtx, OpError, Plugin, type Present, type Request } from "../../../core/plugins.ts"
 import type { Item } from "../../../core/vault.ts"
 import { z } from "zod"
+import { Archived, Grouped, Placed, Report, type ReportGroup, type ReportPane, type ReportTab, Ungrouped } from "./report.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -267,13 +268,8 @@ running terminal) asks on that device first.
   did: (p) => ({ action: "ui", text: `Closed tabs on ${p.device}` }),
 })
 
-type ReportPane = { id: string; to: string; path?: string; behind?: string; focused?: boolean; floating?: boolean; zoomed?: boolean }
-type ReportTab = { id: string; active?: boolean; pinned?: boolean; name?: string; group?: string; panes: ReportPane[] }
-type ReportGroup = { id: string; name: string; color: string; collapsed?: boolean; tabs: number }
-type Report = { tabs: ReportTab[]; groups: ReportGroup[]; window?: string; windows?: { id: string; tabs: ReportTab[] }[] }
-
-async function ask(ctx: OpCtx, msg: Item) {
-  try { return await ctx.ui({ action: "tabs", ...msg }) } catch (e) {
+async function ask<T>(ctx: OpCtx, msg: Item, answer: z.ZodType<T>): Promise<T> {
+  try { return answer.parse(await ctx.ui({ action: "tabs", ...msg })) } catch (e) {
     if (e instanceof OpError && e.status === 409) throw new OpError("no app window is open on this server: open the app (browser or desktop) first", 409)
     throw e
   }
@@ -342,7 +338,7 @@ plugin.op({
   summary: "The user's window's tabs, each with its panes (ids and what each shows), and their tab groups.",
   help: HELP,
   kind: "read",
-  run: (_p, ctx) => ask(ctx, { do: "list" }),
+  run: (_p, ctx) => ask(ctx, { do: "list" }, Report),
   text: listText,
 })
 
@@ -358,7 +354,7 @@ plugin.op({
     to: { type: "string", description: "what the new pane shows (file:<path>, view:<view>); left out, the same as the pane" },
   },
   args: ["pane"],
-  run: (p, ctx) => ask(ctx, { do: "split", ...p, ...(p.to && !/^(file|view):/.test(p.to) && p.to !== "new" ? { to: `file:${p.to}` } : {}) }),
+  run: (p, ctx) => ask(ctx, { do: "split", ...p, ...(p.to && !/^(file|view):/.test(p.to) && p.to !== "new" ? { to: `file:${p.to}` } : {}) }, Placed),
   text: (r) => `Split: pane ${r.pane} in tab ${r.tab}.`,
   did: (p) => ({ action: "ui", text: `Split pane ${p.pane}` }),
 })
@@ -376,7 +372,7 @@ plugin.op({
     at: { type: "integer", minimum: 0, description: "a place in the list of tabs (0 first)" },
   },
   args: ["what"],
-  run: (p, ctx) => ask(ctx, { do: "move", ...p }),
+  run: (p, ctx) => ask(ctx, { do: "move", ...p }, Report),
   text: listText,
   did: (p) => ({ action: "ui", text: `Moved ${p.what}${p.into ? ` to pane ${p.into}` : ""}` }),
 })
@@ -392,7 +388,7 @@ plugin.op({
     with: { type: "string", required: true, description: "the other" },
   },
   args: ["pane", "with"],
-  run: (p, ctx) => ask(ctx, { do: "swap", ...p }),
+  run: (p, ctx) => ask(ctx, { do: "swap", ...p }, Report),
   text: listText,
   did: (p) => ({ action: "ui", text: `Swapped panes ${p.pane} and ${p.with}` }),
 })
@@ -405,12 +401,11 @@ plugin.op({
   kind: "write",
   params: { what: { type: "string", required: true, description: "the tab or pane: its id, or what a pane shows" } },
   args: ["what"],
-  run: (p, ctx) => ask(ctx, { do: "focus", ...p }),
+  run: (p, ctx) => ask(ctx, { do: "focus", ...p }, Placed),
   text: (r) => `Showing tab ${r.tab}, pane ${r.pane} focused.`,
   did: (p) => ({ action: "ui", text: `Showed ${p.what}` }),
 })
 
-type ArchivedReport = { archived: { id: string; to: string; title: string; archived: string }[] }
 plugin.op({
   id: "tabs.archived",
   cli: "tabs archived",
@@ -421,8 +416,8 @@ setting archive_after (never, 12h, 24h, 7d, 30d); the user reopens them from the
 
   vau tabs archived`,
   kind: "read",
-  run: (_p, ctx) => ask(ctx, { action: "tabs:archived" }),
-  text: (r: ArchivedReport) => r.archived.length ? r.archived.map((e) => `${e.id}  ${e.archived}  ${e.to}${e.title ? ` (${e.title})` : ""}`).join("\n") : "No archived tabs.",
+  run: (_p, ctx) => ask(ctx, { action: "tabs:archived" }, Archived),
+  text: (r) => r.archived.length ? r.archived.map((e) => `${e.id}  ${e.archived}  ${e.to}${e.title ? ` (${e.title})` : ""}`).join("\n") : "No archived tabs.",
 })
 
 plugin.op({
@@ -441,9 +436,9 @@ plugin.op({
   args: ["tabs"],
   run: (p, ctx) => {
     if (!p.group && !p.tabs?.length) throw new OpError("say which tabs to group (or `group` to change one)", 400)
-    return ask(ctx, { do: "group", ...p })
+    return ask(ctx, { do: "group", ...p }, Grouped)
   },
-  text: (r) => `Group ${groupLine({ ...r.group, tabs: r.group.tabs.length })}: ${r.group.tabs.map((t: ReportTab) => t.panes.map((x) => x.to).join(" + ")).join(", ")}.`,
+  text: (r) => `Group ${groupLine({ ...r.group, tabs: r.group.tabs.length })}: ${r.group.tabs.map((t) => t.panes.map((x) => x.to).join(" + ")).join(", ")}.`,
   did: (p) => ({ action: "ui", text: p.group ? `Changed tab group ${p.group}` : `Grouped ${p.tabs?.length ?? 0} tab(s)${p.name ? ` as "${p.name}"` : ""}` }),
 })
 
@@ -460,7 +455,7 @@ plugin.op({
   args: ["tabs"],
   run: (p, ctx) => {
     if (!p.group && !p.tabs?.length) throw new OpError("say which `group` or which `tabs`", 400)
-    return ask(ctx, { do: "ungroup", ...p })
+    return ask(ctx, { do: "ungroup", ...p }, Ungrouped)
   },
-  text: (r) => (r.ungrouped ? `Ungrouped ${r.ungrouped}.` : `Took ${r.removed.length} tab(s) out of their groups.`),
+  text: (r) => (r.ungrouped ? `Ungrouped ${r.ungrouped}.` : `Took ${r.removed?.length ?? 0} tab(s) out of their groups.`),
 })

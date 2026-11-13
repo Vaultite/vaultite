@@ -1,5 +1,5 @@
 import fs from "node:fs"
-import { agentName, parseJson } from "../../../core/agents.ts"
+import { agentName } from "../../../core/agents.ts"
 import { OpError } from "../../../core/plugins.ts"
 import type { Follow } from "./follows.ts"
 import { voiceHere, voiceHereText } from "./voice.ts"
@@ -150,7 +150,7 @@ came (faster with speed), so you can watch what the session makes of them.
     speed: { type: "number", minimum: 0.1, default: 1, description: "how much faster than they came" }, limit: { type: "integer", minimum: 1, default: 50, description: "at most this many" } },
   run: async (p) => {
     let ms: Moment[] = []
-    if (p.file) ms = fs.readFileSync(String(p.file), "utf8").split("\n").flatMap((l) => (l ? [parseJson(l)] : []))
+    if (p.file) ms = log.parse(fs.readFileSync(String(p.file), "utf8"))
     else if (p.day) ms = log.read(String(p.day))
     else throw new OpError("give `day` or `file`")
     ms = ms.filter((m) => m && typeof m.kind === "string").slice(-p.limit)

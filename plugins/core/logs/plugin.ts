@@ -1,3 +1,4 @@
+import { z } from "zod"
 import { bullets, fmtMin, HTTPError, LOADED, OpError, Plugin, section, source, today, weekStart } from "../../../core/plugins.ts"
 import { dirOf, isArchived, type Item, joinPath, Kind, num, safeName, slug, sortBy, str, truthy } from "../../../core/vault.ts"
 
@@ -114,6 +115,8 @@ plugin.state(() => ({ areas: areas(), logs: plugin.vault.shared("logs") }))
 /** The areas as the app has them (Today's routines take their icon and weekly goal). */
 plugin.provide("logs:areas", areas)
 
+const Upserted = z.looseObject({ ids: z.array(z.string().nullish()).optional() })
+
 plugin.route("GET", "logs", (req) => {
   const q = req.query
   let out = plugin.vault.items("logs")
@@ -182,7 +185,7 @@ of them) as the one argument works too.
       if (typeof log.notes === "string") log.notes = log.notes.trim()
       return log
     })
-    const r = await ctx.api("POST", "logs", logs)
+    const r = Upserted.parse(await ctx.api("POST", "logs", logs))
     return { logs: logs.map((l, i) => ({ path: r.ids?.[i] ? `${r.ids[i]}.md` : null, id: l.ext_id, title: l.title, date: l.date })) }
   },
   text: (r) => r.logs.length === 1

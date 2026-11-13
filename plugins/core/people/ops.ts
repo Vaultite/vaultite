@@ -1,9 +1,10 @@
-import { OpError, type Plugin, quoted, today } from "../../../core/plugins.ts"
+import { z } from "zod"
+import { OpError, type Plugin, quoted, readFile, today } from "../../../core/plugins.ts"
 import { timelineKind } from "../../../core/timeline.ts"
 import { type Item, str } from "../../../core/vault.ts"
 
 const nameOf = (id: unknown) => String(id).split("/").pop()!
-const enc = encodeURIComponent
+const Logged = z.looseObject({ person: z.string() })
 
 export function addUnder(textIn: string, heading: string | null, line: string) {
   const lines = textIn.replace(/\n+$/, "").split("\n")
@@ -78,7 +79,7 @@ the file stays as it was.
       const body: Item = { person: name, date, kind: p.kind, notes: p.text.trim().replace(/\s*\n\s*/g, " ") }
       for (const k of ["subject", "url"] as const) if (str(p[k]).trim()) body[k] = str(p[k]).trim()
       if (p.duration_min !== undefined) body.duration_min = p.duration_min
-      const r = await ctx.api("POST", "interactions", body)
+      const r = Logged.parse(await ctx.api("POST", "interactions", body))
       return { person: name, path: `${r.person}.md`, date, kind: timelineKind(p.kind) ?? p.kind, text: body.notes }
     },
     text: (r) => `Added to ${r.person}'s timeline: ${r.date} · ${r.kind} · ${r.text}`,
@@ -129,7 +130,7 @@ The same fact twice is kept once.
         line = `${fact.replace(/\s*\(from [^)]*\)$/, "")} (from ${str(p.source).trim() || ctx.who.label}, ${today()})`
       }
       let base: string, made = false
-      try { base = String((await ctx.api("GET", `file?path=${enc(rel)}`)).text ?? "") } catch (e) {
+      try { base = (await readFile(ctx, rel)).text } catch (e) {
         if (!me) throw e
         base = "---\ntype: me\n---\n"
         made = true

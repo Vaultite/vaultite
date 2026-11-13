@@ -3,6 +3,7 @@
 import { spawn, spawnSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
+import { z } from "zod"
 import { Ctx, servers } from "../core/cli.ts"
 import { gitEnv } from "../core/gitenv.ts"
 
@@ -57,7 +58,12 @@ const nodeMajor = (v: string) => Number(v.split(".")[0])
 const ciNode = () => Number(/node-version:\s*(\d+)/.exec(fs.readFileSync(path.join(ROOT, ".github/workflows/ci.yml"), "utf8"))?.[1] ?? 0)
 
 /** A Vaultite server's op, called as its owner's CLI. */
-const op = (url: string, id: string, params: object) => new Ctx({ url, env: plainEnv(), client: "cli" }).callOp({ id, kind: id === "terminal.start" || id === "terminal.end" ? "write" : "read" }, "", params)
+const op = (url: string, id: string, params: object) =>
+  new Ctx({ url, env: plainEnv(), client: "cli" }).callOp({ id, kind: id === "terminal.start" || id === "terminal.end" ? "write" : "read" }, "", params).then((r) => Said.parse(r))
+const Said = z.looseObject({ id: z.unknown().optional(), output: z.unknown().optional(), text: z.unknown().optional(), met: z.unknown().optional(), exit: z.unknown().optional(), lost: z.unknown().optional() })
+const Listed = z.array(z.looseObject({ id: z.string(), label: z.string(), url: z.string().optional(), online: z.boolean().optional(), self: z.boolean().optional(),
+  via: z.string().optional(), platform: z.string().optional() }))
+const FileText = z.looseObject({ text: z.string().optional() })
 const job = (spec: object) => `node -e "eval(Buffer.from('${fs.readFileSync(JOB).toString("base64")}','base64').toString())" ${argOf(spec)}`
 const sshArgs = (dest: string, spec: object) => ["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "ServerAliveInterval=30", dest, "node", "-", argOf(spec)]
 
@@ -91,13 +97,12 @@ async function probe(m: Omit<Machine, "os">): Promise<Probe | string> {
 /** The Machines this try's OSes can run on: online, CI's Node, idle; one per OS, this one first. What was passed over, and why, said. */
 export async function findMachines(root: string, oses: Os[], log: (s: string) => void = () => {}): Promise<Machine[]> {
   if (!oses.length || machinesOff(root)) return []
-  type Listed = { id: string; label: string; url?: string; online?: boolean; self?: boolean; via?: string; platform?: string }
   type Entry = { id?: string; label?: string; url?: string; via?: string; ssh?: string; try?: boolean }
-  let listed: Listed[] | null = null, entries: Entry[] = []
+  let listed: z.infer<typeof Listed> | null = null, entries: Entry[] = []
   for (const url of servers(plainEnv())) {
     const ctx = new Ctx({ url, env: plainEnv() })
-    try { listed = await ctx.call("GET", "machines") } catch { continue }
-    try { entries = JSON.parse(String((await ctx.call("GET", `file?path=${encodeURIComponent(SETTINGS)}`)).text ?? "{}")).machines ?? [] } catch { entries = [] }
+    try { listed = Listed.parse(await ctx.call("GET", "machines")) } catch { continue }
+    try { entries = JSON.parse(FileText.parse(await ctx.call("GET", `file?path=${encodeURIComponent(SETTINGS)}`)).text ?? "{}").machines ?? [] } catch { entries = [] }
     break
   }
   if (!Array.isArray(listed) || !Array.isArray(entries)) return []

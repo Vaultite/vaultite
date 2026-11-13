@@ -3,6 +3,8 @@ import { OpError, type Plugin } from "../../../core/plugins.ts"
 import { openaiText, realtimeKeys, SET_OPENAI } from "./realtime.ts"
 import { messageOf } from "./errors.ts"
 
+const KeySet = z.looseObject({ set: z.boolean() })
+
 const ELEVEN_WS = () => process.env.VAULTITE_ELEVENLABS_URL || "wss://api.elevenlabs.io"
 const ELEVEN_API = () => process.env.VAULTITE_ELEVENLABS_API || "https://api.elevenlabs.io"
 const SONIOX_TTS = () => process.env.VAULTITE_SONIOX_TTS_URL || "wss://tts-rt.soniox.com/tts-websocket"
@@ -75,7 +77,7 @@ vau secret, so it never lands in a transcript. With nothing piped, says whether 
     },
     run: async ({ key, provider, remove }, ctx) => {
       if (ctx.who.client === "mcp") throw new OpError("not over MCP: keys stay on the user's machines (vau voice key, in a terminal)", 403)
-      if (provider === "soniox") return { provider, ...(await ctx.op("dictation.key", { ...(key ? { key } : {}), ...(remove ? { remove } : {}) })) }
+      if (provider === "soniox") return { provider, ...KeySet.parse(await ctx.op("dictation.key", { ...(key ? { key } : {}), ...(remove ? { remove } : {}) })) }
       if (provider === "openai") return openai({ key, remove })
       const stored = all().companion ?? {}
       if (remove) { const rest = Object.fromEntries(Object.entries(stored).filter(([k]) => k !== "elevenlabs")); plugin.saveSecrets(Object.keys(rest).length ? rest : null); return { provider: "elevenlabs", set: false, removed: true } }

@@ -12,8 +12,6 @@ import { isObj } from "./values.ts"
 
 const log = logger("ops")
 
-type Any = any
-
 /** A parameter: its schema, and whether it must be given. */
 export type Param = Omit<Schema, "required"> & { required?: boolean }
 
@@ -30,12 +28,15 @@ export type OpCtx = {
   who: Who
   /** Run another op (its parameters checked like a request's; `input`: the bytes for one that takes them); throws its
    *  OpError. */
-  op: (id: string, params?: Item, input?: Readable) => Promise<Any>
+  // oxlint-disable-next-line anti-slop/no-unknown-returns -- the caller parses what it reads: ops answer what they like
+  op: (id: string, params?: Item, input?: Readable) => Promise<unknown>
   /** A route of the HTTP API, in-process: its body; a 4xx or 5xx throws an OpError with its message. */
-  api: (method: string, route: string, body?: unknown) => Promise<Any>
+  // oxlint-disable-next-line anti-slop/no-unknown-returns, anti-slop/no-unknown-parameters -- the caller parses what it reads: routes answer what they like; a body is JSON
+  api: (method: string, route: string, body?: unknown) => Promise<unknown>
   /** Drive the user's open window (POST /api/ui's message: open, command, notify; null: which windows are open): its
    *  answer. */
-  ui: (message: Item | null) => Promise<Any>
+  // oxlint-disable-next-line anti-slop/no-unknown-returns -- the user's window answers: another process
+  ui: (message: Item | null) => Promise<unknown>
   /** The plugin it belongs to (null: the core's). */
   plugin: string | null
   /** Why the caller isn't this machine's owner for `what` (core/owner.ts), or "": for an op that's the owner's only in part
@@ -114,9 +115,11 @@ export type OpDef<P = Params, R = unknown> = {
 /** Any op, as the catalog keeps them: its own types erased (a plugin's op until Plugin.op infers like defineOp). */
 export type Op = Omit<OpDef, "run" | "text" | "did" | "image"> & {
   run(params: Item, ctx: OpCtx): unknown
-  text?(result: Any, params: Item, who?: Who): string
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- the catalog's ops, their own result types erased
+  text?(result: unknown, params: Item, who?: Who): string
   did?(params: Item): OpDid
-  image?(result: Any): OpImage | null
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- the catalog's ops, their own result types erased
+  image?(result: unknown): OpImage | null
 }
 
 /** An op with its parameters' and result's types inferred: `params` written in place, or constants that

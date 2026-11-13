@@ -10,6 +10,7 @@ import { rowOf, type Who } from "./rows.ts"
 import { agentLabel, sessionTitle, track } from "./sessions.ts"
 import { snoozed, stampOf } from "./snooze.ts"
 import { addEvent, list } from "./store.ts"
+import { Saved } from "./wire.ts"
 
 const openDecisions = () => plugin.vault.items("inbox").filter((r) => truthy(r.question) && str(r.status) === "new" && !isArchived(r))
 export const baseOf = (p: string) => path.posix.basename(p.replace(/\.md$/i, ""))
@@ -46,8 +47,8 @@ export async function askAll(ctx: OpCtx, specs: DecisionSpec[], w: Asker, report
       out.push({ path: `${same.id}.md`, question: str(same.question), merged: true, blocking: waits || same.blocking === true })
       continue
     }
-    const r: Item = await ctx.api("POST", "inbox", { title: d.title, body: d.why, from: w.from, question: d.question, options: d.options, effects: d.effects, default: d.default, blocking: d.blocking,
-      ...(report ? { report: `[[${report}]]` } : {}), ...(gist ? { gist: clip(gist, 400) } : {}), ...(where ? { where } : {}), ...askerFields(w) })
+    const r = Saved.parse(await ctx.api("POST", "inbox", { title: d.title, body: d.why, from: w.from, question: d.question, options: d.options, effects: d.effects, default: d.default, blocking: d.blocking,
+      ...(report ? { report: `[[${report}]]` } : {}), ...(gist ? { gist: clip(gist, 400) } : {}), ...(where ? { where } : {}), ...askerFields(w) }))
     if (d.blocking) tellDecision(r, w)
     out.push({ path: `${r.id}.md`, question: d.question, merged: false, blocking: d.blocking })
   }
@@ -291,7 +292,7 @@ why; undo opens it again. Only with the user's own answer: never decide for them
     })()
     if (p.undo === true) {
       const r = items[0]
-      const back: Item = await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: "new", archived: false, answer: null, answered: null, closed: null })
+      const back = Saved.parse(await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: "new", archived: false, answer: null, answered: null, closed: null }))
       return { decided: [{ path: `${back.id}.md`, question: str(back.question), reopened: true }], sent: [], failed: [] }
     }
     const moot = str(p.moot).trim()
@@ -300,12 +301,12 @@ why; undo opens it again. Only with the user's own answer: never decide for them
     for (const r of items) {
       if (str(r.status) !== "new" || isArchived(r)) throw new OpError(`${r.id}.md was dealt with already${str(r.answer) ? ` (answered ${str(r.answer)})` : ""}: --undo opens it again`, 409)
       if (moot) {
-        const out: Item = await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: "done", closed: clip(moot, 300) })
+        const out = Saved.parse(await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: "done", closed: clip(moot, 300) }))
         rows.push({ path: `${out.id}.md`, question: str(r.question), closed: clip(moot, 300) })
         continue
       }
       const answer = all || p.default === true ? str(r.default) : answerOf(listOf(r.options), str(p.answer)).answer
-      const out: Item = await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: "done", answer, answered: nowStamp() })
+      const out = Saved.parse(await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: "done", answer, answered: nowStamp() }))
       done.push({ d: { ...r, ...out }, answer })
       rows.push({ path: `${out.id}.md`, question: str(r.question), answer, told: !!toldOf(r, answer) })
     }

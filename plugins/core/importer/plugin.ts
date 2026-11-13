@@ -2,6 +2,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { pipeline } from "node:stream/promises"
+import { z } from "zod"
 import { HTTPError, OpError, Plugin, reply, type Request, vaultPath } from "../../../core/plugins.ts"
 import { str } from "../../../core/vault.ts"
 import { type Job, newJob, runImport } from "./importer.ts"
@@ -94,6 +95,8 @@ export function jobText(job: Job) {
   ].join("\n")
 }
 
+const Started = z.looseObject({ id: z.string() })
+
 async function jobOf(id: string, wait: boolean): Promise<Job> {
   for (;;) {
     const job = jobs.find((j) => j.id === id)
@@ -133,7 +136,7 @@ notes imported before stay as they are. wait: answer once it's done.
   args: ["path"],
   run: async (p, ctx) => {
     on()
-    const job = await ctx.api("POST", `importer${p.folder !== undefined ? `?folder=${encodeURIComponent(p.folder)}` : ""}`, { path: p.path })
+    const job = Started.parse(await ctx.api("POST", `importer${p.folder !== undefined ? `?folder=${encodeURIComponent(p.folder)}` : ""}`, { path: p.path }))
     return p.wait ? await jobOf(job.id, true) : job
   },
   text: (job: Job) => jobText(job),

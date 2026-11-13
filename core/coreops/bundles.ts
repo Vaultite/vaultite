@@ -13,6 +13,10 @@ const SKIP = { type: "array", items: { type: "string" }, commas: false,
 const FRESH = { type: "boolean", description: "clean: without the tweaks remembered for it (Reset), which applying forgets" } satisfies Param
 const where = (b: Info) => (b.source === "app" ? "built-in" : "yours")
 
+const answer = <K extends keyof Answers>(_route: K, reply: Promise<unknown>) =>
+  // oxlint-disable-next-line vaultite/no-cast -- in-process: core/bundles.ts' handle answers each route as Answers[K]
+  reply as Promise<Answers[K]>
+
 const HELP = `A bundle is a setup of the app, in the shapes the vault already uses (a folder like .vaultite/: plugins.json,
 sidebars.json, pages.json, appearance.json, editor.json, hotkeys.json, newtab.json, plugins/<id>/data.json, plus the dashboards it
 pins; its picture is drawn from them); a part it leaves out stays as it is when it's applied. The app's own are
@@ -93,7 +97,7 @@ user first.
     summary: "Bundles: setups of the app (plugins, settings, panels, pins, look) to apply, save, export and import.",
     help: HELP,
     kind: "read",
-    run: (_p, ctx): Promise<Answers["list"]> => ctx.api("GET", "bundles"),
+    run: (_p, ctx) => answer("list", ctx.api("GET", "bundles")),
     text: (r) => {
       const rows = r.bundles.map((b) => `${b.id.padEnd(18)} ${where(b).padEnd(9)} ${b.kind.padEnd(7)} ${b.name}` +
         `${b.code?.length ? "  (runs code)" : ""}${b.problems?.length ? `  (can't be read: ${b.problems.join("; ")})` : ""}`)
@@ -130,10 +134,10 @@ user first.
     kind: "read",
     params: { id: ID, workspace: WORKSPACE, fresh: FRESH },
     args: ["id"],
-    run: async ({ id, workspace, fresh }, ctx): Promise<Answers["show"]> => {
+    run: async ({ id, workspace, fresh }, ctx) => {
       const n = workspace ?? await windowWorkspace(ctx)
       const q = new URLSearchParams({ ...n ? { workspace: String(n) } : {}, ...fresh ? { fresh: "1" } : {} }).toString()
-      return ctx.api("GET", `bundles/${enc(id)}${q ? `?${q}` : ""}`)
+      return answer("show", ctx.api("GET", `bundles/${enc(id)}${q ? `?${q}` : ""}`))
     },
     text: (r) => {
       const p = r.plan, b = r.bundle
@@ -159,9 +163,9 @@ user first.
       skip: SKIP, trial: { type: "boolean", description: "try it: the user keeps it (bundle.keep) or puts back the setup from before (bundle.restore)" },
       fresh: FRESH, quiet: { type: "boolean", description: "the app opens nothing after (its guide, its first page)" } },
     args: ["id"],
-    run: async ({ id, workspace, code, offAdded, skip, trial, fresh, quiet }, ctx): Promise<Answers["apply"]> =>
-      ctx.api("POST", `bundles/${enc(id)}/apply`, { workspace: workspace ?? await windowWorkspace(ctx), allowCode: !!code, offAdded: !!offAdded, skip: skip ?? [], trial: !!trial,
-        fresh: !!fresh, quiet: !!quiet }),
+    run: async ({ id, workspace, code, offAdded, skip, trial, fresh, quiet }, ctx) =>
+      answer("apply", ctx.api("POST", `bundles/${enc(id)}/apply`, { workspace: workspace ?? await windowWorkspace(ctx), allowCode: !!code, offAdded: !!offAdded, skip: skip ?? [], trial: !!trial,
+        fresh: !!fresh, quiet: !!quiet })),
     text: (r) => r.trial ? `Trying ${r.applied}: \`vau bundle keep\` keeps it, \`vau bundle restore\` puts back the setup from before.`
       : `Applied ${r.applied}${r.plan.omitted.length ? ` without ${r.plan.omitted.join(", ")}` : ""}. \`vau bundle restore\` puts back the setup from before.`,
   }), defineOp({
@@ -171,8 +175,8 @@ user first.
     help: HELP,
     kind: "write",
     params: { workspace: WORKSPACE },
-    run: async ({ workspace }, ctx): Promise<Answers["apply"]> => ctx.api("POST", `bundles/${DEFAULT_BUNDLE}/apply`, { workspace: workspace ?? await windowWorkspace(ctx), quiet: true,
-      fresh: status(app.vault).applied?.id === DEFAULT_BUNDLE }),
+    run: async ({ workspace }, ctx) => answer("apply", ctx.api("POST", `bundles/${DEFAULT_BUNDLE}/apply`, { workspace: workspace ?? await windowWorkspace(ctx), quiet: true,
+      fresh: status(app.vault).applied?.id === DEFAULT_BUNDLE })),
     text: (r) => `Back to ${r.applied}. \`vau bundle restore\` puts back the setup from before.`,
   }), defineOp({
     id: "bundle.restore",
@@ -180,7 +184,7 @@ user first.
     summary: "Put back the setup from before the last bundle applied (files it added go to the trash).",
     help: HELP,
     kind: "destructive",
-    run: (_p, ctx): Promise<Answers["restore"]> => ctx.api("POST", "bundles/restore", {}),
+    run: (_p, ctx) => answer("restore", ctx.api("POST", "bundles/restore", {})),
     text: (r) => `Restored the setup from before ${r.restored}.${r.trashed.length ? ` Files it added went to the trash: ${r.trashed.join(", ")}.` : ""}`,
   }), defineOp({
     id: "bundle.keep",
@@ -188,7 +192,7 @@ user first.
     summary: "End trying a bundle, keeping its setup (bundle.restore still puts back the one from before).",
     help: HELP,
     kind: "write",
-    run: (_p, ctx): Promise<Answers["keep"]> => ctx.api("POST", "bundles/keep", {}),
+    run: (_p, ctx) => answer("keep", ctx.api("POST", "bundles/keep", {})),
     text: (r) => `Kept ${r.kept}.`,
   }), defineOp({
     id: "bundle.fork",
@@ -198,7 +202,7 @@ user first.
     kind: "write",
     params: { id: ID, skip: SKIP, workspace: WORKSPACE },
     args: ["id"],
-    run: async ({ id, skip, workspace }, ctx): Promise<Answers["fork"]> => ctx.api("POST", `bundles/${enc(id)}/fork`, { skip: skip ?? [], workspace: workspace ?? await windowWorkspace(ctx) }),
+    run: async ({ id, skip, workspace }, ctx) => answer("fork", ctx.api("POST", `bundles/${enc(id)}/fork`, { skip: skip ?? [], workspace: workspace ?? await windowWorkspace(ctx) })),
     text: (r) => `Saved ${r.bundle.name} as .vaultite/bundles/${r.bundle.id}/ (not applied).`,
   }), defineOp({
     id: "bundle.save",
@@ -216,9 +220,9 @@ user first.
       over: { type: "string", description: "save changes to this bundle (its id): the user's is saved over, keeping its name, card and source; the app's is saved as \"My <Name>\" (or name)" },
     },
     args: ["name"],
-    run: async ({ name, description, hotkeys, vaultPlugins, look, workspace, over }, ctx): Promise<Answers["save"]> =>
-      ctx.api("POST", "bundles", { ...over ? { over, ...name ? { name } : {} } : name ? { name, replace: true } : {}, description, ...hotkeys !== undefined ? { hotkeys } : {},
-        ...vaultPlugins !== undefined ? { vaultPlugins } : {}, ...look !== undefined ? { look } : {}, workspace: workspace ?? await windowWorkspace(ctx) }),
+    run: async ({ name, description, hotkeys, vaultPlugins, look, workspace, over }, ctx) =>
+      answer("save", ctx.api("POST", "bundles", { ...over ? { over, ...name ? { name } : {} } : name ? { name, replace: true } : {}, description, ...hotkeys !== undefined ? { hotkeys } : {},
+        ...vaultPlugins !== undefined ? { vaultPlugins } : {}, ...look !== undefined ? { look } : {}, workspace: workspace ?? await windowWorkspace(ctx) })),
     text: (r) => `Saved ${r.bundle.name} as .vaultite/bundles/${r.bundle.id}/.`,
   }), defineOp({
     id: "bundle.export",
@@ -257,12 +261,12 @@ reads it from a file, or a folder shaped like a bundle.`,
     },
     args: ["bundle"],
     lock: false, // (fetching a repository waits on the network)
-    run: async ({ bundle, from, replace }, ctx): Promise<Answers["import"]> => {
-      if (from) return ctx.api("POST", "bundles/import", { from, replace: !!replace })
+    run: async ({ bundle, from, replace }, ctx) => {
+      if (from) return answer("import", ctx.api("POST", "bundles/import", { from, replace: !!replace }))
       let b = bundle
       if (typeof b === "string") { try { b = JSON.parse(b) } catch { throw new OpError("bundle isn't a bundle's JSON") } }
       if (!b || typeof b !== "object" || Array.isArray(b)) throw new OpError("bundle isn't a bundle's JSON")
-      return ctx.api("POST", "bundles/import", { ...b, replace: !!replace })
+      return answer("import", ctx.api("POST", "bundles/import", { ...b, replace: !!replace }))
     },
     text: (r) => `Imported ${r.bundle.name} as ${r.bundle.id} (not applied: \`vau bundle show ${r.bundle.id}\`).`,
   }), defineOp({
@@ -273,7 +277,7 @@ reads it from a file, or a folder shaped like a bundle.`,
     kind: "destructive",
     params: { id: ID },
     args: ["id"],
-    run: ({ id }, ctx): Promise<Answers["delete"]> => ctx.api("DELETE", `bundles/${enc(id)}`),
+    run: ({ id }, ctx) => answer("delete", ctx.api("DELETE", `bundles/${enc(id)}`)),
     text: (r) => `Deleted ${r.deleted} (in ${r.trashed}).`,
   })]
 }

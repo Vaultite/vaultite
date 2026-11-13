@@ -5,6 +5,8 @@ import { allPanes, clean } from "../../../core/layout.ts"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Any = any
+export const Answer = z.looseObject({})
+export const SessionsTitled = z.looseObject({ sessions: z.array(z.looseObject({ id: z.string(), title: z.string().nullish() })).optional() })
 const opt = { s: z.string().optional(), n: z.number().optional(), b: z.boolean().optional() }
 export const Session = z.looseObject({ id: z.string(), agent: z.string().nullable(), process: z.string(), busy: opt.b, clients: z.number(), started: z.number(), title: opt.s,
   state: opt.s, kind: opt.s, msg: opt.s, needs: opt.b, note: opt.s, backend: opt.s, session: opt.s, name: opt.s, cwd: opt.s, command: opt.s, cols: opt.n, rows: opt.n,
@@ -24,10 +26,13 @@ export async function sessions(ctx: OpCtx, ended = false) {
   return Sessions.parse(await ctx.api("GET", `terminals/sessions${ended ? "?ended=1" : ""}`))
 }
 
+const Workspaces = z.looseObject({ workspaces: z.array(z.looseObject({ layout: z.unknown().optional() }).nullable()).optional() })
+const Closed = z.looseObject({ closed: z.array(z.unknown()).optional() })
+
 export async function tabsOf(ctx: OpCtx): Promise<Map<string, TabAt[]>> {
   const out = new Map<string, TabAt[]>()
-  let ws: { layout?: unknown }[] = []
-  try { ws = (await ctx.api("GET", "workspaces")).workspaces ?? [] } catch (e) { if (!(e instanceof OpError)) throw e }
+  let ws: ({ layout?: unknown } | null)[] = []
+  try { ws = Workspaces.parse(await ctx.api("GET", "workspaces")).workspaces ?? [] } catch (e) { if (!(e instanceof OpError)) throw e }
   ws.forEach((w, i) => {
     const l = clean(w?.layout)
     for (const p of l ? [l, ...(l.windows ?? [])].flatMap(allPanes) : []) {
@@ -40,8 +45,8 @@ export async function tabsOf(ctx: OpCtx): Promise<Map<string, TabAt[]>> {
 
 export async function closeTabs(ctx: OpCtx, id: string): Promise<number> {
   try {
-    const r = await ctx.api("POST", "workspaces/close", { path: `view:terminal/${id}` })
-    return r?.closed?.length ?? 0
+    const r = Closed.parse(await ctx.api("POST", "workspaces/close", { path: `view:terminal/${id}` }))
+    return r.closed?.length ?? 0
   } catch (e) {
     if (e instanceof OpError) return 0
     throw e

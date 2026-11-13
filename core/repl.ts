@@ -1,9 +1,13 @@
 import fs from "node:fs"
 import path from "node:path"
 import readline from "node:readline"
-import { commands, Ctx, CliError, execute, parseArgs, print, userData, type Obj } from "./cli.ts"
+import { z } from "zod"
+import { commands, Ctx, CliError, execute, parseArgs, print, userData } from "./cli.ts"
 import type { OpEntry, Schema } from "./contracts/ops.ts"
 import { camel, flagOf } from "./ops.ts"
+
+const Listed = z.looseObject({ files: z.array(z.looseObject({ path: z.unknown().optional() })).optional() })
+const Commands = z.looseObject({ commands: z.array(z.looseObject({ id: z.unknown().optional() })).optional() })
 
 const GLOBAL_FLAGS = ["--json", "--copy", "--count", "--paths", "--help"]
 
@@ -139,10 +143,10 @@ export async function repl(): Promise<number> {
   const src: Source = {
     ops, local,
     files: once(async () => {
-      const t = await ctx.call("POST", "ops/file.list", { limit: 100000 }) as Obj
-      return (t.files ?? []).map((f: Obj) => String(f.path))
+      const t = Listed.parse(await ctx.call("POST", "ops/file.list", { limit: 100000 }))
+      return (t.files ?? []).map((f) => String(f.path))
     }, [] as string[]),
-    commandIds: once(async () => ((await ctx.call("POST", "ops/ui.commands", {}) as Obj).commands ?? []).map((c: Obj) => String(c.id)), [] as string[]),
+    commandIds: once(async () => (Commands.parse(await ctx.call("POST", "ops/ui.commands", {})).commands ?? []).map((c) => String(c.id)), [] as string[]),
   }
 
   const file = path.join(userData(), "vau_history")
