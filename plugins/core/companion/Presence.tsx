@@ -1,9 +1,8 @@
-// Who's in the note, top right as in a shared doc: each agent around in its colour (a click goes where it is, a
-// right-click is its menu). Atop the Conversations panel too.
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react"
 import { cn, type FileHead, menuBelow, menuFor, type MenuItem } from "@vaultite"
 import { type Agent, getState, goToPerson, liveAgents, subscribe, unread } from "./live"
-import { follow, showSaid } from "./Overlay"
+import { follow } from "./spots"
+import { showSaid } from "./Overlay"
 import { usePhone } from "./Phone"
 import { STATUS } from "../../../core/desktop/cursor"
 import { agentMenu } from "./session"
@@ -15,7 +14,6 @@ export function Presence({ file }: { file: FileHead & { place: "bar" | "line"; m
   return <Faces path={file.path} big={file.place !== "bar"} more={file.menu} />
 }
 
-/** How many faces fit the parent's width (unbounded until measured), from the first two faces' size and step. */
 function useFit(on?: boolean) {
   const ref = useRef<HTMLDivElement>(null)
   const geo = useRef({ size: 0, step: 0 })
@@ -23,12 +21,11 @@ function useFit(on?: boolean) {
   const measure = () => {
     const el = ref.current, box = el?.parentElement
     if (!on || !el || !box) return
-    const [a, b] = Array.from(el.children) as HTMLElement[]
-    if (a && b) geo.current = { size: a.offsetWidth, step: b.offsetLeft - a.offsetLeft }
+    const [a, b] = Array.from(el.children)
+    if (a instanceof HTMLElement && b instanceof HTMLElement) geo.current = { size: a.offsetWidth, step: b.offsetLeft - a.offsetLeft }
     const { size, step } = geo.current
     if (step > 0) setFit(Math.max(1, 1 + Math.floor((box.clientWidth - size) / step)))
   }
-  // (again on each render, as agents come and go; on its own as the parent resizes)
   useLayoutEffect(measure)
   useLayoutEffect(() => {
     const box = ref.current?.parentElement
@@ -40,12 +37,9 @@ function useFit(on?: boolean) {
   return [ref, fit] as const
 }
 
-/** Who's in `path` with this window, then the agents around (in `path` first), as a shared doc's faces; `big`: a phone's
- *  sizes; `fit`: what the parent's width holds (the rest behind +N); `more`: the top bar's rows, after an agent's menu. */
 export function Faces({ path, big, fit, more }: { path: string; big?: boolean; fit?: boolean; more?: () => MenuItem[] }) {
   const s = useSyncExternalStore(subscribe, getState)
   const [ref, room] = useFit(fit)
-  // (a phone has no cursor to click: its face opens what it said and a box to ask it, with what's unread as a dot)
   const phone = usePhone()
   const people = s.people[path] ?? []
   if (s.mode === "off" && !people.length) return null

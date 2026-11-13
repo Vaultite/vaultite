@@ -1,17 +1,13 @@
-// What the user does in the app's window while a companion's wait listens (condition.ts: click "Share", type): a click
-// with the words of what it hit, a key only as one typed (never which), Esc to stop. Off unless asked.
 import { interfaceZoom } from "./locate.ts"
 
 type Send = (m: object) => boolean
 let off: (() => void) | null = null
-/** What a click hit, in words: its control's name (aria-label, tip, own text), as the ui model names it. */
 function named(e: Element | null) {
   const el = e?.closest<HTMLElement>("button, a, [role], [aria-label], [data-tip], [data-ui], input, textarea, select, label")
   if (!el) return null
   const label = el.getAttribute("aria-label") || el.dataset.tip || (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el.placeholder : "") || el.textContent?.trim().replace(/\s+/g, " ").slice(0, 120) || ""
   return { label, role: el.getAttribute("role") || el.tagName.toLowerCase(), ...(el.dataset.ui ? { ui: el.dataset.ui } : {}) }
 }
-/** Listen (`on`) or stop, telling the server through `send`. */
 export function listenInputs(on: boolean, send: Send) {
   off?.()
   off = null
@@ -19,7 +15,7 @@ export function listenInputs(on: boolean, send: Send) {
   let typed = 0
   const down = (e: PointerEvent) => {
     const z = interfaceZoom(), x = Math.round(window.screenX + e.clientX * z), y = Math.round(window.screenY + Math.max(0, window.outerHeight - window.innerHeight * z) + e.clientY * z)
-    send({ t: "input", kind: "click", x, y, ...(named(e.target as Element) ?? {}) })
+    send({ t: "input", kind: "click", x, y, ...(named(e.target instanceof Element ? e.target : null) ?? {}) })
   }
   const key = (e: KeyboardEvent) => {
     if (e.key === "Escape") return void send({ t: "input", kind: "esc" })

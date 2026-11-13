@@ -1,26 +1,19 @@
-// The Companion page's blocks (pages/Companion.md): its talk a day at a time (asks, answers, jobs, a press's Details;
-// compact in the Conversations panel) and what its services used. Data: companion conversation, usage, press-media.
 import { useEffect, useState, useSyncExternalStore } from "react"
 import { AudioLines, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, CircleDashed, Clock, CircleDot, CirclePause, CircleStop, Columns2, ExternalLink, Image, Mic, Rows2, SquareArrowOutUpRight } from "lucide-react"
 import { addDays, Button, cn, Empty, HeadingButton, fmtLongDay, fmtStamp, isDesktop, Loading, menuFor, type MenuItem, notifyError, op, openInSplit, openTab, Panel, today, useTick } from "@vaultite"
 import type { Exchange, PressLine, Spent } from "./conversation"
 import { getState, subscribe } from "./live"
-import { Arrow } from "./Overlay"
+import { Arrow } from "./Cursor"
 
-/** jobs.ts' JobCard, `at` its start (companion conversation). */
 export type JobCard = { id: string; title: string; state: string; link: string | null; at: number; result?: string; where?: string; why?: string; now?: string; ended?: number }
 export type Day = { day: string; exchanges: Exchange[]; spent: Spent[]; jobs: JobCard[] }
 type UsageRow = { service: string; today: Spent; week: Spent; left?: { used: number; limit: number; resets?: number; unit: string }; billing?: string }
 
-/** How often a shown page asks again (ms): new asks come as they're made. */
 const EVERY = 5000
-/** An op's answer, asked again every `every` ms while the window is seen, when the companion's state moves, and at
- *  `again()` (an ask just sent). */
 export function useOp<T>(id: string, params: Record<string, unknown>, every = EVERY) {
   const [data, setData] = useState<T | null>(null), [error, setError] = useState<unknown>(null)
   const [asked, setAsked] = useState(0)
   const key = JSON.stringify(params)
-  // (its live state: a new say or ask moves this)
   const said = useSyncExternalStore(subscribe, () => getState().said.length)
   useEffect(() => {
     let on = true
@@ -32,7 +25,6 @@ export function useOp<T>(id: string, params: Record<string, unknown>, every = EV
   return { data, error, again: () => setAsked((n) => n + 1) }
 }
 
-/** A day's talk in order: its exchanges and the jobs started that day, oldest first. */
 export function talkOf(d: Day | null, day: string) {
   const on = new Date(`${day}T12:00`).toDateString()
   return [...(d?.exchanges ?? []).map((e) => ({ t: e.t, e })), ...(d?.jobs ?? []).filter((j) => j.at && new Date(j.at).toDateString() === on).map((j) => ({ t: j.at, j }))]
@@ -45,7 +37,6 @@ const money = (d?: number) => (!d ? "" : d < 0.01 ? "under 1¢" : `$${d.toFixed(
 const SERVICE: Record<string, string> = { soniox: "Soniox", openai: "OpenAI realtime", elevenlabs: "ElevenLabs", apple: "This Mac's recognizer", mac: "This Mac's voice", parakeet: "Parakeet" }
 const nameOf = (s: string) => SERVICE[s] ?? s.charAt(0).toUpperCase() + s.slice(1)
 
-/** A job's state as a mark and a word, the same everywhere (jobs.ts' lifecycle). */
 const STATES: Record<string, { icon: typeof CircleDot; tint: string; word: string }> = {
   waiting: { icon: Clock, tint: "var(--muted-foreground)", word: "Waiting for its machine" },
   starting: { icon: CircleDashed, tint: "var(--muted-foreground)", word: "Starting" },
@@ -56,7 +47,6 @@ const STATES: Record<string, { icon: typeof CircleDot; tint: string; word: strin
   stopped: { icon: CircleStop, tint: "var(--muted-foreground)", word: "Stopped" },
 }
 
-/** ```block-companion-conversation: the day's asks and answers, jobs inline, oldest first. */
 export function ConversationBlock() {
   const [day, setDay] = useState(today)
   const { data, error } = useOp<Day>("companion.conversation", { day })
@@ -82,12 +72,9 @@ export function ConversationBlock() {
   )
 }
 
-/** One exchange: their words on the right, its answer on the left, Details under it. `compact`: the Conversations
- *  panel's and tab's (CompactTurn). */
 export function Turn({ e, name, tint = "var(--orange)", compact }: { e: Exchange; name: string; tint?: string; compact?: boolean }) {
   const [open, setOpen] = useState(false)
   const did = e.did.filter((d) => d !== "pointed")
-  // (its answer still to come: asked under 2 min ago, nothing said, done or done to it)
   const waiting = !e.said.length && !did.length && e.total === undefined && Date.now() - e.t < 120_000
   if (compact) return <CompactTurn e={e} name={name} tint={tint} did={did} waiting={waiting} />
   const words = "text-[15px] leading-[20px]", meta = "text-[12px]"
@@ -120,12 +107,8 @@ export function Turn({ e, name, tint = "var(--orange)", compact }: { e: Exchange
   )
 }
 
-/** Shown while the turn is hovered or focused (always, where there's no hover): drawn in the gap under its line, so
- *  showing it moves nothing. */
 const ASIDE = "pointer-events-none absolute top-full mt-[3px] flex max-w-full min-w-0 items-center gap-1 text-[11.5px] leading-[15px] text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/turn:pointer-events-auto group-hover/turn:opacity-100 group-focus-within/turn:opacity-100 [@media(hover:none)]:opacity-100"
 
-/** A turn as a chat's: their words in a bubble, its answer as plain text by its arrow; when, where and what it did
- *  beside them only on hover. An answer that's only acts says them. */
 function CompactTurn({ e, name, tint, did, waiting }: { e: Exchange; name: string; tint: string; did: string[]; waiting: boolean }) {
   const words = "text-[13px] leading-[19px]"
   const acts = did.length ? did.join(", ") : ""
@@ -149,7 +132,6 @@ function CompactTurn({ e, name, tint, did, waiting }: { e: Exchange; name: strin
   )
 }
 
-/** What a press logged, step by step, with its timings, cost, picture and audio. */
 function Details({ e }: { e: Exchange }) {
   const [media, setMedia] = useState<{ wav: string | null; png: string | null } | null>(null)
   useEffect(() => {
@@ -181,19 +163,15 @@ function Details({ e }: { e: Exchange }) {
     </div>
   )
 }
-/** A step's fields as words: what it says beyond its name and time. */
 const stepText = (s: PressLine) => Object.entries(s).filter(([k]) => !["t", "press", "kind", "ev", "ms"].includes(k)).map(([k, v]) => `${k} ${typeof v === "object" ? JSON.stringify(v) : String(v)}`).join(" · ")
 
-/** Job `j`'s terminal in a tab, or a split: one closed once done resumes its conversation (a job no longer kept: its link as it was). */
 const openJob = (j: JobCard, split?: "right" | "down") => void op("companion.job-open", { id: j.id, ...(split ? { split } : {}) })
   .catch(() => j.link && (split ? openInSplit(j.link, split === "down" ? "bottom" : "right") : openTab(j.link)))
-/** A job's right-click: open it in a tab, or (on a computer) beside or below. */
 const jobMenu = (j: JobCard) => menuFor((): MenuItem[] => [
   { label: "Open in new tab", icon: SquareArrowOutUpRight, run: () => openJob(j) },
   ...(isDesktop() ? [{ label: "Open to the right", icon: Columns2, run: () => openJob(j, "right") }, { label: "Open below", icon: Rows2, run: () => openJob(j, "down") }] : []),
 ])
 
-/** A job as a card in the talk: its state, where it runs, what it's doing, and its session a click away. */
 export function Job({ j }: { j: JobCard }) {
   useTick(30_000)
   const st = STATES[j.state] ?? STATES.working, Icon = st.icon
@@ -213,7 +191,6 @@ export function Job({ j }: { j: JobCard }) {
   )
 }
 
-/** A job as a row in a sidebar's talk: its state's mark, its title and state; a click opens its session. */
 export function JobRow({ j }: { j: JobCard }) {
   const st = STATES[j.state] ?? STATES.working, Icon = st.icon
   const body = <>
@@ -227,7 +204,6 @@ export function JobRow({ j }: { j: JobCard }) {
     : <div className={cls} data-companion-job={j.id} data-state={j.state}>{body}</div>
 }
 
-/** ```block-companion-usage: what each service the companion uses used today and this week, and what's left. */
 export function UsageBlock() {
   const { data, error } = useOp<{ services: UsageRow[] }>("companion.usage", {}, 60_000)
   return (

@@ -1,32 +1,25 @@
-// The companion on drawings (the canvases a format registers, registerCanvas): its agents there as the canvas's own
-// collaborators, what the user does there said back (where, what changed after a pause, @name in a text), its drawing.
 import { canvases, canvasOf, canvasShown, choose, notify, onCanvases, pluginSettings, type CanvasItem, type CanvasPeer, type OpenCanvas } from "@vaultite"
 import { type Agent, bump, getState, liveAgents, mentionIn, say, sayWhere, sendMoment, setDrawings, subscribe, type Target } from "./live"
 
 export type DrawAsk = { rid: string; agent: string; path: string; actions: unknown[] }
 type Point = { x: number; y: number }
 
-/** The canvas the user did something in last, and when. */
 let last: OpenCanvas | null = null
 let lastAt = 0
 const watched = new Map<OpenCanvas, { stop: () => void; hold: (on: boolean) => void; peers: () => void }>()
 
-/** The drawings this window shows, and where the user is in the one they're in (their pointer). */
 function drawingWhere(): { open: string[]; focus: Target | null } {
   const c = last && canvasShown(last) && (last.el.contains(document.activeElement) || Date.now() - lastAt < 60_000) ? last : null
   const p = c?.pointer()
   return { open: [...new Set(canvases().map((x) => x.path))], focus: c ? { path: c.path, ...(p ? { x: Math.round(p.x), y: Math.round(p.y) } : {}) } : null }
 }
 
-/** An item by id, else by its text (exact, then in part). */
 export function findItem(items: CanvasItem[], find: string) {
   const f = find.trim(), low = f.toLowerCase()
   return items.find((i) => i.id === f) ?? items.find((i) => i.text?.trim().toLowerCase() === low) ?? items.find((i) => !!i.text && i.text.toLowerCase().includes(low)) ?? null
 }
 
-// (where an agent with nowhere in particular goes: by the user's pointer as it was when the agent last changed)
 const parked = new Map<string, { t: number; p: Point }>()
-/** Where an agent's pointer is on a canvas: its point, under the middle of the element it looks at, else by the user. */
 export function pointFor(c: OpenCanvas, a: Agent, items = c.items()): Point {
   if (a.x !== undefined && a.y !== undefined) return { x: a.x, y: a.y }
   const it = a.find ? findItem(items, a.find) : null
@@ -39,7 +32,6 @@ export function pointFor(c: OpenCanvas, a: Agent, items = c.items()): Point {
   return p
 }
 
-/** A colour the canvas can draw with (its tint's value now: the theme's, light or dark). */
 function colorOf(tint: string) {
   const css = getComputedStyle(document.documentElement).getPropertyValue(`--${tint}`).trim() || "#e8590c"
   const g = document.createElement("canvas").getContext("2d", { willReadFrequently: true })
@@ -50,7 +42,6 @@ function colorOf(tint: string) {
   return `rgb(${r}, ${gr}, ${b})`
 }
 
-/** The agents on a canvas, as it draws them: where each looks, what it lit (a highlight: its selection there). */
 function peersOn(c: OpenCanvas) {
   const s = getState()
   if (s.mode === "off") return c.setPeers([])
@@ -65,8 +56,6 @@ const quote = (s?: string) => JSON.stringify((s ?? "").length > 60 ? `${s!.slice
 const LINES = new Set(["arrow", "line"])
 const itemLine = (i: CanvasItem) => `${i.id} ${i.type}${i.text ? ` ${quote(i.text)}` : ""}${LINES.has(i.type) ? ` ${i.from ?? "(a free end)"} -> ${i.to ?? "(a free end)"}` : ` at ${i.x},${i.y}`}`
 
-/** What changed from `a` to `b`, a line each: + added, - deleted, ~ changed (an arrow's shape follows its ends: left out;
- *  so does a pixel's drift, as a text's size measured again once its font loads: nothing to wake an agent for). */
 export function changesOf(a: Map<string, CanvasItem>, b: CanvasItem[]): string[] {
   const out: string[] = [], now = new Set(b.map((i) => i.id)), off = (x: number, y: number) => Math.abs(x - y) > 1
   for (const i of b) {
@@ -79,7 +68,6 @@ export function changesOf(a: Map<string, CanvasItem>, b: CanvasItem[]): string[]
   return out.length > 40 ? [...out.slice(0, 40), `… and ${out.length - 40} more`] : out
 }
 
-/** What a moment from a drawing carries: the user's pointer and the scene as text. */
 function sceneOf(c: OpenCanvas) {
   const p = c.pointer()
   return { path: c.path, ...(p ? { x: Math.round(p.x), y: Math.round(p.y) } : {}), scene: c.describe({ pointer: p, selected: c.selected() }) }
@@ -88,7 +76,6 @@ function sceneOf(c: OpenCanvas) {
 function watch(c: OpenCanvas) {
   const index = (items: CanvasItem[]) => new Map(items.map((i) => [i.id, i]))
   let base = index(c.items())
-  // (texts with an @name already there aren't asked again; one is asked once its writing is done)
   const asked = new Set([...base.values()].filter((i) => i.text).map((i) => `${i.id}\n${i.text}`))
   let tick: ReturnType<typeof setTimeout> | null = null, pause: ReturnType<typeof setTimeout> | null = null, where: ReturnType<typeof setTimeout> | null = null
   let held = false, pointer = c.pointer(), selected = c.selected().join()
@@ -117,7 +104,6 @@ function watch(c: OpenCanvas) {
     peersOn(c)
   }
   const stop = c.subscribe((outside) => {
-    // (what came from elsewhere is where the user starts from, not what they did)
     if (outside?.length) { const now = index(c.items()); for (const id of outside) { const i = now.get(id); if (i) base.set(id, i); else base.delete(id) } }
     const p = c.pointer(), sel = c.selected().join()
     if (p !== pointer || sel !== selected) {
@@ -128,9 +114,7 @@ function watch(c: OpenCanvas) {
     bump()
   })
   return {
-    // (what's still waiting is said as it goes; not from a scene already gone, which reads empty)
     stop: () => { stop(); for (const t of [tick, where]) if (t) clearTimeout(t); if (pause && c.items().length) report(); c.setPeers([]); if (last === c) last = null },
-    // (while an agent draws: what it makes isn't the user's)
     hold: (on: boolean) => {
       held = on
       if (on) return
@@ -141,7 +125,6 @@ function watch(c: OpenCanvas) {
   }
 }
 
-/** The canvases followed while the companion runs in this window. */
 export function watchCanvases() {
   setDrawings({ where: drawingWhere, draw: (m) => void draw(m as DrawAsk) })
   const sync = () => {
@@ -156,7 +139,6 @@ export function watchCanvases() {
   return () => { setDrawings(null); for (const o of offs) o(); cancelAnimationFrame(frame); for (const w of watched.values()) w.stop(); watched.clear() }
 }
 
-/** An agent's actions made on the drawing this window shows (`m.path`), its pointer going to each. */
 async function draw(m: DrawAsk) {
   const c = canvasOf(m.path), w = c ? watched.get(c) : undefined
   if (!c?.apply) return say({ t: "done", rid: m.rid, ok: false })
@@ -168,8 +150,6 @@ async function draw(m: DrawAsk) {
   } finally { w?.hold(false) }
 }
 
-/** Ask about what's selected in the drawing the user is in (which agent, when several are around): false when they're
- *  in none. */
 export function askDrawing(agent?: string) {
   const c = last && canvasShown(last) ? last : canvases().find(canvasShown)
   if (!c) return false

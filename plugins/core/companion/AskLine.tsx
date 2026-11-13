@@ -1,12 +1,9 @@
-// A line to ask the companion something not tied to a note: its session's tab (Timeline.tsx) and the Conversations
-// panel's talk. Enter sends; the answer comes as its words do (by its cursor, a phone's card).
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react"
 import { ArrowUp } from "lucide-react"
 import { cn } from "@vaultite"
 import { sendMoment } from "./live"
-import { unsent } from "./Overlay"
+import { unsent } from "./overlaykit"
 
-/** `compact`: a sidebar's, at its sizes; `onSent` hears what was asked, to show it at once. */
 export function AskLine({ name, compact, onSent, className }: { name: string; compact?: boolean; onSent?: (text: string) => void; className?: string }) {
   const [text, setText] = useState("")
   const field = useRef<HTMLTextAreaElement>(null)

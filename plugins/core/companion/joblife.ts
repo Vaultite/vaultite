@@ -1,18 +1,12 @@
-// A job's life: its state (JOB_NEXT), its landed change going live (Going), when each read of it is due (Clock). No
-// clock and no I/O: workers.ts reads the worker, CI and the server, passes what it read with the time, does what's returned.
 import { type Job, type JobState, live, mergedSaid, NEWS, type Transition } from "./jobs.ts"
 
-/** What moves a job: its machine back (start: one waiting for it starts), its worker as read (working, asks, error), its turn's end (changed: to review; answered: none;
- *  landed: what they kept, merged), its terminal's end with nothing to show (endEvent), their steer (told) and stop. */
 export type JobEvent = "start" | "working" | "asks" | "changed" | "answered" | "landed" | "error" | "ended" | "told" | "stop"
 
 export const JOB_NEXT: Record<JobState, Partial<Record<JobEvent, JobState>>> = {
-  // (handed to a machine that's offline: it starts once that machine is back)
   waiting: { start: "starting", error: "failed", stop: "stopped" },
   starting: { working: "working", asks: "needs you", changed: "ready for review", answered: "done", landed: "done", error: "failed", ended: "failed", stop: "stopped" },
   working: { asks: "needs you", changed: "ready for review", answered: "done", landed: "done", error: "failed", ended: "failed", stop: "stopped" },
   "needs you": { working: "working", told: "working", changed: "ready for review", answered: "done", landed: "done", error: "failed", ended: "failed", stop: "stopped" },
-  // (reviewed: closing it, its terminal ending, or its change found on main, is done; a steer or the user typing in it goes on)
   "ready for review": { working: "working", told: "working", asks: "needs you", ended: "done", landed: "done", stop: "done" },
   done: { working: "working", told: "working", asks: "needs you" },
   failed: { working: "working", told: "working" },
@@ -30,8 +24,6 @@ export function step(j: Job, ev: JobEvent, t: number): Transition | null {
   return x
 }
 
-/** Job `j`'s told move `x` (none: told didn't move it) taken back to `was`, its words not taken, unless something
- *  moved it since; its move back, if any. */
 export function untell(j: Job, x: Transition | undefined, was: Pick<Job, "state" | "turn" | "now" | "at">) {
   if (x && j.log.at(-1) !== x) return null
   Object.assign(j, x ? was : { turn: was.turn, now: was.now })
@@ -40,10 +32,7 @@ export function untell(j: Job, x: Transition | undefined, was: Pick<Job, "state"
   return { from: x.to, to: x.from }
 }
 
-/** How long a job landing itself may rest, its change neither landed nor said not to be, before it's ready for review. */
 export const LAND_WAIT = 10 * 60_000
-/** A worker's turn at rest: still `working` while its background tasks run (their end starts its next turn), or while
- *  one landing itself hasn't said "Merged:" or "Not merged:" (LAND_WAIT since `at`); else landed, changed or answered. */
 export function restEvent(o: { background?: number; landed: boolean; changes: boolean; lands?: boolean; text: string; at: number; now: number }): JobEvent {
   if (o.landed) return "landed"
   if (o.background) return "working"
@@ -51,22 +40,14 @@ export function restEvent(o: { background?: number; landed: boolean; changes: bo
   return o.changes ? "changed" : "answered"
 }
 
-/** How a worker's terminal ending moves its job, by what it left: an answer in its turn since the job's began (`final`:
- *  that turn over), changes to review, and whether it crashed (lost, killed, an error code) rather than was ended. */
 export function endEvent(o: { text: boolean; final: boolean; changes: boolean; crashed: boolean }): JobEvent {
-  // (a worker closing itself, as one that ships all the way does, ends mid-turn: on purpose, so what it left stands)
   return (o.text || o.changes) && (o.final || !o.crashed) ? (o.changes ? "changed" : "answered") : "ended"
 }
 
-/** A change a job landed where its own server takes main (Where.live): waited on by that server till it's live there,
- *  never by its worker. Its commit, since when, how many times CI's red sent it back, and its card's line (`why`). */
 export type Going = { commit: string; since: number; fixes: number; state: "waiting" | "fixing" | "live" | "stuck"; why: string }
 export const FIXES = 2
 export const LIVE_WAIT = 60 * 60_000
-/** app.version's answer on a commit: `final`, it won't be live by itself (CI red on `red`, a blocked checkout). */
 export type Verdict = { live: boolean; final: boolean; why: string; red?: string }
-/** `landed` "": nothing to wait on. A verdict or unsent names the going it was for (commit, since): a stale one is
- *  dropped. `where`: its server's name. */
 export type GoingEvent =
   | { type: "landed"; commit: string }
   | { type: "verdict"; commit: string; since: number; v: Verdict | null; where: string }
@@ -104,10 +85,8 @@ function unsent(g: Going | undefined, commit: string, why: string): GoingMove {
   return { going: { ...g, state: "stuck", why: `CI failed on ${short(g.commit)}, and it couldn't be sent back: ${why}` }, ev: "asks" }
 }
 
-// A turn after its change went live, or after it was told it isn't, is about something else.
 const worked = (g: Going | undefined): Going | undefined => (g?.state === "live" ? undefined : g?.state === "stuck" ? { ...g, state: "fixing" } : g)
 
-/** Going `g` after `e`: `g` itself when `e` is stale, how its job moves, or the fix to send its worker. */
 export function going(g: Going | undefined, e: GoingEvent, now: number): GoingMove {
   switch (e.type) {
     case "landed": return landed(g, e.commit, now)
@@ -117,9 +96,7 @@ export function going(g: Going | undefined, e: GoingEvent, now: number): GoingMo
     case "rested": return { going: g?.state === "fixing" ? undefined : g }
   }
 }
-/** Its turn's end and its terminal's were read already: neither moves it again. */
 export const waitsLive = (g: Going | undefined) => g?.state === "waiting" || g?.state === "stuck"
-/** Its card's line while it goes live; "" while it's fixed, its worker's doing says. */
 export const goingLine = (g: Going | undefined) => (g && g.state !== "fixing" ? g.why : "")
 
 export type Pace = {
@@ -130,14 +107,11 @@ export type Pace = {
   live: number
   learn: number
   prune: number
-  /** How long one done keeps its terminal: follow-ups mostly come within a minute or two, and still find it running. */
   grace: number
   flush: number
 }
 export const PACE: Pace = { tick: 3000, hold: 1500, read: 15_000, ship: 5 * 60_000, live: 20_000, learn: 30_000, prune: 3600_000, grace: 120_000, flush: 5 }
 
-/** When each of a job's reads last came, on this server (not kept with the job); `rest`: its worker first seen at rest,
- *  `goingOn`: its turn ended with its work going on. */
 export type Clock = { rest?: number; goingOn?: number; read?: number; ship?: number; live?: number; learn?: number; prune?: number; opened?: number }
 
 const ago = (t: number | undefined, now: number) => (t === undefined ? Infinity : now - t)
@@ -148,8 +122,6 @@ export type Next = { do: "end" | "finish" | "tidy" | "learn" } | { do: "again"; 
 const resting = (w: Worker) => w.state === "idle" || w.state === "done"
 const TURNS = new Set<JobState>(["working", "needs you", "starting"])
 
-/** Job `j` with its worker read as `w`. A rest that holds is its turn's end, unless it's being typed into (`sending`):
- *  its words not taken yet, it hasn't begun. */
 export function read(j: Pick<Job, "state" | "going" | "exited" | "session" | "at">, c: Clock, w: Worker, now: number, o: { sending: boolean; pace: Pace }) {
   const g = w.state === "working" ? going(j.going, { type: "worked" }, now).going : j.going
   const clock: Clock = { ...c }, next: Next[] = []
@@ -184,14 +156,11 @@ export function turnOver(j: Pick<Job, "going">, c: Clock, ev: JobEvent, commit: 
 }
 
 export const readTurn = (j: Pick<Job, "state">, c: Clock, now: number, pace: Pace) => live(j.state) && ago(c.read, now) >= pace.read
-/** Looked for on main however old: landed by anyone, not only through its terminal. */
 export const shipDue = (j: Pick<Job, "state" | "where">, c: Clock, now: number, pace: Pace) => j.state === "ready for review" && !!j.where.repo && ago(c.ship, now) >= pace.ship
 
 const RECENT = 6 * 3600_000
 type Due = Pick<Job, "state" | "at" | "where" | "exited" | "going" | "pruned">
 
-/** Read now and then, not live: on another machine, done with its terminal running (for tidy), or ready for review (its
- *  terminal's end is its end). */
 const readsLater = (j: Due, recent: boolean) =>
   (!!j.where.machine && j.state !== "stopped" && recent) || (j.state === "done" && !j.exited) || (j.state === "ready for review" && recent)
 const closed = (j: Due) => j.state === "stopped" || (j.state === "done" && !!j.exited)

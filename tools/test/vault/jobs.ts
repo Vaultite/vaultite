@@ -166,26 +166,26 @@ export default async ($: VaultTest) => {
 
   // A turn's handoffs, said: one's own line (or its say); several, one line naming them, a sentence each kind.
   {
-    const Wk = await import("../../../plugins/core/companion/workers.ts")
+    const Told = await import("../../../plugins/core/companion/jobtold.ts")
     const T = (kind: Any, title: string, line = "", say = "") => ({ kind, title, line, say })
-    check("handoffs said: one keeps its own line, or its say", Wk.toldLine([T("follow", "Card", "Passed that on to its job.")]) === "Passed that on to its job." &&
-      Wk.toldLine([T("new", "x", "Handed that off to a background agent.", "On it.")]) === "On it." && Wk.toldLine([]) === "")
+    check("handoffs said: one keeps its own line, or its say", Told.toldLine([T("follow", "Card", "Passed that on to its job.")]) === "Passed that on to its job." &&
+      Told.toldLine([T("new", "x", "Handed that off to a background agent.", "On it.")]) === "On it." && Told.toldLine([]) === "")
     check("handoffs said: several, one line naming them by their titles' first words",
-      Wk.toldLine([T("land", "Fix the video card overlap", "Told its job to merge it."), T("land", "Dictation drops words after a pause", "x"), T("land", "Screenshots in the chat", "x")]) ===
+      Told.toldLine([T("land", "Fix the video card overlap", "Told its job to merge it."), T("land", "Dictation drops words after a pause", "x"), T("land", "Screenshots in the chat", "x")]) ===
         "Told three jobs, Fix the video card, Dictation drops words after and Screenshots in the chat, to merge." &&
-      Wk.toldLine([T("new", "Research Hexagon", "x"), T("follow", "Card fix", "x"), T("kept", "Notes", "Studio is offline: the job starts there once it's back.")]) ===
-        "Handed off one job to background agents: Research Hexagon. Passed that on to Card fix. Studio is offline: the job starts there once it's back.", Wk.toldLine([T("land", "Fix the video card overlap", "")]))
+      Told.toldLine([T("new", "Research Hexagon", "x"), T("follow", "Card fix", "x"), T("kept", "Notes", "Studio is offline: the job starts there once it's back.")]) ===
+        "Handed off one job to background agents: Research Hexagon. Passed that on to Card fix. Studio is offline: the job starts there once it's back.", Told.toldLine([T("land", "Fix the video card overlap", "")]))
     const two = [T("new", "Research Hexagon", "Handed that off to a background agent."), T("new", "Card fix", "Handed that off to a background agent.")]
     check("handoffs said once a turn: its own words announced them, nothing more; else one line for both, never one each",
-      Wk.toldLine(two, "I've handed it off to a background agent to fix.") === "" && Wk.toldLine([two[0]], "Two background agents are on it.") === "" && Wk.toldLine(two, "I started two jobs, one each.") === "" &&
-      Wk.toldLine(two, "Sure.") === "Handed off two jobs to background agents: Research Hexagon and Card fix.", Wk.toldLine(two))
+      Told.toldLine(two, "I've handed it off to a background agent to fix.") === "" && Told.toldLine([two[0]], "Two background agents are on it.") === "" && Told.toldLine(two, "I started two jobs, one each.") === "" &&
+      Told.toldLine(two, "Sure.") === "Handed off two jobs to background agents: Research Hexagon and Card fix.", Told.toldLine(two))
     check("handoffs said once a turn: a say announcing it stands for every default line; one answering something else, and an offline machine, still said",
-      Wk.toldLine([T("new", "A", "x", "Handed that off, it runs on the mini PC."), T("new", "B", "x")]) === "Handed that off, it runs on the mini PC." &&
-      Wk.toldLine([T("new", "A", "x", "Handed that off."), T("new", "B", "x", "Passed that on to its job.")]) === "Handed that off." &&
-      Wk.toldLine([T("new", "A", "x", "You're on the personal account.")], "I've handed it off.") === "You're on the personal account." &&
-      Wk.toldLine([T("kept", "A", "Studio is offline: the job starts there once it's back.")], "Handed it off.") === "Studio is offline: the job starts there once it's back." &&
-      !Wk.announces("Sure, the header's blue now.") && !Wk.announces("The footer job is ready for review.") && Wk.announces("A background agent's on it.") &&
-      Wk.announces("I've passed that on to its job.") && Wk.announces("Started two jobs for that.") && Wk.announces("A job's on it."))
+      Told.toldLine([T("new", "A", "x", "Handed that off, it runs on the mini PC."), T("new", "B", "x")]) === "Handed that off, it runs on the mini PC." &&
+      Told.toldLine([T("new", "A", "x", "Handed that off."), T("new", "B", "x", "Passed that on to its job.")]) === "Handed that off." &&
+      Told.toldLine([T("new", "A", "x", "You're on the personal account.")], "I've handed it off.") === "You're on the personal account." &&
+      Told.toldLine([T("kept", "A", "Studio is offline: the job starts there once it's back.")], "Handed it off.") === "Studio is offline: the job starts there once it's back." &&
+      !Told.announces("Sure, the header's blue now.") && !Told.announces("The footer job is ready for review.") && Told.announces("A background agent's on it.") &&
+      Told.announces("I've passed that on to its job.") && Told.announces("Started two jobs for that.") && Told.announces("A job's on it."))
   }
 
   // Where: the addresses on screen, Tailscale Serve's ports, the rules, another machine's name.
@@ -271,7 +271,7 @@ export default async ($: VaultTest) => {
   const real = fs.realpathSync(repo)
   {
     // A job's own change on main: a commit its words name, or its branch, after its base; nothing before it, nothing unpushed.
-    const { onMainSince } = await import("../../../plugins/core/companion/workers.ts")
+    const { onMainSince } = await import("../../../plugins/core/companion/jobgit.ts")
     const base = g("rev-parse", "HEAD").trim()
     fs.writeFileSync(path.join(repo, "a.txt"), "a\n"); g("add", "."); g("commit", "-qm", "landed"); const landed = g("rev-parse", "HEAD").trim()
     g("update-ref", "refs/remotes/origin/main", "HEAD")
@@ -287,7 +287,7 @@ export default async ($: VaultTest) => {
   {
     // Landed by someone else (rebased or squashed: a new sha), its branch removed: found by its change's patch-ids, read
     // while the branch existed; never another job's with the same words, nor main's commits a branch was rebased onto.
-    const { onMainSince, marksOf } = await import("../../../plugins/core/companion/workers.ts")
+    const { onMainSince, marksOf } = await import("../../../plugins/core/companion/jobgit.ts")
     const base = g("rev-parse", "HEAD").trim(), on = g("symbolic-ref", "--short", "HEAD").trim(), put = (f: string, t: string, msg: string) => { fs.writeFileSync(path.join(repo, f), t); g("add", "."); g("commit", "-qm", msg) }
     g("update-ref", "refs/remotes/origin/main", base)
     g("checkout", "-qb", "job-y"); put("c.txt", "c\n", "feat: the header"); put("d.txt", "d\n", "feat: its footer")
@@ -315,7 +315,7 @@ export default async ($: VaultTest) => {
       w("Done.", now - 31_000, true) === "idle" && J.turnWord(null, now) === undefined && w("", 0, true) === undefined)
   })()
   await (async () => {
-    const { diffSince } = await import("../../../plugins/core/companion/workers.ts")
+    const { diffSince } = await import("../../../plugins/core/companion/jobgit.ts")
     const base = g("rev-parse", "HEAD").trim(), on = g("symbolic-ref", "--short", "HEAD").trim(), put = (f: string, t: string, msg: string) => { fs.writeFileSync(path.join(repo, f), t); g("add", "."); g("commit", "-qm", msg) }
     put("m1.txt", "1\n2\n3\n", "chore: main moves on"); put("m2.txt", "x\n", "chore: and on"); g("update-ref", "refs/remotes/origin/main", "HEAD")
     const main = g("rev-parse", "HEAD").trim()
@@ -391,7 +391,7 @@ export default async ($: VaultTest) => {
 
   // A live site is the checkout whose deploy names its address, never a repo guessed from words on the page.
   {
-    const { pageWins, namesRepo } = await import("../../../plugins/core/companion/workers.ts")
+    const { pageWins, namesRepo } = await import("../../../plugins/core/companion/jobplace.ts")
     const make = (name: string, slug: string, files: Record<string, string>) => {
       const dir = path.join(roots[0], name)
       for (const [f, t] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true }); fs.writeFileSync(path.join(dir, f), t) }
@@ -717,7 +717,7 @@ export default async ($: VaultTest) => {
           ended.push(b.id)
           check("handoff from a terminal companion's own session: it says so, and its ask goes with it", st === 200 && /fix the footer/.test(said.at(-1)?.prompt ?? "") &&
             !!(await waitFor(async () => (await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.kind === "say" && n.agent === "Ada" && n.text === "Handed that off to a background agent."), 3000, 50)), [st, b, said.at(-1)?.prompt])
-        } finally { fs.rmSync(sess, { force: true }); cWindows.comeBack("Ada") }
+        } finally { fs.rmSync(sess, { force: true }); cScreen.comeBack("Ada") }
         for (const id of ended.filter(Boolean)) await asItsTool(() => api("POST", "ops/companion.job-stop", { id }, agent)).catch(() => {})
       }
       fs.mkdirSync(path.join(tmp, "Work"), { recursive: true })
@@ -741,7 +741,7 @@ export default async ($: VaultTest) => {
         {
           const says = async (from: number) => (await api("POST", "ops/companion.status", {}))[1].notes.filter((n: Any) => n.kind === "say" && n.agent === "Claude" && n.t >= from).map((n: Any) => n.text)
           await new Promise((r) => setTimeout(r, 700))
-          cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "fix the footer and the header", app: "com.example.browser", title: "Site", sx: 10, sy: 20 })
+          cScreen.screenMoment({ kind: "ask", agent: "Claude", text: "fix the footer and the header", app: "com.example.browser", title: "Site", sx: 10, sy: 20 })
           let from = Date.now()
           const both = await Promise.all(["Fix the footer", "Fix the header"].map((task) => asItsTool(() => api("POST", "ops/companion.handoff", { task, cwd: repo }, agent))))
           await new Promise((r) => setTimeout(r, 1200))
@@ -749,7 +749,7 @@ export default async ($: VaultTest) => {
           check("handoff: a turn handing off two jobs is announced once, one line naming both", both.every(([st]) => st === 200) && one.length === 1 &&
             /^Handed off two jobs to background agents: Fix the (footer|header) and Fix the (footer|header)\.$/.test(one[0]) && one[0].includes("footer") && one[0].includes("header"), [both.map(([st, b]) => [st, b?.error]), one])
           for (const [, b] of both) if (b?.id) await asItsTool(() => api("POST", "ops/companion.job-stop", { id: b.id }, agent)).catch(() => {})
-          cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "fix the sidebar", app: "com.example.browser", title: "Site", sx: 10, sy: 20 })
+          cScreen.screenMoment({ kind: "ask", agent: "Claude", text: "fix the sidebar", app: "com.example.browser", title: "Site", sx: 10, sy: 20 })
           from = Date.now()
           await asItsTool(() => api("POST", "ops/companion.say", { text: "I've handed it off to a background agent to fix." }, agent))
           const [ost, ob] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Fix the sidebar", cwd: repo }, agent))

@@ -1,41 +1,29 @@
-// The companion's session as turns: each what the user did (the moments of its message) and what it did with
-// its tools (said, commented, wrote...), not as a chat. Read from the session's entries, so it stays live. No Node, no DOM.
 import type { Entry } from "@plugins/claude-code/chatlog"
 import { type Message, type Read, readMoments } from "./moments.ts"
 
 export type Place = { path?: string; line?: number; find?: string }
-/** How the user answered one of its items: took it, left it, dismissed it, or replied (the reply). */
 export type Outcome = { kind: "accept" | "reject" | "dismiss" | "reply"; text?: string; at: string }
-/** One thing it did. `item`: the comment, suggestion or proposal it left (its id), which `outcomes` follow. */
 export type Act = Place & { id: string; at: string; live?: boolean; error?: string; item?: string; outcomes?: Outcome[] } & (
   | { k: "say" | "comment"; text: string; reply?: boolean }
   | { k: "suggest"; from: string; to: string; why?: string }
   | { k: "propose"; why?: string; pending?: string; text?: string; from?: string; to?: string }
   | { k: "edit"; text: string; from?: string; proposed?: boolean }
   | { k: "look" | "highlight" | "draw" | "clear" | "handover" | "pass"; text?: string }
-  /** What it read or looked up: a few at once are one row. */
   | { k: "read"; what: string[] }
-  /** A session it started: a terminal (`terminal`: its id), or a task delegated (`task`: its id; `job`: handed off). */
   | { k: "session"; agent: string; title: string; terminal?: string; task?: string; job?: boolean }
-  /** Its own words in its session, which the user only sees there. */
   | { k: "text"; text: string }
-  /** Its session asks the user something (a permission). */
   | { k: "ask"; text: string; answer?: string })
-/** A turn: the message that started it (moments, or another ask: `said`) and what it did. */
 export type Turn = { id: string; at: string; message: Message | null; said?: string; acts: Act[]; live: boolean }
 
 const APP = "mcp__vaultite-app__"
 const str = (v: unknown) => (typeof v === "string" ? v : "")
 const num = (v: unknown) => (typeof v === "number" ? v : typeof v === "string" && /^\d+$/.test(v) ? Number(v) : undefined)
-/** The id its tool's answer names: "Commented (n12).", "Opened claude-3f2a.", "Suggested (n7uaz)." */
 const idIn = (s = "") => /\(([a-z]\w{2,})\)|^Opened (\S+?)[ .]/.exec(s)?.slice(1).find(Boolean)
 const placeOf = (i: Record<string, unknown>): Place => ({
   ...(str(i.path) ? { path: str(i.path) } : {}), ...(num(i.line) !== undefined ? { line: num(i.line) } : {}),
   ...(str(i.find) || str(i.after) ? { find: str(i.find) || str(i.after) } : {}) })
-/** A path an answer names: "Wrote Notes/A.md.", "Typed into Notes/A.md." */
 const pathIn = (s = "") => /^(?:Wrote|Typed into|Drew on|Highlighted in) (.+?)(?: \(.*\))?\.$/.exec(s)?.[1]
 
-/** A vau command it ran, as an act: a session it started, or what it read. */
 function command(cmd: string, result: string): Pick<Extract<Act, { k: "session" }>, "k" | "agent" | "title" | "terminal" | "task"> | { k: "read"; what: string[] } | null {
   const c = cmd.trim().replace(/^cd [^&;]+(&&|;)\s*/, "")
   const word = (re: RegExp) => re.exec(c)?.[1]?.replace(/^["']|["']$/g, "") ?? ""
@@ -50,7 +38,6 @@ function command(cmd: string, result: string): Pick<Extract<Act, { k: "session" 
   return null
 }
 
-/** What one tool call did, or null for one that shows nothing (its status, history). */
 function actOf(t: Extract<Entry, { k: "tool" }>): Act | null {
   const i = (t.input && typeof t.input === "object" ? t.input : {}) as Record<string, unknown>
   const base = { id: t.id, at: t.at, ...(t.live || t.result === undefined ? { live: true } : {}), ...(t.error ? { error: t.result || "It failed" } : {}) }
@@ -83,7 +70,6 @@ function actOf(t: Extract<Entry, { k: "tool" }>): Act | null {
   return { ...base, k: "read", what: [t.summary || t.name] }
 }
 
-/** The session's entries as turns, oldest first: each user message, then what it did till the next. */
 export function turnsOf(entries: Entry[]): Turn[] {
   const turns: Turn[] = []
   const items = new Map<string, Act>()
@@ -94,7 +80,6 @@ export function turnsOf(entries: Entry[]): Turn[] {
       const message = readMoments(e.text)
       turn = { id: e.id, at: e.at, message, ...(message ? {} : { said: e.text }), acts: [], live: false }
       turns.push(turn)
-      // (its answers to items it left: on them, where they show)
       for (const m of message?.moments ?? []) {
         const a = m.item ? items.get(m.item) : undefined
         if (a && (m.kind === "accept" || m.kind === "reject" || m.kind === "dismiss" || m.kind === "reply")) (a.outcomes ??= []).push({ kind: m.kind, ...(m.text ? { text: m.text } : {}), at: e.at })
@@ -108,7 +93,6 @@ export function turnsOf(entries: Entry[]): Turn[] {
     else if (e.k === "ask") a = { id: e.id, at: e.at, k: "ask", text: e.detail || e.title, ...(e.answer ? { answer: e.answer } : {}) }
     else if (e.k === "result" && !e.ok) a = { id: e.id, at: e.at, k: "text", text: e.error || "It stopped", error: e.error || "It stopped" }
     if (!a) continue
-    // (an ask's tool call is drawn as the ask)
     if (a.k === "ask") turn.acts = turn.acts.filter((x) => `ask:${x.id}` !== a!.id)
     const last = turn.acts.at(-1)
     if (a.k === "read" && last?.k === "read" && !last.error && !a.error) { last.what.push(...a.what); last.live = a.live; continue }
@@ -120,13 +104,10 @@ export function turnsOf(entries: Entry[]): Turn[] {
   return turns
 }
 
-/** Where a turn happened: the note of its first moment, else of what it did, else where the user was. */
 export function noteOf(t: Turn): string {
   return t.message?.moments.find((m) => m.path)?.path ?? t.acts.find((a) => a.path)?.path ?? t.message?.focus?.path ?? ""
 }
 
-/** The user's side of a turn worth a row: what they asked, pointed at, wrote, replied; an answer to an item shown on it
- *  (`shown`) isn't again. */
 export function contextOf(t: Turn, shown: Set<string>): Read[] {
   return (t.message?.moments ?? []).filter((m) => m.kind !== "open" && !((m.kind === "accept" || m.kind === "reject" || m.kind === "dismiss") && m.item && shown.has(m.item)))
 }

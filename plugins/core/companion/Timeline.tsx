@@ -1,5 +1,3 @@
-// The companion's session tab: a timeline of what it did and what it saw, grouped by note, newest first; its state live
-// at the top, its chat a click away, and a line to ask it something not tied to a note. timeline.ts reads the session.
 import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react"
 import { Bot, Check, ChevronRight, CircleAlert, Crosshair, Ellipsis, Eraser, Eye, FilePen, FileText, Highlighter, History, MessageCircle, MessageSquare,
   MessageSquareText, MousePointerClick, Pencil, Replace, RotateCcw, Search, Shapes, ShieldQuestion, SquareTerminal, User, X } from "lucide-react"
@@ -9,7 +7,8 @@ import { getState, subscribe, type Agent } from "./live"
 import type { Lines, Message, Read } from "./moments"
 import { readMoments } from "./moments"
 import { AskLine } from "./AskLine"
-import { Arrow, follow } from "./Overlay"
+import { Arrow } from "./Cursor"
+import { follow } from "./spots"
 import { agentMenu, MODES } from "./session"
 import { type Act, contextOf, noteOf, type Outcome, type Place, type Turn, turnsOf } from "./turns"
 
@@ -18,7 +17,6 @@ const clip = (s: string, n: number) => { const l = s.replace(/\s+/g, " ").trim()
 const seconds = (ms: number) => (ms < 60_000 ? `${Math.max(1, Math.round(ms / 1000))} s` : `${Math.floor(ms / 60_000)} min`)
 const linesOf = (s: string) => (s ? s.replace(/\n$/, "").split("\n") : [])
 
-/** Go to a place in a note: its tab if it's open, else beside this pane (on a desktop with another), then its line. */
 function jump(p: Place, pane: string) {
   if (!p.path) return
   const path = p.path, l = getTabLayout(), mine = tabOfPane(l, pane)
@@ -28,7 +26,6 @@ function jump(p: Place, pane: string) {
   follow({ name: "", path, line: p.line ?? 1, find: p.find })
 }
 
-/** The session's agent: "Companion: Ada" is Ada's, "Companion" the companion's. */
 const nameIn = (title: string) => /^Companion: (.+)$/.exec(title)?.[1] ?? getState().name
 
 export function CompanionView({ id, c, chat }: { id: string; c: ChatLive; chat: () => void }) {
@@ -39,7 +36,6 @@ export function CompanionView({ id, c, chat }: { id: string; c: ChatLive; chat: 
   const open = useMemo(() => new Set(s.notes.map((n) => n.id)), [s.notes])
   const tasks = useTasks(id, turns)
   const { pane } = usePane()
-  // (items it left anywhere here: an answer to one shows on it, not again as a row)
   const items = useMemo(() => new Set(turns.flatMap((t) => t.acts.flatMap((a) => (a.item ? [a.item] : [])))), [turns])
   const groups = useMemo(() => groupsOf(turns, items), [turns, items])
   return (
@@ -77,7 +73,6 @@ function Skeleton() {
   )
 }
 
-// ---------- its state, live
 
 const DOING: Partial<Record<Agent["state"], string>> = { reading: "Reading", thinking: "Thinking", writing: "Writing", starting: "Starting", listening: "Listening" }
 
@@ -127,10 +122,8 @@ function Head({ name, agent, c, mode, chat }: { name: string; agent?: Agent; c: 
   )
 }
 
-// ---------- groups: turns in a row in one note
 
 type G = { key: string; path: string; turns: Turn[] }
-/** Newest first: turns in a row in the same note go under it. */
 function groupsOf(turns: Turn[], items: Set<string>): G[] {
   const out: G[] = []
   for (const t of [...turns].reverse()) {
@@ -161,7 +154,6 @@ function Group({ path, turns, items, open, tasks, pane, chat }: { path: string; 
   )
 }
 
-// ---------- a turn: what the user did, then what it did
 
 const OTHER: [RegExp, string][] = [[/^Read ME\.md/, "Its session started"], [/^Time for a fresh session/, "Asked to hand over to a fresh session"],
   [/^Continue where you left off/, "Its session resumed"], [/^Your session has ended/, "Its session ended"]]
@@ -169,11 +161,9 @@ const OTHER: [RegExp, string][] = [[/^Read ME\.md/, "Its session started"], [/^T
 function TurnView({ t, note, items, open, tasks, pane, chat }: { t: Turn; note: string; items: Set<string>; open: Set<string>; tasks: Tasks; pane: string; chat: () => void }) {
   const context = contextOf(t, items)
   const other = !t.message && t.said ? OTHER.find(([re]) => re.test(t.said!))?.[1] ?? clip(t.said, 140) : ""
-  // (what asked for an answer and got none: it chose silence; an edit let pass is the usual)
   const silent = context.some((m) => m.kind === "ask" || m.kind === "point" || m.kind === "reply") && !t.acts.length && !t.live
   return (
     <div className="relative" data-turn={t.id}>
-      {/* (the rail the turn's icons sit on) */}
       <div aria-hidden className="absolute top-3 bottom-3 left-[9px] w-px bg-border max-md:left-[11px]" />
       {context.map((m, n) => <UserRow key={n} m={m} note={note} at={n === 0 ? t.at : undefined} pane={pane} />)}
       {other && <Row icon={t.said?.startsWith("Read ME.md") ? Bot : User} muted at={t.at} title={other} />}
@@ -184,7 +174,6 @@ function TurnView({ t, note, items, open, tasks, pane, chat }: { t: Turn; note: 
   )
 }
 
-/** A row on the rail: its icon, its title (a click goes to its place), and what's under it. */
 function Row({ icon: Icon, title, place, at, muted, live, error, tint, onClick, children, data }: {
   icon: typeof User; title: ReactNode; place?: string; at?: string; muted?: boolean; live?: boolean; error?: boolean; tint?: string
   onClick?: () => void; children?: ReactNode; data?: string
@@ -209,7 +198,6 @@ function Row({ icon: Icon, title, place, at, muted, live, error, tint, onClick, 
   )
 }
 
-/** Where on the note: a line, else the text, else nothing; another note's name first. */
 function placeText(p: Place, note: string) {
   const at = p.line ? `L${p.line}` : p.find ? `“${clip(p.find, 28)}”` : ""
   return p.path && p.path !== note ? [base(p.path), at].filter(Boolean).join(" · ") : at
@@ -243,11 +231,9 @@ function UserRow({ m, note, at, pane }: { m: Read; note: string; at?: string; pa
   }
 }
 
-// ---------- what it did
 
 const OUTCOME: Record<Outcome["kind"], string> = { accept: "Accepted", reject: "Rejected", dismiss: "Dismissed", reply: "Replied" }
 
-/** An item's state: how the user answered it last, else open while it's in the app, else gone. */
 function Status({ a, open }: { a: Act; open: Set<string> }) {
   const last = a.outcomes?.filter((o) => o.kind !== "reply").at(-1)
   const word = last ? OUTCOME[last.kind] : a.item && open.has(a.item) ? "Open" : ""
@@ -322,7 +308,6 @@ function ReadRow({ a }: { a: Extract<Act, { k: "read" }> }) {
   )
 }
 
-// ---------- sessions it started
 
 type Kin = { id: string; agent: string; title: string; state: string; link: string | null }
 type Tasks = Map<string, Kin>
@@ -330,11 +315,9 @@ const AGENT: Record<string, string> = { claude: "Claude Code", codex: "Codex", o
 const KIN_STATE: Record<string, string> = { working: "Working", waiting: "Waiting", done: "Done", error: "Failed", cancelled: "Cancelled",
   running: "Working", "needs you": "Needs you", failed: "Failed" }
 
-/** The tasks it delegated (Delegation's), read again as its turns come and while one works. */
 function useTasks(id: string, turns: Turn[]): Tasks {
   const [kin, setKin] = useState<Tasks>(() => new Map())
   const asked = turns.reduce((n, t) => n + t.acts.filter((a) => a.k === "session" && a.task).length, 0)
-  // (its jobs, handed off for the user: the companion's, not its session's children)
   const jobs = turns.some((t) => t.acts.some((a) => a.k === "session" && a.job))
   const working = [...kin.values()].some((k) => k.state === "working" || k.state === "waiting" || k.state === "running" || k.state === "needs you")
   useEffect(() => {
@@ -363,7 +346,6 @@ function SessionRow({ a, tasks }: { a: Extract<Act, { k: "session" }>; tasks: Ta
   )
 }
 
-// ---------- text and diffs
 
 function Words({ text, muted, clamp }: { text: string; muted?: boolean; clamp?: boolean }) {
   return text.trim() ? <Markdown text={text} className={cn("min-w-0 break-words", muted && "text-muted-foreground", clamp && "line-clamp-3")} /> : null
@@ -372,7 +354,6 @@ function Words({ text, muted, clamp }: { text: string; muted?: boolean; clamp?: 
 const Quote = ({ text }: { text: string }) => <p className="border-l-2 border-border pl-2 text-[13px] break-words text-muted-foreground italic max-md:text-[15px]">{clip(text, 300)}</p>
 
 const MAX = 8
-/** Lines taken out and put in, `-` and `+` shown in their colours; long ones folded after a few. */
 export function DiffBlock({ removed, added, at }: { removed: string[]; added: string[]; at?: number }) {
   const [all, setAll] = useState(false)
   const rows = [...removed.map((text) => ({ add: false, text })), ...added.map((text) => ({ add: true, text }))]
@@ -400,10 +381,7 @@ const Hunks = ({ hunks }: { hunks: NonNullable<Read["hunks"]> }) => (
   <div className="space-y-1.5">{hunks.map((h, n) => <DiffBlock key={n} removed={h.removed} added={h.added} at={hunks.length > 1 ? h.line : undefined} />)}</div>
 )
 
-// ---------- a message of moments, in its chat
 
-/** A message the companion's session was sent, in its chat: its moments as lines, what changed as a diff, the note's
- *  lines folded. */
 export function MomentMessage({ text }: { text: string }) {
   const m = useMemo(() => readMoments(text), [text])
   if (!m) return <Markdown text={text} className="min-w-0 break-words" />

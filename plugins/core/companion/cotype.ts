@@ -1,5 +1,3 @@
-// Typing in a note with whoever else has it open (the user's other windows, guests): a Y.Doc the server keeps (rooms.ts),
-// carets named and coloured. Alone, the editor saves as ever; once someone comes, it saves, then both type into the doc.
 import { Compartment, EditorState, type Extension, Transaction } from "@codemirror/state"
 import { EditorView, ViewPlugin } from "@codemirror/view"
 import { fromBase64, toBase64 } from "lib0/buffer"
@@ -10,28 +8,17 @@ import { keepLive, merge3, notify, settleFile } from "@vaultite"
 import { getState, type Person, say, setPeople, setRooms, subscribe } from "./live"
 import { span } from "./text"
 
-/** A note open here: its doc as the server has it (`ready`), the editors showing it, whether they type into it now
- *  (`bound`, while `others` are in it too) and the session's hold on its saving, from asking for the doc (`hold`). */
 type Room = { path: string; doc: Y.Doc; text: Y.Text; aw: Awareness | null; views: Set<EditorView>; ready: boolean; bound: boolean; others: number
   hold: ReturnType<typeof keepLive> | null; joining: boolean
-  /** The doc asked for and not here yet: asked again meanwhile, it would come twice. */
   asking: boolean
-  /** Saving alone even with others (the server says: a guest in a note too long to type in together). */
   alone: boolean
-  /** Saved alone, just before asking for the doc: the text the server has then, so what's typed till it comes isn't lost. */
   settled: string | null
-  /** Typed in on another machine's rooms, which writes it (its guests are there: bridge.ts): bound even alone. */
   remote: boolean
-  /** The text as the server (or that machine) last sent it: what's typed here since goes back in if it goes and comes
-   *  back, and is what autosave sends if the socket goes. */
   synced: string | null }
 const rooms = new Map<string, Room>()
 const slot = new Compartment()
-/** What the others typed comes in as the server's: not this window's to save, nor to undo. */
 const theirs = EditorState.transactionExtender.of((tr) => (tr.annotation(ySyncAnnotation) !== undefined ? { annotations: [Transaction.remote.of(true), Transaction.addToHistory.of(false)] } : null))
 
-/** A fresh doc for the room (its first, or the server's again). Carets (`aware`) only with the server's: an Awareness
- *  ticks every 3 s, so a note open alone has none. */
 function fresh(r: Room, aware = true) {
   r.aw?.destroy()
   r.doc?.destroy()
@@ -64,7 +51,6 @@ function tellPeople(r: Room) {
   setPeople(r.path, list)
 }
 
-/** Its editors type into the doc, showing it as it is; what was typed since `settled` (saved) goes into it as theirs. */
 function bind(r: Room) {
   if (!r.aw) return
   r.bound = true
@@ -81,18 +67,14 @@ function bind(r: Room) {
     const [a, b] = span(text, typed)
     first.dispatch({ changes: { from: a, to: text.length - b, insert: typed.slice(a, typed.length - b) } })
   }
-  r.aw.setLocalStateField("user", { name: "" }) // (the server says who: its name and colour)
+  r.aw.setLocalStateField("user", { name: "" })
 }
 
-/** Back to saving alone: on the doc (`alone`: the others left), or as the server last sent it (`dropped`: the socket
- *  went, what it never got is saved); `going`, a moment later, as the editor goes; `again`, held for the doc again. */
 function unbind(r: Room, how: "alone" | "dropped" | "going" | "again" = "alone") {
-  // (on another machine's rooms, this server never wrote it: autosave keeps the base it has)
   const base = !r.bound || how === "going" || r.remote ? null : how === "dropped" ? r.synced : r.text.toString()
   if (r.bound) {
     r.bound = false
     for (const v of r.views) if (v.dom.isConnected) v.dispatch({ effects: slot.reconfigure([]) })
-    // (its caret goes from the others' screens)
     if (r.aw) {
       removeAwarenessStates(r.aw, [r.doc.clientID], "gone")
       if (getState().connected) say({ t: "aw", path: r.path, u: toBase64(encodeAwarenessUpdate(r.aw, [r.doc.clientID])) })
@@ -100,12 +82,10 @@ function unbind(r: Room, how: "alone" | "dropped" | "going" | "again" = "alone")
       r.aw = null
     }
     tellPeople(r)
-  } else if (how !== "again" && r.hold) r.settled = null // (a join given up: saved alone from here, what it held is old)
-  // (going: what the others typed last is the server's to write, not this one's autosave)
+  } else if (how !== "again" && r.hold) r.settled = null
   if (how !== "again") handBack(r, base, how === "going")
 }
 
-/** Its editors save it again, on `base` (core/cosync.ts); `later`, a moment from now. */
 function handBack(r: Room, base: string | null, later = false) {
   const hold = r.hold
   r.hold = null
@@ -113,8 +93,6 @@ function handBack(r: Room, base: string | null, later = false) {
   else hold?.handBack(base)
 }
 
-/** Off another machine's rooms, or the socket went: saved here again; what it last sent is where typing here goes back
- *  in from, when it's back. */
 function away(r: Room) {
   if (r.remote && r.bound) r.settled = r.synced ?? r.text.toString()
   unbind(r, "dropped")
@@ -124,8 +102,6 @@ function away(r: Room) {
   r.others = 0
 }
 
-/** Someone else came: what was typed here alone is saved first, then the doc as the server has it is typed into. From
- *  asking for it, autosave stands down: what's typed meanwhile reaches the doc once, through bind. */
 async function together(r: Room) {
   if (r.bound || r.joining || r.asking) return
   r.joining = true
@@ -153,12 +129,10 @@ function heard(m: Record<string, unknown>) {
   if (!r) return
   if (m.t === "y-state") r.asking = false
   if (m.t === "y-state" && typeof m.u !== "string") {
-    // (alone in it: saving as ever, the doc asked for once someone comes)
     r.others = Number(m.others) || 0
     r.alone = m.alone === true
     if (r.others > 0 && !r.alone) void together(r)
   } else if (m.t === "y-state" && typeof m.u === "string") {
-    // (the doc as this window had it: autosave's base if it saves alone from here)
     const was = r.bound && !r.remote ? r.text.toString() : null
     unbind(r, "again")
     r.remote = m.remote === true
@@ -168,7 +142,6 @@ function heard(m: Record<string, unknown>) {
     r.ready = true
     r.others = Number(m.others) || 0
     r.alone = m.alone === true
-    // (with others, or on another machine: once what was typed here alone is saved, and asked for again)
     if ((r.others > 0 || r.remote) && !r.alone && r.settled !== null) bind(r)
     else {
       handBack(r, was)
@@ -179,14 +152,12 @@ function heard(m: Record<string, unknown>) {
     if (r.others === 0) { if (!r.remote) unbind(r) }
     else if (!r.bound && !r.alone) void together(r)
   } else if (m.t === "y-gone") {
-    // (that machine went, or stopped sharing it: saved here again, and asked for here)
     away(r)
     if (getState().connected) say({ t: "y-open", path: r.path, bare: true })
   } else if (m.t === "y" && typeof m.u === "string") Y.applyUpdate(r.doc, fromBase64(m.u), "server")
   else if (m.t === "aw" && typeof m.u === "string") { if (r.aw) applyAwarenessUpdate(r.aw, fromBase64(m.u), "server") }
   else if (m.t === "y-clash") notify(m.kept === "file" ? "Someone changed the same lines on disk as you typed: theirs stayed" : "Someone changed the same lines on disk as you typed: yours stayed, theirs is in the note's history", { id: "cotype-clash" })
   else if (m.t === "y-reject") {
-    // (what was typed here didn't land: the server sends the note as it is, nothing here to keep)
     if (typeof m.why === "string" && m.why) notify(`That change wasn't kept: ${m.why}`, { kind: "error", id: "cotype-reject" })
     r.settled = [...r.views].find((v) => v.dom.isConnected)?.state.doc.toString() ?? ""
   }
@@ -195,8 +166,7 @@ function heard(m: Record<string, unknown>) {
 function join(path: string, v: EditorView) {
   const r = rooms.get(path) ?? open(path)
   r.views.add(v)
-  // (once the update that made this editor's plugin is over: binding dispatches to it, and CodeMirror refuses a
-  // dispatch mid-update)
+  // CodeMirror refuses a dispatch mid-update: bind once the update that made this editor's plugin is over
   if (r.bound) queueMicrotask(() => { if (r.bound && r.views.has(v)) bind(r) })
 }
 
@@ -206,7 +176,6 @@ function leave(path: string, v: EditorView) {
   if (!r.views.size) close(r)
 }
 
-// (the socket went: each note on its own again, saving alone; back, they join again)
 let was = getState().connected
 subscribe(() => {
   const now = getState().connected
@@ -228,7 +197,6 @@ setRooms({
   },
 })
 
-/** A note's editor joins its room (a markdown note with a path): typed in with the others there. */
 export function cotype(path: string): Extension {
   return [slot.of([]), ViewPlugin.define((v) => {
     join(path, v)

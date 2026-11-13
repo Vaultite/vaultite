@@ -1,26 +1,21 @@
-// Its sessions from the app: the mode, showing one, stopping one, a fresh one. The status bar's menu and each cursor's.
 import { EyeOff, MessageCircle, MessageSquare, Power, RotateCcw, SquareTerminal, Undo2 } from "lucide-react"
 import { notify, notifyError, op, openView, pluginSettings, type MenuItem } from "@vaultite"
 import { type Agent, canUndoEdit, foldable, getState, howText, type Mode, undoEdit } from "./live"
 
 const settings = pluginSettings<{ mode?: Mode; agent?: string }>("companion")
 
-/** `note`: what it sees in that mode, under the menus' choice of it. */
 export const MODES: { mode: Mode; label: string; short: string; note: string }[] = [
   { mode: "off", label: "Off", short: "Off", note: "Sees nothing, and asks don't reach it" },
   { mode: "quiet", label: "Quiet: only when asked", short: "Quiet", note: "Sees only what you ask it" },
   { mode: "pair", label: "Pair: with you as you write", short: "Pair", note: "Sees what you write, answers what's meant for it, and may write in your notes" },
 ]
 
-/** The mode as a menu's segmented row; `off`: Off among them (the status bar's, where the companion is switched off;
- *  an agent's menu has Stop). */
 export const modeItem = (off = false): MenuItem => ({
   label: "Mode", run: () => {},
-  segments: { value: getState().mode, options: MODES.filter((m) => off || m.mode !== "off").map((m) => ({ value: m.mode, label: m.short, note: m.note })), pick: (v) => void setMode(v as Mode) },
+  segments: { value: getState().mode, options: MODES.filter((m) => off || m.mode !== "off").map((m) => ({ value: m.mode, label: m.short, note: m.note })), pick: (v) => { const m = MODES.find((x) => x.mode === v); if (m) void setMode(m.mode) } },
 })
 
 const main = (name: string) => name.toLowerCase() === getState().name.toLowerCase()
-/** Where a session shows: a Claude Code one (its id a UUID) in a chat tab, another in its terminal. */
 const sessionView = (id: string) => (/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(id) ? `claude-session/${id}` : `terminal/${id}`)
 const as = (name: string) => (main(name) ? {} : { as: name })
 
@@ -33,17 +28,14 @@ export async function setMode(mode: Mode) {
   } catch (e) { notifyError(e) }
 }
 
-/** Start agent `name` again: another as it ran (Start @name's picks), the companion as set. */
 async function start(name: string) {
   const a = main(name) ? undefined : getState().agents.find((x) => x.name.toLowerCase() === name.toLowerCase())
   try { await op("companion.start", { ...as(name), ...(a?.runs ? { agent: a.runs } : {}), ...(a?.model ? { model: a.model } : {}), ...(a?.effort ? { effort: a.effort } : {}) }) } catch (e) { notifyError(e) }
 }
 
-/** Agent `name`'s session (the companion's by default), in a new tab: its chat, or its terminal. */
 export async function showSession(name = getState().name) {
   const r = await op<{ sessions: { name: string; id: string }[]; summoned: { id: string | null } | null; moments: { kind: string; summoned?: boolean }[] }>("companion.status")
   const s = r.sessions.find((x) => x.name.toLowerCase() === name.toLowerCase())
-  // (its Talk key's asks run in a session of their own: that one, when it's what they talked to last or the only one)
   const asked = r.moments.findLast((m) => m.kind === "ask" || m.kind === "point"), quick = main(name) ? r.summoned?.id : null
   if (quick && (!s || asked?.summoned)) openView(sessionView(quick), { newTab: true })
   else if (s) openView(sessionView(s.id), { newTab: true })
@@ -64,8 +56,6 @@ async function fresh(name: string) {
   } catch (e) { notifyError(e) }
 }
 
-/** An agent's menu: its cursor's (right-click, a held finger on its name, … in its box) and its face's. */
-/** What an agent follows, each to stop following (its cursor's menu, the status bar's). */
 export const followItems = (name: string): MenuItem[] => getState().follows.filter((f) => f.agent === name).map((f, i) => ({
   label: `Stop following ${f.title || f.ui || f.pane || f.group}`, icon: EyeOff, sep: i === 0,
   run: () => void op("companion.unfollow", { id: f.id }).catch((e) => notifyError(e, "Couldn't stop following it")) }))

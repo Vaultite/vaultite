@@ -1,5 +1,3 @@
-// Do it on an open task line of a note: a button at the line's end, on hover; on a phone, on the caret's line. Loads with
-// the editor (editor.ts), so CodeMirror stays out of the app's start.
 import { RangeSetBuilder } from "@codemirror/state"
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view"
 import { syntaxTree } from "@codemirror/language"
@@ -9,7 +7,6 @@ import { doTask } from "./doit"
 const OPEN = /^\s*(?:[-*+]|\d+[.)])\s+\[ \]\s+(\S.*)$/
 const coarse = () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches
 
-/** The open task on line `l` (its text), outside code. */
 function openTask(view: EditorView, l: { from: number; text: string }) {
   const m = OPEN.exec(l.text)
   if (!m) return null
@@ -67,7 +64,6 @@ export const doItEditor = (path: string) => [
   }),
 ]
 
-/** The caret's line as a task, for the editor's menu. */
 export function taskHere(view: EditorView, path: string): DoTask | null {
   const l = view.state.doc.lineAt(view.state.selection.main.head), text = openTask(view, l)
   return text ? { path, line: l.number, text } : null

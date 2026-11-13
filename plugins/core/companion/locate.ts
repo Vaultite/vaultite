@@ -1,20 +1,13 @@
-// Where the app's places are on the screen, for a drawing over it (the server's `locate`): a pane, the app's UI by its
-// data-ui id, words the window shows. Screen points, as the window's own position, its page's CSS px and its zoom say.
 import { DRAWN, OWN } from "./uidom.ts"
 type Rect = { x: number; y: number; w: number; h: number; q?: number }
 type Sized = { interfaceSize?: { get: () => Promise<number>; on: (fn: (zoom: number) => void) => void } }
-/** The desktop app's interface size (its whole-window zoom): a CSS px is this many screen points. */
 let zoom = 1
 const sized = typeof window === "undefined" ? undefined : (window as unknown as { vaultite?: Sized }).vaultite?.interfaceSize
 if (sized) { void sized.get().then((z) => { zoom = z }, () => {}); sized.on((z) => { zoom = z }) }
-/** Screen points per CSS px of the app's page now. */
 export const interfaceZoom = () => zoom
-/** Each of `places` ("pane:t3", "ui:tab:t3", "find:Morning report", "pages": each web page shown, as "page:<pane>") found
- *  on screen now, as a rect in screen points; words found nearest `near` (a screen point: where the user is). */
 export function locate(places: unknown, near?: unknown): Record<string, Rect> {
   const out: Record<string, Rect> = {}
   if (!Array.isArray(places)) return out
-  // (the page's top left on the screen: the window's, below its own bar if it draws one; a CSS px is `z` points)
   const z = zoom, ox = window.screenX, oy = window.screenY + Math.max(0, window.outerHeight - window.innerHeight * z)
   const n = near as { x?: unknown; y?: unknown } | undefined, hint = n && Number.isFinite(n.x) && Number.isFinite(n.y) ? { x: (Number(n.x) - ox) / z, y: (Number(n.y) - oy) / z } : undefined
   const put = (k: string, r: { left: number; top: number; width: number; height: number }, q?: number) => {
@@ -35,15 +28,12 @@ export function locate(places: unknown, near?: unknown): Record<string, Rect> {
   }
   return out
 }
-/** The element with data-ui `id` shown: the one nearest `near`, else the first. Only one in the window's view and
- *  visible: a pane's copy kept out of sight (mid-move, a hidden strip's) put its marks off the screen. */
 function box(id: string | null, near?: { x: number; y: number }) {
   const all = id ? [...document.querySelectorAll<HTMLElement>(`[data-ui="${CSS.escape(id)}"]`)].flatMap((e) => { const r = e.getBoundingClientRect(); return shown(r) && e.checkVisibility() ? [r] : [] }) : []
   const gap = (r: DOMRect) => (near ? Math.hypot(Math.max(r.left - near.x, 0, near.x - r.right), Math.max(r.top - near.y, 0, near.y - r.bottom)) : 0)
   return all.sort((a, b) => gap(a) - gap(b))[0] ?? null
 }
 
-/** A terminal pane's screen as drawn: its box, its lines (terminalText: with WebGL it's a canvas), a row's height, a cell's width. */
 export type Screen = { r: DOMRect; lines: string[]; rowH: number; cw: number }
 export function screenOf(pane: HTMLElement): Screen | null {
   const host = pane.querySelector<HTMLElement & { terminalText?: () => string; terminalCell?: () => { width: number } | null }>("[data-terminal]")
@@ -54,27 +44,21 @@ export function screenOf(pane: HTMLElement): Screen | null {
 }
 
 const shown = (r: { width: number; height: number; bottom: number; right: number; top: number; left: number }) => r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth
-/** Whether `el` shows at `r` now: not hidden (a pane's kept tab, a closed fold) nor under something (a web page's view
- *  over a pane, a sheet), the companion's own drawing aside. */
 export function onTop(el: Element, r: { left: number; top: number; width: number; height: number }) {
   if (!el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) return false
   const x = Math.min(innerWidth - 1, Math.max(0, r.left + Math.min(r.width / 2, 12))), y = Math.min(innerHeight - 1, Math.max(0, r.top + r.height / 2))
   const top = document.elementsFromPoint(x, y).find((e) => !e.closest(DRAWN))
   return !!top && (el.contains(top) || top.contains(el))
 }
-/** Words as they're compared: lower case, anything but letters and digits one space. */
 export const normWords = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()
 const BLOCK = "p, div, li, dt, dd, td, th, tr, h1, h2, h3, h4, h5, h6, pre, blockquote, section, article, header, footer, nav, aside, main, figcaption, label, button, option, summary, .cm-line"
 
-/** A letter's box on the screen (CSS px). */
 function letterBox([n, i]: [Text, number]) {
   const r = document.createRange()
   r.setStart(n, i)
   r.setEnd(n, Math.min(i + 1, n.length))
   return r.getBoundingClientRect()
 }
-/** Whether the words `flat` has from `i` to `end` are read together: in one block (a paragraph's lines), or from block
- *  to block along one row, each just after the one before (a time, a dot, a place), never a pane's end and the next's. */
 function oneRow(flat: string, at: [Text, number][], blocks: number[], i: number, end: number) {
   for (let k = i + 1; k <= end; k++) {
     if (blocks[k] === blocks[k - 1]) continue
@@ -87,8 +71,6 @@ function oneRow(flat: string, at: [Text, number][], blocks: number[], i: number,
   return true
 }
 
-/** Where the window shows all of `text`'s words, in order (CSS px), how well (3: an element named it; 2: its whole words,
- *  across styled parts or a row's elements; 1: inside longer words), nearest `near` of the best: shown, on top. */
 export function findText(text: string, near?: { x: number; y: number }): { r: DOMRect; q: number } | null {
   const want = normWords(text)
   if (!want) return null
@@ -99,13 +81,12 @@ export function findText(text: string, near?: { x: number; y: number }): { r: DO
     const r = el.getBoundingClientRect()
     if (shown(r) && onTop(el, r)) found.push({ r, q: 3 })
   }
-  // (the text as one string of words, each character back to its node and its block, so words split by styling are
-  // found whole, and across blocks only along one row)
   let flat = ""
   const at: [Text, number][] = [], blocks: number[] = []
   let block: Element | null = null, nb = 0
   const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
-  for (let n = walk.nextNode() as Text | null; n; n = walk.nextNode() as Text | null) {
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+    if (!(n instanceof Text)) continue
     const v = n.nodeValue ?? "", p = n.parentElement
     if (!v.trim() || !p || p.closest("script, style, noscript, template") || p.closest(OWN)) continue
     const b = p.closest(BLOCK)
@@ -126,7 +107,6 @@ export function findText(text: string, near?: { x: number; y: number }): { r: DO
     const r = range.getBoundingClientRect(), el = a.parentElement!
     if (shown(r) && onTop(el, r)) found.push({ r, q: whole ? 2 : 1 })
   }
-  // (a terminal's screen, drawn on a canvas: the row saying them)
   for (const pane of document.querySelectorAll<HTMLElement>("[data-ui^='pane:']")) {
     const s = screenOf(pane)
     if (!s || !shown(s.r) || !onTop(pane.querySelector("[data-term-screen]")!, s.r)) continue

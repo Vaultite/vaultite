@@ -1,5 +1,3 @@
-// Proposals in a note's editor: tracked changes in the agent's colour (in a table, cell by cell under it), placeholders
-// while it writes, and a small bar by the change the cursor is in.
 import { type EditorState, type Extension, Prec, StateEffect, StateField } from "@codemirror/state"
 import { Decoration, type DecorationSet, EditorView, keymap, showTooltip, type Tooltip, ViewPlugin, WidgetType } from "@codemirror/view"
 import { keyHint } from "@vaultite"
@@ -8,17 +6,13 @@ import { type Change, changeAt, span } from "./text"
 
 const redraw = StateEffect.define<null>()
 
-/** A change where it is now: from..to its text in the note (the lines it covers: lineFrom..lineTo). In a table (its
- *  rows only): the table's end, where its cells are drawn (the table itself is drawn over its lines), and its header. */
 export type Placed = { n: Note; c: Change; from: number; to: number; lineFrom: number; lineTo: number; table?: { end: number; head: string } }
 
 const ROW = /^\s*\|/
 const rowsOf = (s: string) => s.split("\n").filter((l, i, all) => l || i < all.length - 1)
-/** A table row's cells (pipes escaped with \ stay in their cell). */
 const cellsOf = (row: string) => row.trim().replace(/^\|/, "").replace(/(?<!\\)\|$/, "").split(/(?<!\\)\|/).map((x) => x.trim())
 const separator = (row: string) => /^\s*\|?[\s:|-]+$/.test(row) && row.includes("-")
 
-/** The table a change's rows are in: where it ends and its header row; none when it isn't only table rows. */
 function tableOf(state: EditorState, c: Change, lineFrom: number, lineTo: number) {
   const rows = [...rowsOf(c.find), ...rowsOf(c.text)]
   if (!rows.length || !rows.every((r) => ROW.test(r))) return undefined
@@ -29,7 +23,6 @@ function tableOf(state: EditorState, c: Change, lineFrom: number, lineTo: number
   return { end: doc.line(last).to, head: doc.line(first).text }
 }
 
-/** A note's proposals' changes in the editor's text, in order; stale ones (their text gone) aren't. */
 export function placedIn(state: EditorState, path: string): Placed[] {
   const text = state.doc.toString(), out: Placed[] = []
   for (const n of getState().notes) {
@@ -45,14 +38,11 @@ export function placedIn(state: EditorState, path: string): Placed[] {
   return out.sort((a, b) => a.from - b.from)
 }
 
-/** The change the cursor is in (its lines), if any. */
 export function changeAtCursor(state: EditorState, path: string): Placed | null {
   const head = state.selection.main.head
-  // (a table's are taken from their cells' block: Tab there is the table's)
   return placedIn(state, path).find((p) => !p.c.intent && !p.table && head >= p.lineFrom && head <= p.lineTo) ?? null
 }
 
-/** Lines that come, under what goes; or a placeholder: its agent and what it's writing. */
 class Coming extends WidgetType {
   readonly text: string
   readonly tint: string
@@ -94,8 +84,6 @@ class Inline extends WidgetType {
   ignoreEvent() { return false }
 }
 
-/** A table's change cell by cell, under the table: each changed row's cells, the old struck and the new in the agent's
- *  colour; rows added in its colour, rows removed struck; and its own Accept and Reject. */
 class Cells extends WidgetType {
   readonly p: Placed
   readonly tint: string
@@ -119,7 +107,6 @@ class Cells extends WidgetType {
       b.onmousedown = (e) => e.preventDefault()
       b.onclick = () => review(n.id, verdict, c.id)
     }
-    // (the rows both sides share, as a row the change took along to be found by, aren't drawn)
     let gone = rowsOf(c.find).filter((r) => !separator(r)), come = rowsOf(c.text).filter((r) => !separator(r))
     while (gone.length && come.length && gone[0] === come[0]) { gone = gone.slice(1); come = come.slice(1) }
     while (gone.length && come.length && gone[gone.length - 1] === come[come.length - 1]) { gone = gone.slice(0, -1); come = come.slice(0, -1) }
@@ -145,8 +132,6 @@ class Cells extends WidgetType {
   ignoreEvent() { return true }
 }
 
-/** How a change reads in the text: added lines in a block (under the line above, or above the top line), one line
- *  changed in it (struck words, new ones beside), else its lines struck and what comes under them. */
 function drawn(state: EditorState, path: string): DecorationSet {
   const marks: { from: number; to: number; deco: Decoration }[] = []
   const doc = state.doc, active = changeAtCursor(state, path)
@@ -189,7 +174,6 @@ function drawn(state: EditorState, path: string): DecorationSet {
   return Decoration.set(marks.map((m) => m.deco.range(m.from, m.to)), true)
 }
 
-/** The bar by the change the cursor is in: Accept, Reject, which of how many. */
 function bar(state: EditorState, path: string): Tooltip | null {
   const p = changeAtCursor(state, path)
   if (!p) return null
@@ -222,20 +206,17 @@ function bar(state: EditorState, path: string): Tooltip | null {
   }
 }
 
-/** Move the cursor to the next (or previous) change in the note: true when there's one. */
 export function step(view: EditorView, path: string, dir: 1 | -1) {
   const all = placedIn(view.state, path).filter((x) => !x.c.intent)
   if (!all.length) return false
   const head = view.state.selection.main.head
   const next = dir > 0 ? all.find((x) => x.lineFrom > head) ?? all[0] : [...all].reverse().find((x) => x.lineTo < head) ?? all[all.length - 1]
-  // (a table's: its cells' block brought into sight, the cursor left out of the drawn table)
   if (next.table) view.dispatch({ effects: EditorView.scrollIntoView(next.table.end, { y: "center" }) })
   else view.dispatch({ selection: { anchor: next.lineFrom }, effects: EditorView.scrollIntoView(next.lineFrom, { y: "center" }) })
   view.focus()
   return true
 }
 
-/** Take or leave the change the cursor is in: true when it was in one. */
 export function decide(view: EditorView, path: string, verdict: "accept" | "reject") {
   const p = changeAtCursor(view.state, path)
   if (!p) return false
@@ -243,7 +224,6 @@ export function decide(view: EditorView, path: string, verdict: "accept" | "reje
   return true
 }
 
-/** Proposals in note `path`'s editor: drawn, a bar by the cursor's change, ⌥] ⌥[ through them. */
 export function proposals(path: string): Extension {
   const field = StateField.define<DecorationSet>({
     create: (s) => drawn(s, path),
@@ -255,7 +235,6 @@ export function proposals(path: string): Extension {
     update: (t, tr) => {
       const again = tr.docChanged || tr.effects.some((e) => e.is(redraw))
       if (!again && !tr.selection) return t
-      // (the cursor moved within the same change: the same bar, not one drawn again)
       if (!again && t && changeAtCursor(tr.state, path)?.lineFrom === t.pos) return t
       return bar(tr.state, path)
     },

@@ -64,7 +64,7 @@ export const SITES: Site[] = [
   { file: "plugins/core/agent-files/plugin.ts", why: "the core's AGENTS.md, in agents' files", anchors: true, reads: ["core/AGENTS.md"] },
   { file: "plugins/core/activity/profile.ts", why: "ROOT trims stack frames", anchors: true },
   { file: "plugins/core/companion/wiring.ts", why: "ROOT names this checkout", anchors: true },
-  { file: "plugins/core/companion/workers.ts", why: "ROOT: whether a worker's checkout is this one", anchors: true },
+  { file: "plugins/core/companion/jobplace.ts", why: "ROOT: whether a worker's checkout is this one", anchors: true },
   { file: "plugins/core/share/gateway.ts", why: "serves the web build and Excalidraw's fonts (a package)", anchors: true, fresh: ["web/dist/**"] },
   { file: "plugins/core/mcp/public.ts", why: "web/public's files, served per request", anchors: true, fresh: ["web/public/**"] },
   { file: "plugins/core/mcp-apps/plugin.ts", why: "its cards, in its folder", anchors: true, reads: ["plugins/core/mcp-apps/cards/**"] },
