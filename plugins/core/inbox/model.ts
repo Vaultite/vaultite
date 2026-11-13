@@ -78,9 +78,9 @@ export function byThread(es: InboxEvent[]): InboxEvent[] {
   return out
 }
 
-export function asThreads(es: InboxEvent[]): InboxEvent[] {
+export function asThreads(es: (Omit<InboxEvent, "state"> & { state?: State })[]): InboxEvent[] {
   return es.map((e): InboxEvent => {
-    if (STATES.includes(e.state)) return e
+    if (e.state && STATES.includes(e.state)) return { ...e, state: e.state }
     const session = !e.gate && (e.kind === "waiting" || e.kind === "done") && !!(e.terminal || e.session) && !/^https?:/.test(e.session ?? "")
     const open = e.gate ? !e.answer : !!e.snoozed || (!e.read && !(session && e.kind === "done"))
     const { kept, ...rest } = e

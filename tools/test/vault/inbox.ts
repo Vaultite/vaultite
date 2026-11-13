@@ -1,7 +1,10 @@
 import fs from "node:fs"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
+import type { Item } from "../../../core/vault.ts"
 import type { Turn } from "../../../plugins/core/inbox/needs.ts"
+import type { Last } from "../../../plugins/core/inbox/rows.ts"
+import type { StateChange } from "../../../plugins/core/terminal/terms.ts"
 import { waitFor } from "../lib.ts"
 import { request } from "../fakes.ts"
 import { portOf } from "../../../core/listening.ts"
@@ -110,7 +113,7 @@ export default async ($: VaultTest) => {
     }
     {
       const [, heard] = await api("POST", "ops/events.list", { types: ["inbox.event"] })
-      const evs = (heard.events ?? heard) as Any[]
+      const evs: Any[] = heard.events ?? heard
       check("inbox events: the vault's events hear of it (inbox.event)", evs.some((e: Any) => e.type === "inbox.event" && e.id === b.event.id && e.kind === "done" && e.link === "Notes/Backup.md"), heard)
     }
     ;[st, b] = await api("POST", "inbox/events", { source: "backup", kind: "done", title: "Backup finished", body: "13 GB" })
@@ -158,7 +161,7 @@ export default async ($: VaultTest) => {
       let [, l] = await api("GET", "inbox/events")
       const mine = (x: Any) => x.events.filter((e: Any) => e.source === "lessons")
       check("inbox events: a key keeps one of a kind, the newest", mine(l).length === 1 && mine(l)[0].title === "5 cards to review" && mine(l)[0].link === "detail:review", mine(l))
-      ;(app.plugins.find((p) => p.id === "inbox")!.service("inbox:drop") as (source: string, key: string) => void)("lessons", "cards-due")
+      app.plugins.find((p) => p.id === "inbox")!.service("inbox:drop")!("lessons", "cards-due")
       ;[, l] = await api("GET", "inbox/events")
       check("inbox events: inbox:drop takes one of a kind away", mine(l).length === 0, mine(l))
     }
@@ -225,15 +228,15 @@ export default async ($: VaultTest) => {
         !done.needs && done.by === "model" && !again.needs && asked === 2 && odd.needs && failed.needs && failed.by === "fallback" && none.needs, [done, again, odd, failed, none, asked])
     }
     // Hooks: Terminal's state command (state and prev), Claude Code's and Codex's JSON: a change of the session's state.
-    check("hook: Stop is a turn's end with its last message; a prompt is working again", (fromHook({ hook_event_name: "Stop", last_assistant_message: "Done." }) as Any)?.text === "Done." &&
-      (fromHook({ hook_event_name: "UserPromptSubmit", session_id: "s1" }) as Any)?.state === "working" && fromHook({ hook_event_name: "PostToolUse" }) === null)
-    check("hook: Claude Code's Notification, but not its idle prompt", (fromHook({ hook_event_name: "Notification", message: "Claude needs your permission to use Bash" }) as Any)?.msg === "Claude needs your permission to use Bash" &&
+    check("hook: Stop is a turn's end with its last message; a prompt is working again", fromHook({ hook_event_name: "Stop", last_assistant_message: "Done." })?.text === "Done." &&
+      fromHook({ hook_event_name: "UserPromptSubmit", session_id: "s1" })?.state === "working" && fromHook({ hook_event_name: "PostToolUse" }) === null)
+    check("hook: Claude Code's Notification, but not its idle prompt", fromHook({ hook_event_name: "Notification", message: "Claude needs your permission to use Bash" })?.msg === "Claude needs your permission to use Bash" &&
       fromHook({ hook_event_name: "Notification", notification_type: "idle_prompt", message: "Claude is waiting for your input" }) === null)
-    check("hook: Codex's notify is a turn's end, its words and what was asked", (fromHook({ type: "agent-turn-complete", "thread-id": "t1", "last-assistant-message": "**Merged** and pushed.\nMore", "input-messages": ["Merge it"] }) as Any)?.text === "**Merged** and pushed.\nMore" &&
-      (fromHook({ type: "agent-turn-complete", "input-messages": ["Merge it"] }) as Any)?.prompt === "Merge it")
-    check("hook: what a waiting agent asks", (fromHook({ hook_event_name: "Notification", notification_type: "permission_prompt", message: "x" }) as Any)?.kind === "permission" &&
-      (fromHook({ hook_event_name: "Notification", notification_type: "elicitation_dialog", tool_input: { questions: [{ question: "Which port?" }] } }) as Any)?.msg === "Asks: Which port?")
-    const rows = async () => { await settled(); return (await api("GET", "inbox/events"))[1].events as Any[] }
+    check("hook: Codex's notify is a turn's end, its words and what was asked", fromHook({ type: "agent-turn-complete", "thread-id": "t1", "last-assistant-message": "**Merged** and pushed.\nMore", "input-messages": ["Merge it"] })?.text === "**Merged** and pushed.\nMore" &&
+      fromHook({ type: "agent-turn-complete", "input-messages": ["Merge it"] })?.prompt === "Merge it")
+    check("hook: what a waiting agent asks", fromHook({ hook_event_name: "Notification", notification_type: "permission_prompt", message: "x" })?.kind === "permission" &&
+      fromHook({ hook_event_name: "Notification", notification_type: "elicitation_dialog", tool_input: { questions: [{ question: "Which port?" }] } })?.msg === "Asks: Which port?")
+    const rows = async (): Promise<Any[]> => { await settled(); return (await api("GET", "inbox/events"))[1].events }
     ;[st, b] = await api("POST", "inbox/hook?agent=claude&terminal=claude-k3j2h1g0", { hook_event_name: "Notification", notification_type: "permission_prompt", session_id: "abc", message: "Claude needs your permission to use Bash" })
     let row = (await rows()).find((e) => e.terminal === "claude-k3j2h1g0")
     check("a session asking: its thread needs you, saying what it asks, told (nt), named for the agent when nothing else names it", st === 200 && row?.kind === "session" && row.state === "open" && row.ask === "permission" &&
@@ -271,10 +274,10 @@ export default async ($: VaultTest) => {
     {
       // Terminal's stream (the service "inbox:state", OSC 7501's states): a turn's end reads its last message from the
       // agent's transcript ("agent-turn:<agent>"), judged by the model when its words don't settle it.
-      const tell = service(app.plugins, "inbox:state") as (c: Any) => void
+      const tell: (c: StateChange) => void = service(app.plugins, "inbox:state")!
       const cc = app.plugins.find((p) => p.id === "claude-code")!
       const was = { turn: cc.services["agent-turn:claude"], sample: cc.services.sample }
-      let read = { session: "sess-osc", prompt: "Look at the release and tell me what it needs.", text: "A version bump first, then the tag.", at: 0, final: true }
+      let read: Last = { session: "sess-osc", prompt: "Look at the release and tell me what it needs.", text: "A version bump first, then the tag.", at: 0, final: true }
       let asked: Any = null
       cc.services["agent-turn:claude"] = async (terminal: string) => (terminal === "claude-osc75010" ? { ...read, at: Date.now() } : null)
       cc.services.sample = async (a: Any) => { asked = a; return { text: "NEEDS_YOU", truncated: false } }
@@ -310,7 +313,7 @@ export default async ($: VaultTest) => {
         tell({ terminal: "claude-loop0001", agent: "claude", state: "working", from: "osc7501", at })
         tell({ terminal: "claude-loop0001", agent: "claude", state: "done", from: "osc7501", at })
         const asked = (await rows()).find((e) => e.terminal === "claude-loop0001")
-        read = { ...read, prompt: "<task-notification>Monitor event: Beacon CI</task-notification>", text: "Beacon CI is green again; your tag question is still open.", auto: true } as Any
+        read = { ...read, prompt: "<task-notification>Monitor event: Beacon CI</task-notification>", text: "Beacon CI is green again; your tag question is still open.", auto: true }
         tell({ terminal: "claude-loop0001", agent: "claude", state: "working", from: "osc7501", at })
         tell({ terminal: "claude-loop0001", agent: "claude", state: "done", from: "osc7501", at })
         const kept = (await rows()).find((e) => e.terminal === "claude-loop0001")
@@ -362,9 +365,9 @@ export default async ($: VaultTest) => {
       cx.services["agent-turn:codex"] = async (terminal: string) => (terminal === "codex-osc75012" ? { session: "cx-sess", title: "Answer 2+2",
         prompt: "What is 2+2?", text: "2 + 2 = 4.", at: Date.now(), final: true } : null)
       cc.services.sample = async () => ({ text: "NEEDS_YOU", truncated: false })
-      for (const state of ["idle", "working", "idle"]) tell({ terminal: "codex-osc75012", agent: "codex", state, from: "osc7501", at })
+      for (const state of ["idle", "working", "idle"] as const) tell({ terminal: "codex-osc75012", agent: "codex", state, from: "osc7501", at })
       // (starting up, it says it works, then idle, with no session yet: no turn)
-      for (const state of ["idle", "working", "idle"]) tell({ terminal: "codex-osc75013", agent: "codex", state, from: "osc7501", at })
+      for (const state of ["idle", "working", "idle"] as const) tell({ terminal: "codex-osc75013", agent: "codex", state, from: "osc7501", at })
       await settled()
       r = (await rows()).filter((e) => e.terminal === "codex-osc75012" || e.terminal === "codex-osc75013")
       check("inbox:state: Codex's working -> idle is a turn's end: an answer that only tells is done quietly, unread, never told, titled as its session; starting up isn't a turn",
@@ -373,7 +376,7 @@ export default async ($: VaultTest) => {
       {
         // The setting `answers`: inbox keeps an answer to read in the inbox, told; a model's ANSWER is one too.
         await api("PATCH", "config/plugin/inbox", { answers: "inbox" })
-        for (const state of ["working", "idle"]) tell({ terminal: "codex-osc75012", agent: "codex", state, from: "osc7501", at })
+        for (const state of ["working", "idle"] as const) tell({ terminal: "codex-osc75012", agent: "codex", state, from: "osc7501", at })
         await settled()
         r = (await rows()).filter((e) => e.terminal === "codex-osc75012")
         check("answers: inbox keeps an answer to read open, unread", r.length === 1 && r[0].state === "open" && r[0].ask === "answer" && !r[0].read, r)
@@ -381,7 +384,7 @@ export default async ($: VaultTest) => {
         await api("PATCH", "config/plugin/inbox", { answers: null })
         cx.services["agent-turn:codex"] = async (terminal: string) => (terminal === "codex-osc75014" ? { session: "cx-sess2", prompt: "Look at the logs and tell me what you see.", text: "Two restarts overnight, both after the update.", at: Date.now(), final: true } : null)
         cc.services.sample = async () => ({ text: "ANSWER", truncated: false })
-        for (const state of ["idle", "working", "idle"]) tell({ terminal: "codex-osc75014", agent: "codex", state, from: "osc7501", at })
+        for (const state of ["idle", "working", "idle"] as const) tell({ terminal: "codex-osc75014", agent: "codex", state, from: "osc7501", at })
         await settled()
         r = (await rows()).filter((e) => e.terminal === "codex-osc75014")
         check("answers: the model's ANSWER, by default, is done quietly too", r.length === 1 && r[0].state === "done" && r[0].ask === "answer" && !r[0].read && !r[0].nt, r)
@@ -464,7 +467,7 @@ export default async ($: VaultTest) => {
         now.length === 4 && now[0].id === "o1" && now[0].title === "Beacon docs" && !now[0].body && now[1].title === "Fix done · Sidebar" && now[1].ask === "report" &&
         now[2].title === "Imported 12 meals" && now[3].ask === "permission", now)
       const v3 = asThreads([...now, { id: "g1", t: 0, source: "mcp", kind: "waiting", gate: true, answer: "approve", title: "x" }, { id: "g2", t: 0, source: "mcp", kind: "waiting", gate: true, title: "y" },
-        { id: "w1", t: 0, source: "example.com", kind: "waiting", session: "https://example.com/", title: "A site asks" }, { id: "z1", t: 0, source: "claude", kind: "waiting", terminal: "claude-z", read: true, snoozed: 9e12, title: "z" }] as Any)
+        { id: "w1", t: 0, source: "example.com", kind: "waiting", session: "https://example.com/", title: "A site asks" }, { id: "z1", t: 0, source: "claude", kind: "waiting", terminal: "claude-z", read: true, snoozed: 9e12, title: "z" }])
       const st = Object.fromEntries(v3.map((e) => [e.id, `${e.kind}:${e.state}`]))
       check("events of version 2 get their state: a session's row its thread (read: done, unread: open), a gate answered done, a browser's ask still one, snoozed still to come back",
         st.o1 === "session:done" && st.o3 === "session:done" && st.o4 === "info:open" && st.o5 === "session:done" && st.g1 === "waiting:done" && st.g2 === "waiting:open" &&
@@ -472,8 +475,8 @@ export default async ($: VaultTest) => {
     }
     {
       const push = await import("../../../plugins/core/inbox/push.ts")
-      const p = push.payload({ title: "Claude Code is waiting for you", body: "Bash", category: "permission", thread: "claude-x", urgent: true, data: { event: "e1" } }) as Any
-      check("push: the payload carries its buttons' category and the event", p.aps.category === "permission" && p.aps["interruption-level"] === "time-sensitive" && p.aps["thread-id"] === "claude-x" && p.event === "e1" && p.aps.alert.body === "Bash", p)
+      const p = push.payload({ title: "Claude Code is waiting for you", body: "Bash", category: "permission", thread: "claude-x", urgent: true, data: { event: "e1" } })
+      check("push: the payload carries its buttons' category and the event", p.aps.category === "permission" && p.aps["interruption-level"] === "time-sensitive" && p.aps["thread-id"] === "claude-x" && "event" in p && p.event === "e1" && p.aps.alert.body === "Bash", p)
       ;[st, b] = await api("POST", "inbox/devices", { token: "nothex", topic: "app.example.ios" })
       check("push: a device needs a token", st === 400, [st, b])
       ;[st, b] = await api("POST", "inbox/devices", { token: "AB".repeat(32), topic: "app.example.ios", env: "sandbox", name: "Sam's iPhone" })
@@ -721,7 +724,7 @@ export default async ($: VaultTest) => {
           }
           return { sessions: [{ id: "claude-k3j2h1g0", state: works(sent) ? "working" : "idle" }] }
         }
-        return { sent, ctx: { api } as unknown as Parameters<typeof submit>[0] }
+        return { sent, ctx: { api } }
       }
       const at = fake((s) => s.length > 1)
       await submit(at.ctx, "claude-k3j2h1g0", "Ship it", 1)
@@ -751,7 +754,7 @@ export default async ($: VaultTest) => {
       fs.mkdirSync(path.dirname(tfile), { recursive: true })
       fs.writeFileSync(tfile, JSON.stringify({ type: "assistant", sessionId: sid, cwd: "/Users/sam/beacon", message: { role: "assistant", content: [{ type: "text", text: "Done." }],
         usage: { input_tokens: 3, cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 812 } } } }) + "\n")
-      const look = service(app.plugins, "agent-session:claude") as (id: string) => Any
+      const look: (id: string) => Any = service(app.plugins, "agent-session:claude")!
       const info = look(sid)
       check("agent session: a transcript written with the hour-long cache", info?.ttl === 3600 && info.transcript === tfile && info.account === "default" && Date.now() - info.last < 60_000, info)
       check("agent session: else five minutes, and none for a session that isn't here", look("0a1b2c3d-1111-4222-8333-444455556666")?.ttl === 300 && look("9f9f9f9f-0000-4000-8000-000000000000") === null)
@@ -766,7 +769,7 @@ export default async ($: VaultTest) => {
       ;[st, b] = await api("POST", "ops/inbox.reply-plan", { to: "Inbox/.archive/Fix done · Beacon fixed.md" })
       check("reply plan: with five minutes to spare", b.how === "new", b)
       const handedOf = () => { const d = fs.readdirSync(path.join(tmp, "local", "inbox"))[0]; try { return JSON.parse(fs.readFileSync(path.join(tmp, "local", "inbox", d, "handed.json"), "utf8")) } catch { return [] } }
-      ;(service(app.plugins, "inbox:handed") as (t: string) => void)("claude-handed1")
+      service(app.plugins, "inbox:handed")!("claude-handed1")
       check("handed: dispatch marks its terminal", handedOf().includes("claude-handed1"), handedOf())
       const out = await vau("inbox", "report", "Handed off", "--work", "fix", "--tldr", "Did it.", "--summary", "Did it.", "--terminal", "claude-handed1")
       check("handed: its report says the terminal ends with the turn", out.code === 0 && out.out.includes("this terminal ends when this turn does"), out)
@@ -776,7 +779,7 @@ export default async ($: VaultTest) => {
       await api("POST", "inbox/hook?agent=claude&terminal=claude-mine1", { hook_event_name: "Stop" })
       check("handed: a terminal nobody handed a task stays", !handedOf().includes("claude-mine1"))
       // (replied to before the turn that reported ended: never ended under the reply)
-      ;(service(app.plugins, "inbox:handed") as (t: string) => void)("claude-handed2")
+      service(app.plugins, "inbox:handed")!("claude-handed2")
       ;[st, b] = await api("POST", "ops/inbox.report", { title: "Handed, then replied", work: "fix", tldr: "Did it.", summary: "Did it.", terminal: "claude-handed2", agent: "claude" })
       await api("POST", "ops/inbox.reply", { to: "Inbox/.archive/Fix done · Handed, then replied.md", text: "Also the footer" })
       await api("POST", "inbox/hook?agent=claude&terminal=claude-handed2", { hook_event_name: "Stop" })
@@ -803,7 +806,7 @@ export default async ($: VaultTest) => {
     {
       // A session's host (an agent run outside a terminal, as the Agent SDK runs one) tells its state (inbox:session, POST
       // inbox/sessions): the same thread a hook makes, answered and replied to through its host.
-      const host = service(app.plugins, "inbox:session") as (b: Any) => Promise<Any>
+      const host: (b: Any) => Promise<Any> = service(app.plugins, "inbox:session")!
       const inbox = app.plugins.find((p) => p.id === "inbox")!
       const got: Any[] = []
       inbox.services["agent-reply:sdk"] = async (session: string, text: string) => { got.push([session, text]); return true }
@@ -864,7 +867,7 @@ export default async ($: VaultTest) => {
     {
       // A notice done by its source (inbox:done: a paused plugin allowed again), and the done ones cleared.
       await api("POST", "inbox/events", { source: "plugins", kind: "waiting", key: "paused:beacon", title: "Beacon is paused" })
-      ;(service(app.plugins, "inbox:done") as (s: string, k: string) => void)("plugins", "paused:beacon")
+      service(app.plugins, "inbox:done")!("plugins", "paused:beacon")
       let l = (await api("GET", "inbox/events"))[1]
       check("inbox:done: one of a kind is done", l.events.find((x: Any) => x.key === "paused:beacon")?.state === "done", l.events.slice(0, 2))
       const open = l.events.filter((x: Any) => x.state !== "done").length
@@ -1044,8 +1047,8 @@ export default async ($: VaultTest) => {
 
   // A gate (a permission the server waits on: an MCP app's tool, inbox:ask) is the user's to answer, never an agent's.
   {
-    const ask = app.plugins.find((p) => p.id === "inbox")!.service("inbox:ask") as (b: Any) => Promise<string>
-    const answerOf = app.plugins.find((p) => p.id === "inbox")!.service("inbox:answer") as (id: string, ms?: number) => Promise<string>
+    const ask: (b: Any) => Promise<string> = app.plugins.find((p) => p.id === "inbox")!.service("inbox:ask")!
+    const answerOf: (id: string, ms?: number) => Promise<string> = app.plugins.find((p) => p.id === "inbox")!.service("inbox:answer")!
     // (each from this machine, as its owner: what tells them apart is who they say they are)
     const from = (client: string, agent: string | null = null) => request({ host: "127.0.0.1:8793", "x-vaultite-client": client, ...(agent ? { "x-vaultite-agent": agent } : {}) }, { remote: "127.0.0.1" })
     const gate = await ask({ source: "mcp", key: "gate-agents", title: "Grok Bot asks to run file.delete", body: "file.delete {}" })
@@ -1198,7 +1201,7 @@ export default async ($: VaultTest) => {
 
     {
       // With no phone or watch paired, vau says nothing went, and settle is Settled whichever name it's asked by.
-      const textOf = (id: string) => app.ops().find((o: Any) => o.op.id === id)!.op.text as (r: Any) => string
+      const textOf = (id: string) => (r: Item) => app.ops().find((o) => o.op.id === id)!.op.text!(r, {})
       check("vau inbox push: no phone signed up, nothing sent (not \"Sent to 0 devices\")", /^Nothing sent: no phone/.test(textOf("inbox.push")({ sent: 0, failed: [] })) &&
         textOf("inbox.push")({ sent: 1, failed: [] }) === "Sent to 1 device.")
       check("vau inbox answer: settle and done read Settled", textOf("inbox.answer")({ answer: "settle", title: "A" }) === "Settled: A." && textOf("inbox.answer")({ answer: "done", title: "A" }) === "Settled: A.")
