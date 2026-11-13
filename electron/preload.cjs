@@ -1,5 +1,5 @@
 // The desktop app's bridge into the page (sandboxed, so plain CommonJS): window.vaultite (web/src/core/desktop.ts).
-// main.ts checks that the page asking is one of its own windows.
+// handle.ts checks that the page asking is one of its own windows.
 const { contextBridge, ipcRenderer, webUtils } = require("electron")
 
 const MAC = process.platform === "darwin", WIN = process.platform === "win32"
@@ -24,7 +24,7 @@ if (WIN && location.protocol === "http:") {
 }
 
 // Windows' controls (titleBarOverlay) take the colour of the page under them and the height of its title row, as the
-// theme, the sidebars and the zoom change; main.ts answers how wide they are, which index.css keeps clear (--window-controls).
+// theme, the sidebars and the zoom change; handlers.ts answers how wide they are, which index.css keeps clear (--window-controls).
 if (process.platform === "win32") {
   const hex = (css) => {
     const c = document.createElement("canvas").getContext("2d")
@@ -89,7 +89,7 @@ contextBridge.exposeInMainWorld("vaultite", {
   },
   welcome: call("app:welcome"),
   computerUse: MAC ? call("app:computer-use") : undefined,
-  // (Windows' with forward slashes, as main.ts hands outside files to the page)
+  // (Windows' with forward slashes, as fromoutside.ts hands outside files to the page)
   pathOf: (file) => { const p = webUtils.getPathForFile(file); return process.platform === "win32" ? p.replace(/\\/g, "/") : p },
   copyIn: call("files:copy-in"),
   openOutside: call("files:open"),

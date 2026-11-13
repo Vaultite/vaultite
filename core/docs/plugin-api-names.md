@@ -187,7 +187,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `DiffRows({ lines })`: The diff's lines, only those in sight drawn (a file of a million lines scrolls like a short one), wherever it scrolls.
 - `dismissNotice(id)`: Close a toast before its time.
 - `dockAtEnd(key, side)`: Put a panel at the end of a sidebar, open, and that sidebar open: what every move without a drop does (a sidebar's toggle, Move to the other sidebar, ticking it in the Panels menu), so where it…
-- `dockIcon()`: The Dock's icon in the desktop app (electron/main.ts): null in a browser or a build without it.
+- `dockIcon()`: The Dock's icon in the desktop app (electron/appmenu.ts): null in a browser or a build without it.
 - `DoIt({ task, done, className })`
 - `Dot`: A status dot's kind.
 - `DoTask`: A task for Do it: a line of a note (`path`, its 1-based `line`) or, with no path, only its words.

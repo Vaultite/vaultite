@@ -146,7 +146,7 @@ try {
     const after = files(own)
     const touched = Object.keys({ ...before, ...after }).filter((f) => before[f] !== after[f])
     check("own vault: opening it changes none of the user's files and adds none outside .vaultite/", !touched.length, touched.join(", "))
-    // Set up Vaultite's way (electron/main.ts): a setup picked, its plugins write their pages (core/pages.ts).
+    // Set up Vaultite's way (electron/setupwin.ts): a setup picked, its plugins write their pages (core/pages.ts).
     const call = (method, route, body) => fetch(`${ownBase}api/${route}`, { method, headers: { "Content-Type": "application/json" }, body: body && JSON.stringify(body) })
     const applied = []
     // (Days, as the directory's Life OS, installs Vaultite's own plugins, Today and Books among them: as the user's yes in the app)

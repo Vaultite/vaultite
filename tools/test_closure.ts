@@ -153,7 +153,9 @@ await section("the menu-bar helper shares no state with the main process", () =>
   /** The main process's own state: windows, the browser, dictation's one recognizer, the servers, updates. */
   const STATEFUL = ["electron/main.ts", "electron/appwindow.ts", "electron/web.ts", "electron/browser/engine.ts", "electron/browser/index.ts", "electron/dictation.ts",
     "electron/dictationlist.ts", "electron/mics.ts", "electron/host.ts", "electron/updates.ts", "electron/storehost.ts", "electron/permissions.ts", "electron/gestures.ts",
-    "electron/popup.ts", "electron/player.ts", "electron/apps.ts", "electron/helperload.ts"]
+    "electron/popup.ts", "electron/player.ts", "electron/apps.ts", "electron/helperload.ts",
+    "electron/vaultlist.ts", "electron/servers.ts", "electron/errors.ts", "electron/titlebar.ts", "electron/vaultwindow.ts", "electron/remotewin.ts",
+    "electron/setupwin.ts", "electron/appmenu.ts"]
   /** Imported by both, and why a second copy is harmless. A new one is a decision: stateless, or through HelperHost. */
   const STATELESS: Record<string, string> = {
     "core/dictationtext.ts": "pure functions", "electron/miclogic.ts": "pure functions", "electron/presslog.ts": "a factory: each log its own",

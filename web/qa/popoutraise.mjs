@@ -1,4 +1,4 @@
-// Pop-out windows in the desktop app (core/windows.ts, electron main.ts' window:raise): a tab held over another of the
+// Pop-out windows in the desktop app (core/windows.ts, electron/handlers.ts' window:raise): a tab held over another of the
 // app's windows brings it to the front after a moment, keyboard left alone; let go, it lands there. WRITES: the vault.
 //   node web/qa/popoutraise.mjs <vault copy>
 import { _electron } from "playwright-core"

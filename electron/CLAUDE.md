@@ -58,7 +58,7 @@
 - The menu-bar helper (helper.ts, a Mac's): Electron's own process kept windowless with a Tray, not a second app, so it
   is one install with one signature and the grants the app already has (microphone, Accessibility, screen recording).
   One per Mac (a lock socket in the temp folder: Vaultite, Main and Dev may all run); off in Vaultite Dev and under
-  VAULTITE_QUIET unless VAULTITE_HELPER=1. With it, a closed window's server is kept (`kept` in main.ts) and the Dock
+  VAULTITE_QUIET unless VAULTITE_HELPER=1. With it, a closed window's server is kept (`kept` in servers.ts) and the Dock
   icon shows only while a window is open. Native parts: screen.swift (the keys' tap and ink, fields, other apps' text, the display's picture), dictation, voice.swift
   (the companion's voice out: it never plays under VAULTITE_QUIET, and VOICE_OUT writes a file instead). Each Swift helper
   is built by swiftbuild.ts and run by linehelper.ts; screen.swift and takeover.swift share ax.swift, so they name an element alike.

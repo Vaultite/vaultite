@@ -10,7 +10,7 @@ import { reach } from "./devreach.ts"
 import { fingerprint } from "./shell/print.mjs"
 
 export type Worktree = { worktree: string; branch: string; commit: string; dirty: boolean }
-/** What the instance needs of the app (main.ts). */
+/** What the instance needs of the app (vaultwindow.ts startWorktree). */
 export type DevHost = {
   root: string; userData: string; headless: boolean; debugPort: number | null
   /** The shell's fingerprint: a worktree that no longer matches it needs a new shell (npm run app:dev builds it). */

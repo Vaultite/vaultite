@@ -1,4 +1,4 @@
-// A vault window's own server kept running (main.ts): a restart that brings none back is started again, failures told.
+// A vault window's own server kept running (vaultwindow.ts watchServer): a restart that brings none back is started again, failures told.
 
 export type ServerProc = {
   pid?: number

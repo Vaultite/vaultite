@@ -428,7 +428,7 @@ export const spelling = desktop?.learnWord ? {
   learn: desktop.learnWord,
 } : null
 
-/** The Dock's icon in the desktop app (electron/main.ts): null in a browser or a build without it. */
+/** The Dock's icon in the desktop app (electron/appmenu.ts): null in a browser or a build without it. */
 export const dockIcon = () => desktop?.dock ?? null
 
 /** Something from outside the vault (an absolute path: /x, Windows' C:/x), opened in the desktop app. */

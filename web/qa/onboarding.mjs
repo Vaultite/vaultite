@@ -1,4 +1,4 @@
-// The desktop first run (web/src/components/Onboarding.tsx, electron/setup.ts, main.ts's setup:*, then
+// The desktop first run (web/src/components/Onboarding.tsx, electron/setup.ts, setupwin.ts' setup:*, then
 // components/Welcome.tsx in the vault's window) on a made-up home folder (VAULTITE_SETUP_HOME: iCloud Drive, an Obsidian
 // vault, Claude Code and its config): the first launch shows one page, the vault, with page dots; a new vault in iCloud
 // Drive opens, its window going on with the welcome card (the look, AI as found here, on a Mac the two permissions once

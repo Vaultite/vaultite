@@ -1,4 +1,4 @@
-// An update's relaunch keeps the vault's server (electron/main.ts handOver, server.ts waits, electron/heir.ts) and its
+// An update's relaunch keeps the vault's server (electron/servers.ts handOver, server.ts waits, electron/heir.ts) and its
 // vault (electron/argv.ts): the next launch takes the server over, with no gap; a plain quit still ends it. WRITES: temp.
 //   node web/qa/relaunch.mjs <vault copy>
 import { execFileSync, spawn } from "node:child_process"

@@ -1,5 +1,5 @@
 // A server the last launch left running through its relaunch (server.ts, core/serving.ts' heir), taken over as this
-// launch's own: told things over its host socket (host.ts), standing in for the ChildProcess of one main.ts forked.
+// launch's own: told things over its host socket (host.ts), standing in for the ChildProcess of one servers.ts forked.
 import { EventEmitter } from "node:events"
 import type { Link } from "./host.ts"
 
