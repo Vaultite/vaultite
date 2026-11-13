@@ -4,17 +4,25 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { parseAst } from "rolldown/parseAst"
+import type { ESTree } from "rolldown/utils"
+import { z } from "zod"
 import { PLUGIN_PACKAGES, SHARED, SHARED_EDITOR } from "../core/rules.ts"
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const OUT = path.join(ROOT, "core", "docs", "plugin-api.md")
 const NAMES = path.join(ROOT, "core", "docs", "plugin-api-names.md")
-type Node = { type: string; start: number; end: number; [k: string]: any }
+type Top = ESTree.Program["body"][number]
 
 const parse = (rel: string) => {
   const src = fs.readFileSync(path.join(ROOT, rel), "utf8")
-  return { src, ast: parseAst(src, { lang: rel.endsWith(".tsx") ? "tsx" : "ts" }, rel) as unknown as { body: Node[] } }
+  return { src, ast: parseAst(src, { lang: rel.endsWith(".tsx") ? "tsx" : "ts" }, rel) }
 }
+
+const declarationOf = (n: Top) => n.type === "ExportNamedDeclaration" || n.type === "ExportDefaultDeclaration" ? n.declaration ?? n : n
+const nameOf = (n: ESTree.Node | null): string | null =>
+  n && n.type !== "VariableDeclaration" && "id" in n && n.id?.type === "Identifier" ? n.id.name : null
+const keyName = (k: ESTree.PropertyKey) => (k.type === "Identifier" ? k.name : null)
+const exportName = (x: ESTree.ModuleExportName) => (x.type === "Literal" ? x.value : x.name)
 
 /** The /** comment right before `at`, as one line. */
 function docBefore(src: string, at: number) {
@@ -27,13 +35,14 @@ function docBefore(src: string, at: number) {
 
 function backend() {
   const { src, ast } = parse("core/plugins.ts")
-  const cls = ast.body.map((n) => n.declaration ?? n).find((n) => n.type === "ClassDeclaration" && n.id?.name === "Plugin")!
+  const cls = ast.body.map(declarationOf).find((n) => n.type === "ClassDeclaration" && nameOf(n) === "Plugin")
+  if (cls?.type !== "ClassDeclaration") throw new Error("core/plugins.ts has no class Plugin")
   const out: string[] = []
-  for (const m of cls.body.body as Node[]) {
+  for (const m of cls.body.body) {
     if (m.type !== "MethodDefinition" || m.kind === "constructor" || m.accessibility === "private" || m.key.type !== "Identifier") continue
     const doc = docBefore(src, m.start)
     if (!doc) continue
-    const params = (m.value.params as Node[]).map((p) => src.slice(p.start, p.end).replace(/:[\s\S]*$/, "").replace(/\s*=.*$/, "").trim()).join(", ")
+    const params = m.value.params.map((p) => src.slice(p.start, p.end).replace(/:[\s\S]*$/, "").replace(/\s*=.*$/, "").trim()).join(", ")
     out.push(`- \`plugin.${m.key.name}${m.kind === "get" ? "" : `(${params})`}\`: ${doc}`)
   }
   return out
@@ -42,9 +51,11 @@ function backend() {
 /** A type of define.ts (PluginDef: index.tsx's definePlugin; Manifest: manifest.json), a line per key. */
 function keysOf(type: string) {
   const { src, ast } = parse("web/src/core/define.ts")
-  const def = ast.body.find((n) => n.type === "ExportNamedDeclaration" && n.declaration?.id?.name === type)!
-  return (def.declaration.typeAnnotation.members as Node[]).filter((m) => m.type === "TSPropertySignature")
-    .map((m) => `- \`${m.key.name}\`${m.optional ? "" : " (required)"}${docBefore(src, m.start) ? `: ${docBefore(src, m.start)}` : ""}`)
+  const def = ast.body.find((n) => n.type === "ExportNamedDeclaration" && nameOf(n.declaration) === type)
+  const d = def?.type === "ExportNamedDeclaration" ? def.declaration : null
+  if (d?.type !== "TSTypeAliasDeclaration" || d.typeAnnotation.type !== "TSTypeLiteral") throw new Error(`web/src/core/define.ts: ${type} isn't an exported object type`)
+  return d.typeAnnotation.members.flatMap((m) => (m.type === "TSPropertySignature" ? [m] : []))
+    .map((m) => `- \`${keyName(m.key)}\`${m.optional ? "" : " (required)"}${docBefore(src, m.start) ? `: ${docBefore(src, m.start)}` : ""}`)
 }
 
 /** A doc comment's first sentence, at most a long line. */
@@ -59,16 +70,16 @@ function moduleFile(spec: string) {
 /** A declaration's first sentence and, for a function, its parameters: "(path, opts)". */
 function describe(file: string, name: string): { params: string | null; doc: string } {
   const src = fs.readFileSync(file, "utf8")
-  const ast = parseAst(src, { lang: file.endsWith("x") ? "tsx" : "ts" }, file) as unknown as { body: Node[] }
-  const named = (p: Node): string => p.type === "Identifier" ? `${p.name}${p.optional ? "?" : ""}` : p.type === "AssignmentPattern" ? `${named(p.left)}?`
-    : p.type === "RestElement" ? `...${named(p.argument)}` : p.type === "ObjectPattern" ? `{ ${(p.properties as Node[]).map((k) => k.key?.name ?? "…").join(", ")} }` : "…"
-  const args = (ps: Node[]) => `(${ps.map(named).join(", ")})`
+  const ast = parseAst(src, { lang: file.endsWith("x") ? "tsx" : "ts" }, file)
+  const named = (p: ESTree.ParamPattern | ESTree.BindingPattern): string => p.type === "Identifier" ? `${p.name}${p.optional ? "?" : ""}` : p.type === "AssignmentPattern" ? `${named(p.left)}?`
+    : p.type === "RestElement" ? `...${named(p.argument)}` : p.type === "ObjectPattern" ? `{ ${p.properties.map((k) => (k.type === "Property" ? keyName(k.key) : null) ?? "…").join(", ")} }` : "…"
+  const args = (ps: ESTree.ParamPattern[]) => `(${ps.map(named).join(", ")})`
   for (const n of ast.body) {
     const d = n.type === "ExportNamedDeclaration" ? n.declaration : null
     if (!d) continue
-    const v = d.type === "VariableDeclaration" ? (d.declarations as Node[]).find((x) => x.id?.name === name) : null
-    if (d.id?.name !== name && !v) continue
-    const fn = d.type === "FunctionDeclaration" ? d : v?.init && /Function/.test(v.init.type) ? v.init : null
+    const v = d.type === "VariableDeclaration" ? d.declarations.find((x) => x.id.type === "Identifier" && x.id.name === name) : null
+    if (nameOf(d) !== name && !v) continue
+    const fn = d.type === "FunctionDeclaration" ? d : v?.init?.type === "FunctionExpression" || v?.init?.type === "ArrowFunctionExpression" ? v.init : null
     const doc = docBefore(src, n.start)
     return { params: fn ? args(fn.params) : null, doc: first(doc) }
   }
@@ -82,13 +93,13 @@ function exportsOf() {
   for (const n of ast.body) {
     if (n.type !== "ExportNamedDeclaration") continue
     const file = n.source ? moduleFile(n.source.value) : null
-    for (const s of (n.specifiers ?? []) as Node[]) {
-      const name = s.exported.name ?? s.exported.value, local = s.local?.name ?? name
+    for (const s of n.specifiers) {
+      const name = exportName(s.exported), local = exportName(s.local)
       const d = file ? describe(file, local) : { params: null, doc: "" }
       out.set(name, `- \`${name}${d.params ?? ""}\`${d.doc ? `: ${d.doc}` : ""}`)
     }
-    const d = n.declaration
-    if (d?.id?.name) out.set(d.id.name, `- \`${d.id.name}\``)
+    const declared = nameOf(n.declaration)
+    if (declared) out.set(declared, `- \`${declared}\``)
   }
   return [...out].sort(([a], [b]) => a.localeCompare(b)).map(([, l]) => l)
 }
@@ -102,10 +113,11 @@ function serverExports(rel: string) {
     if (n.type !== "ExportNamedDeclaration" || n.exportKind === "type" && !n.declaration) continue
     if (n.source) {
       const from = path.resolve(path.dirname(file), n.source.value)
-      for (const sp of (n.specifiers ?? []) as Node[]) if (sp.exportKind !== "type") out.set(sp.exported.name, line(sp.exported.name, describe(from, sp.local.name)))
+      for (const sp of n.specifiers) if (sp.exportKind !== "type") out.set(exportName(sp.exported), line(exportName(sp.exported), describe(from, exportName(sp.local))))
       continue
     }
-    const d = n.declaration, names = d?.id?.name ? [d.id.name] : ((d?.declarations ?? []) as Node[]).map((v) => v.id?.name).filter(Boolean)
+    const d = n.declaration, declared = nameOf(d)
+    const names = declared ? [declared] : d?.type === "VariableDeclaration" ? d.declarations.flatMap((v) => (v.id.type === "Identifier" ? [v.id.name] : [])) : []
     for (const name of names) if (name !== "Plugin") out.set(name, line(name, describe(file, name)))
   }
   return [...out].sort(([a], [b]) => a.localeCompare(b)).map(([, l]) => l)
@@ -114,10 +126,14 @@ function serverExports(rel: string) {
 /** A type's or class's members, each with its doc: what a value of it has (a vault entry, a route's request). */
 function shape(rel: string, name: string) {
   const { src, ast } = parse(rel)
-  const d = ast.body.map((n) => n.declaration ?? n).find((n) => n.id?.name === name)!
-  const members: Node[] = d.type === "ClassDeclaration" ? d.body.body : d.typeAnnotation?.members ?? d.typeAnnotation?.types?.flatMap((t: Node) => t.members ?? []) ?? []
-  return members.filter((m) => m.key?.type === "Identifier" && m.accessibility !== "private" && m.kind !== "constructor" && !/^_/.test(m.key.name))
-    .map((m) => `\`${m.key.name}${m.optional ? "?" : ""}\`${docBefore(src, m.start) ? ` (${first(docBefore(src, m.start)).replace(/\.$/, "")})` : ""}`).join("; ")
+  const d = ast.body.map(declarationOf).find((n) => nameOf(n) === name)
+  const t = d?.type === "TSTypeAliasDeclaration" ? d.typeAnnotation : null
+  const members: (ESTree.ClassElement | ESTree.TSSignature)[] = d?.type === "ClassDeclaration" ? d.body.body : t?.type === "TSTypeLiteral" ? t.members
+    : t?.type === "TSIntersectionType" || t?.type === "TSUnionType" ? t.types.flatMap((x) => (x.type === "TSTypeLiteral" ? x.members : [])) : []
+  return members.flatMap((m) => {
+    if (!("key" in m) || m.key.type !== "Identifier" || /^_/.test(m.key.name) || m.accessibility === "private" || m.type === "MethodDefinition" && m.kind === "constructor") return []
+    return [`\`${m.key.name}${m.optional ? "?" : ""}\`${docBefore(src, m.start) ? ` (${first(docBefore(src, m.start)).replace(/\.$/, "")})` : ""}`]
+  }).join("; ")
 }
 
 /** A plugin's own files from its plugin.ts, in the order they run (each one's imports first, as ESM does). */
@@ -154,7 +170,8 @@ function services() {
 /** The npm packages a vault plugin may import (core/rules.ts), each at the version the app ships (package-lock.json):
  *  the app's own copy (its frontend's, never bundled: `own`), or the others. */
 function packages(own: boolean) {
-  const lock = JSON.parse(fs.readFileSync(path.join(ROOT, "package-lock.json"), "utf8")).packages as Record<string, { version: string }>
+  const lock = z.object({ packages: z.record(z.string(), z.object({ version: z.string().optional() })) })
+    .parse(JSON.parse(fs.readFileSync(path.join(ROOT, "package-lock.json"), "utf8"))).packages
   const shared = new Set([...SHARED, ...SHARED_EDITOR])
   return PLUGIN_PACKAGES.filter((n) => shared.has(n) === own).map((n) => `\`${n}\` ${lock[`node_modules/${n}`]?.version ?? "?"}`).join(", ")
 }
