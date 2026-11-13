@@ -2,6 +2,7 @@ import crypto from "node:crypto"
 import { once } from "node:events"
 import fs from "node:fs"
 import path from "node:path"
+import { z } from "zod"
 import { HTTPError, isTextKind, kindOf, LOADED, LOCAL, localDate, localTime, Plugin, Text, vaultHere } from "../../../core/plugins.ts"
 import { fetchFromICloud, READ_WAIT, type Vault, writeAtomic } from "../../../core/vault.ts"
 
@@ -10,7 +11,10 @@ export const plugin = new Plugin(import.meta.url)
 const HOUR = 3600_000
 
 type Stat = { mtime: number; size: number; ns?: string }
-type Meta = Stat & { path: string; hash: string; last: number; gone?: boolean }
+const META = z.object({ mtime: z.number(), size: z.number(), ns: z.string().optional(), path: z.string(), hash: z.string(), last: z.number(), gone: z.boolean().optional() })
+type Meta = z.infer<typeof META>
+const ERRNO = z.object({ errno: z.number() }).catch({ errno: 0 })
+const KEEP = z.object({ path: z.unknown(), text: z.string().optional().catch(undefined) })
 type State = { root: string; heads: Map<string, Meta>; skip: Map<string, string>; pruned: number; version: number; seen: Map<string, object>
   saving: ReturnType<typeof setTimeout> | null }
 const INDEX = "heads.json"
@@ -27,7 +31,7 @@ function state(vault: Vault): State {
   fs.writeFileSync(path.join(root, "vault.txt"), real + "\n")
   s = { root, heads: new Map(), skip: new Map(), pruned: Date.now() - HOUR + 60_000, version: -1, seen: new Map(), saving: null }
   let index: Meta[] | null = null
-  try { index = JSON.parse(fs.readFileSync(path.join(root, INDEX), "utf8")) } catch { /* none yet */ }
+  try { index = z.array(META).parse(JSON.parse(fs.readFileSync(path.join(root, INDEX), "utf8"))) } catch { /* none yet */ }
   for (const m of index ?? []) s.heads.set(m.path, m)
   for (const name of fs.readdirSync(root)) {
     if (name.startsWith("tmp-")) { fs.rmSync(path.join(root, name), { force: true }); continue }
@@ -43,7 +47,7 @@ function state(vault: Vault): State {
 const dirOf = (s: State, rel: string) => path.join(s.root, sha1(rel).slice(0, 16))
 
 function readMeta(dir: string): Meta | null {
-  try { return JSON.parse(fs.readFileSync(path.join(dir, "meta.json"), "utf8")) } catch { return null }
+  try { return META.parse(JSON.parse(fs.readFileSync(path.join(dir, "meta.json"), "utf8"))) } catch { return null }
 }
 const writeMeta = (s: State, m: Meta) => writeAtomic(path.join(dirOf(s, m.path), "meta.json"), JSON.stringify(m))
 
@@ -81,7 +85,7 @@ async function take(abs: string, to: string): Promise<string | null | undefined>
     result = stalled ? undefined : text ? hash.digest("hex") : null
   } catch (e) {
     fetchFromICloud(abs, e)
-    result = stalled || Math.abs((e as NodeJS.ErrnoException).errno ?? 0) === 11 ? undefined : null
+    result = stalled || Math.abs(ERRNO.parse(e).errno) === 11 ? undefined : null
   } finally {
     clearTimeout(timer)
     src.destroy()
@@ -351,9 +355,9 @@ function keepText(rel: string, text: string) {
 }
 
 plugin.route("POST", "history/keep", (req) => {
-  const b = (req.body ?? {}) as { path?: unknown; text?: unknown }
+  const b = KEEP.parse(req.body ?? {})
   const rel = relOf(b.path)
-  return { kept: typeof b.text === "string" ? keepText(rel, b.text) : keepDisk(rel) }
+  return { kept: b.text !== undefined ? keepText(rel, b.text) : keepDisk(rel) }
 })
 
 /** The files followed whose text was last written at or after `since` (ms). */
