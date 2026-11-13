@@ -5,7 +5,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { apiAt, command, qa, until, wait, workspaceKey } from "./lib/qa.mjs"
-const { args: [B, VAULT, OUT = "/tmp/sidebarmode-shots/"], browser, check, watch, done } = await qa(import.meta.url)
+const { args: [B, VAULT, OUT = "/tmp/sidebarmode-shots/"], browser, check, watch, done } = await qa(import.meta.url, { motion: true })
 mkdirSync(OUT, { recursive: true })
 const api = apiAt(B)
 
