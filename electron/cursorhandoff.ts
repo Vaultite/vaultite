@@ -9,16 +9,16 @@ export type HomeWindow = { page: WebContents; bounds: Rect; zoom: number }
 type Summoned = NonNullable<Scene["summon"]>
 export const keyOf = (x: { name: string }) => `agent:${x.name}`
 
-/** Where the window's cursors are (Overlay.tsx; its page's DOM, never its code), in screen points: `at` drawn now, `to`
- *  where it's going. None off screen, nor one faded where it last was (`data-faded`): none flies to or from it. */
-export async function inApp(w: HomeWindow | null): Promise<Map<string, { at: Point; to: Point }>> {
+/** Where the window's cursors are (Overlay.tsx's DOM), in screen points: `at` drawn now, `to` where it's going, unless
+ *  `loose` (a whole pane, no point in it). None off screen, nor one faded where it last was (`data-faded`). */
+export async function inApp(w: HomeWindow | null): Promise<Map<string, { at: Point; to: Point; loose: boolean }>> {
   if (!w || w.page.isDestroyed()) return new Map()
   const code = `[...document.querySelectorAll(".companion-cursor[data-agent]:not([data-faded])")].map((el) => { const r = el.getBoundingClientRect(),
-    m = /^(-?[\\d.]+),(-?[\\d.]+)$/.exec(el.dataset.to ?? ""); return [el.dataset.agent, r.left, r.top, m ? +m[1] : r.left, m ? +m[2] : r.top] })`
-  const rows = await w.page.executeJavaScriptInIsolatedWorld(1007, [{ code }]).catch(() => []) as [string, number, number, number, number][]
+    m = /^(-?[\\d.]+),(-?[\\d.]+)$/.exec(el.dataset.to ?? ""); return [el.dataset.agent, r.left, r.top, m ? +m[1] : r.left, m ? +m[2] : r.top, el.hasAttribute("data-loose")] })`
+  const rows = await w.page.executeJavaScriptInIsolatedWorld(1007, [{ code }]).catch(() => []) as [string, number, number, number, number, boolean][]
   // (its tip: 3, 2 into the box, as both draw the arrow)
   const pt = (x: number, y: number) => ({ x: Math.round(w.bounds.x + (x + 3) * w.zoom), y: Math.round(w.bounds.y + (y + 2) * w.zoom) })
-  return new Map((Array.isArray(rows) ? rows : []).map(([name, x, y, tx, ty]) => [name, { at: pt(x, y), to: pt(tx, ty) }]))
+  return new Map((Array.isArray(rows) ? rows : []).map(([name, x, y, tx, ty, loose]) => [name, { at: pt(x, y), to: pt(tx, ty), loose: !!loose }]))
 }
 
 export function cursorHandOff(o: { window: () => HomeWindow | null; agent: (name: string) => (AgentPlace & { state: string }) | undefined

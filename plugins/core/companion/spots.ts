@@ -11,6 +11,7 @@ export type Spot = { x: number; y: number; parked?: boolean; low?: boolean; draw
   over?: boolean
   faded?: boolean
   out?: boolean
+  loose?: true
   target?: { x: number; y: number; width: number; height: number } }
 export type Place = { at: Target & Pick<Agent, "box">; i: number; shift: number; dx: number; dy: number; screen?: { x: number; y: number; over: boolean }; left?: Left }
 export type Left = { last: string; echo: number }
@@ -142,8 +143,14 @@ function paneSpot(a: Agent): Spot | null {
   const r = el.getBoundingClientRect(), b = paneBox(a)
   if (!b) return null
   const whole = b.width === r.width && b.height === r.height && !b.row
-  const x = whole || (b.over && !a.box) ? r.left + 40 : b.right + (b.row ? 10 : 6), y = whole || (b.over && !a.box) ? r.top + 48 : b.top
-  return { x: clamp(x, r.left + 4, r.right - 40), y: clamp(y, r.top + 2, r.bottom - 30), low: y + FLAG > r.bottom, over: b.over, ...(whole ? {} : { target: rectOf(b) }) }
+  if (whole || (b.over && !a.box)) return looseIn(a.name, r, b.over)
+  const x = b.right + (b.row ? 10 : 6), y = b.top
+  return { x: clamp(x, r.left + 4, r.right - 40), y: clamp(y, r.top + 2, r.bottom - 30), low: y + FLAG > r.bottom, over: b.over, target: rectOf(b) }
+}
+function looseIn(name: string, r: DOMRect, over?: boolean): Spot {
+  const was = lastShown.get(name), inside = was && was.x >= r.left && was.x <= r.right - 24 && was.y >= r.top && was.y <= r.bottom - 24
+  const x = inside ? was.x : r.left + r.width / 2, y = inside ? was.y : r.top + Math.min(r.height / 3, 200)
+  return { x: clamp(x, r.left + 4, r.right - 40), y: clamp(y, r.top + 2, r.bottom - 30), low: y + FLAG > r.bottom, over, loose: true }
 }
 
 export const scroller = (v: EditorView, pos: number) => v.dispatch({ effects: (v.constructor as typeof EditorView).scrollIntoView(pos, { y: "center" }) })

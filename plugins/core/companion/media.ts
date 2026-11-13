@@ -9,6 +9,7 @@ import { screenshotDir } from "./reach.ts"
 import type { KeptFile } from "./kept.ts"
 import { IMAGE_EXT, type Media, VIDEO_EXT } from "../../../core/desktop/screenmarks.ts"
 import { messageOf } from "./errors.ts"
+import { findImage, SEARCH, webImage } from "./webimages.ts"
 
 const TOKENS = 64
 const KEEP_BYTES = 8 << 20
@@ -38,7 +39,7 @@ export function screenMedia(plugin: Plugin, o: {
 
   async function resolve(m: Media): Promise<Media> {
     const kind = m.type, src = m.src.trim(), want = kind === "video" ? VIDEO_EXT : IMAGE_EXT, what = kind === "video" ? "a video" : "an image"
-    if (/^https:\/\//i.test(src)) return { ...m, url: src, name: path.basename(new URL(src).pathname) || new URL(src).host, ...(await probeUrl(src, kind)) }
+    if (SEARCH.test(src) || /^https:\/\//i.test(src)) return fromWeb(m, src)
     if (/^[a-z][a-z0-9+.-]*:/i.test(src) && !/^[a-z]:[\\/]/i.test(src)) throw new OpError(`src: ${src.split(":")[0]}: isn't a source; a vault path, a file of this Mac, an app (its icon), https or "screenshot"`)
     if (/^(latest[ -])?(screenshot|screen ?shot|recording|screen recording)$/i.test(src)) {
       const abs = await latestCapture(kind)
@@ -57,6 +58,17 @@ export function screenMedia(plugin: Plugin, o: {
     const file = plugin.vault.abs(rel)
     if (!fs.existsSync(file)) throw new OpError(`no ${rel} in the vault, so nothing was drawn and they saw no card`, 404)
     return { ...m, url: `api/raw/${encodeURIComponent(path.basename(rel))}?path=${encodeURIComponent(rel)}${/\.(heic|heif)$/i.test(rel) ? "&as=jpeg" : ""}`, name: path.basename(rel), ...pxOf(file) }
+  }
+
+  async function fromWeb(m: Media, src: string): Promise<Media> {
+    if (SEARCH.test(src)) {
+      if (m.type === "video") throw new OpError(`src "search:" finds a picture: a video's src is its address or a file`)
+      const found = await findImage(src.replace(SEARCH, ""))
+      return { ...(await local(m, (await webImage(found.url)).file)), name: found.name }
+    }
+    const name = decodeURIComponent(path.basename(new URL(src).pathname)) || new URL(src).host
+    if (m.type === "image") return { ...(await local(m, (await webImage(src)).file)), name }
+    return { ...m, url: src, name, ...(await probeUrl(src)) }
   }
 
   async function local(m: Media, abs: string): Promise<Media> {
@@ -116,16 +128,16 @@ async function appIcon(app: string): Promise<string> {
   return out
 }
 
-async function probeUrl(url: string, kind: "image" | "video"): Promise<Partial<Media>> {
+async function probeUrl(url: string): Promise<Partial<Media>> {
+  const kind = "video"
   let r
-  try { r = await fetchPublic(url, { max: 64 << 10, types: /^(image|video)\//, timeout: 3000 }) } catch (e) {
+  try { r = await fetchPublic(url, { max: 64 << 10, types: /^video\//, timeout: 3000 }) } catch (e) {
     if (/public|isn't|can't fetch/i.test(messageOf(e))) throw new OpError(`src: ${messageOf(e)}`)
     return {}
   }
   if (r.status >= 400) throw new OpError(`${url} answers ${r.status}, so nothing was drawn and they saw no card`, 409)
-  if (!r.type.startsWith(`${kind}/`)) throw new OpError(`${url} is ${r.type.split(";")[0] || "not a file"}, not ${kind === "video" ? "a video" : "an image"} (a page isn't: give the ${kind}'s own address)`, 409)
-  const px = kind === "image" ? imageSize(r.body) : null
-  return px ? { px } : {}
+  if (!r.type.startsWith(`${kind}/`)) throw new OpError(`${url} is ${r.type.split(";")[0] || "not a file"}, not a video (a page isn't: give the video's own address)`, 409)
+  return {}
 }
 
 function pxOf(file: string): { px?: [number, number] } {

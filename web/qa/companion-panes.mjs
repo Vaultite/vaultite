@@ -39,7 +39,6 @@ const cursor = page.locator('.companion-cursor[data-agent="Claude"]')
 // (where it's going: its spring writes where it is on the way)
 const tip = () => cursor.evaluate((el) => { const m = /^(-?[\d.]+),(-?[\d.]+)$/.exec(el.dataset.to ?? ""); return m ? { x: Number(m[1]) + 3, y: Number(m[2]) + 2 } : null })
 
-// The app's own UI by its id.
 const ui = await page.evaluate(() => ["button:switcher:open", "button:sidebar:toggle", "button:tab:new"].find((id) => [...document.querySelectorAll(`[data-ui="${id}"]`)].some((e) => e.getClientRects().length)))
 let r = await op("companion.look", { ui })
 await wait(900)
@@ -110,6 +109,14 @@ at = await tip()
 const tabs = await page.evaluate(() => [...document.querySelectorAll('[data-ui^="tab:"]')].filter((e) => e.getClientRects().length).map((e) => { const b = e.getBoundingClientRect(); return { text: e.textContent, left: b.left, top: b.top, right: b.right, bottom: b.bottom } }))
 const onTab = tabs.find((b) => !!at && at.x >= b.left - 2 && at.x <= b.right + 2 && at.y >= b.top - 2 && at.y <= b.bottom + 2)
 check("look at a pane not shown: its cursor at its tab", !!onTab && !/new tab/i.test(onTab.text), { at, tabs })
+
+const whole = await page.evaluate(() => { const e = [...document.querySelectorAll("[data-ui^='pane:']")].find((x) => x.getClientRects().length && !x.matches("[data-pane-half], [data-place], [data-tab-row]") && !x.querySelector("[data-terminal]")); const b = e?.getBoundingClientRect()
+  return e && { id: e.getAttribute("data-ui").slice(5), left: b.left, top: b.top, width: b.width, height: b.height } })
+let looked = null
+await until(async () => { looked = await op("companion.look", { pane: whole?.id }); return !looked.error }, 6000)
+await until(async () => (await cursor.getAttribute("data-loose")) !== null, 4000)
+at = await tip()
+check("look at a whole pane: no corner, nothing to fly to", !!at && (await cursor.getAttribute("data-loose")) !== null && at.x > whole.left + whole.width * 0.25 && at.y > whole.top + 60, { at, whole, looked })
 
 // Its place gone from view and no status bar to rest in: it fades where it was, its words never shown there.
 await page.addStyleTag({ content: "[data-companion-status] { display: none !important }" })

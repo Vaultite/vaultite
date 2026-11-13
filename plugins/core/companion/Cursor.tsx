@@ -117,7 +117,7 @@ export const Cursor = memo(function Cursor({ a, spot, said, waiting, others, und
   return (
     <div ref={box} className="companion-cursor pointer-events-none fixed top-0 left-0 z-(--z-page-float)" data-agent={a.name} data-floats={floats ? "" : undefined} data-state={a.state} data-seen={seen || undefined} data-open={open || undefined} data-stacked={many ? others.length + 1 : undefined}
       onPointerEnter={enter} onPointerLeave={() => setHover(false)}
-      data-docked={docked || undefined} data-faded={(docked && spot.faded) || undefined} data-away={away || undefined} data-to={`${Math.round(tx)},${Math.round(ty)}`}
+      data-docked={docked || undefined} data-faded={(docked && spot.faded) || undefined} data-away={away || undefined} data-loose={spot.loose} data-to={`${Math.round(tx)},${Math.round(ty)}`}
       style={{
         transition: away ? "none" : arriving ? "opacity .2s .35s" : docked ? "opacity .6s ease-out, visibility 0s .6s" : "opacity .3s",
         opacity: docked || away ? 0 : shown.dim ? 0.55 : 1, visibility: docked || away ? "hidden" : undefined, zIndex: spot.rides ? "var(--z-peek-rider)" : open || fan ? "calc(var(--z-page-float) + 2)" : many ? "calc(var(--z-page-float) + 1)" : undefined }}>

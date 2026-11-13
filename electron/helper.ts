@@ -1988,7 +1988,7 @@ function inAppPoint(a: Agent) {
     const mine = { p: had?.p ?? null, at: Date.now(), pending: true }
     inAppSpots.set(k, mine)
     // (a moment for the window to place it: the agent's news reaches it as it reaches here)
-    setTimeout(() => void inApp(host?.homeWindow() ?? null).then((m) => { if (inAppSpots.get(k) !== mine) return; inAppSpots.set(k, { p: m.get(a.name)?.to ?? null, at: Date.now(), pending: false }); draw() }), 60)
+    setTimeout(() => void inApp(host?.homeWindow() ?? null).then((m) => { if (inAppSpots.get(k) !== mine) return; const c = m.get(a.name); inAppSpots.set(k, { p: c && !c.loose ? c.to : null, at: Date.now(), pending: false }); draw() }), 60)
   }
   return inAppSpots.get(k)!.p
 }
