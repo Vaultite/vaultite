@@ -1,5 +1,3 @@
-// Dictation (⌘J, fn through the menu-bar helper): what's said goes where the cursor is (web/src/core/dictation.ts has the
-// session, electron/dictation.ts the recognizer). A tap starts and the next stops; held, it listens until let go.
 import { useEffect, useState } from "react"
 import { AudioLines, Mic } from "lucide-react"
 import { afterSheets, createFile, definePlugin, op, openView, dictation, dictationSource, fnDictation, Group, hintDictation, landDictation, listening, notify, notifyError, openFile, openPermissions, plural, pluginSettings,
@@ -10,11 +8,9 @@ import { useMicChoices } from "./mics"
 import { askClear, DictationsView } from "./Dictations"
 import { followPlaces, setTargetAt, whereOf } from "./place"
 
-/** Where the words go: the editor, terminal or field with the keyboard; with none, nowhere here. */
 async function targetHere(): Promise<DictationTarget | null> {
   const el = document.activeElement
   const cm = el instanceof HTMLElement ? el.closest(".cm-editor") : null
-  // (CodeMirror comes with the editor, not with the app)
   const view = cm instanceof HTMLElement ? (await import("./editor")).viewOf(cm) : null
   if (view) return view.target ?? fieldTarget(view.dom)
   const term = el?.closest<HTMLElement & { terminalInput?: TerminalInput }>("[data-terminal]")
@@ -31,7 +27,6 @@ const enginesFor = (language: string) => {
   return known.engines
 }
 
-/** The recognizer: the one set, else Parakeet for English when its model is here, else Apple's. */
 async function engineFor(engine: unknown, language: string): Promise<DictationEngine> {
   if (engine === "apple" || engine === "parakeet") return engine
   if (language && !/^en\b/i.test(language)) return "apple"
@@ -40,7 +35,6 @@ async function engineFor(engine: unknown, language: string): Promise<DictationEn
 }
 
 function failed(code: string, message?: string) {
-  // (that press stopped a session roaming)
   if (code === "roaming") return
   if (code === "permission") return notify("Vaultite isn't allowed to use the microphone", { kind: "error", action: openPermissions ? { label: "Open settings", run: openPermissions } : undefined })
   if (code === "fallback") return notify(message ?? "Dictating on this Mac")
@@ -51,7 +45,6 @@ function failed(code: string, message?: string) {
 async function begin(hold: boolean) {
   const target = await targetHere()
   if (!target) {
-    // (the helper listens: the words in its box, for whatever field has the keyboard when it stops)
     if (!(await dictationSource?.roam?.({ start: true, held: hold }).catch(() => false))) hintDictation("Click where the words should go, then dictate")
     return false
   }
@@ -67,7 +60,6 @@ declare module "@vaultite" {
   interface PluginState { dictionary?: { note: string | null; size: number } }
 }
 
-/** How many dictations this Mac keeps, for its Settings row (null: not known, or none kept here). */
 function useDictationCount() {
   const [n, setN] = useState<number | null>(null)
   useEffect(() => {
@@ -78,7 +70,6 @@ function useDictationCount() {
   return n
 }
 
-/** The dictionary's row in its settings: the note (Dictionary.md), made when there's none yet; the Dictations list. */
 function DictionarySettings() {
   const kept = useDictationCount()
   const d = useStore().store?.dictionary
@@ -96,7 +87,6 @@ function DictionarySettings() {
   )
 }
 
-/** fn while this window has the keyboard: its ⌘J (the helper dictates in other apps itself). */
 function FnKey() {
   useEffect(() => { const key = fnDictation(begin), landing = landDictation(targetHere), places = followPlaces(); setTargetAt(targetHere); return () => { key(); landing(); places() } }, [])
   return null

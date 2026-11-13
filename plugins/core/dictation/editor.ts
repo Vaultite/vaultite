@@ -1,12 +1,8 @@
-// Dictation in an editor: words not settled drawn dimmed at an anchor that follows edits (never in the document), the
-// settled ones typed in there as the user's input ("input.dictation"): undo, autosave and the companion take them so.
 import { Facet, StateEffect, StateField, type Extension } from "@codemirror/state"
 import { Decoration, EditorView, WidgetType } from "@codemirror/view"
 import { joinText, type DictationTarget } from "@vaultite"
 import { watchFix, type Watch } from "./learning.ts"
 
-/** Where the words go and the pending ones; `moved`: the user put the cursor elsewhere since, which takes effect at the
- *  next utterance (a sentence under way finishes where it started). */
 type Spot = { at: number; text: string; moved: boolean }
 const set = StateEffect.define<Spot | null>()
 const spot = StateField.define<Spot | null>({
@@ -21,8 +17,6 @@ const spot = StateField.define<Spot | null>({
   provide: (f) => EditorView.decorations.from(f, (v) => (v?.text ? Decoration.set([Decoration.widget({ widget: new Pending(v.text), side: 1 }).range(v.at)]) : Decoration.none)),
 })
 
-/** Words dictated lately, where they are now (each settled chunk; the user's edits inside or at their ends count as
- *  theirs, the next chunk doesn't), and the watch reading their fixes (learning.ts). */
 type Said = { from: number; to: number; watch: Watch }
 export const said = StateEffect.define<Said>()
 export const saids = StateField.define<Said[]>({
@@ -34,7 +28,6 @@ export const saids = StateField.define<Said[]>({
     return out
   },
 })
-/** An edit of the user's touching words just dictated: their watch hears of it. */
 const edits = EditorView.updateListener.of((u) => {
   for (const tr of u.transactions) {
     if (!tr.docChanged || tr.isUserEvent("input.dictation")) continue
@@ -57,35 +50,30 @@ class Pending extends WidgetType {
 
 const pathOf = Facet.define<string | undefined, string | undefined>({ combine: (v) => v[0] })
 
-/** What every editor gets: the anchor and its pending words. */
 export const dictationEditor = (path?: string): Extension => [spot, saids, edits, pathOf.of(path), EditorView.baseTheme({
   ".cm-dictation-pending": { color: "var(--muted-foreground)", opacity: "0.75" },
 })]
 
-/** What's still pending once `final` settled: the rest of the words it began with, else none (the next ones come). */
 const rest = (pending: string, final: string) => {
   const p = pending.trimStart(), f = final.trim()
   return f && p.startsWith(f) ? p.slice(f.length) : ""
 }
 
-/** Where the cursor puts words: Vim's block cursor sits on a character, and on a line's last one they go after it. */
+/** Vim's block cursor sits on a character: on a line's last one, words go after it. */
 function caret(view: EditorView) {
   const head = view.state.selection.main.head, line = view.state.doc.lineAt(head)
   return line.length && head === line.to - 1 && view.dom.querySelector(".cm-fat-cursor") ? line.to : head
 }
 
-/** The editor drawn in `cm`: where it dictates, and its text's element. */
 export function viewOf(cm: HTMLElement) {
   const view = EditorView.findFromDOM(cm)
   return view && { target: editorTarget(view), dom: view.contentDOM }
 }
 
-/** Dictate into `view`, at its cursor. */
 export function editorTarget(view: EditorView): DictationTarget | null {
   if (view.state.field(spot, false) === undefined) return null
   view.dispatch({ effects: set.of({ at: caret(view), text: "", moved: false }) })
   const here = () => (view.dom.isConnected ? view.state.field(spot, false) ?? null : null)
-  /** The anchor for words starting now: the cursor, if the user moved it there since the last ones. */
   const anchor = (s: Spot) => (s.moved && !s.text ? caret(view) : s.at)
   const before = (at: number) => view.state.sliceDoc(Math.max(0, at - 1), at)
   return {
@@ -105,7 +93,6 @@ export function editorTarget(view: EditorView): DictationTarget | null {
       const at = anchor(s), insert = joinText(before(at), text)
       if (!insert) return
       const sel = view.state.selection.main, block = sel.head !== at && caret(view) === at
-      // (the cursor where the words go goes on with them, as when typing; Vim's block on their last character)
       const follow = sel.empty && (sel.head === at || block)
       const span: Said = { from: at, to: at + insert.length, watch: watchFix(insert, () => {
         const now = view.dom.isConnected ? view.state.field(saids, false)?.find((x) => x.watch === span.watch) : null

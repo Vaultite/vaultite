@@ -1,14 +1,10 @@
-// The setting Microphone's choices: this Mac's inputs as the desktop app lists them (electron/dictation.ts), followed
-// as they come and go. A browser or a phone can't list them: the form offers the manifest's values and Custom.
+// A browser or a phone can't list a machine's inputs: the form offers the manifest's values there.
 import { useEffect, useState } from "react"
 import { dictationSource, type MicList, type SettingChoice } from "@vaultite"
 
-/** Automatic and the system's input, each saying which mic that is now, then each mic by name (what's saved: the
- *  name, as typed before); null where they can't be listed. */
 export function useMicChoices(): SettingChoice[] | null {
   const src = dictationSource
   const can = !!src?.microphones && !!src.onMicrophones
-  // (undefined: on its way)
   const [list, setList] = useState<MicList | null | undefined>(undefined)
   useEffect(() => {
     if (!can) return

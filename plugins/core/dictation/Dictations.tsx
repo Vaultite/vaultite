@@ -1,5 +1,3 @@
-// The Dictations tab (view:dictations): what was said lately, newest first, by day: each dictation's words, where they
-// went (or that they never landed), and the companion's Talk key asks. Copy, Insert again, search. Data: dictation history.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { AppWindow, ClipboardCopy, Copy, FileText, Mic, MoreHorizontal, RotateCcw, Settings, SquareTerminal, TextCursorInput, Trash2, TriangleAlert, type LucideIcon } from "lucide-react"
 import {
@@ -17,10 +15,8 @@ type Show = "all" | "lost" | "companion"
 
 const TIME = { hour: "numeric", minute: "2-digit" } as const
 const LIMIT = 500
-/** Not where it was going: the ones the list exists to save. */
 const missed = (x: Item) => x.landing === "lost" || x.landing === "cancelled" || x.landing === "clipboard"
 
-/** The history, asked again as dictations end, the window comes back, and every 15 s while it's seen. */
 function useHistory(q: string) {
   const [data, setData] = useState<History | null>(null), [error, setError] = useState<unknown>(null), [n, setN] = useState(0)
   useEffect(() => {
@@ -37,7 +33,6 @@ function useHistory(q: string) {
 
 const removing = removals()
 
-/** Take one out: it folds away at once, and goes for good once its Undo's time is up. */
 function forget(x: Item, again: () => void) {
   let undone = false
   void removing.remove(x.id, async () => {
@@ -136,7 +131,6 @@ function dayTitle(day: string) {
   return name === "Today" || name === "Yesterday" ? `${name} · ${fmtLongDay(day)}` : fmtLongDay(day)
 }
 
-/** Where its words went, as a mark and a few words; `open`: the note. */
 function placeOf(x: Item): { icon: LucideIcon; label: string; open?: () => void } {
   const w = x.where
   if (x.kind === "companion") return { icon: Mic, label: `Asked ${x.who || "the companion"}${w.name ? ` · ${w.name}` : ""}` }
@@ -146,7 +140,6 @@ function placeOf(x: Item): { icon: LucideIcon; label: string; open?: () => void 
   return { icon: AppWindow, label: w.name || "Another app" }
 }
 
-/** How it ended up, when that's not where it was going. */
 function statusOf(x: Item): { label: string; warn?: boolean; live?: boolean } | null {
   if (x.kind === "companion") return null
   if (x.landing === "lost") return { label: x.why === "closed" ? "Didn't land: the app closed" : x.why === "failed" ? "Didn't land: dictation stopped" : x.why === "elsewhere" ? "Didn't land: another dictation began" : "Didn't land", warn: true }
@@ -157,7 +150,6 @@ function statusOf(x: Item): { label: string; warn?: boolean; live?: boolean } | 
   return null
 }
 
-/** Its words with what's searched for lit. */
 function Lit({ text, q }: { text: string; q: string }) {
   const words = q.split(/\s+/).filter((w) => w.length > 1).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
   if (!words.length) return <>{text}</>

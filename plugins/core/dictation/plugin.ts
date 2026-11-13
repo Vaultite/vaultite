@@ -1,5 +1,3 @@
-// Soniox's key is this machine's (data/config.json, `dictation.soniox`), never the vault's: the desktop app asks for it
-// to dictate (electron/dictation.ts) and for the companion's voice (companion/voice.ts), and streams to Soniox itself.
 import { inDesktop, OpError, Plugin } from "../../../core/plugins.ts"
 import { Kind } from "../../../core/vault.ts"
 import { addEntry, hintOf, readDictionary, readEntries, removeEntry } from "./words.ts"
@@ -7,7 +5,6 @@ import type { Entry } from "../../../core/desktop/dictationlearn.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
-// (tests point these at a stand-in)
 const WS = () => process.env.VAULTITE_SONIOX_URL || "wss://stt-rt.soniox.com/transcribe-websocket"
 const API = () => process.env.VAULTITE_SONIOX_API || "https://api.soniox.com"
 const MODEL = "stt-rt-v6"
@@ -16,14 +13,9 @@ export const SET_KEY = `vau secret "Soniox API key" | vau dictation key`
 const stored = () => (plugin.secrets()[plugin.id] ?? {}) as { soniox?: unknown }
 const keyHere = () => { const k = stored().soniox; return typeof k === "string" && k.trim() ? k.trim() : "" }
 
-/** Words a recognizer gets wrong unless told (Vaultite's own, the agents'), always expected. */
 const VOCABULARY = ["Vaultite", "vau", "Claude", "Claude Code", "Codex", "Sonnet", "Opus", "Agent SDK"]
-/** What's always written for what's said, before the dictionary's. */
 const REPLACEMENTS: [string, string][] = [["at Claude", "@claude"]]
-/** How many of the vault's note names, newest first, go to the recognizer with them. */
 const NOTE_NAMES = 40
-
-// ---------- the dictionary: the user's words, learned from their fixes or added (Dictionary.md, words.ts)
 
 plugin.kind(new Kind({
   type: "dictionary", collection: "dictionary", file: "Dictionary.md",
@@ -34,13 +26,10 @@ const note = () => plugin.vault.get("dictionary", "dictionary")
 const dictionary = () => readDictionary(String(note()?.body ?? ""))
 plugin.state(() => ({ dictionary: { note: note() ? `${note()!.id}.md` : null, size: readEntries(String(note()?.body ?? "")).length } }))
 
-/** What's written for what's said: Vaultite's, then the dictionary's. */
 export const replacements = (): [string, string][] => [...REPLACEMENTS, ...dictionary().replacements]
 
 const shown = (e: { rel: string; archived: boolean; fm?: Record<string, unknown> | null }) => e.rel.endsWith(".md") && !e.rel.startsWith(".") && !e.archived && !e.fm?.private && e.fm?.companion !== "private"
 const stem = (rel: string) => rel.split("/").pop()!.slice(0, -3)
-/** The words dictation expects: the dictionary's, Vaultite's, what plugins add ("dictation:terms": the companion's
- *  names), the people's and projects' names, and the names of the notes changed last (not dates, not archived or private). */
 export function terms(): string[] {
   const d = dictionary()
   const added = plugin.allServices("dictation:terms").flatMap((fn) => { try { const t = fn(); return Array.isArray(t) ? t : [] } catch { return [] } })
@@ -52,8 +41,6 @@ export function terms(): string[] {
     .map((t) => t.trim()).filter(Boolean))].slice(0, 100)
 }
 
-/** Whether Soniox hears dictation here, with its key; `why` when the engine asked for is Soniox but there's no key.
- *  Either way, the words it should expect (`terms`). */
 plugin.route("GET", "dictation/cloud", async (req) => {
   await plugin.ownerOnly(req, "Dictation's key")
   const s = plugin.settings()
@@ -90,7 +77,6 @@ it never lands in a transcript. With nothing piped, says whether one is set.
     const k = typeof key === "string" ? key.trim() : ""
     if (!k) return { set: !!keyHere() }
     if (!/^[\x21-\x7e]{8,200}$/.test(k)) throw new OpError("that isn't a Soniox key (one line, no spaces)")
-    // (a key Soniox refuses isn't kept; unreachable, it's kept unchecked)
     const r = await fetch(`${API()}/v1/models`, { headers: { Authorization: `Bearer ${k}` }, signal: AbortSignal.timeout(8000) }).catch(() => null)
     if (r && (r.status === 401 || r.status === 403)) throw new OpError("Soniox refused this key: check it in Soniox's console", 400)
     plugin.saveSecrets({ ...stored(), soniox: k })
@@ -109,9 +95,7 @@ const entryOf = (p: Record<string, unknown>): Entry => {
   if (/[\n:]\s/.test(word) || said.includes(": ")) throw new OpError("a word, without \": \" (what's said goes in `said`)")
   return said && said.toLowerCase() !== word.toLowerCase() ? { word, said } : { word }
 }
-/** The changes in order: two fixes at once (a word and the next) each read what the last one saved. */
 let changing: Promise<unknown> = Promise.resolve()
-/** The dictionary changed by `change`, saved when it did: made (Dictionary.md) when there's none yet. */
 function changeDictionary(change: (body: string) => { body: string; did: boolean }) {
   const next = changing.then(async () => {
     const old = note(), r = change(String(old?.body ?? ""))
@@ -145,8 +129,6 @@ said (\`said\` what dictation wrote): the word goes in first, then, misheard aga
   run: async (p) => {
     let e = entryOf(p)
     if (p.fixed) {
-      // (a fix teaches the word; the same word misheard again, what it's misheard as. One the user took out (Undo, by
-      // hand) isn't learned again, as Wispr Flow does)
       const w = e.word.toLowerCase(), learned = plugin.kept<string[]>("learned", []), known = dictionary().words.some((x) => x.toLowerCase() === w)
       if (learned.includes(w) && !known) return { path: note() ? `${note()!.id}.md` : null, added: null, entry: e, unlearned: true }
       if (!known) e = { word: e.word }
@@ -193,15 +175,10 @@ plugin.op({
   ].join("\n"),
 })
 
-// ---------- the Dictations list: what the desktop app on this machine kept (electron/dictationkeep.ts, never the vault),
-// with what was said to the companion (its own log, the service voice:asks)
-
-/** How it ended up, as electron/dictationkeep.ts says. */
 type Landing = "in" | "front" | "origin" | "clipboard" | "cancelled" | "lost" | "live"
 export type DictationItem = { id: string; t: number; text: string; kind: "dictation" | "companion"
   where: { kind: "note" | "terminal" | "field" | "app" | "companion"; path?: string; name?: string; bundle?: string }
   landing?: Landing; inbox?: boolean; why?: string
-  /** A companion ask's answer, and the companion's name. */
   said?: string; who?: string }
 const loose = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase()
 const OWNER = "Your dictations"
@@ -227,7 +204,6 @@ serves this vault here, so only the companion's asks show.
   },
   run: async (p) => {
     const q = typeof p.q === "string" ? p.q.trim().slice(0, 200) : "", limit = Math.max(1, Math.min(1000, Number(p.limit) || 200))
-    // (only this machine's app: another machine's dictations stay there)
     const got = (inDesktop() ? await plugin.desktop("dictations:list", { q, limit }).catch(() => null) : null) as { items?: DictationItem[]; total?: number; here?: boolean } | null
     const words = loose(q).split(/\s+/).filter(Boolean)
     const asks = p.companion === false ? [] : (await plugin.ask<{ t: number; text: string; where: string; said: string; who?: string }[]>("voice:asks", [], 30))
@@ -244,7 +220,6 @@ serves this vault here, so only the companion's asks show.
   ].filter(Boolean).join("\n"),
 })
 
-/** Where a dictation went, in a few words. */
 export function landingSaid(x: Pick<DictationItem, "where" | "landing" | "inbox" | "why">) {
   const w = x.where, at = w.kind === "note" ? (w.path ?? "a note").replace(/\.md$/, "") : w.kind === "terminal" ? (w.name ?? "a terminal") : w.kind === "field" ? (w.name ?? "a field") : (w.name ?? "another app")
   if (x.landing === "clipboard") return x.inbox ? "copied, and in the inbox" : "copied"

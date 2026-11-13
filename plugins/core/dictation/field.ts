@@ -1,5 +1,3 @@
-// Dictation into a field (the Ask box, a chat's input): the settled words typed in as if typed (the field's own undo
-// and input events); the pending ones are shown by the indicator, as a field can't draw them.
 import { joinText, type DictationTarget } from "@vaultite"
 import { WATCH_MS, watchFix, type Watch } from "./learning.ts"
 
@@ -9,12 +7,10 @@ export function fieldTarget(el: HTMLElement): DictationTarget {
   const text = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? (el as Field) : null
   let at = text?.selectionEnd ?? 0
   let pending = ""
-  /** The last words typed in, read back as what's between the text before and after them, for the user's fixes. */
   let fixing: Watch | null = null
   let ours = false
   const input = () => { if (!ours) fixing?.edited() }
   let unhook: ReturnType<typeof setTimeout> | undefined
-  /** Words starting now go where the cursor is, if the user moved it since the last ones. */
   const anchor = () => {
     if (text && !pending && document.activeElement === text && text.selectionEnd !== null && text.selectionEnd !== at) at = text.selectionEnd
     return at
@@ -24,7 +20,6 @@ export function fieldTarget(el: HTMLElement): DictationTarget {
     final(t) {
       if (!el.isConnected) return
       if (!text) {
-        // (a contenteditable: typed where its selection is; the session having left, focused again)
         if (document.activeElement !== el) el.focus()
         const sel = window.getSelection()
         if (document.activeElement === el) document.execCommand("insertText", false, joinText(sel?.anchorNode?.textContent?.slice(0, sel.anchorOffset) ?? "", t))
