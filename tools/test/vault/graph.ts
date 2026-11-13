@@ -345,7 +345,14 @@ export default async ($: VaultTest) => {
   {
     // The whole graph as a patch of the one the app has (?patch=<v>, core/app.ts patched): an edit sends what changed.
     const { applyPatch } = await import("../../../core/statepatch.ts")
-    const [, w0] = await api("GET", "graph?patch=0"), a0 = JSON.parse(w0)
+    let [, w0] = await api("GET", "graph?patch=0"), a0 = JSON.parse(w0)
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 300))
+      await $.vault.sync()
+      const [, w] = await api("GET", "graph?patch=0"), a = JSON.parse(w)
+      if (a.v === a0.v) break
+      ;[w0, a0] = [w, a]
+    }
     const [, w1] = await api("GET", `graph?patch=${a0.v}`), a1 = JSON.parse(w1)
     write("Graph test/Alone.md", "Now it links to [[Far]].\n")
     let w2 = "", a2: Any = null, now: Any = null
