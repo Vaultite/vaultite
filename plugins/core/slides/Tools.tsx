@@ -105,11 +105,11 @@ export function Overview({ n, at, label, thumb, onPick, onClose }: { n: number; 
   const grid = useRef<HTMLDivElement>(null)
   useEffect(() => { grid.current?.querySelector<HTMLElement>(`[data-overview-slide="${sel + 1}"]`)?.scrollIntoView({ block: "nearest" }) }, [sel])
   const cols = () => {
-    const items = grid.current?.children
+    const items = grid.current?.querySelectorAll<HTMLElement>(":scope > *")
     if (!items || items.length < 2) return 1
-    const top = (items[0] as HTMLElement).offsetTop
+    const top = items[0].offsetTop
     let c = 0
-    while (c < items.length && (items[c] as HTMLElement).offsetTop === top) c++
+    while (c < items.length && items[c].offsetTop === top) c++
     return Math.max(1, c)
   }
   const key = (k: string) => {

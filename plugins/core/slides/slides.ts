@@ -177,7 +177,7 @@ function layoutOf(md: string, s: Slide, size: Size): (Box | string)[] | null {
       const before = line.slice(at, m.index)
       if (before.trim()) buf.push(before)
       at = m.index + m[0].length
-      const kind = m[2].toLowerCase() as Box["kind"]
+      const kind = m[2].toLowerCase() === "grid" ? "grid" : "split"
       if (m[1]) end(kind)
       else start(kind, attrsOf(m[3]), !!m[4])
     }
@@ -317,7 +317,7 @@ export function isTitleSlide(md: string): boolean {
 }
 
 export type Style = "none" | "fade" | "slide" | "convex" | "concave" | "zoom"
-const STYLES = new Set(["none", "fade", "slide", "convex", "concave", "zoom"])
+const STYLES: Style[] = ["none", "fade", "slide", "convex", "concave", "zoom"]
 const SPEEDS: Record<string, number> = { default: 800, fast: 400, slow: 1200 }
 export type Move = {
   out: Style; in: Style; outMs: number; inMs: number
@@ -329,8 +329,8 @@ export type Move = {
 function styleOf(t: unknown, way: "in" | "out", fallback: Style): Style {
   const words = typeof t === "string" ? t.toLowerCase().split(/\s+/) : []
   const paired = words.find((x) => x.endsWith(`-${way}`))?.slice(0, -way.length - 1)
-  const w = paired && STYLES.has(paired) ? paired : words.find((x) => STYLES.has(x))
-  return (w as Style | undefined) ?? fallback
+  const style = (x: string | undefined) => STYLES.find((s) => s === x)
+  return style(paired) ?? words.map(style).find(Boolean) ?? fallback
 }
 const str = (v: unknown) => (["string", "number", "boolean"].includes(typeof v) ? String(v) : undefined)
 

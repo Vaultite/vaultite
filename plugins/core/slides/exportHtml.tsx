@@ -1,4 +1,4 @@
-import { useEffect, useRef, type CSSProperties } from "react"
+import { useEffect, useRef } from "react"
 import { createPortal } from "react-dom"
 import { cn, getStore, NoteBody, notify, notifyError, stem, type Store } from "@vaultite"
 import { Boxes, layOut, LAYOUT_CSS } from "./Layout"
@@ -85,7 +85,7 @@ i = Math.max(0, Math.min(S.length - 1, (parseInt(location.hash.slice(1), 10) || 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&${{ "&": "amp", "<": "lt", ">": "gt", '"': "quot" }[c]};`)
 
 async function build(root: HTMLElement, name: string, deckCss: string, theme: string | undefined) {
-  const copy = root.cloneNode(true) as HTMLElement
+  const copy = root.ownerDocument.importNode(root, true)
   const urls = new Map<string, Promise<string>>()
   const inline = (u: string) => { if (!urls.has(u)) urls.set(u, dataUrl(new URL(u, location.href).href).catch(() => new URL(u, location.href).href)); return urls.get(u)! }
   for (const img of copy.querySelectorAll("img")) {
@@ -144,7 +144,7 @@ export function DeckExport({ path, slides, fm, props, css }: { path: string; sli
         const bg = backgroundOf(s, props, store, path)
         return (
           <section key={n} data-n={n} data-h={s.h} data-v={s.v} className={cn(bg.tone && "scheme-preview", bg.tone === "dark" && "dark")}
-            data-scheme={bg.tone ? document.documentElement.dataset.scheme : undefined} style={theme?.vars as CSSProperties}>
+            data-scheme={bg.tone ? document.documentElement.dataset.scheme : undefined} style={theme?.vars}>
             {bg.style && <div className="slide-bg" style={bg.style} />}
             <div data-deck-slide={n + 1} style={{ width: frame.w }} className={cn("slide-fit", !s.boxes && !s.canvas && isTitleSlide(s.md) && TITLE)}>
               <div className={cn("slide-box", s.cls)}><SlideFrame slide={s} frame={frame}>{content(s)}</SlideFrame></div>

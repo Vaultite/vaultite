@@ -14,19 +14,19 @@ export function openPresenter(title: string, gone: () => void): PresenterWindow 
   doc.title = title
   const root = doc.createElement("div")
   doc.body.replaceChildren(root)
-  const clones = new Map<Element, Element>()
+  const clones = new Map<HTMLElement, HTMLElement>()
   const sync = () => {
     const from = document.documentElement, to = doc.documentElement
     for (const a of [...to.attributes]) if (!from.hasAttribute(a.name)) to.removeAttribute(a.name)
     for (const a of from.attributes) if (to.getAttribute(a.name) !== a.value) to.setAttribute(a.name, a.value)
     doc.body.className = document.body.className
     const want = [...document.head.querySelectorAll<HTMLElement>('link[rel="stylesheet"], style')]
-    for (const [o, c] of clones) if (!want.includes(o as HTMLElement)) { c.remove(); clones.delete(o) }
+    for (const [o, c] of clones) if (!want.includes(o)) { c.remove(); clones.delete(o) }
     let prev: Node | null = null
     for (const o of want) {
       let c = clones.get(o)
-      if (!c) clones.set(o, (c = o.cloneNode(true) as Element))
-      if (o instanceof HTMLLinkElement) { if ((c as HTMLLinkElement).href !== o.href) (c as HTMLLinkElement).href = o.href }
+      if (!c) clones.set(o, (c = document.importNode(o, true)))
+      if (o instanceof HTMLLinkElement && c instanceof HTMLLinkElement) { if (c.href !== o.href) c.href = o.href }
       else if (c.textContent !== o.textContent) c.textContent = o.textContent
       // Moving a <link> loads its sheet again.
       const at: Node | null = prev ? prev.nextSibling : doc.head.firstChild
@@ -59,7 +59,7 @@ export function Screen({ size, label, bare, children }: { size: { w: number; h: 
     if (!el || !view) return
     const fit = () => setK(Math.min(el.clientWidth / size.w, el.clientHeight / size.h))
     fit()
-    const ro = new (view as typeof globalThis).ResizeObserver(fit)
+    const ro = new view.ResizeObserver(fit)
     ro.observe(el)
     return () => ro.disconnect()
   }, [size.w, size.h])

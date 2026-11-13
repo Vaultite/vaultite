@@ -38,18 +38,18 @@ ${Object.entries(ANIMATIONS).map(([name, t]) => `@keyframes slides-${name} { ${/
 `
 
 function* itemsOf(box: Element): Generator<HTMLElement> {
-  for (const c of box.children) {
-    if (!c.classList.contains("note-body")) { yield c as HTMLElement; continue }
-    for (const d of c.children) {
-      if (d.classList.contains("note-body-md")) yield* d.children as Iterable<HTMLElement>
-      else yield d as HTMLElement
+  for (const c of box.querySelectorAll<HTMLElement>(":scope > *")) {
+    if (!c.classList.contains("note-body")) { yield c; continue }
+    for (const d of c.querySelectorAll<HTMLElement>(":scope > *")) {
+      if (d.classList.contains("note-body-md")) yield* d.querySelectorAll<HTMLElement>(":scope > *")
+      else yield d
     }
   }
 }
 
 export function layOut(root: HTMLElement) {
   for (const b of root.querySelectorAll<HTMLElement>("[data-kids]")) {
-    const nth: string[] = JSON.parse(b.dataset.nth || "[]")
+    const listed = JSON.parse(b.dataset.nth || "[]"), nth: string[] = Array.isArray(listed) ? listed.map(String) : []
     let k = 0
     for (const el of itemsOf(b)) {
       const s = [b.dataset.kids, nth[k++]].filter(Boolean).join("; ")

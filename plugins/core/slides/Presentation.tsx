@@ -20,6 +20,8 @@ const BASE = 720
 const MAX = 2.2
 const MIN = 0.6
 export const TITLE = "text-center text-[22px] leading-[30px]"
+const isElementOfAnyWindow = (t: EventTarget | null): t is Element => !!t && "nodeType" in t && t.nodeType === 1
+
 export function frameOf(props: Record<string, unknown>) {
   const s = sizeOf(props)
   return revealTheme(props.theme) ? { w: s.w, h: s.h, fixed: true } : { w: BASE, h: Math.round((BASE * s.h) / s.w), fixed: false }
@@ -73,8 +75,8 @@ export function annotate(root: HTMLElement, slide: Slide) {
     if (!a || !target || !root.contains(target)) continue
     target.classList.add(...a.cls.split(/\s+/).filter(Boolean))
     if (a.style) target.setAttribute("style", [target.getAttribute("style"), a.style].filter(Boolean).join("; "))
-    if (a.bg && CSS.supports("color", a.bg)) { (target as HTMLElement).style.backgroundColor = a.bg; target.classList.add(...toneClass(a.bg).split(" ").filter(Boolean)) }
-    if (a.index !== undefined) (target as HTMLElement).dataset.fragmentIndex = String(a.index)
+    if (a.bg && CSS.supports("color", a.bg)) { target.setAttribute("style", [target.getAttribute("style"), `background-color: ${a.bg}`].filter(Boolean).join("; ")); target.classList.add(...toneClass(a.bg).split(" ").filter(Boolean)) }
+    if (a.index !== undefined) target.setAttribute("data-fragment-index", String(a.index))
     for (const [k, v] of Object.entries(a.data ?? {})) target.setAttribute(`data-${k}`, v)
   }
 }
@@ -251,7 +253,7 @@ function SlideView({ src, slide, i, step, onClick }: { src: Source; slide?: Slid
   const content: ReactNode = slide?.boxes ? <Boxes items={slide.boxes} ctx={{ store, path, fm }} /> : md && <NoteBody store={store} path={path} body={md} fm={fm} className="slide-body" />
   return (
     <div className={cn("relative flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground", bg.tone === "dark" ? "dark" : bg.tone === "light" && "scheme-preview")}
-      data-tone={bg.tone ?? undefined} style={theme?.vars as CSSProperties}>
+      data-tone={bg.tone ?? undefined} style={theme?.vars}>
       <div data-deck data-deck-theme={theme?.name} className="relative flex min-h-0 flex-1 flex-col">
         {bg.style && <div aria-hidden className="pointer-events-none absolute inset-0" style={bg.style} />}
         <div ref={stage} onClick={onClick} className="relative flex min-h-0 flex-1 cursor-default overflow-hidden px-6 pt-8 pb-16 md:px-16 md:pt-12">
@@ -300,14 +302,14 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
   const [board, setBoard] = useState(false)
   const [ink, setInk] = useState<Record<string, Stroke[]>>({})
   const [overview, setOverview] = useState(false)
-  const [timer, setTimer] = useState(() => ({ start: Date.now(), paused: null as number | null }))
+  const [timer, setTimer] = useState<{ start: number; paused: number | null }>(() => ({ start: Date.now(), paused: null }))
   const total = Number(props.timeForPresentation) > 0 ? Number(props.timeForPresentation) : 0
   const [notes, setNotes] = useState(() => notesShown || props.showNotes === true)
   useEffect(() => { if (props.showNotes === true) setNotes(true) }, [props.showNotes])
   const toggleNotes = () => setNotes((v) => (notesShown = !v))
   const n = Math.max(1, slides.length)
   const i = Math.min(pos.at, n - 1)
-  const slide = slides[i] as Slide | undefined
+  const slide: Slide | undefined = slides[i]
   const md = slide?.md ?? ""
   const canvas = !!slide?.canvas
   const deckSize = useMemo(() => sizeOf(props), [props])
@@ -443,7 +445,8 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
   }
 
   const click = (e: MouseEvent) => {
-    const t = e.target as Element
+    const t = e.target
+    if (!isElementOfAnyWindow(t)) return
     if (t.closest("[data-wiki], [data-tag]")) { onClose(); return }
     if (t.closest("a, button, audio, video, iframe, input, summary, details, select, textarea, .note-embed, [data-no-nav]")) return
     if ((t.ownerDocument.defaultView ?? window).getSelection()?.toString()) return
@@ -493,7 +496,7 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
       className="group/slides fixed inset-0 z-[70] flex flex-col bg-background text-foreground outline-none select-none md:flex-row" data-presentation={path} data-keeps-keys>
       <style>{DECK_CSS}{LAYOUT_CSS}{TOOLS_CSS}{css}</style>
       <div ref={screenBox} className={cn("relative flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground", other && "scheme-preview", other === "dark" && "dark")}
-        data-tone={bg.tone ?? undefined} data-scheme={scheme} style={theme?.vars as CSSProperties}>
+        data-tone={bg.tone ?? undefined} data-scheme={scheme} style={theme?.vars}>
         <div data-deck data-deck-theme={theme?.name} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
           {bg.style && <div ref={bgEl} aria-hidden className="pointer-events-none absolute inset-0" style={bg.style} />}
           <div ref={layer} aria-hidden className="pointer-events-none absolute inset-0" />

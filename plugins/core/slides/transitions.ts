@@ -28,7 +28,7 @@ const TYPE = ["fontSize", "lineHeight", "letterSpacing"] as const
 type Look = Record<string, string>
 const lookOf = (cs: CSSStyleDeclaration): Look => Object.fromEntries([...LOOK, ...TYPE].map((p) => [p, cs[p]]))
 const pick = (l: Look, text: boolean, k: number) => Object.fromEntries((text ? [...LOOK, ...TYPE] : LOOK)
-  .map((p) => [p, (TYPE as readonly string[]).includes(p) && l[p].endsWith("px") ? `${Number.parseFloat(l[p]) * k}px` : l[p]]))
+  .map((p) => [p, TYPE.some((x) => x === p) && l[p].endsWith("px") ? `${Number.parseFloat(l[p]) * k}px` : l[p]]))
 const scaleOf = (el: HTMLElement) => el.getBoundingClientRect().width / (el.offsetWidth || 1) || 1
 
 type Old = { key: string; rect: DOMRect; look: Look }
@@ -36,7 +36,7 @@ export type Leaving = { move: Move; stage: HTMLElement | null; bg: HTMLElement |
 export type Parts = { stage: HTMLElement; bg: HTMLElement | null; inner: HTMLElement }
 
 function copy(el: HTMLElement) {
-  const c = el.cloneNode(true) as HTMLElement
+  const c = el.ownerDocument.importNode(el, true)
   c.inert = true
   c.setAttribute("aria-hidden", "true")
   c.dataset.slideLeaving = ""
@@ -115,8 +115,8 @@ export function slideMotion() {
     if (!o.unmatched) return
     const hit = [...pairs.keys()]
     const fade = (root: Element) => {
-      for (const c of root.children) {
-        if (pairs.has(c as HTMLElement)) continue
+      for (const c of root.querySelectorAll<HTMLElement>(":scope > *")) {
+        if (pairs.has(c)) continue
         if (hit.some((h) => c.contains(h))) fade(c)
         else play(c, [{ opacity: 0 }, { opacity: getComputedStyle(c).opacity }], { duration: o.ms * 0.8, delay: o.ms * 0.2, easing: "ease", fill: "backwards" })
       }
