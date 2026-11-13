@@ -607,6 +607,7 @@ export default async ($: VaultTest) => {
   if (process.platform !== "win32") {
     const net = await import("node:net")
     const { serverFiles, termdBackend } = await import("../../../plugins/core/terminal/backend.ts")
+    const { waitFor } = await import("../lib.ts")
     const name = `test-stall-${process.pid}`, { socket, files } = serverFiles(name)
     let answering = true, ctl: import("node:net").Socket | null = null
     fs.writeFileSync(`${files}.pid`, "4747\n")
@@ -639,7 +640,7 @@ export default async ($: VaultTest) => {
     const t0 = Date.now()
     const first = await keeper.list()
     const t1 = Date.now()
-    await new Promise((r) => setTimeout(r, 1000))
+    await waitFor(() => keeper.trouble(), 5000, 20)
     const t2 = Date.now()
     let failedFast = ""
     await keeper.kill("x1").catch((e: Error) => { failedFast = e.message })
