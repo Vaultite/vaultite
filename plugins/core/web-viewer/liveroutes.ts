@@ -7,7 +7,7 @@ import type { LiveStep, LiveTab } from "./livetabs.ts"
 
 const RENEW_MS = 10_000
 const BEHIND = 1 << 20
-const STEP = /\bbrowser tab (\d+)\b/
+export const STEP = /\bbrowser tab (\d+)\b/
 const THEIR_TABS = z.object({ tabs: z.array(z.looseObject({})) })
 const EVENTS = z.object({ events: z.array(z.object({ t: z.number(), last: z.number().optional(), actor: z.object({ name: z.string() }),
   action: z.string(), text: z.string(), route: z.string().optional() })) })

@@ -108,6 +108,10 @@ export default async ($: VaultTest) => {
       let steps: Any[] = []
       for (let i = 0; i < 20 && !steps.length; i++) { await sleep(100); steps = (await api("GET", `web-viewer/tabs/3/steps?since=${since}`))[1].steps }
       check("live view: a tab's steps are what Activity kept of agents' ops in it, and only its", steps.length === 1 && steps[0].text === "Clicked e5", steps)
+      const { STEP } = await import("../../../plugins/core/web-viewer/liveroutes.ts")
+      const inTab = wv.ops.filter((o) => "tab" in (o.params ?? {}) && o.did)
+      const unseen = inTab.filter((o) => Number(STEP.exec(o.did?.({ tab: 7, action: "click", ref: "e1", url: "https://example.com/", key: "Enter" })?.text ?? "")?.[1]) !== 7).map((o) => o.id)
+      check("live view: every op on a tab says which in Activity, as its steps are found by", inTab.length > 5 && !unseen.length, unseen)
     } finally { wv.desktopWaiting = was }
     // What the desktop app tells the server unasked reaches who listens (core/desktopapp.ts).
     const { onDesktopEvent } = await import("../../../core/desktopapp.ts")
