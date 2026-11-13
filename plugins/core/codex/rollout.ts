@@ -129,7 +129,7 @@ export class Conversation {
     if (p.type === "function_call" || p.type === "custom_tool_call" || p.type === "local_shell_call") {
       let input: unknown = p.type === "function_call" ? p.arguments : p.type === "custom_tool_call" ? p.input : p.action
       if (typeof input === "string") try { input = JSON.parse(input) } catch {}
-      const cmd = p.type === "local_shell_call" ? commandOf(p.action?.command) : input && typeof input === "object" && "command" in input ? commandOf((input as { command: unknown }).command) : ""
+      const cmd = p.type === "local_shell_call" ? commandOf(p.action?.command) : input && typeof input === "object" && "command" in input ? commandOf(input.command) : ""
       const name = p.type === "local_shell_call" || p.name === "shell" || p.name === "exec_command" ? "Shell" : String(p.name ?? "Tool")
       const tool: Tool = { kind: "tool", id: String(p.call_id ?? p.id ?? ""), name, summary: (cmd || summarize(name, input)).replace(/\s+/g, " ").slice(0, 200),
         input: truncate(cmd || str(input)), result: null, error: false, at }

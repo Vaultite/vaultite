@@ -1,9 +1,10 @@
 import fs from "node:fs"
 import path from "node:path"
 import { type AgentAsk, type AgentCommand, programOf, type AgentMeter, type AgentModels, type AgentStart, ago, codingAgent, cwds, dayOf, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows, limitWindow, type Live, notOnThisMachine,
-  priceList, processes, projectOf, shellQuote, projectRoots, sessionsOf, epochSeconds, Tally, terminalOf, Transcript, transcripts, lastTurn, type PermissionMode } from "../../../core/agents.ts"
+  priceList, processes, projectOf, shellQuote, projectRoots, sessionsOf, epochSeconds, Tally, terminalOf, Transcript, transcripts, lastTurn, PERMISSION_MODES, type PermissionMode } from "../../../core/agents.ts"
 import { Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
+import { z } from "zod"
 import { Conversation, titleOf, userText, WANTED } from "./rollout.ts"
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
@@ -45,11 +46,13 @@ const FILE_ID = /rollout-[\dT-]+-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4
 const USAGE_KEYS = ["input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens", "total_tokens"]
 const int = (v: unknown) => Math.max(Math.trunc(Number(v) || 0), 0)
 
+const KEPT_LIMITS = z.object({ observed: z.number(), rl: z.custom<Item>((v) => typeof v === "object" && v !== null) })
+
 class Scan extends JsonlScan<Resp, FileState> {
   names = new Map<string, string>()
   limits: { observed: number; rl: Item } | null = null
   protected extra() { return this.limits }
-  protected restore(x: unknown) { if (x && typeof x === "object") this.limits = x as Scan["limits"] }
+  protected restore(x: unknown) { const r = KEPT_LIMITS.safeParse(x); if (r.success) this.limits = r.data }
 
   protected fresh(p: string): FileState {
     const id = FILE_ID.exec(path.basename(p))?.[1] ?? path.basename(p, ".jsonl")
@@ -282,7 +285,7 @@ async function sessionFile(id: string): Promise<string | null> {
   if (known && fs.existsSync(known.file)) return known.file
   for (const dir of ["sessions", "archived_sessions"]) {
     try {
-      const hit = (fs.readdirSync(path.join(CODEX, dir), { recursive: true }) as string[]).find((n) => n.endsWith(".jsonl") && n.includes(id))
+      const hit = fs.readdirSync(path.join(CODEX, dir), { recursive: true, encoding: "utf8" }).find((n) => n.endsWith(".jsonl") && n.includes(id))
       if (hit) return path.join(CODEX, dir, hit)
     } catch {}
   }
@@ -352,7 +355,7 @@ plugin.provide("agent-mode:codex", async (terminal: string, session = ""): Promi
   const line = text.split("\n").reverse().find((l) => l.includes('"turn_context"'))
   let c: Item = {}
   try { c = JSON.parse(line ?? "").payload ?? {} } catch { return null }
-  return modeOf(String(c.approval_policy ?? ""), String((c.sandbox_policy as Item | undefined)?.type ?? ""), String(c.approvals_reviewer ?? ""))
+  return modeOf(String(c.approval_policy ?? ""), String(c.sandbox_policy?.type ?? ""), String(c.approvals_reviewer ?? ""))
 })
 
 /** The models its picker lists ($CODEX_HOME/models_cache.json) and the efforts they take. */
@@ -362,7 +365,7 @@ plugin.provide("agent-models:codex", (): AgentModels => {
   const efforts = (m: Item) => (Array.isArray(m.supported_reasoning_levels) ? m.supported_reasoning_levels.map((l: Item) => String(l.effort)) : [])
   return { models: sortBy(list, (m) => Number(m.priority) || 0).map((m) => ({ id: String(m.slug), label: modelName(String(m.slug)) })),
     efforts: list.length ? efforts(list[0]).filter((e: string) => list.every((m) => efforts(m).includes(e))) : ["low", "medium", "high", "xhigh"],
-    modes: Object.keys(SANDBOX) as PermissionMode[] }
+    modes: [...PERMISSION_MODES] }
 })
 
 /** Its dialogs, by their last lines; before 0.163 (no OSC 7501, no hooks) its only blocked state. */
