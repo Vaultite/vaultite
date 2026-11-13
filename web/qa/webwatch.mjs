@@ -1,4 +1,4 @@
-// Cloud sessions (plugins/core/cloud-sessions, electron/web.ts CLOUD), end to end on a throwaway vault, against a
+// Cloud sessions (plugins/core/cloud-sessions, electron/webhandlers.ts `cloud`), end to end on a throwaway vault, against a
 // made-up claude.ai this script serves on 127.0.0.1 (VAULTITE_TEST_CLAUDE_URL): its /code page signs a profile in (a
 // cookie: ?as=team, the team's login), /api/organizations and /v1/sessions answer as claude.ai's do. Signed out, nothing
 // is asked and the panel says nothing; signed in, it asks first, and nothing is read till the yes. Then every account

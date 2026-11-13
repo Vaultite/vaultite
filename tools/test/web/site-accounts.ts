@@ -3,7 +3,7 @@ import { check } from "../lib.ts"
 // ---------- Browser: who's signed in to a site (electron/siteaccounts.ts), on made-up answers ----------
 const sa = await import("../../../electron/siteaccounts.ts")
 const read = (site: string, body: unknown, cookies: Record<string, string> = {}, url = "") => sa.ACCOUNTS[site].read!(body, async (_d, name) => cookies[name] ?? "", url)
-const name = async (...a: Parameters<typeof read>) => { const v = await read(...a); return (typeof v === "string" ? v : v?.account) || null } // (as electron/web.ts askWho: "" names nobody)
+const name = async (...a: Parameters<typeof read>) => { const v = await read(...a); return (typeof v === "string" ? v : v?.account) || null } // (as electron/webaccounts.ts askWho: "" names nobody)
 const look = (site: string, v: unknown) => sa.ACCOUNTS[site].look!.read(v)
 const list = '["gaia.l.a.r",[["gaia.l.a",1,"Alice Park","alice.park@example.com","https://lh3.example.com/a.png",1,1,0,null,1,"1001",null,null,null,0,1],' +
   '["gaia.l.a",1,"Lighthouse","studio@example.com","",1,1,0,null,1,"1002",null,null,null,0,1],["gaia.l.a",1,"Old","old@example.com","",1,1,0,null,1,"1003",null,null,null,1,1]]]'

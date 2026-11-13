@@ -1,4 +1,4 @@
-// An agent's page draws, so its clicks land (electron/web.ts readyView, drawing): pages opened at once (no spare to
+// An agent's page draws, so its clicks land (electron/websession.ts readyView, webspot.ts drawing): pages opened at once (no spare to
 // take, each view new) draw and take their first click. A page that draws no frame drops presses (Chromium), so an act
 // "changed nothing". (Under Playwright a hidden view's page never hides, so a page that stopped drawing isn't made here.)
 // WRITES: the throwaway vault only.

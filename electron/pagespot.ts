@@ -1,4 +1,4 @@
-// Where a browser page is shown (web.ts applies it): one spot at a time, so a page is never both parked and placed.
+// Where a browser page is shown (webspot.ts applies it): one spot at a time, so a page is never both parked and placed.
 
 /** Out of sight; an agent's page drawing off the window (`woke`: when it last came back from resting); hidden and
  *  throttled there a while; in its tab's pane; filling its window (full screen) or its player. */

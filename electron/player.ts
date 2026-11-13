@@ -1,4 +1,4 @@
-// Players (web.ts's): the scripts filling a page's video in its window, and that window: no title bar, its controls
+// Players (webplayer.ts's): the scripts filling a page's video in its window, and that window: no title bar, its controls
 // shown with the pointer at its top, which drags it (topstrip.ts).
 import { app, BaseWindow, type MenuItemConstructorOptions, type Rectangle, screen, WebContentsView } from "electron"
 import fs from "node:fs"

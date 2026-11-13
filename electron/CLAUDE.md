@@ -102,8 +102,11 @@
   `skipTransformProcessType`, or showing it on every Space takes the app out of the Dock. It never takes the keyboard: a
   cursor's conversation is a window of its own (`type: "panel"`, non-activating), so typing there leaves the app in
   front in front, and closing it gives that app its keyboard back.
+- The Browser's pages: web.ts only re-exports its parts (web*.ts), layered with no import cycle: base (the pages,
+  `tell`), keys, paint, permissions, session, icons, accounts, logins, stack, spot, player, life, go, menus, page (`make`,
+  one page's listeners), handlers (the app's calls), each importing only those before it.
 - Every window is an `AppWindow` (appwindow.ts): a BaseWindow whose page is a view, so it can go over the Browser's
-  pages (web.ts `raise`); a BrowserWindow's own page is always under its views. Pop-outs are adopted into one.
+  pages (webstack.ts `raise`); a BrowserWindow's own page is always under its views. Pop-outs are adopted into one.
 - A page's sized popup (a sign-in, a call's video) is a window of its own (popup.ts), never its opener window's child:
   on a Mac a child moves, minimizes and changes Space with its parent. One that stays on its opener's site (or is a
   blank one the opener writes into) is a pop-out, bare as a player; once it goes to another site it's a sign-in for good,

@@ -111,7 +111,7 @@ export function downloads(): Download[] {
 }
 
 const sessionOf = new Map<string, Session>()
-/** Retry needs a profile's session: web.ts hands each over as it's made. */
+/** Retry needs a profile's session: websession.ts hands each over as it's made. */
 export const downloadSession = (profile: string, s: Session) => { sessionOf.set(profile, s) }
 
 /** What the app asks of one: cancel, pause, resume, retry (anew, or on from where it stopped), open, show, forget. */

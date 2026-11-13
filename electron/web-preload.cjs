@@ -8,7 +8,7 @@ const { contextBridge, ipcRenderer, webFrame } = require("electron")
 // every view's: a tab never does, as in Chrome. `initial` (none): `none` itself computes to no-drag, a region per element.
 if (process.isMainFrame) webFrame.insertCSS("*, ::before, ::after { -webkit-app-region: initial !important }", { cssOrigin: "user" })
 
-// ⌘F, ⌘G, ⇧⌘G and zoom: the page's first (a doc's own find), the app's once every listener let it be (web.ts BROWSER_KEYS).
+// ⌘F, ⌘G, ⇧⌘G and zoom: the page's first (a doc's own find), the app's once every listener let it be (webkeys.ts BROWSER_KEYS).
 const MAC = process.platform === "darwin"
 // (only the user's own keys and clicks, here and below: a page's script can't press the app's buttons)
 addEventListener("keydown", (e) => {

@@ -139,7 +139,7 @@ const over = () => win.evaluate(() => {
 })
 const isAligned = async () => (await aligned()) === true
 const shown = async () => (await pages()).some((p) => p.visible)
-/** The window's page over its pages (electron/web.ts `raise`). */
+/** The window's page over its pages (electron/webstack.ts `raise`). */
 const raised = () => app.evaluate(({ BaseWindow }) => {
   const w = BaseWindow.getAllWindows()[0], kids = w.contentView.children
   return kids.length > 1 && kids.indexOf(w.view) === kids.length - 1

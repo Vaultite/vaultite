@@ -26,10 +26,10 @@ a file here that adds itself through `engine.ts` and is imported by `index.ts`; 
   `app.enableSandbox()`: it drops --no-sandbox, which that AppImage needs.
 - Chromium puts its API objects back on `chrome` whenever an extension loads: the preload adds to them, never replaces
   `chrome.<api>`.
-- Session preloads reach frames only because web.ts sets `nodeIntegrationInSubFrames` (sandboxed, no Node); Shields'
+- Session preloads reach frames only because websession.ts sets `nodeIntegrationInSubFrames` (sandboxed, no Node); Shields'
   cosmetic filtering relies on it too.
 - Nothing heavy loads at launch (Ghostery, its lists, extensions): it's `later` in engine.ts, loaded before the first
-  page (web.ts awaits `engineLoaded`) or when the app asks a name nothing answers yet. Names every window asks at start
+  page (webhandlers.ts awaits `engineLoaded`) or when the app asks a name nothing answers yet. Names every window asks at start
   (`adblock:settings`, `lock:set`) stay cheap and eager.
 - The user's hiding rules are an engine of their own per window, apart from the daily lists and from Shields being
   down, sent to frames again as they change (`adblock:rules`). Ghostery joins a sheet's selectors into one rule: ours
@@ -53,7 +53,7 @@ a file here that adds itself through `engine.ts` and is imported by `index.ts`; 
 - Another browser's settings for an extension (extsettings.ts) are copied by a stand-in extension with its key, never
   the extension itself (its worker would act mid-copy): each chrome.storage area is a LevelDB folder a session of its
   own reads, written through the storage shim so the sync area lands where the extension reads it.
-- Pages claim a plain Chrome (web.ts strips Electron from the user agent: Google's sign-in refuses Electron), but
+- Pages claim a plain Chrome (websession.ts strips Electron from the user agent: Google's sign-in refuses Electron), but
   Cloudflare's check finds Electron in the page, so its requests say Electron (challenges.ts) and pass.
 - Google's sign-in still finds Electron by its client hints (Chromium's brands, no Google Chrome's): accounts.google.com
   alone sees Firefox, its requests and its frames' navigator (googlesignin.ts), which sends none; only in Google's own tab
@@ -76,6 +76,6 @@ a file here that adds itself through `engine.ts` and is imported by `index.ts`; 
 - A login its entry's tag doesn't free waits for the user's passkey, verified here (presence.ts), never for a yes an
   agent could give. A passkey is added only by a code the app shows, then Touch ID: agents have computer use, so a
   click proves nothing. The list is encrypted with the Keychain's key.
-- Electron leaves several of Chrome's questions to the app, doing nothing without one: a page asking to stay (web.ts
+- Electron leaves several of Chrome's questions to the app, doing nothing without one: a page asking to stay (weblife.ts
   `mayLeave`, else the navigation's silently dropped), prompt() and a site's sign-in (sheet.ts), sharing the screen
   (screenshare.ts). Input events never come from a frame of another site: web-preload.cjs tells its presses.

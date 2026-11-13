@@ -1,5 +1,5 @@
 // What's over what in a vault window, and where the pointer goes: one owner, pure, so every rule is tested on Node.
-// web.ts applies it; nothing else orders a window's views or passes the pointer to a page.
+// webstack.ts applies it; nothing else orders a window's views or passes the pointer to a page.
 import { z } from "zod"
 
 /** How the window's own page is over its pages: not (null), taking the pointer ("app": a menu, a drag), or letting it

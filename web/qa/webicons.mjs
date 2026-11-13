@@ -1,4 +1,4 @@
-// Web tabs show their sites' icons (electron/web.ts fetches them, web-viewer/icons.tsx draws them): a PNG, an SVG and
+// Web tabs show their sites' icons (electron/webicons.ts fetches them, web-viewer/icons.tsx draws them): a PNG, an SVG and
 // a site's own /favicon.ico each on its tab; a site whose icon isn't an image, and one whose kept icon can't be drawn,
 // keep the globe; a page with an icon of its own under a path (Maps on google.com) has it on its tab while its site's
 // home page keeps the site's; a broken icons file in userData changes nothing; the icons are kept for the next launch.

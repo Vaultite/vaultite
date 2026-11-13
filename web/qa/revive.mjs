@@ -1,4 +1,4 @@
-// The desktop app draws a vault window again when its renderer or server dies (electron/web.ts `revive`), never a gray
+// The desktop app draws a vault window again when its renderer or server dies (electron/weblife.ts `revive`), never a gray
 // window; its boxes answered by stand-ins. Writes the throwaway vault only.
 //   node web/qa/revive.mjs <vault copy>
 import { _electron } from "playwright-core"

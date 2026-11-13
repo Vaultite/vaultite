@@ -19,7 +19,7 @@
 - While its pane moves (core/panemotion.ts) a picture of the page slides in its place and the page waits off the window
   at its new size: a native view moved each frame trails the pane.
 - A tab owns its page by the tab's id (electron/webpages.ts): kept while hidden, ended when the tab closes, leaves the
-  window (moved to another of the vault's windows, it goes along: web.ts `adopt`) or shows something else. None
+  window (moved to another of the vault's windows, it goes along: webhandlers.ts `web:adopt`) or shows something else. None
   outlives its tab. Never match pages by address: `getURL()` is "" till the first load commits (hidden pages kept
   playing with no tab). A page made before its tab (window.open's, a glance) is handed over by id (`web:adopt`) and
   needs `outlivesOpener`, or Electron ends it with its opener.
@@ -29,14 +29,14 @@
   `web/qa/webrestore.mjs` times it.
 - An agent's page has no tab, parked off the window and unthrottled so it keeps drawing (a hidden view stops at its
   next cross-site load); idle a minute it rests hidden (agent.ts) and any agent call wakes it. While an agent holds it
-  (agent.ts `held`) its size is pinned over CDP at 1280x800, zoom isolated, web.ts `fit` never places it, and its tab
+  (agent.ts `held`) its size is pinned over CDP at 1280x800, zoom isolated, webspot.ts `fit` never places it, and its tab
   draws AgentWatch.tsx's picture.
 - Agents from outside this machine (`remote`) never reach local addresses: agent.ts refuses them and cancels loads
   there (redirects, frames, DNS answers) while such an agent drives the page.
 - A page in its player is still its tab's (`win` the tab's window); only `fit` changes. Its video fills it as a popover
   (the top layer), leaving the site's own full screen the site's.
 - The page keeps the keyboard; the app's ⌘/⌃/⌥ shortcuts come back as `key` events. Keys a site may take (⌘F, ⌘G, zoom:
-  web.ts BROWSER_KEYS) reach the page first and come back only if it left them, never to the menu bar.
+  webkeys.ts BROWSER_KEYS) reach the page first and come back only if it left them, never to the menu bar.
 - Only another app's link (desktopapp.ts `fromApp`) may ask which container (linklogins.ts). Who's signed in is the
   engine's to say (`web:who`), and a page's flow too (webpages.ts `flowOn`); sign-ins are known by OAuth's, SAML's and
   OpenID's fields (core/signin.ts), never by naming a site.
@@ -49,7 +49,7 @@
   as `remote:take`. Never add a `remote:` call that answers a cookie or signs out: anything on the tailnet that
   reaches a server could ask it.
 - The page bar hidden (usebar.ts, barout.ts) slides over the page's top, so the window is raised over the page while
-  it's out. The window never hears the pointer over a page: electron/web.ts tells when it's at the page's top (`top`).
+  it's out. The window never hears the pointer over a page: electron/webpage.ts tells when it's at the page's top (`top`).
   The pane's top (Tabs.tsx's `data-pane-bar`, Workspace.tsx's `data-pane-gap`) brings it too, and every menu that has
   the bar's switch puts it last.
 - As cards, a page's corners follow its card's only where it fills the card (`setBorderRadius`). Electron rounds all

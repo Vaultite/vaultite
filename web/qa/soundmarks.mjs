@@ -1,6 +1,6 @@
 // A page playing where its tab can't be seen, in the desktop app (Electron): folded into a tab group, the group's chip
 // (the tab bar) and its row (the sidebar) show a speaker (plugins/core/web-viewer/soundmarks.ts), whose menu shows the
-// tab, pauses it (electron/web.ts `pause`, its media paused in the page) and plays it again; a split's row in the
+// tab, pauses it (electron/webgo.ts `pause`, its media paused in the page) and plays it again; a split's row in the
 // sidebar shows the speaker in its pane's cell. The made-up page's tone is too low and deep to hear.
 // WRITES: the throwaway vault only.
 //   node web/qa/soundmarks.mjs <vault copy>
