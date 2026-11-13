@@ -1,3 +1,4 @@
+import { z } from "zod"
 import { byUser, diffLines, fmtAgo, HTTPError, type OpCtx, OpError, Plugin, type Who, whoOf } from "../../../core/plugins.ts"
 import { isHiddenPath, type Item, parseText, readText, setPropertyText, type Vault } from "../../../core/vault.ts"
 
@@ -7,6 +8,9 @@ type Change = { t: number; last?: number; actor: { kind: string; name: string };
 export type Pending = { path: string; by: string[]; first: number; last: number; added?: number; removed?: number; created?: boolean }
 type Found = Pending & { start: number; base: { t: number; text: string; shown: string } | null; exact: boolean; yours: boolean }
 
+const MARKS = z.record(z.string(), z.unknown()).catch({})
+const WAS = z.object({ was: z.record(z.string(), z.unknown()) })
+const MADE = z.record(z.string(), z.number()).catch({})
 const DAY = 86_400_000
 /** Claude Code tells its hook of an edit after the write. */
 const HOOK_LAG = 3000
@@ -32,7 +36,7 @@ function takeIn() {
   takenIn = true
   const conf = plugin.readSettings()
   if (!conf || !("files" in conf)) return
-  const old = (conf.files && typeof conf.files === "object" ? conf.files : {}) as Record<string, unknown>, cur = plugin.kept<Record<string, number>>("marks", {})
+  const old = MARKS.parse(conf.files), cur = plugin.kept<Record<string, number>>("marks", {})
   for (const [k, t] of Object.entries(old)) if (typeof t === "number" && t > (cur[k] ?? 0)) cur[k] = t
   plugin.keep("marks", cur, { shared: true })
   const { files: _, ...rest } = conf
@@ -263,17 +267,17 @@ plugin.route("GET", "review/file", async (req) => {
 plugin.route("POST", "review/marks", (req) => {
   const h = (k: string) => { const v = req.http?.headers[k]; return typeof v === "string" ? v : null }
   if (!byUser(whoOf(h("x-vaultite-client"), h("x-vaultite-agent")))) throw new HTTPError(403, "only the app puts review marks back")
-  const given = (req.body as { was?: unknown })?.was
-  if (!given || typeof given !== "object") throw new HTTPError(400, "was: { path: ms or null }, as keep or revert answered")
+  const body = WAS.safeParse(req.body)
+  if (!body.success) throw new HTTPError(400, "was: { path: ms or null }, as keep or revert answered")
   remark((n) => {
-    for (const [k, v] of Object.entries(given as Record<string, unknown>)) {
+    for (const [k, v] of Object.entries(body.data.was)) {
       if (typeof v === "number") n[k] = v; else delete n[k]
     }
   })
   return { ok: true }
 })
 
-const made = (): Record<string, number> => (plugin.readCache()?.made ?? {}) as Record<string, number>
+const made = (): Record<string, number> => MADE.parse(plugin.readCache()?.made)
 function madeByAi(rel: string) {
   const old = Date.now() - 15 * DAY
   plugin.writeCache({ made: Object.fromEntries([...Object.entries(made()).filter(([, t]) => t > old), [rel, Date.now()]]) })
