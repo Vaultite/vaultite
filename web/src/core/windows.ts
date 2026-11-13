@@ -3,7 +3,8 @@ import { PANES, placeAt, type Drop } from "@/core/drop"
 import { raiseWindow } from "@/core/desktop"
 import { clean, focusedPane, panesOf, type Tab } from "../../../core/layout.ts"
 import { isDesktop } from "@/core/platform"
-import { paneToTab, takeTabs } from "@/core/splits"
+import { isZone, paneToTab, takeTabs } from "@/core/splits"
+import { isNumber, isObj, isText } from "../../../core/values.ts"
 import { trackSoon } from "@/core/unsaved"
 import { here, isPopout, openedWindows, paneById, paneTab, popOut, tabById, tabCount, takeOut } from "@/core/workspace"
 
@@ -15,10 +16,11 @@ const RAISE_MS = 350
 
 declare global { interface Window { vaultiteWindows?: () => [string, Window][] } }
 
+const openerOf = (w: Window): Window | null => w.opener
 function mainWindow(): Window | null {
-  let w = window.opener as Window | null
+  let w = openerOf(window)
   try {
-    while (w && !w.closed && new URLSearchParams(w.location.search).has("popout")) w = w.opener as Window | null
+    while (w && !w.closed && new URLSearchParams(w.location.search).has("popout")) w = openerOf(w)
     return w && !w.closed ? w : null
   } catch { return null }
 }
@@ -84,6 +86,8 @@ function standIn(item: DragItem): DragItem | null {
 }
 
 const placeOf = (d: Drop) => d.kind === "list" ? { index: d.index, group: d.group } : { pane: d.pane, zone: d.kind === "pane" ? d.zone : "center" as const }
+const isDrop = (v: unknown): v is Drop => isObj(v) && (v.kind === "list" ? isNumber(v.index) && (v.group === null || isText(v.group))
+  : v.kind === "pane" ? isText(v.pane) && isZone(v.zone) : v.kind === "places" && isText(v.pane) && isNumber(v.index))
 const takesTabs = (target: string) => target === PANES || target.startsWith("tabs:list:")
 
 if (typeof window !== "undefined") {
@@ -136,7 +140,7 @@ if (typeof window !== "undefined") {
     if (e.origin !== location.origin) return
     if (e.data?.type === HOVER) {
       const { at, item } = e.data
-      if (!at || !item) { const hit = dragElsewhere(null); landing = { drop: (hit?.data as Drop | undefined) ?? null, when: Date.now() }; return }
+      if (!at || !item) { const hit = dragElsewhere(null); landing = { drop: isDrop(hit?.data) ? hit.data : null, when: Date.now() }; return }
       const p = toPage(at)
       dragElsewhere({ ...item, elsewhere: true }, p.x, p.y, takesTabs)
       landing = null

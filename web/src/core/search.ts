@@ -83,7 +83,7 @@ export function useQueried(query: string): { section: string; hits: Hit[] }[] {
     const off = trackSoon("plugins' search", () => true)
     const t = setTimeout(() => void Promise.all(finders.map((p) => p.searchQuery!.find!(q).then(
       (docs) => ({ section: p.searchQuery!.section ?? p.name, hits: asHits(docs, q) }), () => null)))
-      .then((all) => { if (on) set(all.filter((g) => !!g?.hits.length) as { section: string; hits: Hit[] }[]) }).finally(off), 150)
+      .then((all) => { if (on) set(all.flatMap((g) => (g?.hits.length ? [g] : []))) }).finally(off), 150)
     return () => { on = false; off(); clearTimeout(t) }
   }, [query, finders])
   return found

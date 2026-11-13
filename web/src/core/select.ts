@@ -6,6 +6,7 @@ import { isMac } from "@/core/platform"
 import { menuShowing, type MenuItem } from "@/components/ContextMenu"
 import { signal } from "@/core/signal"
 import { plural } from "@/lib/utils"
+import { elementOf } from "@/core/dom"
 
 /** What a list's selected things can do together: its rows' right-click and the phone's bar. `noun`: what one and
  *  several are called ("file", "files"). */
@@ -75,7 +76,7 @@ export function selectClick(e: React.MouseEvent | MouseEvent, list: string, key:
   const mod = isMac ? e.metaKey : e.ctrlKey
   if (e.shiftKey) {
     e.preventDefault()
-    const order = rowsOf(e.currentTarget as Element, list)
+    const order = rowsOf(elementOf(e.currentTarget), list)
     const from = mine?.anchor && order.includes(mine.anchor) ? mine.anchor : current && order.includes(current) ? current : key
     const [a, b] = [order.indexOf(from), order.indexOf(key)].sort((x, y) => x - y)
     const run = a < 0 || b < 0 ? [key] : order.slice(a, b + 1)
@@ -84,7 +85,7 @@ export function selectClick(e: React.MouseEvent | MouseEvent, list: string, key:
   }
   if (mod) {
     e.preventDefault()
-    const seed = mine ? mine.keys : current && current !== key && rowsOf(e.currentTarget as Element, list).includes(current) ? [current] : []
+    const seed = mine ? mine.keys : current && current !== key && rowsOf(elementOf(e.currentTarget), list).includes(current) ? [current] : []
     put(make(list, seed.includes(key) ? seed.filter((k) => k !== key) : [...seed, key], key))
     return true
   }

@@ -3,6 +3,7 @@ import { haptic } from "@/core/haptics"
 import { LIFT_RADIUS, pageRect } from "@/core/motion"
 import { openSwitcher, swipingSideways } from "@/core/phoneTabs"
 import { shootTab } from "@/core/tabShots"
+import { nodeOf } from "@/core/dom"
 
 const FAR = 90, FAST = 0.45
 
@@ -62,7 +63,7 @@ export function liftFrom(bar: HTMLElement, off: () => boolean) {
   const to = (p: { s: number; tx: number; ty: number }, els: Part[], ms = 0) => place(els, p.s, p.tx, p.ty, ms)
   const down = (e: PointerEvent) => {
     if (g && e.pointerId !== g.id) up(null)
-    if (e.button || g || !bar.contains(e.target as Node) || off() || document.querySelector("dialog[open]")) return
+    if (e.button || g || !bar.contains(nodeOf(e.target)) || off() || document.querySelector("dialog[open]")) return
     g = { id: e.pointerId, x: e.clientX, y: e.clientY, on: false, ready: false, dx: 0, dy: 0, t: e.timeStamp, v: 0, els: [] }
     void shootTab()
   }

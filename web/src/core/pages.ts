@@ -57,11 +57,12 @@ export function tintOf(t?: string | null) {
 /** Left out of lists of pages (the sidebar's): a page whose plugin (its `plugin:`, the one that brought it) is off. */
 export const offPlugin = (f: Pick<VaultFile, "plugin"> | undefined, disabled = getPrefs().disabled) => !!f?.plugin && !!pluginById(f.plugin) && !isEnabled(f.plugin, disabled)
 
-const paths = new WeakMap<{ path: string }[], globalThis.Map<string, { path: string }>>()
+const paths = new WeakMap<{ path: string }[], globalThis.Map<string, number>>()
 export function fileAt<F extends { path: string }>(files: F[], path: string): F | undefined {
   let byPath = paths.get(files)
-  if (!byPath) paths.set(files, (byPath = new globalThis.Map(files.map((f) => [f.path, f]))))
-  return byPath.get(path) as F | undefined
+  if (!byPath) paths.set(files, (byPath = new globalThis.Map(files.map((f, i) => [f.path, i]))))
+  const i = byPath.get(path)
+  return i === undefined ? undefined : files[i]
 }
 
 export function pageView(path: string, store: Store | null = getStore(), disabled = getPrefs().disabled) {

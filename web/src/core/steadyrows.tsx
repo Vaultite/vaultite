@@ -5,6 +5,7 @@ import { slideFrom } from "@/core/animation"
 import { useScopedState } from "@/core/scope"
 import { trackSoon } from "@/core/unsaved"
 import { cn } from "@/lib/utils"
+import { nodeOf } from "@/core/dom"
 
 const LINGER = 600, TOUCH_LINGER = 2000
 
@@ -36,7 +37,7 @@ export function useHold(box: RefObject<HTMLElement | null>) {
     const enter = (e: PointerEvent) => { if (mouse(e)) { at.over = true; settle() } }
     const leave = (e: PointerEvent) => { if (mouse(e)) { at.over = false; settle() } }
     const key = () => { at.keys = true; settle() }
-    const focusOut = (e: FocusEvent) => { if (!el.contains(e.relatedTarget as Node | null)) { at.keys = false; settle() } }
+    const focusOut = (e: FocusEvent) => { if (!el.contains(nodeOf(e.relatedTarget))) { at.keys = false; settle() } }
     const menued = () => { at.menu = true; settle(); requestAnimationFrame(() => { if (!menuShowing()) { at.menu = false; settle() } }) }
     const down = () => { at.touch = true; settle() }
     const up = () => { at.touch = false; settle(TOUCH_LINGER) }

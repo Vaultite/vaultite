@@ -2,6 +2,7 @@ import type { EditorView } from "@codemirror/view"
 import { keyboardUp } from "@/components/KeyBar"
 import { currentEditor } from "@/core/editors"
 import { scrollingBox } from "@/lib/utils"
+import { elementOf } from "@/core/dom"
 
 const TOP = "sight-top", FOOT = "sight-foot"
 
@@ -98,8 +99,8 @@ export function keepTypingInSight() {
   const moved = () => { if (until && performance.now() < until) still() }
   const down = (e: TouchEvent) => {
     until = 0; clearTimeout(timer)
-    const t = e.touches[0], el = e.target as Element
-    before = e.touches.length === 1 && el.closest?.("input, textarea, [contenteditable=true]") ? scrolled(el) : null
+    const t = e.touches[0], el = elementOf(e.target)
+    before = e.touches.length === 1 && el?.closest("input, textarea, [contenteditable=true]") ? scrolled(el) : null
     x = t?.clientX ?? 0; y = t?.clientY ?? 0
   }
   const drag = (e: TouchEvent) => { const t = e.touches[0]; if (t && Math.hypot(t.clientX - x, t.clientY - y) > 10) before = null }

@@ -6,6 +6,8 @@ import { focusPane } from "@/core/focus"
 import { activePane, activeTab, setFocusedPane, here, keepsTab, onWorkspaceChange, paneById, panes, paneTab, quietly, set, show, showActive, showActiveUnder, tabById, tabsByRecent, withTab } from "@/core/workspace"
 
 export type Zone = Side | "center"
+const ZONES = ["left", "right", "top", "bottom", "center"] as const satisfies readonly Zone[]
+export const isZone = (v: unknown): v is Zone => ZONES.some((z) => z === v)
 
 function pulled(l: TabList, id: string) {
   const at = l.tabs.findIndex((t) => t.id === id)
@@ -50,7 +52,7 @@ export function canTabIntoPane(id: string, pane: string, zone: Zone) {
 }
 export function tabIntoPane(id: string, pane: string, zone: Zone) {
   if (!canTabIntoPane(id, pane, zone)) return
-  if (paneTab(pane)!.id === id) return splitOff(id, zone as Side)
+  if (paneTab(pane)!.id === id) return zone === "center" ? undefined : splitOff(id, zone)
   const l = here(), { tab, at, rest } = pulled(l, id), into = tabOfPane(rest, pane)!
   const one = tab.root
   if (zone === "center" && isSplit(into.root) && !isSplit(one)) {
@@ -69,7 +71,7 @@ function splitOff(id: string, side: Side) {
   const t = tabById(id)!, prev = tabsByRecent().find((x) => x.id !== id)
   const other: Layout = prev?.root ?? { id: newPaneId(), to: "new" }
   const root = tidy(beside(t.root, t.root.id, other, across[side]))!
-  const focus = isBlank(other as Pane) ? other.id : t.focus
+  const focus = !isSplit(other) && isBlank(other) ? other.id : t.focus
   const l = mapTab(here(), id, (x) => ({ ...x, root, focus, zoom: undefined }))
   set({ ...(prev ? withoutTabs(l, new Set([prev.id]))! : l), active: id })
   if (focus === t.focus) return showActiveUnder()
@@ -375,7 +377,8 @@ export function dockPane(id = activePane().id) {
   lifted.delete(id)
   if (!at || (home && over(home)) || (was && JSON.stringify(was) === JSON.stringify(f))) return set(withTab(t.id, (x) => ({ ...x, root: floated(x.root, id, null), focus: id })))
   const r = at.rect, fx = (cx - r.x) / r.w, fy = (cy - r.y) / r.h
-  const [side] = ([["left", fx], ["right", 1 - fx], ["top", fy], ["bottom", 1 - fy]] as [Side, number][]).sort((a, b) => a[1] - b[1])[0]
+  const sides: [Side, number][] = [["left", fx], ["right", 1 - fx], ["top", fy], ["bottom", 1 - fy]]
+  const [side] = sides.sort((a, b) => a[1] - b[1])[0]
   paneIntoPane(id, at.pane.id, side)
 }
 export const toggleFloat = () => (isFloating() ? dockPane() : floatPane())

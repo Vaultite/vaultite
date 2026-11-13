@@ -4,7 +4,7 @@ import {
   type Group, type Pane, type Tab, type TabList,
 } from "../../../core/layout.ts"
 import { activePane, activeTab, closeTabIds, closePane, getWorkspace, here, paneById, paneTab, popoutId, selectPane, selectTab, set, show, showActive, tabById } from "@/core/workspace"
-import { canPaneIntoPane, canTabIntoPane, openInSplit, paneIntoPane, paneToTab, placeTab, splitPane, tabIntoPane, type Zone } from "@/core/splits"
+import { canPaneIntoPane, canTabIntoPane, openInSplit, paneIntoPane, paneToTab, placeTab, splitPane, tabIntoPane, isZone, type Zone } from "@/core/splits"
 import { answerUi } from "@/core/askers"
 
 export const groupById = (id: string): Group | undefined => here().groups?.find((g) => g.id === id)
@@ -232,25 +232,27 @@ export function paneNamed(said: string): Pane {
   }
   throw new Error(`no pane shows ${as}: the tab on screen has ${panesOf(t).map(named).join(", ")} (or name one by where it is: left, top right, this)`)
 }
-const SIDES = ["left", "right", "top", "bottom"]
 const zoneOf = (z: unknown, fallback: Zone): Zone => {
   if (z === undefined || z === null || z === "") return fallback
-  if (z === "center" || SIDES.includes(String(z))) return z as Zone
+  if (isZone(z)) return z
   throw new Error("a side is left, right, top, bottom or center")
+}
+const colorOf = (color: string | undefined): Color | undefined => {
+  if (color !== undefined && !isColor(color)) throw new Error(`a colour is one of ${COLORS.join(", ")}`)
+  return color
 }
 answerUi("tabs", (m) => {
   if (m.do === "list") return tabsReport()
-  const color = m.color === undefined || m.color === null ? undefined : String(m.color)
-  if (color !== undefined && !isColor(color)) throw new Error(`a colour is one of ${COLORS.join(", ")}`)
+  const color = colorOf(m.color === undefined || m.color === null ? undefined : String(m.color))
   if (m.do === "group") {
     const ids = namedTabs(m.tabs)
     let id = typeof m.group === "string" && m.group ? m.group : null
     if (id && !groupById(id)) throw new Error(`no tab group ${id} (vau tabs lists them)`)
     if (!id && !ids.length) throw new Error("say which tabs to group")
     if (id) addToGroup(ids, id)
-    else id = makeGroup(ids, { name: typeof m.name === "string" ? m.name : undefined, color: color as Color | undefined })!
+    else id = makeGroup(ids, { name: typeof m.name === "string" ? m.name : undefined, color })!
     if (typeof m.name === "string") renameGroup(id, m.name)
-    if (color) colorGroup(id, color as Color)
+    if (color) colorGroup(id, color)
     if (typeof m.collapsed === "boolean") foldGroup(id, m.collapsed)
     return { group: { ...groupById(id)!, tabs: tabsIn(id).map((t) => tabLine(t, here())) } }
   }

@@ -192,12 +192,13 @@ function fadeIn(el: HTMLElement, into?: Animation[]) {
 
 function copyOf(sec: HTMLElement) {
   const scrolls: [Element, number, number][] = []
-  const el = sec.cloneNode(true) as HTMLElement
+  const el = document.importNode(sec, true)
   stillCopy(sec, el, (o, c) => { if (o.scrollTop || o.scrollLeft) scrolls.push([c, o.scrollTop, o.scrollLeft]) })
   for (const x of el.querySelectorAll("iframe, video, audio, object, embed")) {
+    if (!(x instanceof HTMLElement)) continue
     const stand = document.createElement("div")
-    stand.className = (x as HTMLElement).className
-    stand.style.cssText = (x as HTMLElement).style.cssText
+    stand.className = x.className
+    stand.style.cssText = x.style.cssText
     x.replaceWith(stand)
   }
   for (const x of [el, ...el.querySelectorAll("*")]) {

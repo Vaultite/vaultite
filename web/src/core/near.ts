@@ -17,7 +17,7 @@ export function useNearScreen(ref: RefObject<Element | null>, margin = "600px"):
 export function scrollerOf(el: Element, self = false): HTMLElement | null {
   const had = known.get(el)
   if (had?.isConnected && (had === el || had.contains(el)) && had.scrollHeight > had.clientHeight) return had
-  const found = self && scrolls(el) ? el as HTMLElement : scrollingBox(el)
+  const found = self && el instanceof HTMLElement && scrolls(el) ? el : scrollingBox(el)
   if (found) known.set(el, found)
   return found
 }

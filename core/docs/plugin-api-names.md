@@ -771,7 +771,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useCornerStack(id, corner, rank, ref)`: Cards in one corner stack, the lower `rank` nearest it (the mini player 0, agents' pages 1, pages playing 2): this card's place in it, as a margin from its corner (CORNERS' top or bottom stays;…
 - `useDefaultPlace()`
 - `useDesktop()`: isDesktop that follows the window: a phone's width and a computer's swap as it's resized.
-- `useDictation(pick?)`: The session in React (`pick`: the part drawn from, so the voice's level doesn't redraw what doesn't show it).
+- `useDictation`: The session in React (`pick`: the part drawn from, so the voice's level doesn't redraw what doesn't show it).
 - `useDismiss(open, close, { inside, anchor, hash, escape })`: An open popover (a flyout, a switcher) closes on Escape (not under a menu or palette, nor if `escape(e)` says no), a press outside `inside` (a selector) and `anchor`, and (`hash`) the address…
 - `useDrag`: The drag, drawn again on every move; with `pick`, only when what it picks changes (`(d) => d?.item`: once a drag).
 - `useDropHit(id)`: What a drop on this target would do right now, while something is dragged over it: the same object while the answer is (targets answer anew on every move), so it's drawn again only when that changes.

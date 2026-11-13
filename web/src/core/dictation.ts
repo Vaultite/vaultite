@@ -101,7 +101,9 @@ async function settled() {
   if (now.get()?.stopping) finish()
 }
 /** The session in React (`pick`: the part drawn from, so the voice's level doesn't redraw what doesn't show it). */
-export const useDictation = <R = Dictation | null>(pick?: (d: Dictation | null) => R) => now.use(pick)
+export function useDictation(): Dictation | null
+export function useDictation<R>(pick: (d: Dictation | null) => R): R
+export function useDictation<R>(pick?: (d: Dictation | null) => R) { return pick ? now.use(pick) : now.use() }
 
 /** Whether the user is in the middle of saying something into this editor (an agent writing there waits). */
 export const speakingIn = (view: EditorView) => { const d = now.get(); return !!d && d.target.view === view && (d.speaking || !!d.pending) }

@@ -4,6 +4,7 @@ import { hasLights, lightsFrame, showLights, webPages, type LightsFrame } from "
 import { lightsCard } from "@/core/pane"
 import { resizing } from "@/core/resizing"
 import { space } from "@/lib/utils"
+import { elementOf, nodeOf } from "@/core/dom"
 
 export type Peek = "left" | "right" | null
 type Side = "left" | "right"
@@ -89,7 +90,7 @@ export function usePeekLights(hidden: boolean, peek: Peek) {
       })
     }
     const place = () => {
-      const sliding = aside?.getAnimations().filter((a) => MOVES.has((a as CSSTransition).transitionProperty)) ?? []
+      const sliding = aside?.getAnimations().filter((a) => a instanceof CSSTransition && MOVES.has(a.transitionProperty)) ?? []
       if (sliding.length) {
         void say(null)
         void Promise.allSettled(sliding.map((a) => a.finished)).then(() => { if (live) place() })
@@ -165,13 +166,13 @@ export function usePeek(left: boolean, right: boolean): Peek {
     // Over a frame (an HTML file, a PDF) the window hears no pointer moves, so edges of our own catch it meanwhile.
     const root = document.documentElement.dataset
     const over = (e: PointerEvent) => {
-      const t = e.target as Element
-      if (t.closest?.("[data-peek-edge]")) return
-      if (e.pointerType === "touch" || !t.matches?.(FRAME)) { delete root.inFrame; return }
+      const t = elementOf(e.target)
+      if (t?.closest("[data-peek-edge]")) return
+      if (e.pointerType === "touch" || !t?.matches(FRAME)) { delete root.inFrame; return }
       root.inFrame = ""
       if (peek && !aside()?.contains(t)) closeSoon()
     }
-    const down = (e: PointerEvent) => { if (peek && !aside()?.contains(e.target as Node) && !(e.target as Element).closest?.("[role=menu], [data-sidebar-toggle]")) setPeek(null) }
+    const down = (e: PointerEvent) => { if (peek && !aside()?.contains(nodeOf(e.target)) && !elementOf(e.target)?.closest("[role=menu], [data-sidebar-toggle]")) setPeek(null) }
     const key = (e: KeyboardEvent) => { if (peek && e.key === "Escape" && !e.defaultPrevented && !document.querySelector("[role=menu]")) setPeek(null) }
     addEventListener("pointermove", move, { passive: true })
     addEventListener("pointerover", over, { passive: true })

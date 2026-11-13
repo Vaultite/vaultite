@@ -15,6 +15,7 @@ import { focusedPane, foldedAway, panesOf, type Pane, type Tab } from "../../../
 import { cell } from "@/core/signal"
 import { share } from "@/core/share"
 import { shootTab, shotOf } from "@/core/tabShots"
+import { elementOf, htmlOf } from "@/core/dom"
 
 export async function openSwitcher(from?: { page: DOMRect; reset: () => void }) {
   if (!from) await shootTab()
@@ -77,8 +78,8 @@ export function besideOf(k: Swipe | null): { pane: Pane; tab: Tab; side: -1 | 1 
   return near(ps, ps.findIndex((p) => p.id === t.focus)).map(([p, side]) => ({ pane: p, tab: t, side }))
 }
 
-function ownsSideways(el: Element, top: Element, dx: number) {
-  if (el.closest("input, textarea, select, [contenteditable=true]:focus, [data-keeps-touch]")) return true
+function ownsSideways(el: Element | null, top: Element, dx: number) {
+  if (!el || el.closest("input, textarea, select, [contenteditable=true]:focus, [data-keeps-touch]")) return true
   for (let a: Element | null = el; a && a !== top; a = a.parentElement) {
     const cs = getComputedStyle(a), ta = cs.touchAction
     if (ta === "none" || (ta.includes("pan-y") && !ta.includes("pan-x"))) return true
@@ -112,7 +113,7 @@ export function swipeSideways() {
     m.style.setProperty("--beside-top", `${-r.top}px`)
     m.style.setProperty("--beside-h", `${innerHeight}px`)
     for (const b of m.querySelectorAll<HTMLElement>("[data-beside]")) {
-      const inner = b.firstElementChild as HTMLElement | null
+      const inner = htmlOf(b.firstElementChild)
       const most = Math.max(0, top + (inner?.offsetHeight ?? 0) + bottom - innerHeight)
       b.style.setProperty("--beside-y", `${top - Math.min(most, scrollOf(b.dataset.to ?? ""))}px`)
     }
@@ -187,7 +188,7 @@ export function swipeSideways() {
     if (!d.axis) {
       if (Math.hypot(mx, my) < SLOP) return
       const lifting = document.documentElement.dataset.pageLift !== undefined
-      if (Math.abs(mx) <= Math.abs(my) * 1.15 || lifting || (d.kind === "panes" && heard && ownsSideways(e.target as Element, heard, mx))) { g = null; return }
+      if (Math.abs(mx) <= Math.abs(my) * 1.15 || lifting || (d.kind === "panes" && heard && ownsSideways(elementOf(e.target), heard, mx))) { g = null; return }
       m = page()
       if (!m) { g = null; return }
       d.axis = "x"
@@ -248,7 +249,7 @@ export function swipeSideways() {
     heard.addEventListener("touchcancel", end, { passive: true })
   }
   const onBar = (e: TouchEvent) => {
-    const el = e.target as Element | null, bar = el?.closest?.("[data-phone-bar]")
+    const el = elementOf(e.target), bar = el?.closest("[data-phone-bar]")
     if (bar && (flight || !document.querySelector("dialog[open], #bar-menu"))) start(e, "tabs")
     else if (flight && el && m?.parentElement?.contains(el) && !heard?.contains(el) && !el.closest("[data-phone-header]")) start(e, kind, true)
   }

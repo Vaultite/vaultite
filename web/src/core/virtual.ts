@@ -33,7 +33,7 @@ export function useVirtual(list: RefObject<HTMLElement | null>, keys: readonly s
   }, [keys, guess, measured])
   const at = useMemo(() => new Map(keys.map((k, i) => [k, i])), [keys])
 
-  const state = useRef({ offsets, scroller: undefined as HTMLElement | null | undefined, frame: 0, look: () => {}, soon: () => {} })
+  const state = useRef<{ offsets: Float64Array; scroller: HTMLElement | null | undefined; frame: number; look: () => void; soon: () => void }>({ offsets, scroller: undefined, frame: 0, look: () => {}, soon: () => {} })
   state.current.offsets = offsets
   // After the commit: React sets the list's ref after its rows' layout effects.
   useEffect(() => {

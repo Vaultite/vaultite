@@ -1,5 +1,6 @@
 import { toast } from "sonner"
 import { plainError, plainText, sentence } from "../../../core/plainerror.ts"
+import { isObj } from "../../../core/values.ts"
 import { announce } from "@/core/announce"
 import { keyHint, runCommandById } from "@/core/commands"
 import { noteAppError } from "@/core/errors"
@@ -66,7 +67,7 @@ export const dismissNotice = (id: string | number) => { toast.dismiss(id) }
 
 function said(e: unknown) {
   const p = plainError(e)
-  const status = Number((e as { status?: unknown })?.status) || 0
+  const status = Number(isObj(e) ? e.status : undefined) || 0
   if (p.bug && status < 500) noteAppError("shown", e)
   return p
 }

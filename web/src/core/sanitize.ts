@@ -10,10 +10,11 @@ const FRAME = ' sandbox="allow-scripts allow-same-origin allow-presentation" ref
 
 export const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 const text = (s: string) => s.replace(/</g, "&lt;").replace(/>/g, "&gt;")
+const NAMED: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" }
 const unesc = (s: string) => s.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (_, e: string) => {
   const l = e.toLowerCase()
   if (l[0] === "#") return String.fromCodePoint(l[1] === "x" ? parseInt(l.slice(2), 16) : parseInt(l.slice(1), 10))
-  return ({ amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" } as Record<string, string>)[l]
+  return NAMED[l]
 })
 
 function safeStyle(css: string) {

@@ -9,7 +9,9 @@ function liveRule(selector: string): CSSStyleDeclaration {
     document.head.append(el)
     sheet = el.sheet!
   }
-  return (sheet.cssRules[sheet.insertRule(`${selector} {}`, sheet.cssRules.length)] as CSSStyleRule).style
+  const rule = sheet.cssRules[sheet.insertRule(`${selector} {}`, sheet.cssRules.length)]
+  if (!(rule instanceof CSSStyleRule)) throw new Error(`${selector} isn't a selector`)
+  return rule.style
 }
 
 let now = { left: "0px", right: "0px" }

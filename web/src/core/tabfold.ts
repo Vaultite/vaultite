@@ -20,7 +20,7 @@ type Box = { size: number; margin: number; opacity: number }
 function drawnBox(el: HTMLElement): Box {
   const r = el.getBoundingClientRect(), css = getComputedStyle(el), x = axisOf(el) === "x"
   const seen = x ? r.width : r.height, own = x ? el.offsetWidth : el.offsetHeight
-  const zoom = (el as HTMLElement & { currentCSSZoom?: number }).currentCSSZoom || (seen && own ? seen / own : 1)
+  const zoom = el.currentCSSZoom || (seen && own ? seen / own : 1)
   return { size: seen / zoom, margin: parseFloat(x ? css.marginRight : css.marginBottom) || 0, opacity: parseFloat(css.opacity) }
 }
 const running = new WeakMap<HTMLElement, Animation>()
@@ -174,7 +174,7 @@ export function useShrinkOut(ref: RefObject<HTMLElement | null>, what: { tab: st
       if (!el?.isConnected || still() || replacingWorkspace() || layoutQuiet() || stays()) return
       const r = el.getBoundingClientRect(), size = axisOf(el) === "x" ? r.width : r.height
       if (size < 1) return
-      const copy = el.cloneNode(true) as HTMLElement
+      const copy = document.importNode(el, true)
       for (const e of [copy, ...copy.querySelectorAll("*")]) for (const a of OWN) e.removeAttribute(a)
       copy.querySelector("[data-tab-return]")?.remove()
       copy.inert = true
@@ -224,7 +224,7 @@ export function useReflow(box: RefObject<HTMLElement | null>, l: TabList) {
       if (!a || !b.width) continue
       const dx = a.left - b.left, dy = a.top - b.top
       if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue
-      for (const x of e.getAnimations()) if ((x as CSSAnimation).id === "reflow") x.cancel()
+      for (const x of e.getAnimations()) if (x.id === "reflow") x.cancel()
       const anim = e.animate([{ translate: `${dx}px ${dy}px` }, { translate: "0 0" }], timing("spring"))
       anim.id = "reflow"
     }

@@ -3,6 +3,7 @@ import { onLook } from "@/core/appearance"
 import { haptic } from "@/core/haptics"
 import type { Mounted } from "pele/lazy"
 import { glide } from "@/core/animation"
+import { elementOf } from "@/core/dom"
 
 type Katex = typeof import("katex").default
 let katex: Promise<Katex> | null = null
@@ -183,8 +184,8 @@ function fallbackCopy(text: string) {
 }
 
 export function richClick(e: { target: EventTarget | null; preventDefault: () => void; stopPropagation: () => void }, root: HTMLElement) {
-  const t = e.target as Element | null
-  const copy = t?.closest?.<HTMLElement>("[data-copy]")
+  const t = elementOf(e.target)
+  const copy = t?.closest<HTMLElement>("[data-copy]")
   if (copy && root.contains(copy)) {
     e.preventDefault(); e.stopPropagation()
     copyCode(copy, copy.closest(".md-code")?.querySelector("pre")?.textContent ?? "")

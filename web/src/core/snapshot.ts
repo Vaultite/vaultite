@@ -20,7 +20,7 @@ export function snapshot(el: HTMLElement, { limit = 6000, light }: { limit?: num
   const src = el.getElementsByTagName("*").length > limit ? el.querySelector<HTMLElement>(light ?? ":scope > *") : el
   const scrolls: [Element, number, number][] = []
   if (!src) return { host, settle: () => {} }
-  const copy = src.cloneNode(true) as HTMLElement
+  const copy = document.importNode(src, true)
   Object.assign(copy.style, { position: "absolute", inset: src === el ? "0" : "0 0 auto 0", transform: "none", scale: "none", opacity: "1", display: "" }, src === el ? { width: "auto", height: "auto" } : {})
   const boxes: Element[] = []
   stillCopy(src, copy, (o, c) => {
@@ -45,8 +45,8 @@ export function offerPicture(el: Element, draw: () => HTMLCanvasElement | null) 
 export function stillCopy(src: Element, copy: Element, visit?: (o: Element, c: Element) => void) {
   const shown: [Element, HTMLCanvasElement][] = []
   const a = document.createTreeWalker(src, NodeFilter.SHOW_ELEMENT), b = document.createTreeWalker(copy, NodeFilter.SHOW_ELEMENT)
-  for (let x: Node | null = a.currentNode, y: Node | null = b.currentNode; x && y; x = a.nextNode(), y = b.nextNode()) {
-    const o = x as Element, c = y as Element
+  for (let o: Node | null = a.currentNode, c: Node | null = b.currentNode; o && c; o = a.nextNode(), c = b.nextNode()) {
+    if (!(o instanceof Element) || !(c instanceof Element)) continue
     visit?.(o, c)
     const draw = pictures.get(o)
     let pic: HTMLCanvasElement | null = null
