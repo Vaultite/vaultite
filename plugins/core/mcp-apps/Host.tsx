@@ -32,7 +32,7 @@ function openLink(url: string) {
   return false
 }
 
-export function McpAppBlock({ tool, args, height }: { tool: string; args: Record<string, unknown>; height?: number }) {
+export function McpAppBlock({ tool, args, height }: { tool: string; args: unknown; height?: number }) {
   const [run, setRun] = useState<Run | null>(null)
   const [error, setError] = useState("")
   const [h, setH] = useState(120)
@@ -74,9 +74,9 @@ export function McpAppBlock({ tool, args, height }: { tool: string; args: Record
           if (typeof m.params?.height === "number") setH(Math.min(4000, Math.max(40, Math.ceil(m.params.height))))
           return
         case "tools/call":
-          try { return answer(await post("mcp-apps/call", { name: m.params?.name, arguments: m.params?.arguments ?? {} })) } catch (x) { return fail((x as Error).message) }
+          try { return answer(await post("mcp-apps/call", { name: m.params?.name, arguments: m.params?.arguments ?? {} })) } catch (x) { return fail(x instanceof Error ? x.message : String(x)) }
         case "resources/read":
-          try { return answer(await get(`mcp-apps/resource?uri=${encodeURIComponent(String(m.params?.uri ?? ""))}`)) } catch (x) { return fail((x as Error).message) }
+          try { return answer(await get(`mcp-apps/resource?uri=${encodeURIComponent(String(m.params?.uri ?? ""))}`)) } catch (x) { return fail(x instanceof Error ? x.message : String(x)) }
         case "ui/open-link":
           return openLink(String(m.params?.url ?? "")) ? answer({}) : fail("Invalid URL")
         case "ui/request-display-mode":
