@@ -80,9 +80,9 @@ export function pluginSettings<T extends object = Data>(id: string) {
   return {
     get: (): T => { start(); return (value.get() ?? EMPTY) as T },
     use,
-    set: set as (changes: { [K in keyof T]?: T[K] | null }) => Promise<void>,
+    set: (changes: { [K in keyof T]?: T[K] | null }) => set(changes),
     onChange: value.subscribe,
-    preview: preview as (keys: { [K in keyof T]?: T[K] } | null) => void,
+    preview: (keys: { [K in keyof T]?: T[K] } | null) => preview(keys),
     /** Settled once the file was first read. */
     ready,
   }

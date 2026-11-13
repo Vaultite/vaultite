@@ -27,7 +27,7 @@ import { autoUpdates, byPolicy } from "../../../core/updates.ts"
 import { setMarks } from "../../../core/fileprops.ts"
 import { switched } from "../../../core/pluginmeta.ts"
 import { parseTerminal } from "../../../core/terminalids.ts"
-import { drawnBy } from "../../../core/blocks.ts"
+import { drawnBy, type SettingDecls } from "../../../core/blocks.ts"
 import { placeKey } from "../../../core/slots.ts"
 
 export type { Place, Side, Sidebars } from "../../../core/sidebars.ts"
@@ -40,17 +40,17 @@ const pages = { ...import.meta.glob<string>("../../../plugins/core/*/pages/*.md"
 
 const folder = (path: string) => path.split("/").slice(-3, -1).join("/")
 
-const keyedDecls = <D extends Record<string, { label?: string; description?: string; labels?: Record<string, string> }>>(decls: D): D => isMac ? decls
+const keyedDecls = (decls: SettingDecls): SettingDecls => isMac ? decls
   : Object.fromEntries(Object.entries(decls).map(([k, d]) => [k, { ...d, label: d.label && keysText(d.label), description: d.description && keysText(d.description),
-    labels: d.labels && Object.fromEntries(Object.entries(d.labels).map(([v, l]) => [v, keysText(l)])) }])) as D
+    labels: d.labels && Object.fromEntries(Object.entries(d.labels).map(([v, l]) => [v, keysText(l)])) }]))
 
 export const PLUGINS: Plugin[] = Object.entries(manifests)
-  .map(([path, { blocks: decls, settings, ...read }]) => {
+  .map(([path, { blocks: decls, settings, ...read }]): Plugin => {
     const m = { ...read, description: read.description && keysText(read.description) }
     const f = folder(path)
     const def = Object.entries(modules).find(([p]) => folder(p) === f)?.[1] ?? {}
     const icon = BUILT_IN_ICONS[m.id]
-    return { ...m, ...def, icon: (typeof icon === "string" ? def.icons?.[icon] : icon) ?? Puzzle, blockDecls: decls ?? {}, settingsDecls: keyedDecls(settings ?? {}), tier: "core" } as Plugin
+    return { ...m, ...def, icon: (typeof icon === "string" ? def.icons?.[icon] : icon) ?? Puzzle, blockDecls: decls ?? {}, settingsDecls: keyedDecls(settings ?? {}), tier: "core" }
   })
 
 /** Plugins' colours: a manifest's `tint` ("orange") makes --<id> (--today: var(--orange)). At no specificity
@@ -83,7 +83,7 @@ export function setVaultPlugins(list: Plugin[]) {
   const was = signature(PLUGINS.filter((p) => p.tier === "vault"))
   generation++
   PLUGINS.splice(0, PLUGINS.length, ...app, ...(isMac ? list : list.map((p) => ({ ...p, description: p.description && keysText(p.description), settingsDecls: keyedDecls(p.settingsDecls) }))), ...hosted)
-  setMarks(PLUGINS as unknown as Record<string, unknown>[])
+  setMarks(PLUGINS.map((p) => ({ marks: p.marks })))
   writeTints()
   const first = !vaultIn
   vaultIn = true
@@ -575,13 +575,13 @@ function showBarItemsOf(p: Plugin) {
   if (list !== statusBar) void setPrefs({ statusBar: list, ...(left !== statusBarLeft ? { statusBarLeft: left } : {}) })
 }
 
-function slotItems<K extends "header" | "status" | "fileBar" | "noteTop">(slot: K, disabled: string[]) {
+function slotItems<I extends { sort?: number }>(slot: (p: Plugin) => { [name: string]: I } | undefined, disabled: string[]) {
   return active(disabled)
-    .flatMap((p) => Object.entries(p[slot] ?? {}).map(([name, item]) => ({ key: `${p.id}:${name}`, plugin: p, item: item as NonNullable<Plugin[K]>[string] })))
+    .flatMap((p) => Object.entries(slot(p) ?? {}).map(([name, item]) => ({ key: `${p.id}:${name}`, plugin: p, item })))
     .map((x, i) => ({ ...x, i }))
     .sort((a, b) => (a.item.sort ?? 100) - (b.item.sort ?? 100) || a.i - b.i)
 }
-export const headerItems = (disabled: string[]) => slotItems("header", disabled)
+export const headerItems = (disabled: string[]) => slotItems((p) => p.header, disabled)
 export function shownHeaderItems(disabled: string[], saved = getPrefs().sidebarHeader) {
   const all = headerItems(disabled)
   if (!saved) return all
@@ -597,13 +597,13 @@ function showHeaderItemsOf(p: Plugin) {
   if (!getPrefs().sidebarHeader) return
   for (const name of Object.keys(p.header ?? {})) void setHeaderItemShown(`${p.id}:${name}`, true)
 }
-export const statusItems = (disabled: string[]) => slotItems("status", disabled)
+export const statusItems = (disabled: string[]) => slotItems((p) => p.status, disabled)
 export function fileBarItems(disabled: string[], saved = getPrefs().fileBar) {
-  const all = slotItems("fileBar", disabled)
+  const all = slotItems((p) => p.fileBar, disabled)
   const at = (k: string) => { const i = saved?.indexOf(k) ?? -1; return i < 0 ? Infinity : i }
   return saved ? [...all].sort((a, b) => at(a.key) - at(b.key)) : all
 }
-export const noteTopItems = (disabled: string[]) => slotItems("noteTop", disabled)
+export const noteTopItems = (disabled: string[]) => slotItems((p) => p.noteTop, disabled)
 
 export function ambientItems(disabled: string[]) {
   const ai = getPrefs().ai
@@ -645,8 +645,9 @@ export function templatesOf(id: string) {
 }
 
 export function byCategory<T extends Pick<Plugin, "category">>(list: T[]) {
-  return [...CATEGORIES, OTHER]
-    .map((c) => ({ id: c.id as string, label: c.label as string, plugins: list.filter((p) => categoryOf(p.category).id === c.id) }))
+  const all: readonly { id: string; label: string }[] = [...CATEGORIES, OTHER]
+  return all
+    .map((c) => ({ id: c.id, label: c.label, plugins: list.filter((p) => categoryOf(p.category).id === c.id) }))
     .filter((s) => s.plugins.length)
 }
 
@@ -785,7 +786,7 @@ export function viewFor(to: string, disabled: string[]) {
 /** The items the plugins that are on add to a view's menus (`viewMenu`), for its tab's target. */
 export function viewMenuItems(target: string, disabled = getPrefs().disabled): MenuItem[] {
   return active(disabled).flatMap((p) => {
-    try { return (p.viewMenu?.(target) ?? []).map(({ section: _, many: __, ...it }) => ({ ...it, icon: it.icon as MenuItem["icon"] })) } catch { return [] }
+    try { return (p.viewMenu?.(target) ?? []).map(({ section: _, many: __, ...it }) => it) } catch { return [] }
   })
 }
 

@@ -12,6 +12,7 @@ import { notify } from "@/core/notify"
 import { noteAppError } from "@/core/errors"
 import { safeToReload } from "@/core/unsaved"
 import { API_VERSION } from "../../../core/version.ts"
+import { isObj, isText, messageOf } from "../../../core/values.ts"
 import exported from "virtual:plugin-exports"
 
 const manifests = import.meta.glob<{ exports?: string[] }>("../../../plugins/core/*/manifest.json", { eager: true, import: "default" })
@@ -34,7 +35,8 @@ function moduleLoader(spec: string): (() => Promise<unknown>) | null {
   if (!v) return null
   return async () => {
     const mod = await import(/* @vite-ignore */ new URL(`api/plugins/${encodeURIComponent(id)}/${v}/bundle.js`, document.baseURI).href)
-    const got = (mod.__exports as Record<string, unknown> | undefined)?.[name]
+    const own: unknown = mod.__exports
+    const got = isObj(own) ? own[name] : undefined
     if (!got) throw new Error(`${id} doesn't export ${name}`)
     return got
   }
@@ -89,8 +91,8 @@ async function importBundle(info: VaultPluginInfo, version: string) {
   } catch (e) {
     spent.add(key)
     console.warn(`vault plugin ${info.id}:`, e)
-    noteAppError("plugin", Object.assign(new Error(`${info.name}: ${(e as Error)?.message ?? e}`), { stack: (e as Error)?.stack }))
-    return { version, def: null, error: `index.tsx couldn't run in the app: ${(e as Error).message ?? e}`, at: Date.now() }
+    noteAppError("plugin", Object.assign(new Error(`${info.name}: ${messageOf(e)}`), { stack: isObj(e) && isText(e.stack) ? e.stack : undefined }))
+    return { version, def: null, error: `index.tsx couldn't run in the app: ${messageOf(e)}`, at: Date.now() }
   }
 }
 
