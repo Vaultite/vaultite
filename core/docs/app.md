@@ -29,7 +29,8 @@ heights the user dragged (px) with the sidebar's height then (`heightsAt`, so an
 A panel's key is `<plugin id>:<name>`; one in neither sidebar is hidden (its plugin stays on); a right sidebar with
 none takes no room. Without the file every panel is on the left in the app's order, but the ones a plugin hides until
 asked (Links, Outline, Local graph, Recent files...). With Workspaces on each workspace may have its own (its `sidebars`), so change
-the current one's: `vau panels` (move, hide, show, left, right, collapse, expand; `--vault` for sidebars.json; a file's path is a panel too, drawn there). Phones
+the current one's: `vau panels` (move, hide, show, left, right, collapse, expand; `--vault` for sidebars.json; a file's path is a panel too, drawn there; in the app, a file dragged between a sidebar's panels (onto a heading or a gap, not a panel's body) from anywhere (the
+file tree, a pinned page, a list, a tab: which moves, closing) is one there). Phones
 show the same two sidebars as drawers. A computer's left sidebar can be one panel alone, filling it, as its mode (Show
 activity in the sidebar: Activity's feed); its heading's X or the command again brings the panels back. Each workspace
 keeps its own (`core:sidebar-mode`, the panel's key).

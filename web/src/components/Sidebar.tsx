@@ -2,12 +2,11 @@ import { Children, createContext, Fragment, useContext, useEffect, useLayoutEffe
 import { createPortal } from "react-dom"
 import { ChevronsDownUp, Ellipsis, EyeOff, Layers, PanelBottom, PanelBottomClose, PanelLeft, PanelRight, PanelTop, Search, SlidersHorizontal, SquareArrowOutUpRight } from "lucide-react"
 import type { SidebarCtx, SidebarPanel, TabMark } from "@/core/define"
-import { edgeScroller, getDrag, onDrag, startDrag, useDrag, useDragItem, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
+import { edgeScroller, getDrag, onDrag, rehit, startDrag, useDrag, useDragItem, useDropHit, useDropTarget } from "@/core/drag"
 import { openView } from "@/core/files"
 import { openDetail } from "@/core/nav"
 import { isDesktop } from "@/core/platform"
-import { closeTab } from "@/core/workspace"
-import { dockAtEnd, dockPanel, drawerPanels, headerItems, headingMode, hideBarItem, hidePanel, isBarItem, setHeaderItemShown, shownHeaderItems, panelOfView, panelsIn, setPanelDocked, setPanelHeight, sideOf, sidebarPanels, sidebars, togglePanelCollapsed, useSidebars, type PanelOf, type Side } from "@/core/plugins"
+import { dockAtEnd, dockPanel, drawerPanels, headerItems, headingMode, hideBarItem, hidePanel, isBarItem, setHeaderItemShown, shownHeaderItems, panelsIn, setPanelDocked, setPanelHeight, sideOf, sidebarPanels, sidebars, togglePanelCollapsed, useSidebars, type PanelOf, type Side } from "@/core/plugins"
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { firstKeys, keyCaps, runCommandById, useCommandKeys } from "@/core/commands"
 import { useDismiss } from "@/core/focus"
@@ -21,7 +20,9 @@ import { cn, space } from "@/lib/utils"
 import { INCOMING, reorder, slotAt, useSlide } from "@/core/slide"
 import { Resizer } from "@/components/Resizer"
 import { usePanelLayout } from "@/components/panelLayout"
-import { foldPanel, liftedHeight, settle } from "@/components/panelMotion"
+import { arrive, foldPanel, liftedHeight, settle } from "@/components/panelMotion"
+import { betweenPanels, bringsFiles, closeMovedIn, draggedPanels, intoHint, movesIn, stillHome } from "@/components/panelDrop"
+import { filePanelPath } from "../../../core/sidebars.ts"
 
 import { modeJustSwitched, useSidebarMode, setSidebarMode } from "@/core/sidebarmode"
 import { PanelAlone, PanelFold, PanelHeading, SidebarHeading } from "@/components/SidebarHeading"
@@ -32,17 +33,8 @@ import { closestOf } from "@/core/dom"
 export { PanelFold, SidebarHeading }
 
 const PANELS = "panels"
-type PanelDrop = { before: string | null; order: string[] }
+type PanelDrop = { before: string | null; order: string[]; weak: boolean }
 const SidebarSide = createContext<Side>("left")
-
-const draggedPanel = (item: DragItem) => (item.from === "panel" ? item.panel ?? null : item.from === "tab" ? panelOfView(item.to) : null)
-const dropped = (item: DragItem) => { if (item.from === "tab" && item.tab) closeTab(item.tab) }
-const intoHint = (side: Side) => {
-  const item = getDrag()?.item
-  if (!item) return undefined
-  if (item.from === "tab") return `To the ${side} sidebar`
-  return sideOf(item.panel ?? "") !== side ? `To the ${side} sidebar` : undefined
-}
 
 export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { head?: React.ReactNode
   side?: Side }) {
@@ -55,22 +47,28 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
   const box = useRef<HTMLDivElement>(null)
   const fit = usePanelLayout(box, own && ctx.open, setup, panels)
   const [edge] = useState(edgeScroller)
+  const held = useRef({ x: 0, y: 0 })
   const item = useDragItem()
+  const docking = useMemo(() => !!item && draggedPanels(item).length > 0, [item])
   const target = `${PANELS}:${side}`
   const hit = useDropHit<PanelDrop>(target)
-  useDropTarget<PanelDrop>(target, (item, x, y) => {
-    const key = draggedPanel(item), el = box.current
-    if (!key || !el || !ctx.open) return null
+  useDropTarget<PanelDrop>(target, (item, x, y, over) => {
+    const keys = draggedPanels(item), el = box.current
+    if (!keys.length || !el || !ctx.open || stillHome(item, el, over)) return null
     const b = el.getBoundingClientRect()
     if (x < b.left || x > b.right || y < b.top || y > b.bottom) { edge.stop(); return null }
     edge.near(el, y)
-    const rows = [...el.querySelectorAll<HTMLElement>(":scope > [data-panel]")]
-    const { order, before, same } = reorder(rows.map((r) => r.dataset.panel!), [key], slotAt(el, rows, x, y, "y"))
-    return same && item.from === "panel" ? null : { before, order }
+    held.current = { x, y }
+    const rows = [...el.querySelectorAll<HTMLElement>(":scope > [data-panel]")], weak = bringsFiles(item, keys)
+    if (weak && !betweenPanels(rows, y)) return null
+    const { order, before, same } = reorder(rows.map((r) => r.dataset.panel!), keys, slotAt(el, rows, x, y, "y"))
+    return same && !movesIn(item) ? null : { before, order, weak }
   }, (item, h) => {
-    dockPanel(draggedPanel(item)!, { side, before: h.before })
-    dropped(item)
-  }, { hint: () => intoHint(side), end: edge.stop })
+    const keys = draggedPanels(item)
+    if (item.from !== "panel") arrive(box.current, keys, held.current.x, held.current.y)
+    dockPanel(keys, { side, before: h.before })
+    closeMovedIn(item)
+  }, { hint: () => { const it = getDrag()?.item; return it && intoHint(it, side) }, weak: (h) => h.weak, end: edge.stop })
 
   const over = useDrag((d) => d?.hit?.target ?? null)
   const mine = item?.from === "panel" ? item.panel : undefined
@@ -78,6 +76,8 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
   const leaving = !!mine && (over === `${PANELS}:${other}` || over === `toggle:${other}`) && panels.some((p) => p.key === mine)
   const making = hit && ctx.open && panels.length ? hit.order : leaving && ctx.open ? panels.map((p) => p.key).filter((k) => k !== mine) : null
   useSlide(box, making, "y")
+  const madeWay = useRef(false)
+  useLayoutEffect(() => { if (madeWay.current && !making) rehit(); madeWay.current = !!making })
   useLayoutEffect(settle)
 
   const [flying, setFlying] = useStateFor<string | null>([ctx.open], () => null)
@@ -107,7 +107,7 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
   return (
     <SidebarSide.Provider value={side}>
     {rail}
-    <div ref={box} data-sidebar-body={ctx.open ? side : undefined} data-sidebar-kept={ctx.open ? undefined : side} inert={!ctx.open} data-mode-fade={fades || undefined} data-headings-peek={item?.from === "panel" || undefined} data-scroll={own ? "panels" : "sidebar"} onDoubleClick={(e) => { const key = emptyRoomOf(e.target, box.current); panels.find((p) => p.key === key)?.panel.emptyDoubleClick?.() }}
+    <div ref={box} data-sidebar-body={ctx.open ? side : undefined} data-sidebar-kept={ctx.open ? undefined : side} inert={!ctx.open} data-mode-fade={fades || undefined} data-headings-peek={item?.from === "panel" || docking || undefined} data-scroll={own ? "panels" : "sidebar"} onDoubleClick={(e) => { const key = emptyRoomOf(e.target, box.current); panels.find((p) => p.key === key)?.panel.emptyDoubleClick?.() }}
       className={cn("edge-fade-b relative flex min-h-0 flex-1 flex-col pb-1", !ctx.open && "hidden", own ? "overflow-x-hidden overflow-y-auto" : "overflow-y-auto overscroll-contain",
         making && "[&>:not([data-slide])]:invisible")}>
       {panels.length ? panels.map((p, i) => {
@@ -122,7 +122,8 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
               const control = closestOf(e.target, "button, a, input")
               const handle = closestOf<HTMLElement>(e.target, "[data-panel-handle]")
               if (handle && (!control || control.hasAttribute("data-panel-handle"))) {
-                startDrag(e, { from: "panel", panel: key, label: handle.dataset.heading || panel.heading || panel.title, to: panel.view ? `view:${panel.view}` : undefined, drawn: !ctx.phone }, { touch: true })
+                const file = filePanelPath(key)
+                startDrag(e, { from: "panel", panel: key, label: handle.dataset.heading || panel.heading || panel.title, to: panel.view ? `view:${panel.view}` : file !== null ? `file:${file}` : undefined, drawn: !ctx.phone }, { touch: true })
               }
             }}
             className={cn("flex shrink-0 flex-col pb-1", prefs.panelHeadings === "quiet" && !folded && "has-[[data-panel-empty]]:hidden", item?.panel === key && (item.drawn ? "invisible" : "opacity-50"))}>
@@ -198,18 +199,18 @@ export function SidebarToggle({ side, open, empty, onClick, className, style }: 
   const target = `toggle:${side}`
   const hit = useDropHit<true>(target)
   useDropTarget<true>(target, (item, x, y) => {
-    const key = draggedPanel(item), b = el.current?.getBoundingClientRect()
-    if (!key || !b) return null
+    const b = el.current?.getBoundingClientRect()
+    if (!draggedPanels(item).length || !b) return null
     return x >= b.left - 4 && x <= b.right + 4 && y >= b.top - 4 && y <= b.bottom + 4 ? true : null
   }, (item) => {
-    dockAtEnd(draggedPanel(item)!, side)
-    dropped(item)
+    dockAtEnd(draggedPanels(item), side)
+    closeMovedIn(item)
   }, { hint: () => `To the ${side} sidebar` })
   const Icon = side === "left" ? PanelLeft : PanelRight
   const name = side === "left" ? "left sidebar" : "right sidebar"
   const keys = useCommandKeys(side === "left" ? "sidebar:toggle" : "sidebar:toggle-right", true)
-  const carried = item && draggedPanel(item)
-  const dragging = !!carried && sideOf(carried) !== side
+  const carried = item ? draggedPanels(item) : []
+  const dragging = carried.some((k) => sideOf(k) !== side)
   return (
     <button ref={el} type="button" data-sidebar-toggle={side === "right" ? "right" : ""} data-ui={side === "right" ? "button:sidebar:toggle-right" : "button:sidebar:toggle"} onClick={onClick} style={style}
       aria-label={`${open ? "Hide" : "Show"} ${name}`} aria-expanded={open} data-tip={dragging ? undefined : `${open ? "Hide" : "Show"} ${name}${keys}`} data-tip-side={side === "right" ? "left" : undefined}

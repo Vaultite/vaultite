@@ -186,7 +186,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `diffLines(a, b)`: How to turn a into b (textedit's opcodes), never a wrong diff at any size.
 - `DiffRows({ lines })`: The diff's lines, only those in sight drawn (a file of a million lines scrolls like a short one), wherever it scrolls.
 - `dismissNotice(id)`: Close a toast before its time.
-- `dockAtEnd(key, side)`: Put a panel at the end of a sidebar, open, and that sidebar open: what every move without a drop does (a sidebar's toggle, Move to the other sidebar, ticking it in the Panels menu), so where it…
+- `dockAtEnd(key, side)`: Put panels at a sidebar's end, unfolded, the sidebar open: every move but a drop does, so where they went is in sight.
 - `dockIcon()`: The Dock's icon in the desktop app (electron/appmenu.ts): null in a browser or a build without it.
 - `DoIt({ task, done, className })`
 - `Dot`: A status dot's kind.
@@ -596,7 +596,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `runShortcut(e)`: Take a keydown if the app's keys have it (a command, or a sequence step): true if taken.
 - `sameSidebars`
 - `saveAttachments(s, from, files, folder?)`: Save pasted or dropped files as `from`'s attachments (or in `folder`), answering their paths: "Pasted image <time>" when nameless, as Obsidian names them.
-- `savedSidebars(prefs?)`: sidebars.json as saved (null: unset, the default).
+- `savedSidebars(prefs?)`
 - `savePdf(name)`: In the desktop app: the window, as it prints, saved as a PDF where the user picks (Export to PDF).
 - `Scope`
 - `scopedState(key, fallback, scope?)`: A value kept at a level by key ("<plugin id>:<name>"): `get` answers `fallback` while nothing's kept, `set(undefined)` removes it.

@@ -103,7 +103,31 @@ function end() {
   requestAnimationFrame(() => requestAnimationFrame(() => { if (settling === l && !l.to) fade(l) }))
 }
 
+type Arrival = { keys: string[]; x: number; y: number; tops: Map<string, number>; until: number }
+let arrival: Arrival | null = null
+export function arrive(body: HTMLElement | null, keys: string[], x: number, y: number) {
+  if (!body || !timing("spring").duration) return
+  const tops = new Map([...body.querySelectorAll<HTMLElement>(":scope > [data-panel]")].map((e) => [e.dataset.panel!, e.getBoundingClientRect().top]))
+  arrival = { keys, x, y, tops, until: performance.now() + 1000 }
+}
+function land(a: Arrival) {
+  const els = a.keys.flatMap((k) => panelEl(k) ?? [])
+  if (!els.length) { if (performance.now() > a.until) arrival = null; return }
+  arrival = null
+  const t = timing("spring")
+  for (const el of els) {
+    const r = el.getBoundingClientRect(), origin = `${a.x - r.left}px ${Math.max(0, a.y - r.top)}px`
+    el.animate([{ transformOrigin: origin, transform: "scale(0.92)", opacity: 0, boxShadow: SHADOW, borderRadius: "14px" },
+      { transformOrigin: origin, transform: "none", opacity: 1, boxShadow: FLAT, borderRadius: "0px" }], t)
+  }
+  for (const el of els[0].parentElement?.querySelectorAll<HTMLElement>(":scope > [data-panel]") ?? []) {
+    const was = a.tops.get(el.dataset.panel!), dy = was === undefined ? 0 : was - el.getBoundingClientRect().top
+    if (Math.abs(dy) > 0.5 && !els.includes(el)) el.animate([{ transform: `translateY(${dy}px)` }, { transform: "none" }], t)
+  }
+}
+
 export function settle() {
+  if (arrival) land(arrival)
   const l = settling
   if (!l || l.fading) return
   const el = panelEl(l.key)

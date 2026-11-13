@@ -424,8 +424,7 @@ function provided(prefs = getPrefs()) {
   }
   return null
 }
-/** sidebars.json as saved (null: unset, the default). */
-export const savedSidebars = (prefs = getPrefs()) => prefs.sidebars
+export const savedSidebars = (prefs = getPrefs()): Sidebars | null => prefs.sidebars
 /** sidebars.json's setup: as saved, or the default while it's unset (what a workspace without its own shows). */
 export const vaultSidebars = (prefs = getPrefs()): Sidebars => prefs.sidebars ?? defaultSidebars(panelInfo())
 /** The sidebars' setup in effect: a plugin's own (the current workspace's), else sidebars.json's. */
@@ -476,16 +475,20 @@ export function panelOfView(to: string | undefined) {
   return sidebarPanels(disabled).find((x) => x.panel.view === name)?.key ?? null
 }
 
-export const dockPanel = (key: string, to: Place) => { unhideBarItem(key); changeSidebars((s) => placePanel(s, key, to)) }
+export function dockPanel(key: string | string[], to: Place) {
+  const keys = [key].flat()
+  keys.forEach(unhideBarItem)
+  changeSidebars((s) => keys.reduce((acc, k) => placePanel(acc, k, to), s))
+}
 function unhideBarItem(key: string) {
   const { fileBarHidden } = getPrefs()
   if (fileBarHidden.includes(key)) void setPrefs({ fileBarHidden: fileBarHidden.filter((k) => k !== key) })
 }
-/** Put a panel at the end of a sidebar, open, and that sidebar open: what every move without a drop does (a sidebar's
- *  toggle, Move to the other sidebar, ticking it in the Panels menu), so where it went is in sight. */
-export function dockAtEnd(key: string, side: Side) {
-  unhideBarItem(key)
-  changeSidebars((s) => setCollapsed(placePanel(s, key, { side, before: null }), key, false))
+/** Put panels at a sidebar's end, unfolded, the sidebar open: every move but a drop does, so where they went is in sight. */
+export function dockAtEnd(key: string | string[], side: Side) {
+  const keys = [key].flat()
+  keys.forEach(unhideBarItem)
+  changeSidebars((s) => keys.reduce((acc, k) => setCollapsed(placePanel(acc, k, { side, before: null }), k, false), s))
   if (side === "left" ? !getPrefs().sidebar : !getPrefs().rightSidebar) void setPrefs(side === "left" ? { sidebar: true } : { rightSidebar: true })
 }
 /** Bring a panel into a sidebar unasked, the sidebar left closed: unfolded, at `side`'s end (or before `before`) if

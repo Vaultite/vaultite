@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Notes dragged into a sidebar become panels**: a file dragged between a sidebar's panels (onto a heading), from the file tree, a
+  pinned page, Recent files, links, search or a tab, is drawn there as a panel, the panels making way for it; a tab
+  moves there and closes, as in Obsidian. A sidebar's toggle takes one too, at its end.
 - **An app on the internet asking to allow a vault plugin reaches the owner again**: the ask, which names the plugin
   and what it discloses, failed before it was sent, so the app was only told it couldn't.
 - **Errors the app catches are kept in Errors, and a base's failed edit says so**: a Vim command that couldn't be set up
