@@ -1,6 +1,7 @@
 import crypto from "node:crypto"
 import { bullets, fmtAgo, HTTPError, OpError, Plugin, section, type ServerError } from "../../../core/plugins.ts"
 import type { ErrorDetail, ErrorEvent, ErrorGroup, ErrorList, Source } from "./model.ts"
+import { ErrorRow } from "./rows.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -8,7 +9,7 @@ const MINUTE = 60_000, DAY = 86_400_000
 const BURST = 10_000
 const RECENT = 30
 
-const log = plugin.dayLog<ErrorEvent>("errors")
+const log = plugin.dayLog("errors", ErrorRow)
 const append = (e: ErrorEvent) => log.append(e.t, [e])
 
 function settings() {
@@ -53,7 +54,7 @@ function loaded() {
   if (groups) return groups
   groups = new Map()
   recent.clear()
-  const rows = log.days().flatMap(log.read).filter((e) => e?.id && e.t).sort((a, b) => a.t - b.t)
+  const rows = log.days().flatMap(log.read).sort((a, b) => a.t - b.t)
   for (const e of rows) add(e, false)
   return groups
 }

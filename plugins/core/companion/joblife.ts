@@ -1,6 +1,7 @@
 import { type Job, type JobState, live, mergedSaid, NEWS, type Transition } from "./jobs.ts"
 
-export type JobEvent = "start" | "working" | "asks" | "changed" | "answered" | "landed" | "error" | "ended" | "told" | "stop"
+export const JOB_EVENTS = ["start", "working", "asks", "changed", "answered", "landed", "error", "ended", "told", "stop"] as const
+export type JobEvent = typeof JOB_EVENTS[number]
 
 export const JOB_NEXT: Record<JobState, Partial<Record<JobEvent, JobState>>> = {
   waiting: { start: "starting", error: "failed", stop: "stopped" },
@@ -55,6 +56,8 @@ export type GoingEvent =
   | { type: "worked" }
   | { type: "rested" }
   | { type: "ended" }
+const GOING: Record<GoingEvent["type"], true> = { landed: true, verdict: true, unsent: true, worked: true, rested: true, ended: true }
+export const GOING_TYPES = Object.keys(GOING).filter((k): k is GoingEvent["type"] => Object.hasOwn(GOING, k))
 
 type GoingMove = { going: Going | undefined; ev?: JobEvent; fix?: undefined } | { going: Going; ev?: undefined; fix: string }
 const short = (commit: string) => commit.slice(0, 7)

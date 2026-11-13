@@ -1,40 +1,14 @@
+import type { z } from "zod"
 import type { Writer } from "../../../core/vault.ts"
-import type { Change, Hunk } from "./text.ts"
+import type { ActRow, MomentRow, RectRow } from "./rows.ts"
+import type { Change } from "./text.ts"
 import type { Target } from "../../../core/desktop/places.ts"
 
 export type Mode = "off" | "quiet" | "pair"
-export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | "open" | "reply" | "accept" | "reject" | "dismiss" | "move" | "change" | "watch"
-  path?: string; line?: number; text?: string; selection?: string; hunks?: Hunk[]; item?: string; to?: string
-  find?: string
-  for?: string
-  waited?: number
-  more?: number
-  again?: boolean
-  x?: number; y?: number; changes?: string[]; scene?: string
-  bubble?: boolean
-  summoned?: boolean; voice?: boolean
-  live?: string; shotWindow?: number
-  pageJob?: string
-  reviewed?: string
-  tour?: boolean
-  front?: "realtime"; talk?: string[]
-  into?: "note" | "bubble"
-  app?: string; appName?: string; window?: number; title?: string; screen?: string; shot?: string
-  floating?: { app: string; name: string; frame: Rect }[]
-  under?: string; sx?: number; sy?: number; shotAt?: Rect; near?: Near[]; ink?: Ink[]
-  origin?: { x: number; y: number }
-  region?: Rect
-  clicks?: { sx: number; sy: number; under?: string }[]
-  shotDown?: string; shotDownAt?: Rect; notices?: string
-  closeUp?: { shot: string; at: Rect; scale: number; mark?: "ring" | "pointer" }
-  displays?: Rect[]
-  pane?: string; ui?: string; row?: number; el?: string
-  chrome?: string
-  what?: string; url?: string }
+export type Moment = z.infer<typeof MomentRow>
 export type JobAsk = Omit<Moment, "seq">
-export type Rect = { x: number; y: number; width: number; height: number }
+export type Rect = z.infer<typeof RectRow>
 export type Near = import("./takeover.ts").Near
-type Ink = { shape: string; box: Rect; points: [number, number][] }
 export type Agent = Target & Boxed & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "starting" | "away"; t: number; seen?: boolean; why?: string
   pointed?: number
   rests?: boolean
@@ -54,6 +28,6 @@ export type Note = Target & Boxed & { id: string; kind: "say" | "comment" | "sug
   orphaned?: boolean
   answers?: { t: number; voice?: true; lang?: string; realtime?: true } }
 export type Reply = { by: "user" | "agent" | "guest"; text: string; name?: string; t?: number }
-export type Act = { t: number; as: string; op: string; seqs?: number[]; text?: string }
+export type Act = z.infer<typeof ActRow>
 export type Excerpt = { path: string; from: number; to: number; of: number; lines: string[]; scene?: string
   pane?: string; title?: string; text?: string }

@@ -1,4 +1,7 @@
-export type Hunk = { line: number; added: string[]; removed: string[] }
+import type { z } from "zod"
+import type { HunkRow } from "./rows.ts"
+
+export type Hunk = z.infer<typeof HunkRow>
 
 export function nearest(text: string, find: string, line?: number) {
   if (!find) return -1

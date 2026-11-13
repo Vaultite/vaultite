@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import { isDeepStrictEqual } from "node:util"
 import type { Any, VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
@@ -16,6 +17,17 @@ export default async ($: VaultTest) => {
     const r = await api(method, p, body)
     end({ status: r[0], ms: performance.now() - t, body, ...(r[0] >= 400 ? { error: r[1]?.error } : {}) })
     return r
+  }
+  {
+    const { logs } = await import("../../../plugins/core/activity/store.ts")
+    const day = "2001-02-03", t = new Date(2001, 1, 3, 12).getTime()
+    const row = { id: "e1", t, actor: { kind: "agent" as const, name: "Claude", terminal: "claude-a1" }, action: "edit" as const, text: "Edited a note", paths: ["A.md"], count: 2 }
+    logs.events.append(t, [row])
+    const file = path.join(app.plugins.find((p) => p.id === "activity")!.localDir(), `events-${day}.jsonl`)
+    fs.appendFileSync(file, `{"id":"e2","t":1,"action":"edit"}\n{"torn":\n${JSON.stringify({ ...row, id: "e3", action: "nope" })}\n`)
+    check("day logs: a day's rows read as written, a line of another shape or torn skipped", isDeepStrictEqual(logs.events.read(day), [row]), logs.events.read(day))
+    logs.events.rewrite(day, [])
+    check("day logs: a day rewritten with no rows is gone", !logs.events.days().includes(day), logs.events.days())
   }
   const actEvents = async (q = "") => (await api("GET", `activity?limit=50${q}`))[1].events as Any[]
   await actHeard("PUT", "file", { path: "Act/a.md", text: "one\n" }, "app/desktop")

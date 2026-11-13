@@ -4,7 +4,7 @@ import os from "node:os"
 import { API_VERSION, APP_VERSION, bullets, HTTPError, inDesktop, LOADED, localDate, noDesktop, MACHINE_CLIENT, onTailnet, Plugin, replyWithin, reply, running, section, Text } from "../../../core/plugins.ts"
 import { dialIn, type DialEntry } from "./dial.ts"
 import { shareKept } from "./kept.ts"
-import { alerts, duration, EVERY, KEEP_DAYS, machineNow, type Now, report, reportText, sample, watch, type Report, type Sample } from "./health.ts"
+import { alerts, duration, EVERY, KEEP_DAYS, machineNow, type Now, report, reportText, sample, SampleRow, watch, type Report, type Sample } from "./health.ts"
 import type { Item } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -281,7 +281,7 @@ const hourly = setInterval(() => { if (plugin.loaded) void register() }, 3600 * 
 first.unref?.(); hourly.unref?.()
 plugin.onUnload(() => { clearTimeout(first); clearInterval(hourly) })
 
-const healthLog = plugin.dayLog<Sample>("health")
+const healthLog = plugin.dayLog("health", SampleRow)
 const watching = watch()
 let latest: Sample | null = null
 function health(span: string): Report {

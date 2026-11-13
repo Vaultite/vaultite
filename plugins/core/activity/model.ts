@@ -1,16 +1,11 @@
 
-export type ActorKind = "you" | "agent" | "cli" | "script" | "disk"
-export type Actor = {
-  kind: ActorKind
-  name: string
-  device?: string
-  terminal?: string
-  session?: string
-  sessionId?: string
-}
+import type { z } from "zod"
+import type { ActivityRow, ActorRow, MinuteRow } from "./rows.ts"
 
-export type Action = "edit" | "create" | "delete" | "move" | "save" | "settings" | "pin" | "ui" | "read" | "search" | "run"
-  | "open" | "command" | "drop" | "change" | "request" | "failed"
+export type Actor = z.infer<typeof ActorRow>
+export type ActorKind = Actor["kind"]
+export type ActivityEvent = z.infer<typeof ActivityRow>
+export type Action = ActivityEvent["action"]
 
 export const ACTION_KINDS = [
   { id: "changes", label: "Changes", actions: ["edit", "create", "delete", "move", "save", "change"] },
@@ -26,22 +21,6 @@ export function actionsOf(q: string | undefined): Set<string> | null {
   const names = (q ?? "").split(",").map((x) => x.trim()).filter(Boolean)
   if (!names.length) return null
   return new Set(names.flatMap((n) => ACTION_KINDS.find((k) => k.id === n)?.actions ?? [n]))
-}
-
-export type ActivityEvent = {
-  id: string
-  t: number
-  last?: number
-  count?: number
-  actor: Actor
-  action: Action
-  text: string
-  paths?: string[]
-  wrote?: string[]
-  method?: string
-  route?: string
-  status?: number
-  ms?: number
 }
 
 export type ActivityList = { events: ActivityEvent[]; total: number }
@@ -63,8 +42,7 @@ export type FileSession = {
 }
 
 export type RouteStat = { route: string; n: number; errors: number; avg: number; p50: number; p95: number; max: number }
-export type Minute = { t: number; n: number; errors: number; p50: number; p95: number; max: number
-  lag: number; lagMax: number; rss: number; heap: number }
+export type Minute = z.infer<typeof MinuteRow>
 export type SlowRequest = { t: number; method: string; route: string; ms: number; status: number; who: string }
 export type ClientPerf = {
   device: string; t: number

@@ -1,11 +1,12 @@
 import fs from "node:fs"
-import { agentName } from "../../../core/agents.ts"
+import { agentName, parseJson } from "../../../core/agents.ts"
 import { OpError } from "../../../core/plugins.ts"
 import type { Follow } from "./follows.ts"
 import { voiceHere, voiceHereText } from "./voice.ts"
 import "./draw.ts"
 import { plugin } from "./self.ts"
-import type { Moment, Agent, Note } from "./types.ts"
+import type { JobAsk, Agent, Note } from "./types.ts"
+import { MomentRow } from "./rows.ts"
 import { str, setting, mode, ownName } from "./settings.ts"
 import { moments, waiters, agents, watching, notes, log, did, windows, broadcast, key, isMain, live, focus, batches, resend, shown } from "./state.ts"
 import { addMoment } from "./intake.ts"
@@ -135,6 +136,8 @@ plugin.op({
   text: (r) => `${r.name} hands over to a fresh session once it's free.`,
 })
 
+const Recorded = MomentRow.omit({ seq: true })
+
 plugin.op({
   id: "companion.replay",
   cli: "companion replay",
@@ -149,11 +152,11 @@ came (faster with speed), so you can watch what the session makes of them.
   params: { day: { type: "string", description: "a day (YYYY-MM-DD) of the log" }, file: { type: "string", description: "a file of moments, one JSON per line" },
     speed: { type: "number", minimum: 0.1, default: 1, description: "how much faster than they came" }, limit: { type: "integer", minimum: 1, default: 50, description: "at most this many" } },
   run: async (p) => {
-    let ms: Moment[] = []
-    if (p.file) ms = log.parse(fs.readFileSync(String(p.file), "utf8"))
+    let ms: JobAsk[] = []
+    if (p.file) ms = fs.readFileSync(String(p.file), "utf8").split("\n").flatMap((l) => parseJson(l, Recorded) ?? [])
     else if (p.day) ms = log.read(String(p.day))
     else throw new OpError("give `day` or `file`")
-    ms = ms.filter((m) => m && typeof m.kind === "string").slice(-p.limit)
+    ms = ms.slice(-p.limit)
     const t0 = ms[0]?.t ?? 0
     void (async () => {
       for (const m of ms) {

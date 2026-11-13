@@ -1,22 +1,8 @@
+import type { z } from "zod"
+import type { ErrorRow } from "./rows.ts"
 
-export type Source = "app" | "server"
-
-export type ErrorEvent = {
-  id: string
-  t: number
-  source: Source
-  kind: string
-  message: string
-  stack?: string
-  component?: string
-  fatal?: boolean
-  where?: string
-  url?: string
-  build?: string
-  device?: string
-  trail?: string[]
-  n?: number
-}
+export type ErrorEvent = z.infer<typeof ErrorRow>
+export type Source = ErrorEvent["source"]
 
 export type ErrorGroup = {
   id: string

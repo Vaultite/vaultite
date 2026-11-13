@@ -12,7 +12,7 @@ const ThingIn = z.looseObject({ role: z.string(), label: z.string(), frame: Fram
     focused: z.boolean().optional(), value: z.string().optional() }).catch({}),
   actions: z.array(z.enum(["press", "expand", "collapse", "focus", "select", "scroll", "menu"])).catch([]), inside: z.array(z.object({ role: z.string(), label: z.string() })).catch([]),
   ui: z.string().optional(), id: z.string().optional() })
-const NearIn = ThingIn.extend({ ax: z.string().optional(), id: z.string() })
+export const NearIn = ThingIn.extend({ ax: z.string().optional(), id: z.string() })
 const maybe = <T extends z.ZodType>(t: T) => t.optional().catch(undefined)
 const DoneIn = z.looseObject({ ok: z.boolean().catch(false), why: maybe(z.string()), text: maybe(z.string()), how: maybe(z.string()), near: maybe(z.array(NearIn)), app: maybe(z.string()),
   title: maybe(z.string()), bundle: maybe(z.string()), frame: maybe(Frame), found: maybe(NearIn), moved: maybe(z.boolean()), things: maybe(z.array(ThingIn)),

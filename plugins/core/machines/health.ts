@@ -1,15 +1,15 @@
 import { execFile } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
+import { z } from "zod"
 
-export type Pressure = "normal" | "warn" | "critical"
-export type Top = { name: string; pid: number; cpu: number; rss: number }
-export type Sample = {
-  t: number; load: number[]
-  mem: { total: number; free: number; pressure: Pressure }
-  swap: { used: number; total: number }
-  procs: Top[]
-}
+const TopRow = z.object({ name: z.string(), pid: z.number(), cpu: z.number(), rss: z.number() })
+export const SampleRow = z.object({ t: z.number(), load: z.array(z.number()),
+  mem: z.object({ total: z.number(), free: z.number(), pressure: z.enum(["normal", "warn", "critical"]) }),
+  swap: z.object({ used: z.number(), total: z.number() }), procs: z.array(TopRow) })
+export type Sample = z.infer<typeof SampleRow>
+export type Pressure = Sample["mem"]["pressure"]
+export type Top = z.infer<typeof TopRow>
 type Row = { pid: number; name: string; pcpu: number; secs: number; rss: number }
 
 export const EVERY = 60_000

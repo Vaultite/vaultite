@@ -1,3 +1,4 @@
+import type { z } from "zod"
 import { parseTerminal } from "../../../core/agents.ts"
 import { logger, type OpCtx, OpError } from "../../../core/plugins.ts"
 import { gist, type Job, landTask, linkOf, messageOf, prunedLine, terminalOf } from "./jobs.ts"
@@ -6,12 +7,13 @@ import { COMPANION, THEM } from "./jobtold.ts"
 import { plainWords } from "./jobword.ts"
 import type { workerLinks } from "./links.ts"
 import type { Moment } from "./types.ts"
-import type { JobDeps, JobLogRow, Seen } from "./workers.ts"
+import type { JobDeps, Seen } from "./workers.ts"
+import type { JobLogRow } from "./rows.ts"
 
 const log = logger("companion")
 
 export type TellDeps = {
-  all: () => Job[]; changed: () => void; move: (j: Job, ev: JobEvent, t?: number) => boolean; log: { append: (t: number, rows: JobLogRow[]) => void }
+  all: () => Job[]; changed: () => void; move: (j: Job, ev: JobEvent, t?: number) => boolean; log: { append: (t: number, rows: z.infer<typeof JobLogRow>[]) => void }
   clockOf: (j: Job) => Clock; sending: Set<string>; links: ReturnType<typeof workerLinks>; setting: (k: string) => string; d: JobDeps
   seenOf: (j: Job, turn?: boolean, diff?: boolean) => Promise<Seen>; ended: (j: Job, s: Seen) => Promise<boolean>; refresh: (j: Job, now?: boolean) => Promise<void>
 }

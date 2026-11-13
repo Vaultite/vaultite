@@ -8,7 +8,8 @@ import { inSummoned } from "./summoned.ts"
 import { keepShown, type Shown as ShownMark } from "./shown.ts"
 import { TINTS, setting, mode, agentSetting, howOf, ownName, nameOf, profiles, inAccount, harnesses } from "./settings.ts"
 import { plugin } from "./self.ts"
-import type { Moment, Agent, KeptAgent, Note, Act } from "./types.ts"
+import type { Moment, Agent, KeptAgent, Note } from "./types.ts"
+import { ActRow, MomentRow } from "./rows.ts"
 import { KEPT, save, anchorLine } from "./comments.ts"
 import { screens } from "./windows.ts"
 import { SCREEN_NEWS, riding } from "./screensocket.ts"
@@ -41,8 +42,8 @@ export const recentSays = () => said
 export const setSaid = (to: Note[]) => { said = to }
 export const SAID = 10
 export const timers = new Map<string, ReturnType<typeof setTimeout>>()
-export const log = plugin.dayLog<Moment>("moments")
-export const acts = plugin.dayLog<Act>("actions")
+export const log = plugin.dayLog("moments", MomentRow)
+export const acts = plugin.dayLog("actions", ActRow)
 export const BOOKKEEPING = new Set(["next", "handed", "sent", "done", "again", "result", "withdrawn", "talked", "shown"])
 export const showedAt = new Map<string, number>(), passedAt = new Map<string, number>()
 const SHOWING = new Set(["look", "draw", "highlight", "act"])

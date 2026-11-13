@@ -4,6 +4,7 @@ import { Relayed } from "../../../core/contracts/version.ts"
 import { logger, type OpCtx, OpError, type Plugin, type Who, whoOf } from "../../../core/plugins.ts"
 import { cardOf, commitsIn, turnWord, fixTask, landedSaid, mergedCommit, mergedSaid, type Handoff, type Job, type JobCard, jobsLine, jobTimings, lastOf, linkOf, linksIn, live, type Marks, messageOf, nowOf,
   type Queued, toldBy, type Result, resumeOf, str, type Waits, type Where } from "./jobs.ts"
+import { JobLogRow } from "./rows.ts"
 import { type Clock, due, endEvent, type Going, type GoingEvent, going, goingLine, type JobEvent, PACE, type Pace, read, readTurn, restEvent, shipDue, step, turnOver, waitsLive } from "./joblife.ts"
 import { diffSince, marksOf, onMainSince } from "./jobgit.ts"
 import { handoffOps } from "./jobhandoff.ts"
@@ -40,7 +41,6 @@ export type Seen = { running: boolean; state?: string; kind?: string; msg?: stri
   onMain?: boolean
   marks?: Marks }
 
-export type JobLogRow = { t: number; job: string; ev: JobEvent | "untold" | `going ${GoingEvent["type"]}`; from: string; to: string }
 const KEEP = 40, KEEP_DAYS = 7
 export type JobCore = {
   all: () => Job[]; jobOf: (id: string) => Job; changed: () => void; refresh: (j: Job, now?: boolean) => Promise<void>
@@ -71,7 +71,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   const places = jobPlaces(plugin, machines, atMachine), { placeHere } = places
 
   let held: { vault: string; jobs: Job[] } | null = null
-  const jobLog = plugin.dayLog<JobLogRow>("jobs"), log = logger("companion")
+  const jobLog = plugin.dayLog("jobs", JobLogRow), log = logger("companion")
   function all(): Job[] {
     if (held?.vault === plugin.vault.path) return held.jobs
     held = { vault: plugin.vault.path, jobs: plugin.kept<{ jobs: Job[] }>("jobs", { jobs: [] }).jobs ?? [] }

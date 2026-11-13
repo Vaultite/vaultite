@@ -5,6 +5,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import type { IncomingMessage } from "node:http"
 import type { Readable } from "node:stream"
+import type { z } from "zod"
 import os from "node:os"
 import path from "node:path"
 import { setImmediate as turn } from "node:timers/promises"
@@ -736,9 +737,9 @@ export class Plugin {
     return `plugins/${this.id}/${file}`
   }
 
-  /** A log of JSON lines in localDir(), a file a day (<kind>-<date>.jsonl): appended at once (an error that ends the
-   *  server is on disk first), read and rewritten by day, days older than `keep` pruned at most hourly. */
-  dayLog<T>(kind: string) {
+  /** JSON lines in localDir(), a file a day (<kind>-<date>.jsonl), appended at once, read as `row` (other lines skipped),
+   *  rewritten by day, days older than `keep` pruned at most hourly. */
+  dayLog<T>(kind: string, row: z.ZodType<T>) {
     const file = (date: string) => path.join(this.localDir(), `${kind}-${date}.jsonl`), re = new RegExp(`^${kind}-(\\d{4}-\\d\\d-\\d\\d)\\.jsonl$`)
     const lines = (rows: T[]) => rows.map((r) => JSON.stringify(r)).join("\n") + "\n"
     let pruned = 0
@@ -749,10 +750,14 @@ export class Plugin {
       read: (date: string): T[] => {
         let text: string
         try { text = fs.readFileSync(file(date), "utf8") } catch { return [] }
-        return log.parse(text)
+        return text.split("\n").flatMap((l) => {
+          if (!l) return []
+          let json: unknown
+          try { json = JSON.parse(l) } catch { return [] }
+          const r = row.safeParse(json)
+          return r.success ? [r.data] : []
+        })
       },
-      /** Its rows from a file's text, one JSON per line. */
-      parse: (text: string): T[] => text.split("\n").flatMap((l) => { try { return l ? [JSON.parse(l)] : [] } catch { return [] } }), // (a torn line)
       /** The days it has, oldest first. */
       days: (): string[] => { try { return fs.readdirSync(this.localDir()).flatMap((f) => re.exec(f)?.[1] ?? []).sort() } catch { return [] } },
       rewrite: (date: string, rows: T[]) => { try { if (rows.length) fs.writeFileSync(file(date), lines(rows)); else fs.rmSync(file(date), { force: true }) } catch { /* gone */ } },
