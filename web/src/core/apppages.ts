@@ -21,7 +21,7 @@ export const APP_PAGES: AppPage[] = share ? [] : [
 ]
 
 export const appPageOf = (to: string) => APP_PAGES.find((p) => (p.tabs ?? [p.id]).includes(to)) ?? null
-export const isSetupTab = (to: string): to is SetupTab => (SETUP_TABS as readonly string[]).includes(to)
+export const isSetupTab = (to: string): to is SetupTab => SETUP_TABS.some((t) => t === to)
 export const pageShownAt = (to: string) => {
   const p = appPageOf(to)
   const plugins = p?.id === "settings" && isDesktop() && ownerOf(settingsSection.get()) === "setup"
@@ -40,7 +40,7 @@ export function openAppPage(p: AppPage, newTab = false) {
 export function openSetup(tab?: SetupTab) {
   if (isDesktop()) return openSettings(tab ?? lastOf.setup)
   const open = findOpen(...SETUP_TABS)
-  const to = tab ?? (open?.p.to as SetupTab | undefined) ?? "plugins"
+  const to = tab ?? (open && isSetupTab(open.p.to) ? open.p.to : undefined) ?? "plugins"
   if (open && open.p.to !== to) replaceTabTarget(open.p.id, to)
   goTo(to)
 }

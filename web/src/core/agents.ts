@@ -152,7 +152,7 @@ let lastPlaces: Place[] | null = null, lastMachines: Machine[] | null = null
 let asking: Promise<Place[]> | null = null
 async function askPlaces(): Promise<Place[]> {
   const ms = lastMachines = await fetchMachines()
-  const where = [{ machine: "", label: ms.find((m) => m.self)?.label ?? "This machine", plugins: null as string[] | null },
+  const where: { machine: string; label: string; plugins: string[] | null }[] = [{ machine: "", label: ms.find((m) => m.self)?.label ?? "This machine", plugins: null },
     ...otherMachines(ms, "terminal").map((m) => ({ machine: m.id, label: m.label, plugins: m.plugins ?? [] }))]
   const agents = agentsOn()
   const out: Place[] = []

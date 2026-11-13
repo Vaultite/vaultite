@@ -1,5 +1,5 @@
-import { createElement } from "react"
-import type { LucideIcon } from "lucide-react"
+import { createElement, forwardRef } from "react"
+import type { LucideIcon, LucideProps } from "lucide-react"
 import type { MenuItem } from "@/components/ContextMenu"
 import { colorHighlight, HIGHLIGHT_COLORS, highlightAt, highlightClass, recolor, unmark, type Highlight, type HighlightColor } from "@/core/highlights"
 import { capitalize } from "@/lib/utils"
@@ -11,8 +11,8 @@ export function highlightIcon(color: HighlightColor | null, now = false) {
   const key = `${color ?? ""}:${now}`
   let I = dots.get(key)
   if (!I) {
-    dots.set(key, I = (({ className }: { className?: string }) => createElement("span", { className: `${className ?? ""} grid place-items-center`, "aria-hidden": true },
-      createElement("span", { className: `hl-dot ${highlightClass(color)}${now ? " is-now" : ""}` }))) as unknown as LucideIcon)
+    dots.set(key, I = forwardRef<SVGSVGElement, Omit<LucideProps, "ref">>(({ className }, _ref) => createElement("span", { className: `${className ?? ""} grid place-items-center`, "aria-hidden": true },
+      createElement("span", { className: `hl-dot ${highlightClass(color)}${now ? " is-now" : ""}` }))))
   }
   return I
 }

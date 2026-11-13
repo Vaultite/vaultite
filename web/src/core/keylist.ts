@@ -7,6 +7,7 @@ import { activePane, panes, setFocusedPane } from "@/core/workspace"
 import { focusSide, hasNeighbour } from "@/core/splits"
 import { sidebars } from "@/core/plugins"
 import { asKeys, getSelection, OWN } from "@/core/select"
+import { htmlOf } from "@/core/dom"
 
 const ROW = "[data-keyrow]"
 
@@ -19,7 +20,7 @@ export function currentRow(): HTMLElement | null {
 export const inKeyList = () => !!currentRow()
 
 const scopeOf = (row: HTMLElement) => row.closest<HTMLElement>("[data-sidebar-body]") ?? row.closest<HTMLElement>("[data-keylist]") ?? document.body
-const rowsIn = (scope: HTMLElement) => [...scope.querySelectorAll<HTMLElement>(ROW)].filter((r) => r.getClientRects().length > 0 && !(r as HTMLButtonElement).disabled)
+const rowsIn = (scope: HTMLElement) => [...scope.querySelectorAll<HTMLElement>(ROW)].filter((r) => r.getClientRects().length > 0 && !("disabled" in r && r.disabled))
 
 function focusRow(r: HTMLElement) {
   r.focus({ preventScroll: true })
@@ -183,7 +184,7 @@ const RADIO = "[role=radiogroup] [role=radio]"
 const currentRadio = () => { const a = document.activeElement; return a instanceof HTMLElement && a.matches(RADIO) ? a : null }
 const groupOf = (r: HTMLElement) => r.closest<HTMLElement>("[role=radiogroup]")!
 const radiosIn = (g: HTMLElement) => [...g.querySelectorAll<HTMLElement>("[role=radio]")]
-  .filter((r) => groupOf(r) === g && r.getClientRects().length > 0 && !(r as HTMLButtonElement).disabled && !r.closest("[inert]"))
+  .filter((r) => groupOf(r) === g && r.getClientRects().length > 0 && !("disabled" in r && r.disabled) && !r.closest("[inert]"))
 
 function moveInRadios(by: 1 | -1) {
   const r = currentRadio()
@@ -303,7 +304,7 @@ registerCommands([
   { id: "tabs:tab-back", name: "Move before the tabs", keys: ["Shift+Tab"], when: () => !!currentTab(), run: () => tabPastTabs(true), icon: StepBack },
   // The menu key opens the menu by itself; Macs have none.
   { id: "focus:menu", name: "Open the menu of what has the keyboard", keys: ["Shift+F10"], words: "context menu right-click", when: () => !!focused(),
-    keysWhen: () => { const a = document.activeElement; return !typingIn(a) || (a as HTMLElement).isContentEditable },
+    keysWhen: () => { const a = document.activeElement; return !typingIn(a) || !!htmlOf(a)?.isContentEditable },
     run: () => { setTimeout(() => requestAnimationFrame(() => openFocusedMenu())) }, icon: Menu },
   { id: "focus:activate", name: "Press what has the keyboard", keys: ["Enter"], when: () => !!madeButton() && !typingIn(document.activeElement), run: () => madeButton()?.click(), icon: SquareMousePointer },
   { id: "area:next", name: "Focus the next area", keys: ["F6"], desktop: true, run: () => nextArea(1), icon: StepForward },

@@ -51,7 +51,7 @@ export type Leaving = {
 export function fadeAway(els: readonly (Element | null | undefined)[], o: Leaving = {}) {
   const all = els.filter((e): e is HTMLElement => !!e?.isConnected && "style" in e)
   if (!all.length || !moves()) return
-  const doc = all[0].ownerDocument
+  const doc = all[0].ownerDocument, HTML = doc.defaultView?.HTMLElement ?? HTMLElement
   const { duration, easing } = timing(o.pace ?? "fast")
   const host = doc.createElement("div")
   host.dataset.fading = o.tag ?? ""
@@ -72,14 +72,15 @@ export function fadeAway(els: readonly (Element | null | undefined)[], o: Leavin
   const scrolled: [Element, number, number][] = []
   for (const el of all) {
     const r = el.getBoundingClientRect()
-    const copy = el.cloneNode(true) as HTMLElement
+    const copy = doc.importNode(el, true)
     // What a copy doesn't keep: where it scrolled, what was typed, which part was lit.
     const from = [el, ...el.querySelectorAll("*")], to = [copy, ...copy.querySelectorAll("*")]
-    from.forEach((f, i) => {
-      if (f === o.lit) litCopy = to[i] as HTMLElement
-      if (f.scrollTop || f.scrollLeft) scrolled.push([to[i], f.scrollTop, f.scrollLeft])
-      if (f.tagName === "INPUT" || f.tagName === "TEXTAREA") (to[i] as HTMLInputElement).value = (f as HTMLInputElement).value
-    })
+    for (const [i, f] of from.entries()) {
+      const t = to[i]
+      if (f === o.lit && t instanceof HTML) litCopy = t
+      if (f.scrollTop || f.scrollLeft) scrolled.push([t, f.scrollTop, f.scrollLeft])
+      if ((f.tagName === "INPUT" || f.tagName === "TEXTAREA") && "value" in f && "value" in t) t.value = f.value
+    }
     for (const t of to) { t.removeAttribute("id"); t.removeAttribute("role") }
     Object.assign(copy.style, { position: "fixed", left: `${r.left}px`, top: `${r.top}px`, right: "auto", bottom: "auto", width: `${r.width}px`,
       height: `${r.height}px`, margin: "0", transform: "none", translate: "none", scale: "none", visibility: "visible" })
@@ -90,7 +91,7 @@ export function fadeAway(els: readonly (Element | null | undefined)[], o: Leavin
   for (const [el, y, x] of scrolled) { el.scrollTop = y; el.scrollLeft = x }
   const delay = litCopy && o.blink ? BLINK : 0
   if (litCopy) {
-    const row = litCopy as HTMLElement
+    const row = litCopy
     row.style.backgroundColor = lit
     if (o.blink) row.animate([{ backgroundColor: "transparent" }, { backgroundColor: "transparent", offset: 0.5 }, { backgroundColor: lit, offset: 0.5 }, { backgroundColor: lit }], { duration: BLINK })
   }

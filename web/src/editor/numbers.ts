@@ -42,7 +42,7 @@ function textBaseline(el: Element, range: Range): number | null {
 }
 
 function zoomOf(el: HTMLElement) {
-  const z = (el as HTMLElement & { currentCSSZoom?: number }).currentCSSZoom
+  const z = "currentCSSZoom" in el ? el.currentCSSZoom : undefined
   return z || el.getBoundingClientRect().height / el.offsetHeight || 1
 }
 

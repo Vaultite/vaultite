@@ -68,5 +68,11 @@ const settles = ViewPlugin.define((view) => {
 
 export const suggestKeys = [settles, dismissed, Prec.highest(keymap.of([{ key: "Escape", run: close }, { key: "Tab", run: acceptCompletion }]))]
 
-export const optionGlyph = (c: Completion) => (c as Completion & { glyph?: () => Node }).glyph?.() ?? null
-export const optionTrail = (c: Completion, _s: EditorState, view: EditorView) => (c as Completion & { trail?: (view: EditorView) => Node | null }).trail?.(view) ?? null
+export function optionGlyph(c: Completion) {
+  const glyph = "glyph" in c && c.glyph instanceof Function ? c.glyph() : null
+  return glyph instanceof Node ? glyph : null
+}
+export function optionTrail(c: Completion, _s: EditorState, view: EditorView) {
+  const trail = "trail" in c && c.trail instanceof Function ? c.trail(view) : null
+  return trail instanceof Node ? trail : null
+}

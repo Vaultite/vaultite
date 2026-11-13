@@ -1,5 +1,6 @@
 import { useEffect } from "react"
 import type { FileBarFade } from "@/core/prefs"
+import { elementOf } from "@/core/dom"
 
 const MOVE = 16, AFTER_KEY = 500
 const NEAR = 12
@@ -14,7 +15,7 @@ export function useBarFade(mode: FileBarFade | false) {
     const key = (e: KeyboardEvent) => {
       if (e.key === "Escape") return show()
       if (e.metaKey || e.ctrlKey || e.altKey || !(e.key.length === 1 || e.key === "Backspace" || e.key === "Enter")) return
-      if (!(e.target as Element).closest?.("[data-pane] :is([contenteditable=true], textarea)")) return
+      if (!elementOf(e.target)?.closest("[data-pane] :is([contenteditable=true], textarea)")) return
       last = e.timeStamp; moved = 0
       if (++keys >= 2) root.typing = ""
     }

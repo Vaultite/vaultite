@@ -9,7 +9,7 @@ const CODE = /^(FencedCode|CodeBlock|CodeText|InlineCode|CodeInfo|CodeMark)$/
 
 type ColorOption = Completion & { highlight: HighlightColor }
 export const optionDot = (c: Completion) => {
-  const color = (c as ColorOption).highlight
+  const color = "highlight" in c ? HIGHLIGHT_COLORS.find((h) => h.name === c.highlight)?.name : undefined
   if (!color) return null
   const el = document.createElement("span")
   el.className = `hl-dot ${highlightClass(color)} cm-hl-option`

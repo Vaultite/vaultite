@@ -91,8 +91,8 @@ function make({ resolves, asset }: MarkdownOpts = {}) {
       return tok
     },
     renderer(t) {
-      const n = notes.get((t as FootnoteDef).label)
-      if (n && n.html === undefined) n.html = this.parser.parseInline((t as FootnoteDef).tokens)
+      const n = notes.get(t.label)
+      if (n && n.html === undefined) n.html = this.parser.parseInline(t.tokens ?? [])
       return ""
     },
   }
@@ -105,7 +105,7 @@ function make({ resolves, asset }: MarkdownOpts = {}) {
       if (r) return { type: "footnoteRef", raw: r[0], label: r[1] }
     },
     renderer(t) {
-      const label = t.label as string
+      const label: string = t.label
       let i = order.indexOf(label)
       if (i < 0) { order.push(label); i = order.length - 1 }
       const note = notes.get(label)
@@ -119,9 +119,9 @@ function make({ resolves, asset }: MarkdownOpts = {}) {
     start: (src: string) => { const i = src.search(/^ {0,3}\$\$/m); return i >= 0 ? i : undefined },
     tokenizer(src: string) {
       const r = /^ {0,3}\$\$([\s\S]+?)\$\$[ \t]*(?:\n+|$)/.exec(src)
-      if (r) return { type: "mathBlock", raw: r[0], text: r[1].trim(), display: true } as Math
+      if (r) return { type: "mathBlock", raw: r[0], text: r[1].trim(), display: true } satisfies Math
     },
-    renderer: (t) => `<div class="math math-display" data-math="display">${esc((t as Math).text)}</div>\n`,
+    renderer: (t) => `<div class="math math-display" data-math="display">${esc(t.text)}</div>\n`,
   }
   const mathInline: TokenizerAndRendererExtension = {
     name: "mathInline",
@@ -129,14 +129,14 @@ function make({ resolves, asset }: MarkdownOpts = {}) {
     start: (src: string) => { const i = src.indexOf("$"); return i >= 0 ? i : undefined },
     tokenizer(src: string) {
       const d = /^\$\$([^$]+?)\$\$/.exec(src)
-      if (d) return { type: "mathInline", raw: d[0], text: d[1].trim(), display: true } as Math
+      if (d) return { type: "mathInline", raw: d[0], text: d[1].trim(), display: true } satisfies Math
       // Pandoc's rule: no space inside the dollars, no digit right after the closing one ($5 and $10 is text).
       const r = /^\$(?![\s$])((?:\\.|[^\\$\n])+?)(?<![\s\\])\$(?!\d)/.exec(src)
-      if (r) return { type: "mathInline", raw: r[0], text: r[1], display: false } as Math
+      if (r) return { type: "mathInline", raw: r[0], text: r[1], display: false } satisfies Math
     },
-    renderer: (t) => (t as Math).display
-      ? `<span class="math math-display" data-math="display">${esc((t as Math).text)}</span>`
-      : `<span class="math math-inline" data-math="inline">${esc((t as Math).text)}</span>`,
+    renderer: (t) => t.display
+      ? `<span class="math math-display" data-math="display">${esc(t.text)}</span>`
+      : `<span class="math math-inline" data-math="inline">${esc(t.text)}</span>`,
   }
 
   const highlight: TokenizerAndRendererExtension = {
@@ -277,6 +277,6 @@ function make({ resolves, asset }: MarkdownOpts = {}) {
 const plain = make()
 const md = (opts?: MarkdownOpts) => (opts?.resolves || opts?.asset ? make(opts) : plain)
 
-export const renderMarkdown = (text: string, opts?: MarkdownOpts) => md(opts).parse(text, { async: false }) as string
+export const renderMarkdown = (text: string, opts?: MarkdownOpts) => md(opts).parse(text, { async: false })
 
-export const renderInline = (text: string, opts?: MarkdownOpts) => md(opts).parseInline(text, { async: false }) as string
+export const renderInline = (text: string, opts?: MarkdownOpts) => md(opts).parseInline(text, { async: false })

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from "react"
 import { keyboardTakes, pageTakenSince, webPages } from "@/core/desktop"
 import { isDesktop } from "@/core/platform"
 import { activePane, activeTab, onWorkspaceChange } from "@/core/workspace"
+import { elementOf } from "@/core/dom"
 
 let tabbedAt = -1e9
 if (typeof window !== "undefined") addEventListener("keydown", (e) => { if (e.key === "Tab") tabbedAt = e.timeStamp }, true)
@@ -40,13 +41,13 @@ const where = () => { const p = activePane(); return `${activeTab()?.id} ${p?.id
 
 let handing: Element | null = null
 
-type Hold = { was: HTMLElement | null; under: Hold | null; gone: boolean }
+type Hold = { was: Element | null; under: Hold | null; gone: boolean }
 let top: Hold | null = null
 
 /** Call as something opens over the page, before it takes the focus; call what it returns as it closes. */
 export function holdFocus(): () => void {
   const cur = document.activeElement
-  const held = ((idle(cur) || cur?.closest("[role=menu], [role=dialog][aria-modal]")) && handing ? handing : cur) as HTMLElement | null
+  const held = (idle(cur) || cur?.closest("[role=menu], [role=dialog][aria-modal]")) && handing ? handing : cur
   const hold: Hold = { was: held, under: top, gone: false }
   top = hold
   const before = where(), takes = keyboardTakes()
@@ -63,7 +64,7 @@ export function holdFocus(): () => void {
       const page = pageTakenSince(takes)
       if (page !== null) return void webPages?.go(page, "focus").catch(() => {})
       const pane = was?.closest<HTMLElement>("[data-pane]")?.dataset.pane
-      if (!idle(was) && (!pane || pane === activePane().id)) was!.focus({ preventScroll: true })
+      if (!idle(was) && (!pane || pane === activePane().id)) { if (was instanceof HTMLElement || was instanceof SVGElement) was.focus({ preventScroll: true }) }
       else if (!idle(was) || pane) focusPaneSoon()
     }))
   }
@@ -78,7 +79,7 @@ export function useHeldFocus() {
 
 let seen = where()
 let last: Element | null = null
-addEventListener("focusin", (e) => { last = e.target as Element })
+addEventListener("focusin", (e) => { last = elementOf(e.target) })
 onWorkspaceChange(() => {
   const now = where()
   if (now === seen) return
@@ -101,7 +102,7 @@ export function useDismiss(open: boolean, close: () => void, { inside, anchor, h
       if (e.key === "Escape" && !document.querySelector("[role=menu], [data-palette]") && (latest.current.escape?.(e) ?? true)) { e.stopPropagation(); shut() }
     }
     const down = (e: PointerEvent) => {
-      const t = e.target as Element | null
+      const t = elementOf(e.target)
       if (!t?.closest(inside) && !anchor?.current?.contains(t)) shut()
     }
     addEventListener("keydown", key, true)

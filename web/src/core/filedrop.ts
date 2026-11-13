@@ -43,7 +43,7 @@ const isImageUrl = (u: string) => /^data:image\//i.test(u) || (() => { try { ret
 export function droppedFrom(dt: DataTransfer | null): Dropped | null {
   if (!dt) return null
   const items = [...dt.items].filter((i) => i.kind === "file"), all = [...dt.files]
-  const folder = (i: number) => (items[i] as DataTransferItem & { webkitGetAsEntry?: () => { isDirectory: boolean } | null })?.webkitGetAsEntry?.()?.isDirectory
+  const folder = (i: number) => { const item = items.at(i); return item && "webkitGetAsEntry" in item ? item.webkitGetAsEntry()?.isDirectory : undefined }
   const files = all.filter((_, i) => !folder(i))
   if (files.length) return { files, images: [], links: [] }
   if (all.length) { notify("A folder can't go into a note, only files", { id: "drop-folder" }); return null }

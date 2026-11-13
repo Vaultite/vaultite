@@ -23,6 +23,7 @@ import { drawnLink, linkClick, type Link, type LinkClick } from "@/core/links"
 import { openMenu } from "@/components/ContextMenu"
 import type { ReadingBlock, ReadingDrawn } from "@/core/define"
 import type { ReadBlock } from "@/core/plugins"
+import { elementOf, htmlOf } from "@/core/dom"
 
 export type PreviewConfig = {
   live: boolean
@@ -213,7 +214,7 @@ class Img extends WidgetType {
     })
     return wrap
   }
-  ignoreEvent(e: Event) { return e.type === "contextmenu" || (e.target as Element).closest?.(".cm-image-tools, .cm-image-resize") != null }
+  ignoreEvent(e: Event) { return e.type === "contextmenu" || elementOf(e.target)?.closest(".cm-image-tools, .cm-image-resize") != null }
 }
 
 const VOID = /^(br|img|wbr|hr)$/i
@@ -247,7 +248,7 @@ class InlineEmbed extends WidgetType {
     return el
   }
   destroy(dom: HTMLElement) { inlineDrawn.get(dom)?.destroy() }
-  ignoreEvent(e: Event) { return !(e.target as Element).closest?.(".cm-inline-embed.is-link") }
+  ignoreEvent(e: Event) { return !elementOf(e.target)?.closest(".cm-inline-embed.is-link") }
 }
 const inlineDrawn = new WeakMap<HTMLElement, Drawn>()
 
@@ -267,7 +268,8 @@ function toolButton(icon: string, label: string, run: () => void) {
 function dragWidth(e: PointerEvent, view: EditorView, wrap: HTMLElement, img: HTMLImageElement, edit: () => EmbedEdit | null) {
   if (e.button !== 0) return
   e.preventDefault(); e.stopPropagation()
-  const grip = e.currentTarget as HTMLElement
+  const grip = htmlOf(e.currentTarget)
+  if (!grip) return
   grip.setPointerCapture(e.pointerId)
   const x0 = e.clientX, w0 = img.getBoundingClientRect().width
   const max = view.contentDOM.getBoundingClientRect().width
@@ -344,7 +346,7 @@ class FenceHead extends WidgetType {
     head.append(lang, copy)
     return head
   }
-  ignoreEvent(e: Event) { return (e.target as Element).closest?.(".cm-fence-copy") != null }
+  ignoreEvent(e: Event) { return elementOf(e.target)?.closest(".cm-fence-copy") != null }
 }
 
 class MathInline extends WidgetType {
@@ -409,7 +411,7 @@ class Block extends WidgetType {
     if (this.draw === drawHtml) keepFolds(body, this.held)
     painted.set(el, this)
     el.addEventListener("mousedown", (e) => { if (pressed(view, el, e) && !this.view) bar.edit.source!() })
-    el.addEventListener("click", (e) => { const w = (e.target as Element).closest("[data-wiki], [data-tag]"); if (w && !w.closest("[data-embed]")) e.preventDefault() })
+    el.addEventListener("click", (e) => { const w = elementOf(e.target)?.closest("[data-wiki], [data-tag]"); if (w && !w.closest("[data-embed]")) e.preventDefault() })
     if (!this.view) el.addEventListener("contextmenu", (e) => {
       const l = drawnLink(e.target), menu = view.state.facet(previewConfig).linkMenu
       if (!l || !menu || e.defaultPrevented || l.el.closest("[data-embed]")) return
@@ -434,14 +436,14 @@ type Draw = (el: HTMLElement, text: string, view: EditorView, edit: BlockEdit) =
 
 function pressed(view: EditorView, el: HTMLElement, e: MouseEvent) {
   if (e.button === 2 || (e.ctrlKey && e.button === 0 && isMac)) { e.preventDefault(); return false }
-  const wiki = (e.target as Element).closest<HTMLElement>("[data-wiki], [data-tag]")
+  const wiki = elementOf(e.target)?.closest<HTMLElement>("[data-wiki], [data-tag]")
   if (wiki && (e.button === 0 || e.button === 1) && !wiki.closest("[data-embed]")) {
     e.preventDefault()
     if (e.button === 1) noPaste()
     view.state.facet(previewConfig).follow(wiki.dataset.tag ? { tag: wiki.dataset.tag } : { wiki: wiki.dataset.wiki! }, e.metaKey || e.ctrlKey || e.button === 1)
     return false
   }
-  const own = (e.target as Element).closest("a, button, input, textarea, select, summary, [contenteditable=true], [data-no-edit], [data-md-embed]")
+  const own = elementOf(e.target)?.closest("a, button, input, textarea, select, summary, [contenteditable=true], [data-no-edit], [data-md-embed]")
   if ((own && el.contains(own)) || e.defaultPrevented || !view.state.facet(EditorView.editable)) return false
   e.preventDefault()
   return true
@@ -508,10 +510,10 @@ const runs = new WeakMap<GridEdit, { view: EditorView; run: () => { w: Grid } | 
 function gridEdit(view: EditorView, el: HTMLElement): GridEdit {
   const run = () => {
     if (!el.isConnected) return null
-    let hit = null as { w: Grid } | null
+    let hit: { w: Grid } | undefined
     const pos = view.posAtDOM(el)
     view.state.field(blockField).deco.between(pos, pos, (from, _to, d) => { if (from === pos && d.spec.widget instanceof Grid) hit = { w: d.spec.widget } })
-    return hit
+    return hit ?? null
   }
   const member = (k: number) => run()?.w.members[k] ?? null
   const fenceAt = (a: number) => view.state.field(blockField).c.list.find((x) => x.fence && x.a === a) ?? null
@@ -1695,7 +1697,7 @@ export function linkHandler(open: (link: { wiki?: string; url?: string; tag?: st
   return EditorView.domEventHandlers({
     mousedown(e, view) {
       if (e.button !== 0 && e.button !== 1) return false
-      const el = (e.target as Element).closest<HTMLElement>("[data-wiki], [data-url], [data-tag]")
+      const el = elementOf(e.target)?.closest<HTMLElement>("[data-wiki], [data-url], [data-tag]")
       if (!el || el.closest(".cm-block")) return false
       if (el.dataset.tag) {
         const line = view.state.doc.lineAt(view.posAtDOM(el))
@@ -1722,7 +1724,7 @@ const noPaste = () => addEventListener("mouseup", (e) => { if (e.button === 1) e
 let hovered: Element | null = null
 const fenceHover = EditorView.domEventHandlers({
   mouseover(e) {
-    let l = (e.target as Element).closest?.(".cm-line") ?? null
+    let l = elementOf(e.target)?.closest(".cm-line") ?? null
     if (l && !l.classList.contains("cm-codeblock")) l = null
     while (l && !l.classList.contains("cm-fence-top")) l = l.classList.contains("cm-codeblock-first") ? null : l.previousElementSibling
     if (l === hovered) return false
@@ -1738,7 +1740,7 @@ export const fenceMenu = EditorView.domEventHandlers({
   contextmenu(e, view) {
     const cfg = view.state.facet(previewConfig)
     const pos = view.posAtCoords({ x: e.clientX, y: e.clientY })
-    if (!cfg.blockMenu || pos === null || (e as PointerEvent).pointerType === "touch") return false
+    if (!cfg.blockMenu || pos === null || (e instanceof PointerEvent && e.pointerType === "touch")) return false
     const find = () => view.state.field(blockField, false)?.c.list.find((c) => c.fence && pos >= c.from && pos <= c.to && touchedLines(view.state, c.from, c.to)) ?? null
     const x = find()
     if (!x?.fence) return false

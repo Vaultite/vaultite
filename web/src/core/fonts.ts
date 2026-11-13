@@ -1,6 +1,10 @@
-// Browsers list installed fonts only through `queryLocalFonts()`, which asks first.
+// Browsers list installed fonts only through `queryLocalFonts()`, which asks first ("local-fonts": not in TypeScript's DOM).
 
 export type Font = { family: string; mono: boolean }
+
+declare global {
+  interface Permissions { query(permission: { name: "local-fonts" }): Promise<PermissionStatus> }
+}
 
 const SANS = [
   "Helvetica Neue", "Helvetica", "Arial", "Avenir", "Avenir Next", "Futura", "Gill Sans", "Optima", "Seravek", "Verdana",
@@ -69,7 +73,7 @@ export async function listAllowed() {
   if (local) return true
   if (window.vaultite) return true
   try {
-    const p = await navigator.permissions.query({ name: "local-fonts" as PermissionName })
+    const p = await navigator.permissions.query({ name: "local-fonts" })
     return p.state === "granted"
   } catch { return false }
 }

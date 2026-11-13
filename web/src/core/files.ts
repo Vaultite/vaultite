@@ -19,6 +19,7 @@ import { fileAt } from "@/core/pages"
 import { resolver } from "@/core/links"
 import { filesMoved, resolveView, webContainers } from "@/core/plugins"
 import { paneNamed } from "@/core/tabgroups"
+import { elementOf } from "@/core/dom"
 
 export type VaultFile = {
   /** type: the core's (its kind's when a kind owns it, else its frontmatter's; core/fileprops.ts); kind: that kind's
@@ -276,13 +277,13 @@ export function watchOpeningSoon() {
   const NAMED = "[data-preview], [data-wiki]"
   let over: Element | null = null
   document.addEventListener("pointerover", (e) => {
-    const el = (e.target as Element).closest?.<HTMLElement>(NAMED) ?? null
+    const el = elementOf(e.target)?.closest<HTMLElement>(NAMED) ?? null
     if (el === over) return
     over = el
     openingSoon(el && namedNote(el))
   }, { capture: true, passive: true })
   document.addEventListener("pointerdown", (e) => {
-    const el = (e.target as Element).closest?.<HTMLElement>(NAMED)
+    const el = elementOf(e.target)?.closest<HTMLElement>(NAMED)
     const path = el && namedNote(el)
     if (path) openingSoon(path, true)
   }, { capture: true, passive: true })
@@ -363,7 +364,7 @@ export async function moveFile(from: string, to: string, opts: { undo?: boolean 
 async function undoMove(now: string, back: string) {
   try { await moveFile(now, back, { undo: false }) }
   catch (e) {
-    const m = String((e as Error).message ?? e)
+    const m = e instanceof Error ? e.message : String(e)
     throw new Error(`Couldn't undo: ${/^no file/.test(m) ? `${shownName(now)} was moved or deleted since` : /already exists/.test(m) ? `something else is at ${back} now` : m}`)
   }
 }
@@ -391,7 +392,7 @@ export async function deleteFile(path: string, opts: { quiet?: boolean } = {}): 
   if (trashed && !opts.quiet) {
     notice(`Moved ${shownName(path)} to trash`, { action: { label: "Undo", run: async () => {
       let back: string
-      try { back = await restoreFile(trashed) } catch (e) { throw new Error(`Couldn't undo: ${(e as Error).message ?? e}`) }
+      try { back = await restoreFile(trashed) } catch (e) { throw new Error(`Couldn't undo: ${e instanceof Error ? e.message : e}`) }
       if (wasOpen) openFile(back)
     } } })
   }

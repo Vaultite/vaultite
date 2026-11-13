@@ -1,6 +1,7 @@
 import { EditorSelection, EditorState, Facet, StateField, Transaction, type Extension, type Text } from "@codemirror/state"
 import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view"
-import type { MarkdownConfig } from "@lezer/markdown"
+import type { BlockContext, MarkdownConfig } from "@lezer/markdown"
+import { isObj } from "../../../core/values.ts"
 
 const CLOSE = /^---[ \t]*$/
 
@@ -102,6 +103,11 @@ function bodyPlaceholder(text: string): Extension {
 
 export const hiddenFrontmatter = (placeholder: string): Extension => [frontmatter, shown, guard, bodyPlaceholder(placeholder)]
 
+function inputOf(cx: BlockContext): { length: number; read: (from: number, to: number) => string } | null {
+  const input = "input" in cx && isObj(cx.input) ? cx.input : null, length = Number(input?.length), read = input?.read
+  return input && length >= 0 && read instanceof Function ? { length, read: (from, to) => String(read.call(input, from, to)) } : null
+}
+
 export const frontmatterSyntax: MarkdownConfig = {
   defineNodes: [{ name: "Frontmatter", block: true }],
   parseBlock: [{
@@ -109,7 +115,7 @@ export const frontmatterSyntax: MarkdownConfig = {
     before: "HorizontalRule",
     parse(cx, line) {
       // Lezer can't give back a line once taken, so the closing line is found ahead.
-      const input = (cx as unknown as { input?: { length: number; read: (from: number, to: number) => string } }).input
+      const input = inputOf(cx)
       if (cx.lineStart !== 0 || line.text !== "---" || !input) return false
       let m: RegExpExecArray | null = null
       for (let n = 1 << 16; !m; n *= 2) {

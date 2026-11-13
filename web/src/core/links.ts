@@ -17,6 +17,7 @@ import { active, type LinkTarget } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
 import { WIKI_LINK } from "@/core/markdown"
 import { type LinkEntry, linkIndex } from "../../../core/links.ts"
+import { elementOf } from "@/core/dom"
 
 export type Target = LinkTarget
 
@@ -85,7 +86,7 @@ export function openWebLink(url: string, how?: LinkClick) {
 if (typeof window !== "undefined") {
   const clicked = (e: MouseEvent) => {
     if (e.defaultPrevented || (e.button !== 0 && e.button !== 1) || ((e.shiftKey || e.altKey) && !(e.metaKey || e.ctrlKey))) return
-    const a = (e.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null
+    const a = elementOf(e.target)?.closest<HTMLAnchorElement>("a[href]")
     if (!a || a.hasAttribute("download")) return
     if (OTHER_SCHEME.test(a.href)) { if (e.button === 0 && takeSchemeLink(a.href, e.metaKey || e.ctrlKey)) e.preventDefault(); return }
     if (!/^https?:/i.test(a.href) || a.origin === location.origin) return
@@ -112,7 +113,7 @@ if (typeof window !== "undefined") {
   addEventListener("mousedown", start, true)
   function start(e: MouseEvent) {
     if (!asks(e)) return
-    const item = e.type !== "mousedown" && !!(e.target as Element | null)?.closest?.(ITEM)
+    const item = e.type !== "mousedown" && !!elementOf(e.target)?.closest(ITEM)
     setClickOpens({ front: e.shiftKey && e.button === 0, item })
     setTimeout(() => setClickOpens(null))
   }
@@ -120,8 +121,8 @@ if (typeof window !== "undefined") {
   const end = (e: MouseEvent) => {
     if (synth) return e.preventDefault()
     if (!asks(e)) return
-    const el = (e.target as Element | null)?.closest?.<HTMLElement>(ITEM)
-    const hash = appHref(e.target as Element)
+    const el = elementOf(e.target)?.closest<HTMLElement>(ITEM)
+    const hash = appHref(elementOf(e.target))
     if (!e.defaultPrevented && el && (hash !== null || !el.matches("a[href]"))) {
       e.preventDefault()
       const to = hash && hash.length > 1 ? hashTarget(hash) : null

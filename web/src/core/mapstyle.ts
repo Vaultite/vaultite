@@ -4,7 +4,9 @@ import { onLook } from "@/core/appearance"
 export type MapTheme = "light" | "dark"
 export const MAP_STYLE: Record<MapTheme, string> = { light: "https://tiles.openfreemap.org/styles/positron", dark: "https://tiles.openfreemap.org/styles/dark" }
 
-const PAINT: Record<MapTheme, Record<string, Record<string, string>>> = {
+type Colour = "background-color" | "fill-color" | "line-color"
+const COLOURS: Colour[] = ["background-color", "fill-color", "line-color"]
+const PAINT: Record<MapTheme, Record<string, Partial<Record<Colour, string>>>> = {
   light: {
     background: { "background-color": "#f6f4ef" },
     water: { "fill-color": "#aed3f3" },
@@ -38,12 +40,12 @@ export const mapTheme = (): MapTheme => (document.documentElement.classList.cont
 export function restyleMap(map: MLMap, t: MapTheme) {
   for (const [id, paint] of Object.entries(PAINT[t])) {
     if (!map.getLayer(id)) continue
-    for (const [k, v] of Object.entries(paint)) map.setPaintProperty(id, k as "fill-color", v)
+    for (const k of COLOURS) { const v = paint[k]; if (v !== undefined) map.setPaintProperty(id, k, v) }
   }
   const css = getComputedStyle(document.documentElement)
   const v = (name: string) => css.getPropertyValue(name).trim()
   const land = v("--map-land"), water = v("--map-water"), park = v("--map-park")
-  const set = (ids: string[], prop: string, c: string) => { if (c) for (const id of ids) if (map.getLayer(id)) map.setPaintProperty(id, prop as "fill-color", c) }
+  const set = (ids: string[], prop: Colour, c: string) => { if (c) for (const id of ids) if (map.getLayer(id)) map.setPaintProperty(id, prop, c) }
   set(["background"], "background-color", land)
   set(["landuse_residential", "landcover_ice_shelf", "landcover_glacier", "building"], "fill-color", land)
   set(["water"], "fill-color", water)

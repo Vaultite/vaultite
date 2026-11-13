@@ -150,7 +150,8 @@ export function placeAt(x: number, y: number, el: Element | null, files = false)
   if (paneById(pane)?.float) return { kind: "pane", pane, zone: "center" }
   const r = body.getBoundingClientRect()
   const fx = (x - r.left) / r.width, fy = (y - r.top) / r.height
-  const [side, d] = ([["left", fx], ["right", 1 - fx], ["top", fy], ["bottom", 1 - fy]] as [Zone, number][]).sort((a, b) => a[1] - b[1])[0]
+  const sides: [Zone, number][] = [["left", fx], ["right", 1 - fx], ["top", fy], ["bottom", 1 - fy]]
+  const [side, d] = sides.sort((a, b) => a[1] - b[1])[0]
   return { kind: "pane", pane, zone: d < 0.25 ? side : "center" }
 }
 

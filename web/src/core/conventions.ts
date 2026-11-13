@@ -11,12 +11,15 @@ import { activeFile } from "@/core/active"
 import { folderOf, isHidden } from "@/core/files"
 import { isPage } from "@/core/pages"
 
-type Answer<K extends keyof Conventions> = ReturnType<NonNullable<Conventions[K]>>
+type Args = { [K in keyof Conventions]-?: Parameters<NonNullable<Conventions[K]>> }
+type Answers = { [K in keyof Conventions]-?: ReturnType<NonNullable<Conventions[K]>> }
+type Asks = { [K in keyof Conventions]?: (...a: Args[K]) => Answers[K] | undefined }
 
-function ask<K extends keyof Conventions>(key: K, ...args: Parameters<NonNullable<Conventions[K]>>): Answer<K> | undefined {
+function ask<K extends keyof Conventions>(key: K, ...args: Args[K]): Answers[K] | undefined {
   const { disabled } = getPrefs()
   for (const p of PLUGINS) {
-    const fn = p.conventions?.[key] as ((...a: typeof args) => Answer<K>) | undefined
+    const asks: Asks = p.conventions ?? {}
+    const fn = asks[key]
     if (!fn || !isEnabled(p.id, disabled)) continue
     const out = fn(...args)
     if (out !== undefined) return out

@@ -43,6 +43,7 @@ import { useEditorSettings, type EditorSettings } from "@/core/editorPrefs"
 import { cn, scrollingBox } from "@/lib/utils"
 import { sightOf } from "@/core/sight"
 import { trace } from "@/core/trace"
+import { nodeOf } from "@/core/dom"
 
 export type EditorApi = {
   replace: (text: string) => void
@@ -173,10 +174,10 @@ function scrollToLine(v: EditorView, line: number) {
   v.dispatch({ effects: EditorView.scrollIntoView(textStart(v.state, pos), { y: "start", yMargin: 72 }) })
   requestAnimationFrame(() => requestAnimationFrame(() => {
     const { node } = v.domAtPos(pos)
-    const el = (node instanceof Element ? node : node.parentElement)?.closest(".cm-line, .cm-block")
+    const el = (node instanceof Element ? node : node.parentElement)?.closest<HTMLElement>(".cm-line, .cm-block")
     if (!el) return
     el.classList.remove("cm-flash")
-    void (el as HTMLElement).offsetWidth
+    void el.offsetWidth
     el.classList.add("cm-flash")
     setTimeout(() => el.classList.remove("cm-flash"), 1600)
   }))
@@ -275,7 +276,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
       Prec.high(EditorView.domEventHandlers({ keydown: (e) => runShortcut(e) })),
       EditorView.domEventHandlers({
         blur(e, view) {
-          const to = e.relatedTarget as Node | null
+          const to = nodeOf(e.relatedTarget)
           if (!cb.current.onBlur || !document.hasFocus() || (to && view.dom.contains(to))) return false
           cb.current.onBlur()
           return false

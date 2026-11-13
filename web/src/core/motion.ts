@@ -120,7 +120,7 @@ function heroOf(p: Parts): Hero {
   const tops = [...p.card.children].map((k) => k.getBoundingClientRect().top)
   const radius = (x: Element | null) => (x ? parseFloat(getComputedStyle(x).borderTopLeftRadius) || 0 : 0)
   const r = radius(p.shot), gr = radius(p.card.querySelector("[data-card-ground]"))
-  const el = p.card.cloneNode(true) as HTMLElement
+  const el = document.importNode(p.card, true)
   const win = p.card === p.shot ? el : el.querySelector<HTMLElement>("[data-tab-shot]")!
   const ground = el.querySelector<HTMLElement>("[data-card-ground]")
   const face: HTMLElement[] = []
@@ -159,7 +159,7 @@ const go = (el: Element, keys: Keyframe[], o: KeyframeAnimationOptions) => { con
 const lerp = (a: number, b: number, p: number) => a + (b - a) * p
 function flyHero(h: Hero, A: DOMRect, B: DOMRect, ra: number[], rb: number[]) {
   const S = h.S, n = 40
-  const keys = { el: [] as Keyframe[], fix: [] as Keyframe[], win: [] as Keyframe[], ground: [] as Keyframe[] }
+  const keys: Record<"el" | "fix" | "win" | "ground", Keyframe[]> = { el: [], fix: [], win: [], ground: [] }
   for (let i = 0; i <= n; i++) {
     const p = ZOOM.at((ZOOM.ms * i) / n / 1000), offset = i / n
     const sx = lerp(A.width, B.width, p) / S.width, sy = lerp(A.height, B.height, p) / S.height

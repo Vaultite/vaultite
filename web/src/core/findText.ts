@@ -10,7 +10,8 @@ export function textRanges(el: HTMLElement, re: RegExp, max = 1000, skip = ""): 
   const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
     acceptNode: (n) => (!n.parentElement || n.parentElement.closest(not) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
   })
-  for (let n = walk.nextNode() as Text | null; n; n = walk.nextNode() as Text | null) {
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+    if (!(n instanceof Text)) continue
     const box = n.parentElement?.closest(BREAK) ?? null
     if (text && box !== lastBox) text += "\n"
     lastBox = box
@@ -41,7 +42,7 @@ export function textRanges(el: HTMLElement, re: RegExp, max = 1000, skip = ""): 
 
 /** Open the closed <details> a range is in, so what was found shows. */
 export function openAround(r: Range) {
-  for (let d = r.startContainer.parentElement?.closest("details:not([open])"); d; d = d.parentElement?.closest("details:not([open])")) {
-    (d as HTMLDetailsElement).open = true
+  for (let d = r.startContainer.parentElement?.closest<HTMLDetailsElement>("details:not([open])"); d; d = d.parentElement?.closest<HTMLDetailsElement>("details:not([open])")) {
+    d.open = true
   }
 }
