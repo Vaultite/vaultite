@@ -175,11 +175,12 @@ check("summoned: a shortcut's press shows nothing at first (⌃⌥→ is a windo
 H.holdAppear(false)
 check("summoned: held, its cursor comes beside the pointer, listening, riding with it (the overlay fed the pointer)",
   await until(() => H.scene()!.summon?.state === "listening" && H.scene()!.summon?.sx === 524 && !!H.scene()!.summon?.follow) && following, [H.scene()!.summon, following])
-// (the pointer moved while held: the overlay's feed tells the helper each move, its trail)
+pointer = { x: 530, y: 471 }
+const beside = await until(() => H.scene()!.summon?.sx === 554, 15_000)
+// (its trail fed just before let-go: what's let go reads the last 2 s of it, which a stalled runner's wait above outlasts)
 const feed = fed as ((p: Pt, t: number) => void) | null
 for (let i = 0; i <= 10; i++) feed?.({ x: 470 + i * 6, y: 470 + (i % 2) }, Date.now() - 200 + i * 16)
-pointer = { x: 530, y: 471 }
-check("summoned: held, the pointer's moves are its trail (the overlay draws it from its feed), the cursor beside it", !!feed && await until(() => H.scene()!.summon?.sx === 554), H.scene())
+check("summoned: held, the pointer's moves are its trail (the overlay draws it from its feed), the cursor beside it", !!feed && beside, H.scene())
 await wait(300)
 chord(false)
 check("summoned: let go, it thinks there", await until(() => H.scene()!.summon?.state === "thinking"), H.scene()!.summon)
