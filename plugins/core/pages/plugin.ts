@@ -72,20 +72,43 @@ plugin.onMove((from, to) => { repin(plugin.vault, from, to); repanel(plugin.vaul
 
 type Installed = { made: string[] }
 
-export function pinInstalled(vault: Vault, { made }: Installed) {
+function addPins(vault: Vault, made: string[], { always = false } = {}): string[] {
   let conf
   try { conf = vault.readConfig("pages") } catch (e) {
-    if (e instanceof ConfigError) return
+    if (e instanceof ConfigError) return []
     throw e
   }
-  if (conf?.pinNew === false) return
+  if (conf?.pinNew === false && !always) return []
   const list: unknown[] = Array.isArray(conf?.pinned) ? conf.pinned : []
   const add = made.filter((m) => !list.includes(m))
-  if (!add.length) return
+  if (!add.length) return []
   vault.setConfig("pages", { ...conf, pinned: [...list, ...add] })
   const fn = plugin.service("pins:installed")
   if (typeof fn === "function") fn(add)
+  return add
 }
+
+export const pinInstalled = (vault: Vault, { made }: Installed) => { addPins(vault, made) }
+
+const Bookmarks = z.array(z.object({ path: z.string(), label: z.string().optional() }))
+let bookmarksAt = -1
+
+export function importBookmarks(vault: Vault) {
+  if (plugin.kept("bookmarks", null) !== null) return []
+  const got = Bookmarks.safeParse(plugin.service("bookmarks")?.() ?? [])
+  const marks = got.success ? got.data.filter((b) => pinProblem(vault, relocatedPin(vault, b.path)) === null) : []
+  if (!marks.length) return []
+  const add = addPins(vault, marks.map((b) => relocatedPin(vault, b.path)), { always: true })
+  for (const b of marks) if (b.label && b.path.startsWith("view:")) setLabel(vault, b.path, b.label)
+  plugin.keep("bookmarks", { at: new Date().toISOString(), pinned: add }, { shared: true })
+  return add
+}
+
+plugin.onSync((vault) => {
+  if (vault.settingsVersion === bookmarksAt) return
+  bookmarksAt = vault.settingsVersion
+  importBookmarks(vault)
+})
 
 plugin.provide("pages:installed", (info: Installed) => pinInstalled(plugin.vault, info))
 

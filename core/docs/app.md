@@ -83,6 +83,11 @@ steps separated by spaces, `["G G"]`, `["Space F F"]` (a step without `Mod`, `Ct
 typing). Settings > Hotkeys lists the commands and their ids. In the desktop app the menu bar shows the keys in
 effect, these included.
 
+**Command palette**, `.vaultite/palette.json`: `pinned`, command ids in order (`["daily-notes:today"]`), listed first
+when the palette (⌘P) opens, under Pinned; a row's pin pins or unpins it. Unset, an Obsidian vault's
+`.obsidian/command-palette.json` `pinned` (its core commands by the app's ids). `vau palette` (`pin <id> [--before <id>]`,
+`unpin <id>`).
+
 **Editor**, `.vaultite/editor.json` (`vau settings set editor '{"useTab": false}'`), one for every device; a key it
 doesn't set is `.obsidian/app.json`'s, else Obsidian's default:
 - `spellcheck`: true (default) | false. `useTab`: true (default: Tab indents with a tab) | false (with `tabSize`

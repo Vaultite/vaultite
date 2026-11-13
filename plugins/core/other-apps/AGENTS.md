@@ -15,6 +15,10 @@ sets that mean the same thing here (and never writes `.obsidian/`):
   and `.obsidian/snippets/` are listed beside the vault's own. Its accent colour and text size have no match here.
 - `hotkeys.json`: the keys of its core commands the app has too (`command-palette:open` is `palette:open`...), as the
   defaults of `.vaultite/hotkeys.json` (`vau hotkeys` marks them); its plugins' keys are plugin-compat's, by their ids.
+- `command-palette.json`: its pinned commands, the defaults of `.vaultite/palette.json` (`vau palette`).
+- `bookmarks.json`: brought into Pinned once, the first time the app sees bookmarks there (files, headings, blocks,
+  folders, searches, the graph, web pages; a group's items in its place), after the pages pinned already; Pinned is the
+  list from then on.
 - `.obsidian/types.json`: its property types (`{"types": {"due": "date"}}`; `multitext` is a list) apply here too,
   under `.vaultite/types.json`'s, which wins for a key both have (`vau docs properties`).
 - Its plugins (`.obsidian/community-plugins.json`): `vau other-apps plugins` lists each with what stands in for it here;

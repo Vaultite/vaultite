@@ -1,5 +1,5 @@
 import { Fragment, memo, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react"
-import { X } from "lucide-react"
+import { X, type LucideIcon } from "lucide-react"
 import { dropLeaving, fadeAway } from "@/core/animation"
 import { keyCaps } from "@/core/commands"
 import { isMac } from "@/core/platform"
@@ -9,6 +9,7 @@ import { dismissKeyboardOnDrag, usePageLock } from "@/core/pagelock"
 import { cn } from "@/lib/utils"
 
 export type Pick = { mod: boolean; shift: boolean }
+export type RowAction = { label: string; icon: LucideIcon; on: boolean; run: () => void }
 const ROWS = 30, NEAR = "400px"
 
 const KEEP_MS = 2 * 60_000
@@ -59,17 +60,30 @@ export function NoMatches({ what, query, then }: { what: string; query: string; 
 type Pointer = { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }
 type RowProps = {
   id: string; item: unknown; i: number; selected: boolean; look: unknown; draw: (selected: boolean) => ReactNode
-  onHover: (i: number) => void; onPick: (i: number, e: Pointer) => void
+  act?: RowAction | null; onHover: (i: number) => void; onPick: (i: number, e: Pointer) => void
 }
-const PaletteRow = memo(function PaletteRow({ id, i, selected, draw, onHover, onPick }: RowProps) {
-  return (
+const PaletteRow = memo(function PaletteRow({ id, i, selected, draw, act, onHover, onPick }: RowProps) {
+  const row = (
     <button id={`palette-${id}`} data-i={i} type="button" role="option" aria-selected={selected} tabIndex={-1}
       onMouseMove={() => onHover(i)} onClick={(e) => onPick(i, e)}
-      className={cn("flex w-full cursor-pointer items-center gap-3 rounded-[8px] px-3 py-2 text-left max-md:py-[9px] [contain-intrinsic-size:auto_37px] [content-visibility:auto]", selected && "bg-foreground/[0.07]")}>
+      className={cn("flex w-full cursor-pointer items-center gap-3 rounded-[8px] px-3 py-2 text-left max-md:py-[9px] [contain-intrinsic-size:auto_37px] [content-visibility:auto]", selected && "bg-foreground/[0.07]", act && "pr-11")}>
       {draw(selected)}
     </button>
   )
-}, (a, b) => a.id === b.id && a.i === b.i && a.selected === b.selected && a.look === b.look && a.item === b.item)
+  if (!act) return row
+  if (!act.on && !selected && !COARSE) return <div className="relative" onMouseMove={() => onHover(i)}>{row}</div>
+  return (
+    <div className="relative" onMouseMove={() => onHover(i)}>
+      {row}
+      <button type="button" tabIndex={-1} aria-label={act.label} aria-pressed={act.on} data-tip={act.label} data-row-action
+        onMouseDown={(e) => e.preventDefault()} onClick={act.run}
+        className={cn("absolute top-1/2 right-2 grid size-7 -translate-y-1/2 cursor-pointer place-items-center rounded-[6px] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground",
+          !act.on && !selected && "opacity-60")}>
+        <act.icon className="size-3.5" strokeWidth={2.25} fill={act.on ? "currentColor" : "none"} />
+      </button>
+    </div>
+  )
+}, (a, b) => a.id === b.id && a.i === b.i && a.selected === b.selected && a.look === b.look && a.item === b.item && a.act?.on === b.act?.on)
 
 const Hints = memo(function Hints({ hints }: { hints: [string, string][] }) {
   return (
@@ -92,7 +106,10 @@ const Clear = memo(function Clear({ onClear }: { onClear: () => void }) {
   )
 })
 
-export function Palette<T extends { id: string }>({ label, placeholder, query, setQuery, select = false, items, row, onPick, onClose, hints, heading, section, empty, start = 0, onEnd, onSelect, look, complete, onKey: ownKey }: {
+const COARSE = matchMedia("(pointer: coarse)").matches
+const actOf = <T,>(action: ((item: T) => RowAction | null) | undefined, item: T) => (action ? action(item) : null)
+
+export function Palette<T extends { id: string }>({ label, placeholder, query, setQuery, select = false, items, row, action, onPick, onClose, hints, heading, section, empty, start = 0, onEnd, onSelect, look, complete, onKey: ownKey }: {
   label: string; placeholder: string
   query: string; setQuery: (q: string, how?: { deleting: boolean }) => void
   complete?: string | null
@@ -100,6 +117,7 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
   select?: boolean
   items: T[]
   row: (item: T, selected: boolean) => ReactNode
+  action?: (item: T) => RowAction | null
   onPick: (item: T | null, how: Pick) => void
   onSelect?: (item: T | null) => void
   onClose: () => void
@@ -184,7 +202,7 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
         {!items.length && empty}
         {runs.map((r, k) => {
           const rows = r.rows.map((it, j) => (
-            <PaletteRow key={it.id} id={it.id} item={it} i={r.start + j} selected={r.start + j === sel} look={look} draw={(s) => row(it, s)} onHover={rowHover} onPick={rowPick} />
+            <PaletteRow key={it.id} id={it.id} item={it} i={r.start + j} selected={r.start + j === sel} look={look} draw={(s) => row(it, s)} act={actOf(action, it)} onHover={rowHover} onPick={rowPick} />
           ))
           if (!r.name) return <Fragment key={k}>{rows}</Fragment>
           return (

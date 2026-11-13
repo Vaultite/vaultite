@@ -120,6 +120,8 @@ export default async ($: VaultTest) => {
     if (had === null) fs.rmSync(own, { force: true })
     else fs.writeFileSync(own, had)
   }
+  await palettePins($)
+  await bookmarks($)
   {
     // Its plugins: what stands in for each here (manifests' `replaces`), from the app's and the directory's.
     write(".obsidian/community-plugins.json", JSON.stringify(["recent-files-obsidian", "obsidian-made-up", "made-up-elsewhere"]))
@@ -139,4 +141,57 @@ export default async ($: VaultTest) => {
     const meta = await import("../../../core/rules.ts")
     check("replaces: a manifest's is other apps' plugins by app", meta.metaProblems({ replaces: ["dataview"] }).length === 1 && !meta.metaProblems({ replaces: { obsidian: ["dataview"] } }).length)
   }
+}
+
+async function palettePins($: VaultTest) {
+  const { VAULT, api, check, read, write } = $
+  const { same } = $.vars
+  let s: Any
+  const own = path.join(VAULT, ".vaultite/palette.json")
+  fs.rmSync(own, { force: true })
+  const obs = JSON.stringify({ pinned: ["daily-notes", "app:go-back", "dataview:dataview-force-refresh-views", 4] })
+  write(".obsidian/command-palette.json", obs)
+  ;[, s] = await api("GET", "state")
+  check("palette: Obsidian's pinned commands are the defaults, by the app's ids", same(s.settingDefaults.palette, { pinned: ["daily-notes:today", "nav:back", "dataview:dataview-force-refresh-views"] }) && !s.config.palette?.pinned, [s.settingDefaults.palette, s.config.palette])
+  let [, r] = await api("POST", "ops/palette.pinned", {})
+  check("palette: vau palette lists them, as Obsidian's", same(r, { pinned: ["daily-notes:today", "nav:back", "dataview:dataview-force-refresh-views"], own: false }), r)
+  ;[, r] = await api("POST", "ops/palette.pin", { id: "search:open-tab", before: "nav:back" })
+  check("palette: the first pin copies them into palette.json, before another", same(JSON.parse(read(".vaultite/palette.json")).pinned, ["daily-notes:today", "search:open-tab", "nav:back", "dataview:dataview-force-refresh-views"]), read(".vaultite/palette.json"))
+  ;[, r] = await api("POST", "ops/palette.pin", { id: "nav:back" })
+  check("palette: pinning a pinned one leaves it where it is", same(r.pinned, ["daily-notes:today", "search:open-tab", "nav:back", "dataview:dataview-force-refresh-views"]), r)
+  await api("POST", "ops/palette.unpin", { id: "daily-notes:today" })
+  const [uc] = await api("POST", "ops/palette.unpin", { id: "daily-notes:today" })
+  ;[, s] = await api("GET", "state")
+  check("palette: unpinned, it's off the list (state's config too); one not pinned is a 404", same(s.config.palette?.pinned, ["search:open-tab", "nav:back", "dataview:dataview-force-refresh-views"]) && uc === 404, [s.config.palette, uc])
+  const [bc] = await api("POST", "ops/palette.pin", { id: "not a command" })
+  check("palette: an id that isn't one is refused", bc === 400, bc)
+  check("palette: nothing is written to .obsidian/", read(".obsidian/command-palette.json") === obs)
+  fs.rmSync(path.join(VAULT, ".obsidian/command-palette.json"))
+  fs.rmSync(own, { force: true })
+}
+
+async function bookmarks($: VaultTest) {
+  const { VAULT, api, check, read, write } = $
+  const { same } = $.vars
+  const kept = (await import("../../../core/kept.ts")).keptOf(VAULT)
+  kept.set("pages/bookmarks", null)
+  const before = JSON.parse(read(".vaultite/pages.json")).pinned ?? []
+  write(".obsidian/bookmarks.json", JSON.stringify({ items: [
+    { type: "file", path: "Obs/Obs A.md" }, { type: "file", path: "Obs/Obs A.md", subpath: "#Plans" },
+    { type: "group", title: "More", items: [{ type: "file", path: "Obs/Obs B.md", subpath: "#^intro" }, { type: "folder", path: "Obs" }, { type: "search", query: "tag:#compat" }] },
+    { type: "graph" }, { type: "url", url: "https://example.com/docs", title: "Example docs" }, { type: "file", path: "Obs/Gone.md" }, { type: "file", path: "Obs/Obs A.md" },
+  ] }))
+  await api("GET", "state")
+  const pages = JSON.parse(read(".vaultite/pages.json"))
+  const want = ["Obs/Obs A.md", "Obs/Obs A.md#Plans", "Obs/Obs B.md#^intro", "Obs", "search:tag:#compat", "view:graph", "view:web/https://example.com/docs"]
+  check("bookmarks: brought into Pinned at its end, once each, what's in the vault", same(pages.pinned, [...before, ...want.filter((w) => !before.includes(w))]), pages.pinned)
+  check("bookmarks: a web page keeps its title", pages.labels?.["view:web/https://example.com/docs"] === "Example docs", pages.labels)
+  await api("POST", "pins", { path: "Obs/Obs A.md#Plans", pinned: false })
+  write(".obsidian/bookmarks.json", JSON.stringify({ items: [{ type: "file", path: "Obs/Obs A.md", subpath: "#Plans" }, { type: "file", path: "Obs/Obs B.md" }] }))
+  await api("GET", "state")
+  const after = JSON.parse(read(".vaultite/pages.json")).pinned
+  check("bookmarks: only once: later changes there aren't followed, an unpinned one stays off", !after.includes("Obs/Obs A.md#Plans") && !after.includes("Obs/Obs B.md"), after)
+  fs.rmSync(path.join(VAULT, ".obsidian/bookmarks.json"))
+  for (const p of want) await api("POST", "pins", { path: p, pinned: false })
+  kept.set("pages/bookmarks", null)
 }

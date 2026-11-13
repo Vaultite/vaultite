@@ -550,6 +550,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `PropType`
 - `PropTypes`
 - `put(path, body)`
+- `QueryResults({ store, text })`
 - `QUIET_AFTER`: How long a run that asks nothing stays in the panels' view once it came to rest, before it folds under Earlier, unless the user set otherwise (the Agents plugin's setting `fold`).
 - `range(from, n)`
 - `rawUrl(path, opts?)`: The address of a file's bytes (a vault path, or an outside file's absolute path).
@@ -900,6 +901,9 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `enabled(vault, plugins)`: Ids of the plugins that are on (Vault.switchedOff: not off, nor anything they require).
 - `entryBytes(file, e)`: One entry's bytes, whole (for small ones: an image, memories.json).
 - `entryStream(file, e)`: One entry's bytes as a stream (inflated as they're read).
+- `FENCE_FILES`
+- `FENCE_LINES`
+- `fenceQuery(text)`
 - `fetchPublic(raw, options?)`: GET a public page (publicUrl: else it throws, saying why), following redirects to public addresses too.
 - `FileAnswer`: A route's answer as a file of this machine, sent as /api/raw sends one: by its type, in ranges (a video seeks), never read whole.
 - `FileMoved`

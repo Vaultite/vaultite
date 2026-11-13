@@ -269,6 +269,8 @@ export { hasSettings, openPluginSettings, pluginSettings, settingsFile } from "@
 export { Field as SettingField, usePluginSettings } from "@/components/PluginSettings"
 export type { SettingDecl, SettingDecls } from "../../core/blocks.ts"
 export { SearchPage } from "@/pages/Search"
+// A ```query fence drawn: the files its search finds, live.
+export { QueryResults } from "@/components/QueryResults"
 // Which pane a view is drawn in (its group's id; "" outside the desktop's panes).
 export { usePane, usePaneTopBar } from "@/core/pane"
 export { onPaneMotion, type PaneMotion } from "@/core/panemotion"

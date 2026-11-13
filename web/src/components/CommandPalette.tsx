@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react"
+import { Pin } from "lucide-react"
 import { flushSync } from "react-dom"
 import { available, commandName, isOn, isSetting, keysOf, recentCommands, runCommand, runOrSay, useCommandList, type Command } from "@/core/commands"
 import { useSwitches } from "@/core/switches"
@@ -6,12 +7,13 @@ import { commandIcon } from "@/core/pages"
 import { isEnabled, names, offWithAi, pluginById, setSwitch, switchedOn, usePlugins, type Plugin } from "@/core/plugins"
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { notify } from "@/core/notify"
+import { pinCommand, usePinnedCommands } from "@/core/palettepins"
 import { fuzzy, hasWords } from "@/core/fuzzy"
 import { rankCommands } from "@/core/paletterank"
 import { Keys, marked, NoMatches, Palette, useFinderQuery } from "@/components/Palette"
 import { cn } from "@/lib/utils"
 
-type Row = Command & { marks: number[]; plugin?: "on" | "off" }
+type Row = Command & { marks: number[]; plugin?: "on" | "off"; pinned?: boolean; group?: string }
 
 const TURN_ON = "Turn on ", TURN_OFF = "Turn off "
 const listed = (ids: string[]) => new Intl.ListFormat("en", { type: "conjunction" }).format(ids.map((i) => names([i])))
@@ -78,6 +80,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const { query: q, setQuery: setQ, select, picked } = useFinderQuery()
   const [setting, setSetting] = useState<"switch" | "choice" | null>(null)
   const switched = useSwitches()
+  const pins = usePinnedCommands()
   // eslint-disable-next-line react-hooks/exhaustive-deps -- switched only triggers a recount
   const names = useMemo(() => all.filter((c) => c.nameWhenOn).map(commandName).join("\n"), [all, switched])
   const rows = useMemo((): Row[] => {
@@ -85,11 +88,14 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     if (!q.trim()) {
       const recent = recentCommands()
       const rank = (c: Command) => { const i = recent.indexOf(c.id); return i < 0 ? recent.length : i }
-      return [...cs].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name)).map((c) => ({ ...c, marks: [] }))
+      const top = pins.flatMap((id) => cs.filter((c) => c.id === id))
+      const group = (name: string) => (top.length ? name : undefined)
+      return [...top.map((c) => ({ ...c, marks: [], pinned: true, group: "Pinned" })),
+        ...cs.filter((c) => !pins.includes(c.id)).sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name)).map((c) => ({ ...c, marks: [], group: group("Commands") }))]
     }
-    return [...rankCommands(cs, q), ...pluginRows(plugins, disabled, q.trim())]
+    return [...rankCommands(cs, q).map((c) => (pins.includes(c.id) ? { ...c, pinned: true } : c)), ...pluginRows(plugins, disabled, q.trim())]
   // eslint-disable-next-line react-hooks/exhaustive-deps -- names only triggers a relist
-  }, [all, q, plugins, disabled, names])
+  }, [all, q, plugins, disabled, names, pins])
 
   return (
     <Palette label="Command palette" placeholder="Select a command…" query={q} setQuery={setQ} select={select} items={rows} onClose={onClose}
@@ -99,7 +105,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         setTimeout(() => { flushSync(onClose); void (how.mod && c.place ? c.place.open() : c.plugin ? runOrSay(c.run, c.name) : runCommand(c)) }, 0)
       }}
       onSelect={(c) => setSetting(!c ? null : isSetting(c) ? "switch" : c.value ? "choice" : null)}
-      section={(c) => (c.plugin === "off" ? "Plugins that are off" : c.plugin === "on" ? "Plugins that are on" : undefined)}
+      section={(c) => (c.plugin === "off" ? "Plugins that are off" : c.plugin === "on" ? "Plugins that are on" : c.group)}
+      action={(c) => (c.plugin ? null : { label: c.pinned ? "Unpin" : "Pin to the top", icon: Pin, on: !!c.pinned, run: () => void pinCommand(c.id, !c.pinned) })}
       empty={<NoMatches what="No command matches" query={q} />}
       hints={setting
         ? [["ArrowUp ArrowDown", "to navigate"], ["Enter", setting === "switch" ? "to switch" : "to choose"], ["Mod+Enter", "to open in Settings"], ["Escape", "to dismiss"]]

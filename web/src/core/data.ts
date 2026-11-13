@@ -9,6 +9,7 @@ import { setHere } from "@/core/here"
 import { usePane } from "@/core/pane"
 import { setVaultAppearance, type VaultAppearance } from "@/core/appearance"
 import { hydrateHotkeys } from "@/core/commands"
+import { hydratePalette, type PaletteFile } from "@/core/palettepins"
 import type { FileTree } from "@/core/files"
 import type { Grant } from "@/core/grants"
 import { applyPatch, type Patch } from "../../../core/statepatch.ts"
@@ -29,9 +30,8 @@ export type State = PluginState & {
     downloading?: string[]
     /** A sandbox (core/sandbox.ts): made up, made afresh each time it opens. */
     sandbox?: boolean }
-  /** Every file in the vault (the file tree, links and backlinks). */
   files: FileTree
-  config: { appearance: Record<string, unknown>; plugins: Record<string, unknown>; hotkeys?: Record<string, unknown> }
+  config: { appearance: Record<string, unknown>; plugins: Record<string, unknown>; hotkeys?: Record<string, unknown>; palette?: PaletteFile }
   /** The vault's own plugins (.vaultite/plugins/<id>/), on or off: core/vaultPlugins.ts loads them. */
   vaultPlugins: VaultPluginInfo[]
   /** Obsidian themes and CSS snippets in the vault's .vaultite/ (core/appearance.ts). */
@@ -72,7 +72,6 @@ export type VaultPluginInfo = {
   folder: string; on: boolean; loaded: boolean; problems: string[]
   /** What it should fix but runs anyway (a block without its declaration or its text side). */
   warnings: string[]
-  /** Its blocks as its manifest declares them (core/blocks.ts). */
   blocks: BlockDecls
   /** Blocks other plugins declare that it draws (its manifest's `draws`). */
   draws?: string[]
@@ -345,6 +344,7 @@ function load(): Promise<void> {
         hydratePrefs(all.config, all.settingDefaults)
         setVaultAppearance(all.appearance)
         hydrateHotkeys(all.config.hotkeys, all.settingDefaults?.hotkeys)
+        hydratePalette(all.config.palette, all.settingDefaults)
         await beforeState?.(all)
         loading?.mark("vault plugins")
         const { config: _config, vaultPlugins: _plugins, appearance: _appearance, ...store } = all

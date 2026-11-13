@@ -105,6 +105,12 @@ data:
   - {week: W3, pages: 90}
 ```
 
+A search, embedded: a ```` ```query ```` fence's text is a search in the search tab's syntax, and it shows the files it finds, kept up to date; a click opens one, or the line that matched:
+
+```query
+tag:#design/markdown
+```
+
 A live answer, ChatGPT's Intelligent UI as it wrote it: run sandboxed, drawn with the app's controls, the values picked kept in the note.
 
 ```genui

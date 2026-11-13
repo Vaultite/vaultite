@@ -209,6 +209,7 @@ by its path.
 - `agent-turn:claude` (claude-code): A session's latest turn: the user's last message (or `auto`), Claude's last answer, its background tasks running.
 - `agent-turn:codex` (codex): A session's latest turn: the user's last message, Codex's last answer, the session's title.
 - `agents-used:companion` (companion): The coding agents it runs, as a terminal names them (claude_agent), and for what (the service "agents-used:companion"): its chat's while it's on, then its jobs'. `agent-limits` with `for: companion` shows these accounts first.
+- `bookmarks` (other-apps)
 - `cloud-read:claude` (claude-code)
 - `cloud-ready:claude` (claude-code)
 - `cloud-start:claude` (claude-code)
@@ -223,7 +224,7 @@ by its path.
 - `context` (pages, workspaces): What `vau context` says of it: the pinned pages the user's window shows.
 - `delegate:lineage` (delegate)
 - `dictation:terms` (companion): Its names, for dictation to expect (@claude, "ask Ada").
-- `fence:<…>` (genui, chart, base): genui; query
+- `fence:<…>` (genui, chart, base, query): genui; query; search
 - `file-props` (provenance): Other files' `origin` for database views over every file (a .base): the list's, else what the bytes say.
 - `geocode` (people): A place's pin, [lat, lon] or null: looked up once (Nominatim), then cached. Me uses it for ME.md's place.
 - `geocode:known` (people): A place's cached pin without looking it up: [lat, lon], null (not found) or undefined (not looked up yet).

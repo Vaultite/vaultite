@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Search results in a note**: a ```` ```query ```` fence, as in Obsidian, shows the files its search finds and their
+  matching lines, kept up to date; a click opens one; `vau render` lists them for agents. `/Search results` adds one.
+- **Pinned commands in the palette**: a row's pin keeps a command at the top of ⌘P (`.vaultite/palette.json`,
+  `vau palette pin`); an Obsidian vault's pinned commands and, once, its bookmarks (into Pinned) come along.
 - **Notes dragged into a sidebar become panels**: a file dragged between a sidebar's panels (onto a heading), from the file tree, a
   pinned page, Recent files, links, search or a tab, is drawn there as a panel, the panels making way for it; a tab
   moves there and closes, as in Obsidian. A sidebar's toggle takes one too, at its end.

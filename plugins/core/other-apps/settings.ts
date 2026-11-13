@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import { z } from "zod"
 import type { Item, Vault } from "../../../core/vault.ts"
 import { listSnippets, listThemes } from "../../../core/appearance.ts"
 
@@ -109,7 +110,42 @@ export function obsidianDefaults(vault: Vault): Record<string, Item> {
   if (Object.keys(look).length) out.appearance = look
   const bound = hotkeys(vault)
   if (Object.keys(bound).length) out.hotkeys = bound
+  const pinned = palettePins(vault)
+  if (pinned.length) out.palette = { pinned }
   return out
+}
+
+export type Bookmark = { path: string; label?: string }
+const Mark = z.looseObject({ type: z.string(), path: z.string().trim().min(1).optional(), subpath: z.string().optional(), query: z.string().trim().min(1).optional(),
+  url: z.url({ protocol: /^https?$/ }).optional(), title: z.string().optional(), items: z.array(z.unknown()).optional() })
+type Mark = z.infer<typeof Mark>
+const MarkList = z.array(z.unknown()).catch([]).transform((xs) => xs.flatMap((x) => { const m = Mark.safeParse(x); return m.success ? [m.data] : [] }))
+const sub = (m: Mark) => m.subpath?.replace(/^#/, "") ?? ""
+const AS_PIN = new Map<string, (m: Mark) => Bookmark | null>([
+  ["file", (m) => (m.path ? { path: sub(m) ? `${folder(m.path)}#${sub(m)}` : folder(m.path) } : null)],
+  ["folder", (m) => (m.path ? { path: folder(m.path) } : null)],
+  ["search", (m) => (m.query ? { path: `search:${m.query}` } : null)],
+  ["graph", () => ({ path: "view:graph" })],
+  ["url", (m) => (m.url ? { path: `view:web/${m.url}`, label: text(m.title) } : null)],
+])
+
+export function obsidianBookmarks(vault: Vault): Bookmark[] {
+  const out: Bookmark[] = []
+  const walk = (marks: Mark[]) => {
+    for (const m of marks) {
+      if (m.type === "group") walk(MarkList.parse(m.items ?? []))
+      const pin = AS_PIN.get(m.type)?.(m)
+      if (pin && !out.some((x) => x.path === pin.path)) out.push(pin)
+    }
+  }
+  walk(MarkList.parse(obsidianJson(vault, "bookmarks")?.items ?? []))
+  return out
+}
+
+const PalettePins = z.object({ pinned: z.array(z.string().catch("")).catch([]) }).catch({ pinned: [] })
+function palettePins(vault: Vault): string[] {
+  const p = PalettePins.parse(obsidianJson(vault, "command-palette") ?? {}).pinned
+  return [...new Set(p.filter((id) => !!id.trim()).map((id) => OBSIDIAN_COMMANDS[id] ?? id))]
 }
 
 export const OBSIDIAN_COMMANDS: Record<string, string> = {

@@ -2,7 +2,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { z } from "zod"
 import { OpError, Plugin, type OpCtx } from "../../../core/plugins.ts"
-import { obsidianDefaults, obsidianSettings, obsidianTypes } from "./settings.ts"
+import { obsidianBookmarks, obsidianDefaults, obsidianSettings, obsidianTypes } from "./settings.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -11,6 +11,7 @@ plugin.state(() => ({ obsidian: obsidianSettings(plugin.vault), obsidianOffer: p
 plugin.provide("property-types", () => obsidianTypes(plugin.vault))
 
 plugin.provide("setting-defaults", () => obsidianDefaults(plugin.vault))
+plugin.provide("bookmarks", () => obsidianBookmarks(plugin.vault))
 
 // A runner of Obsidian's plugins says `replaces: {"obsidian": ["*"]}` and offers `obsidian:originals` and `obsidian:run`.
 type Original = { id: string; enabled: boolean; allowed: boolean }

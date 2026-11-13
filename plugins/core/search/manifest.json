@@ -4,7 +4,7 @@
   "category": "navigation",
   "alwaysOn": true,
   "name": "Search field",
-  "description": "The search field at the top of the sidebar. Off, the quick switcher still opens with ⌘O.",
+  "description": "The search field at the top of the sidebar, the search tab, and ```query fences: a search in a note, its results drawn there and kept up to date, as Obsidian embeds them. Off, the quick switcher still opens with ⌘O.",
   "replaces": { "obsidian": ["omnisearch"] },
   "settings": {
     "sort": { "type": "enum", "values": ["relevance", "name", "name-desc", "modified", "modified-old", "created", "created-old"], "default": "relevance", "label": "Sort results", "labels": {"relevance": "Best match", "name": "File name (A to Z)", "name-desc": "File name (Z to A)", "modified": "Modified time (new to old)", "modified-old": "Modified time (old to new)", "created": "Created time (new to old)", "created-old": "Created time (old to new)"}, "description": "the order of the search tab's results" },

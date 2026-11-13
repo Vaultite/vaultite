@@ -13,6 +13,7 @@ import { itemOps } from "./coreops/items.ts"
 import { installOps } from "./coreops/installs.ts"
 import { newTabOps } from "./coreops/newtab.ts"
 import { pageOps } from "./coreops/pages.ts"
+import { paletteOps } from "./coreops/palette.ts"
 import { panelOps } from "./coreops/panels.ts"
 import { pluginList, pluginOps } from "./coreops/plugins.ts"
 import { Commands, Picked, Ran } from "./coreops/common.ts"
@@ -28,7 +29,7 @@ import { defineOp, type Op, OpError, quoted } from "./ops.ts"
 import { isOutside } from "./fileprops.ts"
 
 export function coreOps(app: App): Op[] {
-  return [...contextOps(app), ...fileOps(app), ...typeOps(app), ...propTypeOps(app), ...uploadOps(app), ...pluginOps(app), ...aiOps(app), ...installOps(app), ...bundleOps(app), ...panelOps(app), ...newTabOps(app), ...pageOps(app), ...settingsOps(app), ...keptOps(app), ...itemOps(app),
+  return [...contextOps(app), ...fileOps(app), ...typeOps(app), ...propTypeOps(app), ...uploadOps(app), ...pluginOps(app), ...aiOps(app), ...installOps(app), ...bundleOps(app), ...panelOps(app), ...newTabOps(app), ...pageOps(app), ...settingsOps(app), ...paletteOps(app), ...keptOps(app), ...itemOps(app),
     ...docsOps(app), ...uiOps(app), ...secretOps(), ...permissionOps(app), ...devOps(), ...versionOps(), ...updateOps(), ...opsOps(app)]
 }
 

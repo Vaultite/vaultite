@@ -2,6 +2,9 @@
 
 export class SearchError extends Error {}
 
+export const fenceQuery = (text: string) => text.split("\n").map((l) => l.trim()).filter(Boolean).join(" ")
+export const FENCE_FILES = 30, FENCE_LINES = 3
+
 type Field = "any" | "file" | "path" | "content"
 type Unit = "line" | "block" | "section" | "task" | "task-todo" | "task-done"
 /** `ranges` where it matches (to mark), `test` whether it does (a file's match: the first one will do). */

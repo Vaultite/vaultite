@@ -15,5 +15,8 @@ Finding files, in the app and for you. The quick switcher (⌘O, the sidebar's s
   modified | modified-old | created | created-old`, `&case=1`. `&limit=` files (500 at most) from `&offset=`;
   `&total=1` answers `{results, files, lines}`: the page and how many files and lines matched in all. A query it can't
   read is a 400 saying why.
+A ```` ```query ```` fence in a note is a search embedded there (Obsidian's syntax: its text is the query, its lines
+joined): drawn as the files it finds, each with its first matching lines, kept up to date as files change (the first 30
+files; Open in search shows them all). `vau render` gives them as a list of links.
 The search tab's options (match case, sort, collapse results, more context, explain search terms) are its settings,
 below.

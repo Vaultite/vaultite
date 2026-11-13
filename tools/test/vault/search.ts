@@ -49,5 +49,12 @@ export default async ($: VaultTest) => {
     const ex = sq.excerpt("one two three four five six seven eight nine ten budget eleven", sq.wordRanges("one two three four five six seven eight nine ten budget eleven", ["budget"]), 30, 10)
     check("searchquery: an excerpt around the match", ex.text.startsWith("…") && ex.text.slice(ex.ranges[0][0], ex.ranges[0][1]) === "budget", ex)
   }
+  await api("POST", "file", { path: "Searchy/Queries.md", text: "Rent:\n\n```query\nline:(rent food)\n-file:queries\n```\n\n```query\n\"open\n```\n\n```query\n```\n" })
+  ;[code, res] = await api("GET", "render?path=Searchy/Queries.md")
+  check("query fence: render lists the files the search finds, linked, with their matching lines", code === 200 && res.includes("Search `line:(rent food) -file:queries`: 2 files") &&
+    res.includes("- [[Searchy/Budget plan|Budget plan]]\n  - line 5: # Rent\n  - line 6: Pay the rent and buy food") && res.includes("[[Searchy/Other|Other]]") && !res.includes("```query"), res)
+  check("query fence: one that can't be read says why, an empty one says so", res.includes("can't be searched: A quote isn't closed") && res.includes("an empty query"), res)
+  ;[, res] = await api("GET", "blocks/sources?path=Searchy/Queries.md")
+  check("query fence: Show source names the files it found", JSON.stringify(res).includes("Searchy/Budget plan.md"), res)
   await api("DELETE", "file?path=Searchy")
 }
