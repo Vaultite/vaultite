@@ -7,9 +7,9 @@ import type { OpEntry } from "../../../core/contracts/ops.ts"
 import { whoOf } from "../../../core/ops.ts"
 import { agentLines, APP_VERSION, fromInternet, logger, OpError, type Plugin, type Who } from "../../../core/plugins.ts"
 import { ARCHIVE_DIR } from "../../../core/fileprops.ts"
-import { type Disclosures, disclosed } from "../../../core/pluginmeta.ts"
+import { disclosed, disclosuresOf } from "../../../core/pluginmeta.ts"
+import { portOf } from "../../../core/listening.ts"
 import { hashed } from "../../../core/rules.ts"
-import type { Item } from "../../../core/vault.ts"
 import { agentName } from "../../../core/agents.ts"
 import { blockedHost, localUrl } from "../../../core/web.ts"
 import { byUser } from "../../../core/writegate.ts"
@@ -77,9 +77,21 @@ const SLOW = 15, FAILED_TTL = 10 * 60
 const CODE_CHARS = "BCDFGHJKMNPQRSTVWXZ23456789"
 
 type Settings = { url: string; port: number; redirectHosts: string[]; tools: string[] | null; withhold: string[]; approvalWait: number }
-type Grant = { name: string; client: string; created: string; used?: string; access?: Access; refresh: string; prev?: string; prevUntil?: number }
-export type Access = "read" | "write"
-type Stored = { public?: Partial<Settings>; key?: string; grants?: Record<string, Grant> }
+const Access = z.enum(["read", "write"])
+export type Access = z.infer<typeof Access>
+const Grant = z.looseObject({ name: z.string(), client: z.string(), created: z.string(), used: z.string().optional(), access: Access.optional(), refresh: z.string(),
+  prev: z.string().optional(), prevUntil: z.number().optional() })
+type Grant = z.infer<typeof Grant>
+const Stored = z.looseObject({
+  public: z.record(z.string(), z.unknown()).optional().catch(undefined),
+  key: z.string().optional().catch(undefined),
+  grants: z.record(z.string(), z.unknown())
+    .transform((gs) => Object.fromEntries(Object.entries(gs).flatMap(([id, g]) => { const r = Grant.safeParse(g); return r.success ? [[id, r.data]] : [] }))).optional().catch(undefined),
+}).catch({})
+type Stored = z.infer<typeof Stored>
+const PluginRows = z.array(z.looseObject({ id: z.string(), name: z.string(), tier: z.string(), edits: z.boolean().optional() }))
+const Checked = z.array(z.looseObject({ id: z.string(), name: z.string().optional(), description: z.string().optional(),
+  approval: z.looseObject({ state: z.string(), changed: z.array(z.string()) }).nullish() }))
 type App = { name: string; redirects: string[] }
 type SignIn = { id: string; code: string; app: App; clientId: string; redirect: string; state: string | null; challenge: string; started: number; from: string; base: string; done?: string; auth?: string }
 type AuthCode = { clientId: string; app: App; redirect: string; challenge: string; until: number; approved: number; back?: number }
@@ -135,10 +147,10 @@ export class PublicMcp {
   }
 
   static stored(plugin: Plugin) {
-    return (plugin.secrets().mcp as Stored | undefined)?.public
+    return Stored.parse(plugin.secrets().mcp).public
   }
 
-  static limitsOf(p: Partial<Settings> | undefined): Pick<Settings, "tools" | "withhold"> {
+  static limitsOf(p: Record<string, unknown> | undefined): Pick<Settings, "tools" | "withhold"> {
     return { tools: Array.isArray(p?.tools) ? p.tools.map(String) : null, withhold: Array.isArray(p?.withhold) ? p.withhold.map(String) : [] }
   }
 
@@ -157,7 +169,7 @@ export class PublicMcp {
       setTimeout(() => { if (this.server === server && !server.listening) server.listen(this.settings.port, "127.0.0.1") }, wait)
       wait = Math.min(wait * 2, 60_000)
     })
-    server.on("listening", () => this.listening((server.address() as { port: number }).port))
+    server.on("listening", () => this.listening(portOf(server)))
     server.on("upgrade", (req: IncomingMessage, socket, head: Buffer) => {
       socket.on("error", () => socket.destroy())
       void (async () => {
@@ -183,7 +195,7 @@ export class PublicMcp {
 
 
   stored(): Stored {
-    return (this.plugin.secrets().mcp as Stored | undefined) ?? {}
+    return Stored.parse(this.plugin.secrets().mcp)
   }
 
   save(fn: (s: Stored) => void) {
@@ -676,7 +688,7 @@ export class PublicMcp {
   }
 
   async pluginCode() {
-    const list = (await this.plugin.host.call("plugin.list", {})).result as { id: string; tier: string; edits?: boolean }[]
+    const list = PluginRows.parse((await this.plugin.host.call("plugin.list", {})).result)
     const app = new Set(list.filter((p) => p.tier !== "vault").map((p) => p.id)), edits = new Set(list.filter((p) => p.edits).map((p) => p.id))
     const root = this.plugin.vault.abs(".vaultite/plugins")
     return (p: string) => {
@@ -692,12 +704,12 @@ export class PublicMcp {
     const raw = `${id} ${JSON.stringify(params, null, 2)}`
     if (id !== "plugin.allow" && id !== "plugin.enable") return raw
     const q = String(params.id ?? "").toLowerCase().trim()
-    const list = (await this.plugin.host.call("plugin.list", {})).result as { id: string; name: string; tier: string }[]
+    const list = PluginRows.parse((await this.plugin.host.call("plugin.list", {})).result)
     const own = list.find((p) => p.tier === "vault" && (p.id === q || p.name.toLowerCase() === q))
-    const vp = own && ((await this.plugin.host.call("plugin.check", { dir: own.id })).result as Item[])[0]
+    const vp = own && Checked.parse((await this.plugin.host.call("plugin.check", { path: own.id })).result)[0]
     if (!vp) return raw
-    const does = disclosed(vp.disclosures as Disclosures)
-    const changes = vp.approval as { state: string; changed: string[] } | null
+    const does = disclosed(disclosuresOf(vp))
+    const changes = vp.approval
     return [
       `${vp.name} (${vp.id})${vp.description ? `: ${vp.description}` : ""}`,
       does.length ? `It ${does.join("; ")}.` : "It discloses nothing beyond the vault.",

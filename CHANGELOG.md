@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **An app on the internet asking to allow a vault plugin reaches the owner again**: the ask, which names the plugin
+  and what it discloses, failed before it was sent, so the app was only told it couldn't.
 - **Errors the app catches are kept in Errors, and a base's failed edit says so**: a Vim command that couldn't be set up
   or a view that couldn't close cleanly showed only in the browser's console; a property edited in a base that couldn't
   be saved went back without a word.

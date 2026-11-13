@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import { isDeepStrictEqual } from "node:util"
 import type { Any, VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
@@ -217,6 +218,22 @@ export default async ($: VaultTest) => {
         const onlyCall = only.toolsFor(w).find((x) => x.name === "call")!
         const past = await onlyCall.run({ id: "tag.list", params: {} }, { client: who, op: only.opFor(["g3", w], who as Any, "call") }).then(() => "", (e: Error) => e.message)
         check("public mcp tools: call can't reach an op whose own tool isn't among mcp.public.tools", same(only.toolsFor(w).map((x) => x.name).sort(), ["call", "list", "ops"]) && past.includes("mcp.public.tools"), past)
+      }
+      write(".vaultite/plugins/qa-harbor/manifest.json", JSON.stringify({ id: "qa-harbor", name: "QA Harbor", description: "Tides for the bay.", disclosures: { network: ["tides.example.com"], shell: true } }))
+      await vault.synced(); await app.syncPlugins()
+      const asked = await ro.askBody("plugin.allow", { id: "QA Harbor" }).catch((e: Error) => `threw: ${e.message}`)
+      check("public mcp: asking the owner to allow a vault plugin names it and what it discloses",
+        asked.startsWith("QA Harbor (qa-harbor): Tides for the bay.\nIt talks to tides.example.com; runs programs on this machine.\n"), asked)
+      fs.rmSync(path.join(VAULT, ".vaultite/plugins/qa-harbor"), { recursive: true, force: true })
+      await vault.synced(); await app.syncPlugins()
+      {
+        let saved: Any = null
+        const grant = { name: "Lighthouse bot", client: "c", created: "2026-10-01T00:00:00Z", refresh: "x" }
+        const kept = { cloud: { token: "t", url: "https://alice.vaultite.app" }, key: "k1", public: { url: "https://own.example" }, grants: { g1: grant } }
+        const pm = new PublicMcp({ secrets: () => ({ mcp: kept }), saveSecrets: (x: Any) => { saved = x } } as Any, PublicMcp.cloudOnly())
+        pm.update("g1", { name: "Harbor bot" })
+        check("public mcp: renaming a connection keeps the rest of MCP's secrets as they were (Vaultite Cloud's, its key)",
+          isDeepStrictEqual(saved, { ...kept, grants: { g1: { ...grant, name: "Harbor bot" } } }), saved)
       }
       // The desktop app's browser opening this machine or its network for an app on the internet (its own pages, a NAS).
       const { gateOf } = await import("../../../plugins/core/mcp/public.ts")
