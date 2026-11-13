@@ -2,6 +2,7 @@
 import type { WebContents } from "electron"
 import { getDomain } from "tldts-experimental"
 import { allPages, eachPage, type EnginePage } from "./engine.ts"
+import { mask } from "./mask.ts"
 
 const KEEP_MS = 12 * 3600_000
 const kept = new Map<string, number>()
@@ -12,23 +13,7 @@ function live() {
   return [...kept.keys()]
 }
 
-const MASK = "•••"
-export const literal = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-const patterns = new Map<string, RegExp>()
-function pattern(s: string) {
-  let re = patterns.get(s)
-  if (re) return re
-  const hex = (b: number) => `%${b.toString(16).padStart(2, "0").toUpperCase().replace(/[A-F]/g, (x) => `[${x}${x.toLowerCase()}]`)}`
-  re = new RegExp([...s].map((c) => `(?:${literal(c)}|${[...new TextEncoder().encode(c)].map(hex).join("")}${c === " " ? "|\\+" : ""})`).join(""), "g")
-  if (patterns.size > 100) patterns.clear()
-  patterns.set(s, re)
-  return re
-}
-export function scrub(text: string, secrets: Iterable<string> = live()): string {
-  let out = text
-  for (const s of [...secrets].filter(Boolean).sort((a, b) => b.length - a.length)) out = out.replace(pattern(s), MASK)
-  return out
-}
+export const scrub = (text: string, secrets: Iterable<string> = live()) => mask(text, secrets)
 const BINARY = new Set(["png", "pdf"])
 export function scrubDeep<T>(v: T): T {
   const secrets = live()

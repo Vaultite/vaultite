@@ -61,7 +61,7 @@ export function windowReloaded<W, P extends Owned<W>>(pages: Iterable<P>, win: W
   return out
 }
 
-export function unclaimed<W, P extends Owned<W>>(pages: Iterable<P>, now: number, kept: (p: P) => boolean = () => false): P[] {
+export function unclaimed<W, P extends Owned<W>>(pages: Iterable<P>, now: number, kept: (p: P) => boolean): P[] {
   const late = [...pages].filter((p) => p.orphan !== undefined && now - p.orphan >= RECLAIM_MS)
   for (const p of late) if (kept(p)) p.orphan = undefined
   return late.filter((p) => p.orphan !== undefined)

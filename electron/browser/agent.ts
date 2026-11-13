@@ -5,7 +5,8 @@ import fs from "node:fs"
 import path from "node:path"
 import { allPages, appWindows, busyWhen, cdp, eachPage, eachSession, engineBusy, handle, holdPage, keepPage, localUrl, mayOpen, onRequest, openInBackground, setAgentOwned, setAgentActing, tell, type EngineWindow, type EnginePage } from "./engine.ts"
 import { docOf, exposed, filling, heldNear, markRan, scrub, scrubDeep, wasFilled } from "./pagesecrets.ts"
-import { changes, mainLines } from "./axlines.ts"
+import { clipboardKey, keyEvent } from "./keypress.ts"
+import { axLines, changes, INTERACTIVE, mainLines, type AXNode, type Refs } from "./axlines.ts"
 import { agentBusy } from "./agentbusy.ts"
 
 export const THUMB_WIDTH = 320
@@ -76,15 +77,6 @@ setInterval(() => {
   for (const p of allPages()) if (!p.resting() && (used.get(p.id) ?? 0) < old && !watched.has(p.id) && !asks.has(p.id)) p.rest()
 }, 15_000).unref()
 
-type AXValue = { value?: unknown }
-type AXNode = { nodeId: string; ignored?: boolean; role?: AXValue; name?: AXValue; value?: AXValue; childIds?: string[]; backendDOMNodeId?: number
-  properties?: { name: string; value: AXValue }[] }
-const INTERACTIVE = new Set(["button", "link", "textbox", "searchbox", "combobox", "checkbox", "radio", "switch", "slider", "spinbutton", "menuitem",
-  "menuitemcheckbox", "menuitemradio", "option", "tab", "treeitem", "listbox"])
-const SKIP = new Set(["none", "generic", "InlineTextBox", "LineBreak", "presentation", "LayoutTable", "LayoutTableRow", "LayoutTableCell", "MenuListPopup"])
-type Refs = { byRef: Map<string, number>; byNode: Map<number, string>; n: number
-  // A list that reuses its rows (Gmail, Slack) can put another item in the same element.
-  what: Map<string, { role: string; name: string }> }
 const refs = new WeakMap<WebContents, Refs>()
 const refsOf = (wc: WebContents) => {
   let r = refs.get(wc)
@@ -99,71 +91,13 @@ eachPage((p) => p.wc.on("did-navigate", () => {
   r?.what.clear()
 }))
 const MAX_SNAPSHOT = 60_000
-const MAX_TREE = 1_000_000
 
 async function tree(p: EnginePage, again = true): Promise<string[]> {
   const doc = docOf(p.wc)
   await cdp(p.wc, "Accessibility.enable")
   const { nodes } = await cdp<{ nodes: AXNode[] }>(p.wc, "Accessibility.getFullAXTree")
   if (docOf(p.wc) !== doc) { if (again) return tree(p, false); throw new Error("the page kept changing as it was read: take a snapshot again in a moment") }
-  const byId = new Map(nodes.map((n) => [n.nodeId, n]))
-  const kids = new Set(nodes.flatMap((n) => n.childIds ?? []))
-  const root = nodes.find((n) => !kids.has(n.nodeId)) ?? nodes[0]
-  const r = refsOf(p.wc)
-  let size = 0
-  const text = (v: AXValue | undefined) => (typeof v?.value === "string" ? v.value : v?.value == null ? "" : String(v.value)).replace(/\s+/g, " ").trim()
-  const pad = (depth: number) => "  ".repeat(depth)
-  const walk = (node: AXNode | undefined, depth: number, said: string | true): string[] => {
-    if (!node || size > MAX_TREE) return []
-    const role = text(node.role), name = text(node.name).slice(0, 200)
-    const filled = !!node.backendDOMNodeId && wasFilled(p.wc, node.backendDOMNodeId)
-    const shown = !node.ignored && !SKIP.has(role) && !(role === "StaticText" && !name)
-    const under = (d: number, s: string | true) => (filled ? [] : (node.childIds ?? []).flatMap((c) => walk(byId.get(c), d, s)))
-    if (!shown) return under(depth, said)
-    if (role === "StaticText") {
-      if (said === true || (said && said.includes(name))) return []
-      const line = scrub(`${pad(depth)}- text "${name.replace(/"/g, "'")}"`)
-      size += line.length + 1
-      return [line]
-    }
-    const props = Object.fromEntries((node.properties ?? []).map((x) => [x.name, x.value?.value]))
-    let line = `${pad(depth)}- ${role}${name ? ` "${name.replace(/"/g, "'")}"` : ""}`
-    const id = node.backendDOMNodeId
-    let info = !!name
-    if ((INTERACTIVE.has(role) || (props.focusable === true && !!name)) && id) {
-      let ref = r.byNode.get(id)
-      if (!ref) { ref = `e${++r.n}`; r.byNode.set(id, ref); r.byRef.set(ref, id) }
-      r.what.set(ref, { role, name })
-      line += ` [ref=${ref}]`
-      info = true
-    }
-    const value = filled || /^[•●*]+$/.test(text(node.value)) ? (text(node.value) ? "•••" : "") : text(node.value)
-    if (value && value !== name) { line += `: ${value.slice(0, 200)}`; info = true }
-    for (const k of ["checked", "pressed", "expanded", "selected", "disabled"]) if (props[k] === true || props[k] === "true" || props[k] === "mixed") { line += ` [${k}]`; info = true }
-    const control = INTERACTIVE.has(role) && !!name && !/^(textbox|searchbox|combobox|listbox)$/.test(role)
-    let below = under(depth + 1, control ? true : name && role !== "RootWebArea" ? name : said)
-    const top = (l: string) => l.startsWith(`${pad(depth + 1)}- `)
-    const options = below.filter((l) => top(l) && /^\s*- option\b/.test(l))
-    if (options.length > 15) {
-      let shownOptions = 0
-      below = below.filter((l) => !(top(l) && /^\s*- option\b/.test(l)) || /\[selected\]/.test(l) || shownOptions++ < 10)
-      below.push(`${pad(depth + 1)}- … ${options.length - below.filter((l) => top(l) && /^\s*- option\b/.test(l)).length} more options`)
-    }
-    const tops = below.filter(top)
-    if (!info && !below.length) return []
-    if (tops.length === 1 && (!info || (!line.includes("[ref=") && name && new RegExp(`^\\s*- \\S+ "${name.replace(/"/g, "'").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`).test(tops[0])))) {
-      return below.map((l) => l.slice(2))
-    }
-    if (!info && tops.length > 1 && tops.length <= 12 && tops.length === below.length) {
-      const parts = below.map((l) => l.trim().replace(/^- (?:text|cell|gridcell|paragraph|StaticText) (?=")/, "").replace(/^- /, ""))
-      const joined = `${pad(depth)}- ${role}: ${parts.join(" | ")}`
-      if (joined.length < 500) return [joined]
-    }
-    line = scrub(line)
-    size += line.length + 1
-    return [line, ...below]
-  }
-  const lines = walk(root, 0, "")
+  const lines = axLines(nodes, refsOf(p.wc), (id) => wasFilled(p.wc, id), scrub)
   seen.set(p.wc, { lines, doc: docOf(p.wc) })
   return lines
 }
@@ -312,7 +246,11 @@ function ours(p: EnginePage) {
   if (taken.has(p.id) || paused.has(p.id)) throw new Error("the user took this page over (or paused agents in it) mid-act: stopped there")
 }
 const input = (p: EnginePage, method: string, params: Record<string, unknown>) => { ours(p); return cdp(p.wc, method, params) }
-const pressMine = (p: EnginePage, combo: string) => { ours(p); return press(p, combo) }
+const pressMine = (p: EnginePage, combo: string) => {
+  ours(p)
+  if (clipboardKey(combo)) throw new Error(`no ${combo}: agents never copy, cut or paste with the user's clipboard (act's paste puts a value in)`)
+  return press(p, combo)
+}
 async function click(p: EnginePage, x: number, y: number, count = 1) {
   await pointTo(p, actor.get(p.wc) ?? "", x, y, true)
   await input(p, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y })
@@ -322,40 +260,10 @@ async function click(p: EnginePage, x: number, y: number, count = 1) {
   }
 }
 
-const KEYS: Record<string, { code: string; key: string; vk: number; text?: string }> = {
-  enter: { code: "Enter", key: "Enter", vk: 13, text: "\r" }, tab: { code: "Tab", key: "Tab", vk: 9 }, escape: { code: "Escape", key: "Escape", vk: 27 },
-  backspace: { code: "Backspace", key: "Backspace", vk: 8 }, delete: { code: "Delete", key: "Delete", vk: 46 }, space: { code: "Space", key: " ", vk: 32, text: " " },
-  arrowup: { code: "ArrowUp", key: "ArrowUp", vk: 38 }, arrowdown: { code: "ArrowDown", key: "ArrowDown", vk: 40 },
-  arrowleft: { code: "ArrowLeft", key: "ArrowLeft", vk: 37 }, arrowright: { code: "ArrowRight", key: "ArrowRight", vk: 39 },
-  home: { code: "Home", key: "Home", vk: 36 }, end: { code: "End", key: "End", vk: 35 }, pageup: { code: "PageUp", key: "PageUp", vk: 33 },
-  pagedown: { code: "PageDown", key: "PageDown", vk: 34 },
-}
-// A page takes a Mac's editing keys only as Chromium's editing commands (a key event alone selects nothing).
-const MAC_COMMANDS: Record<string, string> = {
-  "meta+a": "selectAll", "meta+z": "undo", "meta+shift+z": "redo",
-  "meta+arrowleft": "moveToBeginningOfLine", "meta+arrowright": "moveToEndOfLine", "meta+arrowup": "moveToBeginningOfDocument", "meta+arrowdown": "moveToEndOfDocument",
-  "meta+shift+arrowleft": "moveToBeginningOfLineAndModifySelection", "meta+shift+arrowright": "moveToEndOfLineAndModifySelection",
-  "meta+shift+arrowup": "moveToBeginningOfDocumentAndModifySelection", "meta+shift+arrowdown": "moveToEndOfDocumentAndModifySelection",
-  "alt+arrowleft": "moveWordLeft", "alt+arrowright": "moveWordRight", "alt+shift+arrowleft": "moveWordLeftAndModifySelection", "alt+shift+arrowright": "moveWordRightAndModifySelection",
-  "meta+backspace": "deleteToBeginningOfLine", "alt+backspace": "deleteWordBackward", "alt+delete": "deleteWordForward",
-  "shift+arrowleft": "moveLeftAndModifySelection", "shift+arrowright": "moveRightAndModifySelection", "shift+arrowup": "moveUpAndModifySelection", "shift+arrowdown": "moveDownAndModifySelection",
-  "shift+home": "moveToBeginningOfLineAndModifySelection", "shift+end": "moveToEndOfLineAndModifySelection",
-}
-const COPY = /^(?:(?:meta|cmd|control|ctrl)\+(?:shift\+)?[cx]|(?:control|ctrl|shift)\+(?:insert|delete))$/i
 export async function press(p: EnginePage, combo: string) {
-  const parts = combo.split("+").map((x) => x.trim()).filter(Boolean)
-  const last = parts.pop() ?? ""
-  const mods = parts.map((m) => m.toLowerCase())
-  const modifiers = (mods.includes("alt") ? 1 : 0) | (mods.includes("control") || mods.includes("ctrl") ? 2 : 0) | (mods.includes("meta") || mods.includes("cmd") ? 4 : 0) | (mods.includes("shift") ? 8 : 0)
-  const k = KEYS[last.toLowerCase()] ?? (last.length === 1
-    ? { code: /[a-z]/i.test(last) ? `Key${last.toUpperCase()}` : /\d/.test(last) ? `Digit${last}` : "", key: last, vk: last.toUpperCase().charCodeAt(0), text: last }
-    : null)
-  if (!k) throw new Error(`no key "${last}": Enter, Tab, Escape, Backspace, Delete, Space, arrows, Home, End, PageUp, PageDown or one character`)
-  const text = modifiers & ~8 ? undefined : k.text
-  const command = process.platform === "darwin" ? MAC_COMMANDS[[...new Set(mods.map((m) => (m === "cmd" ? "meta" : m === "ctrl" ? "control" : m)))].sort().concat(last.toLowerCase()).join("+")] : undefined
-  await cdp(p.wc, "Input.dispatchKeyEvent", { type: text ? "keyDown" : "rawKeyDown", key: k.key, code: k.code, windowsVirtualKeyCode: k.vk, modifiers, ...(text ? { text, unmodifiedText: text } : {}),
-    ...(command ? { commands: [command] } : {}) })
-  await cdp(p.wc, "Input.dispatchKeyEvent", { type: "keyUp", key: k.key, code: k.code, windowsVirtualKeyCode: k.vk, modifiers })
+  const e = keyEvent(combo, process.platform)
+  await cdp(p.wc, "Input.dispatchKeyEvent", e.down)
+  await cdp(p.wc, "Input.dispatchKeyEvent", e.up)
 }
 
 const loaded = (p: EnginePage, until: number) => waitWhile(p, () => p.wc.isLoading(), ["did-stop-loading"], until)
@@ -435,7 +343,6 @@ async function step(p: EnginePage, a: Act) {
     }
     case "press": {
       const key = String(need(a.key ?? a.value, "a key")).replace(/\s+/g, "")
-      if (COPY.test(key) && heldNear(p)) throw new Error("no copying in a page the app filled a login in")
       if (a.ref) { const n = await nodeOf(p, a.ref); await pointTo(p, actor.get(p.wc) ?? "", n.x, n.y); await cdp(p.wc, "DOM.focus", { backendNodeId: n.id }).catch(() => {}) }
       else await pointTo(p, actor.get(p.wc) ?? "", null, null)
       await pressMine(p, key)

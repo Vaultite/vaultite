@@ -32,7 +32,7 @@ import { openSandbox, refreshSandbox, sandboxPath } from "./sandbox.ts"
 import { parseRepo, repoText } from "../core/bundlelinks.ts"
 import { plainError, plainText, sentence } from "../core/plainerror.ts"
 import { inVault, otherAppScheme, runsCode } from "../core/opening.ts"
-import { permissionFor, whose } from "./apppermissions.ts"
+import { appPage, permissionFor, whose } from "./apppermissions.ts"
 import * as Setup from "./setup.ts"
 import { gitEnv } from "../core/gitenv.ts"
 import { vauEntry } from "../core/appentry.ts"
@@ -621,10 +621,6 @@ function guard(win: AppWindow, origin: string) {
     } else void openLink(url)
     return { action: "deny" }
   })
-}
-
-const appPage = (url: string, origin: string) => {
-  try { const u = new URL(url); return u.origin === origin && (u.pathname === "/" || u.pathname === "/index.html") } catch { return false }
 }
 
 function send(w: Win, file: string) {

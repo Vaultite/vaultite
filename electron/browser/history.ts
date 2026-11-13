@@ -3,7 +3,8 @@ import { app } from "electron"
 import { DatabaseSync, type StatementSync } from "node:sqlite"
 import path from "node:path"
 import { eachPage, handle, tellAll } from "./engine.ts"
-import { hasSecret, literal, scrub } from "./pagesecrets.ts"
+import { literal } from "./mask.ts"
+import { hasSecret, scrub } from "./pagesecrets.ts"
 
 export type How = "typed" | "link" | "bookmark" | "form" | "other"
 const HOWS = new Set<string>(["typed", "link", "bookmark", "form", "other"])

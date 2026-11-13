@@ -28,3 +28,7 @@ export function permissionFor(perm: string, who: ReturnType<typeof whose>): "all
   if (who === "other" || !APP.has(perm)) return "deny"
   return who === "remote" && ASK.has(perm) ? "ask" : "allow"
 }
+
+export const appPage = (url: string, origin: string) => {
+  try { const u = new URL(url); return u.origin === origin && (u.pathname === "/" || u.pathname === "/index.html") } catch { return false }
+}

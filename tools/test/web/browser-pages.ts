@@ -23,7 +23,7 @@ check("pages: a shown tab closing ends its page as it's let go of", !wp.tabGone(
 const r1 = page("t6"), r2 = page(""), r3 = page("t7", { closing: true })
 const ended = wp.windowReloaded([r1, r2, r3], "w", 1000)
 check("pages: a window reloading: tabs' pages wait to be taken back, the rest end", ended.length === 2 && r1.orphan === 1000 && r1.holds === 0, ended)
-check("pages: one not taken back in time ends", !wp.unclaimed([r1], 1000 + wp.RECLAIM_MS - 1).length && wp.unclaimed([r1], 1000 + wp.RECLAIM_MS)[0] === r1)
+check("pages: one not taken back in time ends", !wp.unclaimed([r1], 1000 + wp.RECLAIM_MS - 1, () => false).length && wp.unclaimed([r1], 1000 + wp.RECLAIM_MS, () => false)[0] === r1)
 const r4 = page("t10")
 wp.windowReloaded([r4], "w", 1000)
 check("pages: …but an agent's, in a tab in the background, waits on for its tab (its work and its ask go on)",
