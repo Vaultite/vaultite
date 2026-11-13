@@ -8,7 +8,7 @@ import os from "node:os"
 import path from "node:path"
 import { ROOT, qa, until, wait, keepAwake } from "./lib/qa.mjs"
 
-const { args: [VAULT, OUT_ARG = "/tmp/lights-shots"], check, watch, done } = await qa(import.meta.url, { chrome: false })
+const { args: [VAULT, OUT_ARG = "/tmp/lights-shots"], check, watch, done } = await qa(import.meta.url, { chrome: false, motion: true })
 if (process.platform !== "darwin") { console.log("skipped: the traffic lights are a Mac's"); process.exit(0) }
 const OUT = path.resolve(OUT_ARG)
 // Half a button's height (points): macOS 26's 14pt frame, 16pt before it (electron/main.ts BUTTONS).
