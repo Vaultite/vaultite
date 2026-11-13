@@ -9,7 +9,7 @@ import { matching, typeMatches, type VaultEvent } from "./events.ts"
 import { defineOp, ID, type Op, OpError, opProblems, type Param, whoOf } from "./ops.ts"
 import { LOCAL, type Plugin, serverUrl, vaultHere } from "./plugins.ts"
 import { hashed, inside } from "./rules.ts"
-import { atSetting, type Job, type When, whenProblems } from "./schedule.ts"
+import { atSetting, type Job, resolvedAt, type When, whenProblems } from "./schedule.ts"
 import type { Item, Vault } from "./vault.ts"
 
 export type Command = string[]
@@ -57,9 +57,9 @@ export function inArea(opId: string, pluginId: string, kinds: string[] = []) {
 const jobName = (s: Item, i: number) => (typeof s.name === "string" ? s.name : typeof s.op === "string" ? s.op : `schedule-${i}`)
 
 /** A manifest's `schedule`: each entry's name and when it runs. */
-export function scheduleOf(manifest: Item): (When & { name: string; entry: Item })[] {
+export function scheduleOf(manifest: Item, value?: (key: string) => string | undefined): (When & { name: string; entry: Item })[] {
   const list = Array.isArray(manifest.schedule) ? manifest.schedule as Item[] : []
-  return list.map((s, i) => ({ name: jobName(s, i), every: s.every, ...(s.at ? { at: s.at } : {}), ...(s.machine ? { machine: s.machine } : {}), entry: s }))
+  return list.map((s, i) => ({ name: jobName(s, i), every: s.every, ...(s.at ? { at: value ? resolvedAt(s.at, value) : s.at } : {}), ...(s.machine ? { machine: s.machine } : {}), entry: s }))
 }
 
 /** What's wrong with a manifest's `ops`, `events`, `startup` and `schedule` (core/vaultplugins.ts refuses to load it; `node
@@ -168,6 +168,7 @@ export class Hooks {
     Object.assign(env, {
       VAULTITE: "1", VAULTITE_URL: serverUrl(), VAULTITE_VAULT: this.vault.path, VAULTITE_BIN: path.join(bin, "vau"),
       VAULTITE_PLUGIN_ID: p.id, VAULTITE_PLUGIN_DIR: p.dir, VAULTITE_PLUGIN_STATE: this.stateDir(p.id),
+      PYTHONDONTWRITEBYTECODE: "1", // (a __pycache__ written in its folder is a change: it'd pause itself)
       PATH: [bin, NODE_DIR, process.env.PATH].filter(Boolean).join(path.delimiter), ...o.env,
     })
     let prog = command[0].includes("/") && !path.isAbsolute(command[0]) ? path.resolve(p.dir, command[0]) : command[0]

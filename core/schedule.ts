@@ -37,7 +37,11 @@ export function timed<J extends When>(job: J, value: (key: string) => string | u
     : { why: `its time, the setting ${key}, is ${JSON.stringify(v ?? null)}, not a time of day (HH:MM)` }
 }
 
-/** `every` in ms, or null. */
+export function resolvedAt(at: string, value: (key: string) => string | undefined) {
+  const t = timed({ every: "1d", at }, value)
+  return "job" in t && t.job.at ? t.job.at : at
+}
+
 function periodOf(every: unknown): number | null {
   const m = typeof every === "string" ? /^(\d+)\s*([mhdw])$/.exec(every.trim()) : null
   return m && Number(m[1]) > 0 ? Number(m[1]) * UNIT[m[2]] : null

@@ -47,4 +47,7 @@ export async function pausedStays($: VaultTest, LH: string, stop: () => string[]
   await app.syncPlugins()
   told = await paused()
   check("trust: ...and replaced some other way, the next look says it again", told.length === 1 && told[0].state === "open" && told[0].stays, told)
+  const { scheduleOf } = await import("../../../../core/hooks.ts")
+  const jobs = scheduleOf({ schedule: [{ name: "brief", every: "1d", at: "{morning}" }, { name: "odd", every: "1d", at: "{late}" }] }, (k) => (k === "morning" ? "06:45" : "soon"))
+  check("trust: a paused job's time a setting names is read (so the run it misses is told)", jobs[0].at === "06:45" && jobs[1].at === "{late}", jobs)
 }

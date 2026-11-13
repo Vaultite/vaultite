@@ -603,7 +603,7 @@ export class VaultPlugins {
     const on = this.enabled()
     return [...this.found.values()].filter((vp) => this.trust.approval(vp.id) && !this.adopting.has(vp.id) && this.waits(vp, on)).map((vp) => ({
       id: vp.id, name: vp.manifest.name || vp.id,
-      changed: this.trust.changes(vp.id, vp.digest).files, jobs: scheduleOf(vp.manifest).map(({ entry: _, ...j }) => j),
+      changed: this.trust.changes(vp.id, vp.digest).files, jobs: scheduleOf(vp.manifest, (k) => String(this.vault.config(`plugins/${vp.id}/data`)[k] ?? settingsOf(vp.manifest)[k]?.default ?? "")).map(({ entry: _, ...j }) => j),
     }))
   }
 
