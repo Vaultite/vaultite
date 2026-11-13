@@ -17,7 +17,8 @@ The same tools are served over HTTP at <server>/api/mcp (this machine and its ow
   Claude desktop: in claude_desktop_config.json, "mcpServers": {"vaultite": {"command": "<path to>/bin/vau", "args": ["mcp"]}}`,
     run: async (_a, c) => {
       if (process.stdin.isTTY) throw new CliError("vau mcp talks MCP on stdin and stdout: an MCP client starts it (see vau mcp --help)")
-      const { APP_VERSION } = await import("../../../core/plugins.ts")
+      const { APP_VERSION, logger } = await import("../../../core/plugins.ts")
+      const log = logger("mcp")
       const { clientOf, handleBody, Pictured, ToolError } = await import("./protocol.ts")
       const { toolsOf } = await import("./catalog.ts")
       type Client = import("./protocol.ts").Client
@@ -78,7 +79,7 @@ The same tools are served over HTTP at <server>/api/mcp (this machine and its ow
           const named = c.env.VAULTITE_AGENT?.trim()
           if (named && session.client && (!session.client.agent || session.client.agent === "mcp")) session.client = clientOf(named)
           if (out) write(out)
-        }).catch((e) => console.error("vau mcp:", e))
+        }).catch((e) => log.error("vau mcp: a message failed", e))
       }
       await new Promise<void>((resolve) => {
         process.stdin.setEncoding("utf8")

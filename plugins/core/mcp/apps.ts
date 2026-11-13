@@ -1,6 +1,8 @@
 // MCP Apps: the io.modelcontextprotocol/ui extension, 2026-01-26.
 import { z } from "zod"
+import { logger } from "../../../core/plugins.ts"
 import type { Tool } from "./protocol.ts"
+const log = logger("mcp")
 
 export const UI_EXTENSION = "io.modelcontextprotocol/ui"
 export const UI_MIME = "text/html;profile=mcp-app"
@@ -41,7 +43,7 @@ export async function appsFrom(services: unknown[]): Promise<McpApp[]> {
   const out: McpApp[] = []
   for (const fn of services) {
     let got: unknown
-    try { got = typeof fn === "function" ? await fn() : null } catch (e) { console.error("mcp:apps:", e); continue }
+    try { got = typeof fn === "function" ? await fn() : null } catch (e) { log.error("an app offer failed", e); continue }
     for (const a of Array.isArray(got) ? got : []) {
       if (OFFERED.safeParse(a).success && !out.some((x) => x.uri === a.uri)) out.push(a)
     }

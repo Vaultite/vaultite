@@ -5,7 +5,7 @@ import path from "node:path"
 import { z } from "zod"
 import type { OpEntry } from "../../../core/contracts/ops.ts"
 import { whoOf } from "../../../core/ops.ts"
-import { agentLines, APP_VERSION, fromInternet, OpError, type Plugin, type Who } from "../../../core/plugins.ts"
+import { agentLines, APP_VERSION, fromInternet, logger, OpError, type Plugin, type Who } from "../../../core/plugins.ts"
 import { ARCHIVE_DIR } from "../../../core/fileprops.ts"
 import { type Disclosures, disclosed } from "../../../core/pluginmeta.ts"
 import { hashed } from "../../../core/rules.ts"
@@ -17,6 +17,7 @@ import { appsFrom } from "./apps.ts"
 import { toolsOf } from "./catalog.ts"
 import { type ConnectOptions, MCP_PATHS, serveApp, SIGNED_HEADER, upgradeApp, verifyConnect } from "./connect.ts"
 import { handleBody, initializes, instructionsOf, type Session, ToolError } from "./protocol.ts"
+const log = logger("mcp")
 
 const GATED: Record<string, string> = {
   "plugin.enable": "turn on a plugin (a vault plugin runs code on this machine)",
@@ -144,7 +145,7 @@ export class PublicMcp {
   start() {
     this.server = http.createServer((req, res) => {
       byUser(() => this.handle(req, res)).catch((e) => {
-        console.error("mcp public:", e)
+        log.error("public: a request failed", e)
         if (!res.headersSent) this.json(res, 500, { error: "server_error" })
         else res.end()
       })
@@ -152,7 +153,7 @@ export class PublicMcp {
     const server = this.server
     let wait = 2000
     server.on("error", (e) => {
-      if (wait === 2000) console.error(`mcp public: can't listen on 127.0.0.1:${this.settings.port}:`, e.message)
+      if (wait === 2000) log.error("public: can't listen", undefined, { at: `127.0.0.1:${this.settings.port}`, error: e.message })
       setTimeout(() => { if (this.server === server && !server.listening) server.listen(this.settings.port, "127.0.0.1") }, wait)
       wait = Math.min(wait * 2, 60_000)
     })
@@ -289,7 +290,7 @@ export class PublicMcp {
   }
 
   fail(name: string, why: string) {
-    console.error(`mcp public: ${name} didn't finish connecting: ${why}`)
+    log.error("public: an app didn't finish connecting", undefined, { app: name, why })
     this.failed = [...this.failed.filter((f) => f.name !== name), { name, why, until: now() + FAILED_TTL }]
   }
 
@@ -528,7 +529,7 @@ export class PublicMcp {
       const c = this.codes.get(f.code ?? "")
       this.codes.delete(f.code ?? "")
       if (!c || c.until < now()) {
-        console.error("mcp public: an app traded a sign-in code that's unknown or expired")
+        log.warn("public: an app traded a sign-in code that's unknown or expired")
         return fail("invalid_grant", "the code is unknown or expired")
       }
       const refuse = (why: string) => { this.fail(c.app.name, `its tokens were refused: ${why}`); return fail("invalid_grant", why) }

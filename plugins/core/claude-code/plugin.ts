@@ -6,7 +6,7 @@ import path from "node:path"
 import { type AgentAsk, type AgentCommand, type AgentMeter, type AgentModel, type AgentModels, type Asking, type Choice, type Question, type AgentStart, ago, codingAgent, dayOf, expandHome, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows,
   limitWindow, type Live, type SampleAsk, agentRefusal, notOnThisMachine, priceList, processes, projectName, projectOf, shellQuote, projectRoots, epochSeconds, Tally, terminalOf, Transcript, transcripts,
   type Usage, lastTurn, parseTerminal, PERMISSION_MODES, type PermissionMode, trustClaudeProject, usedFirst, when } from "../../../core/agents.ts"
-import { bullets, gitEnv, localDate, OpError, Plugin, section } from "../../../core/plugins.ts"
+import { bullets, gitEnv, localDate, logger, OpError, Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
 import { askingIn, Conversation, WANTED } from "./transcript.ts"
 import { userSaid } from "./chatlog.ts"
@@ -22,6 +22,7 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 const int = (v: unknown) => Math.trunc(Number(v) || 0)
 
 export const plugin = new Plugin(import.meta.url)
+const log = logger("claude-code")
 const DEFAULT_DIR = process.env.CLAUDE_CONFIG_DIR ? path.resolve(process.env.CLAUDE_CONFIG_DIR) : path.join(HOME, ".claude")
 const APP_HISTORY = path.join(HOME, "Library", "Application Support", "Claude", "plan-usage-history.json")
 
@@ -641,7 +642,7 @@ plugin.provide("agent-model:claude-code", (session: string) => {
 
 let waitsTold = new Map<string, "permission" | "question">()
 let waitsTimer: ReturnType<typeof setTimeout> | null = null
-const tellWaitsSoon = () => { waitsTimer ??= setTimeout(() => { waitsTimer = null; void tellWaits().catch((e) => console.error("claude-code: waits:", e)) }, 100) }
+const tellWaitsSoon = () => { waitsTimer ??= setTimeout(() => { waitsTimer = null; void tellWaits().catch((e) => log.error("telling waits", e)) }, 100) }
 
 export async function tellWaits() {
   const tell = plugin.service("terminal:agent-waits")

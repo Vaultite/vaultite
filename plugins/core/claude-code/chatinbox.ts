@@ -1,8 +1,9 @@
 import type { AgentChatNew, Choice } from "../../../core/agents.ts"
-import type { Plugin } from "../../../core/plugins.ts"
+import { logger, type Plugin } from "../../../core/plugins.ts"
 import type { ChatCore } from "./chat.ts"
 import type { Summary } from "./chathost.ts"
 import { SESSION } from "./chatwire.ts"
+const log = logger("chat")
 
 type Needs = Pick<ChatCore, "asking" | "kept" | "save" | "titleOf" | "readTitle" | "ask" | "can" | "hosted" | "d" | "busyElsewhere" | "send" | "answer" | "start">
 
@@ -33,7 +34,7 @@ export function chatInbox(plugin: Plugin, c: Needs) {
       if (said) void tell({ ...base, ...said }).then((e) => {
         const id = (e as { id?: unknown } | null)?.id
         if (typeof id === "string" && kept()[s.id] && kept()[s.id].thread !== id) { kept()[s.id] = { ...kept()[s.id], thread: id }; save() }
-      }, (e) => console.error("chat: inbox:", e))
+      }, (e) => log.error("inbox", e))
     }
     toldInbox.set(s.id, s.seq)
     if (toldInbox.size > 500) toldInbox.delete(toldInbox.keys().next().value!)

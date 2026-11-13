@@ -7,7 +7,7 @@ import path from "node:path"
 import type { WebSocket } from "ws"
 import { z } from "zod"
 import { type Asking, findBin, HOME, Transcript, transcripts } from "../../../core/agents.ts"
-import { agentLines, OpError, outliving, type Plugin, whenListening } from "../../../core/plugins.ts"
+import { agentLines, logger, OpError, outliving, type Plugin, whenListening } from "../../../core/plugins.ts"
 import { byUser as asUser } from "../../../core/writegate.ts"
 import { merge, PAGE } from "./chatentries.ts"
 import { chatInbox } from "./chatinbox.ts"
@@ -18,6 +18,7 @@ import { chatTab } from "./chatsocket.ts"
 import { CHAT_SOCKET, FILES, NAME, port, SESSION, WIN, Wire } from "./chatwire.ts"
 import { modelId, notAModel } from "./models.ts"
 import { memoryLines, unsaid } from "./memory.ts"
+const log = logger("chat")
 
 type Account = { id: string; dir: string; label: string; private: boolean }
 const Settings = z.looseObject({
@@ -91,7 +92,7 @@ function chatCore(plugin: Plugin, d: ChatDeps) {
   const watching = new Map<string, Set<WebSocket>>()
   const owned = new Map<string, ChatStart>()
   const listeners = new Set<(id: string, s: Summary | null) => void>()
-  const inform = (id: string, s: Summary | null) => { for (const fn of listeners) try { fn(id, s) } catch (e) { console.error("chat: listener:", e) } }
+  const inform = (id: string, s: Summary | null) => { for (const fn of listeners) try { fn(id, s) } catch (e) { log.error("a listener failed", e, { id }) } }
   let wire: Promise<Wire> | null = null
 
   const daemon = path.join(plugin.dir, "chatd.ts")
@@ -140,7 +141,7 @@ function chatCore(plugin: Plugin, d: ChatDeps) {
   const ask = async (op: string, params: Record<string, unknown> = {}) => (await keeper(!!port)).request(op, params)
   let busyAt = Date.now()
   function retire(w: Wire, pid: number) {
-    console.error(`chat: its keeper (pid ${pid}) runs other code: ending it once it's quiet`)
+    log.warn("its keeper runs other code: ending it once it's quiet", { pid })
     const t = setInterval(() => {
       if (w.closed) return clearInterval(t)
       if ([...hosted.values()].some((s) => s.state === "working" || s.state === "waiting" || s.state === "starting" || s.background) || Date.now() - busyAt < 2 * 60_000) return
@@ -167,7 +168,7 @@ function chatCore(plugin: Plugin, d: ChatDeps) {
     try { kept = { ...JSON.parse(fs.readFileSync(keptFile(), "utf8")), ...kept } } catch {}
   })
   let saving: ReturnType<typeof setTimeout> | null = null
-  const save = () => { saving ??= setTimeout(() => { saving = null; try { fs.writeFileSync(keptFile(), JSON.stringify(kept)) } catch (e) { console.error("chat: keeping sessions:", e) } }, 500) }
+  const save = () => { saving ??= setTimeout(() => { saving = null; try { fs.writeFileSync(keptFile(), JSON.stringify(kept)) } catch (e) { log.error("keeping sessions", e) } }, 500) }
   const midTurn = (k: Kept) => k.state === "working" || k.state === "waiting" || k.state === "starting"
   function keep(s: Summary | null, id = s?.id ?? "") {
     if (!s) { if (kept[id]) kept[id] = { ...kept[id], state: "closed" } }
@@ -188,8 +189,8 @@ function chatCore(plugin: Plugin, d: ChatDeps) {
       revived.set(k.id, [...times, Date.now()])
       try {
         await send(k.id, "Continue where you left off.", { model: k.model || undefined, effort: effortOf(k.effort), mode: k.mode, by: k.by })
-        console.error(`chat: took ${k.id} up again after its keeper ended`)
-      } catch (e) { console.error(`chat: couldn't take ${k.id} up again:`, e); kept[k.id] = { ...k, state: "closed" }; save() }
+        log.info("took a session up again after its keeper ended", { id: k.id })
+      } catch (e) { log.error("couldn't take a session up again", e, { id: k.id }); kept[k.id] = { ...k, state: "closed" }; save() }
     }
   }
   async function handOver() {
@@ -246,7 +247,7 @@ function chatCore(plugin: Plugin, d: ChatDeps) {
       inform(e.id, null)
     } else if (e.t === "tool") void asUser(() => runTool(e.id, e.call, e.name, e.args, e.use))
     else if (e.t === "partial") {
-      try { asUser(() => { if (e.name) toolOf(e.id, e.name)?.stream?.(e.use, e.json, e.end === "tool" ? undefined : e.end); else owned.get(e.id)?.onText?.(e.use, e.json, e.end) }) } catch (err) { console.error("chat: stream:", err) }
+      try { asUser(() => { if (e.name) toolOf(e.id, e.name)?.stream?.(e.use, e.json, e.end === "tool" ? undefined : e.end); else owned.get(e.id)?.onText?.(e.use, e.json, e.end) }) } catch (err) { log.error("stream", err, { id: e.id }) }
     }
     else if (e.t === "did") {
       const q = new URLSearchParams({ agent: "claude-code", session: titleOf(e.id) || e.id.slice(0, 8) })

@@ -1,13 +1,14 @@
 import fs from "node:fs"
 import type { WebSocket } from "ws"
 import { HOME } from "../../../core/agents.ts"
-import { type Machine, MACHINE_CLIENT, machineSocket, OpError, pipeSockets, type Plugin, splitMachine, Text } from "../../../core/plugins.ts"
+import { logger, type Machine, MACHINE_CLIENT, machineSocket, OpError, pipeSockets, type Plugin, splitMachine, Text } from "../../../core/plugins.ts"
 import type { ChatCore } from "./chat.ts"
 import { PAGE } from "./chatentries.ts"
 import { type Entry, imageType } from "./chatlog.ts"
 import { type Mode, MODES } from "./chathost.ts"
 import { KEEP_IMAGE, pictureFile, pictureIn, sweep } from "./chatpictures.ts"
 import { SESSION } from "./chatwire.ts"
+const log = logger("chat")
 
 export const MODE_LABELS: Record<Mode, string> = { default: "Ask for permissions", acceptEdits: "Accept edits", plan: "Plan mode", auto: "Auto mode",
   dontAsk: "Don't ask", bypassPermissions: "Bypass permissions" }
@@ -75,7 +76,7 @@ export function chatTab(plugin: Plugin, c: Needs) {
       tui = h.tui
       if (ws.readyState === ws.OPEN) { ws.send(JSON.stringify(h)); for (const text of held) ws.send(text) }
     } catch (e) {
-      console.error(`chat: hello for ${id}:`, e)
+      log.error("hello failed", e, { id })
       if (ws.readyState === ws.OPEN) { ws.send(JSON.stringify({ t: "error", reason: (e instanceof Error ? e.message : String(e)) })); ws.close(1011, "hello failed") }
     } finally { holding.delete(ws) }
   })

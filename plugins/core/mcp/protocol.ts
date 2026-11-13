@@ -1,6 +1,7 @@
 import { z } from "zod"
-import { OpError, type Who, whoOf } from "../../../core/plugins.ts"
+import { logger, OpError, type Who, whoOf } from "../../../core/plugins.ts"
 import { cardData, contents, linked, listed, type McpApp, takesUi, UI_EXTENSION, UI_MIME } from "./apps.ts"
+const log = logger("mcp")
 
 export type Client = Omit<Who, "client"> & { client?: string | null }
 
@@ -126,7 +127,7 @@ export async function callTool(tool: Tool, args: Record<string, unknown>, ctx: T
     return { content: [{ type: "text", text }, ...image], ...(data ? { structuredContent: data } : {}), isError: false }
   } catch (e) {
     const known = e instanceof ToolError || e instanceof OpError
-    if (!known) console.error(`mcp: ${tool.name}:`, e)
+    if (!known) log.error("a tool failed", e, { tool: tool.name })
     const message = e instanceof Error ? e.message : String(e)
     return { content: [{ type: "text", text: known ? message : `${tool.name} failed: ${message}` }], isError: true }
   }
