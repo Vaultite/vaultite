@@ -5,7 +5,7 @@ import type { RawData, WebSocket } from "ws"
 import * as Y from "yjs"
 import { z } from "zod"
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates } from "y-protocols/awareness"
-import { merge3, type Plugin, type Who } from "../../../core/plugins.ts"
+import { logger, merge3, type Plugin, type Who } from "../../../core/plugins.ts"
 import { readText } from "../../../core/vault.ts"
 import { parseJson } from "../../../core/agents.ts"
 import { span } from "./text.ts"
@@ -45,7 +45,7 @@ const AwState = z.object({ cursor: z.unknown().optional() })
 const Written = z.object({ text: z.string() })
 
 export function rooms(plugin: Plugin) {
-  const all = new Map<string, Room>()
+  const all = new Map<string, Room>(), log = logger("companion")
   const peers = new Map<WebSocket, Peer>()
   const hits = new WeakMap<WebSocket, Map<string, { n: number; until: number }>>()
   const over = (ws: WebSocket, kind: string, n: number) => {
@@ -73,7 +73,7 @@ export function rooms(plugin: Plugin) {
     }, origin)
   }
 
-  const inTurn = (r: Room, fn: () => Promise<void>) => (r.turn = r.turn.then(fn).catch((e) => console.error(`companion: ${r.path}:`, e)))
+  const inTurn = (r: Room, fn: () => Promise<void>) => (r.turn = r.turn.then(fn).catch((e) => log.error(r.path, e)))
 
   function write(r: Room, peer: Peer, text: string) {
     return inTurn(r, async () => {
@@ -81,7 +81,7 @@ export function rooms(plugin: Plugin) {
         if (text === r.disk) return
         let f: { text: string }
         try { f = Written.parse(await plugin.host.api("PUT", "file", { path: r.path, text, base: r.disk }, peer.who)) } catch (e) {
-          console.error(`companion: couldn't write ${r.path}: ${messageOf(e)}`)
+          log.error(`couldn't write ${r.path}: ${messageOf(e)}`)
           const was = r.text.toString()
           rereadNow(r)
           text = r.text.toString() === was ? text : merge3(was, text, r.text.toString()) ?? r.text.toString()

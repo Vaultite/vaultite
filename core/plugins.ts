@@ -19,6 +19,7 @@ import { defineOp, entryOf, type Op, type OpDef, type Params, type OpCtx, type O
 import { type Job, type When, whenProblems } from "./schedule.ts"
 import { ownerRefusal } from "./owner.ts"
 export { gitEnv } from "./gitenv.ts"
+export { logger } from "./log.ts"
 export { readableImage } from "./heic.ts"
 export { CONNECT_HEADER, fromInternet, GUEST_HEADER, onTailnet, servedAt } from "./owner.ts"
 export { outliving, runtimeDir } from "./runtime.ts"

@@ -1,5 +1,5 @@
 import type { OpCtx, Plugin } from "../../../core/plugins.ts"
-import { OpError } from "../../../core/plugins.ts"
+import { logger, OpError } from "../../../core/plugins.ts"
 import { type Job, landable, live, terminalOf } from "./jobs.ts"
 import { type Knock, READY_HOLD_MS } from "../../../core/desktop/knocks.ts"
 import type { Moment } from "./types.ts"
@@ -7,6 +7,8 @@ import { type Asked, asksToSee, type Choice, choiceSaid, choicesFor, narration, 
 import type { Result, Tour } from "./tour.ts"
 import type { Screen } from "./tours.ts"
 import { messageOf } from "./errors.ts"
+
+const log = logger("companion")
 
 const str = (v: unknown) => (typeof v === "string" ? v : "")
 const isChoice = (s: string): s is Choice => s === "keep" || s === "broken" || s === "later"
@@ -59,7 +61,7 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
     if (urgency === "off") return true
     try {
       d.knocks.knock({ from: terminalOf(j), who: j.title, line: readyLine(j, change), urgency, hold: READY_HOLD_MS, ...(change ? { open: `job:${j.id}` } : {}) })
-    } catch (e) { console.error(`companion: ${j.id}'s ready knock: ${messageOf(e)}`) }
+    } catch (e) { log.error(`${j.id}'s ready knock: ${messageOf(e)}`) }
     return true
   }
 
@@ -209,7 +211,7 @@ saves it: companion tour-save "<the change>" --job <its id> --record <its own se
       d.shown(j, theirs ? "click" : "ask")
       if (Array.isArray(p.displays)) d.showing({ voice: p.voice !== false, displays: p.displays })
       const proof = d.tours.proofOf(j.id)
-      void show(j, p.voice !== false, p.live === true).catch((e) => console.error(`companion: showing ${j.id}: ${messageOf(e)}`))
+      void show(j, p.voice !== false, p.live === true).catch((e) => log.error(`showing ${j.id}: ${messageOf(e)}`))
       const video = proof && !proof.problems.length && p.live !== true && proof.tour.video && d.has(proof.tour.video) ? proof.tour.video : null
       return { job: j.id, title: j.title, proof: proof && !proof.problems.length ? proof.path : null, ...(video ? { video } : {}) }
     },

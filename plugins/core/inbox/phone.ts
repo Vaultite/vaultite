@@ -1,14 +1,16 @@
-import { HTTPError, reply } from "../../../core/plugins.ts"
+import { HTTPError, logger, reply } from "../../../core/plugins.ts"
 import { str } from "../../../core/vault.ts"
 import { BLOCKED, clip, type InboxEvent, questionLine } from "./model.ts"
 import * as push from "./push.ts"
 import { owner, plugin, settings } from "./server.ts"
 import { waitsOnYou } from "./threads.ts"
 
+const log = logger("inbox")
+
 export function pushBack(title: string, body?: string, data?: { event: string }) {
   if (settings().push === "off" || !push.devices().length) return
   void push.send(apns(), { title, body, thread: "inbox", ...(data ? { category: "event" as const, data } : {}) })
-    .then((x) => { if (x.failed.length) console.error(`inbox: push failed: ${x.failed.join(", ")}`) }, (err) => console.error("inbox: push failed:", err))
+    .then((x) => { if (x.failed.length) log.error(`push failed: ${x.failed.join(", ")}`) }, (err) => log.error("push failed", err))
 }
 
 const apns = (): push.Apns | null => plugin.secrets().inbox?.apns ?? null
@@ -26,7 +28,7 @@ export function pushed(e: InboxEvent) {
     title: e.title, body: e.questions ? questionLine(e.questions, true) : [e.from && `From ${e.from.title}`, e.preview || e.body].filter(Boolean).join("\n"), category: categoryOf(e),
     thread: e.terminal || e.session || e.source, urgent: e.kind === "session" && BLOCKED.has(str(e.ask)),
     data: { event: e.id },
-  }).then((r) => { if (r.failed.length) console.error(`inbox: push failed: ${r.failed.join(", ")}`) }, (err) => console.error("inbox: push failed:", err))
+  }).then((r) => { if (r.failed.length) log.error(`push failed: ${r.failed.join(", ")}`) }, (err) => log.error("push failed", err))
 }
 
 let refreshTimer: ReturnType<typeof setTimeout> | null = null
@@ -34,7 +36,7 @@ export function refreshWidgets() {
   if (refreshTimer || !push.devices().some((d) => d.widgets)) return
   refreshTimer = setTimeout(() => {
     refreshTimer = null
-    void push.refresh(apns()).then((r) => { if (r.failed.length) console.error(`inbox: widget push failed: ${r.failed.join(", ")}`) }, (err) => console.error("inbox: widget push failed:", err))
+    void push.refresh(apns()).then((r) => { if (r.failed.length) log.error(`widget push failed: ${r.failed.join(", ")}`) }, (err) => log.error("widget push failed", err))
   }, 2000)
 }
 

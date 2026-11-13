@@ -1,5 +1,5 @@
 import fs from "node:fs"
-import { OpError } from "../../../core/plugins.ts"
+import { logger, OpError } from "../../../core/plugins.ts"
 import type { Target } from "../../../core/desktop/places.ts"
 import { lane, nowNote } from "./lane.ts"
 import { plugin } from "./self.ts"
@@ -13,6 +13,8 @@ import { type ChatState, chat, apiCtx, chatOptions } from "./chat.ts"
 import { pendingFor, hand, handoverAsk } from "./next.ts"
 import { excerpts, momentsText } from "./momentstext.ts"
 import { messageOf, statusOf } from "./errors.ts"
+
+const log = logger("companion")
 
 const ready = () => { const now = nowNote(); return `Read ME.md${now ? `, ${now.path} (what they're on now)` : ""} and \`vau docs companion\` first, once.` }
 export const turning = new Set<string>()
@@ -168,7 +170,7 @@ export async function tend() {
     if (Date.now() - t < HANDOVER_WAIT) continue
     handing.delete(k)
     const s = sessions().find((x) => key(x.name) === k)
-    if (s) await plugin.runOp("companion.handover", { as: s.name }).catch((e) => console.error(`companion: handover failed: ${messageOf(e)}`))
+    if (s) await plugin.runOp("companion.handover", { as: s.name }).catch((e) => log.error(`handover failed: ${messageOf(e)}`))
   }
   for (const s of sessions()) {
     const k = key(s.name)

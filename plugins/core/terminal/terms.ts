@@ -1,7 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { type AgentAsk, type AgentCommand, askLabel, type AgentHow, type AgentStart, type AgentState, agentName, agentSite, shellQuote } from "../../../core/agents.ts"
-import { serverUrl, span } from "../../../core/plugins.ts"
+import { logger, serverUrl, span } from "../../../core/plugins.ts"
 import type { AgentRun, Backend, Listed as Shell } from "./backend.ts"
 import { psQuote, wslPath } from "./launch.ts"
 import { gitBash, kindOf, progName, type ShellKind } from "./shells.ts"
@@ -45,7 +45,7 @@ export function apply(id: string, ev: Event, o: { quiet?: boolean } = {}): Term 
     if (now) told.set(id, { now, at: Date.now() })
     return t
   }
-  if (moved(was.phase, t.phase)) console.log(`terminal: ${id} ${label(was.phase)} -> ${label(t.phase)}`)
+  if (moved(was.phase, t.phase)) log.info(`${id} ${label(was.phase)} -> ${label(t.phase)}`)
   for (const fn of stateHeard) fn(id)
   tellState(id)
   return t
@@ -53,7 +53,7 @@ export function apply(id: string, ev: Event, o: { quiet?: boolean } = {}): Term 
 
 export const told = new Map<string, { now: Now; at: number; timer?: ReturnType<typeof setTimeout> }>()
 export const stateHeard = new Set<(id: string) => void>()
-const STATE_GAP = 250, MSG_GAP = 2000
+const STATE_GAP = 250, MSG_GAP = 2000, log = logger("terminal")
 
 export const metas = new Map<string, Record<string, string>>()
 const metaOf = (id: string) => metas.get(id) ?? {}
@@ -93,7 +93,7 @@ function tellState(id: string) {
   told.set(id, { now, at: Date.now() })
   const change: StateChange = { terminal: id, ...now, ...(last ? { was: last.now.state } : {}), at: Date.now() }
   tell("terminal.state", { id, agent: now.agent, state: now.state, ...(now.kind ? { kind: now.kind } : {}), ...(now.msg ? { msg: now.msg } : {}), from: now.from })
-  try { void Promise.resolve(plugin.service("inbox:state")?.(change)).catch((e) => console.error("terminal: inbox:state:", e)) } catch (e) { console.error("terminal: inbox:state:", e) }
+  try { void Promise.resolve(plugin.service("inbox:state")?.(change)).catch((e) => log.error("inbox:state", e)) } catch (e) { log.error("inbox:state", e) }
 }
 
 export const held = new Map<string, Said>()
@@ -220,7 +220,7 @@ try {
     if (TERMINAL_ID.test(id)) void runsHere(id).then((here) => here && apply(id, { type: "hooks", text: hooksText(id) }))
   })
   hooksWatch.on("error", () => {})
-} catch (e) { console.error("terminal: can't watch the agents' state files:", e) }
+} catch (e) { log.error("can't watch the agents' state files", e) }
 plugin.onUnload(() => hooksWatch?.close())
 
 export const FRONT_AGE = 1000

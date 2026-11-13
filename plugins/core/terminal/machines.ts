@@ -1,11 +1,13 @@
 import type { IncomingMessage } from "node:http"
 import { type RawData, WebSocket } from "ws"
-import { HTTPError, machineSocket, pipeSockets, splitMachine, type Machine } from "../../../core/plugins.ts"
+import { HTTPError, logger, machineSocket, pipeSockets, splitMachine, type Machine } from "../../../core/plugins.ts"
 import { CLOSE } from "./closes.ts"
 import { type Session, TERMINAL_ID, clamp, plugin, sessions } from "./shared.ts"
 import { LOCAL, agentOf, backendOf, context, env, fromReq, ownerOf, pluginBackend, runsHere } from "./backends.ts"
 import { attach, closesTabs, end, endHere, resize, start } from "./start.ts"
 import { type Listed, remotes } from "./list.ts"
+
+const log = logger("terminal")
 
 const machineOf = (id: string) => plugin.ask<Machine | null>("machines:machine", null, id)
 export const terminalMachines = async () => (await plugin.ask<Machine[]>("machines", [])).filter((m) => !m.self && m.online && m.plugins?.includes("terminal"))
@@ -106,7 +108,7 @@ plugin.socket("terminal/*", async (ws, req, { wild, query }) => {
   const first = !starting.has(id)
   if (first) starting.set(id, start(id, cols, rows, fromReq(req), null, query.dark === "1" ? true : query.dark === "0" ? false : null).finally(() => starting.delete(id)))
   starting.get(id)!.then(({ s, fresh }) => { if (ws.readyState !== ws.OPEN) return; if (cell) resize(s, s.link.cols, s.link.rows, cell); attach(s, ws, first && fresh) }, (e) => {
-    console.error("terminal:", e)
+    log.error(`starting ${id}`, e)
     if (ws.readyState !== ws.OPEN) return
     ws.send(Buffer.from(`\r\nCouldn't start a shell: ${(e as Error).message}\r\n`))
     ws.close(CLOSE.exited, "failed")

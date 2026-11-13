@@ -2,7 +2,7 @@ import fs from "node:fs"
 import type { IncomingMessage } from "node:http"
 import path from "node:path"
 import { z } from "zod"
-import { OpError } from "../../../core/plugins.ts"
+import { logger, OpError } from "../../../core/plugins.ts"
 import { parseJson } from "../../../core/agents.ts"
 import { readText, requestWriter, type Writer, writeAtomic } from "../../../core/vault.ts"
 import { nearest } from "./text.ts"
@@ -25,7 +25,7 @@ export const past = new Map<string, Note[]>()
 export const PAST = 30
 const DIR = ".vaultite/plugins/companion/comments"
 const sidecar = (p: string) => `${DIR}/${p}.json`
-const written = new Map<string, string>()
+const written = new Map<string, string>(), log = logger("companion")
 export const kept = (p: string) => [...notes.values()].filter((n) => n.path === p && KEPT.has(n.kind))
 const lineCount = (text: string) => text.split("\n").length - (text.endsWith("\n") ? 1 : 0)
 const under = (p: string, dir: string) => p === dir || p.startsWith(`${dir}/`)
@@ -52,7 +52,7 @@ export function save(p: string) {
       fs.rmSync(abs, { force: true })
       for (let d = path.dirname(abs), top = plugin.vault.abs(DIR); d.startsWith(top) && fs.readdirSync(d).length === 0; d = path.dirname(d)) fs.rmdirSync(d)
     }
-  } catch (e) { console.error(`companion: couldn't save ${rel}: ${messageOf(e)}`) }
+  } catch (e) { log.error(`couldn't save ${rel}: ${messageOf(e)}`) }
   if (text) written.set(rel, text); else written.delete(rel)
 }
 
@@ -145,7 +145,7 @@ plugin.onMove((from, to, trashed) => {
     if (!fs.existsSync(abs) || (a === `${DIR}/${from}` && !fs.statSync(abs).isDirectory())) continue
     try {
       if (b) { fs.mkdirSync(path.dirname(plugin.vault.abs(b)), { recursive: true }); fs.renameSync(abs, plugin.vault.abs(b)) } else fs.rmSync(abs, { recursive: true, force: true })
-    } catch (e) { console.error(`companion: couldn't move ${a}: ${messageOf(e)}`) }
+    } catch (e) { log.error(`couldn't move ${a}: ${messageOf(e)}`) }
   }
   for (const [k, text] of [...written]) {
     const p = k.slice(DIR.length + 1, -5)
@@ -171,7 +171,7 @@ export function answer(id: string, verdict: "accept" | "reject" | "dismiss" | "r
   const n = notes.get(id) ?? said.find((x) => x.id === id)
   if (!n) return
   if (n.kind === "say") return answerSay(n, verdict, text, from)
-  if (n.kind === "proposal") return verdict === "reply" ? undefined : void review(id, verdict === "accept" ? "accept" : "reject", undefined, from).catch((e) => console.error(`companion: ${messageOf(e)}`))
+  if (n.kind === "proposal") return verdict === "reply" ? undefined : void review(id, verdict === "accept" ? "accept" : "reject", undefined, from).catch((e) => log.error(messageOf(e)))
   if (verdict === "reply" && text) {
     n.replies = [...(n.replies ?? []), { by: "user", text: text.slice(0, MAX_TEXT), t: Date.now() }]
     broadcast({ t: "note", note: n })

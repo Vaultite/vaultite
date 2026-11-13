@@ -2,13 +2,15 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { WebSocket } from "ws"
-import { HTTPError } from "../../../core/plugins.ts"
+import { HTTPError, logger } from "../../../core/plugins.ts"
 import { archiveTwin, type Item, str, writeAtomic } from "../../../core/vault.ts"
 import { asThreads, BLOCKED, byThread, clip, doneAs, type InboxEvent, pinnedAs, previewOf, readThere, snoozedAs, type State, TERMINAL, unreadThere } from "./model.ts"
 import { pushed, refreshWidgets } from "./phone.ts"
 import { DAY, dir, FOLDER, holdNow, MAX, MERGE, plugin, settings } from "./server.ts"
 import { snoozed } from "./snooze.ts"
 import { waitsOnYou } from "./threads.ts"
+
+const log = logger("inbox")
 
 let events: InboxEvent[] | null = null
 let saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -40,7 +42,7 @@ function save() {
     try {
       fs.mkdirSync(dir(), { recursive: true })
       writeAtomic(path.join(dir(), "events.json"), JSON.stringify({ v: VERSION, events: list() }))
-    } catch (e) { console.error("inbox:", e) }
+    } catch (e) { log.error("saving events.json", e) }
   }, 200)
 }
 

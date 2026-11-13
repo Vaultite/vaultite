@@ -928,6 +928,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `LOCAL`: This machine's own files: secrets.
 - `localDate(t)`: A time (a Date or epoch ms) as this machine's date, YYYY-MM-DD, and its time, HH:MM.
 - `localTime(t)`
+- `logger(area)`
 - `Machine`: One of the vault's machines, as the Machines plugin's services ("machines", "machines:machine") answer it.
 - `MACHINE_CLIENT`: How this server says who it is when it asks another machine (Activity shows it).
 - `machineSocket(m, path, query?, opts?)`: A socket to `path` (under /api/) on machine `m`.

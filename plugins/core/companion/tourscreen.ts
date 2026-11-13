@@ -20,6 +20,9 @@ import { lane } from "./lane.ts"
 import { turning } from "./chatturns.ts"
 import { awayIn } from "./momentstext.ts"
 import { askOf } from "./wiring.ts"
+import { logger } from "../../../core/plugins.ts"
+
+const log = logger("companion")
 
 const lastWindow = () => [...windows.entries()].sort((a, b) => b[1].at - a[1].at)[0]?.[0]
 const Frame = z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() })
@@ -53,7 +56,7 @@ async function flip(name: string, src: string, at: { x: number; y: number; width
   const layer = beforeLayer(name)
   try {
     await screenDrawing.draw(layer, [{ type: "image", src, at: [at.x, at.y, at.width, at.height], over: true, caption: "Before", life: "dismiss" }])
-  } catch (e) { return void console.error(`companion: a before picture didn't show: ${messageOf(e)}`) }
+  } catch (e) { return void log.error(`a before picture didn't show: ${messageOf(e)}`) }
   const mine: NonNullable<typeof flipping> = { layer, timers: [] }
   mine.timers = FLIPS.map(([ms, on]) => setTimeout(() => { if (flipping === mine) screenDrawing.toggle(layer, on) }, ms))
   flipping = mine

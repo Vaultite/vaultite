@@ -1,5 +1,5 @@
 import fs from "node:fs"
-import { type OpCtx, OpError, type Plugin } from "../../../core/plugins.ts"
+import { logger, type OpCtx, OpError, type Plugin } from "../../../core/plugins.ts"
 import { joinPath, Kind, parseText, safeName } from "../../../core/vault.ts"
 import { type Anchor, anchorOf, anchorText, keepAnchor, refind, type Seen, type Where } from "../../../core/desktop/anchor.ts"
 import { type Condition, conditionText, type Input, parseCondition, watch } from "./condition.ts"
@@ -11,6 +11,8 @@ import type { Message } from "./rooms.ts"
 import { type Aim, type Do, type DrawMark, type Frontmatter, type Fx, lostLine, type Mode, MODES, parseTour, play, type Result, type Step, type Tour, tourAsked } from "./tour.ts"
 import type { Condition as Check, Rect } from "../../../core/desktop/uimodel.ts"
 import { type Answer, tourSaving } from "./toursave.ts"
+
+const log = logger("companion tour")
 
 export type Screen = {
   things: () => Promise<{ where: Where; things: Seen[] } | null>
@@ -112,10 +114,10 @@ export function toursOf(plugin: Plugin, o: {
       sleep: (ms) => rest(ms, ctl.signal),
     }
     const done = play(tour, mode, fx, ctl.signal, from).then((r) => {
-      console.log(`companion tour "${tour.title}" (${mode}): ${r.ended} after ${r.steps.length} steps in ${Math.round((Date.now() - began) / 1000)} s${r.steps.some((x) => x.how === "model") ? `, the model played ${r.steps.filter((x) => x.how === "model").map((x) => x.n).join(", ")}` : ""}`)
+      log.info(`"${tour.title}" (${mode}): ${r.ended} after ${r.steps.length} steps in ${Math.round((Date.now() - began) / 1000)} s${r.steps.some((x) => x.how === "model") ? `, the model played ${r.steps.filter((x) => x.how === "model").map((x) => x.n).join(", ")}` : ""}`)
       const lost = o2.quiet ? "" : lostLine(tour.title, r)
       if (lost) void s.say(lost).catch(() => {})
-      if (file && from === 1 && playedThrough(r)) void promote(file.ctx, file.path).catch((e) => console.log(`companion tour: ${file.path} played through but stays a draft: ${messageOf(e)}`))
+      if (file && from === 1 && playedThrough(r)) void promote(file.ctx, file.path).catch((e) => log.info(`${file.path} played through but stays a draft: ${messageOf(e)}`))
       return r
     }).finally(() => { if (playing.get(name)?.ctl === ctl) playing.delete(name) })
     playing.set(name, { title: tour.title, mode, ctl, done, step: from })
@@ -124,7 +126,7 @@ export function toursOf(plugin: Plugin, o: {
 
   async function promote(ctx: OpCtx, path: string) {
     const next = promoted(await noteText(plugin, ctx, path), Date.now())
-    if (next) { await writeNote(plugin, ctx, path, next); console.log(`companion tour: ${path} played through, no longer a draft`) }
+    if (next) { await writeNote(plugin, ctx, path, next); log.info(`${path} played through, no longer a draft`) }
   }
   const rows = (): Row[] => plugin.vault.shared("tours").flatMap((t) => Row.safeParse(t).data ?? [])
   const tourAt = async (path: string, ctx: OpCtx): Promise<{ tour: Tour; path: string }> => {
@@ -275,8 +277,8 @@ scroll, a move or a relabel; gone, it says so. Kept ones (k1, k2: what you point
       const row = tourAsked(rows(), text)
       if (!row) return null
       const [tour, problems] = parsed(row), s = problems.length ? null : o.screen(name, tour)
-      if (problems.length || !s) { console.log(`companion tour "${row.title}": asked for, but ${problems.length ? problems.join("; ") : "there's no screen to play it on"}`); return null }
-      void start(name, s, tour, "guide").catch((e) => console.log(`companion tour "${tour.title}": ${messageOf(e)}`)).finally(ended)
+      if (problems.length || !s) { log.info(`"${row.title}": asked for, but ${problems.length ? problems.join("; ") : "there's no screen to play it on"}`); return null }
+      void start(name, s, tour, "guide").catch((e) => log.info(`"${tour.title}": ${messageOf(e)}`)).finally(ended)
       return tour.title
     },
     askable: () => rows().filter((r) => r.ask?.length).map((r) => ({ path: /\.md$/i.test(r.id) ? r.id : `${r.id}.md`, ask: r.ask! })),

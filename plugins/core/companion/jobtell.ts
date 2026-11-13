@@ -1,5 +1,5 @@
 import { parseTerminal } from "../../../core/agents.ts"
-import { type OpCtx, OpError } from "../../../core/plugins.ts"
+import { logger, type OpCtx, OpError } from "../../../core/plugins.ts"
 import { gist, type Job, landTask, linkOf, messageOf, prunedLine, terminalOf } from "./jobs.ts"
 import { type Clock, type JobEvent, untell } from "./joblife.ts"
 import { COMPANION, THEM } from "./jobtold.ts"
@@ -8,6 +8,8 @@ import type { workerLinks } from "./links.ts"
 import type { Moment } from "./types.ts"
 import type { JobDeps, JobLogRow, Seen } from "./workers.ts"
 
+const log = logger("companion")
+
 export type TellDeps = {
   all: () => Job[]; changed: () => void; move: (j: Job, ev: JobEvent, t?: number) => boolean; log: { append: (t: number, rows: JobLogRow[]) => void }
   clockOf: (j: Job) => Clock; sending: Set<string>; links: ReturnType<typeof workerLinks>; setting: (k: string) => string; d: JobDeps
@@ -15,7 +17,7 @@ export type TellDeps = {
 }
 
 export function jobTell(o: TellDeps) {
-  const { all, changed, move, log, clockOf, sending, links, setting, d, seenOf, ended, refresh } = o
+  const { all, changed, move, log: jobLog, clockOf, sending, links, setting, d, seenOf, ended, refresh } = o
   async function wake(ctx: OpCtx, j: Job, prompt = "") {
     const s = await seenOf(j).catch(() => null)
     if (!s || s.running) return false
@@ -67,13 +69,13 @@ export function jobTell(o: TellDeps) {
       sending.add(j.id)
       const back = () => {
         const b = untell(j, x, was), t = Date.now()
-        if (b) log.append(t, [{ t, job: j.id, ev: "untold", ...b }])
+        if (b) jobLog.append(t, [{ t, job: j.id, ev: "untold", ...b }])
         changed()
       }
       const r = await link[how](ctx, j.terminal, text).catch((e) => { back(); throw e }).finally(() => sending.delete(j.id))
       if (r.submitted === false) { back(); throw new OpError(`it didn't take it: ${r.why ?? "its input kept the text"} (${linkOf(j)})`, 409) }
       toldFrom(j, by, text)
-      void refresh(j).catch((e) => console.error("companion: jobs:", e))
+      void refresh(j).catch((e) => log.error("jobs", e))
       return
     }
     toldNow(j, `Told: ${gist(shown, 120)}`)
@@ -87,7 +89,7 @@ export function jobTell(o: TellDeps) {
     if (!w.repo || w.cloud || w.agent.split("_")[0] !== "claude" || !(by === COMPANION || by === THEM || by.startsWith(`${COMPANION} (`))) return
     // (Claude Code's "Trust this folder?" answered in the job's account)
     const body = { cwd: w.cwd, account: parseTerminal(`${w.agent}-x`)?.profile || "default" }
-    try { await links.of(w).there(ctx, "claude-code.trust", body, 10) } catch (e) { console.error(`companion: jobs: ${j.id}: trust:`, messageOf(e)) }
+    try { await links.of(w).there(ctx, "claude-code.trust", body, 10) } catch (e) { log.error(`jobs: ${j.id}: trust: ${messageOf(e)}`) }
   }
   function toldNow(j: Job, line: string) {
     move(j, "told")

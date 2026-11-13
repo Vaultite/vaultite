@@ -2,7 +2,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
 import type { AgentHow } from "../../../core/agents.ts"
-import { readableImage, span } from "../../../core/plugins.ts"
+import { logger, readableImage, span } from "../../../core/plugins.ts"
 import type { BackendEvent, AgentRun, Backend, Cell, Listed as Shell, Made, Spec } from "./backend.ts"
 import { runScript, wslPath } from "./launch.ts"
 import { kindOf, progName } from "./shells.ts"
@@ -13,6 +13,8 @@ import { type From, type Home, LOCAL, PATH, agentOf, backendForNew, backendOf, c
 import { agentReady, agentRun, apply, held, metas, oldMetaFiles, oscSaid, sighted, terms, told, vaultDir } from "./terms.ts"
 import { listChanged } from "./list.ts"
 import { exitHeard, lastInput, pageInput } from "./routes.ts"
+
+const log = logger("terminal")
 
 const DROP_BEHIND = 16 << 20
 const HOLD_BEHIND = 1 << 20, RESUME_BEHIND = 256 << 10, STALL_MS = 3000
@@ -99,7 +101,7 @@ export async function start(id: string, cols: number, rows: number, from = LOCAL
       try { await b.create(id, spec, made) } catch (e) {
         // (out of ptys, the server couldn't start one either: the keeper's message says why)
         if (b !== keeper || /no pseudo-terminal left/.test((e as Error).message)) throw e
-        console.error("terminal: the keeper couldn't start a shell, so this server holds it and restarting the server ends it:", e)
+        log.error("the keeper couldn't start a shell, so this server holds it and restarting the server ends it", e)
         b = fallback
         await b.create(id, spec, made)
       }
@@ -206,7 +208,7 @@ export async function endHere(b: Backend, id: string, keep = false) {
 
 /** A title is read with the next list: an agent's spinner retitles it many times a second. */
 export function onEvent(b: Backend, ev: BackendEvent) {
-  if (ev.type === "trouble") { console.error(`terminal: ${b.label}'s terminal server${ev.id ? `, ${ev.id}` : ""}: ${ev.text}`); return }
+  if (ev.type === "trouble") { log.error(`${b.label}'s terminal server${ev.id ? `, ${ev.id}` : ""}: ${ev.text}`); return }
   if (!TERMINAL_ID.test(ev.id) || ev.id.startsWith(SPARE)) return
   if (ev.type === "status") return oscSaid(ev.id, ev.said)
   if (ev.type === "exited") return exited(ev.id, ev.exit)
@@ -270,13 +272,13 @@ export function attach(s: Session, ws: WebSocket, fresh: boolean) {
     else if (msg.t === "close") end(s)
     else if (msg.t === "upload") {
       let file: string | null = null
-      try { file = upload(s.id, uploads, msg) } catch (e) { console.error("terminal upload:", e); return }
+      try { file = upload(s.id, uploads, msg) } catch (e) { log.error("upload", e); return }
       // (a HEIC photo, as phones paste screenshots, as a JPEG beside it, which agents can read; a WSL distro's shell is
       // given the path as it sees it)
       if (file) pasted = pasted.then(() => readableImage(file!)).then(async (f) => {
         const wsl = await inWsl(s)
         if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: "uploaded", path: wsl ? wslPath(f) : f }))
-      }).catch((e) => console.error("terminal upload:", e))
+      }).catch((e) => log.error("upload", e))
     }
   })
   ws.on("close", () => {

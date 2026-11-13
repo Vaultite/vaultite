@@ -1,10 +1,12 @@
 import type { IncomingMessage } from "node:http"
-import { type OpCtx, OpError, type Plugin } from "../../../core/plugins.ts"
+import { logger, type OpCtx, OpError, type Plugin } from "../../../core/plugins.ts"
 import { followTask, JOB_STATES, type Job, live } from "./jobs.ts"
 import { messageOf } from "./errors.ts"
 import type { Moment } from "./types.ts"
 import { parseTags, type Tag } from "./tags.ts"
 import { agentTint } from "../../../core/agenttint.ts"
+
+const log = logger("companion")
 
 type Jobs = { list: () => Job[]; find: (id: string) => Job; tell: (ctx: OpCtx, id: string, text: string, shown?: string) => Promise<void> }
 export type TalkDeps = {
@@ -98,11 +100,11 @@ export function talkOps(plugin: Plugin, d: TalkDeps) {
   function take(m: Moment, from?: IncomingMessage): boolean {
     const f = now()
     if (!f || m.kind !== "ask" || !m.summoned || !m.text?.trim() || m.tour) return false
-    if (isBack(m.text)) { m.live = f.job; void end(d.ctx(from), m).catch((e) => console.error(`companion: talk: ${messageOf(e)}`)); return true }
+    if (isBack(m.text)) { m.live = f.job; void end(d.ctx(from), m).catch((e) => log.error(`talk: ${messageOf(e)}`)); return true }
     const j = jobOf(f.job)!
     f.at = Date.now()
     void send(d.ctx(from), j, f.name, m, false).catch((e) => {
-      console.error(`companion: talk to ${j.id}: ${messageOf(e)}`)
+      log.error(`talk to ${j.id}: ${messageOf(e)}`)
       if (floor?.job === j.id) { d.gone(f.name); floor = null }
       delete m.live
       m.for = d.main()
@@ -121,7 +123,7 @@ export function talkOps(plugin: Plugin, d: TalkDeps) {
     if (!text) { d.show(f.name, null); return true }
     const { said, tags } = parseTags(text.replace(/\s+/g, " "))
     void d.tags(f.name, tags, said).then(() => (said.trim() ? d.say(f.name, said.trim(), f.m) : undefined))
-      .catch((e) => console.error(`companion: talk ${j.id}: ${messageOf(e)}`))
+      .catch((e) => log.error(`talk ${j.id}: ${messageOf(e)}`))
     return true
   }
 

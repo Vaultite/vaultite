@@ -7,6 +7,9 @@ import type { Moment } from "./types.ts"
 import { readableText } from "./reach.ts"
 import { beatOf, markOf, parseTags, placeOf, type Tag } from "./tags.ts"
 import { drops, type Effect, type EffectKind, handed, label, type News, owes, start, step, turning, type TurnEvent, withdrawing } from "./talkturn.ts"
+import { logger } from "../../../core/plugins.ts"
+
+const log = logger("companion")
 
 type Tool = ChatTool
 type Start = ChatHow & { prompt?: string }
@@ -115,7 +118,7 @@ export function summonedLane(o: {
     thinking: () => o.thinking(o.name()),
     watching: (x) => o.watching(o.name(), x.seen),
     done: () => own(() => o.did(o.name(), "done")),
-    note: (x) => { trouble = { t: Date.now(), why: x.why.slice(0, 300) }; console.error(`companion: its summoned session: ${x.why}`) },
+    note: (x) => { trouble = { t: Date.now(), why: x.why.slice(0, 300) }; log.error(`its summoned session: ${x.why}`) },
     lose: () => { if (kept) { const old = kept.id; keep(null); void o.chat()?.stop(old).catch(() => {}) } },
     interrupt: () => { if (kept) void o.chat()?.interrupt(kept.id).catch(() => false) },
     pump: () => void go({ type: "free" }),

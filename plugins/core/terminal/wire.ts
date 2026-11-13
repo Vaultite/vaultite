@@ -3,6 +3,9 @@ import type { BackendEvent, CaptureFormat, Exit, Input, Link, Listed, Made, Spec
 import { launch, shellName } from "./launch.ts"
 import { lineReader } from "./lines.ts"
 import { Failure, type Answer, type Info, type Op, type Params, type Unasked } from "./termd/protocol.ts"
+import { logger } from "../../../core/plugins.ts"
+
+const log = logger("terminal")
 
 export type Msg = Record<string, unknown>
 type Pipe = { write(m: Msg): void; onMessage(fn: (m: Msg) => void): void; onClose(fn: () => void): void; close(): void; pause(): void; resume(): void }
@@ -39,7 +42,7 @@ export class Wire {
           this.waiting.delete(m.re)
           if (typeof m.error === "string") w.fail(new Failure(m.error, m.code === "retiring" ? m.code : undefined)); else w.ok(m)
         } else if (typeof m.t === "string") for (const fn of this.listeners) fn(m as Unasked)
-      } catch (e) { console.error("terminal: a message from the terminal server:", e) }
+      } catch (e) { log.error("a message from the terminal server", e) }
     })
     pipe.onClose(() => {
       if (this.closed) return

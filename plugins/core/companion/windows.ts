@@ -1,7 +1,7 @@
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
 import { z } from "zod"
-import { LOCAL, vaultPath, type Who } from "../../../core/plugins.ts"
+import { LOCAL, logger, vaultPath, type Who } from "../../../core/plugins.ts"
 import { bridges } from "./bridge.ts"
 import { type Message, messageFrom, rooms } from "./rooms.ts"
 import { paneSource } from "../../../core/desktop/places.ts"
@@ -29,6 +29,8 @@ import { openedFor } from "./opening.ts"
 import { personComment, mentioned, askIn } from "./people.ts"
 import { nearBy, screenSocket } from "./screensocket.ts"
 import { ownTour, screenOf } from "./tourscreen.ts"
+
+const log = logger("companion")
 
 export const co = rooms(plugin)
 plugin.onChange((paths) => co.changed(paths))
@@ -173,7 +175,7 @@ plugin.socket("companion/live", (ws, req, { query }) => {
     } else if (m.t === "answer" && typeof m.id === "string" && isVerdict(m.verdict)) {
       answer(m.id, m.verdict, str(m.text) || undefined, req)
     } else if (m.t === "review" && typeof m.id === "string" && (m.verdict === "accept" || m.verdict === "reject")) {
-      void review(m.id, m.verdict, str(m.change) || undefined, req).catch((e) => console.error(`companion: ${messageOf(e)}`))
+      void review(m.id, m.verdict, str(m.change) || undefined, req).catch((e) => log.error(messageOf(e)))
     } else if (m.t === "comment") {
       const c = personComment({ by: "user", agent: "" }, str(m.path), { text: m.text, line: m.line, find: m.find }), to = c && mentioned(c.text!)
       if (c && to) askIn(c, to, str(m.selection).slice(0, 20_000), req)

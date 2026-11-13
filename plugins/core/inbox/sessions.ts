@@ -1,6 +1,6 @@
 import path from "node:path"
 import { agentName, type Asking, type Question, type SampleAsk } from "../../../core/agents.ts"
-import { HTTPError, LOADED, reply, whoOf } from "../../../core/plugins.ts"
+import { HTTPError, LOADED, logger, reply, whoOf } from "../../../core/plugins.ts"
 import { type Item, requestWriter, str } from "../../../core/vault.ts"
 import { endHanded } from "./handed.ts"
 import { BLOCKED, clip, type InboxEvent, TERMINAL } from "./model.ts"
@@ -10,10 +10,12 @@ import { afterTurn, askedRow, askOf, bodyOf, delegated, delegatedRow, fromHook, 
 import { owner, plugin, settings } from "./server.ts"
 import { list, newId, put, resolve, shown, told } from "./store.ts"
 
+const log = logger("inbox")
+
 const states = new Map<string, Seen>()
 const pending = new Set<Promise<unknown>>()
 export const track = (p: Promise<unknown>) => {
-  const q = p.catch((e) => console.error("inbox:", e)).finally(() => pending.delete(q))
+  const q = p.catch((e) => log.error("handling an agent's event", e)).finally(() => pending.delete(q))
   pending.add(q)
 }
 export const settled = async () => { while (pending.size) await Promise.all([...pending]) }

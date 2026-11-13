@@ -2,13 +2,15 @@ import fs from "node:fs"
 import type { IncomingMessage } from "node:http"
 import path from "node:path"
 import { z } from "zod"
-import { type OpCtx, OpError, type Plugin, quoted } from "../../../core/plugins.ts"
+import { logger, type OpCtx, OpError, type Plugin, quoted } from "../../../core/plugins.ts"
 import type { Box } from "../../../core/desktop/framediff.ts"
 import { gist, type Job, JOB_STATES, live } from "./jobs.ts"
 import type { Moment } from "./types.ts"
 import { unedit } from "./unedit.ts"
 import { messageOf } from "./errors.ts"
 import { editsFor, freshText, isQuestion, isUndo, type LiveAsk, liveText, NOT_MINE, pageOf, type Span } from "./liveasks.ts"
+
+const log = logger("companion")
 
 type Live = { n: number; asks: LiveAsk[]; notes: string[]; at: number; fresh?: number }
 
@@ -112,7 +114,7 @@ export function liveEdits(plugin: Plugin, d: LiveDeps) {
       if (a) a.shot = await before
       save(s2)
     }).catch((e) => {
-      console.error(`companion: live edit to ${j.id}: ${messageOf(e)}`)
+      log.error(`live edit to ${j.id}: ${messageOf(e)}`)
       delete m.live
       d.fallback(m)
     })
@@ -137,9 +139,9 @@ export function liveEdits(plugin: Plugin, d: LiveDeps) {
     for (const a of asks) a.rung = true
     save(s)
     waiting.delete(j.id)
-    const log = (e: Error) => console.error(`companion: live edit ${j.id}: ${e.message}`)
-    if (w) void undoNow(w.ctx, j, w.m, w.tag).catch(log)
-    else void settled(j, asks).catch(log)
+    const failed = (e: Error) => log.error(`live edit ${j.id}: ${e.message}`)
+    if (w) void undoNow(w.ctx, j, w.m, w.tag).catch(failed)
+    else void settled(j, asks).catch(failed)
     return true
   }
   async function changedSince(before: string | undefined, window: number | undefined) {

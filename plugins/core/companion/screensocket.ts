@@ -17,6 +17,9 @@ import { stopStreams } from "./edits.ts"
 import { messageOf } from "./errors.ts"
 import { lane } from "./lane.ts"
 import { jobs, knocks } from "./wiring.ts"
+import { logger } from "../../../core/plugins.ts"
+
+const log = logger("companion")
 
 export const SCREEN_NEWS = new Set(["state", "agent", "note", "drop", "said", "hush", "voice"])
 export let lastScreen: WebSocket | null = null
@@ -157,7 +160,7 @@ function drawingAct(m: Message, req: IncomingMessage) {
   if (m.kind === "settle") return void screenDrawing.settle(d.agent)
   if (m.kind === "dismiss" && typeof m.mark === "string") return void screenDrawing.dismiss(d.id, m.mark)
   if (m.kind === "media" && typeof m.mark === "string") return void screenDrawing.media(d.id, m.mark, { ...(typeof m.sound === "boolean" ? { sound: m.sound } : {}), ...(typeof m.paused === "boolean" ? { paused: m.paused } : {}) })
-  if (m.kind === "keep") return void plugin.runOp("companion.save-drawing", { id: d.id, places: m.places ?? {} }, YOU, req).catch((e) => console.error(`companion: keep: ${messageOf(e)}`))
+  if (m.kind === "keep") return void plugin.runOp("companion.save-drawing", { id: d.id, places: m.places ?? {} }, YOU, req).catch((e) => log.error(`keep: ${messageOf(e)}`))
   const a = agents.get(key(d.agent)), r = spots(d.marks).map((s) => rectOf(s, d.places)).find(Boolean)
   if (m.kind === "ask" && str(m.text)) addMoment({ kind: "ask", for: d.agent, text: str(m.text).slice(0, 2000), ...(a?.app ? { app: a.app } : {}),
     ...(r ? { sx: Math.round(r.x + r.w / 2), sy: Math.round(r.y + r.h / 2) } : a?.sx !== undefined ? { sx: a.sx, sy: a.sy } : {}) }, req)

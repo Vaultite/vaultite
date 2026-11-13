@@ -3,10 +3,12 @@ import fs from "node:fs"
 import path from "node:path"
 import { z } from "zod"
 import { parseTerminal } from "../../../core/agents.ts"
-import { gitEnv, type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin } from "../../../core/plugins.ts"
+import { gitEnv, logger, type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin } from "../../../core/plugins.ts"
 import { commitsIn, type Marks, picturesIn } from "./jobs.ts"
 import { branchOf, githubOf, headOf } from "./where.ts"
 import type { Seen } from "./workers.ts"
+
+const log = logger("companion")
 
 export type Start = { agent: string; cwd: string; name: string; prompt?: string; session?: string; model?: string; effort?: string; mode?: string
   base?: string }
@@ -112,7 +114,7 @@ export function workerLinks(plugin: Plugin, o: { seenHere: (terminal: string, r:
       const r = await fetch(`${m.url}/api/ops/companion.picture-take?name=${encodeURIComponent(path.basename(f))}`, { method: "POST",
         headers: { ...MACHINE_CLIENT, "Content-Type": "image/png" }, body: fs.readFileSync(f), signal: AbortSignal.timeout(15_000) }).catch(() => null)
       const to = (r?.ok ? Taken.safeParse(await r.json().catch(() => null)).data?.path : "") ?? ""
-      if (!to) console.error(`companion: jobs: couldn't copy ${path.basename(f)} to ${m.label}${r ? ` (${r.status})` : ""}`)
+      if (!to) log.error(`jobs: couldn't copy ${path.basename(f)} to ${m.label}${r ? ` (${r.status})` : ""}`)
       return to || f
     }))
     return files.reduce((t, f, i) => t.split(f).join(there[i]), text)

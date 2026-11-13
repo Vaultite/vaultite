@@ -1,6 +1,8 @@
-import { type OpCtx, userSurface } from "../../../core/plugins.ts"
+import { logger, type OpCtx, userSurface } from "../../../core/plugins.ts"
 import { requestWriter } from "../../../core/vault.ts"
 import type { JobDeps } from "./workers.ts"
+
+const log = logger("companion")
 
 export const COMPANION = "the companion"
 export const THEM = "you, in the app"
@@ -64,7 +66,7 @@ export function toldTogether(d: Pick<JobDeps, "say" | "saidSince" | "turnEnd">) 
       told.delete(name)
       const line = toldLine(t.items, (d.saidSince?.(name, t.since) ?? []).filter((x) => !mine.has(x)).join(" "))
       if (line) { mine.add(line); if (mine.size > 50) mine.delete(mine.values().next().value!) }
-      if (line) void d.say(t.ctx, name, line).catch((e) => console.error("companion: jobs:", e))
+      if (line) void d.say(t.ctx, name, line).catch((e) => log.error("jobs", e))
     }
     if (t.ends) { if (!t.waiting) { t.waiting = true; void Promise.race([t.ends.then(() => after(TELL_MS)), after(TURN_END_MAX_MS)]).then(tell) } return }
     t.timer = setTimeout(tell, TELL_MS)

@@ -3,12 +3,14 @@ import fs from "node:fs"
 import type { IncomingMessage } from "node:http"
 import path from "node:path"
 import { agentSession, serversOwn, parseTerminal } from "../../../core/agents.ts"
-import { agentLines, HTTPError, LOCAL as LOCAL_DIR, onTailnet, vauDir, writeWslVau, serverUrl, type Access, accessOf } from "../../../core/plugins.ts"
+import { agentLines, HTTPError, LOCAL as LOCAL_DIR, logger, onTailnet, vauDir, writeWslVau, serverUrl, type Access, accessOf } from "../../../core/plugins.ts"
 import { loadPty, localBackend, mirrored, plain, ptyLink, serverFiles, termdBackend, type Backend, type Listed as Shell } from "./backend.ts"
 import { launch, runScript, SHELL_DIR, shellArgs, shellFiles } from "./launch.ts"
 import { kindOf, progName } from "./shells.ts"
 import { NAME, SPARE, STATES, TERMINAL_ID, UPLOADS, UPLOADS_KEPT, WIN, plugin, sessions, shell } from "./shared.ts"
 import { onEvent } from "./start.ts"
+
+const log = logger("terminal")
 
 const OLD_SERVERS = [1, 2, 3, 4].map((v) => serverFiles(NAME, v))
 export const keeper = termdBackend(NAME, { daemon: path.join(plugin.dir, "termd", "termd.ts"), log: console.error, oldServers: OLD_SERVERS })
@@ -20,7 +22,7 @@ export function pluginBackend(): Backend | null {
   let b: Backend | null = null
   try { b = typeof fn === "function" ? (fn() as Backend | null) ?? null : null } catch { return null }
   if (b && typeof b.capture !== "function") {
-    if (oldBackend !== b.name) { oldBackend = b.name; console.error(`terminal: the backend ${b.name} is made for an older Terminal (it has no capture): not used until its plugin is updated`) }
+    if (oldBackend !== b.name) { oldBackend = b.name; log.error(`the backend ${b.name} is made for an older Terminal (it has no capture): not used until its plugin is updated`) }
     return null
   }
   if (b && b.events && !heard.has(b)) { heard.add(b); b.events((ev) => onEvent(b!, ev)) }

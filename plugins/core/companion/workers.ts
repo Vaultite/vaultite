@@ -1,6 +1,6 @@
 import fs from "node:fs"
 import { parseTerminal } from "../../../core/agents.ts"
-import { type OpCtx, OpError, type Plugin, type Who, whoOf } from "../../../core/plugins.ts"
+import { logger, type OpCtx, OpError, type Plugin, type Who, whoOf } from "../../../core/plugins.ts"
 import { cardOf, commitsIn, turnWord, fixTask, landedSaid, mergedCommit, mergedSaid, type Handoff, type Job, type JobCard, jobsLine, jobTimings, lastOf, linkOf, linksIn, live, type Marks, messageOf, nowOf,
   type Queued, toldBy, type Result, resumeOf, str, type Waits, type Where } from "./jobs.ts"
 import { type Clock, due, endEvent, type Going, type GoingEvent, going, goingLine, type JobEvent, PACE, type Pace, read, readTurn, restEvent, shipDue, step, turnOver, type Verdict, waitsLive } from "./joblife.ts"
@@ -69,7 +69,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   const places = jobPlaces(plugin, machines, atMachine), { placeHere } = places
 
   let held: { vault: string; jobs: Job[] } | null = null
-  const log = plugin.dayLog<JobLogRow>("jobs")
+  const jobLog = plugin.dayLog<JobLogRow>("jobs"), log = logger("companion")
   function all(): Job[] {
     if (held?.vault === plugin.vault.path) return held.jobs
     held = { vault: plugin.vault.path, jobs: plugin.kept<{ jobs: Job[] }>("jobs", { jobs: [] }).jobs ?? [] }
@@ -85,8 +85,8 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   function move(j: Job, ev: JobEvent, t = Date.now()) {
     const x = step(j, ev, t)
     if (!x) return false
-    log.append(x.t, [{ t: x.t, job: j.id, ev, from: x.from, to: x.to }])
-    log.prune(30)
+    jobLog.append(x.t, [{ t: x.t, job: j.id, ev, from: x.from, to: x.to }])
+    jobLog.prune(30)
     d.moved?.(j, x.from)
     return true
   }
@@ -192,14 +192,14 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     } finally {
       busy.delete(j.id)
       const next = again.get(j.id)
-      if (next !== undefined) { again.delete(j.id); void refresh(j, next).catch((e) => console.error("companion: jobs:", e)) }
+      if (next !== undefined) { again.delete(j.id); void refresh(j, next).catch((e) => log.error("jobs", e)) }
     }
   }
   function setGoing(j: Job, g: Going | undefined, ev: GoingEvent["type"], t = Date.now()) {
     const from = j.going?.state ?? "none", to = g?.state ?? "none"
     if (g) j.going = g
     else delete j.going
-    if (from !== to) log.append(t, [{ t, job: j.id, ev: `going ${ev}`, from: `going ${from}`, to: `going ${to}` }])
+    if (from !== to) jobLog.append(t, [{ t, job: j.id, ev: `going ${ev}`, from: `going ${from}`, to: `going ${to}` }])
   }
   function heard(j: Job, s: Seen) {
     if (!s.turn) return
@@ -322,12 +322,12 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     return !!j.session
   }
 
-  const tell = jobTell({ all, changed, move, log, clockOf, sending, links, setting, d, seenOf, ended, refresh })
+  const tell = jobTell({ all, changed, move, log: jobLog, clockOf, sending, links, setting, d, seenOf, ended, refresh })
   const { wake, fresh, retitle, steer, land, close, unsure } = tell
   const { keep, flush, begin } = jobStarts(plugin, { all, changed, move, links, machines, places, appCtx, tell })
   plugin.onEvent({ types: ["terminal.state", "terminal.ended"] }, (ev) => {
     const j = all().find((x) => !x.where.machine && x.terminal === str(ev.id))
-    if (j) void refresh(j).catch((e) => console.error("companion: jobs:", e))
+    if (j) void refresh(j).catch((e) => log.error("jobs", e))
   })
   let ticks = 0
   const timer = setInterval(() => {
@@ -336,10 +336,10 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
       const n = due(j, clockOf(j), ticks, Date.now(), pace)
       if (n.read) void refresh(j).catch(() => {})
       if (n.ship) void ship(j).catch(() => {})
-      if (n.live) void golive(j).catch((e) => console.error("companion: jobs:", e))
+      if (n.live) void golive(j).catch((e) => log.error("jobs", e))
       if (n.prune) void prune(j).catch(() => {})
     }
-    if (ticks % pace.flush === 0) void flush().catch((e) => console.error("companion: jobs:", e))
+    if (ticks % pace.flush === 0) void flush().catch((e) => log.error("jobs", e))
   }, pace.tick)
   timer.unref?.()
   plugin.onUnload(() => clearInterval(timer))

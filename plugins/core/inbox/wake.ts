@@ -6,6 +6,9 @@ import { firstMachine, holdNow, plugin, settings } from "./server.ts"
 import { snoozed, snoozeMs } from "./snooze.ts"
 import { list, put, threadOf } from "./store.ts"
 import { waitsOnYou } from "./threads.ts"
+import { logger } from "../../../core/plugins.ts"
+
+const log = logger("inbox")
 
 const WAKE = 30_000
 const toldBack = new Set<string>()
@@ -24,7 +27,7 @@ export async function wake() {
 }
 
 export function register() {
-  const wakeTimer = setInterval(() => { if (plugin.loaded && !plugin.isOff()) void wake().catch((e) => console.error("inbox: wake:", e)) }, WAKE)
+  const wakeTimer = setInterval(() => { if (plugin.loaded && !plugin.isOff()) void wake().catch((e) => log.error("wake", e)) }, WAKE)
   wakeTimer.unref?.()
   plugin.onUnload(() => clearInterval(wakeTimer))
 }

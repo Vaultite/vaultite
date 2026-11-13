@@ -1,6 +1,6 @@
 import crypto from "node:crypto"
 import fs from "node:fs"
-import { type Access, accessOf, outliving, runtimeDir } from "../../../core/plugins.ts"
+import { type Access, accessOf, logger, outliving, runtimeDir } from "../../../core/plugins.ts"
 import os from "node:os"
 import path from "node:path"
 import { execFile, spawn } from "node:child_process"
@@ -8,6 +8,8 @@ import type { IPty } from "node-pty"
 import type { Said } from "./osc7501.ts"
 import { Failure, PROTOCOL, type Capture, type CaptureFormat, type Event, type Exit as Ended } from "./termd/protocol.ts"
 import { connectTo, type Msg, termdClient, Wire } from "./wire.ts"
+
+const log = logger("terminal")
 
 export type { Capture, CaptureFormat, Ended }
 
@@ -267,7 +269,7 @@ export function termdBackend(name: string, o: { daemon: string; log?: (...a: unk
       stall = { since: w.stalledSince ?? Date.now(), pid, probe, looked: false }
       o.log?.(`terminal: the terminal server (pid ${pid || "unknown"}) didn't answer ${op} in ${Math.round(waited / 1000)} s, nor a check in ${Math.round(w.probeMs / 1000)} s after it: the terminals it holds are frozen until it answers, and new ones run in this server (its log: ${files}.log)`)
     }
-    w.onAnswer = (ms) => { if (!stall) return; answered(); console.log(`terminal: the terminal server answers again, after ${Math.round(ms / 1000)} s`) }
+    w.onAnswer = (ms) => { if (!stall) return; answered(); log.info(`the terminal server answers again, after ${Math.round(ms / 1000)} s`) }
   }
   function answered() { if (stall) clearInterval(stall.probe); stall = null }
   async function lookAt(pid: number, since: number) {
