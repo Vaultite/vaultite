@@ -180,8 +180,8 @@ by its path.
 `plugin.ask("<name>", ...args)` (`plugin.provide` to offer one): by name, never by plugin.
 
 - `activity:typing` (activity): An agent types into `path` in the app for `ms` from now (0: it's done): the app's saves of it meanwhile are its.
-- `activity:report` (activity): The command for a coding agent's hook to report what it did (Terminal passes it to the agent it starts: AgentStart `report`): it sends the hook's JSON (on stdin) here, with the agent's name and its terminal. Never fails the hook.
-- `activity:report-url` (activity): The same as a URL its hook POSTs the JSON to, for an agent whose hooks can (Claude Code's http hooks on Windows).
+- `activity:report` (activity): The command a coding agent's hook runs to send its JSON (on stdin) here; it never fails the hook.
+- `activity:report-url` (activity): The same as a URL the hook POSTs its JSON to (Claude Code's http hooks on Windows).
 - `activity:changes` (activity)
 - `agent:claude` (claude-code)
 - `agent:codex` (codex): `codex`, or `codex resume <id>`. No context or hooks: any `-c` runs it without its shared background server.
@@ -246,7 +246,6 @@ by its path.
 - `inbox:ask` (inbox): Ask the user's permission for something the server would do: a waiting event with Approve and Deny (phone and watch too), answered by the owner only. Returns its id; "inbox:answer" waits for the answer.
 - `inbox:answer` (inbox): A gate's answer (approve, deny), or "waiting" once `ms` passed without one; "gone" when the event isn't kept.
 - `links:canvas` (canvas)
-- `log-areas` (logs)
 - `logs:areas` (logs): The areas as the app has them (Today's routines take their icon and weekly goal).
 - `looks:csv` (tables)
 - `machines:public` (machines)
