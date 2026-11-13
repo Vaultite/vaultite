@@ -67,12 +67,11 @@ export function topStrip(w: BaseWindow, lights: () => void, { page, pin, menu }:
   const lay = () => { if (!w.isDestroyed()) { const [width] = w.getContentSize(); bar.setBounds({ x: 0, y: 0, width, height: STRIP }) } }
   const full = () => { reveal(false); lights() }
   const moved = (_e: unknown, m: { type: string; y: number }) => { if (m.type === "mouseMove") pointerAt(w, m.y) }
-  // (the Mac lays its title bar out again on these, its lights put back)
-  const relaid = ["focus", "blur", "show", "restore", "resized", "leave-full-screen"] as const
   lay()
   w.contentView.on("bounds-changed", lay)
   w.on("enter-full-screen", full)
-  if (MAC) for (const e of relaid) w.on(e as "focus", lights)
+  // (the Mac lays its title bar out again on these, its lights put back)
+  if (MAC) w.on("focus", lights).on("blur", lights).on("show", lights).on("restore", lights).on("resized", lights).on("leave-full-screen", lights)
   page?.on("before-mouse-event", moved)
   const off = () => {
     if (strips.get(w) !== strip) return
@@ -81,7 +80,7 @@ export function topStrip(w: BaseWindow, lights: () => void, { page, pin, menu }:
     if (!w.isDestroyed()) {
       w.contentView.off("bounds-changed", lay)
       w.off("enter-full-screen", full)
-      if (MAC) for (const e of relaid) w.off(e as "focus", lights)
+      if (MAC) w.off("focus", lights).off("blur", lights).off("show", lights).off("restore", lights).off("resized", lights).off("leave-full-screen", lights)
       w.contentView.removeChildView(bar)
     }
     if (page && !page.isDestroyed()) page.off("before-mouse-event", moved)

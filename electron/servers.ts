@@ -3,6 +3,7 @@ import { AppWindow } from "./appwindow.ts"
 import { fork, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
+import { z } from "zod"
 import { pathToFileURL } from "node:url"
 import type { MenuSnapshot } from "./menu.ts"
 import { serverCall, setServerSink } from "./browser/engine.ts"
@@ -22,14 +23,15 @@ import { type Known, nameOf, portFor, PortTaken } from "./vaultlist.ts"
 export const serverLog = (p: string) => path.join(app.getPath("logs"), `server-${nameOf(p)}.log`)
 const LOCAL = process.env.VAULTITE_LOCAL || (app.isPackaged ? path.join(app.getPath("userData"), "local") : path.join(ROOT, "data"))
 
-export type Win = { vault: Known; win: AppWindow; server: ChildProcess | null; link: Link | null; port: number; ready: boolean; queue: string[]
+export type Server = ChildProcess | Adopted
+export type Win = { vault: Known; win: AppWindow; server: Server | null; link: Link | null; port: number; ready: boolean; queue: string[]
   ending?: boolean
-  watch?: ServerWatch<ChildProcess>
+  watch?: ServerWatch<Server>
   web?: string
   welcome?: boolean
   menu?: MenuSnapshot }
 export const wins = new Map<string, Win>()
-type Kept = { server: ChildProcess | null; link: Link | null; port: number }
+type Kept = { server: Server | null; link: Link | null; port: number }
 export const kept = new Map<string, Kept>()
 export const macPermissions = () => import("./permissions.ts")
 
@@ -39,7 +41,7 @@ export const helperOn = () => !!helper?.helperOn()
 export const homeChanged = () => helper?.homeChanged()
 export const popouts = new Map<WebContents, Win>()
 
-export const booting = new Map<string, Promise<[ChildProcess, number]>>()
+export const booting = new Map<string, Promise<[Server, number]>>()
 export const ownPids = new Set<number>()
 function ownServer(pid: number | undefined, s: { once(e: "exit", fn: () => void): unknown }) {
   if (!pid) return
@@ -50,7 +52,7 @@ export const servedElsewhere = (p: string) => (booting.has(p) ? Promise.resolve(
 export function serverFor(v: Known) {
   let b = booting.get(v.path)
   if (!b) {
-    b = (async (): Promise<[ChildProcess, number]> => {
+    b = (async (): Promise<[Server, number]> => {
       for (let tries = 0; ; tries++) {
         const port = portFor(v, tries > 0)
         try {
@@ -66,9 +68,10 @@ export function serverFor(v: Known) {
   return b
 }
 
+const LOOK_ASKED = z.object({ port: z.number(), commit: z.string() })
 export const answerCall = (v: Known, m: Call) => Promise.resolve().then(() => m.name === "app:permissions" ? (MAC ? macPermissions().then((p) => p.macPermissions()) : null)
   : m.name === "app:updates" ? appUpdates()
-  : m.name === "app:update-look" ? lookNow(Array.isArray(m.args) ? m.args[0] as { port?: unknown; commit?: unknown } : undefined)
+  : m.name === "app:update-look" ? lookNow(LOOK_ASKED.safeParse(Array.isArray(m.args) ? m.args[0] : undefined).data)
   : typeof m.name === "string" && m.name.startsWith("screen:") ? (helper ? helper.screenCall(m.name, Array.isArray(m.args) ? m.args : []) : null)
   : typeof m.name === "string" && m.name.startsWith("talk:") ? talkCall(m.name, Array.isArray(m.args) ? m.args : [])
   : typeof m.name === "string" && m.name.startsWith("dictations:") ? (MAC ? import("./dictationlist.ts").then((d) => d.dictationsCall(String(m.name), Array.isArray(m.args) ? m.args : [])) : { items: [], total: 0, here: false })
@@ -81,9 +84,9 @@ function desktopEvent(w: Win, name: string, data: unknown) {
 }
 setServerSink((win, name, data) => { for (const w of wins.values()) if (w.win === win) desktopEvent(w, name, data) })
 
-export const rootOf = new WeakMap<ChildProcess, string>()
-export const logFrom = new WeakMap<ChildProcess, number>()
-export const adopted = (s: ChildProcess | null): s is ChildProcess & Adopted => typeof (s as { release?: unknown } | null)?.release === "function"
+export const rootOf = new WeakMap<Server, string>()
+export const logFrom = new WeakMap<Server, number>()
+export const adopted = (s: Server | null): s is Adopted => !!s && "release" in s
 export function logSince(file: string, from: number) {
   try {
     const fd = fs.openSync(file, "r")
@@ -171,11 +174,10 @@ export function startServer(v: Known, port: number, own = false): Promise<ChildP
 }
 
 export const heirHere = (s: Serving) => !!s.heir && s.app && s.heir.app === app.getPath("userData")
-export async function adopt(v: Known, s: Serving): Promise<ChildProcess> {
+export async function adopt(v: Known, s: Serving): Promise<Server> {
   let a: Adopted | null = null
   const link = await attach(v.path, s, (m) => answerCall(v, m), () => (v.outside?.length ? [{ type: "allow", paths: v.outside }] : []), () => a?.kill())
-  a = new (await import("./heir.ts")).Adopted(s.pid, link)
-  const child = a as unknown as ChildProcess
+  const child = a = new (await import("./heir.ts")).Adopted(s.pid, link)
   ownServer(s.pid, a)
   rootOf.set(child, s.heir!.root)
   logFrom.set(child, (() => { try { return fs.statSync(serverLog(v.path)).size } catch { return 0 } })())

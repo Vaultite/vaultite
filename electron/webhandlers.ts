@@ -27,7 +27,8 @@ setOpener(async (win, url, profile) => {
   if (!shows(url)) throw new Error("only http and https pages")
   await readySession(profile)
   if (!mayOpen(profile)) throw new Error("this container is locked")
-  const p = make(win as AppWindow, url, profile, "", { agent: true, ready: await readyView(profile) })
+  if (!(win instanceof AppWindow)) throw new Error("not an app window")
+  const p = make(win, url, profile, "", { agent: true, ready: await readyView(profile) })
   pagesChanged(p.win)
   return allPages().find((x) => x.id === p.id)!
 })

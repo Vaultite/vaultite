@@ -9,6 +9,7 @@ import { PERMISSIONS, VAULT_PANE, actionOf, paneUrl, signingOf, type Permission,
 import { macAddon, type MacAddon } from "./macaddons.ts"
 import { messageOf } from "./browser/messageof.ts"
 import { logger } from "../core/log.ts"
+import { codeOf } from "../core/values.ts"
 import type { Json } from "./linehelper.ts"
 import { z } from "zod"
 
@@ -30,11 +31,11 @@ function native(): Promise<MacAddon | null> {
   loading ??= macAddon("macpermissions", path.join(app.getPath("userData"), "bin")).then((a) => (addon = a)).catch((e) => { log.warn(`no native helper (${messageOf(e)})`); return null })
   return loading
 }
-const ANSWER = z.looseObject({ state: z.unknown().optional(), open: z.unknown().optional() })
+const ANSWER = z.looseObject({ state: z.enum(["allowed", "denied", "not-asked", "unknown"]).optional().catch(undefined), open: z.unknown().optional() })
 const ask = (cmd: string, more: { [k: string]: Json } = {}) => addon?.call({ cmd, ...more }, ANSWER)
 
 /** EPERM is macOS saying no; anything else (no such folder) isn't about permission. */
-const refused = (e: unknown): PermissionState => (["EPERM", "EACCES"].includes((e as NodeJS.ErrnoException).code ?? "") ? "denied" : "unknown")
+const refused = (e: unknown): PermissionState => (["EPERM", "EACCES"].includes(codeOf(e) ?? "") ? "denied" : "unknown")
 /** Read off the main thread: while macOS asks, the read waits for the answer, and the windows mustn't. */
 const readable = (dir: string): Promise<PermissionState> => fs.promises.readdir(dir).then(() => "allowed" as const, refused)
 
@@ -49,7 +50,7 @@ function stateOf(id: string): PermissionState {
     case "accessibility": return systemPreferences.isTrustedAccessibilityClient(false) ? "allowed" : "denied"
     // (a folder only full disk access reaches: reading it never asks, it fails)
     case "full-disk": try { fs.readdirSync(path.join(os.homedir(), "Library", "Application Support", "com.apple.TCC")); return "allowed" } catch (e) { return refused(e) }
-    case "location": case "input": return (ask(id)?.state as PermissionState | undefined) ?? "unknown"
+    case "location": case "input": return ask(id)?.state ?? "unknown"
     default: return checked.get(id) ?? "unknown"
   }
 }

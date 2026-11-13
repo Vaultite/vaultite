@@ -64,7 +64,7 @@ export let dl: typeof import("./downloads.ts") | null = null
 export const loadDownloads = async () => (dl ??= await import("./downloads.ts"))
 export const toVault = new Set<string>()
 export const pageOf = (wc: WebContents) => [...pages.values()].find((p) => p.view.webContents === wc)
-export const tell = (win: AppWindow, msg: { type: string; [k: string]: unknown }) => { if (!win.isDestroyed()) win.webContents.send("vaultite:web", msg) }
+export const tell = <M extends { type: string }>(win: AppWindow, msg: M) => { if (!win.isDestroyed()) win.webContents.send("vaultite:web", msg) }
 
 export const canBack = (p: Page) => !p.blankBehind && p.view.webContents.navigationHistory.canGoBack()
 export const playingNow = (p: Page) => !p.view.webContents.isDestroyed() && playing(p.sound, p.view.webContents.isCurrentlyAudible(), Date.now())

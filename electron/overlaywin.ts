@@ -3,6 +3,7 @@
 import { BrowserWindow, type BrowserWindowConstructorOptions, ipcMain, screen } from "electron"
 import { QUIET, takePointer } from "./quiet.ts"
 import { type Box, type Layer, LEVELS, overlayTakes } from "./stack.ts"
+import { HOLDS } from "./callwire.ts"
 import { listen, onFree } from "./helperscope.ts"
 
 /** Whether its windows stay out of screen shares, recordings and screenshots (the companion's `hide_from_shares`). */
@@ -73,7 +74,8 @@ function wire() {
   listen(ipcMain, "overlay:holds", (e, m: { boxes?: unknown; pressing?: unknown }) => {
     const w = BrowserWindow.fromWebContents(e.sender), h = w && holds.get(w)
     if (!h) return
-    if (Array.isArray(m?.boxes)) h.boxes = m.boxes.flatMap((b: Partial<Box>) => [b.x, b.y, b.width, b.height].every((n) => typeof n === "number" && Number.isFinite(n)) ? [b as Box] : []).slice(0, 200)
+    const boxes = HOLDS.safeParse(m).data?.boxes
+    if (boxes) h.boxes = boxes
     h.pressing = m?.pressing === true ? Date.now() + PRESS_MS : 0
     check()
   })

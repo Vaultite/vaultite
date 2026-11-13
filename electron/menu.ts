@@ -125,7 +125,7 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
     { label: "Set up Vaultite", icon: icon("circle-play"), click: ctx.setup },
   ]
 
-  return ([
+  const bar: (MenuItemConstructorOptions | false)[] = [
     MAC && { role: "appMenu", submenu: items(
       { role: "about" },
       ctx.update && { ...ctx.update, icon: icon("refresh-cw") },
@@ -295,7 +295,8 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
       !!ctx.issues && { label: "Report an issue", icon: icon("bug"), click: () => ctx.openExternal(ctx.issues!) },
       { label: "Show logs", icon: icon("file-terminal"), click: ctx.showLogs },
     ) },
-  ] as (MenuItemConstructorOptions | false)[]).filter((x): x is MenuItemConstructorOptions => !!x)
+  ]
+  return bar.filter((x): x is MenuItemConstructorOptions => !!x)
 }
 
 const CORE = new Set(["page:settings", "page:setup", "hotkeys:open", "file:new", "tab:new", "switcher:open",

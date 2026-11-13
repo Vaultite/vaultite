@@ -5,6 +5,7 @@ import { buildMenu, remotes, save, zoom } from "./vaultlist.ts"
 import { crashedFor, hangs } from "./errors.ts"
 import { guard } from "./guard.ts"
 import { quitting } from "./vaultwindow.ts"
+import { UNREACHED } from "./callwire.ts"
 
 export const remoteWins = new Map<string, AppWindow>()
 const hostName = (url: string) => new URL(url).hostname.split(".")[0]
@@ -52,8 +53,5 @@ export async function probe(url: string): Promise<{ ok: boolean; error?: string 
     const text = r.ok ? await r.text() : ""
     if (r.ok && text.includes("Vaultite")) return { ok: true }
     return { ok: false, error: r.ok ? "That isn't a Vaultite server" : `It answered ${r.status}` }
-  } catch (e) {
-    const c = (e as { cause?: { code?: string } }).cause?.code
-    return { ok: false, error: (e as Error).name === "TimeoutError" ? "It didn't answer" : c === "ENOTFOUND" ? "No machine has that name" : c === "ECONNREFUSED" ? "Nothing is listening there" : String((e as Error).message) }
-  }
+  } catch (e) { return { ok: false, error: UNREACHED.parse(e) } }
 }

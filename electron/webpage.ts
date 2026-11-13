@@ -19,6 +19,7 @@ import { fromPlayer, strips, toPlayer } from "./webplayer.ts"
 import { end, keepPast, mayLeave, own, restoreMod, revive, unloading } from "./weblife.ts"
 import { go, unsafeOk, zoomOf, zoomTo } from "./webgo.ts"
 import { menus, tellGlance } from "./webmenus.ts"
+import { openedPage } from "./opened.ts"
 
 const ACTIVATION_MS = 5000
 const BLANK_MS = 30_000
@@ -105,8 +106,7 @@ export function make(win: AppWindow, url: string, profile: string, tab: string, 
     const popup = disposition === "new-window" && features.split(",").some((f) => !/^\s*(noopener|noreferrer)?\s*$/i.test(f))
     if (popup && !agents) {
       const k = popups
-      // (Electron puts the new page and what the features asked, its size and place, in its options)
-      if (k) return { action: "allow", overrideBrowserWindowOptions: { webPreferences: prefsOf(profile) }, createWindow: (o) => k.popup(o as Parameters<typeof k.popup>[0], to, {
+      if (k) return { action: "allow", overrideBrowserWindowOptions: { webPreferences: prefsOf(profile) }, createWindow: (o) => k.popup({ ...o, webContents: openedPage(o) }, to, {
         name: () => (p.profile.startsWith("c-") ? menus.containers.find((x) => `c-${x.id}` === p.profile)?.name : "") ?? "",
         away: (u) => { if (shows(u)) return false; void otherApp(p, u); return true },
         link: (u) => { if (web(u)) tell(p.win, { type: "open", id: p.id, tab: p.tab, url: u, profile: p.profile, how: "foreground" }); else void otherApp(p, u) },
@@ -117,7 +117,7 @@ export function make(win: AppWindow, url: string, profile: string, tab: string, 
     // (outliving its page, as a Chrome tab does: Electron closes what window.open made with its opener, which closed every
     // tab opened from a page with it)
     return { action: "allow", outlivesOpener: true, overrideBrowserWindowOptions: { webPreferences: prefsOf(profile) }, createWindow: (o) => {
-      const child = make(p.win, blank ? "" : to, profile, "", { agent: agents, adopt: (o as { webContents: WebContents }).webContents, opener: p.id })
+      const child = make(p.win, blank ? "" : to, profile, "", { agent: agents, adopt: openedPage(o), opener: p.id })
       pagesChanged(p.win)
       const hand = (url: string) => {
         child.orphan = Date.now()

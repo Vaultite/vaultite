@@ -1,8 +1,10 @@
 // Who's signed in to a site, as its own pages ask it.
+import { z } from "zod"
 
 export type Who = { account: string; more?: string[]; avatar?: string }
-type Json = Record<string, unknown>
-const obj = (v: unknown): Json => (v && typeof v === "object" ? v as Json : {})
+const FIELDS = z.record(z.string(), z.unknown())
+type Fields = z.infer<typeof FIELDS>
+const obj = (v: unknown): Fields => FIELDS.safeParse(v).data ?? {}
 export const nonempty = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : "")
 
 const X_LOOK = `(() => { const a = document.querySelector('a[data-testid="AppTabBar_Profile_Link"]'); const img = document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"] img')
@@ -85,10 +87,9 @@ export const ACCOUNTS: Record<string, Rule> = {
   "ycombinator.com": { signed: "user", read: async (_b, cookie) => /^[\w-]{2,15}(?=&)/.exec(await cookie("news.ycombinator.com", "user"))?.[0] ?? null },
 }
 
-function looked(v: unknown, name: (o: Json) => string | null): Who | false | null {
-  if (!v || typeof v !== "object") return null
-  const o = v as Json
-  return o.out ? false : { account: name(o) ?? "" }
+function looked(v: unknown, name: (o: Fields) => string | null): Who | false | null {
+  const o = FIELDS.safeParse(v).data
+  return !o ? null : o.out ? false : { account: name(o) ?? "" }
 }
 
 /** WhatsApp's own id for the number ("5511987654321:12@c.us", maybe quoted) → "+5511987654321". */
@@ -113,14 +114,14 @@ export function xLooked(v: unknown): Who | null {
   return /^\w{1,15}$/.test(handle) ? { account: `@${handle}`, avatar: nonempty(o.avatar) } : null
 }
 
+const LISTED = z.tuple([z.unknown(), z.array(z.unknown())], z.unknown())
 /** Google's ListAccounts answer (JSON, or JSON inside the page it sometimes is): its accounts still signed in. */
 export function googleAccounts(text: string): Who | null {
   const t = text.replace(/\\x22/g, '"').replace(/\\u0022/g, '"').replace(/\\\//g, "/")
   const at = t.indexOf('["gaia.l.a.r"')
   if (at < 0) return null
-  let list: unknown
-  try { list = JSON.parse(jsonEnd(t, at)) } catch { return null }
-  const rows = Array.isArray(list) && Array.isArray(list[1]) ? list[1] as unknown[] : []
+  let rows: unknown[]
+  try { rows = LISTED.safeParse(JSON.parse(jsonEnd(t, at))).data?.[1] ?? [] } catch { return null }
   const found = rows.flatMap((r) => {
     if (!Array.isArray(r) || r[0] !== "gaia.l.a") return []
     const email = nonempty(r[3])

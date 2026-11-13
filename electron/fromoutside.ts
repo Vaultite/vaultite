@@ -1,4 +1,4 @@
-import { app, dialog } from "electron"
+import { app, dialog, type OpenDialogOptions } from "electron"
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -86,9 +86,9 @@ export function copyIn(w: Win, paths: string[], folder: string, move: boolean) {
 export async function pickOutside(w: Win | null) {
   const target = w ?? focusedVault()
   const opts = {
-    properties: ["openFile", "multiSelections"] as ("openFile" | "multiSelections")[],
+    properties: ["openFile", "multiSelections"],
     filters: [{ name: "Notes and tables", extensions: ["md", "markdown", "txt", "csv", "html", "htm", "json"] }, { name: "All files", extensions: ["*"] }],
-  }
+  } satisfies OpenDialogOptions
   const r = target ? await dialog.showOpenDialog(target.win, opts) : await dialog.showOpenDialog(opts)
   if (r.canceled) return []
   const mine = await openFiles(r.filePaths, target)

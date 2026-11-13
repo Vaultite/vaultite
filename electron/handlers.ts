@@ -1,8 +1,9 @@
-import { app, dialog, ipcMain, nativeImage, Notification, shell, systemPreferences } from "electron"
+import { app, dialog, ipcMain, nativeImage, Notification, type OpenDialogOptions, shell, systemPreferences } from "electron"
 import { AppWindow } from "./appwindow.ts"
 import fs from "node:fs"
 import path from "node:path"
 import type { MenuSnapshot } from "./menu.ts"
+import { MENU } from "./callwire.ts"
 import { stripKit, webHandlers } from "./web.ts"
 import { modeChanged, pageSafe, restartToUpdate, updatable, UPDATE_MODES, windowReady, type UpdateMode } from "./updates.ts"
 import { appHandlers } from "./apps.ts"
@@ -62,7 +63,7 @@ handle("vaults:remove", (_w, p: string) => {
   buildMenu()
 })
 handle("vaults:pick", async (w) => {
-  const opts = { properties: ["openDirectory", "createDirectory"] as ("openDirectory" | "createDirectory")[] }
+  const opts = { properties: ["openDirectory", "createDirectory"] } satisfies OpenDialogOptions
   const parent = w?.win ?? manager
   const r = parent ? await dialog.showOpenDialog(parent, opts) : await dialog.showOpenDialog(opts)
   return r.canceled ? null : r.filePaths[0] ?? null
@@ -129,14 +130,9 @@ ipcMain.handle("app:update-safe", (e, safe: boolean) => {
   pageSafe(e.sender, safe === true)
 })
 handle("menu:sync", (w, snap: MenuSnapshot) => {
-  if (!w || !snap || !Array.isArray(snap.commands)) return
-  const list = <T,>(x: unknown, ok: (v: T) => boolean): T[] => (Array.isArray(x) ? (x as T[]).filter(ok) : [])
-  w.menu = {
-    commands: list<MenuSnapshot["commands"][number]>(snap.commands, (c) => typeof c?.id === "string" && typeof c.name === "string" && Array.isArray(c.keys))
-      .map((c) => ({ id: c.id, name: c.name, keys: c.keys.filter((k) => typeof k === "string"), custom: !!c.custom, on: !!c.on })),
-    pinned: list<{ path: string; title: string }>(snap.pinned, (f) => typeof f?.path === "string" && typeof f.title === "string").slice(0, 40),
-    recent: list<{ path: string; title: string }>(snap.recent, (f) => typeof f?.path === "string" && typeof f.title === "string").slice(0, 15),
-  }
+  const menu = MENU.safeParse(snap).data
+  if (!w || !menu) return
+  w.menu = menu
   if (focusedVault() === w) buildMenu()
 })
 handle("print:pdf", async (w, name: string) => {
@@ -166,7 +162,7 @@ handle("dock:set", (_w, png: string | null) => {
 })
 handle("dock:custom", () => fs.existsSync(DOCK_ICON()))
 handle("dock:pick", async (w) => {
-  const opts = { properties: ["openFile"] as "openFile"[], filters: [{ name: "Images", extensions: Object.keys(IMAGE_TYPES) }] }
+  const opts = { properties: ["openFile"], filters: [{ name: "Images", extensions: Object.keys(IMAGE_TYPES) }] } satisfies OpenDialogOptions
   const r = w ? await dialog.showOpenDialog(w.win, opts) : await dialog.showOpenDialog(opts)
   const file = r.canceled ? null : r.filePaths[0]
   const type = file && IMAGE_TYPES[path.extname(file).slice(1).toLowerCase()]

@@ -13,6 +13,7 @@ import { nameOf, zoom } from "./vaultlist.ts"
 import { popouts, type Win, wins } from "./servers.ts"
 import { crashedFor, hangs } from "./errors.ts"
 import { logger } from "../core/log.ts"
+import { openedPage } from "./opened.ts"
 
 const log = logger("links")
 
@@ -82,7 +83,7 @@ export function guard(win: AppWindow, origin: string) {
       const w = [...wins.values()].find((x) => x.win === win) ?? popouts.get(win.webContents)
       if (!w) return { action: "deny" }
       return { action: "allow", overrideBrowserWindowOptions: { webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true, spellcheck: true } },
-        createWindow: (o) => popOut(w, (o as { webContents: WebContents }).webContents, o.webPreferences, o) } // (Electron puts the new page in its options)
+        createWindow: (o) => popOut(w, openedPage(o), o.webPreferences, o) }
     }
     if (appPage(url, origin)) return { action: "deny" }
     if (url.startsWith(origin + "/api/raw?")) {

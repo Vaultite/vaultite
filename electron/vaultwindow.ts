@@ -1,7 +1,6 @@
 import { app } from "electron"
 import { AppWindow } from "./appwindow.ts"
 import { QUIET } from "./quiet.ts"
-import type { ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
@@ -18,7 +17,7 @@ import { ServerWatch } from "./serverwatch.ts"
 import { DIST, MAC, PRELOAD } from "./mainbase.ts"
 import { background, chrome, setLights } from "./titlebar.ts"
 import { buildMenu, devtools, find, known, nameOf, remember, save, zoom } from "./vaultlist.ts"
-import { adopt, adopted, answerCall, booting, handingOver, heirHere, helperOn, homeChanged, keepServer, kept, logFrom, logSince, servedElsewhere, serverFor, serverLog, startServer, type Win, wins } from "./servers.ts"
+import { adopt, adopted, answerCall, booting, handingOver, heirHere, helperOn, homeChanged, keepServer, kept, logFrom, logSince, servedElsewhere, serverFor, serverLog, type Server, startServer, type Win, wins } from "./servers.ts"
 import { crashedFor, failedBox, hangs } from "./errors.ts"
 import { guard } from "./guard.ts"
 
@@ -59,7 +58,7 @@ export async function openVault(p: string, file?: string) {
     webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true, spellcheck: true, v8CacheOptions: "bypassHeatCheck" },
   })
   if (MAC && v.lightsOff) setLights(win, null)
-  let server: ChildProcess | null = null, link: Link | null = null, port: number, loadFailed = false
+  let server: Server | null = null, link: Link | null = null, port: number, loadFailed = false
   const outside = () => (v.outside?.length ? [{ type: "allow", paths: v.outside }] : [])
   try {
     if (there && heirHere(there)) [server, port] = [await adopt(v, there), there.port]
@@ -129,12 +128,12 @@ export async function openVault(p: string, file?: string) {
   return w
 }
 
-function watchServer(w: Win, first: ChildProcess, loadFailed: () => boolean) {
+function watchServer(w: Win, first: Server, loadFailed: () => boolean) {
   const p = w.vault.path, name = nameOf(p)
-  return new ServerWatch<ChildProcess>(first, {
+  return new ServerWatch<Server>(first, {
     start: () => {
       const at = w.port, started = startServer(w.vault, at)
-      const up = started.then((c): [ChildProcess, number] => [c, at])
+      const up = started.then((c): [Server, number] => [c, at])
       up.catch(() => booting.delete(p))
       booting.set(p, up)
       return started

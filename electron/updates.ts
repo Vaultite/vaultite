@@ -23,7 +23,7 @@ const WIN = process.platform === "win32"
 export type UpdateMode = "automatic" | "notify" | "off"
 export const UPDATE_MODES: UpdateMode[] = ["automatic", "notify", "off"]
 
-export type UpdateWindow = { vault: { path: string }; win: { webContents: WebContents }; server: ChildProcess | null; link: unknown; port: number; ready: boolean }
+export type UpdateWindow = { vault: { path: string }; win: { webContents: WebContents }; server: { exitCode: number | null } | null; link: unknown; port: number; ready: boolean }
 export type UpdatesHost = {
   windows(): UpdateWindow[]
   popouts(): ReadonlyMap<WebContents, UpdateWindow>
@@ -140,8 +140,8 @@ export function logUpdate(line: string) {
 function offer(commit: string, how: Exclude<How, "worktree">, behind?: string | null) {
   send({ type: "offered", commit, how: WORKTREE ? "worktree" : how, ...(behind !== undefined ? { behind } : {}) })
 }
-export async function lookNow(asking?: { port?: unknown; commit?: unknown }): Promise<UpdateStatus | null> {
-  if (typeof asking?.port === "number" && typeof asking.commit === "string") told.set(asking.port, asking.commit)
+export async function lookNow(asking?: { port: number; commit: string }): Promise<UpdateStatus | null> {
+  if (asking) told.set(asking.port, asking.commit)
   if (storeOn()) {
     send({ type: "check", byHand: false, via: "store", off: host.mode() === "off", recent: false })
     await storeRun

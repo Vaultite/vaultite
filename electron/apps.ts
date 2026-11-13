@@ -6,6 +6,7 @@ import { takePointer } from "./quiet.ts"
 import { type Call, lineHelper } from "./linehelper.ts"
 import { z } from "zod"
 import { appWindowsSwift } from "./swiftbuild.ts"
+import { APP_RECT, WID } from "./callwire.ts"
 import fs from "node:fs"
 import path from "node:path"
 
@@ -114,7 +115,7 @@ async function put(wid: number, win: AppWindow, r: Rect | null) {
   const at = onScreen(win, to)
   if (r) await clear(wid, at.rect)
   const res = await ask({ op: "place", wid, rect: at.rect, bound: { ...at.bound } })
-  const f = rectOf(res.frame)
+  const f = APP_RECT.safeParse(res.frame).data
   if (res.ok && f && shown.get(wid) === s) s.at = { rect: to, frame: { ...f, x: f.x - at.bound.x, y: f.y - at.bound.y } }
   return res
 }
@@ -123,15 +124,10 @@ function follow(win: AppWindow) {
   for (const [wid, s] of shown) if (s.win === win) void put(wid, win, s.rect)
 }
 
-function rectOf(x: unknown): Rect | null {
-  const r = x as Rect | null
-  return r && [r.x, r.y, r.width, r.height].every((n) => typeof n === "number" && Number.isFinite(n)) && r.width >= 2 && r.height >= 2 ? r : null
-}
 const isBundle = (x: unknown): x is string => typeof x === "string" && /^[\w.-]+$/.test(x)
 const bundleOf = (x: unknown) => { if (!isBundle(x)) throw new Error("expected a bundle id"); return x }
-const widOf = (x: unknown) => (Number.isInteger(x) && (x as number) > 0 ? x as number : 0)
 function drop(win: AppWindow, wid: unknown) {
-  const id = widOf(wid)
+  const id = WID.parse(wid)
   if (!id || shown.get(id)?.win !== win) return 0
   shown.delete(id)
   changed()
@@ -142,7 +138,7 @@ export const appHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
   "apps:list": () => ask({ op: "apps" }),
   "apps:trusted": (_win, prompt) => ask({ op: "trusted", prompt: !!prompt }),
   "apps:show": async (win, bundle, wid, rect) => {
-    const b = bundleOf(bundle), want = widOf(wid), r = rectOf(rect)
+    const b = bundleOf(bundle), want = WID.parse(wid), r = APP_RECT.safeParse(rect).data ?? null
     if (!hosts.has(win)) return { ok: false, why: "reopen" }
     let id = shown.get(want)?.bundle === b ? want : 0
     const had = id ? shown.get(id) : undefined
@@ -177,7 +173,7 @@ export const appHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
   "apps:icons": (_win, bundles) => ask({ op: "icons", bundles: (Array.isArray(bundles) ? bundles : []).filter(isBundle) }),
   "apps:focus": (win, wid, go, bundle) => {
     // (not before it's behind the window: the app would come forward with its window parked)
-    const id = widOf(wid), s = shown.get(id)
+    const id = WID.parse(wid), s = shown.get(id)
     if (go && (s?.win === win || !s)) return ask({ op: "focus", wid: id, bundle: s?.bundle ?? (typeof bundle === "string" ? bundleOf(bundle) : ""), go: true })
     return s?.win === win && s.behind && s.rect ? ask({ op: "focus", wid: id }) : undefined
   },
@@ -201,7 +197,8 @@ export function appsWindow(win: AppWindow) {
     changed()
     setThrough(win, false)
   }
-  for (const e of ["move", "resize", "minimize", "restore", "show", "hide"] as const) win.on(e as "move", () => follow(win))
+  const moved = () => follow(win)
+  win.on("move", moved).on("resize", moved).on("minimize", moved).on("restore", moved).on("show", moved).on("hide", moved)
   win.on("focus", () => {
     for (const [id, s] of shown) {
       if (s.win !== win || !(s.rect || s.at)) continue

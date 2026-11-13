@@ -13,11 +13,11 @@ export function who(e: IpcMainInvokeEvent): Win | null {
   if (manager && e.sender === manager.webContents && url.startsWith(pathToFileURL(DIST).href)) return null
   throw new Error("not a Vaultite window")
 }
-const MAIN_ONLY: Record<string, unknown> = { "app:ready": [], "menu:sync": undefined }
+const MAIN_ONLY = new Map<string, [] | undefined>([["app:ready", []], ["menu:sync", undefined]])
 export function handle(name: string, fn: (w: Win | null, ...args: never[]) => unknown) {
   ipcMain.handle(name, (e, ...args) => {
     const w = who(e)
-    if (name in MAIN_ONLY && popouts.has(e.sender)) return MAIN_ONLY[name]
+    if (MAIN_ONLY.has(name) && popouts.has(e.sender)) return MAIN_ONLY.get(name)
     return fn(w, ...(args as never[]))
   })
 }

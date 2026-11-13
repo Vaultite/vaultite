@@ -7,6 +7,7 @@ import { drawingFor, type Drawing, type DrawAct, offered } from "./drawing.ts"
 import { overlayWindow, takesPointer } from "./overlaywin.ts"
 import { listen, onFree } from "./helperscope.ts"
 import { rectOf, spots } from "../core/desktop/screenmarks.ts"
+import { BOX, PEN, penShifted } from "./callwire.ts"
 
 /** What the user does to it: clicks a bubble (its conversation opens by its cursor, `at`: the screen's), stops dictating. */
 export type OverlayActs = { open: (name: string, at: Point) => void; stop: () => void
@@ -196,10 +197,10 @@ export function overlayActs(a: OverlayActs) {
   })
   listen(ipcMain, "screen:stop", (e) => { if (mine(e)) acts?.stop() })
   listen(ipcMain, "screen:region", (e, r: unknown) => {
-    const w = mine(e), o = (r ?? {}) as Record<string, unknown>, v = [o.x, o.y, o.width, o.height]
-    if (!w || !v.every((n) => typeof n === "number" && Number.isFinite(n))) return
+    const w = mine(e), o = BOX.safeParse(r).data
+    if (!w || !o) return
     const b = w.getBounds()
-    acts?.region?.({ x: Math.round(b.x + Number(o.x)), y: Math.round(b.y + Number(o.y)), width: Math.round(Number(o.width)), height: Math.round(Number(o.height)) })
+    acts?.region?.({ x: Math.round(b.x + o.x), y: Math.round(b.y + o.y), width: Math.round(o.width), height: Math.round(o.height) })
   })
   listen(ipcMain, "screen:region-act", (e, what: unknown) => { if (mine(e) && typeof what === "string") acts?.regionAct?.(what) })
   // (where the companion's pilot is headed: its box goes with it)
@@ -211,14 +212,14 @@ export function overlayActs(a: OverlayActs) {
   })
   // (the pen the display with the drawing gives its cursor: every display's cursor follows it, or one would stay by
   // the pointer on another display while it draws on this one)
-  listen(ipcMain, "screen:pen", (e, s: { strokes?: unknown } | null) => {
-    const w = mine(e)
-    if (!w || (s !== null && !Array.isArray(s?.strokes))) return
+  listen(ipcMain, "screen:pen", (e, said: { strokes?: unknown } | null) => {
+    const w = mine(e), pen = PEN.safeParse(said)
+    if (!w || !pen.success) return
     const b = w.getBounds()
     for (const o of wins.values()) {
       if (o === w || o.isDestroyed() || o.webContents.isLoading()) continue
       const ob = o.getBounds(), dx = b.x - ob.x, dy = b.y - ob.y
-      o.webContents.send("vaultite:pen", s && { ...s, strokes: (s.strokes as { pts: [number, number][] }[]).map((k) => ({ ...k, pts: k.pts.map(([x, y]) => [x + dx, y + dy]) })) })
+      o.webContents.send("vaultite:pen", penShifted(pen.data, dx, dy))
     }
   })
   listen(ipcMain, "screen:draw-act", (e, a: DrawAct) => {

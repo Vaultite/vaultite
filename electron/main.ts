@@ -35,6 +35,7 @@ import { appLink, argFiles, argLinks, openFiles } from "./fromoutside.ts"
 import { applyDockIcon, DOCK_ICON } from "./appmenu.ts"
 import "./handlers.ts"
 import { logger } from "../core/log.ts"
+import { messageOf } from "../core/values.ts"
 
 openMainLog(app.getPath("logs"))
 mainLog(`started: ${CODE?.commit.slice(0, 7) ?? "no build stamp"} from ${ROOT}`)
@@ -246,7 +247,7 @@ async function offerMove(): Promise<boolean> {
     return false
   } catch (e) {
     fs.rmSync(moved, { force: true })
-    void dialog.showMessageBox({ type: "warning", message: `Couldn't move ${app.getName()} to Applications`, detail: String((e as Error).message) })
+    void dialog.showMessageBox({ type: "warning", message: `Couldn't move ${app.getName()} to Applications`, detail: messageOf(e) })
     return false
   }
 }
@@ -277,9 +278,10 @@ function guardPermissions() {
   s.setPermissionRequestHandler((wc, perm, ok, details) => {
     const url = details.requestingUrl || wc.getURL(), d = decide(url, perm)
     if (d !== "ask") return ok(d === "allow")
-    const site = new URL(url).origin, key = `${site} ${perm} ${(details as { mediaTypes?: string[] }).mediaTypes?.join(",") ?? ""}`
+    const media = "mediaTypes" in details ? details.mediaTypes : undefined
+    const site = new URL(url).origin, key = `${site} ${perm} ${media?.join(",") ?? ""}`
     if (!remoteAsked.has(key)) {
-      const what = perm === "geolocation" ? "know your location" : (details as { mediaTypes?: string[] }).mediaTypes?.includes("video") ? "use your camera" : "use your microphone"
+      const what = perm === "geolocation" ? "know your location" : media?.includes("video") ? "use your camera" : "use your microphone"
       const win = AppWindow.fromWebContents(wc) ?? undefined, box = { type: "question" as const, message: `${new URL(url).hostname} wants to ${what}`, buttons: ["Allow", "Don't allow"], defaultId: 1, cancelId: 1 }
       remoteAsked.set(key, (win ? dialog.showMessageBox(win, box) : dialog.showMessageBox(box)).then((r) => {
         if (r.response === 0) remoteYes.add(`${site} ${perm}`)

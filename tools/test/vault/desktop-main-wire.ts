@@ -1,10 +1,14 @@
 import fs from "node:fs"
 import path from "node:path"
+import { isObj } from "../../../core/values.ts"
 import { tempDir } from "../lib.ts"
 import type { VaultTest } from "./harness.ts"
 
 type Check = VaultTest["check"]
-const same = (pairs: [got: unknown, want: unknown][]) => pairs.every(([got, want]) => JSON.stringify(got) === JSON.stringify(want))
+const same = (pairs: [got: unknown, want: unknown][]) => pairs.every((pair) => {
+  const [got, want] = pair.map((x) => JSON.stringify(x, (_k, v) => (isObj(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b))) : v)))
+  return got === want
+})
 const orNone = <T, N>(f: () => T, none: N) => { try { return f() } catch { return none } }
 const listed = <T>(m: Map<string, T>) => [...m]
 
@@ -130,6 +134,90 @@ async function refused(check: Check) {
   ]))
 }
 
+async function unreachable(check: Check) {
+  const { UNREACHED } = await import("../../../electron/callwire.ts")
+  const unreached = <T,>(e: T) => UNREACHED.parse(e)
+  const failed = (code: string) => new TypeError("fetch failed", { cause: Object.assign(new Error("x"), { code }) })
+  check("remote vaults: why a server couldn't be reached, in words", same([
+    [unreached(new DOMException("timed out", "TimeoutError")), "It didn't answer"], [unreached(failed("ENOTFOUND")), "No machine has that name"],
+    [unreached(failed("ECONNREFUSED")), "Nothing is listening there"], [unreached(failed("EHOSTUNREACH")), "fetch failed"], [unreached(new Error("boom")), "boom"],
+    [unreached({ cause: { code: "ENOTFOUND" } }), "No machine has that name"], [unreached({ name: "TimeoutError" }), "It didn't answer"],
+  ]))
+}
+
+async function boxes(check: Check) {
+  const W = await import("../../../electron/callwire.ts")
+  const appRect = <T,>(r: T) => W.APP_RECT.safeParse(r).data ?? null, widOf = <T,>(w: T) => W.WID.parse(w)
+  const regionOf = <T,>(r: T) => W.BOX.safeParse(r).data ?? null, holdBoxes = <T,>(m: T) => W.HOLDS.safeParse(m).data?.boxes ?? null
+  const box = { x: 10, y: -20.5, width: 300, height: 200 }
+  const bads = [null, undefined, 5, "x", [], [1, 2, 3, 4], {}, { ...box, x: "10" }, { ...box, width: null }, { x: 1, y: 2, width: 3 }]
+  check("app windows: a hole's place and a window's number, as the page says them; anything else none", same([
+    [appRect(box), box], [appRect({ ...box, width: 2, height: 2 }), { ...box, width: 2, height: 2 }], [appRect({ ...box, width: 1.9 }), null], [appRect({ ...box, height: 0 }), null],
+    [bads.map((b) => appRect(b)), bads.map(() => null)], [[7, 1, 0, -3, 2.5, "7", null, undefined, Infinity, NaN].map((w) => widOf(w)), [7, 1, 0, 0, 0, 0, 0, 0, 0, 0]],
+  ]))
+  check("overlay: a region the user drew, and the boxes a page holds the pointer over", same([
+    [regionOf(box), box], [regionOf({ ...box, label: "x" }), box], [bads.map((b) => regionOf(b)), bads.map(() => null)],
+    [holdBoxes({ boxes: [box, { ...box, x: "1" }, { x: 1 }, box] }), [box, box]], [holdBoxes({ boxes: Array(250).fill(box) })?.length, 200],
+    [holdBoxes({ boxes: 5 }), null], [holdBoxes({}), null], [holdBoxes({ boxes: [] }), []],
+  ]))
+}
+
+async function pen(check: Check) {
+  const W = await import("../../../electron/callwire.ts")
+  const script = { id: "p1", strokes: [{ start: 0, dur: 300, pts: [[1, 2], [3, 4]] }, { start: 300, dur: 100, pts: [], dry: true }], sound: true }
+  const shift = <T,>(s: T) => { const p = W.PEN.safeParse(s); return p.success ? W.penShifted(p.data, 10, -5) : "refused" }
+  check("overlay: the pen's strokes told the other displays, moved by where they are; none clears it; anything else refused", same([
+    [shift(script), { ...script, strokes: [{ start: 0, dur: 300, pts: [[11, -3], [13, -1]] }, { start: 300, dur: 100, pts: [], dry: true }] }],
+    [shift(null), null], [shift({ strokes: [] }), { strokes: [] }], [shift({}), "refused"], [shift({ strokes: 5 }), "refused"],
+  ]))
+}
+
+async function menuSync(check: Check) {
+  const { MENU } = await import("../../../electron/callwire.ts")
+  const command = { id: "files:new", name: "New note", keys: ["Mod+N"], custom: true, on: true }
+  const file = { path: "Notes/a.md", title: "A" }
+  const sync = <T,>(snap: T) => MENU.safeParse(snap).data ?? null
+  check("menu bar: the page's commands and files kept as their types say, anything else left out", same([
+    [sync({ commands: [command, { ...command, id: "b", keys: ["K", 5], custom: 0, on: "yes", checked: true }], pinned: [file], recent: [file] }),
+      { commands: [command, { ...command, id: "b", keys: ["K"], custom: false, on: true }], pinned: [file], recent: [file] }],
+    [sync({ commands: [null, 5, { ...command, id: 1 }, { ...command, name: null }, { ...command, keys: "Mod+N" }], pinned: [null, { path: 1, title: "x" }, file], recent: "x" }),
+      { commands: [], pinned: [file], recent: [] }],
+    [sync({ commands: [], pinned: Array(50).fill(file), recent: Array(20).fill(file) }), { commands: [], pinned: Array(40).fill(file), recent: Array(15).fill(file) }],
+    [sync({ commands: [command] }), { commands: [command], pinned: [], recent: [] }], [sync({ commands: {} }), null], [sync({}), null], [sync(null), null], [sync(5), null],
+  ]))
+}
+
+async function siteAccounts(check: Check) {
+  const sa = await import("../../../electron/siteaccounts.ts")
+  const look = <T,>(site: string, v: T) => sa.ACCOUNTS[site]?.look?.read(v)
+  const read = <T,>(site: string, b: T) => sa.ACCOUNTS[site]?.read?.(b, async () => "", "")
+  check("site accounts: who a site's answer names at its dotted path; anything but an object along it is none", same([
+    [sa.at({ user: { email: " a@example.com " } }, "user.email"), "a@example.com"], [sa.at({ user: [{ email: "x" }] }, "user.email"), ""],
+    [sa.at({ user: "a" }, "user.length"), ""], [sa.at(5, "a"), ""], [sa.at({ a: { b: { c: "deep" } } }, "a.b.c"), "deep"],
+    [await read("wikipedia.org", { query: { userinfo: { id: "12", name: "Alice Park" } } }), "Alice Park"], [await read("wikipedia.org", { query: [] }), null],
+    [await read("wikipedia.org", "x"), null], [sa.xLooked({ handle: 5 }), null], [sa.xLooked("alicepark"), null], [sa.xLooked({ handle: "alice", avatar: 5 }), { account: "@alice", avatar: "" }],
+    [look("whatsapp.com", null), null], [look("whatsapp.com", 5), null], [look("whatsapp.com", "x"), null], [look("whatsapp.com", { out: 1 }), false],
+    [look("whatsapp.com", { phone: 5511987654321 }), { account: "" }],
+  ]))
+  const google = <T,>(rows: T) => sa.googleAccounts(JSON.stringify(rows))
+  const row = <T,>(email: T, out?: number) => { const r: unknown[] = ["gaia.l.a", 1, "Alice", email, "https://a/p.png"]; r[14] = out; return r }
+  check("site accounts: Google's list, its rows that are accounts still signed in", same([
+    [google(["gaia.l.a.r", [row("a@example.com"), row("b@example.com", 1), row(5), ["other"], null, row("c@example.com")]]), { account: "a@example.com", more: ["c@example.com"], avatar: "https://a/p.png" }],
+    [google(["gaia.l.a.r", 5]), null], [google(["gaia.l.a.r"]), null], [sa.googleAccounts('["gaia.l.a.r",{"a":1}]'), null], [sa.googleAccounts('["gaia.l.a.r",[bad'), null],
+  ]))
+}
+
+async function refusedCalls(check: Check) {
+  const W = await import("../../../electron/callwire.ts")
+  const sa = await import("../../../electron/siteaccounts.ts")
+  const box = { x: 1, y: 2, width: 3, height: 4 }
+  check("what a page or helper says that used to throw, or be taken as it was, is refused or left out", same([
+    [W.PEN.safeParse({ strokes: [{ pts: [[1, "2"]] }] }).success, false], [W.PEN.safeParse({ strokes: [{}] }).success, false], [W.PEN.safeParse(undefined).success, false],
+    [W.HOLDS.safeParse({ boxes: [null, box, 5] }).data?.boxes, [box]], [W.UNREACHED.parse(null), "null"], [W.UNREACHED.parse("down"), "down"],
+    [sa.ACCOUNTS["whatsapp.com"]?.look?.read([]), null], [sa.at({ user: [{ email: "x" }] }, "user.0.email"), ""], [sa.at(["a"], "0"), ""],
+  ]))
+}
+
 export default async ($: VaultTest) => {
-  for (const t of [tabHistory, popupsAndPlayer, downloads, store, stamps, obsidian, refused]) await t($.check)
+  for (const t of [tabHistory, popupsAndPlayer, downloads, store, stamps, obsidian, refused, unreachable, boxes, pen, menuSync, siteAccounts, refusedCalls]) await t($.check)
 }
