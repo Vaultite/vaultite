@@ -5,9 +5,9 @@ import {
   ChevronLeft, ChevronRight, Palette, Pencil, Plus, Presentation, Redo2, Scan, Scissors, Shapes, Spline, StickyNote, Trash2, Type, Undo2, Ungroup, X,
 } from "lucide-react"
 import { choose, cn, plainError, createFile, useCommandKeys, dropHighlightEmoji, fileMenu, isDesktop, menuBelow, newNoteFolder, openFile, openMenu, pastedFiles, pluginSettings, saveAttachments, useDropTarget, useZoomTarget, type FormatCtx, type MenuItem } from "@vaultite"
-import { BORDERS, colorOf, COLLAPSED_H, hiddenIn, LINES, newId, parseCanvas, PRESET_NAMES, SHAPES, styleOf, withStyle, type CanvasDoc, type CanvasEdge, type CanvasNode, type Side } from "./codec"
+import { BORDERS, colorOf, COLLAPSED_H, hiddenIn, LINES, newId, parseCanvas, PRESET_NAMES, SHAPES, styleOf, withStyle, type CanvasDoc, type CanvasEdge, type CanvasNode, type Known, type Side } from "./codec"
 import { align, copyText, directionOf, duplicate, insert, isUrl, nameFromText, pastedCanvas, remove, reverse, setDirection, slice, ungroup, withContents, type Align, type Direction } from "./edit"
-import { anchor, bounds, fitView, nearestSide, overlaps, placeFrom, resizeBox, snapMove, within, zoomAbout, type Box, type Dir, type Guide, type Pt, type View } from "./geometry"
+import { anchor, bounds, DIRS, fitView, nearestSide, overlaps, placeFrom, resizeBox, SIDES, snapMove, within, zoomAbout, type Box, type Dir, type Guide, type Pt, type View } from "./geometry"
 import { Card, Group, type CardEvents } from "./Card"
 import { Edge, Preview } from "./Edges"
 import { edgePath, fileSize, isImage, isNote, px } from "./look"
@@ -17,7 +17,7 @@ import { LabelEditor, Tool } from "./parts"
 import { usePresenting } from "./presenting"
 import { useView, useWheel } from "./view"
 
-const SNAP_PX = 6
+const SNAP_PX = 6, K_ONE: CSSProperties & Record<"--k", number> = { "--k": 1 }
 
 type Settings = { snapToGrid?: boolean; snapToObjects?: boolean }
 const canvasSettings = pluginSettings<Settings>("canvas")
@@ -191,10 +191,10 @@ export default function Board({ store, text, editable, onChange, place, path }: 
   }
   const onGroupToggle = useCallback((id: string) => toggleGroup.current(id), [])
 
-  const addNode = (node: Omit<CanvasNode, "id">, opts: { edit?: boolean; from?: { id: string; side: Side; toSide: Side } } = {}) => {
-    const n = { id: newId(taken()), ...node } as CanvasNode
+  const addNode = (node: Omit<Known<CanvasNode>, "id">, opts: { edit?: boolean; from?: { id: string; side: Side; toSide: Side } } = {}) => {
+    const n: CanvasNode = { id: newId(taken()), ...node }
     const nodes = n.type === "group" ? [n, ...docRef.current.nodes] : [...docRef.current.nodes, n]
-    const edges = opts.from ? [...docRef.current.edges, { id: newId(new Set([...taken(), n.id])), fromNode: opts.from.id, fromSide: opts.from.side, toNode: n.id, toSide: opts.from.toSide } as CanvasEdge] : docRef.current.edges
+    const edges: CanvasEdge[] = opts.from ? [...docRef.current.edges, { id: newId(new Set([...taken(), n.id])), fromNode: opts.from.id, fromSide: opts.from.side, toNode: n.id, toSide: opts.from.toSide }] : docRef.current.edges
     commit({ ...docRef.current, nodes, edges })
     select([n.id])
     if (opts.edit) {
@@ -321,7 +321,7 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     try {
       const f = await createFile(newNoteFolder(store, path), nameFromText(dropHighlightEmoji(String(n.text ?? ""))), String(n.text ?? ""))
       const d = docRef.current
-      commit({ ...d, nodes: d.nodes.map((x) => { if (x.id !== n.id) return x; const { text: _t, ...rest } = x; return { ...rest, type: "file", file: f.path } as CanvasNode }) })
+      commit({ ...d, nodes: d.nodes.map((x) => { if (x.id !== n.id) return x; const { text: _t, ...rest } = x; return { ...rest, type: "file", file: f.path } }) })
     } catch {}
   }
   function openNode(n: CanvasNode, newTab = false) {
@@ -412,7 +412,7 @@ export default function Board({ store, text, editable, onChange, place, path }: 
   const onDown = (e: RPointerEvent<HTMLDivElement>) => {
     if (embed) return
     if (anim.current) { cancelAnimationFrame(anim.current); anim.current = 0 }
-    const target = e.target as Element
+    const target = e.target instanceof Element ? e.target : e.currentTarget
     if (e.pointerType === "mouse" && e.button === 2) return
     if (target.closest("[data-editing], textarea, input, a, [data-no-drag], [data-canvas-toolbar]")) return
     focusBoard()
@@ -425,7 +425,7 @@ export default function Board({ store, text, editable, onChange, place, path }: 
       setD(null)
       return
     }
-    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    e.currentTarget.setPointerCapture(e.pointerId)
     const pan = () => setD({ kind: "pan", sx: e.clientX, sy: e.clientY, view: viewRef.current, moved: false })
     if (e.button === 1 || spacePan) { e.preventDefault(); pan(); return } // (no autoscroll from the middle button)
     const handle = target.closest<HTMLElement>("[data-handle]")
@@ -435,10 +435,10 @@ export default function Board({ store, text, editable, onChange, place, path }: 
       if (kind.startsWith("edge-")) {
         setD({ kind: "end", edge: id, end: kind === "edge-from" ? "from" : "to", to: toWorld(e.clientX, e.clientY), over: null })
       } else if (kind.startsWith("resize-")) {
-        const n = docRef.current.nodes.find((x) => x.id === id)!
-        setD({ kind: "resize", id, dir: kind.slice(7) as Dir, sx: e.clientX, sy: e.clientY, start: { x: n.x, y: n.y, width: n.width, height: n.height },
+        const n = docRef.current.nodes.find((x) => x.id === id)!, dir = DIRS.find((x) => x === kind.slice(7)) ?? "se"
+        setD({ kind: "resize", id, dir, sx: e.clientX, sy: e.clientY, start: { x: n.x, y: n.y, width: n.width, height: n.height },
           others: othersThan(new Set([id])), base: docRef.current, image: n.type === "file" && isImage(String(n.file ?? "")) })
-      } else setD({ kind: "connect", from: id, side: kind as Side, to: toWorld(e.clientX, e.clientY), over: null })
+      } else { const side = SIDES.find((x) => x === kind); if (side) setD({ kind: "connect", from: id, side, to: toWorld(e.clientX, e.clientY), over: null }) }
       e.stopPropagation()
       return
     }
@@ -589,8 +589,8 @@ export default function Board({ store, text, editable, onChange, place, path }: 
   const onDouble = (e: MouseEvent) => {
     if (embed) return
     // The board captured the pointer when it was pressed, so the event's target is the board.
-    const target = (document.elementFromPoint(e.clientX, e.clientY) ?? e.target) as HTMLElement
-    if (typing(target) || target.closest("[data-editing], [data-canvas-toolbar]")) return
+    const target = document.elementFromPoint(e.clientX, e.clientY) ?? e.target
+    if (!(target instanceof Element) || typing(target) || target.closest("[data-editing], [data-canvas-toolbar]")) return
     const edgeEl = target.closest<HTMLElement>("[data-canvas-edge], [data-edge-label]")
     if (edgeEl && editable) { const id = edgeEl.dataset.canvasEdge ?? edgeEl.dataset.edgeLabel!; setSelEdge(id); setEditing({ kind: "edge", id }); return }
     const labelEl = target.closest<HTMLElement>("[data-group-label]")
@@ -712,7 +712,7 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     e.preventDefault()
     e.stopPropagation()
     endEdit()
-    const target = e.target as Element
+    const target = e.target instanceof Element ? e.target : e.currentTarget
     const at = { x: e.clientX, y: e.clientY }
     const edgeEl = target.closest<HTMLElement>("[data-canvas-edge], [data-edge-label]")
     if (edgeEl) {
@@ -770,9 +770,9 @@ export default function Board({ store, text, editable, onChange, place, path }: 
       data-file-drop={editable && !embed ? "" : undefined} data-drops={editable && !embed ? "" : undefined}
       className={cn("absolute inset-0 overflow-hidden bg-background outline-none select-none", !embed && "touch-none",
         (drag?.kind === "pan" || drag?.kind === "move") && drag.moved ? "cursor-grabbing [&_*]:cursor-grabbing" : spacePan ? "cursor-grab" : "cursor-default", embed && "pointer-events-none")}
-      style={{ "--k": 1 } as CSSProperties}
+      style={K_ONE}
       onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onDoubleClick={onDouble} onKeyDown={onKey} onKeyUp={onKeyUp}
-      onBlur={(e) => { if (!box.current?.contains(e.relatedTarget as Node)) setSpacePan(false) }}
+      onBlur={(e) => { if (!box.current?.contains(e.relatedTarget)) setSpacePan(false) }}
       onContextMenu={onContext} onDragOver={onDragOver} onDrop={onDrop}>
       <div ref={stage} className="absolute top-0 left-0 origin-top-left" data-canvas-stage>
         {groups.map((n) => (

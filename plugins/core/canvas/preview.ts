@@ -82,6 +82,6 @@ export function parsePreview(html: string, pageUrl: string): Omit<LinkPreview, "
     image: absolute(pick("og:image:secure_url", "og:image", "og:image:url", "twitter:image", "twitter:image:src"), base),
     icon,
   }
-  for (const k of Object.keys(out) as (keyof typeof out)[]) if (out[k] === undefined) delete out[k]
+  for (const k of ["title", "site", "description", "image", "icon"] as const) if (out[k] === undefined) delete out[k]
   return out
 }

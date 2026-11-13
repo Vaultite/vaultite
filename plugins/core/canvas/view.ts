@@ -85,7 +85,7 @@ export function useWheel(box: RefObject<HTMLDivElement | null>, embed: boolean, 
     const el = box.current
     if (!el || embed) return
     const wheel = (e: WheelEvent) => {
-      if ((e.target as HTMLElement).closest("[data-scrolls], [data-editing]") && !e.ctrlKey && !e.metaKey) return
+      if (e.target instanceof Element && e.target.closest("[data-scrolls], [data-editing]") && !e.ctrlKey && !e.metaKey) return
       e.preventDefault()
       const v = viewRef.current
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight : 1

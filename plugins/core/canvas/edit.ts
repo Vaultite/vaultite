@@ -1,5 +1,5 @@
 // Copies are JSON Canvas text, so Obsidian pastes them too.
-import { inside, newId, type CanvasDoc, type CanvasEdge, type CanvasNode } from "./codec.ts"
+import { inside, newId, parseCanvas, type CanvasDoc, type CanvasEdge } from "./codec.ts"
 
 const taken = (doc: CanvasDoc) => new Set([...doc.nodes.map((n) => n.id), ...doc.edges.map((e) => e.id)])
 export const isUrl = (s: string) => /^https?:\/\/\S+$/i.test(s.trim())
@@ -20,10 +20,7 @@ export function pastedCanvas(text: string): CanvasDoc | null {
   const t = text.trim()
   if (!t.startsWith("{")) return null
   try {
-    const raw = JSON.parse(t) as { nodes?: unknown; edges?: unknown }
-    if (!Array.isArray(raw.nodes) || !raw.nodes.length) return null
-    const nodes = raw.nodes.filter((n): n is CanvasNode => !!n && typeof n === "object" && typeof (n as CanvasNode).type === "string")
-    const edges = (Array.isArray(raw.edges) ? raw.edges : []).filter((e): e is CanvasEdge => !!e && typeof e === "object")
+    const { nodes, edges } = parseCanvas(t)
     return nodes.length ? { nodes, edges } : null
   } catch { return null }
 }

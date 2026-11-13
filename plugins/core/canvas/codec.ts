@@ -9,6 +9,7 @@ export type CanvasNode = {
   file?: string; subpath?: string
   url?: string
   label?: string; background?: string; backgroundStyle?: string
+  styleAttributes?: unknown
   [key: string]: unknown
 }
 export type CanvasEdge = {
@@ -16,22 +17,25 @@ export type CanvasEdge = {
   fromSide?: Side; toSide?: Side
   fromEnd?: End; toEnd?: End
   color?: string; label?: string
+  styleAttributes?: unknown
   [key: string]: unknown
 }
 export type CanvasDoc = { nodes: CanvasNode[]; edges: CanvasEdge[]; [key: string]: unknown }
+export type Known<T> = { [K in keyof T as string extends K ? never : K]: T[K] }
+
+export const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v)
 
 const num = (v: unknown, d = 0) => (typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v.trim() && Number.isFinite(Number(v)) ? Number(v) : d)
 
 export function parseCanvas(text: string): CanvasDoc {
   if (!text.trim()) return { nodes: [], edges: [] }
-  const raw = JSON.parse(text) as unknown
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("a canvas is a JSON object with nodes and edges")
-  const doc = raw as Record<string, unknown>
-  const nodes = (Array.isArray(doc.nodes) ? doc.nodes : []).filter((n): n is Record<string, unknown> => !!n && typeof n === "object")
-    .map((n, i) => ({ ...n, id: typeof n.id === "string" && n.id ? n.id : `node-${i}`, type: typeof n.type === "string" ? n.type : "text",
-      x: num(n.x), y: num(n.y), width: num(n.width, 250), height: num(n.height, 60) }) as CanvasNode)
-  const edges = (Array.isArray(doc.edges) ? doc.edges : []).filter((e): e is Record<string, unknown> => !!e && typeof e === "object")
-    .map((e, i) => ({ ...e, id: typeof e.id === "string" && e.id ? e.id : `edge-${i}`, fromNode: String(e.fromNode ?? ""), toNode: String(e.toNode ?? "") }) as CanvasEdge)
+  const doc = JSON.parse(text)
+  if (!isObj(doc)) throw new Error("a canvas is a JSON object with nodes and edges")
+  const nodes = (Array.isArray(doc.nodes) ? doc.nodes : []).filter(isObj)
+    .map((n, i): CanvasNode => ({ ...n, id: typeof n.id === "string" && n.id ? n.id : `node-${i}`, type: typeof n.type === "string" ? n.type : "text",
+      x: num(n.x), y: num(n.y), width: num(n.width, 250), height: num(n.height, 60) }))
+  const edges = (Array.isArray(doc.edges) ? doc.edges : []).filter(isObj)
+    .map((e, i): CanvasEdge => ({ ...e, id: typeof e.id === "string" && e.id ? e.id : `edge-${i}`, fromNode: String(e.fromNode ?? ""), toNode: String(e.toNode ?? "") }))
   return { ...doc, nodes, edges }
 }
 
@@ -69,17 +73,16 @@ export function colorOf(c: unknown): string | null {
 export const SHAPES: Record<string, string> = { "": "Rectangle", pill: "Pill", circle: "Circle", diamond: "Diamond", parallelogram: "Parallelogram" }
 export const BORDERS: Record<string, string> = { "": "Solid border", dashed: "Dashed border", dotted: "Dotted border", invisible: "No border" }
 export const LINES: Record<string, string> = { "": "Solid line", "long-dashed": "Long dashes", "short-dashed": "Short dashes", dotted: "Dotted line" }
-export function styleOf(x: object, key: "shape" | "border" | "path"): string {
-  const v = ((x as { styleAttributes?: Record<string, unknown> }).styleAttributes)?.[key]
+export function styleOf(x: { styleAttributes?: unknown }, key: "shape" | "border" | "path"): string {
+  const v = isObj(x.styleAttributes) ? x.styleAttributes[key] : undefined
   const known = key === "shape" ? SHAPES : key === "border" ? BORDERS : LINES
   return typeof v === "string" && Object.hasOwn(known, v) ? v : ""
 }
-export function withStyle<T extends object>(x: T, key: string, value: string): T {
-  const was = (x as { styleAttributes?: unknown }).styleAttributes
-  const attrs = { ...((was && typeof was === "object" ? was : {}) as Record<string, unknown>) }
+export function withStyle<T extends { styleAttributes?: unknown }>(x: T, key: string, value: string): T {
+  const attrs: Record<string, unknown> = isObj(x.styleAttributes) ? { ...x.styleAttributes } : {}
   if (value) attrs[key] = value; else delete attrs[key]
-  const y = { ...x } as T & { styleAttributes?: Record<string, unknown> }
-  if (Object.keys(attrs).length) y.styleAttributes = attrs; else delete y.styleAttributes
+  const y: T = { ...x, styleAttributes: attrs }
+  if (!Object.keys(attrs).length) delete y.styleAttributes
   return y
 }
 
@@ -119,7 +122,7 @@ const quote = (text: string) => {
 
 export function canvasMarkdown(text: string): string {
   let doc: CanvasDoc
-  try { doc = parseCanvas(text) } catch (e) { return `_(This canvas isn't valid JSON: ${(e as Error).message})_` }
+  try { doc = parseCanvas(text) } catch (e) { return `_(This canvas isn't valid JSON: ${e instanceof Error ? e.message : String(e)})_` }
   if (!doc.nodes.length) return "_An empty canvas._"
   const byId = new Map(doc.nodes.map((n) => [n.id, n]))
   const order = (a: CanvasNode, b: CanvasNode) => a.y - b.y || a.x - b.x
