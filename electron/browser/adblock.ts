@@ -1,12 +1,13 @@
 // Shields: ads and trackers blocked in every web session (Ghostery's engine, uBlock Origin's lists).
-import { app, ipcMain, webContents, type IpcMainEvent, type IpcMainInvokeEvent, type OnBeforeRequestListenerDetails, type OnHeadersReceivedListenerDetails, type Session } from "electron"
+import { app, ipcMain, webContents, type IpcMainEvent, type IpcMainInvokeEvent, type Session } from "electron"
 import type { ElectronBlocker } from "@ghostery/adblocker-electron"
 import fs from "node:fs"
 import path from "node:path"
 import { createRequire } from "node:module"
 import { fileURLToPath } from "node:url"
 import { Worker } from "node:worker_threads"
-import { eachPage, eachSession, engineLoaded, handle, later, onRequest, tell, type EnginePage, type EngineWindow, logger } from "./engine.ts"
+import { FOUND, SHIELDS } from "./pagewire.ts"
+import { eachPage, eachSession, engineLoaded, handle, later, onRequest, tell, type EnginePage, type EngineWindow, type RequestDetails, logger } from "./engine.ts"
 
 const log = logger("shields")
 
@@ -74,24 +75,24 @@ function tellCount(p: EnginePage) {
   }, 250))
 }
 
-function originOf(d: OnBeforeRequestListenerDetails | OnHeadersReceivedListenerDetails) {
+function originOf(d: RequestDetails) {
   const page = d.webContentsId ? pages.get(d.webContentsId) : undefined
   const wc = page?.wc ?? (d.webContentsId ? webContents.fromId(d.webContentsId) : undefined)
   return { page, top: wc && !wc.isDestroyed() ? wc.getURL() : d.referrer }
 }
-function sourceOf(d: OnBeforeRequestListenerDetails | OnHeadersReceivedListenerDetails, top: string) {
+function sourceOf(d: RequestDetails, top: string) {
   let frame = ""
   try { frame = (d.resourceType === "subFrame" ? d.frame?.parent?.url : d.frame?.url) ?? "" } catch {}
   return /^https?:/i.test(frame) ? frame : top || d.referrer
 }
 
-function requestOf(d: OnBeforeRequestListenerDetails | OnHeadersReceivedListenerDetails, source: string) {
-  const r = lib!.Request.fromRawDetails({ requestId: `${d.id}`, url: d.url, type: (d.resourceType || "other") as never, sourceUrl: source, tabId: d.webContentsId ?? 0 })
+function requestOf(d: RequestDetails, source: string) {
+  const r = lib!.Request.fromRawDetails({ requestId: `${d.id}`, url: d.url, type: d.resourceType || "other", sourceUrl: source, tabId: d.webContentsId ?? 0 })
   if (r.type === "other") r.guessTypeOfRequest()
   return r
 }
 
-function beforeRequest(d: OnBeforeRequestListenerDetails) {
+function beforeRequest(d: RequestDetails) {
   const e = engine
   if (!e || d.resourceType === "mainFrame" || !/^(https?|wss?):/i.test(d.url)) return
   const o = originOf(d)
@@ -106,7 +107,7 @@ function beforeRequest(d: OnBeforeRequestListenerDetails) {
   return redirect ? { redirectURL: redirect.dataUrl } : { cancel: true }
 }
 
-function headersReceived(d: OnHeadersReceivedListenerDetails) {
+function headersReceived(d: RequestDetails) {
   const e = engine
   if (!e || (d.resourceType !== "mainFrame" && d.resourceType !== "subFrame")) return
   const o = originOf(d)
@@ -121,7 +122,7 @@ function headersReceived(d: OnHeadersReceivedListenerDetails) {
 }
 
 onRequest("onBeforeRequest", beforeRequest)
-onRequest("onHeadersReceived", (d) => headersReceived(d as OnHeadersReceivedListenerDetails), undefined, ["mainFrame", "subFrame"])
+onRequest("onHeadersReceived", headersReceived, undefined, ["mainFrame", "subFrame"])
 const sessions = new Set<Session>()
 eachSession((s) => {
   sessions.add(s)
@@ -162,21 +163,17 @@ ipcMain.on("vaultite:adblock:frame", (e, url) => {
     lib: shields?.extended.length || user?.extended.length ? selectorsLib() : "" } : null
 })
 ipcMain.handle("vaultite:adblock:dom", (e, url, found, only) => {
-  const f = frameOf(e, url)
-  if (!f || !found || typeof found !== "object") return null
-  const list = (x: unknown) => (Array.isArray(x) ? x.filter((v): v is string => typeof v === "string").slice(0, 5000) : [])
-  const { classes, ids, hrefs } = found as Record<string, unknown>
-  const ask = { ...f.at, classes: list(classes), ids: list(ids), hrefs: list(hrefs), getBaseRules: false, getInjectionRules: false,
+  const f = frameOf(e, url), given = FOUND.safeParse(found)
+  if (!f || !given.success) return null
+  const ask = { ...f.at, ...given.data, getBaseRules: false, getInjectionRules: false,
     getRulesFromHostname: false, getRulesFromDOM: true, getExtendedRules: false }
   return { shields: f.up && only !== "user" ? engine!.getCosmeticsFilters(ask).styles : "", user: apart(f.user?.getCosmeticsFilters(ask).styles ?? "") }
 })
 
 handle("adblock:settings", (win, x) => {
-  const s = (x && typeof x === "object" ? x : {}) as { on?: unknown; down?: unknown }
-  const down = Array.isArray(s.down) ? s.down.filter((v): v is string => typeof v === "string").map((v) => v.trim().toLowerCase()) : []
-  const c = told(win)
+  const s = SHIELDS.parse(x), c = told(win)
   c.on = s.on !== false
-  c.down = new Set(down)
+  c.down = new Set(s.down)
 })
 handle("adblock:rules", (win, rules) => {
   const text = (Array.isArray(rules) ? rules : []).filter((r): r is string => typeof r === "string" && r.length <= 2000 && !/[\n\r]/.test(r))

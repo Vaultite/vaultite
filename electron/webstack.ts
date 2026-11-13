@@ -1,6 +1,6 @@
 import { screen, type View, WebContentsView } from "electron"
 import { AppWindow } from "./appwindow.ts"
-import { cdp } from "./browser/engine.ts"
+import { cdp } from "./browser/cdp.ts"
 import { QUIET } from "./quiet.ts"
 import { NO_POINTER, type Passed, type Pointer, type PointerEvent, pointerStep, type Raise, type Role, stackOrder } from "./stack.ts"
 import { MAC, type Page, pages } from "./webbase.ts"

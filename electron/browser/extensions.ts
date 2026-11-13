@@ -6,6 +6,7 @@ import { actionsChanged, buttonOf, closeNatives, closeOffscreen, emit, expect, f
   watchWorkers } from "./extapi.ts"
 import * as store from "./extstore.ts"
 import { applyPolicy, problems, watchPolicy } from "./extpolicy.ts"
+import { POPUP_AT, POPUP_SIZE, type PopupAt } from "./extwire.ts"
 import { read as readSettings, write as writeSettings } from "./extsettings.ts"
 import crypto from "node:crypto"
 import fs from "node:fs"
@@ -57,7 +58,7 @@ function setUp(s: Session, profile: string) {
   s.registerPreloadScript({ id: "vaultite-extensions-worker", type: "service-worker", filePath: PRELOAD })
   watchWorkers(s)
   watchCookies(s)
-  const r = { done: false, promise: Promise.resolve() as Promise<unknown> }
+  const r = { done: false, promise: Promise.resolve<unknown>(undefined) }
   ready.set(s, r)
   r.promise = Promise.all(store.installed().filter((x) => x.on).map((x) => loadInto(s, x))).finally(() => { r.done = true })
 }
@@ -243,14 +244,13 @@ handle("ext:click", (win, pageId, id, rect) => {
   setFront(p)
   const url = popupOf(x, p.wc.session, p.wc.id)
   if (!url) { emit(p.wc.session, "action.onClicked", [tabOfPage(p)], x.id); return }
-  togglePopup(p, x, url, rect as Rect)
+  togglePopup(p, x, url, POPUP_AT.parse(rect))
 })
 
 const tabOfPage = (p: EnginePage) => ({ id: p.wc.id, windowId: p.win.id, url: p.wc.getURL(), title: p.wc.getTitle(), active: true, index: 0, pinned: false, highlighted: true, incognito: false })
 
 // ---------- popups ----------
 
-type Rect = { x: number; y: number; width: number; height: number }
 type Popup = { view: WebContentsView; win: EngineWindow; ext: string; page: EnginePage }
 let popup: Popup | null = null
 /** The last one closed (a click on its own button closes it first: it isn't opened again). */
@@ -286,7 +286,7 @@ const sizer = (mark: string) => `(() => {
   addEventListener("load", measure)
 })()`
 
-function togglePopup(page: EnginePage, x: store.Installed, url: string, at: Rect) {
+function togglePopup(page: EnginePage, x: store.Installed, url: string, at: PopupAt) {
   if (popup?.ext === x.id && popup.page === page) return closePopup()
   if (closed.ext === x.id && Date.now() - closed.at < 400) return
   closePopup()
@@ -313,8 +313,9 @@ function togglePopup(page: EnginePage, x: store.Installed, url: string, at: Rect
   wc.on("dom-ready", () => void wc.executeJavaScriptInIsolatedWorld(1004, [{ code: sizer(mark) }]).catch(() => {}))
   wc.on("console-message", (e) => {
     if (!e.message.startsWith(mark) || popup?.view !== view) return
-    const [w, h] = JSON.parse(e.message.slice(mark.length)) as [number, number]
-    place(w, h)
+    const size = POPUP_SIZE.safeParse(JSON.parse(e.message.slice(mark.length)))
+    if (!size.success) return
+    place(...size.data)
     if (!view.getVisible()) { view.setVisible(true); wc.focus() }
   })
   // (one whose page never says: shown anyway, at a common size)

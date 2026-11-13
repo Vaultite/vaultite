@@ -75,14 +75,20 @@ function sourceOf(d: RequestDetails): Source | null {
 const listOf = (h?: Record<string, string | string[]>) =>
   Object.entries(h ?? {}).flatMap(([name, v]) => (Array.isArray(v) ? v : [v]).map((value) => ({ name, value: String(value) })))
 
-/** Chrome's details for `ev` (each listener's own extras added by `forListener`). */
+type Header = { name: string; value: string }
+type AuthAsk = { scheme: string; realm?: string; challenger: { host: string; port: number }; isProxy: boolean }
+type Details = Partial<AuthAsk> & { requestId: string; url: string; method: string; frameId: number; parentFrameId: number; tabId: number; type: string
+  timeStamp: number; frameType: string; documentLifecycle: string; initiator?: string; statusCode?: number; statusLine?: string; fromCache?: boolean; ip?: string
+  redirectUrl?: string; error?: string; requestHeaders?: Header[]; responseHeaders?: Header[]
+  requestBody?: { raw: { bytes?: Buffer; file?: string }[] } }
+
 function detailsOf(ev: Event, d: RequestDetails, src: Source) {
   let frameId = 0, parentFrameId = -1
   try {
     const f = d.resourceType === "mainFrame" ? null : d.frame
     if (f?.parent) { frameId = f.frameTreeNodeId; parentFrameId = f.parent.parent ? f.parent.frameTreeNodeId : 0 }
   } catch { /* the frame went */ }
-  const x: Record<string, unknown> = {
+  const x: Details = {
     requestId: String(d.id), url: d.url, method: d.method, frameId, parentFrameId, tabId: src.tabId, type: TYPES[d.resourceType] ?? d.resourceType,
     timeStamp: d.timestamp, frameType: frameId === 0 ? "outermost_frame" : "sub_frame", documentLifecycle: "active",
   }
@@ -96,7 +102,7 @@ function detailsOf(ev: Event, d: RequestDetails, src: Source) {
   if (ev === "onErrorOccurred") x.error = d.error
   return x
 }
-function forListener(ev: Event, base: Record<string, unknown>, d: RequestDetails, l: Listener) {
+function forListener(ev: Event, base: Details, d: RequestDetails, l: Listener) {
   const x = { ...base }
   if (l.spec.has("requestHeaders") && (ev === "onBeforeSendHeaders" || ev === "onSendHeaders")) x.requestHeaders = listOf(d.requestHeaders)
   if (l.spec.has("responseHeaders") && d.responseHeaders && ev !== "onBeforeRequest" && ev !== "onErrorOccurred") x.responseHeaders = listOf(d.responseHeaders)
@@ -112,7 +118,7 @@ const wants = (l: Listener, u: URL, type: string, src: Source) =>
 
 
 /** Tells the extensions listening for `ev`: an answer only when a blocking listener gives one. */
-function relay(ev: Event, d: RequestDetails, s: Session, extra?: Record<string, unknown>): Promise<Answer | void> | void {
+function relay(ev: Event, d: RequestDetails, s: Session, extra?: AuthAsk): Promise<Answer | void> | void {
   if (ev === "onHeadersReceived" && (d.statusCode === 401 || d.statusCode === 407) && d.webContentsId) challenged(d)
   const list = of(s, ev)
   if (!list.length) return
@@ -121,7 +127,7 @@ function relay(ev: Event, d: RequestDetails, s: Session, extra?: Record<string, 
   try { u = new URL(d.url) } catch { return }
   if (!src) return
   const type = TYPES[d.resourceType] ?? d.resourceType
-  let base: Record<string, unknown> | null = null
+  let base: Details | null = null
   const asked: Promise<Reply>[] = []
   for (const l of list) {
     if (!wants(l, u, type, src)) continue
@@ -187,7 +193,7 @@ function send(s: Session, l: Listener, args: unknown[], failed?: () => void) {
 }
 
 /** A blocking listener's answer; none (as if it gave nothing) if it never comes. */
-function ask(s: Session, l: Listener, x: Record<string, unknown>) {
+function ask(s: Session, l: Listener, x: Details) {
   return new Promise<Reply>((done) => {
     const rid = `${++seq}`
     // (a password manager may wait on its app asking the user)
@@ -248,7 +254,7 @@ onLogin((wc, det, info) => {
   const d: RequestDetails = challenges.get(k) ?? {
     id: -++seq, url: det.url, method: "GET", webContentsId: wc.id, resourceType: det.isRequestForNavigation ? "mainFrame" : "other", referrer: "",
     timestamp: Date.now(), uploadData: [], statusCode: info.isProxy ? 407 : 401, statusLine: info.isProxy ? "HTTP/1.1 407 Proxy Authentication Required" : "HTTP/1.1 401 Unauthorized",
-    responseHeaders: Object.fromEntries(Object.entries(det.responseHeaders ?? {}).map(([n, v]) => [n, ([] as string[]).concat(v)])),
+    responseHeaders: Object.fromEntries(Object.entries(det.responseHeaders ?? {}).map(([n, v]) => [n, Array<string>().concat(v)])),
   }
   const r = relay("onAuthRequired", d, s, { scheme: info.scheme, realm: info.realm || undefined, challenger: { host: info.host, port: info.port }, isProxy: info.isProxy })
   // (none given, as Chrome: the user's asked next, httpauth.ts; cancelled: the site's 401)

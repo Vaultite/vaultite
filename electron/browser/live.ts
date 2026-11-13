@@ -1,8 +1,11 @@
 // A page watched, and driven by its owner, from the app's web client or its window: its frames sent while watched.
 import type { NativeImage } from "electron"
 import { agentState, helped, press, setPaused, setTaken, setWatched } from "./agent.ts"
+import { LIVE_INPUT, type LiveInput } from "./agentwire.ts"
 import { scrub } from "./pagesecrets.ts"
-import { allPages, appWindows, busyWhen, cdp, eachPage, handle, mayOpen, tell, tellServer, type EngineWindow, type EnginePage } from "./engine.ts"
+import { LAYOUT, SCREENCAST_FRAME } from "./cdpwire.ts"
+import { cdp, cdpAnswer } from "./cdp.ts"
+import { allPages, appWindows, busyWhen, eachPage, handle, mayOpen, tell, tellServer, type EngineWindow, type EnginePage } from "./engine.ts"
 
 const FPS = 8, LOCAL_FPS = 15
 const MAX_W = 1280, MAX_H = 1600
@@ -13,7 +16,7 @@ const STILL_MS = 1000
 
 type Watch = { p: EnginePage; css: { w: number; h: number }; frame: string; cast: string; drawn: string; sent: number; checked: number
   sharp: boolean; trailing: ReturnType<typeof setTimeout> | null
-  tick: ReturnType<typeof setInterval>; by: Map<string, number>; state: string; onMessage: (...a: unknown[]) => void }
+  tick: ReturnType<typeof setInterval>; by: Map<string, number>; state: string; onMessage: (e: Electron.Event, method: string, params: unknown) => void }
 const watches = new Map<number, Watch>()
 const SERVER = "server"
 const viewOf = (id: number, key: unknown) => `${id}:${typeof key === "string" ? key.slice(0, 40) : ""}`
@@ -56,7 +59,7 @@ function offer(w: Watch, jpeg: string) {
 }
 
 async function measure(w: Watch) {
-  const m = await cdp<{ cssVisualViewport?: { clientWidth: number; clientHeight: number } }>(w.p.wc, "Page.getLayoutMetrics").catch(() => null)
+  const m = await cdpAnswer(w.p.wc, LAYOUT, "Page.getLayoutMetrics").catch(() => null)
   if (m?.cssVisualViewport) w.css = { w: m.cssVisualViewport.clientWidth, h: m.cssVisualViewport.clientHeight }
 }
 const jpegOf = (img: NativeImage, sharp: boolean) => {
@@ -69,7 +72,9 @@ async function start(p: EnginePage) {
   const w: Watch = { p, css: { w: 0, h: 0 }, frame: "", cast: "", drawn: "", sent: 0, checked: 0, sharp: false, trailing: null, by: new Map(), state: "", tick: setInterval(() => void tick(w), 700),
     onMessage: (_e, method, params) => {
       if (method !== "Page.screencastFrame") return
-      const f = params as { data: string; sessionId: number; metadata: { deviceWidth: number; deviceHeight: number } }
+      const frame = SCREENCAST_FRAME.safeParse(params)
+      if (!frame.success) return
+      const f = frame.data
       void cdp(p.wc, "Page.screencastFrameAck", { sessionId: f.sessionId }).catch(() => {})
       if (f.metadata?.deviceWidth) w.css = { w: f.metadata.deviceWidth, h: f.metadata.deviceHeight }
       if (f.data !== w.cast) offer(w, (w.cast = f.data))
@@ -78,7 +83,7 @@ async function start(p: EnginePage) {
   try {
     await p.wake()
     await measure(w)
-    p.wc.debugger.on("message", w.onMessage as never)
+    p.wc.debugger.on("message", w.onMessage)
     await cdp(p.wc, "Page.startScreencast", { format: "jpeg", quality: 60, ...maxOf(false) })
     await still(w)
   } catch (e) { stop(p.id); throw e }
@@ -112,7 +117,7 @@ function stop(id: number, gone = false) {
   if (w.trailing) clearTimeout(w.trailing)
   if (gone && w.by.has(SERVER)) tellServer(w.p.win, "live:gone", { tab: id })
   if (w.p.wc.isDestroyed()) return
-  w.p.wc.debugger.removeListener("message", w.onMessage as never)
+  w.p.wc.debugger.removeListener("message", w.onMessage)
   void cdp(w.p.wc, "Page.stopScreencast").catch(() => {})
 }
 
@@ -122,12 +127,10 @@ function queued(id: number, fn: () => Promise<unknown>) {
   return run
 }
 
-type Input = { type?: unknown; x?: unknown; y?: unknown; action?: unknown; button?: unknown; count?: unknown; dx?: unknown; dy?: unknown
-  key?: unknown; text?: unknown; modifiers?: unknown }
 const BUTTONS: Record<string, number> = { none: 0, left: 1, right: 2, middle: 4 }
 const MOUSE: Record<string, string> = { down: "mousePressed", up: "mouseReleased", move: "mouseMoved" }
 
-async function input(p: EnginePage, e: Input) {
+async function input(p: EnginePage, e: LiveInput) {
   const w = watches.get(p.id)
   if (w && !w.css.w) await measure(w)
   const css = w?.css.w ? w.css : { w: 1280, h: 800 }
@@ -210,14 +213,14 @@ handle("agents:watch", async (win: EngineWindow, tab, key) => {
 handle("agents:unwatch", (win: EngineWindow, tab, key) => unwatch(Number(tab), viewOf(win.id, key)))
 handle("agent:live:input", (_win, tab, e) => {
   const p = pageOf(tab)
-  const a = agentState(p.id), m = (e && typeof e === "object" ? e : {}) as Input
+  const a = agentState(p.id), m = LIVE_INPUT.parse(e)
   const meant = m.type !== "mouse" || m.action === "down"
   if (meant && a.by && !a.paused && !a.ask) {
     setTaken(p.id, true)
     const w = watches.get(p.id)
     if (w) void tick(w)
   }
-  return queued(p.id, () => input(p, (e && typeof e === "object" ? e : {}) as Input)).then(() => null)
+  return queued(p.id, () => input(p, m)).then(() => null)
 })
 const SELECTION = `(() => { const e = document.activeElement
   if (e && (e.tagName === "TEXTAREA" || (e.tagName === "INPUT" && e.type !== "password")) && e.selectionEnd > e.selectionStart) return e.value.slice(e.selectionStart, e.selectionEnd)

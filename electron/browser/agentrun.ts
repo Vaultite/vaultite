@@ -163,7 +163,7 @@ serve("agent:download", async (_win, tab, url, by) => {
   if (!/^https?:$/.test(to.protocol)) throw new Error("an http(s) address")
   if (who.remote && localUrl(to.href)) throw new Error(OUTSIDE)
   acting(p, who, `Downloading from ${hostOf(to.href)}`)
-  const r = await p.wc.session.fetch(to.href, { credentials: "include", referrer: p.wc.getURL() } as RequestInit)
+  const r = await p.wc.session.fetch(to.href, { credentials: "include", referrer: p.wc.getURL() })
   if (!r.ok) throw new Error(`${to.href} answered ${r.status} ${r.statusText}`)
   const data = Buffer.from(await r.arrayBuffer())
   if (data.length > 50 << 20) throw new Error("the file is over 50 MB")

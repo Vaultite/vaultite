@@ -3,24 +3,24 @@
 import type { WebContents } from "electron"
 import crypto from "node:crypto"
 import { press } from "./agent.ts"
-import { cdp, type EnginePage } from "./engine.ts"
+import type { AXNode } from "./axlines.ts"
+import { AX_TREE, BOX, DOCUMENT, type DomNode } from "./cdpwire.ts"
+import { cdp, cdpAnswer } from "./cdp.ts"
+import type { EnginePage } from "./engine.ts"
 import type { Secrets } from "./keepass.ts"
 import { loginForm, type Input } from "./loginform.ts"
 import { docOf, filling, keep, markFilled, markHeld, ranNear, siteOf } from "./pagesecrets.ts"
 
 const keepass = () => import("./keepass.ts")
 
-type DomNode = { backendNodeId: number; nodeName: string; attributes?: string[]; documentURL?: string; children?: DomNode[]
-  contentDocument?: DomNode; shadowRoots?: DomNode[]; templateContent?: DomNode }
 type Field = { input: Input; frame: string }
 
-type AxNode = { ignored?: boolean; properties?: { name: string; value: { value?: unknown } }[] }
 /** An accessibility node's boolean property (`focusable`, `focused`). */
-const axProp = (n: AxNode | undefined, name: string) => { const v = n?.properties?.find((x) => x.name === name)?.value?.value; return v === true || v === "true" }
+const axProp = (n: AXNode | undefined, name: string) => { const v = n?.properties?.find((x) => x.name === name)?.value?.value; return v === true || v === "true" }
 
 /** Every input of the page and its frames in this process, with the address of the document it's in. */
 async function fieldsOf(p: EnginePage): Promise<Field[]> {
-  const { root } = await cdp<{ root: DomNode }>(p.wc, "DOM.getDocument", { depth: -1, pierce: true })
+  const { root } = await cdpAnswer(p.wc, DOCUMENT, "DOM.getDocument", { depth: -1, pierce: true })
   const out: Field[] = []
   const walk = (n: DomNode, frame: string, form: number) => {
     const name = n.nodeName.toUpperCase()
@@ -40,9 +40,9 @@ async function fieldsOf(p: EnginePage): Promise<Field[]> {
   // it, inert or unfocusable); others are decoys, or another step's: a username-first page's password field)
   await Promise.all(out.map(async (f) => {
     if (f.input.type === "hidden") return
-    const box = await cdp<{ model: { width: number; height: number } }>(p.wc, "DOM.getBoxModel", { backendNodeId: f.input.id }).catch(() => null)
+    const box = await cdpAnswer(p.wc, BOX, "DOM.getBoxModel", { backendNodeId: f.input.id }).catch(() => null)
     if (!box || box.model.width <= 0 || box.model.height <= 0) return
-    const ax = await cdp<{ nodes: AxNode[] }>(p.wc, "Accessibility.getPartialAXTree", { backendNodeId: f.input.id, fetchRelatives: false }).catch(() => null)
+    const ax = await cdpAnswer(p.wc, AX_TREE, "Accessibility.getPartialAXTree", { backendNodeId: f.input.id, fetchRelatives: false }).catch(() => null)
     const node = ax?.nodes[0]
     f.input.visible = !!node && !node.ignored && axProp(node, "focusable") === true
   }))
@@ -53,7 +53,7 @@ async function fieldsOf(p: EnginePage): Promise<Field[]> {
 async function focus(p: EnginePage, id: number) {
   await cdp(p.wc, "DOM.scrollIntoViewIfNeeded", { backendNodeId: id }).catch(() => {})
   await cdp(p.wc, "DOM.focus", { backendNodeId: id })
-  const { nodes } = await cdp<{ nodes: AxNode[] }>(p.wc, "Accessibility.getPartialAXTree", { backendNodeId: id, fetchRelatives: false })
+  const { nodes } = await cdpAnswer(p.wc, AX_TREE, "Accessibility.getPartialAXTree", { backendNodeId: id, fetchRelatives: false })
   return axProp(nodes[0], "focused")
 }
 

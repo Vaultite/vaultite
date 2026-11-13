@@ -70,3 +70,6 @@ export const REPLY = z.object({ cancel: FLAG.catch(undefined), redirectUrl: WORD
   authCredentials: z.object({ username: z.string(), password: z.string() }).optional().catch(undefined) }).nullable().catch(null)
 export type Reply = z.infer<typeof REPLY>
 export const NOTE = z.object({ title: ANY, message: ANY, silent: ANY }).catch({})
+export const POPUP_AT = z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() })
+export type PopupAt = z.infer<typeof POPUP_AT>
+export const POPUP_SIZE = z.tuple([z.number(), z.number()])

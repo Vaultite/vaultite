@@ -3,7 +3,8 @@
 import { ipcMain, type Session } from "electron"
 import { fileURLToPath } from "node:url"
 import { AUTO_BG, tintFilter } from "./darkcolors.ts"
-import { canvasChanged, canvasFrom, cdp, eachPage, eachSession, handle, type EnginePage, type EngineWindow } from "./engine.ts"
+import { cdp, type CdpParams } from "./cdp.ts"
+import { canvasChanged, canvasFrom, eachPage, eachSession, handle, type EnginePage, type EngineWindow } from "./engine.ts"
 
 const PRELOAD = fileURLToPath(new URL("./darkmode-preload.cjs", import.meta.url))
 
@@ -69,7 +70,7 @@ function frameChoice(s: State | undefined, url: string, main: boolean) {
 
 /** What page `s` should be told: "" nothing, "media" prefers dark (a site dark itself), "auto" that and auto dark. */
 const wanted = (s: State) => (!darkens(choiceOf(s.p.win), hostOf(s.url)) ? "" : s.native ? "media" : "auto")
-const commands = (want: string): [string, Record<string, unknown>][] => [
+const commands = (want: string): [string, CdpParams][] => [
   ["Emulation.setEmulatedMedia", { features: want ? [{ name: "prefers-color-scheme", value: "dark" }] : [] }],
   ["Emulation.setAutoDarkModeOverride", want === "auto" ? { enabled: true } : {}],
 ]

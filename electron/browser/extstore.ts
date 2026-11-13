@@ -8,6 +8,7 @@ import fs from "node:fs"
 import { createRequire } from "node:module"
 import os from "node:os"
 import path from "node:path"
+import { z } from "zod"
 import { ID, MANIFEST, MESSAGES, NATIVE_HOST, PROFILE_NAMES, prepared, RAW_MANIFEST, STATE, type Manifest } from "./extwire.ts"
 import { logger } from "./engine.ts"
 
@@ -110,7 +111,8 @@ export function imageOf(dir: string, icon: unknown, want = 32): string {
   } catch { return "" }
 }
 
-const shim = () => (createRequire(import.meta.url)("./extensions.preload.cjs") as { storageShim: () => void }).storageShim
+const PRELOAD = z.object({ storageShim: z.instanceof(Function) })
+export const storageShim = () => PRELOAD.parse(createRequire(import.meta.url)("./extensions.preload.cjs")).storageShim
 const SHIM = "vaultite/content.js"
 
 /** Ready an unpacked extension for Electron: its Web Store key (so its id is the store's), and the storage shim before
@@ -119,7 +121,7 @@ function prepare(dir: string, key?: Buffer) {
   manifests.delete(dir)
   const m = prepared(rawManifest(dir), SHIM, key?.toString("base64"))
   fs.mkdirSync(path.join(dir, "vaultite"), { recursive: true })
-  fs.writeFileSync(path.join(dir, SHIM), `(${String(shim())})();\n`)
+  fs.writeFileSync(path.join(dir, SHIM), `(${String(storageShim())})();\n`)
   fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify(m, null, 2))
   manifests.delete(dir)
 }
@@ -180,7 +182,7 @@ export function fromFolder(src: string): Installed {
 /** The Web Store's package of an extension, for this Chrome; null when it doesn't offer it (a removed or MV2 one). */
 async function download(id: string, url?: string): Promise<Buffer | null> {
   const to = url ?? `${STORE}?response=redirect&prodversion=${process.versions.chrome}&acceptformat=crx2,crx3&x=${encodeURIComponent(`id=${id}&installsource=ondemand&uc`)}`
-  const r = await net.fetch(to, { signal: AbortSignal.timeout(60_000) } as RequestInit)
+  const r = await net.fetch(to, { signal: AbortSignal.timeout(60_000) })
   if (r.status === 204) return null
   if (!r.ok) throw new Error(`the Chrome Web Store answered ${r.status}`)
   const buf = Buffer.from(await r.arrayBuffer())
@@ -240,7 +242,7 @@ export async function update(): Promise<Installed[]> {
   save()
   if (!mine.length) return []
   const q = mine.map((x) => `x=${encodeURIComponent(`id=${x.id}&v=${x.version}&uc`)}`).join("&")
-  const r = await net.fetch(`${STORE}?response=updatecheck&acceptformat=crx3&prodversion=${process.versions.chrome}&${q}`, { signal: AbortSignal.timeout(60_000) } as RequestInit)
+  const r = await net.fetch(`${STORE}?response=updatecheck&acceptformat=crx3&prodversion=${process.versions.chrome}&${q}`, { signal: AbortSignal.timeout(60_000) })
   if (!r.ok) throw new Error(`the Chrome Web Store answered ${r.status}`)
   const xml = await r.text()
   const out: Installed[] = []

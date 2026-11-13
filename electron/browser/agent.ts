@@ -1,13 +1,16 @@
 // Agents in the browser: a page's accessibility tree with refs, and real input on them over the DevTools protocol.
 import { app, powerMonitor, type WebContents } from "electron"
 import crypto from "node:crypto"
+import { once } from "node:events"
 import fs from "node:fs"
 import path from "node:path"
-import { allPages, appWindows, busyWhen, cdp, eachPage, eachSession, engineBusy, handle, holdPage, keepPage, localUrl, mayOpen, onRequest, openInBackground, setAgentOwned, setAgentActing, tell, type EngineWindow, type EnginePage, logger } from "./engine.ts"
+import { cdp, cdpAnswer, type CdpParams } from "./cdp.ts"
+import { allPages, appWindows, busyWhen, eachPage, eachSession, engineBusy, handle, holdPage, keepPage, localUrl, mayOpen, onRequest, openInBackground, setAgentOwned, setAgentActing, tell, type EngineWindow, type EnginePage, logger } from "./engine.ts"
 import { docOf, exposed, filling, heldNear, markRan, scrub, scrubDeep, wasFilled } from "./pagesecrets.ts"
 import { clipboardKey, keyEvent } from "./keypress.ts"
 import { axLines, changes, INTERACTIVE, mainLines, type AXNode, type Refs } from "./axlines.ts"
 import { agentBusy } from "./agentbusy.ts"
+import { AX_TREE, BOX, DESCRIBED, RESOLVED, type DomNode } from "./cdpwire.ts"
 import { messageOf } from "./messageof.ts"
 import { ACT, AT, BY, PAGE_TEXT, WAIT, type Act, type By, type Field, type Upload, type Wait } from "./agentwire.ts"
 
@@ -97,7 +100,7 @@ const MAX_SNAPSHOT = 60_000
 async function tree(p: EnginePage, again = true): Promise<string[]> {
   const doc = docOf(p.wc)
   await cdp(p.wc, "Accessibility.enable")
-  const { nodes } = await cdp<{ nodes: AXNode[] }>(p.wc, "Accessibility.getFullAXTree")
+  const { nodes } = await cdpAnswer(p.wc, AX_TREE, "Accessibility.getFullAXTree")
   if (docOf(p.wc) !== doc) { if (again) return tree(p, false); throw new Error("the page kept changing as it was read: take a snapshot again in a moment") }
   const lines = axLines(nodes, refsOf(p.wc), (id) => wasFilled(p.wc, id), scrub, p.wc.getURL())
   seen.set(p.wc, { lines, doc: docOf(p.wc) })
@@ -207,18 +210,18 @@ async function nodeOf(p: EnginePage, ref: unknown) {
   if (!id) throw new Error(`no ref ${String(ref)} on this tab's page: take a snapshot (\`vau browser snapshot ${p.id}\`)`)
   const was = r.what.get(String(ref))
   if (was) {
-    const { nodes } = await cdp<{ nodes: AXNode[] }>(p.wc, "Accessibility.getPartialAXTree", { backendNodeId: id, fetchRelatives: false }).catch(() => ({ nodes: Array<AXNode>() }))
+    const { nodes } = await cdpAnswer(p.wc, AX_TREE, "Accessibility.getPartialAXTree", { backendNodeId: id, fetchRelatives: false }).catch(() => ({ nodes: Array<AXNode>() }))
     const n = nodes.find((x) => x.backendDOMNodeId === id) ?? nodes[0]
     const name = String(n?.name?.value ?? "").replace(/\s+/g, " ").trim().slice(0, 200), role = String(n?.role?.value ?? "")
     if (n && (role !== was.role || name !== was.name)) throw new Error(`ref ${String(ref)} is now ${role} "${scrub(name)}", not the ${was.role} "${scrub(was.name)}" it was: take a new snapshot`)
   }
   try { await cdp(p.wc, "DOM.scrollIntoViewIfNeeded", { backendNodeId: id }) } catch { throw new Error(`ref ${String(ref)} is gone from the page: take a new snapshot`) }
-  const { model } = await cdp<{ model: { content: number[] } }>(p.wc, "DOM.getBoxModel", { backendNodeId: id })
+  const { model } = await cdpAnswer(p.wc, BOX, "DOM.getBoxModel", { backendNodeId: id })
   const q = model.content
   return { id, x: (q[0] + q[2] + q[4] + q[6]) / 4, y: (q[1] + q[3] + q[5] + q[7]) / 4 }
 }
 async function describe(p: EnginePage, id: number) {
-  const { node } = await cdp<{ node: { nodeName: string; attributes?: string[] } }>(p.wc, "DOM.describeNode", { backendNodeId: id })
+  const { node } = await cdpAnswer(p.wc, DESCRIBED, "DOM.describeNode", { backendNodeId: id })
   const attrs: Record<string, string> = {}
   for (let i = 0; i + 1 < (node.attributes ?? []).length; i += 2) attrs[node.attributes![i]] = node.attributes![i + 1]
   return { tag: node.nodeName.toLowerCase(), attrs }
@@ -246,7 +249,7 @@ const actor = new WeakMap<WebContents, string>()
 function ours(p: EnginePage) {
   if (taken.has(p.id) || paused.has(p.id)) throw new Error("the user took this page over (or paused agents in it) mid-act: stopped there")
 }
-const input = (p: EnginePage, method: string, params: Record<string, unknown>) => { ours(p); return cdp(p.wc, method, params) }
+const input = (p: EnginePage, method: string, params: CdpParams) => { ours(p); return cdp(p.wc, method, params) }
 const pressMine = (p: EnginePage, combo: string) => {
   ours(p)
   if (clipboardKey(combo)) throw new Error(`no ${combo}: agents never copy, cut or paste with the user's clipboard (act's paste puts a value in)`)
@@ -272,9 +275,10 @@ async function waitWhile(p: EnginePage, going: () => boolean, events: string[], 
   const wc = p.wc
   while (!wc.isDestroyed() && going() && Date.now() < until) {
     await new Promise<void>((done) => {
-      const end = () => { clearTimeout(t); for (const e of [...events, "destroyed"]) wc.off(e as "destroyed", end); done() }
+      const heard = new AbortController()
+      const end = () => { clearTimeout(t); heard.abort(); done() }
       const t = setTimeout(end, Math.max(0, Math.min(until - Date.now(), 500)))
-      for (const e of [...events, "destroyed"]) wc.once(e as "destroyed", end)
+      for (const e of [...events, "destroyed"]) once(wc, e, { signal: heard.signal }).then(end, () => {})
     })
   }
 }
@@ -348,7 +352,7 @@ async function step(p: EnginePage, a: Act) {
     }
     case "check": case "uncheck": {
       const n = await nodeOf(p, need(a.ref, "a ref"))
-      const { nodes } = await cdp<{ nodes: AXNode[] }>(p.wc, "Accessibility.getPartialAXTree", { backendNodeId: n.id, fetchRelatives: false })
+      const { nodes } = await cdpAnswer(p.wc, AX_TREE, "Accessibility.getPartialAXTree", { backendNodeId: n.id, fetchRelatives: false })
       const checked = nodes[0]?.properties?.find((x) => x.name === "checked")?.value?.value
       if ((checked === true || checked === "true") !== (a.action === "check")) await click(p, n.x, n.y)
       break
@@ -360,15 +364,14 @@ async function step(p: EnginePage, a: Act) {
       const d = await describe(p, n.id)
       if (d.tag !== "select") throw new Error("select is for a list (a <select>): click the option instead")
       await pointTo(p, actor.get(p.wc) ?? "", n.x, n.y, true)
-      type DomNode = { nodeName: string; nodeValue?: string; children?: DomNode[] }
-      const { node } = await cdp<{ node: DomNode }>(p.wc, "DOM.describeNode", { backendNodeId: n.id, depth: -1 })
+      const { node } = await cdpAnswer(p.wc, DESCRIBED, "DOM.describeNode", { backendNodeId: n.id, depth: -1 })
       const textOf = (x: DomNode): string => (x.nodeValue ?? "") + (x.children ?? []).map(textOf).join("")
       const all = (x: DomNode): DomNode[] => [x, ...(x.children ?? []).flatMap(all)]
       const options = all(node).filter((x) => x.nodeName === "OPTION").map((x) => textOf(x).replace(/\s+/g, " ").trim())
       const at = options.findIndex((o) => o === want || o.trim() === want.trim())
       if (at < 0) throw new Error(`no option "${want}" there: ${options.slice(0, 20).join(", ")}`)
       await cdp(p.wc, "DOM.focus", { backendNodeId: n.id })
-      const { object } = await cdp<{ object: { objectId: string } }>(p.wc, "DOM.resolveNode", { backendNodeId: n.id })
+      const { object } = await cdpAnswer(p.wc, RESOLVED, "DOM.resolveNode", { backendNodeId: n.id })
       await cdp(p.wc, "Runtime.callFunctionOn", { objectId: object.objectId, arguments: [{ value: at }], functionDeclaration: `function (i) {
         if (this.selectedIndex === i) return
         this.selectedIndex = i
@@ -458,10 +461,12 @@ const KEEP_DAYS = 14
 const runOf = (by: By) => `${new Date().toISOString().slice(0, 10)}-${[by.session || by.name || "agent", by.task].filter(Boolean).join("-").replace(/[^\w.-]+/g, "_").slice(0, 80)}`
 const groupOf = (by: By) => [by.name || "Agent", by.task].filter(Boolean).join("/")
 const sameAgent = (a: By, b: By) => (a.name ?? "") === (b.name ?? "") && (a.session ?? "") === (b.session ?? "") && (!b.task || a.task === b.task)
-const latest = new Map<number, { by: By; run: string; t: number; step: Record<string, unknown> }>()
+type Logged = { name: string; value?: string }
+type Step = { action: string; ref?: string; name?: string; value?: string; fields?: ({ ref: string } & Logged)[]; site?: string; result?: string; approved?: string }
+const latest = new Map<number, { by: By; run: string; t: number; step: Step }>()
 const LIVE_MS = 120_000
 
-export async function record(p: EnginePage, asked: By, step: Record<string, unknown>) {
+export async function record(p: EnginePage, asked: By, step: Step) {
   const owner = owners.get(p.id)
   const by = { ...asked, task: asked.task || owner?.task, summary: asked.summary || (owner && sameAgent(owner, asked) ? owner.summary : undefined) }
   const run = runOf(by), t = Date.now()
@@ -545,12 +550,12 @@ async function nameOf(p: EnginePage, ref: unknown) {
   const id = refsOf(p.wc).byRef.get(String(ref))
   if (!id) return ""
   try {
-    const { nodes } = await cdp<{ nodes: AXNode[] }>(p.wc, "Accessibility.getPartialAXTree", { backendNodeId: id, fetchRelatives: false })
+    const { nodes } = await cdpAnswer(p.wc, AX_TREE, "Accessibility.getPartialAXTree", { backendNodeId: id, fetchRelatives: false })
     const v = nodes[0]?.name?.value
     return typeof v === "string" ? v.slice(0, 80) : ""
   } catch { return "" }
 }
-async function logged(p: EnginePage, ref: string | undefined, value: unknown) {
+async function logged(p: EnginePage, ref: string | undefined, value: string | undefined): Promise<Logged> {
   const id = ref ? refsOf(p.wc).byRef.get(ref) : undefined
   const secret = id ? await describe(p, id).then((d) => d.attrs.type === "password", () => false) : false
   return { name: ref ? await nameOf(p, ref) : "", value: secret ? "•••" : value }
@@ -774,7 +779,7 @@ serve("agent:snapshot", (_win, tab) => snapshot(pageFor(tab, "read")))
 serve("agent:read", (_win, tab, main) => readIn(pageFor(tab, "read"), main === true))
 serve("agent:locate", async (_win, tab, ref) => {
   const p = pageFor(tab, "read"), n = await nodeOf(p, ref)
-  const { model } = await cdp<{ model: { border: number[]; width: number; height: number } }>(p.wc, "DOM.getBoxModel", { backendNodeId: n.id })
+  const { model } = await cdpAnswer(p.wc, BOX, "DOM.getBoxModel", { backendNodeId: n.id })
   return { tab: p.id, x: model.border[0], y: model.border[1], width: model.width, height: model.height, zoom: p.wc.getZoomFactor() }
 })
 serve("agent:selection", async (_win, tab) => {

@@ -1,6 +1,5 @@
 // The browser engine: each feature adds itself here for every web session and page as they are made.
-import type { AuthInfo, AuthenticationResponseDetails, BaseWindow, OnBeforeRequestListenerDetails, Session, WebContents } from "electron"
-import { messageOf } from "./messageof.ts"
+import type { AuthInfo, AuthenticationResponseDetails, BaseWindow, OnBeforeRequestListenerDetails, Session, UploadData, WebContents, WebRequest, WebRequestFilter } from "electron"
 import { logger, logTo, unlogged, type Logger } from "./enginelog.ts"
 export { logger }
 
@@ -88,21 +87,33 @@ export const sessionReady = (profile: string) => ready.get(profile) ?? Promise.r
 
 export type RequestEvent = "onBeforeRequest" | "onBeforeSendHeaders" | "onSendHeaders" | "onHeadersReceived" | "onResponseStarted"
   | "onBeforeRedirect" | "onCompleted" | "onErrorOccurred"
-export type RequestDetails = OnBeforeRequestListenerDetails & { requestHeaders?: Record<string, string>; responseHeaders?: Record<string, string[]>
-  statusLine?: string; statusCode?: number; redirectURL?: string; error?: string; fromCache?: boolean; ip?: string }
-export type RequestAnswer = { cancel?: boolean; redirectURL?: string; requestHeaders?: Record<string, string | string[]>
-  responseHeaders?: Record<string, string | string[]>; statusLine?: string }
+export type RequestDetails = Omit<OnBeforeRequestListenerDetails, "uploadData"> & { uploadData?: UploadData[]; requestHeaders?: Record<string, string>
+  responseHeaders?: Record<string, string[]>; statusLine?: string; statusCode?: number; redirectURL?: string; error?: string; fromCache?: boolean; ip?: string }
+export type RequestAnswer = { cancel?: boolean; redirectURL?: string; requestHeaders?: Record<string, string>; responseHeaders?: Record<string, string[]>
+  statusLine?: string }
 type ResourceType = NonNullable<Electron.WebRequestFilter["types"]>[number]
 type RequestHook = { event: RequestEvent; fn: (d: RequestDetails, s: Session) => RequestAnswer | void | Promise<RequestAnswer | void>; on: (s: Session) => boolean
   types?: ResourceType[]; urls?: string[] }
 
+type Listener = { filter: WebRequestFilter; fn: (d: RequestDetails, done?: (r: RequestAnswer) => void) => void }
+const LISTEN: Record<RequestEvent, (wr: WebRequest, l: Listener | null) => void> = {
+  onBeforeRequest: (wr, l) => (l ? wr.onBeforeRequest(l.filter, l.fn) : wr.onBeforeRequest(null)),
+  onBeforeSendHeaders: (wr, l) => (l ? wr.onBeforeSendHeaders(l.filter, l.fn) : wr.onBeforeSendHeaders(null)),
+  onSendHeaders: (wr, l) => (l ? wr.onSendHeaders(l.filter, l.fn) : wr.onSendHeaders(null)),
+  onHeadersReceived: (wr, l) => (l ? wr.onHeadersReceived(l.filter, l.fn) : wr.onHeadersReceived(null)),
+  onResponseStarted: (wr, l) => (l ? wr.onResponseStarted(l.filter, l.fn) : wr.onResponseStarted(null)),
+  onBeforeRedirect: (wr, l) => (l ? wr.onBeforeRedirect(l.filter, l.fn) : wr.onBeforeRedirect(null)),
+  onCompleted: (wr, l) => (l ? wr.onCompleted(l.filter, l.fn) : wr.onCompleted(null)),
+  onErrorOccurred: (wr, l) => (l ? wr.onErrorOccurred(l.filter, l.fn) : wr.onErrorOccurred(null)),
+}
 const EVENTS: RequestEvent[] = ["onBeforeRequest", "onBeforeSendHeaders", "onSendHeaders", "onHeadersReceived", "onResponseStarted", "onBeforeRedirect", "onCompleted", "onErrorOccurred"]
 const ANSWERED = new Set<RequestEvent>(["onBeforeRequest", "onBeforeSendHeaders", "onHeadersReceived"])
 const hooks: RequestHook[] = []
 /** Each session's hooks by event, as `on` said, and the resource types and addresses they want: Electron listens only for
  *  those (each request a listener sees is a round trip through the main process, most of a page's cost here). */
 const wired = new WeakMap<Session, Map<RequestEvent, RequestHook[]>>()
-const wiredTypes = new WeakMap<Session, Map<RequestEvent, { types: string; urls: string }>>()
+type Wanted = { types: ResourceType[]; urls: string[] }
+const wiredTypes = new WeakMap<Session, Map<RequestEvent, Wanted>>()
 const wiredSessions = new Set<Session>()
 
 /** `fn` sees each request's `event` (of `types`, at `urls`, if given; others' hooks may bring it more) in the sessions `on`
@@ -115,24 +126,23 @@ export function onRequest(event: RequestEvent, fn: RequestHook["fn"], on: Reques
 export const requestsChanged = (s: Session) => wire(s)
 
 function wire(s: Session) {
-  const had = wiredTypes.get(s), now = new Map<RequestEvent, RequestHook[]>(), types = new Map<RequestEvent, { types: string; urls: string }>()
+  const had = wiredTypes.get(s), now = new Map<RequestEvent, RequestHook[]>(), types = new Map<RequestEvent, Wanted>()
   for (const h of hooks) if (h.on(s)) now.set(h.event, [...(now.get(h.event) ?? []), h])
-  const union = (list: RequestHook[], k: "types" | "urls") => (list.some((h) => !h[k]) ? "" : [...new Set(list.flatMap((h) => h[k]!))].sort().join(" "))
-  for (const [ev, list] of now) types.set(ev, { types: union(list, "types"), urls: union(list, "urls") })
+  const union = <T extends string>(lists: (T[] | undefined)[]) => (lists.some((l) => !l) ? [] : [...new Set(lists.flatMap((l) => l ?? []))].sort())
+  for (const [ev, list] of now) types.set(ev, { types: union(list.map((h) => h.types)), urls: union(list.map((h) => h.urls)) })
   wired.set(s, now)
   wiredTypes.set(s, types)
   wiredSessions.add(s)
-  const wr = s.webRequest as unknown as Record<RequestEvent, (...a: unknown[]) => void>
   for (const ev of EVENTS) {
     const was = had?.get(ev), want = types.get(ev)
-    if (was?.types === want?.types && was?.urls === want?.urls) continue
-    const filter = { urls: want?.urls ? want.urls.split(" ") : ["<all_urls>"], ...(want?.types ? { types: want.types.split(" ") } : {}) }
-    if (!now.has(ev)) wr[ev](null)
-    else if (ANSWERED.has(ev)) wr[ev](filter, (d: RequestDetails, done: (r: RequestAnswer) => void) => answer(wired.get(s)?.get(ev) ?? [], d, s, done))
-    else wr[ev](filter, (d: RequestDetails) => { for (const h of wired.get(s)?.get(ev) ?? []) if (wants(h, d)) try { void h.fn(d, s) } catch (e) { log.error("a browser feature's request hook failed", e) } })
+    if (was?.types.join(" ") === want?.types.join(" ") && was?.urls.join(" ") === want?.urls.join(" ")) continue
+    const filter = { urls: want?.urls.length ? want.urls : ["<all_urls>"], ...(want?.types.length ? { types: want.types } : {}) }
+    if (!now.has(ev)) LISTEN[ev](s.webRequest, null)
+    else if (ANSWERED.has(ev)) LISTEN[ev](s.webRequest, { filter, fn: (d, done) => answer(wired.get(s)?.get(ev) ?? [], d, s, done ?? (() => {})) })
+    else LISTEN[ev](s.webRequest, { filter, fn: (d) => { for (const h of wired.get(s)?.get(ev) ?? []) if (wants(h, d)) try { void h.fn(d, s) } catch (e) { log.error("a browser feature's request hook failed", e) } } })
   }
 }
-const wants = (h: RequestHook, d: RequestDetails) => !h.types || h.types.includes(d.resourceType as ResourceType)
+const wants = (h: RequestHook, d: RequestDetails) => !h.types || h.types.some((t) => t === d.resourceType)
 
 function answer(all: RequestHook[], d: RequestDetails, s: Session, done: (r: RequestAnswer) => void) {
   const out: RequestAnswer = {}
@@ -142,8 +152,8 @@ function answer(all: RequestHook[], d: RequestDetails, s: Session, done: (r: Req
     if (!r) return false
     if (r.cancel) { done({ cancel: true }); return true }
     if (r.redirectURL) { done({ ...out, redirectURL: r.redirectURL }); return true }
-    if (r.requestHeaders) d.requestHeaders = (out.requestHeaders = r.requestHeaders) as Record<string, string>
-    if (r.responseHeaders) d.responseHeaders = (out.responseHeaders = r.responseHeaders) as Record<string, string[]>
+    if (r.requestHeaders) d.requestHeaders = out.requestHeaders = r.requestHeaders
+    if (r.responseHeaders) d.responseHeaders = out.responseHeaders = r.responseHeaders
     if (r.statusLine) d.statusLine = out.statusLine = r.statusLine
     return false
   }
@@ -279,22 +289,11 @@ export function engineBusy(of: "app" | "server" = "app"): string | null {
 
 /** Tell a window something: the Browser hears it as a `WebEvent` whose `type` starts "engine:". */
 export const tell = (win: EngineWindow, msg: EngineEvent) => { if (!win.isDestroyed()) win.webContents.send("vaultite:web", msg) }
-type EngineEvent = { type: `engine:${string}` } & Record<string, unknown>
+export type Json = string | number | boolean | null | undefined | Json[] | { [k: string]: Json }
+type EngineEvent = { type: `engine:${string}`; [k: string]: Json }
 export const tellAll = (msg: EngineEvent) => { for (const w of appWindows()) tell(w, msg) }
 
 type ServerSink = (win: EngineWindow, name: string, data: unknown) => void
 let sink: ServerSink = () => {}
 export const setServerSink = (fn: ServerSink) => { sink = fn }
 export const tellServer = (win: EngineWindow, name: string, data: unknown) => { if (!win.isDestroyed()) sink(win, name, data) }
-
-const attached = new WeakSet<WebContents>()
-export async function cdp<T = Record<string, unknown>>(wc: WebContents, method: string, params: Record<string, unknown> = {}): Promise<T> {
-  if (!attached.has(wc)) {
-    try { wc.debugger.attach("1.3") } catch (e) {
-      if (!wc.debugger.isAttached()) throw new Error(`couldn't attach to the page (${messageOf(e)}): is its DevTools open?`)
-    }
-    attached.add(wc)
-    wc.debugger.on("detach", () => attached.delete(wc))
-  }
-  return (await wc.debugger.sendCommand(method, params)) as T
-}

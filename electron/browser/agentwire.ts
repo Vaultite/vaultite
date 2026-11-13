@@ -31,3 +31,7 @@ export const WAIT = z.object({ text: z.unknown().optional(), url: z.unknown().op
 export type Wait = z.infer<typeof WAIT>
 
 export const PAGE_TEXT = z.object({ url: z.string(), title: z.string(), text: z.string(), as: z.string().optional().catch(undefined) })
+
+const ANY = z.unknown().optional()
+export const LIVE_INPUT = objectOr(z.object({ type: ANY, x: ANY, y: ANY, action: ANY, button: ANY, count: ANY, dx: ANY, dy: ANY, key: ANY, text: ANY, modifiers: ANY }))
+export type LiveInput = z.infer<typeof LIVE_INPUT>

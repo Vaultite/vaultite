@@ -105,6 +105,58 @@ async function darkColors(check: Check) {
     && crypto.createHash("sha256").update(all.join("\n")).digest("hex").slice(0, 16) === "4b74588f9be0b936", all)
 }
 
+async function cdpAnswers(check: Check) {
+  const C = await import("../../../electron/browser/cdpwire.ts")
+  const { axLines } = await import("../../../electron/browser/axlines.ts")
+  const node = (nodeId: string, role: string, name: string, more = {}) => ({ nodeId, ignored: false, role: { type: "role", value: role }, chromeRole: { type: "internalRole", value: 1 },
+    name: { type: "computedString", value: name, sources: [] }, frameId: "F1", ...more })
+  const tree = { nodes: [node("1", "RootWebArea", "Shop", { childIds: ["2", "3"], backendDOMNodeId: 1 }), node("2", "button", "Buy", { parentId: "1", backendDOMNodeId: 7,
+    properties: [{ name: "focusable", value: { type: "booleanOrUndefined", value: true } }] }), node("3", "textbox", "Email", { parentId: "1", backendDOMNodeId: 8, value: { type: "string", value: "a@b" } })] }
+  const refs = () => ({ byRef: new Map<string, number>(), byNode: new Map<number, string>(), n: 0, what: new Map() })
+  const lines = (nodes: Parameters<typeof axLines>[0]) => axLines(nodes, refs(), () => false, (t) => t, "https://shop.example/")
+  check("DevTools answers: an accessibility tree reads into the same snapshot, Chromium's other fields aside", same([
+    [lines(C.AX_TREE.parse(tree).nodes), lines(tree.nodes)], [C.AX_TREE.safeParse({ nodes: [{ role: { value: "button" } }] }).success, false],
+    [C.AX_TREE.safeParse({}).success, false], [C.AX_TREE.safeParse(null).success, false],
+  ]), lines(C.AX_TREE.parse(tree).nodes))
+  const doc = { root: { nodeId: 1, backendNodeId: 1, nodeType: 9, nodeName: "#document", localName: "", nodeValue: "", documentURL: "https://shop.example/", children: [
+    { nodeId: 2, backendNodeId: 2, nodeType: 1, nodeName: "FORM", localName: "form", nodeValue: "", attributes: ["id", "f"], shadowRoots: [{ backendNodeId: 5, nodeName: "#document-fragment", nodeValue: "" }],
+      children: [{ backendNodeId: 3, nodeName: "IFRAME", nodeValue: "", contentDocument: { backendNodeId: 4, nodeName: "#document", nodeValue: "", documentURL: "https://pay.example/" } }] }] } }
+  const parsed = C.DOCUMENT.parse(doc).root
+  check("DevTools answers: a document's tree keeps its frames, shadow roots and attributes; a node without its ids is refused", same([
+    [[parsed.children?.[0].attributes, parsed.children?.[0].shadowRoots?.[0].backendNodeId, parsed.children?.[0].children?.[0].contentDocument?.documentURL], [["id", "f"], 5, "https://pay.example/"]],
+    [C.DESCRIBED.safeParse({ node: { nodeName: "SELECT", children: [] } }).success, false], [C.DESCRIBED.safeParse({ node: { backendNodeId: 1, nodeName: "SELECT" } }).success, true],
+  ]))
+  const quad = [0, 0, 10, 0, 10, 20, 0, 20]
+  check("DevTools answers: a box, a resolved node, the viewport and a screencast frame by their types", same([
+    [C.BOX.parse({ model: { content: quad, padding: quad, border: quad, margin: quad, width: 10, height: 20 } }).model, { content: quad, border: quad, width: 10, height: 20 }],
+    [C.BOX.safeParse({ model: { content: quad } }).success, false], [C.RESOLVED.parse({ object: { type: "object", objectId: "o-1" } }), { object: { objectId: "o-1" } }],
+    [C.RESOLVED.safeParse({ object: { type: "object" } }).success, false], [C.LAYOUT.parse({ cssVisualViewport: { clientWidth: 800, clientHeight: 600, pageX: 0 } }), { cssVisualViewport: { clientWidth: 800, clientHeight: 600 } }],
+    [C.LAYOUT.parse({}), {}], [C.SCREENCAST_FRAME.parse({ data: "jpeg", sessionId: 3, metadata: { deviceWidth: 800, deviceHeight: 600, offsetTop: 0 } }), { data: "jpeg", sessionId: 3, metadata: { deviceWidth: 800, deviceHeight: 600 } }],
+    [C.SCREENCAST_FRAME.safeParse({ data: "jpeg" }).success, false],
+  ]))
+}
+
+async function pageMessages(check: Check) {
+  const P = await import("../../../electron/browser/pagewire.ts")
+  const X = await import("../../../electron/browser/extwire.ts")
+  const { LIVE_INPUT } = await import("../../../electron/browser/agentwire.ts")
+  check("Shields: a page's classes, ids and links as text only, at most 5000 each; nothing from a non-object", same([
+    [P.FOUND.parse({ classes: ["a", 5, "b"], ids: "x", hrefs: [null, "h"] }), { classes: ["a", "b"], ids: [], hrefs: ["h"] }], [P.FOUND.parse({ classes: Array(6000).fill("c") }).classes.length, 5000],
+    [P.FOUND.safeParse(null).success, false], [P.FOUND.safeParse("x").success, false],
+  ]))
+  check("Shields: the window's choice, on unless false, its sites down trimmed and lowercase", same([
+    [P.SHIELDS.parse({ on: false, down: [" A.com ", 3, "b"] }), { on: false, down: ["a.com", "b"] }], [P.SHIELDS.parse({ on: "no", down: "a" }), { on: "no", down: [] }],
+    [P.SHIELDS.parse(null), { down: [] }], [P.SHIELDS.parse([1]), { down: [] }],
+  ]))
+  check("live: a watched page's input keeps its fields as given, nothing from a non-object", same([
+    [LIVE_INPUT.parse({ type: "tap", x: 0.5, y: "0.2", count: 2, extra: 1 }), { type: "tap", x: 0.5, y: "0.2", count: 2 }], [LIVE_INPUT.parse(null), {}], [LIVE_INPUT.parse([1]), {}],
+  ]))
+  check("extensions: a popup's place and its page's size by their types", same([
+    [X.POPUP_AT.parse({ x: 1, y: 2, width: 3, height: 4, z: 5 }), { x: 1, y: 2, width: 3, height: 4 }], [X.POPUP_AT.safeParse({ x: 1 }).success, false],
+    [X.POPUP_SIZE.parse([320, 400]), [320, 400]], [X.POPUP_SIZE.safeParse([320]).success, false], [X.POPUP_SIZE.safeParse("320x400").success, false],
+  ]))
+}
+
 export default async ($: VaultTest) => {
-  for (const t of [sessionCookies, runSteps, passwordsConfig, passwordEdits, extensionPolicy, chromeHistory, darkColors]) await t($.check)
+  for (const t of [sessionCookies, runSteps, passwordsConfig, passwordEdits, extensionPolicy, chromeHistory, darkColors, cdpAnswers, pageMessages]) await t($.check)
 }

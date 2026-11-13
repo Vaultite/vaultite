@@ -218,10 +218,12 @@ export function emit(s: Session, name: string, args: unknown[], only?: string) {
 }
 export const emitAll = (name: string, args: unknown[]) => { for (const s of sessionsOf()) emit(s, name, args) }
 
+type TabChange = { status?: "loading" | "complete"; url?: string; title?: string; favIconUrl?: string; audible?: boolean }
+type Navigated = { url: string; frameId: number; parentFrameId: number; transitionType?: "link"; transitionQualifiers?: string[]; error?: string }
 /** A page's comings and goings, as tabs and webNavigation events. */
 export function watchPage(p: EnginePage) {
   const wc = p.wc, s = wc.session, id = wc.id
-  const updated = (change: Record<string, unknown>) => { if (!wc.isDestroyed()) emit(s, "tabs.onUpdated", [id, change, tabOf(p)]) }
+  const updated = (change: TabChange) => { if (!wc.isDestroyed()) emit(s, "tabs.onUpdated", [id, change, tabOf(p)]) }
   wc.on("did-start-loading", () => updated({ status: "loading" }))
   wc.on("did-stop-loading", () => updated({ status: "complete" }))
   wc.on("did-navigate", (_e, url) => updated({ url }))
@@ -231,7 +233,7 @@ export function watchPage(p: EnginePage) {
   wc.on("audio-state-changed", (e) => updated({ audible: e.audible }))
   wc.on("focus", () => setFront(p))
   const frameId = (main: boolean, pid: number, rid: number) => (main ? 0 : webFrameMain.fromId(pid, rid)?.frameTreeNodeId ?? -1)
-  const nav = (name: string, x: Record<string, unknown>) => emit(s, `webNavigation.${name}`, [{ tabId: id, processId: -1, timeStamp: Date.now(), ...x }])
+  const nav = (name: string, x: Navigated) => emit(s, `webNavigation.${name}`, [{ tabId: id, processId: -1, timeStamp: Date.now(), ...x }])
   wc.on("did-start-navigation", (d) => {
     if (d.isSameDocument) return
     nav("onBeforeNavigate", { url: d.url, frameId: d.isMainFrame ? 0 : d.frame?.frameTreeNodeId ?? -1, parentFrameId: d.isMainFrame ? -1 : 0 })
