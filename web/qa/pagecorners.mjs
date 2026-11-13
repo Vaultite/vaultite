@@ -1,6 +1,6 @@
 // Panes as cards in the desktop app (Electron), against a made-up page this script serves on 127.0.0.1: a web page's
-// corners follow its card's curve where it meets the card's corners (one radius: the bar shown, its top ones too), square
-// in flat panes and full screen; with its bar hidden, the gap above its card brings the bar as the page's top does
+// corners follow its card's curve only where it fills the card, square under a bar (its own, a split's tab bars), in flat
+// panes and full screen; with its bar hidden, the gap above its card brings the bar as the page's top does
 // (resting, not a quick pass; its pane's only, per pane in a split; not the tab bar), and right-clicked there has the
 // bar's switch.
 // WRITES: the throwaway vault only.
@@ -61,16 +61,16 @@ const near = (a, b) => Math.abs(a - b) <= 1
 const rounded = (l, on) => l.views.length === l.cards.length && l.views.length > 0 && l.views.every((v, i) => (on ? near(v.radius, l.cards[i].radius) && v.radius > 0 : v.radius === 0))
 const barOf = async (i = 0) => (await look()).cards[i]?.bar
 
-// ---------- cards, the bar shown: rounded, its foot at the card's ----------
+// ---------- cards, the bar shown: square under it, its foot at the card's ----------
 await appearance({ paneCards: true, tabBar: true, paneTabBars: true })
 await ui({ action: "open", path: `view:web/${SITE}/one`, newTab: true })
-check("cards, bar shown: the page rounded as its card", await until(async () => { const l = await look(); return rounded(l, true) && near(l.views[0].bottom, l.cards[0].bottom) }, 15000), await look())
+check("cards, bar shown: the page square under it, its foot at the card's", await until(async () => { const l = await look(); return rounded(l, false) && near(l.views[0].bottom, l.cards[0].bottom) }, 15000), await look())
 
 // ---------- flat: square ----------
 await appearance({ paneCards: false })
 check("flat panes: the page square, at once", await until(async () => rounded(await look(), false), 4000), await look())
 await appearance({ paneCards: true })
-check("… cards again: rounded again", await until(async () => rounded(await look(), true), 4000), await look())
+check("… cards again: square under its bar still", await until(async () => { const l = await look(); return rounded(l, false) && near(l.views[0].bottom, l.cards[0].bottom) }, 4000), await look())
 
 // ---------- the bar hidden: the page fills its card, rounded ----------
 await setting({ pageBar: "hidden" })
@@ -136,9 +136,9 @@ check("the gap's right-click: the pane's top's menu, Always show page bar last",
 await win.keyboard.press("Escape")
 await away()
 
-// ---------- a split: each page rounded, each gap its own pane's ----------
+// ---------- a split: each page square under its tab bar, each gap its own pane's ----------
 await ui({ action: "open", path: `view:web/${SITE}/two`, split: "right" })
-check("split: both pages rounded as their cards", await until(async () => { const l = await look(); return l.views.length === 2 && rounded(l, true) }, 15000), await look())
+check("split: both pages square under their tab bars", await until(async () => { const l = await look(); return l.views.length === 2 && rounded(l, false) && l.views.every((v, i) => v.top > l.cards[i].top + 1) }, 15000), await look())
 const gaps = win.locator("[data-pane-gap]:visible")
 check("… a gap above each", await until(async () => (await gaps.count()) === 2, 3000), await gaps.count())
 const right = await gaps.nth(1).boundingBox()
@@ -167,7 +167,7 @@ await app.evaluate(({ BaseWindow }) => {
   const w = BaseWindow.getAllWindows()[0]
   for (const c of w.contentView.children) if (c.webContents && c.webContents !== w.webContents) void c.webContents.executeJavaScript("document.fullscreenElement && document.exitFullscreen()", true).catch(() => {})
 })
-check("… back in its card: rounded again", await until(async () => { const l = await look(); return l.views.length === 2 && rounded(l, true) }, 8000), await look())
+check("… back in its card: square under its tab bar again", await until(async () => { const l = await look(); return l.views.length === 2 && rounded(l, false) && l.views.every((v, i) => v.top > l.cards[i].top + 1) }, 8000), await look())
 
 await setting({ pageBar: null })
 await app.close()
