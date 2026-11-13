@@ -1,4 +1,4 @@
-// A ```query block (components/QueryResults.tsx, components/SearchHits.tsx) and pinned commands (core/palettepins.ts,
+// A ```query block (pages/QueryResults.tsx, pages/SearchHits.tsx) and pinned commands (core/palettepins.ts,
 // components/CommandPalette.tsx). WRITES "Qa query/", palette.json: throwaway server.   node web/qa/querypins.mjs <base>
 import { mkdirSync } from "node:fs"
 import { SHOTS, apiAt, qa, until } from "./lib/qa.mjs"

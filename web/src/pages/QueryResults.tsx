@@ -7,7 +7,7 @@ import { trackSoon } from "@/core/unsaved"
 import { useStateFor } from "@/core/statefor"
 import { errorText } from "@/core/notify"
 import { Panel } from "@/components/kit"
-import { SearchHits, type Found, type Match } from "@/components/SearchHits"
+import { SearchHits, type Found, type Match } from "@/pages/SearchHits"
 import { plural } from "@/lib/utils"
 import { FENCE_FILES, FENCE_LINES, fenceQuery, highlighter, parse, type Node } from "../../../core/searchquery.ts"
 
