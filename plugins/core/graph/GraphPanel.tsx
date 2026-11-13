@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
-import { GripVertical, Plus, X, type LucideIcon } from "lucide-react"
+import { GripVertical, Plus, X } from "lucide-react"
 import { capitalize, CHIP_TINTS, cn, Foldable, menuBelow, Segmented, SortableList, Switch, useQuerySuggest, type MenuItem } from "@vaultite"
 import { PALETTE, tokenOf, type ColorGroup } from "./graph"
 import type { Look } from "./GraphCanvas"
@@ -10,10 +10,11 @@ type Flag = { [K in keyof Settings]-?: Settings[K] extends boolean | undefined ?
 export const Swatch = ({ tok, className }: { tok: string; className?: string }) => (
   <span className={cn("size-2.5 shrink-0 rounded-full", className)} style={{ background: `var(${tok})` }} aria-hidden />
 )
-const swatches = new Map<string, LucideIcon>()
+type MenuIcon = NonNullable<MenuItem["icon"]>
+const swatches = new Map<string, MenuIcon>()
 const swatchIcon = (tok: string) => {
   let I = swatches.get(tok)
-  if (!I) swatches.set(tok, I = (({ className }: { className?: string }) => <span className={cn(className, "grid place-items-center")}><Swatch tok={tok} className="size-3" /></span>) as unknown as LucideIcon)
+  if (!I) swatches.set(tok, I = ({ className }) => <span className={cn(className, "grid place-items-center")}><Swatch tok={tok} className="size-3" /></span>)
   return I
 }
 export const colourItems = (now: string | null, pick: (color: string) => void): MenuItem[] =>
