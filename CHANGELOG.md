@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A terminal whose screen had to start over shows its program again**: when its screen couldn't read some output and
+  started again blank, an agent done with its turn left the terminal blank with only a cursor; its program now redraws it.
 - **"Sign in with Google" buttons open their sign-in popup in the built-in browser**: a press on one did nothing, as
   pages were offered FedCM with no account chooser and Google's button frame was told a different browser than its site.
 - **The Mac's traffic lights and the sidebar button sit at the window's top again**: with panes as cards and the left

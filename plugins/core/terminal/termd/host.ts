@@ -20,6 +20,7 @@ const HOLD = 1 << 20
 /** node-pty gives a burst in small reads, and a message each would cost every hop more than the bytes: while output
  *  pours it goes on every BATCH ms, and at once in the TYPING ms after input (echoes). */
 const BATCH = 4, TYPING = 100
+const REDRAW_APART_MS = 150
 
 fixHelper()
 
@@ -94,6 +95,7 @@ export class Session {
   said: Said = { seen: false, status: null }
   private told?: ReturnType<typeof setTimeout>
   private ending = false
+  private redrawing = false
   private kitty: KittyFeed
 
   constructor(h: Around, x: { id: string; driver: Driver; shell: string; cwd: string; command: string; cols: number; rows: number; scrollback: number; spare: boolean
@@ -111,7 +113,17 @@ export class Session {
     return new Screen({ cols, rows, scrollback,
       onTitle: (t) => { if (t === this.title) return; this.title = t; if (!this.spare) this.h.emit({ type: "title", id: this.id, title: t }) },
       onReply: (d) => { if (!this.attached.size && !this.exit) this.driver.write(d) },
-      onTrouble: (text) => { this.h.log("screen", this.id, text); if (!this.spare) this.h.trouble?.(this.id, text) } })
+      onTrouble: (text) => { this.h.log("screen", this.id, text); if (!this.spare) this.h.trouble?.(this.id, text) },
+      onBlank: () => this.redraw() })
+  }
+
+  // An idle program (an agent done with its turn) draws nothing more: a width changed and put back makes it (SIGWINCH).
+  redraw() {
+    if (this.exit || this.redrawing) return
+    this.redrawing = true
+    const { cols, rows } = this.term
+    this.driver.resize(cols > 2 ? cols - 1 : cols + 1, rows)
+    setTimeout(() => { this.redrawing = false; if (!this.exit) this.driver.resize(this.term.cols, this.term.rows) }, REDRAW_APART_MS).unref()
   }
 
   info(): Info {
@@ -191,7 +203,7 @@ export class Session {
       if (h && --h.snapshots <= 0) { c.held = undefined; for (const d of h.data) c.send({ t: "data", d }) }
       this.hold()
     }
-    this.term.snapshot().then(done, (e: Error) => { this.h.log("snapshot", this.id, "failed:", e.message); done("") })
+    this.term.snapshot().then(done, (e: Error) => { this.h.log("snapshot", this.id, "failed:", e.message); done(""); this.redraw() })
   }
 }
 

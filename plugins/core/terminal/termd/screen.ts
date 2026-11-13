@@ -10,6 +10,7 @@ export type ScreenOptions = {
   onTitle?(title: string): void
   onReply?(data: string): void
   onTrouble?(text: string): void
+  onBlank?(): void
 }
 
 type Waiting = { n: number; at: number; bytes: number; ok?: (v: never) => void; fail?: (e: Error) => void }
@@ -60,7 +61,7 @@ export class Screen {
     if (m.title !== undefined) this.o.onTitle?.(m.title)
     if (m.reply) this.o.onReply?.(m.reply)
     const failed = (m.out as { failed?: string } | undefined)?.failed
-    if (failed && !x.ok) this.o.onTrouble?.(`libghostty-vt failed on its output (${failed}): a blank screen from here`)
+    if (failed && !x.ok) { this.o.onTrouble?.(`libghostty-vt failed on its output (${failed}): started again blank`); this.o.onBlank?.() }
     if (m.error) x.fail?.(new Error(m.error)); else x.ok?.(m.out as never)
   }
 
@@ -106,6 +107,7 @@ export class Screen {
     } else {
       this.start()
       this.o.onTrouble?.(`${why}: started again blank (its program and the pages showing it carry on)`)
+      this.o.onBlank?.()
     }
     for (const x of pending) x.fail?.(new Error(`${why}: started again blank`))
   }
