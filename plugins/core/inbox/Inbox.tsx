@@ -1,5 +1,3 @@
-// The Inbox drawn (header button, panel, tab, block): the lists of threads.ts, snoozed and done folded away on the page.
-// Reading only makes a row plain: a thread leaves once it's done.
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react"
 import {
   AlarmClockOff, Bell, CalendarClock, Check, CheckCheck, ChevronRight, CircleAlert, CircleCheck, Clock, ExternalLink, FileText, FolderInput, Globe, Inbox as InboxIcon, ListTodo, Mail, MailOpen,
@@ -20,13 +18,9 @@ import { DraftTag, ReplyBox } from "./Reply"
 import { acceptAll, DecisionRow, keepDefault } from "./DecisionRows"
 
 const waiting = (r: InboxItem) => reviewing(r) && !snoozed(r.snoozed)
-/** The inbox's lists now (threads.ts), from the events and the store's results. */
 const listsOf = (store: Store, events = getEvents().events, fresh?: ReadonlySet<string>) => lists(events, store.inbox ?? [], fresh)
-/** The results waiting for review, newest first (one whose snooze just ended on top): not a thread's report, which its
- *  thread stands for. */
 export const toReview = (store: Store): InboxItem[] => { const l = listsOf(store); return [...l.pinned.results, ...l.review] }
 
-/** Draw again when the next snooze ends, so what comes back shows (and counts) right then. */
 export function useBack(store: Store) {
   const { events } = useEvents()
   const [, redraw] = useState(0)
@@ -39,7 +33,6 @@ export function useBack(store: Store) {
   }, [next])
 }
 
-/** What the badge counts: what needs the user (sessions, asks) and results to review; reading doesn't change it. */
 export function useCount(store: Store) {
   useBack(store)
   return countOf(listsOf(store, useEvents().events))
@@ -47,31 +40,23 @@ export function useCount(store: Store) {
 
 export const openInbox = () => openView("inbox", { newTab: !isViewOpen("view:inbox") })
 
-
-/** At most `max` rows of `rest` after `first` (which always show), "Show N more" for the others (per list, not saved). */
 function useCap<T>(first: T[], rest: T[], max: number) {
   const [all, setAll] = useState(false)
   const room = Math.max(0, max - first.length)
   return { shown: all ? rest : rest.slice(0, room), more: Math.max(0, rest.length - room), all, toggle: () => setAll(!all) }
 }
 
-// ---------- the keyboard: Gmail's keys on the row it's on (index.tsx's commands)
-
-/** The Inbox's row the keyboard is on: its element (with its selection key), or null. */
 function keyedRow() {
   const row = currentRow()?.closest<HTMLElement>("[data-select-key]")
   return row?.closest(`[data-select-list="${SELECT}"]`) ? row : null
 }
-/** The keyboard is on an Inbox row, or in the Inbox page (where J and K find its first row). */
 export const keysOnInbox = () => !!keyedRow() || (focusedTarget() === "view:inbox" && !typingIn(document.activeElement) && !document.activeElement?.closest("[data-sidebar-body]"))
-/** Its rows in sight, in order: the page's or the panel's, whichever the keyboard is in. */
 const rowsAround = (from: Element | null) => {
   const scope = from?.closest(`[data-select-list="${SELECT}"]`) ?? document.querySelector(`[data-inbox-view] [data-select-list="${SELECT}"]`)
   return scope ? [...scope.querySelectorAll<HTMLElement>("[data-select-key]")].filter((r) => r.getClientRects().length > 0 && !!keyOf(r)) : []
 }
 const keyOf = (row: HTMLElement) => (row.matches("[data-keyrow]") ? row : row.querySelector<HTMLElement>("[data-keyrow]"))
 
-/** Move down (1) or up (-1) the rows; off them, to the first. */
 export function stepRow(by: 1 | -1) {
   if (keyedRow()) return moveInList(by)
   const first = rowsAround(null)[0]
@@ -79,8 +64,6 @@ export function stepRow(by: 1 | -1) {
   return true
 }
 
-/** Do `act` to the row the keyboard is on (by its selection key), then put the keyboard on the row after it, as Gmail
- *  does once one is archived (the one before, when it was the last). */
 function onRow(act: (key: string, row: HTMLElement) => void, leaves = true) {
   const row = keyedRow()
   if (!row) return
@@ -89,7 +72,6 @@ function onRow(act: (key: string, row: HTMLElement) => void, leaves = true) {
   const next = leaves ? (rows[i + 1] ?? rows[i - 1])?.dataset.selectKey : undefined
   act(key, row)
   if (!next) return
-  // (in the list it was pressed in: the panel's, the page's or a block's)
   requestAnimationFrame(() => {
     const to = list?.querySelector<HTMLElement>(`[data-select-key="${CSS.escape(next)}"]`)
     if (to) keyOf(to)?.focus({ preventScroll: true })
@@ -98,37 +80,28 @@ function onRow(act: (key: string, row: HTMLElement) => void, leaves = true) {
 const resultOf = (key: string) => (getStore()?.inbox ?? []).find((r) => resultKey(r) === key)
 const eventOf = (key: string) => getEvents().events.find((e) => eventKey(e) === key)
 
-/** E: done with it (a result archived, a thread or an event done); one done already comes back. */
 export const doneByKey = () => onRow((key) => {
   const r = resultOf(key), e = eventOf(key)
   haptic("medium")
   if (r) void (reviewing(r) ? markDone(r) : reopen(r))
   else if (e) markManyEventsDone([e], e.state !== "done")
 })
-/** B: the Snooze choices under the row (what's snoozed: Wake). */
 export const snoozeByKey = () => onRow((key, row) => {
   const r = resultOf(key), e = eventOf(key)
   if (r ? snoozed(r.snoozed) : e ? snoozed(e.snoozed) : false) return snoozeKeys([key], null)
   if (r ? waiting(r) : e ? snoozable(e) : false) snoozeAtRow([key])(row.getBoundingClientRect())
 }, false)
-/** R: a session's row unfolds its reply box (Reply), the keyboard in it. */
 export const replyByKey = () => onRow((_, row) => row.querySelector<HTMLButtonElement>("[data-row-reply-button]")?.click(), false)
-// In a session's sheet the same keys act on it, as Gmail's do on the conversation open: J and K go to the next or
-// previous session's sheet in the inbox's order.
 
-/** The session sheet in sight, while nothing's typed in: its thread's id. */
 function sheetOn() {
   const s = [...document.querySelectorAll<HTMLElement>("[data-session-sheet]")].find((x) => x.getClientRects().length > 0)
   return s && !typingIn(document.activeElement) ? s : null
 }
-/** The keys work on a row of the Inbox, or in a session's sheet. */
 export const keysOnThreads = () => !!sheetOn() || keysOnInbox()
-/** A key's command: on the sheet if one's open, else on the row. */
 export const byKey = (row: () => unknown, sheet: (s: HTMLElement, id: string) => unknown) => () => {
   const s = sheetOn()
   return s ? sheet(s, s.dataset.sessionSheet!) : row()
 }
-/** J and K in a sheet: the next or previous session's, in the inbox's order (the first, from one that's left it). */
 export function stepSheet(id: string, by: 1 | -1) {
   const all = sessionsInOrder()
   const i = all.findIndex((e) => e.id === id)
@@ -139,42 +112,31 @@ const sessionsInOrder = (working = true) => {
   const l = listsOf(getStore() ?? ({} as Store))
   return [...l.pinned.events, ...l.needs, ...(working ? l.working : []), ...l.messages].filter((e) => e.kind === "session")
 }
-/** A session's sheet settled or snoozed: the next one that needs you takes its place (as T3 Code and Mail go on), the
- *  one before when it was the last; none, the sheet closes. */
 export function leaveSheet(id: string) {
   const all = sessionsInOrder(false), i = all.findIndex((e) => e.id === id)
   const to = i < 0 ? undefined : all[i + 1] ?? all[i - 1]
   if (to) replaceDetail(detailPath(SESSION_DETAIL, to.id)); else backDetail()
 }
-/** What a key presses in a sheet: its own button for it, so the sheet does what a click does. */
 export const press = (s: HTMLElement, sel: string) => s.querySelector<HTMLElement>(sel)?.click()
 
-/** P: pin it on top, or unpin it. */
 export const pinByKey = () => onRow((key) => {
   const r = resultOf(key), e = eventOf(key)
   pinKeys([key], !(r?.pinned ?? e?.pinned))
 }, false)
-/** Shift+I and Shift+U: read or unread, the selected rows or the keyboard's. */
 export const readByKey = (read: boolean) => onRow((key) => {
   const e = eventOf(key)
   if (!e) return
   if (read) markRead([e.id]); else markUnread([e.id])
 }, false)
 
-// ---------- results: what a row can do
-
 const pathOf = (r: InboxItem) => `${r.id}.md`
 
-/** Change a result's fields, on screen at once; it answers the result as it is now (done moves it into Inbox/.archive/:
- *  a new id). */
 function change(r: InboxItem, fields: Record<string, unknown>): Promise<InboxItem> {
   const now = { ...fields, ...("status" in fields ? { archived: fields.status === "done", ...(fields.status === "done" ? { pinned: undefined } : {}) } : {}) }
-  return optimistic((s) => ({ ...s, inbox: (s.inbox ?? []).map((x) => (x.id === r.id ? { ...x, ...now } as InboxItem : x)) }),
+  return optimistic((s) => ({ ...s, inbox: (s.inbox ?? []).map((x) => (x.id === r.id ? { ...x, ...now } : x)) }),
     () => put<InboxItem | null>(`inbox/${encodeURIComponent(r.id)}`, fields).then((out) => out ?? r), "Couldn't change it")
 }
 
-/** Done: out of the way, into Inbox/.archive/ (the server makes done archived), and out of its tabs (leaveTabs). Undo
- *  brings it back, into the tab it was read in. */
 export function markDone(r: InboxItem, done = true) {
   const reading = done && leaveTabs([r])
   const now = change(r, { status: done ? "done" : "new" })
@@ -185,8 +147,6 @@ export function markDone(r: InboxItem, done = true) {
   return now
 }
 
-/** Results leaving the inbox leave their tabs (not followed into the archive): the one read shows the next, as Mail
- *  does (none left: it closes, back to its opener); others close; pinned tabs stay. Whether one was being read. */
 function leaveTabs(going: InboxItem[]) {
   const targets = going.map((r) => `file:${pathOf(r)}`), cur = activePane()
   const reading = !paneTab(cur.id)?.pinned && going.find((r) => cur.to === `file:${pathOf(r)}`)
@@ -201,25 +161,19 @@ function leaveTabs(going: InboxItem[]) {
   return !!reading
 }
 
-/** The result after `r` in what's to review (the one before, when it's the last), not one of `going` too. */
 function nextToReview(r: InboxItem, going: InboxItem[] = [r]) {
   const all = toReview(getStore() ?? ({} as Store)), i = all.findIndex((x) => x.id === r.id)
   const list = all.filter((x) => x === r || !going.some((g) => g.id === x.id)), j = list.indexOf(all[i])
   return i < 0 ? undefined : list[j + 1] ?? list[j - 1]
 }
 
-/** File it into another folder: it's no longer an inbox item there (its `type` and `status` go), then it moves (Undo). */
 export function fileTo(r: InboxItem) {
   const p = pathOf(r)
   askMove(p, { before: () => unInbox(p) })
 }
 const unInbox = async (p: string) => { await setProperty(p, "status", undefined); await setProperty(p, "type", undefined) }
 
-// ---------- an item where it's open: its tab's buttons on hover and its file bar, Settle and Snooze (Wake)
-
-/** The result to review at a vault path, if it's one. */
 const resultAtPath = (path: string) => (getStore()?.inbox ?? []).find((r) => pathOf(r) === path && reviewing(r))
-/** What's done with a result where it's open: Settle, then Snooze (or Wake), as its row's buttons. */
 export function itemButtons(r: InboxItem): TabButton[] {
   const key = resultKey(r)
   return [
@@ -227,12 +181,9 @@ export function itemButtons(r: InboxItem): TabButton[] {
     snoozed(r.snoozed) ? { icon: AlarmClockOff, label: "Wake", run: () => snoozeKeys([key], null) } : { icon: Clock, label: "Snooze", run: snoozeBelow([key]) },
   ]
 }
-/** A tab showing a result to review: its buttons (tabButtons). */
 export const tabButtonsOf = (to: string) => { const r = to.startsWith("file:") ? resultAtPath(to.slice(5)) : undefined; return r ? itemButtons(r) : null }
 
-/** In a result's file bar (a phone's line above its title): Settle and Snooze. */
 export function ItemBar({ file }: { file: FileHead & { place: "bar" | "line" } }) {
-  // (its result only: every note changed elsewhere would redraw it)
   const r = useStoreWith((s) => s?.inbox?.find((x) => pathOf(x) === file.path && reviewing(x)))
   if (!r) return null
   const bar = file.place === "bar"
@@ -250,10 +201,6 @@ export function ItemBar({ file }: { file: FileHead & { place: "bar" | "line" } }
   )
 }
 
-// ---------- snooze: out of the way until a time, then back on top (the server wakes it, and tells the phone)
-
-/** Snooze results and events (by selection key) till `at`, or bring them back now (null: their snooze ends now, so
- *  they're on top); their tabs go as Settle's do. Undo puts each as it was. */
 export function snoozeKeys(keys: string[], at: Date | null) {
   const results = (getStore()?.inbox ?? []).filter((r) => keys.includes(resultKey(r)) && reviewing(r))
   const evs = getEvents().events.filter((e) => keys.includes(eventKey(e)) && (at ? snoozable(e) : !!e.snoozed))
@@ -270,18 +217,14 @@ export function snoozeKeys(keys: string[], at: Date | null) {
   } } })
 }
 
-/** The Snooze ▸ choices for these keys, then Pick a time… (a sheet); `then` runs first, while they're still here. */
 export const snoozeItems = (keys: string[], then?: () => void): MenuItem[] => [
-  // (its time, without the day its name says)
   ...choices().map((c) => ({ label: c.label, hint: whenText(c.at).replace(/^Tomorrow /, ""), run: () => { then?.(); snoozeKeys(keys, c.at) } })),
   { label: "Pick a time…", icon: CalendarClock, sep: true, run: () => openDetail(detailPath(SNOOZE_DETAIL, ...keys)) },
 ]
 const snoozeMenu = (keys: string[], icon = true): MenuItem => ({ label: "Snooze", ...(icon ? { icon: Clock } : {}), run: () => {}, items: snoozeItems(keys) })
-/** The choices as a menu under a button, or under a swiped row. */
 export const snoozeBelow = (keys: string[], then?: () => void) => (e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); menuBelow(e, snoozeItems(keys, then)) }
 const snoozeAtRow = (keys: string[]) => (row?: DOMRect) => openMenu({ x: row ? row.left + 16 : 16, y: row ? row.bottom + 4 : innerHeight / 3, flip: row ? row.top - 4 : undefined }, snoozeItems(keys))
 
-/** The sheet's own time (Pick a time…): any time to come, tomorrow morning to start. */
 export const SNOOZE_DETAIL = "inbox-snooze"
 export function SnoozeSheet({ keys }: { keys: string[] }) {
   const tomorrow = choices().find((c) => c.key === "tomorrow")!.at
@@ -299,9 +242,6 @@ export function SnoozeSheet({ keys }: { keys: string[] }) {
   )
 }
 
-// ---------- pin: kept on top whatever it waits on, till it's done or unpinned
-
-/** Pin results and events (by selection key), or unpin them: one toast, its Undo for all. */
 export function pinKeys(keys: string[], on: boolean) {
   const results = (getStore()?.inbox ?? []).filter((r) => keys.includes(resultKey(r)) && reviewing(r) && !!r.pinned !== on)
   const evs = getEvents().events.filter((e) => keys.includes(eventKey(e)) && e.state !== "done" && !!e.pinned !== on)
@@ -319,24 +259,18 @@ const pinItem = (keys: string[], pinned: boolean): MenuItem => pinned
   ? { label: "Unpin", icon: PinOff, run: () => pinKeys(keys, false) }
   : { label: "Pin", icon: Pin, run: () => pinKeys(keys, true) }
 
-// ---------- several at once (selected together: ⌘- or ⇧-click, a phone's Select)
-
-/** The Inbox's selection: results as `r:<id>`, events as `e:<id>`, wherever the Inbox is drawn. */
 const SELECT = "inbox"
 const resultKey = (r: InboxItem) => `r:${r.id}`, eventKey = (e: InboxEvent) => `e:${e.id}`
 
-/** Done (or back to review) for several: one toast, its Undo for all of them. */
 async function markManyDone(list: InboxItem[], done = true, pinned: boolean[] = []) {
   if (done) leaveTabs(list)
   const all = await Promise.allSettled(list.map((r, i) => change(r, { status: done ? "done" : "new", ...(done ? {} : { archived: false, ...(pinned[i] ? { pinned: true } : {}) }) })))
   const ok = list.flatMap((was, i) => { const x = all[i]; return x.status === "fulfilled" ? [{ was, now: x.value }] : [] })
   const now = ok.map((x) => x.now)
-  // (Undo of a settle pins again what was pinned)
   if (now.length) notify(done ? `Settled ${plural(now.length, "result")}` : `Put back ${plural(now.length, "result")} to review`,
     { action: { label: "Undo", run: () => void markManyDone(now, !done, done ? ok.map((x) => !!x.was.pinned) : []) } })
 }
 
-/** Done (or back in the inbox) for several events: one toast, its Undo for all of them. */
 function markManyEventsDone(evs: InboxEvent[], done = true) {
   if (!evs.length) return
   void markEventsDone(evs.map((e) => e.id), done)
@@ -344,7 +278,6 @@ function markManyEventsDone(evs: InboxEvent[], done = true) {
     { action: { label: "Undo", run: () => void (done ? unsettle(evs) : markEventsDone(evs.map((e) => e.id), true)) } })
 }
 
-/** What the selected rows can do: each item only for the kind it's about (results, events), on all of them. */
 function selectionItems(store: Store, keys: string[]): MenuItem[] {
   const all = store.inbox ?? [], { events } = getEvents()
   const results = all.filter((r) => keys.includes(resultKey(r)))
@@ -354,7 +287,6 @@ function selectionItems(store: Store, keys: string[]): MenuItem[] {
   const out: MenuItem[] = []
   if (fresh.length || live.length) out.push({ label: "Settle", icon: Check, run: () => { if (fresh.length) void markManyDone(fresh); markManyEventsDone(live) } })
   if (fresh.length) out.push({ label: "File to…", icon: FolderInput, run: () => askMoveMany(fresh.map(pathOf), { before: unInbox }) })
-  // (what's snoozed is in the Snoozed list: picked there, it comes back)
   const later = [...results.filter((r) => reviewing(r) && snoozed(r.snoozed)).map(resultKey), ...live.filter((e) => snoozed(e.snoozed)).map(eventKey)]
   const soon = [...fresh.map(resultKey), ...live.filter((e) => snoozable(e) && !snoozed(e.snoozed)).map(eventKey)]
   const pinnable = [...fresh, ...results.filter((r) => reviewing(r) && snoozed(r.snoozed))], unpinned = [...pinnable.filter((r) => !r.pinned).map(resultKey), ...live.filter((e) => !e.pinned).map(eventKey)]
@@ -369,13 +301,10 @@ function selectionItems(store: Store, keys: string[]): MenuItem[] {
   if (gone.length) out.push({ label: "Delete", icon: Trash2, sep: true, run: () => gone.forEach((e) => forget(e.id)) })
   return out
 }
-/** Make the Inbox's rows selectable here (the panel, the page, the block). */
 function useInboxSelect(store: Store) {
   useSelectable(SELECT, { menu: (keys) => selectionItems(store, keys), noun: ["item", "items"] })
 }
 
-/** Phones: a row swiped sideways shows what's done with it most (SwipeRow), Mail's way: Settle at the edge, then
- *  Snooze, then More (its menu); back to review, Back. The same order as a row's buttons on hover. */
 const moreAt = (items: () => MenuItem[]) => (row?: DOMRect) => openMenu({ x: row ? row.right - 16 : 16, y: row ? row.bottom + 4 : innerHeight / 3, flip: row ? row.top - 4 : undefined }, items())
 const resultSwipe = (r: InboxItem): SwipeAction[] => waiting(r)
   ? [{ label: "More", icon: MoreHorizontal, run: moreAt(() => resultItems(r)) }, { label: "Snooze", icon: Clock, run: snoozeAtRow([resultKey(r)]) },
@@ -393,7 +322,6 @@ const eventSwipe = (e: InboxEvent, reply?: SwipeAction): SwipeAction[] => e.stat
     { label: "Settle", icon: Check, run: () => markManyEventsDone([e]), removes: true },
   ]
 
-// (then what other plugins do with a file, like Dispatch's agents)
 const resultItems = (r: InboxItem): MenuItem[] => [
   { label: "Open", icon: FileText, run: () => openFile(pathOf(r)) },
   ...(r.source && /^https?:/.test(r.source) ? [{ label: "Open the page", icon: Globe, run: () => openWebLink(r.source!) }] : []),
@@ -407,15 +335,11 @@ function moreMenu(e: MouseEvent, r: InboxItem) {
   menuBelow(e, resultItems(r))
 }
 
-/** A result dealt with, back to review: new, and out of the archive. */
 const reopen = (r: InboxItem) => change(r, { status: "new", archived: false })
 const settledItems = (r: InboxItem): MenuItem[] => [resultItems(r)[0], { label: "Back to review", icon: RotateCcw, sep: true, run: () => void reopen(r) }]
 
-/** A result's right-click: Done, then what its … button has. */
 const resultItemsMenu = (r: InboxItem) => () => [{ label: "Settle", icon: Check, run: () => markDone(r) }, { ...resultItems(r)[0], sep: true }, ...resultItems(r).slice(1)]
 
-/** An event's right-click. `shownNew`: drawn as new (unread, or still new on the Inbox page); `touched`: the user read
- *  or unread it here (the page stops drawing it as new). */
 const eventItems = (e: InboxEvent, shownNew: boolean, touched?: (id: string) => void) => (): MenuItem[] => [
   ...(targetOf(e) ? [{ label: "Open", icon: ExternalLink, run: () => { openEvent(e); touched?.(e.id) } }] : []),
   ...(e.from ? [{ label: "Go to session", icon: SquareTerminal, run: () => openAsker(e) }] : []),
@@ -430,10 +354,7 @@ const eventItems = (e: InboxEvent, shownNew: boolean, touched?: (id: string) => 
   ...(e.state === "done" ? [{ label: "Delete", icon: Trash2, run: () => void forget(e.id) }] : []),
 ]
 
-/** A row's line: a working session's latest progress, else its body as one plain line. */
 const lineOf = (e: InboxEvent) => (e.state === "working" && e.progress) || e.preview || (e.body ? snippet(e.body) : "")
-
-// ---------- decisions: their rows (Decisions.tsx), with the Inbox's snooze and selection
 
 const decisionItems = (r: InboxItem): MenuItem[] => [
   { label: "Open", icon: FileText, run: () => openFile(pathOf(r)) },
@@ -445,7 +366,6 @@ const decisionSwipe = (r: InboxItem): SwipeAction[] => snoozed(r.snoozed)
   : [{ label: "Snooze", icon: Clock, run: snoozeAtRow([resultKey(r)]) }, ...(r.default ? [{ label: "Keep default", icon: Check, run: () => void keepDefault(r), removes: true }] : [])]
 const decisionSnooze = (r: InboxItem) => snoozeMenu([resultKey(r)])
 
-/** The decisions on the page: the ones an agent waits on, then the ones it went with a default for, and Accept all. */
 function DecisionsSection({ rows, max }: { rows: InboxItem[]; max: number }) {
   const waits = rows.filter((r) => r.blocking), kept = rows.filter((r) => !r.blocking)
   const { shown, more, all, toggle } = useCap(waits, kept, max)
@@ -468,7 +388,6 @@ function DecisionsSection({ rows, max }: { rows: InboxItem[]; max: number }) {
   )
 }
 
-/** The day's reports, folded at the bottom: one line each, its TL;DR; the whole report a click away. */
 function Reports({ store }: { store: Store }) {
   const rs = listsOf(store, useEvents().events).reports
   return (
@@ -488,17 +407,13 @@ function Reports({ store }: { store: Store }) {
   )
 }
 
-/** What a reply to it is kept under (drafts.ts): its id, the thread's, whether it links its report or not. */
 const draftKey = (e: InboxEvent) => e.id
 
 const host = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, "") } catch { return "" } }
 
-// ---------- events: how one looks
-
 const KIND_ICON: Record<string, typeof Bell> = { done: CircleCheck, waiting: MessageCircleQuestion, error: CircleAlert }
 const KIND_TINT: Record<string, string> = { done: "var(--green)", waiting: "var(--orange)", error: "var(--red)" }
 
-/** An event's icon: its agent's, else its kind's (a session's by where it stands), a dot while it's unread. */
 function EventIcon({ e, className }: { e: InboxEvent; className: string }) {
   const a = agentOf(e, useAgents())
   const kind = e.kind === "session" ? (e.state === "done" ? "done" : e.ask === "error" ? "error" : "waiting") : e.kind
@@ -510,16 +425,12 @@ function EventIcon({ e, className }: { e: InboxEvent; className: string }) {
   )
 }
 
-/** Where a thread stands, in a word or two before its line: why it needs you, or that its agent is on it. */
 const WHY: Record<string, string> = { permission: "Asks permission", question: "Asks you", auth: "Sign in", plan: "Plan to approve", report: "Report", error: "Failed" }
 const standing = (e: InboxEvent) => (e.state === "working" ? "Working on it" : e.state === "open" && e.kind !== "info" ? WHY[e.ask ?? ""] ?? "" : "")
 
 const iconButton = "grid size-6 shrink-0 cursor-pointer place-items-center rounded-[5px] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground max-md:size-9"
 
-// ---------- the button in the sidebar's header
-
 const PANEL = "inbox:inbox"
-/** The Inbox panel is in a sidebar: its icon (folded) or its list (open) says what's new, so the button isn't needed. */
 const usePanelShown = () => { const s = useSidebars(); return s.left.includes(PANEL) || s.right.includes(PANEL) }
 
 export function InboxButton({ store, open, phone }: SidebarCtx) {
@@ -541,9 +452,6 @@ export function InboxButton({ store, open, phone }: SidebarCtx) {
   )
 }
 
-// ---------- the sidebar panel
-
-/** The panel's icon in the folded sidebar's rail: a dot while something's new. */
 export function InboxRailIcon({ className, strokeWidth }: { className?: string; strokeWidth?: number }) {
   const { store } = useStore()
   const n = useCount(store ?? ({} as Store))
@@ -552,7 +460,6 @@ export function InboxRailIcon({ className, strokeWidth }: { className?: string; 
 
 function PanelRow({ icon, label, tag, time, active, dim, select, swipe, onClick, onContextMenu, children, ...rest }: {
   icon: ReactNode; label: string; tag?: ReactNode; time?: string; active?: boolean; dim?: boolean; onClick: () => void; onContextMenu?: (e: MouseEvent) => void; children?: ReactNode
-  /** Its key in the Inbox's selection; `swipe`: what a phone's swipe shows. */
   select: string; swipe: () => SwipeAction[]
 } & Record<`data-${string}`, string | undefined>) {
   const picked = useSelected(SELECT, select)
@@ -565,7 +472,6 @@ function PanelRow({ icon, label, tag, time, active, dim, select, swipe, onClick,
         {icon}
         <span className="min-w-0 flex-1 truncate">{label}</span>
         {tag}
-        {/* (its buttons take the time's place on hover, both kept in one cell so the label doesn't move) */}
         {(time || children) && (
           <span className="grid shrink-0 items-center justify-items-end [&>*]:[grid-area:1/1]">
             {time && <span className={cn("text-[11px] text-tertiary tabular-nums", children && "group-hover/row:invisible")}>{time}</span>}
@@ -582,11 +488,8 @@ const stop = (fn: () => void) => (e: MouseEvent) => { e.preventDefault(); e.stop
 const answer = (e: InboxEvent, a: "approve" | "deny") => (haptic("medium"), answerAsk(e, a)).then(
   () => notify(a === "approve" ? "Approved" : "Denied"), (err) => notifyError(err, "Couldn't answer it"))
 
-/** A row shows all of what it asks: one short line. */
 const shownWhole = (e: InboxEvent) => !e.body || (e.body.length <= 80 && !e.body.includes("\n"))
 
-/** Approve and Deny, on a permission not answered yet (the server's, or an agent's in a terminal). Approve answers at once
- *  only when the row shows the whole request; else it opens it. */
 function GateButtons({ e, className, size }: { e: InboxEvent; className: string; size: string }) {
   if (!answerable(e)) return null
   return <>
@@ -598,8 +501,6 @@ function GateButtons({ e, className, size }: { e: InboxEvent; className: string;
 }
 export const gateTitle = (id: string) => getEvents().events.find((e) => e.id === id)?.title ?? "Asks for your yes"
 
-/** A permission the server waits on, in a sheet: who asks (the session, and Go to session), what it asks to run, whole,
- *  in a box that scrolls, and the answer. */
 export function GateSheet({ id }: { id: string }) {
   const { events } = useEvents()
   const e = events.find((x) => x.id === id)
@@ -624,7 +525,6 @@ export function GateSheet({ id }: { id: string }) {
   )
 }
 
-/** The row that unfolds (or folds back) the rest. */
 function FoldButton({ more, all, toggle, className }: { more: number; all: boolean; toggle: () => void; className: string }) {
   if (!more && !all) return null
   return (
@@ -640,7 +540,6 @@ const small = "grid size-5 cursor-pointer place-items-center rounded-[4px] text-
 export function InboxPanel({ store, open, file }: SidebarCtx) {
   const { unread, events } = useEvents()
   const l = listsOf(store, events)
-  // (what needs you always shows; then messages, up to 8 rows: what agents work on is the Agents panel's)
   const { shown: rest, more, all, toggle } = useCap([...l.pinned.events, ...l.needs], l.messages, 8)
   useTick()
   useBack(store)
@@ -660,7 +559,6 @@ export function InboxPanel({ store, open, file }: SidebarCtx) {
   )
   const empty = !l.decisions.length && !l.pinned.events.length && !l.pinned.results.length && !l.needs.length && !l.review.length && !rest.length
   return (
-    // (empty, it takes no room while the sidebars' headings are quiet: "Nothing needs you" alone says nothing there)
     <div className="flex shrink-0 flex-col" data-inbox-panel data-panel-empty={empty || undefined}>
       <SidebarHeading title="Inbox" open={open}>
         {l.decisions.length > 1 && <HeadingButton icon={ListTodo} label="Accept all defaults" onClick={() => void acceptAll(l.decisions)} />}
@@ -695,11 +593,7 @@ export function InboxPanel({ store, open, file }: SidebarCtx) {
   )
 }
 
-// ---------- the page (view:inbox) and the block
-
-/** A page row's swipe box: as wide as its hover shade (8px out each side), its separator line still the row's width. */
 const pageSwipe = "-mx-2 bg-origin-content px-2"
-/** A page row's selected look: the shade behind it (its `before:`), as the sidebar's rows have theirs. */
 const pickedRow = "data-[selected]:!bg-transparent data-[selected]:before:bg-primary/15"
 
 function ResultRow({ r, done }: { r: InboxItem; done?: boolean }) {
@@ -732,12 +626,9 @@ function ResultRow({ r, done }: { r: InboxItem; done?: boolean }) {
   )
 }
 
-/** What a session asks before it goes on (a permission, a pick, a sign-in, a plan) is answered in its sheet, not by a
- *  reply; any other session's row takes one in place, under its last answer. */
 const repliedInPlace = (e: InboxEvent) => e.kind === "session" && !answerable(e) && !(e.state === "open" && ["permission", "question", "auth", "plan"].includes(e.ask ?? ""))
 const agentName = (e: InboxEvent, label?: string) => label ?? (e.source ? e.source[0].toUpperCase() + e.source.slice(1) : "the agent")
 
-/** A session's last answer, whole, and the reply box, under its row (Reply, or a draft left there). */
 function RowReply({ e, close }: { e: InboxEvent; close: (back?: boolean) => void }) {
   const box = useRef<HTMLDivElement>(null)
   const name = agentName(e, agentOf(e, useAgents())?.label)
@@ -751,16 +642,13 @@ function RowReply({ e, close }: { e: InboxEvent; close: (back?: boolean) => void
   )
 }
 
-/** The rows whose reply box is open: still open when the row is drawn anew (its thread moved to another shelf). */
 const replyingTo = new Set<string>()
 
 function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean; touched?: (id: string) => void }) {
   const read = e.read && !fresh, done = e.state === "done" && !fresh
   const key = eventKey(e), picked = useSelected(SELECT, key)
-  // (one that leads nowhere opens in place, its whole body, and stays where it is while the page shows it)
   const [whole, setWhole] = useState(false)
   const asks = answerable(e)
-  // (an agent's answer is Markdown: one plain line here, whole in its sheet)
   const line = lineOf(e)
   const draft = useHasDraft(draftKey(e))
   const where = standing(e)
@@ -782,12 +670,10 @@ function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean; touch
           {(e.body || e.machineLabel || e.parent || e.from || draft || where) && <span data-tip={whole ? undefined : line} data-tip-trunc
             className={cn("block text-[13px] text-muted-foreground max-md:text-[15px]", whole ? "whitespace-pre-wrap break-words" : "max-md:line-clamp-2 md:truncate")}><DraftTag to={draftKey(e)} className="mr-1.5 align-[1px]" />
             {where && <span data-standing className={cn("font-medium", e.state === "working" ? "text-tertiary" : "text-foreground/80")}>{where}{((line && !replying) || e.machineLabel || e.parent || e.from) && " · "}</span>}
-            {/* (unfolded for a reply, its answer is whole under the row) */}
             {[e.parent && `from ${threadTitle(e.parent)}`, e.from && `from ${threadTitle(e.from)}`, replying ? "" : whole ? e.body : line, e.machineLabel && `on ${e.machineLabel}`].filter(Boolean).join(" · ")}</span>}
         </span>
         {!asks && <span className="shrink-0 text-[13px] text-muted-foreground tabular-nums max-md:text-[15px]">{fmtAgo(e.t, { short: true })}</span>}
       </button>
-      {/* (a request's Approve takes its time's place and Deny its Settle's, so the rows stay in line) */}
       <GateButtons e={e} className={iconButton} size="size-4" />
       {inPlace && (
         <button type="button" className={cn(iconButton, !replying && "md:invisible md:group-hover/ev:visible", replying && "text-foreground")} aria-label="Reply" data-tip="Reply"
@@ -812,7 +698,6 @@ function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean; touch
   )
 }
 
-/** What's out of the way, last on the page and folded: "Snoozed N", "Settled N". */
 function Folded({ label, n, attr, children }: { label: string; n: number; attr: string; children: ReactNode }) {
   const [open, setOpen] = useState(false)
   if (!n) return null
@@ -828,7 +713,6 @@ function Folded({ label, n, attr, children }: { label: string; n: number; attr: 
   )
 }
 
-/** What's snoozed, soonest back first: its results and events, each with when it comes back. */
 function Snoozed({ store }: { store: Store }) {
   const { results, events: evs } = listsOf(store, useEvents().events).snoozed
   const rows = [
@@ -859,7 +743,6 @@ function SnoozedRow({ sel, title, until, icon, open: openIt, swipe }: { sel: str
   )
 }
 
-/** What's dealt with: threads and events done (kept keep_days), and results done (or archived), the latest first. */
 function Settled({ store, fresh }: { store: Store; fresh?: ReadonlySet<string> }) {
   const { events: evs, results } = listsOf(store, useEvents().events, fresh).done
   const rows = [...evs.map((e) => ({ at: e.t, row: <EventRow key={e.id} e={e} /> })), ...results.map((r) => ({ at: latestOf(r), row: <ResultRow key={r.id} r={r} done /> }))]
@@ -867,7 +750,6 @@ function Settled({ store, fresh }: { store: Store; fresh?: ReadonlySet<string> }
   return <Folded label="Settled" n={rows.length} attr="data-inbox-settled">{rows.map((x) => x.row)}</Folded>
 }
 
-/** One of the lists, under its heading, with "Show N more" past `max`. */
 function Section({ title, attr, rows, max, loading }: { title: string; attr: string; rows: ReactNode[]; max: number; loading?: ReactNode }) {
   const { shown, more, all, toggle } = useCap([], rows, max)
   if (!rows.length && !loading) return null
@@ -883,7 +765,6 @@ function Section({ title, attr, rows, max, loading }: { title: string; attr: str
 
 function Lists({ store, events: ne, results: nr, fresh, touched, all: dealt }: {
   store: Store; events: number; results: number; fresh?: ReadonlySet<string>; touched?: (id: string) => void
-  /** With what's out of the way, folded at the bottom (the Inbox page). */
   all?: boolean
 }) {
   const { ready, events } = useEvents()
@@ -891,23 +772,18 @@ function Lists({ store, events: ne, results: nr, fresh, touched, all: dealt }: {
   useTick()
   useBack(store)
   useInboxSelect(store)
-  // (while the events come, as many skeleton rows as there were last time; none: the Loading line, as tall as "Nothing needs you.")
   const loading = !!ne && !ready
   const live = ne ? [...l.pinned.events, ...l.needs, ...l.messages] : []
   const kept = ne ? `inbox:${dealt ? "page" : "block"}:events` : null
   const rows = useKeptCount(kept, loading ? undefined : live.length)
-  // (a row with a body is taller: as many of those as last time too)
   const bodies = useKeptCount(kept && `${kept}:bodies`, loading ? undefined : live.filter((e) => e.body || e.machineLabel).length, 0)
   const row = (e: InboxEvent) => <EventRow key={e.id} e={e} fresh={fresh?.has(e.id)} touched={touched} />
   const past = dealt && <><Reports store={store} /><Snoozed store={store} /><Settled store={store} fresh={fresh} /></>
   const results = l.review.slice(0, nr)
-  // The shelves: pinned, active (what waits on you first, then what's to read, the latest first); snoozed and
-  // settled folded below. A row says why it's there (its icon, Asks you, Report...).
   const byLatest = (xs: { at: number; row: ReactNode }[]) => xs.sort((a, b) => b.at - a.at).map((x) => x.row)
   const pinned = byLatest([...(ne ? l.pinned.events.map((e) => ({ at: e.t, row: row(e) })) : []), ...(nr ? l.pinned.results.map((r) => ({ at: latestOf(r), row: <ResultRow key={r.id} r={r} /> })) : [])])
   const active = [...(ne ? l.needs.map(row) : []),
     ...byLatest([...results.map((r) => ({ at: latestOf(r), row: <ResultRow key={r.id} r={r} /> })), ...(ne ? l.messages.map((e) => ({ at: e.t, row: row(e) })) : [])])]
-  // (the page says above what comes here; the block, alone on a dashboard, says it here)
   const empty = dealt ? "Nothing needs you." : "Nothing needs you. When an agent needs a decision from you, it shows here."
   if (!l.decisions.length && !pinned.length && !active.length && !live.length && !(loading && rows)) return <>{loading ? <Loading /> : <Empty>{empty}</Empty>}{dealt && <div className="mt-4 flex flex-col gap-4" data-select-list={SELECT}>{past}</div>}</>
   return (
@@ -921,7 +797,6 @@ function Lists({ store, events: ne, results: nr, fresh, touched, all: dealt }: {
   )
 }
 
-/** ```block-inbox: what needs you, on a dashboard (Today). */
 export function InboxBlock({ store, options }: { store: Store; options: Record<string, unknown> }) {
   const n = useCount(store)
   return (
@@ -932,15 +807,11 @@ export function InboxBlock({ store, options }: { store: Store; options: Record<s
   )
 }
 
-/** Forget the done events (kept keep_days otherwise), here and on the other machines. */
 const clearDone = () => void del("inbox/events?done=1").catch((e) => notifyError(e, "Couldn't clear them"))
 
-/** The Inbox in a tab: while focused, its messages are read (not ones marked unread by hand), but the ones new when
- *  they came into view stay drawn where they were, as new, until it closes, since the tab stays drawn while hidden. */
 export function InboxPage({ store, focused }: { store: Store; focused: boolean }) {
   const { events, unread } = useEvents()
   const selectingHere = useSelecting(SELECT)
-  // What was unread when it came into view: still drawn as new after it's read here.
   const [fresh, setFresh] = useState<ReadonlySet<string>>(() => new Set(events.filter((e) => !e.read).map((e) => e.id)))
   const more = events.filter((e) => !e.read && !fresh.has(e.id))
   if (more.length) setFresh(new Set([...fresh, ...more.map((e) => e.id)]))

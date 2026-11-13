@@ -15,7 +15,6 @@ export function register() {
     const nr = Number(o.results ?? 10), ne = Number(o.events ?? 5)
     const l = lists(plugin.isOff() ? [] : shown(), asResults(plugin.vault.items("inbox")))
     const results = [...l.pinned.results, ...l.review].slice(0, nr)
-    // (what's pinned and what needs the user first, then messages: what agents work on is the Agents panel's)
     const es = [...l.pinned.events, ...l.needs, ...l.messages].slice(0, ne)
     ctx.source([...l.decisions, ...(nr > 0 ? results : [])])
     const parts: string[] = []

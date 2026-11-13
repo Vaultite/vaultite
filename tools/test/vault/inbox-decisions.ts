@@ -14,7 +14,7 @@ export default async ($: VaultTest) => {
   check("decision options as text: the default marked, each with what it causes when it says",
     optionsText({ options: ["Keep", "Go back"], effects: ["the island stays quiet"], default: "Keep" }) === "Keep (default): the island stays quiet · Go back" &&
     optionsText({ options: ["A", "B"], default: "B" }, " / ") === "A / B (default)" && optionsText({}) === "")
-  check("decision files: a list kept is read as given, anything else is none; a link's page by its wikilink",
-    listOf(["a", "b"]).join() === "a,b" && listOf(null).length === 0 && listOf("a").length === 0 &&
+  check("decision files: a list kept is read as given, none is empty; a link's page by its wikilink",
+    listOf(["a", "b"]).join() === "a,b" && listOf(null).length === 0 && listOf(undefined).length === 0 &&
     linkTo("[[Inbox/Fix done · A|the fix]]") === "Inbox/Fix done · A" && linkTo(" Inbox/B.md ") === "Inbox/B.md")
 }

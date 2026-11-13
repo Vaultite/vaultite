@@ -1,5 +1,3 @@
-// An agent's session in the inbox, opened like a mail: what it asks or its last answer, Approve and Deny, the reply back
-// into it (on its machine). Opening it reads it; only Done (or the session moving on) settles it.
 import { useEffect } from "react"
 import { Bot, Check, CheckCheck, Clock, Pin, PinOff, RotateCcw, SquareTerminal, X } from "lucide-react"
 import { Button, detailPath, Empty, fmtAgo, haptic, Markdown, notify, notifyError, openDetail, SheetHead, useAgents } from "@vaultite"
@@ -9,13 +7,11 @@ import { Questions } from "./Questions"
 import { ReplyBox } from "./Reply"
 import type { InboxEvent } from "./types"
 
-/** Why a session needs the user, as its sheet says it. */
 const WHY: Record<string, string> = {
   permission: "Asks permission", question: "Asks you something", auth: "Needs you to sign in", plan: "Has a plan for you to approve",
   answer: "Answered", report: "Reported", error: "Stopped with an error",
 }
 
-/** What an agent asks before it goes on: answered in its terminal (or Approve and Deny), not by a reply. */
 const BLOCKED = ["permission", "question", "auth", "plan"]
 
 export const sessionTitle = (id: string) => getEvents().events.find((e) => e.id === id)?.title ?? "Session"
@@ -23,12 +19,10 @@ export const sessionTitle = (id: string) => getEvents().events.find((e) => e.id 
 const answer = (e: InboxEvent, a: "approve" | "deny") => (haptic("medium"), answerAsk(e, a)).then(
   () => notify(a === "approve" ? "Approved" : "Denied"), (err) => notifyError(err, "Couldn't answer it"))
 
-/** Whether thread `x` is session `p` (by its terminal, else its session id). */
 const isSession = (p: { terminal?: string; session?: string }, x: InboxEvent) => x.kind === "session" && !x.machine &&
   ((!!p.terminal && x.terminal === p.terminal) || (!!p.session && x.session === p.session))
 const STATE: Record<string, string> = { open: "Needs you", working: "Working", done: "Settled" }
 
-/** Who delegated this session its task (its thread, else its session), and the subagents it delegated to. */
 function Lineage({ e }: { e: InboxEvent }) {
   const { events } = useEvents()
   const agents = useAgents()
@@ -70,10 +64,8 @@ function Lineage({ e }: { e: InboxEvent }) {
 
 export function SessionSheet({ id }: { id: string }) {
   const e = useEvents().events.find((x) => x.id === id)
-  // (every render calls the same hooks: the event shows up once the inbox loads)
   const agents = useAgents()
   const agent = e ? agentOf(e, agents) : null
-  // Opened is read, as a mail is; a permission still waits on its answer.
   useEffect(() => { if (e && !e.read && !answerable(e)) markRead([e.id]) }, [e?.id, e?.t]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!e) return <Empty>This session is no longer in the inbox.</Empty>
   const name = agent?.label ?? (e.source ? e.source[0].toUpperCase() + e.source.slice(1) : "the agent")
@@ -83,7 +75,6 @@ export function SessionSheet({ id }: { id: string }) {
   const blocked = e.state === "open" && BLOCKED.includes(e.ask ?? "")
   const done = (to: boolean) => {
     haptic("medium")
-    // (dealt with: the next one's sheet, as a mail archived goes on to the next)
     if (to) leaveSheet(e.id)
     void markEventsDone([e.id], to)
     notify(to ? `Settled “${e.title}”` : `Back in the inbox: “${e.title}”`, { action: { label: "Undo", run: () => void (to ? unsettle([e]) : markEventsDone([e.id], true)) } })
@@ -92,7 +83,6 @@ export function SessionSheet({ id }: { id: string }) {
   return (
     <div data-session-sheet={e.id} data-ask={e.ask ?? ""}>
       <SheetHead icon={agent?.icon ?? Bot} tint={agent?.tint ?? "var(--inbox)"} kicker="Inbox" title={e.title} sub={sub}>
-        {/* (what needs you stays until it's dealt with: settled here, by the title, apart from the sheet bar's Done) */}
         {!asks && (
           <div className="mt-3 flex">
             {e.state === "done"
@@ -103,7 +93,6 @@ export function SessionSheet({ id }: { id: string }) {
                 {e.pinned ? <><PinOff className="size-4" /> Unpin</> : <><Pin className="size-4" /> Pin</>}
               </Button>
             )}
-            {/* (snoozed, it's out of the way: the next one's sheet, as Settle's) */}
             {snoozable(e) && e.state !== "working" && (
               <Button look="quiet" className="ml-2 h-11 px-3 md:h-8" data-session-snooze onClick={snoozeBelow([`e:${e.id}`], () => leaveSheet(e.id))}><Clock className="size-4" /> Snooze</Button>
             )}
@@ -122,8 +111,6 @@ export function SessionSheet({ id }: { id: string }) {
           <Button className="h-11 px-4 md:h-8" data-gate="deny" onClick={() => void answer(e, "deny")}><X className="size-4" /> Deny</Button>
         </div>
       )}
-      {/* (while it asks, a reply would be typed into its question: it's answered there, or with Approve and Deny. Its own
-          questions take one: one question's Type something is its own answer, else a reply puts them aside for it) */}
       {blocked && (!e.questions || (e.questions.length === 1 && !e.questions[0].multi && !e.questions[0].closed))
         ? <Button look="quiet" className="h-11 px-3 md:h-8" onClick={() => void open().catch((err) => notifyError(err, "Couldn't open it"))}><SquareTerminal className="size-4" /> Open session</Button>
         : <ReplyBox to={e.id} name={name} open={open} sent={() => markRead([e.id])} back={() => openDetail(detailPath(SESSION_DETAIL, e.id))}

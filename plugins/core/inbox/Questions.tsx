@@ -1,5 +1,3 @@
-// An agent's questions laid out as its terminal's picker: options numbered, Type something, Chat about this (not a
-// dialog read off its screen: closed). One question answers on a tap or Enter; several, with Send answers.
 import { useState } from "react"
 import { ArrowUp, Check, MessagesSquare } from "lucide-react"
 import { Button, cn, haptic, notify, notifyError, op } from "@vaultite"
@@ -17,11 +15,9 @@ const num = "w-5 shrink-0 self-start text-[17px] leading-[22px] text-muted-foreg
 export function QuestionPicker({ qs, busy = false, answer, ownBelow = false }: { qs: Question[]; busy?: boolean; answer: (a: PickerAnswer, said: string) => void; ownBelow?: boolean }) {
   const [picked, setPicked] = useState<number[][]>(() => qs.map(() => []))
   const [typed, setTyped] = useState<string[]>(() => qs.map(() => ""))
-  // (one question of one option at a time: a tap is the answer, as in its terminal)
   const tapSends = qs.length === 1 && !qs[0].multi
   const below = ownBelow && qs.length === 1 && !qs[0].multi
   const open = !qs.some((q) => q.closed) && !below
-  // A single-select's own answer counts while none of its options is picked; a multi-select's goes with its picks.
   const own = (qi: number) => (qs[qi].multi || !picked[qi].length ? typed[qi].trim() : "")
   const answered = (qi: number) => picked[qi].length > 0 || !!own(qi)
   const send = (picks: number[][], texts: string[]) => {
@@ -37,7 +33,6 @@ export function QuestionPicker({ qs, busy = false, answer, ownBelow = false }: {
   }
   const type = (qi: number, text: string) => {
     setTyped((was) => was.map((t, i) => (i === qi ? text : t)))
-    // (typing in a single-select's row picks it, as moving onto it does in the terminal)
     if (!qs[qi].multi && text.trim()) setPicked((was) => was.map((p, i) => (i === qi ? [] : p)))
   }
   const sendAll = () => send(picked.map((p, i) => (own(i) && !qs[i].multi ? [] : p)), qs.map((_, i) => own(i)))
@@ -112,7 +107,6 @@ export function QuestionPicker({ qs, busy = false, answer, ownBelow = false }: {
   )
 }
 
-/** A session's questions in its inbox sheet: answered with inbox.answer (pick, or chat). */
 export function Questions({ e }: { e: InboxEvent & { questions: Question[] } }) {
   const [sending, setSending] = useState(false)
   const answer = async (a: PickerAnswer, said: string) => {

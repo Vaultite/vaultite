@@ -61,14 +61,11 @@ hook's JSON from stdin, or from its last argument, and says which app terminal i
         try { json = raw ? JSON.parse(raw) : {} } catch { json = {} }
         const q = new URLSearchParams({ agent })
         if (c.env.VAULTITE_TERMINAL) q.set("terminal", c.env.VAULTITE_TERMINAL)
-        // A hook never fails its agent: whatever happens here, it exits 0.
         try { await c.call("POST", `inbox/hook?${q}`, json) } catch { /* the server isn't up, or the Inbox is off */ }
         return done({ ok: true }, "")
       }
       const id = SUBS[sub]
       if (!id) throw new CliError(`no 'vau inbox ${sub}': ${Object.keys(SUBS).filter(Boolean).join(", ")} or hook (vau inbox --help)`)
-      // The op, by its id, with this command line's words as given (a list's flag keeps all its values; add's body
-      // piped in: its stdin param).
       const raw = a.raw ?? []
       const words = sub ? raw.slice(raw.indexOf(sub) + 1) : raw
       const r = await execute([id, ...words], { api: c.api, env: c.env, stdin: c.stdin, url: c.url })

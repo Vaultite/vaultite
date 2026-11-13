@@ -29,7 +29,6 @@ inbox.snooze take it). done: the latest done ones too.
   },
   run: async ({ limit, done }, ctx) => {
     const [ev, items] = await Promise.all([ctx.api("GET", "inbox/events?all=1"), ctx.api("GET", "inbox")]) as [Item, Item[]]
-    // (a report whose thread is listed is that thread's: one row a session)
     const l = lists(ev.events as InboxEvent[], asResults(items ?? []))
     const row = (r: Item) => ({ path: `${r.id}.md`, title: r.title, from: r.from ?? null, created: r.created ?? null, updated: r.updated ?? null })
     const cut = <T>(xs: T[]) => xs.slice(0, limit)

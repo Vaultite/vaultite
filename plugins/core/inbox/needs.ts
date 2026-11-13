@@ -1,5 +1,3 @@
-// Whether an agent's turn that ended needs the user: a question, an approval, a failure; an answer to read (the setting
-// `answers` says whether that's the inbox's); or it's done with nothing for them. Sure cases decide by themselves; the rest ask a small fast model, and when that fails, it needs them.
 import crypto from "node:crypto"
 import type { SampleAnswer, SampleAsk } from "../../../core/agents.ts"
 
@@ -8,36 +6,26 @@ import type { SampleAnswer, SampleAsk } from "../../../core/agents.ts"
 export type Need = "permission" | "question" | "auth" | "plan" | "reply" | "answer" | "report" | "error"
 export type Verdict = ({ needs: true; why: Need } | { needs: false; why: null }) & { by: "rule" | "model" | "fallback"; ms?: number }
 
-/** A turn as it ended: what the user said last, the agent's final message, and whether it ended in an error; `auto`:
- *  not the user but the session itself started it (its background task's notice, a schedule, another session). */
 export type Turn = { prompt?: string; text: string; error?: boolean; auto?: boolean }
 
 const plain = (s: string) => s.replace(/```[\s\S]*?```/g, " ").replace(/^\s*(#{1,6}\s|>).*$/gm, "").replace(/[*_`#|]+/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
 
 const lines = (s: string) => plain(s).split("\n").map((l) => l.trim()).filter(Boolean)
 const asks = (l = "") => /\?["')\]]*$/.test(l)
-/** A question the user wants answered, not a request put as one ("Can you fix it?"). */
 const wondering = (l = "") => asks(l) && /^(what|why|how|which|who|where|when|is|are|does|do|did|was|were|has|have|should)\b/i.test(l) &&
   !/^(can|could|would|will) you\b/i.test(l)
 
-/** What the turn's own words settle, or null for the model to say. */
 export function sure(t: Turn): Verdict | null {
   if (t.error) return { needs: true, why: "error", by: "rule" }
   const said = lines(t.text)
   if (!said.length) return { needs: false, why: null, by: "rule" }
-  // Its last line a question (not one in a code block, a quote or a heading), or one just before a short closing line
-  // ("Take your time."): it waits on the answer.
   const [before, last] = [said.at(-2), said.at(-1)]
   if (asks(last) || (asks(before) && last!.length <= 60)) return { needs: true, why: "reply", by: "rule" }
-  // It says so itself ("Nothing else needs you"), or the session went on by itself (a loop, a watcher): its progress,
-  // which its own row keeps; what it needs from the user it asks (inbox.ask).
   if (t.auto || said.some(nothingForYou)) return { needs: false, why: null, by: "rule" }
-  // The user asked a question: what it says is their answer to read.
   if (wondering(lines(t.prompt ?? "").at(-1))) return { needs: true, why: "answer", by: "rule" }
   return null
 }
 
-/** A line saying the user has nothing to do: "Nothing needs you", "Nothing else needs you right now", "No action needed". */
 const nothingForYou = (l: string) => /^(nothing (else |more )?(needs|is waiting on|waits on) you|nothing (else )?for you( to do)?|no action (is )?needed( from you)?)\b/i.test(l) ||
   /\b(nothing|none of it) (else |more )?needs you\b/i.test(l)
 
@@ -58,7 +46,6 @@ User: "Fix the login bug and push." Agent: "Fixed the token refresh and pushed t
 
 const cut = (s: string, n: number) => (s.length <= n ? s : `${s.slice(0, Math.floor(n * 0.4))}\n[…]\n${s.slice(s.length - Math.floor(n * 0.6))}`)
 
-/** The model's question: the user's last message and the agent's final one, cut to their head and tail. */
 export const question = (t: Turn) =>
   `The user's last message:\n<user>\n${cut((t.prompt ?? "").trim(), 1200) || "(not known)"}\n</user>\n\nThe agent's final message:\n<agent>\n${cut(t.text.trim(), 4000)}\n</agent>`
 
@@ -68,15 +55,12 @@ const cache = new Map<string, Promise<Verdict>>()
 const CACHE = 300
 let running = 0
 const queue: (() => void)[] = []
-/** At most two at once: a burst of turns ending waits its turn rather than starting a model for each. */
 async function slot<T>(fn: () => Promise<T>): Promise<T> {
   if (running >= 2) await new Promise<void>((r) => queue.push(r))
   running++
   try { return await fn() } finally { running--; queue.shift()?.() }
 }
 
-/** The verdict on a turn: its own words when they settle it, else the model's (once per turn: the same turn asked
- *  again, by a hook and the terminal both, is the same answer), else it needs the user. */
 export function judge(t: Turn, sample: Sample | null, ms = 30_000): Promise<Verdict> {
   const known = sure(t)
   if (known) return Promise.resolve(known)

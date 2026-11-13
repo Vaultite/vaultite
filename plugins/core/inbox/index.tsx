@@ -1,5 +1,3 @@
-// The Inbox's frontend: a toast (and the Mac's notification while the window is behind) for what the server says to
-// tell (`nt`), unless the user is looking at it; the header button steps aside while the panel is in a sidebar.
 import { useEffect, useRef, useState } from "react"
 import { AlarmClockOff, ArrowDown, ArrowUp, BellOff, Check, CheckCheck, Clock, FolderInput, Inbox as InboxIcon, Mail, MailOpen, MessageSquareReply, Pin, RotateCcw } from "lucide-react"
 import { AmbientButton, backDetail, definePlugin, getStore, onTabLayoutChange, notify, openFile, Panel, stampMs, systemNotify, useStore, viewOnScreen, type Store } from "@vaultite"
@@ -12,14 +10,9 @@ import { snoozed, snoozeMs } from "./snooze"
 import { settings, type Settings } from "./settings"
 import type { InboxEvent, InboxItem } from "./types"
 
-
-/** What an agent's news is about is on screen: its terminal or session is the focused tab, or what it links to is shown
- *  (a browser tab's ask, whose card a toast would cover). Away from the window, the system notification tells it. */
 const watching = (e: InboxEvent) => (e.kind === "session" || e.kind === "waiting") && document.visibilityState === "visible" &&
   ([targetOf(e), viewOf(e)].includes(focusedTarget()) || viewOnScreen(targetOf(e) ?? ""))
 
-/** A toast's text: the title and the body's first line, short (the whole body is in the Inbox: a session's answer, a
- *  day's learnings, a log). */
 function toastText(e: InboxEvent) {
   const first = e.gate ? "" : e.preview || (e.body?.split("\n").map((l) => l.replace(/^[-*>#\s]+/, "").trim()).find(Boolean) ?? "")
   if (!first) return e.title
@@ -29,7 +22,6 @@ function toastText(e: InboxEvent) {
 function announce(e: InboxEvent, s: Settings) {
   if (getEvents().events.find((x) => x.id === e.id)?.read) return
   const to = targetOf(e)
-  // (an agent's news a moment later: what it's about may be opening on screen, a browser ask's tab)
   const toast = () => {
     if (s.toasts === false || watching(e) || getEvents().events.find((x) => x.id === e.id)?.read) return
     notify(toastText(e), { id: `inbox-${e.id}`, kind: e.kind === "error" ? "error" : undefined, action: to ? { label: "Open", run: () => openEvent(e) } : undefined })
@@ -38,7 +30,6 @@ function announce(e: InboxEvent, s: Settings) {
   if (s.notifications !== false && !document.hasFocus()) systemNotify(e.title, e.preview || e.body || "")?.then((clicked) => { if (clicked) openEvent(e) })
 }
 
-/** When a result last had news (its thread's latest report, else when it came) as ms. */
 const latestAt = (r: InboxItem) => {
   const at = r.updated || r.created
   return at ? stampMs(at) || 0 : 0
@@ -48,8 +39,6 @@ function Background({ store }: { store: Store }) {
   useEffect(() => void settings.ready(), [])
   useEffect(() => follow(), [])
   useEffect(() => onFresh((e) => announce(e, settings.get())), [])
-  // A result that just arrived (an agent's inbox_add, a clip) or a snoozed one whose time came: said once. Not the ones
-  // there when the app loads, nor one brought back (Undo, Wake), nor a report (its session's row tells it).
   const known = useRef<Set<string> | null>(null)
   const away = useRef(new Map<string, number>())
   useBack(store)
@@ -75,8 +64,6 @@ function Background({ store }: { store: Store }) {
     }
     known.current = seen
   }, [review])
-  // What the user is looking at is read (seen, not done): an event whose terminal (or file) is the focused tab, in a
-  // window in front.
   useEffect(() => {
     const check = () => {
       const hit = getEvents().events.filter((e) => !e.read && watching(e))
@@ -121,7 +108,6 @@ function mock(): Partial<Store> {
   }
 }
 
-/** The status bar's count of what's new, when there's any. */
 function InboxNew() {
   const n = useCount(useStore().store ?? ({} as Store))
   const hold = heldNow(useEvents().hold)
@@ -133,7 +119,6 @@ function InboxNew() {
   return n ? <AmbientButton icon={InboxIcon} text={n} tip={`Inbox, ${n} new`} tint="var(--inbox)" onClick={openInbox} /> : null
 }
 
-/** Draw again every half minute while `on` (a hold ends by its time). */
 function useMinute(on: boolean) {
   const [, tick] = useState(0)
   useEffect(() => { if (!on) return; const t = setInterval(() => tick((n) => n + 1), 30_000); return () => clearInterval(t) }, [on])
@@ -154,7 +139,6 @@ export default definePlugin({
   },
   blocks: { inbox: ({ store, options }) => <InboxBlock store={store} options={options} />, reply: (ctx) => <ReplyBlock {...ctx} />, decisions: (ctx) => <DecisionsBlock {...ctx} /> },
   files: { types: ["inbox"], folders: ["Inbox"], icon: InboxIcon, tint: "var(--inbox)" },
-  // (an item to review, where it's open: Settle and Snooze on its tab's hover and in its file bar)
   tabButtons: tabButtonsOf,
   fileBar: { item: { title: "Inbox item", sort: 52, render: (file) => <ItemBar file={file} /> } },
   fileMenu: (path) => {
@@ -172,7 +156,6 @@ export default definePlugin({
   },
   commands: [
     { id: "inbox:open", name: "Open inbox", keys: ["G I"], run: openInbox },
-    // (Gmail's keys, on the Inbox's rows: the page's and the panel's)
     { id: "inbox:next", name: "Move to the next inbox row", keys: ["J"], when: keysOnThreads, run: byKey(() => stepRow(1), (_, id) => stepSheet(id, 1)), icon: ArrowDown },
     { id: "inbox:previous", name: "Move to the previous inbox row", keys: ["K"], when: keysOnThreads, run: byKey(() => stepRow(-1), (_, id) => stepSheet(id, -1)), icon: ArrowUp },
     { id: "inbox:settle", name: "Settle the inbox row", keys: ["E"], when: keysOnThreads, run: byKey(doneByKey, (s) => press(s, "[data-session-done]")), icon: Check },

@@ -6,9 +6,6 @@ import { snoozeMs, stampOf } from "./snooze.ts"
 import { addEvent, broadcast, list } from "./store.ts"
 import { waitsOnYou } from "./threads.ts"
 
-// hold: nothing is told (toasts, notifications, the phone) until a time, then one line of what came. It's
-// kept by the server and shared (core/kept.ts), so every machine's server keeps it; each sums up its own events.
-
 export function hold(until: Date | null, label = "") {
   const was = holdNow()
   if (!until) { if (was) { plugin.keep("hold", { ...was, until: stampOf(new Date()) }, { shared: true }); broadcast() } return null }
@@ -19,7 +16,6 @@ export function hold(until: Date | null, label = "") {
   return h
 }
 
-// hold.json from before (iCloud carried it between machines): taken in, then removed.
 let lookedAt = ""
 
 let heldSince: Hold | null = null
@@ -31,7 +27,6 @@ export async function holdEnds(now = Date.now()) {
   heldSince = null
   broadcast()
   const came = list().filter((e) => !e.read && e.t >= from && e.source !== "inbox")
-  // (results are the vault's: the first machine counts them)
   const results = (await firstMachine()) ? plugin.vault.items("inbox").filter((r) => r.status === "new" && !isArchived(r) && !r.session && !r.terminal && stampMs(str(r.created)) >= from).length : 0
   const n = came.length + results, waiting = came.filter(waitsOnYou).length
   if (!n) return
@@ -45,9 +40,9 @@ export function register() {
     if (lookedAt === key) return
     lookedAt = key
     let old: Item | null
-    try { old = plugin.readSettings("hold") } catch { return } // (mid-sync: the next change)
+    try { old = plugin.readSettings("hold") } catch { return }
     if (!old) return
-    plugin.keep("hold", old, { shared: true }) // (the file is the latest word: an old app wrote it since)
+    plugin.keep("hold", old, { shared: true })
     plugin.saveSettings(null, "hold")
   })
 }

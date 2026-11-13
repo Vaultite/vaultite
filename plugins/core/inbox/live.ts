@@ -1,6 +1,6 @@
 import { type RawData, WebSocket } from "ws"
 import { HTTPError, type Machine, MACHINE_CLIENT, machineSocket, splitMachine } from "../../../core/plugins.ts"
-import { type Item, str } from "../../../core/vault.ts"
+import { str } from "../../../core/vault.ts"
 import { type InboxEvent } from "./model.ts"
 import { machineList, plugin } from "./server.ts"
 import { broadcast, message, remotes, watchers } from "./store.ts"
@@ -22,15 +22,11 @@ function pingAll(socks: Iterable<WebSocket>) {
   }
 }
 
-// the vault's other machines (Machines): their events followed here, so every app shows one inbox; a change
-// to one of theirs (`<id>@<machine>`) is made there, which keeps it.
-
 const FOLLOW = 30_000
 
 const theirs = (e: InboxEvent, m: Machine): InboxEvent => ({ ...e, id: `${e.id}@${m.id}`, machine: m.id, machineLabel: m.label,
   ...(e.terminal && !e.terminal.includes("@") ? { terminal: `${e.terminal}@${m.id}` } : {}) })
 
-/** Follow every other machine with the Inbox on (and drop the ones gone); resolves once each new one said its list. */
 export async function followMachines() {
   const want = plugin.isOff() ? [] : (await machineList()).filter((m) => !m.self && m.online && m.plugins?.includes(plugin.id))
   for (const [id, r] of remotes) if (!want.some((m) => m.id === id)) { r.sock.terminate(); remotes.delete(id); broadcast(false) }
@@ -49,7 +45,6 @@ export async function followMachines() {
       let msg: { t?: string; events?: InboxEvent[] }
       try { msg = JSON.parse(raw) } catch { return }
       if (msg.t !== "events" || !Array.isArray(msg.events)) return
-      // (one that doesn't know local=1 sends what it follows too: only its own)
       r.events = msg.events.filter((e) => e && typeof e.id === "string" && typeof e.t === "number" && !e.id.includes("@")).map((e) => theirs(e, m))
       broadcast(false)
       clearTimeout(timer); resolve()
@@ -58,7 +53,6 @@ export async function followMachines() {
       clearTimeout(timer); resolve()
       if (remotes.get(m.id) !== r) return
       remotes.delete(m.id); broadcast(false)
-      // (one that was there followed again soon, not at the next round: what it says meanwhile would wait half a minute)
       if (opened && plugin.loaded && first) setTimeout(() => { if (plugin.loaded && first) void followMachines() }, 3000).unref?.()
     }
     sock.on("close", gone)
@@ -77,8 +71,6 @@ export async function others() {
   await first
 }
 
-/** Make a change on the machine whose events these are (`ids` bare); its own copy here changes at once, its socket
- *  confirms. Throws a 502 when it doesn't answer. */
 export async function onMachine(id: string, method: string, route: string, body: unknown, local: (e: InboxEvent) => InboxEvent | null) {
   const m = await plugin.ask<Machine | null>("machines:machine", null, id)
   if (!m || m.self) throw new HTTPError(404, `no machine '${id}' (Machines)`)
@@ -91,7 +83,7 @@ export async function onMachine(id: string, method: string, route: string, body:
   }
   if (!r.ok) {
     let why = ""
-    try { why = str(((await r.json()) as Item).error) } catch { /* not JSON */ }
+    try { why = str((await r.json()).error) } catch { /* not JSON */ }
     throw new HTTPError(r.status, `${m.label}: ${why || `answered ${r.status}`}`)
   }
   const kept = remotes.get(m.id)

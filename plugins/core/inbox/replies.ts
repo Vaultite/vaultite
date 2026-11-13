@@ -1,4 +1,4 @@
-import { agentIn, choiceOf, newTerminalId, parseTerminal, resumeTerminalId, startAgent } from "../../../core/agents.ts"
+import { agentIn, type Choice, choiceOf, newTerminalId, parseTerminal, type Question, resumeTerminalId, startAgent } from "../../../core/agents.ts"
 import { localDate, localTime, type Machine, MACHINE_CLIENT, NOT_THE_USER, type Op, type OpCtx, OpError, splitMachine, userSurface } from "../../../core/plugins.ts"
 import { type Item, str } from "../../../core/vault.ts"
 import { hand, keepHanded } from "./handed.ts"
@@ -8,13 +8,13 @@ import { editBody, resultAt } from "./results.ts"
 import { agentOfTerminal, plugin, selfMachine } from "./server.ts"
 import { fileOf, list, moveOn, resolve } from "./store.ts"
 
-/** The terminals a reply may be typed into: its agent running in it, never a shell at its prompt, which would run the
- *  line (a report names its terminal, and anyone who writes the vault can write a report). */
 type Live = { id: string; agent?: string | null; busy?: boolean; state?: string }
+type AgentReply = (session: string, text: string) => Promise<boolean>
+
+/** Never a shell at its prompt, which would run the line: a report names its terminal, and anyone who writes the vault
+ *  can write a report. */
 export const typable = (sessions: Live[]) => (id: string) => !!id && sessions.some((s) => s.id === id && !!s.agent && s.busy === true)
 
-/** Where a reply to a report goes: typed into its terminal still running (`live`: typable); else its session resumed while
- *  the prompt cache lasts (cheap), else a new session told to read the report. `want`: resume or new, whatever the cache. */
 type Plan = { how: "type" | "resume" | "new" | "host"; to: string; ago: number | null; ttl: number | null; transcript: string; account?: string }
 async function replyPlan(r: Item, live: (id: string) => boolean, want = ""): Promise<Plan | null> {
   const terminal = str(r.terminal), session = str(r.session), agent = str(r.agent) || agentOfTerminal(terminal)
@@ -26,7 +26,6 @@ async function replyPlan(r: Item, live: (id: string) => boolean, want = ""): Pro
   const ago = info?.last ? Math.max(0, Math.round((Date.now() - info.last) / 1000)) : null
   const ttl = Number(info?.ttl) || null
   const known = { ago, ttl, transcript: str(info?.transcript) }
-  // A twelfth of it to spare (five minutes of an hour): the reply takes a moment to reach the agent.
   const cached = ago === null || !ttl ? null : ago < ttl - ttl / 12
   const named = str(info?.account) || parseTerminal(terminal)?.profile || ""
   const account = /^[a-z0-9]{1,32}$/.test(named) && named !== "default" ? named : ""
@@ -36,7 +35,6 @@ async function replyPlan(r: Item, live: (id: string) => boolean, want = ""): Pro
   return null
 }
 
-/** The machine a report's session runs on when it isn't this one (a resume here would find no session), else null. */
 async function elsewhere(r: Item, alive: (id: string) => boolean): Promise<{ id: string; m: Machine | null } | null> {
   const terminal = str(r.terminal)
   const self = await selfMachine()
@@ -48,8 +46,6 @@ async function elsewhere(r: Item, alive: (id: string) => boolean): Promise<{ id:
   return { id: there, m: await plugin.ask<Machine | null>("machines:machine", null, there) }
 }
 
-/** Run an inbox op on the machine the report's session runs on (the same vault there), its answer as if run here.
- *  Once only: a call another machine passed on isn't passed on again. */
 async function onSessionMachine(ctx: OpCtx, at: { id: string; m: Machine | null }, op: string, params: Item) {
   const { m } = at
   const name = m?.label || at.id
@@ -64,13 +60,11 @@ async function onSessionMachine(ctx: OpCtx, at: { id: string; m: Machine | null 
     throw new OpError(`its session runs on ${name}, which doesn't answer`, 502)
   }
   let out: Item = {}
-  try { out = (await r.json()) as Item } catch { /* not JSON */ }
+  try { out = await r.json() } catch { /* not JSON */ }
   if (!r.ok) throw new OpError(`${name}: ${str(out.error) || `answered ${r.status}`}`, r.status)
   return out
 }
 
-/** An event by the id an app, a watch or a notification gives: as listed here (another machine's `<id>@<machine>`), or
- *  bare as that machine's notification said it (the phone answers through whichever server it opened last). */
 export function findEvent(events: InboxEvent[], id: string, self: string | null): InboxEvent | undefined {
   const exact = events.find((e) => e.id === id)
   if (exact) return exact
@@ -95,21 +89,18 @@ export async function onOwner(ctx: OpCtx, e: InboxEvent, op: string, params: Ite
 export const EVENT_ID = /^[a-z0-9]{6,12}-[0-9a-f]{6}(@[a-z0-9][a-z0-9-]{0,62})?$/
 const sessionOfRow = (e: InboxEvent) => ({ terminal: e.terminal ?? "", session: e.session ?? "", agent: e.source })
 
-/** Answer a session's thread: its host takes it (agent-reply:<agent>), else it's typed into its terminal, else its
- *  session resumed (or a new one told its last answer); the thread is working, and follows the terminal that answers. */
 async function replyToRow(ctx: OpCtx, e: InboxEvent, text: string, how = "") {
   const line = text.trim().replace(/\s*\n\s*/g, " ")
   if (!line) throw new OpError("`text`: the reply")
   if (!e.terminal && !e.session) throw new OpError("it isn't an agent's session: nothing to reply to", 409)
   const { sessions } = await ctx.api("GET", "terminals/sessions") as { sessions: Live[] }
   const asks = !!e.terminal && sessions.find((s) => s.id === e.terminal)?.state === "blocked"
-  // (a reply to its one question is its answer: an option by number or name, else typed as its own where it takes one)
   const one = e.questions?.length === 1 && !e.questions[0].multi ? e.questions[0] : null
   if (asks && one && (!one.closed || typeof choiceOf(one, line, "", false) !== "string")) {
     if (!userSurface(ctx.who)) throw new OpError(NOT_THE_USER, 403)
     return { how: "type", terminal: (await pickIn(ctx, e, [line])).terminal }
   }
-  const host = plugin.service(`agent-reply:${e.source}`) as ((session: string, text: string) => Promise<boolean>) | null
+  const host: AgentReply | null = plugin.service(`agent-reply:${e.source}`)
   if (host && e.session && !how && await host(e.session, line)) {
     moveOn(list().filter((x) => x.id === e.id), "working")
     return { how: "host", terminal: e.terminal ?? null }
@@ -119,7 +110,6 @@ async function replyToRow(ctx: OpCtx, e: InboxEvent, text: string, how = "") {
   if (!plan) throw new OpError(`its terminal ${e.terminal} has ended and it names no session to resume`, 409)
   keepHanded(plan.to)
   if (plan.how === "type" && asks && (e.questions || e.ask === "question")) {
-    // (its questions put away, as Esc does in its terminal, so the reply is a message, not keys in its choices)
     await ctx.api("POST", `terminals/${encodeURIComponent(plan.to)}/send`, { text: "\x1b", enter: false })
     await new Promise((r) => setTimeout(r, 800))
     await submit(ctx, plan.to, line)
@@ -134,20 +124,16 @@ async function replyToRow(ctx: OpCtx, e: InboxEvent, text: string, how = "") {
   return { how: plan.how, terminal: started ? started.terminal ?? null : plan.to }
 }
 
-/** Start a new session for a reply (plan `new`): its agent's host starts a chat when it has one ("agent-chat-new:<agent>":
- *  {prompt, account?} -> {id}), else a terminal runs it. What the thread follows: its terminal, or its session (hosted). */
 export async function startNew(ctx: OpCtx, agent: string, plan: Plan, prompt: string): Promise<Pick<InboxEvent, "terminal" | "session" | "host">> {
-  const chat = plugin.service(`agent-chat-new:${agent}`) as ((a: Item) => Promise<{ id: string } | null>) | null
+  const chat: ((a: { prompt: string; account?: string; by: string }) => Promise<{ id: string } | null>) | null = plugin.service(`agent-chat-new:${agent}`)
   const made = chat ? await chat({ prompt, ...(plan.account ? { account: plan.account } : {}), by: ctx.who.label }) : null
   if (made?.id) return { terminal: undefined, session: made.id, host: true }
   await startAgent(ctx, plan.to, prompt)
   return { terminal: plan.to, session: undefined }
 }
 
-/** Answer session row `e`'s questions in its terminal (`picks`, `typed`: choiceOf's per question, or "chat"), with its
- *  agent's keys; first checked on its screen, so an answer can't go into something else it shows by then. */
 export async function pickIn(ctx: Pick<OpCtx, "api">, e: InboxEvent, picks: string[] | "chat", typed: string[] = []) {
-  const qs = e.questions, pick = plugin.service(`agent-pick:${e.source}`)
+  const qs = e.questions, pick: ((qs: Question[], choices: Choice[] | "chat") => string[]) | null = plugin.service(`agent-pick:${e.source}`)
   if (!qs?.length || !e.terminal || e.kind !== "session" || !pick) throw new OpError("it doesn't ask anything to pick from now", 409)
   if (picks === "chat" && qs.some((q) => q.closed)) throw new OpError("its question takes one of its options: it has no Chat about this", 409)
   if (picks !== "chat" && picks.length !== qs.length) throw new OpError(`\`picks\`: an answer for each of its ${qs.length} questions`)
@@ -156,7 +142,7 @@ export async function pickIn(ctx: Pick<OpCtx, "api">, e: InboxEvent, picks: stri
   const squash = (s: string) => s.replace(/\s+/g, "")
   const { text } = await ctx.api("GET", `${t}/capture?lines=40`).catch(() => ({ text: "" })) as { text: string }
   if (!squash(text).includes(squash(qs[0].question).slice(0, 80))) throw new OpError("its terminal doesn't show that question any more", 409)
-  for (const [i, k] of (pick(qs, choices) as string[]).entries()) {
+  for (const [i, k] of pick(qs, choices).entries()) {
     if (i) await new Promise((r) => setTimeout(r, 200))
     await ctx.api("POST", `${t}/send`, { text: k, enter: false })
   }
@@ -264,7 +250,6 @@ same way. A session on another of the Machines gets it through the app there.
     if (EVENT_ID.test(to)) {
       const e = await eventFor(ctx, to)
       if (e.machine) return onOwner(ctx, e, "inbox.reply", { to: splitMachine(e.id)[0], text: str(p.text), ...(how ? { how } : {}), ...(p.keep ? { keep: true } : {}) })
-      // (a thread whose report it is: the reply goes on in the report, its record)
       const rec = fileOf(e.link) ? resultAt(fileOf(e.link)!) : undefined
       if (!rec || !(rec.terminal || rec.session)) return { to: e.id, ...(await replyToRow(ctx, e, str(p.text), how)), done: false }
       to = `${rec.id}.md`
@@ -283,15 +268,13 @@ same way. A session on another of the Machines gets it through the app there.
     const at = await elsewhere(r, alive)
     if (at) return onSessionMachine(ctx, at, "inbox.reply", { to: `${r.id}.md`, text: str(p.text), ...(how ? { how } : {}), ...(p.keep ? { keep: true } : {}) })
     const again = "when it's done, report again with vau inbox report"
-    // (a session its host runs takes it there: agent-reply:<agent>, false when it runs in a terminal)
-    const host = session && !how && !typable(sessions)(terminal) ? plugin.service(`agent-reply:${agent}`) as ((s: string, t: string) => Promise<boolean>) | null : null
+    const host: AgentReply | null = session && !how && !typable(sessions)(terminal) ? plugin.service(`agent-reply:${agent}`) : null
     const hosted = !!host && await host(session, `(A reply to your report ${r.id}.md; ${again}) ${text}`)
     const plan: Plan | null = hosted ? { how: "host", to: terminal, ago: null, ttl: null, transcript: "" } : await replyPlan(r, typable(sessions), how)
     if (!plan) throw new OpError(`its terminal ${terminal} has ended and the report has no session to resume`, 409)
     let started: Pick<InboxEvent, "terminal" | "session" | "host"> | null = null
     if (plan.how === "type") {
       const said = `(A reply to your report ${r.id}.md; ${again}) ${text}`
-      // (at its prompt: sent and checked; while it works, the message waits in its queue)
       if (atPrompt(sessions.find((s) => s.id === plan.to)?.state)) await submit(ctx, plan.to, said)
       else await ctx.api("POST", `terminals/${encodeURIComponent(plan.to)}/send`, { text: said, enter: true })
     } else if (plan.how !== "host") {
@@ -302,7 +285,6 @@ same way. A session on another of the Machines gets it through the app there.
           `the reply asks, and ${again}. The user's reply: ${text}`
       if (plan.how === "resume") await startAgent(ctx, plan.to, said)
       else started = await startNew(ctx, agent, plan, said)
-      // (a terminal handed the reply ends once it reports again; a host's chat stays)
       if (!started?.host) hand(plan.to)
     }
     const quoted = lines.split(/\r?\n/).map((l) => `> ${l}`.trimEnd()).join("\n")
@@ -312,14 +294,12 @@ same way. A session on another of the Machines gets it through the app there.
       const at = body.lastIndexOf(REPLY_BLOCK)
       return at < 0 ? `${body.replace(/\n*$/, "")}\n\n${note}` : body.slice(0, at) + note + body.slice(at)
     })
-    // The report now names the session that answers it: its next report goes on in this file, and so do later replies.
     const answering = started ? started.terminal ?? "" : plan.to
     const next = { ...(answering !== terminal ? { terminal: answering } : {}), ...(plan.how === "new" ? { session: started?.session ?? "" } : {}) }
     let id = r.id
     if ((!p.keep && r.status !== "done") || Object.keys(next).length) {
       id = str(((await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { ...next, ...(!p.keep ? { status: "done" } : {}) })) as Item)?.id) || id
     }
-    // Its thread is working on it (archiving its record made it done), on the terminal that answers.
     moveOn(list().filter((e) => [`${r.id}.md`, `${id}.md`].includes(fileOf(e.link) ?? "")), "working",
       started ?? { terminal: plan.to, ...(plan.how === "new" ? { session: undefined } : {}) })
     return { to: `${r.id}.md`, terminal: answering || null, how: plan.how, done: !p.keep }

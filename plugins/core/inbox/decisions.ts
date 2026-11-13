@@ -1,13 +1,9 @@
 import { str } from "../../../core/vault.ts"
 
-
-/** `effects`: what each option causes, a few words shown under its button; `warn`: what to fix in how it's asked, said
- *  back to the asker (a question that doesn't name its subject). */
 export type DecisionSpec = { question: string; title: string; options: string[]; effects: string[]; default: string; blocking: boolean; why: string; warn?: string }
 
 const clean = (v: unknown) => (typeof v === "string" ? v : v === undefined || v === null ? "" : String(v)).replace(/\s+/g, " ").trim()
 
-/** A file name's worth of the question: its words without the question mark, cut at a word by about 60 letters. */
 export function titleOf(question: string) {
   const q = clean(question).replace(/[?？]+$/, "").replace(/[\\/:*"<>|#^[\]]+/g, " ").replace(/\s+/g, " ").trim()
   if (q.length <= 60) return q
@@ -15,14 +11,12 @@ export function titleOf(question: string) {
   return (space > 30 ? cut.slice(0, space) : cut).replace(/[\s,;:.-]+$/, "")
 }
 
-/** An option as given: "Label: what it causes" (or {label, does}): its label the button, what it causes shown under it. */
 export function optionOf(v: unknown): { label: string; does: string } {
   if (v && typeof v === "object" && !Array.isArray(v)) { const o = v as Record<string, unknown>; return { label: clean(o.label), does: clean(o.does ?? o.description) } }
   const t = clean(v), at = t.indexOf(": ")
   return at > 0 ? { label: t.slice(0, at).trim(), does: t.slice(at + 2).trim() } : { label: t, does: "" }
 }
 
-/** Why a question doesn't name what it's about ("Ship it?", "Start the first two steps?"), or "". */
 export function vagueOf(question: string) {
   if (words(question).length < 3) return "it's too short to say what it's about"
   if (/^\W*\w+\s+(?:it|this|that|these|those|them)\b/i.test(question) || /\b(?:the (?:first|next|last|other)|both)\s+(?:\w+\s+)?(?:steps?|ones?|options?|parts?)\b/i.test(question))
@@ -30,8 +24,6 @@ export function vagueOf(question: string) {
   return ""
 }
 
-/** One decision as given: an object ({question, options, default, why, blocking?, title?}), or text "Question? |
- *  Option: what it causes* | Option: what it causes | why: <context>" (`*` the default). Throws what's wrong. */
 export function specOf(v: unknown, blocking = false): DecisionSpec {
   let o: Record<string, unknown>
   if (typeof v === "string" && v.trim().startsWith("{")) {
@@ -74,7 +66,6 @@ const STOP = new Set(("a an the to of or and for in on it its is are be should d
   "me us them they there here if so then than now just also still any all one which what when how").split(" "))
 const words = (s: string) => clean(s).toLowerCase().replace(/[^\p{L}\p{N}\s]+/gu, " ").split(/\s+/).filter((w) => w && !STOP.has(w))
 
-/** How many of their words two questions share (0 to 1). */
 export function overlap(a: string, b: string) {
   const sx = new Set(words(a)), sy = new Set(words(b))
   let both = 0
@@ -82,15 +73,12 @@ export function overlap(a: string, b: string) {
   return sx.size + sy.size - both ? both / (sx.size + sy.size - both) : 0
 }
 
-/** The same question, said much the same way (from two agents, or the same one twice): one decision. */
 export function sameQuestion(a: string, b: string) {
   const x = words(a), y = words(b)
   if (x.join(" ") === y.join(" ")) return true
   return Math.min(x.length, y.length) >= 3 && overlap(a, b) >= 0.7
 }
 
-/** What the user answered, as one of `options`: by its number (1-based) or its words (whole, else the only option
- *  they start); anything else is their own answer, as said. */
 export function answerOf(options: string[], said: string): { answer: string; own: boolean } {
   const s = clean(said)
   const n = /^\d+$/.test(s) ? Number(s) : 0
@@ -101,30 +89,22 @@ export function answerOf(options: string[], said: string): { answer: string; own
   return starts.length === 1 ? { answer: starts[0], own: false } : { answer: s, own: true }
 }
 
-/** A decision as the lists read it: an Inbox/ result with a question. */
 export type Asked = { question?: string; options?: string[]; effects?: string[]; default?: string; blocking?: boolean; answer?: string; closed?: string }
 
-/** A list a decision's file keeps (its options, effects, the reports that asked it too); [] when it has none. */
-export const listOf = (v: unknown): string[] => (Array.isArray(v) ? v : [])
+export const listOf = (v: string[] | null | undefined): string[] => (Array.isArray(v) ? v : [])
 
-/** The page a wikilink names (`[[Inbox/A|a]]`: Inbox/A), else the text as given. */
 export const linkTo = (p: string) => /^\[\[([^\]|#]+)/.exec(p.trim())?.[1]?.trim() ?? p.trim()
 
-/** What its agent is told of an answer: a decision it waits on, or a default it took that the user changed; nothing
- *  when they kept the default it took. */
 export const toldOf = (d: Asked, answer: string) => (d.blocking === true
   ? `"${str(d.question)}": ${answer}`
   : answer !== str(d.default) ? `"${str(d.question)}": you went with "${str(d.default)}"; the user wants "${answer}" instead, so change it` : "")
 
-/** One reply for a session of what the user decided: its lines numbered when there are several. */
 export const decidedText = (lines: string[]) =>
   `The user decided${lines.length > 1 ? ` ${lines.length} of your questions` : ""}: ${lines.map((l, i) => (lines.length > 1 ? `${i + 1}. ${l}` : l)).join(" ")}`
 
-/** Its options as text, each with what it causes: "Keep (default): the island stays quiet · Go back: ...". */
 export const optionsText = (r: Asked, sep = " · ") => listOf(r.options).map((o, i) => {
   const does = str(listOf(r.effects)[i])
   return `${o}${o === r.default ? " (default)" : ""}${does ? `: ${does}` : ""}`
 }).join(sep)
 export const isDecision = (r: Asked) => !!r.question
-/** What it says to the user it already did, or waits on: "I went with X" (a default taken), "Waits on you". */
 export const standingOf = (r: Asked) => (r.answer ? `You chose ${r.answer}` : r.closed ? "Closed" : r.blocking ? "Waits on you" : `Went with ${r.default}`)

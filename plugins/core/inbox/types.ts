@@ -1,6 +1,3 @@
-// What the Inbox keeps in the store (/api/state's `inbox`: the results in Inbox/), and its events as the server sends
-// them (/api/inbox/live: kept on the machine they happened on, not in the vault; the server shows its other machines' too).
-
 /** A result to review: Inbox/<Title>.md. */
 export type InboxItem = {
   id: string; title: string; status: "new" | "done"

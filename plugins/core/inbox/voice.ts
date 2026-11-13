@@ -8,20 +8,15 @@ import { plugin, settings } from "./server.ts"
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
-/** What the front door (an agent the setting `dispatch` names) is told with a voice note: the setting
- *  `dispatch_prompt`, its {path}, {folder} and {text} filled in. */
 const DISPATCH = (file: string, text: string) => settings().prompt.replace(/\{(path|folder|text)\}/g, (_, k: string) =>
   (k === "path" ? file : k === "folder" ? path.posix.dirname(file) : text))
 
-/** Words past which a voice note isn't handed to the front door (about ten minutes of talk). */
 const LONG_VOICE = 1500
 
-/** Start the front door with a voice note: a new terminal running the agent (its id), the note its first prompt, given
- *  as it starts (typed in at its prompt, a fresh TUI could drop the start of it). */
+/** The note goes in as the agent's first prompt: typed in at its prompt, a fresh TUI could drop its start. */
 async function dispatch(ctx: OpCtx, agent: string, file: string, text: string): Promise<string> {
   const id = newTerminalId(agent)
   const parsed = parseTerminal(id)
-  // (its host starts a chat when it has one: agent-chat-new, as a reply's new session)
   const made = await startNew(ctx, parsed?.agent ?? agent, { how: "new", to: id, ago: null, ttl: null, transcript: "", ...(parsed?.profile ? { account: parsed.profile } : {}) }, DISPATCH(file, text))
   if (made.host) return made.session!
   hand(id)
@@ -55,8 +50,8 @@ it down, do it, or say what it would do; one past 1,500 words (a recording left 
       const words = said.replace(/[\\/:*?"<>|#^[\]]/g, "").replace(/\s+/g, " ").trim().split(" ")
       const first = words.slice(0, 8).join(" ")
       const title = `${first[0]?.toUpperCase() ?? ""}${first.slice(1)}${words.length > 8 ? "…" : ""}` || "Voice note"
-      // The user's own words (Provenance's label for what they write, while it's on); an AI app's (MCP) are its own.
-      const origin = (plugin.service(ctx.who.client === "mcp" ? "provenance:agent" : "provenance:user") as (() => string) | null)?.() || undefined
+      const provenance: (() => string) | null = plugin.service(ctx.who.client === "mcp" ? "provenance:agent" : "provenance:user")
+      const origin = provenance?.() || undefined
       let body = said
       if ((audio || ctx.input) && settings().audio) {
         const kind = /^[a-z0-9]{1,5}$/i.test(str(ext)) ? str(ext).toLowerCase() : "m4a"
@@ -68,7 +63,6 @@ it down, do it, or say what it would do; one past 1,500 words (a recording left 
       const file = `${r.id}.md`
       const agent = keep ? "" : settings().dispatch
       let terminal: string | null = null, why = ""
-      // Past a few minutes of talk it's a recording left running or a meeting, not a request: kept, not handed on.
       if (agent && words.length > LONG_VOICE) why = `${words.length} words is a recording, not a request: it's in the inbox`
       else if (agent) {
         try { terminal = await dispatch(ctx, agent, file, said) } catch (e) { why = (e as Error).message }

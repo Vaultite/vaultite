@@ -12,12 +12,9 @@ import { agentLabel, sessionRow, track } from "./sessions.ts"
 import { stampOf } from "./snooze.ts"
 import { addEvent, list } from "./store.ts"
 
-/** What a report is about and where it stands, said first in its title ("Feature done · Sidebar scrolls again"), so
- *  the inbox reads at a glance. */
 const WORK: Record<string, string> = { feature: "Feature", fix: "Fix", change: "Change", research: "Research", plan: "Plan", answer: "Answer" }
 const STATE: Record<string, string> = { done: "done", waiting: "needs you", stuck: "stuck" }
 const reportTitle = (work: string, state: string, title: string) => `${WORK[work] ?? "Work"} ${STATE[state] ?? state} · ${title}`
-/** What a report's title is about, without its work and state ("Sidebar scrolls again"); a title named by hand whole. */
 const subjectOf = (title: string) => {
   const m = /^(\S+) (.+?) · (.+)$/.exec(title)
   return m && Object.values(WORK).concat("Work").includes(m[1]) && Object.values(STATE).includes(m[2]) ? m[3] : title
@@ -26,7 +23,6 @@ const subjectOf = (title: string) => {
 const IMAGE = /\.(png|jpe?g|gif|webp)$/i, VIDEO = /\.(mp4|m4v|mov|webm)$/i
 export const REPLY_BLOCK = "```block-reply\n```"
 const DECISIONS_BLOCK = "```block-decisions\n```"
-/** A report's details at most (about 1,500 words): a report reads in a minute; files hold the rest. */
 const SUMMARY_MAX = 10_000
 const folded = (title: string, md: string) => `> [!info]- ${title}\n${md.trim().split(/\r?\n/).map((l) => `> ${l}`.trimEnd()).join("\n")}`
 
@@ -84,7 +80,6 @@ is vau inbox ask, the end of a task vau inbox report.
     if (!text) throw new OpError("`text`: where it stands, one line")
     const who = { agent: agent || "vau", terminal, session }
     const row = list().find(rowOf(who))
-    // (a row that needs the user stays as it is: only its line changes)
     await sessionRow(who, { progress: text, ...(!row || row.state === "done" ? { state: "working" as const, read: true } : {}) }, false)
     return { ok: true, progress: text }
   },
@@ -147,7 +142,6 @@ A job with a proof embeds its demo video: --video <the path tour-save gave> (Gui
     if (!summary) throw new OpError("`summary`: what you did and where to look")
     if (!tldr) throw new OpError("`tldr`: what happened, one line in plain words")
     if (tldr.length > 400) throw new OpError(`\`tldr\`: one line, at most about 60 words (it's ${tldr.split(" ").length}): the rest goes in summary`)
-    // (the daily digest is the one long read: three times as long)
     if (summary.length > SUMMARY_MAX * (p.digest === true ? 3 : 1)) throw new OpError(`\`summary\`: at most about 1,500 words (it's ${summary.split(/\s+/).length}): keep what a new session needs, link files for the rest`)
     const specs = specsOf(p.decision, p.state === "waiting")
     const settles = ((p.settles ?? []) as string[]).map((x) => str(x).trim()).filter(Boolean)
@@ -155,7 +149,6 @@ A job with a proof embeds its demo video: --video <the path tour-save gave> (Gui
     if (missing.length) throw new OpError(`settles: no decision ${missing.join(", ")} (vau inbox decisions lists them)`, 404)
     const state = str(p.state) || (specs.some((d) => d.blocking) ? "waiting" : "done")
     const title = reportTitle(str(p.work), state, str(p.title).trim())
-    // What reaches the inbox: a failure, what went out publicly, the daily digest; the rest is a record, archived.
     const told = state === "stuck" || p.public === true || p.digest === true
     const images: string[] = []
     for (const given of (p.images ?? []) as string[]) {
@@ -168,12 +161,10 @@ A job with a proof embeds its demo video: --video <the path tour-save gave> (Gui
       }
       let data: Buffer
       try { data = fs.readFileSync(f) } catch { throw new OpError(`can't read ${f}`) }
-      // (named for the day and the report: agents' "after.png" from different tasks never take each other's place)
       const name = `${localDate(Date.now())} ${safeName(str(p.title).trim()).slice(0, 50).trim()} - ${path.basename(f)}`
       const up = await ctx.op("file.upload", { data: data.toString("base64"), name }) as { path: string }
       images.push(up.path)
     }
-    // (a demo video: one in the vault by its path, as its name may be any proof's; one on this machine uploaded)
     let video = str(p.video).trim()
     if (video) {
       if (!VIDEO.test(video)) throw new OpError(`${video}: a video is an mp4, mov or webm`)
@@ -190,7 +181,6 @@ A job with a proof embeds its demo video: --video <the path tour-save gave> (Gui
     const machine = terminal || session ? await selfMachine() : null
     if (terminal && handed().includes(terminal)) ending.set(terminal, Date.now())
     const who = { ...(agent ? { agent } : {}), ...(session ? { session } : {}), ...(terminal ? { terminal } : {}), ...(machine ? { machine } : {}) }
-    // The same session's report before (the one the user replied to): this one goes on in it, so an exchange is one file.
     await plugin.vault.sync()
     const prior = sortBy(plugin.vault.items("inbox").filter((x) => !truthy(x.question) && ((terminal && str(x.terminal) === terminal) || (session && str(x.session) === session))),
       latest, true)[0]
@@ -219,14 +209,11 @@ A job with a proof embeds its demo video: --video <the path tour-save gave> (Gui
       await ctx.api("PUT", `inbox/${encodeURIComponent(d.id)}`, { status: "done", closed: clip(`Settled by [[${baseOf(str(r.id))}]]`, 300) })
       closed.push(`${d.id}.md`)
     }
-    // Its session's thread is the report: needing the user when it's told, else done with it, quietly (the record is the
-    // report, its questions the decisions).
     const report = told
       ? { state: "open" as const, ask: "report", title: str(r.title), body: tldr, link: file, read: false, questions: undefined }
       : { state: "done" as const, ask: "report", title: str(r.title), body: tldr, link: file, read: true, questions: undefined, progress: undefined }
     if (terminal || session) await sessionRow({ agent: agent || "vau", terminal, session }, report, told)
     else if (told) addEvent({ source: agent || "vau", kind: "waiting", ...report })
-    // (later work settles what was asked before it: the rest are read against this report)
     track(closeSettled(ctx, `${tldr}\n\n${summary}`, `[[${baseOf(str(r.id))}]]`, new Set(asked.map((x) => x.path.replace(/\.md$/, "")))))
     const warn = specs.map((d) => d.warn).filter(Boolean)
     return { path: file, title: r.title, inbox: told, decisions: asked, closed, ...(warn.length ? { warn } : {}), images, ...(video ? { video } : {}), terminal: terminal || null, session: session || null, ...(prior ? { thread: true } : {}) }

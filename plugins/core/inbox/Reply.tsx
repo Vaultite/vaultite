@@ -1,5 +1,3 @@
-// The reply box: at the end of an agent's report (```block-reply```), and in a session's sheet (Session.tsx). What's
-// typed goes back into the agent's session (inbox.reply), so an answer is replied to where it's read.
 import { useEffect, useState, type KeyboardEvent } from "react"
 import { MessageSquareReply, PencilLine, SquareTerminal } from "lucide-react"
 import { appDevice, Button, cn, keyHint, notify, notifyError, op, openFile, Panel, parseTerminal, usePane, type BlockCtx } from "@vaultite"
@@ -10,7 +8,6 @@ const field = "w-full resize-y rounded-[7px] border-[0.5px] border-border bg-bac
 // (a phone's 44px target)
 const reply = "h-11 rounded-[6px] px-3 md:h-7 md:px-2.5"
 
-/** A reply typed on this device and not sent (drafts.ts), on its row and on its box. `short`: a sidebar's row. */
 export function DraftTag({ to, short, className }: { to: string; short?: boolean; className?: string }) {
   if (!useHasDraft(to)) return null
   return (
@@ -21,8 +18,6 @@ export function DraftTag({ to, short, className }: { to: string; short?: boolean
   )
 }
 
-// The boxes shown now, by what they answer: one left with its reply unsent says so, unless it's drawn again at once
-// (the box is drawn anew whenever what it answers re-renders).
 const shown = new Map<string, number>()
 function leave(to: string, back?: () => void) {
   shown.set(to, (shown.get(to) ?? 1) - 1)
@@ -32,12 +27,10 @@ function leave(to: string, back?: () => void) {
   }, 500)
 }
 
-/** The replies kept in a report (inbox.reply writes each above the box). */
 const replies = (body: string) => body.split("[!note] You replied").length - 1
 
 type Plan = { how: "type" | "resume" | "new" | null; ago: number | null; ttl: number | null }
 
-/** Where the reply goes, in a line: and the other way, when there's one. */
 function PlanLine({ plan, how, setHow }: { plan: Plan | null; how: "resume" | "new" | ""; setHow: (h: "resume" | "new" | "") => void }) {
   if (!plan?.how) return <span className="md:flex-1" />
   const auto = plan.how
@@ -57,18 +50,13 @@ function PlanLine({ plan, how, setHow }: { plan: Plan | null; how: "resume" | "n
   )
 }
 
-/** A reply box for `to` (a report's path, or a thread's id), its draft under `draft` (its thread's id, else `to`):
- *  `kept`, replies it kept (a report's), shown till there; `sent`, what follows it; `back`, what shows it again. */
 export function ReplyBox({ to, draft: key = to, name, kept = 0, open, sent: done, back, placeholder = "Answer its questions, or ask for more" }: {
   to: string; draft?: string; name: string; kept?: number; open: () => Promise<void>; sent?: () => void; back?: () => void; placeholder?: string
 }) {
-  // (the stored draft is the reply until the server has it: in flight, the box is empty and waits)
   const flying = useSending(key)
   const [text, setDraft] = useState(() => (sendingOf(key) === null ? draftOf(key) : ""))
   const setText = (t: string) => { setDraft(t); keepDraft(key, t) }
-  // Once a send settles, the box shows what's stored: nothing when it went, the reply again when it didn't.
   useEffect(() => { if (flying === null) setDraft(draftOf(key)) }, [flying, key])
-  // The reply just sent, shown at once until it's kept (the agent is reached first, which takes a moment).
   const [sent, setSent] = useState<{ text: string; had: number } | null>(null)
   const [plan, setPlan] = useState<Plan | null>(null)
   const [how, setHow] = useState<"resume" | "new" | "">("")
@@ -83,7 +71,7 @@ export function ReplyBox({ to, draft: key = to, name, kept = 0, open, sent: done
     let live = true
     const look = () => void op<Plan>("inbox.reply-plan", { to }).then((p) => { if (live) setPlan(p) }).catch(() => {})
     look()
-    const t = setInterval(look, 60_000) // the cache runs out while it's open
+    const t = setInterval(look, 60_000)
     return () => { live = false; clearInterval(t) }
   }, [to])
   const send = async () => {
@@ -132,7 +120,6 @@ export function ReplyBox({ to, draft: key = to, name, kept = 0, open, sent: done
 
 export function ReplyBlock({ store, path, body }: BlockCtx) {
   const r = store.inbox?.find((x) => `${x.id}.md` === path)
-  // (its draft is its thread's, as on the thread's row: one draft, wherever it's typed)
   const thread = useEvents().events.find((e) => e.link?.replace(/^file:/, "") === path)?.id
   useEffect(() => { if (thread && hasDraft(path) && !hasDraft(thread)) { keepDraft(thread, draftOf(path)); keepDraft(path, "") } }, [thread, path])
   const terminal = r?.terminal ?? "", session = r?.session ?? ""

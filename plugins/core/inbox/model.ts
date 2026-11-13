@@ -60,8 +60,6 @@ export type InboxEvent = {
   progress?: string
 }
 
-/** Events from before sessions were rows (one per turn: "Claude Code finished", "… is waiting for you", a report's), as
- *  one row per session: its newest, named after the session (the body those titles had) or the report. */
 export function byThread(es: InboxEvent[]): InboxEvent[] {
   const seen = new Set<string>()
   const out: InboxEvent[] = []
@@ -79,15 +77,13 @@ export function byThread(es: InboxEvent[]): InboxEvent[] {
   return out
 }
 
-/** Version 2's events with their state: read had hidden one (dealt with), unread is open. A session's row is its
- *  thread; a browser's session (its page's address) stays the message or ask it was. */
 export function asThreads(es: InboxEvent[]): InboxEvent[] {
-  return es.map((e) => {
+  return es.map((e): InboxEvent => {
     if (STATES.includes(e.state)) return e
     const session = !e.gate && (e.kind === "waiting" || e.kind === "done") && !!(e.terminal || e.session) && !/^https?:/.test(e.session ?? "")
     const open = e.gate ? !e.answer : !!e.snoozed || (!e.read && !(session && e.kind === "done"))
     const { kept, ...rest } = e
-    return { ...rest, kind: session ? "session" : e.kind, state: open ? "open" : "done", ...(open && kept ? { kept } : {}) } as InboxEvent
+    return { ...rest, kind: session ? "session" : e.kind, state: open ? "open" : "done", ...(open && kept ? { kept } : {}) }
   })
 }
 
@@ -116,12 +112,9 @@ export const TERMINAL = /^[\w-]{1,64}(@[a-z0-9][a-z0-9-]{0,62})?$/
 export function pinnedAs(e: InboxEvent, on: boolean): InboxEvent {
   if (on) return e.state === "done" ? e : { ...e, pinned: true }
   const { pinned: _, ...rest } = e
-  // (a message read while pinned was kept for it: unpinned, it's settled as a read one is)
   return isMessage(e) && !e.gate && e.read && e.state === "open" ? { ...rest, state: "done" } : rest
 }
 
-/** `e` snoozed till `until` (out of the lists meanwhile), or woken (null: open, unread, on top, told again); null when
- *  it can't be (a gate or a permission would wait unseen; what's done isn't to come back). */
 export function snoozedAs(e: InboxEvent, until: number | null): InboxEvent | null {
   if (e.gate || e.state === "done" || (until !== null && e.state === "open" && e.ask === "permission")) return null
   if (until !== null) return { ...e, snoozed: until }
@@ -133,7 +126,6 @@ export function snoozedAs(e: InboxEvent, until: number | null): InboxEvent | nul
 const or = (xs: string[], word = "or") => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} ${word} ${xs.at(-1)}`)
 export const questionsText = (qs: Question[]) => qs.map((q) => `${q.question}${q.multi ? " (any of them)" : ""}\n\n` +
   q.options.map((o, i) => `${i + 1}. **${o.label}**${o.description ? `: ${o.description}` : ""}`).join("\n")).join("\n\n")
-/** The first question and its options in a line (the row, the toast); `lines`: an option a line, for a notification. */
 export function questionLine(qs: Question[], lines = false) {
   const q = qs[0], more = qs.length > 1 ? ` (${qs.length - 1} more question${qs.length > 2 ? "s" : ""})` : ""
   const labels = q.options.map((o) => o.label)

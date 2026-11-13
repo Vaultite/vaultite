@@ -9,12 +9,9 @@ import type { Verdict } from "./needs.ts"
 export type StateChange = { terminal: string; agent: string; state: "idle" | "working" | "blocked" | "done" | "error"
   kind?: string; msg?: string; from: "osc7501" | "hooks" | "screen" | "agent" | "backend" | "shell"; was?: string; at: number }
 
-/** A change as the inbox hears it: from Terminal, an agent's own hook, or a host (the service "inbox:session"). */
 export type Heard = Omit<StateChange, "terminal" | "at"> & { terminal?: string; session?: string; cwd?: string; text?: string; prompt?: string
-  /** An agent's own hook or host: each change is news. */
   own?: boolean
   questions?: Question[]; title?: string
-  /** Its thread's id, when its host names it. */
   thread?: string }
 
 export type Who = { agent: string; terminal: string; session: string; host?: boolean; thread?: string }
@@ -62,11 +59,8 @@ export function fromHook(j: Item): Omit<Heard, "agent" | "from"> | null {
   return null
 }
 
-/** What the inbox last heard of a session, and when its turn started (it last went to working). */
 export type Seen = { state: string; kind?: string; msg?: string; since: number }
 
-/** What a change means for its session's row: `working` the user wrote to it (`user`) or answered its question
- *  (`answer`); `refused` out of a question without working again; `turn` a turn ended, started at `since`. */
 export type Act =
   | { do: "repeat" }
   | { do: "nothing" }
@@ -93,7 +87,6 @@ export function hear(was: Seen | undefined, h: Heard, now: number): Hearing {
   return { seen: { state: h.state, kind: h.kind, msg: h.msg, since }, act: actOf(h, was?.state ?? h.was, since) }
 }
 
-/** What a blocked session waits on, by what its change says (a kind the inbox doesn't know is a question). */
 export const askOf = (kind?: string) => (BLOCKED.has(str(kind)) ? str(kind) : "question")
 
 export function askedRow(asking: Asking | null, said: string, msg?: string): Partial<InboxEvent> {
@@ -104,8 +97,7 @@ export function askedRow(asking: Asking | null, said: string, msg?: string): Par
 
 export const wantsLast = (h: Heard) => h.text === undefined || h.prompt === undefined
 
-/** A turn's words: its change's own, else what its agent's transcript says (`last`). null: no turn ended (Codex says it
- *  works while it starts up, then idle with no session to read). */
+/** null: Codex says it works while it starts up, then idle with no session to read. */
 export function wordsOf(h: Heard, last: Last | null): { text: string; prompt?: string; auto: boolean } | null {
   if (!last && h.from === "osc7501" && h.state === "idle" && h.text === undefined && h.prompt === undefined) return null
   return { text: (h.text ?? last?.text ?? h.msg ?? "").trim(), prompt: h.prompt ?? last?.prompt, auto: !!last?.auto && h.prompt === undefined }
@@ -118,22 +110,17 @@ export const bodyOf = (text: string) => (text ? (text.length > BODY ? `${text.sl
 
 export const turnOf = (prompt?: string) => (prompt?.trim() ? crypto.createHash("sha1").update(prompt.trim()).digest("hex").slice(0, 12) : undefined)
 
-/** A subagent's turn is its parent's to read; a session whose subagents still work will hear from them. */
 export const delegated = (line: Lineage | null): line is Lineage => !!(line?.consumes || line?.waits)
 
 export const delegatedRow = (line: Lineage, error: boolean, body: string | undefined, prompt?: string): Partial<InboxEvent> => ({
   state: line.consumes ? "done" : "working", ask: line.consumes && error ? "error" : undefined, body, read: true, questions: undefined,
   turn: line.consumes ? undefined : turnOf(prompt) })
 
-/** Whether open thread `e` still needs the user after a quiet turn answering `turn`: the same turn goes on (a background
- *  task); a new message from the user, or its ask gone, settles it. */
 export const stillOpen = (e: Pick<InboxEvent, "state" | "ask" | "turn">, turn?: string) =>
   e.state === "open" && !BLOCKED.has(str(e.ask)) && (e.ask === "report" || !turn || !e.turn || turn === e.turn)
 
 export type Change = { patch: Partial<InboxEvent>; news: boolean }
 
-/** A judged turn's row: needing the user (told), an answer kept quiet, done; null when what it left stays to read. `row`:
- *  the session's row now. A turn the session started itself (`auto`) settles nothing the user hasn't answered. */
 export function afterTurn(row: InboxEvent | undefined, v: Verdict, t: { body?: string; prompt?: string; auto: boolean; quietAnswers: boolean }): Change | null {
   const { body } = t, turn = turnOf(t.prompt)
   if (v.needs && v.why === "answer" && t.quietAnswers) return { patch: { state: "done", ask: "answer", body, read: false, link: undefined, questions: undefined, turn: undefined }, news: false }
@@ -145,8 +132,6 @@ export function afterTurn(row: InboxEvent | undefined, v: Verdict, t: { body?: s
 export const rowOf = (k: Who) => (e: InboxEvent) => !e.gate && !e.machine && e.source === k.agent &&
   ((!!k.thread && e.id === k.thread) || (!k.thread && ((!!k.session && e.session === k.session) || (!!k.terminal && e.terminal === k.terminal))))
 
-/** Session `k`'s row `old`, or a new one (`id`, `fallback` its title when nothing names it), changed by `patch`: a field
- *  undefined there is taken away. */
 export function rowWith(old: InboxEvent | null, patch: Partial<InboxEvent>, k: Who,
   at: { id: string; t: number; title: string; fallback: string; parent?: InboxEvent["parent"] }): InboxEvent {
   const e: InboxEvent = { ...(old ?? { id: at.id, state: "working" }), t: at.t, source: k.agent, kind: "session", title: at.title || old?.title || at.fallback, ...patch }

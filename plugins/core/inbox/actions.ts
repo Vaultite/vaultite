@@ -35,7 +35,6 @@ undo brings it back: a result to review, a thread open again. (inbox.done, vau i
     if (EVENT_ID.test(item)) {
       const e = await eventFor(ctx, item)
       await ctx.api("POST", "inbox/events/done", { ids: [e.id], done: !back })
-      // (its report to review goes with it: the thread was its item)
       const rec = !back && fileOf(e.link) ? resultAt(fileOf(e.link)!) : undefined
       if (rec && rec.status === "new" && !isArchived(rec)) await ctx.api("PUT", `inbox/${encodeURIComponent(rec.id)}`, { status: "done" })
       return { id: e.id, title: e.title, done: !back }
@@ -63,7 +62,6 @@ const wakeOp: Op = {
   args: ["item"],
   run: async (p, ctx) => {
     const item = str(p.item).trim()
-    // (what isn't snoozed has nothing to wake from: said so, rather than "woken")
     const was = EVENT_ID.test(item) ? !!(await eventFor(ctx, item)).snoozed : (await plugin.vault.sync(), snoozed(resultAt(item)?.snoozed))
     return { ...(await ctx.op("inbox.snooze", { item, until: "now" })) as Item, woke: was }
   },
@@ -244,7 +242,6 @@ id from a notification another machine sent is found too.
   args: ["id", "answer"],
   run: async ({ id, answer, text, picks, typed }, ctx) => {
     const e = await eventFor(ctx, id)
-    // (a gate, an agent's permission or its questions: the user's alone, never an agent saying yes to itself or another)
     if (((answer === "approve" || answer === "deny") && (e.gate || e.ask === "permission") || answer === "pick" || answer === "chat") && !userSurface(ctx.who)) throw new OpError(NOT_THE_USER, 403)
     const bare = splitMachine(e.id)[0]
     if (e.machine) return onOwner(ctx, e, "inbox.answer", { id: bare, answer, ...(text ? { text } : {}), ...(picks?.length ? { picks } : {}), ...(typed?.length ? { typed } : {}) })
@@ -254,7 +251,7 @@ id from a notification another machine sent is found too.
       await ctx.api("POST", "inbox/events/read", { ids: [e.id] })
       return { id: e.id, answer, title: e.title, terminal: e.terminal ?? null }
     }
-    const host = e.host && e.session ? plugin.service(`agent-answer:${e.source}`) as ((session: string, a: Item) => Promise<boolean>) | null : null
+    const host: ((session: string, a: Item) => Promise<boolean>) | null = e.host && e.session ? plugin.service(`agent-answer:${e.source}`) : null
     if (answer === "pick" || answer === "chat") {
       const given = answer === "chat" ? "chat" as const : (picks ?? []).map(str), texts = (typed ?? []).map(str)
       if (!host) return { id: e.id, answer, title: e.title, ...(await pickIn(ctx, e, given, texts)) }
@@ -297,7 +294,6 @@ const pushOp: Op = {
   },
   args: ["title"],
   run: async ({ title, body }, ctx) => await ctx.api("POST", "inbox/push", { title, body }),
-  // (no phone or watch signed up yet: nothing went anywhere, and it says so)
   text: (r) => (!r.sent && !r.failed.length ? "Nothing sent: no phone has signed up for notifications on this machine yet (the iPhone app does, once it connects; the watch shows the phone's)."
     : `Sent to ${r.sent} device${r.sent === 1 ? "" : "s"}${r.failed.length ? `; failed: ${r.failed.join(", ")}` : ""}.`),
 }

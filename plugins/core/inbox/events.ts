@@ -1,43 +1,29 @@
-// The Inbox's events in the app: one socket while the plugin is on; changes apply here at once and the server's answer
-// comes back over the socket.
 import { useMemo } from "react"
 import { agentsOn, canRunAgents, cell, clickOpening, del, detailPath, fetchMachines, focusedPane, get, getTabLayout, shownTab, isDesktop, isOutside, isViewOpen, notify, notifyError, onMachine, op, openAgent, openDetail, openFile, openOutside, openView, openWebLink, post, splitMachine, type Agent, type TabLayout } from "@vaultite"
 import { snoozed, snoozeMs } from "./snooze"
 import { isMessage, waitsOnYou } from "./threads"
 import type { InboxEvent } from "./types"
 
-/** Nothing told till `until` (inbox.hold), on every machine. */
 export type Hold = { until: string; from: string; label?: string }
-/** `needs`: what waits on the user (waitsOnYou), not snoozed. */
 export type Events = { events: InboxEvent[]; unread: number; needs: number; ready: boolean; hold: Hold | null }
-/** The sheet of a permission the server waits on (Inbox.tsx's GateSheet): inbox-gate/<event id>. */
 export const GATE_DETAIL = "inbox-gate"
-/** The sheet of an agent's session (Session.tsx): its last answer or what it asks, the reply: inbox-session/<event id>. */
 export const SESSION_DETAIL = "inbox-session"
 const state = cell<Events>({ events: [], unread: 0, needs: 0, ready: false, hold: null })
 const fresh = new Set<(e: InboxEvent) => void>()
 
 export const { get: getEvents, subscribe: subscribeEvents, use: useEvents } = state
-/** The hold on now, if any (it ends by its time, unannounced). */
 export const heldNow = (h = state.get().hold) => (h && snoozeMs(h.until) > Date.now() ? h : null)
-/** Hear each event the user is to be told of (the server stamps it `nt` when they may be), once; not the ones there
- *  when the app loads. */
 export function onFresh(fn: (e: InboxEvent) => void) { fresh.add(fn); return () => { fresh.delete(fn) } }
 
 function set(events: InboxEvent[], hold = state.get().hold) {
   state.set({ events, unread: events.filter((e) => !e.read).length, needs: events.filter((e) => waitsOnYou(e) && !snoozed(e.snoozed)).length, ready: true, hold })
 }
 
-
-// ---------- the socket
-
 let sock: WebSocket | null = null
 let users = 0
 let retry = 0
 let timer: ReturnType<typeof setTimeout> | null = null
-/** When each event last told the user, as last heard; null until the first list. */
 let seen: Map<string, number> | null = null
-/** News older than this when it arrives (the socket was away a while) is listed, not announced. */
 const STALE = 2 * 60_000
 
 function open() {
@@ -63,7 +49,6 @@ function open() {
   }
 }
 
-/** Follow the events while something needs them (the background, while the plugin is on). */
 export function follow() {
   if (users++ === 0 && !sock && !timer) open()
   return () => {
@@ -75,9 +60,6 @@ export function follow() {
   }
 }
 
-// ---------- changes
-
-/** Mark events read, seen (no ids: every one): a message is done by it, a thread stays until it's done. */
 export function markRead(ids?: string[]) {
   const want = ids ? new Set(ids) : null
   if (!getEvents().events.some((e) => !e.read && (!want || want.has(e.id)))) return
@@ -86,8 +68,6 @@ export function markRead(ids?: string[]) {
   void post("inbox/events/read", ids ? { ids } : {}).catch(undo(before, "Couldn't mark it read"))
 }
 
-/** Mark events unread by hand: they stay so while the Inbox is seen, until opened or marked read (a message read is
- *  back in the inbox). */
 export function markUnread(ids: string[]) {
   const want = new Set(ids)
   const before = getEvents().events
@@ -95,7 +75,6 @@ export function markUnread(ids: string[]) {
   void post("inbox/events/unread", { ids }).catch(undo(before, "Couldn't mark it unread"))
 }
 
-/** Mark events done (dealt with: a thread's report to review is archived with it), or open again (`done` false). */
 export function markEventsDone(ids: string[], done = true) {
   const want = new Set(ids)
   const before = getEvents().events
@@ -104,16 +83,13 @@ export function markEventsDone(ids: string[], done = true) {
   return Promise.all(ids.map((id) => op("inbox.settle", { item: id, ...(done ? {} : { undo: true }) }))).then(() => true, (e) => { undo(before, done ? "Couldn't settle it" : "Couldn't bring it back")(e); return false })
 }
 
-/** Undo a settle: back in the inbox, pinned again if they were. */
 export function unsettle(evs: InboxEvent[]) {
   const pinned = evs.filter((e) => e.pinned).map((e) => e.id)
   return markEventsDone(evs.map((e) => e.id), false).then((ok) => { if (ok && pinned.length) pinEvents(pinned, true) })
 }
 
-/** Whether it can be snoozed: not a gate nor a permission asked (they'd wait unseen), nor what's done. */
 export const snoozable = (e: InboxEvent) => !e.gate && e.state !== "done" && !(e.state === "open" && e.ask === "permission")
 
-/** Snooze events till `until` (ms; out of the lists meanwhile), or bring them back now (null). */
 export function snoozeEvents(ids: string[], until: number | null) {
   const want = new Set(ids)
   const before = getEvents().events
@@ -122,7 +98,6 @@ export function snoozeEvents(ids: string[], until: number | null) {
   void post("inbox/events/snooze", { ids, until }).catch(undo(before, "Couldn't snooze it"))
 }
 
-/** Pin events on top of the inbox (till done), or unpin them (`on` false). */
 export function pinEvents(ids: string[], on: boolean) {
   const want = new Set(ids)
   const before = getEvents().events
@@ -131,48 +106,36 @@ export function pinEvents(ids: string[], on: boolean) {
   void post("inbox/events/pin", { ids, pinned: on }).catch(undo(before, on ? "Couldn't pin it" : "Couldn't unpin it"))
 }
 
-/** Seeing the Inbox reads its messages (they're done), but not what the user marked unread, nor a thread or an ask:
- *  read only once opened, done only once dealt with. */
 export function markSeen() {
   const ids = getEvents().events.filter((e) => !e.read && !e.kept && isMessage(e) && !snoozed(e.snoozed)).map((e) => e.id)
   if (ids.length) markRead(ids)
 }
 
-/** A permission waiting on an answer: one a server waits on (a gate), or an agent's in an app terminal, on any machine
- *  (answered there). */
 export const answerable = (e: InboxEvent) => e.state === "open" && (e.gate ? !e.answer : !isMessage(e) && e.ask === "permission" && !!(e.terminal || e.host))
 
-/** An agent's session's thread (not a server's question or news): its sheet shows it, and it's replied to. */
 export const isSession = (e: InboxEvent) => e.kind === "session"
 
-/** A session (one that asked, or delegated) as its thread is called now (it may have been named since), else as it was then. */
 export const threadTitle = (s: { title: string; terminal?: string; session?: string }, events = getEvents().events) => events.find((x) => x.kind === "session" && !x.machine &&
   ((!!s.terminal && x.terminal === s.terminal) || (!!s.session && x.session === s.session)))?.title ?? s.title
 
-/** Go to the session that asked `e` (Go to session): its terminal, else it resumed, on the machine it asked on. */
 export const openAsker = (e: InboxEvent) => {
   const f = e.from
   if (!f) return
   void openSession({ terminal: f.terminal, session: f.session, agent: f.agent, machine: e.machine, host: !f.terminal }).catch((err) => notifyError(err, "Couldn't open it"))
 }
 
-/** A session's terminal if it still runs, else its session resumed in a new one, or (`host`: run outside a terminal)
- *  its agent's session view: on the machine it ran on (a session is kept there). */
 export async function openSession({ terminal = "", session = "", agent = "", machine = "", host = false }: { terminal?: string; session?: string; agent?: string; machine?: string; host?: boolean }) {
   const ms = await fetchMachines()
   const [bare, at] = splitMachine(terminal)
   const there = at || (machine && ms.some((m) => m.id === machine && !m.self) ? machine : "")
   const view = agentsOn().find((a) => a.name === agent)?.session
   if (host && session && view) { openView(`view:${view}/${onMachine(session, there)}`, { newTab: true }); return }
-  // (whether it still runs: as the machine it runs on lists its terminals)
   const { sessions } = await get<{ sessions: { id: string }[] }>(there ? `machines/${encodeURIComponent(there)}/terminals/sessions` : "terminals/sessions")
   if (bare && sessions.some((s) => s.id === bare)) openView(`terminal/${onMachine(bare, there)}`, { newTab: true })
   else if (session && agent) openAgent(agent, { resume: session, machine: there })
   else notify("Its terminal has ended, and it names no session to resume")
 }
 
-/** Answer a permission: a gate's server runs what was asked or refuses it (done); an agent's terminal gets the keys
- *  for it (working: it goes on). */
 export async function answerAsk(e: InboxEvent, answer: "approve" | "deny") {
   set(getEvents().events.map((x) => (x.id === e.id ? { ...x, answer, read: true, kept: undefined, state: e.gate ? "done" as const : "working" as const } : x)))
   try {
@@ -184,7 +147,6 @@ export async function answerAsk(e: InboxEvent, answer: "approve" | "deny") {
   }
 }
 
-/** Forget one event, or all of them. */
 export function forget(id?: string) {
   const before = getEvents().events
   set(id ? getEvents().events.filter((e) => e.id !== id) : [])
@@ -193,16 +155,10 @@ export function forget(id?: string) {
   return p
 }
 
-/** A change made at once that the server refused: the list as it was, and why. */
 const undo = (before: InboxEvent[], what: string) => (e: unknown) => { set(before); notifyError(e, what) }
 
-// ---------- where an event leads
-
-/** The agent an event is about (its source names one), or null. */
 export const agentOf = (e: InboxEvent, agents: Agent[] = agentsOn()) => agents.find((a) => a.name === e.source) ?? null
 
-/** What a click on it opens, as a tab's target: its link, else a session's sheet (its answer, the reply), else the
- *  app's terminal it ran in (on a computer, with the Terminal on), else its agent's session (`AgentDef.session`), or null. */
 export function targetOf(e: InboxEvent): string | null {
   if (e.gate) return `detail:${detailPath(GATE_DETAIL, e.id)}`
   if (e.link) return /^(view:|detail:|https?:)/.test(e.link) ? e.link : `file:${e.link.replace(/^file:/, "")}`
@@ -210,7 +166,6 @@ export function targetOf(e: InboxEvent): string | null {
   return viewOf(e)
 }
 
-/** Where its agent is: the app's terminal it runs in (on a computer, with the Terminal on), else its session's view. */
 export function viewOf(e: InboxEvent): string | null {
   const a = agentOf(e)
   if (e.terminal && isDesktop() && canRunAgents()) return `view:terminal/${e.terminal}`
@@ -218,15 +173,11 @@ export function viewOf(e: InboxEvent): string | null {
   return null
 }
 
-/** Open what it's about, and mark it read (seen: a thread stays until it's done), unless it's a permission still to
- *  answer: its sheet has the buttons. */
 export function openEvent(e: InboxEvent) {
   if (!answerable(e)) markRead([e.id])
   const to = targetOf(e)
   if (!to) return
-  // (⌘- or middle-clicked, a session opens in a tab, its terminal's or its view, rather than its sheet)
   const tab = to.startsWith("detail:") && clickOpening() ? viewOf(e) : null
-  // (a web address `vau notify` was given is its web tab, view:web/<url>: a link, so a browser opens it when Browser is off)
   if (/^https?:/.test(to) || /^view:web\/https?:/.test(to)) openWebLink(to.replace(/^view:web\//, ""))
   else if (tab || to.startsWith("view:")) openView(tab ?? to, { newTab: !isViewOpen(tab ?? to) })
   else if (to.startsWith("detail:")) openDetail(to.slice(7))
@@ -234,14 +185,11 @@ export function openEvent(e: InboxEvent) {
   else openFile(to.slice(5))
 }
 
-/** The focused tab's target ("view:terminal/abc"), to tell whether the user is looking at what an event is about. */
 export function focusedTarget(layout: TabLayout = getTabLayout()): string {
   const t = shownTab(layout)
   return t ? focusedPane(t).to : ""
 }
 
-/** What sessions said of their progress (inbox.progress), by terminal and by session: the Agents panel's rows show it
- *  as their step while they're on it. */
 export function useProgress(): Map<string, string> {
   const { events } = useEvents()
   return useMemo(() => {

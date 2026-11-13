@@ -15,7 +15,6 @@ export async function postEvent(b: Item) {
 
 export async function askGate(b: Item) {
   const e = eventOf({ ...b, kind: "waiting", ask: "permission" })
-  // (the same ask, by its key, is the one already waiting: answered there, it stays so until inbox:drop)
   const asked = e.key ? list().find((x) => x.gate && sameKey(x, e.source, e.key!)) : null
   if (asked) return asked.id
   const from = await askerOf()
@@ -33,11 +32,11 @@ const ROUTES: [string, string, Handler, RouteOptions?][] = [
   }],
   ["POST", "inbox/events", async (req) => {
     await owner(req)
-    return reply(201, { event: addEvent(eventOf((req.body ?? {}) as Item)) })
+    return reply(201, { event: addEvent(eventOf(req.body ?? {})) })
   }],
   ["POST", "inbox/events/read", async (req) => {
     await owner(req)
-    const ids = (req.body as Item)?.ids
+    const ids = req.body?.ids
     const local = !!req.query.local
     if (!Array.isArray(ids)) {
       markRead(null)
@@ -52,7 +51,7 @@ const ROUTES: [string, string, Handler, RouteOptions?][] = [
   }],
   ["POST", "inbox/events/unread", async (req) => {
     await owner(req)
-    const ids = (req.body as Item)?.ids
+    const ids = req.body?.ids
     if (!Array.isArray(ids) || !ids.length) throw new HTTPError(400, "ids: which events to mark unread")
     const local = !!req.query.local
     for (const [m, some] of byMachine(ids.map(String))) {
@@ -63,7 +62,7 @@ const ROUTES: [string, string, Handler, RouteOptions?][] = [
   }],
   ["POST", "inbox/events/done", async (req) => {
     await owner(req)
-    const b = (req.body ?? {}) as Item
+    const b = req.body ?? {}
     if (!Array.isArray(b.ids) || !b.ids.length) throw new HTTPError(400, "ids: which events are done")
     const done = b.done !== false
     const local = !!req.query.local
@@ -76,7 +75,7 @@ const ROUTES: [string, string, Handler, RouteOptions?][] = [
   /** Snooze events until `until` (ms; null: back now). A permission the server waits on can't be: it'd wait unseen. */
   ["POST", "inbox/events/snooze", async (req) => {
     await owner(req)
-    const b = (req.body ?? {}) as Item
+    const b = req.body ?? {}
     if (!Array.isArray(b.ids) || !b.ids.length) throw new HTTPError(400, "ids: which events to snooze")
     const until = b.until === null ? null : Number(b.until)
     if (until !== null && !(until > Date.now())) throw new HTTPError(400, "until: when it comes back (ms), to come; null: back now")
@@ -89,7 +88,7 @@ const ROUTES: [string, string, Handler, RouteOptions?][] = [
   }],
   ["POST", "inbox/events/pin", async (req) => {
     await owner(req)
-    const b = (req.body ?? {}) as Item
+    const b = req.body ?? {}
     if (!Array.isArray(b.ids) || !b.ids.length) throw new HTTPError(400, "ids: which events to pin")
     const on = b.pinned !== false
     const local = !!req.query.local
@@ -104,9 +103,8 @@ const ROUTES: [string, string, Handler, RouteOptions?][] = [
   ["POST", "inbox/events/*/answer", async (req) => {
     await owner(req)
     const h = (k: string) => { const v = req.http?.headers[k]; return typeof v === "string" ? v : null }
-    // (callers can still lie about who they are: a yes that must be the user's takes a passkey, as browser logins do)
     if (req.http && !userSurface(whoOf(h("x-vaultite-client"), h("x-vaultite-agent")))) throw new HTTPError(403, NOT_THE_USER)
-    const answer = str((req.body as Item)?.answer)
+    const answer = str(req.body?.answer)
     if (answer !== "approve" && answer !== "deny") throw new HTTPError(400, "answer: approve or deny")
     const [bare, there] = splitMachine(req.arg(0))
     if (there) {

@@ -1,5 +1,4 @@
-// Phone push through APNs for each new event (the watch shows the phone's). Needs `inbox.apns` {key_id, team_id, key}
-// in data/config.json (never the vault); devices are kept per machine, and tokens Apple says are gone are forgotten.
+// APNs needs `inbox.apns` {key_id, team_id, key} in data/config.json; a token Apple says is gone is forgotten.
 import crypto from "node:crypto"
 import fs from "node:fs"
 import http2 from "node:http2"
@@ -9,9 +8,7 @@ import { str, writeAtomic } from "../../../core/vault.ts"
 
 export type Device = { token: string; env: "sandbox" | "production"; topic: string; name: string; t: number; widgets?: boolean }
 export type Apns = { key_id: string; team_id: string; key: string }
-/** The most of a body a notification shows. */
 export const BODY_MAX = 500
-/** What a notification says and does: its buttons come from its category (Push.swift registers them). */
 export type Note = { title: string; body?: string; category?: "permission" | "reply" | "event"; thread?: string; urgent?: boolean; data?: Record<string, string> }
 
 const FILE = () => path.join(LOCAL, "push", "devices.json")
@@ -30,7 +27,6 @@ function save(list: Device[]) {
   writeAtomic(FILE(), JSON.stringify({ devices: list }, null, 2), { mode: 0o600 })
 }
 
-/** Add a device, or update it (the same token). Throws on one that isn't a device token. */
 export function register(b: Record<string, unknown>): Device {
   const token = str(b.token).toLowerCase()
   if (!/^[0-9a-f]{32,200}$/.test(token)) throw new Error("token: the device's push token, in hex")
@@ -50,7 +46,6 @@ export function forget(token: string) {
   return after.length !== before.length
 }
 
-/** The key to sign with, from the config: null when push isn't set up here. */
 function keyOf(cfg: Apns | null) {
   if (!cfg?.key_id || !cfg.team_id || !cfg.key) return null
   try {
@@ -71,7 +66,6 @@ function bearer(cfg: Apns, key: crypto.KeyObject) {
   return jwt.token
 }
 
-/** The notification's JSON (aps and the event's own keys). */
 export function payload(n: Note) {
   return {
     aps: {
@@ -105,7 +99,6 @@ function post(d: Device, cfg: Apns, key: crypto.KeyObject, body: string): Promis
   })
 }
 
-/** Send to every device; forgets the ones Apple says are gone. What happened to each. */
 export const send = (cfg: Apns | null, n: Note) => sendTo(devices().filter((d) => !d.widgets), cfg, JSON.stringify(payload(n)))
 
 /** Tell the phones' widgets their data changed: they reload (iOS budgets these, so only on a real change). */

@@ -1,5 +1,3 @@
-// Decisions drawn: a question an agent asked, its options as buttons (the default marked), on the Inbox page, the
-// dashboard block and in its own file (```block-decisions```, a report's too). A tap answers it (inbox.decide).
 import { useState, type ReactNode } from "react"
 import { ArrowUp, Check, Circle, CircleCheck, FileText, MessageCircleQuestion, MoreHorizontal, RotateCcw, SquareTerminal, X } from "lucide-react"
 import {
@@ -13,31 +11,25 @@ import { openSession, useEvents } from "./events"
 const pathOf = (r: InboxItem) => `${r.id}.md`
 const baseOf = (p: string) => p.replace(/\.md$/i, "").split("/").pop() ?? p
 const linkTo = (l: string) => /^\[\[([^\]|#]+)/.exec(l.trim())?.[1]?.trim() ?? l.trim()
-/** A report's title without its work and state ("Feature done · Sidebar" -> "Sidebar"). */
 const subject = (t: string) => t.replace(/^\S+ (done|needs you|stuck) · /, "")
 
 export const isOpen = (r: InboxItem) => !!r.question && r.status === "new" && !r.archived
-/** The report a decision came from, as the store has it (archived ones too). */
 const reportIn = (store: Store | null | undefined, r: InboxItem) => {
   const name = baseOf(linkTo(r.report ?? ""))
   return name ? (store?.inbox ?? []).find((x) => !x.question && baseOf(x.id) === name) : undefined
 }
-/** The session that asked, by its name: kept when it was asked, else its thread's while it's listed (older ones). */
 function useWhere(r: InboxItem) {
   const { events } = useEvents()
   if (r.where) return r.where
   const e = (r.session || r.terminal) ? events.find((x) => x.kind === "session" && ((!!r.session && x.session === r.session) || (!!r.terminal && x.terminal === r.terminal))) : undefined
   return e?.title ?? ""
 }
-/** Go to the session that asked it: its terminal, else it resumed. */
 const goTo = (r: InboxItem) => void openSession({ terminal: r.terminal, session: r.session, agent: r.agent, machine: r.machine, host: !r.terminal })
   .catch((err) => notifyError(err, "Couldn't open it"))
 const reachable = (r: InboxItem) => !!(r.terminal || (r.session && r.agent))
 
-/** Its context: the file's words besides its block, one plain line. */
 const whyOf = (r: InboxItem) => snippet((r.body ?? "").replace(/```[\s\S]*?```/g, " ")).trim()
 
-/** What a tap does: the decision answered on screen at once (it leaves the lists), then written; Undo opens it again. */
 type Decided = { decided: { path: string }[]; sent: string[]; failed: string[] }
 function settle(r: InboxItem, fields: Partial<InboxItem>, write: () => Promise<Decided>, said: (out: Decided) => string) {
   haptic("medium")
@@ -58,7 +50,6 @@ export function decide(r: InboxItem, answer: string) {
 export const keepDefault = (r: InboxItem) => decide(r, r.default ?? "")
 const closeIt = (r: InboxItem) => settle(r, { closed: "Closed by you" }, () => op<Decided>("inbox.decide", { item: pathOf(r), moot: "Closed by you" }), () => "Closed it, unanswered")
 
-/** Accept all defaults: what's only kept is undone with one Undo; when an agent waits on one, that's sent, so it asks. */
 export async function acceptAll(rs: InboxItem[]) {
   if (!rs.length) return
   const waiting = rs.filter((r) => r.blocking)
@@ -78,7 +69,6 @@ export async function acceptAll(rs: InboxItem[]) {
 
 const tall = "max-md:h-11 max-md:rounded-[10px] max-md:px-4 max-md:text-[15px]"
 
-/** Its own answer, typed: Enter sends it. */
 function OwnAnswer({ r, close }: { r: InboxItem; close: () => void }) {
   const [text, setText] = useState("")
   const send = () => { const t = text.trim(); if (t) void decide(r, t) }
@@ -93,13 +83,10 @@ function OwnAnswer({ r, close }: { r: InboxItem; close: () => void }) {
   )
 }
 
-/** Its options as one list of choices, each its words and what picking it does beneath; where it went with the default
- *  already, that one first, marked, and a tap keeps it. Something else… takes an answer of their own. */
 function Options({ r }: { r: InboxItem }) {
   const [own, setOwn] = useState(false)
   const options = r.options ?? []
   const doesOf = (o: string) => r.effects?.[options.indexOf(o)] ?? ""
-  // (what stands now on top: the default it went with, then what it could change to)
   const order = r.blocking ? options : [...options.filter((o) => o === r.default), ...options.filter((o) => o !== r.default)]
   const row = (o: string) => {
     const def = o === r.default, kept = def && !r.blocking, does = doesOf(o)
@@ -141,23 +128,18 @@ const menuOf = (r: InboxItem, store: Store | null | undefined, snooze?: (r: Inbo
   ]
 }
 
-/** Where it stands, when it's news: an agent waits on it (one it went with the default on says so in its list). */
 function Standing({ r }: { r: InboxItem }) {
   if (!r.blocking) return null
   return <span data-standing className="rounded-chip px-1.5 py-px text-[11px] leading-[16px] font-semibold max-md:text-[12px]"
     style={{ color: "var(--orange)", background: "color-mix(in srgb, var(--orange) 14%, transparent)" }}>Waits on you</span>
 }
 
-/** One decision, open: where it stands and who asked, the question, its context, its buttons. `snooze`: its menu's
- *  Snooze (the Inbox's), and its swipe's. */
 export function DecisionRow({ r, snooze, swipe, lead, inReport }: { r: InboxItem; snooze?: (r: InboxItem) => MenuItem; swipe?: SwipeAction[]; lead?: ReactNode
-  /** Drawn in its report: it doesn't link back to it. */
   inReport?: boolean }) {
   const { store } = useStore()
   const rep = inReport ? undefined : reportIn(store, r)
   const why = whyOf(r)
   const where = useWhere(r)
-  // (what its report said as it asked, else the report's own TL;DR: an older one's only context)
   const gist = r.gist || rep?.tldr || ""
   const away = snoozed(r.snoozed)
   const Icon = r.blocking ? MessageCircleQuestion : CircleCheck
@@ -168,7 +150,6 @@ export function DecisionRow({ r, snooze, swipe, lead, inReport }: { r: InboxItem
       className="group/dec relative isolate flex gap-3 py-4 before:absolute before:inset-y-0 before:-inset-x-2 before:-z-10 before:rounded-[8px] hover:before:bg-foreground/[0.02]">
       {lead ?? <Icon className="mt-[2px] size-[18px] shrink-0 max-md:hidden" strokeWidth={2} style={{ color: r.blocking ? "var(--orange)" : "var(--muted-foreground)" }} />}
       <div className="min-w-0 flex-1">
-        {/* The question, then who asks; its why in plain words; what its report said; the choices. */}
         <div className="flex items-start gap-2">
           <div className="min-w-0 flex-1 text-[15px] leading-[21px] font-semibold text-pretty select-text max-md:text-[17px] max-md:leading-[23px]" data-question>{r.question}</div>
           {r.created && <span className="mt-[2px] shrink-0 text-[12px] leading-[18px] text-tertiary tabular-nums max-md:text-[13px]">{fmtAgo(r.created, { short: true })}</span>}
@@ -198,7 +179,6 @@ export function DecisionRow({ r, snooze, swipe, lead, inReport }: { r: InboxItem
   return swipe ? <SwipeRow actions={() => swipe} className="-mx-2 bg-origin-content px-2">{row}</SwipeRow> : row
 }
 
-/** One dealt with: its answer (or why it closed), and Undo. */
 function DecidedRow({ r }: { r: InboxItem }) {
   const said = r.answer ? <>You chose <span className="font-medium text-foreground/80">{r.answer}</span>{r.answer === r.default && !r.blocking ? " (its default)" : ""}</>
     : <>Closed{r.closed && r.closed !== "Closed by you" ? <>: {r.closed.replace(/\[\[([^\]|]+)(\|[^\]]*)?\]\]/g, "$1")}</> : ""}</>
@@ -217,7 +197,6 @@ function DecidedRow({ r }: { r: InboxItem }) {
   )
 }
 
-/** The decisions a file asks (a decision's own file, itself; a report, the ones it asked), newest last. */
 export function decisionsIn(store: Store | null | undefined, path: string): InboxItem[] {
   const all = (store?.inbox ?? []).filter((r) => r.question)
   const own = all.find((r) => pathOf(r) === path)
@@ -227,10 +206,8 @@ export function decisionsIn(store: Store | null | undefined, path: string): Inbo
   return all.filter(asks).sort((a, b) => (a.created ?? "").localeCompare(b.created ?? ""))
 }
 
-/** ```block-decisions: in a decision's file, it answered there; in a report, what it asked, open ones with their buttons. */
 export function DecisionsBlock({ store, path }: BlockCtx) {
   const own = (store?.inbox ?? []).some((r) => r.question && pathOf(r) === path)
-  // (what waits on you first, then a default to keep or change, then what's dealt with)
   const rank = (r: InboxItem) => (!isOpen(r) ? 2 : r.blocking ? 0 : 1)
   const ds = decisionsIn(store, path).sort((a, b) => rank(a) - rank(b))
   if (!ds.length) return <p className="text-[15px] text-muted-foreground md:text-[13px]">The decisions a report asks you, each with its options: none here.</p>

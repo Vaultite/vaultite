@@ -11,8 +11,6 @@ import { agentLabel, sessionTitle, track } from "./sessions.ts"
 import { snoozed, stampOf } from "./snooze.ts"
 import { addEvent, list } from "./store.ts"
 
-// decisions: what an agent asks the user, a file each (decisions.ts), the answer sent back to its session
-
 const openDecisions = () => plugin.vault.items("inbox").filter((r) => truthy(r.question) && str(r.status) === "new" && !isArchived(r))
 export const baseOf = (p: string) => path.posix.basename(p.replace(/\.md$/i, ""))
 const reportOf = (link: string) => {
@@ -24,19 +22,14 @@ export type Asker = { agent: string; session: string; terminal: string; machine:
 const askerFields = (w: Asker) => ({ ...(w.agent ? { agent: w.agent } : {}), ...(w.session ? { session: w.session } : {}), ...(w.terminal ? { terminal: w.terminal } : {}),
   ...(w.machine ? { machine: w.machine } : {}) })
 
-/** A decision that waits on the user is told (toast, notifications) by an event linking its file: not listed apart, done
- *  once the file is archived, and not its session's (whose row is its thread). */
 function tellDecision(r: Item, w: Asker) {
   const options = listOf(r.options)
   addEvent({ source: w.agent || "vau", kind: "waiting", state: "open", ask: "question", title: str(r.question), link: `${r.id}.md`,
     body: options.map((o) => (o === r.default ? `${o} (default)` : o)).join(" · ") })
 }
 
-/** Ask the user `specs`: each a file, or merged into the same question already open (from another agent or note: its
- *  report added to `also`, waiting if this one waits). `report`: the report asking them (its basename). */
 export async function askAll(ctx: OpCtx, specs: DecisionSpec[], w: Asker, report: string, gist = "") {
   await plugin.vault.sync()
-  // (read cold days later: which session asked, and what its report said then, kept with it)
   const k: Who = { agent: w.agent, terminal: w.terminal, session: w.session }
   const where = w.terminal || w.session ? clip(list().find(rowOf(k))?.title || await sessionTitle(k), 120) : ""
   const out: { path: string; question: string; merged: boolean; blocking: boolean }[] = []
@@ -64,8 +57,6 @@ export async function askAll(ctx: OpCtx, specs: DecisionSpec[], w: Asker, report
   return out
 }
 
-/** The same question said another way ("Keep the quieter island?", "Should the island stay quieter?"): a small model
- *  matches new decisions against the open ones, and a match is merged into the one asked first, saying so. */
 async function mergeAlike(ctx: OpCtx, made: string[]) {
   const sample: ((a: SampleAsk) => Promise<{ text: string }>) | null = plugin.service("sample")
   const fresh = made.map(resultAt).filter((r): r is Item => !!r && str(r.status) === "new")
@@ -95,8 +86,6 @@ export function specsOf(given: unknown, blocking: boolean): DecisionSpec[] {
   try { return xs.map((x) => specOf(x, blocking)) } catch (e) { throw new OpError(`decision: ${(e as Error).message}`) }
 }
 
-/** The sessions a decision's answer goes to: its report's (the reply goes on in it), else its own; and those of the
- *  reports that asked it too. Each once, by the file the reply goes into. */
 function answerTargets(d: Item): string[] {
   const out: string[] = [], seen = new Set<string>()
   for (const r of [reportOf(str(d.report)) ?? d, ...listOf(d.also).map(reportOf)]) {
@@ -108,8 +97,6 @@ function answerTargets(d: Item): string[] {
   return out
 }
 
-/** Answers to the sessions that asked, one reply each (inbox.reply: typed in, resumed, or a new session reading the
- *  report). Never fails the answer: what couldn't be sent is said. */
 async function sendAnswers(ctx: OpCtx, answered: { d: Item; answer: string }[]) {
   const by = new Map<string, string[]>()
   for (const { d, answer } of answered) {
@@ -124,8 +111,6 @@ async function sendAnswers(ctx: OpCtx, answered: { d: Item; answer: string }[]) 
   return { sent, failed }
 }
 
-/** Open decisions that later work settled (a report, another answer) close themselves, saying why: a small model reads
- *  what was done against them, and only what it clearly settles goes. Runs after its op has answered. */
 export async function closeSettled(ctx: OpCtx, said: string, by: string, skip: Set<string>) {
   const sample: ((a: SampleAsk) => Promise<{ text: string }>) | null = plugin.service("sample")
   const open = openDecisions().filter((r) => !skip.has(str(r.id))).slice(0, 30)
@@ -144,8 +129,6 @@ export async function closeSettled(ctx: OpCtx, said: string, by: string, skip: S
   }
 }
 
-// The companion says what's waiting at a pause (a knock by the notch), once a burst of decisions has come: told again
-// only when there are more than it said.
 let knockTimer: ReturnType<typeof setTimeout> | null = null
 let knocked = 0, knockWaits = false
 function knockSoon(waits: boolean) {
@@ -327,7 +310,6 @@ why; undo opens it again. Only with the user's own answer: never decide for them
       rows.push({ path: `${out.id}.md`, question: str(r.question), answer, told: !!toldOf(r, answer) })
     }
     const { sent, failed } = await sendAnswers(ctx, done)
-    // (an answer may settle another question: the rest are read against it)
     const said = done.map(({ d, answer }) => `${str(d.question)} The user answered: ${answer}`).join("\n")
     if (said && !all) track(closeSettled(ctx, said, "your answer", new Set(done.map(({ d }) => str(d.id)))))
     knocked = Math.min(knocked, openDecisions().length)

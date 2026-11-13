@@ -22,13 +22,9 @@ export function tldrOf(body: string, last = false) {
   return m ? m[1].split("\n").map((l) => l.replace(/^>\s?/, "").trim()).filter(Boolean).join(" ").slice(0, 400) : ""
 }
 
-// The app's results: an archived one without its body (a kept inbox's reports were most of a big vault's first load;
-// no list reads an archived body, and its file keeps it), the same objects while their files are (core/statepatch.ts).
 const slim = new WeakMap<Item, Item>()
 let stated: { rs: readonly Item[]; out: Item } | null = null
 
-/** When a result last had news: its thread's latest report (`updated`), else when it came, or its snooze's end once
- *  that's past (it came back then). */
 export const latest = (r: Item) => {
   const at = str(r.updated || r.created || ""), back = str(r.snoozed || "")
   return back > at && !snoozed(back) ? back : at
@@ -83,8 +79,6 @@ const KIND = new Kind({
     blocking: r.question ? r.blocking === true : null, answer: r.answer || null, answered: r.answered || null, closed: r.closed || null, report: r.report || null,
     also: Array.isArray(r.also) && r.also.length ? r.also : null, gist: r.question ? r.gist || null : null, where: r.question ? r.where || null : null }, r.body || ""],
   blocks: (fm) => (truthy(fm.question) ? ["decisions"] : []),
-  // Done is archived and archived is done: one state, the file in Inbox/.archive/ (out of the way), whichever key said
-  // so. Taking either back (Back to review, Undo, the same page added again) makes it new, out of the archive.
   prepare(r, old) {
     r.created = r.created || nowStamp()
     r.status = r.status || "new"
@@ -93,18 +87,14 @@ const KIND = new Kind({
     if (done) r.status = "done"
     else if (reopened) r.status = "new"
     r.archived = done
-    // (what's dealt with isn't waiting to come back, nor kept on top)
     if (done || reopened) r.snoozed = null
     if (done) r.pinned = null
     return r
   },
-  // To review first, the latest first (a thread by its last report); then what's dealt with, the last done first. An
-  // archived one is dealt with whatever its status says (archived by hand), so it can't bury what was just done.
   order: (rs) => {
     const open = (r: Item) => r.status === "new" && !isArchived(r)
     return [...sortBy(rs.filter(open), latest, true), ...sortBy(rs.filter((r) => !open(r)), (r) => str(r.modified || latest(r)), true)]
   },
-  // Where it came from (a page's address): adding the same page again updates it.
   key: (r) => (truthy(r.source) ? str(r.source) : null),
   stamps: ["created", "updated", "snoozed", "answered"],
 })
@@ -122,8 +112,6 @@ function appState() {
   return stated.out
 }
 
-/** A file moved here (a result done, filed or renamed): this machine's events about it follow it. Archived (done), its
- *  thread is done too, here and on the machine that keeps it; brought back to review, it's open again. */
 const followMove: MoveHook = (from, to) => {
   if (!to) return
   const at = (link?: string) => { const f = fileOf(link); return f === from ? to : f?.startsWith(`${from}/`) ? to + f.slice(from.length) : null }

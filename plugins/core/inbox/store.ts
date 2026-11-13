@@ -25,7 +25,6 @@ export function list(): InboxEvent[] {
   return events!
 }
 
-/** events.json's shape: 3, every event with its state, a session's row its thread (kind session). */
 const VERSION = 3
 
 export function prune(es: InboxEvent[]) {
@@ -49,8 +48,6 @@ export const shown = (local = false) => current(local || !remotes.size ? list() 
 
 export const fileOf = (link?: string) => (link && !/^(view:|detail:|https?:)/.test(link) ? link.replace(/^file:/, "") : null)
 
-/** Events whose link is a result that's been archived or brought back since (one another machine keeps, or one from
- *  before its move here), linking where it is now. */
 function current(es: InboxEvent[]): InboxEvent[] {
   if (!plugin.loaded || !es.some((e) => fileOf(e.link)?.startsWith(`${FOLDER}/`))) return es
   const ids = new Set(plugin.vault.items("inbox").map((r) => `${r.id}.md`))
@@ -70,14 +67,11 @@ export function changed(next: InboxEvent[]) {
   save()
   watchAsks()
   broadcast()
-  // The phone's agents widget shows what waits on the user: only a change there reloads it.
   const now = list().filter(waitsOnYou).map((e) => e.id).join()
   if (now !== waitingSeen) { waitingSeen = now; refreshWidgets() }
 }
 let waitingSeen = ""
 
-/** An event as given (the API's body, a hook's), checked; its title one line and its body as written, both whole (the
- *  event is their only copy). Throws a 400 for one without a title. */
 export function eventOf(b: Item): Omit<InboxEvent, "id" | "t"> {
   const title = clip(b.title)
   if (!title) throw new HTTPError(400, "title: what happened, one line")
@@ -106,8 +100,6 @@ export const newId = (now: number) => `${now.toString(36)}-${crypto.randomBytes(
 export function addEvent(given: Omit<InboxEvent, "id" | "t">): InboxEvent {
   const now = Date.now()
   const es = list().filter((e) => !given.key || !sameKey(e, given.source, given.key))
-  // A browser's session (claude.ai's, by its address) is one row however often it's told: finishing a turn is its
-  // progress, quietly (a looping session finishes one an hour); needing the user opens it again.
   if (given.session && /^https?:/.test(given.session) && (given.kind === "done" || given.kind === "waiting") && !given.gate) {
     const was = es.find((e) => !e.gate && e.source === given.source && e.session === given.session && (e.kind === "done" || e.kind === "waiting")) ?? null
     const quiet = given.kind === "done"
@@ -115,7 +107,6 @@ export function addEvent(given: Omit<InboxEvent, "id" | "t">): InboxEvent {
     if (e.body) e.preview = previewOf(e.body)
     return put(e, was, es, !quiet)
   }
-  // (a message, `vau notify`'s, only with the same words: a few told in a row from one terminal each show)
   const who = (e: Omit<InboxEvent, "id" | "t">) => `${e.session || e.terminal || ""}\0${e.title}`
   const same = es.find((e) => e.state === "open" && now - e.t < MERGE && e.source === given.source && e.kind === given.kind && who(e) === who(given))
   const e: InboxEvent = same
@@ -127,7 +118,6 @@ export function addEvent(given: Omit<InboxEvent, "id" | "t">): InboxEvent {
 
 export function put(e: InboxEvent, old: InboxEvent | null, es: InboxEvent[], news: boolean): InboxEvent {
   if (e.read) delete e.kept
-  // (settled is unpinned, however it got there: the user, or a quiet turn)
   if (e.state === "done") delete e.pinned
   if (news && e.state === "open") delete e.snoozed
   if (news && e.state === "open" && !e.read && !holdNow() && mayTell(old, e)) e.nt = e.t
@@ -137,8 +127,6 @@ export function put(e: InboxEvent, old: InboxEvent | null, es: InboxEvent[], new
   return e
 }
 
-/** How often the user is told: the same need of one row once a minute while unread, and six sessions a minute at most
- *  (a burst of agents finishing at once is listed, not rung; a message sent on purpose, `vau notify`'s, always is). */
 const TELL_GAP = 60_000, TELL_BURST = 6
 const toldAt: number[] = []
 function mayTell(old: InboxEvent | null, e: InboxEvent) {
@@ -188,7 +176,6 @@ export function markDone(ids: Set<string>, done = true) {
   return n
 }
 
-/** Set rows' state (and more: `patch`) quietly, as their session moved on: working is the user's answer, so it's read. */
 export function moveOn(hit: InboxEvent[], state: State, patch: Partial<InboxEvent> = {}) {
   if (!hit.length) return
   const to = (e: InboxEvent): InboxEvent => { const { kept: _, ...rest } = state === "done" ? doneAs(e, true) : e; return { ...rest, state, read: true, ...patch } }
@@ -196,8 +183,6 @@ export function moveOn(hit: InboxEvent[], state: State, patch: Partial<InboxEven
   for (const e of list()) if (hit.some((h) => h.id === e.id)) told(e)
 }
 
-/** A permission asked in a terminal here that no longer waits ("terminal:waits") was answered: its agent goes on, or
- *  its terminal is gone (done). Checked every few seconds, a new one left to show first. */
 const ASKED = 5000
 const asked = (e: InboxEvent) => e.state === "open" && e.kind === "session" && e.ask === "permission" && !!e.terminal && !e.terminal.includes("@")
 export async function stillWaiting(after = ASKED) {
@@ -212,7 +197,6 @@ export async function stillWaiting(after = ASKED) {
   moveOn(list().filter((e) => on.includes(e.id)), "working")
   moveOn(list().filter((e) => gone.includes(e.id)), "done")
 }
-// (only while one is asked: every 5 s with none, it woke an idle server for nothing)
 let waitTimer: ReturnType<typeof setInterval> | null = null
 function watchAsks() {
   if (waitTimer || !list().some(asked)) return
@@ -222,8 +206,6 @@ function watchAsks() {
   waitTimer.unref?.()
 }
 
-/** Its question answered (blocked, then working; `to` done: refused), or the user wrote to it (`user`): its open thread
- *  is working. Not for an answer it left: it may go on by itself (a background task), which isn't the user's doing. */
 export function resolve(terminal: string, session: string, user = false, to: State = "working") {
   moveOn(list().filter((e) => e.kind === "session" && e.state === "open" && (user ? e.ask !== "report" : BLOCKED.has(str(e.ask))) &&
     ((terminal && e.terminal === terminal) || (session && e.session === session))), to, { questions: undefined })
@@ -235,8 +217,8 @@ let sendTimer: ReturnType<typeof setTimeout> | null = null
 export const message = (local: boolean) => JSON.stringify({ t: "events", events: shown(local), unread: unread(local), needs: needing(local), hold: holdNow() })
 
 let mineChanged = false
-/** Tell the watchers (within 30 ms). `mine`: this machine's events changed; else only the followed machines' did, which
- *  the other machines (local=1) aren't told: telling them made two machines that follow each other echo forever. */
+/** `mine`: this machine's events changed. Only then are the other machines (local=1) told: two machines that follow
+ *  each other would echo forever. */
 export function broadcast(mine = true) {
   if (!watchers.size) return
   mineChanged ||= mine
@@ -260,7 +242,6 @@ export function pin(ids: Set<string>, on: boolean) {
   for (const old of list().filter((e) => ids.has(e.id) && !!e.pinned !== on)) put(pinnedAs(old, on), old, list(), false)
 }
 
-/** Snooze these events, or (null) bring them back now: the user did, so it's no news. */
 export function snooze(ids: Set<string>, until: number | null) {
   for (const old of list().filter((e) => ids.has(e.id))) {
     const e = snoozedAs(old, until)
@@ -268,7 +249,6 @@ export function snooze(ids: Set<string>, until: number | null) {
   }
 }
 
-/** Who waits on a gate's answer, by its event's id (in memory: after a restart the answer is still on the event). */
 export const gates = new Map<string, Set<(answer: "approve" | "deny") => void>>()
 
 export function gateAnswer(id: string, ms = 0): Promise<"approve" | "deny" | "waiting" | "gone"> {
@@ -295,8 +275,6 @@ export function register() {
   setTimeout(watchAsks, 0).unref?.()
   plugin.onUnload(() => { if (waitTimer) clearInterval(waitTimer) })
 
-  /** A terminal ended: what its agent worked on is done; one the user ended (End session) was dealt with, one that ended
-   *  by itself (crashed, exited) keeps what's to read. A report stays open: the reply resumes its session. */
   plugin.onEvent({ types: ["terminal.ended"] }, (ev) => {
     if (typeof ev.id !== "string") return
     moveOn(list().filter((e) => e.kind === "session" && !e.machine && e.terminal === ev.id &&

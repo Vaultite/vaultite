@@ -1,5 +1,4 @@
-// Unsent replies, kept on this device per thing replied to (a report's path, a session's event id) until the server has
-// them: a reply in flight stays stored, so an app killed or suspended mid-send finds it again as a draft.
+// A reply in flight stays stored: a phone's app killed or suspended mid-send finds it again as a draft.
 import { useSyncExternalStore } from "react"
 
 const KEY = (to: string) => `vaultite.reply:${to}`
@@ -8,7 +7,6 @@ const PREFIX = KEY("")
 export const draftOf = (to: string) => { try { return localStorage.getItem(KEY(to)) ?? "" } catch { return "" } }
 export const hasDraft = (to: string) => !!draftOf(to).trim()
 
-/** The replies on their way, by what they answer: their text. */
 const flying = new Map<string, string>()
 export const sendingOf = (to: string) => flying.get(to) ?? null
 
@@ -27,8 +25,6 @@ export function keepDraft(to: string, text: string) {
   changed()
 }
 
-/** Send `text` with `post`: its draft is cleared only once `post` resolves, and kept when it fails (or never answers).
- *  Undefined, sending nothing, while a reply to `to` is still on its way. */
 export async function sendDraft<T>(to: string, text: string, post: () => Promise<T>): Promise<T | undefined> {
   if (flying.has(to)) return undefined
   keepDraft(to, text)
@@ -44,6 +40,5 @@ export async function sendDraft<T>(to: string, text: string, post: () => Promise
   }
 }
 
-/** Whether `to` has a draft not sent yet (in flight isn't one). */
 export const useHasDraft = (to: string) => useSyncExternalStore(subscribe, () => hasDraft(to) && !flying.has(to))
 export const useSending = (to: string) => useSyncExternalStore(subscribe, () => sendingOf(to))

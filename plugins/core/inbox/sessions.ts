@@ -122,8 +122,6 @@ async function parentOf(k: Who): Promise<{ parent: InboxEvent["parent"]; task: s
   return { parent: { title, agent: p.agent, ...(p.terminal ? { terminal: p.terminal } : {}), ...(p.session ? { session: p.session } : {}) }, task: p.task }
 }
 
-/** Session `k`'s row made or changed (`patch`; undefined takes a field away), at the top; `news`: the user is told. A
- *  subagent is called by its task until its agent names it. */
 export async function sessionRow(k: Who, patch: Partial<InboxEvent>, news: boolean, cwd?: string) {
   const line = await parentOf(k)
   const title = (line?.task && !named.has(k.terminal || k.session) ? line.task : "") || await sessionTitle(k, cwd)
@@ -185,7 +183,6 @@ export async function tellSession(b: Item): Promise<InboxEvent | null> {
 export const progressOf = (terminal: string, session?: string) =>
   shown().find((e) => e.kind === "session" && e.state !== "done" && !!e.progress && ((!!terminal && e.terminal === terminal) || (!!session && e.session === session)))?.progress ?? null
 
-/** The session whose request this is (its app terminal, its agent's session), by the name the user knows it by. */
 export async function askerOf(): Promise<InboxEvent["from"]> {
   const w = requestWriter.getStore()
   if (!w || !(w.terminal || w.session)) return undefined
