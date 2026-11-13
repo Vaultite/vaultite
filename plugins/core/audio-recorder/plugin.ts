@@ -5,10 +5,11 @@ import type { IncomingMessage } from "node:http"
 import os from "node:os"
 import path from "node:path"
 import { pipeline } from "node:stream/promises"
+import { z } from "zod"
 import { HTTPError, LOCAL, Plugin, reply, type Who, whoOf } from "../../../core/plugins.ts"
 import { writeAtomic } from "../../../core/vault.ts"
 import { winCommand } from "../../../core/agents.ts"
-import { embedsAudio, paragraphs, type Segment, textParagraphs, withTranscript } from "./transcript.ts"
+import { embedsAudio, paragraphs, textParagraphs, withTranscript } from "./transcript.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -91,18 +92,30 @@ async function apple(language: string): Promise<{ bin: string } | { why: string 
   if (process.platform !== "darwin" || Number(os.release().split(".")[0]) < 25) return { why: "Apple's speech recognition needs macOS 26." }
   let bin = path.join(import.meta.dirname, "bin", helperName())
   if (!runnable(bin)) {
-    try { bin = await buildHelper(path.join(LOCAL, "bin")) } catch (e) { return { why: `Apple's speech recognition: ${(e as Error).message}.` } }
+    try { bin = await buildHelper(path.join(LOCAL, "bin")) } catch (e) { return { why: `Apple's speech recognition: ${e instanceof Error ? e.message : String(e)}.` } }
   }
   const r = await quiet(bin, ["--check", ...(language ? ["--language", language] : [])], 30_000)
   return r.ok ? { bin } : { why: r.err || "Apple's speech recognition isn't available here." }
 }
 
+const SETTING = z.string().trim().catch("")
+const SECRETS = z.object({ command: SETTING, whisper: SETTING }).catch({ command: "", whisper: "" })
+const WHISPERCPP = z.object({
+  result: z.object({ language: z.string().optional() }).optional(),
+  transcription: z.array(z.object({ offsets: z.object({ from: z.number(), to: z.number() }), text: z.string() })).optional(),
+})
+const WHISPER = z.object({
+  text: z.string().optional(),
+  segments: z.array(z.object({ start: z.number(), end: z.number(), text: z.string() })).optional(),
+  language: z.string().optional(),
+})
+
 async function find(_key: string): Promise<Found> {
   const s = plugin.settings()
-  const local = (plugin.secrets()[plugin.id] ?? {}) as Record<string, unknown>
+  const local = SECRETS.parse(plugin.secrets()[plugin.id] ?? {})
   if (s.transcribe === false) return { available: false, why: "Transcription is off (transcribe: false in its settings)." }
-  if (typeof local.command === "string" && local.command.trim()) {
-    const argv = splitCommand(local.command.trim())
+  if (local.command) {
+    const argv = splitCommand(local.command)
     const bin = argv[0].includes("/") || path.isAbsolute(argv[0]) ? argv[0].replace(/^~(?=\/)/, HOME) : which(argv[0])
     if (!bin || !runnable(bin)) return { available: false, why: `Can't run ${argv[0]} (its command setting).` }
     if (!outsideVault(bin)) return { available: false, why: "A transcriber inside the vault isn't run." }
@@ -111,7 +124,7 @@ async function find(_key: string): Promise<Found> {
   }
   const language = typeof s.language === "string" ? s.language.trim() : ""
   if (language && !/^[a-z]{2,3}([-_][a-z0-9]{2,8})*$|^[a-z]+( [a-z]+)?$/i.test(language)) return { available: false, why: `"${language}" isn't a language.` }
-  const named = typeof local.whisper === "string" && local.whisper.trim() ? local.whisper.trim().replace(/^~(?=\/)/, HOME) : null
+  const named = local.whisper ? local.whisper.replace(/^~(?=\/)/, HOME) : null
   const engine = s.engine === "whisper" || s.engine === "apple" ? s.engine : named ? "whisper" : "auto"
   let why = ""
   if (engine !== "whisper" && (process.platform === "darwin" || engine === "apple")) {
@@ -148,7 +161,7 @@ const run = (bin: string, args: string[], env: NodeJS.ProcessEnv, timeout: numbe
       if (!err) return ok(stdout)
       // (a progress bar redraws itself with \r: its lines are never the reason)
       const said = String(stderr || "").trim().split(/[\r\n]+/).filter((l) => !/^\s*\d+%\|/.test(l)).slice(-3).join(" ")
-      fail(new Error((err as { killed?: boolean }).killed ? "it took too long" : said || err.message))
+      fail(new Error(err.killed ? "it took too long" : said || err.message))
     })
   })
 
@@ -172,8 +185,7 @@ async function transcribe(t: Transcriber, abs: string): Promise<{ paras: string[
       const wav = path.join(out, "audio.wav")
       await run(t.ffmpeg, ["-nostdin", "-loglevel", "error", "-i", abs, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", wav], process.env, timeout)
       await run(t.bin, ["-m", t.model, "-f", wav, "-l", lang || "auto", "-oj", "-of", path.join(out, "transcript"), "-np"], process.env, timeout)
-      const j = JSON.parse(fs.readFileSync(path.join(out, "transcript.json"), "utf8")) as
-        { result?: { language?: string }; transcription?: { offsets: { from: number; to: number }; text: string }[] }
+      const j = WHISPERCPP.parse(JSON.parse(fs.readFileSync(path.join(out, "transcript.json"), "utf8")))
       const segments = (j.transcription ?? []).map((x) => ({ start: x.offsets.from / 1000, end: x.offsets.to / 1000, text: x.text }))
       return { paras: paragraphs(segments), language: j.result?.language }
     } finally {
@@ -187,7 +199,7 @@ async function transcribe(t: Transcriber, abs: string): Promise<{ paras: string[
     await run(t.bin, args, env, timeout)
     const file = fs.readdirSync(out).find((f) => f.endsWith(".json"))
     if (!file) throw new Error("whisper wrote no transcript")
-    const j = JSON.parse(fs.readFileSync(path.join(out, file), "utf8")) as { text?: string; segments?: Segment[]; language?: string }
+    const j = WHISPER.parse(JSON.parse(fs.readFileSync(path.join(out, file), "utf8")))
     const paras = j.segments?.length ? paragraphs(j.segments) : textParagraphs(j.text ?? "")
     return { paras, language: j.language }
   } finally {
@@ -228,7 +240,7 @@ async function work(job: Job) {
     job.state = "done"
   } catch (e) {
     job.state = "failed"
-    job.error = String((e as Error)?.message ?? e)
+    job.error = String(e instanceof Error ? e.message : e)
   }
   job.finished = Date.now()
 }
@@ -277,7 +289,7 @@ async function voice(job: Job, dir: string, file: string, from: string, who: Who
         job.note = String((r.result as { path?: unknown })?.path ?? "")
       } catch (e) {
         if (job.note) throw e
-        why = `${found.name} couldn't: ${String((e as Error)?.message ?? e).replace(/\.$/, "")}.`
+        why = `${found.name} couldn't: ${String(e instanceof Error ? e.message : e).replace(/\.$/, "")}.`
       }
     }
     if (why) {
@@ -292,7 +304,7 @@ async function voice(job: Job, dir: string, file: string, from: string, who: Who
     job.state = "done"
   } catch (e) {
     job.state = "failed"
-    job.error = String((e as Error)?.message ?? e)
+    job.error = String(e instanceof Error ? e.message : e)
   } finally {
     fs.rmSync(dir, { recursive: true, force: true })
   }
@@ -309,7 +321,7 @@ plugin.route("POST", "audio-recorder/voice", async (req) => {
     if (!fs.statSync(file).size) throw new HTTPError(400, "the body is empty: send the recording")
   } catch (e) {
     fs.rmSync(dir, { recursive: true, force: true })
-    throw e instanceof HTTPError ? e : new HTTPError(400, `the recording broke off: ${(e as Error).message}`)
+    throw e instanceof HTTPError ? e : new HTTPError(400, `the recording broke off: ${e instanceof Error ? e.message : String(e)}`)
   }
   const h = (k: string) => { const v = req.http?.headers[k]; return typeof v === "string" ? v : null }
   const who = whoOf(h("x-vaultite-client"), h("x-vaultite-agent"))

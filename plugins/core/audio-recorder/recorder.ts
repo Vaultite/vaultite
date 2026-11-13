@@ -55,7 +55,8 @@ export async function start(note?: string | null, voice = false) {
   } catch (e) {
     stop_tracks()
     set({ state: "idle" })
-    const why = (e as Error)?.name === "NotAllowedError" ? "the microphone isn't allowed for this page" : (e as Error)?.name === "NotFoundError" ? "no microphone found" : e
+    const name = e instanceof DOMException ? e.name : ""
+    const why = name === "NotAllowedError" ? "the microphone isn't allowed for this page" : name === "NotFoundError" ? "no microphone found" : e
     notifyError(why, "Couldn't start recording")
     return
   }
@@ -67,7 +68,7 @@ export async function start(note?: string | null, voice = false) {
   meter(stream)
   set({ state: "recording", since: Date.now(), before: 0, note: voice ? null : target, voice })
   // A phone's sleep ends a recording; a wake lock request may never answer.
-  const wl = (navigator as Navigator & { wakeLock?: { request: (t: "screen") => Promise<{ release: () => Promise<void> }> } }).wakeLock
+  const wl = "wakeLock" in navigator ? navigator.wakeLock : undefined
   wl?.request("screen").then((l) => { if (recording()) lock = l; else void l.release().catch(() => {}) }, () => {})
 }
 
@@ -193,8 +194,9 @@ async function sendVoice() {
     if (!blob.size) throw new Error("nothing was recorded")
     const from = matchMedia("(pointer: coarse)").matches ? "Phone" : "Computer"
     const res = await fetch(`api/audio-recorder/voice?ext=${extOf(type)}&from=${encodeURIComponent(from)}`, { method: "POST", headers: { "Content-Type": blob.type || "application/octet-stream", "X-Vaultite-Client": `app/${appDevice}` }, body: blob })
-    let job = await res.json() as Job
-    if (!res.ok) throw new Error((job as unknown as { error?: string }).error || res.statusText)
+    const body = await res.json()
+    if (!res.ok) throw new Error(body.error || res.statusText)
+    let job: Job = body
     while (job.state === "queued" || job.state === "running") {
       await new Promise((r) => setTimeout(r, 1500))
       try { job = await get<Job>(`audio-recorder/jobs/${job.id}`) } catch { /* asked again */ }
