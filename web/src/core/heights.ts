@@ -1,19 +1,22 @@
 import { useLayoutEffect, useRef } from "react"
 import { trace } from "@/core/trace"
 import { trackSoon } from "@/core/unsaved"
+import { elementOf } from "@/core/dom"
+import { isNumber, isObj } from "../../../core/values.ts"
+import { keptEntries } from "@/core/keptEntries"
 
 type Seen = { w: number; h: number }
 const KEPT = "vaultite.heights"
 const MAX = 800
 const NEAR = 24
 let heights: Map<string, Seen[]> | null = null
+const isSeenList = (v: unknown): v is Seen[] => Array.isArray(v) && v.every((s) => isObj(s) && isNumber(s.w) && isNumber(s.h))
 
 function all() {
   if (heights) return heights
   heights = new Map()
   try {
-    const kept = JSON.parse(localStorage.getItem(KEPT) ?? "null") as [string, Seen[]][] | null
-    if (Array.isArray(kept)) heights = new Map(kept)
+    heights = new Map(keptEntries(JSON.parse(localStorage.getItem(KEPT) ?? "null"), isSeenList))
   } catch { /* private mode, or not JSON */ }
   return heights
 }
@@ -145,7 +148,7 @@ export function holdHeight(el: HTMLElement, key: string | (() => string), anyWid
   })
   sizes.observe(el)
   // A summary's click (the keyboard's too), not `toggle`: a fold opened by code fires that as well.
-  const toggled = (e: Event) => { if ((e.target as Element).closest?.("summary")) h?.release("toggle") }
+  const toggled = (e: Event) => { if (elementOf(e.target)?.closest("summary")) h?.release("toggle") }
   el.addEventListener("click", toggled, true)
   return () => {
     stopped = true
@@ -170,8 +173,7 @@ function allCounts() {
   if (counts) return counts
   counts = new Map()
   try {
-    const kept = JSON.parse(localStorage.getItem(COUNTS) ?? "null") as [string, number][] | null
-    if (Array.isArray(kept)) counts = new Map(kept)
+    counts = new Map(keptEntries(JSON.parse(localStorage.getItem(COUNTS) ?? "null"), isNumber))
   } catch { /* private mode, or not JSON */ }
   return counts
 }

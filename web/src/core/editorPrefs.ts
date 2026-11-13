@@ -2,25 +2,31 @@ import { getStore, type Store } from "@/core/data"
 import { vaultEditor } from "@/core/conventions"
 import { notify } from "@/core/notify"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
-import { EDITOR, EDITOR_KEYS, type EditingMode, type EditorSettings, type NoteView, type PropertiesShown } from "../../../core/editor.ts"
+import { EDITOR, type EditingMode, type EditorSettings, type NoteView, type PropertiesShown } from "../../../core/editor.ts"
+import { isNumber } from "../../../core/values.ts"
 
 export type { EditingMode, EditorSettings, NoteView, PropertiesShown }
 
-function editorValue<K extends keyof EditorSettings>(key: K, v: unknown): EditorSettings[K] | undefined {
-  const d = EDITOR[key]
-  if (key === "propertiesInDocument") return (v === "visible" || v === "hidden" || v === "source" ? v : undefined) as EditorSettings[K] | undefined
-  if (key === "defaultView") return (v === "editing" || v === "reading" ? v : undefined) as EditorSettings[K] | undefined
-  if (key === "editingMode") return (v === "live" || v === "source" ? v : undefined) as EditorSettings[K] | undefined
-  if (key === "tabSize") return (typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 8 ? v : undefined) as EditorSettings[K] | undefined
-  return (typeof v === typeof d ? v : undefined) as EditorSettings[K] | undefined
+type Reader<T> = (v: unknown) => T | undefined
+const bool: Reader<boolean> = (v) => (v === true || v === false ? v : undefined)
+const READ: { [K in keyof EditorSettings]: Reader<EditorSettings[K]> } = {
+  spellcheck: bool, useTab: bool,
+  tabSize: (v) => (isNumber(v) && Number.isInteger(v) && v >= 1 && v <= 8 ? v : undefined),
+  autoPairBrackets: bool, autoPairMarkdown: bool, readableLineLength: bool,
+  propertiesInDocument: (v) => (v === "visible" || v === "hidden" || v === "source" ? v : undefined),
+  showInlineTitle: bool,
+  defaultView: (v) => (v === "editing" || v === "reading" ? v : undefined),
+  editingMode: (v) => (v === "live" || v === "source" ? v : undefined),
 }
 
 function read(own: Record<string, unknown>, other: Partial<EditorSettings>): EditorSettings {
-  const out = { ...EDITOR } as Record<string, unknown>
-  for (const k of EDITOR_KEYS) {
-    out[k] = editorValue(k, own[k]) ?? editorValue(k, other[k]) ?? EDITOR[k]
+  const at = <K extends keyof EditorSettings>(k: K): EditorSettings[K] => READ[k](own[k]) ?? READ[k](other[k]) ?? EDITOR[k]
+  return {
+    spellcheck: at("spellcheck"), useTab: at("useTab"), tabSize: at("tabSize"), autoPairBrackets: at("autoPairBrackets"),
+    autoPairMarkdown: at("autoPairMarkdown"), readableLineLength: at("readableLineLength"),
+    propertiesInDocument: at("propertiesInDocument"), showInlineTitle: at("showInlineTitle"), defaultView: at("defaultView"),
+    editingMode: at("editingMode"),
   }
-  return out as EditorSettings
 }
 
 let last: { own: unknown; other: unknown; value: EditorSettings } | null = null
@@ -31,7 +37,7 @@ export function editorSettings(s: Store | null = getStore()): EditorSettings {
   return last.value
 }
 
-export const editorSet = (key: keyof EditorSettings) => editorValue(key, getPrefs().editor[key]) !== undefined
+export const editorSet = (key: keyof EditorSettings) => READ[key](getPrefs().editor[key]) !== undefined
 
 export function setEditor(changes: { [K in keyof EditorSettings]?: EditorSettings[K] | null }) {
   const next = { ...getPrefs().editor }

@@ -7,6 +7,7 @@ import { anyIcon } from "@/core/icons"
 import { notify, notifyError } from "@/core/notify"
 import { fileAt } from "@/core/pages"
 import { getPrefs } from "@/core/prefs"
+import { errorIn } from "../../../core/plainerror.ts"
 
 export type FileAction = ReturnType<typeof actionsFor<Entry>>[number]
 
@@ -47,7 +48,7 @@ export async function runAction(a: FileAction) {
   }
   try {
     const r = await request("POST", `ops/${encodeURIComponent(a.op)}?as=text`, params)
-    if (!r.ok) throw new Error(((await r.json().catch(() => ({}))) as { error?: string }).error || r.statusText)
+    if (!r.ok) throw new Error(errorIn(await r.json().catch(() => ({}))) || r.statusText)
     notify((await r.text()).trim().split("\n")[0] || a.label)
   } catch (e) {
     notifyError(e, `Couldn't ${a.label.toLowerCase()}`)

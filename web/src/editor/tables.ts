@@ -98,7 +98,7 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     if (t && table) {
       const rows = [...t.rows]
       if (rows.length === table.rows.length && rows.every((r) => r.cells.length === table!.align.length)) {
-        grid = rows.map((r) => [...r.cells] as HTMLTableCellElement[])
+        grid = rows.map((r) => [...r.cells])
         pin()
         t.dataset.noEdit = ""
         t.dataset.holdMenu = ""
@@ -439,8 +439,7 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
 
   function caretAt(cell: HTMLElement, e: MouseEvent, raw: string): number | "end" {
     if (cell.textContent !== raw) return "end"
-    const doc = document as Document & { caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null }
-    const p = doc.caretPositionFromPoint?.(e.clientX, e.clientY)
+    const p = "caretPositionFromPoint" in document ? document.caretPositionFromPoint(e.clientX, e.clientY) : null
     const node = p?.offsetNode ?? document.caretRangeFromPoint?.(e.clientX, e.clientY)?.startContainer
     const off = p ? p.offset : document.caretRangeFromPoint?.(e.clientX, e.clientY)?.startOffset
     if (!node || off === undefined || !cell.contains(node)) return "end"
@@ -451,9 +450,9 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
   }
 
   const cellOf = (target: EventTarget | null) => {
-    const cell = (target as Element | null)?.closest?.("th, td")
+    const cell = elementOf(target)?.closest<HTMLTableCellElement>("th, td")
     if (!cell || !grid) return null
-    for (const [r, row] of grid.entries()) { const c = row.indexOf(cell as HTMLTableCellElement); if (c >= 0) return { r, c, cell: cell as HTMLElement } }
+    for (const [r, row] of grid.entries()) { const c = row.indexOf(cell); if (c >= 0) return { r, c, cell } }
     return null
   }
 
@@ -641,7 +640,7 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
       return { data: { row, from, to } }
     },
     drop: (_item, data) => {
-      const { row, from, to } = data as { row: boolean; from: number; to: number }
+      const { row, from, to } = data
       change((t) => (row ? moveRow(t, from, to) : moveColumn(t, from, to)), "input.table", { pick: row ? wholeRow(to) : wholeCol(to) })
     },
     end: () => { dragging = null; line.hidden = true; sideways.stop(); down.stop() },

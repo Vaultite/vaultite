@@ -4,6 +4,7 @@ import { blocksIn, scan } from "../../../core/sections.ts"
 import { activeFile } from "@/core/active"
 import { put } from "@/core/http"
 import { readFile, splitFm, type FileText } from "@/core/files"
+import { isObj } from "../../../core/values.ts"
 
 export type Props = Record<string, unknown>
 
@@ -16,10 +17,10 @@ export function readProps(block: string): { props: Props; error: string | null }
   try {
     const v = load(innerOf(block))
     if (v === null || v === undefined) return { props: {}, error: null }
-    if (typeof v !== "object" || Array.isArray(v)) return { props: {}, error: "The properties aren't a list of key: value lines." }
-    return { props: v as Props, error: null }
+    if (!isObj(v)) return { props: {}, error: "The properties aren't a list of key: value lines." }
+    return { props: v, error: null }
   } catch (e) {
-    return { props: {}, error: String((e as Error).message ?? e).split("\n")[0] }
+    return { props: {}, error: (e instanceof Error ? e.message : String(e)).split("\n")[0] }
   }
 }
 
@@ -30,7 +31,7 @@ export function noteParts(text: string): { fm: Props; body: string } {
 
 export const dumpKey = (key: string, value: unknown) => dump({ [key]: dates(value) })
 
-const loadProps = (text: string) => (load(text) ?? {}) as Props
+const loadProps = (text: string): Props => { const v = load(text); return isObj(v) ? v : {} }
 
 export function setProp(block: string, key: string, value: unknown): string {
   const { props } = readProps(block)
@@ -39,7 +40,7 @@ export function setProp(block: string, key: string, value: unknown): string {
   if (inner !== null) return blockOf(inner, block)
   const want = { ...props }
   if (value === undefined) delete want[key]; else want[key] = value
-  return blockOf(Object.keys(want).length ? dump(dates(want) as Props) : "", block)
+  return blockOf(Object.keys(want).length ? dump(Object.fromEntries(Object.entries(want).map(([k, v]) => [k, dates(v)]))) : "", block)
 }
 
 export function renameProp(block: string, from: string, to: string): string {

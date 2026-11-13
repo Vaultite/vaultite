@@ -1,3 +1,5 @@
+import { isObj, isText } from "./values.ts"
+
 export type Plain = {
   /** The reason in plain words ("the disk is full"), to follow "Couldn't …: "; null when there's none a person can act on. */
   reason: string | null
@@ -55,6 +57,8 @@ export function plainError(e: unknown): Plain {
   if (technical) return { reason: null, bug: true, detail }
   return { reason: text.replace(/\.$/, ""), bug: false, detail }
 }
+
+export const errorIn = (body: unknown) => (isObj(body) && isText(body.error) ? body.error : undefined)
 
 export const sentence = (reason: string) => `${reason[0].toUpperCase()}${reason.slice(1)}${/[.?!]$/.test(reason) ? "" : "."}`
 

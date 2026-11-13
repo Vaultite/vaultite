@@ -10,6 +10,7 @@ import type { SaveBody } from "../../../core/contracts/save.ts"
 import { applyEdit, editOf, LEAN_PAST, textHash } from "../../../core/texthash.ts"
 import { keptLive, onHandBack, typedLive } from "@/core/cosync"
 import { trace } from "@/core/trace"
+import { errorIn } from "../../../core/plainerror.ts"
 
 export type Conflict = { kind: "conflict"; base: string; theirs: FileText; lines: number[]; who?: string; inline?: boolean; version?: boolean; note?: string }
 export type SaveStatus = { kind: "ok" } | { kind: "error"; message: string } | Conflict
@@ -54,6 +55,10 @@ export function conflictText(c: Conflict, above = 0) {
   return c.who ? `${c.who} edited ${where} while you typed.` : `${where[0].toUpperCase()}${where.slice(1)} changed elsewhere while you typed.`
 }
 
+class NotSaved extends Error {
+  why: "conflict" | "gone" | "refused"
+  constructor(message: string, why: NotSaved["why"]) { super(message); this.why = why }
+}
 const lower = (s: string) => s.replace(/^(Lines?|The) /, (w) => w.toLowerCase())
 
 function withTheirs(text: string, clashes: Clash[]) {
@@ -341,25 +346,25 @@ export function makeAutosave(path: string, initial: string, options: Options) {
     const send = async (base: string | null) => {
       sentMaybe(text)
       const r = await put(text, base, { keepalive: true })
-      if (r.status === 409) throw Object.assign(new Error(changedText()), { conflict: true })
-      if (!r.ok) throw Object.assign(new Error((await r.json().catch(() => ({}))).error ?? r.statusText), { gone: r.status === 404 })
+      if (r.status === 409) throw new NotSaved(changedText(), "conflict")
+      if (!r.ok) throw new NotSaved(errorIn(await r.json().catch(() => ({}))) ?? r.statusText, r.status === 404 ? "gone" : "refused")
       dropDraft(path)
     }
     const changedText = () => (status.kind === "conflict" ? conflictText(status).replace(/\.$/, "") : "it changed elsewhere in the same lines")
     const id = `unsaved:${path}`, saved = () => notify(`Saved ${stem(path)}`, { id })
     const unsaved = (e: unknown) => {
-      const mine = !!(e as { conflict?: boolean }).conflict, why = mine ? null : errorReason(e)
-      notify(mine ? `Your edits to ${stem(path)} aren't saved: ${lower((e as Error).message)}` : `Couldn't save ${stem(path)}${why ? `: ${why}` : ""}`, { kind: "error", duration: 15_000, id,
+      const mine = e instanceof NotSaved && e.why === "conflict", why = mine ? null : errorReason(e)
+      notify(mine ? `Your edits to ${stem(path)} aren't saved: ${lower(e.message)}` : `Couldn't save ${stem(path)}${why ? `: ${why}` : ""}`, { kind: "error", duration: 15_000, id,
         action: { label: mine ? "Keep yours" : "Try again", run: async () => {
           if (mine) await post("history/keep", { path: where() }).catch(() => {})
           await send(mine ? null : base)
           notify(mine ? `Saved yours; ${theirName(status.kind === "conflict" ? status.who : undefined)} version is in the note's history` : `Saved ${stem(path)}`, { id })
         } } })
     }
-    if (status.kind === "conflict") { if (say) unsaved({ message: changedText(), conflict: true }); return }
+    if (status.kind === "conflict") { if (say) unsaved(new NotSaved(changedText(), "conflict")); return }
     send(base).catch((e) => {
       if (!say) return
-      if (!(e as { gone?: boolean }).gone) unsaved(e)
+      if (!(e instanceof NotSaved && e.why === "gone")) unsaved(e)
       else if (deletedHere(path)) dropDraft(path)
       else notify(`${stem(path)} was moved or deleted before your last edits were saved`, {
         kind: "error", duration: 15_000, id, action: { label: "Save them", run: async () => { await send(null); saved() } },

@@ -7,6 +7,7 @@ import { signal } from "@/core/signal"
 import { trackSoon } from "@/core/unsaved"
 import { guestCommand } from "@/core/share"
 import { confirmDialog } from "@/components/ConfirmDialog"
+import { isText } from "../../../core/values.ts"
 
 export type Command = {
   id: string
@@ -87,7 +88,7 @@ export function runOrSay(run: () => unknown, name: string): Promise<void> {
   const failed = (e: unknown) => { console.error(e); notifyError(e, `Couldn't ${name.replace(/…$/, "").replace(/^\w/, (c) => c.toLowerCase())}`) }
   try {
     const r = run()
-    if (r && typeof (r as Promise<unknown>).then === "function") return (r as Promise<unknown>).then(() => {}, failed)
+    if (r instanceof Promise) return r.then(() => {}, failed)
   } catch (e) { failed(e) }
   return Promise.resolve()
 }
@@ -157,7 +158,7 @@ let seeded: Record<string, string[]> = {}
 const keyMap = (saved: unknown) => {
   const out: Record<string, string[]> = {}
   if (saved && typeof saved === "object" && !Array.isArray(saved)) {
-    for (const [id, v] of Object.entries(saved)) if (Array.isArray(v)) out[id] = v.filter((k): k is string => typeof k === "string" && !!k)
+    for (const [id, v] of Object.entries(saved)) if (Array.isArray(v)) out[id] = v.filter((k): k is string => isText(k) && !!k)
   }
   return out
 }
@@ -283,7 +284,7 @@ function matching(steps: string[]) {
 export function typingIn(el: EventTarget | null) {
   if (!(el instanceof HTMLElement)) return false
   if (el.isContentEditable || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.closest("[data-keeps-keys]")) return true
-  return el.tagName === "INPUT" && !/^(checkbox|radio|button|submit|reset|range|color|file|image)$/i.test((el as HTMLInputElement).type)
+  return el instanceof HTMLInputElement && !/^(checkbox|radio|button|submit|reset|range|color|file|image)$/i.test(el.type)
 }
 const typed = (step: string) => (!/(^|\+)(mod|ctrl|alt)\+/.test(step) && !/(^|\+)f\d\d?$/.test(step)) || (MAC && /^ctrl\+(shift\+)?[a-z]$/.test(step))
 const FIELD_KEYS = new Set(["mod+a", "mod+backspace", "alt+backspace", "mod+delete", "alt+delete"])

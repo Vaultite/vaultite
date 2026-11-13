@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react"
-import { editCount, edited, type LiveMark, onKeptChange, onVaultChange, settled, startLive, type Paths } from "@/core/live"
+import { editCount, edited, onKeptChange, onVaultChange, settled, startLive, type Paths } from "@/core/live"
 import { get, send } from "@/core/http"
 import { hydratePrefs } from "@/core/prefs"
 import { errorText, notifyError } from "@/core/notify"
@@ -18,6 +18,8 @@ import type { PropTypes } from "../../../core/proptypes.ts"
 import type { Disclosures } from "../../../core/pluginmeta.ts"
 import type { Home } from "../../../core/fileprops.ts"
 import type { PluginState } from "@/api"
+import { isObj, isText } from "../../../core/values.ts"
+import { keptEntries } from "@/core/keptEntries"
 
 /** GET /api/state: what each plugin's plugin.ts puts in it (`PluginState`, which plugins extend: see api.ts), plus the
  *  core's own keys. */
@@ -151,8 +153,8 @@ function recall(path: string) {
     answersVault = vault
     answers.clear()
     try {
-      const all = JSON.parse(localStorage.getItem(KEPT) ?? "null") as { vault: string; answers: [string, string][] } | null
-      if (all?.vault === vault) for (const [k, json] of all.answers) answers.set(k, { data: JSON.parse(json), json })
+      const kept = JSON.parse(localStorage.getItem(KEPT) ?? "null")
+      if (isObj(kept) && kept.vault === vault) for (const [k, json] of keptEntries(kept.answers, isText)) answers.set(k, { data: JSON.parse(json), json })
     } catch { /* private mode, or not JSON */ }
   }
   return answers.get(path)
@@ -296,7 +298,7 @@ let beforeState: ((s: State) => Promise<void>) | null = null
 export const onState = (fn: (s: State) => Promise<void>) => { beforeState = fn }
 
 let server: { v: string; state: State; store: Store } | null = null
-type Answer = ({ v: string; state: State } | { v: string; since: string; patch: Patch | null }) & { live?: LiveMark; here?: "connect" }
+type Answer = ({ v: string; state: State } | { v: string; since: string; patch: Patch | null }) & { live?: unknown; here?: string }
 
 function stateOf(a: Answer): State | null {
   if ("state" in a) return a.state
@@ -311,7 +313,7 @@ async function fromChunks(): Promise<Answer | null> {
     await window.__vauEarlyChunks
     const names = [...new Set(chunksOf(m.tree))]
     const values = new Map(await Promise.all(names.map(async (c) => [c, await get<unknown>(`state/chunk/${c}`)] as const)))
-    return { v: m.v, state: assemble(m.tree, (c) => values.get(c)) as State, live: m.live as LiveMark | undefined, here: m.here as "connect" | undefined }
+    return { v: m.v, state: assemble(m.tree, (c) => values.get(c)) as State, live: m.live, here: m.here }
   } catch (e) {
     console.warn("the state's chunks", e)
     return null
@@ -331,8 +333,8 @@ function load(): Promise<void> {
       try {
         const answer = (server ? null : await fromChunks()) ?? await get<Answer>(`state?since=${encodeURIComponent(server?.v ?? "0")}`)
         loading?.mark("state")
-        startLive(answer.live)
-        setHere(answer.here ?? "mac")
+        startLive(isObj(answer.live) ? answer.live : undefined)
+        setHere(answer.here === "connect" ? "connect" : "mac")
         if (editCount() !== gen) { again = true; continue }
         const all = stateOf(answer)
         if (!all) { server = null; again = true; continue }

@@ -1,6 +1,7 @@
 import { onActivity } from "@/core/activity"
 import { BUILD, offerNewBuild } from "@/core/builds"
 import { safeToReload } from "@/core/unsaved"
+import { isText } from "../../../core/values.ts"
 
 export type AppError = {
   t: number
@@ -43,11 +44,11 @@ function textOf(e: unknown): string {
   if (e instanceof Error) return `${e.name && e.name !== "Error" ? `${e.name}: ` : ""}${e.message}`
   if (typeof e !== "object" || e === null) return String(e)
   // Not an Error (an Event, a DOMException-like object): JSON would say "{}".
-  const o = e as { name?: unknown; message?: unknown; type?: unknown; target?: unknown }
-  const str = (v: unknown) => (typeof v === "string" ? v : "")
-  const kind = str(o.name) || (e.constructor?.name !== "Object" ? str(e.constructor?.name) : "")
-  const el = o.target instanceof Element ? o.target as HTMLScriptElement : null
-  const said = [str(o.message), str(o.type) && `${o.type} event`, el && `<${el.tagName.toLowerCase()}${el.src ? ` ${el.src}` : ""}>`].filter(Boolean)
+  const str = (v: unknown) => (isText(v) ? v : "")
+  const type = str("type" in e ? e.type : undefined), target = "target" in e ? e.target : undefined
+  const kind = str("name" in e ? e.name : undefined) || (e.constructor?.name !== "Object" ? str(e.constructor?.name) : "")
+  const el = target instanceof Element ? target : null, src = el && "src" in el ? str(el.src) : ""
+  const said = [str("message" in e ? e.message : undefined), type && `${type} event`, el && `<${el.tagName.toLowerCase()}${src ? ` ${src}` : ""}>`].filter(Boolean)
   if (kind || said.length) return `${kind || "Object"}${said.length ? `: ${said.join(", ")}` : ""}`
   try { const json = JSON.stringify(e); return json === "{}" ? "An empty object (not an Error)" : json } catch { return String(e) }
 }
@@ -151,6 +152,6 @@ export function startAppErrors() {
   })
   addEventListener("unhandledrejection", (e) => setTimeout(() => { if (!e.defaultPrevented) noteAppError("rejection", e.reason) }))
   // Vite's event for a lazy chunk's failed preload, before the import throws.
-  addEventListener("vite:preloadError", (e) => { void recoverFromStaleBuild((e as Event & { payload?: unknown }).payload) })
+  addEventListener("vite:preloadError", (e) => { void recoverFromStaleBuild("payload" in e ? e.payload : undefined) })
   onActivity((n) => { trail.push(n.text.slice(0, 120)); if (trail.length > 8) trail.shift() })
 }

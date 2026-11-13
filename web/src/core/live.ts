@@ -4,6 +4,8 @@ import { DEVICE } from "@/core/device"
 import { notify } from "@/core/notify"
 import { share } from "@/core/share"
 import { askerOf } from "@/core/askers"
+import { liveMessageOf, uiActionOf, type UiAction } from "@/core/liveMessage"
+import { isNumber, isObj, isText } from "../../../core/values.ts"
 
 export type Paths = string[] | null
 type Fn = (paths: Paths) => void
@@ -54,8 +56,8 @@ function emitKept(names: string[] | null, state: boolean) {
 }
 let keptSeen: string | null = null
 let keptState: number | null = null
-function heardKept(names: string[] | null, kept: unknown, state: unknown) {
-  if (typeof kept !== "string" || typeof state !== "number") return
+function heardKept(names: string[] | null, kept: string | undefined, state: number | undefined) {
+  if (kept === undefined || state === undefined) return
   const stateMoved = keptState !== null && state !== keptState, moved = keptSeen !== null && kept !== keptSeen
   keptSeen = kept
   keptState = state
@@ -93,8 +95,6 @@ function release() {
   emit(paths)
 }
 
-export type UiAction = { action: string; path?: string; split?: "right" | "down" | null; newTab?: boolean; background?: boolean; container?: string | null; in?: string | null; id?: string; rid?: string
-  text?: string; kind?: "error" | null; button?: { label: string; open: string } | null }
 let uiHandler: ((m: UiAction) => unknown) | null = null
 export const onUiAction = (fn: (m: UiAction) => unknown) => { uiHandler = fn }
 const asking = new Map<string, AbortController>()
@@ -135,8 +135,10 @@ function connect() {
   lastHeard = Date.now()
   s.onmessage = (e) => {
     lastHeard = Date.now()
-    let m: { type?: string; v?: string; at?: string; web?: string; role?: string; paths?: Paths; from?: string; to?: string | null; names?: string[]; kept?: string; state?: number } & Partial<UiAction>
-    try { m = JSON.parse(String(e.data)) } catch { return }
+    let raw: unknown
+    try { raw = JSON.parse(String(e.data)) } catch { return }
+    if (!isObj(raw)) return
+    const m = liveMessageOf(raw)
     if (m.type === "hello") {
       tries = 0
       if (poll) { clearInterval(poll); poll = null }
@@ -164,22 +166,23 @@ function connect() {
     } else if (m.type === "ui" && m.action === "ask-end") {
       if (m.rid) asking.get(m.rid)?.abort()
     } else if (m.type === "ui" && m.action && askerOf(m.action)) {
+      const asker = askerOf(m.action)
       const ended = new AbortController()
       if (m.rid) asking.set(m.rid, ended)
       const reply = (a: object) => {
         if (m.rid) asking.delete(m.rid)
         let text: string
-        try { text = JSON.stringify({ type: "ui-done", rid: m.rid, ...a }) } catch (e) { text = JSON.stringify({ type: "ui-done", rid: m.rid, ran: false, error: `the answer isn't JSON (${(e as Error).message})` }) }
+        try { text = JSON.stringify({ type: "ui-done", rid: m.rid, ...a }) } catch (e) { text = JSON.stringify({ type: "ui-done", rid: m.rid, ran: false, error: `the answer isn't JSON (${e instanceof Error ? e.message : String(e)})` }) }
         if (s.readyState === WebSocket.OPEN) s.send(text)
       }
-      Promise.resolve().then(() => askerOf(m.action!)!(m as Record<string, unknown>, ended.signal))
+      Promise.resolve().then(() => asker?.(m.raw, ended.signal))
         .then((result) => reply({ ran: true, result }), (e) => reply({ ran: false, error: e instanceof Error ? e.message : String(e) }))
     } else if (m.type === "ui" && m.action) {
       let r: unknown = true
-      try { r = uiHandler?.(m as UiAction) } catch (e) { r = Promise.reject(e) }
+      try { r = uiHandler?.(uiActionOf(m.raw, m.action)) } catch (e) { r = Promise.reject(e) }
       void Promise.resolve(r).then((v) => {
         if (!m.rid) return
-        const notices = v && typeof v === "object" && Array.isArray((v as { notices?: unknown }).notices) ? (v as { notices: unknown[] }).notices : undefined
+        const notices = isObj(v) && Array.isArray(v.notices) ? v.notices : undefined
         s.send(JSON.stringify({ type: "ui-done", rid: m.rid, ran: v !== false, ...(notices?.length ? { notices } : {}) }))
       }, (e) => {
         console.error(e)
@@ -208,12 +211,11 @@ function revive() {
   connect()
 }
 
-export type LiveMark = { at?: string; kept?: string; state?: number }
-export function startLive(from?: LiveMark) {
+export function startLive(from?: { at?: unknown; kept?: unknown; state?: unknown }) {
   if (started || typeof WebSocket === "undefined") return
   started = true
-  if (typeof from?.at === "string") heard = from.at
-  if (typeof from?.kept === "string" && typeof from.state === "number") { keptSeen = from.kept; keptState = from.state }
+  if (isText(from?.at)) heard = from.at
+  if (isText(from?.kept) && isNumber(from.state)) { keptSeen = from.kept; keptState = from.state }
   connect()
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") { if (!ws || ws.readyState !== WebSocket.OPEN) downSince = Date.now(); release(); revive() }

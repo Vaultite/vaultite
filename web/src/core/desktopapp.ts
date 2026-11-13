@@ -10,6 +10,8 @@ import { recentFiles, subscribeScoped, workspacePins } from "@/core/scope"
 import { safeToRestart } from "@/core/unsaved"
 import { panesShowing } from "@/core/workspace"
 import { whenIdle } from "@/lib/utils"
+import { elementOf } from "@/core/dom"
+import { strings } from "../../../core/values.ts"
 
 let reporting = false
 function reportSafety(d: DesktopApi) {
@@ -41,12 +43,16 @@ export async function dropInto(dt: DataTransfer, folder: string, move: boolean):
 
 const send = async (file: File, to: string) => { await uploadFile(to, file) }
 
+const isFileEntry = (e: FileSystemEntry): e is FileSystemFileEntry => e.isFile
+const isFolderEntry = (e: FileSystemEntry): e is FileSystemDirectoryEntry => e.isDirectory
+
 async function upload(e: FileSystemEntry, to: string): Promise<void> {
-  if (e.isFile) {
-    return send(await new Promise<File>((ok, fail) => (e as FileSystemFileEntry).file(ok, fail)), to)
+  if (isFileEntry(e)) {
+    return send(await new Promise<File>((ok, fail) => e.file(ok, fail)), to)
   }
+  if (!isFolderEntry(e)) return
   await post("folder", { path: to })
-  const reader = (e as FileSystemDirectoryEntry).createReader()
+  const reader = e.createReader()
   for (;;) {
     const batch = await new Promise<FileSystemEntry[]>((ok, fail) => reader.readEntries(ok, fail))
     if (!batch.length) break
@@ -82,7 +88,7 @@ export function startDesktop() {
   whenIdle(refresh)
   addEventListener("focus", refresh)
   startFileDrops()
-  const outside = (e: DragEvent) => hasFiles(e.dataTransfer) && !(e.target as Element | null)?.closest?.("[data-file-drop]")
+  const outside = (e: DragEvent) => hasFiles(e.dataTransfer) && !elementOf(e.target)?.closest("[data-file-drop]")
   // A browser replaces the page with a file dropped where nothing takes it.
   if (!app) {
     addEventListener("dragover", (e) => { if (outside(e) && !e.defaultPrevented) { e.preventDefault(); e.dataTransfer!.dropEffect = "none" } })
@@ -136,11 +142,11 @@ function syncMenu(sync: (snap: MenuSnapshot) => Promise<unknown>) {
     timer = 0
     const s = getStore()
     const exists = new Set(s?.files.files.map((f) => f.path) ?? [])
-    const pins = workspacePins() ?? ((s as { pinned?: unknown } | null)?.pinned as string[] | undefined) ?? []
+    const pins = workspacePins() ?? (s && "pinned" in s ? s.pinned : undefined) ?? []
     const snap: MenuSnapshot = {
       commands: commandList().map((c) => ({ id: c.id, name: commandName(c), keys: keysOf(c), custom: isCustom(c.id), on: available([c]).length > 0,
         ...(isSetting(c) ? { checked: isOn(c) } : {}) })),
-      pinned: (Array.isArray(pins) ? pins : []).filter((p) => exists.has(p)).map((p) => ({ path: p, title: title(p) })),
+      pinned: (Array.isArray(pins) ? strings(pins) : []).filter((p) => exists.has(p)).map((p) => ({ path: p, title: title(p) })),
       recent: recentFiles().filter((p) => exists.has(p)).slice(0, 15).map((p) => ({ path: p, title: title(p) })),
     }
     const json = JSON.stringify(snap)

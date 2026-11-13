@@ -8,7 +8,7 @@ export type JNode = (
 ) & { start: number; end: number }
 
 export function parseJson(text: string): { node: JNode } | { error: string } {
-  try { JSON.parse(text) } catch (e) { return { error: String((e as Error).message ?? e) } }
+  try { JSON.parse(text) } catch (e) { return { error: e instanceof Error ? e.message : String(e) } }
   let i = 0
   const ws = () => { while (i < text.length && " \t\n\r".includes(text[i])) i++ }
   const str = (): [string, number] => {
@@ -16,7 +16,7 @@ export function parseJson(text: string): { node: JNode } | { error: string } {
     i++
     while (text[i] !== '"') i += text[i] === "\\" ? 2 : 1
     i++
-    return [JSON.parse(text.slice(s, i)) as string, s]
+    return [String(JSON.parse(text.slice(s, i))), s]
   }
   const value = (): JNode => {
     ws()

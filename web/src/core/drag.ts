@@ -6,6 +6,7 @@ import { haptic } from "@/core/haptics"
 import { isMac } from "@/core/platform"
 import { scrollerOf } from "@/core/near"
 import { signal } from "@/core/signal"
+import { elementOf, htmlOf } from "@/core/dom"
 
 export type DragItem = {
   /** Where it comes from ("row": a database view's file, a board's card or a calendar's item; with `to`, a panel's row
@@ -57,7 +58,8 @@ export type DragItem = {
    *  draws it, this one only where it would land. */
   elsewhere?: boolean
 }
-type Hit = { target: string; data: unknown; hint?: string; weak?: boolean; stay?: boolean }
+type Answer = { data: unknown; hint?: string; weak?: boolean; stay?: boolean; drop: (item: DragItem) => void }
+type Hit = Answer & { target: string }
 export type Drag = { item: DragItem; x: number; y: number; hit: Hit | null; finger?: boolean; origin?: Origin }
 export type Origin = { x: number; y: number; rect: DOMRect }
 
@@ -89,16 +91,21 @@ if (typeof window !== "undefined") {
   addEventListener("lostpointercapture", (e) => { if (captured.delete(e.pointerId) && !captured.size) root.removeAttribute("data-captured") }, true)
 }
 
-export type DropTarget = {
-  at: (item: DragItem, x: number, y: number, el: Element | null) => { data: unknown; hint?: string; weak?: boolean; stay?: boolean } | null
-  drop: (item: DragItem, data: unknown) => void
+export type DropTarget<H> = {
+  at: (item: DragItem, x: number, y: number, el: Element | null) => { data: H; hint?: string; weak?: boolean; stay?: boolean } | null
+  drop: (item: DragItem, data: H) => void
   end?: () => void
 }
-const targets = new Map<string, DropTarget>()
+type Target = { at: (item: DragItem, x: number, y: number, el: Element | null) => Answer | null; end?: () => void }
+const targets = new Map<string, Target>()
 
-export function addDropTarget(id: string, t: DropTarget) {
-  targets.set(id, t)
-  return () => { if (targets.get(id) === t) targets.delete(id) }
+export function addDropTarget<H>(id: string, t: DropTarget<H>) {
+  const target: Target = {
+    at: (item, x, y, el) => { const a = t.at(item, x, y, el); return a && { ...a, drop: (it) => t.drop(it, a.data) } },
+    end: t.end,
+  }
+  targets.set(id, target)
+  return () => { if (targets.get(id) === target) targets.delete(id) }
 }
 
 /** Take drops while mounted. `at` answers what a drop at (x, y) would do (`hint`: a word on the item, like "Unpin";
@@ -111,9 +118,8 @@ export function useDropTarget<H>(id: string, at: (item: DragItem, x: number, y: 
     targets.set(id, {
       at: (item, x, y, el) => {
         const h = ref.current.at(item, x, y, el)
-        return h === null ? null : { data: h, hint: ref.current.opts.hint?.(h), weak: ref.current.opts.weak?.(h), stay: ref.current.opts.stay?.(h) }
+        return h === null ? null : { data: h, hint: ref.current.opts.hint?.(h), weak: ref.current.opts.weak?.(h), stay: ref.current.opts.stay?.(h), drop: (it) => ref.current.drop(it, h) }
       },
-      drop: (item, data) => ref.current.drop(item, data as H),
       end: () => ref.current.opts.end?.(),
     })
     return () => { targets.delete(id) }
@@ -178,8 +184,8 @@ export function edgeScroller(axis: "x" | "y" = "y") {
     frame = requestAnimationFrame(step)
   }
   const over = (list: Element, x: number, y: number) => {
-    const page = document.scrollingElement as HTMLElement
-    const box = axis === "x" ? list as HTMLElement : scrollerOf(list, true) ?? (page.scrollHeight > page.clientHeight ? page : null)
+    const page = htmlOf(document.scrollingElement)
+    const box = axis === "x" ? htmlOf(list) : scrollerOf(list, true) ?? (page && page.scrollHeight > page.clientHeight ? page : null)
     if (!box || (axis === "x" && box.scrollWidth <= box.clientWidth)) return stop()
     if (box === page) return near(box, y)
     const b = box.getBoundingClientRect()
@@ -202,9 +208,10 @@ export function useDropHit<H>(id: string): H | null {
   return subs.use(() => {
     const raw = drag?.hit?.target === id ? drag.hit.data : null
     const l = last.current
-    if (raw === l.raw) return l.data as H | null
-    const key = raw == null ? "null" : JSON.stringify(raw)
-    last.current = key === l.key ? { ...l, raw } : { raw, key, data: raw }
+    if (raw !== l.raw) {
+      const key = raw == null ? "null" : JSON.stringify(raw)
+      last.current = key === l.key ? { ...l, raw } : { raw, key, data: raw }
+    }
     return last.current.data as H | null
   })
 }
@@ -250,7 +257,7 @@ function lift(item: DragItem, finger = false) {
     const swallow = (ev: MouseEvent) => { ev.preventDefault(); ev.stopPropagation() }
     addEventListener("click", swallow, true)
     setTimeout(() => removeEventListener("click", swallow, true))
-    if (hit) { targets.get(hit.target)?.drop(item, hit.data); noteDrop(item, hit) }
+    if (hit) { if (targets.has(hit.target)) hit.drop(item); noteDrop(item, hit) }
   }
 }
 
@@ -264,11 +271,11 @@ export const pastEdge = (x: number, y: number, finger = false) => !finger && (x 
  *  a finger scrolls or taps). `data-no-drag` children stay plain buttons. */
 export function startDrag(e: React.PointerEvent<HTMLElement> | PointerEvent, item: DragItem, { touch = false }: { touch?: boolean } = {}) {
   // A Mac's Control-click is a right-click.
-  if (e.button !== 0 || (isMac && e.ctrlKey) || (e.target as Element).closest("[data-no-drag]")) return
+  if (e.button !== 0 || (isMac && e.ctrlKey) || elementOf(e.target)?.closest("[data-no-drag]")) return
   if (e.pointerType === "touch") { if (touch) pickUp(e, item); return }
-  const el = e.currentTarget as HTMLElement, x0 = e.clientX, y0 = e.clientY, id = e.pointerId
-  let end: ReturnType<typeof lift> | null = null
-  let last: PointerEvent | null = null, origin: Origin | undefined
+  const el = htmlOf(e.currentTarget), x0 = e.clientX, y0 = e.clientY, id = e.pointerId
+  if (!el) return
+  let end: ReturnType<typeof lift> | null = null, last: PointerEvent | null = null, origin: Origin | undefined
   const move = (ev: PointerEvent) => {
     if (ev.pointerId !== id) return
     last = ev
@@ -315,7 +322,8 @@ export function startDrag(e: React.PointerEvent<HTMLElement> | PointerEvent, ite
 
 // Touch events, since they go on while the page is held still.
 function pickUp(e: React.PointerEvent<HTMLElement> | PointerEvent, item: DragItem) {
-  const el = e.currentTarget as HTMLElement
+  const el = htmlOf(e.currentTarget)
+  if (!el) return
   let from = { x: e.clientX, y: e.clientY }, picked = false
   let end: ReturnType<typeof lift> | null = null
   const held = (ev: MouseEvent) => {
@@ -349,11 +357,11 @@ function pickUp(e: React.PointerEvent<HTMLElement> | PointerEvent, item: DragIte
   const quit = onAway(cancel)
 }
 
-const PLACES = { panes: "a pane", panels: "the sidebar", pins: "Pinned", workspaces: "another workspace", newtab: "its place on the new tab", status: "the status bar" }
+const PLACES: Partial<Record<string, string>> = { panes: "a pane", panels: "the sidebar", pins: "Pinned", workspaces: "another workspace", newtab: "its place on the new tab", status: "the status bar" }
 function noteDrop(item: DragItem, hit: Hit) {
   const what = item.path || item.label || item.to?.replace(/^(file|view):/, "") || item.from
   const kind = hit.target.split(":")[0]
-  const where = (PLACES as Record<string, string | undefined>)[kind]
+  const where = PLACES[kind]
     ?? (typeof hit.data === "string" ? hit.data || "the vault's top folder" : kind.replace(/-/g, " "))
   noteActivity("drop", `Dragged ${what} to ${where}`, item.path ? [item.path] : undefined)
 }

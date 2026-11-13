@@ -12,6 +12,7 @@ import { parseRepo, repoText } from "../../../core/bundlelinks.ts"
 import { signal } from "@/core/signal"
 import { overConnect } from "@/core/here"
 import { registerCommands } from "@/core/commands"
+import { isObj } from "../../../core/values.ts"
 
 export type { BundleInfo, Plan, PlanChange, ShareItem }
 
@@ -195,7 +196,7 @@ export function sourceOf(text: string): { file: unknown } | { from: string } | n
 
 export const isBundleText = (text: string) => {
   const s = sourceOf(text)
-  return !!s && ("from" in s || (typeof s.file === "object" && (s.file as { vaultite?: unknown } | null)?.vaultite === "bundle"))
+  return !!s && ("from" in s || (isObj(s.file) && s.file.vaultite === "bundle"))
 }
 
 const notABundle = (what: string) => new Error(`${what} isn't a bundle: paste its JSON, or a GitHub repository (owner/name)`)
