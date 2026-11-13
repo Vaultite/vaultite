@@ -1,22 +1,31 @@
+import { z } from "zod"
 import { type OpCtx, OpError } from "../../../core/plugins.ts"
-import { readText } from "../../../core/vault.ts"
 import { paneSource } from "../../../core/desktop/places.ts"
 import { doneText, effectOf, stepOf } from "./takeover.ts"
-import { check as checkOn, listView, parseCondition, thingFrom, type Verdict } from "../../../core/desktop/uimodel.ts"
+import { check as checkOn, listView, parseCondition, thingFrom } from "../../../core/desktop/uimodel.ts"
 import "./propose.ts"
 import { plugin } from "./self.ts"
-import type { Near } from "./types.ts"
 import { str } from "./settings.ts"
 import { moments, did, key, agentOf, writingAt } from "./state.ts"
-import { takeover, nearBy } from "./windows.ts"
+import { takeover } from "./windows.ts"
+import { nearBy } from "./screensocket.ts"
 import { paneById, privatePane, paneFocus, pageFor, resolve } from "./windowpanes.ts"
-import { cut } from "./edits.ts"
+import { cut, vaultText } from "./edits.ts"
+import { messageOf } from "./errors.ts"
 import { AS, PANE, UI, EL, PLACE, target, who } from "./args.ts"
-import { awayIn } from "./next.ts"
+import { awayIn } from "./momentstext.ts"
 import { askOf } from "./wiring.ts"
 
-/** A page's tree as the companion is given it, at most this long. */
 export const SNAPSHOT = 12_000
+const UiRead = z.object({ found: z.boolean(), label: z.string().optional(), folded: z.boolean().optional(), text: z.string().optional() })
+const Snapshot = z.object({ url: z.string(), title: z.string(), snapshot: z.string() })
+const Acted = z.record(z.string(), z.unknown()).and(z.object({ url: z.string(), title: z.string(), navigated: z.boolean(),
+  opened: z.array(z.object({ tab: z.number(), url: z.string(), title: z.string() })).optional(), diff: z.object({ page: z.boolean(), lines: z.array(z.string()), more: z.number() }).optional() }))
+type Acted = z.infer<typeof Acted>
+const UiClicked = z.object({ found: z.boolean(), label: z.string().optional(), role: z.string().optional(), opened: z.boolean().optional(), already: z.boolean().optional(),
+  ok: z.boolean().optional(), saw: z.string().optional(), shows: z.string().optional(), notices: z.array(z.object({ text: z.string(), kind: z.string().optional() })).optional() })
+type InApp = Omit<z.infer<typeof UiClicked>, "found" | "label"> & { ui: string; clicked: string }
+const UiChecked = z.looseObject({ ok: z.boolean().catch(false), saw: z.string() })
 plugin.op({
   id: "companion.see",
   cli: "companion see",
@@ -32,7 +41,7 @@ private page or note is never shown.
     ui: { ...UI, description: "instead of a pane: the app's own UI by its id (panel:files:files, tab:<id>): what it shows now" }, as: AS },
   run: async (p, ctx) => {
     if (str(p.ui)) {
-      const ui = str(p.ui), r = await ctx.ui({ action: "companion:read", ui }).catch(() => null) as { found: boolean; label?: string; folded?: boolean; text?: string } | null
+      const ui = str(p.ui), r = UiRead.safeParse(await ctx.ui({ action: "companion:read", ui }).catch(() => null)).data
       if (!r?.found) throw new OpError(`${ui} isn't on the user's screen (act --ui shows a place)`, 404)
       return { ui, title: r.label || ui, kind: "ui", text: r.folded ? "(folded: only its heading shows; act expand --ui opens it)" : r.text ?? "" }
     }
@@ -41,25 +50,21 @@ private page or note is never shown.
     if (privatePane(pn)) throw new OpError("that pane is private: the companion never sees it", 403)
     const x = paneSource(pn.to)
     if (x.kind === "terminal") return { pane: pn.id, title: pn.title, kind: "terminal", text: await plugin.ask<string>("terminal:screen", "", x.terminal, 80) }
-    if (x.kind === "note") { let text = ""; try { text = readText(plugin.vault.abs(x.path!)) } catch { /* gone */ } return { pane: pn.id, title: pn.title, kind: "note", path: x.path, text: cut(text, SNAPSHOT) } }
+    if (x.kind === "note") return { pane: pn.id, title: pn.title, kind: "note", path: x.path, text: cut(vaultText(x.path!) ?? "", SNAPSHOT) }
     if (x.kind !== "site") return { pane: pn.id, title: pn.title, kind: "view", text: "" }
     const t = await pageFor(pn.id, "read", who(p))
-    const r = await plugin.desktop("agent:snapshot", t.tab).catch((e) => { throw new OpError((e as Error).message, 409) }) as { url: string; title: string; snapshot: string }
+    const r = Snapshot.parse(await plugin.desktop("agent:snapshot", t.tab).catch((e) => { throw new OpError(messageOf(e), 409) }))
     return { pane: pn.id, title: r.title || pn.title, kind: "site", url: r.url, access: t.access, text: cut(r.snapshot, SNAPSHOT) }
   },
   text: (r) => `"${r.title}" (${"ui" in r ? r.ui : `pane ${r.pane}`}${"url" in r && r.url ? `, ${r.url}` : ""}${"access" in r && r.access === "read" ? "; you may only read here" : ""}):\n${r.text || "(nothing to read)"}`,
 })
 
-type Acted = { url: string; title: string; navigated: boolean; opened?: { tab: number; url: string; title: string }[]; diff?: { page: boolean; lines: string[]; more: number } }
-/** What an act in a page did, as told: the page's text is all it sees, so no change there isn't "nothing happened". */
 function actText(r: Acted, action: string) {
   const opened = r.opened?.length ? `\nOpened ${r.opened.map((o) => o.title || o.url).join(", ")} in a new tab.` : ""
   const lines = r.diff?.lines?.length ? `\n${r.diff.page ? "The page now" : "What changed (- gone, + new)"}:\n${r.diff.lines.join("\n")}${r.diff.more ? `\n… ${r.diff.more} more lines` : ""}` : ""
   const none = lines || opened ? "" : action === "scroll" ? "\nScrolled; the page's text is the same (see shows what's in view)." : "\nIts text didn't change (a change only its picture shows isn't in it: see, or look at the screen)."
   return `${r.navigated ? "Went to another page: " : ""}${r.title || r.url}${opened}${lines}${none}`
 }
-type InApp = { ui: string; clicked: string; role?: string; opened?: boolean; already?: boolean; ok?: boolean; saw?: string; shows?: string; notices?: { text: string; kind?: string }[] }
-/** What an act in the app did, as read back: done, already so, or plainly not ("nothing changed"), and what shows now. */
 function actInAppText(r: InApp, action: string) {
   const what = r.clicked ? JSON.stringify(r.clicked) : r.ui
   const head = r.already ? `Nothing to do: ${r.saw}.` : r.ok === false ? `${r.opened ? "Asked the app to show" : action === "click" ? "Pressed" : `Tried to ${action}`} ${what}, but ${r.saw ?? "nothing changed"}: tell them plainly, or try another way.`
@@ -67,22 +72,17 @@ function actInAppText(r: InApp, action: string) {
   const notices = r.notices?.length ? ` It then showed: ${r.notices.map((n) => `${JSON.stringify(n.text)}${n.kind === "error" ? " (an error)" : ""}`).join(", ")}.` : ""
   return `${head}${notices}${r.shows ? `\n${r.ui ? `${r.ui} shows now` : "It shows now"} (point at a row by its words, [point "<words>"]):\n${r.shows}` : ""}`
 }
-/** How long its cursor flies before it clicks, so they see where. */
 export const LAND_MS = 450
-/** The acts the app's own UI takes: a press, or a state asked for (expand: pressed only when folded). */
 const IN_APP = ["click", "dblclick", "expand", "collapse", "check", "uncheck", "select"]
-/** An act on the app's own UI, its cursor there first (index.tsx' answers.click): the target by its id or its role and
- *  words, resolved to the part that acts, its state read back. Only what's on screen, or a place the app can show. */
 async function actInApp(ctx: OpCtx, name: string, ui: string, find: string, action: string, role = ""): Promise<InApp> {
   if (!IN_APP.includes(action)) throw new OpError(`in the app's own UI it does ${IN_APP.join(", ")}: to write in a note, edit; in a page, give its pane`, 400)
   did(name, "act")
-  // (words anywhere in the window: no place to fly to first, as find alone would mean their note's words)
   const done = writingAt(name, { ...(ui ? { ui, ...(find ? { find } : {}) } : {}), pointed: Date.now() })
   try {
     await new Promise((done) => setTimeout(done, LAND_MS))
-    const r = await ctx.ui({ action: "companion:click", ui, find, role, how: action }).catch((e) => {
+    const r = UiClicked.safeParse(await ctx.ui({ action: "companion:click", ui, find, role, how: action }).catch((e) => {
       throw e instanceof OpError && e.status === 409 ? new OpError("no app window is open on this server: open the app first", 409) : e
-    }) as ({ found: boolean; label?: string } & Omit<InApp, "ui" | "clicked">) | null
+    })).data
     if (r?.found) { const { found: _f, label, ...rest } = r; return { ui, clicked: label ?? "", ...rest } }
     throw new OpError(find ? `no ${role ? `${role} ` : ""}"${find}" in ${ui || "the app's window"} on the user's screen (use its words as shown)`
       : `${ui} isn't on the user's screen, and the app can't show it (vau tabs lists tabs and panes)`, 404)
@@ -90,25 +90,23 @@ async function actInApp(ctx: OpCtx, name: string, ui: string, find: string, acti
 }
 
 const ACTS = ["click", "dblclick", "rightclick", "hover", "fill", "type", "press", "check", "uncheck", "select", "scroll", "focus", "expand", "collapse"]
-/** A step in another app (take-over): an element their ask listed, a screen point, or (asked there) the field with the keys. */
-function onScreen(p: Record<string, unknown>, name: string) {
+type ScreenParams = { [K in "action" | "ax" | "sx" | "sy" | "value" | "key" | "direction" | "doing" | "app" | "find" | "role" | "ask" | "pane" | "el" | "as"]?: unknown }
+function onScreen(p: ScreenParams, name: string) {
   if (str(p.ax) || p.sx !== undefined || str(p.app)) return true
   if (str(p.pane) || str(p.el)) return false
   const m = moments.findLast((x) => (x.kind === "ask" || x.kind === "point") && (!x.for || key(x.for) === key(name)))
   return !!m?.summoned && !!m.app && m.app !== "private" && !m.pane && !m.ui
 }
-async function screenAct(p: Record<string, unknown>, name: string) {
+async function screenAct(p: ScreenParams, name: string) {
   let step: ReturnType<typeof stepOf>
   try { step = stepOf({ action: str(p.action), ax: str(p.ax) || undefined, sx: p.sx === undefined ? undefined : Number(p.sx), sy: p.sy === undefined ? undefined : Number(p.sy),
     value: p.value === undefined ? undefined : str(p.value), key: str(p.key) || undefined, direction: str(p.direction) || undefined, doing: str(p.doing) || undefined,
-    app: str(p.app) || undefined, find: str(p.find) || undefined, role: str(p.role) || undefined }, nearBy.get(key(name)) ?? []) } catch (e) { throw new OpError((e as Error).message, 404) }
+    app: str(p.app) || undefined, find: str(p.find) || undefined, role: str(p.role) || undefined }, nearBy.get(key(name)) ?? []) } catch (e) { throw new OpError(messageOf(e), 404) }
   did(name, "act")
-  // (its cursor flies there first: the helper waits for it; behind their windows, its card shows where instead)
   const done = writingAt(name, (step.el || step.at) && !step.app ? { ...await resolve(target(p, true), name), pointed: Date.now() } : null)
   try {
     const r = await takeover.act(step, { agent: name, tint: agentOf(name).tint, ask: str(p.ask) || undefined }), was = nearBy.get(key(name)) ?? []
-    // (helper's ids are fresh each step: what's near now is what the next points at)
-    const near = (r.near ?? []).flatMap((e) => { const t = thingFrom(e); return t?.id ? [t as Near] : [] }), read = { ...r, ...(r.near ? { near } : {}) }
+    const near = (r.near ?? []).flatMap((e) => { const t = thingFrom(e); return t?.id ? [{ ...t, id: t.id }] : [] }), read = { ...r, ...(r.near ? { near } : {}) }
     if (near.length) nearBy.set(key(name), near)
     const effect = effectOf(str(p.action), read, was), effected = effect ? { ...read, effect } : read
     return { screen: true, ...effected, text: doneText(effected) }
@@ -152,11 +150,9 @@ or keys pause a step that needs them, a click or Esc stops it. Answers the eleme
   run: async (p, ctx) => {
     const name = who(p)
     if (str(p.ui)) return actInApp(ctx, name, str(p.ui), str(p.find), str(p.action), str(p.role))
-    // (an element their ask listed over Vaultite's own window: the same act, through its UI by id or role and name)
     const ask = askOf(name), own = str(p.ax) && ask && !awayIn([ask]) ? nearBy.get(key(name))?.find((e) => e.id === str(p.ax)) : undefined
     if (own) return actInApp(ctx, name, own.ui ?? "", own.ui ? "" : own.label, str(p.action), own.ui ? "" : own.role)
     if (onScreen(p, name)) return screenAct(p, name)
-    // (words alone, in a note or a view: a button or row of the app's window saying them)
     if (str(p.find) && !str(p.pane) && !str(p.el) && paneSource(paneFocus()?.to ?? "").kind !== "site") return actInApp(ctx, name, "", str(p.find), str(p.action), str(p.role))
     if (p.action === "rightclick" || p.action === "focus") throw new OpError(`${String(p.action)} is for another app (--ax, --sx --sy)`)
     if (p.action === "expand" || p.action === "collapse") throw new OpError(`in a web page, click what opens or folds it`)
@@ -167,8 +163,8 @@ or keys pause a step that needs them, a click or Esc stops it. Answers the eleme
     did(name, "act")
     const done = writingAt(name, str(p.el) ? await resolve({ pane: id, el: str(p.el) }, name).catch(() => ({ pane: id })) : null)
     try {
-      const r = await plugin.desktop("agent:act", t.tab, { action: p.action, ref: str(p.el) || undefined, value: p.value, key: p.key, direction: p.direction, diff: "summary" },
-        { name, session: "", task: "", summary: "", remote: false }).catch((e) => { throw new OpError((e as Error).message, 409) }) as Acted
+      const r = Acted.parse(await plugin.desktop("agent:act", t.tab, { action: p.action, ref: str(p.el) || undefined, value: p.value, key: p.key, direction: p.direction, diff: "summary" },
+        { name, session: "", task: "", summary: "", remote: false }).catch((e) => { throw new OpError(messageOf(e), 409) }))
       return { pane: id, ...r }
     } finally { done() }
   },
@@ -176,13 +172,10 @@ or keys pause a step that needs them, a click or Esc stops it. Answers the eleme
   did: (p) => ({ action: "ui", text: `${String(p.action)} in ${p.ui ? `the app (${String(p.ui)}${p.find ? ` "${String(p.find)}"` : ""})` : p.app ? `${String(p.app)}, behind their window${p.find ? ` ("${String(p.find)}")` : ""}` : p.ax || p.sx !== undefined ? "another app" : "the user's page"}${p.el || p.ax ? ` (${String(p.el || p.ax)})` : ""}`, paths: [], by: who(p) }),
 })
 
-/** What each agent's last check of another app read: what its next `changed` compares with. */
 const checked = new Map<string, string>()
-/** One condition (core/desktop/uimodel.ts' language: expanded "Files", shows "Saved", selected tab "Notes", changed) checked once where
- *  agent `name`'s last ask was: another app's window (its helper's Accessibility) or Vaultite's (its page). */
-export async function checkNow(ctx: OpCtx, name: string, condition: string): Promise<Verdict & { where: string }> {
+export async function checkNow(ctx: OpCtx, name: string, condition: string) {
   let c
-  try { c = parseCondition(condition) } catch (e) { throw new OpError((e as Error).message, 400) }
+  try { c = parseCondition(condition) } catch (e) { throw new OpError(messageOf(e), 400) }
   const ask = askOf(name), away = ask ? awayIn([ask]) : ""
   if (away) {
     if (away === "a private app") throw new OpError("that app is private: the companion never reads it", 403)
@@ -192,11 +185,10 @@ export async function checkNow(ctx: OpCtx, name: string, condition: string): Pro
     checked.set(key(name), view.snapshot())
     return { ...v, where: away }
   }
-  const r = await ctx.ui({ action: "companion:check", condition }).catch((e) => {
+  const r = UiChecked.safeParse(await ctx.ui({ action: "companion:check", condition }).catch((e) => {
     throw e instanceof OpError && e.status === 409 ? new OpError("no app window is open on this server: open the app first", 409) : e
-  }) as Verdict | null
-  // (a window still running the app from before it could check: it answers nothing)
-  if (typeof r?.saw !== "string") throw new OpError("the app's window is out of date: it can check once it reloads", 409)
+  })).data
+  if (!r) throw new OpError("the app's window is out of date: it can check once it reloads", 409)
   return { ...r, where: "Vaultite" }
 }
 plugin.op({

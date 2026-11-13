@@ -128,7 +128,7 @@ export default async ($: VaultTest) => {
 
   // ---------- act on the screen, through a stand-in helper
   const c = await import("../../../plugins/core/companion/plugin.ts")
-  const cWindows = await import("../../../plugins/core/companion/windows.ts")
+  const cScreen = await import("../../../plugins/core/companion/screensocket.ts")
   // (its summoned session off: asks here start no agent)
   await api("PATCH", "config/plugin/companion", { mode: "quiet", summoned_model: "companion" })
   const { EventEmitter } = await import("node:events")
@@ -141,7 +141,7 @@ export default async ($: VaultTest) => {
   const near = [{ id: "a1", role: "button", label: "Save", frame, ...bare }, { id: "a2", role: "text field", label: "Name", frame: { x: 100, y: 260, width: 200, height: 24 }, ...bare }]
   // (the helper's moment says where its steps go; the ask itself as screenMoment takes it, with no request to start one)
   from({ t: "moment", kind: "none" })
-  const ask = () => cWindows.screenMoment({ kind: "ask", text: "save it for me", app: "com.example.mail", sx: 120, sy: 210, near })
+  const ask = () => cScreen.screenMoment({ kind: "ask", text: "save it for me", app: "com.example.mail", sx: 120, sy: 210, near })
   const seq0 = ask()?.seq ?? 0
   const steps = () => helper.got.filter((m: Any) => m.t === "takeover")
   answer = (m) => { if (m.t === "takeover") setImmediate(() => from({ t: "takeover-done", id: m.id, ok: true, how: "ax", app: "Mail", title: "Draft", near: [{ id: "a1", role: "menu item", label: "Save as", frame: { x: 1, y: 2, width: 3, height: 4 } }] })) }
@@ -187,7 +187,7 @@ export default async ($: VaultTest) => {
     [r, helper.got.filter((m: Any) => m.t === "takeover-answer"), seqOther])
   // (asked from their browser: a web page opens there, by the helper, not in a pane of Vaultite's behind it)
   const bar = { id: "a1", role: "text field", label: "Address and search bar", frame: { x: 266, y: 44, width: 929, height: 24 } }
-  cWindows.screenMoment({ kind: "ask", text: "open internal.example.com here", app: "com.google.Chrome", window: 5, title: "New Tab - Google Chrome", sx: 598, sy: 189, near: [bar],
+  cScreen.screenMoment({ kind: "ask", text: "open internal.example.com here", app: "com.google.Chrome", window: 5, title: "New Tab - Google Chrome", sx: 598, sy: 189, near: [bar],
     ink: [{ shape: "ring", box: { x: 0, y: 101, width: 293, height: 146 }, points: [[0, 101], [293, 247]] }] })
   const found = { role: "button", label: "Bookmarks", frame: { x: 1200, y: 44, width: 30, height: 24 } }
   answer = (m) => {
@@ -216,7 +216,7 @@ export default async ($: VaultTest) => {
   const fnRow = { id: "a1", role: "pop up button", label: "Press fn key to", frame: { x: 700, y: 400, width: 160, height: 22 }, state: {}, actions: [], inside: [] }
   answer = (m) => { if (m.t === "open") setImmediate(() => from({ t: "takeover-done", id: m.id, ok: true, how: "open", app: "System Settings", bundle: "com.apple.systempreferences", title: "Keyboard",
     frame: { x: 400, y: 100, width: 715, height: 600 }, near: [fnRow] })) }
-  cWindows.screenMoment({ kind: "ask", text: "show me where fn's setting is", app: "com.example.mail", sx: 10, sy: 10, near: [] })
+  cScreen.screenMoment({ kind: "ask", text: "show me where fn's setting is", app: "com.example.mail", sx: 10, sy: 10, near: [] })
   ;[st, r] = await api("POST", "ops/companion.open", { path: pane })
   const toPane = helper.got.filter((m: Any) => m.t === "open").at(-1)
   check("open on the Mac: a System Settings pane goes to the helper, answering the window in front and its elements by id",
@@ -234,7 +234,7 @@ export default async ($: VaultTest) => {
   ;[st, r] = await api("POST", "ops/companion.open", { path: "/nope" })
   check("open on the Mac: what doesn't open says why", st === 409 && /there's no \/nope/.test(r.error), [st, r])
   await api("POST", "ops/companion.clear", {})
-  cWindows.screenMoment({ kind: "ask", text: "and this?", app: "com.example.mail", sx: 1, sy: 1 })
+  cScreen.screenMoment({ kind: "ask", text: "and this?", app: "com.example.mail", sx: 1, sy: 1 })
   ;[st, r] = await api("POST", "ops/companion.act", { action: "click", ax: "a1" })
   check("takeover: a later ask with no elements takes the last ask's ids away (never pointed at on another screen)", st === 404 && /no element a1/.test(r.error), [st, r])
   // (no helper: says so; the pane path untouched)

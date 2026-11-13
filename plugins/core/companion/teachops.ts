@@ -1,38 +1,43 @@
-// Teach by showing on the server: a lesson (what the desktop app watched, or the timeline's last minutes) made a draft
-// tour in Guides/ or a draft skill in .agents/skills/. The rules are lesson.ts'; tours.ts plays and promotes them.
+import { z } from "zod"
 import { type OpCtx, OpError, type Plugin } from "../../../core/plugins.ts"
 import fs from "node:fs"
 import { dirname } from "node:path"
 import { readText, writeText } from "../../../core/vault.ts"
-import { type Act, type As, recentStretch } from "../../../core/desktop/teach.ts"
+import { type Act, recentStretch } from "../../../core/desktop/teach.ts"
 import { kindFor, type Lesson, lessonSkillText, lessonTitle, lessonTour, lessonTourText, skillName } from "./lesson.ts"
 import { fileTitle } from "../../../core/desktop/names.ts"
 import { offWhy } from "../../../core/desktop/screentimeline.ts"
+import { messageOf } from "./errors.ts"
 
 const KINDS = ["app", "click", "key", "field", "said"]
+const RectIn = z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() })
+const ElIn = z.looseObject({ role: z.string(), label: z.string(), frame: RectIn, inside: z.array(z.object({ role: z.string(), label: z.string() })).optional() })
+const maybe = <T extends z.ZodType>(t: T) => t.optional().catch(undefined)
+const ActIn = z.discriminatedUnion("kind", [
+  z.looseObject({ t: z.number(), kind: z.literal("click"), x: z.number(), y: z.number(), el: maybe(ElIn), under: maybe(z.string()), window: maybe(RectIn) }),
+  z.looseObject({ t: z.number(), kind: z.literal("key"), key: z.string() }),
+  z.looseObject({ t: z.number(), kind: z.literal("field"), el: ElIn, value: z.string(), window: maybe(RectIn) }),
+  z.looseObject({ t: z.number(), kind: z.literal("app"), app: z.string(), name: z.string().catch(""), title: maybe(z.string()), private: maybe(z.boolean()) }),
+  z.looseObject({ t: z.number(), kind: z.literal("said"), text: z.string() }),
+])
+const actsOf = (v: unknown[]): Act[] => v.flatMap((a) => ActIn.safeParse(a).data ?? [])
+const Timeline = z.object({ ok: z.boolean(), why: z.string().optional(), events: z.array(z.unknown()).optional() })
+const FileText = z.object({ text: z.unknown() })
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v.trim() ? (Number.isFinite(Number(v)) ? Number(v) : Date.parse(v)) : undefined)
 
-/** A skill's file: hidden from the vault's API (a dot folder), read and written here by its exact path only. */
 export const SKILL = /^\.agents\/skills\/[a-z0-9][a-z0-9-]*\/SKILL\.md$/
-/** A note's text ("" when there's none): a skill's from its file, else through the vault's API. */
 export async function noteText(plugin: Plugin, ctx: OpCtx, rel: string) {
   if (SKILL.test(rel)) { try { return readText(plugin.vault.abs(rel)) } catch { return "" } }
-  return String((await ctx.api("GET", `file?path=${encodeURIComponent(rel)}`).catch(() => null) as { text?: unknown } | null)?.text ?? "")
+  return String(FileText.safeParse(await ctx.api("GET", `file?path=${encodeURIComponent(rel)}`).catch(() => null)).data?.text ?? "")
 }
 export async function writeNote(plugin: Plugin, ctx: OpCtx, rel: string, text: string) {
   if (SKILL.test(rel)) { const abs = plugin.vault.abs(rel); fs.mkdirSync(dirname(abs), { recursive: true }); return void writeText(abs, text) }
   await ctx.api("PUT", "file", { path: rel, text })
 }
 
-const isStr = (v: unknown) => typeof v === "string"
-/** An act given whole, as its kind needs it (a field's value, a key's name, a said's words). */
-const actOk = (a: Act) => !!a && typeof a === "object" && typeof a.t === "number" && KINDS.includes(a.kind)
-  && (a.kind === "click" ? typeof a.x === "number" && typeof a.y === "number" : a.kind === "key" ? isStr(a.key) : a.kind === "field" ? !!a.el && isStr(a.value)
-    : a.kind === "app" ? isStr(a.app) : isStr(a.text))
 
 export function teachOps(plugin: Plugin) {
   const exists = async (ctx: OpCtx, path: string) => !!await noteText(plugin, ctx, path)
-  /** The first of `make(1)`, `make(2)`... not taken yet. */
   async function free(ctx: OpCtx, make: (n: number) => string) {
     for (let n = 1; n < 50; n++) if (!await exists(ctx, make(n))) return make(n)
     throw new OpError("too many lessons by that name", 409)
@@ -63,16 +68,18 @@ either is a draft (status: draft) till it has played through once (companion tou
     },
     run: async (p, ctx) => {
       let acts: Act[], from = num(p.from), to = Date.now()
-      if (Array.isArray(p.acts)) acts = (p.acts as Act[]).filter(actOk).slice(0, 2000)
+      if (Array.isArray(p.acts)) acts = actsOf(p.acts).slice(0, 2000)
       else {
-        const r = await plugin.desktop("screen:timeline", { ...(from ? { from } : { from: to - (num(p.last) ?? 300) * 1000 }), kinds: KINDS }).catch((e: Error) => ({ ok: false, why: e.message })) as { ok: boolean; why?: string; events?: Act[] }
+        const r = Timeline.safeParse(await plugin.desktop("screen:timeline", { ...(from ? { from } : { from: to - (num(p.last) ?? 300) * 1000 }), kinds: KINDS })
+          .catch((e) => ({ ok: false, why: messageOf(e) }))).data ?? { ok: false }
         if (!r.ok) throw new OpError(`nothing to learn from: ${offWhy(r.why ?? "the desktop app didn't answer")}`, 409)
-        acts = (r.events ?? []).filter(actOk)
+        acts = actsOf(r.events ?? [])
         if (!from) acts = recentStretch(acts)
       }
       if (!acts.length) throw new OpError("nothing to learn from: nothing was done on screen in that stretch", 409)
       from = Math.min(...acts.map((a) => a.t))
-      const lesson: Lesson = { from, to, acts, ...(typeof p.about === "string" && p.about.trim() ? { about: p.about.trim() } : {}), ...(p.as === "tour" || p.as === "skill" ? { as: p.as as As } : {}) }
+      const asked = z.enum(["tour", "skill"]).safeParse(p.as).data
+      const lesson: Lesson = { from, to, acts, ...(typeof p.about === "string" && p.about.trim() ? { about: p.about.trim() } : {}), ...(asked ? { as: asked } : {}) }
       const as = kindFor(lesson)
       const appNames = [...new Set(acts.flatMap((a) => (a.kind === "app" && !a.private && a.name ? [a.name] : [])))]
       const title = fileTitle(typeof p.title === "string" && p.title.trim() ? p.title : lessonTitle(lesson, appNames[0]), 80)

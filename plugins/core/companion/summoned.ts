@@ -1,8 +1,7 @@
-// The summoned companion's own session: its Talk key's asks go to a lean, warm Claude Code session apart from the long
-// one, which answers in plain words, spoken as they stream, its tags pointing and drawing (tags.ts). Same character.
 import { AsyncLocalStorage } from "node:async_hooks"
 import crypto from "node:crypto"
 import fs from "node:fs"
+import { z } from "zod"
 import type { Chat, ChatHow, ChatState as State, ChatTool } from "./chat.ts"
 import type { Moment } from "./types.ts"
 import { readableText } from "./reach.ts"
@@ -14,10 +13,12 @@ type Start = ChatHow & { prompt?: string }
 export type Lane = ReturnType<typeof summonedLane>
 type Runners = { [K in EffectKind]: (x: Effect<Moment, Tag, K>) => void }
 const BUSY = new Set<State["state"]>(["working", "waiting", "starting"])
-/** Set while the summoned session's tool runs: its acts are logged as its own (timings), not the long session's. */
+const Kept = z.object({ id: z.string(), model: z.string(), t: z.number(), handed: z.number(), v: z.string().optional(), last: z.number().optional(), context: z.number().optional() })
+type Kept = z.infer<typeof Kept>
+const Open = z.record(z.string(), z.unknown())
+const ToolResult = Open.and(z.object({ isError: z.boolean().optional(), endsTurn: z.boolean().optional(), content: z.array(Open.and(z.object({ text: z.string().optional() }))).optional() }))
 export const inSummoned = new AsyncLocalStorage<boolean>()
 
-/** What its session is told, the same every time (its prompt cache stays warm): its whole system prompt. */
 export const SUMMONED_PROMPT = `You're the user's companion in Vaultite, called up where they are: they held your Talk key over something on their screen or in the app, spoke (or drew), and let go. Each ask comes as a message: what they said, what was under their pointer, the elements near it (by id), what they drew, what the window says, and the display's picture, with a closer look at what they pointed at (several times its size: what's too small to make out in the picture, a logo, an icon, fine print, read off that one).
 Their words are dictated, so expect slips: read them by sound and by what's on screen ("remove the init" by a line ending "in it" means those two words; their ME.md lists their usual slips), act on what they meant, and hand that on, never the slip. Do every part of an ask ("A on the left and B on the right" is two opens) and carry it to its end: a click that gets you there is a step, not the answer. Check before you guess: the screen and its picture first, then a read-only look (vau search, ls, cat, grep, lsof, tailscale serve status, git -C <repo> log: in ${readableText()}, paths as arguments, no cd); a guess you couldn't check you say as one. A name they say that you don't know for sure (a person, a company, a project, a show: "videos from Lighthouse") is theirs: vau search <name> in the vault first (their notes, Inbox, Attachments) and answer from what it finds, never taking it for Vaultite, a job or what's on screen unless their words say so; found nowhere, ask which they mean. Before a change that removes or rewrites what they pointed at, mark exactly that ([strike] or [frame] on its words); when you're not sure it's the one, mark it and ask in a few words ("This line?"), and act only on their yes.
 Speak only to answer, to ask, or to tell them something they need: never narrate what you do ("On it", "Let me look", "Changing it to…", "Cutting that line"). Asked to explain, show or tell as you go ("scroll down and explain"), each step comes with its words: what it shows, as a story, a sentence or two a step. A closing word from them ("all right", "okay", "thanks", "no need to say anything"), or a remark that asks nothing of you ("that's just for the watcher", feedback, an idea in passing), gets no reply and no job; but how they feel (tired, down, a headache, frustrated) always gets a short, warm line back, as a friend would: let it pass (mcp__vaultite-app__pass), their seen tick is enough. An ask for something (can you…, open, pull up, show me), however broken its words, is never a pass: read "it", "that", "here" by what you just did (the job you just started, the page you just opened) and where their pointer is, and do it; still unsure, ask them in a few words.
@@ -37,16 +38,11 @@ You're Claude, run by Vaultite through the Claude Agent SDK. Asked to do one of 
 Your cursor, asked about it: your arrow and name in your colour; by the name, dots while you work, a wave while you listen, a check when you did what they asked without words. Idle it fades and rests in the status bar, where a dot on its arrow is something you said they haven't read.
 Panes: a web page you can read (see) and act on; a terminal you can read (see) and follow, never type in. Other apps: when they ask you to do something there, or plainly want it done, do it with act (ax: an element by id, else sx and sy; or the field with the keys): they're shown a one-line offer first (ask: your words, "Want me to turn it on?"), no words as it goes, and a step's answer lists what's there now by fresh ids for the next. Never to send, post or pay unless they said to. Asked how to do a quick thing there you could do yourself, offer to do it (act's offer) rather than list the steps. Done, leave it as you found it: close what you opened only to get there (a settings window, a dialog), and mark what changed ([ring] the thing now back), in one short line.
 The commands you'll need, no --help first: vau search <words>, vau read <path>, vau tabs (tabs and panes), vau tabs focus <id>. Your voice off or on ("stop talking", "talk to me again"): vau voice off, vau voice on (typed asks too: vau voice always), at once, no docs or search first, then one short say, which follows it (text once off, said once on). Any other command they asked for, or their ask plainly needs, just run: one needing their yes is offered to them by itself, so never ask first in words, nor say you can't run commands. Deleting their files: trash <paths> (the Trash: they can take it back); a deletion for good is always offered. A refusal says why: tell them in a few words with what they can do, never your shell, a mode or a setting. Their next ask is your next message (a follow-up goes on from the last); one asked right after a job's change was shown says so, and is about that job (its line says how). A fresh session is told the talk so far, with what you did (ids of what you opened, jobs you started): "close the one you just opened" means that one. Further back, or another day: mcp__vaultite-app__conversation. Something lasting they tell you about themselves: vau remember. A word they spell out ("V-O-R-S...") or one dictation keeps getting wrong: vau dictation add <word> (--said what it wrote).`
-/** Its tools that act on what it meant (a mark it drew showing what): held once when that mark didn't show. */
 const ACTING = new Set(["handoff", "act"])
-/** A fresh session once its context (every ask's screen and picture) reads past this many tokens, or past this many
- *  asks when unknown; and after its prompt cache's hour, when a resumed one would read it all again. Each is told the talk. */
+// The prompt cache lasts an hour: a session resumed after it reads its whole context again.
 const FRESH_TOKENS = 80_000, FRESH_ASKS = 40, FRESH_AFTER_MS = 55 * 60_000
-/** Its prompt's version: a session told another is left for a fresh one. */
 const VERSION = crypto.createHash("sha256").update(SUMMONED_PROMPT).digest("hex").slice(0, 12)
 
-/** Its words before they're said: a block with a tag (an answer, a walkthrough's step) as it's written; one with none at
- *  its message's end (`use` ""): said if the turn ends there, dropped if a tool call follows (narration, not for them). */
 export function wordsGate(speak: (use: string, text: string, end?: "done" | "stop") => void, dropped: (text: string) => void) {
   const live = new Set<string>(), held = new Map<string, string>()
   return (use: string, text: string, end?: "done" | "stop" | "tool") => {
@@ -62,38 +58,25 @@ export function wordsGate(speak: (use: string, text: string, end?: "done" | "sto
       if (end) live.delete(use)
       return
     }
-    // (its turn cut short: what it had goes as before)
     if (end === "stop") { held.delete(use); return speak(use, text, "stop") }
     held.set(use, text)
   }
 }
 
-/** The summoned session of the companion `name()`, on while it runs Claude Code and `model()` is set: `text` is an
- *  ask's message, `options` how it runs, `acts` what its words and tags become; the rest is the plugin's own (lane.ts). */
 export function summonedLane(o: {
   file: () => string; chat: () => Chat | null; name: () => string; model: () => string
   options: (model: string) => Start; text: (ms: Moment[]) => Promise<{ text: string; images: string[] }>
   acts: () => { say: Tool; look: Tool; draw: Tool }
-  /** Where words a point tag names show on the screen asked about ({sx, sy}); null when the ask was in a note (found
-   *  there). */
-  found: (text: string) => Promise<Record<string, unknown> | null>
-  /** Its drawing's words, now that a block of them is whole: its marks' beats are their sentences. */
+  found: (text: string) => Promise<{ sx: number; sy: number } | null>
   caption: (name: string, text: string) => void
-  /** A text block of its answer ended: its words with their tags (what "save that as a tour" saves). */
   answered?: (name: string, text: string) => void
   thinking: (name: string) => void; watching: (name: string, seen: boolean) => void
   did: (as: string, op: string, seqs?: number[], text?: string) => void; say: (name: string, text: string) => void
-  /** What a fresh session is told first: who they are (their ME.md), what they're on (their Now note, when they keep
-   *  one) and the talk before `t` (conversation.ts). */
   talk: (t: number) => { me: string; now: { path: string; body: string } | null; said: string }
 }) {
-  /** Its session: when it started, its last ask, how many it took, its context's tokens and its prompt (`v`). */
-  type Kept = { id: string; model: string; t: number; handed: number; v?: string; last?: number; context?: number }
   let kept: Kept | null = null
-  try { kept = JSON.parse(fs.readFileSync(o.file(), "utf8")) } catch { /* none yet */ }
-  const keep = (k: Kept | null) => { kept = k; try { if (k) fs.writeFileSync(o.file(), JSON.stringify(k)); else fs.rmSync(o.file(), { force: true }) } catch { /* as it was */ } }
-  /** The talk so far, for a fresh session's first ask: what was said and done before `ms`, from the log, so a session
-   *  started anew (its context grown, a pause, a restart) goes on from it. */
+  try { kept = Kept.safeParse(JSON.parse(fs.readFileSync(o.file(), "utf8"))).data ?? null } catch {}
+  const keep = (k: Kept | null) => { kept = k; try { if (k) fs.writeFileSync(o.file(), JSON.stringify(k)); else fs.rmSync(o.file(), { force: true }) } catch {} }
   const recap = (ms: Moment[]) => {
     const { me, now, said } = o.talk(Math.min(...ms.map((m) => m.t)) - 50)
     return [me && `(Who they are, their ME.md:\n${me}\n)`,
@@ -103,8 +86,6 @@ export function summonedLane(o: {
   }
   let unhear: (() => void) | null = null, trouble: { t: number; why: string } | null = null
   const heardSeq = new Map<string, number>()
-  /** Its tags' marks that didn't show (none found there): told to its next tool, or its next ask, so it never goes on
-   *  as if they saw them. */
   const missed: string[] = []
 
   let talk = start<Moment>()
@@ -113,7 +94,6 @@ export function summonedLane(o: {
   const hostedNow = () => (kept ? o.chat()?.list().find((s) => s.id === kept!.id && s.state !== "error") ?? null : null)
   const due = () => !kept || kept.model !== o.model() || kept.v !== VERSION || (kept.context ?? 0) >= FRESH_TOKENS || kept.handed >= FRESH_ASKS ||
     Date.now() - (kept.last ?? kept.t) > FRESH_AFTER_MS
-  // (one not running that never had a turn has nothing to resume: its keeper ended as it sat warm)
   const world = { on, fresh: () => !kept || due() || (!hostedNow() && kept.handed === 0) }
   const turnWaiters: (() => void)[] = []
   function go(e: TurnEvent<Moment, Tag>) {
@@ -151,24 +131,18 @@ export function summonedLane(o: {
     ...(t.stream ? { stream: (use: string, json: string, end?: "done" | "stop") => inSummoned.run(true, () => t.stream!(use, json, end)) } : {}) }))
   const options = (model: string) => { const x = o.options(model); return { ...x, tools: tools(x.tools ?? []), onText: gated } }
 
-  /** Where the picture of the asks it was handed sits on the screen: its x, y are that picture's pixels. */
   const origin = () => { const at = talk.turn.asks.findLast((m) => m.shotAt)?.shotAt; return { x: at?.x ?? 0, y: at?.y ?? 0 } }
-  /** Its points, given as the picture's pixels, as the screen's: draw's marks, act's and look's sx and sy. The one
-   *  mapping: its tools' calls and its tags' marks and points all come through it. */
   function onScreen(tool: string, args: unknown) {
-    const o = origin(), a = args as Record<string, unknown> | null
+    const o = origin(), a = args
     if ((!o.x && !o.y) || !a || typeof a !== "object") return args
     const spot = (v: unknown): unknown => (Array.isArray(v) && v.length >= 2 && v.every((n) => typeof n === "number") ? [v[0] + o.x, v[1] + o.y, ...v.slice(2)]
-      : v && typeof v === "object" && typeof (v as { x?: unknown }).x === "number" && typeof (v as { y?: unknown }).y === "number" ? { ...v, x: (v as { x: number }).x + o.x, y: (v as { y: number }).y + o.y } : v)
-    if ((tool === "act" || tool === "look") && typeof a.sx === "number" && typeof a.sy === "number") return { ...a, sx: a.sx + o.x, sy: a.sy + o.y }
+      : v && typeof v === "object" && "x" in v && typeof v.x === "number" && "y" in v && typeof v.y === "number" ? { ...v, x: v.x + o.x, y: v.y + o.y } : v)
+    if ((tool === "act" || tool === "look") && "sx" in a && typeof a.sx === "number" && "sy" in a && typeof a.sy === "number") return { ...a, sx: a.sx + o.x, sy: a.sy + o.y }
     const mark = (m: unknown) => (m && typeof m === "object" ? Object.fromEntries(Object.entries(m).map(([k, v]) => [k, k === "at" || k === "from" || k === "to" ? spot(v) : v])) : m)
-    if (tool === "draw" && Array.isArray(a.marks)) return { ...a, marks: a.marks.map(mark) }
-    // (on the screen's drawing: a card moved to a point, a mark added; a pad's items are in its own units)
-    if (tool === "draw" && Array.isArray(a.actions) && a.path === undefined) return { ...a, actions: a.actions.map((x) => (x && typeof x === "object" ? { ...x, ...("at" in x ? { at: spot(x.at) } : {}), ...("mark" in x ? { mark: mark(x.mark) } : {}) } : x)) }
+    if (tool === "draw" && "marks" in a && Array.isArray(a.marks)) return { ...a, marks: a.marks.map(mark) }
+    if (tool === "draw" && "actions" in a && Array.isArray(a.actions) && (!("path" in a) || a.path === undefined)) return { ...a, actions: a.actions.map((x) => (x && typeof x === "object" ? { ...x, ...("at" in x ? { at: spot(x.at) } : {}), ...("mark" in x ? { mark: mark(x.mark) } : {}) } : x)) }
     return args
   }
-  /** Before a tool runs, its marks so far drawn (they come first); one that didn't show stops a step that acts on what it
-   *  meant (a handoff, a step in an app) once, with why. */
   async function marksShown(tool: string) {
     await queue
     if (!missed.length || !ACTING.has(tool)) return null
@@ -177,25 +151,22 @@ export function summonedLane(o: {
   }
   const drew = (r: unknown, of: number) => { go({ type: "drew", n: of, ok: !(r instanceof Object && "isError" in r && r.isError) }); return r }
   function told(r: unknown) {
-    const x = r as { content?: { type: string; text?: string }[] } | null
-    if (!missed.length || !x || typeof x !== "object" || !Array.isArray(x.content)) return r
+    const x = ToolResult.safeParse(r).data
+    if (!missed.length || !x?.content) return r
     return { ...x, content: [...x.content, { type: "text", text: `(Not shown, they saw no mark: ${missed.splice(0).join("; ")}.)` }] }
   }
-  /** A tool's answer: one that would end an ask's turn before a word was said goes on, told to say what it did. */
   function unsaid(r: unknown) {
-    const x = r as { endsTurn?: boolean; isError?: boolean; content?: { text?: string }[] } | null
-    if (!x || typeof x !== "object") return r
+    const x = ToolResult.safeParse(r).data
+    if (!x) return r
     const text = x.content?.map((c) => c.text ?? "").join(" ").trim() ?? ""
     if (!go({ type: "answered", text, error: !!x.isError, ends: !!x.endsTurn }).some((e) => e.do === "go-on")) return r
     const { endsTurn: _e, ...rest } = x
     return { ...rest, content: [...(x.content ?? []), { type: "text", text: "They've heard nothing from you on this ask yet: tell them in a few words what you did, then stop." }] }
   }
 
-  // ---------- its words: each text block, said as it grows, its tags acted on as each one closes
   const blocks = new Map<string, number>()
   let queue: Promise<unknown> = Promise.resolve(), queued = 0
   const then = (f: () => Promise<unknown>) => { queued++; queue = queue.then(() => inSummoned.run(true, f)).catch(() => {}).finally(() => queued--) }
-  /** Its narration kept from their ears (its session still has it): never said at its turn's end either. */
   const unspoken = new Set<string>()
   const gated = wordsGate(words, (t) => { unspoken.add(t.trim()); if (unspoken.size > 20) unspoken.delete(unspoken.values().next().value!) })
   function words(use: string, text: string, end?: "done" | "stop") {
@@ -210,11 +181,10 @@ export function summonedLane(o: {
     if (said) { then(async () => { await a.say.run({ text: said }, use); if (tags.some((t) => t.kind !== "point")) o.caption(o.name(), said) }) }
     go({ type: "wrote", said: !!said })
   }
-  /** A tag: its cursor flies there (point), or a mark is drawn there, with the sentence it sits in (`said` so far). */
   function tagged(t: Tag, said: string) {
     const a = o.acts(), mark = markOf(t, beatOf(said, t.offset)), of = talk.turn.n
     const failed = (r: unknown) => {
-      const x = r as { isError?: boolean; content?: { text?: string }[] } | null, why = x?.isError ? x.content?.map((c) => c.text ?? "").join(" ") ?? "" : null
+      const x = ToolResult.safeParse(r).data, why = x?.isError ? x.content?.map((c) => c.text ?? "").join(" ") ?? "" : null
       if (why !== null) missed.push(`your [${t.kind}${"find" in t.at ? ` "${t.at.find}"` : ""}] ${t.kind === "point" ? "pointed nowhere" : "wasn't drawn"}: ${/nothing on the user's screen says/.test(why) ? "nothing on their screen says those words, all of them in order, now (aim by an element's id or words it does show, never a guessed box)" : why.slice(0, 160)}${of === talk.turn.n && talk.turn.shown ? " (what else you drew for it did show)" : ""}`)
     }
     if (t.kind === "point") return ("find" in t.at ? o.found(t.at.find).then((at) => a.look.run(at ?? placeOf(t.at))) : a.look.run(onScreen("look", placeOf(t.at)))).then(failed)
@@ -238,13 +208,10 @@ export function summonedLane(o: {
     keepContext(s)
     if (BUSY.has(s.state)) { heardSeq.delete(s.id); return { type: "busy" } }
     if (heardAgain(s)) return null
-    // Its words not heard as they came (a keeper of older code): said whole now, its tags acted on.
     const last = s.turn?.text?.trim() ?? ""
     return { type: "ended", error: s.state === "error" ? s.error || "its session failed" : "", words: s.state === "idle" && !unspoken.has(last) ? parseTags(last) : null, acting: queued > 0 }
   }
 
-  /** A fresh session, handed `ms` as its first message; none: started idle, its process up and its tools served while
-   *  they speak (a cold start took seconds; its short prompt needs no turn to warm). */
   async function begin(ms: Moment[]) {
     const c = o.chat()!, model = o.model()
     if (kept) { const old = kept.id; keep(null); void c.stop(old).catch(() => {}) }
@@ -258,10 +225,8 @@ export function summonedLane(o: {
       go({ type: "started", news: now ? news(now) : null })
     } catch (e) { go({ type: "start-failed", why: e instanceof Error ? e.message : String(e) }) }
   }
-  /** Asks handed to the kept session, in `round`: dropped if it was lost meanwhile. */
   async function send(ms: Moment[], round: number) {
     const c = o.chat()!, model = o.model(), s = hostedNow()
-    // (its first ask, a fresh session started as they spoke: told what was said before)
     const before = (kept!.handed === 0 ? recap(ms) : "") + unseen()
     keep({ ...kept!, handed: kept!.handed + ms.length, last: Date.now() })
     try {
@@ -269,7 +234,6 @@ export function summonedLane(o: {
       if (talk.round !== round || !kept) return
       await c.send(kept.id, before + text, { ...options(model), ...(images.length ? { images } : {}) })
       inSummoned.run(true, () => o.did(o.name(), "sent"))
-      // (resumed: its process had ended, idle a while)
       if (!s) { const now = c.list().find((x) => x.id === kept?.id); if (now) { const n = news(now); if (n) go(n) } }
     } catch (e) { go({ type: "send-failed", round, why: e instanceof Error ? e.message : String(e) }) }
   }
@@ -280,16 +244,12 @@ export function summonedLane(o: {
     on,
     takes: (m: Moment) => on() && !!m.summoned && m.for === o.name() && (m.kind === "ask" || m.kind === "point"),
     take(m: Moment) { o.chat()?.touch(); go({ type: "asked", ask: m }) },
-    /** Ready before the ask (started with the companion, its Talk key pressed): its session up while they speak, a
-     *  fresh one if one is due (one ended idle is); an ask meanwhile waits for it to start. */
     warm() { if (on()) o.chat()!.touch(); go({ type: "pressed", cold: !(hostedNow() && !due()) }) },
-    /** After a restart: its session's tools served again, so a call it makes now reaches them. */
     serve() { hear(); if (kept && on()) o.chat()!.serve(kept.id, options(kept.model)) },
     busy: () => turning(talk),
     asking: () => handed(talk),
     turnEnd: () => (handed(talk) ? new Promise<void>((r) => turnWaiters.push(r)) : null),
     owes: () => owes(talk),
-    /** It did `op` on an ask: its words (a say, their first word) are an answer. */
     acted(op?: string) { go({ type: "acted", op }) },
     id: () => kept?.id ?? null,
     trouble: () => trouble,
@@ -297,11 +257,7 @@ export function summonedLane(o: {
     last: () => talk.turn.asks,
     as: (name: string) => `${name} (summoned)`,
     async interrupt() { const was = turning(talk); go({ type: "escaped" }); return !!(was && kept && await o.chat()?.interrupt(kept.id).catch(() => false)) },
-    /** Its answer to the last asks isn't wanted: the realtime voice answered them alone (`said`). Those still waiting
-     *  go; its turn on them stops, nothing more of it said (the log has the realtime voice's words). Answers: those asks. */
     withdraw() { const ms = withdrawing(talk); go({ type: "withdrawn" }); return ms },
-    /** Ask `m` (a tour's step) isn't wanted any more, the tour stopped: gone if it waits, else its turn on it stops,
-     *  nothing more of it said. Never an answer to their own asks handed with it. */
     drop(m: Moment) { const ok = drops(talk, m); go({ type: "dropped", ask: m }); return ok },
     async stop() {
       go({ type: "stopped" })
@@ -310,38 +266,27 @@ export function summonedLane(o: {
   }
 }
 
-/** A tool as its session reads it: its points are the picture's pixels (onScreen maps them), not the screen points its
- *  op's own docs say. */
 export function inPixels(t: Tool): Tool {
   if (t.name !== "draw" && t.name !== "act") return t
   const px = (s: string) => s.replace(/\bin screen points\b|\(screen points\)|\(points\)/g, "(pixels of the ask's picture, mapped to the screen for you)")
-  const properties = Object.fromEntries(Object.entries(t.schema.properties ?? {}).map(([k, v]) => {
-    const d = (v as { description?: unknown } | null)?.description
-    return [k, typeof d === "string" ? { ...(v as object), description: px(d) } : v]
-  }))
+  const properties = Object.fromEntries(Object.entries(t.schema.properties ?? {}).map(([k, v]) =>
+    [k, v && typeof v === "object" && "description" in v && typeof v.description === "string" ? { ...v, description: px(v.description) } : v]))
   return { ...t, description: px(t.description), schema: { ...t.schema, properties } }
 }
-/** An ask as its session reads it: its points the picture's pixels (its pointer, what they drew, what's near), the
- *  picture's top left 0, 0, so what it reads off the picture and what it's told agree (its points are mapped back). */
 export function inPicture(m: Moment): Moment {
   const at = m.shotAt
   if (!at || (!at.x && !at.y)) return m
   const r = <T extends { x: number; y: number }>(b: T): T => ({ ...b, x: b.x - at.x, y: b.y - at.y })
   return { ...m, shotAt: r(at), origin: { x: at.x, y: at.y }, ...(m.sx !== undefined && m.sy !== undefined ? { sx: m.sx - at.x, sy: m.sy - at.y } : {}),
     ...(m.shotDownAt ? { shotDownAt: r(m.shotDownAt) } : {}), ...(m.closeUp ? { closeUp: { ...m.closeUp, at: r(m.closeUp.at) } } : {}), ...(m.near ? { near: m.near.map((e) => ({ ...e, frame: r(e.frame) })) } : {}),
-    ...(m.ink ? { ink: m.ink.map((k) => ({ ...k, box: r(k.box), points: k.points.map(([x, y]) => [x - at.x, y - at.y] as [number, number]) })) } : {}) }
+    ...(m.ink ? { ink: m.ink.map((k) => ({ ...k, box: r(k.box), points: k.points.map(([x, y]): [number, number] => [x - at.x, y - at.y]) })) } : {}) }
 }
 
-// ---------- an ask's window text, slimmed: the lines by what's at their pointer, within a budget
-
-/** What's at their pointer, as words its window text may have: what's under it, the elements near it, nearest first. */
 export function anchorsOf(m: Pick<Moment, "under" | "near">): string[] {
   const under = [...(m.under ?? "").matchAll(/"([^"]+)"/g)].map((x) => x[1])
   return [...under, ...(m.near ?? []).map((e) => e.label)].map((s) => s.trim()).filter((s) => s.length >= 3)
 }
 
-/** `screen` within `budget` chars: its first lines (the window's own), then the lines around each of `anchors` in turn,
- *  nearest first, the rest left out (… where lines are). Whole when it fits. */
 export function screenNear(screen: string, anchors: string[], budget: number) {
   if (screen.length <= budget) return screen
   const lines = screen.split("\n").map((l) => (l.length > 300 ? `${l.slice(0, 299)}…` : l)), keep = new Set<number>()

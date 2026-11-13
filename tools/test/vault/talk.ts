@@ -29,7 +29,7 @@ export default async ($: VaultTest) => {
   // End to end: a job, the floor handed to it, the Talk key's words typed into its terminal (the companion's turn none),
   // its answer said by its own name; back, the floor the companion's again and the job told so.
   if (process.platform !== "win32") {
-    const cWindows = await import("../../../plugins/core/companion/windows.ts")
+    const cScreen = await import("../../../plugins/core/companion/screensocket.ts")
     const { matchSocket } = await import("../../../core/plugins.ts")
     const heard: Any[] = [], sc = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, send: (d: string) => heard.push(JSON.parse(d)), close() {}, ping() {}, terminate() {} })
     matchSocket(app.plugins, ["companion", "live"])![1].fn(sc as Any, {} as IncomingMessage, { wild: [], query: { screen: "1" } })
@@ -47,13 +47,13 @@ export default async ($: VaultTest) => {
     let job = ""
     try {
       await api("PATCH", "config/plugin/companion", { mode: "quiet", agent: "claude", summoned_model: "companion", jobs_agent: "claude" })
-      cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "write up the landing page plan", ...over })
+      cScreen.screenMoment({ kind: "ask", agent: "Claude", text: "write up the landing page plan", ...over })
       const [, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Make a landing page", cwd: tmp }, agent))
       job = b.id
       turn = { text: "Wrote it.", files: [], at: Date.now() + 1500, final: true }
       await waitFor(async () => !["starting", "working"].includes((await api("POST", "ops/companion.job", { id: job }))[1].state), 10000, 100)
 
-      cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "let me talk with that job", ...over, voice: true })
+      cScreen.screenMoment({ kind: "ask", agent: "Claude", text: "let me talk with that job", ...over, voice: true })
       const [ts, tb] = await api("POST", "ops/companion.talk", { job }, agent)
       const first = await waitFor(() => /^Talk: the user wants to talk with you by voice[^\n]*as Make a landing page[^\n]*let me talk with that job/m.test(told()) && told(), 8000, 50)
       check("talk: handing a job the floor tells its worker how to talk, the ask that asked its first words", ts === 200 && tb.name === "Make a landing page" && !!first, [ts, tb, told()])
@@ -64,20 +64,20 @@ export default async ($: VaultTest) => {
       const stays = (await api("POST", "ops/companion.status", {}))[1].agents.find((a: Any) => a.name === "Make a landing page")?.state
       check("talk: the watchdog leaves a talking job's cursor, which never calls next", stays === "watching", stays)
 
-      const m = cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "what's in part two?", ...over, voice: true }) as Any
+      const m = cScreen.screenMoment({ kind: "ask", agent: "Claude", text: "what's in part two?", ...over, voice: true }) as Any
       const next = await waitFor(() => /^Talk: they said this to you by voice[^\n]*what's in part two\?/m.test(told()), 8000, 50)
       check("talk: the Talk key's next words go into its terminal, the job's, not the companion's", !!next && m?.live === job && m?.for === "Make a landing page", [told(), m?.for, m?.live])
       turn = { text: "Pricing and a signup form.", files: [], at: Date.now() + 1000, final: true }
       await waitFor(async () => (await says()).includes("Make a landing page: Pricing and a signup form."), 10000, 100)
 
-      const back = cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "Thanks, back to Claude.", ...over, voice: true }) as Any
+      const back = cScreen.screenMoment({ kind: "ask", agent: "Claude", text: "Thanks, back to Claude.", ...over, voice: true }) as Any
       const ended = await waitFor(async () => (await says()).includes("Claude: Back.") && /^Talk over: they're back/m.test(told()), 8000, 50)
       check("talk: back is the app's: the companion says so, and the job is told to end with a line for its thread", !!ended && back?.live === job, [await says(), told()])
       const jobStates = heard.flatMap((x) => (x.t === "agent" && x.agent.name === "Make a landing page" ? [x.agent.state] : [])).filter((x, i, xs) => x !== xs[i - 1]).join(", ")
       check("talk: the job's cursor thinks on their words, watches once it said its turn, and goes when they're back", jobStates === "thinking, watching, thinking, watching, away", jobStates)
       const left = (await api("POST", "ops/companion.status", {}))[1]
       check("talk: once back, the job's cursor and words are gone", !left.agents.some((a: Any) => a.name === "Make a landing page") && !(await says()).some((t: string) => t.startsWith("Make a landing page:")), left.agents)
-      const after = cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "what's on my calendar?", ...over }) as Any
+      const after = cScreen.screenMoment({ kind: "ask", agent: "Claude", text: "what's on my calendar?", ...over }) as Any
       check("talk: once back, the Talk key's asks are the companion's again", after?.for === "Claude" && !after?.live, after)
       const [os2] = await api("POST", "ops/companion.talk", { off: true }, agent)
       check("talk: ending a talk when none is on says so", os2 === 409)

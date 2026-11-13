@@ -1,5 +1,3 @@
-// A job's proof on the server: its ready knock, Show me playing its worker's video (else its tour, live), then Keep and
-// merge (its own worker lands it; Keep alone once on main), Needs changes (a clip, sent back) or Not yet. Rules: proof.ts.
 import type { OpCtx, Plugin } from "../../../core/plugins.ts"
 import { OpError } from "../../../core/plugins.ts"
 import { type Job, landable, live, terminalOf } from "./jobs.ts"
@@ -8,13 +6,12 @@ import type { Moment } from "./types.ts"
 import { type Asked, asksToSee, type Choice, choiceSaid, choicesFor, narration, readyLine, readyNow, summaryOf } from "./proof.ts"
 import type { Result, Tour } from "./tour.ts"
 import type { Screen } from "./tours.ts"
+import { messageOf } from "./errors.ts"
 
 const str = (v: unknown) => (typeof v === "string" ? v : "")
-/** How long the choice is waited for after a proof. */
+const isChoice = (s: string): s is Choice => s === "keep" || s === "broken" || s === "later"
 const CHOOSE_MS = 5 * 60_000
-/** A surface just opened: a moment for it to show before the tour looks for its things. */
 const SETTLE_MS = 900
-/** How long after its choice card went up their next ask is still taken as about the job just shown. */
 const REVIEWED_MS = 10 * 60_000
 
 export type ProofDeps = {
@@ -22,49 +19,28 @@ export type ProofDeps = {
     land: (ctx: OpCtx, id: string) => Promise<void>; shipped: (id: string) => Promise<boolean>; close: (ctx: OpCtx, id: string) => Promise<void>; unsure: (id: string, m: Moment | undefined, which?: string) => string }
   knocks: { knock: (p: { from: string; who: string; line: string; urgency?: string; open?: string; hold?: number }) => Knock; settle: (from: string) => void }
   tours: { proofOf: (id: string) => { path: string; tour: Tour; problems: string[] } | null; show: (name: string, s: Screen, tour: Tour) => Promise<Result> }
-  /** The companion's name (the one that shows proofs). */
   name: () => string
-  /** Where a proof plays: Vaultite's window unless the tour names another app or site (then the one asked over). */
   screen: (name: string, tour: Tour) => Screen | null
-  /** Why job `j`'s change isn't in what tour `t` plays on here (it ran on another machine, it's on a branch not merged
-   *  into the app running here), "" when it is. */
   notHere: (j: Job, t: Tour) => Promise<string>
-  /** Its words in a bubble (said aloud while a proof shows), at a place of Vaultite's when given. */
   say: (text: string, o?: { ask?: boolean }) => Promise<unknown>
-  /** The choice's buttons on the screen (the helper's), or false when there's no screen to draw on. */
   choices: (job: Job, c: { say: string; buttons: string[]; hint?: string }) => Promise<boolean>
-  /** Its proof's layers taken down (a step's before, the choices). */
   clear: () => void
-  /** Open what a job worked on (a note, a page), so its tour finds its things. */
   open: (path: string) => Promise<unknown>
-  /** Play a proof's video (a vault path) where they are: a card by the notch over their screen, else its note opened in
-   *  the app (`note`); false when neither can show. */
   play: (video: string, title: string, note: string) => Promise<boolean>
-  /** Whether a vault file is there (a proof's video, synced). */
   has: (path: string) => boolean
-  /** Ask the helper to record a clip for job `id` (its region capture, sent to the job); false: no helper. */
   record: (id: string) => boolean
-  /** How a ready knock comes now: said aloud (high: job_news spoken, not in a focus block), shown (normal), or not (off). */
   urgency: () => Promise<"high" | "normal" | "off">
-  /** The displays the helper said it has (for drawing without an ask), and a proof's narration said aloud or not. */
   showing: (on: { voice: boolean; displays?: unknown } | null) => void
-  /** The ask the companion answers now (an agent's job-show must be one asking to see it). */
   asked: () => Moment | undefined
-  /** A proof shown, logged as its own (the conversation's, never an answer to the ask before it). */
   shown: (j: Job, by: "click" | "ask") => void
 }
 
 export function proofOps(plugin: Plugin, d: ProofDeps) {
-  /** What the choice answers now: a job just shown (or offered to merge first); `tell`: its next words go to it (no
-   *  helper to record). */
   let pending: { job: string; until: number; asked: Asked; tell?: boolean } | null = null
-  /** The job whose change they just watched: their next ask that isn't a choice is taken as about it (once). */
   let reviewed: { job: string; until: number } | null = null
   let playing: { job: string; ctl: { stopped: boolean } } | null = null
-  /** The job being shown, looked for on main as it starts. */
   let mainRead: Promise<boolean> = Promise.resolve(false)
 
-  /** The job Show me means with no id: the one ready to show, only when there's just one (never a guess among several). */
   const jobOf = (id: string) => {
     if (id) return d.jobs.find(id)
     const all = d.jobs.list(), fresh = all.filter((x) => (x.state === "ready for review" || x.state === "done") && !x.seen)
@@ -74,11 +50,8 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
     return ready[0]
   }
 
-  /** Job `j` moved from `from`: when it's just ready, its knock ("Ready to show you …", Show me on it), or how merging
-   *  what they kept went; one path for its news. A knock with nothing to show opens its terminal. */
   async function moved(j: Job, from: string) {
     if (!readyNow(j, from) || !j.terminal) return false
-    // (they watched its page change as it went: nothing to show them)
     if (j.where.watched && !j.land) return false
     const proof = d.tours.proofOf(j.id), merging = j.land?.at !== undefined
     const change = proof && !proof.problems.length && !merging ? proof.tour.title : undefined
@@ -86,12 +59,10 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
     if (urgency === "off") return true
     try {
       d.knocks.knock({ from: terminalOf(j), who: j.title, line: readyLine(j, change), urgency, hold: READY_HOLD_MS, ...(change ? { open: `job:${j.id}` } : {}) })
-    } catch (e) { console.error(`companion: ${j.id}'s ready knock: ${(e as Error).message}`) }
+    } catch (e) { console.error(`companion: ${j.id}'s ready knock: ${messageOf(e)}`) }
     return true
   }
 
-  /** Where its tour's things are: the note or page it names, a site's preview, else the note it changed (never the one
-   *  they asked from, for that alone). */
   function whereOf(j: Job, t: Tour) {
     if (t.open) return t.open
     if (t.site.length) return j.result?.link ?? j.where.preview ?? ""
@@ -99,10 +70,8 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
     return note && (j.result?.files ?? []).some((f) => f.endsWith(`/${note}`)) ? note : ""
   }
 
-  /** Show job `j`: its proof played, else said plainly what it changed; then the choice. */
   async function show(j: Job, voice: boolean, live = false) {
     const name = d.name(), proof = d.tours.proofOf(j.id), mine = { stopped: false }, began = Date.now()
-    // (its change may have reached main since it was last looked for: the choice and the offer to merge go by that)
     mainRead = d.jobs.shipped(j.id).catch(() => false)
     playing = { job: j.id, ctl: mine }
     reviewed = null
@@ -111,7 +80,6 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
       if (!proof) return await plain(j, mine, `It didn't leave a demo to show you, so here's what it says it did. ${summaryOf(j)}`)
       if (proof.problems.length) return await plain(j, mine, `Its tour doesn't play (${proof.problems[0]}), so here's what it says it did. ${summaryOf(j, proof.tour.open)}`)
       const t = proof.tour
-      // (its video by default: recorded on the worker's own copy, so it shows wherever the change is)
       if (!live && t.video && d.has(t.video)) {
         if (!(await d.play(t.video, t.title, proof.path))) return await plain(j, mine, `I can't play its video here. ${summaryOf(j, proof.tour.open)}`)
         for (const [at, said] of narration(t)) {
@@ -123,7 +91,6 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
       }
       await mainRead
       const away = await d.notHere(j, t)
-      // (a change that isn't in the app here has nothing on screen to find: say so, and offer to merge it first)
       if (away) {
         if (!landable(j)) return await plain(j, mine, `I can't show it on this Mac: ${away}. ${summaryOf(j, proof.tour.open)}`)
         await d.say(`It isn't in the app on this Mac yet: ${away}.`)
@@ -135,7 +102,6 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
       const s = d.screen(name, t)
       if (!s) return await plain(j, mine, `I can't show it here: there's no window of yours to show it on. ${summaryOf(j, proof.tour.open)}`)
       const r = await d.tours.show(name, s, t)
-      // (stopped by another proof or a new ask: what's up now is theirs, not this one's to clear)
       if (mine.stopped || r.ended === "stopped") return
       d.clear()
       if (r.ended === "lost") {
@@ -161,10 +127,8 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
     if (!(await d.choices(j, c).catch(() => false))) await d.say(c.say, { ask: true })
   }
 
-  /** Their choice for the job just shown (or offered). */
   async function chose(ctx: OpCtx, what: Choice) {
     const p = pending
-    // (no proof up: "keep it" may mean merge it or close it, theirs to say; never a stop on a guess)
     if (!p) throw new OpError(`nothing was just shown to them, so there's no ${what === "keep" ? "Keep" : "choice"} to answer: ask them in one short line what they mean (see it first, merge it, or close it as it is), each a button; never close or merge a job on your own`, 409)
     pending = null
     d.clear()
@@ -176,13 +140,11 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
       return { job: j.id, later: true }
     }
     if (what === "keep") {
-      // (a change of its own: its worker, with all its context, lands it; the job closes once it says it merged)
       if (landable(j)) {
         await d.jobs.land(ctx, j.id)
         await d.say("Merging it now. I'll tell you once it's in.")
         return { job: j.id, landing: true }
       }
-      // (nothing of its own to merge, or already on main: reviewed, so closed as done; its conversation stays to resume)
       if (j.state === "ready for review") await d.jobs.close(ctx, j.id).catch(() => {})
       await d.say("Kept.")
       return { job: j.id, kept: true }
@@ -228,10 +190,10 @@ saves it: companion tour-save "<the change>" --job <its id> --record <its own se
     },
     args: ["id"],
     run: async (p, ctx) => {
-      if (str(p.choose)) return chose(ctx, str(p.choose) as Choice)
+      const choice = str(p.choose)
+      if (isChoice(choice)) return chose(ctx, choice)
       const theirs = !ctx.who.agent
       if (!theirs) {
-        // (an agent shows a job only when their ask is to see it, and the job it means: never as an answer to anything else)
         const m = d.asked(), said = str(p.said).trim().toLowerCase()
         if (!str(p.id)) throw new OpError("id: the job they mean (companion jobs lists them)")
         if (!m?.text || !said || !m.text.toLowerCase().includes(said) || !asksToSee(said))
@@ -247,7 +209,7 @@ saves it: companion tour-save "<the change>" --job <its id> --record <its own se
       d.shown(j, theirs ? "click" : "ask")
       if (Array.isArray(p.displays)) d.showing({ voice: p.voice !== false, displays: p.displays })
       const proof = d.tours.proofOf(j.id)
-      void show(j, p.voice !== false, p.live === true).catch((e) => console.error(`companion: showing ${j.id}: ${(e as Error).message}`))
+      void show(j, p.voice !== false, p.live === true).catch((e) => console.error(`companion: showing ${j.id}: ${messageOf(e)}`))
       const video = proof && !proof.problems.length && p.live !== true && proof.tour.video && d.has(proof.tour.video) ? proof.tour.video : null
       return { job: j.id, title: j.title, proof: proof && !proof.problems.length ? proof.path : null, ...(video ? { video } : {}) }
     },
@@ -258,8 +220,6 @@ saves it: companion tour-save "<the change>" --job <its id> --record <its own se
 
   return {
     moved,
-    /** A Talk key ask (or a typed one) right after a proof: the choice answered here, never the model's; with no helper
-     *  to record, their next words after Needs changes go to the job. */
     answer(ctx: OpCtx, text: string) {
       const p = pending
       if (!p || Date.now() > p.until) { pending = null; return false }
@@ -267,23 +227,20 @@ saves it: companion tour-save "<the change>" --job <its id> --record <its own se
         pending = null
         reviewed = null
         void d.jobs.tell(ctx, p.job, `The user looked at what you made and it needs changes. They said: ${JSON.stringify(text.slice(0, 2000))}`, text)
-          .then(() => d.say("Sent to the job."), (e) => d.say(`It didn't reach the job: ${(e as Error).message}`)).catch(() => {})
+          .then(() => d.say("Sent to the job."), (e) => d.say(`It didn't reach the job: ${messageOf(e)}`)).catch(() => {})
         return true
       }
       const c = choiceSaid(text, p.asked)
       if (!c) { pending = null; d.clear(); return false }
-      void chose(ctx, c).catch((e) => d.say((e as Error).message)).catch(() => {})
+      void chose(ctx, c).catch((e) => d.say(messageOf(e))).catch(() => {})
       return true
     },
-    /** The job their ask `text` is about, when it comes right after that job's change was shown (its choice card up, or
-     *  answered but for Not yet), once: the companion is told they just watched it, and so is the job when it's passed on. */
     reviewedBy(text: string) {
       const r = reviewed
       if (!r || !text.trim()) return undefined
       reviewed = null
       return Date.now() <= r.until && d.jobs.list().some((x) => x.id === r.job) ? r.job : undefined
     },
-    /** A proof playing now stops (a new ask: they moved on). */
     stop: () => { if (playing) playing.ctl.stopped = true },
   }
 }

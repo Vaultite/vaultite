@@ -7,19 +7,18 @@ import "./innotes.ts"
 import { plugin } from "./self.ts"
 import type { Note } from "./types.ts"
 import { EMOJI, HIGHLIGHT_MS, str } from "./settings.ts"
-import { notes, did, broadcast, key, focus, addMoment, agentOf, setAgent, writingAt, wroteAt, putNote, dropNote } from "./state.ts"
+import { notes, did, broadcast, key, focus, agentOf, setAgent, writingAt, wroteAt, putNote, dropNote } from "./state.ts"
+import { addMoment } from "./intake.ts"
 import { save } from "./comments.ts"
 import { resolve } from "./windowpanes.ts"
 import { applyEdit, editText, streams, toolUse, finishStream, cut } from "./edits.ts"
 import { apiCtx } from "./chat.ts"
-import { AS, PATH, LINE, FIND, PANE, UI, ROW, EL, target, notOnDrawing, who } from "./args.ts"
+import { AS, PATH, LINE, FIND, PANE, UI, ROW, EL, target, notOnDrawing, who, type Given } from "./args.ts"
 
 const changeId = () => `c${Math.random().toString(36).slice(2, 6)}`
 const firstLine = (s: string) => s.split("\n")[0] || undefined
-/** A note's text as the app has it (its open editor's typing saved). */
 export const textOf = async (ctx: OpCtx, p: string) => String((await ctx.api("GET", `file?path=${encodeURIComponent(p)}`)).text ?? "")
 
-/** A proposal's place (where its card sits): its first change that still fits. True when it moved. */
 function placeAt(n: Note) {
   const c = n.changes?.find((x) => !x.stale && !x.intent) ?? n.changes?.[0]
   if (!c || (n.line === c.line && n.find === firstLine(c.find))) return false
@@ -27,8 +26,6 @@ function placeAt(n: Note) {
   if (firstLine(c.find)) n.find = firstLine(c.find); else delete n.find
   return true
 }
-/** A proposal's changes found again in the note's text (their lines as it changes; stale once their text is gone).
- *  True when any moved. */
 export function refind(n: Note, text: string) {
   let moved = false
   for (const c of n.changes ?? []) {
@@ -43,8 +40,6 @@ export function refind(n: Note, text: string) {
   return moved
 }
 
-/** Propose `next` for note `p` (now `cur`): cut into changes, as a new proposal or filling `into` (its placeholders
- *  go). The frontmatter stays when `next` leaves it out. */
 function proposeText(ctx: OpCtx, name: string, p: string, next: string, cur: string, why = "", into?: Note) {
   const fm = /^---\n[\s\S]*?\n---\n\n*/.exec(cur)?.[0]
   if (fm && !next.startsWith("---\n")) next = fm + next.replace(/^\n+/, "")
@@ -61,14 +56,11 @@ function proposeText(ctx: OpCtx, name: string, p: string, next: string, cur: str
   return into
 }
 
-/** Take a change: typed in by the window showing the note (else written), as its agent's (Provenance, History). */
 async function take(n: Note, c: Change) {
   const writer: Writer = n.writer ?? { client: "cli", agent: n.agent }
   await requestWriter.run(writer, () => applyEdit(apiCtx, agentOf(n.agent), { path: n.path!, find: c.find, line: c.line, text: c.text }, false))
 }
 
-/** Take or leave a proposal's changes: one, or all those not decided (a stale one can only be left; leaving all takes
- *  its placeholders too). Once none is left it closes, and its agent hears what was taken. */
 export async function review(id: string, verdict: "accept" | "reject", change?: string, from?: IncomingMessage) {
   const n = notes.get(id)
   if (!n || n.kind !== "proposal") throw new OpError(`there's no proposal ${id}`, 404)
@@ -187,7 +179,6 @@ typed in as you write them, its place first; your cursor stays at their end.
   vau companion edit --after "## Budget" --text "- Ask Ben about the budget"`,
   kind: "write",
   lock: false,
-  // (its place before its words: the model writes them in this order, so its words are typed in as they come)
   params: { path: PATH, find: { type: "string", description: "the text it replaces, exactly as in the file" },
     after: { type: "string", description: "new lines go after the line with this text (exactly as in the file)" },
     line: LINE, append: { type: "boolean", description: "at the end of the file" }, text: { type: "string", required: true, description: "what to write" }, as: AS },
@@ -195,7 +186,6 @@ typed in as you write them, its place first; your cursor stays at their end.
   run: async (p, ctx) => {
     const name = who(p), t = target(p), after = str(p.after) || undefined
     notOnDrawing(t, "change it with companion draw")
-    // (a big change is never a silent rewrite: it comes as a proposal)
     if (t.find && linesIn(t.find) > BIG_EDIT) {
       const cur = await textOf(ctx, t.path!)
       const n = proposeText(ctx, name, t.path!, editText(cur, { find: t.find, line: t.line, text: str(p.text) }), cur)
@@ -204,14 +194,12 @@ typed in as you write them, its place first; your cursor stays at their end.
     did(name, "edit")
     const use = toolUse.getStore(), s = use ? streams.get(use) : undefined
     if (s?.edit) {
-      // (typed in as it was written: its last words, then it's done)
       const x = s.edit
       x.text = x.e.text = str(p.text)
       finishStream(s)
       try {
         const how = await x.job
         if (how === "stopped") throw new OpError("the user stopped you (Esc) as you wrote it: what you had typed by then stays", 409)
-        // (no window could show it as it came: made like any edit, written to the file)
         return { path: x.e.path, how: how === "typed" ? how : await applyEdit(ctx, agentOf(name), x.e) }
       } finally { setAgent(name, {}) }
     }
@@ -226,8 +214,7 @@ typed in as you write them, its place first; your cursor stays at their end.
   did: (p) => edited(p),
 })
 
-/** An edit as Activity lists it: by the agent's name in the app (Ada), not the coding agent it runs on. */
-export function edited(p: Record<string, unknown>) {
+export function edited(p: Given) {
   const path = str(p.path) || focus()?.path || ""
   return { action: "edit" as const, text: path ? `Edited ${path}` : "Edited a note", paths: path ? [path] : [], by: who(p) }
 }

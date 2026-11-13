@@ -1,25 +1,23 @@
-// The realtime voice front's key (the desktop app talks: electron/realtimefront.ts). OpenAI's key is this machine's, in
-// data/config.json (`companion.openai`), never the vault's; `vau voice key --provider openai` sets it.
+import { z } from "zod"
 import { OpError, type Plugin } from "../../../core/plugins.ts"
 
-// (tests point these at a stand-in)
 const RT_WS = () => process.env.VAULTITE_OPENAI_REALTIME_URL || "wss://api.openai.com/v1/realtime"
 const API = () => process.env.VAULTITE_OPENAI_API || "https://api.openai.com"
 export const SET_OPENAI = `vau secret "OpenAI API key" | vau voice key --provider openai`
 
+const Secrets = z.object({ companion: z.looseObject({ openai: z.unknown().optional() }).optional() })
+
 export function realtimeKeys(plugin: Plugin) {
-  const stored = () => ((plugin.secrets() as { companion?: Record<string, unknown> }).companion ?? {})
+  const stored = () => Secrets.safeParse(plugin.secrets()).data?.companion ?? {}
   const key = () => { const v = stored().openai; return typeof v === "string" && v.trim() ? v.trim() : "" }
 
-  /** The realtime session's socket and key, for this machine's desktop app. */
   plugin.route("GET", "companion/realtime", async (req) => {
     await plugin.ownerOnly(req, "The voice's keys")
     const k = key()
     return k ? { url: RT_WS(), key: k } : {}
   }, { lock: false, sync: false })
 
-  /** `vau voice key --provider openai`: set (checked by asking for a Realtime session's client secret: free, and a key
-   *  restricted to Realtime may list no models), removed, or whether one is set. */
+  // A Realtime client secret costs nothing, and a key restricted to Realtime may list no models.
   return async (p: { key?: unknown; remove?: unknown }) => {
     const all = stored()
     if (p.remove) { const { openai: _, ...rest } = all; plugin.saveSecrets(Object.keys(rest).length ? rest : null); return { provider: "openai", set: false, removed: true } }
@@ -36,7 +34,6 @@ export function realtimeKeys(plugin: Plugin) {
   }
 }
 
-/** The op's words for OpenAI's key. */
 export const openaiText = (r: { set?: boolean; removed?: boolean; checked?: boolean }) =>
   r.removed ? "Removed the OpenAI key: the companion answers through dictation and its cloud voice."
     : r.checked === undefined ? (r.set ? "An OpenAI key is set: the companion talks in realtime." : `No OpenAI key here: ${SET_OPENAI}`)

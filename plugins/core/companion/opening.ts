@@ -11,7 +11,8 @@ import type { Moment, Note } from "./types.ts"
 import { str, ownName } from "./settings.ts"
 import { agents, acted, did, key, setAgent, writingAt, wroteAt } from "./state.ts"
 import { past, kept } from "./comments.ts"
-import { takeover, nearBy } from "./windows.ts"
+import { takeover } from "./windows.ts"
+import { nearBy } from "./screensocket.ts"
 import { allPanes, paneById, privatePane, paneFocus, resolve, followed, sourceOf } from "./windowpanes.ts"
 import { cut } from "./edits.ts"
 import { session } from "./alwayson.ts"
@@ -20,23 +21,19 @@ import { AS, PATH, PANE, UI, target, who } from "./args.ts"
 import { askOf } from "./wiring.ts"
 import { byText } from "./people.ts"
 
-/** Set while its own open runs, so the CLI's wrap below doesn't fly it twice. */
 const opening = new AsyncLocalStorage<boolean>()
-/** Which of its sessions asked over the CLI (its session header): the summoned one, or an agent's own; else null. */
 function companionAsking(): string | null {
   const sid = requestWriter.getStore()?.session
   if (!sid) return null
   if (laneOf?.vault === plugin.vault && lane().id() === sid) return ownName()
   return [...agents.values()].find((a) => session(a.name)?.id === sid)?.name ?? null
 }
-/** What a pane shows that `path` opens (a note, a folder's page, a view, a web address). */
 function shows(p: Pane, path: string) {
   const x = path.replace(/^file:/, "")
   const to = p.to.replace(/^view:web\/@[a-z0-9]{1,24}\//, "view:web/")
   return /^https?:\/\//i.test(x) ? to === `view:web/${x}` || to.startsWith(`view:web/${x.replace(/\/$/, "")}`)
     : x.startsWith("view:") ? p.to === x : p.to === `file:${x}` || p.to === `file:${x}.md` || p.to === `view:folder/${x}`
 }
-/** Open `path` with its cursor there: on its tab first when it's open already, then on what opened. */
 async function openSeen(name: string, path: string, open: () => Promise<unknown>) {
   const was = allPanes().find((p) => shows(p, path) && p.tab)
   acted(name)
@@ -46,7 +43,6 @@ async function openSeen(name: string, path: string, open: () => Promise<unknown>
     if (was) await new Promise((done) => setTimeout(done, LAND_MS))
     const focused = paneFocus()?.id
     const r = await opening.run(true, open)
-    // (the window says what it shows a moment after)
     for (const until = Date.now() + 1500; !p && Date.now() < until;) {
       await new Promise((done) => setTimeout(done, 100))
       const f = paneFocus()
@@ -65,7 +61,6 @@ plugin.around("ui.open", async (call, next) => {
 })
 plugin.around("ui.command", async (call, next) => {
   const name = companionAsking(), id = str(call.params.id)
-  // (its button, where the window shows one: the cursor goes there as it runs)
   if (name) acted(name)
   const done = name ? writingAt(name, id ? { ui: `button:${id}`, pointed: Date.now() } : null) : null
   try { return await next() } finally { done?.() }
@@ -75,7 +70,6 @@ plugin.around("tabs.focus", async (call, next) => {
   if (name && tab) { wroteAt(name, { ui: `tab:${tab}`, pointed: Date.now() }); await new Promise((done) => setTimeout(done, LAND_MS)) }
   return next()
 })
-/** The ask a Mac open answered, by agent: its words name what's in that window now (screenFind looks there). */
 export const openedFor = new Map<string, Moment>()
 plugin.op({
   id: "companion.open",
@@ -105,7 +99,6 @@ work there), or the Mac's window in front and what's in it by id (point, ring an
     const name = who(p), path = str(p.path), app = str(p.app), m = askOf(name)
     if (!path && !app) throw new OpError("give a path or an app")
     did(name, "open")
-    // (asked from their browser: a page opens there, where they are, not in a pane of Vaultite's behind it)
     const browser = /^https?:\/\/\S+$/i.test(path) && !app && p.vaultite !== true && !p.container && !p.in && m?.summoned && m.app && isBrowser(m.app) ? m.app : ""
     const mac = browser ? { url: path, app: browser } : macOpen(path, app, plugin.vault.path, os.homedir())
     if (mac) {
@@ -120,7 +113,7 @@ work there), or the Mac's window in front and what's in it by id (point, ring an
     return { path, pane: r.pane ?? null }
   },
   text: (r) => (r.browser ? `Opened ${r.path} in ${r.in}, a new tab there in front of them.`
-    : r.in !== undefined ? `Opened ${r.path} on their Mac${r.in ? `: ${r.in}${r.title ? `, "${r.title}"` : ""} is in front` : ""}.${nearText(r.near as never, "In it now (point, ring or act by id)")}`
+    : "in" in r ? `Opened ${r.path} on their Mac${r.in ? `: ${r.in}${r.title ? `, "${r.title}"` : ""} is in front` : ""}.${nearText(r.near, "In it now (point, ring or act by id)")}`
     : `Opened ${r.path}${r.pane ? ` (pane ${r.pane})` : ""}.`),
   did: (p) => ({ action: "ui", text: `Opened ${String(p.path || p.app)}`, paths: [], by: who(p) }),
 })

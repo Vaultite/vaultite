@@ -1,73 +1,55 @@
-// Where a job runs, from what the ask was over (no registry): a preview -> the process serving it -> its repo; a live site
-// -> the checkout whose deploy names it; a GitHub page -> its checkout; an editor -> its project; a note -> the vault.
 import { execFile } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { z } from "zod"
 import { gitEnv } from "../../../core/plugins.ts"
+import { parseJson } from "../../../core/agents.ts"
 
-/** What an ask was over, as far as routing needs it (a Moment's). */
 export type Over = { url?: string; app?: string; title?: string; path?: string; screen?: string; under?: string
-  /** Vaultite's own UI it was over: a data-ui id off any pane (a panel, a button), or what lay over the pane (a menu, its bar). */
   ui?: string; chrome?: string }
-/** Where it resolved: the folder (a repo's top, else the vault), why, what led there, and the preview it came from. */
 export type Found = { cwd: string; why: string; from?: "note" | "github" | "preview" | "site" | "editor" | "vault"; preview?: string }
 
 const HOME = os.homedir()
-/** A command's output, null when it failed. */
 const ran = (cmd: string, args: string[], cwd?: string, timeout = 3000) => new Promise<string | null>((ok) =>
   execFile(cmd, args, { timeout, cwd, maxBuffer: 1 << 20, env: gitEnv({ GIT_TERMINAL_PROMPT: "0" }) }, (e, out) => ok(e ? null : String(out))))
 const run = async (cmd: string, args: string[], cwd?: string) => (await ran(cmd, args, cwd)) ?? ""
 export const tilde = (p: string, home = HOME) => (p === home ? "~" : p.startsWith(`${home}/`) ? `~${p.slice(home.length)}` : p)
 const untilde = (p: string) => p.replace(/^~(?=$|\/)/, HOME)
 
-/** A repo's top folder, or "" (not in one). */
 export const repoOf = async (dir: string) => (await run("git", ["rev-parse", "--show-toplevel"], dir)).trim()
-/** Its commit now, the base a review's diff is counted from. */
 export const headOf = async (dir: string) => (await run("git", ["rev-parse", "HEAD"], dir)).trim()
-/** Checkouts fetched lately (several placements of one ask fetch once). */
 const fetched = new Map<string, { at: number; done: Promise<unknown> }>()
-/** The commit a job's worktree in checkout `dir` starts from: its branch's remote tip, fetched now, when the checkout has
- *  no commits of its own (one nothing pulls lags days behind); else its HEAD, the branch work it continues. */
 export async function jobBase(dir: string) {
   const head = await headOf(dir), ref = (await run("git", ["symbolic-ref", "-q", "HEAD"], dir)).trim()
   const [remote, from, to] = ref ? (await run("git", ["for-each-ref", "--format=%(upstream:remotename)%00%(upstream:remoteref)%00%(upstream)", ref], dir)).trim().split("\0") : []
   if (!head || !remote || remote === "." || !from || !to?.startsWith("refs/remotes/")) return head
   const f = fetched.get(dir)
-  // (only its remote-tracking ref moves: its branch and files stay; short, as another machine's placement waits 6 s on it)
   if (!f || Date.now() - f.at > 30_000) fetched.set(dir, { at: Date.now(), done: ran("git", ["-c", "gc.auto=0", "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--no-auto-maintenance", remote, `+${from}:${to}`], dir, 4000) })
   await fetched.get(dir)!.done
   const tip = (await run("git", ["rev-parse", "-q", "--verify", `${to}^{commit}`], dir)).trim()
   return tip && tip !== head && await ran("git", ["merge-base", "--is-ancestor", head, tip], dir) !== null ? tip : head
 }
-/** File `file` of a repo as commit `base` has it, null when it hasn't. */
 export const fileAt = (dir: string, base: string, file: string) => ran("git", ["show", `${base}:${file}`], dir)
 
 const LOCAL = /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])$/
-/** The addresses an ask's words, title or screen show, the page's own first. */
 export function urlsIn(o: Over): URL[] {
   const text = [o.url, o.title, o.under, o.screen?.slice(0, 6000)].filter(Boolean).join("\n")
   const found = text.match(/\b(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|0\.0\.0\.0|[\w-]+(?:\.[\w-]+)*\.ts\.net|github\.com)(?::\d{2,5})?(?:\/[^\s"'<>)]*)?/g) ?? []
-  return [...new Set(found)].flatMap((s) => { try { return [new URL(/^https?:/.test(s) ? s : `http://${s}`)] } catch { return [] } })
+  return [...new Set(found)].flatMap((s) => URL.parse(/^https?:/.test(s) ? s : `http://${s}`) ?? [])
 }
 
-/** A browser's address bar as Accessibility reads it: a line that is an address alone, or labelled as one. */
 const ADDRESS_LINE = /^\s*(?:(?:address(?: and search)? bar|url|location)\b[^:]{0,20}:\s*)?(?:https?:\/\/)?((?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:[/?#]\S*)?)\s*$/i
-/** A live site's address (not this machine's, a tailnet preview's or GitHub's). */
 const isLive = (u: URL) => /^https?:$/.test(u.protocol) && u.hostname.includes(".") && !LOCAL.test(u.hostname) && !u.hostname.endsWith(".ts.net") &&
   u.hostname !== "github.com" && !/^[\d.]+$/.test(u.hostname)
-/** The live sites an ask is over: its page's address, else what a browser's address bar shows (never a link on the page). */
 export function sitesIn(o: Over): URL[] {
   const lines = (o.screen ?? "").split("\n").slice(0, 60).flatMap((l) => { const m = ADDRESS_LINE.exec(l); return m ? [`https://${m[1]}`] : [] })
-  return [o.url ?? "", ...lines].flatMap((s) => { try { const u = new URL(s); return isLive(u) ? [u] : [] } catch { return [] } })
+  return [o.url ?? "", ...lines].flatMap((s) => { const u = URL.parse(s); return u && isLive(u) ? [u] : [] })
     .filter((u, i, all) => all.findIndex((x) => x.href === u.href) === i)
 }
 
-/** Vaultite's own repo (GitHub's owner/name): an ask about the app itself is its work, wherever it was asked. */
 export const APP_REPO = "Vaultite/vaultite"
 const UI_KINDS: Record<string, string> = { panel: "panel", button: "button", group: "tab group", tab: "tab" }
-/** Vaultite's own UI the pointer was on, in words ("" none): a menu, a dialog or a pane's bar over what the pane shows,
- *  or what's off every pane (a sidebar's panel, a button, the tab bar). A note's, a page's or a terminal's content isn't. */
 export function appUiOf(o: Over) {
   if (o.chrome) return `Vaultite's own ${o.chrome}`
   const [kind, id] = (o.ui ?? "").split(/:(.*)/)
@@ -76,8 +58,6 @@ export function appUiOf(o: Over) {
   return `Vaultite's own ${UI_KINDS[kind] ?? "UI"} ${JSON.stringify(name.slice(0, 60))}`
 }
 
-/** What an ask is over, as one surface a job can work on: a note, else a page's site (a preview's address, the app's);
- *  "" none (a GitHub page is a repo's, not one page). */
 export function surfaceOf(m: (Over & { path?: string }) | undefined) {
   if (!m) return ""
   if (m.path) return `note:${m.path}`
@@ -85,9 +65,9 @@ export function surfaceOf(m: (Over & { path?: string }) | undefined) {
   return u ? `site:${u.origin}` : ""
 }
 
-/** The local port a Tailscale Serve name's port proxies to here (`tailscale serve status`), or 0. */
+const ServeStatus = z.object({ Web: z.record(z.string(), z.object({ Handlers: z.record(z.string(), z.object({ Proxy: z.string().optional() })).optional() })).optional() })
 export function servedPort(status: unknown, host: string, port: string): number {
-  const web = ((status ?? {}) as { Web?: Record<string, { Handlers?: Record<string, { Proxy?: string }> }> }).Web ?? {}
+  const web = ServeStatus.safeParse(status ?? {}).data?.Web ?? {}
   const site = web[`${host}:${port || "443"}`]
   const proxy = Object.values(site?.Handlers ?? {}).map((h) => h.Proxy ?? "").find(Boolean) ?? ""
   return Number(/:(\d+)\/?$/.exec(proxy)?.[1]) || 0
@@ -95,13 +75,12 @@ export function servedPort(status: unknown, host: string, port: string): number 
 const TAILSCALE = ["tailscale", "/Applications/Tailscale.app/Contents/MacOS/Tailscale", "/usr/local/bin/tailscale", "/opt/homebrew/bin/tailscale"]
 async function serveStatus() {
   for (const bin of TAILSCALE) {
-    const out = await run(bin, ["serve", "status", "--json"])
-    if (out.trim()) try { return JSON.parse(out) } catch { /* not JSON */ }
+    const out = await run(bin, ["serve", "status", "--json"]), status = out.trim() ? ServeStatus.safeParse(parseJson(out)).data : undefined
+    if (status) return status
   }
   return null
 }
 
-/** The folder of the process listening on local port `port` (lsof), or "". */
 async function listenerDir(port: number) {
   const pids = (await run("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"])).split("\n").filter(Boolean)
   for (const pid of pids) {
@@ -111,11 +90,9 @@ async function listenerDir(port: number) {
   return ""
 }
 
-/** The folders checkouts are looked for in: `roots` (~ for home), two levels down. */
 const DEFAULT_ROOTS = ["~/Projects", "~/Documents/personal/Projects", "~/Documents/Projects", "~/code", "~/src", "~/dev", "~/Developer", "~/Work", "~/repos", "~/git"]
 let ROOTS = DEFAULT_ROOTS
 let scanned: { at: number; key: string; repos: string[] } | null = null
-/** Other folders to look for checkouts in (the tests'), or the usual ones again (none); either looks afresh. */
 export const checkoutsIn = (roots?: string[]) => { ROOTS = roots ?? DEFAULT_ROOTS; scanned = null }
 function checkouts(roots: string[]) {
   const key = roots.join("\n")
@@ -128,7 +105,7 @@ function checkouts(roots: string[]) {
   scanned = { at: Date.now(), key, repos }
   return repos
 }
-/** A checkout's remote URLs (its .git/config; a worktree's .git file points at its own). */
+// A worktree's .git is a file naming its own git folder.
 function remotes(dir: string) {
   try {
     let git = path.join(dir, ".git")
@@ -136,44 +113,34 @@ function remotes(dir: string) {
     return [...fs.readFileSync(path.join(git, "config"), "utf8").matchAll(/url\s*=\s*(\S+)/g)].map((m) => m[1])
   } catch { return [] }
 }
-/** The checkout here of GitHub's `owner/repo` (its main one before a worktree), or "". */
 export function checkoutOf(slug: string, roots = ROOTS) {
   const want = slug.toLowerCase().replace(/\.git$/, "")
   const hits = checkouts(roots).filter((d) => remotes(d).some((u) => u.toLowerCase().replace(/\.git$/, "").replace(/^git@github\.com:/, "github.com/").endsWith(`github.com/${want}`)))
   return hits.find((d) => fs.statSync(path.join(d, ".git")).isDirectory()) ?? hits[0] ?? ""
 }
-/** A checkout here named `name` (a folder's name), or "". */
 const namedCheckout = (name: string, roots = ROOTS) => { const n = name.trim().toLowerCase(); return n ? checkouts(roots).find((d) => path.basename(d).toLowerCase() === n) ?? "" : "" }
-/** This machine's own checkout of a repo another names: by GitHub's `owner/repo` (or its address), by a folder's name,
- *  or by another machine's path to it (its folder's name): each machine keeps its repos in its own place. */
 export function checkoutNamed(repo: string, roots: string[] = ROOTS) {
   const r = repo.trim().replace(/\/+$/, ""), slug = /github\.com[:/]([\w.-]+\/[\w.-]+?)(?:\.git)?$/i.exec(r)?.[1] ?? (/^[\w.-]+\/[\w.-]+$/.test(r) ? r : "")
   if (slug) return checkoutOf(slug, roots) || namedCheckout(slug.split("/")[1], roots)
   return namedCheckout(path.basename(r), roots)
 }
-/** This machine's checkouts as a job's needs name them (placement.ts): their folders' names and GitHub's owner/name, lowercase. */
 export const checkoutNames = (roots: string[] = ROOTS) => [...new Set(checkouts(roots).flatMap((d) => [path.basename(d).toLowerCase(),
   ...remotes(d).flatMap((u) => { const m = /github\.com[:/]([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/i.exec(u); return m ? [m[1].toLowerCase()] : [] })]))]
-/** The checkouts this machine has, by their folders' names (~ for home), at most `n`: what's there when a repo isn't. */
 export const checkoutsLine = (n = 30, roots: string[] = ROOTS) => { const all = checkouts(roots).map((d) => tilde(d)); return all.length ? `${all.slice(0, n).join(", ")}${all.length > n ? `, and ${all.length - n} more` : ""}` : "none" }
-/** Where checkouts are looked for, in words ("~/Projects, ~/Documents/personal/Projects..."). */
 export const rootsLine = (roots: string[] = ROOTS) => roots.filter((r) => fs.existsSync(untilde(r))).join(", ") || "none of its usual project folders exist"
 
-/** The files a checkout's deploy names its domain in, and the addresses (route patterns) each names. */
 const nocomment = (t: string) => t.split("\n").filter((l) => !/^\s*(#|\/\/)/.test(l)).join("\n")
 const patterns = (t: string) => [...nocomment(t).matchAll(/["']?\b(?:pattern|route)["']?\s*[=:]\s*["']([^"']+)["']/g)].map((m) => m[1])
 const firstWord = (t: string) => nocomment(t).split(/\s+/).filter(Boolean).slice(0, 1)
 const siteKey = (t: string) => [...nocomment(t).matchAll(/\b(?:site|url)\s*:\s*["'`](https?:\/\/[^"'`]+)/g)].map((m) => m[1])
-/** (a host's routes and CNAMEs are what deploys there; a homepage or a site's own address in its config only says where
- *  it lives (an app's package.json names its website): weaker, so a repo that deploys the site wins) */
-const DEPLOYS: [string, (text: string) => string[], number][] = [
+type Deploy = [string, (text: string) => string[], number]
+const Package = z.object({ homepage: z.string().regex(/^https?:/) })
+const DEPLOYS: Deploy[] = [
   ["wrangler.toml", patterns, 1], ["wrangler.json", patterns, 1], ["wrangler.jsonc", patterns, 1],
   ["CNAME", firstWord, 1], ["public/CNAME", firstWord, 1], ["static/CNAME", firstWord, 1], ["docs/CNAME", firstWord, 1],
-  ["package.json", (t) => { try { const h = JSON.parse(t).homepage; return typeof h === "string" && /^https?:/.test(h) ? [h] : [] } catch { return [] } }, 0],
-  ...["astro.config.mjs", "astro.config.ts", "astro.config.js", "docusaurus.config.js", "docusaurus.config.ts"].map((f) => [f, siteKey, 0] as [string, (t: string) => string[], number]),
+  ["package.json", (t) => { const h = Package.safeParse(parseJson(t)).data?.homepage; return h ? [h] : [] }, 0],
+  ...["astro.config.mjs", "astro.config.ts", "astro.config.js", "docusaurus.config.js", "docusaurus.config.ts"].map((f): Deploy => [f, siteKey, 0]),
 ]
-/** How closely a deploy's route pattern (Cloudflare's "example.com/*", "*.example.com", a CNAME's domain, a URL) covers
- *  `u`: 0 not at all; a named host over a wildcard, a longer path over a shorter. A bare www. is its apex. */
 export function routeCovers(pattern: string, u: URL) {
   const p = pattern.trim().replace(/^https?:\/\//i, ""), cut = p.indexOf("/")
   const bare = (h: string) => h.toLowerCase().replace(/:\d+$/, "").replace(/^www\./, "")
@@ -182,15 +149,12 @@ export function routeCovers(pattern: string, u: URL) {
   const pathOk = !rest || rest === "/" || rest === "/*" ? true : rest.endsWith("*") ? u.pathname.startsWith(rest.slice(0, -1)) : u.pathname.replace(/\/$/, "") === rest.replace(/\/$/, "")
   return pathOk ? (host.startsWith("*") ? 1000 : 2000) + rest.replace(/\*$/, "").replace(/\/$/, "").length : 0
 }
-/** A checkout's own git folder (a worktree's is its main checkout's): what tells two folders are one repo. */
 function gitHome(dir: string) {
   try {
     const git = path.join(dir, ".git")
     return fs.realpathSync(fs.statSync(git).isFile() ? path.resolve(dir, /gitdir: (.+)/.exec(fs.readFileSync(git, "utf8"))?.[1]?.trim() ?? "", "../..") : git)
   } catch { return dir }
 }
-/** The checkout here that deploys the live site `u`: the one whose deploy config names its address most closely (its
- *  main checkout over a worktree, one clone of a GitHub repo); `both` when two repos name it alike, null when none does. */
 export function siteCheckout(u: URL, roots = ROOTS): { dir: string; file: string; pattern: string } | { both: string[] } | null {
   const hits: { dir: string; file: string; pattern: string; score: number }[] = []
   for (const dir of checkouts(roots)) for (const [file, read, deploys] of DEPLOYS) {
@@ -199,30 +163,25 @@ export function siteCheckout(u: URL, roots = ROOTS): { dir: string; file: string
     for (const pattern of read(text)) { const score = routeCovers(pattern, u); if (score) hits.push({ dir, file, pattern, score: score + deploys * 10_000 }) }
   }
   const best = Math.max(0, ...hits.map((x) => x.score)), top = hits.filter((x) => x.score === best)
-  // (one repo by its git folder, then by its GitHub name: worktrees and clones of it aren't a second answer)
   const repos = new Map<string, typeof top>()
   for (const x of top) { const k = remotes(x.dir).find((r) => /github\.com/i.test(r))?.toLowerCase().replace(/\.git$/, "").replace(/^git@github\.com:/, "github.com/").replace(/^.*github\.com\//, "") || gitHome(x.dir); repos.set(k, [...(repos.get(k) ?? []), x]) }
   if (!repos.size) return null
   if (repos.size > 1) return { both: [...repos.values()].map((xs) => xs[0].dir).sort() }
-  const xs = [...repos.values()][0], main = xs.find((x) => { try { return fs.statSync(path.join(x.dir, ".git")).isDirectory() } catch { return false } }) ?? xs[0]
+  const xs = [...repos.values()][0], main = xs.find((x) => fs.statSync(path.join(x.dir, ".git"), { throwIfNoEntry: false })?.isDirectory()) ?? xs[0]
   return { dir: main.dir, file: main.file, pattern: main.pattern }
 }
 
-/** Editors whose window title names the project (VS Code, Cursor, Zed, Xcode...: "file.ts — project"). */
 const EDITORS = /vscode|VSCode|cursor|zed|xcode|sublime|jetbrains|intellij|webstorm|nova|windsurf/i
 
-/** Where an ask over `o` runs on this machine; `self`: this machine's Tailscale names (its Serve sites). */
 export async function resolveHere(o: Over, vault: string, self: string[] = [], roots = ROOTS): Promise<Found> {
   if (o.path) return { cwd: vault, why: `the note ${o.path}`, from: "note" }
   let away = ""
-  // (the page's own address first (its url, else a browser's address bar): a live site's, before a preview its text mentions)
   const sites = sitesIn(o), first = o.url ? sitesIn({ url: o.url }).slice(0, 1) : sites
   for (const [u, live] of [...first.map((u) => [u, true] as const), ...urlsIn(o).map((u) => [u, false] as const), ...sites.slice(first.length).map((u) => [u, true] as const)]) {
     if (live) {
       if (away) continue
       const hit = siteCheckout(u, roots), where = `${u.host}${u.pathname === "/" ? "" : u.pathname}`
       if (hit && "dir" in hit) return { cwd: hit.dir, why: `${where} is deployed from ${tilde(hit.dir)} (its ${hit.file} names ${hit.pattern})`, from: "site" }
-      // (never a guess between two, nor from the page's title: said, so whoever asked can name the repo)
       away = hit ? `${where} is deployed from ${hit.both.map((d) => tilde(d)).join(" and ")} alike, so which is unclear`
         : `no checkout here deploys ${u.host} (no wrangler config, CNAME, package.json homepage or site config names it)`
       continue
@@ -239,7 +198,6 @@ export async function resolveHere(o: Over, vault: string, self: string[] = [], r
     if (!port) continue
     const dir = await listenerDir(port), top = dir ? await repoOf(dir) : ""
     if (top) return { cwd: top, why: `the preview ${u.host} is served from ${tilde(top)}`, from: "preview", preview: u.origin }
-    // (an app's own server, a bundle: no project to work on there)
     if (dir) away = `the preview ${u.host} is served from ${tilde(dir)}, not a repo`
   }
   if (o.app && EDITORS.test(o.app) && o.title) {
@@ -251,14 +209,12 @@ export async function resolveHere(o: Over, vault: string, self: string[] = [], r
   return { cwd: vault, why: `${away || "nothing on screen named a project"}: the vault`, from: "vault" }
 }
 
-/** Whether an ask placed here is over a copy the user watches here: a preview served here, an editor's project open here. */
 export const watched = (f: Found) => f.from === "preview" || f.from === "editor"
-/** A checkout's GitHub `owner/repo` (origin's first, else any remote's), or "". */
 export async function githubOf(dir: string) {
   for (const u of [(await run("git", ["remote", "get-url", "origin"], dir)).trim(), ...remotes(dir)]) {
     const m = /github\.com[:/]([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/i.exec(u)
     if (m) return `${m[1]}/${m[2]}`
-    // (an SSH host alias for GitHub, git@work:owner/repo.git: ssh's config says where it goes)
+    // An SSH host alias (git@work:owner/repo.git) goes where ssh's config says.
     const a = /^(?:[\w.-]+@)?([\w.-]+):([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/.exec(u)
     if (a && await sshHost(a[1]) === "github.com") return `${a[2]}/${a[3]}`
   }
@@ -269,24 +225,18 @@ const sshHost = (alias: string) => {
   if (!hosts.has(alias)) hosts.set(alias, run("ssh", ["-G", alias]).then((out) => /^hostname (\S+)/m.exec(out)?.[1]?.toLowerCase() ?? ""))
   return hosts.get(alias)!
 }
-/** What of a checkout exists only here, in words: its uncommitted changes and commits on no remote ("" when none). */
 export async function onlyHere(dir: string) {
   const [status, ahead] = await Promise.all([ran("git", ["status", "--porcelain"], dir), ran("git", ["rev-list", "--count", "HEAD", "--not", "--remotes"], dir)])
-  // (unread, it may hold changes: never moved on a guess)
   if (status === null || ahead === null) return "changes git couldn't read"
   const n = status.split("\n").filter(Boolean).length, c = Number(ahead.trim()) || 0
   return [n ? `${n} uncommitted change${n > 1 ? "s" : ""}` : "", c ? `${c} unpushed commit${c > 1 ? "s" : ""}` : ""].filter(Boolean).join(" and ")
 }
-/** The commits a job's worktree here would start from that no remote has, in words ("" when none): its uncommitted
- *  changes aren't counted, as a worktree never takes them. */
 export async function unpushed(dir: string) {
   const ahead = await ran("git", ["rev-list", "--count", "HEAD", "--not", "--remotes"], dir)
   if (ahead === null) return "commits git couldn't read"
   const c = Number(ahead.trim()) || 0
   return c ? `${c} unpushed commit${c > 1 ? "s" : ""}` : ""
 }
-/** Job worktree `tree` of checkout `dir` removed, and its branch once it's in the checkout's upstream: "" once gone,
- *  else why it stays (what only it has: changes not committed, commits no remote has). */
 export async function dropTree(dir: string, tree: string, branch: string) {
   if (fs.existsSync(tree)) {
     if (path.resolve(tree) === path.resolve(dir)) return "it's the checkout itself"
@@ -297,16 +247,13 @@ export async function dropTree(dir: string, tree: string, branch: string) {
   if (branch && await ran("git", ["merge-base", "--is-ancestor", `refs/heads/${branch}`, "@{upstream}"], dir) !== null) await ran("git", ["branch", "-D", branch], dir)
   return ""
 }
-/** Its branch now ("" when detached). */
 export const branchOf = async (dir: string) => { const b = (await run("git", ["rev-parse", "--abbrev-ref", "HEAD"], dir)).trim(); return b === "HEAD" ? "" : b }
 
-/** The Tailscale name of an address that's another machine's: its hostname, when `hosts` (machine id -> hostname) has it. */
 export function machineOfUrl(o: Over, hosts: Record<string, string>): { machine: string; url: string } | null {
   for (const u of urlsIn(o)) for (const [id, host] of Object.entries(hosts)) if (u.hostname === host) return { machine: id, url: u.href }
   return null
 }
 
-/** A rule `never` (`<folder>: <why>`) the folder breaks: its why, else "". */
 export function refusal(cwd: string, never: string[], home = HOME) {
   const here = tilde(cwd, home)
   for (const line of never) {

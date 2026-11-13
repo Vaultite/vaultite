@@ -1,9 +1,5 @@
-// Text helpers both halves use (no Node, no DOM).
-
-/** Lines changed together: from `line` (1-based, in the file's text, frontmatter too), `removed` replaced by `added`. */
 export type Hunk = { line: number; added: string[]; removed: string[] }
 
-/** Where `find` is in `text`: the occurrence nearest line `line` (1-based), -1 when it isn't. */
 export function nearest(text: string, find: string, line?: number) {
   if (!find) return -1
   let best = -1, bestD = Infinity
@@ -15,8 +11,7 @@ export function nearest(text: string, find: string, line?: number) {
   return best
 }
 
-/** Where `a` and `b` differ: the common head's length and the common tail's, never cutting a character in two (Yjs
- *  would make each half a U+FFFD). */
+// Yjs turns each half of a split surrogate pair into U+FFFD.
 export function span(a: string, b: string): [number, number] {
   const low = (s: string, i: number) => { const c = s.charCodeAt(i); return c >= 0xdc00 && c <= 0xdfff }
   let head = 0
@@ -28,26 +23,21 @@ export function span(a: string, b: string): [number, number] {
   return [head, tail]
 }
 
-/** One change of a proposal: `find` (whole lines of the note as it was) becomes `text`. While its agent writes, a
- *  placeholder by `find` saying what will come (`intent`). stale: its text has since changed, so it can only be left. */
 export type Change = { id: string; find: string; text: string; line: number; intent?: string; stale?: boolean }
 
-/** Where a change is in `text`: its start, -1 when its lines aren't there any more. */
 export const changeAt = (text: string, c: Pick<Change, "find" | "line">) => (c.find ? nearest(text, c.find, c.line) : text ? -1 : 0)
 
-/** The setting `private` read: its plain lines are folders, `site:`, `container:` and `app:` lines the rest. */
 export function privateOf(list: unknown) {
-  const out = { folders: [] as string[], sites: [] as string[], containers: [] as string[], apps: [] as string[] }
+  const out: { folders: string[]; sites: string[]; containers: string[]; apps: string[] } = { folders: [], sites: [], containers: [], apps: [] }
   for (const l of Array.isArray(list) ? list.map(String) : []) {
     const m = /^\s*(site|container|app):\s*(.+?)\s*$/i.exec(l)
     if (!m) { if (l.trim()) out.folders.push(l.trim()); continue }
-    out[`${m[1].toLowerCase()}s` as "sites"].push(m[2])
+    const kind = m[1].toLowerCase()
+    ;(kind === "site" ? out.sites : kind === "container" ? out.containers : out.apps).push(m[2])
   }
   return out
 }
 
-/** Whether a note is kept from the agents: under one of `folders` (vault paths; the setting's other lines are skipped),
- *  or its frontmatter (at the start of `text`) says `companion: private`. */
 export function isPrivate(path: string, text: string, list: string[]) {
   const folders = privateOf(list).folders
   if (folders.some((f) => { const d = f.trim().replace(/^\/+|\/+$/g, ""); return !!d && (path === d || path.startsWith(`${d}/`)) })) return true

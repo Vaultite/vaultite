@@ -8,7 +8,6 @@ import { past, save, place, fold, reopen } from "./comments.ts"
 import { streams, toolUse, cut, lineText } from "./edits.ts"
 import { AS, PATH, LINE, FIND, target, notOnDrawing, who } from "./args.ts"
 
-/** The open task line `line` (1-based) of `src`, or the only one with `text`: its index, or -1. */
 export function openTaskLine(src: string, line: number, text: string) {
   const lines = src.split("\n"), open = (l: string | undefined) => !!l && /^\s*(?:[-*+]|\d+[.)])\s+\[ \]\s/.test(l) && (!text || l.includes(text))
   if (open(lines[line - 1])) return line - 1
@@ -17,7 +16,6 @@ export function openTaskLine(src: string, line: number, text: string) {
 }
 
 const queues = new Map<string, Promise<unknown>>()
-/** `fn` once the last one under `key` has ended, however it ended. */
 function oneAtATime<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const run = (queues.get(key) ?? Promise.resolve()).then(fn, fn), tail = run.catch(() => {})
   queues.set(key, tail)
@@ -41,21 +39,17 @@ starts at once through companion handoff.
   run: async (p, ctx) => {
     const rel = str(p.path), words = str(p.text).trim()
     if (!rel && !words) throw new OpError("say what: a note's path and line, or the task's text")
-    // (set inside the queue: typed so it isn't read as always null after it)
-    let line = "", at = 0, mark = null as { old: string; new: string } | null
-    // (one tap at a time per note: two edits alike both merge, so two that read it open would both start a worker)
-    if (rel) await oneAtATime(`do:${rel}`, async () => {
+    const got = rel ? await oneAtATime(`do:${rel}`, async () => {
       const src = fs.readFileSync(plugin.vault.abs(rel), "utf8"), i = openTaskLine(src, Number(p.line) || 0, words), lines = src.split("\n")
       if (i < 0) throw new OpError(`no open task ${words ? `"${cut(words, 60)}" ` : ""}at line ${p.line} of ${rel}`, 404)
-      line = lines[i]
-      at = i + 1
-      // In progress first: a second tap (another device's) finds it taken, and two workers never start.
+      const line = lines[i]
       let before = ""
-      // (the lines above it tell twins apart)
       for (let k = i - 1; k >= 0 && src.indexOf(before + line) !== src.lastIndexOf(before + line); k--) before = `${lines[k]}\n${before}`
-      mark = { old: before + line, new: before + line.replace("[ ]", "[/]") }
+      const mark = { old: before + line, new: before + line.replace("[ ]", "[/]") }
       await ctx.op("file.edit", { path: rel, ...mark }).catch(() => { throw new OpError(`that task was just handed over, or changed: ${cut(line.trim(), 60)}`, 409) })
-    })
+      return { line, at: i + 1, mark }
+    }) : null
+    const line = got?.line ?? "", at = got?.at ?? 0, mark = got?.mark ?? null
     const said = rel ? line.replace(/^\s*(?:[-*+]|\d+[.)])\s+\[ \]\s+/, "") : words
     const task = rel
       ? [`Do this task from the note ${rel} (line ${at}): ${said}`, "Read the note first: it's the context. When it's fully done, mark the line done (tasks_complete, or `[x]` with vau edit). If it needs the user (a decision, a sign-in, anything outward like a post or a message), leave it open and say what you need."].join("\n\n")
@@ -63,7 +57,6 @@ starts at once through companion handoff.
     try {
       return await ctx.op("companion.handoff", { task, say: `On it: ${cut(said, 60)}`, title: cut(said, 80) })
     } catch (e) {
-      // (nobody's on it: the line's open again)
       if (mark) await ctx.op("file.edit", { path: rel, old: mark.new, new: mark.old }).catch(() => {})
       throw e
     }
@@ -135,16 +128,13 @@ it: with id (the comment's), your words join its thread.
   vau companion comment "Yes, both work." --id n12`,
   kind: "write",
   lock: false,
-  // (its place before its words: the model writes them in this order, so its card shows them as they come)
   params: { id: { type: "string", description: "a comment to reply in" }, path: PATH, line: LINE, find: FIND,
     text: { type: "string", required: true, description: "the comment (Markdown, short)" }, as: AS },
   args: ["text"],
   run: async (p) => {
     const name = who(p)
     did(name, "comment")
-    // (shown as it was written: that card or reply, with its words as the call has them)
     const use = toolUse.getStore(), s = use ? streams.get(use) : undefined
-    // (dismissed as it was written: it stays dismissed, with all its words)
     const gone = s?.reply && !notes.has(s.reply.id) ? s.reply.id : s?.note && !notes.has(s.note) ? s.note : undefined
     if (gone) {
       const n = [...past.values()].flat().find((x) => x.id === gone)
@@ -162,7 +152,6 @@ it: with id (the comment's), your words join its thread.
       return n
     }
     const shown = s?.note ? notes.get(s.note) : undefined
-    // (a reply after all, its id after its words: the card its words showed in goes)
     if (shown && p.id) { s!.note = undefined; dropNote(shown.id) }
     else if (shown) {
       const t = target(p), anchor = !t.find && t.line ? lineText(t.path!, t.line) : ""
@@ -172,7 +161,6 @@ it: with id (the comment's), your words join its thread.
       return shown
     }
     if (p.id) {
-      // (a word in a dismissed thread brings it back to the margin)
       const n = notes.get(p.id) ?? reopen(p.id)
       if (!n || n.kind !== "comment") throw new OpError(`there's no comment ${p.id}`, 404)
       n.replies = [...(n.replies ?? []), { by: "agent", text: str(p.text), t: Date.now(), ...(n.by ? { name } : {}) }]

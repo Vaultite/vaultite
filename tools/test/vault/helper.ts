@@ -651,36 +651,36 @@ export default async ($: VaultTest) => {
     // The companion hears the user on screen: an ask or a point with the window's text, the display's picture, what's near
     // the pointer and what they drew.
     const c = await import("../../../plugins/core/companion/plugin.ts")
-    const cNext = await import("../../../plugins/core/companion/next.ts")
-    const cState = await import("../../../plugins/core/companion/state.ts")
-    const cWindows = await import("../../../plugins/core/companion/windows.ts")
+    const cMoments = await import("../../../plugins/core/companion/momentstext.ts")
+    const cIntake = await import("../../../plugins/core/companion/intake.ts")
+    const cScreen = await import("../../../plugins/core/companion/screensocket.ts")
     // (its Talk key's own session on, as by default: what an area before set doesn't decide where a summoned ask goes)
     await api("PATCH", "config/plugin/companion", { mode: "quiet", summoned_model: null })
-    const ask = cState.addMoment({ kind: "ask", text: "what does this error mean?", app: "com.apple.Terminal", window: 42, title: "zsh", screen: "error: no such file\nline two", shot: "/tmp/x/screens/window-42-1.png" })
-    const text = ask ? cNext.momentsText([ask], "quiet", null) : ""
+    const ask = cIntake.addMoment({ kind: "ask", text: "what does this error mean?", app: "com.apple.Terminal", window: 42, title: "zsh", screen: "error: no such file\nline two", shot: "/tmp/x/screens/window-42-1.png" })
+    const text = ask ? cMoments.momentsText([ask], "quiet", null) : ""
     check("companion: an ask on screen names the app and window, its picture and its text", !!ask && text.includes('on screen, "zsh" in com.apple.Terminal (window 42)') &&
       text.includes("its picture: /tmp/x/screens/window-42-1.png") && text.includes("    error: no such file"), text)
-    const desk = cState.addMoment({ kind: "ask", text: "what is this folder?", app: "com.apple.finder", sx: 812, sy: 440, under: 'Finder: folder "Taxes", in "Desktop"', shot: "/tmp/x/screens/display-812-1.png", shotAt: { x: 0, y: 0, width: 1600, height: 1000 } })
-    const deskText = desk ? cNext.momentsText([desk], "quiet", null) : ""
+    const desk = cIntake.addMoment({ kind: "ask", text: "what is this folder?", app: "com.apple.finder", sx: 812, sy: 440, under: 'Finder: folder "Taxes", in "Desktop"', shot: "/tmp/x/screens/display-812-1.png", shotAt: { x: 0, y: 0, width: 1600, height: 1000 } })
+    const deskText = desk ? cMoments.momentsText([desk], "quiet", null) : ""
     const [, deskSt] = await api("POST", "ops/companion.status", {})
     check("companion: an ask from the desktop (no window) says what was under the pointer, its point, and the display's picture",
       deskText.includes('under their pointer (sx 812, sy 440): Finder: folder "Taxes", in "Desktop"') && deskText.includes("its picture: /tmp/x/screens/display-812-1.png (the screen around their pointer") &&
       (deskSt as { agents?: { sx?: number }[] }).agents?.some((a) => a.sx === 812), [deskText, deskSt])
-    const clicked = cState.addMoment({ kind: "ask", text: "why is this greyed out?", app: "com.apple.Safari", sx: 820, sy: 40, clicks: [{ sx: 820, sy: 40, under: 'Safari: button "Share"' }, { sx: 5, sy: 6 }] })
-    const clickedText = clicked ? cNext.momentsText([clicked], "quiet", null) : ""
+    const clicked = cIntake.addMoment({ kind: "ask", text: "why is this greyed out?", app: "com.apple.Safari", sx: 820, sy: 40, clicks: [{ sx: 820, sy: 40, under: 'Safari: button "Share"' }, { sx: 5, sy: 6 }] })
+    const clickedText = clicked ? cMoments.momentsText([clicked], "quiet", null) : ""
     check("companion: what they clicked with the Talk key held goes with the ask, each click the app's",
       clickedText.includes('they clicked as they spoke (each went to the app as a click; the picture may show what it did): Safari: button "Share" at sx 820, sy 40; something at sx 5, sy 6'), clickedText)
-    const bar = cState.addMoment({ kind: "point", sx: 1290, sy: 12, shot: "/tmp/x/screens/region-2.png" })
-    const barText = bar ? cNext.momentsText([bar], "quiet", null) : ""
+    const bar = cIntake.addMoment({ kind: "point", sx: 1290, sy: 12, shot: "/tmp/x/screens/region-2.png" })
+    const barText = bar ? cMoments.momentsText([bar], "quiet", null) : ""
     const [, barSt] = await api("POST", "ops/companion.status", {})
     check("companion: a point where nothing reads (the menu bar) is still a point there, with its picture",
       barText.includes("on screen, at sx 1290, sy 12 (no window there") && barText.includes("its picture: /tmp/x/screens/region-2.png") &&
       (barSt as { agents?: { sx?: number }[] }).agents?.some((a) => a.sx === 1290), [barText, barSt])
     // (the summoned companion's ask: the display's picture, what's near the pointer by id, what they drew)
-    const held = cWindows.screenMoment({ kind: "ask", text: "what's this button?", app: "com.example.mail", window: 9, title: "Inbox", sx: 812, sy: 440, shot: "/tmp/x/screens/display-812-1.png",
+    const held = cScreen.screenMoment({ kind: "ask", text: "what's this button?", app: "com.example.mail", window: 9, title: "Inbox", sx: 812, sy: 440, shot: "/tmp/x/screens/display-812-1.png",
       shotAt: { x: 0, y: 0, width: 1600, height: 1000 }, near: [{ id: "a1", role: "button", label: "Send", frame: { x: 790, y: 430, width: 60, height: 24 } }],
       ink: [{ shape: "ring", box: { x: 770, y: 410, width: 100, height: 60 }, points: [[770, 440], [820, 410], [870, 440]] }] })
-    const heldText = held ? cNext.momentsText([held], "quiet", null) : ""
+    const heldText = held ? cMoments.momentsText([held], "quiet", null) : ""
     check("companion: a summoned ask says the display's picture and their pointer in it, what they drew and what's near, by id",
       heldText.includes("its picture: /tmp/x/screens/display-812-1.png (the screen around their pointer, cropped: what its edges cut is whole on their screen; a pixel a point: its top left is sx 0, sy 0, so its pixel x, y is sx 0 + x, sy 0 + y; their pointer at 812, 440 in it)") &&
       heldText.includes("they drew a ring round sx 770-870, sy 410-470") && heldText.includes('a1 button "Send" at 790,430 60×24'), heldText)
@@ -691,20 +691,20 @@ export default async ($: VaultTest) => {
     check("companion: --ax points at an element of the ask's list, snapped to its frame; an id not listed is a 404",
       axSt === 200 && pointed?.sx === 806 && pointed?.sy === 442 && pointed?.frame?.x === 790 && (await api("POST", "ops/companion.look", { ax: "a9" }))[0] === 404, [axSt, pointed])
     // (a floating panel of another app: asked over, named by its app's name; behind the ask, said as what floats there)
-    const tray = cWindows.screenMoment({ kind: "ask", text: "what is this?", app: "com.acme.utils", appName: "Acme", sx: 535, sy: 125, under: "Acme: list" })
-    const trayText = tray ? cNext.momentsText([tray], "pair", null) : ""
-    const behind = cWindows.screenMoment({ kind: "ask", text: "what's that thing?", app: "com.example.mail", appName: "Mail", window: 9, sx: 240, sy: 183,
+    const tray = cScreen.screenMoment({ kind: "ask", text: "what is this?", app: "com.acme.utils", appName: "Acme", sx: 535, sy: 125, under: "Acme: list" })
+    const trayText = tray ? cMoments.momentsText([tray], "pair", null) : ""
+    const behind = cScreen.screenMoment({ kind: "ask", text: "what's that thing?", app: "com.example.mail", appName: "Mail", window: 9, sx: 240, sy: 183,
       floating: [{ app: "com.acme.utils", name: "Acme", frame: { x: 470, y: 40, width: 530, height: 290 } }] })
-    const behindText = behind ? cNext.momentsText([behind], "pair", null) : ""
+    const behindText = behind ? cMoments.momentsText([behind], "pair", null) : ""
     check("companion: an app on screen is named by its name and bundle id, and another app's panel floating over the screen is said, by whose",
       trayText.includes("The user is in Acme (com.acme.utils)") && trayText.includes("on screen, Acme (com.acme.utils)") &&
       behindText.includes("floating over the screen (another app's panel, maybe what they mean): Acme (com.acme.utils) at sx 470, sy 40, 530×290"), [trayText, behindText])
     // (over Vaultite's own window: the page's place there, a note's line, as asked there, with the display's picture)
-    const there = cWindows.screenMoment({ kind: "ask", text: "what's this line?", path: "Notes/A.md", line: 3, selection: "the plan", sx: 400, sy: 300, shot: "/tmp/x/screens/display-400-1.png",
+    const there = cScreen.screenMoment({ kind: "ask", text: "what's this line?", path: "Notes/A.md", line: 3, selection: "the plan", sx: 400, sy: 300, shot: "/tmp/x/screens/display-400-1.png",
       shotAt: { x: 0, y: 0, width: 1600, height: 1000 } })
     check("companion: a summoned ask over Vaultite's window is about the note's line under the pointer, its picture too",
       there?.path === "Notes/A.md" && there.line === 3 && there.selection === "the plan" && there.summoned === true && there.shot === "/tmp/x/screens/display-400-1.png" && !there.app, there)
-    cWindows.comeBack(name)
+    cScreen.comeBack(name)
     const [, homeSt] = await api("POST", "ops/companion.status", {})
     const home = (homeSt as { agents?: { name: string; sx?: number; app?: string }[] }).agents?.find((a) => a.name === name)
     check("companion: done there, its cursor leaves the screen", !!home && home.sx === undefined && !home.app, home)
@@ -723,9 +723,9 @@ export default async ($: VaultTest) => {
       const placed = async () => ((await api("POST", "ops/companion.status", {}))[1] as { agents: { name: string; path?: string }[] }).agents.find((a) => a.name === name)
       // (the ask over the window above, its session a stand-in, is answered late: wait for that turn to end first)
       await waitFor(async () => ((await api("POST", "ops/companion.status", {}))[1] as { notes: { kind: string; t: number }[] }).notes.some((n) => n.kind === "say" && n.t >= (there?.t ?? 0)), 8000, 100)
-      where([]); cWindows.comeBack(name)
+      where([]); cScreen.comeBack(name)
       const behind = await placed()
-      where(["Notes/A.md"]); cWindows.comeBack(name)
+      where(["Notes/A.md"]); cScreen.comeBack(name)
       const shown = await placed()
       check("companion: back from the screen, by their note when it's shown, else home (never a tab behind's file row)", !!behind && !behind.path && shown?.path === "Notes/A.md", [behind, shown])
       check("companion: …moved there, not acting: its cursor rests at home", (shown as { rests?: boolean } | undefined)?.rests === true, shown)
@@ -735,7 +735,7 @@ export default async ($: VaultTest) => {
       helper.emit("message", JSON.stringify({ t: "answered", agent: name, heard: "how are you", said: "I'm good." }))
       const answer = win.got.filter((m) => m.t === "note").at(-1)?.note
       // (a summoned ask, its answer by the pointer: here, that its session can't start)
-      cState.addMoment({ kind: "ask", for: name, summoned: true, text: "open my page" })
+      cIntake.addMoment({ kind: "ask", for: name, summoned: true, text: "open my page" })
       const late = () => win.got.find((m) => m.t === "note" && m.note?.id !== answer?.id && m.note?.answers)?.note
       for (let i = 0; i < 100 && !late(); i++) await $.sleep(50)
       helper.emit("message", JSON.stringify({ t: "riding", agent: "" }))
@@ -747,8 +747,8 @@ export default async ($: VaultTest) => {
       check("companion: …and seen there (by the pointer, in its box), so no unread dot for them", !!theirs?.seen, theirs)
       helper.emit("close"); win.emit("close")
     }
-    check("companion: in quiet no edit reaches it, nor does the helper send one (it follows nothing on screen)", cState.addMoment({ kind: "edit", path: "Notes/A.md", hunks: [] }) === null &&
-      cWindows.screenMoment({ kind: "edit", app: "com.apple.Terminal", window: 42, hunks: [{ line: 3, removed: [], added: ["ok"] }] }) === null)
+    check("companion: in quiet no edit reaches it, nor does the helper send one (it follows nothing on screen)", cIntake.addMoment({ kind: "edit", path: "Notes/A.md", hunks: [] }) === null &&
+      cScreen.screenMoment({ kind: "edit", app: "com.apple.Terminal", window: 42, hunks: [{ line: 3, removed: [], added: ["ok"] }] }) === null)
     await api("PATCH", "config/plugin/companion", { mode: null })
   }
   {

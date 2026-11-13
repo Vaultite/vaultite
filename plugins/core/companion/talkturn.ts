@@ -1,6 +1,3 @@
-// The summoned companion's talk turn as a pure machine: every fact is an event, `step` says what comes next and what to
-// do, as data (summoned.ts runs it).
-
 export type Waiting<A> = { ask: A; again: boolean }
 export type Cut = "withdrawn" | "stopped" | "lost"
 export type Turn<A> = { n: number; asks: A[]; again: boolean; acted: boolean; said: boolean; shown: boolean; missed: boolean; did: string
@@ -62,7 +59,6 @@ export type Effect<A, T = unknown, K extends EffectKind = EffectKind> = { [P in 
 
 export type World = { on: () => boolean; fresh: () => boolean }
 
-/** Acts the user sees happen: an answer without words. A draw counts only once its marks showed. */
 export const SHOWS = new Set(["handoff", "open", "act", "highlight", "pass"])
 export const NOT_SHOWN = "I couldn't mark that on your screen. Ask me again?"
 const LOST = "I lost my session there, ask me again?", OFF = "My session's off right now, so I couldn't answer that."
@@ -77,11 +73,9 @@ export const owes = (s: TurnState<unknown>) => s.waiting.length > 0 || s.phase.k
 const unanswered = (t: Turn<unknown>) => !t.acted && !t.shown && !t.cut
 const silent = (t: Turn<unknown>) => (!t.acted || (t.missed && !t.said)) && !t.shown && !t.cut
 export const withdrawing = <A>(s: TurnState<A>): A[] => (s.waiting.length ? [s.waiting.at(-1)!.ask] : s.turn.asks)
-/** A tour's step handed with their own ask isn't dropped: that ask still wants its answer. */
 export const drops = <A extends Ask>(s: TurnState<A>, ask: A) =>
   s.waiting.some((w) => w.ask === ask) || (handed(s) && s.turn.asks.includes(ask) && s.turn.asks.every((x) => x.tour))
 
-/** Its words for an ask its turn left unanswered: what its last tool did (no ids), else that it got nowhere. */
 export function quietly(did: string) {
   const x = (/^.*?(?:[.!?](?=\s|$)|$)/.exec(did.split("\n")[0].replace(/\s*\([^)]*\)/g, ""))?.[0] ?? "").replace(/\s+/g, " ").trim()
   return x && x.length <= 200 ? x : "I didn't get to an answer on that one. Ask me again?"
@@ -94,7 +88,6 @@ type Handlers = { [K in EventKind]: <A extends Ask, T>(s: TurnState<A>, e: TurnE
 const go = <A, T>(to: TurnState<A>, ...d: Effect<A, T>[]): Out<A, T> => ({ to, do: d })
 const plus = <A, T>(a: Out<A, T>, ...d: Effect<A, T>[]): Out<A, T> => ({ to: a.to, do: [...a.do, ...d] })
 const chain = <A, T>(a: Out<A, T>, f: (s: TurnState<A>) => Out<A, T>): Out<A, T> => { const b = f(a.to); return { to: b.to, do: [...a.do, ...b.do] } }
-// A pump is its own event, run after the effects before it: a say's own act lands on the asks it answered.
 const pump = <A, T>(a: Out<A, T>) => plus(a, { do: "pump" })
 const idle = <A>(x: TurnState<A>): TurnState<A> => ({ ...x, phase: { kind: "idle" } })
 const between = (x: TurnState<unknown>) => x.phase.kind === "making" || x.phase.kind === "starting"
@@ -119,8 +112,6 @@ function next<A, T>(x: TurnState<A>, w: World): Out<A, T> {
   return go(g, { do: "handed", asks: g.turn.asks }, { do: "send", asks: g.turn.asks, round: g.round })
 }
 
-/** Asks its session couldn't take or answer go to a fresh session once, else get one short line; never the error
- *  itself, which goes to the log and `companion status`. */
 function failed<A, T>(x: TurnState<A>, ms: Waiting<A>[], why: string, w: World): Out<A, T> {
   const y = { ...x, round: x.round + 1 }
   if (!ms.length) return go(y, { do: "note", why })
@@ -139,7 +130,6 @@ function lost<A, T>(x: TurnState<A>, to: TurnState<A>, why: string, w: World): O
   return chain<A, T>(go(to, { do: "note", why }), ended)
 }
 
-/** An ask never ends in silence: its words said whole, else what its last tool did; tags still acting are judged once done. */
 function answer<A, T>(out: Out<A, T>, t: Turn<A>, n: TurnEvent<A, T, "ended">): Out<A, T> {
   const words = !t.acted && !t.wrote && t.cut !== "withdrawn" ? n.words : null
   let o = out
@@ -194,7 +184,6 @@ const ON: Handlers = {
   busy: (s) => (between(s) ? go(s) : go(s.phase.kind === "idle" ? { ...s, phase: { kind: "busy" } } : s, ...(handed(s) ? [{ do: "thinking" } as const] : []))),
   gone: (s, _e, w) => {
     if (between(s)) return go(s)
-    // Its keeper ended or crashed mid-ask: the ask goes again, to a fresh one.
     if (handed(s) && unanswered(s.turn)) return failed(idle(s), handedOf(s), "its session ended before it answered", w)
     return pump(handed(s) ? ended(s) : go(idle(s)))
   },
@@ -220,7 +209,6 @@ const ON: Handlers = {
   stopped: (s) => go(unhand({ ...s, waiting: [] })),
 }
 
-/** What its session still does for asks it lost is stale: they went again. */
 const LATE = new Set<EventKind>(["acted", "wrote", "drew", "answered"])
 
 export function step<A extends Ask, T, K extends EventKind>(s: TurnState<A>, e: TurnEvent<A, T, K>, w: World): Out<A, T> {

@@ -4,7 +4,7 @@ import "./chatturns.ts"
 import { str, ownName } from "./settings.ts"
 import { agents, key, focus } from "./state.ts"
 import { drawing, point } from "./comments.ts"
-import { nearBy } from "./windows.ts"
+import { nearBy } from "./screensocket.ts"
 
 export const AS = { type: "string", description: "your name in the app, when several agents keep the user company (default: the companion's, Claude)" } as const
 export const PATH = { type: "string", format: "path", description: "the file (Notes/Idea.md); default: the one the user is in" } as const
@@ -17,7 +17,6 @@ export const PANE = { type: "string", description: "instead of a note: a pane of
 export const UI = { type: "string", description: "instead of a note: the app's own UI, by its id (tab:<id>, pane:<id>, group:<id>, panel:<plugin>:<name>, button:<command id>)" } as const
 export const ROW = { type: "integer", minimum: 1, description: "in a terminal pane: a row of its screen, from 1 (or find: its text)" } as const
 export const EL = { type: "string", description: "in a web page's pane: an element, by its ref (e12: companion see)" } as const
-/** Where an op points, in a note, a pane, the app's UI, or (the helper's) an app's window and the screen. */
 export const PLACE = { path: PATH, line: LINE, find: FIND, x: X, y: Y, pane: PANE, ui: UI, row: ROW, el: EL,
   app: { type: "string", description: "outside the app (the helper): an app, by its bundle id" } as const,
   window: { type: "integer", description: "outside the app: a window of it (its CGWindowID)" } as const,
@@ -26,9 +25,9 @@ export const PLACE = { path: PATH, line: LINE, find: FIND, x: X, y: Y, pane: PAN
   display: { type: "integer", description: "outside the app: the display sx and sy are on" } as const,
   ax: { type: "string", description: "outside the app: an element the user's last ask listed near their pointer (a3), instead of sx and sy: your cursor snaps to it" } as const }
 
-/** A target from params: the user's file when none is given; a pane, the app's UI or the screen (`elsewhere`: the ops
- *  that point) without one. */
-export function target(p: Record<string, unknown>, elsewhere = false): Target {
+export type Given = { [K in keyof typeof PLACE | "as"]?: unknown }
+
+export function target(p: Given, elsewhere = false): Target {
   const out: Target = {}
   if (str(p.ax)) {
     const e = nearBy.get(key(who(p)))?.find((x) => x.id === str(p.ax))
@@ -44,9 +43,7 @@ export function target(p: Record<string, unknown>, elsewhere = false): Target {
   if (!path && !away) throw new OpError("the user has no file open: give `path` (or `pane`, `ui`)")
   return { ...(path ? { path } : {}), ...(p.line !== undefined ? { line: Number(p.line) } : {}), ...(str(p.find) ? { find: str(p.find) } : {}), ...point(p), ...out }
 }
-/** What a drawing doesn't have (a margin, lines to write in): the op that does it there instead. */
 export function notOnDrawing(t: Target, what: string) {
   if (t.path && drawing(t.path)) throw new OpError(`${t.path} is a drawing: ${what}`)
 }
-/** The agent acting: --as (as it was first called), else the companion. */
-export const who = (p: Record<string, unknown>) => { const n = str(p.as).trim(); return n ? agents.get(key(n))?.name ?? n : ownName() }
+export const who = (p: Given) => { const n = str(p.as).trim(); return n ? agents.get(key(n))?.name ?? n : ownName() }

@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import { z } from "zod"
 import { localDate } from "../../../core/plugins.ts"
 import { readText, writeNew } from "../../../core/vault.ts"
 import { elevenUsage } from "./voice.ts"
@@ -14,17 +15,15 @@ import { cut } from "./edits.ts"
 import { AS } from "./args.ts"
 import { jobs } from "./wiring.ts"
 
-/** A moment's latency (ms): the user's pause, until handed (handoff), sent (a summoned session's message), its first
- *  action (think) and word shown (word), to its next `next` or turn's end (total); undefined: it didn't happen. */
 export type Timing = { t: number; seq: number; kind: string; at: string; as?: string; op?: string; pause?: number; handoff?: number; sent?: number; think?: number; word?: number; total?: number }
 
-/** What's logged that isn't an action of its own. */
+const PressLineIn = z.looseObject({ t: z.number(), press: z.string(), kind: z.string(), ev: z.string(), ms: z.number().optional().catch(undefined) })
+const Presses = z.array(z.unknown()).catch([]).transform((a): PressLine[] => a.flatMap((l) => PressLineIn.safeParse(l).data ?? []))
+const Audio = z.object({ wav: z.string().nullable() })
+const Shot = z.object({ png: z.string().nullable() })
 const NOT_ACTS = new Set([...BOOKKEEPING, "word", "stopped"])
-/** The actions that show words. */
 const WORDS = new Set(["word", "say", "comment", "suggest", "propose", "edit"])
 
-/** Each moment's timing per agent handed it, from the moments and actions logged on a day (seqs restart with the
- *  server: matched in time). A moment handed again (they went on with it) counts from its last handing. */
 export function timings(ms: Moment[], log: Act[]): Timing[] {
   return ms.flatMap((m, i) => {
     const until = ms.slice(i + 1).find((x) => x.seq === m.seq)?.t ?? Infinity
@@ -54,7 +53,6 @@ export function timingsText(day: string, rows: Timing[]) {
     `${"time".padEnd(8)} ${"pause".padStart(7)} ${"handoff".padStart(7)}${"think".padStart(7)}${"word".padStart(7)}  ${"total".padStart(7)}  moment`,
     ...rows.map((r) => `${time(r.t)} ${s(r.pause)} ${s(r.handoff)}${s(r.think)}${s(r.word)}  ${s(r.total)}  ${r.as ? `${r.as}: ` : ""}${r.kind}${r.op ? ` -> ${r.op}` : ""} ${cut(r.at, 50)}`),
     sum("asks and replies", rows.filter((r) => r.kind === "ask" || r.kind === "reply")), sum("all", rows),
-    // (each agent's own, to compare models)
     ...(new Set(rows.flatMap((r) => r.as ?? [])).size > 1 ? [...new Set(rows.flatMap((r) => r.as ?? []))].map((a) => sum(a, rows.filter((r) => r.as === a))) : [])].join("\n")
 }
 
@@ -86,7 +84,7 @@ recognizer, the key's up and down, its end), as the menu-bar helper logged them 
   params: { day: { type: "string", description: "a day (YYYY-MM-DD); default: today" } },
   run: async (p) => {
     const day = str(p.day) || localDate(Date.now())
-    const got = await plugin.desktop("talk:presses", { day }).catch(() => []), presses = (Array.isArray(got) ? got : []) as PressLine[]
+    const presses = Presses.parse(await plugin.desktop("talk:presses", { day }).catch(() => []))
     return { day, exchanges: exchanges(log.read(day), acts.read(day), presses, ownName()), spent: spent(presses), jobs: jobs.cards().map((j) => ({ ...j, at: j.started, ...(j.ended ? { ended: j.ended } : {}) })) }
   },
   text: (r) => [`${r.day}: ${r.exchanges.length} ${r.exchanges.length === 1 ? "ask" : "asks"}.`, ...r.exchanges.map((e: Exchange) => `${new Date(e.t).toTimeString().slice(0, 5)} ${e.kind === "shown" ? "proof played" : e.voice ? "said" : "asked"}${e.where ? ` (${e.where})` : ""}: ${e.text.replace(/\s+/g, " ").slice(0, 160)}${e.said.length ? `\n  -> ${e.said.join(" ").replace(/\s+/g, " ").slice(0, 200)}` : ""}`),
@@ -101,7 +99,6 @@ plugin.provide("voice:asks", (days: number) => {
     .map((e) => ({ t: e.t, text: e.text, where: e.where, said: e.said.join(" ").slice(0, 600), who: name }))
 })
 
-/** A Talk key ask's picture of the screen, as the helper wrote it (userData/screens/display-*.png): no other file. */
 plugin.op({
   id: "companion.press-media",
   owner: "The companion's presses",
@@ -110,14 +107,13 @@ plugin.op({
   mcp: false,
   params: { press: { type: "string", description: "the press's id (companion conversation)" }, shot: { type: "string", description: "its ask's picture (companion conversation)" } },
   run: async (p) => {
-    const wav = str(p.press) ? ((await plugin.desktop("talk:audio", { press: str(p.press) }).catch(() => null)) as { wav: string | null } | null)?.wav ?? null : null
-    const png = str(p.shot) ? ((await plugin.desktop("talk:shot", { name: path.basename(str(p.shot)) }).catch(() => null)) as { png: string | null } | null)?.png ?? null : null
+    const wav = str(p.press) ? Audio.safeParse(await plugin.desktop("talk:audio", { press: str(p.press) }).catch(() => null)).data?.wav ?? null : null
+    const png = str(p.shot) ? Shot.safeParse(await plugin.desktop("talk:shot", { name: path.basename(str(p.shot)) }).catch(() => null)).data?.png ?? null : null
     return { wav, png }
   },
   text: (r) => [r.wav ? "Its audio is kept." : "No audio kept.", r.png ? "Its picture is kept." : "No picture kept."].join(" "),
 })
 
-/** Where each service's balance is told, when it can't be asked. */
 type UsageRow = { service: string; today: Spent; week: Spent; left?: { used: number; limit: number; resets?: number; unit: string }; billing?: string }
 const BILLING: Record<string, string> = { openai: "https://platform.openai.com/settings/organization/billing/overview", soniox: "https://console.soniox.com", elevenlabs: "https://elevenlabs.io/app/subscription" }
 plugin.op({
@@ -132,8 +128,8 @@ Claude Code's (vau claude-code limits).
   kind: "read",
   run: async (): Promise<{ services: UsageRow[] }> => {
     const days = Array.from({ length: 7 }, (_, i) => localDate(Date.now() - i * 86_400_000))
-    const got = await Promise.all(days.map((day) => plugin.desktop("talk:presses", { day }).catch(() => []) as Promise<unknown>))
-    const lines = got.map((x) => (Array.isArray(x) ? x : []) as PressLine[])
+    const got = await Promise.all(days.map((day) => plugin.desktop("talk:presses", { day }).catch(() => [])))
+    const lines = got.map((x) => Presses.parse(x))
     const today = spent(lines[0]), week = spent(lines.flat()), eleven = await elevenUsage(plugin)
     const services = [...new Set([...week.map((x) => x.service), ...(eleven ? ["elevenlabs"] : [])])]
     return { services: services.map((service) => ({ service, today: today.find((x) => x.service === service) ?? { service, uses: 0 }, week: week.find((x) => x.service === service) ?? { service, uses: 0 },
@@ -156,15 +152,12 @@ companion-usage).
   params: { split: { type: "string", enum: ["right", "down"], description: "in a pane beside (right) or below (down)" }, newTab: { type: "boolean", description: "in a new tab" }, as: AS },
   run: async (p, ctx) => {
     const home = plugin.vault.pagesHome(), at = home ? `${home}/Companion.md` : "Companion.md"
-    // (a vault that had it on before its page came: written now, as turning it on would have)
     if (!fs.existsSync(plugin.vault.abs(at))) writeNew(plugin.vault.abs(at), readText(path.join(plugin.dir, "pages", "Companion.md")))
-    // (no window to show it in: said, never "opened")
     const shown = await ctx.op("ui.open", { path: at, ...(p.split ? { split: p.split } : {}), ...(p.newTab ? { newTab: true } : {}) }).then(() => true, () => false)
     return { path: at, shown, split: str(p.split) }
   },
   text: (r) => (r.shown ? `Opened ${r.path}${r.split ? ` in a split ${r.split}` : ""}.` : `${r.path} is ready, but no window of the app is open to show it in.`),
 })
 
-// (the Companion page's blocks as text: what /api/render shows)
 plugin.block("companion-conversation", async (ctx) => (await plugin.host.call("companion.conversation", { day: ctx.today })).text)
 plugin.block("companion-usage", async () => (await plugin.host.call("companion.usage", {})).text)

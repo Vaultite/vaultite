@@ -1,70 +1,53 @@
-// Co-editing: a Y.Doc per note open in some window, outside edits merged in; while others are in it, windows type into
-// it and it's written back a person at a time (each one's lines theirs); alone, a window saves as ever. Companion's socket.
 import * as decoding from "lib0/decoding"
 import * as encoding from "lib0/encoding"
 import { fromBase64, toBase64 } from "lib0/buffer"
-import type { WebSocket } from "ws"
+import type { RawData, WebSocket } from "ws"
 import * as Y from "yjs"
+import { z } from "zod"
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates } from "y-protocols/awareness"
 import { merge3, type Plugin, type Who } from "../../../core/plugins.ts"
 import { readText } from "../../../core/vault.ts"
+import { parseJson } from "../../../core/agents.ts"
 import { span } from "./text.ts"
+import { messageOf } from "./errors.ts"
 
-/** Someone in a note: who writes as them, the name and colour others see, whether they may type, their names for the
- *  vault's paths; a guest's: why a change of theirs can't land (`may`), and whether they're typing too fast (`slow`). */
+export const Message = z.looseObject({ t: z.string() })
+export type Message = z.infer<typeof Message>
+export const messageFrom = (data: RawData) => Message.safeParse(parseJson(String(data))).data
+
 export type Peer = { who: Who; name: string; tint: string; edits: boolean; see: (rel: string) => string | null
   may?: (rel: string, before: string, after: string) => string; slow?: () => boolean }
-/** `queued`: a guest's updates waiting to be checked together (a check reads the whole note: not one per keystroke). */
 type Room = { path: string; doc: Y.Doc; text: Y.Text; aw: Awareness; peers: Map<WebSocket, Set<number>>; disk: string
   pending: { peer: Peer; timer: ReturnType<typeof setTimeout>; since: number } | null; turn: Promise<void>
   queued: Map<WebSocket, { updates: Uint8Array[]; bytes: number; timer: ReturnType<typeof setTimeout> }>
-  /** Each Yjs client id's window, as first seen: no window writes under another's. */
   clients: Map<number, WebSocket>
-  /** Typed in by guests too much to check their changes on a copy any more (see check). */
   worn: boolean }
 
 const WRITE_MS = 400, WRITE_MAX_MS = 1500, MAX_UPDATE = 400_000, CHECK_MS = 250
-/** A guest's changes checked together hold at most this many pieces, under one or two Yjs ids (a window's own, and the
- *  next after a resync); a window claims a few ids in all. Many at one spot would take Yjs long to place. */
+// Yjs is slow to place many pieces at one spot.
 const MAX_STRUCTS = 500, MAX_IDS = 2, IDS_PER_WINDOW = 32
-/** The longest note a guest types into with others (their changes are checked whole, a few times a second). */
 const GUEST_LIVE_MAX = 64_000
-/** What a window may send a minute (opens, carets), how often it's sent the note back for a change that didn't land, and
- *  how much may wait unsent to it before it's let go. */
 const OPENS = 30, CARETS = 1200, REFUSALS = 30, BACKLOG = 32 << 20
-/** The biggest note typed in together (its whole text goes to each window that joins). */
 const ROOM_MAX = 2 << 20
 const WORN = "this note has been typed in too much to go on together: reopen it"
 const send = (ws: WebSocket, m: object) => {
   if (ws.readyState !== ws.OPEN) return
-  if (ws.bufferedAmount > BACKLOG) return void ws.close() // (a window that doesn't read: not kept in memory)
+  if (ws.bufferedAmount > BACKLOG) return void ws.close()
   ws.send(JSON.stringify(m))
 }
-/** A caret as y-codemirror reads one: two relative positions, each written out whole (it reads them as they come). */
-const idOf = (v: unknown) => {
-  const x = v as { client?: unknown; clock?: unknown } | null
-  return x && typeof x === "object" && Number.isSafeInteger(x.client) && Number.isSafeInteger(x.clock) && (x.client as number) >= 0 && (x.clock as number) >= 0
-    ? { client: x.client as number, clock: x.clock as number } : null
-}
-const relPos = (p: unknown) => {
-  const x = p as { type?: unknown; tname?: unknown; item?: unknown; assoc?: unknown } | null
-  if (!x || typeof x !== "object") return null
-  const item = idOf(x.item), type = idOf(x.type), assoc = x.assoc === -1 ? -1 : 0
-  if ((x.item != null && !item) || (x.type != null && !type)) return null
-  if (!item && !type && x.tname !== "md") return null
-  return { type, tname: type ? null : "md", item, assoc }
-}
-const caretOf = (c: unknown) => {
-  const x = c as { anchor?: unknown; head?: unknown } | null, anchor = x && relPos(x.anchor), head = x && relPos(x.head)
-  return anchor && head ? { anchor, head } : null
-}
+const Id = z.object({ client: z.int().min(0), clock: z.int().min(0) })
+const RelPos = z.object({ type: Id.nullish(), tname: z.unknown().optional(), item: Id.nullish(), assoc: z.unknown().optional() })
+  .refine((x) => x.item || x.type || x.tname === "md")
+  .transform((x) => ({ type: x.type ?? null, tname: x.type ? null : "md", item: x.item ?? null, assoc: x.assoc === -1 ? -1 : 0 }))
+const Caret = z.object({ anchor: RelPos, head: RelPos })
+const caretOf = Caret.nullable().catch(null).parse
+const AwState = z.object({ cursor: z.unknown().optional() })
+const Written = z.object({ text: z.string() })
 
-/** The rooms of one plugin's vault: what its sockets say about notes open in them. */
 export function rooms(plugin: Plugin) {
   const all = new Map<string, Room>()
   const peers = new Map<WebSocket, Peer>()
   const hits = new WeakMap<WebSocket, Map<string, { n: number; until: number }>>()
-  /** Over `n` of `kind` this minute, from this window. */
   const over = (ws: WebSocket, kind: string, n: number) => {
     const mine = hits.get(ws) ?? new Map(), t = Date.now(), h = mine.get(kind)
     hits.set(ws, mine)
@@ -72,8 +55,7 @@ export function rooms(plugin: Plugin) {
     return ++h.n > n
   }
 
-  /** Tell the room's other windows, each by its own name for the note. */
-  const tell = (r: Room, from: WebSocket | null, m: Record<string, unknown>) => {
+  const tell = (r: Room, from: WebSocket | null, m: Message) => {
     for (const ws of r.peers.keys()) {
       if (ws === from) continue
       const p = peers.get(ws)?.see(r.path)
@@ -81,7 +63,6 @@ export function rooms(plugin: Plugin) {
     }
   }
 
-  /** `text` as the doc's: one change from where they differ to where they agree again. */
   function become(r: Room, text: string, origin: unknown) {
     const now = r.text.toString()
     if (now === text) return
@@ -92,18 +73,15 @@ export function rooms(plugin: Plugin) {
     }, origin)
   }
 
-  /** One thing at a time per room (writes, merges from disk), in order. */
   const inTurn = (r: Room, fn: () => Promise<void>) => (r.turn = r.turn.then(fn).catch((e) => console.error(`companion: ${r.path}:`, e)))
 
-  /** Write `text` (the doc when `peer`'s turn ended) as theirs; what the server set as it saved (a date) comes back. */
   function write(r: Room, peer: Peer, text: string) {
     return inTurn(r, async () => {
       for (let tries = 0; tries < 2; tries++) {
         if (text === r.disk) return
         let f: { text: string }
-        try { f = await plugin.host.api("PUT", "file", { path: r.path, text, base: r.disk }, peer.who) as { text: string } } catch (e) {
-          // (changed on disk meanwhile: that merged in, the text written on it, once more)
-          console.error(`companion: couldn't write ${r.path}: ${(e as Error).message}`)
+        try { f = Written.parse(await plugin.host.api("PUT", "file", { path: r.path, text, base: r.disk }, peer.who)) } catch (e) {
+          console.error(`companion: couldn't write ${r.path}: ${messageOf(e)}`)
           const was = r.text.toString()
           rereadNow(r)
           text = r.text.toString() === was ? text : merge3(was, text, r.text.toString()) ?? r.text.toString()
@@ -114,25 +92,19 @@ export function rooms(plugin: Plugin) {
         if (f.text !== text) become(r, now === text ? f.text : merge3(text, now, f.text) ?? now, "disk")
         return
       }
-      // (a guest's that didn't land goes from the doc, or the next one to save it would write it as theirs)
       if (!peer.may) return
       become(r, merge3(text, r.text.toString(), r.disk) ?? r.disk, "disk")
       for (const [ws, p] of peers) if (p === peer && r.peers.has(ws)) refuse(r, ws, peer, "it couldn't be saved")
     })
   }
-  // (the text as it is now: what comes after is the next one's)
   const flush = (r: Room) => { if (!r.pending) return; clearTimeout(r.pending.timer); const p = r.pending.peer; r.pending = null; void write(r, p, r.text.toString()) }
 
-  /** What's on disk now merged into the doc (an agent, another machine, iCloud wrote it; a window alone saved it). Where
-   *  both changed the same lines, the doc's typing stays (the file's version is in its history) and the windows hear so. */
   function rereadNow(r: Room) {
     let disk: string
     try { disk = readText(plugin.vault.abs(r.path)) } catch { return }
     if (disk === r.disk) return
     const now = r.text.toString(), merged = merge3(r.disk, now, disk)
-    // (the file's version kept in its history, whatever the interval, before the typing goes over it)
     const here = [...r.peers.keys()].map((ws) => peers.get(ws)).filter((p) => !!p), by = r.pending?.peer ?? here.find((p) => !p.may) ?? here[0]
-    // (only guests in it: their typing stays only if they could have written it over the file's version)
     const kept = merged !== null || (by && !by.may?.(r.path, disk, now))
     if (merged === null && kept) plugin.service("history:keep")?.(r.path)
     if (merged === null) tell(r, null, { t: "y-clash", kept: kept ? "typed" : "file" })
@@ -142,10 +114,8 @@ export function rooms(plugin: Plugin) {
   }
   const reread = (r: Room) => inTurn(r, async () => rereadNow(r))
 
-  /** Each window hears how many others are in the note: typed in together only while there are some. */
   const counted = (r: Room) => { for (const ws of r.peers.keys()) { const p = peers.get(ws)?.see(r.path); if (p) send(ws, { t: "y-peers", path: p, others: r.peers.size - 1 }) } }
 
-  /** The room of a vault path, made from its file the first time. */
   function roomOf(path: string): Room | null {
     let r = all.get(path)
     if (r) return r
@@ -153,11 +123,11 @@ export function rooms(plugin: Plugin) {
     try { text = readText(plugin.vault.abs(path)) } catch { return null }
     if (text.length > ROOM_MAX) return null
     const doc = new Y.Doc({ gc: true }), aw = new Awareness(doc)
-    aw.setLocalState(null) // (the server is no one)
+    aw.setLocalState(null)
     r = { path, doc, text: doc.getText("md"), aw, peers: new Map(), disk: text, pending: null, turn: Promise.resolve(), queued: new Map(), clients: new Map(), worn: false }
     r.text.insert(0, text)
     const room = r
-    doc.on("update", (u: Uint8Array, origin: unknown) => tell(room, origin === "disk" ? null : origin as WebSocket, { t: "y", u: toBase64(u) }))
+    doc.on("update", (u, origin) => tell(room, [...room.peers.keys()].find((ws) => ws === origin) ?? null, { t: "y", u: toBase64(u) }))
     all.set(path, r)
     return r
   }
@@ -165,7 +135,6 @@ export function rooms(plugin: Plugin) {
   function leave(ws: WebSocket, path: string) {
     const r = all.get(path), ids = r?.peers.get(ws)
     if (!r || !ids) return
-    // (what they typed last, checked and kept as they go)
     const q = r.queued.get(ws), peer = peers.get(ws)
     if (q && peer) { clearTimeout(q.timer); check(r, ws, peer) }
     r.peers.delete(ws)
@@ -174,7 +143,6 @@ export function rooms(plugin: Plugin) {
       removeAwarenessStates(r.aw, [...ids], ws)
       tell(r, ws, { t: "aw", u: toBase64(encodeAwarenessUpdate(r.aw, [...ids])) })
     }
-    // (what's typed is written before the others hear they're alone: alone, a window saves on the doc as it has it)
     if (r.pending && (r.pending.peer === peer || r.peers.size < 2)) flush(r)
     void inTurn(r, async () => counted(r))
     if (r.peers.size) return
@@ -182,15 +150,12 @@ export function rooms(plugin: Plugin) {
     void r.turn.then(() => { if (!r.peers.size && all.get(path) === r) { all.delete(path); r.aw.destroy(); r.doc.destroy() } })
   }
 
-  /** A change of `ws`'s didn't land: said back, with the note as it is to type on from there (so often a minute). */
   function refuse(r: Room, ws: WebSocket, peer: Peer, why = "") {
     if (over(ws, "refused", REFUSALS)) return
     send(ws, { t: "y-reject", path: peer.see(r.path) ?? undefined, why })
     sendState(r, ws, peer)
   }
 
-  /** The doc to a window, as it is; `alone`: a guest who can't type in it with others (too long) saves by themselves. */
-  /** The room as `ws` joins it; `bare`, without the doc (a window that saves alone till someone comes, then asks again). */
   function sendState(r: Room, ws: WebSocket, peer: Peer, bare = false) {
     const p = peer.see(r.path)
     if (!r.peers.has(ws) || p === null) return
@@ -200,8 +165,6 @@ export function rooms(plugin: Plugin) {
       edits: peer.edits, alone, others })
   }
 
-  /** An awareness update from `ws` with its own states only (two at most), each named and coloured as the server knows
-   *  it, its caret as y-codemirror gives one; null when it speaks for another's. */
   function ownStates(r: Room, ws: WebSocket, peer: Peer, u: Uint8Array): Uint8Array | null {
     const d = decoding.createDecoder(u), e = encoding.createEncoder(), mine = r.peers.get(ws)!
     const n = decoding.readVarUint(d)
@@ -211,35 +174,28 @@ export function rooms(plugin: Plugin) {
       const id = decoding.readVarUint(d), clock = decoding.readVarUint(d), json = decoding.readVarString(d)
       if (json.length > 4000) return null
       if (taken(r, ws, id)) return null
-      let state: Record<string, unknown> | null = null
-      try { state = JSON.parse(json) } catch { return null }
+      const state = json === "null" ? null : AwState.safeParse(parseJson(json)).data
+      if (state === undefined) return null
       if (!mine.has(id) && mine.size >= 2 && state) return null
-      if (state) mine.add(id); else mine.delete(id) // (a caret gone: room for its window's next)
-      // (a fallback of each one's own: carets of one colour would share a label, as y-codemirror tells them apart by colour)
-      if (state) state = { cursor: caretOf(state.cursor), user: { name: peer.name, color: `var(--${peer.tint}, #${(id % 0xffffff).toString(16).padStart(6, "0")})`, colorLight: `color-mix(in srgb, var(--${peer.tint}) 25%, transparent)` } }
+      if (state) mine.add(id); else mine.delete(id)
       encoding.writeVarUint(e, id)
       encoding.writeVarUint(e, clock)
-      encoding.writeVarString(e, JSON.stringify(state))
+      encoding.writeVarString(e, JSON.stringify(state && { cursor: caretOf(state.cursor), user: { name: peer.name, color: `var(--${peer.tint}, #${(id % 0xffffff).toString(16).padStart(6, "0")})`, colorLight: `color-mix(in srgb, var(--${peer.tint}) 25%, transparent)` } }))
     }
     return encoding.toUint8Array(e)
   }
 
-  /** Whether a Yjs client id is another window's: one of its changes landed under it, or its caret goes by it. */
   const taken = (r: Room, ws: WebSocket, id: number) =>
     id === r.doc.clientID || (r.clients.get(id) ?? ws) !== ws || [...r.peers].some(([other, ids]) => other !== ws && ids.has(id))
-  /** Whether `u` writes only under `ws`'s own Yjs client ids (theirs once one of their changes lands: land). */
   function ownClients(r: Room, ws: WebSocket, u: Uint8Array) {
     return !Y.decodeUpdate(u).structs.some((s) => taken(r, ws, s.id.client))
   }
-  /** Whether the note's text holds only text: no embeds, formats or nested types, which no editor shows. */
   const onlyText = (t: Y.Text) => {
     for (let i = t._start; i; i = i.right) if (!(i.content instanceof Y.ContentString || i.content instanceof Y.ContentDeleted)) return false
     return t.length === t.toString().length
   }
 
-  /** A change from `ws` into the doc as theirs (written back in their turn). */
   function land(r: Room, ws: WebSocket, peer: Peer, u: Uint8Array) {
-    // (a write per person: another's turn writes what came before this)
     if (r.pending && r.pending.peer !== peer) flush(r)
     const was = r.text.toString()
     Y.applyUpdate(r.doc, u, ws)
@@ -247,18 +203,14 @@ export function rooms(plugin: Plugin) {
     if (r.text.toString() === was) return
     const since = r.pending?.since ?? Date.now()
     if (r.pending) clearTimeout(r.pending.timer)
-    // (a pause writes it, and so does a long stretch of typing, now and then)
     r.pending = { peer, since, timer: setTimeout(() => flush(r), Date.now() - since > WRITE_MAX_MS ? 0 : WRITE_MS) }
   }
 
-  /** A guest's waiting changes, checked together on a copy: they land only as the file would take them from them, and
-   *  only as text (nothing waiting on what isn't there, nothing but the note's text). */
   function check(r: Room, ws: WebSocket, peer: Peer) {
     const q = r.queued.get(ws)
     r.queued.delete(ws)
     if (!q || !r.peers.has(ws)) return
     const no = (why = "") => refuse(r, ws, peer, why)
-    // (before the copy, which costs as much as the doc)
     if (r.text.length > GUEST_LIVE_MAX) return no("this note is too long to type in together")
     if (r.worn) return no(WORN)
     const copy = new Y.Doc()
@@ -280,22 +232,18 @@ export function rooms(plugin: Plugin) {
   }
 
   return {
-    /** A window's socket joins: who it is. */
     add(ws: WebSocket, peer: Peer) {
       peers.set(ws, peer)
       ws.on("close", () => { for (const [path, r] of all) if (r.peers.has(ws)) leave(ws, path); peers.delete(ws) })
     },
 
-    /** A message about a room (`path` already the vault's, or null when it isn't one the window may name): true when it
-     *  was one. */
-    heard(ws: WebSocket, m: Record<string, unknown>, path: string | null) {
+    heard(ws: WebSocket, m: Message, path: string | null) {
       const peer = peers.get(ws)
-      if (!peer || typeof m.t !== "string" || !m.t.startsWith("y") && m.t !== "aw") return false
+      if (!peer || !m.t.startsWith("y") && m.t !== "aw") return false
       if (!path || !/\.md$/i.test(path)) return true
       const p = peer.see(path)
       if (p === null) return true
       if (m.t === "y-open") {
-        // (again after a window saved what it had typed alone: the doc as the file has it now)
         if (over(ws, "open", OPENS)) return true
         const r = roomOf(path)
         if (!r) return true
@@ -314,15 +262,14 @@ export function rooms(plugin: Plugin) {
       else if (m.t === "aw" && typeof m.u === "string") {
         if (m.u.length > 16_000 || over(ws, "caret", CARETS)) return true
         let u: Uint8Array | null = null
-        try { u = ownStates(r, ws, peer, fromBase64(m.u)) } catch { /* not an update */ }
+        try { u = ownStates(r, ws, peer, fromBase64(m.u)) } catch {}
         if (!u) return true
         applyAwarenessUpdate(r.aw, u, ws)
         tell(r, ws, { t: "aw", u: toBase64(u) })
       } else if (m.t === "y" && typeof m.u === "string") {
-        if (!peer.edits) return true // (a reader's editor doesn't type: nothing to say back)
+        if (!peer.edits) return true
         if (m.u.length > MAX_UPDATE || peer.slow?.()) return refuse(r, ws, peer), true
-        let u: Uint8Array
-        try { u = fromBase64(m.u) } catch { return true }
+        const u = fromBase64(m.u)
         if (!peer.may) {
           try { if (ownClients(r, ws, u)) land(r, ws, peer, u) } catch { send(ws, { t: "y-reject", path: p }) }
           return true
@@ -331,21 +278,17 @@ export function rooms(plugin: Plugin) {
         q.updates.push(u)
         q.bytes += u.length
         r.queued.set(ws, q)
-        // (more than a check takes, refused before it's merged: each update holds a piece at least)
         if (q.bytes > MAX_UPDATE || q.updates.length > MAX_STRUCTS) { clearTimeout(q.timer); r.queued.delete(ws); refuse(r, ws, peer) }
       }
       return true
     },
 
-    /** Files changed (on disk, or written): open notes take what isn't their own. */
     changed(paths: string[] | null) {
       for (const r of all.values()) if (paths === null || paths.includes(r.path)) void reread(r)
     },
 
-    /** Notes open now and who's in each (tests, status). */
     list: () => [...all.values()].map((r) => ({ path: r.path, peers: r.peers.size, text: r.text.toString() })),
 
-    /** Until no room has a write or a guest's check waiting, nor anything in turn (tests: what's done, not a guessed wait). */
     async settled() {
       for (;;) {
         const rs = [...all.values()], turns = rs.map((r) => r.turn)

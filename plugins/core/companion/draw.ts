@@ -1,3 +1,4 @@
+import { z } from "zod"
 import { type OpCtx, OpError } from "../../../core/plugins.ts"
 import { isAnswer, type Mark, type Rect as ScreenRect, rectOf, spots, VOCABULARY } from "../../../core/desktop/screenmarks.ts"
 import type { Shown as ShownMark } from "./shown.ts"
@@ -11,6 +12,12 @@ import { editorFor, inTurn, askWindow, streams, toolUse, saidUndrawn } from "./e
 import { AS, PATH, target, who } from "./args.ts"
 import { askOf } from "./wiring.ts"
 import { edited } from "./propose.ts"
+import { messageOf } from "./errors.ts"
+
+type OnScreen = { say?: unknown; hint?: unknown; as?: unknown }
+const PlaceRect = z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number(), label: z.string().optional() })
+const Places = z.record(z.string(), z.unknown()).catch({}).transform((all): Record<string, ScreenRect> => Object.fromEntries(Object.entries(all)
+  .flatMap(([k, r]) => { const x = PlaceRect.safeParse(r); return x.success ? [[k, x.data]] : [] })))
 
 plugin.op({
   id: "companion.draw",
@@ -69,7 +76,7 @@ drawing's text (next, vau render). Only in pair mode or when they asked you to.
       return await inTurn(t.path!, async () => {
         const f = await ctx.api("GET", `file?path=${encodeURIComponent(t.path!)}`), cur = String(f.text ?? "")
         let made: ReturnType<Draw>
-        try { made = apply(cur, p.actions) } catch (e) { throw new OpError((e as Error).message) }
+        try { made = apply(cur, p.actions) } catch (e) { throw new OpError(messageOf(e)) }
         const ws = editorFor(t.path!), reply: { touched?: unknown } = {}
         const drawn = !!ws && await askWindow(ws, { t: "draw", agent: agentOf(name).name, path: t.path, actions: p.actions }, EDIT_WAIT + p.actions.length * 300, reply)
         if (!drawn) await ctx.api("PUT", "file", { path: f.path, text: made.text, base: cur })
@@ -83,8 +90,7 @@ drawing's text (next, vau render). Only in pair mode or when they asked you to.
   did: (p) => (p.marks !== undefined ? { action: "ui", text: "Drew on the screen", paths: [], by: who(p) } : edited(p)),
 })
 
-/** Marks over the screen, its cursor at the first and its words said with them. */
-async function drawOnScreen(p: Record<string, unknown>, ctx: OpCtx) {
+async function drawOnScreen(p: OnScreen & { marks: unknown[] }, ctx: OpCtx) {
   const name = who(p)
   const { drawing: d, unshown, added } = await screenDrawing.draw(name, p.marks, str(p.say) || undefined, str(p.hint).trim() || undefined).catch((e) => {
     did(name, "draw")
@@ -92,26 +98,22 @@ async function drawOnScreen(p: Record<string, unknown>, ctx: OpCtx) {
     if (n && ask !== undefined) saidUndrawn.set(key(name), { note: n, text: notes.get(n)?.text ?? str(p.say), ask })
     throw e
   })
-  // (where each landed, a bare point snapped to what's there: what they saw)
   const landed = added.map((m) => ({ t: Date.now(), what: `your ${m.type}`, ...landing(m, d.places) }))
   showed(name, landed)
   did(name, "draw", undefined, `${landed.map((x) => `${/^[aeiou]/.test(x.what.slice(5)) ? "an" : "a"} ${x.what.slice(5)}${x.at ? ` at ${Math.round(x.at.x)},${Math.round(x.at.y)}` : ""}`).join(", ")} on the screen`)
   const r = spots(d.marks).map((s) => rectOf(s, d.places)).find(Boolean)
   const at = r ? { sx: Math.round(r.x + r.w / 2), sy: Math.round(r.y + r.h / 2) } : {}
-  // (a choice's question: asked, as a question is)
   if (str(p.say)) await ctx.op("companion.say", { text: str(p.say), ...at, ...(d.marks.some(isAnswer) ? { ask: true } : {}), ...(p.as ? { as: p.as } : {}) })
   else if (r) setAgent(name, at)
-  return { screen: d.id, marks: (p.marks as unknown[]).length - unshown.length, ...(unshown.length ? { unshown } : {}) }
+  return { screen: d.id, marks: p.marks.length - unshown.length, ...(unshown.length ? { unshown } : {}) }
 }
 
-/** Where mark `m` landed on the screen (its first spot's box), or its area in words; a card on calm space has neither. */
 function landing(m: Mark, places: Record<string, ScreenRect> = {}): Pick<ShownMark, "at" | "on"> {
   const s = spots([m])[0], r = s && rectOf(s, places)
   return r ? { at: { x: r.x, y: r.y, w: r.w, h: r.h } } : s && "area" in s ? { on: `the ${s.area} of the screen` } : {}
 }
 
-/** The drawing up changed in place by id, its words said with it. */
-async function editOnScreen(p: Record<string, unknown>, ctx: OpCtx) {
+async function editOnScreen(p: OnScreen & { actions?: unknown }, ctx: OpCtx) {
   const name = who(p)
   did(name, "draw")
   const { drawing: d, touched } = await screenDrawing.edit(name, p.actions, str(p.say) || undefined)
@@ -127,7 +129,7 @@ plugin.op({
   kind: "write",
   params: { id: { type: "string", description: "the drawing (default: the one up)" }, path: { ...PATH, description: "where (default Drawings/<its title>.excalidraw)" },
     all: { type: "boolean", description: "the marks on the screen too, as they were placed" }, places: { type: "object", description: "where the overlay found its places (Keep's)" } },
-  run: async (p, ctx) => ({ path: await screenDrawing.keep(ctx, { id: str(p.id) || undefined, path: str(p.path) || undefined, all: p.all === true, places: (p.places ?? {}) as Record<string, ScreenRect> }) }),
+  run: async (p, ctx) => ({ path: await screenDrawing.keep(ctx, { id: str(p.id) || undefined, path: str(p.path) || undefined, all: p.all === true, places: Places.parse(p.places) }) }),
   text: (r) => `Kept ${r.path}.`,
   did: () => ({ action: "create", text: "Kept the companion's drawing", paths: [] }),
 })
@@ -140,7 +142,6 @@ plugin.op({
   lock: false,
   params: { id: { type: "string", description: "the item (n12); default: all of yours" }, as: AS },
   run: async (p) => {
-    // (an agent's own: never a person's thread)
     const name = who(p), gone = [...notes.values()].filter((n) => !n.by && (p.id ? n.id === p.id : n.agent === name))
     for (const n of gone) dropNote(n.id)
     const drew = !p.id && screenDrawing.clear({ agent: name })

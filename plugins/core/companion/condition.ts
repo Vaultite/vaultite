@@ -1,18 +1,12 @@
-// Condition over time: the ui model's checks (core/desktop/uimodel.ts) with what happens (click, type, idle, after),
-// joined (and, or) and bounded (within 10s). Waiting watches one over time. No Node: the tests read it.
 import { type Condition as Check, conditionText as checkText, normWords, parseCondition as parseCheck } from "../../../core/desktop/uimodel.ts"
+import { messageOf } from "./errors.ts"
 
 export type Clause =
-  /** The user clicked (the thing saying `text`), or typed (into it): seen as it happens, kept once seen. */
   | { kind: "click"; text?: string } | { kind: "type"; text?: string }
-  /** Nothing they did and nothing on screen changed for `ms`; or `ms` went by. */
   | { kind: "idle"; ms: number } | { kind: "after"; ms: number }
-  /** A state of the screen, checked by the ui model (changed: since the wait began). */
   | { kind: "check"; check: Check }
-/** Any of its groups met, each group's clauses all at once (`and` binds tighter than `or`); `within`: how long to wait. */
 export type Condition = { any: Clause[][]; within?: number; source: string }
 const DURATION = /^(\d+(?:\.\d+)?)\s*(ms|s|sec|secs|seconds?|m|min|mins|minutes?)?$/i
-/** `1s`, `500ms`, `2m` (seconds when bare) as milliseconds, or null. */
 export function durationOf(s: string): number | null {
   const m = DURATION.exec(s.trim())
   if (!m) return null
@@ -20,7 +14,6 @@ export function durationOf(s: string): number | null {
   return Math.round(u === "ms" ? n : u.startsWith("m") ? n * 60_000 : n * 1000)
 }
 
-/** `source` as a condition; throws saying what's wrong, with the words it knows. */
 export function parseCondition(source: string): Condition {
   const src = source.trim()
   if (!src) throw new Error("an empty condition: say what to wait for (click, type, shows \"Saved\", gone \"Loading\", changed, idle 1s)")
@@ -32,7 +25,6 @@ export function parseCondition(source: string): Condition {
     within = ms
     body = body.slice(0, w.index)
   }
-  // (clauses split at and / or outside quotes)
   const any: Clause[][] = []
   let group: Clause[] = [], cur = ""
   const end = () => { const c = cur.trim(); cur = ""; if (!c) throw new Error(`"${src}": something is missing beside and / or`); group.push(clauseOf(c)) }
@@ -51,7 +43,7 @@ function clauseOf(c: string): Clause {
   if (word === "click" || word === "type") {
     const q = /^"((?:[^"\\]|\\.)*)"$/.exec(rest)
     if (rest && !q) throw new Error(`${word} takes the words of what, quoted: ${word} "Send"`)
-    return { kind: word as "click", ...(q?.[1].trim() ? { text: q[1].trim() } : {}) }
+    return { kind: word, ...(q?.[1].trim() ? { text: q[1].trim() } : {}) }
   }
   if (word === "idle" || word === "after" || word === "wait") {
     const ms = durationOf(rest)
@@ -59,26 +51,21 @@ function clauseOf(c: string): Clause {
     return { kind: word === "idle" ? "idle" : "after", ms }
   }
   try { return { kind: "check", check: parseCheck(word === "show" ? `shows ${rest}` : c) } } catch (e) {
-    throw new Error(`${(e as Error).message}; or what happens: click, type, idle 1s, after 2s (and, or, within 10s)`)
+    throw new Error(`${messageOf(e)}; or what happens: click, type, idle 1s, after 2s (and, or, within 10s)`)
   }
 }
 
 const q = (s: string) => JSON.stringify(s)
 const secs = (ms: number) => (ms % 1000 ? `${ms}ms` : `${ms / 1000}s`)
 export function clauseText(c: Clause): string {
-  // (the ui model writes gone as not exists: said as written)
   if (c.kind === "check") return checkText(c.check).replace(/^not exists /, "gone ")
   if (c.kind === "click" || c.kind === "type") return c.text ? `${c.kind} ${q(c.text)}` : c.kind
   return `${c.kind} ${secs(c.ms)}`
 }
-/** A condition written back, as it parses. */
 export const conditionText = (c: Condition) => `${c.any.map((g) => g.map(clauseText).join(" and ")).join(" or ")}${c.within !== undefined ? ` within ${secs(c.within)}` : ""}`
 
-/** What the user did, as the helper or the app's window saw it: never what keys they pressed, only where. */
 export type Input = { kind: "click" | "type"; t: number; label?: string; role?: string; x?: number; y?: number }
 type Rect = { x: number; y: number; width: number; height: number }
-/** What a watch reads the screen with. `holds` checks once (the ui model's check; `before`, the snapshot as the wait
- *  began, for changed); `snapshot` is what the screen says now; `where` is where the thing saying words is, for a click. */
 export type Env = {
   now: () => number
   sleep: (ms: number) => Promise<void>
@@ -88,10 +75,8 @@ export type Env = {
   where?: (text: string) => Promise<Rect | null>
 }
 export type Watched = { met: boolean; why: "met" | "timeout" | "stopped"; ms: number
-  /** The group that was met, as written. */
   by?: string }
 
-/** Whether an input's element is the one saying `text`: its words, or (a click) its point inside where those words are. */
 export function inputOn(i: Input, text: string | undefined, at?: Rect | null) {
   if (!text) return true
   const want = normWords(text), got = normWords(i.label ?? "")
@@ -100,23 +85,19 @@ export function inputOn(i: Input, text: string | undefined, at?: Rect | null) {
 }
 
 const STEP_MS = 250
-/** What it waits for when no `within` says: long enough to read a step and do it. */
 export const WAIT_MS = 5 * 60_000
 
-/** Wait until `c` is met (polled every `every` ms), `within` (or `timeout`) passes, or `signal` aborts. */
 export async function watch(c: Condition, env: Env, o: { every?: number; timeout?: number; signal?: AbortSignal } = {}): Promise<Watched> {
   const start = env.now(), limit = c.within ?? o.timeout ?? WAIT_MS, every = o.every ?? STEP_MS
   const all = c.any.flat()
   const needsSig = all.some((x) => x.kind === "idle" || (x.kind === "check" && x.check.kind === "changed"))
   const base = needsSig ? await env.snapshot() : undefined
   let sig = base, still = start
-  /** Event clauses once seen stay met for the rest of the wait. */
   const seen = new Set<Clause>()
   const aims = new Map<string, Rect | null>()
   for (;;) {
     if (o.signal?.aborted) return { met: false, why: "stopped", ms: env.now() - start }
     const now = env.now(), ins = env.inputs(start)
-    // (where the things clicked on are now, so a click on them counts by its point too)
     await Promise.all(all.flatMap((x) => (x.kind === "click" && x.text && env.where ? [env.where(x.text).then((b) => { if (b) aims.set(x.text!, b) }, () => {})] : [])))
     for (const x of all) if ((x.kind === "click" || x.kind === "type") && ins.some((i) => i.kind === x.kind && inputOn(i, x.text, x.text ? aims.get(x.text) : null))) seen.add(x)
     if (needsSig) {
@@ -140,14 +121,12 @@ export async function watch(c: Condition, env: Env, o: { every?: number; timeout
   }
 }
 
-/** Test `c` once, now: the screen's states as they are; what happens over time (a click, changed, idle) can't be
- *  checked once and is said so. */
 export async function check(c: Condition, env: Pick<Env, "holds">): Promise<{ met: boolean; by?: string; cant?: string[] }> {
   const once = (x: Clause) => x.kind === "check" && x.check.kind !== "changed"
   const cant = c.any.flat().filter((x) => !once(x)).map(clauseText)
   for (const g of c.any) {
     if (!g.every(once)) continue
-    const ok = await Promise.all(g.map((x) => env.holds((x as Extract<Clause, { kind: "check" }>).check).catch(() => false)))
+    const ok = await Promise.all(g.map((x) => (x.kind === "check" ? env.holds(x.check).catch(() => false) : false)))
     if (ok.every(Boolean)) return { met: true, by: g.map(clauseText).join(" and ") }
   }
   return { met: false, ...(cant.length ? { cant: [...new Set(cant)] } : {}) }

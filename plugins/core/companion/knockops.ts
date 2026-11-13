@@ -1,19 +1,20 @@
-// Knocks and presences, kept and told: each knock is its own shared entry (the other Macs' helpers may be the one the
-// user is at), the sessions' presences worked out here from the terminals of every machine, both sent to the helpers.
+import { z } from "zod"
 import type { OpCtx, Plugin } from "../../../core/plugins.ts"
 import { OpError } from "../../../core/plugins.ts"
 import { actOn, addKnock, duration, expire, type Knock, type KnockAct, makeKnock, over, type Presence, presencesOf, type PresenceState, type TermRow, URGENCIES } from "../../../core/desktop/knocks.ts"
 import { type Job, terminalOf } from "./jobs.ts"
+import { messageOf } from "./errors.ts"
+import type { Message } from "./rooms.ts"
 
 const str = (v: unknown) => (typeof v === "string" ? v : "")
-/** An ended knock is kept a day (`companion knocks` shows what came), then forgotten. */
 const KEEP_MS = 86_400_000
-/** A session ignored stays so this long (it's ended by then, mostly). */
 const MUTE_MS = 12 * 3600_000
-/** How often the terminals of every machine are read while a helper listens. */
 const EVERY_MS = 6000
+const Listed = z.object({ sessions: z.array(z.unknown()).optional() })
+const Row = z.object({ id: z.string(), agent: z.string().nullable().optional(), state: z.string().optional(), needs: z.boolean().optional(), name: z.string().optional(),
+  title: z.string().optional(), msg: z.string().optional() })
+const Heard = z.object({ act: z.enum(["show", "later", "told", "ignore", "open"]), id: z.unknown().optional(), mute: z.unknown().optional() })
 
-/** `off`: the companion is; `hidden`: the island is (the setting `island`), nothing goes to the helpers. */
 type Deps = { toScreens: (m: object) => void; listening: () => boolean; jobs: () => Job[]; off: () => boolean; hidden: () => boolean }
 
 export function knockOps(plugin: Plugin, d: Deps) {
@@ -22,7 +23,6 @@ export function knockOps(plugin: Plugin, d: Deps) {
   const muted = () => plugin.kept<Record<string, number>>("knocks-muted", {})
   const isMuted = (from: string) => (muted()[from] ?? 0) > Date.now()
 
-  // (a knock's session by its machine, `<terminal>@<machine>`, as every machine's list names it; this one's own bare)
   let self = ""
   void plugin.ask<string | null>("machines:self", null).then((id) => { self = id ?? "" }, () => {})
   const qualified = (from: string) => (!from || from.includes("@") || !self ? from : `${from}@${self}`)
@@ -33,7 +33,6 @@ export function knockOps(plugin: Plugin, d: Deps) {
   const seen = new Map<string, { state: PresenceState; since: number }>()
   let presences: Presence[] = []
   let sent = ""
-  /** What the helpers have: the knocks still to come or telling, and the presences. */
   function tell(force = false) {
     const now = Date.now(), ks = tidy(now)
     const jobs = d.jobs(), titles = new Map(jobs.map((j) => [local(terminalOf(j)), j.title]))
@@ -46,7 +45,6 @@ export function knockOps(plugin: Plugin, d: Deps) {
     sent = text
     d.toScreens(m)
   }
-  /** Expired ones marked, those over a day ago forgotten. */
   function tidy(now: number) {
     const ks = all()
     for (const k of expire(ks, now)) {
@@ -55,7 +53,6 @@ export function knockOps(plugin: Plugin, d: Deps) {
     }
     return all()
   }
-  // (`again`: a terminal moved while they were read, so they're read once more after)
   let reading = false, again = false
   async function readTerminals(): Promise<void> {
     if (reading) { again = true; return }
@@ -63,8 +60,8 @@ export function knockOps(plugin: Plugin, d: Deps) {
     reading = true
     try {
       const r = await plugin.runOp("terminal.list", { machine: "all" })
-      rows = ((r.result as { sessions?: TermRow[] })?.sessions ?? []).map((s) => ({ id: s.id, agent: s.agent, state: s.state, needs: s.needs, name: s.name, title: s.title, msg: s.msg }))
-    } catch { /* this machine's terminals as last read */ } finally { reading = false }
+      rows = (Listed.safeParse(r.result).data?.sessions ?? []).flatMap((s) => Row.safeParse(s).data ?? [])
+    } catch {} finally { reading = false }
     tell()
     if (again) { again = false; return readTerminals() }
   }
@@ -73,7 +70,6 @@ export function knockOps(plugin: Plugin, d: Deps) {
   plugin.onUnload(() => clearInterval(timer))
   plugin.onEvent({ types: ["terminal.state", "terminal.ended"] }, () => void readTerminals())
 
-  /** A knock's session named as the user knows it: its job's title, its terminal's name or title. */
   function whoIs(at: string, ctx: OpCtx) {
     const from = local(at)
     const job = d.jobs().find((j) => terminalOf(j) === from)
@@ -81,17 +77,15 @@ export function knockOps(plugin: Plugin, d: Deps) {
     return job?.title || row?.name || row?.title || ctx.who.agent || "A session"
   }
 
-  /** A knock added (one before from its session replaced), kept and told; throws (400) on a bad one. */
   function knock(p: { from: string; who: string; line: string; urgency?: string; life?: number; open?: string; hold?: number }) {
     let k: Knock
-    try { k = makeKnock({ id: `k${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, ...p, from: qualified(p.from) }, Date.now()) } catch (e) { throw new OpError((e as Error).message, 400) }
+    try { k = makeKnock({ id: `k${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, ...p, from: qualified(p.from) }, Date.now()) } catch (e) { throw new OpError(messageOf(e), 400) }
     const before = new Map(all().map((x) => [x.id, x.state])), ks = addKnock(all(), k, isMuted)
     for (const x of ks) if (x.id === k.id || x.state !== before.get(x.id)) put(x)
     tell()
     return named(ks.find((x) => x.id === k.id)!)
   }
 
-  /** The user (or the helper for them) did `act` to knock `id`; `mute`: its session's knocks too, a while. */
   function act(id: string, what: KnockAct, mute = false) {
     const k = all().find((x) => x.id === id || (id.length >= 4 && x.id.endsWith(id)))
     if (!k) throw new OpError(`no knock ${id} (companion knocks lists them)`, 404)
@@ -180,18 +174,15 @@ its proof (companion job-show), one without opens its terminal.
   })
 
   return {
-    /** A helper's word on a knock: it showed it, its grace ran out (told), the user put it off, ignored it, opened it. */
-    heard(m: Record<string, unknown>) {
-      const what = str(m.act) as KnockAct
-      if (!["show", "later", "told", "ignore", "open"].includes(what)) return
-      try { act(str(m.id), what, m.mute === true) } catch { /* gone meanwhile */ }
+    heard(m: Message) {
+      const h = Heard.safeParse(m).data
+      if (!h) return
+      try { act(str(h.id), h.act, h.mute === true) } catch {}
     },
-    /** A helper came: it gets them at once. */
     hello: () => { tell(true); void readTerminals() },
     presences: () => presences,
     knocks: () => all().filter((k) => !over(k)),
     knock,
-    /** Knocks from `from` still to come or telling, ended (its job reviewed elsewhere, say). */
     settle: (from: string) => { for (const x of all()) if (x.from === qualified(from) && !over(x)) put(actOn(x, "open", Date.now())); tell() },
   }
 }

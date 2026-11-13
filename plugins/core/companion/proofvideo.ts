@@ -1,41 +1,32 @@
-// A job's proof as a video: its tour played on the worker's own copy of the change (a dev server's address) in a
-// headless Chrome, never on the user's screen and with no sound, its marks and each step's words drawn in, as an mp4.
 import { spawn } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
+import { z } from "zod"
 import { type Cdp, chromePath, headless } from "../../../core/headless.ts"
 import type { Do, Step, Tour } from "./tour.ts"
 import { FLIPS, holdMs } from "./proof.ts"
 
-/** The frame a proof is recorded at (CSS pixels), and how many frames a second: small files, still sharp text. */
 export const SIZE = { width: 1280, height: 800 }
 const FPS = 15
-/** The most a proof runs: a short video, a few MB. */
 const MOST_MS = 120_000
 
-/** ffmpeg, from PATH or where Homebrew and Linux put it. */
 export function ffmpegPath() {
   const dirs = [...(process.env.PATH ?? "").split(path.delimiter), "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"]
   return dirs.map((d) => path.join(d, "ffmpeg")).find((p) => fs.existsSync(p)) ?? null
 }
 
-/** The words a do or a wait clicks or types into, in the order the step does them: a demo does what guide waits for. */
 export function actsOf(s: Pick<Step, "do" | "wait" | "tags">): Do[] {
-  // (a bare click: on the step's first thing)
   const thing = s.tags.map((g) => ("find" in g.at ? g.at.find : "")).find(Boolean)
   const clicks = s.wait?.any.length === 1 ? s.wait.any[0].flatMap((c) => { const text = c.kind === "click" ? c.text ?? thing : undefined; return text ? [{ action: "click" as const, text }] : [] }) : []
   return [...clicks, ...(s.do ?? [])]
 }
 
-/** The address a proof plays at: `url` itself, or a note or page (`open`) of the Vaultite served there. */
 export function proofUrl(url: string, open?: string) {
   if (!open || /^https?:\/\//i.test(open)) return open || url
   const base = url.replace(/#.*$/, "").replace(/\/+$/, "")
   return /\.\w+$/.test(open) ? `${base}/#file/${encodeURIComponent(open)}` : `${base}/#${open.replace(/^#/, "")}`
 }
 
-/** What the page is given: finding a thing by its words (the smallest that says them, its label first), the marks, the
- *  step's words as a caption, a before picture over its thing, a before and after slide. */
 const PAGE = String.raw`(() => {
   if (window.__proof) return
   const norm = (s) => (s || "").replace(/\s+/g, " ").trim().toLowerCase()
@@ -127,12 +118,14 @@ const PAGE = String.raw`(() => {
   window.__proof = { find, mark, caption, picture, slide, tap, clear, labels }
 })()`
 
-/** A picture for the page: a data address (the page may be any site's, so never a file of this machine). */
 const dataUrl = (abs: string) => `data:image/${path.extname(abs).slice(1).replace("jpg", "jpeg")};base64,${fs.readFileSync(abs).toString("base64")}`
 
+const Evaluated = z.object({ result: z.object({ value: z.unknown().optional() }).optional(), exceptionDetails: z.object({ text: z.string().optional() }).optional() })
+const Labels = z.array(z.string())
+const Rect = z.looseObject({ x: z.number(), y: z.number(), w: z.number(), h: z.number() })
+type Rect = z.infer<typeof Rect>
+
 export type Recorded = { file: string; ms: number; times: number[]; bytes: number }
-/** Record `tour` played at `url` into mp4 `out`: captions, marks, befores flipped, afters (the Mac's own UI) as slides;
- *  `pic` finds a step's picture here. Throws saying what it couldn't find. */
 export async function recordProof(o: { url: string; tour: Pick<Tour, "title" | "steps">; out: string; pic: (p: string) => string; signal?: AbortSignal }): Promise<Recorded> {
   const chrome = chromePath(), ffmpeg = ffmpegPath()
   if (!chrome) throw new Error("no Chrome to record in here (Google Chrome, or Chromium: VAULTITE_CHROME names one)")
@@ -149,18 +142,14 @@ export async function recordProof(o: { url: string; tour: Pick<Tour, "title" | "
     if (nav.errorText) throw new Error(`couldn't open ${o.url}: ${nav.errorText} (is its server running?)`)
     await Promise.race([loaded, sleep(15_000)])
     const js = async (expr: string) => {
-      const r = await p.send("Runtime.evaluate", { expression: expr, returnByValue: true, awaitPromise: true }) as { result?: { value?: unknown }; exceptionDetails?: { text?: string } }
+      const r = Evaluated.safeParse(await p.send("Runtime.evaluate", { expression: expr, returnByValue: true, awaitPromise: true })).data ?? {}
       if (r.exceptionDetails) throw new Error(`the page: ${r.exceptionDetails.text}`)
       return r.result?.value
     }
-    // (a page that draws itself after load, as the app does: its first words up before the first frame)
     for (let i = 0; i < 40 && !(await js("document.body && document.body.innerText.trim().length > 0")); i++) await sleep(250)
     await sleep(1200)
     await js(PAGE)
 
-    // The things of the steps before any acts found first (later ones may come of what it does, so when theirs comes):
-    // one that isn't there fails before any video is made, saying so.
-    type Rect = { x: number; y: number; w: number; h: number }
     const finds = (s: Step) => s.tags.flatMap((g) => [g.at, g.to]).flatMap((at) => (at && "find" in at ? [at.find] : []))
     const missing = async (s: Step, wait = 0) => {
       const out: string[] = []
@@ -171,7 +160,7 @@ export async function recordProof(o: { url: string; tour: Pick<Tour, "title" | "
       }
       return out
     }
-    const lostSay = async (lost: string[]) => new Error(`not on the page at ${o.url}: ${lost.join(", ")}. It shows: ${((await js("__proof.labels()")) as string[]).map((x) => `"${x}"`).join(", ") || "nothing readable"}. Name things by the words they show there`)
+    const lostSay = async (lost: string[]) => new Error(`not on the page at ${o.url}: ${lost.join(", ")}. It shows: ${(Labels.safeParse(await js("__proof.labels()")).data ?? []).map((x) => `"${x}"`).join(", ") || "nothing readable"}. Name things by the words they show there`)
     const acts = o.tour.steps.findIndex((s) => actsOf(s).length), first = acts < 0 ? o.tour.steps : o.tour.steps.slice(0, acts + 1)
     const lost = (await Promise.all(first.map((s) => missing(s)))).flat()
     if (lost.length) throw await lostSay(lost)
@@ -181,7 +170,7 @@ export async function recordProof(o: { url: string; tour: Pick<Tour, "title" | "
     let encErr = ""
     enc.stderr!.on("data", (d: Buffer) => { encErr += d })
     const encoded = new Promise<number>((ok) => enc!.on("exit", (c) => ok(c ?? 1)))
-    // (frames come only when the page changes: the latest is written at a steady rate, so the video keeps real time)
+    // Chrome's screencast sends a frame only when the page changes.
     let latest: Buffer | null = null, written = 0
     p.on("Page.screencastFrame", (f) => { latest = Buffer.from(String(f.data), "base64"); void p.send("Page.screencastFrameAck", { sessionId: f.sessionId }).catch(() => {}) })
     await p.send("Page.startScreencast", { format: "jpeg", quality: 82, maxWidth: SIZE.width, maxHeight: SIZE.height })
@@ -212,11 +201,10 @@ export async function recordProof(o: { url: string; tour: Pick<Tour, "title" | "
         if (late.length) throw await lostSay(late)
         const rects: (Rect | null)[] = []
         for (const g of s.tags) {
-          const r = "find" in g.at ? await js(`__proof.find(${JSON.stringify(g.at.find)})`) as Rect | null : null
+          const r = "find" in g.at ? Rect.safeParse(await js(`__proof.find(${JSON.stringify(g.at.find)})`)).data ?? null : null
           rects.push(r)
           if (r) await js(`__proof.mark(${JSON.stringify(g.kind === "arrow" || g.kind === "connect" ? "ring" : g.kind)}, ${JSON.stringify(r)}, ${JSON.stringify(g.label ?? "")})`)
         }
-        // (a mark low on the page: the caption goes on top, never over it)
         const low = rects.some((r) => r && r.y + r.h > SIZE.height - 150)
         await js(`__proof.caption(${s.n}, ${total}, ${JSON.stringify(s.said)}, ${low})`)
         if (s.before && rects[0]) {
@@ -226,7 +214,6 @@ export async function recordProof(o: { url: string; tour: Pick<Tour, "title" | "
           for (const [ms, on] of FLIPS) { await sleep(ms - at); at = ms; await js(`__proof.picture(${src}, ${r}, ${on})`) }
           await sleep(Math.max(0, hold - at))
         } else await sleep(hold)
-        // (what guide would wait for them to do, and its do: done, so the next step shows what it led to)
         for (const d of actsOf(s)) { await act(p, js, d); await sleep(700) }
       }
       await js("__proof.clear()")
@@ -245,15 +232,13 @@ export async function recordProof(o: { url: string; tour: Pick<Tour, "title" | "
   }
 }
 
-/** One do in the recording browser: a click at the thing saying its words, typing (into one), a key, a scroll. */
 async function act(p: Cdp, js: (e: string) => Promise<unknown>, d: Do) {
   const at = async (text: string) => {
-    const r = await js(`__proof.find(${JSON.stringify(text)})`) as { x: number; y: number; w: number; h: number } | null
+    const r = Rect.safeParse(await js(`__proof.find(${JSON.stringify(text)})`)).data
     if (!r) throw new Error(`do: nothing says "${text}" on the page now`)
     return { x: r.x + r.w / 2, y: r.y + r.h / 2 }
   }
   const click = async (pt: { x: number; y: number }) => {
-    // (seen in the video: where it clicked)
     await js(`__proof.tap(${pt.x}, ${pt.y})`)
     for (const type of ["mousePressed", "mouseReleased"]) await p.send("Input.dispatchMouseEvent", { type, ...pt, button: "left", clickCount: 1 })
   }

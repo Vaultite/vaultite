@@ -1,5 +1,5 @@
 import fs from "node:fs"
-import { agentName } from "../../../core/agents.ts"
+import { agentName, parseJson } from "../../../core/agents.ts"
 import { OpError } from "../../../core/plugins.ts"
 import type { Follow } from "./follows.ts"
 import { voiceHere, voiceHereText } from "./voice.ts"
@@ -7,8 +7,9 @@ import "./draw.ts"
 import { plugin } from "./self.ts"
 import type { Moment, Agent, Note } from "./types.ts"
 import { str, setting, mode, ownName } from "./settings.ts"
-import { moments, waiters, agents, watching, notes, log, did, windows, broadcast, key, isMain, live, focus, addMoment, batches, resend, shown } from "./state.ts"
-import { realtimePaused, pausedNow, mics, calls } from "./windows.ts"
+import { moments, waiters, agents, watching, notes, log, did, windows, broadcast, key, isMain, live, focus, batches, resend, shown } from "./state.ts"
+import { addMoment } from "./intake.ts"
+import { realtimePaused, pausedNow, mics, calls } from "./screensocket.ts"
 import { followed } from "./windowpanes.ts"
 import { stopStreams, cut } from "./edits.ts"
 import { session, sessionId, sessions, running, isChat, runsOf, nextCmd, start, fresh, stop } from "./alwayson.ts"
@@ -100,13 +101,11 @@ plugin.op({
     broadcast({ t: "hush", agent: name })
     const asks = (batches.get(k) ?? []).flatMap((n) => moments.find((m) => m.seq === n && m.kind === "ask")?.text ?? [])
     const keys = s && !isChat(s.id) ? INTERRUPT[runsOf(s).split("_")[0]] : undefined
-    // (its summoned session, answering a Talk key's ask)
     let ok = isMain(name) && await lane().interrupt()
     if (!ok && s && isChat(s.id)) {
       ok = !!(await chat()?.interrupt(s.id).catch(() => false))
       if (ok) { stopped.set(k, asks); resend.delete(k) }
     } else if (!ok && s && keys && !waiters.has(k) && await running(s.id)) {
-      // (a terminal's agent busy on a moment, not waiting in next: its own interrupt key, then told so and back to next)
       ok = !!(await plugin.runOp("terminal.key", { id: s.id, keys }).catch(() => null))
       if (ok) setTimeout(() => void plugin.runOp("terminal.send", { id: s.id, text: `${STOPPED(asks)} Then run \`${nextCmd(name)}\` again, and never end your turn.` }).catch(() => {}), 1000).unref?.()
     }
@@ -127,7 +126,6 @@ plugin.op({
   run: async (p) => {
     const name = str(p.as).trim() || ownName(), k = key(name), s = session(name)
     if (!s || !(await running(s.id))) throw new OpError(`${name} isn't running`, 404)
-    // (asked when it's next free, not cut off mid-work; waiting now, at once)
     fresh.add(k)
     const wait = waiters.get(k)
     if (wait) { waiters.delete(k); wait([]) }
@@ -152,7 +150,7 @@ came (faster with speed), so you can watch what the session makes of them.
     speed: { type: "number", minimum: 0.1, default: 1, description: "how much faster than they came" }, limit: { type: "integer", minimum: 1, default: 50, description: "at most this many" } },
   run: async (p) => {
     let ms: Moment[] = []
-    if (p.file) ms = fs.readFileSync(String(p.file), "utf8").split("\n").flatMap((l) => { try { return l ? [JSON.parse(l)] : [] } catch { return [] } })
+    if (p.file) ms = fs.readFileSync(String(p.file), "utf8").split("\n").flatMap((l) => (l ? [parseJson(l)] : []))
     else if (p.day) ms = log.read(String(p.day))
     else throw new OpError("give `day` or `file`")
     ms = ms.filter((m) => m && typeof m.kind === "string").slice(-p.limit)

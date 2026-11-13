@@ -12,6 +12,7 @@ export default async ($: VaultTest) => {
   const { asItsTool } = await import("../../../plugins/core/companion/chat.ts")
   const { app, api, check } = $
   const L = await import("../../../plugins/core/companion/liveedit.ts")
+  const Asks = await import("../../../plugins/core/companion/liveasks.ts")
   const U = await import("../../../plugins/core/companion/unedit.ts")
   const F = await import("../../../core/desktop/framediff.ts")
   const E = await import("../../../plugins/core/claude-code/edits.ts")
@@ -42,10 +43,10 @@ export default async ($: VaultTest) => {
     const spans: Any[] = [{ prompt: "Live edit L1: a", edits: [] }, { prompt: "Live edit L2: b", edits: [] }, { prompt: "Live edit L3: c", edits: [] },
       { said: "L1:", edits: [e("a")] }, { said: "L2: rounding the card", edits: [e("b")] }, { said: "Now the footer.", edits: [] }, { said: "**L3**", edits: [e("c")] },
       { said: "Done: all three.", edits: [] }, { prompt: "my own words", edits: [e("d")] }]
-    const of = (t: string) => L.editsFor(spans, t).map((x: Any) => x.new).join()
+    const of = (t: string) => Asks.editsFor(spans, t).map((x: Any) => x.new).join()
     const plain: Any[] = [{ prompt: "Live edit L4: x", edits: [e("x")] }, { prompt: "Live edit L5: y", edits: [e("y")] }]
     check("live edit: each ask's edits are those its worker made once it said it was on it (L2:), till the next; the user's own typed words end them",
-      of("L1") === "a" && of("L2") === "b" && of("L3") === "c" && L.editsFor(plain, "L5").map((x: Any) => x.new).join() === "y" && L.editsFor(plain, "L4").map((x: Any) => x.new).join() === "x", [of("L1"), of("L2"), of("L3")])
+      of("L1") === "a" && of("L2") === "b" && of("L3") === "c" && Asks.editsFor(plain, "L5").map((x: Any) => x.new).join() === "y" && Asks.editsFor(plain, "L4").map((x: Any) => x.new).join() === "x", [of("L1"), of("L2"), of("L3")])
   }
 
   // Undoing: its edits reversed latest first on the files as they are now; the user's edits stay; nothing on a conflict.
@@ -90,14 +91,14 @@ export default async ($: VaultTest) => {
 
   // What's the app's own: "undo that" and its kin, never an ask with more in it.
   check("live edit: undo that (and its kin) is the app's own; an ask about undoing, or more with it, isn't",
-    ["undo that", "Undo.", "okay, undo that please", "revert it", "Undo the last change", "no, take that back", "undo", "undo that too", "Undo that one as well."].every(L.isUndo) &&
-    !["how do I undo in vim?", "undo that and make it red", "undo the header change", "redo that"].some(L.isUndo))
+    ["undo that", "Undo.", "okay, undo that please", "revert it", "Undo the last change", "no, take that back", "undo", "undo that too", "Undo that one as well."].every(Asks.isUndo) &&
+    !["how do I undo in vim?", "undo that and make it red", "undo the header change", "redo that"].some(Asks.isUndo))
   check("live edit: a plain question is the companion's; a change, one asked as a question, or anything unclear is the job's",
-    ["what does this button do?", "Why is this red", "how does the filter work?", "OK, which font is this?", "is this the final logo?", "can you tell me what this link opens?", "Explain this section", "where does this go"].every(L.isQuestion) &&
-    !["make this blue", "move that up", "can you make it blue?", "what if the title were bigger?", "why isn't the button centered?", "could we drop the footer?", "the header looks off", "how about a darker one?", "is it possible to add a logo?", "how do I add a page?", "", "undo that"].some(L.isQuestion),
-    ["what does this button do?", "can you make it blue?", "why isn't the button centered?"].map((t) => [t, L.isQuestion(t)]))
+    ["what does this button do?", "Why is this red", "how does the filter work?", "OK, which font is this?", "is this the final logo?", "can you tell me what this link opens?", "Explain this section", "where does this go"].every(Asks.isQuestion) &&
+    !["make this blue", "move that up", "can you make it blue?", "what if the title were bigger?", "why isn't the button centered?", "could we drop the footer?", "the header looks off", "how about a darker one?", "is it possible to add a logo?", "how do I add a page?", "", "undo that"].some(Asks.isQuestion),
+    ["what does this button do?", "can you make it blue?", "why isn't the button centered?"].map((t) => [t, Asks.isQuestion(t)]))
   {
-    const t = L.freshText({ title: "Landing page", on: "site:http://localhost:5173", where: { cwd: "/p/site", tree: "/p/site-j1", branch: "job-j1", base: "abc123" } as Any, result: { text: "Made it blue." } },
+    const t = Asks.freshText({ title: "Landing page", on: "site:http://localhost:5173", where: { cwd: "/p/site", tree: "/p/site-j1", branch: "job-j1", base: "abc123" } as Any, result: { text: "Made it blue." } },
       [{ tag: "L1", text: "make it blue" }, { tag: "L2", text: "a footer", undone: true }], "Live edit L3: now bigger")
     check("live edit: a worker starting fresh is told the job, its page, its worktree and diff, its asks so far (what's undone), then the next",
       /^You're taking over a job [^]*"Landing page"[^]*localhost:5173[^]*worktree \/p\/site-j1 \(branch job-j1\)[^]*diff abc123[^]*L1 "make it blue"; L2 "a footer" \(they undid it\)[^]*Made it blue\.[^]*Live edit L3: now bigger$/.test(t), t)
@@ -106,11 +107,11 @@ export default async ($: VaultTest) => {
     W.surfaceOf({ path: "Notes/A.md", url: "http://localhost:5173/x" }) === "note:Notes/A.md" && W.surfaceOf({ title: "Site", screen: "Address and search bar: localhost:5173/about" }) === "site:http://localhost:5173" &&
     W.surfaceOf({ screen: "github.com/lighthouse/site" }) === "" && W.surfaceOf(undefined) === "")
   check("live edit: only the page itself goes live: a browser's address or a web pane's, never a terminal or editor mentioning it",
-    L.pageOf({ app: "com.google.Chrome", title: "Site", screen: "Address and search bar: localhost:5173/about\nHello" } as Any) === "site:http://localhost:5173" &&
-    L.pageOf({ url: "http://localhost:5173/x", pane: "t1" } as Any) === "site:http://localhost:5173" && L.pageOf({ path: "Notes/A.md" } as Any) === "note:Notes/A.md" &&
-    L.pageOf({ app: "com.mitchellh.ghostty", title: "npm run dev", screen: "VITE ready\n  Local:   http://localhost:5173/\n" } as Any) === "" &&
-    L.pageOf({ pane: "t2", screen: "  Local:   http://localhost:5173/" } as Any) === "" &&
-    L.pageOf({ app: "com.todesktop.230313mzl4w4u92", screen: 'const site = "http://localhost:5173"' } as Any) === "")
+    Asks.pageOf({ app: "com.google.Chrome", title: "Site", screen: "Address and search bar: localhost:5173/about\nHello" } as Any) === "site:http://localhost:5173" &&
+    Asks.pageOf({ url: "http://localhost:5173/x", pane: "t1" } as Any) === "site:http://localhost:5173" && Asks.pageOf({ path: "Notes/A.md" } as Any) === "note:Notes/A.md" &&
+    Asks.pageOf({ app: "com.mitchellh.ghostty", title: "npm run dev", screen: "VITE ready\n  Local:   http://localhost:5173/\n" } as Any) === "" &&
+    Asks.pageOf({ pane: "t2", screen: "  Local:   http://localhost:5173/" } as Any) === "" &&
+    Asks.pageOf({ app: "com.todesktop.230313mzl4w4u92", screen: 'const site = "http://localhost:5173"' } as Any) === "")
   {
     // (a job asked over a note may only research: it takes that note's asks once it changed it, never before)
     const job = (id: string, files?: string[]) => ({ id, state: "done", on: "note:Notes/Day.md", at: Date.now(), where: {}, ...(files ? { result: { files } } : {}) })
@@ -121,13 +122,13 @@ export default async ($: VaultTest) => {
     check("live edit: a note's asks go to a job only once it changed that note", !none && live.jobOn({ path: "Notes/Day.md" } as Any)?.id === "j3", none)
   }
   check("live edit: what its worker is told: tagged, change it now, a question answered, another's handed back",
-    /^Live edit L3: [^]*make this change now[^]*\(not for me\)[^]*they undid[^]*\(The user, through their companion: They said: "make it red"/.test(L.liveText("L3", { t: 1, seq: 1, kind: "ask", text: "make it red" } as Any, ["(they undid L2)"])))
+    /^Live edit L3: [^]*make this change now[^]*\(not for me\)[^]*they undid[^]*\(The user, through their companion: They said: "make it red"/.test(Asks.liveText("L3", { t: 1, seq: 1, kind: "ask", text: "make it red" } as Any, ["(they undid L2)"])))
 
   // End to end: a job on a preview, then asks over that page go straight to it (no turn of the companion's), its turn's
   // end said; "undo that" takes back exactly its edits for the last ask, the user's own kept.
   if (process.platform !== "win32") {
-    const cNext = await import("../../../plugins/core/companion/next.ts")
-    const cWindows = await import("../../../plugins/core/companion/windows.ts")
+    const cMoments = await import("../../../plugins/core/companion/momentstext.ts")
+    const cScreen = await import("../../../plugins/core/companion/screensocket.ts")
     const { matchSocket } = await import("../../../core/plugins.ts")
     const heard: Any[] = [], sc = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, send: (d: string) => heard.push(JSON.parse(d)), close() {}, ping() {}, terminate() {} })
     matchSocket(app.plugins, ["companion", "live"])![1].fn(sc as Any, {} as IncomingMessage, { wild: [], query: { screen: "1" } })
@@ -168,7 +169,7 @@ export default async ($: VaultTest) => {
     let job = ""
     try {
       await api("PATCH", "config/plugin/companion", { mode: "quiet", agent: "claude", summoned_model: "companion", jobs_agent: "claude" })
-      cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "make me a landing page", ...over })
+      cScreen.screenMoment({ kind: "ask", agent: "Claude", text: "make me a landing page", ...over })
       const [st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Make a landing page", cwd: repo }, agent))
       job = b.id
       turn = { text: "Made it.", files: [], at: Date.now() + 1500, final: true }
@@ -177,7 +178,7 @@ export default async ($: VaultTest) => {
 
       await api("POST", "ops/companion.next", { timeout: 0 }); await api("POST", "ops/companion.next", { timeout: 0 })
       const heardFrom = heard.length
-      const m = cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "make the title say Hi", ...over }) as Any
+      const m = cScreen.screenMoment({ kind: "ask", agent: "Claude", text: "make the title say Hi", ...over }) as Any
       const typed = await waitFor(() => /Live edit L1: [^\n]*make the title say Hi/.test(told()) && fs.readFileSync(page, "utf8").includes("Hi") && told(), 8000, 50)
       check("live edit: the next ask over that page goes straight into its worker's terminal, tagged, no turn of the companion's first",
         !!typed && m?.live === job && fs.readFileSync(page, "utf8") === "<h1>Hi</h1>\n", [told(), m])
@@ -190,28 +191,28 @@ export default async ($: VaultTest) => {
       check("live edit: the companion's cursor shows it sent the ask on (a seen tick), then watches once the job's words are said", liveStates === "watching seen, watching", liveStates)
 
       fs.appendFileSync(page, "<p>mine</p>\n")
-      cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "Undo that.", ...over })
+      cScreen.screenMoment({ kind: "ask", agent: "Claude", text: "Undo that.", ...over })
       const back = await waitFor(() => fs.readFileSync(page, "utf8") === "<h1>Hello</h1>\n<p>mine</p>\n", 8000, 50)
       check("live edit: undo that takes back exactly the last ask's edits, their own line since kept, and says so; its worker isn't asked",
         !!back && (await waitFor(async () => (await says()).includes("Undone."), 3000, 50)) && !/Undo that/.test(told()), [fs.readFileSync(page, "utf8"), await says(), told()])
-      cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "undo", ...over })
+      cScreen.screenMoment({ kind: "ask", agent: "Claude", text: "undo", ...over })
       check("live edit: once it's all undone, another undo says there's nothing of its to undo",
         !!await waitFor(async () => (await says()).some((t: string) => /nothing of mine to undo/.test(t)), 3000, 50), await says())
 
-      cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "now a footer", ...over })
+      cScreen.screenMoment({ kind: "ask", agent: "Claude", text: "now a footer", ...over })
       const noted = await waitFor(() => /Live edit L2: [^\n]*they undid your change for L1[^\n]*now a footer/.test(told()), 8000, 50)
       check("live edit: its next ask tells it what was undone, so it knows what's on disk", !!noted, told())
-      cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "undo that too", ...over })
+      cScreen.screenMoment({ kind: "ask", agent: "Claude", text: "undo that too", ...over })
       const later = await waitFor(async () => (await says()).includes("I'll undo it once it's done."), 3000, 50)
       await end({ text: "Footer added.", files: [page], at: Date.now(), final: true })
       const after = await waitFor(() => fs.readFileSync(page, "utf8") === "<h1>Hello</h1>\n<p>mine</p>\n", 10000, 50)
       check("live edit: undo said while it works waits for its turn's end, then takes back the ask it was on", !!later && !!after, [await says(), fs.readFileSync(page, "utf8")])
       turn = null
-      const q = cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "what does this button do?", ...over }) as Any
-      const qText = cNext.momentsText([q], "quiet", null)
+      const q = cScreen.screenMoment({ kind: "ask", agent: "Claude", text: "what does this button do?", ...over }) as Any
+      const qText = cMoments.momentsText([q], "quiet", null)
       check("live edit: a plain question over the page goes to the companion, told the job there and what it was asked live",
         !q?.live && q?.pageJob === job && new RegExp(`over the page job ${job} [^\\n]*this question is yours[^\\n]*L2 "now a footer"[^\\n]*companion job ${job}`).test(qText) && !/what does this button do/.test(told()), [q, qText])
-      const other = cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "remind me to call Alice at five", ...over }) as Any
+      const other = cScreen.screenMoment({ kind: "ask", agent: "Claude", text: "remind me to call Alice at five", ...over }) as Any
       await waitFor(() => /Live edit L3: /.test(told()), 8000, 50)
       check("live edit: anything not plainly a question goes to its job at once", other?.live === job, other)
       await end({ text: "(not for me)", files: [], at: Date.now(), final: true })
@@ -223,7 +224,7 @@ export default async ($: VaultTest) => {
       const was0 = String((await api("POST", "ops/companion.jobs", {}))[1].jobs.find((x: Any) => x.id === job)?.terminal), n0 = starts.length
       context = { tokens: 150_000, window: 1_000_000 }
       turn = null
-      const big = cWindows.screenMoment({ kind: "ask", agent: "Claude", text: "make the title bigger", ...over }) as Any
+      const big = cScreen.screenMoment({ kind: "ask", agent: "Claude", text: "make the title bigger", ...over }) as Any
       const fresh = await waitFor(() => starts.length > n0 && starts.at(-1), 10000, 50) as Any
       const moved = await waitFor(async () => { const r = (await api("POST", "ops/companion.jobs", {}))[1].jobs.find((x: Any) => x.id === job); return r?.terminal !== was0 && r }, 8000, 100) as Any
       check("live edit: a worker grown large starts fresh for its next ask: a new conversation in a new terminal, told the job, its asks so far and the ask",

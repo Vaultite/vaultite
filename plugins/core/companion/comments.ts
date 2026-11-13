@@ -1,45 +1,46 @@
 import fs from "node:fs"
 import type { IncomingMessage } from "node:http"
 import path from "node:path"
+import { z } from "zod"
 import { OpError } from "../../../core/plugins.ts"
+import { parseJson } from "../../../core/agents.ts"
 import { readText, requestWriter, type Writer, writeAtomic } from "../../../core/vault.ts"
 import { nearest } from "./text.ts"
 import type { Target } from "../../../core/desktop/places.ts"
-import { waiters, agents, notes, said, setSaid, SAID, timers, windows, MAX_TEXT, broadcast, key, focus, addMoment, agentOf, acted, setAgent, putNote, dropNote } from "./state.ts"
+import { waiters, agents, notes, said, setSaid, SAID, timers, windows, MAX_TEXT, broadcast, key, focus, agentOf, acted, setAgent, putNote, dropNote } from "./state.ts"
+import { addMoment } from "./intake.ts"
 import { plugin } from "./self.ts"
 import type { Moment, Note } from "./types.ts"
 import { sayMs } from "./settings.ts"
-import { applyEdit, lineText } from "./edits.ts"
+import { applyEdit, lineText, vaultText } from "./edits.ts"
 import { apiCtx } from "./chat.ts"
 import { unhearChats, watchdog } from "./chatturns.ts"
 import { textOf, refind, review } from "./propose.ts"
 import { loadedFor } from "./sync.ts"
 import { mentioned, lineOf } from "./people.ts"
+import { codeOf, messageOf } from "./errors.ts"
 
 export const KEPT = new Set(["comment", "suggestion", "proposal"])
-/** Comments the user dismissed, per note, newest last: its history (kept in the sidecar too). */
 export const past = new Map<string, Note[]>()
 export const PAST = 30
 const DIR = ".vaultite/plugins/companion/comments"
 const sidecar = (p: string) => `${DIR}/${p}.json`
-/** Each sidecar's text as last written or read: our own writes come back from the watcher. */
 const written = new Map<string, string>()
 export const kept = (p: string) => [...notes.values()].filter((n) => n.path === p && KEPT.has(n.kind))
 const lineCount = (text: string) => text.split("\n").length - (text.endsWith("\n") ? 1 : 0)
 const under = (p: string, dir: string) => p === dir || p.startsWith(`${dir}/`)
 
-/** A drawing's typed actions made on its text (`draw:<ext>`, from the plugin that draws it), or null: not a drawing. */
 export type Draw = (text: string, actions: unknown[]) => { text: string; touched: string[] }
 export function drawer(p: string): Draw | null {
   const exts = p.slice(p.lastIndexOf("/") + 1).toLowerCase().split(".").slice(1)
-  for (let i = 0; i < exts.length; i++) { const fn = plugin.service(`draw:${exts.slice(i).join(".")}`); if (typeof fn === "function") return fn as Draw }
+  for (let i = 0; i < exts.length; i++) { const fn = plugin.service(`draw:${exts.slice(i).join(".")}`); if (typeof fn === "function") return fn }
   return null
 }
 export const drawing = (p: string) => !!drawer(p)
-/** A point given (x and y, numbers), as a target's or a moment's fields. */
+const Sidecar = z.object({ comments: z.array(z.unknown()), past: z.unknown().optional() })
+const isNote = (n: unknown): n is Note => typeof n === "object" && n !== null && "id" in n && typeof n.id === "string" && "kind" in n && typeof n.kind === "string"
 export const point = (o: Record<string, unknown>) => (typeof o.x === "number" && typeof o.y === "number" && Number.isFinite(o.x + o.y) ? { x: Math.round(o.x), y: Math.round(o.y) } : {})
 
-/** Write a note's sidecar as its kept items are now; none: the file goes. */
 export function save(p: string) {
   const rel = sidecar(p), list = kept(p), old = past.get(p) ?? [], bare = ({ path: _, ...n }: Note) => n
   const text = list.length || old.length ? `${JSON.stringify({ comments: list.map(bare), ...(old.length ? { past: old.map(bare) } : {}) }, null, 2)}\n` : ""
@@ -49,29 +50,26 @@ export function save(p: string) {
     if (text) writeAtomic(abs, text)
     else {
       fs.rmSync(abs, { force: true })
-      // (its folders too, once empty)
       for (let d = path.dirname(abs), top = plugin.vault.abs(DIR); d.startsWith(top) && fs.readdirSync(d).length === 0; d = path.dirname(d)) fs.rmdirSync(d)
     }
-  } catch (e) { console.error(`companion: couldn't save ${rel}: ${(e as Error).message}`) }
+  } catch (e) { console.error(`companion: couldn't save ${rel}: ${messageOf(e)}`) }
   if (text) written.set(rel, text); else written.delete(rel)
 }
 
-/** A note's kept items as its sidecar has them now (the server started, or another machine wrote it). */
 function load(p: string) {
   const rel = sidecar(p), abs = plugin.vault.abs(rel)
   let text = ""
   try { text = readText(abs) } catch (e) {
-    // (in iCloud only for now, or unreadable: as it was until it reads)
-    if ((e as NodeJS.ErrnoException).code !== "ENOENT" || fs.existsSync(path.join(path.dirname(abs), `.${path.basename(abs)}.icloud`))) return
+    // iCloud keeps a file not downloaded yet as a `.<name>.icloud` placeholder.
+    if (codeOf(e) !== "ENOENT" || fs.existsSync(path.join(path.dirname(abs), `.${path.basename(abs)}.icloud`))) return
   }
   if (text === (written.get(rel) ?? "")) return
-  let list: unknown, was: unknown
-  try { ({ comments: list, past: was } = text ? JSON.parse(text) : { comments: [] }) } catch { return }
-  if (!Array.isArray(list)) return
+  const doc = Sidecar.safeParse(text ? parseJson(text) : { comments: [] }).data
+  if (!doc) return
   if (text) written.set(rel, text); else written.delete(rel)
-  const gone = Array.isArray(was) ? was.filter((n): n is Note => n && typeof n.id === "string" && n.kind === "comment").map((n) => ({ ...n, path: p })) : []
+  const gone = Array.isArray(doc.past) ? doc.past.filter((n): n is Note => isNote(n) && n.kind === "comment").map((n) => ({ ...n, path: p })) : []
   if (gone.length) past.set(p, gone); else past.delete(p)
-  const now = new Map(list.filter((n): n is Note => n && typeof n.id === "string" && KEPT.has(n.kind)).map((n) => [n.id, { ...n, path: p }]))
+  const now = new Map(doc.comments.filter((n): n is Note => isNote(n) && KEPT.has(n.kind)).map((n) => [n.id, { ...n, path: p }]))
   for (const n of kept(p)) if (!now.has(n.id)) { notes.delete(n.id); broadcast({ t: "drop", id: n.id }) }
   for (const n of now.values()) {
     if (JSON.stringify(notes.get(n.id)) === JSON.stringify(n)) continue
@@ -80,7 +78,6 @@ function load(p: string) {
   }
 }
 
-/** The line an item is on in `text` now: where its find (or anchor line) is nearest its line, null when that's gone. */
 export function anchorLine(text: string, n: Pick<Note, "find" | "anchor" | "line">): number | null {
   if (n.find) {
     const i = nearest(text, n.find, n.line)
@@ -93,12 +90,10 @@ export function anchorLine(text: string, n: Pick<Note, "find" | "anchor" | "line
   return best
 }
 
-/** A note's kept items found again in its text: a comment whose text is gone stays by its last line, orphaned, a
- *  suggestion goes. */
 function follow(p: string) {
   const list = kept(p)
-  let text: string
-  try { text = readText(plugin.vault.abs(p)) } catch { return }
+  const text = vaultText(p)
+  if (text === null) return
   let changed = false
   for (const n of list) {
     if (n.kind === "proposal") { if (refind(n, text)) changed = true; continue }
@@ -113,23 +108,20 @@ function follow(p: string) {
   }
   if (changed) save(p)
 }
-// (after a pause: a suggestion just taken is answered before its text is gone from the file)
 const following = new Map<string, ReturnType<typeof setTimeout>>()
 const followSoon = (p: string) => {
   clearTimeout(following.get(p))
   following.set(p, setTimeout(() => { following.delete(p); follow(p) }, 2000))
 }
 
-/** Every sidecar read (as when the server starts), and its note's items found again; fresh: memory's forgotten first. */
 export function loadAll(fresh = false) {
   if (fresh) { for (const n of notes.values()) if (KEPT.has(n.kind)) notes.delete(n.id); written.clear(); past.clear() }
   const top = plugin.vault.abs(DIR)
   let files: string[] = []
-  try { files = (fs.readdirSync(top, { recursive: true }) as string[]).filter((f) => f.endsWith(".json")) } catch { /* none yet */ }
+  try { files = fs.readdirSync(top, { recursive: true, encoding: "utf8" }).filter((f) => f.endsWith(".json")) } catch {}
   for (const f of files) {
     const p = f.split(path.sep).join("/").slice(0, -5)
     load(p)
-    // (a trashed note's, once it's gone for good from the trash)
     if (p.startsWith(".trash/") && !fs.existsSync(plugin.vault.abs(p))) { for (const n of kept(p)) notes.delete(n.id); past.delete(p); save(p) } else follow(p)
   }
 }
@@ -145,7 +137,6 @@ plugin.onChange((paths) => {
   }
 })
 
-// Kept items follow their note: moved, renamed, into the trash and back (even while it's off).
 plugin.onMove((from, to, trashed) => {
   const dest = to ?? trashed ?? null
   const there = (p: string) => (dest === null ? null : dest + p.slice(from.length))
@@ -154,7 +145,7 @@ plugin.onMove((from, to, trashed) => {
     if (!fs.existsSync(abs) || (a === `${DIR}/${from}` && !fs.statSync(abs).isDirectory())) continue
     try {
       if (b) { fs.mkdirSync(path.dirname(plugin.vault.abs(b)), { recursive: true }); fs.renameSync(abs, plugin.vault.abs(b)) } else fs.rmSync(abs, { recursive: true, force: true })
-    } catch (e) { console.error(`companion: couldn't move ${a}: ${(e as Error).message}`) }
+    } catch (e) { console.error(`companion: couldn't move ${a}: ${messageOf(e)}`) }
   }
   for (const [k, text] of [...written]) {
     const p = k.slice(DIR.length + 1, -5)
@@ -176,12 +167,11 @@ plugin.onMove((from, to, trashed) => {
   }
 })
 
-/** The user's answer to an item from the app: a moment for its agent; a suggestion or a dismissed comment goes away. */
 export function answer(id: string, verdict: "accept" | "reject" | "dismiss" | "reply", text?: string, from?: IncomingMessage) {
   const n = notes.get(id) ?? said.find((x) => x.id === id)
   if (!n) return
   if (n.kind === "say") return answerSay(n, verdict, text, from)
-  if (n.kind === "proposal") return verdict === "reply" ? undefined : void review(id, verdict === "accept" ? "accept" : "reject", undefined, from).catch((e) => console.error(`companion: ${(e as Error).message}`))
+  if (n.kind === "proposal") return verdict === "reply" ? undefined : void review(id, verdict === "accept" ? "accept" : "reject", undefined, from).catch((e) => console.error(`companion: ${messageOf(e)}`))
   if (verdict === "reply" && text) {
     n.replies = [...(n.replies ?? []), { by: "user", text: text.slice(0, MAX_TEXT), t: Date.now() }]
     broadcast({ t: "note", note: n })
@@ -190,7 +180,6 @@ export function answer(id: string, verdict: "accept" | "reject" | "dismiss" | "r
     if (verdict === "dismiss" && n.kind === "comment" && n.path) past.set(n.path, [...(past.get(n.path) ?? []).filter((x) => x.id !== id), { ...n, dismissed: Date.now() }].slice(-PAST))
     dropNote(id)
   }
-  // (a person's thread is between people, unless it asks an agent: then that agent hears the words in it)
   if (n.by) {
     const to = n.by === "user" && verdict === "reply" && text ? mentioned(text) ?? n.ask : undefined
     if (!to) return
@@ -200,7 +189,6 @@ export function answer(id: string, verdict: "accept" | "reject" | "dismiss" | "r
   addMoment({ kind: verdict, for: n.agent, item: id, path: n.path, line: n.line, text: verdict === "reply" ? text : n.text, ...(n.kind === "suggestion" ? { selection: n.find, to: n.replace } : {}) }, from)
 }
 
-/** The user's answer to a bubble: a reply to it (in the bubble), or closing it; either way it goes. */
 function answerSay(n: Note, verdict: string, text: string | undefined, from?: IncomingMessage) {
   if (verdict !== "reply" && verdict !== "dismiss") return
   if (notes.has(n.id)) dropNote(n.id)
@@ -210,31 +198,27 @@ function answerSay(n: Note, verdict: string, text: string | undefined, from?: In
     text: verdict === "reply" ? text!.slice(0, MAX_TEXT) : n.text }, from)
 }
 
-/** The user saw these bubbles (they showed long enough to read, or the cursor's history opened): no unread dot for them. */
 export function saw(ids: string[]) {
   let changed = false
   for (const x of said) if (ids.includes(x.id) && !x.seen) { x.seen = true; changed = true }
   if (changed) broadcast({ t: "said", said })
 }
 
-/** A bubble gone before its time, as the user went on writing: no word to its agent. */
 export function hide(id: string) {
   if (notes.get(id)?.kind === "say") dropNote(id)
 }
 
-/** Where a say is in its note's text now: its line (its find nearest it), else null. */
-function sayLine(text: string, n: Note) {
+function sayLine(text: string, n: Pick<Note, "find" | "anchor" | "line">) {
   return n.find ? anchorLine(text, n) : n.line ? Math.max(1, Math.min(n.line, lineCount(text))) : null
 }
 
-/** Put a bubble in the note, as its agent's words (Provenance): after the paragraph it was said by, else at the end. */
 export async function place(id: string) {
   const n = said.find((x) => x.id === id) ?? notes.get(id)
   if (!n || n.kind !== "say" || !n.text?.trim()) throw new OpError(`there's no bubble ${id}`, 404)
   const a = agents.get(key(n.agent)), t: Target = n.path ? n : a?.path ? a : focus() ?? {}
   if (!t.path || drawing(t.path)) throw new OpError("it wasn't said by a note", 409)
   const cur = await textOf(apiCtx, t.path), lines = cur.split("\n")
-  let at = sayLine(cur, t as Note)
+  let at = sayLine(cur, t)
   if (at !== null) while (at < lines.length && lines[at]?.trim()) at++
   const text = at === null ? n.text.trim() : `\n${n.text.trim()}`
   const writer: Writer = n.writer ?? { client: "cli", agent: n.agent }
@@ -246,7 +230,6 @@ export async function place(id: string) {
   return { path: t.path, line: at === null ? lineCount(cur) + 1 : at + 2 }
 }
 
-/** What an agent wrote in a note (its lines, taken out by the user's editor) back in a bubble by its cursor there. */
 export function fold(name: string, path: string, line: number, text: string) {
   const a = agents.get(key(name))
   if (!a || !text.trim()) throw new OpError(`${name} isn't here to say it`, 404)
@@ -258,17 +241,13 @@ export function fold(name: string, path: string, line: number, text: string) {
   return n
 }
 
-/** A say (or the user's ask) kept in its agent's last ones (the cursor's history): ten of each. */
 export function keepSaid(n: Note) {
   const mine = said.filter((x) => key(x.agent) === key(n.agent) && (x.kind === "ask") === (n.kind === "ask"))
   setSaid([...said.filter((x) => !mine.slice(0, -(SAID - 1)).includes(x)), { ...n }])
   broadcast({ t: "said", said })
 }
 
-/** Each ask's row in the history, by its moment's seq: one that goes on (dictation's next sentence) rewrites its row. */
 const askRows = new Map<number, string>()
-/** What the user asked an agent (an ask, a reply to its bubble), kept with its says: the popover shows both. Asks in
- *  a comment's thread stay in the thread. */
 export function keepAsked(m: Moment) {
   if (!m.for || m.tour || !m.text?.trim() || !((m.kind === "ask" && !m.item) || (m.kind === "reply" && m.bubble))) return
   const id = askRows.get(m.more ?? m.seq) ?? `ask-${m.seq}`, text = m.text.trim()
@@ -279,7 +258,6 @@ export function keepAsked(m: Moment) {
   keepSaid({ id, kind: "ask", by: "user", agent: m.for, text, t: m.t, seen: true, ...(m.path ? { path: m.path, line: m.line } : {}) })
 }
 
-/** A dismissed comment back in the margin, as it was. */
 export function reopen(id: string) {
   for (const [p, list] of past) {
     const n = list.find((x) => x.id === id)
@@ -295,7 +273,6 @@ export function reopen(id: string) {
   return null
 }
 
-/** A say the user pinned: a comment with its words, where it was said (else where its agent is, else the user). */
 export function pin(id: string) {
   const s = said.find((n) => n.id === id) ?? notes.get(id)
   if (!s || s.kind !== "say" || s.pinned) return null
@@ -304,7 +281,8 @@ export function pin(id: string) {
   if (!t.path) return null
   if (notes.has(id)) dropNote(id)
   let line = t.line ?? 1
-  if (t.find) try { line = anchorLine(readText(plugin.vault.abs(t.path)), t) ?? line } catch { /* as it was said */ }
+  const text = t.find ? vaultText(t.path) : null
+  if (text !== null) line = anchorLine(text, t) ?? line
   const anchor = t.find ? "" : lineText(t.path, line)
   const c = putNote({ kind: "comment", agent: s.agent, text: s.text, path: t.path, line, ...(t.find ? { find: t.find } : {}), ...(anchor ? { anchor } : {}) })
   s.pinned = c.id

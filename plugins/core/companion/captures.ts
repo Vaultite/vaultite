@@ -1,28 +1,36 @@
-// Region captures (the desktop app's capture.ts records them): saved in the vault and handed to the job on that surface,
-// else a new job when they said what to do over it. The companion only says where it went.
 import path from "node:path"
+import { z } from "zod"
 import type { OpCtx, Plugin } from "../../../core/plugins.ts"
 import { OpError } from "../../../core/plugins.ts"
-import { captureTitle, type Narration, narrationLines, type Rect } from "../../../core/desktop/clips.ts"
+import { captureTitle, narrationLines } from "../../../core/desktop/clips.ts"
 import { type Job, live, type Where } from "./jobs.ts"
 import type { Moment } from "./types.ts"
 import type { Found, Over } from "./where.ts"
 import { localStamp } from "../../../core/desktop/names.ts"
 import { freeBase, ownCapture, saveFiles, vaultFileOn } from "./vaultfiles.ts"
+import { messageOf } from "./errors.ts"
 
-export type Capture = { kind: "recording" | "replay"; job?: string; clip: string; ms: number; width: number; height: number; frames: { t: number; file: string }[]
-  narration: Narration[]; box: Rect; at: number; place: Record<string, unknown>; end?: Record<string, unknown> }
-type Jobs = { list: () => Job[]; begin: (ctx: OpCtx, task: (w: Where) => Promise<string>, m: Moment | undefined, p: Record<string, unknown>) => Promise<Job>
+const Num = z.number().catch(NaN)
+const Spot = z.object({ under: z.unknown().optional(), title: z.unknown().optional(), url: z.unknown().optional(), app: z.unknown().optional(), path: z.unknown().optional() })
+const Frame = z.object({ t: Num, file: z.string() })
+const Said = z.object({ t: z.unknown().optional(), text: z.string() }).transform((n) => ({ t: Math.max(0, Number(n.t) || 0), text: n.text.slice(0, 2000) }))
+const listOf = <T,>(item: z.ZodType<T>) => z.array(z.unknown()).catch([]).transform((xs) => xs.flatMap((x) => item.safeParse(x).data ?? []))
+const CaptureIn = z.object({
+  kind: z.enum(["recording", "replay"]), job: z.string().optional().catch(undefined), clip: z.string(), ms: Num, width: Num, height: Num,
+  frames: listOf(Frame).transform((fs) => fs.filter((f) => ownCapture(f.file) && !f.file.endsWith(".mp4")).slice(0, 12)),
+  narration: listOf(Said).transform((ns) => ns.slice(0, 200)),
+  box: z.object({ x: Num, y: Num, width: Num, height: Num }), at: z.unknown().optional().transform((v) => Number(v) || Date.now()),
+  place: Spot.catch({}), end: Spot.optional().catch(undefined),
+})
+export type Capture = z.infer<typeof CaptureIn>
+type Jobs = { list: () => Job[]; begin: (ctx: OpCtx, task: (w: Where) => Promise<string>, m: Moment | undefined, p: { title: string }) => Promise<Job>
   tell: (ctx: OpCtx, id: string, text: string) => Promise<void>; placeHere: (o: Over) => Promise<Found & { repo: string }> }
 
 const str = (v: unknown) => (typeof v === "string" ? v : "")
 const RECENT_MS = 6 * 3600_000
-/** What ties a surface to a repo (a note or the vault never does: any job could be on it). */
 const SURFACES = new Set(["preview", "editor", "github"])
-const origin = (u: string) => { try { return new URL(u).origin } catch { return "" } }
+const origin = (u: string) => URL.parse(u)?.origin ?? ""
 
-/** The job working on the surface a capture shows: one previewing its address, or (a preview, an editor, a GitHub page)
- *  working in its folder here or on its repo elsewhere. Live ones first, then the latest. */
 export function jobFor(jobs: Job[], at: { url?: string; found?: Found & { repo?: string } }, now = Date.now()): Job | undefined {
   const o = at.url ? origin(at.url) : "", f = at.found && SURFACES.has(at.found.from ?? "") ? at.found : null, fo = f?.preview ? origin(f.preview) : ""
   const same = (j: Job) => {
@@ -33,8 +41,6 @@ export function jobFor(jobs: Job[], at: { url?: string; found?: Found & { repo?:
   return hits.find((j) => live(j.state)) ?? hits.sort((a, b) => b.at - a.at)[0]
 }
 
-/** What a worker is told of a capture, its files where it runs (`file`: a vault path there): a new job's prompt, or one
- *  line typed into a job at work (`fresh` false). */
 export function captureText(c: Capture, saved: { clip: string; frames: { t: number; path: string }[]; note: string }, file: (rel: string) => string, fresh: boolean) {
   const secs = (c.ms / 1000).toFixed(1), b = c.box
   const said = narrationLines(c.narration)
@@ -53,13 +59,11 @@ export function captureText(c: Capture, saved: { clip: string; frames: { t: numb
 export function captureOps(plugin: Plugin, jobs: Jobs) {
   const setting = (k: string) => str(plugin.settings()[k]).trim() || str(plugin.manifest.settings?.[k]?.default)
 
-  /** The capture's files in the vault, beside its note (`<folder>/<stamp> <title>/`). */
   async function save(ctx: OpCtx, c: Capture, title: string) {
     const folder = setting("captures_folder").replace(/^\/+|\/+$/g, ""), base = freeBase(plugin, `${folder ? `${folder}/` : ""}${localStamp(c.at)} ${title}`)
     const [clip, ...rels] = await saveFiles(ctx, base, [{ from: c.clip, name: "clip.mp4" }, ...c.frames.map((f) => ({ from: f.file, name: path.basename(f.file) }))])
     return { base, clip, frames: c.frames.map((f, i) => ({ t: f.t, path: rels[i] })), note: `${base}.md` }
   }
-  /** Its note: the clip, their words by time, the frames, and where it went. */
   async function note(ctx: OpCtx, c: Capture, saved: Awaited<ReturnType<typeof save>>, went: string) {
     const where = [str(c.place.title) && `"${str(c.place.title)}"`, str(c.place.url)].filter(Boolean).join(", ")
     const text = ["---", "type: note", "tags: [capture]", "---", "",
@@ -89,12 +93,8 @@ export function captureOps(plugin: Plugin, jobs: Jobs) {
       job: { type: "string", description: "the job it's for (Still broken after its proof), else the one on that surface" },
     },
     run: async (p, ctx) => {
-      const c = p as unknown as Capture
-      if (!ownCapture(c.clip) || !c.clip.endsWith("clip.mp4")) throw new OpError("clip: one of the helper's own captures")
-      c.frames = (Array.isArray(c.frames) ? c.frames : []).filter((f) => ownCapture(f?.file) && !f.file.endsWith(".mp4")).slice(0, 12)
-      c.narration = (Array.isArray(c.narration) ? c.narration : []).filter((n) => typeof n?.text === "string").map((n) => ({ t: Math.max(0, Number(n.t) || 0), text: n.text.slice(0, 2000) })).slice(0, 200)
-      c.place = c.place && typeof c.place === "object" ? c.place : {}
-      c.at = Number(c.at) || Date.now()
+      const c = CaptureIn.safeParse(p).data
+      if (!c || !ownCapture(c.clip) || !c.clip.endsWith("clip.mp4")) throw new OpError("clip: one of the helper's own captures")
       const title = captureTitle(c.narration, str(c.place.title) || str(c.place.app))
       const saved = await save(ctx, c, title)
       const said = c.narration.map((n) => n.text).join(" ").trim()
@@ -104,7 +104,6 @@ export function captureOps(plugin: Plugin, jobs: Jobs) {
       let went = "Saved here: no job was working on it and nothing was said to do.", to = `Saved in ${setting("captures_folder") || "the vault"}`, sent = ""
       try {
         if (job) {
-          // (Still broken, after its proof: they watched it and it doesn't work yet)
           const broken = str(p.job) === job.id ? "They watched your change shown on their screen and it's still broken. " : ""
           await jobs.tell(ctx, job.id, `${broken}${captureText(c, saved, await vaultFileOn(plugin, job.where.machine), false)}`)
           went = `Sent to the job "${job.title}" (${job.id}).`
@@ -118,7 +117,7 @@ export function captureOps(plugin: Plugin, jobs: Jobs) {
           sent = j.id
         }
       } catch (e) {
-        went = `Saved here: the job didn't take it (${(e as Error).message}).`
+        went = `Saved here: the job didn't take it (${messageOf(e)}).`
         to = "Saved: the job didn't take it"
       }
       await note(ctx, c, saved, went)
