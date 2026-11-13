@@ -1,5 +1,3 @@
-// The chat sessions' keeper: a detached Node process hosting Claude Code sessions through the Agent SDK (chathost.ts),
-// so a turn running survives the server restarting or a deploy, as the terminal server's shells do (terminal/termd/).
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -12,7 +10,6 @@ const FILES = process.argv[3] || SOCK
 const WIN = process.platform === "win32"
 const SELF = fileURLToPath(import.meta.url)
 const log = (...a: unknown[]) => console.log(new Date().toISOString(), ...a)
-// (run from a code root in the app's store: kept while it lives, as it outlives the app and its updates)
 void holdRoot(SELF, "chatd")
 
 const sdk = await import("@anthropic-ai/claude-agent-sdk")
@@ -20,13 +17,10 @@ const { fromJSONSchema } = await import("zod")
 
 const host = new Host({ query: sdk.query, mcp: relayed(sdk.createSdkMcpServer, fromJSONSchema) }, log)
 
-/** Its own files are gone (the checkout moved): it makes way once it holds no session, and the server starts another. */
 const stale = () => !fs.existsSync(SELF)
-/** Its code as it started, told to the server, which ends a keeper of other code once it's quiet (chat.ts). */
 const code = codeOf(path.dirname(SELF))
 
 let served: ReturnType<typeof listen> | null = null
-/** Another one already answers at this path: leave it be. */
 async function start() {
   const net = await import("node:net")
   const taken = await new Promise<boolean>((r) => {
@@ -36,22 +30,19 @@ async function start() {
   })
   if (taken) { log("another one answers here: exiting"); process.exit(0) }
   const s = served = listen(host, SOCK, { log, hello: () => ({ file: SELF, stale: stale(), code }) })
-  try { fs.writeFileSync(`${FILES}.pid`, `${process.pid}\n`) } catch { /* only for stopping it by hand */ }
+  try { fs.writeFileSync(`${FILES}.pid`, `${process.pid}\n`) } catch {}
   log(`listening on ${SOCK} (pid ${process.pid})`)
-  // No session and nobody connected for a minute (or its files gone and no session): it ends.
   let alone = Date.now()
   setInterval(() => {
     if (s.conns() && !stale()) alone = Date.now()
     if (host.size || (Date.now() - alone < 60_000 && !stale())) return
     log(stale() ? "its files are gone: exiting" : "nothing left: exiting")
-    for (const f of [...(WIN ? [] : [SOCK]), `${FILES}.pid`]) try { fs.rmSync(f, { force: true }) } catch { /* gone */ }
+    for (const f of [...(WIN ? [] : [SOCK]), `${FILES}.pid`]) try { fs.rmSync(f, { force: true }) } catch {}
     process.exit(0)
   }, 15_000)
 }
 await start()
 
-// The server going away isn't its business; a SIGTERM ends it, with its sessions (each saved in its transcript), unheard:
-// a server told each ended would forget the turns a reboot cut off, and not take them up again (chat.ts recover).
 process.on("SIGHUP", () => {})
 process.on("SIGINT", () => {})
 process.on("SIGTERM", () => { void served?.stop(); host.close(); setTimeout(() => process.exit(0), 300) })

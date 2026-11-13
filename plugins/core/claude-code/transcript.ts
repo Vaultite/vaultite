@@ -1,26 +1,17 @@
-// A Claude Code session's transcript as a conversation: what the user said, Claude's answers (Markdown) and each tool
-// call with its result; attachments, thinking, sidechains and meta lines are skipped.
 import { type Asking, truncate, type Entry, type Head, type Tool } from "../../../core/agents.ts"
 import { NOT_SAID, questionsOf, resultText, summarize, userText } from "./chatlog.ts"
 // (a transcript line: untrusted JSON, each field checked where it's read)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = any
 
-/** Byte strings a line must have to matter (the rest is skipped without parsing): plugin.ts tests them on the raw line. */
 export const WANTED = ['"type":"user"', '"type":"assistant"', '"ai-title"', '"custom-title"', '"type":"queue-operation"']
 
-/** A conversation read so far, fed one line of the transcript at a time (the lines with a WANTED string). */
 export class Conversation {
   entries: Entry[] = []
   head: Head = { title: "", cwd: "", model: "", first: "", last: "", branch: "" }
-  /** Its background tasks still running (a call run in the background or moved there, a Monitor, an async agent), by
-   *  tool_use id: done once a notice with a status names it. */
   background = new Set<string>()
-  /** What started its latest turn when that wasn't the user: its own background task's notice, a schedule it set
-   *  (a meta prompt), another session's message. Null once the user writes. */
   auto: { text: string; at: string } | null = null
   private promptId = ""
-  /** Each background task's id (as its notices name it) to the tool_use that started it. */
   private tasks = new Map<string, string>()
   private titleKind = ""
   private lastMsg = ""
@@ -28,7 +19,6 @@ export class Conversation {
   private tools = new Map<string, Tool>()
   private models = new Map<string, number>()
 
-  /** Done with the lines there are for now: the title falls back to the first prompt, the model is the most used. */
   settle() {
     const top = [...this.models].sort((a, b) => b[1] - a[1])[0]
     this.head.model = top ? top[0] : ""
@@ -36,7 +26,6 @@ export class Conversation {
     return this
   }
 
-  /** A user line `d` (`meta`: a meta one): a new prompt id opens a turn, the user's or not (see `auto`). */
   private started(d: Json, text: string, at: string, meta: boolean) {
     const id = typeof d.promptId === "string" ? d.promptId : ""
     if (meta && (!id || id === this.promptId || !text)) return
@@ -45,7 +34,6 @@ export class Conversation {
     this.auto = meta || (typeof origin === "string" && origin !== "human") || NOT_SAID.test(text) ? { text, at } : null
   }
 
-  /** One line of the file (a JSON record). */
   line(text: string) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let d: any
@@ -67,7 +55,6 @@ export class Conversation {
     }
     if ((d.type !== "user" && d.type !== "assistant") || d.isSidechain) return
     const at = typeof d.timestamp === "string" ? d.timestamp : ""
-    // (a meta line opening a turn of its own, a schedule's prompt, isn't in the conversation but did start that turn)
     if (d.isMeta) return void this.started(d, typeof d.message?.content === "string" ? userText(d.message.content) : "", at, true)
     if (at) { this.head.first ||= at; this.head.last = at }
     if (d.cwd && !this.head.cwd) this.head.cwd = String(d.cwd)
@@ -118,14 +105,10 @@ export class Conversation {
   }
 }
 
-/** The task a tool result says it left running in the background (its id), however it got there: run in the
- *  background, moved there by its timeout or by the user, a Monitor, an async agent. */
 export function backgroundTask(result: string) {
   return /^(?:Command (?:running in background|was manually backgrounded[^\n]*?) with ID: |Command [^\n]*?moved to the background \(ID: |Monitor started \(task |Async agent launched[\s\S]*?agentId: )([\w-]+)/m.exec(result)?.[1] ?? null
 }
 
-/** What a transcript's tail waits on: its last tool call still without a result, when that's AskUserQuestion (its
- *  questions) or ExitPlanMode (its plan). A prompt after it, or another tool waiting, means it asks nothing. */
 export function askingIn(tail: string): Asking | null {
   const answered = new Set<string>()
   const lines = tail.split("\n")

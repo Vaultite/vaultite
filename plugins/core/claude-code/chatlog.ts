@@ -1,13 +1,10 @@
-// A Claude Code conversation as the chat tab draws it, read from the Agent SDK's messages (live, streamed) and from a
-// transcript's lines alike: both carry the same ids, so a session's history and its live turn merge by id. Node-free.
 
 /** A question as AskUserQuestion asks it (core/agents.ts' Question). */
 export type Question = { question: string; header?: string; multi?: boolean; options: { label: string; description?: string }[] }
 /** What an ask is: a tool to allow, AskUserQuestion's questions, or ExitPlanMode's plan. */
 export type AskKind = "permission" | "question" | "plan"
 
-/** One thing in a conversation, by id: a user message (its uuid), a block of an answer (`<message id>:<index>`), a tool
- *  call (its tool_use id), what a session asks (`ask:<tool_use id>`), a turn's end, a note. `live`: still streaming. */
+/** One thing in a conversation, by id: a user message's uuid, `<message id>:<index>`, a tool_use id, `ask:<tool_use id>`. */
 export type Entry =
   | { k: "user"; id: string; text: string; at: string
       /** Its pictures, each as `imageSrc` names it (useChat gives the app a URL it loads). */
@@ -22,7 +19,6 @@ export type Entry =
   | { k: "result"; id: string; ok: boolean; ms: number; error?: string; at: string }
   | { k: "note"; id: string; text: string; tone?: "error"; at: string }
 
-/** Long texts cut short: the tab is for reading a conversation, not for the raw data. */
 export const clip = (s: string, n = 4000) => (s.length > n ? `${s.slice(0, n)}\n… (${(s.length - n).toLocaleString("en-US")} more characters)` : s)
 
 const PICK = ["description", "command", "file_path", "path", "pattern", "url", "query", "prompt", "skill", "notebook_path", "subject", "task_id"]
@@ -38,8 +34,7 @@ export function summarize(name: string, input: unknown) {
   return s.replace(/\s+/g, " ").trim().slice(0, 200)
 }
 
-/** What a user message says, as Markdown: a slash command as "/name args", system reminders and command output left out;
- *  `pictures`: each image as "_(image)_" (the chat draws them itself). */
+/** A user message as Markdown: a slash command as "/name args", system reminders and command output left out. */
 export function userText(content: unknown, pictures = true): string {
   let s = ""
   if (typeof content === "string") s = content
@@ -60,11 +55,10 @@ export function resultText(content: unknown): string {
   return content == null ? "" : JSON.stringify(content)
 }
 
-/** The pictures a message may carry (the API's), at most IMAGES_MAX of IMAGE_MAX bytes each. */
+/** The picture types the API takes, at most IMAGES_MAX of IMAGE_MAX bytes each. */
 export const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"] as const
 export type ImageType = (typeof IMAGE_TYPES)[number]
 export const IMAGES_MAX = 10, IMAGE_MAX = 5 << 20
-/** What a picture's bytes are, by their first bytes (not what it's called), or null when none of IMAGE_TYPES. */
 export function imageType(b: Uint8Array): ImageType | null {
   const at = (i: number, ...xs: number[]) => xs.every((x, j) => b[i + j] === x)
   if (at(0, 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return "image/png"
@@ -73,7 +67,6 @@ export function imageType(b: Uint8Array): ImageType | null {
   if (at(0, 0x52, 0x49, 0x46, 0x46) && at(8, 0x57, 0x45, 0x42, 0x50)) return "image/webp"
   return null
 }
-/** Picture `n` of user message `entry`, under its session's chat URL (api/claude-code/chat/<id>/). */
 export const imageSrc = (entry: string, n: number) => `image/${encodeURIComponent(entry)}/${n}`
 const picturesOf = (id: string, content: unknown) => {
   const n = Array.isArray(content) ? content.filter((c) => c?.type === "image").length : 0
@@ -90,7 +83,6 @@ export function questionsOf(input: unknown): Question[] {
     const question = words(q?.question, 500)
     const options = (Array.isArray(q?.options) ? q.options : []).slice(0, 6).flatMap((o: unknown) => {
       const label = words((o as Json)?.label, 120), description = words((o as Json)?.description, 300)
-      // (one that only says its label again says nothing)
       return label ? [{ label, ...(description && description.toLowerCase() !== label.toLowerCase() ? { description } : {}) }] : []
     })
     const header = words(q?.header, 40)
@@ -106,8 +98,7 @@ const INTERRUPTED = /^\[Request interrupted by user/
 /** A user line that isn't the user's: a background task's notice, another session's or a teammate's message. */
 export const NOT_SAID = /^(?:<(?:agent-message|cross-session-message|teammate-message|task-notification)\b|Another Claude session sent a message)/
 
-/** The user's own latest message in a transcript's lines (typed or queued mid-turn, not a notice or another session's
- *  message, nor a subagent's prompt): what an agent may quote as their word (the companion's job-stop). */
+/** The user's own latest message in a transcript's lines: not a notice, another session's message or a subagent's prompt. */
 export function userSaid(lines: string[]): { text: string; at: number } | null {
   for (let i = lines.length - 1; i >= 0; i--) {
     if (!lines[i].includes('"user"') && !lines[i].includes("queued_command")) continue
@@ -128,18 +119,14 @@ export function userSaid(lines: string[]): { text: string; at: number } | null {
   return null
 }
 
-/** A conversation read so far: `feed` takes one SDK message or transcript line and answers the entries it changed. */
+/** A conversation read so far: `feed` takes an SDK message or transcript line and answers the entries it changed. */
 export class Reader {
   entries = new Map<string, Entry>()
-  /** The last answer's text since the user last spoke, and what they said: a turn's end tells the inbox both. */
   prompt = ""
   text = ""
-  /** Blocks of a message seen so far (its next block's index), by message id. */
   private blocks = new Map<string, number>()
-  /** The message each stream is in, by the tool call a subagent runs under ("" for the main one). */
   private streaming = new Map<string, string>()
   private partial = new Map<string, string>()
-  /** A streamed tool call's id, by its block's (`<message id>:<index>`). */
   private calls = new Map<string, string>()
 
   private put(e: Entry, out: Entry[]) {
@@ -174,7 +161,7 @@ export class Reader {
       }
       return
     }
-    if (parent) return // (a subagent's prompt: its Agent call says it)
+    if (parent) return
     const text = userText(content, false), id = String(m.uuid ?? `user:${at}`), pics = picturesOf(id, content)
     if (!text && !pics.images) return
     if (INTERRUPTED.test(text)) return this.put({ k: "note", id, text: "Interrupted", at }, out)
@@ -183,8 +170,7 @@ export class Reader {
     this.put({ k: "user", id, text: clip(text, 20000), at, ...pics }, out)
   }
 
-  /** A message the user sent mid-turn: a transcript keeps it as an attachment (by the uuid it was sent with), not a user
-   *  line. Background tasks' notices and other sessions' messages come this way too: not the user's. */
+  // Claude Code's transcript keeps a message sent mid-turn as an attachment, not a user line
   private queued(a: Json, out: Entry[]) {
     if (a?.type !== "queued_command" || a.commandMode !== "prompt" || !a.source_uuid) return
     const text = userText(a.prompt, false), id = String(a.source_uuid), pics = picturesOf(id, a.prompt)
@@ -204,7 +190,6 @@ export class Reader {
     if (this.streaming.get(parent ?? "") === mid) this.streaming.delete(parent ?? "")
   }
 
-  /** One block of an answer, whole (`live` false) or as streamed so far. */
   private block(c: Json, id: string, at: string, parent: string | undefined, live: boolean, out: Entry[]) {
     const was = this.entries.get(id) ?? (c?.id ? this.entries.get(String(c.id)) : undefined)
     const own = { at: was?.at ?? at, ...(parent ? { parent } : {}), ...(live ? { live: true } : {}) }
@@ -225,7 +210,6 @@ export class Reader {
     }
   }
 
-  /** A streamed piece (includePartialMessages): the block it's in grows, drawn as it comes. */
   private stream(m: Json, at: string, parent: string | undefined, out: Entry[]) {
     const ev = m.event ?? {}, key = parent ?? ""
     if (ev.type === "message_start") { this.streaming.set(key, String(ev.message?.id ?? m.api_message_id ?? "")); return }
@@ -242,7 +226,6 @@ export class Reader {
       if (e.k === "text" && d.type === "text_delta") this.put({ ...e, text: e.text + String(d.text ?? "") }, out)
       else if (e.k === "thinking" && d.type === "thinking_delta") this.put({ ...e, text: e.text + String(d.thinking ?? "") }, out)
       else if (e.k === "tool" && d.type === "input_json_delta") {
-        // (the command as it's written: the input's first string so far)
         const json = (this.partial.get(e.id) ?? "") + String(d.partial_json ?? "")
         this.partial.set(e.id, json)
         const said = /"(?:command|file_path|path|pattern|url|query|description)"\s*:\s*"((?:[^"\\]|\\.)*)/.exec(json)?.[1]
@@ -252,7 +235,6 @@ export class Reader {
   }
 }
 
-/** An assistant message's error (the SDK's: "rate_limit", "authentication_failed"...) in words. */
 function errorText(e: unknown) {
   const s = String(e)
   if (s === "authentication_failed") return "Claude Code isn't signed in for this account: run claude in a terminal and sign in"

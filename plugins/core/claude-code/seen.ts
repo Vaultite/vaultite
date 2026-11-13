@@ -1,5 +1,3 @@
-// What this device last showed of a chat (its title, folder, model), so a tab that can't reach its session still says
-// which chat it is. A cache of what was drawn, per device: the session's own data stays its transcript.
 import { get, splitMachine } from "@vaultite"
 
 export type Seen = { title: string; cwd: string; model: string }
@@ -18,7 +16,6 @@ export function see(id: string, s: Seen) {
   try { localStorage.setItem(key(id), JSON.stringify(s)) } catch { /* private mode */ }
 }
 
-/** Its title and folder as the app's list of chats has them, for a tab that never drew it (null: not listed). */
 export async function listedOf(id: string): Promise<Seen | null> {
   const r = await get<{ sessions: { id: string; title?: string; cwd: string; model?: string }[] }>("claude-code/chats")
   const s = r.sessions.find((x) => x.id === id || splitMachine(x.id)[0] === splitMachine(id)[0])

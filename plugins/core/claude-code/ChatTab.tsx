@@ -1,5 +1,3 @@
-// A Claude Code session as a chat (view:claude-session/<id>, `new` till it starts): live over its socket, what it asks
-// answered in place, a composer saying straight into it; `<id>@<machine>` is another machine's, through its server.
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { ArrowDown, History } from "lucide-react"
 import { glide, moves, notifyError, useDesktop } from "@vaultite"
@@ -13,7 +11,6 @@ import { Composer, type Queued } from "./Composer"
 import { Head, Welcome, Skeleton, Kinfolk, Failed, Away, Unread } from "./Head"
 import { knowChat } from "./chatmenu"
 
-// ---------- the view
 
 export function ChatView({ id, setArg }: { id: string; setArg: (arg: string) => void }) {
   return <Chat key={id === NEW ? NEW : id} id={id} setArg={setArg} />
@@ -21,7 +18,6 @@ export function ChatView({ id, setArg }: { id: string; setArg: (arg: string) => 
 
 function Chat({ id, setArg }: { id: string; setArg: (arg: string) => void }) {
   const c = useChat(id)
-  // (a plugin's session, drawn its way: the chat a click away)
   const d = drivenOf(c.driven)
   const [chat, setChat] = useState(false)
   useEffect(() => { if (d?.title && !c.title) nameTab(id, d.title) }, [d?.title, c.title, c.ready]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -35,18 +31,14 @@ function ChatOf({ id, setArg, c, d, back }: { id: string; setArg: (arg: string) 
   const desktop = useDesktop()
   const f = useFollow(c.ready)
   const working = c.s?.state === "working" || c.s?.state === "starting"
-  // (a turn waiting on the user is still under way: its work stays open, its status says so)
   const live = working || c.s?.state === "waiting"
   const pending = c.entries.filter((e): e is Ask => e.k === "ask" && !e.answer && !!c.s?.asks.includes(e.id))
-  // What the menus outside the tab offer (its tab's, the phone's …) follows what it knows.
   useEffect(() => {
     if (fresh) return
     knowChat(id, { ready: c.ready, running: !!c.s, busy: c.s?.state === "working" || c.s?.state === "waiting", tui: c.tui, driven: !!c.driven })
   }, [id, fresh, c.ready, c.s, c.tui, c.driven])
   useEffect(() => () => knowChat(id, null), [id])
 
-  // Messages sent while it works wait by the composer till it takes them up (an entry after theirs): it reads them only
-  // between steps. Then they're drawn in the conversation where they went in.
   const [sentQueued, setSentQueued] = useState<Queued[]>([])
   const queued = !working ? [] : sentQueued.filter((q) => {
     let at = -1
@@ -54,7 +46,6 @@ function ChatOf({ id, setArg, c, d, back }: { id: string; setArg: (arg: string) 
     return at < 0 || c.entries.slice(at + 1).every((e) => e.k === "user")
   })
 
-  // (what's opened and shut by hand, over each part's own default: a live turn's work open, a done one's folded)
   const [opened, setOpened] = useState<Map<string, boolean>>(() => new Map())
   const [seen] = useState(() => new Set<string>())
   const settled = useRef(false)
@@ -66,19 +57,13 @@ function ChatOf({ id, setArg, c, d, back }: { id: string; setArg: (arg: string) 
   }), [c.cwd, o?.home, opened]) // eslint-disable-line react-hooks/exhaustive-deps
   useLayoutEffect(() => { f.follow() }, [c.entries, c.s?.state]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // (what waits for an answer is docked over the composer, a queued message under it: not in the conversation too)
   const away = [...pending.map((p) => p.id), ...queued.map((q) => c.entries.findLast((e) => e.id === q.id || (e.k === "user" && e.text === q.text))?.id ?? "")].join(",")
   const { turns, kids } = useMemo(() => layout(c.entries, new Set(away.split(","))), [c.entries, away])
-  // (till Claude Code names it, what was asked first)
   const first = c.entries.find((e) => e.k === "user")
-  // (a first message of pictures only names it as one)
   const said = first?.k === "user" ? clipLine(first.text) || (first.images?.length ? "Pictures" : "") : ""
   const title = fresh ? "New chat" : c.title || d?.title || said || (c.ready ? "Untitled chat" : "")
   useEffect(() => { if (!c.title && !d?.title && said && !fresh) nameTab(id, said) }, [first?.id]) // eslint-disable-line react-hooks/exhaustive-deps
-  // (a turn's time runs from its message, as its "Worked for" does)
   const askedAt = turns.at(-1)?.user?.at
-  // Sent, it works before the message comes back: the turn before stays done till it does (or, a turn resumed with no
-  // message, a moment has passed), so the message rises in first and its status after it.
   const lastEnded = !!turns.at(-1)?.ended
   const [late, setLate] = useState(false)
   useEffect(() => { setLate(false); if (!live || !lastEnded) return; const t = setTimeout(() => setLate(true), 1500); return () => clearTimeout(t) }, [live, lastEnded])
@@ -87,7 +72,6 @@ function ChatOf({ id, setArg, c, d, back }: { id: string; setArg: (arg: string) 
   const composer = <Composer id={id} fresh={fresh} c={c} o={o} asks={pending} working={working} queued={queued} setArg={setArg}
     onSent={(m) => { f.stick(); if (m.queued) setSentQueued([...queued, { id: m.uuid ?? "", text: m.text }]) }} />
   if (fresh) {
-    // A new chat: what to ask in the middle, the composer under it (on a phone at the foot, by the thumb and keyboard).
     return (
       <div className="flex h-full min-h-0 flex-col bg-background" data-chat="new" data-state="new">
         <div className="chat-fresh isolate flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-4">
@@ -124,7 +108,6 @@ function ChatOf({ id, setArg, c, d, back }: { id: string; setArg: (arg: string) 
           )}
         </div>
       </div>
-      {/* (only while scrolled away from the latest, fading in and out just over the composer, on a scrim of its own) */}
       <div aria-hidden className="chat-scrim" data-on={f.away || undefined} />
       <button type="button" onClick={f.jump} aria-label="Jump to latest" data-tip="Jump to latest" data-jump-latest={f.away || undefined} tabIndex={f.away ? 0 : -1} aria-hidden={!f.away}
         className="chat-jump grid size-8 cursor-pointer place-items-center rounded-full border-[0.5px] border-border bg-card text-muted-foreground hover:text-foreground max-md:size-11">
@@ -137,8 +120,6 @@ function ChatOf({ id, setArg, c, d, back }: { id: string; setArg: (arg: string) 
   )
 }
 
-/** Kept at the bottom while it's there, as a chat is, easing down as words come rather than stepping; scrolled up, it
- *  stays where it was and offers a way back. A part opened by hand moves nothing. */
 function useFollow(ready: boolean) {
   const scroller = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null)
   const stuck = useRef(true), mine = useRef(-1), frame = useRef(0), held = useRef(0), began = useRef(false)
@@ -149,7 +130,6 @@ function useFollow(ready: boolean) {
     const el = scroller.current
     if (!el || !stuck.current || Date.now() < held.current) return
     const goal = el.scrollHeight - el.clientHeight
-    // (the first draw lands at the bottom; after it, it glides there)
     if (!began.current || !moves()) { if (ready) began.current = true; set(el, goal); return }
     if (frame.current) return
     const step = () => {
@@ -180,7 +160,6 @@ function useFollow(ready: boolean) {
   }
   return {
     scroller, content, away, scrolled, onScroll, follow,
-    /** A part opened or shut by hand: the page stays where it is while it moves. */
     hold: () => { held.current = Date.now() + 450 },
     stick: () => { stuck.current = true; held.current = 0 },
     jump: () => { const el = scroller.current; if (!el) return; stuck.current = true; setAway(false); el.scrollTo({ top: el.scrollHeight, behavior: glide() }) },

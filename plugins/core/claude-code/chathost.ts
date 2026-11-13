@@ -1,5 +1,3 @@
-// Claude Code sessions run through the Agent SDK, each a streaming-input query kept open between turns, what it asks
-// held until answered; chatd.ts runs this in a process that outlives the server, `listen` being its socket.
 import crypto from "node:crypto"
 import fs from "node:fs"
 import net from "node:net"
@@ -12,94 +10,64 @@ export type Effort = "low" | "medium" | "high" | "xhigh" | "max"
 export const MODES: Mode[] = ["default", "acceptEdits", "plan", "auto", "dontAsk", "bypassPermissions"]
 export const EFFORTS: Effort[] = ["low", "medium", "high", "xhigh", "max"]
 
-/** A tool the server serves to a session (the companion's), each call relayed to it. `streams`: its input told as it's
- *  written ("partial"); `ends`: a turn may end after it with no words (Claude Code asks for some); `endsTurn`: it ends. */
+/** `streams`: its input told as it's written; `ends`: a turn may end after it with no words; `endsTurn`: it ends one. */
 export type ToolDef = { name: string; description: string; schema: { properties?: Record<string, unknown>; required?: string[] }; streams?: boolean; ends?: boolean
   /** Never shown to the model: the host calls it itself (a session's `confirm`). */
   hidden?: boolean }
 
-/** How a session runs: its id (a new one's, or the one it resumes), folder, environment (CLAUDE_CONFIG_DIR picks the
- *  account), the claude to run, and what it starts with. */
 export type Spec = {
   id: string; resume: boolean; cwd: string; env: Record<string, string>; claude?: string
   model?: string; effort?: Effort; mode?: Mode; append?: string; title?: string; tools?: ToolDef[]
-  /** Permission rules it runs without asking (allowedTools: "mcp__vaultite-app", "Bash(vau read:*)"), and never. */
   allowed?: string[]; denied?: string[]
-  /** Folders besides cwd its read-only commands may read unasked. */
   dirs?: string[]
-  /** Who started it ("app", "inbox", a plugin's id): the inbox and the list say so. */
   by?: string; account?: string
-  /** Its news stays out of the inbox (a plugin's own session). */
   quiet?: boolean
-  /** No thinking before it answers (a quick one's: thinking took 1.5 s of a summoned answer's 2). */
   quick?: boolean
-  /** Its whole system prompt, in place of Claude Code's: a lean session, which loads none of the user's settings,
-   *  CLAUDE.md files, MCP servers or skills, and has only `builtins` of Claude Code's own tools. */
   system?: string; builtins?: string[]
-  /** Its words told as they're written ("partial" with no name). */
   texts?: boolean
-  /** Who answers its permission asks and auto mode's blocks, in place of the chat tab: a hidden tool, called with
-   *  `{ tool, input, reason, blocked }`, answering `{ yes, message? }`. A yes to a block runs that very call when retried. */
   confirm?: string
-  /** Shell commands refused outright, never offered (regex sources: keys, Keychains, the server's secrets). */
   never?: string[]
-  /** Auto mode's classifier rules (settings' autoMode: allow, soft_deny, hard_deny, environment; "$defaults" keeps its own). */
   autoMode?: Record<string, string[]>
 }
 
 export type State = "starting" | "working" | "waiting" | "idle" | "error"
-/** A session as the host tells it. `seq` counts the news the inbox hears (a turn started, ended, an ask); `told` is the
- *  last it heard, so a server that comes back tells only what it missed. */
 export type Summary = {
   id: string; state: State; cwd: string; account: string; by: string; model: string; effort: string; mode: Mode
   started: number; at: number; asks: string[]; seq: number; told: number
-  /** The last turn: what the user said, the answer's last text, and its error. */
   turn: { prompt: string; text: string; error?: string } | null
   error?: string; quiet?: boolean
-  /** Tokens its last request read (its context now), as the API counted them. */
   context?: number
-  /** Its background tasks running now (a Monitor, a shell, a subagent): ending its process would kill them. */
   background: number
 }
 
-/** A permission allowed (`always`: its rules too) or not (`message`: why); questions' answers (options, text or both;
- *  `message`: a reply instead; `chat`: Chat about this); a plan approved (`mode`: the mode after it) or sent back. */
 export type Answer = { allow?: boolean; always?: boolean; message?: string; answers?: (number[] | string | { options: number[]; text: string })[]; chat?: boolean; mode?: Mode }
 
-/** What Chat about this tells it, as Claude Code's terminal picker does. */
+// Claude Code's terminal picker's words for Chat about this
 const CHAT = "The user wants to clarify these questions. They may have more context or questions for you: take their " +
   "response into account, then ask again if it still applies. Start by asking them what they would like to clarify."
 
-/** What the host tells its connections. */
 export type Event =
   | { t: "put"; id: string; e: Entry }
-  /** Entry `e` is no more (a message Stop took back before it ran). */
   | { t: "drop"; id: string; e: string }
   | { t: "state"; s: Summary }
   | { t: "gone"; id: string }
   | { t: "tool"; id: string; call: string; name: string; args: unknown; use?: string }
-  /** A file it edited or a command it ran, for Activity (as a terminal's hooks report). */
   | { t: "did"; id: string; tool: string; input: unknown }
-  /** A streaming tool's input as written so far (`use`: its tool_use id, which its call names too; no `name`: its words,
-   *  `texts`, by their entry id); `end`: its block is written ("done"; the call comes), or the turn ended ("stop"). */
   | { t: "partial"; id: string; use: string; name: string; json: string; end?: "done" | "stop" | "tool" }
 
-/** What the host runs sessions with: the SDK's query, and an in-process MCP server of relayed tools. */
 export type Sdk = {
   query: (p: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => Query
   mcp?: (name: string, tools: { name: string; description: string; schema: ToolDef["schema"]; run: (args: unknown, use?: string) => Promise<unknown> }[]) => McpServerConfig
 }
 
-/** The in-process MCP server of a session's relayed tools, as the SDK makes one (`createSdkMcpServer`), each tool's
- *  parameters made zod from the JSON Schema the server gave (zod's `fromJSONSchema`). */
 export function relayed(create: typeof import("@anthropic-ai/claude-agent-sdk")["createSdkMcpServer"], fromJSONSchema: typeof import("zod")["fromJSONSchema"]): NonNullable<Sdk["mcp"]> {
   const shapeOf = (schema: ToolDef["schema"]) => Object.fromEntries(Object.entries(schema.properties ?? {}).map(([k, s]) => {
     const z = fromJSONSchema(s as Parameters<typeof fromJSONSchema>[0])
     return [k, schema.required?.includes(k) ? z : z.optional()]
   }))
-  // (always in its prompt: behind tool search, beside the user's own MCP servers, it reached for the shell instead)
+  // alwaysLoad: behind tool search the model reached for the shell instead
   return (name, tools) => create({ name, alwaysLoad: true, tools: tools.map((t) => ({ name: t.name, description: t.description, inputSchema: shapeOf(t.schema),
-    // (Claude Code names the tool_use a call is for in its _meta: the streamed input it goes with)
+    // Claude Code names the call's tool_use id in its _meta
     handler: async (args: unknown, extra: unknown) => (await t.run(args, toolUseIdOf(extra))) as never })) })
 }
 
@@ -107,33 +75,24 @@ const toolUseIdOf = (extra: unknown) => {
   const u = (extra as { _meta?: Record<string, unknown> } | undefined)?._meta?.["claudecode/toolUseId"]
   return typeof u === "string" ? u : undefined
 }
-/** The keeper's code in folder `dir` (its files', as one hash): a keeper runs what it started with. */
 export function codeOf(dir: string) {
   const h = crypto.createHash("sha256")
-  for (const f of ["chatd.ts", "chathost.ts", "chatlog.ts"]) { try { h.update(fs.readFileSync(path.join(dir, f))) } catch { /* gone */ } h.update("\0") }
+  for (const f of ["chatd.ts", "chathost.ts", "chatlog.ts"]) { try { h.update(fs.readFileSync(path.join(dir, f))) } catch {} h.update("\0") }
   return h.digest("hex").slice(0, 16)
 }
 
-/** The relayed tools' names as Claude Code calls them. */
 const APP = "mcp__vaultite-app__"
 
-/** What a refused call tells the model: the user's no, and a secret's. */
 const NO = "Not run: the user said no to it (or moved on from it). Tell them you left it, in a few words (it was their no: no hooks or blocks), and don't try it another way."
 const SECRET = "That reads keys or secrets (Keychains, ~/.ssh, tokens, Vaultite's own secrets): never, whoever asks. Say you may not."
-/** A shell call's command (Bash's), else null. */
 const shellOf = (tool: string, input: unknown) => (tool === "Bash" && typeof (input as { command?: unknown })?.command === "string" ? (input as { command: string }).command : null)
-/** A call as its retry matches it: the tool and what it does (a command's words, not its description or timeout). */
 export function callKey(tool: string, input: unknown) {
   const cmd = shellOf(tool, input)
   return `${tool}\0${cmd !== null ? cmd.trim().replace(/\s+/g, " ") : JSON.stringify(input)}`
 }
 
-/** Minutes a session sits idle (no turn, nothing asked, nothing running in the background) before its claude process
- *  ends; the next message resumes it. */
 const IDLE = 20 * 60_000
-/** Entries a session keeps (the newest): the rest is in its transcript. */
 const KEEP = 1500
-/** How long a relayed tool call waits for the server; a confirm, for the user (an offer waits ten minutes). */
 const TOOL_MS = 5 * 60_000, CONFIRM_MS = 11 * 60_000
 
 type Pending = { kind: AskKind; input: Record<string, unknown>; suggestions: PermissionUpdate[]; resolve: (r: PermissionResult) => void }
@@ -148,20 +107,12 @@ class Session {
   asks = new Map<string, Pending>()
   s: Summary
   idle: ReturnType<typeof setTimeout> | null = null
-  /** Its background tasks running now (a Monitor, a shell, a subagent; not ambient ones), as its process last said
-   *  (background_tasks_changed): ending it would kill them, and the turn their end starts. */
   background = 0
-  /** The user stopped its turn: the result that ends it says so, not why the SDK stopped. */
   stopping = false
   stderr: string[] = []
-  /** Streaming tools' inputs (and its words, `texts`) being written, by their block's index in the message. */
   streams = new Map<number, { use: string; name: string; json: string }>()
-  /** The message being streamed: its blocks' entries are `<id>:<index>`. */
   message = ""
-  /** Relayed calls (tool_use ids) whose result ended the turn. */
   ending = new Set<string>()
-  /** The user's answers to blocked calls (`confirm`), by call: retried, a yes runs it unchecked once and a no is told
-   *  why; their no holds the shell till their next message (no trying it another way). */
   answered = new Map<string, { yes: boolean; message?: string }[]>()
   declined = false
   constructor(spec: Spec) {
@@ -169,7 +120,6 @@ class Session {
     this.s = { id: spec.id, state: "starting", cwd: spec.cwd, account: spec.account ?? "", by: spec.by ?? "app", model: spec.model ?? "", effort: spec.effort ?? "",
       mode: spec.mode ?? "default", started: Date.now(), at: Date.now(), asks: [], seq: 0, told: 0, turn: null, background: 0, ...(spec.quiet ? { quiet: true } : {}) }
   }
-  /** What the user says, as the query takes it (it waits here between turns). */
   async *input(): AsyncGenerator<SDKUserMessage> {
     while (!this.ended) {
       const m = this.queue.shift()
@@ -186,14 +136,12 @@ export class Host {
   private listeners = new Set<(e: Event) => void>()
   private calls = new Map<string, { resolve: (v: unknown) => void; timer: ReturnType<typeof setTimeout>; e: Extract<Event, { t: "tool" }> }>()
   log: (...a: unknown[]) => void
-  /** How long a session sits idle before its process ends (tests shorten it). */
   idleMs = IDLE
   constructor(sdk: Sdk, log: (...a: unknown[]) => void = () => {}) { this.sdk = sdk; this.log = log }
 
   on(fn: (e: Event) => void) { this.listeners.add(fn); return () => { this.listeners.delete(fn) } }
   private emit(e: Event) { for (const fn of this.listeners) try { fn(e) } catch (err) { this.log("listener:", err) } }
 
-  /** Sessions with a claude process now. */
   get size() { return this.sessions.size }
   list(): Summary[] { return [...this.sessions.values()].map((x) => x.s) }
   read(id: string) {
@@ -207,8 +155,6 @@ export class Host {
     return x
   }
 
-  /** Start session `spec` (new, or resuming its id) with `prompt` as its first message, if any (`images`: its pictures;
-   *  `uuid`: its id). */
   start(spec: Spec, prompt?: string, images: string[] = [], uuid?: string): Summary {
     const content = prompt || images.length ? withImages(prompt ?? "", images) : null
     const old = this.sessions.get(spec.id)
@@ -224,7 +170,7 @@ export class Host {
       ...(spec.model ? { model: spec.model } : {}), ...(spec.effort ? { effort: spec.effort } : {}),
       ...(spec.mode ? { permissionMode: spec.mode } : {}), ...(spec.allowed?.length ? { allowedTools: spec.allowed } : {}),
       ...(spec.denied?.length ? { disallowedTools: spec.denied } : {}), ...(spec.dirs?.length ? { additionalDirectories: spec.dirs } : {}),
-      // (only so the picker can switch to it later, as the TUI's --allow-dangerously-skip-permissions does)
+      // the SDK switches a session to bypassPermissions later only when it started with this
       allowDangerouslySkipPermissions: true,
       includePartialMessages: true, thinking: spec.quick ? { type: "disabled" } : { type: "adaptive", display: "summarized" },
       ...(spec.system !== undefined
@@ -240,7 +186,6 @@ export class Host {
           this.effortOf(x, h)
           return {}
         }] },
-        // (a relayed call that ends its turn: none of the model's after it)
         { matcher: `^${APP}`, hooks: [async (h) => (h.hook_event_name === "PostToolUse" && x.ending.delete(h.tool_use_id) ? { continue: false, suppressOutput: true } : {})] }],
         Stop: [{ hooks: [async (h) => { this.effortOf(x, h); return {} }] }],
       },
@@ -267,8 +212,6 @@ export class Host {
     return x.s
   }
 
-  /** The user's message to session `id` (`uuid`: its id in the transcript; `images`: its pictures), queued while a turn
-   *  runs; while it asks something it's the answer (with pictures it's said too, as an answer can't carry them). */
   send(id: string, text: string, uuid: string = crypto.randomUUID(), images: string[] = []) {
     const x = this.session(id)
     if (!text.trim() && !images.length) throw new Error("nothing to send")
@@ -280,7 +223,6 @@ export class Host {
     return { uuid, ...(asked ? { answered: asked } : {}) }
   }
 
-  /** A message queued for the query, its entry told (`pictures`: how many it carries). */
   private said(x: Session, text: string, pictures: number, uuid: string, content: SDKUserMessage["message"]["content"]) {
     const at = new Date().toISOString(), id = x.s.id
     x.declined = false
@@ -292,8 +234,6 @@ export class Host {
     this.state(x, "working", true)
   }
 
-  /** Stop its turn, and the messages queued behind it (`taken`: the user's, given back, as Esc gives them in a terminal);
-   *  a Claude Code too old to take them back runs them after. */
   async interrupt(id: string) {
     const x = this.session(id)
     x.stopping = x.s.state === "working" || x.s.state === "waiting"
@@ -310,7 +250,6 @@ export class Host {
     return { taken }
   }
 
-  /** Change how it runs from now: the model, its effort, the permission mode. */
   async set(id: string, o: { model?: string; effort?: Effort; mode?: Mode }) {
     const x = this.session(id)
     if (o.model) { await x.q?.setModel(o.model); x.spec.model = x.s.model = o.model }
@@ -320,7 +259,6 @@ export class Host {
     return x.s
   }
 
-  /** End its claude process (the session stays in its transcript, to resume). */
   stop(id: string) {
     const x = this.sessions.get(id)
     if (!x) return false
@@ -328,13 +266,11 @@ export class Host {
     return true
   }
 
-  /** The inbox heard the news up to `seq`. */
   told(id: string, seq: number) {
     const x = this.sessions.get(id)
     if (x && seq > x.s.told) x.s.told = Math.min(seq, x.s.seq)
   }
 
-  /** Answer what it asks (`shown`: the ask's answer in words, in place of what `a` says). */
   answer(id: string, ask: string, a: Answer, shown?: string) {
     const x = this.session(id)
     const p = x.asks.get(ask)
@@ -375,7 +311,6 @@ export class Host {
     return x.s
   }
 
-  /** A relayed tool's answer from the server. */
   toolResult(call: string, result: unknown) {
     const c = this.calls.get(call)
     if (!c) return
@@ -384,7 +319,6 @@ export class Host {
     c.resolve(result)
   }
 
-  /** The tool calls the server hasn't answered: told again to a server that follows (one restarting missed them). */
   pendingCalls() { return [...this.calls.values()].map((c) => c.e) }
 
   private relay(id: string, name: string, args: unknown, use?: string, ms = TOOL_MS) {
@@ -397,7 +331,6 @@ export class Host {
     })
   }
 
-  /** canUseTool: an ask (a permission, its questions, its plan) held until the user answers it, or the turn is stopped. */
   private asker(x: Session): CanUseTool {
     return (tool, input, o) => (x.spec.confirm && tool !== "AskUserQuestion" && tool !== "ExitPlanMode"
       ? this.confirmed(x, tool, input, o.decisionReason ?? o.title ?? "", false, o.toolUseID).then((a): PermissionResult => (a.yes
@@ -421,13 +354,11 @@ export class Host {
         x.s.asks = [...x.asks.keys()]
         this.put(x, { ...e, answer: "Stopped" })
         resolve({ behavior: "deny", message: "Stopped" })
-        // (as an answer does: its turn goes on; a Stop's result says it ended)
         if (!x.asks.size && !x.ended && !x.stopping) this.state(x, "working", true)
       }, { once: true })
     }))
   }
 
-  /** Its `confirm` tool's answer for a call (`blocked`: auto mode refused it), a no while the user's last one holds. */
   private async confirmed(x: Session, tool: string, input: unknown, reason: string, blocked: boolean, use?: string): Promise<{ yes: boolean; message?: string }> {
     if (x.declined) return { yes: false }
     const r = await this.relay(x.spec.id, x.spec.confirm!, { tool, input, reason, blocked }, use, CONFIRM_MS) as { yes?: unknown; message?: unknown } | null
@@ -436,8 +367,6 @@ export class Host {
     return a
   }
 
-  /** The hooks `confirm` and `never` need: a block offered to the user, then retried, their yes letting that call
-   *  through once and their no told in its words; a no holds the shell till their next message; secrets never run. */
   private gate(x: Session): NonNullable<Options["hooks"]> {
     const { confirm, never } = x.spec
     if (!confirm && !never?.length) return {}
@@ -453,7 +382,6 @@ export class Host {
         if (a) return decide(a.yes, a.yes ? "the user said yes to it" : a.message ?? NO)
         return cmd !== null && x.declined ? decide(false, NO) : {}
       }] }],
-      // (the retry is what tells the model their answer: a no's words, not the classifier's "try another way")
       ...(confirm ? { PermissionDenied: [{ timeout: CONFIRM_MS / 1000, hooks: [async (h) => {
         if (h.hook_event_name !== "PermissionDenied") return {}
         const a = await this.confirmed(x, h.tool_name, h.tool_input, h.reason, true, h.tool_use_id), k = callKey(h.tool_name, h.tool_input)
@@ -463,7 +391,6 @@ export class Host {
     }
   }
 
-  /** The effort Claude Code applies (a hook's word for it), shown till one is chosen. */
   private effortOf(x: Session, h: unknown) {
     const level = (h as { effort?: { level?: unknown } }).effort?.level
     if (typeof level !== "string" || x.spec.effort || x.s.effort === level) return
@@ -495,7 +422,6 @@ export class Host {
       const was = x.background
       x.background = x.s.background = m.tasks.filter((t) => !t.ambient).length
       if (was !== x.background) this.emit({ t: "state", s: x.s })
-      // (its last one done while idle: the wait starts now)
       if (was && !x.background && x.s.state === "idle") this.idleTimer(x, true)
     }
     if (m.type === "assistant" && !m.parent_tool_use_id) {
@@ -503,13 +429,11 @@ export class Host {
       const n = (u?.input_tokens ?? 0) + (u?.cache_read_input_tokens ?? 0) + (u?.cache_creation_input_tokens ?? 0)
       if (n) x.s.context = n
     }
-    // (a turn its process started on its own, or a message sent as the last one ended: the SDK sends each at once, so
-    // only a new answer starting says a turn runs; a stopped stream's last pieces don't)
+    // the SDK sends a queued message at once: only a new answer starting says a turn runs
     const begun = m.type === "assistant" || (m.type === "stream_event" && (m.event as { type?: string }).type === "message_start")
     if (begun && !m.parent_tool_use_id && x.s.state === "idle") this.state(x, "working", true)
     this.streamed(x, m)
     const stopped = m.type === "result" && x.stopping
-    // (its transcript's "Interrupted" says it already: the same line once, live or read back)
     const said = stopped && interrupted([...x.reader.entries.values()])
     for (const e of x.reader.feed(m)) {
       if (stopped && e.k === "result") { if (said) x.reader.entries.delete(e.id); else this.put(x, { k: "note", id: e.id, text: "Stopped", at: e.at }) }
@@ -517,22 +441,18 @@ export class Host {
     }
     if (m.type === "result") {
       x.stopping = false
-      // (what was streaming when it stopped is as far as it got)
       for (const e of [...x.reader.entries.values()]) if ("live" in e && e.live) this.put(x, { ...e, live: undefined })
       const error = stopped || (m.subtype === "success" && !m.is_error) ? undefined : (x.reader.entries.get(String(m.uuid)) as { error?: string } | undefined)?.error
       x.s.turn = { prompt: x.reader.prompt, text: x.reader.text, ...(error ? { error } : {}) }
-      // (a message sent meanwhile runs as its own turn: its first words say so)
       if (!x.asks.size) this.state(x, "idle", true)
     }
   }
 
-  /** A streaming tool's input, told as it's written: each piece, its block's end, or the turn's end before that. */
   private streamed(x: Session, m: SDKMessage) {
     const stop = () => {
       for (const s of x.streams.values()) this.emit({ t: "partial", id: x.s.id, ...s, end: "stop" })
       x.streams.clear()
     }
-    // (`texts`: each message's end told too, with no `use`: "tool" when a tool call follows its words, else "stop")
     const ended = (end: "tool" | "stop") => { if (x.spec.texts) this.emit({ t: "partial", id: x.s.id, use: "", name: "", json: "", end }) }
     if (m.type === "result") { stop(); return ended("stop") }
     if (m.type !== "stream_event" || m.parent_tool_use_id) return
@@ -568,7 +488,6 @@ export class Host {
     this.emit({ t: "put", id: x.s.id, e })
   }
 
-  /** Its state now; `news`: what the inbox hears (a turn starting or ending, an ask). */
   private state(x: Session, state: State, news = false) {
     if (x.s.state === state && !news) return
     x.s.state = state
@@ -594,7 +513,6 @@ export class Host {
     x.idle.unref?.()
   }
 
-  /** Its process ends; `gone`: it's no longer listed (an error stays listed, to be seen, until the next one starts). */
   private end(x: Session, gone = true) {
     if (x.ended && !gone) return
     x.ended = true
@@ -602,14 +520,13 @@ export class Host {
     for (const [id, p] of x.asks) { p.resolve({ behavior: "deny", message: "The session ended" }); x.asks.delete(id) }
     for (const [call, c] of this.calls) if (c.e.id === x.s.id) { clearTimeout(c.timer); this.calls.delete(call); c.resolve({ isError: true, content: [{ type: "text", text: "The session ended" }] }) }
     x.wake?.()
-    try { x.q?.close() } catch { /* ended */ }
+    try { x.q?.close() } catch {}
     x.q = null
     if (!gone) return
     if (this.sessions.get(x.s.id) === x) this.sessions.delete(x.s.id)
     this.emit({ t: "gone", id: x.s.id })
   }
 
-  /** A session that failed is listed until `forget` or another start. */
   forget(id: string) {
     const x = this.sessions.get(id)
     if (x?.ended) { this.sessions.delete(id); this.emit({ t: "gone", id }) }
@@ -618,7 +535,6 @@ export class Host {
   close() { for (const x of [...this.sessions.values()]) this.end(x) }
 }
 
-/** What a permission is for, in words: "Claude wants to run a command", "to edit app.ts". */
 function wants(tool: string, input: Record<string, unknown>) {
   const file = typeof input.file_path === "string" ? path.basename(input.file_path) : ""
   if (tool === "Bash" || tool === "PowerShell") return "Claude wants to run a command"
@@ -630,7 +546,6 @@ function wants(tool: string, input: Record<string, unknown>) {
   return `Claude wants to use ${tool}`
 }
 
-/** What Always allow allows, in words: "Bash(git push:*)" as "git push commands", a folder's edits. */
 function alwaysText(ups: PermissionUpdate[]) {
   const said = ups.flatMap((u) => u.type === "addRules" && u.behavior === "allow" ? u.rules.map((r) => {
     const c = r.ruleContent?.replace(/:\*$/, "").trim()
@@ -641,9 +556,7 @@ function alwaysText(ups: PermissionUpdate[]) {
   return said.length ? said.join(", ").slice(0, 200) : "this from now on"
 }
 
-/** What an answer says when the user's message has pictures (said next: an answer can't carry them). */
 const PICTURES = "The user answered with a message and pictures: it's their next message, read it."
-/** Whether the turn told last (since the user last spoke) was cut short by the user, as its transcript says it. */
 function interrupted(es: Entry[]) {
   for (let i = es.length - 1; i >= 0; i--) {
     if (es[i].k === "user") return false
@@ -654,9 +567,7 @@ function interrupted(es: Entry[]) {
 
 const lastLines = (lines: string[]) => lines.join("").trim().split("\n").slice(-4).join("\n").slice(0, 600)
 
-// ---------- the socket: requests {op, re, ...} answered {re, ...} or {re, error}; `follow` hears every Event
 
-/** Each message a socket of the keeper's protocol brings (a JSON object a line; an unreadable line skipped). */
 export function eachMessage(sock: net.Socket, fn: (m: Record<string, unknown>) => void) {
   let buf = ""
   sock.setEncoding("utf8")
@@ -673,7 +584,6 @@ export function eachMessage(sock: net.Socket, fn: (m: Record<string, unknown>) =
 }
 
 const imagesIn = (v: unknown) => (Array.isArray(v) ? v.map(String) : [])
-/** A message's content: its pictures (files on this machine), then its text; one that can't go is refused, never left out. */
 function withImages(text: string, images: string[]): SDKUserMessage["message"]["content"] {
   if (images.length > IMAGES_MAX) throw new Error(`at most ${IMAGES_MAX} pictures a message (${images.length} given)`)
   const blocks = images.map((f) => {
@@ -687,7 +597,6 @@ function withImages(text: string, images: string[]): SDKUserMessage["message"]["
   return blocks.length ? [...blocks, ...(text ? [{ type: "text" as const, text }] : [])] : text
 }
 
-/** Serve `host` at socket `sock` (a Unix socket, or a named pipe on Windows), until `stop`. */
 export function listen(host: Host, sock: string, o: { log?: (...a: unknown[]) => void; hello?: () => Record<string, unknown> } = {}) {
   const conns = new Set<net.Socket>(), followers = new Set<net.Socket>()
   const send = (c: net.Socket, m: object) => { if (!c.destroyed) c.write(JSON.stringify(m) + "\n") }
@@ -696,7 +605,6 @@ export function listen(host: Host, sock: string, o: { log?: (...a: unknown[]) =>
     const id = String(m.id ?? "")
     switch (m.op) {
       case "hello": return { v: 1, pid: process.pid, ...o.hello?.() }
-      // (after its answer: the calls a server gone a moment missed)
       case "follow": followers.add(c); setTimeout(() => { for (const e of host.pendingCalls()) send(c, e) }, 0); return { sessions: host.list() }
       case "list": return { sessions: host.list() }
       case "read": { const r = host.read(id); if (!r) throw new Error(`no session ${id} runs here`); return r }
@@ -720,8 +628,8 @@ export function listen(host: Host, sock: string, o: { log?: (...a: unknown[]) =>
     c.on("close", gone)
     c.on("error", gone)
   })
-  if (process.platform !== "win32") { try { fs.rmSync(sock, { force: true }) } catch { /* none */ } fs.mkdirSync(path.dirname(sock), { recursive: true }) }
-  server.listen(sock, () => { if (process.platform !== "win32") try { fs.chmodSync(sock, 0o600) } catch { /* the folder is the user's anyway */ } })
+  if (process.platform !== "win32") { try { fs.rmSync(sock, { force: true }) } catch {} fs.mkdirSync(path.dirname(sock), { recursive: true }) }
+  server.listen(sock, () => { if (process.platform !== "win32") try { fs.chmodSync(sock, 0o600) } catch {} })
   return {
     server, conns: () => conns.size,
     stop: () => new Promise<void>((r) => { for (const c of conns) c.destroy(); server.close(() => r()) }),

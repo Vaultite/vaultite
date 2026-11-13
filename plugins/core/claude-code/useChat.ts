@@ -1,4 +1,3 @@
-// A chat session, live: its socket's hello, then each change, merged by id (the chat tab's; ChatTab.tsx draws it).
 import { useEffect, useRef, useState } from "react"
 import { announceAgent, get, type AgentPhase } from "@vaultite"
 import type { Entry } from "./chatlog"
@@ -9,21 +8,14 @@ export type Summary = { id: string; state: "starting" | "working" | "waiting" | 
   mode: Mode; at: number; asks: string[]; error?: string; background?: number }
 
 export type Live = { ready: boolean; found: boolean; s: Summary | null; title: string; cwd: string; account: string; model: string; effort: string; tui: string | null
-  /** The plugin driving it with the tools it serves (the companion), or "": it can't go to a terminal. */
   driven: string
-  /** Its entries in order; a user message's `images` each have a `src` the app loads (api/claude-code/chat/...). */
   entries: Entry[]; start: number
-  /** Why it may not be shown (not the owner's, not a session): for good. */
   refused?: string
-  /** The machine it runs on isn't answering now: tried again until it does (what's shown stays). */
   unreachable?: string
-  /** It couldn't be read several times running: why (it keeps trying). */
   failed?: string }
 
 const PHASE: Record<Summary["state"], AgentPhase> = { starting: "working", working: "working", waiting: "waiting", idle: "done", error: "failed" }
-/** The server pings every 20 s: a socket quiet longer went dead (a phone's, back from the background). */
 const QUIET_MS = 35_000
-/** Hellos failed in a row before the tab says it couldn't load. */
 const TRIES = 3
 
 export function useChat(id: string) {
@@ -31,13 +23,11 @@ export function useChat(id: string) {
   const [live, setLive] = useState<Live>({ ready: false, found: true, s: null, title: "", cwd: "", account: "", model: "", effort: "", tui: null, driven: "", entries: [], start: 0 })
   const meta = useRef(live)
   const now = useRef<() => void>(() => {})
-  // (a picture's src as the server names it, under the session's chat URL: this tab's id, another machine's too)
   const shown = (e: Entry): Entry => (e.k === "user" && e.images?.length
     ? { ...e, images: e.images.map((i) => ({ src: /^(api\/|\/|https?:)/.test(i.src) ? i.src : `api/claude-code/chat/${encodeURIComponent(id)}/${i.src}` })) } : e)
   useEffect(() => {
     if (!id || id === NEW) return
     let ws: WebSocket | null = null, timer: ReturnType<typeof setTimeout> | null = null, frame = 0, retry = 0, failures = 0, closed = false, last = 0
-    // (a stream's pieces come many a second: drawn once a frame)
     const draw = () => { frame ||= requestAnimationFrame(() => { frame = 0; setLive({ ...meta.current, entries: [...map.current.values()] }) }) }
     const again = () => { if (!closed && !meta.current.refused && !timer) timer = setTimeout(open, Math.min(15_000, 500 * 2 ** retry++)) }
     const heard = () => { const { unreachable: _u, failed: _f, ...rest } = meta.current; meta.current = rest }
@@ -76,7 +66,6 @@ export function useChat(id: string) {
       }
       s.onclose = () => { if (ws === s) { ws = null; again() } }
     }
-    /** Back in view, online again, or a page restored: a socket gone quiet is dropped for a new one now. */
     const revive = () => {
       if (closed || document.visibilityState !== "visible" || meta.current.refused) return
       if (ws && Date.now() - last < QUIET_MS) return
@@ -86,7 +75,6 @@ export function useChat(id: string) {
       open()
     }
     open()
-    // (Try now: whatever the socket's state, a new one at once)
     now.current = () => { if (ws) { const s = ws; ws = null; s.onclose = null; s.close() } last = 0; revive() }
     document.addEventListener("visibilitychange", revive)
     addEventListener("online", revive)
@@ -103,14 +91,12 @@ export function useChat(id: string) {
       ws?.close()
     }
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
-  /** The page before what's shown, from its transcript. */
   const earlier = async () => {
     const r = await get<{ entries: Entry[]; start: number }>(`claude-code/chat/${encodeURIComponent(id)}/history?before=${meta.current.start}`)
     map.current = new Map([...r.entries.map((e) => [e.id, shown(e)] as const), ...map.current])
     meta.current = { ...meta.current, start: r.start }
     setLive({ ...meta.current, entries: [...map.current.values()] })
   }
-  /** Connect again now rather than when the next try is due (a Try now button). */
   const retry = () => now.current()
   return { ...live, earlier, retry }
 }

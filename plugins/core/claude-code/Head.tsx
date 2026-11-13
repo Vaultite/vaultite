@@ -1,5 +1,3 @@
-// The chat tab's frame: its header (title, where it runs, actions; on a phone, the phone's own bar), its family, a new
-// chat's welcome, the skeleton while it loads, and what went wrong with what to do next.
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { CircleAlert, Ellipsis, Folder, ListTree, RotateCcw, SquareTerminal, WifiOff } from "lucide-react"
@@ -11,18 +9,15 @@ import { useChat } from "./useChat"
 import { type Options, TINT, home, modelLabel, folderName } from "./chatbits"
 import { chatMenu, terminalOk, toTerminal } from "./chatmenu"
 
-/** Where it runs, as the header's line says it: its folder, model, and account when there are several. */
 function whereOf(c: ReturnType<typeof useChat>, o: Options | null, last: Seen | null) {
   const model = c.s?.model || c.model || last?.model, cwd = c.cwd || last?.cwd
   const background = c.s?.background ? plural(c.s.background, "background task") : ""
   return [cwd && folderName(cwd, o), model && modelLabel(model, o), o && o.accounts.length > 1 && o.accounts.find((a) => a.id === c.account)?.label, background].filter(Boolean) as string[]
 }
 
-/** What's known of it while it can't be read: what this device last showed, else the app's list of chats. */
 function useLastSeen(id: string, c: ReturnType<typeof useChat>, title: string, known: boolean) {
   const [listed, setListed] = useState<Seen | null>(null)
   const last = seenOf(id) ?? listed
-  // (a title of its own or its first words, not "Untitled chat")
   const named = known && !!title && (!!c.title || c.entries.length > 0)
   useEffect(() => { if (named) see(id, { title, cwd: c.cwd, model: c.s?.model || c.model }) }, [id, named, title, c.cwd, c.s?.model, c.model])
   const lost = !known && (!!c.unreachable || !!c.failed)
@@ -32,19 +27,15 @@ function useLastSeen(id: string, c: ReturnType<typeof useChat>, title: string, k
     void listedOf(id).then((s) => { if (on && s) setListed(s) }, () => {})
     return () => { on = false }
   }, [id, lost])
-  // (its tab says it too, not "Claude Code session")
   useEffect(() => { if (!known && last?.title) nameTab(id, last.title) }, [id, known, last?.title])
   return known ? null : last
 }
 
-/** The header: on a computer a bar pinned over the conversation, aligned with it; on a phone the phone's bar says it
- *  (its title the tab's name, under it where it runs, its … menu the chat's: chatmenu.ts). */
 export function Head({ id, title, c, o, scrolled, back }: { id: string; title: string; c: ReturnType<typeof useChat>; o: Options | null; scrolled: boolean
   back?: { name: string; go: () => void } }) {
   const desktop = useDesktop()
   const { hidden } = usePane()
   const subtitle = usePortalHost(!desktop && !hidden ? "phone-subtitle" : null)
-  // (no stand-in name while it isn't known: "Untitled chat", "Claude Code session")
   const known = c.ready && !(c.failed && !c.entries.length)
   const last = useLastSeen(id, c, title, known)
   const shown = known || !!last
@@ -56,7 +47,6 @@ export function Head({ id, title, c, o, scrolled, back }: { id: string; title: s
 
 function Bar({ id, title, c, o, where, scrolled, back, blank }: { id: string; title: string; c: ReturnType<typeof useChat>; o: Options | null; where: string[]; scrolled: boolean
   back?: { name: string; go: () => void }
-  /** Nothing known of it yet: the shape of a title. */
   blank: boolean }) {
   const bar = useRef<HTMLElement>(null)
   usePaneTopBar(bar)
@@ -98,7 +88,6 @@ function Bar({ id, title, c, o, where, scrolled, back, blank }: { id: string; ti
 
 const ICON = "grid size-7 cursor-pointer place-items-center rounded-control text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:cursor-default disabled:opacity-40"
 
-/** While it loads: the shape of a conversation; its machine not answering, that instead (nothing is coming yet). */
 export function Skeleton({ note, retry }: { note?: string; retry?: () => void }) {
   if (note) return <Unreached title={note} body="The chat shows here once it answers." retry={retry} />
   return (
@@ -110,7 +99,6 @@ export function Skeleton({ note, retry }: { note?: string; retry?: () => void })
   )
 }
 
-/** The chat can't be followed now (its machine isn't answering, or it couldn't be read): what's shown may be behind. */
 export function Away({ text }: { text: string }) {
   return (
     <div data-chat-away role="status" className="mx-auto mb-1.5 flex w-full chat-column items-center gap-2 px-5 text-[13px] text-muted-foreground max-md:px-4 max-md:text-[15px]">
@@ -119,12 +107,10 @@ export function Away({ text }: { text: string }) {
   )
 }
 
-/** It couldn't be read, and there's nothing to show yet. */
 export function Unread({ id, retry }: { id: string; retry: () => void }) {
   return <Unreached title="Couldn't load this chat" retry={retry} terminal={id} />
 }
 
-/** A chat that can't be shown now: what's wrong, and what to do (Try now, and Open in terminal where that works). */
 function Unreached({ title, body, retry, terminal }: { title: string; body?: string; retry?: () => void; terminal?: string }) {
   const [trying, setTrying] = useState(false)
   const now = () => { if (!retry) return; setTrying(true); retry(); setTimeout(() => setTrying(false), 1500) }
@@ -141,7 +127,6 @@ function Unreached({ title, body, retry, terminal }: { title: string; body?: str
   )
 }
 
-/** A new chat: what to ask, centred, the composer under it (`children`). */
 export function Welcome({ children }: { children?: ReactNode }) {
   return (
     <div data-welcome className="flex flex-col items-center text-center">
@@ -153,7 +138,6 @@ export function Welcome({ children }: { children?: ReactNode }) {
   )
 }
 
-/** It stopped on an error: what happened, and what can be done next. */
 export function Failed({ id, error, c }: { id: string; error: string; c: ReturnType<typeof useChat> }) {
   const [busy, setBusy] = useState(false)
   const retry = async () => {
@@ -183,8 +167,6 @@ type Family = { parent: { title: string; link: string | null } | null; children:
 const KIN_STATE: Record<string, string> = { working: "Working", waiting: "Waiting", done: "Done", error: "Failed", cancelled: "Cancelled" }
 const AGENT_NAME: Record<string, string> = { claude: "Claude", codex: "Codex", opencode: "OpenCode" }
 
-/** Who delegated this session its task and the subagents it delegated to (Delegation's, when it's on), read again as
- *  its state changes and, while a subagent works, now and then. */
 function useFamily(id: string, state: string) {
   const [f, setF] = useState<Family | null>(null)
   useEffect(() => {
@@ -198,7 +180,6 @@ function useFamily(id: string, state: string) {
   return f
 }
 
-/** Its family, a line over the conversation. */
 export function Kinfolk({ id, state }: { id: string; state: string }) {
   const f = useFamily(id, state)
   if (!f) return null

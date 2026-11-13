@@ -1,5 +1,3 @@
-// What a session asks, answered in place: a permission, its questions, its plan. Waiting, it's docked over the
-// composer (it can't scroll away) with its keys; answered, the transcript's line says how it went.
 import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react"
 import { Check, X } from "lucide-react"
 import { Button, cn, haptic, Markdown, notify, notifyError, op, ink, useCommandKeys, useCommands, usePane } from "@vaultite"
@@ -8,13 +6,10 @@ import { QuestionPicker } from "@plugins/inbox/Questions"
 import { type Ask, TINT, STRONG, str } from "./chatbits"
 import { EditDiff } from "./chatbits"
 
-/** What the waiting ask's keys do, for the composer to do too while its field is empty (Enter, Esc, a digit). */
 export type AskKeys = { yes?: () => void; no?: () => void; also?: () => void; pick?: (n: number) => void }
 
 export function AskCard({ e, id, pending, docked, of, bind }: { e: Ask; id: string; pending: boolean; docked?: boolean
-  /** Its place among the asks waiting ("1 of 2"), when there are several. */
   of?: [number, number]
-  /** Told what its keys do while it's docked (null once it's gone), for the composer. */
   bind?: (k: AskKeys | null) => void }) {
   const [busy, setBusy] = useState(false)
   const root = useRef<HTMLDivElement>(null)
@@ -27,7 +22,6 @@ export function AskCard({ e, id, pending, docked, of, bind }: { e: Ask; id: stri
   }
   const plan = e.kind === "plan" ? splitPlan(e.plan ?? "") : null
   const head = e.kind === "permission" ? e.title : e.kind === "question" ? (e.questions?.length === 1 && e.questions[0].header) || "Claude asks" : plan!.title
-  // (a question's options are the inbox's picker: its rows are what a digit presses)
   const click = (sel: string) => { const b = root.current?.querySelector<HTMLButtonElement>(sel); if (b && !b.disabled) b.click() }
   const acts: Acts = e.kind === "permission" ? {
     yes: () => void answer({ allow: true }, "Allowed"), no: () => void answer({ allow: false }, "Denied"),
@@ -36,14 +30,12 @@ export function AskCard({ e, id, pending, docked, of, bind }: { e: Ask; id: stri
     yes: () => void answer({ allow: true, mode: "acceptEdits" }, "Approved: edits go ahead"), no: () => void answer({ allow: false }, "Kept planning"),
     also: () => void answer({ allow: true, mode: "default" }, "Approved"),
   } : { yes: () => click("[data-send-answers]"), pick: (n) => click(`[data-question="0"] [data-option="${n}"]`) }
-  // (the composer's field does them too while it's empty: Enter allows, Esc denies)
   useLayoutEffect(() => {
     if (!bind || !docked || !pending) return
     bind(acts)
     return () => bind(null)
   })
   if (!pending) {
-    // Answered, or no longer asked: a line saying how it went.
     const ok = !!e.answer && !/^(Denied|Kept planning|Stopped)/.test(e.answer)
     return (
       <div data-entry="ask" data-answered className="-mx-1.5 flex min-h-7 items-start gap-2 px-1.5 text-[13px] text-muted-foreground max-md:text-[15px]">
@@ -78,11 +70,8 @@ export function AskCard({ e, id, pending, docked, of, bind }: { e: Ask; id: stri
 
 type Acts = AskKeys
 type Answering = { busy: boolean; acts: Acts }
-// (on a phone each a whole label, the row wrapping rather than a word lost)
 const BIG = "chat-act whitespace-nowrap max-md:h-11 max-md:px-3 max-md:text-[16px]"
 
-/** The keys of the ask docked in the focused chat: Enter is its yes, Esc its no, a digit an answer. While a field has
- *  the keyboard they're the field's (the composer does them itself while it's empty). */
 function AskCommands({ kind, acts, root }: { kind: Ask["kind"]; acts: Acts; root: RefObject<HTMLDivElement | null> }) {
   const { focused } = usePane()
   const live = useRef(acts)
@@ -103,21 +92,17 @@ function AskCommands({ kind, acts, root }: { kind: Ask["kind"]; acts: Acts; root
   return null
 }
 
-/** A key's caps at a button's end (its command's keys, as rebound), on a computer. */
 function Key({ id, strong }: { id: string; strong?: boolean }) {
   const k = useCommandKeys(id)
   if (!k) return null
   return <kbd className={cn("ml-0.5 rounded-chip px-1 font-keys text-[11px] leading-[16px] max-md:hidden", strong ? "chat-key-strong" : "bg-foreground/[0.07] text-muted-foreground")}>{k}</kbd>
 }
 
-/** The answers, in a row while they all fit, else one under another, full width, the first on top: never a row of
- *  two and one left alone. */
 function Actions({ children }: { children: ReactNode }) {
   const row = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
     const el = row.current
     if (!el) return
-    // (measured as a row each time: stacked, it would always fit)
     let width = -1
     const fit = () => {
       if (el.clientWidth === width) return
@@ -168,7 +153,6 @@ function Plan({ text, busy, acts }: { text: string } & Answering) {
   )
 }
 
-/** A plan's own first heading is the card's title ("Plan" said once), the rest its body. */
 function splitPlan(plan: string): { title: string; body: string } {
   const m = /^\s*#{1,6}\s+(.+?)\s*#*\s*\n/.exec(plan)
   if (!m) return { title: "Claude's plan", body: plan }

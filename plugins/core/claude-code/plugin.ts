@@ -1,5 +1,3 @@
-// Claude Code: what it does on this machine, in each of its accounts (config folders), read from its own files; nothing is
-// written anywhere. Value = the tokens at API list prices (PRICES), not what was paid.
 import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import fs from "node:fs"
@@ -27,8 +25,7 @@ export const plugin = new Plugin(import.meta.url)
 const DEFAULT_DIR = process.env.CLAUDE_CONFIG_DIR ? path.resolve(process.env.CLAUDE_CONFIG_DIR) : path.join(HOME, ".claude")
 const APP_HISTORY = path.join(HOME, "Library", "Application Support", "Claude", "plan-usage-history.json")
 
-// US dollars per million tokens: input, output, cache read, cache write (5 min), cache write (1 h), from the published
-// API list. A model takes the longest id it starts with (claude-sonnet-5-5 -> claude-sonnet-5). Fast mode costs FAST x.
+// US dollars per million tokens, the published API list: input, output, cache read, cache write 5 min, cache write 1 h.
 const price = priceList<[number, number, number, number, number]>({
   "claude-fable-5-1": [10, 50, 0.25, 12.5, 20], "claude-fable-5": [10, 50, 1, 12.5, 20],
   "claude-mythos-5": [10, 50, 1, 12.5, 20],
@@ -43,22 +40,18 @@ const FAST = 2
 const PLANS: [string, string, number | null][] = [["max_20x", "Max 20x", 200], ["max_5x", "Max 5x", 100], ["max", "Max", null],
   ["pro", "Pro", 20], ["team", "Team", null], ["enterprise", "Enterprise", null]]
 
-// ---------- accounts (Claude Code's config folders, CLAUDE_CONFIG_DIR)
 
 type Account = { id: string; dir: string; label: string; private: boolean }
 const ACCOUNT_ID = /^[a-z0-9]{1,32}$/
 
-/** Every account: the default folder, its siblings <folder>-<name> Claude Code has run in (signed in, maybe no session
- *  yet), and folders the settings add; minus hidden ones. One folder is one account (a sibling's name wins over "default"). */
 function accounts(): Account[] {
   const set = plugin.loaded ? (plugin.settings({}).accounts ?? {}) as Item : {}
   const byDir = new Map<string, string>([[DEFAULT_DIR, "default"]])
   const parent = path.dirname(DEFAULT_DIR), base = path.basename(DEFAULT_DIR)
   let names: string[] = []
-  try { names = fs.readdirSync(parent) } catch { /* none */ }
+  try { names = fs.readdirSync(parent) } catch {}
   for (const n of names.sort()) {
     const id = n.startsWith(base + "-") ? n.slice(base.length + 1).toLowerCase() : ""
-    // (the name first: the home folder's other entries aren't looked into, as the sessions' watch asks often)
     if (ACCOUNT_ID.test(id) && ["projects", ".claude.json"].some((f) => fs.existsSync(path.join(parent, n, f)))) byDir.set(path.join(parent, n), id)
   }
   for (const [id, o] of Object.entries(set)) {
@@ -73,38 +66,31 @@ function accounts(): Account[] {
   return out
 }
 
-/** Whether a folder is in the vault (or links into it): an account's holds Claude Code's settings, whose hooks it runs,
- *  so the settings never name one that whoever writes the vault could fill. */
 function inVault(dir: string) {
   const real = (p: string) => { try { return fs.realpathSync(p) } catch { return path.resolve(p) } }
   const roots = [path.resolve(plugin.vault.path), real(plugin.vault.path)]
   return [path.resolve(dir), real(dir)].some((d) => roots.some((r) => d === r || d.startsWith(r + path.sep)))
 }
 
-// Its accounts' folders: a block's menu opens them in Finder.
 plugin.folders(() => accounts().map((a) => a.dir))
 
 /** Where an account keeps its .claude.json: beside ~/.claude for the default folder, inside any other. */
 const accountJson = (a: Account) => (a.dir === path.join(HOME, ".claude") ? path.join(HOME, ".claude.json") : path.join(a.dir, ".claude.json"))
-/** A private account's sessions have this as their folder: one project, the account's. */
 const PRIVATE = "\0private:"
 
-// ---------- the transcripts (<account>/projects/**/*.jsonl), read as they grow; only the fields counted are kept
 
-/** A response: when (epoch s), which model, where, which session, the token counts, fast mode, the local day. */
 type Resp = { ts: number; model: string; cwd: string; session: string; n: [number, number, number, number, number]; fast: boolean; day: string }
 const N_INPUT = 0, N_WRITE5 = 1, N_WRITE1H = 2, N_READ = 3, N_OUTPUT = 4
 
 const TYPE_FIRST = Buffer.from('{"type":"')
 
 class Scan extends JsonlScan<Resp> {
-  titles = new Map<string, [string, string]>()  // session -> [custom | ai, title]
+  titles = new Map<string, [string, string]>()
   protected extra() { return [...this.titles] }
   protected restore(x: unknown) { if (Array.isArray(x)) this.titles = new Map(x) }
 
   protected line(line: Buffer) {
-    // Cheap byte tests first: most lines are tool output nobody needs. A line's own type comes first in some (titles,
-    // request blobs) and early in a user's (before its message, the big part): those are told from their head.
+    // Claude Code writes a line's type first in some (titles, request blobs), early in a user's: told from their head.
     let kind: string
     if (line.subarray(0, TYPE_FIRST.length).equals(TYPE_FIRST)) {
       const type = line.subarray(TYPE_FIRST.length, TYPE_FIRST.length + 14).toString("latin1")
@@ -150,15 +136,13 @@ class Scan extends JsonlScan<Resp> {
   }
 }
 
-const scans = new Map<string, Scan>() // account folder -> its transcripts
+const scans = new Map<string, Scan>()
 const keyOf = (dir: string) => createHash("sha1").update(dir).digest("hex").slice(0, 12)
 const scanOf = (a: Account) => {
   let s = scans.get(a.dir)
-  // (what's read kept on this server's disk, by the folder: a restart reads on, not a month of transcripts again)
   if (!s) scans.set(a.dir, (s = new Scan(() => [path.join(a.dir, "projects")], () => path.join(plugin.localDir(), `scan-${keyOf(a.dir)}.json`))))
   return s
 }
-/** A session's title, whichever account it's in (never a private one's). */
 function titleOf(id: string, accts = accounts()) {
   for (const a of accts) if (!a.private) { const t = scans.get(a.dir)?.titles.get(id)?.[1]; if (t) return t }
   return ""
@@ -171,12 +155,10 @@ function cost(r: Resp) {
   return r.fast ? c * FAST : c
 }
 
-/** A worktree under .claude/worktrees/ belongs to the repository it's in. */
 const rootsOf = (cwds: Iterable<string>) => projectRoots(cwds, (c) => c.split("/.claude/worktrees/")[0])
 const nameOf = (root: string, accts: Account[] = []) => root.startsWith(PRIVATE)
   ? accts.find((a) => a.id === root.slice(PRIVATE.length))?.label ?? "Private" : projectName(root)
 
-// The last summary, and what it was of: worked out again when the transcripts, the days asked for or the date changed.
 let summarized: { key: string; out: ReturnType<typeof summarize> } | null = null
 
 async function summary(days: number, accts: Account[]) {
@@ -188,8 +170,7 @@ async function summary(days: number, accts: Account[]) {
 
 function summarize(days: number, accts: Account[]) {
   const t = new Tally(days, (root) => nameOf(root, accts))
-  // Each row knows its account; a private account's have its one folder.
-  const acctOf = new Map<string, Account>() // session -> account
+  const acctOf = new Map<string, Account>()
   const rows = sortBy(accts.flatMap((a) => [...scanOf(a).resp.values()].filter((r) => r.day >= t.start).map((r) => {
     acctOf.set(r.session, a)
     return a.private ? { ...r, cwd: PRIVATE + a.id } : r
@@ -208,9 +189,7 @@ function summarize(days: number, accts: Account[]) {
   return t.result(modelName)
 }
 
-// ---------- sessions running now (<account>/sessions/<pid>.json)
 
-/** ps's lstart ("Tue Sep 29 10:00:00 2026") -> epoch ms, in this machine's zone or in UTC; null when unreadable. */
 function lstart(s: string, utc = false) {
   const m = /^\w{3} (\w{3}) +(\d+) (\d\d):(\d\d):(\d\d) (\d{4})$/.exec(s.trim().split(/\s+/).join(" "))
   if (!m) return null
@@ -219,7 +198,7 @@ function lstart(s: string, utc = false) {
   return utc ? Date.UTC(...parts) : +new Date(...parts)
 }
 
-const started = new Map<number, [unknown, boolean]>() // pid -> [the start its session file says, whether ps agreed]
+const started = new Map<number, [unknown, boolean]>()
 
 function alive(pid: number, start: unknown) {
   try {
@@ -228,15 +207,14 @@ function alive(pid: number, start: unknown) {
     if ((e as NodeJS.ErrnoException).code !== "EPERM") { started.delete(pid); return false }
   }
   if (!start) return true
-  // A pid can be reused: the process must be the one that wrote the file (its start in UTC; ps says local time). Asked
-  // once per process (a running process's start doesn't change): ps is a process of its own.
+  // A pid can be reused: the process must be the one that wrote the file (its start in UTC; ps says local time).
   const seen = started.get(pid)
   if (seen && seen[0] === start) return seen[1]
   let out: string
   try {
     out = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", timeout: 3000 })
   } catch (e) {
-    return (e as { status?: number }).status === undefined // ps couldn't run: assume it's alive; no such process: not
+    return (e as { status?: number }).status === undefined
   }
   if (!out.trim()) return false
   const ran = lstart(out), wrote = lstart(String(start), true)
@@ -245,7 +223,6 @@ function alive(pid: number, start: unknown) {
   return same
 }
 
-/** Each account's sessions running now (<account>/sessions/<pid>.json), their process still the one that wrote them. */
 function running(accts: Account[]) {
   return accts.flatMap((a) => {
     const d = path.join(a.dir, "sessions")
@@ -268,14 +245,11 @@ async function live(accts: Account[]): Promise<Live[]> {
     since: ms(s.statusUpdatedAt), account: a.id, ...(a.private ? { project: a.label, private: true } : {}) }))
 }
 
-// ---------- plan limits: asked of Claude Code itself, else the status line's snapshots, else the Claude app's history;
-// the plan from .claude.json
 
 const LABELS: Record<string, string> = { session: "Current session", week: "This week", opus: "This week, Opus", sonnet: "This week, Sonnet" }
 
 const window = (key: string, minutes: number, used: number, resets: number | null, now: number, label = LABELS[key]) =>
   limitWindow(key, label, minutes, used, resets, now)
-/** The plan's windows Claude Code tells (its /usage and its status line): ours, and their minutes. */
 const KEYS: Record<string, [string, number]> = { five_hour: ["session", 300], seven_day: ["week", 10080],
   seven_day_opus: ["opus", 10080], seven_day_sonnet: ["sonnet", 10080] }
 const windows = (rl: Item, used: string, resets: (v: unknown) => number | null, now: number) => Object.entries(KEYS).flatMap(([name, [k, m]]) => {
@@ -283,14 +257,11 @@ const windows = (rl: Item, used: string, resets: (v: unknown) => number | null, 
   return w && typeof w === "object" && typeof w[used] === "number" ? [window(k, m, w[used], resets(w.resets_at), now)] : []
 })
 
-/** Where the asking runs: its brief session is told apart from the user's by this folder (live() leaves it out). */
 const ASKING_DIR = path.join(os.tmpdir(), "vaultite-claude-limits")
 let askingReal = ""
 let sampleReal = ""
 const isAsking = (cwd: string) => (!!askingReal && cwd === askingReal) || cwd === (sampleReal ||= (() => { try { return fs.realpathSync(SAMPLE_DIR) } catch { return "" } })())
 
-/** Asks Claude Code (stream-json, no prompt: nothing reaches a model) what the account's plan has used, as /usage
- *  shows. Null when it can't say, and in a test run (its servers would ask with the user's real logins). */
 function askClaude(dir: string): Promise<Item | null> {
   const bin = process.env.VAULTITE_TEST === "1" ? null : findBin("claude")
   if (!bin) return Promise.resolve(null)
@@ -309,8 +280,6 @@ function askClaude(dir: string): Promise<Item | null> {
   } })
 }
 
-/** What Claude Code says now, asked at most every two minutes (a failure too, so a missing login isn't asked for every
- *  block). memo() tells its functions apart by name: this has one. */
 const asked = (dir: string) => plugin.memoStale(120, async function claudeUsage(d: string) { return { at: Date.now() / 1000, got: await askClaude(d) } }, dir)
 
 const at = (v: unknown) => { const t = typeof v === "string" ? Date.parse(v) / 1000 : NaN; return Number.isFinite(t) ? t : null }
@@ -320,7 +289,6 @@ async function accountLimits(now: number, dir: string) {
   const rl = got?.rate_limits_available ? got.rate_limits : null
   if (!rl || typeof rl !== "object") return null
   const wins = windows(rl, "utilization", at, now)
-  // A week of one model only ("This week, Fable"), when the plan has one.
   for (const l of Array.isArray(rl.limits) ? rl.limits : []) {
     const name = l?.kind === "weekly_scoped" && typeof l.percent === "number" ? l.scope?.model?.display_name : null
     if (typeof name === "string" && name && !wins.some((w) => w.label === `This week, ${name}`))
@@ -329,13 +297,11 @@ async function accountLimits(now: number, dir: string) {
   return wins.length ? { source: "Claude account", observed, windows: wins } : null
 }
 
-/** The newest status line snapshot of this account's sessions (written on every render of Claude Code's status line):
- *  in its folder, or ~/.claude's (a status line may write there whatever account runs it), with limits in it. */
 function statusLineLimits(now: number, a: Account) {
   const files: string[] = []
   for (const dir of new Set([a.dir, path.join(HOME, ".claude")])) {
     const d = path.join(dir, "usage-snapshots")
-    try { for (const n of fs.readdirSync(d)) if (n.endsWith(".json")) files.push(path.join(d, n)) } catch { /* none */ }
+    try { for (const n of fs.readdirSync(d)) if (n.endsWith(".json")) files.push(path.join(d, n)) } catch {}
   }
   let projects: string[] = []
   try { projects = fs.readdirSync(path.join(a.dir, "projects")).map((n) => path.join(a.dir, "projects", n)) } catch { return null }
@@ -354,8 +320,6 @@ function statusLineLimits(now: number, a: Account) {
 
 const hour = (ts: number) => ts - (ts % 3600) // allowances renew on the hour, in UTC
 
-/** The Claude app's history: percentages only. A session renews five hours after the hour its use began (the history
- *  brackets it, this machine's own first request narrows it); a week renews seven days after its last drop. */
 function appLimits(now: number, org: string | null, scan: Scan) {
   let data: Item
   try { data = JSON.parse(fs.readFileSync(APP_HISTORY, "utf8")) } catch { return null }
@@ -399,7 +363,6 @@ function appLimits(now: number, org: string | null, scan: Scan) {
   return wins.length ? { source: "Claude app", observed: t, windows: wins } : null
 }
 
-/** An account's login, as its .claude.json says (the plan, the organization). */
 function login(file: string): Item {
   try { return JSON.parse(fs.readFileSync(file, "utf8")).oauthAccount || {} } catch { return {} }
 }
@@ -422,46 +385,39 @@ async function limits(a: Account) {
   return { ...best, observed: isoOf(best.observed * 1000) }
 }
 
-// ---------- Remote Control servers (`claude remote-control`) running here
 
-/** Every `claude remote-control` server on this machine: its name (--name), account (its CLAUDE_CONFIG_DIR) and start. */
 async function servers(accts: Account[]) {
   const rows: Item[] = []
   for (const { pid, started, command } of await processes()) {
     if (!/^(\S*\/)?claude\s+remote-control(\s|$)/.test(command) || /\s(-h|--help)(\s|$)/.test(command)) continue
     // Unnamed, its sessions are named after the machine (Remote Control's default).
     const name = /--name(?:=|\s+)("[^"]*"|'[^']*'|\S+)/.exec(command)?.[1]?.replace(/^["']|["']$/g, "") || os.hostname().replace(/\.local$/, "")
-    // Its account: the CLAUDE_CONFIG_DIR it was started with (ps shows a process's environment to its user).
+    // ps shows a process's environment to its user: its CLAUDE_CONFIG_DIR names its account
     let dir = DEFAULT_DIR
     try {
       const env = execFileSync("ps", ["eww", "-o", "command=", "-p", String(pid)], { encoding: "utf8", timeout: 3000 })
       const d = /(?:^|\s)CLAUDE_CONFIG_DIR=(\S+)/.exec(env)?.[1]
       if (d) dir = expandHome(d)
-    } catch { /* gone */ }
+    } catch {}
     const a = accts.find((x) => x.dir === dir)
     rows.push({ pid, name, account: a?.id ?? "", accountLabel: a?.label ?? path.basename(dir), started: isoOf(started) })
   }
   return sortBy(rows, (r) => [r.started ?? "", r.pid])
 }
 
-/** Each account's plan and limits, the Remote Control servers, of one account or all of them. */
 async function plans(accts: Account[]) {
   const each = await Promise.all(accts.map(async (a) => ({ id: a.id, label: a.label, private: a.private, plan: await plan(a), limits: await limits(a) })))
   const plans = each.map((a) => a.plan).filter((p) => p !== null)
-  // All of them: one plan whose price is theirs together (when each is known).
   const both = plans.length === each.length && plans.length > 1
     ? { name: plans.map((p) => p.name).join(" + "), monthly: plans.every((p) => p.monthly) ? plans.reduce((n, p) => n + p.monthly!, 0) : null } : null
   return { plan: each.length === 1 ? each[0].plan : both, limits: each.find((a) => a.limits)?.limits ?? null,
     accounts: each, servers: await plugin.memoStale(10, servers, accts) }
 }
 
-// ---------- one session's transcript (the view tab: view:claude-session/<id>)
 
 const SESSION_ID = /^[\w-]{1,80}$/
 const transcript = transcripts((file) => new Transcript(file, () => new Conversation(), WANTED))
 
-/** A session's transcript file (<account>/projects/<folder>/<id>.jsonl) and its account, or null. `all`: private
- *  accounts too (to resume one, never to read it). */
 function sessionFile(id: string, all = false): { file: string; account: Account } | null {
   if (!SESSION_ID.test(id)) return null
   for (const a of accounts().filter((x) => all || !x.private)) {
@@ -476,7 +432,6 @@ function sessionFile(id: string, all = false): { file: string; account: Account 
   return null
 }
 
-/** A session's title, folder, times, model and conversation (the view tab: view:claude-session/<id>). */
 async function session(id: string) {
   const file = sessionFile(id)?.file
   const t = file ? await transcript(file) : null
@@ -484,13 +439,10 @@ async function session(id: string) {
   return { ...t.talk.head, title: titleOf(id) || t.talk.head.title, entries: t.talk.entries }
 }
 
-// An artifact asking Claude (claude.sample), in the default account.
 plugin.provide("sample", (a: SampleAsk) => sample(a, DEFAULT_DIR))
 
-// ---------- Terminal runs it (the service "agent:claude")
 
-/** Claude Code's hooks (`--settings`): `report` (Activity's) hears edits and commands, the rest mark its state (nothing
- *  once it speaks OSC 7501); on Windows' PowerShell and cmd they POST (http hooks; SessionStart takes a program). */
+/** On Windows' PowerShell and cmd the hooks POST (http hooks); SessionStart takes only a program. */
 function hooks({ state, report, stateHook, reportUrl }: Pick<AgentStart, "state" | "report" | "stateHook" | "reportUrl">): object | null {
   const reported = report ? { type: "command", command: report } : reportUrl ? { type: "http", url: reportUrl, timeout: 5 } : null
   const told = reported ? [{ matcher: "^(Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell)$", hooks: [reported] }] : []
@@ -513,29 +465,20 @@ function hooks({ state, report, stateHook, reportUrl }: Pick<AgentStart, "state"
   } }
 }
 
-/** `claude`, or `claude --resume <id>` in the folder it ran in (sessions are per folder), in the account the profile
- *  names or the session is in (CLAUDE_CONFIG_DIR, unless that's the default and the server has none). */
 const CLOUD_SESSION = /^session_\w{4,80}$/
 const FLAGS = new Set(["--resume", "--teleport", "--append-system-prompt", "--settings", "--allowedTools", "--model", "--effort", "--permission-mode", "--"])
 plugin.provide("agent:claude", async (start: AgentStart): Promise<AgentCommand> => {
   const { resume, context, profile, prompt, dark, allow, model, effort, mode, wsl } = start
-  // (a plugin's session that runs now, the companion's, stays: a terminal would have none of the tools it serves, and
-  // taking it over ends it for that plugin)
   const driver = resume ? chat.driving(resume) : ""
   if (driver) return agentRefusal(`This is ${driver === "companion" ? "the companion's" : `the ${driver} plugin's`} Claude Code session, running in the app with tools only the app serves: open it in its chat tab, or stop it there first to resume it here.`)
-  // (a cloud session's, session_..., comes here with --teleport, into the folder it was asked to start in: a checkout of
-  // its repository; inside WSL its sessions and accounts are the distro's own, not these)
   const cloud = !!resume && CLOUD_SESSION.test(resume)
   const found = resume && !wsl && !cloud ? sessionFile(resume, true) : null
   if (resume && !found && !wsl && !cloud) return notOnThisMachine("Claude Code", resume)
-  // (a session the chat runs goes to the terminal: one writes it)
   if (resume && !cloud && chat.hosted(resume)) await chat.letGo(resume)
   const a = wsl ? undefined : found?.account ?? (profile ? accounts().find((x) => x.id === profile) : undefined)
   if (cloud && profile && !a) return agentRefusal(`There's no Claude Code account "${profile}" on this machine to continue that cloud session in.`)
   const env: Record<string, string> = a && (a.dir !== path.join(HOME, ".claude") || process.env.CLAUDE_CONFIG_DIR) ? { CLAUDE_CONFIG_DIR: a.dir } : {}
   const cwd = found ? (await transcript(found.file))?.talk.head.cwd || null : null
-  // (what its CLAUDE.md files say, the vault's rules among them in the vault, it isn't told again; its MCP server is
-  // told it was told: VAULTITE_TOLD, so the vault's lines reach it once)
   const append = context && !wsl && !cloud ? unsaid(context, memoryLines(cwd || start.cwd || plugin.vault.path, a?.dir ?? DEFAULT_DIR)) : context
   if (context) env.VAULTITE_TOLD = "1"
   // Its ANSI themes draw in the terminal's 16 colours, which are the app's colour scheme.
@@ -553,20 +496,18 @@ plugin.provide("agent:claude", async (start: AgentStart): Promise<AgentCommand> 
   }
 })
 
-/** The models a session may run, by the aliases --model takes (each its family's latest), and its efforts. */
 const models = (): AgentModels => ({ models: FAMILIES.map((id) => ({ id, label: modelName(id) })),
   efforts: ["low", "medium", "high", "xhigh", "max"], modes: [...PERMISSION_MODES] })
-/** Its accounts' ids (vau limits'): what a job may ask to run in on this machine. */
+/** Its accounts' ids: what a job may ask to run in on this machine. */
 plugin.provide("agent-accounts:claude", () => accounts().map((a) => a.id))
 plugin.provide("agent-models:claude", models)
-/** A model as people say it ("Fable 5.2", "opus 55") as --model takes it (claude-fable-5-2, opus), and its name. */
+/** A model as people say it ("Fable 5.2", "opus 55") as --model takes it, and its name. */
 plugin.provide("agent-model-id:claude", (said: string): AgentModel => {
   const id = modelId(said)
   return id === null ? { error: notAModel(said) } : { id, label: id && modelName(id) }
 })
 
-/** The permission mode a session runs in now (the service "agent-mode:claude": what a subagent it delegates to may have at
- *  most): the chat's, else its transcript's last. The session in `terminal` when `session` isn't given; null: unknown. */
+/** The permission mode a session runs in now: what a subagent it delegates to may have at most; null: unknown. */
 plugin.provide("agent-mode:claude", async (terminal: string, session = ""): Promise<PermissionMode | null> => {
   const sid = session || await sessionIn(terminal)
   const hosted = sid ? chat.api.list().find((s) => s.id === sid) : undefined
@@ -576,8 +517,7 @@ plugin.provide("agent-mode:claude", async (terminal: string, session = ""): Prom
   return PERMISSION_MODES.find((m) => m === said) ?? null
 })
 
-/** Its dialogs: folder trust, then external CLAUDE.md imports, before its hooks run (menus defaulting to No); a permission,
- *  Enter while Yes is chosen, its question maybe far up (choices wrapped): Yes chosen and no user prompt (❯) after it. */
+/** Claude Code's dialogs: folder trust, then external CLAUDE.md imports, before its hooks run; a permission, Yes chosen. */
 const ASKS: AgentAsk[] = [
   { id: "trust", match: /Yes, I trust this folder/, says: "Trust this folder? It can read, edit and run files in it", approve: { option: "Yes, I trust this folder" }, deny: { option: "No, exit" } },
   { id: "imports", match: /Yes, allow external imports/, says: "Allow external CLAUDE.md imports? Its rules read files outside this folder",
@@ -586,15 +526,13 @@ const ASKS: AgentAsk[] = [
 ]
 plugin.provide("agent-asks:claude", (): AgentAsk[] => ASKS)
 
-/** A session's last response and how long its prompt cache lasts (the service "agent-session:claude": the Inbox resumes
- *  it while cached). The TTL is an hour when its last responses wrote 1 h cache, else five minutes. */
+/** A session's last response and how long its prompt cache lasts: an hour when it wrote 1 h cache, else five minutes. */
 plugin.provide("agent-session:claude", (id: string): { transcript: string; last: number; ttl: number; account: string } | null => {
   const found = sessionFile(id, true), t = found && tail(found.file)
   return t ? { transcript: found.file, last: t.st.mtimeMs, ttl: ttlOf(t.text), account: found.account.id } : null
 })
 
-/** The account a session runs in ("agent-account:claude": the Inbox mutes the ones the user muted): its transcript's, else
- *  the one running in app terminal `terminal`, else the one its id names; null when it can't be told. */
+/** The account a session runs in (the Inbox mutes the ones the user muted); null when it can't be told. */
 plugin.provide("agent-account:claude", async (terminal: string, session = ""): Promise<{ id: string; label: string } | null> => {
   const accts = accounts(), of = (a: Account | undefined) => (a ? { id: a.id, label: a.label } : null)
   const found = session ? sessionFile(session, true) : null
@@ -610,22 +548,18 @@ plugin.provide("agent-account:claude", async (terminal: string, session = ""): P
   return named?.agent === "claude" ? of(accts.find((a) => a.id === (named.profile ?? "default")) ?? accts[0]) : null
 })
 
-/** A session's latest turn: the user's last message (or, `auto`, what else started it), Claude's last answer, its
- *  background tasks running ("agent-turn:claude", read as a turn ends). The session running in `terminal` when `session` isn't given; never a private account's. */
+/** A session's latest turn: the user's last message (or `auto`), Claude's last answer, its background tasks running. */
 plugin.provide("agent-turn:claude", async (terminal: string, session = "") => {
   const now = !terminal && session ? chat.turnNow(session) : null
   const sid = session || await sessionIn(terminal)
   const found = sid ? sessionFile(sid) : null
   const t = found ? await transcript(found.file) : null
-  // (a chat's turn as its keeper says it, the files from its transcript)
   if (now) return { ...now, files: t ? lastTurn(t.talk.entries).files : [] }
-  // (a turn its own task, schedule or another session started: that's its prompt, and not the user's)
   const auto = t?.talk.auto
   return t ? { session: sid, ...lastTurn(t.talk.entries), ...(auto ? { prompt: auto.text, auto: true } : {}), background: t.talk.background.size } : null
 })
 
-/** The user's own latest message in a session ("agent-said:claude": an agent quoting their word, the companion's
- *  job-stop), not a notice or another session's message; the session in `terminal` when `session` isn't given. */
+/** The user's own latest message in a session, not a notice or another session's message. */
 plugin.provide("agent-said:claude", async (terminal: string, session = "") => {
   const sid = session || await sessionIn(terminal)
   const found = sid ? sessionFile(sid) : null
@@ -634,8 +568,7 @@ plugin.provide("agent-said:claude", async (terminal: string, session = "") => {
   return said ? { session: sid, ...said } : null
 })
 
-/** The files a session changed after each message it was told and each of its words (the service "agent-edits:claude":
- *  the companion takes a live edit's back): the session in `terminal` when `session` isn't given, from `from` on. */
+/** The files a session changed after each message it was told and each of its words, from `from` on. */
 plugin.provide("agent-edits:claude", async (terminal: string, session = "", from = ""): Promise<EditSpan[] | null> => {
   const sid = session || await sessionIn(terminal)
   const found = sid ? sessionFile(sid) : null
@@ -645,8 +578,7 @@ plugin.provide("agent-edits:claude", async (terminal: string, session = "", from
   return first < 0 ? [] : spans.slice(first)
 })
 
-/** What a session waits on ("agent-asking:claude", the Inbox shows it whole): its AskUserQuestion or plan, else a dialog
- *  its terminal shows, as a question (not a permission: Approve and Deny answer it). Never a private account's. */
+/** What a session waits on: its AskUserQuestion or plan, else its terminal's dialog as a question; never a private account's. */
 plugin.provide("agent-asking:claude", async (terminal: string, session = ""): Promise<Asking | null> => {
   const hosted = !terminal && session ? chat.askingNow(session) : undefined
   if (hosted !== undefined) return hosted
@@ -661,8 +593,7 @@ plugin.provide("agent-asking:claude", async (terminal: string, session = ""): Pr
   return q ? { kind: "question", questions: [q] } : null
 })
 
-/** The keys answering its questions with `choices`, or "chat" ("agent-pick:claude"): a digit picks (a multi-select's
- *  toggles, then Tab; its Type something is ↓ past the options, then Tab, Enter); 1 submits the review at the end. */
+/** The keys answering its questions with `choices`, or "chat": a digit picks (toggles in a multi-select, then Tab). */
 plugin.provide("agent-pick:claude", (questions: Question[], choices: Choice[] | "chat"): string[] => {
   if (choices === "chat") return [String(questions[0].options.length + 2)]
   const keys = questions.flatMap((q, i) => {
@@ -674,7 +605,6 @@ plugin.provide("agent-pick:claude", (questions: Question[], choices: Choice[] | 
   return questions.length > 1 || questions.some((q) => q.multi) ? [...keys, "1"] : keys
 })
 
-/** The session running in app terminal `terminal`, if any (not a private account's). */
 async function sessionIn(terminal: string) {
   const sid = parseTerminal(terminal)?.resume || ""
   if (sid || !terminal) return sid
@@ -688,8 +618,6 @@ async function sessionIn(terminal: string) {
   return ""
 }
 
-/** The model a session runs now, as said ("Opus 5.5"): its transcript's last answer's (the service "agent-model:claude-code":
- *  Provenance says who wrote a line). Read again only when the transcript grew. */
 const said = new Map<string, { size: number; model: string | null }>()
 plugin.provide("agent-model:claude-code", (session: string) => {
   const found = SESSION_ID.test(session) ? sessionFile(session, true) : null
@@ -709,10 +637,7 @@ plugin.provide("agent-model:claude-code", (session: string) => {
   return model
 })
 
-// ---------- what each session says it waits on: its session file's status (Claude Code's own word, whatever shows it),
-// so a dialog no hook or OSC 7501 report tells (a one-time notice, a usage limit) still blocks its terminal
 
-/** Terminal -> what its session waits on, as last told to Terminal ("terminal:agent-waits"). */
 let waitsTold = new Map<string, "permission" | "question">()
 let waitsTimer: ReturnType<typeof setTimeout> | null = null
 const tellWaitsSoon = () => { waitsTimer ??= setTimeout(() => { waitsTimer = null; void tellWaits().catch((e) => console.error("claude-code: waits:", e)) }, 100) }
@@ -734,8 +659,6 @@ export async function tellWaits() {
   waitsTold = now
 }
 
-// Each account's sessions folder watched (one made later found by a look every half minute, which also catches an
-// event the watch missed).
 const watched = new Map<string, fs.FSWatcher>()
 function watchSessions() {
   for (const a of accounts()) {
@@ -745,7 +668,7 @@ function watchSessions() {
       const w = fs.watch(d, tellWaitsSoon)
       w.on("error", () => { w.close(); watched.delete(d) })
       watched.set(d, w)
-    } catch { /* looked at again soon */ }
+    } catch {}
   }
   tellWaitsSoon()
 }
@@ -754,7 +677,6 @@ sessionsLook.unref?.()
 setTimeout(watchSessions, 0).unref?.()
 plugin.onUnload(() => { clearInterval(sessionsLook); if (waitsTimer) clearTimeout(waitsTimer); for (const w of watched.values()) w.close() })
 
-/** A file's last 256 KB and its stat, or null when it can't be read. */
 function tail(file: string) {
   try {
     const fd = fs.openSync(file, "r")
@@ -768,9 +690,7 @@ function tail(file: string) {
 /** How long a transcript's prompt cache lasts: an hour when its tail wrote 1 h cache, else five minutes. */
 const ttlOf = (tail: string) => (/"ephemeral_1h_input_tokens":\s*[1-9]/.test(tail) ? 3600 : 300)
 
-/** Live sessions by terminal ("agent-meters:claude"); `meters`: context from each transcript's last request, the window
- *  the status line's (else 200k, 1M once exceeded). A terminal is asked once, a transcript reread only when grown. */
-const terminals = new Map<string, string>() // pid@start -> terminal
+const terminals = new Map<string, string>()
 type Read = { tokens: number; last: number; ttl: number }
 const lastRead = new Map<string, { size: number; meter: Read | null }>()
 plugin.provide("agent-meters:claude", async (meters?: boolean): Promise<AgentMeter[]> => {
@@ -792,24 +712,21 @@ plugin.provide("agent-meters:claude", async (meters?: boolean): Promise<AgentMet
   return out
 })
 
-/** A session's context window: its status line's, else 200k (1M once exceeded). */
 function windowOf(dir: string, sid: string, tokens: number) {
   // A status line may write to ~/.claude whatever account runs it: a session id is the same in either.
   for (const d of new Set([dir, path.join(HOME, ".claude")])) {
-    try { const w = Number(JSON.parse(fs.readFileSync(path.join(d, "usage-snapshots", `${sid}.json`), "utf8")).context_window?.context_window_size) || 0; if (w) return w } catch { /* none */ }
+    try { const w = Number(JSON.parse(fs.readFileSync(path.join(d, "usage-snapshots", `${sid}.json`), "utf8")).context_window?.context_window_size) || 0; if (w) return w } catch {}
   }
   return tokens > 200_000 ? 1_000_000 : 200_000
 }
 
-/** How full a session's context is now: its last request's tokens and its window ("agent-context:claude": a job taking
- *  live edits starts fresh before it compacts). The session in `terminal` when `session` isn't given. */
+/** How full a session's context is now: its last request's tokens and its window. */
 plugin.provide("agent-context:claude", async (terminal: string, session = ""): Promise<{ tokens: number; window: number } | null> => {
   const sid = session || await sessionIn(terminal)
   const found = sid ? sessionFile(sid) : null, m = found && lastRequest(found.file)
   return m ? { tokens: m.tokens, window: windowOf(found.account.dir, sid, m.tokens) } : null
 })
 
-/** A transcript's last request: what it read, when, and its cache's TTL (an hour when the tail wrote 1 h cache). */
 function lastRequest(file: string) {
   let size = 0
   try { size = fs.statSync(file).size } catch { return null }
@@ -826,16 +743,14 @@ function lastRequest(file: string) {
       if (!tokens) continue
       meter = { tokens, last: Date.parse(e.timestamp) || 0, ttl: ttlOf(t.text) }
       break
-    } catch { /* a cut line */ }
+    } catch {}
   }
   lastRead.set(file, { size, meter })
   return meter
 }
 
-// ---------- blocks as text (GET /api/render)
 
 plugin.block("agent-limits", async (ctx) => {
-  // (`for:` a plugin: the accounts it runs Claude Code in come first, saying for what)
   const accts = agent.accountsFor(ctx.options.account)
   const used = accts.length > 1 ? await agent.usedBy(ctx.options.for) : new Map<string, string[]>()
   const each = await Promise.all(usedFirst(accts, used).map(async (a) => ({ a, lim: await limits(a) })))
@@ -846,7 +761,6 @@ plugin.block("agent-limits", async (ctx) => {
   }))
 })
 
-/** How much of an account's week is left (null: not read), and whether its 5-hour session is spent. */
 function room(lim: Awaited<ReturnType<typeof limits>>) {
   const week = lim?.windows.find((w) => w.id === "week"), session = lim?.windows.find((w) => w.id === "session")
   return { week_left: week ? Math.max(0, Math.round((100 - week.used) * 10) / 10) : null, renews: week?.resets_at ?? null,
@@ -879,12 +793,10 @@ session is spent goes last until it renews. for (a plugin) says what that plugin
       (a.session_full ? `; its 5-hour session is spent${a.session_renews ? ` until ${when(a.session_renews)}` : ""}` : ""))).join("\n") || "No Claude Code accounts here.",
 })
 
-/** The checkout folder `cwd` is in, the main one when it's a worktree's (Claude Code trusts a worktree as its checkout):
- *  "" when it's in none. */
+/** The checkout `cwd` is in, the main one for a worktree's (Claude Code trusts a worktree as its checkout), or "". */
 function checkoutOf(cwd: string) {
   try {
     const common = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd, env: gitEnv(), timeout: 5000, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim()
-    // (a bare repository's or a submodule's isn't a checkout's .git folder)
     if (path.basename(common) !== ".git" || !fs.statSync(common).isDirectory()) return ""
     return fs.realpathSync(path.dirname(common))
   } catch { return "" }
@@ -919,13 +831,11 @@ const agent = codingAgent(plugin, {
   },
 })
 
-// ---------- chat sessions: run through the Agent SDK in the app's chat keeper (chat.ts), drawn in the session's tab
 
 const chat = chats(plugin, {
   accounts, sessionFile, models, modelName,
   async tuiOf(id) {
     for (const { a, s, pid, sid } of running(accounts())) {
-      // (one the SDK runs is the chat keeper's, followed again in a moment after a restart)
       if (sid !== id || chat.hosted(id) || String(s.entrypoint ?? "").startsWith("sdk")) continue
       const key = `${pid}@${s.procStart}`
       const t = terminals.get(key) ?? await terminalOf(plugin, pid)
@@ -944,7 +854,6 @@ const chat = chats(plugin, {
 })
 plugin.exports.chat = chat.api
 
-// Cloud jobs: sessions started, told and read by Claude Code itself in the account asked for (none in a test run).
 cloudSessions(plugin, { accounts, bin: () => (process.env.VAULTITE_TEST === "1" ? null : findBin("claude")), trust: (a, dir) => trustClaudeProject(accountJson(a), dir),
   envOf: (a) => {
     const env: NodeJS.ProcessEnv = { ...process.env }
@@ -953,7 +862,6 @@ cloudSessions(plugin, { accounts, bin: () => (process.env.VAULTITE_TEST === "1" 
     return env
   } })
 
-// A cloud session continued here: its account by its organization, its repository's checkout among every account's projects.
 teleports(plugin, { accounts, json: accountJson, roots: async () => {
   const u = await summary(30, accounts())
   return sortBy((u.projects as Item[]).filter((p) => typeof p.root === "string" && p.root), (p) => [String(p.last ?? "")]).reverse().map((p) => String(p.root))

@@ -16,7 +16,6 @@ export function chatOps(plugin: Plugin, c: Needs) {
 
   const ID = { type: "string", required: true, description: "the session's id (vau chat list; <id>@<machine>: another machine's)" } as const
 
-  /** An op on a session, which another machine's (`<id>@<machine>`) runs there, once (not passed on again). */
   function onMachines(def: Op) {
     plugin.op({ ...def, run: async (p, ctx) => {
       const [sid, at] = splitMachine(String(p.id ?? ""))
@@ -27,7 +26,6 @@ export function chatOps(plugin: Plugin, c: Needs) {
       return { ...out, ...(typeof out.id === "string" ? { id: `${out.id}@${m.id}` } : {}) }
     } })
   }
-  /** An op of this plugin run on another machine (a call passed on from one runs where it's sent). */
   async function onMachine(ctx: { who: { client: string | null } }, m: Machine, op: string, body: Record<string, unknown>) {
     if (ctx.who.client?.startsWith("machine/")) throw new OpError(`a call passed on from another machine runs where it's sent, not on ${m.label}`, 409)
     if (!m.online) throw new OpError(`${m.label} is offline`, 502)
@@ -41,12 +39,10 @@ export function chatOps(plugin: Plugin, c: Needs) {
     return out
   }
   const OWNER = "Claude Code's chat"
-  /** A session as chat-list gives it: its title too (another machine's knows its own). */
   type Listed = Summary & { title?: string }
   const line = (s: Listed) => `- ${s.id} · ${s.state}${s.asks.length ? " (asks)" : ""} · ${s.title || titleOf(s.id) || path.basename(s.cwd)} · ${d.modelName(s.model) || "default model"} · ${MODE_LABELS[s.mode] ?? s.mode}${s.account ? ` · ${s.account}` : ""}`
   const theUser = (ctx: OpCtx) => { if (!userSurface(ctx.who)) throw new OpError(NOT_THE_USER, 403) }
 
-  /** Open its tab in the user's window: theirs at once, an agent's behind their tab with a toast. */
   async function show(ctx: OpCtx, id: string) {
     const path = `view:claude-session/${id}`
     try {
@@ -172,7 +168,6 @@ after an approved plan (acceptEdits, default...).`,
     text: (r) => `Now ${d.modelName(r.model) || "its model"}${r.effort ? `, ${r.effort} effort` : ""}, ${MODE_LABELS[r.mode as Mode] ?? r.mode}.`,
   })
 
-  /** The sessions running in the app's chat here, on machine `at`, or on every machine (`all`): another's are <id>@<machine>. */
   async function chatList(at: string, ctx: { who: { client: string | null } }): Promise<{ sessions: Listed[]; away?: Record<string, string> }> {
     const here = async () => {
       await keeper(false).catch(() => null)
@@ -195,16 +190,13 @@ after an approved plan (acceptEdits, default...).`,
     return { sessions, ...(Object.keys(away).length ? { away } : {}) }
   }
 
-  // Every machine's chats, for the Agents panel (polled while it shows): a route, so a look isn't an op call in Activity.
   plugin.route("GET", "claude-code/chats", async (req) => {
     await plugin.ownerOnly(req, OWNER)
     const client = req.http?.headers["x-vaultite-client"]
     const r = await chatList("all", { who: { client: typeof client === "string" ? client : null } })
-    // (a turn's words cut to what a row can say: a list polled every few seconds)
     const progress = plugin.service("inbox:progress") as ((t: string, s: string) => string | null) | null
     return { ...r, sessions: r.sessions.map((s) => {
       const said = progress?.("", splitMachine(s.id)[0]) ?? null
-      // (its repository named here, where its folder is: another machine's says its own)
       const project = (s as { project?: string }).project ?? (s.id.includes("@") ? "" : repoName(s.cwd))
       return { ...s, turn: s.turn && { prompt: s.turn.prompt.slice(0, 200), text: s.turn.text.slice(-200), error: s.turn.error }, ...(said ? { progress: said } : {}), ...(project ? { project } : {}) }
     }) }

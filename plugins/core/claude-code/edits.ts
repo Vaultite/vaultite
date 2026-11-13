@@ -1,18 +1,12 @@
-// The files a session changed, by the message each change answered (agent-edits:claude): its Edit and Write results,
-// which keep the text before and after, so a change can be taken back exactly (the companion's live editing).
 
-/** One file change it made (the companion's unedit.ts takes the same shape): an Edit's strings, or a
- *  Write's whole text (`original` null: it made the file). */
+/** An Edit's strings, or a Write's whole text (`original` null: it made the file); the companion's unedit.ts takes it. */
 export type FileEdit = { file: string; kind: "edit"; old: string; new: string; all: boolean; original: string | null }
   | { file: string; kind: "write"; content: string; original: string | null }
-/** What it was told (`prompt`: a message, or one typed while it worked) or said (`said`: its words between steps), when,
- *  and the changes it made after it till the next. */
 export type EditSpan = { prompt?: string; said?: string; at: number; edits: FileEdit[] }
 
 const str = (v: unknown) => (typeof v === "string" ? v : "")
 type Line = { type?: string; timestamp?: string; message?: { content?: unknown }; toolUseResult?: unknown; attachment?: { type?: string; prompt?: unknown }; isSidechain?: boolean }
 
-/** What a line says it was told: a message of the user's (not a tool's result), or a message typed while it worked. */
 function told(d: Line): string | null {
   if (d.type === "attachment" && d.attachment?.type === "queued_command") return str(d.attachment.prompt) || null
   if (d.type !== "user" || d.toolUseResult !== undefined) return null
@@ -31,8 +25,6 @@ function editOf(r: unknown): FileEdit | null {
   return null
 }
 
-/** A transcript's JSONL lines as spans: each message it was told and each of its words between steps, with the file
- *  changes made before the next (asks typed while it works come before it acts on any: its words tell which it's on). */
 export function editSpans(lines: string[]): EditSpan[] {
   const spans: EditSpan[] = []
   for (const l of lines) {

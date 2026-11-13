@@ -1,5 +1,3 @@
-// A conversation's entries as the chat tab draws them: turns (the user's message, Claude's work folded once it's done,
-// its answer), thinking, tool calls with their outcome, asks, notes; and the line saying what a live turn is doing.
 import { createContext, Suspense, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react"
 import { Brain, ChevronRight, CircleAlert, FileText, Folder, Globe, ListTodo, Pencil, Search, SquareTerminal, Bot, Wrench, LoaderCircle, FilePlus } from "lucide-react"
 import { cn, Markdown, moves, plural } from "@vaultite"
@@ -12,18 +10,15 @@ import { EditDiff } from "./chatbits"
 
 type User = Extract<Entry, { k: "user" }>
 
-// ---------- what the transcript shares: the session's folder, what's open, what was drawn already
 
 export type Transcript = {
   cwd: string; home?: string
   isOpen: (key: string, dflt: boolean) => boolean
   toggle: (key: string, dflt: boolean) => void
-  /** Ids drawn before (a new one enters with a rise), and whether the first draw is over (it doesn't). */
   seen: Set<string>; settled: () => boolean
 }
 export const TranscriptOf = createContext<Transcript>({ cwd: "", isOpen: (_, d) => d, toggle: () => {}, seen: new Set(), settled: () => false })
 
-/** The app's motion pace (its Animations setting; none when things are kept still). */
 function pace() {
   if (!moves()) return null
   const s = getComputedStyle(document.documentElement)
@@ -31,7 +26,6 @@ function pace() {
   return { duration: ms || 220, easing: s.getPropertyValue("--ease-out").trim() || "ease-out" }
 }
 
-/** A part that wasn't drawn before comes in with a short fade and rise; on the chat's first draw everything just is. */
 function Enter({ id, children, className, delay = 0, ...rest }: { id: string; children: ReactNode; className?: string; delay?: number } & Record<`data-${string}`, unknown>) {
   const ref = useRef<HTMLDivElement>(null)
   const t = useContext(TranscriptOf)
@@ -44,8 +38,6 @@ function Enter({ id, children, className, delay = 0, ...rest }: { id: string; ch
   return <div ref={ref} className={className} {...rest}>{children}</div>
 }
 
-/** What folds: its height eases open and shut (drawn only while open or folding). `slow`: a fold the reader didn't ask
- *  for (a turn's work as it ends) goes at an unhurried pace, so it reads as folding, not vanishing. */
 export function Reveal({ open, slow, children, className }: { open: boolean; slow?: boolean; children: ReactNode; className?: string }) {
   const ref = useRef<HTMLDivElement>(null)
   const [shown, setShown] = useState(open)
@@ -61,28 +53,20 @@ export function Reveal({ open, slow, children, className }: { open: boolean; slo
     if (!p) { if (!open) setShown(false); return }
     const to = open ? el.scrollHeight : 0
     el.style.overflow = "hidden"
-    // (its height and its fade go together, the fade done by halfway: what's below glides, never jumps)
     const start = open && from >= to ? 0 : from
     const frames = open ? [{ height: `${start}px`, opacity: 0.4 }, { height: `${to}px`, opacity: 1 }]
       : [{ height: `${start}px`, opacity: 1 }, { opacity: 0, offset: 0.55 }, { height: "0px", opacity: 0 }]
     const a = el.animate(frames, { duration: p.duration * (slow ? 2.8 : 1.2), easing: slow ? "cubic-bezier(0.45, 0, 0.55, 1)" : p.easing, fill: open ? "none" : "forwards" })
-    // (shut, it holds at nothing till it's gone: else it shows whole for a frame before it unmounts)
     a.onfinish = () => { el.style.overflow = ""; if (!open) setShown(false) }
   }, [open, shown])
   return shown ? <div ref={ref} className={className}>{children}</div> : null
 }
 
-// ---------- turns
 
 export type Row = { kind: "one"; e: Entry } | { kind: "tools"; key: string; tools: Tool[] }
-/** One exchange: what the user said, what Claude did (`work`, folded once it's done), what came of it on the way (asks,
- *  notes), and its answer (`tail`: the words after its last call, and what came after them). */
 export type Turn = { key: string; user: User | null; work: Row[]; rest: Row[]; tail: Row[]; ms: number; last: Entry | null
-  /** Its end came (a result): what works next is a turn not drawn yet. */
   ended: boolean }
 
-/** The entries as turns. Tool calls in a row are one run; a subagent's steps go under the call that runs it (`kids`).
- *  What's drawn elsewhere (`away`: an ask docked by the composer, a queued message) is left out, a call with its ask. */
 export function layout(entries: Entry[], away: Set<string>): { turns: Turn[]; kids: Map<string, Entry[]> } {
   const kids = new Map<string, Entry[]>(), have = new Set(entries.map((e) => e.id))
   for (const e of entries) if ("parent" in e && e.parent) kids.set(e.parent, [...(kids.get(e.parent) ?? []), e])
@@ -92,7 +76,6 @@ export function layout(entries: Entry[], away: Set<string>): { turns: Turn[]; ki
     if (e.k === "user") { groups.push({ user: e, items: [] }); continue }
     if (!groups.length) groups.push({ user: null, items: [] })
     if (e.k === "tool" && (e.name === "AskUserQuestion" || e.name === "ExitPlanMode")) {
-      // (its ask is drawn; read back from a transcript, it's said how it was answered)
       if (!have.has(`ask:${e.id}`) && e.result !== undefined) groups[groups.length - 1].items.push(askOf(e))
       continue
     }
@@ -115,7 +98,6 @@ export function layout(entries: Entry[], away: Set<string>): { turns: Turn[]; ki
     rows.forEach((r, n) => { if (isWork(r)) end = n })
     const before = rows.slice(0, end + 1)
     const last = items[items.length - 1] ?? null
-    // (a turn read back without its result: from its message to its last entry)
     if (!ms && user) ms = Math.max(0, ...items.map((e) => Date.parse(e.at) - Date.parse(user.at)).filter((n) => n > 0))
     return { key: user?.id ?? `from:${items[0]?.id ?? ""}`, user, work: before.filter((r) => isWork(r) || (r.kind === "one" && r.e.k === "text")),
       rest: before.filter((r) => !isWork(r) && !(r.kind === "one" && r.e.k === "text")), tail: rows.slice(end + 1), ms: Math.max(0, ms), last, ended: items.some((e) => e.k === "result") }
@@ -123,7 +105,6 @@ export function layout(entries: Entry[], away: Set<string>): { turns: Turn[]; ki
   return { turns, kids }
 }
 
-/** A question or plan read back from a transcript, as the line an answered ask is. */
 export function askOf(t: Tool): Ask {
   const i = (t.input ?? {}) as { questions?: { question?: string }[] }
   const question = t.name === "AskUserQuestion" ? i.questions?.map((q) => q.question).filter(Boolean).join(" ") || "Claude asked" : "Claude had a plan"
@@ -132,7 +113,6 @@ export function askOf(t: Tool): Ask {
   return { k: "ask", id: `ask:${t.id}`, kind: t.name === "ExitPlanMode" ? "plan" : "question", tool: t.name, title: question, answer, at: t.at }
 }
 
-/** How long it took, short: 5s, 1m 12s, 2h 3m. */
 export const took = (ms: number) => {
   const s = Math.max(1, Math.round(ms / 1000))
   return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
@@ -140,20 +120,16 @@ export const took = (ms: number) => {
 
 type TurnProps = { t: Turn; kids: Map<string, Entry[]>; live: boolean; id: string; pending: Ask[]; Message?: Driven["Message"]; status?: ReactNode }
 
-/** A turn: once done, its work is one quiet line ("Worked for 1m 12s") that opens it; live, its calls show as they run
- *  and its status stays under it. */
 export function TurnView({ t, kids, live, id, pending, Message, status }: TurnProps) {
   const x = useContext(TranscriptOf)
   const fold = `work:${t.key}`
   const open = x.isOpen(fold, live)
-  // (the turn just ended: its work folds away on its own, slowly)
   const was = useRef(live)
   const ending = was.current && !live
   useEffect(() => { was.current = live }, [live])
   const tools = t.work.flatMap((r) => (r.kind === "tools" ? r.tools : []))
   const lines = tools.reduce((s, c) => { const d = changed(c); return d ? [s[0] + d[0], s[1] + d[1]] : s }, [0, 0])
   const failed = tools.filter((c) => c.error).length
-  // (a thought still being thought is the status line's; drawn here once it's whole)
   const one = (r: Row) => r.kind === "tools"
     ? <Run key={r.key} run={r} kids={kids} live={live} />
     : live && r.e.k === "thinking" && r.e.live ? null
@@ -163,7 +139,6 @@ export function TurnView({ t, kids, live, id, pending, Message, status }: TurnPr
       {t.user && <Enter id={t.user.id}><EntryView e={t.user} id={id} pending={false} Message={Message} /></Enter>}
       {t.work.length > 0 && (
         <div data-work={open ? "open" : "closed"}>
-          {/* (as a turn ends its line eases in while its work eases out: what's below moves once, smoothly) */}
           <Reveal open={!live} slow>
             <div className="pb-1.5">
               <button type="button" onClick={() => x.toggle(fold, live)} aria-expanded={open}
@@ -182,13 +157,11 @@ export function TurnView({ t, kids, live, id, pending, Message, status }: TurnPr
       )}
       {t.rest.map(one)}
       {t.tail.map(one)}
-      {/* (closer to what's above it than a paragraph is: it's about that) */}
       {status && <Enter id={`status:${t.key}`} delay={160} className="-mt-4">{status}</Enter>}
     </div>
   )
 }
 
-// (chat.css: the chat's text sizes, its Markdown's code and spacing, the caret, rows)
 const PROSE = "chat-prose"
 const CARET = "chat-caret"
 
@@ -204,7 +177,6 @@ function useFlow(text: string, live: boolean) {
     return () => cancelAnimationFrame(f)
   }, [n, len, live])
   if (n >= len) return text
-  // (whole words only: a half-written word or mark ("**", "`") would flash raw)
   const cut = text.slice(0, n), sp = cut.search(/\s\S*$/)
   return sp > 0 ? cut.slice(0, sp) : cut
 }
@@ -229,7 +201,6 @@ function Words({ text, live }: { text: string; live: boolean }) {
       end.parentNode.insertBefore(dot, end.nextSibling)
     }
     place()
-    // (the Markdown draws its code's colours after this: the dot goes back after its last letter)
     const mo = new MutationObserver(() => { if (!el.querySelector("[data-caret]")) place() })
     mo.observe(el, { childList: true, subtree: true })
     return () => { mo.disconnect(); el.querySelector("[data-caret]")?.remove() }
@@ -280,7 +251,6 @@ function Thinking({ e }: { e: Extract<Entry, { k: "text" | "thinking" }> }) {
     <div data-entry="thinking">
       <button type="button" onClick={() => x.toggle(e.id, false)} aria-expanded={open} className={ROW}>
         <Brain className={ICON} strokeWidth={2} />
-        {/* (live, the status line says it's thinking: here only what it thinks) */}
         {!e.live && <span data-verb className="shrink-0 font-medium text-foreground/80">Thought</span>}
         <span className={cn("min-w-0 truncate text-muted-foreground", e.live && "italic")}>{gist || "…"}</span>
         <Chevron open={open} />
@@ -303,13 +273,10 @@ export function Note({ text, tone }: { text: string; tone?: "error" }) {
   )
 }
 
-// ---------- what a live turn is doing
 
 const GERUND: Record<string, string> = { Read: "Reading", Edit: "Editing", MultiEdit: "Editing", Write: "Writing", NotebookEdit: "Editing", Grep: "Searching for", Glob: "Finding",
   WebFetch: "Fetching", WebSearch: "Searching the web for", Agent: "Delegating", Task: "Delegating", TodoWrite: "Planning", Bash: "Running", PowerShell: "Running", LS: "Listing" }
 
-/** Its one line from send to finish: thinking (its latest words), writing, running a call (which), waiting for the user;
- *  how long so far. */
 export function Status({ entries, since, state, asking }: { entries: Entry[]; since: number; state: string; asking: boolean }) {
   const [, tick] = useState(0)
   useEffect(() => { const t = setInterval(() => { if (!document.hidden) tick((n) => n + 1) }, 1000); return () => clearInterval(t) }, [])
@@ -320,7 +287,6 @@ export function Status({ entries, since, state, asking }: { entries: Entry[]; si
     : last && "live" in last && last.live && last.k === "text" && !last.parent ? "Writing"
     : call ? [GERUND[call.name] ?? `Running ${toolName(call.name)}`, target(call, x.cwd, x.home, true)].filter(Boolean).join(" ")
     : "Thinking"
-  // (what it's thinking, as it thinks it: the line's end, the latest words in sight)
   const thought = word === "Thinking" && last?.k === "thinking" && last.live && !last.parent ? last.text.replace(/[`*#>_]/g, "").replace(/\s+/g, " ").trim().slice(-160) : ""
   return (
     <div className="chat-small flex h-7 min-w-0 items-center gap-2 text-muted-foreground" data-working={state} aria-live="polite">
@@ -332,7 +298,6 @@ export function Status({ entries, since, state, asking }: { entries: Entry[]; si
   )
 }
 
-// ---------- tool calls
 
 const TOOL_ICONS: Record<string, typeof Wrench> = { Bash: SquareTerminal, PowerShell: SquareTerminal, Read: FileText, Write: FilePlus, Edit: Pencil, MultiEdit: Pencil,
   NotebookEdit: Pencil, Grep: Search, Glob: Search, WebFetch: Globe, WebSearch: Globe, Agent: Bot, Task: Bot, TodoWrite: ListTodo, LS: Folder }
@@ -348,11 +313,9 @@ const Counts = ({ plus, minus }: { plus: number; minus: number }) => (
   <span className="chat-count shrink-0 tabular-nums"><span className="text-ink-(--green)">+{plus}</span> <span className="text-ink-(--red)">−{minus}</span></span>
 )
 
-/** A path as the session sees it: inside its folder, from there. */
 const rel = (p: string, cwd: string, h?: string) => (cwd && p.startsWith(`${cwd}/`) ? p.slice(cwd.length + 1) : home(p, h))
 const lineCount = (s: string) => (s ? s.replace(/\n$/, "").split("\n").length : 0)
 
-/** What a call is about, short: a path from the session's folder, a command, a pattern; `brief` for the status line. */
 function target(t: Tool, cwd: string, h?: string, brief = false): string {
   const i = (t.input ?? {}) as Record<string, unknown>
   const path = str(i.file_path) || str(i.notebook_path) || str(i.path)
@@ -368,7 +331,6 @@ function target(t: Tool, cwd: string, h?: string, brief = false): string {
 const isCommand = (t: Tool) => (t.name === "Bash" || t.name === "PowerShell") && !str((t.input as Record<string, unknown>)?.description)
 const isPathy = (t: Tool) => !!["Read", "Edit", "MultiEdit", "Write", "NotebookEdit", "Grep", "Glob", "LS"].includes(t.name)
 
-/** An edit's lines added and taken away (lines only in the new text, only in the old), or null for other calls. */
 function changed(t: Tool): [number, number] | null {
   const i = (t.input ?? {}) as Record<string, unknown>
   if (t.name === "Write" && typeof i.content === "string") return [lineCount(i.content), 0]
@@ -385,7 +347,6 @@ function changed(t: Tool): [number, number] | null {
   return [plus, minus]
 }
 
-/** What came of a call, in a few words: +2 −1, 42 passed, exit 1, 120 lines, 3 matches. */
 function outcome(t: Tool, kids: Entry[]): { text: string; tone?: "red" } | { plus: number; minus: number } | null {
   const r = t.result ?? ""
   if (t.result === undefined) {
@@ -419,8 +380,6 @@ function outcome(t: Tool, kids: Entry[]): { text: string; tone?: "red" } | { plu
   return null
 }
 
-/** A run of calls, one row each. A long one in a live turn keeps to a few rows' height, the newest in sight and the rest
- *  fading above (no fold of its own: a turn's work is the one fold). */
 function Run({ run, kids, live }: { run: Extract<Row, { kind: "tools" }>; kids: Map<string, Entry[]>; live: boolean }) {
   const list = useRef<HTMLDivElement>(null)
   const capped = live && run.tools.length >= 6
@@ -462,14 +421,10 @@ export function ToolRow({ t, kids, live }: { t: Tool; kids: Entry[]; live: boole
   )
 }
 
-// (a box scrolls down; what's in it scrolls sideways on its own, fading where it's cut)
 const BOX = "min-w-0 overflow-hidden rounded-card border-[0.5px] border-border bg-foreground/[0.025] font-mono text-[12.5px] leading-[19px] select-text max-md:text-[13px] max-md:leading-[20px]"
-// (Claude Code's own words for a call that went through: nothing a person needs to read)
 const SIDE = "overflow-x-auto overscroll-x-contain edge-fade-x whitespace-pre"
 const BLAND = /^(The file .* has been (updated|created)( successfully)?\.?|File created successfully.*|Todos have been modified successfully.*)$/s
 
-/** A call's box: a long one shows its start, fading, with Show all (chat.css' chat-clamp) rather than scrolling on
- *  its own or running on behind the composer. */
 function Box({ children, className }: { children: ReactNode; className?: string }) {
   const ref = useRef<HTMLDivElement>(null)
   const [all, setAll] = useState(false)
@@ -486,7 +441,6 @@ function Box({ children, className }: { children: ReactNode; className?: string 
   )
 }
 
-/** Lines of code, numbered: Read's (as `cat -n` numbers them) and a file written. */
 function Numbered({ text, from = 1 }: { text: string; from?: number }) {
   const lines = text.replace(/\n$/, "").split("\n")
   const read = lines.every((l) => /^\s*\d+[→\t]/.test(l) || !l)
@@ -505,8 +459,6 @@ function Numbered({ text, from = 1 }: { text: string; from?: number }) {
   )
 }
 
-/** What a call was given and what it gave back, framed one way per kind: a command with its output in one box, an edit
- *  as a diff, a file's lines numbered; a result only when it says something. */
 function ToolBody({ t, kids, live }: { t: Tool; kids: Entry[]; live: boolean }) {
   const x = useContext(TranscriptOf)
   const i = (t.input ?? {}) as Record<string, unknown>

@@ -1,5 +1,3 @@
-// The chat's composer: what's said next (its words and pictures), what waits for an answer docked over it, messages
-// queued while Claude works, and the session's mode, folder, account, model and effort.
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react"
 import { ArrowUp, ChevronDown, Clock, Folder, Plus, Square, X } from "lucide-react"
 import { cn, formatSize, haptic, ink, notify, notifyError, op, openMenu, useScopedState, type MenuItem } from "@vaultite"
@@ -13,11 +11,9 @@ import { type Picture, MAX_PICTURES, draftPictures, keepPictures, picturesIn, re
 
 type UserEntry = Extract<Entry, { k: "user" }>
 type Picks = { model?: string; effort?: string; mode?: Mode; account?: string; cwd?: string }
-/** A message sent while Claude works, till it's taken up. */
 export type Queued = { id: string; text: string }
 
 export function Composer({ id, fresh, c, o, asks, working, queued, setArg, onSent }: { id: string; fresh: boolean; c: ReturnType<typeof useChat>; o: Options | null
-  /** What it waits on an answer to, oldest first: the first is docked over the field. */
   asks: Ask[]
   working: boolean; queued: Queued[]; setArg: (arg: string) => void
   onSent: (sent: { uuid?: string; text: string; queued: boolean }) => void }) {
@@ -27,7 +23,6 @@ export function Composer({ id, fresh, c, o, asks, working, queued, setArg, onSen
   const [reading, setReading] = useState(0)
   const [sending, setSending] = useState(false)
   const [dropping, setDropping] = useState(false)
-  // A new chat's choices are the workspace's, kept for the next; a running one's are its own.
   const [saved, save] = useScopedState<Picks>("claude-code:chat", {}, "workspace")
   const [next, setNext] = useState<Picks>({})
   const field = useRef<HTMLTextAreaElement>(null)
@@ -42,7 +37,6 @@ export function Composer({ id, fresh, c, o, asks, working, queued, setArg, onSen
 
   const picsNow = useRef(pics)
   useLayoutEffect(() => { picsNow.current = pics })
-  /** Pictures pasted, dropped or picked: read and made small enough, up to ten with the message. */
   const add = async (files: File[], pasted = false) => {
     const room = MAX_PICTURES - picsNow.current.length
     if (!files.length) return
@@ -57,7 +51,6 @@ export function Composer({ id, fresh, c, o, asks, working, queued, setArg, onSen
   }
   const addRef = useRef(add)
   useLayoutEffect(() => { addRef.current = add })
-  // Files dragged from the computer onto the chat (HTML5 drops: core/drag.ts is the app's own drags).
   useEffect(() => {
     const chat = box.current?.closest<HTMLElement>("[data-chat]")
     if (!chat) return
@@ -82,11 +75,9 @@ export function Composer({ id, fresh, c, o, asks, working, queued, setArg, onSen
     void add(got, true)
   }
 
-  // (one it can't read now runs the model it last showed, the header's)
   const picks: Picks = fresh ? saved : { model: c.s?.model || c.model || seenOf(id)?.model || undefined, effort: c.s?.effort || undefined, mode: c.s?.mode, ...next }
   const blocked = !fresh && c.ready && (c.tui !== null || !c.found)
   const said = text.trim()
-  // (its machine not answering: nothing can reach it, so the words wait in the box, kept as a draft)
   const away = !fresh && !!c.unreachable
   const ready = (!!said || pics.length > 0) && !sending && !blocked && !reading && !away
   const send = async () => {
@@ -101,19 +92,15 @@ export function Composer({ id, fresh, c, o, asks, working, queued, setArg, onSen
         setArg(r.id)
         onSent({ text: said, queued: false })
       } else {
-        // (a choice made before the tab heard it runs goes with it: the server applies it either way)
         const r = await op<{ uuid?: string; answered?: string }>("claude-code.chat-send", { id, text: said, ...(images.length ? { images } : {}), ...next })
         keep(""); keepPics([])
         setNext({})
-        // (queued: sent mid-turn, or with pictures in place of an answer, it waits for its turn)
-        // (an answer taken as said says no uuid: it isn't waiting for a turn)
         onSent({ uuid: r?.uuid || undefined, text: said, queued: r?.uuid !== "" && (working || !!r?.answered) })
       }
     } catch (e) { notifyError(e, fresh ? "Couldn't start the chat" : "Couldn't send it") }
     setSending(false)
     field.current?.focus({ preventScroll: true })
   }
-  /** Stop its turn: the messages queued behind it come back into the draft, words and pictures, as Esc gives them back. */
   const stop = async () => {
     let taken: UserEntry[] = []
     try { taken = (await op<{ taken?: UserEntry[] }>("claude-code.chat-interrupt", { id }))?.taken ?? [] } catch (e) { return notifyError(e, "Couldn't stop it") }
@@ -127,7 +114,6 @@ export function Composer({ id, fresh, c, o, asks, working, queued, setArg, onSen
     field.current?.focus({ preventScroll: true })
   }
   const onKey = (e: KeyboardEvent) => {
-    // (an empty field answers what's docked over it, as its buttons' keys say)
     const empty = !text && !pics.length, ask = askKeys.current
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault()
@@ -136,7 +122,6 @@ export function Composer({ id, fresh, c, o, asks, working, queued, setArg, onSen
     else if (e.key === "Escape" && working && empty) { e.preventDefault(); void stop() }
     else if (empty && ask?.pick && /^[1-9]$/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); ask.pick(Number(e.key)) }
   }
-  /** A choice changed: a new chat's is kept for the next one; a running session's changes it now. */
   const choose = (p: Picks) => {
     if (fresh) return save({ ...saved, ...p })
     if (!c.ready) return
@@ -149,12 +134,9 @@ export function Composer({ id, fresh, c, o, asks, working, queued, setArg, onSen
     openMenu({ x: r.left, y: r.top - 4, flip: r.bottom + 4 }, items.map(refocus), true)
   }
   const loading = fresh ? !o : !c.ready || !o
-  // (none chosen: the account's, as its settings say, so the chip always names a model when one is known)
   const accountModel = o?.accounts.find((a) => a.id === (fresh ? saved.account ?? "default" : c.account))?.model ?? o?.accounts[0]?.model ?? ""
   const model = picks.model ? modelLabel(picks.model, o) : accountModel ? modelLabel(accountModel, o) : "Default model"
-  // (none chosen: what the session runs at, as Claude Code says, else its account's settings)
   const effort = picks.effort || (fresh ? o?.accounts.find((a) => a.id === (saved.account ?? "default"))?.effort ?? o?.accounts[0]?.effort : c.effort) || ""
-  // (none chosen: the account's default, auto unless its settings say otherwise)
   const modeId: Mode = picks.mode ?? o?.accounts.find((a) => a.id === (fresh ? saved.account ?? "default" : c.account))?.mode ?? o?.accounts[0]?.mode ?? "auto"
   const mode = o?.modes.find((m) => m.id === modeId)?.label ?? "Auto mode"
   const account = o && o.accounts.length > 1 ? o.accounts.find((a) => a.id === (picks.account ?? c.account))?.label ?? o.accounts[0]?.label : ""
@@ -176,7 +158,7 @@ export function Composer({ id, fresh, c, o, asks, working, queued, setArg, onSen
             className="chat-queued flex max-w-[85%] items-center gap-2 rounded-[18px] border-[0.5px] border-dashed border-foreground/25 bg-muted/50 py-1 pr-1 pl-2.5 text-[14px] max-md:text-[16px]">
             <Clock className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={2} />
             <span className="line-clamp-2 min-w-0 break-words" data-tip="Queued: Claude reads it between its steps">{q.text || "Pictures"}</span>
-            {/* (Claude Code gives queued messages back only all at once, by stopping its turn: one button, saying so) */}
+            {/* Claude Code gives queued messages back only all at once, by stopping its turn */}
             {n === queued.length - 1 ? (
               <button type="button" data-queued-edit onClick={() => void stop()} data-tip="Stops Claude's turn and puts what you queued back here to edit or remove"
                 className="shrink-0 cursor-pointer rounded-full px-2.5 py-1 text-[12px] text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground max-md:min-h-11 max-md:text-[14px]">Stop and edit</button>
@@ -203,10 +185,8 @@ export function Composer({ id, fresh, c, o, asks, working, queued, setArg, onSen
               className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-full text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:cursor-default disabled:opacity-40 max-md:size-11">
               <Plus className="chat-plus" strokeWidth={2} />
             </button>
-            {/* (a row of its own that scrolls under a fade, never under the send button) */}
             <div data-chips className="flex min-w-0 flex-1 items-center gap-0.5 chat-chips overflow-x-auto pr-3 [scrollbar-width:none]">
               {loading && away ? null : loading ? <><ChipSkeleton w="w-16" /><ChipSkeleton w="w-24" /><span className="ml-auto" /><ChipSkeleton w="w-28" /></> : <>
-                {/* (first: what's changed mid-session, whole on a phone however far the rest scroll) */}
                 <Chip label="Permission mode" onClick={(e) => menu(e, (o?.modes ?? []).filter((m) => m.id !== "dontAsk").map((m) => ({ label: m.label, checked: m.id === modeId,
                   danger: m.id === "bypassPermissions", run: () => choose({ mode: m.id }) })))}>
                   <span className={cn(modeId === "bypassPermissions" && "text-ink-(--red)")} style={modeId === "plan" ? { color: ink("var(--teal)") } : undefined}>
@@ -243,7 +223,6 @@ export function Composer({ id, fresh, c, o, asks, working, queued, setArg, onSen
   )
 }
 
-/** A picture going with the message: what it is (a thumbnail, its name and size) and its button to take it out. */
 function Thumb({ p, remove }: { p: Picture; remove: () => void }) {
   return (
     <div data-picture className="chat-pic group/pic relative flex shrink-0 items-center gap-2.5 rounded-control border-[0.5px] border-border bg-background/60 p-1.5 pr-3">
@@ -252,7 +231,6 @@ function Thumb({ p, remove }: { p: Picture; remove: () => void }) {
         <span data-picture-name className="truncate text-[13px] font-medium max-md:text-[15px]">{p.name}</span>
         <span className="text-[12px] text-muted-foreground tabular-nums max-md:text-[13px]">{formatSize(p.size)}</span>
       </span>
-      {/* (a finger's 44px, the dot drawn small in the corner) */}
       <button type="button" aria-label={`Remove ${p.name}`} onClick={remove} data-remove-picture
         className="chat-pic-hit grid cursor-pointer place-items-center">
         <span className="grid size-5 place-items-center rounded-full bg-foreground text-background chat-pic-x">

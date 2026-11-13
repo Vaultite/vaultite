@@ -1,5 +1,3 @@
-// A Claude Code on the web session continued here (`claude --teleport`) in a terminal, in the account signed in to its
-// organization, in a worktree beside a checkout of its repository: none of the user's checkouts changes branch.
 import { execFile } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
@@ -16,22 +14,19 @@ const BRANCH = /^[\w./-]{1,200}$/
 const git = (cwd: string, ...args: string[]) => new Promise<string>((ok, fail) =>
   execFile("git", ["-C", cwd, ...args], { env: gitEnv(), timeout: 30_000, maxBuffer: 4 << 20 }, (e, out, err) => (e ? fail(new Error(String(err || e.message).trim())) : ok(String(out)))))
 
-/** The claude.ai organization an account is signed in to (its .claude.json's), or "". */
 function orgOf(a: Account, json: (a: Account) => string) {
   try { return String((JSON.parse(fs.readFileSync(json(a), "utf8")) as Item).oauthAccount?.organizationUuid ?? "") } catch { return "" }
 }
 
-/** Whether `remotes` (git remote -v) name GitHub's `repo`. */
 const names = (remotes: string, repo: string) => remotes.split("\n").some((l) => {
   const u = l.split(/\s+/)[1] ?? ""
   return new RegExp(`github\\.com[:/]${repo.replace(/[.]/g, "\\.")}(\\.git)?/?$`, "i").test(u)
 })
 
-/** A folder in one spelling, to compare and hand on: Windows' git says C:/a/b, its temp folder may be C:\Users\RUNNER~1. */
+/** Windows' git says C:/a/b, and its temp folder may be C:\Users\RUNNER~1. */
 const real = (p: string) => { const r = path.resolve(p); try { return fs.realpathSync.native(r) } catch { return r } }
 const same = (a: string, b: string) => (process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b)
 
-/** A checkout of `repo` among `roots` (the projects Claude Code ran in lately, most recent first): a main one first. */
 export async function checkoutOf(repo: string, roots: string[]) {
   const found: { root: string; main: boolean }[] = []
   for (const r of roots.slice(0, 80)) {
@@ -40,13 +35,11 @@ export async function checkoutOf(repo: string, roots: string[]) {
       if (found.some((f) => same(f.root, top)) || !names(await git(top, "remote", "-v"), repo)) continue
       found.push({ root: top, main: fs.statSync(path.join(top, ".git")).isDirectory() })
       if (found.at(-1)!.main) break
-    } catch { /* not a checkout */ }
+    } catch {}
   }
   return found.find((f) => f.main)?.root ?? found[0]?.root ?? null
 }
 
-/** The worktree to teleport in: the one that has `branch` already (it was continued here before), else a new one beside
- *  the checkout, named for the branch (megaset-vibrant-pasteur-7o0vgx) or the session. */
 export async function worktreeFor(checkout: string, session: string, branch: string | undefined) {
   const root = real(checkout), list = await git(root, "worktree", "list", "--porcelain")
   const where = (block: string) => { const l = block.split("\n").find((x) => x.startsWith("worktree ")); return l ? real(l.slice(9).trim()) : null }
@@ -65,8 +58,6 @@ export async function worktreeFor(checkout: string, session: string, branch: str
 }
 
 export function teleports(plugin: Plugin, o: { accounts: () => Account[]; json: (a: Account) => string; roots: () => Promise<string[]> }) {
-  // Which accounts are signed in to which claude.ai organization: the Cloud sessions panel continues a session here
-  // only when one is.
   plugin.route("GET", "claude-code/organizations", () => o.accounts().map((a) => ({ account: a.id, org: orgOf(a, o.json) })).filter((x) => x.org))
 
   plugin.op({

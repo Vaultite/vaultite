@@ -1,4 +1,3 @@
-// The pictures sent with a message: checked and kept for the keeper to read, and read back for the chat tab.
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -10,13 +9,10 @@ import { NAME } from "./chatwire.ts"
 export const IMAGES_PARAM = { type: "array", description: `pictures sent with it (at most ${IMAGES_MAX}, ${IMAGE_MAX >> 20} MB each): {data: base64, type: ${IMAGE_TYPES.join(" | ")}}`,
   items: { type: "object", properties: { data: { type: "string" }, type: { type: "string", enum: IMAGE_TYPES } }, required: ["data", "type"] } } satisfies Param
 const EXT: Record<ImageType, string> = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" }
-/** Where the pictures given to the ops wait for the keeper to read them (this machine's, out of the vault), by the
- *  message they go with, a day at most: a transcript has them after. */
 export const IMAGES = path.join(os.tmpdir(), `vaultite-chat-images-${NAME}`)
 const IMAGE_DAYS = 1
 export const KEEP_IMAGE = { "Cache-Control": "private, max-age=31536000, immutable" }
 
-/** The pictures an op was given, checked (each one's bytes say what it is), written for message `uuid`: their files. */
 export function picturesFor(uuid: string, given: unknown): string[] {
   if (given === undefined || given === null) return []
   if (!Array.isArray(given)) throw new OpError("`images`: a list of {data, type}")
@@ -41,12 +37,10 @@ export function picturesFor(uuid: string, given: unknown): string[] {
     return f
   })
 }
-/** Picture `n` of message `entry` as the server wrote it, while it's kept. */
 export function pictureFile(entry: string, n: number) {
-  for (const ext of Object.values(EXT)) { try { return fs.readFileSync(path.join(IMAGES, `${entry}-${n}.${ext}`)) } catch { /* not this one */ } }
+  for (const ext of Object.values(EXT)) { try { return fs.readFileSync(path.join(IMAGES, `${entry}-${n}.${ext}`)) } catch {} }
   return null
 }
-/** Picture `n` of message `entry` as its transcript keeps it (a user line, or one sent mid-turn: its queued_command). */
 export async function pictureIn(file: string | undefined, entry: string, n: number) {
   if (!file) return null
   const lines = readline.createInterface({ input: fs.createReadStream(file, "utf8"), crlfDelay: Infinity })
@@ -60,11 +54,10 @@ export async function pictureIn(file: string | undefined, entry: string, n: numb
       const img = content.filter((c) => c?.type === "image")[n] as { source?: { type?: string; data?: unknown } } | undefined
       return img?.source?.type === "base64" && typeof img.source.data === "string" ? Buffer.from(img.source.data, "base64") : null
     }
-  } catch { /* gone */ } finally { lines.close() }
+  } catch {} finally { lines.close() }
   return null
 }
 let swept = 0
-/** The pictures kept past IMAGE_DAYS removed (at most hourly). */
 export function sweep() {
   if (Date.now() - swept < 3600_000) return
   swept = Date.now()
@@ -72,6 +65,6 @@ export function sweep() {
   try { names = fs.readdirSync(IMAGES) } catch { return }
   for (const name of names) {
     const f = path.join(IMAGES, name)
-    try { if (Date.now() - fs.statSync(f).mtimeMs > IMAGE_DAYS * 86400_000) fs.rmSync(f, { force: true }) } catch { /* gone */ }
+    try { if (Date.now() - fs.statSync(f).mtimeMs > IMAGE_DAYS * 86400_000) fs.rmSync(f, { force: true }) } catch {}
   }
 }

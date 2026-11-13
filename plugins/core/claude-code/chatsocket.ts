@@ -17,8 +17,7 @@ type Needs = Pick<ChatCore, "watching" | "holding" | "hosted" | "readTitle" | "h
 
 export function chatTab(plugin: Plugin, c: Needs) {
   const { watching, holding, hosted, readTitle, hello, conversation, page, modelDefault, effortDefault, modeDefault, d } = c
-  // Every tab's socket is pinged (and told so, as /api/events is): a phone back from the background finds a socket that
-  // went quiet and connects again; one that stopped answering is ended here.
+  // A phone back from the background has a socket that went quiet: each is pinged, one that stops answering ended.
   const answered = new Map<WebSocket, boolean>(), told = new WeakSet<WebSocket>()
   function alive(ws: WebSocket, tell: boolean) {
     answered.set(ws, true)
@@ -43,7 +42,6 @@ export function chatTab(plugin: Plugin, c: Needs) {
     const why = await plugin.refusal(req, "Claude Code's chat")
     const m = !why && at ? await plugin.ask<Machine | null>("machines:machine", null, at) : null
     if (m && !m.self) {
-      // (another machine's session: its own socket, joined both ways; not reached now, the tab tries again)
       const away = () => { if (ws.readyState === ws.OPEN) { ws.send(JSON.stringify({ t: "unreachable", reason: `${m.label} isn't answering` })); ws.close(1013, "unreachable") } }
       if (!m.online) return away()
       const up = machineSocket(m, `claude-code/chat/${encodeURIComponent(id)}`)
@@ -61,7 +59,6 @@ export function chatTab(plugin: Plugin, c: Needs) {
     holding.set(ws, held)
     set.add(ws)
     alive(ws, true)
-    // A session the keeper doesn't run (a terminal's, or one ended) is read again as its transcript grows.
     const sent = new Map<string, Entry>()
     let tui: string | null = null
     const poll = setInterval(async () => {
@@ -78,7 +75,6 @@ export function chatTab(plugin: Plugin, c: Needs) {
       tui = h.tui
       if (ws.readyState === ws.OPEN) { ws.send(JSON.stringify(h)); for (const text of held) ws.send(text) }
     } catch (e) {
-      // (closed, so the tab tries again, and says it couldn't load after a few)
       console.error(`chat: hello for ${id}:`, e)
       if (ws.readyState === ws.OPEN) { ws.send(JSON.stringify({ t: "error", reason: String((e as Error)?.message ?? e) })); ws.close(1011, "hello failed") }
     } finally { holding.delete(ws) }
@@ -98,8 +94,6 @@ export function chatTab(plugin: Plugin, c: Needs) {
     return page(list, req.query.before !== undefined ? Math.trunc(Number(req.query.before)) || 0 : undefined, Math.min(1000, Math.max(1, Number(req.query.limit) || PAGE)))
   }, { sync: false })
 
-  // A user message's pictures: the file the server wrote while it's fresh, else from its transcript (another machine's
-  // session asked of it), so a tab shows them live and read back alike.
   plugin.route("GET", "claude-code/chat/*/image/*/*", async (req) => {
     await plugin.ownerOnly(req, "Claude Code's chat")
     const [id, at] = splitMachine(req.arg(0)), entry = req.arg(1), n = req.arg(2)
@@ -118,7 +112,7 @@ export function chatTab(plugin: Plugin, c: Needs) {
     return new Text(b, type, KEEP_IMAGE)
   }, { sync: false })
 
-  // (as sessions' folders are said: the vault through a link, iCloud's, is the same folder as their cwd)
+  // a vault reached through a link (iCloud's) is named by its real path, as sessions' cwd is
   const realVault = () => { try { return fs.realpathSync(plugin.vault.path) } catch { return plugin.vault.path } }
   plugin.route("GET", "claude-code/chat/options", async (req) => {
     await plugin.ownerOnly(req, "Claude Code's chat")

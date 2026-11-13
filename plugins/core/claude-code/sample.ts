@@ -1,5 +1,3 @@
-// The service "sample": one answer from `claude -p` in the default account, with no tools, MCP servers, settings or
-// session kept, in an empty folder (so nothing of the user's projects is read). An artifact's claude.sample runs on it.
 import { spawnBin, withPath } from "../../../core/agents.ts"
 import fs from "node:fs"
 import os from "node:os"
@@ -11,7 +9,6 @@ const TIERS = { quick: "haiku", default: "sonnet", complex: "opus" } as const
 
 const coded = (code: string, message: string, text?: string) => Object.assign(new Error(message), { code, ...(text ? { text } : {}) })
 
-/** Why a failed run failed, as a claude.sample code. */
 function codeOf(message: string, status: unknown) {
   if (status === 429 || /rate.?limit|usage limit|limit reached/i.test(message)) return "rate_limited"
   if (status === 401 || /log ?in|auth|credential/i.test(message)) return "session_expired"
@@ -62,7 +59,6 @@ function run(bin: string, a: SampleAsk, model: string, dir: string): Promise<Sam
   })
 }
 
-/** One answer: the named model when it can (else the tier's, as claude.ai falls back), streamed through onText. */
 export async function sample(a: SampleAsk, dir: string): Promise<SampleAnswer> {
   const bin = findBin("claude")
   if (!bin) throw coded("sampling_disabled", "Claude Code isn't installed on the machine Vaultite runs on")

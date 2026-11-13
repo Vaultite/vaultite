@@ -1,13 +1,9 @@
-// The Agents panel's chats: the Claude Code sessions every machine's app runs in its chat (GET /api/claude-code/chats,
-// asked every few seconds while the panel shows). A session a terminal took over shows as that terminal.
 import { useMemo } from "react"
 import { splitMachine, stem, useAccountNames, useLive, type AgentRun } from "@vaultite"
 import { agentTint } from "../../../core/agenttint.ts"
 
-/** A session as the route lists it (chathost.ts' Summary, with its title); <id>@<machine> for another machine's. */
 type Chat = { id: string; state: "starting" | "working" | "waiting" | "idle" | "error"; cwd: string; account?: string; project?: string; by: string; started: number; at: number
   asks: string[]; title?: string; error?: string; turn: { prompt: string; text: string; error?: string } | null
-  /** What it last said of its progress (inbox.progress). */
   progress?: string }
 
 const EVERY = 4000

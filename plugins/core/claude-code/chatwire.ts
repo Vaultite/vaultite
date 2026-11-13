@@ -7,8 +7,6 @@ import { eachMessage } from "./chathost.ts"
 
 export const SESSION = /^[\w-]{1,80}$/
 
-/** The keeper's name follows the port, as the terminal keeper's does (terminal/backend.ts backendName): a QA server's
- *  sessions stay its own, and an app serving no port (a test's) never reaches the live one's. */
 export const port = Number(process.env.PORT) || 0
 export const NAME = port === 8793 ? "vaultite" : `vaultite-${port || `x${process.pid}`}`
 export const WIN = process.platform === "win32"

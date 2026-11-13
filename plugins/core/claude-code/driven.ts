@@ -1,5 +1,3 @@
-// How a plugin draws the sessions it drives (exports.chat's, with the tools it serves: the companion's): a view of its own
-// in their tab, the chat a click away, and the messages it sends them. Plugins that require claude-code set it as they load.
 import type { ComponentType } from "react"
 import type { Entry } from "./chatlog"
 

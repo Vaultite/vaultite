@@ -1,5 +1,3 @@
-// Cloud sessions for an account here, through Claude Code itself (no credential read): `claude --cloud` in a terminal
-// of the app's (it starts none without one), `-p --cloud` to tell one, its stream-json control requests to read them.
 import { type ChildProcessByStdio, execFile, spawn } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
@@ -12,7 +10,6 @@ type Account = { id: string; dir: string; label: string; private: boolean }
 const SESSION = /^session_\w{4,80}$/, REPO = /^[\w.-]{1,100}\/[\w.-]{1,100}$/, BRANCH = /^[\w./-]{1,200}$/, COMMIT = /^[0-9a-f]{7,64}$/
 /** A cloud session as its list says: running, idle, requires_action, archived, pending or failed. */
 export type CloudSeen = { status: string; title: string; updated: number; branch?: string }
-/** Its latest turn, from its transcript: as agent-turn's, with the question it waits on. */
 export type CloudTurn = { prompt: string; text: string; at: number; final: boolean; files: string[]; background?: number; asks?: { question: string; choices: string[] }[] }
 
 const git = (cwd: string, args: string[]) => new Promise<string>((ok, fail) =>
@@ -25,7 +22,6 @@ export function cloudSessions(plugin: Plugin, o: { accounts: () => Account[]; bi
     if (!a) throw new OpError(`no Claude Code account '${id}' here (vau limits lists them)`, 404)
     return a
   }
-  /** Why cloud sessions can't be started here, "" when they can. */
   function unready(account: string) {
     if (process.platform === "win32") return "not from Windows yet"
     if (!o.bin()) return "Claude Code isn't installed here"
@@ -33,14 +29,12 @@ export function cloudSessions(plugin: Plugin, o: { accounts: () => Account[]; bi
     return ""
   }
 
-  // ---------- started: from a sparse checkout of its own (only what's on GitHub: never a checkout's unpushed work)
   const queue = new Map<string, Promise<unknown>>()
   async function start(account: string, s: { repo: string; branch: string; base: string; from: string; prompt: string }) {
     const why = unready(account)
     if (why) throw new OpError(`can't start a cloud session: ${why}`, 409)
     if (!REPO.test(s.repo) || !BRANCH.test(s.branch) || !COMMIT.test(s.base)) throw new OpError("a cloud session needs a GitHub repo (owner/name), a branch and the commit it starts from")
     const a = accountOf(account), dir = path.join(plugin.localDir(), "cloud", s.repo.replace("/", "__"))
-    // (one at a time per repo: they share the folder)
     const run = (queue.get(dir) ?? Promise.resolve()).catch(() => {}).then(async () => {
       fs.mkdirSync(dir, { recursive: true })
       if (!fs.existsSync(path.join(dir, ".git"))) {
@@ -74,7 +68,6 @@ export function cloudSessions(plugin: Plugin, o: { accounts: () => Account[]; bi
     return { submitted: true }
   }
 
-  // ---------- read: one Claude Code per account kept running a minute after its last read, asked over its stdin
   const readers = new Map<string, Reader>()
   const readerOf = (a: Account) => {
     let r = readers.get(a.id)
@@ -82,7 +75,6 @@ export function cloudSessions(plugin: Plugin, o: { accounts: () => Account[]; bi
     return r
   }
   plugin.onUnload(() => { for (const r of readers.values()) r.close() })
-  /** Each session's transcript lines read so far (user and assistant ones, the last 3000) and the cursor of its last page. */
   const pages = new Map<string, { lines: string[]; cursor?: string }>()
   let listed: { at: number; account: string; got: Record<string, CloudSeen> } | null = null
 
@@ -109,7 +101,6 @@ export function cloudSessions(plugin: Plugin, o: { accounts: () => Account[]; bi
       if (got?.status !== "ok") return null
       const page = (got.entries ?? []).map((e) => JSON.stringify(e)).filter((l) => WANTED.slice(0, 2).some((w) => l.includes(w)))
       if (!got.next_cursor) { last = page; break }
-      // (a full page is kept; the last one is read again next time, from its cursor)
       lines = [...lines, ...page].slice(-3000)
       cursor = got.next_cursor
     }
@@ -128,8 +119,6 @@ export function cloudSessions(plugin: Plugin, o: { accounts: () => Account[]; bi
 }
 
 const sh = (s: string) => `'${s.replace(/'/g, "'\\''")}'`
-/** `claude --cloud <its task>` in `cwd`, run in a terminal of the app's (a command's, waited for): the session it
- *  printed, else why not, from its last words. */
 async function cloudStart(plugin: Plugin, bin: string, config: string | undefined, cwd: string, prompt: string): Promise<{ session: string; url: string; title: string; note?: string }> {
   const task = path.join(cwd, "..", `${path.basename(cwd)}.task`)
   fs.writeFileSync(task, prompt)
@@ -143,7 +132,6 @@ async function cloudStart(plugin: Plugin, bin: string, config: string | undefine
   } finally { fs.rmSync(task, { force: true }) }
 }
 
-/** A `claude -p` in stream-json kept open to ask control requests of, closed a minute after the last one. */
 class Reader {
   private p: ChildProcessByStdio<Writable, Readable, null> | null = null
   private waiting = new Map<string, (v: unknown) => void>()

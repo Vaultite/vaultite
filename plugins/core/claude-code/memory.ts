@@ -1,10 +1,8 @@
-/** What Claude Code reads into a session from its memory files (CLAUDE.md and what it imports), so what the app adds to
- *  its system prompt doesn't say again what they say (the vault's rules carry the plugins' lines too). */
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-/** The memory files of each folder from the session's up to the top. */
+/** The memory files Claude Code reads in each folder. */
 const NAMES = ["CLAUDE.md", path.join(".claude", "CLAUDE.md"), "CLAUDE.local.md"]
 /** How many imports deep Claude Code follows. */
 const DEPTH = 5
@@ -12,8 +10,7 @@ const DEPTH = 5
 const read = (file: string) => { try { return fs.readFileSync(file, "utf8") } catch { return null } }
 const inside = (dir: string, file: string) => { const r = path.relative(dir, file); return !!r && !r.startsWith("..") && !path.isAbsolute(r) }
 
-/** The trimmed lines of the memory files a session in `cwd` reads (NAMES up to the top, the account's CLAUDE.md, their
- *  `@path` imports); one outside `cwd` and `account` is left out: Claude Code asks before reading it, maybe told no. */
+/** A session's memory files' lines; imports outside `cwd` and `account` left out, as Claude Code asks first. */
 export function memoryLines(cwd: string, account: string): Set<string> {
   const out = new Set<string>(), seen = new Set<string>()
   const take = (file: string, depth: number) => {
@@ -37,6 +34,5 @@ export function memoryLines(cwd: string, account: string): Set<string> {
   return out
 }
 
-/** `text` without the lines its memory files already have (`said`: memoryLines), blank lines and short ones kept. */
 export const unsaid = (text: string, said: Set<string>) =>
   text.split("\n").filter((l) => l.trim().length < 20 || !said.has(l.trim())).join("\n").trim()

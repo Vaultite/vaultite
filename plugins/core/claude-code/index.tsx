@@ -5,8 +5,7 @@ import { chatTitle, NEW } from "./titles"
 import { useChatRuns } from "./runs"
 import { chatMenu } from "./chatmenu"
 
-// The chat is its own chunk, loaded once the app is idle on a computer, else when a chat tab first draws. Not lazy:
-// React holds what suspended back ~300 ms; and one element whether loaded or not, so its arrival doesn't remount it.
+// Not React.lazy: React holds back what suspended for ~300 ms.
 type ChatViewType = typeof import("./ChatTab").ChatView
 let Loaded: ChatViewType | null = null
 const loadChat = () => import("./ChatTab").then((m) => { Loaded = m.ChatView; return m })
@@ -14,7 +13,6 @@ function ChatView(props: ComponentProps<ChatViewType>) {
   const [View, setView] = useState(() => Loaded)
   const [failed, setFailed] = useState<{ error: unknown } | null>(null)
   useEffect(() => { if (!View) loadChat().then((m) => setView(() => m.ChatView), (error) => setFailed({ error })) }, [View])
-  // (to its Guard, as lazy did)
   if (failed) throw failed.error
   return View ? <View {...props} /> : null
 }
@@ -28,31 +26,23 @@ function PreloadChat() {
   }, [])
   return null
 }
-// (one element: the store's changes redraw backgrounds, and the same element isn't drawn again)
 const preload = <PreloadChat />
 
-// Claude Code draws the agent blocks (`agent: claude-code`) with the app's agent components (AgentUsage.tsx) on GET
-// /api/claude-code, and its sessions' tabs as chats (ChatTab.tsx); its page is the Claude dashboard (pages/Claude.md).
 const SRC: AgentSource = {
   path: "claude-code", label: "Claude Code", speaker: "Claude", icon: ClaudeIcon, tint: "var(--orange)", agent: "claude", view: "claude-session",
   noLimits: "No limits yet. They come from Claude Code, signed in on this machine, or else its status line or the Claude app.",
 }
 
 export default definePlugin(agentPlugin(SRC, {
-  // `icon: claude` in a file (the Claude dashboard), and Terminal's Claude Code sessions.
   icons: { claude: ClaudeIcon },
   background: () => preload,
   ambient: { limits: { title: "Claude limits", sort: 40, render: () => <AgentLimitsChip src={SRC} open={() => { const p = pageOf(getStore(), "claude-code", "Claude"); if (p) openFile(p.path) }} /> } },
   blocks: { "agent-limits": "limits", "agent-sessions": "sessions", "agent-usage": "usage", "agent-projects": "projects", "agent-models": "models", "agent-project": "project" },
-  // Its accounts (config folders: plugin.ts) are offered when choosing where to open it.
   process: ["claude"], accounts: "claude-code/accounts",
   opens: { open: { id: "terminal:claude", name: "Open Claude Code" }, split: { id: "terminal:claude-split", desktop: true, name: "Open Claude Code in right split" } },
-  // A session's tab is its chat (`new` until it starts), drawn edge to edge with its own composer.
   sessionView: { full: true, argState: true, title: (id) => chatTitle(id, sessionTitle(SRC, id)), tabMenu: (id) => chatMenu(id),
     render: ({ arg, setArg }) => <ChatView id={arg} setArg={setArg} /> },
-  // A question about a file (a live answer's follow-up): a new chat with it.
   ask: (question, file) => void askChat(question, file),
-  // Its chats, every machine's, in the Agents panel with every other agent.
   agentRuns: useChatRuns,
   commands: [
     { id: "claude-code:chat", name: "New Claude Code chat", words: "new", icon: ClaudeIcon, run: () => newChat() },
@@ -80,10 +70,8 @@ export default definePlugin(agentPlugin(SRC, {
   },
 }))
 
-/** A new chat, in a new tab. */
 const newChat = () => openView(`${SRC.view}/${NEW}`, { newTab: true })
 
-/** Where to open Claude Code: a chat in the app, then each terminal place (an account, a machine). */
 const chooseWhere = () => choosePlace({ agent: "claude", first: [{ label: "Claude Code chat", detail: "In the app", icon: ClaudeIcon, run: newChat }] })
 
 async function askChat(question: string, file?: string) {
