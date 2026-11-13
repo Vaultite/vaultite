@@ -706,7 +706,8 @@ export default async ($: VaultTest) => {
       there?.path === "Notes/A.md" && there.line === 3 && there.selection === "the plan" && there.summoned === true && there.shot === "/tmp/x/screens/display-400-1.png" && !there.app, there)
     cWindows.comeBack(name)
     const [, homeSt] = await api("POST", "ops/companion.status", {})
-    check("companion: done there, its cursor leaves the screen", !(homeSt as { agents?: { sx?: number; app?: string }[] }).agents?.some((a) => a.sx !== undefined || a.app), homeSt)
+    const home = (homeSt as { agents?: { name: string; sx?: number; app?: string }[] }).agents?.find((a) => a.name === name)
+    check("companion: done there, its cursor leaves the screen", !!home && home.sx === undefined && !home.app, home)
     {
       // (back in the window: by their note only while it's on screen; one in a tab behind sent it to a file's row, far off)
       const { EventEmitter } = await import("node:events")
