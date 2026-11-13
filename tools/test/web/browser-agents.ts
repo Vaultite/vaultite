@@ -24,4 +24,9 @@ await section("google sign-in", async () => {
     JSON.stringify(h) === JSON.stringify({ Cookie: "SID=1", "Sec-Fetch-Mode": "navigate", "User-Agent": mac }), h)
   check("google sign-in: only accounts.google.com", g.isSignIn("https://accounts.google.com/v3/signin/identifier") && g.isSignIn("https://accounts.google.com/gsi/iframe")
     && !g.isSignIn("https://mail.google.com/") && !g.isSignIn("https://accounts.google.com.evil.example/") && !g.isSignIn("http://accounts.google.com/"))
+  check("google sign-in: its tab or popup sees Firefox, its frames in another site see that site's browser",
+    g.seesFirefox("https://accounts.google.com/v3/signin/identifier", "https://accounts.google.com/v3/signin/identifier")
+    && g.seesFirefox("https://accounts.google.com/_/lookup", "https://accounts.google.com/o/oauth2/v2/auth")
+    && !g.seesFirefox("https://accounts.google.com/gsi/button", "https://www.lighthouse.example/login")
+    && !g.seesFirefox("https://www.lighthouse.example/", "https://accounts.google.com/v3/signin/identifier"))
 })

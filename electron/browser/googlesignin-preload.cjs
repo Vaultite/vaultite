@@ -1,5 +1,4 @@
-// A frame on Google's sign-in: its navigator says Firefox (googlesignin.ts), as its requests do, before the page's own
-// scripts run. Every other frame is left alone and never asks.
+// Google's sign-in, before its scripts run: its navigator says Firefox where googlesignin.ts says so; other sites never ask.
 "use strict"
 const { contextBridge, ipcRenderer } = require("electron")
 

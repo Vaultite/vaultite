@@ -1,9 +1,10 @@
 // Google's sign-in is told this browser is Firefox: it refuses embedded ones, finding Electron by its client hints
 // (Chromium's brands, no Google Chrome's) behind a plain Chrome's user agent; Firefox sends none. accounts.google.com only.
 
-/** Where Google signs in: its pages and the frames other sites embed ("Sign in with Google"). */
 export const SIGN_IN = "https://accounts.google.com/"
 export const isSignIn = (url: string) => url.startsWith(SIGN_IN)
+/** Only Google's own tab or popup sees Firefox: its button framed in a site talks to that site's script, seeing Chrome. */
+export const seesFirefox = (url: string, top: string) => isSignIn(url) && isSignIn(top)
 
 /** A current Firefox's user agent on this platform: about the version of the month Chromium's `chrome` came out. */
 export function firefoxAgent(chrome: string, platform: string) {

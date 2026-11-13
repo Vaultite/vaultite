@@ -55,11 +55,10 @@ if (driven && !process.env.VAULTITE_SOUND) app.commandLine.appendSwitch("mute-au
 // A keychain password prompt nobody's there to answer hangs the run.
 if (driven) { app.commandLine.appendSwitch("use-mock-keychain"); app.commandLine.appendSwitch("password-store", "basic") }
 app.commandLine.appendSwitch("enable-features", [app.commandLine.getSwitchValue("enable-features"), "DocumentPolicyIncludeJSCallStacksInCrashReports"].filter(Boolean).join(","))
-// Under Playwright, a page's frame swapped out as it navigates (RenderDocument) can crash its renderer turning off
-// Playwright's focus emulation (Blink's race: QA's "Target crashed"); no user page has it, so only there it's off.
-if (app.commandLine.hasSwitch("remote-debugging-port")) {
-  app.commandLine.appendSwitch("disable-features", [app.commandLine.getSwitchValue("disable-features"), "RenderDocument"].filter(Boolean).join(","))
-}
+// FedCM: Electron has no account chooser for it, so its sign-ins never settle; sites without it open their popup.
+// RenderDocument, under Playwright: a frame swapped as it navigates can crash its renderer (Blink's race: "Target crashed").
+app.commandLine.appendSwitch("disable-features", [app.commandLine.getSwitchValue("disable-features"), "FedCm",
+  app.commandLine.hasSwitch("remote-debugging-port") ? "RenderDocument" : ""].filter(Boolean).join(","))
 // A Mac takes a window's icon from the bundle, a packaged Windows app from its .exe; on Linux (and Windows from source)
 // each window carries it (the taskbar, Alt+Tab), else Electron's.
 if (LINUX || (WIN && !app.isPackaged)) { app.on("browser-window-created", (_e, w) => w.setIcon(ICON)); AppWindow.each((w) => w.setIcon(ICON)) }
