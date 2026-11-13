@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The Mac's traffic lights and the sidebar button sit at the window's top again**: with panes as cards and the left
+  sidebar pinned, they no longer sit a gap low in the window's corner.
 - **The companion and agents see where a page's links go**: what they read of a web page or a note (the text under the
   pointer, a page's text and snapshot, a panel) has each link's host and path beside its words, without tracking parameters.
 - **Stopping the companion as its session starts ends that session**: the session it was starting no longer stays up

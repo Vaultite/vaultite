@@ -1373,6 +1373,10 @@ html[data-electron][data-platform=darwin][data-pane-cards]:not([data-top-tabs], 
    the left one) are centred on the same line. */
 :root[data-pane-cards]:not([data-top-tabs]) aside[data-side]:not([data-peek]) [data-titlebar] { margin-top: var(--pane-gap); }
 :root[data-pane-cards]:not([data-top-tabs]) [data-sidebar-toggle] { translate: 0 var(--pane-gap); }
+/* Except where the Mac's lights sit in the pinned left sidebar: a gap down, they sat low in the window's corner. Its
+   top row, the lights and the toggle stay at the window's top. */
+html[data-electron][data-platform=darwin][data-pane-cards]:not([data-top-tabs], [data-fullscreen]) aside[data-side=left]:not([data-peek], [data-collapsed]) [data-titlebar] { margin-top: 0; }
+html[data-electron][data-platform=darwin][data-pane-cards]:not([data-top-tabs], [data-fullscreen]) [data-sidebar-toggle=""][aria-expanded=true] { translate: none; }
 /* With no right sidebar and no tab bar, its toggle sits in the top-right card's bar: as far in as the card is. */
 :root[data-pane-cards]:not([data-right-sidebar]):not([data-top-tabs]) [data-sidebar-toggle=right] { translate: calc(var(--pane-gap) * -0.5) var(--pane-gap); }
 /* Beside a Mac's rail (narrower than the lights) with no tab bar, the lights sit in the top-left card's title row
