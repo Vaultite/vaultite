@@ -1,4 +1,3 @@
-// AI import's frontend: the import command with one toast following it, how chats look, and the review list's card.
 import { useState } from "react"
 import { Brain, MessagesSquare, Upload } from "lucide-react"
 import { activeFile, definePlugin, Group, Panel, SettingRow } from "@vaultite"
@@ -29,8 +28,6 @@ function ReviewCard({ path, body }: { path: string; body: string }) {
   )
 }
 
-/** Its settings sheet: the import itself and how to get an export; its options (folder, short chats, images) are a
- *  form from manifest.json's `settings`, under this. */
 function SettingsPanel() {
   return (
     <div>
@@ -67,7 +64,6 @@ export default definePlugin({
   ],
   fileMenu: (path) => (isReview(path) ? [{ label: "Add ticked memories", icon: Brain, section: "actions", run: () => void applyReview(path) }] : []),
   blocks: {
-    // ```block-memory-review: in a review list (or `file:` one), its count and the Add button.
     "memory-review": ({ path, body }) => <ReviewCard path={path} body={body} />,
   },
   settingsPanel: () => <SettingsPanel />,

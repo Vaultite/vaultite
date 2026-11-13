@@ -1,10 +1,7 @@
-// `vau import <export>`: a command, not an op, because the file is on vau's computer and streamed (exports run to
-// GBs); it then follows the job. An export already in the vault: the op ai-import.run.
 import fs from "node:fs"
 import path from "node:path"
 import { CliError, done, flag, need, type PluginCli } from "../../../core/cli.ts"
 
-/** The file streamed as a request's body; the answer's JSON. */
 async function upload(url: string, file: string, headers: Record<string, string>) {
   const u = new URL(url)
   const { request } = u.protocol === "https:" ? await import("node:https") : await import("node:http")
@@ -16,7 +13,7 @@ async function upload(url: string, file: string, headers: Record<string, string>
       res.on("error", reject)
       res.on("end", () => {
         let body: Record<string, unknown> = {}
-        try { body = JSON.parse(Buffer.concat(chunks).toString("utf8")) } catch { /* not JSON */ }
+        try { body = JSON.parse(Buffer.concat(chunks).toString("utf8")) } catch {}
         resolve({ status: res.statusCode ?? 0, body })
       })
     })
@@ -74,7 +71,6 @@ in the vault: vau ai-import.run <path>.
       }
       if (process.stderr.isTTY && last) process.stderr.write("\n")
       if (job.state === "failed") throw new CliError(`couldn't import ${job.name}: ${job.error}`)
-      // What it did, as the op says it.
       const text = await c.call("POST", "ops/ai-import.job?as=text", { id: job.id })
       return done(job, String(text).trimEnd())
     },

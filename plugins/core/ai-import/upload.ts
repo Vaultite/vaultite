@@ -1,5 +1,3 @@
-// Sending an export from the app: pick the file, send it (a small one whole, a big one 8 MB at a time, so no request runs
-// for minutes and a phone shows how far it got), then follow the import job, all in one toast that updates itself.
 import { notify, openFile, plural, post, notifyError } from "@vaultite"
 import type { Job } from "./chat"
 
@@ -7,7 +5,6 @@ const CHUNK = 8 << 20
 const TOAST = "ai-import"
 const HEADERS = { "X-Vaultite-Client": "app" }
 
-/** Ask for the export (the zip ChatGPT or Claude emailed, or its conversations.json) and import it. */
 export function pickExport() {
   const input = document.createElement("input")
   input.type = "file"
@@ -32,7 +29,6 @@ async function send(url: string, body: Blob, type = "application/octet-stream") 
 const pct = (a: number, b: number) => `${Math.min(100, Math.floor((a / Math.max(1, b)) * 100))}%`
 const name = (j: Job) => (j.source === "claude" ? "Claude" : j.source === "chatgpt" ? "ChatGPT" : "the export")
 
-/** Upload `file` and follow its import until it's done. Resolves with the finished job. */
 export async function importFile(file: File): Promise<Job | null> {
   const say = (text: string) => notify(text, { id: TOAST, duration: Infinity })
   try {
@@ -64,7 +60,6 @@ export async function importFile(file: File): Promise<Job | null> {
   }
 }
 
-/** One line for what an import did. */
 export function summary(j: Job) {
   if (j.state === "failed") return `Couldn't import ${j.name}: ${j.error ?? "it failed"}`
   const parts = [`${j.created} new`]
@@ -82,7 +77,6 @@ function finished(j: Job) {
   notify(summary(j), { id: TOAST, duration: 12000, action: review ? { label: "Review memories", run: () => openFile(review) } : undefined })
 }
 
-/** Add a review list's ticked memories (the op ai-import.apply, on the server) and say how it went. */
 export async function applyReview(path: string) {
   try {
     const r = await post<{ added: number; failed: number; results: { fact: string; error?: string }[] }>("ops/ai-import.apply", { path })

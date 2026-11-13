@@ -1,5 +1,3 @@
-// One import as a job: the zip and conversations.json are streamed so a big export never sits in memory, written in
-// small batches holding the vault briefly. Idempotent by `ext_id`; memories only reach the review list.
 import fs from "node:fs"
 import path from "node:path"
 import { setImmediate as turn } from "node:timers/promises"
@@ -14,11 +12,8 @@ import { chatNote, INLINE, LABELS, localDate, projectNote, reviewText, splitBody
 import { entryBytes, entryStream, isZip, type ZipEntry, zipEntries } from "../../../core/plugins.ts"
 
 export type Options = {
-  /** The folder chats go in (a subfolder per source). */
   folder: string
-  /** Chats with fewer messages (the user's and the AI's, with something in them) are skipped; 0 imports every one. */
   minMessages: number
-  /** Import ChatGPT's images, whatever their size. */
   images: boolean
 }
 
@@ -29,14 +24,12 @@ export const newJob = (id: string, name: string): Job => ({
   files: 0, projects: 0, memories: 0, review: null, folder: null, problems: [], started: Date.now(),
 })
 
-/** Files written per hold of the vault. */
 const BATCH = 20
 
 type Write =
   | { kind: "note"; ext: string; dir: string; name: string; fm: Record<string, unknown>; body: string }
   | { kind: "file"; rel: string; data: Buffer; counts: "images" | "files" }
 
-/** A file name for `name` in `dir` that's free ("Name.md", "Name 1.md"...). */
 function freePath(vault: Vault, dir: string, name: string, taken: Set<string>) {
   const base = [...safeName(name)].slice(0, 100).join("").replace(/^[.\s]+|[.\s]+$/g, "") || "Untitled"
   for (let n = 0; ; n++) {
@@ -45,8 +38,6 @@ function freePath(vault: Vault, dir: string, name: string, taken: Set<string>) {
   }
 }
 
-/** A chat's file as it is now, rewritten: the importer's keys set (only their lines), what the user wrote above the
- *  transcript kept, the transcript replaced. */
 export function rewritten(now: string, fm: Record<string, unknown>, body: string) {
   let t = now
   for (const [k, v] of Object.entries(fm)) {
@@ -60,7 +51,6 @@ export function rewritten(now: string, fm: Record<string, unknown>, body: string
   return `${head}\n${[own, body].filter(Boolean).join("\n\n")}\n`
 }
 
-/** Runs the import of `file` (the upload, on this machine) into `vault`, updating `job` as it goes. */
 export async function runImport(vault: Vault, file: string, opts: Options, job: Job) {
   job.state = "running"
   const zip = isZip(file)
@@ -80,7 +70,6 @@ export async function runImport(vault: Vault, file: string, opts: Options, job: 
     try { return JSON.parse((await entryBytes(file, e)).toString("utf8")) } catch { return undefined }
   }
 
-  // What every chat is, by its ext_id: so importing again updates instead of adding.
   const known = new Map<string, string>()
   for (const e of vault.entries.values()) {
     const x = e.fm.ext_id
@@ -88,14 +77,11 @@ export async function runImport(vault: Vault, file: string, opts: Options, job: 
   }
   const taken = new Set<string>()
 
-  // Claude's projects first (a chat links to its project's note).
   const projects: Project[] = claude.readProjects(await wholeJson(named(/(^|\/)projects\.json$/i)[0]))
   const projectNames = new Map(projects.map((p) => [p.id, p.name]))
   const projectLinks = new Map<string, string>()
 
   const pending: Write[] = []
-  /** Write what's pending a few files per hold, each batch synced before the next, so no sync has thousands of new files
-   *  and requests keep being answered. */
   const flush = async () => {
     while (pending.length) {
       const batch = pending.splice(0, BATCH)
@@ -125,15 +111,12 @@ export async function runImport(vault: Vault, file: string, opts: Options, job: 
   const count = (type: unknown, what: "created" | "updated" | "unchanged") => {
     if (type === "chat-project") { if (what !== "unchanged") job.projects++ } else job[what]++
   }
-  /** Unchanged since the last import (same updated time and message count): nothing to write. */
   const same = (ext: string, fm: Record<string, unknown>) => {
     const rel = known.get(ext)
     const e = rel ? vault.entries.get(rel) : undefined
     return !!e && str(e.fm.updated) === str(fm.updated ?? "") && str(e.fm.messages ?? "") === str(fm.messages ?? "")
   }
 
-  /** A long text as a file in `dir` (a text kind keeps its name, else ".txt" is added): its name, the same file again
-   *  when it's there with these bytes (importing again), else the next free name. */
   const saveText = (dir: string, name: string, text: string) => {
     const base = [...safeName(name)].slice(0, 100).join("").replace(/^[.\s]+|[.\s]+$/g, "") || "Attachment"
     const full = isTextKind(kindOf(base)) ? base : `${base}.txt`
@@ -161,7 +144,6 @@ export async function runImport(vault: Vault, file: string, opts: Options, job: 
     if (rel) projectLinks.set(p.id, `[[${rel.replace(/\.md$/, "")}|${p.name}]]`)
   }
 
-  // ChatGPT's images by asset id, and the newest memory list it showed the model.
   const assets = chatgpt.assetIndex(entries.map((e) => e.name))
   const byName = new Map(entries.map((e) => [e.name, e]))
   const memories: Memory[] = []
@@ -191,7 +173,6 @@ export async function runImport(vault: Vault, file: string, opts: Options, job: 
     for (const m of chat.messages) for (const p of m.parts) {
       if (p.kind === "file" && p.text && p.text.length > INLINE) p.saved = saveText(`${opts.folder}/${label}/Attachments`, p.name, p.text)
     }
-    // Its images: the ones the zip has, once each.
     const images = new Map<string, string>()
     if (opts.images && zip) {
       for (const m of chat.messages) for (const p of m.parts) {
@@ -215,7 +196,6 @@ export async function runImport(vault: Vault, file: string, opts: Options, job: 
 
   const onBytes = (n: number) => { job.read += n }
   let n = 0
-  // (each opened only when the one before is read)
   const streams = zip ? convs.map((e) => () => entryStream(file, e)) : [() => fs.createReadStream(file)]
   for (const stream of streams) for await (const item of jsonItems(stream(), onBytes)) {
     try { await take(item) } catch (err) { if (job.problems.length < 10) job.problems.push(String((err as Error).message ?? err)) }
@@ -224,7 +204,6 @@ export async function runImport(vault: Vault, file: string, opts: Options, job: 
   await flush()
   if (!job.chats && !projects.length) throw new Error("found no conversations: is this ChatGPT's or Claude's export?")
 
-  // Memories: into the review list, never straight into ME.md.
   const source: Chat["source"] = job.source ?? (projects.length ? "claude" : "chatgpt")
   if (memoryList) { const at = memoryList.at; memories.unshift(...memoryList.facts.map((f) => ({ text: f, about: aboutOf(f), from: "ChatGPT's memory", at }))) }
   const memFile = named(/(^|\/)memories\.json$/i)[0]

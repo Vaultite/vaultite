@@ -1,12 +1,9 @@
-// Claude's export (conversations, projects, memories) into chats. Edits and retries branch: the transcript is the line
-// to the newest leaf (or current_leaf_message_uuid); memory may come in several shapes, all read.
 import { aboutOf, arr, type Chat, factsOf, isObj, type Memory, type Message, type Part, type Project, text, timeOf } from "./chat.ts"
 
 const ROOT = "00000000-0000-4000-8000-000000000000"
 
 type Msg = Record<string, unknown>
 
-/** The messages from the root to the leaf the user last saw, and how many other leaves there are. */
 export function linearize(msgs: Msg[], current?: string) {
   const parentOf = (m: Msg) => text(m.parent_message_uuid)
   if (!msgs.some((m) => parentOf(m))) return { path: msgs, others: 0 }
@@ -28,7 +25,6 @@ export function linearize(msgs: Msg[], current?: string) {
   return { path: path.reverse(), others: Math.max(0, leaves.length - 1) }
 }
 
-/** A tool's input as one short line or a block. */
 function toolUse(b: Record<string, unknown>): Part[] {
   const name = text(b.name)
   const input = isObj(b.input) ? b.input : {}
@@ -47,7 +43,6 @@ function toolUse(b: Record<string, unknown>): Part[] {
   if (typeof input.url === "string") return [{ kind: "note", text: `Opened ${input.url}` }]
   if (typeof input.code === "string") return [{ kind: "code", text: input.code, lang: text(input.language) || "javascript", title: name ? `Called ${name}` : "Code" }]
   const json = JSON.stringify(input)
-  // (a long input reads better as a block than as one line)
   if (json && json.length > 300) return [{ kind: "code", text: JSON.stringify(input, null, 2), lang: "json", title: `Called ${name || "a tool"}` }]
   return [{ kind: "note", text: `Used ${name || "a tool"}${json && json !== "{}" ? `: ${json}` : ""}` }]
 }
@@ -66,7 +61,7 @@ function toolResult(b: Record<string, unknown>): Part[] {
   return [{ kind: "output", text: t, title: [text(b.name), b.is_error === true ? "error" : ""].filter(Boolean).join(", ") || undefined }]
 }
 
-/** A message's parts: its content blocks (or its text, in older exports), what it attached. */
+// Older exports have `text` instead of content blocks
 function partsOf(m: Msg): Part[] {
   const out: Part[] = []
   for (const a of arr(m.attachments)) {
@@ -95,7 +90,6 @@ function partsOf(m: Msg): Part[] {
   return out
 }
 
-/** One conversation of conversations.json, or null when it isn't one. `projects`: names by id, to say which. */
 export function readConversation(c: unknown): Chat | null {
   if (!isObj(c) || !Array.isArray(c.chat_messages)) return null
   const id = text(c.uuid)
@@ -125,7 +119,6 @@ export function readConversation(c: unknown): Chat | null {
   }
 }
 
-/** projects.json's projects. */
 export function readProjects(v: unknown): Project[] {
   const out: Project[] = []
   for (const p of arr(v)) {
@@ -137,7 +130,6 @@ export function readProjects(v: unknown): Project[] {
   return out
 }
 
-/** memories.json's memories: across chats (about the user), and each project's (`projects`: names by id). */
 export function readMemories(v: unknown, projects: Map<string, string> = new Map()): Memory[] {
   const out: Memory[] = []
   const add = (raw: string, from: string, at?: number, about?: string) => {

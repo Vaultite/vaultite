@@ -1,17 +1,15 @@
-// ChatGPT's export into chats: each conversation a tree whose line from `current_node` to the root is the transcript.
-// It has no memory list, so memories come from `bio` calls, model_set_context (newest wins) and custom instructions.
+// ChatGPT's export has no memory list: memories come from `bio` calls, model_set_context and custom instructions.
 import { arr, type Chat, factsOf, isObj, type Memory, type Message, type Part, text, timeOf, aboutOf } from "./chat.ts"
 import { dataLine, fenceDil } from "../genui/dil.ts"
 
 type Node = { id: string; message?: Record<string, unknown> | null; parent?: string | null; children?: string[] }
 
-/** ChatGPT's private-use citation markers ("\ue200cite\ue202turn0search1\ue201") and its file citations. */
+// ChatGPT's private-use citation markers ("\ue200cite\ue202turn0search1\ue201") and its file citations
 const clean = (s: string) => s.replace(/[ \t]*\ue200[^\ue201]*\ue201/g, "").replace(/\u3010\d+(?::\d+)?\u2020[^\u3011]*\u3011/g, "")
 
-/** The asset id of an image pointer: "file-service://file-AbC" and "sediment://file_00ab" -> "file-AbC", "file_00ab". */
+// "file-service://file-AbC" and "sediment://file_00ab" -> "file-AbC", "file_00ab"
 export const assetId = (pointer: string) => pointer.replace(/^[a-z-]+:\/\//, "").trim()
 
-/** The line of messages from the root to `current_node` (or, without one, the newest leaf), and how many other leaves. */
 function line(mapping: Record<string, Node>, current: unknown) {
   const nodes = Object.values(mapping).filter(isObj) as Node[]
   const leaves = nodes.filter((n) => !arr(n.children).some((c) => typeof c === "string" && mapping[c]))
@@ -29,7 +27,6 @@ function line(mapping: Record<string, Node>, current: unknown) {
   return { nodes: out.reverse(), others: Math.max(0, leaves.length - 1) }
 }
 
-/** The text of `parts` (strings), and images and transcripts among them. */
 function partsOf(content: Record<string, unknown>): Part[] {
   const out: Part[] = []
   for (const p of arr(content.parts)) {
@@ -40,13 +37,12 @@ function partsOf(content: Record<string, unknown>): Part[] {
         out.push({ kind: "image", ref: assetId(text(p.asset_pointer)), size: typeof p.size_bytes === "number" ? p.size_bytes : undefined })
       } else if (ct === "audio_transcription" && text(p.text).trim()) out.push({ kind: "text", text: text(p.text) })
       else if (typeof p.text === "string" && p.text.trim()) out.push({ kind: "text", text: clean(p.text) })
-      // audio, video and other pointers: the export has their bytes as files, but a note doesn't take them
     }
   }
   return out
 }
 
-/** The text inside a custom instruction's ``` fence (ChatGPT wraps them in its own explanation), or all of it. */
+// ChatGPT wraps custom instructions in a ``` fence inside its own explanation
 export function instructionText(s: string) {
   const m = /```(?:[a-z]*\n)?([\s\S]*?)```/.exec(s)
   return (m ? m[1] : s).trim()
@@ -54,7 +50,6 @@ export function instructionText(s: string) {
 
 export type ChatGptRead = { chat: Chat; memories: Memory[]; memoryList?: { at: number; facts: string[] } }
 
-/** One conversation of conversations.json, or null when it isn't one. */
 export function readConversation(c: unknown): ChatGptRead | null {
   if (!isObj(c) || !isObj(c.mapping)) return null
   const id = text(c.conversation_id) || text(c.id)
@@ -74,7 +69,6 @@ export function readConversation(c: unknown): ChatGptRead | null {
     const ct = text(content.content_type)
     const meta = isObj(m.metadata) ? m.metadata : {}
     const at = timeOf(m.create_time)
-    // The custom instructions and the memory list: memories, never transcript.
     if (ct === "user_editable_context") {
       for (const f of factsOf(instructionText(text(content.user_profile)))) memories.push({ text: f, about: "me", from: "ChatGPT's custom instructions", at: updated })
       for (const f of factsOf(instructionText(text(content.user_instructions)))) memories.push({ text: f, about: "preference", from: "ChatGPT's custom instructions", at: updated })
@@ -119,18 +113,15 @@ export function readConversation(c: unknown): ChatGptRead | null {
       parts.push({ kind: "note", text: `Error: ${text(content.name)}${text(content.text) ? `: ${text(content.text)}` : ""}` })
     } else {
       parts = partsOf(content)
-      // An Intelligent UI answer: its markup as a ```genui fence, so it's drawn live, not shown as text.
       if (role === "assistant") parts = parts.map((p) => (p.kind === "text" ? { ...p, text: fenceDil(p.text, dataLine(meta)) } : p))
       if (!parts.length && typeof content.text === "string" && content.text.trim()) parts.push({ kind: "text", text: clean(content.text) })
     }
     if (role === "tool") {
       name = text(author.name) || undefined
-      // A tool's text is output, and an image it made (DALL·E) is the assistant's picture.
       parts = parts.map((p) => (p.kind === "text" ? { kind: "output", text: p.text } : p))
       if (parts.length && parts.every((p) => p.kind === "image")) r = "assistant"
     }
     if (!parts.length) continue
-    // A message continuing the one before it (the same role, a tool's call and its answer folded into the turn).
     messages.push({ role: r, name, at, model: model || undefined, parts })
   }
   const def = text(c.default_model_slug)
@@ -146,7 +137,7 @@ export function readConversation(c: unknown): ChatGptRead | null {
   }
 }
 
-/** ChatGPT's memory list as the model saw it: "1. [2024-05-01]. Lives in Lisbon." lines, numbers and dates taken off. */
+// ChatGPT's memory list as the model saw it: "1. [2024-05-01]. Lives in Lisbon." lines
 export function memoryLines(list: string): string[] {
   const out: string[] = []
   for (const l of list.split("\n")) {
@@ -156,7 +147,6 @@ export function memoryLines(list: string): string[] {
   return out.length ? out : factsOf(list)
 }
 
-/** A memories.json, if the export has one: a list of strings or of objects with the memory's text. */
 export function memoriesFile(v: unknown): Memory[] {
   const out: Memory[] = []
   const walk = (x: unknown) => {
@@ -172,7 +162,7 @@ export function memoriesFile(v: unknown): Memory[] {
   return out
 }
 
-/** The zip's images by asset id: "file-AbC-photo.png", "dalle-generations/file-XyZ-uuid.webp", "user-1/file_00ab-x.png". */
+// The zip's image names: "file-AbC-photo.png", "dalle-generations/file-XyZ-uuid.webp", "user-1/file_00ab-x.png"
 export function assetIndex(names: string[]) {
   const out = new Map<string, string>()
   for (const n of names) {

@@ -1,11 +1,9 @@
-// A JSON file's top-level array one item at a time as its bytes come (conversations.json can pass what one string
-// holds); a top-level object is one item.
+// conversations.json can exceed V8's longest string, so it's parsed an item at a time
 import type { Readable } from "node:stream"
 
 const QUOTE = 0x22, BACKSLASH = 0x5c, OPEN_OBJ = 0x7b, CLOSE_OBJ = 0x7d, OPEN_ARR = 0x5b, CLOSE_ARR = 0x5d, COMMA = 0x2c
 const space = (c: number) => c === 0x20 || c === 0x0a || c === 0x0d || c === 0x09
 
-/** The top-level array's items, parsed. `onBytes(n)`: n more bytes were read (progress). Throws on JSON that's broken. */
 export async function* jsonItems(stream: Readable | AsyncIterable<Buffer | string>, onBytes?: (n: number) => void): AsyncGenerator<unknown> {
   let mode: "start" | "array" | "whole" | "done" = "start"
   let depth = 0, inStr = false, esc = false, inItem = false, bare = false
@@ -20,7 +18,7 @@ export async function* jsonItems(stream: Readable | AsyncIterable<Buffer | strin
     onBytes?.(chunk.length)
     let i = 0
     if (mode === "start") {
-      if (chunk[0] === 0xef && chunk[1] === 0xbb && chunk[2] === 0xbf) i = 3 // a byte order mark
+      if (chunk[0] === 0xef && chunk[1] === 0xbb && chunk[2] === 0xbf) i = 3
       while (i < chunk.length && space(chunk[i])) i++
       if (i >= chunk.length) continue
       if (chunk[i] === OPEN_ARR) { mode = "array"; i++ }
@@ -37,7 +35,7 @@ export async function* jsonItems(stream: Readable | AsyncIterable<Buffer | strin
         inItem = true; start = i; depth = 0; bare = false
         if (c === QUOTE) { inStr = true; continue }
         if (c === OPEN_OBJ || c === OPEN_ARR) { depth = 1; continue }
-        bare = true // a number, true, false or null
+        bare = true
         continue
       }
       if (bare) {
