@@ -1,5 +1,4 @@
-// Google Keep's export (Takeout: a JSON file per note in Keep/, attachments beside them): a note's text, its checklist
-// as tasks, its links, labels as tags, dates and archived kept; a trashed note is left out.
+// Keep's Takeout: a JSON file per note in Keep/, attachments beside them
 
 export type KeepNote = {
   title: string; body: string; tags: string[]; created: number | null; updated: number | null
@@ -9,7 +8,6 @@ export type KeepNote = {
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v)
 const usec = (v: unknown) => (typeof v === "number" && v > 0 ? Math.floor(v / 1000) : null)
 
-/** A note's JSON as a note, or null when it isn't one of Keep's. */
 export function readKeep(v: unknown): KeepNote | null {
   if (!isObj(v) || (typeof v.textContent !== "string" && !Array.isArray(v.listContent))) return null
   const text = typeof v.textContent === "string" ? v.textContent.replace(/\r\n?/g, "\n").trim() : ""

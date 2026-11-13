@@ -1,5 +1,3 @@
-// Importer: Notion's, Evernote's and Keep's exports into notes, one import at a time. The app streams the file onto this
-// machine's disk (the plugin's own folder: an export with attachments can pass a GB), then it's read in place.
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
@@ -22,17 +20,15 @@ const folder = (given?: string) => {
   return f ? vaultPath(f, false, plugin.vault).replace(/\/+$/, "") : ""
 }
 
-/** This machine's folder for uploads and opened parts, cleared of ones left behind (over a day old). */
 function scratch() {
   const dir = path.join(plugin.localDir(), "uploads")
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
   for (const f of fs.readdirSync(dir)) {
-    try { if (Date.now() - fs.statSync(path.join(dir, f)).mtimeMs > 86400_000) fs.rmSync(path.join(dir, f), { recursive: true, force: true }) } catch { /* gone */ }
+    try { if (Date.now() - fs.statSync(path.join(dir, f)).mtimeMs > 86400_000) fs.rmSync(path.join(dir, f), { recursive: true, force: true }) } catch {}
   }
   return dir
 }
 
-/** Queue the import of `file` (removed after, when it's an upload). */
 function start(file: string, name: string, into: string, temporary: boolean) {
   const job = newJob(`${Date.now().toString(36)}-${++n}`, name)
   jobs.unshift(job)
@@ -87,11 +83,8 @@ plugin.route("GET", "importer/jobs/*", (req) => {
   return job
 })
 
-// ---------- operations (core/ops.ts)
-
 const LABEL = { notion: "Notion", evernote: "Evernote", keep: "Google Keep", html: "HTML pages", bear: "Bear", csv: "CSV", roam: "Roam" }
 
-/** A job's summary (what `vau importer.run --wait` prints). */
 export function jobText(job: Job) {
   if (job.state === "queued" || job.state === "running") return `Importing ${job.name} (job ${job.id}): ${job.state}, ${job.notes} notes so far. vau importer.job ${job.id} --wait follows it.`
   if (job.state === "failed") return `Couldn't import ${job.name}: ${job.error}`
@@ -131,7 +124,7 @@ notes imported before stay as they are. wait: answer once it's done.
   vau importer.run Imports/notion-export.zip --wait
   vau importer.run "Imports/Recipes.enex" --folder Archive`,
   kind: "write",
-  lock: false, // the job holds the vault a few files at a time
+  lock: false,
   params: {
     path: { type: "string", format: "path", required: true, description: "the export in the vault (Notion's zip, an .enex or a zip of them, Takeout's zip, Bear's .bear2bk, HTML pages, a CSV, Roam's JSON)" },
     folder: { type: "string", description: "the folder Notion/, Evernote/ or Keep/ goes in (default the setting's: the vault's top)" },

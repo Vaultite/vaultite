@@ -1,4 +1,3 @@
-// Importer's frontend: pick an export, send it, follow its job in one toast; the settings sheet says how to export.
 import { FileInput, Import } from "lucide-react"
 import { definePlugin, Group, notify, notifyError, Panel, SettingRow } from "@vaultite"
 import type { Job } from "./job"

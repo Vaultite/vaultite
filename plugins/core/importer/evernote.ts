@@ -1,5 +1,4 @@
-// Evernote's export (.enex: one notebook's notes as XML, attachments inside as base64): each note's title, dates, tags,
-// source and attachments, its ENML body as Markdown with every <en-media> an embed of its attachment (by MD5).
+// Evernote's .enex: one notebook's notes as XML, attachments inside as base64, <en-media> naming one by its MD5
 import crypto from "node:crypto"
 import { xmlDecode } from "../../../core/plugins.ts"
 import { fromEnml, toMarkdown } from "./html.ts"
@@ -16,7 +15,7 @@ const text = (s: string) => {
   return cdata ? cdata[1] : xmlDecode(s).trim()
 }
 
-/** "20261005T150405Z" as a time, or null. */
+// Evernote's times: "20261005T150405Z"
 export function enDate(s: string): number | null {
   const m = /^(\d{4})(\d\d)(\d\d)T(\d\d)(\d\d)(\d\d)Z?$/.exec(s.trim())
   return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : null
@@ -35,7 +34,6 @@ function resource(xml: string, i: number): Resource {
   return { name, mime, data, hash: crypto.createHash("md5").update(data).digest("hex") }
 }
 
-/** Every note in an .enex file's text. */
 export function* readEnex(xml: string): Generator<EnNote> {
   if (!/<en-export\b/i.test(xml)) throw new Error("this isn't an Evernote export (.enex)")
   for (const m of xml.matchAll(/<note>([\s\S]*?)<\/note>/gi)) {
@@ -43,7 +41,7 @@ export function* readEnex(xml: string): Generator<EnNote> {
     const attrs = /<note-attributes>([\s\S]*?)<\/note-attributes>/i.exec(n)?.[1] ?? ""
     const res = [...n.matchAll(/<resource>([\s\S]*?)<\/resource>/gi)].map((r, i) => resource(r[1], i))
     yield {
-      title: tag(n, "title") || "Untitled", // (the note's own comes before its content)
+      title: tag(n, "title") || "Untitled", // the note's <title> comes before <content>, which may hold an HTML one
       created: enDate(tag(n, "created")), updated: enDate(tag(n, "updated")),
       tags: [...n.matchAll(/<tag>([\s\S]*?)<\/tag>/gi)].map((t) => text(t[1])).filter(Boolean),
       source: tag(attrs, "source-url"), author: tag(attrs, "author"),
@@ -52,8 +50,6 @@ export function* readEnex(xml: string): Generator<EnNote> {
   }
 }
 
-/** A note's body as Markdown, each attachment by `link` (given its resource). Ones the body never shows are listed at the
- *  end, so nothing is left behind. */
 export function noteBody(note: EnNote, link: (r: Resource) => string) {
   const shown = new Set<string>()
   const byHash = new Map(note.resources.map((r) => [r.hash, r]))

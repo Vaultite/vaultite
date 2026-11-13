@@ -1,5 +1,3 @@
-// One import as a job: Notion's zip (maybe of zips), Evernote's .enex (or a zip of them), Keep's Takeout, Bear's backup, HTML pages, CSV rows, Roam's JSON. Every file gets its path
-// first, so links point where files land; written a few per hold of the vault; idempotent by `ext_id`.
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
@@ -20,13 +18,10 @@ export type Options = { folder: string; tmp: string }
 export const newJob = (id: string, name: string): Job =>
   ({ id, state: "queued", name, source: null, notes: 0, created: 0, unchanged: 0, files: 0, folder: null, problems: [], started: Date.now() })
 
-/** The most an .enex is read whole (its attachments are inside, as base64). */
 const ENEX_MAX = 512 << 20
 const BATCH = 20
 const LABEL: Record<Source, string> = { notion: "Notion", evernote: "Evernote", keep: "Keep", html: "HTML", bear: "Bear", csv: "CSV", roam: "Roam" }
-/** A TextBundle's text in Bear's backup (its folder: the bundle). */
 const BUNDLE = /^(.*\.textbundle)\/text\.(markdown|md|txt)$/i
-/** A Keep note's JSON in a Takeout zip. */
 const KEEP = /(^|\/)Keep\/[^/]+\.json$/i
 
 type Write = { rel: string; data: () => Promise<Buffer | string>; note: boolean }
@@ -36,14 +31,12 @@ const split = (rel: string) => { const i = rel.lastIndexOf("/"); return { dir: r
 const extOf = (name: string) => { const d = name.lastIndexOf("."); return d > 0 ? name.slice(d) : "" }
 const say = (job: Job, p: string) => { if (job.problems.length < 10) job.problems.push(p) }
 
-/** Writes and paths for one import: a path free in the vault and in this import, kept per source path. */
 function planner(vault: Vault) {
-  // (by lower case: on a Mac "Ideas.md" and "ideas.md" are one file, so the second would overwrite the first)
+  // by lower case: on a Mac "Ideas.md" and "ideas.md" are one file
   const taken = new Set<string>()
   const inVault = new Set([...vault.entries.keys()].map((k) => k.toLowerCase()))
   const there = (rel: string) => taken.has(rel.toLowerCase()) || inVault.has(rel.toLowerCase()) || fs.existsSync(vault.abs(rel))
   return {
-    /** `rel`, or "Name 1.ext"... when that's taken; `same` says a file there is this one (an attachment imported before). */
     free(rel: string, same?: (abs: string) => boolean) {
       const { dir, name } = split(rel)
       const ext = extOf(name), stem = [...safeName(ext ? name.slice(0, -ext.length) : name)].slice(0, 120).join("").replace(/^[.\s]+|[.\s]+$/g, "") || "Untitled"
@@ -58,7 +51,6 @@ function planner(vault: Vault) {
   }
 }
 
-/** Notes already imported, by ext_id. */
 function knownIds(vault: Vault, prefix: string) {
   const out = new Map<string, string>()
   for (const e of vault.entries.values()) {
@@ -89,7 +81,7 @@ async function flush(vault: Vault, pending: Write[], job: Job) {
 
 type Zip = { file: string; entries: ZipEntry[] }
 
-/** The zip's entries, and a zip of zips (Notion's big exports come in parts) opened into `tmp`. */
+// Notion's big exports are a zip of zips
 async function zips(file: string, tmp: string, depth = 0): Promise<Zip[]> {
   const entries = zipEntries(file).filter((e) => !/(^|\/)(__MACOSX\/|\.DS_Store$)/.test(e.name))
   const inner = entries.filter((e) => /\.zip$/i.test(e.name))
@@ -103,7 +95,6 @@ async function zips(file: string, tmp: string, depth = 0): Promise<Zip[]> {
   return out
 }
 
-/** What the file is: Notion's export, Evernote's, Keep's, Bear's, HTML pages or CSV tables. */
 function kindOfExport(parts: Zip[] | null, file: string, name: string): Source {
   if (!parts && /\.csv$/i.test(name)) return "csv"
   if (!parts && /\.json$/i.test(name)) return "roam"
@@ -119,7 +110,6 @@ function kindOfExport(parts: Zip[] | null, file: string, name: string): Source {
   if (names.some((n) => /\.enex$/i.test(n))) return "evernote"
   if (names.some((n) => KEEP.test(n))) return "keep"
   if (names.some((n) => BUNDLE.test(n))) return "bear"
-  // (Markdown beside HTML pages is a page's readme, unless it's named the way Notion names its pages)
   const html = names.some((n) => /\.html?$/i.test(n))
   if (names.some((n) => /\.md$/i.test(n)) && (!html || names.some((n) => /[ -][0-9a-f]{32}\.md$/i.test(n)))) return "notion"
   if (names.some((n) => /\.html?$/i.test(n))) return "html"
@@ -128,14 +118,12 @@ function kindOfExport(parts: Zip[] | null, file: string, name: string): Source {
   throw new Error("no notes in this zip: is it Notion's export (Markdown & CSV), Evernote's .enex files, Keep's Takeout, Bear's backup, HTML pages, CSV tables or Roam's JSON?")
 }
 
-/** Runs the import of `file` (on this machine) into `vault`, updating `job` as it goes. */
 export async function runImport(vault: Vault, file: string, opts: Options, job: Job) {
   job.state = "running"
   fs.mkdirSync(opts.tmp, { recursive: true })
   const parts = isZip(file) ? await zips(file, opts.tmp) : null
   const source = kindOfExport(parts, file, job.name)
   job.source = source
-  // (HTML pages and tables go in a folder named as the export: they could be any app's)
   job.folder = join(opts.folder, source === "html" || source === "csv" ? [...safeName(job.name.replace(/\.(zip|html?|csv)$/i, ""))].slice(0, 120).join("") : LABEL[source])
   if (source === "csv") await csvRows(vault, parts ?? [{ file, entries: [{ name: job.name, method: 0, size: fs.statSync(file).size, packed: 0, offset: -1 }] }], job.folder, job)
   else if (source === "html") await htmlPages(vault, parts ?? [{ file, entries: [{ name: job.name, method: 0, size: fs.statSync(file).size, packed: 0, offset: -1 }] }], job.folder, job)
@@ -160,13 +148,12 @@ export async function runImport(vault: Vault, file: string, opts: Options, job: 
 
 async function notion(vault: Vault, parts: Zip[], base: string, job: Job) {
   const all = parts.flatMap((z) => z.entries.map((e) => ({ z, e })))
-  // One top folder for the whole export (Export-<uuid>/) says nothing: dropped.
+  // Notion wraps the whole export in one Export-<uuid>/ folder
   const tops = new Set(all.map(({ e }) => e.name.split("/")[0]))
   const strip = tops.size === 1 && all.every(({ e }) => e.name.includes("/")) && /^Export-[\w-]+$/i.test([...tops][0])
   const local = (name: string) => (strip ? name.slice(name.indexOf("/") + 1) : name)
-  /** A page's id: Notion's, else its path's (a page named without one is still known when imported again). */
   const noteId = (name: string) => idOf(name) ?? crypto.createHash("sha1").update(barePath(local(name))).digest("hex").slice(0, 16)
-  // A database's rows are in a folder named as its CSV; its _all.csv (every property) wins over the view's.
+  // Notion: a database's rows are in a folder named as its CSV; its _all.csv has every property, the view's CSV some
   const names = new Set(all.map(({ e }) => e.name))
   const files = all.filter(({ e }) => !(/\.csv$/i.test(e.name) && !/_all\.csv$/i.test(e.name) && names.has(e.name.replace(/\.csv$/i, "_all.csv"))))
   const databases = new Set(files.filter(({ e }) => /\.csv$/i.test(e.name)).map(({ e }) => barePath(local(e.name)).replace(/\.csv$/i, "")))
@@ -182,7 +169,6 @@ async function notion(vault: Vault, parts: Zip[], base: string, job: Job) {
     const had = id ? known.get(`notion-${id}`) : undefined
     if (had) { to.set(e.name, { rel: had, md, skip: true }); continue }
     const want = join(base, barePath(local(e.name)))
-    // (an attachment imported before is the same size; a CSV lost its byte-order mark)
     const p = plan.free(want, md ? undefined : (abs) => [e.size, e.size - 3].includes(fs.statSync(abs).size))
     to.set(e.name, { rel: p.rel, md, skip: p.exists })
   }
@@ -223,7 +209,6 @@ async function evernote(vault: Vault, xml: string, notebook: string, base: strin
   const seen = new Map<string, number>()
   for (const n of readEnex(xml)) {
     job.notes++
-    // (two notes of one title and time are told apart by their order)
     const key = `${notebook}\n${n.title}\n${n.created ?? ""}`
     const nth = (seen.get(key) ?? 0) + 1
     seen.set(key, nth)
@@ -255,11 +240,11 @@ async function keep(vault: Vault, parts: Zip[], dir: string, job: Job) {
   const known = knownIds(vault, "keep-")
   const plan = planner(vault)
   const pending: Write[] = []
-  // Every part's files (a big Takeout comes in several), and how many notes share each file name.
+  // a big Takeout comes in several parts
   const byName = new Map(parts.flatMap((z) => z.entries.map((e) => [e.name, { z, e }] as const)))
   const names = new Map<string, number>()
   for (const name of byName.keys()) if (KEEP.test(name)) names.set(name.split("/").pop()!, (names.get(name.split("/").pop()!) ?? 0) + 1)
-  /** An attachment's file: by its path, else by its name with another extension (Takeout writes .jpeg as .jpg). */
+  // Takeout writes .jpeg as .jpg
   const fileOf = (folder: string, p: string) => {
     const hit = byName.get(folder + p) ?? byName.get(p)
     if (hit) return hit
@@ -273,7 +258,6 @@ async function keep(vault: Vault, parts: Zip[], dir: string, job: Job) {
       if (!n) { say(job, `${e.name} isn't a Keep note`); continue }
       if (n.trashed) continue
       job.notes++
-      // (by its file's name, or its whole path when another note's file has that name)
       const base = e.name.split("/").pop()!
       const ext = `keep-${crypto.createHash("sha1").update((names.get(base) ?? 0) > 1 ? e.name : base).digest("hex").slice(0, 16)}`
       if (known.has(ext)) { job.unchanged++; continue }
@@ -302,7 +286,6 @@ async function keep(vault: Vault, parts: Zip[], dir: string, job: Job) {
   await flush(vault, pending, job)
 }
 
-/** A page's HTML as Markdown: its body, its first heading off when it's the page's name (the file says it). */
 export function pageMarkdown(html: string, name: string) {
   const body = /<body\b[^>]*>([\s\S]*)<\/body>/i.exec(html)?.[1] ?? html.replace(/<head\b[\s\S]*?<\/head>/i, "")
   const md = toMarkdown(body)
@@ -361,13 +344,12 @@ async function bear(vault: Vault, parts: Zip[], dir: string, job: Job) {
       const bundle = m[1]
       const infoEntry = byName.get(`${bundle}/info.json`)
       let info = bearInfo(null)
-      try { if (infoEntry) info = bearInfo(JSON.parse((await entryBytes(z.file, infoEntry)).toString("utf8"))) } catch { /* no dates then */ }
+      try { if (infoEntry) info = bearInfo(JSON.parse((await entryBytes(z.file, infoEntry)).toString("utf8"))) } catch {}
       if (info.trashed) continue
       job.notes++
       const ext = `bear-${crypto.createHash("sha1").update(info.id ?? bundle).digest("hex").slice(0, 16)}`
       if (known.has(ext)) { job.unchanged++; continue }
       const { title, body } = bearNote((await entryBytes(z.file, e)).toString("utf8"))
-      // Its pictures and files (assets/ in its bundle) into Bear/Attachments/, linked where they were.
       const assets = new Map<string, string>()
       for (const a of z.entries.filter((x) => x.name.startsWith(`${bundle}/assets/`))) {
         const p = plan.free(join(dir, "Attachments", safeName(a.name.split("/").pop())), (abs) => fs.statSync(abs).size === a.size)
@@ -393,11 +375,8 @@ async function bear(vault: Vault, parts: Zip[], dir: string, job: Job) {
   await flush(vault, pending, job)
 }
 
-/** A column whose text is the note's body, by its name. */
 const BODY = /^(content|body|text|notes?|description)$/i
 
-/** A CSV row as a note: its first column names it, a Content (Body, Notes...) column is its text, the rest are its
- *  properties (whole numbers and decimals as numbers, empty ones left out). */
 export function rowNote(row: Record<string, string>): { title: string; fm: Record<string, unknown>; body: string } {
   const keys = Object.keys(row)
   const title = (row[keys[0]] ?? "").trim()
@@ -419,7 +398,6 @@ async function csvRows(vault: Vault, parts: Zip[], base: string, job: Job) {
   const tables = parts.flatMap((z) => z.entries.filter((e) => /\.csv$/i.test(e.name)).map((e) => ({ z, e })))
   for (const { z, e } of tables) {
     const table = e.name.split("/").pop()!.replace(/\.csv$/i, "")
-    // (one table: its rows in the export's folder; several: a folder each)
     const dir = tables.length > 1 ? join(base, [...safeName(table)].slice(0, 120).join("")) : base
     const text = (e.offset < 0 ? fs.readFileSync(z.file) : await entryBytes(z.file, e)).toString("utf8")
     const seen = new Map<string, number>()
@@ -453,8 +431,6 @@ async function roam(vault: Vault, parts: Zip[], dir: string, job: Job) {
       const ext = `roam-${crypto.createHash("sha1").update(n.title).digest("hex").slice(0, 16)}`
       if (known.has(ext)) { job.unchanged++; continue }
       const fm: Record<string, unknown> = {}
-      // (a page renamed, a daily one to its date or one whose title a file can't be named, keeps its title as an alias, so
-      // [[links]] by it still find it)
       if (safeName(n.name) !== n.title) fm.aliases = [n.title]
       if (n.created) fm.created = stamp(new Date(n.created))
       if (n.updated) fm.updated = stamp(new Date(n.updated))

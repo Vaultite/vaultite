@@ -1,18 +1,14 @@
-// HTML (an Evernote note's) as Markdown: Turndown with the vault's style (ATX headings, "- " lists, fenced code), GFM
-// tables, task lists from to-dos, highlights, and attachments as embeds by what `media` says.
 import TurndownService from "turndown"
 
-/** An attachment's embed or link, for `<en-media hash>` (null: leave it out). */
 export type Media = (hash: string, type: string) => string | null
 
 const isBlank = (s: string) => !s.replace(/[\s ]+/g, "")
 const cell = (s: string) => s.replace(/\n+/g, "<br>").replace(/\|/g, "\\|").trim()
 
-// (Turndown's DOM has no spec querySelectorAll: walked by hand, a nested table's rows left to it)
+// Turndown's DOM has no spec querySelectorAll
 const kids = (n: Node) => Array.from(n.childNodes)
 const rowsOf = (n: Node): Node[] => kids(n).flatMap((c) => (c.nodeName === "TR" ? [c] : ["THEAD", "TBODY", "TFOOT"].includes(c.nodeName) ? rowsOf(c) : []))
 
-/** Turndown set up once per conversion (its rules close over `media`). */
 function service(media: Media) {
   const t = new TurndownService({ headingStyle: "atx", hr: "---", bulletListMarker: "-", codeBlockStyle: "fenced", emDelimiter: "*", strongDelimiter: "**" })
   t.remove(["style", "script", "title", "head"])
@@ -68,7 +64,7 @@ function service(media: Media) {
   return t
 }
 
-/** Evernote's own tags as HTML the parser reads: `<en-todo/>` and `<en-media/>` are void in ENML, not in HTML. */
+// `<en-todo/>` and `<en-media/>` are void in ENML, not in HTML
 export function fromEnml(enml: string) {
   return enml
     .replace(/<\?xml[^>]*\?>|<!DOCTYPE[^>]*>/gi, "")
@@ -79,7 +75,7 @@ export function fromEnml(enml: string) {
       const type = /type\s*=\s*["']([^"']+)["']/i.exec(a)?.[1] ?? ""
       return `<img data-hash="${hash}" data-type="${type}">`
     })
-    // A code block is a div of lines, styled "--en-codeblock:true": a <pre> keeps its spaces.
+    // Evernote's code block is a div of lines, styled "--en-codeblock:true"
     .replace(/<div\b[^>]*--en-codeblock\s*:\s*true[^>]*>((?:\s*<div\b[^>]*>[\s\S]*?<\/div>)*)\s*<\/div>/gi, (_, inner: string) => {
       const lines = [...inner.matchAll(/<div\b[^>]*>([\s\S]*?)<\/div>/gi)].map((m) => m[1].replace(/<br\s*\/?>/gi, "").replace(/<[^>]+>/g, ""))
       return `<pre><code>${lines.join("\n")}</code></pre>`
@@ -87,7 +83,6 @@ export function fromEnml(enml: string) {
     .replace(/<en-crypt\b[^>]*>[\s\S]*?<\/en-crypt>/gi, "<p><em>(encrypted text, not imported)</em></p>")
 }
 
-/** The Markdown for `html`: blank lines collapsed, a to-do outside a list made a task. */
 export function toMarkdown(html: string, media: Media = () => null) {
   const md = service(media).turndown(html)
   return md
