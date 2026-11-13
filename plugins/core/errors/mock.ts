@@ -2,7 +2,7 @@ import type { ErrorEvent, ErrorGroup, ErrorList } from "./model"
 
 const MIN = 60_000, HOUR = 3_600_000
 
-export function mockLive(): Record<string, unknown> {
+export function mockLive() {
   const now = Date.now()
   const ev = (id: string, ago: number, e: Omit<ErrorEvent, "id" | "t">): ErrorEvent => ({ id, t: now - ago, ...e })
   const group = (e: ErrorEvent, count: number, first: number, extra: Partial<ErrorGroup> = {}): ErrorGroup =>

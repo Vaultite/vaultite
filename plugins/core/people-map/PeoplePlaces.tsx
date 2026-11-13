@@ -78,7 +78,7 @@ export function PeoplePlaces({ store, list = true }: { store: Store; list?: bool
   const mapRef = useRef<HTMLElement>(null)
   const raw = useMemo(() => store.people.filter((p) => !isArchived(p)), [store.people])
   const unpinned = [...new Set([...raw.filter((p) => p.location && !located(p)).map((p) => p.location),
-    ...(store.me?.location && typeof store.me.lat !== "number" ? [store.me.location as string] : [])])]
+    ...(store.me?.location && typeof store.me.lat !== "number" ? [store.me.location] : [])])]
   const pins = usePins(unpinned)
   const people = useMemo(() => raw.map((p) => {
     const ll = located(p) ? null : pins[p.location]

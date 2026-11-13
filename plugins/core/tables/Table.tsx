@@ -14,7 +14,7 @@ export function CsvView({ text, embed, onChange }: { text: string; embed?: boole
   const added = useRef(0)
   const { head, rows, numeric } = useMemo(() => {
     const [h = [], ...all] = parseCsv(text)
-    const rs = all.map((r, i) => Object.assign(r, { at: i + 1 }) as Row).filter((r) => r.length > 1 || r[0] !== "" || r.at === added.current)
+    const rs = all.map((r, i): Row => Object.assign(r, { at: i + 1 })).filter((r) => r.length > 1 || r[0] !== "" || r.at === added.current)
     const numeric = h.map((_, j) => {
       const filled = rs.map((r) => r[j] ?? "").filter((v) => v.trim() !== "")
       return filled.length > 0 && filled.filter((v) => NUM.test(v)).length >= filled.length * 0.95

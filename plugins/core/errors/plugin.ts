@@ -115,21 +115,23 @@ plugin.onServerError((e: ServerError) => {
     ...(e.where ? { where: e.where } : {}), ...(e.fatal ? { fatal: true } : {}) })
 })
 
-const KINDS = new Set(["uncaught", "rejection", "boundary", "stopped", "boot", "stale", "shown", "plugin", "update", "hung"])
+const KINDS = ["uncaught", "rejection", "boundary", "stopped", "boot", "stale", "shown", "plugin", "update", "hung"]
+type Reported = Partial<Record<"message" | "t" | "trail" | "kind" | "stack" | "component" | "fatal" | "url" | "build", unknown>>
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "")
 
 plugin.route("POST", "errors", (req) => {
-  const b = (req.body ?? {}) as Record<string, unknown>
-  const list = Array.isArray(b.errors) ? b.errors.slice(0, 50) : []
-  const client = typeof req.http?.headers["x-vaultite-client"] === "string" ? (req.http.headers["x-vaultite-client"] as string).replace(/^app\//, "") : ""
+  const b: { errors?: unknown; device?: unknown } = req.body ?? {}
+  const list: Reported[] = Array.isArray(b.errors) ? b.errors.slice(0, 50) : []
+  const from = req.http?.headers["x-vaultite-client"]
+  const client = typeof from === "string" ? from.replace(/^app\//, "") : ""
   const device = str(b.device, 40) || client || "web"
   let n = 0
-  for (const x of list as Record<string, unknown>[]) {
+  for (const x of list) {
     const message = str(x.message, 500)
     if (!message) continue
     const t = typeof x.t === "number" && Math.abs(x.t - Date.now()) < 7 * DAY ? x.t : Date.now()
     const trail = Array.isArray(x.trail) ? x.trail.filter((s): s is string => typeof s === "string").slice(-10).map((s) => s.slice(0, 200)) : []
-    record({ t, source: "app", kind: KINDS.has(x.kind as string) ? x.kind as string : "uncaught", message, device,
+    record({ t, source: "app", kind: KINDS.find((k) => k === x.kind) ?? "uncaught", message, device,
       ...(str(x.stack, 8000) ? { stack: str(x.stack, 8000) } : {}), ...(str(x.component, 3000) ? { component: str(x.component, 3000) } : {}),
       ...(x.fatal === true ? { fatal: true } : {}), ...(str(x.url, 500) ? { url: str(x.url, 500) } : {}),
       ...(str(x.build, 100) ? { build: str(x.build, 100) } : {}), ...(trail.length ? { trail } : {}) })

@@ -6,7 +6,7 @@ export const plugin = new Plugin(import.meta.url)
 export const EXTS = ["xlsx", "xlsm", "xls", "ods", "numbers"]
 type XLSX = typeof import("./xlsx/xlsx.mjs")
 let lib: XLSX | null = null
-const xlsx = () => (lib ??= createRequire(import.meta.url)("./xlsx/xlsx.mjs") as XLSX)
+const xlsx = (): XLSX => (lib ??= createRequire(import.meta.url)("./xlsx/xlsx.mjs"))
 
 const cell = (s: unknown) => String(s ?? "").replace(/\|/g, "\\|").replace(/\r?\n/g, " ").trim()
 
@@ -16,7 +16,7 @@ export function workbookMarkdown(bytes: Buffer): string {
   const out: string[] = []
   for (const name of book.SheetNames) {
     const sheet = book.Sheets[name]
-    const rows = (X.utils.sheet_to_json(sheet, { header: 1, raw: false, blankrows: false, defval: "" }) as unknown[][])
+    const rows = X.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: false, blankrows: false, defval: "" })
       .map((r) => r.map(cell))
     const width = Math.max(0, ...rows.map((r) => { let n = r.length; while (n && !r[n - 1]) n--; return n }))
     out.push(`## ${name}`)

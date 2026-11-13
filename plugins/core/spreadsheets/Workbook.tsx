@@ -40,8 +40,8 @@ function readBook(buf: ArrayBuffer, signal: AbortSignal): Promise<WorkBook> {
 function gridOf(ws: WorkSheet): Grid {
   const ref = ws["!ref"]
   const range = ref ? rangeOf(ref) : { s: { r: 0, c: 0 }, e: { r: -1, c: -1 } }
-  const dense = (ws as { "!data"?: CellObject[][] })["!data"]
-  const cell = (r: number, c: number) => dense ? dense[r]?.[c] : ws[`${colName(c)}${r + 1}`] as CellObject | undefined
+  const dense: CellObject[][] | undefined = ws["!data"]
+  const cell = (r: number, c: number): CellObject | undefined => dense ? dense[r]?.[c] : ws[`${colName(c)}${r + 1}`]
   let rows = range.e.r + 1, cols = range.e.c + 1
   const filled = (r: number, c: number) => { const x = cell(r, c); return !!x && x.v !== undefined && x.v !== null && x.v !== "" }
   while (rows > 0 && !Array.from({ length: cols }, (_, c) => filled(rows - 1, c)).some(Boolean)) rows--

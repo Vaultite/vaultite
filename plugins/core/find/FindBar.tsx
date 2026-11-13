@@ -64,7 +64,7 @@ export function paintLit() {
 export function scroller(el: Element | null, axis: "x" | "y", stop?: Element): HTMLElement | null {
   for (; el && el !== stop; el = el.parentElement) {
     const cs = getComputedStyle(el), o = axis === "x" ? cs.overflowX : cs.overflowY
-    if (/auto|scroll/.test(o) && (axis === "x" ? el.scrollWidth > el.clientWidth : el.scrollHeight > el.clientHeight)) return el as HTMLElement
+    if (el instanceof HTMLElement && /auto|scroll/.test(o) && (axis === "x" ? el.scrollWidth > el.clientWidth : el.scrollHeight > el.clientHeight)) return el
   }
   return null
 }

@@ -30,7 +30,7 @@ export default function Deck({ url, embed }: { url: string; embed?: boolean }) {
     return () => { stop.abort(); viewer?.destroy() }
   }, [url, embed])
   const click = (e: React.MouseEvent) => {
-    const a = (e.target as Element).closest?.("a[href]")
+    const a = e.target instanceof Element ? e.target.closest("a[href]") : null
     if (!a) return
     e.preventDefault()
     const href = a.getAttribute("href") ?? ""

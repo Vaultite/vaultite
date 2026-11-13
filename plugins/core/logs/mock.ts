@@ -7,7 +7,7 @@ export function mockLogs(real: Store): Partial<Store> {
   const areas = new Set(real.areas.map((a) => a.slug))
   let id = 1
   const logs: Log[] = []
-  const log = (area: string, date: string, title: string, data: Record<string, unknown> = {}, duration_min: number | null = null, notes = "") => {
+  const log = (area: string, date: string, title: string, data: Log["data"] = {}, duration_min: number | null = null, notes = "") => {
     if (areas.has(area)) logs.push({ id: `Logs/mock/${id++}`, area, date, title, data, duration_min, notes, source: "mock", ext_id: null })
   }
   for (const n of [1, 3, 5, 8, 10]) {

@@ -7,7 +7,7 @@ import { often } from "./often.ts"
 import { peopleOps } from "./ops.ts"
 
 export const plugin = new Plugin(import.meta.url)
-const places = geocoder(() => (plugin.readCache({})!.places ?? {}) as Places, (ps) => plugin.writeCache({ ...plugin.readCache({}), places: ps }))
+const places = geocoder((): Places => plugin.readCache({})?.places ?? {}, (ps) => plugin.writeCache({ ...plugin.readCache({}), places: ps }))
 /** A place's pin, [lat, lon] or null: looked up once (Nominatim), then cached. Me uses it for ME.md's place. */
 plugin.provide("geocode", places.locate)
 /** A place's cached pin without looking it up: [lat, lon], null (not found) or undefined (not looked up yet). */
@@ -92,7 +92,8 @@ function parse(fm: Item, body: string, stem: string): [Item, string[]] {
 }
 
 function entries(p: Item): [number, Item][] {
-  return ((p.timeline ?? []) as Item[]).map((i, n) => [n, i] as [number, Item]).filter(([, i]) => !("_raw" in i))
+  const tl: Item[] = p.timeline ?? []
+  return tl.flatMap((i, n): [number, Item][] => ("_raw" in i ? [] : [[n, i]]))
 }
 
 function render(p: Item): [Item, string] {
@@ -105,7 +106,8 @@ function render(p: Item): [Item, string] {
     contact: p.contact, aliases: splitTags(p.aliases), sort: p.sort,
   }
   const lines: string[] = []
-  for (const i of (p.timeline ?? []) as Item[]) {
+  const tl: Item[] = p.timeline ?? []
+  for (const i of tl) {
     if ("_raw" in i) lines.push(i._raw)
     else if (i._src !== undefined && i._src !== null && i._sig === sig(i)) lines.push(i._src)
     else lines.push(line(i))
@@ -118,9 +120,9 @@ function render(p: Item): [Item, string] {
 
 function merge(old: Item, patch: Item): Item {
   const neu: Item = { ...old, ...patch }
-  const tl = patch.timeline as Item[] | undefined
+  const tl: Item[] | undefined = patch.timeline
   if (tl === undefined || tl === null || tl.some((i) => Object.keys(i).some((k) => k.startsWith("_")))) return neu
-  const olds = (old.timeline ?? []) as Item[]
+  const olds: Item[] = old.timeline ?? []
   const pool = olds.filter((o) => !("_raw" in o))
   const out: Item[] = []
   const twin = new Map<Item, Item>()
@@ -242,7 +244,7 @@ plugin.route("POST", "interactions", async (req) => {
 plugin.route("PUT", "interactions/*", async (req) => {
   const [p, n] = splitId(req.arg(0))
   const tl = [...p.timeline]
-  tl[n] = { ...tl[n], ...Object.fromEntries(Object.entries(req.body).filter(([k]) => (FIELDS as readonly string[]).includes(k))) }
+  tl[n] = { ...tl[n], ...Object.fromEntries(Object.entries(req.body).filter(([k]) => FIELDS.some((f) => f === k))) }
   await plugin.vault.save("people", { timeline: tl }, p.id)
   return { ok: true }
 })

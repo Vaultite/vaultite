@@ -103,7 +103,7 @@ function GroupRow({ g, open, onToggle, onForgot, leaving }: { g: ErrorGroup; ope
   )
 }
 
-export function ErrorsList({ options = {} }: { options?: Record<string, unknown> }) {
+export function ErrorsList({ options = {} }: { options?: { source?: unknown; limit?: unknown; title?: unknown } }) {
   const fixed = options.source === "app" || options.source === "server" ? options.source : null
   const [filter, setFilter] = useState<Filter>("all")
   const source = fixed ?? (filter === "all" ? null : filter)

@@ -51,7 +51,7 @@ function groupLabel(it: Item) {
   return it.people.length === 2 ? it.people.map((p) => firstName(p.name)).join(" and ") : `${it.people.length} people`
 }
 
-const el = (tag: string, cls: string, text?: string) => {
+const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string) => {
   const e = document.createElement(tag)
   e.className = cls
   if (text !== undefined) e.textContent = text
@@ -79,7 +79,7 @@ function slices(people: P[]) {
 }
 
 function pinElement(it: Item) {
-  const b = el("button", "pm-pin") as HTMLButtonElement
+  const b = el("button", "pm-pin")
   b.type = "button"
   if (!it.people.length) {
     b.classList.add("pm-pin-me")
@@ -112,7 +112,7 @@ function popupContent(it: Item, me: Me | null, onOpen: (id: string) => void, clo
     box.append(r)
   }
   for (const p of it.people) {
-    const r = el("button", "pm-row pm-row-btn") as HTMLButtonElement
+    const r = el("button", "pm-row pm-row-btn")
     r.type = "button"
     const txt = el("span", "pm-row-text")
     txt.append(el("span", "pm-row-name", p.name), el("span", "pm-row-meta", p.location))
@@ -134,7 +134,7 @@ export default function PeopleMap({ people, me, onOpen, onFail, focus }: {
 }) {
   const box = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MLMap | null>(null)
-  const all: [number, number][] = [...people.map((p): [number, number] => [p.lat, p.lon]), ...(me ? [[me.lat, me.lon] as [number, number]] : [])]
+  const all: [number, number][] = [...people.map((p): [number, number] => [p.lat, p.lon]), ...(me ? [[me.lat, me.lon] satisfies [number, number]] : [])]
   const fitted = useRef(false)
   const fitAll = (animate = true) => {
     const map = mapRef.current, all = live.current.all
@@ -173,7 +173,7 @@ export default function PeopleMap({ people, me, onOpen, onFail, focus }: {
           closePopup()
           const { me, onOpen } = live.current
           if (it.people.length === 1 && !it.me) return onOpen(it.people[0].id)
-          const pts: [number, number][] = [...it.people.map((p): [number, number] => [p.lat, p.lon]), ...(it.me && me ? [[me.lat, me.lon] as [number, number]] : [])]
+          const pts: [number, number][] = [...it.people.map((p): [number, number] => [p.lat, p.lon]), ...(it.me && me ? [[me.lat, me.lon] satisfies [number, number]] : [])]
           const b = boundsOf(pts)
           const spread = b.getNorthEast().distanceTo(b.getSouthWest())
           if (!onlyMe && spread > 1500 && map.getZoom() < 12) {

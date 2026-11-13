@@ -33,7 +33,7 @@ orange, purple, today, people...).
     for (const [k, v] of [["icon", icon], ["tint", tint]] as const) {
       if (v) fm.push(`${k}: ${/^[\w -]+$/.test(v) && !/^\s|\s$/.test(v) ? v : JSON.stringify(v)}`)
     }
-    const body = ((blocks ?? []) as string[]).map((b) => "```block-" + b.trim() + "\n```\n").join("\n")
+    const body = (blocks ?? []).map((b) => "```block-" + b.trim() + "\n```\n").join("\n")
     try {
       await ctx.api("POST", "file", { path: rel, text: `---\n${fm.join("\n")}\n---\n\n${body}` })
     } catch (e) {

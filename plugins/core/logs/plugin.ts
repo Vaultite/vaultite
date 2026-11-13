@@ -164,7 +164,7 @@ of them) as the one argument works too.
   rest: "data",
   run: async (p, ctx) => {
     const json = jsonOf(p.title)
-    const given: Item[] = json ? (Array.isArray(json) ? json : [json]) as Item[]
+    const given: Item[] = json ? (Array.isArray(json) ? json : [json])
       : [{ area: p.area, title: p.title, date: p.date, duration_min: p.duration_min ?? p.duration, data: p.data, notes: p.notes, ext_id: p.id ?? p.extId, source: p.source }]
     const logs = given.map((x) => {
       if (!x || typeof x !== "object" || Array.isArray(x)) throw new OpError("a log is an object: {area, title, date, ...}")
@@ -246,7 +246,8 @@ function fieldText(v: unknown, unit?: unknown) {
 export function areaSummary(slug: string, today: string, meta: string | string[] | null = null, extra?: (log: Item) => string,
   n = 5, total: string | null = null) {
   const a = areas().find((x) => x.slug === slug) ?? { name: slug, weekly_goal: null, track_duration: true, fields: [] }
-  const fields = new Map<string, Item>(((a.fields ?? []) as Item[]).filter((f) => f && typeof f === "object").map((f) => [str(f.key), f]))
+  const declared: Item[] = a.fields ?? []
+  const fields = new Map<string, Item>(declared.flatMap((f): [string, Item][] => (f && typeof f === "object" ? [[str(f.key), f]] : [])))
   const metas = meta === null ? [] : Array.isArray(meta) ? meta : [meta]
   const logs = ofArea(slug)
   if (!logs.length) return section(a.name, `_No ${String(a.name).toLowerCase()} logged yet._`)

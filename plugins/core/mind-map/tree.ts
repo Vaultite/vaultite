@@ -56,13 +56,16 @@ export function treeText(root: MindNode, depth = 9): string {
   return out.length > 1 ? out.join("\n") : `**${root.text}** has no headings yet.`
 }
 
+type CanvasCard = { id: string; type: "text"; text: string; x: number; y: number; width: number; height: number; color?: string }
+type CanvasArrow = { id: string; fromNode: string; fromSide: "right"; toNode: string; toSide: "left" }
+
 export function canvasOf(root: MindNode, note: string): string {
   const W = 260, H = 60, GAP_X = 80, ROW = 90
-  const nodes: Record<string, unknown>[] = [], edges: Record<string, unknown>[] = []
+  const nodes: CanvasCard[] = [], edges: CanvasArrow[] = []
   let rows = 0
   const place = (n: MindNode, depth: number, color: string | null): { id: string; y: number } => {
     const id = `n${nodes.length}`
-    const node: Record<string, unknown> = { id, type: "text", text: depth ? n.text : `## [[${note.replace(/\.md$/i, "")}|${n.text}]]`, x: depth * (W + GAP_X), y: 0, width: W, height: H }
+    const node: CanvasCard = { id, type: "text", text: depth ? n.text : `## [[${note.replace(/\.md$/i, "")}|${n.text}]]`, x: depth * (W + GAP_X), y: 0, width: W, height: H }
     if (color) node.color = color
     nodes.push(node)
     const kids = n.children.map((c, i) => place(c, depth + 1, color ?? String((i % 6) + 1)))
