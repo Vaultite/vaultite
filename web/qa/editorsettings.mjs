@@ -2,7 +2,8 @@
 // never written), aliases, ⌘E. WRITES a "Qa editor" folder and editor.json: throwaway server only.
 //   node web/qa/editorsettings.mjs <base url> <vault path>
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
-import { openPalette, qa, until, wait } from "./lib/qa.mjs"
+import { palette, qa, until } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
 const { args: [B, VAULT], browser, check, watch, done } = await qa(import.meta.url)
 const json = { "Content-Type": "application/json" }
 const write = (path, text) => fetch(`${B}api/file`, { method: "PUT", headers: json, body: JSON.stringify({ path, text, base: null }) })
@@ -22,11 +23,17 @@ await write(TYPING, "---\ntype: note\n---\n\n")
 
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 } })
 await ctx.addInitScript(() => { try { localStorage.removeItem("vaultite.tabViews") } catch { /* about:blank */ } })
-const page = watch(await ctx.newPage())
+const page = watch(await ctx.newPage()), ui = app(page)
 const ed = () => globalThis.__vaultite.modules["@vaultite"].currentEditor()
 const open = async (path) => {
   await page.goto("about:blank"); await page.goto(`${B}#file/${encodeURIComponent(path)}`)
-  await page.locator(".file-view .cm-content").first().waitFor({ timeout: 60000 }); await wait(800)
+  await page.locator(".file-view .cm-content").first().waitFor({ timeout: 60000 }); await ui.idle()
+}
+const viewNow = () => page.evaluate(() => document.querySelector("[role=status] button[aria-label^='Current view']")?.getAttribute("aria-label") ?? "")
+const flip = async () => {
+  const from = await viewNow()
+  await page.keyboard.press("ControlOrMeta+e")
+  await until(async () => await viewNow() !== from); await page.locator("article.file-view:visible").first().waitFor(); await ui.idle()
 }
 const docText = () => page.evaluate(() => globalThis.__vaultite.modules["@vaultite"].currentEditor().view.state.doc.toString())
 /** Put the cursor (or a selection) at the first `find` (+ `off`), focused. */
@@ -36,7 +43,7 @@ const cursor = async (find, off = 0, len = 0) => {
     const at = view.state.doc.toString().indexOf(find) + off
     view.focus()
     view.dispatch({ selection: { anchor: at, head: at + len } })
-  }, [find, off, len]); await wait(150)
+  }, [find, off, len]); await ui.idle()
 }
 const lineText = (has) => page.evaluate((has) => {
   const l = [...document.querySelectorAll(".file-view .cm-line")].find((x) => x.textContent.includes(has))
@@ -80,7 +87,7 @@ await cursor("- item one", 0, 4)
 check("a selection over a bullet: its - shows", (await lineText("item one")).startsWith("- item"), await lineText("item one"))
 await cursor("quoted", 2)
 check("a quote line: its > shows, its bold stays drawn", (await lineText("quoted")).startsWith("> quoted x"), await lineText("quoted"))
-await page.evaluate(() => document.activeElement.blur()); await wait(200)
+await page.evaluate(() => document.activeElement.blur()); await ui.idle()
 check("unfocused: everything drawn", await lineText("then") === DRAWN && await lineText("Heading one") === "Heading one")
 await page.screenshot({ path: "/tmp/editorsettings-reveal.png" })
 
@@ -91,13 +98,14 @@ await props.locator("button[aria-expanded]").click()
 check("…open on a click", await until(async () => await props.locator("button[aria-expanded=true]").count() === 1))
 await page.keyboard.press("ControlOrMeta+e"); await until(async () => !(await page.locator(".file-view .cm-content[contenteditable=true]").count()))
 check("reading view shows the properties, read-only", await props.count() === 1 && await props.locator("input, textarea").count() === 0 && (await props.textContent()).includes("draft"))
-await page.keyboard.press("ControlOrMeta+e"); await wait(600)
+await flip()
 
 // ---------- Settings > Editor ----------
 /** A click in Settings from outside its rows: a row's preview card (aimed at, as a jumping pointer seems to) would be
  *  over the next row. */
-const tap = async (loc) => { await page.mouse.move(2, 2); await wait(450); await loc.click() }
-const settings = async () => { await page.goto("about:blank"); await page.goto(`${B}#settings`); await page.locator('[data-settings-nav="editor"]').click(); await page.locator("[data-settings-row=spellcheck]").waitFor({ timeout: 15000 }); await wait(300) }
+const tap = async (loc) => { await page.mouse.move(2, 2); await until(async () => !(await page.locator("[data-setting-preview] .preview-card:visible").count())); await loc.click() }
+const set = (loc) => ui.sees(".vaultite/editor.json", () => tap(loc))
+const settings = async () => { await page.goto("about:blank"); await page.goto(`${B}#settings`); await page.locator('[data-settings-nav="editor"]').click(); await page.locator("[data-settings-row=spellcheck]").waitFor({ timeout: 15000 }); await ui.idle() }
 await settings()
 check("Settings has an Editor panel", await page.getByText("Editor", { exact: true }).count() >= 1)
 check("nothing written before a change", editorJson() === null, editorJson())
@@ -110,14 +118,14 @@ const article = page.locator("article.file-view").first()
 const w0 = (await article.boundingBox()).width
 check(`readable line length: the column stops at 700px (${w0})`, w0 <= 701, w0)
 const body = async () => (await docText()).replace(/^---\n[\s\S]*?\n---\n\n?/, "")
-const fresh = async () => { await page.evaluate(() => { const { view, start } = globalThis.__vaultite.modules["@vaultite"].currentEditor(); view.focus(); view.dispatch({ changes: { from: start(view.state), to: view.state.doc.length, insert: "" } }) }); await wait(100) }
+const fresh = async () => { await page.evaluate(() => { const { view, start } = globalThis.__vaultite.modules["@vaultite"].currentEditor(); view.focus(); view.dispatch({ changes: { from: start(view.state), to: view.state.doc.length, insert: "" } }) }); await ui.idle() }
 await fresh(); await page.keyboard.type("- a"); await page.keyboard.press("Enter"); await page.keyboard.press("Tab"); await page.keyboard.type("b")
 check("Tab indents with a tab", (await body()) === "- a\n\t- b", await body())
 await fresh(); await page.keyboard.type("(x")
 check("( closes itself", (await body()) === "(x)", await body())
 await fresh(); await page.keyboard.type("[[Lin")
 await page.locator(".cm-tooltip-autocomplete li", { hasText: "Linky" }).first().waitFor({ timeout: 4000 }).catch(() => {})
-await page.locator(".cm-tooltip-autocomplete li", { hasText: "Linky" }).first().click().catch(() => {}); await wait(200)
+await page.locator(".cm-tooltip-autocomplete li", { hasText: "Linky" }).first().click().catch(() => {}); await ui.idle()
 check("an alias picked after [[ links its file", (await body()) === "[[Linked note|Linky]]", await body())
 await fresh(); await page.keyboard.type("one word")
 await page.keyboard.press("Shift+ArrowLeft"); await page.keyboard.press("Shift+ArrowLeft"); await page.keyboard.press("Shift+ArrowLeft"); await page.keyboard.press("Shift+ArrowLeft")
@@ -136,11 +144,11 @@ await fresh()
 
 // Changed in Settings: written key by key; the editor follows.
 await settings()
-await tap(page.locator("[data-settings-row=spellcheck] [role=switch]")); await wait(300)
-await tap(page.locator("[data-settings-row=indent] [role=radio]", { hasText: "2 spaces" })); await wait(300)
-await tap(page.locator("[data-settings-row=auto-pair-brackets] [role=switch]")); await wait(300)
-await tap(page.locator("[data-settings-row=readable-line-length] [role=switch]")); await wait(300)
-await tap(page.locator("[data-settings-row=properties-in-document] [role=radio]", { hasText: "Hidden" })); await wait(500)
+await set(page.locator("[data-settings-row=spellcheck] [role=switch]"))
+await set(page.locator("[data-settings-row=indent] [role=radio]", { hasText: "2 spaces" }))
+await set(page.locator("[data-settings-row=auto-pair-brackets] [role=switch]"))
+await set(page.locator("[data-settings-row=readable-line-length] [role=switch]"))
+await set(page.locator("[data-settings-row=properties-in-document] [role=radio]", { hasText: "Hidden" }))
 check("only what changed is written", JSON.stringify(editorJson()) === JSON.stringify({ spellcheck: false, useTab: false, tabSize: 2, autoPairBrackets: false, readableLineLength: false, propertiesInDocument: "hidden" }), editorJson())
 await open(TYPING)
 check("spellcheck off", await page.locator(".file-view .cm-content").first().getAttribute("spellcheck") === "false")
@@ -160,27 +168,27 @@ check("( doesn't close itself", (await body()) === "(x", await body())
 await fresh()
 await open(NOTE)
 check("properties hidden while editing", await props.count() === 0)
-await page.keyboard.press("ControlOrMeta+e"); await wait(600)
+await flip()
 check("…and reading", await props.count() === 0)
-await page.keyboard.press("ControlOrMeta+e"); await wait(600)
+await flip()
 await settings()
-await tap(page.locator("[data-settings-row=properties-in-document] [role=radio]", { hasText: "As text" })); await wait(500)
+await set(page.locator("[data-settings-row=properties-in-document] [role=radio]", { hasText: "As text" }))
 await open(NOTE)
 check("properties as source: the frontmatter in the text", await props.count() === 0 && (await page.locator(".file-view .cm-content").first().textContent()).includes("stage: draft"))
-await cursor("stage: draft", 12); await page.keyboard.type("y"); await wait(1500)
+await cursor("stage: draft", 12); await page.keyboard.type("y"); await ui.idle()
 check("…typed into, saved as the file's frontmatter", /\nstage: drafty\n[\s\S]*---\n\n# Heading one/.test(await read(NOTE)), (await read(NOTE)).slice(0, 60))
 await settings()
 for (const row of ["spellcheck", "indent", "auto-pair-brackets", "readable-line-length", "properties-in-document"]) {
-  await tap(page.locator(`[data-settings-row=${row}] [data-reset-default]`)); await wait(300)
+  await set(page.locator(`[data-settings-row=${row}] [data-reset-default]`))
 }
 check("reset takes the keys out again", JSON.stringify(editorJson() ?? {}) === "{}", editorJson())
 
 // ---------- ⌘E: only the tab in front ----------
 await open(NOTE)
-await page.keyboard.press("ControlOrMeta+Alt+\\"); await wait(1200)
 const panes = page.locator("[data-pane] article.file-view")
+await page.keyboard.press("ControlOrMeta+Alt+\\"); await panes.nth(1).waitFor(); await ui.idle()
 check("split: two panes on the note", await panes.count() === 2)
-await page.keyboard.press("ControlOrMeta+e"); await wait(800)
+await flip()
 const modes = await page.evaluate(() => [...document.querySelectorAll("[data-pane]")].map((p) => !!p.querySelector(".cm-content[contenteditable=true]")))
 check("⌘E switched only the focused pane to reading", modes.filter((x) => !x).length === 1 && modes.filter(Boolean).length === 1, modes)
 await page.screenshot({ path: "/tmp/editorsettings-panes.png" })
@@ -191,32 +199,32 @@ await freshDesk()
 const sourceShown = async () => (await page.locator("[data-focused] .file-view:not([data-kept] *) .vau-editor.is-source").count()) > 0
 const editing = async () => (await page.locator("[data-focused] .file-view:not([data-kept] *) .cm-content[contenteditable=true]").count()) > 0
 await settings()
-await tap(page.locator("[data-settings-row=editing-mode] [role=radio]", { hasText: "Source mode" })); await wait(500)
+await set(page.locator("[data-settings-row=editing-mode] [role=radio]", { hasText: "Source mode" }))
 check("default editing mode: source mode, in editor.json", editorJson()?.editingMode === "source", editorJson())
 await open(OTHER)
 check("a new tab opens in source mode", await sourceShown())
-await page.keyboard.press("ControlOrMeta+e"); await wait(600)
+await flip()
 check("…⌘E reads", !(await editing()))
-await page.keyboard.press("ControlOrMeta+e"); await wait(600)
+await flip()
 check("…and goes back to source mode", await sourceShown())
-await openPalette(page); await page.keyboard.type("Create new note"); await wait(300); await page.keyboard.press("Enter")
+await palette(page, "Create new note", 0)
 check("a new note opens in source mode", await until(async () => (await page.locator(".file-view .vau-editor.is-source").count()) > 0 && /Untitled/.test(await page.evaluate(() => location.hash))), await page.evaluate(() => location.hash))
 await page.keyboard.press("Escape")
 await settings()
-await tap(page.locator("[data-settings-row=default-view] [role=radio]", { hasText: "Reading" })); await wait(500)
+await set(page.locator("[data-settings-row=default-view] [role=radio]", { hasText: "Reading" }))
 await open(NOTE).catch(() => {})
 check("default view reading: a new tab reads", !(await editing()))
-await page.keyboard.press("ControlOrMeta+e"); await wait(600)
+await flip()
 check("…⌘E edits in the default editing mode", await sourceShown())
 await settings()
-for (const row of ["default-view", "editing-mode"]) { await tap(page.locator(`[data-settings-row=${row}] [data-reset-default]`)); await wait(300) }
+for (const row of ["default-view", "editing-mode"]) { await set(page.locator(`[data-settings-row=${row}] [data-reset-default]`)) }
 check("…reset takes them out again", JSON.stringify(editorJson() ?? {}) === "{}", editorJson())
 // Unset here, Obsidian's: livePreview false is source mode.
 const hadObsidian = existsSync(`${VAULT}/.obsidian`)
 mkdirSync(`${VAULT}/.obsidian`, { recursive: true })
 const appJson = `${VAULT}/.obsidian/app.json`, hadApp = existsSync(appJson) ? readFileSync(appJson, "utf8") : null
 writeFileSync(appJson, JSON.stringify({ livePreview: false }))
-await wait(1500); await open(NOTE)
+await until(async () => (await fetch(`${B}api/state`).then((r) => r.json())).obsidian?.editingMode === "source", 5000); await open(NOTE)
 check("Obsidian's livePreview: false opens in source mode", await sourceShown())
 if (hadApp !== null) writeFileSync(appJson, hadApp); else if (hadObsidian) rmSync(appJson); else rmSync(`${VAULT}/.obsidian`, { recursive: true, force: true })
 

@@ -5,6 +5,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { SHOTS, apiAt, qa } from "./lib/qa.mjs"
 import { setAsideWorkspaces } from "./lib/wsfiles.mjs"
+import { app } from "./lib/app.mjs"
 const { args: [B, VAULT, OUT = `${SHOTS}appearance/`], browser, check, watch, done } = await qa(import.meta.url)
 fs.mkdirSync(OUT, { recursive: true })
 const api = apiAt(B)
@@ -17,14 +18,16 @@ const note = files.find((f) => f.path.startsWith("Notes/") && f.path.endsWith(".
 const today = files.find((f) => f.path === "Dashboards/Today.md")?.path ?? note
 const themes = await api("GET", "themes")
 
+const uis = new WeakMap()
 async function open(w, dark, hash, contrast = "no-preference") {
   const mobile = w < 768
   const ctx = await browser.newContext({ viewport: { width: w, height: mobile ? 844 : 900 }, deviceScaleFactor: 2, isMobile: mobile, hasTouch: mobile, colorScheme: dark ? "dark" : "light", contrast })
-  const page = watch(await ctx.newPage())
+  const page = watch(await ctx.newPage()), ui = app(page)
+  uis.set(page, ui)
   await page.goto(`${B}#${hash}`)
-  await page.waitForTimeout(1500)
+  await page.locator(hash === "settings" ? '[data-settings-nav="appearance"]' : "article.file-view:visible").first().waitFor(); await ui.idle()
   // Settings' Appearance: beside the list, or its sheet on a phone.
-  if (hash === "settings") { await page.locator('[data-settings-nav="appearance"]').click(); await page.waitForTimeout(600) }
+  if (hash === "settings") { await page.locator('[data-settings-nav="appearance"]').click(); await page.locator("[data-settings-row=theme]:visible").first().waitFor(); await ui.idle() }
   return page
 }
 const shot = (page, name) => page.screenshot({ path: `${OUT}${name}.png` })
@@ -45,7 +48,7 @@ const lowest = (page) => page.evaluate(() => {
 // Settings, desktop and phone, light and dark
 await set({})
 for (const [w, dark] of [[1440, false], [1440, true], [390, false], [390, true]]) {
-  const page = await open(w, dark, "settings")
+  const page = await open(w, dark, "settings"), ui = uis.get(page)
   await shot(page, `settings-${w}-${dark ? "dark" : "light"}`)
   if (w === 390 && !dark) {
     // At a phone's width: the scheme strip flush under its label, and Style wrapped under Theme.
@@ -73,22 +76,22 @@ for (const [w, dark] of [[1440, false], [1440, true], [390, false], [390, true]]
     check("every scheme in one strip, Classic in use, and Show all", (await radios()).length === all && (await radios()).includes("Classic*") && (await appearance.locator("[data-schemes-all]").count()) === 1, await radios())
     const sx = await strip.evaluate((el) => ({ scrolls: el.scrollWidth > el.clientWidth, left: Math.round(el.getBoundingClientRect().left), label: Math.round(el.closest("[data-settings-row]").getBoundingClientRect().left) }))
     check("the strip scrolls sideways, its first picture under its label", sx.scrolls && Math.abs(sx.left + 12 - sx.label) <= 1, sx)
-    await appearance.getByRole("radio", { name: "Gruvbox", exact: true }).click(); await page.waitForTimeout(500)
+    await ui.sees(".vaultite/appearance.json", () => appearance.getByRole("radio", { name: "Gruvbox", exact: true }).click())
     check("a picture picks its scheme", (await api("GET", "config/appearance")).scheme === "gruvbox")
-    await appearance.locator("[data-schemes-all]").click(); await page.waitForTimeout(600)
+    await appearance.locator("[data-schemes-all]").click(); await page.getByRole("dialog").getByRole("radio").first().waitFor(); await ui.idle()
     check("Show all opens the gallery", (await page.getByRole("dialog").getByRole("radio").count()) === all)
-    await page.getByRole("dialog").getByRole("radio", { name: "Nord", exact: true }).click(); await page.waitForTimeout(500)
-    await page.keyboard.press("Escape"); await page.waitForTimeout(500)
+    await ui.sees(".vaultite/appearance.json", () => page.getByRole("dialog").getByRole("radio", { name: "Nord", exact: true }).click())
+    await page.keyboard.press("Escape"); await page.getByRole("dialog").waitFor({ state: "detached" }); await ui.idle()
     check("the strip follows the gallery's pick", (await radios()).includes("Nord*"), await radios())
     // Style: Glass unfolds its own rows (translucent pages), Solid folds them away.
     const pagesRow = appearance.locator('[data-settings-row="translucent-pages"]')
     const shown = () => pagesRow.evaluate((el) => el.getBoundingClientRect().height > 0 && !el.closest("[inert]"))
     check("solid: no translucent pages row", !(await shown()))
-    await appearance.getByRole("radio", { name: "Glass", exact: true }).click(); await page.waitForTimeout(600)
+    await ui.sees(".vaultite/appearance.json", () => appearance.getByRole("radio", { name: "Glass", exact: true }).click())
     check("glass: translucent pages unfolds", (await api("GET", "config/appearance")).translucent === true && await shown())
-    await appearance.getByRole("radio", { name: "Solid", exact: true }).click(); await page.waitForTimeout(600)
+    await ui.sees(".vaultite/appearance.json", () => appearance.getByRole("radio", { name: "Solid", exact: true }).click())
     check("solid again: it folds away", (await api("GET", "config/appearance")).translucent === false && !(await shown()))
-    await set({}); await page.waitForTimeout(800)
+    await ui.sees(".vaultite/appearance.json", () => set({}))
     // Rows are even: every row of the list has the same room above and below what it draws (its label and its control).
     // (a folded row, Glass's while Solid, has no room at all)
     const pads = await appearance.evaluate((sec) => [...sec.querySelector(".hairline").children].filter((r) => r.getBoundingClientRect().height > 0).map((r) => {
@@ -101,11 +104,11 @@ for (const [w, dark] of [[1440, false], [1440, true], [390, false], [390, true]]
     const fonts = page.locator("[data-fonts-open]")
     check("fonts: one row saying Default, no pickers on the page", (await fonts.innerText()).includes("Default") &&
       !(await page.getByRole("button", { name: /^Interface font:/ }).count()), await fonts.innerText())
-    await page.evaluate(() => document.querySelector("#main-scroll")?.scrollTo(0, 99999)); await page.waitForTimeout(200)
+    await page.evaluate(() => document.querySelector("#main-scroll")?.scrollTo(0, 99999)); await ui.idle()
     await shot(page, `settings-${w}-light-end`)
   }
   // The gallery as a sheet (More…, the command "Colour scheme…")
-  await page.evaluate(() => { location.hash = "settings/schemes" }); await page.waitForTimeout(600)
+  await page.evaluate(() => { location.hash = "settings/schemes" }); await page.getByRole("dialog").getByRole("radio").first().waitFor(); await ui.idle()
   check(`the gallery's sheet at ${w}px: the same grid`, (await page.getByRole("dialog").getByRole("radio").count()) === 16 + themes.filter((t) => !t.problem).length)
   await shot(page, `gallery-${w}-${dark ? "dark" : "light"}`)
   await page.close()
@@ -143,14 +146,10 @@ const boxes = (page) => page.evaluate((KEY) => [...document.querySelectorAll(KEY
 }), KEY)
 const settle = async (page, scheme) => {
   await page.waitForFunction((s) => (document.documentElement.dataset.scheme ?? "default") === s, scheme, { timeout: 8000 }).catch(() => {})
-  await page.waitForTimeout(350) // past the tiles' transitions
+  await uis.get(page).idle()
 }
 // The base once the page is done loading: what comes when it's idle (the status bar's file part) isn't a scheme's doing.
-const loaded = async (page) => {
-  let last = JSON.stringify(await boxes(page)), still = 0
-  for (let i = 0; i < 30 && still < 3; i++) { await page.waitForTimeout(400); const now = JSON.stringify(await boxes(page)); still = now === last ? still + 1 : 0; last = now }
-  return JSON.parse(last)
-}
+const loaded = async (page) => { await uis.get(page).idle(); return boxes(page) }
 for (const [w, hash] of [[1440, "settings"], [1440, fileHash(today)], [1440, fileHash(note)], [390, "settings"], [390, fileHash(today)]]) {
   await set({})
   const page = await open(w, false, hash)
@@ -193,15 +192,15 @@ for (const [w, dark] of [[1440, false], [1440, true], [390, true]]) {
 // The font pickers. An old fontSize key is ignored.
 await set({ fontSize: 22 })
 {
-  const page = await open(1440, false, "settings")
+  const page = await open(1440, false, "settings"), ui = uis.get(page)
   const size = await page.evaluate(() => getComputedStyle(document.body).fontSize)
-  await page.locator("[data-fonts-open]").click(); await page.waitForTimeout(500)
+  await page.locator("[data-fonts-open]").click(); await page.locator("dialog[open]").getByRole("button", { name: /^Interface font:/ }).waitFor(); await ui.idle()
   check("fonts: a click opens a sheet of the three pickers", (await page.locator("dialog[open]").getByRole("button", { name: /^(Interface|Text|Monospace) font:/ }).count()) === 3)
   const button = page.getByRole("button", { name: /^Interface font:/ })
   await button.scrollIntoViewIfNeeded()
   check("interface font: a picker button showing the default", (await button.getAttribute("aria-label")) === "Interface font: System font", await button.getAttribute("aria-label"))
-  await button.click(); await page.waitForTimeout(300)
   const dialog = page.getByRole("dialog", { name: "Interface font" })
+  await button.click(); await dialog.waitFor(); await ui.idle()
   check("the picker opens (the palette)", await dialog.isVisible())
   const rows = dialog.getByRole("option")
   const first = await rows.first().textContent()
@@ -213,36 +212,36 @@ await set({ fontSize: 22 })
   // Georgia, else a listed family whose start no other shares (this device's fonts)
   const names = (await rows.allTextContents()).slice(1).filter((n) => !/Monospace|…/.test(n))
   const FONT = names.includes("Georgia") ? "Georgia" : names.find((n) => names.filter((m) => m.toLowerCase().startsWith(n.slice(0, 5).toLowerCase())).length === 1) ?? names[0]
-  await page.keyboard.type(FONT.slice(0, 5).toLowerCase()); await page.waitForTimeout(200)
+  await page.keyboard.type(FONT.slice(0, 5).toLowerCase()); await ui.idle()
   const hit = rows.first()
   check("typing filters (fuzzy)", (await hit.textContent()).startsWith(FONT), [FONT, await hit.textContent()])
   const drawn = await hit.evaluate((el) => getComputedStyle(el.querySelector("[style]")).fontFamily)
   check("each font drawn in itself", drawn.replace(/"/g, "").startsWith(FONT), drawn)
   await shot(page, "font-picker-typed")
-  await page.keyboard.press("Enter"); await page.waitForTimeout(600)
+  await ui.sees(".vaultite/appearance.json", () => page.keyboard.press("Enter"))
   check("Enter applies at once (appearance.json)", (await api("GET", "config/appearance")).interfaceFont === FONT)
   check("the interface is drawn in it", (await page.evaluate(() => getComputedStyle(document.body).fontFamily)).replace(/"/g, "").startsWith(FONT))
   check("the button shows it, in itself", (await button.getAttribute("aria-label")) === `Interface font: ${FONT}` &&
     (await button.evaluate((el) => getComputedStyle(el.querySelector("span")).fontFamily)).replace(/"/g, "").startsWith(FONT))
   // A name that isn't listed
-  await page.getByRole("button", { name: /^Text font:/ }).click(); await page.waitForTimeout(300)
-  await page.keyboard.type("Qa Unlisted Serif"); await page.waitForTimeout(200)
+  await page.getByRole("button", { name: /^Text font:/ }).click(); await page.getByRole("dialog", { name: "Text font" }).waitFor(); await ui.idle()
+  await page.keyboard.type("Qa Unlisted Serif"); await ui.idle()
   const other = page.getByRole("dialog").getByRole("option").last()
   check("a name that isn't listed: offered", (await other.textContent()).includes('Use "Qa Unlisted Serif"'), await other.textContent())
-  await page.keyboard.press("Enter"); await page.waitForTimeout(600)
+  await ui.sees(".vaultite/appearance.json", () => page.keyboard.press("Enter"))
   check("…and used", (await api("GET", "config/appearance")).textFont === "Qa Unlisted Serif")
   check("fonts: the row says which are set", (await page.locator("[data-fonts-open]").innerText()).includes(`${FONT}, Qa Unlisted Serif`), await page.locator("[data-fonts-open]").innerText())
   check("quoted in the stack", (await page.evaluate(() => document.documentElement.style.getPropertyValue("--font-text"))).startsWith('"Qa Unlisted Serif"'))
   // Monospace: monospace fonts first
-  await page.getByRole("button", { name: /^Monospace font:/ }).click(); await page.waitForTimeout(300)
+  await page.getByRole("button", { name: /^Monospace font:/ }).click(); await page.getByRole("dialog", { name: "Monospace font" }).waitFor(); await ui.idle()
   const second = await page.getByRole("dialog").getByRole("option").nth(1).textContent()
   check("monospace: monospace fonts first", /Monospace/.test(second), second)
-  await page.keyboard.press("Escape"); await page.waitForTimeout(200)
+  await page.keyboard.press("Escape"); await ui.idle()
   check("Escape closes it, the fonts' sheet stays", !(await page.getByRole("dialog", { name: "Monospace font" }).count()) &&
     (await page.locator("dialog[open]").getByRole("button", { name: /^Interface font:/ }).count()) === 1)
   // Back to the default
-  await button.click(); await page.waitForTimeout(300)
-  await page.getByRole("dialog").getByRole("option").first().click(); await page.waitForTimeout(600)
+  await button.click(); await dialog.waitFor(); await ui.idle()
+  await ui.sees(".vaultite/appearance.json", () => dialog.getByRole("option").first().click())
   check("the default row resets it", (await api("GET", "config/appearance")).interfaceFont === "")
   check("an old fontSize key is ignored, and left in the file", size === (await page.evaluate(() => getComputedStyle(document.body).fontSize)) &&
     (await api("GET", "config/appearance")).fontSize === 22)
@@ -255,9 +254,9 @@ await set({ fontSize: 22 })
   await page.close()
 }
 {
-  const page = await open(390, false, "settings")
-  await page.locator("[data-fonts-open]").click(); await page.waitForTimeout(500)
-  await page.getByRole("button", { name: /^Interface font:/ }).click(); await page.waitForTimeout(400)
+  const page = await open(390, false, "settings"), ui = uis.get(page)
+  await page.locator("[data-fonts-open]").click(); await page.locator("dialog[open]").getByRole("button", { name: /^Interface font:/ }).waitFor(); await ui.idle()
+  await page.getByRole("button", { name: /^Interface font:/ }).click(); await page.getByRole("dialog", { name: "Interface font" }).waitFor(); await ui.idle()
   check("phone: the picker opens", await page.getByRole("dialog", { name: "Interface font" }).isVisible())
   await shot(page, "font-picker-390")
   await page.close()
@@ -269,12 +268,11 @@ fs.mkdirSync(path.dirname(snip), { recursive: true })
 fs.writeFileSync(snip, ":root { --primary: rgb(1, 2, 3); }\n")
 await set({ snippets: ["Qa snippet"] })
 {
-  const page = await open(1440, false, "settings")
+  const page = await open(1440, false, "settings"), ui = uis.get(page)
   check("snippet applied", (await token(page, "primary")) === "rgb(1, 2, 3)", await token(page, "primary"))
-  fs.writeFileSync(snip, ":root { --primary: rgb(4, 5, 6); }\n")
-  await page.waitForTimeout(1500)
+  await ui.sees(".vaultite/snippets/Qa snippet.css", () => fs.writeFileSync(snip, ":root { --primary: rgb(4, 5, 6); }\n"))
   check("snippet edited on disk: live", (await token(page, "primary")) === "rgb(4, 5, 6)", await token(page, "primary"))
-  await page.getByRole("switch", { name: "Qa snippet snippet" }).click(); await page.waitForTimeout(800)
+  await ui.sees(".vaultite/appearance.json", () => page.getByRole("switch", { name: "Qa snippet snippet" }).click())
   check("snippet off from Settings", (await token(page, "primary")) !== "rgb(4, 5, 6)", await token(page, "primary"))
   check("appearance.json has it off", !(await api("GET", "config/appearance")).snippets.includes("Qa snippet"))
   await page.close()

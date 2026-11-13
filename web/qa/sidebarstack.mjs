@@ -2,7 +2,8 @@
 // sidebars.json, pages.json and appearance.json (put back) and empties the workspaces: throwaway only.
 //   node web/qa/sidebarstack.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
-import { qa, until, wait } from "./lib/qa.mjs"
+import { qa, until } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
 const { args: [B, OUT = "/tmp/sidebarstack-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const api = (p, init) => fetch(new URL(`/api/${p}`, B), init).then((r) => r.json())
@@ -24,7 +25,7 @@ await fetch(new URL("/api/config/pages", B), { method: "PUT", headers: { "Conten
 await put(DEFAULT)
 await fetch(new URL("/api/config/appearance", B), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sidebarScroll: null }) })
 
-const page = watch(await browser.newPage({ viewport: { width: 1440, height: 900 } }))
+const page = watch(await browser.newPage({ viewport: { width: 1440, height: 900 } })), ui = app(page)
 const L = "aside[data-side=left]", R = "aside[data-side=right]"
 /** A sidebar's panels, top to bottom. */
 // (what a rail hides behind it, kept drawn, doesn't count: data-sidebar-kept)
@@ -51,14 +52,13 @@ const lifted = (k) => page.evaluate((k) => {
 }, k)
 /** Drag from an element to (x, y); `during` looks while over the target (before the drop); `cancel`: Escape, no drop. */
 async function dragTo(from, x, y, during, cancel) {
-  // (from where it settles: a tab just opened slides in)
-  let b = await box(from)
-  for (let i = 0; i < 20; i++) { await wait(100); const n = await box(from); if (n.x === b.x && n.y === b.y && n.width === b.width) break; b = n }
+  await ui.idle()
+  const b = await box(from)
   await page.mouse.move(b.x + Math.min(20, b.width / 2), b.y + b.height / 2); await page.mouse.down()
-  await page.mouse.move(b.x + 40, b.y + b.height / 2 + 6, { steps: 5 }); await page.mouse.move(x, y, { steps: 12 }); await wait(250)
+  await page.mouse.move(b.x + 40, b.y + b.height / 2 + 6, { steps: 5 }); await page.mouse.move(x, y, { steps: 12 }); await ui.idle()
   const seen = during ? await during() : null
   if (cancel) await page.keyboard.press("Escape")
-  await page.mouse.up(); await wait(cancel ? 300 : 600)
+  await page.mouse.up(); await ui.idle()
   return seen
 }
 /** Where a panel starts and ends, in the page. */
@@ -68,7 +68,7 @@ const near = (a, b) => a !== null && Math.abs(a - b) <= 2.5
 try {
   const file = (await api("state")).files.files.find((f) => f.path.endsWith(".md") && !f.path.startsWith("Dashboards/"))?.path
   await page.goto(`${B}#file/${encodeURIComponent(file)}`)
-  await page.waitForSelector(`${L} [data-panel]`); await wait(800)
+  await page.waitForSelector(`${L} [data-panel]`); await ui.idle()
   check("the default: Search, Pinned, Terminals, Files", (await shown()).join() === DEFAULT.left.join(), await shown())
   check("no right sidebar, only its toggle", !(await page.$(R)) && !!(await page.$("[data-sidebar-toggle=right]")))
   const density = await page.evaluate(() => document.documentElement.dataset.density ?? "compact")
@@ -79,9 +79,8 @@ try {
   const openFolders = async (want) => {
     for (const f of folders) {
       const row = await page.$(`${L} [data-tree-folder][data-tree-path='${f}'] > button`)
-      if (row && ((await row.getAttribute("aria-expanded")) === "true") !== want) { await row.click(); await wait(150) }
+      if (row && ((await row.getAttribute("aria-expanded")) === "true") !== want) { await row.click(); await ui.idle() }
     }
-    await wait(400)
   }
   const body = `${L} [data-sidebar-body]`
   // ---------- scrolling, the default: each panel in its own box (components/panelLayout.ts), dividers move room ----------
@@ -110,7 +109,7 @@ try {
   check("...the tree takes what's left: the panels reach the bottom", reaches(lay), [lay.panels.at(-1), lay.end])
   // The tree scrolled by the wheel: its heading stays where it was (its gap is outside the box).
   const fh = of(lay, "files:files")
-  await page.mouse.move(120, fh.top + (fh.bottom - fh.top) * 0.6); await page.mouse.wheel(0, 300); await wait(400)
+  await page.mouse.move(120, fh.top + (fh.bottom - fh.top) * 0.6); await page.mouse.wheel(0, 300); await ui.idle()
   let after = await layoutOf()
   check("wheel over the tree: its box scrolls, the sidebar doesn't", of(after, "files:files").scrollTop > 0 && !after.bodyScrolls, of(after, "files:files"))
   check("...its heading stays put", Math.abs(of(after, "files:files").head - fh.head) < 0.5, [fh.head, of(after, "files:files").head])
@@ -119,11 +118,11 @@ try {
   // pixel past its bottom, and the sidebar doesn't scroll (an outer scrollbar for a stray pixel).
   const vp = page.viewportSize()
   await page.setViewportSize({ width: vp.width, height: vp.height - 1 })
-  await page.evaluate(() => { document.querySelector("aside[data-side=left]").style.paddingBottom = "0.5px" }); await wait(500)
+  await page.evaluate(() => { document.querySelector("aside[data-side=left]").style.paddingBottom = "0.5px" }); await ui.idle()
   const half = await page.evaluate((b) => { const e = document.querySelector(b); const r = e.getBoundingClientRect(); return { h: r.height, bottom: r.bottom - parseFloat(getComputedStyle(e).paddingBottom), last: e.lastElementChild.getBoundingClientRect().bottom, overflow: getComputedStyle(e).overflowY, marked: e.hasAttribute("data-overflow") } }, body)
   check("a fractional height: the panels end inside it, the sidebar doesn't scroll", half.h % 1 !== 0 && half.last <= half.bottom + 0.01 && half.overflow === "hidden" && !half.marked, half)
   await page.evaluate(() => { document.querySelector("aside[data-side=left]").style.paddingBottom = "" })
-  await page.setViewportSize(vp); await wait(500)
+  await page.setViewportSize(vp); await ui.idle()
   // Pinned (the vault's many pages) doesn't fit: its box scrolls; its divider moves room between it and the tree.
   const pin0 = of(lay, "pages:pages")
   check("Pinned with many pages: shorter than what it draws, its box scrolls", pin0.scrolls && pin0.box + 4 < pin0.content, pin0)
@@ -131,7 +130,7 @@ try {
   const dragDivider = async (dy) => {
     const db = await box(divider)
     await page.mouse.move(db.x + 60, db.y + db.height / 2); await page.mouse.down()
-    await page.mouse.move(db.x + 60, db.y + db.height / 2 + dy, { steps: 8 }); await page.mouse.up(); await wait(700)
+    await page.mouse.move(db.x + 60, db.y + db.height / 2 + dy, { steps: 8 }); await page.mouse.up(); await ui.idle()
   }
   await dragDivider(40)
   after = await layoutOf()
@@ -146,21 +145,20 @@ try {
   await dragDivider(-2000)
   after = await layoutOf()
   check("dragged far up: Pinned keeps a few rows (four rows' height), the tree grows", of(after, "pages:pages").box >= 100 && of(after, "pages:pages").box < 140 && of(after, "files:files").box > of(lay, "files:files").box, [of(after, "pages:pages").box, of(after, "files:files").box])
-  await page.dblclick(divider); await wait(700)
+  await page.dblclick(divider); await ui.idle()
   check("double-click: fitted to its content again (no height saved)", !("pages:pages" in ((await sbs()).heights ?? {})), await sbs())
   after = await layoutOf()
   check("...and laid out as before", Math.abs(of(after, "pages:pages").box - pin0.box) <= 1, [pin0.box, of(after, "pages:pages").box])
   check("no divider under the last panel", !(await page.$(`${L} [role=separator][aria-label="Resize File explorer"]`)))
   // Heights saved before (or on a bigger screen) that would leave empty room are drawn no taller than what they draw.
-  await put({ ...DEFAULT, heights: { "pages:pages": 3000, "terminal:sessions": 900 } })
-  await wait(900)
+  await ui.sees(".vaultite/sidebars.json", () => put({ ...DEFAULT, heights: { "pages:pages": 3000, "terminal:sessions": 900 } }))
   after = await layoutOf()
   check("old heights taller than what panels draw: clamped, no empty room inside", noRoomInside(after) && reaches(after), after.panels)
   // (back to Pinned's fitted height before measuring: a loaded machine draws the put late)
-  await put(DEFAULT); await until(async () => Math.abs(of(await layoutOf(), "pages:pages").box - pin0.box) <= 1, 8000); await wait(200)
+  await put(DEFAULT); await until(async () => Math.abs(of(await layoutOf(), "pages:pages").box - pin0.box) <= 1, 8000); await ui.idle()
   // Folding a panel and opening it again moves only the panels below it, and comes back to the same place.
   lay = await layoutOf()
-  await clickHead("pages:pages"); await wait(500)
+  await clickHead("pages:pages"); await ui.idle()
   after = await layoutOf()
   check("Pinned folded: the panels above it don't move, the tree grows by what it gave", of(after, "search:search").bottom === of(lay, "search:search").bottom &&
     Math.abs((of(after, "files:files").box - of(lay, "files:files").box) - (of(lay, "pages:pages").bottom - of(lay, "pages:pages").top - (of(after, "pages:pages").bottom - of(after, "pages:pages").top))) < ROW, [lay.panels, after.panels])
@@ -170,7 +168,7 @@ try {
   // The user's sidebar: one pinned page, one terminal row, a long tree: Pinned and Terminals whole, the tree the rest.
   const pinsBefore = await api("config/pages")
   await fetch(new URL("/api/config/pages", B), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...pinsBefore, pinned: [pinsBefore.pinned?.[0] ?? "Dashboards/Today.md"] }) })
-  await until(async () => (await page.$$(`${panel("pages:pages")} [data-pin]`)).length === 1); await wait(500)
+  await until(async () => (await page.$$(`${panel("pages:pages")} [data-pin]`)).length === 1); await ui.idle()
   after = await layoutOf()
   check("one pinned page: Pinned as tall as what it draws, not cut", !of(after, "pages:pages").scrolls && Math.abs(of(after, "pages:pages").box - of(after, "pages:pages").content) <= 1, of(after, "pages:pages"))
   check("...Terminals too", !of(after, "terminal:sessions").scrolls, of(after, "terminal:sessions"))
@@ -179,25 +177,25 @@ try {
   await fetch(new URL("/api/config/pages", B), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(pinsBefore) })
   // Many panels: each its own box, never a box inside a box.
   await put({ left: ["search:search", "activity:feed", "backlinks:links", "outline:outline", "tags:tags", "pages:pages", "terminal:sessions", "files:files", "graph:local"] })
-  await until(async () => (await shown()).length === 9); await wait(800)
+  await until(async () => (await shown()).length === 9); await ui.idle()
   lay = await layoutOf()
   check("nine panels, panels mode: no scroller inside a panel's box, none taller than what it draws", !lay.inner && noRoomInside(lay), lay)
   await page.screenshot({ path: `${OUT}1-panels.png` })
   await put(DEFAULT)
   await until(async () => (await shown()).join() === DEFAULT.left.join())
   // Settings > Appearance switches to one scroller (appearance.json `sidebarScroll`); the sidebar's menu doesn't have it.
-  await page.click(head("pages:pages"), { button: "right" }); await wait(250)
+  await ui.menu.context(page.locator(head("pages:pages")))
   check("the sidebar's menu has no scroll setting", !(await menuItems()).some((t) => /scroll/i.test(t)), await menuItems())
-  await page.keyboard.press("Escape")
-  await page.evaluate(() => { location.hash = "settings" }); await wait(800)
-  await page.click('[data-settings-nav="appearance"]'); await wait(300)
+  await ui.menu.close()
+  await page.evaluate(() => { location.hash = "settings" }); await page.locator('[data-settings-nav="appearance"]').waitFor(); await ui.idle()
+  await page.click('[data-settings-nav="appearance"]'); await ui.idle()
   // (the sidebars' switches are on Appearance's Sidebars page, a sheet: a second step back)
-  await page.click('[data-settings-row="sidebars"]'); await wait(500)
-  await page.click('[aria-label="Scroll sidebar panels separately"]'); await wait(600)
+  await page.click('[data-settings-row="sidebars"]'); await ui.idle()
+  await ui.sees(".vaultite/appearance.json", () => page.click('[aria-label="Scroll sidebar panels separately"]'))
   check("Settings' switch: sidebarScroll is sidebar", (await api("config/appearance")).sidebarScroll === "sidebar", await api("config/appearance"))
   // (the panels' dividers: not the sidebar's own edge, a separator too)
   check("...and no dividers then", !(await page.$(`${L} [role=separator][aria-label^="Resize "]:not([aria-label^="Resize the "])`)))
-  await page.goBack(); await wait(300); await page.goBack(); await wait(500)
+  await page.goBack(); await ui.idle(); await page.goBack(); await ui.idle()
 
   // ---------- scrolling as one (sidebarScroll: sidebar): a long file tree, the sidebar the one scroller ----------
   await openFolders(true)
@@ -210,10 +208,10 @@ try {
   check("a long tree: the sidebar body scrolls", g.overflow === "auto" && g.scrolls, g)
   check("...and nothing in it scrolls itself", !g.inner.length, g)
   const tb = await box(panel("files:files"))
-  await page.mouse.move(tb.x + tb.width / 2, 600); await page.mouse.wheel(0, 600); await wait(400)
+  await page.mouse.move(tb.x + tb.width / 2, 600); await page.mouse.wheel(0, 600); await ui.idle()
   g = await geo()
   check("wheel over the tree: the sidebar scrolls", g.scrollTop > 0, g)
-  await page.$eval(body, (e) => { e.scrollTop = 0 }); await wait(200)
+  await page.$eval(body, (e) => { e.scrollTop = 0 }); await ui.idle()
   // Held near the bottom edge, a dragged panel scrolls the sidebar; let go there, it's last.
   const sb0 = await box(body)
   const held = await dragTo(head("terminal:sessions"), sb0.x + 100, sb0.y + sb0.height - 6, async () => { await until(() => page.$eval(body, (e) => e.scrollTop >= e.scrollHeight - e.clientHeight - 1), 9000); return page.$eval(body, (e) => e.scrollTop) })
@@ -222,7 +220,7 @@ try {
   // Many panels shown at once: still one scrollbar (Activity, Links, Outline and Tags don't scroll themselves).
   await put({ left: ["search:search", "activity:feed", "backlinks:links", "outline:outline", "tags:tags", "pages:pages", "terminal:sessions", "files:files", "graph:local"] })
   await until(async () => (await shown()).length === 9)
-  await wait(800)
+  await ui.idle()
   g = await geo()
   check("nine panels: one scroller, none inside", g.scrolls && !g.inner.length, g)
   const graph = await page.$eval(`${panel("graph:local")} [data-local-graph-panel] > div:last-child`, (e) => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)] }).catch(() => null)
@@ -260,7 +258,7 @@ try {
   // ---------- past a panel's middle ----------
   // The geometry below wants the whole stack on screen: the tree's folders closed, a taller window, scrolled to the top.
   if (await page.$(`${L} [aria-label="Collapse all"]`)) await page.click(`${L} [aria-label="Collapse all"]`, { force: true })
-  await page.setViewportSize({ width: 1440, height: 1300 }); await wait(400)
+  await page.setViewportSize({ width: 1440, height: 1300 }); await ui.idle()
   await page.$eval(body, (e) => { e.scrollTop = 0 })
   check("...the whole stack fits now", await page.$eval(body, (e) => e.scrollHeight <= e.clientHeight + 1))
   // Over Files (tall: the tree), a third of the way down: above it; two thirds: below it.
@@ -280,8 +278,10 @@ try {
     await page.$eval(`${L} [data-sidebar-search]`, (e) => getComputedStyle(e).marginTop))
 
   // ---------- folding, and the empty space below the last panel ----------
+  await page.emulateMedia({ reducedMotion: "no-preference" })
   await clickHead("files:files")
   check("...it closes under its heading (a copy of what it drew, clipped), then the copy goes", !!(await page.$(`${body} > [data-fold-shade]`)) && !!(await until(async () => !(await page.$(`${body} > [data-fold-shade]`)), 2000)))
+  await page.emulateMedia({ reducedMotion: "reduce" })
   check("a heading clicked: Files folds to it", !!(await until(async () => !!(await page.$(`${panel("files:files")}[data-collapsed]`)) && !(await visible(`${panel("files:files")} [role=tree]`)))))
   check("...saved as collapsed", !!(await until(async () => (await saved()) === "pages:pages|search:search|files:files!|terminal:sessions")), await saved())
   const bb = await box(body), lastEnd = (await edges("terminal:sessions")).bottom
@@ -305,7 +305,7 @@ try {
     !(await page.$(`${R}[data-collapsed]`)) && !(await page.$(`${panel("terminal:sessions", "right")}[data-collapsed]`)), await shown("right"))
   check("...saved", (await saved("right")) === "terminal:sessions" && (await saved()) === "search:search|files:files|pages:pages", [await saved(), await saved("right")])
   // Fold the right sidebar to its rail, then Pinned onto its toggle: the end there, and the sidebar opens.
-  await page.click("[data-sidebar-toggle=right]"); await wait(400)
+  await page.click("[data-sidebar-toggle=right]"); await ui.idle()
   check("the right sidebar folded to its rail", !!(await page.$(`${R}[data-collapsed]`)))
   await dragTo(head("pages:pages"), ...mid(await box("[data-sidebar-toggle=right]")))
   check("Pinned onto the folded right's toggle: last there, and it opens", !!(await until(async () => (await saved("right")) === "terminal:sessions|pages:pages")) &&
@@ -332,10 +332,8 @@ try {
 
   // ---------- the sidebar's menu: its panels ticked, the rest in More ▸ ----------
   const ticked = () => page.$$eval("[role=menuitemcheckbox]", (els) => els.map((e) => `${e.textContent.trim()}:${e.getAttribute("aria-checked")}`))
-  // Escape closes a submenu first, then the menu.
-  const closeMenus = async () => { while (await page.$("[role=menu]")) { await page.keyboard.press("Escape"); await wait(100) } }
   const fromMore = async (name) => {
-    await page.locator("[role=menu]").first().locator(":scope > button", { hasText: /^More$/ }).hover(); await wait(300)
+    await page.locator("[role=menu]").first().locator(":scope > button", { hasText: /^More$/ }).hover(); await page.locator("[role=menu]").nth(1).waitFor(); await ui.idle()
     const more = (await page.locator("[role=menu]").nth(1).locator("button").allInnerTexts()).map((t) => t.replace(/\s+/g, ""))
     await page.locator("[role=menu]").nth(1).locator("button", { hasText: name }).click()
     return more
@@ -351,11 +349,11 @@ try {
   const more = await fromMore("Outline")
   check("More ▸: the hidden ones, then the right one's labelled", more.includes("Outline") && more.at(-1) === "TerminalsRightsidebar", more)
   check("a hidden one picked from More: the end of the left, the menu left open", !!(await until(async () => (await saved()) === "search:search|files:files|pages:pages|outline:outline")) && !!(await page.$("[role=menu]")), await saved())
-  await closeMenus()
+  await ui.menu.close()
   await page.click(`${L} [data-titlebar]`, { button: "right" })
   await fromMore("Terminals")
   check("the right's picked here: moved to the end of the left", !!(await until(async () => (await saved()) === "search:search|files:files|pages:pages|outline:outline|terminal:sessions" && !(await saved("right")))), [await saved(), await saved("right")])
-  await closeMenus()
+  await ui.menu.close()
   await page.click(`${L} [data-titlebar]`, { button: "right" })
   await page.locator("[role=menuitemcheckbox]", { hasText: "Outline" }).click()
   check("unticked: hidden (in neither sidebar)", !!(await until(async () => !(await saved()).includes("outline") && !(await shown()).includes("outline:outline"))), await saved())
@@ -419,13 +417,13 @@ try {
   // ---------- the rail: every panel's icons ----------
   await put({ left: ["search:search", "pages:pages", "terminal:sessions", "outline:outline", "files:files"], collapsed: ["pages:pages", "outline:outline"] })
   await until(async () => (await shown()).length === 5)
-  await page.click("[data-sidebar-toggle='']"); await wait(500)
+  await page.click("[data-sidebar-toggle='']"); await ui.idle()
   const rail = await shown()
   check("the rail: every panel, folded or not, in order", rail.join() === "search:search,pages:pages,terminal:sessions,outline:outline,files:files", rail)
   check("...folded Pinned still shows its icons", await visible(`${L} [data-panel='pages:pages'] [data-pin]`))
   check("...no headings", !(await page.$(`${L} [data-panel-handle]:not([data-sidebar-kept] *)`)))
   await page.screenshot({ path: `${OUT}5-rail.png` })
-  await page.click("[data-sidebar-toggle='']"); await wait(400)
+  await page.click("[data-sidebar-toggle='']"); await ui.idle()
 } catch (e) {
   check(String(e), false)
 }

@@ -4,7 +4,8 @@
 //   node web/qa/statusbar.mjs <base url> <vault path>
 import { mkdirSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
-import { apiAt, qa, SHOTS, until, wait } from "./lib/qa.mjs"
+import { apiAt, openPalette, qa, SHOTS, until } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
 
 const { args: [B0, VAULT], browser, check, watch, done } = await qa(import.meta.url)
 const B = B0.endsWith("/") ? B0 : `${B0}/`
@@ -29,7 +30,12 @@ await api("PATCH", "config/appearance", { statusBar: ["today:routines", "termina
 try {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
   await ctx.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } })
-  const page = watch(await ctx.newPage(), { console: true })
+  await ctx.addInitScript(() => {
+    const set = Storage.prototype.setItem
+    window.qaKept = 0
+    Storage.prototype.setItem = function (k, v) { if (k === "vaultite.statusbar.items") window.qaKept++; return set.call(this, k, v) }
+  })
+  const page = watch(await ctx.newPage(), { console: true }), ui = app(page)
   await page.goto(`${B}#file/${encodeURIComponent(P)}`)
   const bar = page.locator(RIGHT)
   await until(async () => (await bar.locator("[data-status-key='qa-long:long']").count()) > 0 && /word/.test(await bar.innerText()), 15000)
@@ -39,9 +45,8 @@ try {
     const side = document.querySelector("aside[data-side=left]").getBoundingClientRect().right
     return document.querySelector("[data-status-right]").getBoundingClientRect().left - side
   })
-  // (settled: an item fetching its data, Claude's limits, comes a moment later)
-  let shown = await keys()
-  for (let i = 0; i < 20; i++) { await wait(250); const now = await keys(); if (now.join() === shown.join() && i > 7) break; shown = now }
+  await ui.idle()
+  const shown = await keys()
   console.log("bar:", shown.join(", "), "|", (await bar.innerText()).replace(/\n/g, " "))
   check("wide window: every item in the bar, no more button", shown.length >= 2 && shown.includes("qa-long:long") && !(await bar.locator("[data-status-more]").isVisible()), shown)
   await page.screenshot({ path: `${SHOTS}statusbar-1-wide.png`, clip: { x: 0, y: 740, width: 1280, height: 60 } })
@@ -60,22 +65,22 @@ try {
   })
   check("narrow: no empty room after the more button", gap <= 12, gap)
   await page.screenshot({ path: `${SHOTS}statusbar-2-narrow.png`, clip: { x: 0, y: 740, width: 820, height: 60 } })
-  await bar.locator("[data-status-more]").click(); await wait(200)
+  await bar.locator("[data-status-more]").click(); await ui.idle()
   const tray = page.locator("[data-status-tray] > [data-status-key]")
   // (the file's items it left out too: the characters first)
   const inTray = (await tray.evaluateAll((els) => els.filter((e) => e.offsetWidth).map((e) => e.dataset.statusKey))).filter((k) => shown.includes(k))
   check("the tray has what the bar left out", inTray.length === shown.length - narrow.length && inTray.every((k) => !narrow.includes(k)), inTray)
   await page.screenshot({ path: `${SHOTS}statusbar-3-tray.png`, clip: { x: 0, y: 680, width: 820, height: 120 } })
-  await page.keyboard.press("Escape"); await wait(100)
+  await page.keyboard.press("Escape"); await ui.idle()
   check("Escape closes the tray", (await page.locator("[data-status-tray]").count()) === 0)
 
   // 2. Wide again: drag the first item to the end of the bar.
-  await page.setViewportSize({ width: 1280, height: 800 }); await wait(400)
+  await page.setViewportSize({ width: 1280, height: 800 }); await ui.idle()
   const box = async (sel) => (await page.locator(sel).first().boundingBox())
   const drag = async (from, to) => {
     await page.mouse.move(from.x, from.y); await page.mouse.down()
-    await page.mouse.move(from.x + 8, from.y, { steps: 3 }); await page.mouse.move(to.x, to.y, { steps: 12 }); await wait(150)
-    await page.mouse.up(); await wait(400)
+    await page.mouse.move(from.x + 8, from.y, { steps: 3 }); await page.mouse.move(to.x, to.y, { steps: 12 }); await ui.idle()
+    await page.mouse.up(); await ui.idle()
   }
   const first = await box(`[data-status-key="${shown[0]}"]`), last = await box(`[data-status-items] > [data-status-key="${shown.at(-1)}"]`)
   await drag({ x: first.x + first.width / 2, y: first.y + first.height / 2 }, { x: last.x + last.width - 2, y: last.y + last.height / 2 })
@@ -88,10 +93,10 @@ try {
   // 3. Onto the more button (it shows while one is dragged): tucked away.
   const a = await box(`[data-status-items] > [data-status-key="${moved[0]}"]`)
   await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2); await page.mouse.down()
-  await page.mouse.move(a.x + a.width / 2 + 8, a.y + 10, { steps: 3 }); await wait(150)
+  await page.mouse.move(a.x + a.width / 2 + 8, a.y + 10, { steps: 3 }); await ui.idle()
   const m = await box("[data-status-more]")
-  await page.mouse.move(m.x + m.width / 2, m.y + m.height / 2, { steps: 10 }); await wait(150)
-  await page.mouse.up(); await wait(400)
+  await page.mouse.move(m.x + m.width / 2, m.y + m.height / 2, { steps: 10 }); await ui.idle()
+  await page.mouse.up(); await ui.idle()
   check("onto the more button: tucked in the tray", !(await keys()).includes(moved[0]) && !!(await until(async () => (await api("GET", "config/appearance")).statusBarMore?.includes(moved[0]))),
     { bar: await keys(), more: (await api("GET", "config/appearance")).statusBarMore })
 
@@ -101,15 +106,15 @@ try {
     const r = els.find((e) => e.offsetWidth)?.getBoundingClientRect()
     return r && { x: r.x, y: r.y, width: r.width, height: r.height }
   })
-  await bar.locator("[data-status-more]").click(); await wait(200)
+  await bar.locator("[data-status-more]").click(); await ui.idle()
   const t = await box(`[data-status-tray] > [data-status-key="${moved[0]}"]`), b = await firstItem()
   // (the last drop's toast may sit over the tray, bottom right, until it goes: the item held, not the toast)
   await until(() => page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest("[data-status-tray]"), [t.x + t.width / 2, t.y + t.height / 2]), 10000)
   // (aimed at its first item as it was: the gap it opens grows the bar to the left, under a pointer that then stirs)
   await page.mouse.move(t.x + t.width / 2, t.y + t.height / 2); await page.mouse.down()
-  await page.mouse.move(t.x + t.width / 2 + 8, t.y + t.height / 2, { steps: 3 }); await page.mouse.move(b.x + 2, b.y + b.height / 2, { steps: 12 }); await wait(300)
-  await page.mouse.move(b.x + 3, b.y + b.height / 2); await wait(300)
-  await page.mouse.up(); await wait(400)
+  await page.mouse.move(t.x + t.width / 2 + 8, t.y + t.height / 2, { steps: 3 }); await page.mouse.move(b.x + 2, b.y + b.height / 2, { steps: 12 }); await ui.idle()
+  await page.mouse.move(b.x + 3, b.y + b.height / 2); await ui.idle()
+  await page.mouse.up(); await ui.idle()
   check("out of the tray: back at the bar's start", (await keys())[0] === moved[0] && !!(await until(async () => !(await api("GET", "config/appearance")).statusBarMore?.includes(moved[0]))),
     { bar: await keys(), more: (await api("GET", "config/appearance")).statusBarMore })
   await page.screenshot({ path: `${SHOTS}statusbar-4-after.png`, clip: { x: 0, y: 740, width: 1280, height: 60 } })
@@ -117,7 +122,7 @@ try {
   // 5. Never on two lines, whatever the width: what doesn't fit is left out, not wrapped.
   const lines = []
   for (let w = 1280; w >= 780; w -= 50) {
-    await page.setViewportSize({ width: w, height: 800 }); await wait(250)
+    await page.setViewportSize({ width: w, height: 800 }); await ui.idle()
     lines.push(await page.evaluate((w) => {
       const bar = document.querySelector("[data-status-right]"), row = bar.querySelector("[data-status-row]")
       // (a text on two lines draws two boxes)
@@ -134,7 +139,8 @@ try {
 
   // 6. Last load's widths hold only while the app loads: an item drawn narrower than last time (another song) keeps
   // no room of the old one, and coming back to the first file holds none again.
-  await page.setViewportSize({ width: 1280, height: 800 }); await wait(2500)
+  const keptSaved = async () => { const n = await page.evaluate(() => window.qaKept); await until(() => page.evaluate((n) => window.qaKept > n, n), 4000) }
+  await page.setViewportSize({ width: 1280, height: 800 }); await ui.idle(); await keptSaved()
   await page.evaluate(() => {
     const k = JSON.parse(localStorage.getItem("vaultite.statusbar.items") ?? "[]")
     localStorage.setItem("vaultite.statusbar.items", JSON.stringify(k.map(([key, w, ...rest]) => [key, key === "qa-long:long" ? w + 300 : w, ...rest])))
@@ -142,16 +148,16 @@ try {
   const longWidth = () => page.evaluate(() => Math.round(document.querySelector("[data-status-items] > [data-status-key='qa-long:long']")?.getBoundingClientRect().width ?? 0))
   const natural = await longWidth()
   await page.reload()
-  await until(async () => (await longWidth()) > 0 && /word/.test(await bar.innerText()), 15000); await wait(1500)
+  await until(async () => (await longWidth()) > 0 && /word/.test(await bar.innerText()), 15000); await ui.idle()
   const after = await longWidth()
-  await page.evaluate(() => { location.hash = "#view/inbox" }); await wait(800)
-  await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, P); await wait(1500)
+  await page.evaluate(() => { location.hash = "#view/inbox" }); await ui.idle()
+  await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, P); await page.locator(`article.file-view[data-path="${P}"]`).waitFor(); await ui.idle()
   const back = await longWidth()
   check("an item drawn narrower than last load keeps none of its old room", Math.abs(after - natural) <= 2 && Math.abs(back - natural) <= 2, { natural, after, back })
   // …and a file's items hold no room when the app opens on a view: no file comes there (an empty stretch past the line).
-  await wait(2500)
+  await keptSaved()
   await page.evaluate(() => { location.hash = "#view/inbox" })
-  await page.reload(); await wait(1000)
+  await page.reload(); await bar.locator("[data-ambient]:not(:empty)").first().waitFor(); await ui.idle()
   const onView = await page.evaluate(() => [...document.querySelectorAll("[data-status-items] > :not([data-ambient])")]
     .filter((el) => el.offsetWidth).map((el) => el.dataset.statusKey ?? (el.hasAttribute("data-status-sep") ? "line" : "coming")))
   check("opened on a view: no room held for the last file's items", onView.length === 0, onView)
@@ -161,28 +167,28 @@ try {
   // 7. The file's items are items too: hidden by right-click, back from the palette; none at all leaves a faint corner.
   const look_ = async () => (await api("GET", "config/appearance")).statusBar ?? []
   const words = bar.locator("[data-status-key='core:words']")
-  await words.click({ button: "right" }); await wait(300)
-  await page.getByRole("menuitemcheckbox", { name: "Word count", exact: true }).click(); await wait(300)
-  await page.keyboard.press("Escape")
+  await ui.menu.context(words)
+  await ui.menu.pick("Word count")
+  await ui.menu.close()
   check("right-click: the word count hides, saved", !!(await until(async () => !(await look_()).includes("core:words") && (await words.count()) === 0)), await look_())
-  await page.keyboard.press("ControlOrMeta+P"); await wait(300)
-  await page.keyboard.type("show in status bar: word"); await wait(300)
+  await openPalette(page); await page.locator("[role=dialog] input:focus").waitFor()
+  await page.keyboard.type("show in status bar: word"); await page.locator("[role=option]", { hasText: /show in status bar: word/i }).first().waitFor()
   await page.keyboard.press("Enter")
   check("the palette shows it again, in its place", !!(await until(async () => (await look_()).indexOf("core:words") === (await look_()).indexOf("core:view") + 1 && (await words.count()) === 1)), await look_())
   await api("PATCH", "config/appearance", { statusBar: [] })
   await until(async () => (await bar.locator("[data-status-key]").count()) === 0)
-  await wait(300)
+  await ui.idle()
   const corner = await page.evaluate(() => {
     const el = document.querySelector("[data-status-right]"), r = el.getBoundingClientRect(), cs = getComputedStyle(el)
     return { w: r.width, h: r.height, right: innerWidth - r.right, bottom: innerHeight - r.bottom, bg: cs.backgroundColor, border: cs.borderTopColor }
   })
   const clear_ = (c) => c === "transparent" || /rgba\(.*,\s*0\)$/.test(c)
   check("nothing shown: no bar drawn, a corner of its height left", corner.h >= 27 && corner.w >= 36 && corner.bottom <= 1 && clear_(corner.bg) && clear_(corner.border), corner)
-  await page.mouse.move(1280 - 10, 800 - 10); await wait(200)
+  await page.mouse.move(1280 - 10, 800 - 10); await ui.idle()
   check("…its outline on hover", !clear_(await page.evaluate(() => getComputedStyle(document.querySelector("[data-status-right]")).borderTopColor)))
   await page.screenshot({ path: `${SHOTS}statusbar-5-empty.png`, clip: { x: 1080, y: 740, width: 200, height: 60 } })
-  await page.mouse.click(1280 - 10, 800 - 10, { button: "right" }); await wait(300)
-  await page.getByRole("menuitem", { name: "Show all", exact: true }).click(); await wait(300)
+  await page.mouse.click(1280 - 10, 800 - 10, { button: "right" }); await ui.menu.top().waitFor()
+  await ui.menu.pick("Show all")
   check("…whose right-click shows them all again", !!(await until(async () => (await look_()).filter((k) => k.startsWith("core:")).length === 3 && (await words.count()) === 1)), await look_())
 
   // 8. The left corner, by the left sidebar: Vim's mode and the companion. The mode stays (dimmed) as the keyboard
@@ -198,9 +204,9 @@ try {
   check("left corner: against the left sidebar, at the bottom", Math.abs(spot.gap) <= 1 && spot.bottom <= 1, spot)
   const places = () => page.evaluate(() => [...document.querySelectorAll("[data-status-key]")].filter((e) => e.offsetWidth)
     .map((e) => `${e.dataset.statusKey}@${Math.round(e.getBoundingClientRect().left)}`).join(" "))
-  await page.locator(".cm-content").first().click(); await wait(300)
+  await page.locator(".cm-content").first().click(); await ui.idle()
   const inNote = { mode: await left.locator("[data-vim-mode]").getAttribute("data-vim-mode"), focused: await left.locator("[data-vim-mode][data-focused]").count(), at: await places() }
-  await bar.locator("[data-status-key='core:words']").click(); await wait(300)
+  await bar.locator("[data-status-key='core:words']").click(); await ui.idle()
   const onBar = { mode: await left.locator("[data-vim-mode]").getAttribute("data-vim-mode"), focused: await left.locator("[data-vim-mode][data-focused]").count(), at: await places() }
   check("in the note: the mode shows, lit", inNote.mode === "normal" && inNote.focused === 1, inNote)
   check("the keyboard on the bar: the mode stays, dimmed, nothing moved", onBar.mode === "normal" && onBar.focused === 0 && onBar.at === inNote.at, { inNote, onBar })
