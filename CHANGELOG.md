@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A busy Mac no longer cuts the end of what the cloud voice says**: a piece whose last audio came while the app was
+  held up ended before saying it.
 - **The app loads 84 KB less JavaScript before it draws**: its files no longer list, for each feature loaded later,
   the files the app has loaded already.
 - **Open search in a tab goes to the search tab you have**: with a query typed, it opened a second one.

@@ -139,11 +139,12 @@ function elevenlabs(c: CloudConfig): CloudVoice {
     drop(id, x)
     x.to.end()
   }
-  /** No audio for `ms`: all of it has come, and the piece ends (its context closed). */
+  /** No audio for `ms`, nor any waiting to be read (Node runs timers before a socket's reads): the piece ends. */
   function hush(id: string, x: Stream, ms: number) {
     clearTimeout(x.quiet)
-    x.quiet = setTimeout(() => { if (streams.get(id) === x) finish(id, x) }, ms)
-    x.quiet.unref?.()
+    const quiet = setTimeout(() => setImmediate(() => { if (streams.get(id) === x && x.quiet === quiet) finish(id, x) }), ms)
+    x.quiet = quiet
+    quiet.unref?.()
   }
   function heard(d: string) {
     let m: { contextId?: string; audio?: string | null; isFinal?: boolean; error?: string; message?: string

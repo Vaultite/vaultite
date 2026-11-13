@@ -269,7 +269,7 @@ export default async ($: VaultTest) => {
         const words = [...String(m.text)], half = Math.ceil(words.length / 2)
         ws.send(JSON.stringify({ audio, contextId: id, ...timed(words.slice(0, half)) }))
         if (/early/.test(m.text)) ws.send(JSON.stringify({ audio: null, isFinal: true, contextId: id }))
-        setTimeout(() => { if (ws.readyState === ws.OPEN && !got.some((x) => x.close_context && x.context_id === id)) ws.send(JSON.stringify({ audio, contextId: id, ...timed(words.slice(half)) })) }, 120)
+        setTimeout(() => { if (ws.readyState === ws.OPEN && !got.some((x) => x.close_context && x.context_id === id)) ws.send(JSON.stringify({ audio, contextId: id, ...timed(words.slice(half)) })) }, /stalled/.test(m.text) ? 250 : 120)
       })
     })
     await new Promise<void>((done) => server.listen(0, "127.0.0.1", done))
@@ -285,6 +285,9 @@ export default async ($: VaultTest) => {
       return { h: h.join(), ms: Date.now() - t0 }
     }
     const early = await piece("Its final word comes early."), bare = await piece("No timings, bare.")
+    const holdTheLoop = (ms: number) => { const until = Date.now() + ms; while (Date.now() < until) Math.random() }
+    setTimeout(() => holdTheLoop(200), 240)
+    const stalled = await piece("Its final word comes early, the machine stalled.")
     const u = new URL(seen[0]?.url ?? "/", "http://x")
     check("tts: ElevenLabs' socket for its voice and model, PCM at 24 kHz with timings, the key as a header", u.pathname === "/v1/text-to-speech/nPczCjzI2devNBz1zQrb/multi-stream-input" &&
       u.searchParams.get("model_id") === "eleven_flash_v2_5" && u.searchParams.get("output_format") === "pcm_24000" && u.searchParams.get("sync_alignment") === "true" && seen[0].key === "eleven-key-1", seen)
@@ -294,6 +297,7 @@ export default async ($: VaultTest) => {
     check("tts: all its audio, then its end (the bug: closed with its text, it ended after its first chunk); timings follow the audio before",
       JSON.stringify(heard) === '[["audio",24000],["audio",24000],["end"]]' && JSON.stringify(timed?.ends?.slice(0, 3)) === "[0.05,0.1,0.15]" && timed?.ends?.[5] === 0.55, { heard, timed })
     check("tts: its final word before its last audio: that audio is still said, then it ends", early.h === "audio,audio,end", early)
+    check("tts: …on a machine that stalled as its last audio came too", stalled.h === "audio,audio,end", stalled)
     check("tts: audio without timings ends once it goes quiet a moment", bare.h === "audio,audio,end" && bare.ms >= 1000 && bare.ms < 2500, bare)
     c.close()
     wss.close(); server.close()
