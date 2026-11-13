@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { isDeepStrictEqual } from "node:util"
 import type { Any, VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
@@ -466,12 +467,42 @@ export default async ($: VaultTest) => {
       said(1).startsWith("a create request this server can't read: id ") && /^a kill request .*: id .*expected string, received number/.test(said(2)) && said(3) === "unknown op 'nope'", answers)
     check("terminal server: a new terminal's size is kept in bounds, as a resize's", huge.includes('"cols":2,"rows":500'), huge)
     const { Failure } = await import("../../../plugins/core/terminal/termd/protocol.ts")
-    const { Wire } = await import("../../../plugins/core/terminal/wire.ts")
+    const { Wire, termdClient } = await import("../../../plugins/core/terminal/wire.ts")
     let reply: (m: Record<string, unknown>) => void = () => {}
     const wire = new Wire({ write: (m) => queueMicrotask(() => reply({ re: m.re, error: "its files are gone", code: "retiring" })), onMessage: (fn) => { reply = fn },
       onClose: () => {}, close: () => {}, pause: () => {}, resume: () => {} })
     const retired = await wire.request("hello", {}).then(() => null, (e) => e)
     check("terminal server: a retiring server's refusal reaches its client as a code", retired instanceof Failure && retired.code === "retiring", retired)
+    const blocked = { seen: true, status: { state: "blocked", kind: "question", msg: "Which one?", app: "claude" } }
+    const info = { id: "a1", pid: 7, shell: "zsh", process: "vim", cwd: "", command: "", created: 1, activity: 2, title: "Notes", cols: 80, rows: 24, clients: 1, spare: false,
+      meta: { name: "Notes" }, said: blocked, via: 99 }
+    const replies = new Map<unknown, object>([
+      ["list", { sessions: [info], ended: [{ ...info, id: "a2", pid: 0, exit: { code: 1, signal: 0, at: 5 } }] }],
+      ["capture", { text: "$ ls", cols: 80, rows: 24, cursor: { x: 3, y: 1 }, alternate: false, input: { line: "$ ls", typed: "ls", suggested: "" }, ended: true }],
+      ["snapshot", { data: "screen" }],
+    ])
+    let hear: (m: import("../../../plugins/core/terminal/wire.ts").Msg) => void = () => {}
+    const fake = new Wire({ write: (m) => queueMicrotask(() => hear({ re: m.re, ...replies.get(m.op) })), onMessage: (fn) => { hear = fn },
+      onClose: () => {}, close: () => {}, pause: () => {}, resume: () => {} })
+    const client = termdClient({ name: "fake", label: "Fake", control: async () => fake, running: async () => fake, open: async () => fake })
+    const events: unknown[] = []
+    client.backend.events((ev) => events.push(ev))
+    client.follow(fake)
+    hear({ t: "event", type: "started", id: "a1", info })
+    hear({ t: "event", type: "trouble", id: "", text: "slow" })
+    const listedOnes = await client.backend.list({ ended: true })
+    const captured = await client.backend.capture("a1", { format: "text" })
+    const snap = await new Promise((ok) => fake.call("snapshot", {}, (m) => ok(m.data)))
+    const listedOne = { id: "a1", pid: 7, process: "vim", created: 1, activity: 2, attached: 1, title: "Notes", meta: { name: "Notes" }, said: blocked, cols: 80, rows: 24, via: 99 }
+    const { pid: _, ...noPid } = listedOne
+    const got = JSON.parse(JSON.stringify([listedOnes, captured, snap, events]))
+    check("terminal server: its answers and events reach the client as they were sent", isDeepStrictEqual(got, [
+      [listedOne, { ...noPid, id: "a2", exit: { code: 1, signal: 0, at: 5 } }],
+      { text: "$ ls", cols: 80, rows: 24, cursor: { x: 3, y: 1 }, alternate: false, input: { line: "$ ls", typed: "ls", suggested: "" }, ended: true }, "screen",
+      [{ type: "started", id: "a1", info: listedOne }, { type: "trouble", id: "", text: "slow" }]]), got)
+    replies.set("capture", { ...replies.get("capture"), cursor: { x: "3", y: 1 } })
+    const unread = await client.backend.capture("a1", { format: "text" }).then(() => "", (e: Error) => e.message)
+    check("terminal server: an answer its client can't read fails saying which field", unread.startsWith("the terminal server's answer to capture can't be read: cursor.x "), unread)
   }
   // termd runs detached and keeps its code until it holds no terminals: what it loads stays its own few files.
   {

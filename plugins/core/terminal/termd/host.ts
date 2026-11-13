@@ -10,7 +10,7 @@ import { KittyFeed, remoteFront } from "./kitty.ts"
 import { Screen } from "./screen.ts"
 import { fixHelper } from "./spawnhelper.ts"
 import { z } from "zod"
-import { Failure, PROTOCOL, Request, type Answer, type Op, type Capture, type CaptureFormat, type Event, type Exit, type Info, type Reply, type Unasked } from "./protocol.ts"
+import { Failure, issues, PROTOCOL, Request, type Answer, type Op, type Capture, type CaptureFormat, type Event, type Exit, type Info, type Reply, type Unasked } from "./protocol.ts"
 
 const WIN = process.platform === "win32"
 const SCROLLBACK = 10000
@@ -77,7 +77,7 @@ const lineCount = (v: number | "all", max: number) => (v === "all" ? null : Math
 const Envelope = z.object({ op: z.string().optional().catch(undefined), re: z.number().optional().catch(undefined) })
 function refused(op: string | undefined, e: z.ZodError) {
   if (!op || !Request.options.some((r) => r.shape.op.value === op)) return new Error(`unknown op '${op ?? ""}'`)
-  return new Error(`a ${op} request this server can't read: ${e.issues.map((i) => `${i.path.join(".") || "it"} ${i.message}`).join("; ")}`)
+  return new Error(`a ${op} request this server can't read: ${issues(e)}`)
 }
 
 type Around = { emit(ev: Event): number; sessions: Map<string, Session>; keepEnded(s: Session, told: boolean): void; log(...a: unknown[]): void; changed?(): void

@@ -1,39 +1,53 @@
 import { z } from "zod"
-import type { Said } from "../osc7501.ts"
+import type { Said as Told } from "../osc7501.ts"
 
 /** 1 ptyd.ts, the keeper before; 2 termd with xterm.js; 3 before pictures; 4 screens on its loop (one stuck froze all). */
 export const PROTOCOL = 5
 
-/** `lost`: the server holding it went away first, so how it ended is unknown. */
-export type Exit = { code: number; signal: number; at: number; lost?: boolean }
+const Meta = z.record(z.string(), z.string())
+const Id = z.string().min(1)
 
-export type Info = {
-  id: string; pid: number; shell: string; process: string; cwd: string; command: string; created: number; activity: number; title: string
-  cols: number; rows: number; clients: number; spare: boolean; meta: Record<string, string>; said: Said; exit?: Exit
+const Exit = z.object({ code: z.number(), signal: z.number(), at: z.number(),
+  /** The server holding it went away first, so how it ended is unknown. */
+  lost: z.boolean().optional() })
+export type Exit = z.infer<typeof Exit>
+
+const Status = z.object({ state: z.enum(["idle", "working", "blocked", "done", "error"]), kind: z.enum(["permission", "question", "auth"]).optional(),
+  msg: z.string().optional(), app: z.string().optional() })
+const Said: z.ZodType<Told> = z.object({ seen: z.boolean(), status: Status.nullable() })
+
+const Info = z.object({
+  id: z.string(), pid: z.number(), shell: z.string(), process: z.string(), cwd: z.string(), command: z.string(), created: z.number(), activity: z.number(), title: z.string(),
+  cols: z.number(), rows: z.number(), clients: z.number(), spare: z.boolean(), meta: Meta, said: Said, exit: Exit.optional(),
   /** The pid of an older server it's held through. */
-  via?: number
-}
+  via: z.number().optional(),
+})
+export type Info = z.infer<typeof Info>
 
-export type Event =
-  | { type: "started"; id: string; info: Info }
-  | { type: "renamed"; id: string; to: string }
-  | { type: "exited"; id: string; exit: Exit }
-  | { type: "status"; id: string; said: Said }
-  | { type: "title"; id: string; title: string }
-  | { type: "meta"; id: string; meta: Record<string, string> }
-  | { type: "size"; id: string; cols: number; rows: number }
-  | { type: "clients"; id: string; clients: number }
+const event = <T extends string, F extends Record<string, z.ZodType>>(type: T, fields: F) => z.object({ t: z.literal("event"), type: z.literal(type), id: z.string(), ...fields })
+const EventMessage = z.discriminatedUnion("type", [
+  event("started", { info: Info }),
+  event("renamed", { to: z.string() }),
+  event("exited", { exit: Exit }),
+  event("status", { said: Said }),
+  event("title", { title: z.string() }),
+  event("meta", { meta: Meta }),
+  event("size", { cols: z.number(), rows: z.number() }),
+  event("clients", { clients: z.number() }),
   /** `id` "": the server's own. */
-  | { type: "trouble"; id: string; text: string }
+  event("trouble", { text: z.string() }),
+])
+type WithoutT<M> = M extends unknown ? Omit<M, "t"> : never
+export type Event = WithoutT<z.infer<typeof EventMessage>>
 
 const CaptureFormat = z.enum(["text", "vt", "html"])
 export type CaptureFormat = z.infer<typeof CaptureFormat>
-export type Capture = { text: string; cols: number; rows: number; cursor: { x: number; y: number }; alternate: boolean
+const Capture = z.object({ text: z.string(), cols: z.number(), rows: z.number(), cursor: z.object({ x: z.number(), y: z.number() }), alternate: z.boolean(),
   /** The cursor's line (an agent's input): `suggested` is what's dim or grey (a suggested reply). */
-  input?: { line: string; typed: string; suggested: string } }
+  input: z.object({ line: z.string(), typed: z.string(), suggested: z.string() }).optional() })
+export type Capture = z.infer<typeof Capture>
 
-const Meta = z.record(z.string(), z.string())
-const Id = z.string().min(1)
+export const issues = (e: z.ZodError) => e.issues.map((i) => `${i.path.join(".") || "it"} ${i.message}`).join("; ")
 
 const request = <O extends string, F extends Record<string, z.ZodType>>(op: O, fields: F) => z.object({ op: z.literal(op), re: z.number().optional(), ...fields })
 
@@ -63,27 +77,31 @@ export type Request = z.output<typeof Request>
 export type Op = Request["op"]
 export type Params<O extends Op> = Omit<Extract<z.input<typeof Request>, { op: O }>, "op" | "re">
 
-type Answers = {
-  hello: { v: number; pid: number; file: string; stale: boolean; pictures?: boolean }
-  subscribe: {}
-  "status-drop": {}
-  access: { ok: boolean; code?: string }
-  create: { info: Info }
-  rename: { info: Info }
-  set: { info: Info }
-  kill: {}
-  list: { sessions: Info[]; ended?: Info[] }
-  get: { info: Info }
-  capture: Capture & { ended?: boolean }
-  forget: {}
-  attach: { cols: number; rows: number }
-  snapshot: { data: string }
-  input: {}
-  keys: {}
-  resize: never
-  adopt: { adopted: string[] }
-}
-export type Answer<O extends Op> = Answers[O]
+const Empty: z.ZodType<{}> = z.object({})
+const InfoAnswer = z.object({ info: Info })
+const answers = {
+  hello: z.object({ v: z.number(), pid: z.number(), file: z.string(), stale: z.boolean(), pictures: z.boolean().optional() }),
+  subscribe: Empty,
+  "status-drop": Empty,
+  access: z.object({ ok: z.boolean(), code: z.string().optional() }),
+  create: InfoAnswer,
+  rename: InfoAnswer,
+  set: InfoAnswer,
+  kill: Empty,
+  list: z.object({ sessions: z.array(Info), ended: z.array(Info).optional() }),
+  get: InfoAnswer,
+  capture: Capture.extend({ ended: z.boolean().optional() }),
+  forget: Empty,
+  attach: z.object({ cols: z.number(), rows: z.number() }),
+  snapshot: z.object({ data: z.string() }),
+  input: Empty,
+  keys: Empty,
+  resize: z.never(),
+  adopt: z.object({ adopted: z.array(z.string()) }),
+} satisfies Record<Op, z.ZodType>
+export type Answer<O extends Op> = z.infer<(typeof answers)[O]>
+type AnswerSchemas = { [O in Op]: z.ZodType<Answer<O>> }
+export const Answers: AnswerSchemas = answers
 
 /** `retiring`: this server's files are gone and it's ending, so the next one should be asked. */
 export type FailureCode = "retiring"
@@ -95,10 +113,12 @@ export class Failure extends Error {
   }
 }
 
-export type Reply = { re: number } & (Answers[Op] | { error: string; code?: FailureCode })
+export type Reply = { re: number } & (Answer<Op> | { error: string; code?: FailureCode })
 
-export type Unasked =
-  | { t: "data"; d: string }
-  | { t: "size"; cols: number; rows: number }
-  | { t: "exit"; code: number; signal: number; lost?: boolean }
-  | ({ t: "event" } & Event)
+export const Unasked = z.discriminatedUnion("t", [
+  z.object({ t: z.literal("data"), d: z.string() }),
+  z.object({ t: z.literal("size"), cols: z.number(), rows: z.number() }),
+  z.object({ t: z.literal("exit"), code: z.number(), signal: z.number(), lost: z.boolean().optional() }),
+  EventMessage,
+])
+export type Unasked = z.infer<typeof Unasked>

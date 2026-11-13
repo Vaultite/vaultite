@@ -2,7 +2,7 @@ import net from "node:net"
 import type { BackendEvent, CaptureFormat, Exit, Input, Link, Listed, Made, Spec, Backend } from "./backend.ts"
 import { launch, shellName } from "./launch.ts"
 import { lineReader } from "./lines.ts"
-import { Failure, type Answer, type Info, type Op, type Params, type Unasked } from "./termd/protocol.ts"
+import { Answers, Failure, issues, Unasked, type Answer, type Info, type Op, type Params } from "./termd/protocol.ts"
 import { logger } from "../../../core/plugins.ts"
 
 const log = logger("terminal")
@@ -21,6 +21,12 @@ export class Wire {
   pipe: Pipe
   seq = 0
   waiting = new Map<number, { ok: (v: Msg) => void; fail: (e: Error) => void }>()
+  private answer<O extends Op>(op: O, fn: (a: Answer<O> | Error) => void) {
+    return (m: Msg) => {
+      const a = Answers[op].safeParse(m)
+      fn(a.success ? a.data : new Error(`the terminal server's answer to ${op} can't be read: ${issues(a.error)}`))
+    }
+  }
   listeners = new Set<(m: Unasked) => void>()
   closed = false
   onClose: (() => void) | null = null
@@ -41,7 +47,11 @@ export class Wire {
           const w = this.waiting.get(m.re)!
           this.waiting.delete(m.re)
           if (typeof m.error === "string") w.fail(new Failure(m.error, m.code === "retiring" ? m.code : undefined)); else w.ok(m)
-        } else if (typeof m.t === "string") for (const fn of this.listeners) fn(m as Unasked)
+        } else if (typeof m.t === "string") {
+          const u = Unasked.safeParse(m)
+          if (!u.success) throw new Error(`a ${m.t} message it can't read: ${issues(u.error)}`)
+          for (const fn of this.listeners) fn(u.data)
+        }
       } catch (e) { log.error("a message from the terminal server", e) }
     })
     pipe.onClose(() => {
@@ -59,7 +69,7 @@ export class Wire {
   call<O extends Op>(op: O, params: Params<O>, fn: (m: Answer<O>) => void) {
     if (this.closed) return
     const re = ++this.seq
-    this.waiting.set(re, { ok: (m) => fn(m as Answer<O>), fail: () => {} })
+    this.waiting.set(re, { ok: this.answer(op, (a) => { if (a instanceof Error) log.error(a.message); else fn(a) }), fail: () => {} })
     this.pipe.write({ op, re, ...params })
   }
   request<O extends Op>(op: O, params: Params<O>, ms = 5000): Promise<Answer<O>> {
@@ -72,7 +82,7 @@ export class Wire {
         if (op !== "hello") this.probe(op, ms)
         fail(new Error(this.stalledSince !== null ? this.stalled() : `the terminal server didn't answer ${op} in ${Math.round(ms / 1000)} s`))
       }, ms)
-      this.waiting.set(re, { ok: (v) => { cancel(); ok(v as Answer<O>) }, fail: (e) => { cancel(); fail(e) } })
+      this.waiting.set(re, { ok: this.answer(op, (a) => { cancel(); if (a instanceof Error) fail(a); else ok(a) }), fail: (e) => { cancel(); fail(e) } })
       this.pipe.write({ op, re, ...params })
     })
   }
@@ -171,7 +181,7 @@ export function termdClient(o: { name: string; label: string; control: () => Pro
         },
         onData: (fn) => { data.add(fn) },
         onExit: (fn) => { exits.add(fn) },
-        snapshot: (fn) => w.call("snapshot", {}, (m) => fn(m.data ?? "")),
+        snapshot: (fn) => w.call("snapshot", {}, (m) => fn(m.data)),
         pause: () => w.pipe.pause(),
         resume: () => w.pipe.resume(),
         close: () => { exits.clear(); w.close() },
