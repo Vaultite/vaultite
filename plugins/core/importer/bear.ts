@@ -6,7 +6,8 @@ const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 
 const time = (v: unknown) => { const t = typeof v === "string" ? Date.parse(v) : NaN; return Number.isNaN(t) ? null : t }
 
 export function bearInfo(v: unknown): BearInfo {
-  const b = isObj(v) && isObj(v["net.shinyfrog.bear"]) ? v["net.shinyfrog.bear"] as Record<string, unknown> : {}
+  const bear = isObj(v) ? v["net.shinyfrog.bear"] : undefined
+  const b = isObj(bear) ? bear : {}
   return {
     id: typeof b.uniqueIdentifier === "string" ? b.uniqueIdentifier : null,
     created: time(b.creationDate), updated: time(b.modificationDate),

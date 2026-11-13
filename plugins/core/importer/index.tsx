@@ -22,7 +22,7 @@ async function importFile(file: File) {
     say(`Sending ${file.name}…`)
     const res = await fetch(`api/importer?name=${encodeURIComponent(file.name)}`, { method: "POST", body: file, headers: { ...HEADERS, "Content-Type": "application/octet-stream" } })
     let job: Job = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error((job as { error?: string }).error ?? `${res.status}`)
+    if (!res.ok) throw new Error(job.error ?? `${res.status}`)
     while (job.state === "queued" || job.state === "running") {
       say(job.state === "queued" ? "Waiting for the import before it…" : `Importing from ${job.source ? LABEL[job.source] : file.name}… ${job.notes} notes`)
       await new Promise((r) => setTimeout(r, 700))

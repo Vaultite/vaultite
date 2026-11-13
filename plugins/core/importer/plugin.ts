@@ -39,7 +39,7 @@ function start(file: string, name: string, into: string, temporary: boolean) {
       await runImport(plugin.vault, file, { folder: into, tmp }, job)
     } catch (e) {
       job.state = "failed"
-      job.error = String((e as Error)?.message ?? e)
+      job.error = e instanceof Error ? e.message : String(e)
     } finally {
       job.finished = Date.now()
       fs.rmSync(tmp, { recursive: true, force: true })
@@ -58,7 +58,7 @@ plugin.route("POST", "importer", async (req) => {
     let body = req.body
     if (req.http) {
       const chunks: Buffer[] = []
-      for await (const c of req.http) chunks.push(c as Buffer)
+      for await (const c of req.http) { const piece: Buffer = c; chunks.push(piece) }
       try { body = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}") } catch { throw new HTTPError(400, "the body isn't JSON") }
     }
     if (typeof body?.path !== "string" || !body.path) throw new HTTPError(400, "send the export as the body, or {path} of one in the vault")
@@ -71,7 +71,7 @@ plugin.route("POST", "importer", async (req) => {
     await pipeline(req.http, fs.createWriteStream(file))
   } catch (e) {
     fs.rmSync(file, { force: true })
-    throw new HTTPError(400, `the upload broke off: ${(e as Error).message}`)
+    throw new HTTPError(400, `the upload broke off: ${e instanceof Error ? e.message : String(e)}`)
   }
   if (!fs.statSync(file).size) { fs.rmSync(file, { force: true }); throw new HTTPError(400, "the body is empty: send the export") }
   return reply(202, start(file, str(req.query.name) || "export", into, true))

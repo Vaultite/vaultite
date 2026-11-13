@@ -63,7 +63,7 @@ function knownIds(vault: Vault, prefix: string) {
 async function flush(vault: Vault, pending: Write[], job: Job) {
   while (pending.length) {
     const batch = pending.splice(0, BATCH)
-    const data = await Promise.all(batch.map((w) => w.data().catch((e) => { say(job, `${w.rel}: ${(e as Error).message}`); return null })))
+    const data = await Promise.all(batch.map((w) => w.data().catch((e) => { say(job, `${w.rel}: ${e instanceof Error ? e.message : String(e)}`); return null })))
     await vault.lock(async () => {
       batch.forEach((w, i) => {
         const d = data[i]
@@ -136,7 +136,7 @@ export async function runImport(vault: Vault, file: string, opts: Options, job: 
       if (e.size > ENEX_MAX) { say(job, `${e.name} is over ${ENEX_MAX >> 20} MB: export that notebook in parts`); continue }
       try {
         await evernote(vault, (await entryBytes(z.file, e)).toString("utf8"), e.name.split("/").pop()!.replace(/\.enex$/i, ""), job.folder, job)
-      } catch (err) { say(job, `${e.name}: ${(err as Error).message}`) }
+      } catch (err) { say(job, `${e.name}: ${err instanceof Error ? err.message : String(err)}`) }
     }
   } else {
     if (fs.statSync(file).size > ENEX_MAX) throw new Error(`an .enex over ${ENEX_MAX >> 20} MB: export that notebook in parts`)

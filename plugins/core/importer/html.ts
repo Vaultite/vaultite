@@ -13,14 +13,13 @@ function service(media: Media) {
   const t = new TurndownService({ headingStyle: "atx", hr: "---", bulletListMarker: "-", codeBlockStyle: "fenced", emDelimiter: "*", strongDelimiter: "**" })
   t.remove(["style", "script", "title", "head"])
   t.addRule("todo", {
-    filter: (n) => n.nodeName === "INPUT" && (n as HTMLInputElement).getAttribute("type") === "checkbox",
-    replacement: (_c, n) => ((n as HTMLElement).hasAttribute("checked") && (n as HTMLElement).getAttribute("checked") !== "false" ? "[x] " : "[ ] "),
+    filter: (n) => n.nodeName === "INPUT" && n.getAttribute("type") === "checkbox",
+    replacement: (_c, n) => (n.hasAttribute("checked") && n.getAttribute("checked") !== "false" ? "[x] " : "[ ] "),
   })
   t.addRule("media", {
-    filter: (n) => n.nodeName === "IMG" && (n as HTMLElement).hasAttribute("data-hash"),
+    filter: (n) => n.nodeName === "IMG" && n.hasAttribute("data-hash"),
     replacement: (_c, n) => {
-      const e = n as HTMLElement
-      const out = media(e.getAttribute("data-hash") ?? "", e.getAttribute("data-type") ?? "")
+      const out = media(n.getAttribute("data-hash") ?? "", n.getAttribute("data-type") ?? "")
       return out ? `\n\n${out}\n\n` : ""
     },
   })
@@ -39,7 +38,7 @@ function service(media: Media) {
   t.addRule("table", {
     filter: "table",
     replacement: (_c, n) => {
-      const rows = rowsOf(n).map((tr) => kids(tr).filter((c) => c.nodeName === "TD" || c.nodeName === "TH").map((td) => cell(t.turndown((td as HTMLElement).innerHTML))))
+      const rows = rowsOf(n).map((tr) => kids(tr).filter((c): c is HTMLElement => c.nodeName === "TD" || c.nodeName === "TH").map((td) => cell(t.turndown(td.innerHTML))))
       if (!rows.length) return ""
       const w = Math.max(...rows.map((r) => r.length))
       const line = (r: string[]) => `| ${Array.from({ length: w }, (_, i) => r[i] ?? "").join(" | ")} |`
@@ -47,9 +46,9 @@ function service(media: Media) {
     },
   })
   t.addRule("styled", {
-    filter: (n) => n.nodeName === "SPAN" && !!(n as HTMLElement).getAttribute("style"),
+    filter: (n) => n.nodeName === "SPAN" && !!n.getAttribute("style"),
     replacement: (content, n) => {
-      const s = (n as HTMLElement).getAttribute("style") ?? ""
+      const s = n.getAttribute("style") ?? ""
       if (isBlank(content)) return content
       let out = content
       if (/font-weight\s*:\s*(bold|[6-9]00)/.test(s)) out = `**${out}**`

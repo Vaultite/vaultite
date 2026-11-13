@@ -4,7 +4,7 @@ type Block = { string?: unknown; children?: unknown; uid?: unknown; heading?: un
 export type RoamNote = { name: string; title: string; body: string; created: number | null; updated: number | null }
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v)
-const kids = (v: unknown): Block[] => (Array.isArray(v) ? v.filter(isObj) : []) as Block[]
+const kids = (v: unknown): Block[] => (Array.isArray(v) ? v.filter(isObj) : [])
 const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
 
 // Roam's daily pages: "October 5th, 2026"
