@@ -1,18 +1,11 @@
-// [[Links]] resolved as Obsidian does: a path, a file name, then aliases and plugins' names; of several, the closest to
-// the linking file wins, an archived one last.
 import { archiveTwin } from "./fileprops.ts"
 
-/** A file as links see it. `names` are what plugins add (a person's name); `archived`: it loses ties. */
 export type LinkFile = { path: string; aliases?: string[]; names?: string[]; archived?: boolean }
-/** Something a link can go to: a file (`path`), or only a name (`labels`) for what isn't one. `bare`: its name counts
- *  without its extension too (by default, a note's). */
 export type LinkEntry<T> = { value: T; path?: string; bare?: boolean; labels?: string[]; archived?: boolean }
-/** Resolve a link target ("Alice Park", "Notes/Idea", "../Idea#Heading") written in `from`, or null. */
 export type Resolve<T> = (target: string, from?: string) => T | null
 
 const WIKI = () => /!?\[\[([^[\]\n|#^]+)(?:[#^][^[\]\n|]*)?(?:\|[^[\]\n]*)?\]\]/g
 const CODE = /(`+)(?:(?!\1).)+?\1/g
-// A [[link]] or ![[embed]] (target, #heading, |alias), or a Markdown link or image (its text, then its address and title)
 const LINK = () => /(!?\[\[)([^[\]\n|#^]+)([#^][^[\]\n|]*)?(\|[^[\]\n]*)?\]\]|(!?\[[^\]\n]*\]\()(<[^>\n]+>|[^)\s]+)((?:\s+"[^"\n]*")?\))/g
 
 /** The targets of every [[link]] (and ![[embed]]) in Markdown, outside code (fences and inline). */
@@ -22,7 +15,6 @@ export function wikiTargets(text: string): string[] {
   return out
 }
 
-/** A link in a note: its target as a resolver reads it, the line it's on (as written) and whether it's an embed. */
 export type NoteLink = { target: string; line: string; embed: boolean }
 
 /** Every link in a note's Markdown, outside code (fences and inline), as Obsidian counts them: [[links]], ![[embeds]]
@@ -52,8 +44,6 @@ function localHref(href: string): { angle: boolean; raw: string; path: string; a
   return { angle, raw: p, path, anchor: hash < 0 ? "" : raw.slice(hash) }
 }
 
-/** A Markdown link's address as a link target, or null when it isn't a file in the vault. As Obsidian reads it: from
- *  the note's folder first, then the vault's top, then by name (`Sub/Idea.md` is written `./Sub/Idea.md` for that). */
 export function mdLinkTarget(href: string): string | null {
   const p = localHref(href)?.path.trim()
   if (!p) return null
@@ -100,8 +90,6 @@ function distance(dir: string, p: string) {
   return a.length - i + (b.length - i)
 }
 
-/** What links can go to: `resolve`, and what a link to nothing may have meant (`suggest`: "Alice" for Alice Park, a
- *  file of that name elsewhere). `twins` false: a path doesn't find its archive twin (what relinking needs). */
 export function linkIndex<T>(entries: LinkEntry<T>[], { twins = true } = {}): { resolve: Resolve<T>; suggest: (target: string, from?: string, max?: number) => T[] } {
   const paths = new Map<string, LinkEntry<T>[]>(), names = new Map<string, LinkEntry<T>[]>(), labels = new Map<string, LinkEntry<T>[]>()
   const put = (m: Map<string, LinkEntry<T>[]>, k: string, e: LinkEntry<T>) => {
@@ -188,8 +176,6 @@ export function linksIn(text: string, offset = 0): LinkSpan[] {
   return out
 }
 
-/** `text` with each link's target (outside code) passed through `to`: a wikilink's or embed's target, or a Markdown
- *  link's path (decoded, without its #anchor; md: true). `to` gives the new target, or null to leave the link. */
 export function mapLinks(text: string, to: (target: string, md: boolean) => string | null): string {
   return Array.from(fenced(text), ([line, code]) => {
     if (code || !(line.includes("[[") || line.includes("]("))) return line
@@ -217,7 +203,6 @@ function relinkSpan(s: string, to: (target: string, md: boolean) => string | nul
   })
 }
 
-/** A vault path from `dir` and a relative one ("../a/b.md"), or null when it leaves the vault. */
 export function resolvePath(dir: string, rel: string): string | null {
   const parts = dir ? dir.split("/") : []
   for (const x of rel.split("/")) {

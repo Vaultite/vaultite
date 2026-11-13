@@ -26,8 +26,6 @@ module.enableCompileCache?.()
 process.env.UV_THREADPOOL_SIZE ??= "128"
 startServerLog()
 const log = logger("vaultite")
-// A test's server (VAULTITE_PARENT_PID: tools/test/lib.ts testServer) ends with its test however that ended, from a thread
-// of its own: a main thread held (a read that never returns) can't keep it alive.
 if (Number(process.env.VAULTITE_PARENT_PID) > 1) {
   const { Worker } = await import("node:worker_threads")
   new Worker(`const pid = ${Number(process.env.VAULTITE_PARENT_PID)}
@@ -38,7 +36,6 @@ const starting = span("server.start", {}, askedAt - performance.timeOrigin)
 starting.mark("spawn")
 const { WebSocketServer } = await import("ws")
 const { decodePart: decode, jsonOf, open, queryOf } = await import("./core/app.ts")
-// (the module graph, for vau version and the updater: the host's to give, so the web demo's bundle of the core has no parser)
 ;(await import("./core/update/graph.ts")).giveGraph(() => import("./core/update/closure.ts"))
 const { Live } = await import("./core/live.ts")
 const { served: web } = await import("./core/webbuild.ts")
@@ -61,7 +58,7 @@ starting.mark("imports")
 
 const HOST = process.env.HOST || "127.0.0.1"
 const PORT = Number(process.env.PORT || 8793)
-process.env.PORT = String(PORT) // (what the plugins' names go by: Terminal's terminal server; unset, an app serves nothing)
+process.env.PORT = String(PORT)
 const DESKTOP = process.env.VAULTITE_DESKTOP === "1"
 
 const VAULT_AT = DESKTOP ? VAULT_PATH : vaults.current(VAULT_PATH)
@@ -317,7 +314,6 @@ async function raw(req: http.IncomingMessage, res: http.ServerResponse, query: R
   if (thumb) {
     const px = Number(query.thumb)
     if (!(px > 0)) return json(res, { error: "thumb is the longer side's most pixels" }, 400)
-    // a thumbnail doesn't bring an iCloud placeholder down: a folder of videos would download
     const made = await thumbOf(abs, st, px)
     if (!made) return iCloud.on && iCloud.evicted(abs, st) ? json(res, { error: "this file isn't on this machine yet" }, 404) : json(res, { error: "no thumbnail for this file" }, 415)
     abs = made
@@ -368,7 +364,6 @@ function sendAnswered(req: http.IncomingMessage, res: http.ServerResponse, f: An
 
 const EXTRA_HOSTS = (process.env.VAULTITE_HOSTS ?? "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean)
 
-/** Why a request isn't from this app's pages, or "". The Host check stops DNS rebinding. */
 async function foreign(req: http.IncomingMessage, origin = true) {
   const h = req.headers
   if ("tailscale-funnel-request" in h) return "this app doesn't answer the internet (Tailscale Funnel)"

@@ -6,41 +6,28 @@ import { messageOf } from "../values.ts"
 const exec = promisify(execFile)
 
 import type { CiState } from "../contracts/version.ts"
-/** A commit's verdict; ok null is not yet (running, not run, cancelled, GitHub not answering: no `state`). `elsewhere`:
- *  the jobs that failed besides the ones it waits for (another OS's tests, the demo), as far as GitHub said. */
 export type CiResult = { ok: boolean | null; why: string; state?: CiState; elsewhere?: string[] }
-/** Asks CI about a commit of "owner/repo". `superseded`: an older commit than the branch's tip, answered from what the
- *  branch's runs already say (a commit pushed under a newer one never gets a run of its own to look up). */
 export type Ci = (repo: string, sha: string, o?: { superseded?: boolean }) => Promise<CiResult>
-/** A workflow run, as GitHub's API gives it. */
 export type CiRun = { id?: number; path?: string; event?: string; status?: string; conclusion?: string | null; head_sha?: string; head_branch?: string | null }
 
 export const CI_WORKFLOW = ".github/workflows/ci.yml"
-/** A run's job, as GitHub's API gives it (its latest attempt's). */
 export type CiJob = { name: string; status?: string; conclusion?: string | null }
 
-/** The jobs a server waits for: ci.yml's test job on its own OS ("test (macos-15)": the check, build, tests and smoke
- *  in it), by the runner's family. The other OSes' and the demo (the site's build, not what a server runs) only say. */
 export type Gate = { label: string; job: (name: string) => boolean }
 const FAMILY: Partial<Record<NodeJS.Platform, [string, string]>> = { darwin: ["macos", "macOS"], linux: ["ubuntu", "Linux"], win32: ["windows", "Windows"] }
-/** This OS's gate; null where ci.yml tests on no runner of its kind (the whole run must pass). */
 export function osGate(platform: NodeJS.Platform = process.platform): Gate | null {
   const f = FAMILY[platform]
   return f ? { label: `${f[1]} tests`, job: (name) => name.startsWith(`test (${f[0]}`) } : null
 }
 
-/** tools/try.ts' branches. */
 export const TRY_PREFIX = "try/"
 
 export const githubRepo = (url: string) => /github\.com[/:]([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/.exec(url.trim())?.[1] ?? null
 
-/** Runs gh with these arguments: its stdout, or rejects as execFile does (`code`: the exit code or ENOENT, `killed`,
- *  `stderr`). */
 export type RunGh = (args: string[], timeout: number) => Promise<{ stdout: string }>
 // (a branch's 100 runs are over 1 MB: execFile's default buffer failed every list through gh)
 const runGh: RunGh = (args, timeout) => exec("gh", args, { timeout, maxBuffer: 64 * 1024 * 1024 })
 
-/** Whether a gh failure says it can't serve at all (no gh, no login, a revoked token), not that GitHub answered an error. */
 export function ghUnusable(e: unknown): boolean {
   const err = e as { code?: unknown; stderr?: unknown }
   if (err?.code === "ENOENT") return true
@@ -55,11 +42,8 @@ function ghWhy(e: unknown, timeout: number): string {
   return `GitHub didn't answer about CI (gh: ${String(err?.stderr ?? "").trim().split("\n")[0] || err?.message || "failed"})`
 }
 
-/** A signed-out (or missing, or unknown) gh is asked again after this: one signed in later is taken up. */
 export const LOGIN_RECHECK = 10 * 60_000
 
-/** GitHub's API through gh while gh says it's signed in (`gh auth status`, or a call failing for want of a login), else
- *  anonymously (the repo is public). An error GitHub answers (a 404, a 5xx) or a timeout never changes which. */
 export function githubClient(o: { gh?: RunGh; fetch?: typeof fetch; now?: () => number } = {}) {
   const gh = o.gh ?? runGh, get = o.fetch ?? fetch, now = o.now ?? Date.now
   let state: { signedIn: boolean | null; at: number } = { signedIn: null, at: -Infinity }
@@ -94,7 +78,6 @@ export function githubClient(o: { gh?: RunGh; fetch?: typeof fetch; now?: () => 
 export type GithubClient = ReturnType<typeof githubClient>
 
 const github = githubClient()
-/** Its answer, or why not. */
 export const githubApi = <T>(api: string, timeout?: number) => github.api<T>(api, timeout)
 
 /** GitHub's API allows 60 calls an hour without a login, per address, shared by every machine behind it: the updates
@@ -106,7 +89,6 @@ const HOUR = 3_600_000
 
 export const ciCallsPerHour = (viaGh: boolean | null = github.signedIn()) => viaGh ? CI_CALLS_SIGNED_IN : CI_CALLS_PER_HOUR
 
-/** A function `limit` is sized at each call. */
 export function callBudget(limit: number | (() => number) = CI_CALLS_PER_HOUR, now = Date.now) {
   const at: number[] = [], max = typeof limit === "number" ? () => limit : limit
   return {
@@ -123,17 +105,12 @@ export function callBudget(limit: number | (() => number) = CI_CALLS_PER_HOUR, n
 export type CallBudget = ReturnType<typeof callBudget>
 const hourly = callBudget(() => ciCallsPerHour())
 
-/** A red verdict is asked again after this (a re-run or the nightly may pass it); a pass is final. */
 const RED_RECHECK = 10 * 60_000
-/** The branch's runs serve every question of one look, not the next's. */
 const LIST_FOR = 15_000
 
-/** CI's verdicts, asked as little as GitHub allows: the branch's latest runs in one call, a commit not among them on its
- *  own once, a run's jobs only while they may change (once all ended, never again), a pass never, a red every 10 min. */
 export function githubCi(branch: string, get: (api: string) => Promise<unknown> = githubApi, o: { budget?: CallBudget; now?: () => number; gate?: Gate | null; login?: () => Promise<unknown> } = {}): Ci {
   const budget = o.budget ?? hourly, now = o.now ?? Date.now, gate = o.gate === undefined ? osGate() : o.gate
   const login = o.login ?? (get === githubApi ? github.login : null)
-  // (the budget is sized by gh's login, asked before each call: a refused call can't keep a wrong size)
   const ask = async <T>(api: string) => {
     await login?.()
     return (budget.take() ? get(api) : `GitHub's API was asked ${budget.max()} times this hour, the most the updates ask: CI is asked again later`) as T | string
@@ -145,14 +122,12 @@ export function githubCi(branch: string, get: (api: string) => Promise<unknown> 
     const k = known.get(sha)
     if (k && (k.r.ok === true || (k.r.ok === false && now() - k.at < RED_RECHECK))) return k.r
     if (k?.r.ok === false) { for (const r of seen.get(sha) ?? []) if (r.id) ended.delete(r.id); seen.delete(sha) }
-    // (with a gate, a run's progress is read from its jobs, once it started; without, or before, from the list)
     let runs = gate && !seen.get(sha)?.some(waiting) ? seen.get(sha) : undefined
     if (!runs?.length) {
       if (!list || now() - list.at >= LIST_FOR) list = { at: now(), runs: ask<{ workflow_runs?: CiRun[] }>(`repos/${repo}/actions/workflows/${path.basename(CI_WORKFLOW)}/runs?branch=${branch}&per_page=100`).then(runsOf) }
       const all = await list.runs
       if (typeof all === "string") return { ok: null, why: all }
       runs = all.filter((r) => r.head_sha === sha)
-      // (one not among the branch's latest runs: its own, older than the list, asked once; a superseded one never had one)
       if (!runs.length && !seen.has(sha) && !superseded) {
         const theirs = runsOf(await ask<{ workflow_runs?: CiRun[] }>(`repos/${repo}/actions/runs?head_sha=${sha}&per_page=50`))
         if (typeof theirs === "string") return { ok: null, why: theirs }
@@ -173,24 +148,19 @@ export function githubCi(branch: string, get: (api: string) => Promise<unknown> 
     }
     const r = ciOf(runs, { gate, jobs: (run) => (run.id ? jobs.get(run.id) ?? ended.get(run.id) : undefined) })
     if (r.ok !== null) known.set(sha, { r, at: now() })
-    if (known.size + seen.size + ended.size > 1500) { known.clear(); seen.clear(); ended.clear() } // (a long-running server's: never more than a look's)
+    if (known.size + seen.size + ended.size > 1500) { known.clear(); seen.clear(); ended.clear() }
     return r
   }
 }
 
-/** ci.yml's runs that are main's: its push and nightly runs, never one by hand (QA) nor a try run (tools/try.ts: a try/
- *  branch, only the tests). */
 const ours = (runs: CiRun[]) => runs.filter((r) => (r.path ?? "").startsWith(CI_WORKFLOW) && (r.event === "push" || r.event === "schedule") && !r.head_branch?.startsWith(TRY_PREFIX))
 
-/** Whether a run's verdict needs its jobs: not when it passed whole, nor while it waits to start (none of its jobs can
- *  have ended), nor, with no gate, while it runs. */
 const WAITING = new Set(["queued", "pending", "waiting", "requested"])
 const waiting = (run: CiRun) => WAITING.has(run.status ?? "")
 const needsJobs = (run: CiRun, gate: Gate | null) => !(run.status === "completed" && run.conclusion === "success") && !waiting(run) && (!!gate || run.status === "completed")
 
 const RED = new Set(["failure", "timed_out", "startup_failure"])
 type RunVerdict = { state: CiState | "unknown"; why?: string; elsewhere: string[] }
-/** One run's verdict for a gate, from its jobs (undefined: not asked, a string: why GitHub didn't say). */
 function verdictOf(run: CiRun, jobs: CiJob[] | string | undefined, gate: Gate | null): RunVerdict {
   if (run.status === "completed" && run.conclusion === "success") return { state: "passed", elsewhere: [] }
   if (typeof jobs === "string" && gate) return { state: "unknown", why: jobs, elsewhere: [] }
@@ -208,8 +178,6 @@ function verdictOf(run: CiRun, jobs: CiJob[] | string | undefined, gate: Gate | 
   return { state: mine.every((j) => j.conclusion === "cancelled") ? "cancelled" : "failed", elsewhere }
 }
 
-/** CI's verdict on a commit from its runs: one of main's (push or nightly) passed the gate's jobs, the rest of the run
- *  only said (`elsewhere`); red once a gate's job failed, ended or not. No gate: the whole run, by its conclusion. */
 export function ciOf(runs: CiRun[], o: { gate?: Gate | null; jobs?: (run: CiRun) => CiJob[] | string | undefined } = {}): CiResult {
   const gate = o.gate ?? null, what = gate ? `CI's ${gate.label}` : "CI"
   const vs = ours(runs).map((r) => verdictOf(r, o.jobs?.(r), gate))

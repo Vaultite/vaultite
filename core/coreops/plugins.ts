@@ -1,5 +1,3 @@
-// Plugins: list, switch (plugins.json key by key; one turned on brings its panels, as the app does), allow a vault
-// plugin on this machine (core/trust.ts), check, and start a new vault plugin.
 import fs from "node:fs"
 import path from "node:path"
 import type { App } from "../app.ts"
@@ -15,19 +13,12 @@ import * as G from "../grants.ts"
 import { strings } from "../values.ts"
 
 export type PluginInfo = PluginDir & { name: string; description: string; requires: string[]
-  /** Off until turned on (`enabled`), like a vault plugin: the vault's, and the app's with `offByDefault`. */
   optIn: boolean
-  /** Part of the app (`alwaysOn`): no switch. */
   alwaysOn?: boolean
-  /** For AI (`ai`): off while AI is (plugins.json `ai: false`). */
   ai?: boolean
-  /** A vault plugin that's on but waits for this machine's owner to allow it (core/trust.ts). */
   waiting?: boolean
-  /** A vault plugin whose edits run without asking on this machine (core/trust.ts). */
   edits?: boolean }
 
-/** A vault plugin's listing with its schedule's ops checked against the catalog: a job that would fail at 05:00 says so
- *  now (an op that isn't there, a parameter it doesn't take). */
 function scheduledOf(app: App) {
   return (p: Item) => {
     const jobs = app.vaultPlugins.found.get(String(p.id))?.manifest.schedule
@@ -42,7 +33,6 @@ function scheduledOf(app: App) {
   }
 }
 
-/** Every plugin: the app's built-in ones, then the vault's own (loaded or not). */
 export function pluginList(app: App): PluginInfo[] {
   const own = app.vaultPlugins.list().map((v): PluginInfo => ({ id: String(v.id), tier: "vault", dir: app.vault.abs(String(v.folder)), name: String(v.name),
     description: String(v.description ?? ""), requires: strings(v.requires), optIn: true, waiting: !!v.approval, edits: !!v.edits, ...(v.ai === true ? { ai: true } : {}) }))
@@ -51,8 +41,6 @@ export function pluginList(app: App): PluginInfo[] {
     ...(p.manifest.alwaysOn === true ? { alwaysOn: true } : {}), ...(p.manifest.ai === true ? { ai: true } : {}) })), ...own]
 }
 
-/** Which plugins are on (web/src/core/plugins.ts isEnabled): by plugins.json's lists, none of the `ai` ones while AI is
- *  off, and everything each requires on too. `own`: switched on itself. */
 export function onOff(list: PluginInfo[], conf: Item) {
   const disabled = strings(conf.disabled), enabled = strings(conf.enabled), aiOff = conf.ai === false
   const by = new Map(list.map((p) => [p.id, p]))
@@ -73,7 +61,6 @@ function findPlugin(list: PluginInfo[], q: string) {
 
 const ID = { type: "string", required: true, description: "the plugin's id (reddit) or name (Reddit)" } satisfies Param
 
-/** Let a vault plugin run on this machine as its files are now (`hash`: only if they're still what the caller was shown). */
 async function allowPlugin(app: App, q: string, hash?: string, edits?: boolean) {
   const p = findPlugin(pluginList(app), q)
   if (p.tier !== "vault") throw new OpError(`${p.name} is one of the app's plugins: only the vault's own are allowed one by one`)
@@ -87,24 +74,18 @@ async function allowPlugin(app: App, q: string, hash?: string, edits?: boolean) 
     edits: !!app.vaultPlugins.trust.approval(p.id)?.edits }
 }
 
-/** What's wrong with one plugin's folder, anywhere on this machine (a plugin's own repository): its manifest and imports
- *  like a vault plugin's, its commands, and for one to install (`tag`: what its version must be) version and repo. */
 export function folderProblems(dir: string, appIds: Map<string, string>, o: { installable?: boolean; tag?: string | null; dirOf?: (id: string) => string } = {}) {
   const abs = path.resolve(dir), base = path.basename(abs)
-  // (in a repository of several, the plugins beside it: one may require another)
   let beside: string[] = []
   try { beside = fs.readdirSync(path.dirname(abs)).filter((n) => n !== base && fs.existsSync(path.join(path.dirname(abs), n, "manifest.json"))) } catch { /* none */ }
   const r = checkVaultPlugin(abs, { ids: new Map([...beside.map((n): [string, string] => [n, "vault"]), [base, "vault"], ...appIds]), label: ".", ...o })
   const id = r.manifest?.id ?? base
-  // (its folder may be named after its repository: the check reads it as .vaultite/plugins/<id>/ would)
   const named = `./manifest.json: id must be '${base}' (its folder's name)`
   return { id, problems: r.problems.filter((x) => base === id || x !== named), warnings: r.warnings }
 }
 
 export function pluginOps(app: App): Op[] {
   const scheduled = scheduledOf(app)
-  /** Switch one on or off (app plugins listed in `disabled` when off, opt-in ones in `enabled` when on); turned on, its
-   *  panels join the left sidebar and its new tab sections the page, where those are saved. */
   const turn = async (q: string, want: boolean, ctx?: OpCtx) => {
     const ps = pluginList(app)
     const p = findPlugin(ps, q)
@@ -112,8 +93,6 @@ export function pluginOps(app: App): Op[] {
       if (!want) throw new OpError(`${p.name} is part of the app: it's always on`)
       return { id: p.id, name: p.name, on: true, switched: true, blockedBy: [], waiting: false }
     }
-    // Turned on by this machine's owner, a vault plugin is allowed to run here as it is now (core/trust.ts); by anyone else,
-    // it's on in the vault and waits for them.
     let allowed = false
     if (want && p.tier === "vault" && !(await ctx?.refusal?.("allowing a vault plugin to run on this machine"))) {
       try { app.vaultPlugins.allow(p.id); allowed = true } catch { /* can't be read yet */ }
@@ -127,7 +106,6 @@ export function pluginOps(app: App): Op[] {
       const next = add.reduce((s, d) => placePanel(s, d.key, { side: "left", before: null }), saved!)
       app.vault.patchConfig("sidebars", { left: next.left, right: next.right, collapsed: next.collapsed, heights: next.heights })
     }
-    // Its new tab sections (not those it hides) join the end of the page, when newtab.json lists the sections.
     const { sections } = readNewTab(app.vault.config("newtab"))
     const join = want && sections ? sectionsOf(p).filter((d) => !d.hidden && !sections.includes(d.key)).map((d) => d.key) : []
     if (join.length) app.vault.patchConfig("newtab", { sections: [...sections!, ...join] })
@@ -317,7 +295,6 @@ vau docs vault-plugins, and vau docs plugin-api for everything it can use.
         fs.mkdirSync(path.dirname(app.vault.abs(`${dir}/${f}`)), { recursive: true })
         writeAtomic(app.vault.abs(`${dir}/${f}`), t)
       }
-      // Made here by this machine's owner (an agent writing one for them): allowed, its edits too, so writing it reloads it.
       const edits = !(await ctx.refusal?.("allowing a vault plugin to run on this machine"))
       if (edits) app.vaultPlugins.allow(id, { version: "0.1.0", edits: true })
       return { id, name, folder: dir, files: Object.keys(files), edits }
@@ -330,7 +307,6 @@ vau docs vault-plugins, and vau docs plugin-api for everything it can use.
   })]
 }
 
-/** A vault plugin's files to start from (vau plugin new). */
 function scaffold(id: string, name: string, description: string): Record<string, string> {
   return {
     "manifest.json": JSON.stringify({ id, name, description, icon: "puzzle", version: "0.1.0", apiVersion: API_VERSION, disclosures: {},

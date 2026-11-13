@@ -1,5 +1,3 @@
-// Vault plugins without server code: a manifest's `ops`, `events`, `startup` and `schedule` are commands run on this
-// machine (argv, no shell; format: core/docs/vault-plugins.md). Same trust as plugin.ts: nothing runs while it's off.
 import { spawn } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
@@ -15,25 +13,19 @@ import { messageOf } from "./values.ts"
 
 export type Command = string[]
 type Declared = { id: string; dir: string; manifest: Item }
-/** One run of a command, as `vault-plugin.log` shows it. */
 export type Run = { t: string; what: string; command: string[]; exit: number | null; signal: string | null; ms: number; stderr: string; error?: string }
 
 const OP_TIMEOUT = 60, HOOK_TIMEOUT = 120, MAX_TIMEOUT = 600
 const PER_MINUTE = 30, KEEP = 50, MAX_OUT = 4 << 20
 
-// ---------- checking a manifest ----------
-
 // The server's own Node, for `node` and `vau` (#!/usr/bin/env node) in commands: launchd's PATH has no Homebrew.
 const NODE_DIR = /^node(\.exe)?$/i.test(path.basename(process.execPath)) ? path.dirname(process.execPath) : ""
 
-/** What's wrong with a command: an argv array of strings, its program a name on PATH, an absolute path, or a path in
- *  the plugin's folder. */
 function commandProblems(c: unknown, dir: string, where: string): string[] {
   if (!Array.isArray(c) || !c.length || !c.every((x) => typeof x === "string" && x.length && !x.includes("\0"))) {
     return [`${where}: command must be an argv array of strings, like ["node", "run.mjs"] (no shell)`]
   }
   const prog = c[0] as string
-  // (a script it hands a program, node's .hidden/run.mjs, is part of the approved version too: one not there yet as well)
   const unhashed = (c as string[]).slice(1).find((a) => !path.isAbsolute(a) && inside(dir, path.resolve(dir, a)) && !hashed(dir, path.resolve(dir, a)))
   if (unhashed) return [`${where}: '${unhashed}' is hidden or in node_modules (not part of the plugin's version, so this machine couldn't approve it)`]
   if (path.isAbsolute(prog) || !prog.includes("/")) return []
@@ -47,24 +39,18 @@ function commandProblems(c: unknown, dir: string, where: string): string[] {
 const timeoutProblems = (t: unknown, where: string) =>
   t === undefined || (typeof t === "number" && t > 0 && t <= MAX_TIMEOUT) ? [] : [`${where}: timeout is seconds, at most ${MAX_TIMEOUT}`]
 
-/** An op's id is in its plugin's area: its first part is the plugin's id, or its singular (`habit.add` for "habits",
- *  `property.retype` for "properties"), or a type or collection of a kind it owns. */
 export function inArea(opId: string, pluginId: string, kinds: string[] = []) {
   const area = opId.split(".")[0]
   return area === pluginId || area === pluginId.replace(/ies$/, "y") || area === pluginId.replace(/s$/, "") || kinds.includes(area)
 }
 
-/** A manifest's `schedule` entry's name: its own, else its op's, else its place. */
 const jobName = (s: Item, i: number) => (typeof s.name === "string" ? s.name : typeof s.op === "string" ? s.op : `schedule-${i}`)
 
-/** A manifest's `schedule`: each entry's name and when it runs. */
 export function scheduleOf(manifest: Item, value?: (key: string) => string | undefined): (When & { name: string; entry: Item })[] {
   const list = Array.isArray(manifest.schedule) ? manifest.schedule as Item[] : []
   return list.map((s, i) => ({ name: jobName(s, i), every: s.every, ...(s.at ? { at: value ? resolvedAt(s.at, value) : s.at } : {}), ...(s.machine ? { machine: s.machine } : {}), entry: s }))
 }
 
-/** What's wrong with a manifest's `ops`, `events`, `startup` and `schedule` (core/vaultplugins.ts refuses to load it; `node
- *  tools/check_plugins.ts <vault>` prints them). */
 export function hookProblems(m: Item, dir: string, where = "manifest.json"): string[] {
   const out: string[] = []
   const id = String(m.id ?? path.basename(dir))
@@ -130,46 +116,37 @@ export function hookProblems(m: Item, dir: string, where = "manifest.json"): str
   return out
 }
 
-// ---------- running ----------
-
-/** A manifest op's `did` with its params filled in: "Synced {account}". */
 const fillIn = (did: string, params: Item) => did.replace(/\{(\w+)\}/g, (_, k: string) => (params[k] == null || typeof params[k] === "object" && !Array.isArray(params[k]) ? "" : String(params[k])))
 const tail = (s: string, lines = 12) => s.replace(/\s+$/, "").split("\n").slice(-lines).join("\n").slice(-2000)
 
 export class Hooks {
   vault: Vault
-  /** Each plugin's last runs, newest last. */
   logs = new Map<string, Run[]>()
   private started = new Set<string>()
-  private busy = new Map<string, { pending: VaultEvent | null }>() // event hooks running: the event to run next
-  private rate = new Map<string, number[]>() // event hooks' recent starts
+  private busy = new Map<string, { pending: VaultEvent | null }>()
+  private rate = new Map<string, number[]>()
 
-  /** Whether a plugin's files are still the ones this machine allowed (VaultPlugins sets it): an event or a job can come
-   *  before the next sync, after its files changed. */
   allowed: (p: Declared) => boolean = () => true
 
   constructor(vault: Vault) {
     this.vault = vault
   }
 
-  /** Its folder of its own on this machine: <LOCAL>/plugin-state/<hash of the vault's real path>/<id>/, made. */
   stateDir(id: string) {
     const d = path.join(LOCAL, "plugin-state", vaultHere(this.vault.path).key, id)
     fs.mkdirSync(d, { recursive: true })
     return d
   }
 
-  /** Run a plugin's command: its exit, stdout and stderr, logged. Never throws. */
   run(p: Declared, command: Command, o: { what: string; env: Record<string, string>; stdin: string; timeout: number }) {
     const t0 = performance.now()
     const env: Record<string, string> = {}
     for (const [k, v] of Object.entries(process.env)) if (v !== undefined && k !== "ELECTRON_RUN_AS_NODE" && k !== "VAULTITE_TERMINAL") env[k] = v
-    // (a folder with a vau that runs: core/appentry.ts)
     const bin = vauDir(LOCAL)
     Object.assign(env, {
       VAULTITE: "1", VAULTITE_URL: serverUrl(), VAULTITE_VAULT: this.vault.path, VAULTITE_BIN: path.join(bin, "vau"),
       VAULTITE_PLUGIN_ID: p.id, VAULTITE_PLUGIN_DIR: p.dir, VAULTITE_PLUGIN_STATE: this.stateDir(p.id),
-      PYTHONDONTWRITEBYTECODE: "1", // (a __pycache__ written in its folder is a change: it'd pause itself)
+      PYTHONDONTWRITEBYTECODE: "1",
       PATH: [bin, NODE_DIR, process.env.PATH].filter(Boolean).join(path.delimiter), ...o.env,
     })
     let prog = command[0].includes("/") && !path.isAbsolute(command[0]) ? path.resolve(p.dir, command[0]) : command[0]
@@ -213,7 +190,7 @@ export class Hooks {
       }, o.timeout * 1000)
       child.stdout!.setEncoding("utf8").on("data", (s: string) => { if (stdout.length < MAX_OUT) stdout += s })
       child.stderr!.setEncoding("utf8").on("data", (s: string) => { stderr = (stderr + s).slice(-8000) })
-      child.stdin!.on("error", () => {}) // (a command that doesn't read its stdin)
+      child.stdin!.on("error", () => {})
       child.stdin!.end(o.stdin)
       // (a program that couldn't start: no close may follow)
       child.on("error", (e) => { error = e.message; if (child.pid === undefined) finish(null, null) })
@@ -221,7 +198,6 @@ export class Hooks {
     })
   }
 
-  /** A manifest's `ops` as operations (their `run` is the command). */
   opsOf(p: Declared): Op[] {
     const ops = Array.isArray(p.manifest.ops) ? p.manifest.ops as Item[] : []
     return ops.map((d): Op => (defineOp({
@@ -241,7 +217,6 @@ export class Hooks {
     })))
   }
 
-  /** A manifest's `schedule` as jobs of `plugin` (core/schedule.ts): a command, or an op run as "schedule". */
   jobsOf(p: Declared, plugin: Plugin): Job[] {
     return scheduleOf(p.manifest).map(({ name, entry: s, ...when }): Job => {
       if (s.op) return { ...when, name, run: () => plugin.runOp(s.op, s.params ?? {}, whoOf("schedule", null)) }
@@ -254,8 +229,6 @@ export class Hooks {
     })
   }
 
-  /** A plugin that's on now (loaded): its startup commands, unless they ran since the server opened the vault or it was
-   *  last turned on. */
   startup(p: Declared) {
     if (this.started.has(p.id)) return
     this.started.add(p.id)
@@ -264,12 +237,10 @@ export class Hooks {
     }
   }
 
-  /** A plugin turned off: its startup runs again when it's turned on. */
   stopped(id: string) {
     this.started.delete(id)
   }
 
-  /** An event: the event hooks of the plugins that are on (loaded) and match it. */
   heard(ev: VaultEvent, plugins: Declared[]) {
     for (const p of plugins) {
       const hooks = Array.isArray(p.manifest.events) ? p.manifest.events as Item[] : []
@@ -283,7 +254,7 @@ export class Hooks {
 
   private fire(p: Declared, h: Item, key: string, ev: VaultEvent) {
     const b = this.busy.get(key)
-    if (b) { b.pending = ev; return } // one at a time: the latest runs next
+    if (b) { b.pending = ev; return }
     const now = Date.now()
     const recent = (this.rate.get(key) ?? []).filter((t) => now - t < 60_000)
     if (recent.length >= PER_MINUTE) {
@@ -307,13 +278,11 @@ export class Hooks {
     })
   }
 
-  /** Forget the startups (the server serves another vault now). */
   close() {
     this.started.clear()
   }
 }
 
-/** The hooks' own operation: a vault plugin's command log. */
 export function hookOps(hooks: () => Hooks): Op[] {
   return [defineOp({
     id: "vault-plugin.log",

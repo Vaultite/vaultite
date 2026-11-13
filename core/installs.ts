@@ -17,22 +17,15 @@ import { removeTree, type Item, type Vault } from "./vault.ts"
 import { gitEnv } from "./gitenv.ts"
 import { messageOf } from "./values.ts"
 
-/** Kept so another machine knows. `tag` and `commit` are null from a plain folder. */
 export type Locked = { source: string; repo: string | null; tag: string | null; commit: string | null; version: string; hash: string; installed: string
-  /** Its updates, oldest first (at most HISTORY_MAX). */
   history?: Update[]
-  /** A version rolled back from: updating on its own skips it (a newer one is taken). */
   skip?: string
-  /** It was one of the app's own plugins, installed by the app when it moved here (core/migrations.ts MOVED). */
   moved?: true }
 const LOCK = "plugins-lock"
 const HISTORY_MAX = 30
 
-/** What a source names: a git address or folder, its GitHub repo, `dir` the plugin's folder in a repo of several (tags
- *  `<dir>/v1.2.0`), a tag; or `archive`, a zip's address and the sha256 it must have. */
 export type Source = { given: string; url: string | null; folder: string | null; repo: string | null; dir: string | null; tag: string | null
   archive?: { url: string; sha256: string }
-  /** A commit to fetch (its full sha) instead of what the tag names now: tags move, a commit doesn't. */
   commit?: string | null }
 
 export const COMMIT = /^[0-9a-f]{40}$/
@@ -44,8 +37,6 @@ const ZIP_MAX = 64 << 20, UNZIPPED_MAX = 256 << 20, ENTRIES_MAX = 5000
 const STABLE = /^v?\d+\.\d+\.\d+$/
 const GIT_TIMEOUT = 120_000
 
-/** "owner/name[@tag]", a git URL ("https://...", "git@host:o/n.git", "file://...") with "@tag" after it, or a folder on
- *  this machine (a git repository is cloned, so its tags count; else copied as it is). */
 export function parseSource(given: string, tag?: string | null): Source {
   let s = given.trim()
   let at: string | null = tag?.trim() || null
@@ -67,7 +58,6 @@ export function parseSource(given: string, tag?: string | null): Source {
     const [, scheme, host, file, , hash] = zip
     if (scheme.toLowerCase() !== "https" && !LOOPBACK.test(host)) throw new OpError(`a plugin's zip is fetched over https only: ${scheme}://${host}${file}`)
     if (!hash) throw new OpError(`a plugin's zip needs its hash after its address, #sha256=<64 hex digits>, so what's installed is what was meant: ${scheme}://${host}${file}`)
-    // (recorded and shown without its query: a short-lived signed address isn't kept in the vault's lock file)
     return { given: `${scheme}://${host}${file}#sha256=${hash.toLowerCase()}`, url: null, folder: null, repo: null, dir: null, tag: null,
       archive: { url: s.replace(/#.*$/, ""), sha256: hash.toLowerCase() } }
   }
@@ -82,7 +72,6 @@ export function parseSource(given: string, tag?: string | null): Source {
   if (!m || dir?.split("/").some((p) => /^\.+$/.test(p))) {
     throw new OpError(`'${given}' isn't a plugin's source: owner/name on GitHub (owner/name/folder for one of several in it, with @tag), a git URL, or a folder`)
   }
-  // (VAULTITE_GITHUB: another place for owner/name, this machine's; file://<folder> in the tests)
   const base = (process.env.VAULTITE_GITHUB || "https://github.com").replace(/\/+$/, "")
   return { given, url: `${base}/${m[1]}/${m[2]}${base === "https://github.com" ? ".git" : ""}`, folder: null, repo: `${m[1]}/${m[2]}`, dir,
     tag: at && dir && !at.includes("/") ? `${dir}/${at}` : at }
@@ -100,14 +89,11 @@ export function git(args: string[], cwd?: string): Promise<string> {
 const NO_GIT = `plugins are installed with git, which isn't on this machine: install it (${process.platform === "win32" ? "https://git-scm.com/download/win"
   : process.platform === "darwin" ? "xcode-select --install" : "your system's git package"}), then restart Vaultite`
 
-/** A repository at `ref` (a tag, branch or commit; its default branch when null) checked out into `dir`, and its commit.
- *  With `sub`, only that folder (a sparse index: a file elsewhere that Windows can't name, like `a:b.md`, never stops it). */
 export async function checkout(url: string, ref: string | null, dir: string, sub: string | null = null) {
   fs.mkdirSync(dir, { recursive: true })
   await git(["init", "--quiet"], dir)
   if (sub) await git(["sparse-checkout", "set", "--cone", "--sparse-index", sub], dir)
   await git(["fetch", "--quiet", "--depth", "1", "--no-tags", url, ref ?? "HEAD"], dir)
-  // (symlinks checked out as plain files: a link can't point a plugin's file anywhere on this machine)
   await git(["-c", "core.symlinks=false", "-c", "advice.detachedHead=false", "checkout", "--quiet", "FETCH_HEAD"], dir)
   return (await git(["rev-parse", "HEAD"], dir)).trim()
 }
@@ -126,7 +112,6 @@ async function headOf(url: string) {
 
 export type Fetched = { dir: string; id: string; manifest: Manifest; tag: string | null; commit: string | null; untagged: boolean; done: () => void }
 
-/** Without a commit or tag: the newest version tag, else the default branch (`untagged`). 422 with the check's problems. */
 export async function fetchSource(src: Source, tiers: Map<string, string>, vault: Map<string, string>): Promise<Fetched> {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-install-"))
   const done = () => removeTree(tmp)
@@ -175,7 +160,6 @@ export async function fetchSource(src: Source, tiers: Map<string, string>, vault
   }
 }
 
-/** What digestOf hashes: not ignored files, nor links. */
 export function stage(from: string, dir: string) {
   const ignored = ignoreOf(from)
   for (const f of walk(from)) {
@@ -186,8 +170,6 @@ export function stage(from: string, dir: string) {
   }
 }
 
-/** A source's zip downloaded (at most ZIP_MAX), checked against its sha256 and unpacked into `to` (at its top or in its
- *  one top folder). Names leaving the folder, too many files or too many bytes are refused. */
 async function unpack(src: Source, to: string): Promise<string> {
   const { url, sha256 } = src.archive!, shown = src.given.replace(/#.*$/, "")
   let r: Response
@@ -236,8 +218,6 @@ export function readLock(vault: Vault): Record<string, Locked> {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v && typeof v === "object" && typeof (v as Item).source === "string")) as Record<string, Locked>
 }
 
-/** Whether a plugin's folder is as the lock says it was installed (`now`: its digest, when known). A lock written before
- *  its settings files but data.json were left out of the digest (2026-10) has them in: compat.json isn't an edit. */
 export function asLocked(dir: string, l: Locked, now = digestOf(dir).content) {
   return now === l.hash || digestOf(dir, true).content === l.hash
 }
@@ -252,7 +232,6 @@ function writeLock(vault: Vault, id: string, entry: Locked | null) {
 }
 
 
-/** Swaps the whole folder at once, keeping its settings and the files it keeps as the user's. */
 export function place(vault: Vault, f: Fetched, src: Source, change?: { how: Update["how"]; notes: string[]; skip?: string }, moved?: boolean): Locked {
   const was = readLock(vault)[f.id]
   const root = vault.abs(DIR), target = path.join(root, f.id)
@@ -315,11 +294,10 @@ export async function tagOf(src: Source, version: string) {
   return src.url ? (await tagsOf(src.url, src.dir)).find((t) => tagVersion(t) === version) ?? null : null
 }
 
-/** Null when it's up to date. */
 export async function newer(l: Locked): Promise<{ tag: string | null; commit: string | null } | null> {
   const src = parseSource(l.source)
-  if (src.folder) return { tag: null, commit: null } // (a folder on this machine: what's there now is looked at)
-  if (src.archive) return null // (a zip pinned by its hash is one version: a newer one is installed from its own address)
+  if (src.folder) return { tag: null, commit: null }
+  if (src.archive) return null
   if (!src.url) return null
   if (l.tag) {
     const latest = (await tagsOf(src.url, src.dir))[0]
