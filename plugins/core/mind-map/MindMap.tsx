@@ -1,5 +1,3 @@
-// The mind map: a tidy tree laid out left to right (leaves a row each, a parent centred on its children), each top
-// branch in a colour of its own. Text is measured once per label; folding a branch is this session's, per file.
 import { useMemo, useState } from "react"
 import type { MindNode } from "./tree"
 
@@ -9,7 +7,6 @@ const folded = new Map<string, Set<number>>()
 
 let ctx: CanvasRenderingContext2D | null = null
 const widths = new Map<string, number>()
-/** A label's width in px at the map's font. */
 function measure(text: string, bold: boolean) {
   const key = `${bold ? 1 : 0}${text}`
   const hit = widths.get(key)
@@ -26,7 +23,6 @@ function measure(text: string, bold: boolean) {
 
 type Laid = { node: MindNode; x: number; y: number; w: number; label: string; color: string; kids: Laid[]; hidden: number }
 
-/** Each node's place: right of its parent, a leaf a row each, a parent centred on its children. */
 function layout(root: MindNode, shut: Set<number>, depth: number) {
   let rows = 0, width = 0
   const place = (n: MindNode, d: number, x: number, color: string): Laid => {

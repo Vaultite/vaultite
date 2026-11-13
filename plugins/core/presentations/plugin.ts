@@ -1,9 +1,7 @@
-// Presentations' server side: each slide's text and speaker notes as Markdown, for /api/render and search.
 import { Plugin, unzip, xmlDecode, zipText } from "../../../core/plugins.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
-/** The relationships of a part (`ppt/slides/slide1.xml` -> its rels): id -> [type, target as a path in the zip]. */
 function rels(zip: Map<string, () => Buffer>, part: string) {
   const dir = part.slice(0, part.lastIndexOf("/"))
   const xml = zipText(zip, `${dir}/_rels/${part.slice(dir.length + 1)}.rels`) ?? ""
@@ -26,20 +24,17 @@ function resolve(dir: string, rel: string) {
   return parts.join("/")
 }
 
-/** A slide's (or notes page's) text: each paragraph a line. */
 function paragraphs(xml: string) {
   return [...xml.matchAll(/<a:p\b[\s\S]*?<\/a:p>/g)]
     .map((p) => [...p[0].matchAll(/<a:t>([^<]*)<\/a:t>|<a:br\/>/g)].map((t) => (t[1] !== undefined ? xmlDecode(t[1]) : "\n")).join("").trim())
     .filter(Boolean)
 }
 
-/** A .pptx deck's text as Markdown. */
 export function deckMarkdown(bytes: Buffer): string {
   const zip = unzip(bytes)
   const pres = zipText(zip, "ppt/presentation.xml")
   if (pres === null) throw new Error("not a PowerPoint deck (no ppt/presentation.xml)")
   const presRels = rels(zip, "ppt/presentation.xml")
-  // The deck's order; slides it doesn't list (a broken file) after, by number.
   let slides = [...pres.matchAll(/<p:sldId\b[^>]*\br:id="([^"]+)"/g)].map((m) => presRels.get(m[1])?.[1]).filter((p): p is string => !!p && zip.has(p))
   if (!slides.length) {
     slides = [...zip.keys()].filter((k) => /^ppt\/slides\/slide\d+\.xml$/.test(k))

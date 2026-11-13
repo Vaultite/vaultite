@@ -1,9 +1,6 @@
-// A CSV changed a field at a time: only that field's characters are rewritten, so its quoting, separator and line
-// endings stay as they were (a diff shows one cell). Reads records as core/csv.ts does. No Node.
 
 type Span = { start: number; end: number; quoted: boolean }
 
-/** The separator, as core/csv.ts picks it: the first line's commonest of , ; and tab, outside quotes. */
 function sepOf(text: string, from: number): string {
   const count: Record<string, number> = { ",": 0, ";": 0, "\t": 0 }
   for (let j = from, q = false; j < text.length && j < from + 10_000; j++) {
@@ -15,7 +12,6 @@ function sepOf(text: string, from: number): string {
   return count[";"] > count[","] && count[";"] >= count["\t"] ? ";" : count["\t"] > count[","] ? "\t" : ","
 }
 
-/** Each record's fields as spans of the text, and where each record's line ends. */
 function spans(text: string) {
   let i = text.charCodeAt(0) === 0xfeff ? 1 : 0
   const sep = sepOf(text, i)
@@ -37,11 +33,8 @@ function spans(text: string) {
   return { sep, rows, newline: /\r\n/.test(text) ? "\r\n" : "\n" }
 }
 
-/** A field as written: in quotes when it holds the separator, a quote or a line break (or was quoted). */
 const field = (v: string, sep: string, quote = false) => (quote || v.includes(sep) || /["\r\n]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v)
 
-/** Record `row`'s field `col` (as parseCsv numbers them, the header 0) set to `value`; a record too short gets the
- *  fields it lacks. */
 export function setCell(text: string, row: number, col: number, value: string): string {
   const { sep, rows } = spans(text)
   const r = rows[row]
@@ -51,7 +44,6 @@ export function setCell(text: string, row: number, col: number, value: string): 
   return text.slice(0, r.end) + sep.repeat(col - r.fields.length + 1) + field(value, sep) + text.slice(r.end)
 }
 
-/** A record of `n` empty fields added at the end (after the last line's break, which it gets too). */
 export function addRow(text: string, n: number): string {
   const { sep, newline } = spans(text)
   const body = text.length && !/[\r\n]$/.test(text) ? text + newline : text

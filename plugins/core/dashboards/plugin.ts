@@ -1,5 +1,3 @@
-// Dashboards' server side: `vau dashboard new` makes one. Writing plugins' pages is the core's, pinning them
-// Pinned's.
 import { OpError, Plugin } from "../../../core/plugins.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -43,8 +41,6 @@ orange, purple, today, people...).
       throw e
     }
     const icons: string[] = icon ? await ctx.op("icon.list") : []
-    // Pinned where the user sees it (Pinned's page.pin: the window's workspace's list with Workspaces on); without
-    // Pinned the page stays unpinned.
     const pinnedTo = noPin ? null : await ctx.op("page.pin", { path: rel }).then((r: { label: string }) => r.label, () => null)
     return { path: rel, pinned: pinnedTo !== null, ...(icon && icons.length && !icons.includes(icon) ? { unknownIcon: icon, icons } : {}) }
   },

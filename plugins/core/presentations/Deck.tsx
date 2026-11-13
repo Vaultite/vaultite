@@ -1,5 +1,3 @@
-// A .pptx drawn read-only like PowerPoint (pptx-renderer, its own chunk), far slides not kept drawn. The file is
-// untrusted: the renderer escapes text, filters link protocols and limits what the zip may unpack.
 import { useEffect, useRef, useState } from "react"
 import { linkClick, Loading, openWebLink } from "@vaultite"
 
@@ -19,7 +17,6 @@ export default function Deck({ url, embed }: { url: string; embed?: boolean }) {
         fetch(url, { signal: stop.signal }).then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(r.statusText)))),
       ])
       if (stop.signal.aborted) return
-      // (scrolled by the pane, or by the embed's own box)
       const scroller = embed ? el.parentElement! : el.closest<HTMLElement>("[data-pane]") ?? undefined
       viewer = await PptxViewer.open(bytes, el, {
         zipLimits: RECOMMENDED_ZIP_LIMITS, fitMode: "contain", lazyMedia: true, lazySlides: true, pdfjs: false,
@@ -32,7 +29,6 @@ export default function Deck({ url, embed }: { url: string; embed?: boolean }) {
     })().catch((e) => { if (!stop.signal.aborted) setState(String(e?.message ?? e)) })
     return () => { stop.abort(); viewer?.destroy() }
   }, [url, embed])
-  // Links: web ones open like the app's; nothing else runs.
   const click = (e: React.MouseEvent) => {
     const a = (e.target as Element).closest?.("a[href]")
     if (!a) return

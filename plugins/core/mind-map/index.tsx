@@ -1,5 +1,3 @@
-// Mind map: a note's headings and lists drawn as a map, in a tab (view:mind-map/<path>, or following the file you're on)
-// and as a block. It reads the editor's text as it's typed (useOutline), so the map keeps up.
 import { useMemo } from "react"
 import { LayoutDashboard, Network, SquareArrowOutUpRight } from "lucide-react"
 import { currentFile, definePlugin, notify, notifyError, openFile, openView, Panel, post, stem, useFocusedFile, useOutline } from "@vaultite"
@@ -13,13 +11,11 @@ const openMap = (path?: string | null, split = false) => {
   openView(`mind-map/${path}`, split ? { split: true } : { newTab: true })
 }
 
-/** The note's map as a canvas beside it (the op mind-map.canvas), opened. */
 async function toCanvas(path?: string | null) {
   if (!path || !/\.md$/i.test(path)) return notify("Open a note to turn its mind map into a canvas")
   try { openFile((await post<{ path: string }>("ops/mind-map.canvas", { path })).path) } catch (e) { notifyError(e, "Couldn't make the canvas") }
 }
 
-/** The map of `path`'s headings and lists; a click goes to that line (the root: the note). */
 function NoteMap({ path, depth, height, lists = true }: { path: string; depth?: number; height?: number; lists?: boolean }) {
   const { headings: outline, text, loading, go, goLine } = useOutline(path)
   const headings = useMemo(() => headingsIn(text, lists), [text, lists])

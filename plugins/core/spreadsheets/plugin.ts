@@ -1,5 +1,3 @@
-// Spreadsheets' server side: each sheet as a Markdown table of its formatted cells for /api/render and
-// search, with SheetJS (xlsx/, ours: PROVENANCE.md) loaded on first use.
 import { createRequire } from "node:module"
 import { Plugin } from "../../../core/plugins.ts"
 
@@ -8,12 +6,10 @@ export const plugin = new Plugin(import.meta.url)
 export const EXTS = ["xlsx", "xlsm", "xls", "ods", "numbers"]
 type XLSX = typeof import("./xlsx/xlsx.mjs")
 let lib: XLSX | null = null
-// (require of an ES module: synchronous, as the text: readers are)
 const xlsx = () => (lib ??= createRequire(import.meta.url)("./xlsx/xlsx.mjs") as XLSX)
 
 const cell = (s: unknown) => String(s ?? "").replace(/\|/g, "\\|").replace(/\r?\n/g, " ").trim()
 
-/** A workbook's sheets as Markdown: `## Sheet` then its cells as a table (the first row as its header). */
 export function workbookMarkdown(bytes: Buffer): string {
   const X = xlsx()
   const book = X.read(bytes, { type: "buffer", cellDates: true, dense: true })

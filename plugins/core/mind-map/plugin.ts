@@ -1,5 +1,3 @@
-// Mind map's block as text (the note's headings and lists as a nested list: what an agent reads where the app draws the
-// map), and the map turned into a canvas to rearrange freely.
 import fs from "node:fs"
 import { OpError, Plugin, vaultPath } from "../../../core/plugins.ts"
 import { readText } from "../../../core/vault.ts"

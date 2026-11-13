@@ -1,5 +1,3 @@
-// A workbook read off the main thread (Workbook.tsx): any file can come from anywhere, so a big or broken one never
-// freezes the app, and one that takes too long is stopped with its worker.
 import { read } from "./xlsx/xlsx.mjs"
 
 self.onmessage = (e: MessageEvent<ArrayBuffer>) => {

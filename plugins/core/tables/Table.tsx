@@ -1,13 +1,9 @@
-// A .csv drawn: a sticky header, a filter, sorting (numbers as numbers), the first rows until asked for all; its cells
-// edited in place (a double-click) when it can be written. Embedded it's its rows only.
 import { useMemo, useRef, useState } from "react"
 import { ArrowDown, ArrowUp, Plus } from "lucide-react"
 import { cn, FilterField, numberText, parseCsv } from "@vaultite"
 import { addRow, setCell } from "./csvedit"
 
 const PAGE = 300
-/** Text in the user's order, "2" before "10" (one collator: localeCompare with options makes one per call, slow on
- *  thousands of rows). */
 const byText = new Intl.Collator(undefined, { numeric: true })
 const NUM = /^\s*[-+]?(?:\$|R\$|€|£)?\s*[-+]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?\s*%?\s*$/
 const num = (s: string) => Number(s.replace(/[^\d.+-]/g, ""))
@@ -15,13 +11,10 @@ const num = (s: string) => Number(s.replace(/[^\d.+-]/g, ""))
 type Row = string[] & { at?: number }
 
 export function CsvView({ text, embed, onChange }: { text: string; embed?: boolean; onChange?: (text: string) => void }) {
-  // (a record just added stays, blank as it is: one column's empty record reads as a blank line)
   const added = useRef(0)
   const { head, rows, numeric } = useMemo(() => {
     const [h = [], ...all] = parseCsv(text)
-    // (each record keeps its place in the file, which an edit is written to; a blank line isn't one, ",," is)
     const rs = all.map((r, i) => Object.assign(r, { at: i + 1 }) as Row).filter((r) => r.length > 1 || r[0] !== "" || r.at === added.current)
-    // A column is numeric when (nearly) every filled cell is a number.
     const numeric = h.map((_, j) => {
       const filled = rs.map((r) => r[j] ?? "").filter((v) => v.trim() !== "")
       return filled.length > 0 && filled.filter((v) => NUM.test(v)).length >= filled.length * 0.95
@@ -31,7 +24,6 @@ export function CsvView({ text, embed, onChange }: { text: string; embed?: boole
   const [q, setQ] = useState("")
   const [sort, setSort] = useState<{ col: number; dir: 1 | -1 } | null>(null)
   const [all, setAll] = useState(false)
-  // The cell being edited: its record's place in the file and its column.
   const [editing, setEditing] = useState<{ at: number; col: number } | null>(null)
 
   const shown = useMemo(() => {
@@ -50,7 +42,6 @@ export function CsvView({ text, embed, onChange }: { text: string; embed?: boole
   if (!head.length) return <p className="text-[15px] text-muted-foreground">An empty table. Source mode shows its text.</p>
   const visible = all || embed ? shown : shown.slice(0, PAGE)
   const save = (at: number, col: number, value: string) => { if (onChange && (parseCsv(text)[at]?.[col] ?? "") !== value) onChange(setCell(text, at, col, value)) }
-  /** Leaving a cell: saved, then on to the next one (Enter: the row under it as shown, Tab: the next column). */
   const leave = (input: HTMLTextAreaElement, r: number, j: number, go: "down" | "up" | "right" | "left" | null) => {
     const at = visible[r].at!
     save(at, j, input.value)
@@ -90,12 +81,10 @@ export function CsvView({ text, embed, onChange }: { text: string; embed?: boole
               <tr key={r.at ?? i} tabIndex={i === 0 ? 0 : -1} data-keyrow data-csv-row={r.at} className="even:bg-foreground/[0.025]">
                 {head.map((_, j) => editing?.at === r.at && editing.col === j ? (
                   <td key={j} className="relative p-0 align-top">
-                    {/* (the cell keeps its size, its text unseen under the field: editing moves no column) */}
                     <div aria-hidden className={cn("invisible max-w-[420px] truncate px-3 py-1.5", numeric[j] && "tabular-nums")}>{r[j] || " "}</div>
                     <textarea autoFocus defaultValue={r[j] ?? ""} rows={1} aria-label={`${head[j] || "Column"} of row ${i + 1}`} data-csv-input
                       onFocus={(e) => e.currentTarget.select()}
                       onKeyDown={(e) => {
-                        // (a key that leaves the cell marks its field, so the blur that follows saves nothing more)
                         if (e.key === "Escape") { e.preventDefault(); e.currentTarget.dataset.left = ""; setEditing(null) }
                         else if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); e.currentTarget.dataset.left = ""; leave(e.currentTarget, i, j, "down") }
                         else if (e.key === "Tab") { e.preventDefault(); e.currentTarget.dataset.left = ""; leave(e.currentTarget, i, j, e.shiftKey ? "left" : "right") }

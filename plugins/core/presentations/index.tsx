@@ -1,5 +1,3 @@
-// Presentations: .pptx decks drawn read-only like PowerPoint (Deck.tsx, its own chunk), and embedded as scrolling
-// slides. Off, a .pptx is a file card.
 import { lazy, Suspense } from "react"
 import { Presentation } from "lucide-react"
 import { definePlugin, Loading, type FileFormat } from "@vaultite"
