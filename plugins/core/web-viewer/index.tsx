@@ -9,7 +9,6 @@ import { painted } from "./layers"
 import { manageContainers, SitesPanel, sitesPanelMenu, SitesSettings, SitesView } from "./Sites"
 import { extensionPageName, extensionsChanged, hasExtensions, popupChanged, setExtensionsOpener } from "./extstate"
 import { liveTitle } from "./livetitles"
-import { askClear, HistoryView } from "./HistoryView"
 import { EDIT_DETAIL, ENTRY_DETAIL, entryTitle, NEW_DETAIL, PasswordsSetting } from "./passwordstore"
 import { askImport, browsersHere, findBrowsers } from "./importer"
 import "./types"
@@ -32,6 +31,8 @@ import { useSecretKeeper } from "./secretkeeper"
 import { engine } from "./engine"
 
 const WebPage = lazy(() => import("./WebPage"))
+// oxlint-disable-next-line react/only-export-components -- a lazy view's loader, like the ones below; fast refresh is dev-only
+const HistoryView = lazy(() => import("./HistoryView").then((m) => ({ default: m.HistoryView })))
 const ReplaysView = lazy(() => import("./Replays").then((m) => ({ default: m.ReplaysView })))
 const AgentPasskeys = lazy(() => import("./AgentPasskeys").then((m) => ({ default: m.AgentPasskeys })))
 const PasswordsView = lazy(() => import("./Passwords").then((m) => ({ default: m.PasswordsView })))
@@ -281,7 +282,7 @@ export default definePlugin({
       render: ({ arg, setArg }) => <Suspense fallback={null}><LiveView arg={arg} setArg={setArg} /></Suspense> },
     "web-pages": { icon: Globe, title: () => "Sites", render: () => <SitesView openPage={openPage} /> },
     "web-extensions": { icon: Puzzle, title: () => "Extensions", render: () => <Suspense fallback={null}><ExtensionsView openPage={openPage} /></Suspense> },
-    "web-history": { icon: History, title: () => "History", render: () => <HistoryView openPage={(url) => openPage(url)} onImport={() => void askImport()} /> },
+    "web-history": { icon: History, title: () => "History", render: () => <Suspense fallback={null}><HistoryView openPage={(url) => openPage(url)} onImport={() => void askImport()} /></Suspense> },
   },
   details: {
     [ENTRY_DETAIL]: { title: (_s, [id]) => entryTitle(id), render: (_s, [id]) => <Suspense fallback={null}><EntrySheet id={id} /></Suspense> },
@@ -344,7 +345,7 @@ export default definePlugin({
       run: () => openView("passwords", { newTab: !isViewOpen("view:passwords") }) },
     { id: "web:downloads", name: "Show downloads", desktop: true, when: () => !!webPages?.download, run: () => showDownloads(), icon: Download },
     { id: "web:history", name: "Show history", keys: isMac ? ["Mod+Y"] : ["Mod+H"], desktop: true, when: () => !!webPages?.engine, run: () => openView("web-history", { newTab: !isViewOpen("view:web-history") }), icon: History },
-    { id: "web:clear-history", name: "Clear browsing history…", desktop: true, when: () => !!webPages?.engine, run: askClear, icon: Eraser },
+    { id: "web:clear-history", name: "Clear browsing history…", desktop: true, when: () => !!webPages?.engine, run: () => void import("./HistoryView").then((m) => m.askClear()), icon: Eraser },
     { id: "web:block-element", name: "Block an element on this page", when: () => !!webPages?.engine && /^https?:\/\//i.test(focusedPage()?.url() ?? ""),
       run: () => void pickElement(focusedPageId()), icon: MousePointerSquareDashed },
     { id: "web:edit-style", name: "Edit this site's style", when: () => !!webPages?.engine && !!hostOf(focusedPage()?.url() ?? ""),
