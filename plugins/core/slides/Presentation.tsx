@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, LayoutGrid, Maximize2, Minimize2, NotebookTe
 import { activeFile, cn, folderOf, getStore, isDesktop, NoteBody, notify, onLook, onlyMode, rawUrl, readFile, readProps, resolver, snippet, splitFm, stem, useVaultChange, type Store } from "@vaultite"
 import { exportAsked } from "./asked"
 import { DeckExport } from "./exportHtml"
-import { cssFiles, cssPlaces, cssUrls, isTitleSlide, moveOf, parseDeck, scopeCss, templateNames, sizeOf, upcoming, type Slide } from "./slides"
+import { BACK_KEYS, cssFiles, cssPlaces, cssUrls, fragmentGroups, isTitleSlide, moveOf, NEXT_KEYS, parseDeck, scopeCss, templateNames, sizeOf, upcoming, type Slide } from "./slides"
 import { openPresenter, Presenter, Screen, type Keys, type PresenterWindow } from "./Presenter"
 import { Ink, InkBar, Laser, Overview, overviewKeys, TimeBar, TOOLS_CSS, type InkColor, type Stroke } from "./Tools"
 import { revealTheme } from "./themes"
@@ -79,16 +79,7 @@ export function annotate(root: HTMLElement, slide: Slide) {
   }
 }
 
-function fragmentsOf(root: HTMLElement): HTMLElement[][] {
-  const at = new Map<number, HTMLElement[]>(), rest: HTMLElement[][] = []
-  for (const f of root.querySelectorAll<HTMLElement>(".fragment")) {
-    const k = Number.parseInt(f.dataset.fragmentIndex ?? "", 10)
-    if (!Number.isFinite(k)) rest.push([f])
-    else if (at.has(k)) at.get(k)!.push(f)
-    else at.set(k, [f])
-  }
-  return [...[...at].sort((a, b) => a[0] - b[0]).map((e) => e[1]), ...rest]
-}
+const fragmentsOf = (root: HTMLElement) => fragmentGroups(root.querySelectorAll<HTMLElement>(".fragment"), (f) => f.dataset.fragmentIndex)
 
 function useLook() {
   const read = () => { const r = document.documentElement; return `${r.classList.contains("dark") ? "dark" : "light"} ${r.dataset.scheme ?? ""}` }
@@ -436,8 +427,8 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
     else if (k === "b") { setBoard((b) => !b); setPen((p) => p ?? color) }
     else if (k === "q") setLaser((v) => !v)
     else if (k === "o") setOverview(true)
-    else if (["ArrowDown", "PageDown", " ", "Enter", "n"].includes(k)) go(1)
-    else if (["ArrowUp", "PageUp", "Backspace", "p"].includes(k)) go(-1)
+    else if (NEXT_KEYS.includes(k)) go(1)
+    else if (BACK_KEYS.includes(k)) go(-1)
     else if (k === "ArrowRight") go(1, true)
     else if (k === "ArrowLeft") go(-1, true)
     else if (k === "Home") jump(0)

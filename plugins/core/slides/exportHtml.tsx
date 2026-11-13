@@ -4,7 +4,7 @@ import { cn, getStore, NoteBody, notify, notifyError, stem, type Store } from "@
 import { Boxes, layOut, LAYOUT_CSS } from "./Layout"
 import { annotate, backgroundOf, DECK_CSS, frameOf, SlideFrame, TITLE } from "./Presentation"
 import { exportAsked } from "./asked"
-import { isTitleSlide, type Slide } from "./slides"
+import { BACK_KEYS, fragmentGroups, isTitleSlide, NEXT_KEYS, type Slide } from "./slides"
 import { revealTheme } from "./themes"
 
 const dataUrl = (url: string) => fetch(url).then((r) => (r.ok ? r.blob() : Promise.reject(new Error(`${r.status}`)))).then((b) => new Promise<string>((ok, no) => {
@@ -63,12 +63,12 @@ body.notes section.on > aside { display: block; position: fixed; top: 0; right: 
 const PLAYER = `(() => {
 const S = [...document.querySelectorAll("[data-deck] > section")], bar = document.querySelector(".slide-bar"), count = document.querySelector(".slide-count")
 let i = 0, step = 0
-const groups = (s) => { const at = new Map(), rest = []; for (const f of s.querySelectorAll(".slide-fit .fragment")) { const k = parseInt(f.dataset.fragmentIndex, 10); if (isNaN(k)) rest.push([f]); else { if (!at.has(k)) at.set(k, []); at.get(k).push(f) } } return [...[...at].sort((a, b) => a[0] - b[0]).map((e) => e[1]), ...rest] }
+const groups = (s) => (${fragmentGroups.toString()})(s.querySelectorAll(".slide-fit .fragment"), (f) => f.dataset.fragmentIndex)
 const fit = () => { const f = S[i].querySelector(".slide-fit"), w = innerWidth - (document.body.classList.contains("notes") ? 360 : 0); f.style.transform = "none"; const fw = f.offsetWidth, sc = Math.max(0.1, Math.min(2.2 * 720 / fw, (w * 0.9) / fw, (innerHeight * 0.85) / f.offsetHeight)); f.style.left = w / 2 + "px"; f.style.transform = "translate(-50%, -50%) scale(" + sc + ")" }
 const show = () => { S.forEach((s, k) => s.classList.toggle("on", k === i)); const g = groups(S[i]); step = Math.max(0, Math.min(step, g.length)); g.forEach((x, k) => x.forEach((f) => { f.classList.toggle("visible", k < step); f.classList.toggle("current-fragment", k === step - 1) })); count.textContent = i + 1 + " / " + S.length; bar.style.width = ((i + 1) / S.length) * 100 + "%"; history.replaceState(null, "", "#" + (i + 1)); fit() }
 const go = (d, col) => { const n = groups(S[i]).length; if (!col && d > 0 && step < n) { step++; return show() } if (!col && d < 0 && step > 0) { step--; return show() } const h = +S[i].dataset.h; const to = !col ? i + d : d > 0 ? S.findIndex((s) => +s.dataset.h > h) : S.findIndex((s) => +s.dataset.h === h - 1); if (to < 0 || to >= S.length) return; i = to; step = d < 0 && !col ? Infinity : 0; show() }
 addEventListener("keydown", (e) => { if (e.metaKey || e.ctrlKey || e.altKey) return; const k = e.key
-  if (["ArrowDown", "PageDown", " ", "Enter", "n"].includes(k)) go(1); else if (["ArrowUp", "PageUp", "Backspace", "p"].includes(k)) go(-1)
+  if (${JSON.stringify(NEXT_KEYS)}.includes(k)) go(1); else if (${JSON.stringify(BACK_KEYS)}.includes(k)) go(-1)
   else if (k === "ArrowRight") go(1, true); else if (k === "ArrowLeft") go(-1, true)
   else if (k === "Home" || k === "End") { i = k === "Home" ? 0 : S.length - 1; step = 0; show() }
   else if (k === "s") { document.body.classList.toggle("notes"); fit() }

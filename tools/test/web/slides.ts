@@ -123,6 +123,13 @@ import { check } from "../lib.ts"
   check("slides: the presenter's next: the next fragment, else the next slide (none after the last)", up(0, 0, 2) === '{"at":0,"step":1}'
     && up(0, 2, 2) === '{"at":1,"step":0}' && up(1, Infinity, 1) === '{"at":2,"step":0}' && up(2, 0, 0) === "null" && up(2, 0, 1) === '{"at":2,"step":1}')
   check("slides: the presenter's timer", elapsedText(0) === "0:00" && elapsedText(245_900) === "4:05" && elapsedText(3_845_000) === "1:04:05" && elapsedText(-5) === "0:00")
+  const { fragmentGroups } = await import("../../../plugins/core/slides/slides.ts")
+  const frags = [{ n: "2", id: "a" }, { n: undefined, id: "b" }, { n: "1", id: "c" }, { n: "2", id: "d" }, { n: "x", id: "e" }]
+  const order = fragmentGroups(frags, (f) => f.n).map((g) => g.map((f) => f.id).join("")).join(" ")
+  check("slides: fragments come by data-fragment-index, one step each, then the rest", order === "c ad b e", order)
+  const { runInNewContext } = await import("node:vm")
+  const alone: unknown = runInNewContext(`(${fragmentGroups.toString()})(frags, (f) => f.n).map((g) => g.map((f) => f.id).join("")).join(" ")`, { frags })
+  check("slides: an exported deck's player runs the same fragment order on its own", alone === order, alone)
 }
 
 // ---------- Slides themes: reveal's and Advanced Slides' themes in the app's colours (plugins/core/slides/themes.ts) ----------

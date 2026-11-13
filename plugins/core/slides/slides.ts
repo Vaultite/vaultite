@@ -360,6 +360,20 @@ export function upcoming(at: number, step: number, count: number, n: number): { 
   return k < count ? { at, step: k + 1 } : at + 1 < n ? { at: at + 1, step: 0 } : null
 }
 
+export const NEXT_KEYS = ["ArrowDown", "PageDown", " ", "Enter", "n"]
+export const BACK_KEYS = ["ArrowUp", "PageUp", "Backspace", "p"]
+
+export function fragmentGroups<T>(fragments: Iterable<T>, indexOf: (f: T) => string | undefined): T[][] {
+  const at = new Map<number, T[]>(), rest: T[][] = []
+  for (const f of fragments) {
+    const k = Number.parseInt(indexOf(f) ?? "", 10), same = at.get(k)
+    if (!Number.isFinite(k)) rest.push([f])
+    else if (same) same.push(f)
+    else at.set(k, [f])
+  }
+  return [...[...at].sort((a, b) => a[0] - b[0]).map((e) => e[1]), ...rest]
+}
+
 export function elapsedText(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60
   const two = (v: number) => String(v).padStart(2, "0")
