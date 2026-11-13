@@ -1,5 +1,3 @@
-// Canvas (JSON Canvas): an infinite board of cards in groups, joined by arrows, saved and merged like
-// any file; embeds show a picture. As text for AIs: its cards and connections.
 import { lazy, Suspense, type ReactNode } from "react"
 import { LayoutDashboard, Scan, ZoomIn, ZoomOut } from "lucide-react"
 import { besideActive, definePlugin, freeName, getStore, openNew, plural, post, reload, type FileFormat } from "@vaultite"
@@ -10,7 +8,6 @@ const Board = lazy(() => import("./Board"))
 
 const EMPTY = JSON.stringify({ nodes: [], edges: [] }, null, "\t") + "\n"
 
-/** Where a new canvas goes: next to the note being written (not a page: a dashboard), else Canvases/. */
 const whereNew = () => besideActive("Canvases")
 
 async function newCanvas(folder = whereNew()) {
@@ -25,13 +22,11 @@ const box = (node: ReactNode) => <Suspense fallback={<div className="absolute in
 
 const format: FileFormat = {
   exts: ["canvas"], icon: LayoutDashboard, tint: "var(--teal)", json: true, layout: "pane",
-  // (its words would be the JSON's)
   status: (text) => { try { const n = parseCanvas(text).nodes.filter((x) => x.type !== "group").length; return plural(n, "card") } catch { return null } },
   render: (ctx) => box(<Board {...ctx} />),
   embed: (ctx) => box(<Board {...ctx} editable={false} place="embed" />),
 }
 
-// A made-up canvas for the Plugins sheet.
 const SAMPLE = JSON.stringify({
   nodes: [
     { id: "g", type: "group", label: "Lighthouse", x: -40, y: -60, width: 620, height: 260, color: "5" },
@@ -47,8 +42,6 @@ export default definePlugin({
   newFiles: [{ label: "New canvas", icon: LayoutDashboard, make: newCanvas }],
   commands: [
     { id: "canvas:new", name: "New canvas", run: () => void newCanvas().then((p) => openNew(p)) },
-    // While a board has the keyboard: the arrows pan it (with nothing selected: selected cards move instead), + and -
-    // zoom. Vim's h/j/k/l pan too (the Vim vault plugin's lists.ts).
     ...([["left", "ArrowLeft", -1, 0], ["right", "ArrowRight", 1, 0], ["up", "ArrowUp", 0, -1], ["down", "ArrowDown", 0, 1]] as const).map(([dir, key, x, y]) => ({
       id: `canvas:pan-${dir}`, name: `Pan the canvas ${dir}`, keys: [key],
       when: () => { const b = focusedBoard(); return !!b && !b.selected() }, run: () => { const b = focusedBoard(); if (b) b.pan(x * panStep(b), y * panStep(b)) },

@@ -1,4 +1,3 @@
-// The board's buttons and its one-line label editor.
 import { useEffect, useRef, type MouseEvent } from "react"
 import type { StickyNote } from "lucide-react"
 import { cn } from "@vaultite"

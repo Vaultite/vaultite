@@ -1,5 +1,3 @@
-// A .canvas drawn as an infinite board; the file's text is the only state. Panning and zooming never
-// redraw React: the view lives in a ref written straight to the stage, and only cards near the screen are drawn.
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as RDragEvent, type KeyboardEvent, type MouseEvent, type PointerEvent as RPointerEvent } from "react"
 import {
   AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignStartHorizontal, AlignStartVertical, ArrowLeftRight,
@@ -19,7 +17,6 @@ import { LabelEditor, Tool } from "./parts"
 import { usePresenting } from "./presenting"
 import { useView, useWheel } from "./view"
 
-/** How near (screen px) a card's edge must come to another's to snap to it. */
 const SNAP_PX = 6
 
 type Settings = { snapToGrid?: boolean; snapToObjects?: boolean }
@@ -52,7 +49,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
   const [guides, setGuides] = useState<Guide[]>([])
   const [spacePan, setSpacePan] = useState(false)
   const fitted = useRef(false)
-  /** The canvas before the edit going on (one undo when it ends), or NEW: a card just added, its text part of that. */
   const editBase = useRef<CanvasDoc | typeof NEW | null>(null)
   const lastPointer = useRef<Pt | null>(null)
 
@@ -60,7 +56,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
   const snapToGrid = settings.snapToGrid !== false, snapToObjects = settings.snapToObjects !== false
   const setSetting = (patch: Settings) => void canvasSettings.set(patch).catch(() => {})
 
-  // A change made elsewhere (on disk, another device): drawn as it is.
   useEffect(() => {
     if (text === last.current) return
     last.current = text
@@ -86,7 +81,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
 
   const { box, stage, zoomLabel, viewRef, win, winRef, cull, bar, barAt, placeBar, paint, anim, setView, animateTo } = useView()
 
-  // Fit it in its box when it's first drawn (and an embed whenever it changes size or content).
   const fitKey = embed ? doc : null
   useLayoutEffect(() => {
     const el = box.current
@@ -120,7 +114,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
   const zoomTo100 = () => { const { w, h } = size(); animateTo(zoomAbout(viewRef.current, 1, w / 2, h / 2)) }
   const { slides, slide, showSlide, endPresenting } = usePresenting(doc, size, animateTo, fitAll)
   const present = () => { setSel(new Set()); setSelEdge(null); setEditing(null); showSlide(0); box.current?.focus() }
-  // The keyboard's pan and zoom commands (keys.ts) reach this board through these, the latest of them.
   const keyed = useRef<BoardKeys | null>(null)
   keyed.current = {
     box: box.current,
@@ -128,7 +121,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     zoom: zoomBy, fit: fitAll, fitSelection, zoom100: zoomTo100, selected: () => sel.size > 0 || !!selEdge,
   }
   useEffect(() => registerBoard(() => ({ ...keyed.current!, box: box.current })), [box])
-  // ⌘+ ⌘- ⌘0 in its pane zoom the board as = - ⇧0 do (its own label says how far: nothing more to say).
   useZoomTarget(box, (step) => { if (step) zoomBy(step > 0 ? 1.25 : 0.8); else zoomTo100(); return null })
 
   const toWorld = (cx: number, cy: number): Pt => {
@@ -142,7 +134,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     return ns.findLast((n) => n.type !== "group") ?? ns[ns.length - 1] ?? null
   }
   const viewCentre = (): Pt => { const r = box.current!.getBoundingClientRect(); return toWorld(r.left + r.width / 2, r.top + r.height / 2) }
-  /** Where something pasted goes: the pointer, when it's over the board, else the middle of the view. */
   const pastePoint = (): Pt => {
     const p = lastPointer.current, r = box.current?.getBoundingClientRect()
     return p && r && p.x >= r.left && p.x <= r.right && p.y >= r.top && p.y <= r.bottom ? toWorld(p.x, p.y) : viewCentre()
@@ -151,7 +142,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
   const focusBoard = () => box.current?.focus({ preventScroll: true })
   const select = (ids: Iterable<string>) => { setSel(new Set(ids)); setSelEdge(null) }
 
-  /** Stop editing: a text card grows to fit what was written, and the whole edit is one undo. */
   function endEdit() {
     const ed = editingRef.current
     if (!ed) return
@@ -193,7 +183,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     if (n && t !== null && t !== String(n.label ?? "")) patchNode(id, { label: t })
   }
   const onGroupLabel = useCallback((id: string, t: string | null) => labelDone.current(id, t), [])
-  // Folding a group: `collapsed` on it, its cards (and arrows to them) hidden until it's unfolded.
   const toggleGroup = useRef((_id: string) => {})
   toggleGroup.current = (id: string) => {
     const d = docRef.current
@@ -204,13 +193,11 @@ export default function Board({ store, text, editable, onChange, place, path }: 
 
   const addNode = (node: Omit<CanvasNode, "id">, opts: { edit?: boolean; from?: { id: string; side: Side; toSide: Side } } = {}) => {
     const n = { id: newId(taken()), ...node } as CanvasNode
-    // Groups go first: they're drawn behind the cards.
     const nodes = n.type === "group" ? [n, ...docRef.current.nodes] : [...docRef.current.nodes, n]
     const edges = opts.from ? [...docRef.current.edges, { id: newId(new Set([...taken(), n.id])), fromNode: opts.from.id, fromSide: opts.from.side, toNode: n.id, toSide: opts.from.toSide } as CanvasEdge] : docRef.current.edges
     commit({ ...docRef.current, nodes, edges })
     select([n.id])
     if (opts.edit) {
-      // (a new card's text is part of adding it: one undo takes both away)
       if (n.type === "group") setEditing({ kind: "label", id: n.id })
       else if (n.type === "text") { editBase.current = NEW; setEditing({ kind: "text", id: n.id }) }
     } else focusBoard()
@@ -248,7 +235,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     const g = b ? { x: b.x0 - 40, y: b.y0 - 60, width: b.x1 - b.x0 + 80, height: b.y1 - b.y0 + 100 } : { x: c.x - 250, y: c.y - 180, width: 500, height: 360 }
     addNode({ type: "group", label: "Group", ...g }, { edit: true })
   }
-  /** An arrow let go in empty space: a new card there, connected, of the kind picked from a menu. */
   const connectInto = (from: CanvasNode, side: Side, p: Pt, client: Pt) => {
     const a = anchor(from, side)
     openMenu(client, [
@@ -282,7 +268,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     return [{ label: "No colour", checked: !current, run: () => recolour(null) },
       ...Object.entries(PRESET_NAMES).map(([id, label]) => ({ label, checked: current === id, run: () => recolour(id) }))]
   }
-  /** Shapes and borders for the selected cards, line styles for the selected arrow (one menu each). */
   const restyle = (key: "shape" | "border" | "path", value: string) => {
     const d = docRef.current
     if (selEdge) commit({ ...d, edges: d.edges.map((e) => (e.id === selEdge ? withStyle(e, key, value) : e)) })
@@ -337,7 +322,7 @@ export default function Board({ store, text, editable, onChange, place, path }: 
       const f = await createFile(newNoteFolder(store, path), nameFromText(dropHighlightEmoji(String(n.text ?? ""))), String(n.text ?? ""))
       const d = docRef.current
       commit({ ...d, nodes: d.nodes.map((x) => { if (x.id !== n.id) return x; const { text: _t, ...rest } = x; return { ...rest, type: "file", file: f.path } as CanvasNode }) })
-    } catch { /* told by the app */ }
+    } catch {}
   }
   function openNode(n: CanvasNode, newTab = false) {
     if (n.type === "file" && n.file) openFile(String(n.file), { newTab })
@@ -363,7 +348,7 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     try {
       const paths = await saveAttachments(store, path, files)
       paths.forEach((p, i) => addFileAt(p, { x: at.x + i * 40, y: at.y + i * 40 }))
-    } catch { /* told by the app */ }
+    } catch {}
   }
   const pasteFromMenu = async (at: Pt) => {
     try {
@@ -372,9 +357,8 @@ export default function Board({ store, text, editable, onChange, place, path }: 
         if (img) { const b = await it.getType(img); await pasteFiles([new File([b], `Pasted image.${img.split("/")[1] ?? "png"}`, { type: img })], at); return }
       }
       pasteText(await navigator.clipboard.readText(), at)
-    } catch { /* no access to the clipboard */ }
+    } catch {}
   }
-  // The clipboard's events, while the board (not a field in it) has the keyboard.
   const clip = useRef({ copy: (_e: ClipboardEvent) => {}, cut: (_e: ClipboardEvent) => {}, paste: (_e: ClipboardEvent) => {} })
   clip.current = {
     copy: (e) => { if (sel.size && e.clipboardData) { e.preventDefault(); e.clipboardData.setData("text/plain", selectionText()) } },
@@ -416,7 +400,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
   const pts = useRef(new Map<number, Pt>())
   const pinch = useRef<{ d: number; c: Pt } | null>(null)
   const setD = (d: Drag | null) => { dragRef.current = d; setDrag(d) }
-  /** Boxes a move or a resize snaps to: the cards near the screen that aren't moving. */
   const othersThan = (moving: Set<string>) => {
     const w = winRef.current
     return docRef.current.nodes.filter((n) => !moving.has(n.id) && (!w || overlaps(n, w)))
@@ -476,7 +459,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
       if (e.shiftKey && wasSelected) next.delete(id); else next.add(id)
       if (!editable) { setSel(next); pan(); return }
       const base = docRef.current
-      // Alt: the selection is copied, and the copy is what moves.
       if (e.altKey) {
         const copy = duplicate(base, next, 0, 0)
         docRef.current = copy.doc
@@ -569,9 +551,9 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     if (d.kind === "move") {
       if (d.moved) commit(docRef.current, d.base)
       else {
-        if (docRef.current !== d.base) { docRef.current = d.base; setDoc(d.base); setSel(new Set([d.id])) } // an Alt-click that didn't move: no copy
+        if (docRef.current !== d.base) { docRef.current = d.base; setDoc(d.base); setSel(new Set([d.id])) }
         const n = docRef.current.nodes.find((x) => x.id === d.id)
-        // A tap on a card that was already selected edits it (phones have no double-click).
+        // Phones have no double-click: a tap on a selected card edits it.
         if (n && d.touch && d.wasSelected && (n.type === "text" || n.type === "group" || isNote(n))) beginEdit(n)
         else if (n && !e.shiftKey && d.wasSelected && sel.size > 1) select([n.id])
       }
@@ -606,7 +588,7 @@ export default function Board({ store, text, editable, onChange, place, path }: 
 
   const onDouble = (e: MouseEvent) => {
     if (embed) return
-    // (what's under the pointer: the board captured the pointer when it was pressed, so the event's target is the board)
+    // The board captured the pointer when it was pressed, so the event's target is the board.
     const target = (document.elementFromPoint(e.clientX, e.clientY) ?? e.target) as HTMLElement
     if (typing(target) || target.closest("[data-editing], [data-canvas-toolbar]")) return
     const edgeEl = target.closest<HTMLElement>("[data-canvas-edge], [data-edge-label]")
@@ -632,7 +614,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     if (typing(e.target)) return
     const mod = e.metaKey || e.ctrlKey
     if (e.key === " " && !mod) { e.preventDefault(); if (!spacePan) setSpacePan(true); return }
-    // Escape mid-drag lets go of it nowhere: what it moved or resized goes back (a copy it made goes), the rest just ends.
     const d = dragRef.current
     if (e.key === "Escape" && d && d.kind !== "pan") {
       e.preventDefault()
@@ -696,7 +677,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
       items.push({ label: "Duplicate", icon: CopyPlus, run: dup })
       items.push({ label: "Delete", icon: Trash2, danger: true, sep: true, run: removeSelected })
     }
-    // A file's card: then the file's own menu, as everywhere it's shown (the plugins' items too).
     if (!many && n.type === "file" && n.file) items.push(...fileMenu(String(n.file), { inside: true, phone: !isDesktop() }).map((it, i) => (i ? it : { ...it, sep: true })))
     return items
   }
@@ -719,7 +699,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     { label: "Zoom to 100%", run: zoomTo100 },
     ...(editable ? [{ label: "Select all", run: () => { const h = hiddenIn(docRef.current); select(docRef.current.nodes.filter((n) => !h.has(n.id)).map((n) => n.id)) } }] : []),
   ]
-  // A node's or an arrow's menu is opened once the click's selection is drawn: its items read it.
   const pendingMenu = useRef<{ at: Pt; node?: string; edge?: string } | null>(null)
   useEffect(() => {
     const m = pendingMenu.current
@@ -762,7 +741,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
 
   const far = !!win?.far
   const hidden = hiddenIn(doc)
-  // (a folded group as drawn: its bar, which its arrows meet)
   const drawn = (n: CanvasNode | undefined) => (n?.collapsed === true ? { ...n, height: COLLAPSED_H } : n)
   const shown = (n: CanvasNode) => !hidden.has(n.id) && (!win || overlaps(n, win) || sel.has(n.id) || editing?.id === n.id)
   const groups = doc.nodes.filter((n) => n.type === "group" && shown(n))
@@ -782,7 +760,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
       if (p) at = { x: p.mid.x, top: p.mid.y - 12, bottom: p.mid.y + 12 }
     } else if (toolbarOn) {
       const b = bounds(doc.nodes.filter((n) => sel.has(n.id)))
-      // (above a file's or a group's name, which sits over its box)
       if (b) at = { x: (b.x0 + b.x1) / 2, top: b.y0 - (one?.type === "file" || one?.type === "group" ? 26 : 0), bottom: b.y1 }
     }
     barAt.current = at

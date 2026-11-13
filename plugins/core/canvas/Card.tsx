@@ -1,5 +1,3 @@
-// A canvas's cards and groups, each memoized so dragging or panning redraws only what changed. Text and note cards edit
-// in place; zoomed far out a card is only its colour and name, to keep big boards smooth.
 import { memo, useEffect, useState, type CSSProperties } from "react"
 import { ChevronDown, ChevronUp, FileText, ImageOff } from "lucide-react"
 import { cn, FileEditor, FileEmbed, Markdown, NoteEditor, rawUrl, readFile, splitFm, useVaultChange, withoutBlocks, type Store } from "@vaultite"
@@ -8,14 +6,12 @@ import { SIDES, DIRS, anchor, type Dir } from "./geometry"
 import { fileName, isImage, px, tint } from "./look"
 import { LinkCard } from "./LinkCard"
 
-/** What a card's first line says, for a card drawn small. */
 function titleOf(n: CanvasNode) {
   if (n.type === "file") return fileName(String(n.file ?? "")).replace(/\.md$/i, "")
   if (n.type === "link") { try { return new URL(String(n.url)).host } catch { return String(n.url ?? "") } }
   return String(n.text ?? "").split("\n").map((l) => l.replace(/^#{1,6}\s+/, "").trim()).find(Boolean) ?? ""
 }
 
-/** A note's text in a file card (its body, without blocks; a heading's section for `#Heading`). */
 function NotePreview({ store, path, subpath }: { store?: Store; path: string; subpath?: string }) {
   const [text, setText] = useState<string | null>(null)
   const [missing, setMissing] = useState(false)
@@ -30,7 +26,6 @@ function NotePreview({ store, path, subpath }: { store?: Store; path: string; su
   if (text === null) return <NameOnly path={path} />
   let body = withoutBlocks(splitFm(text).body)
   if (subpath?.startsWith("#") && !subpath.startsWith("#^")) {
-    // A heading: from it to the next heading as big.
     const want = subpath.slice(1).trim().toLowerCase()
     const lines = body.split("\n")
     const at = lines.findIndex((l) => /^#{1,6}\s/.test(l) && l.replace(/^#+\s*/, "").trim().toLowerCase() === want)
@@ -51,22 +46,17 @@ const Missing = ({ path }: { path: string }) => (
 )
 
 export type CardEvents = {
-  /** The text card's text, as it's typed (saved, not undoable one key at a time). */
   typed: (id: string, text: string) => void
-  /** Editing ended (Escape, the editor let go of the keyboard). */
   done: (id: string) => void
   open: (n: CanvasNode, newTab: boolean) => void
 }
 
-/** The shapes drawn as polygons (in % of the card's box); the rest are a rounded box. */
-/** A shaped card's text sits in its middle, as in a flowchart. */
 const SHAPED = "grid place-items-center text-center [&>*]:!h-auto [&>*]:max-h-full [&_.canvas-md]:!px-1 [&_.canvas-md]:!py-0"
 const POLYGONS: Record<string, string> = { diamond: "50% 0%, 100% 50%, 50% 100%, 0% 50%", parallelogram: "14% 0%, 100% 0%, 86% 100%, 0% 100%" }
 
 type CardProps = {
   node: CanvasNode; store?: Store; canvas: string
   selected: boolean; editing: boolean; far: boolean; lite: boolean; editable: boolean; target: boolean
-  /** Its handles: resize (only when it's the one selected) and connect dots (hover or selected). */
   handles: boolean; resizable: boolean
   on: { current: CardEvents }
 }
@@ -139,8 +129,6 @@ export const Card = memo(function Card({ node: n, store, canvas, selected, editi
   )
 })
 
-/** The dots on a card's sides (drag one to another card, or into space, to connect) and, when it's the one selected,
- *  its edges and corners to resize it. */
 function Handles({ node: n, selected, resizable }: { node: CanvasNode; selected: boolean; resizable: boolean }) {
   return <>
     {resizable && DIRS.map((d) => <ResizeHandle key={d} id={n.id} dir={d} />)}
@@ -154,7 +142,6 @@ function Handles({ node: n, selected, resizable }: { node: CanvasNode; selected:
 }
 
 const CURSOR: Record<Dir, string> = { n: "ns-resize", s: "ns-resize", e: "ew-resize", w: "ew-resize", ne: "nesw-resize", sw: "nesw-resize", nw: "nwse-resize", se: "nwse-resize" }
-/** An edge (a strip along it) or a corner (a square on it) to drag. */
 export function ResizeHandle({ id, dir }: { id: string; dir: Dir }) {
   const t = px(10), half = px(5)
   const s: CSSProperties = { cursor: CURSOR[dir] }
@@ -171,11 +158,9 @@ export function ResizeHandle({ id, dir }: { id: string; dir: Dir }) {
 type GroupProps = {
   node: CanvasNode; selected: boolean; editingLabel: boolean; far: boolean; resizable: boolean
   onLabel: (id: string, label: string | null) => void
-  /** Fold or unfold it (absent: it can't be changed). */
   onToggle?: (id: string) => void
   LabelEditor: (p: { value: string; className: string; onDone: (t: string) => void }) => React.ReactNode
 }
-/** A group: its box behind the cards, its label above it (bigger when zoomed out, so it stays readable). */
 export const Group = memo(function Group({ node: n, selected, editingLabel, far, resizable, onLabel, onToggle, LabelEditor }: GroupProps) {
   const c = colorOf(n.color)
   const shut = n.collapsed === true

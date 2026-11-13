@@ -1,4 +1,3 @@
-// A canvas web page card drawn like a link unfurl from /api/canvas/link; the host and address until that answers.
 import { useState } from "react"
 import { Globe } from "lucide-react"
 import { cn, useLive } from "@vaultite"
@@ -7,7 +6,6 @@ import type { LinkPreview } from "./preview"
 const hostOf = (url: string) => { try { return new URL(url).host.replace(/^www\./, "") } catch { return url } }
 const isWeb = (url: string) => /^https?:\/\//i.test(url)
 
-/** A picture from another site: lazy, sent no referrer, not draggable, gone if it fails to load. */
 function Remote({ src, className, onFail }: { src: string; className: string; onFail?: () => void }) {
   const [failed, setFailed] = useState<string | null>(null)
   if (failed === src) return null
@@ -15,13 +13,11 @@ function Remote({ src, className, onFail }: { src: string; className: string; on
     onError={() => { setFailed(src); onFail?.() }} />
 }
 
-/** The page's address as a small link that opens in a new tab (the click doesn't reach the board). */
 function Address({ url }: { url: string }) {
   return <a href={url} target="_blank" rel="noopener noreferrer" className="block shrink-0 truncate text-[11.5px] text-primary hover:underline"
     onClick={(e) => e.stopPropagation()}>{url}</a>
 }
 
-/** Text cut to `lines` lines with an ellipsis (0: not shown). */
 const clamp = (lines: number) => ({ display: "-webkit-box", WebkitBoxOrient: "vertical" as const, WebkitLineClamp: lines, overflow: "hidden" })
 
 export function LinkCard({ url, width, height }: { url: string; width: number; height: number }) {
@@ -41,10 +37,9 @@ export function LinkCard({ url, width, height }: { url: string; width: number; h
   }
 
   const image = p.image && p.image !== noImage ? p.image : null
-  const top = !!image && height >= 220 && width >= 200 // the image across the top, filling what the text leaves
-  const side = !!image && !top && width >= 360 && height >= 96 // a thumbnail on the right
+  const top = !!image && height >= 220 && width >= 200
+  const side = !!image && !top && width >= 360 && height >= 96
   const icon = p.icon && p.icon !== noIcon ? p.icon : null
-  // Lines of description that fit: what's left of the card after its padding, site, title (two lines) and address.
   const lines = top ? (height >= 320 ? 2 : height >= 260 ? 1 : 0) : Math.max(0, Math.min(8, Math.floor((height - 24 - 18 - (p.title ? 40 : 0) - 18 - 12) / 17)))
 
   return (

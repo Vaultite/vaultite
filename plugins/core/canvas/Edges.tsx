@@ -1,4 +1,3 @@
-// A canvas's arrows, each memoized on its two cards so moving a card redraws only its own arrows.
 import { memo } from "react"
 import { cn } from "@vaultite"
 import { colorOf, styleOf, type CanvasEdge, type CanvasNode, type Side } from "./codec"
@@ -11,7 +10,6 @@ const DASHES: Record<string, string | undefined> = { "long-dashed": "14 8", "sho
 type Props = {
   edge: CanvasEdge; from: CanvasNode; to: CanvasNode
   selected: boolean; editingLabel: boolean; interactive: boolean
-  /** One of its ends is being dragged elsewhere: drawn faint. */
   moving: boolean
 }
 
@@ -38,7 +36,6 @@ export const Edge = memo(function Edge({ edge: e, from, to, selected, editingLab
   )
 })
 
-/** The arrow being drawn: dashed, from where it starts to the pointer (or the side of the card under it). */
 export function Preview({ pa, sa, pb, sb }: { pa: Pt; sa: Side; pb: Pt; sb: Side | null }) {
   const d = Math.max(30, Math.min(220, Math.hypot(pb.x - pa.x, pb.y - pa.y) / 2))
   const dir = { top: [0, -1], right: [1, 0], bottom: [0, 1], left: [-1, 0] } as const

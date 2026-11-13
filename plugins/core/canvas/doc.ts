@@ -1,4 +1,3 @@
-// A board's canvas: parsed from the file's text, saved back 300 ms after a change, with its undo and redo.
 import { useCallback, useEffect, useRef, useState } from "react"
 import { plainError, type FormatCtx } from "@vaultite"
 import { parseCanvas, unfoldOnDrop, writeCanvas, type CanvasDoc } from "./codec"
@@ -28,9 +27,7 @@ export function useBoardDoc(text: string, editable: boolean, onChange: FormatCtx
   }, [onChange])
   useEffect(() => () => { if (timer.current) { clearTimeout(timer.current); flush.current() } }, [])
 
-  /** A change drawn and saved, not undoable by itself (typing in a card: the edit is one undo when it ends). */
   const live = (next: CanvasDoc) => { docRef.current = next; setDoc(next); save(next) }
-  /** A change the user made: drawn, undoable, saved. `before`: the canvas it started from (a drag's start). */
   const commit = (next: CanvasDoc, before: CanvasDoc = docRef.current) => {
     if (!editable || next === before) return
     next = unfoldOnDrop(before, next)

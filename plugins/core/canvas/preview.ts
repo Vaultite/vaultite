@@ -1,10 +1,5 @@
-// A web page card's preview: what a page's HTML says about itself. Pure, no Node: plugin.ts fetches through
-// fetchPublic, and tests run it on made-up HTML.
 
-/** What GET /api/canvas/link answers: the address asked about, and what its page says (each left out when it doesn't). */
 export type LinkPreview = { url: string; title?: string; site?: string; description?: string; image?: string; icon?: string }
-
-// ---------- What a page's HTML says about itself ----------
 
 const NAMED: Record<string, string> = {
   amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: "\u00a0", ndash: "–", mdash: "—", hellip: "…", lsquo: "‘",
@@ -12,7 +7,6 @@ const NAMED: Record<string, string> = {
   deg: "°", times: "×", euro: "€", pound: "£", yen: "¥", cent: "¢", sect: "§", para: "¶", shy: "", zwj: "\u200d", zwnj: "\u200c",
 }
 
-/** Text with its HTML character references decoded (&amp; &#39; &#x2014; and common named ones; unknown ones stay). */
 export function decodeEntities(s: string): string {
   return s.replace(/&(#\d{1,7}|#x[0-9a-f]{1,6}|[a-z]{2,8});?/gi, (all, ref: string) => {
     if (ref[0] === "#") {
@@ -24,7 +18,6 @@ export function decodeEntities(s: string): string {
   })
 }
 
-/** A tag's attributes, names lowercased, values decoded. */
 function attributes(tag: string): Record<string, string> {
   const out: Record<string, string> = {}
   const re = /([^\s=/>"']+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g
@@ -41,7 +34,6 @@ const clean = (s: string | undefined, max: number) => {
   return !t ? undefined : t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t
 }
 
-/** `href` against `base` as an absolute http(s) address (or a small data: image, for icons), else undefined. */
 function absolute(href: string | undefined, base: string, data = false): string | undefined {
   const h = (href ?? "").trim()
   if (!h) return undefined
@@ -52,10 +44,8 @@ function absolute(href: string | undefined, base: string, data = false): string 
   } catch { return undefined }
 }
 
-/** What a page's HTML says about itself (og:, twitter:, <title>, the best icon), addresses made absolute against
- *  `pageUrl` or its <base href>. Never throws. */
 export function parsePreview(html: string, pageUrl: string): Omit<LinkPreview, "url"> {
-  // Comments, scripts, styles and inline SVG (whose <title>s aren't the page's) say nothing about the page.
+  // An inline SVG's <title>s aren't the page's.
   const text = html.replace(/<!--[\s\S]*?(?:-->|$)/g, "")
     .replace(/<(script|style|svg|template|noscript)\b[\s\S]*?(?:<\/\1\s*>|$)/gi, "")
   const meta: Record<string, string> = {}
@@ -79,13 +69,11 @@ export function parsePreview(html: string, pageUrl: string): Omit<LinkPreview, "
   const title = /<title\b[^>]*>([\s\S]*?)<\/title\s*>/i.exec(text)?.[1]
   const pick = (...keys: string[]) => keys.map((k) => meta[k]).find((v) => v && v.trim())
 
-  // An icon: a plain one over an apple-touch-icon; among them the smallest at least 32 px, else the biggest, else
-  // the first (sizes unknown). /favicon.ico when the page names none.
   const rank = (i: (typeof icons)[number]) => (i.size >= 32 ? 10_000 - i.size : i.size)
   const best = (list: typeof icons) => list.length ? list.reduce((a, b) => (rank(b) > rank(a) ? b : a)) : undefined
   const chosen = best(icons.filter((i) => i.rel === "icon")) ?? best(icons.filter((i) => i.rel === "apple"))
   let icon = chosen ? absolute(chosen.href, base, true) : undefined
-  if (!icon) try { icon = new URL("/favicon.ico", pageUrl).href } catch { /* no address: no icon */ }
+  if (!icon) try { icon = new URL("/favicon.ico", pageUrl).href } catch {}
 
   const out: Omit<LinkPreview, "url"> = {
     title: clean(pick("og:title", "twitter:title") ?? decodeEntities(title ?? ""), 300),

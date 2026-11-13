@@ -1,13 +1,9 @@
-// A canvas's geometry: arrow anchors and curves, bounds, fitting, and snapping to the grid and other
-// cards. Pure, in the file's pixels.
 import type { Side } from "./codec.ts"
 
 export type Pt = { x: number; y: number }
 export type Box = { x: number; y: number; width: number; height: number }
 export type View = { x: number; y: number; k: number }
-/** Where a card is resized from: a side or a corner. */
 export type Dir = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw"
-/** A line drawn while something snaps to it: `x` (vertical) or `y` (horizontal) at `at`, from `a` to `b`. */
 export type Guide = { axis: "x" | "y"; at: number; a: number; b: number }
 
 export const SIDES: Side[] = ["top", "right", "bottom", "left"]
@@ -23,22 +19,18 @@ export function anchor(n: Box, side: Side): Pt {
 }
 export const center = (n: Box): Pt => ({ x: n.x + n.width / 2, y: n.y + n.height / 2 })
 
-/** The side of `n` facing the point: where an arrow without sides leaves or arrives. */
 export function facing(n: Box, p: Pt): Side {
   const c = center(n)
   const dx = (p.x - c.x) / Math.max(1, n.width), dy = (p.y - c.y) / Math.max(1, n.height)
   return Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "bottom" : "top")
 }
 
-/** The side of `n` nearest the point (an arrow's end dropped on a card: the side it was dropped by). */
 export function nearestSide(n: Box, p: Pt): Side {
   let best: Side = "top", d = Infinity
   for (const s of SIDES) { const a = anchor(n, s), h = Math.hypot(a.x - p.x, a.y - p.y); if (h < d) { d = h; best = s } }
   return best
 }
 
-/** An arrow's curve from one side to another: its path, the middle (for its label), and the control points (the
- *  arrowheads point along them). */
 export function curve(a: Pt, sa: Side, b: Pt, sb: Side | null) {
   const d = Math.max(30, Math.min(220, Math.hypot(b.x - a.x, b.y - a.y) / 2))
   const c1 = { x: a.x + DIR[sa].x * d, y: a.y + DIR[sa].y * d }
@@ -47,7 +39,6 @@ export function curve(a: Pt, sa: Side, b: Pt, sb: Side | null) {
   return { d: `M ${a.x} ${a.y} C ${c1.x} ${c1.y} ${c2.x} ${c2.y} ${b.x} ${b.y}`, mid, c1, c2 }
 }
 
-/** An arrowhead at `tip`, pointing away from `from`. */
 export function head(tip: Pt, from: Pt, size: number) {
   const a = Math.atan2(tip.y - from.y, tip.x - from.x)
   const p = (t: number) => `${tip.x - size * Math.cos(a + t)},${tip.y - size * Math.sin(a + t)}`
@@ -60,7 +51,6 @@ export function bounds(nodes: Box[]) {
   return nodes.length ? { x0, y0, x1, y1 } : null
 }
 
-/** The view that shows these boxes in a w × h box, `pad` px around them, never zoomed in past `max`. */
 export function fitView(nodes: Box[], w: number, h: number, pad = 40, max = 1): View {
   const b = bounds(nodes)
   if (!b || !w || !h) return { x: w / 2, y: h / 2, k: 1 }
@@ -68,7 +58,6 @@ export function fitView(nodes: Box[], w: number, h: number, pad = 40, max = 1): 
   return { k, x: w / 2 - ((b.x0 + b.x1) / 2) * k, y: h / 2 - ((b.y0 + b.y1) / 2 - 12) * k }
 }
 
-/** The view zoomed to `k` about a point of the box (px from its top left), which stays where it is. */
 export function zoomAbout(v: View, k: number, px: number, py: number): View {
   const kk = Math.max(MIN_K, Math.min(MAX_K, k))
   const wx = (px - v.x) / v.k, wy = (py - v.y) / v.k
@@ -78,16 +67,12 @@ export function zoomAbout(v: View, k: number, px: number, py: number): View {
 export const overlaps = (a: Box, b: { x0: number; y0: number; x1: number; y1: number }) =>
   a.x < b.x1 && a.x + a.width > b.x0 && a.y < b.y1 && a.y + a.height > b.y0
 
-/** Whether a box lies wholly in a rectangle. */
 export const within = (a: Box, b: { x0: number; y0: number; x1: number; y1: number }) =>
   a.x >= b.x0 && a.y >= b.y0 && a.x + a.width <= b.x1 && a.y + a.height <= b.y1
 
 export const snapGrid = (v: number) => Math.round(v / GRID) * GRID
-/** `v` pulled onto the grid when it's within a notch of a line (half the cards' `tol`, a quarter of the grid at most),
- *  else as it is: a gentle aid that never holds what's dragged back from the pointer. */
 const notch = (v: number, tol: number) => { const g = snapGrid(v); return Math.abs(g - v) <= Math.min(tol / 2, GRID / 4) ? g : v }
 
-/** The lines other cards offer to snap to on one axis: their two edges and their centre. */
 function lines(others: Box[], axis: "x" | "y") {
   const out: { at: number; a: number; b: number }[] = []
   for (const o of others) {
@@ -98,7 +83,6 @@ function lines(others: Box[], axis: "x" | "y") {
   return out
 }
 
-/** The nearest of `lines` to any of `mine` (within `tol`): how far to move, and the line. */
 function nearest(mine: number[], cands: { at: number; a: number; b: number }[], tol: number) {
   let best: { delta: number; line: { at: number; a: number; b: number } } | null = null
   for (const m of mine) {
@@ -110,8 +94,6 @@ function nearest(mine: number[], cands: { at: number; a: number; b: number }[], 
   return best
 }
 
-/** A box being moved, snapped: to other cards' edges and centres (`others`; a guide is drawn for each) when one is
- *  within `tol`, else to the grid (its top left corner) when near a line. Returns how far to shift it, and the guides. */
 export function snapMove(box: Box, others: Box[], opts: { grid: boolean; objects: boolean; tol: number }) {
   const guides: Guide[] = []
   let dx = 0, dy = 0
@@ -129,8 +111,6 @@ export function snapMove(box: Box, others: Box[], opts: { grid: boolean; objects
   return { dx, dy, guides }
 }
 
-/** A box resized from `dir` by (dx, dy) from `start`, at least the minimum size; its moving edges snap like a move's.
- *  `keep`: the corner keeps the box's proportions (Shift, an image). */
 export function resizeBox(start: Box, dir: Dir, dx: number, dy: number, others: Box[], opts: { grid: boolean; objects: boolean; tol: number; keep?: boolean }) {
   let x0 = start.x, y0 = start.y, x1 = start.x + start.width, y1 = start.y + start.height
   if (dir.includes("w")) x0 += dx
@@ -157,7 +137,6 @@ export function resizeBox(start: Box, dir: Dir, dx: number, dy: number, others: 
   if (x1 - x0 < MIN_W) { if (dir.includes("w")) x0 = x1 - MIN_W; else x1 = x0 + MIN_W }
   if (y1 - y0 < MIN_H) { if (dir.includes("n")) y0 = y1 - MIN_H; else y1 = y0 + MIN_H }
   if (opts.keep && dir.length === 2 && start.width > 0 && start.height > 0) {
-    // A corner: the larger change wins, the other side follows the proportions.
     const ratio = start.width / start.height
     const w = x1 - x0, h = y1 - y0
     if (w / h > ratio) { const nh = w / ratio; if (dir.includes("n")) y0 = y1 - nh; else y1 = y0 + nh }
@@ -166,8 +145,6 @@ export function resizeBox(start: Box, dir: Dir, dx: number, dy: number, others: 
   return { box: { x: Math.round(x0), y: Math.round(y0), width: Math.round(x1 - x0), height: Math.round(y1 - y0) }, guides }
 }
 
-/** Where a new card goes so its side facing `from` sits at `p`: an arrow dragged out from a card's `side` and let go
- *  in empty space. Returns its box and the side the arrow arrives at. */
 export function placeFrom(p: Pt, from: Pt, w: number, h: number): { box: Box; side: Side } {
   const dx = p.x - from.x, dy = p.y - from.y
   const side: Side = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "left" : "right") : (dy > 0 ? "top" : "bottom")

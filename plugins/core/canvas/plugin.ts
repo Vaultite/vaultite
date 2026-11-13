@@ -1,5 +1,3 @@
-// Canvas's server side: `text:canvas`, `links:canvas` (the graph's lines), its settings, and link card previews fetched
-// through fetchPublic, so a refused address answers like a page that's down and the route can't probe the network.
 import { fetchPublic, HTTPError, pageText, Plugin, publicUrl } from "../../../core/plugins.ts"
 import { canvasLinks, canvasMarkdown } from "./codec.ts"
 import { type LinkPreview, parsePreview } from "./preview.ts"
@@ -21,7 +19,6 @@ async function preview(u: URL): Promise<LinkPreview> {
   }
 }
 
-// The latest answers by address, in the order they were last asked for (the oldest first).
 const kept = new Map<string, { at: number; ttl: number; answer: Promise<LinkPreview> }>()
 const KEEP = 500
 const READ_TTL = 86_400_000, FAILED_TTL = 600_000
@@ -33,7 +30,7 @@ plugin.route("GET", "canvas/link", async (req) => {
   try { u = new URL(raw) } catch { throw new HTTPError(400, `not a web address: ${raw}`) }
   if (u.protocol !== "http:" && u.protocol !== "https:") throw new HTTPError(400, "only http and https addresses have a preview")
   const ok = publicUrl(raw)
-  if (typeof ok === "string") return { url: raw } // a local address: the same answer as a page that's down
+  if (typeof ok === "string") return { url: raw }
   let entry = kept.get(ok.href)
   kept.delete(ok.href)
   if (!entry || Date.now() - entry.at >= entry.ttl) {

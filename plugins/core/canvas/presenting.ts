@@ -4,7 +4,6 @@ import { fitView, type View } from "./geometry"
 import { typing } from "./keys"
 import { slidesOf } from "./present"
 
-// Presenting: each group a slide, shown whole (slidesOf's order); the arrow keys step, Escape ends it.
 export function usePresenting(doc: CanvasDoc, size: () => { w: number; h: number }, animateTo: (to: View) => void, fitAll: () => void) {
   const slides = useMemo(() => slidesOf(doc), [doc])
   const [slide, setSlide] = useState<number | null>(null)
