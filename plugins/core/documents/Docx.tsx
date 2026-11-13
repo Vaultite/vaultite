@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { linkClick, Loading, openWebLink } from "@vaultite"
+import { disarmLinks, DRAWN, linkOf } from "./untrusted"
 
 const STYLE = `
   :host { display: block; }
@@ -27,16 +28,10 @@ export default function Docx({ url, embed }: { url: string; embed?: boolean }) {
         fetch(url).then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(r.statusText)))),
       ])
       if (!on) return
-      await renderAsync(bytes, body, body, {
-        inWrapper: true, breakPages: true, ignoreLastRenderedPageBreak: true, renderAltChunks: false, renderComments: false,
-        renderChanges: false, experimental: true, className: "docx",
-      })
+      await renderAsync(bytes, body, body, DRAWN)
       if (!on) return
       for (const st of body.querySelectorAll("style")) st.textContent = bullets(st.textContent ?? "")
-      for (const a of body.querySelectorAll("a[href]")) {
-        const href = a.getAttribute("href") ?? ""
-        if (!/^(https?:|mailto:|#)/i.test(href)) a.removeAttribute("href")
-      }
+      disarmLinks(body)
       fit(el, body)
       setState("ok")
     })().catch((e) => { if (on) setState(String(e?.message ?? e)) })
@@ -53,10 +48,10 @@ export default function Docx({ url, embed }: { url: string; embed?: boolean }) {
     const a = e.nativeEvent.composedPath().find((n): n is HTMLAnchorElement => n instanceof HTMLAnchorElement)
     if (!a) return
     e.preventDefault()
-    const href = a.getAttribute("href") ?? ""
-    if (/^https?:/i.test(href)) openWebLink(href, linkClick(e))
-    else if (/^mailto:/i.test(href)) window.open(href, "_blank", "noopener")
-    else if (href.startsWith("#")) host.current?.shadowRoot?.getElementById(decodeURIComponent(href.slice(1)))?.scrollIntoView({ block: "start" })
+    const link = linkOf(a.getAttribute("href") ?? "")
+    if (link?.to === "web") openWebLink(link.href, linkClick(e))
+    else if (link?.to === "mail") window.open(link.href, "_blank", "noopener")
+    else if (link?.to === "place") host.current?.shadowRoot?.getElementById(decodeURIComponent(link.id))?.scrollIntoView({ block: "start" })
   }
   return (
     <div className={embed ? "max-h-[520px] overflow-auto" : undefined}>
