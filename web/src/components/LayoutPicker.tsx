@@ -35,7 +35,7 @@ export async function pickLayout(b: BundleInfo, o: Pick<ApplyOptions, "open" | "
 
 export function useLayouts() {
   const l = useBundles()
-  const list = (l?.bundles.filter(isLayout) ?? []) as BundleInfo[]
+  const list = l?.bundles.filter(isLayout) ?? []
   const current = (l?.applied && list.find((b) => b.id === l.applied!.id)) || list.find((b) => b.inUse) || null
   return { loaded: !!l, list, current: current?.id ?? null }
 }
@@ -132,7 +132,7 @@ export function LayoutPicker({ menus = true, open = "behind", builtInOnly, silen
     const by = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0
     if (!by) return
     const all = [...group.current?.querySelectorAll<HTMLElement>("[data-layout-pick]") ?? []]
-    const i = all.indexOf(document.activeElement as HTMLElement)
+    const i = all.findIndex((b) => b === document.activeElement)
     if (i < 0) return
     e.preventDefault()
     all[(i + by + all.length) % all.length]?.focus()

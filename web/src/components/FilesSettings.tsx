@@ -1,7 +1,7 @@
 import { useStore } from "@/core/data"
 import { patch } from "@/core/http"
 import { notifyError } from "@/core/notify"
-import { setPrefs, usePrefs, type FileSort, type FolderGroup, type FolderView } from "@/core/prefs"
+import { setPrefs, usePrefs, type FolderGroup, type FolderView } from "@/core/prefs"
 import { coreSwitch } from "@/core/switches"
 import { SwitchRow } from "@/components/SwitchRow"
 import { Group } from "@/components/kit"
@@ -45,14 +45,14 @@ export function FilesSettings() {
   const prefs = usePrefs()
   const { store } = useStore()
   const seeds = store?.settingDefaults?.files ?? {}, filing = store?.filing
-  const at = { ...DECLS.attachmentFolder, default: seeds.attachmentFolder ?? DECLS.attachmentFolder.default } as SettingDecl
-  const ex = { ...DECLS.excluded, default: seeds.excluded ?? [] } as SettingDecl
+  const at: SettingDecl = { ...DECLS.attachmentFolder, default: seeds.attachmentFolder ?? DECLS.attachmentFolder.default }
+  const ex: SettingDecl = { ...DECLS.excluded, default: seeds.excluded ?? [] }
   const own = (v: unknown, d: unknown) => (JSON.stringify(v) === JSON.stringify(d) ? undefined : v)
   return (
     <Group>
       <SwitchRow s={switchOf("show-hidden")} />
       <SwitchRow s={switchOf("show-archived")} />
-      <Field k="fileSort" d={DECLS.fileSort} value={prefs.fileSort} set={(v) => void setPrefs({ fileSort: (v ?? "name") as FileSort })} />
+      <Field k="fileSort" d={DECLS.fileSort} value={prefs.fileSort} set={(v) => void setPrefs({ fileSort: sorts.find((s) => s.value === v)?.value ?? "name" })} />
       <Field k="folderView" d={DECLS.folderView} value={prefs.folderView} set={(v) => void setPrefs({ folderView: FOLDER_VIEWS.find((x) => x === v) ?? "list" })} />
       <Field k="folderGroup" d={DECLS.folderGroup} value={prefs.folderGroup} set={(v) => void setPrefs({ folderGroup: FOLDER_GROUPS.find((x) => x === v) ?? "none" })} />
       <Field k="folderLimit" d={DECLS.folderLimit} value={prefs.folderLimit}

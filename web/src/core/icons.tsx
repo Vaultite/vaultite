@@ -1,6 +1,8 @@
-import { forwardRef } from "react"
+import { forwardRef, type ComponentType, type CSSProperties } from "react"
 import type { LucideIcon, LucideProps } from "lucide-react"
 import { signal } from "@/core/signal"
+
+export type IconType = ComponentType<{ className?: string; strokeWidth?: number; style?: CSSProperties }>
 
 let lucide: Record<string, LucideIcon> | null = null
 let loading: Promise<Record<string, LucideIcon>> | null = null

@@ -2,6 +2,7 @@ import type { ComponentType, MouseEvent as ReactMouseEvent, ReactNode } from "re
 import type { Extension } from "@codemirror/state"
 import type { EditorView } from "@codemirror/view"
 import type { LucideIcon } from "lucide-react"
+import type { IconType } from "@/core/icons"
 import type { Store, VaultMeta } from "@/core/data"
 import type { ConfirmOptions } from "@/components/ConfirmDialog"
 import type { Dot } from "@/components/kit"
@@ -216,7 +217,7 @@ export type AgentRun = {
 /** A kind of entry in a timeline (a `## Timeline` section a file's kind draws: a person's): how its rows look. */
 export type TimelineKind = { label: string; icon: LucideIcon; tint?: string }
 export type SearchDoc = {
-  id: string; title: string; meta: string; kind: string; icon: LucideIcon; tint: string
+  id: string; title: string; meta: string; kind: string; icon: IconType; tint: string
   /** Where it goes: a detail sheet ("note/…"). */
   detail?: string
   /** Or a file it opens ("Notes/Idea.md"). */
@@ -609,7 +610,7 @@ export type ReadingBlocks = {
 
 /** An item in a file's menu. `section`: "actions" (default: what its kind is for), "navigate", "share" (in sight in a tab's
  *  short menu too), "more" (More ▸, where most belong), "away" (with Delete: Archive), or a group of its own. */
-export type FileMenuItem = { label: string; icon?: LucideIcon; run: () => void; disabled?: boolean; section?: string
+export type FileMenuItem = { label: string; icon?: IconType; run: () => void; disabled?: boolean; section?: string
   /** Do it to several files at once (core/select.ts: files selected together), saying so once. Offered for a selection
    *  only when every file's menu has this item (same label) with `many`. */
   many?: (paths: string[]) => void

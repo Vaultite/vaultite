@@ -7,6 +7,7 @@ import { SwipeRow } from "@/components/SwipeRow"
 import { headingsPeek } from "@/core/headingpeek"
 import type { HeadingMode } from "@/core/plugins"
 import { cn } from "@/lib/utils"
+import { closestOf } from "@/core/dom"
 
 /** The panel a heading is in (SidebarPanels provides it, in the open sidebar): whether it's folded to its heading, and
  *  how to fold or open it. None (a heading outside the sidebar, the rail): the heading is only a label. */
@@ -42,7 +43,7 @@ export function SidebarHeading({ title, open, children, aside, className }: {
   )
   const head = {
     "data-panel-handle": "", "data-heading": title,
-    onClick: f ? (e: React.MouseEvent) => { if (!(e.target as HTMLElement).closest("button, a, input") && (mode !== "hidden" || headingsPeek())) f.toggle(e) } : undefined,
+    onClick: f ? (e: React.MouseEvent) => { if (!closestOf(e.target, "button, a, input") && (mode !== "hidden" || headingsPeek())) f.toggle(e) } : undefined,
   }
   if (mode !== "shown") {
     return (

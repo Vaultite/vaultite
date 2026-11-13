@@ -1,6 +1,7 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { fadeAway } from "@/core/animation"
+import { closestOf } from "@/core/dom"
 
 type Tip = { text: string; x: number; y: number; side: "top" | "bottom" | "left" | "right" }
 
@@ -24,10 +25,10 @@ export const Tooltips = memo(function Tooltips({ win = window }: { win?: Window 
       setTip(null)
     }
     const cut = (el: Element) => {
-      const ts = [...el.querySelectorAll<HTMLElement>(".truncate, .fade-end")], t = ts[0] ?? (el as HTMLElement)
+      const ts = [...el.querySelectorAll<HTMLElement>(".truncate, .fade-end")], t = ts[0] ?? el
       return !t.getClientRects().length || (ts.length ? ts : [t]).some((x) => x.scrollWidth > x.clientWidth || under(x))
     }
-    const under = (x: HTMLElement) => {
+    const under = (x: Element) => {
       const kept = parseFloat(getComputedStyle(x).getPropertyValue("--fade-reserve")) || 0
       if (!kept) return false
       const r = document.createRange()
@@ -50,7 +51,7 @@ export const Tooltips = memo(function Tooltips({ win = window }: { win?: Window 
     }
     const over = (e: PointerEvent) => {
       if (e.pointerType !== "mouse" || e.buttons) return
-      const el = (e.target as Element | null)?.closest?.("[data-tip]") ?? null
+      const el = closestOf(e.target, "[data-tip]") ?? null
       if (el === cur) return
       hide(!el)
       if (!el) return

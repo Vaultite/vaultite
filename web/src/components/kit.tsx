@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useId, useRef, useState, type HTMLAttributes, type MouseEvent as ReactMouseEvent, type ReactNode, type Ref } from "react"
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type HTMLAttributes, type MouseEvent as ReactMouseEvent, type ReactNode } from "react"
 import { ChevronRight, RotateCcw, Search, X, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ink } from "@/lib/ink"
@@ -9,7 +9,8 @@ import { copyText } from "@/core/richmd"
 import { useDraft } from "@/core/statefor"
 import { trackSoon } from "@/core/unsaved"
 import { Described, usePreview, type Preview } from "@/components/SettingPreview"
-import { elementOf } from "@/core/dom"
+import { closestOf } from "@/core/dom"
+import type { IconType } from "@/core/icons"
 
 /** The element with id `id` (a bar left for a portal: #sheet-bar), found as it renders so the portal is there in the
  *  same frame (a view transition's picture takes it at once); one more render if it isn't in the page yet. */
@@ -64,7 +65,7 @@ const DOTS: Record<"true" | Exclude<Dot, boolean>, string> = {
  *  is. `tag`: a tiny label on its bottom corner (the machine a terminal runs on: "M1"). */
 export function Badged({ on, tag, children }: { on?: Dot; tag?: string; children: ReactNode }) {
   if (!on && !tag) return <>{children}</>
-  const kind = on ? String(on) as keyof typeof DOTS : undefined
+  const kind = on === true ? "true" : on || undefined
   return (
     <span className="relative inline-grid shrink-0 place-items-center" data-badged>
       {children}
@@ -96,7 +97,7 @@ export function Stone({ className }: { className?: string; strokeWidth?: number 
 
 export const DenseRows = createContext(false)
 
-export function IconTile({ icon: Icon, tint, className, iconClassName }: { icon: LucideIcon | typeof Logo; tint: string; className?: string; iconClassName?: string }) {
+export function IconTile({ icon: Icon, tint, className, iconClassName }: { icon: IconType; tint: string; className?: string; iconClassName?: string }) {
   if (Icon === Logo) return <Logo className={cn("size-5 shrink-0", className)} />
   return (
     <span aria-hidden data-icon-tile style={{ "--tint": tint }}
@@ -346,6 +347,7 @@ export function SettingRow({ label, sub, stack, below, value, onClick, chevron =
   const Chevron = chevron
   const dense = useContext(DenseRows)
   const ref = useRef<HTMLElement>(null)
+  const attach = useCallback((el: HTMLElement | null) => { ref.current = el }, [])
   const pv = usePreview(preview, ref, { said: !!sub })
   const body = (
     <>
@@ -362,8 +364,8 @@ export function SettingRow({ label, sub, stack, below, value, onClick, chevron =
   )
   const cls = cn("flex min-h-12 w-full gap-3 py-2 text-left", dense && "md:min-h-10", below ? "flex-col items-stretch" : stack ? "flex-col items-stretch sm:flex-row sm:items-center" : "items-center", pv?.inline && "flex-wrap", className)
   return onClick
-    ? <button ref={ref as Ref<HTMLButtonElement>} type="button" onClick={onClick} {...rest} className={cn(cls, "cursor-pointer")}>{body}</button>
-    : <div ref={ref as Ref<HTMLDivElement>} {...pv?.props} {...rest} className={cls}>{body}</div>
+    ? <button ref={attach} type="button" onClick={onClick} {...rest} className={cn(cls, "cursor-pointer")}>{body}</button>
+    : <div ref={attach} {...pv?.props} {...rest} className={cls}>{body}</div>
 }
 
 /** A choice of a few, side by side. `big`: a page's tabs, as tall as a finger on phones. An option's `count`: how many it
@@ -504,7 +506,7 @@ export function Editable({ value, set, placeholder, className, children }: {
   const change = `Change ${placeholder.replace(/^Add /, "")}`
   // Links can't sit inside a button: the keyboard's way in is a button of its own.
   if (value && children) return (
-    <span data-no-edit data-tip={change} onClick={(e) => { if (!elementOf(e.target)?.closest("a, button")) setEditing(true) }} className={look}>
+    <span data-no-edit data-tip={change} onClick={(e) => { if (!closestOf(e.target, "a, button")) setEditing(true) }} className={look}>
       {children}
       <button type="button" aria-label={change} onClick={() => setEditing(true)}
         className="sr-only focus-visible:not-sr-only focus-visible:ml-1 focus-visible:rounded-[4px] focus-visible:px-1 focus-visible:text-[12px] focus-visible:text-muted-foreground">Change</button>
@@ -512,7 +514,7 @@ export function Editable({ value, set, placeholder, className, children }: {
   )
   return (
     <span role="button" tabIndex={0} data-no-edit data-tip={value ? change : undefined}
-      onClick={(e) => { if (!elementOf(e.target)?.closest("a")) setEditing(true) }} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); setEditing(true) } }}
+      onClick={(e) => { if (!closestOf(e.target, "a")) setEditing(true) }} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); setEditing(true) } }}
       className={look}>
       {value || placeholder}
     </span>

@@ -10,9 +10,10 @@ import { get } from "@/core/http"
 import { machinePath, splitMachine } from "@/core/machines"
 import { useEnabled } from "@/core/plugins"
 import { cn } from "@/lib/utils"
+import { groupsOf } from "@/components/sessionGroups"
 
-type Tool = { kind: "tool"; id: string; name: string; summary: string; input: string; result: string | null; error: boolean; at: string }
-type Said = { kind: "user" | "assistant"; text: string; at: string }
+export type Tool = { kind: "tool"; id: string; name: string; summary: string; input: string; result: string | null; error: boolean; at: string }
+export type Said = { kind: "user" | "assistant"; text: string; at: string }
 export type Entry = Said | Tool
 type Head = { title: string; cwd: string; model: string; first: string; last: string; branch: string }
 export type SessionPage = Head & { id: string; project: string; start: number; total: number; entries: Entry[]; speaker?: string }
@@ -108,12 +109,7 @@ export function AgentSession({ src, id }: { src: AgentSource; id: string }) {
       </article>
     )
   }
-  const groups: { at: number; entries: Entry[] }[] = []
-  data.entries.forEach((e, i) => {
-    const last = groups[groups.length - 1]
-    if (e.kind === "tool" && last?.entries[0].kind === "tool") last.entries.push(e)
-    else groups.push({ at: data.start + i, entries: [e] })
-  })
+  const groups = groupsOf(data.entries, data.start)
   return (
     <article className="pb-10" data-agent-session={data.id} data-claude-session={src.agent === "claude" ? data.id : undefined}>
       <header className="mb-6 pt-2">
@@ -142,9 +138,9 @@ export function AgentSession({ src, id }: { src: AgentSource; id: string }) {
       )}
       {!data.entries.length ? <Empty>{src.cloud ?? "Nothing was said in this session."}</Empty> : (
         <div className="space-y-4">
-          {groups.map(({ at, entries: g }) => (g[0].kind === "tool"
-            ? <div key={at} className="-mx-1">{(g as Tool[]).map((t, j) => <ToolLine key={t.id || j} t={t} />)}</div>
-            : <Message key={at} src={src} e={g[0] as Said} speaker={data.speaker} />))}
+          {groups.map((g) => (g.kind === "tools"
+            ? <div key={g.at} className="-mx-1">{g.tools.map((t, j) => <ToolLine key={t.id || j} t={t} />)}</div>
+            : <Message key={g.at} src={src} e={g.said} speaker={data.speaker} />))}
         </div>
       )}
     </article>

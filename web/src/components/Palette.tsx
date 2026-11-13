@@ -57,19 +57,19 @@ export function NoMatches({ what, query, then }: { what: string; query: string; 
 }
 
 type Pointer = { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }
-type RowProps<T> = {
-  id: string; item: T; i: number; selected: boolean; look: unknown; draw: (item: T, selected: boolean) => ReactNode
+type RowProps = {
+  id: string; item: unknown; i: number; selected: boolean; look: unknown; draw: (selected: boolean) => ReactNode
   onHover: (i: number) => void; onPick: (i: number, e: Pointer) => void
 }
-const PaletteRow = memo(function PaletteRow({ id, item, i, selected, draw, onHover, onPick }: RowProps<unknown>) {
+const PaletteRow = memo(function PaletteRow({ id, i, selected, draw, onHover, onPick }: RowProps) {
   return (
     <button id={`palette-${id}`} data-i={i} type="button" role="option" aria-selected={selected} tabIndex={-1}
       onMouseMove={() => onHover(i)} onClick={(e) => onPick(i, e)}
       className={cn("flex w-full cursor-pointer items-center gap-3 rounded-[8px] px-3 py-2 text-left max-md:py-[9px] [contain-intrinsic-size:auto_37px] [content-visibility:auto]", selected && "bg-foreground/[0.07]")}>
-      {draw(item, selected)}
+      {draw(selected)}
     </button>
   )
-}, (a, b) => a.id === b.id && a.i === b.i && a.selected === b.selected && a.look === b.look && a.item === b.item) as <T>(p: RowProps<T>) => ReactNode
+}, (a, b) => a.id === b.id && a.i === b.i && a.selected === b.selected && a.look === b.look && a.item === b.item)
 
 const Hints = memo(function Hints({ hints }: { hints: [string, string][] }) {
   return (
@@ -171,7 +171,7 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
     <PaletteFrame label={label} onClose={onClose} onKeyDown={onDialogKey}>
       <div className="flex items-center gap-2 border-b-[0.5px] border-border pr-3 pl-5">
         <input ref={input} value={query + suffix} onKeyDown={onKey} placeholder={placeholder}
-          onChange={(e) => setQuery(e.target.value, { deleting: !!(e.nativeEvent as InputEvent).inputType?.startsWith("delete") })}
+          onChange={(e) => setQuery(e.target.value, { deleting: e.nativeEvent instanceof InputEvent && e.nativeEvent.inputType.startsWith("delete") })}
           onCompositionStart={() => setComposing(true)} onCompositionEnd={() => setComposing(false)}
           autoComplete="off" autoCorrect="off" spellCheck={false} enterKeyHint="go" role="combobox" aria-expanded aria-controls="palette-results"
           aria-activedescendant={items[sel] ? `palette-${items[sel].id}` : undefined}
@@ -184,7 +184,7 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
         {!items.length && empty}
         {runs.map((r, k) => {
           const rows = r.rows.map((it, j) => (
-            <PaletteRow key={it.id} id={it.id} item={it} i={r.start + j} selected={r.start + j === sel} look={look} draw={row} onHover={rowHover} onPick={rowPick} />
+            <PaletteRow key={it.id} id={it.id} item={it} i={r.start + j} selected={r.start + j === sel} look={look} draw={(s) => row(it, s)} onHover={rowHover} onPick={rowPick} />
           ))
           if (!r.name) return <Fragment key={k}>{rows}</Fragment>
           return (

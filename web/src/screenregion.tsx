@@ -36,9 +36,9 @@ export function Region({ r, top, moved, act }: { r: RegionScene; top: number; mo
   const down = (edge: Edge) => (e: React.PointerEvent) => {
     if (e.button !== 0) return
     e.preventDefault()
-    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    e.currentTarget.setPointerCapture(e.pointerId)
     const box = pill.current?.getBoundingClientRect()
-    const grip = !!box && pill.current!.contains(e.currentTarget as Node)
+    const grip = !!box && pill.current!.contains(e.currentTarget)
     drag.current = { edge, x: e.clientX, y: e.clientY, r0: rect, ...(grip ? { pill: { x: box.left - rect.x, y: box.top - rect.y } } : {}) }
   }
   const move = (e: React.PointerEvent) => {

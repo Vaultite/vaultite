@@ -5,6 +5,7 @@ import { usePageLock } from "@/core/pagelock"
 import { cn } from "@/lib/utils"
 import { signal } from "@/core/signal"
 import { answerUi } from "@/core/askers"
+import { focusableOf } from "@/core/dom"
 
 export type ConfirmOptions = {
   title: string
@@ -110,10 +111,10 @@ function Dialog({ a }: { a: Ask }) {
   useEffect(() => {
     const d = ref.current
     if (!d) return
-    const back = document.activeElement as HTMLElement | null
+    const back = document.activeElement
     if (typeof d.showModal === "function") d.showModal(); else d.setAttribute("open", "")
     if (a.field) input.current?.focus(); else ok.current?.focus()
-    return () => { if (d.open && typeof d.close === "function") d.close(); back?.focus?.({ preventScroll: true }) }
+    return () => { if (d.open && typeof d.close === "function") d.close(); focusableOf(back)?.focus({ preventScroll: true }) }
   }, [])
   return (
     <dialog ref={ref} role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby={a.body ? "confirm-body" : undefined}
@@ -123,7 +124,7 @@ function Dialog({ a }: { a: Ask }) {
         if (e.key === "Enter" && !e.nativeEvent.isComposing && document.activeElement?.getAttribute("data-cancel") === null) { e.preventDefault(); finish(true) }
         if (e.key === "Tab") {
           const all = [...e.currentTarget.querySelectorAll<HTMLElement>("button, input")]
-          const i = all.indexOf(document.activeElement as HTMLElement)
+          const i = all.findIndex((b) => b === document.activeElement)
           e.preventDefault()
           all[(i + (e.shiftKey ? -1 : 1) + all.length) % all.length]?.focus()
         }

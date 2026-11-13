@@ -6,6 +6,7 @@ import { haptic } from "@/core/haptics"
 import { commandIcon } from "@/core/pages"
 import { usePrefs, type Prefs } from "@/core/prefs"
 import { cn } from "@/lib/utils"
+import { closestOf } from "@/core/dom"
 
 export type Slot = 0 | 1 | 2
 export const PULL_SLOTS = ["Pull down and left", "Pull straight down", "Pull down and right"] as const
@@ -29,7 +30,7 @@ function moveTo(dy: number, ms = 0) {
 }
 
 const busy = (t: EventTarget | null) =>
-  !!(t as Element | null)?.closest?.("dialog, [data-phone-drawer], [data-phone-bar], .phone-fill, [data-keeps-touch], input, textarea")
+  !!closestOf(t, "dialog, [data-phone-drawer], [data-phone-bar], .phone-fill, [data-keeps-touch], input, textarea")
 
 type Pull = { dy: number; pick: Slot; ready: boolean; gone?: "ran" | "let" }
 

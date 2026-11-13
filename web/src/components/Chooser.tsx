@@ -1,14 +1,15 @@
-import { memo, isValidElement, useEffect, useMemo, useState, type ReactNode } from "react"
-import { Check, type LucideIcon } from "lucide-react"
-import { anyIcon } from "@/core/icons"
+import { memo, isValidElement, useEffect, useMemo, useState, type ReactElement, type ReactNode } from "react"
+import { Check } from "lucide-react"
+import { anyIcon, type IconType } from "@/core/icons"
 import { answerUi } from "@/core/askers"
 import { fuzzy } from "@/core/fuzzy"
 import { marked, NoMatches, Palette, type Pick as How } from "@/components/Palette"
 import { signal } from "@/core/signal"
+import { isObj } from "../../../core/values.ts"
 
 export type Choice = { id: string; label: string; detail?: string
-  /** Drawn before the label: a lucide icon, or anything (an app's icon). */
-  icon?: LucideIcon | ReactNode }
+  /** Drawn before the label: an icon, or anything drawn (an app's icon). */
+  icon?: IconType | ReactElement }
 export type Choose<C extends Choice = Choice> = {
   /** What it's for ("Insert template"), read by screen readers. */
   title: string
@@ -38,21 +39,17 @@ export type Choose<C extends Choice = Choice> = {
    *  picker closes, after `onPick` or `onDismiss`. */
   preview?: (item: C | null) => void
 }
-const iconOf = (i: LucideIcon | ReactNode) => {
-  // Lucide's icons are objects (forwardRef), an app's own a plain function: both are components.
-  if (isValidElement(i) || (typeof i !== "object" && typeof i !== "function") || i === null) return i as ReactNode
-  const Icon = i as unknown as LucideIcon
-  return <Icon className="size-4 text-muted-foreground" strokeWidth={2} />
-}
-let asking: Choose<never> | null = null
+const iconOf = (I: IconType | ReactElement) => (isValidElement(I) ? I : <I className="size-4 text-muted-foreground" strokeWidth={2} />)
+type Asking = { of: object; onDismiss?: () => void; draw: (key: number, onClose: () => void) => ReactNode }
+let asking: Asking | null = null
 const subs = signal()
 let shown = 0
-const show = (c: Choose<never> | null) => { asking = c; shown++; subs.notify() }
+const show = (c: Asking | null) => { asking = c; shown++; subs.notify() }
 /** Ask the user to pick one of `items`. */
 export function choose<C extends Choice>(c: Choose<C> | null) {
   const was = asking
-  show(c as unknown as Choose<never> | null)
-  if (was && was !== asking) was.onDismiss?.()
+  show(c && { of: c, onDismiss: c.onDismiss, draw: (key, onClose) => <Picker key={key} c={c} onClose={onClose} /> })
+  if (was && was.of !== c) was.onDismiss?.()
 }
 
 /** The palette as a text field: Enter gives what's typed (trimmed; `label` names the row it makes), an empty Enter
@@ -65,23 +62,23 @@ export function askText(o: Pick<Choose, "title" | "heading" | "placeholder" | "t
 }
 
 export const Chooser = memo(function Chooser() {
-  const c = subs.use(() => asking) as unknown as Choose | null
-  return c ? <Picker key={shown} c={c} onClose={() => choose(null)} /> : null
+  const c = subs.use(() => asking)
+  return c ? c.draw(shown, () => choose(null)) : null
 })
 
 const TYPED = "\u0000typed"
 answerUi("choose", (m, ended) => new Promise((done) => {
-  const items = (Array.isArray(m.items) ? m.items : []) as { label?: unknown; detail?: unknown; icon?: unknown }[]
+  const items = (Array.isArray(m.items) ? m.items : []).map((it): Record<string, unknown> => (isObj(it) ? it : {}))
   const str = (v: unknown) => (typeof v === "string" && v ? v : undefined)
   let c: Choose, typed = ""
-  const timer = setTimeout(() => { if ((asking as unknown) === c) choose(null) }, (typeof m.timeout === "number" ? m.timeout : 300) * 1000)
+  const timer = setTimeout(() => { if (asking?.of === c) choose(null) }, (typeof m.timeout === "number" ? m.timeout : 300) * 1000)
   const end = (answer: unknown) => { clearTimeout(timer); done(answer) }
   const prompt = str(m.prompt)
   c = {
     title: prompt ?? "Pick one", heading: prompt, placeholder: items.length ? "Type to filter…" : "Type your answer…",
     empty: items.length ? undefined : <span />,
     items: items.map((it, i) => {
-      const icon = str(it.icon) && anyIcon(str(it.icon)!)
+      const name = str(it.icon), icon = name && anyIcon(name)
       return { id: String(i), label: str(it.label) ?? String(i + 1), detail: str(it.detail), ...(icon ? { icon } : {}) }
     }),
     current: typeof m.current === "number" ? String(m.current) : undefined,
@@ -89,19 +86,20 @@ answerUi("choose", (m, ended) => new Promise((done) => {
     onPick: (it) => end(it.id === TYPED ? { typed } : { index: Number(it.id) }),
     onDismiss: () => end(null),
   }
-  ended.addEventListener("abort", () => { if ((asking as unknown) === c) choose(null) })
+  ended.addEventListener("abort", () => { if (asking?.of === c) choose(null) })
   choose(c)
 }))
 
-function Picker({ c, onClose }: { c: Choose; onClose: () => void }) {
+function Picker<C extends Choice>({ c, onClose }: { c: Choose<C>; onClose: () => void }) {
   const [q, setQ] = useState(c.typed ?? "")
   useEffect(() => () => c.preview?.(null), [c])
   const items = useMemo(() => {
     const query = q.trim()
-    if (!query) return c.items.map((it) => ({ ...it, marks: [] as number[] }))
+    const none = (): number[] => []
+    if (!query) return c.items.map((it) => ({ ...it, marks: none() }))
     const hits = c.items.flatMap((it) => { const m = fuzzy(query, it.label); return m ? [{ ...it, ...m }] : [] }).sort((a, b) => b.score - a.score)
     const extra = !c.items.some((it) => it.label.toLowerCase() === query.toLowerCase()) && c.other?.(query)
-    return extra ? [...hits, { ...extra, marks: [] as number[] }] : hits
+    return extra ? [...hits, { ...extra, marks: none() }] : hits
   }, [c, q])
   const start = Math.max(0, c.items.findIndex((it) => it.id === c.current))
   const field = !c.items.length && !!c.other
@@ -111,7 +109,7 @@ function Picker({ c, onClose }: { c: Choose; onClose: () => void }) {
         if (it) { show(null); c.onPick(it, how) } else if (!q.trim() && c.onBlank) { show(null); c.onBlank() }
       }} heading={c.heading}
       empty={c.empty ?? <NoMatches what="Nothing matches" query={q} />}
-      hints={field ? [["Enter", "to confirm"], ["Escape", "to cancel"]] : [["ArrowUp ArrowDown", "to navigate"], ["Enter", "to pick"], ...(c.modHint ? [["Mod+Enter", c.modHint] as [string, string]] : []), ["Escape", "to dismiss"]]}
+      hints={field ? [["Enter", "to confirm"], ["Escape", "to cancel"]] : [["ArrowUp ArrowDown", "to navigate"], ["Enter", "to pick"], ...(c.modHint ? [["Mod+Enter", c.modHint] satisfies [string, string]] : []), ["Escape", "to dismiss"]]}
       row={(h) => (
         <>
           {h.icon && <span className="flex size-5 shrink-0 items-center justify-center">{iconOf(h.icon)}</span>}

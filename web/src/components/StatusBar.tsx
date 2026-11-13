@@ -18,6 +18,7 @@ import { trackSoon } from "@/core/unsaved"
 import { barShown, barShows, type BarItem, type BarPlace, moveBarItem, showAllBarItems, showBarItem } from "@/core/statusbar"
 import { INCOMING, reorder, slotAt, useSlide } from "@/core/slide"
 import { cn } from "@/lib/utils"
+import { closestOf } from "@/core/dom"
 
 const WAIT_FOR_PAUSE_PAST = 32 * 1024
 const WORKER_PAST = 1 << 20
@@ -48,7 +49,7 @@ function useFit(bar: RefObject<HTMLElement | null>, keys: string[], pinned: bool
     const out = (els: Iterable<Element>, gone = true) => { for (const el of els) el.toggleAttribute("data-fit-out", gone) }
     const gap = parseFloat(getComputedStyle(b).columnGap) || 0
     const fits = () => {
-      const parts = [...b.children].filter((el) => (el as HTMLElement).offsetWidth) as HTMLElement[]
+      const parts = [...b.children].flatMap((el) => (el instanceof HTMLElement && el.offsetWidth ? [el] : []))
       return parts.reduce((w, el) => w + el.offsetWidth, 0) + gap * Math.max(0, parts.length - 1) <= b.clientWidth + 0.5
     }
     out(b.querySelectorAll("[data-fit-out]"), false)
@@ -221,7 +222,7 @@ export const StatusBar = memo(function StatusBar() {
   const trayOpen = tray && inTray.length > 0
   useEffect(() => {
     if (!trayOpen) return
-    const down = (e: PointerEvent) => { if (!(e.target as Element).closest?.("[data-status-tray], [data-status-more]")) setTray(false) }
+    const down = (e: PointerEvent) => { if (!closestOf(e.target, "[data-status-tray], [data-status-more]")) setTray(false) }
     const key = (e: KeyboardEvent) => { if (e.key === "Escape") setTray(false) }
     addEventListener("pointerdown", down, true); addEventListener("keydown", key, true)
     return () => { removeEventListener("pointerdown", down, true); removeEventListener("keydown", key, true) }
@@ -461,7 +462,7 @@ const ViewButton = memo(function ViewButton({ mode, views, setMode }: { mode: Mo
 })
 
 const FileItem = memo(function FileItem({ item, head, text, reads }: { item: StatusItem; head: FileHead; text: string; reads: { text: boolean } }) {
-  const file = useMemo(() => Object.defineProperty({ ...head }, "text", { enumerable: true, get: () => { reads.text = true; return text } }) as OpenFile, [head, text, reads])
+  const file = useMemo((): OpenFile => ({ ...head, get text() { reads.text = true; return text } }), [head, text, reads])
   return <Catch reset={head.path} fallback={() => null}><Drawn draw={() => item.render(file)} /></Catch>
 }, (a, b) => a.item === b.item && a.head === b.head && a.reads === b.reads && (a.text === b.text || !b.reads.text))
 
@@ -506,7 +507,9 @@ function useSteady(row: RefObject<HTMLElement | null>, reset: string) {
   const [ro] = useState(() => new ResizeObserver((entries) => {
     if (row.current?.hasAttribute("data-cramped")) return
     for (const e of entries) {
-      const el = e.target as HTMLElement, k = el.dataset.statusKey!, w = e.borderBoxSize[0]?.inlineSize ?? 0
+      const el = e.target
+      if (!(el instanceof HTMLElement)) continue
+      const k = el.dataset.statusKey!, w = e.borderBoxSize[0]?.inlineSize ?? 0
       if (w > (widest.current.get(k) ?? 0)) { widest.current.set(k, w); el.style.minWidth = `${w}px` }
     }
   }))

@@ -34,7 +34,7 @@ const ROWS = [
   ["A", "S", "D", "F", "G", "H", "J", "K", "L", ";", "'", "\\"],
   ["Z", "X", "C", "V", "B", "N", "M", ",", ".", "/"],
 ]
-const MODS = (isMac ? ["Mod", "Shift", "Alt", "Ctrl"] : ["Mod", "Shift", "Alt"]) as readonly string[]
+const MODS: readonly string[] = isMac ? ["Mod", "Shift", "Alt", "Ctrl"] : ["Mod", "Shift", "Alt"]
 const combo = (mods: string[], key: string) => [...MODS.filter((m) => mods.includes(m)), key].join("+")
 const ORDER = isMac ? ["Mod", "Ctrl", "Alt", "Shift"] : ["Mod", "Alt", "Shift"], CAPS = keyCaps([...ORDER, "A"].join("+"))
 const glyph = (mod: string) => CAPS[ORDER.indexOf(mod)] ?? mod

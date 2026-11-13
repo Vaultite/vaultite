@@ -42,7 +42,7 @@ function Picker({ p, onClose }: { p: FolderPick; onClose: () => void }) {
   const [q, setQ] = useState("")
   const items = useMemo((): Item[] => {
     const query = q.trim().replace(/^\/+|\/+$/g, "")
-    const all = p.folders.map((f) => ({ id: `f-${f}`, path: f, label: f || "/", marks: [] as number[], score: 0, create: false }))
+    const all = p.folders.map((f) => { const marks: number[] = []; return { id: `f-${f}`, path: f, label: f || "/", marks, score: 0, create: false } })
     if (!query) return all
     const out: Item[] = all.flatMap((h) => { const m = fuzzy(query, h.label); return m ? [{ ...h, ...m }] : [] }).sort((a, b) => b.score - a.score)
     const name = cleanName(query)

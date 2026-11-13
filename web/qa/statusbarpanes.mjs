@@ -1,6 +1,6 @@
-// The desktop status bar split along the panes: the focused file's items right under its pane, each other pane's file
-// in a word under its own, the right corner at the right of the panes it may draw over (not a chat's or a terminal's
-// foot), a narrow pane's part down to its word count, a word clicked focusing its pane.
+// The desktop status bar split along the panes (components/statusColumns.ts): the focused file's items right under its
+// pane, each other pane's file in a word under its own, the right corner at the right of the panes it may draw over (not
+// a chat's or a terminal's foot), a narrow pane's part down to its word count, a word clicked focusing its pane.
 // WRITES workspace 1's layout and three notes (put back, removed): throwaway server only.
 //   node web/qa/statusbarpanes.mjs <base url>
 import { apiAt, qa, SHOTS, until, wait } from "./lib/qa.mjs"

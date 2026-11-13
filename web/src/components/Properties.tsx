@@ -112,7 +112,7 @@ function summary(v: unknown): string {
   return String(v ?? "")
 }
 
-const isKeptStamp = (stamps: string[], k: string, v: unknown) => stamps.includes(k) && typeof v === "string" && /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/.test(v)
+const keptStamp = (stamps: string[], k: string, v: unknown) => (stamps.includes(k) && typeof v === "string" && /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/.test(v) ? v : null)
 
 const ICONS: Record<PropType | PropKind, LucideIcon> = {
   text: Text, list: List, number: Hash, checkbox: SquareCheck, date: Calendar, datetime: CalendarClock, tags: Tags, aliases: Forward,
@@ -162,10 +162,11 @@ function TypeButton({ k, v, types, readOnly, stamp }: { k: string; v: unknown; t
 function Value({ k, v, set, readOnly, autoFocus, type, stamps, suggest, from }: {
   k: string; v: unknown; set: (v: unknown) => void; readOnly: boolean; autoFocus?: boolean; type: PropType | null; stamps: string[]; suggest?: Suggestions; from: string
 }) {
-  if (isKeptStamp(stamps, k, v)) {
-    const d = new Date(stampMs(v as string))
+  const stamp = keptStamp(stamps, k, v)
+  if (stamp !== null) {
+    const d = new Date(stampMs(stamp))
     return (
-      <div className="truncate px-1.5 py-1.5 text-[15px] leading-5 text-muted-foreground tabular-nums" data-tip={v as string}>
+      <div className="truncate px-1.5 py-1.5 text-[15px] leading-5 text-muted-foreground tabular-nums" data-tip={stamp}>
         {d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
       </div>
     )
@@ -195,7 +196,7 @@ function Value({ k, v, set, readOnly, autoFocus, type, stamps, suggest, from }: 
 }
 
 const vaultNames = (): [string, number][] =>
-  ((getStore() as { properties?: { key: string; count: number }[] } | null)?.properties ?? []).map((p) => [p.key, p.count])
+  (getStore()?.properties ?? []).map((p) => [p.key, p.count])
 const vaultTags = (): [string, number][] => { const files = getStore()?.files.files; return files ? vocabOf(files).tags : [] }
 const asked = new Map<string, { files: unknown; rows: { path: string; value: unknown }[] }>()
 
@@ -252,7 +253,7 @@ export const Properties = memo(function Properties({ path, block, onChange, read
   const box = useRef<HTMLElement>(null)
   useEffect(() => {
     const on = (e: Event) => {
-      if ((e as CustomEvent).detail !== path) return
+      if (!(e instanceof CustomEvent) || e.detail !== path) return
       setOpenState(true)
       requestAnimationFrame(() => box.current?.scrollIntoView({ block: "nearest", behavior: glide() }))
     }
@@ -289,7 +290,7 @@ export const Properties = memo(function Properties({ path, block, onChange, read
                 return (
                 <div role="row" key={k} className="group contents">
                   <div role="rowheader" className="flex min-w-0 items-start">
-                    <TypeButton k={k} v={props[k]} types={types} readOnly={readOnly} stamp={isKeptStamp(stamps, k, props[k])} />
+                    <TypeButton k={k} v={props[k]} types={types} readOnly={readOnly} stamp={keptStamp(stamps, k, props[k]) !== null} />
                     {readOnly ? (
                       <span className="truncate px-1.5 py-1.5 text-[15px] leading-5 text-muted-foreground">{k}</span>
                     ) : (

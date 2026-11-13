@@ -29,7 +29,7 @@ export function tellHolds(api: Bridge | undefined) {
   const look = () => {
     soon = 0
     send()
-    if (document.getAnimations().some((a) => a.playState === "running" && Number.isFinite(a.effect?.getComputedTiming().endTime as number))) schedule()
+    if (document.getAnimations().some((a) => a.playState === "running" && Number.isFinite(a.effect?.getComputedTiming().endTime))) schedule()
   }
   const schedule = () => { if (!soon) soon = requestAnimationFrame(look) }
   const held = (e: Event) => e.target instanceof Element && !!e.target.closest("[data-hold]")

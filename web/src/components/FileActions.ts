@@ -1,4 +1,4 @@
-import { Columns2, Copy, Ellipsis, FileInput, FilePlus, FileSymlink, FolderInput, FolderOpen, FolderPlus, FolderSearch, FolderTree, Link, Pencil, RotateCcw, Smile, SquareArrowOutUpRight, Trash2, type LucideIcon } from "lucide-react"
+import { Columns2, Copy, Ellipsis, FileInput, FilePlus, FileSymlink, FolderInput, FolderOpen, FolderPlus, FolderSearch, FolderTree, Link, Pencil, RotateCcw, Smile, SquareArrowOutUpRight, Trash2 } from "lucide-react"
 import { actionIcon, fileActions, runAction } from "@/core/actions"
 import { getStore } from "@/core/data"
 import { kindOf } from "@/core/filekinds"
@@ -159,7 +159,7 @@ export function pluginFileGroups(path: string, skip?: string, folder = false): P
     try {
       for (const { section = "actions", ...it } of menu(path)) {
         if (!by.has(section)) by.set(section, [])
-        by.get(section)!.push({ ...it, icon: it.icon as LucideIcon | undefined })
+        by.get(section)!.push(it)
       }
     } catch {}
   }
@@ -273,7 +273,7 @@ function pluginManyItems(paths: string[], folders: Set<string>): { items: MenuIt
       for (const it of menus[0]) {
         if (!it.many || !menus.every((m) => m.some((x) => x.label === it.label && x.many))) continue
         const run = it.many
-        ;(it.section === "away" ? away : items).push({ label: it.label, icon: it.icon as LucideIcon | undefined, run: () => run(paths) })
+        ;(it.section === "away" ? away : items).push({ label: it.label, icon: it.icon, run: () => run(paths) })
       }
     } catch {}
   }

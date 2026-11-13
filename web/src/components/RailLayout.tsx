@@ -1,14 +1,15 @@
 import { Fragment, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type UIEvent } from "react"
-import { ChevronRight, type LucideIcon } from "lucide-react"
+import { ChevronRight } from "lucide-react"
 import { usePane } from "@/core/pane"
 import { cn } from "@/lib/utils"
 import { FilterField, IconTile, PageHeader } from "@/components/kit"
 import { SidebarRow } from "@/components/Sidebar"
+import type { IconType } from "@/core/icons"
 
 type Attrs = Record<`data-${string}`, string | undefined>
 
 export type RailItem = {
-  id: string; label: string; icon?: LucideIcon; tint?: string
+  id: string; label: string; icon?: IconType; tint?: string
   value?: string
   heading?: string; gap?: boolean
   fold?: { open: boolean; toggle: () => void }
@@ -49,11 +50,11 @@ function rowsFrom(items: RailItem[], i: number) {
   return n
 }
 
-const tiles = new Map<string, LucideIcon>()
-const tileOf = (icon: LucideIcon, tint: string): LucideIcon => {
+const tiles = new Map<string, IconType>()
+const tileOf = (icon: IconType, tint: string): IconType => {
   const key = `${icon.displayName ?? icon.name}|${tint}`
   let t = tiles.get(key)
-  if (!t) { t = (() => <IconTile icon={icon} tint={tint} />) as unknown as LucideIcon; tiles.set(key, t) }
+  if (!t) { t = () => <IconTile icon={icon} tint={tint} />; tiles.set(key, t) }
   return t
 }
 

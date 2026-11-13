@@ -60,7 +60,7 @@ export function useCornerDrag(corner: Corner, setCorner: (c: Corner) => void) {
       const left = room("left"), right = room("right")
       const still = u.timeStamp - last.t > 80
       const cx = r.left + r.width / 2 + (still ? 0 : v.x * 180), cy = r.top + r.height / 2 + (still ? 0 : v.y * 180)
-      const next = `${cy < innerHeight / 2 ? "t" : "b"}${cx < (left + innerWidth - right) / 2 ? "l" : "r"}` as Corner
+      const next: Corner = `${cy < innerHeight / 2 ? "t" : "b"}${cx < (left + innerWidth - right) / 2 ? "l" : "r"}`
       if (next === corner) settle(el, { x: r.left, y: r.top })
       else { from.current = { x: r.left, y: r.top }; setCorner(next) }
     }

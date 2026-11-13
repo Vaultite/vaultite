@@ -1,6 +1,6 @@
 import { Children, createContext, Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { createPortal } from "react-dom"
-import { ChevronsDownUp, Ellipsis, EyeOff, Layers, PanelBottom, PanelBottomClose, PanelLeft, PanelRight, PanelTop, Search, SlidersHorizontal, SquareArrowOutUpRight, type LucideIcon } from "lucide-react"
+import { ChevronsDownUp, Ellipsis, EyeOff, Layers, PanelBottom, PanelBottomClose, PanelLeft, PanelRight, PanelTop, Search, SlidersHorizontal, SquareArrowOutUpRight } from "lucide-react"
 import type { SidebarCtx, SidebarPanel, TabMark } from "@/core/define"
 import { edgeScroller, getDrag, onDrag, startDrag, useDrag, useDragItem, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 import { openView } from "@/core/files"
@@ -28,6 +28,7 @@ import { PanelAlone, PanelFold, PanelHeading, SidebarHeading } from "@/component
 import { watchHeadingPeek } from "@/core/headingpeek"
 import { useStateFor } from "@/core/statefor"
 import { SwipeRow, type SwipeAction } from "@/components/SwipeRow"
+import { closestOf } from "@/core/dom"
 export { PanelFold, SidebarHeading }
 
 const PANELS = "panels"
@@ -118,9 +119,8 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
           <Fragment key={key}>
           <div data-panel={key} data-ui={`panel:${key}`} id={panelId(key)} role="group" aria-label={panel.heading || panel.title} aria-labelledby={`${panelId(key)}-name`} data-slide={key} data-collapsed={folded || undefined} onContextMenu={menuFor(() => panelMenu(key, side))}
             onPointerDown={(e) => {
-              const t = e.target as HTMLElement
-              const control = t.closest("button, a, input")
-              const handle = t.closest<HTMLElement>("[data-panel-handle]")
+              const control = closestOf(e.target, "button, a, input")
+              const handle = closestOf<HTMLElement>(e.target, "[data-panel-handle]")
               if (handle && (!control || control.hasAttribute("data-panel-handle"))) {
                 startDrag(e, { from: "panel", panel: key, label: handle.dataset.heading || panel.heading || panel.title, to: panel.view ? `view:${panel.view}` : undefined, drawn: !ctx.phone }, { touch: true })
               }
@@ -222,7 +222,7 @@ export function SidebarToggle({ side, open, empty, onClick, className, style }: 
 }
 
 const OWNED = "[role=menu], [aria-label='Close menu'], [data-sonner-toaster], dialog, [data-flyout], .vau-tooltips"
-const editing = (e: KeyboardEvent) => !!(e.target as Element | null)?.closest?.(".cm-editor")
+const editing = (e: KeyboardEvent) => !!closestOf(e.target, ".cm-editor")
 
 function RailFlyout({ panel, ctx, open, setOpen }: { panel: SidebarPanel; ctx: SidebarCtx; open: boolean; setOpen: (v: boolean) => void }) {
   const icon = useRef<HTMLDivElement>(null)
@@ -274,7 +274,7 @@ function RailFlyout({ panel, ctx, open, setOpen }: { panel: SidebarPanel; ctx: S
   )
 }
 
-export const panelIcon = ({ panel, plugin }: PanelOf) => (panel.flyout?.icon ?? plugin.icon) as LucideIcon
+export const panelIcon = ({ panel, plugin }: PanelOf) => panel.flyout?.icon ?? plugin.icon
 
 /** Right-click a sidebar: its panels ticked, More ▸ with the hidden ones and the other sidebar's (a `checklist`). In a
  *  panel (`key`): its own `menu`, Open in a tab, a Panels submenu, Move to the other sidebar and Hide. */

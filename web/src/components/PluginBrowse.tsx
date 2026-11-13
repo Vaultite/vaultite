@@ -319,7 +319,7 @@ async function installEntry(e: Entry, show?: (id: string) => void) {
 }
 
 function Directory({ query, filters = GET_NONE, showInstalled, onListed, compact }: { query: string; filters?: GetFilters; showInstalled: (id: string) => void; onListed?: (l: Listed | null) => void; compact?: boolean }) {
-  const sort = sortOf(filters) as Sort
+  const sort = sortOf(filters)
   const [found, setFound] = useState<Found | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [n, setN] = useState(0)

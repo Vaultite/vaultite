@@ -16,9 +16,9 @@ type State = { failed: boolean; error: unknown; reset?: string; tries: number; s
  *  pass the Guard by). */
 export function Drawn({ draw }: { draw: () => ReactNode }) { return <>{draw()}</> }
 
-export class Catch extends Component<{ children: ReactNode; fallback: (error: unknown) => ReactNode; reset?: string; onError?: (e: unknown) => void },
-  { failed: boolean; error: unknown; reset?: string }> {
-  state = { failed: false, error: null as unknown, reset: this.props.reset }
+type Caught = { failed: boolean; error: unknown; reset?: string }
+export class Catch extends Component<{ children: ReactNode; fallback: (error: unknown) => ReactNode; reset?: string; onError?: (e: unknown) => void }, Caught> {
+  state: Caught = { failed: false, error: null, reset: this.props.reset }
   static getDerivedStateFromError(error: unknown) { return { failed: true, error } }
   static getDerivedStateFromProps(p: { reset?: string }, s: { reset?: string }) { return p.reset === s.reset ? null : { failed: false, error: null, reset: p.reset } }
   componentDidCatch(e: unknown) { this.props.onError?.(e) }

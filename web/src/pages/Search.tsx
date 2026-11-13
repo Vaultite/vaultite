@@ -79,7 +79,7 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
   const matchCase = !!settings.matchCase
   const { node, error } = useMemo((): { node: Node | null; error?: string } => {
     if (!q.trim()) return { node: null }
-    try { return { node: parse(q.trim(), { matchCase }) } } catch (e) { return { node: null, error: (e as Error).message } }
+    try { return { node: parse(q.trim(), { matchCase }) } } catch (e) { return { node: null, error: e instanceof Error ? e.message : undefined } }
   }, [q, matchCase])
   const plain = !!node && isPlain(node)
   const marks = useMemo(() => (node ? highlighter(node) : () => []), [node])

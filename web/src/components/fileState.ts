@@ -6,6 +6,7 @@ import { editorSettings, useEditorSettings, type EditingMode } from "@/core/edit
 import { isDesktop } from "@/core/platform"
 import { usePane } from "@/core/pane"
 import { signal } from "@/core/signal"
+import { isObj } from "../../../core/values.ts"
 
 export type Mode = "read" | "live" | "source"
 type TabView = { mode: Mode; edit: EditingMode }
@@ -23,8 +24,9 @@ const fresh = (): TabView => {
 function storedTabs() {
   const out = new Map<string, TabView>()
   try {
-    for (const [k, v] of Object.entries(JSON.parse(stored(TABS_KEY) ?? "{}") as Record<string, Partial<TabView>>))
-      if (isMode(v?.mode) && isEdit(v.edit)) out.set(k, { mode: v.mode, edit: v.edit })
+    const all: unknown = JSON.parse(stored(TABS_KEY) ?? "{}")
+    for (const [k, v] of Object.entries(isObj(all) ? all : {}))
+      if (isObj(v) && isMode(v.mode) && isEdit(v.edit)) out.set(k, { mode: v.mode, edit: v.edit })
   } catch {}
   return out
 }

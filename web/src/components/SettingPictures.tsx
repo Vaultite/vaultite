@@ -3,7 +3,7 @@ import { FileText, Folder, MousePointer2 } from "lucide-react"
 import { moves, PACES } from "@/core/animation"
 import { setPrefs, usePrefs, type Animation, type FileBarFade } from "@/core/prefs"
 import { PROPERTIES_SHOWN, setEditor, type PropertiesShown } from "@/core/editorPrefs"
-import { switchPreview, type Preview } from "@/components/SettingPreview"
+import { choicePreview, switchPreview, type Preview } from "@/components/SettingPreview"
 import { Frame, Lights, line } from "@/components/ChoicePictures"
 import { cn } from "@/lib/utils"
 
@@ -367,17 +367,18 @@ export function switchPictures(row: string, value: boolean, set: (on: boolean) =
   return p && switchPreview(p.text, [p.draw(false), p.draw(true)], value, set)
 }
 
-export const animationPreview = (value: Animation): Preview => ({
-  text: "How panes, tabs and sidebars move: with a soft spring, quickly, or not at all.", value, set: (v) => setPrefs({ animation: v as Animation }),
-  options: [{ value: "natural", label: "Natural" }, { value: "snappy", label: "Snappy" }, { value: "off", label: "Off" }].map((o) => ({ ...o, picture: <Peek pace={o.value as Animation} /> })),
+export const animationPreview = (value: Animation): Preview => choicePreview({
+  text: "How panes, tabs and sidebars move: with a soft spring, quickly, or not at all.", value, set: (v) => setPrefs({ animation: v }),
+  options: ([{ value: "natural", label: "Natural" }, { value: "snappy", label: "Snappy" }, { value: "off", label: "Off" }] satisfies { value: Animation; label: string }[])
+    .map((o) => ({ ...o, picture: <Peek pace={o.value} /> })),
 })
 
-export const barFadePreview = (value: FileBarFade, options: { value: FileBarFade; label: string }[]): Preview => ({
-  text: "The bar above a file: always there, fading while you type, or out of sight until the pointer goes up to it.", value, set: (v) => setPrefs({ fileBarFade: v as FileBarFade }),
+export const barFadePreview = (value: FileBarFade, options: { value: FileBarFade; label: string }[]): Preview => choicePreview({
+  text: "The bar above a file: always there, fading while you type, or out of sight until the pointer goes up to it.", value, set: (v) => setPrefs({ fileBarFade: v }),
   options: options.map((o) => ({ ...o, picture: <BarFade mode={o.value} /> })),
 })
 
-export const propertiesPreview = (value: PropertiesShown): Preview => ({
-  text: "A note's properties above its text: as a table, hidden, or as their YAML while editing.", value, set: (v) => setEditor({ propertiesInDocument: v as PropertiesShown }),
+export const propertiesPreview = (value: PropertiesShown): Preview => choicePreview({
+  text: "A note's properties above its text: as a table, hidden, or as their YAML while editing.", value, set: (v) => setEditor({ propertiesInDocument: v }),
   options: PROPERTIES_SHOWN.map((o) => ({ ...o, picture: propertiesPicture(o.value) })),
 })

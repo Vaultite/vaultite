@@ -27,6 +27,7 @@ const certified = (p: Plugin) => p.tier === "core" || (p.tier === "vault" && !!p
 
 type Source = "built-in" | "installed" | "vault"
 const SOURCES: Record<Source, string> = { "built-in": "Built in", installed: "Installed", vault: "In this vault" }
+const isSource = (s: string): s is Source => Object.hasOwn(SOURCES, s)
 const sourceOf = (p: Plugin): Source => (p.tier === "core" ? "built-in" : p.tier === "hosted" || p.meta?.source ? "installed" : "vault")
 
 function bylineOf(p: Plugin): { text: string; tip?: string } | null {
@@ -164,6 +165,8 @@ type Status = "all" | "on" | "off"
 type Filters = { status: Status; source: Source | "any"; cat: string }
 const NONE: Filters = { status: "all", source: "any", cat: "" }
 const STATUSES: Record<Status, string> = { all: "All", on: "On", off: "Off" }
+const isStatus = (s: string): s is Status => Object.hasOwn(STATUSES, s)
+const isShow = (s: string): s is GetShow => Object.hasOwn(SHOWS, s)
 
 function ActiveFilters<K extends string>({ chips, count, remove, clear }: { chips: { id: K; label: string }[]; count: number | null; remove: (id: K) => void; clear: () => void }) {
   if (!chips.length) return null
@@ -244,10 +247,10 @@ export function Plugins({ view, onView, above }: { store: Store; view?: Tab; onV
     const picked = sections.find((s) => s.id === f.cat)
     return [
       { label: "Status", caption: true, run: () => {} },
-      ...(Object.keys(STATUSES) as Status[]).map((s) => ({ label: STATUSES[s], checked: f.status === s, keep: true, hint: count({ status: s }), run: pick({ status: s }) })),
+      ...Object.keys(STATUSES).filter(isStatus).map((s) => ({ label: STATUSES[s], checked: f.status === s, keep: true, hint: count({ status: s }), run: pick({ status: s }) })),
       { label: "Source", caption: true, sep: true, run: () => {} },
       { label: "Any", checked: f.source === "any", keep: true, hint: count({ source: "any" }), run: pick({ source: "any" }) },
-      ...(Object.keys(SOURCES) as Source[]).map((s) => ({ label: SOURCES[s], checked: f.source === s, keep: true, hint: count({ source: s }), run: pick({ source: s }) })),
+      ...Object.keys(SOURCES).filter(isSource).map((s) => ({ label: SOURCES[s], checked: f.source === s, keep: true, hint: count({ source: s }), run: pick({ source: s }) })),
       { label: "Category", sep: true, hint: picked?.label ?? "All", run: () => {}, items: [
         { label: "All", checked: !picked, keep: true, hint: count({ cat: "" }), run: pick({ cat: "" }) },
         ...sections.map((s) => ({ label: s.label, checked: picked === s, keep: true, hint: count({ cat: s.id }), run: pick({ cat: s.id }) })),
@@ -268,7 +271,7 @@ export function Plugins({ view, onView, above }: { store: Store; view?: Tab; onV
         ...sources.map((s) => ({ label: s.label, checked: f.source === s.value, keep: true, run: () => { if (gotRef.current.source !== s.value) { setListed(null); pick({ source: s.value, sort: "", cat: "" })() } } })),
       ] : []),
       { label: "Show", caption: true, sep: true, run: () => {} },
-      ...(Object.keys(SHOWS) as GetShow[]).map((s) => ({ label: SHOWS[s], checked: f.show === s, keep: true, hint: count({ show: s }), run: pick({ show: s }) })),
+      ...Object.keys(SHOWS).filter(isShow).map((s) => ({ label: SHOWS[s], checked: f.show === s, keep: true, hint: count({ show: s }), run: pick({ show: s }) })),
       ...(!f.source && cats.length ? [{ label: "Category", sep: true, hint: picked?.label ?? "All", run: () => {}, items: [
         { label: "All", checked: !picked, keep: true, hint: count({ cat: "" }), run: pick({ cat: "" }) },
         ...cats.map((c) => ({ label: c.label, checked: picked === c, keep: true, hint: count({ cat: c.id }), run: pick({ cat: c.id }) })),

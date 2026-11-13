@@ -25,6 +25,7 @@ import { drawnRows, hrefOf, iconFor, metaOf, NameField, naming, pick, pickedIn, 
 import { arrive, arrived, focusThing, keyedPages } from "@/pages/FolderKeys"
 import { Columns } from "@/pages/FolderColumns"
 import { Gallery } from "@/pages/FolderGallery"
+import { closestOf, nodeOf } from "@/core/dom"
 
 /** A folder's name as its tab says it; the vault's own for its top. */
 export const folderName = (path: string) => (path ? path.slice(path.lastIndexOf("/") + 1) : vaultName(getStore()))
@@ -245,7 +246,7 @@ export function FolderPage({ store, path }: { store: Store; path: string }) {
     return into !== undefined && all.some((p) => canMoveInto(p, into)) && all.every((p) => into !== p && !into.startsWith(`${p}/`)) ? into : null
   }, (item, folder) => void moveManyInto(item.paths ?? [item.path!], folder, { reveal: false }), { end: edge.stop })
   const [fromComputer, setFromComputer] = useState<string | null>(null)
-  const at = (t: EventTarget | null) => (t as Element | null)?.closest?.<HTMLElement>("[data-folder-drop]")?.dataset.folderDrop ?? path
+  const at = (t: EventTarget | null) => closestOf<HTMLElement>(t, "[data-folder-drop]")?.dataset.folderDrop ?? path
   const moving = (e: DragEvent) => !!desktop && (isMac ? e.altKey : e.shiftKey)
   const computer = {
     onDragOver: (e: DragEvent) => {
@@ -254,7 +255,7 @@ export function FolderPage({ store, path }: { store: Store; path: string }) {
       e.dataTransfer.dropEffect = moving(e) ? "move" : "copy"
       setFromComputer(at(e.target))
     },
-    onDragLeave: (e: DragEvent) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFromComputer(null) },
+    onDragLeave: (e: DragEvent) => { if (!e.currentTarget.contains(nodeOf(e.relatedTarget))) setFromComputer(null) },
     onDrop: (e: DragEvent) => {
       if (!hasFiles(e.dataTransfer)) return
       e.preventDefault()
@@ -282,7 +283,7 @@ export function FolderPage({ store, path }: { store: Store; path: string }) {
     if (was && all.some((n) => n.path === was)) focusThing(el, was)
   }, [path, view, got])
   const onThing = (e: FocusEvent) => {
-    const k = (e.target as Element).closest<HTMLElement>("[data-folder-item]")?.dataset.folderItem
+    const k = closestOf<HTMLElement>(e.target, "[data-folder-item]")?.dataset.folderItem
     if (k && got?.items.some((n) => n.path === k)) pick(path, k)
   }
 
@@ -296,7 +297,7 @@ export function FolderPage({ store, path }: { store: Store; path: string }) {
     : view === "grid" ? <Grid {...kids} sections={sections} folder={path} /> : <Rows {...kids} sections={sections} folder={path} />
   return (
     <div ref={root} data-folder-page={path} data-folder-shown={view} data-own-keys data-file-drop {...computer} onFocus={onThing}
-      onContextMenu={(e) => { if (!(e.target as Element).closest("[data-folder-item]")) menuFor(() => spaceMenu(path))(e) }}
+      onContextMenu={(e) => { if (!closestOf(e.target, "[data-folder-item]")) menuFor(() => spaceMenu(path))(e) }}
       className={cn("min-h-[60vh] rounded-[10px] transition-colors", fromComputer === path && "bg-primary/[0.06]")}>
       {desk ? <PageHeader title={folderName(path)} className={view === "columns" || view === "gallery" ? "mb-3" : undefined}><Toolbar path={path} view={view} /></PageHeader>
         : <PhoneHead path={path} view={view} />}

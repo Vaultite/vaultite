@@ -5,6 +5,7 @@ import { haptic } from "@/core/haptics"
 import { cell } from "@/core/signal"
 import { trackSoon } from "@/core/unsaved"
 import { cn } from "@/lib/utils"
+import { nodeOf } from "@/core/dom"
 
 /** One state of a setting and its picture (drawn in a `Frame`, to fill its box). */
 export type PreviewOption = { value: string; label: string; picture: ReactNode }
@@ -16,6 +17,10 @@ export type Preview = {
   options: PreviewOption[]
   value: string
   set: (v: string) => unknown
+}
+
+export function choicePreview<T extends string>(p: { text: string; value: T; set: (v: T) => void; options: { value: T; label: string; picture: ReactNode }[] }): Preview {
+  return { text: p.text, value: p.value, options: p.options, set: (v) => { const o = p.options.find((x) => x.value === v); if (o) p.set(o.value) } }
 }
 
 /** A switch's preview: Off and On. */
@@ -113,7 +118,7 @@ export function usePreview(preview: Preview | undefined, row: RefObject<HTMLElem
       },
       // (keyboard focus only: a tap or a click focuses too)
       onFocus: (e: FocusEvent) => { if (e.target instanceof Element && e.target.matches(":focus-visible") && Date.now() - pressed > 600) want(id, optionAt(e.target), true, false) },
-      onBlur: (e: FocusEvent) => { if (!row.current?.contains(e.relatedTarget as Node | null) && (shown || pending?.id === id)) hide() },
+      onBlur: (e: FocusEvent) => { if (!row.current?.contains(nodeOf(e.relatedTarget)) && (shown || pending?.id === id)) hide() },
     },
     card: shown && <Card preview={preview} row={row} option={shown.option} cold={shown.cold} up={shown.up} glide={!!shown.glide} />,
     button: <InlineButton on={inline} toggle={() => setInline(!inline)} />,
@@ -168,7 +173,7 @@ function Card({ preview, row, option, cold, up, glide }: { preview: Preview; row
   useEffect(() => { if (at) last = { left: at.left, top: at.top } }, [at])
   useEffect(() => {
     const scroll = (e: Event) => { if (e.target instanceof Node && e.target.contains(row.current)) hide() }
-    const down = (e: PointerEvent) => { const t = e.target as Node; if (!row.current?.contains(t) && !el.current?.contains(t)) hide() }
+    const down = (e: PointerEvent) => { const t = nodeOf(e.target); if (!row.current?.contains(t) && !el.current?.contains(t)) hide() }
     const key = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); shushed = true; hide() } }
     const off = new AbortController(), { signal } = off
     addEventListener("scroll", scroll, { capture: true, signal }); addEventListener("pointerdown", down, { capture: true, signal }); addEventListener("keydown", key, { capture: true, signal })

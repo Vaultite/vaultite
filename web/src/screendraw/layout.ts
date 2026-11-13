@@ -195,7 +195,7 @@ export function place(d: Drawing, here: Here, labelSize: (m: Mark) => Size | nul
   const near = here.pointer ? { x: here.pointer.x - here.origin.x, y: here.pointer.y - here.origin.y } : marked.length ? centre(marked[0]) : { x: here.width * 0.7, y: here.height * 0.35 }
   let at = near
   const answers = out.filter((p) => isAnswer(p.mark)), first = answers[0]
-  if (first) first.answers = answers.map((p) => p.mark as Extract<Mark, { type: "button" }>)
+  if (first) first.answers = answers.flatMap((p) => (isAnswer(p.mark) ? [p.mark] : []))
   for (const p of first ? [first, ...out.filter((x) => x !== first)] : out) {
     const m = p.mark
     if (!CARDS.has(m.type) || (isAnswer(m) && p !== first)) continue

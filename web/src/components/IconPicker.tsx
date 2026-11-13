@@ -69,7 +69,7 @@ function Picker({ a, onClose }: { a: IconAsk; onClose: () => void }) {
     <Palette label={a.title} placeholder="Search icons, or type an emoji…" query={q} setQuery={setQ} items={rows} onClose={onClose}
       onPick={(r) => { if (!r) return; onClose(); a.onPick(r.id) }}
       empty={tags ? <NoMatches what="No icon matches" query={q} /> : <Skeleton />}
-      hints={[["ArrowUp ArrowDown", "to navigate"], ["Enter", "to pick"], ...(isMac ? [["Ctrl+Mod+Space", "for an emoji"] as [string, string]] : []), ["Escape", "to dismiss"]]}
+      hints={[["ArrowUp ArrowDown", "to navigate"], ["Enter", "to pick"], ...(isMac ? [["Ctrl+Mod+Space", "for an emoji"] satisfies [string, string]] : []), ["Escape", "to dismiss"]]}
       row={(r) => {
         const Icon = namedIcon(r.id)
         return (

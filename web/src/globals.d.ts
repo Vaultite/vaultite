@@ -16,6 +16,8 @@ declare global {
     queryLocalFonts?: () => Promise<{ family: string }[]>
   }
   interface Navigator { standalone?: boolean }
+  // A clone has its original's interface (the DOM's cloning steps); TypeScript's DOM types say only Node.
+  interface Node { cloneNode(subtree?: boolean): this }
   var Capacitor: CapacitorGlobal | undefined
   var vaultiteShare: Share | undefined
   var __vauTrace: Record<string, TraceEvent[]> | undefined

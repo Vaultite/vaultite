@@ -87,7 +87,7 @@ export function Where({ path, lead, icon: Icon = FileJson, open }: { path: strin
 function SettingsForm({ id, decls, titled, offers }: { id: string; decls: SettingDecls; titled: boolean; offers?: Record<string, Offer> }) {
   const [data, save] = usePluginSettings(id)
   const seeds = useStore().store?.settingDefaults?.[`plugins/${id}/data`]
-  const declOf = (k: string): SettingDecl => (seeds && Object.hasOwn(seeds, k) ? { ...decls[k], default: seeds[k] as SettingDecl["default"] } : decls[k])
+  const declOf = (k: string): SettingDecl => (seeds && Object.hasOwn(seeds, k) ? { ...decls[k], default: seeds[k] } : decls[k])
   if (!data) return <Group><div className="min-h-12" aria-busy /></Group>
   const set = (k: string, v: unknown) => {
     const d = declOf(k)

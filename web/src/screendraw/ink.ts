@@ -14,9 +14,9 @@ export const hash = (s: string) => { let h = 2166136261; for (let i = 0; i < s.l
 export function ringLine(r: Rect, rnd: () => number, shape: RingShape = "ellipse"): Line {
   if (shape === "box") return boxLoop(r, rnd)
   const cx = r.x + r.w / 2, cy = r.y + r.h / 2, rx = r.w / 2, ry = r.h / 2, start = -2.5 + rnd() * 0.4, turn = Math.PI * 2 + 0.45, phase = rnd() * 6
-  return Array.from({ length: 56 }, (_, i) => {
+  return Array.from({ length: 56 }, (_, i): [number, number] => {
     const k = i / 55, a = start + k * turn, wob = 1 + 0.035 * Math.sin(a * 3 + phase) + k * 0.05
-    return [cx + Math.cos(a) * rx * wob, cy + Math.sin(a) * ry * wob] as [number, number]
+    return [cx + Math.cos(a) * rx * wob, cy + Math.sin(a) * ry * wob]
   })
 }
 function boxLoop(r: Rect, rnd: () => number): Line {
@@ -37,22 +37,22 @@ function boxLoop(r: Rect, rnd: () => number): Line {
     return corner(x0, y0, Math.PI, s)
   }
   const cx = r.x + r.w / 2, cy = r.y + r.h / 2
-  return Array.from({ length: n }, (_, i) => {
+  return Array.from({ length: n }, (_, i): [number, number] => {
     const k = i / (n - 1), [x, y] = at(startAt + k * run), out = 1.5 * Math.sin(k * 9 + phase) + k * 4
     const dx = x - cx, dy = y - cy, len = Math.hypot(dx, dy) || 1
-    return [x + (dx / len) * out, y + (dy / len) * out] as [number, number]
+    return [x + (dx / len) * out, y + (dy / len) * out]
   })
 }
 export function bowLine(a: Pt, b: Pt, bow: number, n = 18): Line {
   const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1, nx = -dy / len, ny = dx / len
-  return Array.from({ length: n }, (_, i) => { const k = i / (n - 1), s = Math.sin(k * Math.PI) * bow; return [a.x + dx * k + nx * s, a.y + dy * k + ny * s] as [number, number] })
+  return Array.from({ length: n }, (_, i): [number, number] => { const k = i / (n - 1), s = Math.sin(k * Math.PI) * bow; return [a.x + dx * k + nx * s, a.y + dy * k + ny * s] })
 }
 export function curveLine(p0: Pt, c: Pt, p1: Pt, n = 28): Line {
-  return Array.from({ length: n }, (_, i) => { const k = i / (n - 1), u = 1 - k; return [u * u * p0.x + 2 * u * k * c.x + k * k * p1.x, u * u * p0.y + 2 * u * k * c.y + k * k * p1.y] as [number, number] })
+  return Array.from({ length: n }, (_, i): [number, number] => { const k = i / (n - 1), u = 1 - k; return [u * u * p0.x + 2 * u * k * c.x + k * k * p1.x, u * u * p0.y + 2 * u * k * c.y + k * k * p1.y] })
 }
 export function headLines(tip: Pt, from: Pt, size = 13): Line[] {
   const a = Math.atan2(tip.y - from.y, tip.x - from.x)
-  return [-0.5, 0.5].map((d) => [[tip.x - Math.cos(a + d) * size, tip.y - Math.sin(a + d) * size], [tip.x, tip.y]] as Line)
+  return [-0.5, 0.5].map((d): Line => [[tip.x - Math.cos(a + d) * size, tip.y - Math.sin(a + d) * size], [tip.x, tip.y]])
 }
 export const checkLines = (c: Pt, s = 1): Line[] => [[[c.x - 11 * s, c.y - 1 * s], [c.x - 4 * s, c.y + 8 * s], [c.x + 13 * s, c.y - 12 * s]]]
 export const crossLines = (c: Pt, s = 1): Line[] => [[[c.x - 10 * s, c.y - 10 * s], [c.x + 10 * s, c.y + 10 * s]], [[c.x + 10 * s, c.y - 10 * s], [c.x - 10 * s, c.y + 10 * s]]]
@@ -82,15 +82,16 @@ const f = (v: number) => (Math.round(v * 10) / 10).toString()
 
 const gen = rough.generator()
 export type Sketched = { d: string; hatch: boolean; fill?: boolean }
-type Shape = "rect" | "ellipse" | "diamond" | "line" | "poly" | "open"
-export function sketch(kind: Shape, r: Rect | [Pt, Pt] | Line, seed: number, opts: { fill?: boolean; solid?: boolean; roughness?: number } = {}): Sketched[] {
+export type Sketchable = { kind: "poly"; line: Line } | { kind: "open"; line: Line } | { kind: "line"; ends: [Pt, Pt] }
+  | { kind: "rect" | "ellipse" | "diamond"; box: Rect }
+export function sketch(s: Sketchable, seed: number, opts: { fill?: boolean; solid?: boolean; roughness?: number } = {}): Sketched[] {
   const o = { seed: (seed % 2_000_000) + 1, roughness: opts.roughness ?? 1.1, bowing: 1.2, strokeWidth: 2, stroke: "#000",
     ...(opts.fill ? { fill: "#000", fillStyle: "hachure", hachureGap: 6, fillWeight: 1.4 } : opts.solid ? { fill: "#000", fillStyle: "solid" } : {}) }
-  const pts = (l: Line) => l.map(([x, y]) => [x, y] as [number, number])
-  const d = kind === "poly" ? gen.polygon(pts(r as Line), o) : kind === "open" ? gen.linearPath(pts(r as Line), o)
-    : Array.isArray(r) ? gen.line((r as [Pt, Pt])[0].x, (r as [Pt, Pt])[0].y, (r as [Pt, Pt])[1].x, (r as [Pt, Pt])[1].y, o)
-    : kind === "ellipse" ? gen.ellipse(r.x + r.w / 2, r.y + r.h / 2, r.w, r.h, o)
-    : kind === "diamond" ? gen.polygon([[r.x + r.w / 2, r.y], [r.x + r.w, r.y + r.h / 2], [r.x + r.w / 2, r.y + r.h], [r.x, r.y + r.h / 2]], o)
-    : gen.rectangle(r.x, r.y, r.w, r.h, o)
+  const pts = (l: Line) => l.map(([x, y]): [number, number] => [x, y])
+  const d = s.kind === "poly" ? gen.polygon(pts(s.line), o) : s.kind === "open" ? gen.linearPath(pts(s.line), o)
+    : s.kind === "line" ? gen.line(s.ends[0].x, s.ends[0].y, s.ends[1].x, s.ends[1].y, o)
+    : s.kind === "ellipse" ? gen.ellipse(s.box.x + s.box.w / 2, s.box.y + s.box.h / 2, s.box.w, s.box.h, o)
+    : s.kind === "diamond" ? gen.polygon([[s.box.x + s.box.w / 2, s.box.y], [s.box.x + s.box.w, s.box.y + s.box.h / 2], [s.box.x + s.box.w / 2, s.box.y + s.box.h], [s.box.x, s.box.y + s.box.h / 2]], o)
+    : gen.rectangle(s.box.x, s.box.y, s.box.w, s.box.h, o)
   return gen.toPaths(d).map((p) => { const fill = p.stroke === "none" && !!p.fill && p.fill !== "none"; return { d: p.d, hatch: !fill && p.strokeWidth < 2, ...(fill ? { fill } : {}) } })
 }

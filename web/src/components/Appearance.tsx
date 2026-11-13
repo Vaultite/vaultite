@@ -137,7 +137,7 @@ function FontRow({ k }: { k: FontKey }) {
 
 function Fonts() {
   const prefs = usePrefs()
-  const names = [...new Set((Object.keys(FONTS) as FontKey[]).map((k) => (typeof prefs[k] === "string" ? prefs[k].trim() : "")).filter(Boolean))]
+  const names = [...new Set(Object.keys(FONTS).filter((k): k is FontKey => Object.hasOwn(FONTS, k)).map((k) => (typeof prefs[k] === "string" ? prefs[k].trim() : "")).filter(Boolean))]
   return (
     <SettingRow label="Fonts" value={<span data-tip={names.join(", ") || undefined} data-tip-trunc>{names.length ? names.join(", ") : "Default"}</span>}
       onClick={() => openDetail("fonts")} data-fonts-open />

@@ -4,6 +4,7 @@ import { onAway } from "@/core/away"
 import { haptic } from "@/core/haptics"
 import { selecting } from "@/core/select"
 import { cn } from "@/lib/utils"
+import { nodeOf } from "@/core/dom"
 
 /** `removes`: it takes the row away (Done, Delete) at once, like Mail's, back if `run` fails or the row stays. `run`
  *  gets the row's box, for a menu it opens (Snooze ▸). */
@@ -132,7 +133,7 @@ export function SwipeRow({ actions, under: behind, children, className, ...rest 
     <div {...rest} ref={box} className={cn("relative overflow-hidden", className)} style={{ touchAction: "pan-y" }}
       onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
       onClickCapture={(e) => {
-        if (under.current?.contains(e.target as Node)) return
+        if (under.current?.contains(nodeOf(e.target))) return
         if (swiped.current || at.current) { e.preventDefault(); e.stopPropagation(); swiped.current = false; if (at.current) close() }
       }}>
       <div ref={under} aria-hidden={!at.current} data-swipe-under

@@ -35,6 +35,7 @@ import { listOrders, rowMenu, selectClick, selectedAttr, selectionFor, useSelect
 import { SidebarHeading } from "@/components/SidebarHeading"
 import { signal } from "@/core/signal"
 import { glide } from "@/core/animation"
+import { closestOf, nodeOf } from "@/core/dom"
 
 function openSet(key: string, fallback: string[]) {
   const state = scopedState<string[]>(key, fallback, "workspace")
@@ -568,9 +569,9 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
     edge.stop()
   }
   const targetAt = (el: EventTarget | null) => {
-    const more = (el as Element | null)?.closest?.<HTMLElement>("[data-tree-more]")
+    const more = closestOf<HTMLElement>(el, "[data-tree-more]")
     if (more) return { target: more.dataset.treeMore!, folder: null }
-    const row = (el as Element | null)?.closest?.<HTMLElement>("[data-tree-path]")
+    const row = closestOf<HTMLElement>(el, "[data-tree-path]")
     if (!row) return { target: folder ?? "", folder: null }
     const p = row.dataset.treePath!
     return row.dataset.treeFolder ? { target: p, folder: p } : { target: folderOf(p), folder: null }
@@ -611,7 +612,7 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
     onDragEnter: over,
     onDragOver: over,
     onDragLeave: (e: DragEvent) => {
-      if (e.currentTarget.contains(e.relatedTarget as globalThis.Node | null)) return
+      if (e.currentTarget.contains(nodeOf(e.relatedTarget))) return
       setFromComputer(null); stopTimers()
     },
     onDrop: (e: DragEvent) => {
@@ -663,7 +664,7 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
             anyOpen
               ? { label: "Collapse all", icon: ChevronsDownUp, run: () => { treeOpen.set(new Set()); setShowingAll(null) } }
               : { label: "Expand all", icon: ChevronsUpDown, run: () => treeOpen.set(new Set(allFolders)) },
-          ] as { label: string; icon: LucideIcon; pressed?: boolean; run: (e: MouseEvent) => void }[]).map((b) => (
+          ]).map((b: { label: string; icon: LucideIcon; pressed?: boolean; run: (e: MouseEvent) => void }) => (
             <button key={b.label} type="button" onClick={b.run} data-tip={b.label} aria-label={b.label} aria-pressed={b.pressed}
               className={cn("grid size-6 cursor-pointer place-items-center rounded-[4px] hover:bg-foreground/[0.06] hover:text-foreground",
                 b.pressed ? "bg-foreground/[0.08] text-foreground" : "text-muted-foreground")}>
@@ -704,7 +705,7 @@ function styleOf(css?: string): CSSProperties | undefined {
     const k = d.slice(0, i).trim(), v = d.slice(i + 1).trim()
     if (k) out[k.startsWith("--") ? k : k.replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = v
   }
-  return out as CSSProperties
+  return out
 }
 const partProps = (p?: FileRowPart) => ({ ...p?.attrs, ...(p?.style ? { style: styleOf(p.style) } : {}) })
 function RowNodes({ nodes }: { nodes: globalThis.Node[] }) {

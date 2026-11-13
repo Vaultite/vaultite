@@ -86,7 +86,7 @@ function VaultPage({ setup, info }: { setup: SetupApi; info: Info }) {
         <h1 className="text-[22px] leading-[28px] font-semibold tracking-[-0.01em]">Welcome to Vaultite</h1>
         <p className="max-w-[360px] text-muted-foreground">Your notes, as plain Markdown files in a folder you own.</p>
       </div>
-      <Options name="vault" value={kind} onChange={(v) => { setKind(v as "new" | "open"); setError("") }} options={[
+      <Options name="vault" value={kind} onChange={(v) => { setKind(v); setError("") }} options={[
         { value: "new", icon: FolderPlus, title: "Create a vault", sub: "A new folder for your notes" },
         { value: "open", icon: FolderOpen, title: "Open a folder", sub: info.obsidian.length ? "Your Obsidian vaults work too" : "Notes you already have" },
       ]} />
@@ -164,8 +164,8 @@ function Chip({ on, children, onClick, tip, ...p }: { on: boolean; children: Rea
   )
 }
 
-function Options({ name, value, options, onChange }: { name: string; value: string; onChange: (v: string) => void
-  options: { value: string; icon: LucideIcon; title: string; sub: string }[] }) {
+function Options<T extends string>({ name, value, options, onChange }: { name: string; value: T; onChange: (v: T) => void
+  options: { value: T; icon: LucideIcon; title: string; sub: string }[] }) {
   return (
     <div role="radiogroup" className="grid grid-cols-2 gap-2.5">
       {options.map((o) => {

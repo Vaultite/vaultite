@@ -1,6 +1,6 @@
 import { memo, Fragment, useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react"
 import { createPortal } from "react-dom"
-import { Check, ChevronLeft, ChevronRight, Ellipsis, Search, type LucideIcon } from "lucide-react"
+import { Check, ChevronLeft, ChevronRight, Ellipsis, Search } from "lucide-react"
 import { commandName, isOn, isSetting, keyHint, keysOf, offeredCommand, runOrSay } from "@/core/commands"
 import { fadeAway } from "@/core/animation"
 import { fingerHolding, useDragging } from "@/core/drag"
@@ -14,9 +14,11 @@ import { signal } from "@/core/signal"
 import { trackSoon } from "@/core/unsaved"
 import { isDesktop, isMac } from "@/core/platform"
 import { COLOR_NAMES, COLORS, colorVar, type Color } from "../../../core/colors.ts"
+import { closestOf } from "@/core/dom"
+import type { IconType } from "@/core/icons"
 
 export type MenuItem = {
-  label: string; icon?: LucideIcon; run: () => void; danger?: boolean; disabled?: boolean
+  label: string; icon?: IconType; run: () => void; danger?: boolean; disabled?: boolean
   /** A choice: a check shows on the one that's on. */
   checked?: boolean
   /** Muted text at the row's right end: where it is (a panel in the other sidebar: Right sidebar). */
@@ -52,7 +54,7 @@ export function commandItems(...ids: string[]): MenuItem[] {
     const c = offeredCommand(id)
     if (!c) return []
     const keys = keysOf(c)[0]
-    return [{ label: commandName(c), icon: typeof c.icon === "string" ? undefined : c.icon as LucideIcon | undefined, hint: keys ? keyHint(keys) : undefined,
+    return [{ label: commandName(c), icon: typeof c.icon === "string" ? undefined : c.icon, hint: keys ? keyHint(keys) : undefined,
       ...(isSetting(c) ? { checked: isOn(c), keep: true } : {}), run: () => c.run() }]
   })
 }
@@ -97,21 +99,22 @@ const openState = () => open
 let pressed: { x: number; y: number } | null = null
 let armed: { x: number; y: number; at: number } | null = null
 const AIMED_PX = 5, AIMED_MS = 300
+type Opening = Pick<MouseEvent, "clientX" | "clientY" | "preventDefault" | "stopPropagation">
 /** For onContextMenu: the menu at the pointer (nothing if there are no items; never the browser's). */
-export const menuFor = (items: () => MenuItem[]) => (e: MouseEvent) => {
+export const menuFor = (items: () => MenuItem[]) => (e: Opening) => {
   e.preventDefault(); e.stopPropagation()
   openMenu({ x: e.clientX, y: e.clientY }, items(), false, items)
 }
 export const menuOnCard = (items: () => MenuItem[]) => (e: MouseEvent) => {
   e.preventDefault(); e.stopPropagation()
-  const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  const r = e.currentTarget.getBoundingClientRect()
   const up = r.top + r.height / 2 > innerHeight / 2
   openMenu({ x: r.left, y: up ? r.top - 8 : r.bottom + 8 }, items(), up, items)
 }
 const redraw = (items: () => MenuItem[]) => { redrawing = true; try { return items() } finally { redrawing = false } }
 
 /** One thing a checklist turns on or off; `icon`: what it is (a panel's, as the rail shows it), beside its check. */
-export type CheckItem = { key: string; label: string; hint?: string; disabled?: boolean; icon?: LucideIcon }
+export type CheckItem = { key: string; label: string; hint?: string; disabled?: boolean; icon?: IconType }
 const listed = new Map<string, { rows: CheckItem[]; more: CheckItem[][] }>()
 
 /** Which things are on, as menu rows: on ones ticked, in order, then More ▸ with `off`. Each is a checkbox keeping the
@@ -155,7 +158,7 @@ function watchHolds() {
   const marked = () => root.hasAttribute("data-held")
   const mark = (on: boolean) => { if (marked() !== on) root.toggleAttribute("data-held", on) }
   const selecting = () => { const s = getSelection(); if (s && !s.isCollapsed && marked()) s.removeAllRanges() }
-  const lift = (e: Event) => { if (!("touches" in e && (e as TouchEvent).touches.length)) { stop(); mark(false) } }
+  const lift = (e: globalThis.PointerEvent | TouchEvent) => { if (!("touches" in e && e.touches.length)) { stop(); mark(false) } }
   const down = (e: globalThis.PointerEvent) => {
     stop()
     const t = e.target
@@ -219,19 +222,19 @@ function watchHolds() {
 }
 /** For a … button: the menu under it. */
 export const menuBelow = (e: MouseEvent, items: MenuItem[]) => {
-  const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  const r = e.currentTarget.getBoundingClientRect()
   openMenu({ x: r.left, y: r.bottom + 4, flip: r.top - 4 }, items)
 }
 /** For a … button: right-clicks it, so the menu under it is whatever right-clicking its row or heading shows. */
 export const rightClickBelow = (e: MouseEvent) => {
   e.preventDefault(); e.stopPropagation()
-  const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  const r = e.currentTarget.getBoundingClientRect()
   e.currentTarget.dispatchEvent(new globalThis.MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left, clientY: r.bottom + 4 }))
 }
 /** For a button at the bottom (the status bar): the menu above it. */
 export const menuAbove = (e: MouseEvent, items: MenuItem[]) => {
   e.preventDefault(); e.stopPropagation()
-  const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  const r = e.currentTarget.getBoundingClientRect()
   openMenu({ x: r.left, y: r.top - 4, flip: r.bottom + 4 }, items, true)
 }
 
@@ -393,8 +396,8 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
   const later = (fn: () => void) => { clearTimeout(timer.current); timer.current = window.setTimeout(fn, 120) }
   const onKey = (e: React.KeyboardEvent) => {
     const all = [...(ref.current?.querySelectorAll<HTMLElement>(":scope > button:not(:disabled)") ?? [])]
-    const cur = document.activeElement as HTMLElement
-    if (!all.includes(cur) && e.target !== ref.current) return
+    const at = all.findIndex((b) => b === document.activeElement), cur = all[at]
+    if (at < 0 && e.target !== ref.current) return
     e.stopPropagation()
     if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey && (e.key !== " " || query)) { e.preventDefault(); type(query + e.key, true); return }
     if (e.key === "Backspace" && query) { e.preventDefault(); type(query.slice(0, -1), true); return }
@@ -402,7 +405,7 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
     if (e.key.toLowerCase() === "a" && (isMac ? e.metaKey : e.ctrlKey)) { e.preventDefault(); field.current?.focus(); field.current?.select(); return }
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault()
-      const i = all.indexOf(cur)
+      const i = at
       const above = e.key === "ArrowUp" && i === 0 && ["[data-menu-segments] [aria-checked=true]", "[data-menu-colors] [aria-checked=true]", "[data-menu-colors] button", "[data-menu-field] input"]
         .map((q) => ref.current?.querySelector<HTMLElement>(q)).find(Boolean)
       ;(above || all[(i + (e.key === "ArrowDown" ? 1 : -1) + all.length) % all.length])?.focus()
@@ -463,11 +466,11 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
               else if (sub) later(() => setSub(null))
             }}
             onClick={(e) => {
-              const more = it.items && (!it.split || !!(e.target as Element).closest("[data-menu-more]"))
+              const more = it.items && (!it.split || !!closestOf(e.target, "[data-menu-more]"))
               if (it.items && more && drill) { into(i); return }
               if (more) { if (subAt === i) setSub(null); else open(i, e.currentTarget, e.detail === 0); return }
               if (it.keep && again) { runOrSay(it.run, it.label); if (openState()) set({ ...openState()!, items: redraw(again) }); return }
-              closeMenu({ chosen: e.currentTarget, blink: (e.nativeEvent as PointerEvent).pointerType !== "touch" }); runOrSay(it.run, it.label)
+              closeMenu({ chosen: e.currentTarget, blink: !(e.nativeEvent instanceof PointerEvent && e.nativeEvent.pointerType === "touch") }); runOrSay(it.run, it.label)
             }}
             className={cn("relative flex h-11 w-full cursor-pointer items-center gap-3 rounded-[8px] px-3 text-left text-[17px] whitespace-nowrap hover:bg-foreground/[0.07] focus-visible:bg-foreground/[0.07] focus-visible:outline-none disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent md:h-7 md:gap-2.5 md:rounded-[4px] md:px-2.5 md:text-[13px]",
               it.danger && "text-destructive", (subAt === i || (inField && query && i === bestAt)) && "bg-foreground/[0.07]")}>
@@ -577,13 +580,13 @@ function MenuColors({ it, redraw }: { it: MenuItem; redraw?: () => MenuItem[] })
         }
         if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return
         e.preventDefault(); e.stopPropagation()
-        const all = [...e.currentTarget.querySelectorAll<HTMLElement>("button")], i = all.indexOf(document.activeElement as HTMLElement)
+        const all = [...e.currentTarget.querySelectorAll<HTMLElement>("button")], i = all.findIndex((b) => b === document.activeElement)
         all[(i + (e.key === "ArrowRight" ? 1 : -1) + all.length) % all.length]?.focus()
       }}
       className="grid grid-cols-5 justify-items-center gap-1 px-1 pb-1 md:flex md:gap-0.5 md:px-1 md:pb-0.5">
       {COLORS.map((c) => (
         <button key={c} type="button" role="radio" aria-checked={c === value} aria-label={COLOR_NAMES[c]} data-tip={COLOR_NAMES[c]} data-color={c}
-          tabIndex={c === (COLORS.includes(value as Color) ? value : COLORS[0]) ? 0 : -1}
+          tabIndex={c === (COLORS.find((x) => x === value) ?? COLORS[0]) ? 0 : -1}
           onClick={() => choose(c)}
           className="group/swatch grid size-11 cursor-pointer place-items-center rounded-full outline-none md:size-6">
           <span className="on-tint grid size-7 place-items-center rounded-full transition-transform duration-150 group-hover/swatch:scale-110 group-active/swatch:scale-95 group-focus-visible/swatch:outline-2 group-focus-visible/swatch:outline-offset-2 group-focus-visible/swatch:outline-primary/60 md:size-[18px]"

@@ -20,7 +20,7 @@ type Found = { path: string; title: string; context: string; mtime: number; arch
 
 function readQuery(q: string): { node: Node | null; error?: string } {
   if (!q.trim()) return { node: null }
-  try { return { node: parse(q.trim()) } } catch (e) { return { node: null, error: (e as Error).message } }
+  try { return { node: parse(q.trim()) } } catch (e) { return { node: null, error: e instanceof Error ? e.message : undefined } }
 }
 
 function foundHit(r: Found, node: Node): Hit {
@@ -130,8 +130,8 @@ export function SearchPalette({ store, onClose, launcher = false }: { store: Sto
       section={(h) => (h.id === "search-tab" ? "More" : sections.has(h.id) ? sections.get(h.id) || undefined : plain && h.id.startsWith("text-") ? "In files" : undefined)}
       empty={error ? <p className="px-3 py-6 text-center text-[15px] text-muted-foreground">{error}</p>
         : q.trim() && <NoMatches what="Nothing matches" query={q} then="Enter makes a note with that name" />}
-      hints={[["ArrowUp ArrowDown", "to navigate"], ...(launcher ? [["Enter", "to open in new tab"]] as [string, string][] : [["Enter", "to open"], ["Mod+Enter", "to open in new tab"]] as [string, string][]),
-        ...(turns ? [["Alt+ArrowUp Alt+ArrowDown", `to change ${turns}`]] as [string, string][] : []), ["Shift+Enter", "to create"], ["Escape", "to dismiss"]]}
+      hints={[["ArrowUp ArrowDown", "to navigate"], ...(launcher ? [["Enter", "to open in new tab"]] satisfies [string, string][] : [["Enter", "to open"], ["Mod+Enter", "to open in new tab"]] satisfies [string, string][]),
+        ...(turns ? [["Alt+ArrowUp Alt+ArrowDown", `to change ${turns}`]] satisfies [string, string][] : []), ["Shift+Enter", "to create"], ["Escape", "to dismiss"]]}
       row={(h) => (<>
         {fileIcons && <h.icon className="size-4 shrink-0 text-muted-foreground" strokeWidth={2} />}
         <span className="flex min-w-0 flex-1 items-baseline gap-2.5">

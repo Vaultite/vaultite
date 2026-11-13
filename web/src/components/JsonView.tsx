@@ -30,7 +30,7 @@ export function JsonView({ text, editable, onChange }: { text: string; editable:
 
 type JObject = Extract<JNode, { kind: "object" }>
 type JArray = Extract<JNode, { kind: "array" }>
-const isBranch = (n: JNode) => n.kind === "object" || n.kind === "array"
+const isBranch = (n: JNode): n is JObject | JArray => n.kind === "object" || n.kind === "array"
 const count = (n: JNode) =>
   n.kind === "object" ? `${plural(n.entries.length, "field")}`
   : n.kind === "array" ? `${plural(n.items.length, "item")}` : ""
@@ -54,9 +54,9 @@ function Fields({ node, depth, edit }: { node: JObject; depth: number; edit: Edi
   )
 }
 
-function Branch({ label, node, depth, edit }: { label: ReactNode; node: JNode; depth: number; edit: Edit }) {
+function Branch({ label, node, depth, edit }: { label: ReactNode; node: JObject | JArray; depth: number; edit: Edit }) {
   const [open, setOpen] = useState(depth < 3)
-  const empty = node.kind === "object" ? !node.entries.length : node.kind === "array" && !node.items.length
+  const empty = node.kind === "object" ? !node.entries.length : !node.items.length
   return (
     <div className="py-1">
       <button type="button" onClick={() => setOpen(!open)} disabled={empty} aria-expanded={open}
@@ -67,7 +67,7 @@ function Branch({ label, node, depth, edit }: { label: ReactNode; node: JNode; d
       </button>
       {open && !empty && (
         <div className="mt-1 ml-[6px] border-l-[0.5px] border-border pl-4">
-          {node.kind === "object" ? <Fields node={node} depth={depth + 1} edit={edit} /> : <Items node={node as JArray} depth={depth + 1} edit={edit} />}
+          {node.kind === "object" ? <Fields node={node} depth={depth + 1} edit={edit} /> : <Items node={node} depth={depth + 1} edit={edit} />}
         </div>
       )}
     </div>
@@ -85,21 +85,22 @@ function nameOf(n: JNode, i: number): ReactNode {
 }
 
 function Items({ node, depth, edit }: { node: JArray; depth: number; edit: Edit }) {
-  const columns = useMemo(() => {
-    if (!node.items.length || node.items.some((n) => n.kind !== "object")) return null
+  const table = useMemo(() => {
+    const rows = node.items.flatMap((n) => (n.kind === "object" ? [n] : []))
+    if (!node.items.length || rows.length < node.items.length) return null
     const cols: string[] = []
     let cells = 0, plain = 0
-    for (const n of node.items as JObject[]) {
+    for (const n of rows) {
       for (const e of n.entries) {
         if (!cols.includes(e.key)) cols.push(e.key)
         cells++
         if (!isBranch(e.value)) plain++
       }
     }
-    return cols.length && plain >= cells * 0.6 ? cols : null
+    return cols.length && plain >= cells * 0.6 ? { rows, cols } : null
   }, [node])
   if (!node.items.length) return <Faint>Empty list</Faint>
-  if (columns) return <Table rows={node.items as JObject[]} columns={columns} edit={edit} />
+  if (table) return <Table rows={table.rows} columns={table.cols} edit={edit} />
   return (
     <div className="hairline">
       {node.items.map((n, i) =>
@@ -196,7 +197,7 @@ function Value({ node, edit, short }: { node: JNode; edit: Edit; short?: boolean
         if (!t) return
         let v: unknown = t
         try { v = JSON.parse(t) } catch {}
-        edit(node, v === null || ["string", "number", "boolean"].includes(typeof v) ? (v as string | number | boolean | null) : t)
+        edit(node, v === null || typeof v === "string" || typeof v === "number" || typeof v === "boolean" ? v : t)
         return
       }
       edit(node, typed)

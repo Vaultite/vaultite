@@ -5,11 +5,12 @@ import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifi
 import { CSS } from "@dnd-kit/utilities"
 import { sortHaptics } from "@/core/haptics"
 import { cn } from "@/lib/utils"
+import { closestOf } from "@/core/dom"
 
 let down = { x: 0, y: 0 }
 document.addEventListener("pointerdown", (e) => { down = { x: e.clientX, y: e.clientY } }, true)
 document.addEventListener("click", (e) => {
-  if (!(e.target as Element).closest?.("[data-sortable-item]")) return
+  if (!closestOf(e.target, "[data-sortable-item]")) return
   if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) { e.preventDefault(); e.stopPropagation() }
 }, true)
 

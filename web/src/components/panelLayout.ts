@@ -16,7 +16,7 @@ function gapAfter(el: Element) {
 function settling(box: HTMLElement): Settling[] {
   const out: Settling[] = []
   for (const a of box.getAnimations({ subtree: true })) {
-    const fx = a.effect as KeyframeEffect | null, el = fx?.target, end = fx?.getKeyframes().at(-1)
+    const fx = a.effect instanceof KeyframeEffect ? a.effect : null, el = fx?.target, end = fx?.getKeyframes().at(-1)
     if (!el || !end || end.height == null || a.playState === "finished") continue
     // Layout keeps lengths in 1/64px, truncated; computed values mid-animation are finer.
     const css = getComputedStyle(el), px = (v: unknown, now: string) => Math.trunc((parseFloat(String(v ?? now)) || 0) * 64) / 64

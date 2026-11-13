@@ -9,6 +9,7 @@ import { durOf, FRAME_MS, lineStarts, markInk, penStrokes, STAGGER, waitForPen }
 import type { Act, Shown } from "./index"
 import { HOLD } from "./hold"
 import { trackSoon } from "../core/unsaved"
+import { closestOf } from "@/core/dom"
 
 const PILL_H = 24, PILL_PX = 13, TAB_H = 20, TAB_PX = 12
 
@@ -251,7 +252,7 @@ function Shell({ p, ctx, children }: { p: Placed; ctx: CardCtx; children: React.
   return (
     <div data-card={p.mark.id ?? p.i} className="sd-shell pointer-events-auto absolute" style={{ left: c.x + off.x, top: c.y + off.y, width: c.w }}
       {...HOLD}
-      onPointerDown={(e) => { if (e.button !== 0 || (e.target as HTMLElement).closest("[data-nodrag]")) return; drag.current = { x: e.clientX, y: e.clientY, ox: off.x, oy: off.y, moved: false } }}
+      onPointerDown={(e) => { if (e.button !== 0 || closestOf(e.target, "[data-nodrag]")) return; drag.current = { x: e.clientX, y: e.clientY, ox: off.x, oy: off.y, moved: false } }}
       onPointerMove={(e) => {
         const g = drag.current
         if (!g) return
@@ -449,23 +450,23 @@ function Item({ it, items, id, seed, delay }: { it: PaperItem; items: PaperItem[
   const shape = (paths: Sketched[]) => <Sketch paths={paths} delay={delay} />
   if (it.type === "rect" || it.type === "ellipse" || it.type === "diamond") {
     const local = { x: 0, y: 0, w: it.w, h: it.h }, fill = it.fill && it.fill !== "none"
-    return <g className="sd-move" style={at(it.x, it.y)}>{shape(sketch(it.type, local, seed, { solid: !!fill, roughness: 1 }))}</g>
+    return <g className="sd-move" style={at(it.x, it.y)}>{shape(sketch({ kind: it.type, box: local }, seed, { solid: !!fill, roughness: 1 }))}</g>
   }
   if (it.type === "line" || it.type === "arrow") {
     const a = edgeOf(it.from, it.to, items), b = edgeOf(it.to, it.from, items), from = pt(a), to = pt(b)
-    const heads = it.type === "arrow" ? headLines(to, from, 11).map((l) => sketch("open", l, seed + 3, { roughness: 0.6 })).flat() : []
-    return <g key={`${a.join()}-${b.join()}`}><Sketch paths={[...sketch("line", [from, to], seed, { roughness: 1 }), ...heads]} delay={delay} dur={420} /></g>
+    const heads = it.type === "arrow" ? headLines(to, from, 11).map((l) => sketch({ kind: "open", line: l }, seed + 3, { roughness: 0.6 })).flat() : []
+    return <g key={`${a.join()}-${b.join()}`}><Sketch paths={[...sketch({ kind: "line", ends: [from, to] }, seed, { roughness: 1 }), ...heads]} delay={delay} dur={420} /></g>
   }
   if (it.type === "path") return ink([it.points])
   if (it.type === "svg") return <Svg it={it} seed={seed} delay={delay} />
   if (it.type !== "chart") return null
   const { x, y, w, h } = it, foot = it.labels ? 16 : 0, top = Math.max(...it.values, 0), low = Math.min(...it.values, 0), span = top - low || 1, step = w / it.values.length
   const yOf = (v: number) => y + (h - foot) - ((v - low) / span) * (h - foot)
-  const base = <Sketch paths={sketch("line", [{ x, y: yOf(0) }, { x: x + w, y: yOf(0) }], seed, { roughness: 0.6 })} delay={delay} dur={300} />
+  const base = <Sketch paths={sketch({ kind: "line", ends: [{ x, y: yOf(0) }, { x: x + w, y: yOf(0) }] }, seed, { roughness: 0.6 })} delay={delay} dur={300} />
   if (it.kind === "bar") return (
     <g>{base}{it.values.map((v, i) => {
       const bx = x + i * step + step * 0.18, bw = step * 0.64, by = Math.min(yOf(v), yOf(0)), bh = Math.max(1, Math.abs(yOf(v) - yOf(0)))
-      return <Sketch key={i} paths={sketch("rect", { x: bx, y: by, w: bw, h: bh }, seed + i, { fill: true, roughness: 0.8 })} delay={delay + 200 + i * 90} dur={380} />
+      return <Sketch key={i} paths={sketch({ kind: "rect", box: { x: bx, y: by, w: bw, h: bh } }, seed + i, { fill: true, roughness: 0.8 })} delay={delay + 200 + i * 90} dur={380} />
     })}</g>
   )
   const pts = it.values.map((v, i): [number, number] => [x + i * step + step / 2, yOf(v)])
@@ -479,7 +480,7 @@ function Svg({ it, seed, delay }: { it: Extract<PaperItem, { type: "svg" }>; see
     return <g>{it.paths.map((sp, j) => {
       const fill = sp.fill ?? it.fill, stroke = sp.color === "none" ? fill : sp.color ?? it.color
       return <g key={j} style={{ "--ink": inkCss(stroke), "--fill": fillCss(fill) }}>
-        {flatten(sp.d).map((sub, k) => <Sketch key={k} paths={sketch(sub.closed ? "poly" : "open", sub.pts.map(toBox), seed + j * 31 + k, { solid: sub.closed && !!fill && fill !== "none", roughness: 0.9 })} delay={delay + j * step} dur={dur} />)}
+        {flatten(sp.d).map((sub, k) => <Sketch key={k} paths={sketch({ kind: sub.closed ? "poly" : "open", line: sub.pts.map(toBox) }, seed + j * 31 + k, { solid: sub.closed && !!fill && fill !== "none", roughness: 0.9 })} delay={delay + j * step} dur={dur} />)}
       </g>
     })}</g>
   }

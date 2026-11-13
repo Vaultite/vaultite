@@ -14,6 +14,7 @@ import { SwitchRow } from "@/components/SwitchRow"
 import { coreSwitch } from "@/core/switches"
 import { panelIcon } from "@/components/Sidebar"
 import { cn } from "@/lib/utils"
+import { htmlOf } from "@/core/dom"
 
 type Where = Side | null
 type Drop = { before: string | null; order?: string[] }
@@ -43,7 +44,7 @@ export function SidebarsSheet() {
   const root = useRef<HTMLDivElement>(null)
   const [edge] = useState(() => edgeScroller())
   useDropTarget("customize:edge", (item, _x, y) => {
-    const box = root.current && carried(item) ? scrollerOf(root.current) ?? document.scrollingElement as HTMLElement : null
+    const box = root.current && carried(item) ? scrollerOf(root.current) ?? htmlOf(document.scrollingElement) : null
     if (box) edge.near(box, y)
     else edge.stop()
     return null

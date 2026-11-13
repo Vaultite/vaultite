@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, type MouseEvent } from "react"
+import { useCallback, useEffect, useMemo, useRef, type MouseEvent } from "react"
 import { createRoot } from "react-dom/client"
 import { getStore, type Store } from "@/core/data"
 import { Copy } from "lucide-react"
@@ -18,6 +18,7 @@ import { openMenu, type MenuItem } from "@/components/ContextMenu"
 import { copyText, grouped } from "@/components/FileActions"
 import { linkItems } from "@/components/LinkMenu"
 import { cn } from "@/lib/utils"
+import { closestOf } from "@/core/dom"
 
 function vaultOpts(s: Store | null, from?: string): MarkdownOpts {
   if (!s) return {}
@@ -62,6 +63,7 @@ export function Markdown({ text, store, inline, full, className, from, plain, se
     return inline ? renderInline(text, opts) : renderMarkdown(text, opts)
   }, [text, s, inline, from])
   const ref = useRef<HTMLElement>(null)
+  const attach = useCallback((el: HTMLElement | null) => { ref.current = el }, [])
   const seenKey = (seen ?? (from ? [from] : [])).join("\n")
   useEffect(() => {
     if (!ref.current) return
@@ -83,9 +85,9 @@ export function Markdown({ text, store, inline, full, className, from, plain, se
   }, [html])
   const follow = (e: MouseEvent) => {
     if (e.button === 0 && ref.current && richClick(e, ref.current)) return
-    const a = (e.target as Element).closest<HTMLElement>("[data-wiki], [data-tag], [data-url]")
+    const a = closestOf<HTMLElement>(e.target, "[data-wiki], [data-tag], [data-url]")
     const web = !a && s && from && fileOf(s, from)?.container && !((e.shiftKey || e.altKey) && !(e.metaKey || e.ctrlKey))
-      ? (e.target as Element).closest<HTMLAnchorElement>("a[href]") : null
+      ? closestOf<HTMLAnchorElement>(e.target, "a[href]") : null
     if (web && s && /^https?:/i.test(web.href)) {
       e.preventDefault(); e.stopPropagation()
       return void followLink(s, { url: web.href }, linkClick(e), from)
@@ -97,7 +99,7 @@ export function Markdown({ text, store, inline, full, className, from, plain, se
   }
   const menu = (e: MouseEvent) => {
     if (!s || e.defaultPrevented) return
-    const img = (e.target as Element).closest("img"), at = { x: e.clientX, y: e.clientY }
+    const img = closestOf(e.target, "img"), at = { x: e.clientX, y: e.clientY }
     if (img) {
       e.preventDefault(); e.stopPropagation()
       const src = img.getAttribute("src") ?? ""
@@ -115,7 +117,7 @@ export function Markdown({ text, store, inline, full, className, from, plain, se
   }
   const Tag = inline ? "span" : "div"
   return (
-    <Tag ref={ref as never} className={cn(!plain && "note-prose", !plain && (inline ? "inline" : !full && "compact"), className)} onClick={follow} onAuxClick={(e) => { if (e.button === 1) follow(e) }} onContextMenu={menu} data-markdown-from={from} dangerouslySetInnerHTML={{ __html: html }} />
+    <Tag ref={attach} className={cn(!plain && "note-prose", !plain && (inline ? "inline" : !full && "compact"), className)} onClick={follow} onAuxClick={(e) => { if (e.button === 1) follow(e) }} onContextMenu={menu} data-markdown-from={from} dangerouslySetInnerHTML={{ __html: html }} />
   )
 }
 

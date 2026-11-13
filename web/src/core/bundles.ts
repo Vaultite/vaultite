@@ -6,7 +6,7 @@ import { openDetail, replaceDetail, route } from "@/core/nav"
 import { openFile } from "@/core/files"
 import { dismissNotice, notify, notifyError } from "@/core/notify"
 import { currentWorkspace, landingWorkspace } from "@/core/scope"
-import type { Info as BundleInfo, Plan, PlanChange, ShareItem } from "../../../core/bundles.ts"
+import type { Answers, Info as BundleInfo, Plan, PlanChange, ShareItem } from "../../../core/bundles.ts"
 import type { Sketch } from "../../../core/bundlesketch.ts"
 import { parseRepo, repoText } from "../../../core/bundlelinks.ts"
 import { signal } from "@/core/signal"
@@ -67,7 +67,7 @@ export function lockedBy(p: Plan, off: ReadonlySet<string>): Set<string> {
 }
 export const skipOf = (p: Plan, off: ReadonlySet<string>) => [...new Set([...off, ...lockedBy(p, off)])].filter((id) => p.changes.some((c) => c.id === id))
 
-export async function previewOf(id: string, fresh = false): Promise<{ bundle: BundleInfo; files: string[]; plan: Plan }> {
+export async function previewOf(id: string, fresh = false): Promise<Answers["show"]> {
   const q = whereQuery()
   return get(`bundles/${encodeURIComponent(id)}${q}${fresh ? `${q ? "&" : "?"}fresh=1` : ""}`)
 }

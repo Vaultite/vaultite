@@ -21,6 +21,7 @@ import { LayoutPicker } from "@/components/LayoutPicker"
 import { Dots, PageFoot } from "@/components/WelcomeParts"
 import { cn } from "@/lib/utils"
 import type { Permission, PermissionReport } from "../../../core/permissions.ts"
+import { closestOf, focusableOf } from "@/core/dom"
 
 type Page = "look" | "ai" | "permissions" | "done"
 const DOT: Record<Page, number> = { look: 0, ai: 1, permissions: 1, done: 2 }
@@ -47,11 +48,11 @@ function Welcome({ ask }: { ask: WelcomeAsk }) {
 
   useEffect(() => { codingAgents().then(setAgents, () => setAgents([])) }, [])
   useLayoutEffect(() => {
-    const root = document.getElementById("root"), back = document.activeElement as HTMLElement | null
+    const root = document.getElementById("root"), back = document.activeElement
     root?.setAttribute("inert", "")
-    return () => { root?.removeAttribute("inert"); back?.focus?.({ preventScroll: true }) }
+    return () => { root?.removeAttribute("inert"); focusableOf(back)?.focus({ preventScroll: true }) }
   }, [])
-  useEffect(() => { (card.current?.querySelector<HTMLElement>("[data-primary]") ?? card.current)?.focus({ preventScroll: true, focusVisible: false } as FocusOptions) }, [page, agents])
+  useEffect(() => { (card.current?.querySelector<HTMLElement>("[data-primary]") ?? card.current)?.focus({ preventScroll: true, focusVisible: false }) }, [page, agents])
 
   const go = (to: Page) => { setDir(1); setTrail((t) => [...t, to]) }
   const back = trail.length > 1 ? () => { setDir(-1); setTrail((t) => t.slice(0, -1)) } : undefined
@@ -96,7 +97,7 @@ function Welcome({ ask }: { ask: WelcomeAsk }) {
       return
     }
     if (appShortcut(n)) { e.preventDefault(); return }
-    if (e.defaultPrevented || typingIn(e.target) || (e.target as Element).closest?.("[role=radiogroup]") || e.metaKey || e.ctrlKey || e.altKey) return
+    if (e.defaultPrevented || typingIn(e.target) || closestOf(e.target, "[role=radiogroup]") || e.metaKey || e.ctrlKey || e.altKey) return
     if (e.key === "ArrowRight" && next && page !== "done" && !busy) { e.preventDefault(); next() }
     else if (e.key === "ArrowLeft" && back && !busy) { e.preventDefault(); back() }
   }

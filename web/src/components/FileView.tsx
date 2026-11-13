@@ -64,6 +64,7 @@ import type { PreviewConfig } from "@/editor/livePreview"
 import { beforeMode, CODE_VIEWS, MODES, opensReading, SOURCE_VIEWS, useMode, usePublish, viewItems, VIEWS, type Mode } from "@/components/fileState"
 import { fmLines, keepPlace, lineAtTop, partLineAt, revealProps, spotOf, useTextFocus, type Spot } from "@/components/filePlace"
 import { share } from "@/core/share"
+import { closestOf } from "@/core/dom"
 
 const Notebook = lazy(() => import("@/editor/Notebook"))
 
@@ -112,7 +113,7 @@ const Title = memo(function Title({ path, editable, sheet, focus, settle, mode, 
       onChange={(e) => setV(e.target.value)} onBlur={commit}
       onKeyDown={(e) => {
         if (e.key === "Enter") { e.preventDefault(); const { why } = renaming(path, v); if (why) return refuseName(why, e.currentTarget); enter.current = true; e.currentTarget.blur() }
-        if (e.key === "Escape") { setV(name); (e.target as HTMLTextAreaElement).blur() }
+        if (e.key === "Escape") { setV(name); e.currentTarget.blur() }
       }}
       className="block w-full resize-none overflow-hidden bg-transparent outline-none placeholder:text-muted-foreground" /></h1>
   )
@@ -193,7 +194,7 @@ const PathBar = memo(function PathBar({ path, mode, setMode, edit, views, settle
               onFocus={(e) => e.target.select()} onChange={(e) => setV(e.target.value)}
               onBlur={async () => { setEditing(false); if (!(await rename(path, v, settle))) setV(name) }}
               onKeyDown={(e) => {
-                if (e.key === "Enter") (e.target as HTMLInputElement).blur()
+                if (e.key === "Enter") e.currentTarget.blur()
                 if (e.key === "Escape") { setV(name); setEditing(false) }
               }}
               className="col-start-1 row-start-1 h-6 w-full min-w-10 rounded-[4px] bg-card px-1 outline-none ring-1 ring-primary/60" />
@@ -306,7 +307,7 @@ function MediaFile({ store, path, pane, kind, note }: { store: Store; path: stri
     setExtra(h ? `${h}:${String(m).padStart(2, "0")}:${sec}` : `${m}:${sec}`)
   }
   const onMenu = (e: MouseEvent) => {
-    if (e.defaultPrevented || (e.target as Element).closest("input, textarea, [contenteditable]")) return
+    if (e.defaultPrevented || closestOf(e.target, "input, textarea, [contenteditable]")) return
     menuFor(() => mediaItems(path, isOutside(path)))(e)
   }
   return (
@@ -565,7 +566,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     if (!el) return
     let touched = false
     const keep = () => { if (touched) keepAt() }
-    const into = (e: FocusEvent) => { if ((e.target as HTMLElement).closest?.(".cm-content")) touched = true }
+    const into = (e: FocusEvent) => { if (closestOf(e.target, ".cm-content")) touched = true }
     el.addEventListener("focusin", into)
     el.addEventListener("focusout", keep)
     return () => { el.removeEventListener("focusin", into); el.removeEventListener("focusout", keep); keep() }
@@ -622,7 +623,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     if (!strict) return
     jsonCheck.current = window.setTimeout(() => {
       const text = full()
-      try { if (text.trim()) JSON.parse(text); setBadJson(null) } catch (e) { setBadJson(String((e as Error).message ?? e)) }
+      try { if (text.trim()) JSON.parse(text); setBadJson(null) } catch (e) { setBadJson(e instanceof Error ? e.message : String(e)) }
     }, 600)
   }
   useEffect(() => { checkJson(); return () => clearTimeout(jsonCheck.current) },
@@ -805,7 +806,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     })
   }, [droppable])
   const outsideMenu = outside ? (e: MouseEvent) => {
-    if (!(e.target as Element).closest(".cm-content, input, textarea")) menuFor(() => [copyToVaultItem(path), ...revealItem(path, true)])(e)
+    if (!closestOf(e.target, ".cm-content, input, textarea")) menuFor(() => [copyToVaultItem(path), ...revealItem(path, true)])(e)
   } : undefined
   if (fills && drawing) return <PaneFile path={path} kind={kind} bar={pathBar("mb-0")} toggle={phoneToggle} notices={notices} onContextMenu={outsideMenu}>{drawing}</PaneFile>
 

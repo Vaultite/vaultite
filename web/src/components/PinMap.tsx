@@ -40,7 +40,7 @@ function cluster(map: MLMap, pins: MapPin[]): Item[] {
   return out
 }
 
-const el = (tag: string, cls: string, text?: string) => {
+const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string) => {
   const e = document.createElement(tag)
   e.className = cls
   if (text !== undefined) e.textContent = text
@@ -48,7 +48,7 @@ const el = (tag: string, cls: string, text?: string) => {
 }
 
 function pinElement(it: Item) {
-  const b = el("button", "nm-pin") as HTMLButtonElement
+  const b = el("button", "nm-pin")
   b.type = "button"
   const one = it.pins.length === 1 ? it.pins[0] : null
   const colors = new Set(it.pins.map((p) => p.color ?? DEFAULT_COLOR))
@@ -65,7 +65,7 @@ function pinElement(it: Item) {
 function popupContent(it: Item, onOpen: (id: string, newTab: boolean) => void, close: () => void) {
   const box = el("div", "nm-list")
   for (const p of it.pins) {
-    const r = el("button", "nm-row") as HTMLButtonElement
+    const r = el("button", "nm-row")
     r.type = "button"
     const dot = el("span", "nm-row-dot")
     dot.style.setProperty("--c", p.color ?? DEFAULT_COLOR)

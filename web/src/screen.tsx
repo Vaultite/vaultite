@@ -14,7 +14,7 @@ import { type Sample, TRAIL, trailPieces } from "@/core/trail"
 import { type Cue, cueLength, playCue } from "@/core/cues"
 import { penSound } from "@/core/pensound"
 import { cn, followSystemTheme } from "@/lib/utils"
-import { presence, type Mark as MarkKind } from "../../core/desktop/cursor"
+import { presence, STATUS, type CursorState, type Mark as MarkKind } from "../../core/desktop/cursor"
 import { arrowBox, boxAt, flagBox } from "../../core/desktop/boxes"
 import { Chat, type ChatItem } from "@/components/Chat"
 import { type DrawBridge, ScreenDrawings } from "./screendraw"
@@ -346,10 +346,13 @@ const WORDS = cn("companion-pop absolute top-0 left-0 flex w-max max-w-[320px] f
   "data-[side=right]:data-up:rounded-bl-[4px] data-[side=left]:data-up:rounded-br-[4px] data-[side=right]:not-data-up:rounded-tl-[4px] data-[side=left]:not-data-up:rounded-tr-[4px]")
 const FADES = "screen-in group fixed top-0 left-0 transition-opacity duration-300 data-gone:pointer-events-none data-gone:opacity-0 data-gone:duration-500 data-gone:ease-out data-leaving:delay-150"
 
+const cursorState = (s: string): CursorState => (isCursorState(s) ? s : "away")
+const isCursorState = (s: string): s is CursorState => Object.hasOwn(STATUS, s)
+
 function Cursor({ a, gone, speaking }: { a: Agent; gone?: boolean; speaking?: boolean }) {
   const tint = `var(--${a.tint})`, key = `agent:${a.name}`
   const [hover, setHover] = useState(false), age = useAge(a.t)
-  const shown = presence({ state: a.state as Parameters<typeof presence>[0]["state"], seen: a.seen, why: a.why }, { bubble: !!a.say, age, looked: hover })
+  const shown = presence({ state: cursorState(a.state), seen: a.seen, why: a.why }, { bubble: !!a.say, age, looked: hover })
   useLayoutEffect(() => repaint(key), [key, a.say?.id, a.say?.text, shown.flag, shown.words])
   return (
     <div ref={attach(key, paintCursor)} data-gone={gone || a.leaving || undefined} data-leaving={a.leaving || undefined} data-target={targetOf(a)}
@@ -467,7 +470,7 @@ function Pill({ p, top }: { p: NonNullable<Shown["pill"]>; top: number }) {
 
 const marked = new Marked({ gfm: true, breaks: true })
 const linkAttrs = (href: string) => (/^https?:/i.test(href) ? ` href="${href.replace(/"/g, "&quot;")}" target="_blank" rel="noreferrer"` : null)
-const html = (text: string) => sanitizeHtml(marked.parse(text, { async: false }) as string, { link: linkAttrs, image: () => null })
+const html = (text: string) => sanitizeHtml(marked.parse(text, { async: false }), { link: linkAttrs, image: () => null })
 const TIME = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" })
 
 function Panel() {

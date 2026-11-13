@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react"
 import {
   ArrowRight, BookOpen, Bot, Check, Copy, Download, FilePlus, Import, LayoutDashboard, MoreHorizontal, Package, PackagePlus, PanelLeft, PanelRight, Pin, Plus,
-  Puzzle, RefreshCw, Settings2, Share, ShieldAlert, Star, Trash2, type LucideIcon,
+  Puzzle, RefreshCw, Settings2, Share, ShieldAlert, Star, Trash2,
 } from "lucide-react"
 import {
   addIncoming, agentPrompt, applyBundle, browseBundles, bundleText, exportBundle, forkBundle, givenImport, incomingOf, isBundleText, isLayout,
@@ -26,6 +26,7 @@ import { cn, plural } from "@/lib/utils"
 import { official } from "../../../core/updates.ts"
 import { Button } from "@/components/Button"
 import { BundleLink } from "./BundleLink"
+import { nodeOf } from "@/core/dom"
 
 const iconOfBundle = (b: Pick<BundleInfo, "icon">) => namedIcon(b.icon) ?? Package
 const tintOfBundle = (b: Pick<BundleInfo, "tint">) => tintOf(b.tint) ?? "var(--primary)"
@@ -49,7 +50,7 @@ function useImportGestures(root: RefObject<HTMLDivElement | null>) {
     }
     const files = (e: DragEvent) => !!e.dataTransfer?.types.includes("Files")
     const enter = (e: DragEvent) => { if (!files(e)) return; e.preventDefault(); e.dataTransfer!.dropEffect = "copy"; setOver(true) }
-    const leave = (e: DragEvent) => { if (!el.contains(e.relatedTarget as Node | null)) setOver(false) }
+    const leave = (e: DragEvent) => { if (!el.contains(nodeOf(e.relatedTarget))) setOver(false) }
     const drop = (e: DragEvent) => {
       if (!files(e)) return
       e.preventDefault()
@@ -225,7 +226,7 @@ function panelLook(key: string) {
   const [pid, name] = key.split(":")
   const p = pluginById(pid)
   const def = p?.sidebar?.[name]
-  return { title: def ? (def.heading || def.title) : name, icon: (def?.flyout?.icon ?? p?.icon ?? PanelLeft) as LucideIcon, tint: tintOfPlugin(pid) }
+  return { title: def ? (def.heading || def.title) : name, icon: def?.flyout?.icon ?? p?.icon ?? PanelLeft, tint: tintOfPlugin(pid) }
 }
 
 function Side({ side, keys, collapsed }: { side: string; keys: string[]; collapsed: string[] }) {
@@ -268,7 +269,7 @@ export function BundlePreview({ id }: { id: string }) {
   const [edits, setEdits] = useState<ReadonlySet<string> | null>(null)
   const l = useBundles()
   const drift = !!l?.bundles.find((x) => x.id === id)?.modified
-  useEffect(() => { previewOf(id, drift).then((x) => setP(x as Preview), (e) => setError(errorText(e))) }, [id, drift])
+  useEffect(() => { previewOf(id, drift).then((x) => setP(x), (e) => setError(errorText(e))) }, [id, drift])
   if (error) return <SheetHead icon={Package} tint="var(--muted-foreground)" kicker="Bundle" title="Can't open this bundle" sub={error} />
   if (!p) return <div aria-busy><SheetHead icon={Package} tint="var(--muted-foreground)" kicker="Bundle" title={<Line w="45%" />} sub={<Line w="70%" />} /></div>
   const { bundle: b, plan } = p
@@ -485,8 +486,8 @@ function Changes({ p, pick, offAdded, setOffAdded }: { p: Preview; pick?: Picks;
         {(plan.appearance.length > 0 || plan.newtab.length > 0) && (
           <Panel title="Look" icon={Settings2}>
             {(() => {
-              const scheme = plan.appearance.find((c) => c.key === "scheme")?.to as string | undefined
-              const theme = plan.appearance.find((c) => c.key === "theme")?.to as string | undefined
+              const to = (key: string) => { const v = plan.appearance.find((c) => c.key === key)?.to; return typeof v === "string" ? v : undefined }
+              const scheme = to("scheme"), theme = to("theme")
               return scheme ? <Swatches id={scheme} mode={theme === "dark" || theme === "light" ? theme : undefined} className="mb-2 h-12 max-w-[280px]" /> : null
             })()}
             {plan.appearance.map((c) => <Setting key={c.key} pick={pick} id={c.change} label={APPEARANCE[c.key] ?? c.key} from={c.from} to={c.to} />)}

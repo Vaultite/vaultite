@@ -5,10 +5,10 @@ import type { ViewDef } from "@/core/define"
 import { useHeldHeight } from "@/core/heights"
 import { barsHidden, closePane, paneById, quietly, replaceTabTarget, setArchivable, setCloseGuard, setFocusedPane, setOpenElsewhere, setOpener, setOwnHistory, setPageTest, setPathView, setTabCloser, setTabKeeper, setWorkspaceOf, useTabList } from "@/core/workspace"
 import { dropAt, dropOn, PANES, springOver, type Drop } from "@/core/drop"
-import { evenOut, placeFloat, resize } from "@/core/splits"
+import { evenOut, placeFloat, resize, type Zone } from "@/core/splits"
 import { paneBoxes, paneGap, usePaneMotion } from "@/core/panemotion"
 import { setGroupNamer, setPaneLabeler } from "@/core/tabgroups"
-import { layout, panesOf, placesIn, shownTab, tabOfPane, tabPath, type Divider as DividerAt, type Pane, type Rect, type Tab, type TabList } from "../../../core/layout.ts"
+import { layout, panesOf, placesIn, shownTab, tabOfPane, tabPath, type Divider as DividerAt, type Pane, type Rect, type Side, type Tab, type TabList } from "../../../core/layout.ts"
 import { PaneContext } from "@/core/pane"
 import { VaultLoading } from "@/components/VaultLoading"
 import { isPage } from "@/core/pages"
@@ -19,7 +19,7 @@ import { FileView } from "@/components/FileView"
 import { Drawn, Guard } from "@/components/Guard"
 import { barMenuOf, DragGhost, PaneBar, springTabAt, tabBarOn, TabStrip, tabLabel, useTabInfo, type TabInfo } from "@/components/Tabs"
 import { NewTab, useNewTabPage } from "@/components/NewTab"
-import { useDrag, useDropTarget, type DragItem } from "@/core/drag"
+import { hitOn, useDrag, useDropTarget, type DragItem } from "@/core/drag"
 import { Resizer } from "@/components/Resizer"
 import { resizing, startResizing, stopResizing } from "@/core/resizing"
 import { ViewBar } from "@/components/ViewBar"
@@ -27,6 +27,7 @@ import { keepScroll, restoreScroll, scrollOf } from "@/core/viewstate"
 import { cn } from "@/lib/utils"
 import { menuFor } from "@/components/ContextMenu"
 import { unsavedIn } from "@/core/unsaved"
+import { closestOf } from "@/core/dom"
 
 setTabCloser((to, pane, last, moved) => {
   const v = viewFor(to, getPrefs().disabled)
@@ -202,8 +203,8 @@ function track(e: React.PointerEvent<HTMLElement>, cursor: string, move: (dx: nu
 }
 
 function moveCard(e: React.PointerEvent<HTMLElement>, id: string, box: React.RefObject<HTMLElement | null>) {
-  const t = e.target as Element, b = box.current?.getBoundingClientRect(), was = paneById(id)?.float
-  if (e.button !== 0 || !b || !was || !t.closest("[data-pane-bar]") || t.closest("button, a, input, [role=separator]")) return
+  const b = box.current?.getBoundingClientRect(), was = paneById(id)?.float
+  if (e.button !== 0 || !b || !was || !closestOf(e.target, "[data-pane-bar]") || closestOf(e.target, "button, a, input, [role=separator]")) return
   const r = { x: was.x * b.width, y: was.y * b.height, w: was.w * b.width, h: was.h * b.height }
   const plate = box.current?.querySelector<HTMLElement>(`:scope > [data-plate="${CSS.escape(id)}"]`)
   if (plate) plate.dataset.dragging = ""
@@ -236,7 +237,7 @@ function CardEdges({ id, rect, box, z }: { id: string; rect: Rect; box: React.Re
 }
 
 const useZone = (pane: string) => useDrag((d) => {
-  const h = d?.hit?.target === PANES ? (d.hit.data as Drop) : null
+  const h = hitOn(d?.hit, PANES)
   return h?.kind === "pane" && h.pane === pane ? h.zone : null
 })
 
@@ -250,9 +251,9 @@ function PaneBody({ pane, tab, shown, focused, ...p }: Props & { pane: Pane; tab
   )
 }
 
-function DropZone({ zone }: { zone: string }) {
-  const whole = { top: 4, right: 4, bottom: 4, left: 4 }, half = (side: string) => ({ ...whole, [side]: "calc(50% + 2px)" })
-  const other = { left: "right", right: "left", top: "bottom", bottom: "top" } as Record<string, string>
+function DropZone({ zone }: { zone: Zone }) {
+  const whole = { top: 4, right: 4, bottom: 4, left: 4 }, half = (side: Side) => ({ ...whole, [side]: "calc(50% + 2px)" })
+  const other: Record<Side, Side> = { left: "right", right: "left", top: "bottom", bottom: "top" }
   return (
     <>
       <div aria-hidden data-drop-rest className="drop-zone pointer-events-none absolute z-20 rounded-[8px] bg-foreground/[0.04] ring-1 ring-foreground/15 ring-inset"
@@ -285,7 +286,7 @@ function PlaceBody({ pane, tab, shown, focused, ...p }: Props & { pane: Pane; ta
   const wasShown = useRef(shown)
   useLayoutEffect(() => {
     if (shown && !wasShown.current && box.current && !full) box.current.scrollTop = scrollOf(place.current)
-    if (!shown && wasShown.current) for (const m of box.current?.querySelectorAll("audio:not([data-keeps-playing]), video:not([data-keeps-playing])") ?? []) (m as HTMLMediaElement).pause()
+    if (!shown && wasShown.current) for (const m of box.current?.querySelectorAll("audio:not([data-keeps-playing]), video:not([data-keeps-playing])") ?? []) if (m instanceof HTMLMediaElement) m.pause()
     // Blurred now: the browser's own focus fixup for a hidden element comes a frame later.
     if (!shown && wasShown.current && document.activeElement instanceof HTMLElement && box.current?.contains(document.activeElement)) document.activeElement.blur()
     wasShown.current = shown

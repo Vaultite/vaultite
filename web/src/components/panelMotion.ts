@@ -12,7 +12,7 @@ const panelEl = (key: string, root: ParentNode = document) =>
   root.querySelector<HTMLElement>(`${root === document ? "[data-sidebar-body]" : ":scope"} > [data-panel="${CSS.escape(key)}"]`)
 
 function copyOf(el: HTMLElement) {
-  const c = el.cloneNode(true) as HTMLElement
+  const c = el.cloneNode(true)
   c.dataset.panel = ""
   c.removeAttribute("data-slide")
   c.classList.remove("invisible")
@@ -37,7 +37,7 @@ function likeIt(c: HTMLElement, el: HTMLElement) {
   })
 }
 
-type Lift = { key: string; el: HTMLElement; ghost: HTMLElement; card: HTMLElement; tag: HTMLElement; dx: number; dy: number; h: number
+type Lift = { key: string; el: HTMLElement; ghost: HTMLElement; card: HTMLElement; clip: HTMLElement; tag: HTMLElement; dx: number; dy: number; h: number
   over: string | null; to?: DOMRect; fading?: boolean; cancelled?: boolean }
 let lift: Lift | null = null
 let settling: Lift | null = null
@@ -74,7 +74,7 @@ function start(d: Drag) {
   ghost.append(card, tag)
   document.body.append(ghost)
   likeIt(copy, el)
-  lift = { key, el, ghost, card, tag, dx: d.x - r.left, dy: d.y - top, h, over: null }
+  lift = { key, el, ghost, card, clip, tag, dx: d.x - r.left, dy: d.y - top, h, over: null }
   follow(d)
   card.style.transformOrigin = `${lift.dx}px ${lift.dy}px`
   card.style.transform = `scale(${LIFT})`
@@ -125,9 +125,8 @@ export function settle() {
   const fly = l.ghost.animate([{ transform: `translate(${g.m41}px, ${g.m42}px)` }, { transform: to }], t)
   l.card.animate([{ transform: `scale(${scale})`, boxShadow: shadow, borderRadius: "14px", backdropFilter: "blur(12px)" },
     { transform: "none", boxShadow: FLAT, borderRadius: "0px", backdropFilter: "blur(0px)" }], t)
-  const clip = l.card.firstElementChild as HTMLElement
   const cut = Math.max(0, l.h - r.height)
-  clip.animate([{ clipPath: "inset(0 0 0 0)", borderRadius: "14px" }, { clipPath: `inset(0 0 ${cut}px 0)`, borderRadius: "0px" }], { ...t, fill: "forwards" })
+  l.clip.animate([{ clipPath: "inset(0 0 0 0)", borderRadius: "14px" }, { clipPath: `inset(0 0 ${cut}px 0)`, borderRadius: "0px" }], { ...t, fill: "forwards" })
   fly.finished.then(() => { if (settling === l && l.to === r) finish() }, () => {})
 }
 

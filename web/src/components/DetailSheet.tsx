@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode } from "react"
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { ChevronLeft, X } from "lucide-react"
 import { confirmDialog } from "@/components/ConfirmDialog"
@@ -10,6 +10,7 @@ import { lockPage } from "@/core/pagelock"
 import { isDesktop } from "@/core/platform"
 import { trackUnsaved } from "@/core/unsaved"
 import { cn } from "@/lib/utils"
+import { closestOf, focusableOf } from "@/core/dom"
 
 const guards = new Set<{ current: () => string[] }>()
 const InSheet = createContext(false)
@@ -43,6 +44,12 @@ async function leave(go: () => void) {
   go()
 }
 
+function onBackdrop(e: ReactMouseEvent<HTMLDialogElement>) {
+  if (e.target !== e.currentTarget) return false
+  const r = e.currentTarget.getBoundingClientRect()
+  return e.clientY < r.top || e.clientY > r.bottom || e.clientX < r.left || e.clientX > r.right
+}
+
 function movedTo(detail: string) {
   if (!detail.startsWith("file/")) return detail
   try { return `file/${encodeURIComponent(whereNow(decodeURIComponent(detail.slice(5)), 0))}` } catch { return detail }
@@ -74,7 +81,7 @@ export function DetailSheet({ open, onClose, onBack, backLabel, title, path, dep
     closePalette()
     const release = isDesktop() ? holdFocus() : null
     // Phones: closing a dialog refocuses what had focus, which would pop the keyboard, so blur first.
-    ;(document.activeElement as HTMLElement | null)?.blur?.()
+    focusableOf(document.activeElement)?.blur()
     const unlock = lockPage()
     if (!d.open) {
       if (typeof d.showModal === "function") d.showModal(); else d.setAttribute("open", "") // pre-15.4 iOS: no <dialog>
@@ -126,10 +133,10 @@ export function DetailSheet({ open, onClose, onBack, backLabel, title, path, dep
   const letGo = () => { drag.current?.quit(); drag.current = null; setDy(0) }
   const header = {
     onPointerDown: (e: PointerEvent) => {
-      if (e.pointerType === "mouse" || (e.target as Element).closest("button")) return
+      if (e.pointerType === "mouse" || closestOf(e.target, "button")) return
       drag.current?.quit()
       drag.current = { y: e.clientY, t: e.timeStamp, quit: onAway(letGo) }
-      ;(e.currentTarget as Element).setPointerCapture(e.pointerId)
+      e.currentTarget.setPointerCapture(e.pointerId)
     },
     onPointerMove: (e: PointerEvent) => { if (drag.current) setDy(Math.max(0, e.clientY - drag.current.y)) },
     onPointerUp: (e: PointerEvent) => {
@@ -144,12 +151,7 @@ export function DetailSheet({ open, onClose, onBack, backLabel, title, path, dep
   return (
     <dialog ref={ref} aria-labelledby="sheet-title" tabIndex={-1}
       onCancel={(e) => { e.preventDefault(); close() }}
-      onClick={(e) => {
-        // The backdrop: a click on the dialog element itself that lands outside its box.
-        if (e.target !== e.currentTarget || performance.now() - openedAt.current < 400) return
-        const r = e.currentTarget.getBoundingClientRect()
-        if (e.clientY < r.top || e.clientY > r.bottom || e.clientX < r.left || e.clientX > r.right) close()
-      }}
+      onClick={(e) => { if (onBackdrop(e) && performance.now() - openedAt.current >= 400) close() }}
       style={dy ? { transform: `translateY(${dy}px)`, transition: "none" } : undefined}
       className={cn(
         "sheet-h m-0 flex w-full max-w-none flex-col overflow-hidden overscroll-none border-0 p-0 text-foreground outline-none",

@@ -2,10 +2,10 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalS
 import { createPortal } from "react-dom"
 import {
   AppWindow, Blocks, Columns2, Columns3, Files, Globe, Group as GroupIcon, LayoutList, Maximize2, Minimize2, MousePointerClick, GripVertical, PictureInPicture2, Folder,
-  ArrowLeftRight, PanelTop, PanelBottom, FileText, Layers, Pin, PinOff, Plus, Rows2, SquareArrowOutUpRight, SquareDashed, Undo2, UnfoldHorizontal, Ungroup, X, type LucideIcon, PencilLine,
+  ArrowLeftRight, PanelTop, PanelBottom, FileText, Layers, Pin, PinOff, Plus, Rows2, SquareArrowOutUpRight, SquareDashed, Undo2, UnfoldHorizontal, Ungroup, X, PencilLine,
 } from "lucide-react"
 import type { Store } from "@/core/data"
-import { edgeScroller, getDrag, laidOut, onDrag, onDragEnd, pastEdge, startDrag, useDrag, useDragItem, useDropHit, type Drag, type DragItem } from "@/core/drag"
+import { edgeScroller, getDrag, laidOut, onDrag, onDragEnd, pastEdge, startDrag, useDrag, useDragItem, useDropHit, hitOn, type Drag, type DragItem } from "@/core/drag"
 import { slideFrom, timing } from "@/core/animation"
 import { landFrom } from "@/core/panemotion"
 import { snapshot } from "@/core/snapshot"
@@ -36,9 +36,11 @@ import { Badged, IconAction, type Dot } from "@/components/kit"
 import type { TabMark } from "@/core/define"
 import { cn } from "@/lib/utils"
 import { rowMenu, selectClick, selectedAttr, selectionFor, useSelectable, useSelected } from "@/core/select"
+import { closestOf, elementOf } from "@/core/dom"
+import type { IconType } from "@/core/icons"
 
 /** `iconClassName`: a status on the icon (a view's `iconClass`: a Claude Code session working or waiting). */
-export type TabInfo = { label: string; icon: LucideIcon; tint?: string; iconClassName?: string
+export type TabInfo = { label: string; icon: IconType; tint?: string; iconClassName?: string
   /** A dot on the icon (a view's `iconBadge`: a coding agent at work, waiting for you). */
   badge?: Dot
   /** The colour it's marked with, active or not (a view's `tabColor`: a web page's container): a line along the tab's
@@ -375,8 +377,8 @@ export function DragGhost({ info }: { info: (t: Tab | Pane) => TabInfo }) {
   const [back, setBack] = useState<{ item: DragItem } | null>(null)
   const item = live ?? back?.item ?? null
   const hint = useDrag((d) => d?.hit?.hint), hit = useDrag((d) => !!d?.hit), finger = useDrag((d) => !!d?.finger)
-  const over = useDrag((d) => (d?.hit?.target === PANES ? (d.hit.data as Drop).kind : null)), overPanes = !!over
-  const zone = useDrag((d) => (d?.hit?.target === PANES && (d.hit.data as Drop).kind === "pane" ? (d.hit.data as Drop & { kind: "pane" }).zone : null))
+  const over = useDrag((d) => hitOn(d?.hit, PANES)?.kind ?? null), overPanes = !!over
+  const zone = useDrag((d) => { const h = hitOn(d?.hit, PANES); return h?.kind === "pane" ? h.zone : null })
   const { fileIcons } = usePrefs()
   const el = useRef<HTMLDivElement>(null), card = useRef<HTMLDivElement>(null), shot = useRef<HTMLDivElement>(null)
   const held = useRef({ x: 0, y: 0 })
@@ -586,13 +588,13 @@ function TabChip({ tab, info, active, icons, menu, width, settling, close, line,
   const click = (e: React.MouseEvent<HTMLElement>) => {
     if (e.altKey && !active && canTabIntoPane(tab.id, activePane().id, "center")) { e.preventDefault(); return replaceWithTab(tab.id) }
     if (selectClick(e, TABS, tab.id, active ? null : here().active)) return
-    const half = (e.target as Element).closest<HTMLElement>("[data-pane-half]")?.dataset.paneHalf
+    const half = closestOf<HTMLElement>(e.target, "[data-pane-half]")?.dataset.paneHalf
     if (half) selectPane(half); else selectTab(tab.id)
   }
   return (
     <div ref={el} data-tab-id={tab.id} data-ui={`tab:${tab.id}`} data-spring-tab={tab.id} data-in-group={tab.group} data-line-of={line} data-slide={tab.id} data-select-key={tab.id} data-split={split || undefined}
       {...selectedAttr(picked)} role="presentation" onContextMenu={(e) => {
-        const half = (e.target as Element).closest<HTMLElement>("[data-pane-half]")?.dataset.paneHalf
+        const half = closestOf<HTMLElement>(e.target, "[data-pane-half]")?.dataset.paneHalf
         menuFor(half && !picked ? () => cellMenu(half, menu) : rowMenu(TABS, tab.id, menu))(e)
       }}
       onPointerDown={(e) => dragTab(e, tab)} onClick={click}
@@ -898,13 +900,13 @@ export function PaneBar({ pane, tab, focused, info, only, float, zoomed }: { pan
   const merged = !strip && hasTopBar
   const bare = useRef<HTMLDivElement>(null)
   const id = pane.id
-  const over = useDrag((d) => { const x = d?.hit?.target === PANES ? (d.hit.data as Drop) : null; return !!x && x.kind !== "list" && x.pane === id })
+  const over = useDrag((d) => { const x = hitOn(d?.hit, PANES); return !!x && x.kind !== "list" && x.pane === id })
   const dropping = split && !strip && over
   useEffect(() => {
     const section = bare.current?.parentElement
     if (!merged || !section) return
     const menu = (e: globalThis.MouseEvent) => {
-      if (!e.defaultPrevented && (e.target as Element).matches?.("[data-view-bar], [data-view-bar-fill], [data-web-bar]")) menuFor(() => barMenuOf(id))(e as never)
+      if (!e.defaultPrevented && elementOf(e.target)?.matches("[data-view-bar], [data-view-bar-fill], [data-web-bar]")) menuFor(() => barMenuOf(id))(e)
     }
     section.addEventListener("contextmenu", menu)
     return () => section.removeEventListener("contextmenu", menu)

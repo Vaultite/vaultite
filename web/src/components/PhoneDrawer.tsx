@@ -18,6 +18,7 @@ import { SharedWith } from "@/components/SharedWith"
 import { selecting } from "@/core/select"
 import { signal } from "@/core/signal"
 import { trackSoon } from "@/core/unsaved"
+import { closestOf } from "@/core/dom"
 
 let out: Side | null = null
 const subs = signal()
@@ -150,9 +151,8 @@ export function PhoneDrawers({ store, file, tab, vaultName, vaultMenu }: { store
       <div ref={panel} data-phone-drawer={shown ?? undefined} role="dialog" aria-label={shown === "right" ? "Right sidebar" : "Sidebar"} aria-hidden={!side}
         onPointerDown={(e) => shown && start(e, shown, 1)} {...handlers}
         onClick={(e) => {
-          const t = e.target as Element
           if (e.defaultPrevented || selecting()) return
-          if (t.closest("[data-tree-path]:not([data-tree-folder]), a[href^='#']") && !t.closest("[aria-haspopup], [data-no-drag]")) setTimeout(() => openDrawer(null))
+          if (closestOf(e.target, "[data-tree-path]:not([data-tree-folder]), a[href^='#']") && !closestOf(e.target, "[aria-haspopup], [data-no-drag]")) setTimeout(() => openDrawer(null))
         }}
         className={cn("fixed inset-y-0 z-40 flex flex-col bg-sidebar shadow-xl md:hidden", shown === "right" ? "right-0" : "left-0", !shown && "invisible")}
         style={{ width: "min(86vw, 360px)", transform: `translateX(${shown === "right" ? 100 : -100}%)`, touchAction: "pan-y" }}>

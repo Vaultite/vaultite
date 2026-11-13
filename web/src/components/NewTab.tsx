@@ -23,6 +23,7 @@ import { anchorFor, placeKey } from "../../../core/slots.ts"
 import { cn } from "@/lib/utils"
 import { Catch, Drawn, Guard } from "@/components/Guard"
 import { HeadingButton } from "@/components/Button"
+import { closestOf } from "@/core/dom"
 
 type Section = SectionInfo & { heading?: string | false; render?: NewTabSection["render"]; sidebar?: SidebarPanel }
 
@@ -61,9 +62,8 @@ export function NewTab({ store, phone }: { store: Store; phone?: boolean }) {
   useReorder(list, "sections")
   const item = useDragItem()
   const onMenu = (e: MouseEvent) => {
-    const t = e.target as HTMLElement
-    const action = t.closest<HTMLElement>("[data-newtab-action]")?.dataset.newtabAction
-    const section = t.closest<HTMLElement>("[data-newtab-section]")?.dataset.newtabSection
+    const action = closestOf<HTMLElement>(e.target, "[data-newtab-action]")?.dataset.newtabAction
+    const section = closestOf<HTMLElement>(e.target, "[data-newtab-section]")?.dataset.newtabSection
     menuFor(() => customizeMenu(!!phone, { action, section }))(e)
   }
   const sections = (
@@ -74,9 +74,8 @@ export function NewTab({ store, phone }: { store: Store; phone?: boolean }) {
         return (
           <section key={s.key} data-newtab-section={s.key} data-slide={s.key} aria-label={s.title} className={cn(item?.newtab?.key === s.key && "opacity-50")}
             onPointerDown={(e) => {
-              const t = e.target as HTMLElement
-              const handle = t.closest<HTMLElement>("[data-panel-handle]")
-              const control = t.closest("button, a, input")
+              const handle = closestOf<HTMLElement>(e.target, "[data-panel-handle]")
+              const control = closestOf(e.target, "button, a, input")
               if (!handle || (control && !control.hasAttribute("data-panel-handle"))) return
               startDrag(e, { from: "newtab", newtab: { list: "sections", key: s.key }, label: s.title }, { touch: !!phone })
             }}>

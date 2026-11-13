@@ -8,7 +8,7 @@ import { closedMeta, closedName } from "@/components/TabSearch"
 import { addPane, keepShown, paneIntoPane, paneToTab, placeTabBy } from "@/core/splits"
 import { addToGroup, closeGroup, groupWith, leaveGroup, renameGroup } from "@/core/tabgroups"
 import { focusedPane, layout, panesOf, placesIn, tabOf, tabPath, tabWith, type Group, type Pane, type Tab } from "../../../core/layout.ts"
-import { edgeScroller, fingerHolding, rehit, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
+import { edgeScroller, fingerHolding, rehit, startDrag, useDrag, useDropHit, useDropTarget, hitOn, type DragItem, type DropId } from "@/core/drag"
 import { workspaces, useWorkspaceVersion } from "@/core/scope"
 import type { WorkspaceInfo } from "@/core/define"
 import { newPhoneTab, pickPane, pickTab } from "@/core/phoneTabs"
@@ -31,6 +31,7 @@ import { cn, plural } from "@/lib/utils"
 import { hasWords } from "@/core/fuzzy"
 import { Drawn, Guard } from "@/components/Guard"
 import { HeldView, viewBody } from "@/components/Workspace"
+import { closestOf } from "@/core/dom"
 
 const GLIDE = spring(0.32, 0.86)
 const CLOSE_UP = spring(0.3, 1)
@@ -39,6 +40,7 @@ const MOVE_MS = 40
 const SPRING_MS = 400
 const isOpen = (id: string) => here().tabs.some((t) => t.id === id)
 type ListHit = { kind: "before" | "after" | "into"; tab: string } | { kind: "join"; group: string } | { kind: "out"; via: "bar" | "head" | "here" }
+const TAB_LIST: DropId<ListHit> = "tab-list"
 type Placed = { kind: "before" | "after"; tab: string }
 type PaneHit = { kind: "swap"; pane: string } | { kind: "out" }
 type Info = (t: Tab | Pane) => TabInfo
@@ -100,7 +102,7 @@ function Lifted({ store, info, current }: { store: Store; info: Info; current: s
   const sheet = [...document.querySelectorAll<HTMLElement>("dialog[open]")].pop()
   const o = sheet?.getBoundingClientRect() ?? { left: 0, top: 0 }
   const left = d ? d.x - (g?.dx ?? 0) - o.left : 0
-  const hit = d?.hit?.target === "tab-list" ? d.hit.data as ListHit : null
+  const hit = hitOn(d?.hit, TAB_LIST)
   const s = hit?.kind === "out" && hit.via === "head" ? 0.45 : 1
   useLayoutEffect(() => {
     const p = pill.current
@@ -235,7 +237,7 @@ function ghostOf(card: HTMLElement) {
   const sc = card.closest<HTMLElement>(".overflow-y-auto"), cell = card.parentElement
   if (!sc || !cell) return null
   const r = cell.getBoundingClientRect(), o = sc.getBoundingClientRect()
-  const g = card.cloneNode(true) as HTMLElement
+  const g = card.cloneNode(true)
   unmark(g)
   Object.assign(g.style, { position: "absolute", left: `${r.left - o.left + sc.scrollLeft}px`, top: `${r.top - o.top + sc.scrollTop}px`,
     width: `${r.width}px`, height: `${r.height}px`, aspectRatio: "auto", minWidth: "0", margin: "0", pointerEvents: "none", transition: "none" })
@@ -403,7 +405,7 @@ function Pager({ pages, at, go, peek, children, head }: {
       g.current.quit = onAway(drop)
       return
     }
-    if ((e.target as Element).closest("[data-tab-row], [data-group-card], input")) return
+    if (closestOf(e.target, "[data-tab-row], [data-group-card], input")) return
     g.current = { id: e.pointerId, x: e.clientX, y: e.clientY, from: pos.current, axis: null, moves: [[e.timeStamp, e.clientX]] }
   }
   const move = (e: PointerEvent) => {
@@ -614,7 +616,7 @@ export function TabSwitcher({ store, info }: { store: Store; info: Info }) {
     unrest()
     return keep(same ? null : h)
   }
-  useDropTarget<ListHit>("tab-list", aim, (item, h) => {
+  useDropTarget(TAB_LIST, aim, (item, h) => {
     const id = item.tab!, shown = activeTab().id
     if (h.kind === "into") groupWith(id, h.tab)
     else if (h.kind === "join") addToGroup([id], h.group)
@@ -655,7 +657,7 @@ export function TabSwitcher({ store, info }: { store: Store; info: Info }) {
     },
   })
   const paneHit = useDropHit<PaneHit>("split-panes")
-  const hit = useDropHit<ListHit>("tab-list")
+  const hit = useDropHit(TAB_LIST)
   const hitKey = !hit ? "" : hit.kind === "join" ? `join:${hit.group}` : hit.kind === "out" ? `out:${hit.via}` : `${hit.kind}:${hit.tab}`
   const shownPlace = placed.current ? `${placed.current.kind}:${placed.current.tab}` : ""
   const tickKey = !hit || (hit.kind === "out" && hit.via === "here") ? "" : hit.kind === "before" || hit.kind === "after" ? shownPlace : hitKey

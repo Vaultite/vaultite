@@ -6,6 +6,7 @@ import { ICONS, namedIcon, tintOf } from "@/core/pages"
 import { PLUGINS } from "@/core/plugins"
 import { capitalize, cn } from "@/lib/utils"
 import { menuAbove, menuBelow, type MenuItem } from "@/components/ContextMenu"
+import { isObj } from "../../../core/values.ts"
 
 /** One of a chip's values, as its settings keep it: `icon` a name (`pen-line`:
  *  core/pages.ts ICONS, or a plugin's), `tint` a colour token (`green`: var(--green)). Only `value` is needed. */
@@ -21,7 +22,7 @@ export function chipValues(raw: unknown): ChipValue[] {
   if (!Array.isArray(raw)) return []
   const out: ChipValue[] = []
   for (const x of raw) {
-    const r: Record<string, unknown> = x && typeof x === "object" ? (x as Record<string, unknown>) : { value: x }
+    const r: Record<string, unknown> = isObj(x) ? x : { value: x }
     const value = clean(r.value)
     if (!value || out.some((o) => same(o.value, value))) continue
     const v: ChipValue = { value }
