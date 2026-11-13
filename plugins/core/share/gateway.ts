@@ -19,6 +19,14 @@ const GuestWrite = z.object({ path: passed, text: z.string().optional().catch(un
   edit: z.object({ at: z.number().int().min(0), cut: z.number().int().min(0), add: z.string() }).optional().catch(undefined),
   base: passed, baseHash: passed, lean: passed, unique: passed })
 const GuestStat = z.object({ paths: z.array(z.unknown()).catch([]) })
+const Row = z.looseObject({ path: z.string() })
+type Row = z.infer<typeof Row>
+const Tree = z.object({ files: z.array(Row), others: z.array(Row), folders: z.array(z.string()) })
+const Linked = z.object({ linked: z.array(Row) })
+const Found = z.looseObject({ results: z.array(Row), files: z.unknown(), lines: z.unknown() })
+const Stats = z.record(z.string(), z.number().nullable())
+const HostPlugins = z.array(z.looseObject({ id: z.string(), on: z.unknown(), loaded: z.unknown() }))
+const GuestPage = z.object({ page: z.string(), wrapper: z.custom<(rawPath: string) => string>((v) => v instanceof Function) })
 type Res = Writable & { headersSent: boolean; setHeader(k: string, v: OutgoingHttpHeader): void; removeHeader(k: string): void
   writeHead(status: number, h?: OutgoingHttpHeaders): void }
 type SearchNode = ReturnType<typeof parseSearch>
@@ -78,8 +86,8 @@ export class Folder {
     return rel
   }
 
-  tree(t: { files: Item[]; others: Item[]; folders: string[] }) {
-    const rows = (list: Item[]) => list.flatMap((r) => { const p = this.see(String(r.path)); return p === null ? [] : [{ ...r, path: p }] })
+  tree(t: z.infer<typeof Tree>) {
+    const rows = (list: Row[]) => list.flatMap((r) => { const p = this.see(r.path); return p === null ? [] : [{ ...r, path: p }] })
     return { files: rows(t.files), others: rows(t.others), folders: t.folders.flatMap((f) => { const p = this.see(f); return p === null ? [] : [p] }) }
   }
 
@@ -176,7 +184,7 @@ export class Gateway {
     ws.on("close", () => this.sockets.delete(ws))
     ws.on("error", () => ws.close())
     if (kind === "events") return ws.send(JSON.stringify({ type: "hello", v: this.v(), role: g.share.role }))
-    if (kind === "page") return (join as (ws: WebSocket, rel: string, v: object) => void)(ws, page, { shown: this.folderOf(g).see(page) ?? "",
+    if (kind === "page") return join?.(ws, page, { shown: this.folderOf(g).see(page) ?? "",
       id: `g_${g.id}`, name: g.share.guest, ua: String(req.headers["user-agent"] ?? ""), watch: g.share.role === "read" ? "you can only view this folder" : undefined })
     const threads = this.plugin.service("companion:guest"), f = this.folderOf(g)
     if (typeof threads === "function") threads(ws, { id: g.id, since: Date.parse(g.share.created), name: g.share.guest, who: guestWho(g.share), role: g.share.role, see: (rel: string) => f.see(rel), at: (q: string) => f.at(q), said: () => this.limited(`say:${g.id}`, SAYS), holds: () => this.holds(g),
@@ -304,7 +312,7 @@ export class Gateway {
     if (!g || typeof make !== "function" || req.method !== "GET") return this.json(res, 404, { error: "not found" })
     const rel = this.folderOf(g).at(shown)
     if (!/\.html?$/i.test(rel)) return this.json(res, 404, { error: "not found" })
-    const out = make(rel, shown, q) as { page: string; wrapper: (rawPath: string) => string }
+    const out = GuestPage.parse(make(rel, shown, q))
     const at = `${this.https(req) ? "https" : "http"}://${req.headers.host}/s/${id}/v/`
     const head = { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer", "X-DNS-Prefetch-Control": "off" }
     res.removeHeader("X-Frame-Options")
@@ -337,31 +345,32 @@ export class Gateway {
     const q = Object.fromEntries(url.searchParams)
     const f = this.folderOf(g), role = g.share.role
     const api = (m: string, r: string, body?: unknown) => this.plugin.host.api(m, r, body, guestWho(g.share), m === "GET" ? {} : { report: `share ${m} ${r.split("?")[0]}` })
-    const theirs = (x: Item) => ({ ...x, path: f.see(String(x.path)), problems: [] })
+    const theirs = (x: Row) => ({ ...x, path: f.see(x.path), problems: [] })
+    const row = async (m: string, r: string, body?: Item) => theirs(Row.parse(await api(m, r, body)))
     const key = `${method} ${route}`
     if (key === "GET state" || key === "GET state/manifest") return this.json(res, 200, { v: this.v(), state: await this.state(g, f) })
-    if (key === "GET file") return this.json(res, 200, theirs(await api("GET", `file?path=${encodeURIComponent(f.at(q.path))}`) as Item))
-    if (key === "GET file/info") return this.json(res, 200, theirs(await api("GET", `file/info?path=${encodeURIComponent(f.at(q.path))}`) as Item))
+    if (key === "GET file") return this.json(res, 200, await row("GET", `file?path=${encodeURIComponent(f.at(q.path))}`))
+    if (key === "GET file/info") return this.json(res, 200, await row("GET", `file/info?path=${encodeURIComponent(f.at(q.path))}`))
     // api/raw/<its name>?path=...: the name only for the browser's sake
     if (method === "GET" && (route === "raw" || route.startsWith("raw/"))) return this.raw(req, res, f.at(q.path), q.download === "1")
     if (key === "GET file/linked") {
-      const rel = f.at(q.path), t = await api("GET", `file/linked?path=${encodeURIComponent(rel)}`) as { linked: { path: string; line: string }[] }
+      const rel = f.at(q.path), t = Linked.parse(await api("GET", `file/linked?path=${encodeURIComponent(rel)}`))
       const linked = t.linked.flatMap((l) => { const p = f.see(l.path); return p === null ? [] : [{ ...l, path: p }] })
       return this.json(res, 200, { path: f.see(rel), linked, links: linkTargets(this.plugin.vault.entries.get(rel)?.body ?? "") })
     }
     if (key === "GET search") {
       if (this.limited(`search:${g.id}`, SEARCHES)) return this.json(res, 429, { error: "too many searches at once: wait a moment" })
       if (!plainQuery(q.q ?? "")) throw new HTTPError(400, "search here takes words and phrases, not /regular expressions/, path: or folder:")
-      const tree = f.tree(await api("GET", "files") as Parameters<Folder["tree"]>[0]), under = q.folder ? `${String(q.folder).replace(/^\/+|\/+$/g, "")}/` : ""
-      const only = [...tree.files, ...tree.others].map((r) => String(r.path)).filter((p) => p.startsWith(under)).map((p) => `${f.folder}/${p}`)
-      const found = await api("GET", `search?${new URLSearchParams({ ...pick(q, ["q", "lines", "case", "sort", "context", "offset", "limit"]), total: "1", only: only.join("\n"), ...(q.path ? { path: f.at(q.path) } : {}) })}`) as Item
-      const page = (found.results as Item[]).flatMap((r) => { const p = f.see(String(r.path)); return p === null ? [] : [{ ...r, path: p }] })
+      const tree = f.tree(Tree.parse(await api("GET", "files"))), under = q.folder ? `${String(q.folder).replace(/^\/+|\/+$/g, "")}/` : ""
+      const only = [...tree.files, ...tree.others].map((r) => r.path).filter((p) => p.startsWith(under)).map((p) => `${f.folder}/${p}`)
+      const found = Found.parse(await api("GET", `search?${new URLSearchParams({ ...pick(q, ["q", "lines", "case", "sort", "context", "offset", "limit"]), total: "1", only: only.join("\n"), ...(q.path ? { path: f.at(q.path) } : {}) })}`))
+      const page = found.results.flatMap((r) => { const p = f.see(r.path); return p === null ? [] : [{ ...r, path: p }] })
       return this.json(res, 200, q.total === "1" ? { results: page, files: found.files, lines: found.lines } : page)
     }
     if (key === "POST artifact/stat") {
       const asked = this.parsed(GuestStat, await this.body(req)).paths, rels = new Map<string, string>()
       for (const x of asked.slice(0, 200)) try { rels.set(f.at(x), String(x)) } catch {}
-      const now = await this.plugin.host.api("POST", "artifact/stat", { paths: [...rels.keys()] }) as Record<string, number | null>
+      const now = Stats.parse(await this.plugin.host.api("POST", "artifact/stat", { paths: [...rels.keys()] }))
       return this.json(res, 200, Object.fromEntries([...rels].map(([rel, x]) => [x, now[rel] ?? null])))
     }
     if (key === "GET config/plugin") return this.json(res, 200, Object.fromEntries(String(q.ids ?? "").split(",").filter(Boolean).slice(0, 100).map((x) => [x, {}])))
@@ -404,8 +413,8 @@ export class Gateway {
       const grows = Buffer.byteLength(text) + (fresh ? 512 : -(this.plugin.vault.entries.get(rel)?.stat.size ?? 0))
       if ((fresh && has.notes >= room.notes) || (grows > 0 && has.bytes + grows > room.bytes)) throw new HTTPError(507, "this folder is full: ask whoever shared it")
       const sent: Item = { path: rel, ...(edit ? { edit } : { text }), ...pick(body, method === "PUT" ? ["base", "baseHash", "lean"] : ["unique"]) }
-      try { return this.json(res, method === "POST" ? 201 : 200, theirs(await api(method, "file", sent) as Item)) } catch (e) {
-        if ((e instanceof OpError || e instanceof HTTPError) && e.status === 409 && method === "PUT") return this.json(res, 409, { error: "the note changed meanwhile", ...theirs(await api("GET", `file?path=${encodeURIComponent(rel)}`) as Item) })
+      try { return this.json(res, method === "POST" ? 201 : 200, await row(method, "file", sent)) } catch (e) {
+        if ((e instanceof OpError || e instanceof HTTPError) && e.status === 409 && method === "PUT") return this.json(res, 409, { error: "the note changed meanwhile", ...await row("GET", `file?path=${encodeURIComponent(rel)}`) })
         throw e
       }
     }
@@ -434,9 +443,9 @@ export class Gateway {
   async state(g: Guest, f: Folder) {
     return {
       vault: { path: g.share.folder.split("/").pop(), problems: [] },
-      files: f.tree(await this.plugin.host.api("GET", "files") as Parameters<Folder["tree"]>[0]),
+      files: f.tree(Tree.parse(await this.plugin.host.api("GET", "files"))),
       config: { appearance: {}, plugins: { disabled: [], enabled: [] }, hotkeys: {}, sidebars: { left: ["files:files"], right: [], collapsed: [] } },
-      vaultPlugins: (await this.plugin.host.api("GET", "plugins") as Item[]).filter((p) => VIEWS.includes(p.id) && p.on && p.loaded)
+      vaultPlugins: HostPlugins.parse(await this.plugin.host.api("GET", "plugins")).filter((p) => VIEWS.includes(p.id) && p.on && p.loaded)
         .map((p) => ({ ...Object.fromEntries(PLUGIN_FIELDS.filter((k) => k in p).map((k) => [k, p[k]])), folder: "", problems: [], warnings: [] })),
     }
   }
