@@ -2,7 +2,8 @@
 // find made (People/Qa person*.md). WRITES to the vault: throwaway server only.
 //   node web/qa/files.mjs <base url> <vault path> [out dir]   (a fresh copy of the vault each run: it renames files)
 import { readFileSync } from "node:fs"
-import { SHOTS, qa, wait } from "./lib/qa.mjs"
+import { SHOTS, qa, until } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
 import { pageHash, subjects } from "./subjects.mjs"
 const { args: [B, VAULT, OUT = SHOTS], browser, check, done } = await qa(import.meta.url)
 const read = (p) => readFileSync(`${VAULT}/${p}`, "utf8")
@@ -41,11 +42,11 @@ const out = { errs: [] }
 // ---------- desktop ----------
 {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 })
-  const page = await ctx.newPage()
+  const page = await ctx.newPage(), ui = app(page)
   page.on("pageerror", (e) => out.errs.push(String(e)))
   page.on("console", (m) => m.type() === "error" && out.errs.push(m.text()))
   const shot = (name) => page.screenshot({ path: `${OUT}files-desktop-${name}.png` })
-  await page.goto(B); await wait(1500)
+  await page.goto(B); await until(() => page.locator("aside [role=tree]").count(), 10_000); await ui.idle()
   await shot("start")
   out.tree = await page.locator("aside [role=tree]").count()
   // Open People, then the person, by path (the tree may show a Dashboards/People.md too), folder by folder.
@@ -53,48 +54,48 @@ const out = { errs: [] }
   for (let i = 0; i < dirs.length; i++) {
     const next = i + 1 < dirs.length ? dirs.slice(0, i + 2).join("/") : person.path
     if (!(await page.locator(`aside [role=tree] [data-tree-path="${next}"]`).count())) {
-      await page.locator(`aside [role=tree] [data-tree-path="${dirs.slice(0, i + 1).join("/")}"] > button`).first().click(); await wait(300)
+      await page.locator(`aside [role=tree] [data-tree-path="${dirs.slice(0, i + 1).join("/")}"] > button`).first().click(); await ui.idle()
     }
   }
-  await page.locator(`aside [role=tree] [data-tree-path="${person.path}"] > button`).first().click(); await wait(1500)
+  await page.locator(`aside [role=tree] [data-tree-path="${person.path}"] > button`).first().click(); await ui.idle()
   out.personHash = await page.evaluate(() => location.hash)
   out.tabs = await page.locator("[role=tablist] [role=tab]").allInnerTexts()
   out.timelineWidget = await page.locator(".cm-block-section").count()
   out.header = await page.locator("article :text('Last in touch')").count()
   await shot("person")
   // click into the timeline: raw lines show
-  await page.locator(".cm-block-section").first().click({ position: { x: 300, y: 60 } }); await wait(400)
+  await page.locator(".cm-block-section").first().click({ position: { x: 300, y: 60 } }); await ui.idle()
   out.rawAfterClick = await page.locator(".cm-line", { hasText: person.entry }).count()
   await shot("person-editing-timeline")
   // type at the end of the first paragraph
   const before = read(person.path)
   await page.locator(".cm-line", { hasText: person.plain }).first().click(); await page.keyboard.press("End"); await page.keyboard.type(" Loves hiking.")
-  await wait(2200)
+  await ui.idle()
   const after = read(person.path)
   out.typedSaved = after.includes(`${person.plain} Loves hiking.`)
   out.onlyThatChanged = after === before.replace(person.plain, `${person.plain} Loves hiking.`)
   // properties open/close
-  await page.locator("section[aria-label=Properties]:visible > button").first().click(); await wait(300)
+  await page.locator("section[aria-label=Properties]:visible > button").first().click(); await ui.idle()
   await shot("person-properties")
   // a note with links
-  await page.keyboard.press("ControlOrMeta+o"); await wait(300)
-  await page.keyboard.type(withLinks.split("/").pop()); await wait(500)
-  await page.keyboard.press("Enter"); await wait(1500)
+  await page.keyboard.press("ControlOrMeta+o"); await ui.idle()
+  await page.keyboard.type(withLinks.split("/").pop()); await ui.idle()
+  await page.keyboard.press("Enter"); await ui.idle()
   out.noteHash = await page.evaluate(() => location.hash)
   out.tabs2 = await page.locator("[role=tablist] [role=tab]").allInnerTexts()
   await shot("note")
   out.wikilinks = await page.locator(".cm-wikilink").count()
   // new note from the tree header
-  await page.locator("aside button[aria-label='New note']").click(); await wait(1500)
+  await page.locator("aside button[aria-label='New note']").click(); await ui.idle()
   out.newHash = await page.evaluate(() => location.hash)
   out.titleFocused = await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))
-  await page.keyboard.type("QA test note"); await page.keyboard.press("Enter"); await wait(1500)
+  await page.keyboard.type("QA test note"); await page.keyboard.press("Enter"); await ui.idle()
   out.renamedHash = await page.evaluate(() => location.hash)
   // (in the tab shown: a pane keeps its other tabs drawn but hidden)
-  await page.locator("#main-scroll .cm-content").click(); await page.keyboard.type(`Hello [[${person.name.slice(0, 3)}`); await wait(500)
+  await page.locator("#main-scroll .cm-content").click(); await page.keyboard.type(`Hello [[${person.name.slice(0, 3)}`); await ui.idle()
   out.autocomplete = await page.locator(".cm-tooltip-autocomplete li").allInnerTexts()
-  await page.keyboard.press("Enter"); await page.keyboard.type(" and **bold**."); await wait(2200)
-  await page.locator("#main-scroll article h1, #main-scroll article textarea").first().click(); await wait(400)
+  await page.keyboard.press("Enter"); await page.keyboard.type(" and **bold**."); await ui.idle()
+  await page.locator("#main-scroll article h1, #main-scroll article textarea").first().click(); await ui.idle()
   await shot("new-note")
   try { out.newNoteText = read("QA test note.md") } catch (e) { out.newNoteText = String(e) }
   await ctx.close()
@@ -104,81 +105,80 @@ const out = { errs: [] }
 {
   const { writeFileSync } = await import("node:fs")
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 })
-  const page = await ctx.newPage()
+  const page = await ctx.newPage(), ui = app(page)
   page.on("pageerror", (e) => out.errs.push(String(e)))
   const shot = (name) => page.screenshot({ path: `${OUT}files-desktop-${name}.png` })
-  await page.goto(`${B}#file/${encodeURIComponent(other.path)}`); await wait(1500)
+  await page.goto(`${B}#file/${encodeURIComponent(other.path)}`); await page.locator(".cm-content").first().waitFor(); await ui.idle()
   // Claude appends a timeline line while the file is open: the editor picks it up, the timeline redraws
   const k = read(other.path)
-  writeFileSync(`${VAULT}/${other.path}`, k.replace(/## Timeline\n+/, "## Timeline\n\n- 2026-09-29 · call · 20 min · From Claude while open\n"))
-  await wait(6500)
+  await ui.sees(other.path, () => writeFileSync(`${VAULT}/${other.path}`, k.replace(/## Timeline\n+/, "## Timeline\n\n- 2026-09-29 · call · 20 min · From Claude while open\n")))
   out.externalShown = await page.locator(".cm-block-section", { hasText: "From Claude while open" }).count()
   // and while typing: both kept
   await page.locator(".cm-line", { hasText: other.plain }).first().click(); await page.keyboard.press("End")
   await page.keyboard.type(" Met at a conference.")
   const k2 = read(other.path)
-  writeFileSync(`${VAULT}/${other.path}`, k2.replace("- 2026-09-29 · call", "- 2026-09-29 · meet"))
-  await wait(7000)
+  await ui.sees(other.path, () => writeFileSync(`${VAULT}/${other.path}`, k2.replace("- 2026-09-29 · call", "- 2026-09-29 · meet")))
   const k3 = read(other.path)
   out.bothKept = k3.includes("Met at a conference.") && k3.includes("- 2026-09-29 · meet · 20 min")
   // a property: want_to changes on its own line only
-  await page.locator("section[aria-label=Properties]:visible > button").first().click(); await wait(300)
+  await page.locator("section[aria-label=Properties]:visible > button").first().click(); await ui.idle()
   const before = read(other.path)
   const want = page.locator("[role=row]", { has: page.locator("input[value=want_to]") }).locator("[role=cell] input").first()
-  await want.fill("Ask about the camp"); await want.press("Enter"); await wait(2000)
+  await want.fill("Ask about the camp"); await want.press("Enter"); await ui.idle()
   const after = read(other.path)
   out.propertyLine = after === before.replace(/want_to: .*\n/, "want_to: Ask about the camp\n")
   out.headerFollows = await page.locator("article :text('Ask about the camp')").count()
   await shot("other-properties")
   // rename a note from its title: links to it follow, the tab follows
-  await page.goto(`${B}#file/${encodeURIComponent(`${rename}.md`)}`); await wait(1500)
+  await page.goto(`${B}#file/${encodeURIComponent(`${rename}.md`)}`); await ui.idle()
   const t = page.locator("textarea[aria-label='File name']")
-  await t.fill(`${rename.split("/").pop()} (maybe)`); await t.press("Enter"); await wait(2000)
+  await t.fill(`${rename.split("/").pop()} (maybe)`); await t.press("Enter"); await ui.idle()
   out.renameHash = await page.evaluate(() => location.hash)
   out.renameTabs = await page.locator("[role=tablist] [role=tab]").allInnerTexts()
   // a file's sheet address (a phone's, #<tab>/file/<path>) opens its tab
   const notes = await (await fetch(`${B}api/notes`)).json()
-  await page.goto(`${B}#new/file/${encodeURIComponent(`${notes[0].id}.md`)}`); await wait(1800)
+  await page.goto(`${B}#new/file/${encodeURIComponent(`${notes[0].id}.md`)}`); await until(() => page.evaluate(() => !location.hash.includes("/file/"))); await ui.idle()
   out.sheetLinkHash = await page.evaluate(() => location.hash)
   out.sheetLinkWant = `#file/${encodeURIComponent(`${notes[0].id}.md`)}`
   out.sheetLinkSheet = await page.evaluate(() => !!document.querySelector("dialog")?.open)
   // close the active tab
-  await page.locator("aside [role=tree] button", { hasText: new RegExp(`^${esc(topFile)}$`) }).first().click({ button: "middle" }); await wait(1200)
+  await page.locator("aside [role=tree] button", { hasText: new RegExp(`^${esc(topFile)}$`) }).first().click({ button: "middle" }); await ui.idle()
   const n = await page.locator("[role=tablist] [role=tab]").count()
-  await page.locator("[role=tablist] button[aria-label^=Close]").first().click(); await wait(500)
+  await page.locator("[role=tablist] button[aria-label^=Close]").first().click(); await ui.idle()
   out.closedTab = n >= 2 && (await page.locator("[role=tablist] [role=tab]").count()) === n - 1
   // the same line changed on disk and in the editor: shown in place, nothing is overwritten (web/qa/conflicts.mjs)
-  await page.goto(`${B}#file/${encodeURIComponent(third.path)}`); await wait(1500)
+  await page.goto(`${B}#file/${encodeURIComponent(third.path)}`); await ui.idle()
   await page.locator("#main-scroll .cm-content").click(); await page.keyboard.press("ControlOrMeta+End"); await page.keyboard.type("Mine.")
-  await wait(1500)
+  await ui.idle()
   const m = read(third.path)
   writeFileSync(`${VAULT}/${third.path}`, m.replace("Mine.", "Theirs."))
   await page.keyboard.type(" More")
-  await wait(7000)
-  out.conflictBanner = await page.locator("[role=alert]", { hasText: "changed elsewhere while you typed" }).count()
+  const banner = page.locator("[role=alert]", { hasText: "changed elsewhere while you typed" })
+  await until(async () => await banner.count() > 0, 10_000)
+  out.conflictBanner = await banner.count()
   out.diskKept = read(third.path).includes("Theirs.") && !read(third.path).includes("Mine. More")
-  await page.locator(".cm-clash-mine button", { hasText: "Keep" }).click(); await wait(1500)
+  await page.locator(".cm-clash-mine button", { hasText: "Keep" }).click(); await ui.idle()
   out.keepMine = read(third.path).includes("Mine. More") && !read(third.path).includes("Theirs.")
   // source mode shows the frontmatter
-  await page.goto(`${B}#file/${encodeURIComponent(person.path)}`); await wait(1500)
+  await page.goto(`${B}#file/${encodeURIComponent(person.path)}`); await ui.idle()
   // the status bar's view menu (its view button: the bar also has property chips, which open menus too): source mode
-  await page.locator("[role=status] button[aria-label^='Current view']").click(); await wait(200)
-  await page.locator("[role=menu] button", { hasText: "Source mode" }).click(); await wait(800)
+  await ui.menu.open(page.locator("[role=status] button[aria-label^='Current view']"))
+  await page.locator("[role=menu] button", { hasText: "Source mode" }).click(); await ui.idle()
   out.sourceShowsFm = await page.locator(".cm-line", { hasText: /^type: / }).count()
   await shot("source")
-  await page.locator("[role=status] button[aria-label^='Current view']").click(); await wait(200)
-  await page.locator("[role=menu] button", { hasText: "Live preview" }).click(); await wait(300)
+  await ui.menu.open(page.locator("[role=status] button[aria-label^='Current view']"))
+  await page.locator("[role=menu] button", { hasText: "Live preview" }).click(); await ui.idle()
   await ctx.close()
 }
 
 // ---------- phone ----------
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
-  const page = await ctx.newPage()
+  const page = await ctx.newPage(), ui = app(page)
   page.on("pageerror", (e) => out.errs.push(String(e)))
   const shot = (name) => page.screenshot({ path: `${OUT}files-390-${name}.png` })
   const here = () => page.evaluate(() => ({ hash: decodeURIComponent(location.hash), sheet: !!document.querySelector("dialog")?.open, title: document.querySelector("[data-phone-title]")?.textContent, tabs: Number(document.querySelector("[data-tabs-button]")?.innerText) }))
-  await page.goto(`${B}#view/files`); await wait(1500)
+  await page.goto(`${B}#view/files`); await page.locator("main [role=tree]").waitFor(); await ui.idle()
   await shot("files")
   // A file from the tree opens in a tab (a file opened from a view goes beside it), not a sheet; Back returns.
   { // (each folder down to it: People/, or Personal/People/)
@@ -186,30 +186,30 @@ const out = { errs: [] }
     for (let i = 0; i < dirs.length; i++) {
       const next = i + 1 < dirs.length ? dirs.slice(0, i + 2).join("/") : other.path
       if (!(await page.locator(`main [role=tree] [data-tree-path="${next}"]`).count())) {
-        await page.locator(`main [role=tree] [data-tree-path="${dirs.slice(0, i + 1).join("/")}"] > button`).first().tap(); await wait(300)
+        await page.locator(`main [role=tree] [data-tree-path="${dirs.slice(0, i + 1).join("/")}"] > button`).first().tap(); await ui.idle()
       }
     }
   }
   const atTree = await here()
-  await page.locator(`main [role=tree] [data-tree-path="${other.path}"] > button`).first().tap(); await wait(1500)
+  await page.locator(`main [role=tree] [data-tree-path="${other.path}"] > button`).first().tap(); await ui.idle()
   out.phoneTree = await here()
   out.phoneTreeOk = !out.phoneTree.sheet && out.phoneTree.hash === `#file/${other.path}` && out.phoneTree.title === other.path.split("/").pop().replace(/\.md$/, "") && out.phoneTree.tabs === atTree.tabs + 1
   await shot("other")
-  await page.goBack(); await wait(700)
+  await page.goBack(); await ui.idle()
   out.phoneTreeBackOk = (await here()).hash === "#view/files"
-  await page.goto(`${B}#${await pageHash(B, "People")}`); await wait(1200)
-  await page.locator("main button", { hasText: person.name }).first().tap(); await wait(1500)
+  await page.goto(`${B}#${await pageHash(B, "People")}`); await ui.idle()
+  await page.locator("main button", { hasText: person.name }).first().tap(); await ui.idle()
   out.phonePeople = await here()
   out.phonePeopleOk = !out.phonePeople.sheet && out.phonePeople.hash === `#file/${person.path}`
   await shot("person-from-people")
   // A [[link]] in reading mode opens that file in the same tab (a file replaces a file); Back returns to the note.
-  await page.goto(`${B}#file/${encodeURIComponent(`${linking.note.id}.md`)}`); await wait(1800)
+  await page.goto(`${B}#file/${encodeURIComponent(`${linking.note.id}.md`)}`); await ui.idle()
   const atNote = await here()
-  await page.locator("main .cm-wikilink").first().tap(); await wait(1500)
+  await page.locator("main .cm-wikilink").first().tap(); await ui.idle()
   out.phoneLink = await here()
   out.phoneLinkOk = !out.phoneLink.sheet && out.phoneLink.hash.startsWith("#file/") && out.phoneLink.hash !== atNote.hash && out.phoneLink.tabs === atNote.tabs
   await shot("link")
-  await page.goBack(); await wait(800)
+  await page.goBack(); await ui.idle()
   out.phoneLinkBackOk = (await here()).hash === atNote.hash
   await ctx.close()
 }
