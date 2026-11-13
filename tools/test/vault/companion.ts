@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url"
 import { waitFor } from "../lib.ts"
 
 export default async ($: VaultTest) => {
-  const { api, check, exists, read, write } = $
+  const { api, app, check, exists, read, write } = $
   // Companion (plugins/core/companion): moments in, ops out; the windows' socket is QA's (web/qa/companion.mjs).
   const c = await import("../../../plugins/core/companion/plugin.ts")
   const cAlwayson = await import("../../../plugins/core/companion/alwayson.ts")
@@ -499,12 +499,15 @@ export default async ($: VaultTest) => {
   }
   {
     const noWindow = (st: number, r: Any) => st === 200 && /window/.test(r.unshown)
+    const windows = app.ui
+    app.ui = null
     let [s1, r1] = await api("POST", "ops/companion.open", { path: "Notes/Lisbon trip", new: true })
     check("companion: open with new makes the note (a .md path) before opening it", noWindow(s1, r1) && read("Notes/Lisbon trip.md").endsWith("\n# Lisbon trip\n"), [s1, r1, read("Notes/Lisbon trip.md")])
     ;[s1, r1] = await api("POST", "ops/companion.edit", { path: "Notes/Lisbon trip.md", append: true, text: "\n## Day one\n\nThe castle in the morning." })
     ;[s1, r1] = await api("POST", "ops/companion.open", { path: "Notes/Lisbon trip.md", new: true })
     check("companion: open with new over a note that's there leaves it as it was, a blank line before each section",
       noWindow(s1, r1) && read("Notes/Lisbon trip.md").endsWith("\n# Lisbon trip\n\n## Day one\n\nThe castle in the morning.\n"), [s1, r1, read("Notes/Lisbon trip.md")])
+    app.ui = windows
     const C = await import("../../../plugins/core/companion/opening.ts")
     check("companion: open's text tells it to write in a new note, or to read one that was there",
       /write it with edit/.test(C.openText({ path: "N.md", pane: "p1", fresh: "made" })) && /read it before/.test(C.openText({ path: "N.md", pane: "p1", fresh: "there" })) &&
