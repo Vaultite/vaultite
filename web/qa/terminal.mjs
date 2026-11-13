@@ -5,7 +5,8 @@ import http from "node:http"
 import { execFileSync } from "node:child_process"
 import { mkdirSync } from "node:fs"
 import path from "node:path"
-import { apiAt, openPalette, PROMPT, qa, tailnet, TERMINAL_FIND_KEY, terminalText, wait } from "./lib/qa.mjs"
+import { apiAt, openPalette, PROMPT, qa, tailnet, TERMINAL_FIND_KEY, terminalText, until as poll, wait } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
 const { args: [B, OUT = "/tmp/term-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 // The shell starts in the vault: its folder's name, as the server reports it.
 const vaultPath = (await (await fetch(new URL("api/vault", B.endsWith("/") ? B : `${B}/`))).json()).path
@@ -18,6 +19,7 @@ const vau = (...a) => execFileSync(process.execPath, [path.resolve(import.meta.d
 vau("plugin", "on", "codex")
 for (const where of [[], ["--vault"]]) if (!vau("panels", ...where).match(/sidebar:\n(?:\s+\d+\. .*\n)*?\s+\d+\. terminal:sessions/)) vau("panels", "show", "terminals", ...where)
 const id = `qa${Date.now().toString(36)}`
+const until = (pred, ms = 8000) => poll(pred, ms)
 
 /** A WebSocket handshake to the terminal with these extra headers: "attached", "refused" (the server says why in the
  *  socket), or the HTTP status when it wasn't upgraded. */
@@ -55,9 +57,8 @@ function handshake(headers, sid = `${id}x`) {
 
 for (const dark of [false, true]) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, colorScheme: dark ? "dark" : "light" })
-  const page = watch(await ctx.newPage(), { console: true })
+  const page = watch(await ctx.newPage(), { console: true }), ui = app(page)
   const text = () => terminalText(page)
-  const until = async (pred, ms = 8000) => { for (let t = 0; t < ms; t += 100) { if (await pred()) return true; await wait(100) } return false }
   const sid = `${id}${dark ? "d" : "l"}`
 
   await page.goto(`${B}#view/terminal%2F${sid}`)
@@ -135,12 +136,12 @@ for (const dark of [false, true]) {
     const screen = await page.locator("[data-term-screen]").boundingBox()
     await page.mouse.move(screen.x + 200, screen.y + 200); await page.mouse.wheel(0, -2000)
     check("scrolled up, the way back to the end shows", await until(async () => (await page.locator("[data-terminal-end]").count()) > 0, 3000))
-    await wait(1200)
+    await until(() => page.evaluate(() => /^tail-25\s*$/m.test(document.querySelector("[data-terminal]").terminalText(true))))
     await page.locator("[data-terminal-end]").click()
     check("it goes back to the end", await until(async () => /^tail-25\s*$/m.test(await text()) && !(await page.locator("[data-terminal-end]").count()), 3000))
     // Scheme change recolours.
     const before = await page.evaluate(() => getComputedStyle(document.querySelector("[data-term-ground]")).backgroundColor)
-    await page.evaluate(() => { const h = document.documentElement; if (h.dataset.scheme) delete h.dataset.scheme; else h.dataset.scheme = "gruvbox" }); await wait(300)
+    await page.evaluate(() => { const h = document.documentElement; if (h.dataset.scheme) delete h.dataset.scheme; else h.dataset.scheme = "gruvbox" }); await ui.idle()
     const after = await page.evaluate(() => getComputedStyle(document.querySelector("[data-term-ground]")).backgroundColor)
     check("scheme change recolours", before !== after, [before, after])
     await page.screenshot({ path: `${OUT}terminal-other-scheme.png` })
@@ -150,7 +151,8 @@ for (const dark of [false, true]) {
     await page.keyboard.type("exit"); await page.keyboard.press("Enter")
     check("exit closes the tab", await until(async () => (await page.locator(`[data-terminal="${sid}"]`).count()) === 0 && !(await page.getByText("Process exited").count())))
   } else {
-    await page.keyboard.type("exit"); await page.keyboard.press("Enter"); await wait(300)
+    await page.keyboard.type("exit"); await page.keyboard.press("Enter")
+    await until(async () => (await page.locator(`[data-terminal="${sid}"]`).count()) === 0)
   }
   await ctx.close()
 }
@@ -173,9 +175,8 @@ for (const dark of [false, true]) {
       }
     }
   })
-  const page = watch(await ctx.newPage())
+  const page = watch(await ctx.newPage()), ui = app(page)
   const text = () => terminalText(page)
-  const until = async (pred, ms = 8000) => { for (let t = 0; t < ms; t += 100) { if (await pred()) return true; await wait(100) } return false }
   const socks = (sid) => page.evaluate((sid) => window.__socks.filter((s) => s.id === sid), sid)
   const sid = `${id}p`
   await page.goto(`${B}#view/terminal%2F${sid}`)
@@ -185,7 +186,7 @@ for (const dark of [false, true]) {
   await until(async () => (await text()).includes("parked-21"))
   await page.keyboard.press("Control+Backquote") // another terminal, in a new tab: this one's is hidden
   await until(async () => (await page.evaluate(() => window.__socks.length)) > 1)
-  await wait(800)
+  await ui.idle()
   check("a hidden terminal stays connected", (await socks(sid)).filter((s) => !s.closed).length === 1, await socks(sid))
   await page.locator(`[data-session="${sid}"]`).first().click()
   check("its tab comes back as it was", await until(async () => (await text()).includes("parked-21"), 3000), (await text()).slice(-200))
@@ -194,7 +195,7 @@ for (const dark of [false, true]) {
   check("it has the keys again", await until(() => page.evaluate((sid) => !!document.activeElement?.closest(`[data-terminal="${sid}"]`), sid), 3000))
   await openPalette(page)
   await page.locator('input[placeholder^="Select a command"]').fill("Close current tab") // (into the palette, not the terminal)
-  await wait(300)
+  await ui.idle()
   await page.keyboard.press("Enter")
   check("closing its tab lets it go", await until(async () => (await socks(sid)).every((s) => s.closed), 3000), await socks(sid))
   await ctx.close()
@@ -206,7 +207,6 @@ for (const dark of [false, true]) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
   const page = watch(await ctx.newPage())
   const text = () => terminalText(page)
-  const until = async (pred, ms = 8000) => { for (let t = 0; t < ms; t += 100) { if (await pred()) return true; await wait(100) } return false }
   const tabs = () => page.locator('[role="tab"]').count()
   const hid = `${id}h`
   await page.goto(`${B}#view/terminal%2F${hid}`)
@@ -231,7 +231,6 @@ for (const dark of [false, true]) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
   const page = watch(await ctx.newPage())
   const text = () => terminalText(page)
-  const until = async (pred, ms = 8000) => { for (let t = 0; t < ms; t += 100) { if (await pred()) return true; await wait(100) } return false }
   // From the app (its button in the Terminals panel, the palette): only the page that makes a terminal's id starts its agent (a tab put back
   // by its address only attaches, and a session that isn't there is "gone").
   await page.goto(B)
@@ -249,16 +248,15 @@ for (const dark of [false, true]) {
 // Codex: another plugin's agent, run the same way (codex-<id>: the service "agent:codex").
 {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
-  const page = watch(await ctx.newPage())
+  const page = watch(await ctx.newPage()), ui = app(page)
   const text = () => terminalText(page)
-  const until = async (pred, ms = 8000) => { for (let t = 0; t < ms; t += 100) { if (await pred()) return true; await wait(100) } return false }
   // From the app (its button in the Terminals panel, the palette): only the page that makes a terminal's id starts its agent (a tab put back
   // by its address only attaches, and a session that isn't there is "gone").
   await page.goto(B)
   await page.locator("[data-agent]").first().waitFor() // the app is up
   await openPalette(page)
   await page.locator('input[placeholder^="Select a command"]').fill("Open Codex") // (into the palette, not the terminal)
-  await wait(300)
+  await ui.idle()
   await page.keyboard.press("Enter")
   const mine = page.locator(`[data-terminal^="codex-"]`).last()
   await mine.waitFor()
@@ -277,7 +275,7 @@ for (const dark of [false, true]) {
   await page.goto(`${B}#view/terminal%2F${id}r`)
   const shown = await page.getByText(/No shell here/).waitFor({ timeout: 8000 }).then(() => true, () => false)
   check("a refused page says why", shown)
-  await wait(1500)
+  await wait(1500) // (its first retry would come within 800 ms: that none does is the check)
   check("and doesn't reconnect", !(await page.getByText("Reconnecting").count()))
   await page.screenshot({ path: `${OUT}terminal-refused.png` })
   await ctx.close()

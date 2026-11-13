@@ -4,7 +4,8 @@
 import { execFileSync } from "node:child_process"
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
-import { SHOTS, palette, qa, until, wait } from "./lib/qa.mjs"
+import { SHOTS, palette, qa, until } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
 import { setAsideWorkspaces, workspaces } from "./lib/wsfiles.mjs"
 const { args: [B, VAULT, OUT = SHOTS], browser, check, watch, noErrors, done } = await qa(import.meta.url)
 const req = (method, path, body) => fetch(`${B}api/${path}`, { method, headers: { "Content-Type": "application/json" }, body: body && JSON.stringify(body) })
@@ -29,7 +30,7 @@ await req("POST", "file", { path: NOTE, text: `Links to [[${hub.path.replace(/\.
 const all = await (await req("GET", "graph")).json()
 
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 }, deviceScaleFactor: 1 })
-const page = watch(await ctx.newPage())
+const page = watch(await ctx.newPage()), ui = app(page)
 
 await page.goto(`${B}#file/${encodeURIComponent(NOTE)}`)
 await page.waitForSelector("[data-local-graph] canvas", { timeout: 15000 })
@@ -38,19 +39,18 @@ check("the block has no Fit button until it's moved", !(await page.$("[data-loca
 {
   const b = await (await page.$("[data-local-graph] canvas")).boundingBox()
   await page.mouse.move(b.x + 6, b.y + 6); await page.mouse.down()
-  await page.mouse.move(b.x + b.width - 6, b.y + b.height - 6, { steps: 8 }); await page.mouse.up(); await wait(300)
+  await page.mouse.move(b.x + b.width - 6, b.y + b.height - 6, { steps: 8 }); await page.mouse.up(); await ui.idle()
   check("dragged away, the block shows Fit", !!(await page.$("[data-local-graph] [data-graph-fit]")))
-  await page.click("[data-local-graph] [data-graph-fit]"); await wait(300)
+  await page.click("[data-local-graph] [data-graph-fit]"); await ui.idle()
   check("Fit brings it back and goes", !(await page.$("[data-local-graph] [data-graph-fit]")))
 }
 check("the sidebar's Local graph panel is hidden until shown (`hidden`)", !(await page.$("[data-local-graph-panel]")))
 // Shown from the sidebar's right-click menu (a hidden panel is under More ▸, 1db1908): at the end of the left sidebar.
-await page.click("aside [data-titlebar]", { button: "right" }); await wait(300)
-await page.locator("[role=menu]").first().locator(":scope > button", { hasText: /^More$/ }).hover(); await wait(300)
+await ui.menu.context(page.locator("aside [data-titlebar]").first())
+await page.locator("[role=menu]").first().locator(":scope > button", { hasText: /^More$/ }).hover(); await page.locator("[role=menu]").nth(1).waitFor()
 check("the menu lists it under More, unticked", await page.getAttribute('[role=menuitemcheckbox]:has-text("Local graph")', "aria-checked") === "false")
-await page.click('[role=menuitemcheckbox]:has-text("Local graph")'); await wait(500)
-// (Escape closes the submenu, then the menu)
-while (await page.$("[role=menu]")) { await page.keyboard.press("Escape"); await wait(100) }
+await page.click('[role=menuitemcheckbox]:has-text("Local graph")'); await ui.idle()
+await ui.menu.close()
 await page.waitForSelector("[data-local-graph-panel] canvas", { timeout: 8000 }).then(() => check("shown from the menu, it draws the file's neighbours", true), () => check("shown from the menu, it draws the file's neighbours", false))
 // With Workspaces on there always is a current workspace (02c5ae8): a panel shown is that workspace's own (its
 // `sidebars` in Workspaces' data.json, the first one here), and sidebars.json, the default new ones start with, stays.
@@ -58,14 +58,13 @@ const own = workspaces(B)[0]?.sidebars ?? null
 check(`showing it writes the workspace's panels (${JSON.stringify(own?.left)})`, JSON.stringify(own?.left) === JSON.stringify([...DEFAULT, "graph:local"]))
 check("...and leaves sidebars.json, the default, as it was", JSON.stringify(JSON.parse(readFileSync(SIDEBARS, "utf8")).left) === JSON.stringify(DEFAULT))
 
-await palette(page, "Open graph view")
+await palette(page, "Open graph view", 0)
 const canvas = page.locator("[data-graph-canvas=view] canvas")
 await canvas.waitFor({ timeout: 15000 })
 const linked = new Set(all.edges.flatMap((e) => [e.from, e.to])).size
 const shownNodes = Number(await canvas.getAttribute("data-graph-nodes"))
 check(`files with no links are shown by default, as in Obsidian (${shownNodes} of ${all.nodes.length})`, shownNodes === all.nodes.length)
-// The layout settles.
-await wait(3000)
+await ui.idle()
 await page.screenshot({ path: `${OUT}graph-light.png` })
 
 // Hover: find a node by moving over the canvas, then click it.
@@ -82,10 +81,10 @@ check("...and names it, whatever its neighbours", (await canvas.evaluate((el) =>
 await page.screenshot({ path: `${OUT}graph-hover.png` })
 const at = await page.evaluate(() => [location.hash])
 await page.mouse.down(); await page.mouse.up()
-await wait(800)
+await ui.idle()
 const hash = decodeURIComponent(await page.evaluate(() => location.hash))
 check(`a click opens it (${hash}, was ${at[0]})`, hash.includes(hovered))
-await page.goBack(); await wait(800)
+await page.goBack(); await ui.idle()
 await page.locator("[data-graph-canvas=view] canvas").waitFor()
 
 // Search filters the graph to what it finds (saved as the view's `search`), and clearing it brings the rest back.
@@ -108,7 +107,7 @@ for (const f of CROWD) await req("POST", "file", { path: f, text: CROWD.filter((
 await until(async () => (await nodes()) === all.nodes.length + CROWD.length, 8000)
 await page.fill("[data-graph-search]", "Crowd")
 await until(async () => (await nodes()) === CROWD.length, 8000)
-await page.click("button[aria-label='Fit the graph']"); await wait(2500)
+await page.click("button[aria-label='Fit the graph']"); await ui.idle()
 {
   const labels = () => canvas.evaluate((el) => el.labels?.() ?? [])
   const named = (await labels()).filter((l) => l.full)
@@ -143,7 +142,7 @@ await page.locator(`[data-graph-group="${group}"]`).click()
 check("...and showing it brings them back", !!(await until(async () => (await nodes()) === all.nodes.length, 8000)))
 
 // Dark.
-await req("PUT", "config/appearance", { theme: "dark" }); await wait(1500)
+await ui.sees(".vaultite/appearance.json", () => req("PUT", "config/appearance", { theme: "dark" }))
 await page.screenshot({ path: `${OUT}graph-dark.png` })
 const px = await page.evaluate(() => {
   const c = document.querySelector("[data-graph-canvas=view] canvas"), g = c.getContext("2d")
@@ -156,17 +155,17 @@ check(`draws in dark (${px} painted samples)`, px > 100)
 await req("PUT", "config/appearance", { theme: "light" })
 
 // Local graph from the palette.
-await page.goto(`${B}#file/${encodeURIComponent(NOTE)}`); await wait(1200)
-await palette(page, "Open local graph")
-check("Open local graph opens the file's graph in a tab", !!(await page.$(`[data-graph-view="${NOTE}"] canvas`)))
+await page.goto(`${B}#file/${encodeURIComponent(NOTE)}`); await ui.idle()
+await palette(page, "Open local graph", 0)
+check("Open local graph opens the file's graph in a tab", await page.locator(`[data-graph-view="${NOTE}"] canvas`).waitFor({ timeout: 8000 }).then(() => true, () => false))
 noErrors()
 
 // Phone.
 const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
-const pp = await phone.newPage()
+const pp = await phone.newPage(), phoneUi = app(pp)
 await pp.goto(`${B}#view/graph`)
 await pp.waitForSelector("[data-graph-canvas=view] canvas", { timeout: 15000 })
-await wait(2500)
+await phoneUi.idle()
 const over = await pp.evaluate(() => document.documentElement.scrollWidth - innerWidth)
 check(`no sideways scroll at 390px (${over})`, over <= 0)
 await pp.screenshot({ path: `${OUT}graph-phone.png` })

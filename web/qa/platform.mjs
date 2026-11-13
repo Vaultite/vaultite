@@ -3,7 +3,8 @@
 //   node web/qa/platform.mjs <base url>
 import { execFileSync } from "node:child_process"
 import path from "node:path"
-import { BACK_KEY, PROMPT, qa, terminalText, until, wait } from "./lib/qa.mjs"
+import { BACK_KEY, PROMPT, qa, terminalText, until } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
 
 const { args: [B], browser, check, watch, done } = await qa(import.meta.url)
 const MAC = process.platform === "darwin"
@@ -12,7 +13,7 @@ const vau = (...a) => execFileSync(process.execPath, [path.resolve(import.meta.d
 vau("plugin", "on", "workspaces")
 for (const where of [[], ["--vault"]]) if (!/^\s+\d+\. search:search/m.test(vau("panels", ...where))) vau("panels", "show", "search", ...where)
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, permissions: ["clipboard-read", "clipboard-write"] })
-const page = watch(await ctx.newPage(), { console: true })
+const page = watch(await ctx.newPage(), { console: true }), ui = app(page)
 await page.goto(`${B}#notes`)
 await page.waitForSelector("[role=tree]", { timeout: 30000 })
 const platform = await page.evaluate(() => navigator.platform)
@@ -25,7 +26,7 @@ const side = await tip("[data-sidebar-toggle='']")
 check(`the sidebar toggle's tooltip names ${MAC ? "⌘\\" : "Ctrl+\\"}`, side?.endsWith(MAC ? "(⌘\\)" : "(Ctrl+\\)"), side)
 // (vau changes the workspace of the window it last heard from: this page's, now that it's open)
 if (!(await page.locator("[data-sidebar-search]").count())) { vau("panels", "show", "search"); await page.waitForSelector("[data-sidebar-search]", { timeout: 10000 }) }
-await page.locator("[data-sidebar-search]").hover(); await wait(300)
+await page.locator("[data-sidebar-search]").hover(); await ui.idle()
 const caps = await page.locator("[data-sidebar-search] kbd").allTextContents()
 check("the search field's keycaps are the quick switcher's", caps.join(" ") === (MAC ? "⌘ O" : "Ctrl O"), caps)
 
@@ -33,23 +34,23 @@ check("the search field's keycaps are the quick switcher's", caps.join(" ") === 
 const notes = await page.evaluate(async () => (await (await fetch("api/state")).json()).notes?.filter((n) => /\[\[/.test(n.body ?? "")).map((n) => `${n.id}.md`) ?? [])
 const [a, b] = notes
 await page.goto("about:blank"); await page.goto(`${B}#file/${encodeURIComponent(a)}`)
-await page.waitForSelector("[data-pane] .cm-content", { timeout: 20000 }); await wait(800)
+await page.waitForSelector("[data-pane] .cm-content", { timeout: 20000 }); await ui.idle()
 const view = await tip("[data-pane] button[aria-label=Edit], [data-pane] button[aria-label=Read]")
 check(`the view button's tooltip names ${MAC ? "⌘E" : "Ctrl+E"}`, view?.includes(MAC ? "(⌘E)" : "(Ctrl+E)"), view)
 await page.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent(b)}`)
-await until(async () => decodeURIComponent(await page.evaluate(() => location.hash)).includes(b), 5000); await wait(600)
+await until(async () => decodeURIComponent(await page.evaluate(() => location.hash)).includes(b), 5000); await ui.idle()
 await page.locator("body").click({ position: { x: 640, y: 20 } }).catch(() => {})
 await page.keyboard.press(BACK_KEY)
 check("back's keys go back", await until(async () => decodeURIComponent(await page.evaluate(() => location.hash)).includes(a), 5000), await page.evaluate(() => location.hash))
 
 // The palette: keycaps in the quick switcher's footer, as its rows draw them; Ctrl+P (off a Mac the palette's own key)
 // not taken as ↑.
-await page.keyboard.press("ControlOrMeta+O"); await wait(500)
+await page.keyboard.press("ControlOrMeta+O"); await ui.idle()
 const foot = await page.locator("[role=dialog]").last().locator("span:has(> span > kbd)").evaluateAll((hs) => hs.map((h) => [...h.querySelectorAll("kbd")].map((k) => k.textContent).join(" ") + ": " + h.textContent.replace(/^.*?(?=to )/, "")))
 check(`the quick switcher's footer says ${MAC ? "⌘ ↵" : "Ctrl Enter"} as keycaps`, foot.includes(`${MAC ? "⌘ ↵" : "Ctrl Enter"}: to open in new tab`), foot)
 await page.keyboard.press("Escape")
-await page.keyboard.press("ControlOrMeta+P"); await wait(300)
-await page.keyboard.type("Switch to workspace 2"); await wait(400)
+await page.keyboard.press("ControlOrMeta+P"); await ui.idle()
+await page.keyboard.type("Switch to workspace 2"); await ui.idle()
 const row = await page.locator("[role=dialog]").last().textContent()
 check(`workspace 2 is on ${MAC ? "⌃2" : "Alt 2"}`, (MAC ? /Switch to workspace 2\s*⌃\s*2/ : /Switch to workspace 2\s*Alt\s*2/).test(row), row.slice(0, 200))
 await page.keyboard.press("Escape")
@@ -58,9 +59,9 @@ await page.keyboard.press(MAC ? "Control+2" : "Alt+2")
 check("its keys switch to it", await until(async () => (await lit()) === "2", 5000), await lit())
 await page.keyboard.press(MAC ? "Control+1" : "Alt+1")
 await until(async () => (await lit()) === "1", 5000)
-await page.keyboard.press("ControlOrMeta+P"); await wait(300)
+await page.keyboard.press("ControlOrMeta+P"); await ui.idle()
 if (!MAC) {
-  await page.keyboard.press("Control+P"); await wait(300)
+  await page.keyboard.press("Control+P"); await ui.idle()
   check("Ctrl+P closes the palette (not ⌃P's move up, a Mac's)", !(await page.getByPlaceholder(/command/i).count()))
 }
 await page.keyboard.press("Escape")
@@ -69,7 +70,7 @@ await page.keyboard.press("Escape")
 await page.locator("[role=tree] [role=treeitem]").filter({ hasText: a.split("/").pop().replace(/\.md$/, "") }).first().click({ button: "right" })
 const items = await until(async () => (await page.locator("[role=menu] [role=menuitem]").count()) > 0, 3000) ? await page.locator("[role=menu]").allTextContents() : []
 const more = page.getByRole("menuitem", { name: /^More/ })
-if (await more.count()) { await more.first().hover(); await wait(300) }
+if (await more.count()) { await more.first().hover(); await page.locator("[role=menu]").nth(1).waitFor() }
 const all = (await page.locator("[role=menu]").allTextContents()).join(" ")
 check(`a file's menu has ${MAC ? "Reveal in Finder" : "Show in folder"}`, all.includes(MAC ? "Reveal in Finder" : "Show in folder") && (MAC || !all.includes("Finder")), [items.join(" ").slice(0, 200), all.slice(0, 300)])
 await page.keyboard.press("Escape"); await page.keyboard.press("Escape")
@@ -81,7 +82,7 @@ await page.evaluate(() => {
 })
 const link = page.locator("[data-pane] .cm-content [data-wiki]").first()
 if (await link.count()) {
-  await link.click({ button: "middle" }); await wait(500)
+  await link.click({ button: "middle" }); await ui.idle()
   check("a middle click on a link prevents the paste", await page.evaluate(() => window.__middle === true), await page.evaluate(() => window.__middle))
 } else check("a note with a link to middle-click", false, a)
 
@@ -100,13 +101,15 @@ if (!MAC) {
     return box && box.width ? { x: box.left - 2.5 * box.width, y: box.top + box.height / 2 } : null
   })
   if (word) await page.mouse.dblclick(word.x, word.y)
-  await page.keyboard.press("Control+Shift+C"); await wait(300)
-  const clip = await page.evaluate(() => navigator.clipboard.readText().catch((e) => String(e)))
+  await page.keyboard.press("Control+Shift+C")
+  const readClip = () => page.evaluate(() => navigator.clipboard.readText().catch((e) => String(e)))
+  const clip = await until(async () => { const c = await readClip(); return c.trim() === "zebra" && c }, 3000) || await readClip()
   check("Ctrl+Shift+C copies the selection", clip.trim() === "zebra", clip)
   check("...and sends no ^C (the line is still there)", !(await text()).includes("^C") && /echo zebra\s*$/m.test(await text()), (await text()).slice(-200))
   await page.keyboard.press("Control+Shift+V")
   check("Ctrl+Shift+V pastes", await until(async () => (await text()).includes("echo zebrazebra"), 3000), (await text()).slice(-200))
-  await page.keyboard.press("Control+U"); await page.keyboard.type("exit"); await page.keyboard.press("Enter"); await wait(500)
+  await page.keyboard.press("Control+U"); await page.keyboard.type("exit"); await page.keyboard.press("Enter")
+  await until(async () => (await page.locator(`[data-terminal="${sid}"]`).count()) === 0, 5000)
 }
 
 await ctx.close()

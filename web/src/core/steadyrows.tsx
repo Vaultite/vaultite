@@ -3,6 +3,7 @@ import { ChevronRight } from "lucide-react"
 import { menuShowing, useMenuShowing } from "@/components/ContextMenu"
 import { slideFrom } from "@/core/animation"
 import { useScopedState } from "@/core/scope"
+import { trackSoon } from "@/core/unsaved"
 import { cn } from "@/lib/utils"
 
 const LINGER = 600, TOUCH_LINGER = 2000
@@ -18,7 +19,7 @@ export function useHold(box: RefObject<HTMLElement | null>) {
     if (!el) return
     const at = by.current
     const hover = matchMedia("(hover: hover)")
-    let timer = 0, due = 0
+    let timer = 0, due = 0, untrack = trackSoon("a list letting go", () => due !== 0)
     const settle = (after = LINGER) => {
       clearTimeout(timer)
       if (at.over || at.keys || at.menu || at.touch) { due = 0; return setHeld(true) }
@@ -50,7 +51,7 @@ export function useHold(box: RefObject<HTMLElement | null>) {
     el.addEventListener("touchcancel", up)
     document.addEventListener("scroll", scrolled, { capture: true, passive: true })
     return () => {
-      clearTimeout(timer)
+      clearTimeout(timer); untrack()
       el.removeEventListener("pointerenter", enter)
       el.removeEventListener("pointerleave", leave)
       el.removeEventListener("keydown", key)

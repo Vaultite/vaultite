@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Maximize } from "lucide-react"
 import { forceLink, forceManyBody, forceSimulation, forceX, forceY, type Simulation, type SimulationLinkDatum, type SimulationNodeDatum } from "d3-force"
-import { onLook } from "@vaultite"
+import { onLook, trackSoon } from "@vaultite"
 import { nameOf, type Graph, type GraphEdge, type GraphNode } from "./graph"
 
 type SimNode = SimulationNodeDatum & { n: GraphNode; r: number; tok: string; color: string; label: string; low: string; text: string; tw: number; tws: number; la: number }
@@ -441,7 +441,7 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
       if (fading) s.dirty = true
       ctx.globalAlpha = 1
     }
-    let seen = true
+    let seen = true, untrack = trackSoon("the graph's layout", () => frame !== 0)
     const io = new IntersectionObserver((es) => { seen = es[es.length - 1].isIntersecting; if (seen) s.dirty = true })
     io.observe(el)
     const loop = () => {
@@ -459,7 +459,7 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
     s.wake = () => { if (!frame && seen) frame = requestAnimationFrame(loop) }
     s.wake()
     return () => {
-      s.wake = () => {}
+      untrack(); s.wake = () => {}
       cancelAnimationFrame(frame)
       io.disconnect()
       ro.disconnect()
