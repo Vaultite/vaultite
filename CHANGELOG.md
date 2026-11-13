@@ -15,6 +15,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Notes dragged into a sidebar become panels**: a file dragged between a sidebar's panels (onto a heading), from the file tree, a
   pinned page, Recent files, links, search or a tab, is drawn there as a panel, the panels making way for it; a tab
   moves there and closes, as in Obsidian. A sidebar's toggle takes one too, at its end.
+- **Docked notes are editable**: a note in a sidebar is the editor its tab has (live preview, saving, links opening
+  in the main area, a file dropped on its text linked), with its own view on its heading (⌘E while typing in it); a
+  tab of the same note shows what's typed in either as it's typed. Dashboards and plugins' files draw as before.
 - **Notes take several cursors, HTML pastes as Markdown, and inline footnotes and custom callouts draw**: ⌥-click
   adds a cursor, ⌘⌥↑ and ⌘⌥↓ one above or below, ⌥-drag a column (⇧⌥-drag one alone), and Select next occurrence is
   in the palette; a web page's formatting pastes as Markdown (⇧⌘V keeps the text) and an address pasted over selected

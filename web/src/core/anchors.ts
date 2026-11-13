@@ -44,8 +44,10 @@ export function docChanged(u: ViewUpdate) {
   if (moved) changed()
 }
 
+const placed = (el: Element, within?: Element | null) => el.isConnected && el.getClientRects().length > 0 && (within ? within.contains(el) : !el.closest("[data-docked]"))
+
 function viewOf(path: string, within?: Element | null): DocView | null {
-  const shown = docs.filter((d) => d.path === path && d.dom.isConnected && d.dom.getClientRects().length > 0 && (!within || within.contains(d.dom)))
+  const shown = docs.filter((d) => d.path === path && placed(d.dom, within))
   return shown.find((d) => d.dom.closest("#main-scroll")) ?? shown[shown.length - 1] ?? null
 }
 
@@ -54,7 +56,7 @@ function drawnHeading(path: string, anchor: string, within?: Element | null): HT
   if (anchor.startsWith("^")) return null
   const want = anchorKey(anchor.split("#").pop() ?? "")
   const hs = (within ?? document).querySelectorAll<HTMLElement>(`.file-view[data-path="${CSS.escape(path)}"] :is(h1, h2, h3, h4, h5, h6)`)
-  return [...hs].find((h) => h.getClientRects().length > 0 && anchorKey(h.textContent ?? "") === want) ?? null
+  return [...hs].find((h) => placed(h, within) && anchorKey(h.textContent ?? "") === want) ?? null
 }
 
 function tryPending() {
@@ -113,7 +115,7 @@ trackSoon("a line's edit on its way", () => !!wanted && Date.now() <= wanted.unt
 function deliver() {
   if (!wanted) return
   if (Date.now() > wanted.until) { wanted = null; return }
-  const shown = takers.filter((t) => t.path === wanted!.path && !!t.dom()?.isConnected && t.dom()!.getClientRects().length > 0)
+  const shown = takers.filter((t) => { const el = t.dom(); return t.path === wanted!.path && !!el && placed(el) })
   const t = shown.find((x) => x.dom()!.closest("#main-scroll")) ?? shown[shown.length - 1]
   if (!t) return
   const { line, find, from, col } = wanted

@@ -1,3 +1,6 @@
+import { closestOf } from "@/core/dom"
+import { cell } from "@/core/signal"
+
 export type ActiveFile = {
   path: string
   /** The whole file as it is in the editor now (frontmatter and body). */
@@ -8,6 +11,11 @@ export type ActiveFile = {
   insert: (text: string) => void
   /** Save what's typed now, and wait for it. */
   settle: () => Promise<void>
+}
+
+export const dockedKeys = cell<string | null>(null)
+if (typeof window !== "undefined") {
+  for (const ev of ["focusin", "pointerdown"]) addEventListener(ev, (e) => { if (closestOf(e.target, "[data-pane]")) dockedKeys.set(null) }, true)
 }
 
 let active: ActiveFile | null = null

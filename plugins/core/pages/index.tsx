@@ -1,7 +1,7 @@
 import { useEffect } from "react"
 import { AppWindow, PanelRight, PanelRightClose, Pin, PinOff } from "lucide-react"
 import {
-  currentEditor, currentFile, definePlugin, dockAtEnd, FileEmbed, filePanelKey, focusedPane, hidePanel, panelSide, stem, getTabLayout, shownTab, iconAt, isViewOpen, openFile, openView, PIN_SEARCH, useCommands, useFocusedFile,
+  currentEditor, currentFile, definePlugin, dockAtEnd, DockedFile, DockedViewToggle, filePanelKey, focusedPane, hidePanel, panelSide, stem, getTabLayout, shownTab, iconAt, isViewOpen, openFile, openView, PIN_SEARCH, useCommands, useFocusedFile,
   usePane, useViewsVersion, useWorkspaceVersion, viewPinLabel, type Store, type TabLayout,
 } from "@vaultite"
 import { PinCurrent, pinChecklist, PinnedPages, showAsMenu } from "./Pinned"
@@ -80,7 +80,8 @@ export default definePlugin({
     file: (path) => ({
       title: stem(path).replace(/^.*\//, ""), flyout: { icon: AppWindow, width: 360 },
       tab: () => ({ name: stem(path).replace(/^.*\//, ""), open: () => void openFile(path, { newTab: true }) }),
-      render: ({ store }) => <div data-file-panel={path} className="px-2 pb-2"><FileEmbed store={store} path={path} fill /></div>,
+      actions: ({ store }) => <DockedViewToggle store={store} path={path} panel={filePanelKey(path)} />,
+      render: ({ store }) => <div data-file-panel={path} className="px-2 pb-2"><DockedFile store={store} path={path} panel={filePanelKey(path)} /></div>,
     }),
   },
   sidebar: { pages: { title: "Pinned pages", heading: "Pinned", sort: 10, view: "pages", render: (ctx) => <PinnedPages {...ctx} />,

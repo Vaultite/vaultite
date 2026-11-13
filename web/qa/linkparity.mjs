@@ -27,7 +27,7 @@ const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 }, d
 const page = watch(await ctx.newPage()), ui = app(page)
 const menu = page.locator(".cm-tooltip-autocomplete")
 const ready = async (name) => { await menu.locator("li", { hasText: name }).first().waitFor({ timeout: 5000 }); await ui.idle() }
-const content = page.locator(".vau-editor .cm-content[contenteditable=true]")
+const content = page.locator("#main-scroll .vau-editor .cm-content[contenteditable=true]")
 
 async function openHere() {
   await page.goto("about:blank"); await page.goto(`${B}#file/${encodeURIComponent(HERE)}`)
@@ -88,12 +88,12 @@ check("an image dragged in is embedded", await saved((t) => /Copy this paragraph
 const panes = await ui.pane.all()
 check("…and the pane under the text didn't open them", panes.length === 1 && panes[0] === "Here", panes)
 
-const docked = page.locator(`[data-file-panel="${SIDE}"]`, { hasText: "Docked note." })
+const docked = page.locator(`[data-file-panel="${SIDE}"] .cm-line`, { hasText: "Docked note." }).first()
 await docked.waitFor({ timeout: 8000 }); await ui.idle()
 const layout = JSON.stringify(await api("GET", "config/sidebars"))
 await drag(row(TARGET), docked)
-check("a file dropped onto a note docked in a sidebar: the sidebar keeps its panels, the note as it was",
-  JSON.stringify(await api("GET", "config/sidebars")) === layout && read(SIDE).endsWith("\nDocked note.\n"), [await api("GET", "config/sidebars"), read(SIDE)])
+check("a file dropped onto the text of a note docked in a sidebar: its link there, the sidebar's panels as they were",
+  await saved((t) => t.endsWith("\nDocked note.[[Target]]\n"), SIDE) && JSON.stringify(await api("GET", "config/sidebars")) === layout, [await api("GET", "config/sidebars"), read(SIDE)])
 
 await api("PATCH", "config/files", { wikilinks: false, linkFormat: "absolute" })
 await openHere(); await end()

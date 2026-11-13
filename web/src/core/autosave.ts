@@ -162,6 +162,13 @@ const holding = new Set<() => string>()
 export const heldByConflict = (path: string) => [...holding].some((w) => w() === path)
 
 const backoff = (tries: number) => Math.min(30_000, 1000 * 2 ** tries)
+const sentHere = new Map<string, { by: symbol; text: string; t: number }[]>()
+const SENT_KEPT = 60_000
+const fresh = (x: { t: number }) => Date.now() - x.t < SENT_KEPT
+function noteSent(path: string, by: symbol, text: string) {
+  sentHere.set(path, [...(sentHere.get(path) ?? []).filter((x) => fresh(x) && x.text !== text).slice(-4), { by, text, t: Date.now() }])
+}
+const sentByOthers = (path: string, me: symbol) => (sentHere.get(path) ?? []).filter((x) => x.by !== me && fresh(x)).map((x) => x.text)
 const SAVE_WAIT = 60_000
 // fetch's keepalive takes a body of 64 KB at most.
 const KEEPALIVE_MAX = 60_000
@@ -184,10 +191,12 @@ export function makeAutosave(path: string, initial: string, options: Options) {
   let parked: { text: string; clashes: Clash[] } | null = null
   let calmed: (() => void)[] = []
   let unconfirmed: string[] = []
+  let following = false
+  const me = Symbol(path)
   const sentMaybe = (text: string) => { unconfirmed = [...unconfirmed.filter((t) => t !== text), text].slice(-5) }
   const ownSave = (disk: string, base: string) => {
     const body = splitFm(disk).body
-    return unconfirmed.find((t) => t === disk || (splitFm(t).body === body && body !== splitFm(base).body))
+    return [...unconfirmed, ...sentByOthers(where(), me)].find((t) => t === disk || (splitFm(t).body === body && body !== splitFm(base).body))
   }
   const adopt = (own: string, disk: string) => {
     const typed = now(), merged = own === disk ? typed : merge3(own, typed, disk) ?? typed
@@ -208,7 +217,7 @@ export function makeAutosave(path: string, initial: string, options: Options) {
 
   const go = (e: SaveEvent) => {
     const was = phase
-    const { to, do: effects } = step(phase, e, () => keptLive(where()) || (!(e.type === "save" && e.force) && now() === s.disk))
+    const { to, do: effects } = step(phase, e, () => keptLive(where()) || following || (!(e.type === "save" && e.force) && now() === s.disk))
     phase = to
     if (to.kind !== was.kind) trace("autosave", { path, from: was.kind, to: to.kind, on: e.type })
     if (to.kind === "conflict") holding.add(where)
@@ -222,7 +231,7 @@ export function makeAutosave(path: string, initial: string, options: Options) {
       else if (d === "read") void read(e.type === "check" ? e.known : undefined)
       else if (d === "flush") flush(s.disk, true)
       else if (d === "tell") tell(status)
-      else if (d === "drop") dropDraft(path)
+      else if (d === "drop" && !following) dropDraft(path)
       else if (d === "calm" && status.kind === "error") tell({ kind: "ok" })
     }
   }
@@ -238,6 +247,7 @@ export function makeAutosave(path: string, initial: string, options: Options) {
   const send = async () => {
     if (drafting) { clearTimeout(drafting); drafting = null }
     const sent = now(), base = s.disk, retried = phase.kind === "saving" && phase.tries > 0
+    noteSent(where(), me, sent)
     keepDraft(path, sent, base)
     let finish = () => {}
     inflight = { text: sent, done: new Promise<void>((r) => { finish = r }) }
@@ -302,7 +312,7 @@ export function makeAutosave(path: string, initial: string, options: Options) {
       mtime = r.mtime
       o.current.onDisk?.(r)
       show(merged)
-      if (merged !== r.text) s.changed()
+      if (merged !== r.text && !following) s.changed()
     } catch (e) {
       if (!mine()) return
       go({ type: "read" })
@@ -317,8 +327,8 @@ export function makeAutosave(path: string, initial: string, options: Options) {
       o.current.onDisk?.(theirs)
       tell({ kind: "ok" })
       show(text)
-      if (text !== theirs.text) s.changed()
-      else dropDraft(path)
+      if (text === theirs.text) dropDraft(path)
+      else if (!following) s.changed()
     }
     const first = mergeClashes(base, now(), theirs.text)
     if (!first.clashes.length) { take(first.text); return false }
@@ -340,11 +350,12 @@ export function makeAutosave(path: string, initial: string, options: Options) {
 
   const flush = (base: string, say: boolean) => {
     const text = now()
-    if (text === base || o.current.readOnly || typedLive(where())) return
+    if (text === base || o.current.readOnly || typedLive(where()) || following) return
     // A save too big for keepalive is a plain one, which a closing window may cut short.
     keepDraft(path, text, base)
     const send = async (base: string | null) => {
       sentMaybe(text)
+      noteSent(where(), me, text)
       const r = await put(text, base, { keepalive: true })
       if (r.status === 409) throw new NotSaved(changedText(), "conflict")
       if (!r.ok) throw new NotSaved(errorIn(await r.json().catch(() => ({}))) ?? r.statusText, r.status === 404 ? "gone" : "refused")
@@ -390,7 +401,7 @@ export function makeAutosave(path: string, initial: string, options: Options) {
         if (base !== null && base !== s.disk) { s.disk = base; mtime = 0; unconfirmed = [] }
         go({ type: "rebase" })
       })
-      const untrack = trackUnsaved(() => !o.current.readOnly && !typedLive(where()) && (phase.kind === "pending" || phase.kind === "saving" || status.kind !== "ok" || now() !== s.disk), where)
+      const untrack = trackUnsaved(() => !o.current.readOnly && !typedLive(where()) && !following && (phase.kind === "pending" || phase.kind === "saving" || status.kind !== "ok" || now() !== s.disk), where)
       return () => {
         ghost = o.current.text()
         untrack()
@@ -406,9 +417,12 @@ export function makeAutosave(path: string, initial: string, options: Options) {
     get conflict() { return phase.kind === "conflict" },
 
     changed() {
+      following = false
       if (keptLive(where())) return
       go({ type: "typed" })
     },
+
+    follow() { following = true },
 
     save(force = false): Promise<void> {
       go({ type: "save", force })
@@ -447,6 +461,7 @@ export function makeAutosave(path: string, initial: string, options: Options) {
     },
     keep(side: "mine" | "theirs") {
       if (status.kind !== "conflict") return
+      following = false
       const c = status, typed = now(), p = parked, was = s.disk
       const disk = c.version ? was : c.theirs.text
       const { text: merged, clashes } = p ? mergeClashes(p.text, typed, withTheirs(p.text, p.clashes)) : mergeClashes(c.base, typed, c.theirs.text)

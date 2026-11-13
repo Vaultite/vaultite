@@ -39,6 +39,7 @@ import { pastedFiles } from "@/core/files"
 import { droppedFrom, fromOutside, type Dropped } from "@/core/filedrop"
 import { dropInto, fileDrops, markDrop, spotAt } from "./filedrop"
 import { linkDrops, takesDrops } from "./linkDrop"
+import { mirror, mirroredIn } from "./mirror"
 import { pasteTable } from "./tables"
 import { pasteHtml, pasteLink } from "./paste"
 import { editorExtensions, usePluginsVersion } from "@/core/plugins"
@@ -68,7 +69,7 @@ type Props = {
   doc: string
   editable: boolean
   config: PreviewConfig
-  onChange: (doc: string, start: number, remote: boolean) => void
+  onChange: (doc: string, start: number, from: Edited) => void
   onUndoFrontmatter?: () => void
   onOpen: (link: { wiki?: string; url?: string }, how: boolean | LinkClick) => void
   links?: Linking
@@ -93,7 +94,8 @@ type Props = {
 
 const hosts = Annotation.define<boolean>()
 const news = (u: ViewUpdate) => u.docChanged && !u.transactions.every((t) => !t.docChanged || t.annotation(hosts))
-const fromElsewhere = (u: ViewUpdate) => u.transactions.every((t) => !t.docChanged || t.annotation(Transaction.remote))
+export type Edited = "here" | "mirror" | "elsewhere"
+const edited = (u: ViewUpdate): Edited => (!u.transactions.every((t) => !t.docChanged || t.annotation(Transaction.remote)) ? "here" : mirroredIn(u) ? "mirror" : "elsewhere")
 
 let tooltipLayer: HTMLElement | null = null
 function tooltipHost() {
@@ -260,7 +262,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, links,
       keymap.of([{ key: "Tab", run: indentMore }, { key: "Shift-Tab", run: indentLess }, ...defaultKeymap, ...historyKeymap]),
       EditorView.contentAttributes.of({ spellcheck: "false", autocorrect: "off", autocapitalize: "off", "aria-label": label ?? "File" }),
       EditorView.updateListener.of((u) => {
-        if (news(u)) cb.current.onChange(u.state.doc.toString(), 0, fromElsewhere(u))
+        if (news(u)) cb.current.onChange(u.state.doc.toString(), 0, edited(u))
       }),
     ]
     const keepAs = keep ? keptKey(tab, keep) : null
@@ -289,7 +291,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, links,
         ] : [
           Prec.highest(fenceMenu), Prec.highest(plugged.current.of([])),
           leaving, sight, history(), cursors, conflicts,
-          EditorView.updateListener.of((u) => { if (u.docChanged && docPath) docChanged(u) }),
+          EditorView.updateListener.of((u) => { if (u.docChanged && docPath) docChanged(u) }), docPath ? mirror(docPath) : [],
           fencedCode(!!source), source ? syntaxHighlighting(fmStyle) : [],
           prose.current.of(writing(settings, doc)),
           EditorView.lineWrapping, nums.current.of(showNumbers ? numberGutter() : []),
@@ -330,7 +332,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, links,
           EditorView.contentAttributes.of({ autocorrect: "on", autocapitalize: "sentences", "aria-label": label ?? "Note" }),
           EditorView.updateListener.of((u) => {
             const start = u.state.field(frontmatter, false) ?? 0
-            if (news(u)) cb.current.onChange(u.state.doc.toString(), start, fromElsewhere(u))
+            if (news(u)) cb.current.onChange(u.state.doc.toString(), start, edited(u))
             const was = u.startState.field(frontmatter, false) ?? 0
             if (u.transactions.some((t) => t.isUserEvent("undo") || t.isUserEvent("redo")) && u.startState.doc.sliceString(0, was) !== u.state.doc.sliceString(0, start)) cb.current.onUndoFrontmatter?.()
           }),

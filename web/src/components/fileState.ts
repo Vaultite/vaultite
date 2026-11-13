@@ -65,9 +65,9 @@ function subscribeMode(f: () => void) {
   if (modeSubs.size === 1) addEventListener("storage", otherWindow)
   return () => { modeSubs.delete(f); if (!modeSubs.size) removeEventListener("storage", otherWindow) }
 }
-export function useMode(): [Mode, (m: Mode) => void, string, EditingMode] {
+export function useMode(own?: string): [Mode, (m: Mode) => void, string, EditingMode] {
   const { pane, tab: inTab } = usePane()
-  const tab = pane || inTab || ""
+  const tab = own ?? (pane || inTab || "")
   useEditorSettings()
   const set = useCallback((m: Mode) => setMode(tab, m), [tab])
   const v = useSyncExternalStore(subscribeMode, () => viewOf(tab))

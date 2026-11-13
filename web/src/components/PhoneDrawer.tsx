@@ -102,6 +102,7 @@ export function PhoneDrawers({ store, file, tab, vaultName, vaultMenu }: { store
 
   const start = (e: React.PointerEvent, s: Side, from: number) => {
     if (e.pointerType === "mouse" && e.button) return
+    if (closestOf(e.target, "[contenteditable=true]") && getSelection()?.isCollapsed === false) return
     drag.current?.quit?.()
     drag.current = { side: s, x: e.clientX, y: e.clientY, axis: null, from, p: from, t: e.timeStamp, v: 0 }
   }

@@ -42,7 +42,6 @@ await section("autosave", async () => {
     async get(p: string) { return p.startsWith("activity") ? { events: [] } : { mtime: srv.mtime, size: srv.text.length } },
     async putJson(_p: string, b: Any) { srv.text = b.text; srv.mtime++; return file() },
   }
-  // (the page's events, which the module listens to as a browser's)
   const win = new EventTarget(), doc = Object.assign(new EventTarget(), { visibilityState: "visible" })
   const g = globalThis as Any
   g.addEventListener = win.addEventListener.bind(win); g.removeEventListener = win.removeEventListener.bind(win); g.document = doc
@@ -119,6 +118,28 @@ await section("autosave", async () => {
     await ticks()
     check("autosave: a change heard while a save was pending is merged in even when there was nothing to save", ed.text === "a\nagent\n", ed.text)
     ed.close()
+  }
+  {
+    srv.text = "a\n"
+    const tab = open(), docked = open()
+    const typeIn = (here: Any, there: Any, t: string) => { here.type(t); there.set(t); there.saver.follow() }
+    typeIn(tab, docked, "a b\n")
+    await tab.saver.save()
+    typeIn(tab, docked, "a bc\n")
+    const puts = srv.puts
+    await docked.saver.check()
+    await docked.saver.save()
+    await ticks()
+    check("autosave: an editor following another's typing takes its save without a conflict, and doesn't save it again",
+      docked.text === "a bc\n" && srv.puts === puts && !docked.said.some((x: Any) => x.kind === "conflict"), { text: docked.text, puts: srv.puts - puts, said: docked.said.map((x: Any) => x.kind) })
+    typeIn(docked, tab, "a bcd\n")
+    await docked.saver.save()
+    await tab.saver.check()
+    await tab.saver.save()
+    await ticks()
+    check("autosave: typed in the other, it saves, and the first follows without a conflict",
+      srv.text === "a bcd\n" && tab.text === "a bcd\n" && ![...tab.said, ...docked.said].some((x: Any) => x.kind === "conflict"), { disk: srv.text, tab: tab.text })
+    tab.close(); docked.close()
   }
   {
     srv.text = "a\nb\n"

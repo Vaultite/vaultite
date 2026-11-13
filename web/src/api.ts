@@ -204,6 +204,8 @@ export { NotePreview, noteFor } from "@/components/NoteEmbed"
 // saved in place; and any file drawn as `![[file]]` draws it.
 export { FileEditor, NoteEditor, type FileEditorProps, type NoteEditorProps } from "@/components/NoteEditor"
 export { FileEmbed } from "@/components/FileEmbed"
+// A file docked in a sidebar as a panel: a note edited as in its tab, with its own view on the panel's heading.
+export { DockedFile, DockedViewToggle } from "@/components/DockedFile"
 export { DoIt } from "@/components/DoIt"
 // The address of a file's bytes (an image's src, a binary format's file; an iPhone photo as JPEG where needed).
 export { rawUrl } from "@/components/FileViewers"

@@ -40,7 +40,7 @@ import { allChoices, choiceCommand } from "@/core/choices"
 import { loadVaultPlugins } from "@/core/vaultPlugins"
 import { menuBelow, menuFor, type MenuItem } from "@/components/ContextMenu"
 import { DetailSheet } from "@/components/DetailSheet"
-import { setSheetFile } from "@/components/TargetView"
+import { setFileView } from "@/components/drawFile"
 import { newNote, revealInTree } from "@/components/FileTree"
 import { headerMenu, panelMenu, RAIL, SidebarPanels, SidebarToggle } from "@/components/Sidebar"
 import { FileView } from "@/components/FileView"
@@ -238,7 +238,7 @@ const tellOffer = (e: OfferEvent) => {
 }
 setClosedTogether((id, n) => tellOffer({ type: "closed", id, n }))
 
-setSheetFile((store, path) => <FileView store={store} path={path} pane={false} />)
+setFileView((store, path, docked) => <FileView store={store} path={path} pane={false} docked={docked} />)
 
 setDetailRedirect((path) => {
   const s = getStore()

@@ -1,6 +1,7 @@
 import type { EditorState } from "@codemirror/state"
 import type { EditorView } from "@codemirror/view"
 import { typingIn } from "@/core/commands"
+import { dockedKeys } from "@/core/active"
 
 export type OpenEditor = {
   view: EditorView
@@ -50,7 +51,8 @@ export function currentEditor(): OpenEditor | null {
     if (hit) return hit
   }
   if (sheets.length) return null
-  return shown.find((e) => e.view.dom.closest("#main-scroll .file-view")) ?? null
+  const docked = dockedKeys.get()
+  return (docked && shown.find((e) => e.view.dom.closest(`[data-docked="${CSS.escape(docked)}"]`))) || shown.find((e) => e.view.dom.closest("#main-scroll .file-view")) || null
 }
 
 /** Keys pressed now are meant for this editor: the keyboard is in it, or nowhere else (nothing focused, something in

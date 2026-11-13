@@ -6,7 +6,7 @@ import { menuFor, menuOnCard } from "@/components/ContextMenu"
 import { copyToVault, copyToVaultItem, folderMenu, revealItem } from "@/components/FileActions"
 import { mediaItems } from "@/components/EmbedMenu"
 import { typingIn, useCommandKeys, useCommands } from "@/core/commands"
-import { dropActiveFile, setActiveFile, type ActiveFile } from "@/core/active"
+import { dockedKeys, dropActiveFile, setActiveFile, type ActiveFile } from "@/core/active"
 import { askMove } from "@/components/FileTree"
 import { fmtAgo, type Store } from "@/core/data"
 import { isOutside } from "@/core/desktop"
@@ -57,7 +57,7 @@ import { trace } from "@/core/trace"
 import { addRestore, afterPlaced, cancelRestores, cursorOf, hideUntilPlaced, keepCursor, offerPlace, readPlace, takeRestore } from "@/core/viewstate"
 import { capitalize, cn, plural } from "@/lib/utils"
 import { haptic } from "@/core/haptics"
-import type { EditorApi } from "@/editor/Editor"
+import type { EditorApi, Edited } from "@/editor/Editor"
 import { Editor } from "@/editor/lazy"
 import type { PreviewConfig } from "@/editor/livePreview"
 
@@ -260,13 +260,13 @@ const ViewToggle = memo(function ViewToggle({ mode, setMode, edit, views, phone 
   return host ? createPortal(button, host) : null
 })
 
-export function FileView({ store, path, pane }: { store: Store; path: string; pane: boolean }) {
+export function FileView({ store, path, pane, docked }: { store: Store; path: string; pane: boolean; docked?: string }) {
   const kind = kindOf(path)
   if (isMedia(kind)) return <MediaFile key={path} store={store} path={path} pane={pane} kind={kind} />
-  return <TextFile key={path} store={store} path={path} pane={pane} />
+  return <TextFile key={path} store={store} path={path} pane={pane} docked={docked} />
 }
 
-function TextFile({ store, path, pane }: { store: Store; path: string; pane: boolean }) {
+function TextFile({ store, path, pane, docked }: { store: Store; path: string; pane: boolean; docked?: string }) {
   const [file, setFile] = useState<FileText | null | "missing" | "binary" | "big">(() => seen.get(path) ?? null)
   const [tries, setTries] = useState(0)
   useEffect(() => {
@@ -282,7 +282,7 @@ function TextFile({ store, path, pane }: { store: Store; path: string; pane: boo
   if (file === "missing") return padded(<Missing path={path} pane={pane} />)
   if (file === "binary" || file === "big") return padded(<MediaFile store={store} path={path} pane={pane} kind="binary" note={file === "big" ? "Too big to open here." : undefined} />)
   if (!file) return <div className="min-h-[50vh]" aria-busy />
-  return <Loaded key={path} store={store} initial={file} pane={pane} onGone={() => setFile("missing")} />
+  return <Loaded key={path} store={store} initial={file} pane={pane} docked={docked} onGone={() => setFile("missing")} />
 }
 
 const moveCommand = (path: string) => (isReadOnly(path) || isOutside(path) ? [] : [{ id: "file:move", name: "Move current file to another folder", run: () => askMove(path), icon: FolderInput }])
@@ -351,12 +351,12 @@ function Missing({ path, pane }: { path: string; pane: boolean }) {
   )
 }
 
-function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileText; pane: boolean; onGone: () => void }) {
+function Loaded({ store, initial, pane, docked, onGone }: { store: Store; initial: FileText; pane: boolean; docked?: string; onGone: () => void }) {
   const path = initial.path
-  const [saved, setSaved, tabId, tabEdit] = useMode()
+  const [saved, setSaved, tabId, tabEdit] = useMode(docked)
   const wideSheet = useWideSheet()
-  const [fresh] = useState(() => takeNew(path))
-  const [kept] = useState(() => takeRenamed(path))
+  const [fresh] = useState(() => !docked && takeNew(path))
+  const [kept] = useState(() => (docked ? null : takeRenamed(path)))
   const [override, setOverride] = useState<Mode | null>(fresh && saved === "read" ? tabEdit : kept?.mode ?? null)
   const first = splitFm(initial.text)
   const [fm, setFm] = useState(first.fm)
@@ -600,12 +600,13 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     if (!ed?.api.view.dom.isConnected) { apply(text); changed(); return }
     ed.api.change(text)
   }, [apply])
-  const typed = useCallback((text: string, start: number | null, remote = false) => {
+  const typed = useCallback((text: string, start: number | null, from: Edited) => {
     const s = start === null ? splitFm(text) : { fm: text.slice(0, start), body: text.slice(start) }
     cur.current = s
     setFm(s.fm)
     onTyped.current()
-    if (!remote) changed()
+    if (from === "here") changed()
+    else if (from === "mirror") saver.follow()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- changed is the saver's, made once a mount
   }, [])
   const setProps = useCallback((b: string) => editAround(joinFm(b, cur.current.body)), [editAround])
@@ -696,7 +697,15 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   }), [shown, ro, resolve, store, disabled, version, path, sections, editGrid, readBlock])
 
 
-  const live = pane && focused
+  const keys = dockedKeys.use()
+  const live = docked ? keys === docked : pane && focused && keys === null
+  useEffect(() => {
+    const el = article.current
+    if (!docked || !el) return
+    const take = () => dockedKeys.set(docked)
+    el.addEventListener("focusin", take)
+    return () => { el.removeEventListener("focusin", take); if (dockedKeys.get() === docked) dockedKeys.set(null) }
+  }, [docked])
   useCommands(() => (live ? [
     ...(views.length > 1 ? [{ id: "view:toggle", name: "Switch to reading view", keys: ["Mod+E"], run: () => setMode(shown === "read" ? edit : "read"), icon: BookOpen,
       nameWhenOn: `Switch to ${(views.find((v) => v.value === edit)?.label ?? "editing view").toLowerCase()}`, on: () => shown === "read" }] : []),
@@ -745,7 +754,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   const board = dash && shown === "read"
   const layout = format?.layout ?? "box"
   const page = layout === "full" && shown === "read" && pane
-  const titled = showInlineTitle || !pane
+  const titled = !docked && (showInlineTitle || !pane)
   const pageCtx: PageCtx = { store, path, fm: props, get body() { return cur.current.body }, setProperty: ctx.setProperty, title: stem(path), place: pane ? "page" : "sheet", disabled }
   pageRef.current = pageCtx
   const wide = (board || !!editGrid) && !pageView?.narrow?.(pageCtx)
@@ -815,17 +824,17 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   const parted = withParts(path, !!source, !!drawing), place = pane ? "page" : "sheet"
   const fileArticle = (
     <article ref={article} className={cn("file-view", pane && "pb-24", column && "mx-auto", column && (wide || code || notebook || format ? "max-w-[1040px]" : readable && "max-w-(--line-width)"))} data-path={path} data-kind={kind}
-      data-grid={editGrid ? "" : undefined}
+      data-grid={editGrid ? "" : undefined} data-docked={docked}
       onContextMenu={outsideMenu}
       style={zoom && readable ? { maxWidth: `calc(var(--line-width) * ${zoom})` } : undefined}>
       {pathBar()}
       {phoneToggle}
       <div style={zoom ? { zoom } : undefined} data-text-size={zoom ? "note" : undefined}>
-        {!page && (!pane || phoneTab) && (
+        {!page && !docked && (!pane || phoneTab) && (
           <TitleLine icon={view?.icon ?? Folder} tint={view?.tint} text={folderLine(path)} head={fileHead} pane={pane}
             toggle={!pane && !ro && views.length > 1 && <ViewToggle mode={shown} setMode={setMode} edit={edit} views={views} phone="sheet" />} />
         )}
-        {!page && !(code && pane && !phoneTab) && (titled ? (
+        {!page && !docked && !(code && pane && !phoneTab) && (titled ? (
           <TitleRow icon={props.icon} tint={props.tint} phone={phoneTab}
             onIcon={changeable && iconChangeable(path) ? () => changeIcon(path, (n) => setProperty("icon", n)) : undefined}>
             <Title path={path} editable={shown !== "read" && !ro && !isProtected(path) && !outside} sheet={!pane} focus={fresh} settle={settle}
@@ -854,7 +863,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
                   ready(api, source); saver.reshow(); if (kept?.write) toText()
                   return () => { if (editor.current === me) editor.current = null }
                 }}
-                onChange={(text, start, remote) => typed(text, source || fmText ? null : start, remote)} />
+                onChange={(text, start, from) => typed(text, source || fmText ? null : start, from)} />
             )}
           </Suspense>}
           <NoteParts head={fileHead} place={place} at="end" on={parted && !board} />
