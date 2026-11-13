@@ -1,0 +1,20 @@
+--- a/src/terminal/PageList.zig
++++ b/src/terminal/PageList.zig
+@@ -777,7 +777,7 @@
+         // (WASM), the WasmAllocator reuses freed slots without zeroing since
+         // only fresh memory.grow pages are guaranteed zero by the WASM spec.
+         // On native, the OS page allocator (mmap) returns zeroed pages.
+-        if (comptime std.debug.runtime_safety or builtin.target.os.tag == .freestanding)
++        if (comptime std.debug.runtime_safety or builtin.target.cpu.arch.isWasm())
+             @memset(page_buf, 0);
+ 
+         // Initialize the first set of pages to contain our viewport so that
+@@ -5155,7 +5155,7 @@
+     // come from the OS page allocator (zeroed pages), destroyNodeExt
+     // zeroes buffers before returning them to the pool, and the pool
+     // never writes into its items (see PagePool).
+-    if (comptime std.debug.runtime_safety or builtin.target.os.tag == .freestanding)
++    if (comptime std.debug.runtime_safety or builtin.target.cpu.arch.isWasm())
+         @memset(page_buf, 0);
+ 
+     page.* = .{

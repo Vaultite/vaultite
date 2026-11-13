@@ -124,9 +124,9 @@ async function main() {
       fs.writeFileSync(path.join(DIR, "PROVENANCE.md"), `# ghostty-vt.wasm
 
 libghostty-vt, Ghostty's terminal emulator as a library (MIT license, https://github.com/ghostty-org/ghostty), built
-here by \`tools/ghostty_update.ts --build ${buildV}\` from Ghostty's signed release source with two patches of ours:
+here by \`tools/ghostty_update.ts --build ${buildV}\` from Ghostty's signed release source with patches of ours:
 Ghostty's own wasm (wasm32-freestanding) has kitty graphics compiled out; this is wasm32-wasi, its WASI imports
-stubs \`vt.ts\` gives (no clock, no files).
+stubs \`vt.ts\` gives (no clock, no files), and its grown pages zeroed as Ghostty does on freestanding.
 
 - Version: ${it.version}
 - Source: ${b.src} (+ ${b.src.replace(".tar.gz", "-deps.tar.gz")}), minisign checked against Ghostty's key

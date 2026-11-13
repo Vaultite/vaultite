@@ -5,6 +5,7 @@ import fs from "node:fs"
 import { createRequire } from "node:module"
 import os from "node:os"
 import path from "node:path"
+import { Worker } from "node:worker_threads"
 import zlib from "node:zlib"
 import { newVt } from "../plugins/core/terminal/vt/load.ts"
 import { KITTY_STORAGE, LAYOUT, wasiImports } from "../plugins/core/terminal/vt/vt.ts"
@@ -16,6 +17,16 @@ import { inkFrames, seq, streaming } from "./perf/vtcorpus.ts"
 import { check, section, summary } from "./test/lib.ts"
 
 const t0 = Date.now()
+const GRAPHEMES_AFTER_PICTURE_IN_A_WORKER = `
+const { workerData, parentPort } = require("node:worker_threads")
+import(workerData.vt).then(({ newVt }) => {
+  const v = newVt({ cols: 120, rows: 40, scrollback: 10000 })
+  v.resize(120, 40, 16, 32)
+  v.write(Array.from({ length: 300 }, (_, i) => "line " + i + "\\r\\n").join(""))
+  const px = Buffer.alloc(448 * 291 * 4).map((_, i) => (i * 2654435761) >>> 24).toString("base64")
+  v.write("\\x1b_Ga=T,U=1,q=2,f=32,i=9,s=448,v=291,c=48,r=16;" + px + "\\x1b\\\\")
+  try { v.write(("e\\u0301\\u0302".repeat(48) + "\\r\\n").repeat(16) + "after"); parentPort.postMessage(v.text(1)) } catch (e) { parentPort.postMessage(String(e)) }
+})`
 const require = createRequire(import.meta.url)
 const { Terminal } = require("@xterm/headless") as typeof import("@xterm/headless")
 const VT = path.join(import.meta.dirname, "../plugins/core/terminal/vt")
@@ -178,6 +189,16 @@ await section("sizes", async () => {
   v.resize(20, 4)
   check("… narrower too", v.text(null) === `${"word ".repeat(20).trimEnd()}\nshort`, v.text(null))
   v.dispose()
+})
+
+await section("a grown page after a picture is zeroed (vt/patches/3)", async () => {
+  const got = await new Promise<string>((done) => {
+    const w = new Worker(GRAPHEMES_AFTER_PICTURE_IN_A_WORKER, { eval: true, workerData: { vt: new URL("../plugins/core/terminal/vt/load.ts", import.meta.url).href } })
+    const t = setTimeout(() => { void w.terminate(); done("still parsing after 10 s") }, 10_000)
+    w.on("message", (m: string) => { clearTimeout(t); void w.terminate(); done(m) })
+    w.on("error", (e) => { clearTimeout(t); done(String(e)) })
+  })
+  check("many graphemes after it: written, read back", got === "after", got)
 })
 
 await section("memory", () => {

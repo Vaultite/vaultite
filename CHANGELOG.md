@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A terminal showing big pictures no longer freezes the window**: a terminal's screen with a long history and a
+  large picture in it (Claude Code reading screenshots) could crash or loop forever on the next lines of output.
 - **The companion says a handoff once**: when its own words already said it handed something off, the app no longer
   adds its "Handed that off" line, and several jobs in one answer get one line.
 - **The app loads about 190 KB less script at start**: it bundles only the plugin modules vault plugins may import.
