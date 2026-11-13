@@ -12,7 +12,7 @@ import type { Focus } from "./screen.ts"
 import { teachDeaf, teachFinal, teachListening, teachListens, teachPending } from "./teach.ts"
 import { endWalk, walkFinal, walkListening, walkListens, walkPending } from "./walk.ts"
 import { QUIET, screenAsk, screenAsked, stubs } from "./helperask.ts"
-import { dictate, dictating, dictationEngines, draw, freeFor, front, handOver, HELD, hidden, hint, host, keptLanded, notice, op, prefs, releaseMic, type Session, stopFor, type Summon } from "./helperbase.ts"
+import { dictate, dictating, dictationEngines, draw, freeFor, front, handOver, HELD, hidden, hint, host, keptLanded, notice, op, DONE, prefs, releaseMic, type Session, stopFor, type Summon } from "./helperbase.ts"
 import { askPage, backWhereItBegan, dropOrigin, following, followFix } from "./helperlearn.ts"
 import { live } from "./helperlive.ts"
 import { frontedIs, speaker, stopVoice, voiceFront } from "./helpervoice.ts"
@@ -251,7 +251,7 @@ async function finish(s: Session, cancelled: boolean) {
     insert: (t) => screenAsk("insert", { text: t }),
     origin: (t) => backWhereItBegan(s, t),
     copy: (t) => { if (QUIET) screenAsked.push({ op: "copy", text: t }); else clipboard.writeText(t) },
-    capture: async (t) => !!(await op("inbox.voice", { text: t, from: "Dictation", keep: true })),
+    capture: async (t) => !!(await op("inbox.voice", { text: t, from: "Dictation", keep: true }, DONE)),
     secret: (f) => hidden(f) || hidden(s.focus),
   })
   s.log?.end("landed", { to: to.to, chars: text.length, ...(to.how ? { how: to.how } : {}), ...(to.to === "clipboard" ? { kept: !!to.kept } : {}) })

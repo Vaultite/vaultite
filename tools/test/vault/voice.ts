@@ -190,7 +190,8 @@ export default async ($: VaultTest) => {
 
   // ---------- the helper's say: its settings, and its cursor speaking (a level, sent as a place)
   {
-    const { prefsOf, sceneFor, splitScene } = await import("../../../electron/helperlogic.ts")
+    const { sceneFor, splitScene } = await import("../../../electron/helperlogic.ts")
+    const { prefsOf } = await import("../../../electron/helperprefs.ts")
     const decls = { dictation: {}, screen: {}, companion: JSON.parse(fs.readFileSync(path.join(import.meta.dirname, "../../../plugins/core/companion/manifest.json"), "utf8")).settings }
     const def = prefsOf({}, {}, {}, decls).voice, set = prefsOf({}, { voice: "always", voice_name: "Larissa", voice_speed: 3 }, {}, decls).voice
     check("voice: its settings, the manifest's defaults (when you speak; ElevenLabs' Brian first, Soniox's Adrian), a speed kept in range", def.mode === "auto" && def.name === "Adrian" && def.speed === 1 && def.provider === "auto" && def.eleven.voice === "nPczCjzI2devNBz1zQrb" && def.eleven.model === "eleven_flash_v2_5" &&

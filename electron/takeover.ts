@@ -10,8 +10,8 @@ import { quiet, takePointer } from "./quiet.ts"
 import { privateApp } from "../core/privateapps.ts"
 import { hostOf, siteIn } from "../core/desktop/places.ts"
 import { aimedAt, type Answer, type Call, cardSpot, declined, handGrace, intentOf, keepsYes, kindOf, OFFER_MS, outward, PAUSED_MS, pausedLine, plan, type Probe, type Rect, refusal, REST_MS,
-  spotOf, STEP, type Step, tookText, types, probeThing, behindPlan, behindRefusal, cursorIn, inFront, LOOK_MS, type Readback, SETTLE_MS, unsureLine, verified,
-  type Window } from "./takeoverlogic.ts"
+  spotOf, type Step, tookText, types, probeThing, behindPlan, behindRefusal, cursorIn, inFront, LOOK_MS, type Readback, SETTLE_MS, unsureLine, verified,
+  type TakeoverMessage, type Window } from "./takeoverlogic.ts"
 
 type Point = { x: number; y: number }
 type Near = { id: string; role: string; label: string; frame: Rect }
@@ -492,23 +492,19 @@ async function runBehind(m: Ask, host: TakeoverHost): Promise<Record<string, unk
   } finally { lease.set(w.pid ?? 0, { agent: m.agent, until: Date.now() + DRIVE_MS }) }
 }
 
-/** The server's take-over messages: a step to do (`takeover`), their spoken answer to an offer (`takeover-answer`). */
-export function takeoverHeard(m: Record<string, unknown>, host: TakeoverHost) {
+export function takeoverHeard(m: TakeoverMessage, host: TakeoverHost) {
   redraw = host.redraw
-  if (m.t === "takeover-answer") return void (cards.size && spoken(m.yes === true ? "yes" : m.asked === true ? "asked" : "no"))
-  if (m.t === "confirm" && typeof m.id === "string") return void confirm(m, host)
-  if (m.t !== "takeover" || typeof m.id !== "string") return
-  const step = STEP.safeParse(m.step)
-  if (!step.success) return void host.reply({ t: "takeover-done", id: m.id, ok: false, why: "refused", text: "that isn't a step take-over knows: an action, and an element (its frame), a point or neither" })
-  const list = (x: unknown) => (Array.isArray(x) ? x.map(String) : [])
-  const req = { id: m.id, agent: String(m.agent ?? ""), tint: String(m.tint ?? "orange"), step: step.data, ...(typeof m.ask === "string" ? { ask: m.ask } : {}), apps: list(m.apps), sites: list(m.sites) }
+  if (m.t === "takeover-answer") return void (cards.size && spoken(m.yes ? "yes" : m.asked ? "asked" : "no"))
+  if (m.t === "confirm") return void confirm(m, host)
+  if (!m.step) return void host.reply({ t: "takeover-done", id: m.id, ok: false, why: "refused", text: "that isn't a step take-over knows: an action, and an element (its frame), a point or neither" })
+  const req = { id: m.id, agent: m.agent, tint: m.tint, step: m.step, ...(m.ask !== undefined ? { ask: m.ask } : {}), apps: m.apps, sites: m.sites }
   queue = queue.then(() => run(req, host).catch((e: Error) => ({ ok: false, why: "failed", text: e.message })).then((r) => host.reply({ t: "takeover-done", id: req.id, ...r })))
 }
 
 /** The server's `confirm`: their yes or no to `line` (a command to run), by their pointer, apart from any step's. */
-async function confirm(m: Record<string, unknown>, host: TakeoverHost) {
-  const id = String(m.id), name = String(m.agent ?? "")
-  const said = await offer(id, { line: String(m.line ?? "").slice(0, 160), sub: String(m.sub ?? ""), yes: "Run", name, tint: String(m.tint ?? "orange"), at: screen.getCursorScreenPoint() },
+async function confirm(m: Extract<TakeoverMessage, { t: "confirm" }>, host: TakeoverHost) {
+  const { id, agent: name } = m
+  const said = await offer(id, { line: m.line.slice(0, 160), sub: m.sub, yes: "Run", name, tint: m.tint, at: screen.getCursorScreenPoint() },
     () => host.reply({ t: "takeover-asking", id, agent: name, ms: OFFER_MS }))
   host.reply({ t: "takeover-done", id, ok: said === "yes", why: said })
 }

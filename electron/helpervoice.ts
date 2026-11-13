@@ -3,12 +3,15 @@ import { type Heard, heardBeats } from "../core/desktop/screenmarks.ts"
 import { voiceOf } from "../core/desktop/spoken.ts"
 import { type Drawing, elementPlaces } from "./drawing.ts"
 import { answerAloud, beatsWait, drawingHold, type Point, type Scene } from "./helperlogic.ts"
+import type { Prefs } from "./helperprefs.ts"
 import { markSampler } from "./marksampler.ts"
 import { drawingUp, panelOpen, penSounds, showDrawing, showOverlay } from "./overlay.ts"
 import type { Press } from "./presslog.ts"
 import { realtimeFront } from "./realtimefront.ts"
 import type { AppWindowInfo } from "./screen.ts"
+import { REALTIME_KEY } from "./homewire.ts"
 import { takeoverOffering } from "./takeover.ts"
+import type { TakeoverMessage } from "./takeoverlogic.ts"
 import { companionVoice } from "./voice.ts"
 import { QUIET, screenAsk } from "./helperask.ts"
 import { type Agent, based, BUSY, draw, type Exchange, expectedWords, hint, host, type Note, notice, prefs, prefsAre, type Summon } from "./helperbase.ts"
@@ -123,7 +126,7 @@ async function realtimeConfig() {
   const r = prefs.realtime, port = host?.home()?.port
   if (r.front !== "realtime" || prefs.voice.mode === "off" || quietForCall() || !port) return null
   const res = await fetch(`http://127.0.0.1:${port}/api/companion/realtime`, { headers: { "X-Vaultite-Client": "app/desktop" }, signal: AbortSignal.timeout(2000) })
-  const k = (res.ok ? await res.json() : {}) as { url?: string; key?: string }
+  const k = REALTIME_KEY.parse(res.ok ? await res.json() : {})
   return k.url && k.key ? { url: k.url, key: k.key, model: r.model, voice: r.voice } : null
 }
 /** The answer being said: the ask it answers (when it came), its says (the last still growing). Answers to asks before
@@ -135,9 +138,9 @@ let hushed = 0
 /** Where hushing stood before a press made while an offer was up: said to be its answer (the server tells), the turn
  *  it lets go on is heard, not hushed with the press. */
 let hushedBefore: number | null = null
-export function offerAnswered(m: Record<string, unknown>) {
+export function offerAnswered(m: TakeoverMessage) {
   if (m.t !== "takeover-answer") return
-  if (m.asked !== true && hushedBefore !== null) hushed = hushedBefore
+  if (!m.asked && hushedBefore !== null) hushed = hushedBefore
   hushedBefore = null
 }
 export let speakingNow: Scene["speaking"] = null
@@ -145,8 +148,8 @@ export let speakingNow: Scene["speaking"] = null
 let turnedOn = 0
 /** Its voice setting as the server has it now (with each say, and as it's changed): followed at once, not at the next
  *  settings read, so the answer that turned it off shows as text, and the one that turned it on is said. */
-export function voiceSetting(v: unknown) {
-  if (v !== "auto" && v !== "always" && v !== "off") return
+export function voiceSetting(v: Prefs["voice"]["mode"] | undefined) {
+  if (!v) return
   const was = prefs.voice.mode
   if (v === was) return
   prefsAre({ ...prefs, voice: { ...prefs.voice, mode: v } })

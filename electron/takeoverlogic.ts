@@ -18,6 +18,16 @@ export const STEP: z.ZodType<Step> = z.object({
   action: z.string(), el: z.object({ frame: RECT, role: WORDS, label: WORDS }).optional(), at: z.object({ x: z.number(), y: z.number() }).optional(),
   value: WORDS, key: WORDS, direction: z.enum(["up", "down"]).optional().catch("down"), doing: WORDS, app: WORDS, find: WORDS, role: WORDS,
 })
+const said = (fallback: string) => z.unknown().optional().transform((v) => String(v ?? fallback))
+const yes = z.unknown().optional().transform((v) => v === true)
+/** The server's take-over messages (plugins/core/companion/takeover.ts). */
+export const TAKEOVER_MESSAGES = [
+  z.object({ t: z.literal("takeover"), id: z.string(), agent: said(""), tint: said("orange"), step: STEP.nullable().catch(null), ask: z.string().optional().catch(undefined),
+    apps: z.array(z.unknown()).catch([]).transform((a) => a.map(String)), sites: z.array(z.unknown()).catch([]).transform((a) => a.map(String)) }),
+  z.object({ t: z.literal("confirm"), id: z.string(), agent: said(""), line: said(""), sub: said(""), tint: said("orange") }),
+  z.object({ t: z.literal("takeover-answer"), yes, asked: yes }),
+] as const
+export type TakeoverMessage = z.infer<typeof TAKEOVER_MESSAGES[number]>
 /** What takeover.swift found there (`probe`). */
 export type Probe = { ok: boolean; why?: string; bundle?: string; name?: string; pid?: number; vaultite?: boolean; role?: string; roleName?: string; subrole?: string
   secure?: boolean; label?: string; frame?: Rect | null; actions?: string[]; valueSettable?: boolean; checked?: boolean; web?: boolean; window?: number; title?: string

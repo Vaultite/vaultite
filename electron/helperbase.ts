@@ -4,12 +4,14 @@ import path from "node:path"
 import { privateApp } from "../core/privateapps.ts"
 import type { DictationSink } from "./dictation.ts"
 import type { HomeWindow } from "./cursorhandoff.ts"
-import type { HeldClick, Point, Prefs } from "./helperlogic.ts"
+import type { HeldClick, Point } from "./helperlogic.ts"
+import type { Prefs } from "./helperprefs.ts"
 import type { Press } from "./presslog.ts"
 import type { Phase, PressMachine } from "./pressmachine.ts"
 import type { AppWindowInfo, Focus, Rect } from "./screen.ts"
 import { happened } from "./timeline.ts"
 import { asked, QUIET } from "./helperask.ts"
+import { z } from "zod"
 
 export type Home = { port: number; path: string; name: string }
 /** This Mac's say (vaults.json): open at login, and the notice about macOS acting on fn too, shown. */
@@ -53,12 +55,13 @@ export let prefs: Prefs = { fn: true, keys: DEFAULTS.dictation.keys?.default ?? 
   realtime: { front: "realtime", model: "gpt-realtime-2.1-mini", voice: "cedar" }, jobNews: String(DEFAULTS.companion.job_news?.default ?? "quiet"), timeline: false,
   hideFromShares: true, quietOnCalls: true }
 export let based = ""
-export async function op(id: string, body: Record<string, unknown> = {}) {
+export const DONE = z.unknown()
+export async function op<B extends object, S extends z.ZodType>(id: string, body: B, answer: S): Promise<z.output<S>> {
   const home = host?.home()
   if (!home) throw new Error("no vault is open")
   const r = await fetch(`http://127.0.0.1:${home.port}/api/ops/${id}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/desktop" }, body: JSON.stringify(body) })
   if (!r.ok) throw new Error(`${id} answered ${r.status}`)
-  return r.json() as Promise<Record<string, unknown>>
+  return answer.parse(await r.json())
 }
 export type Agent = { name: string; tint: string; state: string; t?: number; seen?: boolean; why?: string; app?: string; window?: number; find?: string; sx?: number; sy?: number; display?: number; path?: string
   /** Its place in the app, off a note: a pane (a terminal's row), the app's UI; a note's line. */

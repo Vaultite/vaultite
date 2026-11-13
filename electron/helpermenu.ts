@@ -9,7 +9,8 @@ import { macAddon } from "./macaddons.ts"
 import { icon } from "./menu.ts"
 import { endWalk, startWalk, walkOn, walkScene } from "./walk.ts"
 import { asked, QUIET } from "./helperask.ts"
-import { host, op, prefs } from "./helperbase.ts"
+import { DONE, host, op, prefs } from "./helperbase.ts"
+import { DECISIONS, HOLD } from "./homewire.ts"
 import { live } from "./helperlive.ts"
 import { logger } from "../core/log.ts"
 
@@ -23,7 +24,7 @@ let tray: Tray | null = null
 /** The tray's icon, and with its badge's dot (made once it's first needed). */
 let plainIcon: Electron.NativeImage | null = null, dottedIcon: Electron.NativeImage | null = null
 export function panelMenu(_name: string, at: { window: BrowserWindow; x: number; y: number }) {
-  const mode = (m: string) => () => void op("settings.set", { name: "plugin/companion", values: { mode: m } })
+  const mode = (m: string) => () => void op("settings.set", { name: "plugin/companion", values: { mode: m } }, DONE)
   Menu.buildFromTemplate([
     { label: "Quiet", type: "radio", checked: live.state.mode === "quiet", click: mode("quiet") },
     { label: "Pair", type: "radio", checked: live.state.mode === "pair", click: mode("pair") },
@@ -33,7 +34,7 @@ export function panelMenu(_name: string, at: { window: BrowserWindow; x: number;
  *  island has the rest at a glance, the Agents view all of it. */
 export function menuItems(): Electron.MenuItemConstructorOptions[] {
   const h = host!, home = h.home()
-  const setting = (name: string, values: Record<string, unknown>) => () => void op("settings.set", { name, values }).then(refresh)
+  const setting = (name: string, values: { mode: string }) => () => void op("settings.set", { name, values }, DONE).then(refresh)
   const name = live.state.name, unread = unreadSays().length, mode = live.state.mode
   const m = menuNow({ presences: presencesNow(), decisions, jobs: live.state.jobs ?? [], now: Date.now() })
   const muted = mutedUntil > Date.now()
@@ -53,7 +54,7 @@ export function menuItems(): Electron.MenuItemConstructorOptions[] {
     { label: "Pair", type: "checkbox", checked: mode === "pair", enabled: !!home, click: setting("plugin/companion", { mode: "pair" }) },
     // (the inbox's hold, on every machine: nothing comes up by the notch, is said or notified till then)
     { label: muted ? `Muted until ${new Date(mutedUntil).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "Mute for an hour", icon: icon("bell-off"), type: "checkbox", checked: muted, enabled: !!home,
-      click: () => void op("inbox.hold", muted ? { until: "off" } : { until: "1h", label: "Muted from the menu bar" }).then((r) => { mutedUntil = heldUntil(r.hold) }, () => {}) },
+      click: () => void op("inbox.hold", muted ? { until: "off" } : { until: "1h", label: "Muted from the menu bar" }, HOLD).then((r) => { mutedUntil = heldUntil(r.hold) }, () => {}) },
     { type: "separator" },
     // (a QA walk: started and ended here too, as by voice)
     walkOn() ? { label: "End the QA walk", icon: icon("footprints"), sublabel: walkScene()?.state === "sending" ? "Sending…" : `${countText(walkScene()?.count ?? 0)}: sent as a job per project`, enabled: walkScene()?.state !== "sending", click: () => void endWalk(true) }
@@ -67,7 +68,7 @@ export function menuItems(): Electron.MenuItemConstructorOptions[] {
 let decisions: { question: string; from: string | null; created: string | null }[] = []
 /** Till when the user muted (the inbox's hold), in ms; 0: not. */
 export let mutedUntil = 0
-const heldUntil = (h: unknown) => { const u = (h as { until?: unknown } | null)?.until; const t = typeof u === "string" ? Date.parse(u.replace(" ", "T")) : NaN; return Number.isFinite(t) ? t : 0 }
+const heldUntil = (h: { until: string } | null | undefined) => { const t = h ? Date.parse(h.until.replace(" ", "T")) : NaN; return Number.isFinite(t) ? t : 0 }
 const cursors = new Map<string, Electron.NativeImage>()
 /** An agent's cursor in its colour, as the island draws it (not a template: it keeps its colour). */
 function cursorIcon(tint: string) {
@@ -83,7 +84,7 @@ export async function openIn(to: string) {
   host.openHome()
   // (a window just opening has no page to open it in yet)
   for (let i = 0; i < 20; i++) {
-    if (await op("ui.open", { path: to }).then(() => true, () => false)) return
+    if (await op("ui.open", { path: to }, DONE).then(() => true, () => false)) return
     await new Promise((r) => setTimeout(r, 500))
   }
 }
@@ -95,7 +96,7 @@ async function openJob(j: HelperJob) {
   host.openHome()
   // (a window just opening has no page to open it in yet)
   for (let i = 0; i < 20; i++) {
-    if (await op("companion.job-open", { id: j.id }).catch(() => op("ui.open", { path: j.link })).then(() => true, () => false)) return
+    if (await op("companion.job-open", { id: j.id }, DONE).catch(() => op("ui.open", { path: j.link }, DONE)).then(() => true, () => false)) return
     await new Promise((r) => setTimeout(r, 500))
   }
 }
@@ -106,7 +107,7 @@ export async function openPresence(p: Presence) {
   host.openHome()
   const job = p.open?.startsWith("job:") ? p.open.slice(4) : ""
   const displays = screen.getAllDisplays().map((d) => d.bounds)
-  const go = () => (job ? op("companion.job-show", { id: job, displays }) : p.terminal ? op("ui.open", { path: `view:terminal/${p.terminal}` }) : p.open ? op("ui.open", { path: p.open }) : Promise.resolve({}))
+  const go = () => (job ? op("companion.job-show", { id: job, displays }, DONE) : p.terminal ? op("ui.open", { path: `view:terminal/${p.terminal}` }, DONE) : p.open ? op("ui.open", { path: p.open }, DONE) : Promise.resolve({}))
   // (a window just opening has no page to open it in yet)
   for (let i = 0; i < 20; i++) {
     if (await go().then(() => true, () => false)) return
@@ -122,7 +123,7 @@ export function jobNotice(j: HelperJob) {
   const n = new Notification({ title: note.title, body: note.body, silent: true, actions: note.choices.map((text) => ({ type: "button" as const, text })) })
   n.on("click", () => void openJob(j))
   // (a choice that no longer fits, its prompt gone or changed: the job opens instead)
-  n.on("action", (_e, i) => void op("companion.job-answer", { id: j.id, choice: String(i + 1) }).catch(() => openJob(j)))
+  n.on("action", (_e, i) => void op("companion.job-answer", { id: j.id, choice: String(i + 1) }, DONE).catch(() => openJob(j)))
   n.show()
 }
 /** Keys as a Mac writes them: "fn⌃, right ⌥ or ⌃⌥". */
@@ -172,7 +173,7 @@ export function hideTray() {
 }
 /** For the menu: the decisions an agent waits on, and whether the user muted (a vault without the inbox has neither). */
 export async function followInbox() {
-  const [ds, held] = await Promise.all([op("inbox.decisions", {}).catch(() => null), op("inbox.hold", {}).catch(() => null)])
-  decisions = ((ds?.decisions ?? []) as { question: string; from: string | null; created: string | null; blocking?: boolean }[]).filter((x) => x.blocking)
+  const [ds, held] = await Promise.all([op("inbox.decisions", {}, DECISIONS).catch(() => null), op("inbox.hold", {}, HOLD).catch(() => null)])
+  decisions = (ds?.decisions ?? []).filter((x) => x.blocking)
   mutedUntil = heldUntil(held?.hold)
 }

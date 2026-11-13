@@ -9,6 +9,7 @@ import type { Heard } from "../core/desktop/screenmarks.ts"
 import { voiceSwift } from "./swiftbuild.ts"
 import { messageOf } from "./browser/messageof.ts"
 import { logger } from "../core/log.ts"
+import { z } from "zod"
 
 const log = logger("voice")
 
@@ -20,7 +21,8 @@ const IDLE_MS = 10 * 60_000
 export type VoicePrefs = { mode: "auto" | "always" | "off"; provider: Provider | "auto"; name: string; eleven: { voice: string; model: string }; speed: number }
 export type Provider = "elevenlabs" | "soniox"
 /** The server's keys for each cloud voice (companion/voice): what it has. */
-type Keys = { elevenlabs?: { url: string; key: string }; soniox?: { url: string; key: string; model: string } }
+const CLOUD = z.object({ url: z.string(), key: z.string() })
+const KEYS = z.object({ elevenlabs: CLOUD.optional().catch(undefined), soniox: CLOUD.extend({ model: z.string() }).optional().catch(undefined) }).catch({})
 
 export function companionVoice(o: {
   /** The home vault's server's port: its keys for the cloud voices (companion/voice). */
@@ -40,7 +42,7 @@ export function companionVoice(o: {
   record?: (m: Record<string, unknown>) => void
 }) {
   let child: ChildProcess | null = null, starting: Promise<ChildProcess | null> | null = null, idle: ReturnType<typeof setTimeout> | null = null
-  let keys: { at: number; port: number; k: Keys } | null = null
+  let keys: { at: number; port: number; k: z.infer<typeof KEYS> } | null = null
   const clouds = new Map<string, CloudVoice>()
   /** A sample's provider, for that answer alone; the Soniox voice of an answer by another agent than the companion. */
   let only: Provider | null = null, as: string | null = null
@@ -137,7 +139,7 @@ export function companionVoice(o: {
     try {
       const r = await fetch(`http://127.0.0.1:${port}/api/companion/voice`, { headers: { "X-Vaultite-Client": "app/desktop" }, signal: AbortSignal.timeout(2000) })
       if (!r.ok) throw new Error(`${r.status}`)
-      keys = { at: Date.now(), port, k: await r.json() as Keys }
+      keys = { at: Date.now(), port, k: KEYS.parse(await r.json()) }
     } catch {
       // (its server busy or restarting: the keys it had stay, asked again soon; none known, this Mac's voice)
       keys = { at: Date.now() - 50_000, port, k: keys?.port === port ? keys.k : {} }

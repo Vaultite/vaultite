@@ -1,9 +1,10 @@
 import type { WebContents } from "electron"
 import { joinText } from "../core/dictationtext.ts"
-import { type Entry, learnedList, type Teach } from "../core/desktop/dictationlearn.ts"
+import { learnedList, type Teach } from "../core/desktop/dictationlearn.ts"
 import { followField, type Followed } from "./dictationfix.ts"
 import { screenAsk } from "./helperask.ts"
-import { hidden, hint, op, type Session } from "./helperbase.ts"
+import { DONE, hidden, hint, op, type Session } from "./helperbase.ts"
+import { ADDED } from "./homewire.ts"
 
 /** Dictation that learns, in other apps: the field its words went into followed a minute for the user's fixes. */
 let up: { readonly session: Session | null }
@@ -14,8 +15,8 @@ export let following: Followed | null = null
 let follows = 0
 /** What's learned goes in the dictionary, said in the dictation box's place (the user is in another app). */
 const teachHere: Teach = {
-  add: async (e) => ((await op("dictation.add", { ...e, fixed: true })).added as Entry | null) ?? null,
-  remove: (e) => op("dictation.remove", { ...e }),
+  add: async (e) => (await op("dictation.add", { ...e, fixed: true }, ADDED)).added ?? null,
+  remove: (e) => op("dictation.remove", { ...e }, DONE),
   told: (added) => hint(`Added ${learnedList(added)} to your dictionary`, 4000),
 }
 /** Follow the words `said` just put in the field (`from`: the focused one, or the kept one they went back to); a

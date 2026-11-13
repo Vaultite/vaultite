@@ -2,18 +2,19 @@ import { WebSocket } from "ws"
 import type { HelperJob } from "./helperlogic.ts"
 import { asked, QUIET } from "./helperask.ts"
 import type { Agent, Note } from "./helperbase.ts"
+import { type Heard, heardFrom } from "./homewire.ts"
 
-export type Message = Record<string, unknown>
-let on: { heard: (m: Message) => void; opened: (s: WebSocket) => void; closed: () => void }
+let on: { heard: (m: Heard) => void; opened: (s: WebSocket) => void; closed: () => void }
 export const liveHooks = (h: typeof on) => { on = h }
+type LiveState = { mode: string; name: string; agents: Map<string, Agent>; notes: Map<string, Note>
+  /** Each agent's last says and what the user asked it: its conversation. */
+  said: Note[]
+  /** What it handed off (null till the server says): the menu's Jobs. */
+  jobs: HelperJob[] | null }
 /** The companion's socket, as the helper (?screen=1): the agents and their bubbles, and what the user asks on screen. */
 export const live = (() => {
   let ws: WebSocket | null = null, port: number | null = null, wait = 1000, timer: ReturnType<typeof setTimeout> | null = null
-  const state = { mode: "quiet", name: "", agents: new Map<string, Agent>(), notes: new Map<string, Note>(),
-    /** Each agent's last says and what the user asked it: its conversation. */
-    said: [] as Note[],
-    /** What it handed off (null till the server says): the menu's Jobs. */
-    jobs: null as HelperJob[] | null }
+  const state: LiveState = { mode: "quiet", name: "", agents: new Map(), notes: new Map(), said: [], jobs: null }
   const connect = () => {
     timer = null
     if (port === null) return
@@ -21,9 +22,8 @@ export const live = (() => {
     ws = s
     s.on("open", () => { wait = 1000; on.opened(s) })
     s.on("message", (d) => {
-      let m: Message
-      try { m = JSON.parse(String(d)) } catch { return }
-      on.heard(m)
+      const m = heardFrom(String(d))
+      if (m) on.heard(m)
     })
     s.on("error", () => {})
     s.on("close", () => { if (ws === s) { ws = null; if (port !== null) { timer = setTimeout(connect, wait); wait = Math.min(wait * 2, 5000) } } })

@@ -15,6 +15,7 @@ import { happened, timelineOn } from "./timeline.ts"
 import { displayShot, QUIET, screenAsk, SHOTS } from "./helperask.ts"
 import { type Agent, draw, front, hidden, host, type Shot } from "./helperbase.ts"
 import { live } from "./helperlive.ts"
+import type { LiveMessage } from "./homewire.ts"
 
 /** A closer look at what an ask points at (helperlogic.ts closeCrop): what they drew round, else by the pointer, at more
  *  pixels a point than its picture, for what's too small to read there (a logo, an icon); their rings or pointer on it. */
@@ -45,9 +46,9 @@ export function shotChanged(a: Shot, b: Shot) {
 export let openedUntil = 0
 /** What the companion opens on this Mac, as a user could, then what's in front and in it, by id (as an ask's elements:
  *  what it points at, rings and acts on next). */
-export async function openOn(m: Record<string, unknown>) {
+export async function openOn(m: Extract<LiveMessage, { t: "open" }>) {
   const reply = (r: object) => live.say({ t: "takeover-done", id: m.id, ...r })
-  const o = { url: typeof m.url === "string" ? m.url : "", app: typeof m.app === "string" ? m.app : "", path: typeof m.path === "string" ? m.path : "" }
+  const o = { url: m.url, app: m.app, path: m.path }
   const args = openArgs(o, os.homedir())
   if (!Array.isArray(args)) return reply({ ok: false, why: "failed", text: args.why })
   if (o.path && !fs.existsSync(args.at(-1)!)) return reply({ ok: false, why: "failed", text: `there's no ${o.path} on this Mac` })
@@ -94,9 +95,9 @@ export async function inputHeard(m: Record<string, unknown>) {
 }
 /** The element saying a mark's words in the window the last ask was over: its whole Accessibility tree, not only by
  *  the pointer. Answered as a step is. */
-export async function findIn(m: Record<string, unknown>) {
+export async function findIn(m: Extract<LiveMessage, { t: "find" }>) {
   const p = nearPoint ?? screen.getCursorScreenPoint()
-  const el = byLabel(await axThings(p, 5000, 400, nearWindow), String(m.text ?? ""))
+  const el = byLabel(await axThings(p, 5000, 400, nearWindow), m.text)
   live.say({ t: "takeover-done", id: m.id, ...(el ? { ok: true, found: { id: "", ...el } } : { ok: false, why: "none" }) })
 }
 type Under = { ok?: boolean; vaultite?: boolean; bundle?: string; name?: string; role?: string; label?: string; in?: string }

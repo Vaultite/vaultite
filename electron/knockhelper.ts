@@ -93,14 +93,14 @@ export function walkShown(w: WalkScene | null) {
 }
 
 /** The server's knocks and presences, as it sends them on each change. */
-export function knocksHeard(m: Record<string, unknown>) {
+export function knocksHeard(m: { knocks: Knock[]; presences: Presence[] }) {
   const mine = new Map(knocks.map((k) => [k.id, k]))
-  knocks = (Array.isArray(m.knocks) ? m.knocks as Knock[] : []).map((k) => {
+  knocks = m.knocks.map((k) => {
     // (what this helper did a moment ago, the server not having said it back yet)
     const had = mine.get(k.id)
     return had && had.state === "showing" && (k.state === "waiting" || k.state === "showing") ? had : k
   })
-  presences = Array.isArray(m.presences) ? m.presences as Presence[] : []
+  presences = m.presences
   tick()
 }
 

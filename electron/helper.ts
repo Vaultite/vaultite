@@ -9,26 +9,29 @@ import { type FnEvent } from "../core/fnkey.ts"
 import { freeAll, listen as hear, onFree } from "./helperscope.ts"
 import { pickMic } from "./miclogic.ts"
 import { hideFromShares } from "./overlaywin.ts"
-import { type HelperJob, jobNews, prefsOf } from "./helperlogic.ts"
+import { jobNews } from "./helperlogic.ts"
 import { captureHeard, captureHost, recordFor, recordingNow, regionAct, regionMoved, stopCapture } from "./capture.ts"
 import { quitRecorder } from "./recorder.ts"
 import { keepTimeline, timelineHost, timelineRefollow } from "./timeline.ts"
 import { islandNow, knockHost, knockSaid, knocksHeard, stopKnocks, toPresence } from "./knockhelper.ts"
 import { closePanel, drawingActs, dropDrawings, onPanel, overlayActs, panelBounds, showDrawing, showOverlay, watchLayers } from "./overlay.ts"
 import { displayShot as shootDisplay, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, type AppWindowInfo } from "./screen.ts"
-import { type Drawing, elementPlaces } from "./drawing.ts"
+import { elementPlaces } from "./drawing.ts"
 import { keyHeard, lessonAct, lessonScene, stopTeach, teachFinal, teachHeard, teachHost, teachPending, typedHeard, watching } from "./teach.ts"
 import { stopWalk, walkAct, walkCall, walkFinal, walkHeard, walkHost, walkOn, walkPending } from "./walk.ts"
 import { offerHere, offerSaid, stopTakeover, takeoverClick, takeoverDriving, takeoverHeard } from "./takeover.ts"
 import { type Needs, offerHeard, offerHost, offerScene, offerTimeline, OFFER_UP_MS } from "./timelineoffer.ts"
 import { asked, LIVE, QUIET, screenAsk, screenAsked, stubs, switched } from "./helperask.ts"
-import { type Agent, based, basedAt, BUSY, defaults, dictating, drawWith, front, frontHappened, frontIs, hidden, hint, host, hostIs, type Note, notice, op, prefs, prefsAre, stopFor, type HelperHost } from "./helperbase.ts"
+import { based, basedAt, BUSY, defaults, dictating, drawWith, front, frontHappened, frontIs, hidden, hint, host, hostIs, notice, op, DONE, prefs, prefsAre, stopFor, type HelperHost } from "./helperbase.ts"
 import { logger } from "../core/log.ts"
 
 const log = logger("helper")
 
 export type { Dictation, HelperHost, HelperPrefs, Home } from "./helperbase.ts"
-import { live, liveHooks, type Message } from "./helperlive.ts"
+import { live, liveHooks } from "./helperlive.ts"
+import { type Heard, SAID } from "./homewire.ts"
+import { COMPANION_SETTINGS, DICTATION_SETTINGS, prefsOf, SCREEN_SETTINGS } from "./helperprefs.ts"
+import type { z } from "zod"
 import { axThings, clicked, excluded, findIn, inputHeard, nearAt, nearPoint, lastNear, openedUntil, openOn, places, placeTold, pointedAt, teachThings, walkPlace } from "./helperat.ts"
 import { badge, badged, followInbox, hideTray, jobNotice, login, menuHost, menuItems, mutedUntil, openIn, openPresence, panelMenu, showTray } from "./helpermenu.ts"
 import { drawingCame, drawn, drawnIs, marks, offerAnswered, paceDrawing, penHeard, realtimePaused, sayHere, speaker, spoken, stopVoice, voiceFront, voiceHeard, voiceHeardAgent, voiceHost, voiceSetting, waited } from "./helpervoice.ts"
@@ -83,7 +86,7 @@ export async function startHelper(h: HelperHost) {
   hostIs(h)
   hear(app, "will-quit", stopHelper)
   if (QUIET) Object.assign(globalThis, { vaultiteHelper: { heard: (m: Record<string, unknown>) => heard(m), stub: (op: string, v?: Record<string, unknown> | null) => (v == null ? stubs.delete(op) : stubs.set(op, v)), presses: () => presses.read(),
-    asked: () => [...asked], screenAsked: () => [...screenAsked], spoken: () => [...spoken], scene: () => lastScene, island: islandNow, knocks: (m: Record<string, unknown>) => knocksHeard(m), islandSaid: (text: string, x: number, y: number) => knockSaid(text) || toPresence(text, { x, y }), badge: () => badged, menu: () => menuItems(),
+    asked: () => [...asked], screenAsked: () => [...screenAsked], spoken: () => [...spoken], scene: () => lastScene, island: islandNow, knocks: knocksHeard, islandSaid: (text: string, x: number, y: number) => knockSaid(text) || toPresence(text, { x, y }), badge: () => badged, menu: () => menuItems(),
     walk: (what: string) => walkCall(what), talkSaid: (text: string) => walkHeard(text), walkSaid: (text: string) => { walkPending(text); walkFinal(text) },
     teach: (text: string) => teachHeard(text, Date.now()), capture: (text: string) => captureHeard(text, Date.now()), offer: offerScene, offerSaid: (text: string) => offerHeard(text), refresh: () => refresh(), teachSaid: (text: string) => { teachPending(text); teachFinal(text) }, lesson: lessonScene,
     layers: () => marks.layers(), watched: () => marks.areas(), near: (x: number, y: number) => nearAt({ x, y }),
@@ -100,20 +103,20 @@ export async function startHelper(h: HelperHost) {
   timelineHost({ exclude: excluded, bundles: () => prefs.privateApps, holding: recordingNow, privateNow: () => hidden(front),
     clicks: (on) => void screenAsk("clicks", { on }).catch(() => {}) })
   offerHost({ offer: (id, line, sub, yes) => offerHere(id, { line, sub, yes, name: live.state.name, tint: live.state.agents.get(live.state.name)?.tint ?? "orange" }, OFFER_UP_MS),
-    answer: offerSaid, say: sayHere, turnOn: () => op("screen.keep").then(refresh) })
+    answer: offerSaid, say: sayHere, turnOn: () => op("screen.keep", {}, DONE).then(refresh) })
   captureHost({ exclude: excluded, bundles: () => prefs.privateApps, hint, draw, unkept: () => unkept("replay"),
     placeAt: async (p) => { const w = await screenAsk<AppWindowInfo>("at", { x: p.x, y: p.y }).catch(() => null); return { ...await pointedAt(live.state.name, p, w?.window ? w : null, false), ...(w?.frame ? { frame: w.frame } : {}) } },
-    deliver: async (c) => String((await op("companion.capture", c)).said ?? "Sent") })
+    deliver: async (c) => String((await op("companion.capture", c, SAID)).said ?? "Sent") })
   walkHost({ draw, listening: (on) => { if (!on && session?.into === "free" && freeBy?.final === walkFinal) stopFor(session.sink); freeTick() },
     allowed: () => (QUIET ? stubs.get("screen-access")?.granted === true : systemPreferences.getMediaAccessStatus("screen") === "granted"),
     placeAt: walkPlace,
     still: async (p, crop, file) => { if (QUIET) return false; const r = await shootDisplay(p, await excluded(), path.dirname(file), crop).catch(() => null); if (!r) return false; fs.renameSync(r.file, file); return true },
-    deliver: async (w) => String((await op("companion.walk-send", w)).said ?? "Sent") })
+    deliver: async (w) => String((await op("companion.walk-send", w, SAID)).said ?? "Sent") })
   teachHost({ draw, hint, unkept: () => unkept("skill"), privateNow: () => hidden(front), refollow: ringFollows, listening: () => freeTick(),
     trusted: () => (QUIET ? stubs.get("ax-access")?.granted !== false : systemPreferences.isTrustedAccessibilityClient(false)),
     things: teachThings, windowAt: async (p) => { const w = await screenAsk<AppWindowInfo>("at", { x: p.x, y: p.y }).catch(() => null); return w ? { ...(w.frame ? { frame: w.frame } : {}), vaultite: !!w.vaultite, private: !!w.window && !w.vaultite && hidden(w) } : null },
     focus: () => screenAsk("focus", {}),
-    deliver: async (l) => String((await op("companion.teach", l)).said ?? "Saved") })
+    deliver: async (l) => String((await op("companion.teach", l, SAID)).said ?? "Saved") })
   drawingActs((a) => live.say({ t: "drawing-act", ...a }))
   watchLayers(marks.changed)
   knockHost({ say: (m) => live.say(m), talking: () => { const t = talkNow(); return t.listening || t.box || t.speaking || t.pressing || t.answering },
@@ -121,7 +124,7 @@ export async function startHelper(h: HelperHost) {
     walk: (what) => (watching() ? lessonAct(what) : walkAct(what)),
     speak: (text) => { if (prefs.voice.mode !== "off" && !quietForCall()) void voiceCall("voice:sample", [{ text, after: true }]).catch(() => {}) },
     open: (p) => void openPresence(p), hint, view: (to) => void openIn(to), muted: () => mutedUntil > Date.now(),
-    send: (id, text) => op("terminal.send", { id, text }).then(() => true, () => false), ...(QUIET ? { still: () => Number(process.env.VAULTITE_QA_STILL ?? 2000) } : {}) })
+    send: (id, text) => op("terminal.send", { id, text }, DONE).then(() => true, () => false), ...(QUIET ? { still: () => Number(process.env.VAULTITE_QA_STILL ?? 2000) } : {}) })
   onPanel({ send: (name, text) => void askFrom(name, text), mic: () => act(session || starting ? "stop" : "start"), more: panelMenu, play: playQuiet, stop: stopFromBox, notCall,
     // (Esc in its box ends the exchange; the box closed otherwise (clicked away, its close) leaves what it says going on)
     closed: (_name, why) => { if (session?.into === "panel") stopFor(session.sink, true); if (why === "esc") endExchange(); else moveOn(); draw() } })
@@ -193,8 +196,8 @@ async function refresh() {
   const base = home ? `http://127.0.0.1:${home.port}` : ""
   if (base !== based) { basedAt(base); live.open(home ? home.port : null) }
   if (!home) return draw()
-  const get = (name: string) => op("settings.get", { name }).catch(() => ({}))
-  const [d, c, s] = await Promise.all([get("plugin/dictation"), get("plugin/companion"), get("plugin/screen")])
+  const get = <S extends z.ZodType>(name: string, settings: S) => op("settings.get", { name }, settings).catch(() => settings.parse({}))
+  const [d, c, s] = await Promise.all([get("plugin/dictation", DICTATION_SETTINGS), get("plugin/companion", COMPANION_SETTINGS), get("plugin/screen", SCREEN_SETTINGS)])
   prefsAre(prefsOf(d, c, s, defaults()))
   await followInbox()
   penHeard()
@@ -208,50 +211,41 @@ async function refresh() {
 liveHooks({ heard: liveHeard,
   opened: (s) => { if (realtimePaused) s.send(JSON.stringify({ t: "realtime", paused: realtimePaused })); if (micSent) s.send(JSON.stringify({ t: "mic", mic: micSent })) },
   closed: () => { drawnIs(null); dropDrawings() } })
-function liveHeard(m: Message) {
+function liveHeard({ voice, message: m }: Heard) {
   const state = live.state
-  voiceSetting(m.voice)
-  if (m.t === "voice") return
-  // (the companion's drawing over the screen: the server's, its places found there)
+  voiceSetting(voice)
+  if (!m || m.t === "voice") return
   // (a session's layer: the one of the answer coming is paced to its words, the others drawn as they are)
-  if (m.t === "drawing" && typeof m.agent === "string") {
-    const d = (m.drawing as Drawing | undefined) ?? null
+  if (m.t === "drawing") {
+    const d = m.drawing
     if (d && !d.past && !d.hidden && (!exchange || exchange.name === m.agent)) { answerArrived(); drawingCame(d); drawnIs(d); return paceDrawing() }
     if (drawn?.agent === m.agent) drawnIs(d && !d.past ? d : null)
     return void showDrawing(m.agent, d, elementPlaces(lastNear))
   }
   if (m.t === "state") {
-    state.mode = String(m.mode); state.name = String(m.name)
-    state.agents = new Map((m.agents as Agent[]).map((a) => [a.name, a]))
-    state.notes = new Map((m.notes as Note[]).map((n) => [n.id, n]))
-    state.said = (m.said as Note[] | undefined) ?? []
+    state.mode = m.mode; state.name = m.name
+    state.agents = new Map(m.agents.map((a) => [a.name, a]))
+    state.notes = new Map(m.notes.map((n) => [n.id, n]))
+    state.said = m.said ?? []
     // (connected again: the server hears who rides with the pointer now)
     ridingAgain()
-  } else if (m.t === "said") state.said = (m.said as Note[] | undefined) ?? []
-  else if (m.t === "agent") { const a = m.agent as Agent; state.agents.set(a.name, a); voiceHeardAgent(a); if (waited && drawn?.agent === a.name && !BUSY.has(a.state)) paceDrawing(false) }
-  else if (m.t === "note") { const n = m.note as Note; state.notes.set(n.id, n); voiceHeard(n); if (n.kind === "say" && n.agent === exchange?.name && n.t >= exchange.since) answerArrived() }
-  else if (m.t === "drop") state.notes.delete(String(m.id))
-  // (its answer stopped in the app: Esc, its box closed)
+  } else if (m.t === "said") state.said = m.said ?? []
+  else if (m.t === "agent") { const a = m.agent; state.agents.set(a.name, a); voiceHeardAgent(a); if (waited && drawn?.agent === a.name && !BUSY.has(a.state)) paceDrawing(false) }
+  else if (m.t === "note") { const n = m.note; state.notes.set(n.id, n); voiceHeard(n); if (n.kind === "say" && n.agent === exchange?.name && n.t >= exchange.since) answerArrived() }
+  else if (m.t === "drop") state.notes.delete(m.id)
   else if (m.t === "hush") return stopVoice()
-  // (a step in another app, or their spoken answer to its offer: takeover.ts')
   else if (m.t === "takeover" || m.t === "takeover-answer" || m.t === "confirm") return void (offerAnswered(m), takeoverHeard(m, { reply: (r) => live.say(r), isPrivate: hidden, near: nearAt, redraw: draw }))
-  // (what the companion opens on this Mac: an app, a file, a page in their browser, a System Settings pane)
   else if (m.t === "open") return void openOn(m)
-  // (words a mark names, found in the window asked about)
   else if (m.t === "find") return void findIn(m)
-  // (every thing in the window asked about, in the UI model's shape: a check or an anchor reads them)
   else if (m.t === "things") return void axThings(nearPoint ?? screen.getCursorScreenPoint()).then((things) => live.say({ t: "takeover-done", id: m.id, ok: true, things }))
-  // (a companion's wait listening: clicks and typing, told to the server as they happen)
-  else if (m.t === "inputs") return void screenAsk("inputs", { on: m.on === true }).catch(() => {})
+  else if (m.t === "inputs") return void screenAsk("inputs", { on: m.on }).catch(() => {})
   else if (m.t === "knocks") return knocksHeard(m)
-  // (Still broken, after a job's proof: what they show and say recorded, for that job)
-  else if (m.t === "record" && typeof m.job === "string") return void recordFor(m.job)
-  else if (m.t === "jobs" && Array.isArray(m.jobs)) {
-    const jobs = m.jobs as HelperJob[]
-    for (const j of jobNews(state.jobs, jobs, prefs.jobNews)) jobNotice(j)
-    state.jobs = jobs
+  else if (m.t === "record") return void recordFor(m.job)
+  else {
+    for (const j of jobNews(state.jobs, m.jobs, prefs.jobNews)) jobNotice(j)
+    state.jobs = m.jobs
     return badge()
-  } else return
+  }
   draw()
   chatChanged()
 }
@@ -273,7 +267,6 @@ function heard(m: Record<string, unknown>) {
   if (m.event === "typed") return typedHeard()
   if (m.event === "follow") return followHeard(m)
   if (m.event === "front") {
-    // (another app in front: they moved on)
     if (exchange && !m.vaultite && front && m.bundle !== front.bundle && !takeoverDriving() && Date.now() > openedUntil) moveOn()
     const now = m as unknown as AppWindowInfo
     frontIs(now)

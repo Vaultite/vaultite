@@ -100,6 +100,7 @@ export const AREAS: { name: string; deps: string[] }[] = [
   { name: "stack", deps: [] },
   { name: "desktop-rules", deps: [] },
   { name: "browser-wire", deps: [] },
+  { name: "desktop-wire", deps: [] },
   { name: "helper", deps: ["pages"] },
   { name: "voice", deps: ["pages", "cli"] },
   { name: "realtime", deps: ["pages", "cli"] },

@@ -4,57 +4,9 @@ import { jobTold } from "../core/desktop/jobnews.ts"
 import type { RegionScene } from "../core/desktop/clips.ts"
 import type { Presence } from "../core/desktop/knocks.ts"
 import { agentTint } from "../core/agenttint.ts"
+import type { Prefs } from "./helperprefs.ts"
 
 export type Rect = { x: number; y: number; width: number; height: number }
-type Decls = Record<string, { default?: unknown }>
-/** `keys` dictate, `talk` talk to the companion (its own: a key in both talks). */
-export type Prefs = { fn: boolean; keys: string[]; talk: string[]; privateApps: string[]; dictation: Record<string, unknown>
-  /** Whether its answers are spoken (`auto`: an ask by voice), by which cloud voice first, which voices, how fast. */
-  voice: { mode: "auto" | "always" | "off"; provider: "auto" | "elevenlabs" | "soniox"; name: string; eleven: { voice: string; model: string }; speed: number }
-  /** Soft cues as it's summoned, sent an ask, and answers (the companion's `sounds`). */
-  sounds: boolean
-  /** Who hears a spoken ask and answers it first (realtimefront.ts): a realtime model, or dictation and the voice. */
-  realtime: { front: "realtime" | "pipeline"; model: string; voice: string }
-  /** Which jobs' news is told (the companion's job_news). */
-  jobNews: string
-  /** The screen's timeline kept in memory, the last seconds (the companion's `timeline`). */
-  timeline: boolean
-  /** Its windows kept out of screen shares and recordings (`hide_from_shares`); quiet while on a call (`quiet_on_calls`). */
-  hideFromShares: boolean; quietOnCalls: boolean }
-/** The home vault's settings the helper follows: dictation's, the companion's and screen's data.json, their manifests'
- *  `settings` giving the defaults. */
-export function prefsOf(d: Record<string, unknown>, c: Record<string, unknown>, s: Record<string, unknown>, DEFAULTS: Record<"dictation" | "companion" | "screen", Decls>): Prefs {
-  const def = (from: Record<string, { default?: unknown }>, k: string) => from[k]?.default
-  const val = <T>(x: unknown, fallback: T) => (x === undefined || x === null ? fallback : x as T)
-  const list = (from: Record<string, unknown>, decls: Decls) => (Array.isArray(from.keys) ? from.keys.map(String) : (def(decls, "keys") as string[] | undefined) ?? [])
-  const talk = list(c, DEFAULTS.companion)
-  return {
-    fn: val(d.fn, def(DEFAULTS.dictation, "fn") ?? true) !== false,
-    keys: list(d, DEFAULTS.dictation).filter((k) => !talk.includes(k)),
-    talk,
-    privateApps: Array.isArray(s.private_apps) ? s.private_apps.map(String) : (def(DEFAULTS.screen, "private_apps") as string[] | undefined) ?? [],
-    dictation: d,
-    sounds: val(c.sounds, def(DEFAULTS.companion, "sounds") ?? true) !== false,
-    voice: {
-      mode: (["auto", "always", "off"] as const).find((m) => m === val(c.voice, def(DEFAULTS.companion, "voice"))) ?? "auto",
-      provider: (["auto", "elevenlabs", "soniox"] as const).find((m) => m === val(c.voice_provider, def(DEFAULTS.companion, "voice_provider"))) ?? "auto",
-      name: String(val(c.voice_name, def(DEFAULTS.companion, "voice_name") ?? "") || ""),
-      eleven: { voice: String(val(c.elevenlabs_voice, def(DEFAULTS.companion, "elevenlabs_voice") ?? "") || ""),
-        model: String(val(c.elevenlabs_model, def(DEFAULTS.companion, "elevenlabs_model") ?? "") || "") },
-      speed: Math.min(1.3, Math.max(0.7, Number(val(c.voice_speed, def(DEFAULTS.companion, "voice_speed") ?? 1)) || 1)),
-    },
-    realtime: {
-      front: val(c.voice_front, def(DEFAULTS.companion, "voice_front")) === "pipeline" ? "pipeline" : "realtime",
-      model: String(val(c.realtime_model, def(DEFAULTS.companion, "realtime_model") ?? "") || "gpt-realtime-2.1-mini"),
-      voice: String(val(c.realtime_voice, def(DEFAULTS.companion, "realtime_voice") ?? "") || "cedar"),
-    },
-    jobNews: String(val(c.job_news, def(DEFAULTS.companion, "job_news") ?? "quiet")),
-    timeline: val(c.timeline, def(DEFAULTS.companion, "timeline") ?? false) === true,
-    hideFromShares: val(c.hide_from_shares, def(DEFAULTS.companion, "hide_from_shares") ?? true) !== false,
-    quietOnCalls: val(c.quiet_on_calls, def(DEFAULTS.companion, "quiet_on_calls") ?? true) !== false,
-  }
-}
-
 /** The dictation keys heard: none while Dictate anywhere is off. */
 export const dictationKeys = (p: Pick<Prefs, "fn" | "keys">) => (p.fn ? p.keys : [])
 /** What the screen helper's tap hears: the dictation keys and the Talk keys, which turning dictation off never takes. */

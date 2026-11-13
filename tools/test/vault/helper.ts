@@ -112,7 +112,7 @@ export default async ($: VaultTest) => {
       !privateApp({ bundle: "com.apple.MobileSMS", name: "Messages" }, ["1Password"]))
   }
   {
-    const { atOffset, beatsWait, dictationKeys, drawingHold, drawnShapes, inkOf, panelAt, pointIn, prefsOf, sceneFor, splitScene, tappedKeys, trailStrokes } = await import("../../../electron/helperlogic.ts")
+    const { atOffset, beatsWait, dictationKeys, drawingHold, drawnShapes, inkOf, panelAt, pointIn, sceneFor, splitScene, tappedKeys, trailStrokes } = await import("../../../electron/helperlogic.ts")
     // (a drawing answered with no words: its marks wait for nothing, and are held up long enough to see before a spoken
     // exchange ends by itself; the bug: they waited for words never said, and went with the exchange 1.5 s on)
     check("helper: a wordless drawing's marks don't wait for words once its turn is over; a worded one's do while said or to come",
@@ -142,6 +142,7 @@ export default async ($: VaultTest) => {
     check("helper: a spot left in a window stays inside it as it shrinks", JSON.stringify(atOffset({ x: 10, y: 10, width: 100, height: 100 }, { dx: 500, dy: 50 })) === '{"x":102,"y":60}')
     const blank = { agents: [], summon: null, pill: null }
     check("helper: a display's scene knows the menu bar's height", sceneFor({ id: 1, bounds, workArea: area }, blank, { x: 0, y: 0 }, []).top === 25)
+    const { prefsOf } = await import("../../../electron/helperprefs.ts")
     const defaults = { dictation: { fn: { default: true }, keys: { default: ["fn_control"] } }, companion: { keys: { default: ["control_option"] } }, screen: { private_apps: { default: ["1Password"] } } }
     const none = prefsOf({}, {}, {}, defaults), set = prefsOf({ fn: false, keys: ["right_option"] }, {}, { private_apps: [] }, defaults)
     check("helper: settings left out are the manifests' defaults (fn⌃ dictates, ⌃⌥ talks); set ones win, an empty private list too",

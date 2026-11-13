@@ -1,0 +1,1346 @@
+{
+ "state": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:blue:watching",
+   "Bo:green:thinking"
+  ],
+  "notes": [
+   "n1"
+  ],
+  "said": [
+   "n1"
+  ],
+  "jobs": null,
+  "badge": "1",
+  "voice": "auto",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "full": {
+  "agents": [
+   {
+    "name": "Ada",
+    "tint": "blue",
+    "state": "watching",
+    "t": 1,
+    "seen": true,
+    "app": "com.apple.Notes",
+    "window": 7,
+    "sx": 10,
+    "sy": 20,
+    "frame": {
+     "x": 1,
+     "y": 2,
+     "width": 30,
+     "height": 40
+    },
+    "box": {
+     "x": 0,
+     "y": 0,
+     "w": 1,
+     "h": 1,
+     "zoom": 1
+    }
+   },
+   {
+    "name": "Bo",
+    "tint": "green",
+    "state": "thinking"
+   }
+  ],
+  "notes": [
+   {
+    "id": "n1",
+    "kind": "say",
+    "agent": "Ada",
+    "t": 5,
+    "text": "Hello",
+    "answers": {
+     "t": 4,
+     "voice": true
+    }
+   }
+  ],
+  "said": [
+   {
+    "id": "n1",
+    "kind": "say",
+    "agent": "Ada",
+    "t": 5,
+    "text": "Hello",
+    "answers": {
+     "t": 4,
+     "voice": true
+    }
+   }
+  ],
+  "jobs": null
+ },
+ "agent": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:red:thinking",
+   "Bo:green:thinking"
+  ],
+  "notes": [
+   "n1"
+  ],
+  "said": [
+   "n1"
+  ],
+  "jobs": null,
+  "badge": "1",
+  "voice": "auto",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "note": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:red:thinking",
+   "Bo:green:thinking"
+  ],
+  "notes": [
+   "n1",
+   "n2"
+  ],
+  "said": [
+   "n1"
+  ],
+  "jobs": null,
+  "badge": "1",
+  "voice": "auto",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "drop": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:red:thinking",
+   "Bo:green:thinking"
+  ],
+  "notes": [
+   "n2"
+  ],
+  "said": [
+   "n1"
+  ],
+  "jobs": null,
+  "badge": "1",
+  "voice": "auto",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "said": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:red:thinking",
+   "Bo:green:thinking"
+  ],
+  "notes": [
+   "n2"
+  ],
+  "said": [
+   "n1",
+   "n3"
+  ],
+  "jobs": null,
+  "badge": "2",
+  "voice": "auto",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "jobs": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:red:thinking",
+   "Bo:green:thinking"
+  ],
+  "notes": [
+   "n2"
+  ],
+  "said": [
+   "n1",
+   "n3"
+  ],
+  "jobs": [
+   "j1",
+   "j2"
+  ],
+  "badge": "3",
+  "voice": "auto",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "fullJobs": {
+  "agents": [
+   {
+    "name": "Ada",
+    "tint": "red",
+    "state": "thinking",
+    "t": 1,
+    "seen": true,
+    "app": "com.apple.Notes",
+    "window": 7,
+    "sx": 10,
+    "sy": 20,
+    "frame": {
+     "x": 1,
+     "y": 2,
+     "width": 30,
+     "height": 40
+    },
+    "box": {
+     "x": 0,
+     "y": 0,
+     "w": 1,
+     "h": 1,
+     "zoom": 1
+    }
+   },
+   {
+    "name": "Bo",
+    "tint": "green",
+    "state": "thinking"
+   }
+  ],
+  "notes": [
+   {
+    "id": "n2",
+    "kind": "comment",
+    "agent": "Ada",
+    "t": 5,
+    "text": "Hello",
+    "answers": {
+     "t": 4,
+     "voice": true
+    }
+   }
+  ],
+  "said": [
+   {
+    "id": "n1",
+    "kind": "say",
+    "agent": "Ada",
+    "t": 5,
+    "text": "Hello",
+    "answers": {
+     "t": 4,
+     "voice": true
+    }
+   },
+   {
+    "id": "n3",
+    "kind": "say",
+    "agent": "Ada",
+    "t": 5,
+    "text": "Hello",
+    "answers": {
+     "t": 4,
+     "voice": true
+    }
+   }
+  ],
+  "jobs": [
+   {
+    "id": "j1",
+    "title": "Fix the build",
+    "state": "working",
+    "link": "Jobs/j1.md",
+    "unseen": true,
+    "at": 3,
+    "where": "here",
+    "now": "testing",
+    "took": "2m",
+    "result": "",
+    "started": 1
+   },
+   {
+    "id": "j2",
+    "title": "Fix the build",
+    "state": "working",
+    "link": null,
+    "unseen": false,
+    "at": 3,
+    "where": "here",
+    "now": "testing",
+    "took": "2m",
+    "result": "",
+    "started": 1
+   }
+  ]
+ },
+ "voice": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:red:thinking",
+   "Bo:green:thinking"
+  ],
+  "notes": [
+   "n2"
+  ],
+  "said": [
+   "n1",
+   "n3"
+  ],
+  "jobs": [
+   "j1",
+   "j2"
+  ],
+  "badge": "3",
+  "voice": "off",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "voice-back": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:red:thinking",
+   "Bo:green:thinking"
+  ],
+  "notes": [
+   "n2"
+  ],
+  "said": [
+   "n1",
+   "n3"
+  ],
+  "jobs": [
+   "j1",
+   "j2"
+  ],
+  "badge": "3",
+  "voice": "always",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "unknown": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:red:thinking",
+   "Bo:green:thinking"
+  ],
+  "notes": [
+   "n2"
+  ],
+  "said": [
+   "n1",
+   "n3"
+  ],
+  "jobs": [
+   "j1",
+   "j2"
+  ],
+  "badge": "3",
+  "voice": "always",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "inputs": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:red:thinking",
+   "Bo:green:thinking"
+  ],
+  "notes": [
+   "n2"
+  ],
+  "said": [
+   "n1",
+   "n3"
+  ],
+  "jobs": [
+   "j1",
+   "j2"
+  ],
+  "badge": "3",
+  "voice": "always",
+  "crashes": [],
+  "back": [],
+  "screen": [
+   {
+    "op": "inputs",
+    "on": true
+   }
+  ]
+ },
+ "find": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:red:thinking",
+   "Bo:green:thinking"
+  ],
+  "notes": [
+   "n2"
+  ],
+  "said": [
+   "n1",
+   "n3"
+  ],
+  "jobs": [
+   "j1",
+   "j2"
+  ],
+  "badge": "3",
+  "voice": "always",
+  "crashes": [],
+  "back": [
+   {
+    "t": "takeover-done",
+    "id": "to1",
+    "ok": false,
+    "why": "none"
+   }
+  ],
+  "screen": [
+   {
+    "op": "near",
+    "radius": 5000,
+    "max": 400
+   }
+  ]
+ },
+ "things": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:red:thinking",
+   "Bo:green:thinking"
+  ],
+  "notes": [
+   "n2"
+  ],
+  "said": [
+   "n1",
+   "n3"
+  ],
+  "jobs": [
+   "j1",
+   "j2"
+  ],
+  "badge": "3",
+  "voice": "always",
+  "crashes": [],
+  "back": [
+   {
+    "t": "takeover-done",
+    "id": "to2",
+    "ok": true,
+    "things": []
+   }
+  ],
+  "screen": [
+   {
+    "op": "near",
+    "radius": 5000,
+    "max": 400
+   }
+  ]
+ },
+ "open": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:red:thinking",
+   "Bo:green:thinking"
+  ],
+  "notes": [
+   "n2"
+  ],
+  "said": [
+   "n1",
+   "n3"
+  ],
+  "jobs": [
+   "j1",
+   "j2"
+  ],
+  "badge": "3",
+  "voice": "always",
+  "crashes": [],
+  "back": [
+   {
+    "t": "takeover-done",
+    "id": "to3",
+    "ok": true,
+    "how": "open",
+    "args": [
+     "https://example.com"
+    ]
+   },
+   {
+    "t": "takeover-done",
+    "id": "to4",
+    "ok": true,
+    "how": "open",
+    "args": [
+     "-a",
+     "Notes"
+    ]
+   },
+   {
+    "t": "takeover-done",
+    "id": "to5",
+    "ok": false,
+    "why": "failed",
+    "text": "a path from / or ~/"
+   }
+  ],
+  "screen": []
+ },
+ "takeover-refused": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:red:thinking",
+   "Bo:green:thinking"
+  ],
+  "notes": [
+   "n2"
+  ],
+  "said": [
+   "n1",
+   "n3"
+  ],
+  "jobs": [
+   "j1",
+   "j2"
+  ],
+  "badge": "3",
+  "voice": "always",
+  "crashes": [],
+  "back": [
+   {
+    "t": "takeover-done",
+    "id": "to6",
+    "ok": false,
+    "why": "refused",
+    "text": "that isn't a step take-over knows: an action, and an element (its frame), a point or neither"
+   }
+  ],
+  "screen": []
+ },
+ "confirm": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:red:thinking",
+   "Bo:green:thinking"
+  ],
+  "notes": [
+   "n2"
+  ],
+  "said": [
+   "n1",
+   "n3"
+  ],
+  "jobs": [
+   "j1",
+   "j2"
+  ],
+  "badge": "3",
+  "voice": "always",
+  "crashes": [],
+  "back": [
+   {
+    "t": "takeover-asking",
+    "id": "to7",
+    "agent": "Ada",
+    "ms": 600000
+   },
+   {
+    "t": "takeover-done",
+    "id": "to7",
+    "ok": true,
+    "why": "yes"
+   }
+  ],
+  "screen": []
+ },
+ "knocks": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:red:thinking",
+   "Bo:green:thinking"
+  ],
+  "notes": [
+   "n2"
+  ],
+  "said": [
+   "n1",
+   "n3"
+  ],
+  "jobs": [
+   "j1",
+   "j2"
+  ],
+  "badge": "3",
+  "voice": "always",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "island": {
+  "knocks": [
+   {
+    "id": "k1",
+    "from": "t1",
+    "who": "Ada",
+    "line": "Ready",
+    "urgency": "normal",
+    "at": 1,
+    "until": 9000000000000,
+    "state": "waiting"
+   }
+  ],
+  "presences": [
+   {
+    "id": "p1",
+    "who": "Ada",
+    "tint": "blue",
+    "state": "working",
+    "since": 1,
+    "step": "testing"
+   }
+  ],
+  "walk": null,
+  "spot": {
+   "x": 0,
+   "bar": 24,
+   "align": "centre",
+   "attached": false
+  },
+  "showing": null
+ },
+ "drawing": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:red:thinking",
+   "Bo:green:thinking"
+  ],
+  "notes": [
+   "n2"
+  ],
+  "said": [
+   "n1",
+   "n3"
+  ],
+  "jobs": [
+   "j1",
+   "j2"
+  ],
+  "badge": "3",
+  "voice": "always",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "drawn": {
+  "id": "d1",
+  "agent": "Ada",
+  "tint": "blue",
+  "t": 1,
+  "marks": [
+   {
+    "type": "ring",
+    "at": {
+     "el": "a1"
+    },
+    "label": "Save"
+   },
+   {
+    "type": "sticky",
+    "text": "Hi"
+   }
+  ],
+  "caption": "There.",
+  "places": {
+   "el:a1": {
+    "x": 1,
+    "y": 2,
+    "w": 3,
+    "h": 4
+   }
+  }
+ },
+ "drawing-every": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:red:thinking",
+   "Bo:green:thinking"
+  ],
+  "notes": [
+   "n2"
+  ],
+  "said": [
+   "n1",
+   "n3"
+  ],
+  "jobs": [
+   "j1",
+   "j2"
+  ],
+  "badge": "3",
+  "voice": "always",
+  "crashes": [],
+  "back": [],
+  "screen": [
+   {
+    "op": "sample",
+    "areas": [
+     {
+      "x": -17,
+      "y": -16,
+      "width": 36,
+      "height": 36,
+      "w": 36,
+      "h": 36
+     }
+    ],
+    "exclude": []
+   }
+  ]
+ },
+ "drawnEvery": true,
+ "drawing-gone": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:red:thinking",
+   "Bo:green:thinking"
+  ],
+  "notes": [
+   "n2"
+  ],
+  "said": [
+   "n1",
+   "n3"
+  ],
+  "jobs": [
+   "j1",
+   "j2"
+  ],
+  "badge": "3",
+  "voice": "always",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "drawnAfter": null,
+ "bad-agents": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:blue:watching",
+   "Bo:green:thinking",
+   "Probe:gray:away"
+  ],
+  "notes": [
+   "n1"
+  ],
+  "said": [
+   "n1"
+  ],
+  "jobs": null,
+  "badge": "1",
+  "voice": "auto",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "bad-notes": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:blue:watching",
+   "Bo:green:thinking",
+   "Probe:gray:away"
+  ],
+  "notes": [
+   "n1"
+  ],
+  "said": [
+   "n1"
+  ],
+  "jobs": null,
+  "badge": "1",
+  "voice": "auto",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "bad-agent": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:blue:watching",
+   "Bo:green:thinking",
+   "Probe:gray:away"
+  ],
+  "notes": [
+   "n1"
+  ],
+  "said": [
+   "n1"
+  ],
+  "jobs": null,
+  "badge": "1",
+  "voice": "auto",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "bad-agent-name": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:blue:watching",
+   "Bo:green:thinking",
+   "Probe:gray:away"
+  ],
+  "notes": [
+   "n1"
+  ],
+  "said": [
+   "n1"
+  ],
+  "jobs": null,
+  "badge": "1",
+  "voice": "auto",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "bad-note": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:blue:watching",
+   "Bo:green:thinking",
+   "Probe:gray:away"
+  ],
+  "notes": [
+   "n1"
+  ],
+  "said": [
+   "n1"
+  ],
+  "jobs": null,
+  "badge": "1",
+  "voice": "auto",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "bad-said": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:blue:watching",
+   "Bo:green:thinking",
+   "Probe:gray:away"
+  ],
+  "notes": [
+   "n1"
+  ],
+  "said": [
+   "n1"
+  ],
+  "jobs": null,
+  "badge": "1",
+  "voice": "auto",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "bad-jobs": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:blue:watching",
+   "Bo:green:thinking",
+   "Probe:gray:away"
+  ],
+  "notes": [
+   "n1"
+  ],
+  "said": [
+   "n1"
+  ],
+  "jobs": [],
+  "badge": "1",
+  "voice": "auto",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "bad-jobs-list": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:blue:watching",
+   "Bo:green:thinking",
+   "Probe:gray:away"
+  ],
+  "notes": [
+   "n1"
+  ],
+  "said": [
+   "n1"
+  ],
+  "jobs": null,
+  "badge": "1",
+  "voice": "auto",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "bad-drop": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:blue:watching",
+   "Bo:green:thinking",
+   "Probe:gray:away"
+  ],
+  "notes": [
+   "n1"
+  ],
+  "said": [
+   "n1"
+  ],
+  "jobs": null,
+  "badge": "1",
+  "voice": "auto",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "bad-json": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:blue:watching",
+   "Bo:green:thinking",
+   "Probe:gray:away"
+  ],
+  "notes": [
+   "n1"
+  ],
+  "said": [
+   "n1"
+  ],
+  "jobs": null,
+  "badge": "1",
+  "voice": "auto",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "bad-null": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:blue:watching",
+   "Bo:green:thinking",
+   "Probe:gray:away"
+  ],
+  "notes": [
+   "n1"
+  ],
+  "said": [
+   "n1"
+  ],
+  "jobs": null,
+  "badge": "1",
+  "voice": "auto",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "bad-find": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:blue:watching",
+   "Bo:green:thinking",
+   "Probe:gray:away"
+  ],
+  "notes": [
+   "n1"
+  ],
+  "said": [
+   "n1"
+  ],
+  "jobs": null,
+  "badge": "1",
+  "voice": "auto",
+  "crashes": [],
+  "back": [
+   {
+    "t": "takeover-done",
+    "ok": false,
+    "why": "none"
+   }
+  ],
+  "screen": [
+   {
+    "op": "near",
+    "radius": 5000,
+    "max": 400
+   }
+  ]
+ },
+ "bad-open": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:blue:watching",
+   "Bo:green:thinking",
+   "Probe:gray:away"
+  ],
+  "notes": [
+   "n1"
+  ],
+  "said": [
+   "n1"
+  ],
+  "jobs": null,
+  "badge": "1",
+  "voice": "auto",
+  "crashes": [],
+  "back": [
+   {
+    "t": "takeover-done",
+    "id": "to8",
+    "ok": false,
+    "why": "failed",
+    "text": "give a url, an app or a path"
+   }
+  ],
+  "screen": []
+ },
+ "bad-knocks": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:blue:watching",
+   "Bo:green:thinking",
+   "Probe:gray:away"
+  ],
+  "notes": [
+   "n1"
+  ],
+  "said": [
+   "n1"
+  ],
+  "jobs": null,
+  "badge": "1",
+  "voice": "auto",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "badIsland": {
+  "knocks": [],
+  "presences": [],
+  "walk": null,
+  "spot": {
+   "x": 0,
+   "bar": 24,
+   "align": "centre",
+   "attached": false
+  },
+  "showing": null
+ },
+ "bad-knock": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:blue:watching",
+   "Bo:green:thinking",
+   "Probe:gray:away"
+  ],
+  "notes": [
+   "n1"
+  ],
+  "said": [
+   "n1"
+  ],
+  "jobs": null,
+  "badge": "1",
+  "voice": "auto",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "badKnock": {
+  "knocks": [],
+  "presences": [],
+  "walk": null,
+  "spot": {
+   "x": 0,
+   "bar": 24,
+   "align": "centre",
+   "attached": false
+  },
+  "showing": null
+ },
+ "bad-voice": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:blue:watching",
+   "Bo:green:thinking",
+   "Probe:gray:away"
+  ],
+  "notes": [
+   "n1"
+  ],
+  "said": [
+   "n1"
+  ],
+  "jobs": null,
+  "badge": "1",
+  "voice": "auto",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "bad-drawing": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:blue:watching",
+   "Bo:green:thinking",
+   "Probe:gray:away"
+  ],
+  "notes": [
+   "n1"
+  ],
+  "said": [
+   "n1"
+  ],
+  "jobs": null,
+  "badge": "1",
+  "voice": "auto",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "badDrawn": null,
+ "bad-drawing-marks": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:blue:watching",
+   "Bo:green:thinking",
+   "Probe:gray:away"
+  ],
+  "notes": [
+   "n1"
+  ],
+  "said": [
+   "n1"
+  ],
+  "jobs": null,
+  "badge": "1",
+  "voice": "auto",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "badMarks": null,
+ "bad-takeover": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:blue:watching",
+   "Bo:green:thinking",
+   "Probe:gray:away"
+  ],
+  "notes": [
+   "n1"
+  ],
+  "said": [
+   "n1"
+  ],
+  "jobs": null,
+  "badge": "1",
+  "voice": "auto",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "knocks-none": {
+  "mode": "on",
+  "name": "Ada",
+  "agents": [
+   "Ada:blue:watching",
+   "Bo:green:thinking",
+   "Probe:gray:away"
+  ],
+  "notes": [
+   "n1"
+  ],
+  "said": [
+   "n1"
+  ],
+  "jobs": null,
+  "badge": "1",
+  "voice": "auto",
+  "crashes": [],
+  "back": [],
+  "screen": []
+ },
+ "settings-none": {
+  "prefs": {},
+  "menu": [
+   "Open Lighthouse",
+   "separator",
+   "Ada",
+   "What it said (1 new)",
+   "Quiet",
+   "Pair",
+   "Mute for an hour",
+   "separator",
+   "Start a QA walk",
+   "separator",
+   "Settings…",
+   "Quit "
+  ],
+  "muted": false,
+  "crashes": []
+ },
+ "settings": {
+  "prefs": {
+   "keys": [
+    "fn",
+    "right_option"
+   ],
+   "privateApps": [
+    "1Password",
+    "Bank"
+   ],
+   "dictation": {
+    "fn": true,
+    "keys": [
+     "fn",
+     "right_option"
+    ],
+    "languages": [
+     "en",
+     "fr"
+    ],
+    "microphone": "auto"
+   },
+   "sounds": false,
+   "voice": {
+    "mode": "always",
+    "provider": "elevenlabs",
+    "name": "Ava",
+    "eleven": {
+     "voice": "v1",
+     "model": "m1"
+    },
+    "speed": 1.2
+   },
+   "realtime": {
+    "front": "pipeline",
+    "model": "gpt-x",
+    "voice": "ash"
+   },
+   "jobNews": "all",
+   "timeline": true,
+   "hideFromShares": false,
+   "quietOnCalls": false
+  },
+  "menu": [
+   "Open Lighthouse",
+   "separator",
+   "Needs you (1)",
+   "Ship it?",
+   "All in inbox",
+   "separator",
+   "Ada",
+   "What it said (1 new)",
+   "Quiet",
+   "Pair",
+   "Muted until …",
+   "separator",
+   "Start a QA walk",
+   "separator",
+   "Settings…",
+   "Quit "
+  ],
+  "muted": true,
+  "crashes": []
+ },
+ "bad-settings": {
+  "prefs": {
+   "talk": [
+    "1",
+    "2"
+   ]
+  },
+  "menu": [
+   "Open Lighthouse",
+   "separator",
+   "Ada",
+   "What it said (1 new)",
+   "Quiet",
+   "Pair",
+   "Mute for an hour",
+   "separator",
+   "Start a QA walk",
+   "separator",
+   "Settings…",
+   "Quit "
+  ],
+  "muted": false,
+  "crashes": []
+ },
+ "bad-settings-null": {
+  "prefs": {},
+  "menu": [
+   "Open Lighthouse",
+   "separator",
+   "Ada",
+   "What it said (1 new)",
+   "Quiet",
+   "Pair",
+   "Mute for an hour",
+   "separator",
+   "Start a QA walk",
+   "separator",
+   "Settings…",
+   "Quit "
+  ],
+  "muted": false,
+  "crashes": []
+ }
+}
