@@ -1,24 +1,32 @@
+import { z } from "zod"
 import { isRecord, rec, str } from "./inputs.ts"
 
-/** A question as AskUserQuestion asks it (core/agents.ts' Question). */
-export type Question = { question: string; header?: string; multi?: boolean; options: { label: string; description?: string }[] }
-/** What an ask is: a tool to allow, AskUserQuestion's questions, or ExitPlanMode's plan. */
-export type AskKind = "permission" | "question" | "plan"
+const s = z.string().optional(), b = z.boolean().optional()
 
+/** A question as AskUserQuestion asks it (core/agents.ts' Question). */
+export const Question = z.object({ question: z.string(), header: s, multi: b, options: z.array(z.object({ label: z.string(), description: s })) })
+export type Question = z.infer<typeof Question>
+/** What an ask is: a tool to allow, AskUserQuestion's questions, or ExitPlanMode's plan. */
+export const AskKind = z.enum(["permission", "question", "plan"])
+export type AskKind = z.infer<typeof AskKind>
+
+export const UserEntry = z.object({ k: z.literal("user"), id: z.string(), text: z.string(), at: z.string(),
+  /** Its pictures, each as `imageSrc` names it (useChat gives the app a URL it loads). */
+  images: z.array(z.object({ src: z.string() })).optional() })
 /** One thing in a conversation, by id: a user message's uuid, `<message id>:<index>`, a tool_use id, `ask:<tool_use id>`. */
-export type Entry =
-  | { k: "user"; id: string; text: string; at: string
-      /** Its pictures, each as `imageSrc` names it (useChat gives the app a URL it loads). */
-      images?: { src: string }[] }
-  | { k: "text" | "thinking"; id: string; text: string; at: string; live?: boolean; parent?: string }
-  | { k: "tool"; id: string; name: string; summary: string; input: unknown; result?: string; error?: boolean; at: string; live?: boolean; parent?: string }
-  | { k: "ask"; id: string; kind: AskKind; tool: string; title: string; detail?: string; input?: unknown; questions?: Question[]; plan?: string
-      /** What Always allow allows ("git push commands"), when it's offered. */
-      always?: string
-      /** How it was answered ("Allowed", "Answered"), once it was. */
-      answer?: string; at: string }
-  | { k: "result"; id: string; ok: boolean; ms: number; error?: string; at: string }
-  | { k: "note"; id: string; text: string; tone?: "error"; at: string }
+export const Entry = z.discriminatedUnion("k", [
+  UserEntry,
+  z.object({ k: z.enum(["text", "thinking"]), id: z.string(), text: z.string(), at: z.string(), live: b, parent: s }),
+  z.object({ k: z.literal("tool"), id: z.string(), name: z.string(), summary: z.string(), input: z.unknown(), result: s, error: b, at: z.string(), live: b, parent: s }),
+  z.object({ k: z.literal("ask"), id: z.string(), kind: AskKind, tool: z.string(), title: z.string(), detail: s, input: z.unknown().optional(), questions: z.array(Question).optional(), plan: s,
+    /** What Always allow allows ("git push commands"), when it's offered. */
+    always: s,
+    /** How it was answered ("Allowed", "Answered"), once it was. */
+    answer: s, at: z.string() }),
+  z.object({ k: z.literal("result"), id: z.string(), ok: z.boolean(), ms: z.number(), error: s, at: z.string() }),
+  z.object({ k: z.literal("note"), id: z.string(), text: z.string(), tone: z.literal("error").optional(), at: z.string() }),
+])
+export type Entry = z.infer<typeof Entry>
 
 export const clip = (s: string, n = 4000) => (s.length > n ? `${s.slice(0, n)}\n… (${(s.length - n).toLocaleString("en-US")} more characters)` : s)
 

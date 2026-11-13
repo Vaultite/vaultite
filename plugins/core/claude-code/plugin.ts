@@ -5,7 +5,7 @@ import os from "node:os"
 import path from "node:path"
 import { type AgentAsk, type AgentCommand, type AgentMeter, type AgentModel, type AgentModels, type Asking, type Choice, type Question, type AgentStart, ago, codingAgent, dayOf, expandHome, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows,
   limitWindow, type Live, type SampleAsk, agentRefusal, notOnThisMachine, priceList, processes, projectName, projectOf, shellQuote, projectRoots, epochSeconds, Tally, terminalOf, Transcript, transcripts,
-  type Usage, lastTurn, parseTerminal, PERMISSION_MODES, type PermissionMode, trustClaudeProject, usedFirst, when } from "../../../core/agents.ts"
+  lastTurn, parseTerminal, PERMISSION_MODES, type PermissionMode, trustClaudeProject, usedFirst, when } from "../../../core/agents.ts"
 import { bullets, gitEnv, localDate, logger, OpError, Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
 import { askingIn, Conversation, WANTED } from "./transcript.ts"
@@ -828,7 +828,7 @@ const agent = codingAgent(plugin, {
   warm: () => Promise.all(accounts().map((a) => scanOf(a).refresh())),
   state: (s) => (s.status === "busy" ? "Working" : cap(String(s.status).toLowerCase()) || "Open"),
   more: (u) => {
-    const rc = (u as Usage & { servers: Item[] }).servers
+    const rc: Item[] = Array.isArray(u.servers) ? u.servers : []
     return rc.length ? ["### Remote Control", bullets(rc.map((r) => `${r.name || "Unnamed"}${r.accountLabel ? ` (${r.accountLabel})` : ""}, since ${ago(r.started)}`))] : []
   },
 })
@@ -851,7 +851,7 @@ const chat = chats(plugin, {
   },
   async folders() {
     const u = await summary(30, accounts().filter((a) => !a.private))
-    return sortBy((u.projects as Item[]).filter((p) => typeof p.root === "string" && p.root && fs.existsSync(p.root)), (p) => [String(p.last ?? "")]).reverse().map((p) => String(p.root))
+    return sortBy(u.projects.filter((p) => typeof p.root === "string" && p.root && fs.existsSync(p.root)), (p) => [String(p.last ?? "")]).reverse().map((p) => String(p.root))
   },
 })
 plugin.exports.chat = chat.api
@@ -866,5 +866,5 @@ cloudSessions(plugin, { accounts, bin: () => (process.env.VAULTITE_TEST === "1" 
 
 teleports(plugin, { accounts, json: accountJson, roots: async () => {
   const u = await summary(30, accounts())
-  return sortBy((u.projects as Item[]).filter((p) => typeof p.root === "string" && p.root), (p) => [String(p.last ?? "")]).reverse().map((p) => String(p.root))
+  return sortBy(u.projects.filter((p) => typeof p.root === "string" && p.root), (p) => [String(p.last ?? "")]).reverse().map((p) => String(p.root))
 } })

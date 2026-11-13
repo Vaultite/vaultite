@@ -1,11 +1,8 @@
 import { useEffect, useRef, useState } from "react"
 import { announceAgent, get, type AgentPhase } from "@vaultite"
 import type { Entry } from "./chatlog"
+import { Page, type State, type Summary, TabMessage } from "./chatprotocol"
 import { nameTab, NEW } from "./titles"
-
-export type Mode = "default" | "acceptEdits" | "plan" | "auto" | "dontAsk" | "bypassPermissions"
-export type Summary = { id: string; state: "starting" | "working" | "waiting" | "idle" | "error"; cwd: string; account: string; model: string; effort: string
-  mode: Mode; at: number; asks: string[]; error?: string; background?: number }
 
 export type Live = { ready: boolean; found: boolean; s: Summary | null; title: string; cwd: string; account: string; model: string; effort: string; tui: string | null
   driven: string
@@ -14,7 +11,7 @@ export type Live = { ready: boolean; found: boolean; s: Summary | null; title: s
   unreachable?: string
   failed?: string }
 
-const PHASE: Record<Summary["state"], AgentPhase> = { starting: "working", working: "working", waiting: "waiting", idle: "done", error: "failed" }
+const PHASE: Record<State, AgentPhase> = { starting: "working", working: "working", waiting: "waiting", idle: "done", error: "failed" }
 const QUIET_MS = 35_000
 const TRIES = 3
 
@@ -37,30 +34,32 @@ export function useChat(id: string) {
       const s = ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/claude-code/chat/${encodeURIComponent(id)}`)
       s.onmessage = (ev) => {
         last = Date.now()
-        let m: Record<string, unknown>
-        try { m = JSON.parse(String(ev.data)) } catch { return }
+        let raw: unknown
+        try { raw = JSON.parse(String(ev.data)) } catch { return }
+        const read = TabMessage.safeParse(raw)
+        if (!read.success) return
+        const m = read.data
         if (m.t === "ping") return
         if (m.t === "hello") {
           retry = failures = 0
-          map.current = new Map((m.history as { entries: Entry[] }).entries.map((e) => [e.id, shown(e)]))
-          meta.current = { ready: true, found: !!m.found, s: m.s as Summary | null, title: String(m.title ?? ""), cwd: String(m.cwd ?? ""), account: String(m.account ?? ""), model: String(m.model ?? ""), effort: String(m.effort ?? ""),
-            tui: (m.tui as string | null) ?? null, driven: String(m.driven ?? ""), entries: [], start: (m.history as { start: number }).start }
+          map.current = new Map(m.history.entries.map((e) => [e.id, shown(e)]))
+          meta.current = { ready: true, found: m.found, s: m.s, title: m.title, cwd: m.cwd, account: m.account, model: m.model, effort: m.effort,
+            tui: m.tui, driven: m.driven, entries: [], start: m.history.start }
           nameTab(id, meta.current.title)
         } else if (m.t === "put") {
-          const e = m.e as Entry
-          map.current.set(e.id, shown(e))
+          map.current.set(m.e.id, shown(m.e))
           meta.current = { ...meta.current, found: true }
-        } else if (m.t === "drop") map.current.delete(String(m.e))
+        } else if (m.t === "drop") map.current.delete(m.e)
         else if (m.t === "state") {
-          const was = meta.current.s?.state, now = (m.s as Summary | null)?.state
+          const was = meta.current.s?.state, now = m.s?.state
           announceAgent(meta.current.title || "Claude", was ? PHASE[was] : null, now ? PHASE[now] : null)
-          meta.current = { ...meta.current, s: m.s as Summary | null, found: true }
+          meta.current = { ...meta.current, s: m.s, found: true }
         }
-        else if (m.t === "tui") { meta.current = { ...meta.current, tui: (m.tui as string | null) ?? null, title: String(m.title || meta.current.title) }; nameTab(id, meta.current.title) }
-        else if (m.t === "title") { meta.current = { ...meta.current, title: String(m.title ?? "") }; nameTab(id, meta.current.title) }
-        else if (m.t === "refused") meta.current = { ...meta.current, ready: true, refused: String(m.reason ?? "") }
-        else if (m.t === "unreachable") meta.current = { ...meta.current, unreachable: String(m.reason ?? "") }
-        else if (m.t === "error" && ++failures >= TRIES) meta.current = { ...meta.current, ready: true, failed: String(m.reason ?? "") }
+        else if (m.t === "tui") { meta.current = { ...meta.current, tui: m.tui, title: m.title || meta.current.title }; nameTab(id, meta.current.title) }
+        else if (m.t === "title") { meta.current = { ...meta.current, title: m.title }; nameTab(id, meta.current.title) }
+        else if (m.t === "refused") meta.current = { ...meta.current, ready: true, refused: m.reason }
+        else if (m.t === "unreachable") meta.current = { ...meta.current, unreachable: m.reason }
+        else if (m.t === "error" && ++failures >= TRIES) meta.current = { ...meta.current, ready: true, failed: m.reason }
         if (m.t === "hello") heard()
         draw()
       }
@@ -92,7 +91,7 @@ export function useChat(id: string) {
     }
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
   const earlier = async () => {
-    const r = await get<{ entries: Entry[]; start: number }>(`claude-code/chat/${encodeURIComponent(id)}/history?before=${meta.current.start}`)
+    const r = Page.parse(await get(`claude-code/chat/${encodeURIComponent(id)}/history?before=${meta.current.start}`))
     map.current = new Map([...r.entries.map((e) => [e.id, shown(e)] as const), ...map.current])
     meta.current = { ...meta.current, start: r.start }
     setLive({ ...meta.current, entries: [...map.current.values()] })

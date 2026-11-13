@@ -2,6 +2,7 @@ import crypto from "node:crypto"
 import { EventEmitter } from "node:events"
 import fs from "node:fs"
 import http from "node:http"
+import net from "node:net"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 import { waitFor } from "../lib.ts"
@@ -119,6 +120,7 @@ export default async ($: VaultTest) => {
   const { IMAGES } = await import("../../../plugins/core/claude-code/chatpictures.ts")
   const { merge } = await import("../../../plugins/core/claude-code/chatentries.ts")
   const { matchSocket } = await import("../../../core/plugins.ts")
+  const { TabMessage } = await import("../../../plugins/core/claude-code/chatprotocol.ts")
   const as = (client: string, agent: string | null = null) => request({ host: "127.0.0.1:8793", "x-vaultite-client": client, ...(agent ? { "x-vaultite-agent": agent } : {}) }, { remote: "127.0.0.1" })
   const asApp = as("app/desktop")
   const rows = async () => { await settled(); return (await api("GET", "inbox/events"))[1].events as Any[] }
@@ -169,6 +171,20 @@ export default async ($: VaultTest) => {
     let [st, b] = await api("POST", "ops/claude-code.chat-start", { prompt: "Say hello", cwd: VAULT, model: "sonnet", mode: "default" })
     const id = b.id
     check("chat start: a new session, its id a UUID", st === 200 && /^[0-9a-f-]{36}$/.test(id), [st, b])
+    {
+      const c = net.connect(CHAT_SOCKET), heard: Any[] = []
+      let buf = ""
+      c.setEncoding("utf8")
+      c.on("data", (d: string) => { buf += d; for (let nl = buf.indexOf("\n"); nl >= 0; nl = buf.indexOf("\n")) { heard.push(JSON.parse(buf.slice(0, nl))); buf = buf.slice(nl + 1) } })
+      await new Promise((r) => c.once("connect", r))
+      for (const m of [{ op: "send", re: 1, id, text: 3 }, { op: "start", re: 2, spec: { id: "x" } }, { op: "launch", re: 3 }, { op: "send", re: 4, id, text: "hi", uuid: "u-1" }, { op: "list", re: 5 }]) c.write(JSON.stringify(m) + "\n")
+      await waitFor(() => heard.some((m) => m.re === 5), 3000, 20)
+      c.destroy()
+      const by = (re: number) => heard.find((m) => m.re === re)
+      check("chat keeper: a request it can't read is answered with what's wrong (the field, an unknown op, a uuid that isn't one), and it goes on",
+        String(by(1)?.error).startsWith("a send it can't read: text ") && /spec\.resume/.test(by(2)?.error) && by(3)?.error === "unknown op 'launch'" && /uuid not a UUID/.test(by(4)?.error) &&
+        Array.isArray(by(5)?.sessions), heard)
+    }
     await waitFor(() => host.list().find((s) => s.id === id)?.state === "idle", 5000, 50)
     const o = sdk.runs[0]?.options
     check("chat start: a new session by its id, the model asked, Claude Code's own settings and prompt, Vaultite's words added, the account's folder",
@@ -423,9 +439,11 @@ export default async ($: VaultTest) => {
 
     // ---------- the chat tab's socket: hello first, then what changed, nothing lost or undone; the conversation merged
     {
+      const unread: Any[] = []
       const tab = () => {
         const got: Any[] = []
-        const ws: Any = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, send(d: string) { got.push(JSON.parse(d)) }, close() { ws.readyState = 3; ws.emit("close") }, ping() {}, terminate() { ws.close() } })
+        const heard = (d: string) => { const m = JSON.parse(d); if (!TabMessage.safeParse(m).success) unread.push(m); got.push(m) }
+        const ws: Any = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, send: heard, close() { ws.readyState = 3; ws.emit("close") }, ping() {}, terminate() { ws.close() } })
         return { ws, got }
       }
       const open = (sid: string, ws: Any) => matchSocket(app.plugins, ["claude-code", "chat", sid])![1].fn(ws, asApp, { wild: [sid], query: {} })
@@ -464,6 +482,7 @@ export default async ($: VaultTest) => {
         t.ws.close()
       }
       check("chat tab: its hello comes first, then each change since, so a tab opened mid-turn shows the turn and its end (never working forever)", fine, why)
+      check("chat tab: every message it's sent is one useChat reads", unread.length === 0, unread.slice(0, 3))
 
       // Reload mid-way: what only the keeper has (an ask, a turn's failure) stays where it was, not at the bottom.
       await api("POST", "ops/claude-code.chat-send", { id: w.id, text: "ask permission" })

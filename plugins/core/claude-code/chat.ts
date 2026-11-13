@@ -13,8 +13,10 @@ import { merge, PAGE } from "./chatentries.ts"
 import { chatInbox } from "./chatinbox.ts"
 import { type Entry, Reader } from "./chatlog.ts"
 import { chatOps } from "./chatops.ts"
-import { type Answer, codeOf, type Effort, effortOf, type Event, type Mode, modeOf, type Spec, type Summary, type ToolDef } from "./chathost.ts"
+import { codeOf } from "./chathost.ts"
+import { type Answer, type Effort, effortOf, type Event, type Mode, modeOf, type Op, type Params, type Spec, type Summary, type TabMessage, type ToolDef, type ToolResult, type Uuid } from "./chatprotocol.ts"
 import { chatTab } from "./chatsocket.ts"
+import { isRecord } from "./inputs.ts"
 import { CHAT_SOCKET, FILES, NAME, port, SESSION, WIN, Wire } from "./chatwire.ts"
 import { modelId, notAModel } from "./models.ts"
 import { memoryLines, unsaid } from "./memory.ts"
@@ -37,10 +39,10 @@ export type ChatDeps = {
 }
 
 /** A tool a plugin serves its session, run on the server (`use`: the tool_use id its streamed input named). */
-export type ChatTool = ToolDef & { run: (args: unknown, use?: string) => Promise<unknown>; stream?: (use: string, json: string, end?: "done" | "stop") => void }
+export type ChatTool = ToolDef & { run: (args: unknown, use?: string) => Promise<ToolResult>; stream?: (use: string, json: string, end?: "done" | "stop") => void }
 export type ChatStart = { prompt?: string; cwd?: string; account?: string; model?: string; effort?: Effort; mode?: Mode; append?: string
   /** Pictures on this machine sent with its message (a screenshot), seen without a Read; `uuid`: that message's id. */
-  images?: string[]; uuid?: string
+  images?: string[]; uuid?: Uuid
   /** Answers without thinking first (the summoned companion's). */
   quick?: boolean
   /** A lean session: its whole system prompt, none of the user's settings, CLAUDE.md, MCP servers or skills. */
@@ -69,7 +71,7 @@ class Talk {
     if (d.type === "custom-title" && d.customTitle) { this.title = String(d.customTitle); this.custom = true; return }
     if (d.type === "ai-title" && d.aiTitle) { if (!this.custom) this.title = String(d.aiTitle); return }
     if (!this.cwd && typeof d.cwd === "string") this.cwd = d.cwd
-    const m = (d.message as { model?: unknown } | undefined)?.model
+    const m = isRecord(d.message) ? d.message.model : undefined
     if (d.type === "assistant" && typeof m === "string" && !m.startsWith("<")) this.model = m
     this.r.feed(d)
   }
@@ -126,9 +128,9 @@ function chatCore(plugin: Plugin, d: ChatDeps) {
         w = await whenListening(connectTo, startKeeper())
         if (!w) throw new Error(`the chat keeper didn't start (see ${FILES}.log)`)
       }
-      const { sessions } = await w.request("follow") as { sessions: Summary[] }
-      const h = await w.request("hello").catch(() => ({} as Record<string, unknown>))
-      if (h.code !== codeOf(plugin.dir) && typeof h.pid === "number" && h.pid !== process.pid) retire(w, h.pid)
+      const { sessions } = await w.request("follow", {})
+      const h = await w.request("hello", {}).catch(() => null)
+      if (h && h.code !== codeOf(plugin.dir) && h.pid !== process.pid) retire(w, h.pid)
       for (const s of sessions) { hosted.set(s.id, s); void readAsks(w, s.id) }
       for (const s of sessions) { tellInbox(s); inform(s.id, s); toTabs(s.id, { t: "state", s }) }
       void recover(new Set(sessions.map((s) => s.id)))
@@ -138,7 +140,7 @@ function chatCore(plugin: Plugin, d: ChatDeps) {
     p.catch(() => { if (wire === p) wire = null })
     return p
   }
-  const ask = async (op: string, params: Record<string, unknown> = {}) => (await keeper(!!port)).request(op, params)
+  const ask = async <O extends Op>(op: O, params: Params<O>) => (await keeper(!!port)).request(op, params)
   let busyAt = Date.now()
   function retire(w: Wire, pid: number) {
     log.warn("its keeper runs other code: ending it once it's quiet", { pid })
@@ -211,7 +213,7 @@ function chatCore(plugin: Plugin, d: ChatDeps) {
 
   async function readAsks(w: Wire, id: string) {
     try {
-      const r = await w.request("read", { id }) as { entries: Entry[] }
+      const r = await w.request("read", { id })
       for (const e of r.entries) if (e.k === "ask" && !e.answer) asksOf(id).set(e.id, e)
     } catch {}
   }
@@ -223,8 +225,7 @@ function chatCore(plugin: Plugin, d: ChatDeps) {
     asking.clear()
   }
 
-  function hear(m: Record<string, unknown>) {
-    const e = m as Event
+  function hear(e: Event) {
     if (e.t === "put") {
       if (e.e.k === "ask") { if (e.e.answer) asking.get(e.id)?.delete(e.e.id); else asksOf(e.id).set(e.e.id, e.e) }
       toTabs(e.id, { t: "put", e: e.e })
@@ -259,7 +260,7 @@ function chatCore(plugin: Plugin, d: ChatDeps) {
   async function runTool(id: string, call: string, name: string, args: unknown, use?: string) {
     for (let i = 0; i < 100 && !toolOf(id, name); i++) await new Promise((r) => setTimeout(r, 200))
     const t = toolOf(id, name)
-    let result: unknown
+    let result: ToolResult
     try {
       result = t ? await t.run(args, use) : { isError: true, content: [{ type: "text", text: `Vaultite serves no tool ${name} to this session now: the plugin that started it is off` }] }
     } catch (err) {
@@ -339,7 +340,7 @@ function chatCore(plugin: Plugin, d: ChatDeps) {
     const id = crypto.randomUUID()
     if (own) owned.set(id, { ...o, prompt: undefined, images: undefined, uuid: undefined })
     const said = o.prompt?.trim() || o.images?.length ? { prompt: o.prompt?.trim() ?? "", ...(o.images?.length ? { images: o.images } : {}), ...(o.uuid ? { uuid: o.uuid } : {}) } : {}
-    const { s } = await ask("start", { spec: await specFor(id, { ...o, resume: false }, a), ...said }) as { s: Summary }
+    const { s } = await ask("start", { spec: await specFor(id, { ...o, resume: false }, a), ...said })
     if (!hosted.has(id)) hosted.set(id, s)
     return hosted.get(id)!
   }
@@ -365,7 +366,7 @@ function chatCore(plugin: Plugin, d: ChatDeps) {
         ...(given.mode && given.mode !== s.mode ? { mode: given.mode } : {}) }
       try {
         if (Object.keys(change).length) await ask("set", { id, ...change })
-        return await ask("send", { id, text: said, ...pics }) as { uuid: string; answered?: string }
+        return await ask("send", { id, text: said, ...pics })
       } catch (e) {
         if (!/^no session \S+ runs here$/.test(e instanceof Error ? e.message : String(e))) throw e
         lost = hosted.get(id)
@@ -381,7 +382,7 @@ function chatCore(plugin: Plugin, d: ChatDeps) {
     const before = hosted.get(id), was = before ?? lost
     const { s } = await ask("start", { spec: await specFor(id, { ...o, resume: true, cwd: o.cwd || t?.cwd || "",
       model: o.model || was?.model || undefined, effort: o.effort || effortOf(was?.effort), mode: o.mode || was?.mode || kept[id]?.mode }, f.account), prompt: said,
-      ...pics }) as { s: Summary }
+      ...pics })
     if (hosted.get(id) === before) hosted.set(id, s)
     return { uuid: "", resumed: true }
   }
@@ -401,7 +402,7 @@ function chatCore(plugin: Plugin, d: ChatDeps) {
     hostedOr404(id)
     const at = askId || [...(asking.get(id)?.keys() ?? [])].at(-1)
     if (!at) throw new OpError("it doesn't ask anything now", 409)
-    return (await ask("answer", { id, ask: at, answer: a }) as { s: Summary }).s
+    return (await ask("answer", { id, ask: at, answer: a })).s
   }
   const { tellInbox } = chatInbox(plugin, { asking, kept: () => kept, save, titleOf, readTitle, ask, can, hosted, d, busyElsewhere, send, answer, start })
 
@@ -420,7 +421,7 @@ function chatCore(plugin: Plugin, d: ChatDeps) {
 
 
   const holding = new WeakMap<WebSocket, string[]>()
-  function toTabs(id: string, m: object) {
+  function toTabs(id: string, m: TabMessage) {
     const tabs = watching.get(id)
     if (!tabs?.size) return
     const text = JSON.stringify(m)
@@ -458,11 +459,11 @@ function chatCore(plugin: Plugin, d: ChatDeps) {
 
   async function conversation(id: string) {
     const t = await readTitle(id)
-    const live = hosted.has(id) ? ((await ask("read", { id }).catch(() => null)) as { entries: Entry[] } | null)?.entries ?? [] : []
+    const live = hosted.has(id) ? (await ask("read", { id }).catch(() => null))?.entries ?? [] : []
     return { t, s: hosted.get(id) ?? null, list: merge(t?.list ?? [], live) }
   }
 
-  async function hello(id: string) {
+  async function hello(id: string): Promise<Extract<TabMessage, { t: "hello" }>> {
     const { t, s, list } = await conversation(id)
     const f = d.sessionFile(id)
     const account = s?.account || f?.account.id || ""

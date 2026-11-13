@@ -2,8 +2,10 @@ import crypto from "node:crypto"
 import type net from "node:net"
 import os from "node:os"
 import path from "node:path"
-import { runtimeDir } from "../../../core/plugins.ts"
+import { logger, runtimeDir } from "../../../core/plugins.ts"
 import { eachMessage } from "./chathost.ts"
+import { Answers, Event, issues, type Op, type Params, type Reply } from "./chatprotocol.ts"
+const log = logger("chat")
 
 export const SESSION = /^[\w-]{1,80}$/
 
@@ -18,11 +20,14 @@ export class Wire {
   seq = 0
   waiting = new Map<number, { ok: (v: Record<string, unknown>) => void; fail: (e: Error) => void }>()
   closed = false
-  constructor(sock: net.Socket, hear: (m: Record<string, unknown>) => void, gone: () => void) {
+  constructor(sock: net.Socket, hear: (e: Event) => void, gone: () => void) {
     this.sock = sock
     eachMessage(sock, (m) => {
       const re = typeof m.re === "number" ? m.re : NaN, w = this.waiting.get(re)
-      if (w) { this.waiting.delete(re); if (typeof m.error === "string") w.fail(new Error(m.error)); else w.ok(m) } else hear(m)
+      if (w) { this.waiting.delete(re); if (typeof m.error === "string") w.fail(new Error(m.error)); else w.ok(m); return }
+      const e = Event.safeParse(m)
+      if (e.success) hear(e.data)
+      else log.error("a message from the chat keeper it can't read", new Error(issues(e.error)), { t: String(m.t) })
     })
     const end = () => {
       if (this.closed) return
@@ -34,12 +39,16 @@ export class Wire {
     sock.on("close", end)
     sock.on("error", end)
   }
-  request(op: string, params: Record<string, unknown> = {}, ms = 15000): Promise<Record<string, unknown>> {
+  request<O extends Op>(op: O, params: Params<O>, ms = 15000): Promise<Reply<O>> {
     if (this.closed) return Promise.reject(new Error("the chat keeper went away"))
     const re = ++this.seq
     return new Promise((ok, fail) => {
       const timer = setTimeout(() => { this.waiting.delete(re); fail(new Error(`the chat keeper didn't answer ${op}`)) }, ms)
-      this.waiting.set(re, { ok: (v) => { clearTimeout(timer); ok(v) }, fail: (e) => { clearTimeout(timer); fail(e) } })
+      const answered = (v: Record<string, unknown>) => {
+        const a = Answers[op].safeParse(v)
+        if (a.success) ok(a.data); else fail(new Error(`the chat keeper's answer to ${op} can't be read: ${issues(a.error)}`))
+      }
+      this.waiting.set(re, { ok: (v) => { clearTimeout(timer); answered(v) }, fail: (e) => { clearTimeout(timer); fail(e) } })
       this.sock.write(JSON.stringify({ op, re, ...params }) + "\n")
     })
   }

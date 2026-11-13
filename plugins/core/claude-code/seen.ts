@@ -1,11 +1,13 @@
 import { get, splitMachine } from "@vaultite"
+import { z } from "zod"
 
-export type Seen = { title: string; cwd: string; model: string }
+const Seen = z.object({ title: z.string(), cwd: z.string(), model: z.string() })
+export type Seen = z.infer<typeof Seen>
 const key = (id: string) => `vaultite.chat.seen.${id}`
 const mem = new Map<string, Seen | null>()
 
 export function seenOf(id: string): Seen | null {
-  if (!mem.has(id)) { try { mem.set(id, JSON.parse(localStorage.getItem(key(id)) ?? "null") as Seen | null) } catch { mem.set(id, null) } }
+  if (!mem.has(id)) { try { mem.set(id, Seen.nullable().catch(null).parse(JSON.parse(localStorage.getItem(key(id)) ?? "null"))) } catch { mem.set(id, null) } }
   return mem.get(id) ?? null
 }
 

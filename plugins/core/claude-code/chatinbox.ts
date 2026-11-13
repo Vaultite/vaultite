@@ -1,8 +1,9 @@
 import type { AgentChatNew, Choice } from "../../../core/agents.ts"
 import { logger, type Plugin } from "../../../core/plugins.ts"
 import type { ChatCore } from "./chat.ts"
-import type { Summary } from "./chathost.ts"
+import type { Summary } from "./chatprotocol.ts"
 import { SESSION } from "./chatwire.ts"
+import { isRecord } from "./inputs.ts"
 const log = logger("chat")
 
 type Needs = Pick<ChatCore, "asking" | "kept" | "save" | "titleOf" | "readTitle" | "ask" | "can" | "hosted" | "d" | "busyElsewhere" | "send" | "answer" | "start">
@@ -20,10 +21,10 @@ export function chatInbox(plugin: Plugin, c: Needs) {
     void p.finally(() => { if (telling.get(s.id) === p) telling.delete(s.id) })
   }
   function tellNow(s: Summary) {
-    const tell = plugin.service("inbox:session") as ((c: Record<string, unknown>) => Promise<unknown>) | null
+    const tell = plugin.service("inbox:session")
     if (!tell && !s.quiet) return
     if (tell && !s.quiet) {
-      const a = [...(asking.get(s.id)?.values() ?? [])].at(-1), cmd = (a?.input as { command?: unknown } | undefined)?.command
+      const a = [...(asking.get(s.id)?.values() ?? [])].at(-1), cmd = isRecord(a?.input) ? a.input.command : undefined
       const thread = kept()[s.id]?.thread
       const base = { agent: "claude", session: s.id, cwd: s.cwd, ...(thread ? { thread } : {}), ...(titleOf(s.id) ? { title: titleOf(s.id) } : {}) }
       const said = s.state === "working" ? { state: "working" }
@@ -31,8 +32,8 @@ export function chatInbox(plugin: Plugin, c: Needs) {
           text: a?.kind === "plan" ? a.plan ?? "" : a ? a.title + (typeof cmd === "string" ? `: ${cmd.slice(0, 200)}` : a.detail ? `: ${a.detail}` : "") : "" }
         : s.state === "idle" && s.turn ? { state: "done", text: s.turn.text, prompt: s.turn.prompt }
         : s.state === "error" ? { state: "error", text: s.error ?? s.turn?.text ?? "", prompt: s.turn?.prompt ?? "" } : null
-      if (said) void tell({ ...base, ...said }).then((e) => {
-        const id = (e as { id?: unknown } | null)?.id
+      if (said) void Promise.resolve(tell({ ...base, ...said })).then((e: unknown) => {
+        const id = isRecord(e) ? e.id : undefined
         if (typeof id === "string" && kept()[s.id] && kept()[s.id].thread !== id) { kept()[s.id] = { ...kept()[s.id], thread: id }; save() }
       }, (e) => log.error("inbox", e))
     }

@@ -5,14 +5,15 @@ import { logger, type Machine, MACHINE_CLIENT, machineSocket, OpError, pipeSocke
 import type { ChatCore } from "./chat.ts"
 import { PAGE } from "./chatentries.ts"
 import { type Entry, imageType } from "./chatlog.ts"
-import { type Mode, MODES } from "./chathost.ts"
+import { type Mode, MODES, type TabMessage } from "./chatprotocol.ts"
 import { KEEP_IMAGE, pictureFile, pictureIn, sweep } from "./chatpictures.ts"
 import { SESSION } from "./chatwire.ts"
 const log = logger("chat")
 
 export const MODE_LABELS: Record<Mode, string> = { default: "Ask for permissions", acceptEdits: "Accept edits", plan: "Plan mode", auto: "Auto mode",
   dontAsk: "Don't ask", bypassPermissions: "Bypass permissions" }
-const PING_MS = 20_000, PING = JSON.stringify({ t: "ping" })
+const PING_MS = 20_000, PING = JSON.stringify({ t: "ping" } satisfies TabMessage)
+const say = (ws: WebSocket, m: TabMessage) => ws.send(JSON.stringify(m))
 
 type Needs = Pick<ChatCore, "watching" | "holding" | "hosted" | "readTitle" | "hello" | "conversation" | "page" | "modelDefault" | "effortDefault" | "modeDefault" | "d">
 
@@ -43,7 +44,7 @@ export function chatTab(plugin: Plugin, c: Needs) {
     const why = await plugin.refusal(req, "Claude Code's chat")
     const m = !why && at ? await plugin.ask<Machine | null>("machines:machine", null, at) : null
     if (m && !m.self) {
-      const away = () => { if (ws.readyState === ws.OPEN) { ws.send(JSON.stringify({ t: "unreachable", reason: `${m.label} isn't answering` })); ws.close(1013, "unreachable") } }
+      const away = () => { if (ws.readyState === ws.OPEN) { say(ws, { t: "unreachable", reason: `${m.label} isn't answering` }); ws.close(1013, "unreachable") } }
       if (!m.online) return away()
       const up = machineSocket(m, `claude-code/chat/${encodeURIComponent(id)}`)
       alive(ws, true)
@@ -51,7 +52,7 @@ export function chatTab(plugin: Plugin, c: Needs) {
       return pipeSockets(ws, up, away)
     }
     if (why || !SESSION.test(id) || (at && !m)) {
-      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: "refused", reason: why || (at ? `no machine '${at}'` : "not a session id") }))
+      if (ws.readyState === ws.OPEN) say(ws, { t: "refused", reason: why || (at ? `no machine '${at}'` : "not a session id") })
       return ws.close(4003, "refused")
     }
     let set = watching.get(id)
@@ -65,19 +66,19 @@ export function chatTab(plugin: Plugin, c: Needs) {
     const poll = setInterval(async () => {
       if (hosted.has(id) || ws.readyState !== ws.OPEN) return
       const t = await readTitle(id).catch(() => null)
-      for (const e of t?.list.slice(-PAGE) ?? []) if (sent.get(e.id) !== e) { sent.set(e.id, e); ws.send(JSON.stringify({ t: "put", e })) }
+      for (const e of t?.list.slice(-PAGE) ?? []) if (sent.get(e.id) !== e) { sent.set(e.id, e); say(ws, { t: "put", e }) }
       const now = await d.tuiOf(id)
-      if (now !== tui) { tui = now; ws.send(JSON.stringify({ t: "tui", tui, title: t?.title ?? "" })) }
+      if (now !== tui) { tui = now; say(ws, { t: "tui", tui, title: t?.title ?? "" }) }
     }, 2500)
     ws.on("close", () => { clearInterval(poll); set!.delete(ws); if (!set!.size) watching.delete(id) })
     try {
       const h = await hello(id)
       for (const e of h.history.entries) sent.set(e.id, e)
       tui = h.tui
-      if (ws.readyState === ws.OPEN) { ws.send(JSON.stringify(h)); for (const text of held) ws.send(text) }
+      if (ws.readyState === ws.OPEN) { say(ws, h); for (const text of held) ws.send(text) }
     } catch (e) {
       log.error("hello failed", e, { id })
-      if (ws.readyState === ws.OPEN) { ws.send(JSON.stringify({ t: "error", reason: (e instanceof Error ? e.message : String(e)) })); ws.close(1011, "hello failed") }
+      if (ws.readyState === ws.OPEN) { say(ws, { t: "error", reason: (e instanceof Error ? e.message : String(e)) }); ws.close(1011, "hello failed") }
     } finally { holding.delete(ws) }
   })
 

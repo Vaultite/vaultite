@@ -2,85 +2,41 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import net from "node:net"
 import path from "node:path"
-import type { CanUseTool, McpServerConfig, Options, PermissionResult, PermissionUpdate, Query, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
+import type { CanUseTool, HookInput, McpServerConfig, Options, PermissionResult, PermissionUpdate, Query, SDKControlInterruptResponse, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
+import type { JSONSchema } from "zod/v4/core"
 import { type AskKind, type Entry, IMAGE_MAX, IMAGES_MAX, imageType, questionsOf, Reader, summarize } from "./chatlog.ts"
+import { type Answer, type Effort, type Event, issues, type Mode, type Op, type Reply, Request, type Spec, type State, type Summary, type ToolDef, ToolResult, type Uuid } from "./chatprotocol.ts"
 import { isRecord } from "./inputs.ts"
-
-export type Mode = "default" | "acceptEdits" | "plan" | "auto" | "dontAsk" | "bypassPermissions"
-export type Effort = "low" | "medium" | "high" | "xhigh" | "max"
-export const MODES: Mode[] = ["default", "acceptEdits", "plan", "auto", "dontAsk", "bypassPermissions"]
-export const EFFORTS: Effort[] = ["low", "medium", "high", "xhigh", "max"]
-export const modeOf = (x: string | undefined) => MODES.find((m) => m === x)
-export const effortOf = (x: string | undefined) => EFFORTS.find((e) => e === x)
-
-/** `streams`: its input told as it's written; `ends`: a turn may end after it with no words; `endsTurn`: it ends one. */
-export type ToolDef = { name: string; description: string; schema: { properties?: Record<string, unknown>; required?: string[] }; streams?: boolean; ends?: boolean
-  /** Never shown to the model: the host calls it itself (a session's `confirm`). */
-  hidden?: boolean }
-
-export type Spec = {
-  id: string; resume: boolean; cwd: string; env: Record<string, string>; claude?: string
-  model?: string; effort?: Effort; mode?: Mode; append?: string; title?: string; tools?: ToolDef[]
-  allowed?: string[]; denied?: string[]
-  dirs?: string[]
-  by?: string; account?: string
-  quiet?: boolean
-  quick?: boolean
-  system?: string; builtins?: string[]
-  texts?: boolean
-  confirm?: string
-  never?: string[]
-  autoMode?: Record<string, string[]>
-}
-
-export type State = "starting" | "working" | "waiting" | "idle" | "error"
-export type Summary = {
-  id: string; state: State; cwd: string; account: string; by: string; model: string; effort: string; mode: Mode
-  started: number; at: number; asks: string[]; seq: number; told: number
-  turn: { prompt: string; text: string; error?: string } | null
-  error?: string; quiet?: boolean
-  context?: number
-  background: number
-}
-
-export type Answer = { allow?: boolean; always?: boolean; message?: string; answers?: (number[] | string | { options: number[]; text: string })[]; chat?: boolean; mode?: Mode }
 
 // Claude Code's terminal picker's words for Chat about this
 const CHAT = "The user wants to clarify these questions. They may have more context or questions for you: take their " +
   "response into account, then ask again if it still applies. Start by asking them what they would like to clarify."
 
-export type Event =
-  | { t: "put"; id: string; e: Entry }
-  | { t: "drop"; id: string; e: string }
-  | { t: "state"; s: Summary }
-  | { t: "gone"; id: string }
-  | { t: "tool"; id: string; call: string; name: string; args: unknown; use?: string }
-  | { t: "did"; id: string; tool: string; input: unknown }
-  | { t: "partial"; id: string; use: string; name: string; json: string; end?: "done" | "stop" | "tool" }
-
 export type Sdk = {
   query: (p: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => Query
-  mcp?: (name: string, tools: { name: string; description: string; schema: ToolDef["schema"]; run: (args: unknown, use?: string) => Promise<unknown> }[]) => McpServerConfig
+  mcp?: (name: string, tools: { name: string; description: string; schema: ToolDef["schema"]; run: (args: unknown, use?: string) => Promise<ToolResult> }[]) => McpServerConfig
 }
+
+const isJsonSchema = (v: unknown): v is JSONSchema.JSONSchema => isRecord(v)
 
 export function relayed(create: typeof import("@anthropic-ai/claude-agent-sdk")["createSdkMcpServer"], fromJSONSchema: typeof import("zod")["fromJSONSchema"]): NonNullable<Sdk["mcp"]> {
   const shapeOf = (schema: ToolDef["schema"]) => Object.fromEntries(Object.entries(schema.properties ?? {}).map(([k, s]) => {
-    const z = fromJSONSchema(s as Parameters<typeof fromJSONSchema>[0])
+    const z = fromJSONSchema(isJsonSchema(s) ? s : {})
     return [k, schema.required?.includes(k) ? z : z.optional()]
   }))
   // alwaysLoad: behind tool search the model reached for the shell instead
   return (name, tools) => create({ name, alwaysLoad: true, tools: tools.map((t) => ({ name: t.name, description: t.description, inputSchema: shapeOf(t.schema),
     // Claude Code names the call's tool_use id in its _meta
-    handler: async (args: unknown, extra: unknown) => (await t.run(args, toolUseIdOf(extra))) as never })) })
+    handler: async (args: unknown, extra: unknown) => await t.run(args, toolUseIdOf(extra)) })) })
 }
 
 const toolUseIdOf = (extra: unknown) => {
-  const u = (extra as { _meta?: Record<string, unknown> } | undefined)?._meta?.["claudecode/toolUseId"]
+  const meta = isRecord(extra) ? extra._meta : undefined, u = isRecord(meta) ? meta["claudecode/toolUseId"] : undefined
   return typeof u === "string" ? u : undefined
 }
 export function codeOf(dir: string) {
   const h = crypto.createHash("sha256")
-  for (const f of ["chatd.ts", "chathost.ts", "chatlog.ts", "inputs.ts"]) { try { h.update(fs.readFileSync(path.join(dir, f))) } catch {} h.update("\0") }
+  for (const f of ["chatd.ts", "chathost.ts", "chatlog.ts", "chatprotocol.ts", "inputs.ts"]) { try { h.update(fs.readFileSync(path.join(dir, f))) } catch {} h.update("\0") }
   return h.digest("hex").slice(0, 16)
 }
 
@@ -158,7 +114,7 @@ export class Host {
     return x
   }
 
-  start(spec: Spec, prompt?: string, images: string[] = [], uuid?: string): Summary {
+  start(spec: Spec, prompt?: string, images: string[] = [], uuid?: Uuid): Summary {
     const content = prompt || images.length ? withImages(prompt ?? "", images) : null
     const old = this.sessions.get(spec.id)
     if (old && !old.ended) throw new Error(`session ${spec.id} already runs`)
@@ -195,10 +151,10 @@ export class Host {
       stderr: (d: string) => { x.stderr.push(d); if (x.stderr.length > 40) x.stderr.shift() },
     }
     const shown = spec.tools?.filter((t) => !t.hidden)
-    const tools = shown?.length && this.sdk.mcp ? this.sdk.mcp("vaultite-app", shown.map((t) => ({ ...t, run: async (args: unknown, use?: string) => {
-      const r = await this.relay(spec.id, t.name, args, use)
-      if (!r || typeof r !== "object" || !("endsTurn" in r)) return r
-      const { endsTurn, ...rest } = r
+    const tools = shown?.length && this.sdk.mcp ? this.sdk.mcp("vaultite-app", shown.map((t) => ({ ...t, run: async (args: unknown, use?: string): Promise<ToolResult> => {
+      const r = ToolResult.safeParse(await this.relay(spec.id, t.name, args, use))
+      if (!r.success) return { isError: true, content: [{ type: "text", text: `Vaultite's answer isn't a tool's result: ${issues(r.error)}` }] }
+      const { endsTurn, ...rest } = r.data
       if (endsTurn === true && use) x.ending.add(use)
       return rest
     } }))) : null
@@ -215,7 +171,7 @@ export class Host {
     return x.s
   }
 
-  send(id: string, text: string, uuid: string = crypto.randomUUID(), images: string[] = []) {
+  send(id: string, text: string, uuid: Uuid = crypto.randomUUID(), images: string[] = []) {
     const x = this.session(id)
     if (!text.trim() && !images.length) throw new Error("nothing to send")
     const content = withImages(text.trim(), images)
@@ -226,11 +182,11 @@ export class Host {
     return { uuid, ...(asked ? { answered: asked } : {}) }
   }
 
-  private said(x: Session, text: string, pictures: number, uuid: string, content: SDKUserMessage["message"]["content"]) {
+  private said(x: Session, text: string, pictures: number, uuid: Uuid, content: SDKUserMessage["message"]["content"]) {
     const at = new Date().toISOString(), id = x.s.id
     x.declined = false
     x.answered.clear()
-    x.queue.push({ type: "user", uuid, session_id: id, parent_tool_use_id: null, message: { role: "user", content }, timestamp: at } as SDKUserMessage)
+    x.queue.push({ type: "user", uuid, session_id: id, parent_tool_use_id: null, message: { role: "user", content }, timestamp: at })
     x.wake?.()
     const shown = [...Array.from({ length: pictures }, () => ({ type: "image" })), ...(text ? [{ type: "text", text }] : [])]
     for (const e of x.reader.feed({ type: "user", uuid, message: { content: shown }, timestamp: at })) this.put(x, e)
@@ -241,7 +197,8 @@ export class Host {
     const x = this.session(id)
     x.stopping = x.s.state === "working" || x.s.state === "waiting"
     // (cancelQueued: the SDK's, though its type doesn't list it yet)
-    const r = await (x.q?.interrupt as ((o?: { cancelQueued: boolean }) => Promise<{ cancelled?: string[] } | undefined>) | undefined)?.call(x.q, { cancelQueued: true })
+    const q: { interrupt(o?: { cancelQueued: boolean }): Promise<SDKControlInterruptResponse | undefined> } | null = x.q
+    const r = await q?.interrupt({ cancelQueued: true })
     const taken: Extract<Entry, { k: "user" }>[] = []
     for (const uuid of r?.cancelled ?? []) {
       const e = x.reader.entries.get(uuid)
@@ -395,9 +352,9 @@ export class Host {
     }
   }
 
-  private effortOf(x: Session, h: unknown) {
-    const level = (h as { effort?: { level?: unknown } }).effort?.level
-    if (typeof level !== "string" || x.spec.effort || x.s.effort === level) return
+  private effortOf(x: Session, h: HookInput) {
+    const level = h.effort?.level
+    if (!level || x.spec.effort || x.s.effort === level) return
     x.s.effort = level
     this.emit({ t: "state", s: x.s })
   }
@@ -589,7 +546,7 @@ export function eachMessage(sock: net.Socket, fn: (m: Record<string, unknown>) =
   })
 }
 
-const imagesIn = (v: unknown) => (Array.isArray(v) ? v.map(String) : [])
+const OPS = new Set<string>(Request.options.map((r) => r.shape.op.value))
 function withImages(text: string, images: string[]): SDKUserMessage["message"]["content"] {
   if (images.length > IMAGES_MAX) throw new Error(`at most ${IMAGES_MAX} pictures a message (${images.length} given)`)
   const blocks = images.map((f) => {
@@ -603,27 +560,28 @@ function withImages(text: string, images: string[]): SDKUserMessage["message"]["
   return blocks.length ? [...blocks, ...(text ? [{ type: "text" as const, text }] : [])] : text
 }
 
-export function listen(host: Host, sock: string, o: { log?: (...a: unknown[]) => void; hello?: () => Record<string, unknown> } = {}) {
+export function listen(host: Host, sock: string, o: { log?: (...a: unknown[]) => void; hello?: () => { file: string; stale: boolean; code: string } } = {}) {
   const conns = new Set<net.Socket>(), followers = new Set<net.Socket>()
   const send = (c: net.Socket, m: object) => { if (!c.destroyed) c.write(JSON.stringify(m) + "\n") }
   host.on((e) => { for (const c of followers) send(c, e) })
-  const handle = async (c: net.Socket, m: Record<string, unknown>): Promise<Record<string, unknown>> => {
-    const id = String(m.id ?? "")
+  const handle = async (c: net.Socket, raw: Record<string, unknown>): Promise<Reply<Op>> => {
+    const r = Request.safeParse(raw)
+    if (!r.success) throw new Error(typeof raw.op === "string" && !OPS.has(raw.op) ? `unknown op '${raw.op}'` : `a ${String(raw.op)} it can't read: ${issues(r.error)}`)
+    const m = r.data
     switch (m.op) {
       case "hello": return { v: 1, pid: process.pid, ...o.hello?.() }
       case "follow": followers.add(c); setTimeout(() => { for (const e of host.pendingCalls()) send(c, e) }, 0); return { sessions: host.list() }
       case "list": return { sessions: host.list() }
-      case "read": { const r = host.read(id); if (!r) throw new Error(`no session ${id} runs here`); return r }
-      case "start": return { s: host.start(m.spec as Spec, typeof m.prompt === "string" ? m.prompt : undefined, imagesIn(m.images), typeof m.uuid === "string" ? m.uuid : undefined) }
-      case "send": return { ...host.send(id, String(m.text ?? ""), typeof m.uuid === "string" ? m.uuid : undefined, imagesIn(m.images)) }
-      case "interrupt": return await host.interrupt(id)
-      case "set": return { s: await host.set(id, m as { model?: string; effort?: Effort; mode?: Mode }) }
-      case "answer": return { s: host.answer(id, String(m.ask ?? ""), (m.answer ?? {}) as Answer) }
-      case "stop": return { stopped: host.stop(id) }
-      case "forget": host.forget(id); return {}
-      case "told": host.told(id, Number(m.seq) || 0); return {}
-      case "tool-result": host.toolResult(String(m.call ?? ""), m.result); return {}
-      default: throw new Error(`unknown op '${m.op}'`)
+      case "read": { const s = host.read(m.id); if (!s) throw new Error(`no session ${m.id} runs here`); return s }
+      case "start": return { s: host.start(m.spec, m.prompt, m.images, m.uuid) }
+      case "send": return host.send(m.id, m.text, m.uuid, m.images)
+      case "interrupt": return await host.interrupt(m.id)
+      case "set": return { s: await host.set(m.id, m) }
+      case "answer": return { s: host.answer(m.id, m.ask, m.answer) }
+      case "stop": return { stopped: host.stop(m.id) }
+      case "forget": host.forget(m.id); return {}
+      case "told": host.told(m.id, m.seq); return {}
+      case "tool-result": host.toolResult(m.call, m.result); return {}
     }
   }
   const server = net.createServer((c) => {

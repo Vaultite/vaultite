@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { DiffRows, get, textDiff, type DiffLine } from "@vaultite"
 import type { Entry } from "./chatlog"
-import { type Mode } from "./useChat"
+import type { Mode } from "./chatprotocol"
 
 export type Ask = Extract<Entry, { k: "ask" }>
 export type Tool = Extract<Entry, { k: "tool" }>

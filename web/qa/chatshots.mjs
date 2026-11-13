@@ -11,7 +11,7 @@ mkdirSync(OUT, { recursive: true })
 const T0 = Date.now() - 6 * 60_000
 const at = (s) => new Date(T0 + s * 1000).toISOString()
 const S = (state, more = {}) => ({ id: "qa-chat", state, cwd: "/Users/alice/lighthouse", account: "default", by: "app", model: "claude-opus-5-5", effort: "high",
-  mode: "auto", started: T0, at: Date.now() - (state === "working" ? 14_000 : 60_000), asks: [], seq: 1, told: 0, turn: null, ...more })
+  mode: "auto", started: T0, at: Date.now() - (state === "working" ? 14_000 : 60_000), asks: [], seq: 1, told: 0, turn: null, background: 0, ...more })
 
 const LONG = `The launch page now builds from \`site/launch.md\`, and the countdown reads the date from its front matter.
 
@@ -117,8 +117,8 @@ const ALL = [
 ]
 const SIZES = ALL.filter((s) => (SIZES_ONLY ? SIZES_ONLY.split(",").includes(s.name) : !s.extra))
 
-const hello = (h) => JSON.stringify({ t: "hello", found: true, s: h.s, title: "Read the launch date from front matter", cwd: h.s.cwd, account: "default", model: h.s.model, effort: "high",
-  tui: null, driven: "", history: { entries: h.asked ? [{ ...h.live[0], at: new Date(Date.now() - h.asked).toISOString() }, ...h.live.slice(1)] : h.live, start: 0 } })
+const hello = (h) => JSON.stringify({ t: "hello", id: h.s.id, found: true, s: h.s, title: "Read the launch date from front matter", cwd: h.s.cwd, account: "default", model: h.s.model, effort: "high",
+  tui: null, driven: "", history: { entries: h.asked ? [{ ...h.live[0], at: new Date(Date.now() - h.asked).toISOString() }, ...h.live.slice(1)] : h.live, start: 0, total: h.live.length } })
 
 /** `end`: told as the turn is about to end (its result, then idle), so a video can mark where its work folds away. */
 async function stream(ws, page, ui, shot, end = () => {}) {

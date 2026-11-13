@@ -5,8 +5,7 @@ import { choiceOf, HOME, repoName } from "../../../core/agents.ts"
 import { byUser, defineOp, type Machine, MACHINE_CLIENT, NOT_THE_USER, type Op, type OpCtx, OpError, type Plugin, splitMachine, userSurface } from "../../../core/plugins.ts"
 import type { ChatCore } from "./chat.ts"
 import { entryText } from "./chatentries.ts"
-import type { Entry } from "./chatlog.ts"
-import { EFFORTS, modeOf, MODES, type Summary } from "./chathost.ts"
+import { EFFORTS, modeOf, MODES } from "./chatprotocol.ts"
 import { IMAGES_PARAM, picturesFor } from "./chatpictures.ts"
 import { MODE_LABELS } from "./chatsocket.ts"
 
@@ -121,8 +120,8 @@ send again), as Esc gives them back in a terminal.`,
     params: { id: ID }, args: ["id"],
     run: async (p) => {
       hostedOr404(p.id)
-      const r = await ask("interrupt", { id: p.id }) as { taken?: Extract<Entry, { k: "user" }>[] }
-      return { id: p.id, taken: r.taken ?? [] }
+      const r = await ask("interrupt", { id: p.id })
+      return { id: p.id, taken: r.taken }
     },
     text: (r) => `Interrupted.${r.taken.length ? ` Taken back, not sent: ${r.taken.map((e) => (e.k === "user" ? JSON.stringify(e.text) : "")).join(", ")}.` : ""}`,
   }))
@@ -169,7 +168,7 @@ after an approved plan (acceptEdits, default...).`,
     run: async (p) => {
       hostedOr404(p.id)
       if (!p.model && !p.effort && !p.mode) throw new OpError("`model`, `effort` or `mode`: what to change")
-      const { s } = await ask("set", { id: p.id, ...(p.model ? { model: runsAs(p.model) } : {}), ...(p.effort ? { effort: p.effort } : {}), ...(p.mode ? { mode: p.mode } : {}) }) as { s: Summary }
+      const { s } = await ask("set", { id: p.id, ...(p.model ? { model: runsAs(p.model) } : {}), ...(p.effort ? { effort: p.effort } : {}), ...(p.mode ? { mode: p.mode } : {}) })
       return { id: p.id, model: s.model, effort: s.effort, mode: s.mode }
     },
     text: (r) => `Now ${d.modelName(r.model) || "its model"}${r.effort ? `, ${r.effort} effort` : ""}, ${modeLabel(r.mode)}.`,
@@ -201,9 +200,9 @@ after an approved plan (acceptEdits, default...).`,
     await plugin.ownerOnly(req, OWNER)
     const client = req.http?.headers["x-vaultite-client"]
     const r = await chatList("all", { who: { client: typeof client === "string" ? client : null } })
-    const progress = plugin.service("inbox:progress") as ((t: string, s: string) => string | null) | null
+    const progress = plugin.service("inbox:progress")
     return { ...r, sessions: r.sessions.map((s) => {
-      const said = progress?.("", splitMachine(s.id)[0]) ?? null
+      const told: unknown = progress?.("", splitMachine(s.id)[0]), said = typeof told === "string" ? told : null
       const project = s.project ?? (s.id.includes("@") ? "" : repoName(s.cwd))
       return { ...s, turn: s.turn && { prompt: s.turn.prompt.slice(0, 200), text: s.turn.text.slice(-200), error: s.turn.error }, ...(said ? { progress: said } : {}), ...(project ? { project } : {}) }
     }) }
