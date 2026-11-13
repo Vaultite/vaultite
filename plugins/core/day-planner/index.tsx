@@ -32,7 +32,8 @@ function lanes(plan: Entry[]) {
   return out
 }
 
-const NO_EVENTS = { timed: [] as Entry[], allDay: [] as string[] }
+type DayEvents = { timed: Entry[]; allDay: string[] }
+const NO_EVENTS: DayEvents = { timed: [], allDay: [] }
 function useEvents(day: string, on: boolean) {
   const [events, setEvents] = useState<typeof NO_EVENTS | null>(on ? null : NO_EVENTS)
   useEffect(() => {
