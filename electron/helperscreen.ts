@@ -3,10 +3,11 @@ import { nativeImage } from "electron"
 import fs from "node:fs"
 import path from "node:path"
 import { changedBoxes } from "../core/desktop/framediff.ts"
-import type { AppWindowInfo, Rect } from "./screen.ts"
+import type { Rect } from "./screen.ts"
 import { queryTimeline } from "./timeline.ts"
 import { walkCall } from "./walk.ts"
 import { screenAsk, SHOTS, windowShot } from "./helperask.ts"
+import { TEXT, WINDOW } from "./screenwire.ts"
 import { hidden } from "./helperbase.ts"
 import { talkNow } from "./helpertalk.ts"
 import { speaker, stopVoice } from "./helpervoice.ts"
@@ -41,7 +42,7 @@ async function changedCall(a: unknown) {
   const before = typeof o.before === "string" ? path.resolve(o.before) : "", window = Number.isInteger(o.window) ? o.window as number : 0
   // (only its own pictures are read)
   if (!before.startsWith(SHOTS() + path.sep) || !fs.existsSync(before) || !window) return { ok: false, why: "no-window" }
-  const w = await screenAsk<AppWindowInfo>("window", { window, bundle: "" })
+  const w = await screenAsk("window", { window, bundle: "" }, WINDOW)
   if (!w.window || !w.frame) return { ok: false, why: "no-window" }
   if (hidden(w)) return { ok: false, why: "private" }
   const bitmap = (f: string) => { const i = nativeImage.createFromPath(f), z = i.getSize(); return { px: new Uint8Array(i.toBitmap()), ...z } }
@@ -71,10 +72,10 @@ export async function screenCall(name: string, args: unknown[]) {
   const o = (args[0] && typeof args[0] === "object" ? args[0] : {}) as { app?: unknown; window?: unknown; max?: unknown }
   const window = Number.isInteger(o.window) ? o.window as number : 0, bundle = typeof o.app === "string" ? o.app : ""
   // (whose window it is first: a private app's is never read)
-  const w = await screenAsk<AppWindowInfo>("window", { window, bundle })
+  const w = await screenAsk("window", { window, bundle }, WINDOW)
   if (!w.window) return { ok: false, why: "no-window" }
   if (hidden(w)) return { ok: false, why: "private" }
-  if (name === "screen:text") return screenAsk("text", { window: w.window, max: Number(o.max) || 20_000 })
+  if (name === "screen:text") return screenAsk("text", { window: w.window, max: Number(o.max) || 20_000 }, TEXT)
   if (name === "screen:shot") {
     const file = await windowShot(w.window, SHOTS())
     return file ? { ok: true, file, bundle: w.bundle, name: w.name, title: w.title, window: w.window } : { ok: false, why: "no picture: Vaultite needs screen recording (System Settings, Privacy & Security)" }

@@ -1,0 +1,216 @@
+{
+ "videoAt": {
+  "ok": true,
+  "id": 1
+ },
+ "videoOn": true,
+ "holdVideo": {
+  "ok": true,
+  "id": 2
+ },
+ "stopped": 1,
+ "saveClip": {
+  "file": "/c/clip.mp4",
+  "ms": 900,
+  "width": 10,
+  "height": 20,
+  "frames": [
+   {
+    "t": 1,
+    "file": "/c/f1.png"
+   }
+  ]
+ },
+ "badSave": {
+  "why": "no video"
+ },
+ "badStart": {
+  "id": 5
+ },
+ "noSave": {
+  "why": "no frames"
+ },
+ "captureSent": [
+  {
+   "op": "start",
+   "x": 1,
+   "y": 2,
+   "exclude": [
+    5
+   ],
+   "bundles": [
+    "com.x"
+   ],
+   "ring": 3000,
+   "id": 1
+  },
+  {
+   "op": "hold",
+   "from": 7,
+   "id": 2
+  },
+  {
+   "op": "save",
+   "from": 1000,
+   "to": 2000,
+   "boxes": [
+    {
+     "t": 1000,
+     "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 10,
+      "height": 20
+     }
+    }
+   ],
+   "file": "…",
+   "frames": "…",
+   "id": 3
+  },
+  {
+   "op": "save",
+   "from": 1000,
+   "to": 2000,
+   "boxes": [],
+   "file": "…",
+   "frames": "…",
+   "id": 4
+  },
+  {
+   "op": "start",
+   "x": 1,
+   "y": 2,
+   "exclude": [],
+   "bundles": [],
+   "ring": 3000,
+   "id": 5
+  },
+  {
+   "op": "save",
+   "from": 1000,
+   "to": 2000,
+   "boxes": [],
+   "file": "…",
+   "frames": "…",
+   "id": 6
+  },
+  {
+   "op": "stop",
+   "id": 7
+  }
+ ],
+ "captureThrew": [],
+ "engines": {
+  "apple": true,
+  "locale": "fr-FR",
+  "parakeet": false,
+  "why": "no-model"
+ },
+ "dictate": {
+  "ok": true,
+  "engine": "apple"
+ },
+ "told": [
+  {
+   "type": "pending",
+   "id": 1,
+   "text": "hel"
+  },
+  {
+   "type": "level",
+   "id": 1,
+   "v": 0.4
+  },
+  {
+   "type": "final",
+   "id": 1,
+   "text": "hello"
+  },
+  {
+   "type": "final",
+   "id": 1
+  },
+  {
+   "type": "end",
+   "id": 1,
+   "reason": "stop"
+  }
+ ],
+ "micHeld": "AirPods",
+ "devices": {
+  "devices": [
+   {
+    "uid": "m1",
+    "name": "Mic",
+    "transport": "usb",
+    "input": true,
+    "output": false
+   }
+  ],
+  "input": "m1",
+  "output": "o1"
+ },
+ "badEngines": {
+  "apple": false,
+  "parakeet": false
+ },
+ "badDictate": {
+  "ok": true,
+  "engine": "apple"
+ },
+ "badTold": [
+  {
+   "type": "end",
+   "id": 2
+  }
+ ],
+ "badDevices": {
+  "devices": [],
+  "input": "",
+  "output": ""
+ },
+ "dictationSent": [
+  {
+   "cmd": "check",
+   "language": "fr"
+  },
+  {
+   "cmd": "start",
+   "id": 1,
+   "engine": "apple",
+   "language": "en",
+   "model": "",
+   "silence": 2,
+   "words": [],
+   "file": "…"
+  },
+  {
+   "cmd": "check",
+   "language": ""
+  },
+  {
+   "cmd": "start",
+   "id": 2,
+   "engine": "apple",
+   "language": "",
+   "model": "",
+   "silence": 0,
+   "words": [],
+   "file": "…"
+  }
+ ],
+ "dictationThrew": [],
+ "voiceHeard": [
+  "{\"t\":\"sound\",\"at\":5,\"by\":\"mac\",\"out\":\"Speakers (built-in, 48 kHz)\"}",
+  "[\"level\",true,0.5]",
+  "[\"level\",true,0]",
+  "{\"t\":\"reroute\",\"why\":\"headset\",\"again\":2}",
+  "[\"level\",false,0]"
+ ],
+ "voiceSent": [
+  "say",
+  "end"
+ ],
+ "voiceThrew": []
+}

@@ -4,7 +4,8 @@ import { app } from "electron"
 import fs from "node:fs"
 import path from "node:path"
 import { captureSwift } from "./swiftbuild.ts"
-import { lineHelper } from "./linehelper.ts"
+import { type Call, lineHelper } from "./linehelper.ts"
+import { z } from "zod"
 import type { BoxAt, Point, Rect } from "../core/desktop/clips.ts"
 
 /** A scripted copy records nothing, unless its QA asks for the real screen (web/qa/capture.mjs). */
@@ -15,13 +16,15 @@ let on = false
 let stopped: (() => void) | null = null
 // (macOS stopped it (screen recording taken away, the display gone), or it died: a recording's lost)
 const lost = () => { on = false; stopped?.() }
-const helper = lineHelper({ binary: () => captureSwift.binary(path.join(app.getPath("userData"), "bin")), exited: lost, event: (m) => { if (m.event === "stopped") lost() } })
-const ask = <T = Record<string, unknown>>(call: Record<string, unknown>, ms = 15_000): Promise<T> =>
-  REAL ? helper.ask<T>(call, ms) : Promise.resolve({ ok: false, why: "quiet" } as T)
+const helper = lineHelper({ binary: () => captureSwift.binary(path.join(app.getPath("userData"), "bin")), exited: lost, events: z.object({ event: z.literal("stopped") }), event: lost })
+const opt = <T extends z.ZodType>(s: T) => s.optional().catch(undefined)
+const ANSWER = z.looseObject({ ok: opt(z.boolean()), why: opt(z.string()), file: opt(z.string()), ms: opt(z.number()), width: opt(z.number()), height: opt(z.number()),
+  frames: opt(z.array(z.object({ t: z.number(), file: z.string() }))) })
+const ask = (call: Call, ms = 15_000) => (REAL ? helper.ask(call, ANSWER, ms) : Promise.resolve(ANSWER.parse({ ok: false, why: "quiet" })))
 
 /** Video of the display at `p` (that display's already: what's left out looked at again), keeping `ring` ms. */
 export async function videoAt(p: Point, exclude: number[], bundles: string[], ring: number) {
-  const r = await ask<{ ok?: boolean; why?: string }>({ op: "start", x: p.x, y: p.y, exclude, bundles, ring })
+  const r = await ask({ op: "start", x: p.x, y: p.y, exclude, bundles, ring })
   on = !!r.ok
   return r
 }
@@ -41,7 +44,7 @@ export const onVideoStopped = (fn: () => void) => { stopped = fn }
  *  moved, its frames at each change beside it. */
 export async function saveClip(from: number, to: number, boxes: BoxAt[]): Promise<Clip | { why: string }> {
   const dir = captureDir(from)
-  const r = await ask<{ ok?: boolean; why?: string } & Partial<Clip>>({ op: "save", from, to, boxes, file: path.join(dir, "clip.mp4"), frames: path.join(dir, "frames") }, 120_000)
+  const r = await ask({ op: "save", from, to, boxes, file: path.join(dir, "clip.mp4"), frames: path.join(dir, "frames") }, 120_000)
   prune()
   return r.ok && r.file ? { file: r.file, ms: r.ms ?? to - from, width: r.width ?? 0, height: r.height ?? 0, frames: r.frames ?? [] } : { why: r.why ?? "no video" }
 }

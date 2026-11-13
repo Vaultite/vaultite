@@ -9,6 +9,8 @@ import { PERMISSIONS, VAULT_PANE, actionOf, paneUrl, signingOf, type Permission,
 import { macAddon, type MacAddon } from "./macaddons.ts"
 import { messageOf } from "./browser/messageof.ts"
 import { logger } from "../core/log.ts"
+import type { Json } from "./linehelper.ts"
+import { z } from "zod"
 
 const log = logger("permissions")
 
@@ -28,7 +30,8 @@ function native(): Promise<MacAddon | null> {
   loading ??= macAddon("macpermissions", path.join(app.getPath("userData"), "bin")).then((a) => (addon = a)).catch((e) => { log.warn(`no native helper (${messageOf(e)})`); return null })
   return loading
 }
-const ask = (cmd: string, more: Record<string, unknown> = {}) => addon?.call({ cmd, ...more })
+const ANSWER = z.looseObject({ state: z.unknown().optional(), open: z.unknown().optional() })
+const ask = (cmd: string, more: { [k: string]: Json } = {}) => addon?.call({ cmd, ...more }, ANSWER)
 
 /** EPERM is macOS saying no; anything else (no such folder) isn't about permission. */
 const refused = (e: unknown): PermissionState => (["EPERM", "EACCES"].includes((e as NodeJS.ErrnoException).code ?? "") ? "denied" : "unknown")

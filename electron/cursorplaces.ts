@@ -1,9 +1,11 @@
 // Where the agents' cursors point on screen (helper.ts'): places resolved to points through the screen helper and kept a
 // moment, as windows move. Each knows its window and its frame then, so a move of it moves the point at once.
 import { atOffset, pointIn, type Point } from "./helperlogic.ts"
-import type { AppWindowInfo, Rect } from "./screen.ts"
+import type { Rect, Req } from "./screen.ts"
+import { COVERED, FOUND, OK, type ScreenEvent, WINDOW } from "./screenwire.ts"
+import type { z } from "zod"
 
-export type Ask = <T = Record<string, unknown>>(op: string, req?: Record<string, unknown>) => Promise<T>
+export type Ask = <S extends z.ZodType>(op: string, req: Req, answer: S) => Promise<z.output<S>>
 /** An agent's place, as the companion's socket tells it. */
 export type AgentPlace = { name: string; app?: string; window?: number; find?: string; sx?: number; sy?: number; path?: string
   line?: number; pane?: string; row?: number; ui?: string }
@@ -29,7 +31,7 @@ export function cursorPlaces(o: { ask: Ask; hidden: (a: { bundle?: string; name?
   /** `r` with whether a window in front of its own covers its point. */
   async function seen(r: Omit<Placed, "at" | "pending">): Promise<Omit<Placed, "at" | "pending">> {
     if (!r.p) return r
-    const c = await o.ask<{ covered?: boolean }>("covered", { window: r.win ?? 0, x: r.p.x, y: r.p.y }).catch(() => null)
+    const c = await o.ask("covered", { window: r.win ?? 0, x: r.p.x, y: r.p.y }, COVERED).catch(() => null)
     return { ...r, covered: !!c?.covered }
   }
   async function resolve(a: AgentPlace): Promise<Omit<Placed, "at" | "pending">> {
@@ -39,10 +41,10 @@ export function cursorPlaces(o: { ask: Ask; hidden: (a: { bundle?: string; name?
     if (typeof a.sx === "number" && typeof a.sy === "number") return { p: { x: a.sx, y: a.sy } }
     if (!a.app || o.hidden({ bundle: a.app, name: a.app })) return { p: null }
     if (a.find) {
-      const r = await o.ask<{ ok?: boolean; found?: Rect | null; window?: number; frame?: Rect | null }>("find", { window: a.window ?? 0, bundle: a.app, text: a.find })
+      const r = await o.ask("find", { window: a.window ?? 0, bundle: a.app, text: a.find }, FOUND)
       if (r.found) return { p: pointIn(r.found, true), win: r.window, frame: r.frame, find: true, target: r.found }
     }
-    const w = await o.ask<AppWindowInfo>("window", { window: a.window ?? 0, bundle: a.app })
+    const w = await o.ask("window", { window: a.window ?? 0, bundle: a.app }, WINDOW)
     if (!w.frame) return { p: null }
     const pk = parks.get(a.name), off = pk && pk.window === w.window ? { dx: pk.dx, dy: pk.dy } : undefined
     return { p: off ? atOffset(w.frame, off) : pointIn(w.frame, false), win: w.window, frame: w.frame, ...(off ? { off } : {}) }
@@ -72,12 +74,12 @@ export function cursorPlaces(o: { ask: Ask; hidden: (a: { bundle?: string; name?
     const wins = [...new Set([...placed].filter(([k, e]) => used.has(k) && e.win).map(([, e]) => e.win!))].sort()
     if (wins.join() === watched) return
     watched = wins.join()
-    void o.ask("watch", { windows: wins }).catch(() => {})
+    void o.ask("watch", { windows: wins }, OK).catch(() => {})
   }
   const refinding = new Map<number, ReturnType<typeof setTimeout>>()
   /** A watched window moved or resized: its points move with it now; an element in a resized one is found again once it settles. */
-  function windowMoved(m: Record<string, unknown>) {
-    const win = Number(m.window) || 0, f = m.frame as Rect | null
+  function windowMoved(m: Extract<ScreenEvent, { event: "moved" }>) {
+    const win = m.window, f = m.frame
     for (const e of placed.values()) {
       if (win && e.win !== win) continue
       if (m.gone || !f) { e.at = 0; continue }

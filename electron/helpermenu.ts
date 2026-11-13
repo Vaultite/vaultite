@@ -11,6 +11,7 @@ import { endWalk, startWalk, walkOn, walkScene } from "./walk.ts"
 import { asked, QUIET } from "./helperask.ts"
 import { DONE, host, op, prefs } from "./helperbase.ts"
 import { DECISIONS, HOLD } from "./homewire.ts"
+import { z } from "zod"
 import { live } from "./helperlive.ts"
 import { logger } from "../core/log.ts"
 
@@ -163,7 +164,7 @@ export function showTray(file: string) {
   tray = new Tray(icon)
   tray.setToolTip(app.getName())
   // (its section headers, Companion and Jobs, read as bold titles: menus.m)
-  void macAddon("menus", path.join(app.getPath("userData"), "bin")).then((m) => m.call({ cmd: "boldHeaders" }))
+  void macAddon("menus", path.join(app.getPath("userData"), "bin")).then((m) => m.call({ cmd: "boldHeaders" }, z.unknown()))
     .catch((e) => log.warn(`the menu's headers stay AppKit's (${(e as Error).message})`))
   tray.on("click", () => tray?.popUpContextMenu(Menu.buildFromTemplate(menuItems())))
 }

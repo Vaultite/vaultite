@@ -4,14 +4,15 @@ import { app, BrowserWindow, screen } from "electron"
 import path from "node:path"
 import { HEX } from "../core/desktop/screenmarks.ts"
 import { takeoverSwift } from "./swiftbuild.ts"
-import { lineHelper } from "./linehelper.ts"
+import { type Json, lineHelper } from "./linehelper.ts"
 import { overlayWindow } from "./overlaywin.ts"
 import { quiet, takePointer } from "./quiet.ts"
 import { privateApp } from "../core/privateapps.ts"
 import { hostOf, siteIn } from "../core/desktop/places.ts"
-import { aimedAt, type Answer, type Call, cardSpot, declined, handGrace, intentOf, keepsYes, kindOf, OFFER_MS, outward, PAUSED_MS, pausedLine, plan, type Probe, type Rect, refusal, REST_MS,
+import { aimedAt, type Answer, type Call, cardSpot, declined, handGrace, intentOf, keepsYes, kindOf, OFFER_MS, outward, PAUSED_MS, pausedLine, plan, type Rect, refusal, REST_MS,
   spotOf, type Step, tookText, types, probeThing, behindPlan, behindRefusal, cursorIn, inFront, LOOK_MS, type Readback, SETTLE_MS, unsureLine, verified,
-  type TakeoverMessage, type Window } from "./takeoverlogic.ts"
+  type TakeoverMessage, DID, PROBE, TAKEOVER_EVENT, WINDOW } from "./takeoverlogic.ts"
+import type { z } from "zod"
 
 type Point = { x: number; y: number }
 type Near = { id: string; role: string; label: string; frame: Rect }
@@ -35,12 +36,13 @@ const CAPTION_MS = 1200
 const helper = lineHelper({ binary: () => takeoverSwift.binary(path.join(app.getPath("userData"), "bin")),
   // (gone mid-drive: its guard went with it, so nothing more is done blind)
   exited: () => { if (drive) stop("helper") },
+  events: TAKEOVER_EVENT,
   event: (m) => {
-    if (m.event === "user") stop(`user-${String(m.why)}`)
+    if (m.event === "user") stop(`user-${m.why}`)
     else if (m.event === "busy") handsOn(m.why === "keys" ? "keys" : "mouse")
     else if (m.event === "rested") handsOff()
   } })
-const ask = <T = Record<string, unknown>>(call: Call, ms = 15_000): Promise<T> => helper.ask<T>(call, ms)
+const ask = <S extends z.ZodType>(call: Call, answer: S, ms = 15_000): Promise<z.output<S>> => helper.ask(call, answer, ms)
 export function stopTakeover() {
   stop("quit")
   helper.quit()
@@ -199,7 +201,7 @@ function stop(why: string) {
   handsOff()
   redraw()
   // (done: their pointer glides back where they left it, unless they've had it since; stopped by them, it's theirs)
-  if (helper.running()) void ask({ op: "release", back: d.moved && !why.startsWith("user") })
+  if (helper.running()) void ask({ op: "release", back: d.moved && !why.startsWith("user") }, DID)
 }
 /** A step behind their windows, as its card shows it (helper.ts draws it): the window's live picture, the agent's cursor
  *  in it (where the step acts, as fractions of the window), and what it does. */
@@ -266,7 +268,7 @@ async function calm(d: Drive): Promise<boolean | null> {
 async function driving(name: string, tint: string, at: Point): Promise<string | null> {
   if (drive && drive.name === name) { if (drive.idle) clearTimeout(drive.idle); drive.idle = null; return null }
   if (drive) stop("another")
-  const g = await ask<{ ok?: boolean }>({ op: "guard", on: true, grace: handGrace(yesClicked, Date.now()), rest: REST_MS })
+  const g = await ask({ op: "guard", on: true, grace: handGrace(yesClicked, Date.now()), rest: REST_MS }, DID)
   yesClicked = 0
   if (!g.ok) return "it can't tell when they take back the mouse (Vaultite needs Accessibility): it won't drive blind"
   hands = null
@@ -283,14 +285,15 @@ function idle() {
   if (d.fade) clearTimeout(d.fade)
   d.fade = setTimeout(() => { if (drive === d) { d.fade = null; d.caption = ""; redraw() } }, CAPTION_MS)
 }
-const pointerNow = (): Promise<Point> => ask<{ x?: number; y?: number }>({ op: "pointer" }).then((p) => ({ x: Number(p.x) || 0, y: Number(p.y) || 0 }))
+const pointerNow = (): Promise<Point> => ask({ op: "pointer" }, DID).then((p) => ({ x: p.x || 0, y: p.y || 0 }))
 const wait = (ms: number) => new Promise((done) => setTimeout(done, ms))
 const mid = (f: Rect): Point => ({ x: Math.round(f.x + f.width / 2), y: Math.round(f.y + f.height / 2) })
 
+type Done = { ok: boolean; [k: string]: Json }
 type Ask = { id: string; agent: string; tint: string; step: Step; ask?: string; apps: string[]; sites: string[] }
 /** Their yes, asked by `at` unless they gave it this exchange (a send, post or delete is asked each time, `out` naming
  *  it). null: go on; else what act answers. */
-async function agree(m: Ask, out: string | null, line: string, at: Point, host: TakeoverHost): Promise<Record<string, unknown> | null> {
+async function agree(m: Ask, out: string | null, line: string, at: Point, host: TakeoverHost): Promise<Done | null> {
   const agreed = consent?.agent === m.agent && Date.now() - consent.at < YES_MS
   if (out || !agreed) {
     if (stepOffer) answered(stepOffer, "no")
@@ -303,14 +306,13 @@ async function agree(m: Ask, out: string | null, line: string, at: Point, host: 
   return null
 }
 const privateOf = (m: Ask, host: TakeoverHost) => (a: { bundle: string; name: string; url?: string }) => host.isPrivate(a) || privateApp(a, m.apps) || (!!a.url && siteIn(hostOf(a.url), m.sites))
-async function run(m: Ask, host: TakeoverHost): Promise<Record<string, unknown>> {
+async function run(m: Ask, host: TakeoverHost): Promise<Done> {
   const { step } = m
   if (step.app) return runBehind(m, host)
   const probeAt: Call = step.el ? { op: "probe", frame: step.el.frame, role: step.el.role ?? "", label: step.el.label ?? "" }
     : step.at ? { op: "probe", frame: { ...step.at, width: 1, height: 1 }, role: "", label: "" } : { op: "probe", focused: true }
-  // (private: the screen plugin's apps, and the companion's own apps and sites, the server's)
   const hidden = privateOf(m, host)
-  const there = await ask<Probe>(probeAt)
+  const there = await ask(probeAt, PROBE)
   const no = refusal(step, there, hidden)
   if (no) return { ok: false, why: "refused", text: no }
   const spot: Point = spotOf(step, there) ?? await pointerNow()
@@ -322,22 +324,21 @@ async function run(m: Ask, host: TakeoverHost): Promise<Record<string, unknown>>
   const blind = await driving(m.agent, m.tint, spot)
   if (blind) return { ok: false, why: "refused", text: blind }
   const d = drive!
-  // (its cursor flies there first with its caption, so every step is seen and said)
   caption(d, intentOf(step, there))
   await wait(FLY_MS)
   if (d.stopped) return took(d.stopped)
   // (the offer may have waited: what's there now is checked again, and a send that wasn't offered isn't done)
-  const now = await ask<Probe>(probeAt)
+  const now = await ask(probeAt, PROBE)
   const changed = refusal(step, now, hidden) ?? (outward(step, now) && !out ? "it changed into a send, post or delete since you offered: offer it again" : null)
   if (changed) { idle(); return { ok: false, why: "refused", text: changed } }
   // (their typing while this step types is into its field: theirs, so it stops; else their keys only pause it)
-  await ask({ op: "expect", keys: types(step) })
+  await ask({ op: "expect", keys: types(step) }, DID)
   /** After waiting for their hands: where the step goes now (what's there looked at again), or why it can't go on. */
   const reaim = async (call: Call): Promise<Call | string> => {
-    const fresh = await ask<Probe>(probeAt), gone = refusal(step, fresh, hidden) ?? (outward(step, fresh) && !out ? "it changed into a send, post or delete while they used the mouse: offer it again" : null)
+    const fresh = await ask(probeAt, PROBE), gone = refusal(step, fresh, hidden) ?? (outward(step, fresh) && !out ? "it changed into a send, post or delete while they used the mouse: offer it again" : null)
     if (gone) return gone
     if (kindOf(call.op) === "keys") {
-      if (step.el) return (await ask({ ...probeAt, op: "focus" })).ok ? call : "its field can't take the keys again after they used them: look again"
+      if (step.el) return (await ask({ ...probeAt, op: "focus" }, DID)).ok ? call : "its field can't take the keys again after they used them: look again"
       return !now.frame || (fresh.frame && Math.abs(fresh.frame.x - now.frame.x) < 4 && Math.abs(fresh.frame.y - now.frame.y) < 4) ? call : "the keys went to another field while they typed: ask where to type"
     }
     if (call.x === undefined) return call
@@ -351,13 +352,13 @@ async function run(m: Ask, host: TakeoverHost): Promise<Record<string, unknown>>
     host.reply({ t: "takeover-at", id: m.id, agent: m.agent, sx: p.x, sy: p.y })
     return { ...call, ...p }
   }
-  let did: Record<string, unknown> | null = null, why = ""
+  let did: z.output<typeof DID> | null = null, why = ""
   for (const attempt of plan(step, now)) {
     let ok = true
     for (let call of attempt) {
       const kind = kindOf(call.op)
       if (kind === "pointer") d.moved = true
-      let r: Record<string, unknown> = {}
+      let r: z.output<typeof DID> = {}
       for (let tries = 0; tries < 20; tries++) {
         // (the pointer or the keys: only once their hands are off them; a step through Accessibility doesn't wait)
         if (kind !== "ax") {
@@ -369,11 +370,11 @@ async function run(m: Ask, host: TakeoverHost): Promise<Record<string, unknown>>
             call = aimed
           }
         }
-        r = await ask(call, 60_000)
+        r = await ask(call, DID, 60_000)
         if (d.stopped) return took(d.stopped)
         if (r.why !== "busy") break
         // (their hands came on it mid-way: what's typed stays, the rest goes once they're still)
-        if (call.op === "type" && Number(r.typed) > 0) call = { ...call, text: String(call.text).slice(Number(r.typed)) }
+        if (call.op === "type" && Number(r.typed) > 0) call = { ...call, text: String(call.text).slice(r.typed) }
       }
       if (!r.ok) { ok = false; why = String(r.why ?? ""); break }
       did = r
@@ -381,15 +382,14 @@ async function run(m: Ask, host: TakeoverHost): Promise<Record<string, unknown>>
     if (ok) { did ??= { how: "none" }; break }
     did = null
   }
-  void ask({ op: "expect", keys: false })
+  void ask({ op: "expect", keys: false }, DID)
   if (!did) { idle(); return { ok: false, why: "failed", text: why === "secure" ? "that's a password field: the companion never types secrets" : why === "vaultite" ? "that's Vaultite's own window: act there with --ui or --pane" : `it didn't work there (${why || "no way to"}): point at it again, or tell them how` } }
   idle()
-  // (what's there now, by fresh ids: the next step points at those)
   await wait(350)
   const near = await host.near(spot).catch(() => [])
-  const after = await ask<Probe>({ op: "probe", focused: true }).catch(() => null)
+  const after = await ask({ op: "probe", focused: true }, PROBE).catch(() => null)
   // (its element read back: whether the step did what it meant, the server judges from before and after)
-  const target = step.el ? probeThing(await ask<Probe>(probeAt).catch(() => null)) : null, was = probeThing(now)
+  const target = step.el ? probeThing(await ask(probeAt, PROBE).catch(() => null)) : null, was = probeThing(now)
   return { ok: true, how: did.how, ...(did.moved === false ? { moved: false } : {}), ...(near.length ? { near } : {}), ...(was ? { before: was } : {}), ...(target ? { target } : {}),
     ...(after?.ok && !hidden({ bundle: after.bundle ?? "", name: after.name ?? "", url: after.url }) ? { app: after.name, title: after.title } : {}) }
 }
@@ -411,7 +411,7 @@ function showCard(c: BehindCard, window: number) {
 /** Its window's picture, a few times a second while the card shows. */
 async function shoot(window: number, gen: number) {
   while (card && gen === shots) {
-    const r = await ask<{ ok?: boolean; img?: string; w?: number; h?: number }>({ op: "shot", window, width: 320 }, 4000)
+    const r = await ask({ op: "shot", window, width: 320 }, DID, 4000)
     if (!card || gen !== shots) return
     if (r.ok && r.img) { card = { ...card, img: r.img, aspect: r.w && r.h ? r.w / r.h : card.aspect }; redraw() }
     await wait(r.ok ? 300 : 1000)
@@ -425,9 +425,9 @@ function endCard(end: "done" | "unsure") {
   cardIdle = setTimeout(hideCard, DRIVE_MS)
 }
 
-async function runBehind(m: Ask, host: TakeoverHost): Promise<Record<string, unknown>> {
+async function runBehind(m: Ask, host: TakeoverHost): Promise<Done> {
   const step = m.step, app = step.app ?? ""
-  const w = await ask<Window>({ op: "window", app }), hidden = privateOf(m, host)
+  const w = await ask({ op: "window", app }, WINDOW), hidden = privateOf(m, host)
   const no = behindRefusal(app, w)
   if (no) return { ok: false, why: "refused", text: no }
   if (hidden({ bundle: w.bundle ?? "", name: w.name ?? "" })) return { ok: false, why: "refused", text: "that app is private: the companion never acts there" }
@@ -435,7 +435,7 @@ async function runBehind(m: Ask, host: TakeoverHost): Promise<Record<string, unk
   const probeAt: Call = step.find ? { op: "probe", find: step.find, role: step.role ?? "", ...at }
     : step.el ? { op: "probe", frame: step.el.frame, role: step.el.role ?? "", label: step.el.label ?? "", ...at }
     : step.at ? { op: "probe", frame: { ...step.at, width: 1, height: 1 }, role: "", label: "", ...at } : { op: "probe", focused: true, ...at }
-  const there = await ask<Probe>(probeAt)
+  const there = await ask(probeAt, PROBE)
   if (step.find && !there.ok) return { ok: false, why: "refused", text: `nothing in ${name} says "${step.find}": check its words, or point with --sx --sy` }
   // (found by its words: from here on it's that element, by its frame)
   const s: Step = { ...step, find: undefined, ...(step.find && there.frame ? { el: { frame: there.frame, role: there.role ?? "", label: there.label ?? "" } } : {}) }
@@ -455,25 +455,25 @@ async function runBehind(m: Ask, host: TakeoverHost): Promise<Record<string, unk
     await wait(FLY_MS)
     const probeEl: Call = s.el ? { op: "probe", frame: s.el.frame, role: s.el.role ?? "", label: s.el.label ?? "", ...at } : probeAt
     const read = async (): Promise<Readback> => {
-      const d = await ask<{ ok?: boolean; digest?: string }>({ op: "digest", ...at }), t = s.at ? null : await ask<Probe>(probeEl)
-      return { digest: d.ok ? d.digest : undefined, ...(t?.ok && !t.secure && typeof t.value === "string" ? { value: t.value } : {}),
-        ...(typeof t?.checked === "boolean" ? { checked: t.checked } : {}), ...(typeof t?.expanded === "boolean" ? { expanded: t.expanded } : {}) }
+      const d = await ask({ op: "digest", ...at }, DID), t = s.at ? null : await ask(probeEl, PROBE)
+      return { digest: d.ok ? d.digest : undefined, ...(t?.ok && !t.secure && t.value !== undefined ? { value: t.value } : {}),
+        ...(t?.checked !== undefined ? { checked: t.checked } : {}), ...(t?.expanded !== undefined ? { expanded: t.expanded } : {}) }
     }
     // (each way in turn, Accessibility first; each read back till its effect shows, else the next is tried)
     let before = await read(), how = "", why = "", ok = false
     for (const attempt of behindPlan(s, there)) {
       if (!attempt.length) { ok = true; how = "none"; break }
-      let r: Record<string, unknown> = { ok: true }
-      for (const call of attempt) { r = await ask({ ...call, ...at }, 60_000); if (!r.ok) break }
+      let r: z.output<typeof DID> = { ok: true }
+      for (const call of attempt) { r = await ask({ ...call, ...at }, DID, 60_000); if (!r.ok) break }
       if (!r.ok) { why = String(r.why ?? ""); continue }
-      how = String(r.how ?? "")
+      how = r.how ?? ""
       for (const since = Date.now(); !ok && Date.now() - since < SETTLE_MS; await wait(LOOK_MS)) ok = verified(s, before, await read())
       if (ok) break
       before = await read()
     }
     if (ok) {
       endCard("done")
-      const target = s.el ? probeThing(await ask<Probe>(probeEl).catch(() => null)) : null, was = probeThing(there)
+      const target = s.el ? probeThing(await ask(probeEl, PROBE).catch(() => null)) : null, was = probeThing(there)
       return { ok: true, how, behind: true, app: name, title: w.title, ...(was ? { before: was } : {}), ...(target ? { target } : {}) }
     }
     endCard("unsure")
@@ -484,7 +484,7 @@ async function runBehind(m: Ask, host: TakeoverHost): Promise<Record<string, unk
     const said = await offer(stepOffer, { line: unsureLine(name), sub: driveSub(m.agent), yes: "Bring it forward", name: m.agent, tint: m.tint, at: await pointerNow() },
       () => host.reply({ t: "takeover-asking", id: m.id, agent: m.agent, ms: OFFER_MS }))
     if (said !== "yes") return { ok: false, why: "unsure", text: `it couldn't tell whether that worked in ${name} behind their window${why ? ` (${why})` : ""}: look (vau companion check), or ask them` }
-    await ask({ op: "raise", ...at })
+    await ask({ op: "raise", ...at }, DID)
     hideCard()
     await wait(300)
     consent = { agent: m.agent, at: Date.now() }

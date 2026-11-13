@@ -5,21 +5,24 @@ import { execFile } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { screenSwift } from "./swiftbuild.ts"
-import { lineHelper } from "./linehelper.ts"
+import { type Json, lineHelper } from "./linehelper.ts"
+import { FOCUS, type RECT, SCREEN_EVENT, type ScreenEvent, SHOT, type WINDOW } from "./screenwire.ts"
+import type { z } from "zod"
 
-export type Rect = { x: number; y: number; width: number; height: number }
+export type Rect = z.infer<typeof RECT>
 /** An app's window as the helper tells it: its app (bundle id, name), number and title; `vaultite`: one of this app's. */
-export type AppWindowInfo = { bundle: string; name: string; pid: number; window: number; title: string; frame?: Rect | null; vaultite?: boolean }
+export type AppWindowInfo = z.infer<typeof WINDOW>
 /** The field with the keyboard: whether words can go in (`field`), a password's (`secure`), the text before its caret. */
-export type Focus = AppWindowInfo & { field: boolean; editable?: boolean; secure?: boolean; role?: string; before?: string }
+export type Focus = z.infer<typeof FOCUS>
+export type Req = { [k: string]: Json }
 
-let listener: (m: Record<string, unknown>) => void = () => {}
+let listener: (m: ScreenEvent) => void = () => {}
 export const onScreenEvent = (fn: typeof listener) => { listener = fn }
 
-const helper = lineHelper({ binary: () => screenSwift.binary(path.join(app.getPath("userData"), "bin")), event: (m) => listener(m), exited: () => listener({ event: "exit" }) })
+const helper = lineHelper({ binary: () => screenSwift.binary(path.join(app.getPath("userData"), "bin")), events: SCREEN_EVENT, event: (m) => listener(m), exited: () => listener({ event: "exit" }) })
 export const startScreen = helper.started
 /** Ask the helper (a hung app's AX calls time out in it: 1 s each). */
-export const screenAsk = <T = Record<string, unknown>>(op: string, req: Record<string, unknown> = {}, ms = 10_000): Promise<T> => helper.ask<T>({ ...req, op }, ms)
+export const screenAsk = <S extends z.ZodType>(op: string, req: Req, answer: S, ms = 10_000): Promise<z.output<S>> => helper.ask({ ...req, op }, answer, ms)
 export const stopScreen = helper.quit
 
 /** A window's picture, as a PNG file in `dir` (the last few kept); null when macOS gave none (no screen recording). */
@@ -45,7 +48,7 @@ export type ShotMark = { rings: Rect[] } | { pointer: { x: number; y: number } }
 export async function displayShot(p: { x: number; y: number }, exclude: number[], dir: string, crop?: Rect, scale = 1, mark?: ShotMark): Promise<{ file: string; frame: Rect } | null> {
   fs.mkdirSync(dir, { recursive: true })
   const file = path.join(dir, `${scale === 1 ? "display" : "close"}-${Math.round(p.x)}-${Date.now()}.png`)
-  const r = await screenAsk<{ ok?: boolean; file?: string; frame?: Rect }>("display", { x: p.x, y: p.y, exclude, file, ...(crop ? { crop } : {}), ...(scale === 1 ? {} : { scale }), ...(mark ? { mark } : {}) }, 8000)
+  const r = await screenAsk("display", { x: p.x, y: p.y, exclude, file, ...(crop ? { crop } : {}), ...(scale === 1 ? {} : { scale }), ...(mark ? { mark } : {}) }, SHOT, 8000)
   prune(dir)
   return r.ok && r.frame && fs.existsSync(file) && fs.statSync(file).size > 0 ? { file, frame: r.frame } : null
 }

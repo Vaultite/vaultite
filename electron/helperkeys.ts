@@ -1,16 +1,17 @@
 import { fnActsToo, isChord, keyCodes, modKeys, type FnEvent, type ModEvent } from "../core/fnkey.ts"
 import { dictationKeys, tappedKeys } from "./helperlogic.ts"
 import { fnUsage } from "./screen.ts"
-import { LIVE, QUIET, screenAsk, stubs } from "./helperask.ts"
+import { LIVE, QUIET, screenDo, stubs } from "./helperask.ts"
 import { dictating, host, notice, prefs } from "./helperbase.ts"
 import { act, key, page, pageIs, session, starting } from "./helpersession.ts"
 import { talkHeard } from "./helpertalk.ts"
+import type { ScreenEvent } from "./screenwire.ts"
 
 /** The screen helper's tap hears the picked keys only: the dictation keys (none while Dictate anywhere is off) and the
  *  Talk keys, a key alone by its code, a chord by its name. */
 const heardKeys = () => dictationKeys(prefs)
 const keysNow = () => `${heardKeys().join()}|${prefs.talk.join()}`
-export const listen = () => { const all = tappedKeys(prefs); return LIVE ? screenAsk("fn", { keys: keyCodes(all), chords: all.filter(isChord) }) : Promise.resolve({}) }
+export const listen = () => { const all = tappedKeys(prefs); return LIVE ? screenDo("fn", { keys: keyCodes(all), chords: all.filter(isChord) }) : Promise.resolve() }
 let mods = modKeys(heardKeys()), talkMods = modKeys(prefs.talk), followed = keysNow()
 export function followKeys() {
   if (keysNow() === followed) return
@@ -22,8 +23,8 @@ export function followKeys() {
 let settling: ReturnType<typeof setTimeout> | null = null, talkSettling: ReturnType<typeof setTimeout> | null = null
 const asFn = (events: FnEvent[]) => { for (const e of events) fnHeard(e, false) }
 const asTalk = (events: FnEvent[]) => { for (const e of events) talkHeard(e) }
-export function modHeard(m: Record<string, unknown>) {
-  const r = mods.heard(m as ModEvent), t = talkMods.heard(m as ModEvent)
+export function modHeard(m: ModEvent) {
+  const r = mods.heard(m), t = talkMods.heard(m)
   if (settling) clearTimeout(settling)
   settling = r.wait ? setTimeout(() => { settling = null; asFn(mods.settled()) }, r.wait) : null
   if (talkSettling) clearTimeout(talkSettling)
@@ -32,25 +33,25 @@ export function modHeard(m: Record<string, unknown>) {
   asTalk(t.fn)
 }
 /** A chord (⌃⌥, fn⌃): the companion's if it's a Talk key, else dictation's, as a key's press and release. */
-export function chordHeard(m: Record<string, unknown>) {
-  const name = String(m.name), e: FnEvent = m.other === true ? { other: true } : { down: m.on === true, ...typeof m.t === "number" ? { t: m.t } : {} }
+export function chordHeard(m: Extract<ScreenEvent, { event: "chord" }>) {
+  const name = m.name, e: FnEvent = m.other ? { other: true } : { down: m.on, ...(m.t !== undefined ? { t: m.t } : {}) }
   if (prefs.talk.includes(name)) talkHeard(e)
   else if (heardKeys().includes(name)) fnHeard(e)
 }
-export function fnHeard(m: Record<string, unknown>, byFn = true) {
+export function fnHeard(m: FnEvent, byFn = true) {
   if (!prefs.fn || !host?.home()) return
   const to = page && !page.isDestroyed() ? page : null
   // (Control's double tap: hands-free, or off; the window's while it dictates or has the keyboard, never because it
   // took an earlier press: a double tap brings no down of its own)
-  if (m.double === true) {
+  if ("double" in m) {
     const win = session || starting ? null : dictating() ? to : keyboardPage()
     if (win) { pageIs(win); return void win.send("vaultite:fn", { double: true }) }
     if (session || starting) return act("stop")
     act("start")
     return act("free")
   }
-  if (m.other === true) { const shortcut = m.shortcut === true; if (to) to.send("vaultite:fn", { other: true, shortcut }); else act(key.other(Date.now(), shortcut)); return }
-  if (m.down === true) {
+  if ("other" in m) { const shortcut = m.shortcut === true; if (to) to.send("vaultite:fn", { other: true, shortcut }); else act(key.other(Date.now(), shortcut)); return }
+  if (m.down) {
     if (!session) pageIs(keyboardPage())
     if (page && !session) return void page.send("vaultite:fn", { down: true, held: m.held === true })
     pageIs(null)

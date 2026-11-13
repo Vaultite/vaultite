@@ -1,34 +1,19 @@
 // The QUIET helper fed its home server's messages, real and malformed: what it holds and says, as JSON.
 import { isDeepStrictEqual } from "node:util"
-import { homeServer } from "./server.ts"
+import { done, J, out, quietHelper, ROOT, threw, tick, until } from "./quiet.ts"
 
-const crashes: string[] = []
-process.on("uncaughtException", (e) => crashes.push(e.message))
-process.on("unhandledRejection", (e) => crashes.push(e instanceof Error ? e.message : String(e)))
-setTimeout(() => { process.stderr.write(`still running after 60 s: ${Object.keys(out).at(-1)} was the last done\n`); process.exit(2) }, 60_000).unref()
-const ROOT = "../../../../electron"
-const H = await import(`${ROOT}/helper.ts`), L = await import(`${ROOT}/helperlive.ts`), B = await import(`${ROOT}/helperbase.ts`)
-const A = await import(`${ROOT}/helperask.ts`), V = await import(`${ROOT}/helpervoice.ts`), K = await import(`${ROOT}/knockhelper.ts`), M = await import(`${ROOT}/helpermenu.ts`)
-const home = await homeServer()
-const J = JSON.stringify
+const { H, home } = await quietHelper()
+const L = await import(`${ROOT}/helperlive.ts`), B = await import(`${ROOT}/helperbase.ts`), A = await import(`${ROOT}/helperask.ts`)
+const V = await import(`${ROOT}/helpervoice.ts`), K = await import(`${ROOT}/knockhelper.ts`), M = await import(`${ROOT}/helpermenu.ts`)
 const BACKGROUND = new Set(["covered", "windows", "notch", "mics"])
-const tick = (ms = 30) => new Promise((done) => setTimeout(done, ms))
-async function until(ok: () => boolean, ms = 2000) { for (const end = Date.now() + ms; !ok() && Date.now() < end;) await tick(10) }
-const noop = () => {}
-const dictation = new Proxy({}, { get: () => () => noop })
-await H.startHelper({ dictation, home: () => ({ port: home.port, path: "/v", name: "Lighthouse" }), openHome: noop, focusedPage: () => null, homeWindow: () => null,
-  event: noop, prefs: () => ({}), setPrefs: noop, quit: noop, icon: "" })
-await until(() => home.sockets() > 0)
-await until(() => home.said.length >= 1)
 
 const full = () => ({ agents: [...L.live.state.agents.values()], notes: [...L.live.state.notes.values()], said: L.live.state.said, jobs: L.live.state.jobs })
 const state = () => {
   const s = L.live.state
   const ids = (xs: { id?: string }[] | null) => (Array.isArray(xs) ? xs.map((x) => x?.id) : xs)
   return { mode: s.mode, name: s.name, agents: [...s.agents.entries()].map(([k, a]) => `${k}:${a?.tint}:${a?.state}`), notes: [...s.notes.keys()], said: ids(s.said), jobs: ids(s.jobs),
-    badge: M.badged, voice: B.prefs.voice.mode, crashes: [...new Set(crashes.splice(0))] }
+    badge: M.badged, voice: B.prefs.voice.mode, crashes: threw() }
 }
-const out: { [name: string]: ReturnType<typeof JSON.parse> } = {}
 async function sent(name: string, ...messages: string[]) {
   const from = home.said.length, asked = A.screenAsked.length
   for (const m of messages) { home.send(m); await tick() }
@@ -126,7 +111,7 @@ async function refreshed(name: string, answers: [string, unknown][]) {
   const now = Object.entries(B.prefs).map(([k, v]): [string, string] => [k, J(v)])
   defaults ??= new Map(now)
   const prefs = Object.fromEntries(now.filter(([k, v]) => v !== defaults?.get(k)).map(([k, v]) => [k, JSON.parse(v)]))
-  out[name] = { prefs, menu: menu(), muted: M.mutedUntil > Date.now(), crashes: [...new Set(crashes.splice(0))] }
+  out[name] = { prefs, menu: menu(), muted: M.mutedUntil > Date.now(), crashes: threw() }
 }
 function menu() {
   try { return M.menuItems().map((i: { label?: string; type?: string }) => i.label?.replace(/^Muted until .*/, "Muted until …") ?? i.type) } catch (e) { return `threw: ${e instanceof Error ? e.message : e}` }
@@ -145,5 +130,4 @@ await refreshed("bad-settings-null", [["settings.get plugin/dictation", null], [
 
 H.stopHelper()
 home.close()
-process.stdout.write(JSON.stringify(out) + "\n")
-process.exit(0)
+done()

@@ -2,6 +2,7 @@
 // how each step is done (Accessibility first, then the pointer or the keys).
 import { actionsOfAx, roleOfAx, type Thing } from "../core/desktop/uimodel.ts"
 import { z } from "zod"
+import type { Call } from "./linehelper.ts"
 
 export type Rect = { x: number; y: number; width: number; height: number }
 /** A step the companion asked for: at an element an ask listed (`el`), a screen point (`at`), or the field with the
@@ -35,8 +36,17 @@ export type Probe = { ok: boolean; why?: string; bundle?: string; name?: string;
   expanded?: boolean; selected?: boolean; disabled?: boolean; value?: string
   /** The page or document its window shows (a browser's address): a private site is never acted on. */
   url?: string }
-/** One request to takeover.swift. */
-export type Call = { op: string } & Record<string, unknown>
+export type { Call }
+const opt = <T extends z.ZodType>(s: T) => s.optional().catch(undefined)
+const TEXT = opt(z.string()), NUM = opt(z.number()), FLAG = opt(z.boolean())
+export const PROBE = z.looseObject({ ok: z.boolean().catch(false), why: TEXT, bundle: TEXT, name: TEXT, pid: NUM, vaultite: FLAG, role: TEXT, roleName: TEXT, subrole: TEXT, secure: FLAG,
+  label: TEXT, frame: RECT.nullish().catch(undefined), actions: opt(z.array(z.string())), valueSettable: FLAG, checked: FLAG, web: FLAG, window: NUM, title: TEXT, expanded: FLAG,
+  selected: FLAG, disabled: FLAG, value: TEXT, url: TEXT }) satisfies z.ZodType<Probe>
+export const WINDOW = z.looseObject({ ok: z.boolean().catch(false), why: TEXT, pid: NUM, window: NUM, frame: opt(RECT), title: TEXT, bundle: TEXT, name: TEXT, front: FLAG, covered: NUM,
+  behind: FLAG, vaultite: FLAG }) satisfies z.ZodType<Window>
+export const DID = z.looseObject({ ok: FLAG, why: TEXT, how: TEXT, typed: NUM, moved: FLAG, digest: TEXT, img: TEXT, w: NUM, h: NUM, x: NUM, y: NUM })
+export const TAKEOVER_EVENT = z.discriminatedUnion("event", [z.object({ event: z.literal("user"), why: said("") }), z.object({ event: z.literal("busy"), why: TEXT }),
+  z.object({ event: z.literal("rested") })])
 
 export const STEPS = ["click", "dblclick", "rightclick", "hover", "fill", "type", "press", "check", "uncheck", "expand", "collapse", "scroll", "focus"]
 const TYPING = new Set(["fill", "type"])

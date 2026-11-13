@@ -21,6 +21,12 @@ const IDLE_MS = 10 * 60_000
 export type VoicePrefs = { mode: "auto" | "always" | "off"; provider: Provider | "auto"; name: string; eleven: { voice: string; model: string }; speed: number }
 export type Provider = "elevenlabs" | "soniox"
 /** The server's keys for each cloud voice (companion/voice): what it has. */
+const opt = <T extends z.ZodType>(s: T) => s.optional().catch(undefined)
+const N = opt(z.number()), WORDS = opt(z.string())
+const PLAYER_LINE = z.object({ type: WORDS, n: N, v: N, at: N, s: N, why: WORDS, again: N, name: WORDS, transport: WORDS, rate: N })
+type Command = { cmd: "pcm"; n: number; data: string } | { cmd: "say"; n: number; text: string; language?: string; speed: number } | { cmd: "end"; n: number } | { cmd: "stop" }
+  | { cmd: "yield"; n: number; grace: number }
+export type Played = Command | { cmd: "pcm"; n: number }
 const CLOUD = z.object({ url: z.string(), key: z.string() })
 const KEYS = z.object({ elevenlabs: CLOUD.optional().catch(undefined), soniox: CLOUD.extend({ model: z.string() }).optional().catch(undefined) }).catch({})
 
@@ -39,7 +45,7 @@ export function companionVoice(o: {
   told?: (e: { t: "sound"; at: number; by: string; out?: string } | { t: "fallback"; why: string; from: string; to: string; slow?: true } | { t: "reroute"; why: string; again: number }
     | { t: "silent"; by: string; why?: string }) => void
   /** A scripted copy's (VAULTITE_QUIET): what it would play goes here, and nothing plays. */
-  record?: (m: Record<string, unknown>) => void
+  record?: (m: Played) => void
 }) {
   let child: ChildProcess | null = null, starting: Promise<ChildProcess | null> | null = null, idle: ReturnType<typeof setTimeout> | null = null
   let keys: { at: number; port: number; k: z.infer<typeof KEYS> } | null = null
@@ -79,7 +85,10 @@ export function companionVoice(o: {
         for (let i; (i = buf.indexOf("\n")) >= 0;) {
           const line = buf.slice(0, i)
           buf = buf.slice(i + 1)
-          try { heard(JSON.parse(line)) } catch { /* not a line of its */ }
+          let json: unknown
+          try { json = JSON.parse(line) } catch { continue }
+          const m = PLAYER_LINE.safeParse(json)
+          if (m.success) heard(m.data)
         }
       })
       c.stdin!.on("error", () => {})
@@ -95,33 +104,33 @@ export function companionVoice(o: {
     }, (e) => { log.warn(`its helper isn't here (${messageOf(e)})`); return null }).finally(() => { starting = null })
     return starting
   }
-  function heard(m: { type?: string; n?: number; v?: number; at?: number; s?: number; why?: string; again?: number; name?: string; transport?: string; rate?: number }) {
-    const k = typeof m.n === "number" ? ofPlayer.get(m.n) : undefined, mine = k?.startsWith("v") ? Number(k.slice(1)) : null
-    if (m.type === "start" && typeof m.n === "number" && typeof m.at === "number") {
+  function heard(m: z.infer<typeof PLAYER_LINE>) {
+    const k = m.n !== undefined ? ofPlayer.get(m.n) : undefined, mine = k?.startsWith("v") ? Number(k.slice(1)) : null
+    if (m.type === "start" && m.n !== undefined && m.at !== undefined) {
       begun.add(m.n)
       if (mine !== null) v.played(mine, m.at)
       if (sounded !== gen && mine !== null) { sounded = gen; o.told?.({ t: "sound", at: m.at, by: whose(v.tier()), ...(output ? { out: output } : {}) }) }
     }
-    else if (m.type === "length" && typeof m.n === "number" && typeof m.s === "number") { if (mine !== null) v.length(mine, m.s) }
-    else if (m.type === "level") { if (speaking || playing.size) tell(playing.size > 0, Number(m.v) || 0) }
-    else if (m.type === "done" && typeof m.n === "number") {
+    else if (m.type === "length" && m.n !== undefined && m.s !== undefined) { if (mine !== null) v.length(mine, m.s) }
+    else if (m.type === "level") { if (speaking || playing.size) tell(playing.size > 0, m.v ?? 0) }
+    else if (m.type === "done" && m.n !== undefined) {
       if (worded.has(m.n) && !begun.has(m.n) && mine !== null) o.told?.({ t: "silent", by: whose(v.tier()) })
       worded.delete(m.n); begun.delete(m.n)
       playing.delete(m.n); forget(m.n); if (!playing.size) tell(false, 0)
     }
     else if (m.type === "stopped") { playing.clear(); worded.clear(); begun.clear(); tell(false, 0) }
-    else if (m.type === "output") output = `${m.name} (${m.transport}${m.rate ? `, ${Math.round(Number(m.rate) / 1000)} kHz` : ""})`
-    else if (m.type === "rerouted") o.told?.({ t: "reroute", why: String(m.why ?? ""), again: Number(m.again) || 0 })
+    else if (m.type === "output") output = `${m.name} (${m.transport}${m.rate ? `, ${Math.round(m.rate / 1000)} kHz` : ""})`
+    else if (m.type === "rerouted") o.told?.({ t: "reroute", why: m.why ?? "", again: m.again || 0 })
   }
   function tell(on: boolean, v: number) { speaking = on; o.level(on, on ? v : 0) }
   /** Commands go once its helper is up, in order. */
   let line = Promise.resolve()
-  function send(m: Record<string, unknown>) {
+  function send(m: Command) {
     // (a scripted copy plays nothing: a piece is heard as it's given, as a file is written (VOICE_OUT), and played once ended)
     if (o.record) {
       o.record(m.cmd === "pcm" ? { cmd: "pcm", n: m.n } : m)
-      if ((m.cmd === "pcm" || m.cmd === "say") && !recorded.has(m.n as number)) { recorded.add(m.n as number); heard({ type: "start", n: m.n as number, at: Date.now() }) }
-      if (m.cmd === "end") heard({ type: "done", n: m.n as number })
+      if ((m.cmd === "pcm" || m.cmd === "say") && !recorded.has(m.n)) { recorded.add(m.n); heard({ type: "start", n: m.n, at: Date.now() }) }
+      if (m.cmd === "end") heard({ type: "done", n: m.n })
       if (m.cmd === "stop") recorded.clear()
       return
     }

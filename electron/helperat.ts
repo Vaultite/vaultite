@@ -15,6 +15,7 @@ import { happened, timelineOn } from "./timeline.ts"
 import { displayShot, QUIET, screenAsk, SHOTS } from "./helperask.ts"
 import { type Agent, draw, front, hidden, host, type Shot } from "./helperbase.ts"
 import { live } from "./helperlive.ts"
+import { ELEMENTS, type ScreenEvent, TEXT, UNDER, WINDOW, WINDOWS } from "./screenwire.ts"
 import type { LiveMessage } from "./homewire.ts"
 
 /** A closer look at what an ask points at (helperlogic.ts closeCrop): what they drew round, else by the pointer, at more
@@ -62,14 +63,14 @@ export async function openOn(m: Extract<LiveMessage, { t: "open" }>) {
   for (const until = Date.now() + 8000; Date.now() < until;) {
     await new Promise((r) => setTimeout(r, 150))
     if (!want && !(front && front.window !== was)) continue
-    w = await screenAsk<AppWindowInfo>("window", { window: 0, bundle: want || front?.bundle || "" }).catch(() => null)
+    w = await screenAsk("window", { window: 0, bundle: want || front?.bundle || "" }, WINDOW).catch(() => null)
     if (w?.window) break
   }
   if (!w?.window || hidden(w)) return reply({ ok: true, how: "open" })
   // (an app already open shows another pane in the same window: its title changes; then its elements, once they settle)
   for (const until = Date.now() + 1500; was === w.window && Date.now() < until && w.title === wasTitle;) {
     await new Promise((r) => setTimeout(r, 150))
-    w = (await screenAsk<AppWindowInfo>("window", { window: w.window }).catch(() => null)) ?? w
+    w = (await screenAsk("window", { window: w.window }, WINDOW).catch(() => null)) ?? w
   }
   const f = w.frame
   let near: Near[] = []
@@ -86,10 +87,10 @@ async function nearIn(f: Rect, window: number) {
 /** A click or a key while a companion's wait listens: a click with what's under it (never in a private app or
  *  Vaultite's own window, which tells its own); a key only that one was typed. */
 let typedAt = 0
-export async function inputHeard(m: Record<string, unknown>) {
+export async function inputHeard(m: Extract<ScreenEvent, { event: "input" }>) {
   if (m.kind === "type") { if (Date.now() - typedAt < 300) return; typedAt = Date.now() }
   if (m.kind !== "click") return void live.say({ t: "input", kind: m.kind })
-  const x = Number(m.x), y = Number(m.y), u = await screenAsk<Under>("under", { x, y }).catch(() => null)
+  const x = Number(m.x), y = Number(m.y), u = await screenAsk("under", { x, y }, UNDER).catch(() => null)
   if (u?.vaultite || (u?.ok && hidden(u))) return
   live.say({ t: "input", kind: "click", x, y, ...(u?.ok && u.label ? { label: u.label, role: u.role } : {}) })
 }
@@ -100,17 +101,16 @@ export async function findIn(m: Extract<LiveMessage, { t: "find" }>) {
   const el = byLabel(await axThings(p, 5000, 400, nearWindow), m.text)
   live.say({ t: "takeover-done", id: m.id, ...(el ? { ok: true, found: { id: "", ...el } } : { ok: false, why: "none" }) })
 }
-type Under = { ok?: boolean; vaultite?: boolean; bundle?: string; name?: string; role?: string; label?: string; in?: string }
 /** What's under a point of the screen, in words (`Finder: folder "Taxes", in "Desktop"`); null on Vaultite, nothing, or a
  *  private app's. */
 export async function underAt(p: Point): Promise<{ text: string; bundle: string; name: string } | null> {
-  const u = await screenAsk<Under>("under", { x: p.x, y: p.y }).catch(() => null)
+  const u = await screenAsk("under", { x: p.x, y: p.y }, UNDER).catch(() => null)
   if (!u?.ok || u.vaultite || hidden(u)) return null
   const what = [u.role, u.label && JSON.stringify(u.label)].filter(Boolean).join(" ")
   if (!what) return null
   return { text: `${u.name || u.bundle}: ${what}${u.in && u.in !== u.label ? `, in ${JSON.stringify(u.in)}` : ""}`, bundle: u.bundle ?? "", name: u.name ?? "" }
 }
-const screenWindows = async () => (await screenAsk<{ windows?: ScreenWindow[] }>("windows").catch(() => null))?.windows ?? []
+const screenWindows = async () => (await screenAsk("windows", {}, WINDOWS).catch(() => null))?.windows ?? []
 /** What a picture or a recording leaves out: our windows and a private app's (capture.swift leaves out their whole app too). */
 const leftOut = (all: ScreenWindow[]) => [...overlayNumbers(), ...all.filter((w) => hidden(w)).map((w) => w.window)]
 export const excluded = async () => leftOut(await screenWindows())
@@ -128,7 +128,7 @@ export let nearPoint: Point | null = null, nearWindow = 0
 /** Every thing Accessibility lists in the window under `p` (not Vaultite's), nearest first: what a check or an anchor
  *  reads in another app. */
 export async function axThings(p: Point, radius = 5000, most = 400, window = 0): Promise<Near[]> {
-  const r = await screenAsk<{ elements?: unknown[] }>("near", { x: p.x, y: p.y, radius, max: most, ...(window ? { window } : {}) }).catch(() => null)
+  const r = await screenAsk("near", { x: p.x, y: p.y, radius, max: most, ...(window ? { window } : {}) }, ELEMENTS).catch(() => null)
   return (r?.elements ?? []).flatMap((e) => thingFrom(e) ?? [])
 }
 /** What Accessibility finds near `p`, nearest first, each with an id the agent points by (companion say --ax a3). */
@@ -144,7 +144,7 @@ export async function pointedAt(name: string, p: Point, w: AppWindowInfo | null,
   const win = w?.window && !w.vaultite ? w : null
   if (win && hidden(win)) return { app: "private" }
   if (parks && win?.frame) park(name, win.window, offsetIn(win.frame, p))
-  const [text, { shot, floating }, under, axNear, inApp] = await Promise.all([win ? screenAsk<{ ok?: boolean; text?: string }>("text", { window: win.window, max: 20_000 }) : null, shotAt(p), underAt(p), nearAt(p),
+  const [text, { shot, floating }, under, axNear, inApp] = await Promise.all([win ? screenAsk("text", { window: win.window, max: 20_000 }, TEXT) : null, shotAt(p), underAt(p), nearAt(p),
     w?.vaultite ? inAppAt(p) : null])
   // (over Vaultite's window, Accessibility reads nothing of it: its page names what's near, by the same ids)
   const { near: appNear, ...there } = inApp ?? {}, near = Array.isArray(appNear) && appNear.length ? pageNear(appNear) : axNear
@@ -194,10 +194,10 @@ export function placeTold(from: WebContents, m: { id?: unknown; place?: unknown 
 }
 /** What a walk's item was over (never the display's picture: that's walk.ts', only with screen recording allowed). */
 export async function walkPlace(p: Point): Promise<{ place: WalkPlace; near: Thing[]; window?: Rect; private?: boolean }> {
-  const w = await screenAsk<AppWindowInfo>("at", { x: p.x, y: p.y }).catch(() => null)
+  const w = await screenAsk("at", { x: p.x, y: p.y }, WINDOW).catch(() => null)
   const win = w?.window && !w.vaultite ? w : null
   if (win && hidden(win)) return { place: { appName: "a private app" }, near: [], private: true }
-  const [text, under, near, inApp] = await Promise.all([win ? screenAsk<{ ok?: boolean; text?: string }>("text", { window: win.window, max: 3000 }).catch(() => null) : null, underAt(p),
+  const [text, under, near, inApp] = await Promise.all([win ? screenAsk("text", { window: win.window, max: 3000 }, TEXT).catch(() => null) : null, underAt(p),
     w?.vaultite ? null : axThings(p, 160, 30, win?.window ?? 0),
     w?.vaultite ? inAppAt(p) : null])
   const str = (v: unknown) => (typeof v === "string" ? v : undefined)

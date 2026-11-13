@@ -12,7 +12,7 @@ import type { AppWindowInfo } from "./screen.ts"
 import { REALTIME_KEY } from "./homewire.ts"
 import { takeoverOffering } from "./takeover.ts"
 import type { TakeoverMessage } from "./takeoverlogic.ts"
-import { companionVoice } from "./voice.ts"
+import { companionVoice, type Played } from "./voice.ts"
 import { QUIET, screenAsk } from "./helperask.ts"
 import { type Agent, based, BUSY, draw, type Exchange, expectedWords, hint, host, type Note, notice, prefs, prefsAre, type Summon } from "./helperbase.ts"
 import { axThings, lastNear } from "./helperat.ts"
@@ -48,7 +48,7 @@ export function sayHere(text: string, card = false) {
   speaker.text(id, text)
   speaker.end(id)
 }
-export const spoken: Record<string, unknown>[] = []
+export const spoken: Played[] = []
 /** The press whose ask went last, and when its key was let go: its answer's first sound is logged with it (`sounded`),
  *  and what its voice went through. */
 export let lastAsk: { press: Press; up: number; sounded?: boolean } | null = null
@@ -75,7 +75,7 @@ export const speaker = companionVoice({
     x.sounded = true
     x.press.after("sound", { by: e.by, afterUp: Math.round(e.at - x.up), ...(e.out ? { out: e.out } : {}) })
   },
-  ...(QUIET ? { record: (m: Record<string, unknown>) => void spoken.push(m) } : {}),
+  ...(QUIET ? { record: (m: Played) => void spoken.push(m) } : {}),
 })
 const VOICES: Record<string, string> = { elevenlabs: "ElevenLabs", soniox: "Soniox", mac: "this Mac" }
 /** Its voice failing, told once a run: a cloud voice that didn't speak (not one merely slow), or none making a sound,

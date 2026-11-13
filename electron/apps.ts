@@ -3,7 +3,8 @@ import { app, globalShortcut, screen } from "electron"
 import { AppWindow } from "./appwindow.ts"
 import { coverTranslucent } from "./translucency.ts"
 import { takePointer } from "./quiet.ts"
-import { lineHelper } from "./linehelper.ts"
+import { type Call, lineHelper } from "./linehelper.ts"
+import { z } from "zod"
 import { appWindowsSwift } from "./swiftbuild.ts"
 import fs from "node:fs"
 import path from "node:path"
@@ -52,11 +53,14 @@ function setThrough(win: AppWindow, on: boolean, tell = false) {
   else if (!any && watching) { clearInterval(watching); watching = null }
 }
 
-const helper = lineHelper({ binary: () => appWindowsSwift.binary(path.join(app.getPath("userData"), "bin")), stderr: "inherit", event: heard,
+const SAID = { wid: z.unknown().optional(), title: z.unknown().optional(), bundle: z.unknown().optional() }
+const EVENT = z.looseObject({ event: z.string(), here: z.unknown().optional(), ...SAID })
+const ANSWER = z.looseObject({ ok: z.unknown().optional(), frame: z.unknown().optional(), ...SAID })
+const helper = lineHelper({ binary: () => appWindowsSwift.binary(path.join(app.getPath("userData"), "bin")), stderr: "inherit", events: EVENT, event: heard,
   // (an app that doesn't answer the Accessibility API holds the helper; adopt can take 15 s)
   timeout: { ms: 30_000, why: "helper" },
   exited: () => { for (const w of [...shown.keys()]) gone(w) } })
-const ask = (req: Record<string, unknown>) => helper.ask(req)
+const ask = (req: Call) => helper.ask(req, ANSWER)
 
 function gone(wid: number) {
   const s = shown.get(wid)
@@ -65,7 +69,7 @@ function gone(wid: number) {
   if (s && !s.win.isDestroyed()) s.win.webContents.send("vaultite:apps", { type: "gone", wid })
 }
 
-function heard(m: Record<string, unknown>) {
+function heard(m: z.infer<typeof EVENT>) {
   const wid = Number(m.wid)
   if (m.event === "gone") return gone(wid)
   const s = shown.get(wid)
@@ -109,7 +113,7 @@ async function put(wid: number, win: AppWindow, r: Rect | null) {
   if (!to) { s.at = null; return ask({ op: "park", wid }) }
   const at = onScreen(win, to)
   if (r) await clear(wid, at.rect)
-  const res = await ask({ op: "place", wid, ...at })
+  const res = await ask({ op: "place", wid, rect: at.rect, bound: { ...at.bound } })
   const f = rectOf(res.frame)
   if (res.ok && f && shown.get(wid) === s) s.at = { rect: to, frame: { ...f, x: f.x - at.bound.x, y: f.y - at.bound.y } }
   return res

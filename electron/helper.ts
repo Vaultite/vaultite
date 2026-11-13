@@ -5,7 +5,6 @@ import fs from "node:fs"
 import net from "node:net"
 import os from "node:os"
 import path from "node:path"
-import { type FnEvent } from "../core/fnkey.ts"
 import { freeAll, listen as hear, onFree } from "./helperscope.ts"
 import { pickMic } from "./miclogic.ts"
 import { hideFromShares } from "./overlaywin.ts"
@@ -15,13 +14,14 @@ import { quitRecorder } from "./recorder.ts"
 import { keepTimeline, timelineHost, timelineRefollow } from "./timeline.ts"
 import { islandNow, knockHost, knockSaid, knocksHeard, stopKnocks, toPresence } from "./knockhelper.ts"
 import { closePanel, drawingActs, dropDrawings, onPanel, overlayActs, panelBounds, showDrawing, showOverlay, watchLayers } from "./overlay.ts"
-import { displayShot as shootDisplay, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, type AppWindowInfo } from "./screen.ts"
+import { displayShot as shootDisplay, onScreenEvent, type Req, screenAsk as askHelper, startScreen, stopScreen } from "./screen.ts"
 import { elementPlaces } from "./drawing.ts"
 import { keyHeard, lessonAct, lessonScene, stopTeach, teachFinal, teachHeard, teachHost, teachPending, typedHeard, watching } from "./teach.ts"
 import { stopWalk, walkAct, walkCall, walkFinal, walkHeard, walkHost, walkOn, walkPending } from "./walk.ts"
 import { offerHere, offerSaid, stopTakeover, takeoverClick, takeoverDriving, takeoverHeard } from "./takeover.ts"
 import { type Needs, offerHeard, offerHost, offerScene, offerTimeline, OFFER_UP_MS } from "./timelineoffer.ts"
-import { asked, LIVE, QUIET, screenAsk, screenAsked, stubs, switched } from "./helperask.ts"
+import { asked, LIVE, QUIET, screenAsk, screenAsked, screenDo, stubs, switched } from "./helperask.ts"
+import { fnEvent, FOCUS, OK, SCREEN_EVENT, type ScreenEvent, WINDOW } from "./screenwire.ts"
 import { based, basedAt, BUSY, defaults, dictating, drawWith, front, frontHappened, frontIs, hidden, hint, host, hostIs, notice, op, DONE, prefs, prefsAre, stopFor, type HelperHost } from "./helperbase.ts"
 import { logger } from "../core/log.ts"
 
@@ -85,7 +85,7 @@ export async function startHelper(h: HelperHost) {
   if (!lock) return false
   hostIs(h)
   hear(app, "will-quit", stopHelper)
-  if (QUIET) Object.assign(globalThis, { vaultiteHelper: { heard: (m: Record<string, unknown>) => heard(m), stub: (op: string, v?: Record<string, unknown> | null) => (v == null ? stubs.delete(op) : stubs.set(op, v)), presses: () => presses.read(),
+  if (QUIET) Object.assign(globalThis, { vaultiteHelper: { heard: (m: Req) => { const e = SCREEN_EVENT.safeParse(m); if (e.success) heard(e.data) }, stub: (op: string, v?: Req | null) => (v == null ? stubs.delete(op) : stubs.set(op, v)), presses: () => presses.read(),
     asked: () => [...asked], screenAsked: () => [...screenAsked], spoken: () => [...spoken], scene: () => lastScene, island: islandNow, knocks: knocksHeard, islandSaid: (text: string, x: number, y: number) => knockSaid(text) || toPresence(text, { x, y }), badge: () => badged, menu: () => menuItems(),
     walk: (what: string) => walkCall(what), talkSaid: (text: string) => walkHeard(text), walkSaid: (text: string) => { walkPending(text); walkFinal(text) },
     teach: (text: string) => teachHeard(text, Date.now()), capture: (text: string) => captureHeard(text, Date.now()), offer: offerScene, offerSaid: (text: string) => offerHeard(text), refresh: () => refresh(), teachSaid: (text: string) => { teachPending(text); teachFinal(text) }, lesson: lessonScene,
@@ -101,11 +101,11 @@ export async function startHelper(h: HelperHost) {
   onFree(h.dictation.onAudioDevices((d) => micTold(pickMic(prefs.dictation.microphone, d))))
   overlayActs({ open: openChat, stop: () => { if (session) stopFor(session.sink) }, region: regionMoved, regionAct })
   timelineHost({ exclude: excluded, bundles: () => prefs.privateApps, holding: recordingNow, privateNow: () => hidden(front),
-    clicks: (on) => void screenAsk("clicks", { on }).catch(() => {}) })
+    clicks: (on) => void screenDo("clicks", { on }).catch(() => {}) })
   offerHost({ offer: (id, line, sub, yes) => offerHere(id, { line, sub, yes, name: live.state.name, tint: live.state.agents.get(live.state.name)?.tint ?? "orange" }, OFFER_UP_MS),
     answer: offerSaid, say: sayHere, turnOn: () => op("screen.keep", {}, DONE).then(refresh) })
   captureHost({ exclude: excluded, bundles: () => prefs.privateApps, hint, draw, unkept: () => unkept("replay"),
-    placeAt: async (p) => { const w = await screenAsk<AppWindowInfo>("at", { x: p.x, y: p.y }).catch(() => null); return { ...await pointedAt(live.state.name, p, w?.window ? w : null, false), ...(w?.frame ? { frame: w.frame } : {}) } },
+    placeAt: async (p) => { const w = await screenAsk("at", { x: p.x, y: p.y }, WINDOW).catch(() => null); return { ...await pointedAt(live.state.name, p, w?.window ? w : null, false), ...(w?.frame ? { frame: w.frame } : {}) } },
     deliver: async (c) => String((await op("companion.capture", c, SAID)).said ?? "Sent") })
   walkHost({ draw, listening: (on) => { if (!on && session?.into === "free" && freeBy?.final === walkFinal) stopFor(session.sink); freeTick() },
     allowed: () => (QUIET ? stubs.get("screen-access")?.granted === true : systemPreferences.getMediaAccessStatus("screen") === "granted"),
@@ -114,13 +114,13 @@ export async function startHelper(h: HelperHost) {
     deliver: async (w) => String((await op("companion.walk-send", w, SAID)).said ?? "Sent") })
   teachHost({ draw, hint, unkept: () => unkept("skill"), privateNow: () => hidden(front), refollow: ringFollows, listening: () => freeTick(),
     trusted: () => (QUIET ? stubs.get("ax-access")?.granted !== false : systemPreferences.isTrustedAccessibilityClient(false)),
-    things: teachThings, windowAt: async (p) => { const w = await screenAsk<AppWindowInfo>("at", { x: p.x, y: p.y }).catch(() => null); return w ? { ...(w.frame ? { frame: w.frame } : {}), vaultite: !!w.vaultite, private: !!w.window && !w.vaultite && hidden(w) } : null },
-    focus: () => screenAsk("focus", {}),
+    things: teachThings, windowAt: async (p) => { const w = await screenAsk("at", { x: p.x, y: p.y }, WINDOW).catch(() => null); return w ? { ...(w.frame ? { frame: w.frame } : {}), vaultite: !!w.vaultite, private: !!w.window && !w.vaultite && hidden(w) } : null },
+    focus: async () => { const f = await screenAsk("focus", {}, FOCUS); return { ...f, frame: f.frame ?? undefined } },
     deliver: async (l) => String((await op("companion.teach", l, SAID)).said ?? "Saved") })
   drawingActs((a) => live.say({ t: "drawing-act", ...a }))
   watchLayers(marks.changed)
   knockHost({ say: (m) => live.say(m), talking: () => { const t = talkNow(); return t.listening || t.box || t.speaking || t.pressing || t.answering },
-    base: () => (live.state.mode === "off" && !walkOn() && !watching() ? null : based || null), ask: (o, r) => screenAsk(o, r ?? {}), cue: (n) => cue(n),
+    base: () => (live.state.mode === "off" && !walkOn() && !watching() ? null : based || null), ask: screenAsk, cue: (n) => cue(n),
     walk: (what) => (watching() ? lessonAct(what) : walkAct(what)),
     speak: (text) => { if (prefs.voice.mode !== "off" && !quietForCall()) void voiceCall("voice:sample", [{ text, after: true }]).catch(() => {}) },
     open: (p) => void openPresence(p), hint, view: (to) => void openIn(to), muted: () => mutedUntil > Date.now(),
@@ -238,7 +238,7 @@ function liveHeard({ voice, message: m }: Heard) {
   else if (m.t === "open") return void openOn(m)
   else if (m.t === "find") return void findIn(m)
   else if (m.t === "things") return void axThings(nearPoint ?? screen.getCursorScreenPoint()).then((things) => live.say({ t: "takeover-done", id: m.id, ok: true, things }))
-  else if (m.t === "inputs") return void screenAsk("inputs", { on: m.on }).catch(() => {})
+  else if (m.t === "inputs") return void screenDo("inputs", { on: m.on }).catch(() => {})
   else if (m.t === "knocks") return knocksHeard(m)
   else if (m.t === "record") return void recordFor(m.job)
   else {
@@ -250,25 +250,25 @@ function liveHeard({ voice, message: m }: Heard) {
   chatChanged()
 }
 
-function heard(m: Record<string, unknown>) {
+function heard(m: ScreenEvent) {
   if (!host) return
-  if (m.event === "fn") return prefs.talk.includes("fn") ? talkHeard(m as FnEvent) : prefs.keys.includes("fn") ? fnHeard(m) : undefined
+  if (m.event === "fn") return prefs.talk.includes("fn") ? talkHeard(fnEvent(m)) : prefs.keys.includes("fn") ? fnHeard(fnEvent(m)) : undefined
   if (m.event === "mod") return modHeard(m)
   if (m.event === "chord") return chordHeard(m)
   if (m.event === "moved") return places.windowMoved(m)
   if (m.event === "ink") return inkHeard(m)
   // (its exchange on: a click elsewhere moves on, Esc ends it, its voice with it)
   // (one let go while the Talk key was held: it went on to the app, and goes with the ask)
-  if (m.event === "click" && m.held) { void clicked(Number(m.x), Number(m.y)); return heldClick({ x: Number(m.x), y: Number(m.y) }) }
-  if (m.event === "click") { void clicked(Number(m.x), Number(m.y)); if (m.exchange === false) return; if (takeoverClick(Number(m.x), Number(m.y))) return; const b = panelBounds(), x = Number(m.x), y = Number(m.y); if (!b || x < b.x || y < b.y || x > b.x + b.width || y > b.y + b.height) moveOn(); return }
+  if (m.event === "click" && m.held) { void clicked(m.x, m.y); return heldClick({ x: m.x, y: m.y }) }
+  if (m.event === "click") { const { x, y } = m; void clicked(x, y); if (m.exchange === false) return; if (takeoverClick(x, y)) return; const b = panelBounds(); if (!b || x < b.x || y < b.y || x > b.x + b.width || y > b.y + b.height) moveOn(); return }
   if (m.event === "esc") return endExchange()
   if (m.event === "input") return void inputHeard(m)
-  if (m.event === "key" && typeof m.key === "string") return void keyHeard(m.key)
+  if (m.event === "key") return void keyHeard(m.key)
   if (m.event === "typed") return typedHeard()
   if (m.event === "follow") return followHeard(m)
   if (m.event === "front") {
     if (exchange && !m.vaultite && front && m.bundle !== front.bundle && !takeoverDriving() && Date.now() > openedUntil) moveOn()
-    const now = m as unknown as AppWindowInfo
+    const now = m
     frontIs(now)
     frontHappened()
     timelineRefollow()
@@ -278,7 +278,7 @@ function heard(m: Record<string, unknown>) {
   }
   if (m.event === "tap" && (m.ok === false || m.ink === false)) notice("tap", m.ok === false ? "Dictation and Talk keys need Vaultite in Accessibility" : "Drawing while you talk needs Vaultite in Accessibility",
     "Allow it in System Settings, Privacy & Security, Accessibility, then press one again.", "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility")
-  if (m.event === "exit" && host) setTimeout(() => { if (host) void startScreen().then(() => Promise.all([...switched].map(([op, req]) => askHelper(op, req)))).catch(() => {}) }, 2000)
+  if (m.event === "exit" && host) setTimeout(() => { if (host) void startScreen().then(() => Promise.all([...switched].map(([op, req]) => askHelper(op, req, OK)))).catch(() => {}) }, 2000)
 }
 
 /** The timeline isn't kept, for what needs it: off by their choice, an offer to turn it on; on but not kept here (the

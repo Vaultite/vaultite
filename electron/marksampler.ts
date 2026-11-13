@@ -6,6 +6,7 @@ import { type Area, followed as thingFollowed, makeWatch, type On, SAMPLE_MS, sa
 import { overlayNumbers } from "./overlaywin.ts"
 import type { Point } from "./helperlogic.ts"
 import type { Ask } from "./cursorplaces.ts"
+import { SAMPLES } from "./screenwire.ts"
 
 export function markSampler(o: { ask: Ask; things: (p: Point, radius: number, most: number) => Promise<Seen[]>; near: () => (Seen & { id?: string })[]; say: (m: object) => void }) {
   const watch = makeWatch(), anchored = new Map<string, On | null>(), lookedAt = new Map<string, number>(), followedTo = new Set<string>()
@@ -29,7 +30,7 @@ export function markSampler(o: { ask: Ask; things: (p: Point, radius: number, mo
     sampleBusy = true
     try {
       const now = areas
-      const r = await o.ask<{ ok?: boolean; samples?: unknown[] }>("sample", { areas: now.map((a) => ({ x: a.rect.x, y: a.rect.y, width: a.rect.w, height: a.rect.h, ...sampleSize(a.rect) })), exclude: overlayNumbers() })
+      const r = await o.ask("sample", { areas: now.map((a) => ({ x: a.rect.x, y: a.rect.y, width: a.rect.w, height: a.rect.h, ...sampleSize(a.rect) })), exclude: overlayNumbers() }, SAMPLES)
       // (no screen recording: nothing to watch with, till the marks change)
       if (r.ok === false) { areas = []; if (sampling) clearInterval(sampling); sampling = null; return }
       const gone = new Map<string, string[]>(), moves = new Map<string, { mark: string; dx: number; dy: number }[]>(), told = new Set<string>()

@@ -2,7 +2,8 @@ import type { WebContents } from "electron"
 import { joinText } from "../core/dictationtext.ts"
 import { learnedList, type Teach } from "../core/desktop/dictationlearn.ts"
 import { followField, type Followed } from "./dictationfix.ts"
-import { screenAsk } from "./helperask.ts"
+import { screenAsk, screenDo } from "./helperask.ts"
+import { FOLLOWED, KEPT, OK, type ScreenEvent } from "./screenwire.ts"
 import { DONE, hidden, hint, op, type Session } from "./helperbase.ts"
 import { ADDED } from "./homewire.ts"
 
@@ -26,23 +27,23 @@ export async function followFix(said: string, from: "front" | "kept", pasted: bo
   for (let i = 0; i < (pasted ? 6 : 2); i++) {
     await new Promise((r) => setTimeout(r, pasted ? 250 : 50))
     if (id !== follows || up.session) return
-    const r = await screenAsk<{ ok?: boolean; value?: unknown; caret?: unknown; bundle?: string; name?: string }>("follow", { do: "start", from }).catch(() => null)
-    if (!r?.ok || typeof r.value !== "string") return
-    if (hidden(r)) return void screenAsk("follow", { do: "stop" }).catch(() => {})
-    const f = followField(said, r.value, typeof r.caret === "number" ? r.caret : -1, teachHere, () => {
+    const r = await screenAsk("follow", { do: "start", from }, FOLLOWED).catch(() => null)
+    if (!r?.ok || r.value === undefined) return
+    if (hidden(r)) return void screenDo("follow", { do: "stop" }).catch(() => {})
+    const f = followField(said, r.value, r.caret ?? -1, teachHere, () => {
       if (following !== f) return
       following = null
-      void screenAsk("follow", { do: "stop" }).catch(() => {})
+      void screenDo("follow", { do: "stop" }).catch(() => {})
     })
     if (f) { following = f; return }
   }
-  void screenAsk("follow", { do: "stop" }).catch(() => {})
+  void screenDo("follow", { do: "stop" }).catch(() => {})
 }
 /** screen.swift on the field followed: its text changed, or it's over (its window left, the field gone). */
-export function followHeard(m: Record<string, unknown>) {
+export function followHeard(m: Extract<ScreenEvent, { event: "follow" }>) {
   const f = following
   if (!f) return
-  if (typeof m.value === "string") return f.changed(m.value)
+  if (m.value !== undefined) return f.changed(m.value)
   f.done()
 }
 export const dropOrigin = (s: Session) => { if (s.origin) void askPage(s.origin, "drop") }
@@ -62,14 +63,14 @@ export function askPage(to: WebContents, where: "here" | "origin" | "drop", text
 export async function backWhereItBegan(s: Session, text: string): Promise<{ ok: boolean; name?: string; text?: string; how?: string }> {
   if (s.origin) return { ok: (await askPage(s.origin, "origin", text))?.ok === true }
   if (!s.focus.field) return { ok: false }
-  const f = await screenAsk<{ ok?: boolean; before?: string; name?: string }>("kept", { do: "info" })
+  const f = await screenAsk("kept", { do: "info" }, KEPT)
   if (!f.ok) return { ok: false }
   const words = joinText(f.before ?? "", text)
-  if ((await screenAsk<{ ok?: boolean }>("kept", { do: "insert", text: words })).ok) return { ok: true, name: f.name, text: words, how: "ax" }
-  if (!(await screenAsk<{ ok?: boolean }>("kept", { do: "front" })).ok) return { ok: false }
+  if ((await screenAsk("kept", { do: "insert", text: words }, OK)).ok) return { ok: true, name: f.name, text: words, how: "ax" }
+  if (!(await screenAsk("kept", { do: "front" }, OK)).ok) return { ok: false }
   for (let i = 0; i < 10; i++) {
     await new Promise((r) => setTimeout(r, 100))
-    if ((await screenAsk<{ ok?: boolean }>("kept", { do: "paste", text: words })).ok) return { ok: true, name: f.name, text: words, how: "paste" }
+    if ((await screenAsk("kept", { do: "paste", text: words }, OK)).ok) return { ok: true, name: f.name, text: words, how: "paste" }
   }
   return { ok: false }
 }

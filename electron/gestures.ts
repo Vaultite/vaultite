@@ -4,6 +4,7 @@ import path from "node:path"
 import { macAddon, type MacAddon } from "./macaddons.ts"
 import { messageOf } from "./browser/messageof.ts"
 import { logger } from "../core/log.ts"
+import { z } from "zod"
 
 const log = logger("gestures")
 
@@ -17,7 +18,7 @@ export function passPinch(win: BaseWindow, on: boolean) {
   addon ??= macAddon("gestures", path.join(app.getPath("userData"), "bin"))
     .catch((e) => { log.warn(`a pinch over a covered page stays the window's (${messageOf(e)})`); return null })
   const window = idOf(win)
-  void addon.then((g) => g?.call({ cmd: "pass", window, on }))
+  void addon.then((g) => g?.call({ cmd: "pass", window, on }, z.unknown()))
 }
 
 function idOf(win: BaseWindow) {
@@ -25,7 +26,7 @@ function idOf(win: BaseWindow) {
   if (id === undefined) {
     const n = Number(win.getMediaSourceId().split(":")[1])
     ids.set(win, id = n)
-    win.once("closed", () => void addon?.then((g) => g?.call({ cmd: "pass", window: n, on: false })))
+    win.once("closed", () => void addon?.then((g) => g?.call({ cmd: "pass", window: n, on: false }, z.unknown())))
   }
   return id
 }

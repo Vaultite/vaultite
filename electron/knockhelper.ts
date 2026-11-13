@@ -7,6 +7,8 @@ import { islandActs, islandReady, presenceAt, showIsland, spotNow } from "./isla
 import type { OtherWindow, Rect, Spot } from "./islandlogic.ts"
 import type { WalkScene } from "../core/desktop/walks.ts"
 import { agentTint } from "../core/agenttint.ts"
+import type { Ask } from "./cursorplaces.ts"
+import { NOTCHES, WINDOWS } from "./screenwire.ts"
 
 export type KnockHost = {
   /** Tell the server (the companion's socket). */
@@ -16,7 +18,7 @@ export type KnockHost = {
   /** The server's address for the island's page (null: none open). */
   base: () => string | null
   /** The screen helper's answers: `notch`, `windows`. */
-  ask: <T>(op: string, req?: Record<string, unknown>) => Promise<T>
+  ask: Ask
   cue: (name: "knock") => void
   /** Say an urgent knock aloud, in the companion's voice, once nothing else is said. */
   speak: (text: string) => void
@@ -157,8 +159,8 @@ async function place() {
   asking = true
   const first = !spot
   try {
-    if (!notches) notches = (await host.ask<{ screens?: { frame: Rect; notch?: Rect }[] }>("notch").catch(() => ({ screens: [] }))).screens ?? []
-    others = (await host.ask<{ windows?: OtherWindow[] }>("windows").catch(() => ({ windows: [] }))).windows ?? []
+    if (!notches) notches = (await host.ask("notch", {}, NOTCHES).catch(() => ({ screens: [] }))).screens ?? []
+    others = (await host.ask("windows", {}, WINDOWS).catch(() => ({ windows: [] }))).windows ?? []
     othersAt = Date.now()
     spot = spotNow(notches, others)
   } finally { asking = false }

@@ -10,18 +10,25 @@ import { replacer } from "../core/dictationtext.ts"
 import { pickMic, type Devices, type MicPick } from "./miclogic.ts"
 import type { Keeping } from "./dictationkeep.ts"
 import { messageOf } from "./browser/messageof.ts"
+import type { Json } from "./linehelper.ts"
 
 let helper: ChildProcess | null = null
 let starting: Promise<ChildProcess> | null = null
-export type DictationMessage = { type: string; [k: string]: unknown }
-type Command = { cmd: string; [k: string]: unknown }
+const opt = <T extends z.ZodType>(s: T) => s.optional().catch(undefined)
+const WORDS = opt(z.string()), N = opt(z.number()), FLAG = opt(z.boolean())
+const DEVICE = z.object({ uid: z.string(), name: z.string(), transport: z.string(), input: z.boolean(), output: z.boolean() })
+const LINE = z.looseObject({ type: z.string(), id: N, text: WORDS, reason: WORDS, code: WORDS, message: WORDS, name: WORDS, why: WORDS, missing: FLAG, bluetooth: FLAG,
+  v: N, data: WORDS, apple: FLAG, parakeet: FLAG, locale: WORDS, devices: opt(z.array(z.unknown()).transform((ds) => ds.flatMap((d) => DEVICE.safeParse(d).data ?? []))),
+  input: WORDS, output: WORDS })
+export type DictationMessage = z.infer<typeof LINE>
+type Command = { cmd: string; [k: string]: Json }
 export type DictationSink = { tell: (m: DictationMessage) => void; win?: AppWindow
   audio?: (pcm: Buffer) => void }
 let owner: DictationSink | null = null
 let idle: ReturnType<typeof setTimeout> | null = null
 const IDLE_MS = 15 * 60_000
 let sid = 0
-let checked: ((msg: { [k: string]: unknown }) => void)[] = []
+let checked: ((msg: Pick<DictationMessage, "apple" | "parakeet" | "locale">) => void)[] = []
 let devices: Devices | null = null
 let listed: (() => void)[] = []
 const deviceWatchers = new Set<(d: Devices) => void>()
@@ -77,7 +84,7 @@ function typed(cmd: Command) {
 }
 
 let swap: [RegExp, string][] = []
-const swapped = (m: DictationMessage) => (swap.length && (m.type === "pending" || m.type === "final") && typeof m.text === "string"
+const swapped = (m: DictationMessage) => (swap.length && (m.type === "pending" || m.type === "final") && m.text !== undefined
   ? { ...m, text: swap.reduce((x, [re, to]) => x.replace(re, to), m.text) } : m)
 function tell(...msgs: DictationMessage[]) {
   const o = owner
@@ -98,23 +105,23 @@ function sinkOf(win: AppWindow) {
 function heard(m: DictationMessage) {
   if (m.type === "engines") { for (const done of checked.splice(0)) done(m); return }
   if (m.type === "devices") {
-    devices = { devices: Array.isArray(m.devices) ? m.devices : [], input: String(m.input ?? ""), output: String(m.output ?? "") }
+    devices = { devices: m.devices ?? [], input: m.input ?? "", output: m.output ?? "" }
     for (const done of listed.splice(0)) done()
     for (const fn of deviceWatchers) fn(devices)
     return
   }
-  if (m.type === "mic-held") { heldMic = String(m.name ?? ""); return }
+  if (m.type === "mic-held") { heldMic = m.name ?? ""; return }
   if (m.type === "mic-released") { heldMic = ""; return }
-  if (m.type === "ready" || (typeof m.id === "number" && m.id !== sid)) return
-  if (m.type === "audio") return void owner?.audio?.(Buffer.from(String(m.data ?? ""), "base64"))
+  if (m.type === "ready" || (m.id !== undefined && m.id !== sid)) return
+  if (m.type === "audio") return void owner?.audio?.(Buffer.from(m.data ?? "", "base64"))
   tell(m)
   if (keeping && (m.type === "final" || m.type === "pending")) {
-    const text = String(swapped(m).text ?? "")
+    const text = swapped(m).text ?? ""
     if (m.type === "final") keeping.words(text, !!owner?.win && !owner.win.isDestroyed())
     else keeping.pending(text)
   }
   if (m.type === "end") {
-    keeping?.end(String(m.reason ?? ""))
+    keeping?.end(m.reason ?? "")
     keeping = null
     owner = null
     if (idle) clearTimeout(idle)
@@ -125,7 +132,7 @@ function heard(m: DictationMessage) {
 async function engines(language: string) {
   if (TEXT) return { apple: true, locale: language || "en-US", parakeet: false }
   try { await start() } catch (e) { return { apple: false, parakeet: false, why: messageOf(e) } }
-  const r = await new Promise<{ [k: string]: unknown }>((done) => {
+  const r = await new Promise<Pick<DictationMessage, "apple" | "parakeet" | "locale">>((done) => {
     checked.push(done)
     send({ cmd: "check", language })
     setTimeout(() => { checked = checked.filter((d) => d !== done); done({ apple: false, parakeet: false }) }, 10_000)
@@ -138,7 +145,6 @@ let serverOf: (win?: AppWindow) => number | null = () => null
 export const setDictationServer = (f: typeof serverOf) => { serverOf = f }
 
 type Cloud = { url: string; key: string; model?: string; languages: string[] }
-const LINE = z.looseObject({ type: z.string() })
 const PAIR = z.tuple([z.string(), z.string()]).rest(z.unknown()).transform(([a, b]): [string, string] => [a, b])
 const CLOUD_ANSWER = z.object({
   url: z.string().optional().catch(undefined), key: z.string().optional().catch(undefined), model: z.string().optional().catch(undefined),

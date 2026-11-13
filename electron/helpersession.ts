@@ -8,10 +8,12 @@ import { land, landedSaid } from "./dictationroam.ts"
 import { micSaid } from "./miclogic.ts"
 import { panelFocused, type PanelData } from "./overlay.ts"
 import { type Press, pressLog } from "./presslog.ts"
-import type { Focus } from "./screen.ts"
 import { teachDeaf, teachFinal, teachListening, teachListens, teachPending } from "./teach.ts"
 import { endWalk, walkFinal, walkListening, walkListens, walkPending } from "./walk.ts"
 import { QUIET, screenAsk, screenAsked, stubs } from "./helperask.ts"
+import { FOCUS, INSERTED } from "./screenwire.ts"
+import type { DictationMessage } from "./dictation.ts"
+import type { Prefs } from "./helperprefs.ts"
 import { dictate, dictating, dictationEngines, draw, freeFor, front, handOver, HELD, hidden, hint, host, keptLanded, notice, op, DONE, prefs, releaseMic, type Session, stopFor, type Summon } from "./helperbase.ts"
 import { askPage, backWhereItBegan, dropOrigin, following, followFix } from "./helperlearn.ts"
 import { live } from "./helperlive.ts"
@@ -58,8 +60,8 @@ export function act(a: FnAction, talk = false) {
   else if (a === "cancel" && session) stopFor(session.sink, true)
 }
 /** The recognizer, as the page picks it (plugins/core/dictation): Parakeet for English when it's here, else Apple's. */
-async function engineFor(s: Record<string, unknown>) {
-  const language = typeof s.language === "string" ? s.language.trim() : ""
+async function engineFor(s: Prefs["dictation"]) {
+  const language = s.language?.trim() ?? ""
   if (s.engine === "apple" || s.engine === "parakeet") return { engine: s.engine, language }
   if (language && !/^en\b/i.test(language)) return { engine: "apple", language }
   const e: { parakeet: boolean; locale?: unknown } = await dictationEngines(language)
@@ -68,7 +70,7 @@ async function engineFor(s: Record<string, unknown>) {
 async function begin() {
   if (panelFocused()) return listenFor({ into: "panel", focus: { bundle: "", name: "", pid: 0, window: 0, title: "", field: true } })
   // (kept: where its words go if no other field has them when it stops)
-  const focus = await screenAsk<Focus>("focus", { keep: true })
+  const focus = await screenAsk("focus", { keep: true }, FOCUS)
   if (dictating()) return
   // (a password field gets nothing said; with no field it listens: one may be clicked by the time it stops)
   if (focus.field && focus.secure) return
@@ -144,7 +146,7 @@ const freeOwners: FreeOwner[] = [
   { wants: teachListens, listening: teachListening, pending: teachPending, final: teachFinal, failed: teachDeaf },
 ]
 export let freeBy: FreeOwner | null = null
-function freeTold(s: Session, e: Record<string, unknown>) {
+function freeTold(s: Session, e: DictationMessage) {
   const by = freeBy
   if (e.type === "start") { s.ready = true; by?.listening(true) }
   else if (e.type === "level") s.level = Number(e.v) || 0
@@ -184,7 +186,7 @@ async function listenFree(by: FreeOwner) {
   freeRetry = Date.now() + 5000
   if (++freeFails >= 3) { freeFails = 0; by.failed("the microphone didn't start") }
 }
-function told(s: Session, e: Record<string, unknown>) {
+function told(s: Session, e: DictationMessage) {
   if (session !== s) return
   if (s.into === "free") return freeTold(s, e)
   const said = (t: unknown) => String(t ?? "")
@@ -247,8 +249,8 @@ async function finish(s: Session, cancelled: boolean) {
   const to = await land(text, {
     // (a scripted copy's window never has the keyboard: a stub says it does)
     page: async (t) => { const p = host?.focusedPage() ?? (QUIET && stubs.has("page") ? host?.homeWindow()?.page : null); return p ? askPage(p, "here", t) : null },
-    front: () => screenAsk<Focus>("focus"),
-    insert: (t) => screenAsk("insert", { text: t }),
+    front: () => screenAsk("focus", {}, FOCUS),
+    insert: (t) => screenAsk("insert", { text: t }, INSERTED),
     origin: (t) => backWhereItBegan(s, t),
     copy: (t) => { if (QUIET) screenAsked.push({ op: "copy", text: t }); else clipboard.writeText(t) },
     capture: async (t) => !!(await op("inbox.voice", { text: t, from: "Dictation", keep: true }, DONE)),

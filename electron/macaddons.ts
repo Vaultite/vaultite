@@ -4,6 +4,8 @@ import { execFile } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
+import { z } from "zod"
+import type { Json } from "./linehelper.ts"
 
 /** Each addon, by its source's name, and the frameworks it links. */
 const FRAMEWORKS = { macpermissions: ["AppKit", "CoreLocation", "IOKit"], gestures: ["AppKit"], menus: ["AppKit"] }
@@ -34,17 +36,21 @@ export async function buildMacAddon(name: MacAddonName, dir: string): Promise<st
   return out
 }
 
-export type MacAddon = { call: (cmd: Record<string, unknown>) => Record<string, unknown> }
+export type MacAddon = { call: <S extends z.ZodType>(cmd: { cmd: string; [k: string]: Json }, answer: S) => z.output<S> }
+const EXPORTS = z.object({ call: z.instanceof(Function) })
+const FAILED = z.object({ error: z.string() })
 
 /** Load a built addon: its one call, JSON in and out (it throws on what it answers as an error). */
 export function loadMacAddon(file: string): MacAddon {
-  const mod = { exports: {} as { call: (json: string) => string } }
+  const mod = { exports: {} }
   process.dlopen(mod, file)
+  const { call } = EXPORTS.parse(mod.exports)
   return {
-    call: (cmd) => {
-      const res = JSON.parse(mod.exports.call(JSON.stringify(cmd))) as Record<string, unknown>
-      if (typeof res.error === "string") throw new Error(res.error)
-      return res
+    call: (cmd, answer) => {
+      const res = JSON.parse(String(call(JSON.stringify(cmd))))
+      const failed = FAILED.safeParse(res)
+      if (failed.success) throw new Error(failed.data.error)
+      return answer.parse(res)
     },
   }
 }

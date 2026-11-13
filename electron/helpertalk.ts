@@ -17,7 +17,8 @@ import { happened } from "./timeline.ts"
 import { offerHeard } from "./timelineoffer.ts"
 import { takeoverEnded, takeoverOffering } from "./takeover.ts"
 import { walkHeard } from "./walk.ts"
-import { asked, QUIET, screenAsk } from "./helperask.ts"
+import { asked, QUIET, screenAsk, screenDo } from "./helperask.ts"
+import { type ScreenEvent, WINDOW } from "./screenwire.ts"
 import { based, BUSY, draw, type Exchange, front, HELD, hidden, hint, host, notice, prefs, type Summon, dictating, stopFor } from "./helperbase.ts"
 import { closeShot, inAppSpots, leave, park, pointedAt, shotAt, shotChanged, underAt } from "./helperat.ts"
 import { live } from "./helperlive.ts"
@@ -173,8 +174,8 @@ export async function startSummon() {
   live.say({ t: "summoning" })
   // (a press that's a shortcut shows nothing: it appears after a moment)
   appear(() => { s.appeared = true; draw() })
-  void screenAsk("ink", { on: true })
-  void screenAsk<AppWindowInfo>("at", { x: p.x, y: p.y }).then((w) => { s.w = w.window ? w : null }, () => {})
+  void screenDo("ink", { on: true })
+  void screenAsk("at", { x: p.x, y: p.y }, WINDOW).then((w) => { s.w = w.window ? w : null }, () => {})
   draw()
   // (its realtime turn begins now: a let-go while the last press's words finish is this one's)
   // (while it records, their words are narration: the realtime voice never answers them)
@@ -184,7 +185,7 @@ export async function startSummon() {
   if (session?.into === "summon") s.press?.step("took over a press still finishing")
   await listenFor({ into: "summon", focus: { bundle: "", name: "", pid: 0, window: 0, title: "", field: true }, talk: true, of: s })
 }
-export const inkOff = () => screenAsk("ink", { on: false }).catch(() => {})
+export const inkOff = () => screenDo("ink", { on: false }).catch(() => {})
 /** A press stuck in a phase past its limit (pressmachine.ts LIMITS): held 10 min (a lost key-up), let go with nothing
  *  sent, or asked with no turn begun. Its cursor never stays stuck. */
 function stuck(s: Summon, phase: Phase) {
@@ -195,8 +196,8 @@ function stuck(s: Summon, phase: Phase) {
 }
 /** A drag while the Talk key is held: a box (capture.ts), the pointer leaving no trail meanwhile. */
 export let inkDown = false
-export function inkHeard(m: Record<string, unknown>) {
-  const s = summon, phase = m.phase as "down" | "move" | "up", p = { x: Number(m.x), y: Number(m.y) }
+export function inkHeard(m: Extract<ScreenEvent, { event: "ink" }>) {
+  const s = summon, phase = m.phase, p = { x: m.x, y: m.y }
   if (phase === "up") inkDown = false
   if (!s || !HELD.has(s.m.phase) || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return
   if (phase === "down") inkDown = true
@@ -254,7 +255,7 @@ export function captured(s: Summon, text: string) {
 }
 /** The window at the point let go at and what's there (pointedAt), its cursor left there only once it's asked. */
 async function gather(s: Summon) {
-  const w = s.w ?? await screenAsk<AppWindowInfo>("at", { x: s.p.x, y: s.p.y }).catch(() => null)
+  const w = s.w ?? await screenAsk("at", { x: s.p.x, y: s.p.y }, WINDOW).catch(() => null)
   // (its closer look taken with its picture, not after: the ask waits for neither)
   const drawn = drawnShapes(inkOf(trailStrokes(s.trail, s.released ?? Date.now()))).map((k) => k.box)
   const [place, close] = await Promise.all([pointedAt(s.name, s.p, w?.window ? w : null, false), closeShot(s.p, drawn)]), down = await s.down
@@ -278,7 +279,7 @@ function openTyping() {
   openChat(name, p, !!summon)
   if (panelOpen() !== name) return
   exchange = { name, p, w, since: Date.now() }
-  void screenAsk("exchange", { on: true })
+  void screenDo("exchange", { on: true })
 }
 /** A double tap: hands-free, into its box, till the next double tap. */
 async function freeTalk() {
@@ -297,7 +298,7 @@ export function openAnswer(name: string, p: Point, w: AppWindowInfo | null, sinc
   // (an answer said aloud needs no box: the box comes only by a tap of the key)
   const spoken = prefs.voice.mode !== "off" && !quietForCall()
   exchange = { name, p, w, since, ...(spoken ? { spoken } : {}) }
-  void screenAsk("exchange", { on: true })
+  void screenDo("exchange", { on: true })
   if (spoken) return draw()
   answerBox()
 }
@@ -338,7 +339,7 @@ export function endExchange(stop = true) {
   if (a && onScreen(a) && a.state === "watching") leave(a.name)
   if (name) endDrawing(name, stop)
   gesture.reset()
-  void screenAsk("exchange", { on: false }).catch(() => {})
+  void screenDo("exchange", { on: false }).catch(() => {})
   if (panelOpen()) closePanel()
   draw()
 }
@@ -366,14 +367,14 @@ export async function askFrom(name: string, text: string) {
   if (walkHeard(text) || teachHeard(text, Date.now())) { saidInBox = 0; return }
   const a = live.state.agents.get(name), x = exchange?.name === name ? exchange : null
   const p = x?.p ?? (a && onScreen(a) ? drawnAt(keyOf(a)) : undefined) ?? screen.getCursorScreenPoint()
-  const w = x ? x.w : await screenAsk<AppWindowInfo>("at", { x: p.x, y: p.y }).catch(() => null)
+  const w = x ? x.w : await screenAsk("at", { x: p.x, y: p.y }, WINDOW).catch(() => null)
   // (said into its box a moment ago: spoken; typed, its answer stays silent unless its voice is always on)
   const said = Date.now() - saidInBox < 60_000
   saidInBox = 0
   stopVoice()
   askedAloud = said
   live.say({ t: "moment", kind: "ask", agent: name, text, ...(await pointedAt(name, p, w?.window ? w : null)), summoned: true, ...(said ? { voice: true } : {}) })
-  if (!x) { exchange = { name, p, w: w?.window ? w : null, since: Date.now() }; void screenAsk("exchange", { on: true }) }
+  if (!x) { exchange = { name, p, w: w?.window ? w : null, since: Date.now() }; void screenDo("exchange", { on: true }) }
 }
 /** When words were last said into a cursor's box: the ask they make is a spoken one. */
 export let saidInBox = 0

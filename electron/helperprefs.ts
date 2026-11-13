@@ -4,7 +4,7 @@ const opt = <T extends z.ZodType>(s: T) => s.optional().catch(undefined)
 const settings = <F extends Record<string, z.ZodType>>(fields: F) => z.looseObject(fields).catch(z.looseObject(fields).parse({}))
 const KEYS = opt(z.array(z.coerce.string())), TEXT = opt(z.string()), FLAG = opt(z.boolean())
 /** The settings the helper follows (settings.get of each plugin; one left out: the manifest's default). */
-export const DICTATION_SETTINGS = settings({ fn: FLAG, keys: KEYS, languages: KEYS, microphone: TEXT })
+export const DICTATION_SETTINGS = settings({ fn: FLAG, keys: KEYS, languages: KEYS, microphone: TEXT, engine: TEXT, language: TEXT, silence: opt(z.coerce.number()), keep_audio: FLAG })
 export const COMPANION_SETTINGS = settings({
   keys: KEYS, sounds: FLAG, voice: TEXT, voice_provider: TEXT, voice_name: TEXT, elevenlabs_voice: TEXT, elevenlabs_model: TEXT, voice_speed: opt(z.coerce.number()),
   voice_front: TEXT, realtime_model: TEXT, realtime_voice: TEXT, job_news: TEXT, timeline: FLAG, hide_from_shares: FLAG, quiet_on_calls: FLAG,

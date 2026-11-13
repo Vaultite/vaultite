@@ -1,0 +1,535 @@
+{
+ "under": {
+  "text": "Notes: button \"Save\", in \"Toolbar\"",
+  "bundle": "com.apple.Notes",
+  "name": "Notes"
+ },
+ "underVaultite": null,
+ "badUnder": null,
+ "near": [
+  {
+   "role": "button",
+   "label": "Save",
+   "frame": {
+    "x": 10,
+    "y": 20,
+    "width": 60,
+    "height": 24
+   },
+   "state": {},
+   "actions": [
+    "press"
+   ],
+   "inside": [],
+   "ax": "AXButton",
+   "id": "a1"
+  }
+ ],
+ "badNear": [],
+ "excluded": [
+  3
+ ],
+ "badExcluded": [],
+ "walkPlace": {
+  "place": {
+   "app": "com.apple.Notes",
+   "appName": "Notes",
+   "title": "Groceries",
+   "screen": "Milk, eggs",
+   "under": "Notes: button \"Save\", in \"Toolbar\""
+  },
+  "near": [
+   {
+    "role": "button",
+    "label": "Save",
+    "frame": {
+     "x": 10,
+     "y": 20,
+     "width": 60,
+     "height": 24
+    },
+    "state": {},
+    "actions": [
+     "press"
+    ],
+    "inside": [],
+    "ax": "AXButton"
+   }
+  ],
+  "window": {
+   "x": 0,
+   "y": 0,
+   "width": 800,
+   "height": 600
+  }
+ },
+ "walkNothing": {
+  "place": {
+   "app": "com.apple.Notes",
+   "appName": "Notes",
+   "under": "Notes: button \"Save\", in \"Toolbar\""
+  },
+  "near": [
+   {
+    "role": "button",
+    "label": "Save",
+    "frame": {
+     "x": 10,
+     "y": 20,
+     "width": 60,
+     "height": 24
+    },
+    "state": {},
+    "actions": [
+     "press"
+    ],
+    "inside": [],
+    "ax": "AXButton"
+   }
+  ]
+ },
+ "badWalk": {
+  "place": {
+   "app": "com.apple.Notes",
+   "appName": "Notes",
+   "under": "Notes: button \"Save\", in \"Toolbar\""
+  },
+  "near": [
+   {
+    "role": "button",
+    "label": "Save",
+    "frame": {
+     "x": 10,
+     "y": 20,
+     "width": 60,
+     "height": 24
+    },
+    "state": {},
+    "actions": [
+     "press"
+    ],
+    "inside": [],
+    "ax": "AXButton"
+   }
+  ]
+ },
+ "pointedAt": {
+  "app": "com.apple.Notes",
+  "appName": "Notes",
+  "window": 7,
+  "title": "Groceries",
+  "sx": 30,
+  "sy": 40,
+  "screen": "Milk, eggs",
+  "under": "Notes: button \"Save\", in \"Toolbar\"",
+  "near": [
+   {
+    "role": "button",
+    "label": "Save",
+    "frame": {
+     "x": 10,
+     "y": 20,
+     "width": 60,
+     "height": 24
+    },
+    "state": {},
+    "actions": [
+     "press"
+    ],
+    "inside": [],
+    "ax": "AXButton",
+    "id": "a1"
+   }
+  ],
+  "shotWindow": 7
+ },
+ "kept": {
+  "ok": true,
+  "name": "Notes",
+  "text": " milk",
+  "how": "ax"
+ },
+ "keptPasted": {
+  "ok": true,
+  "name": "Notes",
+  "text": " milk",
+  "how": "paste"
+ },
+ "badKept": {
+  "ok": false
+ },
+ "placed": {
+  "p": {
+   "x": 400,
+   "y": 12
+  },
+  "win": 7,
+  "frame": {
+   "x": 0,
+   "y": 0,
+   "width": 800,
+   "height": 600
+  },
+  "covered": false,
+  "pending": false
+ },
+ "moved": {
+  "p": {
+   "x": 500,
+   "y": 62
+  },
+  "win": 7,
+  "frame": {
+   "x": 100,
+   "y": 50,
+   "width": 800,
+   "height": 600
+  },
+  "covered": false,
+  "pending": false
+ },
+ "bad-moved": {
+  "said": [],
+  "asked": [],
+  "events": [],
+  "front": null,
+  "threw": []
+ },
+ "badMoved": {
+  "p": {
+   "x": 500,
+   "y": 62
+  },
+  "win": 7,
+  "frame": {
+   "x": 100,
+   "y": 50,
+   "width": 800,
+   "height": 600
+  },
+  "covered": false,
+  "pending": false
+ },
+ "front": {
+  "said": [],
+  "asked": [],
+  "events": [
+   [
+    "screen:front",
+    {
+     "bundle": "com.apple.Notes",
+     "name": "Notes",
+     "title": "Groceries",
+     "window": 7,
+     "vaultite": false
+    }
+   ]
+  ],
+  "front": {
+   "bundle": "com.apple.Notes",
+   "name": "Notes",
+   "pid": 5,
+   "window": 7,
+   "title": "Groceries",
+   "frame": {
+    "x": 0,
+    "y": 0,
+    "width": 800,
+    "height": 600
+   },
+   "vaultite": false,
+   "event": "front"
+  },
+  "threw": []
+ },
+ "front-private": {
+  "said": [],
+  "asked": [],
+  "events": [
+   [
+    "screen:front",
+    {
+     "bundle": "com.1password.1password",
+     "name": "1Password",
+     "private": true
+    }
+   ]
+  ],
+  "front": {
+   "bundle": "com.1password.1password",
+   "name": "1Password",
+   "pid": 5,
+   "window": 9,
+   "title": "Groceries",
+   "frame": {
+    "x": 0,
+    "y": 0,
+    "width": 800,
+    "height": 600
+   },
+   "vaultite": false,
+   "event": "front"
+  },
+  "threw": []
+ },
+ "tap": {
+  "said": [],
+  "asked": [
+   {
+    "notice": "tap"
+   },
+   {
+    "notice": "tap"
+   }
+  ],
+  "events": [],
+  "front": {
+   "bundle": "com.1password.1password",
+   "name": "1Password",
+   "pid": 5,
+   "window": 9,
+   "title": "Groceries",
+   "frame": {
+    "x": 0,
+    "y": 0,
+    "width": 800,
+    "height": 600
+   },
+   "vaultite": false,
+   "event": "front"
+  },
+  "threw": []
+ },
+ "input": {
+  "said": [
+   {
+    "t": "input",
+    "kind": "type"
+   },
+   {
+    "t": "input",
+    "kind": "esc"
+   },
+   {
+    "t": "input",
+    "kind": "click",
+    "x": 30,
+    "y": 40,
+    "label": "Save",
+    "role": "button"
+   }
+  ],
+  "asked": [
+   {
+    "t": "input",
+    "kind": "type"
+   },
+   {
+    "t": "input",
+    "kind": "esc"
+   },
+   {
+    "t": "input",
+    "kind": "click",
+    "x": 30,
+    "y": 40,
+    "label": "Save",
+    "role": "button"
+   }
+  ],
+  "events": [],
+  "front": {
+   "bundle": "com.1password.1password",
+   "name": "1Password",
+   "pid": 5,
+   "window": 9,
+   "title": "Groceries",
+   "frame": {
+    "x": 0,
+    "y": 0,
+    "width": 800,
+    "height": 600
+   },
+   "vaultite": false,
+   "event": "front"
+  },
+  "threw": []
+ },
+ "keys": {
+  "said": [
+   {
+    "t": "interrupt"
+   }
+  ],
+  "asked": [
+   {
+    "t": "interrupt"
+   }
+  ],
+  "events": [],
+  "front": {
+   "bundle": "com.1password.1password",
+   "name": "1Password",
+   "pid": 5,
+   "window": 9,
+   "title": "Groceries",
+   "frame": {
+    "x": 0,
+    "y": 0,
+    "width": 800,
+    "height": 600
+   },
+   "vaultite": false,
+   "event": "front"
+  },
+  "threw": []
+ },
+ "takeover-vaultite": [
+  {
+   "t": "takeover-done",
+   "id": "vaultite",
+   "ok": false,
+   "why": "refused",
+   "text": "that's Vaultite's own window: act there with --ui or --pane"
+  }
+ ],
+ "takeover-gone": [
+  {
+   "t": "takeover-done",
+   "id": "gone",
+   "ok": false,
+   "why": "refused",
+   "text": "that element isn't there any more: point again from a fresh ask"
+  }
+ ],
+ "takeover-private": [
+  {
+   "t": "takeover-done",
+   "id": "private",
+   "ok": false,
+   "why": "refused",
+   "text": "that app or site is private: the companion never acts there"
+  }
+ ],
+ "takeover-malformed": [
+  {
+   "t": "takeover-done",
+   "id": "malformed",
+   "ok": false,
+   "why": "refused",
+   "text": "nothing to act on there"
+  }
+ ],
+ "bad-front": {
+  "said": [],
+  "asked": [],
+  "events": [
+   [
+    "screen:front",
+    {
+     "bundle": "",
+     "name": "",
+     "title": "",
+     "window": 0,
+     "vaultite": false
+    }
+   ],
+   [
+    "screen:front",
+    {
+     "bundle": "",
+     "name": "",
+     "title": "",
+     "window": 0,
+     "vaultite": false
+    }
+   ]
+  ],
+  "front": {
+   "bundle": "",
+   "name": "",
+   "pid": 0,
+   "window": 0,
+   "title": "",
+   "event": "front"
+  },
+  "threw": []
+ },
+ "bad-tap": {
+  "said": [],
+  "asked": [],
+  "events": [],
+  "front": {
+   "bundle": "",
+   "name": "",
+   "pid": 0,
+   "window": 0,
+   "title": "",
+   "event": "front"
+  },
+  "threw": []
+ },
+ "bad-input": {
+  "said": [
+   {
+    "t": "input",
+    "kind": "click",
+    "x": null,
+    "y": null,
+    "label": "Save",
+    "role": "button"
+   }
+  ],
+  "asked": [
+   {
+    "t": "input",
+    "kind": "click",
+    "x": null,
+    "y": null,
+    "label": "Save",
+    "role": "button"
+   }
+  ],
+  "events": [],
+  "front": {
+   "bundle": "",
+   "name": "",
+   "pid": 0,
+   "window": 0,
+   "title": "",
+   "event": "front"
+  },
+  "threw": []
+ },
+ "bad-events": {
+  "said": [],
+  "asked": [],
+  "events": [],
+  "front": {
+   "bundle": "",
+   "name": "",
+   "pid": 0,
+   "window": 0,
+   "title": "",
+   "event": "front"
+  },
+  "threw": []
+ },
+ "takeoverSent": [
+  "probe",
+  "probe",
+  "probe",
+  "probe"
+ ],
+ "screenSent": [
+  "at",
+  "covered",
+  "kept",
+  "near",
+  "text",
+  "under",
+  "window",
+  "windows"
+ ],
+ "threw": []
+}

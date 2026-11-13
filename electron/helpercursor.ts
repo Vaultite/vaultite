@@ -12,7 +12,7 @@ import { takeoverBehind, takeoverCaption } from "./takeover.ts"
 import { keepsActs, lessonScene, watching } from "./teach.ts"
 import { keepTimeline, timelineOn } from "./timeline.ts"
 import { walkFilms, walkOn, walkScene } from "./walk.ts"
-import { LIVE, QUIET, screenAsk } from "./helperask.ts"
+import { LIVE, QUIET, screenDo } from "./helperask.ts"
 import { type Agent, based, BUSY, frontHappened, hinted, host, type Note, prefs, type Session, type Summon } from "./helperbase.ts"
 import { inAppPoint, leave, places, pointOf } from "./helperat.ts"
 import { live } from "./helperlive.ts"
@@ -32,7 +32,7 @@ export function ringFollows() {
   // (just on: the app in front as it began)
   if (!was && timelineOn()) frontHappened()
   const keys = keepsActs()
-  if (keys !== keysTold) { keysTold = keys; void screenAsk("keys", { on: keys }).catch(() => { keysTold = !keys }) }
+  if (keys !== keysTold) { keysTold = keys; void screenDo("keys", { on: keys }).catch(() => { keysTold = !keys }) }
 }
 let keysTold = false
 export const glide = cursorHandOff({ window: () => host?.homeWindow() ?? null, agent: (name) => live.state.agents.get(name), last: () => lastScene?.agents, draw })

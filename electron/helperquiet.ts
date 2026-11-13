@@ -1,7 +1,8 @@
 import { voiceOf } from "../core/desktop/spoken.ts"
-import { type Call, callFrom, callSaid, type MicUser } from "./calllogic.ts"
+import { type Call, callFrom, callSaid } from "./calllogic.ts"
 import { panelData, panelOpen, type PanelData } from "./overlay.ts"
 import { LIVE, QUIET, screenAsk } from "./helperask.ts"
+import { MICS } from "./screenwire.ts"
 import { prefs, stopFor } from "./helperbase.ts"
 import { live } from "./helperlive.ts"
 import { session } from "./helpersession.ts"
@@ -33,7 +34,7 @@ export function followCalls(on = prefs.quietOnCalls && process.platform === "dar
   if (call) callChanged(null)
 }
 async function callLook() {
-  const r = await screenAsk<{ ok?: boolean; users?: MicUser[] }>("mics").catch(() => null)
+  const r = await screenAsk("mics", {}, MICS).catch(() => null)
   if (!callTimer || !r?.ok || !Array.isArray(r.users)) return
   const next = callFrom(r.users, OWN, call, micSince, Date.now(), excused)
   if (next?.bundle !== call?.bundle) callChanged(next)
