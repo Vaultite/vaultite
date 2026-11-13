@@ -1,10 +1,14 @@
 // A text file's place is also its top line: CodeMirror guesses unseen heights, so a scrollTop can drift.
 import { getStore } from "@/core/data"
 import { trackSoon } from "@/core/unsaved"
+import { keptEntries } from "@/core/keptEntries"
+import { isNumber, isObj } from "../../../core/values.ts"
 
 type Place = { y?: number; props?: boolean; at?: [number, number]
   line?: number; into?: number }
 const KEPT = "vaultite.places"
+const isPlace = (v: unknown): v is Place => isObj(v) && [v.y, v.line, v.into].every((n) => n === undefined || isNumber(n))
+  && (v.props === undefined || v.props === true || v.props === false) && (v.at === undefined || (Array.isArray(v.at) && v.at.length === 2 && v.at.every(isNumber)))
 const MAX = 200
 let places = new Map<string, Place>()
 let keptFor: string | null = null
@@ -15,8 +19,8 @@ function all() {
     keptFor = vault
     places = new Map()
     try {
-      const kept = JSON.parse(localStorage.getItem(KEPT) ?? "null") as { vault: string; places: [string, Place][] } | null
-      if (kept?.vault === vault && Array.isArray(kept.places)) places = new Map(kept.places)
+      const kept: unknown = JSON.parse(localStorage.getItem(KEPT) ?? "null")
+      if (isObj(kept) && kept.vault === vault) places = new Map(keptEntries(kept.places, isPlace))
     } catch { /* private mode, or not JSON */ }
   }
   return places

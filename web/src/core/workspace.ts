@@ -1,4 +1,4 @@
-import { backDetail, hashChanged, route } from "@/core/nav"
+import { backDetail, hashChanged, historyEntry, route } from "@/core/nav"
 import { isDesktop } from "@/core/platform"
 import {
   HISTORY, allPanes, beside, blankList, clean, cleanLayout, fixGroups, focusedPane, foldedAway, inGroup, isBlank, isBlankTab, isSplit, mapPane, mapPanes, mapPlaces, mapTab, mapTabs, migrate, moveOn,
@@ -8,6 +8,7 @@ import {
 import { signal } from "@/core/signal"
 import { tabsChanged } from "@/core/tabevents"
 import { trackSoon } from "@/core/unsaved"
+import { isNumber, isObj, isText } from "../../../core/values.ts"
 
 const enc = encodeURIComponent
 const POPOUT = new URLSearchParams(location.search).get("popout")
@@ -34,8 +35,8 @@ function older(t: Record<string, unknown>): unknown {
 }
 function load(): Workspace {
   try {
-    const t = JSON.parse(tabStore().getItem(tabKey()) ?? "null") as Record<string, unknown> | null
-    let w = t ? clean(older(t)) : null
+    const t: unknown = JSON.parse(tabStore().getItem(tabKey()) ?? "null")
+    let w = isObj(t) ? clean(older(t)) : null
     if (POPOUT && !w?.windows?.some((x) => x.id === POPOUT)) {
       const handed = clean(JSON.parse(sessionStorage.getItem(`vaultite.popout.${POPOUT}`) ?? "null"))
       if (handed) w = { ...(w ?? blankList()), windows: [...(w?.windows ?? []), { id: POPOUT, tabs: handed.tabs, ...(handed.groups ? { groups: handed.groups } : {}), active: handed.active }] }
@@ -240,8 +241,6 @@ export const setOwnHistory = (fn: typeof ownHistory) => { ownHistory = fn }
 export type OwnHistory = { can: boolean; go: () => Promise<boolean> }
 const opener = (p: Pane | undefined) => (p?.from && p.from !== p.id && paneById(p.from) ? p.from : null)
 
-type Entry = { pane?: string; sheet?: number; prev?: string } | null
-const entry = () => history.state as Entry
 export function show(to: string, push: boolean) {
   const h = `#${hashOf(to)}`
   if (location.hash === h) { stamp(); return hashChanged() }
@@ -250,8 +249,7 @@ export function show(to: string, push: boolean) {
   hashChanged()
 }
 function stamp() {
-  const e = entry()
-  if (!e?.pane) history.replaceState({ ...e, pane: activePane().id }, "")
+  if (!historyEntry().pane) history.replaceState({ ...history.state, pane: activePane().id }, "")
 }
 addEventListener("hashchange", () => { if (targetOf(route().tab) === activePane().to) stamp() })
 export const showActive = () => show(activePane().to, false)
@@ -428,7 +426,7 @@ export function followHash(tab: string) {
   const to = targetOf(tab)
   let cur = activePane()
   if (cur.to === to) return stamp()
-  const owner = isDesktop() ? undefined : entry()?.pane
+  const owner = isDesktop() ? undefined : historyEntry().pane
   const t = owner && owner !== cur.id ? tabOfPane(here(), owner) : undefined
   if (t) { set(withTab(t.id, (x) => ({ ...showingPlace(x, owner!), focus: owner! }), { active: t.id })); cur = activePane(); if (cur.to === to) return }
   const open = findOpen(to)
@@ -650,16 +648,22 @@ type Closed = (ClosedSet | ClosedPane) & { closed: number; ws?: number }
 export type ClosedEntry = { id: string; tabs: Tab[]; groups: Group[]; closed: number; window: boolean }
 const CLOSED_KEY = `${KEY}.closed`, MAX_CLOSED = 50
 type Obj = Record<string, unknown>
+const isSpot = (v: unknown): v is Spot => isObj(v) && isText(v.next) && (v.dir === "row" || v.dir === "col") && (v.after === true || v.after === false) && isNumber(v.share)
 function closedOf(e: Obj): Closed[] {
   const when = { closed: typeof e.closed === "number" ? e.closed : 0, ...(typeof e.ws === "number" ? { ws: e.ws } : {}) }
   const tabIn = (x: unknown): Tab | null => {
-    const t = x && typeof x === "object" ? clean({ tabs: [x], active: "" })?.tabs[0] : null, g = (x as Obj | null)?.group
-    return t ? (typeof g === "string" && g ? { ...t, group: g } : t) : null
+    const t = isObj(x) ? clean({ tabs: [x], active: "" })?.tabs[0] : null, g = isObj(x) ? x.group : undefined
+    return t ? (isText(g) && g ? { ...t, group: g } : t) : null
   }
   const old = (t: Obj) => tabOf(String(t.to), { id: `t${t.id}`, pane: String(t.id) })
-  const isOld = (t: unknown): t is Obj => !!t && typeof t === "object" && typeof (t as Obj).to === "string" && typeof (t as Obj).id === "string"
+  const isOld = (t: unknown): t is Obj => isObj(t) && isText(t.to) && isText(t.id)
   if (Array.isArray(e.tabs)) {
-    const tabs = e.tabs.flatMap((c: Obj | null) => { const t = tabIn(c?.tab); return t ? [{ tab: t, at: typeof c!.at === "number" ? c!.at : Infinity }] : [] })
+    const saved: unknown[] = e.tabs
+    const tabs = saved.flatMap((c) => {
+      if (!isObj(c)) return []
+      const t = tabIn(c.tab)
+      return t ? [{ tab: t, at: isNumber(c.at) ? c.at : Infinity }] : []
+    })
     if (!tabs.length) return []
     const groups = clean({ tabs: tabs.map((c) => c.tab), groups: e.groups, active: "" })?.groups?.map(({ collapsed: _, ...g }) => g)
     return [{ tabs, ...(groups?.length ? { groups } : {}), ...(typeof e.shown === "string" ? { shown: e.shown } : {}), ...(e.window === true ? { window: true } : {}), ...when }]
@@ -668,11 +672,11 @@ function closedOf(e: Obj): Closed[] {
     const t = isOld(e.tab) ? old(e.tab) : tabIn(e.tab)
     return t ? [{ tabs: [{ tab: t, at: typeof e.at === "number" ? e.at : 0 }], ...when }] : []
   }
-  const pane = e.pane as Obj | undefined
+  const pane = isObj(e.pane) ? e.pane : undefined
   if (pane && Array.isArray(pane.tabs)) return pane.tabs.filter(isOld).map((t) => ({ tabs: [{ tab: old(t), at: Infinity }], ...when }))
   const p = pane && cleanLayout(pane)
-  const among = Array.isArray(e.beside) && e.beside.every((x) => typeof x === "string") ? { beside: e.beside as string[], at: typeof e.at === "number" ? e.at : 0 } : {}
-  if (p && !isSplit(p) && typeof e.tab === "string") return [{ pane: p, tab: e.tab, spot: (e.spot as Spot) ?? null, ...(e.zoom === true ? { zoom: true } : {}), ...among, ...when }]
+  const among = Array.isArray(e.beside) && e.beside.every(isText) ? { beside: e.beside, at: typeof e.at === "number" ? e.at : 0 } : {}
+  if (p && !isSplit(p) && typeof e.tab === "string") return [{ pane: p, tab: e.tab, spot: isSpot(e.spot) ? e.spot : null, ...(e.zoom === true ? { zoom: true } : {}), ...among, ...when }]
   return []
 }
 const closedFrom = (raw: string | null): Closed[] => {
@@ -717,13 +721,15 @@ function remember(tabs: Tab[], panes: Pane[] = [], { from = here(), window = fal
     const left = tabWithout(t, new Set(placesIn(t).filter((p) => !keep(p)).map((p) => p.id))), at = from.tabs.findIndex((x) => x.id === t.id)
     return left && at >= 0 ? [{ tab: keptTab({ ...left, id: t.id }), at }] : []
   })
+  let set: Extract<Closed, ClosedSet> | null = null
   if (kept.length) {
     const ids = new Set(kept.map((c) => c.tab.group)), groups = from.groups?.filter((g) => ids.has(g.id)).map(({ collapsed: _, ...g }) => g)
     const shown = kept.find((c) => c.tab.id === from.active)?.tab.id
-    reopenable.push({ tabs: kept, ...(groups?.length ? { groups } : {}), ...(shown ? { shown } : {}), ...(window ? { window } : {}), closed, ws })
+    set = { tabs: kept, ...(groups?.length ? { groups } : {}), ...(shown ? { shown } : {}), ...(window ? { window } : {}), closed, ws }
+    reopenable.push(set)
   }
   keepClosed()
-  return kept.length ? reopenable[reopenable.length - 1] as Extract<Closed, ClosedSet> : null
+  return set
 }
 function rememberTaken(was: TabList, next: TabList) {
   const ids = new Set(allPanes(next).map((p) => p.id)), places = new Set(allPanes(next).map((p) => p.to)), stays = new Set(next.tabs.map((t) => t.id))

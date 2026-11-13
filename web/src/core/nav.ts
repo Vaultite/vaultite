@@ -1,4 +1,5 @@
 import { glide } from "@/core/animation"
+import { isNumber, isObj, isText } from "../../../core/values.ts"
 /** Scroll the page: on desktop the main area scrolls by itself (#main-scroll, below the tab bar), on phones the window. */
 export function scrollPage(top: number, smooth = false) {
   const el = document.getElementById("main-scroll")
@@ -6,13 +7,20 @@ export function scrollPage(top: number, smooth = false) {
   target.scrollTo({ top, behavior: smooth ? glide() : "auto" })
 }
 
+type Entry = { sheet?: number; prev?: string; pane?: string }
+export function historyEntry(): Entry {
+  const s: unknown = history.state
+  return isObj(s) ? { sheet: isNumber(s.sheet) ? s.sheet : undefined, prev: isText(s.prev) ? s.prev : undefined, pane: isText(s.pane) ? s.pane : undefined } : {}
+}
+const isNumbered = (s: unknown): s is { n: number } => isObj(s) && isNumber(s.n)
+
 export type Route = { tab: string; detail: string; depth: number; prev: string }
 
 export function route(): Route {
   let [tab, ...rest] = location.hash.slice(1).split("/")
   if ((tab === "file" || tab === "view") && rest.length) tab = `${tab}/${rest.shift()}`
-  const s = history.state as { sheet?: number; prev?: string } | null
-  return { tab, detail: rest.join("/"), depth: s?.sheet ?? 0, prev: s?.prev ?? "" }
+  const e = historyEntry()
+  return { tab, detail: rest.join("/"), depth: e.sheet ?? 0, prev: e.prev ?? "" }
 }
 
 let redirect: ((path: string) => string | null) | null = null
@@ -85,7 +93,6 @@ export function replaceDetail(path: string) {
 
 // The browser won't say whether Back stays in the app (from Safari's first entry it leaves), so entries are
 // numbered in sessionStorage.
-type Numbered = { n?: number } | null
 const SEQ = "vaultite.history.n", FLOOR = "vaultite.history.floor", TOP = "vaultite.history.top"
 function session(key: string, v?: number) {
   try {
@@ -97,11 +104,11 @@ function session(key: string, v?: number) {
 let seq = session(SEQ)
 let top = session(TOP)
 const nextN = () => { top = session(TOP, ++seq); return seq }
-const numberOf = () => (history.state as Numbered)?.n ?? 0
+const numberOf = () => { const s: unknown = history.state; return isNumbered(s) ? s.n : 0 }
 const rawReplace = history.replaceState.bind(history), rawPush = history.pushState.bind(history)
 const withN = (s: unknown, n: number) => ({ ...(s && typeof s === "object" ? s : {}), n })
 history.replaceState = (s: unknown, unused: string, url?: string | URL | null) => {
-  const n = (s as Numbered)?.n ?? numberOf()
+  const n = isNumbered(s) ? s.n : numberOf()
   rawReplace(n ? withN(s, n) : s, unused, url)
 }
 history.pushState = (s: unknown, unused: string, url?: string | URL | null) => rawPush(withN(s, nextN()), unused, url)

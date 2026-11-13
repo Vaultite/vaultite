@@ -1,4 +1,5 @@
-import { type Entry, type FileStat, type Folder, kindOf, norm, PROTOCOL, Replica, sha, type Store, unsynced, type Vector } from "../../../core/syncengine.ts"
+import { type Conflict, type Entry, type FileStat, type Folder, kindOf, type Node as SyncNode, norm, PROTOCOL, Replica, sha, type Store, unsynced, type Vector } from "../../../core/syncengine.ts"
+import { isNumber, isObj, isText, messageOf } from "../../../core/values.ts"
 import { phoneLocal, type LocalArea } from "@/core/phoneapp"
 
 const BATCH = 4 << 20, TEXT_MAX = 8 << 20, PULL_MS = 15_000
@@ -152,6 +153,19 @@ export type PhoneSync = {
 }
 
 type Info = { set: string | null; vault: string; readOnly: boolean; device: string }
+const isInfo = (v: unknown): v is Info => isObj(v) && (v.set === null || isText(v.set)) && isText(v.vault) && (v.readOnly === true || v.readOnly === false) && isText(v.device)
+const isVector = (v: unknown): v is Vector => isObj(v) && Object.values(v).every(isNumber)
+const isBlobs = (v: unknown): v is Record<string, string> => isObj(v) && Object.values(v).every(isText)
+const textOrNull = (v: unknown): v is string | null => v === null || isText(v)
+const texts = (v: unknown): v is string[] => Array.isArray(v) && v.every(isText)
+const maybe = <T>(is: (v: unknown) => v is T) => (v: unknown): v is T | undefined => v === undefined || is(v)
+const CONFLICTS = ["text", "json", "binary", "deleted", "name"] as const satisfies readonly Conflict["kind"][]
+const isConflict = (c: unknown): c is Conflict => isObj(c) && [isText(c.id), CONFLICTS.some((k) => k === c.kind), textOrNull(c.base), textOrNull(c.other),
+  isText(c.device), isNumber(c.at), maybe(isText)(c.copy), maybe(texts)(c.keys), maybe(isNumber)(c.lines)].every(Boolean)
+const isNode = (n: unknown): n is SyncNode => isObj(n) && [isText(n.id), isText(n.file), isText(n.path), textOrNull(n.blob), isNumber(n.size), texts(n.parents),
+  isNumber(n.clock), isText(n.device), isNumber(n.at), maybe(isConflict)(n.conflict), maybe(texts)(n.settles), maybe(isText)(n.from),
+  n.confirmed === undefined || n.confirmed === true].every(Boolean)
+const isEntry = (e: unknown): e is Entry => isObj(e) && isText(e.device) && isNumber(e.seq) && isNode(e.node)
 
 export const previewPath = (path: string) => `previews/${sha(norm(path))}.jpg`
 
@@ -160,14 +174,14 @@ export const phoneSync = () => running
 
 export async function startPhoneSync(get: (route: string) => Promise<unknown>, post: (route: string, body: unknown) => Promise<unknown>, server = location.origin) {
   if (!phoneLocal || running) return running
-  const info = await get("sync/phone").catch(() => null) as Info | null
-  if (!info?.set) return null
+  const info = await get("sync/phone").catch(() => null)
+  if (!isInfo(info) || !info.set) return null
   await phoneLocal.setOffline({ server, vault: info.vault }).catch(() => {})
   const [folder, store] = await Promise.all([PhoneFolder.load(phoneLocal, info.vault), PhoneStore.load(phoneLocal, info.vault)])
   store.folder = folder
   const replica = new Replica({ device: info.device, store, folder })
   const s: PhoneSync = { vault: info.vault, set: info.set, readOnly: info.readOnly, replica, folder, store, last: 0, error: "", downloading: new Set(),
-    step: () => chain = chain.then(() => once(s, post)).catch((e) => { s.error = (e as Error).message }) }
+    step: () => chain = chain.then(() => once(s, post)).catch((e) => { s.error = messageOf(e) }) }
   let chain: Promise<void> = Promise.resolve()
   running = s
   void s.step()
@@ -188,17 +202,17 @@ async function once(s: PhoneSync, post: (route: string, body: unknown) => Promis
     const blobs: Record<string, string> = {}
     let total = 0
     for (const e of send) { const h = e.node.blob, b = h && !blobs[h] ? s.store.blob(h) : null; if (b && total < BATCH * 2) { blobs[h!] = b64(b); total += b.length } }
-    const r = await post("sync/exchange", { set: s.set, device: s.replica.device, protocol: PROTOCOL, vector: s.replica.vector(), entries: send, blobs }) as
-      { vector: Vector; entries: Entry[]; blobs?: Record<string, string>; more?: boolean }
-    for (const [h, d] of Object.entries(r.blobs ?? {})) { const bytes = unb64(d); if (sha(bytes) === h) s.store.putBlob(h, bytes) }
-    s.replica.receive(r.entries ?? [])
+    const r = await post("sync/exchange", { set: s.set, device: s.replica.device, protocol: PROTOCOL, vector: s.replica.vector(), entries: send, blobs })
+    if (!isObj(r) || !isVector(r.vector)) throw new Error("the server's sync answer has no vector")
+    for (const [h, d] of Object.entries(isBlobs(r.blobs) ? r.blobs : {})) { const bytes = unb64(d); if (sha(bytes) === h) s.store.putBlob(h, bytes) }
+    s.replica.receive(Array.isArray(r.entries) ? r.entries.filter(isEntry) : [])
     theirs = r.vector
     if (!r.more && !s.replica.missing(theirs, 1).length) break
   }
   const textWant = s.replica.missingBlobs().filter((h) => { const n = headWith(s.replica, h); return !n || kindOf(n.path) !== "binary" || n.size < 64 << 10 })
   for (let i = 0; i < textWant.length; i += 300) {
-    const r = await post("sync/blobs", { set: s.set, hashes: textWant.slice(i, i + 300) }) as { blobs: Record<string, string> }
-    for (const [h, d] of Object.entries(r.blobs ?? {})) { const bytes = unb64(d); if (sha(bytes) === h) s.store.putBlob(h, bytes) }
+    const r = await post("sync/blobs", { set: s.set, hashes: textWant.slice(i, i + 300) })
+    for (const [h, d] of Object.entries(isObj(r) && isBlobs(r.blobs) ? r.blobs : {})) { const bytes = unb64(d); if (sha(bytes) === h) s.store.putBlob(h, bytes) }
   }
   s.replica.mergeAll()
   s.replica.materialize()

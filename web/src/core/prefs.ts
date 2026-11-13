@@ -2,26 +2,36 @@ import { patch, put } from "@/core/http"
 import { readSidebars, type Sidebars } from "../../../core/sidebars.ts"
 import { readNewTab, type NewTabSetup } from "../../../core/newtab.ts"
 import type { UpdatePolicy } from "../../../core/updates.ts"
-import { isObj } from "../../../core/values.ts"
+import { isNumber, isObj, isText } from "../../../core/values.ts"
 import { LOOK, LOOK_KEYS } from "../../../core/look.ts"
 import { signal } from "@/core/signal"
 
-export type Theme = "system" | "light" | "dark"
+const THEMES = ["system", "light", "dark"] as const
+export type Theme = (typeof THEMES)[number]
 type Scheme = string
-export type Density = "compact" | "comfortable"
-export type Animation = "snappy" | "natural" | "off"
-export type FileBarFade = "off" | "typing" | "always"
-type SidebarScroll = "panels" | "sidebar"
-export type FileSort = "name" | "name-desc" | "modified" | "modified-old" | "created" | "created-old"
-export type FolderView = "list" | "grid" | "columns" | "gallery"
-export type FolderGroup = "none" | "kind" | "modified"
+const DENSITIES = ["compact", "comfortable"] as const
+export type Density = (typeof DENSITIES)[number]
+const ANIMATIONS = ["snappy", "natural", "off"] as const
+export type Animation = (typeof ANIMATIONS)[number]
+const FADES = ["off", "typing", "always"] as const
+export type FileBarFade = (typeof FADES)[number]
+const SCROLLS = ["panels", "sidebar"] as const
+type SidebarScroll = (typeof SCROLLS)[number]
+const HEADINGS = ["shown", "quiet"] as const
+const SORTS = ["name", "name-desc", "modified", "modified-old", "created", "created-old"] as const
+export type FileSort = (typeof SORTS)[number]
+const VIEWS = ["list", "grid", "columns", "gallery"] as const
+export type FolderView = (typeof VIEWS)[number]
+const GROUPINGS = ["none", "kind", "modified"] as const
+export type FolderGroup = (typeof GROUPINGS)[number]
+const POLICIES = ["vaultite", "all", "off"] as const satisfies readonly UpdatePolicy[]
 export type Prefs = {
   theme: Theme; scheme: Scheme; sidebar: boolean; disabled: string[]
   density: Density
   animation: Animation
   sidebarScroll: SidebarScroll
   panelDividers: boolean
-  panelHeadings: "shown" | "quiet"
+  panelHeadings: (typeof HEADINGS)[number]
   quickTextSize: boolean
   interfaceFont: string; textFont: string; monoFont: string
   snippets: string[]
@@ -67,29 +77,49 @@ const KEY = "vaultite.prefs"
 const DEFAULTS: Prefs = {
   ...LOOK, sidebar: true, sidebarWidth: 240, rightSidebar: true, rightSidebarWidth: 280, disabled: [], enabled: [], ai: true, fileSort: "name", folderView: "list", folderGroup: "none", folderLimit: 0, autoReveal: true, showHidden: false, showArchived: false, sidebars: null, newTab: { sections: null, actions: null, icons: null, page: null, opens: null }, updates: "vaultite", updatesOn: [], updatesOff: [], device: {}, editor: {},
 }
-const FILES = {
+const FILE_NAMES = ["appearance", "plugins", "files"] as const
+type File = (typeof FILE_NAMES)[number]
+const FILES: Record<File, readonly Plain[]> = {
   appearance: LOOK_KEYS, plugins: ["disabled", "enabled", "ai", "updates", "updatesOn", "updatesOff"], files: ["fileSort", "folderView", "folderGroup", "folderLimit", "autoReveal", "showHidden", "showArchived"],
-} as const
-type File = keyof typeof FILES
-const WHOLE = { sidebars: "sidebars" } as const
+}
+const WHOLE = ["sidebars"] as const satisfies readonly (keyof Prefs)[]
 
-function fits(k: keyof Prefs, v: unknown) {
-  const d = DEFAULTS[k], nullable = k === "statusBar" || k === "statusBarLeft" || k === "fileBar" || k === "sidebarHeader" || k === "pullActions"
-  if (Array.isArray(d) || nullable) return (v === null && nullable) || (Array.isArray(v) && v.every((x) => typeof x === "string"))
-  if (d === null) return v === null || (typeof v === "object" && !Array.isArray(v))
-  if (typeof d === "number") return typeof v === "number" && Number.isFinite(v)
-  if (typeof d === "object") return !!v && typeof v === "object" && !Array.isArray(v)
-  return typeof v === typeof d
+type Fits<T> = (v: unknown) => v is T
+type Plain = Exclude<keyof Prefs, "sidebars" | "newTab">
+const oneOf = <T extends string>(values: readonly T[]) => (v: unknown): v is T => values.some((x) => x === v)
+const bool = (v: unknown): v is boolean => v === true || v === false
+const finite = (v: unknown): v is number => isNumber(v) && Number.isFinite(v)
+const texts = (v: unknown): v is string[] => Array.isArray(v) && v.every(isText)
+const textsOrNull = (v: unknown): v is string[] | null => v === null || texts(v)
+const FITS: { [K in Plain]: Fits<Prefs[K]> } = {
+  theme: oneOf(THEMES), scheme: isText, sidebar: bool, disabled: texts, density: oneOf(DENSITIES), animation: oneOf(ANIMATIONS), sidebarScroll: oneOf(SCROLLS),
+  panelDividers: bool, panelHeadings: oneOf(HEADINGS), quickTextSize: bool, interfaceFont: isText, textFont: isText, monoFont: isText, snippets: texts,
+  enabled: texts, ai: bool, sidebarWidth: finite, rightSidebar: bool, rightSidebarWidth: finite, fileIcons: bool, tabBar: bool, paneTabBars: bool,
+  dimPanes: bool, paneCards: bool, rails: bool, peekShade: bool, sidebarButtons: bool, fileBarFade: oneOf(FADES), translucent: bool, translucentPages: bool,
+  translucency: finite, pageTranslucency: finite, lineNumbers: bool, statusBar: textsOrNull, statusBarMore: texts, statusBarLeft: textsOrNull,
+  fileBar: textsOrNull, fileBarHidden: texts, sidebarHeader: textsOrNull, pullActions: textsOrNull, fileSort: oneOf(SORTS), folderView: oneOf(VIEWS),
+  folderGroup: oneOf(GROUPINGS), folderLimit: finite, autoReveal: bool, showHidden: bool, showArchived: bool, updates: oneOf(POLICIES),
+  updatesOn: texts, updatesOff: texts, device: isObj, editor: isObj,
+}
+const isPlain = (k: string): k is Plain => Object.hasOwn(FITS, k)
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the parse at the boundary
+function take<K extends Plain>(out: Prefs, k: K, saved: unknown, orDefault = false) {
+  if (FITS[k](saved)) out[k] = saved
+  else if (orDefault) out[k] = DEFAULTS[k]
+}
+
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the parse at the boundary
+export function readPrefs(saved: unknown): Prefs {
+  if (!isObj(saved)) return DEFAULTS
+  const out: Prefs = { ...DEFAULTS }
+  for (const [k, v] of Object.entries(saved)) if (isPlain(k)) take(out, k, v)
+  if (saved.sidebars === null || isObj(saved.sidebars)) out.sidebars = readSidebars(saved.sidebars)
+  if (isObj(saved.newTab)) out.newTab = readNewTab(saved.newTab)
+  return out
 }
 
 function load(): Prefs {
-  try {
-    const saved: unknown = JSON.parse(localStorage.getItem(KEY) ?? "{}")
-    if (!isObj(saved)) return DEFAULTS
-    const out = { ...DEFAULTS } as Record<string, unknown>
-    for (const k of Object.keys(DEFAULTS) as (keyof Prefs)[]) if (k in saved && fits(k, saved[k])) out[k] = saved[k]
-    return out as Prefs
-  } catch { return DEFAULTS }
+  try { return readPrefs(JSON.parse(localStorage.getItem(KEY) ?? "{}")) } catch { return DEFAULTS }
 }
 
 let prefs = load()
@@ -113,22 +143,23 @@ function save(file: File, keys?: readonly string[]) {
 export function setPrefs(changes: Partial<Prefs>) {
   const before = prefs
   commit({ ...prefs, ...changes })
-  const tab = changes.newTab && (Object.keys(changes.newTab) as (keyof NewTabSetup)[]).filter((k) => JSON.stringify(changes.newTab![k]) !== JSON.stringify(before.newTab[k]))
+  const tab = changes.newTab && Object.keys(changes.newTab).filter(isNewTabKey).filter((k) => JSON.stringify(changes.newTab![k]) !== JSON.stringify(before.newTab[k]))
   const newTab = tab?.length ? [patch("config/newtab", Object.fromEntries(tab.map((k) => [k, prefs.newTab[k]]))).then(() => {}, () => {})] : []
   const ed = changes.editor && [...new Set([...Object.keys(before.editor), ...Object.keys(changes.editor)])]
     .filter((k) => JSON.stringify(changes.editor![k]) !== JSON.stringify(before.editor[k]))
   const editor = ed?.length ? [patch("config/editor", Object.fromEntries(ed.map((k) => [k, prefs.editor[k] ?? null]))).then(() => {}, () => {})] : []
-  const whole = (Object.keys(WHOLE) as (keyof typeof WHOLE)[]).filter((k) => k in changes).map((k) =>
-    put(`config/${WHOLE[k]}`, prefs[k] ?? {}).then(() => {}, () => {}))
-  return Promise.all([...whole, ...newTab, ...editor, ...(Object.keys(FILES) as File[]).filter((file) => FILES[file].some((k) => k in changes)).map((file) => save(file, Object.keys(changes)))]).then(() => {})
+  const whole = WHOLE.flatMap((k) => (k in changes ? [put(`config/${k}`, prefs[k] ?? {}).then(() => {}, () => {})] : []))
+  const files = FILE_NAMES.flatMap((file) => (FILES[file].some((k) => k in changes) ? [save(file, Object.keys(changes))] : []))
+  return Promise.all([...whole, ...newTab, ...editor, ...files]).then(() => {})
 }
+const isNewTabKey = (k: string): k is keyof NewTabSetup => Object.hasOwn(DEFAULTS.newTab, k)
 
-export function hydratePrefs(config: Partial<Record<File | (typeof WHOLE)[keyof typeof WHOLE] | "newtab" | "editor", Record<string, unknown>>>,
+export function hydratePrefs(config: Partial<Record<File | (typeof WHOLE)[number] | "newtab" | "editor", Record<string, unknown>>>,
   seeds: Record<string, Record<string, unknown>> = {}) {
   const next = { ...prefs, sidebars: readSidebars(config.sidebars), newTab: readNewTab(config.newtab), editor: isObj(config.editor) ? config.editor : {} }
-  for (const file of Object.keys(FILES) as File[]) {
-    const got: unknown = config[file], saved = { ...(isObj(seeds[file]) ? seeds[file] : {}), ...(isObj(got) ? got : {}) }
-    for (const k of FILES[file]) (next as Record<string, unknown>)[k] = k in saved && fits(k, saved[k]) ? saved[k] : DEFAULTS[k]
+  for (const file of FILE_NAMES) {
+    const got: unknown = config[file], saved: Record<string, unknown> = { ...(isObj(seeds[file]) ? seeds[file] : {}), ...(isObj(got) ? got : {}) }
+    for (const k of FILES[file]) take(next, k, saved[k], true)
   }
   if (JSON.stringify(next) !== JSON.stringify(prefs)) commit(next)
 }

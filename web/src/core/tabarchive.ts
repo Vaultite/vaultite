@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react"
 import { clean, focusedPane, newPaneId, newTabId, mapPlaces, placesIn, tabOf, type Tab } from "../../../core/layout.ts"
 import { scopedState, subscribeScoped } from "@/core/scope"
+import { isNumber, isObj, isText } from "../../../core/values.ts"
 import { archivesAfter, archivingDue, canReopenTab, closeToArchive, findOpen, lastClosedAt, paneById, reopenTab, restoreTab, selectPane, tabById, unseenTabs } from "@/core/workspace"
 
 /** An archived tab: its panes (`tab`), what its focused pane showed (`to`) and what it was called, its place in the
@@ -10,11 +11,11 @@ export type ArchivedTab = { id: string; to: string; title: string; at: number; t
 const MAX = 200
 const kept = scopedState<unknown>("core:archived-tabs", [], "workspace")
 function okEntry(e: unknown): ArchivedTab[] {
-  const x = e as Partial<ArchivedTab> & { set?: string } | null
-  if (!x || typeof x !== "object" || typeof x.id !== "string" || typeof x.to !== "string" || typeof x.archived !== "number") return []
-  const at = typeof x.at === "number" ? x.at : 0, title = typeof x.title === "string" ? x.title : ""
-  const tab = x.tab ? clean({ tabs: [x.tab], active: x.tab.id })?.tabs[0] : { ...tabOf(x.to, { id: `t${x.id}`, pane: x.id }), ...(x.set ? { group: x.set } : {}) }
-  return tab ? [{ id: tab.id, to: focusedPane(tab).to, title, at, tab, archived: x.archived }] : []
+  if (!isObj(e) || !isText(e.id) || !isText(e.to) || !isNumber(e.archived)) return []
+  const at = isNumber(e.at) ? e.at : 0, title = isText(e.title) ? e.title : ""
+  const tab = e.tab ? clean({ tabs: [e.tab], active: isObj(e.tab) ? e.tab.id : undefined })?.tabs[0]
+    : { ...tabOf(e.to, { id: `t${e.id}`, pane: e.id }), ...(isText(e.set) && e.set ? { group: e.set } : {}) }
+  return tab ? [{ id: tab.id, to: focusedPane(tab).to, title, at, tab, archived: e.archived }] : []
 }
 const NONE: ArchivedTab[] = []
 let raw: unknown, list = NONE

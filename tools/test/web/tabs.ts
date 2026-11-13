@@ -100,6 +100,13 @@ check("saves: a list with tab groups (its `groups`, not the old {groups, split})
 const rooted = await fresh(oldLayout, [{ tab: { id: "x", to: "file:x.md" }, at: 1, closed: 5 }, { pane: { tabs: [{ id: "y", to: "file:y.md" }, { id: "z", to: "file:z.md" }] }, closed: 6 }])
 check("older saves: a layout of groups in splits migrates; closed tabs and panes of tabs saved then reopen as tabs",
   listOf(rooted) === "b,c,[a|d]*" && rooted.closedTabs().map((r: Any) => `${r.id}:${r.closed}`).join() === "tz:6,ty:6,tx:5", [listOf(rooted), rooted.closedTabs()])
+const spotted = await fresh({ tabs: [S("ta", row("s0", [a, b]), "a")], active: "ta" },
+  [{ pane: c, tab: "ta", spot: { next: "b", dir: "row", after: true, share: 0.25 }, closed: 8 }, { pane: d, tab: "ta", spot: { next: 3 }, closed: 9 }])
+spotted.reopenTab()
+const noSpot = listOf(spotted)
+spotted.reopenTab()
+check("closed panes kept: one whose spot isn't one reopens beside the focus; one with its spot, there", noSpot === "[a|d|b]*" && listOf(spotted) === "[a|d|b|c]*",
+  [noSpot, listOf(spotted)])
 // A pop-out keeps its own list in the workspace; the main window keeps its own and which pop-outs there are.
 const pop = await fresh({ tabs: [T("a")], active: "ta", windows: [{ id: "w1", tabs: [T("p")], active: "tp" }] }, undefined, "w1")
 const theirs = { tabs: [T("a"), T("b")], active: "tb", windows: [{ id: "w1", tabs: [T("q")], active: "tq" }, { id: "w2", tabs: [T("r")], active: "tr" }] }

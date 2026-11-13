@@ -37,3 +37,41 @@ await section("kept values", async () => {
   const answers = JSON.parse(JSON.stringify({ vault: "/Users/alice/Vault", answers: [["inbox/list", '{"items":[]}'], ["people/all?x=1", "[1,2]"]] }))
   check("live answers: those kept for a vault read back as [route, JSON]", same(h.keptEntries(answers.answers, isText), answers.answers))
 })
+
+await section("kept prefs", async () => {
+  const p: Any = await web("core/prefs.ts")
+  const old = JSON.parse(JSON.stringify({ theme: "dark", scheme: "nord", density: "comfortable", animation: "snappy", sidebar: false, sidebarWidth: 312,
+    disabled: ["vim"], statusBar: null, statusBarLeft: ["core:words"], fileSort: "modified-old", folderView: "gallery", updates: "all", translucency: 35,
+    sidebars: { left: ["files:files", "search:search"], right: ["outline:outline"], collapsed: ["search:search"], heights: { "files:files": 300 } },
+    newTab: { sections: ["recent"], actions: null, icons: null, page: null, opens: null }, device: { "textSize:note": 110, workspace: 2 }, editor: { tabSize: 2 },
+    panes: { old: true }, sidebarPanels: ["files"] }))
+  const read = p.readPrefs(old)
+  const kept = ["theme", "scheme", "density", "animation", "sidebar", "sidebarWidth", "disabled", "statusBar", "statusBarLeft", "fileSort", "folderView", "updates",
+    "translucency", "sidebars", "newTab", "device", "editor"]
+  check("prefs: what a device kept before reads back as it was", kept.every((k) => same(read[k], old[k])), kept.filter((k) => !same(read[k], old[k])))
+  check("prefs: what's no longer a pref is left out, the rest are defaults", !("panes" in read) && !("sidebarPanels" in read) && read.ai === true && read.folderLimit === 0)
+  const wrong = p.readPrefs({ theme: "sepia", sidebarWidth: "wide", disabled: [1], statusBar: "x", device: [], sidebars: [], fileSort: 3, ai: "yes", newTab: "recent" })
+  check("prefs: a kept value that isn't one is the default", wrong.theme === "system" && wrong.sidebarWidth === 240 && same(wrong.disabled, []) && wrong.statusBar === null
+    && same(wrong.device, {}) && wrong.sidebars === null && wrong.fileSort === "name" && wrong.ai === true && wrong.newTab.sections === null, wrong)
+  check("prefs: nothing kept, or not an object, is the defaults", same(p.readPrefs(null), p.readPrefs({})) && p.readPrefs([]).theme === "system")
+})
+
+await section("prefs from the vault's settings", async () => {
+  const p: Any = await web("core/prefs.ts")
+  p.hydratePrefs({ appearance: { theme: "light", density: "nope" }, plugins: { ai: false, updates: "off" }, files: { folderLimit: 50 } }, { files: { showHidden: true } })
+  const h = p.getPrefs()
+  check("prefs: the vault's settings fill what they set (seeds under them), defaults what they don't or got wrong",
+    h.theme === "light" && h.density === "compact" && h.ai === false && h.updates === "off" && h.folderLimit === 50 && h.showHidden === true, h)
+})
+
+await section("kept places", async () => {
+  const g: Any = globalThis, was = g.localStorage, listen = g.addEventListener
+  g.addEventListener = () => {}
+  const places = [["file:a.md", { y: 120, props: true, at: [3, 4] }], ["file:b.md", { line: 7, into: 0.25 }], ["file:c.md", { y: "far" }], ["file:d.md", { at: [1] }]]
+  g.localStorage = { getItem: (k: string) => (k === "vaultite.places" ? JSON.stringify({ vault: "", places }) : null), setItem() {}, removeItem() {} }
+  const v: Any = await web("core/viewstate.ts")
+  check("places: those kept read back", v.scrollOf("file:a.md") === 120 && v.propsOpen("a.md") === true && same(v.cursorOf("a.md"), [3, 4]))
+  check("places: one that isn't is dropped", v.scrollOf("file:c.md") === 0 && v.cursorOf("d.md") === null)
+  g.localStorage = was
+  g.addEventListener = listen
+})
