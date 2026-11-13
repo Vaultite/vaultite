@@ -58,14 +58,14 @@ export function startRecording(): () => void {
     if (MODS.has(e.key)) return
     const at = where(e.target), letter = e.key.length === 1 && !e.metaKey && !e.ctrlKey
     const name = letter ? "typed" : combo(e), text = letter && typedText && !secret(e.target) ? e.key : ""
-    into("key", (r) => r.key === name && r.in === at, (r) => { r.n = (r.n as number) + 1; if (text) r.text = `${r.text ?? ""}${text}` },
+    into("key", (r) => r.key === name && r.in === at, (r) => { r.n = Number(r.n) + 1; if (text) r.text = `${r.text ?? ""}${text}` },
       () => ({ key: name, n: 1, in: at, ...(text ? { text } : {}) }))
   })
   on("pointerdown", (e) => { lastInput = Date.now(); add("pointer", { button: e.button, kind: e.pointerType, x: Math.round(e.clientX), y: Math.round(e.clientY), on: where(e.target) }) })
   on("wheel", (e) => {
     lastInput = Date.now()
     const over = where(e.target), dy = Math.round(e.deltaY)
-    into("wheel", (r) => r.on === over, (r) => { r.dy = (r.dy as number) + dy }, () => ({ dy, on: over }), 500)
+    into("wheel", (r) => r.on === over, (r) => { r.dy = Number(r.dy) + dy }, () => ({ dy, on: over }), 500)
   })
   on("touchmove", () => { lastInput = Date.now() })
   on("focusin", (e) => add("focus", { on: where(e.target) }))

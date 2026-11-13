@@ -103,7 +103,7 @@ in); this moves those, one by one, through vau move, so links follow. --dry list
     if (dry) return { dry: true, files: todo, moved: [], failed: [] }
     const moved: Moved[] = [], failed: { path: string; error: string }[] = []
     for (const rel of todo) {
-      try { moved.push(await archive(ctx, rel)) } catch (e) { failed.push({ path: rel, error: (e as Error).message }) }
+      try { moved.push(await archive(ctx, rel)) } catch (e) { failed.push({ path: rel, error: e instanceof Error ? e.message : String(e) }) }
     }
     return { dry: false, files: todo, moved, failed }
   },

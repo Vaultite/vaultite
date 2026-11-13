@@ -50,7 +50,7 @@ export default function Docx({ url, embed }: { url: string; embed?: boolean }) {
     return () => ro.disconnect()
   }, [])
   const click = (e: React.MouseEvent) => {
-    const a = (e.nativeEvent.composedPath().find((n) => n instanceof HTMLAnchorElement) as HTMLAnchorElement | undefined)
+    const a = e.nativeEvent.composedPath().find((n): n is HTMLAnchorElement => n instanceof HTMLAnchorElement)
     if (!a) return
     e.preventDefault()
     const href = a.getAttribute("href") ?? ""

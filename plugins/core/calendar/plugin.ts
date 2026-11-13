@@ -1,6 +1,7 @@
 import ICAL from "ical.js"
 import { addDays, bullets, OpError, Plugin, section, today as todayIso } from "../../../core/plugins.ts"
 import { type Item, sortBy, str } from "../../../core/vault.ts"
+import type { CalEvent } from "./types.ts"
 
 export const plugin = new Plugin(import.meta.url)
 const TTL = 600
@@ -66,15 +67,22 @@ function occurrences(cal: ICAL.Component, start: string, end: string) {
   return out
 }
 
+async function fromServices(start: string, end: string, out: CalEvent[], errors: string[]) {
+  for (const items of plugin.allServices("agenda:items")) {
+    try { for (const e of await (items as AgendaItems)(start, end) ?? []) out.push({ calendar: str(e.calendar), title: str(e.title), location: str(e.location), start: str(e.start), end: e.end ? str(e.end) : null, all_day: !!e.all_day }) }
+    catch (e) { errors.push(e instanceof Error ? e.name : "Error") }
+  }
+}
+
 async function events(start: string, end: string) {
   const calendars: Item[] = plugin.secrets().calendars ?? []
-  const out: Item[] = [], errors: string[] = []
+  const out: CalEvent[] = [], errors: string[] = []
   for (const c of calendars) {
     let cal: ICAL.Component
     try {
       cal = await plugin.memo(TTL, fetchCalendar, c.ics)
     } catch (e) {
-      errors.push(`${c.name ?? "None"}: ${(e as Error).name}`)
+      errors.push(`${c.name ?? "None"}: ${e instanceof Error ? e.name : "Error"}`)
       continue
     }
     for (const o of occurrences(cal, start, addDays(end, 1))) {
@@ -82,10 +90,7 @@ async function events(start: string, end: string) {
         start: iso(o.start), end: iso(o.end), all_day: o.start.isDate })
     }
   }
-  for (const items of plugin.allServices("agenda:items")) {
-    try { for (const e of await (items as AgendaItems)(start, end) ?? []) out.push({ calendar: str(e.calendar), title: str(e.title), location: str(e.location), start: str(e.start), end: e.end ? str(e.end) : null, all_day: !!e.all_day }) }
-    catch (e) { errors.push(`${(e as Error).name}`) }
-  }
+  await fromServices(start, end, out, errors)
   return { events: sortBy(out, (x) => x.start), errors, configured: calendars.length > 0 || out.length > 0 }
 }
 type AgendaItems = (from: string, to: string) => Promise<Item[]> | Item[]
@@ -96,7 +101,7 @@ plugin.route("GET", "calendar", async (req) => {
   try {
     return await events(start, end)
   } catch (e) {
-    return { events: [], errors: [String((e as Error).message ?? e)], configured: true }
+    return { events: [], errors: [e instanceof Error ? e.message : String(e)], configured: true }
   }
 })
 
@@ -141,14 +146,14 @@ zone. What matters from one goes where it belongs (a person's timeline, a log), 
 
 plugin.block("agenda", async (ctx) => {
   const today = ctx.today, tomorrow = addDays(today, 1)
-  let res: Item
+  let res: Awaited<ReturnType<typeof events>>
   try {
     res = await events(today, tomorrow)
   } catch (e) {
-    return section("Agenda", `_Couldn't read the calendars: ${(e as Error).name}_`)
+    return section("Agenda", `_Couldn't read the calendars: ${e instanceof Error ? e.name : "Error"}_`)
   }
   if (!res.configured) return section("Agenda", "_No calendars connected yet._")
-  const rows = (res.events as Item[]).map((e) => {
+  const rows = res.events.map((e) => {
     const day = e.start.slice(0, 10) === today ? "Today" : e.start.slice(0, 10) === tomorrow ? "Tomorrow" : e.start.slice(0, 10)
     const when = e.all_day ? "all day" : e.start.slice(11, 16) + (e.end ? ` to ${e.end.slice(11, 16)}` : "")
     return `${day}, ${when}: ${e.title}` + (e.location ? ` (${e.location})` : "")

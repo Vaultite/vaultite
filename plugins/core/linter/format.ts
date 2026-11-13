@@ -11,8 +11,12 @@ export type Rules = {
 
 export const RULES: Rules = { trailingSpaces: true, blankLines: true, headingSpacing: true, headingSpace: true, quoteSpace: true, headingMarks: true, listMarkers: true, finalNewline: true }
 
-export const rulesOf = (s: Record<string, unknown>): Rules =>
-  Object.fromEntries(Object.entries(RULES).map(([k, d]) => [k, typeof s[k] === "boolean" ? s[k] : d])) as Rules
+const isRule = (k: string): k is keyof Rules => Object.hasOwn(RULES, k)
+export function rulesOf(s: Record<string, unknown>): Rules {
+  const out = { ...RULES }
+  for (const [k, v] of Object.entries(s)) if (isRule(k) && typeof v === "boolean") out[k] = v
+  return out
+}
 
 const HEADING = /^#{1,6}(\s|$)/
 const HR = /^ {0,3}([*_-])(?:[ \t]*\1){2,}[ \t]*$/

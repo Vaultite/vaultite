@@ -11,7 +11,7 @@ const WIDTH = 460, HEIGHT = 400, GAP = 6, LINGER = 300
 function targetOf(store: Store, el: Element): { target: string; from: string; path: string } | null {
   const from = el.closest<HTMLElement>("[data-preview-path]")?.dataset.previewPath
     ?? el.closest<HTMLElement>("[data-embed]")?.dataset.embed ?? el.closest<HTMLElement>(".file-view[data-path]")?.dataset.path ?? ""
-  const own = (el as HTMLElement).dataset
+  const own = el instanceof HTMLElement || el instanceof SVGElement ? el.dataset : {}
   const target = own.preview ? own.preview.replace(/\.md$/i, "") : (own.wiki ?? "")
   if (!target) return null
   const path = noteFor(store, target, from)
@@ -58,7 +58,7 @@ export function Previews({ store }: { store: Store }) {
     const over = (e: PointerEvent) => {
       x = e.clientX; y = e.clientY
       check()
-      const el = (e.target as Element).closest?.("[data-wiki], [data-preview]")
+      const el = e.target instanceof Element ? e.target.closest("[data-wiki], [data-preview]") : null
       if (!el || el === armed?.el) return
       disarm()
       if (el.closest("dialog") || el.closest("[data-no-preview]")) return
@@ -81,9 +81,9 @@ export function Previews({ store }: { store: Store }) {
       if (e.key === "Escape" && live.current.pops.length) { closeAll(); return }
       if ((e.key === "Meta" || e.key === "Control") && armed && !armed.timer && armed.mod) show(armed)
     }
-    const down = (e: Event) => { if (!(e.target as Element).closest?.("[data-preview-level]")) closeAll() }
+    const down = (e: Event) => { if (!(e.target instanceof Element && e.target.closest("[data-preview-level]"))) closeAll() }
     const click = (e: Event) => {
-      if ((e.target as Element).closest?.("[data-preview-level] :is([data-wiki], a[href], [data-tag])")) setTimeout(closeAll, 0)
+      if (e.target instanceof Element && e.target.closest("[data-preview-level] :is([data-wiki], a[href], [data-tag])")) setTimeout(closeAll, 0)
     }
     document.addEventListener("pointerover", over, true)
     document.addEventListener("pointerout", out, true)
