@@ -1,9 +1,5 @@
-// About how many tokens Claude reads for a text, without its tokenizer: pieces a tokenizer keeps together, each costing
-// what such a piece usually does. Rough by design: prose near chars/4, code nearer chars/3.
-
 const PIECE = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]|[\p{L}\p{M}]+|\p{N}+|[ \t]+|\n+|[\p{P}\p{S}]+|[^]/gu
 
-/** Past this, a text is estimated from evenly spaced samples, scaled up: a 16 MB note's takes milliseconds, not seconds. */
 const SAMPLE_PAST = 1 << 20, SAMPLES = 64, SAMPLE = 8192
 
 export function estimateTokens(text: string): number {
@@ -16,9 +12,7 @@ export function estimateTokens(text: string): number {
   return Math.round(n / 5 * text.length / (SAMPLES * SAMPLE))
 }
 
-/** The last text's lines' counts: a note counted again as it's typed counts only the lines that changed. */
 let last = new Map<string, number>()
-/** A text's count, line by line: a run of newlines ends a piece, so the lines' counts add up to the whole's. */
 function byLines(text: string, was: Map<string, number>): number {
   let n = 0
   for (let a = 0; a < text.length;) {
@@ -35,7 +29,6 @@ function byLines(text: string, was: Map<string, number>): number {
   return n
 }
 
-/** In fifths of a token (whole numbers: a sum doesn't depend on how it's split). */
 function count(text: string): number {
   let n = 0
   for (const [p] of text.matchAll(PIECE)) {
@@ -46,14 +39,12 @@ function count(text: string): number {
     else if (c === 32 || c === 9) n += len === 1 ? 0 : 5 * Math.ceil(len / 8)
     else if (c === 10) n += 5 * Math.ceil(len / 2)
     else if (/^[\x21-\x7e]+$/.test(p)) n += 5 * Math.ceil(len / 2)
-    else n += 5 * len // emoji and other symbols: a token or more each
+    else n += 5 * len
   }
   return n
 }
 
-/** "840", "1.2k", "35k", "1.4M". */
 export const shortTokens = (n: number) => n < 1000 ? String(n) : n < 10_000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k`
   : n < 999_500 ? `${Math.round(n / 1000)}k` : `${(n / 1e6).toFixed(1).replace(/\.0$/, "")}M`
 
-/** "~840 tokens", "~1.2k tokens", "~35k tokens", "~1.4M tokens". */
 export const tokenText = (n: number) => `~${shortTokens(n)} token${n === 1 ? "" : "s"}`

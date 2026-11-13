@@ -1,5 +1,3 @@
-// Token count's server side: each Markdown file's tokens against its limit (limits.ts), and what Claude Code loads with
-// a CLAUDE.md's @imports, for the app (its part of /api/state) and for agents (the op token-count.size: `vau size`).
 import fs from "node:fs"
 import path from "node:path"
 import { OpError, pathAsSaid, Plugin } from "../../../core/plugins.ts"
@@ -13,7 +11,6 @@ const decls = plugin.manifest.settings ?? {}
 const DEFAULTS: Limits = { limit: decls.limit?.default ?? 0, limits: decls.limits?.default ?? {} }
 export const limits = () => limitsOf(plugin.settings(), DEFAULTS)
 
-// Read again only when a file's stat changed: the text's tokens, its imports and its frontmatter (by vault path).
 type Read = { ns: bigint; size: number; tokens: number; imports: string[]; fm: Record<string, unknown> }
 const reads = new Map<string, Read>()
 
@@ -26,7 +23,7 @@ function readAt(vault: Vault, rel: string, stat?: { ns: bigint; size: number }):
   const had = reads.get(rel)
   if (had && had.ns === st.ns && had.size === st.size) return had
   let text: string
-  try { text = fs.readFileSync(abs, "utf8") } catch { return null } // (any size the index reads too; past what a string holds, none)
+  try { text = fs.readFileSync(abs, "utf8") } catch { return null }
   let fm: Record<string, unknown> = {}
   if (rel.endsWith(".md")) try { fm = parseText(text)[0] } catch { /* a header that doesn't parse: no max_tokens */ }
   const r = { ns: st.ns, size: st.size, tokens: estimateTokens(text), imports: rel.endsWith(".md") ? importsOf(text) : [], fm }
@@ -34,7 +31,6 @@ function readAt(vault: Vault, rel: string, stat?: { ns: bigint; size: number }):
   return r
 }
 
-/** Agent files in hidden folders (the vault's rules, skills): the index leaves hidden folders out. */
 function hiddenAgentFiles(vault: Vault): string[] {
   const out = [".vaultite/AGENTS.md"].filter((p) => fs.existsSync(vault.abs(p)))
   const walk = (dir: string, depth: number) => {
@@ -50,8 +46,7 @@ function hiddenAgentFiles(vault: Vault): string[] {
   return out
 }
 
-/** An import as a vault path, Claude Code's way (relative to the file importing it; `~/` is the home folder): null for
- *  one outside the vault. */
+/** Claude Code resolves an import from the file importing it, `~/` from the home folder. */
 function resolveImport(vault: Vault, from: string, p: string): string | null {
   if (p.startsWith("~/")) return null
   const root = path.resolve(vault.path)
@@ -60,7 +55,6 @@ function resolveImport(vault: Vault, from: string, p: string): string | null {
   return rel && !rel.startsWith("..") && !path.isAbsolute(rel) ? rel.split(path.sep).join("/") : null
 }
 
-/** What an agent loads with `root`: it and its imports, depth first, each file once (a cycle ends there). */
 function chainOf(vault: Vault, root: string, first: Read) {
   const chain: Link[] = [], outside = new Set<string>(), missing = new Set<string>()
   const seen = new Set([root])
@@ -94,19 +88,13 @@ function size(vault: Vault, rel: string, r: Read, l: Limits): Sized {
   return out
 }
 
-/** At most this many tokens a byte (a CJK character is 3 bytes and about 1.2 tokens): what a file can't be near its
- *  limit by, told from its size alone. */
+/** A CJK character is 3 bytes and about 1.2 tokens. */
 const MAX_PER_BYTE = 1.2
-// Whether a file may be flagged (a load chain's root, or near its limit by its size), once per read of it (an Entry is
-// new each time) and per limits.
 const mayFlag = new WeakMap<Entry, { key: string; may: boolean }>()
 let lastKey = ""
 
-/** Every Markdown file sized (the index's, and agent files in hidden folders), biggest first. `flaggedOnly`: only the
- *  files that may be flagged are read, so a big vault isn't read again for the few near a limit (most have none). */
 export function sizes(vault: Vault, { flaggedOnly = false } = {}): Sized[] {
   const l = limits(), out: Sized[] = []
-  // (one string while the limits stay the same: each file's check is then a pointer compare)
   const json = JSON.stringify(l), key = lastKey = json === lastKey ? lastKey : json
   for (const e of vault.entries.values()) {
     if (flaggedOnly) {
@@ -129,11 +117,9 @@ export function sizes(vault: Vault, { flaggedOnly = false } = {}): Sized[] {
   return out.sort((a, b) => (b.total ?? b.tokens) - (a.total ?? a.tokens) || a.path.localeCompare(b.path))
 }
 
-/** What the app needs: the files near or over their limit, and every load chain. */
 const flagged = (s: Sized) => s.level !== "ok" || s.chain !== undefined
 plugin.state(() => ({ tokenCount: { limits: limits(), files: sizes(plugin.vault, { flaggedOnly: true }).filter(flagged) } }))
 
-/** An absolute path (a Claude Code hook's) as a vault path; null when it's outside the vault. */
 function vaultRel(vault: Vault, p: string): string | null {
   if (!path.isAbsolute(p)) return p.replace(/^\.\//, "")
   for (const root of new Set([path.resolve(vault.path), (() => { try { return fs.realpathSync(vault.path) } catch { return vault.path } })()])) {

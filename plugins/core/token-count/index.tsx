@@ -6,9 +6,6 @@ import { levelOf, ruleFor, worse } from "./limits"
 import { ContextPanel, ContextView, toneOf } from "./AgentContext"
 import "./types"
 
-// Token count: an estimate of the Claude tokens in the open file (its whole text, frontmatter included), in the status
-// bar after its words and characters, amber near the file's limit and red over it (limits.ts). Never sent anywhere.
-
 const ABOUT = "About how many tokens Claude reads for this file, frontmatter included.\nAn estimate made on this device, not Claude's own tokenizer."
 
 function Tokens({ file }: { file: OpenFile }) {
@@ -18,7 +15,6 @@ function Tokens({ file }: { file: OpenFile }) {
   const tc = store?.tokenCount
   const md = file.path.endsWith(".md") && tc
   const rule = md ? ruleFor(file.path, file.fm, tc.limits) : { limit: 0, by: null }
-  // A load chain's total as the server counted it, with this file's own part as typed.
   const known = md ? tc.files.find((s) => s.path === file.path) : undefined
   const total = known?.total !== undefined ? known.total - known.tokens + n : undefined
   const level = worse(levelOf(n, rule.limit), total !== undefined ? levelOf(total, rule.limit) : "ok")
@@ -34,7 +30,6 @@ function Tokens({ file }: { file: OpenFile }) {
   )
 }
 
-/** Files over their limit, marked in the file tree with their size. */
 function marks(store: Store): Record<string, FileMark> {
   const out: Record<string, FileMark> = {}
   for (const s of store.tokenCount?.files ?? []) {

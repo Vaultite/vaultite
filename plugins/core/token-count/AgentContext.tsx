@@ -1,22 +1,17 @@
-// The Agent context panel: files over or near their token limit, and what each CLAUDE.md or AGENTS.md loads with its
-// @imports, biggest first (the server's list: plugin.ts). A sidebar panel, or a tab.
 import { FileText, SquareArrowOutUpRight } from "lucide-react"
 import { cn, Foldable, HeadingButton, openFile, openView, SidebarHeading, startDrag, type SidebarCtx, type Store } from "@vaultite"
 import type { Level, Sized } from "./limits"
 import { shortTokens } from "./estimate"
 import "./types"
 
-/** "12k", "840": a size without its tilde and unit. */
 export const toneOf = (l: Level) => (l === "over" ? "text-ink-(--red)" : l === "near" ? "text-ink-(--orange)" : "text-muted-foreground")
 const name = (p: string) => p.slice(p.lastIndexOf("/") + 1)
 const folder = (p: string) => p.slice(0, Math.max(0, p.lastIndexOf("/")))
 
-/** One file: its name, its folder, its size (and limit); opens it, drags like a file in the tree. */
 function Row({ path, size, tip, level, depth = 0, big }: { path: string; size: string; tip: string; level: Level; depth?: number; big?: boolean }) {
   const open = (e: { metaKey: boolean; ctrlKey: boolean }) => openFile(path, { newTab: e.metaKey || e.ctrlKey })
   return (
     <div role="button" tabIndex={0} data-keyrow data-context-row={path} data-level={level} data-preview={path.endsWith(".md") ? path : undefined}
-      // (a note's whole path is in its preview; another file's, cut off, in the tooltip)
       data-tip={path.endsWith(".md") ? undefined : path} data-tip-trunc
       onPointerDown={(e) => startDrag(e, { from: "row", path, to: `file:${path}`, label: name(path) })}
       onClick={open} onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) open(e) }}
@@ -33,7 +28,6 @@ function Row({ path, size, tip, level, depth = 0, big }: { path: string; size: s
 const sizeTip = (s: Sized) => [`About ${shortTokens(s.tokens)} tokens` + (s.total !== undefined ? `, ${shortTokens(s.total)} with its imports` : ""),
   s.limit ? `Its limit: ${shortTokens(s.limit)}` : "No limit"].join("\n")
 
-/** Over, near, and the load chains. */
 export function ContextList({ store, big }: { store: Store; big?: boolean }) {
   const files = store.tokenCount?.files ?? []
   const over = files.filter((s) => s.level === "over"), near = files.filter((s) => s.level === "near"), chains = files.filter((s) => s.chain)
@@ -68,7 +62,6 @@ export function ContextList({ store, big }: { store: Store; big?: boolean }) {
     </div>
   )
 }
-
 
 export function ContextPanel({ store, open }: SidebarCtx) {
   if (!open) return null
