@@ -1,5 +1,3 @@
-// Device sync on the iPhone: the copy kept in step from the hub's page (web/src/core/phonesync.ts), the media its rules
-// want brought down (phone.ts), the Downloads page, and a mark on each media file: online only, downloading, on the phone.
 import { useEffect, useState } from "react"
 import { CloudDownload, HardDriveDownload, Smartphone } from "lucide-react"
 import { Button, definePlugin, Empty, fileRowsChanged, get, notify, notifyError, op, openView, PageHeader, phoneLocal, phoneSyncModule, post,
@@ -7,7 +5,6 @@ import { Button, definePlugin, Empty, fileRowsChanged, get, notify, notifyError,
 import { CAP, BIG, fit, mediaKind, wanted, type DeviceRules, type Media, type MediaKind } from "./phone.ts"
 
 const DEVICE = "iphone"
-/** The phone's sync, loaded in the iPhone app only (never in a computer's pages). */
 let M: Awaited<ReturnType<typeof phoneSyncModule>> | null = null
 const phoneSync = () => M?.phoneSync() ?? null
 const keepHere = (...a: Parameters<NonNullable<typeof M>["keepHere"]>) => M!.keepHere(...a)
@@ -15,12 +12,10 @@ const letGo = (...a: Parameters<NonNullable<typeof M>["letGo"]>) => M!.letGo(...
 const previewPath = (p: string) => M!.previewPath(p)
 const dec = new TextDecoder()
 const json = (s: PhoneSync, p: string) => { try { const b = s.folder.read(p); return b ? JSON.parse(dec.decode(b)) : null } catch { return null } }
-/** The rules for this phone, from the copy's own settings (so they hold offline too). */
 const rulesOf = (s: PhoneSync): DeviceRules => json(s, ".vaultite/plugins/sync/data.json")?.devices?.[DEVICE] ?? {}
 const blobUrl = (set: string, hash: string) => `api/sync/blob?set=${encodeURIComponent(set)}&hash=${hash}`
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` }
 
-/** Every live file's version now, media and notes apart. */
 function heads(s: PhoneSync) {
   const media: (Media & { blob: string })[] = [], notes: { path: string; at: number; text: string }[] = []
   for (const [file] of s.replica.byFile) {
@@ -31,11 +26,9 @@ function heads(s: PhoneSync) {
   }
   return { media, notes }
 }
-/** Whether a media file's bytes are on the phone now (its version's). */
 const here = (s: PhoneSync, m: { path: string; blob: string }) => s.folder.files.get(m.path)?.hash === m.blob
 
 let applying = false
-/** Bring down what the rules want (big files on Wi-Fi only), let go of the rest past the cap, take previews. */
 async function apply(s: PhoneSync) {
   if (applying || !phoneLocal) return
   applying = true
@@ -53,7 +46,6 @@ async function apply(s: PhoneSync) {
       if (++got > 3) break
       await keepHere(s, m.path, blobUrl).catch(() => false)
     }
-    // (past the cap only: what no rule wants goes, the oldest first)
     let used = media.filter((m) => here(s, m)).reduce((n, m) => n + m.size, 0)
     for (const m of media.filter((x) => here(s, x) && !want.has(x.path)).sort((a, b) => a.at - b.at)) {
       if (used <= cap) break
@@ -63,9 +55,7 @@ async function apply(s: PhoneSync) {
   } finally { applying = false; fileRowsChanged() }
 }
 
-/** Which image each preview is of now (previews/index.json: path -> blob), so a changed image gets a new one. */
 let previewIndex: Record<string, string> | null = null
-/** A small picture of every image, so a note never looks broken offline (kept in the sync area, never the vault). */
 async function previews(s: PhoneSync, images: (Media & { blob: string })[]) {
   if (!phoneLocal) return
   if (!previewIndex) {
@@ -85,12 +75,11 @@ async function previews(s: PhoneSync, images: (Media & { blob: string })[]) {
       for (let i = 0; i < b.length; i += 0x8000) bin += String.fromCharCode(...b.subarray(i, i + 0x8000))
       await phoneLocal.write({ area: "sync", vault: s.vault, path: previewPath(m.path), data: btoa(bin) })
       index[m.path] = m.blob
-    } catch { /* next time */ }
+    } catch {}
   }
   if (n) await phoneLocal.write({ area: "sync", vault: s.vault, path: "previews/index.json", data: btoa(unescape(encodeURIComponent(JSON.stringify(index)))) })
 }
 
-/** Starts the phone's copy (once) and follows what it does. */
 function useSync() {
   const [s, setS] = useState<PhoneSync | null>(phoneSync())
   const [, tick] = useState(0)
@@ -111,7 +100,6 @@ function Background() {
 const KINDS: [MediaKind, string][] = [["video", "Video"], ["audio", "Audio"], ["pdf", "PDF"], ["image", "Images"]]
 const size = (n: number) => (n >= 1 << 30 ? `${(n / (1 << 30)).toFixed(1)} GB` : n >= 1 << 20 ? `${Math.round(n / (1 << 20))} MB` : `${Math.max(1, Math.round(n / 1024))} KB`)
 
-/** Downloads: what's on this phone by kind with sizes, storage used and free, each one to let go (its preview stays). */
 function Downloads() {
   const s = useSync()
   const [free, setFree] = useState<number | null>(null)
@@ -146,7 +134,6 @@ function Downloads() {
   )
 }
 
-/** Each media file's state here: on the phone, downloading, or online only. */
 function marks(): Record<string, FileMark> {
   const s = phoneSync()
   if (!s) return {}
@@ -160,7 +147,6 @@ const keepOnPhone = (path: string, off = false) => op("sync.keep", { path, devic
   .then(() => notify(off ? "This phone keeps it by its rules again" : "Kept on this phone: it comes down next time it syncs"), (e) => notifyError(e, "Couldn't keep it on this phone"))
 const kept = (path: string) => { const s = phoneSync(); return !!s && (rulesOf(s).keep ?? []).some((r) => r.path === path) }
 
-// (the iPhone app's only: on a computer each store change would redraw it for nothing; one element, as they redraw backgrounds)
 const background = <Background />
 
 export default definePlugin({

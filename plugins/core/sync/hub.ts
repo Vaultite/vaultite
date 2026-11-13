@@ -1,12 +1,8 @@
-// The hub's jobs: hourly git snapshots of the text and settings, and the one-way copy (the iCloud copy) that catches what
-// anyone writes into it as a change, never writing over it unseen.
 import { execFile } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { gitEnv, type Replica, sha256hex as sha, syncPath as norm, unsynced } from "../../../core/plugins.ts"
 import type { DiskFolder, DiskStore } from "./disk.ts"
-
-// ---------- git snapshots: text and settings only (media is in the copy)
 
 const TEXT_EXT = ["md", "markdown", "txt", "json", "jsonl", "canvas", "base", "csv", "tsv", "yaml", "yml", "toml", "css", "js", "mjs", "ts",
   "tsx", "html", "htm", "svg", "excalidraw", "ics", "org", "tex", "bib", "py", "sh", "swift", "xml", "vtt", "srt"]
@@ -15,7 +11,6 @@ const run = (args: string[], cwd?: string) => new Promise<{ ok: boolean; out: st
     { cwd, env: { ...gitEnv(), GIT_AUTHOR_NAME: "Vaultite", GIT_AUTHOR_EMAIL: "sync@vaultite.local", GIT_COMMITTER_NAME: "Vaultite", GIT_COMMITTER_EMAIL: "sync@vaultite.local" },
       timeout: 600_000, maxBuffer: 64 << 20 }, (e, out, err) => done({ ok: !e, out: String(out), err: String(err || e?.message || "") })))
 
-/** Commit the folder's text and settings into the repo `gitDir` (made the first time, outside the vault), if changed. */
 export async function snapshot(gitDir: string, work: string, label = new Date().toISOString().slice(0, 16).replace("T", " ")) {
   const g = ["--git-dir", gitDir, "--work-tree", work]
   if (!fs.existsSync(path.join(gitDir, "HEAD"))) {
@@ -37,12 +32,9 @@ export async function snapshot(gitDir: string, work: string, label = new Date().
   return { committed: true, files }
 }
 
-// ---------- the one-way copy
-
 type Copied = { hash: string; node: string; size: number; mtime: number }
 export type CopyNotice = { path: string; what: "imported" | "restored" }
 
-/** Mirror the replica's files into `target`; what was written there by anyone else comes back as a change from `from`. */
 export class Mirror {
   readonly target: string
   readonly from: string
@@ -51,7 +43,6 @@ export class Mirror {
   private abs(p: string) { return path.join(this.target, ...p.split("/")) }
   private stat(p: string) { try { const st = fs.statSync(this.abs(p)); return st.isFile() ? { size: st.size, mtime: Math.round(st.mtimeMs) } : null } catch { return null } }
 
-  /** What changed in the copy that this didn't write: imported (edits and new files) or put back (deletes). */
   check(r: Replica): CopyNotice[] {
     const out: CopyNotice[] = []
     for (const [p, c] of this.copied) {
@@ -66,7 +57,6 @@ export class Mirror {
       this.copied.set(p, { hash: h, node: c.node, ...st })
       out.push({ path: p, what: "imported" })
     }
-    // (files there that nobody copied: new ones written straight into it)
     const snap = r.snapshot()
     const walk = (dir: string) => {
       let names: fs.Dirent[]
@@ -90,7 +80,6 @@ export class Mirror {
     return out
   }
 
-  /** Write the replica's files into the copy where they differ, and remove those it no longer has. */
   update(r: Replica, folder: DiskFolder, store: DiskStore): number {
     let n = 0
     const live = new Map<string, { blob: string; node: string }>()

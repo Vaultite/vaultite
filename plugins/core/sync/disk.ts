@@ -1,5 +1,3 @@
-// A device's folder and store on disk. The folder is written like iCloud writes it (whole files, replaced at once), not
-// through the app's write gate: sync carries files, it doesn't author them.
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
@@ -10,7 +8,6 @@ const rel = (root: string, abs: string) => norm(path.relative(root, abs).split(p
 
 export class DiskFolder implements Folder {
   readonly root: string
-  /** Hashes worked out ahead (prepare), by path, for the size and mtime they were of. */
   private hashes = new Map<string, { size: number; mtime: number; hash: string }>()
   constructor(root: string) { this.root = root }
   abs(p: string) { return path.join(this.root, ...p.split("/")) }
@@ -45,19 +42,18 @@ export class DiskFolder implements Folder {
     this.hashes.set(p, { size: st.size, mtime: st.mtime, hash: h })
     return h
   }
-  /** Hash these files ahead, streamed and a few at a time, so the engine's look at them doesn't hold the server. */
   async prepare(paths: string[], known: (p: string) => { size: number; mtime: number } | undefined) {
     for (const p of paths) {
       const st = this.stat(p)
       if (!st) continue
       const k = known(p), c = this.hashes.get(p)
       if ((k && k.size === st.size && k.mtime === st.mtime) || (c && c.size === st.size && c.mtime === st.mtime)) continue
-      if (st.size < 256 << 10) continue // (small: hashed on the spot)
+      if (st.size < 256 << 10) continue
       try {
         const h = crypto.createHash("sha256")
         for await (const chunk of fs.createReadStream(this.abs(p))) h.update(chunk as Buffer)
         this.hashes.set(p, { size: st.size, mtime: st.mtime, hash: h.digest("hex") })
-      } catch { /* gone, or not downloaded yet: looked at later */ }
+      } catch {}
     }
   }
   write(p: string, bytes: Uint8Array): FileStat {
@@ -69,7 +65,6 @@ export class DiskFolder implements Folder {
     this.hashes.set(p, { size: st.size, mtime: st.mtime, hash: sha(bytes) })
     return st
   }
-  /** Write a stored blob's file without reading it into memory (a clone where the disk can). */
   copyIn(p: string, from: string, hash: string): FileStat | null {
     const abs = this.abs(p), tmp = `${abs}.${process.pid}.sync-part`
     fs.mkdirSync(path.dirname(abs), { recursive: true })
@@ -95,7 +90,6 @@ export class DiskFolder implements Folder {
     this.hashes.delete(p)
     this.prune(path.dirname(this.abs(p)))
   }
-  /** Folders a delete or move left empty go too (as another device's would), never the root. */
   private prune(dir: string) {
     while (dir.startsWith(this.root + path.sep)) {
       try { if (fs.readdirSync(dir).some((n) => n !== ".DS_Store")) return; fs.rmSync(dir, { recursive: true }) } catch { return }
@@ -104,7 +98,6 @@ export class DiskFolder implements Folder {
   }
 }
 
-/** Logs (a JSON line per entry, a file per device), blobs by hash, and the state, under one folder. */
 export class DiskStore implements Store {
   readonly dir: string
   private pending: Record<string, unknown> | null = null
@@ -116,10 +109,9 @@ export class DiskStore implements Store {
     for (const f of fs.readdirSync(path.join(this.dir, "log")).filter((n) => n.endsWith(".jsonl")).sort()) {
       for (const line of fs.readFileSync(path.join(this.dir, "log", f), "utf8").split("\n")) {
         if (!line.trim()) continue
-        try { out.push(JSON.parse(line)) } catch { /* a line cut short by a crash: its entry comes again from a peer */ }
+        try { out.push(JSON.parse(line)) } catch {}
       }
     }
-    // (each device's in order: take() fills gaps from what comes later)
     return out.sort((a, b) => (a.device < b.device ? -1 : a.device > b.device ? 1 : a.seq - b.seq))
   }
   append(es: Entry[]) {
@@ -130,7 +122,6 @@ export class DiskStore implements Store {
   state() {
     try { return JSON.parse(fs.readFileSync(path.join(this.dir, "state.json"), "utf8")) } catch { return null }
   }
-  /** Written a moment later (a step saves often); `flush` writes it now. */
   saveState(s: Record<string, unknown>) {
     this.pending = s
     this.timer ??= setTimeout(() => this.flush(), 1500)
@@ -146,14 +137,13 @@ export class DiskStore implements Store {
     this.pending = null
   }
   blobPath(h: string) { return path.join(this.dir, "blobs", h.slice(0, 2), h) }
-  /** A big file's bytes kept where they are (a file in the folder) rather than copied: iCloud Drive's files can't be
-   *  cloned, and media twice over is gigabytes. Good while that file is as it was; then that version is gone. */
+  // iCloud Drive's files can't be cloned
   private pointer(h: string): string | null {
     try {
       const at = JSON.parse(fs.readFileSync(`${this.blobPath(h)}.at`, "utf8")) as { path: string; size: number; mtime: number }
       const st = fs.statSync(at.path)
       if (st.size === at.size && Math.round(st.mtimeMs) === at.mtime) return at.path
-    } catch { /* none, or gone */ }
+    } catch {}
     return null
   }
   private point(h: string, abs: string) {
@@ -169,8 +159,8 @@ export class DiskStore implements Store {
       try {
         const b = new Uint8Array(fs.readFileSync(p))
         if (sha(b) === h) return b
-        if (p === this.blobPath(h)) fs.rmSync(p, { force: true }) // (a linked copy changed under it: not that version any more)
-      } catch { /* none */ }
+        if (p === this.blobPath(h)) fs.rmSync(p, { force: true })
+      } catch {}
     }
     return null
   }
@@ -181,8 +171,6 @@ export class DiskStore implements Store {
     fs.writeFileSync(`${p}.tmp`, b)
     fs.renameSync(`${p}.tmp`, p)
   }
-  /** A clone on APFS (no space until one changes); else a big file is pointed at where it is, a small one copied (a hard
-   *  link would change with the file, edited in place). */
   keepFile(h: string, folder: Folder, p: string) {
     if (!(folder instanceof DiskFolder)) return false
     const to = this.blobPath(h)
@@ -195,10 +183,9 @@ export class DiskStore implements Store {
         return true
       }
     } catch { fs.rmSync(`${to}.tmp`, { force: true }) }
-    try { if (fs.statSync(folder.abs(p)).size >= BIG) { this.point(h, folder.abs(p)); return true } } catch { /* gone */ }
+    try { if (fs.statSync(folder.abs(p)).size >= BIG) { this.point(h, folder.abs(p)); return true } } catch {}
     return false
   }
-  /** A big blob now also in the folder (written there): kept as a pointer to it, not twice. */
   placed(h: string, folder: Folder, p: string) {
     if (!(folder instanceof DiskFolder)) return
     try { if (fs.statSync(this.blobPath(h)).size < BIG) return } catch { return }

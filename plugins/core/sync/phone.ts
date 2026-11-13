@@ -1,8 +1,5 @@
-// What media the phone keeps (device sync's media on the phone): the rules in the vault's sync settings (`devices`), the
-// defaults, the cap. Notes come in full; a media file comes when a rule wants it and goes only past the cap.
 export type MediaKind = "image" | "video" | "audio" | "pdf" | "other"
 export type KeepRule = { path: string; kind?: MediaKind; since?: string; latest?: number }
-/** A device's rules (`devices.<id>` in .vaultite/plugins/sync/data.json, set by sync.keep from anywhere). */
 export type DeviceRules = { keep?: KeepRule[]; keepAll?: boolean; cap?: number; bigOnWifi?: number }
 export type Media = { path: string; size: number; at: number }
 export type Want = { path: string; size: number; why: "kept" | "all" | "pinned" | "recent" | "daily" | "audio" }
@@ -15,13 +12,11 @@ for (const e of "m4a mp3 wav aac flac ogg opus caf".split(" ")) EXT[e] = "audio"
 EXT.pdf = "pdf"
 export const mediaKind = (path: string): MediaKind => EXT[path.slice(path.lastIndexOf(".") + 1).toLowerCase()] ?? "other"
 
-/** "7d", "2w", "12h" -> ms (0 when it doesn't read). */
 export function span(s: string | undefined) {
   const m = /^(\d+)\s*([hdwm])$/.exec(String(s ?? "").trim())
   return m ? Number(m[1]) * { h: 3600_000, d: 86400_000, w: 7 * 86400_000, m: 30 * 86400_000 }[m[2] as "h"]! : 0
 }
 
-/** Media a note embeds (![[x.png]], ![](x.png)), resolved by path or, as Obsidian does, by name. */
 export function embeds(text: string, from: string, byName: Map<string, string[]>, exists: (p: string) => boolean): string[] {
   const out = new Set<string>(), dir = from.includes("/") ? from.slice(0, from.lastIndexOf("/")) : ""
   const find = (raw: string) => {
@@ -36,8 +31,6 @@ export function embeds(text: string, from: string, byName: Map<string, string[]>
   return [...out]
 }
 
-/** What the phone should have now, most wanted first: kept by a rule, then the defaults (images of recent, pinned
- *  and today's notes; every recording; videos and big PDFs only when kept or pinned). */
 export function wanted(o: { media: Media[]; notes: { path: string; at: number; text: string }[]; pinned: string[]; rules: DeviceRules; now: number; today: string }): Want[] {
   const { media, notes, pinned, rules, now } = o
   const byPath = new Map(media.map((m) => [m.path, m])), byName = new Map<string, string[]>()
@@ -70,7 +63,6 @@ export function wanted(o: { media: Media[]; notes: { path: string; at: number; t
   return [...out.values()]
 }
 
-/** Within the cap: what's kept by a rule always (said when it alone doesn't fit), then the rest in order. */
 export function fit(want: Want[], cap: number) {
   const kept = want.filter((w) => w.why === "kept" || w.why === "all"), rest = want.filter((w) => w.why !== "kept" && w.why !== "all")
   let used = kept.reduce((n, w) => n + w.size, 0)

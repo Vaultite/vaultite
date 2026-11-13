@@ -284,7 +284,7 @@ by its path.
 - `sidebars:of` (workspaces): Workspace n's sidebars, for the core's panel ops (`vau panels`): its own setup (null: sidebars.json's) and how to save one.
 - `sync:conflicts` (sync): The served vault's clashes sync kept, for the note's banner: by path ({id, at, from}), or one file's with their text and base.
 - `sync:settle` (sync): Settle one (the user merged it in or kept the note as it is): a version on the file that says so, on every device.
-- `sync:rooms` (sync): Where this machine's windows type a note together with the others' (companion's bridge.ts): the hub's rooms, for every note, while this machine syncs the vault it serves and isn't the hub; null otherwise (its own rooms).
+- `sync:rooms` (sync): Where this machine's windows type a note together with the others': the hub's rooms while this machine syncs and isn't the hub; null otherwise.
 - `sync:hub` (sync): The hub this vault's settings name (vau sync hub), or null: Machines' first then.
 - `tabs:open` (workspaces): Every place open in any workspace's tabs, as this machine has them: a terminal shown in a workspace nobody's looking at isn't idle.
 - `templates:folder` (templates): Its folder's notes are patterns: the vault never reads them as items (a `type: person` template isn't a person).
