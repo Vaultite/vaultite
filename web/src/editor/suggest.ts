@@ -1,6 +1,7 @@
-import { acceptCompletion, closeCompletion, completionStatus, type Completion, type CompletionContext, type CompletionResult, type CompletionSource } from "@codemirror/autocomplete"
+import { acceptCompletion, closeCompletion, completionStatus, currentCompletions, type Completion, type CompletionContext, type CompletionResult, type CompletionSource } from "@codemirror/autocomplete"
 import { type EditorState, Prec, StateEffect, StateField } from "@codemirror/state"
-import { keymap, type EditorView } from "@codemirror/view"
+import { keymap, ViewPlugin, type EditorView } from "@codemirror/view"
+import { trackSoon } from "@/core/unsaved"
 
 // Replaces the `]]` that closeBrackets already typed after the cursor.
 export const pickLink = (text: string) => (view: EditorView, _c: Completion, from: number, to: number) => {
@@ -54,7 +55,18 @@ const close = (view: EditorView) => {
   return true
 }
 
-export const suggestKeys = [dismissed, Prec.highest(keymap.of([{ key: "Escape", run: close }, { key: "Tab", run: acceptCompletion }]))]
+export const PICK_DELAY = 75
+const suggesting = new Map<EditorView, number>()
+trackSoon("suggestions", () => [...suggesting].some(([v, opened]) => completionStatus(v.state) === "pending" || Date.now() - opened < PICK_DELAY))
+const settles = ViewPlugin.define((view) => {
+  suggesting.set(view, 0)
+  return {
+    update(u) { if (currentCompletions(u.state).length && !currentCompletions(u.startState).length) suggesting.set(view, Date.now()) },
+    destroy() { suggesting.delete(view) },
+  }
+})
+
+export const suggestKeys = [settles, dismissed, Prec.highest(keymap.of([{ key: "Escape", run: close }, { key: "Tab", run: acceptCompletion }]))]
 
 export const optionGlyph = (c: Completion) => (c as Completion & { glyph?: () => Node }).glyph?.() ?? null
 export const optionTrail = (c: Completion, _s: EditorState, view: EditorView) => (c as Completion & { trail?: (view: EditorView) => Node | null }).trail?.(view) ?? null

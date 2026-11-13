@@ -4,7 +4,8 @@
 // panes, and the header's menu. WRITES Qa splits/.
 //   node web/qa/phonesplits.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
-import { qa, until, wait } from "./lib/qa.mjs"
+import { qa, until } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
 const { args: [B, OUT = "/var/tmp/phonesplits-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const api = (method, p, body) => fetch(`${B}api/${p}`, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined })
@@ -23,7 +24,8 @@ const tabs = {
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true })
 await ctx.addInitScript((t) => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); localStorage.setItem("vaultite.tabs", t); sessionStorage.setItem("qa", "1") } }, JSON.stringify(tabs))
 const P = watch(await ctx.newPage(), { console: true, ignore: /favicon|Failed to load resource|WebSocket/ })
-const cdp = await ctx.newCDPSession(P)
+const cdp = await ctx.newCDPSession(P), ui = app(P)
+const frame = () => P.evaluate(() => new Promise((r) => requestAnimationFrame(() => r())))
 
 /** The tabs as kept: each tab's panes by name, and which tab and pane are on screen. */
 const state = () => P.evaluate(() => {
@@ -33,17 +35,17 @@ const state = () => P.evaluate(() => {
   return { tabs: w.tabs.map((x) => leaves(x.root).map((p) => name(p.to)).join("+")), shown: leaves(t.root).find((p) => p.id === t.focus) && name(leaves(t.root).find((p) => p.id === t.focus).to) }
 })
 const list = () => P.locator("dialog[open]")
-const openList = async () => { await P.locator("[data-tabs-button]").tap(); await P.waitForSelector("dialog[open] [data-tab-row]"); await wait(500) }
-const closeList = async () => { await list().getByRole("button", { name: "Done" }).click().catch(() => P.keyboard.press("Escape")); await wait(600) }
+const openList = async () => { await P.locator("[data-tabs-button]").tap(); await P.waitForSelector("dialog[open] [data-tab-row]"); await ui.idle() }
+const closeList = async () => { await list().getByRole("button", { name: "Done" }).click().catch(() => P.keyboard.press("Escape")); await ui.idle() }
 const splitCard = () => P.locator("dialog[open] [data-tab-row]", { has: P.locator("[data-mini-pane]") }).first()
 /** A card's menu (held: its contextmenu), then the item named `label`. */
 async function cardMenu(card, label) {
   await card.dispatchEvent("contextmenu", { bubbles: true })
-  await wait(300)
+  await P.locator("[role=menu]").first().waitFor(); await ui.idle()
   const items = (await P.locator("[role=menu] [role=menuitem], [role=menu] button").allInnerTexts()).map((t) => t.trim())
   const it = P.locator("[role=menu] [role=menuitem], [role=menu] button", { hasText: new RegExp(`^${label}$`) }).first()
   if (!(await it.count())) { await P.keyboard.press("Escape"); return items }
-  await it.click(); await wait(500)
+  await it.click(); await ui.idle()
   return items
 }
 const touch = (type, x, y) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x, y }] })
@@ -51,7 +53,7 @@ const touch = (type, x, y) => cdp.send("Input.dispatchTouchEvent", { type, touch
 try {
   await P.goto(`${B}#file/${encodeURIComponent("Qa splits/Alpha.md")}`)
   await P.waitForSelector("[data-phone-bar]", { timeout: 30000 })
-  await wait(800)
+  await ui.idle()
 
   // ---------- swiped to the next pane at the page's top: the header's name stays out, the dots stay put ----------
   // (each change to the header's classes kept as it happens: a page settling slides its title out sideways, not a scroll)
@@ -63,9 +65,9 @@ try {
     w.__mo.observe(h, { attributes: true, attributeFilter: ["class"], subtree: true })
   })
   await touch("touchStart", 300, 500)
-  for (let i = 1; i <= 15; i++) { await wait(16); await touch("touchMove", 300 - i * 14, 500) }
+  for (let i = 1; i <= 15; i++) { await frame(); await touch("touchMove", 300 - i * 14, 500) }
   await touch("touchEnd", 0, 0)
-  await until(async () => (await state()).shown === "Bravo", 3000); await wait(800)
+  await until(async () => (await state()).shown === "Bravo", 3000); await ui.idle()
   const head = await P.evaluate(() => { window.__mo.disconnect(); return window.__head })
   check("swiped to the next pane: its name doesn't come into the header, the dots don't move", (await state()).shown === "Bravo" && head.every(([out, up]) => out && up), [head, await state()])
 
@@ -83,7 +85,7 @@ try {
 
   // ---------- the split's page ----------
   await openList()
-  await splitCard().locator("[data-card-panes]").tap(); await wait(500)
+  await splitCard().locator("[data-card-panes]").tap(); await ui.idle()
   const paneNames = () => list().locator("[data-tabs-grid] [data-tab-row] [data-tab-card] > button[aria-current], [data-tabs-grid] [data-tab-row] [data-tab-card] > button:first-of-type").evaluateAll((bs) => bs.map((b) => b.getAttribute("aria-label")))
   check("the panes' page: All tabs back, the split's name, a card for each pane", (await list().locator("[data-split-head]").count()) === 1 && (await list().locator("[data-group-back]").innerText()).includes("All tabs")
     && JSON.stringify(await paneNames()) === JSON.stringify(["Alpha", "Bravo"]), await paneNames())
@@ -93,11 +95,11 @@ try {
   // Dragged onto the other: the two swap.
   const a = await list().locator("[data-tab-row='pa'] [data-tab-card]").boundingBox(), b = await list().locator("[data-tab-row='pb'] [data-tab-card]").boundingBox()
   await touch("touchStart", a.x + a.width / 2, a.y + a.height / 2)
-  await wait(450)
-  for (let i = 1; i <= 12; i++) { await touch("touchMove", a.x + a.width / 2 + ((b.x - a.x) * i) / 12, a.y + a.height / 2); await wait(20) }
-  await wait(250)
+  await ui.idle()
+  for (let i = 1; i <= 12; i++) { await touch("touchMove", a.x + a.width / 2 + ((b.x - a.x) * i) / 12, a.y + a.height / 2); await frame() }
+  await ui.idle()
   const hint = await P.locator("[data-drag-hint]").innerText().catch(() => "")
-  await touch("touchEnd", 0, 0); await wait(600)
+  await touch("touchEnd", 0, 0); await ui.idle()
   check("dragging a pane onto the other: 'Swap', and they swap", hint === "Swap" && (await state()).tabs[0] === "Bravo+Alpha", [hint, await state()])
   // Its menu: Move to new tab.
   const items = await cardMenu(list().locator("[data-tab-row='pa']"), "Move to new tab")
@@ -118,7 +120,7 @@ try {
   // ---------- the panes' page: + and closing ----------
   await cardMenu(list().locator("[data-tab-row]", { has: P.locator("button[aria-label='Alpha']") }), "Open in split")
   await until(async () => (await state()).tabs.length === 3, 3000)
-  await splitCard().locator("[data-card-panes]").tap(); await wait(500)
+  await splitCard().locator("[data-card-panes]").tap(); await ui.idle()
   check("the panes' + is New pane", (await P.locator("[data-tabs-new]").getAttribute("aria-label")) === "New pane")
   await P.locator("[data-tabs-new]").tap()
   const splitOf = async () => (await state()).tabs.find((t) => t.includes("+")) ?? ""
@@ -127,19 +129,19 @@ try {
   const dots = await P.locator("[data-pane-dots]").boundingBox()
   check("...centred on the screen, whatever the title and buttons", Math.abs(dots.x + dots.width / 2 - 195) < 1.5, dots)
   // The header's menu: the split's own items.
-  await P.locator("[data-phone-header] button[aria-label=More]").tap(); await wait(300)
+  await P.locator("[data-phone-header] button[aria-label=More]").tap(); await P.locator("[role=menu]").first().waitFor(); await ui.idle()
   const menu = (await P.locator("[role=menu] [role=menuitem], [role=menu] button").allInnerTexts()).map((t) => t.trim())
   check("header menu of a split: Move to new tab, Separate panes, Close pane, Close tab", ["Move to new tab", "Separate panes", "Close pane", "Close tab"].every((x) => menu.includes(x)), menu)
-  await P.locator("[role=menu] button, [role=menu] [role=menuitem]", { hasText: /^Close pane$/ }).first().click(); await wait(500)
+  await P.locator("[role=menu] button, [role=menu] [role=menuitem]", { hasText: /^Close pane$/ }).first().click(); await ui.idle()
   check("Close pane: the blank pane goes", (await splitOf()) === "Bravo+Alpha", await state())
   // Swiped away on the panes' page: that pane closes.
   await openList()
-  await splitCard().locator("[data-card-panes]").tap(); await wait(500)
+  await splitCard().locator("[data-card-panes]").tap(); await ui.idle()
   const first = await list().locator("[data-tabs-grid] [data-tab-row] [data-tab-card]").first().boundingBox()
   const y = first.y + first.height / 2, x0 = first.x + first.width * 0.6
   await touch("touchStart", x0, y); await touch("touchMove", x0 - 12, y)
   for (let i = 1; i <= 8; i++) await touch("touchMove", x0 - 12 - (150 * i) / 8, y)
-  await touch("touchEnd", 0, 0); await wait(700)
+  await touch("touchEnd", 0, 0); await ui.idle()
   check("a pane's card swiped away closes the pane; one left, the page goes back to all tabs", !(await splitOf()) && (await state()).tabs.length === 3 && !(await list().locator("[data-split-head]").count()), [await state()])
   check("no sideways scroll", await P.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
 } catch (e) {

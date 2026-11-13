@@ -3,7 +3,8 @@
 //   node web/qa/player.mjs <base url> <vault path> [out dir]
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
-import { SHOTS, qa, until, wait } from "./lib/qa.mjs"
+import { SHOTS, qa, until } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
 import { pagePath } from "./subjects.mjs"
 const { args: [B, VAULT, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url, { chrome: { args: ["--autoplay-policy=no-user-gesture-required"] } })
 const enc = encodeURIComponent
@@ -21,12 +22,12 @@ fs.writeFileSync(`${dir}/Qa talk.vtt`, "WEBVTT\n\n00:00:01.000 --> 00:00:09.000\
 await put(TALK, "---\ntype: inbox\nstatus: new\nfrom: Videos\nsource: https://example.com/talk\n---\n\n![[Qa talk.webm]]\n\n- 0:30 Intro\n- 1:15 The middle\n\n## Transcript\n\n**0:00** Hello.\n\n**1:00** The middle part.\n")
 await put(EP, "---\ntype: inbox\nstatus: new\nfrom: A show\nsource: https://example.com/ep\n---\n\n![[Qa episode.opus]]\n\nAn episode.\n")
 await put(OTHER, "Nothing playing here.\n")
-await wait(1500)
 
 for (const [label, viewport] of [["desktop", { width: 1280, height: 820 }], ["phone", { width: 390, height: 844 }]]) {
-  const page = watch(await (await browser.newContext({ viewport, deviceScaleFactor: 1, isMobile: label === "phone", hasTouch: label === "phone" })).newPage(), { label })
+  const page = watch(await (await browser.newContext({ viewport, deviceScaleFactor: 1, isMobile: label === "phone", hasTouch: label === "phone" })).newPage(), { label }), ui = app(page)
+  const frame = () => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r())))
   const el = () => page.evaluate(() => { const v = document.querySelector("[data-player-for]"); return v && { t: v.currentTime, paused: v.paused, mini: !!v.closest("[data-mini-player]"), rate: v.playbackRate } })
-  await page.goto(`${B}#file/${enc(TALK)}`); await wait(2000)
+  await page.goto(`${B}#file/${enc(TALK)}`); await page.locator("[data-player-for]").waitFor({ state: "attached", timeout: 30000 }); await ui.idle()
   await page.evaluate(() => document.querySelectorAll("[data-sonner-toast]").forEach((t) => t.remove()))
   check(`${label}: the note's times are links`, await until(async () => await page.locator(".cm-timestamp").count() >= 3, 5000))
   await page.locator(".cm-timestamp", { hasText: "1:15" }).first().click()
@@ -36,13 +37,13 @@ for (const [label, viewport] of [["desktop", { width: 1280, height: 820 }], ["ph
   check(`${label}: and is lit`, (await page.locator(".cm-timestamp-now").allInnerTexts()).includes("1:15"))
   check(`${label}: captions and speed under the video`, await page.getByRole("button", { name: "Captions" }).count() === 1 && await page.getByRole("button", { name: /^Speed/ }).count() === 1)
 
-  await page.goto(`${B}#file/${enc(OTHER)}`); await wait(1500)
-  const b = await el()
+  await page.goto(`${B}#file/${enc(OTHER)}`); await ui.idle()
+  const b = await until(async () => { const v = await el(); return v?.mini && v.t > a.t ? v : null }, 5000) ?? await el()
   check(`${label}: elsewhere it keeps playing, in the mini player`, b && !b.paused && b.mini && b.t > a.t, b)
   await page.screenshot({ path: `${OUT}player-mini-${label}.png` })
   if (label === "desktop") {
     const mini = page.locator("[data-mini-player]")
-    if (await page.locator("[data-sidebar-toggle=right]").getAttribute("aria-expanded") !== "true") { await page.locator("[data-sidebar-toggle=right]").click(); await wait(500) }
+    if (await page.locator("[data-sidebar-toggle=right]").getAttribute("aria-expanded") !== "true") { await page.locator("[data-sidebar-toggle=right]").click(); await ui.idle() }
     // (the sidebar as drawn: --right-sidebar is a calc() of its width and the window's inset)
     const side = await page.evaluate(() => document.querySelector("aside[data-side=right]")?.getBoundingClientRect().width ?? 0)
     const r0 = await mini.boundingBox()
@@ -50,28 +51,27 @@ for (const [label, viewport] of [["desktop", { width: 1280, height: 820 }], ["ph
     await page.screenshot({ path: `${OUT}player-mini-sidebar-${label}.png` })
     check("desktop: its picture has no browser controls", await page.evaluate(() => document.querySelector("[data-mini-player] video")?.controls === false))
     await page.mouse.move(r0.x + 100, r0.y + 60); await page.mouse.down()
-    for (let i = 1; i <= 10; i++) { await page.mouse.move(r0.x + 100 - i * 80, r0.y + 60 - i * 50); await wait(16) }
-    await page.mouse.up(); await wait(600)
+    for (let i = 1; i <= 10; i++) { await page.mouse.move(r0.x + 100 - i * 80, r0.y + 60 - i * 50); await frame() }
+    await page.mouse.up(); await ui.idle()
     const r1 = await mini.boundingBox()
     check("desktop: dragged, it lands in the top left corner", r1 && r1.y < 140 && r1.x < viewport.width / 2, r1)
     check("desktop: a drag doesn't open the note", page.url().includes("Other"), page.url())
   }
-  await page.getByRole("button", { name: "Pause" }).first().click(); await wait(800)
+  await page.getByRole("button", { name: "Pause" }).first().click(); await ui.idle()
   const kept = await (await fetch(`${B}api/player/places`)).json()
   check(`${label}: where it stopped is kept`, Math.abs((kept.places?.["Qa player/Qa talk.webm"]?.t ?? 0) - (await el()).t) < 2, kept.places?.["Qa player/Qa talk.webm"])
-  await page.getByRole("button", { name: "Stop" }).click(); await wait(400)
+  await page.getByRole("button", { name: "Stop" }).click(); await ui.idle()
   check(`${label}: Stop closes the mini player`, await page.locator("[data-mini-player]").count() === 0)
 
-  await page.goto(`${B}#file/${enc(await pagePath(B, "Queue"))}`); await wait(2000)
+  await page.goto(`${B}#file/${enc(await pagePath(B, "Queue"))}`); await page.locator("[data-queue-row]").first().waitFor({ timeout: 30000 }); await ui.idle()
   const row = page.locator('[data-queue-row="Qa player/Talk"]')
   check(`${label}: the queue shows its time left`, /left/.test(await row.innerText().catch(() => "")), await row.innerText().catch(() => ""))
   const play = page.locator('[data-queue-row="Qa player/Episode"] [aria-label="Play"]')
   await page.evaluate(() => document.querySelectorAll("[data-sonner-toast]").forEach((t) => t.remove()))
-  await play.evaluate((e) => e.scrollIntoView({ block: "center" })); await play.click(); await wait(1500)
-  const c = await el()
+  await play.evaluate((e) => e.scrollIntoView({ block: "center" })); await play.click()
+  const c = await until(async () => { const v = await el(); return v && !v.paused && /Episode/.test(await page.locator("[data-mini-player]").innerText()) ? v : null }, 5000) ?? await el()
   check(`${label}: play in the queue starts the episode in the mini player`, c && !c.paused && /Episode/.test(await page.locator("[data-mini-player]").innerText().catch(() => "")), c)
   await page.screenshot({ path: `${OUT}player-queue-${label}.png` })
-  await wait(5500) // (what plays is kept every 5 s)
   const before = (await el()).t
   await page.reload()
   await until(async () => (await el())?.paused === false, 15000)
@@ -79,15 +79,14 @@ for (const [label, viewport] of [["desktop", { width: 1280, height: 820 }], ["ph
   check(`${label}: a reload while it plays plays on from there`, d && !d.paused && d.t >= before - 1 && d.t < before + 8, { before, d })
   // A connection dropped mid-stream: the element errors; it starts again where it was.
   await page.evaluate(() => { const v = document.querySelector("[data-player-for]"); Object.defineProperty(v, "error", { configurable: true, get: () => ({ code: 2 }) }); v.pause(); v.dispatchEvent(new Event("error")); delete v.error })
-  await wait(400)
   const e = await el()
   await until(async () => (await el())?.paused === false, 10000)
   const f = await el()
   check(`${label}: a dropped stream starts again where it was`, e.paused && f && !f.paused && f.t >= e.t - 0.5 && f.t < e.t + 4, { e, f })
-  await page.evaluate(() => document.querySelector("[data-player-for]").pause()); await wait(300)
-  await page.reload(); await page.waitForSelector("[data-mini-player], [data-queue-row]", { timeout: 15000 }).catch(() => {}); await wait(2000)
+  await page.evaluate(() => document.querySelector("[data-player-for]").pause()); await ui.idle()
+  await page.reload(); await page.waitForSelector("[data-mini-player], [data-queue-row]", { timeout: 15000 }).catch(() => {}); await ui.idle()
   check(`${label}: paused, a reload leaves it be`, !(await el())?.t || (await el()).paused, await el())
-  await page.getByRole("button", { name: "Stop" }).click({ timeout: 2000 }).catch(() => {}); await wait(300)
+  await page.getByRole("button", { name: "Stop" }).click({ timeout: 2000 }).catch(() => {}); await ui.idle()
   await page.close()
 }
 await done()

@@ -145,6 +145,7 @@ export function Background({ store }: { store: Store }) {
 function useSwipes() {
   useEffect(() => {
     let sum = 0, done = false, quiet = 0
+    const untrack = trackSoon("a swipe's end", () => quiet !== 0)
     const sideways = (from: Element, side: Element) => {
       for (let e: Element | null = from; e && e !== side; e = e.parentElement) {
         if (e.scrollWidth > e.clientWidth + 1 && /auto|scroll/.test(getComputedStyle(e).overflowX)) return true
@@ -155,7 +156,7 @@ function useSwipes() {
       const el = e.target instanceof Element ? e.target : null, side = el?.closest("aside[data-side]")
       if (!el || !side || e.ctrlKey) return
       clearTimeout(quiet)
-      quiet = window.setTimeout(() => { sum = 0; done = false }, 250)
+      quiet = window.setTimeout(() => { sum = 0; done = false; quiet = 0 }, 250)
       if (done || Math.abs(e.deltaX) <= Math.abs(e.deltaY) || used().length < 2 || sideways(el, side)) return
       sum += e.deltaX
       if (Math.abs(sum) < 80) return
@@ -163,7 +164,7 @@ function useSwipes() {
       cycle(sum > 0 ? 1 : -1)
     }
     addEventListener("wheel", wheel, { passive: true })
-    return () => { removeEventListener("wheel", wheel); clearTimeout(quiet) }
+    return () => { untrack(); removeEventListener("wheel", wheel); clearTimeout(quiet) }
   }, [])
 }
 

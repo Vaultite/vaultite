@@ -17,7 +17,7 @@ import { slashSource } from "./slash"
 import { followReader, sightMargins } from "./sight"
 import { blockOptionSource } from "./blockOptions"
 import { highlightSource, optionDot } from "./highlights"
-import { optionGlyph, optionTrail, pickLink, pluginSuggest, quiet, suggestKeys } from "./suggest"
+import { optionGlyph, optionTrail, PICK_DELAY, pickLink, pluginSuggest, quiet, suggestKeys } from "./suggest"
 import { tagSource } from "./tags"
 import { numberGutter } from "./numbers"
 import { keepState, keptKey, keptState } from "./kept"
@@ -349,7 +349,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
           suggestKeys,
           autocompletion({
             override: [complete, tagSource(() => cb.current.tags?.() ?? []), slashSource(() => cb.current.slash?.() ?? []), blockOptionSource((name) => blockFor(name, getPrefs().disabled).decl), highlightSource, pluginSuggest].map(quiet),
-            icons: false, addToOptions: [{ render: optionDot, position: 20 }, { render: optionGlyph, position: 20 }, { render: optionTrail, position: 90 }],
+            icons: false, interactionDelay: PICK_DELAY, addToOptions: [{ render: optionDot, position: 20 }, { render: optionGlyph, position: 20 }, { render: optionTrail, position: 90 }],
           }),
           keymap.of([
             { key: "Mod-b", run: wrap("**") }, { key: "Mod-i", run: wrap("*") },
