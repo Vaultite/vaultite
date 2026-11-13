@@ -1,5 +1,8 @@
 import fs from "node:fs"
 import type { Any, VaultTest } from "./harness.ts"
+import type { Moment, Note } from "../../../plugins/core/companion/types.ts"
+import type { Entry } from "../../../plugins/core/claude-code/chatlog.ts"
+import type { Outcome, Step } from "../../evals/companion/score.ts"
 import { fileURLToPath } from "node:url"
 import { waitFor } from "../lib.ts"
 
@@ -37,7 +40,7 @@ export default async ($: VaultTest) => {
   {
     // The talk a fresh summoned session is told: from the log, with what it did, withdrawn answers and small talk.
     const v = await import("../../../plugins/core/companion/conversation.ts")
-    const now = 10_000_000, ask = (seq: number, t: number, text: string) => ({ seq, t, kind: "ask", text, summoned: true, for: "Claude" }) as Any
+    const now = 10_000_000, ask = (seq: number, t: number, text: string): Moment => ({ seq, t, kind: "ask", text, summoned: true, for: "Claude" })
     const xs = v.exchanges([ask(1, now - 40 * 60_000, "open the pr"), ask(2, now - 5 * 60_000, "how's it going")], [
       { t: now - 40 * 60_000 + 500, as: "Claude (summoned)", op: "say", text: "Opening it." },
       { t: now - 40 * 60_000 + 900, as: "Claude (summoned)", op: "result", text: "open: Opened https://github.com/x/y/pull/3 (pane p7)." },
@@ -119,19 +122,19 @@ export default async ($: VaultTest) => {
       /^Your last answer wasn't heard aloud: at 16:24 \(to "What's on my calendar this afternoon\?"\), kept quiet, as they seemed on a call in Chrome\. .*offer to say it now/.test(held) &&
       !held.includes("aren't said aloud now") && /answers weren't heard aloud: at 16:24, your voice was off then; at 16:25, your voice failed \(its player quit/.test(twice), [held, twice])
     // Timings: handed, first action, back to next; seqs restart with the server.
-    const ms = [{ seq: 1, t: 1000, kind: "ask" }, { seq: 2, t: 1500, kind: "edit" }, { seq: 1, t: 9000, kind: "ask" }] as Any[]
+    const ms: Moment[] = [{ seq: 1, t: 1000, kind: "ask" }, { seq: 2, t: 1500, kind: "edit" }, { seq: 1, t: 9000, kind: "ask" }]
     const acts = [{ t: 0, as: "C", op: "next" }, { t: 1100, as: "C", op: "handed", seqs: [1] }, { t: 3100, as: "C", op: "say" }, { t: 3200, as: "C", op: "next" },
       { t: 3200, as: "C", op: "handed", seqs: [2] }, { t: 4000, as: "C", op: "next" }, { t: 9000, as: "C", op: "handed", seqs: [1] }]
     const [a, e, b] = cPageops.timings(ms, acts)
     check("companion timings: per moment, its handoff, think to the first action and total", a.handoff === 100 && a.think === 2000 && a.op === "say" && a.total === 2200 &&
       e.handoff === 1700 && e.think === undefined && e.total === 2500 && b.handoff === 0 && b.total === undefined, [a, e, b])
-    const two = cPageops.timings([{ seq: 5, t: 0, kind: "edit" }] as Any[], [{ t: 100, as: "C", op: "handed", seqs: [5] }, { t: 300, as: "Q", op: "handed", seqs: [5] },
+    const two = cPageops.timings([{ seq: 5, t: 0, kind: "edit" }], [{ t: 100, as: "C", op: "handed", seqs: [5] }, { t: 300, as: "Q", op: "handed", seqs: [5] },
       { t: 900, as: "Q", op: "say" }, { t: 2000, as: "C", op: "say" }])
     check("companion timings: a moment handed to two agents, a row each, and a summary each", two.length === 2 && two[0].as === "C" && two[0].think === 1900 &&
       two[1].as === "Q" && two[1].think === 600 && /\nQ \(1\): pause -, handoff 0\.3/.test(cPageops.timingsText("2026-10-16", two)), [two, cPageops.timingsText("2026-10-16", two)])
     check("companion timings: read as a table and a summary", /asks and replies \(2\): pause -, handoff 0\.0\/0\.1, think 2\.0\/2\.0/.test(cPageops.timingsText("2026-10-16", [a, e, b])), cPageops.timingsText("2026-10-16", [a, e, b]))
     // (its first word streamed before its call; handed again, as they went on: from then)
-    const [w] = cPageops.timings([{ seq: 7, t: 0, kind: "ask" }] as Any[], [{ t: 100, as: "C", op: "handed", seqs: [7] }, { t: 400, as: "C", op: "again", seqs: [7] }, { t: 500, as: "C", op: "done" },
+    const [w] = cPageops.timings([{ seq: 7, t: 0, kind: "ask" }], [{ t: 100, as: "C", op: "handed", seqs: [7] }, { t: 400, as: "C", op: "again", seqs: [7] }, { t: 500, as: "C", op: "done" },
       { t: 600, as: "C", op: "handed", seqs: [7] }, { t: 1500, as: "C", op: "word" }, { t: 3000, as: "C", op: "edit" }, { t: 3500, as: "C", op: "done" }])
     check("companion timings: the first word shown, from its last handing", w.handoff === 600 && w.word === 900 && w.think === 2400 && w.op === "edit" && w.total === 3500 &&
       /think 2\.4\/2\.4, word 0\.9\/0\.9/.test(cPageops.timingsText("2026-11-02", [w])), [w, cPageops.timingsText("2026-11-02", [w])])
@@ -276,13 +279,13 @@ export default async ($: VaultTest) => {
     // Its timeline and chat read moments back from its messages (moments.ts): what momentsText writes, read again.
     const { readMoments } = await import("../../../plugins/core/companion/moments.ts")
     const { turnsOf, noteOf } = await import("../../../plugins/core/companion/turns.ts")
-    const ms = [
+    const ms: Moment[] = [
       { seq: 1, t: 0, kind: "ask", path: "Notes/My plans.md", line: 7, text: "is this \"right\"?\nsure", selection: "the basil" },
       { seq: 2, t: 0, kind: "edit", path: "Notes/My plans.md", hunks: [{ line: 3, removed: ["- old: a"], added: ["+ new", ""] }, { line: 9, removed: [], added: ["x"] }] },
       { seq: 3, t: 0, kind: "reply", item: "n12", path: "Notes/My plans.md", line: 4, text: "ok" },
       { seq: 4, t: 0, kind: "accept", item: "n7", path: "Notes/A.md", line: 5, to: "Call Ben" },
       { seq: 5, t: 0, kind: "point", path: "Notes/A.md", line: 2 }, { seq: 6, t: 0, kind: "ask", text: "no note" }, { seq: 7, t: 0, kind: "open", path: "Notes/B.md" },
-    ] as Any[]
+    ]
     const text = `Read ME.md first.\n\n${cMoments.momentsText(ms, "pair", { path: "Notes/My plans.md", line: 7 }, [{ path: "Notes/My plans.md", from: 1, to: 2, of: 9, lines: ["a", "  b"] }])}`
     const m = readMoments(text)
     check("companion: its moments read back from what it was sent, whatever's in their text and paths", !!m && m.before === "Read ME.md first." && m.mode === "pair" &&
@@ -302,10 +305,10 @@ export default async ($: VaultTest) => {
       readMoments(cMoments.momentsText([{ ...chrome, app: undefined, path: "Notes/A.md", line: 2 }], "pair", { path: "Notes/A.md", line: 2 }))?.away === undefined, [away, awayRead])
     const moved = readMoments(cMoments.momentsText([{ seq: 1, t: 0, kind: "reply", bubble: true, item: "n3", path: "Notes/A.md", line: 2, text: "yes" },
       { seq: 2, t: 0, kind: "dismiss", bubble: true, item: "n4", path: "Notes/A.md", line: 3, text: "Hi: there" },
-      { seq: 3, t: 0, kind: "move", into: "note", item: "n5", path: "Notes/A.md", line: 6, text: "Kept" }, { seq: 4, t: 0, kind: "move", into: "bubble", path: "Notes/A.md", line: 9, text: "Back" }] as Any[], "pair", null))
+      { seq: 3, t: 0, kind: "move", into: "note", item: "n5", path: "Notes/A.md", line: 6, text: "Kept" }, { seq: 4, t: 0, kind: "move", into: "bubble", path: "Notes/A.md", line: 9, text: "Back" }], "pair", null))
     check("companion: replies to its bubbles, closing them and moving its words read back too", JSON.stringify(moved?.moments.map((x) => [x.kind, x.bubble ?? x.into, x.item ?? "", x.line, x.text])) ===
       JSON.stringify([["reply", true, "n3", 2, "yes"], ["dismiss", true, "n4", 3, "Hi: there"], ["move", "note", "", 6, "Kept"], ["move", "bubble", "", 9, "Back"]]), moved?.moments)
-    const at = "2026-11-02T10:00:00.000Z", tool = (id: string, name: string, input: Any, result?: string, error?: boolean) => ({ k: "tool", id, name, summary: "", input, result, error, at }) as Any
+    const at = "2026-11-02T10:00:00.000Z", tool = (id: string, name: string, input: Any, result?: string, error?: boolean): Entry => ({ k: "tool", id, name, summary: "", input, result, error, at })
     const ts = turnsOf([
       { k: "user", id: "u1", text: cMoments.momentsText([ms[0]], "pair", null), at },
       tool("t1", "mcp__vaultite-app__say", { text: "On it" }, "Said."),
@@ -316,12 +319,12 @@ export default async ($: VaultTest) => {
       tool("t7", "mcp__vaultite-app__comment", { text: "x" }, "there's no note", true),
       { k: "user", id: "u2", text: cMoments.momentsText([{ seq: 8, t: 0, kind: "reject", item: "n7uaz", path: "Notes/A.md", line: 1 }], "pair", null), at },
       { k: "user", id: "u3", text: cMoments.momentsText([{ seq: 9, t: 0, kind: "edit", path: "Notes/B.md", hunks: [{ line: 1, removed: [], added: ["hi"] }] }], "pair", null), at },
-    ] as Any[])
+    ])
     const acts = ts[0]?.acts ?? []
     check("companion: its session reads as turns: what the user did, then what it did, reads folded, sessions it started, an item's answer on it",
-      ts.length === 3 && acts.map((a) => a.k).join() === "say,read,suggest,edit,session,comment" && (acts[1] as Any).what.length === 2 &&
+      ts.length === 3 && acts.map((a) => a.k).join() === "say,read,suggest,edit,session,comment" && acts[1].k === "read" && acts[1].what.length === 2 &&
       acts[2].item === "n7uaz" && acts[2].outcomes?.[0]?.kind === "reject" && acts[3].path === "Notes/My plans.md" && acts[3].find === "## Plan" &&
-      (acts[4] as Any).terminal === "claude_default-ab12cd34" && (acts[4] as Any).title === "Fix the test" && !!acts[5].error &&
+      acts[4].k === "session" && acts[4].terminal === "claude_default-ab12cd34" && acts[4].title === "Fix the test" && !!acts[5].error &&
       noteOf(ts[0]) === "Notes/My plans.md" && noteOf(ts[2]) === "Notes/B.md" && !ts[2].acts.length, ts)
   }
   {
@@ -378,7 +381,8 @@ export default async ($: VaultTest) => {
     // The eval (tools/evals/companion.ts): a session's turns against the contract; its fixture, and the check itself.
     const e = await import("../../evals/companion/score.ts")
     const fx = JSON.parse(fs.readFileSync(new URL("../../evals/companion/2026-11-02.json", import.meta.url), "utf8"))
-    const ideal = fx.steps.map((s: Any) => ({ silent: [], bubble: ["say"], note: ["edit", "look"], comment: ["comment"] } as Any)[s.expect[0]])
+    const ideals: Record<Outcome, string[]> = { silent: [], bubble: ["say"], note: ["edit", "look"], comment: ["comment"] }
+    const ideal = fx.steps.map((s: Step) => ideals[s.expect[0]])
     check("companion eval: a turn is silent, a bubble, the note or a comment, the note first", e.outcomeOf([]) === "silent" && e.outcomeOf(["look", "pass"]) === "silent" &&
       e.outcomeOf(["say", "edit"]) === "note" && e.outcomeOf(["say"]) === "bubble" && e.outcomeOf(["comment", "say"]) === "comment")
     const best = e.score(fx.steps, ideal), base = e.score(fx.steps, fx.baseline)
@@ -419,9 +423,9 @@ export default async ($: VaultTest) => {
   }
   {
     // A drawing's moments: what changed, the scene as its window saw it (the last one), the user's pointer.
-    const ms = [{ seq: 1, t: 0, kind: "edit", path: "D.excalidraw", x: 5, y: 9, changes: ["+ r1 rectangle at 0,0"], scene: "old" },
-      { seq: 2, t: 1, kind: "ask", path: "D.excalidraw", find: "t1", text: "why?", scene: "1 items:\n- t1 text \"@claude why?\"" }] as Any[]
-    const ex = await cMoments.excerpts(null as Any, ms), text = cMoments.momentsText(ms, "pair", { path: "D.excalidraw", x: 5, y: 9 }, ex)
+    const ms: Moment[] = [{ seq: 1, t: 0, kind: "edit", path: "D.excalidraw", x: 5, y: 9, changes: ["+ r1 rectangle at 0,0"], scene: "old" },
+      { seq: 2, t: 1, kind: "ask", path: "D.excalidraw", find: "t1", text: "why?", scene: "1 items:\n- t1 text \"@claude why?\"" }]
+    const ex = await cMoments.excerpts({ api: async () => { throw new Error("not asked") } }, ms), text = cMoments.momentsText(ms, "pair", { path: "D.excalidraw", x: 5, y: 9 }, ex)
     check("companion: a drawing's moments read with what changed and its scene, at the user's pointer", ex.length === 1 && !!ex[0].scene?.startsWith("1 items") &&
       text.includes("The user is in D.excalidraw at 5,9.") && text.includes("  + r1 rectangle at 0,0") && text.includes('- ask D.excalidraw (in t1): "why?"') && text.endsWith('- t1 text "@claude why?"'), text)
     ;[st, r] = await api("POST", "ops/companion.draw", { path: "Notes/A.md", actions: [{ op: "delete", id: "x" }] })
@@ -524,7 +528,7 @@ export default async ($: VaultTest) => {
     // Comments and suggestions kept: a sidecar per note, read again when the server starts or another machine writes it.
     const side = (p: string) => `.vaultite/plugins/companion/comments/${p}.json`
     const kept = (p: string) => (exists(side(p)) ? JSON.parse(read(side(p))).comments : null)
-    const status = async () => (await api("POST", "ops/companion.status", {}))[1].notes as Any[]
+    const status = async (): Promise<Any[]> => (await api("POST", "ops/companion.status", {}))[1].notes
     check("companion: an item's line follows its text, or its line's text; gone, null",
       cComments.anchorLine("x\na\nb\n", { find: "b", line: 2 }) === 3 && cComments.anchorLine("x\ny\na\n", { anchor: "a", line: 1 }) === 3 &&
       cComments.anchorLine("x\n", { find: "b", line: 1 }) === null && cComments.anchorLine("x\ny\n", { line: 9 }) === 2)
@@ -713,7 +717,7 @@ export default async ($: VaultTest) => {
     const { whoOf } = await import("../../../core/ops.ts")
     const { service } = await import("../../../core/plugins.ts")
     const code = whoOf("cli", "claude-code"), user = whoOf("app/desktop", null)
-    const call = async (id: string, params: Any, who = code) => { await $.sleep(3); return (await $.app.callOp(id, params, who, { report: `cli ${id}` })).result as Any }
+    const call = async (id: string, params: Any, who = code): Promise<Any> => { await $.sleep(3); return (await $.app.callOp(id, params, who, { report: `cli ${id}` })).result }
     const R = "Rev/Companion.md"
     await api("PUT", "file", { path: R, text: "# Plans\n\nCall Alice friday\n" })
     await $.sleep(20)
@@ -738,7 +742,7 @@ export default async ($: VaultTest) => {
     await call("companion.clear", { as: "Ada" })
     check("companion: a comment or a suggestion keeps no version of the note", await versions() === was, [was, await versions()])
     // Typed into a window: the app's save of that note is the agent's while it types, and the user's again after.
-    const typing = service($.app.plugins, "activity:typing") as (p: string, name: string, ms: number) => boolean
+    const typing: (p: string, name: string, ms: number) => boolean = service($.app.plugins, "activity:typing")!
     const save = async (text: string) => {
       await $.sleep(3)
       const end = $.app.requestStarted({ t: Date.now(), method: "PUT", route: "file", query: {}, client: "app/desktop", agent: null, command: null, ua: "", remote: "", port: 1, forwarded: false })
@@ -818,9 +822,9 @@ export default async ($: VaultTest) => {
     await api("POST", "ops/companion.next", { timeout: 0 })
     fs.rmSync(file, { force: true })
     check("companion: no session, no handover", (await api("POST", "ops/companion.handover", { summary: "x", as: "Nobody" }))[0] === 404)
-    const items = [{ id: "n1", kind: "comment", agent: "Claude", t: 0, path: "A.md", line: 3, text: "Alice is away", replies: [{ by: "user", text: "Then Tuesday" }] },
+    const items: Note[] = [{ id: "n1", kind: "comment", agent: "Claude", t: 0, path: "A.md", line: 3, text: "Alice is away", replies: [{ by: "user", text: "Then Tuesday" }] },
       { id: "n2", kind: "say", agent: "Claude", t: 0, path: "A.md", line: 4, text: "Done" },
-      { id: "n3", kind: "suggestion", agent: "Ada", t: 0, path: "A.md", find: "x", replace: "y" }] as Any[]
+      { id: "n3", kind: "suggestion", agent: "Ada", t: 0, path: "A.md", find: "x", replace: "y" }]
     const h = cAlwayson.handoverText("Claude", "Working on the Lisbon trip.", items, [{ seq: 1, t: 0, kind: "ask", path: "A.md", line: 2, text: "budget?" }])
     check("companion: the fresh one is told the summary, its own open threads and the last asks", h.includes("Working on the Lisbon trip.") &&
       h.includes("- n1 comment in A.md:3") && h.includes("the user: \"Then Tuesday\"") && !h.includes("n2") && !h.includes("n3") && h.includes("budget?") && /don't greet/.test(h), h)
@@ -870,7 +874,8 @@ export default async ($: VaultTest) => {
     const { EventEmitter } = await import("node:events")
     const live = c.plugin.sockets.find((x: Any) => x.pattern.join("/") === "companion/live")!
     const fake = (answer?: (m: Any, ws: Any) => void) => {
-      const ws: Any = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, got: [] as Any[], close() {}, send(t: string) { const m = JSON.parse(t); ws.got.push(m); answer?.(m, ws) } })
+      const got: Any[] = []
+      const ws: Any = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, got, close() {}, send(t: string) { const m = JSON.parse(t); got.push(m); answer?.(m, ws) } })
       return ws
     }
     const req: Any = { headers: {}, socket: { remoteAddress: "127.0.0.1" } }
@@ -954,7 +959,7 @@ export default async ($: VaultTest) => {
     }
     cIntake.addMoment({ kind: "ask", text: "make B blue", app: "com.example.mail", sx: 5, sy: 5 })
     L = layerOf("Claude")
-    const told = cMoments.momentsText([{ seq: 1, t: 0, kind: "ask", for: "Claude", text: "make B blue" }] as Any[], "pair", null)
+    const told = cMoments.momentsText([{ seq: 1, t: 0, kind: "ask", for: "Claude", text: "make B blue" }], "pair", null)
     check("companion: at the next ask its cards stay (what pointed goes), and the ask lists them by id to change in place",
       L?.past === true && L.marks.map((m: Any) => m.id).join() === "flow,pic" && told.includes("Still on their screen, your layer") && told.includes("b rect \"B\" at 200,10"), [L?.marks, told])
     ;[st3, r3] = await api("POST", "ops/companion.draw", { actions: [{ op: "change", id: "b", fill: "blue" }, { op: "delete", id: "a" }, { op: "move", id: "pic", at: "bottom-left" }] })
@@ -975,7 +980,7 @@ export default async ($: VaultTest) => {
     const clipOf = () => layerOf("Claude")?.marks.find((m: Any) => m.id === "clip")
     check("companion: a video card plays muted unless asked", st3 === 200 && clipOf() && !clipOf().sound && !clipOf().paused, [st3, r3, clipOf()])
     helper.emit("message", JSON.stringify({ t: "drawing-act", id: layerOf("Claude").id, kind: "media", mark: "clip", paused: true }))
-    const toldClip = cMoments.momentsText([{ seq: 2, t: 0, kind: "ask", for: "Claude", text: "play it" }] as Any[], "pair", null)
+    const toldClip = cMoments.momentsText([{ seq: 2, t: 0, kind: "ask", for: "Claude", text: "play it" }], "pair", null)
     check("companion: what the user did on a video card is kept, and the next ask says it (paused, muted), to change in place, not in a player",
       clipOf()?.paused === true && toldClip.includes("clip video Clip.mp4 (paused, muted)") && toldClip.includes("never opened again in a player"), [clipOf(), toldClip])
     ;[st3, r3] = await api("POST", "ops/companion.draw", { actions: [{ op: "change", id: "clip", sound: true, paused: false }] })
@@ -990,7 +995,7 @@ export default async ($: VaultTest) => {
     ;[st3, r3] = await api("POST", "ops/companion.draw", { marks: [{ type: "button", id: "lh", label: "Lighthouse", do: { ask: "Hand it to Lighthouse" } }, { type: "button", label: "Alice", do: { ask: "Alice" } }], say: "Two can take it. Which one?" })
     const askedQ = (await api("POST", "ops/companion.status", {}))[1].notes.filter((n: Any) => n.kind === "say" && n.text === "Two can take it. Which one?")
     check("companion: a choice's question goes with its answers, and is asked as a question", st3 === 200 && layerOf("Claude")?.question === "Which one?" && askedQ.at(-1)?.question === true, [layerOf("Claude")?.question, askedQ])
-    const toldQ = cMoments.momentsText([{ seq: 3, t: 0, kind: "ask", for: "Claude", text: "what are these?" }] as Any[], "pair", null)
+    const toldQ = cMoments.momentsText([{ seq: 3, t: 0, kind: "ask", for: "Claude", text: "what are these?" }], "pair", null)
     check("companion: what's up says a choice's answers and what each sends", toldQ.includes("lh button \"Lighthouse\" (an answer: sends \"Hand it to Lighthouse\")"), toldQ)
     cIntake.addMoment({ kind: "ask", text: "Hand it to Lighthouse", app: "com.example.mail", sx: 5, sy: 5 })
     check("companion: answered (or asked past), a choice goes; the other cards stay", !layerOf("Claude")?.marks.some((m: Any) => m.type === "button") && !!clipOf(), layerOf("Claude")?.marks)
@@ -1063,7 +1068,7 @@ export default async ($: VaultTest) => {
     check("companion: a drawing with every mark off their screen is refused: nothing drawn, they saw no mark", st3 === 409 && /off their screen.*saw no mark/.test(r3.error), r3)
     // (what it showed is in its next asks, where it landed, in the ask's own points: it never denies a mark they saw)
     await api("POST", "ops/companion.look", { sx: 700, sy: 40 })
-    const next = { kind: "ask", text: "why did you draw up there?", for: "Claude", seq: 900, t: Date.now() } as Any
+    const next: Moment = { kind: "ask", text: "why did you draw up there?", for: "Claude", seq: 900, t: Date.now() }
     const was = cMoments.momentsText([next], "pair", null), inPic = cMoments.momentsText([{ ...next, origin: { x: 100, y: 20 } }], "pair", null)
     check("companion: its next ask says what it showed lately and where each landed, a mark left out not among them, in the picture's pixels when its points are",
       /What you showed on their screen lately[^\n]*\n(.*\n)*.*your ring at 100,100 40×20\n(.*\n)*.*your cursor pointed at 700,40/.test(was) && !/your check at 5000/.test(was) &&

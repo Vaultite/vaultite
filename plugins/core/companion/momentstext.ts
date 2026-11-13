@@ -19,7 +19,7 @@ const Snapshot = z.object({ snapshot: z.string() })
 const FileText = z.object({ text: z.unknown() })
 const TourRow = z.object({ id: z.string(), app: z.array(z.string()).optional(), site: z.array(z.string()).optional() })
 
-export async function excerpts(ctx: OpCtx, ms: Moment[]) {
+export async function excerpts(ctx: Pick<OpCtx, "api">, ms: Moment[]) {
   const by = new Map<string, Moment[]>()
   const out: Excerpt[] = []
   for (const m of ms) if ((m.kind === "point" || m.kind === "ask") && m.pane && !out.some((e) => e.pane === m.pane)) {

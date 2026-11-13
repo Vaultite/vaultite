@@ -4,7 +4,8 @@ import os from "node:os"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 import { waitFor } from "../lib.ts"
-import { request, socket } from "../fakes.ts"
+import { request, socket, where } from "../fakes.ts"
+import type { JobEvent } from "../../../plugins/core/companion/joblife.ts"
 import { portOf } from "../../../core/listening.ts"
 
 export default async ($: VaultTest) => {
@@ -20,7 +21,7 @@ export default async ($: VaultTest) => {
   {
     const job = (): Any => ({ id: "j1", title: "t", state: "starting", where: { machine: "", label: "M", cwd: "/r", repo: "r", agent: "claude", account: "", harness: "Claude Code", model: "", effort: "", why: "" },
       terminal: "claude-x", now: "", started: 0, turn: 0, at: 0, seen: true, log: [] })
-    const run = (evs: string[]) => { const j = job(); for (const e of evs) L.step(j, e as Any, 1); return j }
+    const run = (evs: JobEvent[]) => { const j = job(); for (const e of evs) L.step(j, e, 1); return j }
     {
       // (what each summoned ask is told of its jobs: the newest few, and every one waiting on them however old)
       const now = 10 * 3600_000, at = (id: string, state: string, h: number) => ({ ...job(), id, title: id, state, at: now - h * 3600_000, started: now - h * 3600_000 })
@@ -73,7 +74,7 @@ export default async ($: VaultTest) => {
       E(true, false, false, false) === "answered" && E(true, true, true, true) === "changed" && E(false, false, true, false) === "changed" &&
       E(true, false, false, true) === "ended" && E(false, false, false, false) === "ended")
     check("jobs: every state is in the table, and each one reached is one of them", J.JOB_STATES.every((s) => s in L.JOB_NEXT) &&
-      Object.values(L.JOB_NEXT).every((m) => Object.values(m).every((s) => (J.JOB_STATES as readonly string[]).includes(s!))))
+      Object.values(L.JOB_NEXT).every((m) => Object.values(m).every((s) => J.JOB_STATES.includes(s!))))
     check("jobs: its news in a line said aloud: needs you, ready for review, done, failed; a reviewed job done isn't news again",
       J.jobSpoken({ title: "Make the header blue on the about page please", state: "ready for review" }, "working") === 'The job "Make the header blue" is ready for review.' &&
       J.jobSpoken({ title: "x", state: "needs you" }, "working") === 'The job "x" needs you.' && J.jobSpoken({ title: "", state: "failed" }, "working") === "A job failed." &&
@@ -150,8 +151,8 @@ export default async ($: VaultTest) => {
       check("jobs: what it does now is what it waits on, else what it said last this turn, else its status (not its own title)",
         J.nowOf(j, {}) === "Checking the footer at phone width." && J.nowOf(j, { kind: "question", msg: "Which blue?" }) === "waits on an answer: Which blue?" &&
         J.nowOf({ ...j, turn: 30_000 }, { title: "✳ Fix the footer" }) === "starting" && J.nowOf({ ...j, turn: 30_000 }, { title: "✳ Editing a.ts" }) === "Editing a.ts")
-      check("jobs: its conversation resumes in its account's terminal", J.resumeOf({ session: "s-123", where: { agent: "claude_agent" } as Any }) === "resume-claude_agent-s-123" &&
-        J.resumeOf({ where: { agent: "claude" } as Any }) === "")
+      check("jobs: its conversation resumes in its account's terminal", J.resumeOf({ session: "s-123", where: where({ agent: "claude_agent" }) }) === "resume-claude_agent-s-123" &&
+        J.resumeOf({ where: where({ agent: "claude" }) }) === "")
     }
     {
       const shot = "/Users/alice/Library/Application Support/Vaultite Main/screens/display-746-1794124886020.png", close = "/Users/alice/Library/Application Support/Vaultite Main/screens/close-746-1794124886021.png"
@@ -254,7 +255,7 @@ export default async ($: VaultTest) => {
       check("jobs: a cloud job is told it has no vau nor vault, to ask through AskUserQuestion, to land from its branch and end Merged with its hash, never wait for live",
         /Fix the footer/.test(told) && /no vau/.test(told) && /AskUserQuestion/.test(told) && /from your session's branch[^]*git push origin HEAD:main[^]*Don't wait for it to go live[^]*"Merged:" and its commit's hash on main/.test(told) &&
         !/worktree|tour-save|vau inbox/.test(told) && !/git push/.test(J.jobTask("Fix it", undefined, { cwd: "/r/site", repo: "site", label: "Cloud", cloud: true }, "j1", { land: false }).replace(/don't push to main/, "")), told)
-      check("jobs: a cloud job's card links its session on claude.ai", J.linkOf({ terminal: "session_01abc", where: { cloud: true, machine: "" } as Any }) === "view:web/https://claude.ai/code/session_01abc")
+      check("jobs: a cloud job's card links its session on claude.ai", J.linkOf({ terminal: "session_01abc", where: where({ cloud: true, machine: "" }) }) === "view:web/https://claude.ai/code/session_01abc")
     }
     check("where: a preview or an editor's project is a copy the user watches here; a note, a GitHub page or nothing isn't",
       W.watched({ cwd: "/r", why: "", from: "preview" }) && W.watched({ cwd: "/r", why: "", from: "editor" }) && !W.watched({ cwd: "/r", why: "", from: "github" }) && !W.watched({ cwd: "/v", why: "", from: "vault" }))
@@ -576,8 +577,8 @@ export default async ($: VaultTest) => {
         check("proof: its choice card says, under its answers, that their Talk key's words go to that job", /^Or hold your Talk key and say what to change: it goes to "Make the heading blue"\.$/.test(choice?.drawing.hint ?? ""), choice?.drawing.hint)
         // (their words next, not a choice, over another note: about the job just shown, told the companion and the job; asked
         // long ago here, so no later handoff takes them as its ask)
-        const fb = cIntake.addMoment({ kind: "ask", for: "Claude", text: "the heading is too big now, make it smaller", path: "Inbox/Status bar.md", line: 28, t: Date.now() - 20 * 60_000 }) as Any
-        const fbText = cMoments.momentsText([fb], "pair", null), next = cIntake.addMoment({ kind: "ask", for: "Claude", text: "what's on my calendar", path: "Inbox/Status bar.md", line: 3, t: Date.now() - 20 * 60_000 }) as Any
+        const fb = cIntake.addMoment({ kind: "ask", for: "Claude", text: "the heading is too big now, make it smaller", path: "Inbox/Status bar.md", line: 28, t: Date.now() - 20 * 60_000 }) ?? undefined
+        const fbText = cMoments.momentsText(fb ? [fb] : [], "pair", null), next = cIntake.addMoment({ kind: "ask", for: "Claude", text: "what's on my calendar", path: "Inbox/Status bar.md", line: 3, t: Date.now() - 20 * 60_000 })
         check("proof: their next ask after it (not a choice), over another note, is marked as about the job just shown: its line says so, the job is told they just watched it; the ask after, not",
           fb?.reviewed === card.id && fbText.includes(`just after they watched job ${card.id} "Make the heading blue"`) && fbText.includes(`handoff --job ${card.id}`) &&
           J.followTask("Smaller", fb, card.id).startsWith("They just watched your demo (Show me)") && !J.followTask("Smaller", fb, "other").startsWith("They just") && !next?.reviewed,
@@ -589,9 +590,10 @@ export default async ($: VaultTest) => {
       // Opened beside: "open it on the right" is a split, not a new tab.
       {
         const { checkParams, whoOf } = await import("../../../core/ops.ts")
-        const opened: string[] = [], ctx = { who: whoOf("cli", null), op: async (id: string, b: unknown) => { opened.push(`${id} ${JSON.stringify(b)}`); return {} } }
+        const unasked = async () => { throw new Error("not asked") }
+        const opened: string[] = [], ctx = { vault: $.vault, who: whoOf("cli", null), plugin: "companion", api: unasked, ui: unasked, op: async (id: string, b: unknown) => { opened.push(`${id} ${JSON.stringify(b)}`); return {} } }
         const jo = app.plugins.find((x) => x.id === "companion")!.ops.find((o) => o.id === "companion.job-open")!
-        await jo.run(checkParams(jo, { id: card.id, split: "right" }), ctx as never)
+        await jo.run(checkParams(jo, { id: card.id, split: "right" }), ctx)
         check("job-open --split right: its terminal in a pane beside, not a new tab", opened.at(-1) === `ui.open ${JSON.stringify({ path: card.link, split: "right" })}`, opened)
       }
       turn = null
@@ -600,7 +602,7 @@ export default async ($: VaultTest) => {
       check("handoff --job: typed into its worker's terminal, which goes on; with no say, it still says so in a line", st === 200 && told === "Use the darker blue" &&
         !!(await waitFor(async () => (await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.kind === "say" && n.text === "Passed that on to its job."), 3000, 50)), [st, b, told])
       check("handoff --job: a follow-up carries the user's own words and screen once, one line, where they were first and the ask last (a cut loses the context)",
-        J.followTask("Darker", { t: 1, seq: 1, kind: "ask", text: "make it darker", voice: true, app: "com.example.browser", title: "Site", shot: "/s.png" } as Any) ===
+        J.followTask("Darker", { t: 1, kind: "ask", text: "make it darker", voice: true, app: "com.example.browser", title: "Site", shot: "/s.png" }) ===
           '(Where the user was, through their companion: Where: on their screen, in "Site" (com.example.browser) · Their screen then (a picture): /s.png) Darker They said (dictated, so it may hold slips: go by the task): "make it darker"' &&
         J.followTask("Darker", undefined) === "Darker")
       {
@@ -705,7 +707,7 @@ export default async ($: VaultTest) => {
             st === 200 && r?.tells?.at(-1)?.by === by && J.jobText(r).includes(`told last (by ${by}): Also keep the pointer when watched`) && J.jobsLine([r]).includes(`told last by ${by}`), [st, r?.tells, r?.last])
         }
         const [, conv] = await api("POST", "ops/companion.conversation", {})
-        const ex = (conv.exchanges as Any[]).findLast((e) => e.text === "download this video please")
+        const ex = conv.exchanges.findLast((e: Any) => e.text === "download this video please")
         check("handoff not the companion's: nothing filed under the user's ask in its conversation", !!ex && !ex.did.includes("handoff") && !ex.said.length, ex)
         // (a Codex companion's vau, from its own session's terminal: its own)
         const cp = app.plugins.find((x) => x.id === "companion")!, sess = path.join(cp.localDir(), "session-ada.json")
@@ -1040,7 +1042,7 @@ setTimeout(draw, 300)
   // A picture another machine's companion hands on for a job here: kept out of the vault, by the helper's name only.
   {
     const { Readable } = await import("node:stream")
-    const take = (name: string, bytes: Buffer) => app.runOp("companion.picture-take", { name }, { input: Readable.from([bytes]) }).then((r) => r.result as Any, (e: Error) => e.message)
+    const take = (name: string, bytes: Buffer) => app.runOp("companion.picture-take", { name }, { input: Readable.from([bytes]) }).then((r): Any => r.result, (e: Error) => e.message)
     const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(500, 1)])
     const got = await take("close-3-44.png", png), bad = await take("../x.png", png), notPng = await take("display-1-2.png", Buffer.from("hello"))
     check("picture-take: a picture handed on is kept on this machine, out of the vault, and its path answered; a name not the helper's, or not a PNG, refused",
@@ -1080,18 +1082,18 @@ setTimeout(draw, 300)
       try {
         got.length = 0
         const saved = await app.runOp("companion.tour-save", { title: "The blue button", job: "jabc123", home: url, video, times: [0, 1500], open: "Notes/Idea.md",
-          text: `1. Save is blue now [ring "Save"]. (before: ${before})` }).then((x) => x.result as Any, (e: Error) => e.message)
+          text: `1. Save is blue now [ring "Save"]. (before: ${before})` }).then((x): Any => x.result, (e: Error) => e.message)
         const files = got.filter((x) => x.route === "/api/ops/companion.job-file"), save = got.find((x) => x.route === "/api/ops/companion.tour-save")
         check("tour-save --job from a worker away from home: its video and pictures sent there, then saved there naming their paths there, nothing in this vault",
           saved?.path === "Guides/Proofs/The blue button.md" && saved.home === url && files.map((x) => `${x.q.name}:${x.bytes}`).sort().join() === "The blue button.mp4:2048,before 1.png:300" &&
           save?.p.video === "/home/alice/job-files/jabc123/The blue button.mp4" && JSON.stringify(save.p.times) === "[0,1500]" && save.p.text.includes("(before: /home/alice/job-files/jabc123/before 1.png)") &&
           save.p.job === "jabc123" && save.p.open === "Notes/Idea.md" && files.every((x) => x.client?.startsWith("machine/")) && !fs.existsSync(path.join(VAULT, "Guides", "Proofs", "The blue button.md")), [save?.p, files.length])
       } finally { fs.rmSync(dir, { recursive: true, force: true }) }
-      const cap = (await app.runOp("companion.capacity", {})).result as Any
+      const cap: Any = (await app.runOp("companion.capacity", {})).result
       check("companion.capacity: the jobs this machine runs, how many it takes, its agents and checkouts", typeof cap.jobs === "number" && cap.cap >= 1 && cap.agents.includes("claude") && Array.isArray(cap.repos), cap)
       if (process.platform !== "win32") {
-        const t = (await app.runOp("terminal.start", { command: `${JSON.stringify(process.execPath)} -e "console.log('home=' + process.env.VAULTITE_HOME + ' as=' + process.env.VAULTITE_HOME_AS)"`, wait: true, timeout: 30,
-          home: { url, as: "box" } })).result as Any
+        const t: Any = (await app.runOp("terminal.start", { command: `${JSON.stringify(process.execPath)} -e "console.log('home=' + process.env.VAULTITE_HOME + ' as=' + process.env.VAULTITE_HOME_AS)"`, wait: true, timeout: 30,
+          home: { url, as: "box" } })).result
         check("terminal.start --home: its programs get the job's home server and this machine's id there", t.output?.includes(`home=${url} as=box`), t)
         const { asFromDock } = await import("../../../core/sessionenv.ts")
         const said = await app.runOp("terminal.start", { command: `${JSON.stringify(process.execPath)} -e "console.log('names=' + Object.keys(process.env).join(' '))"`, wait: true, timeout: 30, home: { url, as: "box" } })
