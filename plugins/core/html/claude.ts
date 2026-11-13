@@ -1,11 +1,14 @@
 import fs from "node:fs"
 import path from "node:path"
 import type { WebSocket } from "ws"
+import { z } from "zod"
 import type { SampleAnswer, SampleAsk } from "../../../core/agents.ts"
 import { HTTPError, type Plugin, reply } from "../../../core/plugins.ts"
 import { type Item, readText, type Vault, writeAtomic } from "../../../core/vault.ts"
 
 const ARTIFACT = /\.html?$/i
+
+const FAILURE = z.object({ code: z.string().optional().catch(undefined), text: z.string().optional().catch(undefined) }).catch({})
 
 export const dataPath = (rel: string) => `.vaultite/artifacts/${rel}.data.json`
 
@@ -14,7 +17,7 @@ export type ArtifactData = { db: Record<string, Item>; storage: { shared: Record
 export function dataOf(vault: Vault, rel: string): ArtifactData {
   let d: Item = {}
   try { d = JSON.parse(readText(vault.abs(dataPath(rel)))) } catch {}
-  const obj = (v: unknown) => (v && typeof v === "object" && !Array.isArray(v) ? v : {}) as Item
+  const obj = (v: unknown): Item => (v && typeof v === "object" && !Array.isArray(v) ? v : {})
   const st = obj(d.storage)
   return { db: obj(d.db), storage: { shared: obj(st.shared), personal: obj(st.personal) } }
 }
@@ -88,8 +91,8 @@ export function sampleSocket(plugin: Plugin, ws: WebSocket) {
         signal: ctl.signal, onText: (delta) => send({ t: "text", delta }) })
       send({ t: "done", ...out })
     } catch (e) {
-      const err = e as Error & { code?: string; text?: string }
-      send({ t: "error", code: err.code ?? "upstream_error", message: err.message, text: err.text })
+      const f = FAILURE.parse(e)
+      send({ t: "error", code: f.code ?? "upstream_error", message: e instanceof Error ? e.message : String(e), text: f.text })
     } finally {
       ws.close()
     }

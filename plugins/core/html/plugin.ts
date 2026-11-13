@@ -11,7 +11,7 @@ import type { RawData, WebSocket } from "ws"
 
 export const plugin = new Plugin(import.meta.url)
 
-const obj = (body: unknown) => (body && typeof body === "object" && !Array.isArray(body) ? body : {}) as Item
+const obj = (body: unknown): Item => (body && typeof body === "object" && !Array.isArray(body) ? body : {})
 
 plugin.serve("v", (req) => {
   const vault = plugin.vault
@@ -124,7 +124,7 @@ plugin.route("GET", "artifact/scope", async (req) => {
   return { folder: folders.filter((f) => inside(rel, f)).sort((a, b) => b.length - a.length)[0] ?? null }
 }, { lock: false, sync: false })
 
-const pageOf = (p: unknown) => { try { return artifactIn(plugin.vault, p) } catch (e) { throw new OpError((e as Error).message) } }
+const pageOf = (p: string | undefined) => { try { return artifactIn(plugin.vault, p) } catch (e) { throw new OpError(e instanceof Error ? e.message : String(e)) } }
 const pageParam = { type: "string", format: "path", required: true, description: "the page (.html), a vault path" } as const
 plugin.op({
   id: "html.shared",
@@ -146,7 +146,7 @@ plugin.op({
   args: ["path"],
   run: ({ path, values }, ctx) => {
     const rel = pageOf(path)
-    try { return { state: shared.set(rel, values, ctx.who.label) } } catch (e) { throw new OpError((e as Error).message) }
+    try { return { state: shared.set(rel, values, ctx.who.label) } } catch (e) { throw new OpError(e instanceof Error ? e.message : String(e)) }
   },
 })
 
@@ -186,7 +186,7 @@ copy's: a sandbox or dev server, never the user's live app).
     try {
       shots = await pictures({ url: url || pathToFileURL(plugin.vault.abs(rel)).href, width: Number(p.width ?? 1280), height: Number(p.height ?? 800),
         selector: typeof p.selector === "string" && p.selector.trim() ? p.selector : undefined, full: !!p.full, dark: !!p.dark })
-    } catch (e) { throw new OpError((e as Error).message) }
+    } catch (e) { throw new OpError(e instanceof Error ? e.message : String(e)) }
     const files = shots.map((s, i) => {
       const at = shots.length > 1 ? out.replace(/\.png$/i, ` ${i + 1}.png`) : out
       writeAtomic(plugin.vault.abs(at), s.png)

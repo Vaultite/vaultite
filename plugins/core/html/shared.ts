@@ -14,6 +14,8 @@ const TINTS = ["blue", "orange", "green", "purple", "pink", "teal", "red", "indi
 
 const send = (ws: WebSocket, m: object) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(m)) }
 
+const isValues = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v)
+
 export function sharedPages(vaultOf: () => Vault) {
   const rooms = new Map<string, Room>()
   const hits = new WeakMap<WebSocket, { n: number; until: number }>()
@@ -55,13 +57,13 @@ export function sharedPages(vaultOf: () => Vault) {
   const tellPeople = (r: Room) => { for (const ws of r.views.keys()) send(ws, { t: "people", people: people(r, ws) }) }
 
   function refusal(r: Room, values: unknown) {
-    if (!values || typeof values !== "object" || Array.isArray(values)) return "values is an object of keys"
+    if (!isValues(values)) return "values is an object of keys"
     const keys = Object.keys(values)
     if (!keys.length || keys.length > KEYS_MAX) return `1 to ${KEYS_MAX} keys a set`
     let bytes = r.bytes
     for (const k of keys) {
       if (!k || k.length > KEY_MAX) return `a key is 1 to ${KEY_MAX} characters`
-      const v = (values as Record<string, unknown>)[k], n = v === null ? 0 : k.length + JSON.stringify(v).length
+      const v = values[k], n = v === null ? 0 : k.length + JSON.stringify(v).length
       if (n > VALUE_MAX) return `${k} is over 64 KiB`
       bytes += n - (r.sizes.get(k) ?? 0)
     }
@@ -97,11 +99,11 @@ export function sharedPages(vaultOf: () => Vault) {
         const t = Date.now(), h = hits.get(ws)
         if (!h || h.until < t) hits.set(ws, { n: 1, until: t + 60_000 })
         const why = viewer.watch || (h && h.until >= t && ++h.n > SETS ? "too many changes a minute" : refusal(r, m.values))
-        if (why) {
+        if (why || !isValues(m.values)) {
           const keys = m.values && typeof m.values === "object" ? Object.keys(m.values).slice(0, KEYS_MAX) : []
           return send(ws, { t: "no", n: m.n, why, values: Object.fromEntries(keys.map((k) => [k, r.state.get(k) ?? null])) })
         }
-        apply(r, m.values as Record<string, unknown>, viewer.person.id, ws)
+        apply(r, m.values, viewer.person.id, ws)
         send(ws, { t: "ok", n: m.n })
       })
     },

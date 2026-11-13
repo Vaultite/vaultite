@@ -1,4 +1,9 @@
+import { z } from "zod"
 import { headless } from "../../../core/headless.ts"
+
+const EVALUATED = z.object({ result: z.object({ value: z.unknown() }).partial().optional(), exceptionDetails: z.object({ text: z.string().optional() }).optional() })
+const RECT = z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() })
+const SIZE = z.object({ w: z.number(), h: z.number() })
 
 export type Shot = { png: Buffer; width: number; height: number }
 export const MOST = 12
@@ -16,7 +21,7 @@ export async function pictures(o: { url: string; width: number; height: number; 
     if (nav.errorText) throw new Error(`couldn't open ${o.url}: ${nav.errorText}`)
     await Promise.race([loaded, sleep(15_000)])
     const js = async (expr: string) => {
-      const r = await p.send("Runtime.evaluate", { expression: expr, returnByValue: true, awaitPromise: true }) as { result?: { value?: unknown }; exceptionDetails?: { text?: string } }
+      const r = EVALUATED.parse(await p.send("Runtime.evaluate", { expression: expr, returnByValue: true, awaitPromise: true }))
       if (r.exceptionDetails) throw new Error(`the page: ${r.exceptionDetails.text}`)
       return r.result?.value
     }
@@ -26,13 +31,13 @@ export async function pictures(o: { url: string; width: number; height: number; 
     for (let i = 0; i < 120 && !(await js(drawn)); i++) await sleep(250)
     await js("document.fonts ? document.fonts.ready.then(() => true) : true")
     await sleep(800)
-    type Rect = { x: number; y: number; w: number; h: number }
+    type Rect = z.infer<typeof RECT>
     let rects: Rect[]
     if (o.selector) {
-      rects = await js(`[...document.querySelectorAll(${JSON.stringify(o.selector)})].slice(0, ${MOST}).map((e) => { const r = e.getBoundingClientRect(); return { x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height } }).filter((r) => r.w > 0 && r.h > 0)`) as Rect[]
+      rects = await js(`[...document.querySelectorAll(${JSON.stringify(o.selector)})].slice(0, ${MOST}).map((e) => { const r = e.getBoundingClientRect(); return { x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height } }).filter((r) => r.w > 0 && r.h > 0)`).then((v) => z.array(RECT).parse(v))
       if (!rects.length) throw new Error(`nothing on the page matches ${o.selector}`)
     } else if (o.full) {
-      const size = await js("({ w: document.documentElement.scrollWidth, h: document.documentElement.scrollHeight })") as { w: number; h: number }
+      const size = SIZE.parse(await js("({ w: document.documentElement.scrollWidth, h: document.documentElement.scrollHeight })"))
       rects = [{ x: 0, y: 0, w: Math.max(o.width, size.w), h: Math.min(size.h, 16_000) }]
     } else rects = [{ x: 0, y: 0, w: o.width, h: o.height }]
     const out: Shot[] = []

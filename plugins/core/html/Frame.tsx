@@ -120,7 +120,7 @@ export function ArtifactFrame({ path, page, height, className }: {
       else if (d.type === "ask") {
         if (outside) return reply(undefined, "a page from outside the vault can't read the vault")
         if (share && !["read", "files", "shared"].includes(String(d.op))) return reply(undefined, "a shared folder's page can't do that here", "unavailable")
-        const args = (d.args ?? {}) as Record<string, unknown>
+        const args: Record<string, unknown> = d.args ?? {}
         const within = await scopeOf(), mayRead = (p: string) => !within || p.startsWith(`${within}/`)
         if (d.op === "read") {
           const p = String(args.path ?? "")

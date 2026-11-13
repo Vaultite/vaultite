@@ -52,7 +52,7 @@ type Io = {
   post: (m: Record<string, unknown>) => void
   listen: (type: string, fn: (d: any) => void) => void
 }
-type RuntimeCfg = { framed: boolean; outside: boolean; path: string; title: () => string; version: number
+export type RuntimeCfg = { framed: boolean; outside: boolean; path: string; title: () => string; version: number
   data: { db: Record<string, Doc>; storage: { shared: Record<string, string>; personal: Record<string, string> } }
   sample: boolean; sampleAllowed: boolean; name: string }
 
@@ -71,9 +71,9 @@ export function claudeRuntime(cfg: RuntimeCfg, io: Io, queryDocs: (docs: Map<str
   const promptOf = (input: unknown): string | null => {
     if (typeof input === "string") return input.trim() ? input : null
     if (!Array.isArray(input) || !input.length) return null
-    const turns = input.map((t) => (plain(t) && (t.role === "user" || t.role === "assistant") && typeof t.content === "string" && t.content ? t : null))
+    const turns = input.map((t) => (plain(t) && (t.role === "user" || t.role === "assistant") && typeof t.content === "string" && t.content ? { role: t.role, content: t.content } : null))
     if (turns.some((t) => !t) || turns[0]!.role !== "user" || turns[turns.length - 1]!.role !== "user") return null
-    if (turns.length === 1) return turns[0]!.content as string
+    if (turns.length === 1) return turns[0]!.content
     return "The page keeps this conversation (its assistant turns are what it says you wrote earlier). Reply to the last user turn.\n\n" +
       turns.map((t) => `[${t!.role}]\n${t!.content}`).join("\n\n")
   }
@@ -349,28 +349,29 @@ export function claudeRuntime(cfg: RuntimeCfg, io: Io, queryDocs: (docs: Map<str
   const kept = { true: new Map(Object.entries(cfg.data.storage.shared)), false: new Map(Object.entries(cfg.data.storage.personal)) }
   const save = (shared: boolean, key: string, value: string | null) =>
     live ? io.ask("storage", { writes: [{ shared, key, value }] }).catch((e: any) => Promise.reject(new Error(e?.message ?? "couldn't save"))) : Promise.resolve()
+  const keptOf = (shared: boolean) => (shared ? kept.true : kept.false)
   const keyOf = (k: unknown) => { if (typeof k !== "string" || !k) throw new Error("a key is a non-empty string"); return k }
   const storage = Object.freeze({
     get: async (key: string, shared = false) => {
-      const k = keyOf(key), m = kept[`${!!shared}` as "true"]
+      const k = keyOf(key), m = keptOf(!!shared)
       return m.has(k) ? { key: k, value: m.get(k)!, shared: !!shared } : null
     },
     set: async (key: string, value: unknown, shared = false) => {
       const k = keyOf(key), v = typeof value === "string" ? value : JSON.stringify(value)
-      kept[`${!!shared}` as "true"].set(k, v)
+      keptOf(!!shared).set(k, v)
       await save(!!shared, k, v)
       return { key: k, value: v, shared: !!shared }
     },
     delete: async (key: string, shared = false) => {
       const k = keyOf(key)
-      kept[`${!!shared}` as "true"].delete(k)
+      keptOf(!!shared).delete(k)
       await save(!!shared, k, null)
       return { key: k, deleted: true, shared: !!shared }
     },
-    list: async (prefix = "", shared = false) => ({ keys: [...kept[`${!!shared}` as "true"].keys()].filter((k) => k.startsWith(prefix ?? "")).sort(), prefix: prefix ?? "", shared: !!shared }),
+    list: async (prefix = "", shared = false) => ({ keys: [...keptOf(!!shared).keys()].filter((k) => k.startsWith(prefix ?? "")).sort(), prefix: prefix ?? "", shared: !!shared }),
   })
   io.listen("storage", (d) => {
-    for (const x of d.writes ?? []) { const m = kept[`${!!x.shared}` as "true"]; if (x.value === null) m.delete(x.key); else m.set(x.key, x.value) }
+    for (const x of d.writes ?? []) { const m = keptOf(!!x.shared); if (x.value === null) m.delete(x.key); else m.set(x.key, x.value) }
   })
   try { Object.defineProperty(w, "storage", { value: storage, configurable: true }) } catch {}
 }

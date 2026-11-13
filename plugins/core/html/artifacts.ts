@@ -4,7 +4,7 @@ import path from "node:path"
 import { HTTPError, LOCAL, parseCsv } from "../../../core/plugins.ts"
 import { type Item, readText, type Vault, writeAtomic } from "../../../core/vault.ts"
 import type { ArtifactData } from "./claude.ts"
-import { claudeRuntime, parseReply, queryDocs } from "./runtime.ts"
+import { claudeRuntime, parseReply, queryDocs, type RuntimeCfg } from "./runtime.ts"
 
 export const ARTIFACT = /\.html?$/i
 
@@ -92,7 +92,7 @@ export async function cdn(host: string, rest: string): Promise<{ status: number;
       at = next.href
     }
   } catch (e) {
-    return { status: 502, type: "text/plain", body: Buffer.from(`couldn't fetch ${url}: ${(e as Error).message}`) }
+    return { status: 502, type: "text/plain", body: Buffer.from(`couldn't fetch ${url}: ${e instanceof Error ? e.message : String(e)}`) }
   }
   const type = res.headers.get("content-type") ?? "application/octet-stream"
   let body: Buffer = Buffer.from(await res.arrayBuffer())
@@ -154,17 +154,17 @@ function guestOnly() {
   const drop = (n: Node) => {
     if (apply(nodeType, n, []) !== 1) return
     if (apply(matches, n, [OUT])) return void apply(remove, n, [])
-    const inner = apply(all, n, [OUT]) as NodeList
+    const inner: NodeList = apply(all, n, [OUT])
     for (let i = apply(count, inner, []) - 1; i >= 0; i--) apply(remove, inner[i], [])
   }
   const watch = (root: Node) => apply(observe, new Observer((ms) => {
-    for (let i = 0; i < ms.length; i++) { const ns = apply(added, ms[i], []) as NodeList; for (let j = 0; j < apply(count, ns, []); j++) drop(ns[j]) }
+    for (let i = 0; i < ms.length; i++) { const ns: NodeList = apply(added, ms[i], []); for (let j = 0; j < apply(count, ns, []); j++) drop(ns[j]) }
   }), [root, { childList: true, subtree: true }])
   watch(document)
-  define(Element.prototype, "attachShadow", { value(this: Element, o: ShadowRootInit) { const r = apply(attach, this, [o]) as ShadowRoot; watch(r); return r }, writable: false, configurable: false })
+  define(Element.prototype, "attachShadow", { value(this: Element, o: ShadowRootInit) { const r: ShadowRoot = apply(attach, this, [o]); watch(r); return r }, writable: false, configurable: false })
 }
 
-type Cfg = { path: string; dark: boolean; scheme: string; embed: boolean; state: Record<string, string>; claude: Record<string, any> }
+type Cfg = { path: string; dark: boolean; scheme: string; embed: boolean; state: Record<string, string>; claude: Omit<RuntimeCfg, "framed" | "path" | "title"> }
 
 /** Injected as source, so it stands alone: no imports, no outer names. */
 function bridge(cfg: Cfg, parseCsv: (text: string) => string[][], runtime: typeof claudeRuntime, query: typeof queryDocs, reply: typeof parseReply) {
@@ -287,7 +287,7 @@ function bridge(cfg: Cfg, parseCsv: (text: string) => string[][], runtime: typeo
     setTimeout(ready, live ? 4000 : 0)
   })
 
-  runtime({ ...cfg.claude, framed: !!top, path: cfg.path, title: () => document.title } as any, {
+  runtime({ ...cfg.claude, framed: !!top, path: cfg.path, title: () => document.title }, {
     ask, post, listen: (type, f) => { (heard[type] ??= []).push(f) },
   }, query, reply)
 
@@ -308,7 +308,7 @@ function bridge(cfg: Cfg, parseCsv: (text: string) => string[][], runtime: typeo
     else if (/^(https?|mailto):$/.test(url.protocol)) post({ type: "open", url: url.href })
   }
   document.addEventListener("click", (e) => {
-    const a = (e.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null
+    const a = e.target instanceof Element ? e.target.closest<HTMLAnchorElement>("a[href]") : null
     if (!a || e.defaultPrevented) return
     const href = a.getAttribute("href") ?? ""
     if (href.startsWith("#") || href.startsWith("javascript:") || a.hasAttribute("download")) return
