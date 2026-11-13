@@ -1,5 +1,5 @@
 // What this branch changed, checked, timing each: build, check, then the tests and QA scripts it reaches (--all: every
-// test and smoke; --try: HEAD on Linux, macOS and Windows too, idle Machines first, else GitHub's runners: tools/try.ts). node tools/verify.ts [--base main] [--all] [--try [--surfaces]] [--dry] [--fresh]
+// test and smoke; --try: HEAD on Linux, macOS and Windows too, idle Machines first, else GitHub's runners: tools/try.ts). node tools/verify.ts [--base origin/main] [--all] [--try [--surfaces]] [--dry] [--fresh]
 import "./test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { spawn, spawnSync } from "node:child_process"
 import fs from "node:fs"
@@ -15,7 +15,7 @@ import { filesState, passes } from "./verify_passed.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "..")
 const argv = process.argv.slice(2)
-const base = argv.includes("--base") ? argv[argv.indexOf("--base") + 1] : "main"
+const base = argv.includes("--base") ? argv[argv.indexOf("--base") + 1] : "origin/main"
 const dry = argv.includes("--dry"), all = argv.includes("--all"), tryIt = argv.includes("--try"), fresh = argv.includes("--fresh")
 const git = (...a: string[]) => spawnSync("git", a, { cwd: ROOT, encoding: "utf8", env: gitEnv() }).stdout.split("\n").filter(Boolean)
 const changed = [...new Set([...git("diff", "--name-only", `${base}...HEAD`), ...git("diff", "--name-only", "HEAD"),
