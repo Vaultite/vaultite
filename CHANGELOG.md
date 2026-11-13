@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A tap as a toast leaves reaches what's under it**: a leaving toast took taps meant for the bar under it, such as
+  the phone's tabs button.
+- **An agent's sign-in with submit waits for the page it leads to**: on a busy machine, or a site whose submit starts
+  late, `vau browser login --submit` answered on the sign-in page still.
 - **Updates download less, and the app starts from fewer files**: a change to one part of the interface re-downloads
   about 40 KB rather than 150 KB, and a first start loads 45 files instead of 103.
 - **An agent done in its terminal stays done**: on a busy machine, its state file read again late made a terminal back at
