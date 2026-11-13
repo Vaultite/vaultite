@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A delegated task's answer is entered again when its parent's input still shows it**: when the parent agent's Enter
+  didn't take (a dialog over its input), the answer sat there unsent; Vaultite now presses Enter once more.
 - **`vau inbox` counts settled results as the inbox does**: it counted only settled events, so it said 1 where the
   page's Settled said 2; `--done` lists both.
 - **A settled result's file no longer keeps `pinned: null`**: settling a pinned or snoozed result removes those keys.

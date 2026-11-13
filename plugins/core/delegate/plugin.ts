@@ -4,6 +4,7 @@ import { agentModel, type AgentModels, type Asking, type Choice, agentName, HOME
   startAgent } from "../../../core/agents.ts"
 import { byUser, logger, type OpCtx, OpError, Plugin, quoted, userSurface } from "../../../core/plugins.ts"
 import { type Item, writeAtomic } from "../../../core/vault.ts"
+import { z } from "zod"
 import { cascade, childrenOf, clampMode, ended, known, type Party, same, type Task, TasksFile, taskOf, titleOf } from "./graph.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -66,7 +67,12 @@ plugin.onEvent({ types: ["inbox.event"] }, (ev) => {
 
 // Codex before 0.163 tells nothing as its turn ends (no OSC 7501, no hooks): its transcript says, read once it's quiet.
 const reading = (t: Task) => t.state === "working" && !!t.child.terminal
-type Waited = { met: string | null; waited: number }
+const Waited = z.looseObject({ met: z.string().nullable(), waited: z.number() })
+type Waiting = { for: string[]; timeout: number; quiet?: number; hold?: number; signal?: AbortSignal }
+function waiter() {
+  const wait = plugin.service("terminal:wait")
+  return wait ? async (id: string, o: Waiting) => Waited.parse(await wait(id, o)) : null
+}
 const watching = new Map<string, AbortController>()
 const watchAll = () => { for (const t of all()) if (reading(t)) watch(t) }
 setTimeout(watchAll, 0).unref?.()
@@ -78,7 +84,7 @@ function watch(t: Task) {
   void (async () => {
     let quiet = 3, failed = 0
     while (reading(t) && !stop.signal.aborted) {
-      const wait = plugin.service("terminal:wait") as ((id: string, o: object) => Promise<Waited>) | null
+      const wait = waiter()
       const r = wait ? await wait(t.child.terminal!, { for: ["quiet", "exit"], quiet, timeout: 600, signal: stop.signal }).catch(() => null) : null
       if (stop.signal.aborted || r?.met === "exit") return
       if (!r) { if (++failed > 60) return; await new Promise((ok) => setTimeout(ok, 5000).unref?.()); continue }
@@ -136,17 +142,18 @@ async function wake(t: Task) {
   const text = `[Vaultite] ${resultText(view(t))}`
   try {
     if (p.terminal && await plugin.ask<boolean>("terminal:runs", false, p.terminal)) await typeInto(p.terminal, text)
-    else if (p.session) await (plugin.service(`agent-reply:${p.agent}`) as ((s: string, text: string) => Promise<boolean>) | null)?.(p.session, text)
+    else if (p.session) await plugin.service(`agent-reply:${p.agent}`)?.(p.session, text)
   } catch (e) { log.error("couldn't tell the parent its task ended", e, { parent: p.terminal || p.session, task: t.id }) }
 }
 
-type Sent = { submitted?: boolean | null; why?: string }
+const Sent = z.looseObject({ submitted: z.boolean().nullish(), why: z.string().optional() })
+const Started = z.looseObject({ id: z.string() })
 async function typeInto(id: string, text: string) {
-  const wait = plugin.service("terminal:wait") as ((id: string, o: object) => Promise<Waited>) | null
+  const wait = waiter()
   const blocked = async () => (await plugin.ask<{ state?: string } | null>("terminal:state", null, id))?.state === "blocked"
   for (let i = 0; i < 3 && wait && await blocked(); i++) await wait(id, { for: ["idle", "working", "done", "error", "exit"], hold: 0, timeout: 3600 }).catch(() => null)
   if (await blocked()) throw new Error("it still waits on the user")
-  const r = await plugin.runOp("terminal.send", { id, text }) as Sent
+  const r = Sent.parse((await plugin.runOp("terminal.send", { id, text })).result)
   if (r.submitted !== false) return
   if (await blocked()) return void log.error("the parent took the result as its answer to what it asked", undefined, { terminal: id, why: r.why })
   await plugin.runOp("terminal.key", { id, keys: ["Enter"] })
@@ -253,8 +260,8 @@ async function launch(ctx: OpCtx, o: { parent: Party | null; agent: string; task
   try {
     if (o.agent === "claude") {
       const r = await ctx.op("claude-code.chat-start", { prompt: promptFor(t), cwd: t.cwd, ...(t.model ? { model: t.model } : {}), ...(t.effort ? { effort: t.effort } : {}),
-        ...(o.mode ? { mode: o.mode } : {}) }) as { id: string }
-      t.child.session = r.id
+        ...(o.mode ? { mode: o.mode } : {}) })
+      t.child.session = Started.parse(r).id
     } else {
       t.child.terminal = newTerminalId(o.agent)
       await startAgent(ctx, t.child.terminal, promptFor(t), { model: t.model ?? null, effort: t.effort ?? null, mode: o.mode, cwd: t.cwd })
@@ -377,7 +384,7 @@ user may have set that only they answer (then it waits for them, in their inbox)
       return ns.every((n) => Number.isInteger(n) && n >= 1 && n <= (qs[i]?.options.length ?? 0)) ? ns : x
     })
     if (picks.length !== qs.length) throw new OpError(`picks: one answer per question (${qs.length})`)
-    const answer = plugin.service(`agent-answer:${t.child.agent}`) as ((s: string, a: Item) => Promise<boolean>) | null
+    const answer = plugin.service(`agent-answer:${t.child.agent}`)
     if (t.child.terminal || !t.child.session || !answer || !(await answer(t.child.session, { picks }))) {
       throw new OpError(`${nameOf(t.child.agent)} takes its answer as a message here: vau delegate send ${t.id} "<your answer>"`, 409)
     }

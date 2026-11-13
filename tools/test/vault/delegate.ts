@@ -167,9 +167,9 @@ export default async ($: VaultTest) => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "delegate-term-")), done = path.join(tmp, "done"), got = path.join(tmp, "got")
     const printing = path.join(tmp, "printing"), up = path.join(tmp, "up")
     // (the child prints a while, as Codex's spinner does, then rests; the parent, Claude Code's stand-in, keeps what it's
-    // sent: a program, as an agent is, not its shell at its prompt)
+    // sent: a program, as an agent is, not its shell at its prompt; it shows what it got as an input the Enter didn't take)
     const child = `touch '${printing}'; i=0; while [ $i -lt 8 ]; do printf 'working %s\\n' $i; i=$((i+1)); sleep 0.5; done; touch '${done}'; sleep 600`
-    const parentCmd = `sh -c 'touch "$1"; stty -echo; while IFS= read -r l; do printf "%s\\n" "$l" >> "$0"; done' '${got}' '${up}'`
+    const parentCmd = `sh -c 'touch "$1"; stty -echo; a=""; while IFS= read -r l; do printf "%s\\n" "$l" >> "$0"; a="$a $l"; printf "\\r%s" "$a"; done' '${got}' '${up}'`
     const svc = (id: string) => app.plugins.find((p) => p.id === id)!.services
     const cx = svc("codex"), cc = svc("claude-code"), was = { ...cx }, wasCc = { ...cc }
     // (early: a read while it prints; one before it starts, a busy machine slow to start it, is only quiet)
@@ -195,9 +195,11 @@ export default async ($: VaultTest) => {
       const held = mid.state === "done" && !fs.existsSync(got)
       asks(parent, null)
       const heard = await waitFor(() => fs.existsSync(got) && /\[Vaultite\] Codex finished "Review the diff"[^]*Two bugs: a and b\./.test(fs.readFileSync(got, "utf8")), 40000, 200)
+      const again = await waitFor(() => fs.readFileSync(got, "utf8").endsWith("Two bugs: a and b.\n\n"), 20000, 200)
       const [, s2] = await api("POST", "ops/delegate.status", { id: b.id }, asApp)
       check("delegate: a silent terminal child's end is read when it goes quiet (not while it prints), and typed into its parent's terminal once it asks the user nothing",
         st === 200 && held && !!heard && s2.state === "done" && s2.result === "Two bugs: a and b." && early === 0 && reads >= 1, [{ st, held, heard: !!heard, reads, early }, s2.state, s2.result, fs.existsSync(got) && fs.readFileSync(got, "utf8")])
+      check("delegate: a parent whose input still shows the result after its Enter gets Enter once more", !!again, fs.readFileSync(got, "utf8"))
     } finally {
       Object.assign(cx, was); Object.assign(cc, wasCc)
       for (const id of [parent, kid].filter(Boolean)) await api("DELETE", `terminals/${id}`).catch(() => {})
