@@ -7,26 +7,20 @@ import type { Actor, ActivityEvent } from "./model.ts"
 import { MINUTE, plugin } from "./store.ts"
 import { busy, timing } from "./timings.ts"
 
-const CLAIM = 2500 // how long a change on disk waits for an agent's hook to say it made it
+const CLAIM = 2500
 const BOOT = Date.now()
 
-/** Writes in progress or just done, to tie the files that change on disk to the request that wrote them: a file whose
- *  mtime falls between a write's start and end (Infinity until it ends) is that write's. */
 type Write = { start: number; end: number; paths: string[]; event: ActivityEvent | null; failed?: boolean }
 const writes: Write[] = []
-/** How far a file's mtime may fall outside its write: a file's clock is coarser than Date.now(), and a write may land as
- *  its answer goes. */
+// A file's clock is coarser than Date.now(), and a write may land as its answer goes.
 const BEFORE = 5, AFTER = 50
-/** The write a file with this mtime is from, of those that didn't fail (refused, a request wrote nothing) else any: see
- *  nearest(). (A lagging file clock can date the next request's write inside a refused one.) */
 const writeAt = (mtime: number) => nearest(writes.filter((x) => !x.failed), mtime) ?? nearest(writes, mtime)
-/** The one going on then, else the nearest just around it, each side by its margin (the next request's margin starts
- *  before the last one ended; Windows' file clock runs a ms or two ahead). */
+// Windows' file clock runs a ms or two ahead.
 function nearest(writes: Write[], mtime: number) {
-  // (Date.now() is whole ms: a write that ended at `end` went on until end + 1)
+  // Date.now() is whole ms: a write that ended at `end` went on until end + 1.
   const exact = writes.findLast((x) => mtime >= x.start && mtime < x.end + 1)
   if (exact) return exact
-  // A clock that lags (Linux's coarse one) dates a write just before its request began, never after one ended.
+  // Linux's coarse clock dates a write just before its request began, never after one ended.
   const next = process.platform !== "win32" && writes.find((x) => mtime < x.start && x.start - mtime <= BEFORE)
   if (next) return next
   const off = (x: Write) => (mtime < x.start ? (x.start - mtime) / BEFORE : (mtime - x.end) / AFTER)
@@ -46,7 +40,6 @@ plugin.onRequest((s) => {
   return (end: RequestEnd) => {
     const late = timing(s, end, actor)
     if (w) { w.end = Date.now(); w.failed = end.status >= 400 }
-    // (a call an agent, the CLI or a script got wrong is kept even unrecorded otherwise: what they fail at)
     const did = end.status >= 400 && !byApp && !route.startsWith("activity") ? failed(s.method, route, end)
       : describe(s.method, route, s.query, end.body, byApp || actor.kind === "you")
     if (!did) return
@@ -67,10 +60,7 @@ plugin.onRequest((s) => {
   }
 })
 
-/** Notes an agent is typing into in the app (Companion): path -> its name and until when the app's saves of it are its. */
 const typing = new Map<string, { name: string; until: number }>()
-/** Who a request's change was by: an agent's under the name it acts as (an op's `by`), the app's save of a note an agent
- *  is typing into that agent's. */
 function actingAs(a: Actor, by: string | undefined, s: RequestStart, paths: string[]): Actor {
   if (by && a.kind === "agent") return { ...a, name: by }
   if (a.kind !== "you" || s.method !== "PUT" || s.route !== "file") return a
@@ -84,13 +74,11 @@ plugin.provide("activity:typing", (path: string, name: string, ms: number) => {
   return true
 })
 
-/** Changed on disk and not yet claimed by a request: waits CLAIM ms for an agent's hook to say it made them. */
 let unclaimed: { t: number; paths: Set<string> } | null = null
 let claimTimer: ReturnType<typeof setTimeout> | null = null
 const QUIET = /^(\.vaultite\/(cache|generated|artifacts)\/|\.trash\/|\.git\/)|(^|\/)\.DS_Store$/
 
 export const recaps = { dirty: true }
-/** Recaps this server wrote, just now: not someone's change. */
 export const ownWrites = new Map<string, number>()
 function ownRecap(p: string) { const t = ownWrites.get(p); return t !== undefined && Date.now() - t < 10_000 }
 
@@ -102,8 +90,7 @@ plugin.onChange((paths) => {
     if (QUIET.test(p) || ownRecap(p)) continue
     recaps.dirty = true
     let mtime: number | null = null
-    try { mtime = fs.statSync(plugin.vault.abs(p)).mtimeMs } catch { /* deleted or moved away */ }
-    // Written by a request: its mtime is in its time; gone: a write that ended just now (a delete, a move).
+    try { mtime = fs.statSync(plugin.vault.abs(p)).mtimeMs } catch {}
     const w = mtime !== null
       ? writeAt(mtime)
       : writes.findLast((x) => now - (x.end + AFTER) < 1500)
@@ -125,8 +112,6 @@ plugin.onChange((paths) => {
       unclaimed = null
       if (!u || !u.paths.size) return
       const ps = [...u.paths].sort()
-      // Just after the server started, what it writes then (dashboards, pins, the rules' pointer lines): its own,
-      // not someone's on disk.
       const self = u.t - BOOT < 20_000 && ps.every((p) => /^(AGENTS\.md|CLAUDE\.md|Dashboards\/|\.vaultite\/)/.test(p))
       record({ t: u.t, actor: self ? { kind: "script", name: "Vaultite" } : { kind: "disk", name: "On disk" }, action: "change",
         text: ps.length === 1 ? `Changed ${ps[0]}` : `Changed ${ps.length} files (${ps.slice(0, 3).join(", ")}${ps.length > 3 ? "..." : ""})`, paths: ps })
@@ -135,7 +120,6 @@ plugin.onChange((paths) => {
   }
 })
 
-/** An agent's hook says it wrote `abs`: a change on disk waiting to be claimed is its, not "On disk". */
 export function claim(rel: string) {
   if (unclaimed?.paths.delete(rel) && !unclaimed.paths.size) unclaimed = null
 }

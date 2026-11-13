@@ -1,5 +1,3 @@
-// The app's side of Activity in every window's background: what the user opens, runs and drops (batched every 3 s)
-// and how fast this window is (every minute). Nothing here may throw into the app: every callback is guarded.
 import { useEffect } from "react"
 import { appDevice as DEVICE, focusedPane, getTabLayout, shownTab, onActivity, onTabLayoutChange, onTrace, takeSpans, type TabLayout } from "@vaultite"
 
@@ -7,9 +5,9 @@ type Note = { action: string; text: string; paths?: string[]; t: number }
 
 const SEND_EVERY = 3000
 const PERF_EVERY = 60_000
-const SETTLE = 800 // a tab has to stay focused this long to count as opened
+const SETTLE = 800
 
-const safe = <A extends unknown[]>(f: (...a: A) => void) => (...a: A) => { try { f(...a) } catch { /* never into the app */ } }
+const safe = <A extends unknown[]>(f: (...a: A) => void) => (...a: A) => { try { f(...a) } catch {} }
 
 function send(path: string, body: unknown, keepalive = false) {
   const text = JSON.stringify(body)
@@ -21,14 +19,12 @@ function send(path: string, body: unknown, keepalive = false) {
   }).then(() => undefined, () => undefined)
 }
 
-/** The focused pane's active tab's target ("file:Notes/Idea.md", "view:graph", "settings"). */
 function focusedTab(ws: TabLayout): string {
   const t = shownTab(ws)
   return t ? focusedPane(t).to : ""
 }
 
 const words = (s: string) => s.replace(/[-_]+/g, " ")
-/** What opening a tab reads as, or null for nothing worth saying (a blank tab). */
 function opened(to: string): Note | null {
   const t = Date.now()
   if (!to || to === "new") return null
@@ -36,14 +32,12 @@ function opened(to: string): Note | null {
   if (to.startsWith("view:")) {
     const [name, ...rest] = to.slice(5).split("/")
     const arg = rest.join("/")
-    // A view about a vault file (a file's history): that file is what was opened.
     const file = /\.[a-z0-9]+$/i.test(arg) && !arg.startsWith("/") ? arg : ""
     return { action: "open", text: file ? `Opened ${words(name)} of ${file}` : `Opened ${words(name)} view`, paths: file ? [file] : undefined, t }
   }
   return { action: "open", text: `Opened ${words(to)}`, t }
 }
 
-/** An /api/ call's route: the path under /api/ with ids as "*" (words only: /^[a-z][a-z-]*$/, 24 characters at most). */
 export function routeOf(url: string): string | null {
   let u: URL
   try { u = new URL(url, location.href) } catch { return null }
@@ -63,7 +57,6 @@ function start(): () => void {
   const queue: Note[] = []
   const push = (n: Note) => { if (queue.length < 200) queue.push({ action: n.action, text: n.text, paths: n.paths, t: n.t }) }
 
-  // What's opened: the focused tab, once it has stayed a moment; the same one again isn't news.
   let last = focusedTab(getTabLayout()), timer = 0
   stops.push(onTabLayoutChange(safe(() => {
     clearTimeout(timer)
@@ -85,7 +78,6 @@ function start(): () => void {
   const sender = setInterval(safe(() => flush()), SEND_EVERY)
   stops.push(() => clearInterval(sender))
 
-  // Timings: API calls by route and long tasks, since the last report.
   const calls = new Map<string, number[]>()
   let stateMs: number | undefined
   let longTasks = 0, longMs = 0, shift = 0, shifts = 0
@@ -101,7 +93,6 @@ function start(): () => void {
     const r = e as PerformanceResourceTiming
     if (r.initiatorType !== "fetch" && r.initiatorType !== "xmlhttprequest") return
     const route = routeOf(r.name)
-    // Activity's own calls (these reports, the feed's polling) aren't the app's work.
     if (!route || route === "activity" || route.startsWith("activity/")) return
     if (route === "state" && stateMs === undefined) stateMs = r.duration
     const xs = calls.get(route) ?? []
@@ -138,24 +129,21 @@ function start(): () => void {
     calls.clear(); longTasks = 0; longMs = 0; shift = 0; shifts = 0
     void send("activity/perf", body)
   }
-  // A span (a terminal opened, the app loaded) goes a moment after it ends: `vau perf` has it while it's news.
   let spanTimer = 0
   stops.push(onTrace(safe((topic: string) => {
     if (topic !== "span" || spanTimer) return
     spanTimer = window.setTimeout(safe(() => { spanTimer = 0; void send("activity/perf", { device: DEVICE, spans: takeSpans() }) }), 1000)
   })), () => clearTimeout(spanTimer))
 
-  // Once after load (when the load's timings are in), then every minute.
   const once = window.setTimeout(safe(report), document.readyState === "complete" ? 2000 : 5000)
   const perf = setInterval(safe(report), PERF_EVERY)
   stops.push(() => { clearTimeout(once); clearInterval(perf) })
 
-  // Leaving: what's queued goes now.
   const hide = safe(() => { if (document.visibilityState === "hidden") flush(true) })
   document.addEventListener("visibilitychange", hide)
   stops.push(() => document.removeEventListener("visibilitychange", hide))
 
-  return () => { flush(); for (const s of stops) try { s() } catch { /* gone */ } }
+  return () => { flush(); for (const s of stops) try { s() } catch {} }
 }
 
 export function Report() {

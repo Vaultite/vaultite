@@ -1,5 +1,3 @@
-// The Activity panel: the last few things done, live; a row opens its file or an agent's terminal. Who and what to
-// show are kept per workspace. Alone in the left sidebar (its mode) it fills it: the days back, scrolling.
 import { ListFilter, SquareArrowOutUpRight, Users } from "lucide-react"
 import { Bar, cn, fmtAgo, fmtDay, fmtStamp, menuBelow, openFile, openView, SidebarHeading, useKeptCount, useScopedState, useTick, type SidebarCtx } from "@vaultite"
 import { ACTION_KINDS, type ActionKind, type ActivityEvent, type ActorKind } from "./model"
@@ -29,7 +27,6 @@ function Line({ e, exists }: { e: ActivityEvent; exists: Set<string> }) {
 }
 
 const widths = ["70%", "52%", "78%", "60%", "66%"]
-/** Lines on their way: Line's shape with bars for its text. */
 function Skeleton({ count }: { count: number }) {
   return (
     <div className="loading-in flex flex-col gap-px" aria-busy>
@@ -44,11 +41,9 @@ function Skeleton({ count }: { count: number }) {
   )
 }
 
-/** What the panel shows, kept in the workspace (unset: everything). */
 type Filter = { actor?: ActorKind; action?: ActionKind }
 const ALL: Filter = {}
 
-/** The panel's lines: in the sidebar's stack the last few, alone in it (`mode`) the days back under their dates. */
 function Lines({ events, exists, mode }: { events: ActivityEvent[]; exists: Set<string>; mode?: boolean }) {
   if (!mode) return <>{events.map((e) => <Line key={e.id} e={e} exists={exists} />)}</>
   return byDay(events).map(([d, es]) => (
@@ -85,7 +80,6 @@ export function ActivityPanel({ store, open, mode }: SidebarCtx) {
   ]
   return (
     <div className={cn("flex flex-col pb-1", mode ? "min-h-0 flex-1" : "shrink-0")} data-activity-panel={mode ? "mode" : ""} data-filter={[actor, action].filter(Boolean).join(",") || undefined}>
-      {/* A filter on shows in the title (the buttons show only on hover). */}
       <SidebarHeading title={["Activity", ...(actor ? [kindLabel(actor)] : []), ...(action ? [ACTION_KINDS.find((k) => k.id === action)!.label.toLowerCase()] : [])].join(" · ")} open={open}>
         {buttons.map((b, i) => (
           <button key={i} type="button" onClick={b.run} data-tip={b.label} aria-label={b.label} aria-pressed={b.pressed}

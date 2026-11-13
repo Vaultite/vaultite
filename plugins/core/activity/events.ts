@@ -2,11 +2,10 @@ import { localDate } from "../../../core/plugins.ts"
 import { ACTION_KINDS, type ActivityEvent } from "./model.ts"
 import { append, DAY, logs, plugin, prune, readDay, settings } from "./store.ts"
 
-const KEEP = 5000 // events in memory (the rest are read from the files when asked)
-const MERGE = 90_000 // the same thing again within this long is one event with a count
+const KEEP = 5000
+const MERGE = 90_000
 
-/** Events in memory, the last two days' then what happened since; each written as it happens and again when it grows,
- *  within FLUSH, so a restart (SIGTERM runs no exit hook) loses at most FLUSH. */
+// SIGTERM runs no exit hook: events are written within FLUSH of happening.
 export let events: ActivityEvent[] | null = null
 const open = new Map<string, ActivityEvent>()
 const dirty = new Set<ActivityEvent>()
@@ -30,7 +29,6 @@ function loaded() {
 
 const keyOf = (e: Pick<ActivityEvent, "actor" | "action" | "text">) => `${e.actor.kind}\0${e.actor.name}\0${e.actor.device ?? ""}\0${e.actor.terminal ?? ""}\0${e.action}\0${e.text}`
 
-/** Record something done: merged into the same thing done by the same one within MERGE, else a new event. */
 export function record(e: Omit<ActivityEvent, "id">): ActivityEvent {
   const list = loaded()
   const key = keyOf(e)
@@ -47,7 +45,6 @@ export function record(e: Omit<ActivityEvent, "id">): ActivityEvent {
   }
   const ev: ActivityEvent = { id: `${e.t.toString(36)}-${(seq++).toString(36)}`, ...e }
   if (ev.paths && !ev.paths.length) delete ev.paths
-  // In time order (a caller looked up answers late).
   let i = list.length
   while (i > 0 && list[i - 1].t > ev.t) i--
   list.splice(i, 0, ev)
@@ -85,7 +82,6 @@ function scheduleFlush() {
 }
 plugin.onUnload(() => { if (events) flush() })
 
-/** Events waiting to be recorded until their caller is named (its process asked): `activity:changes` waits for them. */
 export const naming = new Set<Promise<void>>()
 
 export function between(since: number): ActivityEvent[] {
@@ -99,10 +95,7 @@ export function between(since: number): ActivityEvent[] {
   return [...older.sort((a, b) => a.t - b.t), ...list]
 }
 
-/** What another plugin reads of who changed which files (Provenance's review): the events since `since` (ms) that changed
- *  files, oldest first. Read from the files once, then kept up as events come (changed). */
 const CHANGES = new Set<string>([...ACTION_KINDS.find((k) => k.id === "changes")!.actions, "request"])
-// (a request's are the files it wrote: one only naming a note, a companion started on it, changed nothing)
 export const changedPaths = (e: ActivityEvent) => (e.action === "request" ? e.wrote ?? e.paths : e.paths) ?? []
 export const isChange = (e: ActivityEvent) => !!changedPaths(e).length && CHANGES.has(e.action)
 let changesKept: { list: ActivityEvent[]; has: Set<ActivityEvent> } | null = null
@@ -112,7 +105,6 @@ function keptChange(e: ActivityEvent) {
   changesKept.list.push(e)
 }
 export async function changes(since: number) {
-  // (a write just answered is recorded once its caller is named: Review keeping "everything" must see it)
   if (naming.size) await Promise.race([Promise.all(naming), new Promise((r) => setTimeout(r, 3000))])
   if (!changesKept) {
     const list = between(Date.now() - settings().keep * DAY).filter(isChange)

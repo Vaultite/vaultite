@@ -14,11 +14,8 @@ const run = (cmd: string, args: string[]) => new Promise<string>((resolve) =>
   execFile(cmd, args, { timeout: 3000, maxBuffer: 4 << 20 }, (_e, out) => resolve(String(out ?? ""))))
 
 type Table = Map<number, Proc>
-/** Every process, one `ps` shared by the requests of 2 s (agents call in bursts); `fresh` asks again (a caller newer
- *  than the last one). */
 const processes = (fresh = false) => processTable(fresh ? 0 : 2000)
 
-/** Callers already named: by connection (a keep-alive one's next requests skip lsof) and by process. */
 const byPort = new Map<number, [number, Caller | null]>(), byPid = new Map<number, [number, Caller | null]>()
 const CALLER_TTL = 10_000
 const cached = (m: Map<number, [number, Caller | null]>, k: number) => { const hit = m.get(k); return hit && Date.now() - hit[0] < CALLER_TTL ? hit : null }
@@ -28,13 +25,10 @@ function remember(m: Map<number, [number, Caller | null]>, k: number, c: Caller 
   return c
 }
 
-/** The process at the other end of a loopback connection and its parents: the first coding agent names the caller, else
- *  the program itself. Null when it can't be found. */
 export async function lookup(port: number): Promise<Caller | null> {
   const known = cached(byPort, port)
   if (known) return known[1]
-  // Both at once, as the request starts: a quick caller (curl) is gone by the time it's answered.
-  // (Linux: iproute2's ss, there by default, where lsof often isn't; Windows: netstat, its line from the caller's port)
+  // A quick caller (curl) is gone by the time it's answered. Linux has iproute2's ss by default, lsof often not.
   let [sockets, table] = await Promise.all([process.platform === "linux"
     ? run("ss", ["-Htnp", "state", "established", `( sport = :${port} )`])
     : process.platform === "win32" ? run("netstat", ["-ano", "-p", "TCP"])
@@ -46,10 +40,9 @@ export async function lookup(port: number): Promise<Caller | null> {
   if (pid) {
     const seen = cached(byPid, pid)
     if (seen) return remember(byPort, port, seen[1])
-    if (!table.has(pid)) table = await processes(true) // newer than the shared table
+    if (!table.has(pid)) table = await processes(true)
   } else {
-    // lsof too late: the newest program with this server's API URL on its command line (an API URL, since tmux's command
-    // lines carry the server's address too).
+    // tmux's command lines carry the server's address too: only an API URL names a caller.
     const self = new RegExp(`(localhost|127\\.0\\.0\\.1|\\[::1\\]):${process.env.PORT || 8793}/api/`)
     const newest = (t: Table) => [...t].filter(([p, x]) => p !== process.pid && self.test(x.args)).map(([p]) => p).sort((a, b) => b - a)[0]
     pid = newest(table)
@@ -79,18 +72,14 @@ async function terminalOf(pids: number[]): Promise<{ terminal?: string; session?
 
 const loopback = (a: string) => a === "127.0.0.1" || a === "::1" || a === "::ffff:127.0.0.1"
 
-/** Who a request is from, as far as its headers tell; `lookup` says the process should be asked. */
 export function whoFrom(s: RequestStart): { actor: Actor; lookup: boolean } {
   const c = s.client ?? ""
   if (c.startsWith("app")) return { actor: { kind: "you", name: "You", device: c.split("/")[1] || "web" }, lookup: false }
-  // MCP's tools (plugins/core/mcp): the server calling itself, or `vau mcp`, for the client the session named.
-  // (an app on the internet by its connection's name: "Grok Bot", not its slug)
   if (c === "mcp") return { actor: { kind: "agent", name: s.label || (s.agent ? nameOf(s.agent) : "An MCP client") }, lookup: false }
   if (c === "cli") {
     if (s.agent) return { actor: { kind: "agent", name: nameOf(s.agent) }, lookup: loopback(s.remote) }
     return { actor: { kind: "cli", name: "vau CLI" }, lookup: loopback(s.remote) }
   }
-  // The app's own requests that don't go through its fetch helper (a file's bytes, an upload): a browser.
   if (/^Mozilla\//.test(s.ua) && !s.agent) return { actor: { kind: "you", name: "You", device: /iPhone|Android/.test(s.ua) ? "phone" : "web" }, lookup: false }
   if (s.agent) return { actor: { kind: "agent", name: nameOf(s.agent) }, lookup: loopback(s.remote) }
   const ua = /^([A-Za-z-]+)/.exec(s.ua)?.[1]?.toLowerCase()
@@ -106,9 +95,7 @@ export function withCaller(a: Actor, c: Caller | null): Actor {
   return { ...a, ...term }
 }
 
-/** Sessions' agent ids by terminal, as last heard (a hook, the terminal's list): kept a minute, as /clear starts another. */
 export const sessionIds = new Map<string, [number, string]>()
-/** An agent's actor with its agent's id for the session (a resumed terminal's is in its id), so it can be resumed later. */
 export async function withSession(a: Actor): Promise<Actor> {
   if (a.kind !== "agent" || !a.terminal || a.sessionId) return a
   const heard = sessionIds.get(a.terminal)

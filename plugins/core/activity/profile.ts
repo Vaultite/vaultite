@@ -1,5 +1,3 @@
-// A CPU profile of this server taken while it runs (`vau profile`): where its time goes with the real vault and real use,
-// without a restart. Kept on this machine (LOCAL/profiles, the last few); Chrome's DevTools opens one (Performance).
 import fs from "node:fs"
 import path from "node:path"
 import { Session } from "node:inspector/promises"
@@ -8,7 +6,6 @@ import { HTTPError, LOCAL, localDate, ROOT } from "../../../core/plugins.ts"
 type Frame = { functionName: string; url: string; lineNumber: number }
 type Node = { id: number; callFrame: Frame; children?: number[] }
 type CpuProfile = { nodes: Node[]; samples: number[]; timeDeltas: number[] }
-/** A function and the main thread's ms in it: in its own code (`self`) and with what it called (`total`). */
 export type Hot = { fn: string; at: string; self: number; total: number }
 export type Profiled = { file: string; seconds: number; busy: number; hot: Hot[] }
 
@@ -16,7 +13,6 @@ const DIR = path.join(LOCAL, "profiles"), KEEP = 10
 const IDLE = new Set(["(idle)", "(root)", "(program)"])
 let taking = false
 
-/** Profile the server for `seconds`; the `top` functions by own time. */
 export async function profile(seconds: number, top: number): Promise<Profiled> {
   if (taking) throw new HTTPError(409, "a profile is being taken already")
   taking = true
@@ -41,7 +37,6 @@ export async function profile(seconds: number, top: number): Promise<Profiled> {
   return { file, seconds, ...summary(cpu, top) }
 }
 
-/** Each function's own and total time (a recursive one counted once per sample), the busiest first. */
 export function summary(cpu: CpuProfile, top: number) {
   const byId = new Map(cpu.nodes.map((n) => [n.id, n]))
   const parent = new Map<number, number>()

@@ -1,4 +1,3 @@
-// Made-up answers for Activity's routes, for its preview (Plugins > Activity): nobody real, times relative to now.
 import type { ActivityEvent, ActivityList, ActivitySummary, Minute, Perf } from "./model"
 import { parseRecap } from "./recap"
 
@@ -67,7 +66,6 @@ export function mockLive(): Record<string, unknown> {
         api: [{ route: "state", n: 1, p50: 180, max: 180 }] },
     ],
   }
-  // A day as its recap file would say it.
   const day = (n: number) => { const d = new Date(now - n * 86_400_000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` }
   const { entries } = parseRecap([
     "- 08:40 Completed \"Book the venue\" · [[Projects/Open|Open]] → [[Projects/Closed|Closed]]",

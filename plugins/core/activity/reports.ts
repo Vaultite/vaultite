@@ -12,7 +12,7 @@ import { DAY, plugin } from "./store.ts"
 import { clients } from "./timings.ts"
 
 function relOf(abs: string) {
-  // (path.relative: Windows' separators and its case-blind names too)
+  // path.relative: Windows' separators and case-blind names.
   const under = (root: string) => {
     const r = root ? path.relative(root, abs) : ""
     return r && r !== ".." && !r.startsWith(".." + path.sep) && !path.isAbsolute(r) ? r.split(path.sep).join("/") : null
@@ -25,22 +25,19 @@ function relOf(abs: string) {
   return { rel: home ? `~/${home}` : abs, inVault: false }
 }
 
-/** The command for a coding agent's hook to report what it did (Terminal passes it to the agent it starts: AgentStart
- *  `report`): it sends the hook's JSON (on stdin) here, with the agent's name and its terminal. Never fails the hook. */
+/** The command a coding agent's hook runs to send its JSON (on stdin) here; it never fails the hook. */
 plugin.provide("activity:report", (agent: string, terminal: string) => {
   return hookCommand("activity/hook", { agent, terminal })
 })
-/** The same as a URL its hook POSTs the JSON to, for an agent whose hooks can (Claude Code's http hooks on Windows). */
+/** The same as a URL the hook POSTs its JSON to (Claude Code's http hooks on Windows). */
 plugin.provide("activity:report-url", (agent: string, terminal: string) => `${serverUrl()}/api/activity/hook?${new URLSearchParams({ agent, terminal })}`)
 
 plugin.route("POST", "activity/hook", async (req) => {
-  // The hook's JSON is the body; the report command names the agent and its terminal in the query.
   const b = (req.body ?? {}) as Record<string, unknown>
   const agent = str(req.query.agent) || "claude-code"
   const tool = str(b.tool_name)
   const input = (b.tool_input ?? {}) as Record<string, unknown>
   const terminal = str(req.query.terminal)
-  // (a chat session has no terminal: its title says which)
   const term = terminal ? await terminalInfo(terminal) : str(req.query.session) ? { session: str(req.query.session).slice(0, 120) } : {}
   const sid = (str(b.session_id) || str(b.thread_id) || str(b["thread-id"]) || str(b.sessionID)).slice(0, 120) || parseTerminal(terminal)?.resume
   if (sid && terminal) sessionIds.set(terminal, [Date.now(), sid])
@@ -57,7 +54,7 @@ plugin.route("POST", "activity/hook", async (req) => {
     if (cmd) record({ t, actor, action: "run", text: `Ran ${cmd}`, paths: [] })
   }
   return { ok: true }
-}, { sync: false }) // (an agent waits on its hook, which reads nothing of the vault)
+}, { sync: false })
 
 async function terminalInfo(id: string): Promise<{ terminal?: string; session?: string; sessionId?: string }> {
   const t = await plugin.ask<{ title?: string; session?: string } | null>("terminal:info", null, id)
@@ -90,7 +87,7 @@ plugin.route("POST", "activity/perf", (req) => {
     const ok = s && typeof s.name === "string" && typeof s.t === "number" && typeof s.ms === "number" && s.parts && typeof s.parts === "object"
     if (ok) recordSpan({ name: s.name.slice(0, 40), t: s.t, ms: s.ms, parts: s.parts, tags: { ...(s.tags ?? {}), device } })
   }
-  if (b.longTasks === undefined) return { ok: true } // spans only
+  if (b.longTasks === undefined) return { ok: true }
   const was = clients.get(device)
   const num = (v: unknown) => (typeof v === "number" && isFinite(v) && v >= 0 ? Math.round(v * 10) / 10 : undefined)
   const api = Array.isArray(b.api) ? b.api.slice(0, 50).filter((r) => r && typeof r.route === "string").map((r) => ({ route: r.route.slice(0, 80), n: num(r.n) ?? 0, p50: num(r.p50) ?? 0, max: num(r.max) ?? 0 })) : undefined

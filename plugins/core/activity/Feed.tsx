@@ -1,5 +1,3 @@
-// The feed: what was done, newest first, grouped by day, live (every 4 s while the page shows). The `activity` block,
-// the Activity tab (view:activity) and, one line each, the sidebar's Activity panel (Panel.tsx).
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { Activity as ActivityIcon, ChevronRight } from "lucide-react"
 import { Bar, cn, Empty, fmtAgo, fmtDay, fmtStamp, get, Loading, openFile, pageOf, Panel, Section, useKeptCount, useLive, usePreview, useTick, type Store } from "@vaultite"
@@ -10,7 +8,6 @@ export const TINT = "var(--activity)"
 export const KINDS: ActorKind[] = ["you", "agent", "cli", "script", "disk"]
 const SLOW = 300
 
-/** The files in the vault (a path that's gone isn't a link). */
 export function useExists(store: Store) {
   return useMemo(() => {
     const s = new Set<string>()
@@ -21,12 +18,9 @@ export function useExists(store: Store) {
 }
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-/** What a path reads as in a line: a note by its name (like a [[link]]), any other file by its file name. */
 export const shortName = (p: string) => (/\.md$/i.test(p) ? p.split("/").pop()!.replace(/\.md$/i, "") : p.split("/").pop() || p)
 
-/** The event's line with its vault paths as links that open the file (`plain`: names only, no links: a one-line row). */
 export function EventText({ e, exists, plain }: { e: ActivityEvent; exists: Set<string>; plain?: boolean }) {
-  // Each path where the line says it, or its name ("Saved the note Idea"); longest first.
   const at = new Map<string, string>()
   for (const p of e.paths ?? []) {
     if (e.text.includes(p)) at.set(p, p)
@@ -50,7 +44,6 @@ export function EventText({ e, exists, plain }: { e: ActivityEvent; exists: Set<
   )
 }
 
-/** Filter chips: All, then each choice (who: You, Agents, CLI, Scripts, On disk; what: Changes, Opens and reads...). */
 export function Chips<T extends string>({ name, opts, value, onChange }: { name: string; opts: { v: T; label: string }[]; value: T | ""; onChange: (v: T | "") => void }) {
   const all: { v: T | ""; label: string }[] = [{ v: "", label: "All" }, ...opts]
   return (
@@ -77,7 +70,6 @@ const rowButton = "relative isolate cursor-pointer text-left before:absolute bef
 
 const rowCls = "flex min-h-11 w-full items-start gap-2.5 py-2"
 
-/** One event: who (icon), what (links to its files), when; an agent's row goes to its terminal. */
 function EventRow({ e, exists }: { e: ActivityEvent; exists: Set<string> }) {
   const look = useLook()(e.actor)
   const Icon = look.icon
@@ -108,7 +100,6 @@ function EventRow({ e, exists }: { e: ActivityEvent; exists: Set<string> }) {
 }
 
 const widths = ["64%", "47%", "72%", "55%", "68%", "41%"]
-/** A day of `count` events on its way, drawn as EventRows with bars for their lines. */
 function Skeleton({ count }: { count: number }) {
   return (
     <div className="loading-in" aria-busy>
@@ -130,7 +121,6 @@ function Skeleton({ count }: { count: number }) {
   )
 }
 
-/** Events by local day, newest first. */
 export function byDay(events: ActivityEvent[]) {
   const out: [string, ActivityEvent[]][] = []
   for (const e of events) {
@@ -141,12 +131,10 @@ export function byDay(events: ActivityEvent[]) {
   return out
 }
 
-/** The query's path: the block's own file for `path: this`. */
 export const pathOption = (o: unknown, file: string) => (o === "this" ? file : typeof o === "string" ? o : "")
 
 export type FeedOpts = { limit?: number; actor?: ActorKind | ""; action?: ActionKind | ""; path?: string }
 
-/** The events for a query, live, and older ones on "Load more". */
 export function useFeed({ limit = 30, actor = "", action = "", path = "" }: FeedOpts) {
   const q = `limit=${limit}${actor ? `&actor=${actor}` : ""}${action ? `&action=${action}` : ""}${path ? `&path=${encodeURIComponent(path)}` : ""}`
   const preview = usePreview()
@@ -164,12 +152,11 @@ export function useFeed({ limit = 30, actor = "", action = "", path = "" }: Feed
     setBusy(true)
     get<ActivityList>(`activity?${q}&limit=${Math.max(limit, 50)}&before=${last.last ?? last.t}`).then((r) => {
       setOlder((o) => (o.q !== q ? o : { q, events: [...o.events, ...r.events], done: r.events.length === 0 }))
-    }, () => { /* try again */ }).finally(() => setBusy(false))
+    }, () => {}).finally(() => setBusy(false))
   }
   return { q, data, error, events, more, loadMore, busy }
 }
 
-/** The feed itself: chips, then the days. */
 export function FeedList({ store, opts, empty }: { store: Store; opts: FeedOpts; empty?: ReactNode }) {
   const [actor, setActor] = useState<ActorKind | "">(opts.actor ?? "")
   useEffect(() => setActor(opts.actor ?? ""), [opts.actor])
@@ -206,7 +193,6 @@ export function FeedList({ store, opts, empty }: { store: Store; opts: FeedOpts;
   )
 }
 
-/** ```block-activity: `limit` (30), `actor` (a kind), `path` (a vault path, or `this`: the file the block is in). */
 export function FeedBlock({ store, path: file, options }: { store: Store; path: string; options: Record<string, unknown> }) {
   const limit = Math.min(Math.max(typeof options.limit === "number" ? Math.round(options.limit) : 30, 1), 200)
   const actor = typeof options.actor === "string" && (KINDS as string[]).includes(options.actor) ? options.actor as ActorKind : ""
@@ -219,7 +205,6 @@ export function FeedBlock({ store, path: file, options }: { store: Store; path: 
   )
 }
 
-/** The Activity tab (view:activity): the feed, page-sized. */
 export function FeedView({ store }: { store: Store }) {
   return (
     <div className="pb-10" data-activity-view>

@@ -15,11 +15,10 @@ plugin.kind(new Kind({
   render: (r) => [{}, r.body || ""],
   filename: (r, at) => joinPath(at.folder, str(r.date)), key: (r) => r.date ?? null,
 }))
-// (Read through activity/recap: a year of them is too much for every window's state.)
 plugin.state(() => ({}))
 
 const DATE = /^\d{4}-\d\d-\d\d$/
-const GRACE = 3 * HOUR // after midnight, yesterday's recap still takes what arrives late (an edit on the phone, synced)
+const GRACE = 3 * HOUR
 
 function recapSettings() {
   const s = plugin.loaded ? plugin.settings() : {}
@@ -27,20 +26,16 @@ function recapSettings() {
   return { on: s.recaps !== false, folders }
 }
 
-/** Local midnight of a date, and of the next day. */
 function bounds(date: string): [number, number] {
   const [y, m, d] = date.split("-").map(Number)
   return [+new Date(y, m - 1, d), +new Date(y, m - 1, d + 1)]
 }
 const dayBefore = (date: string, n = 1) => { const [y, m, d] = date.split("-").map(Number); return localDate(new Date(y, m - 1, d - n)) }
 
-/** The kinds that are records of your life (their plugin is about life or health): kept one by one even when an
- *  agent wrote them. */
 function lifeTypes() {
   return new Set(LOADED.filter((p) => p.manifest.category === "life" || p.manifest.category === "health").flatMap((p) => p.kinds.map((k) => k.type)))
 }
 
-/** The Tasks plugin's own checkbox statuses (its settings, where Obsidian or this app keeps them). */
 function taskStatuses(): Record<string, "todo" | "doing" | "done" | "cancelled"> {
   const map = { TODO: "todo", ON_HOLD: "todo", NON_TASK: "todo", IN_PROGRESS: "doing", DONE: "done", CANCELLED: "cancelled" } as const
   for (const dir of [".obsidian", ".vaultite/obsidian"]) {
@@ -48,12 +43,11 @@ function taskStatuses(): Record<string, "todo" | "doing" | "done" | "cancelled">
       const d = JSON.parse(fs.readFileSync(plugin.vault.abs(`${dir}/plugins/obsidian-tasks-plugin/data.json`), "utf8"))
       const all = [...(d?.statusSettings?.coreStatuses ?? []), ...(d?.statusSettings?.customStatuses ?? [])] as { symbol?: string; type?: string }[]
       return Object.fromEntries(all.filter((x) => typeof x.symbol === "string" && x.type && x.type in map).map((x) => [x.symbol!, map[x.type as keyof typeof map]]))
-    } catch { /* not there */ }
+    } catch {}
   }
   return {}
 }
 
-// Stretches read for earlier recaps, while the task statuses they were read with stay the same.
 const memo = { statuses: "", stretches: new Map<string, Read | null>() }
 async function sourcesOf(date: string): Promise<Sources> {
   const [from, to] = bounds(date)
@@ -77,8 +71,6 @@ async function sourcesOf(date: string): Promise<Sources> {
   }
 }
 
-/** Installed plugins' updates (.vaultite/plugins-lock.json's history: core/installs.ts), as the recap reads them. Read
- *  from the file, not through plugin.history: a recap is made while a request may hold the vault. */
 function pluginUpdates(): NonNullable<Sources["updates"]> {
   const lock = plugin.vault.config("plugins-lock")
   return Object.entries(lock).flatMap(([id, l]) => {
@@ -90,8 +82,6 @@ function pluginUpdates(): NonNullable<Sources["updates"]> {
   })
 }
 
-/** A day's entries made now from what this machine has (a few seconds' cache: every window asks; a file changed since
- *  makes them again). */
 const built = new Map<string, { at: number; version: number; entries: Promise<RecapEntry[]> }>()
 function build(date: string) {
   const hit = built.get(date), version = plugin.vault.version
@@ -105,8 +95,6 @@ function build(date: string) {
 
 const recapOf = (date: string) => (plugin.vault.has("recaps") ? plugin.vault.get("recaps", date) : null)
 
-/** Write a day's recap as it is now: its entries replaced, your own lines kept; nothing when nothing changed. A day
- *  with nothing done gets no file. */
 async function writeRecap(date: string) {
   const entries = await build(date)
   const vault = plugin.vault
@@ -125,15 +113,13 @@ async function writeRecap(date: string) {
   })
 }
 
-/** The machine that writes the recaps when it isn't this one: the one their job runs on (Machines' first), so two never
- *  write a day's at once (iCloud would show one and hide the other). Null: this one, or none known. */
+// One machine writes the recaps: iCloud shows one of two machines' writes of a file and hides the other.
 async function recapWriter(): Promise<{ id: string; m: Machine | null } | null> {
   const ids = await plugin.ask<string[]>("machines:ids", []), self = await plugin.ask<string>("machines:self", "")
   const writer = await plugin.ask<string | null>("machines:writer", null) ?? ids[0]
   if (!writer || !self || self === writer) return null
   return { id: writer, m: await plugin.ask<Machine | null>("machines:machine", null, writer) }
 }
-/** activity.recap --write on the recaps' machine, its answer as if run here; once only (one passed on isn't again). */
 async function writeThere({ id, m }: { id: string; m: Machine | null }, client: string | null | undefined, params: object) {
   const name = m?.label || id, why = `${name} writes the recaps (their job runs there)`
   if (!m || client?.startsWith("machine/")) throw new OpError(`${why}: write it there`, 409)
@@ -148,17 +134,14 @@ async function writeThere({ id, m }: { id: string; m: Machine | null }, client: 
   return out as { days: RecapDay[] }
 }
 
-/** The days this machine already wrote (or found nothing for), so a recap you deleted isn't made again. */
 function written(): Set<string> {
   try { return new Set(JSON.parse(fs.readFileSync(path.join(plugin.localDir(), "recaps.json"), "utf8")).days ?? []) } catch { return new Set() }
 }
 function markWritten(dates: string[]) {
   const all = [...new Set([...written(), ...dates])].sort().slice(-400)
-  try { fs.writeFileSync(path.join(plugin.localDir(), "recaps.json"), JSON.stringify({ days: all })) } catch { /* its folder gone */ }
+  try { fs.writeFileSync(path.join(plugin.localDir(), "recaps.json"), JSON.stringify({ days: all })) } catch {}
 }
 
-/** Today's recap when something changed, yesterday's too just after midnight; the first time, the days before that
- *  File history still has. One machine does it (Machines' first). */
 export async function recapsDue() {
   if (!recapSettings().on || !plugin.vault.has("recaps")) return
   const now = Date.now(), today = localDate(now)
@@ -167,17 +150,13 @@ export async function recapsDue() {
   const dirty = recaps.dirty
   const days = dirty ? [today, ...(late ? [dayBefore(today)] : [])] : []
   recaps.dirty = false
-  // The days before, once: as far back as File history keeps versions (a week by default).
   for (let i = late ? 2 : 1; i <= 7; i++) { const d = dayBefore(today, i); if (!done.has(d) && !recapOf(d)) days.push(d) }
-  // (a write refused, Activity not allowed yet: still due, so allowing it writes them at once, not after the next change)
   try { for (const d of days) { built.delete(d); await writeRecap(d) } } catch (e) { if (dirty) recaps.dirty = true; throw e }
   markWritten(days.filter((d) => d !== today))
 }
 plugin.every("recaps", { every: "5m" }, recapsDue)
 
 type RecapDay = { date: string; entries: RecapEntry[]; live: boolean; path?: string }
-/** A day as the app shows it: today (and yesterday just after midnight) made now, any other from its file, else
- *  made now from what this machine still has. */
 async function recapDay(date: string): Promise<RecapDay> {
   const today = localDate(Date.now())
   const f = recapOf(date)
@@ -203,7 +182,6 @@ const dateOf = (v: unknown) => {
 
 plugin.route("GET", "activity/recap", async (req) => ({ days: await recapDays(dateOf(req.query.date), Math.min(31, Math.max(1, Number(req.query.days) || 1))) }), { lock: false })
 
-/** Each day's count of entries by group (Notes, Tasks...), `weeks` weeks to today: from the recap files (today's made now). */
 async function recapCounts(weeks: number) {
   const today = localDate(Date.now())
   const from = dayBefore(today, weeks * 7 - 1)

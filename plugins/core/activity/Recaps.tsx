@@ -1,5 +1,3 @@
-// What you did, as a timeline: ```block-recap (a day, a week or a month, stepping back and forth), a recap file's page
-// (Recaps/<date>.md, drawn from its own text), and ```block-recap-stats (a grid of days and counts by kind).
 import { useMemo, useState, type ComponentType } from "react"
 import {
   Bookmark, Bot, CalendarDays, ChevronLeft, ChevronRight, CircleCheck, CircleDot, CircleX, Dot, FilePlus, FolderInput, ListPlus, Pencil, Puzzle,
@@ -29,7 +27,6 @@ const LOOKS: Record<RecapKind, Look> = {
 }
 export const GROUP_TINT: Record<RecapGroup, string> = { notes: "var(--purple)", tasks: "var(--teal)", captures: "var(--blue)", logs: "var(--pink)", agents: "var(--orange)", plugins: "var(--indigo)" }
 
-/** An entry's line without its verb (the label says it), and what the label adds after it: "Captured · Raindrop". */
 function partsOf(e: RecapEntry) {
   const verb = verbOf(e.kind)
   const rest = verb && e.text.startsWith(`${verb} `) ? e.text.slice(verb.length + 1) : e.text
@@ -46,7 +43,6 @@ function EntryRow({ e, store, last }: { e: RecapEntry; store: Store; last: boole
   const { label, title } = partsOf(e)
   const [head, ...meta] = title.split(" · ")
   const title1 = /^".*"$/.test(head) ? head.slice(1, -1) : head
-  // A file's folder, as the mockup's path line.
   const folder = /^\[\[([^\]|]+)\/[^\]/|]+(\|[^\]]*)?\]\]$/.exec(head)?.[1]
   if (folder && e.kind !== "agent") meta.unshift(folder)
   return (
@@ -78,7 +74,6 @@ function EntryRow({ e, store, last }: { e: RecapEntry; store: Store; last: boole
 }
 
 const widths = ["58%", "44%", "67%", "51%", "62%"]
-/** Entries on their way: EntryRow's shape (time, ring, label and line) with bars for the text. */
 function Skeleton({ count }: { count: number }) {
   return (
     <div className="loading-in" aria-busy>
@@ -99,7 +94,6 @@ function Skeleton({ count }: { count: number }) {
   )
 }
 
-/** Days of entries, newest day first and, in each, the latest first. `group` filters by kind. */
 export function Timeline({ days, store, group }: { days: { date: string; entries: RecapEntry[] }[]; store: Store; group: RecapGroup | "" }) {
   const shown = days.map((d) => ({ ...d, entries: d.entries.filter((e) => !group || groupOf(e.kind) === group).slice().reverse() }))
   if (!shown.some((d) => d.entries.length)) return <Empty>{group ? "Nothing of this kind." : "Nothing recorded."}</Empty>
@@ -120,7 +114,6 @@ export function Timeline({ days, store, group }: { days: { date: string; entries
   )
 }
 
-/** The kinds present, as chips (only when there's more than one). */
 function useGroups(days: { entries: RecapEntry[] }[]) {
   return useMemo(() => {
     const have = new Set(days.flatMap((d) => d.entries.map((e) => groupOf(e.kind))))
@@ -132,7 +125,6 @@ type Span = "day" | "week" | "month"
 const SPAN_DAYS: Record<Span, number> = { day: 1, week: 7, month: 30 }
 type RecapAnswer = { days: { date: string; entries: RecapEntry[]; live: boolean; path?: string }[] }
 
-/** The date a block shows by default: the note it's in, when it's a day's (a daily note, a recap), else today. */
 const dateOfFile = (p: string) => { const stem = p.split("/").pop()!.replace(/\.md$/, ""); return /^\d{4}-\d\d-\d\d$/.test(stem) ? stem : "" }
 
 export function RecapBlock({ store, path, options }: { store: Store; path: string; options: Record<string, unknown> }) {
@@ -169,7 +161,6 @@ export function RecapBlock({ store, path, options }: { store: Store; path: strin
   )
 }
 
-/** A recap file read: its entries as the timeline, your own lines around them as they are. */
 export function RecapPage({ store, body, path }: FileCtx) {
   const { entries, before, after } = useMemo(() => parseRecap(body), [body])
   const [group, setGroup] = useState<RecapGroup | "">("")
@@ -187,7 +178,6 @@ export function RecapPage({ store, body, path }: FileCtx) {
 
 const blank = "color-mix(in oklab, var(--foreground) 7%, transparent)"
 
-/** The stats on its way: the grid's squares, blank, and as many kinds' bars as last time. */
 function StatsSkeleton({ weeks, kinds }: { weeks: number; kinds: number }) {
   return (
     <div className="loading-in" aria-busy>
@@ -220,7 +210,6 @@ export function RecapStats({ store, options }: { store: Store; options: Record<s
   const title = `Your days · last ${weeks} weeks`
   if (!data) return <Panel title={title} icon={CalendarDays} tint={RECAP_TINT}>{error ? <Loading error="Couldn't read the recaps." /> : <StatsSkeleton weeks={weeks} kinds={kinds} />}</Panel>
   const sum = (d: string) => Object.values(data.days[d] ?? {}).reduce((n, x) => n + (x ?? 0), 0)
-  // Whole weeks, Monday first, ending with this one.
   const start = addDays(data.to, -(dow(data.to) + (weeks - 1) * 7))
   const cols = Array.from({ length: weeks }, (_, w) => Array.from({ length: 7 }, (_, i) => addDays(start, w * 7 + i)))
   const max = Math.max(1, ...cols.flat().map(sum))

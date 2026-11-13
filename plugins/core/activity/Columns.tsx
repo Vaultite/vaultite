@@ -1,4 +1,3 @@
-// A stacked column chart over time in the style of the kit's Bars (readout above, rounded tops, gapped segments).
 import { useState } from "react"
 import { numberText } from "@vaultite"
 
@@ -7,9 +6,7 @@ export type Col = { values: number[]; tip: string }
 
 export function Columns({ series, cols, height = 96, format = (v) => numberText(v), from, to, legend }: {
   series: Series[]; cols: Col[]; height?: number; format?: (v: number) => string
-  /** The axis' two ends ("09:00", "Now"). */
   from: string; to: string
-  /** Each series' total in the legend (for counts; not for times). */
   legend?: "totals" | "labels"
 }) {
   const [hover, setHover] = useState<number | null>(null)

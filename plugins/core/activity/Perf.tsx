@@ -1,5 +1,3 @@
-// How fast the app is: the server, its routes and each window's reports, three blocks sharing one request every
-// 15 s.
 import { useState } from "react"
 import { MonitorSmartphone, Route, Server } from "lucide-react"
 import { Empty, fmtAgo, fmtStamp, Loading, Panel, Section, Stat, useLive, useTick } from "@vaultite"
@@ -13,7 +11,6 @@ const usePerf = (minutes: number) => useLive<Perf>(`activity/perf?minutes=${minu
 const span = (m: number) => (m % 1440 === 0 ? (m === 1440 ? "Last 24 h" : `Last ${m / 1440} days`) : m % 60 === 0 ? `Last ${m / 60} h` : `Last ${m} min`)
 const Waiting = ({ error }: { error: string | null }) => <Loading error={error && "Couldn't read the timings."} />
 
-/** Minutes into at most `n` columns over [now - minutes, now]: requests (answered, failed) and the worst p95. */
 function bucket(list: Minute[], minutes: number, now: number, n = 72) {
   const cols = Math.min(n, minutes)
   const size = (minutes * 60_000) / cols
@@ -88,7 +85,6 @@ export function PerfRoutes({ options }: { options: Record<string, unknown> }) {
   const [all, setAll] = useState(false)
   useTick()
   if (!data) return <Panel title="Routes" icon={Route} tint={TINT}><Waiting error={error} /></Panel>
-  // The routes that took the server the most time, first.
   const routes = [...data.routes].sort((a, b) => b.n * b.avg - a.n * a.avg)
   const shown = all ? routes : routes.slice(0, 12)
   return (

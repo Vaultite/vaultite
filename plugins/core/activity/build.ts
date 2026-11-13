@@ -1,49 +1,35 @@
-// A day's recap, made from File history's versions (what each file said before and after each stretch of work) and
-// Activity's events (who did it, moves and deletes). What it needs comes in `Sources`, so tests give made-up ones.
 import { diffLines, localTime, opcodes } from "../../../core/plugins.ts"
 import { archiveTwin, parseText, type Item } from "../../../core/vault.ts"
 import type { ActivityEvent } from "./model.ts"
 import { type RecapEntry, type RecapKind, taskLine, type TaskLine, taskState, type TaskState, transition, verbOf } from "./recap.ts"
 
 const MINUTE = 60_000
-/** A quiet this long between two versions of a file starts another stretch of work on it (another entry). */
 export const GAP = 30 * MINUTE
-const BATCH = 2 * MINUTE, BATCH_MIN = 4, BATCH_EDITS = 6 // this many alike, each within BATCH of the last, are one entry
+const BATCH = 2 * MINUTE, BATCH_MIN = 4, BATCH_EDITS = 6
 const BATCHED: Partial<Record<RecapKind, string>> = { captured: "notes", created: "files", logged: "entries", edited: "files" }
 const QUOTE_LINES = 3, QUOTE_CHARS = 160, ITEMS = 12, BIG = 300_000
 
 export type Sources = {
-  /** Local midnight to the next (ms). */
   from: number; to: number
-  /** Activity's events around the day. */
   events: ActivityEvent[]
-  /** Files File history saw written since `from`. */
   changed: string[]
   versions: (rel: string) => Promise<{ gone: boolean; versions: { t: number }[] }>
   text: (rel: string, t: number) => Promise<string | null>
   exists: (rel: string) => boolean
-  /** A type's kind: a record of your life (its plugin's category is life or health), a log. */
   kindOf: (type: string | null) => { life: boolean; log: boolean }
-  /** Folders whose new files are captures (a transcriber's, a bookmarks plugin's). */
   captureFolders: string[]
-  /** The Tasks plugin's own statuses, by symbol. */
   statuses?: Record<string, TaskState>
-  /** Installed plugins' updates (the op plugin.history): when, the plugin's name, versions, how, what's new. */
   updates?: { t: number; name: string; from: string; to: string; how: "auto" | "manual" | "rollback"; notes: string[] }[]
-  /** The lines agents wrote in a file this day that are still there, by who (Provenance's authorship). */
   authored?: (rel: string) => Promise<{ by: string; lines: number }[]>
-  /** Stretches already read, kept between recaps (for the same statuses): each recap reads only what's new. */
   memo?: Map<string, Read | null>
 }
 
-/** A file's properties and body; one whose properties can't be read is all body. */
 const split = (text: string): [Item, string] => { try { return parseText(text) } catch { return [{}, text] } }
 const followed = (rel: string) => /\.(md|canvas)$/i.test(rel) && !rel.split("/").some((s) => s.startsWith("."))
 const CHANGES = new Set(["edit", "create", "delete", "move", "save", "change", "request"])
 
 type Who = { agent: string; session?: string } | null
 
-/** The events naming a file, in order: indexed once a recap, which asks for each of its files. */
 const byPath = new WeakMap<ActivityEvent[], Map<string, ActivityEvent[]>>()
 function eventsOf(s: Sources, rel: string) {
   let m = byPath.get(s.events)
@@ -54,27 +40,22 @@ function eventsOf(s: Sources, rel: string) {
   return m.get(rel) ?? []
 }
 
-/** Who made a stretch of changes to a file: an agent when only agents' events touched it then, else you (an edit
- *  from another device arrives as a change on disk). "skip": the app's own writes. */
 function whoOf(s: Sources, rel: string, t0: number, t1: number): Who | "skip" {
   const evs = eventsOf(s, rel).filter((e) => CHANGES.has(e.action) &&
     (e.last ?? e.t) >= t0 - 10 * MINUTE && e.t <= t1 + 2 * MINUTE)
   if (!evs.length) return null
   if (evs.every((e) => e.actor.kind === "script" && e.actor.name === "Vaultite")) return "skip"
   const agents = evs.filter((e) => e.actor.kind === "agent")
-  // (the watcher may hear an agent's write after its hook said so: that change on disk is the agent's)
   const mine = evs.filter((e) => e.actor.kind !== "agent" && !(e.actor.kind === "disk" && agents.some((a) => Math.abs(a.t - e.t) < 15_000)))
   if (mine.length) return null
   const a = agents[agents.length - 1].actor
   return { agent: a.name, ...(a.session || a.terminal ? { session: a.session ?? a.terminal } : {}) }
 }
 
-/** Links to where files are now: a path an event names may have moved since (renamed that day, or archived). */
 function linker(s: Sources) {
   const moved = new Map(s.events.flatMap((e) => (e.action === "move" && e.paths?.length === 2 ? [[e.paths[0], e.paths[1]] as const] : [])))
   return (rel: string) => {
     let at = rel
-    // (only while it isn't there: a path made again after a move is that new file)
     for (let n = 0; !s.exists(at) && moved.has(at) && n < 20; n++) at = moved.get(at)!
     if (!s.exists(at) && s.exists(archiveTwin(at))) at = archiveTwin(at)
     const p = at.replace(/\.md$/i, ""), name = p.split("/").pop()!
@@ -84,8 +65,6 @@ function linker(s: Sources) {
 const plainName = (rel: string) => rel.split("/").pop()!.replace(/\.md$/i, "")
 const IMAGE = /\.(png|jpe?g|gif|webp|svg|avif|heic)$/i
 
-/** A line of a note as a quote's line: links and images kept, other embeds as links, tags not tags here, block
- *  markup left out. Empty: nothing worth quoting. */
 export function quoteLine(line: string): string {
   let l = line.replace(/^\s*(>\s?)+/, "").replace(/^\s*>?\s*\[![\w-]+\][+-]?.*$/, "").trim()
   if (!l || /^(```|~~~|---+$|\|?\s*:?-{3,})/.test(l) || /^[\w ]+::/.test(l) || /^%%/.test(l)) return ""
@@ -106,8 +85,6 @@ function quoteOf(lines: string[], skipHeadings = false) {
   return out
 }
 
-/** Where a note came from, when it's a capture: a sync plugin's id key (`raindrop_id`: Raindrop), a capture folder;
- *  a new one also by the web address it was saved from (the clipper's, or its site). A record (a log, a person) isn't. */
 function captureOf(s: Sources, rel: string, fm: Item, evs: ActivityEvent[] | null): string | null {
   if (fm.type !== undefined && fm.type !== null && fm.type !== "note") return null
   const idKey = Object.keys(fm).find((k) => /^[a-z]+_id$/i.test(k) && k !== "ext_id" && fm[k] !== null && fm[k] !== "")
@@ -121,16 +98,12 @@ function captureOf(s: Sources, rel: string, fm: Item, evs: ActivityEvent[] | nul
 }
 
 type Task = TaskLine & { state: TaskState; sub: string[]; under: number[] }
-/** A stretch's texts, read: what doesn't depend on who made it. */
 export type Read = Omit<Stretch, "rel" | "t0" | "t1" | "who" | "from">
 const MEMO = 5000
-/** One stretch of work on one file, read. */
 type Stretch = { rel: string; t0: number; t1: number; who: Who; created: boolean; fm: Item; added: string[]; removed: string[]
   hunks: number; tasksIn: Task[]; tasksOut: Task[]; moves: { task: Task; kind: RecapKind }[]; audio: boolean
-  /** Tasks that came from another file, by key: that file. */
   from: Map<string, string> }
 
-/** The lines under a task that belong to it (more indented, not tasks themselves): a reason, a note. */
 function subLines(lines: string[], i: number, indent: number) {
   const at: number[] = []
   for (let j = i + 1; j < lines.length && at.length < 4; j++) {
@@ -143,7 +116,6 @@ function subLines(lines: string[], i: number, indent: number) {
   return at
 }
 
-/** Which lines are inside a fence (code, a query, a block): not text to quote. */
 function fenced(lines: string[]) {
   const inside = new Set<number>()
   let open: string | null = null
@@ -168,20 +140,17 @@ async function stretchesOf(s: Sources, rel: string): Promise<Stretch[]> {
   const out: Stretch[] = []
   for (const run of runs) {
     const t0 = run[0].t, t1 = run[run.length - 1].t
-    // (a version's text never changes, so a stretch is read once a day, not at every recap)
     const key = `${rel}\0${prev?.t ?? ""}\0${t1}`
     let read = s.memo?.get(key)
     if (read === undefined) {
       const before = prev ? await s.text(rel, prev.t) : null, after = await s.text(rel, t1)
       read = readStretch(s, before, after)
-      // (not a text that went missing: it may be there next time)
       if (s.memo && after !== null && (before !== null || !prev)) { s.memo.set(key, read); if (s.memo.size > MEMO) s.memo.delete(s.memo.keys().next().value!) }
     } else { s.memo!.delete(key); s.memo!.set(key, read) }
     prev = run[run.length - 1]
     if (!read) continue
     let who = whoOf(s, rel, t0, t1)
     if (who === "skip") continue
-    // A file that says an agent made it (an inbox report's `agent:`) is that agent's, wherever it was written.
     const fm = read.fm
     if (!who && read.created && typeof fm.agent === "string" && fm.agent) who = { agent: typeof fm.from === "string" && fm.from ? fm.from : fm.agent }
     out.push({ ...read, rel, t0, t1, who, added: [...read.added], removed: [...read.removed], tasksIn: [...read.tasksIn], tasksOut: [...read.tasksOut], moves: [...read.moves], from: new Map() })
@@ -189,13 +158,11 @@ async function stretchesOf(s: Sources, rel: string): Promise<Stretch[]> {
   return out
 }
 
-/** What a stretch's texts say: its file's properties and the lines and tasks it changed; null when only its properties
- *  did, or its text is gone. */
 function readStretch(s: Sources, before: string | null, after: string | null): Read | null {
   if (after === null) return null
   const [fm, body] = split(after)
   const [, was] = before === null ? [{}, ""] : split(before)
-  if (before !== null && was === body) return null // only its properties changed (a date the app keeps)
+  if (before !== null && was === body) return null
   const a = before === null ? [] : was.split("\n"), b = body.split("\n")
   const st: Read = { created: before === null, fm, added: [], removed: [], hunks: 0, tasksIn: [], tasksOut: [], moves: [], audio: false }
   const readTask = (lines: string[], i: number): Task | null => {
@@ -206,7 +173,6 @@ function readStretch(s: Sources, before: string | null, after: string | null): R
   }
   const code = fenced(b)
   const addedAt: number[] = []
-  // (a big file's lines by the diff that's fast at any size)
   const ops = was.length + body.length > BIG ? diffLines(a, b) : opcodes(a, b)
   for (const [tag, i1, i2, j1, j2] of ops) {
     if (tag === "equal") continue
@@ -215,7 +181,6 @@ function readStretch(s: Sources, before: string | null, after: string | null): R
     for (let j = j1; j < j2; j++) { const t = readTask(b, j); if (t) st.tasksIn.push(t); else if (!code.has(j)) addedAt.push(j) }
   }
   st.audio = st.added.some((l) => /!\[\[[^\]]+\.(m4a|webm|mp3|wav|ogg|aac)\]\]/i.test(l))
-  // A task in both is the same task, its state changed (or only its fields: nothing to tell).
   for (const t of [...st.tasksIn]) {
     const i = st.tasksOut.findIndex((o) => o.key === t.key)
     if (i < 0) continue
@@ -224,19 +189,15 @@ function readStretch(s: Sources, before: string | null, after: string | null): R
     st.tasksOut.splice(i, 1)
     st.tasksIn.splice(st.tasksIn.indexOf(t), 1)
   }
-  // What's added is text, but for a task's own lines under it (its reason) once its state is told.
   const told = new Set(st.moves.flatMap((m) => m.task.under))
   for (const t of st.tasksIn) if (t.state === "done" || t.state === "cancelled") for (const j of t.under) told.add(j)
   st.added = addedAt.filter((j) => !told.has(j)).map((j) => b[j])
-  // A recurring task done puts a new one to do next to it.
   st.tasksIn = st.tasksIn.filter((t) => !(t.state === "todo" && st.moves.some((m) => m.kind === "done" && m.task.key === t.key)))
   return st
 }
 
-/** The day's entries, oldest first. */
 export async function buildRecap(s: Sources): Promise<RecapEntry[]> {
   const inDay = (t: number) => t >= s.from && t < s.to, link = linker(s)
-  // (" · 12 lines by Opus": what agents wrote in a file, the companion's edits in yours too)
   const wrote = async (rel: string) => {
     const a = await s.authored?.(rel) ?? []
     return a.length ? ` · ${a.map((x) => `${x.lines} line${x.lines === 1 ? "" : "s"} by ${x.by}`).join(", ")}` : ""
@@ -245,18 +206,15 @@ export async function buildRecap(s: Sources): Promise<RecapEntry[]> {
   for (const e of s.events) if (CHANGES.has(e.action) && inDay(e.t)) for (const p of e.paths ?? []) if (followed(p)) paths.add(p)
   const stretches: Stretch[] = []
   for (const rel of [...paths].sort()) {
-    // (not recaps themselves, nor a plugin's pages the app puts in)
     for (const st of await stretchesOf(s, rel)) if (st.fm.type !== "recap" && !(st.fm.type === "dashboard" && st.fm.plugin)) stretches.push(st)
   }
   type Extra = { source?: string; rel?: string; agent?: { name: string; session?: string; rel: string } }
   const made: ({ t: number; e: RecapEntry } & Extra)[] = []
   const add = (t: number, kind: RecapKind, text: string, quote: string[] = [], extra: Extra = {}) =>
     made.push({ t, e: { time: localTime(t), kind, text, quote, items: [] }, ...extra })
-  // Files made this day: one also deleted this day was a scratch (nothing to tell), one renamed was made under its name.
   const madeToday = new Set(stretches.filter((st) => st.created).map((st) => st.rel))
   const scratch = new Set<string>()
 
-  // Tasks that left one file and arrived in another (Open.md to Closed.md) are moved, not deleted and added.
   const out = stretches.flatMap((st) => st.tasksOut.map((task) => ({ st, task })))
   for (const st of stretches) {
     for (const task of [...st.tasksIn]) {
@@ -268,7 +226,7 @@ export async function buildRecap(s: Sources): Promise<RecapEntry[]> {
         out[i].st.tasksOut.splice(out[i].st.tasksOut.indexOf(out[i].task), 1)
         out.splice(i, 1)
         st.tasksIn.splice(st.tasksIn.indexOf(task), 1)
-      } else if ((task.state === "done" || task.state === "cancelled") && !st.created) { // (a new file's are its text)
+      } else if ((task.state === "done" || task.state === "cancelled") && !st.created) {
         st.moves.push({ task, kind: task.state })
         st.tasksIn.splice(st.tasksIn.indexOf(task), 1)
       }
@@ -284,7 +242,6 @@ export async function buildRecap(s: Sources): Promise<RecapEntry[]> {
       const where = st.from.has(m.task.key) ? `${link(st.from.get(m.task.key)!)} → ${link(st.rel)}` : link(st.rel)
       add(st.t1, m.kind, `${verbOf(m.kind)} "${m.task.title.replace(/"/g, "'")}" · ${where}${by}`, quoteOf(m.task.sub))
     }
-    // What's left is the text: the lines added (new tasks to do are text too), or what was removed.
     const added = [...st.added, ...st.tasksIn.map((t) => `- [${t.symbol}] ${t.title}`)]
     const left = added.some((l) => l.trim()) || st.removed.some((l) => l.trim()) || st.tasksOut.length > 0
     if (agent) { if (left || st.created || st.moves.length) add(st.t0, "agent", "", [], { agent }); continue }
@@ -306,7 +263,6 @@ export async function buildRecap(s: Sources): Promise<RecapEntry[]> {
     else add(st.t0, "edited", `Edited ${link(st.rel)} · ${n} change${n === 1 ? "" : "s"}${by}${await wrote(st.rel)}`, quote, { source })
   }
 
-  // Moves and deletes, from the events (File history keeps a moved file's versions under its new name).
   for (const e of s.events) {
     if (!inDay(e.t) || (e.action !== "move" && e.action !== "delete" && e.action !== "change")) continue
     const agentName = e.actor.kind === "agent" ? e.actor.name : null
@@ -320,9 +276,9 @@ export async function buildRecap(s: Sources): Promise<RecapEntry[]> {
     }
     for (const p of e.paths ?? []) {
       if (!followed(p) || s.exists(p)) continue
-      if (e.action === "change" && !(await s.versions(p)).gone) continue // moved away on disk, or never followed
+      if (e.action === "change" && !(await s.versions(p)).gone) continue
       if (made.some((m) => m.e.kind === "deleted" && m.e.text === `Deleted ${plainName(p)}`)) continue
-      if (s.exists(archiveTwin(p))) continue // archived (an inbox item done), not deleted
+      if (s.exists(archiveTwin(p))) continue
       if (madeToday.has(p)) { scratch.add(p); continue }
       if (agentName) add(e.t, "agent", "", [], { agent: { name: agentName, session: e.actor.session ?? e.actor.terminal, rel: p } })
       else add(e.t, "deleted", `Deleted ${plainName(p)}`)
@@ -340,7 +296,6 @@ export async function buildRecap(s: Sources): Promise<RecapEntry[]> {
     if (r && scratch.has(r)) made.splice(i, 1)
   }
   made.sort((a, b) => a.t - b.t)
-  // An agent's changes are one entry per session: its files, listed.
   const sessions = new Map<string, { t: number; e: RecapEntry; files: string[] }>()
   const rest: typeof made = []
   for (const m of made) {
@@ -366,8 +321,6 @@ function listed(files: string[], link: (rel: string) => string) {
   return files.length > ITEMS ? [...shown, `and ${files.length - ITEMS} more`] : shown
 }
 
-/** Many alike close together are one entry listing them: captures from one source (a bookmarks sync), or more files
- *  made, logged or edited than someone types in a minute or two (an import, a find and replace, a sync). */
 function batched<T extends { t: number; e: RecapEntry; source?: string }>(list: T[]): T[] {
   const runs = new Map<string, T[][]>()
   for (const m of list) {

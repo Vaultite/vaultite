@@ -1,5 +1,3 @@
-// ```block-activity-summary: the last 24 hours (`days: 1`, per hour) or days (per day): how much was done, by you, by
-// coding agents and by everything else; who did it; the files touched most.
 import { BarChart3, ChevronRight } from "lucide-react"
 import { Bar, cn, Empty, fmtAgo, fmtDay, fmtStamp, Loading, LoadingRows, openFile, Panel, Section, useKeptCount, useLive, useTick, type Store } from "@vaultite"
 import type { ActivitySummary, ActorCount } from "./model"
@@ -55,7 +53,6 @@ function FileRow({ f, exists }: { f: ActivitySummary["files"][number]; exists: b
   ) : <div className={cls} data-tip={`${f.path} (not in the vault now)`}>{body}</div>
 }
 
-/** The summary on its way: the chart's room, then as many rows of each list as last time. */
 function Skeleton({ who, files }: { who: number; files: number }) {
   const rows = (n: number, lead?: boolean) => n ? <LoadingRows count={n} lead={lead && <span className="size-[17px] shrink-0" />} right /> : <Loading />
   return (

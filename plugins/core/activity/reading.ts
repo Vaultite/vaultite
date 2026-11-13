@@ -6,8 +6,6 @@ import { DAY, HOUR, plugin, settings } from "./store.ts"
 
 plugin.provide("activity:changes", changes)
 
-/** The agents' sessions among `events` that changed file `p`, newest first: one per agent's session id, else per
- *  terminal (its events from before the id was known take the terminal's). */
 export function sessionsOf(events: ActivityEvent[], p: string): FileSession[] {
   const want = strip(p)
   const mine = events.filter((e) => e.actor.kind === "agent" && e.actor.terminal && isChange(e) && changedPaths(e).some((x) => strip(x) === want)).sort((a, b) => a.t - b.t)
@@ -26,7 +24,6 @@ export function sessionsOf(events: ActivityEvent[], p: string): FileSession[] {
   return [...by.values()].sort((a, b) => b.last - a.last)
 }
 
-/** The sessions that changed `p` in the last `days`, each live when its terminal still runs that session. */
 export async function fileSessions(p: string, days: number): Promise<FileSession[]> {
   return Promise.all(sessionsOf(await changes(Date.now() - days * DAY), p).map(async (s) => {
     const t = await plugin.ask<{ session?: string; busy?: boolean } | null>("terminal:info", null, s.terminal).catch(() => null)
@@ -46,12 +43,10 @@ export function query(q: Record<string, string>): ActivityList {
   const all = between(since).filter((e) => at(e) < before &&
     (!q.actor || e.actor.kind === q.actor) && (!acts || acts.has(e.action)) && (!q.name || e.actor.name === q.name) &&
     (!pathQ || (e.paths ?? []).some((p) => strip(p) === pathQ)))
-  // By when each last happened: a run still going (an editor's autosaves) stays on top.
   all.sort((a, b) => at(a) - at(b))
   return { events: all.slice(-limit).reverse(), total: all.length }
 }
 
-// (`settled`: after the writes just answered are recorded, their callers named: who wrote what the app just read)
 plugin.route("GET", "activity", async (req) => {
   if (req.query.settled && naming.size) await Promise.race([Promise.all(naming), new Promise((r) => setTimeout(r, 3000))])
   return query(req.query)
@@ -61,7 +56,6 @@ export function summary(days: number): ActivitySummary {
   const now = Date.now()
   const bucket = days <= 1 ? "hour" : "day"
   const size = bucket === "hour" ? HOUR : DAY
-  // Whole hours (or local days) ending with the current one.
   const n = bucket === "hour" ? 24 : days
   let start: number
   if (bucket === "hour") start = Math.floor(now / HOUR) * HOUR - (n - 1) * HOUR
@@ -81,7 +75,7 @@ export function summary(days: number): ActivitySummary {
     a.n += c
     if ((e.last ?? e.t) >= a.last) { a.last = e.last ?? e.t; if (e.actor.terminal) { a.terminal = e.actor.terminal; a.session = e.actor.session } }
     actors.set(k, a)
-    if (e.action === "read" || e.action === "search" || e.action === "open") continue // looked at, not touched
+    if (e.action === "read" || e.action === "search" || e.action === "open") continue
     for (const p of e.paths ?? []) {
       if (p.startsWith(".vaultite/")) continue
       const f = files.get(p) ?? { path: p, n: 0, last: 0, actors: [] }

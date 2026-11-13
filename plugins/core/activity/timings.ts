@@ -3,29 +3,24 @@ import { localDate, spans, type RequestEnd, type RequestStart, type Span } from 
 import type { Actor, ClientPerf, Minute, Perf, RouteStat, SlowRequest, Timing } from "./model.ts"
 import { append, DAY, MINUTE, plugin, readDay } from "./store.ts"
 
-export const SLOW = 300 // ms: a request this slow is listed
+export const SLOW = 300
 
 export const clients = new Map<string, ClientPerf>()
 
-/** Requests by route since the server started: a reservoir of recent durations for percentiles. */
 type Agg = { n: number; errors: number; total: number; max: number; recent: number[] }
 const routes = new Map<string, Agg>()
 const slow: SlowRequest[] = []
 let reqs = 0, errs = 0, syncs = 0
-// This minute's requests (ms each), then one Minute per minute: the last 24 h in memory, each written to perf-<date>.
 let cur: { t: number; ms: number[]; errors: number } = { t: Math.floor(Date.now() / MINUTE) * MINUTE, ms: [], errors: 0 }
 let minutes: Minute[] | null = null
-// (sampled only while the server works, a minute after a write, a change on disk or a slow request: always on, its
-// 20 ms timer woke an idle server 50 times a second; on every request or sync, an open window's polls kept it on)
 const lag = monitorEventLoopDelay({ resolution: 20 })
 let busyAt = 0
 export const busy = () => { if (!busyAt) lag.enable(); busyAt = Date.now() }
 plugin.onUnload(() => lag.disable())
 plugin.onSync(() => { syncs++ })
 
-/** A route as a pattern: its words kept, ids (anything with a digit, a space, a dot, a capital) as *. */
 export function routeOf(route: string) {
-  if (/^ops\/[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/.test(route)) return route // an op by its id (POST /api/ops/note.create)
+  if (/^ops\/[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/.test(route)) return route
   return route.split("/").map((s) => (/^[a-z][a-z-]*$/.test(s) && s.length <= 24 ? s : "*")).slice(0, 4).join("/") || "/"
 }
 
@@ -33,7 +28,6 @@ const pct = (sorted: number[], p: number) => (sorted.length ? sorted[Math.min(so
 const r1 = (n: number) => Math.round(n * 10) / 10
 const mb = (n: number) => Math.round(n / 1048576)
 
-/** Count a request; a slow one is listed too (returned, so who it was can be filled in once known). */
 export function timing(s: RequestStart, end: RequestEnd, actor: Actor): SlowRequest | null {
   if (end.ms >= 20 || (s.method !== "GET" && s.method !== "HEAD" && !s.route.startsWith("activity"))) busy()
   rollMinute()
@@ -64,7 +58,6 @@ function loadMinutes() {
   return minutes
 }
 
-/** Close the minute that ended (or this one, `force`: exiting) into a Minute. */
 export function rollMinute(force = false) {
   const now = Math.floor(Date.now() / MINUTE) * MINUTE
   if (!force && now === cur.t) return

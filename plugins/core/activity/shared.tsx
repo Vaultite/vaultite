@@ -1,5 +1,3 @@
-// What the Activity plugin's blocks, panel and view share: how each kind of actor looks, times and
-// durations in words, and going to an agent's terminal.
 import { type ComponentType } from "react"
 import type { LucideIcon } from "lucide-react"
 import { Bot, Code, HardDrive, Terminal, User } from "lucide-react"
@@ -16,7 +14,6 @@ const KINDS: Record<ActorKind, Look & { label: string }> = {
 }
 export const kindLabel = (k: ActorKind) => KINDS[k]?.label ?? k
 
-/** How an actor looks: its kind's icon and colour; a coding agent the app knows (Claude Code, Codex...) its own. */
 export function useLook() {
   const agents = useAgents()
   return (a: Pick<Actor, "kind" | "name">): Look => {
@@ -29,13 +26,10 @@ export function useLook() {
   }
 }
 
-/** Who, in a few words: "You on the phone", "Claude Code · Fix the tabs". */
 export function whoOf(a: Actor) {
   if (a.kind === "you") return a.device && a.device !== "web" ? `You, ${a.device === "desktop" ? "desktop app" : a.device}` : "You"
   return a.session ? `${a.name} · ${a.session}` : a.name
 }
-
-// ---------- times and sizes
 
 export const localDay = (t: number) => iso(new Date(t))
 export const clock = (t: number) => dateText(new Date(t), { hour: "numeric", minute: "2-digit" })
@@ -48,26 +42,22 @@ export function uptime(s: number) {
 }
 export const count = (n: number) => (n >= 10_000 ? `${(n / 1000).toFixed(n >= 100_000 ? 0 : 1)}K` : numberText(n))
 
-// ---------- an agent's terminal
-
-/** Whether the server still runs this terminal (the Terminal plugin's socket lists them; 1.5 s at most). */
 function terminalRuns(id: string): Promise<boolean> {
   return new Promise((resolve) => {
     let sock: WebSocket
     try { sock = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/terminals`) } catch { return resolve(false) }
-    const done = (v: boolean) => { clearTimeout(timer); try { sock.close() } catch { /* closed */ } resolve(v) }
+    const done = (v: boolean) => { clearTimeout(timer); try { sock.close() } catch {} resolve(v) }
     const timer = setTimeout(() => done(false), 1500)
     sock.onmessage = (e) => {
       try {
         const m = JSON.parse(e.data)
         if (m.t === "sessions" && Array.isArray(m.list)) done(m.list.some((s: { id?: string }) => s.id === id))
-      } catch { /* not ours */ }
+      } catch {}
     }
     sock.onerror = () => done(false)
   })
 }
 
-/** Go to the app's terminal an agent ran in, if it still runs (opening an ended one would start a new shell there). */
 export async function openTerminal(id: string) {
   const to = `terminal/${id}`
   if (isViewOpen(to)) return openView(to)

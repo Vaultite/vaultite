@@ -11,12 +11,10 @@ export function failed(method: string, route: string, end: RequestEnd): Did {
   return { action: "failed", text: `${what} failed: ${(end.error || `status ${end.status}`).slice(0, 200)}`, paths: [] }
 }
 
-/** A request, worded ("Edited Notes/Idea.md"); null: not worth an event (the app reading, its own reports). */
 export function describe(method: string, route: string, query: Record<string, string>, body: unknown, byApp: boolean): Did {
   const parts = route.split("/")
   const b = (body && typeof body === "object" && !Array.isArray(body) ? body : {}) as Record<string, unknown>
   const p = str(b.path) || str(query.path)
-  // (MCP's own requests carry the messages; what each tool did is a request of its own, recorded as the agent's.)
   if (parts[0] === "activity" || parts[0] === "events" || parts[0] === "mcp") return null
   if (parts[0] === "ops" && parts[1] && method === "POST") return describeOp(parts[1], b, byApp)
   if (method === "GET" || method === "HEAD") {
@@ -29,8 +27,8 @@ export function describe(method: string, route: string, query: Record<string, st
     if (route === "ui") return null
     return { action: "read", text: `Read /api/${route}${p ? ` for ${p}` : ""}`, paths: p ? [p] : [] }
   }
-  if (route === "artifact/state") return null // an artifact's own storage, written as it runs
-  if (route === "history/keep") return null // a version kept (File history), the vault unchanged
+  if (route === "artifact/state") return null
+  if (route === "history/keep") return null
   if (route === "file") {
     if (method === "PUT") return { action: "edit", text: `Edited ${p}`, paths: p ? [p] : [] }
     if (method === "POST") return { action: "create", text: `Created ${p}`, paths: p ? [p] : [] }
@@ -77,7 +75,6 @@ export function describe(method: string, route: string, query: Record<string, st
   return { action: "request", text: `${method} /api/${route}${p ? ` for ${p}` : ""}`, paths: p ? [p] : [] }
 }
 
-/** An op's kind (read, write, destructive): a plugin's from its definition, the core's by its area; null: unknown. */
 export function opKind(id: string): "read" | "write" | "destructive" | null {
   for (const p of LOADED) for (const o of p.ops) if (o.id === id) return o.kind
   if (/^(ops|docs)\./.test(id) || id === "ui.windows") return "read"
@@ -85,8 +82,6 @@ export function opKind(id: string): "read" | "write" | "destructive" | null {
   return null
 }
 
-/** What an op call did, in its own words (its `did`); a read is left out like the app's reads (`reads`: false, or the
- *  app's own). */
 function describeOp(id: string, b: Record<string, unknown>, byApp: boolean): Did {
   const kind = opKind(id)
   if (kind === "read") {
