@@ -1192,6 +1192,52 @@ export default async ($: VaultTest) => {
       check("vau inbox push: no phone signed up, nothing sent (not \"Sent to 0 devices\")", /^Nothing sent: no phone/.test(textOf("inbox.push")({ sent: 0, failed: [] })) &&
         textOf("inbox.push")({ sent: 1, failed: [] }) === "Sent to 1 device.")
       check("vau inbox answer: settle and done read Settled", textOf("inbox.answer")({ answer: "settle", title: "A" }) === "Settled: A." && textOf("inbox.answer")({ answer: "done", title: "A" }) === "Settled: A.")
+      const waits = { path: "Inbox/Ship it.md", question: "Ship it?", options: ["Ship", "Wait"], effects: ["today", ""], default: "Wait", blocking: true, from: "Claude", where: "Sidebar",
+        gist: "Done on desktop", why: "The phone is untested", snoozed: "2026-10-24 09:00" }
+      const went = { path: "Inbox/Keep.md", question: "Keep it?", options: ["Keep", "Drop"], effects: [], default: "Keep", blocking: false, from: null, where: null, gist: null, why: null }
+      const texts: [string, Any, string][] = [
+        ["inbox.decisions", { decisions: [waits, went], recent: [{ question: "Old?", answer: "Yes", path: "Inbox/Old.md" }, { question: "Moot?", closed: "Gone", path: "Inbox/Moot.md" }] },
+          "Waiting on the user (2):\n1. [waits on you] Ship it?\n   Ship: today · Wait (default)\n   The phone is untested\n   Its report: Done on desktop\n   Inbox/Ship it.md · from Claude (Sidebar) · snoozed until 2026-10-24 09:00\n" +
+          "2. [went with Keep] Keep it?\n   Keep (default) · Drop\n   Inbox/Keep.md\n\nDealt with in the last day:\n  Old?: answered Yes  (Inbox/Old.md)\n  Moot?: closed (Gone)  (Inbox/Moot.md)"],
+        ["inbox.decisions", { decisions: [] }, "No decision waits on the user."],
+        ["inbox.ask", { merged: true, path: "Inbox/Ship it.md", session: true }, "The same question was open already: Inbox/Ship it.md (it says you asked it too). Their answer comes back to this session."],
+        ["inbox.ask", { merged: false, path: "Inbox/Ship it.md", blocking: true, session: false, warn: "No why" }, "Asked: Inbox/Ship it.md (it comes first, with a push to the phone).\nWarning: No why"],
+        ["inbox.decide", { decided: [], sent: [], failed: [] }, "No decision was open."],
+        ["inbox.decide", { decided: [{ path: "a.md", question: "A?", reopened: true }], sent: [], failed: [] }, "Done:\n  Open again: A?"],
+        ["inbox.decide", { decided: [{ question: "A?", closed: "moot" }, { question: "B?", answer: "Go", told: false }, { question: "C?", answer: "Stay", told: true }], sent: ["x.md", "y.md"], failed: ["z.md: gone"] },
+          "3 done:\n  Closed: A?\n  Answered \"Go\": B? (kept the default: nothing to tell)\n  Answered \"Stay\": C?\nSent to 2 sessions.\nCouldn't send: z.md: gone"],
+        ["inbox.settle", { path: "Inbox/A.md", done: true }, "Settled: Inbox/A.md."],
+        ["inbox.done", { id: "e1", title: "T", done: false }, "Back in the inbox: T."],
+        ["inbox.wake", { item: "Inbox/A.md", woke: true }, "Woken, back on top: Inbox/A.md."],
+        ["inbox.wake", { item: "Inbox/A.md", woke: false }, "Not snoozed: Inbox/A.md."],
+        ["inbox.snooze", { item: "Inbox/A.md", until: "2026-10-24 09:00", when: "Saturday 9:00" }, "Snoozed until Saturday 9:00 (2026-10-24 09:00): Inbox/A.md."],
+        ["inbox.snooze", { item: "Inbox/A.md", until: null, when: null }, "Back in the inbox: Inbox/A.md."],
+        ["inbox.pin", { item: "e1", title: "T", pinned: true }, "Pinned: T."],
+        ["inbox.pin", { item: "Inbox/A.md", pinned: false }, "Unpinned: Inbox/A.md."],
+        ["inbox.hold", { hold: null }, "Not held."],
+        ["inbox.read", { all: true }, "Every event is read."],
+        ["inbox.read", { all: false, unread: 3 }, "Read. 3 unread."],
+        ["inbox.unread", { unread: 2 }, "Unread. 2 unread."],
+        ["inbox.clear", { done: true }, "Forgot the settled events."],
+        ["inbox.clear", { done: false }, "Forgot every event."],
+        ["inbox.answer", { answer: "read", title: "A" }, "Read: A."],
+        ["inbox.answer", { answer: "reply", title: "A", terminal: "claude-a1" }, "Sent to claude-a1."],
+        ["inbox.answer", { answer: "pick", title: "A", terminal: null }, "Sent."],
+        ["inbox.answer", { answer: "approve", title: "A", terminal: "claude-a1" }, "Approved in claude-a1."],
+        ["inbox.answer", { answer: "deny", title: "A", terminal: null }, "Denied: A."],
+      ]
+      const wrong = texts.flatMap(([id, r, want]) => { const got = textOf(id)(r); return got === want ? [] : [[id, got, want]] })
+      check("vau inbox: what its asking and settling ops print, for each kind of answer", !wrong.length, wrong)
+      const didOf = (id: string, p: Any) => app.ops().find((o: Any) => o.op.id === id)!.op.did?.(p)?.text
+      const dids: [string, Any, string][] = [
+        ["inbox.ask", { question: "Ship it?" }, "Asked \"Ship it?\""], ["inbox.decide", { defaults: true }, "Accepted every default"], ["inbox.decide", { item: "Inbox/A.md" }, "Decided \"Inbox/A.md\""],
+        ["inbox.settle", { item: "Inbox/A.md", undo: true }, "Brought back \"Inbox/A.md\" in the inbox"], ["inbox.wake", { item: "e1" }, "Woke \"e1\" in the inbox"],
+        ["inbox.snooze", { item: "e1" }, "Snoozed \"e1\" in the inbox"], ["inbox.pin", { item: "e1", off: true }, "Unpinned \"e1\" in the inbox"],
+        ["inbox.hold", { until: "30m" }, "Held the inbox: 30m"], ["inbox.hold", {}, "Read the inbox's hold"], ["inbox.read", { ids: ["a"] }, "Marked 1 inbox event read"],
+        ["inbox.read", {}, "Marked the inbox read"], ["inbox.unread", { ids: ["a", "b"] }, "Marked 2 inbox events unread"], ["inbox.clear", { done: true }, "Cleared the inbox's settled events"],
+      ]
+      const wrongDid = dids.flatMap(([id, p, want]) => { const got = didOf(id, p); return got === want ? [] : [[id, got, want]] })
+      check("vau inbox: what its asking and settling ops tell Activity they did", !wrongDid.length, wrongDid)
     }
 
     const nine = new Date(2026, 9, 20, 9, 0)

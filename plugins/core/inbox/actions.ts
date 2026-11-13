@@ -1,5 +1,5 @@
 import { choiceOf } from "../../../core/agents.ts"
-import { NOT_THE_USER, type Op, OpError, quoted, splitMachine, userSurface } from "../../../core/plugins.ts"
+import { defineOp, NOT_THE_USER, type Op, OpError, quoted, splitMachine, userSurface } from "../../../core/plugins.ts"
 import { isArchived, type Item, str } from "../../../core/vault.ts"
 import { hold } from "./hold.ts"
 import { clip } from "./model.ts"
@@ -9,7 +9,7 @@ import { DAY, holdNow, plugin } from "./server.ts"
 import { parseUntil, snoozed, snoozeMs, stampOf, whenText } from "./snooze.ts"
 import { fileOf, list, moveOn } from "./store.ts"
 
-const settle: Op = {
+const settle = defineOp({
   id: "inbox.settle",
   cli: "inbox settle",
   summary: "Settle something in the inbox: a result is archived (into Inbox/.archive/, named anew when given a title); a thread or an event is settled, out of the inbox (its report archived).",
@@ -43,17 +43,17 @@ undo brings it back: a result to review, a thread open again. (inbox.done, vau i
     const r = resultAt(item)
     if (!r) throw new OpError(`no ${item} in the inbox`, 404)
     const title = str(p.title).replace(/\s+/g, " ").trim()
-    const done = await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: back ? "new" : "done", ...(title ? { title } : {}) }) as Item
+    const done: Item = await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: back ? "new" : "done", ...(title ? { title } : {}) })
     return { path: `${done.id}.md`, done: !back }
   },
   text: (r) => (r.done ? `Settled: ${r.path ?? r.title}.` : `Back in the inbox: ${r.path ?? r.title}.`),
   did: (p) => ({ action: "save", text: `${p.undo ? "Brought back" : "Settled"} ${quoted(p.item)} in the inbox` }),
-}
+})
 
 // (the old name: scripts, hooks and saved prompts call it)
 const doneOp: Op = { ...settle, id: "inbox.done", cli: "inbox done", summary: "inbox.settle's old name: settle something in the inbox.", action: undefined }
 
-const wakeOp: Op = {
+const wakeOp = defineOp({
   id: "inbox.wake",
   cli: "inbox wake",
   summary: "Wake something snoozed in the inbox: back now, on top (inbox.snooze --until now).",
@@ -63,13 +63,14 @@ const wakeOp: Op = {
   run: async (p, ctx) => {
     const item = str(p.item).trim()
     const was = EVENT_ID.test(item) ? !!(await eventFor(ctx, item)).snoozed : (await plugin.vault.sync(), snoozed(resultAt(item)?.snoozed))
-    return { ...(await ctx.op("inbox.snooze", { item, until: "now" })) as Item, woke: was }
+    const woken: { item: string; until: string | null; when: string | null } = await ctx.op("inbox.snooze", { item, until: "now" })
+    return { ...woken, woke: was }
   },
   text: (r) => (r.woke ? `Woken, back on top: ${r.item}.` : `Not snoozed: ${r.item}.`),
   did: (p) => ({ action: "save", text: `Woke ${quoted(p.item)} in the inbox` }),
-}
+})
 
-const snoozeOp: Op = {
+const snoozeOp = defineOp({
   id: "inbox.snooze",
   cli: "inbox snooze",
   summary: "Snooze something in the inbox (a result, or an event): out of the way until a time, then back on top, told again.",
@@ -103,9 +104,9 @@ morning), a while (30m, 3h, 2d), a local time (2026-10-24 09:00), or now to brin
   },
   text: (r) => (r.until ? `Snoozed until ${r.when} (${r.until}): ${r.item}.` : `Back in the inbox: ${r.item}.`),
   did: (p) => ({ action: "save", text: `Snoozed ${quoted(p.item)} in the inbox` }),
-}
+})
 
-const pinOp: Op = {
+const pinOp = defineOp({
   id: "inbox.pin",
   cli: "inbox pin",
   summary: "Pin something in the inbox (a result, or a thread or an event) on top of it, whatever it waits on, until it's done or unpinned.",
@@ -136,9 +137,9 @@ it or it's read; done (or archived) unpins it. off unpins it.
   },
   text: (r) => `${r.pinned ? "Pinned" : "Unpinned"}: ${r.title ?? r.item}.`,
   did: (p) => ({ action: "save", text: `${p.off ? "Unpinned" : "Pinned"} ${quoted(p.item)} in the inbox` }),
-}
+})
 
-const holdOp: Op = {
+const holdOp = defineOp({
   id: "inbox.hold",
   cli: "inbox hold",
   summary: "Hold the inbox: nothing is told (toasts, the Mac's and the phone's notifications) until a time, then one line of what came meanwhile.",
@@ -168,9 +169,9 @@ hold on now, if any. label says what for ("Practice guitar"), in the line at its
   },
   text: (r) => (r.hold ? `Held until ${whenText(new Date(snoozeMs(r.hold.until)))}${r.hold.label ? ` (${r.hold.label})` : ""}: told of what came then.` : "Not held."),
   did: (p) => ({ action: "save", text: str(p.until) ? `Held the inbox: ${str(p.until)}` : "Read the inbox's hold" }),
-}
+})
 
-const readOp: Op = {
+const readOp = defineOp({
   id: "inbox.read",
   cli: "inbox read",
   summary: "Mark the inbox's events read (seen: no longer bold), some by id (vau inbox lists them) or all. A message is done once read; a thread stays until it's settled (inbox.settle).",
@@ -180,9 +181,9 @@ const readOp: Op = {
   run: async ({ ids }, ctx) => ({ ...(await ctx.api("POST", "inbox/events/read", ids?.length ? { ids } : {})), all: !ids?.length }),
   text: (r) => (r.all ? "Every event is read." : `Read. ${r.unread} unread.`),
   did: ({ ids }) => ({ action: "save", text: ids?.length ? `Marked ${ids.length} inbox event${ids.length === 1 ? "" : "s"} read` : "Marked the inbox read" }),
-}
+})
 
-const unreadOp: Op = {
+const unreadOp = defineOp({
   id: "inbox.unread",
   cli: "inbox unread",
   summary: "Mark events unread by hand: they stay unread when the Inbox is seen, until opened or marked read (a message read is back in the inbox).",
@@ -195,9 +196,9 @@ const unreadOp: Op = {
   },
   text: (r) => `Unread. ${r.unread} unread.`,
   did: ({ ids }) => ({ action: "save", text: `Marked ${ids.length || "some"} inbox event${ids.length === 1 ? "" : "s"} unread` }),
-}
+})
 
-const clearOp: Op = {
+const clearOp = defineOp({
   id: "inbox.clear",
   cli: "inbox clear",
   summary: "Forget the inbox's events: every one, or only the settled ones (results in Inbox/ stay).",
@@ -206,9 +207,9 @@ const clearOp: Op = {
   run: async ({ done }, ctx) => ({ ...(await ctx.api("DELETE", `inbox/events${done ? "?done=1" : ""}`)), done: !!done }),
   text: (r) => (r.done ? "Forgot the settled events." : "Forgot every event."),
   did: ({ done }) => ({ action: "delete", text: done ? "Cleared the inbox's settled events" : "Cleared the inbox's events" }),
-}
+})
 
-const answerOp: Op = {
+const answerOp = defineOp({
   id: "inbox.answer",
   cli: "inbox answer",
   summary: "Answer an event, as its notification's buttons do: approve or deny the permission an agent waits on, pick answers to its questions, reply to a session that needs you, mark it done, or read.",
@@ -277,9 +278,9 @@ id from a notification another machine sent is found too.
   },
   text: (r) => (r.answer === "read" ? `Read: ${r.title}.` : r.answer === "settle" || r.answer === "done" ? `Settled: ${r.title}.` : r.answer === "reply" || r.answer === "pick" || r.answer === "chat" ? `Sent${r.terminal ? ` to ${r.terminal}` : ""}.`
     : `${r.answer === "approve" ? "Approved" : "Denied"}${r.terminal ? ` in ${r.terminal}` : `: ${r.title}`}.`),
-}
+})
 
-const pushOp: Op = {
+const pushOp = defineOp({
   id: "inbox.push",
   cli: "inbox push",
   summary: "Send a notification to the user's phone (and watch) now, not kept in the inbox: to try push, or for what can't wait.",
@@ -296,7 +297,7 @@ const pushOp: Op = {
   run: async ({ title, body }, ctx) => await ctx.api("POST", "inbox/push", { title, body }),
   text: (r) => (!r.sent && !r.failed.length ? "Nothing sent: no phone has signed up for notifications on this machine yet (the iPhone app does, once it connects; the watch shows the phone's)."
     : `Sent to ${r.sent} device${r.sent === 1 ? "" : "s"}${r.failed.length ? `; failed: ${r.failed.join(", ")}` : ""}.`),
-}
+})
 
 export function register() {
   plugin.op(settle)

@@ -1,6 +1,6 @@
 import path from "node:path"
 import { type SampleAsk } from "../../../core/agents.ts"
-import { type Op, type OpCtx, OpError, quoted } from "../../../core/plugins.ts"
+import { defineOp, type OpCtx, OpError, quoted } from "../../../core/plugins.ts"
 import { isArchived, type Item, nowStamp, sortBy, str, truthy } from "../../../core/vault.ts"
 import { answerOf, decidedText, type DecisionSpec, linkTo, listOf, optionsText, overlap, sameQuestion, specOf, toldOf } from "./decisions.ts"
 import { clip, previewOf, TERMINAL } from "./model.ts"
@@ -46,8 +46,8 @@ export async function askAll(ctx: OpCtx, specs: DecisionSpec[], w: Asker, report
       out.push({ path: `${same.id}.md`, question: str(same.question), merged: true, blocking: waits || same.blocking === true })
       continue
     }
-    const r = await ctx.api("POST", "inbox", { title: d.title, body: d.why, from: w.from, question: d.question, options: d.options, effects: d.effects, default: d.default, blocking: d.blocking,
-      ...(report ? { report: `[[${report}]]` } : {}), ...(gist ? { gist: clip(gist, 400) } : {}), ...(where ? { where } : {}), ...askerFields(w) }) as Item
+    const r: Item = await ctx.api("POST", "inbox", { title: d.title, body: d.why, from: w.from, question: d.question, options: d.options, effects: d.effects, default: d.default, blocking: d.blocking,
+      ...(report ? { report: `[[${report}]]` } : {}), ...(gist ? { gist: clip(gist, 400) } : {}), ...(where ? { where } : {}), ...askerFields(w) })
     if (d.blocking) tellDecision(r, w)
     out.push({ path: `${r.id}.md`, question: d.question, merged: false, blocking: d.blocking })
   }
@@ -177,7 +177,7 @@ export function decisionsIn(p: string): Item[] {
   return sortBy(all.filter(asks), (r) => str(r.created), false)
 }
 
-const decisionsOp: Op = {
+const decisionsOp = defineOp({
   id: "inbox.decisions",
   cli: "inbox decisions",
   summary: "The decisions waiting on the user: each question an agent asked, its options and the default it takes; the ones an agent waits on first.",
@@ -197,15 +197,15 @@ closed ones too. The companion walks the user through these by voice.
     return { decisions: open.map(decisionRow), ...(recent ? { recent: past.map(decisionRow) } : {}) }
   },
   text: (r) => {
-    const line = (d: Item, i: number) => `${i + 1}. ${d.blocking ? "[waits on you] " : `[went with ${d.default}] `}${d.question}\n   ${optionsText(d)}` +
+    const line = (d: ReturnType<typeof decisionRow>, i: number) => `${i + 1}. ${d.blocking ? "[waits on you] " : `[went with ${d.default}] `}${d.question}\n   ${optionsText(d)}` +
       `${d.why ? `\n   ${d.why}` : ""}${d.gist ? `\n   Its report: ${d.gist}` : ""}\n   ${d.path}${d.from ? ` · from ${d.from}` : ""}${d.where ? ` (${d.where})` : ""}${d.snoozed ? ` · snoozed until ${d.snoozed}` : ""}`
     const out = [r.decisions.length ? `Waiting on the user (${r.decisions.length}):\n${r.decisions.map(line).join("\n")}` : "No decision waits on the user."]
-    if (r.recent?.length) out.push(`Dealt with in the last day:\n${r.recent.map((d: Item) => `  ${d.question}: ${d.answer ? `answered ${d.answer}` : `closed (${d.closed})`}  (${d.path})`).join("\n")}`)
+    if (r.recent?.length) out.push(`Dealt with in the last day:\n${r.recent.map((d) => `  ${d.question}: ${d.answer ? `answered ${d.answer}` : `closed (${d.closed})`}  (${d.path})`).join("\n")}`)
     return out.join("\n\n")
   },
-}
+})
 
-const askOp: Op = {
+const askOp = defineOp({
   id: "inbox.ask",
   home: true,
   cli: "inbox ask",
@@ -252,9 +252,9 @@ resumes it): a default they kept isn't sent.
   text: (r) => (r.merged ? `The same question was open already: ${r.path} (it says you asked it too).` : `Asked: ${r.path}${r.blocking ? " (it comes first, with a push to the phone)" : ""}.`) +
     (r.session ? " Their answer comes back to this session." : "") + (r.warn ? `\nWarning: ${r.warn}` : ""),
   did: (p) => ({ action: "create", text: `Asked ${quoted(p.question)}` }),
-}
+})
 
-const decideOp: Op = {
+const decideOp = defineOp({
   id: "inbox.decide",
   cli: "inbox decide",
   owner: "the terminal",
@@ -291,7 +291,7 @@ why; undo opens it again. Only with the user's own answer: never decide for them
     })()
     if (p.undo === true) {
       const r = items[0]
-      const back = await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: "new", archived: false, answer: null, answered: null, closed: null }) as Item
+      const back: Item = await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: "new", archived: false, answer: null, answered: null, closed: null })
       return { decided: [{ path: `${back.id}.md`, question: str(back.question), reopened: true }], sent: [], failed: [] }
     }
     const moot = str(p.moot).trim()
@@ -300,12 +300,12 @@ why; undo opens it again. Only with the user's own answer: never decide for them
     for (const r of items) {
       if (str(r.status) !== "new" || isArchived(r)) throw new OpError(`${r.id}.md was dealt with already${str(r.answer) ? ` (answered ${str(r.answer)})` : ""}: --undo opens it again`, 409)
       if (moot) {
-        const out = await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: "done", closed: clip(moot, 300) }) as Item
+        const out: Item = await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: "done", closed: clip(moot, 300) })
         rows.push({ path: `${out.id}.md`, question: str(r.question), closed: clip(moot, 300) })
         continue
       }
       const answer = all || p.default === true ? str(r.default) : answerOf(listOf(r.options), str(p.answer)).answer
-      const out = await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: "done", answer, answered: nowStamp() }) as Item
+      const out: Item = await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: "done", answer, answered: nowStamp() })
       done.push({ d: { ...r, ...out }, answer })
       rows.push({ path: `${out.id}.md`, question: str(r.question), answer, told: !!toldOf(r, answer) })
     }
@@ -317,12 +317,12 @@ why; undo opens it again. Only with the user's own answer: never decide for them
   },
   text: (r) => {
     if (!r.decided.length) return "No decision was open."
-    const lines = r.decided.map((d: Item) => `  ${d.reopened ? "Open again" : d.closed ? "Closed" : `Answered ${quoted(d.answer)}`}: ${d.question}${d.told === false ? " (kept the default: nothing to tell)" : ""}`)
+    const lines = r.decided.map((d) => `  ${d.reopened ? "Open again" : d.closed ? "Closed" : `Answered ${quoted(d.answer)}`}: ${d.question}${d.told === false ? " (kept the default: nothing to tell)" : ""}`)
     return [`${r.decided.length === 1 ? "Done" : `${r.decided.length} done`}:`, ...lines,
       ...(r.sent.length ? [`Sent to ${r.sent.length === 1 ? "its session" : `${r.sent.length} sessions`}.`] : []), ...(r.failed.length ? [`Couldn't send: ${r.failed.join("; ")}`] : [])].join("\n")
   },
   did: (p) => ({ action: "edit", text: p.defaults ? "Accepted every default" : `Decided ${quoted(str(p.item))}` }),
-}
+})
 
 export function register() {
   plugin.onUnload(() => { if (knockTimer) clearTimeout(knockTimer) })
