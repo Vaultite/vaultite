@@ -1177,7 +1177,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `newTerminalId(agent?)`: A new terminal's id: 8 letters and digits, after `agent` (a name, or a name and account: TERMINAL_AGENT) when it runs one.
 - `notOnThisMachine(agent, id)`: A session to resume that isn't on this machine (a tab from a synced or shared workspace): a note, then a plain shell.
 - `numberOf(v)`: A number as stored, else 0.
-- `parseJson(v)`: A JSON text's value (its bytes too), or null.
+- `parseJson(v, schema)`: A JSON text (its bytes too) parsed as `schema`, or undefined when it isn't JSON or isn't one.
 - `parseTerminal(id)`: The agent terminal `id` runs, in which account, the session it resumes and the machine it's on; null: a shell.
 - `PERMISSION_MODES`: How much a session may do without asking the user, in Claude Code's words, least first (dontAsk: only what its rules allow, never asking).
 - `PermissionMode`

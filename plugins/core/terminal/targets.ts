@@ -3,9 +3,8 @@ import { parseTerminal } from "../../../core/agents.ts"
 import { byUser, type Machine, MACHINE_CLIENT, OpError, type OpCtx, type Plugin, splitMachine } from "../../../core/plugins.ts"
 import { allPanes, clean } from "../../../core/layout.ts"
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type Any = any
 export const Answer = z.looseObject({})
+const Reply = z.looseObject({ id: z.string().optional(), error: z.string().optional() })
 export const SessionsTitled = z.looseObject({ sessions: z.array(z.looseObject({ id: z.string(), title: z.string().nullish() })).optional() })
 const opt = { s: z.string().optional(), n: z.number().optional(), b: z.boolean().optional() }
 export const Session = z.looseObject({ id: z.string(), agent: z.string().nullable(), process: z.string(), busy: opt.b, clients: z.number(), started: z.number(), title: opt.s,
@@ -66,7 +65,7 @@ export async function show(ctx: OpCtx, to: string, split: "right" | "down" | nul
   }
 }
 
-export async function passOn(plugin: Plugin, ctx: OpCtx, machine: string, id: string, body: object, seconds = 15): Promise<Any> {
+export async function passOn(plugin: Plugin, ctx: OpCtx, machine: string, id: string, body: z.infer<typeof Answer>, seconds = 15): Promise<z.infer<typeof Reply>> {
   const m = await plugin.ask<Machine | null>("machines:machine", null, machine)
   if (!m || m.self) throw new OpError(`no machine '${machine}' to ask (Machines lists them)`, 404)
   if (ctx.who.client?.startsWith("machine/")) throw new OpError(`a call passed on from another machine runs where it's sent, not on ${m.label}`, 409)
@@ -74,7 +73,7 @@ export async function passOn(plugin: Plugin, ctx: OpCtx, machine: string, id: st
   const r = await fetch(`${m.url}/api/ops/${id}`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" },
     body: JSON.stringify(body), signal: AbortSignal.timeout(seconds * 1000) }).catch(() => null)
   if (!r) throw new OpError(`${m.label} doesn't answer`, 502)
-  const out = await r.json().catch(() => ({}))
+  const out = Reply.safeParse(await r.json().catch(() => ({}))).data ?? {}
   if (r.status === 404 && !out.id) throw new OpError(`${m.label} runs an older Vaultite, without ${id}`, 409)
   if (!r.ok) throw new OpError(`${m.label}: ${out.error || `answered ${r.status}`}`, r.status)
   return out
@@ -109,9 +108,10 @@ export async function target(plugin: Plugin, ctx: OpCtx, raw: string | undefined
   throw new OpError(`no terminal '${own}' here (vau terminal lists them; another machine's is <id>@<machine>)`, 404)
 }
 
-export async function there(plugin: Plugin, ctx: OpCtx, machine: string, op: string, body: Record<string, unknown>, seconds?: number) {
-  const out = await passOn(plugin, ctx, machine, op, body, seconds)
-  return { ...out, ...(typeof out.id === "string" ? { id: `${out.id}@${machine}` } : {}), machine }
+export async function there(plugin: Plugin, ctx: OpCtx, machine: string, op: string, body: z.infer<typeof Answer>, seconds?: number) {
+  const out = { ...await passOn(plugin, ctx, machine, op, body, seconds), machine }
+  if (out.id) out.id = `${out.id}@${machine}`
+  return out
 }
 
 export async function shown(ctx: OpCtx, id: string, split: "right" | "down" | null = null, did?: string) {

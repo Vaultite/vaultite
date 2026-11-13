@@ -1,8 +1,10 @@
 import fs from "node:fs"
+import http from "node:http"
 import os from "node:os"
 import path from "node:path"
 import { isDeepStrictEqual } from "node:util"
 import type { Any, VaultTest } from "./harness.ts"
+import { freePort } from "../lib.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, check, tmp, vault } = $
@@ -132,6 +134,55 @@ export default async ($: VaultTest) => {
     tr = await term("send", { id: "Release notes", text: "Summarize it", wait: true, timeout: 60 })
     check("vau terminal send --wait: types, then waits for its turn to end (wait's default)", tr.code === 0 && calls.at(-1) === 'POST terminals/a8f3k2m1/wait {"timeout":60}' &&
       tr.out.endsWith("(Enter). a8f3k2m1 ended (exit code 3) after 1.5 s."), [tr, calls])
+    {
+      const asked: { op: string; p: Any }[] = []
+      const waitAnswer = { id: "claude-far1", met: "exit", timedOut: false, waited: 2.5, for: ["exit"], exit: { code: 0, signal: 15, at: 1 } }
+      const answers = new Map<string, object>(Object.entries({
+        "terminal.wait": waitAnswer,
+        "terminal.send": { id: "claude-far1", sent: 3, enter: true, submitted: false, why: "it was waiting on the user", met: null, timedOut: true, waited: 5, for: ["idle"], state: "blocked" },
+        "terminal.end": { id: "claude-far1", ended: true, closedTabs: 1 },
+        "terminal.rename": { id: "claude-far1", name: "far" },
+        "terminal.capture": { id: "claude-far1", format: "text", text: "far line" },
+        "terminal.start": { id: "k9j8h7g6", command: "make", shown: false },
+      }))
+      const port = await freePort()
+      const server = http.createServer((req, res) => {
+        let body = ""
+        req.on("data", (d) => (body += d)).on("end", () => {
+          const op = (req.url ?? "").replace("/api/ops/", "")
+          asked.push({ op, p: JSON.parse(body || "{}") })
+          res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(answers.get(op) ?? { error: "no such op" }))
+        })
+      }).listen(port, "127.0.0.1")
+      await new Promise((r) => server.once("listening", r))
+      const ms = $.app.plugins.find((x) => x.id === "machines")!.services, was = ms["machines:machine"]
+      const studio = { id: "studio", label: "Studio", url: `http://127.0.0.1:${port}`, online: true, self: false, plugins: ["terminal"] }
+      ms["machines:machine"] = async (id: string) => (id === "studio" ? studio : null)
+      try {
+        const out = async (verb: string, given: Parameters<typeof checkParams>[1]) => {
+          const op = termPlugin.ops.find((o) => o.id === `terminal.${verb}`)!, p = checkParams(op, given), r = await op.run(p, termCtx)
+          return { r: JSON.parse(JSON.stringify(r)), text: op.text!(r, p) }
+        }
+        const w = await out("wait", { id: "claude-far1@studio", for: ["exit"], timeout: 30 })
+        check("vau terminal wait <id>@<machine>: asked there, its answer and text as it says",
+          w.text === "claude-far1@studio ended (signal 15) after 2.5 s." && isDeepStrictEqual(w.r, { ...waitAnswer, id: "claude-far1@studio", machine: "studio" }) &&
+          isDeepStrictEqual(asked.at(-1), { op: "terminal.wait", p: { id: "claude-far1", for: ["exit"], timeout: 30, quiet: 2 } }), [w, asked.at(-1)])
+        const sd = await out("send", { id: "claude-far1@studio", text: "yes", wait: true, timeout: 5 })
+        check("vau terminal send --wait <id>@<machine>: its answer's words, then the wait's",
+          sd.text === "Typed into claude-far1@studio: yes (Enter). It didn't take it: it was waiting on the user. Still not idle after 5 s: claude-far1@studio is blocked." &&
+          sd.r.sent === 3 && sd.r.machine === "studio", sd)
+        const en = await out("end", { id: "claude-far1@studio", keepTabs: true })
+        check("vau terminal end <id>@<machine>: its tabs as there", en.text === "Ended claude-far1@studio, closed its tab." && en.r.closedTabs === 1 && en.r.ended === true, en)
+        const nm = await out("rename", { id: "claude-far1@studio", name: "far" })
+        const cp = await out("capture", { id: "claude-far1@studio" })
+        const st = await out("start", { command: "make", machine: "studio" })
+        check("vau terminal rename, capture and start on another machine: their answers and words", nm.text === 'Named claude-far1@studio "far".' && cp.text === "far line" &&
+          cp.r.format === "text" && st.text === 'Started k9j8h7g6@studio running "make".' && st.r.machine === "studio" && st.r.shown === false, [nm, cp, st])
+      } finally {
+        if (was) ms["machines:machine"] = was; else delete ms["machines:machine"]
+        server.close()
+      }
+    }
     tr = await term("list", { ended: true })
     check("vau terminal --ended: the ones that ended lately, with how", tr.code === 0 && /q9w8e7r6 {2}npm test {2}ended just now \(exit code 3\)/.test(tr.out), tr)
     tr = await term("start", { command: "npm test", agent: "claude" })

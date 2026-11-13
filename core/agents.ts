@@ -43,10 +43,11 @@ function daysOf(v: unknown) {
   return days
 }
 
-type Any = any
-/** A JSON text's value (its bytes too), or null. */
-export function parseJson(v: unknown): Any {
-  try { return JSON.parse(v instanceof Uint8Array ? Buffer.from(v).toString("utf8") : String(v)) } catch { return null }
+/** A JSON text (its bytes too) parsed as `schema`, or undefined when it isn't JSON or isn't one. */
+export function parseJson<T>(v: unknown, schema: z.ZodType<T>): T | undefined {
+  let json: unknown
+  try { json = JSON.parse(v instanceof Uint8Array ? Buffer.from(v).toString("utf8") : String(v)) } catch { return undefined }
+  return schema.safeParse(json).data
 }
 /** A number as stored, else 0. */
 export const numberOf = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0)

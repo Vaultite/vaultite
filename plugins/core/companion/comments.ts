@@ -64,7 +64,7 @@ function load(p: string) {
     if (codeOf(e) !== "ENOENT" || fs.existsSync(path.join(path.dirname(abs), `.${path.basename(abs)}.icloud`))) return
   }
   if (text === (written.get(rel) ?? "")) return
-  const doc = Sidecar.safeParse(text ? parseJson(text) : { comments: [] }).data
+  const doc = text ? parseJson(text, Sidecar) : { comments: [] }
   if (!doc) return
   if (text) written.set(rel, text); else written.delete(rel)
   const gone = Array.isArray(doc.past) ? doc.past.filter((n): n is Note => isNote(n) && n.kind === "comment").map((n) => ({ ...n, path: p })) : []

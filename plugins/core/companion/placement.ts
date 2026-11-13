@@ -104,7 +104,7 @@ export type RepoRule = { when?: string; needs: Need[] }
 export const RULES_FILE = ".vaultite-jobs.json"
 const Listed = z.object({ needs: z.array(z.unknown()) })
 const Rule = z.object({ when: z.unknown().optional(), needs: z.array(z.unknown()) })
-export const rulesIn = (text: string): RepoRule[] => rulesOf(Listed.safeParse(parseJson(text)).data?.needs ?? [])
+export const rulesIn = (text: string): RepoRule[] => rulesOf(parseJson(text, Listed)?.needs ?? [])
 export const RepoRules = z.array(z.unknown()).transform((list) => rulesOf(list))
 function rulesOf(list: unknown[]): RepoRule[] {
   return list.flatMap((r) => {
@@ -116,6 +116,6 @@ function rulesOf(list: unknown[]): RepoRule[] {
     return [{ ...(when ? { when } : {}), needs }]
   })
 }
-export const cloudIn = (text: string) => z.object({ cloud: z.literal(true) }).safeParse(parseJson(text)).success
+export const cloudIn = (text: string) => parseJson(text, z.object({ cloud: z.literal(true) })) !== undefined
 export const rulesNeed = (rules: RepoRule[], words: string): Need[] =>
   [...new Set(rules.filter((r) => !r.when || new RegExp(r.when, "i").test(words)).flatMap((r) => r.needs))]

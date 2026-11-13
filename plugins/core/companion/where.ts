@@ -75,7 +75,7 @@ export function servedPort(status: unknown, host: string, port: string): number 
 const TAILSCALE = ["tailscale", "/Applications/Tailscale.app/Contents/MacOS/Tailscale", "/usr/local/bin/tailscale", "/opt/homebrew/bin/tailscale"]
 async function serveStatus() {
   for (const bin of TAILSCALE) {
-    const out = await run(bin, ["serve", "status", "--json"]), status = out.trim() ? ServeStatus.safeParse(parseJson(out)).data : undefined
+    const out = await run(bin, ["serve", "status", "--json"]), status = out.trim() ? parseJson(out, ServeStatus) : undefined
     if (status) return status
   }
   return null
@@ -138,7 +138,7 @@ const Package = z.object({ homepage: z.string().regex(/^https?:/) })
 const DEPLOYS: Deploy[] = [
   ["wrangler.toml", patterns, 1], ["wrangler.json", patterns, 1], ["wrangler.jsonc", patterns, 1],
   ["CNAME", firstWord, 1], ["public/CNAME", firstWord, 1], ["static/CNAME", firstWord, 1], ["docs/CNAME", firstWord, 1],
-  ["package.json", (t) => { const h = Package.safeParse(parseJson(t)).data?.homepage; return h ? [h] : [] }, 0],
+  ["package.json", (t) => { const h = parseJson(t, Package)?.homepage; return h ? [h] : [] }, 0],
   ...["astro.config.mjs", "astro.config.ts", "astro.config.js", "docusaurus.config.js", "docusaurus.config.ts"].map((f): Deploy => [f, siteKey, 0]),
 ]
 export function routeCovers(pattern: string, u: URL) {

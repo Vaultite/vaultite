@@ -2,7 +2,7 @@ import { agentModel, MODEL_NAME, PERMISSION_MODES, startAgent, TERMINAL_AGENT, n
 import { fmtAgo, type Machine, OpError, type Plugin, quoted } from "../../../core/plugins.ts"
 import { z } from "zod"
 import { homeOf } from "./backends.ts"
-import { Answer, type Any, closeTabs, SessionsTitled, elsewhere, Ended, freshAgent, passOn, Session, sessions, show, shown, TabAt, tabsOf, target, there, Trouble } from "./targets.ts"
+import { Answer, closeTabs, SessionsTitled, elsewhere, Ended, freshAgent, passOn, Session, sessions, show, shown, TabAt, tabsOf, target, there, Trouble } from "./targets.ts"
 
 const Shown = Session.extend({ tabs: z.array(TabAt) })
 const Listing = z.looseObject({ sessions: z.array(Shown), gone: z.array(z.object({ id: z.string(), tabs: z.array(TabAt), agent: z.boolean() })).default([]),
@@ -31,14 +31,23 @@ async function howOf(plugin: Plugin, agent: string | undefined, p: { model?: str
     ...(p.allow?.length ? { allow: p.allow } : {}), ...(p.cwd ? { cwd: p.cwd } : {}) }
 }
 
-const waited = (r: Any) => r.met === "exit" ? `${r.id} ended (${how(r.exit)}) after ${r.waited} s.`
+const waited = (r: Waited) => r.met === "exit" ? `${r.id} ended (${how(r.exit)}) after ${r.waited} s.`
   : r.met === "match" ? `${r.id} shows ${quoted(r.matched, 80)} after ${r.waited} s.`
   : r.met ? `${r.id} is ${r.met}${r.kind ? ` (${r.kind}${r.msg ? `: ${r.msg}` : ""})` : ""} after ${r.waited} s.`
-  : r.exit ? `${r.id} ended (${how(r.exit)}) before it was ${r.for.join(" or ")}.`
-  : `Still not ${r.for.join(" or ")} after ${r.waited} s: ${r.id} is ${r.state ?? "running"}.`
+  : r.exit ? `${r.id} ended (${how(r.exit)}) before it was ${(r.for ?? []).join(" or ")}.`
+  : `Still not ${(r.for ?? []).join(" or ")} after ${r.waited} s: ${r.id} is ${r.state ?? "running"}.`
 const ago = (t: number) => { const a = fmtAgo(t, { short: true }); return a === "now" ? "just now" : `${a} ago` }
 const row = (s: Session & { tabs?: TabAt[] }) => `${s.id}  ${s.process || "-"}${s.state ? ` (${s.state}${s.kind ? `: ${s.kind}` : ""}${s.state !== "blocked" && s.needs ? ", unread" : ""})` : ""}${s.name ? `  named "${s.name}"` : ""}${s.title ? `  "${s.title}"` : ""}${s.session ? `  session ${s.session}` : ""}${s.note ? `  on ${s.note}` : ""}  ${ago(s.started)}, ${s.machine ? `on ${s.machineLabel ?? s.machine}` : where(s.tabs)}${s.backend === "pty" ? " (in the server: a restart ends it)" : ""}${s.via ? ` (held by the older terminal server, pid ${s.via}, which ends after its last)` : ""}`
-const how = (e: { code: number; signal: number; lost?: boolean }) => (e.lost ? "lost: its terminal server went away, so how is unknown" : e.signal ? `signal ${e.signal}` : `exit code ${e.code}`)
+const Exit = z.looseObject({ code: z.number(), signal: z.number(), lost: z.boolean().optional() })
+const Waited = z.looseObject({ id: z.string().optional(), met: z.string().nullish(), matched: z.string().optional(), timedOut: z.boolean().optional(),
+  waited: z.number().optional(), for: z.array(z.string()).optional(), state: z.string().optional(), kind: z.string().optional(), msg: z.string().optional(), exit: Exit.nullish() })
+type Waited = z.infer<typeof Waited>
+const Started = Waited.extend({ agent: z.string().optional(), command: z.string().optional(), name: z.string().optional(), shown: z.boolean().optional(), output: z.string().optional() })
+const Typed = Waited.extend({ enter: z.boolean().optional(), submitted: z.boolean().nullish(), why: z.string().optional() })
+const Named = z.looseObject({ id: z.string().optional(), name: z.string().nullish() })
+const Closed = z.looseObject({ id: z.string().optional(), closedTabs: z.number().optional() })
+const Captured = z.looseObject({ text: z.string().optional() })
+const how = (e: z.infer<typeof Exit> | null | undefined) => (!e ? "how is unknown" : e.lost ? "lost: its terminal server went away, so how is unknown" : e.signal ? `signal ${e.signal}` : `exit code ${e.code}`)
 
 export function terminalOps(plugin: Plugin) {
   plugin.op({
@@ -194,9 +203,9 @@ its tab too (as vau terminal open does). With machine, on another of the Machine
       if (wait && !command) throw new OpError("`wait` is a command's: an agent's turn is waited for with vau terminal wait")
       const m = await elsewhere(plugin, machine ?? "")
       if (m) {
-        const out = await there(plugin, ctx, m, "terminal.start", { ...(command ? { command } : {}), ...(agent ? { agent } : {}), ...(prompt ? { prompt } : {}), ...(session ? { session } : {}),
-          ...(name ? { name } : {}), ...how, ...(home ? { home } : {}), ...(wait ? { wait, timeout } : {}) }, wait ? Number(timeout) + 30 : 30)
-        return { ...out, shown: open ? await shown(ctx, out.id) : false }
+        const out = Started.parse(await there(plugin, ctx, m, "terminal.start", { ...(command ? { command } : {}), ...(agent ? { agent } : {}), ...(prompt ? { prompt } : {}), ...(session ? { session } : {}),
+          ...(name ? { name } : {}), ...how, ...(home ? { home } : {}), ...(wait ? { wait, timeout } : {}) }, wait ? Number(timeout) + 30 : 30))
+        return { ...out, shown: open && out.id ? await shown(ctx, out.id) : false }
       }
       const [who, profile] = (agent ?? "").split("_")
       const id = session ? resumeTerminalId(who, session, profile) : newTerminalId(agent)
@@ -207,7 +216,7 @@ its tab too (as vau terminal open does). With machine, on another of the Machine
       } else await ctx.api("POST", `terminals/${id}`, Object.keys(body).length ? body : undefined)
       const isShown = open ? await shown(ctx, id) : false
       if (!wait) return { id, ...(agent ? { agent } : {}), ...(command ? { command } : {}), ...(name ? { name } : {}), shown: isShown }
-      const w = Answer.parse(await ctx.api("POST", `terminals/${encodeURIComponent(id)}/wait`, { for: ["exit"], timeout }))
+      const w = Waited.parse(await ctx.api("POST", `terminals/${encodeURIComponent(id)}/wait`, { for: ["exit"], timeout }))
       const c = Answer.parse(await ctx.api("GET", `terminals/${encodeURIComponent(id)}/capture?lines=60`).catch(() => ({ text: "" })))
       return { id, command, ...(name ? { name } : {}), shown: isShown, ...w, output: String(c.text ?? "") }
     },
@@ -319,11 +328,11 @@ hour too (its last lines only, as text, after ten minutes).
     args: ["id"],
     run: async ({ id, lines, all, format }, ctx) => {
       const [t, machine] = await target(plugin, ctx, id, { ended: true })
-      if (machine) return await there(plugin, ctx, machine, "terminal.capture", { id: t, ...(lines ? { lines } : {}), ...(all ? { all } : {}), format })
+      if (machine) return Captured.parse(await there(plugin, ctx, machine, "terminal.capture", { id: t, ...(lines ? { lines } : {}), ...(all ? { all } : {}), format }))
       const q = new URLSearchParams({ format, ...(all ? { lines: "all" } : lines ? { lines: String(lines) } : {}) })
-      return await ctx.api("GET", `terminals/${encodeURIComponent(t)}/capture?${q}`)
+      return Captured.parse(await ctx.api("GET", `terminals/${encodeURIComponent(t)}/capture?${q}`))
     },
-    text: (r) => String(r.text ?? ""),
+    text: (r) => r.text ?? "",
   })
 
   plugin.op({
@@ -357,8 +366,8 @@ code when it waited for that (1 when it was lost: its terminal server went away)
     run: async ({ id, for: wants, timeout, quiet, match, hold }, ctx) => {
       const [t, machine] = await target(plugin, ctx, id, { ended: true })
       const body = { ...(wants?.length ? { for: wants } : {}), timeout, quiet, ...(match ? { match } : {}), ...(hold !== undefined ? { hold } : {}) }
-      if (machine) return await there(plugin, ctx, machine, "terminal.wait", { id: t, ...body }, Number(timeout) + 30)
-      return { id: t, ...Answer.parse(await ctx.api("POST", `terminals/${encodeURIComponent(t)}/wait`, body)) }
+      if (machine) return Waited.parse(await there(plugin, ctx, machine, "terminal.wait", { id: t, ...body }, Number(timeout) + 30))
+      return Waited.parse({ id: t, ...Answer.parse(await ctx.api("POST", `terminals/${encodeURIComponent(t)}/wait`, body)) })
     },
     text: waited,
   })
@@ -390,9 +399,9 @@ done or error, told after this text; else the terminal's end), at most timeout s
     run: async ({ id, text, enter, wait, timeout }, ctx) => {
       const [t, machine] = await target(plugin, ctx, id)
       if (!text && !enter) throw new OpError("give the text to type")
-      if (machine) return await there(plugin, ctx, machine, "terminal.send", { id: t, text: text ?? "", enter, ...(wait ? { wait, timeout } : {}) }, wait ? Number(timeout) + 30 : 15)
+      if (machine) return Typed.parse(await there(plugin, ctx, machine, "terminal.send", { id: t, text: text ?? "", enter, ...(wait ? { wait, timeout } : {}) }, wait ? Number(timeout) + 30 : 15))
       const r = Answer.parse(await ctx.api("POST", `terminals/${encodeURIComponent(t)}/send`, { text: text ?? "", enter, confirm: true }))
-      return wait ? { ...r, ...Answer.parse(await ctx.api("POST", `terminals/${encodeURIComponent(t)}/wait`, { timeout })) } : r
+      return Typed.parse(wait ? { ...r, ...Answer.parse(await ctx.api("POST", `terminals/${encodeURIComponent(t)}/wait`, { timeout })) } : r)
     },
     text: (r, p) => `Typed into ${r.id}${p.text ? `: ${p.text.length > 60 ? `${p.text.slice(0, 60)}…` : p.text}` : ""}${r.enter ? " (Enter)" : ""}.` +
       (r.submitted === true ? " It took it." : r.submitted === false ? ` It didn't take it: ${r.why}.` : r.why ? ` (${r.why}.)` : "") + (p.wait ? ` ${waited(r)}` : ""),
@@ -448,8 +457,8 @@ tab… in the app names it.
     run: async ({ id, name }, ctx) => {
       if (!id) throw new OpError("which terminal? give its id (vau terminal lists them): you don't run in one of the app's")
       const [t, machine] = await target(plugin, ctx, id)
-      if (machine) return await there(plugin, ctx, machine, "terminal.rename", { id: t, name: name ?? "" })
-      return await ctx.api("POST", `terminals/${encodeURIComponent(t)}/name`, { name: name ?? "" })
+      if (machine) return Named.parse(await there(plugin, ctx, machine, "terminal.rename", { id: t, name: name ?? "" }))
+      return Named.parse(await ctx.api("POST", `terminals/${encodeURIComponent(t)}/name`, { name: name ?? "" }))
     },
     text: (r) => (r.name ? `Named ${r.id} "${r.name}".` : `${r.id} goes by its program's title again.`),
     did: ({ id, name }) => ({ action: "ui", text: name ? `Named the terminal ${id ?? ""} ${quoted(name, 60)}` : `Took the name off the terminal ${id ?? ""}` }),
@@ -476,10 +485,10 @@ what you did first: the tab and what's in it go).
       if (!id) throw new OpError("which terminal? give its id (vau terminal lists them): you don't run in one of the app's")
       const [t, machine] = await target(plugin, ctx, id)
       if (machine) {
-        const r = await there(plugin, ctx, machine, "terminal.end", { id: t, ...(keepTabs ? { keepTabs } : {}) })
-        return { ...r, closedTabs: (r.closedTabs ?? 0) + (keepTabs ? 0 : await closeTabs(ctx, r.id)) }
+        const r = Closed.parse(await there(plugin, ctx, machine, "terminal.end", { id: t, ...(keepTabs ? { keepTabs } : {}) }))
+        return { ...r, closedTabs: (r.closedTabs ?? 0) + (keepTabs ? 0 : await closeTabs(ctx, r.id ?? `${t}@${machine}`)) }
       }
-      const r = Answer.parse(await ctx.api("DELETE", `terminals/${encodeURIComponent(t)}${keepTabs ? "?keep=1" : ""}`))
+      const r = Closed.parse(await ctx.api("DELETE", `terminals/${encodeURIComponent(t)}${keepTabs ? "?keep=1" : ""}`))
       return { ...r, closedTabs: keepTabs ? 0 : await closeTabs(ctx, t) }
     },
     text: (r) => `Ended ${r.id}${r.closedTabs ? `, closed its tab${r.closedTabs === 1 ? "" : "s"}` : ""}.`,

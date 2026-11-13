@@ -20,14 +20,14 @@ const WHERE = new Set(["look", "draw"])
 const Shown = z.object({ title: z.unknown().optional(), job: z.unknown().optional() })
 const Talked = z.object({ heard: z.unknown().optional(), said: z.unknown().optional() })
 type Heard = { t: number; seq: number; kind: string; text: string; summoned: boolean; voice: true; talked?: string; app?: undefined; title?: undefined; shot?: undefined }
-const proofOf = (a: Act): Heard | null => { const x = Shown.safeParse(parseJson(a.text ?? "")).data; return x ? { t: a.t, seq: -1, kind: "shown", text: `Show me: ${String(x.title ?? x.job ?? "a job")}`, summoned: false, voice: true } : null }
+const proofOf = (a: Act): Heard | null => { const x = parseJson(a.text ?? "", Shown); return x ? { t: a.t, seq: -1, kind: "shown", text: `Show me: ${String(x.title ?? x.job ?? "a job")}`, summoned: false, voice: true } : null }
 
 const costOf = (steps: PressLine[]) => { const c = steps.reduce((s, x) => s + (typeof x.cost === "number" ? x.cost : 0), 0); return c > 0 ? c : undefined }
 
 export function exchanges(ms: Moment[], allActs: Act[], presses: PressLine[], name: string): Exchange[] {
   const mine = (as: string) => as === name || as.startsWith(`${name} (`)
   const acts = allActs.filter((a) => mine(a.as))
-  const talked = acts.filter((a) => a.op === "talked" && a.text).flatMap((a) => { const x = Talked.safeParse(parseJson(a.text)).data; return x ? [{ t: a.t, heard: String(x.heard ?? ""), said: String(x.said ?? "") }] : [] })
+  const talked = acts.filter((a) => a.op === "talked" && a.text).flatMap((a) => { const x = parseJson(a.text, Talked); return x ? [{ t: a.t, heard: String(x.heard ?? ""), said: String(x.said ?? "") }] : [] })
   const asks: (Moment | Heard)[] = [
     ...ms.filter((m) => ASKS.has(m.kind) && !m.again && (!m.for || m.for === name)),
     ...talked.map((x) => ({ t: x.t, seq: -1, kind: "ask", text: x.heard, summoned: true as const, voice: true as const, talked: x.said })),

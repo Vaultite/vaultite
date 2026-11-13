@@ -20,7 +20,7 @@ const SessionIn = z.object({ id: z.string(), name: z.string(), t: z.number(), mo
   runs: z.string().optional() })
 export type Session = z.infer<typeof SessionIn>
 const Named = z.object({ id: z.string(), name: z.unknown().optional() })
-const fileOf = <T,>(f: string, as: z.ZodType<T>) => { try { return as.safeParse(parseJson(fs.readFileSync(f, "utf8"))).data ?? null } catch { return null } }
+const fileOf = <T,>(f: string, as: z.ZodType<T>) => { try { return parseJson(fs.readFileSync(f, "utf8"), as) ?? null } catch { return null } }
 export const session = (name?: string | null): Session | null => fileOf(sessionFile(name), SessionIn)
 export const writeSession = (s: Session) => fs.writeFileSync(sessionFile(s.name), JSON.stringify(s))
 export const sessionId = (name?: string | null): string | null => session(name)?.id ?? null

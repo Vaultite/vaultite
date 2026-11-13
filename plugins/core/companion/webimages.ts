@@ -68,7 +68,9 @@ async function api(host: string, params: Record<string, string>) {
   for (const [k, v] of Object.entries({ action: "query", format: "json", formatversion: "2", ...params })) u.searchParams.set(k, v)
   const r = await fetchPublic(u, { types: /json/, timeout: 6000, headers: { "User-Agent": WIKI_UA, "Accept": "application/json" } })
   if (r.status >= 400) throw new OpError(`${host} answers ${r.status}`, 502)
-  return Pages.parse(parseJson(r.body.toString("utf8"))).query?.pages ?? []
+  const pages = parseJson(r.body.toString("utf8"), Pages)
+  if (!pages) throw new OpError(`${host} answers something other than its pages`, 502)
+  return pages.query?.pages ?? []
 }
 
 async function wikimediaThumb(url: string): Promise<string | null> {

@@ -13,7 +13,7 @@ import { messageOf } from "./errors.ts"
 
 export const Message = z.looseObject({ t: z.string() })
 export type Message = z.infer<typeof Message>
-export const messageFrom = (data: RawData) => Message.safeParse(parseJson(String(data))).data
+export const messageFrom = (data: RawData) => parseJson(String(data), Message)
 
 export type Peer = { who: Who; name: string; tint: string; edits: boolean; see: (rel: string) => string | null
   may?: (rel: string, before: string, after: string) => string; slow?: () => boolean }
@@ -174,7 +174,7 @@ export function rooms(plugin: Plugin) {
       const id = decoding.readVarUint(d), clock = decoding.readVarUint(d), json = decoding.readVarString(d)
       if (json.length > 4000) return null
       if (taken(r, ws, id)) return null
-      const state = json === "null" ? null : AwState.safeParse(parseJson(json)).data
+      const state = json === "null" ? null : parseJson(json, AwState)
       if (state === undefined) return null
       if (!mine.has(id) && mine.size >= 2 && state) return null
       if (state) mine.add(id); else mine.delete(id)
