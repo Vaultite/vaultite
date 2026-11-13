@@ -4,12 +4,10 @@ import type { EditorView } from "@codemirror/view"
 import { NoteKeys, ToolbarSettings } from "./keys"
 import { addPhotos } from "./photo"
 
-// Editing commands with Obsidian's ids, so names and keys carry over; they win over the editor's keys and make its
-// menu. edit.ts loads with the first editor; then they act at once, so a caller sees the change on return.
+// Obsidian's command ids, so its names and keys carry over.
 let loading: Promise<typeof import("./edit")> | null = null, edit: typeof import("./edit") | null = null
 const load = () => (loading ??= import("./edit").then((m) => (edit = m)))
 
-/** The note being edited, if it can be. */
 const note = () => { const ed = currentEditor(); return ed?.kind === "markdown" && !ed.view.state.readOnly ? ed.view : null }
 const run = (fn: (m: typeof import("./edit")) => (v: EditorView) => unknown) => () => {
   const v = note()
@@ -17,7 +15,6 @@ const run = (fn: (m: typeof import("./edit")) => (v: EditorView) => unknown) => 
   if (edit) { fn(edit)(v); v.focus() } else void load().then((m) => { fn(m)(v); v.focus() })
 }
 const when = () => !!note()
-// (a phone has no right-click menu in a note: Add photo is at the top of the note's … menu there, else under More)
 const coarse = () => matchMedia("(pointer: coarse)").matches
 
 const marks: [string, string, string, string[]?][] = [
@@ -25,7 +22,6 @@ const marks: [string, string, string, string[]?][] = [
   ["strikethrough", "Toggle strikethrough", "~~", ["Mod+Shift+X"]], ["code", "Toggle code", "`", ["Mod+Shift+C"]], ["inline-math", "Toggle inline math", "$"],
   ["comment", "Toggle comment", "%%", ["Mod+/"]],
 ]
-// (‸ is where the cursor goes.)
 const blocks: [string, string, string][] = [
   ["insert-callout", "Insert callout", "> [!note]\n> ‸"],
   ["insert-codeblock", "Insert code block", "```\n‸\n```"],
@@ -37,9 +33,7 @@ const blocks: [string, string, string][] = [
 export default definePlugin({
   settingsPanel: () => <ToolbarSettings />,
   settingsPanelDraws: ["toolbar"],
-  // Their keys only while the keyboard is in the note: ⌘L on a sidebar's row isn't the note's (the palette still offers them).
   commands: ([
-    // (a coloured highlight, ==🟢text==, goes with its colour)
     ...marks.map(([id, name, m, keys]) => ({ id: `editor:toggle-${id}`, name, keys, when, run: run((e) => (m === "==" ? (v) => unhighlight(v) || e.toggleMark(m)(v) : e.toggleMark(m))) })),
     { id: "editor:clear-formatting", name: "Clear formatting", when, run: run((e) => (v) => e.clearFormatting(v, HIGHLIGHT_EMOJI)), icon: RemoveFormatting },
     { id: "editor:insert-link", name: "Insert Markdown link", keys: ["Mod+K"], when, run: run((e) => e.insertLink), icon: Link },

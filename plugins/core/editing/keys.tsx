@@ -1,5 +1,3 @@
-// Phones: while a note is being written, a row of editing keys over the on-screen keyboard (the terminal's KeyBar),
-// made of commands by id, in the order the `toolbar` setting lists them.
 import { useEffect, useState } from "react"
 import { createPortal } from "react-dom"
 import {
@@ -20,7 +18,6 @@ const ICONS: Partial<Record<string, LucideIcon>> = {
 }
 const { default: DEFAULT, labels: LABELS } = manifest.settings.toolbar
 
-/** The note being typed in on a touch screen: an editable Markdown editor with the keyboard. */
 function typingIn(): EditorView | null {
   const ed = currentEditor()
   return ed?.kind === "markdown" && document.activeElement === ed.view.contentDOM && !ed.view.state.readOnly ? ed.view : null
@@ -53,9 +50,6 @@ export function NoteKeys() {
   )
 }
 
-// ---------- its settings: the keys as they'll show
-
-/** Keys over the keyboard, drawn as the row is: one tapped is moved along or taken off; the rest are a tap to add. */
 export function ToolbarSettings() {
   const [settings, save] = usePluginSettings("editing")
   const [picked, setPicked] = useState<string | null>(null)

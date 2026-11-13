@@ -1,5 +1,3 @@
-// What the editing commands do to a note's editor (index.tsx lists them): each takes the CodeMirror view and changes
-// every selection the way the command's name says. Loaded when one first runs.
 import { startCompletion } from "@codemirror/autocomplete"
 import { deleteLine, moveLineDown, moveLineUp } from "@codemirror/commands"
 export { indentLess, indentMore } from "@codemirror/commands"
@@ -7,7 +5,6 @@ import { EditorSelection, type EditorState, type Line } from "@codemirror/state"
 import type { EditorView } from "@codemirror/view"
 import { blockPieces, paragraphAt } from "@vaultite"
 
-/** How many of `c` run back from `pos` (or on from it, `dir` 1). */
 function run(state: EditorState, pos: number, c: string, dir: -1 | 1) {
   let n = 0
   while (true) {
@@ -16,14 +13,12 @@ function run(state: EditorState, pos: number, c: string, dir: -1 | 1) {
     n++
   }
 }
-/** Whether runs of `c` this long on both sides hold mark `m` (`*` is italic in 1 or 3 of them, `**` bold in 2 or 3). */
 function holds(m: string, before: number, after: number) {
   if (m === "*") return before % 2 === 1 && after % 2 === 1
   if (m === "**") return before >= 2 && after >= 2
   return before >= m.length && after >= m.length
 }
 
-/** The edits that take mark `m` off from..to (selected with it, or around it), or null when it isn't marked. */
 function unmarkOf(state: EditorState, from: number, to: number, m: string) {
   const c = m[0], text = state.sliceDoc(from, to)
   if (text.length > 2 * m.length && text.startsWith(m) && text.endsWith(m) && holds(m, run(state, from, c, 1), run(state, to, c, -1))) {
@@ -33,8 +28,6 @@ function unmarkOf(state: EditorState, from: number, to: number, m: string) {
   return null
 }
 
-/** Bold, italic, ==highlight==, ~~strike~~, `code`, %%comment%%: on the selection (nothing selected: the word at the
- *  cursor, else the marks with the cursor between), or off where marked. Over several blocks, block by block. */
 export const toggleMark = (m: string) => (view: EditorView) => {
   const { state } = view
   const c = m[0]
@@ -42,7 +35,6 @@ export const toggleMark = (m: string) => (view: EditorView) => {
     let { from, to } = r
     if (!r.empty) {
       const pieces = blockPieces(state.doc, from, to)
-      // (nothing to mark in code, a table, a rule...: left alone)
       if (!pieces.length) return { range: r }
       const offs = pieces.map((p) => unmarkOf(state, p.from, p.to, m))
       const changes = offs.every((o) => o) ? offs.flat() as { from: number; to: number; insert?: string }[]
@@ -55,12 +47,10 @@ export const toggleMark = (m: string) => (view: EditorView) => {
       if (w) ({ from, to } = w)
     }
     const text = state.sliceDoc(from, to)
-    // The marks selected with the text.
     if (text.length > 2 * m.length && text.startsWith(m) && text.endsWith(m) && holds(m, run(state, from, c, 1), run(state, to, c, -1))) {
       const inner = text.slice(m.length, -m.length)
       return { changes: { from, to, insert: inner }, range: EditorSelection.range(from, from + inner.length) }
     }
-    // The marks around it.
     if (holds(m, run(state, from, c, -1), run(state, to, c, 1))) {
       const sel = r.empty ? EditorSelection.cursor(r.head - m.length) : EditorSelection.range(from - m.length, to - m.length)
       return { changes: [{ from: from - m.length, to: from }, { from: to, to: to + m.length }], range: sel }
@@ -71,20 +61,16 @@ export const toggleMark = (m: string) => (view: EditorView) => {
   return true
 }
 
-// Inline marks, longest first (so ** is taken before *).
 const MARKS = ["**", "__", "==", "~~", "%%", "*", "_", "`", "$"]
 const MARK_CHAR = /[*_=~%`$]/
 const STRIP = [/(\*\*|__|==|~~|%%)(?=\S)((?:(?!\n[ \t]*\n)[^])*?\S)\1/g, /(?<![\w*])([*_])(?=\S)(.*?\S)\1(?![\w*])/g, /(`)([^`\n]+)`/g, /(\$)(?=\S)([^$\n]*?\S)\$/g]
 
-/** Clear formatting: the marks in what's selected (with nothing selected, the word at the cursor), and those around
- *  it, taken out; the text stays selected. `colors`: a highlight's colour emoji (HIGHLIGHT_EMOJI), taken with its ==. */
 export const clearFormatting = (view: EditorView, colors = "") => {
   const { state } = view
   const opened = colors ? new RegExp(`==${colors}$`, "u") : null, colored = colors ? new RegExp(`(?<!=)==${colors}(?=\\S)`, "gu") : null
   view.dispatch(state.changeByRange((r) => {
     let { from, to } = r
     if (r.empty) { const w = state.wordAt(r.head); if (w) ({ from, to } = w) }
-    // (an edge at marks live preview hides, where its Home, End or a drag stops: they're taken in too)
     else {
       const a = state.doc.lineAt(from).from, b = state.doc.lineAt(to).to
       for (;;) {
@@ -103,7 +89,6 @@ export const clearFormatting = (view: EditorView, colors = "") => {
       const hl = !grew && opened ? opened.exec(state.sliceDoc(Math.max(0, from - 5), from)) : null
       if (hl && state.sliceDoc(to, to + 2) === "==") { from -= hl[0].length; to += 2; grew = true }
     }
-    // (a paragraph at a time: a mark never runs across list items, headings or quotes)
     const strip = (t: string) => {
       if (colored) t = t.replace(colored, "==")
       for (let was = ""; was !== t;) { was = t; for (const re of STRIP) t = t.replace(re, "$2") }
@@ -123,8 +108,6 @@ export const clearFormatting = (view: EditorView, colors = "") => {
   return true
 }
 
-/** Insert footnote: the next [^n] after the selection, and its definition at the end of the note,
- *  the cursor there to write it. */
 export function insertFootnote(view: EditorView) {
   const { state } = view
   const used = new Set([...state.doc.toString().matchAll(/\[\^(\d+)\]/g)].map((m) => Number(m[1])))
@@ -139,8 +122,6 @@ export function insertFootnote(view: EditorView) {
 
 const URL_RE = /^(https?:\/\/|www\.)\S+$/
 
-/** ⌘K: the selection as a link's text, the cursor where its address goes ([text](|)); a selected address as the
- *  address, the cursor in the text ([|](url)); nothing selected: [|](). */
 export function insertLink(view: EditorView) {
   const { state } = view
   view.dispatch(state.changeByRange((r) => {
@@ -152,7 +133,6 @@ export function insertLink(view: EditorView) {
   return true
 }
 
-/** Add internal link: [[selection]], or [[|]] with the suggestions open. */
 export function insertWikilink(view: EditorView) {
   const { state } = view
   const empty = state.selection.ranges.every((r) => r.empty)
@@ -164,7 +144,6 @@ export function insertWikilink(view: EditorView) {
   return true
 }
 
-/** The lines the selections touch, each once, top to bottom. */
 function linesOf(state: EditorState) {
   const seen = new Set<number>(), out: Line[] = []
   for (const r of state.selection.ranges) {
@@ -174,8 +153,6 @@ function linesOf(state: EditorState) {
   }
   return out.sort((a, b) => a.number - b.number)
 }
-/** Rewrite each selected line's start (its indent, list marker, checkbox, heading or quote marks): `fn` gets the line
- *  and returns what its first `len` characters become. The cursors move with the text. */
 function rewriteLines(view: EditorView, fn: (text: string, i: number) => { len: number; insert: string } | null) {
   const changes = linesOf(view.state).flatMap((l, i) => {
     const r = fn(l.text, i)
@@ -188,7 +165,6 @@ function rewriteLines(view: EditorView, fn: (text: string, i: number) => { len: 
 
 const LIST = /^(\s*)([-*+]|\d+[.)])( +\[(.)\])?( +|$)/
 
-/** ⌘L: a line becomes a task (- [ ] ), a task is ticked, a ticked one unticked; a list item keeps its marker. */
 export const toggleChecklist = (view: EditorView) => rewriteLines(view, (t) => {
   const m = LIST.exec(t)
   if (m?.[3]) return { len: m[0].length, insert: `${m[1]}${m[2]} [${m[4] === " " ? "x" : " "}] ` }
@@ -197,8 +173,6 @@ export const toggleChecklist = (view: EditorView) => rewriteLines(view, (t) => {
   return { len: indent.length, insert: `${indent}- [ ] ` }
 })
 
-/** Toggle bullet list: lines that are all bullets lose them; otherwise each becomes one (a numbered item or a task
- *  turns into a plain bullet). */
 export function toggleBullets(view: EditorView) {
   const lines = linesOf(view.state).filter((l) => l.text.trim())
   const all = lines.length > 0 && lines.every((l) => { const m = LIST.exec(l.text); return m && !/\d/.test(m[2]) && !m[3] })
@@ -212,8 +186,6 @@ export function toggleBullets(view: EditorView) {
   })
 }
 
-/** Toggle task list: lines that are all tasks lose their checkboxes and markers; otherwise each becomes a task
- *  (a list item keeps its marker). */
 export function toggleTasks(view: EditorView) {
   const lines = linesOf(view.state).filter((l) => l.text.trim())
   const all = lines.length > 0 && lines.every((l) => LIST.exec(l.text)?.[3])
@@ -227,7 +199,6 @@ export function toggleTasks(view: EditorView) {
   })
 }
 
-/** Toggle numbered list: numbered lines lose their numbers; otherwise they're numbered 1, 2, 3… */
 export function toggleNumbers(view: EditorView) {
   const lines = linesOf(view.state).filter((l) => l.text.trim())
   const all = lines.length > 0 && lines.every((l) => /\d/.test(LIST.exec(l.text)?.[2] ?? ""))
@@ -243,13 +214,11 @@ export function toggleNumbers(view: EditorView) {
   })
 }
 
-/** Set as heading 1–6 (0: Remove heading). */
 export const setHeading = (level: number) => (view: EditorView) => rewriteLines(view, (t) => {
   const m = /^#{1,6}[ \t]+|^#{1,6}$/.exec(t)
   return { len: m ? m[0].length : 0, insert: level ? `${"#".repeat(level)} ` : "" }
 })
 
-/** Toggle blockquote: quoted lines lose their > ; otherwise every line gets one. */
 export function toggleQuote(view: EditorView) {
   const all = linesOf(view.state).every((l) => /^\s*>/.test(l.text))
   return rewriteLines(view, (t) => {
@@ -258,8 +227,6 @@ export function toggleQuote(view: EditorView) {
   })
 }
 
-/** Text that goes on lines of its own (a callout, a fence, a table, a rule), the cursor at its `‸`: around what's
- *  selected (in place of `‸`), on the cursor's line when it's empty, else after it. */
 export const insertBlock = (block: string) => (view: EditorView) => {
   const { state } = view
   const r = state.selection.main
@@ -278,7 +245,6 @@ export const deleteParagraph = deleteLine
 export const lineUp = moveLineUp
 export const lineDown = moveLineDown
 
-/** Paste as plain text: the clipboard's text, as it is, in place of the selection (nothing a paste would make of it). */
 export async function pastePlain(view: EditorView) {
   const text = await navigator.clipboard.readText()
   if (text) view.dispatch(view.state.replaceSelection(text), { userEvent: "input.paste", scrollIntoView: true })

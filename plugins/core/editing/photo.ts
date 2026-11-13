@@ -1,9 +1,6 @@
-// Add photo: the system's picker (an iPhone offers its library, the camera and files), each image saved as an
-// attachment of the note, as a pasted one is, and embedded on a line of its own.
 import { activeFile, dismissNotice, getStore, insertOnOwnLine, notify, notifyError, pasteAttachments, put, readFile, reload } from "@vaultite"
 
-/** Images chosen with the system's picker; none when it's cancelled. Call it while the tap or key that asked is being
- *  handled: WebKit opens a picker for nothing else. */
+/** Call it while the tap or key that asked is being handled: WebKit opens a picker for nothing else. */
 export function pickImages(): Promise<File[]> {
   const el = document.createElement("input")
   Object.assign(el, { type: "file", accept: "image/*", multiple: true, hidden: true })
@@ -17,8 +14,6 @@ export function pickImages(): Promise<File[]> {
   })
 }
 
-/** Pick photos and add them to the note `path`: with `insert` (the slash menu's), else at the cursor when it's the note
- *  being edited, else at its end. */
 export async function addPhotos(path: string, insert?: (text: string) => void) {
   const files = await pickImages()
   const s = getStore()
@@ -26,9 +21,9 @@ export async function addPhotos(path: string, insert?: (text: string) => void) {
   const id = "add-photo"
   notify(files.length > 1 ? "Adding the photos…" : "Adding the photo…", { id, duration: Infinity })
   try {
-    // (the camera's "image.jpg" is named "Pasted image <time>" there, like a pasted one)
+    // (an iPhone camera names every shot "image.jpg")
     const embed = await pasteAttachments(s, path, files)
-    await reload() // (the store has the file before the embed is drawn)
+    await reload()
     if (insert) insert(embed)
     else if (activeFile()?.path === path) insertOnOwnLine(embed)
     else {
