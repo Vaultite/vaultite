@@ -1,5 +1,3 @@
-// Recording: one at a time for the whole app, saved as an attachment of its note and embedded, then transcribed when
-// the server can. Indicator.tsx draws what's recording.
 import {
   activeFile, appDevice, askMicrophone, attachmentFolder, cell, choose, createFile, currentFile, dismissNotice, folderOf, get, getStore,
   insertOnOwnLine, newNoteFolder, notify, notifyError, openFile, pasteAttachments, phoneVoiceNote, post, put, readFile, reload, stem, trackUnderway,
@@ -9,7 +7,6 @@ export type Status =
   | { state: "idle" }
   | { state: "starting" }
   | { state: "recording" | "paused"; since: number; before: number; note: string | null
-      /** A voice note for the inbox (Record a voice note), not a recording in a note. */
       voice?: boolean }
   | { state: "saving" }
 
@@ -23,28 +20,23 @@ let stream: MediaStream | null = null
 let chunks: Blob[] = []
 let started = new Date()
 let lock: { release: () => Promise<void> } | null = null
-/** The input's level, 0..1, while recording (Indicator.tsx draws it). */
 export let level = () => 0
 
-/** What the browser records in, best first: AAC in MP4 plays everywhere (Safari and iPhones record only MP4). */
+/** Safari and iPhones record only MP4. */
 const TYPES = ["audio/mp4;codecs=mp4a.40.2", "audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"]
 const pickType = () => TYPES.find((t) => { try { return MediaRecorder.isTypeSupported(t) } catch { return false } })
 export const extOf = (type: string) => (/mp4|aac|m4a/.test(type) ? "m4a" : /ogg/.test(type) ? "ogg" : /wav/.test(type) ? "wav" : "webm")
 
 const p2 = (n: number) => String(n).padStart(2, "0")
-/** "Recording 2026-10-01 14.03.12" (local time, when it started). */
 export const recordingName = (d: Date) =>
   `Recording ${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}.${p2(d.getMinutes())}.${p2(d.getSeconds())}`
 
-/** Seconds recorded so far (pauses left out). */
 export function elapsed(s = getStatus()) {
   if (s.state !== "recording" && s.state !== "paused") return 0
   return s.before + (s.state === "recording" ? (Date.now() - s.since) / 1000 : 0)
 }
 
-// (the page doesn't reload into a new build, nor the app restart, till it's saved)
 let held = false
-/** Start recording, for `note` (the file being edited, when left out), or (`voice`) a voice note for the inbox. */
 export async function start(note?: string | null, voice = false) {
   if (getStatus().state !== "idle") return
   if (!held) { trackUnderway(() => getStatus().state !== "idle"); held = true }
@@ -74,7 +66,7 @@ export async function start(note?: string | null, voice = false) {
   rec.start(1000)
   meter(stream)
   set({ state: "recording", since: Date.now(), before: 0, note: voice ? null : target, voice })
-  // The screen kept on (going to sleep would end it on a phone); never waited for (it may not answer at all).
+  // A phone's sleep ends a recording; a wake lock request may never answer.
   const wl = (navigator as Navigator & { wakeLock?: { request: (t: "screen") => Promise<{ release: () => Promise<void> }> } }).wakeLock
   wl?.request("screen").then((l) => { if (recording()) lock = l; else void l.release().catch(() => {}) }, () => {})
 }
@@ -92,7 +84,6 @@ export function resume() {
   set({ ...s, state: "recording", since: Date.now() })
 }
 
-/** Stop and save (MediaRecorder's last data arrives, then `finish`). */
 export function stop() {
   if (!recording() || !rec) return
   set({ state: "saving" })
@@ -107,13 +98,12 @@ function stop_tracks() {
   lock = null
 }
 
-/** The input's loudness, for the indicator's meter (nothing when the page can't have an AudioContext yet). */
 function meter(s: MediaStream) {
   try {
     const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
     if (!Ctx) return
     const ctx = new Ctx()
-    void ctx.resume().catch(() => {}) // (iPhones start it suspended outside a tap)
+    void ctx.resume().catch(() => {}) // (iPhones start an AudioContext suspended outside a tap)
     const an = ctx.createAnalyser()
     an.fftSize = 512
     ctx.createMediaStreamSource(s).connect(an)
@@ -130,13 +120,11 @@ function meter(s: MediaStream) {
   } catch { /* no meter */ }
 }
 
-/** Where a new note for a recording goes (no note was being edited). */
 const newNotePath = (name: string) => {
   const folder = newNoteFolder(getStore(), currentFile())
   return `${folder ? `${folder}/` : ""}${name}.md`
 }
 
-/** The saved file's vault path, from what pasteAttachments typed for it. */
 function savedPath(embed: string, from: string) {
   const wiki = /^!\[\[([^\]]+)\]\]$/.exec(embed.trim())
   if (wiki) { const dir = attachmentFolder(getStore(), from); return `${dir ? `${dir}/` : ""}${wiki[1]}` }
@@ -144,7 +132,6 @@ function savedPath(embed: string, from: string) {
   return md ? decodeURIComponent(md[1]) : ""
 }
 
-/** What was recorded, as a file named for when it started; the recorder let go. */
 function taken() {
   const type = rec?.mimeType || chunks[0]?.type || "audio/webm"
   const blob = new Blob(chunks, { type })
@@ -154,13 +141,11 @@ function taken() {
   return { blob, type, file: new File([blob], `${recordingName(started)}.${extOf(type)}`, { type }) }
 }
 
-/** Never lose a recording: offer it as a download. */
 const keep = (why: unknown, blob: Blob, file: File) => notifyError(why, "Couldn't save the recording", {
   duration: Infinity,
   action: { label: "Download", run: () => { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = file.name; a.click() } },
 })
 
-/** A tap by mistake (under 0.7 s, as on the phone and watch): not saved, and said so. */
 function tooShort() {
   if (Date.now() - started.getTime() >= 700) return false
   notify("Too short, not saved", { duration: 2000 })
@@ -178,7 +163,7 @@ async function finish(note: string | null) {
     const from = note ?? newNotePath(name)
     const embed = await pasteAttachments(s, from, [file])
     const audio = savedPath(embed, from)
-    await reload() // (the store has the file before the embed is drawn)
+    await reload()
     let target = note
     if (note && activeFile()?.path === note) insertOnOwnLine(embed)
     else if (note) {
@@ -198,8 +183,6 @@ async function finish(note: string | null) {
   }
 }
 
-/** A voice note as the phone's widget sends one: transcribed on the server and put in the inbox (inbox.voice), the
- *  recording kept above its words (alone, when it couldn't be transcribed). */
 async function sendVoice() {
   const { blob, type, file } = taken()
   set({ state: "idle" })
@@ -209,7 +192,6 @@ async function sendVoice() {
   try {
     if (!blob.size) throw new Error("nothing was recorded")
     const from = matchMedia("(pointer: coarse)").matches ? "Phone" : "Computer"
-    // (the recording as it is, any length: streamed from the page, never base64)
     const res = await fetch(`api/audio-recorder/voice?ext=${extOf(type)}&from=${encodeURIComponent(from)}`, { method: "POST", headers: { "Content-Type": blob.type || "application/octet-stream", "X-Vaultite-Client": `app/${appDevice}` }, body: blob })
     let job = await res.json() as Job
     if (!res.ok) throw new Error((job as unknown as { error?: string }).error || res.statusText)
@@ -219,7 +201,6 @@ async function sendVoice() {
     }
     if (job.state === "failed") throw new Error(job.error ?? "it failed")
     dismissNotice(id)
-    // (the id Inbox's own toast for a new result has: one toast, not two)
     const r = job.note.replace(/\.md$/, "")
     notify(job.kept ? `In your inbox as a recording, not transcribed: ${job.kept}` : `In your inbox: ${r.split("/").pop()}`,
       { id: `inbox-${r}`, action: { label: "Open", run: () => openFile(job.note) } })
@@ -229,12 +210,9 @@ async function sendVoice() {
   }
 }
 
-// ---------- transcripts (plugin.ts runs them) ----------
-
 type Transcriber = { available: boolean; name?: string; why?: string; auto?: boolean }
 let known: Transcriber | null = null
 let asked = 0
-/** What transcribes on the server (asked again after a minute). */
 export async function transcriber(): Promise<Transcriber> {
   if (!known || Date.now() - asked > 60_000) {
     asked = Date.now()
@@ -242,7 +220,6 @@ export async function transcriber(): Promise<Transcriber> {
   }
   return known
 }
-/** The last answer, for menus and `when` (which can't wait); asks again in the background. */
 export function canTranscribe() {
   if (!known || Date.now() - asked > 60_000) void transcriber()
   return !!known?.available
@@ -250,19 +227,14 @@ export function canTranscribe() {
 
 type Job = { id: string; path: string; note: string; state: "queued" | "running" | "done" | "failed"; error?: string; kept?: string }
 
-/** "Record a voice note": the iPhone app's own (what its widgets open), else one recorded here, which needs the
- *  server to transcribe it. */
 export async function voiceNote() {
   if (phoneVoiceNote()) return
-  void transcriber() // (one the server can't transcribe is kept in the inbox as a recording)
+  void transcriber()
   await start(null, true)
 }
 
-/** Transcribe `audio` into `note` (left out: the notes that embed it; none: a new note for it), telling the user how it
- *  went. The server writes the transcript, so it lands even if this page is closed meanwhile. */
 export async function transcribe(audio: string, note?: string) {
   const file = audio.split("/").pop()!
-  // (said at once, before the server takes the job: the same toast follows it)
   const id = `transcribe-${audio}`
   notify(`Transcribing ${file}…`, { id, duration: Infinity })
   let job: Job
@@ -271,7 +243,6 @@ export async function transcribe(audio: string, note?: string) {
   } catch (e) {
     dismissNotice(id)
     if (note || !/no note embeds/.test(String(e))) { notifyError(e, `Couldn't transcribe ${file}`); return }
-    // No note has it yet: a new one, with it.
     const made = await createFile(newNoteFolder(getStore(), currentFile()), stem(file).replace(/\.[^.]+$/, ""), `![[${file}]]\n`)
     openFile(made.path)
     return transcribe(audio, made.path)
@@ -291,7 +262,6 @@ export async function transcribe(audio: string, note?: string) {
 const AUDIO = /\.(mp3|m4a|m4b|aac|wav|ogg|oga|opus|flac|webm|weba|aiff?|caf)$/i
 export const isAudio = (path: string) => AUDIO.test(path)
 
-/** The audio files a note embeds (vault paths). */
 export function audioIn(text: string): string[] {
   const s = getStore()
   if (!s) return []
@@ -307,7 +277,6 @@ export function audioIn(text: string): string[] {
   return [...out]
 }
 
-/** "Transcribe audio": the audio file that's open, or one the note being edited embeds (asked which, when several). */
 export function transcribeHere() {
   const cur = currentFile()
   if (cur && isAudio(cur)) return void transcribe(cur)

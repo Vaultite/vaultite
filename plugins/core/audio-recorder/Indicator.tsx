@@ -1,5 +1,3 @@
-// While recording: a small bar floating over the app (bottom centre on computers, under the header on phones, clear of
-// the toasts), with the time, the level, pause and stop (and send: a voice note). Drawn by `background` into <body>.
 import { useEffect, useState } from "react"
 import { createPortal } from "react-dom"
 import { Loader2, Pause, Play, Square } from "lucide-react"
@@ -11,7 +9,6 @@ const clock = (s: number) => {
   return `${h ? `${h}:${String(m).padStart(2, "0")}` : m}:${String(sec).padStart(2, "0")}`
 }
 
-/** Five bars for the input's level (0..1). */
 function Meter({ on }: { on: boolean }) {
   const [v, setV] = useState(0)
   useEffect(() => {

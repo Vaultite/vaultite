@@ -1,5 +1,4 @@
-// Audio recorder: record into the note being written, saved as an attachment and embedded, then
-// transcribed on this machine when it can. Phones need https: browsers give the microphone only to secure pages.
+// Browsers give the microphone only to secure pages: phones need https.
 import { useEffect } from "react"
 import { Captions, Mic, Square } from "lucide-react"
 import { activeFile, definePlugin, Panel, pluginOn, useLive } from "@vaultite"
@@ -35,7 +34,6 @@ export default definePlugin({
     { id: "audio-recorder:toggle", name: "Start recording audio", run: () => (recording() ? stop() : void start()), icon: Mic,
       nameWhenOn: "Stop recording audio", on: recording },
     { id: "audio-recorder:transcribe", name: "Transcribe audio", when: canTranscribe, run: transcribeHere, icon: Captions },
-    // What the iPhone's voice note widget opens: said, transcribed, in the inbox (Inbox's inbox.voice).
     { id: "audio-recorder:voice-note", name: "Record a voice note for your inbox", when: () => idle() && pluginOn("inbox"), run: () => void voiceNote(), icon: Mic },
   ],
   slash: () => [recording()

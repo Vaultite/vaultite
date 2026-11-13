@@ -1,5 +1,3 @@
-// Transcribing audio here as jobs, a small edit into the note: Apple's speech recognition, else whisper.cpp, else openai-whisper.
-// A program is data/config.json's, never the vault's (it syncs, AIs write it); a model is a name, never a path (whisper unpickles).
 import { execFile } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
@@ -24,15 +22,14 @@ type Transcriber =
   | { kind: "whispercpp"; name: string; bin: string; ffmpeg: string; model: string; language: string }
 type Found = { available: boolean; name?: string; why?: string; t?: Transcriber }
 
-/** Where programs are looked for: PATH (launchd's is short), then the usual places. */
+/** launchd's PATH is short. */
 const dirs = () => [...new Set([...(process.env.PATH ?? "").split(path.delimiter), "/opt/homebrew/bin", "/usr/local/bin", `${HOME}/.local/bin`,
   `${HOME}/miniforge3/bin`, `${HOME}/mambaforge/bin`, `${HOME}/miniconda3/bin`, `${HOME}/anaconda3/bin`, "/usr/bin"].filter(Boolean))]
 const runnable = (p: string) => { try { fs.accessSync(p, fs.constants.X_OK); return fs.statSync(p).isFile() } catch { return false } }
-/** (Windows' programs end in one of PATHEXT's: whisper.exe, ffmpeg.exe) */
+/** Windows' programs end in one of PATHEXT's. */
 const EXTS = process.platform === "win32" ? ["", ...(process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";").filter(Boolean)] : [""]
 const which = (name: string) => dirs().flatMap((d) => EXTS.map((x) => path.join(d, name + x))).find(runnable) ?? null
 
-/** Not a program in the vault. */
 function outsideVault(p: string) {
   let real = p, root = plugin.vault.path
   try { real = fs.realpathSync(p) } catch { /* checked by runnable */ }
@@ -40,7 +37,6 @@ function outsideVault(p: string) {
   return real !== root && !real.startsWith(root + path.sep)
 }
 
-/** "my-tool --x {file}" as arguments: spaces split them, quotes ("a b", 'a b') keep them together. */
 function splitCommand(cmd: string): string[] {
   const out: string[] = []
   for (const m of cmd.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)) out.push(m[1] ?? m[2] ?? m[3])
@@ -53,26 +49,19 @@ function defaultModel() {
   return MODELS.find((m) => fs.existsSync(path.join(dir, `${m}.pt`))) ?? "base"
 }
 
-// ---------- whisper.cpp (brew install whisper.cpp): the same models on the GPU, minutes faster than openai-whisper's CPU
-
 const GGML = () => path.join(process.env.XDG_CACHE_HOME || path.join(HOME, ".cache"), "whisper.cpp")
-/** The downloaded model file for a model's name (turbo is large-v3-turbo; a quantized one does too), else the best one there. */
 function ggml(model: string | null) {
   const names = (m: string) => { const b = m === "turbo" ? "large-v3-turbo" : m; return [b, `${b}-q8_0`, `${b}-q5_0`, `${b}-q5_1`] }
   return (model ? [model] : ["turbo", "medium", "small", "base", "tiny"]).flatMap(names).map((n) => path.join(GGML(), `ggml-${n}.bin`))
     .find((f) => fs.existsSync(f)) ?? null
 }
 
-// ---------- Apple's speech recognition: transcribe.swift, built the first time (the desktop app ships it built)
-
 const SWIFT = path.join(import.meta.dirname, "transcribe.swift")
-/** The helper's file name: its source's hash, so a changed source is built again. */
 const helperName = () => `transcribe-${crypto.createHash("sha1").update(fs.readFileSync(SWIFT)).digest("hex").slice(0, 12)}`
 const quiet = (bin: string, args: string[], timeout = 120_000) => new Promise<{ ok: boolean; out: string; err: string }>((done) =>
   execFile(bin, args, { timeout }, (e, out, err) => done({ ok: !e, out: String(out).trim(), err: String(err).trim() })))
 
-/** Build the helper into `dir` (Xcode's Command Line Tools: never /usr/bin/swiftc without them, which asks to install),
- *  for this Mac, or one file for each of `archs` (the desktop app's: both, as it ships for Apple silicon and Intel). */
+/** /usr/bin/swiftc without Xcode's Command Line Tools asks to install them. */
 export async function buildHelper(dir: string, archs: string[] = []): Promise<string> {
   const out = path.join(dir, helperName())
   if (runnable(out)) {
@@ -97,7 +86,7 @@ export async function buildHelper(dir: string, archs: string[] = []): Promise<st
   return out
 }
 
-/** Apple's on-device transcriber for `language` (the Mac's when ""), or why this machine has none: it's macOS 26's. */
+/** Apple's on-device transcriber is macOS 26's. */
 async function apple(language: string): Promise<{ bin: string } | { why: string }> {
   if (process.platform !== "darwin" || Number(os.release().split(".")[0]) < 25) return { why: "Apple's speech recognition needs macOS 26." }
   let bin = path.join(import.meta.dirname, "bin", helperName())
@@ -108,7 +97,6 @@ async function apple(language: string): Promise<{ bin: string } | { why: string 
   return r.ok ? { bin } : { why: r.err || "Apple's speech recognition isn't available here." }
 }
 
-/** What transcribes here, from the settings (or found), or why nothing does. */
 async function find(_key: string): Promise<Found> {
   const s = plugin.settings()
   const local = (plugin.secrets()[plugin.id] ?? {}) as Record<string, unknown>
@@ -124,10 +112,8 @@ async function find(_key: string): Promise<Found> {
   const language = typeof s.language === "string" ? s.language.trim() : ""
   if (language && !/^[a-z]{2,3}([-_][a-z0-9]{2,8})*$|^[a-z]+( [a-z]+)?$/i.test(language)) return { available: false, why: `"${language}" isn't a language.` }
   const named = typeof local.whisper === "string" && local.whisper.trim() ? local.whisper.trim().replace(/^~(?=\/)/, HOME) : null
-  // Apple's first (built in, on the device), unless whisper is asked for: the setting engine, or its program named.
   const engine = s.engine === "whisper" || s.engine === "apple" ? s.engine : named ? "whisper" : "auto"
   let why = ""
-  // (Apple's is a Mac's: elsewhere it's never tried, nor named in why nothing transcribes)
   if (engine !== "whisper" && (process.platform === "darwin" || engine === "apple")) {
     const a = await apple(/^[a-z]{2,3}([-_][a-z0-9]{2,8})*$/i.test(language) ? language : "")
     if ("bin" in a) return { available: true, name: "Apple's speech recognition", t: { kind: "apple", name: "Apple's speech recognition", bin: a.bin, language } }
@@ -137,7 +123,6 @@ async function find(_key: string): Promise<Found> {
   const model = typeof s.model === "string" && s.model.trim() ? s.model.trim() : null
   if (model && !/^[a-z0-9][a-z0-9.-]*$/i.test(model)) return { available: false, why: `"${model}" isn't a whisper model's name.` }
   const ffmpeg = which("ffmpeg")
-  // whisper.cpp with one of its models downloaded, unless a whisper program is named
   const cpp = named ? null : which("whisper-cli"), file = cpp && ffmpeg ? ggml(model) : null
   if (cpp && ffmpeg && file && outsideVault(cpp)) {
     const name = `whisper.cpp ${path.basename(file).replace(/^ggml-|\.bin$/g, "")}`
@@ -153,12 +138,11 @@ async function find(_key: string): Promise<Found> {
   const name = `whisper ${model ?? defaultModel()}`
   return { available: true, name, t: { kind: "whisper", name, bin, ffmpeg, model: model ?? defaultModel(), language } }
 }
-/** (Looked up again when its settings change, else at most every 30 s.) */
 const transcriber = () => plugin.memo(30, find, JSON.stringify([plugin.settings(), plugin.secrets()[plugin.id] ?? null]))
 
 const run = (bin: string, args: string[], env: NodeJS.ProcessEnv, timeout: number) =>
   new Promise<string>((ok, fail) => {
-    // (Windows: a .cmd transcriber runs through cmd, or as the Node script an npm shim starts)
+    // (Windows runs a .cmd only through cmd)
     const [file, argv, verbatim] = (process.platform === "win32" && winCommand([bin, ...args], env)) || [bin, args, false]
     execFile(file, argv, { env, timeout, maxBuffer: 64 << 20, killSignal: "SIGKILL", windowsHide: true, windowsVerbatimArguments: verbatim }, (err, stdout, stderr) => {
       if (!err) return ok(stdout)
@@ -168,7 +152,6 @@ const run = (bin: string, args: string[], env: NodeJS.ProcessEnv, timeout: numbe
     })
   })
 
-/** The file's transcript, as paragraphs, and the language whisper heard. */
 async function transcribe(t: Transcriber, abs: string): Promise<{ paras: string[]; language?: string }> {
   const timeout = 3 * 3600_000
   if (t.kind === "apple") {
@@ -185,7 +168,7 @@ async function transcribe(t: Transcriber, abs: string): Promise<{ paras: string[
   const lang = /^[a-z]{2,3}[-_]/i.test(t.language) ? t.language.split(/[-_]/)[0] : t.language
   if (t.kind === "whispercpp") {
     try {
-      // (it reads 16 kHz WAV: ffmpeg makes one of whatever came; left out, its language is English, so "auto")
+      // (whisper.cpp reads only 16 kHz WAV; without a language it assumes English)
       const wav = path.join(out, "audio.wav")
       await run(t.ffmpeg, ["-nostdin", "-loglevel", "error", "-i", abs, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", wav], process.env, timeout)
       await run(t.bin, ["-m", t.model, "-f", wav, "-l", lang || "auto", "-oj", "-of", path.join(out, "transcript"), "-np"], process.env, timeout)
@@ -218,7 +201,6 @@ const jobs: Job[] = []
 let queue: Promise<unknown> = Promise.resolve()
 let n = 0
 
-/** The notes that embed the file (newest first). */
 function notesEmbedding(rel: string) {
   return [...plugin.vault.entries.values()].filter((e) => e.body.split("\n").some((l) => embedsAudio(l, rel)))
     .sort((a, b) => Number(b.stat.ns - a.stat.ns)).map((e) => e.rel)
@@ -234,7 +216,6 @@ async function work(job: Job) {
     if (!fs.existsSync(abs)) throw new Error(`${job.path} isn't there any more`)
     const { paras, language } = await transcribe(found.t, abs)
     job.language = language
-    // Into the note as it is now (the user may have typed meanwhile): a small edit, written while no other write runs.
     await vault.lock(async () => {
       await vault.sync()
       const note = vault.abs(job.note)
@@ -280,8 +261,6 @@ plugin.route("POST", "audio-recorder/transcribe", async (req) => {
   return reply(202, job)
 })
 
-/** A voice note: transcribed, then inbox.voice with its words and the recording (kept above them), as who recorded it;
- *  one this Mac can't transcribe is kept in the inbox as the recording alone (`kept`: why), never lost. */
 async function voice(job: Job, dir: string, file: string, from: string, who: Who, http: IncomingMessage | undefined) {
   job.state = "running"
   let why = ""
@@ -320,7 +299,6 @@ async function voice(job: Job, dir: string, file: string, from: string, who: Who
   job.finished = Date.now()
 }
 
-// POST /api/audio-recorder/voice?ext=&from=: the recording as the body, any size, onto this machine's disk as it comes.
 plugin.route("POST", "audio-recorder/voice", async (req) => {
   if (!req.http) throw new HTTPError(400, "the recording comes over HTTP, as the body")
   const ext = /^[a-z0-9]{1,5}$/i.test(String(req.query.ext ?? "")) ? String(req.query.ext) : "webm"
