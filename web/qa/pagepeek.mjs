@@ -1,6 +1,6 @@
 // Zen's sidebars over a browser tab in the desktop app: its page is a native view the window doesn't hear, yet the
 // pointer at an edge slides the sidebar in (moves sent with sendInputEvent), and the window is over the page for all of its
-// slide, in and out, not only once it stopped (the part over the page slid under it). Writes the throwaway vault only.
+// slide, in and out, not only once it stopped (the part over the page slid under it: plugins/core/web-viewer/placement.ts). Writes the throwaway vault only.
 //   node web/qa/pagepeek.mjs <vault copy>
 import { _electron } from "playwright-core"
 import fs from "node:fs"

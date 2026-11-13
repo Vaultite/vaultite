@@ -1,5 +1,5 @@
 // The sidebars moving beside and over a web page in the desktop app: a pinned one opening and closing (the panes are
-// laid out once and slide there, core/panemotion.ts; the page's picture slides in its place, WebPage.tsx), a hidden one
+// laid out once and slide there, core/panemotion.ts; the page's picture slides in its place, plugins/core/web-viewer/placement.ts), a hidden one
 // sliding in and out over it (core/peek.ts). Per motion: frames presented and dropped (Chromium's frame reporter), the
 // app's layout time, and how often the page was moved. HEAVY=<n> adds n spans to a pane, as a well-used vault's page.
 // WRITES: the throwaway vault only.

@@ -4,11 +4,12 @@ import { useEffect, useRef, useState, type ReactNode } from "react"
 import { AppWindow, ArrowLeft, ArrowRight, ArrowUpRight, Check, ChevronDown, Ellipsis, FileCode2, FileWarning, Globe, History, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Pause, PictureInPicture2, Play, Printer, RotateCw, Scissors,
   Search, ShieldAlert, Star, Undo2, Volume2, VolumeX, WifiOff, X, type LucideIcon } from "lucide-react"
 import {
-  Button, canNavigate, cn, commandKeys, getTabLayout, ink, menuBelow, menuFor, navigate, notify, notifyError, onPaneMotion, openInSplit, openMenu, openView, allPanes, PaneControls, post, typingIn, useEnabled, usePane, usePaneTopBar, useStore, useZoomTarget, webPageActions, webPages,
-  type MenuItem, type PaneMotion, type WebPageAction, type WebPageState, type WebPages,
+  Button, canNavigate, cn, commandKeys, getTabLayout, ink, menuBelow, menuFor, navigate, notify, notifyError, onPaneMotion, openInSplit, openMenu, openView, allPanes, PaneControls, post, trace, typingIn, useEnabled, usePane, usePaneTopBar, useStore, useZoomTarget, webPageActions, webPages,
+  type MenuItem, type WebPageAction, type WebPageState, type WebPages,
 } from "@vaultite"
 import { hostOf } from "./address"
-import { floatCover, hitCover, matters, moved, overlap, painted, passPointer, popupOpen, sameRect, setCover, setHole, SLIDES, type Change, type Cover } from "./layers"
+import { floatCover, hitCover, matters, moved, painted, passPointer, popupOpen, setCover, setHole, SLIDES } from "./layers"
+import { placementStart, placeStep, type Look, type PlaceEffect, type PlaceEvent, type Seen, type Box, type Change, worthTracing } from "./placement"
 import { ExtensionButtons, extensionItems, useExtensionBar } from "./Extensions"
 import { AddressBar, type Go } from "./AddressBar"
 import { ContainerButton } from "./ContainerButton"
@@ -69,7 +70,7 @@ function corners(box: HTMLElement, r: DOMRect) {
   const c = card.getBoundingClientRect(), at = (a: number, b: number) => Math.abs(a - b) < 1
   return radius && at(r.left, c.left) && at(r.right, c.right) && (at(r.top, c.top) || at(r.bottom, c.bottom)) ? radius : 0
 }
-const spot = (r: DOMRect, radius: number) => ({ x: r.left, y: r.top, width: r.width, height: r.height, radius })
+const spot = (r: Box, radius: number) => ({ x: r.left, y: r.top, width: r.width, height: r.height, radius })
 
 const http = (u: string) => /^https?:\/\//i.test(u)
 /** What a tab may follow and name: the web, an extension's own pages (its options) and a page's source. */
@@ -258,139 +259,93 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   useEffect(() => {
     const el = box.current
     if (!id || !el || away) return
-    let raf = 0, covered = false, gone = false, busy = false, again = false, hits: Cover = null, coverNow: Cover = null
-    /** Where the page is now (null: hidden), and its corners. Not known till this places it: `web:open` showed it where
-     *  the box was. */
-    let at: DOMRect | null = null, known = false, radius = -1
-    /** What to look at again (null: only where it is). */
-    let dirty: Change = "hits"
-    // The window is see-through only where the page is, in every frame (App windows make it transparent): the hole
-    // shrinks and is painted before the page moves or hides, and grows only once the page is there.
-    const move = async (to: DOMRect | null, round = 0) => {
-      const both = at && to ? overlap(at, to) : null
-      if (!sameRect(both, at)) { setHole(id, el, both, radius); await painted() }
-      if (gone) return undefined
-      const placed = await web.place(id, to && spot(to, round)).catch(() => undefined)
-      at = placed?.shown === false ? null : to
-      radius = round
-      known = true
-      setOnScreen(id, !!at)
-      if (!gone) setHole(id, el, at, radius)
-      return placed
+    let s = placementStart(shownFocused.current), gone = false, raf = 0, motions = 0
+    let moving: HTMLElement = el, taken: HTMLImageElement | null = null, picture: HTMLImageElement | null = null
+    let holding: Promise<unknown> | undefined
+    const look: Look = { hits: (a) => hitCover(el, a), floats: floatCover }
+    const see = (): Seen => {
+      const area = pageArea(el.getBoundingClientRect()), { error, passkey, held } = live.current, a = document.activeElement
+      return { area, radius: corners(el, area), error, passkey, held, keysFree: !a || a === document.body, paneFocused: el.closest("[data-pane]")?.id === "main-scroll" }
     }
-    const step = async () => {
-      if (still) return
-      const r = pageArea(el.getBoundingClientRect()), round = corners(el, r)
-      const show = !live.current.error && !live.current.passkey && !live.current.held && r.width >= 2 && r.height >= 2
-      // (where it was, and nothing changed since: nor did what covers it)
-      if (!dirty && show && at && sameRect(at, r) && round === radius) return
-      if (dirty === "hits" || !sameRect(at, r)) hits = show ? hitCover(el, r) : null
-      dirty = null
-      const cover = show ? hits ?? floatCover(r) : null
-      setCover(id, coverNow = cover)
-      // In the focused pane with the keyboard nowhere in particular: the page has it (back from under a menu, or shown again
-      // with it, or it had it when it was hidden and nothing else took it meanwhile).
-      const free = !document.activeElement || document.activeElement === document.body
-      const mine = el.closest("[data-pane]")?.id === "main-scroll"
-      if (covered && cover !== "app" && free && mine) void web.go(id, "focus")
-      covered = cover === "app"
-      // (an error that came before its first step: the page web:open showed is hidden under it)
-      if (!show) { if (at || (!known && live.current.error)) await move(null); return }
-      if (sameRect(at, r) && round === radius) return
-      const wasHidden = !at
-      const placed = await move(r, round)
-      if (wasHidden && free && (placed?.focused || shownFocused.current || mine)) void web.go(id, "focus")
-      shownFocused.current = false
-    }
-    // One step at a time: a move waits for the paint before it.
-    const sync = async () => {
-      raf = 0
+    const send = (e: PlaceEvent) => {
       if (gone) return
-      if (busy) { again = true; return }
-      busy = true
-      try { await step() } finally { busy = false; if (again) { again = false; schedule() } }
+      const was = s, step = placeStep(s, e, look)
+      s = step.to
+      if (worthTracing(was, s)) trace("web-page", { id, on: e.type, from: was.phase.kind, to: s.phase.kind, where: s.where.kind })
+      for (const fx of step.do) run(fx)
     }
-    // (A window that's hidden or covered gets no animation frames: a timer then, so the page is in place when it shows.)
-    const schedule = () => {
-      if (raf || gone) return
-      raf = document.hidden ? window.setTimeout(() => void sync(), 50) : requestAnimationFrame(() => void sync())
+    const unpicture = () => { if (!picture) return; picture.remove(); URL.revokeObjectURL(picture.src); picture = null }
+    const shoot = async (motion: number) => {
+      const shot = await web.shot!(id).catch(() => null), img = new Image()
+      if (shot) { img.src = URL.createObjectURL(new Blob([shot as BlobPart], { type: "image/jpeg" })); await img.decode().catch(() => {}) }
+      taken = img
+      send({ type: "shot", motion, ok: !!shot })
+      if (picture !== img) { URL.revokeObjectURL(img.src); return }
+      // (a frame later it's drawn: the pane may start moving as the page is told to go, it's gone within a frame)
+      await new Promise(requestAnimationFrame)
+      send({ type: "drawn", motion })
     }
-    const touch = (c: Change = "hits") => {
-      if (!c || dirty === "hits") return
-      dirty = c
-      schedule()
+    const run = (fx: PlaceEffect) => {
+      switch (fx.do) {
+        // (A window that's hidden or covered gets no animation frames: a timer then, so the page is in place when it shows.)
+        case "ask": if (!raf) raf = document.hidden ? window.setTimeout(frame, 50) : requestAnimationFrame(frame); return
+        case "cover": return setCover(id, fx.cover)
+        case "hole": return setHole(id, el, fx.at, fx.radius)
+        case "paint": return void painted().then(() => send({ type: "painted", n: fx.n }))
+        case "place": return void web.place(id, fx.to && spot(fx.to, fx.radius)).catch(() => undefined)
+          .then((p) => send({ type: "placed", n: fx.n, to: fx.to, radius: fx.radius, shown: p?.shown !== false, focused: !!p?.focused }))
+        case "focus": return void web.go(id, "focus")
+        case "on-screen": return setOnScreen(id, fx.on)
+        case "spent": shownFocused.current = false; return
+        case "shoot": holding = shoot(fx.motion); return
+        case "picture": {
+          const img = taken
+          if (!img) return
+          img.alt = ""
+          img.className = "pointer-events-none absolute top-0 left-0 max-w-none select-none"
+          Object.assign(img.style, { width: `${fx.was.width}px`, height: `${fx.was.height}px` })
+          el.append(img)
+          picture = img
+          return
+        }
+        case "off": {
+          // Off the window at its new size (the box's, without its pane's move), so it's laid out once it's back.
+          const m = new DOMMatrixReadOnly(getComputedStyle(moving).transform), r = el.getBoundingClientRect()
+          const to = pageArea(new DOMRect(r.left - m.m41, r.top - m.m42, el.offsetWidth, el.offsetHeight))
+          return void web.place(id, { x: -40000, y: 0, width: Math.max(2, to.width), height: Math.max(2, to.height) }).catch(() => undefined)
+        }
+        case "unpicture": return unpicture()
+      }
     }
+    const frame = () => { raf = 0; send({ type: "frame", seen: see() }) }
+    const touch = (change: Change = "hits") => send({ type: "changed", change })
     kick.current = touch
     // While its pane moves (core/panemotion.ts), a picture of the page slides with it: a native view moved each frame
     // lags behind. The page waits off the window at its new size and comes back where the pane stops.
-    let still: { until: Promise<unknown> } | null = null, picture: HTMLImageElement | null = null
-    const unpicture = () => { if (!picture) return; picture.remove(); URL.revokeObjectURL(picture.src); picture = null }
-    const thaw = async () => {
-      still = null
-      const r = pageArea(el.getBoundingClientRect())
-      if (picture && !live.current.error && !live.current.passkey && r.width >= 2 && r.height >= 2) {
-        const round = corners(el, r)
-        await web.place(id, spot(r, round)).catch(() => undefined)
-        if (gone) return
-        at = r
-        radius = round
-        setHole(id, el, at, radius)
-        await painted()
-      }
-      unpicture()
-      touch()
-    }
-    const freeze = ({ moving, finished }: PaneMotion) => {
-      const sec = moving.find((m) => m.contains(el))
-      if (!sec || !web.shot || (!at && !picture)) return
-      const mine = still = { until: finished }
-      void finished.then(() => { if (still === mine) void thaw() })
-      // (moving again before it stopped: its picture is up already)
-      if (picture) return
-      // (the window over the live page till its picture's up: a sidebar coming in slides over it, not under)
-      if (!coverNow) setCover(id, coverNow = "through")
-      const was = at!
-      return (async () => {
-        const shot = await web.shot!(id).catch(() => null)
-        const img = new Image()
-        if (shot) img.src = URL.createObjectURL(new Blob([shot as BlobPart], { type: "image/jpeg" }))
-        if (shot) await img.decode().catch(() => {})
-        if (gone || still !== mine || !shot) { URL.revokeObjectURL(img.src); if (still === mine) { still = null; touch() } return }
-        img.alt = ""
-        img.className = "pointer-events-none absolute top-0 left-0 max-w-none select-none"
-        Object.assign(img.style, { width: `${was.width}px`, height: `${was.height}px` })
-        el.append(img)
-        picture = img
-        // (the window, still over the page, solid there again: its picture shows in its place before it goes)
-        setHole(id, el, null)
-        // (a frame later it's drawn: the pane may start moving as the page is told to go, it's gone within a frame)
-        await new Promise(requestAnimationFrame)
-        if (gone || still !== mine) return
-        // Off the window at its new size (the box's, without its pane's move), so it's laid out once it's back.
-        const m = new DOMMatrixReadOnly(getComputedStyle(sec).transform), r = el.getBoundingClientRect()
-        const to = pageArea(new DOMRect(r.left - m.m41, r.top - m.m42, el.offsetWidth, el.offsetHeight))
-        void web.place(id, { x: -40000, y: 0, width: Math.max(2, to.width), height: Math.max(2, to.height) }).catch(() => undefined)
-        at = null
-        // (then nothing of it is under what the app draws: the window may drop)
-        setCover(id, coverNow = null)
-        covered = false
-      })()
-    }
-    const unmotion = onPaneMotion(freeze)
+    const unmotion = onPaneMotion(({ moving: secs, finished }) => {
+      const sec = secs.find((m) => m.contains(el))
+      if (!sec || !web.shot) return
+      const motion = ++motions
+      moving = sec
+      holding = undefined
+      void finished.then(() => send({ type: "stopped", motion, seen: see() }))
+      send({ type: "motion", motion })
+      return holding
+    })
     const ro = new ResizeObserver(() => touch())
     ro.observe(el)
-    const mo = new MutationObserver((rs) => { for (const m of rs) { if (dirty === "hits") return; touch(matters(m, el)) } })
+    const mo = new MutationObserver((rs) => { for (const m of rs) { if (s.dirty === "hits") return; touch(matters(m, el)) } })
     mo.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["open", "class", "style", "hidden", "data-dragging", "data-state", "data-visible", "data-removed"] })
     // (something sliding over it is looked at as it starts, where it goes, and where it stops)
-    const slid = (e: Event) => { if (dirty !== "hits") touch(moved(e, el)) }
+    const slid = (e: Event) => { if (s.dirty !== "hits") touch(moved(e, el)) }
     const all = () => touch()
     for (const ev of SLIDES) document.addEventListener(ev, slid, true)
     addEventListener("resize", all)
     document.addEventListener("visibilitychange", all)
     // (and now and then where it is, for a move nothing above announces)
-    const tick = setInterval(schedule, 500)
+    const tick = setInterval(() => send({ type: "tick" }), 500)
     const unpass = passPointer(el, () => id, () => pageArea(el.getBoundingClientRect()))
-    schedule()
+    send({ type: "tick" })
     return () => {
       gone = true
       kick.current = undefined

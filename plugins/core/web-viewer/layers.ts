@@ -1,10 +1,8 @@
 // The window over its pages (electron/appwindow.ts): raised while anything of it covers a page, see-through behind
 // each so the live page shows there, passing the pointer on where nothing of it is (but under a menu, dialog or drag).
 import { webPages } from "@vaultite"
+import { overlap, sameBox, type Box, type Change, type Cover } from "./placement.ts"
 
-/** What covers a page: something that takes every click over it ("app": a menu, a dialog, a drag), only what lets the
- *  rest through ("through": a toast, the mini player, a sidebar peeking over it), or nothing (null). */
-export type Cover = "app" | "through" | null
 
 const covers = new Map<number, Cover>()
 let raised: Cover = null
@@ -34,7 +32,7 @@ const EDGE_STEP = 64, INSIDE = 4
 
 /** What's over the page: a popup or a drag takes every click there ("app": a click beside a menu only closes it), else
  *  each its own ("through"). Toasts, the status bar never count. Hit tests: popups where they are, the edges, a few inside. */
-export function hitCover(box: HTMLElement, r: DOMRect): Cover {
+export function hitCover(box: HTMLElement, r: Box): Cover {
   if ("dragging" in document.documentElement.dataset) return "app"
   // (8px in from the edges: the dividers beside a pane, the sidebar's edge, a split's, reach a few pixels into it)
   const E = 8, L = r.left + E, T = r.top + E, R = r.right - E, B = r.bottom - E
@@ -96,15 +94,12 @@ function slides(box: HTMLElement, r: DOMRect) {
 
 /** Whether only what lets the pointer through is over the page ("through"): tooltips and toasts, found by where they are
  *  (they take no pointer, so no hit test finds them). */
-export function floatCover(r: DOMRect): Cover {
+export function floatCover(r: Box): Cover {
   const floats = document.querySelectorAll<HTMLElement>("[data-floats], [data-sonner-toast][data-visible=true]:not([data-removed=true])")
   for (const f of floats) { const b = f.getBoundingClientRect(); if (b.width > 1 && b.height > 1 && b.left < r.right && b.right > r.left && b.top < r.bottom && b.bottom > r.top) return "through" }
   return null
 }
 
-/** What a change may change of what covers `box`: "hits", only its floats (in a toast or tooltip), or nothing (in the
- *  box, the status bar, or another pane, whose scroller clips it, but for a fixed element added there). */
-export type Change = "hits" | "floats" | null
 function changeAt(t: Element | null, box: HTMLElement): Change {
   if (!t || box.contains(t) || t.closest("[data-status-bar]")) return null
   if (t.closest("[data-sonner-toaster], [data-floats]")) return "floats"
@@ -166,25 +161,18 @@ export function passPointer(box: HTMLElement, id: () => number | null, area: () 
 
 // ---------- the hole: only backgrounds are cut, never what's drawn over the page ----------
 
-const holes = new Map<number, { box: HTMLElement; r: DOMRect; radius: number }>()
+const holes = new Map<number, { box: HTMLElement; r: Box; radius: number }>()
 /** The elements whose backgrounds are cut, with the CSS they were given. */
 let cut = new Map<HTMLElement, string>()
 let soon = 0
 
 /** Page `id` shows at `r` of `box` (null: it doesn't), its corners rounded by `radius`: what's behind it is cut away. */
-export function setHole(id: number, box: HTMLElement, r: DOMRect | null, radius = 0) {
+export function setHole(id: number, box: HTMLElement, r: Box | null, radius = 0) {
   const had = holes.get(id)
   if (!r) { if (!had) return; holes.delete(id) }
-  else if (had && had.box === box && same(had.r, r) && had.radius === radius) return
+  else if (had && had.box === box && sameBox(had.r, r) && had.radius === radius) return
   else holes.set(id, { box, r, radius })
   schedule()
-}
-const same = (a: DOMRect, b: DOMRect) => a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height
-export const sameRect = (a: DOMRect | null, b: DOMRect | null) => (a && b ? same(a, b) : a === b)
-/** Where `a` and `b` overlap (null: nowhere). */
-export function overlap(a: DOMRect, b: DOMRect) {
-  const l = Math.max(a.left, b.left), r = Math.min(a.right, b.right), t = Math.max(a.top, b.top), btm = Math.min(a.bottom, b.bottom)
-  return l < r && t < btm ? new DOMRect(l, t, r - l, btm - t) : null
 }
 /** Once the holes as set now are on screen: two frames after the one that cuts them (it's then been shown). */
 export const painted = () => new Promise<void>((done) => {
@@ -208,7 +196,7 @@ function apply() {
   }
   // Every element painting behind a page: its colour as four (or more) strips around the holes in it.
   const next = new Map<HTMLElement, string>()
-  const under = new Map<HTMLElement, { r: DOMRect; radius: number }[]>()
+  const under = new Map<HTMLElement, { r: Box; radius: number }[]>()
   for (const { box, r, radius } of holes.values()) {
     for (let el: HTMLElement | null = box; el; el = el.parentElement) under.set(el, [...(under.get(el) ?? []), { r, radius }])
   }
@@ -234,7 +222,7 @@ function apply() {
 }
 
 /** A rounded page's hole keeps what's outside its corners' curves painted: the page shows only inside them. */
-function corners(h: DOMRect, radius: number, color: string) {
+function corners(h: Box, radius: number, color: string) {
   if (radius <= 0) return []
   const at = (x: number, y: number, centre: string) => ({ image: `radial-gradient(circle at ${centre}, transparent ${radius - 0.5}px, ${color} ${radius + 0.5}px)`,
     s: new DOMRect(x, y, radius, radius) })
@@ -243,7 +231,7 @@ function corners(h: DOMRect, radius: number, color: string) {
 }
 
 /** `a` without `h`: up to four rects. */
-function minus(a: DOMRect, h: DOMRect): DOMRect[] {
+function minus(a: DOMRect, h: Box): DOMRect[] {
   const l = Math.max(a.left, h.left), r = Math.min(a.right, h.right), t = Math.max(a.top, h.top), b = Math.min(a.bottom, h.bottom)
   if (l >= r || t >= b) return [a]
   const out = [new DOMRect(a.left, a.top, a.width, t - a.top), new DOMRect(a.left, b, a.width, a.bottom - b),
