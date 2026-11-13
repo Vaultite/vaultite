@@ -589,16 +589,17 @@ export default async ($: VaultTest) => {
       stuck && listed && /stuck/.test(failed?.error ?? "") && trouble?.id === "stuck1" && /started again blank/.test(trouble?.text ?? "") &&
       typeof after === "string" && !/before/.test(after), [stuck, listed, failed, trouble, after])
 
-    c.take({ op: "create", id: "redraw1", file: "/bin/sh", args: ["-c", "trap 'echo \"drawn $(stty size)\"' WINCH; printf 'ready\\n'; while :; do sleep 0.05; done"],
+    c.take({ op: "create", id: "redraw1", file: "/bin/sh", args: ["-c", "trap 'echo \"drawn $(stty size)\"' WINCH; printf '\\033[?2004hready\\n'; while :; do sleep 0.05; done"],
       cwd: tmp, env: { PATH: "/usr/bin:/bin" }, cols: 80, rows: 24, re: 6 })
     const r = h.sessions.get("redraw1")!
     await waitFor(() => { c.take({ op: "capture", id: "redraw1", re: 7 }); return /ready/.test(String(msgs.findLast((m) => m.re === 7)?.text ?? "")) || null }, 5_000, 50)
     c.take({ op: "capture", id: "redraw1", re: 8 })
     r.term.check(performance.now() + HUNG + 1)
     const drawn = await waitFor(async () => { c.take({ op: "capture", id: "redraw1", re: 9 }); await new Promise((res) => setTimeout(res, 50)); const t = String(msgs.findLast((m) => m.re === 9)?.text ?? ""); return /drawn 24 80/.test(t) ? t : null }, 5_000, 50)
+    const paste = r.term.mode(2004)
     r.driver.kill()
-    check("terminal server: a screen started again blank has its program draw itself again, at its own size",
-      /drawn 24 79/.test(String(drawn)) && !/ready/.test(String(drawn)), [drawn])
+    check("terminal server: a screen started again blank has its program draw itself again, at its own size, its paste mode kept (a long text typed reaches it whole)",
+      /drawn 24 79/.test(String(drawn)) && !/ready/.test(String(drawn)) && paste === true, [drawn, paste])
   }
 
   // A terminal server that stops answering (stuck): said once, its trouble told, what's asked then failing at once; heard

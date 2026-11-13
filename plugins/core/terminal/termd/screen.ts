@@ -43,7 +43,7 @@ export class Screen {
 
   private start() {
     const w = new Worker(new URL("./screenworker.ts", import.meta.url),
-      { workerData: { module: vtModule(), cols: this.cols, rows: this.rows, scrollback: this.scrollback } })
+      { workerData: { module: vtModule(), cols: this.cols, rows: this.rows, scrollback: this.scrollback, modes: this.modes } })
     this.w = w
     w.unref()
     w.on("message", (m: Said) => { if (this.w === w) this.heard(m) })
@@ -96,7 +96,6 @@ export class Screen {
     const old = this.w, pending = this.waiting.splice(0)
     this.w = null
     this.inflight = 0
-    this.modes = { app: false, paste: false }
     void old?.terminate()
     const now = performance.now()
     this.restarts = [...this.restarts.filter((t) => now - t < 60_000), now]

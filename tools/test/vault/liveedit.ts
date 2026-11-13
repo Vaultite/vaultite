@@ -122,7 +122,7 @@ export default async ($: VaultTest) => {
     check("live edit: a note's asks go to a job only once it changed that note", !none && live.jobOn({ path: "Notes/Day.md" } as Any)?.id === "j3", none)
   }
   check("live edit: what its worker is told: tagged, change it now, a question answered, another's handed back",
-    /^Live edit L3: [^]*make this change now[^]*\(not for me\)[^]*they undid[^]*\(The user, through their companion: They said: "make it red"/.test(Asks.liveText("L3", { t: 1, seq: 1, kind: "ask", text: "make it red" } as Any, ["(they undid L2)"])))
+    /^Live edit L3: [^]*make this change now[^]*\(not for me\)[^]*they undid[^]*They said: "make it red"$/.test(Asks.liveText("L3", { t: 1, seq: 1, kind: "ask", text: "make it red" } as Any, ["(they undid L2)"])))
 
   // End to end: a job on a preview, then asks over that page go straight to it (no turn of the companion's), its turn's
   // end said; "undo that" takes back exactly its edits for the last ask, the user's own kept.

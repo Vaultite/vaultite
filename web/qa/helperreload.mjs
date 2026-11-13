@@ -79,6 +79,9 @@ try {
   const drawn = () => Promise.all(overlays().map((p) => p.evaluate(() => document.body.textContent).catch(() => "")))
   check("…and its overlay draws them on the screen", await until(async () => (await drawn()).some((t) => /paragraph/i.test(t)), 15000, 200),
     { overlays: overlays().length, text: (await drawn()).map((t) => t.slice(0, 200)) })
+  await app.evaluate(({ BrowserWindow }) => { for (const w of BrowserWindow.getAllWindows()) if (w.webContents.getURL().endsWith("/screen.html")) void w.loadURL("http://127.0.0.1:9/screen.html").catch(() => {}) })
+  check("…its page failing to load (its server down a moment), it loads again and draws them", await until(async () => overlays().length > 0 && !overlays().some((p) => p.url().includes(":9/")) &&
+    (await drawn()).some((t) => /paragraph/i.test(t)), 20000, 200), { urls: overlays().map((p) => p.url()), text: (await drawn()).map((t) => t.slice(0, 200)) })
   await slot((s, r) => s.reload(r.dir, r.commit), roots[0])
   await wait(6000)
   check("…a reload asked meanwhile waits", await slot((s) => s.commit()) === roots[1].commit)

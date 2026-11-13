@@ -34,20 +34,36 @@ const hiding = new Map<BrowserWindow, ReturnType<typeof setTimeout>>()
 // (an empty window still costs the window server a full-screen layer, but hiding and showing it at once flickers)
 const LINGER = 4000
 
+/** Load `to()` in `w`, again after a failed load or a lost page: else it draws nothing while the window hides its cursor. */
+function kept(w: BrowserWindow, to: () => string) {
+  let tries = 0, ok = true, timer: ReturnType<typeof setTimeout> | null = null
+  const again = () => {
+    if (timer || w.isDestroyed()) return
+    timer = setTimeout(() => { timer = null; const u = to(); if (u && !w.isDestroyed()) void w.loadURL(u).catch(() => {}) }, Math.min(500 * 2 ** tries++, 5000))
+  }
+  w.webContents.on("did-fail-load", (_e, code, _d, _u, main) => { if (main && code !== -3) again() })
+  w.webContents.on("did-navigate", (_e, _u, status) => { ok = !status || status < 400 })
+  w.webContents.on("did-finish-load", () => { if (ok) tries = 0; else again() })
+  w.webContents.on("render-process-gone", again)
+  w.once("closed", () => { if (timer) clearTimeout(timer) })
+  const u = to()
+  if (u) void w.loadURL(u).catch(() => {})
+}
+
 function make(d: Display) {
   const w = overlayWindow({ ...d.bounds, focusable: false, enableLargerThanScreen: true,
     // (its soft cues play with no click on it: nothing ever clicks the overlay to allow them)
     webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true, backgroundThrottling: false, autoplayPolicy: "no-user-gesture-required" } }, "screen")
   takesPointer(w)
   w.webContents.on("did-finish-load", () => { sent.delete(w); push(); if (layers.size) sendDrawing(); if (feed) feedPointer(true) })
-  if (url) void w.loadURL(url).catch(() => {})
+  w.webContents.on("render-process-gone", () => sent.delete(w))
+  kept(w, () => url)
   wins.set(d.id, w)
   return w
 }
 
 function drop(w: BrowserWindow) { clearTimeout(hiding.get(w)); hiding.delete(w); sent.delete(w); w.destroy() }
 
-/** Each display has its window, where it is. */
 function fit() {
   const ds = screen.getAllDisplays()
   for (const [id, w] of [...wins]) if (!ds.some((d) => d.id === id)) { drop(w); wins.delete(id) }
@@ -157,7 +173,6 @@ function sendDrawing() {
   for (const d of ds) { const w = wins.get(d.id); if (w && !w.isDestroyed() && !w.webContents.isLoading()) w.webContents.send("vaultite:draw", [...layers.values()].map((l) => drawingFor(l, d, ds, p, penSound))) }
   onLayers?.([...layers.values()])
 }
-/** Whether the layer `id` is up (not cleared, not ended). */
 export const drawingUp = (id: string) => [...layers.values()].some((l) => l.id === id)
 /** `agent`'s exchange is over: what lives until the next ask goes from its layer (the server does it and says so); `all`
  *  (Esc), the whole layer, at once. */
@@ -271,7 +286,7 @@ export function openPanel(base: string, at: Point, data: PanelData, focus = true
   // (only a move by hand: the box's own (setBounds) never asks)
   w.on("will-move", () => { mine.moved = true; mine.travels = false })
   w.on("closed", () => { if (panel === mine) { panel = null; panelActs?.closed(mine.name, mine.esc ? "esc" : undefined) } })
-  void w.loadURL(`${base}/screen.html#panel`).catch(() => {})
+  kept(w, () => `${base}/screen.html#panel`)
 }
 
 /** Its words changed (a new say, an ask, dictation): drawn again. */

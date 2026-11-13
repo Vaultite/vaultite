@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The companion's cursor and your words show after an update**: when the menu-bar helper started while the server
+  restarted, its overlay never loaded and drew nothing while the window hid its own cursor; it now loads again by itself.
+- **A follow-up to a job arrives whole**: after a terminal's screen started over, a long message typed to a job reached it
+  as only its last part; the screen now keeps its program's paste mode, and a follow-up's context comes before the ask.
 - **A terminal whose screen had to start over shows its program again**: when its screen couldn't read some output and
   started again blank, an agent done with its turn left the terminal blank with only a cursor; its program now redraws it.
 - **"Sign in with Google" buttons open their sign-in popup in the built-in browser**: a press on one did nothing, as

@@ -55,7 +55,7 @@ export default async ($: VaultTest) => {
 
       cScreen.screenMoment({ kind: "ask", agent: "Claude", text: "let me talk with that job", ...over, voice: true })
       const [ts, tb] = await api("POST", "ops/companion.talk", { job }, agent)
-      const first = await waitFor(() => /^Talk: the user wants to talk with you by voice[^\n]*as Make a landing page[^\n]*let me talk with that job/m.test(told()) && told(), 8000, 50)
+      const first = await waitFor(() => /Talk: the user wants to talk with you by voice[^\n]*as Make a landing page[^\n]*let me talk with that job/m.test(told()) && told(), 8000, 50)
       check("talk: handing a job the floor tells its worker how to talk, the ask that asked its first words", ts === 200 && tb.name === "Make a landing page" && !!first, [ts, tb, told()])
       turn = { text: "I wrote the plan [ring \"Jobs\"], in two parts.", files: [], at: Date.now() + 1000, final: true }
       const said = await waitFor(async () => (await says()).includes("Make a landing page: I wrote the plan, in two parts."), 10000, 100)
@@ -65,7 +65,7 @@ export default async ($: VaultTest) => {
       check("talk: the watchdog leaves a talking job's cursor, which never calls next", stays === "watching", stays)
 
       const m = cScreen.screenMoment({ kind: "ask", agent: "Claude", text: "what's in part two?", ...over, voice: true }) as Any
-      const next = await waitFor(() => /^Talk: they said this to you by voice[^\n]*what's in part two\?/m.test(told()), 8000, 50)
+      const next = await waitFor(() => /Talk: they said this to you by voice[^\n]*what's in part two\?/m.test(told()), 8000, 50)
       check("talk: the Talk key's next words go into its terminal, the job's, not the companion's", !!next && m?.live === job && m?.for === "Make a landing page", [told(), m?.for, m?.live])
       turn = { text: "Pricing and a signup form.", files: [], at: Date.now() + 1000, final: true }
       await waitFor(async () => (await says()).includes("Make a landing page: Pricing and a signup form."), 10000, 100)

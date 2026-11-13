@@ -599,9 +599,9 @@ export default async ($: VaultTest) => {
       const told = await waitFor(() => fs.existsSync(path.join(repo, "told.txt")) && fs.readFileSync(path.join(repo, "told.txt"), "utf8").trim(), 10000, 100)
       check("handoff --job: typed into its worker's terminal, which goes on; with no say, it still says so in a line", st === 200 && told === "Use the darker blue" &&
         !!(await waitFor(async () => (await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.kind === "say" && n.text === "Passed that on to its job."), 3000, 50)), [st, b, told])
-      check("handoff --job: a follow-up carries the user's own words and screen once, one line",
+      check("handoff --job: a follow-up carries the user's own words and screen once, one line, where they were first and the ask last (a cut loses the context)",
         J.followTask("Darker", { t: 1, seq: 1, kind: "ask", text: "make it darker", voice: true, app: "com.example.browser", title: "Site", shot: "/s.png" } as Any) ===
-          'Darker (The user, through their companion: They said (dictated, so it may hold slips: go by the task): "make it darker" · Where: on their screen, in "Site" (com.example.browser) · Their screen then (a picture): /s.png)' &&
+          '(Where the user was, through their companion: Where: on their screen, in "Site" (com.example.browser) · Their screen then (a picture): /s.png) Darker They said (dictated, so it may hold slips: go by the task): "make it darker"' &&
         J.followTask("Darker", undefined) === "Darker")
       {
         // (who told it what: the companion's own turn here, read wherever the job is)
@@ -1200,7 +1200,7 @@ setTimeout(draw, 300)
         studio.online = true
         const sent = await waitFor(() => calls.find((c) => c.op === "terminal.send"), 15000, 200)
         check("a follow-up kept for its machine is typed in once it's back, and its card no longer waits",
-          sent?.p.id === "claude-remote1" && /^Use bigger text/.test(sent.p.text) && !!(await waitFor(async () => !(await card(waiting.id))?.queued, 5000, 200)), sent?.p)
+          sent?.p.id === "claude-remote1" && /Use bigger text They said/.test(sent.p.text) && !!(await waitFor(async () => !(await card(waiting.id))?.queued, 5000, 200)), sent?.p)
         Wk.paced({ flush: L.PACE.flush })
         // Several handoffs in one turn (one tool call each, at once): one line naming the jobs, never the default line per call.
         const more: string[] = []

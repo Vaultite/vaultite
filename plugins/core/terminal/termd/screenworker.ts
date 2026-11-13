@@ -6,9 +6,16 @@ import type { CaptureFormat } from "./protocol.ts"
 type In = { n: number; op: "write"; d: string } | { n: number; op: "resize"; cols: number; rows: number; cw: number; ch: number }
   | { n: number; op: "capture"; format: CaptureFormat; lines: number | null } | { n: number; op: "snapshot" } | { n: number; op: "text"; lines: number }
 
-const { module, cols, rows, scrollback } = workerData as { module: WebAssembly.Module; cols: number; rows: number; scrollback: number }
-let title: string | undefined, reply = ""
-const make = (c: number, r: number, sb: number) => new Vt(module, { cols: c, rows: r, scrollback: sb, onTitle: (t) => { title = t }, onReply: (d) => { reply += d } })
+type Modes = { app: boolean; paste: boolean }
+const { module, cols, rows, scrollback, modes: was } = workerData as { module: WebAssembly.Module; cols: number; rows: number; scrollback: number; modes?: Modes }
+let title: string | undefined, reply = "", modes: Modes = was ?? { app: false, paste: false }
+// Its program set its modes once and won't on a redraw: unpasted, an agent's long text came in ~1 KB pieces, most lost.
+const make = (c: number, r: number, sb: number) => {
+  const v = new Vt(module, { cols: c, rows: r, scrollback: sb, onTitle: (x) => { title = x }, onReply: (d) => { reply += d } })
+  const set = `${modes.app ? "\x1b[?1h" : ""}${modes.paste ? "\x1b[?2004h" : ""}`
+  if (set) v.write(set)
+  return v
+}
 let t = make(cols, rows, scrollback)
 
 function answer(m: In): unknown {
@@ -36,7 +43,8 @@ function answer(m: In): unknown {
 parentPort!.on("message", (m: In) => {
   let out: unknown, error: string | undefined
   try { out = answer(m) } catch (e) { error = String((e as Error)?.message ?? e) }
-  const said = { n: m.n, app: t.mode(1), paste: t.mode(2004), ...(out !== undefined ? { out } : {}), ...(error ? { error } : {}),
+  modes = { app: t.mode(1), paste: t.mode(2004) }
+  const said = { n: m.n, ...modes, ...(out !== undefined ? { out } : {}), ...(error ? { error } : {}),
     ...(title !== undefined ? { title } : {}), ...(reply ? { reply } : {}) }
   title = undefined; reply = ""
   parentPort!.postMessage(said)

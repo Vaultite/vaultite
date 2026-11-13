@@ -249,9 +249,10 @@ function cloudTask(task: string, m: JobAsk | undefined, w: Pick<Where, "cwd" | "
 }
 
 export function followTask(task: string, m: JobAsk | undefined, id?: string) {
-  const asked = askLines(m), watched = !!id && m?.reviewed === id
+  const asked = askLines(m), words = asked.filter((l) => l.startsWith("They said")), around = asked.filter((l) => !words.includes(l))
+  const watched = !!id && m?.reviewed === id
   return [watched ? "They just watched your demo (Show me) and read its choice card: this is their feedback on what you made, whatever note or page their screen shows." : "",
-    task.trim(), asked.length ? `(The user, through their companion: ${asked.join(" · ")})` : ""].filter(Boolean).join(" ")
+    around.length ? `(Where the user was, through their companion: ${around.join(" · ")})` : "", task.trim(), ...words].filter(Boolean).join(" ")
 }
 
 export function jobText(j: Job, now = Date.now()) {
