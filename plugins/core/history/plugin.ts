@@ -1,5 +1,3 @@
-// File history: snapshots of text files on this machine (not the vault: disposable, and they
-// shouldn't sync), at most one per file per interval, so any bad edit can be undone. Restoring is an ordinary edit.
 import crypto from "node:crypto"
 import { once } from "node:events"
 import fs from "node:fs"
@@ -11,21 +9,15 @@ export const plugin = new Plugin(import.meta.url)
 
 const HOUR = 3600_000
 
-/** `ns`: the exact time (a rewrite of the same size within a millisecond, an agent's, changes only it). */
 type Stat = { mtime: number; size: number; ns?: string }
-/** What's kept for a file: its head's stat and hash, and when its last snapshot was taken (ms). */
 type Meta = Stat & { path: string; hash: string; last: number; gone?: boolean }
-/** `version`: the vault's version at the last comparison (nothing to compare while it's the same); `seen`: each file's
- *  stat at the last look (one still the same isn't compared again); `saving`: the index's write, due after heads change. */
 type State = { root: string; heads: Map<string, Meta>; skip: Map<string, string>; pruned: number; version: number; seen: Map<string, object>
   saving: ReturnType<typeof setTimeout> | null }
-/** Every followed file's head (its meta.json's), kept together; each meta.json stays what's true, the index may lag it. */
 const INDEX = "heads.json"
 
 const sha1 = (s: string | Buffer) => crypto.createHash("sha1").update(s).digest("hex")
 const states = new WeakMap<Vault, State>()
 
-/** This vault's folder of snapshots, and what's known about it (read from disk the first time). */
 function state(vault: Vault): State {
   let s = states.get(vault)
   if (s) return s
@@ -33,19 +25,17 @@ function state(vault: Vault): State {
   const root = path.join(LOCAL, "history", key)
   fs.mkdirSync(root, { recursive: true })
   fs.writeFileSync(path.join(root, "vault.txt"), real + "\n")
-  // The first prune a minute after the start (it looks at every snapshot: not while a server is starting), then hourly.
   s = { root, heads: new Map(), skip: new Map(), pruned: Date.now() - HOUR + 60_000, version: -1, seen: new Map(), saving: null }
-  // The heads from the index when there is one (one file, not one per file followed: a big vault's start isn't held).
   let index: Meta[] | null = null
   try { index = JSON.parse(fs.readFileSync(path.join(root, INDEX), "utf8")) } catch { /* none yet */ }
   for (const m of index ?? []) s.heads.set(m.path, m)
   for (const name of fs.readdirSync(root)) {
-    if (name.startsWith("tmp-")) { fs.rmSync(path.join(root, name), { force: true }); continue } // (a copy a stop cut off)
+    if (name.startsWith("tmp-")) { fs.rmSync(path.join(root, name), { force: true }); continue }
     if (index) continue
     const m = readMeta(path.join(root, name))
     if (m && !m.gone) s.heads.set(m.path, m)
   }
-  if (!index) (s.saving = setTimeout(() => saveIndex(s), 10_000)).unref?.() // (the next start reads the index)
+  if (!index) (s.saving = setTimeout(() => saveIndex(s), 10_000)).unref?.()
   states.set(vault, s)
   return s
 }
@@ -55,10 +45,8 @@ const dirOf = (s: State, rel: string) => path.join(s.root, sha1(rel).slice(0, 16
 function readMeta(dir: string): Meta | null {
   try { return JSON.parse(fs.readFileSync(path.join(dir, "meta.json"), "utf8")) } catch { return null }
 }
-// (whole or not at all: a head cut off by a crash would become the next snapshot, losing the version to restore)
 const writeMeta = (s: State, m: Meta) => writeAtomic(path.join(dirOf(s, m.path), "meta.json"), JSON.stringify(m))
 
-/** A file's head as its own meta.json says (the index may be behind it, after a stop): what's done to it goes by this. */
 function current(s: State, rel: string): Meta | undefined {
   const m = readMeta(dirOf(s, rel))
   if (m && !m.gone && m.path === rel) s.heads.set(rel, m)
@@ -72,8 +60,7 @@ function saveIndex(s: State) {
   try { writeAtomic(path.join(s.root, INDEX), JSON.stringify([...s.heads.values()])) } catch (e) { console.error("history:", e) }
 }
 
-/** Copy a file's bytes for its history as they're read (what's hashed is what's kept, never all in memory): its hash;
- *  null if not text we keep (not UTF-8, NULs: copy removed); undefined if unreadable now (iCloud: next sync). */
+/** undefined: unreadable now (iCloud may give it at its next sync). */
 async function take(abs: string, to: string): Promise<string | null | undefined> {
   const hash = crypto.createHash("sha1"), utf8 = new TextDecoder("utf-8", { fatal: true })
   const src = fs.createReadStream(abs), out = fs.createWriteStream(to)
@@ -108,8 +95,6 @@ async function take(abs: string, to: string): Promise<string | null | undefined>
 let tmpN = 0
 const tmp = (s: State) => path.join(s.root, `tmp-${process.pid}-${++tmpN}`)
 
-/** The files to follow now (Markdown, the index's, and text files by kind, none hidden) whose stat isn't the one last
- *  looked at, and whether a followed file may be gone: an edit compares one file, not every file of a big vault. */
 function candidates(s: State, vault: Vault) {
   const out = new Map<string, Stat>()
   let followed = 0, all = 0
@@ -133,8 +118,6 @@ function settings() {
   return { interval: n(s.interval_min, 5) * 60_000, keep: n(s.keep_days, 7) * 24 * HOUR }
 }
 
-/** Keep the head (the version saved at `t`) as a snapshot of the file: moved, not copied (a big file's is instant), and
- *  dated now, as its own mtime says when it was taken. The head is gone after. */
 function snapshot(s: State, rel: string, t: number) {
   const dir = dirOf(s, rel), file = path.join(dir, `${t}.snap`)
   if (fs.existsSync(file)) return fs.rmSync(path.join(dir, "head"), { force: true })
@@ -143,7 +126,6 @@ function snapshot(s: State, rel: string, t: number) {
   fs.utimesSync(file, now, now)
 }
 
-/** Start following a file (or again): its content (`copy`, take's) is the head. */
 function track(s: State, rel: string, st: Stat, copy: string, hash: string) {
   const dir = dirOf(s, rel)
   fs.mkdirSync(dir, { recursive: true })
@@ -153,7 +135,6 @@ function track(s: State, rel: string, st: Stat, copy: string, hash: string) {
   s.heads.set(rel, m)
 }
 
-/** A file gone (deleted, moved away, or no longer text we keep): its last content becomes a snapshot. */
 function untrack(s: State, rel: string) {
   const m = s.heads.get(rel)!
   try { snapshot(s, rel, m.mtime) } catch { /* its head went missing */ }
@@ -161,7 +142,6 @@ function untrack(s: State, rel: string) {
   s.heads.delete(rel)
 }
 
-/** A file renamed or moved: its snapshots go with it. */
 function carry(s: State, from: string, to: string) {
   const src = dirOf(s, from), dst = dirOf(s, to)
   const m = s.heads.get(from)!
@@ -174,7 +154,7 @@ function carry(s: State, from: string, to: string) {
   writeMeta(s, { ...m, path: to, last: Math.max(m.last, readMeta(dst)?.last ?? 0) })
 }
 
-/** The vault's folder is there (a whole top-level folder missing may be iCloud or a disk away: not "deleted"). */
+/** A whole top-level folder missing may be iCloud or a disk away, not a delete. */
 function present(vault: Vault, rel: string) {
   try { return fs.statSync(rel.includes("/") ? vault.abs(rel.split("/")[0]) : vault.path).isDirectory() } catch { return false }
 }
@@ -187,15 +167,14 @@ const isOff = (vault: Vault) => {
   return offCheck.off
 }
 
-/** After every sync: what changed since last time. Nothing to do when no file changed (the vault's version). */
 export async function follow(vault: Vault) {
   if (isOff(vault)) {
     const s = states.get(vault)
-    if (s) { s.version = -1; s.seen.clear() } // turned on again: compare every file
+    if (s) { s.version = -1; s.seen.clear() }
     return
   }
   const s = state(vault)
-  if (s.version === vault.version) { // no file changed since the last look
+  if (s.version === vault.version) {
     if (Date.now() - s.pruned > HOUR) prune(vault)
     return
   }
@@ -217,10 +196,9 @@ export async function follow(vault: Vault) {
     for (const rel of changed) {
       const m = s.heads.get(rel)!, st = now.get(rel)!, copy = tmp(s)
       const hash = await take(vault.abs(rel), copy)
-      if (hash === undefined) { s.version = -1; s.seen.delete(rel); continue } // (looked at again next time)
+      if (hash === undefined) { s.version = -1; s.seen.delete(rel); continue }
       if (hash === null) { untrack(s, rel); s.skip.set(rel, `${st.mtime}:${st.size}`); continue }
       if (hash !== m.hash) {
-        // The head is the previous content: kept, unless a snapshot was taken less than the interval ago.
         if (Date.now() - m.last >= interval) {
           try { snapshot(s, rel, m.mtime); m.last = Date.now() } catch { /* no head */ }
         }
@@ -230,7 +208,6 @@ export async function follow(vault: Vault) {
       m.mtime = st.mtime; m.size = st.size; m.ns = st.ns
       writeMeta(s, m)
     }
-    // A new path with a gone file's content is that file, renamed or moved.
     const byHash = new Map(gone.map((r) => [s.heads.get(r)!.hash, r]))
     for (const rel of added) {
       const st = now.get(rel)!, copy = tmp(s)
@@ -247,7 +224,6 @@ export async function follow(vault: Vault) {
   if (Date.now() - s.pruned > HOUR) prune(vault)
 }
 
-/** Drop snapshots taken more than keep_days ago, and what's left of files that have none and are gone. */
 export function prune(vault: Vault, at = Date.now()) {
   const s = state(vault)
   s.pruned = at
@@ -255,7 +231,7 @@ export function prune(vault: Vault, at = Date.now()) {
   for (const name of fs.readdirSync(s.root)) {
     const dir = path.join(s.root, name)
     let files: string[]
-    try { files = fs.readdirSync(dir) } catch { continue } // vault.txt
+    try { files = fs.readdirSync(dir) } catch { continue }
     let left = 0
     for (const f of files) {
       if (!f.endsWith(".snap")) continue
@@ -267,7 +243,6 @@ export function prune(vault: Vault, at = Date.now()) {
   }
 }
 
-// One look at a time, off the sync (a file iCloud is slow to give waits there); the routes wait for it.
 let following: Promise<void> | null = null, again = false
 plugin.onSync((vault) => {
   if (following) { again = true; return }
@@ -289,12 +264,9 @@ const relOf = (p: unknown) => {
   return rel
 }
 
-/** A file's versions' times, newest first. */
 function times(s: State, rel: string) {
   return namesIn(dirOf(s, rel)).filter((f) => f.endsWith(".snap")).map((f) => Number(f.slice(0, -5))).sort((a, b) => b - a)
 }
-// Folders' names, kept while their mtime is the same (a day's recap asks for each file it tells, every few minutes); not
-// one changed just now: a coarse clock can give the next change the same mtime.
 const listed = new Map<string, { at: string; names: string[] }>()
 function namesIn(dir: string): string[] {
   let st: fs.BigIntStats
@@ -303,6 +275,7 @@ function namesIn(dir: string): string[] {
   if (hit?.at === at) return hit.names
   let names: string[] = []
   try { names = fs.readdirSync(dir) } catch { /* gone meanwhile */ }
+  // A coarse clock can give a folder's next change the same mtime.
   if (Date.now() - Number(st.mtimeNs / 1_000_000n) > 2000) listed.set(dir, { at, names }); else listed.delete(dir)
   return names
 }
@@ -310,8 +283,7 @@ function versions(s: State, rel: string) {
   return times(s, rel).map((t) => ({ t, size: fs.statSync(path.join(dirOf(s, rel), `${t}.snap`)).size }))
 }
 
-/** Versions other plugins keep of a file (a git plugin's commits), shown beside these: each plugin that's on offering the service
- *  `versions:<source>`, fn(path) -> { label, versions: [{ id, t, title?, by? }] } or null, fn(path, id) -> its text. */
+/** Service `versions:<source>`: fn(path) -> { label, versions } or null; fn(path, id) -> that version's text. */
 type Other = { id: string; t: number; title?: string; by?: string }
 type VersionsFn = (rel: string, id?: string) => Promise<{ label: string; versions: Other[] } | string | null>
 function sources(): [string, VersionsFn][] {
@@ -332,8 +304,7 @@ async function others(rel: string) {
   return all.filter((x) => x !== null && x.versions.length)
 }
 
-// What another plugin reads of a file's past (Activity's day recaps): its versions oldest first, each `t` when its text
-// was written (the head, its text now, last), and one version's text.
+/** A file's versions, oldest first, its text now last. */
 plugin.provide("history:versions", async (rel: string) => {
   await following
   const s = state(plugin.vault)
@@ -342,6 +313,7 @@ plugin.provide("history:versions", async (rel: string) => {
   if (head && !v.some((x) => x.t === head.mtime)) v.push({ t: head.mtime })
   return { gone: !head && !!readMeta(dirOf(s, rel))?.gone, versions: v }
 })
+/** One version's text. */
 plugin.provide("history:text", async (rel: string, t: number) => {
   await following
   const s = state(plugin.vault)
@@ -361,14 +333,12 @@ function keepDisk(rel: string) {
     fs.mkdirSync(path.dirname(file), { recursive: true })
     fs.copyFileSync(vault.abs(rel), file)
     const now = new Date()
-    fs.utimesSync(file, now, now) // (pruned by when it was kept)
+    fs.utimesSync(file, now, now)
     return true
   } catch { return false }
 }
-/** Keep a file's text as it is now as a version, whatever the interval: what an agent is about to change (Provenance's
- *  review compares with it). Sync, so it runs before the write. */
+/** Keeps a file's text now as a version, whatever the interval; sync, so it runs before the write. */
 plugin.provide("history:keep", keepDisk)
-/** Keep `text` (an editor's unsaved text) as a version of a vault file, dated now: what the app is about to drop. */
 function keepText(rel: string, text: string) {
   const vault = plugin.vault
   if (!followed(vault, rel)) return false
@@ -380,7 +350,6 @@ function keepText(rel: string, text: string) {
   return true
 }
 
-// Before the app settles a conflict: both sides kept (the file as it is, the editor's text), so either can be undone.
 plugin.route("POST", "history/keep", (req) => {
   const b = (req.body ?? {}) as { path?: unknown; text?: unknown }
   const rel = relOf(b.path)
@@ -411,12 +380,10 @@ plugin.route("GET", "history", async (req) => {
 })
 
 type Change = { t: number; last?: number; actor: { kind: string; name: string }; paths?: string[] }
-/** Each version an agent wrote, with its name (Activity's: Claude, Ada): the change it was written in. */
 async function byAgents(rel: string, vs: { t: number; size: number }[]): Promise<{ t: number; size: number; by?: string }[]> {
   if (!vs.length) return vs
   const changes = (await plugin.ask<Change[]>("activity:changes", [], vs.at(-1)!.t - 60_000)).filter((e) => e.paths?.includes(rel))
   return vs.map((v) => {
-    // (a write's file time falls in its request, or just after a run of them)
     const e = changes.findLast((c) => c.t - 1000 <= v.t && v.t <= (c.last ?? c.t) + 5000)
     return e?.actor.kind === "agent" ? { ...v, by: e.actor.name } : v
   })
@@ -437,11 +404,9 @@ plugin.route("GET", "history/version", async (req) => {
   let data: Buffer
   try { data = fs.readFileSync(path.join(dirOf(s, rel), `${t}.snap`)) } catch { throw new HTTPError(404, `no version ${t} of '${rel}'`) }
   let text: string | Buffer
-  try { text = data.toString("utf8").replace(/\r\n?/g, "\n") } catch { text = data } // (too big for one string: its bytes)
+  try { text = data.toString("utf8").replace(/\r\n?/g, "\n") } catch { text = data }
   return new Text(text, "text/plain; charset=utf-8")
 })
-
-// ---------- operations (core/ops.ts)
 
 const when = (t: number) => `${localDate(t)} ${localTime(t)}`
 

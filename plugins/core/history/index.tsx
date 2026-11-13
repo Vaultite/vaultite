@@ -5,7 +5,6 @@ import { HistoryView } from "./HistoryView"
 const openHistory = (path: string) => openView(`history/${path}`)
 
 export default definePlugin({
-  // A tab at view:history/<vault path>: that file's earlier versions.
   views: {
     history: {
       icon: History,

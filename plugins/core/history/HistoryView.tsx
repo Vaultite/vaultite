@@ -1,10 +1,7 @@
-// A file's versions beside a diff with the file now; Restore writes one back as an ordinary edit (with Undo), Copy
-// copies it.
 import { useCallback, useEffect, useState } from "react"
 import { Copy, History, RotateCcw } from "lucide-react"
 import { Bar, capitalize, cn, copyText, DiffRows, fmtAgo, fmtStamp, get, Loading, notify, notifyError, openFile, plural, post, put, readFile, textDiff, useKeptCount, useVaultChange, type DiffLine } from "@vaultite"
 
-/** One kept here (`size`), or another plugin's (`source`: Git's commits, with their `id`, `title` and `by`). */
 type Version = { t: number; size?: number; source?: string; label?: string; id?: string; title?: string; by?: string }
 type Other = { source: string; label: string; versions: { id: string; t: number; title?: string; by?: string }[] }
 const keyOf = (v: Version) => (v.source ? `${v.source}:${v.id}` : String(v.t))
@@ -16,7 +13,6 @@ const when = "text-[15px] font-medium md:text-[13px]"
 const what = "truncate text-[13px] text-muted-foreground md:text-[12px]"
 const list = "flex max-h-[34vh] shrink-0 flex-col gap-px overflow-y-auto overscroll-contain @2xl:max-h-[calc(100dvh-12rem)] @2xl:w-[210px]"
 
-/** Versions on their way: the list's options with bars for their two lines. */
 function Skeleton({ count }: { count: number }) {
   return (
     <ul aria-busy className={cn("loading-in", list)}>
@@ -34,7 +30,6 @@ export function HistoryView({ path }: { path: string }) {
   const [versions, setVersions] = useState<Version[] | null>(null)
   const [sel, setSel] = useState<string | null>(null)
   const [text, setText] = useState<string | null>(null)
-  // The file as it is now (null: not in the vault any more).
   const [now, setNow] = useState<string | null | undefined>(undefined)
   const q = encodeURIComponent(path)
 
@@ -62,7 +57,6 @@ export function HistoryView({ path }: { path: string }) {
   useEffect(() => {
     if (text === null || now === undefined) { setLines(null); return }
     let live = true
-    // (the version's lines are the added ones: what restoring it would bring back)
     textDiff(now ?? "", text).then((l) => { if (live) setLines(l) }, (e) => notifyError(e))
     return () => { live = false }
   }, [text, now])
@@ -70,14 +64,13 @@ export function HistoryView({ path }: { path: string }) {
   const kept = useKeptCount(`history:${path}`, versions?.length)
 
   const [restoring, setRestoring] = useState(false)
-  // (the file shows as the version at once, so a second press has nothing to restore; a failure puts it back)
   const restore = async () => {
     if (text === null || !v || restoring) return
     const before = now
     setRestoring(true)
     setNow(text)
     try {
-      if (before === null) await post("file", { path, text })  // it was deleted: it comes back
+      if (before === null) await post("file", { path, text })
       else await put("file", { path, text, base: before })
       notify(`Restored the version from ${fmtStamp(v.t)}`, {
         action: before === null ? undefined : {

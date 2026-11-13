@@ -227,9 +227,9 @@ by its path.
 - `file-props` (provenance): Other files' `origin` for database views over every file (a .base): the list's, else what the bytes say.
 - `geocode` (people): A place's pin, [lat, lon] or null: looked up once (Nominatim), then cached. Me uses it for ME.md's place.
 - `geocode:known` (people): A place's cached pin without looking it up: [lat, lon], null (not found) or undefined (not looked up yet).
-- `history:versions` (history)
-- `history:text` (history)
-- `history:keep` (history): Keep a file's text as it is now as a version, whatever the interval: what an agent is about to change (Provenance's review compares with it). Sync, so it runs before the write.
+- `history:versions` (history): A file's versions, oldest first, its text now last.
+- `history:text` (history): One version's text.
+- `history:keep` (history): Keeps a file's text now as a version, whatever the interval; sync, so it runs before the write.
 - `history:changed` (history): The files followed whose text was last written at or after `since` (ms).
 - `html:guest` (html): A page as a shared folder's guest gets it (plugins/core/share), at their path for it, nothing of the user's (name, Claude, what it kept), and the wrapper framing it: the guest's gateway serves both, with its own policies.
 - `html:shared` (html): A shared folder's guest joins a page's shared state (plugins/core/share's gateway: the page in their folder, as them).
