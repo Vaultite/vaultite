@@ -1,31 +1,24 @@
-// The graph's settings panel (the Filter button), as Obsidian's: Filters and Groups open, Display and Forces folded.
-// Every control is a setting in .vaultite/plugins/graph/data.json; leaving one at its default removes the key.
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { GripVertical, Plus, X, type LucideIcon } from "lucide-react"
 import { capitalize, CHIP_TINTS, cn, Foldable, menuBelow, Segmented, SortableList, Switch, useQuerySuggest, type MenuItem } from "@vaultite"
 import { PALETTE, tokenOf, type ColorGroup } from "./graph"
 import type { Save, Settings } from "./GraphView"
 
-/** A colour's dot (a legend's, a menu's). */
 export const Swatch = ({ tok, className }: { tok: string; className?: string }) => (
   <span className={cn("size-2.5 shrink-0 rounded-full", className)} style={{ background: `var(${tok})` }} aria-hidden />
 )
 const swatches = new Map<string, LucideIcon>()
-/** A colour's dot as a menu row's icon. */
 const swatchIcon = (tok: string) => {
   let I = swatches.get(tok)
   if (!I) swatches.set(tok, I = (({ className }: { className?: string }) => <span className={cn(className, "grid place-items-center")}><Swatch tok={tok} className="size-3" /></span>) as unknown as LucideIcon)
   return I
 }
-/** The theme's colours as menu rows, `now` checked. */
 export const colourItems = (now: string | null, pick: (color: string) => void): MenuItem[] =>
   CHIP_TINTS.map((c) => ({ label: capitalize(c), icon: swatchIcon(tokenOf(c)), checked: c === now, run: () => pick(c) }))
-/** A new group's colour: the first of the palette no group has. */
 const nextColour = (groups: ColorGroup[]) => PALETTE.map((t) => t.slice(2)).find((c) => !groups.some((g) => g.color === c)) ?? "gray"
 
 const rowCls = "flex min-h-8 items-center gap-3 rounded-[6px] px-1.5 text-[13px] max-md:min-h-11 max-md:text-[17px]"
 
-/** A setting's switch on a row of its own. */
 export function SwitchRow({ label, on, set }: { label: string; on: boolean; set: (on: boolean) => void }) {
   return (
     <div className={rowCls} data-graph-switch={label}>
@@ -47,7 +40,6 @@ export function Row({ label, children, className }: { label?: string; children: 
 const iconBtn = "grid size-7 shrink-0 cursor-pointer place-items-center rounded-[6px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground max-md:size-10"
 const field = "h-7 min-w-0 flex-1 rounded-[6px] border-[0.5px] border-border bg-background px-2 text-[13px] outline-none focus:border-primary max-md:h-10 max-md:text-[16px]"
 
-/** A group's query, typed and saved on Enter or leaving the field (empty: the group goes). */
 function QueryField({ value, set, auto }: { value: string; set: (q: string) => void; auto?: boolean }) {
   const [v, setV] = useState(value)
   useEffect(() => setV(value), [value])
@@ -64,7 +56,6 @@ function QueryField({ value, set, auto }: { value: string; set: (q: string) => v
   )
 }
 
-/** The user's groups: a search and a colour each, the first a file is in colouring it; drag to reorder. */
 function Groups({ groups, found, counts, setGroups }: GroupProps) {
   const [adding, setAdding] = useState(false)
   const at = (id: string) => Number(id)
@@ -109,7 +100,6 @@ function Groups({ groups, found, counts, setGroups }: GroupProps) {
   )
 }
 
-/** A number setting as a slider: shown while dragged (`tryIt`), saved when let go; its default saves nothing. */
 function SliderRow({ label, k, min, max, step, dflt, settings, save, tryIt }: {
   label: string; k: keyof Settings; min: number; max: number; step: number; dflt: number; settings: Settings; save: Save; tryIt: (p: Partial<Settings>) => void
 }) {
@@ -132,7 +122,6 @@ function SliderRow({ label, k, min, max, step, dflt, settings, save, tryIt }: {
   )
 }
 
-/** Puts a section's settings back to their defaults; there only when one isn't. */
 function ResetRow({ keys, settings, save }: { keys: (keyof Settings)[]; settings: Settings; save: Save }) {
   if (!keys.some((k) => settings[k] !== undefined)) return null
   return (
@@ -148,11 +137,9 @@ const FORCES: (keyof Settings)[] = ["center", "repel", "linkDistance"]
 
 type GroupProps = { groups: ColorGroup[]; found: { error?: string }[]; counts: number[]; setGroups: (g: ColorGroup[]) => void }
 
-/** The panel: `local` for a file's local graph (depth instead of the whole graph's switches). */
 export function GraphPanel({ settings, save, try: tryIt, tried, local, ...groups }: { settings: Settings; save: Save; try: (p: Partial<Settings>) => void; tried: () => void; local: boolean } & GroupProps) {
   const slider = { settings, tryIt, save: (p: Partial<Record<keyof Settings, unknown>>) => { save(p); tried() } }
   const depth = settings.depth ?? 1
-  // (a default is saved as null: the key goes, so the vault holds only what was changed)
   const flag = (k: keyof Settings, dflt: boolean) => ({ on: (settings[k] as boolean | undefined) ?? dflt, set: (v: boolean) => save({ [k]: v === dflt ? null : v }) })
   return (
     <div className="glass pointer-events-auto flex max-h-full w-[290px] flex-col overflow-y-auto overscroll-contain rounded-[12px] p-1.5 max-md:w-full" data-graph-panel>

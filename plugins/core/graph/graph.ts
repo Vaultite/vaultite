@@ -1,35 +1,21 @@
-// The vault as a graph (files as nodes, links as edges), shared by the server and the app's filters. No Node.
 
-/** A file as the graph sees it: what it links to (targets as written: `links` in its text, `props` [key, target] in its
- *  frontmatter); its type is the core's (core/fileprops.ts: its kind's, else its frontmatter's). */
 export type GraphFile = { path: string; title: string; type: string | null; tags: string[]; links: string[]; props?: [string, string][]; archived?: boolean; excluded?: boolean }
-/** `tag`: a tag drawn as a dot (path "#name"), linked to the files that have it (withTags). */
 export type GraphNode = { path: string; title: string; type: string | null; folder: string; tags: string[]; degree: number; archived?: boolean; excluded?: boolean; tag?: true }
-/** A link from one file to another (paths); a pair linked both ways is one edge, `both`. `types`: the frontmatter keys
- *  it's written under, and BODY when it's in the text too; left out when it's only in the text. */
 export type GraphEdge = { from: string; to: string; both?: true; types?: string[] }
 export type Graph = { nodes: GraphNode[]; edges: GraphEdge[] }
 
-/** A file's top folder ("" at the top of the vault): what the graph colours it by. */
 export const topFolder = (path: string) => (path.includes("/") ? path.slice(0, path.indexOf("/")) : "")
 
-/** A file's name without its folder and without .md. */
 export const nameOf = (path: string) => path.slice(path.lastIndexOf("/") + 1).replace(/\.md$/i, "")
 
-/** A link's type when it's in a file's text, not its frontmatter (the legend's "In the text"). */
 export const BODY = "body"
-/** An edge's link types (BODY alone when it has none listed). */
 export const typesOf = (e: GraphEdge) => e.types ?? [BODY]
 
-/** A graph as built, with what updating it needs: each file's links as resolved, and each linked pair's edge (by its
- *  files' numbers). */
 export type Built = { graph: Graph; files: GraphFile[]; links: [string, string | null][][]; index: Map<string, number>; pairs: Map<number, GraphEdge>; degree: Uint32Array }
 
 const nodeOf = (f: GraphFile, degree: number): GraphNode => Object.freeze({ path: f.path, title: f.title, type: f.type, folder: topFolder(f.path), tags: f.tags, degree,
   ...(f.archived ? { archived: true } : {}), ...(f.excluded ? { excluded: true } : {}) })
 
-/** The edge between files a and b (a before b), from their links, or null when neither links to the other: from the
- *  first that links to the other; `types` those of a's links to b, then b's to a. */
 function edgeOf(files: GraphFile[], links: [string, string | null][][], a: number, b: number): GraphEdge | null {
   const pa = files[a].path, pb = files[b].path
   const ta = links[a].filter(([, to]) => to === pb).map(([t]) => t), tb = links[b].filter(([, to]) => to === pa).map(([t]) => t)
@@ -39,8 +25,6 @@ function edgeOf(files: GraphFile[], links: [string, string | null][][], a: numbe
     ...(types.length > 1 || types[0] !== BODY ? { types } : {}) })
 }
 
-/** The graph of these files, `links` each one's links as resolved ([BODY or a frontmatter key, path or null]), but to
- *  itself or out of `files`. With `was` (the last build), only files whose links changed are; unchanged parts stay. */
 export function buildGraph(files: GraphFile[], links: [string, string | null][][], was?: Built): Built {
   const n = files.length
   if (!was || was.files.length !== n) return buildAll(files, links)
@@ -49,7 +33,6 @@ export function buildGraph(files: GraphFile[], links: [string, string | null][][
     if (files[i].path !== was.files[i].path) return buildAll(files, links)
     if (links[i] !== was.links[i] && changed.push(i) > n / 8) return buildAll(files, links)
   }
-  // (files by number: a pair's key is a number, not a string made per link)
   const { index, pairs } = was, degree = was.degree.slice()
   const key = (i: number, j: number) => (i < j ? i * n + j : j * n + i)
   const touched = new Set<number>()
@@ -100,7 +83,6 @@ function buildAll(files: GraphFile[], links: [string, string | null][][]): Built
   return { graph: { nodes: files.map((f, i) => nodeOf(f, degree[i])), edges }, files, links, index, pairs, degree }
 }
 
-/** Adjacency: each path's neighbours (linked either way). */
 export function adjacency(g: Graph) {
   const adj = new Map<string, Set<string>>()
   for (const n of g.nodes) adj.set(n.path, new Set())
@@ -108,25 +90,19 @@ export function adjacency(g: Graph) {
   return adj
 }
 
-/** How far out a local graph goes at most, as in Obsidian. */
+// Obsidian's deepest local graph.
 export const MAX_DEPTH = 5
 
-/** Which links a local graph follows out from a file: those to it (`incoming`), from it (`outgoing`), and whether it
- *  shows the links between files the same distance out (`neighbors`). Left out: true. */
 export type Direction = { incoming?: boolean; outgoing?: boolean; neighbors?: boolean }
 
-/** Whether a link can be followed out from `p`, in the directions asked for. */
 const follows = (e: GraphEdge, p: string, dir: Direction) =>
   (dir.outgoing !== false && (e.from === p || (!!e.both && e.to === p))) || (dir.incoming !== false && (e.to === p || (!!e.both && e.from === p)))
 
-/** The local graph around `path`: it, what's within `depth` links of it (either way, or as `dir` says), and the edges
- *  between them. Each node's `dist` is how many links away it is. */
 export function localGraph(g: Graph, path: string, depth = 1, dir: Direction = {}): Graph & { dist: Map<string, number> } {
   const dist = new Map<string, number>()
   if (!g.nodes.some((n) => n.path === path)) return { nodes: [], edges: [], dist }
   const all = dir.incoming !== false && dir.outgoing !== false
   dist.set(path, 0)
-  // (a pass over the edges a ring: cheaper than an index of them, made again for each graph)
   for (let d = 1, grew = true; grew && d <= Math.max(1, Math.min(MAX_DEPTH, depth)); d++) {
     grew = false
     for (const e of g.edges) {
@@ -135,7 +111,6 @@ export function localGraph(g: Graph, path: string, depth = 1, dir: Direction = {
       else if (b === d - 1 && a === undefined && (all || follows(e, e.to, dir))) { dist.set(e.from, d); grew = true }
     }
   }
-  // (without neighbour links, only the links that lead out from the file, one step at a time)
   const outward = (e: GraphEdge) => {
     const a = dist.get(e.from)!, b = dist.get(e.to)!
     return Math.abs(a - b) === 1 && (all || follows(e, a < b ? e.from : e.to, dir))
@@ -147,10 +122,8 @@ export function localGraph(g: Graph, path: string, depth = 1, dir: Direction = {
   }
 }
 
-/** A file that isn't a note (an image, a PDF, a drawing): what the Attachments switch leaves out. */
 export const isAttachment = (n: GraphNode) => !n.tag && !/\.md$/i.test(n.path)
 
-/** The graph with each of its files' tags as a dot ("#name", its degree how many files have it), linked to them. */
 export function withTags(g: Graph): Graph {
   const tags = new Map<string, GraphNode>()
   const edges: GraphEdge[] = []
@@ -167,14 +140,12 @@ export function withTags(g: Graph): Graph {
   return tags.size ? { nodes: [...g.nodes, ...tags.values()], edges: [...g.edges, ...edges] } : g
 }
 
-/** Keeps only the nodes `keep` says yes to, and the edges between them. */
 export function filterGraph(g: Graph, keep: (n: GraphNode) => boolean): Graph {
   const nodes = g.nodes.filter(keep)
   const on = new Set(nodes.map((n) => n.path))
   return { nodes, edges: g.edges.filter((e) => on.has(e.from) && on.has(e.to)) }
 }
 
-/** The local graph as Markdown, for AIs (/api/render): its neighbours as [[links]], nearest first. */
 export function localMarkdown(g: Graph, path: string, depth = 1, linkName: (path: string) => string = nameOf) {
   const local = localGraph(g, path, depth)
   if (!local.nodes.length) return "_Not in the graph._"
@@ -198,26 +169,16 @@ export function localMarkdown(g: Graph, path: string, depth = 1, linkName: (path
   return parts.join("\n\n")
 }
 
-// ---------- groups: what colours a dot, and what the legend lists
-
-/** A group of the user's (the `groups` setting): the files a search query matches, in a colour (a token's name, "blue"),
- *  `hidden` left out. The first group a file is in colours it; files in none are coloured by folder or type. */
 export type ColorGroup = { query: string; color: string; hidden?: boolean }
 export type ColorBy = "folder" | "type" | "none"
-/** A legend row: one of the user's groups (`group`: its index) or a folder or type (`auto`: its name, "" for none). */
 export type LegendRow = { key: string; label: string; tok: string; count: number; hidden: boolean; group?: number; auto?: string }
 
-/** The colours folders and types get, most files first; the rest are grey. */
 export const PALETTE = ["--blue", "--green", "--orange", "--purple", "--pink", "--teal", "--yellow", "--indigo", "--red"]
-/** Tags drawn as dots: a colour of their own, out of the groups. */
 export const TAG_TOKEN = "--muted-foreground"
-/** A colour's name as its token ("blue": --blue); anything else is grey. */
 export const tokenOf = (color: unknown) => (typeof color === "string" && /^[a-z][a-z0-9-]*$/.test(color) ? `--${color}` : "--gray")
 export const autoOf = (by: ColorBy, n: GraphNode) => (by === "type" ? n.type ?? "" : n.folder)
 export const autoLabel = (by: ColorBy, g: string) => g || (by === "type" ? "No type" : "Top level")
 
-/** Each file's group and colour, and the legend: the user's groups in their order, then folders or types, biggest first.
- *  `sets[i]`: the files groups[i]'s query matches (null: none yet); `hidden`: folders and types left out ("folder:Logs"). */
 export function grouping(g: Graph | null, by: ColorBy, groups: ColorGroup[], sets: (Set<string> | null)[], hidden: Set<string>) {
   const at = new Map<string, number>()
   const count = new Map<string, number>()
@@ -231,7 +192,6 @@ export function grouping(g: Graph | null, by: ColorBy, groups: ColorGroup[], set
     count.set(k, (count.get(k) ?? 0) + 1)
   }
   const order = [...count].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-  // (the colours the user's groups have are left to them)
   const free = PALETTE.filter((t) => !groups.some((x) => tokenOf(x.color) === t))
   const tok = new Map(order.map(([k], i) => [k, free[i] ?? "--gray"]))
   const rows: LegendRow[] = [
@@ -245,7 +205,6 @@ export function grouping(g: Graph | null, by: ColorBy, groups: ColorGroup[], set
       const i = at.get(n.path)
       return i !== undefined ? tokenOf(groups[i].color) : by === "none" ? "--gray" : tok.get(autoOf(by, n)) ?? "--gray"
     },
-    /** Whether its group is hidden. */
     hides: (n: GraphNode) => {
       if (n.tag) return false
       const i = at.get(n.path)
@@ -254,22 +213,17 @@ export function grouping(g: Graph | null, by: ColorBy, groups: ColorGroup[], set
   }
 }
 
-// ---------- link types: the frontmatter keys links are written under
-
-/** Each link type the graph has and how many links have it: the text's first, then the most used. */
 export function linkTypes(g: Graph | null): [string, number][] {
   const count = new Map<string, number>()
   for (const e of g?.edges ?? []) for (const t of typesOf(e)) count.set(t, (count.get(t) ?? 0) + 1)
   return [...count].sort((a, b) => (a[0] === BODY ? -1 : b[0] === BODY ? 1 : b[1] - a[1] || a[0].localeCompare(b[0])))
 }
 
-/** A link's colour token: its first type, of those not hidden, that has a colour (`colors`: type -> colour name). */
 export const linkColour = (e: GraphEdge, colors: Record<string, string>, hidden: Set<string>) => {
   const t = typesOf(e).find((x) => !hidden.has(x) && colors[x])
   return t ? tokenOf(colors[t]) : null
 }
 
-/** Without the links whose every type is hidden. */
 export function withoutLinks(g: Graph, hidden: Set<string>): Graph {
   return hidden.size ? { nodes: g.nodes, edges: g.edges.filter((e) => typesOf(e).some((t) => !hidden.has(t))) } : g
 }

@@ -1,5 +1,3 @@
-// Graph view: the whole vault, a file's local graph (a tab or the sidebar panel), and
-// ```block-graph for a file's neighbours.
 import { lazy, Suspense } from "react"
 import { SquareArrowOutUpRight, Waypoints } from "lucide-react"
 import { currentFile, definePlugin, isViewOpen, notify, openView, Panel } from "@vaultite"
@@ -14,7 +12,6 @@ const openLocal = (path?: string | null) => {
   openView(`graph/${path}`, { newTab: true })
 }
 
-// A made-up graph for the Plugins sheet.
 const MOCK = {
   nodes: [
     ["Notes/Lighthouse ideas.md", "Notes", 4], ["Projects/Lighthouse.md", "Projects", 3], ["People/Alice Park.md", "People", 2],
@@ -36,14 +33,12 @@ export default definePlugin({
       title: (arg) => (arg ? `Graph of ${nameOf(arg)}` : "Graph view"),
       render: ({ arg }) => <Suspense fallback={null}><GraphView key={arg} arg={arg} /></Suspense>,
     },
-    // The sidebar's Local graph panel as a tab: it follows the file you're on (graph/<path> stays on one file).
     "local-graph": { icon: Waypoints, full: true, title: () => "Local graph", render: () => <Suspense fallback={null}><FollowingGraph /></Suspense> },
   },
   commands: [
     { id: "graph:open", name: "Open graph view", keys: ["Mod+G"], run: () => openView("graph", { newTab: !isViewOpen("graph") }) },
     { id: "graph:local", name: "Open local graph", run: () => openLocal(currentFile()) },
   ],
-  // Not in the sidebar until shown from its right-click menu (`hidden`).
   sidebar: {
     local: { title: "Local graph", heading: false, sort: 45, tall: true, hidden: true, view: "local-graph", flyout: { icon: Waypoints, width: 320 },
       render: (ctx) => <LocalGraphPanel {...ctx} /> },

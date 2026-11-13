@@ -1,5 +1,3 @@
-// Graph view's server side: /api/graph (the whole vault or a local graph) and its settings. Nodes include linked
-// attachments and files plugins read links from; links resolve like the app's. Nothing is stored.
 import fs from "node:fs"
 import { frontmatterLinks, HTTPError, type LinkFile, linkResolver, LOADED, OpError, parseSearch, Plugin, type SearchDoc, SearchError, searchMatches, linkTargets } from "../../../core/plugins.ts"
 import { type Entry, readText, stemOf, type Vault } from "../../../core/vault.ts"
@@ -21,8 +19,6 @@ function linkReader(vault: Vault, rel: string): ((text: string) => string[]) | n
   return null
 }
 
-// A file's links (its text's, and its frontmatter's by key), its place in the graph and as a link target, once per read
-// of it (an Entry is new each time its file is read) and settings version: an edit doesn't read every other file again.
 type Seen = { settings: number; excluded: boolean; file: GraphFile; target: LinkFile; key: string }
 const seenOf = new WeakMap<Entry, Seen>()
 function seen(vault: Vault, rel: string, e: Entry): Seen {
@@ -43,11 +39,8 @@ function seen(vault: Vault, rel: string, e: Entry): Seen {
 
 const NO_LINKS: string[] = []
 
-// Other files' links, kept until the file or its reader changes: a big drawing is read once, not on every change.
 const otherLinks = new WeakMap<Vault, Map<string, { ns: bigint; read: unknown; links: string[]; file?: GraphFile }>>()
 
-/** The last build: each file's Seen (notes first, in the index's order, then other files) and resolved links, the
- *  resolver (kept while the files links can go to are), and how many links go to each path (what makes an attachment a node). */
 type Kept = { vault: Vault; version: string; plugins: unknown[]; graph: Graph; built: Built; entries: Entry[]; seen: Seen[]; others: GraphFile[]
   resolve: (t: string, from?: string) => string | null; links: [string, string | null][][]; inbound: Map<string, number> }
 let cached: Kept | null = null
@@ -58,8 +51,6 @@ const count = (inbound: Map<string, number>, links: [string, string | null][], b
   for (const [, p] of links) if (p) inbound.set(p, (inbound.get(p) ?? 0) + by)
 }
 
-/** The whole vault's graph, built again when files changed or plugins went off (their services name links), frozen
- *  meanwhile (serialized once). An edit redoes only its files: their links resolved again, their edges. */
 export function vaultGraph(vault: Vault): Graph {
   const version = `${vault.version}:${vault.settingsVersion}:${[...vault.switchedOff()].join(",")}`
   const same = cached?.vault === vault && cached.plugins.length === LOADED.length && LOADED.every((p, i) => p === cached!.plugins[i])
@@ -73,7 +64,6 @@ export function vaultGraph(vault: Vault): Graph {
     if (changed && s !== was!.seen[at] && changed.push(at) > 1000) changed = null
     entries.push(e); seens.push(s); at++
   }
-  // Other files: those a plugin reads links out of, and the ones something links to (attachments).
   const others: GraphFile[] = []
   let known = otherLinks.get(vault)
   if (!known) otherLinks.set(vault, known = new Map())
@@ -83,7 +73,7 @@ export function vaultGraph(vault: Vault): Graph {
     let had = known.get(rel)
     if (had?.ns !== st.ns || had.read !== read) {
       let links = NO_LINKS
-      try { if (read) links = read(readText(vault.abs(rel))) } catch { /* half-written: no links this time */ }
+      try { if (read) links = read(readText(vault.abs(rel))) } catch {}
       known.set(rel, had = { ns: st.ns, read, links })
     }
     const excluded = vault.excluded(rel)
@@ -91,7 +81,6 @@ export function vaultGraph(vault: Vault): Graph {
     others.push(had.file)
   }
   const n = seens.length, all = [...seens.map((s) => s.file), ...others]
-  // The resolver and every file's links again when a file came or went, was renamed or archived, or its aliases changed.
   if (changed && was && (was.seen.length !== n || was.others.length !== others.length || others.some((o, i) => o !== was.others[i]) ||
     changed.some((i) => seens[i].key !== was.seen[i].key))) changed = null
   let resolve: Kept["resolve"], links: [string, string | null][][], inbound: Map<string, number>
@@ -108,7 +97,6 @@ export function vaultGraph(vault: Vault): Graph {
     links = all.map((f) => resolveAll(f, resolve)); inbound = new Map()
     for (const l of links) count(inbound, l, 1)
   }
-  // (an attachment is a node when it links somewhere or something links to it)
   const files = all.slice(0, n), kept = links.slice(0, n)
   for (let i = n; i < all.length; i++) if (all[i].links.length || inbound.get(all[i].path)) { files.push(all[i]); kept.push(links[i]) }
   const built = buildGraph(files, kept, was?.built)
@@ -116,7 +104,6 @@ export function vaultGraph(vault: Vault): Graph {
   return built.graph
 }
 
-/** How a path is written as a [[link]]: its name, or its path when another file has the same name. */
 function linkNameFor(vault: Vault) {
   const count = new Map<string, number>()
   const nm = (p: string) => stemOf(p).toLowerCase()
@@ -126,8 +113,6 @@ function linkNameFor(vault: Vault) {
 
 const depthOf = (v: unknown) => Math.max(1, Math.min(MAX_DEPTH, Math.trunc(Number(v) || 1)))
 
-/** The graph without excluded files, nor archived ones unless the settings or the request (`all`) ask for them; but
- *  `keep`, the file a local graph is of. The same object for the same graph, so the whole vault's is serialized once. */
 const shownCache = new WeakMap<Graph, Map<boolean, Graph>>()
 function shown(g: Graph, all: boolean, keep = "") {
   const archived = all || plugin.settings().archived === true
@@ -144,7 +129,6 @@ function shown(g: Graph, all: boolean, keep = "") {
 plugin.route("GET", "graph", (req) => {
   const path = String(req.query.path ?? "")
   const all = vaultGraph(plugin.vault), archived = req.query.archived === "true"
-  // (a local graph of a file left out of the graph keeps it: filtered for it alone)
   let g = shown(all, archived)
   if (path && g !== all && !g.nodes.some((n) => n.path === path)) g = shown(all, archived, path)
   if (!path) return g
@@ -155,8 +139,6 @@ plugin.route("GET", "graph", (req) => {
   return { nodes: local.nodes.map((n) => ({ ...n, dist: local.dist.get(n.path) })), edges: local.edges }
 })
 
-/** The files of the graph a search query matches (core/searchquery.ts, with type: and folder:), worked out again only
- *  when the graph changes: what the graph's search box and groups ask for while typing. */
 const matchCache = new WeakMap<Graph, Map<string, string[] | string>>()
 function matching(vault: Vault, q: string): string[] | string {
   const g = vaultGraph(vault)
@@ -181,7 +163,6 @@ function matching(vault: Vault, q: string): string[] | string {
   return out
 }
 
-// The files each query (a JSON list) matches, or why it can't be read: the search box's filter and the groups.
 plugin.route("GET", "graph/match", (req) => {
   let qs: unknown
   try { qs = JSON.parse(String(req.query.q ?? "[]")) } catch { throw new HTTPError(400, "q is a JSON list of queries") }
@@ -189,7 +170,6 @@ plugin.route("GET", "graph/match", (req) => {
   return { results: (qs as string[]).map((q) => { const r = matching(plugin.vault, q); return typeof r === "string" ? { error: r } : { paths: r } }) }
 })
 
-// ```block-graph: the file's neighbours in the graph, as links.
 plugin.block("graph", (ctx) => {
   const depth = depthOf(ctx.options.depth)
   const g = shown(vaultGraph(ctx.vault), false, ctx.path)

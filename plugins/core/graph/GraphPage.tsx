@@ -1,5 +1,3 @@
-// The graph view's tab (view:graph, view:graph/<path>, view:local-graph), apart from GraphView.tsx (the sidebar panel and
-// block draw at launch): it loads with its first tab.
 import { Suspense, useEffect, useMemo, useState } from "react"
 import { ChevronRight, Filter, Maximize, Search, X } from "lucide-react"
 import { cn, menuFor, useFocusedFile, useQuerySuggest, type MenuItem } from "@vaultite"
@@ -7,27 +5,20 @@ import { BODY, filterGraph, grouping, linkTypes, localGraph, nameOf, PALETTE, to
 import { colourItems, GraphPanel, Swatch } from "./GraphPanel"
 import { dirOf, GraphCanvas, graphSettings, Loading, lookOf, openNode, trimmed, useGraph, useGroups, useLinkStyle, type Settings } from "./GraphView"
 
-/** A link type as the legend names it. */
 const typeLabel = (t: string) => (t === BODY ? "In the text" : t)
 
-/** A query that finds a folder's or a type's files, for a legend row coloured by hand (none for "Top level"). */
 const queryOf = (by: ColorBy, g: string) => (!g ? null : `${by}:${/[\s()"]/.test(g) ? `"${g}"` : g}`)
 
 const tool = "grid size-8 shrink-0 cursor-pointer place-items-center rounded-[8px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground max-md:size-10"
 
-/** The whole vault (arg ""), or a file's local graph (arg: its path), filling the pane. */
 export function GraphView({ arg }: { arg: string }) {
   const saved = graphSettings.use()
-  // (a slider shows what it does while it's dragged, and is saved once let go)
   const [trying, setTrying] = useState<Partial<Settings>>({})
   const settings = useMemo(() => ({ ...saved, ...trying }), [saved, trying])
   const save = (p: Partial<Record<keyof Settings, unknown>>) => void graphSettings.set(p as Settings).catch(() => {})
   const by = settings.colorBy ?? "folder"
   const depth = settings.depth ?? 1
-  // (A file's own graph asks for archived files too: that file may be one.)
   const { data, error } = useGraph(undefined, 1, !!settings.archived || !!arg)
-  // The search box filters: the whole graph's is its `search` setting (saved a moment after typing), a local graph's
-  // only while it's open.
   const [q, setQ] = useState(() => (arg ? "" : settings.search ?? ""))
   const [asked, setAsked] = useState(q)
   useEffect(() => {
@@ -38,21 +29,17 @@ export function GraphView({ arg }: { arg: string }) {
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, arg])
-  // (set elsewhere: by an agent, another device)
   useEffect(() => { if (!arg && (settings.search ?? "") !== asked.trim()) { setQ(settings.search ?? ""); setAsked(settings.search ?? "") } // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.search])
-  // (tag:, type:, folder: and their values suggested as they're typed)
   const suggest = useQuerySuggest(q, setQ, { onKeyDown: (e) => { if (e.key === "Escape") setQ("") } })
   const { groups, first: [found], found: inGroups } = useGroups(settings, [asked])
   const [panel, setPanel] = useState(false)
   const [refit, setRefit] = useState(0)
-  // The colours' list, open on computers and folded on phones (it would cover the graph).
   const [legend, setLegend] = useState(() => !matchMedia("(max-width: 767px)").matches)
   const hidden = useMemo(() => new Set(settings.hidden ?? []), [settings.hidden])
   const sets = useMemo(() => inGroups.map((m) => m.paths), [inGroups])
   const { rows, colorOf, hides } = useMemo(() => grouping(data, by, groups, sets, hidden), [data, by, groups, sets, hidden])
   const links = useLinkStyle(settings)
-  // (the legend lists link types once some link is in a property)
   const types = useMemo(() => { const t = linkTypes(data); return t.some(([x]) => x !== BODY) ? t : [] }, [data])
   const shown = useMemo(() => {
     if (!data) return null
@@ -76,7 +63,6 @@ export function GraphView({ arg }: { arg: string }) {
     if (next.has(r.key)) next.delete(r.key); else next.add(r.key)
     save({ hidden: next.size ? [...next] : null })
   }
-  // A row's menu: its colour (a folder or type coloured by hand becomes a group), hiding it, removing a group.
   const rowMenu = (r: LegendRow): MenuItem[] => {
     const q = r.auto !== undefined ? queryOf(by, r.auto) : null
     const colour = r.group !== undefined ? groups[r.group].color : null
@@ -174,8 +160,6 @@ export function GraphView({ arg }: { arg: string }) {
   )
 }
 
-/** The Local graph tab (view:local-graph): the whole-pane graph around the file focused last, following it, as the
- *  sidebar's panel does (drag the panel's heading onto a pane, or its button). */
 export function FollowingGraph() {
   const { path } = useFocusedFile()
   if (!path) return <p className="p-6 text-[15px] text-muted-foreground">Open a file to see its local graph here: it follows the file you're on.</p>

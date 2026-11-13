@@ -1,45 +1,29 @@
-// The graph on a <canvas> with d3-force, coloured from the app's tokens. Quick with thousands of nodes: one path per
-// colour, ticked only while it moves, labels only where there's room (none drawn over another).
 import { useEffect, useRef, useState } from "react"
 import { Maximize } from "lucide-react"
 import { forceLink, forceManyBody, forceSimulation, forceX, forceY, type Simulation, type SimulationLinkDatum, type SimulationNodeDatum } from "d3-force"
 import { onLook } from "@vaultite"
 import { nameOf, type Graph, type GraphEdge, type GraphNode } from "./graph"
 
-/** `text`/`tw`: its label as drawn and that text's width at size `tws`; `la`: how far its label has faded in (0 to 1). */
 type SimNode = SimulationNodeDatum & { n: GraphNode; r: number; tok: string; color: string; label: string; low: string; text: string; tw: number; tws: number; la: number }
-/** `tok`/`color`: its own colour, when its link type has one. */
 type SimLink = SimulationLinkDatum<SimNode> & { e: GraphEdge; tok: string | null; color: string | null }
 
 export type CanvasProps = {
   graph: Graph
-  /** The colour token each node gets ("--blue"); changing it recolours without laying the graph out again. */
   colorOf: (n: GraphNode) => string
-  /** A link's own colour token, if any (its type's). */
   edgeColor?: (e: GraphEdge) => string | null
-  /** An arrowhead where each link goes (both ends when it goes both ways). */
   arrows?: boolean
-  /** Multipliers on the drawing and the forces (1: as it's drawn by default); textFade -3 to 3: names show sooner
-   *  (below 0) or need more zoom (above). Changing them never lays the graph out from scratch. */
   look?: Look
-  /** The file the graph is about (a local graph): drawn with a ring and kept in the middle. */
   focus?: string
-  /** The search the graph is filtered by: nodes whose name has it are named. */
   search?: string
   onOpen: (path: string, newTab: boolean) => void
-  /** Where the layout is remembered between openings ("view", "local"). */
   scope: string
-  /** Smaller text and nodes (the sidebar, a block). */
   compact?: boolean
-  /** Change it to fit the whole graph in the box again. Unset: a Fit button shows once the view is moved. */
   refit?: number
 }
 
-// Positions by scope and path: reopening the view (or a new file on disk) doesn't lay everything out again.
 const POS = new Map<string, Map<string, { x: number; y: number }>>()
 
-/** The page's value of a colour token, as the canvas can use it. Read once per theme (a graph asks for each node's,
- *  and reading one makes the browser work out the page's styles first): forgotten when the theme or scheme changes. */
+// Reading a token makes the browser work out the page's styles first: once per theme.
 const tokens = new Map<string, string>()
 let watching = false
 function token(name: string, fallback: string) {
@@ -55,14 +39,11 @@ function token(name: string, fallback: string) {
   return v || fallback
 }
 
-/** Nodes' and links' colours from the tokens their props give them. */
 function recolour(nodes: SimNode[], links: SimLink[], p: { colorOf: (n: GraphNode) => string; edgeColor?: (e: GraphEdge) => string | null }) {
   for (const n of nodes) { n.tok = p.colorOf(n.n); n.color = token(n.tok, "#8e8e93") }
   for (const l of links) { l.tok = p.edgeColor?.(l.e) ?? null; l.color = l.tok ? token(l.tok, "") || null : null }
 }
 
-/** The screen's room for labels: `take` claims a box when it overlaps none taken (`force`: whatever it overlaps),
- *  looked up in a grid of cells so a frame with hundreds of labels stays quick. */
 function labelRoom() {
   const CELL = 64, cells = new Map<number, number[]>(), boxes: number[] = []
   return {
@@ -87,7 +68,6 @@ const radius = (degree: number, compact?: boolean) => Math.min(compact ? 9 : 16,
 export type Look = { nodeSize?: number; lineWidth?: number; textFade?: number; repel?: number; linkDistance?: number; center?: number }
 const num = (v: unknown, dflt: number) => (typeof v === "number" && Number.isFinite(v) ? v : dflt)
 
-/** The forces, by the look and the graph's size (`many`: big graphs push less, and settle sooner). */
 function setForces(sim: Simulation<SimNode, SimLink>, look: Look, compact: boolean, many: boolean) {
   ;(sim.force("link") as ReturnType<typeof forceLink<SimNode, SimLink>>).distance((compact ? 48 : 46) * num(look.linkDistance, 1))
   ;(sim.force("charge") as ReturnType<typeof forceManyBody<SimNode>>).strength((compact ? -150 : many ? -45 : -120) * num(look.repel, 1))
@@ -101,12 +81,10 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
   looks.current = look
   const wrap = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
-  // Everything the drawing loop reads, kept in one mutable place so props changing never restarts the loop.
   const st = useRef({
     nodes: [] as SimNode[], order: [] as SimNode[], links: [] as SimLink[], by: new Map<string, SimNode>(), adj: new Map<string, Set<string>>(),
     sim: null as Simulation<SimNode, SimLink> | null,
     t: { k: 1, x: 0, y: 0 }, w: 0, h: 0, dpr: 1, touched: false,
-    // Marking it dirty asks for a frame: the loop runs while something moves or changed, never every frame of a still graph.
     drawn: false, wake: () => {}, get dirty() { return !this.drawn }, set dirty(v: boolean) { this.drawn = !v; if (v) this.wake() },
     hover: null as SimNode | null, search: "", focus: "", font: "system-ui", colors: { fg: "#000", muted: "#888", line: "#ccc", bg: "#fff", accent: "#07f" },
     onOpen, compact: !!compact, arrows: false, look: {} as Look, fit: null as (() => void) | null, setMoved: (_: boolean) => {},
@@ -115,7 +93,6 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
   st.current.onOpen = onOpen
   st.current.setMoved = setMoved
 
-  // The graph: nodes keep their place (and new ones start next to a neighbour).
   useEffect(() => {
     const s = st.current
     const pos = POS.get(scope) ?? new Map<string, { x: number; y: number }>()
@@ -137,7 +114,6 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
       return { n, x: pinned ? 0 : p.x, y: pinned ? 0 : p.y, fx: pinned ? 0 : undefined, fy: pinned ? 0 : undefined, r: radius(n.degree, compact) * num(looks.current.nodeSize, 1), tok: "", color: "", label: n.tag ? n.path : nameOf(n.path), low: `${nameOf(n.path)}\n${n.title}`.toLowerCase(), text: "", tw: 0, tws: 0, la: 0 }
     })
     for (const n of nodes) n.text = n.label.length > 32 ? n.label.slice(0, 31) + "…" : n.label
-    // (who names itself first where labels would meet: the files with the most links)
     const order = nodes.slice().sort((a, b) => b.n.degree - a.n.degree)
     const by = new Map(nodes.map((n) => [n.n.path, n]))
     const links: SimLink[] = graph.edges.flatMap((e) => (by.has(e.from) && by.has(e.to) ? [{ source: by.get(e.from)!, target: by.get(e.to)!, e, tok: null, color: null }] : []))
@@ -161,7 +137,6 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
   useEffect(() => { st.current.search = (search ?? "").trim().toLowerCase(); st.current.dirty = true }, [search])
   useEffect(() => { st.current.focus = focus ?? ""; st.current.dirty = true }, [focus])
   useEffect(() => { st.current.arrows = !!arrows; st.current.dirty = true }, [arrows])
-  // The look: sizes at once; new forces stir the layout a little, from where it is.
   const { nodeSize, lineWidth, textFade, repel, linkDistance, center } = look
   useEffect(() => {
     const s = st.current
@@ -179,7 +154,6 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
   }, [repel, linkDistance, center, compact])
   useEffect(() => { if (refit) st.current.fit?.() }, [refit])
 
-  // The colours, read again when the theme or scheme changes.
   useEffect(() => {
     const read = () => {
       const s = st.current
@@ -194,7 +168,6 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
     return onLook(() => { tokens.clear(); read() })
   }, [])
 
-  // Size, input and the drawing loop: set up once.
   useEffect(() => {
     const el = canvas.current!, box = wrap.current!, s = st.current
     const ctx = el.getContext("2d")!
@@ -220,7 +193,6 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
       }
       return best
     }
-    /** Fit what's there in the box (while the layout settles, until someone moves it). */
     const fit = (ease: number) => {
       if (!s.nodes.length || !s.w) return
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
@@ -241,7 +213,6 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
       touch(); s.dirty = true
     }
 
-    // Pointers: one drags a node or pans, two pinch. A press that barely moves is a click.
     const pts = new Map<number, { x: number; y: number }>()
     let drag: { node: SimNode | null; x: number; y: number; moved: boolean; t0: number } | null = null
     let pinch: { d: number; cx: number; cy: number } | null = null
@@ -315,7 +286,7 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
     const wheel = (e: WheelEvent) => {
       e.preventDefault()
       const p = local(e)
-      // A trackpad's two-finger scroll pans; a wheel, a pinch (ctrl) or ⌘ zooms.
+      // A trackpad pinch arrives as a wheel event with ctrlKey.
       const pan = !e.ctrlKey && !e.metaKey && e.deltaMode === 0 && Math.abs(e.deltaX) > 0
       if (pan) { s.t = { ...s.t, x: s.t.x - e.deltaX, y: s.t.y - e.deltaY }; touch(); s.dirty = true; return }
       zoomAt(p.x, p.y, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0022)))
@@ -336,7 +307,7 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
     let frame = 0
     const draw = () => {
       const { nodes, links, t, dpr, colors, hover, adj } = s
-      el.dataset.graphHover = hover?.n.path ?? "" // what's lit, for tests and screen readers' sake
+      el.dataset.graphHover = hover?.n.path ?? ""
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.clearRect(0, 0, s.w, s.h)
       ctx.save()
@@ -347,7 +318,6 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
       const match = (n: SimNode) => !q || n.low.includes(q)
       const faded = (n: SimNode) => (lit ? n !== hover && !lit.has(n.n.path) : false)
 
-      // Edges: one path for the plain ones, one for the lit ones.
       const lw = num(s.look.lineWidth, 1)
       ctx.lineWidth = Math.max(0.35 * lw, (s.compact ? 0.8 : 0.9) * lw / t.k)
       ctx.strokeStyle = colors.line
@@ -363,7 +333,6 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
         ctx.moveTo(a.x!, a.y!); ctx.lineTo(b.x!, b.y!)
       }
       ctx.stroke()
-      // Arrowheads where links go, at the dot's edge, in the line's colour.
       const heads = (ls: SimLink[]) => {
         if (!s.arrows || !ls.length) return
         const size = Math.max(4, ctx.lineWidth * 4)
@@ -384,7 +353,6 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
         ctx.fill()
       }
       heads(plain)
-      // (links whose type has a colour: a path per colour, a little stronger than the grey ones)
       if (own.size) {
         const alpha = ctx.globalAlpha
         ctx.globalAlpha = lit ? alpha : Math.min(1, alpha + 0.35)
@@ -407,7 +375,6 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
         heads(hot)
       }
 
-      // Nodes: a path per colour, faded ones first.
       for (const pass of [true, false]) {
         const groups = new Map<string, SimNode[]>()
         for (const n of nodes) if (faded(n) === pass) { const g = groups.get(n.color); if (g) g.push(n); else groups.set(n.color, [n]) }
@@ -428,14 +395,11 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
       }
       ctx.restore()
 
-      // Labels in screen space (crisp at any zoom): the lit ones always, the rest once there's room, and never one over
-      // another: the file with more links names itself first, one that would overlap fades out until zooming makes room.
       const size = s.compact ? 11 : 12
       ctx.font = `${size}px ${s.font}`
       ctx.textAlign = "center"
       ctx.textBaseline = "top"
       const all = nodes.length
-      // A small graph (a block, the sidebar) names the file's own neighbours; the rest once zoomed in.
       const near = s.compact && s.focus ? adj.get(s.focus) : null
       const fade = Math.pow(2, num(s.look.textFade, 0) / 2)
       const zoomLabels = t.k >= (s.compact ? 1.4 : all > 600 ? 1.6 : all > 150 ? 1.05 : 0.55) * fade
@@ -443,10 +407,8 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
       const shown: [SimNode, number, number, number][] = []
       let drawn = 0, fading = false
       const focusNode = s.focus ? s.by.get(s.focus) : undefined
-      // (the hovered file and the graph's own first: always named, the space theirs; then the lit, then by links)
       const firsts = [hover, focusNode].filter((n, i, a): n is SimNode => !!n && a.indexOf(n) === i)
       const important = (n: SimNode) => (lit?.has(n.n.path) ?? false) || (!!q && match(n) && all < 400) || (!lit && (near?.has(n.n.path) ?? false) && (near?.size ?? 0) <= 24)
-      // (a pass for the lit ones only when there are any: the order is every file, thousands of them)
       const leads = !!lit || !!q || !!near
       for (const pass of leads ? [0, 1, 2] : [0, 2]) {
         for (const n of pass === 0 ? firsts : s.order) {
@@ -461,14 +423,12 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
           if (n.tws !== size) { n.tw = ctx.measureText(n.text).width; n.tws = size }
           const fits = room.take(sx - n.tw / 2 - 4, sy - 1, sx + n.tw / 2 + 4, sy + size + 2, must)
           if (fits && !lead) drawn++
-          // (one that's just come into room fades in, one that's lost it fades out, so a moving graph doesn't flicker)
           const goal = fits ? 1 : 0
           n.la = must ? 1 : Math.abs(goal - n.la) < 0.04 ? goal : n.la + (goal - n.la) * 0.3
           if (n.la !== goal) fading = true
           if (n.la > 0) shown.push([n, sx, sy, (lead ? 1 : Math.min(1, 0.35 + (t.k - 0.5) * 0.6)) * n.la])
         }
       }
-      // (what's named and where, for tests: as graphHover)
       ;(el as HTMLCanvasElement & { labels?: unknown }).labels = () => shown.map(([n, sx, sy, alpha]) => ({ text: n.text, x0: sx - n.tw / 2, x1: sx + n.tw / 2, y0: sy, y1: sy + size, alpha, full: n.la === 1 }))
       for (const [n, sx, sy, alpha] of shown) {
         ctx.globalAlpha = alpha
@@ -481,7 +441,6 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
       if (fading) s.dirty = true
       ctx.globalAlpha = 1
     }
-    // Off screen (scrolled away, or in a tab kept drawn but hidden) it neither moves nor draws: it goes on when seen.
     let seen = true
     const io = new IntersectionObserver((es) => { seen = es[es.length - 1].isIntersecting; if (seen) s.dirty = true })
     io.observe(el)
