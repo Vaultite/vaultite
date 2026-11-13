@@ -1,9 +1,12 @@
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
+import { z } from "zod"
 import { type Entry, type FileStat, type Folder, sha256hex as sha, type SyncStore as Store, syncPath as norm, unsynced } from "../../../core/plugins.ts"
 
 const BIG = 1 << 20
+type SavedState = Parameters<Store["saveState"]>[0]
+const Pointer = z.object({ path: z.string(), size: z.number(), mtime: z.number() })
 const rel = (root: string, abs: string) => norm(path.relative(root, abs).split(path.sep).join("/"))
 
 export class DiskFolder implements Folder {
@@ -51,7 +54,7 @@ export class DiskFolder implements Folder {
       if (st.size < 256 << 10) continue
       try {
         const h = crypto.createHash("sha256")
-        for await (const chunk of fs.createReadStream(this.abs(p))) h.update(chunk as Buffer)
+        for await (const chunk of fs.createReadStream(this.abs(p))) h.update(chunk)
         this.hashes.set(p, { size: st.size, mtime: st.mtime, hash: h.digest("hex") })
       } catch {}
     }
@@ -100,7 +103,7 @@ export class DiskFolder implements Folder {
 
 export class DiskStore implements Store {
   readonly dir: string
-  private pending: Record<string, unknown> | null = null
+  private pending: SavedState | null = null
   private timer: ReturnType<typeof setTimeout> | null = null
   constructor(dir: string) { this.dir = dir; fs.mkdirSync(path.join(dir, "log"), { recursive: true }); fs.mkdirSync(path.join(dir, "blobs"), { recursive: true }) }
 
@@ -122,7 +125,7 @@ export class DiskStore implements Store {
   state() {
     try { return JSON.parse(fs.readFileSync(path.join(this.dir, "state.json"), "utf8")) } catch { return null }
   }
-  saveState(s: Record<string, unknown>) {
+  saveState(s: SavedState) {
     this.pending = s
     this.timer ??= setTimeout(() => this.flush(), 1500)
     this.timer.unref?.()
@@ -140,7 +143,7 @@ export class DiskStore implements Store {
   // iCloud Drive's files can't be cloned
   private pointer(h: string): string | null {
     try {
-      const at = JSON.parse(fs.readFileSync(`${this.blobPath(h)}.at`, "utf8")) as { path: string; size: number; mtime: number }
+      const at = Pointer.parse(JSON.parse(fs.readFileSync(`${this.blobPath(h)}.at`, "utf8")))
       const st = fs.statSync(at.path)
       if (st.size === at.size && Math.round(st.mtimeMs) === at.mtime) return at.path
     } catch {}

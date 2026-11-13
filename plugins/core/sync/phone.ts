@@ -12,9 +12,10 @@ for (const e of "m4a mp3 wav aac flac ogg opus caf".split(" ")) EXT[e] = "audio"
 EXT.pdf = "pdf"
 export const mediaKind = (path: string): MediaKind => EXT[path.slice(path.lastIndexOf(".") + 1).toLowerCase()] ?? "other"
 
+const SPAN_MS = new Map([["h", 3600_000], ["d", 86400_000], ["w", 7 * 86400_000], ["m", 30 * 86400_000]])
 export function span(s: string | undefined) {
   const m = /^(\d+)\s*([hdwm])$/.exec(String(s ?? "").trim())
-  return m ? Number(m[1]) * { h: 3600_000, d: 86400_000, w: 7 * 86400_000, m: 30 * 86400_000 }[m[2] as "h"]! : 0
+  return m ? Number(m[1]) * (SPAN_MS.get(m[2]) ?? 0) : 0
 }
 
 export function embeds(text: string, from: string, byName: Map<string, string[]>, exists: (p: string) => boolean): string[] {

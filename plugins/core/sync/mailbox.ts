@@ -1,7 +1,8 @@
 import fs from "node:fs"
 import path from "node:path"
-import type { Entry, Replica, Vector } from "../../../core/plugins.ts"
+import type { Replica, Vector } from "../../../core/plugins.ts"
 import type { DiskStore } from "./disk.ts"
+import { Entries } from "./wire.ts"
 
 const SEGMENT = 1000, BLOB_MAX = 8 << 20
 const segName = (from: number, to: number) => `seg-${String(from).padStart(9, "0")}-${String(to).padStart(9, "0")}.jsonl`
@@ -66,13 +67,13 @@ export class Mailbox {
       let names: string[]
       try { names = fs.readdirSync(dir).filter((n) => SEG.test(n)).sort() } catch { continue }
       for (const name of names) {
-        const [, , to] = SEG.exec(name)!.map(Number) as number[]
+        const [, , to] = SEG.exec(name)!.map(Number)
         if (to <= (this.read[d] ?? 0)) continue
         let text: string
         try { text = fs.readFileSync(path.join(dir, name), "utf8") } catch { break }
-        const es: Entry[] = []
+        const es: unknown[] = []
         for (const line of text.split("\n")) { if (!line.trim()) continue; try { es.push(JSON.parse(line)) } catch {} }
-        got += r.receive(es)
+        got += r.receive(Entries.parse(es))
         this.read[d] = Math.max(this.read[d] ?? 0, to)
       }
     }

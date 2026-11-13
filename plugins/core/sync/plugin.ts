@@ -7,6 +7,7 @@ import { type Conflict, type Entry, FileAnswer, HTTPError, LOCAL, localDate, loc
 import { DiskFolder, DiskStore } from "./disk.ts"
 import { Mailbox } from "./mailbox.ts"
 import { Mirror, snapshot } from "./hub.ts"
+import { BlobsAsk, type Compare, CompareRun, DeviceSettings, ExchangeAnswer, ExchangeAsk, SavedExtra } from "./wire.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -22,7 +23,7 @@ export type SetConfig = {
 }
 type Peer = { id: string; url: string; label: string }
 type PeerState = { vector: Vector | null; ok: number; tried: number; error: string; hosts: boolean | null }
-export type Compare = { at: number; same: number; differ: string[]; missing: string[]; extra: string[]; keptMore: string[]; lostLines: { path: string; lines: string[] }[] }
+export type { Compare }
 
 const MACHINES = "machines"
 const ICLOUD = path.join(os.homedir(), "Library", "Mobile Documents", "com~apple~CloudDocs")
@@ -90,7 +91,7 @@ export class SyncSet {
     this.replica.onEntries = () => this.push()
     this.replica.onLog = (m) => this.note(m)
     const mbox = cfg.mailbox === undefined ? (fs.existsSync(ICLOUD) ? path.join(ICLOUD, "Vaultite sync", cfg.id) : null) : cfg.mailbox
-    const saved = this.replica.extra as { mailbox?: { read?: Record<string, number>; written?: number }; mirror?: [string, never][] }
+    const saved = SavedExtra.parse(this.replica.extra)
     if (mbox) this.mailbox = new Mailbox(mbox, device, saved.mailbox)
     if (cfg.copy) this.mirror = new Mirror(cfg.copy, "icloud-copy", saved.mirror)
   }
@@ -106,7 +107,7 @@ export class SyncSet {
       try { fs.mkdirSync(this.mirror.target, { recursive: true }); this.copyWatcher = fs.watch(this.mirror.target, { recursive: true }, (_e, name) => { if (!name || !unsynced(String(name))) soon() }) } catch {}
       this.timers.push(setInterval(soon, SCAN_MS))
     }
-    if (this.shadow) this.timers.push(setInterval(() => void this.compare().catch((e) => this.note(`compare: ${(e as Error).message}`)), COMPARE_MS))
+    if (this.shadow) this.timers.push(setInterval(() => void this.compare().catch((e) => this.note(`compare: ${e instanceof Error ? e.message : String(e)}`)), COMPARE_MS))
     for (const t of this.timers) t.unref?.()
     const fresh = this.replica.seen.size === 0
     void (fresh ? this.exchangeAll().then(() => this.mail()) : Promise.resolve())
@@ -133,7 +134,7 @@ export class SyncSet {
   }
   run<T>(fn: () => Promise<T> | T): Promise<T> {
     const p = this.chain.then(fn)
-    this.chain = p.catch((e) => this.note(`error: ${(e as Error).message}`))
+    this.chain = p.catch((e) => this.note(`error: ${e instanceof Error ? e.message : String(e)}`))
     return p
   }
   later(ms = QUIET_MS) {
@@ -191,9 +192,9 @@ export class SyncSet {
   async exchangeAll() {
     if (this.closed) return
     let ps: Peer[]
-    try { ps = await this.peerList() } catch (e) { this.note(`peers: ${(e as Error).message}`); return }
+    try { ps = await this.peerList() } catch (e) { this.note(`peers: ${e instanceof Error ? e.message : String(e)}`); return }
     if (ps.length !== this.lastPeers) { this.lastPeers = ps.length; this.note(`peers: ${ps.map((p) => p.id).join(", ") || "none (Machines lists no other machine)"}`) }
-    await Promise.all(ps.map((p) => this.exchange(p).catch((e) => { this.note(`${p.id}: ${(e as Error).message}`); return false })))
+    await Promise.all(ps.map((p) => this.exchange(p).catch((e) => { this.note(`${p.id}: ${e instanceof Error ? e.message : String(e)}`); return false })))
   }
   private trading = new Set<string>()
   async exchange(p: Peer): Promise<boolean> {
@@ -211,11 +212,11 @@ export class SyncSet {
           body: JSON.stringify({ set: this.cfg.id, device: this.device, protocol: PROTOCOL, vector: this.replica.vector(), entries: send, blobs: this.inline(send) }),
           signal: AbortSignal.timeout(30_000) })
         if (r.status === 404) { st.hosts = false; st.error = "doesn't sync this vault"; return false }
-        const body = await r.json().catch(() => ({})) as { vector?: Vector; entries?: Entry[]; blobs?: Record<string, string>; more?: boolean; error?: string }
+        const body = ExchangeAnswer.parse(await r.json().catch(() => ({})))
         if (!r.ok) { st.error = body.error ?? `answered ${r.status}`; return false }
         st.hosts = true
         this.take(body.blobs)
-        const n = this.replica.receive(body.entries ?? [])
+        const n = this.replica.receive(body.entries)
         got += n
         st.vector = body.vector ?? {}
         if (!body.more && !this.replica.missing(st.vector, 1).length) break
@@ -225,7 +226,7 @@ export class SyncSet {
       if (got) { this.later(50); this.push() }
       return true
     } catch (e) {
-      st.error = (e as Error).name === "TimeoutError" ? "no answer" : "unreachable"
+      st.error = e instanceof Error && e.name === "TimeoutError" ? "no answer" : "unreachable"
       return false
     } finally { this.trading.delete(p.id) }
   }
@@ -259,7 +260,7 @@ export class SyncSet {
           fs.mkdirSync(path.dirname(to), { recursive: true })
           const hash = crypto.createHash("sha256")
           const out = fs.createWriteStream(tmp)
-          for await (const chunk of r.body as unknown as AsyncIterable<Uint8Array>) { hash.update(chunk); if (!out.write(chunk)) await new Promise<void>((ok) => out.once("drain", () => ok())) }
+          for await (const chunk of r.body) { hash.update(chunk); if (!out.write(chunk)) await new Promise<void>((ok) => out.once("drain", () => ok())) }
           await new Promise<void>((ok, bad) => out.end((e?: Error | null) => (e ? bad(e) : ok())))
           if (hash.digest("hex") === h) fs.renameSync(tmp, to); else fs.rmSync(tmp, { force: true })
         } catch {}
@@ -279,7 +280,7 @@ export class SyncSet {
         mb.clean()
         this.saveExtra()
         if (got) { this.later(50); this.push() }
-      } catch (e) { this.note(`mailbox: ${(e as Error).message}`) }
+      } catch (e) { this.note(`mailbox: ${e instanceof Error ? e.message : String(e)}`) }
     })
   }
   private saveExtra() {
@@ -306,7 +307,7 @@ export class SyncSet {
       const r = await snapshot(g, this.folder.root)
       if (r.committed) this.note(`git snapshot: ${r.files || "committed"}`)
       return r
-    } catch (e) { this.note(`git snapshot: ${(e as Error).message}`); return null }
+    } catch (e) { this.note(`git snapshot: ${e instanceof Error ? e.message : String(e)}`); return null }
   }
   copy() {
     if (!this.mirror) return
@@ -353,7 +354,7 @@ export class SyncSet {
     let names: string[] = []
     try { names = fs.readdirSync(dir).filter((n) => n.endsWith(".jsonl")).sort().slice(-days) } catch {}
     return names.map((n) => {
-      const runs = fs.readFileSync(path.join(dir, n), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as Compare)
+      const runs = fs.readFileSync(path.join(dir, n), "utf8").split("\n").filter(Boolean).map((l) => CompareRun.parse(JSON.parse(l)))
       const clean = runs.filter((r) => !r.missing.length && !r.extra.length && !r.lostLines.length && r.differ.length === r.keptMore.length)
       return { day: n.slice(0, 10), runs: runs.length, clean: clean.length, last: runs[runs.length - 1] }
     })
@@ -378,7 +379,7 @@ async function load() {
       const s = new SyncSet(cfg, cfg.device ?? await selfId())
       running.set(cfg.id, s)
       s.start()
-    } catch (e) { console.warn(`sync: ${cfg.id}: ${(e as Error).message}`) }
+    } catch (e) { console.warn(`sync: ${cfg.id}: ${e instanceof Error ? e.message : String(e)}`) }
   }
 }
 const boot = setTimeout(() => { if (plugin.loaded) void load() }, FAST ? 200 : 4000)
@@ -393,13 +394,13 @@ const setOf = (id: unknown) => {
 
 plugin.route("POST", "sync/exchange", async (req) => {
   await plugin.ownerOnly(req, "Device sync")
-  const b = req.body ?? {}
+  const b = ExchangeAsk.parse(req.body ?? {})
   const s = setOf(b.set)
   if (b.protocol !== PROTOCOL) throw new HTTPError(409, `sync protocol ${String(b.protocol)} here is ${PROTOCOL}: update the older app (nothing is dropped meanwhile)`)
-  s.take(b.blobs as Record<string, string>)
-  const n = s.replica.receive(Array.isArray(b.entries) ? b.entries as Entry[] : [])
+  s.take(b.blobs)
+  const n = s.replica.receive(b.entries)
   if (n) { s.later(50); s.push() }
-  const theirs = (b.vector && typeof b.vector === "object" ? b.vector : {}) as Vector
+  const theirs = b.vector
   const entries = s.replica.missing(theirs, 2000)
   const more = s.replica.missing(theirs, 2001).length > 2000
   const st = s.peers.get(String(b.device)) ?? { vector: null, ok: 0, tried: 0, error: "", hosts: true }
@@ -435,9 +436,9 @@ plugin.route("POST", "sync/blob", async (req) => {
 
 plugin.route("POST", "sync/blobs", async (req) => {
   await plugin.ownerOnly(req, "Device sync")
-  const s = setOf(req.body?.set), out: Record<string, string> = {}
+  const ask = BlobsAsk.parse(req.body ?? {}), s = setOf(ask.set), out: Record<string, string> = {}
   let total = 0
-  for (const h of Array.isArray(req.body?.hashes) ? (req.body.hashes as unknown[]).slice(0, 2000) : []) {
+  for (const h of ask.hashes.slice(0, 2000)) {
     if (typeof h !== "string" || !/^[0-9a-f]{64}$/.test(h) || total > 8 << 20) continue
     const b = s.store.blob(h)
     if (b && b.length <= 8 << 20) { out[h] = Buffer.from(b).toString("base64"); total += b.length }
@@ -616,6 +617,7 @@ plugin.op({
 })
 
 const BYTES = /^(\d+(?:\.\d+)?)\s*(kb|mb|gb)$/i
+const UNIT_BYTES = new Map([["kb", 1 << 10], ["mb", 1 << 20], ["gb", 1 << 30]])
 plugin.op({
   id: "sync.keep", cli: "sync keep", kind: "write",
   summary: "Choose what a device keeps offline (the phone): a file, a note with its media, or a folder (new files in it too), by kind and age; or all media, or the storage cap.",
@@ -640,16 +642,16 @@ them the next time it connects (big files on Wi-Fi only). Notes are always on it
     device: { type: "string", default: "iphone", description: "which device (the phone: iphone)" },
   },
   run: ({ path: p, kind, since, latest, off, all, cap, device }) => {
-    const cur = plugin.settings({}), devices = { ...(cur.devices ?? {}) } as Record<string, Record<string, unknown>>, d = { ...(devices[device] ?? {}) }
+    const cur = plugin.settings({}), devices = DeviceSettings.parse(cur.devices ?? {}), d = { ...(devices[device] ?? {}) }
     if (all !== undefined) d.keepAll = all
     if (cap) {
       const m = BYTES.exec(cap)
       if (!m) throw new HTTPError(400, "`cap`: a size like 2GB or 500MB")
-      d.cap = Math.round(Number(m[1]) * { kb: 1 << 10, mb: 1 << 20, gb: 1 << 30 }[m[2].toLowerCase() as "kb"]!)
+      d.cap = Math.round(Number(m[1]) * (UNIT_BYTES.get(m[2].toLowerCase()) ?? 0))
     }
     if (p !== undefined) {
       const at = String(p).replace(/^\/+|\/+$/g, "")
-      const keep = (Array.isArray(d.keep) ? d.keep : []).filter((r: { path?: string }) => r.path !== at)
+      const keep = (d.keep ?? []).filter((r) => r.path !== at)
       d.keep = off ? keep : [...keep, { path: at, ...(kind ? { kind } : {}), ...(since ? { since } : {}), ...(latest ? { latest } : {}) }]
     } else if (all === undefined && !cap) throw new HTTPError(400, "say what: a `path`, `all` or `cap`")
     devices[device] = d
