@@ -1,5 +1,5 @@
-// Interaction consistency (desktop): what should behave the same everywhere does (tabs reused, focus returned, drops,
-// menus' order). Runs a shell, WRITES "Qa interact", tabs and workspaces 1 and 3 (removed after): throwaway server only.
+// Interaction consistency on a desktop: tabs reused, focus returned, drops and menus' order alike everywhere.
+// Runs a shell, WRITES "Qa interact", tabs and workspaces 1 and 3 (removed after): throwaway server only.
 //   node web/qa/interact.mjs <base url> [out dir]
 import { execFileSync } from "node:child_process"
 import { mkdirSync } from "node:fs"
@@ -9,8 +9,6 @@ import { app } from "./lib/app.mjs"
 const { args: [B, OUT = "/tmp/interact-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const api = apiAt(B)
-// What it uses, whatever the vault turned off (the sandbox starts calm), told through vau to the served vault, not the
-// one VAULTITE_VAULT may name (in a Vaultite terminal, the user's).
 const vaultPath = (await (await fetch(new URL("api/vault", B))).json()).path
 const vau = (...a) => execFileSync(process.execPath, [path.resolve(import.meta.dirname, "../../bin/vau"), "--url", B, ...a],
   { encoding: "utf8", env: { ...process.env, VAULTITE_URL: B, VAULTITE_VAULT: vaultPath } })
@@ -25,18 +23,15 @@ const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
 await ctx.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } })
 const page = watch(await ctx.newPage(), { console: true, ignore: /favicon|Failed to load resource|WebSocket/ }), ui = app(page)
 const shot = (name) => page.screenshot({ path: `${OUT}interact-${name}.png` })
-/** The panes on screen, left to right, each with what it shows (its section's name). */
 const panes = () => page.evaluate(() => [...document.querySelectorAll("[data-pane-area] > section[data-pane-frame]:not([data-away])")].map((s) => ({
   id: s.dataset.paneFrame, x: s.getBoundingClientRect().x, tabs: [s.getAttribute("aria-label")],
 })).sort((a, b) => a.x - b.x))
-/** What every tab in the bar shows: a split tab's panes each. */
 const tabs = () => page.evaluate(() => [...document.querySelectorAll("[data-tab-strip] [data-tab-id]")].flatMap((c) => {
   const halves = [...c.querySelectorAll("[data-pane-half]")]
   return halves.length ? halves.map((h) => h.innerText.trim()) : [c.querySelector("[role=tab]").innerText.trim()]
 }))
 const count = async (label) => (await tabs()).filter((t) => t === label).length
 const cmd = async (name) => { await command(page, name, 0); await ui.idle() }
-/** Where the keyboard is: "editor:<pane id>", "palette", "tab", a row of the workspace list ("ws:<n>"), or its tag. */
 const focus = () => page.evaluate(() => {
   const a = document.activeElement
   if (!a || a === document.body) return "body"
@@ -51,17 +46,13 @@ const focusedPane = () => page.evaluate(() => document.querySelector("#main-scro
 
 await page.goto(`${B}#file/${encodeURIComponent(`${DIR}/One.md`)}`); await page.locator(".cm-content").first().waitFor(); await ui.idle()
 
-// ---------- one tab per view ----------
 await cmd("Open tags in a tab"); await cmd("Open tags in a tab")
 check("Open tags in a tab, twice: one Tags tab", (await count("Tags")) === 1, await tabs())
 await cmd("Open outline in right split"); await cmd("Open outline in right split"); await cmd("Open outline in a tab")
 check("Open outline in right split twice, then in a tab: one Outline tab", (await count("Outline")) === 1, await tabs())
 await cmd("Open links in a tab"); await cmd("Open links in right split")
 check("Open links in a tab, then in right split: one Links tab", (await count("Links")) === 1, await tabs())
-// Start again from one tab, its folder open: both workspace 1's (there always is a workspace, 02c5ae8).
 const fresh = async () => {
-  // (Off the app once its tabs are saved as they are, order and splits too, about 1 s after a change: one still on its
-  // way is saved over these by the next page, workspaces/state.ts' leaving, which compares them so.)
   const shape = (l) => JSON.stringify(l ?? null, (k, v) => (["back", "fwd", "from", "active", "focus"].includes(k) ? undefined : v))
   const mine = () => page.evaluate(() => JSON.parse(localStorage.getItem("vaultite.tabs.workspace") ?? localStorage.getItem("vaultite.tabs") ?? "null")?.tabs)
   await until(async () => shape((await api("GET", "workspaces")).workspaces?.[0]?.layout?.tabs) === shape(await mine()), 10000); await ui.idle()
@@ -71,8 +62,6 @@ const fresh = async () => {
 }
 await fresh()
 
-// ---------- a drop never gives a bar the same place twice ----------
-/** Drag `from` (a locator) to (x, y) and let go. */
 async function dragTo(from, x, y) {
   await from.scrollIntoViewIfNeeded()
   const b = await from.boundingBox()
@@ -90,7 +79,6 @@ check("a tree file dropped on a bar that has its tab: offered (the tabs make way
 check("...its tab moves there, no second one", (await tabs()).join("|") === "Two|One", await tabs())
 await fresh()
 
-// ---------- a terminal dragged from the Terminals panel opens where it's dropped, like a file ----------
 await cmd("Open terminal"); await page.locator("aside [data-session]").first().waitFor(); await ui.idle()
 const term = await page.evaluate(() => document.querySelector("aside [data-session]")?.getAttribute("data-session"))
 await page.locator("[data-tab-strip] [data-tab-id]", { hasText: "One" }).first().click(); await ui.idle()
@@ -105,7 +93,6 @@ if (await page.$("[role=alertdialog]")) await page.locator("[role=alertdialog] b
 await ui.idle()
 await fresh()
 
-// ---------- a middle-click is "in a new tab" everywhere, never the browser's new tab ----------
 let popups = 0
 ctx.on("page", () => popups++)
 const pinned = page.locator("aside nav[aria-label=Pages] [data-pin]").first()
@@ -115,7 +102,6 @@ check("a pinned page middle-clicked: a tab here, no browser tab", popups === 0 &
 for (const p of ctx.pages()) if (p !== page) await p.close()
 await fresh()
 
-// ---------- the keyboard after overlays ----------
 await page.click(".cm-content"); await ui.idle()
 const ed = await focus()
 check("typing in the editor", ed.startsWith("editor:"), ed)
@@ -147,7 +133,6 @@ await cmd("Colour scheme"); await ui.idle()
 await page.keyboard.press("Escape"); await ui.idle()
 check("a sheet (colour schemes) closed with Escape: back in the editor", (await focus()).startsWith("editor:"), await focus())
 
-// ---------- a tab's menu: where the file is at hand, what changes it under More file actions ▸ ----------
 const menuItems = async (loc) => {
   await ui.menu.context(loc)
   const items = await page.$$eval("[role=menu] > button", (bs) => bs.map((b) => b.innerText.trim()))
@@ -169,7 +154,6 @@ await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` },
 const pinMenu = await menuItems(page.locator("aside nav[aria-label=Pages] [data-pin]").first())
 check("a pinned page's menu opens it like the tree's (new tab, to the right in its submenu), has a file's items and unpins it last", pinMenu[0] === "Open in new tab" && pinMenu.includes("Copy path") && pinMenu.at(-1) === "Unpin" && pinMenu.filter((t) => t === "Unpin").length === 1, pinMenu)
 
-// ---------- the workspace list ----------
 await page.click("aside [data-workspace-switcher]"); await ui.idle()
 check("the workspace list opens with the keyboard on the current one", (await focus()) === "ws:1", await focus())
 await page.keyboard.press("ArrowDown"); await ui.idle()
@@ -180,11 +164,9 @@ await page.keyboard.press("Escape"); await ui.idle()
 check("...Escape: closed, the keyboard back on the switcher", !(await page.$("[data-workspace-list]")) && (await focus()) === "switcher", await focus())
 await page.keyboard.press("Escape")
 
-// ---------- tabs and workspaces from the keyboard ----------
 await fresh()
 await page.locator(`aside [data-tree-path="${DIR}/Two.md"] > button`).first().click({ button: "middle" }); await ui.idle()
 const active = async () => page.evaluate(() => document.querySelector("#main-scroll")?.closest("section[data-pane-frame]")?.getAttribute("aria-label"))
-// (a middle click opens behind, as a browser's links do: e9482a68)
 check("a tree file middle-clicked: its tab behind, One still on screen", (await tabs()).join() === "One,Two" && (await active()) === "One", [await tabs(), await active()])
 await page.locator("[data-tab-strip] [data-tab-id] [role=tab]", { hasText: "Two" }).first().click(); await ui.idle()
 await cmd("Go to previous tab")

@@ -1,6 +1,7 @@
-// A finger held still is the right-click (components/ContextMenu.tsx, watchHolds), in Chrome's touch emulation: WebKit's
-// own hold (selection, a link's preview) isn't covered. WRITES .vaultite/newtab.json: throwaway only.
+// A finger held still is the right-click, in Chrome's touch emulation (WebKit's own hold isn't covered).
+// WRITES .vaultite/newtab.json: throwaway only.
 //   node web/qa/hold.mjs <base url> <vault path> [out dir]
+// Paths: components/ContextMenu.tsx
 import { mkdirSync, rmSync } from "node:fs"
 import path from "node:path"
 import { fingers, qa, until, wait } from "./lib/qa.mjs"
@@ -11,11 +12,8 @@ rmSync(path.join(VAULT, ".vaultite/newtab.json"), { force: true })
 try {
   const page = watch(await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }))
   const { touch } = await fingers(page)
-  /** A finger on the element's middle for `ms`, moved `dy` px on the way, then lifted. `marked`: whether the page was
-   *  kept from selecting (data-held) before the lift and after, and whether a selection made then (as iOS's) stayed. */
   let marked = null
   const hold = async (sel, ms = 700, dy = 0) => {
-    // (a box still for half a second, its point on it: the new tab's sections fill in after it opens, moving rows down)
     let b, still = 0
     for (let i = 0; i < 60 && still < 5; i++) {
       const n = await page.locator(sel).first().boundingBox()
@@ -45,7 +43,7 @@ try {
   await page.click("[data-bar='new']")
   await page.waitForSelector("[data-newtab-action='file:new']")
   const tabs0 = await page.getAttribute("[data-tabs-button]", "aria-label")
-  // Which contextmenu events come: Chrome's touch sends none of its own, like iOS, so the menu is the hold's.
+  // (Chrome's touch emulation sends no contextmenu of its own, as iOS)
   await page.evaluate(() => { window.__menus = []; addEventListener("contextmenu", (e) => window.__menus.push(e.isTrusted), true) })
 
   await hold("[data-newtab-action='file:new']")
@@ -69,8 +67,6 @@ try {
   check("held on a file's row: the page's menu", await menus() === 1, await menus())
   await closeMenus()
 
-  // A note's text: nothing takes the hold (the system's selection would).
-  // (a note of the sample's: the latest changed files are dashboards the vault's plugins wrote)
   await page.goto("about:blank")
   await page.goto(`${B}#file/${encodeURIComponent("Notes/How this vault works.md")}`)
   const text = page.locator("main .cm-content .cm-line").filter({ hasText: /\w{4}/ })
@@ -79,10 +75,8 @@ try {
   check("held on a note's text: no menu", await menus() === 0, await menus())
   check("held on a note's text: its text stays selectable", !marked.held && marked.selected && !marked.after, marked)
 
-  // The tab list: a card held is picked up to move it, not a menu.
   await page.click("[data-tabs-button]")
   if (await until(() => page.locator("[data-tab-row]").count(), 3000)) {
-    // (once the list has slid in: a finger during its motion is on a picture of the screen)
     await until(() => page.evaluate(() => !document.documentElement.dataset.motion))
     await hold("[data-tab-row]")
     check("held on a tab card: its menu", await menus() === 1, await menus())

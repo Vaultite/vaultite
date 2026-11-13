@@ -1,8 +1,7 @@
-// The island by the notch (electron/island.ts, knockhelper.ts) in the desktop app, unseen: a session knocks, its line
-// comes up right of the notch (a 15-inch MacBook Air's, Vorssaint's island over it as read there) with Answer and a close
-// and no countdown, is told and rests as one orange mark; its × closes a ready one's card at once; Not now in the list puts
-// one off; a ready one is calm; a hover lists them in
-// the Agents panel's groups; another app's island wide moves ours to its right. The screen helper is stood in for. WRITES: throwaway vault only.   node web/qa/island.mjs <vault copy> [png]
+// The island by the notch: a session's knock comes up beside the notch, rests as a mark, and a hover lists sessions.
+// Needs the desktop app, the screen helper stood in for; WRITES only the throwaway vault.
+//   node web/qa/island.mjs <vault copy> [png]
+// Paths: electron/island.ts
 import { _electron } from "playwright-core"
 import fs from "node:fs"
 import os from "node:os"
@@ -25,12 +24,9 @@ const port = new URL(win.url()).port
 const helper = (fn, arg) => app.evaluate((_e, [f, a]) => globalThis.vaultiteHelper && new Function("h", "a", `return (${f})(h, a)`)(globalThis.vaultiteHelper, a), [String(fn), arg])
 const op = (id, body) => fetch(`http://127.0.0.1:${port}/api/ops/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json())
 check("the helper runs with the app", await helper(() => true))
-// (as the M4's screen.swift read them: the notch, Vorssaint's island at rest over it and its corner window)
 const notch = { x: 646, y: 0, width: 179, height: 32 }
 const vors = (x, width, height = 32) => ({ window: 1, bundle: "com.vorssaint.utils", name: "Vorssaint", layer: 26, seen: true, vaultite: false, frame: { x, y: 0, width, height } })
-// (on this display, as Electron has it here: the stand-in's notch is matched by the display's frame)
 const display = await app.evaluate(({ screen }) => screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).bounds)
-// (and its status items, Control Center's, from 951)
 const items = [951, 999, 1033, 1071].map((x) => ({ window: x, bundle: "com.apple.controlcenter", name: "Control Center", layer: 25, seen: true, vaultite: false, frame: { x: display.x + x, y: 0, width: 38, height: 33 } }))
 await helper((h, a) => { h.stub("notch", { screens: [{ frame: a.d, notch: { ...a.notch, x: a.d.x + 646 } }] }); h.stub("windows", { windows: [a.v, a.corner, ...a.items] }) },
   { d: display, notch, items, v: vors(display.x + 645, 179), corner: { ...vors(0, 40, 40), frame: { x: 0, y: 916, width: 40, height: 40 }, seen: false } })
@@ -39,7 +35,6 @@ await wait(1500)
 const k = await op("companion.knock", { line: "Tests pass: ready for you to look", who: "Lighthouse", urgency: "normal" })
 check("a session knocks", k.state === "waiting", k)
 const island = await until(() => app.windows().find((p) => p.url().endsWith("/screen.html#island")), 10000)
-// (all read at once as it comes: its grace is a few seconds)
 const came = !!island && await until(() => island.evaluate(() => { const k = document.querySelector("[data-island-knock]")
   return k && { text: k.textContent, close: !!document.querySelector("[data-island-dismiss]"), answer: !!document.querySelector('[data-island-action="Answer"]'),
     countdown: !!document.querySelector(".island-grace, [style*='scaleX']"), card: !!document.querySelector(".island-card [data-island-knock]") } }), 8000, 50)
@@ -56,7 +51,6 @@ if (PNG) { await wait(600); fs.writeFileSync(PNG.replace(/\.png$/, "-rest.png"),
 const told = await op("companion.knocks", {})
 check("…and the server has it told", told.knocks.some((x) => x.id === k.id && x.state === "told"), told.knocks)
 
-// ---------- a Talk key let go over a session by the notch: its words typed into its terminal
 const term = await op("terminal.start", { command: "cat", name: "island-cat" })
 const tid = term.id ?? term.terminal
 check("a terminal to talk to", typeof tid === "string", term)
@@ -71,7 +65,6 @@ check("…typed into its terminal", await until(async () => /use main/.test(JSON
 check("…and its knock is answered", await until(async () => (await op("companion.knocks", {})).knocks.find((x) => x.who === "Cat")?.state === "opened", 4000))
 await op("terminal.end", { id: tid })
 
-// ---------- ×: a ready one's card (up 15 s) closed at once, resting in the island, not put off
 const k3 = await op("companion.knock", { line: "Ready to show you the new tab list", who: "Tab list", hold: "15s" })
 await until(() => island.evaluate(() => document.querySelector("[data-island-knock]")?.textContent?.includes("Tab list")), 8000)
 check("a ready one's card is calm: Show me and a close", await island.evaluate(() => !!document.querySelector('[data-island-action="Show me"]') && !!document.querySelector("[data-island-dismiss]")))
@@ -81,7 +74,6 @@ check("…told, not put off: it rests in the island", await until(async () => (a
   await until(() => helper((h, id) => h.island().presences.find((p) => p.knock === id)?.state === "ready", k3.id), 3000))
 await op("companion.knocks", { ignore: k3.id })
 
-// ---------- Not now, in the list: off till their next break
 const k2 = await op("companion.knock", { line: "Which account should the deploy use?", who: "Deploy", urgency: "high" })
 await until(() => helper((h, id) => h.island().knocks.find((x) => x.id === id && x.state === "told"), k2.id), 10000)
 await island.locator("[data-island]").hover({ position: { x: 30, y: 10 } })
@@ -92,7 +84,6 @@ check("Not now puts it off", await until(async () => (await op("companion.knocks
 check("…and the island lets it go", await until(async () => !(await island.locator("[data-island-row]", { hasText: "Deploy" }).count()), 3000))
 await island.mouse.move(600, 330)
 
-// ---------- at rest and in the list: needs you orange, ready calm, working still; a hover lists them as the Agents panel
 const mixed = [{ id: "qa-n", who: "Lighthouse migration", tint: "teal", state: "needs you", since: Date.now() - 120_000, line: "Run it on prod?" },
   { id: "qa-r", who: "Tab list fix", tint: "purple", state: "ready", since: Date.now() - 300_000, line: "Ready to show you" },
   { id: "qa-w1", who: "Inbox decisions", tint: "green", state: "working", since: Date.now() - 720_000, step: "Running npm test" },
@@ -122,7 +113,6 @@ await island.locator("[data-island]").hover({ position: { x: 30, y: 10 } })
 check("…closed and hovered again, they're folded again", await until(() => island.evaluate(() => !!document.querySelector("[data-island-row]") && !document.querySelector('[data-island-row="qa-d"]')), 3000))
 await island.mouse.move(600, 330)
 
-// ---------- the menu bar's menu: the way in, who waits on them, one row of how many work, the companion's few controls
 const menu = () => helper((h) => h.menu().map((i) => ({ label: i.label ?? "", type: i.type ?? "", checked: !!i.checked, sub: i.sublabel ?? "" })))
 const menuRows = await menu(), labels = menuRows.filter((i) => i.type !== "separator").map((i) => i.label)
 check("menu: open, needs you with its rows, all in inbox, one count row, the companion, a QA walk, settings, quit",
@@ -143,7 +133,6 @@ check("…a click unmutes; what waited comes up then", await until(async () => !
   await until(() => helper((h, id) => ["showing", "told"].includes(h.island().knocks.find((x) => x.id === id)?.state), quietly.id), 8000))
 await op("companion.knocks", { ignore: quietly.id }).catch(() => {})
 
-// ---------- many sessions: the list a hover opens fits the window, rounds its bottom and scrolls the rest
 const before = await helper((h) => h.island().presences)
 const H = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().endsWith("#island"))?.getBounds().height)
 const fake = (n) => Array.from({ length: n }, (_, i) => ({ id: `qa-${i}`, who: `Session ${i + 1}`, tint: ["orange", "teal", "purple", "green"][i % 4], state: i % 3 ? "working" : "needs you",
@@ -162,7 +151,6 @@ for (const n of [1, 8, 30]) {
   check(n === 30 ? "…too many to fit: it scrolls, fading below" : "…no scroll it doesn't need", n === 30 ? over && c.more === "bottom" : !over && !c.more, c)
   if (PNG && n === 30) fs.writeFileSync(PNG.replace(/\.png$/, "-many.png"), await island.screenshot({ omitBackground: true }))
   if (n !== 30) continue
-  // (the wheel and a trackpad's swipe are both wheel events, over the list while hovered)
   const box = await island.locator(".island-rows").boundingBox()
   const first = await island.evaluate(() => { const r = document.querySelector('[data-island-row="qa-0"]').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 } })
   await island.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
@@ -180,10 +168,8 @@ for (const n of [1, 8, 30]) {
 }
 await helper((h, a) => h.knocks({ knocks: h.island().knocks, presences: a }), before)
 
-// ---------- another app's island wide over the notch: ours to its right, apart
 await helper((h, a) => h.stub("windows", { windows: [a] }), { ...vors(display.x + 560, 350) })
 const islandBounds = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().endsWith("#island"))?.getBounds())
-// (its window list is read again every 2 s with the pointer near the top, else every 10 s)
 const moved = await until(async () => { const b = await islandBounds(); return b?.x === display.x + 560 + 350 + 6 - 330 ? b : null }, 14000) ?? await islandBounds()
 check("Vorssaint wide: ours sits right of it", moved?.x === display.x + 560 + 350 + 6 - 330, moved)
 await helper((h, a) => h.stub("windows", { windows: [a] }), { ...vors(display.x + 480, 510, 300) })

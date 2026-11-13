@@ -1,5 +1,5 @@
-// A session's row on the Inbox page replies in place: Reply unfolds its last answer and the reply box, Escape folds it,
-// what's sent goes to its session; R does Reply from the keyboard. WRITES the inbox's events: throwaway server only.
+// A session's row on the Inbox page replies in place: Reply unfolds its answer and box, Escape folds it, R is Reply.
+// WRITES the inbox's events: throwaway server only.
 //   node web/qa/inboxrowreply.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { devices } from "playwright-core"
@@ -46,7 +46,6 @@ await page.keyboard.press("Enter")
 check("Enter sends it to the session", !!(await until(() => sent)) && sent.to === thread.id && sent.text === "Bump to 0.6.1", sent)
 check("and the box folds away", !!(await until(async () => (await box.count()) === 0)))
 
-// A phone: Reply on the row, the box in the phone's width.
 const phone = await browser.newContext({ ...devices["iPhone 13"], viewport: { width: 390, height: 844 } })
 await phone.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } })
 const ph = watch(await phone.newPage(), { label: "phone" })

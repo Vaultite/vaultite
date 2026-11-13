@@ -1,7 +1,5 @@
-// Live answers: a ```genui fence draws with the app's controls, block buttons share a row without spilling out of it, an
-// AppBlock gets ChatGPT's theme variables, a change redraws it and is kept in the note (and back
-// after a reload), an AppBlock and the program share state both ways, the program has no network, a ```chart draws, on a
-// desktop and a 390px phone. WRITES fixtures (QA/ in the vault): throwaway server only.
+// Live answers: genui fences, AppBlocks and charts draw, redraw, keep state, have no network, desktop and phone.
+// WRITES fixtures (QA/ in the vault): throwaway server only.
 //   node web/qa/genui.mjs <base url> <vault path>
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { qa, until, wait, SHOTS as OUT } from "./lib/qa.mjs"

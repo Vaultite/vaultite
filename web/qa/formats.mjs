@@ -1,6 +1,7 @@
-// Binary formats drawn from their bytes (a workbook, a Word document, a deck, a book, a HEIC photo), each embedded too:
-// made-up files (tools/fixtures/formats/make.ts), or real ones from [fixtures dir]. WRITES "Qa formats": throwaway only.
+// Binary formats (a workbook, a Word document, a deck, a book, a HEIC photo) drawn from their bytes, embedded too.
+// Made-up files unless [fixtures dir] gives real ones. WRITES "Qa formats": throwaway only.
 //   node web/qa/formats.mjs <base url> <vault path> [fixtures dir] [out dir]
+// Paths: tools/fixtures/formats/make.ts
 import { execFileSync } from "node:child_process"
 import { copyFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { SHOTS, qa, until, wait } from "./lib/qa.mjs"
@@ -10,7 +11,6 @@ const DIR = "Qa formats"
 const enc = encodeURIComponent
 rmSync(`${VAULT}/${DIR}`, { recursive: true, force: true })
 mkdirSync(`${VAULT}/${DIR}`, { recursive: true })
-/** Made-up files (the default): what each holds is known, so it's checked. */
 const made = !FIX
 let heic = true
 if (FIX) for (const f of ["Lease.docx", "Pitch.pptx", "Budget.xlsx", "Log.epub", "Photo.heic"]) copyFileSync(`${FIX}/${f}`, `${VAULT}/${DIR}/${f}`)
@@ -54,7 +54,6 @@ const ok = (k, v) => { out[k] = v }
   } else {
     await page.locator("[data-workbook] [role=tab]", { hasText: "Visitors" }).click(); await wait(300)
     ok("xlsxOtherSheet", await page.locator("[data-sheet-grid] td", { hasText: "Bob Lee" }).count())
-    // (an old .xls reads as the others; a damaged workbook says so at once, the app still answering)
     await open("Budget.xls")
     ok("xlsMoney", await page.locator("[data-sheet-grid] td", { hasText: "$42.50" }).count())
     await open("Broken.xlsx", 1500)
@@ -75,11 +74,10 @@ const ok = (k, v) => { out[k] = v }
 
   await open("Log.epub", 4000)
   const frameText = async () => {
-    for (const f of page.frames()) { try { const t = await f.evaluate(() => document.body?.innerText ?? ""); if (/storm|harbour/i.test(t)) return t.slice(0, 80) } catch { /* not ours */ } }
+    for (const f of page.frames()) { try { const t = await f.evaluate(() => document.body?.innerText ?? ""); if (/storm|harbour/i.test(t)) return t.slice(0, 80) } catch {} }
     return ""
   }
   ok("epubText", await frameText())
-  // (the book's pages are blob: frames: cleaned of scripts, a CSP first; its <script>alert(1)</script> never runs)
   const books = page.frames().filter((f) => f.url().startsWith("blob:"))
   ok("epubCleaned", books.length > 0 && (await Promise.all(books.map((f) => f.evaluate(() => !document.querySelector("script") && !!document.querySelector("meta[http-equiv=Content-Security-Policy]"))))).every(Boolean))
   ok("epubNoDialog", !dialogs.length)
@@ -125,13 +123,11 @@ const ok = (k, v) => { out[k] = v }
 await browser.close()
 rmSync(`${VAULT}/${DIR}`, { recursive: true, force: true })
 
-// What it saw, checked.
 check("an image the browser can't draw: a card", out.brokenImageCard === 1, out.brokenImageCard)
 check("...the file fixed, the image is drawn", out.fixedImageDrawn > 0, out.fixedImageDrawn)
 check("workbook: its grid is drawn", out.xlsxCells >= 6, out.xlsxCells)
 check("workbook: a money number in its format", out.xlsxMoney >= 1, out.xlsxMoney)
 check("workbook: its sheets are tabs", out.xlsxTabs.length >= 2, out.xlsxTabs)
-// (the sheet's first row stays: it's its header)
 if (made) check("workbook: the filter keeps the matching rows", out.xlsxFiltered.some((r) => r.includes("Lamp oil")) && !out.xlsxFiltered.some((r) => r.includes("Paint")), out.xlsxFiltered)
 else check("workbook: the filter keeps the matching rows", out.xlsxFiltered.length >= 1, out.xlsxFiltered)
 if (made) check("workbook: another sheet's tab shows it", out.xlsxOtherSheet >= 1, out.xlsxOtherSheet)

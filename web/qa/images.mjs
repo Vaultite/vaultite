@@ -1,5 +1,5 @@
-// Images in a note (live preview): laid out on their line, resized from the corner (`|<n>`), their menu, and the Markdown
-// button. WRITES a "Qa images" folder: throwaway server only.
+// Images in live preview: laid out on their line, resized from the corner (`|<n>`), their menu and the Markdown button.
+// WRITES a "Qa images" folder: throwaway server only.
 //   node web/qa/images.mjs <base url> <vault path> [out dir]
 import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
@@ -24,7 +24,6 @@ try {
   await page.waitForSelector(".vau-editor .cm-image-wrap img", { timeout: 10000 })
   await page.waitForFunction(() => [...document.querySelectorAll(".cm-image")].every((i) => i.complete && i.naturalWidth))
   await wait(500)
-  // The picture's line: its number beside the picture's top, the line no taller than the picture and its margins.
   const geo = await page.evaluate(() => {
     const line = document.querySelector(".cm-image-wrap").closest(".cm-line"), img = line.querySelector(".cm-image")
     const l = line.getBoundingClientRect(), i = img.getBoundingClientRect()
@@ -35,7 +34,6 @@ try {
   check("its number beside the image's top", geo.numTop >= -2 && geo.numTop < 30, geo)
   await page.screenshot({ path: `${OUT}images.png` })
 
-  // Its corner drags its width.
   const wrap = page.locator(".cm-image-wrap").first()
   await wrap.hover()
   const g = await page.locator(".cm-image-resize").first().boundingBox()
@@ -43,7 +41,6 @@ try {
   await page.mouse.move(g.x - 200, g.y + 6, { steps: 6 }); await page.mouse.up()
   check("dragging its corner writes |width", /!\[\[Qa pic\.png\|\d+\]\]/.test(await waitText((t) => /Qa pic\.png\|\d+\]\]\n\nAfter/.test(t))), text().slice(0, 200))
 
-  // Its menu: reset size, then remove the inline one.
   await page.locator(".cm-image-wrap").first().click({ button: "right" })
   const items = await page.locator("[role=menu] [role=menuitem]").allTextContents()
   check("menu has the image's items", ["Copy image", "Reset size", "Remove embed", "Open in new tab", "Copy path", "Delete image"].every((x) => items.some((i) => i.includes(x))), items)
@@ -53,7 +50,6 @@ try {
   await page.getByRole("menuitem", { name: "Remove embed" }).click()
   check("Remove embed takes the embed out", (await waitText((t) => t.includes("Inline text."))).includes("Inline text."), text())
 
-  // The Markdown button: the source shows, the image stays under it.
   await page.locator(".cm-image-wrap").first().hover()
   await page.locator(".cm-image-tools button[aria-label='Show Markdown']").first().click()
   await wait(300)
@@ -62,7 +58,6 @@ try {
   await page.screenshot({ path: `${OUT}images-source.png` })
   await ctx.close()
 
-  // A phone: a finger held on it opens the same menu.
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, colorScheme: "dark" })
   const p = await phone.newPage()
   await p.goto(`${B}#view/files/file/${encodeURIComponent(`${DIR}/Pictures.md`)}`)

@@ -1,6 +1,4 @@
-// Files dragged in from outside (Finder, a screenshot's thumbnail, a browser's image) onto a note: saved as its
-// attachments and embedded where they land, between lines, the note's margins and the space below it included; the
-// line shows where while dragging, being read too. Not a note: nothing taken. CDP drag events with real files.
+// Files dragged in from outside onto a note are saved as attachments and embedded where they land; off a note, nothing.
 // WRITES a "Qa drop" folder: throwaway server only.
 //   node web/qa/filedrop.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
@@ -16,10 +14,8 @@ const START = "---\ntags: qa\n---\nFirst line.\n\nSecond line.\n"
 writeFileSync(FILE, START)
 const text = () => readFileSync(FILE, "utf8")
 const changed = (from) => until(() => text() !== from, 10000)
-/** Every file in the vault named like `name` (the attachments folder is the vault's to choose). */
 const found = (re) => { const out = []; const walk = (d) => { for (const e of readdirSync(d, { withFileTypes: true })) { if (e.name.startsWith(".")) continue; const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else if (re.test(e.name)) out.push(p) } }; walk(VAULT); return out }
 
-// What a screenshot's thumbnail hands over: a PNG file
 const TMP = mkdtempSync(path.join(os.tmpdir(), "vau-filedrop-"))
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64")
 const shot = path.join(TMP, "Screenshot 2026-11-08 at 01.13.36.png"), pdf = path.join(TMP, "Qa statement.pdf")
@@ -45,8 +41,6 @@ async function run(phone) {
   writeFileSync(FILE, START)
   await open()
 
-  // Over the empty space below a short note (where the screenshot was dropped): the line shows at the end, and the
-  // drop goes there, not into a tab outside the vault
   const p = await pane(), url = page.url()
   const below = { x: p.x + p.w / 2, y: p.y + p.h - 60 }
   await drag({ files: [shot] }, below.x, below.y, ["dragEnter", "dragOver"])
@@ -61,7 +55,6 @@ async function run(phone) {
   check(`${tag}…and no tab opened outside the vault`, page.url() === url, page.url())
   check(`${tag}the line is gone after the drop`, await until(async () => !(await page.locator(".cm-file-drop").count()), 2000))
 
-  // Beside the first line, its upper half (the margin left of the text): before it, after the frontmatter
   writeFileSync(FILE, START); await wait(1200)
   const first = await lineBox("First line.")
   was = text()
@@ -70,7 +63,6 @@ async function run(phone) {
     && /^---\ntags: qa\n---\n!\[\[Screenshot[^\]]*\.png\]\]\nFirst line\.\n/.test(text()), text())
 
   if (!phone) {
-    // On the text, a line's lower half, two files at once (a PDF too): one per line, after it
     writeFileSync(FILE, START); await wait(1200)
     const one = await lineBox("First line.")
     was = text()
@@ -78,26 +70,22 @@ async function run(phone) {
     check("two files dropped on a line's lower half: each on its own line after it", await changed(was)
       && /First line\.\n!\[\[Screenshot[^\]]*\.png\]\]\n!\[\[Qa statement( \d+)?\.pdf\]\]\n\nSecond line\./.test(text()), text())
 
-    // A browser's image (its <img> as HTML, no file): saved into the vault as well
     writeFileSync(FILE, START); await wait(1200)
     was = text()
     const data = "data:image/png;base64," + png.toString("base64")
     await drag({ items: [{ mimeType: "text/html", data: `<meta charset="utf-8"><img src="${data}" alt="">` }, { mimeType: "text/uri-list", data }] }, below.x, below.y)
     check("a browser's image dropped: saved as an attachment and embedded", await changed(was) && /Second line\.\n!\[\[Pasted image \d+\.png\]\]$/.test(text()), text())
-    // One the server can't download (not a public address): shown from the web, and said so
     writeFileSync(FILE, START); await wait(1200)
     was = text()
     const far = `${B}nowhere/qa.png`
     await drag({ items: [{ mimeType: "text/uri-list", data: far }] }, below.x, below.y)
     check("an image the server can't download: embedded from the web", await changed(was) && text().endsWith(`![](${far})`), text())
     check("…and a toast says so", await until(async () => (await page.getByText("Couldn't download the image").count()) > 0, 3000))
-    // A link: as it is
     writeFileSync(FILE, START); await wait(1200)
     was = text()
     await drag({ items: [{ mimeType: "text/uri-list", data: "https://example.com/article" }] }, below.x, below.y)
     check("a link dropped: put in as it is", await changed(was) && text().endsWith("\nhttps://example.com/article"), text())
 
-    // Being read: where it lands too
     writeFileSync(FILE, START); await wait(1200)
     await page.keyboard.press("ControlOrMeta+E"); await wait(800)
     const read = await lineBox("Second line.")
@@ -106,7 +94,6 @@ async function run(phone) {
     check("being read, a drop goes where it lands", await changed(was) && /First line\.\n\n!\[\[Screenshot[^\]]*\.png\]\]\nSecond line\./.test(text()), text())
     await page.keyboard.press("ControlOrMeta+E"); await wait(500)
 
-    // A pane with no note: nothing taken, nothing opened (a browser would replace the app with the file)
     await page.goto(`${B}#new`); await wait(1200)
     const n = found(/^Screenshot/).length, blank = page.url()
     const q = await pane()

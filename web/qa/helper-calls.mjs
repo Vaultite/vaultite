@@ -1,8 +1,7 @@
-// The companion over the screen on a call (electron/helper.ts, calllogic.ts), in the desktop app, unseen: asked by typing
-// in its box (a Talk key's tap), its answer is said aloud; while another app has the mic (a stand-in Zoom) the same
-// answer shows in its box with a play button, unsaid and uncued, its box saying why, and the play button says it. A
-// browser tab holding the mic with no call (a stand-in Firefox): Not a call speaks again till it lets go of the mic.
-// The screen helper is stood in for. WRITES: throwaway vault only.   node web/qa/helper-calls.mjs <vault copy>
+// The companion on a call: answers are said aloud, but shown with a play button while another app has the mic.
+// Needs the desktop app, the screen helper stood in for; WRITES only the throwaway vault.
+//   node web/qa/helper-calls.mjs <vault copy>
+// Paths: electron/helper.ts
 import { _electron } from "playwright-core"
 import fs from "node:fs"
 import os from "node:os"
@@ -13,7 +12,6 @@ const { args: [VAULT], check, watch, done, skip } = await qa(import.meta.url, { 
 if (process.platform !== "darwin") await skip("the helper is a Mac's")
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-helper-calls-"))
 const conf = (id, v) => { fs.mkdirSync(path.join(VAULT, ".vaultite", "plugins", id), { recursive: true }); fs.writeFileSync(path.join(VAULT, ".vaultite", "plugins", id, "data.json"), JSON.stringify(v)) }
-// (an agent that isn't here: the ask arrives and its answer is that it couldn't start; always said, a typed ask too)
 conf("companion", { agent: "nobody", voice: "always", voice_front: "pipeline" })
 
 const app = await _electron.launch({
@@ -23,17 +21,15 @@ const app = await _electron.launch({
 const win = watch(await app.firstWindow(), { console: true })
 await win.waitForSelector("[role=tree]", { timeout: 60000 })
 const port = new URL(win.url()).port
-/** The companion answering, as its session would (its own agent isn't here: what it says otherwise is that it couldn't start). */
 const answer = (text) => fetch(`http://127.0.0.1:${port}/api/ops/companion.say`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, as: "Nobody" }) }).then((r) => r.ok)
 const helper = (fn, arg) => app.evaluate((_e, [f, a]) => globalThis.vaultiteHelper && new Function("h", "a", `return (${f})(h, a)`)(globalThis.vaultiteHelper, a), [String(fn), arg])
 check("the helper runs with the app", await helper(() => true))
 const w9 = { window: 9, bundle: "com.example.notes", name: "Example Notes", title: "Draft", frame: { x: 100, y: 120, width: 800, height: 600 } }
 await helper((h, w) => { h.stub("focus", { ...w, field: false, pid: 1 }); h.stub("window", w); h.stub("at", w) }, w9)
-await wait(1500) // (its settings and the companion's socket, read as it starts)
+await wait(1500)
 
 const said = () => helper((h) => h.spoken().filter((m) => m.cmd === "say" && /couldn't start/i.test(m.text ?? "")).length)
 const box = () => app.windows().find((p) => p.url().endsWith("/screen.html#panel"))
-/** A Talk key tapped (its box, to type in), then `text` typed and sent there. */
 async function typedAsk(text) {
   await helper((h) => h.heard({ event: "chord", name: "control_option", on: true }))
   await wait(60)
@@ -41,7 +37,6 @@ async function typedAsk(text) {
   const b = await until(box, 10000, 100)
   const field = "[data-companion-popover] input"
   await b?.waitForSelector(field, { timeout: 10000 })
-  // (a box just opening may take its words before its page is up: typed again till the ask goes)
   const sent = () => helper((h, t) => h.asked().some((m) => m.kind === "ask" && m.text === t), text)
   for (let i = 0; i < 5 && !(await sent()); i++) {
     await b?.fill(field, text)
@@ -53,12 +48,10 @@ async function typedAsk(text) {
 }
 const end = async () => { await helper((h) => h.heard({ event: "esc" })); await until(() => !box(), 5000, 100) }
 
-// ---------- no call: a typed ask's answer is said aloud (the setting: always)
 await typedAsk("What's this window?")
 check("off a call, its answer is said aloud", await until(async () => (await said()) >= 1, 20000, 200), await helper((h) => h.spoken().slice(-3)))
 await end()
 
-// ---------- on a call (a stand-in Zoom has the mic): shown, with a play button, nothing said or cued
 await helper((h) => h.stub("mics", { ok: true, users: [{ pid: 9001, bundle: "us.zoom.xos", app: "zoom.us", appBundle: "us.zoom.xos", chain: [1], input: true, output: true }] }))
 check("another app on a call is heard as one", await until(() => helper((h) => h.asked().some((m) => m.t === "call" && m.call === "on a call in Zoom")), 5000, 200))
 const before = await said(), cues = await helper((h) => h.asked().filter((m) => m.cue === "answer").length)
@@ -75,7 +68,6 @@ await b?.click('[aria-label="Say it aloud"]')
 check("its play button says it, on a call or not", await until(() => helper((h) => h.spoken().some((m) => m.cmd === "say" && /Share button/.test(m.text ?? ""))), 5000, 200), await helper((h) => h.spoken().slice(-3)))
 await end()
 
-// ---------- the call over (its mic let go, a grace on): it speaks again
 await helper((h) => h.stub("mics", { ok: true, users: [] }))
 check("the call over, it's told", await until(() => helper((h) => h.asked().some((m) => m.t === "call" && m.call === "")), 25000, 500))
 const after = await said()
@@ -83,7 +75,6 @@ await typedAsk("Once more")
 check("…and its answers are said aloud again", await until(async () => (await said()) > after, 15000, 200), await helper((h) => h.spoken().slice(-3)))
 await end()
 
-// ---------- a browser tab holding the mic, no call (a stand-in Firefox): Not a call speaks again, till it lets go
 const fox = { ok: true, users: [{ pid: 9002, bundle: "org.mozilla.firefox", app: "Firefox", appBundle: "org.mozilla.firefox", chain: [1], input: true, output: false }] }
 await helper((h, m) => h.stub("mics", m), fox)
 check("a browser holding the mic is heard as a call", await until(() => helper((h) => h.asked().some((m) => m.t === "call" && m.call === "on a call in Firefox")), 5000, 200))

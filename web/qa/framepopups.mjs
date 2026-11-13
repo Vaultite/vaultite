@@ -1,5 +1,7 @@
-// A sign-in button framed from its provider's site opens its popup, which answers its opener and closes, in any container;
-// pages have no FedCM (electron/main.ts). WRITES: throwaway vault. Run: node web/qa/framepopups.mjs <vault copy>
+// A framed sign-in button opens its provider's popup, which answers its opener and closes, in any container, no FedCM.
+// Needs the desktop app; WRITES: throwaway vault.
+//   node web/qa/framepopups.mjs <vault copy>
+// Paths: electron/main.ts
 import { _electron } from "playwright-core"
 import fs from "node:fs"
 import http from "node:http"

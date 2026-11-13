@@ -1,7 +1,7 @@
-// The menu-bar helper (electron/helper.ts) in the desktop app, unseen (dictation's roaming: web/qa/dictation-roam.mjs): ⌃⌥ held summons
-// the companion at the pointer, listening (speech from a file), and let go asks it about the window there, its answer's
-// answer said aloud (no box) and its cursor riding beside the pointer over the screen; closing the window keeps the server and reopening takes it back.
-// The screen helper is stood in for. WRITES: throwaway vault only.   node web/qa/helper.mjs <vault copy>
+// The menu-bar helper: ⌃⌥ held summons the companion listening at the pointer, let go asks about the window there.
+// Needs the desktop app, the screen helper stood in for; WRITES only the throwaway vault.
+//   node web/qa/helper.mjs <vault copy>
+// Paths: electron/helper.ts, web/qa/dictation-roam.mjs
 import { _electron } from "playwright-core"
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
@@ -16,7 +16,6 @@ const AUDIO = path.join(TMP, "said.aiff")
 execFileSync("say", ["-o", AUDIO, "What does this paragraph say about milk?"])
 const conf = (id, v) => { fs.mkdirSync(path.join(VAULT, ".vaultite", "plugins", id), { recursive: true }); fs.writeFileSync(path.join(VAULT, ".vaultite", "plugins", id, "data.json"), JSON.stringify(v)) }
 conf("dictation", { engine: "apple", language: "en-US" })
-// (an agent that isn't here: the ask arrives, and no session starts)
 conf("companion", { agent: "nobody" })
 
 const app = await _electron.launch({
@@ -34,9 +33,8 @@ if (!engines?.apple) { await app.close(); await skip(`Apple's recognizer doesn't
 const frame = { x: 100, y: 120, width: 800, height: 600 }
 const win9 = { window: 9, bundle: "com.example.notes", name: "Example Notes", title: "Draft", frame }
 await helper((h, w) => { h.stub("focus", { ...w, field: false, pid: 1 }); h.stub("window", w); h.stub("at", w) }, win9)
-await wait(1500) // (its settings and the companion's socket, read as it starts)
+await wait(1500)
 
-// ---------- ⌃⌥ held (a Talk key): the companion at the pointer, listening; let go, what was said is sent
 const chord = (on) => helper((h, o) => h.heard({ event: "chord", name: "control_option", on: o }), on)
 await chord(true)
 const overlay = await until(() => app.windows().find((p) => p.url().endsWith("/screen.html")), 10000)
@@ -45,14 +43,11 @@ check("…its words by it as they come", await until(() => helper((h) => /milk/i
 await chord(false)
 const ask = await until(() => helper((h) => h.asked().find((m) => m.kind === "ask")), 30000, 200)
 check("let go, what was said goes, about the window under the pointer", !!ask && ask.app === "com.example.notes" && ask.window === 9 && /milk/i.test(ask.text ?? ""), ask)
-// ---------- its cursor over the screen: through the exchange, the summoned one, riding beside the pointer
 const at = await until(() => helper((h) => (h.scene()?.summon?.follow ? h.scene().summon : null)), 10000, 200)
 check("the companion's cursor rides beside the pointer through the exchange (its own place no cursor of its own)", !!at && !(await helper((h) => h.scene()?.agents?.length)), at)
 check("the overlay draws its cursor and name", !!overlay && await until(() => overlay.evaluate((n) => document.body.textContent.includes(n), at?.name ?? "?"), 5000))
 check("an ask by voice gets no box: its answer is said by its cursor", !app.windows().some((p) => p.url().endsWith("/screen.html#panel")))
 
-// ---------- its answer to an ask by voice, said aloud as it's written (a scripted copy plays nothing: it tells what it'd say)
-// (its agent isn't here: what it answers is that it couldn't start)
 const spoken = () => helper((h) => h.spoken().filter((m) => m.cmd === "say").map((m) => m.text).join(" "))
 check("its answer to an ask by voice is said aloud", await until(async () => /^I couldn't start/.test(await spoken()), 8000, 200), await helper((h) => h.spoken()))
 check("…and the press's phases are in its log, from held to answered", await until(() => helper((h) => { const id = h.presses().filter((l) => l.ev === "end").at(-1)?.press
@@ -62,7 +57,6 @@ check("the overlay paints nothing else: it's see-through", !!overlay && await ov
 await helper((h) => h.heard({ event: "esc" }))
 check("Esc ends the exchange and silences its voice at once", await until(() => helper((h) => h.spoken().at(-1)?.cmd === "stop"), 3000), await helper((h) => h.spoken().slice(-2)))
 
-// ---------- fn while the window has the keyboard: its ⌘J, into the note
 fs.writeFileSync(path.join(VAULT, "Said.md"), "# Said\n\nAsked:")
 await win.evaluate(() => { location.hash = `#file/${encodeURIComponent("Said.md")}` })
 await win.locator("[data-pane] .cm-line", { hasText: "Asked:" }).click()
@@ -76,7 +70,6 @@ await until(() => win.evaluate(() => !document.querySelector(".dictation-pill"))
 const note = await win.evaluate(() => [...document.querySelectorAll("[data-pane] .cm-line")].map((l) => l.textContent).join("\n"))
 check("its words land in the note", /Asked: what does this paragraph say about milk/i.test(note), note)
 
-// ---------- a Talk key held over the window: the same companion over the screen (one companion), never the page's box
 const line = await win.locator("[data-pane] .cm-line", { hasText: "Asked:" }).boundingBox()
 await win.mouse.move(line.x + 20, line.y + line.height / 2)
 const left = await win.evaluate(() => [...document.querySelectorAll("[data-pane] .cm-line")].map((l) => l.textContent).join("\n"))
@@ -91,7 +84,6 @@ const after = await win.evaluate(() => [...document.querySelectorAll("[data-pane
 check("…and nothing it hears goes in the note", after === left, { left, after })
 await helper((h) => h.heard({ event: "esc" }))
 
-// ---------- closing the window keeps the server; the app clicked again opens it on the same one
 const alive = () => fetch(`http://127.0.0.1:${port}/api/ops/screen.front`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then((r) => r.ok, () => false)
 await app.evaluate(({ BaseWindow }) => { for (const w of BaseWindow.getAllWindows()) w.close() })
 await wait(1500)

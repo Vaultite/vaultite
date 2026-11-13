@@ -1,13 +1,13 @@
-// Keyboard lists (web/src/core/keylist.ts): the file tree, sidebars, menus, areas, resizing edges, the palette, a tab
-// bar and a canvas, all from the keyboard. Throwaway only.
+// Keyboard lists: the file tree, sidebars, menus, areas, resizing edges, the palette, a tab bar and a canvas.
+// Throwaway only.
 //   node web/qa/keylists.mjs <base url> [out dir]
+// Paths: web/src/core/keylist.ts
 import { SHOTS, palette, qa } from "./lib/qa.mjs"
 import { app } from "./lib/app.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)
 
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1 })
 const page = watch(await ctx.newPage()), ui = app(page)
-/** The keyboard's row: its tree path (or its text), and where it is. */
 const where = () => page.evaluate(() => {
   const a = document.activeElement
   const row = a?.closest("[data-keyrow]")
@@ -23,13 +23,11 @@ const hash = () => page.evaluate(() => decodeURIComponent(location.hash))
 const tabCount = () => page.locator("[data-tab-id], [role=tab]").count()
 
 await page.goto(`${B}#file/${encodeURIComponent("Dashboards/People.md")}`); await page.locator("[data-sidebar-body=left] [data-tree-path=Notes]").waitFor(); await ui.idle()
-// A file at the vault's top level (whatever the vault has: the sandbox's ME.md), one not open yet.
 const topFiles = await page.evaluate(() => [...document.querySelectorAll("[data-sidebar-body=left] [data-tree-path]")]
   .map((e) => e.getAttribute("data-tree-path")).filter((p) => p && !p.includes("/") && p.endsWith(".md")))
 const ENTER_FILE = topFiles[0]
 check(`the tree shows top-level files to open (${topFiles.join(", ")})`, topFiles.length >= 1)
 
-// ---- the arrows
 await palette(page, "Focus the left sidebar", 0); await ui.idle()
 let w = await where()
 check(`Focus the left sidebar: the keyboard is on a row there (${w.row})`, w.side === "left" && !!w.row)
@@ -61,7 +59,6 @@ await focusRow("ME.md"); await page.keyboard.press("Escape"); await ui.idle()
 check("Escape gives the keyboard back to the pane", (await where()).side === null)
 await page.screenshot({ path: `${OUT}keylists-tree.png` })
 
-// ---- Tab past the tree, its menu, the areas
 const menuOpen = () => page.evaluate(() => !!document.querySelector("[role=menu]"))
 await focusRow("Notes"); await page.keyboard.press("Tab"); await ui.idle()
 check("Tab from a tree row leaves the tree", !(await where()).row?.startsWith("Notes") && !await page.evaluate(() => !!document.activeElement?.closest("[role=tree]")))
@@ -82,7 +79,6 @@ await page.keyboard.press("ArrowRight"); await ui.idle()
 check("→ on the sidebar's edge widens it", await width() > w0)
 await page.keyboard.press("Enter"); await ui.idle()
 
-// ---- the palette: Ctrl+J / Ctrl+K
 await page.keyboard.press("ControlOrMeta+p"); await page.locator("[data-i]").first().waitFor(); await ui.idle()
 const selected = () => page.evaluate(() => [...document.querySelectorAll("[data-i]")].findIndex((el) => el.className.includes("bg-foreground/[0.07]")))
 const s0 = await selected()
@@ -95,7 +91,6 @@ check("the palette: Tab stays in its field", await page.evaluate(() => document.
 await page.keyboard.press("Escape"); await ui.idle()
 check("the palette: Escape closes it", !await page.evaluate(() => !!document.querySelector("[role=dialog][aria-modal=true]:not(dialog)")))
 
-// ---- the tab bar: one Tab stop (in at its shown tab, out past every tab), the arrows, Home, End, Delete
 const ws = page.locator("[data-tab-strip]")
 for (const h of ["settings", "view/files", "view/search"]) {
   await ws.locator("button[aria-label='New tab']").click(); await ui.idle()
@@ -118,9 +113,7 @@ check("tab bar: Tab leaves it, past every tab and X", (await onTab()) === "New t
 await page.keyboard.press("Shift+Tab"); await page.keyboard.press("End"); await page.keyboard.press("Delete"); await ui.idle()
 check("tab bar: Delete closes the tab with the keyboard", (await tabsNow()).length === names.length - 1, await tabsNow())
 
-// ---- a canvas
 await page.goto(`${B}#file/${encodeURIComponent("Projects/Lighthouse/Launch plan.canvas")}`)
-// (the one shown: a pane keeps its other tabs drawn but hidden, and one may embed a canvas)
 const board = page.locator("#main-scroll [data-canvas-board]").first()
 await board.waitFor(); await ui.idle()
 const bg = () => board.evaluate((el) => el.style.backgroundPosition)

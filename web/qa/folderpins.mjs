@@ -1,6 +1,7 @@
-// Pinned folders and files that aren't notes (plugins/core/pages): pinned, opened in place, kept open after a reload,
-// revealed and unpinned. WRITES "Qa pins" and pages.json: throwaway server only.
+// Pinned folders and non-note files: pinned, opened in place, kept open after a reload, revealed and unpinned.
+// WRITES "Qa pins" and pages.json: throwaway server only.
 //   node web/qa/folderpins.mjs <base url> [out dir]
+// Paths: plugins/core/pages
 import { SHOTS, apiAt, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)
 const api = apiAt(B, { "X-Vaultite-Client": "app/qa" })
@@ -20,7 +21,6 @@ await ctx.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorag
 const page = watch(await ctx.newPage(), { console: true })
 await page.goto(B); await wait(1500)
 const tree = page.locator("aside [role=tree][aria-label=Files]").first()
-// The folder's menu in the tree: Pin.
 await tree.locator(`div[data-tree-path="Qa pins"] button`).first().click(); await wait(300)
 await tree.locator(`div[data-tree-path="${D}"]`).click({ button: "right" })
 await page.click("[role=menu] >> text=Pin")
@@ -48,7 +48,6 @@ check("still open after a reload", await until(async () => (await sub.count()) =
 await row.click()
 check("a click closes it", await until(async () => (await sub.count()) === 0))
 
-// Dragged as a tab is: onto a pane's edge it splits there, onto the tab bar it's a tab, each drawn while held.
 const glide = async ([x0, y0], [x1, y1], steps = 12) => { for (let i = 1; i <= steps; i++) { await page.mouse.move(x0 + (x1 - x0) * i / steps, y0 + (y1 - y0) * i / steps); await wait(16) } }
 const folderShown = () => page.locator(`[data-pane-body] [data-folder-page="${D}"]:visible`).count()
 async function dragRow(to, held) {
@@ -70,12 +69,10 @@ check("dragged onto the tab bar: the tabs make way for it", await dragRow([strip
 check("let go: a tab of its own", await until(async () => (await tabs()) === tabsWere + 1 && (await page.locator("[role=tab][aria-selected=true]").first().innerText()).trim() === "Trips"), [tabsWere, await tabs()])
 await page.screenshot({ path: `${OUT}/folderpins-dragged.png` })
 
-// A recording pinned shows, with its extension.
 await api("POST", "pins", { path: `${D}/Voice note.m4a`, pinned: true })
 const media = page.locator(`aside [data-pin="${D}/Voice note.m4a"]`)
 check("a pinned recording shows, named with its extension", await until(async () => (await media.count()) === 1 && /Voice note\.m4a/.test(await media.innerText())))
 
-// Its menu: Reveal in file tree, Unpin.
 await row.click({ button: "right" })
 await page.click("[role=menu] >> text=Reveal in file tree")
 check("Reveal in file tree opens it there", await until(async () => (await tree.locator(`div[data-tree-path="${D}/Packing.md"]`).count()) === 1))

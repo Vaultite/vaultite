@@ -1,6 +1,5 @@
-// The inbox's words with no phone or watch paired: the verbs are pin, settle, snooze and wake (never Done or Unsnooze),
-// vau says what happened (nothing pushed, nothing to wake), and the Inbox page names no device. WRITES Inbox/ and the
-// inbox's events: throwaway server only.
+// The inbox's verbs with no phone or watch paired (pin, settle, snooze, wake), in vau and the app, no device named.
+// WRITES Inbox/ and the inbox's events: throwaway server only.
 //   node web/qa/inboxwording.mjs <base url> [out dir]
 import { execFileSync } from "node:child_process"
 import { mkdirSync } from "node:fs"
@@ -20,7 +19,6 @@ for (const r of await api("GET", "inbox")) await api("DELETE", `inbox/${encodeUR
 const paired = await api("GET", "inbox/devices").catch(() => null)
 check("no phone or watch is paired here", Array.isArray(paired?.devices ?? paired) && (paired?.devices ?? paired).length === 0, paired)
 
-// vau: what each verb did, in its own words.
 let r = vau("inbox", "push", "Try push")
 check("vau inbox push: says push isn't set up, or that no phone has signed up; never that it was sent", !/^Sent to/m.test(r.out) && /isn't set up|no phone has signed up/.test(r.out), r)
 await api("POST", "inbox", { title: "Lighthouse launch notes", body: "Ship on Friday.", from: "Claude" })
@@ -35,7 +33,6 @@ check("vau inbox answer settle: Settled, not Denied", r.code === 0 && /^Settled:
 r = vau("inbox", "clear", "--done")
 check("vau inbox clear --done: the settled events", r.code === 0 && /settled events/.test(r.out), r)
 
-// The app: menus and buttons use the verbs; the page names no device.
 await api("POST", "inbox", { title: "Plant care apps compared", body: "Three of them.", from: "Claude" })
 await api("POST", "inbox", { title: "Snoozed for later", body: "Later.", from: "Claude" })
 vau("inbox", "snooze", "Inbox/Snoozed for later.md", "--until", "tomorrow")

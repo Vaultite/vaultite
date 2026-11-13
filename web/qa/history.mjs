@@ -1,6 +1,7 @@
-// The desktop app Browser's history, address bar and import from Brave (tools/fixtures/browsers), against made-up sites
-// it serves on 127.0.0.1 (lighthouse.test, harbor.test). WRITES: the throwaway vault only.
+// The Browser's history, address bar and import from Brave, against made-up sites served on 127.0.0.1.
+// Needs the desktop app; WRITES: the throwaway vault only.
 //   node web/qa/history.mjs <vault copy>
+// Paths: tools/fixtures/browsers
 import { _electron } from "playwright-core"
 import fs from "node:fs"
 import http from "node:http"
@@ -12,7 +13,6 @@ const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-history-"))
 keepAwake(600)
 
-// ---------- made-up sites ----------
 const PAGES = {
   "lighthouse.test": { "/": "Lighthouse", "/docs/start": "Getting started · Lighthouse", "/docs/keys": "Keys · Lighthouse" },
   "harbor.test": { "/": "The Harbor News" },
@@ -26,16 +26,13 @@ await new Promise((ok, fail) => { server.once("error", fail); server.listen(0, "
 const PORT = server.address().port
 const at = (host, p = "/") => `http://${host}:${PORT}${p}`
 
-// The Browser on (off by default).
 const pluginsFile = path.join(VAULT, ".vaultite/plugins.json")
 const plugins = fs.existsSync(pluginsFile) ? JSON.parse(fs.readFileSync(pluginsFile, "utf8")) : {}
 fs.mkdirSync(path.dirname(pluginsFile), { recursive: true })
 fs.writeFileSync(pluginsFile, JSON.stringify({ ...plugins, enabled: [...(plugins.enabled ?? []).filter((x) => x !== "web-viewer"), "web-viewer"] }, null, 2) + "\n")
-// The browsers to import from: a copy of the fixture's made-up Brave profiles.
 const BROWSERS = path.join(TMP, "browsers")
 fs.cpSync(path.join(ROOT, "tools/fixtures/browsers"), BROWSERS, { recursive: true })
 
-// ---------- the app ----------
 const app = await _electron.launch({
   executablePath: path.join(ROOT, "node_modules/.bin/electron"),
   args: [ROOT, "--vault", VAULT, "--host-resolver-rules=MAP *.test 127.0.0.1"],
@@ -53,7 +50,6 @@ const command = async (id) => { await ui({ action: "command", id }); await wait(
 const engine = (name, ...args) => win.evaluate(([name, args]) => window.vaultite.web.engine(name, ...args), [name, args])
 const visits = async () => (await engine("history:list", {})).visits
 
-/** The visible web page's address, if one is over the window. */
 const visible = () => app.evaluate(({ BaseWindow }) => {
   const w = BaseWindow.getAllWindows()[0]
   const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
@@ -65,11 +61,9 @@ const inPage = (code) => app.evaluate(({ BaseWindow }, code) => {
   return v ? v.webContents.executeJavaScript(code) : null
 }, code)
 const address = () => win.locator("[data-web-page]:visible [data-web-address]")
-/** The address field: what it shows and what of it is selected. */
 const field = () => address().evaluate((el) => ({ value: el.value, sel: el.value.slice(el.selectionStart, el.selectionEnd), focused: document.activeElement === el }))
 const rows = () => win.locator("[data-web-suggestions] [data-suggestion]").evaluateAll((l) => l.map((e) => `${e.dataset.suggestion} ${e.dataset.url}`))
 
-// ---------- visits ----------
 await open(`view:web/${at("lighthouse.test")}`)
 check("a page opens (lighthouse.test, the host mapped to this script)", await until(async () => (await visible()) === at("lighthouse.test"), 15000), await visible())
 await wait(500)
@@ -85,14 +79,12 @@ check("… a link followed is a link, a page the app opened isn't typed", (await
   && (await visits()).every((x) => x.how !== "typed"), await visits())
 check("… kept on this computer, not in the vault", fs.existsSync(path.join(TMP, "userData/web-history.sqlite")) && !fs.readdirSync(VAULT).some((f) => /history/i.test(f)), fs.readdirSync(path.join(TMP, "userData")))
 
-// ---------- a new web tab ----------
 await command("web:open")
 check("Open web page: a new tab, its address ready to type", await until(async () => (await win.locator("[data-web-page]:visible [data-web-address]").count()) === 1 && (await field()).focused, 10000),
   await win.locator("[data-web-page]:visible [data-web-address]").count())
 check("… with the sites visited most under it", await until(async () => (await win.locator("[data-web-start] [data-web-top]").count()) === 2, 10000),
   await win.locator("[data-web-start]").innerText().catch(() => ""))
 
-// ---------- typing completes inline ----------
 await win.keyboard.type("light")
 check("typing completes inline to the site, the rest selected", await until(async () => { const f = await field(); return f.value === `lighthouse.test:${PORT}` && f.sel === `house.test:${PORT}` }, 5000), await field())
 check("… and the list: the site first, the search, then the history", await until(async () => { const r = await rows(); return r[0] === `url ${at("lighthouse.test")}` && r[1]?.startsWith("search ") && r.some((x) => x === `history ${at("lighthouse.test", "/docs/start")}`) }, 5000), await rows())
@@ -111,7 +103,6 @@ const marks = () => { try { return fs.readFileSync(path.join(VAULT, "Bookmarks.m
 await win.keyboard.press("ControlOrMeta+d")
 check("⌘D: the page bookmarked in Bookmarks.md", await until(() => marks().includes(`- [Lighthouse](${at("lighthouse.test")})`), 5000), marks())
 
-// ---------- the list over a page ----------
 await command("web:address")
 await win.keyboard.type("harbor")
 const raised = () => app.evaluate(({ BaseWindow }) => { const w = BaseWindow.getAllWindows()[0], kids = w.contentView.children; return kids.indexOf(w.view) === kids.length - 1 })
@@ -121,7 +112,6 @@ await win.keyboard.press("Escape")
 await win.keyboard.press("Escape")
 check("Esc twice: the list goes, the page is back", await until(async () => (await win.locator("[data-web-suggestions]").count()) === 0 && (await visible()) === at("lighthouse.test"), 5000), await visible())
 
-// ---------- removing a history row from the list ----------
 await command("web:address")
 await win.keyboard.type("getting")
 await until(async () => (await rows()).includes(`history ${at("lighthouse.test", "/docs/start")}`), 5000)
@@ -133,8 +123,6 @@ check("⇧⌦ on a history row: it leaves the history and the list", await until
 await win.keyboard.press("Escape")
 await win.keyboard.press("Escape")
 
-// ---------- the History tab ----------
-// (Ctrl+H off a Mac, as Chrome there)
 await win.keyboard.press(process.platform === "darwin" ? "Meta+y" : "Control+h")
 check("⌘Y: the History tab, by day", await until(async () => (await win.locator("[data-web-history] [data-web-history-day]").count()) === 1, 10000),
   await win.locator("[role=tab][aria-selected=true]").textContent().catch(() => ""))
@@ -157,7 +145,6 @@ await win.locator("[role=option]", { hasText: "The last hour" }).click()
 await win.locator("dialog[open] button", { hasText: "Clear" }).click()
 check("Clear browsing history, the last hour: none left", await until(async () => (await visits()).length === 0 && (await historyRows()).length === 0, 5000), await visits())
 
-// ---------- import from Brave ----------
 await command("web:import-brave")
 check("Import from Brave: its profiles, by name", await until(async () => (await win.locator("[role=option]").allTextContents()).join("|").includes("Alice"), 5000),
   await win.locator("[role=option]").allTextContents())

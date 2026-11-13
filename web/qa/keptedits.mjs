@@ -1,6 +1,7 @@
-// A tab drawn again after its pane stopped drawing it (components/Workspace.tsx keeps five) is as left (editor/kept.ts):
-// undo, redo, selection, and a change made on disk meanwhile. WRITES notes of its own: throwaway server only.
+// A tab drawn again after its pane stopped drawing it is as left: undo, redo, selection, a change made on disk.
+// WRITES notes of its own: throwaway server only.
 //   node web/qa/keptedits.mjs <base url> <vault path>
+// Paths: components/Workspace.tsx, editor/kept.ts
 import { readFileSync, writeFileSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT], browser, check, done } = await qa(import.meta.url)
@@ -20,17 +21,15 @@ await until(async () => (await editor(0).getAttribute("contenteditable")) === "t
 check("the first note opens in editing", (await editor(0).getAttribute("contenteditable")) === "true")
 const tab0 = await page.evaluate(() => document.querySelector("[role=tab][aria-selected=true]")?.closest("[data-tab-id]")?.getAttribute("data-tab-id"))
 
-// Typed at the end of its first line, then the word selected.
 await editor(0).locator(".cm-line", { hasText: "First line" }).click()
 await page.keyboard.press("End")
 await page.keyboard.type(" kept-word", { delay: 20 })
 await wait(400)
 for (let k = 0; k < 9; k++) await page.keyboard.press("Shift+ArrowLeft")
-await wait(900) // (autosave)
+await wait(900)
 const sel = () => page.evaluate(() => getSelection()?.toString() ?? "")
 check("typed and selected", (await sel()) === "kept-word", await sel())
 
-// Six more tabs: the first is drawn no more.
 for (let i = 1; i <= 6; i++) {
   await page.keyboard.press("ControlOrMeta+o"); await wait(300)
   await page.keyboard.type(name(i)); await wait(500)
@@ -38,18 +37,14 @@ for (let i = 1; i <= 6; i++) {
 }
 check("its editor is gone (more tabs than a pane keeps)", await page.locator(`.file-view[data-path="${file(0)}"]`).count() === 0)
 
-// Changed on disk meanwhile (an agent): the second line.
 const disk = readFileSync(`${VAULT}/${file(0)}`, "utf8")
 check("what was typed was saved", disk.includes("kept-word"), disk)
 writeFileSync(`${VAULT}/${file(0)}`, disk.replace("Second line.", "Second line, changed on disk."))
 await wait(1200)
 
-// Back to it.
 await page.locator(`[data-tab-id="${tab0}"] [role=tab]`).click()
 await until(async () => (await text(0)).includes("changed on disk"), 15_000)
 check("drawn again with the change from disk", (await text(0)).includes("changed on disk"), await text(0))
-// (the keyboard goes back into the text once the tab's place is found, frames after it's drawn: keys before then are
-// the tab's)
 check("the keyboard is in the text again", !!(await until(() => editor(0).evaluate((el) => el === document.activeElement), 5000)))
 check("the selection is where it was", (await sel()) === "kept-word", await sel())
 await page.keyboard.press("ControlOrMeta+z"); await wait(500)

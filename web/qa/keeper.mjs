@@ -1,6 +1,7 @@
-// The terminal's keeper (plugins/core/terminal/ptyd.ts): a shell's whole history comes back after a reload as the
-// page's own scrollback, nothing redrawn. Runs a shell: throwaway server only.
+// The terminal's keeper: a shell's whole history comes back after a reload as the page's own scrollback.
+// Runs a shell: throwaway server only.
 //   node web/qa/keeper.mjs <base url> [out dir]
+// Paths: plugins/core/terminal/ptyd.ts
 import { mkdirSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = "/tmp/keeper-shots/"], browser, check, watch, noErrors, done } = await qa(import.meta.url)
@@ -19,7 +20,6 @@ const historyText = () => page.evaluate(() => document.querySelector("[data-term
 await until(async () => /^row-6000$/m.test(await historyText()), 15000)
 const history = await historyText()
 check("keeper: after a reload, the whole history is back (over 3000 lines)", /^row-1$/m.test(history) && /^row-6000$/m.test(history), history.length)
-// The wheel scrolls xterm.js's own buffer (nothing goes to the server): what it shows moves up the history.
 const box = await page.$("[data-pane] [data-term-screen]")
 const at = await box?.boundingBox()
 if (at) await page.mouse.move(at.x + at.width / 2, at.y + at.height / 2)

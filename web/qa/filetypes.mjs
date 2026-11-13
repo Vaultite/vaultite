@@ -1,4 +1,4 @@
-// Every kind of file opens (code, images, PDFs, audio, notebooks, decks, binaries, a big log), on a desktop and a phone.
+// Every kind of file opens (code, images, PDFs, audio, notebooks, decks, binaries, a big log), desktop and phone.
 // WRITES a "Qa files" folder: throwaway server only.
 //   node web/qa/filetypes.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
@@ -11,10 +11,8 @@ const DIR = "Qa files"
 const at = (name) => `${VAULT}/${DIR}/${name}`
 const enc = encodeURIComponent
 
-// ---------- sample files ----------
 rmSync(`${VAULT}/${DIR}`, { recursive: true, force: true })
 mkdirSync(`${VAULT}/${DIR}`, { recursive: true })
-/** A w×h PNG of one colour. */
 function png(w, h) {
   const chunk = (type, data) => {
     const len = Buffer.alloc(4); len.writeUInt32BE(data.length)
@@ -27,7 +25,6 @@ function png(w, h) {
   return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr),
     chunk("IDAT", zlib.deflateSync(Buffer.concat(Array(h).fill(row)))), chunk("IEND", Buffer.alloc(0))])
 }
-/** A small PDF with `n` pages, each with a line of text. */
 function pdf(n) {
   const objs = ["<< /Type /Catalog /Pages 2 0 R >>", `<< /Type /Pages /Kids [${Array.from({ length: n }, (_, i) => `${3 + i * 2} 0 R`).join(" ")}] /Count ${n} >>`]
   for (let i = 0; i < n; i++) {
@@ -43,7 +40,6 @@ function pdf(n) {
   out += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`
   return out
 }
-/** A second of silence. */
 function wav() {
   const rate = 8000, data = Buffer.alloc(rate), h = Buffer.alloc(44)
   h.write("RIFF", 0); h.writeUInt32LE(36 + data.length, 4); h.write("WAVEfmt ", 8); h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20)
@@ -65,7 +61,7 @@ writeFileSync(at("statement.pdf"), pdf(2))
 writeFileSync(at("memo.wav"), wav())
 writeFileSync(at("Budget.xlsx"), Buffer.concat([Buffer.from("PK\x03\x04"), Buffer.alloc(200, 7)]))
 writeFileSync(at("Slides.key"), Buffer.concat([Buffer.from("PK\x03\x04"), Buffer.alloc(200, 7)]))
-writeFileSync(at("big.log"), "line of a long log file\n".repeat(60000)) // about 1.4 MB: read-only
+writeFileSync(at("big.log"), "line of a long log file\n".repeat(60000))
 writeFileSync(at("analysis.ipynb"), JSON.stringify({
   metadata: { kernelspec: { language: "python", name: "python3" }, language_info: { name: "python" } }, nbformat: 4, nbformat_minor: 5,
   cells: [
@@ -88,7 +84,6 @@ await until(serverListsThemAll, 15000)
 const out = { errs: [] }
 const ok = (name, v) => { out[name] = v }
 
-// ---------- desktop ----------
 {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 })
   const page = await ctx.newPage(), ui = app(page)
@@ -99,7 +94,6 @@ const ok = (name, v) => { out[name] = v }
   const open = async (name) => { await page.goto(`${B}#file/${enc(`${DIR}/${name}`)}`); await ui.idle() }
   const status = () => page.locator("[role=status]").last().innerText().catch(() => "")
   await page.goto(B); await page.locator("aside [role=tree]").first().waitFor(); await ui.idle()
-  // The tree: every file listed, each with its icon.
   await page.locator("aside [role=tree] button", { hasText: new RegExp(`^${DIR}$`) }).first().click(); await ui.idle()
   const icons = await page.evaluate((dir) => Object.fromEntries([...document.querySelectorAll(`aside [data-tree-path^="${dir}/"]`)].map((row) =>
     [row.dataset.treePath.split("/").pop(), row.querySelector("svg.lucide:not(.lucide-chevron-right)")?.getAttribute("class")?.split(" ").find((c) => c.startsWith("lucide-")) ?? null])), DIR)
@@ -109,7 +103,6 @@ const ok = (name, v) => { out[name] = v }
     && icons["run.sh"] === "lucide-file-terminal" && icons["config.yaml"] === "lucide-file-cog" && icons["Makefile"] === "lucide-file-code")
   await shot("tree")
 
-  // Code: highlighted, line numbers, typing saves only the change.
   await page.locator("aside [role=tree] button", { hasText: /^sample\.py$/ }).first().click(); await ui.idle()
   ok("pyHash", await page.evaluate(() => location.hash))
   ok("pyEditor", await page.locator(".vau-editor.is-code").count())
@@ -122,11 +115,9 @@ const ok = (name, v) => { out[name] = v }
   await page.locator(".cm-line", { hasText: "print(total([]))" }).click(); await page.keyboard.press("End"); await page.keyboard.type("  # done"); await ui.idle()
   const py = readFileSync(at("sample.py"), "utf8")
   ok("pySaved", py === PY.replace("print(total([]))", "print(total([]))  # done"))
-  // Tab indents with the file's own unit (4 spaces here).
   await page.keyboard.press("Enter"); await page.keyboard.type("x = 1"); await page.keyboard.press("Home"); await page.keyboard.press("Tab"); await ui.idle()
   ok("pyIndent", readFileSync(at("sample.py"), "utf8").includes("\n        x = 1") || readFileSync(at("sample.py"), "utf8").includes("\n    x = 1"))
 
-  // Other text: a YAML file, an unknown name that is text, a binary file, a big log.
   await open("config.yaml")
   ok("yamlEditor", await page.locator(".vau-editor.is-code").count())
   await open("odd.qqq")
@@ -136,7 +127,6 @@ const ok = (name, v) => { out[name] = v }
   await open("big.log")
   ok("bigReadOnly", (await page.locator("article [role=status]", { hasText: "read-only" }).count()) && (await page.locator(".cm-content[contenteditable=false]").count()))
 
-  // An image: fit, click for its real size.
   await open("chart.png")
   ok("imgLoaded", await page.evaluate(() => document.querySelector("[data-image-view] img")?.naturalWidth ?? 0))
   ok("imgStatus", await status())
@@ -146,19 +136,16 @@ const ok = (name, v) => { out[name] = v }
   await open("logo.svg")
   ok("svgLoaded", await page.evaluate(() => document.querySelector("[data-image-view] img")?.naturalWidth ?? 0))
 
-  // A PDF in the browser's viewer.
   await open("statement.pdf")
   ok("pdfFrame", await page.locator("article iframe[src*='api/raw']").count())
   ok("pdfFrameHeight", await page.evaluate(() => document.querySelector("article iframe")?.getBoundingClientRect().height ?? 0))
   ok("pdfStatus", await status())
   await shot("pdf")
 
-  // Audio.
   await open("memo.wav")
   ok("audio", await page.locator("article audio").count())
   ok("audioStatus", await status())
 
-  // A notebook: read, then its JSON.
   await open("analysis.ipynb")
   ok("nbCells", await page.locator("[data-notebook] [data-cell=code]").count())
   ok("nbHighlighted", await page.locator("[data-notebook] .nb-code .tok-keyword").count())
@@ -169,8 +156,6 @@ const ok = (name, v) => { out[name] = v }
   ok("nbSource", await page.locator(".cm-line", { hasText: '"cell_type": "markdown"' }).count())
   await page.keyboard.press("ControlOrMeta+e"); await ui.idle()
 
-  // A file no viewer or plugin draws (a Keynote deck): a card with Download; "Open in default app" only in the desktop
-  // app on this machine. (A workbook is Spreadsheets': web/qa/formats.mjs.)
   await open("Slides.key")
   ok("cardDownload", await page.locator("[data-file-card] a[download]", { hasText: "Download" }).getAttribute("href"))
   ok("cardNoOpenHere", await page.locator("[data-file-card] button", { hasText: "Open in default app" }).count() === 0)
@@ -180,22 +165,18 @@ const ok = (name, v) => { out[name] = v }
   await page.evaluate(() => { delete document.documentElement.dataset.electron })
   await shot("card")
 
-  // A PDF embedded in a note.
   await open("Embeds.md")
   ok("pdfEmbed", await page.locator(".cm-editor iframe[src*='statement.pdf']").count())
   ok("audioEmbed", await page.locator(".cm-editor audio").count())
   await shot("embeds")
 
-  // The quick switcher finds files by their full name.
   await page.keyboard.press("ControlOrMeta+o"); await ui.idle()
   await page.keyboard.type("statement.pdf"); await ui.idle()
   ok("switcher", await page.locator("[role=dialog] [role=option], [role=listbox] [role=option]").allInnerTexts().then((t) => t.slice(0, 3)))
   await page.keyboard.press("Escape")
 
-  // Range requests (players seek with them).
   ok("range", await page.evaluate(async (p) => { const r = await fetch(`api/raw?path=${encodeURIComponent(p)}`, { headers: { Range: "bytes=0-9" } }); return [r.status, (await r.arrayBuffer()).byteLength] }, `${DIR}/memo.wav`))
 
-  // Rename and delete from the tree.
   await ui.menu.context(page.locator(`aside [data-tree-path="${DIR}/readme.txt"]`))
   await page.locator("[role=menu] button", { hasText: "Rename" }).click(); await ui.idle()
   await page.keyboard.press("ControlOrMeta+a"); await page.keyboard.type("notes.txt"); await page.keyboard.press("Enter"); await ui.idle()
@@ -206,7 +187,6 @@ const ok = (name, v) => { out[name] = v }
   await ctx.close()
 }
 
-// ---------- phones ----------
 for (const width of [390, 320]) {
   const ctx = await browser.newContext({ viewport: { width, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
   const page = await ctx.newPage(), ui = app(page)

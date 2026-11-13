@@ -1,5 +1,5 @@
-// Clicks into a cross-site frame (a captcha, "Sign in with Google") in the desktop app's Browser reach it even while the
-// window's page is raised over it (Chromium runs such frames in a process of their own). WRITES: throwaway vault.
+// Clicks reach a cross-site frame, which Chromium runs in its own process, while the window's page is raised over it.
+// Needs the desktop app; WRITES: throwaway vault.
 //   node web/qa/frameclicks.mjs <vault copy>
 import { _electron } from "playwright-core"
 import fs from "node:fs"
@@ -11,7 +11,6 @@ import { ROOT, qa, uiAt, until, wait } from "./lib/qa.mjs"
 const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-frameclicks-"))
 
-// The page: a button of its own, and a frame from another site with a button filling it; each counts its clicks.
 const server = http.createServer((q, r) => {
   r.writeHead(200, { "Content-Type": "text/html" })
   if (q.url === "/frame") return r.end(`<!doctype html><body style="margin:0"><button id=b style="width:100vw;height:100vh;font:20px sans-serif"
@@ -38,7 +37,6 @@ try {
   await app.evaluate(({ BaseWindow }) => { const w = BaseWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }) })
   await uiAt(origin)({ action: "open", path: `view:web/${SITE}` })
 
-  /** The page's view (window points), what it counted, and whether its frame runs in a process of its own. */
   const view = () => app.evaluate(async ({ BaseWindow }) => {
     const w = BaseWindow.getAllWindows()[0], v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
     if (!v) return null
@@ -51,7 +49,6 @@ try {
   check("the frame is another site's, in a process of its own", placed?.oopif === true, placed)
   await wait(500)
 
-  // The window raised over the page letting the pointer through, as while a toast is over it (layers.ts).
   await win.evaluate(() => {
     const d = document.createElement("div")
     d.dataset.floats = ""
@@ -62,7 +59,6 @@ try {
   const through = await until(() => win.evaluate(() => "overPages" in document.documentElement.dataset), 5000)
   check("a float over the page raises the window, letting the pointer through", !!through)
 
-  /** A click at the page's own point (x, y), on the window's page over it. */
   const click = async (x, y) => {
     const b = await view()
     await win.mouse.click(b.x + x, b.y + y)
@@ -76,7 +72,6 @@ try {
   await click(170, 170)
   const twice = await until(async () => (await view())?.counts?.frame === 2, 3000)
   check("through: and again", !!twice, (await view())?.counts)
-  // (zoomed in, the page's CSS pixels are bigger than the window's: the click still lands where the pointer is)
   await app.evaluate(({ BaseWindow }) => {
     const w = BaseWindow.getAllWindows()[0]
     w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible()).webContents.setZoomFactor(1.5)
@@ -85,7 +80,6 @@ try {
   await click(300 * 1.5, 210 * 1.5)
   const zoomed = await until(async () => (await view())?.counts?.frame === 3, 3000)
   check("through, the page zoomed in: a click reaches the frame where the pointer is", !!zoomed, (await view())?.counts)
-  // (the wheel scrolls the page under it)
   const scrolled = () => app.evaluate(({ BaseWindow }) => {
     const w = BaseWindow.getAllWindows()[0]
     return w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible()).webContents.executeJavaScript("scrollY")

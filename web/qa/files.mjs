@@ -1,5 +1,5 @@
-// Files, tabs and the editor, on a desktop and a phone; its subjects come from the vault (subjects.mjs), people it can't
-// find made (People/Qa person*.md). WRITES to the vault: throwaway server only.
+// Files, tabs and the editor on a desktop and a phone, with subjects from the vault (People/Qa person*.md if none).
+// WRITES to the vault: throwaway server only.
 //   node web/qa/files.mjs <base url> <vault path> [out dir]   (a fresh copy of the vault each run: it renames files)
 import { readFileSync } from "node:fs"
 import { SHOTS, qa, until } from "./lib/qa.mjs"
@@ -17,7 +17,6 @@ if (!v.people.some(fit) || !v.people.some((p) => fit(p) && p.hasWant && p !== v.
   }
   v = await subjects(B)
 }
-// Notes too (the sandbox has a few): one that links to another note and to a person, and spares (one linked to, to rename).
 if (!v.linked || v.state.notes.length < 6) {
   const who = v.people.find(fit) ?? v.people[0]
   for (const [name, body] of [["Qa idea", "An idea worth linking to.\n"], ["Qa linking", `Links to [[Qa idea]] and to [[${who.name}]].\n`],
@@ -30,7 +29,6 @@ if (!v.linked || v.state.notes.length < 6) {
 const person = v.people.find(fit)
 const other = v.people.find((p) => fit(p) && p.hasWant && p !== person)
 const third = v.people.find((p) => p !== person && p !== other)
-// Notes: one with links (opened from the switcher), one that links to a note and a person (the phone's link), one to rename.
 const linking = v.need(v.linked, "a note that links to another note and to a person")
 const withLinks = v.state.notes.find((n) => v.links(n.body ?? "").some((l) => l.note || l.person)).id
 const linkedTo = new Set(v.state.notes.flatMap((n) => v.links(n.body ?? "").map((l) => l.note?.id)))
@@ -39,7 +37,6 @@ const rename = v.need(spare.find((n) => linkedTo.has(n.id)) ?? spare[0], "a four
 const topFile = (v.tree.files.find((f) => !f.path.includes("/") && !/^(AGENTS|CLAUDE)\.md$/.test(f.path)) ?? v.tree.files.find((f) => !f.path.includes("/"))).path.replace(/\.md$/, "")
 const out = { errs: [] }
 
-// ---------- desktop ----------
 {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 })
   const page = await ctx.newPage(), ui = app(page)
@@ -49,7 +46,6 @@ const out = { errs: [] }
   await page.goto(B); await until(() => page.locator("aside [role=tree]").count(), 10_000); await ui.idle()
   await shot("start")
   out.tree = await page.locator("aside [role=tree]").count()
-  // Open People, then the person, by path (the tree may show a Dashboards/People.md too), folder by folder.
   const dirs = person.path.split("/").slice(0, -1)
   for (let i = 0; i < dirs.length; i++) {
     const next = i + 1 < dirs.length ? dirs.slice(0, i + 2).join("/") : person.path
@@ -63,21 +59,17 @@ const out = { errs: [] }
   out.timelineWidget = await page.locator(".cm-block-section").count()
   out.header = await page.locator("article :text('Last in touch')").count()
   await shot("person")
-  // click into the timeline: raw lines show
   await page.locator(".cm-block-section").first().click({ position: { x: 300, y: 60 } }); await ui.idle()
   out.rawAfterClick = await page.locator(".cm-line", { hasText: person.entry }).count()
   await shot("person-editing-timeline")
-  // type at the end of the first paragraph
   const before = read(person.path)
   await page.locator(".cm-line", { hasText: person.plain }).first().click(); await page.keyboard.press("End"); await page.keyboard.type(" Loves hiking.")
   await ui.idle()
   const after = read(person.path)
   out.typedSaved = after.includes(`${person.plain} Loves hiking.`)
   out.onlyThatChanged = after === before.replace(person.plain, `${person.plain} Loves hiking.`)
-  // properties open/close
   await page.locator("section[aria-label=Properties]:visible > button").first().click(); await ui.idle()
   await shot("person-properties")
-  // a note with links
   await page.keyboard.press("ControlOrMeta+o"); await ui.idle()
   await page.keyboard.type(withLinks.split("/").pop()); await ui.idle()
   await page.keyboard.press("Enter"); await ui.idle()
@@ -85,13 +77,11 @@ const out = { errs: [] }
   out.tabs2 = await page.locator("[role=tablist] [role=tab]").allInnerTexts()
   await shot("note")
   out.wikilinks = await page.locator(".cm-wikilink").count()
-  // new note from the tree header
   await page.locator("aside button[aria-label='New note']").click(); await ui.idle()
   out.newHash = await page.evaluate(() => location.hash)
   out.titleFocused = await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))
   await page.keyboard.type("QA test note"); await page.keyboard.press("Enter"); await ui.idle()
   out.renamedHash = await page.evaluate(() => location.hash)
-  // (in the tab shown: a pane keeps its other tabs drawn but hidden)
   await page.locator("#main-scroll .cm-content").click(); await page.keyboard.type(`Hello [[${person.name.slice(0, 3)}`); await ui.idle()
   out.autocomplete = await page.locator(".cm-tooltip-autocomplete li").allInnerTexts()
   await page.keyboard.press("Enter"); await page.keyboard.type(" and **bold**."); await ui.idle()
@@ -101,7 +91,6 @@ const out = { errs: [] }
   await ctx.close()
 }
 
-// ---------- desktop: changes from elsewhere, properties, rename, old links, tabs ----------
 {
   const { writeFileSync } = await import("node:fs")
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 })
@@ -109,18 +98,15 @@ const out = { errs: [] }
   page.on("pageerror", (e) => out.errs.push(String(e)))
   const shot = (name) => page.screenshot({ path: `${OUT}files-desktop-${name}.png` })
   await page.goto(`${B}#file/${encodeURIComponent(other.path)}`); await page.locator(".cm-content").first().waitFor(); await ui.idle()
-  // Claude appends a timeline line while the file is open: the editor picks it up, the timeline redraws
   const k = read(other.path)
   await ui.sees(other.path, () => writeFileSync(`${VAULT}/${other.path}`, k.replace(/## Timeline\n+/, "## Timeline\n\n- 2026-09-29 · call · 20 min · From Claude while open\n")))
   out.externalShown = await page.locator(".cm-block-section", { hasText: "From Claude while open" }).count()
-  // and while typing: both kept
   await page.locator(".cm-line", { hasText: other.plain }).first().click(); await page.keyboard.press("End")
   await page.keyboard.type(" Met at a conference.")
   const k2 = read(other.path)
   await ui.sees(other.path, () => writeFileSync(`${VAULT}/${other.path}`, k2.replace("- 2026-09-29 · call", "- 2026-09-29 · meet")))
   const k3 = read(other.path)
   out.bothKept = k3.includes("Met at a conference.") && k3.includes("- 2026-09-29 · meet · 20 min")
-  // a property: want_to changes on its own line only
   await page.locator("section[aria-label=Properties]:visible > button").first().click(); await ui.idle()
   const before = read(other.path)
   const want = page.locator("[role=row]", { has: page.locator("input[value=want_to]") }).locator("[role=cell] input").first()
@@ -129,24 +115,20 @@ const out = { errs: [] }
   out.propertyLine = after === before.replace(/want_to: .*\n/, "want_to: Ask about the camp\n")
   out.headerFollows = await page.locator("article :text('Ask about the camp')").count()
   await shot("other-properties")
-  // rename a note from its title: links to it follow, the tab follows
   await page.goto(`${B}#file/${encodeURIComponent(`${rename}.md`)}`); await ui.idle()
   const t = page.locator("textarea[aria-label='File name']")
   await t.fill(`${rename.split("/").pop()} (maybe)`); await t.press("Enter"); await ui.idle()
   out.renameHash = await page.evaluate(() => location.hash)
   out.renameTabs = await page.locator("[role=tablist] [role=tab]").allInnerTexts()
-  // a file's sheet address (a phone's, #<tab>/file/<path>) opens its tab
   const notes = await (await fetch(`${B}api/notes`)).json()
   await page.goto(`${B}#new/file/${encodeURIComponent(`${notes[0].id}.md`)}`); await until(() => page.evaluate(() => !location.hash.includes("/file/"))); await ui.idle()
   out.sheetLinkHash = await page.evaluate(() => location.hash)
   out.sheetLinkWant = `#file/${encodeURIComponent(`${notes[0].id}.md`)}`
   out.sheetLinkSheet = await page.evaluate(() => !!document.querySelector("dialog")?.open)
-  // close the active tab
   await page.locator("aside [role=tree] button", { hasText: new RegExp(`^${esc(topFile)}$`) }).first().click({ button: "middle" }); await ui.idle()
   const n = await page.locator("[role=tablist] [role=tab]").count()
   await page.locator("[role=tablist] button[aria-label^=Close]").first().click(); await ui.idle()
   out.closedTab = n >= 2 && (await page.locator("[role=tablist] [role=tab]").count()) === n - 1
-  // the same line changed on disk and in the editor: shown in place, nothing is overwritten (web/qa/conflicts.mjs)
   await page.goto(`${B}#file/${encodeURIComponent(third.path)}`); await ui.idle()
   await page.locator("#main-scroll .cm-content").click(); await page.keyboard.press("ControlOrMeta+End"); await page.keyboard.type("Mine.")
   await ui.idle()
@@ -159,9 +141,7 @@ const out = { errs: [] }
   out.diskKept = read(third.path).includes("Theirs.") && !read(third.path).includes("Mine. More")
   await page.locator(".cm-clash-mine button", { hasText: "Keep" }).click(); await ui.idle()
   out.keepMine = read(third.path).includes("Mine. More") && !read(third.path).includes("Theirs.")
-  // source mode shows the frontmatter
   await page.goto(`${B}#file/${encodeURIComponent(person.path)}`); await ui.idle()
-  // the status bar's view menu (its view button: the bar also has property chips, which open menus too): source mode
   await ui.menu.open(page.locator("[role=status] button[aria-label^='Current view']"))
   await page.locator("[role=menu] button", { hasText: "Source mode" }).click(); await ui.idle()
   out.sourceShowsFm = await page.locator(".cm-line", { hasText: /^type: / }).count()
@@ -171,7 +151,6 @@ const out = { errs: [] }
   await ctx.close()
 }
 
-// ---------- phone ----------
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
   const page = await ctx.newPage(), ui = app(page)
@@ -180,8 +159,7 @@ const out = { errs: [] }
   const here = () => page.evaluate(() => ({ hash: decodeURIComponent(location.hash), sheet: !!document.querySelector("dialog")?.open, title: document.querySelector("[data-phone-title]")?.textContent, tabs: Number(document.querySelector("[data-tabs-button]")?.innerText) }))
   await page.goto(`${B}#view/files`); await page.locator("main [role=tree]").waitFor(); await ui.idle()
   await shot("files")
-  // A file from the tree opens in a tab (a file opened from a view goes beside it), not a sheet; Back returns.
-  { // (each folder down to it: People/, or Personal/People/)
+  {
     const dirs = other.path.split("/").slice(0, -1)
     for (let i = 0; i < dirs.length; i++) {
       const next = i + 1 < dirs.length ? dirs.slice(0, i + 2).join("/") : other.path
@@ -202,7 +180,6 @@ const out = { errs: [] }
   out.phonePeople = await here()
   out.phonePeopleOk = !out.phonePeople.sheet && out.phonePeople.hash === `#file/${person.path}`
   await shot("person-from-people")
-  // A [[link]] in reading mode opens that file in the same tab (a file replaces a file); Back returns to the note.
   await page.goto(`${B}#file/${encodeURIComponent(`${linking.note.id}.md`)}`); await ui.idle()
   const atNote = await here()
   await page.locator("main .cm-wikilink").first().tap(); await ui.idle()
@@ -224,7 +201,6 @@ check("the switcher opens a note in a tab, its links drawn", out.noteHash === ha
 check("New note: an untitled note, its name focused", out.newHash.startsWith("#file/Untitled") && out.titleFocused === "File name", [out.newHash, out.titleFocused])
 check("…named by typing", out.renamedHash === hash("QA test note.md"), out.renamedHash)
 check("[[ suggests the person", out.autocomplete.some((t) => t.includes(person.name)), out.autocomplete)
-// (after its properties: Note dates' created and updated)
 const newBody = out.newNoteText.replace(/^---\n[\s\S]*?\n---\n\n?/, "")
 check("…and the link and text are saved", newBody.startsWith(`Hello [[${person.name}`) && newBody.endsWith("and **bold**."), out.newNoteText)
 check("a line written elsewhere shows in the open timeline", out.externalShown >= 1)

@@ -1,6 +1,4 @@
-// A command auto mode blocks, asked by voice of the real companion (Claude Code): offered on a card by the pointer
-// (the helper's, drawn unseen), staying up while they decide; its Run clicked runs it and the ask completes; two at
-// once, each its own card, a spoken yes and a Not now each answering theirs.
+// A command auto mode blocks, asked by voice, is offered on a card by the pointer and answered there.
 // LIVE: a real model, and `defaults` on this Mac's com.vaultite.offer-test only.
 //   VAULTITE_QA_LIVE=1 node web/qa/helper-offer.mjs <vault copy>
 import { _electron } from "playwright-core"
@@ -17,7 +15,7 @@ const read = (k) => { try { return execFileSync("defaults", ["read", DOMAIN, k],
 const clear = () => { try { execFileSync("defaults", ["delete", DOMAIN], { stdio: "ignore" }) } catch {} }
 clear()
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-offer-"))
-// (the words each press "hears": a Mac before macOS 26 has no recognizer to hear a file with)
+// (a Mac before macOS 26 has no recognizer to hear a file with)
 const WORDS = path.join(TMP, "said.txt")
 const speak = (text) => fs.writeFileSync(WORDS, text)
 const conf = (id, v) => { fs.mkdirSync(path.join(VAULT, ".vaultite", "plugins", id), { recursive: true }); fs.writeFileSync(path.join(VAULT, ".vaultite", "plugins", id, "data.json"), JSON.stringify(v)) }
@@ -48,19 +46,16 @@ try {
     return until(() => helper((h, k) => h.asked().filter((m) => m.kind === "ask")[k], n), 30000, 200)
   }
   const cards = () => app.windows().filter((p) => p.url().startsWith("data:text/html") && decodeURIComponent(p.url()).includes('href="takeover:yes"'))
-  // (its window shown first: one not on screen yet takes no click)
   const shownUp = (u) => app.evaluate(({ BrowserWindow }, url) => BrowserWindow.getAllWindows().some((w) => w.webContents.getURL() === url && w.isVisible()), u)
   const said = () => helper((h) => h.spoken().filter((m) => m.cmd === "say").map((m) => m.text).join(" "))
 
-  // ---------- one offer: its Run clicked
   const ask = await press()
   check("asked by voice", /defaults/i.test(ask?.text ?? ""), ask)
   const card = await until(() => cards()[0], 120000, 300)
   if (card) await until(() => shownUp(card.url()), 5000)
   const line = card ? decodeURIComponent(card.url()) : ""
   check("the blocked command is offered on a card by the pointer", /Run `defaults write com\.vaultite\.offer-test probe/.test(line), line.slice(0, 600))
-  // (it waits for them: not gone with the exchange's end, however long its words take)
-  await wait(8000)
+  await wait(8000) // (longer than its words take)
   check("…and it stays up while they decide", !!card && !card.isClosed() && cards().length === 1)
   const before = await said()
   const hit = (page, sel) => page.locator(sel).click({ timeout: 5000 }).then(() => true, (e) => (console.log(`couldn't click ${sel}: ${e.message.split("\n")[0]}`), false))
@@ -70,7 +65,6 @@ try {
   check("…and the ask completes: it says it's done", await until(async () => (await said()).length > before.length && !(await helper((h) => h.scene()?.summon)), 60000, 300), (await said()).slice(before.length))
   console.log("said:", (await said()).slice(before.length))
 
-  // ---------- two commands at once: Claude Code asks them one after the other, each its own card and answer
   await until(async () => !(await helper((h) => h.scene()?.summon)) && !cards().length, 30000, 300)
   speak("Run these two as two separate commands at the same time, in parallel: defaults write com.vaultite.offer-test a -int 1, and defaults write com.vaultite.offer-test b -int 1.")
   await press()
@@ -78,7 +72,6 @@ try {
   const which = (c) => / (a|b) -int/.exec(c ? decodeURIComponent(c.url()) : "")?.[1]
   const one = which(first), other = one === "a" ? "b" : "a"
   check("two blocked commands at once: the first offered", !!one, first?.url().slice(0, 200))
-  // (said while the card is up, by the pointer: its answer, not an ask)
   speak("Yes.")
   const n = await helper((h) => h.spoken().length)
   await press()

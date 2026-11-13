@@ -1,5 +1,5 @@
-// The Inbox by keyboard, Gmail's keys: J and K move along its rows, E marks one done (the keyboard goes on to the next),
-// B snoozes, P pins, the same in a session's sheet (J and K to the next and previous one, E on to the next), Shift+U and Shift+I unread and read, G I opens it. WRITES Inbox/ and the inbox's events: throwaway server only.
+// The Inbox by Gmail's keys (J, K, E, B, P, Shift+U, Shift+I, G I), in its list and in a session's sheet.
+// WRITES Inbox/ and the inbox's events: throwaway server only.
 //   node web/qa/inboxkeys.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { apiAt, qa, until, wait } from "./lib/qa.mjs"
@@ -26,7 +26,6 @@ await page.keyboard.press("i")
 check("G I opens the Inbox", !!(await until(() => page.locator("[data-inbox-view] [data-inbox-active]").count(), 8000)))
 await wait(500)
 
-/** The selection key of the row the keyboard is on. */
 const on = () => page.evaluate(() => document.activeElement?.closest("[data-select-key]")?.getAttribute("data-select-key") ?? null)
 await page.locator("[data-inbox-view] h1").click()
 await page.keyboard.press("j")
@@ -39,14 +38,12 @@ check("K goes back up", (await on()) === `e:${ask.id}`, await on())
 await page.keyboard.press("j")
 await page.screenshot({ path: `${OUT}1-keyboard-on-row.png` })
 
-// E: done, and the keyboard is on the next row.
 await page.keyboard.press("e")
 const archived = await until(async () => (await api("GET", "inbox")).find((r) => `r:${r.id}` === second.replace("Inbox/", "Inbox/.archive/") && r.status === "done"))
 check("E marks the result done", !!archived)
 const after = await until(async () => { const k = await on(); return k && k !== second ? k : null })
 check("and the keyboard goes on to the next row", !!after && after.startsWith("r:Inbox/") && after !== second, after)
 
-// B: the Snooze choices under the row; picking one snoozes it.
 await page.keyboard.press("b")
 const menu = page.getByRole("menuitem", { name: /Tomorrow/ })
 check("B shows the Snooze choices", !!(await until(() => menu.count())))
@@ -54,7 +51,6 @@ await page.screenshot({ path: `${OUT}2-snooze-menu.png` })
 await menu.click()
 check("and one picked snoozes it", !!(await until(async () => (await api("GET", "inbox")).find((r) => `r:${r.id}` === after)?.snoozed)))
 
-// P: pins the thread, again unpins it.
 await page.locator(`[data-inbox-view] [data-event="${ask.id}"] [data-keyrow]`).focus()
 await page.keyboard.press("p")
 check("P pins it", !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.id === ask.id)?.pinned === true)))
@@ -63,14 +59,12 @@ await page.locator(`[data-inbox-view] [data-event="${ask.id}"] [data-keyrow]`).f
 await page.keyboard.press("p")
 check("P again unpins it", !!(await until(async () => !(await api("GET", "inbox/events")).events.find((e) => e.id === ask.id)?.pinned)))
 
-// Shift+U and Shift+I: unread and read the thread.
 await page.locator(`[data-inbox-view] [data-event="${ask.id}"] [data-keyrow]`).focus()
 await page.keyboard.press("Shift+I")
 check("Shift+I reads it", !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.id === ask.id)?.read === true)))
 await page.keyboard.press("Shift+U")
 check("Shift+U unreads it", !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.id === ask.id)?.read === false)))
 
-// In a session's sheet: J and K go to the next or previous session's, P pins it, E marks it done and goes on to the next (the last one's closes).
 const hook = (name, text) => api("POST", `inbox/hook?agent=claude&terminal=qk${name}${Date.now().toString(36)}`, { hook_event_name: "Stop", cwd: `/tmp/${name}`, last_assistant_message: text })
 await hook("harbor", "Which port should the server use, 8080 or 9090?")
 await hook("lighthouse", "Should I bump the version to 0.6.1 or retag 0.6.0?")
@@ -96,7 +90,6 @@ check("and then a letter is typed, not a key", (await page.locator("[data-sessio
 await page.locator("[data-session-sheet] textarea[data-reply]").fill("")
 await page.evaluate(() => document.activeElement?.blur())
 await page.keyboard.press("e")
-// (settled in its sheet, a session goes on to the next one's, as Mail does: the last one's closes, e9482a68)
 const settled = (id) => until(async () => (await api("GET", "inbox/events")).events.find((e) => e.id === id)?.state === "done")
 check("E marks it done and goes on to the next session's sheet", !!(await settled(sessions[0].id)) &&
   (await until(async () => ((await sheet()) === sessions[1].id ? true : null))) === true, await sheet())
@@ -105,7 +98,6 @@ await page.keyboard.press("e")
 check("...E on the last one: done, and the sheet closes", !!(await settled(sessions[1].id)) &&
   !!(await until(async () => ((await sheet()) === null ? true : null))), await sheet())
 
-// Typing elsewhere, the keys are letters: a note's editor gets its J.
 await page.goto(`${B}#file/Start%20here.md`)
 await wait(1000)
 check("off the Inbox, J isn't its", (await page.evaluate(() => !!document.activeElement?.closest("[data-inbox-view]"))) === false)

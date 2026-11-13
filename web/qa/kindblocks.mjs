@@ -1,6 +1,7 @@
-// A kind's blocks are fences in its files (core/blocks.ts withKindBlocks): a new person or log has them on top and draws
-// them; a file without one draws none. WRITES to the vault (Logs' areas put back): throwaway server only.
+// A kind's blocks are fences in its files: a new person or log has them on top and draws them, other files none.
+// WRITES to the vault (Logs' areas put back): throwaway server only.
 //   node web/qa/kindblocks.mjs <base url> [out dir]
+// Paths: core/blocks.ts
 import { SHOTS, qa, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, noErrors, done } = await qa(import.meta.url)
 const enc = encodeURIComponent
@@ -12,7 +13,6 @@ await fetch(`${B}api/file?path=${enc(BARE)}`, { method: "DELETE" })
 await post("file", { path: BARE, text: "---\ntype: person\nrelation: friend\ncontext: Neighbour\n---\n\nNo fence here.\n" })
 const person = await post("people", { name: "Kim Lee", relation: "friend", context: "From the climbing gym", notes: "Likes tea." })
 const PERSON = `${person.id}.md`
-// (an area whose block is Logs' own week-goals, so it draws with only the app's plugins)
 const AREAS = ".vaultite/plugins/logs/data.json"
 const areasBefore = await read(AREAS)
 const put = (text) => fetch(`${B}api/file`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: AREAS, text }) })

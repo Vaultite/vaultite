@@ -1,5 +1,5 @@
-// The Inbox's Pin: pinned threads and results on top under Pinned, a row's menu pins, done unpins, on a phone too. WRITES
-// Inbox/ and the inbox's events: throwaway server only.
+// The Inbox's Pin: pinned rows on top under Pinned, a row's menu pins, done unpins, on a phone too.
+// WRITES Inbox/ and the inbox's events: throwaway server only.
 //   node web/qa/inboxpin.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { devices } from "playwright-core"
@@ -24,7 +24,6 @@ const pinned = page.locator("[data-inbox-view] [data-inbox-pinned]")
 check("a pinned message is under Pinned, on top", !!(await until(async () => (await pinned.locator(`[data-event="${msg.id}"]`).count()) === 1, 8000)))
 check("Pinned is the first list", await page.locator("[data-inbox-view] section").first().evaluate((s) => s.hasAttribute("data-inbox-pinned")))
 
-// A result's right-click: Pin, then it's under Pinned (not To review), one toast with Undo.
 const res = page.locator("[data-inbox-view] [data-inbox-active] [data-result]", { hasText: "Lighthouse launch notes" })
 await res.click({ button: "right" })
 await page.getByRole("menuitem", { name: "Pin", exact: true }).click()
@@ -35,12 +34,10 @@ check("its file says pinned", file?.pinned === true, file)
 await wait(500)
 await page.screenshot({ path: `${OUT}1-desktop-pinned.png` })
 
-// The menu of a pinned row says Unpin.
 await pinned.locator(`[data-event="${msg.id}"]`).click({ button: "right" })
 check("a pinned row's menu has Unpin", (await page.getByRole("menuitem", { name: "Unpin" }).count()) === 1)
 await page.keyboard.press("Escape")
 
-// Done unpins: the result leaves Pinned, archived.
 await pinned.locator("[data-result]", { hasText: "Lighthouse launch notes" }).getByRole("button", { name: "Settle" }).click()
 check("done, it leaves Pinned", !!(await until(async () => (await pinned.locator("[data-result]").count()) === 0)))
 check("and isn't pinned any more", !!(await until(async () => (await api("GET", "inbox")).find((r) => r.title === "Lighthouse launch notes")?.pinned !== true)))
@@ -48,7 +45,6 @@ await page.locator("[data-sonner-toast]", { hasText: "Settled “Lighthouse laun
 check("Undo: back under Pinned, pinned again", !!(await until(async () => (await pinned.locator("[data-result]", { hasText: "Lighthouse launch notes" }).count()) === 1)) &&
   !!(await until(async () => (await api("GET", "inbox")).find((r) => r.title === "Lighthouse launch notes")?.pinned === true)))
 
-// A phone: Pinned on top, no sideways scroll.
 await api("POST", "inbox/events/pin", { ids: [ask.id] })
 const phone = await browser.newContext({ ...devices["iPhone 13"], viewport: { width: 390, height: 844 } })
 await phone.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } })

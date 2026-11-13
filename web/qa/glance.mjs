@@ -1,6 +1,7 @@
-// Glance (plugins/core/glance): ⌥-click a [[link]] or a tree file and it opens over the page, shut or opened as a tab or
-// split from there. Turns Glance on (put back) and opens notes in tabs: throwaway server only.
+// Glance: ⌥-click a [[link]] or a tree file opens it over the page, shut or opened as a tab or split from there.
+// Turns Glance on (put back) and opens notes in tabs: throwaway server only.
 //   node web/qa/glance.mjs <base url> [out dir]
+// Paths: plugins/core/glance
 import { mkdirSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = "/tmp/glance-shots/"], browser, check, watch, done } = await qa(import.meta.url)
@@ -9,7 +10,6 @@ const api = async (p, init) => (await fetch(new URL(`/api/${p}`, B), { headers: 
 const before = await api("config/plugins")
 await api("config/plugins", { method: "PATCH", body: JSON.stringify({ enabled: [...new Set([...(before.enabled ?? []), "glance"])] }) })
 
-// A note of Notes/ with a [[link]] to another note there.
 const state = await api("state")
 const notes = state.files.files.filter((f) => f.path.startsWith("Notes/") && f.path.endsWith(".md"))
 const names = new Set(notes.map((f) => f.path.slice(6, -3)))
@@ -27,7 +27,6 @@ const page = watch(await ctx.newPage(), { console: true })
 const shot = (name) => page.screenshot({ path: `${OUT}glance-${name}.png` })
 const sheet = page.locator("dialog[open]")
 const glanceOpen = () => page.evaluate(() => !!document.querySelector("dialog[open]") && location.hash.includes("/glance/"))
-/** What each pane on screen shows (its name). */
 const activeTabs = () => page.evaluate(() => [...document.querySelectorAll("[data-pane-area] > section[data-pane-frame]:not([data-away])")].map((s) => s.getAttribute("aria-label")?.trim()))
 const link = () => page.locator("main .cm-wikilink:not(.is-missing), main a[data-wiki]", { hasText: target }).filter({ visible: true }).first()
 
@@ -45,7 +44,7 @@ async function glance() {
 await openFrom()
 check("⌥-click on a [[link]] opens a glance", await glance())
 check("the glance shows the linked note", await until(() => sheet.locator(`.file-view[data-path="${targetPath}"]`).count(), 4000))
-await wait(400) // (its zoom in)
+await wait(400)
 const box = await sheet.boundingBox()
 check("the glance is wide: about 80% of the window, centred", box && Math.abs(box.width - 1440 * 0.8) < 4 && Math.abs(box.x + box.width / 2 - 720) < 4 && box.height > 700, box)
 check("its bar names it and offers Open in tab and Open to the side",
@@ -71,7 +70,6 @@ await sheet.getByRole("button", { name: "Open in tab" }).click()
 const promoted = await until(async () => !(await glanceOpen()) && (await page.evaluate(() => decodeURIComponent(location.hash))).includes(targetPath), 4000)
 check("Open in tab closes the glance and shows the note in the focused pane", promoted, await page.evaluate(() => location.hash))
 const tabNames = () => page.evaluate(() => [...document.querySelectorAll("[data-tab-strip] [role=tab]")].map((t) => t.innerText.trim()))
-// (a new tab grows in, its name shown once it's wide enough)
 const beside = (tabs) => tabs.some((t) => t.includes(target)) && tabs.some((t) => t.includes(from.path.slice(6, -3)))
 check("as a new tab beside the one it was glanced from", !!(await until(async () => beside(await tabNames()), 2000)), await tabNames())
 await wait(1200)
@@ -83,7 +81,6 @@ await sheet.getByRole("button", { name: "Open to the side" }).click()
 check("Open to the side opens it in a split", await until(async () => !(await glanceOpen()) && (await activeTabs()).length === 2, 4000), await activeTabs())
 check("the split shows the glanced note", !!(await until(async () => (await activeTabs()).some((t) => t?.includes(target)), 2000)), await activeTabs())
 
-// The tree: ⌥-click a file there.
 await openFrom()
 const row = page.locator(`[data-tree-path="${targetPath}"]`).filter({ visible: true }).first()
 if (!(await row.count())) await page.locator('[data-tree-path="Notes"][data-tree-folder] button').first().click().catch(() => {})
@@ -95,7 +92,6 @@ if (await row.count()) {
   await page.keyboard.press("Escape"); await until(async () => !(await glanceOpen()), 3000)
 } else check("the tree shows the note to ⌥-click", false)
 
-// A plain click still follows the link, in the tab.
 await link().click()
 check("a plain click still follows the link", await until(async () => !(await glanceOpen()) && (await page.evaluate(() => decodeURIComponent(location.hash))).includes(targetPath), 4000))
 

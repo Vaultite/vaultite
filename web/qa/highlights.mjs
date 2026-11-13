@@ -1,6 +1,7 @@
-// Highlight colours (==🟢text==, web/src/core/highlights.ts): drawn in each view with the emoji hidden, changed from the
-// swatch, suggested, and from Format ▸ Highlight. WRITES a "Qa highlights" folder: throwaway server only.
+// Highlight colours (==🟢text==) draw with the emoji hidden and change from the swatch, typing and Format ▸ Highlight.
+// WRITES a "Qa highlights" folder: throwaway server only.
 //   node web/qa/highlights.mjs <base url> <vault path> [out dir]
+// Paths: web/src/core/highlights.ts
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { qa, SELECT_WORD, SHOTS, until } from "./lib/qa.mjs"
 import { app } from "./lib/app.mjs"
@@ -23,7 +24,6 @@ try {
   const ed = page.locator("[data-pane] .cm-content").first()
   const line = (n) => ed.locator(".cm-line").nth(n)
 
-  // ---- drawn: live preview, the embed ----
   const colours = ["red", "orange", "yellow", "green", "blue", "purple"]
   const live = await page.evaluate((cs) => cs.map((c) => {
     const el = document.querySelector(`[data-pane] .cm-content .cm-line .cm-highlight.hl-${c}`)
@@ -33,7 +33,6 @@ try {
   check("live: six different tints", new Set(live.map((x) => x?.bg)).size === 6, live.map((x) => x?.bg))
   check("live: no emoji shown off the cursor", !EMOJI.test(await line(0).innerText()), await line(0).innerText())
   check("live: plain ==default== has no colour class", await ed.locator(".cm-highlight", { hasText: "default" }).evaluate((el) => !/hl-/.test(el.className)))
-  // a highlight runs over a soft line break (like ~~strike~~), never over list items
   const soft = await ed.locator(".cm-line").evaluateAll((ls) => ls.filter((l) => /^soft|^two/.test(l.textContent)).map((l) => [...l.querySelectorAll(".cm-highlight")].map((h) => h.textContent)))
   check("live: ==a\\nb== marks both lines of one paragraph, hides its marks", JSON.stringify(soft) === '[["one"],["two"]]', soft)
   check("live: ==x and y== in two list items are not a highlight", await ed.locator(".cm-line", { hasText: "list" }).locator(".cm-highlight").count() === 0)
@@ -49,7 +48,6 @@ try {
   check("dark: tints from the dark scheme's tokens", darkBg !== live[4]?.bg, [darkBg, live[4]?.bg])
   await page.emulateMedia({ colorScheme: "light" }); await ui.idle()
 
-  // ---- the swatch ----
   await ed.locator(".cm-highlight", { hasText: "here" }).click(); await ui.idle()
   const swatch = ed.locator(".cm-hl-swatch")
   check("swatch: on the highlight at the cursor, in its colour", await swatch.count() === 1 && /hl-green/.test(await swatch.getAttribute("class")))
@@ -69,7 +67,6 @@ try {
   await (await ui.menu.open(ed.locator(".cm-hl-swatch"))).getByRole("menuitem", { name: "Remove highlight" }).click()
   check("swatch: Remove highlight keeps the text", await saved("swatch here end"), disk().split("\n")[2])
 
-  // ---- typing == ----
   await line(4).click(); await page.keyboard.press("End"); await page.keyboard.type(" ==")
   const list = page.locator(".cm-tooltip-autocomplete")
   check("==: the colours suggested, each with its dot", await until(async () => (await list.count()) === 1)
@@ -77,7 +74,6 @@ try {
   await list.locator("li").allTextContents().catch(() => []))
   await page.screenshot({ path: `${OUT}highlights-suggest.png` })
   await page.keyboard.type("gr")
-  // (Enter once the list has narrowed to it: before, Enter is a new line)
   await until(async () => (await list.locator("li[aria-selected=true]").textContent().catch(() => "")) === "Green")
   await page.keyboard.press("Enter"); await page.keyboard.type("go")
   check("==: a pick puts the emoji in, the cursor before the closing ==", await saved("word ==🟢go=="), disk().split("\n")[4])
@@ -85,7 +81,6 @@ try {
   await ui.idle()
   check("==: not offered for a closing == or after a space", await list.count() === 0)
 
-  // ---- Format ▸ Highlight ▸ ----
   await line(4).click(); await page.keyboard.press("Home"); await page.keyboard.press(SELECT_WORD)
   await ui.menu.context(line(4), { position: { x: 12, y: 10 } })
   await page.getByRole("menuitem", { name: "Format" }).hover(); await page.locator("[role=menu]").nth(1).waitFor()
@@ -98,7 +93,6 @@ try {
   await page.locator("[role=menu]").nth(2).getByRole("menuitem", { name: "Orange" }).click()
   check("Format ▸ Highlight ▸ Orange highlights the selection", await saved("==🟠word=="), disk().split("\n")[4])
 
-  // ---- reading ----
   await page.keyboard.press("ControlOrMeta+E"); await ui.idle()
   check("reading: coloured, the emoji hidden", await ed.locator(".cm-highlight.hl-purple").count() === 1 && !EMOJI.test(await line(0).innerText()))
 } finally {

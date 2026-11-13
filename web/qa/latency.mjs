@@ -1,15 +1,8 @@
-// How instant the core interactions feel: input event to the next frame, with what each cost (React commits, CPU). Times
-// are noisy, so lean on counts and CPU time. WRITES "Latency" notes, workspace 1's tabs, vault plugins: throwaway only.
-//   load      a cold load and a warm one: to the first file's text drawn, and app.load's parts (core/spans.ts)
-//   typing    keys typed in the middle of a long note (~3000 lines): keydown to the next frame, CPU per key
-//   open      a file clicked in the file explorer, to its text drawn: files never opened, then ones opened before
-//   tabs      switching between tabs by clicking them, to the tab's text drawn
-//   panes     a click into the other pane of a split, to its editor focused
-//   palette   the command palette (Mod+P) opened, then a query typed; the quick switcher (Mod+O) the same
-//   sidebar   the left sidebar hidden and shown (Mod+\)
-// With a vault path it first adds 20 made-up vault plugins there (left there), so the load waits for bundles as a big
-// vault's does. --phone: 390x844, touch, CPU 4x slower; --profile <step> saves that step's CPU profile.
+// How fast the core interactions are: input event to the next frame, with React commits and CPU, step by step.
+// WRITES "Latency" notes, workspace 1's tabs and, with a vault path, 20 made-up vault plugins: throwaway only.
+// Steps: load, typing, open, tabs, panes, palette, sidebar. --phone: 390x844, touch, CPU 4x slower.
 //   node web/qa/latency.mjs <base url> [vault path] [--runs 3] [--only load] [--phone] [--profile <step>] [--out r.json] [--compare r.json]
+// Paths: core/spans.ts
 import fs from "node:fs"
 import path from "node:path"
 import { qa, until, wait } from "./lib/qa.mjs"
@@ -28,7 +21,6 @@ const api = async (method, p, body) => {
   return r.headers.get("content-type")?.includes("json") ? r.json() : r.text()
 }
 
-// ---------- the notes it works on ----------
 const DIR = "Latency", NOTES = 12, LONG = `${DIR}/Long note.md`, MANY = `${DIR}/Many`
 const words = "the keeper climbs one hundred steps every evening to light the lamp while fog rolls in from the north sea".split(" ")
 const line = (i) => Array.from({ length: 8 + (i % 9) }, (_, k) => words[(i * 7 + k * 3) % words.length]).join(" ")
@@ -47,10 +39,8 @@ const note = (i) => `---\ntype: note\n---\n\nMarker ${i} lighthouse\n\n${Array.f
 const name = (i) => `${DIR}/Note ${String(i).padStart(2, "0")}.md`
 for (let i = 1; i <= NOTES; i++) await api("PUT", "file", { path: name(i), text: note(i) })
 await api("PUT", "file", { path: LONG, text: longNote() })
-// (a big folder for the file explorer: 600 short notes, 25 at a time)
 for (let i = 0; i < 600; i += 25) await Promise.all(Array.from({ length: 25 }, (_, k) => api("PUT", "file", { path: `${MANY}/Note ${String(i + k).padStart(3, "0")}.md`, text: `${line(i + k)}\n` })))
 
-// ---------- made-up vault plugins (with a vault path) ----------
 if (VAULT) {
   const dir = (id) => path.join(VAULT, ".vaultite/plugins", id)
   const ids = Array.from({ length: 20 }, (_, i) => `latency-${String(i + 1).padStart(2, "0")}`)
@@ -58,7 +48,6 @@ if (VAULT) {
     if (fs.existsSync(dir(id))) continue
     fs.mkdirSync(dir(id), { recursive: true })
     fs.writeFileSync(path.join(dir(id), "manifest.json"), JSON.stringify({ id, name: `Latency ${i + 1}`, description: "A made-up vault plugin with a bundle of a real one's size.", version: "1.0.0", apiVersion: 1, icon: "puzzle" }, null, 2))
-    // (the first as big as a drawing plugin's, the others a few dozen KB: ~550 KB in all)
     const rows = Array.from({ length: i === 0 ? 4000 : 250 }, (_, k) => `  "${id} row ${k} ${line(k * (i + 1))}",`).join("\n")
     fs.writeFileSync(path.join(dir(id), "rows.ts"), `export const rows = [\n${rows}\n]\n`)
     fs.writeFileSync(path.join(dir(id), "index.tsx"), `import { definePlugin, notify } from "@vaultite"\nimport { rows } from "./rows"\n\nexport default definePlugin({\n  commands: [{ id: "${id}:say", name: "Say ${id}'s rows", run: () => notify(String(rows.length) + rows[rows.length - 1]) }],\n})\n`)
@@ -67,7 +56,6 @@ if (VAULT) {
   const conf = fs.existsSync(pj) ? JSON.parse(fs.readFileSync(pj, "utf8")) : {}
   const missing = ids.filter((id) => !(conf.enabled ?? []).includes(id))
   if (missing.length) { conf.enabled = [...(conf.enabled ?? []), ...missing]; fs.writeFileSync(pj, `${JSON.stringify(conf, null, 2)}\n`) }
-  // Allowed on this machine once built (their hash: what's allowed).
   const ready = await until(async () => {
     const st = (await api("GET", "state?since=0")).state
     const vp = (st.vaultPlugins ?? []).filter((p) => ids.includes(p.id))
@@ -77,13 +65,11 @@ if (VAULT) {
   check("the made-up vault plugins are built and allowed", ready)
 }
 
-// ---------- in the page ----------
 const INIT = () => {
   const P = window.__lat = { commits: 0, rendered: 0, byName: {}, longtasks: [], lastMutation: 0, lastCommit: 0, keys: [], input: null }
-  const COMP = new Set([0, 1, 11, 14, 15]) // function, class, forwardRef, memo, simple memo
+  const COMP = new Set([0, 1, 11, 14, 15]) // (React's fiber tags: function, class, forwardRef, memo, simple memo)
   const named = (t) => t && (t.displayName || t.name)
   const own = (f) => { const t = f.type; return t && typeof t !== "string" && (named(t) || named(t.type) || named(t.render)) }
-  // (an unnamed one, a plugin's inline render, by the nearest named component above it)
   const nameOf = (f) => { const n = own(f); if (n) return n; for (let p = f.return; p; p = p.return) { const m = own(p); if (m) return `(in ${m})` } return "anonymous" }
   const count = (f) => { P.rendered++; const n = nameOf(f); P.byName[n] = (P.byName[n] || 0) + 1 }
   const mount = (f) => { for (let c = f; c; c = c.sibling) { if (COMP.has(c.tag)) count(c); if (c.child) mount(c.child) } }
@@ -106,7 +92,7 @@ const INIT = () => {
   try { new PerformanceObserver((l) => l.getEntries().forEach((e) => P.longtasks.push([e.startTime, e.duration]))).observe({ type: "longtask", buffered: true }) } catch {}
   addEventListener("DOMContentLoaded", () => new MutationObserver(() => { P.lastMutation = performance.now() })
     .observe(document, { childList: true, subtree: true, attributes: true, characterData: true }))
-  // The next frame after now: a rAF, then a task (so that frame's paint is done).
+  // (a task posted in a rAF runs after that frame's paint)
   P.nextPaint = () => new Promise((r) => requestAnimationFrame(() => { const c = new MessageChannel(); c.port1.onmessage = () => r(performance.now()); c.port2.postMessage(0) }))
   addEventListener("keydown", (e) => { const t = e.timeStamp; P.nextPaint().then((n) => P.keys.push(n - t)) }, true)
   for (const type of ["pointerdown", "keydown"]) addEventListener(type, (e) => { P.input ??= e.timeStamp }, true)
@@ -121,11 +107,9 @@ const INIT = () => {
     }
     tick()
   })
-  /** Whether a shown editor has `text` (a pane's tab kept hidden doesn't count). */
   P.shows = (text) => [...document.querySelectorAll(".cm-content")].some((e) => e.getClientRects().length && e.closest("[data-kept]") === null && e.textContent.includes(text))
 }
 
-// ---------- helpers ----------
 const median = (xs) => { const s = xs.filter((x) => typeof x === "number" && !Number.isNaN(x)).sort((a, b) => a - b); return s.length ? s[Math.floor((s.length - 1) / 2)] : null }
 const pct = (xs, p) => { const s = [...xs].sort((a, b) => a - b); return s.length ? s[Math.min(s.length - 1, Math.floor(s.length * p))] : null }
 const busiest = (by) => Object.entries(by).sort((a, b) => b[1] - a[1]).slice(0, 14).map(([n, c]) => `${n} ${c}`).join(", ")
@@ -158,7 +142,6 @@ async function since(s, b) {
     longTasks: lt.length, longTaskMs: Math.round(lt.reduce((n, [, d]) => n + d, 0)),
   }
 }
-/** Done with what came before: no commit and no DOM change for `ms`. */
 async function quiet(s, ms = 400, max = 15000) {
   const end = Date.now() + max
   while (Date.now() < end) {
@@ -180,8 +163,6 @@ async function profiling(s, name, fn) {
   return r
 }
 
-/** `act`, timed from its first input event (else from `act` itself) to the next frame after `cond(arg)` holds in the
- *  page; then what it cost until the page is quiet. */
 async function step(s, name, act, cond, arg) {
   await quiet(s)
   return profiling(s, name, async () => {
@@ -198,7 +179,6 @@ async function step(s, name, act, cond, arg) {
   })
 }
 
-/** Medians of each number over the samples, and the busiest components of the first. */
 const combine = (xs) => {
   xs = xs.filter(Boolean)
   if (!xs.length) return null
@@ -207,7 +187,6 @@ const combine = (xs) => {
   return out
 }
 
-// ---------- a run ----------
 const load = (s, reload) => profiling(s, reload ? "warmLoad" : "coldLoad", () => loadOnce(s, reload))
 async function loadOnce(s, reload) {
   const go = reload ? s.page.reload({ waitUntil: "commit" }) : s.page.goto(`${B}#file/${encodeURIComponent(name(1))}`, { waitUntil: "commit" })
@@ -229,7 +208,6 @@ async function loadOnce(s, reload) {
   }, t)
 }
 
-/** The editor's view of the shown note, to put the cursor somewhere without a hundred arrow keys. */
 const cursorTo = (s, frac) => s.page.evaluate((f) => {
   const el = [...document.querySelectorAll(".cm-content")].find((e) => e.getClientRects().length && !e.closest("[data-kept]"))
   const view = el?.cmTile?.root?.view
@@ -260,7 +238,6 @@ async function typing(s, label) {
 const treeRow = (p) => `aside [role=tree] [data-tree-path="${p}"] > button`
 async function reveal(s, p) {
   const parts = p.split("/")
-  // (a big vault's tree draws only the rows near its scroll: bring each folder to the top before looking inside)
   const top = (q) => s.page.evaluate((sel) => document.querySelector(sel)?.scrollIntoView({ block: "start" }), q)
   for (let i = 1; i < parts.length; i++) {
     const dir = parts.slice(0, i).join("/"), q = `aside [role=tree] [data-tree-path="${dir}"] > button`
@@ -272,7 +249,6 @@ async function reveal(s, p) {
   }
   await s.page.locator(treeRow(p)).first().scrollIntoViewIfNeeded()
 }
-/** A click as a person makes one: the pointer rests on it a moment (as it moves there), then a press. */
 async function press(s, sel, middle) {
   await s.page.hover(sel)
   await wait(120)
@@ -280,7 +256,6 @@ async function press(s, sel, middle) {
 }
 
 async function run(n) {
-  // (each run from one tab in one pane: the last run's tabs and splits are kept in the workspace's file)
   const one = { root: { id: "g0", tabs: [{ id: "tlat0", to: `file:${name(1)}` }], active: "tlat0" } }
   await api("PUT", "workspaces/1", { layout: one, focus: "g0" })
   await wait(500)
@@ -290,16 +265,14 @@ async function run(n) {
   r.warmLoad = await load(s, true)
   if (ONLY === "load") { await s.ctx.close(); console.log(`run ${n + 1}/${RUNS} done`); return r }
 
-  // Typing in the middle of a long note.
   await s.page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, LONG)
   await until(() => s.page.evaluate(() => window.__lat.shows("Section 0")), 15000)
   await quiet(s)
   check("the cursor put in the middle of the long note", await cursorTo(s, 0.5))
   r.typing = await typing(s, "typing")
-  await wait(1500) // (its autosave)
+  await wait(1500)
 
   if (!PHONE) {
-    // Opening files from the explorer: ones not opened this session, then the same again.
     await reveal(s, name(2))
     const fresh = [], again = []
     for (const i of [2, 3, 4, 5, 6]) fresh.push(await step(s, "open", () => press(s, treeRow(name(i))), (m) => window.__lat.shows(m), `Marker ${i} lighthouse`))
@@ -307,9 +280,7 @@ async function run(n) {
     r.open = combine(fresh)
     r.openAgain = combine(again)
 
-    // Tabs: four, opened with a middle click, then switched between by clicking them.
     for (const i of [7, 8, 9]) { await press(s, treeRow(name(i)), true); await wait(400) }
-    // (each tab's note by its label: done when its text is drawn)
     const tabs = await s.page.$$eval("[data-tab-bar] [data-tab-id]", (els) => els.map((e) => [e.dataset.tabId, /Note (\d+)/.exec(e.textContent)?.[1]]))
     const sw = []
     for (let k = 0; k < 8 && tabs.length > 1; k++) {
@@ -321,7 +292,6 @@ async function run(n) {
     r.tabs = combine(sw)
     r.tabCount = tabs.length
 
-    // Panes: split right, then clicks between the two panes' editors.
     await s.page.keyboard.press("ControlOrMeta+Alt+\\")
     await wait(800)
     const panes = await s.page.$$eval("[data-pane]", (els) => els.filter((e) => e.getClientRects().length).map((e, i) => { e.setAttribute("data-lat-pane", String(i)); return i }))
@@ -334,7 +304,6 @@ async function run(n) {
     r.panes = combine(pp)
     r.paneCount = panes.length
 
-    // The left sidebar hidden, then shown again.
     const sb = []
     for (let k = 0; k < 2; k++) {
       sb.push(await step(s, "sidebar", () => s.page.keyboard.press("ControlOrMeta+\\"), () => !document.querySelector("aside [data-sidebar-body] [role=tree]")))
@@ -342,13 +311,12 @@ async function run(n) {
     }
     r.sidebar = combine(sb)
 
-    // A folder of 600 notes in the file explorer opened, then closed.
     await reveal(s, MANY)
     const big = await s.page.locator(treeRow(MANY)).count() ? MANY : null
     if (big) {
       const fo = []
       const open = () => !!document.querySelector('aside [role=tree] [data-tree-path^="Latency/Many/"]')
-      if (await s.page.evaluate(open)) { await press(s, treeRow(big)); await wait(300) } // (open from the last run)
+      if (await s.page.evaluate(open)) { await press(s, treeRow(big)); await wait(300) }
       for (let k = 0; k < 2; k++) {
         fo.push(await step(s, "folder", () => press(s, treeRow(big)), () => document.querySelectorAll('aside [role=tree] [data-tree-path^="Latency/Many/"]').length > 20))
         await step(s, "folderClose", () => press(s, treeRow(big)), () => !document.querySelector('aside [role=tree] [data-tree-path^="Latency/Many/"]'))
@@ -356,7 +324,6 @@ async function run(n) {
       r.folder = combine(fo)
     }
 
-    // The command palette: opened, a query typed, closed.
     const pal = [], palType = []
     for (let k = 0; k < 3; k++) {
       check("the cursor put in the middle of the long note", await cursorTo(s, 0.5))
@@ -368,7 +335,6 @@ async function run(n) {
     r.paletteType = combine(palType)
   }
 
-  // The quick switcher: opened, a name typed.
   const qs = [], qsType = []
   for (let k = 0; k < 3; k++) {
     await quiet(s)
@@ -404,7 +370,6 @@ if (OUT) fs.writeFileSync(OUT, `${JSON.stringify(result, null, 2)}\n`)
 if (profiled) {
   const file = path.resolve(`latency-${PROFILE}.cpuprofile`)
   fs.writeFileSync(file, JSON.stringify(profiled))
-  // Self time by function, from the samples.
   const self = new Map(), byId = new Map(profiled.nodes.map((nd) => [nd.id, nd]))
   const dt = (profiled.endTime - profiled.startTime) / 1000 / Math.max(1, profiled.samples.length)
   for (const id of profiled.samples) {

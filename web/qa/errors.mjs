@@ -1,5 +1,5 @@
-// The Errors plugin end to end: the app's errors reach the server, a vanished chunk reloads once into the new build,
-// the view lists them. WRITES only its own throwaway vault (with <base url>: that server's error record, then cleared).
+// The Errors plugin end to end: app errors reach the server, a vanished chunk reloads once, the view lists them.
+// WRITES only its own throwaway vault (with <base url>: that server's error record, then cleared).
 //   node web/qa/errors.mjs [<base url>] [--shots <dir>]
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
@@ -31,7 +31,6 @@ if (!base) {
 }
 if (!base.endsWith("/")) base += "/"
 
-/** Stops the server and removes its folders once it has exited: one still exiting writes its last files into them. */
 async function stop() {
   if (server && server.exitCode === null && server.signalCode === null) {
     const gone = new Promise((r) => server.once("exit", r))
@@ -54,7 +53,6 @@ try {
   await page.waitForFunction(() => document.querySelector("#root > *"), null, { timeout: 20000 })
   await wait(1500)
 
-  // The window's own: an uncaught error and a rejection.
   await page.evaluate(() => {
     setTimeout(() => { throw new Error("qa: an uncaught error") })
     void Promise.reject(new Error("qa: a rejection"))
@@ -65,14 +63,12 @@ try {
   const one = got?.find((g) => g.message === "qa: an uncaught error")
   check("with its stack, address and build", !!one?.latest.stack && typeof one?.latest.url === "string" && /\.js(#\w+)?$/.test(one?.latest.build ?? ""), one?.latest)
 
-  // One from before the app started (index.html keeps it in the queue): sent once the app is up.
   await page.evaluate(() => localStorage.setItem("vaultite.errors", JSON.stringify([{ t: Date.now(), kind: "boot", fatal: true, message: "qa: before it started", url: "/" }])))
   await page.reload()
   got = await until(async () => (await errors("?source=app")).find((g) => g.message === "qa: before it started"))
   check("one kept from before the app started is sent after the reload", got?.kind === "boot" && got.fatal === 1, got)
   check("and the queue is empty after", await until(() => page.evaluate(() => localStorage.getItem("vaultite.errors") === null)), await page.evaluate(() => localStorage.getItem("vaultite.errors")))
 
-  // An older build's chunk that's gone: the server has another build (its index.html names another entry script).
   await page.route((u) => u.href === base || u.href === `${base}./`, async (route) => {
     if (route.request().resourceType() !== "fetch") return route.continue()
     const res = await route.fetch()
@@ -90,7 +86,6 @@ try {
   check("but not twice in a minute (a reload that didn't fix it isn't that)", !(await again))
   await page.unroute(() => true)
 
-  // The view: each kind once; opening one shows its stack and Copy / Forget.
   await page.goto(`${base}#view/errors`)
   const rows = await page.waitForFunction(() => document.querySelectorAll("[data-error]").length, null, { timeout: 10000 }).then((h) => h.jsonValue(), () => 0)
   check("the view lists them", rows >= 3, rows)

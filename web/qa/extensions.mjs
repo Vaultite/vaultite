@@ -1,15 +1,7 @@
-// Chrome extensions in the Browser's pages (the desktop app, Electron), end to end on a throwaway vault with a
-// made-up extension (tools/fixtures/web-extension: Page painter) and a page this script serves on 127.0.0.1, so no
-// network: added from its folder in the Extensions view, its content script paints the page from the sync area and
-// learns its tab from the service worker, its button in the bar shows its badge, a click opens its popup under it,
-// which finds the page as the active tab and repaints it by message (closing on Escape); the worker opens a tab and
-// lists the windows; its options page opens in a tab; Settings from Brave gives it a Brave profile's (both areas); off,
-// the page is left alone; on a Web Store page the bar says it's added; removed, it's gone. Then managed: a copy without
-// its key named in this app's policy file is added, always on, with no switch or Remove (and the engine refuses both),
-// its pages open at the id Chrome gives its folder, a new container's pages get it too, its content script sends a page
-// to its own (as a site blocker does a feed); out of the policy, it's an ordinary one.
-// WRITES: the throwaway vault only.
+// Chrome extensions in the Browser: added, popup, worker, options, Brave's settings, off, removed, then managed.
+// Needs the desktop app; WRITES only the throwaway vault.
 //   node web/qa/extensions.mjs <vault copy>
+// Paths: tools/fixtures/web-extension
 import { _electron } from "playwright-core"
 import crypto from "node:crypto"
 import fs from "node:fs"
@@ -21,7 +13,7 @@ import { ROOT, qa, until, wait, keepAwake, uiAt } from "./lib/qa.mjs"
 const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-extensions-"))
 const FIXTURE = path.join(ROOT, "tools/fixtures/web-extension")
-const ID = "lkhijjcmmbciijnfgebdecnmdmomgdna" // (its manifest's key's)
+const ID = "lkhijjcmmbciijnfgebdecnmdmomgdna"
 keepAwake(600)
 
 const server = http.createServer((req, res) => {
@@ -45,13 +37,11 @@ const ui = (body) => uiAt(origin)(body)
 const command = async (id) => { await ui({ action: "command", id }); await wait(700) }
 const openUrl = async (url) => { await ui({ action: "open", path: `view:web/${url}` }); await wait(500) }
 
-/** The window's native views other than the app: pages and popups, with their address and whether they show. */
 const views = () => app.evaluate(({ BaseWindow }) => {
   const w = BaseWindow.getAllWindows()[0]
   return w.contentView.children.filter((x) => x.webContents && x.webContents !== w.webContents)
     .map((v) => ({ url: v.webContents.getURL(), visible: v.getVisible(), id: v.webContents.id, bounds: v.getBounds() }))
 })
-/** Run JavaScript in the view whose address starts with `prefix` (the visible one first). */
 const inView = (prefix, code) => app.evaluate(({ BaseWindow }, [prefix, code]) => {
   const w = BaseWindow.getAllWindows()[0]
   const all = w.contentView.children.filter((x) => x.webContents && x.webContents !== w.webContents && x.webContents.getURL().startsWith(prefix))
@@ -60,8 +50,6 @@ const inView = (prefix, code) => app.evaluate(({ BaseWindow }, [prefix, code]) =
 }, [prefix, code])
 const painted = (prefix = SITE) => inView(prefix, "({ ...document.documentElement.dataset })")
 
-// A made-up Brave profile with the painter's settings (for Settings from Brave, below): each area a LevelDB folder as
-// Chromium keeps it, written by a session of their own.
 const BRAVE = path.join(TMP, "browsers/brave")
 fs.mkdirSync(path.join(BRAVE, "Default"), { recursive: true })
 fs.writeFileSync(path.join(BRAVE, "Local State"), JSON.stringify({ profile: { info_cache: { Default: { name: "Personal" } } } }))
@@ -80,8 +68,6 @@ for (const [area, items] of [["Sync Extension Settings", { color: "plum" }], ["L
   fs.cpSync(path.join(at, "Local Extension Settings", ID), path.join(BRAVE, "Default", area, ID), { recursive: true })
 }
 
-// ---------- added from its folder ----------
-// (the folder picker answered as if the user chose the fixture)
 await app.evaluate(({ dialog }, dir) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [dir] }) }, FIXTURE)
 await command("web:extensions")
 check("Extensions: a tab, empty", await until(async () => (await win.locator("[data-extensions]").count()) === 1, 10000), await win.locator("main").innerText().catch(() => ""))
@@ -90,13 +76,11 @@ check("… Add from a folder lists it, on", await until(async () => (await win.l
   await win.locator("[data-extensions]").innerText().catch(() => ""))
 check("… by its name", (await win.locator(`[data-ext-row="${ID}"]`).innerText()).includes("Page painter"))
 
-// ---------- a page: the content script, storage, messaging ----------
 await openUrl(`${SITE}/one`)
 check("its content script ran, with the sync area's colour", await until(async () => (await painted())?.painter === "teal", 15000), [await painted(), await views()])
 const pageId = (await views()).find((v) => v.url.startsWith(SITE))?.id
 check("… and its tab from the service worker", await until(async () => (await painted())?.painterTab === String(pageId), 10000), [await painted(), pageId])
 check("… a page of the user's isn't an agent's", (await painted())?.painterAgent === "false", await painted())
-// An agent's page, in the background: its tab says so, for a site blocker to leave it alone.
 const agentPage = () => app.evaluate(async ({ webContents }, at) => {
   const wc = webContents.getAllWebContents().find((w) => w.getURL() === at)
   return wc ? wc.executeJavaScript("document.documentElement.dataset.painterAgent", true) : null
@@ -107,7 +91,6 @@ check("… and its own stylesheet loads in the page", await until(async () => (a
 check("its button in the bar, badged", await until(async () => (await win.locator(`[data-ext-button="${ID}"]`).innerText()) === "on", 10000),
   await win.locator(`[data-ext-button="${ID}"]`).count())
 
-// ---------- its popup ----------
 await win.locator(`[data-ext-button="${ID}"]`).click()
 const popup = () => views().then((v) => v.find((x) => x.url.startsWith(`chrome-extension://${ID}/popup.html`)))
 check("a click opens its popup", await until(async () => (await popup())?.visible, 10000), await views())
@@ -125,15 +108,12 @@ await app.evaluate(({ BaseWindow }, id) => {
 }, ID)
 check("Escape closes it", await until(async () => !(await popup()), 5000), await views())
 
-// ---------- tabs and windows, from the service worker ----------
-// Ask the service worker from one of the extension's own pages (its options, below).
 const ask = (msg) => app.evaluate(async ({ BaseWindow }, [id, msg]) => {
   const w = BaseWindow.getAllWindows()[0]
   const v = w.contentView.children.find((x) => x.webContents?.getURL().startsWith(`chrome-extension://${id}/`))
   return v ? v.webContents.executeJavaScript(`chrome.runtime.sendMessage(${JSON.stringify(msg)})`) : "no extension page"
 }, [ID, msg])
 
-// ---------- its options, in a tab ----------
 await command("web:extensions")
 await win.locator(`[data-ext-row="${ID}"] [aria-label="Page painter options"]`).click()
 const options = `chrome-extension://${ID}/options.html`
@@ -145,7 +125,6 @@ const opened = await ask({ type: "open", url: `${SITE}/two` })
 check("… and opens a tab", opened?.opened === true && await until(async () => (await views()).some((v) => v.url === `${SITE}/two`), 10000), [opened, before, await views()])
 check("… whose page it paints too", await until(async () => (await painted(`${SITE}/two`))?.painter === "orange", 10000), await painted(`${SITE}/two`))
 
-// ---------- its settings from Brave ----------
 await command("web:extensions")
 await win.locator(`[data-ext-more="${ID}"]`).click()
 await win.locator("[role=menuitem]", { hasText: "Settings from Brave" }).click()
@@ -153,12 +132,10 @@ await win.locator("dialog[open] button", { hasText: "Use them" }).click()
 check("Settings from Brave: done, it says", await until(async () => (await win.locator("body").innerText()).includes("Page painter has Brave's settings"), 15000))
 await openUrl(`${SITE}/brave`)
 check("… its sync area is Brave's", await until(async () => (await painted(`${SITE}/brave`))?.painter === "plum", 15000), await painted(`${SITE}/brave`))
-// (the options tab open before was the extension's last run: a page of this one)
 await openUrl(`${options}?brave`)
 const seen = () => inView(`${options}?brave`, "chrome.storage.local.get('seen').then((r) => r.seen)")
 check("… and its local area", await until(async () => (await seen()) === "in brave", 10000), await seen())
 
-// ---------- the Web Store's page ----------
 await app.evaluate(({ session }) => {
   session.fromPartition("persist:web").protocol.handle("https", () => new Response("<!doctype html><title>Page painter - Chrome Web Store</title><p>store", { headers: { "content-type": "text/html" } }))
 })
@@ -168,7 +145,6 @@ check("a Web Store page of one added: the bar says so", await until(async () => 
 await openUrl(`https://chromewebstore.google.com/detail/other/${"a".repeat(32)}`)
 check("… of another: Add to Vaultite", await until(async () => (await win.locator(`[data-ext-store="${"a".repeat(32)}"]`).innerText().catch(() => "")) === "Add to Vaultite", 10000))
 
-// ---------- off, then removed ----------
 await command("web:extensions")
 await win.locator(`[data-ext-row="${ID}"] [role=switch]`).click()
 check("off: its switch", await until(async () => (await win.locator(`[data-ext-row="${ID}"] [role=switch][aria-checked=false]`).count()) === 1, 10000))
@@ -184,8 +160,6 @@ await win.locator("dialog[open] button", { hasText: "Remove" }).click()
 check("removed: gone from the list", await until(async () => (await win.locator(`[data-ext-row="${ID}"]`).count()) === 0, 10000))
 check("… and from this Mac", await until(() => !fs.existsSync(path.join(TMP, "userData/extensions", ID)), 5000))
 
-// ---------- managed by this Mac ----------
-// (this app's policy file, as its owner writes it in the terminal: the app looks at it every few seconds)
 const POLICY = path.join(TMP, "userData/managed-extensions.json"), KEYLESS = path.join(TMP, "keyless")
 fs.cpSync(FIXTURE, KEYLESS, { recursive: true })
 const { key: _key, ...bare } = JSON.parse(fs.readFileSync(path.join(KEYLESS, "manifest.json"), "utf8"))

@@ -1,5 +1,5 @@
-// The Inbox across two throwaway servers that list each other: a session on the owner that asks or answers toasts on the
-// follower, and its Approve or reply reaches its terminal, on a phone too. Starts a shell: throwaway servers only.
+// The Inbox across two servers that list each other: the owner's asks toast here, answers reach its terminal.
+// Starts a shell: throwaway servers only.
 //   node web/qa/inboxmachines.mjs <follower base url> <owner's id> <owner base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { devices } from "playwright-core"
@@ -11,7 +11,6 @@ const owner = (await api("GET", "machines")).find((m) => m.id === OWNER)
 if (!owner?.online) { console.error(`the owner '${OWNER}' isn't listed or doesn't answer`); process.exit(2) }
 await api("DELETE", "inbox/events")
 
-// A shell on the owner showing what Claude Code shows when it asks permission (its keys go to the shell).
 const term = `qm${Date.now().toString(36)}`
 await there("POST", `terminals/${term}`)
 await wait(1500)
@@ -28,7 +27,6 @@ await page.goto(B)
 await page.waitForSelector("aside [data-inbox-button]")
 await wait(1500)
 
-// 1. It asks permission there: a toast here, its sheet with Approve and Deny, which answer it there.
 await there("POST", `inbox/hook?agent=claude&terminal=${term}`,
   { hook_event_name: "Notification", notification_type: "permission_prompt", message: "Claude needs your permission to use Bash", session_id: "qm-session" })
 check("a permission asked on the other machine toasts here", !!(await toastWith("permission to use Bash")), await page.locator("[data-sonner-toast]").allInnerTexts())
@@ -44,7 +42,6 @@ await sheet.locator("[data-gate=approve]").click()
 check("Approve presses its keys there (Enter: a new prompt line)", !!(await until(async () => (await screen()).split("\n").length > before.split("\n").length || (await screen()) !== before, 8000)), (await screen()).slice(-200))
 check("and it's working there (answered)", !!(await until(async () => (await there("GET", "inbox/events")).events.find((e) => e.terminal === term)?.state === "working", 8000)))
 
-// 2. Its turn ends with something to read: a toast here, its answer in the sheet, the reply typed into it there.
 await there("POST", `inbox/hook?agent=claude&terminal=${term}`,
   { hook_event_name: "Stop", session_id: "qm-session", cwd: "/tmp/lighthouse", last_assistant_message: "Tests pass on **both** machines. Which branch should I merge into?" })
 check("its answer toasts here", !!(await toastWith("Tests pass on both machines")))
@@ -60,8 +57,7 @@ check("Send types it into its terminal there", !!(await until(async () => (await
 check("working there, and here", !!(await until(async () => (await there("GET", "inbox/events")).events.find((e) => e.terminal === term)?.state === "working" &&
   (await api("GET", "inbox/events")).events.find((e) => e.terminal === `${term}@${OWNER}`)?.state === "working", 8000)))
 
-// 3. A phone on the follower: the same row opens its sheet, in the phone's width.
-await page.keyboard.press("Escape") // (a sheet left open reads what comes to it)
+await page.keyboard.press("Escape")
 await wait(500)
 await there("POST", `inbox/hook?agent=claude&terminal=${term}`,
   { hook_event_name: "Stop", session_id: "qm-session", last_assistant_message: "Merged into main. Should I deploy it now?" })

@@ -1,31 +1,25 @@
-// The file menus (tree, tab, phone) and what each item does, with no browser dialog anywhere, on a desktop and a phone.
+// The file menus (tree, tab, phone) and what each item does, with no browser dialog, on a desktop and a phone.
 // WRITES a "Qa menu" folder and Notes/Qa dup*.md, empties the trash: throwaway only.
 //   node web/qa/filemenu.mjs <base url> <vault path> [out dir]
 import { existsSync, readFileSync } from "node:fs"
 import { REVEAL, SHOTS, apiAt, qa, until } from "./lib/qa.mjs"
 import { app } from "./lib/app.mjs"
 const { args: [B, VAULT, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)
-// As the app: these are the user's files (a note an agent makes through the API gets `origin: ai`: Provenance).
 const api = apiAt(B, { "X-Vaultite-Client": "app/qa" })
 const has = (p) => existsSync(`${VAULT}/${p}`)
 const read = (p) => readFileSync(`${VAULT}/${p}`, "utf8")
-// (Note dates' created and updated in what the API makes: compare from the body on)
 const body = (p) => read(p).replace(/^---\n[\s\S]*?\n---\n\n?/, "")
 
-// A fresh "Qa menu" folder, a note to duplicate, history kept on every change.
 for (const p of ["Qa menu", "Notes/Qa dup.md", "Notes/Qa dup 1.md"]) await fetch(`${B}api/file?path=${encodeURIComponent(p)}`, { method: "DELETE" })
 const filesBefore = await api("GET", "config/files")
 const pagesBefore = await api("GET", "config/pages")
 await api("PUT", "config/files", { ...filesBefore, showHidden: true, autoReveal: false })
 await api("POST", "file", { path: ".vaultite/plugins/history/data.json", text: '{"interval_min": 0, "keep_days": 7}\n' })
 await api("PUT", "file", { path: ".vaultite/plugins/history/data.json", text: '{"interval_min": 0, "keep_days": 7}\n' })
-// Provenance's `origin` on new notes would change the texts checked here.
 for (const m of ["POST", "PUT"]) await api(m, "file", { path: ".vaultite/plugins/provenance/data.json", text: '{"label_agents": false, "label_user": false}\n' })
 await api("POST", "folder", { path: "Qa menu" })
 await api("POST", "file", { path: "Qa menu/Alpha.md", text: "Alpha text.\n" })
 await api("POST", "notes", { ext_id: "note-qa-dup", title: "Qa dup", body: "A note to duplicate.", source: "claude" })
-// (a snapshot per edit: by default at most one per 5 minutes; and each edit seen before the next, as a reading of
-// the history waits for it to have looked)
 await api("PATCH", "config/plugin/history", { interval_min: 0 })
 const histNow = async () => (await api("GET", "history?path=Qa%20menu/Hist.md")).versions.length
 await api("POST", "file", { path: "Qa menu/Hist.md", text: "First line\nSecond line\n" })
@@ -35,12 +29,10 @@ const hist1 = await until(async () => (await histNow()) || 0, 5000)
 await api("PUT", "file", { path: "Qa menu/Hist.md", text: "Rewritten by a bad edit\n", base: "First line\nSecond line changed\nThird line\n" })
 await until(async () => (await histNow()) > hist1, 5000)
 const vaultPath = (await api("GET", "vault")).path
-// Earlier runs' versions of Hist.md are kept too (history outlives a delete): count from here.
 const histBefore = (await api("GET", "history?path=Qa%20menu/Hist.md")).versions.length
 
 const origin = new URL(B).origin
 
-// ---------- desktop ----------
 {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
   await ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin })
@@ -64,16 +56,12 @@ const origin = new URL(B).origin
   await page.goto(B); await ui.idle()
   await openFolder("Qa menu")
 
-  // The tree's menu.
   await ui.menu.context(row("Qa menu/Alpha.md"))
   const tree = await items()
   for (const want of ["Open in new tab", "Duplicate", "Move file to…", "Copy path", REVEAL, "More", "Rename", "Delete"]) {
     check(`tree menu: ${want}`, tree.includes(want), tree)
   }
   check("tree menu: Open to the right, Change icon and the other kinds are in submenus", !["Open to the right", "Change icon", "New"].some((x) => tree.includes(x)), tree)
-  // Its groups (a line between each): open; new (other kinds in New note ▸); change; Pin, Show in the sidebar (the
-  // plugins' "navigate" section); the path then More ▸ (the plugins' "more"); Archive right above Delete (the
-  // plugins' "away").
   const groups = await menu.evaluate((m) => {
     const out = [[]]
     for (const el of m.children) {
@@ -86,7 +74,6 @@ const origin = new URL(B).origin
   check("tree menu: open, new, change, keep, more, delete groups", groups[0]?.join("|") === "Open in new tab" &&
     groups[1]?.join("|") === "New note|New folder" && groups[2]?.join("|") === "Rename|Move file to…|Duplicate" &&
     groupOf("Pin") === "Pin|Show in the sidebar" && groupOf("More") === `Copy path|${REVEAL}|More` && groups.at(-1)?.join("|") === "Archive|Delete", groups)
-  // Split rows: hovering opens the rest, the row's own choice first.
   for (const [row_, want] of [["Open in new tab", "Open in new tab|Open to the right"], ["Rename", "Rename|Change icon"]]) {
     const got = await (await subOf(menu.locator(":scope > button", { hasText: new RegExp(`^${row_}$`) }))).locator("button").allInnerTexts()
     check(`${row_} ▸: ${want}`, got.join("|") === want, got)
@@ -104,7 +91,6 @@ const origin = new URL(B).origin
   await shot("tree-menu-new")
   await ui.menu.close()
   await ui.menu.context(row("Qa menu/Alpha.md"))
-  // Copy path: hover opens the submenu beside it.
   const sub = await subOf(menu.locator("button", { hasText: "Copy path" }))
   check("hover opens the submenu", await sub.isVisible())
   const subItems = await sub.locator("button").allInnerTexts()
@@ -116,12 +102,10 @@ const origin = new URL(B).origin
   check("copy path from the vault folder", await clip() === "Qa menu/Alpha.md", await clip())
   check("a toast says it's copied", (await page.locator("[data-sonner-toast]").allInnerTexts()).some((t) => t.includes("Copied the path")))
   check("the menu closed", !(await page.locator("[role=menu]").count()))
-  // A click on Copy path itself copies from the vault folder.
   await page.evaluate(() => navigator.clipboard.writeText(""))
   await ui.menu.context(row("Qa menu/Alpha.md"))
   await menu.locator(":scope > button", { hasText: "Copy path" }).click(); await ui.idle()
   check("clicking Copy path copies from the vault folder, the menu closed", await clip() === "Qa menu/Alpha.md" && !(await page.locator("[role=menu]").count()), await clip())
-  // The keyboard: ↓ to Copy path, → opens it, ↓ Enter picks; ← goes back.
   await ui.menu.context(row("Qa menu/Alpha.md"))
   const idx = (await menu.locator(":scope > button:not(:disabled)").allInnerTexts()).indexOf("Copy path")
   for (let i = 0; i < idx; i++) await page.keyboard.press("ArrowDown")
@@ -132,25 +116,21 @@ const origin = new URL(B).origin
   await page.keyboard.press("ArrowRight"); await ui.idle()
   await page.keyboard.press("ArrowDown"); await page.keyboard.press("Enter"); await ui.idle()
   check("copy path from the system root", await clip() === `${vaultPath}/Qa menu/Alpha.md`, await clip())
-  // Copy link: the shortest [[link]] that finds it.
   await openFolder("Notes")
   await ui.menu.context(row("Notes/Qa dup.md"))
   await menu.locator(":scope > button", { hasText: "Copy path" }).locator("[data-menu-more]").click(); await page.locator("[role=menu]").nth(1).waitFor()
   await page.locator("[role=menu]").nth(1).locator("button", { hasText: "Copy link" }).click(); await ui.idle()
   check("copy link", await clip() === "[[Qa dup]]", await clip())
-  // Folders get Copy path too.
   await ui.menu.context(row("Qa menu"))
   check("a folder's menu has Copy path", (await items()).includes("Copy path"), await items())
   await ui.menu.close()
 
-  // Duplicate: a copy next to it, opened ready to rename, with its own id.
   await ui.menu.context(row("Notes/Qa dup.md"))
   await menu.locator("button", { hasText: "Duplicate" }).click()
   check("duplicate makes 'Qa dup 1'", await until(async () => has("Notes/Qa dup 1.md")))
   check("the copy opens in a tab", await until(async () => (await page.locator("[data-tab-bar] [role=tab][aria-selected=true]").innerText()).trim() === "Qa dup 1"))
   check("its name is ready to type", await until(async () => await page.evaluate(() => document.activeElement?.getAttribute("aria-label")) === "File name"))
   const idOf = (t) => /\nid: (.+)\n/.exec(t)?.[1]
-  // (the file as it is, like Obsidian's: its own id comes with its first edit in the app, core/files.ts file/copy)
   check("the copy keeps the id until it's edited", idOf(read("Notes/Qa dup 1.md")) === "note-qa-dup", idOf(read("Notes/Qa dup 1.md")))
   await page.keyboard.press("Escape")
   await page.locator("article.file-view .cm-content").first().click()
@@ -158,7 +138,6 @@ const origin = new URL(B).origin
   const ids = () => [idOf(read("Notes/Qa dup.md")), idOf(read("Notes/Qa dup 1.md"))]
   check("edited, the copy has its own id, the original keeps its", await until(() => { const [a, b] = ids(); return a === "note-qa-dup" && b && b !== a }, 8000), ids())
 
-  // Delete: to the trash at once, Undo in a toast.
   const alpha = read("Qa menu/Alpha.md")
   await ui.menu.context(row("Qa menu/Alpha.md"))
   await menu.locator("button", { hasText: /^Delete$/ }).click(); await ui.idle()
@@ -172,7 +151,6 @@ const origin = new URL(B).origin
   await t.locator("[data-button]", { hasText: "Undo" }).click()
   check("undo puts it back where it was", await until(async () => has("Qa menu/Alpha.md") && read("Qa menu/Alpha.md") === alpha))
 
-  // Delete permanently (in the trash): the app's dialog. Escape cancels, the button confirms.
   await ui.menu.context(row("Qa menu/Alpha.md"))
   await menu.locator("button", { hasText: /^Delete$/ }).click(); await ui.idle()
   await openFolder(".trash"); await openFolder(".trash/Qa menu")
@@ -194,14 +172,12 @@ const origin = new URL(B).origin
   await menu.locator("button", { hasText: "Delete permanently" }).click(); await ui.idle()
   await dlg.locator("button[data-confirm-ok]").click(); await ui.idle()
   check("Delete deletes it for good", !has(trashedPath))
-  // Empty trash: Enter confirms.
   await ui.menu.context(row(".trash"))
   await menu.locator("button", { hasText: "Empty trash" }).click(); await ui.idle()
   check("empty trash asks", await dlg.isVisible() && (await dlg.innerText()).includes("Empty the trash?"))
   await page.keyboard.press("Enter"); await ui.idle()
   check("Enter confirms: the trash is empty", !(await api("GET", "files")).others.some((f) => f.path.startsWith(".trash/")))
 
-  // File history: the tab's menu opens it; a version compared and restored.
   await row("Qa menu/Hist.md").click(); await ui.idle()
   const tab = page.locator("[data-tab-bar] [role=tab][aria-selected=true]").first()
   await ui.menu.context(tab)
@@ -225,7 +201,6 @@ const origin = new URL(B).origin
   await ctx.close()
 }
 
-// ---------- phone ----------
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 3 })
   await ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin })
@@ -241,10 +216,7 @@ const origin = new URL(B).origin
   check("phone …: duplicate, copy path, more, delete", ["Duplicate", "Copy path", "More", "Delete"].every((x) => pm.includes(x)), pm)
   check("phone …: no Open to the right", !pm.includes("Open to the right"), pm)
   await shot("menu")
-  // Taps, as on a phone: a click is a mouse, which hovers whatever item the menu puts under the … it clicked.
-  // A split row: its chevron opens the submenu (the label copies).
   await m.locator("[role=menu] button", { hasText: "Copy path" }).locator("[data-menu-more]").tap(); await mUi.idle()
-  // Phones open a submenu in place of the menu, with a Back row first.
   const sub = await m.locator("[role=menu] button").allInnerTexts()
   check("phone: tapping Copy path's chevron opens its submenu in place", await m.locator("[role=menu]").count() === 1 && sub.includes("From vault folder") && !sub.includes("Delete"), sub)
   const b = await m.locator("[role=menu]").first().boundingBox()
@@ -258,7 +230,6 @@ const origin = new URL(B).origin
   const wide = await m.evaluate(() => document.documentElement.scrollWidth)
   check("phone: no sideways scroll", wide <= 390, wide)
   await shot("history")
-  // Delete: the toast sits above the bar.
   await m.goto(`${B}#view/files`); await mUi.idle()
   await mUi.menu.open(mrow("Qa menu/Hist.md").locator('button[aria-label^="More for"]'))
   await m.locator("[role=menu] button", { hasText: /^Delete$/ }).click(); await mUi.idle()
@@ -268,7 +239,6 @@ const origin = new URL(B).origin
   await shot("toast")
   await m.locator("[data-sonner-toast] [data-button]", { hasText: "Undo" }).last().tap()
   check("phone: undo", await until(async () => has("Qa menu/Hist.md")))
-  // The app's dialog at 390px: Delete permanently, from the trash (closing tabs asks nothing any more).
   await mrow("Qa menu/Hist.md").locator('button[aria-label^="More for"]').tap(); await mUi.idle()
   await m.locator("[role=menu] button", { hasText: /^Delete$/ }).tap(); await mUi.idle()
   for (const f of [".trash", ".trash/Qa menu"]) {
@@ -286,7 +256,6 @@ const origin = new URL(B).origin
   await ctx.close()
 }
 
-// Clean up.
 for (const p of ["Qa menu", "Notes/Qa dup.md", "Notes/Qa dup 1.md"]) await fetch(`${B}api/file?path=${encodeURIComponent(p)}`, { method: "DELETE" })
 await api("PUT", "config/files", filesBefore)
 await api("PATCH", "config/plugin/history", { interval_min: null })

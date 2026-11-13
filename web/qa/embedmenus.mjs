@@ -1,6 +1,7 @@
-// Every `![[ ]]` embed's menu (components/EmbedMenu.tsx) offers what fits its kind, and its items do what they say;
-// one held on a phone opens it too. WRITES a "Qa embeds" folder: throwaway server only.
+// Every `![[ ]]` embed's menu offers what fits its kind and its items do what they say, on a desktop and a phone.
+// WRITES a "Qa embeds" folder: throwaway server only.
 //   node web/qa/embedmenus.mjs <base url> <vault path> [out dir]
+// Paths: components/EmbedMenu.tsx
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { qa, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT, OUT = "/tmp/embedmenus-shots/"], browser, check, watch, done } = await qa(import.meta.url)
@@ -8,7 +9,6 @@ mkdirSync(OUT, { recursive: true })
 const DIR = "Qa embeds", NOTE = `${VAULT}/${DIR}/Embeds.md`, enc = encodeURIComponent
 rmSync(`${VAULT}/${DIR}`, { recursive: true, force: true })
 mkdirSync(`${VAULT}/${DIR}`, { recursive: true })
-// A second of silence as a WAV, a PDF of one page, bytes named .mp4 (the menu doesn't need it to play), a table.
 const wav = Buffer.alloc(44 + 8000)
 wav.write("RIFF", 0); wav.writeUInt32LE(36 + 8000, 4); wav.write("WAVEfmt ", 8); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20)
 wav.writeUInt16LE(1, 22); wav.writeUInt32LE(8000, 24); wav.writeUInt32LE(8000, 28); wav.writeUInt16LE(1, 32); wav.writeUInt16LE(8, 34)
@@ -23,10 +23,7 @@ writeFileSync(NOTE, body)
 const text = () => readFileSync(NOTE, "utf8")
 const waitText = async (want) => { for (let i = 0; i < 40 && !want(text()); i++) await wait(100); return want(text()) }
 try {
-  // (tall enough for every embed at once: the editor draws only what's near the screen, and it measures that before
-  // the embeds have their heights)
   const ctx = await browser.newContext({ viewport: { width: 1200, height: 2000 }, colorScheme: "dark" })
-  // (in every frame: a PDF's has no localStorage)
   const page = watch(await ctx.newPage())
   await page.goto(`${B}#file/${enc(`${DIR}/Embeds.md`)}`)
   await page.waitForSelector("[data-pane] .vau-editor [data-embed-menu] audio", { timeout: 15000 })
@@ -40,7 +37,6 @@ try {
   const has = (got, want) => want.every((x) => got.some((i) => i.startsWith(x)))
   const lacks = (got, no) => no.every((x) => !got.some((i) => i.startsWith(x)))
 
-  // The top-level embeds (in this note): each with Remove embed.
   const audio = pane.locator(".cm-block-embed").filter({ has: page.locator("audio") }).first()
   let got = await menuOn(audio.locator("audio"), "audio")
   check("audio: open, download, move, copy path, remove, delete", has(got, ["Open in new tab", "Download", "Move file to…", "Copy path", "Reveal in file tree", "Remove embed", "Delete file"]), got)
@@ -66,7 +62,6 @@ try {
   check("table body: its menu too", has(got, ["Remove embed"]), got)
   await close()
 
-  // An embedded note: its header's menu; its text keeps the text's own.
   const inner = pane.locator(".note-embed").first()
   got = await menuOn(inner.locator(".note-embed-head"), "note")
   check("note header: open, move, remove, delete note", has(got, ["Open in new tab", "Move file to…", "Remove embed", "Delete note"]), got)
@@ -76,13 +71,11 @@ try {
   got = await items()
   check("note text: no embed menu", !got.includes("Remove embed"), got)
   await close()
-  // An embed inside the embedded note: the file's items, nothing that changes this note.
   got = await menuOn(inner.locator("audio"), "nested")
   check("nested audio: its menu", has(got, ["Open in new tab", "Delete file"]), got)
   check("nested audio: no Remove embed", lacks(got, ["Remove embed"]), got)
   await close()
 
-  // Remove embed and Delete file; Open in new tab.
   await menuOn(pdf.locator("button[data-hold-menu]"), "pdf-again")
   await page.getByRole("menuitem", { name: "Remove embed" }).click()
   check("Remove embed takes the PDF's line out", await waitText((t) => !t.includes("Qa doc.pdf") && t.includes("![[Qa clip.mp4]]\n\n![[Qa table.csv]]")), text())
@@ -96,7 +89,6 @@ try {
   check("Delete file trashes the video", !existsSync(`${VAULT}/${DIR}/Qa clip.mp4`))
   await ctx.close()
 
-  // A phone: a finger held on the audio's header opens its menu.
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, colorScheme: "dark" })
   const p = watch(await phone.newPage())
   await p.goto(`${B}#view/files/file/${enc(`${DIR}/Embeds.md`)}`)

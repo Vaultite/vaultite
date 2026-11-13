@@ -1,4 +1,4 @@
-// A file drawn in a sidebar (mini-apps): an .html page, a note with a genui and an mcp-app block; by vau and by the palette.
+// A file drawn in a sidebar: an .html page and a note with genui and mcp-app blocks, by vau and by the palette.
 // WRITES fixtures (QA/ in the vault): throwaway server only.
 //   node web/qa/filepanels.mjs <base url> <vault path>
 import { mkdirSync, writeFileSync } from "node:fs"
@@ -33,13 +33,11 @@ check("and it's live", await until(async () => /4 cups/.test(await panel("QA/Cup
 check("a note's mcp-app card draws in its panel", await until(async () => await panel("QA/Cups.md").locator("iframe").count() > 0 && !/no tool/.test(await panel("QA/Cups.md").innerText()), 8000), await panel("QA/Cups.md").innerText())
 await page.screenshot({ path: `${OUT}filepanels.png` })
 
-// Its heading's menu opens the file in a tab, and hides it.
 await page.locator('[data-panel="pages:file/QA/Weather.html"] [data-panel-handle]').first().click({ button: "right" })
 check("its menu opens it in a tab", await until(async () => await page.getByText("Open Weather in a tab").count() > 0, 3000))
 await page.getByText("Open Weather in a tab").first().click()
 check("open in a tab: the file's the focused tab", await until(async () => /Weather/.test(await page.locator('[data-tab][data-active="true"], [role=tab][aria-selected="true"]').first().innerText().catch(() => "")), 4000))
 
-// The palette toggles the file on screen.
 await palette(page, "Remove current file from the sidebar")
 check("the palette takes it out", await until(async () => await panel("QA/Weather.html").count() === 0, 4000))
 await palette(page, "Show current file in the sidebar")
