@@ -1028,6 +1028,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `vaultPath(p, mustExist?, vault?, explicit?, trash?)`: A safe vault-relative path, or a 400.
 - `vauShims(s, platform?)`: The shims by file name: `vau` always, `vau.cmd` on Windows.
 - `weekStart(date)`: The Monday of a YYYY-MM-DD's week.
+- `whenListening(connect, started, ms?)`: `connect`ed once what `started` runs listens, however long its start takes: null once it ended unheard, or after `ms`.
 - `whoOf(client, agent)`: Who asked, from the request's X-Vaultite-Client and -Agent (or an MCP client's own name, given as the agent).
 - `wikiTargets(text)`: The targets of every [[link]] (and ![[embed]]) in Markdown, outside code (fences and inline).
 - `withPinFile(entry, file)`: The entry with its file moved to `file` (a search as it is).

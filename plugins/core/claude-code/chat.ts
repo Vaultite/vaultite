@@ -7,7 +7,7 @@ import path from "node:path"
 import type { WebSocket } from "ws"
 import { z } from "zod"
 import { type Asking, findBin, HOME, Transcript, transcripts } from "../../../core/agents.ts"
-import { agentLines, OpError, outliving, type Plugin } from "../../../core/plugins.ts"
+import { agentLines, OpError, outliving, type Plugin, whenListening } from "../../../core/plugins.ts"
 import { byUser as asUser } from "../../../core/writegate.ts"
 import { merge, PAGE } from "./chatentries.ts"
 import { chatInbox } from "./chatinbox.ts"
@@ -95,16 +95,21 @@ function chatCore(plugin: Plugin, d: ChatDeps) {
   let wire: Promise<Wire> | null = null
 
   const daemon = path.join(plugin.dir, "chatd.ts")
-  function startKeeper(plain = false) {
-    let out: number | "ignore" = "ignore"
-    try { out = fs.openSync(`${FILES}.log`, "a") } catch {}
-    const [cmd, args] = plain ? [process.execPath, [daemon, CHAT_SOCKET, FILES]] : outliving(process.execPath, [daemon, CHAT_SOCKET, FILES], `chatd-${NAME}`)
-    const child = spawn(cmd, args, { detached: true, stdio: ["ignore", out, out], cwd: os.homedir(), env: process.env, windowsHide: true })
-    if (cmd !== process.execPath) child.once("exit", (code) => { if (code) startKeeper(true) })
-    child.unref()
-    if (typeof out === "number") fs.closeSync(out)
+  function startKeeper() {
+    let ended = false
+    const run = (plain: boolean) => {
+      let out: number | "ignore" = "ignore"
+      try { out = fs.openSync(`${FILES}.log`, "a") } catch {}
+      const [cmd, args] = plain ? [process.execPath, [daemon, CHAT_SOCKET, FILES]] : outliving(process.execPath, [daemon, CHAT_SOCKET, FILES], `chatd-${NAME}`)
+      const child = spawn(cmd, args, { detached: true, stdio: ["ignore", out, out], cwd: os.homedir(), env: process.env, windowsHide: true })
+      child.once("error", () => { ended = true })
+      child.once("exit", (code) => { if (cmd !== process.execPath && code) run(true); else ended = true })
+      child.unref()
+      if (typeof out === "number") fs.closeSync(out)
+    }
+    run(false)
+    return { ended: () => ended }
   }
-
   const connectTo = () => new Promise<Wire>((ok, fail) => {
     const sock = net.connect(CHAT_SOCKET)
     sock.once("connect", () => { sock.removeAllListeners("error"); ok(new Wire(sock, hear, () => { wire = null; dropAll() })) })
@@ -117,11 +122,7 @@ function chatCore(plugin: Plugin, d: ChatDeps) {
       let w: Wire | null = null
       try { w = await connectTo() } catch {
         if (!start) throw new Error("no chat keeper runs")
-        startKeeper()
-        for (let i = 0; i < 100 && !w; i++) {
-          await new Promise((r) => setTimeout(r, 100))
-          try { w = await connectTo() } catch {}
-        }
+        w = await whenListening(connectTo, startKeeper())
         if (!w) throw new Error(`the chat keeper didn't start (see ${FILES}.log)`)
       }
       const { sessions } = await w.request("follow") as { sessions: Summary[] }

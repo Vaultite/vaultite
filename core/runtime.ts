@@ -39,3 +39,12 @@ export function outliving(cmd: string, args: string[], name: string): [string, s
 function inService() {
   try { return /\/user@\d+\.service\/.*\.service$/m.test(fs.readFileSync("/proc/self/cgroup", "utf8")) } catch { return false }
 }
+
+/** `connect`ed once what `started` runs listens, however long its start takes: null once it ended unheard, or after `ms`. */
+export async function whenListening<T>(connect: () => Promise<T>, started: { ended: () => boolean }, ms = 60_000): Promise<T | null> {
+  for (const end = Date.now() + ms; ;) {
+    const gone = started.ended()
+    try { return await connect() } catch { if (gone || Date.now() > end) return null }
+    await new Promise((r) => setTimeout(r, 50))
+  }
+}

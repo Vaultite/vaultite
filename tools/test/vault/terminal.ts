@@ -386,6 +386,21 @@ export default async ($: VaultTest) => {
       JSON.stringify([null, { ok: true }, { ok: false, why: "the folder isn't there" }]), access)
   }
 
+  if (process.platform !== "win32") {
+    const { termdBackend } = await import("../../../plugins/core/terminal/backend.ts")
+    const { pathToFileURL } = await import("node:url")
+    const real = pathToFileURL(path.resolve(import.meta.dirname, "../../../plugins/core/terminal/termd/termd.ts")).href
+    const slow = path.join(tmp, "slow-termd.mjs"), dead = path.join(tmp, "dead-termd.mjs")
+    fs.writeFileSync(slow, `await new Promise((r) => setTimeout(r, 3200)); await import(${JSON.stringify(real)})\n`)
+    fs.writeFileSync(dead, "process.exit(1)\n")
+    const late = termdBackend(`test-slow-${process.pid}`, { daemon: slow }), gone = termdBackend(`test-dead-${process.pid}`, { daemon: dead })
+    const up = await late.ready()
+    if (up) process.kill(Number(fs.readFileSync(`${late.files}.pid`, "utf8")), "SIGTERM")
+    const t0 = Date.now(), why = await gone.kill("x").then(() => "", (e: Error) => e.message), ms = Date.now() - t0
+    check("terminal: a terminal server slow to start is waited for; one that ends as it starts fails at once, saying where its log is",
+      up && /didn't start \(see .*test-dead-.*\.log\)/.test(why) && ms < 2500, [up, why, ms])
+  }
+
   // The terminal server's core (host.ts) in this process: what it keeps of each terminal (meta, command, cwd), captures as
   // text, vt and html, keys by name, its events, and an ended one kept with how it ended.
   if (process.platform !== "win32") {

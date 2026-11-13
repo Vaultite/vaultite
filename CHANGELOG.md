@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Terminals and chats open on a busy machine**: the terminal server and the chat keeper are waited for as long as they
+  take to start, rather than given up on after a few seconds; one that ends as it starts says so at once.
 - **Edit source and a found line land on their line on a slow machine too**: when the file took more than 4 s to show,
   the cursor stayed at its top; it now waits for the file, until you press or type something else.
 - **A site's own full-screen button works in the video player's window on a busy Mac too**: the player no longer

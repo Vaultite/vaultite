@@ -24,8 +24,8 @@ async function keeper(sock: string) {
   const p = spawn(process.execPath, ["--import", pathToFileURL(HOOKS).href, CHATD, sock, sock], { stdio: ["ignore", "ignore", "pipe"], env: { ...process.env, CHATD_TEST_RELEASE: RELEASE, CHATD_TEST_CRASH: CRASH } })
   let err = ""
   p.stderr!.on("data", (d) => { err += d })
-  const up = await waitFor(() => new Promise<boolean>((r) => { const c = net.connect(sock); c.on("connect", () => { c.destroy(); r(true) }); c.on("error", () => r(false)) }), 10000, 100)
-  if (!up) throw new Error(`the chat keeper didn't start: ${err}`)
+  const up = await waitFor<boolean | "ended">(() => p.exitCode !== null || p.signalCode !== null ? "ended" : new Promise<boolean>((r) => { const c = net.connect(sock); c.on("connect", () => { c.destroy(); r(true) }); c.on("error", () => r(false)) }), 60_000, 100)
+  if (up !== true) throw new Error(`the chat keeper didn't start: ${err}`)
   return { stop: async () => { if (p.exitCode === null && p.signalCode === null) { p.kill("SIGTERM"); await new Promise((r) => p.once("exit", r)) } fs.rmSync(sock, { force: true }); fs.rmSync(`${sock}.pid`, { force: true }) } }
 }
 

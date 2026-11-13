@@ -1,6 +1,6 @@
 import crypto from "node:crypto"
 import fs from "node:fs"
-import { type Access, accessOf, logger, outliving, runtimeDir } from "../../../core/plugins.ts"
+import { type Access, accessOf, logger, outliving, runtimeDir, whenListening } from "../../../core/plugins.ts"
 import os from "node:os"
 import path from "node:path"
 import { execFile, spawn } from "node:child_process"
@@ -211,25 +211,28 @@ export function termdBackend(name: string, o: { daemon: string; log?: (...a: unk
   let ctl: Promise<Wire> | null = null
 
   // Detached and, under systemd, in a scope of its own: else stopping the app's server's unit ends it too.
-  function startServer(plain = false) {
-    let out: number | "ignore" = "ignore"
-    try { out = fs.openSync(`${files}.log`, "a") } catch { /* no log */ }
-    const [cmd, args] = plain ? [process.execPath, [o.daemon, socket, files]] : outliving(process.execPath, [o.daemon, socket, files], `termd-${name}`)
-    const child = spawn(cmd, args, { detached: true, stdio: ["ignore", out, out], cwd: os.homedir(), env: process.env, windowsHide: true })
-    // systemd-run that couldn't make the scope (no user bus) fails at once: start it as before.
-    if (cmd !== process.execPath) child.once("exit", (code) => { if (code) startServer(true) })
-    child.unref()
-    if (typeof out === "number") fs.closeSync(out)
+  function startServer() {
+    let ended = false
+    const run = (plain: boolean) => {
+      let out: number | "ignore" = "ignore"
+      try { out = fs.openSync(`${files}.log`, "a") } catch { /* no log */ }
+      const [cmd, args] = plain ? [process.execPath, [o.daemon, socket, files]] : outliving(process.execPath, [o.daemon, socket, files], `termd-${name}`)
+      const child = spawn(cmd, args, { detached: true, stdio: ["ignore", out, out], cwd: os.homedir(), env: process.env, windowsHide: true })
+      child.once("error", () => { ended = true })
+      // systemd-run that couldn't make the scope (no user bus) fails at once: start it as before.
+      child.once("exit", (code) => { if (cmd !== process.execPath && code) run(true); else ended = true })
+      child.unref()
+      if (typeof out === "number") fs.closeSync(out)
+    }
+    run(false)
+    return { ended: () => ended }
   }
 
   async function open(): Promise<Wire> {
     try { return await connectTo(socket) } catch { /* not running */ }
-    startServer()
-    for (let i = 0; i < 60; i++) {
-      await new Promise((r) => setTimeout(r, 50))
-      try { return await connectTo(socket) } catch { /* not yet */ }
-    }
-    throw new Error(`the terminal server didn't start (see ${files}.log)`)
+    const w = await whenListening(() => connectTo(socket), startServer())
+    if (!w) throw new Error(`the terminal server didn't start (see ${files}.log)`)
+    return w
   }
 
   function control(): Promise<Wire> {
