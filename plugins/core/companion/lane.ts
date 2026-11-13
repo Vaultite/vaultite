@@ -19,7 +19,7 @@ import { answering } from "./edits.ts"
 import { excerpts, awayIn, momentsText } from "./momentstext.ts"
 import { askOf, jobs } from "./wiring.ts"
 
-export const SUMMONED_TOOLS = ["pass", "open", "page", "draw", "layer", "see", "act", "check", "follow", "clear", "handoff", "where", "jobs", "job", "job-open", "job-stop", "job-answer", "job-show", "talk", "live-undo", "conversation", "tour", "tour-save"]
+export const SUMMONED_TOOLS = ["pass", "open", "edit", "page", "draw", "layer", "see", "act", "check", "follow", "clear", "handoff", "where", "jobs", "job", "job-open", "job-stop", "job-answer", "job-show", "talk", "live-undo", "conversation", "tour", "tour-save"]
 const SUMMONED_ACTS = ["say", "look", "draw"]
 const SUMMONED_BUILTINS = ["Bash"]
 const SUMMONED_ALLOWED = [...ALLOWED, "Bash(vau --help)", "Bash(vau open:*)", "Bash(vau commands:*)", "Bash(vau command companion:session:*)", "Bash(vau screen:*)",

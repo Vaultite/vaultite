@@ -87,3 +87,19 @@ export function calmFaults(text: string, o: { calm?: boolean; aged?: boolean; po
   if (o.aged && !o.tools.length && !/\b(as of|this morning|earlier|last (check|time)|when I (last )?checked|haven.t checked|check(ing)? (again|now))\b/i.test(text)) f.push("stale state as now")
   return f
 }
+const LOOKS = new Set(["see", "check", "jobs", "job", "where", "conversation", "open", "follow", "page", "draw", "layer", "clear", "pass"])
+export function whereFaults(o: { where?: "here" | "away" | "live"; tools: string[]; words: string[] }) {
+  const first = o.tools.findIndex((t) => t === "handoff"), wrote = o.tools.indexOf("edit"), opened = o.tools.indexOf("open")
+  if (o.where === "here") {
+    if (first >= 0 && (wrote < 0 || first < wrote)) return ["handed off what they'd watch"]
+    if (wrote < 0) return [opened < 0 ? "wrote no note" : "opened a note but wrote nothing in it"]
+  }
+  if (o.where === "away" && first < 0) return ["didn't hand it off"]
+  if (o.where === "live") {
+    const changed = o.tools.findIndex((t) => t !== "handoff" && t !== "Bash" && !LOOKS.has(t))
+    if (changed >= 0 && (first < 0 || changed < first)) return []
+    if (first < 0) return ["neither changed it nor handed it off"]
+    if (!/\b(live|myself|right here|from here|yet)\b/i.test(o.words.join(" "))) return ["handed it off without saying it can't be done live"]
+  }
+  return []
+}

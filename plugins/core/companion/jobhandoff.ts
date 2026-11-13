@@ -12,8 +12,13 @@ export function handoffOps(plugin: Plugin, d: JobDeps, core: JobCore, machines: 
   plugin.op({
     id: "companion.handoff",
     cli: "companion handoff",
-    summary: "Hand long work to a worker: a coding agent (Claude Code on Opus, or Codex) in a terminal of the app, where the ask was (its repo, here or on another machine); job: tell one more.",
-    help: `For what takes more than a minute or two: code, research, a document, a long errand, writing in their notes. It
+    summary: "Hand work they'd leave to run to a worker: a coding agent (Claude Code on Opus, or Codex) in a terminal of the app, where the ask was (its repo, here or on another machine); job: tell one more.",
+    help: `For work they'd leave to run: code or a change to an app, site or repo, research across many sources, a document
+they won't sit through, a mini-app, a slow errand. What they'd watch or join (being taught, an explanation, a plan, a
+recipe, a note written with them, a quick tweak to the page or note in front of them) isn't a handoff, however long:
+do it in front of them (a note: open with new, then edit; a page: your tool that changes it live), handing off only
+the lasting fix (its code).
+Their words win: "do it here" or "with me" is never a handoff; "in the background" or "make it a job" always is. It
 runs where the ask was over, derived on the spot: a preview's address (localhost, a Tailscale name: the process
 serving it, its repo, on its machine), a live site (the checkout whose deploy config names its address), a GitHub page (its checkout here), an editor's window (its project), a note (the
 vault); an ask about Vaultite itself (how its panels, sidebars, menus, views, the web viewer's own bar or you look or

@@ -509,8 +509,8 @@ export default async ($: VaultTest) => {
       const sent = (await api("POST", "ops/claude-code.chat-read", { id: quick, limit: 100 }))[1].entries.filter((e: Any) => e.k === "text").map((e: Any) => e.text)
       cIntake.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: "list", summoned: true })
       const qtools = await waitFor(async () => (await said(quick!)).findLast((e) => e.k === "text" && /^Tools:/.test(e.text))?.text, 15_000, 50)
-      check("summoned: an ask by its Talk key in the app goes there too, with the short list of tools (its words are its say; no writing in notes)",
-        /\bhandoff\b/.test(qtools ?? "") && /\bdraw\b/.test(qtools ?? "") && !/\bsay\b|\bedit\b|\bcomment\b|\bhandover\b/.test((qtools ?? "").split(".")[0]) && (await said(longId)).length === before, [qtools, sent])
+      check("summoned: an ask by its Talk key in the app goes there too, with the short list of tools (its words are its say; a note written with them, by edit)",
+        /\bhandoff\b/.test(qtools ?? "") && /\bdraw\b/.test(qtools ?? "") && /\bedit\b/.test((qtools ?? "").split(".")[0]) && !/\bsay\b|\bcomment\b|\bhandover\b/.test((qtools ?? "").split(".")[0]) && (await said(longId)).length === before, [qtools, sent])
       check("summoned: a lean session: its own prompt, only Bash of Claude Code's tools, none of the user's settings, low effort",
         /Prompt: its own\. Builtins: Bash\. Settings: none\. Effort: low/.test(qtools ?? ""), qtools)
       check("summoned: it looks in their projects and documents unasked (ls, lsof, tailscale serve status), never home's dotfiles or Library, nor git -c",

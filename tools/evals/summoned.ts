@@ -8,18 +8,18 @@ import path from "node:path"
 import { WebSocket } from "ws"
 import { freePort, stopTerminals, testServer, waitFor } from "../test/lib.ts"
 import { parseTags } from "../../plugins/core/companion/tags.ts"
-import { calmFaults, spokenScore } from "./companion/score.ts"
+import { calmFaults, spokenScore, whereFaults } from "./companion/score.ts"
 
 const argv = process.argv.slice(2)
 const opt = (f: string) => { const i = argv.indexOf(f); return i >= 0 ? argv.splice(i, 2)[1] : undefined }
-const MODELS = (opt("--models") ?? "haiku,sonnet").split(","), ASKED = opt("--asks"), N = Number(ASKED ?? 4), FIXTURE = opt("--fixture")
+const MODELS = (opt("--models") ?? "haiku,sonnet").split(","), ASKED = opt("--asks"), N = Number(ASKED ?? 4), FIXTURE = opt("--fixture"), KEEP = opt("--keep")
 
 const near = [{ id: "a1", role: "button", label: "Send", frame: { x: 800, y: 820, width: 80, height: 32 } },
   { id: "a2", role: "button", label: "Attach", frame: { x: 892, y: 820, width: 80, height: 32 } },
   { id: "a3", role: "row", label: "Alice Park, Lisbon trip: flights on Tuesday?", frame: { x: 300, y: 60, width: 460, height: 70 } },
   { id: "a4", role: "row", label: "Bob Lee, Invoice 2026-114 attached", frame: { x: 300, y: 134, width: 460, height: 70 } },
   { id: "a5", role: "text", label: "Hi! I found two flights for Tuesday, 7:05 and 13:20. The early one is cheaper. Which do you prefer?", frame: { x: 800, y: 170, width: 340, height: 50 } }]
-type Ask = { text?: string; sx: number; sy: number; kind?: string; id?: string; app?: string; title?: string; under?: string; screen?: string; near?: unknown[]; calm?: boolean; aged?: boolean }
+type Ask = { text?: string; sx: number; sy: number; kind?: string; id?: string; app?: string; title?: string; under?: string; screen?: string; near?: unknown[]; calm?: boolean; aged?: boolean; where?: "here" | "away" | "live" }
 const DEMO: Ask[] = [
   { text: "what does this button do?", sx: 830, sy: 836 },
   { text: "how do I add a file to my reply?", sx: 930, sy: 836 },
@@ -54,7 +54,7 @@ try {
   const ws = new WebSocket(`ws://127.0.0.1:${port}/api/companion/live?screen=1`)
   await new Promise((r, j) => { ws.once("open", r); ws.once("error", j) })
   for (const model of MODELS) {
-    await fetch(`${url}/api/config/plugin/companion`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "quiet", agent: "claude", summoned_model: model }) })
+    await fetch(`${url}/api/config/plugin/companion`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "quiet", agent: "claude", summoned_model: model, jobs_never: ["~: the eval starts no jobs", "/var: the eval starts no jobs", "/private: the eval starts no jobs", "/tmp: the eval starts no jobs"] }) })
     await new Promise((r) => setTimeout(r, 300))
     // (its Talk key pressed: a session up, as while they speak; one ask first so its prompt is cached, as in use)
     ws.send(JSON.stringify({ t: "summoning" }))
@@ -65,7 +65,7 @@ try {
       ws.send(JSON.stringify({ t: "moment", kind: a.kind ?? "ask", agent: "Claude", ...(a.text ? { text: a.text } : {}), app: a.app ?? "com.example.mail", window: 9, title: a.title ?? "Lighthouse Mail",
         sx: a.sx, sy: a.sy, screen: a.screen ?? screenText, shot, shotAt: { x: 0, y: 0, width: 1440, height: 900 }, ...(a.under ? { under: a.under } : {}),
         ...(FIXTURE ? (a.near?.length ? { near: a.near } : {}) : { near }) }))
-      const done = await waitFor(async () => { const r = (await rowsOf()).slice(seen); return r.length > i && r[i].total !== undefined ? r[i] : null }, 90_000, 300)
+      const done = await waitFor(async () => { const r = (await rowsOf()).slice(seen); return r.length > i && r[i].total !== undefined ? r[i] : null }, a.where === "here" ? 300_000 : 90_000, 300)
       // (past its fresh_after asks it hands over to a fresh session: each one's entries are read)
       const now = await quick()
       if (now && !sessions.includes(now)) sessions.push(now)
@@ -109,7 +109,7 @@ try {
       const sc = spokenScore(heard.map((t) => t.words.join(" ")))
       out.push(`${model}: as speech, ${sc.clean}/${sc.of} clean, ${sc.short}/${sc.of} in 30 words or fewer; words median ${sc.words.median}, mean ${sc.words.mean}, most ${sc.words.most}; pointed in ${heard.filter((t) => t.pointed).length}/${sc.of}`,
         `${model}: faults ${Object.entries(sc.tally).sort((a, b) => b[1] - a[1]).map(([f, k]) => `${f} ${k}`).join(", ") || "none"}`)
-      heard.forEach((t, i) => { const faults = [...sc.rows[i].faults, ...calmFaults(t.words.join(" "), { ...ASKS[i], ...t })]; out.push(`  ${(ASKS[i].id ?? String(i + 1)).padEnd(16)} ${faults.length ? `[${faults.join(", ")}]` : "[clean]"} ${t.tags.length ? `{${t.tags.join(", ")}} ` : ""}${t.words.join(" ").replace(/\s+/g, " ")}`) })
+      heard.forEach((t, i) => { const faults = [...(ASKS[i].where ? [] : sc.rows[i].faults), ...calmFaults(t.words.join(" "), { ...ASKS[i], ...t }), ...whereFaults({ ...ASKS[i], ...t })]; out.push(`  ${(ASKS[i].id ?? String(i + 1)).padEnd(16)} ${faults.length ? `[${faults.join(", ")}]` : "[clean]"} ${ASKS[i].where ? `(${t.tools.join(" ") || "no tools"}) ` : ""}${t.tags.length ? `{${t.tags.join(", ")}} ` : ""}${t.words.join(" ").replace(/\s+/g, " ")}`) })
       console.log(out.slice(from).join("\n"))
     }
     if (process.env.DEBUG) console.log(((await call("claude-code.chat-read", { id: await quick(), limit: 40 })).entries as Any[]).map((e) => `${e.k}${e.name ? `:${e.name}` : ""}${e.at ? ` ${e.at}` : ""} ${JSON.stringify(e.input ?? "").slice(0, 200)}`).join("\n"))
@@ -117,6 +117,7 @@ try {
   ws.close()
 } catch (e) { console.error(`summoned eval: ${(e as Error).message}`); code = 2 } finally {
   await call("companion.stop", { all: true }).catch(() => {})
+  if (KEEP && fs.existsSync(path.join(VAULT, "Notes"))) fs.cpSync(path.join(VAULT, "Notes"), path.resolve(KEEP), { recursive: true })
   server.kill()
   stopTerminals(port)
   const keeper = spawnSync("pgrep", ["-f", `vaultite-chatd1-vaultite-${port}\\.sock`], { encoding: "utf8" }).stdout.split("\n").filter(Boolean)

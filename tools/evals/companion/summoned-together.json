@@ -1,0 +1,115 @@
+{
+ "about": "Talk key asks to sort by whether they'd watch it: `here` asks (being taught, a recipe, a paper explained, a plan, and \"do it here\") want a note opened beside them and written as it goes (open with new, then edit), never a handoff; `away` asks (code, big research, and \"in the background\") want a handoff. A `live` ask (a quick tweak to the page in front of them) wants it changed there by a tool, the lasting fix handed off; with no tool that changes it, a handoff that says it can't be done live yet. Jobs are refused here (jobs_never), so a handoff is only tried. tools/evals/summoned.ts --fixture companion/summoned-together.json --models sonnet runs them.",
+ "asks": [
+  {
+   "id": "blues",
+   "where": "here",
+   "text": "Teach me the history of the blues while I listen to this, I want to learn as it plays.",
+   "app": "com.spotify.client",
+   "title": "Spotify",
+   "under": "Spotify: group",
+   "screen": "Spotify\nHome\nSearch\nYour Library\nCross Road Blues\nRobert Johnson\n2:41 / 2:29\nPlaying",
+   "sx": 720,
+   "sy": 420
+  },
+  {
+   "id": "recipe",
+   "where": "here",
+   "text": "Let's make a recipe for a pumpkin risotto for four people, walk me through it.",
+   "app": "app.vaultite.desktop",
+   "title": "Today - Vaultite",
+   "under": "Vaultite: text",
+   "screen": "Vaultite\nFiles\nSearch\nToday\nInbox (2)\nJobs\nAgents\nToday\nThursday\n- [ ] Groceries\n- [ ] Call Bob Lee about Saturday",
+   "sx": 700,
+   "sy": 400
+  },
+  {
+   "id": "paper",
+   "where": "here",
+   "text": "Can you explain this paper to me? I don't get what they actually did.",
+   "app": "com.apple.Preview",
+   "title": "sparse-lighthouse-routing.pdf",
+   "under": "Preview: text",
+   "screen": "Sparse Lighthouse Routing for Long-Context Models\nAlice Park, Bob Lee\nAbstract\nWe route each token to a small set of beacon tokens chosen by a learned score, so attention cost grows with the number of beacons rather than the context. On three long-document benchmarks it matches dense attention at a fifth of the compute.\n1 Introduction\n2 Method\n2.1 Beacon selection\n3 Results",
+   "sx": 600,
+   "sy": 300
+  },
+  {
+   "id": "trip",
+   "where": "here",
+   "text": "Help me plan a weekend in Lisbon, let's figure it out together.",
+   "app": "app.vaultite.desktop",
+   "title": "Today - Vaultite",
+   "under": "Vaultite: text",
+   "screen": "Vaultite\nFiles\nSearch\nToday\nInbox (2)\nJobs\nAgents\nToday\nThursday\n- [ ] Groceries\n- [ ] Call Bob Lee about Saturday",
+   "sx": 700,
+   "sy": 400
+  },
+  {
+   "id": "code",
+   "where": "away",
+   "text": "Add a dark mode toggle to this page.",
+   "app": "com.google.Chrome",
+   "title": "Lighthouse - localhost:5173",
+   "under": "Google Chrome: group",
+   "screen": "localhost:5173\nLighthouse\nHome\nPricing\nSign in\nShips that find their way",
+   "sx": 700,
+   "sy": 300
+  },
+  {
+   "id": "research",
+   "where": "away",
+   "text": "Compare every e-bike sold in Portugal this year across all the big shops and tell me which is the best value.",
+   "app": "app.vaultite.desktop",
+   "title": "Today - Vaultite",
+   "under": "Vaultite: text",
+   "screen": "Vaultite\nFiles\nSearch\nToday\nInbox (2)\nJobs\nAgents\nToday\nThursday\n- [ ] Groceries\n- [ ] Call Bob Lee about Saturday",
+   "sx": 700,
+   "sy": 400
+  },
+  {
+   "id": "say-background",
+   "where": "away",
+   "text": "Write up a short guide to composting at home, do it in the background.",
+   "app": "app.vaultite.desktop",
+   "title": "Today - Vaultite",
+   "under": "Vaultite: text",
+   "screen": "Vaultite\nFiles\nSearch\nToday\nInbox (2)\nJobs\nAgents\nToday\nThursday\n- [ ] Groceries\n- [ ] Call Bob Lee about Saturday",
+   "sx": 700,
+   "sy": 400
+  },
+  {
+   "id": "say-here",
+   "where": "here",
+   "text": "Write up a short list of what to pack for a beach day, do it here with me.",
+   "app": "app.vaultite.desktop",
+   "title": "Today - Vaultite",
+   "under": "Vaultite: text",
+   "screen": "Vaultite\nFiles\nSearch\nToday\nInbox (2)\nJobs\nAgents\nToday\nThursday\n- [ ] Groceries\n- [ ] Call Bob Lee about Saturday",
+   "sx": 700,
+   "sy": 400
+  },
+  {
+   "id": "note-tweak",
+   "where": "here",
+   "text": "The intro of this note is too long, make it two short sentences.",
+   "app": "app.vaultite.desktop",
+   "title": "How this vault works - Vaultite",
+   "under": "Vaultite: text",
+   "screen": "Vaultite\nFiles\nSearch\nHow this vault works\n# How this vault works",
+   "sx": 700,
+   "sy": 300
+  },
+  {
+   "id": "page-tweak",
+   "where": "live",
+   "text": "The dark mode on this page is hard to read, make it better.",
+   "app": "app.vaultite.desktop",
+   "title": "Lighthouse Reviews - Vaultite",
+   "under": "Vaultite: web page",
+   "screen": "Vaultite\nlighthousereviews.example\nLighthouse Reviews\nThe best headphones of the year\nOur picks, tested for a month\nDark mode",
+   "sx": 700,
+   "sy": 300
+  }
+ ]
+}

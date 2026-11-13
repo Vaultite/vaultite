@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import os from "node:os"
-import { OpError } from "../../../core/plugins.ts"
+import { type OpCtx, OpError } from "../../../core/plugins.ts"
 import { requestWriter } from "../../../core/vault.ts"
 import type { Follow } from "./follows.ts"
 import type { Pane } from "../../../core/desktop/places.ts"
@@ -19,6 +19,7 @@ import { session } from "./alwayson.ts"
 import { laneOf, lane } from "./lane.ts"
 import { AS, PATH, PANE, UI, target, who } from "./args.ts"
 import { askOf } from "./wiring.ts"
+import { messageOf } from "./errors.ts"
 import { byText } from "./people.ts"
 
 const opening = new AsyncLocalStorage<boolean>()
@@ -70,6 +71,20 @@ plugin.around("tabs.focus", async (call, next) => {
   if (name && tab) { wroteAt(name, { ui: `tab:${tab}`, pointed: Date.now() }); await new Promise((done) => setTimeout(done, LAND_MS)) }
   return next()
 })
+type Opened = { path: string; pane?: string | null; fresh?: "made" | "there"; unshown?: string; browser?: boolean; in?: string; title?: string; near?: Parameters<typeof nearText>[0] }
+export const openText = (r: Opened) => (r.browser ? `Opened ${r.path} in ${r.in}, a new tab there in front of them.`
+  : "in" in r ? `Opened ${r.path} on their Mac${r.in ? `: ${r.in}${r.title ? `, "${r.title}"` : ""} is in front` : ""}.${nearText(r.near ?? [], "In it now (point, ring or act by id)")}`
+  : r.unshown ? `${r.fresh === "made" ? "Made" : "Found"} ${r.path}, but their window couldn't show it (${r.unshown}): it has only its heading: write it all the same with edit (append, a section at a time), it's saved, and say where it is in a few words.`
+  : `Opened ${r.path}${r.pane ? ` (pane ${r.pane})` : ""}.${r.fresh === "made" ? " It's new, only its heading in it: write it with edit (append), a section at a time; nothing is in it until you do." : r.fresh === "there" ? " It was there already (new left it as it was): read it before you write in it." : ""}`)
+type UiOpen = { path: string; split?: string; newTab?: true; in?: string; container?: string }
+const HAS_EXT = /\.[a-z0-9]{1,8}$/i, OUTSIDE_VAULT = /^[a-z][\w+.-]*:|^[~/]/i
+async function newNote(ctx: OpCtx, path: string): Promise<"made" | "there"> {
+  if (!path.toLowerCase().endsWith(".md") || OUTSIDE_VAULT.test(path)) throw new OpError(`new makes a note in the vault: give its path as Folder/Title.md, not ${path}`)
+  const there = await ctx.api("GET", `file?path=${encodeURIComponent(path)}`).then(() => true, () => false)
+  if (there) return "there"
+  await ctx.api("PUT", "file", { path, text: `# ${path.split("/").pop()!.replace(/\.md$/i, "")}\n` })
+  return "made"
+}
 export const openedFor = new Map<string, Moment>()
 plugin.op({
   id: "companion.open",
@@ -78,6 +93,9 @@ plugin.op({
   help: `For what they asked to see: a pinned page, a note, a site; on their Mac, what they could open themselves (an app,
 ~/Downloads in Finder, a System Settings pane by its address). It answers the pane it opened (a web page's: see and act
 work there), or the Mac's window in front and what's in it by id (point, ring and act on those).
+new: a note to work on with them, made at path when there's none (only its heading, "# <its name>") and opened beside
+them (split right unless split, in or newTab says where); then write all of it with edit (append, a section at a
+time), each typed in as they watch: it holds nothing else.
 
   vau companion open Personal/Dashboards/Today.md
   vau companion open https://example.com --split right
@@ -85,7 +103,8 @@ work there), or the Mac's window in front and what's in it by id (point, ring an
   vau companion open http://localhost:5173 --in left
   vau companion open "x-apple.systempreferences:com.apple.Keyboard-Settings.extension"
   vau companion open ~/Downloads
-  vau companion open --app Calculator`,
+  vau companion open --app Calculator
+  vau companion open "Notes/Blues history.md" --new`,
   kind: "write",
   lock: false,
   params: { path: { type: "string", description: "a vault path (or as they say it: Today), a folder, a view (view:graph), a web address, any other address (x-apple.systempreferences:..., mailto:...), or a path on their Mac (~/Downloads)" },
@@ -93,11 +112,14 @@ work there), or the Mac's window in front and what's in it by id (point, ring an
     split: { type: "string", enum: ["right", "down"], description: "in a pane beside (right) or below (down)" }, newTab: { type: "boolean", description: "in a new tab" },
     in: { type: "string", description: "the pane to open it in as a new tab, as they name it: where it is (left, top right), this, what it shows (a note, a site, its title's words) or its id" },
     container: { type: "string", description: "a web page's browser container (its own logins), by its name as they say it: Personal, Work, Agents, or none" },
-    vaultite: { type: "boolean", description: "a web page in Vaultite even when they asked from their browser (where it opens, a new tab, by default)" }, as: AS },
+    vaultite: { type: "boolean", description: "a web page in Vaultite even when they asked from their browser (where it opens, a new tab, by default)" },
+    new: { type: "boolean", description: "path is a new note to write in with them (edit): made with only its heading when there's none, opened beside them" }, as: AS },
   args: ["path"],
   run: async (p, ctx) => {
-    const name = who(p), path = str(p.path), app = str(p.app), m = askOf(name)
+    const name = who(p), given = str(p.path), app = str(p.app), m = askOf(name)
+    const path = p.new === true && given && !HAS_EXT.test(given) ? `${given}.md` : given
     if (!path && !app) throw new OpError("give a path or an app")
+    const fresh = p.new === true ? await newNote(ctx, path) : null
     did(name, "open")
     const browser = /^https?:\/\/\S+$/i.test(path) && !app && p.vaultite !== true && !p.container && !p.in && m?.summoned && m.app && isBrowser(m.app) ? m.app : ""
     const mac = browser ? { url: path, app: browser } : macOpen(path, app, plugin.vault.path, os.homedir())
@@ -108,13 +130,21 @@ work there), or the Mac's window in front and what's in it by id (point, ring an
       if (r.frame) { const f = r.frame; void resolve(target({ sx: Math.round(f.x + f.width / 2), sy: Math.round(f.y + Math.min(f.height / 2, 120)) }, true), name).then((t) => setAgent(name, { ...t, pointed: Date.now() }), () => {}) }
       return { path: path || app, pane: null, in: r.app || mac.app || "", title: r.title ?? "", near: r.near ?? [], browser: !!browser }
     }
-    const r = await openSeen(name, path, () => ctx.op("ui.open", { path, ...(p.split ? { split: p.split } : {}), ...(p.newTab ? { newTab: true } : {}),
-      ...(p.in ? { in: p.in } : {}), ...(p.container ? { container: p.container } : {}) }))
-    return { path, pane: r.pane ?? null }
+    const split = p.split || (fresh && !p.in && !p.newTab ? "right" : "")
+    const how: UiOpen = { path }
+    if (split) how.split = split
+    if (p.newTab) how.newTab = true
+    if (p.in) how.in = str(p.in)
+    if (p.container) how.container = str(p.container)
+    const out: Opened = { path, pane: null }
+    if (fresh) out.fresh = fresh
+    try { out.pane = (await openSeen(name, path, () => ctx.op("ui.open", how))).pane ?? null } catch (e) {
+      if (!fresh) throw e
+      out.unshown = messageOf(e)
+    }
+    return out
   },
-  text: (r) => (r.browser ? `Opened ${r.path} in ${r.in}, a new tab there in front of them.`
-    : "in" in r ? `Opened ${r.path} on their Mac${r.in ? `: ${r.in}${r.title ? `, "${r.title}"` : ""} is in front` : ""}.${nearText(r.near, "In it now (point, ring or act by id)")}`
-    : `Opened ${r.path}${r.pane ? ` (pane ${r.pane})` : ""}.`),
+  text: (r) => openText(r),
   did: (p) => ({ action: "ui", text: `Opened ${String(p.path || p.app)}`, paths: [], by: who(p) }),
 })
 

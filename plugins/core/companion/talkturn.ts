@@ -59,7 +59,7 @@ export type Effect<A, T = unknown, K extends EffectKind = EffectKind> = { [P in 
 
 export type World = { on: () => boolean; fresh: () => boolean }
 
-export const SHOWS = new Set(["handoff", "open", "act", "highlight", "pass"])
+export const SHOWS = new Set(["handoff", "open", "edit", "act", "highlight", "pass"])
 export const NOT_SHOWN = "I couldn't mark that on your screen. Ask me again?"
 const LOST = "I lost my session there, ask me again?", OFF = "My session's off right now, so I couldn't answer that."
 

@@ -170,13 +170,14 @@ plugin.op({
   id: "companion.edit",
   cli: "companion edit",
   summary: "Write in a note: typed in before the user's eyes when it's open (they can undo it), else saved to the file.",
-  help: `Only in pair mode or when they asked you to. find and text: find replaced by text. after and text: new lines after
+  help: `Only in pair mode or when they asked you to (a note you write with them, made with open's new). find and text: find replaced by text. after and text: new lines after
 the line with that text. Else new lines after line (0: at the top), or at the end. Prefer find or after: a line number
 goes stale as they type. Edits of a note go one at a time; each returns once it's in. In the app's chat your words are
 typed in as you write them, its place first; your cursor stays at their end.
 
   vau companion edit --path Notes/Idea.md --find "- [ ] Call Alice" --text "- [x] Call Alice"
-  vau companion edit --after "## Budget" --text "- Ask Ben about the budget"`,
+  vau companion edit --after "## Budget" --text "- Ask Ben about the budget"
+  vau companion edit --path "Notes/Lisbon trip.md" --append --text "## Day one"`,
   kind: "write",
   lock: false,
   params: { path: PATH, find: { type: "string", description: "the text it replaces, exactly as in the file" },

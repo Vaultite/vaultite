@@ -497,6 +497,21 @@ export default async ($: VaultTest) => {
     check("companion: quick edits of a note go one at a time, each where the last left it", all.every(([s]) => s === 200) && read("Notes/B.md") === "# B\n\nOne\nTwo\nThree\nFour\n", [all, read("Notes/B.md")])
     check("companion: after anchors new lines to a line's text, wherever it moved", cEdits.editText("a\nb\nc", { after: "b", line: 1, text: "x" }) === "a\nb\nx\nc")
   }
+  {
+    const noWindow = (st: number, r: Any) => st === 200 && /window/.test(r.unshown)
+    let [s1, r1] = await api("POST", "ops/companion.open", { path: "Notes/Lisbon trip", new: true })
+    check("companion: open with new makes the note (a .md path) before opening it", noWindow(s1, r1) && read("Notes/Lisbon trip.md").endsWith("\n# Lisbon trip\n"), [s1, r1, read("Notes/Lisbon trip.md")])
+    ;[s1, r1] = await api("POST", "ops/companion.edit", { path: "Notes/Lisbon trip.md", append: true, text: "\n## Day one\n\nThe castle in the morning." })
+    ;[s1, r1] = await api("POST", "ops/companion.open", { path: "Notes/Lisbon trip.md", new: true })
+    check("companion: open with new over a note that's there leaves it as it was, a blank line before each section",
+      noWindow(s1, r1) && read("Notes/Lisbon trip.md").endsWith("\n# Lisbon trip\n\n## Day one\n\nThe castle in the morning.\n"), [s1, r1, read("Notes/Lisbon trip.md")])
+    const C = await import("../../../plugins/core/companion/opening.ts")
+    check("companion: open's text tells it to write in a new note, or to read one that was there",
+      /write it with edit/.test(C.openText({ path: "N.md", pane: "p1", fresh: "made" })) && /read it before/.test(C.openText({ path: "N.md", pane: "p1", fresh: "there" })) &&
+      /write it all the same/.test(C.openText({ path: "N.md", pane: null, fresh: "made", unshown: "no window" })))
+    ;[s1, r1] = await api("POST", "ops/companion.open", { path: "https://example.com", new: true })
+    check("companion: open with new only makes a note in the vault", s1 === 400 && /in the vault/.test(r1.error), [s1, r1])
+  }
   ;[st, r] = await api("POST", "ops/companion.highlight", { path: "Notes/A.md", find: "Tuesday", keep: true })
   check("companion: a kept highlight is in the file in its colour", st === 200 && read("Notes/A.md").includes("==🟠Tuesday=="), [st, read("Notes/A.md")])
   ;[st, r] = await api("POST", "ops/companion.edit", { path: "Notes/A.md", find: "Wednesday", text: "x" })

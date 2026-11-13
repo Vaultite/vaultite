@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The companion teaches and plans with you in a note beside you**: asked to explain a topic, a paper, a recipe or a
+  trip plan, it opens a new note in a split and writes it a section at a time as it talks, instead of handing it to a
+  background job; a quick tweak to the page or note in front of you is made live too, with only the lasting fix handed
+  off; code and long research still go to jobs, and "do it here" or "in the background" decides either way.
 - **A plugin's scheduled job can run at a time the user picks in its settings**: a manifest's `at` of `"{morning}"`
   follows that setting, so a brief's time changes in its settings sheet; a value that isn't HH:MM holds the job, saying why.
 - **The sidebar's search field sits evenly under its header**: first in the sidebar, it's as far under the header's
