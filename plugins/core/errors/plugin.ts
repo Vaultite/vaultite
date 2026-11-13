@@ -97,7 +97,7 @@ function flushOld() {
 }
 plugin.onUnload(() => { if (flusher) clearInterval(flusher); for (const id of held.keys()) flushHeld(id); held.clear() })
 
-const TOLD = new Set(["stale", "shown", "plugin", "hung"])
+const TOLD = new Set(["stale", "shown", "plugin", "hung", "caught"])
 function tell(g: ErrorGroup) {
   if (!settings().notify || TOLD.has(g.kind) || g.latest.fatal && g.source === "server") return
   const where = g.source === "app" ? (g.kind === "stopped" ? "The app stopped" : "Something went wrong in the app") : "Something went wrong in the server"
@@ -116,7 +116,7 @@ plugin.onServerError((e: ServerError) => {
     ...(e.where ? { where: e.where } : {}), ...(e.fatal ? { fatal: true } : {}) })
 })
 
-const KINDS = ["uncaught", "rejection", "boundary", "stopped", "boot", "stale", "shown", "plugin", "update", "hung"]
+const KINDS = ["uncaught", "rejection", "boundary", "stopped", "boot", "stale", "shown", "plugin", "update", "hung", "caught"]
 type Reported = Partial<Record<"message" | "t" | "trail" | "kind" | "stack" | "component" | "fatal" | "url" | "build", unknown>>
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "")
 

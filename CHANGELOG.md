@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Errors the app catches are kept in Errors, and a base's failed edit says so**: a Vim command that couldn't be set up
+  or a view that couldn't close cleanly showed only in the browser's console; a property edited in a base that couldn't
+  be saved went back without a word.
 - **A delegated task's answer is entered again when its parent's input still shows it**: when the parent agent's Enter
   didn't take (a dialog over its input), the answer sat there unsent; Vaultite now presses Enter once more.
 - **`vau inbox` counts settled results as the inbox does**: it counted only settled events, so it said 1 where the

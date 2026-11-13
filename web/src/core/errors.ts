@@ -7,7 +7,7 @@ export type AppError = {
   t: number
   /** uncaught, rejection, boundary (a block or view failed), stopped (the app unmounted), boot (before it started), stale
    *  (an old build's file: reloaded), shown (told in plain words: notifyError), plugin (a vault plugin couldn't start). */
-  kind: "uncaught" | "rejection" | "boundary" | "stopped" | "boot" | "stale" | "shown" | "plugin"
+  kind: "uncaught" | "rejection" | "boundary" | "stopped" | "boot" | "stale" | "shown" | "plugin" | "caught"
   message: string
   stack?: string
   /** React's component stack (a boundary's error, one that stopped the app). */
@@ -54,9 +54,9 @@ function textOf(e: unknown): string {
 }
 
 let minute = 0, inMinute = 0
-export function noteAppError(kind: AppError["kind"], error: unknown, extra: { component?: string; fatal?: boolean } = {}) {
+export function noteAppError(kind: AppError["kind"], error: unknown, extra: { component?: string; fatal?: boolean; area?: string } = {}) {
   try {
-    const message = (textOf(error) || "(an empty error)").split("\n")[0].slice(0, 500)
+    const message = `${extra.area ? `${extra.area}: ` : ""}${textOf(error) || "(an empty error)"}`.split("\n")[0].slice(0, 500)
     if (NOISE.test(message)) return
     const now = Date.now()
     if (now - minute > 60_000) { minute = now; inMinute = 0 }
@@ -70,6 +70,13 @@ export function noteAppError(kind: AppError["kind"], error: unknown, extra: { co
     save()
     for (const f of subs) try { f() } catch { /* a listener's problem */ }
   } catch { /* never into the app */ }
+}
+
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- what a catch caught: anything can be thrown
+export function logError(area: string, error: unknown) {
+  // oxlint-disable-next-line no-console -- the browser's console is where a developer looks first
+  console.error(`${area}:`, error)
+  noteAppError("caught", error, { area })
 }
 
 /** The errors waiting to be sent, oldest first; they're the caller's now (the queue is emptied). */

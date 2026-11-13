@@ -1,7 +1,7 @@
 import { Compartment, EditorState, Prec, type Extension } from "@codemirror/state"
 import { EditorView, ViewPlugin, drawSelection } from "@codemirror/view"
 import { foldAll, foldCode, toggleFold, unfoldAll, unfoldCode } from "@codemirror/language"
-import { beginKeys, followLink, getStore, isMac, linksIn, runCommandById, runShortcut, type EditorCtx } from "@vaultite"
+import { beginKeys, followLink, getStore, isMac, linksIn, logError, runCommandById, runShortcut, type EditorCtx } from "@vaultite"
 import { EX } from "./ex"
 import { applyVimrc, editorOpen } from "./vimrc"
 import { deviceOn, leaderOn, leftEditor, onState, peekPath, setEditorMode, setPeek, settings } from "./state"
@@ -147,7 +147,7 @@ export function installKeys(Vim: Vim) {
         const raw = params.argString ?? ""
         ex.run(raw.replace(/^!/, "").trim(), raw.startsWith("!"))
       })
-    } catch (e) { console.error("vim:", e) }
+    } catch (e) { logError("vim", e) }
   }
 }
 

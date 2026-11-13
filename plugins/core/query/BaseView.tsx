@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { ArrowDown, ArrowUp, Blocks, Calculator, CalendarDays, Columns3, Ellipsis, EyeOff, LayoutGrid, List, Map as MapIcon, PencilLine, Plus, Search, Table2, X, type LucideIcon } from "lucide-react"
-import { baseLayoutOf, cn, freeName, getStore, menuBelow, newNoteFolder, notify, notifyError, openNew, Panel, post, put, readFile, reload, resolver, today, useBaseLayouts, type BaseLayout, type BaseLayoutCtx, type BaseLayoutDrawn, type BlockCtx, type FormatCtx, type MenuItem } from "@vaultite"
+import { baseLayoutOf, cn, freeName, getStore, logError, menuBelow, newNoteFolder, notify, notifyError, openNew, Panel, post, put, readFile, reload, resolver, today, useBaseLayouts, type BaseLayout, type BaseLayoutCtx, type BaseLayoutDrawn, type BlockCtx, type FormatCtx, type MenuItem } from "@vaultite"
 import { ResultBody, ResultSkeleton, TINT, useQueryResult, type TableCtl } from "./QueryView"
 import { parse as parseYaml, stringify } from "yaml"
 import { addView, firstView, freeViewName, removeView, setColumnSize, setDisplayName, setOrder, setSort, setSummary, setViewType } from "./baseedit"
@@ -276,7 +276,7 @@ function PluginLayout({ layout, ctx }: { layout: BaseLayout; ctx: BaseLayoutCtx 
     const el = ref.current
     if (!el) return
     try { drawn.current = layout.mount(el, latest.current) || null } catch (e) { notifyError(e, `${layout.name} couldn't draw this view`) }
-    return () => { try { drawn.current?.destroy?.() } catch (e) { console.error(e) } drawn.current = null; el.replaceChildren() }
+    return () => { try { drawn.current?.destroy?.() } catch (e) { logError("query", e) } drawn.current = null; el.replaceChildren() }
   }, [layout])
   const first = useRef(true)
   useEffect(() => {

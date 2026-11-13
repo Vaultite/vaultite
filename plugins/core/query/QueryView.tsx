@@ -1,7 +1,7 @@
 import { memo, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Ellipsis, Info, Plus } from "lucide-react"
 import {
-  addDays, Bar, cn, dateText, dow, edgeScroller, Empty, isMac, Loading, menuBelow, menuFor, numberText, openFile, parse, PinMap, range, rawUrl, Resizer, resolver, rowFileMenu, setProperty, startDrag,
+  addDays, Bar, cn, dateText, dow, edgeScroller, Empty, isMac, Loading, menuBelow, menuFor, notifyError, numberText, openFile, parse, PinMap, range, rawUrl, Resizer, resolver, rowFileMenu, setProperty, startDrag,
   textKey, today, typedValue, useDrag, useDropHit, useDropTarget, useKeptCount, useLive, useRowsNear, useVaultChange, weekStart, type MapPin, type MenuItem,
 } from "@vaultite"
 import { byKeys, dayOf, groupName, monthName, propKey, summaryText, text, type Group, type Result, type Row } from "./query"
@@ -101,7 +101,7 @@ export function useQueryResult(url: string, sort?: SortKey[] | null) {
     try {
       await setProperty(r.path, prop, value)
     } catch (err) {
-      console.error(err)
+      notifyError(err, "Couldn't change it")
       setEdits((e) => { const { [`${r.path}\0${key}`]: _, ...rest } = e; return rest })
     }
   }, [])

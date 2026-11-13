@@ -9,7 +9,7 @@ type Filter = "all" | "app" | "server"
 const KIND: Record<string, string> = {
   stopped: "stopped the app", boot: "before the app started", boundary: "a block or view failed", uncaught: "uncaught",
   rejection: "unhandled rejection", stale: "an older build (reloaded)", error: "logged", fatal: "ended the server",
-  shown: "told in a toast or a page", plugin: "a plugin couldn't start", update: "the app's updates",
+  shown: "told in a toast or a page", plugin: "a plugin couldn't start", update: "the app's updates", caught: "caught by the app",
 }
 const forgetting = removals()
 

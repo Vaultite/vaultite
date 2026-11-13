@@ -288,7 +288,7 @@ export { onActivity, type ActivityNote } from "@/core/activity"
 /** What the app did, by topic (editor changes, scroll restores, commands, console warnings): add to it, or hear it all. */
 export { onTrace, trace, type TraceEvent } from "@/core/trace"
 export { span, takeSpans, type Span } from "@/core/spans"
-export { onAppError, takeAppErrors, type AppError } from "@/core/errors"
+export { logError, onAppError, takeAppErrors, type AppError } from "@/core/errors"
 export { dismissNotice, errorText, noticesSince, notify, notifyError, type Notice, type NotifyOptions } from "@/core/notify"
 // What a screen reader is told without the focus moving (toasts say theirs): an agent finished, waits, failed.
 export { announce, announceAgent, type AgentPhase } from "@/core/announce"

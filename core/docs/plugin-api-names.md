@@ -369,6 +369,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Loading({ error, className })`: A block's data on its way: "Loading…", shimmering, or what went wrong getting it (`error`: "Couldn't ask Tailscale.").
 - `LoadingRows({ count, meta, lead, right, className })`: A list on its way: `count` skeleton rows built from the real `Row` (`meta`: with a meta line, or how many have one), taking the list's room at once; `useKeptCount` gives as many rows as last time.
 - `LoadingSidebarRows({ count, right, className, … })`: Rows on their way: SidebarRow's shape, its icon a muted square and its label a bar (`right`: a bar at its end, as a time or a count); in a `data-size-up` list where the real rows are.
+- `logError(area, error)`
 - `lookUp`: The desktop app's Look up and spell checker (the editor's menu): null in a browser or a build without them.
 - `Machine`: A machine as GET /api/machines says: `self` is the one serving this app; `plugins`, the ones that are on there; `vault`, its vault's id (the same as this one's: it has this vault).
 - `machinePath(machine, path)`: An API path on a machine ("" or none: this one): "claude-code?days=7" -> "machines/studio/claude-code?days=7".
