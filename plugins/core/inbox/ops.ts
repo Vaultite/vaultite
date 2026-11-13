@@ -9,8 +9,10 @@ import { asResults, withTldr } from "./results.ts"
 import { plugin } from "./server.ts"
 import { NEEDS } from "./rows.ts"
 import { stampOf } from "./snooze.ts"
-import { lists } from "./threads.ts"
+import { latestOf, lists } from "./threads.ts"
 import { Saved } from "./wire.ts"
+
+const row = (r: Item) => ({ path: `${r.id}.md`, title: r.title, from: r.from ?? null, created: r.created ?? null, updated: r.updated ?? null })
 
 const listOp = defineOp({
   id: "inbox.list",
@@ -22,24 +24,24 @@ something, its last answer or report is for the user, or it failed; working once
 ends with nothing for them, or they mark it done. Reading never settles a thread (* is unread); a message (vau notify)
 is done once read. Results are files in Inbox/ to review. Events are kept on the machine they happened on (another
 machine's id ends in @<machine>), done ones for keep_days, each with its id (inbox.settle, inbox.answer, inbox.reply,
-inbox.snooze take it). done: the latest done ones too.
+inbox.snooze take it). done: the latest settled ones too, events and results.
 
   vau inbox
   vau inbox --done`,
   kind: "read",
   params: {
     limit: { type: "integer", minimum: 1, default: 20, description: "at most this many in each list" },
-    done: { type: "boolean", description: "the latest done events too" },
+    done: { type: "boolean", description: "the latest settled events and results too" },
   },
   run: async ({ limit, done }, ctx) => {
     const [, items] = await Promise.all([others(), ctx.api("GET", "inbox").then((v) => z.array(Saved).parse(v))])
     const l = lists(shown(), asResults(items))
-    const row = (r: Item) => ({ path: `${r.id}.md`, title: r.title, from: r.from ?? null, created: r.created ?? null, updated: r.updated ?? null })
     const cut = <T>(xs: T[]) => xs.slice(0, limit)
     return { decisions: cut(l.decisions.map(decisionRow)), pinned: [...l.pinned.events, ...l.pinned.results.map(row)], needs: cut(l.needs), results: cut(l.review.map(row)), working: cut(l.working), messages: cut(l.messages),
       snoozed: [...l.snoozed.results.map((r) => ({ ...row(r), until: str(r.snoozed) })),
         ...l.snoozed.events.map((e) => ({ id: e.id, title: e.title, until: stampOf(new Date(e.snoozed!)) }))],
-      done: done ? cut(l.done.events) : l.done.events.length }
+      done: done ? cut([...l.done.events.map((e) => ({ at: e.t, x: e })), ...l.done.results.map((r) => ({ at: latestOf(r), x: row(r) }))].sort((a, b) => b.at - a.at).map((d) => d.x))
+        : l.done.events.length + l.done.results.length }
   },
   text: (r) => {
     const out: string[] = []
@@ -47,13 +49,14 @@ inbox.snooze take it). done: the latest done ones too.
       `${e.preview || e.body ? `: ${clip(e.preview || e.body, 160)}` : ""}${e.machineLabel ? ` (on ${e.machineLabel})` : ""}  (${e.id})`
     const list = (title: string, xs: string[]) => { if (xs.length) out.push(`${out.length ? "\n" : ""}${title}:`, ...xs) }
     list("Decisions", r.decisions.map((d) => `  ${d.blocking ? "[waits on you]" : `[went with ${d.default}]`} ${d.question}  (${d.path})`))
-    list("Pinned", r.pinned.map((x) => ("path" in x ? `  ${x.path}${x.from ? `  (from ${x.from})` : ""}` : line(x))))
+    const either = (x: InboxEvent | ReturnType<typeof row>) => ("path" in x ? `  ${x.path}${x.from ? `  (from ${x.from})` : ""}` : line(x))
+    list("Pinned", r.pinned.map(either))
     list("Needs you", r.needs.map(line))
     list("To review", r.results.map((x) => `  ${x.path}${x.from ? `  (from ${x.from})` : ""}`))
     list("Working on it", r.working.map((e) => (e.progress ? line({ ...e, preview: e.progress }) : line(e))))
     list("Messages", r.messages.map(line))
     list("Snoozed", r.snoozed.map((x) => `  until ${x.until}  ${"path" in x ? x.path : `${x.title}  (${x.id})`}`))
-    if (Array.isArray(r.done)) list("Settled", r.done.map(line))
+    if (Array.isArray(r.done)) list("Settled", r.done.map(either))
     else if (r.done) out.push(`${out.length ? "\n" : ""}Settled: ${r.done} (vau inbox --done lists them).`)
     if (r.decisions.length) out.push(`\nAnswer one: vau inbox decide <path> <answer> (vau inbox decisions has their options).`)
     return out.length ? out.join("\n") : "Nothing new."

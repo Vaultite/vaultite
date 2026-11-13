@@ -97,6 +97,7 @@ const KIND = new Kind({
   },
   key: (r) => (truthy(r.source) ? str(r.source) : null),
   stamps: ["created", "updated", "snoozed", "answered"],
+  dropWhenCleared: ["pinned", "snoozed"],
 })
 
 function appState() {

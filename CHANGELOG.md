@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **`vau inbox` counts settled results as the inbox does**: it counted only settled events, so it said 1 where the
+  page's Settled said 2; `--done` lists both.
+- **A settled result's file no longer keeps `pinned: null`**: settling a pinned or snoozed result removes those keys.
 - **A tap as a toast leaves reaches what's under it**: a leaving toast took taps meant for the bar under it, such as
   the phone's tabs button.
 - **An agent's sign-in with submit waits for the page it leads to**: on a busy machine, or a site whose submit starts

@@ -90,6 +90,12 @@ export default async ($: VaultTest) => {
     }
     ;[st, b] = await api("PUT", "inbox/Inbox/.archive/Plant care apps, again", { archived: false })
     check("inbox: unarchived is new", st === 200 && b.status === "new" && exists("Inbox/Plant care apps, again.md"), b)
+    ;[st, b] = await api("PUT", "inbox/Plant care apps, again", { pinned: true, snoozed: "2999-01-01 08:00:00" })
+    const pinnedFile = read("Inbox/Plant care apps, again.md")
+    ;[st, b] = await api("PUT", "inbox/Plant care apps, again", { status: "done" })
+    check("inbox: a pinned, snoozed result settled is neither, its archived file without their keys", /pinned: true/.test(pinnedFile) && /snoozed: '2999/.test(pinnedFile) && st === 200 && b.pinned !== true &&
+      !/pinned|snoozed/.test(read("Inbox/.archive/Plant care apps, again.md")), [pinnedFile, read("Inbox/.archive/Plant care apps, again.md")])
+    ;[st, b] = await api("PUT", "inbox/Inbox/.archive/Plant care apps, again", { status: "new" })
     write("Inbox/Written by hand.md", "---\ntype: inbox\nstatus: maybe\n---\n\nA file.\n")
     ;[, b] = await api("GET", "inbox/Written by hand")
     const [, v] = await api("GET", "vault")
@@ -882,7 +888,11 @@ export default async ($: VaultTest) => {
       const brief = await vau("inbox"), listed = await vau("inbox", "--done")
       const [, opened] = await api("GET", "inbox/events?open=1&all=1")
       check("inbox events ?open=1: only what isn't done (the widgets', the watch's)", opened.events.length > 0 && !opened.events.some((x: Any) => x.state === "done") && !opened.events.some((x: Any) => x.id === eid), opened.events.length)
-      check("vau inbox: settled ones counted, listed with --done", /\nSettled: 1 \(vau inbox --done/.test(brief.out) && new RegExp(`\\nSettled:\\n.*\\(${eid}\\)`).test(listed.out), [brief.out.slice(-200), listed.out.slice(-300)])
+      const { lists: listsOf } = await import("../../../plugins/core/inbox/threads.ts"), { asResults } = await import("../../../plugins/core/inbox/results.ts")
+      const page = listsOf((await api("GET", "inbox/events?all=1"))[1].events, asResults((await api("GET", "inbox"))[1])).done
+      check("vau inbox: settled ones counted as the page counts them (events and results), listed with --done", page.events.length > 0 && page.results.length > 0 &&
+        brief.out.includes(`\nSettled: ${page.events.length + page.results.length} (vau inbox --done`) && new RegExp(`\\nSettled:\\n[^]*\\(${eid}\\)`).test(listed.out) &&
+        listed.out.includes(`  ${page.results[0].id}.md`), [page.events.length, page.results.map((r) => r.id), brief.out.slice(-200), listed.out.slice(-500)])
       cr = await vau("inbox", "unread")
       check("vau inbox unread: needs ids", cr.code !== 0, cr)
     }

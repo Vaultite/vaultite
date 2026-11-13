@@ -490,6 +490,7 @@ export type KindSpec = {
   sections?: string[]
   /** frontmatter keys the app keeps as local times (stamp: "YYYY-MM-DD HH:MM:SS"): shown, not edited by hand */
   stamps?: string[]
+  dropWhenCleared?: string[]
 }
 
 export class Kind {
@@ -1612,7 +1613,7 @@ export class Vault {
       if (norm(v) === norm(baseOwned[key])) continue
       if (blank(v)) {
         if (!(key in e.fm) || blank(e.fm[key])) continue
-        if (key === "archived") removals.push(key)
+        if (key === "archived" || k.spec.dropWhenCleared?.includes(key)) removals.push(key)
         else changes[key] = v === false ? false : Array.isArray(v) ? [] : null
       } else if (norm(v) !== norm(e.fm[key])) changes[key] = v
     }
