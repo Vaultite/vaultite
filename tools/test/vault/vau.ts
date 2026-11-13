@@ -54,6 +54,8 @@ export default async ($: VaultTest) => {
   check("vau command: to the window now in use", uiOf(w2).length === 1 && uiOf(w2)[0].id === "sidebar:toggle" && uiOf(w1).length === 6, [w1.got, w2.got])
   cr = await vau("open", "x.md", "--split", "left")
   check("vau open: a bad split is refused", cr.code === 2, cr)
+  const had = w2.got.length, ui = (b: Record<string, unknown>) => uiLive.handle("POST", b), said = ui({ action: "notify", text: " Saved ", button: { open: " Notes/a.md " } }), sent = w2.got.splice(had).at(-1), noOpen = ui({ action: "notify", text: "x", button: { label: "Go" } }), oddIn = ui({ action: "open", path: "a.md", in: 5 })
+  check("ui: a notice's button opens its path, trimmed, labelled Open; one with nothing to open, or a pane that isn't a name, is refused", said[1] === 200 && sent.text === "Saved" && sent.button.open === "Notes/a.md" && sent.button.label === "Open" && noOpen[1] === 400 && /button is/.test(noOpen[0].error) && oddIn[1] === 400 && /in is a name/.test(oddIn[0].error), [said, sent, noOpen, oddIn])
   cr = await vau("read", "Nowhere/Nothing.md")
   check("vau: a command that fails is exit 1, not a usage mistake", cr.code === 1, cr)
   cr = await vau("inbox", "add")

@@ -18,7 +18,7 @@ import type { App } from "./core/app.ts"
 import type { FileAnswer as Answered } from "./core/plugins.ts"
 import type { Live as LiveType } from "./core/live.ts"
 import type { Vault } from "./core/vault.ts"
-import { codeOf, errnoOf, messageOf } from "./core/values.ts"
+import { codeOf, errnoOf, isObj, messageOf } from "./core/values.ts"
 
 // Node's compile cache must be on before the app's modules load, so they're imported below rather than above.
 module.enableCompileCache?.()
@@ -187,7 +187,7 @@ function encodingFor(req: http.IncomingMessage | undefined, type: string, size: 
 }
 
 async function send(res: http.ServerResponse, status: number, body: string | Buffer, type: string, headers: Record<string, string> = {}) {
-  const req = res.req as http.IncomingMessage | undefined
+  const req: http.IncomingMessage | undefined = res.req
   let data = typeof body === "string" ? Buffer.from(body) : body
   const out: Record<string, string> = { "Content-Type": type, ...headers }
   if (req && req.method === "GET" && status === 200 && overNetwork(req) && (out["Cache-Control"] ?? "no-cache") === "no-cache") {
@@ -259,7 +259,7 @@ const failures = new WeakMap<http.IncomingMessage, string>()
 
 async function bodyOf(req: http.IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = []
-  for await (const c of req) chunks.push(c as Buffer)
+  for await (const c of req) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(String(c)))
   let raw: string
   try { raw = Buffer.concat(chunks).toString("utf8") } catch (e) {
     if (!tooBig(e)) throw e
@@ -392,16 +392,16 @@ async function openHere(req: http.IncomingMessage, res: http.ServerResponse) {
   if (process.platform !== "darwin" && process.platform !== "linux" && process.platform !== "win32") return json(res, { error: "opening files in their app needs macOS, Windows or Linux" }, 501)
   if (process.platform === "linux" && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY && !inWsl())
     return json(res, { error: "this server has no desktop to open files on (no DISPLAY or WAYLAND_DISPLAY)" }, 501)
-  const body = await bodyOf(req) as { path?: unknown; reveal?: unknown } | undefined
+  const body = await bodyOf(req), given = isObj(body) ? body.path : undefined
   let abs: string
-  if (body?.path === ".vaultite/themes" || body?.path === ".vaultite/snippets") fs.mkdirSync(vault.abs(body.path), { recursive: true })
+  if (given === ".vaultite/themes" || given === ".vaultite/snippets") fs.mkdirSync(vault.abs(given), { recursive: true })
   try {
-    abs = isOutside(body?.path) ? liveFolder(body!.path as string) ?? allowedPath(body!.path as string) : vault.abs(clean(body?.path, true, vault, true))
+    abs = isOutside(given) ? liveFolder(given) ?? allowedPath(given) : vault.abs(clean(given, true, vault, true))
   } catch (e) {
     return json(res, { error: messageOf(e) }, e instanceof HTTPError ? e.status : 400)
   }
   const done = (err: Error | null) => (err ? json(res, { error: String(err.message) }, 500) : json(res, { ok: true }))
-  let reveal = !!body?.reveal
+  let reveal = isObj(body) && !!body.reveal
   reveal ||= runsCode(abs)
   if (process.platform === "darwin") return void execFile("/usr/bin/open", reveal ? ["-R", abs] : [abs], { timeout: 10000 }, done)
   if (process.platform === "win32") return void explorer(abs, reveal).then(() => done(null), done)
@@ -474,7 +474,7 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
   const body = app.streams(method, parts, String(req.headers["content-type"] ?? "")) ? {} : await bodyOf(req)
   if (body === undefined) return json(res, { error: "the body isn't JSON" }, 400)
   if (parts.join("/") === "ui") {
-    const b = (body ?? {}) as { action?: unknown; path?: unknown }
+    const b = isObj(body) ? body : {}
     const why = method === "POST" && (b.action === "command" || (b.action === "open" && String(b.path).startsWith("view:terminal/")))
       ? await app.ownerWhy(req, b.action === "command" ? "the app's commands" : "the terminal") : ""
     if (why) return json(res, { error: why }, 403)
@@ -486,7 +486,7 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
     const why = await app.ownerWhy(req, "Managing vaults")
     if (why) return json(res, { error: why }, 403)
     try {
-      return json(res, await vaults.handle(method, parts, query, (body ?? {}) as Record<string, unknown>, vault.path, switchTo))
+      return json(res, await vaults.handle(method, parts, query, isObj(body) ? body : {}, vault.path, switchTo))
     } catch (e) {
       if (e instanceof HTTPError) return json(res, { error: e.message }, e.status)
       throw e
@@ -494,7 +494,7 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
   }
   if (!app.unsynced(method, parts)) await app.syncPlugins({ trusting: app.trusts(req) })
   const out = await app.run(method, parts, query, body, req)
-  if (out.status >= 400) failures.set(req, String((out.body as { error?: unknown } | null)?.error ?? ""))
+  if (out.status >= 400) failures.set(req, String((isObj(out.body) ? out.body.error : undefined) ?? ""))
   if (out.body instanceof Text) return send(res, out.status, out.body.text, out.body.type, out.body.headers)
   if (out.body instanceof FileAnswer) return sendAnswered(req, res, out.body)
   return send(res, out.status, jsonOf(out.body), "application/json")
@@ -668,8 +668,8 @@ if (process.env.VAULTITE_UPDATES && !DESKTOP && fs.existsSync(path.join(ROOT, ".
     restart: () => setTimeout(() => bye(143), 200),
     busy: async () => {
       await ready
-      const r = await LOADED[0]?.desktop("agent:busy", "server").catch(() => null) as { busy?: boolean; why?: string } | null
-      return r?.busy ? String(r.why || "the browser is busy") : null
+      const r = await LOADED[0]?.desktop("agent:busy", "server").catch(() => null)
+      return isObj(r) && r.busy ? String(r.why || "the browser is busy") : null
     } }
   const store = process.env.VAULTITE_CODE_STORE, checkout = process.env.VAULTITE_SERVICE_CHECKOUT
   if (store && checkout) {

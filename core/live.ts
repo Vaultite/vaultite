@@ -8,7 +8,7 @@ import type { Vault } from "./vault.ts"
 import { type TreeWatcher, watchTree } from "./treewatch.ts"
 import { keptOf } from "./kept.ts"
 import { logger } from "./log.ts"
-import { codeOf, messageOf } from "./values.ts"
+import { codeOf, isObj, isText, messageOf } from "./values.ts"
 
 const log = logger("live")
 
@@ -311,13 +311,13 @@ export class Live {
     const ran = rid ? new Promise<Answer | null>((done) => { this.answers.set(rid, (a) => done(a)); setTimeout(() => done(null), UI_ANSWER_MS) }) : null
     try {
       const [out, status] = this.handle(message ? "POST" : "GET", rid ? { ...message, rid } : message)
-      if (status >= 400) throw new OpError(String((out as { error?: unknown }).error ?? status), status)
+      if (status >= 400) throw new OpError(String(out.error ?? status), status)
       const a = ran ? await ran : null
       if (a && a.ran === false && typeof a.error === "string") throw new OpError(a.error, 422)
       if (a && a.ran === false && message!.action === "command") throw new OpError(`the command ${String(message!.id)} isn't available in the user's window right now (it may need a note open there): nothing ran`, 422)
       if (!a) return out
-      const notices = Array.isArray(a.notices) ? a.notices.slice(-5).flatMap((n) => { const x = n as { text?: unknown; kind?: unknown }; return typeof x?.text === "string" ? [{ text: x.text.slice(0, 300), ...(x.kind === "error" ? { kind: "error" } : {}) }] : [] }) : []
-      return { ...(out as object), ran: true, ...(notices.length ? { notices } : {}) }
+      const notices = Array.isArray(a.notices) ? a.notices.slice(-5).flatMap((x) => (isObj(x) && isText(x.text) ? [{ text: x.text.slice(0, 300), ...(x.kind === "error" ? { kind: "error" } : {}) }] : [])) : []
+      return { ...out, ran: true, ...(notices.length ? { notices } : {}) }
     } finally {
       if (rid) this.answers.delete(rid)
     }
@@ -353,27 +353,27 @@ export class Live {
     }
   }
 
-  handle(method: string, body: unknown): [unknown, number] {
+  handle(method: string, body: unknown): [Record<string, unknown>, number] {
     if (method === "GET") return [{ windows: this.windows, workspace: this.workspace }, 200]
     if (method !== "POST") return [{ error: "not found" }, 404]
-    const b = (body ?? {}) as Record<string, unknown>
+    const b = isObj(body) ? body : {}
     let msg: Record<string, unknown>
     if (b.action === "open" && typeof b.path === "string" && b.path.trim()) {
       if (b.split != null && b.split !== "right" && b.split !== "down") return [{ error: "split is right or down" }, 400]
-      for (const k of ["container", "in"]) { const v = b[k]; if (v != null && (typeof v !== "string" || !v.trim())) return [{ error: `${k} is a name (a string)` }, 400] }
+      for (const k of ["container", "in"]) { const v = b[k]; if (v != null && (!isText(v) || !v.trim())) return [{ error: `${k} is a name (a string)` }, 400] }
       msg = { action: "open", path: b.path.trim(), split: b.split ?? null, newTab: !!b.newTab, ...(b.background ? { background: true } : {}),
-        ...(b.container ? { container: (b.container as string).trim() } : {}), ...(b.in ? { in: (b.in as string).trim() } : {}), ...(typeof b.rid === "string" ? { rid: b.rid } : {}) }
+        ...(isText(b.container) ? { container: b.container.trim() } : {}), ...(isText(b.in) ? { in: b.in.trim() } : {}), ...(typeof b.rid === "string" ? { rid: b.rid } : {}) }
     } else if (b.action === "command" && typeof b.id === "string" && b.id) msg = { action: "command", id: b.id, ...(typeof b.rid === "string" ? { rid: b.rid } : {}) }
     else if (b.action === "notify") {
       const text = typeof b.text === "string" ? b.text.trim() : ""
       if (!text) return [{ error: "notify needs a text" }, 400]
       if (b.kind != null && b.kind !== "error") return [{ error: "kind is error, or left out" }, 400]
-      const btn = (b.button ?? null) as Record<string, unknown> | null
-      if (btn !== null && (typeof btn !== "object" || typeof btn.open !== "string" || !btn.open.trim())) {
+      const btn = b.button ?? null
+      if (btn !== null && (!isObj(btn) || !isText(btn.open) || !btn.open.trim())) {
         return [{ error: "button is {label, open: <vault path>}" }, 400]
       }
       msg = { action: "notify", text: text.slice(0, 500), kind: b.kind ?? null,
-        button: btn && { label: typeof btn.label === "string" && btn.label.trim() ? btn.label.trim().slice(0, 40) : "Open", open: (btn.open as string).trim() } }
+        button: isObj(btn) && isText(btn.open) ? { label: isText(btn.label) && btn.label.trim() ? btn.label.trim().slice(0, 40) : "Open", open: btn.open.trim() } : null }
     } else return [{ error: "action is open (with a path), command (with an id) or notify (with a text)" }, 400]
     if (!this.ui(msg)) return [{ error: "no app window is open on this server" }, 409]
     return [{ ok: true, windows: this.windows }, 200]
