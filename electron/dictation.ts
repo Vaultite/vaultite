@@ -1,5 +1,6 @@
 // Dictation: dictation.swift hears the microphone for a window or the menu-bar helper, one session at a time.
 import { app, systemPreferences } from "electron"
+import { z } from "zod"
 import { spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
@@ -8,16 +9,19 @@ import { dictationSwift, parakeetModel } from "./dictation-build.ts"
 import { replacer } from "../core/dictationtext.ts"
 import { pickMic, type Devices, type MicPick } from "./miclogic.ts"
 import type { Keeping } from "./dictationkeep.ts"
+import { messageOf } from "./browser/errors.ts"
 
 let helper: ChildProcess | null = null
 let starting: Promise<ChildProcess> | null = null
-export type DictationSink = { tell: (m: Record<string, unknown>) => void; win?: AppWindow
+export type DictationMessage = { type: string; [k: string]: unknown }
+type Command = { cmd: string; [k: string]: unknown }
+export type DictationSink = { tell: (m: DictationMessage) => void; win?: AppWindow
   audio?: (pcm: Buffer) => void }
 let owner: DictationSink | null = null
 let idle: ReturnType<typeof setTimeout> | null = null
 const IDLE_MS = 15 * 60_000
 let sid = 0
-let checked: ((msg: Record<string, unknown>) => void)[] = []
+let checked: ((msg: { [k: string]: unknown }) => void)[] = []
 let devices: Devices | null = null
 let listed: (() => void)[] = []
 const deviceWatchers = new Set<(d: Devices) => void>()
@@ -36,9 +40,10 @@ function start(): Promise<ChildProcess> {
       for (let i; (i = buf.indexOf("\n")) >= 0;) {
         const line = buf.slice(0, i)
         buf = buf.slice(i + 1)
-        let msg: Record<string, unknown>
+        let msg: unknown
         try { msg = JSON.parse(line) } catch { continue }
-        heard(msg)
+        const m = LINE.safeParse(msg)
+        if (m.success) heard(m.data)
       }
     })
     child.on("error", () => { if (child.exitCode === null && !child.killed) child.kill(); child.emit("exit") })
@@ -60,10 +65,10 @@ function start(): Promise<ChildProcess> {
   return starting
 }
 
-function send(cmd: Record<string, unknown>) { if (TEXT) return typed(cmd); helper?.stdin?.write(JSON.stringify(cmd) + "\n") }
+function send(cmd: Command) { if (TEXT) return typed(cmd); helper?.stdin?.write(JSON.stringify(cmd) + "\n") }
 
 const TEXT = process.env.VAULTITE_QUIET ? process.env.VAULTITE_DICTATION_TEXT : undefined
-function typed(cmd: Record<string, unknown>) {
+function typed(cmd: Command) {
   const id = sid, words = () => { try { return fs.readFileSync(TEXT!, "utf8").trim() } catch { return "" } }
   if (cmd.cmd === "start") return void setTimeout(() => { if (sid === id) heard({ type: "pending", id, text: words() }) }, 300)
   if (cmd.cmd !== "stop" && cmd.cmd !== "cancel") return
@@ -72,9 +77,9 @@ function typed(cmd: Record<string, unknown>) {
 }
 
 let swap: [RegExp, string][] = []
-const swapped = (m: Record<string, unknown>) => (swap.length && (m.type === "pending" || m.type === "final") && typeof m.text === "string"
+const swapped = (m: DictationMessage) => (swap.length && (m.type === "pending" || m.type === "final") && typeof m.text === "string"
   ? { ...m, text: swap.reduce((x, [re, to]) => x.replace(re, to), m.text) } : m)
-function tell(...msgs: Record<string, unknown>[]) {
+function tell(...msgs: DictationMessage[]) {
   const o = owner
   if (o) for (const m of msgs) o.tell(swapped(m))
 }
@@ -90,7 +95,7 @@ function sinkOf(win: AppWindow) {
   return s
 }
 
-function heard(m: Record<string, unknown>) {
+function heard(m: DictationMessage) {
   if (m.type === "engines") { for (const done of checked.splice(0)) done(m); return }
   if (m.type === "devices") {
     devices = { devices: Array.isArray(m.devices) ? m.devices : [], input: String(m.input ?? ""), output: String(m.output ?? "") }
@@ -119,8 +124,8 @@ function heard(m: Record<string, unknown>) {
 
 async function engines(language: string) {
   if (TEXT) return { apple: true, locale: language || "en-US", parakeet: false }
-  try { await start() } catch (e) { return { apple: false, parakeet: false, why: (e as Error).message } }
-  const r = await new Promise<Record<string, unknown>>((done) => {
+  try { await start() } catch (e) { return { apple: false, parakeet: false, why: messageOf(e) } }
+  const r = await new Promise<{ [k: string]: unknown }>((done) => {
     checked.push(done)
     send({ cmd: "check", language })
     setTimeout(() => { checked = checked.filter((d) => d !== done); done({ apple: false, parakeet: false }) }, 10_000)
@@ -133,6 +138,13 @@ let serverOf: (win?: AppWindow) => number | null = () => null
 export const setDictationServer = (f: typeof serverOf) => { serverOf = f }
 
 type Cloud = { url: string; key: string; model?: string; languages: string[] }
+const LINE = z.looseObject({ type: z.string() })
+const PAIR = z.tuple([z.string(), z.string()]).rest(z.unknown()).transform(([a, b]): [string, string] => [a, b])
+const CLOUD_ANSWER = z.object({
+  url: z.string().optional().catch(undefined), key: z.string().optional().catch(undefined), model: z.string().optional().catch(undefined),
+  languages: z.array(z.string()).optional().catch(undefined), why: z.string().optional().catch(undefined),
+  terms: z.array(z.unknown()).catch([]), replacements: z.array(z.unknown()).catch([]), keep: z.unknown().optional(),
+}).catch({ terms: [], replacements: [] })
 type Words = { terms: string[]; replacements: [string, string][] }
 let lastWords: Words & { keep?: boolean } = { terms: [], replacements: [] }
 export const expectedWords = () => lastWords
@@ -141,9 +153,9 @@ async function cloudFor(sink: DictationSink, language: string): Promise<{ cloud?
   if (!port) return lastWords
   try {
     const r = await fetch(`http://127.0.0.1:${port}/api/dictation/cloud`, { headers: { "X-Vaultite-Client": "app/desktop" }, signal: AbortSignal.timeout(2000) })
-    const c = (r.ok ? await r.json() : {}) as Partial<Cloud> & { why?: string; terms?: unknown; replacements?: unknown; keep?: unknown }
-    const terms = Array.isArray(c.terms) ? c.terms.filter((t): t is string => typeof t === "string") : []
-    const replacements = Array.isArray(c.replacements) ? c.replacements.filter((x): x is [string, string] => Array.isArray(x) && typeof x[0] === "string" && typeof x[1] === "string") : []
+    const c = CLOUD_ANSWER.parse(r.ok ? await r.json() : {})
+    const terms = c.terms.flatMap((t) => (typeof t === "string" ? [t] : []))
+    const replacements = c.replacements.flatMap((x) => { const pair = PAIR.safeParse(x); return pair.success ? [pair.data] : [] })
     if (r.ok) lastWords = { terms, replacements, keep: c.keep !== false }
     const words = lastWords
     if (!c.url || !c.key) return { why: c.why ?? (r.ok ? undefined : `Vaultite's server answered ${r.status}`), ...words }
@@ -151,7 +163,7 @@ async function cloudFor(sink: DictationSink, language: string): Promise<{ cloud?
     const said = c.languages?.length ? c.languages : [language, ...app.getPreferredSystemLanguages()]
     const languages = [...new Set(said.map((l) => l.split(/[-_]/)[0].toLowerCase()).filter((l) => /^[a-z]{2,3}$/.test(l)))].slice(0, 6)
     return { cloud: { url: c.url, key: c.key, model: c.model, languages }, ...words }
-  } catch (e) { return { why: `Vaultite's server didn't answer (${(e as Error).name === "TimeoutError" ? "timed out" : (e as Error).message})`, ...lastWords } }
+  } catch (e) { return { why: `Vaultite's server didn't answer (${(e as Error).name === "TimeoutError" ? "timed out" : messageOf(e)})`, ...lastWords } }
 }
 
 export const termsOf = (terms: string[]) => [...new Set(terms.filter((w) => !!w.trim()).map((w) => w.trim().slice(0, 100)))].slice(0, 100)
@@ -188,7 +200,7 @@ export async function dictate(sink: DictationSink, opts: DictateOptions): Promis
     engine = "apple"
     model = null
   }
-  try { if (!TEXT) await start() } catch (e) { return { ok: false, code: "helper", message: (e as Error).message } }
+  try { if (!TEXT) await start() } catch (e) { return { ok: false, code: "helper", message: messageOf(e) } }
   if (idle) { clearTimeout(idle); idle = null }
   const file = !!(process.env.VAULTITE_QUIET && (process.env.VAULTITE_DICTATION_FILE || TEXT))
   const mic = file ? undefined : pickMic(opts.microphone, await listedDevices())

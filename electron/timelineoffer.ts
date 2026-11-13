@@ -2,6 +2,7 @@
  *  to turn it on (its button or a spoken yes), never a dead end; on, it keeps from then, and says what came before wasn't. */
 import { answerOf } from "../core/desktop/yesno.ts"
 import type { Answer } from "./takeoverlogic.ts"
+import { messageOf } from "./browser/errors.ts"
 
 /** What needed it: a replay of the last seconds, or a skill from what they just did. */
 export type Needs = "replay" | "skill"
@@ -49,7 +50,7 @@ export async function offerTimeline(needs: Needs): Promise<Answer | null> {
     await host.turnOn()
     host.say(ON[needs])
   } catch (e) {
-    host.say(`Couldn't turn it on: ${(e as Error).message}`)
+    host.say(`Couldn't turn it on: ${messageOf(e)}`)
   }
   return how
 }

@@ -4,6 +4,7 @@ import crypto from "node:crypto"
 import { argon2 } from "./argon2.ts"
 import { CryptoEngine, Credentials, Kdbx, KdbxError, ProtectedValue, type KdbxEntry, type KdbxGroup } from "./kdbx/index.ts"
 import { getDomain } from "tldts-experimental"
+import { messageOf } from "./errors.ts"
 
 CryptoEngine.setArgon2Impl(argon2)
 
@@ -28,7 +29,7 @@ export async function loadKdbx(data: Uint8Array, password: string): Promise<Kdbx
   try {
     return await Kdbx.load(new Uint8Array(data).buffer, new Credentials(ProtectedValue.fromString(password)))
   } catch (e) {
-    const code = e instanceof KdbxError ? e.code : "", memory = code === "Unsupported" && /^argon2 memory/.test((e as Error).message)
+    const code = e instanceof KdbxError ? e.code : "", memory = code === "Unsupported" && /^argon2 memory/.test(messageOf(e))
     throw new Error(code === "InvalidKey" ? "the password doesn't open it" : memory ? "its key settings ask for more than 1 GB of memory to open, more than the app allows"
       : code === "Unsupported" ? "it's a KeePass file this app can't read (a key file or a hardware key?)"
       : "it isn't a KeePass database (.kdbx), or it's damaged")

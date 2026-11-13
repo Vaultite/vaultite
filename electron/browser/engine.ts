@@ -1,5 +1,6 @@
 // The browser engine: each feature adds itself here for every web session and page as they are made.
 import type { AuthInfo, AuthenticationResponseDetails, BaseWindow, OnBeforeRequestListenerDetails, Session, WebContents } from "electron"
+import { messageOf } from "./errors.ts"
 
 export type EngineWindow = BaseWindow & { readonly webContents: WebContents }
 /** What the engine needs of the app (main.ts hands it once, before any page opens). `localUrl`: whether an address is
@@ -287,7 +288,7 @@ const attached = new WeakSet<WebContents>()
 export async function cdp<T = Record<string, unknown>>(wc: WebContents, method: string, params: Record<string, unknown> = {}): Promise<T> {
   if (!attached.has(wc)) {
     try { wc.debugger.attach("1.3") } catch (e) {
-      if (!wc.debugger.isAttached()) throw new Error(`couldn't attach to the page (${(e as Error).message}): is its DevTools open?`)
+      if (!wc.debugger.isAttached()) throw new Error(`couldn't attach to the page (${messageOf(e)}): is its DevTools open?`)
     }
     attached.add(wc)
     wc.debugger.on("detach", () => attached.delete(wc))

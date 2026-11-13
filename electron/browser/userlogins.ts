@@ -9,6 +9,7 @@ import { filledLately, fillLogin } from "./fill.ts"
 import { saveOffer } from "./loginform.ts"
 import { ranNear, siteOf } from "./pagesecrets.ts"
 import { configured, entriesForUrl, samePassword, saveLogin, secretsOf } from "./passwords.ts"
+import { messageOf } from "./errors.ts"
 
 const PRELOAD = fileURLToPath(new URL("./userlogins-preload.cjs", import.meta.url))
 eachSession((s) => { s.registerPreloadScript({ type: "frame", filePath: PRELOAD }) })
@@ -77,7 +78,7 @@ handle("passwords:fill", async (win, id, entry) => {
   const row = (await entriesForUrl(url)).find((r) => r.id === String(entry))
   if (!row) throw new Error("that login isn't for this site")
   let s: Awaited<ReturnType<typeof secretsOf>>
-  try { s = await secretsOf(row.id) } catch (e) { if ((e as Error).message === "locked") return { locked: true }; throw e }
+  try { s = await secretsOf(row.id) } catch (e) { if (messageOf(e) === "locked") return { locked: true }; throw e }
   if (!s) throw new Error("that login is gone from your passwords")
   if (ranNear(p, siteOf(url))) throw new Error("an agent ran a script in a page of this site since it loaded, and could read what's filled: reload the page, then fill")
   return { filled: await fillLogin(p, row, s, { noForm: "this page has no login form to fill" }) }
@@ -128,7 +129,7 @@ function weigh(p: EnginePage) {
     if (Date.now() > h.until) { waiting.delete(p.wc); return }
     if (p.wc.isLoading() || shows(p, "password")) { h.timer = setTimeout(() => weigh(p), 2000); return }
     waiting.delete(p.wc)
-    void offer(p, h).catch((e) => console.error("vaultite: a sign-in wasn't offered to save:", (e as Error).message))
+    void offer(p, h).catch((e) => console.error("vaultite: a sign-in wasn't offered to save:", messageOf(e)))
   }, 1200)
 }
 

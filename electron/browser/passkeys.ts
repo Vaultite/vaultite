@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url"
 import { eachPage, eachSession, handle, tell, type EnginePage } from "./engine.ts"
 import { newKey, publicOf, qrText, run, type Progress } from "./hybrid.ts"
 import { prepareCreate, prepareGet, readCreate, readGet, WebAuthnError, type Prepared } from "./webauthn.ts"
+import { messageOf } from "./errors.ts"
 
 const PRELOAD = fileURLToPath(new URL("./passkeys-preload.cjs", import.meta.url))
 const SWIFT = fileURLToPath(new URL("./ble.swift", import.meta.url))
@@ -112,7 +113,7 @@ function listen(advert: Listener["advert"], state: Listener["state"]) {
 async function start() {
   let bin: string
   try { bin = await binary() } catch (e) {
-    console.error("vaultite:", (e as Error).message)
+    console.error("vaultite:", messageOf(e))
     for (const l of listeners) l.state("unavailable")
     return
   }

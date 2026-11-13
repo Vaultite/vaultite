@@ -11,6 +11,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { messageOf } from "./errors.ts"
 
 const PRELOAD = path.join(path.dirname(fileURLToPath(import.meta.url)), "extensions.preload.cjs")
 const sessions = new Map<Session, string>()
@@ -34,7 +35,7 @@ async function loadInto(s: Session, x: store.Installed) {
     await s.extensions.loadExtension(store.dirOf(x))
     failed.delete(x.id)
   } catch (e) {
-    failed.set(x.id, (e as Error).message)
+    failed.set(x.id, messageOf(e))
     console.error(`vaultite: couldn't load the extension ${x.name}:`, e)
   }
 }

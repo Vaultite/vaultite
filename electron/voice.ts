@@ -7,6 +7,7 @@ import { cloudVoice, type CloudConfig, type CloudVoice } from "./tts.ts"
 import { voice, type Voice } from "./voicelogic.ts"
 import type { Heard } from "../core/desktop/screenmarks.ts"
 import { voiceSwift } from "./swiftbuild.ts"
+import { messageOf } from "./browser/errors.ts"
 
 /** Its helper goes after this long unused (its process, and the audio device with it). */
 const IDLE_MS = 10 * 60_000
@@ -86,7 +87,7 @@ export function companionVoice(o: {
       })
       child = c
       return c
-    }, (e) => { console.warn(`voice: its helper isn't here (${(e as Error).message})`); return null }).finally(() => { starting = null })
+    }, (e) => { console.warn(`voice: its helper isn't here (${messageOf(e)})`); return null }).finally(() => { starting = null })
     return starting
   }
   function heard(m: { type?: string; n?: number; v?: number; at?: number; s?: number; why?: string; again?: number; name?: string; transport?: string; rate?: number }) {

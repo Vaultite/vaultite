@@ -6,6 +6,7 @@ import { run, swiftHelper } from "./swiftbuild.ts"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { messageOf } from "./browser/errors.ts"
 
 const TRANSCRIBE = { version: "v0.4.1", sha256: "fb5646e564036a6c49659e3efcf72eb567af20da31b8569045c9a08181d35126" }
 const ZIP_URL = `https://github.com/handy-computer/transcribe.cpp/releases/download/${TRANSCRIBE.version}/TranscribeCpp.xcframework.zip`
@@ -35,7 +36,7 @@ async function framework(): Promise<string | null> {
     if (!r.ok) throw new Error(r.err)
     return whole() ? dir : null
   } catch (e) {
-    console.warn(`dictation: Parakeet left out (transcribe.cpp ${TRANSCRIBE.version}: ${(e as Error).message})`)
+    console.warn(`dictation: Parakeet left out (transcribe.cpp ${TRANSCRIBE.version}: ${messageOf(e)})`)
     return null
   }
 }

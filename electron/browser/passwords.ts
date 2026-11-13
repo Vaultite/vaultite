@@ -7,6 +7,7 @@ import path from "node:path"
 import { allPages, handle, tellAll } from "./engine.ts"
 import type { Change, Full, Row } from "./kdbxedit.ts"
 import type { Otp } from "./keepass.ts"
+import { messageOf } from "./errors.ts"
 
 // (kdbx/ loads at the first use: a Mac that never opens the page never loads it)
 const kdbx = () => Promise.all([import("./keepass.ts"), import("./kdbxedit.ts")]).then(([k, e]) => ({ ...k, ...e }))
@@ -95,7 +96,7 @@ function write<T>(edit: (db: Awaited<ReturnType<typeof load>>["db"], k: Awaited<
       writeAtomic(c.file, saved)
       for (const s of k.sharesOf(db, c.file)) {
         if (!fs.existsSync(path.dirname(s.path))) continue
-        try { writeAtomic(s.path, new Uint8Array(await k.exportOf(db, s))) } catch (e) { console.error("vaultite: a KeeShare export wasn't written:", (e as Error).message) }
+        try { writeAtomic(s.path, new Uint8Array(await k.exportOf(db, s))) } catch (e) { console.error("vaultite: a KeeShare export wasn't written:", messageOf(e)) }
       }
       changed()
       return out
@@ -193,7 +194,7 @@ handle("passwords:status", async () => {
   const c = config()
   if (!c) return null
   const base = { file: c.file, locked: !isUnlocked(), touchId: touchId(), ...(c.key === null ? { held: true } : {}) }
-  try { await load(); return base } catch (e) { return { ...base, error: (e as Error).message } }
+  try { await load(); return base } catch (e) { return { ...base, error: messageOf(e) } }
 })
 handle("passwords:choose", async (win) => {
   const r = await dialog.showOpenDialog(win, { title: "Your passwords", buttonLabel: "Choose", properties: ["openFile"], filters: [{ name: "KeePass", extensions: ["kdbx", "*"] }] })
@@ -204,7 +205,7 @@ handle("passwords:set", async (_win, file, password) => {
   if (typeof file !== "string" || !path.isAbsolute(file) || typeof password !== "string" || !password) throw new Error("give a KeePass file and its password")
   let data: Buffer
   try { data = fs.readFileSync(file) } catch { return { error: "the file can't be read" } }
-  try { await (await kdbx()).loadKdbx(data, password) } catch (e) { return { error: (e as Error).message } }
+  try { await (await kdbx()).loadKdbx(data, password) } catch (e) { return { error: messageOf(e) } }
   const kept = keyring()
   const tmp = `${CONFIG()}.${process.pid}.tmp`
   fs.writeFileSync(tmp, JSON.stringify({ file, key: kept ? safeStorage.encryptString(password).toString("base64") : null }), { mode: 0o600 })
@@ -229,7 +230,7 @@ handle("passwords:unlock", async (_win, given) => {
     const kept = passwordOf(c)
     if (kept === null) {
       // (no keyring: what's typed is checked by opening the file, then held)
-      try { await (await kdbx()).loadKdbx(fs.readFileSync(c.file), given) } catch (e) { return { error: (e as Error).message } }
+      try { await (await kdbx()).loadKdbx(fs.readFileSync(c.file), given) } catch (e) { return { error: messageOf(e) } }
       held = { file: c.file, password: given }
     } else if (kept.length !== given.length || !crypto.timingSafeEqual(Buffer.from(kept), Buffer.from(given))) return { error: "that isn't its password" }
   } else {

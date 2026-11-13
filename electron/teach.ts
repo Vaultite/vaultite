@@ -5,6 +5,7 @@ import { clickedThing, keptValue, recentStretch, teachCommand, type Act, type As
 import type { Rect, Thing } from "../core/desktop/uimodel.ts"
 import type { WalkScene } from "../core/desktop/walks.ts"
 import { happened, queryTimeline, timelineOn } from "./timeline.ts"
+import { messageOf } from "./browser/errors.ts"
 
 type Point = { x: number; y: number }
 /** What helper.ts lends it. */
@@ -142,7 +143,7 @@ async function fromLast(as: As | undefined, title: string) {
 async function deliver(l: Parameters<TeachHost["deliver"]>[0]) {
   saving = true
   host!.draw()
-  try { host!.hint(await host!.deliver(l)) } catch (e) { host!.hint(`Couldn't make it: ${(e as Error).message.replace(/^nothing to learn from: /, "nothing to learn from, ")}`) } finally { saving = false; host!.draw() }
+  try { host!.hint(await host!.deliver(l)) } catch (e) { host!.hint(`Couldn't make it: ${messageOf(e).replace(/^nothing to learn from: /, "nothing to learn from, ")}`) } finally { saving = false; host!.draw() }
 }
 
 // ---------- what's done, on the thing it acted on

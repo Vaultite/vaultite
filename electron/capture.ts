@@ -4,6 +4,7 @@ import { screen } from "electron"
 import { type BoxAt, boxesSince, boxMoved, boxOf, captureCommand, type Narration, type Point, RECORD_MOST_MS, type Rect, type RegionScene, REPLAY_MS } from "../core/desktop/clips.ts"
 import { type Clip, holdVideo, onVideoStopped, REAL, saveClip, stopVideo, videoAt } from "./recorder.ts"
 import { happened, queryTimeline, timelineOn, timelineRefollow } from "./timeline.ts"
+import { messageOf } from "./browser/errors.ts"
 
 /** What helper.ts lends it. */
 export type CaptureHost = {
@@ -179,7 +180,7 @@ async function send(kind: Capture["kind"], at: number, narration: Narration[], p
     host!.hint(await host!.deliver({ kind, clip: c.file, ms: c.ms, width: c.width, height: c.height, frames: c.frames, narration: c.narration ?? narration,
       box: box ?? { x: 0, y: 0, width: c.width, height: c.height }, at, place, ...(end ? { end } : {}), ...(job ? { job } : {}) }))
   } catch (e) {
-    host!.hint(`Couldn't send it: ${(e as Error).message}`)
+    host!.hint(`Couldn't send it: ${messageOf(e)}`)
   } finally {
     saving = false
     host!.draw()

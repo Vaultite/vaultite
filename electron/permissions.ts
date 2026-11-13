@@ -7,6 +7,7 @@ import os from "node:os"
 import path from "node:path"
 import { PERMISSIONS, VAULT_PANE, actionOf, paneUrl, signingOf, type Permission, type PermissionDef, type PermissionState, type Signing } from "../core/permissions.ts"
 import { macAddon, type MacAddon } from "./macaddons.ts"
+import { messageOf } from "./browser/errors.ts"
 
 const FOLDERS: Record<string, () => string> = {
   desktop: () => app.getPath("desktop"), documents: () => app.getPath("documents"), downloads: () => app.getPath("downloads"),
@@ -21,7 +22,7 @@ let addon: MacAddon | null = null
 let loading: Promise<MacAddon | null> | null = null
 function native(): Promise<MacAddon | null> {
   if (addon) return Promise.resolve(addon)
-  loading ??= macAddon("macpermissions", path.join(app.getPath("userData"), "bin")).then((a) => (addon = a)).catch((e) => { console.warn(`permissions: no native helper (${(e as Error).message})`); return null })
+  loading ??= macAddon("macpermissions", path.join(app.getPath("userData"), "bin")).then((a) => (addon = a)).catch((e) => { console.warn(`permissions: no native helper (${messageOf(e)})`); return null })
   return loading
 }
 const ask = (cmd: string, more: Record<string, unknown> = {}) => addon?.call({ cmd, ...more })

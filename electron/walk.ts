@@ -7,6 +7,7 @@ import type { Rect, Thing } from "../core/desktop/uimodel.ts"
 import { countText, dwellAt, type Point, sentences, thingAt, walkCommand, type WalkItem, type WalkPlace, type WalkScene } from "../core/desktop/walks.ts"
 import { captureDir } from "./recorder.ts"
 import { happened, queryTimeline, timelineFilmed } from "./timeline.ts"
+import { messageOf } from "./browser/errors.ts"
 
 /** What helper.ts lends it. */
 export type WalkHost = {
@@ -92,7 +93,7 @@ export async function endWalk(send: boolean, why = ""): Promise<string> {
     // (nothing lost: it goes on, and done sends it again)
     w.phase = "on"
     host?.listening(true)
-    const said = `Couldn't send the walk: ${(e as Error).message}. Say done to try again`
+    const said = `Couldn't send the walk: ${messageOf(e)}. Say done to try again`
     say(said, TOLD_MS)
     return said
   }

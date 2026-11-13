@@ -3,6 +3,7 @@
 import { CODE } from "./identity.ts"
 import { pinOf } from "./storepolicy.ts"
 import type { UpdatesHost } from "./updates.ts"
+import { messageOf } from "./browser/errors.ts"
 
 type Host = Pick<UpdatesHost, "windows" | "ownsServer" | "nameOf">
 
@@ -34,6 +35,6 @@ export const serverCommit = (port: number, log: (line: string) => void) => fetch
   const v = VersionHere.pick({ commit: true }).safeParse(await r.json())
   return v.success ? v.data.commit ?? "" : ""
 }, (e) => {
-  log(`its server on port ${port} didn't say its commit: ${(e as Error).message}`)
+  log(`its server on port ${port} didn't say its commit: ${messageOf(e)}`)
   return ""
 })

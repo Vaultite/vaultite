@@ -12,12 +12,13 @@ import type { Applied, Update, UpdaterOptions } from "../core/update/updater.ts"
 import { BRANCH, CODE, HOST, SHELL } from "./identity.ts"
 import { readJson, SHA, type StoreHost, userData } from "./storehost.ts"
 import { policyFor, SHELL_EVERY, storeDir } from "./storepolicy.ts"
+import { messageOf } from "./browser/errors.ts"
 
 const exec = promisify(execFile)
 const ROOT = path.dirname(import.meta.dirname)
 const engine = () => Promise.all([import("../core/update/store.ts"), import("../core/update/updater.ts"), import("../core/update/plan.ts")])
   .then(([store, updater, plan]) => ({ ...store, ...updater, ...plan }))
-const errText = (e: unknown) => String((e as { stderr?: string }).stderr || (e as Error).message || e).trim().split("\n").slice(-3).join(" ").slice(0, 500)
+const errText = (e: unknown) => String((e as { stderr?: string }).stderr || messageOf(e) || e).trim().split("\n").slice(-3).join(" ").slice(0, 500)
 
 let opts: UpdaterOptions | null = null
 async function storeOf(h: StoreHost, recipe?: Recipe): Promise<RootStore> {

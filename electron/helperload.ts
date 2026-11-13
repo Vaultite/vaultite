@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url"
 import { leaseIn, storeRootOf } from "../core/update/lease.ts"
 import type { HelperHost } from "./helper.ts"
 import { CODE } from "./identity.ts"
+import { messageOf } from "./browser/errors.ts"
 
 type Helper = typeof import("./helper.ts")
 const ROOT = path.dirname(import.meta.dirname)
@@ -27,14 +28,14 @@ export function helperSlot(o: { now: () => Helper | null; set: (h: Helper) => vo
   async function swap(old: Helper, t: { root: string; commit: string }) {
     let next: Helper
     try { next = await import(pathToFileURL(path.join(t.root, "electron", "helper.ts")).href) as Helper } catch (e) {
-      return o.log(`helper: ${short(t.commit)} didn't load (${(e as Error).message}): it stays on ${short(at.commit)}`)
+      return o.log(`helper: ${short(t.commit)} didn't load (${messageOf(e)}): it stays on ${short(at.commit)}`)
     }
     old.stopHelper()
     let started = false
-    try { started = await next.startHelper(o.host) } catch (e) { o.log(`helper: ${short(t.commit)} didn't start: ${(e as Error).message}`) }
+    try { started = await next.startHelper(o.host) } catch (e) { o.log(`helper: ${short(t.commit)} didn't start: ${messageOf(e)}`) }
     if (!started) {
       try { next.stopHelper() } catch { /* half started */ }
-      await old.startHelper(o.host).catch((e) => o.log(`helper: ${short(at.commit)} didn't start again: ${(e as Error).message}`))
+      await old.startHelper(o.host).catch((e) => o.log(`helper: ${short(at.commit)} didn't start again: ${messageOf(e)}`))
       return o.log(`helper: stays on ${short(at.commit)} (${short(t.commit)} didn't take its lock or start)`)
     }
     o.set(next)
@@ -64,7 +65,7 @@ export function helperSlot(o: { now: () => Helper | null; set: (h: Helper) => vo
     commit: () => (o.now()?.helperOn() ? at.commit : null),
     reload(root, commit) {
       target = { root, commit }
-      waiting ??= run().catch((e) => o.log(`helper: the reload failed: ${(e as Error).message}`)).finally(() => { waiting = null })
+      waiting ??= run().catch((e) => o.log(`helper: the reload failed: ${messageOf(e)}`)).finally(() => { waiting = null })
     },
   }
   // (web/qa/helperreload.mjs: a reload onto a copy of the code, and what the process holds after it)

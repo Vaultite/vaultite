@@ -9,6 +9,7 @@ import { allPages, handle, tellAll, type EnginePage } from "./engine.ts"
 import type { Database, Entry } from "./keepass.ts"
 import { fillLogin } from "./fill.ts"
 import { register, verify, type Asserted, type Created, type Passkey } from "./presence.ts"
+import { messageOf } from "./errors.ts"
 
 // (its reader, kdbx/, loads at the first login: a Mac whose agents never log in never loads it)
 const keepass = () => import("./keepass.ts")
@@ -47,7 +48,7 @@ async function database(): Promise<Database> {
     try { password = safeStorage.decryptString(Buffer.from(c.key, "base64")) } catch { throw new Error(`${KEYRING} didn't give the file's password: ${SETUP}`) }
   }
   const { openDatabase } = await keepass()
-  try { return await openDatabase(data, password) } catch (e) { throw new Error(`the agents' passwords file doesn't open (${(e as Error).message}): ${SETUP}`) }
+  try { return await openDatabase(data, password) } catch (e) { throw new Error(`the agents' passwords file doesn't open (${messageOf(e)}): ${SETUP}`) }
 }
 
 // ---------- approvals: an entry without the agent-free tag needs the user's yes, given with their passkey ----------
@@ -184,7 +185,7 @@ handle("logins:status", async () => {
   try {
     const db = await database()
     return { file: c.file, ...kept, entries: db.entries.length, free: db.entries.filter((e) => e.free).length }
-  } catch (e) { return { file: c.file, ...kept, error: (e as Error).message } }
+  } catch (e) { return { file: c.file, ...kept, error: messageOf(e) } }
 })
 handle("logins:choose", async (win) => {
   const r = await dialog.showOpenDialog(win, { title: "Passwords for agents", buttonLabel: "Choose", properties: ["openFile"], filters: [{ name: "KeePass", extensions: ["kdbx"] }] })
@@ -197,7 +198,7 @@ handle("logins:set", async (_win, file, password) => {
   let data: Buffer
   try { data = fs.readFileSync(file) } catch { return { error: "the file can't be read" } }
   let db: Database
-  try { db = await (await keepass()).openDatabase(data, password) } catch (e) { return { error: (e as Error).message } }
+  try { db = await (await keepass()).openDatabase(data, password) } catch (e) { return { error: messageOf(e) } }
   const kept = keyring()
   const tmp = `${CONFIG()}.${process.pid}.tmp`
   fs.writeFileSync(tmp, JSON.stringify({ file, key: kept ? safeStorage.encryptString(password).toString("base64") : null }), { mode: 0o600 })

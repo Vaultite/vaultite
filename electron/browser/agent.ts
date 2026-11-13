@@ -8,6 +8,7 @@ import { docOf, exposed, filling, heldNear, markRan, scrub, scrubDeep, wasFilled
 import { clipboardKey, keyEvent } from "./keypress.ts"
 import { axLines, changes, INTERACTIVE, mainLines, type AXNode, type Refs } from "./axlines.ts"
 import { agentBusy } from "./agentbusy.ts"
+import { messageOf } from "./errors.ts"
 
 export const THUMB_WIDTH = 320
 
@@ -743,7 +744,7 @@ busyWhen(() => asks.size ? "a page waits on the user for an agent" : null, true)
 busyWhen((of) => agentBusy(of, { inFlight, lastStep, now: Date.now() }))
 export const serve = (name: `agent:${string}`, fn: Parameters<typeof handle>[1]) => handle(name, async (...a) => {
   inFlight++
-  try { return scrubDeep(await fn(...a)) } catch (e) { const why = scrub((e as Error).message ?? String(e)); failed(name, a, why); throw new Error(why) } finally { inFlight-- }
+  try { return scrubDeep(await fn(...a)) } catch (e) { const why = scrub(messageOf(e) ?? String(e)); failed(name, a, why); throw new Error(why) } finally { inFlight-- }
 })
 function failed(name: string, a: unknown[], why: string) {
   const p = allPages().find((x) => x.id === Number(a[1]))
