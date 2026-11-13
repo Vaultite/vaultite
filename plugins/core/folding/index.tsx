@@ -1,5 +1,5 @@
 import { FoldVertical, UnfoldVertical } from "lucide-react"
-import { currentEditor, definePlugin } from "@vaultite"
+import { currentEditor, definePlugin, trackSoon } from "@vaultite"
 
 // Folding: headings and list items fold from a chevron or commands, remembered per file on this
 // device. fold.ts loads when a note first needs it.
@@ -14,7 +14,7 @@ const run = (what: "foldAll" | "unfoldAll" | "toggleHere") => () => {
 }
 
 export default definePlugin({
-  editor: async (ctx) => (ctx.kind === "markdown" ? (await load()).foldingExtension(ctx.path) : []),
+  editor: async (ctx) => (ctx.kind === "markdown" ? (await load()).foldingExtension(ctx.path, trackSoon) : []),
   commands: [
     { id: "folding:toggle", name: "Toggle fold on the current line", keys: ["Mod+Alt+["], when: () => !!note(), run: run("toggleHere") },
     { id: "folding:fold-all", name: "Fold all headings and lists", keys: ["Mod+Alt+Shift+["], when: () => !!note(), run: run("foldAll"), icon: FoldVertical },

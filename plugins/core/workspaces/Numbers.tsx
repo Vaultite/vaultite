@@ -4,7 +4,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { Check, ChevronDown } from "lucide-react"
 import { Mark as Look } from "./Mark"
-import { cn, colorVar, commandKeys, getStore, menuFor, onTabLayoutChange, sidebarsChanged, tabsInWorkspace, useDismiss, useDrag, useDropHit, useDropTarget, trackSave, type DragItem, type SidebarCtx, type Store } from "@vaultite"
+import { cn, colorVar, commandKeys, getStore, menuFor, onTabLayoutChange, sidebarsChanged, tabsInWorkspace, useDismiss, useDrag, useDropHit, useDropTarget, trackSoon, type DragItem, type SidebarCtx, type Store } from "@vaultite"
 import {
   cycle, emit, getRenaming, label, leaving, lit as litNow, lookOf, named, patch, saveTabs, saveTabsSoon, savePending, sendTo, setRenaming, slotMenu, slots,
   SLOTS, switchTo, sync, tookTabs, used, useVersion, type Sent,
@@ -156,7 +156,7 @@ export function Background({ store }: { store: Store }) {
   useEffect(() => {
     // (before the first sync: this device's own tabs are set aside, not overwritten, till Workspaces is off again)
     if (tabsInWorkspace(true)) tookTabs()
-    const off = onTabLayoutChange(saveTabsSoon), unsaved = trackSave("the tabs' save", savePending)
+    const off = onTabLayoutChange(saveTabsSoon), unsaved = trackSoon("tabs", savePending, true)
     addEventListener("pagehide", leaving)
     return () => { off(); unsaved(); removeEventListener("pagehide", leaving); if (savePending()) saveTabs() }
   }, [])

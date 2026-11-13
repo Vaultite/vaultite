@@ -4,7 +4,6 @@ import { codeFolding, ensureSyntaxTree, foldEffect, foldedRanges, foldState, syn
 import { type EditorState, type Extension, type StateEffect } from "@codemirror/state"
 import { EditorView, gutter, GutterMarker, gutters, ViewPlugin, type ViewUpdate } from "@codemirror/view"
 import type { SyntaxNode } from "@lezer/common"
-import { trackSave } from "@vaultite"
 
 type Range = { from: number; to: number }
 /** Each heading level's line height, in the editor's em (index.css: .cm-h1...), so a chevron sits beside its text. */
@@ -240,11 +239,12 @@ function restore(view: EditorView, path: string) {
   if (effects.length) view.dispatch({ effects })
 }
 
-function remember(path: string) {
+type Track = (what: string, on: () => boolean, save: boolean) => () => void
+function remember(path: string, track: Track) {
   return ViewPlugin.fromClass(class {
     timer: ReturnType<typeof setTimeout> | null = null
     view: EditorView
-    saving = trackSave("the folds' save", () => this.timer !== null)
+    saving = track("folds", () => this.timer !== null, true)
     constructor(view: EditorView) {
       this.view = view
       // (not while the editor is being set up: a moment after)
@@ -301,12 +301,12 @@ const theme = EditorView.theme({
   "&.vau-narrow .cm-gutters:not(:has(.cm-gutter:not(.cm-vau-fold-gutter)))": { display: "none !important" },
 })
 
-/** What the plugin adds to a note's editor (`path`: its file, to remember its folds). */
-export function foldingExtension(path?: string): Extension {
+/** What the plugin adds to a note's editor (`path`: its file, to remember its folds; `track`: its saves, for QA). */
+export function foldingExtension(path?: string, track: Track = () => () => {}): Extension {
   // A device without a pointer that
   // rests (a phone) has no chevrons to show: what's folded (Fold all, a fold kept from a computer) opens from its "…".
   const pointer = typeof matchMedia === "function" && matchMedia("(hover: hover) and (pointer: fine)").matches
   // The gutter is drawn in the margin (theme), not beside the text: not "fixed", or CodeMirror counts its width as a
   // margin over the text's left edge and hides what's anchored there (the slash menu of a "/" at a line's start).
-  return [codeFolding({ placeholderText: "…" }), pointer ? [chevrons, gutters({ fixed: false }), hover, narrow] : [], theme, path ? remember(path) : []]
+  return [codeFolding({ placeholderText: "…" }), pointer ? [chevrons, gutters({ fixed: false }), hover, narrow] : [], theme, path ? remember(path, track) : []]
 }

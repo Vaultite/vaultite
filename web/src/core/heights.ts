@@ -3,7 +3,7 @@
 
 import { useLayoutEffect, useRef } from "react"
 import { trace } from "@/core/trace"
-import { trackSave } from "@/core/unsaved"
+import { trackSoon } from "@/core/unsaved"
 
 type Seen = { w: number; h: number }
 const KEPT = "vaultite.heights"
@@ -23,7 +23,6 @@ function all() {
 }
 
 let saving: ReturnType<typeof setTimeout> | null = null
-const noting = new Set<() => void>()
 const save = () => {
   if (saving) clearTimeout(saving)
   saving = null
@@ -116,7 +115,6 @@ export function holdHeight(el: HTMLElement, key: string | (() => string), anyWid
   let size: { w: number; h: number } | null = null
   const record = () => {
     note = null
-    noting.delete(record)
     // (a hidden tab measures nothing: not a height to come back to; a block that draws nothing is 0 tall, and is one)
     if (h || !size || size.w <= 0 || !el.isConnected || busy(el)) return
     remember(at(), size.w, size.h)
@@ -167,7 +165,6 @@ export function holdHeight(el: HTMLElement, key: string | (() => string), anyWid
     if (h) return
     if (note) clearTimeout(note)
     note = setTimeout(record, 300)
-    noting.add(record)
   })
   sizes.observe(el)
   // (a fold the user opens or shuts inside: what it holds now is its height, not what came in last time; a click,
@@ -204,7 +201,7 @@ function allCounts() {
   return counts
 }
 let savingCounts: ReturnType<typeof setTimeout> | null = null
-trackSave("a height's save", () => saving !== null || savingCounts !== null || noting.size > 0)
+trackSoon("heights", () => saving !== null || savingCounts !== null, true)
 
 /** How many rows to draw while list `key` loads: `now` (how many it has; undefined while loading) is kept for next time,
  *  and while loading, what it had last time, at most `most` (`first`: never seen). */

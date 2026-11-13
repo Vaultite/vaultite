@@ -338,7 +338,7 @@ let pending: Pending | null = null
 let pendingTimer = 0
 const pendingSubs = signal()
 const WAIT = 1000
-trackSoon("a key sequence's command", () => !!pending?.exact)
+trackSoon("key sequence", () => !!pending?.exact)
 function setPending(p: Pending | null) {
   clearTimeout(pendingTimer)
   pending = p

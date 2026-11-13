@@ -6,7 +6,7 @@ import { get, send } from "@/core/http"
 import { hydratePrefs } from "@/core/prefs"
 import { errorText, notifyError } from "@/core/notify"
 import { span } from "@/core/spans"
-import { trackSave, trackSoon } from "@/core/unsaved"
+import { trackSoon } from "@/core/unsaved"
 import { setHere } from "@/core/here"
 import { usePane } from "@/core/pane"
 import { setVaultAppearance, type VaultAppearance } from "@/core/appearance"
@@ -169,7 +169,6 @@ function recall(path: string) {
   return answers.get(path)
 }
 let keeping: ReturnType<typeof setTimeout> | null = null
-trackSave("the answers' save", () => keeping !== null)
 function remember(path: string, data: unknown, json: string) {
   const same = answers.get(path)?.json === json
   answers.delete(path)
@@ -399,7 +398,7 @@ export const reload = () => load()
 const GAP = 1000
 let lastLoad = 0
 let soon: ReturnType<typeof setTimeout> | null = null
-trackSoon("the store's reload", () => soon !== null)
+trackSoon("store reload", () => soon !== null)
 function loadSoon() {
   if (soon) return
   const wait = lastLoad + GAP - Date.now()

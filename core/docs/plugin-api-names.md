@@ -746,8 +746,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `touchTabsSeen()`: The tab on screen is being looked at (the window is in view): its panes stamped as seen now.
 - `trace(topic, event)`: Something the app did, under `topic`: plain values only, never a file's text.
 - `TraceEvent`
-- `trackSave(what, on)`: A debounced save of this device's state (a place, folds): QA's `saved()` waits while `on()`.
-- `trackSoon(what, on)`: What the page will do by itself in a moment (a hint's delay, a held scroll): QA's `idle()` waits while `on()`.
+- `trackSoon(what, on, save?)`: What the page will do by itself in a moment (a hint's delay; `save`: a debounced save): QA waits while `on()`.
 - `trackUnderway(on)`: Something under way in the page that it going away would cut (a recording, dictation): `on` says while it is.
 - `treeShownItems({ reveal }?)`: The tree's panel, tab and empty-space menus: hidden files, archived ones when there are archive folders, and revealing the open file (the heading's buttons have the rest: new, sort, collapse);…
 - `typedValue(type, v)`: A value as its type sorts and compares it: numbers and dates as numbers (ms), checkboxes as true or false; undefined when the type doesn't change how it compares.

@@ -226,7 +226,7 @@ export { Frame } from "@/components/ChoicePictures"
 export { useSheetGuard } from "@/components/DetailSheet"
 // Something under way (a recording) that a reload into a new build or the app's restart waits for; what's due in a
 // moment (a debounced save) that only QA waits for.
-export { trackSave, trackSoon, trackUnderway } from "@/core/unsaved"
+export { trackSoon, trackUnderway } from "@/core/unsaved"
 /** Buttons a sheet's content puts in its header, left of Close; and a tab's target drawn in a sheet (a glance). */
 export { SheetActions } from "@/components/DetailSheet"
 export { TargetView } from "@/components/TargetView"

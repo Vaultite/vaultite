@@ -14,7 +14,7 @@ export const KeyHints = memo(function KeyHints() {
   const [shown, setShown] = useStateFor([!!steps], () => false)
   useEffect(() => {
     if (!steps) return
-    const off = trackSoon("the key hints' delay", () => true)
+    const off = trackSoon("key hints", () => true)
     const t = setTimeout(() => { off(); setShown(true) }, DELAY)
     return () => { off(); clearTimeout(t) }
   }, [steps, setShown])

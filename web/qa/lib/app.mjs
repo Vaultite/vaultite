@@ -64,7 +64,7 @@ export function app(page) {
   const sees = (file, act, { timeout = 10_000 } = {}) =>
     hearing((url, payload) => { const paths = changedPaths(url, payload); return paths === null || !!paths?.includes(file) }, act, timeout, `the app didn't hear ${file} change`)
 
-  /** idle, and the debounced saves done (trackSave): before a reload or reading localStorage. */
+  /** idle, and the debounced saves done (trackSoon's `save`): before a reload or reading localStorage. */
   const saved = (o = {}) => idle({ timeout: 15_000, ...o, saves: true })
 
   const hears = (socket, act, { timeout = 10_000 } = {}) => hearing((url) => socket.test(url), act, timeout, `the page heard nothing on ${socket}`)

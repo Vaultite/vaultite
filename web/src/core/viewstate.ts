@@ -1,7 +1,7 @@
 // Where you left a place (scroll, cursor, Properties open), per place, device and vault, so coming back shows it as it
 // was. A text file's place is also its top line: the editor guesses unseen heights, so a scrollTop can drift.
 import { getStore } from "@/core/data"
-import { trackSave } from "@/core/unsaved"
+import { trackSoon } from "@/core/unsaved"
 
 type Place = { y?: number; props?: boolean; at?: [number, number]
   /** The body's line at the top (0-based) and how far into it (a share of its height). */
@@ -67,7 +67,7 @@ export const keepScroll = (key: string, y: number, box: HTMLElement | null = nul
   }, 200))
 }
 const settling = new Map<HTMLElement | null, ReturnType<typeof setTimeout>>()
-trackSave("a place's save", () => saving !== null || settling.size > 0)
+trackSoon("places", () => saving !== null || settling.size > 0, true)
 
 /** A file or folder was renamed or moved: its places go with it, so a tab that follows it (a report archived by a reply
  *  sent from it) stays where it was read. */
