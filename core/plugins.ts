@@ -18,6 +18,7 @@ import type { OpEntry, OpKind } from "./contracts/ops.ts"
 import { defineOp, entryOf, type Op, type OpDef, type Params, type OpCtx, type OpDid, type OpImage, pluginOpsDoc, type Who, whoOf } from "./ops.ts"
 import { type Job, type When, whenProblems } from "./schedule.ts"
 import { ownerRefusal } from "./owner.ts"
+import { logger } from "./log.ts"
 export { gitEnv } from "./gitenv.ts"
 export { logger } from "./log.ts"
 export { readableImage } from "./heic.ts"
@@ -222,14 +223,15 @@ export type BlockCtx = { vault: Vault; path: string; fm: Item; body: string; opt
   source: (...things: unknown[]) => void }
 /** A process on this machine: its parent, its terminal's foreground group, when it started (epoch ms), its command line. */
 export type Proc = { ppid: number; tpgid: number; started: number; args: string }
-let procs: [number, Promise<Map<number, Proc>>] | null = null
+let procs: [number, Promise<Map<number, Proc>>] | null = null, whole: Map<number, Proc> | null = null
+const psLog = logger("processes")
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 /** Every process on this machine by pid, from one `ps` shared by every caller of the last `maxAge` ms. */
 export function processTable(maxAge = 1000): Promise<Map<number, Proc>> {
   if (procs && Date.now() - procs[0] < maxAge) return procs[1]
   const p = process.platform === "win32" ? windowsProcesses() : new Promise<Map<number, Proc>>((resolve) => {
     // (LC_ALL=C: procps writes lstart's day and month in the locale's language, which the pattern wouldn't read)
-    execFile("ps", ["-Aww", "-o", "pid=,ppid=,tpgid=,lstart=,args="], { timeout: 3000, maxBuffer: 16 << 20, env: { ...process.env, LC_ALL: "C" } }, (_err, out) => {
+    execFile("ps", ["-Aww", "-o", "pid=,ppid=,tpgid=,lstart=,args="], { timeout: 15_000, maxBuffer: 16 << 20, env: { ...process.env, LC_ALL: "C" } }, (err, out) => {
       const map = new Map<number, Proc>()
       for (const line of String(out ?? "").split("\n")) {
         const m = /^\s*(\d+)\s+(\d+)\s+(-?\d+)\s+\w{3}\s+(\w{3})\s+(\d+)\s+(\d+):(\d+):(\d+)\s+(\d{4})\s+(.*)$/.exec(line)
@@ -237,7 +239,10 @@ export function processTable(maxAge = 1000): Promise<Map<number, Proc>> {
         const started = +new Date(Number(m[9]), MONTHS.indexOf(m[4]), Number(m[5]), Number(m[6]), Number(m[7]), Number(m[8]))
         map.set(Number(m[1]), { ppid: Number(m[2]), tpgid: Number(m[3]), started, args: m[10] })
       }
-      resolve(map)
+      if (!err) return resolve(whole = map)
+      if (procs?.[1] === p) procs = null
+      psLog.warn("ps failed: its table may be cut short, the last whole one stands in", { error: err.message, read: map.size, last: whole?.size })
+      resolve(whole ?? map)
     })
   })
   procs = [Date.now(), p]

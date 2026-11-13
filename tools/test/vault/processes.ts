@@ -59,6 +59,12 @@ console.log((await sh.ask(${JSON.stringify(win ? "'asked'" : "echo asked")}, 300
 
   // The process table: this process in it, with its parent and command line.
   const { processTable } = await import("../../../core/plugins.ts")
-  const me = (await processTable(0)).get(process.pid)
-  check("processes: this one is in the table, its parent and command", !!me && me.ppid === process.ppid && me.args.includes("test_vault"), me)
+  const table = await processTable(0), me = table.get(process.pid)
+  check("processes: this one is in the table, its parent and command", !!me && me.ppid === process.ppid && me.args.includes("test_vault"), { me, pid: process.pid, of: table.size })
+  if (!win) {
+    const was = process.env.PATH
+    process.env.PATH = "/nonexistent"
+    const cut = await processTable(0).finally(() => { process.env.PATH = was })
+    check("processes: a ps that fails gives the last whole table, never an empty or cut one", cut.has(process.pid) && cut.size === table.size, [cut.size, table.size])
+  }
 }
