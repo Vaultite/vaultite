@@ -60,6 +60,8 @@ export type DragItem = {
 }
 type Answer = { data: unknown; hint?: string; weak?: boolean; stay?: boolean; drop: (item: DragItem) => void }
 type Hit = Answer & { target: string }
+export type DropId<H> = string & { readonly hit?: H }
+export const hitOn = <H,>(hit: Hit | null | undefined, id: DropId<H>): H | null => (hit?.target === id ? hit.data as H : null)
 export type Drag = { item: DragItem; x: number; y: number; hit: Hit | null; finger?: boolean; origin?: Origin }
 export type Origin = { x: number; y: number; rect: DOMRect }
 
@@ -96,11 +98,11 @@ export type DropTarget<H> = {
   drop: (item: DragItem, data: H) => void
   end?: () => void
 }
-type Target = { at: (item: DragItem, x: number, y: number, el: Element | null) => Answer | null; end?: () => void }
-const targets = new Map<string, Target>()
+type Registered = { at: (item: DragItem, x: number, y: number, el: Element | null) => Answer | null; end?: () => void }
+const targets = new Map<string, Registered>()
 
-export function addDropTarget<H>(id: string, t: DropTarget<H>) {
-  const target: Target = {
+export function addDropTarget<H>(id: DropId<H>, t: DropTarget<H>) {
+  const target: Registered = {
     at: (item, x, y, el) => { const a = t.at(item, x, y, el); return a && { ...a, drop: (it) => t.drop(it, a.data) } },
     end: t.end,
   }
@@ -110,7 +112,7 @@ export function addDropTarget<H>(id: string, t: DropTarget<H>) {
 
 /** Take drops while mounted. `at` answers what a drop at (x, y) would do (`hint`: a word on the item, like "Unpin";
  *  `weak`: taken only when no other target answers; `stay`: where it is already, a Hit's); `drop` does it. */
-export function useDropTarget<H>(id: string, at: (item: DragItem, x: number, y: number, el: Element | null) => H | null,
+export function useDropTarget<H>(id: DropId<H>, at: (item: DragItem, x: number, y: number, el: Element | null) => H | null,
   drop: (item: DragItem, hit: H) => void, opts: { hint?: (hit: H) => string | undefined; weak?: (hit: H) => boolean; stay?: (hit: H) => boolean; end?: () => void } = {}) {
   const ref = useRef({ at, drop, opts })
   useEffect(() => { ref.current = { at, drop, opts } })
@@ -203,16 +205,16 @@ export function rehit() { if (drag) setDrag({ ...drag, hit: hitAt(drag.item, dra
 
 /** What a drop on this target would do right now, while something is dragged over it: the same object while the answer
  *  is (targets answer anew on every move), so it's drawn again only when that changes. */
-export function useDropHit<H>(id: string): H | null {
-  const last = useRef<{ raw: unknown; key: string; data: unknown }>({ raw: null, key: "null", data: null })
+export function useDropHit<H>(id: DropId<H>): H | null {
+  const last = useRef<{ raw: H | null; key: string; data: H | null }>({ raw: null, key: "null", data: null })
   return subs.use(() => {
-    const raw = drag?.hit?.target === id ? drag.hit.data : null
+    const raw = hitOn(drag?.hit, id)
     const l = last.current
     if (raw !== l.raw) {
       const key = raw == null ? "null" : JSON.stringify(raw)
       last.current = key === l.key ? { ...l, raw } : { raw, key, data: raw }
     }
-    return last.current.data as H | null
+    return last.current.data
   })
 }
 

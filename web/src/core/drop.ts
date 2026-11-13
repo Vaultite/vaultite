@@ -1,4 +1,4 @@
-import { laidOut, rehit, type DragItem } from "@/core/drag"
+import { laidOut, rehit, type DragItem, type DropId } from "@/core/drag"
 import { isSplit, outsideGroups, panesOf, runOf, type TabList } from "../../../core/layout.ts"
 import {
   canOpenAt, canOpenAtIndex, canPaneIntoPane, canPlaceAmong, canPlaceTab, canTabIntoPane, openAllAt, openAllAtIndex, openAmong, openAt, openAtIndex, paneIntoPane, paneToTab, placeAmong, placeTab, placeTabs,
@@ -13,7 +13,7 @@ import { INCOMING } from "@/core/slide"
 export type Drop = { kind: "list"; index: number; group: string | null; home?: boolean } | { kind: "pane"; pane: string; zone: Zone }
   | { kind: "places"; pane: string; index: number }
 const loneTab = (id: string) => { const t = tabById(id); return t && !isSplit(t.root) && t.root.to !== "new" ? t.root : null }
-export const PANES = "panes"
+export const PANES: DropId<Drop> = "panes"
 
 const lonePane = (id: string) => { const t = paneTab(id); return t && panesOf(t).length === 1 ? t : null }
 /** A place in a list of tabs as a drop target answers it: what a drop there does, or, where the tabs or group dragged
