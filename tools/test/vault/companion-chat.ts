@@ -26,7 +26,7 @@ async function keeper(sock: string) {
   p.stderr!.on("data", (d) => { err += d })
   const up = await waitFor<boolean | "ended">(() => p.exitCode !== null || p.signalCode !== null ? "ended" : new Promise<boolean>((r) => { const c = net.connect(sock); c.on("connect", () => { c.destroy(); r(true) }); c.on("error", () => r(false)) }), 60_000, 100)
   if (up !== true) throw new Error(`the chat keeper didn't start: ${err}`)
-  return { stop: async () => { if (p.exitCode === null && p.signalCode === null) { p.kill("SIGTERM"); await new Promise((r) => p.once("exit", r)) } fs.rmSync(sock, { force: true }); fs.rmSync(`${sock}.pid`, { force: true }) } }
+  return { signal: (sig: NodeJS.Signals) => p.kill(sig), alive: () => p.exitCode === null && p.signalCode === null, stop: async () => { if (p.exitCode === null && p.signalCode === null) { p.kill("SIGTERM"); await new Promise((r) => p.once("exit", r)) } fs.rmSync(sock, { force: true }); fs.rmSync(`${sock}.pid`, { force: true }) } }
 }
 
 /** A line-JSON client of a keeper, as the server is: requests answered by `re`, the rest its events. */
@@ -92,6 +92,12 @@ export default async ($: VaultTest) => {
       check("chat keeper: a tool call not answered is told again to the next server that follows, whose answer reaches the session",
         !started.error && call?.name === "shout" && call.args?.text === "hi" && again?.call === call.call && r.entries?.some((e: Any) => e.k === "text" && e.text === "Called: HI"), [started, call, again, r.entries])
       await w.ask("stop", { id })
+      if (process.platform !== "win32") {
+        k.signal("SIGHUP"); k.signal("SIGINT")
+        await new Promise((r) => setTimeout(r, 300))
+        check("chat keeper: outlives its terminal closing (SIGHUP) and a Ctrl+C (SIGINT), its sessions with it", k.alive() && !!(await w.ask("list")).sessions)
+        if (!k.alive()) throw new Error("the chat keeper ended on SIGHUP or SIGINT")
+      }
       // Ended by a SIGTERM (a reboot) mid-turn: its sessions end unheard, so the server takes their turns up again after.
       const cut = crypto.randomUUID()
       await w.ask("start", { spec: { id: cut, resume: false, cwd: VAULT, env: {} }, prompt: "slow" })
