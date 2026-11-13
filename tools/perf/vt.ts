@@ -63,7 +63,6 @@ async function time<T>(fn: () => Promise<T> | T) { const t0 = performance.now();
 const results: Record<string, Record<string, number>> = {}
 const put = (metric: string, engine: string, v: number) => { (results[metric] ??= {})[engine] = Math.round(v * 100) / 100 }
 
-// Throughput: each corpus into a new screen, in pty-sized pieces.
 for (const [name, make] of Object.entries(CORPORA)) {
   const data = make(), bytes = Buffer.byteLength(data), parts = pieces(data)
   for (const e of ENGINES) {
@@ -78,7 +77,6 @@ for (const [name, make] of Object.entries(CORPORA)) {
   }
 }
 
-// A 10k-line history: reflow, snapshot, captures, the cursor's line.
 const history = pieces(fill(10000))
 for (const e of ENGINES) {
   const s = e.make(COLS, ROWS, 10000)
@@ -90,16 +88,13 @@ for (const e of ENGINES) {
   put("snapshot 10k ms", e.name, median(await Promise.all(Array.from({ length: RUNS }, async () => time(() => { snap = s.serialize() })))))
   put("snapshot 10k KB", e.name, Buffer.byteLength(snap) / 1024)
   put("capture all ms", e.name, median(await Promise.all(Array.from({ length: RUNS }, () => time(() => s.text(null))))))
-  // (small ones a hundred at a time, warmed)
   const each = async (fn: () => unknown) => { for (let i = 0; i < 100; i++) fn(); const ms: number[] = []; for (let r = 0; r < RUNS; r++) ms.push(await time(() => { for (let i = 0; i < 100; i++) fn() }) / 100); return median(ms) }
   put("capture 40 ms", e.name, await each(() => s.text(40)))
   put("input line µs", e.name, 1000 * await each(() => s.input()))
-  // Replaying it: the snapshot into a new screen (what a page or an adopting server does).
   put("replay 10k ms", e.name, median(await Promise.all(Array.from({ length: RUNS }, async () => { const r = e.make(COLS, ROWS, 10000); const t = await time(() => feed(r, pieces(snap))); r.dispose(); return t }))))
   s.dispose()
 }
 
-// Memory: a screen with 0, 10k and 100k lines written (history kept up to 10k), heap and WebAssembly memory.
 for (const lines of [0, 10000, 100000]) {
   const data = lines ? pieces(fill(lines)) : []
   for (const e of ENGINES) {
@@ -114,7 +109,6 @@ for (const lines of [0, 10000, 100000]) {
   }
 }
 
-// 50 idle agents (a spinner at 15 Hz) and 5 floods (64 KB a tick), for a few seconds: CPU per second of it.
 const SECS = QUICK ? 2 : 5, TICK = 1000 / 15, FLOOD = fill(600).slice(0, 65536)
 for (const e of ENGINES) {
   const idle = Array.from({ length: 50 }, () => e.make(COLS, ROWS, 10000)), floods = Array.from({ length: 5 }, () => e.make(COLS, ROWS, 10000))

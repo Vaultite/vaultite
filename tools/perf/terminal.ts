@@ -21,14 +21,11 @@ const PORT = await freePort()
 const BASE = `http://127.0.0.1:${PORT}`, WSBASE = `ws://127.0.0.1:${PORT}`
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-termperf-"))
 const VAULT = path.join(tmp, "vault"), LOCAL = path.join(tmp, "local"), ZDOT = path.join(tmp, "zdot")
-/** The server's terminal server (termd): its socket, and its files (.pid) beside it; a checkout before this one's
- *  protocol (--root, for a baseline) runs the one before. */
 const KEEPERS = [PROTOCOL, PROTOCOL - 1].map((v) => serverFiles(backendName(PORT), v))
 const keeper = () => KEEPERS.find((f) => fs.existsSync(`${f.files}.pid`)) ?? KEEPERS[0]
 
 const step = (what: string) => console.error(`${new Date().toISOString().slice(11, 19)} ${what}`)
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
-/** A process's CPU time so far (user + system), in ms; 0 when it's gone. */
 function cpu(pid: number | undefined) {
   if (!pid) return 0
   try {
@@ -38,7 +35,6 @@ function cpu(pid: number | undefined) {
 }
 const keeperPid = () => { try { return Number(fs.readFileSync(`${keeper().files}.pid`, "utf8")) || undefined } catch { return undefined } }
 let server: ChildProcess
-/** CPU the server and the keeper spend in `fn`. */
 async function cpuOf<T>(fn: () => Promise<T>): Promise<{ r: T; server: number; keeper: number }> {
   const s0 = cpu(server.pid), k0 = cpu(keeperPid())
   const r = await fn()
@@ -69,7 +65,6 @@ async function boot() {
   }
 }
 
-/** Stops the server and its keeper (CLAUDE.md: by port and pid, never by pattern). */
 async function cleanup() {
   const k = keeperPid()
   if (server && server.exitCode === null) { const gone = new Promise((r) => server.once("exit", r)); server.kill(); await Promise.race([gone, sleep(5000)]) }
@@ -77,7 +72,6 @@ async function cleanup() {
   fs.rmSync(tmp, { recursive: true, force: true })
 }
 
-/** A page's socket on a shell: what it printed (decoded), when each message came, and waits on it. */
 class Term {
   ws: WebSocket
   out = ""
@@ -106,16 +100,13 @@ class Term {
       if (this.out.length > 1 << 21) { this.base += this.out.length - (1 << 16); this.out = this.out.slice(-(1 << 16)) }
       this.out += s
       this.onChunk?.(s, at)
-      // (only what's new and a little before it is looked at: scanning all of it each time would make this the bottleneck)
       const end = this.base + this.out.length
       this.waiters = this.waiters.filter((w) => { if (w.test(end - s.length)) { w.ok(); return false } return true })
     })
   }
   ready() { return new Promise<void>((ok, fail) => { this.ws.once("open", () => ok()); this.ws.once("error", fail) }) }
-  /** Resolves once what it printed from now on passes `test`. */
   until(test: RegExp | string, ms = 20000) {
     const from = this.base + this.out.length
-    /** Whether it's in what was printed since `from`, looking only from a little before `fresh` (where the new part starts). */
     const t = (fresh: number) => {
       const at = Math.max(0, Math.max(from, fresh - 4096) - this.base)
       return typeof test === "string" ? this.out.indexOf(test, at) >= 0 : test.test(this.out.slice(at))
@@ -126,7 +117,6 @@ class Term {
     })
   }
   type(s: string) { this.ws.send(Buffer.from(s), { binary: true }) }
-  /** Runs a command and waits for it to end (a marker it prints after, computed so the typed line doesn't match). */
   async run(cmd: string, ms = 60000) {
     const n = Math.floor(Math.random() * 1e6)
     const done = this.until(`END${n + 1}`, ms)
@@ -139,7 +129,6 @@ class Term {
 let seq = 0
 const newId = () => `perf${Date.now().toString(36)}${seq++}`
 
-/** A new shell, from the socket's first byte to a command's answer. */
 async function openOne(id = newId()) {
   const t = new Term(id)
   await t.ready()
@@ -165,7 +154,6 @@ async function echo(t: Term, n: number) {
   return ms
 }
 
-/** The same straight to the keeper's socket (attached to the same shell): the path without the server. */
 async function echoKeeper(id: string, n: number) {
   const sock = net.connect(keeper().socket)
   await new Promise((r) => sock.once("connect", r))
@@ -194,7 +182,6 @@ async function echoKeeper(id: string, n: number) {
   return ms
 }
 
-/** A full-screen program redrawing at 60 fps: each frame says when it was written; how late each arrives here. */
 const TUI = `import sys,time
 w=sys.stdout
 for f in range(240):
@@ -209,7 +196,6 @@ try {
   await boot()
   if (flag("page-only")) throw "page"
   step("opening")
-  // Opening: new shells (no spare), then ones the page's list socket keeps ready.
   const cold: Record<string, number>[] = []
   for (let i = 0; i < 5; i++) { const { t } = await openOne(); cold.push(t.times); await t.close() }
   const watcher = new WebSocket(`${WSBASE}/api/terminals`)
@@ -221,7 +207,6 @@ try {
   result.open = { new: opening(cold), spare: opening(warm) }
 
   step("typing")
-  // Typing.
   const { id, t } = await openOne()
   await t.run("clear")
   await echo(t, 20) // warm-up
@@ -231,7 +216,6 @@ try {
   result.echoKeeper = { ...stats(k.r), keeperCpuPerKey: +(k.keeper / RUNS).toFixed(3) }
 
   step("bursts")
-  // Output in a burst: 2 MB of lines, and many short lines.
   for (const [name, cmd] of [["yes 2MB", "yes | head -c 2000000"], ["seq 100k", "seq 1 100000"]] as const) {
     const m0 = t.msgs, b0 = t.bytes, t0 = performance.now()
     const r = await cpuOf(() => t.run(cmd, 120000))
@@ -242,7 +226,6 @@ try {
   }
 
   step("typing while busy")
-  // Typing while a program prints (a busy agent): a line of output every 5 ms in the background.
   await t.run("clear")
   t.type("(for i in $(seq 1 600); do echo tick $i; sleep 0.005; done) &\r")
   await sleep(300)
@@ -262,7 +245,6 @@ try {
   await t.run("wait; clear", 120000) // (the ticks end by themselves: a kill typed among them may not arrive whole)
 
   step("60 fps program")
-  // A full-screen program's frames: how late each reaches the page.
   fs.writeFileSync(path.join(tmp, "tui.py"), TUI)
   const late: number[] = []
   t.onChunk = null
@@ -280,13 +262,11 @@ try {
   result.tui = { frames: seen.size, ...stats(late), ms: Math.round(performance.now() - t0), serverCpu: tu.server, keeperCpu: tu.keeper }
 
   step("reattach")
-  // Reattaching to a shell with a full history (its 10,000 lines kept).
   await t.run("seq 1 10000 | sed 's/$/ some text to fill a line of the history/'", 180000)
   await t.close()
   const back: Record<string, number>[] = []
   for (let i = 0; i < 5; i++) {
     const r = new Term(id, "&attach=1")
-    // (the picture, then nothing for half a second)
     while (r.times.first === undefined || performance.now() - r.t0 - (r.times.last ?? 0) < 500) await sleep(20)
     back.push({ ...r.times, bytes: r.bytes })
     await r.close()
@@ -294,7 +274,6 @@ try {
   result.reattach = { attached: col(back, "attached"), picture: col(back, "first"), bytes: col(back, "bytes") }
 
   step("noisy terminals")
-  // 50 agents idle in the background (a spinner at 15 Hz) and 5 printing hard, none shown: what the keeper spends.
   const op = async (id: string, body: object) => (await fetch(`${BASE}/api/ops/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json() as Promise<{ id?: string }>
   const noisy: string[] = []
   const spin = "i=0; while :; do i=$((i+1)); printf '\\r\\033[2K\\033[38;5;208m%s\\033[0m waiting %d' x $i; sleep 0.066; done"
@@ -308,7 +287,6 @@ try {
   for (const n of noisy) await op("terminal.end", { id: n }).catch(() => {})
 
   step("list")
-  // terminal.list with 10 shells.
   const many: Term[] = []
   for (let i = 0; i < 9; i++) many.push((await openOne()).t)
   const list: number[] = [], sessions: number[] = []
@@ -334,9 +312,7 @@ try {
   await cleanup()
 }
 
-/** The page's side: keystroke to echo drawn, and frames while a shell prints fast, in Playwright's Chromium. */
 async function browserSide() {
-  // (Playwright's own Chromium, after this machine's QA slot: tools/qa_slots.ts)
   const { hold } = await import("../qa_slots.ts"), { chromium } = await import("playwright-core")
   await hold()
   // (--gpu: the machine's GPU, still headless, where it has one: Metal on a Mac; else SwiftShader's software GL)
@@ -359,10 +335,8 @@ async function browserSide() {
     await page.goto(`${BASE}/#view/terminal%2F${id}`)
     const text = () => page.evaluate(() => [...document.querySelectorAll("[data-terminal]")].map((e) => (e as unknown as { terminalText?: () => string }).terminalText?.() ?? "").join("\n"))
     for (let i = 0; i < 100 && !/\$ /.test(await text()); i++) await sleep(100)
-    // (the made-up vault's plugins may ask something first: a dialog over the page)
     for (let i = 0; i < 10 && await page.locator("dialog[open]").count(); i++) { await page.keyboard.press("Escape"); await sleep(300) }
     await page.locator("[data-term]").click()
-    // Input to echo drawn: the key's event, then the frame after the echo is parsed (the row shows it).
     const keys: number[] = []
     for (let i = 0; i < (part("echo") ? 40 : 0); i++) {
       const ch = String.fromCharCode(97 + (i % 26))
@@ -378,14 +352,12 @@ async function browserSide() {
         }
         step()
       }), ch)
-      // (a random wait: a fixed one locks each key to one place between frames, and a run's median to 2 or 3 of them)
       await sleep(30 + Math.random() * 17)
       await page.keyboard.type(ch)
       keys.push(await p)
       await sleep(30)
     }
     await page.keyboard.press("Control+U")
-    // Frames under heavy output: rAF gaps and long tasks while 2 MB scroll by.
     const frames = !part("frames") ? null : page.evaluate(() => new Promise<{ gaps: number[]; long: number[]; ms: number }>((resolve) => {
       const gaps: number[] = [], long: number[] = []
       new PerformanceObserver((l) => { for (const e of l.getEntries()) long.push(e.duration) }).observe({ type: "longtask", buffered: false })
@@ -405,7 +377,6 @@ async function browserSide() {
     const r = frames ? await frames : { gaps: [NaN], long: [] as number[], ms: 0 }
     const busy = r.gaps.slice(0, Math.max(1, r.gaps.length - 31))
     const out = { echoDrawn: stats(keys), frame: stats(busy), longTasks: r.long.length, longTaskMs: Math.round(r.long.reduce((a: number, b: number) => a + b, 0)), outputMs: Math.round(r.ms) } as Record<string, unknown>
-    // A 10k-line history replayed into a page: its first binary message to the last line drawn (the next frame).
     if (part("replay")) await page.keyboard.type("clear; seq 10000 | awk '{printf \"\\033[3%dmline %d lorem ipsum dolor sit amet, consectetur adipiscing elit\\033[0m\\n\", $1%8, $1}'\n")
     for (let i = 0; i < 200 && part("replay") && !/line 10000 /.test(await text()); i++) await sleep(100)
     const replay: number[] = []
@@ -435,7 +406,6 @@ async function browserSide() {
       await p2.close()
     }
     if (part("replay")) out.replay = stats(replay)
-    // (memory: a fresh page, before any terminal and after six, each with output, five of them parked)
     const ids: string[] = []
     if (part("memory")) {
       const fresh = await browser.newPage({ viewport: { width: 1440, height: 900 } })
@@ -458,8 +428,6 @@ async function browserSide() {
       out.parkedBytes = (await heap()) - m0
       await fresh.close()
     }
-    // Tab switch: a second terminal in this page, then each picked in turn, a screenful drawn in both: from the ask
-    // (the hash changing) to the frame after it shows its text. Four switches warm up, forty are timed.
     if (part("tabs")) {
       const other = newId()
       ids.push(other)
@@ -492,7 +460,6 @@ async function browserSide() {
   } finally { await browser.close() }
 }
 
-// ---------- the report
 const before = COMPARE ? JSON.parse(fs.readFileSync(COMPARE, "utf8")) : null
 const vs = (a?: number, b?: number) => (a && b ? ` (${(a / b).toFixed(1)}x)` : "")
 const get = (o: unknown, p: string) => p.split(".").reduce((x: unknown, k) => (x as Record<string, unknown> | undefined)?.[k], o) as number | undefined

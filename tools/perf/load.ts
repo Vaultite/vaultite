@@ -25,7 +25,6 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-load-"))
 type Run = { line: number; drawn: number }
 type Browser = Awaited<ReturnType<typeof chromium.launchPersistentContext>>
 
-/** One start: ms until the start line and until the dashboard is drawn, from spawning the server. */
 async function start(root: string, i: number, browser: Browser): Promise<Run> {
   const dir = path.join(tmp, String(i))
   const t0 = performance.now()

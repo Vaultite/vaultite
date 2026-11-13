@@ -14,7 +14,7 @@ const args = process.argv.slice(2)
 const arg = (name: string, dflt: string) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : dflt }
 const ROOT = path.resolve(arg("root", path.join(import.meta.dirname, "..", "..")))
 const SCALE = Number(arg("scale", "1")), MINUTES = Number(arg("minutes", "2")), OUT = arg("out", ""), COMPARE = arg("compare", "")
-const QUIET = args.includes("--quiet") // no agent writing: the app alone
+const QUIET = args.includes("--quiet")
 const PORT = await freePort()
 const BASE = `http://127.0.0.1:${PORT}/`
 const CHROME = [chromium.executablePath(), "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/google-chrome", "/usr/bin/chromium"]
@@ -23,13 +23,11 @@ const CHROME = [chromium.executablePath(), "/Applications/Google Chrome.app/Cont
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-idle-"))
 const VAULT = path.join(tmp, "vault")
 
-/** A process's CPU time so far (user + system), in ms. */
 function cpu(c: ChildProcess) {
   const t = execFileSync("/bin/ps", ["-o", "time=", "-p", String(c.pid)], { encoding: "utf8" }).trim()
   return t.split(":").reduce((acc, x) => acc * 60 + Number(x), 0) * 1000
 }
 
-/** A request's name in the tally: its route, with what's per-file left out ("state?since", "config/plugin/*"). */
 function routeOf(u: URL) {
   if (!u.pathname.startsWith("/api/")) return u.pathname.startsWith("/assets/") ? "(assets)" : u.pathname
   const r = u.pathname.slice(5).replace(/^(config\/plugin|file|raw|themes)\/.+/, "$1/*")
@@ -40,8 +38,6 @@ type Tally = Record<string, { n: number; bytes: number }>
 type Client = { name: string; page: Page; tally: Tally; ws: number; wsBytes: number }
 const add = (t: Tally, k: string, bytes: number) => { t[k] ??= { n: 0, bytes: 0 }; t[k].n++; t[k].bytes += bytes }
 
-/** A window asking as over the tailnet (X-Forwarded-For: compressed answers with ETags), counting each request's bytes
- *  on the wire (headers and the body as sent) and the live socket's frames. */
 async function open(browser: Browser, name: string, options: Parameters<Browser["newContext"]>[0]): Promise<Client> {
   const ctx: BrowserContext = await browser.newContext({ ...options, extraHTTPHeaders: { "X-Forwarded-For": "100.64.0.1" } })
   const page = await ctx.newPage()
@@ -91,7 +87,6 @@ try {
   })
   browser = await chromium.launch({ executablePath: CHROME })
   const clients = [await open(browser, "desktop", { viewport: { width: 1440, height: 900 } }), await open(browser, "phone", { ...devices["iPhone 13"] })]
-  // First load: until nothing was asked for 3 s.
   const c0 = cpu(child)
   await Promise.all(clients.map((c) => c.page.goto(BASE)))
   for (let quiet = 0, last = -1; quiet < 3; ) {
@@ -102,7 +97,6 @@ try {
   }
   result.first = Object.fromEntries(clients.map((c) => [c.name, { ...total(c.tally), routes: structuredClone(c.tally) }]))
   result.firstCpu = cpu(child) - c0
-  // Idle: the windows stay open and shown; an agent writes meanwhile.
   for (const c of clients) { c.tally = {}; c.ws = 0; c.wsBytes = 0 }
   const stop = QUIET ? () => {} : agent()
   const c1 = cpu(child)
@@ -110,8 +104,6 @@ try {
   stop()
   result.idleCpuPerMin = Math.round((cpu(child) - c1) / MINUTES)
   result.idle = Object.fromEntries(clients.map((c) => [c.name, { ...total(c.tally), ws: c.ws, wsBytes: c.wsBytes, routes: structuredClone(c.tally) }]))
-  // Away: the phone loses the network for 30 s (asleep, in a tunnel) while the agent writes, then is back: what it asks
-  // for in the 15 s after.
   const phone = clients[1]
   const stopAway = QUIET ? () => {} : agent()
   await phone.page.context().setOffline(true)

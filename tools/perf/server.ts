@@ -16,8 +16,6 @@ const BOOTS = Number(arg("boots", "3")), ONLY = arg("only", "")
 const PORT = Number(arg("port", "")) || await freePort()
 const BASE = `http://127.0.0.1:${PORT}`
 
-/** Asked as the web app asks (Activity looks up any other caller's process on each request, which isn't the app's cost);
- *  `--client none` asks as a script or an agent does (no header). */
 const CLIENT = arg("client", "app/web")
 const APP: Record<string, string> = CLIENT === "none" ? {} : { "X-Vaultite-Client": CLIENT }
 const ENDPOINTS = ["/api/state", "/api/vault", "/api/files", "/api/plugins", "/api/graph", "/api/tags", "/api/search?q=light",
@@ -37,14 +35,12 @@ const Compared = z.object({
   refresh: z.record(z.string(), Row).optional(),
 })
 
-/** Start the server; resolves once the API answers, with when the page answered first and its CPU by then. */
 async function boot(): Promise<Boot> {
   const t0 = performance.now()
   const child = spawn(process.execPath, ["server.ts"], {
     cwd: ROOT, stdio: ["ignore", "ignore", "pipe"],
     env: { ...process.env, ...isolated(path.join(tmp, "home")), VAULTITE_VAULT: VAULT, VAULTITE_LOCAL: LOCAL, PORT: String(PORT), HOST: "127.0.0.1" },
   })
-  // What it said last, to show if it stops on its own (a crash is a finding, not noise).
   let said = ""
   child.stderr!.on("data", (b: Buffer) => { said = (said + b.toString()).slice(-4000) })
   child.once("exit", (code, signal) => { if (code) console.error(`the server stopped (exit ${code}${signal ? `, ${signal}` : ""}):\n${said.split("\n").filter((l) => !l.startsWith('"')).join("\n")}`) })
@@ -71,7 +67,6 @@ async function boot(): Promise<Boot> {
   }
 }
 
-/** A process's CPU time so far (user + system), in ms. */
 function cpu(c: ChildProcess) {
   const t = execFileSync("/bin/ps", ["-o", "time=", "-p", String(c.pid)], { encoding: "utf8" }).trim() // [h:]m:ss.cc
   return t.split(":").reduce((acc, x) => acc * 60 + Number(x), 0) * 1000
@@ -106,7 +101,6 @@ const stats = (xs: number[]) => {
   return { median: +q(0.5).toFixed(2), p90: +q(0.9).toFixed(2), min: +s[0].toFixed(2) }
 }
 
-/** Each endpoint's times, CPU and bytes, then the first-load burst, against a running server. */
 async function measure(child: ChildProcess) {
   const pageOutsideImportMap = fs.readFileSync(path.join(ROOT, "web", "dist", "index.html"), "utf8").replace(/<script type="importmap">[\s\S]*?<\/script>/, "")
   const assets = pageOutsideImportMap.match(/\.\/assets\/[^"]+/g) ?? []
@@ -123,7 +117,6 @@ async function measure(child: ChildProcess) {
     const w = await wire(url, "br, gzip")
     endpoints[url] = { ...stats(ms), cpu: cpuMs, status: last.status, bytes: last.bytes, wire: w.bytes, encoding: w.encoding, cache: w.cache, again: w.again }
   }
-  // What a first load asks for at once (web/src/core/data.ts and the shell): all in flight together.
   const burst = ["/api/state?since=0", "/api/files", "/api/plugins", "/api/render?path=Start%20here.md", "/api/graph", "/api/tags", "/api/vault", "/api/config/plugins"]
   const bursts: number[] = []
   const c0 = cpu(child)
@@ -134,8 +127,6 @@ async function measure(child: ChildProcess) {
   }
   const bursted = { requests: burst.length, ...stats(bursts), cpu: +((cpu(child) - c0) / RUNS).toFixed(1) }
 
-  // A change on disk and the web app's refresh after it (GET /api/state?since=<v>), over the network: a note, a timeline
-  // line, a workspace's tabs. A checkout that doesn't know `since` answers the whole state.
   const first = (dir: string) => path.join(VAULT, dir, fs.readdirSync(path.join(VAULT, dir)).filter((f) => f.endsWith(".md")).sort()[0])
   const note = first("Notes"), person = first("People"), ws = path.join(VAULT, ".vaultite/plugins/workspaces/data.json")
   fs.mkdirSync(path.dirname(ws), { recursive: true })
@@ -183,7 +174,6 @@ let ran: Awaited<ReturnType<typeof run>>
 try {
   ran = await run()
 } finally {
-  // (a server stopping may still be writing there: tried again, and a leftover temp folder isn't worth hiding an error)
   try { fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }) } catch (e) { console.error(`left ${tmp}: ${e instanceof Error ? e.message : String(e)}`) }
 }
 

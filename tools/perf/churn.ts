@@ -13,11 +13,9 @@ const args = process.argv.slice(2)
 const arg = (name: string, dflt: string) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : dflt }
 const N = Number(arg("commits", "20")), FROM = arg("from", "origin/main")
 const variants = ["", ...args.flatMap((a, i) => (a === "--variant" ? [path.resolve(args[i + 1])] : []))]
-/** --config: a vite.config.ts each commit is built with instead of its own (a new way of building, on main's commits). */
 const CONFIG = arg("config", "") && path.resolve(arg("config", ""))
 const git = (...a: string[]) => execFileSync("git", a, { cwd: ROOT, encoding: "utf8", env: gitEnv() }).trim()
 
-// Commits that changed what the web build is made from, oldest first (one more: the first's baseline)
 const commits = git("log", "--format=%H", `-${N + 1}`, FROM, "--", "web", "plugins", "vite.config.ts", "package-lock.json").split("\n").reverse()
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-churn-"))
 const brCache = new Map<string, number>()
@@ -27,7 +25,6 @@ const br = (file: string) => {
   return brCache.get(key)!
 }
 
-/** The files a start fetches: index.html's scripts and styles, the editor, and what they import (statically). */
 function startSet(dist: string) {
   const html = fs.readFileSync(path.join(dist, "index.html"), "utf8")
   const todo = [...html.matchAll(/(?:src|href)="\.?\/?(assets\/[^"]+\.(?:js|css))"/g)].map((m) => m[1])

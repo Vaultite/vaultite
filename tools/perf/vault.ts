@@ -16,7 +16,6 @@ const int = (lo: number, hi: number) => lo + Math.floor(rand() * (hi - lo + 1))
 
 const FIRST = ["Alice", "Sam", "Maya", "Leo", "Iris", "Noah", "Zoe", "Omar", "Lina", "Theo", "Ruth", "Kai", "Nina", "Hugo", "Ada", "Eli"]
 const LAST = ["Stone", "Lee", "Chen", "Costa", "Park", "Silva", "Novak", "Reyes", "Ito", "Berg", "Moreau", "Haddad", "Kim", "Rossi"]
-// With coordinates, so the server has nothing to geocode (a real vault's people are filled in already).
 const PLACES: [string, number, number][] = [["Lisbon, Portugal", 38.7078, -9.1366], ["Denver, CO", 39.7392, -104.9903],
   ["Berlin, Germany", 52.52, 13.405], ["Tokyo, Japan", 35.6762, 139.6503], ["Austin, TX", 30.2672, -97.7431],
   ["Toronto, Canada", 43.6532, -79.3832], ["Porto, Portugal", 41.1579, -8.6291]]
@@ -33,8 +32,6 @@ function write(dir: string, rel: string, text: string) {
   fs.writeFileSync(file, text)
 }
 
-/** A port nothing listens on (the system's pick): other sessions' servers sit on the usual ones, and a benchmark that
- *  reached one of them would time the wrong server. */
 export function freePort(): Promise<number> {
   return new Promise((ok, fail) => {
     const s = net.createServer().once("error", fail).listen(0, "127.0.0.1", () => {
@@ -69,7 +66,6 @@ export function makeVault(dir: string, scale = 1) {
       `id: gen-note-${i}\ncreated: '${day(int(0, 400))} 10:00:00'\nupdated: '${day(int(0, 30))} 10:00:00'\n---\n\n${links ? links + "\n\n" : ""}${body}\n`)
   }
   const areas = ["workouts", "sleep", "nutrition", "running", "reading", "study"]
-  // An areas setting of the vault's own (the default one lacks running: every such log would be a problem in /api/vault).
   write(dir, ".vaultite/plugins/logs/data.json", JSON.stringify({ areas: [
     { slug: "health", name: "Health", icon: "heart" },
     { slug: "workouts", name: "Workouts", icon: "dumbbell", parent: "health", weekly_goal: 3, blocks: ["workout"] },
@@ -96,17 +92,13 @@ export function makeVault(dir: string, scale = 1) {
     write(dir, `Books/${sentence(3).slice(0, -1)} ${i}.md`, `---\ntype: book\nauthor: ${pick(FIRST)} ${pick(LAST)}\nstatus: ${pick(["reading", "want", "done"])}\n` +
       `total_pages: ${int(150, 600)}\ncurrent_page: ${int(0, 150)}\n---\n\n\`\`\`block-book\n\`\`\`\n\n${para(1)}\n`)
   }
-  let rows = "date,description,amount\n" // a table, like a finance export
+  let rows = "date,description,amount\n"
   for (let i = 0; i < 400 * scale; i++) rows += `${day(i % 365)},${pick(WORDS)} ${pick(WORDS)},${(rand() * 200 - 100).toFixed(2)}\n`
   write(dir, "Finance/Transactions.csv", rows)
-  // (a vault made as the app's defaults are now, as the sandbox is: else its first start installs the plugins that
-  // moved out of the app, from GitHub, and every benchmark times that)
   write(dir, ".vaultite/migrations.json", JSON.stringify({ done: DONE }, null, 2) + "\n")
   return { people: people.length, notes: notes.length }
 }
 
-/** Environment for a server on a made-up vault: the coding agents' plugins pointed at empty folders under `dir` (they'd
- *  read this machine's own histories, seconds of CPU in the background) and Cursor's account at nothing. */
 export function isolated(dir: string): Record<string, string> {
   const at = (name: string) => { const p = path.join(dir, name); fs.mkdirSync(p, { recursive: true }); return p }
   return { CLAUDE_CONFIG_DIR: at("claude"), CODEX_HOME: at("codex"), OPENCODE_DATA_DIR: at("opencode"), OPENCODE_CACHE_DIR: at("opencode-cache"),

@@ -27,12 +27,11 @@ const VAULT = path.join(tmp, "vault")
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const step = (what: string) => console.error(`${new Date().toISOString().slice(11, 19)} ${what}`)
 
-// ---------- in the page: timers, frames and sockets, counted from when the soak installs it (dev.eval, after load)
 const COUNTERS = () => {
   const w = window as unknown as Record<string, unknown>
   if (w.__soak) return
-  const live = new Map<number, string>() // interval id -> where it was made
-  const sites = new Map<string, number>() // timeout and frame callers, while counting
+  const live = new Map<number, string>()
+  const sites = new Map<string, number>()
   let timeouts = 0, frames = 0, wsMade = 0, counting = false
   const sockets = new Set<WebSocket>()
   const site = (kind: string) => { if (!counting) return; const s = `${kind} ${(new Error().stack ?? "").split("\n")[3]?.trim() ?? "?"}`; sites.set(s, (sites.get(s) ?? 0) + 1) }
@@ -46,7 +45,6 @@ const COUNTERS = () => {
   w.WebSocket = class extends WS {
     constructor(url: string | URL, p?: string | string[]) { super(url, p); wsMade++; sockets.add(this); this.addEventListener("close", () => sockets.delete(this)) }
   }
-  // Hidden as the app's own work sees it (document.hidden, visibilitychange), without a hand on the window.
   let hidden: boolean | null = null
   for (const [k, v] of [["hidden", () => hidden ?? false], ["visibilityState", () => (hidden ? "hidden" : "visible")]] as const) {
     const real = Object.getOwnPropertyDescriptor(Document.prototype, k)!
@@ -59,7 +57,6 @@ const COUNTERS = () => {
     return r
   }
 }
-/** What the page holds after a full collection (--expose-gc), measured by the page itself. */
 const MEASURE = () => {
   (window as unknown as { gc: () => void }).gc()
   const soak = (window as unknown as { __soak: (r: boolean) => Record<string, number> }).__soak(false)
@@ -69,7 +66,6 @@ const MEASURE = () => {
     xterms: document.querySelectorAll("[data-term]").length, editors: document.querySelectorAll(".cm-editor").length, tabs: document.querySelectorAll("[role=tab]").length }
 }
 
-// ---------- the app: Electron as a user starts it, and its ops
 let port = 0, mainPid = 0, child: ChildProcess | null = null
 const BASE = () => `http://127.0.0.1:${port}/`
 const CLI = { "Content-Type": "application/json", "X-Vaultite-Client": "cli" }
@@ -79,12 +75,10 @@ async function op(id: string, params: Record<string, unknown> = {}) {
   if (!r.ok) throw new Error(`${id}: ${body.error ?? r.status}`)
   return body
 }
-/** A function run in the page (its source, called with `a`): its value. */
 const inPage = async <T>(fn: (a: never) => unknown, a: unknown = null, timeout = 30) =>
   (await op("dev.eval", { code: `(${fn})(${JSON.stringify(a)})`, timeout })).value as T
 const command = (id: string) => op("ui.command", { id }).then(() => wait(400), (e: Error) => step(`command ${id}: ${e.message}`))
 const go = (hash: string) => inPage((h: string) => { location.hash = h }, hash)
-/** Why the last `until` gave up: its check's last error. */
 let lastWhy = ""
 async function until(what: string, f: () => Promise<boolean>, ms: number) {
   lastWhy = ""
@@ -93,7 +87,6 @@ async function until(what: string, f: () => Promise<boolean>, ms: number) {
   return false
 }
 
-// ---------- processes
 type Proc = { pid: number; ppid: number; rss: number; cpu: number; cmd: string }
 const cpuMs = (t: string) => t.split(/[-:]/).reverse().reduce((ms, part, i) => ms + Number(part) * [1000, 60000, 3600000, 86400000][i], 0)
 const TICK = MAC ? 0 : 1000 / Number(execFileSync("getconf", ["CLK_TCK"], { encoding: "utf8" }))
@@ -109,11 +102,8 @@ function ps(): Proc[] {
   })
 }
 const tree = (all: Proc[], root: number) => { const out = new Set([root]); for (let grew = true; grew; ) { grew = false; for (const p of all) if (out.has(p.ppid) && !out.has(p.pid)) { out.add(p.pid); grew = true } } return out }
-/** The server's terminal server (termd), by its pid file. */
 const keeperPid = () => { try { return Number(fs.readFileSync(`${serverFiles(backendName(port)).files}.pid`, "utf8")) || 0 } catch { return 0 } }
 
-/** Every process the app runs, by role (from ps: nothing asked of Electron): memory and CPU ms. The app's page is the
- *  biggest renderer; the others (web pages, pop-outs) are "other renderers". */
 function processes() {
   const all = ps(), byPid = new Map(all.map((p) => [p.pid, p]))
   const mine = tree(all, mainPid), k = keeperPid()
@@ -201,14 +191,12 @@ async function takeSnapshots(n: number) {
     snaps[which].push(file)
   }
 }
-/** Objects made between the first and second snapshot that the third still holds: what a cycle leaves behind. */
 function survivors(files: string[]) {
   const [a, b] = files.slice(-3, -1).map((f) => readSnapshot(fs.readFileSync(f, "utf8")).maxId)
   const c = readSnapshot(fs.readFileSync(files[files.length - 1], "utf8"), a, b)
   return { detached: c.detached, top: [...c.groups].sort((x, y) => y[1].size - x[1].size).slice(0, 25).map(([k, v]) => ({ what: k, n: v.n, kb: Math.round(v.size / 1024) })) }
 }
 
-// ---------- one sample
 type Sample = { t: number; phase: string; procs: ReturnType<typeof processes>; page: ReturnType<typeof MEASURE> }
 const samples: Sample[] = []
 async function sample(phase: string) {
@@ -218,7 +206,6 @@ async function sample(phase: string) {
   return s
 }
 
-// ---------- the user and an agent
 const notes = () => fs.readdirSync(path.join(VAULT, "Notes")).filter((f) => f.endsWith(".md")).sort()
 let typed = 0, tried = 0, terminals = 0, terminalsTried = 0
 /** Typed at the end of the focused pane's editor, a key at a time, as the editor's input does (the soak's window is
@@ -237,8 +224,6 @@ const TYPE = async (text: string) => {
   return true
 }
 const editorShown = () => inPage<boolean>(() => [...document.querySelectorAll<HTMLElement>("[data-pane] .cm-content")].some((e) => e.offsetParent))
-/** Open notes in new tabs, type in each (autosave writes it), then close them: the loop's tabs don't pile up, so what
- *  grows is what's left behind. */
 async function editNotes(n: number, offset: number) {
   const list = notes()
   for (let i = 0; i < n; i++) {
@@ -251,7 +236,6 @@ async function editNotes(n: number, offset: number) {
   }
   for (let i = 0; i < n; i++) await command("tab:close")
 }
-/** A terminal in a new tab printing a few thousand lines, then its tab closed and its shell ended. */
 async function terminal(i: number) {
   const sid = `soak${i}`
   await command("tab:new")
@@ -266,12 +250,10 @@ async function terminal(i: number) {
   await command("tab:close")
   await fetch(`${BASE()}api/terminals/${sid}`, { method: "DELETE", headers: CLI }).catch(() => {})
 }
-/** Panels opened as tabs, looked at, closed. */
 async function panels(cycle: number) {
   const ids = ["search:open-tab", "outline:open-tab", "backlinks:open-tab", "recent:open-tab", "graph:local", "properties:open-tab"]
   for (const id of [ids[cycle % ids.length], ids[(cycle + 3) % ids.length]]) { await command(id); await wait(1500); await command("tab:close") }
 }
-/** An agent at work: new notes made, others edited, old ones removed (so the vault doesn't only grow). */
 function agent() {
   const dir = path.join(VAULT, "Agent"); fs.mkdirSync(dir, { recursive: true })
   let i = 0
@@ -286,9 +268,7 @@ function agent() {
 const hide = (h: boolean) => inPage<string>((x: boolean) => { (window as unknown as { __soakHide: (h: boolean) => void }).__soakHide(x); return document.visibilityState }, h)
 const soakCall = (r: boolean | "count") => inPage((x: boolean | "count") => (window as unknown as { __soak: (r: boolean | "count") => unknown }).__soak(x), r)
 
-// ---------- the report
 const roleKeys = () => [...new Set(samples.flatMap((s) => Object.keys(s.procs)))]
-/** Least-squares slope per hour of `f` over samples of a phase. */
 function perHour(phase: string, f: (s: Sample) => number | undefined) {
   const xs = samples.filter((s) => s.phase === phase && f(s) !== undefined)
   if (xs.length < 3) return NaN
@@ -296,7 +276,6 @@ function perHour(phase: string, f: (s: Sample) => number | undefined) {
   const mt = t.reduce((a, b) => a + b) / t.length, my = y.reduce((a, b) => a + b) / y.length
   return t.reduce((a, ti, i) => a + (ti - mt) * (y[i] - my), 0) / t.reduce((a, ti) => a + (ti - mt) ** 2, 0)
 }
-/** How much `f` changed a minute across a phase. */
 function perMinute(phase: string, f: (s: Sample) => number | undefined) {
   const xs = samples.filter((s) => s.phase === phase)
   if (xs.length < 2) return NaN
@@ -329,7 +308,6 @@ function report() {
   return lines.join("\n")
 }
 
-/** The budget (--budget): what the loop may leave behind past its first third, what it must have done, idle CPU. */
 function budget() {
   const loop = samples.filter((s) => s.phase === "loop"), warm = loop[Math.floor(loop.length / 3)], end = loop[loop.length - 1]
   const idle = (role: string) => Math.max(...PHASES.filter((p) => p !== "graph").map((p) => perMinute(p, (s) => s.procs[role]?.cpu)).filter((x) => !isNaN(x)), 0)
@@ -347,12 +325,10 @@ function budget() {
   return failed.length === 0
 }
 
-// ---------- run
 step(`vault at ${VAULT} (scale ${SCALE}), out ${OUT}`)
 makeVault(VAULT, SCALE)
 const userData = path.join(tmp, "userData")
 port = await freePort()
-// (the window's server on a port of the soak's choosing: the vault list keeps one per vault)
 fs.mkdirSync(userData, { recursive: true })
 fs.writeFileSync(path.join(userData, "vaults.json"), JSON.stringify({ vaults: [{ path: VAULT, port, open: true, last: Date.now() }] }))
 process.once("SIGINT", () => { aborted = true })
@@ -366,14 +342,13 @@ try {
   const flags = ["--js-flags=--expose-gc", "--enable-precise-memory-info", ...(SNAPSHOTS ? [`--remote-debugging-port=${debugPort}`] : []),
     ...(process.platform === "linux" ? ["--no-sandbox"] : []), ROOT, "--vault", VAULT]
   const headless = process.platform === "linux" && !process.env.DISPLAY
-  // (its own process group: the soak ends xvfb-run, Electron and the server it forked together)
   child = spawn(headless ? "xvfb-run" : electron, headless ? ["-a", electron, ...flags] : flags, { stdio: ["ignore", "ignore", "pipe"], detached: true,
     env: { ...process.env, ...isolated(path.join(tmp, "home")), VAULTITE_QUIET: "1", VAULTITE_USER_DATA: userData, VAULTITE_LOCAL: path.join(tmp, "local") } })
   let said = ""
   child.stderr!.on("data", (b: Buffer) => { said = (said + b).slice(-20000) })
   const up = await until("the app", async () => child!.exitCode !== null || await inPage<boolean>(() => !!document.querySelector("[role=tree]")), 120000)
   if (child.exitCode !== null) {
-    await Promise.race([once(child, "close"), wait(2000)]) // (its last words)
+    await Promise.race([once(child, "close"), wait(2000)])
     throw new Error(`the app exited (${child.exitCode}):\n${said}`)
   }
   if (!up) {
@@ -393,7 +368,6 @@ try {
   stopAgent = agent()
   await sample("loop")
   let lastSample = Date.now()
-  // (cycles take about 45 s: past the warm-up, mid-run and near the end)
   const snapAt = SNAPSHOTS ? [Math.max(2, Math.ceil(MINUTES * 0.3)), Math.max(4, Math.ceil(MINUTES * 0.6)), Math.max(6, Math.floor(MINUTES * 1.1))] : []
   while (Date.now() - t0 < MINUTES * 60000 && !aborted) {
     cycle++
@@ -410,13 +384,11 @@ try {
   }
   await sample("loop")
   stopAgent()
-  // Idle: still (shown, nothing changing), shown with the agent writing (live updates arriving), hidden, a graph.
   await wait(5000)
   for (const phase of PHASES) {
     if (aborted) break
     if (phase === "shown" || phase === "hidden") { stopAgent(); stopAgent = agent() }
     const vis = await hide(phase === "hidden")
-    // (the graph: a tab of it shown, the agent stopped, so it settles and nothing moves; each write moves it again)
     if (phase === "graph") { stopAgent(); await command("tab:new"); await go("#view/graph"); await wait(30000) }
     step(`idle ${phase} (${vis}) for ${IDLE} min`)
     await soakCall("count")

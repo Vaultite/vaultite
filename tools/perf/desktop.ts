@@ -35,7 +35,7 @@ function processes(): Proc[] {
         const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8"), f = stat.slice(stat.lastIndexOf(")") + 2).split(" ")
         const rss = Number(/VmRSS:\s+(\d+)/.exec(fs.readFileSync(`/proc/${pid}/status`, "utf8"))?.[1] ?? 0)
         return [{ pid: Number(pid), ppid: Number(f[1]), cpu: (Number(f[11]) + Number(f[12])) * 10, mem: rss / 1024, name: stat.slice(stat.indexOf("(") + 1, stat.lastIndexOf(")")) }]
-      } catch { return [] } // (gone meanwhile)
+      } catch { return [] }
     })
   }
   if (WIN) {
@@ -49,8 +49,6 @@ function processes(): Proc[] {
     return { pid: +pid, ppid: +ppid, cpu: time.split(/[-:]/).reverse().reduce((ms, part, i) => ms + Number(part) * [1000, 60000, 3600000, 86400000][i], 0), mem: +rss / 1024, name: name.join(" ") }
   })
 }
-/** The vault's server (a child of the main process) and what it started (the terminal and chat keepers, shells): CPU
- *  ms and memory MB, all of them and each kind. */
 function usage(pid: number) {
   const all = processes(), tree = new Set([pid])
   for (let grew = true; grew;) { grew = false; for (const p of all) if (!tree.has(p.pid) && tree.has(p.ppid)) { tree.add(p.pid); grew = true } }
@@ -58,7 +56,6 @@ function usage(pid: number) {
   return { cpu: mine.reduce((n, p) => n + p.cpu, 0), mem: mine.reduce((n, p) => n + p.mem, 0), count: mine.length, names: mine.map((p) => p.name).join(",") }
 }
 
-// In the page before its scripts: React commits through a stand-in for React DevTools' hook, and room for every request.
 const PAGE = `(() => {
   performance.setResourceTimingBufferSize(100000)
   const P = window.__perf = { commits: 0 }
@@ -85,7 +82,6 @@ handlers.set = (ch, fn) => set(ch, (...a) => { count(ch); return fn(...a) })
 app.on("session-created", (s) => s.registerPreloadScript({ type: "frame", filePath: ${JSON.stringify(path.join(tmp, "hook-preload.cjs"))} }))
 `)
 
-/** What the page and the main process have counted so far: requests (by route), IPC messages (by channel), commits. */
 async function counts(app: ElectronApplication, win: Awaited<ReturnType<ElectronApplication["firstWindow"]>>) {
   const page = await win.evaluate(() => ({
     commits: (window as unknown as { __perf?: { commits: number } }).__perf?.commits ?? 0,
@@ -111,11 +107,8 @@ async function launch(root: string, dir: string): Promise<[Launch, Extra]> {
     const window = performance.now() - t0
     await win.waitForSelector("[role=tree]", { timeout: 120000 })
     const ready = performance.now() - t0
-    // The page's clock starts at its navigation (timeOrigin, wall time); first paint is on that clock.
     const [origin, fcp, base] = await win.evaluate(() => [performance.timeOrigin, performance.getEntriesByName("first-contentful-paint")[0]?.startTime ?? 0, location.origin] as const)
     const loaded = await counts(app, win)
-    // CPU time each process spent until then, less swayed by a busy machine than wall time: the page's renderer, the
-    // rest of Electron (its main process, GPU, network), and the vault's server (a child of the main process).
     const metrics = () => app.evaluate(({ app }) => app.getAppMetrics())
     const perf = await (await fetch(`${base}/api/activity/perf?minutes=10`)).json() as { pid: number; timings: { name: string; last: { parts: Record<string, number>; ms: number } }[] }
     const main = await app.evaluate(() => (globalThis as unknown as { __main: Record<string, number> }).__main)
@@ -123,14 +116,13 @@ async function launch(root: string, dir: string): Promise<[Launch, Extra]> {
     const cpu = (m: Electron.ProcessMetric[], tab: boolean) => 1000 * m.filter((x) => (x.type === "Tab") === tab).reduce((n, x) => n + x.cpu.cumulativeCPUUsage!, 0)
     const mem = (m: Electron.ProcessMetric[], tab: boolean) => m.filter((x) => (x.type === "Tab") === tab).reduce((n, x) => n + x.memory.workingSetSize, 0) / 1024
     const mr = await metrics(), sr = usage(perf.pid)
-    // Idle: the vault open and nothing done, as most of an open app's day is (once what loading set off has settled).
     await new Promise((r) => setTimeout(r, SETTLE * 1000))
     const m0 = await metrics(), s0 = usage(perf.pid), settled = await counts(app, win)
     const i0 = performance.now()
     await new Promise((r) => setTimeout(r, IDLE * 1000))
     const secs = (performance.now() - i0) / 1000
     const m1 = await metrics(), s1 = usage(perf.pid), idled = await counts(app, win)
-    const pct = (ms: number) => +(ms / secs / 10).toFixed(2) // % of one core
+    const pct = (ms: number) => +(ms / secs / 10).toFixed(2)
     return [{
       window, page: origin - epoch, paint: origin - epoch + fcp, ready, renderer: cpu(mr, true), app: cpu(mr, false), server: sr.cpu,
       requests: loaded.requests.length, ipc: total(loaded.channels), commits: loaded.commits,
@@ -168,7 +160,7 @@ try {
 const KEYS = Object.keys(runs[0][0]) as (keyof Launch)[]
 const median = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); return +s[Math.floor(s.length / 2)].toFixed(1) }
 const round = (l: Launch) => Object.fromEntries(Object.entries(l).map(([k, v]) => [k, +v.toFixed(1)])) as Launch
-const again = (i: number) => (runs[i].length > 1 ? runs[i].slice(1) : runs[i]) // (a single launch: itself)
+const again = (i: number) => (runs[i].length > 1 ? runs[i].slice(1) : runs[i])
 const results = ROOTS.map((root, i) => ({
   root, platform: `${process.platform}-${process.arch}`, scale: SCALE, launches: LAUNCHES, settle: SETTLE, idle: IDLE, date: new Date().toISOString(), first: round(runs[i][0]),
   again: Object.fromEntries(KEYS.map((k) => [k, median(again(i).map((r) => r[k]))])) as Launch,

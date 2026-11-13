@@ -18,7 +18,6 @@ process.env.VAULTITE_LOCAL = path.join(tmp, "local")
 process.env.VAULTITE_VAULT = VAULT
 Object.assign(process.env, isolated(path.join(tmp, "home")))
 
-// --- counting file system calls
 const COUNTED = ["statSync", "lstatSync", "readdirSync", "readFileSync", "existsSync", "writeFileSync", "openSync", "renameSync", "mkdirSync", "realpathSync"] as const
 const calls: Record<string, number> = {}
 for (const name of COUNTED) {
@@ -52,11 +51,10 @@ try {
     return { app, ms: +(performance.now() - t).toFixed(0), cpu: +(cpuMs() - c).toFixed(0), fs: diff(f, counts()) }
   }
   const first = await opening()
-  const again = await opening() // the same vault, as a restarted server finds it
+  const again = await opening()
   result.open = { import: { ms: +imported.ms.toFixed(0), cpu: +imported.cpu.toFixed(0), fs: imported.fs },
     first: { ms: first.ms, cpu: first.cpu, fs: total(first.fs), calls: first.fs }, again: { ms: again.ms, cpu: again.cpu, fs: total(again.fs), calls: again.fs } }
   const app = again.app
-  /** One GET as server.ts serves it. */
   const request = async (url: string) => {
     const u = new URL(url, "http://x/api/")
     const parts = u.pathname.split("/").filter(Boolean).slice(1).map(decodeURIComponent)
@@ -66,7 +64,6 @@ try {
     const out = await app.run("GET", parts, query, {})
     return out.body instanceof Text ? out.body.text : jsonOf(out.body)
   }
-  // Also after an edit (a note changed on disk, as by an AI): what the app asks for again then.
   const note = path.join(VAULT, "Notes", fs.readdirSync(path.join(VAULT, "Notes")).sort()[0])
   const endpoints: Record<string, unknown> = {}
   for (const url of [...ENDPOINTS, ...EDITED.map((u) => `${u} after an edit`)]) {
@@ -82,7 +79,6 @@ try {
     endpoints[url] = { cpu: +((cpuMs() - c) / RUNS).toFixed(2), fs: total(d), calls: d, bytes }
   }
   result.endpoints = endpoints
-  // What a first load asks for, all at once: the syncs they wait for (server.ts coalesces them where it can).
   const burst = ["state", "files", "plugins", "render?path=Start%20here.md", "graph", "tags", "vault", "config/plugins"]
   const c = cpuMs(), f = counts()
   for (let i = 0; i < RUNS; i++) await Promise.all(burst.map(request))

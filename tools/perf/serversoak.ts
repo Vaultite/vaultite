@@ -28,7 +28,6 @@ let said = ""
 child.stderr!.on("data", (b: Buffer) => { said = (said + b).slice(-20000) })
 const errors = () => said.split("\n").filter((l) => /error|Error|EMFILE|ENOSPC|leak/i.test(l) && !l.startsWith('"') && !/^\d{4}-\d\d-\d\d [\d:]+ #\d+ "/.test(l))
 
-// ---------- the process, from /proc
 const TICK = 1000 / Number(execFileSync("getconf", ["CLK_TCK"], { encoding: "utf8" }))
 function sample() {
   const pid = child.pid!
@@ -47,7 +46,6 @@ function sample() {
   return { at: Date.now(), cpu: (Number(stat[11]) + Number(stat[12])) * TICK, rss: Math.round(kb("VmRSS") / 1024), threads: kb("Threads"), fds, sockets, pipes, watches }
 }
 
-// ---------- app windows: each on /api/events, refreshing the state as a patch of its own on every change
 type Win = { ws: WebSocket; v: string; busy: boolean; again: boolean; closed: boolean }
 const wins = new Set<Win>()
 let refreshes = 0, slowest = 0
@@ -73,7 +71,6 @@ function open() {
 }
 const close = (w: Win) => { w.closed = true; w.ws.close(); wins.delete(w) }
 
-// ---------- an agent writing (made-up notes of its own: Soak/), and what an open app asks for besides the state
 let n = 0
 const mine: string[] = []
 async function act() {
@@ -84,7 +81,6 @@ async function act() {
     fs.mkdirSync(path.join(VAULT, "Soak"), { recursive: true })
     fs.writeFileSync(path.join(VAULT, rel), `---\ntype: note\n---\n\nWritten by the soak, linking [[${mine.length ? pick(mine).slice(5, -3) : "Start here"}]].\n`)
     mine.push(rel)
-    // (past 60, one of its notes goes for each made: the vault stays one size, so what grows is the server's)
     if (mine.length > 60) fs.rmSync(path.join(VAULT, mine.splice(Math.floor(Math.random() * (mine.length - 1)), 1)[0]), { force: true })
   } else if (r < 0.75) fs.appendFileSync(path.join(VAULT, pick(mine)), `\nOne more line at ${new Date().toISOString()}.\n`)
   else if (r < 0.85) {
@@ -109,7 +105,6 @@ try {
   log(`up in ${Math.round(performance.now() - t0)} ms on ${fs.readdirSync(VAULT, { recursive: true }).length} files; soaking ${MINUTES} min`)
   for (let i = 0; i < 3; i++) open()
   const end = Date.now() + MINUTES * 60_000
-  // (an idle stretch an hour, or once in a shorter run)
   const BUSY = Math.max(1, Math.min(60, MINUTES) - IDLE)
   let nextSample = 0, phase = "busy", phaseEnd = Date.now() + BUSY * 60_000
   while (Date.now() < end) {
@@ -127,7 +122,6 @@ try {
     }
     if (phase === "busy") {
       await act()
-      // Windows come and go: a reload, a phone waking (the server must let go of each socket).
       if (wins.size > 2 && Math.random() < 0.05) close([...wins][0])
       if (wins.size < 3 || (wins.size < 6 && Math.random() < 0.05)) open()
       await wait(1000 + Math.random() * 3000)
@@ -142,7 +136,6 @@ try {
   fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
 }
 
-// ---------- the report: growth an hour (least squares over the samples after the first 10 minutes, or third), idle CPU
 const WARM = Math.min(10, MINUTES / 3) * 60_000
 const warm = samples.filter((s) => s.at - samples[0].at > WARM && s.phase !== "end")
 const perHour = (k: "rss" | "fds" | "sockets" | "watches") => {
@@ -152,7 +145,6 @@ const perHour = (k: "rss" | "fds" | "sockets" | "watches") => {
   const slope = xs.reduce((a, x, i) => a + (x - mx) * (ys[i] - my), 0) / xs.reduce((a, x) => a + (x - mx) ** 2, 0)
   return +slope.toFixed(1)
 }
-// (CPU over each half minute both of whose ends are idle)
 const idle = samples.flatMap((s, i) => (i > 0 && s.phase === "idle" && samples[i - 1].phase === "idle" ? [(s.cpu - samples[i - 1].cpu) / (s.at - samples[i - 1].at)] : []))
 const idleCpu = idle.length ? +(idle.reduce((a, b) => a + b, 0) / idle.length * 100).toFixed(2) : null
 const first = samples[0], last = samples.at(-1)!
@@ -161,7 +153,6 @@ console.log(`rss ${first.rss} -> ${last.rss} MB (${result.perHour.rssMb ?? "?"} 
   `watches ${first.watches} -> ${last.watches}), idle CPU ${idleCpu ?? "?"}%, ${refreshes} refreshes (slowest ${result.slowestRefreshMs} ms)`)
 if (result.errors.length) console.log(`server errors:\n${result.errors.join("\n")}`)
 if (OUT) fs.writeFileSync(OUT, JSON.stringify({ ...result, samples }, null, 2))
-// (the budget: every window closed, the server lets go of their sockets; no growth past the warm-up; quiet when idle)
 if (process.argv.includes("--budget")) {
   const checks: [string, number | null, number][] = [
     ["sockets left after the windows closed", last.sockets - first.sockets, 0], ["files left open", last.fds - first.fds, 3],

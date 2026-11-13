@@ -6,13 +6,9 @@ import path from "node:path"
 
 const ROOT = path.join(import.meta.dirname, "..", "..")
 const LIMITS = path.join(import.meta.dirname, "startup.json")
-/** Room over the last ratchet, so an ordinary change fits and a heavy import doesn't. */
 const HEADROOM = 1.1
-/** The server's code: the main process reaching it loads the whole vault's machinery at every launch. */
 const NEVER_IN_MAIN = ["core/vault.ts", "core/plugins.ts", "core/app.ts"]
 
-/** Every file the entry's imports reach as it starts (static ones, not `import type`; a top-level `await import()`, which
- *  is unindented), and their bytes. */
 function graph(entry: string) {
   const seen = new Map<string, number>()
   const walk = (file: string) => {
@@ -27,16 +23,13 @@ function graph(entry: string) {
   return seen
 }
 
-// (the shell, package.json's main, and the code's entry it imports by a path it picks: electron/shell/boot.mjs)
 const main = new Map([...graph(path.join(ROOT, JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).main)), ...graph(path.join(ROOT, "electron", "boot.ts"))])
 const kb = (n: number) => Math.round(n / 1024)
 const now: Record<string, number> = { desktopMainKB: kb([...main.values()].reduce((a, b) => a + b, 0)) }
 const DIST = path.join(ROOT, "web", "dist")
-/** The files a page of web/dist loads before drawing. */
 const eagerOf = (page: string) =>
   [...fs.readFileSync(path.join(DIST, page), "utf8").matchAll(/<(?:script|link)\b[^>]*?(?:src|href)="\.?\/?(assets\/[^"]+\.(?:js|css))"/g)].map((m) => m[1])
 const sizeOf = (files: string[], ext: string) => kb(files.filter((f) => f.endsWith(ext)).reduce((n, f) => n + fs.statSync(path.join(DIST, f)).size, 0))
-// (--main skips web/dist: a worktree's may be an older build's)
 const web = !process.argv.includes("--main")
 if (web && fs.existsSync(path.join(DIST, "index.html"))) {
   const eager = eagerOf("index.html")
@@ -44,7 +37,6 @@ if (web && fs.existsSync(path.join(DIST, "index.html"))) {
   now.webEagerCssKB = sizeOf(eager, ".css")
   // (a browser asks 6 at a time over HTTP/1.1: a hundred small files cost a phone seconds; vite.config.ts bootChunks)
   now.webEagerFiles = eager.length
-  // The iPhone app's first screen, at every launch: a server list, not the app (whose code its imports could reach)
   now.phoneEagerJsKB = sizeOf(eagerOf("phone.html"), ".js")
 } else if (web) console.log("startup: no web/dist (npm run build first): the web app's part skipped")
 

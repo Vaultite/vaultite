@@ -42,8 +42,6 @@ const api = async (method: string, p: string, body?: unknown) => {
   return r.json()
 }
 
-// Each window: when the note probe was told (a change naming it), when each probe was first drawn (a frame showing its
-// marker), and its main thread's long tasks.
 const browser = await chromium.launch({ executablePath: CHROME, args: ["--mute-audio"] })
 type Got = { __told: number[]; __drawn: Record<string, number>; __long: number[] }
 const pages = []
@@ -87,7 +85,6 @@ for (let i = 0; i < CLIENTS; i++) {
 }
 log(`${CLIENTS} windows on ${PROBE}, ${notes.length} notes; ${WRITERS} writers at ${RATE}/s for ${SECONDS} s`)
 
-// Writers: half on disk (as an editor or an AI's file tool), half through the API; one in ten makes a new note.
 let stop = false, writes = 0, failed = 0
 const writer = async (n: number) => {
   for (let i = 0; !stop; i++) {
@@ -113,8 +110,6 @@ const writer = async (n: number) => {
 const profiled = await profiling?.()
 const writing = Array.from({ length: WRITERS }, (_, n) => writer(n))
 
-// The probes, every 700 ms, alternately on disk and through the API: a line in the open note (drawn by its editor), then
-// a new note beside it in place of the last (drawn by the file tree, from the store).
 const probes: { id: string; at: number; via: string }[] = []
 const end = Date.now() + SECONDS * 1000
 for (let n = 0; Date.now() < end; n++) {

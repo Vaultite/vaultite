@@ -21,11 +21,9 @@ const VAULT = path.join(tmp, "vault"), LOCAL = path.join(tmp, "local")
 const PORT = await freePort(), BASE = `http://127.0.0.1:${PORT}/`
 const HEADERS = { "X-Vaultite-Client": "app/web", "Content-Type": "application/json" }
 
-// ---------- the copy, and what to measure on it
 try { execFileSync("/bin/cp", ["-cR", path.resolve(SRC), VAULT], { stdio: "ignore" }) } catch { fs.cpSync(SRC, VAULT, { recursive: true }) }
 for (const p of [".obsidian/plugins", ".git", ".vaultite/plugins/workspaces", ".vaultite/plugins/machines"]) fs.rmSync(path.join(VAULT, p), { recursive: true, force: true })
 
-/** Every file under the vault, as the index sees them (no hidden folders). */
 function walk(dir = "", out: string[] = []) {
   for (const d of fs.readdirSync(path.join(VAULT, dir), { withFileTypes: true })) {
     if (d.name.startsWith(".")) continue
@@ -50,7 +48,6 @@ const NOTE = arg("note") || [...md].sort((a, b) => heavyScore(b) - heavyScore(a)
 const dirs = new Map<string, number>()
 for (const f of all) { const d = f.includes("/") ? f.slice(0, f.lastIndexOf("/")) : ""; dirs.set(d, (dirs.get(d) ?? 0) + 1) }
 const [BIG_DIR, BIG_N] = [...dirs].sort((a, b) => b[1] - a[1])[0]
-// A word from the heavy note's text: something that's there, in many files or few.
 const SEARCH = arg("search") || (stemOf(NOTE).split(/\s+/).find((w) => w.length > 3) ?? stemOf(NOTE))
 const DQL = arg("dql", `TABLE file.mtime FROM "${BIG_DIR}" SORT file.mtime DESC LIMIT 50`)
 const bytes = all.reduce((n, f) => n + fs.statSync(path.join(VAULT, f)).size, 0)
@@ -62,7 +59,6 @@ const result: Record<string, any> = {
 console.log(`${result.vault}: ${all.length} files (${md.length} Markdown, ${result.mb} MB), ${links} wikilinks; heavy note ${NOTE}, ` +
   `most linked ${RENAME} (${result.subjects.renameInbound} links), biggest folder ${BIG_DIR || "(top)"} (${BIG_N} files)`)
 
-// ---------- the server
 const cpu = (c: ChildProcess) => execFileSync("/bin/ps", ["-o", "time=", "-p", String(c.pid)], { encoding: "utf8" }).trim()
   .split(":").reduce((acc, x) => acc * 60 + Number(x), 0) * 1000
 const rss = (c: ChildProcess) => Math.round(Number(execFileSync("/bin/ps", ["-o", "rss=", "-p", String(c.pid)], { encoding: "utf8" }).trim()) / 1024)
@@ -144,8 +140,6 @@ try {
     for (let i = 0; i < RUNS; i++) ms.push((await time(method, url, body)).ms)
     endpoints[name] = { first: Math.round(first.ms), median: median(ms), cpu: +((cpu(child) - c0) / RUNS).toFixed(0), bytes: first.bytes }
   }
-  // After an edit (a note changed on disk, as by an AI): the change told over /api/events, then what the app asks for
-  // again (the state as a patch of the one it has), and the whole files and graph.
   const notePath = path.join(VAULT, NOTE)
   const ws = new WebSocket(`ws://127.0.0.1:${PORT}/api/events`)
   let told: (() => void) | null = null
@@ -169,7 +163,6 @@ try {
     after["graph after an edit"].push((await time("GET", "api/graph")).ms)
     after["search after an edit"].push((await time("GET", `api/search?q=${q(SEARCH)}`)).ms)
   }
-  // A new note linking to the most linked one (an AI writing one): what the Links panel asks then.
   after["links panel after a new note"] = []
   for (let i = 0; i < RUNS; i++) {
     const heard = new Promise<void>((r) => { told = r })
@@ -182,7 +175,6 @@ try {
   for (const [name, ms] of Object.entries(after)) endpoints[name] = { median: median(ms), ...(name.startsWith("state") ? { bytes: patchBytes } : {}) }
   result.endpoints = endpoints
 
-  // A rename of the most linked note: every file linking to it rewritten (core/vault.ts relink), then back.
   const to = RENAME.replace(/\.md$/, " renamed.md")
   const moved = await time("POST", "api/file/move", { from: RENAME, to })
   const updated = moved.json().updated.length
@@ -198,11 +190,9 @@ try {
   fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
 }
 
-/** In Chrome (a QA slot): the app loaded until its tree shows, the biggest folder opened and shown whole, the heavy
- *  note opened in the editor, and 40 keys typed into it (each from keydown to the next frame). */
 async function browse() {
   const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
-  await hold() // (this machine's QA slot: tools/qa_slots.ts)
+  await hold()
   const browser = await chromium.launch({ executablePath: chromium.executablePath() })
   try {
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
@@ -222,7 +212,6 @@ async function browse() {
       const tree = page.locator("aside [role=tree]").first()
       await page.locator('aside [aria-label="Collapse all"]').click().catch(() => {})
       await wait(300)
-      // (a folder deep down: its parents opened first)
       const parts = BIG_DIR.split("/")
       for (let i = 0; i < parts.length; i++) {
         const p = parts.slice(0, i + 1).join("/")
@@ -238,7 +227,6 @@ async function browse() {
     await page.waitForFunction(() => document.querySelectorAll(".cm-content .cm-line").length > 2, null, { timeout: 60_000 })
     out.noteOpened = Math.round(performance.now() - t0)
     const cdp = PROFILE ? await ctx.newCDPSession(page) : null
-    /** 40 keys typed at the note's end: each one's latency (median, p95, max), under `key`. */
     const typing = async (key: string) => {
       await page.click(".cm-content")
       await page.keyboard.press("ControlOrMeta+End")
@@ -254,7 +242,6 @@ async function browse() {
     if (cdp) { await cdp.send("Profiler.enable"); await cdp.send("Profiler.start") }
     await typing("keyMs")
     if (cdp) fs.writeFileSync(PROFILE, JSON.stringify((await cdp.send("Profiler.stop")).profile))
-    // The biggest folder shown whole (past files.json's folderLimit, if one cuts it) and scrolled far down, then typing again.
     const more = page.locator(`aside [role=tree] [data-tree-more="${BIG_DIR}"] button`)
     if (BIG_DIR) {
       if (await more.count()) {
@@ -263,12 +250,10 @@ async function browse() {
         await page.waitForFunction(([d, n]: [string, number]) => document.querySelectorAll(`div[data-tree-path^="${CSS.escape(d)}/"]`).length > n, [BIG_DIR, 200] as [string, number], { timeout: 120_000 }).catch(() => {})
         out.folderShownWhole = Math.round(performance.now() - t0)
       }
-      // (a page too busy to answer a hover is a result too: a tree drawing every row)
       const tree = await page.locator("aside [role=tree]").first().boundingBox({ timeout: 60_000 }).catch(() => null)
       if (tree) await page.mouse.move(tree.x + tree.width / 2, tree.y + Math.min(tree.height, 400) / 2)
       for (let i = 0; i < 10; i++) { await page.mouse.wheel(0, 20000); await wait(300) }
       out.treeRows = await page.evaluate(() => document.querySelectorAll("aside [role=tree] [data-tree-path]").length)
-      // (a page that can't take a click for minutes: noted, the rest kept)
       await typing("wholeFolderKeyMs").catch(() => { out.wholeFolderStuck = 1 })
     }
     return out
@@ -277,7 +262,6 @@ async function browse() {
   }
 }
 
-// ---------- the table
 const before = COMPARE ? JSON.parse(fs.readFileSync(COMPARE, "utf8")) : null
 const vs = (a: number | undefined, b: number | undefined) => (a !== undefined && b ? ` (was ${a}, ${(a / b).toFixed(1)}x)` : "")
 const b = result.boot.again, bb = before?.boot?.again

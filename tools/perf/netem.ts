@@ -12,14 +12,11 @@ import tls from "node:tls"
 import { portOf } from "../../core/listening.ts"
 
 export type Profile = { name: string; rttMs: number; downKbps: number; upKbps: number }
-/** A phone on LTE through the tailnet (a relay or a direct path home), and a Mac away from home on good Wi-Fi. */
 export const PROFILES: Record<string, Profile> = {
   cellular: { name: "cellular", rttMs: 150, downKbps: 8_000, upKbps: 2_000 },
   tailnet: { name: "tailnet", rttMs: 40, downKbps: 50_000, upKbps: 20_000 },
 }
 
-/** One direction of the link: a chunk leaves once the ones before it have, takes its bytes' time on the wire, then
- *  half the round trip in flight. */
 class Link {
   free = 0
   bytes = 0
@@ -34,7 +31,6 @@ class Link {
   }
 }
 
-/** Pipe `from` into `to` through `link`, in order. */
 function carry(from: net.Socket, to: net.Socket, link: Link, count: (n: number) => void) {
   let last = Promise.resolve()
   from.on("data", (chunk: Buffer) => {
@@ -62,7 +58,6 @@ function certificate() {
 }
 
 const HOP = new Set(["connection", "keep-alive", "proxy-connection", "transfer-encoding", "upgrade", "http2-settings", "te", "host"])
-/** A proxy's headers on a request to the server: the client's address, as Tailscale Serve sends it. */
 const forwarded = (h: http.IncomingHttpHeaders | http2.IncomingHttpHeaders, host: string) => {
   const out: Record<string, string | string[]> = {}
   for (const [k, v] of Object.entries(h)) if (!k.startsWith(":") && !HOP.has(k) && v !== undefined) out[k] = v as string | string[]
@@ -70,14 +65,10 @@ const forwarded = (h: http.IncomingHttpHeaders | http2.IncomingHttpHeaders, host
 }
 
 export type Netem = { url: string; spki: string; up: Link; down: Link; set(p: Profile): void; close(): Promise<void>
-  /** Point it at another server (a deploy: the same address, a new build). */
   retarget(target: string): void
-  /** Bytes on the wire of HTTP/1.1 connections (the live socket's). */
   h1Bytes(): number
-  /** Cut the live sockets, as a phone's radio or iOS suspending the app does. */
   dropSockets(): void }
 
-/** The emulated network in front of `target` (http://127.0.0.1:<port>). Its URL is https://localhost:<port>/. */
 export async function netem(target: string, profile: Profile): Promise<Netem> {
   let t = new URL(target)
   const { key, cert, spki } = certificate()
@@ -101,7 +92,6 @@ export async function netem(target: string, profile: Profile): Promise<Netem> {
     stream.pipe(req)
   })
   h2.on("sessionError", () => {})
-  // HTTP/1.1: the live socket (a WebSocket's upgrade), and anything that doesn't speak HTTP/2
   const h1 = http.createServer((req, res) => {
     const up = toServer(req.method ?? "GET", req.url ?? "/", forwarded(req.headers, req.headers.host ?? ""))
     up.on("response", (r) => { res.writeHead(r.statusCode ?? 502, r.headers); r.pipe(res) })
@@ -120,7 +110,6 @@ export async function netem(target: string, profile: Profile): Promise<Netem> {
     up.on("error", () => socket.destroy())
     socket.on("error", () => up.destroy())
   })
-  // (each relayed connection's protocol, by the relay's port: the live socket's are HTTP/1.1's)
   const alpn = new Map<number, string>()
   const secure = tls.createServer({ key, cert, ALPNProtocols: ["h2", "http/1.1"] }, (s) => {
     alpn.set(s.remotePort ?? 0, String(s.alpnProtocol))
@@ -130,10 +119,8 @@ export async function netem(target: string, profile: Profile): Promise<Netem> {
   await new Promise<void>((r) => secure.listen(0, "127.0.0.1", r))
   const tlsPort = portOf(secure)
 
-  // The air: the relay the browser connects to
   const up = new Link(profile.upKbps, profile.rttMs / 2), down = new Link(profile.downKbps, profile.rttMs / 2)
   const sockets = new Set<net.Socket>()
-  /** Bytes by connection: [the relay's port to the proxy, bytes]. */
   const conns: { port: number; bytes: number }[] = []
   const relay = net.createServer((client) => {
     client.setNoDelay(true)

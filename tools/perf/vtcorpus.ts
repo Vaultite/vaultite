@@ -1,15 +1,12 @@
 // Made-up terminal output for the terminal's benchmarks and tests (perf/vt.ts, test_vt.ts): what programs in a
 // terminal here print, fixed so runs compare. Each is the bytes a program writes, as a string.
 
-/** A small seeded random (mulberry32), so a corpus is the same each run. */
 function rand(seed: number) {
   return () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296 }
 }
 const WORDS = "the terminal keeps its screen and history while agents write notes about Lisbon trips plans for Lighthouse reviews of code".split(" ")
 const sentence = (r: () => number, n: number) => Array.from({ length: n }, () => WORDS[Math.floor(r() * WORDS.length)]).join(" ")
 
-/** An Ink-style agent (Claude Code's look): each frame drawn again in place in synchronized output (2026), cursor up
- *  and erased lines, truecolor text, a spinner, a box around the input. */
 export function inkFrames(frames = 600, cols = 120) {
   const r = rand(1), spin = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
   let out = "", height = 0
@@ -29,7 +26,6 @@ export function inkFrames(frames = 600, cols = 120) {
   return out
 }
 
-/** Styled Markdown streamed in small pieces as an agent's answer: bold, code, lists, emoji and CJK. */
 export function streaming(lines = 3000) {
   const r = rand(2)
   let out = ""
@@ -44,11 +40,8 @@ export function streaming(lines = 3000) {
   return out
 }
 
-/** `yes`-like: one short line again and again. */
 export const yes = (lines = 50000) => "y\r\n".repeat(lines)
-/** `seq`-like: numbered lines. */
 export function seq(lines = 50000) { let s = ""; for (let i = 1; i <= lines; i++) s += `${i}\r\n`; return s }
-/** Full lines of colored text to fill a history: `lines` of `cols` columns. */
 export function fill(lines: number, cols = 120) {
   const r = rand(3)
   let s = ""
@@ -60,10 +53,8 @@ export function fill(lines: number, cols = 120) {
   return s
 }
 
-/** A spinner a program redraws in place at `hz`, for `seconds`: what an idle agent's terminal gets. */
 export const spinner = (frames: number) => Array.from({ length: frames }, (_, i) => `\r\x1b[2K\x1b[38;5;208m${"⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"[i % 10]}\x1b[0m waiting · ${i}`).join("")
 
-/** The corpora the benchmark and tests use, by name. */
 export const CORPORA: Record<string, () => string> = {
   ink: () => inkFrames(),
   streaming: () => streaming(),

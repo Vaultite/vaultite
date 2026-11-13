@@ -12,18 +12,14 @@ export const FLOWS: Record<string, string> = {
 }
 const Metric = z.enum(["wire", "requests", "serial"])
 type Metric = z.infer<typeof Metric>
-/** Metrics with a ceiling, and the room a ceiling leaves over what it was set from (--ratchet). */
 const METRICS: Record<Metric, { name: string; room: (v: number, flow: string) => number }> = {
   wire: { name: "Wire", room: (v: number, flow: string) => Math.ceil((v * (flow === "idle" || flow === "phone-resume" ? 1.5 : 1.08) + 2048) / 1024) * 1024 },
   requests: { name: "Requests", room: (v: number) => v + 3 },
   serial: { name: "Round trips in a row", room: (v: number) => v + 1 },
 }
-/** Which flows' requests and round trips are worth a row (the rest are a request or two). */
 const LATENCY_FLOWS = new Set(["cold", "warm", "open", "today", "phone-cold", "phone-resume", "phone-reopen", "update"])
 const Ceilings = z.object({ profile: z.string(), flows: z.record(z.string(), z.partialRecord(Metric, z.number())) })
 export type Ceilings = z.infer<typeof Ceilings>
-
-// ---- reading the result, as untrusted data
 
 const Count = z.number().nonnegative().lt(1e11)
 const Kinds = z.object({ js: Count, css: Count, api: Count, html: Count, media: Count, other: Count, socket: Count })
@@ -53,8 +49,6 @@ export function read(text: string, profile: string) {
   return { runs: r.runs, idleS: r.idleS, prof: r.profiles[profile], base: second ? side(first) : null, head: side(second ?? first) }
 }
 
-// ---- the Markdown
-
 const kib = (n: number) => (Math.abs(n) >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(2)} MiB` : Math.abs(n) >= 1024 ? `${(n / 1024).toFixed(1)} KiB` : `${Math.round(n)} B`)
 const fmt = (m: Metric, n: number) => (m === "wire" ? kib(n) : String(Math.round(n)))
 function impact(m: Metric, base: number | undefined, head: number) {
@@ -72,7 +66,6 @@ export function render(data: ReturnType<typeof read>, ceilings: Ceilings | null,
     if (!h) continue
     for (const m of Metric.options) {
       if (m !== "wire" && !LATENCY_FLOWS.has(flow)) continue
-      // (main's own "deploy" is a reload into the same build: no baseline for it)
       const b = flow === "update" ? undefined : base?.flows[flow]?.[m], v = h[m], cap = ceilings?.flows[flow]?.[m]
       const ok = cap === undefined || v <= cap
       if (!ok) over.push(`${label}: ${METRICS[m].name.toLowerCase()}`)
@@ -119,14 +112,12 @@ export function render(data: ReturnType<typeof read>, ceilings: Ceilings | null,
   ].join("\n")
 }
 
-/** Ceilings from this result, each with its room (--ratchet: only ever lowered, a new flow's added). */
 export function ratchet(data: ReturnType<typeof read>, was: Ceilings | null, profile: string): Ceilings {
   const flows: Ceilings["flows"] = {}
   for (const [flow, h] of Object.entries(data.head.flows)) {
     for (const m of Metric.options) {
       if (m !== "wire" && !LATENCY_FLOWS.has(flow)) continue
       const now = METRICS[m].room(h[m], flow), before = was?.flows[flow]?.[m]
-      // (a deploy's is set by hand, about half the app's start: what one commit changes varies, a cascade doesn't)
       ;(flows[flow] ??= {})[m] = before === undefined ? now : flow === "update" ? before : Math.min(before, now)
     }
   }

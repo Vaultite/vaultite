@@ -23,9 +23,6 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-browser-perf-"))
 const results: Record<string, unknown> = { root: ROOT, date: new Date().toISOString(), load: +os.loadavg()[0].toFixed(1) }
 const say = (k: string, v: unknown) => { results[k] = v; console.log(k, JSON.stringify(v)) }
 
-// ---------- made-up pages, each telling its own times (window.__p) ----------
-
-/** In every page: first paint, visibility changes with the first frame after each, keys to their next frame, frames. */
 const INSTR = `<script>
 const T = (t) => performance.timeOrigin + t
 window.__p = { fcp: 0, vis: [], keys: [], frames: [], rec: false, raf: 0 }
@@ -40,7 +37,6 @@ const page = (title: string, body: string) => `<!doctype html><html><head><meta 
 <link rel="icon" href="/icon.svg"><style>body{font:16px/1.5 -apple-system,sans-serif;margin:0;padding:24px 40px;background:#fff;color:#222}</style>${INSTR}</head><body>${body}</body></html>`
 const words = (n: number, s = 1) => Array.from({ length: n }, (_, i) => ["lighthouse", "keeper", "fog", "harbor", "signal", "tide", "rocks", "lamp"][(i * 7 + s) % 8]).join(" ")
 const ARTICLE = (name: string) => page(`Page ${name}`, `<h1>Page ${name}</h1><input id="q">${Array.from({ length: 30 }, (_, i) => `<p>${words(80, i + name.length)}</p>`).join("")}`)
-// A feed like YouTube's: thousands of cards with images, a sticky blurred header, and parts changing all the time.
 const HEAVY = page("Heavy feed", `<header style="position:sticky;top:0;z-index:2;height:56px;backdrop-filter:blur(20px);background:rgba(255,255,255,.7);display:flex;align-items:center;gap:12px;padding:0 16px">
 <b>Feed</b><input id="q" style="flex:1;height:32px"></header><main id="grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px"></main>
 <script>
@@ -54,7 +50,6 @@ g.append(f)
 setInterval(() => { for (let k = 0; k < 40; k++) { const c = g.children[(Math.random() * g.children.length) | 0]; c.classList.toggle("hot"); c.querySelector("p").textContent = "channel · " + ((Math.random() * 99) | 0) + "K views" } }, 100)
 </script><style>.hot{outline:2px solid #f33}</style>`)
 const IMG = (i: number) => `<svg xmlns="http://www.w3.org/2000/svg" width="260" height="146"><rect width="260" height="146" fill="hsl(${(i * 37) % 360},55%,60%)"/><circle cx="130" cy="73" r="${20 + (i % 30)}" fill="#fff8"/></svg>`
-/** A page asking for many scripts and images, some on paths ad lists name, to cost Shields' matching. */
 const ADS = (n: number) => page("Ads", `<h1>Requests</h1>${Array.from({ length: n }, (_, i) => i % 3 === 0 ? `<script src="/static/lib${i}.js"></script>`
   : i % 3 === 1 ? `<img src="/ads/banner_ad_${i}.gif?adunit=top&ad_type=display" width="1" height="1">` : `<img src="/pixel/track.gif?utm_source=x&i=${i}&event=pageview" width="1" height="1">`).join("")}`)
 
@@ -72,8 +67,6 @@ const server = http.createServer((req, res) => {
 })
 await new Promise<void>((ok) => server.listen(0, "127.0.0.1", ok))
 const SITE = `http://127.0.0.1:${portOf(server)}`
-
-// ---------- the app, through its main process's inspector ----------
 
 const VAULT = path.join(tmp, "vault")
 makeVault(VAULT, 1)
@@ -115,23 +108,19 @@ class App {
     }
     await until(() => this.app("!!document.querySelector('[role=tree]')"), 120000, 100)
     await this.main(({ app, BaseWindow }) => { const w = BaseWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 820 }); app.focus({ steal: true }); w.focus() })
-    // (when each page's load started, in the main process: a tab's own part of opening, without the app's)
     await this.main(({ app }) => {
       const g = globalThis as unknown as { __navStart: Record<string, number> }
       g.__navStart = {}
       app.on("web-contents-created", (_e, wc) => wc.on("did-start-navigation", (d) => { if (d.isMainFrame && /^http/.test(d.url)) g.__navStart[d.url] ??= performance.timeOrigin + performance.now() }))
     })
-    // (a vault plugin's question at the first launch, "Activity wants to write a recap": Not now)
     void until(() => this.app("(() => { const b = [...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'Not now'); b?.click(); return !!b })()"), 15000, 200)
     await wait(1500)
     return this
   }
 
-  /** `fn(electron, arg)` in the main process. */
   main<T, A = null>(fn: (e: typeof Electron.CrossProcessExports, arg: A) => T | Promise<T>, a?: A): Promise<T> {
     return this.raw(`(async () => (${fn.toString()})(require("electron"), ${JSON.stringify(a ?? null)}))()`)
   }
-  /** A command to the main process's inspector (Profiler.start...). */
   async send<T>(method: string, params: object = {}): Promise<T> {
     const id = ++this.n
     this.ws.send(JSON.stringify({ id, method, params }))
@@ -147,17 +136,14 @@ class App {
     if (j.result?.exceptionDetails) throw new Error(j.result.exceptionDetails.exception?.description ?? "failed")
     return j.result?.result?.value as T
   }
-  /** `code` in the app's own page. */
   app<T>(code: string) {
     return this.main((e, code) => (e.BaseWindow.getAllWindows()[0] as unknown as Win).webContents.executeJavaScript(code), code) as Promise<T>
   }
-  /** `code` in the page at an address starting `url` (null: none yet). */
   page<T>(url: string, code: string) {
     return this.main(({ webContents }, [url, code]) => { const wc = webContents.getAllWebContents().find((w) => w.getURL().startsWith(url)); return wc ? wc.executeJavaScript(code) : null }, [url, code]) as Promise<T | null>
   }
   ui(body: object) { return fetch(`${this.origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }) }
   setting(o: object) { return fetch(`${this.origin}/api/config/plugin/web-viewer`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(o) }) }
-  /** A click in the app's page at its CSS pixels, as the OS would send it (through the main process to the page). */
   click(x: number, y: number) {
     return this.main((e, [x, y]) => {
       const wc = (e.BaseWindow.getAllWindows()[0] as unknown as Win).webContents, z = wc.getZoomFactor()
@@ -171,7 +157,6 @@ class App {
     await this.main(({ app }) => { setTimeout(() => app.quit(), 10) }).catch(() => {})
     const gone = await Promise.race([new Promise((r) => this.child.once("exit", () => r(true))), wait(15000).then(() => false)])
     try { this.ws.close() } catch { /* gone */ }
-    // (its own process group: everything it started, nothing else)
     if (!gone) try { process.kill(-this.child.pid!, "SIGKILL") } catch { /* gone */ }
   }
 }
@@ -181,7 +166,6 @@ async function until<T>(fn: () => Promise<T>, ms = 20000, every = 20): Promise<T
   for (;;) { let v: T | undefined; try { v = await fn() } catch { v = undefined } if (v || Date.now() > end) return v as T; await wait(every) }
 }
 type Metrics = Record<string, { cpu: number; mem: number; n: number }>
-/** Each kind of process's CPU (ms) and memory (MB): the main process, the GPU, the app's page, the web pages, the rest. */
 const metrics = (a: App) => a.main(({ app, BaseWindow, webContents }) => {
   const appPid = (BaseWindow.getAllWindows()[0] as unknown as Win).webContents.getOSProcessId()
   const webPids = new Set(webContents.getAllWebContents().filter((w) => /^https?:/.test(w.getURL()) && w.getOSProcessId() !== appPid).map((w) => w.getOSProcessId()))
@@ -198,7 +182,6 @@ const pct = (xs: number[], p: number) => { const s = [...xs].filter(Number.isFin
 const med = (xs: number[]) => pct(xs, 0.5)
 const r1 = (x: number) => +x.toFixed(1)
 
-/** Open `url` in a new tab: ms from asking to the page's first paint. */
 async function openTab(a: App, url: string) {
   const t0 = now()
   await a.ui({ action: "open", path: `view:web/${url}`, newTab: true })
@@ -206,7 +189,6 @@ async function openTab(a: App, url: string) {
   const start = await a.main((_e, url) => (globalThis as unknown as { __navStart: Record<string, number> }).__navStart[url] ?? 0, url)
   return { total: fcp ? fcp - t0 : NaN, load: fcp && start ? fcp - start : NaN }
 }
-/** The tab strip's tab whose text has `text`: its centre. */
 const tabAt = (a: App, text: string) => a.app<{ x: number; y: number } | null>(`(() => { const t = [...document.querySelectorAll("[data-tab-id]")].find((t) => t.getBoundingClientRect().width > 0 && t.textContent.includes(${JSON.stringify(text)}))
   if (!t) return null; const r = t.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 } })()`)
 
@@ -217,10 +199,7 @@ const engineInto = (dir: string) => {
   return dir
 }
 
-// ---------- the measures ----------
-
 async function measure(a: App) {
-  // Shields' engine: waited for once (built from the lists online when none was given), kept for the next run.
   const kept = path.join(a.dir, "userData", "adblock", "engine-2.bin")
   if (!fs.existsSync(ENGINE)) {
     console.log("(building Shields' engine from the lists online, once)")
@@ -230,16 +209,13 @@ async function measure(a: App) {
   }
 
   if (want("open")) {
-    // The first tab waits for the engine (Ghostery and its kept lists loaded); then the others.
     const first = await openTab(a, `${SITE}/first`)
     const next: { total: number; load: number }[] = []
     for (let i = 0; i < 8; i++) { await wait(2500); next.push(await openTab(a, `${SITE}/open${i}`)) }
-    // (total: asked to first paint; load: the page's load starting to its first paint, the browser's own part)
     say("open", { firstMs: r1(first.total), totalMedianMs: med(next.map((x) => x.total)), loadMedianMs: med(next.map((x) => x.load)), load: next.map((x) => r1(x.load)) })
   }
 
   if (want("nav")) {
-    // A page going to another address (as the bar's Enter does): to its load and its first paint.
     await openTab(a, `${SITE}/nav0`)
     const loads: number[] = [], paints: number[] = []
     for (let i = 1; i <= 8; i++) {
@@ -257,21 +233,18 @@ async function measure(a: App) {
     await openTab(a, `${SITE}/sw-b`)
     await wait(1000)
     if (want("hidden")) {
-      // A background tab's page: hidden (no frames, timers slowed), as in a browser?
       const [f0, s] = (await a.page<[number, string]>(`${SITE}/sw-a`, "[__p.raf, document.visibilityState]")) ?? [0, ""]
       await wait(3000)
       const [f1] = (await a.page<[number]>(`${SITE}/sw-a`, "[__p.raf]")) ?? [0]
       say("hidden", { visibility: s, framesIn3s: f1 - f0 })
     }
     if (want("switch")) {
-      // A click on a tab to the first frame its page draws once shown; and the page view's being shown in the window.
       const times: number[] = [], shown: number[] = []
       for (let i = 0; i < 10; i++) {
         const [name, url] = i % 2 ? ["sw-b", `${SITE}/sw-b`] : ["sw-a", `${SITE}/sw-a`]
         const at = await tabAt(a, name)
         if (!at) { times.push(NaN); continue }
         const n = (await a.page<number>(url, "__p.vis.length")) ?? 0
-        // (the view's showing, watched in the main process every millisecond)
         const visible = a.main(async ({ BaseWindow, webContents }, url) => {
           const wc = webContents.getAllWebContents().find((w) => w.getURL().startsWith(url))
           const v = BaseWindow.getAllWindows()[0].contentView.children.find((c) => (c as Electron.WebContentsView).webContents === wc)
@@ -296,7 +269,6 @@ async function measure(a: App) {
     await openTab(a, heavy)
     await wait(2000)
     if (want("heavy")) {
-      // Scrolling: wheel events at 60 Hz for 4 s, the page's frame intervals, and each process's CPU meanwhile.
       await a.page(heavy, "__p.frames = []; __p.rec = true")
       const m0 = await metrics(a)
       await a.main(async ({ webContents }, url) => {
@@ -309,7 +281,6 @@ async function measure(a: App) {
       say("scroll", { frames: f.length, p50: pct(gaps, 0.5), p95: pct(gaps, 0.95), over25ms: gaps.filter((g) => g > 25).length, cpu: cpuDelta(m0, m1) })
     }
     if (want("preload")) {
-      // What Shields' frame script costs a page that changes all the time: its CPU for 10 s, Shields on, then off.
       const idle = async () => { const m0 = await metrics(a); await wait(10000); return Math.round((await metrics(a)).pages.cpu - m0.pages.cpu) }
       const on = await idle()
       await a.setting({ shields: false }); await wait(1000)
@@ -320,8 +291,6 @@ async function measure(a: App) {
       say("heavyPage10s", { shieldsOn: on, shieldsOff: off })
     }
     if (want("keys")) {
-      // Keys into the page's search box, sent as the OS's are (through the main process, its key handling, to the page):
-      // the event's time to the page's next frame, 40 keys 80 ms apart.
       await a.page(heavy, "document.getElementById('q').focus(); __p.keys = []; 0")
       await a.main(async ({ webContents }, url) => {
         const wc = webContents.getAllWebContents().find((w) => w.getURL().startsWith(url))!
@@ -333,7 +302,6 @@ async function measure(a: App) {
       say("keys", { n: k.length, inputDelayP50: med(k.map((x) => x.run - x.at)), toFrameP50: med(k.map((x) => x.frame - x.at)), toFrameP95: pct(k.map((x) => x.frame - x.at), 0.95) })
     }
     if (want("chrome")) {
-      // The app's own page while a page shows: idle, and while it changes (a toast a second, over the page), profiled.
       await a.app(`window.__muts = {}; new MutationObserver((rs) => { for (const r of rs) { const t = r.target.nodeType === 1 ? r.target : r.target.parentElement
         const k = (t?.closest("[data-web-box]") ? "box" : t?.closest("[data-pane]") ? "pane" : t?.closest("[data-status-bar]") ? "statusbar" : t?.closest("[data-tab-id]") ? "tab" : t?.closest("[data-sonner-toaster]") ? "toast" : (t?.className?.toString?.() || t?.tagName || "?").slice(0, 40)) + " " + r.type + (r.attributeName ? ":" + r.attributeName : "")
         __muts[k] = (__muts[k] ?? 0) + 1 } }).observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["open", "class", "style", "hidden", "data-dragging", "data-state", "data-visible", "data-removed"] }); 0`)
@@ -358,7 +326,6 @@ async function measure(a: App) {
   }
 
   if (want("ads")) {
-    // Shields' cost: the main process's CPU loading a page of 600 requests, Shields on and off.
     const run = async (label: string) => {
       const url = `${SITE}/ads?n=600&${label}`
       const m0 = await metrics(a)
@@ -376,7 +343,6 @@ async function measure(a: App) {
     say("adsMainTop", topFunctions(profile).slice(0, 14))
     await a.setting({ shields: false }); await wait(1000)
     const off = await run("off")
-    // (no request hooks at all, for what Electron's webRequest costs by itself)
     const hooks = await a.main(({ session }) => { const s = session.fromPartition("persist:web"); const wr = s.webRequest as unknown as Record<string, (f: null) => void>; for (const ev of ["onBeforeRequest", "onBeforeSendHeaders", "onHeadersReceived", "onSendHeaders", "onResponseStarted", "onCompleted", "onErrorOccurred", "onBeforeRedirect"]) wr[ev](null); return true })
     const none = hooks ? await run("none") : null
     await a.setting({ shields: true }); await wait(1000)
@@ -384,7 +350,6 @@ async function measure(a: App) {
   }
 
   if (want("idle", "memory")) {
-    // Ten tabs (one ticking, one heavy), all but the last in the background, a minute idle.
     for (let i = 0; i < 8; i++) await openTab(a, `${SITE}/idle${i}`)
     await openTab(a, `${SITE}/clock`)
     await openTab(a, `${SITE}/heavy?2`)
@@ -411,7 +376,6 @@ async function measure(a: App) {
 }
 
 async function restore() {
-  // Fifteen tabs, the app closed and opened again: the shown tab's first paint, how many pages were made, their cost.
   const dir = engineInto(path.join(tmp, "b"))
   const a = await new App(dir).launch()
   try { for (let i = 0; i < 15; i++) await openTab(a, `${SITE}/r${i}`); await wait(3000) } finally { await a.close() }
@@ -429,7 +393,6 @@ async function restore() {
 }
 
 type Profile = { nodes: { id: number; callFrame: { functionName: string; url: string; lineNumber: number; columnNumber: number }; children?: number[] }[]; samples: number[]; timeDeltas: number[] }
-/** The functions the app's page spent the most time in (self time, ms). */
 function topFunctions(p: Profile) {
   const self = new Map<number, number>()
   p.samples.forEach((id, i) => self.set(id, (self.get(id) ?? 0) + (p.timeDeltas[i] ?? 0) / 1000))
@@ -439,7 +402,6 @@ function topFunctions(p: Profile) {
     if (/^\((idle|program|root)\)/.test(name)) continue
     by.set(name, (by.get(name) ?? 0) + (self.get(n.id) ?? 0))
   }
-  // (and who called the costliest, two frames up)
   const parent = new Map<number, number>()
   for (const n of p.nodes) for (const c of n.children ?? []) parent.set(c, n.id)
   const node = new Map(p.nodes.map((n) => [n.id, n]))
@@ -453,7 +415,6 @@ function topFunctions(p: Profile) {
   return [...top.slice(0, 15).map(([k, v]) => `${k}: ${v.toFixed(1)}`), ...[...callers].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => `  called by ${k}: ${v.toFixed(1)}`)]
 }
 
-/** Shields' engine on its own (Node, no Electron): load time and the cost of matching a request. */
 function blockerBench() {
   const code = `
     const { FiltersEngine, Request } = await import("@ghostery/adblocker")

@@ -25,47 +25,35 @@ const profiles = arg("profiles", "cellular,tailnet").split(",").map((p) => PROFI
 export const FLOWS = ["cold", "warm", "open", "switch", "search", "today", "rich", "terminal", "idle", "phone-cold", "phone-resume", "phone-reopen", "update"] as const
 type Flow = (typeof FLOWS)[number]
 const only = arg("flows", "").split(",").filter(Boolean) as Flow[]
-/** --from: the build a phone's cache holds before a deploy (update); without it, no update flow. */
 const FROM = arg("from", "") && spec(arg("from", ""))
 const FLOWS_ = (only.length ? only : [...FLOWS]).filter((f) => f !== "update" || FROM), flows = FLOWS_
 const CHROME = [process.env.VAULTITE_CHROME, chromium.executablePath(), "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/chromium"]
   .find((p) => p && fs.existsSync(p))!
-/** Where a failed flow's screenshot goes (kept after the run's own temp folder is gone). */
 const SHOTS = path.join(import.meta.dirname, "..", "..", "web", "qa", "shots")
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-/** Bytes split by what they carried. */
 type Kinds = { js: number; css: number; api: number; html: number; media: number; other: number; socket: number }
 const kinds = (): Kinds => ({ js: 0, css: 0, api: 0, html: 0, media: 0, other: 0, socket: 0 })
 export type Measure = {
-  /** On the wire, both ways: TLS, headers and compressed bodies. */
   wire: number; down: number; up: number
-  /** Bodies as sent (compressed) and as decoded, by kind; sockets' messages as their text. */
   sent: Kinds; decoded: Kinds
   requests: number; api: number; cached: number
-  /** The longest chain of requests each asked only after the one before it was answered. */
   serial: number
   socketMsgs: number
-  /** ms from the flow's start until it's usable (its marker drawn). */
   ms: number
 }
-
-// ---- the vault: the sample, generated notes, and a few made for the flows
 
 function fixture(vault: string) {
   const w = (rel: string, text: string) => { fs.mkdirSync(path.dirname(path.join(vault, rel)), { recursive: true }); fs.writeFileSync(path.join(vault, rel), text) }
   const lines = (n: number, s: string) => Array.from({ length: n }, (_, i) => `${s} ${i + 1}: the transfer harness's text, long enough to wrap on a phone's screen.`).join("\n\n")
   w("Transfer/Alpha.md", `---\ntype: note\ntags: [transfer]\n---\n\n# Alpha\n\n${lines(40, "Alpha paragraph")}\n`)
   w("Transfer/Beta.md", `---\ntype: note\ntags: [transfer]\n---\n\n# Beta\n\nLinks to [[Alpha]].\n\n${lines(40, "Beta paragraph")}\n`)
-  // (an image, an embedded note, a query, a table: what a note's body asks the server for)
   const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64")
   fs.mkdirSync(path.join(vault, "Transfer"), { recursive: true })
   fs.writeFileSync(path.join(vault, "Transfer/pixel.png"), png)
   w("Transfer/Rich.md", `---\ntype: note\n---\n\n# Rich\n\n![[pixel.png]]\n\n![[Beta]]\n\n\`\`\`query\ntype: note\ntag: transfer\n\`\`\`\n\n` +
     `| Name | Value |\n| --- | --- |\n${Array.from({ length: 20 }, (_, i) => `| Row ${i} | ${i * 7} |`).join("\n")}\n\n${lines(10, "Rich paragraph")}\n`)
 }
-
-// ---- a server per root, with the network in front of it
 
 type Server = { root: string; child: ChildProcess; base: string; port: number; dir: string }
 async function serve(rootSpec: string, dir: string): Promise<Server> {
@@ -82,7 +70,6 @@ async function serve(rootSpec: string, dir: string): Promise<Server> {
     child.stdout!.on("data", on); child.stderr!.on("data", (b: Buffer) => { log = (log + b).slice(-20_000) })
     child.on("exit", () => reject(new Error(`the server at ${root} exited:\n${log.slice(-2000)}`)))
   })
-  // (the vault read and indexed before any flow: the first answer isn't the vault's first read)
   for (let t = Date.now(); Date.now() - t < 60_000; await wait(200)) {
     const r = await fetch(`http://127.0.0.1:${port}/api/loading`).then((x) => x.json(), () => null) as { ready?: boolean } | null
     if (r?.ready) break
@@ -97,19 +84,15 @@ async function serve(rootSpec: string, dir: string): Promise<Server> {
 }
 async function stop(s: Server) {
   await new Promise<void>((r) => { if (s.child.exitCode !== null) return r(); s.child.once("exit", () => r()); s.child.kill() })
-  // (and its terminal server, which outlives it: this protocol's or, for an older checkout, the one before)
   for (const v of [PROTOCOL, PROTOCOL - 1]) {
     try { process.kill(Number(fs.readFileSync(`${serverFiles(backendName(s.port), v).files}.pid`, "utf8")), "SIGTERM") } catch { /* none */ }
   }
 }
 
-// ---- one flow's accounting, from the DevTools protocol and the relay
-
 class Tally {
   reqs = new Map<string, { url: string; type: string; start: number; end: number; enc: number; dec: number; cached: boolean; api: boolean }>()
   socketSent = 0; socketDec = 0; socketMsgs = 0
   frames: string[] = []
-  /** When the network last did anything (performance.now()). */
   last = 0
   down0: number; up0: number; h10: number
   cdp: CDPSession; net: Netem; origin: string; page: Page
@@ -148,7 +131,6 @@ class Tally {
     for (const f of this.frames) console.log(`    socket ${f}`)
     for (const x of [...this.reqs.values()].sort((a, b) => b.enc - a.enc)) console.log(`    ${x.cached ? "cached" : String(x.enc).padStart(7)} ${String(x.dec).padStart(8)} ${x.type.padEnd(10)} ${((x.end - x.start) * 1000).toFixed(0).padStart(5)}ms ${x.url.slice(0, 90)}`)
   }
-  /** Requests started so far (for waiting until quiet). */
   get count() { return this.reqs.size + this.socketMsgs }
   done(ms: number): Measure {
     const sent = kinds(), decoded = kinds()
@@ -166,7 +148,6 @@ class Tally {
   }
 }
 
-/** The longest chain of requests where each starts after the one before it ended: round trips paid one after another. */
 function serial(xs: { start: number; end: number }[]) {
   const s = [...xs].sort((a, b) => a.end - b.end)
   const best: number[] = []
@@ -177,20 +158,16 @@ function serial(xs: { start: number; end: number }[]) {
   return Math.max(0, ...best)
 }
 
-/** Nothing new asked for `ms` (at most 15 s). */
 async function quiet(t: Tally, ms = 1500) {
   const t0 = performance.now()
   t.last = Math.max(t.last, t0)
   while (performance.now() - t0 < 15_000 && performance.now() - t.last < ms) await wait(Math.max(50, ms - (performance.now() - t.last)))
 }
 
-// ---- the flows
-
 const tabText = (page: Page, title: string) => page.waitForFunction((t) =>
   [...document.querySelectorAll("[role=tab][aria-selected=true]")].some((e) => e.textContent?.includes(t)) &&
   [...document.querySelectorAll(".cm-content, [data-pane] article, [data-pane] main")].some((e) => (e as HTMLElement).offsetParent && e.textContent!.length > 40),
 title, { timeout: 30_000, polling: "raf" })
-/** The app drawn and usable: the open page's content on screen (its heading, or an editor's lines). */
 const usable = (page: Page) => page.waitForFunction(() => [...document.querySelectorAll("h1, .cm-line")].some((e) => {
   const r = e.getBoundingClientRect()
   return r.height > 0 && r.bottom > 0 && r.top < innerHeight && e.textContent!.trim().length > 2
@@ -210,13 +187,10 @@ async function open(c: Ctx, phone: boolean) {
   const page = await ctx.newPage()
   page.on("pageerror", (e) => { errors.push(`${flowNow}: ${e.message}`); if (errors.length < 5) console.error(`page error in ${flowNow}: ${e.message}`) })
   const t = await Tally.attach(page, c.net)
-  // (a phone's CPU: a few times slower than this machine's)
   if (phone) await t.cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 })
   return { ctx, page, t }
 }
 
-/** Runs `act` and measures from its start until `ready` resolves (or, without one, until the last request ends), then
- *  until the network is quiet. */
 let flowNow = "start"
 async function measure(t: Tally, name: string, act: () => Promise<unknown>, ready?: () => Promise<unknown>, settle = 1500) {
   flowNow = name
@@ -246,7 +220,6 @@ const visible = (page: Page, on: boolean) => page.evaluate((v) => {
   window.dispatchEvent(new Event(v ? "focus" : "blur"))
 }, on)
 
-/** A session on a computer: a cold load, then each flow in turn on that page. */
 async function desktop(c: Ctx, want: Flow[], out: Partial<Record<Flow, Measure>>) {
   const { ctx, page, t } = await open(c, false)
   try {
@@ -286,14 +259,12 @@ async function desktop(c: Ctx, want: Flow[], out: Partial<Record<Flow, Measure>>
       t.reset()
       await wait(IDLE_S * 1000)
       const m = t.done(0)
-      // (per minute: a CI run idles a minute, a run by hand as long as it likes)
       const per = (n: number) => Math.round((n * 60) / IDLE_S)
       out.idle = { ...m, wire: per(m.wire), down: per(m.down), up: per(m.up), requests: per(m.requests), api: per(m.api), socketMsgs: per(m.socketMsgs) }
     }
   } finally { await ctx.close() }
 }
 
-/** A session on a phone: a cold load, then to the background (its socket cut, a file changed meanwhile) and back. */
 async function phone(c: Ctx, want: Flow[], out: Partial<Record<Flow, Measure>>) {
   const { ctx, page, t } = await open(c, true)
   try {
@@ -309,7 +280,6 @@ async function phone(c: Ctx, want: Flow[], out: Partial<Record<Flow, Measure>>) 
       out["phone-resume"] = await measure(t, "phone-resume", () => visible(page, true), undefined, 2500)
     }
     if (want.includes("phone-reopen")) {
-      // The app opened again (from the phone's cache) after an agent wrote a note: the vault's state is asked anew
       await quiet(t, 2000)
       await fetch(new URL("api/file", c.server.base), { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/qa" },
         body: JSON.stringify({ path: "Transfer/Written by an agent.md", text: "Written by an agent before the app was opened again.\n" }) })
@@ -319,11 +289,9 @@ async function phone(c: Ctx, want: Flow[], out: Partial<Record<Flow, Measure>>) 
   } finally { await ctx.close() }
 }
 
-/** A deploy as a phone meets it: its cache holds the build before (`from`), and the page reloads into this one. */
 async function update(c: Ctx, out: Partial<Record<Flow, Measure>>, restart: (root: string) => Promise<Server>) {
   const { ctx, page, t } = await open(c, true)
   try {
-    // (a deploy as the M1 does it: the same vault and local data, the server started again on the new code)
     c.net.retarget((await restart(FROM)).base)
     await page.goto(c.net.url); await usable(page); await quiet(t, 2500)
     c.net.retarget((await restart(c.server.root)).base)
@@ -339,15 +307,11 @@ async function command(page: Page, name: string) {
   await page.keyboard.press("Enter")
 }
 
-/** Dialogs a fresh vault may show over the app (a plugin asking to write): not now. */
 async function dismiss(page: Page) {
   if (await page.$("dialog[data-confirm][open]")) { await page.keyboard.press("Escape"); await wait(300) }
 }
 
-/** What the pages threw: a flow with errors isn't measured, it's broken. */
 const errors: string[] = []
-
-// ---- the run
 
 const median = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); return s.length % 2 ? s[s.length >> 1] : Math.round((s[s.length / 2 - 1] + s[s.length / 2]) / 2) }
 function medianOf(ms: Measure[]): Measure {
@@ -358,7 +322,6 @@ function medianOf(ms: Measure[]): Measure {
     socketMsgs: pick((m) => m.socketMsgs), ms: pick((m) => m.ms) }
 }
 export type Result = { commit: string; profiles: Record<string, Partial<Record<Flow, Measure>>> }
-/** What --out writes (transfer_report.ts reads it): each root's medians, the first the baseline, the last this commit. */
 export type Report = { version: 1; runs: number; idleS: number; profiles: Record<string, Profile>; results: Result[] }
 
 const kb = (n: number) => `${(n / 1024).toFixed(1)} KB`
@@ -381,7 +344,6 @@ async function main() {
           const browser = await chromium.launch({ executablePath: CHROME, headless: true,
             args: ["--mute-audio", `--ignore-certificate-errors-spki-list=${net.spki}`] })
           const out: Partial<Record<Flow, Measure>> = {}
-          // (idling is the slowest flow and the steadiest: once)
           const flows = run === 0 ? FLOWS_ : FLOWS_.filter((f) => f !== "idle")
           try {
             const c = { server, browser, net }
