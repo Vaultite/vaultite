@@ -120,7 +120,7 @@ function Row({ t, l, info, only, line, hit }: { t: Tab; l: TabList; info: (x: Ta
   useShrinkOut(box, { tab: t.id })
   const active = t.id === l.active, ps = panesOf(t), split = ps.length > 1, i = info(t)
   const close = () => closeTab(t.id)
-  const halfOf = (e: { target: EventTarget }) => (e.target as Element).closest<HTMLElement>("[data-pane-half]")?.dataset.paneHalf
+  const halfOf = (e: { target: EventTarget }) => (e.target instanceof Element ? e.target.closest<HTMLElement>("[data-pane-half]")?.dataset.paneHalf : undefined)
   const click = (e: React.MouseEvent) => {
     if (e.button === 1) { if (!t.pinned && !only) close(); return }
     const into: TabDrop = { kind: "pane", pane: activePane().id, zone: "center" }, it: DragItem = { from: "tab", tab: t.id }
@@ -158,20 +158,21 @@ function Row({ t, l, info, only, line, hit }: { t: Tab; l: TabList; info: (x: Ta
   )
 }
 
+type Rect = { x: number; y: number; w: number; h: number }
 function whereIn(n: Part, id: string) {
-  let at: { x: number; y: number; w: number; h: number } | null = null
-  const walk = (x: Part, r: { x: number; y: number; w: number; h: number }) => {
-    if (!isSplit(x)) { if (x.id === id && !x.float) at = r; return }
+  const walk = (x: Part, r: Rect): Rect | null => {
+    if (!isSplit(x)) return x.id === id && !x.float ? r : null
     const kids = tiledKids(x), total = kids.reduce((a, k) => a + k.size, 0) || 1
     let off = 0
     for (const { k, size } of kids) {
       const s = size / total
-      walk(k, x.dir === "row" ? { ...r, x: r.x + off * r.w, w: s * r.w } : { ...r, y: r.y + off * r.h, h: s * r.h })
+      const hit = walk(k, x.dir === "row" ? { ...r, x: r.x + off * r.w, w: s * r.w } : { ...r, y: r.y + off * r.h, h: s * r.h })
+      if (hit) return hit
       off += s
     }
+    return null
   }
-  walk(n, { x: 0, y: 0, w: 1, h: 1 })
-  const r = at as { x: number; y: number; w: number; h: number } | null
+  const r = walk(n, { x: 0, y: 0, w: 1, h: 1 })
   if (!r) return "Floating"
   const third = (c: number, lo: string, hi: string) => (c < 1 / 3 ? lo : c > 2 / 3 ? hi : "middle")
   const across = r.w > 0.99 ? "" : third(r.x + r.w / 2, "left", "right"), down = r.h > 0.99 ? "" : third(r.y + r.h / 2, "top", "bottom")

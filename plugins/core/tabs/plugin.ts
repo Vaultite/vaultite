@@ -3,12 +3,14 @@ import fs from "node:fs"
 import path from "node:path"
 import { COLORS, HTTPError, MACHINE_CLIENT, type OpCtx, OpError, Plugin, type Present, type Request } from "../../../core/plugins.ts"
 import type { Item } from "../../../core/vault.ts"
+import { z } from "zod"
 
 export const plugin = new Plugin(import.meta.url)
 
 type DeviceTab = { to: string; label?: string; pinned?: boolean }
 type Device = { id: string; name: string; label?: string; kind: "desktop" | "phone" | "web"; at: string; tabs: DeviceTab[]
   live?: boolean; windows?: number }
+type Kept = { name?: string; label?: string; kind?: string; at?: string; tabs?: DeviceTab[] }
 type Machine = { id: string; label: string; url: string; online: boolean; self: boolean; via?: string; host?: string; vault?: string }
 
 const ID = /^[a-z0-9]{8,32}$/
@@ -18,8 +20,8 @@ const LOOPBACK_URL = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?\/?$/
 const loopbackIp = (ip: string) => ip === "::1" || ip.startsWith("127.") || ip === "::ffff:127.0.0.1"
 
 const file = (id: string) => `device-${id}`
-const record = (id: string) => plugin.kept<Item>(file(id), {})
-const keepRecord = (id: string, d: Item | null) => plugin.keep(file(id), d, { shared: true })
+const record = (id: string) => plugin.kept<Kept>(file(id), {})
+const keepRecord = (id: string, d: Kept | null) => plugin.keep(file(id), d, { shared: true })
 const idOf = (s: string) => { const id = s.toLowerCase(); if (!ID.test(id)) throw new HTTPError(400, "a device id is 8 to 32 letters and digits"); return id }
 
 const self = async () => String(await plugin.ask("machines:self", ""))
@@ -79,13 +81,16 @@ async function whoAsks(req: Request): Promise<Pick<Device, "name" | "kind">> {
   return { name: at || os ? `${app} on ${at || os}` : app, kind: /iPhone|Android/.test(ua) ? "phone" : "web" }
 }
 
+const SentTabs = z.array(z.object({ to: z.string(), label: z.string().optional().catch(undefined), pinned: z.boolean().optional().catch(undefined) })
+  .nullable().catch(null)).catch([])
 function tabsOf(raw: unknown, machine: string): DeviceTab[] {
   const out: DeviceTab[] = []
-  for (const t of Array.isArray(raw) ? raw as Item[] : []) {
-    let to = typeof t?.to === "string" ? t.to : ""
+  for (const t of SentTabs.parse(raw)) {
+    if (!t) continue
+    let to = t.to
     if (!/^(file|view):./.test(to) || to.startsWith("file:/") || out.some((o) => o.to === to)) continue
     if (to.startsWith(TERM) && !to.includes("@")) { if (!machine) continue; to = `${to}@${machine}` }
-    out.push({ to, ...(typeof t.label === "string" && t.label ? { label: t.label } : {}), ...(t.pinned === true ? { pinned: true } : {}) })
+    out.push({ to, ...(t.label ? { label: t.label } : {}), ...(t.pinned ? { pinned: true } : {}) })
   }
   return out
 }
@@ -95,6 +100,7 @@ async function otherServers() {
   return all.filter((m) => !m.self && !m.via && m.online && m.url && (!me?.vault || !m.vault || m.vault === me.vault))
 }
 
+const HereAnswer = z.object({ devices: z.array(z.object({ id: z.string(), windows: z.number(), at: z.number() }) satisfies z.ZodType<Present>).optional() })
 async function presence(): Promise<Map<string, Present & { on: string }>> {
   return plugin.memo(5, async function presence() {
     const all = await machinesNow(), me = all.find((m) => m.self)
@@ -109,7 +115,7 @@ async function presence(): Promise<Map<string, Present & { on: string }>> {
     await Promise.all((await otherServers()).map(async (m) => {
       try {
         const r = await fetch(`${m.url}/api/tabs/devices/here`, { headers: MACHINE_CLIENT, signal: AbortSignal.timeout(2000) })
-        if (r.ok) add(((await r.json()) as { devices?: Present[] }).devices ?? [], m.id)
+        if (r.ok) add(HereAnswer.parse(await r.json()).devices ?? [], m.id)
       } catch {}
     }))
     return out
@@ -129,7 +135,7 @@ async function devices(live = true): Promise<Device[]> {
       if (!now && at && Date.now() - Date.parse(at) > 2 * STALE) keepRecord(m[1], null)
       continue
     }
-    const tabs = (Array.isArray(d.tabs) ? d.tabs as DeviceTab[] : []).filter((t) => typeof t?.to === "string")
+    const tabs = (Array.isArray(d.tabs) ? d.tabs : []).filter((t) => typeof t?.to === "string")
       .map((t) => (machine && t.to.endsWith(`@${machine}`) && t.to.startsWith(TERM) ? { ...t, to: t.to.slice(0, -machine.length - 1) } : t))
     out.push({ id: m[1], name: String(d.name || "A device"), ...(typeof d.label === "string" && d.label ? { label: d.label } : {}),
       kind: d.kind === "desktop" || d.kind === "phone" ? d.kind : "web", at, tabs,
@@ -160,6 +166,7 @@ plugin.route("POST", "tabs/devices/*/label", (req) => {
   return { ok: true }
 })
 
+const CloseAnswer = z.object({ error: z.unknown(), windows: z.unknown() }).partial().catch({})
 async function closeOn(id: string, tabs: string[] | undefined, here = false): Promise<{ windows: number }> {
   const msg = { action: "tabs", do: "close", ...(tabs ? { tabs } : {}) }
   const n = plugin.host.tell(id, msg)
@@ -172,13 +179,13 @@ async function closeOn(id: string, tabs: string[] | undefined, here = false): Pr
     r = await fetch(`${m.url}/api/tabs/devices/${id}/close`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" },
       body: JSON.stringify({ ...(tabs ? { tabs } : {}), here: true }), signal: AbortSignal.timeout(5000) })
   } catch { throw new HTTPError(502, `${m.label} doesn't answer`) }
-  const answer = await r.json().catch(() => ({})) as Item
+  const answer = CloseAnswer.parse(await r.json().catch(() => ({})))
   if (!r.ok) throw new HTTPError(r.status, String(answer.error || `${m.label} couldn't reach it`))
   return { windows: Number(answer.windows) || 0 }
 }
 
 plugin.route("POST", "tabs/devices/*/close", async (req) => {
-  const tabs = Array.isArray(req.body.tabs) ? (req.body.tabs as unknown[]).map(String) : undefined
+  const tabs = Array.isArray(req.body.tabs) ? req.body.tabs.map(String) : undefined
   const done = await closeOn(idOf(req.arg(0)), tabs, req.body.here === true)
   plugin.forget()
   return done
@@ -265,7 +272,7 @@ type ReportTab = { id: string; active?: boolean; pinned?: boolean; name?: string
 type ReportGroup = { id: string; name: string; color: string; collapsed?: boolean; tabs: number }
 type Report = { tabs: ReportTab[]; groups: ReportGroup[]; window?: string; windows?: { id: string; tabs: ReportTab[] }[] }
 
-async function ask(ctx: OpCtx, msg: Record<string, unknown>) {
+async function ask(ctx: OpCtx, msg: Item) {
   try { return await ctx.ui({ action: "tabs", ...msg }) } catch (e) {
     if (e instanceof OpError && e.status === 409) throw new OpError("no app window is open on this server: open the app (browser or desktop) first", 409)
     throw e
