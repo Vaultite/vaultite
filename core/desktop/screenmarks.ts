@@ -1,28 +1,15 @@
-// What the companion draws over the screen (companion draw --marks): marks as data, checked here for the server and the
-// overlay alike (no Node, no DOM), and a drawing kept as an .excalidraw scene. web/src/screendraw draws them.
 import { sayable, speakable } from "./spoken.ts"
 import { boundsOf, flatten, parsePath } from "./svgpath.ts"
 
-/** A rectangle in screen points (a point: w and h 0); an element's, with what it says. */
 export type Rect = { x: number; y: number; w: number; h: number; label?: string }
-/** Where a card goes on a display by name: a corner, an edge's middle, the centre, or by the cursor (the default). */
 export type Area = "cursor" | "top-left" | "top" | "top-right" | "left" | "centre" | "right" | "bottom-left" | "bottom" | "bottom-right"
 export const AREAS: Area[] = ["cursor", "top-left", "top", "top-right", "left", "centre", "right", "bottom-left", "bottom", "bottom-right"]
-/** Where a mark goes: a point or a box (screen points), an element of the ask (`el`, its id), a pane or the app's UI, or
- *  words to find on the screen (`find`: an element saying them, else where the window shows them); a card also an area. */
 export type Spot = Rect | { el: string } | { pane: string } | { ui: string } | { find: string } | { area: Area }
 export type Action = { copy: string } | { open: string } | { ask: string }
-/** How long a mark stays up: until the next ask (what points, by default), until it's dismissed (cards, by default:
- *  the user's ×, Clear, a later answer erasing it), or until the screen under it changes. */
 export type Life = "ask" | "dismiss" | "screen"
 export const LIVES: Life[] = ["ask", "dismiss", "screen"]
-/** `id`: its name for later changes (draw actions); `life`: how long it stays; `gone`: erased then (ms), its pen run
- *  backward before it goes. Its anchor is its spot (`at`, a connect's ends), found as a screen rect in the layer's places. */
 type Base = { beat?: number; id?: string; life?: Life; gone?: number }
-/** A paper item's end: a point on the paper, or the id of a shape on it (the line starts or ends at its edge). */
 export type End = [number, number] | string
-/** A colour: a palette name (black, gray, red, pink, purple, violet, blue, cyan, teal, green, yellow, orange), ink (the
- *  theme's text colour), tint (the companion's), or #hex; a fill also none. */
 type Ink = { id?: string; color?: string; fill?: string; gone?: number }
 export type SvgPath = { d: string; color?: string; fill?: string; width?: number }
 export type PaperItem = Ink & (
@@ -33,12 +20,8 @@ export type PaperItem = Ink & (
   | { type: "chart"; kind: "bar" | "line"; x: number; y: number; w: number; h: number; values: number[]; labels?: string[] }
   | { type: "svg"; x: number; y: number; w: number; h: number; paths: SvgPath[]; viewBox?: [number, number, number, number]; style?: "clean" | "sketch" })
 export type Size = "s" | "m" | "l"
-/** An image or a video on the screen: `src` as given (a vault path, a file of this machine, an https address, or
- *  "screenshot": their latest); the rest the server's, as it found it: where the overlay loads it, its name, its pixels. */
 export type Media = { type: "image" | "video"; at?: Spot; src: string; caption?: string; size?: Size; url?: string; name?: string; px?: [number, number]
-  /** Laid over its spot, its size (a before picture over the thing as it is now), not beside it. */
   over?: boolean
-  /** A video heard (only when they asked for its sound), or held still (stopped): the agent's word or the user's press. */
   sound?: boolean; paused?: boolean }
 export type Mark = Base & (
   | { type: "point" | "ring" | "frame"; at: Spot; label?: string }
@@ -56,32 +39,21 @@ export type Mark = Base & (
   | Media)
 export type MarkType = Mark["type"]
 type Pad = Extract<Mark, { type: "paper" }>
-/** A drawing as the overlay gets it: an agent's marks, the words they're timed with (`caption`, its sentences the
- *  beats), and the screen rects of its places (`places`: "el:e12", "pane:t3", "ui:tab:t3"). */
 export type Drawing = { id: string; agent: string; tint: string; t: number; marks: Mark[]; caption?: string; places?: Record<string, Rect>; kept?: string
-  /** Its caption's sentences as they're heard aloud (the companion's voice): when each began (ms, the clock's) and how
-   *  long it took; null, not heard (yet). The pen draws each beat while its sentence is heard; `waits`, still being said. */
   spoken?: (Spoken | null)[]; waits?: boolean
-  /** From an exchange before (a new ask came since): its cards stay up to be changed by id; new marks replace it. */
   past?: boolean
-  /** Hidden for now (companion layer --hide): kept as it is, drawn again when shown. */
   hidden?: boolean
-  /** The question its answers (buttons that ask) came with: shown atop them. */
   question?: string
-  /** A line under a choice's answers, shown, never said: another way to answer (their Talk key's words). */
   hint?: string }
 export type Spoken = { at: number; dur: number }
 
 export const MARK_TYPES: MarkType[] = ["point", "ring", "frame", "underline", "strike", "connect", "num", "check", "cross", "spotlight", "scroll", "write", "paper", "sticky", "list", "button", "copy", "open", "image", "video"]
-/** Cards: placed by the cursor when they have no `at`, else at it (an area, a point, beside a thing); the user can drag
- *  one or dismiss it. */
 export const CARDS = new Set<MarkType>(["write", "paper", "sticky", "list", "button", "copy", "open", "image", "video"])
 export const MOST = { marks: 40, items: 60, points: 200, values: 24, list: 12, label: 60, text: 300, copy: 4000, paper: [720, 520] as const, paths: 40, d: 6000, svg: 40_000 }
 export const PAPER = { w: 360, h: 240 }
 export const IMAGE_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|svg|heic|heif|tiff?)$/i
 export const VIDEO_EXT = /\.(mp4|m4v|mov|webm)$/i
 
-/** The vocabulary in a few lines, for the op's help and the docs. */
 export const VOCABULARY = `Spots: {"el": "<id>"} (an element of the ask: snaps to its frame; the best), {"find": "<words>"} (the thing on the screen saying them now, by their pointer), {"pane": "<id>"} or {"ui": "tab:<id>"} in the app; [x, y, w, h] or [x, y] in screen points only for what has none (a bare point snaps to a frame round what they drew there, else to the element there).
 On the screen: point, ring, frame (a thing or an area boxed, the whole of it: what it is), underline, strike, check, cross, spotlight {at, label?}; num {at, n}; scroll {at, dir}; connect {from, to, label?}.
 Cards (by your cursor unless at says: an area "top-left" | "top" | "top-right" | "left" | "centre" | "right" | "bottom-left" | "bottom" | "bottom-right", a point [x, y] for its top left, or a spot it goes beside; the user can drag or dismiss one): write {text, size: s|m|l}; sticky {text, title?}; list {items, title?, numbered?}; image or video {src, caption?, size?: s|m|l, over?: true (laid over its spot, its size: a before picture over the thing)}: src a vault path, a file of this Mac (~/...), an app (/Applications/Name.app: its icon), an https address (an image's own, one you saw, never a guessed one: Vaultite fetches it), "search: <words>" (a real picture of a thing in the world, found on Wikipedia and Wikimedia Commons: "search: star trek phaser"), or "screenshot" (their latest screenshot; a video: their latest screen recording); a video plays muted a few times round, with sound: true only when they ask to hear it, paused: true stopped. A video card up is changed in place, never opened again in a player: "unmute it", "with sound" {"op": "change", "id", "sound": true}; "mute it" sound false; "stop it", "pause it" paused true; "play it" paused false (it plays from the start once it had rested).
@@ -95,12 +67,10 @@ const int = (v: unknown, lo: number, hi: number): v is number => num(v) && Numbe
 const oneOf = <T extends string>(xs: readonly T[], v: unknown): v is T => xs.some((x) => x === v)
 const COORD = 100_000
 const DIRS = ["up", "down", "left", "right"] as const
-/** `f`'s answer, or its error with `what` named first. */
 function naming<T>(what: string, f: () => T): T {
   try { return f() } catch (e) { throw new Error(`${what}: ${e instanceof Error ? e.message : String(e)}`) }
 }
 
-/** `marks` checked: the marks as drawn, or an Error saying what's wrong with which one, and how it's written. */
 export function checkMarks(marks: unknown): Mark[] {
   if (!Array.isArray(marks)) throw new Error("marks: a JSON list of marks")
   if (marks.length > MOST.marks) throw new Error(`marks: at most ${MOST.marks}`)
@@ -142,7 +112,6 @@ function checkMark(m: unknown): Mark {
     case "button": return { ...base, type, ...card(), label: words(m.label, "label", MOST.label), do: action(m.do) }
     case "copy": return { ...base, type, ...card(), text: words(m.text, "text", MOST.copy), ...label() }
     case "open": return { ...base, type, ...card(), url: url(m.url), ...label() }
-    // (where it loads from is the server's to find: url, name and px given are dropped)
     case "image": case "video": {
       for (const k of ["sound", "paused"] as const) if (m[k] !== undefined && (typeof m[k] !== "boolean" || type !== "video")) throw new Error(`${k}: true or false, a video's`)
       return { ...base, type, ...card(), src: words(m.src ?? m.path ?? m.url, "src", 2000), ...size(m.size),
@@ -162,7 +131,6 @@ function checkMark(m: unknown): Mark {
 
 const ID_RE = /^[\w-]{1,40}$/
 const idOf = (v: unknown, what: string) => { if (typeof v !== "string" || !ID_RE.test(v)) throw new Error(`${what}: letters, digits, - and _ (up to 40)`); return v }
-/** A pad's items together: ids once each, a bound end a shape's. */
 export function checkItems(items: PaperItem[]) {
   const ids = new Set<string>()
   for (const it of items) if (it.id) { if (ids.has(it.id)) throw new Error(`items: id "${it.id}" twice`); ids.add(it.id) }
@@ -192,7 +160,6 @@ function action(v: unknown): Action {
   throw new Error("do: {\"copy\": text}, {\"open\": url} or {\"ask\": a follow-up}")
 }
 const ID = /^[\w.:/-]{1,120}$/
-/** A spot as given: [x, y], [x, y, w, h], {x, y, w?, h?}, {el}, {pane}, {ui}; a card's also an area ("top-right"). */
 function spot(v: unknown, what: string, card = false): Spot {
   const how = `${what}: {"el": "<id>"}, {"find": "<words>"}, {"pane": "<id>"}, {"ui": "<id>"}, [x, y, w, h] or [x, y] (screen points)${card ? `, or an area: ${AREAS.join(", ")}` : ""}`
   const area = typeof v === "string" ? v : isObj(v) && typeof v.area === "string" ? v.area : null
@@ -220,7 +187,6 @@ function spot(v: unknown, what: string, card = false): Spot {
   }
   throw new Error(how)
 }
-/** A card's spot, as an action gives one (draw actions' move). */
 export const cardSpot = (v: unknown) => spot(v, "at", true)
 function pt(v: unknown, what: string, w: number, h: number): [number, number] {
   if (!Array.isArray(v) || v.length !== 2 || !num(v[0]) || !num(v[1])) throw new Error(`${what}: [x, y]`)
@@ -235,7 +201,6 @@ function box(m: Record<string, unknown>, w: number, h: number) {
 }
 const isBox = (v: unknown): v is [number, number, number, number] => Array.isArray(v) && v.length === 4 && v.every(num)
 const SHAPE_SIZE = (label?: string) => ({ w: Math.max(100, Math.min(260, (label?.length ?? 0) * 8.5 + 36)), h: 56 })
-/** A colour as given: a palette name, ink, tint or #hex (a fill also none). */
 export function colorOf(v: unknown, what: string, fill = false) {
   if (v === undefined) return undefined
   const s = String(v).trim().toLowerCase()
@@ -248,7 +213,6 @@ const inkOf = (v: Record<string, unknown>): Ink => {
   return { ...(v.id === undefined ? {} : { id: idOf(v.id, "id") }), ...(c ? { color: c } : {}), ...(f ? { fill: f } : {}) }
 }
 const end = (v: unknown, what: string, w: number, h: number): End => (typeof v === "string" ? idOf(v, `${what} (a shape's id)`) : pt(v, what, w, h))
-/** A paper item checked on a pad `w` by `h` (Excalidraw's names too: rectangle, freedraw). */
 export function paperItem(v: unknown, w: number, h: number): PaperItem {
   if (!isObj(v)) throw new Error("an item is an object: {\"type\": ..., ...}")
   const label = v.label === undefined ? {} : { label: words(v.label, "label", MOST.label) }
@@ -307,31 +271,24 @@ export function paperItem(v: unknown, w: number, h: number): PaperItem {
   throw new Error("type is one of rect, ellipse, diamond, line, arrow, text, path, chart, svg")
 }
 
-/** Excalidraw's palette by name: a stroke and the fill that goes with it. */
 export const PALETTE: Record<string, [string, string]> = {
   black: ["#1e1e1e", "#e9ecef"], gray: ["#868e96", "#e9ecef"], red: ["#e03131", "#ffc9c9"], pink: ["#c2255c", "#fcc2d7"],
   purple: ["#9c36b5", "#eebefa"], violet: ["#6741d9", "#d0bfff"], blue: ["#1971c2", "#a5d8ff"], cyan: ["#0c8599", "#99e9f2"],
   teal: ["#099268", "#96f2d7"], green: ["#2f9e44", "#b2f2bb"], yellow: ["#f08c00", "#ffec99"], orange: ["#e8590c", "#ffd8a8"],
 }
 
-/** How long `m` stays: as it says, else a card until it's dismissed, what points until the next ask. */
 export const lifeOf = (m: Mark): Life => m.life ?? (CARDS.has(m.type) && !isAnswer(m) ? "dismiss" : "ask")
-/** A button that answers the question it came with (a choice's): no place of its own, it goes with its question. */
 export const isAnswer = (m: Mark): m is Extract<Mark, { type: "button" }> => m.type === "button" && "ask" in m.do && !m.at
 
-/** The places a drawing's marks name that the app must find: panes and UI ("pane:t3", "ui:tab:t3"). */
 export function appPlaces(marks: Mark[]) {
   const out = new Set<string>()
   for (const s of spots(marks)) { if ("pane" in s) out.add(`pane:${s.pane}`); else if ("ui" in s) out.add(`ui:${s.ui}`) }
   return [...out]
 }
-/** The words `marks` name to find on the screen ("find:<words>" places). */
 export const findsOf = (marks: Mark[]) => [...new Set(spots(marks).flatMap((s) => ("find" in s ? [s.find] : [])))]
-/** Every spot of `marks`, in order. */
 export function spots(marks: Mark[]): Spot[] {
   return marks.flatMap((m) => ("from" in m ? [m.from, m.to] : "at" in m && m.at ? [m.at] : []))
 }
-/** A spot's rect: as given, or found in `places` (null: not known). */
 export function rectOf(s: Spot, places: Record<string, Rect> = {}): Rect | null {
   if ("el" in s) return places[`el:${s.el}`] ?? null
   if ("pane" in s) return places[`pane:${s.pane}`] ?? null
@@ -341,8 +298,6 @@ export function rectOf(s: Spot, places: Record<string, Rect> = {}): Rect | null 
   return s
 }
 
-/** Why each of `marks` can't show, null where it can: its spot found nowhere (`places` lacks it), or its box off every
- *  one of `displays` (screen points; none known, not checked). A card with no spot goes on calm space: it shows. */
 export function unshown(marks: Mark[], places: Record<string, Rect> = {}, displays: Rect[] = []): (string | null)[] {
   const on = (r: Rect) => displays.some((d) => r.x + r.w >= d.x && r.x <= d.x + d.w && r.y + r.h >= d.y && r.y <= d.y + d.h)
   return marks.map((m) => {
@@ -358,25 +313,19 @@ export function unshown(marks: Mark[], places: Record<string, Rect> = {}, displa
 
 /** Words as found: a key's glyph by its name (macOS labels the fn key 🌐, which people call fn or globe). */
 const norm = (t: string) => t.toLowerCase().replace(/🌐/gu, " fn ").replace(/\bglobe\b/g, "fn").replace(/[^\p{L}\p{N}]+/gu, " ").trim()
-/** The element of `els` saying `text`: the same words, else one saying them all whole and in order (first at its
- *  start); never one saying only some of them ("Agents" isn't "4:24 PM · Agents"). */
 export function byLabel<T extends { label: string }>(els: T[], text: string): T | null {
   const want = norm(text)
   if (!want) return null
   return els.find((e) => norm(e.label) === want) ?? els.find((e) => norm(e.label).startsWith(`${want} `)) ?? els.find((e) => ` ${norm(e.label)} `.includes(` ${want} `)) ?? null
 }
 
-/** Words found on the screen, and how well (3: an element named them; 2: their whole words; 1: inside longer words). */
 export type Found = Rect & { q: number }
 const gapOf = (a: Rect, b: Rect) => Math.hypot(Math.max(0, b.x - a.x - a.w, a.x - b.x - b.w), Math.max(0, b.y - a.y - a.h, a.y - b.y - b.h))
-/** Of places words were found, the one meant: the best match, then the nearest `by` (what the user drew, else their
- *  pointer), so of two panes saying them the one they're at wins. */
 export function bestFound(found: Found[], by: Rect[] = []): Found | null {
   const gap = (r: Rect) => (by.length ? Math.min(...by.map((b) => gapOf(r, b))) : 0)
   return [...found].sort((a, b) => b.q - a.q || gap(a) - gap(b))[0] ?? null
 }
 
-/** Marks whose size is what they mean (a ring, a frame, a line under or through, a spotlight). */
 const SIZED = new Set<MarkType>(["ring", "frame", "underline", "strike", "spotlight"])
 const contains = (r: Rect, x: number, y: number) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h
 const iou = (a: Rect, b: Rect) => {
@@ -385,12 +334,9 @@ const iou = (a: Rect, b: Rect) => {
   return i ? i / (a.w * a.h + b.w * b.h - i) : 0
 }
 const within = (r: Rect, b: Rect, slack = 8) => r.x >= b.x - slack && r.y >= b.y - slack && r.x + r.w <= b.x + b.w + slack && r.y + r.h <= b.y + b.h + slack
-/** `marks` at what's there: a sized mark at a guessed pixel or box goes round what the user drew there (`drawn`; a ring
- *  there a frame: they circled a thing or a group), else the element it's on, by or much like (`places`' "el:a3"). */
 export function snapMarks(marks: Mark[], places: Record<string, Rect> = {}, drawn: Rect[] = []): Mark[] {
   const els = Object.entries(places).filter(([k, r]) => k.startsWith("el:") && r.w > 0 && r.h > 0).map(([k, r]) => ({ id: k.slice(3), r }))
   const area = (r: Rect) => r.w * r.h
-  // (what they circled: round the elements inside it, the whole of each, else as drawn)
   const circled = (ring: Rect): Rect => {
     const inside = els.map((e) => e.r).filter((r) => within(r, ring) && area(r) < area(ring) * 0.9)
     if (!inside.length) return { x: ring.x, y: ring.y, w: ring.w, h: ring.h }
@@ -419,13 +365,9 @@ export function snapMarks(marks: Mark[], places: Record<string, Rect> = {}, draw
   })
 }
 
-// ---------- timing: marks come in beats, each with a sentence of the words
-
-/** The words' sentences, as read (a sentence's end, or a line's). */
 export function sentences(text: string) {
   return text.replace(/\s+\n/g, "\n").split(/(?<=[.!?…:])\s+(?=\S)|\n+/).map((s) => s.trim()).filter(Boolean)
 }
-/** When each beat starts (ms after the words show): the time to read the sentences before it. */
 export function beatTimes(caption: string, beats: number) {
   const ss = sentences(caption), out = [0]
   for (let i = 1; i <= beats; i++) out.push(out[i - 1] + (ss[i - 1] ? readMs(ss[i - 1]) : 1200))
@@ -433,12 +375,8 @@ export function beatTimes(caption: string, beats: number) {
 }
 const readMs = (s: string) => Math.min(3500, Math.max(700, 300 + s.split(/\s+/).length * 230))
 
-/** A sentence as the voice said it (electron/voice.ts, or any voice that plays the answer): its words, when it began
- *  (ms, the clock's), how long it took. */
 export type Heard = { text: string; at: number; dur: number }
 const wordsOf = (s: string) => sayable(speakable(s)).toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean)
-/** Each of `caption`'s sentences as it was heard: matched in order to the sentences said (most of their words the same),
- *  null for one not heard yet. */
 export function heardBeats(caption: string, heard: Heard[]): (Spoken | null)[] {
   const said = heard.map((h) => ({ h, w: new Set(wordsOf(h.text)) }))
   let from = 0
@@ -452,8 +390,6 @@ export function heardBeats(caption: string, heard: Heard[]): (Spoken | null)[] {
     return null
   })
 }
-/** When each beat starts (ms after `t0`, the drawing's clock) and how long its marks spread over: while its sentence is
- *  heard (one not heard yet while it `waits`: Infinity); else the time to read the ones before, on from the last heard. */
 export function pacedBeats(caption: string, beats: number, spoken: (Spoken | null)[] | undefined, t0: number, waits = false) {
   const ss = sentences(caption), times: number[] = [], spread: (number | null)[] = []
   for (let b = 0; b <= beats; b++) {
@@ -465,22 +401,15 @@ export function pacedBeats(caption: string, beats: number, spoken: (Spoken | nul
   return { times, spread }
 }
 
-// ---------- changed in place: a drawing's marks and its pads' items by id (draw actions without a path)
-
-/** How long what's erased stays (its pen run backward), ms. */
 export const ERASE_MS = 700
 const live = <T extends { gone?: number }>(x: T) => !x.gone
 const ITEM_TYPES = new Set(["rect", "rectangle", "ellipse", "diamond", "line", "arrow", "text", "path", "freedraw", "chart", "svg"])
-/** Every id in `marks`: its marks' and its pads' items'. */
 export function idsIn(marks: Mark[]) {
   return new Set(marks.flatMap((m) => [...(m.id ? [m.id] : []), ...(m.type === "paper" ? m.items.flatMap((i) => (i.id ? [i.id] : [])) : [])]))
 }
-/** `marks` with what was erased more than a moment ago (`now`) gone for good. */
 export const pruned = (marks: Mark[], now = Date.now()): Mark[] => marks.filter((m) => !m.gone || now - m.gone < ERASE_MS)
   .map((m) => (m.type === "paper" && m.items.some((i) => i.gone) ? { ...m, items: m.items.filter((i) => !i.gone || now - i.gone < ERASE_MS) } : m))
 
-/** `marks` with `actions` made, in order, each checked first (an error names the action and why); `added`: the marks
- *  they added (their places are still to find), `touched`: the ids they changed. */
 export function editMarks(marks: Mark[], actions: unknown, now = Date.now()): { marks: Mark[]; added: Mark[]; touched: string[] } {
   if (!Array.isArray(actions) || !actions.length) throw new Error("actions: a list of at least one ({\"op\": \"add\" | \"move\" | \"change\" | \"delete\", ...})")
   if (actions.length > MOST.items) throw new Error(`actions: at most ${MOST.items}`)
@@ -548,7 +477,6 @@ export function editMarks(marks: Mark[], actions: unknown, now = Date.now()): { 
           const { op: _op, id: _id, ...rest } = a
           const next = checkMark({ ...mark, ...rest })
           if ((mark.type === "image" || mark.type === "video") && rest.src !== undefined) { delete mark.url; delete mark.name; delete mark.px; added.push(mark) }
-          // (what the change turned off goes: sound false, paused false; where its media loads from is the server's)
           for (const k of Object.keys(mark)) if (!(k in next) && !SERVERS.has(k)) Reflect.deleteProperty(mark, k)
           Object.assign(mark, next); touch(mark.id)
         }
@@ -557,7 +485,6 @@ export function editMarks(marks: Mark[], actions: unknown, now = Date.now()): { 
         if (!found.item) { found.mark.gone = now; touch(found.mark.id); return }
         const { mark: pad, item } = found
         item.gone = now; touch(item.id)
-        // (what's bound to it goes with it)
         for (const x of pad.items) if ((x.type === "line" || x.type === "arrow") && live(x) && (x.from === item.id || x.to === item.id)) { x.gone = now; touch(x.id) }
       } else throw new Error(`op ${JSON.stringify(op ?? "")}: add, move, change or delete`)
     } catch (e) { throw new Error(`actions[${n}]${typeof op === "string" ? ` (${op})` : ""}: ${e instanceof Error ? e.message : String(e)}`) }
@@ -567,7 +494,6 @@ export function editMarks(marks: Mark[], actions: unknown, now = Date.now()): { 
 const bad = (why: string): never => { throw new Error(why) }
 const SERVERS = new Set(["url", "name", "px", "gone"])
 const spotOf = (v: unknown) => spot(v, "at")
-/** An item's box on its pad (a bound end at its shape's centre). */
 export function itemBox(it: PaperItem, items: PaperItem[] = []): Rect {
   if ("w" in it) return { x: it.x, y: it.y, w: it.w, h: it.h }
   if (it.type === "text") return { x: it.x, y: it.y, w: it.text.length * 8, h: it.size === "l" ? 26 : 18 }
@@ -575,7 +501,6 @@ export function itemBox(it: PaperItem, items: PaperItem[] = []): Rect {
   const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]), x = Math.min(...xs), y = Math.min(...ys)
   return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y }
 }
-/** A line's end as a point: as given, or its shape's centre. */
 export function endPoint(e: End, items: PaperItem[]): [number, number] {
   if (Array.isArray(e)) return e
   const s = items.find((i) => i.id === e)
@@ -589,7 +514,6 @@ function shift(it: PaperItem, dx: number, dy: number) {
   if (it.type === "line" || it.type === "arrow") for (const k of ["from", "to"] as const) { const e = it[k]; if (Array.isArray(e)) it[k] = [e[0] + dx, e[1] + dy] }
 }
 
-/** A drawing as its agent reads it at its next ask: each mark and pad item by id, to change in place. */
 export function drawingText(d: Drawing) {
   const q = (t: string) => JSON.stringify(t.length > 40 ? `${t.slice(0, 40)}…` : t)
   const at = (s?: Spot) => (!s ? "" : "area" in s ? ` at ${s.area}` : "el" in s ? ` at ${s.el}` : "find" in s ? ` at ${q(s.find)}` : "x" in s ? ` at ${Math.round(s.x)},${Math.round(s.y)}` : "")
@@ -612,15 +536,12 @@ export function drawingText(d: Drawing) {
 }
 
 
-/** The palette Excalidraw picks from, by the app's tint names. */
 export const HEX: Record<string, string> = { orange: "#e8590c", blue: "#1971c2", purple: "#9c36b5", green: "#2f9e44", red: "#e03131", yellow: "#f08c00", pink: "#c2255c", teal: "#099268", gray: "#868e96" }
-/** Where an svg item's paths go in its box: their viewBox (else their own bounds) fitted in, centred. */
 export function svgFit(it: Extract<PaperItem, { type: "svg" }>) {
   const vb = it.viewBox ?? boundsOf(it.paths.flatMap((p) => { try { return flatten(p.d) } catch { return [] } })) ?? [0, 0, it.w, it.h]
   const [vx, vy, vw, vh] = [vb[0], vb[1], Math.max(vb[2], 1e-6), Math.max(vb[3], 1e-6)], k = Math.min(it.w / vw, it.h / vh)
   return { vx, vy, k, ox: (it.w - vw * k) / 2, oy: (it.h - vh * k) / 2 }
 }
-/** A line's end on a pad: its point, or where it leaves its shape (box, ellipse or diamond) toward the other end. */
 export function edgeOf(e: End, other: End, items: PaperItem[], gap = 6): [number, number] {
   if (Array.isArray(e)) return e
   const s = items.find((i) => i.id === e)

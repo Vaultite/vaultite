@@ -2,43 +2,27 @@ import { isColor, type Color } from "./colors.ts"
 
 /** One view with its own history: what a tab shows, or one part of a split tab. */
 export type Pane = { id: string; to: string
-  /** Where it was before, oldest first; and where Back came from, the next first. */
   back?: string[]; fwd?: string[]
-  /** The pane it was opened from: Back past its first place closes it and shows that one again. Kept for this visit
-   *  only, like its history. */
   from?: string
-  /** Its place when its tab was pinned: ⌘W takes it back there. */
   home?: string
-  /** When it was last on screen: ms, to the minute. */
   seen?: number
-  /** Floating over the tab's other panes at this place (shares of the workspace), out of the tiling: its spot in the
-   *  tree is kept, empty, so docking it puts it back where it came from. */
   float?: Rect
-  /** A split's pane has tabs of its own: its other places, hidden, each a pane of its own (its id, its history; no stack
-   *  nor float), in their order with this one at `stackAt` (none: first). Never in a tab of one pane (`spilled`). */
   stack?: Pane[]; stackAt?: number }
-/** Panes (or splits) side by side ("row": a vertical divider between them) or stacked ("col"); `sizes` are their
- *  shares, adding up to 1. */
 export type Split = { id: string; dir: "row" | "col"; kids: Layout[]; sizes: number[] }
 export type Layout = Pane | Split
 type Loose = Pane | (Omit<Split, "kids"> & { kids: (Loose | null)[] })
 /** A tab: its panes in a tree of splits (one pane, mostly), the one `focus`ed, and the one filling it for now (`zoom`,
  *  tmux's). */
 export type Tab = { id: string; root: Layout; focus: string; zoom?: string
-  /** The name the user gave it (Rename tab), shown for what has no name of its own. */
   name?: string
-  /** Pinned: what's opened from it opens in a tab beside it, ⌘W and closing others leave it open. */
   pinned?: boolean
   group?: string
-  /** A split whose panes have tabs of their own, folded in the Tabs panel: its map says how many each has (+2), not
-   *  listing them under its row. Gone once no pane has others, so the next ones start listed. */
   folded?: boolean }
 /** A tab group, as browsers have them: a named, coloured run of tabs side by side (those whose `group` is its id),
  *  folded to its name while `collapsed`. */
 export type Group = { id: string; name: string; color: Color; collapsed?: boolean }
 /** A window's tabs, in order, their groups (in the order their tabs are) and the one on screen. */
 export type TabList = { tabs: Tab[]; groups?: Group[]; active: string }
-/** A pop-out; `barsHidden`: only what it shows (Hide window bars). */
 export type Window = TabList & { id: string; barsHidden?: boolean }
 /** A workspace: the main window's tabs, and its pop-outs'. */
 export type Workspace = TabList & { windows?: Window[] }
@@ -85,7 +69,6 @@ export function stacked(places: Pane[], shown: string, at?: Pane): Pane {
   const rest = places.filter((_, j) => j !== i).map(loose)
   return { ...loose(places[i]), ...(at?.float ? { float: at.float } : {}), ...(rest.length ? { stack: rest, ...(i ? { stackAt: i } : {}) } : {}) }
 }
-/** A file from outside the vault is absolute: "file:/…". */
 export const tabPath = (to: string) => (to.startsWith("file:") ? to.slice(5) : null)
 export const vaultPath = (to: string) => (to.startsWith("file:") && !to.startsWith("file:/") ? to.slice(5) : null)
 export const tabOf = (to: string, opts: { id?: string; pane?: string } & Partial<Omit<Pane, "id" | "to">> = {}): Tab => {
@@ -95,10 +78,8 @@ export const tabOf = (to: string, opts: { id?: string; pane?: string } & Partial
 export const tabWith = (p: Pane, id = newTabId()): Tab => { const { float: _, ...rest } = bare(p); return { id, root: rest, focus: p.id } }
 export const blankList = (): TabList => { const t = tabOf("new"); return { tabs: [t], active: t.id } }
 
-/** 200px of a workspace up to 4000px wide. */
 const THIN = 0.05
 
-/** A part gone (null) leaves its room to its tiled neighbour; one too thin to use comes back at an even share. */
 export function tidy(n: Loose | null): Layout | null {
   if (!n) return null
   if (!("kids" in n)) return n
@@ -211,7 +192,6 @@ export function clean(w: unknown): Workspace | null {
   return windows.length ? { ...main, windows } : main
 }
 
-/** Each tab's id is "t" + its first pane's, so every device and the server migrate a layout alike. */
 export function migrate(old: Obj): Workspace | null {
   type OldTab = Obj & { id: string; to: string }
   const isOldTab = (t: unknown): t is OldTab => isObj(t) && str(t.id) && str(t.to)
@@ -348,7 +328,6 @@ export const inGroup = (t: Tab, group: string | undefined): Tab => {
   const { group: _, ...rest } = t
   return group ? { ...rest, group } : rest
 }
-/** Unchanged, `l` itself. */
 export function fixGroups<L extends TabList>(l: L): L {
   if (!l.groups) return l.tabs.some((t) => t.group) ? { ...l, tabs: l.tabs.map((t) => inGroup(t, undefined)) } : l
   const known = new Map(l.groups.map((s) => [s.id, s]))
@@ -394,7 +373,6 @@ export function beside(n: Layout, at: string, p: Layout, side: Side): Layout {
   return tidy({ ...n, kids, sizes })!
 }
 
-/** `next`: the part its room goes to when it closes; `share`: its part of the room the two had. */
 export type Spot = { next: string; dir: Split["dir"]; after: boolean; share: number }
 export function spotOf(n: Layout, id: string): Spot | null {
   if (!isSplit(n)) return null
@@ -423,7 +401,6 @@ export function putBack(n: Layout, p: Pane, { next, dir, after, share }: Spot): 
   return null
 }
 
-/** Shares of the workspace, 0 to 1. */
 export type Rect = { x: number; y: number; w: number; h: number }
 export type Divider = { split: Split; i: number; rect: Rect; at: number }
 export function layout(root: Layout) {
@@ -464,7 +441,6 @@ export function neighbourOf(root: Layout, from: string, side: Side): Pane | null
   return near[0]?.pane ?? null
 }
 
-/** `at` and `min`: shares of the split. */
 export function resized(root: Layout, splitId: string, i: number, at: number, min: number): Layout {
   const fix = (n: Layout): Layout => {
     if (!isSplit(n)) return n
@@ -492,7 +468,6 @@ export function evened(root: Layout, splitId: string): Layout {
 }
 export const evenedAll = (n: Layout): Layout => (isSplit(n) ? { ...n, sizes: n.kids.map(() => 1 / n.kids.length), kids: n.kids.map(evenedAll) } : n)
 
-/** The same objects, so neither remounts. */
 export function swapped(root: Layout, a: string, b: string): Layout {
   const pa = leaves(root).find((p) => p.id === a), pb = leaves(root).find((p) => p.id === b)
   if (!pa || !pb || a === b) return root
@@ -511,7 +486,6 @@ function edgeOf(root: Layout, id: string, side: Side): Divider | null {
     ? Math.abs(r.x + at * r.w - edge) < e && r.y < c.y + c.h - e && r.y + r.h > c.y + e
     : Math.abs(r.y + at * r.h - edge) < e && r.x < c.x + c.w - e && r.x + r.w > c.x + e)) ?? null
 }
-/** `by` and `min`: shares of the whole layout, across that way. */
 export function nudged(root: Layout, id: string, side: Side, by: number, min: number): Layout {
   const back: Record<Side, Side> = { left: "right", right: "left", top: "bottom", bottom: "top" }
   const d = edgeOf(root, id, side) ?? edgeOf(root, id, back[side])
@@ -520,13 +494,11 @@ export function nudged(root: Layout, id: string, side: Side, by: number, min: nu
   return resized(root, d.split.id, d.i, d.at + ((side === "right" || side === "bottom" ? by : -by) / span), min / span)
 }
 
-/** null docks it back into its spot. */
 export const floated = (root: Layout, id: string, rect: Rect | null): Layout => mapPanes(root, (p) => {
   if (p.id !== id) return p
   const { float: _, ...rest } = p
   return rect ? { ...rest, float: okFloat(rect)! } : rest
 })
-/** Unchanged, `t` itself. */
 export function settledTab(t: Tab): Tab {
   const root = tiled(t.root) ? t.root : mapPanes(t.root, (p) => { const { float: _, ...rest } = p; return rest })
   const ps = leaves(root), focus = ps.some((p) => p.id === t.focus) ? t.focus : ps[0].id

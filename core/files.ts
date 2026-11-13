@@ -24,7 +24,7 @@ import { messageOf } from "./values.ts"
 const log = logger("files")
 
 const WIKI = () => /\[\[([^[\]\n|#^]+)((?:#[^[\]\n|]*)?)((?:\|[^[\]\n]*)?)\]\]/g
-const SKIP = new Set([".DS_Store", ".git", ".localized"]) // never shown, even with hidden files on
+const SKIP = new Set([".DS_Store", ".git", ".localized"])
 const STAMP = / \d{4}-\d{2}-\d{2} \d{6}(?: \d+)?$/
 
 function showHidden(vault: Vault | null) {
@@ -35,7 +35,6 @@ function locked(rel: string) {
   return rel.startsWith(".trash/") || rel === ".vaultite/generated" || rel.startsWith(".vaultite/generated/")
 }
 
-/** [stem, extension] like Python's os.path.splitext: a leading dot isn't an extension. */
 function splitext(rel: string): [string, string] {
   const slash = rel.lastIndexOf("/")
   const name = rel.slice(slash + 1)
@@ -43,11 +42,8 @@ function splitext(rel: string): [string, string] {
   return dot > 0 ? [rel.slice(0, slash + 1 + dot), name.slice(dot)] : [rel, ""]
 }
 
-/** Advanced Slides' themes, read (never written) by a deck's `theme: css/….css`. */
 const SLIDE_THEMES = ".obsidian/plugins/obsidian-advanced-slides/css/"
 
-/** The app's settings files, reachable by exact path even with hidden files off: .vaultite/**.{json,md,vim,css} (site styles), and the
- *  snippets and themes folders. */
 const SETTINGS = /^\.vaultite\/(?:(?:[^./][^/]*\/)*[^./][^/]*\.(?:json|md|vim|css)|(?:snippets|themes)(?:\/[^./][^/]*)*)$/
 
 /** A safe vault-relative path, or a 400. Hidden ones only when Settings shows hidden files, or (`explicit`: opening
@@ -138,8 +134,6 @@ function pagePlugins(vault: Vault) {
   return LOADED.filter((p) => !off.has(p.id) && Object.keys(p.services).some((k) => k.startsWith("looks:")))
 }
 
-/** Every file and folder, for the tree and links: the same frozen object while the vault is unchanged, so
- *  it's serialized once. Its rows are shared: don't change them. */
 export function tree(vault: Vault): Tree {
   let hit = trees.get(vault)
   const pages = pagePlugins(vault)
@@ -208,7 +202,6 @@ function hiddenFiles(vault: Vault): [TreeRow[], string[]] {
 
 const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
 
-/** A file's text, or null when it isn't text (not UTF-8, or has NUL bytes: a binary file that happens to decode). */
 function textOf(data: Buffer) {
   if (data.subarray(0, 8000).includes(0)) return null
   try {
@@ -239,7 +232,6 @@ function read(vault: Vault, rel: string) {
   return { path: rel, text, mtime: ms(st.mtimeNs), size: Number(st.size), kind: e && e.kind ? e.kind.collection : null, problems: e ? [...e.problems] : [] }
 }
 
-/** Wait, off the main thread, for a text file iCloud may still be downloading: a 503 when it takes over `wait` ms. */
 async function downloaded(vault: Vault, rel: string, wait = 10_000) {
   let st: fs.Stats
   try { st = fs.statSync(vault.abs(rel)) } catch { return }
@@ -257,8 +249,6 @@ function writable(vault: Vault, rel: string) {
   }
 }
 
-/** A PDF's page count, when it's cheap to see (its page objects are plain in the file); null otherwise. Read a piece at a
- *  time off the main thread, at any size: a match is counted in the piece it starts in, the last MB carried over. */
 async function pdfPages(abs: string) {
   const PIECE = 32 << 20, OVER = 1 << 20
   let most = 0, pages = 0, carry = "", at = 0
@@ -303,14 +293,10 @@ function previews(vault: Vault, folder: string) {
   return { folder, previews: out }
 }
 
-/** Drop a moved or trashed folder's files from the index (a missing top-level folder alone doesn't count as deleted:
- *  the vault may be mid-sync). */
 function forget(vault: Vault, rel: string) {
   for (const r of [...vault.entries.keys()]) if (r === rel || r.startsWith(rel + "/")) vault.drop(r)
 }
 
-/** `rel`, or "Name 1", "Name 2"... when that's taken: Obsidian's rule, everywhere the app names a new file or folder
- *  (a dropped one, a restored one, "Untitled"). */
 function freeName(vault: Vault, rel: string) {
   const [stem, ext] = splitext(rel)
   let n = 1, out = rel
@@ -354,8 +340,6 @@ function restore(vault: Vault, rel: string) {
 const TRASH_DAYS = 30
 const TRASHED_AT = / (\d{4})-(\d{2})-(\d{2}) (\d{2})(\d{2})(\d{2})(?: \d+)?$/
 
-/** Delete for good what went to .trash over TRASH_DAYS ago: by the time in its name, else (put there by another app)
- *  when it was moved there. A few at a time; an iCloud placeholder counts as its file. Returns what it deleted. */
 export async function emptyTrash(vault: Vault, now = Date.now()) {
   const cutoff = now - TRASH_DAYS * 86_400_000, gone: string[] = []
   const top = vault.abs(".trash")
@@ -396,12 +380,9 @@ function copyName(vault: Vault, rel: string) {
   return out
 }
 
-/** Non-note files' text for search (text files, and `text:<ext>` a plugin reads: a workbook's cells), read off the main
- *  thread when changed; up to KEEP bytes stay in memory, the rest is reread per search: bounded, nothing left out. */
 const KEEP = 256 << 20
 /** Bigger than this, a file is read a piece at a time (one string can't hold much more): a query matches a piece. */
 const PIECE = 128 << 20
-/** `text`: its text kept; "disk": text, read when searched; null: not text (or nothing a reader could read). */
 type Indexed = { ns: bigint; reader: Reader | null; text: string | "disk" | null }
 type Index = { files: Map<string, Indexed>; kept: number; version: string; busy: Promise<void> | null }
 const indexes = new WeakMap<Vault, Index>()
@@ -413,8 +394,6 @@ function readerPlugins(vault: Vault) {
 }
 
 type Reader = (b: Buffer, rel: string) => string
-/** Data, not documents: an export of 25k records would make a first search read them all, and nobody looks for
- *  words in them (Obsidian doesn't either). Drawings and canvases (.excalidraw, .canvas) are searched. */
 const DATA = new Set(["json", "jsonl", "ndjson", "geojson", "map"])
 function searchFiles(vault: Vault) {
   const readers = readerPlugins(vault)
@@ -428,8 +407,6 @@ function searchFiles(vault: Vault) {
   return out
 }
 
-/** Embedded files' bytes (a data: URL's base64: a drawing's pasted images) aren't text anyone looks for, and short
- *  words would match inside them: left out of what's searched. */
 const DATA_URL = /(data:[\w.+-]+\/[\w.+-]+;base64,)[A-Za-z0-9+/=]{256,}/g
 const searchText = (t: string) => t.replace(DATA_URL, "$1…")
 
@@ -441,8 +418,6 @@ export function pageText(html: string): string {
   return xmlDecode(html.replace(MARKUP, (m) => (m.includes("\n") ? m.replace(/[^\n]+/g, "") : " "))).replace(/[ \t\u00a0]+/g, " ")
 }
 
-/** A file's text to search, read now: null when it isn't text; DISK when it's too big to keep (read when searched);
- *  undefined while it's only in iCloud (asked for, not waited on: tried again next time). */
 async function readIndexed(abs: string, rel: string, reader: Reader | null, room: number): Promise<string | null | undefined> {
   const st = await fs.promises.stat(abs)
   if (iCloud.on && iCloud.evicted(abs, st)) { fetchFromICloud(abs, { errno: 11 }); return undefined }
@@ -551,7 +526,6 @@ function docOf(rel: string, e: Entry): SearchDoc {
   return d
 }
 
-/** `only`: the files it may look at, no other (a shared folder's guest's: plugins/core/share). */
 type SearchOpts = { lines?: number; folder?: string; path?: string; only?: Set<string>; matchCase?: boolean; sort?: string; context?: number; offset?: number }
 
 async function searchAll(vault: Vault, q: string, limit = 60, opts: SearchOpts = {}): Promise<{ results: Item[]; files: number; lines: number }> {
@@ -571,8 +545,6 @@ async function searchAll(vault: Vault, q: string, limit = 60, opts: SearchOpts =
     const { path: rel, name, text: body } = d
     const score = names(name).length * 3 + (name.toLowerCase().includes(whole) ? 5 : 0)
     const item: Item = { path: rel, title: name, context: "", score, mtime: ms(ns), created: born, ...(e?.archived ? { archived: true } : {}) }
-    // The search tab (view:search) shows every line that matched, like a search editor; `context` lines around each
-    // come marked `ctx: true`, each line once. Lines are the file's (1-based), frontmatter counted.
     if (opts.lines) {
       const lines = body.split("\n")
       const hits: number[] = []
@@ -662,11 +634,8 @@ export async function upload(vault: Vault, query: Record<string, string>, body: 
 }
 
 type Linked = { version: number; resolve: (t: string, from?: string) => string | null
-  /** each file's link names (its aliases, archived), by path; other files' "" */
   names: Map<string, string>
-  /** each note's read, the paths its links go to and the names they're written with */
   out: Map<string, { e: Entry; to: string[]; named: string[] }>
-  /** the notes linking to a path, and those with a link by a name (lowercase: its last part) */
   into: Map<string, Set<string>>; byName: Map<string, Set<string>> }
 const linkIndexes = new WeakMap<Vault, Linked>()
 const aliasesOf = (e: Entry) => { const a = e.fm.aliases; return (Array.isArray(a) ? a : a ? [a] : []).map(String) }
@@ -741,14 +710,12 @@ function linkedTo(vault: Vault, rel: string): { path: string; linked: { path: st
   return { path: rel, linked, links: e ? linksOf(e).map(([t]) => t) : [] }
 }
 
-/** The file routes, or undefined if the request isn't one of them. */
 export async function handle(vault: Vault, method: string, parts: string[], query: Record<string, string>, body: Item): Promise<unknown> {
   const route = parts.join("/")
   if (route === "files" && method === "GET") { warmSearch(vault); return tree(vault) }
   if (route === "search" && method === "GET") {
     const n = (v: string | undefined, max: number) => Math.max(0, Math.min(max, Math.floor(Number(v) || 0)))
     if (query.sort && !(query.sort in SORTS)) throw new HTTPError(400, `sort is one of ${Object.keys(SORTS).join(", ")}`)
-    // (a page at a time from `offset`; `total=1`: with how many files and lines matched in all)
     const found = await searchAll(vault, query.q ?? "", n(query.limit, 500) || 60, { lines: n(query.lines, 100_000), folder: query.folder, path: query.path,
       only: query.only !== undefined ? new Set(query.only.split("\n")) : undefined, matchCase: query.case === "1" || query.case === "true", sort: query.sort, context: n(query.context, 5), offset: n(query.offset, Infinity) })
     return query.total === "1" ? found : found.results
@@ -805,7 +772,7 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
       try {
         cur = readText(vault.abs(rel))
       } catch (e) {
-        if (notHereYet(e)) throw e // (there, not down yet: never written over as a new file)
+        if (notHereYet(e)) throw e
         cur = null
       }
       const plan = planSave(cur, { ...said.body, text })
@@ -868,8 +835,6 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
     if (fs.statSync(vault.abs(src)).isDirectory()) throw new HTTPError(400, `'${src}' is a folder; only files can be duplicated`)
     const dst = copyName(vault, src)
     if (locked(dst)) throw new HTTPError(403, `${dst} is read-only`)
-    // The file as it is, as Obsidian copies it (read and written, not cloned, so it has its own dates). A note's copy gets
-    // its own id when it's first edited in the app.
     if (!writeNew(vault.abs(dst), fs.readFileSync(vault.abs(src)))) throw new HTTPError(409, `${dst} already exists`)
     await vault.sync()
     return reply(201, { path: dst })

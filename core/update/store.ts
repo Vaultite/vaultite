@@ -1,5 +1,3 @@
-// The root store: each commit the app runs made once into its own read-only folder (a code root), so each process keeps
-// a consistent tree while newer ones are made beside it. electron/shell/roots.mjs picks among them: the layout is its.
 import { execFile, spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import net from "node:net"
@@ -16,12 +14,10 @@ import { codeOf, isObj, messageOf } from "../values.ts"
 const exec = promisify(execFile)
 const MINUTE = 60_000
 const SHA = /^[0-9a-f]{40}$/
-/** A root this new stays through a gc: made, and about to be current (its host's next step after prepare). */
 const FRESH = 10 * MINUTE
 /** In a deps set, what builds write (tsconfig's tsBuildInfoFile, vite's cacheDir): left writable, shared as caches. */
 const CACHES = [".tmp", ".vite"]
 
-/** Runs a command: its stdout; throws with its stderr's end when it fails. */
 export type Exec = (cmd: string, args: string[], o: { cwd: string; env?: NodeJS.ProcessEnv; timeout?: number }) => Promise<string>
 
 const running = new Set<ChildProcess>()
@@ -38,27 +34,21 @@ export const execIn: Exec = async (cmd, args, o) => {
     tracked(run.child)
     return (await run).stdout
   } catch (e) {
-    // (a build's warnings fill its stderr: the lines that say error are the why)
     const x = e as { stdout?: string; stderr?: string; message: string }, all = `${x.stdout ?? ""}\n${x.stderr ?? ""}`.split("\n").map((l) => l.replace(/\x1b\[[0-9;]*m/g, "").trim()).filter(Boolean)
     const errors = all.filter((l) => /\berror\b|\bERR!|failed|FAIL\b/i.test(l))
     throw new Error((errors.length ? errors : all).slice(-3).join(" ").slice(0, 500) || x.message, { cause: e })
   }
 }
 
-/** What a step is given: the root being prepared and the store's own. */
 export type StepCtx = { root: string; store: string; helpers: string; node: string; env: NodeJS.ProcessEnv; exec: Exec }
-/** One step of a root's making: its name (for the log and the measures) and what it does in the root. */
 export type Step = { name: string; run: (c: StepCtx) => Promise<void> }
-/** How a commit becomes a root: its build steps, the files it must have, and the preflight that runs it once. */
 export type Recipe = { build: Step[]; keyFiles: string[]; preflight: Step[] }
 
-/** A free port on this machine. */
 const freePort = () => new Promise<number>((resolve, reject) => {
   const srv = net.createServer().listen(0, "127.0.0.1", () => { const p = (srv.address() as net.AddressInfo).port; srv.close(() => resolve(p)) })
   srv.on("error", reject)
 })
 
-/** The root's server, started on a sandbox vault of its own with the shell's Node, answers; then it's stopped. */
 export const serverBoots: Step = {
   name: "server boots",
   async run(c) {
@@ -87,8 +77,6 @@ export const serverBoots: Step = {
   },
 }
 
-/** The app's recipe, as npm run app:build makes a build: the web app, the native helpers (from the store's cache), the
- *  stamps; then its server boots and the smoke test passes, with the shell's Node. */
 export function appRecipe(o: { channel?: string } = {}): Recipe {
   const npm = (c: StepCtx, args: string[], env: Record<string, string> = {}) => c.exec("npm", args, { cwd: c.root, env: { ...c.env, ...env } })
   return {
@@ -103,7 +91,6 @@ export function appRecipe(o: { channel?: string } = {}): Recipe {
   }
 }
 
-/** A service's recipe (core/update/servicestore.ts): the web app and the stamps, then its server boots, on its Node. */
 export function serverRecipe(): Recipe {
   return {
     build: [
@@ -116,24 +103,18 @@ export function serverRecipe(): Recipe {
 }
 
 export type StoreOptions = {
-  /** The store's folder (Main's: userData/code.noindex). */
   dir: string
-  /** origin's url. */
   url: string
   recipe?: Recipe
-  /** The Node that runs the steps and the preflight (the shell's binary as Node: ELECTRON_RUN_AS_NODE in `env`). */
   node?: string
   env?: NodeJS.ProcessEnv
-  /** Installs `dir`'s package-lock.json into its node_modules (`fresh`: nothing there yet). Default: npm. */
   install?: (dir: string, o: { fresh: boolean }) => Promise<void>
   exec?: Exec
   log?: (line: string) => void
   now?: () => number
-  /** How long a root just made stays through a gc (default FRESH, 10 minutes). */
   fresh?: number
 }
 
-/** A prepared root: where, its commit, its shell fingerprint, its deps set, and how long it took. */
 export type Root = { commit: string; dir: string; fingerprint: string; deps: string; prepared: number; seconds: number; steps: Record<string, number> }
 export type { Lease }
 
@@ -143,7 +124,6 @@ const writeJson = (file: string, v: unknown) => {
   fs.writeFileSync(`${file}.${process.pid}.tmp`, JSON.stringify(v, null, 2) + "\n")
   fs.renameSync(`${file}.${process.pid}.tmp`, file)
 }
-/** Every file and folder under `dir` writable (`on`) or not, links left as they are. */
 function writable(dir: string, on: boolean) {
   const walk = (p: string) => {
     const st = fs.lstatSync(p)
@@ -154,13 +134,11 @@ function writable(dir: string, on: boolean) {
   }
   if (fs.existsSync(dir)) walk(dir)
 }
-/** Gone, read-only or not. */
 function remove(dir: string) {
   if (!fs.existsSync(dir)) return
   writable(dir, true)
   fs.rmSync(dir, { recursive: true, force: true })
 }
-/** A copy of `from` at `to` that shares its blocks where the filesystem can (APFS clones, Linux reflinks). */
 async function cloneDir(from: string, to: string, run: Exec) {
   try {
     if (process.platform === "darwin") await run("cp", ["-cR", from, to], { cwd: path.dirname(to) })
@@ -172,24 +150,19 @@ async function cloneDir(from: string, to: string, run: Exec) {
   }
 }
 
-/** Each store folder's turn in this process: a prepare and a gc of two rootStore()s of one folder never overlap. */
 const chains = new Map<string, Promise<unknown>>()
 
 export function rootStore(o: StoreOptions) {
   const dir = path.resolve(o.dir), run = o.exec ?? execIn, log = o.log ?? (() => {}), now = o.now ?? Date.now
   const recipe = o.recipe ?? appRecipe(), node = o.node ?? process.execPath, env = o.env ?? process.env
-  /** A bare clone (an older source clone migrates in), and roots/<sha>: its detached worktrees, built, then 0555. */
   const repo = path.join(dir, "repo.git"), roots = path.join(dir, "roots")
-  /** deps/<lock's blob>: node_modules for one package-lock.json, linked into its roots; helpers/<id>: built once. */
   const deps = path.join(dir, "deps"), helpers = path.join(dir, "helpers")
-  // (also current.json and good.json, {"commit", "t"} by rename; bad/<sha>.json; leases/<sha>.<pid>.json; meta/<sha>.json)
   const git = (args: string[], cwd = repo) => run("git", args, { cwd, env: gitEnv(), timeout: 10 * MINUTE }).then((s) => s.trim())
   const rootOf = (sha: string) => path.join(roots, sha)
   const install = o.install ?? (async (d: string, x: { fresh: boolean }) => {
     await run("npm", [x.fresh ? "ci" : "install", "--no-audit", "--no-fund"], { cwd: d, env })
   })
 
-  // One prepare or gc at a time, here (every rootStore of this folder in this process: chains) and in any other process.
   const lockFile = path.join(dir, "lock")
   async function locked<T>(fn: () => Promise<T>): Promise<T> {
     const mine = (chains.get(dir) ?? Promise.resolve()).then(async () => {
@@ -210,7 +183,6 @@ export function rootStore(o: StoreOptions) {
     return mine
   }
 
-  /** The bare clone, made once: from an older clone of the same repo when given (its objects shared, no download). */
   async function init(from?: string) {
     if (fs.existsSync(path.join(repo, "HEAD"))) return
     fs.mkdirSync(dir, { recursive: true })
@@ -224,14 +196,12 @@ export function rootStore(o: StoreOptions) {
     log(`store: made ${repo}${local ? ` from ${local}` : ""}`)
   }
 
-  /** origin's branch, fetched: its commit. */
   async function fetch(branch: string) {
     await init()
     await git(["fetch", "--quiet", "--no-tags", "origin", `+refs/heads/${branch}:refs/remotes/origin/${branch}`])
     return git(["rev-parse", `refs/remotes/origin/${branch}`])
   }
 
-  /** The deps set for `sha`'s package-lock.json: there already, or cloned from the newest one and installed. */
   async function depsFor(sha: string) {
     const blob = await git(["rev-parse", `${sha}:package-lock.json`])
     const at = path.join(deps, blob)
@@ -256,15 +226,12 @@ export function rootStore(o: StoreOptions) {
       // (moved first: a Mac may refuse to rename a folder no longer writable)
       fs.renameSync(tmp, at)
       writable(at, false)
-      // (the caches a root's build writes in node_modules, tsc's .tmp and vite's: the rest stays as installed)
       for (const c of CACHES) writable(path.join(at, "node_modules", c), true)
     } catch (e) { remove(tmp); remove(at); throw e }
     log(`store: deps ${blob.slice(0, 7)} for ${sha.slice(0, 7)}${near ? ` (from ${near.n.slice(0, 7)})` : ""}`)
     return { blob, at, made: true }
   }
 
-  /** Why `root` isn't a sound root of `sha` (none: it is): its stamp and HEAD are the commit, its key files and web
-   *  build are there, its dependencies resolve, and git has nothing changed or added in it. */
   async function check(root: string, sha: string): Promise<string[]> {
     const out: string[] = []
     const stamp = readJson<{ commit?: string }>(path.join(root, "electron", "build.json"))?.commit
@@ -287,17 +254,13 @@ export function rootStore(o: StoreOptions) {
     const c = readJson<{ commit?: string }>(path.join(dir, `${name}.json`))?.commit
     return typeof c === "string" && SHA.test(c) ? c : null
   }
-  /** A prepared root of `sha`, or null. */
   const prepared = (sha: string): Root | null => { const m = metaOf(sha); return m && fs.existsSync(rootOf(sha)) ? m : null }
 
-  /** Removes a root and its worktree's record. */
   async function drop(root: string) {
     remove(root)
     await git(["worktree", "prune"]).catch(() => {})
   }
 
-  /** `sha` as a root: made, built, checked and preflighted once, then read-only. One that fails leaves nothing behind
-   *  (and `current` as it was); a failure of its own code marks the commit bad, never tried again unless `retry`. */
   function prepare(sha: string, x: { retry?: boolean } = {}): Promise<Root> {
     return locked(async () => {
       if (!SHA.test(sha)) throw new Error(`${sha} isn't a full commit hash`)
@@ -311,7 +274,7 @@ export function rootStore(o: StoreOptions) {
       await drop(stage)
       fs.mkdirSync(roots, { recursive: true })
       const timed = async <T>(name: string, fn: () => Promise<T>) => { const t = now(); try { return await fn() } finally { steps[name] = (now() - t) / 1000 } }
-      let mine = false // (a failure of the commit's own code, not of the network or the disk)
+      let mine = false
       try {
         await timed("worktree", () => git(["worktree", "add", "--quiet", "--detach", stage, sha]))
         const d = await timed("deps", () => depsFor(sha))
@@ -322,12 +285,10 @@ export function rootStore(o: StoreOptions) {
         const problems = await timed("verify", () => check(stage, sha))
         if (problems.length) throw new Error(`it doesn't check out: ${problems.join("; ")}`)
         for (const s of recipe.preflight) await timed(s.name, () => s.run(ctx).catch((e) => { throw new Error(`${s.name}: ${errLine(e)}`) }))
-        // (once more: a preflight that wrote into the root would leave it changed)
         const after = await check(stage, sha)
         if (after.length) throw new Error(`its preflight changed it: ${after.join("; ")}`)
         mine = false
         await git(["worktree", "move", stage, root])
-        // (moved: the link to its deps is relative, the same from roots/<sha>)
         const r: Root = { commit: sha, dir: root, fingerprint: fingerprint(root), deps: d.blob, prepared: now(), seconds: (now() - t0) / 1000, steps }
         writable(root, false)
         writeJson(path.join(dir, "meta", `${sha}.json`), r)
@@ -344,10 +305,8 @@ export function rootStore(o: StoreOptions) {
     })
   }
 
-  /** Whether `sha`'s root is sound now (none: it is); one never prepared says so. */
   const verify = async (sha: string) => prepared(sha) ? check(rootOf(sha), sha) : [`${sha.slice(0, 7)} isn't prepared`]
 
-  /** `sha` is what the app runs next: only a prepared, sound root not marked bad. */
   async function setCurrent(sha: string) {
     const bad = badOf(sha)
     if (bad) throw new Error(`${sha.slice(0, 7)} is bad: ${bad.why}`)
@@ -355,20 +314,16 @@ export function rootStore(o: StoreOptions) {
     if (problems.length) throw new Error(`${sha.slice(0, 7)} can't be current: ${problems.join("; ")}`)
     writeJson(path.join(dir, "current.json"), { commit: sha, t: now() })
   }
-  /** It ran and became ready (the shell's ready()): what the app falls back to. */
   function markGood(sha: string) {
     if (!prepared(sha)) throw new Error(`${sha.slice(0, 7)} isn't prepared`)
     writeJson(path.join(dir, "good.json"), { commit: sha, t: now() })
   }
-  /** It's bad (`why`): never current again, and no longer current or good. */
   function markBad(sha: string, why: string) {
     writeJson(path.join(dir, "bad", `${sha}.json`), { why, t: now() })
     for (const p of ["current", "good"] as const) if (pointer(p) === sha) fs.rmSync(path.join(dir, `${p}.json`), { force: true })
   }
 
-  /** A process running `sha`'s root for long (a keeper): kept from gc while it lives. Answers its release. */
   const lease = (sha: string, l: { pid: number; what: string }) => leaseIn(dir, sha, l)
-  /** The roots leased by a process still running (the same one: its start time too); the rest of the leases removed. */
   async function leased(): Promise<Map<string, Lease[]>> {
     const out = new Map<string, Lease[]>(), at = path.join(dir, "leases")
     let names: string[] = []
@@ -381,8 +336,6 @@ export function rootStore(o: StoreOptions) {
     return out
   }
 
-  /** Every root but current, good, the leased and one just made (about to be current: FRESH) removed, with the deps
-   *  sets none of those use: what it removed. */
   function gc() {
     return locked(async () => {
       const fresh = (n: string) => now() - (metaOf(n)?.prepared ?? 0) < (o.fresh ?? FRESH)
@@ -402,7 +355,6 @@ export function rootStore(o: StoreOptions) {
   return {
     dir, repo, init, fetch, prepare, verify, setCurrent, markGood, markBad, lease, leased, gc,
     root: rootOf, prepared, current: () => pointer("current"), good: () => pointer("good"), bad: badOf,
-    /** The roots there, prepared or not. */
     roots: () => { try { return fs.readdirSync(roots).filter((n) => SHA.test(n)) } catch { return [] } },
   }
 }

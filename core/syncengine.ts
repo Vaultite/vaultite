@@ -1,43 +1,32 @@
 import { sha256 } from "@noble/hashes/sha2.js"
 import { mergeJson, mergeText } from "./syncmerge.ts"
 
-/** A version of a file. `blob` is its bytes' sha-256 (null: deleted); `device` "" for a merge, which any device makes alike. */
 export type Node = {
   id: string; file: string; path: string; blob: string | null; size: number; parents: string[]
   clock: number; device: string; at: number
-  /** A merge where both sides changed the same lines: the losing side, until a later version settles it. */
   conflict?: Conflict
-  /** The conflicts this version settles (the user chose). */
   settles?: string[]
-  /** Where an import came from when it isn't this device's own folder ("icloud-copy"). */
   from?: string
-  /** A delete among many the user let through on its device: not held again on the others. */
   confirmed?: true
 }
 export type Conflict = {
   id: string; kind: "text" | "json" | "binary" | "deleted" | "name"
-  /** The text to merge `other` in from (merge.ts Clash), as blobs; null where there's none (binary, deleted). */
   base: string | null; other: string | null
-  /** The losing side's device and when it changed. */
   device: string; at: number
-  /** Binary: where the other side's file was kept beside it. Name: the path it lost. */
   copy?: string; keys?: string[]; lines?: number
 }
 export type Entry = { device: string; seq: number; node: Node }
 export type Vector = Record<string, number>
 export type FileStat = { path: string; size: number; mtime: number }
 
-/** The files a device syncs (its vault folder, or one in memory for tests). Paths are vault paths, NFC. */
 export interface Folder {
   list(): FileStat[]
   stat(path: string): FileStat | null
   read(path: string): Uint8Array | null
-  /** sha-256 of a file's bytes (hex), or null when it's gone. */
   hash(path: string): string | null
   write(path: string, bytes: Uint8Array): FileStat
   move(from: string, to: string): FileStat | null
   remove(path: string): void
-  /** Write a stored blob's file without reading it (a clone where the disk can): big media. */
   copyIn?(path: string, from: string, hash: string): FileStat | null
 }
 /** Where a device keeps its logs, blobs and what it knows of its folder: runtime state, never in the vault. */
@@ -49,11 +38,8 @@ export interface Store {
   hasBlob(h: string): boolean
   blob(h: string): Uint8Array | null
   putBlob(h: string, bytes: Uint8Array): void
-  /** Keep a folder file's bytes as blob h without reading them into memory (a clone on APFS), if it can. */
   keepFile?(h: string, folder: Folder, path: string): boolean
-  /** A blob's own file, to copy from (Folder.copyIn). */
   blobFile?(h: string): string | null
-  /** A blob was just written into the folder there (it may keep it as that file, not twice). */
   placed?(h: string, folder: Folder, path: string): void
 }
 
@@ -62,7 +48,6 @@ export const sha = (b: Uint8Array | string) => { let s = ""; for (const x of sha
 const enc = new TextEncoder(), dec = new TextDecoder("utf-8", { fatal: true })
 export const PROTOCOL = 1
 const DEBUG = typeof process !== "undefined" && !!process.env?.SYNC_DEBUG
-/** Text bigger than this merges as binary: the later wins, the other kept beside it. */
 const TEXT_MAX = 8 << 20
 
 /** The id a version has: a hash of everything else in it, so two devices that make the same merge agree on it. */
@@ -104,16 +89,13 @@ export type Guard = { files: number; max: number }
 export type Status = {
   device: string; vector: Vector; files: number; heads: number; merging: number; waiting: number; missingBlobs: number
   held: { deletes: number; since: number } | null; conflicts: number
-  /** Deletes the last look found, waiting for the next to see whether more are coming. */
   deleting: number
 }
 
 export class Replica {
   readonly device: string
   readonly store: Store
-  /** Where versions are written (the vault, or a shadow copy). */
   readonly folder: Folder
-  /** Where changes are read from: the folder itself, or in shadow mode the live vault, copied in as if made here. */
   readonly input: Folder
   readonly shadow: boolean
   nodes = new Map<string, Node>()
@@ -122,23 +104,17 @@ export class Replica {
   logs = new Map<string, Entry[]>()
   private headCache = new Map<string, Node[]>()
   private named = new Map<string, Set<string>>()
-  /** Entries that came before the ones before them (a gap in a device's log): applied once it's filled. */
   waiting = new Map<string, Map<number, Entry>>()
   clock = 0
   seq = 0
-  /** The input's files as last seen, and which version each was. */
   seen = new Map<string, Tracked>()
-  /** The folder's files as last written (in shadow mode; else `seen`). */
   wrote = new Map<string, Tracked>()
-  /** Deletes held for the user's yes: too many at once (an unmounted folder looks like that). */
   held: { deletes: string[]; since: number } | null = null
   release = false
   private going = new Set<string>()
   deleting = 0
-  /** What the device keeps with the replica's state (the mailbox's place, the copy's files). */
   extra: Record<string, unknown> = {}
   now: () => number
-  /** Files changing now: left until they've been quiet a moment (vault paths -> last change). */
   guard: Guard = { files: 50, max: 0.05 }
   onEntries: (e: Entry[]) => void = () => {}
   onLog: (msg: string) => void = () => {}
@@ -198,7 +174,6 @@ export class Replica {
     for (const h of hs) { const k = keyOf(h.path), s = this.named.get(k) ?? new Set(); s.add(file); this.named.set(k, s) }
   }
 
-  /** Entries from another device (any device's, relayed). Checked: a version whose id doesn't match its content is refused. */
   receive(entries: Entry[]): number {
     const fresh: Entry[] = []
     for (const e of entries) {
@@ -220,7 +195,6 @@ export class Replica {
     return v
   }
 
-  /** What a device that has `vector` lacks, oldest first per device (at most `max`). */
   missing(vector: Vector, max = 5000): Entry[] {
     const out: Entry[] = []
     for (const [d, log] of this.logs) {
@@ -246,7 +220,6 @@ export class Replica {
     return true
   }
 
-  /** The device behind a version: its own, or for a merge the latest one's it came from. */
   author(n: Node): Node {
     if (n.device) return n
     let best: Node | null = null
@@ -254,7 +227,6 @@ export class Replica {
     return best ?? n
   }
 
-  /** The file's version now: its one head (null while it has several, until they're merged). */
   head(file: string): Node | null {
     const h = this.heads(file)
     return h.length === 1 ? h[0] : null
@@ -281,8 +253,6 @@ export class Replica {
     return common.filter((c) => !below.has(c)).map((c) => this.nodes.get(c)!).sort(order)
   }
 
-  /** The text a set of versions stands for: one's own, or several merged in order, each from the versions they share
-   *  (git's recursive merge base, for a criss-cross); clashes go to the later. null: a blob isn't here. */
   private textOfSet(ns: Node[]): string | null {
     if (!ns.length) return ""
     let acc = this.blobText(ns[0].blob)
@@ -298,7 +268,6 @@ export class Replica {
 
   blobText(h: string | null): string | null { return h === null ? "" : textOf(this.store.blob(h)) }
 
-  /** Blobs the versions need that aren't here (to fetch from a peer). */
   missingBlobs(): string[] {
     const out = new Set<string>()
     for (const [file] of this.byFile) {
@@ -361,7 +330,6 @@ export class Replica {
     return name
   }
 
-  /** Merge every file with several heads, and part files that came to share a name. Returns how many it made. */
   mergeAll(): number {
     let made_ = 0
     for (const [file] of this.byFile) {
@@ -421,8 +389,6 @@ export class Replica {
     return true
   }
 
-  /** Look at the input's files (these paths, or all of them) and record what changed as new versions. `seed`: the first
-   *  look, where a file nobody has a version of yet becomes one every device makes alike. */
   scan(paths?: string[], { from }: { from?: string } = {}): { changed: number; held: number; waiting: number } {
     const all = !paths
     const list = paths ? paths.map(norm).filter((p) => !unsynced(p)) : this.input.list().map((s) => norm(s.path)).filter((p) => !unsynced(p))
@@ -536,8 +502,6 @@ export class Replica {
     return this.record(this.fresh({ file: prev.file, path, blob: hash, size, parents: [prev.id], from }))
   }
 
-  /** A file written where this device keeps a one-way copy (the iCloud copy): a version on the one copied there, or a
-   *  new file. Merged with what came since like any edit, so nothing written there is lost or written over unseen. */
   foreign(path: string, bytes: Uint8Array, parent: string | null, from: string): Node {
     const blob = sha(bytes)
     if (!this.store.hasBlob(blob)) this.store.putBlob(blob, bytes)
@@ -548,8 +512,6 @@ export class Replica {
     return this.record(this.fresh({ file: sha(`file:${keyOf(path)}:${from}:${this.clock + 1}`), path: norm(path), blob, size: bytes.length, parents: [], from }))
   }
 
-  /** A file put into the folder from outside the engine (a big download straight to disk): its version's, so it isn't
-   *  written again nor taken for an edit. False when no live version there has those bytes. */
   adoptFile(path: string, hash: string, size: number, mtime: number): boolean {
     const there = this.fileAt(norm(path))
     if (!there || there.head.blob !== hash) return false
@@ -561,7 +523,6 @@ export class Replica {
     return true
   }
 
-  /** Let go of a file here without deleting it anywhere (the phone freeing room): it stays online only. */
   forget(path: string) {
     const p = norm(path)
     this.wrote.delete(p)
@@ -569,14 +530,12 @@ export class Replica {
     this.save()
   }
 
-  /** Settle a conflict (the user chose): a version on the file's head that says so. */
   settle(file: string, ids: string[]): Node | null {
     const h = this.head(file)
     if (!h) return null
     return this.record(this.fresh({ file, path: h.path, blob: h.blob, size: h.size, parents: [h.id], settles: ids }))
   }
 
-  /** The open conflicts: a merge's clash no later version settled, newest first. */
   conflicts(): { file: string; path: string; node: string; conflict: Conflict }[] {
     const out: { file: string; path: string; node: string; conflict: Conflict }[] = []
     for (const [file] of this.byFile) {
@@ -597,8 +556,6 @@ export class Replica {
     return out
   }
 
-  /** Write each file's version into the folder where it isn't yet. A file changed there since it was last seen is
-   *  looked at first (a new version, merged), never written over. */
   materialize(): { wrote: number; held: number } {
     const target = new Map<string, Node>()
     for (const [file] of this.byFile) { const h = this.head(file); if (h) target.set(file, h) }
@@ -669,7 +626,6 @@ export class Replica {
     return { wrote, held: 0 }
   }
 
-  /** Look, merge, write: what a device does after a change of its own or a peer's. */
   step(paths?: string[]) {
     const s = this.scan(paths)
     if (DEBUG) this.audit("scan")
@@ -679,7 +635,6 @@ export class Replica {
     return { changed: s.changed, merged: m, wrote: w.wrote, held: s.held + w.held, waiting: s.waiting }
   }
 
-  /** Let held deletes through (the user said yes), or forget them (`no`: the files are written back). */
   releaseHeld(yes: boolean) {
     if (!this.held) return 0
     const n = this.held.deletes.length
@@ -706,7 +661,6 @@ export class Replica {
       held: this.held ? { deletes: this.held.deletes.length, since: this.held.since } : null, conflicts: this.conflicts().length, deleting: this.deleting }
   }
 
-  /** Each live file's path and blob, as its versions say now (to compare devices, or a copy with the vault). */
   snapshot(): Map<string, string> {
     const out = new Map<string, string>()
     for (const [file] of this.byFile) { const h = this.head(file); if (h && h.blob) out.set(h.path, h.blob) }
