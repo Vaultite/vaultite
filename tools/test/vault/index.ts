@@ -99,6 +99,7 @@ export const AREAS: { name: string; deps: string[] }[] = [
   { name: "takeover", deps: ["pages"] },
   { name: "stack", deps: [] },
   { name: "desktop-rules", deps: [] },
+  { name: "desktop-fds", deps: [] },
   { name: "browser-wire", deps: [] },
   { name: "desktop-wire", deps: [] },
   { name: "helper", deps: ["pages"] },

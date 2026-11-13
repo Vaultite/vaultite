@@ -3,6 +3,7 @@ import { AppWindow } from "./appwindow.ts"
 import { fork, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
+import { pathToFileURL } from "node:url"
 import type { MenuSnapshot } from "./menu.ts"
 import { serverCall, setServerSink } from "./browser/engine.ts"
 import { attach, servedHere, type Call, type Link } from "./host.ts"
@@ -15,6 +16,7 @@ import { appUpdates, lookNow, mainBehind } from "./updates.ts"
 import { mainLog } from "./mainlog.ts"
 import { ServerWatch } from "./serverwatch.ts"
 import { MAC, ROOT, WIN } from "./mainbase.ts"
+import { heldPastExec, INHERITED } from "./inherited.ts"
 import { type Known, nameOf, portFor, PortTaken } from "./vaultlist.ts"
 
 export const serverLog = (p: string) => path.join(app.getPath("logs"), `server-${nameOf(p)}.log`)
@@ -98,11 +100,13 @@ export function startServer(v: Known, port: number, own = false): Promise<ChildP
   fs.mkdirSync(logDir, { recursive: true })
   const logFile = serverLog(v.path), fd = fs.openSync(logFile, "a"), from = fs.fstatSync(fd).size
   const root = own ? ROOT : codeRoot()
+  const leaks = heldPastExec()
   const child = fork(path.join(root, "server.ts"), [], {
     cwd: root, stdio: ["ignore", fd, fd, "ipc"], detached: !WIN,
+    execArgv: leaks ? [...process.execArgv, "--import", pathToFileURL(path.join(root, "electron", "inheritedclose.ts")).href] : process.execArgv,
     env: {
       ...process.env, ELECTRON_RUN_AS_NODE: "1", VAULTITE_DESKTOP: "1", VAULTITE_VAULT: v.path, VAULTITE_LOCAL: LOCAL,
-      HOST: "127.0.0.1", PORT: String(port),
+      HOST: "127.0.0.1", PORT: String(port), [INHERITED]: leaks || undefined,
       // (Node's compile cache out of the temp folder: restarts and cleanups empty it)
       NODE_COMPILE_CACHE: process.env.NODE_COMPILE_CACHE || path.join(app.getPath("userData"), "compile-cache"),
       VAULTITE_LAUNCHED_AT: String(Math.round(Date.now() - process.uptime() * 1000)), VAULTITE_FORKED_AT: String(Date.now()),
