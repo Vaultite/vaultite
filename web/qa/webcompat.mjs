@@ -11,7 +11,8 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, qa, until, wait, uiAt } from "./lib/qa.mjs"
+import { ROOT, qa, until, uiAt } from "./lib/qa.mjs"
+import { app as appOf } from "./lib/app.mjs"
 
 const { args: [VAULT], check, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-webcompat-"))
@@ -75,7 +76,7 @@ const app = await _electron.launch({
 const quietDialogs = (pg) => pg.on("dialog", () => {})
 app.context().pages().forEach(quietDialogs)
 app.context().on("page", quietDialogs)
-const win = await app.firstWindow()
+const win = await app.firstWindow(), ui = appOf(win)
 watch(win, { console: true, fail: false })
 await win.waitForSelector("[role=tree]", { timeout: 60000 })
 const origin = new URL(win.url()).origin
@@ -94,7 +95,7 @@ await app.evaluate(({ app: a, BaseWindow, BrowserWindow, dialog, Menu, shell }, 
 const asked = () => app.evaluate(() => globalThis.__asked)
 /** The next questions' answers (any left from before are dropped). */
 const answerNext = (...r) => app.evaluate((_e, r) => { globalThis.__answers = r }, r)
-const ui = (body) => uiAt(origin)(body)
+const uiOp = (body) => uiAt(origin)(body)
 const menuClick = (label) => app.evaluate(({ Menu, BaseWindow, BrowserWindow }, label) => {
   const find = (items) => { for (const i of items) { if (i.label === label) return i; const s = i.submenu && find(i.submenu.items); if (s) return s } }
   find(Menu.getApplicationMenu().items).click(undefined, BaseWindow.getAllWindows().find((x) => !(x instanceof BrowserWindow)))
@@ -139,9 +140,9 @@ const answerSheet = (values) => app.evaluate(({ BrowserWindow }, values) => {
   return s.webContents.executeJavaScript(`(() => { for (const [k, v] of Object.entries(${JSON.stringify(values)})) document.getElementById(k).value = v; setTimeout(() => document.querySelector("form").requestSubmit(), 50) })()`)
 }, values)
 const open = async (p) => {
-  await ui({ action: "open", path: at(p), newTab: true })
+  await uiOp({ action: "open", path: at(p), newTab: true })
   check(`(${p} is shown)`, await until(async () => (await shown())?.url === at(p), 20000), await pages())
-  await wait(500)
+  await ui.idle()
 }
 /** The share menu's items (electron/browser/screenshare.ts), once it's asked; and a click on one, by its label. */
 const shareMenu = () => app.evaluate(() => (globalThis.__menu ?? []).map((i) => i.label).filter(Boolean))
@@ -187,11 +188,11 @@ await app.evaluate(() => globalThis.__menu.find((i) => i.label === "Reload").cli
 check("its Reload asks \"Reload site?\"", await until(async () => (await asked()).includes("Reload site?"), 5000), await asked())
 const before = (await asked()).length
 await menuClick("Close tab")
-await wait(1500)
+await until(async () => !(await pages()).some((p) => p.url === at("/leave")), 8000)
 check("closing its tab never asks", (await asked()).length === before && !(await pages()).some((p) => p.url === at("/leave")), [await asked(), await pages()])
 
 // ---------- HTTP sign-in ----------
-await ui({ action: "open", path: at("/auth"), newTab: true })
+await uiOp({ action: "open", path: at("/auth"), newTab: true })
 const signIn = await until(sheetText, 15000)
 check("a site's HTTP sign-in: asked in a sheet, saying where (never in the site's own words)", /Sign in/.test(signIn ?? "") && signIn.includes(`127.0.0.1:${PORT} asks for a username and password`) && !/Lighthouse/.test(signIn), signIn)
 await answerSheet({ username: "alice", password: "pw" })
@@ -237,14 +238,14 @@ await clickInPage("#zoom")
 check("another app's link: a no isn't kept, so it asks again", await until(async () => (await ofZoom()) === 2, 5000), await asked())
 check("… and a yes opens it", await until(() => app.evaluate(() => globalThis.__opened.some((u) => u.startsWith("zoommtg:"))), 5000))
 await clickInPage("#zoom")
-await wait(1000)
+await until(() => app.evaluate(() => globalThis.__opened.filter((u) => u.startsWith("zoommtg:")).length === 2), 5000)
 check("… kept: it opens again without asking", (await ofZoom()) === 2 && (await app.evaluate(() => globalThis.__opened.filter((u) => u.startsWith("zoommtg:")).length)) === 2, await asked())
 
 // ---------- what already works as in Chrome ----------
 await open("/storage")
 const cookie = await until(() => onShown("frame value", "window.__c"), 5000)
 check("a frame from another site keeps its cookies", cookie === "tp=1", cookie)
-await ui({ action: "open", path: at("/doc.pdf"), newTab: true })
+await uiOp({ action: "open", path: at("/doc.pdf"), newTab: true })
 check("a PDF shows in its tab, not downloaded", await until(async () => (await shown())?.url === at("/doc.pdf"), 10000) && !fs.readdirSync(DOWNLOADS).length, [await shown(), fs.readdirSync(DOWNLOADS)])
 
 await app.close().catch(() => {})

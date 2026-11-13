@@ -3,7 +3,8 @@
 //   node web/qa/tabgroups.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
-import { command, palette, qa, until, wait } from "./lib/qa.mjs"
+import { command, palette, qa, until } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
 const { args: [B0, VAULT, OUT = "/tmp/tabgroups-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 const B = B0.endsWith("/") ? B0 : `${B0}/`
 mkdirSync(OUT, { recursive: true })
@@ -20,27 +21,20 @@ writeFileSync(look.p, JSON.stringify({ ...lookNow(), tabBar: true, theme: "light
 
 try {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 760 } })
-  const page = watch(await ctx.newPage())
+  const page = watch(await ctx.newPage()), ui = app(page)
   await page.goto(`${B}#new`)
   await page.evaluate(() => localStorage.removeItem("vaultite.tabs"))
   await page.reload()
   await page.waitForSelector("[data-tab-bar] [data-tab-id]")
   for (const p of notes) {
-    await page.click("[data-tab-bar] button[aria-label='New tab']"); await wait(150)
-    await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, p); await wait(350)
+    await page.click("[data-tab-bar] button[aria-label='New tab']"); await ui.idle()
+    await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, p); await ui.idle()
   }
   /** The bar as text: each tab's label, its group's name in brackets ("~" folded), a chip as <name>. */
   // (a chip's count is drawn always, hidden while it's open: not what it says)
   const bar = () => page.$$eval("[data-tab-bar] :is([data-tab-id], [data-group-chip])", (els) => els.map((e) => (e.dataset.groupChip ? `<${((e) => { const c = e.cloneNode(true); for (const x of c.querySelectorAll("[data-group-count][aria-hidden]")) x.remove(); return c.textContent.trim() })(e)}>` : e.textContent.trim())).join(" "))
   const tab = (label) => page.locator("[data-tab-bar] [data-tab-id]", { hasText: label }).first()
-  const menu = async (loc, ...items) => {
-    await loc.click({ button: "right" }); await wait(200)
-    for (const [i, it] of items.entries()) {
-      const row = page.locator("[role=menu]").last().getByRole("menuitem", { name: it, exact: true })
-      if (i < items.length - 1) await row.hover(); else await row.click()
-      await wait(200)
-    }
-  }
+  const menu = async (loc, ...items) => { await ui.menu.context(loc); await ui.menu.pick(...items) }
   await until(async () => (await page.$$("[data-tab-bar] [data-tab-id]")).length === 5, 5000)
 
   // A new group from a tab's menu: its editor opens under its chip, the name field focused.
@@ -50,11 +44,11 @@ try {
   check("a new group opens its editor, its name field focused, the folder its tab is in suggested", !!field && focused && (await field.inputValue()) === "Projects", await field?.inputValue())
   const [chipBox, menuBox] = [await page.locator("[data-group-chip]").first().boundingBox(), await page.locator("[role=menu]").boundingBox()]
   check("  under its chip", Math.abs(menuBox.x - chipBox.x) <= 2 && menuBox.y >= chipBox.y + chipBox.height, [chipBox, menuBox])
-  await page.keyboard.type("Lighthouse work"); await wait(150)
+  await page.keyboard.type("Lighthouse work"); await ui.idle()
   check("  the chip follows the name as it's typed", (await bar()).includes("<Lighthouse work>"), await bar())
   const bg = () => page.$eval("[data-group-chip] [data-group-name]", (e) => getComputedStyle(e).backgroundColor)
   const was = await bg()
-  await page.locator("[role=menu] [data-menu-colors] [data-color='purple']").click(); await wait(300)
+  await page.locator("[role=menu] [data-menu-colors] [data-color='purple']").click(); await ui.idle()
   check("  a colour is one click, and the editor stays open with it ticked", (await bg()) !== was && await page.locator("[role=menu] [data-color='purple'][aria-checked=true]").count() === 1, [was, await bg()])
   await page.screenshot({ path: `${OUT}editor-light.png`, clip: { x: 0, y: 0, width: 1280, height: 360 } })
   // The keyboard through it, as through any menu: ↓ from the colours to its rows, ↑ from the first row back to them.
@@ -66,40 +60,40 @@ try {
   await page.keyboard.press("Tab"); const tab1 = await on()
   await page.keyboard.press("Tab"); const tab2 = await on()
   check("  Tab: the name, the colour it has (one stop for the row), its first row", tab1 === "purple" && tab2 === "New tab in group", [tab1, tab2])
-  await page.locator("[role=menu] [data-menu-field] input").press("Enter"); await wait(200)
+  await page.locator("[role=menu] [data-menu-field] input").press("Enter"); await ui.idle()
   check("  Enter closes it, the name kept", !(await page.$("[role=menu]")) && (await bar()).includes("<Lighthouse work> Lighthouse"), await bar())
   // A long name: cut off in its chip (a browser's width), the tabs keeping their room; then back.
-  const rename = async (name) => { await page.click("[data-group-chip]", { button: "right" }); const f = await until(() => page.$("[role=menu] [data-menu-field] input"), 3000); await f.fill(name); await f.press("Enter"); await wait(300) }
+  const rename = async (name) => { await page.click("[data-group-chip]", { button: "right" }); const f = await until(() => page.$("[role=menu] [data-menu-field] input"), 3000); await f.fill(name); await f.press("Enter"); await ui.idle() }
   await rename("Everything about the Lighthouse launch and the people on it")
   const chipW = await page.$eval("[data-group-chip] [data-group-name]", (e) => Math.round(e.getBoundingClientRect().width))
   check("  a long name is cut off in its chip", chipW <= 160, chipW)
   await rename("Lighthouse work")
-  await tab("ME").click({ button: "right" }); await wait(200)
-  await page.locator("[role=menu]").last().getByRole("menuitem", { name: "Add tab to group", exact: true }).hover(); await wait(300)
-  const sub = await page.locator("[role=menu]").last().getByRole("menuitem").allTextContents()
+  await ui.menu.context(tab("ME"))
+  const subOpen = page.locator("[role=menu]").nth(1)
+  await ui.menu.top().getByRole("menuitem", { name: "Add tab to group", exact: true }).hover(); await subOpen.waitFor(); await ui.idle()
+  const sub = await ui.menu.items()
   check("with a group to join: Add tab to group ▸, New group first, then the groups (no row of its own for a new one)",
     sub[0]?.trim() === "New group" && sub[1]?.trim() === "Lighthouse work" && await page.getByRole("menuitem", { name: "Add tab to new group", exact: true }).count() === 0, sub)
-  await page.keyboard.press("Escape"); await page.keyboard.press("Escape"); await wait(200)
-  await menu(tab("ME"), "Add tab to group", "Lighthouse work"); await wait(200)
+  await ui.menu.close()
+  await menu(tab("ME"), "Add tab to group", "Lighthouse work")
   check("another tab joins it from its menu, at its end", (await bar()).includes("<Lighthouse work> Lighthouse ME"), await bar())
   // A new tab (⌘T) from a grouped tab is past its group, in none, whatever it opens (a link from it joins it).
   const fresh = () => page.$$eval("[data-tab-bar] [data-tab-id]", (els) => { const i = els.findIndex((e) => e.querySelector("[aria-selected=true]"))
     return { prev: els[i - 1]?.textContent.trim(), at: els[i]?.textContent.trim(), grouped: !!els[i]?.dataset.inGroup } })
   const newtab = keep("newtab.json"), wasShown = await page.$eval("[data-tab-bar] [data-tab-id]:has([aria-selected=true])", (e) => e.dataset.tabId)
   for (const opens of [null, "switcher"]) {
-    writeFileSync(newtab.p, JSON.stringify({ opens }) + "\n"); await wait(800)
-    await tab("Lighthouse").click(); await wait(200)
-    await command(page, "Open new tab", 500)
-    if (opens) { await page.keyboard.type("Lisbon trip"); await wait(500); await page.keyboard.press("Enter"); await wait(500) }
+    await ui.sees(".vaultite/newtab.json", () => writeFileSync(newtab.p, JSON.stringify({ opens }) + "\n"))
+    await tab("Lighthouse").click(); await ui.idle()
+    await command(page, "Open new tab", 0); await ui.idle()
+    if (opens) { await page.keyboard.type("Lisbon trip"); await ui.idle(); await page.keyboard.press("Enter"); await ui.idle() }
     const f = await fresh()
     check(`a new tab (${opens ?? "blank"}) from a grouped tab goes past its group, in none`, f.prev === "ME" && f.at === (opens ? "Lisbon trip" : "New tab") && !f.grouped, [f, await bar()])
-    await page.locator("[data-tab-bar] [data-tab-id]:has([aria-selected=true])").click({ button: "right" }); await wait(200)
-    await page.locator("[role=menu]").last().getByRole("menuitem", { name: "Close", exact: true }).click(); await wait(400)
+    await menu(page.locator("[data-tab-bar] [data-tab-id]:has([aria-selected=true])"), "Close")
   }
   if (newtab.was === null) rmSync(newtab.p); else writeFileSync(newtab.p, newtab.was)
-  await page.click(`[data-tab-bar] [data-tab-id="${wasShown}"]`); await wait(300)
+  await page.click(`[data-tab-bar] [data-tab-id="${wasShown}"]`); await ui.idle()
   await menu(tab(day), "Add tab to group", "New group")
-  await until(() => page.$("[role=menu] [data-menu-field] input"), 3000); await page.keyboard.press("Backspace"); await page.keyboard.press("Enter"); await wait(300)
+  await until(() => page.$("[role=menu] [data-menu-field] input"), 3000); await page.keyboard.press("Backspace"); await page.keyboard.press("Enter"); await ui.idle()
   const chips = await page.$$eval("[data-group-chip]", (els) => els.map((e) => ({ text: ((e) => { const c = e.cloneNode(true); for (const x of c.querySelectorAll("[data-group-count][aria-hidden]")) x.remove(); return c.textContent.trim() })(e), name: e.querySelector("[data-group-name]").getAttribute("aria-label"), bg: getComputedStyle(e.firstElementChild).backgroundColor })))
   check("a group without a name is a square of its colour, in the next colour", chips.length === 2 && chips[1].text === "" && chips[1].name === "Blue group" && chips[0].bg !== chips[1].bg, chips)
   // The chip is solid, its text readable on it.
@@ -119,8 +113,8 @@ try {
     const a = await from.boundingBox(), b = await to.boundingBox()
     await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2); await page.mouse.down()
     await page.mouse.move(a.x + a.width / 2 + 8, a.y + a.height / 2, { steps: 3 })
-    await page.mouse.move(b.x + (dx === "end" ? b.width - 6 : dx), b.y + b.height / 2, { steps: 12 }); await wait(150)
-    await page.mouse.up(); await wait(350)
+    await page.mouse.move(b.x + (dx === "end" ? b.width - 6 : dx), b.y + b.height / 2, { steps: 12 }); await ui.idle()
+    await page.mouse.up(); await ui.idle()
   }
   const inGroup = (label) => page.$$eval("[data-tab-bar] [data-tab-id]", (els, l) => {
     const e = els.find((x) => x.textContent.trim() === l)
@@ -136,8 +130,8 @@ try {
     const a = await from.boundingBox()
     await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2); await page.mouse.down()
     await page.mouse.move(a.x + a.width / 2 + 8, a.y + a.height / 2, { steps: 3 })
-    await page.mouse.move(x, y, { steps: 12 }); await wait(300)
-    return async () => { await page.mouse.up(); await wait(350) }
+    await page.mouse.move(x, y, { steps: 12 }); await ui.idle()
+    return async () => { await page.mouse.up(); await ui.idle() }
   }
   const slid = (sel) => page.$$eval(sel, (els) => els.filter((e) => e.style.transform && !/\(0px\)/.test(e.style.transform)).length)
   let me = await tab("ME").boundingBox()
@@ -157,21 +151,8 @@ try {
   const lw0 = await page.$eval("[data-group-chip]:has-text('Lighthouse work')", (e) => e.dataset.groupChip)
   const inGroupSel = `[data-tab-bar] [data-tab-id][data-in-group="${lw0}"]`
   const widths = () => page.$$eval(inGroupSel, (els) => els.map((e) => Math.round(e.getBoundingClientRect().width)))
-  /** The group's tabs' widths at each frame drawn while `act` runs and for `ms` after: the motion as it's seen, however
-   *  late a busy machine draws its first frame. */
-  const frames = async (act, ms = 700) => {
-    await page.evaluate(([sel, ms]) => {
-      const f = window.__frames = [], end = performance.now() + ms
-      const tick = () => { f.push([...document.querySelectorAll(sel)].map((e) => Math.round(e.getBoundingClientRect().width))); if (performance.now() < end) requestAnimationFrame(tick) }
-      requestAnimationFrame(tick)
-    }, [inGroupSel, ms])
-    await act()
-    await wait(ms)
-    return page.evaluate(() => window.__frames)
-  }
-  const full = await widths()
-  const folding = await frames(() => page.click("[data-group-chip]:has-text('Lighthouse work')"))
-  check("folding, its tabs shrink into the chip", folding.some((ws) => ws.length === full.length && ws.every((w, i) => w > 0 && w < full[i])), [full, folding.slice(0, 8)])
+  // (how they fold and open, frame by frame: tabgroupmotion.mjs)
+  await page.click("[data-group-chip]:has-text('Lighthouse work')"); await ui.idle()
   check("a click on the chip folds the group to it, with its count", (await bar()).includes("<Lighthouse work2>") && !(await bar()).includes(" ME"), await bar())
   await page.screenshot({ path: `${OUT}bar-folded.png`, clip: { x: 0, y: 0, width: 1280, height: 120 } })
   // A tab dropped on a folded group's chip goes into it, which stays folded.
@@ -180,10 +161,10 @@ try {
   const lit = await page.$eval("[data-group-chip] > span", (e) => !!e.style.boxShadow)
   await release()
   check("a tab dropped on a folded group's chip goes into it, which stays folded", lit && (await bar()).includes("<Lighthouse work3>") && !(await bar()).includes("Garden planner"), [lit, await bar()])
-  const growing = await frames(() => page.click("[data-group-chip]:has-text('Lighthouse work')"))
-  check("opening, they grow back out of it", growing.some((ws) => ws.length > 1 && ws.some((w, i) => w < (full[i] ?? 0) - 4)) && (await widths()).every((w) => w > 40), [growing.slice(0, 8), await widths()])
-  await page.click("[data-group-chip]:has-text('Lighthouse work')"); await wait(400)
-  await palette(page, "Go to tab #2", 400)
+  await page.click("[data-group-chip]:has-text('Lighthouse work')"); await ui.idle()
+  check("opened, its tabs are back at their width", (await widths()).length > 1 && (await widths()).every((w) => w > 40), await widths())
+  await page.click("[data-group-chip]:has-text('Lighthouse work')"); await ui.idle()
+  await palette(page, "Go to tab #2", 0); await ui.idle()
   const folded = await page.$$eval("[data-group-chip]", (els) => els.map((e) => e.getAttribute("aria-expanded")))
   check("showing a tab of a folded group opens it", folded[0] === "true" && (await bar()).includes("ME"), [folded, await bar()])
   await menu(tab("Garden planner"), "Remove from group")
@@ -194,10 +175,10 @@ try {
   check("the chip dragged moves the whole group, its tabs in order", /<Lighthouse work> Lighthouse ME$/.test(await bar()), await bar())
 
   // Kept: a reload, and a closed tab reopening into its group.
-  await page.reload(); await page.waitForSelector("[data-group-chip]"); await wait(400)
+  await page.reload(); await page.waitForSelector("[data-group-chip]"); await ui.idle()
   check("groups come back after a reload", /<Lighthouse work> Lighthouse ME$/.test(await bar()), await bar())
-  await tab("ME").hover(); await tab("ME").locator("[data-tab-close]").click(); await wait(300)
-  await palette(page, "Reopen closed tab", 400)
+  await tab("ME").hover(); await tab("ME").locator("[data-tab-close]").click(); await ui.idle()
+  await palette(page, "Reopen closed tab", 0); await ui.idle()
   check("a closed tab reopens into its group", /<Lighthouse work> Lighthouse ME$/.test(await bar()), await bar())
 
   // Agents: the window's tabs and groups, and grouping by name.
@@ -208,11 +189,11 @@ try {
   check("vau tabs lists the groups, with their tabs", groups.length === 2 && groups.some((g) => g.name === "Lighthouse work" && g.tabs === 2), listed)
   const made = await ops("tabs.group", { tabs: ["Start here", "Projects/Garden planner.md"], name: "Reading", color: "green" })
   check("vau tabs group makes a group of tabs named by file", made?.group?.name === "Reading" && made.group.color === "green" && made.group.tabs?.length === 2, made)
-  await wait(300)
+  await until(async () => (await bar()).startsWith("<Reading>"), 5000); await ui.idle()
   check("and the bar shows it, where the first of them was", (await bar()).startsWith("<Reading> Garden planner Start here"), await bar())
 
   // Vertical tabs: one switch.
-  await palette(page, "Show tabs in the sidebar", 900)
+  await ui.sees(".vaultite/sidebars.json", () => palette(page, "Show tabs in the sidebar", 0))
   const sb = JSON.parse(readFileSync(sidebars.p, "utf8")), lk = lookNow()
   check("Show tabs in the sidebar: the tab bar off, the Tabs panel first in the left sidebar", lk.tabBar === false && sb.left[0] === "tabs:tabs", [lk.tabBar, sb.left])
   await page.waitForSelector("[data-tabs-panel] [data-group-row]")
@@ -233,10 +214,10 @@ try {
   check("  its tabs' rows start past the line", inset[1] > inset[0], inset)
   // Its … opens the same editor.
   const headRow = page.locator("[data-tabs-panel] [data-group-row]").first()
-  await headRow.hover(); await headRow.locator("[data-row-more]").click(); await wait(250)
+  await headRow.hover(); await ui.menu.open(headRow.locator("[data-row-more]")); await ui.idle()
   check("a group's … in the panel opens its editor", await page.locator("[role=menu] [data-menu-colors]").count() === 1 && await page.locator("[role=menu] [data-menu-field] input").count() === 1)
   await page.screenshot({ path: `${OUT}vertical-editor.png`, clip: { x: 0, y: 0, width: 520, height: 420 } })
-  await page.keyboard.press("Escape"); await wait(200)
+  await ui.menu.close()
   const row = (label) => page.locator("[data-tabs-panel] [data-open-tab]", { hasText: label }).first()
   const sh = await row("Start here").boundingBox()
   release = await hold(row("Lighthouse"), sh.x + sh.width / 2, sh.y + sh.height * 0.8)
@@ -268,19 +249,20 @@ try {
   const room = await until(async () => { const r = await measure(); return roomFor(r) ? r : null }, 3000) ?? await measure()
   check("a file from the tree held over the list: the rows make way where it would open (its tab, if one shows it)", roomFor(room), [name, shown, room])
   await page.screenshot({ path: `${OUT}vertical-file.png`, clip: { x: 0, y: 0, width: 360, height: 400 } })
-  await page.keyboard.press("Escape"); await page.mouse.up(); await wait(300)
+  await page.keyboard.press("Escape"); await page.mouse.up(); await ui.idle()
   const after = await page.$$eval("[data-tabs-panel] :is([data-open-tab], [data-group-row])", (els) => els.map((e) => (e.dataset.groupRow ? `[${((e) => { const c = e.cloneNode(true); for (const x of c.querySelectorAll("[data-group-count][aria-hidden]")) x.remove(); return c.textContent.trim() })(e)}]` : e.textContent.trim())).join(" "))
   check("  dropped, it joins that group's end", after.includes("[Reading] Garden planner Start here Lighthouse") && after.includes("[Lighthouse work] ME"), after)
   await page.mouse.move(900, 500); await page.screenshot({ path: `${OUT}vertical-light.png` })
   await page.click("[data-group-row]:has-text('Lighthouse work')")
   const panelRows = () => page.$$eval("[data-tabs-panel] [data-open-tab]", (els) => els.map((e) => e.textContent.trim()))
   check("a group's row folds it in the panel", !!(await until(async () => !(await panelRows()).includes("ME"), 3000)), await panelRows())
-  theme("dark"); await until(() => page.evaluate(() => document.documentElement.classList.contains("dark")), 5000); await wait(300)
+  await ui.sees(".vaultite/appearance.json", () => theme("dark"))
+  check("the theme follows the vault's appearance", await page.evaluate(() => document.documentElement.classList.contains("dark")))
   await page.screenshot({ path: `${OUT}vertical-dark.png` })
-  await page.locator("[data-tabs-panel]").click({ button: "right", position: { x: 60, y: 10 } }); await wait(200)
-  const back = page.locator("[role=menu]").last().getByRole("menuitem", { name: /Show tabs on top/ })
+  await ui.menu.context(page.locator("[data-tabs-panel]"), { position: { x: 60, y: 10 } })
+  const back = ui.menu.top().getByRole("menuitem", { name: /Show tabs on top/ })
   check("the panel's menu offers Show tabs on top", await back.count() > 0)
-  if (await back.count()) { await back.click(); await wait(900) }
+  if (await back.count()) await ui.sees(".vaultite/sidebars.json", () => back.click())
   check("Show tabs on top: the tab bar back, the panel hidden", lookNow().tabBar === true && !JSON.parse(readFileSync(sidebars.p, "utf8")).left.includes("tabs:tabs"))
   await until(() => page.$("[data-tab-bar] [data-group-chip]"), 4000)
   await page.mouse.move(640, 500); await page.screenshot({ path: `${OUT}bar-dark.png`, clip: { x: 0, y: 0, width: 1280, height: 120 } })
@@ -293,14 +275,13 @@ try {
     const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 })
     // (the desktop's tabs, put in place before the app reads them)
     await phone.addInitScript((s) => { if (!sessionStorage.getItem("qa.seeded")) { localStorage.setItem("vaultite.tabs", s); sessionStorage.setItem("qa.seeded", "1") } }, saved)
-    const pp = watch(await phone.newPage())
+    const pp = watch(await phone.newPage()), phoneUi = app(pp)
     await pp.goto(`${B}#file/${encodeURIComponent("ME.md")}`)
-    await pp.waitForSelector("[data-phone-bar]")
-    await wait(600)
+    await pp.waitForSelector("[data-phone-bar]"); await phoneUi.idle()
     await pp.evaluate(() => { location.hash = `${location.hash}/tabs` })
     const heads = await until(async () => { const h = await pp.$$eval("[data-group-card] button:not([aria-label^='Close '])", (els) => els.map((e) => e.getAttribute("aria-label"))); return h.length ? h : null }, 5000)
     if (t === "light") check("a phone's tab list shows each group as a card", heads?.length === 3 && heads.some((h) => h.startsWith("Lighthouse work,")), heads)
-    await wait(500); await pp.screenshot({ path: `${OUT}phone-${t}.png` })
+    await phoneUi.idle(); await pp.screenshot({ path: `${OUT}phone-${t}.png` })
     await phone.close()
   }
 } finally {

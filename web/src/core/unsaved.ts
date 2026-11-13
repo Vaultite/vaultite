@@ -36,3 +36,6 @@ const hidden = () => document.visibilityState === "hidden"
 export const safeToReload = () => !hasUnsavedEdits() && !underway() && (hidden() || Date.now() - lastKey >= 30_000)
 /** The app may restart by itself: nothing unsaved or under way, and the page hidden or untouched for 10 minutes. */
 export const safeToRestart = () => !hasUnsavedEdits() && !underway() && (hidden() || Date.now() - lastInput >= 10 * 60_000)
+
+declare global { var vaultiteBusy: () => string[] }
+globalThis.vaultiteBusy = () => [hasUnsavedEdits() && "unsaved edits", [...going].some(isDirty) && "under way"].filter((x): x is string => !!x)

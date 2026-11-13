@@ -3,7 +3,8 @@
 //   node web/qa/workspaces.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
-import { PROMPT, qa, terminalText, until, wait, workspaceKey } from "./lib/qa.mjs"
+import { PROMPT, command, qa, terminalText, until, wait, workspaceKey } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
 import { clearWorkspaces, workspaces } from "./lib/wsfiles.mjs"
 const { args: [B, VAULT, OUT = "/tmp/workspaces-shots/"], browser, check, watch, noErrors, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
@@ -27,7 +28,7 @@ const openFile = path.join(VAULT, "Qa ws open.md")
 
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2 })
 await ctx.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } })
-const page = watch(await ctx.newPage(), { console: true, ignore: /favicon|Failed to load resource|WebSocket/ })
+const page = watch(await ctx.newPage(), { console: true, ignore: /favicon|Failed to load resource|WebSocket/ }), ui = app(page)
 
 const panels = () => page.$$eval("aside [data-panel]", (els) => els.map((e) => e.getAttribute("data-panel")))
 // The switcher: one button in the header (or the rail) with the current number; its list (portalled into body) has a
@@ -53,6 +54,7 @@ const lit = () => page.$eval(SWITCHER, (e) => e.getAttribute("data-workspace-swi
 const pick = async (n) => { await openList(); await row(n).click() }
 const tabs = () => page.$$eval("[data-tab-strip] [role=tab]", (els) => els.map((t) => t.innerText.trim()))
 const text = () => terminalText(page)
+const pastSaveTabsSoon = (ms = 1500) => wait(ms)
 const menuItem = (name) => page.locator("[role=menuitemcheckbox], [role=menuitem]", { hasText: name }).first()
 let sid = null
 
@@ -108,12 +110,12 @@ try {
   check("2 is lit", !!(await until(async () => (await lit()) === "2", 6000)), await numbers())
   check("an unused workspace: one blank tab", !!(await until(async () => { const t = await tabs(); return t.length === 1 && !t[0].includes("Alpha") }, 6000)), await tabs())
   check("...and sidebars.json's panels", (await panels()).length === 4, await panels())
-  await wait(1500)
+  await pastSaveTabsSoon()
   check("...not written: it's nothing yet", !data()[1], data())
 
   // Hide every panel but Terminals in workspace 2: saved in it, not in sidebars.json.
   await page.click("aside [data-titlebar]", { button: "right", position: { x: 50, y: 20 } })
-  for (const name of ["Search field", "Pinned pages", "File explorer"]) { await menuItem(name).click(); await wait(150) }
+  for (const name of ["Search field", "Pinned pages", "File explorer"]) { await menuItem(name).click(); await ui.idle() }
   await page.keyboard.press("Escape")
   check("only Terminals shows in 2", !!(await until(async () => JSON.stringify(await panels()) === JSON.stringify(["terminal:sessions"]), 6000)), await panels())
   check("...which makes workspace 2: saved in it", !!(await until(() => onlyTerminals(data()[1]), 6000)), data()[1])
@@ -150,7 +152,7 @@ try {
   // (The first keys typed into a terminal that just reattached can be lost, here and in splits.mjs: try a few times.)
   let again = null
   for (let i = 0; i < 3 && !again; i++) {
-    await page.locator("[data-term]").click(); await wait(500)
+    await page.locator("[data-term]").click(); await ui.idle()
     await page.keyboard.type("echo again-$$"); await page.keyboard.press("Enter")
     again = await until(async () => (await text()).match(/^again-(\d+)\s*$/m)?.[1], 3000)
   }
@@ -186,7 +188,7 @@ try {
 
   // ---------- a tab dragged onto another workspace's number ----------
   // A second window (its own device: its own localStorage) on workspace 1; this one stays on 2.
-  writeFileSync(moveFile, "Moved between workspaces.\n")
+  await ui.sees("Qa ws move.md", () => writeFileSync(moveFile, "Moved between workspaces.\n"))
   const ctx2 = await browser.newContext({ viewport: { width: 1280, height: 800 } })
   await ctx2.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } })
   const other = watch(await ctx2.newPage(), { label: "other" })
@@ -196,7 +198,7 @@ try {
   check("move: the other window is on 1", !!(await until(async () => (await other.$eval(SWITCHER, (e) => e.getAttribute("data-workspace-switcher")).catch(() => null)) === "1", 6000)))
   check("move: ...showing 1's tabs", !!(await until(async () => (await otherTabs()).some((t) => t.includes("Alpha")), 6000)), await otherTabs())
   // In a new tab beside the terminal's (the address fills the blank tab).
-  await page.click("[data-tab-strip] button[aria-label='New tab']"); await wait(200)
+  await page.click("[data-tab-strip] button[aria-label='New tab']"); await ui.idle()
   await page.evaluate(() => { location.hash = `#file/${encodeURIComponent("Qa ws move.md")}` })
   check("move: a file opened in 2 (saved)", !!(await until(async () => (await tabs()).some((t) => t.includes("Qa ws move")) && JSON.stringify(data()[1]?.layout ?? {}).includes("Qa ws move.md"), 6000)), [await tabs(), data()[1]])
   const tabBox = await page.locator("[data-tab-strip] [role=tab]", { hasText: "Qa ws move" }).boundingBox()
@@ -208,7 +210,7 @@ try {
     await page.mouse.move(s.x, s.y, { steps: 10 })
     if (!(await until(() => isOpen(), 2000))) return // (not something another workspace takes: the list stays shut)
     const r = await center(row(n))
-    await page.mouse.move(r.x, r.y, { steps: 6 }); await wait(150)
+    await page.mouse.move(r.x, r.y, { steps: 6 }); await ui.idle()
   }
   await page.mouse.move(tabBox.x + tabBox.width / 2, tabBox.y + tabBox.height / 2)
   await page.mouse.down()
@@ -230,7 +232,7 @@ try {
   check("move: ...and loses the tab (the terminal stays)", !!(await until(async () => { const t = await tabs(); return !t.some((x) => x.includes("Qa ws move")) && t.some((x) => x.includes("Terminal")) }, 6000)), await tabs())
   check("move: the other window shows it, appended", !!(await until(async () => { const t = await otherTabs(); return t[t.length - 1]?.includes("Qa ws move") }, 6000)), await otherTabs())
   check("move: ...without switching to it", decodeURIComponent(other.url()).includes("Notes/Alpha.md"), other.url())
-  await wait(2500)
+  await pastSaveTabsSoon(2500)
   check("move: nothing stale saved back afterwards", !JSON.stringify(data()[1]?.layout ?? {}).includes("Qa ws move.md") && JSON.stringify(data()[0]?.layout ?? {}).includes("Qa ws move.md"), data())
   check("move: this window still hasn't got it", !(await tabs()).some((x) => x.includes("Qa ws move")), await tabs())
   await other.screenshot({ path: `${OUT}5-other-window.png` })
@@ -240,10 +242,10 @@ try {
   const drag = async (from, to, before) => {
     await page.mouse.move(from.x, from.y); await page.mouse.down()
     await page.mouse.move(from.x + 8, from.y + 6, { steps: 3 })
-    if (typeof to === "number") await overRow(to); else { await page.mouse.move(to.x, to.y, { steps: 10 }); await wait(200) }
+    if (Number.isInteger(to)) await overRow(to); else { await page.mouse.move(to.x, to.y, { steps: 10 }); await ui.idle() }
     const seen = { open: await isOpen(), lit: await isOpen() ? await dropLit() : [], zone: await page.$eval("[data-drop-zone]", (e) => e.getAttribute("data-drop-zone")).catch(() => null), ghost: await page.$eval("[data-drag-ghost]", (e) => e.innerText).catch(() => "") }
     if (before) await before()
-    await page.mouse.up(); await wait(300)
+    await page.mouse.up(); await ui.idle()
     return seen
   }
   const mid = async (loc) => { await loc.scrollIntoViewIfNeeded(); const b = await loc.boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 } }
@@ -251,15 +253,15 @@ try {
   const groups = () => page.$$eval("[data-pane-area] > section[data-pane-frame]:not([data-away])", (els) => els.map((e) => ({ id: e.getAttribute("data-pane-frame"), x: e.getBoundingClientRect().x, tabs: [e.getAttribute("aria-label") ?? ""] })).sort((a, b) => a.x - b.x))
   /** A file in a tab of its own, then joined to the terminal's tab on its right (the terminal's tab on screen). */
   const openRight = async (file) => {
-    await page.click("[data-tab-strip] button[aria-label='New tab']"); await wait(200)
+    await page.click("[data-tab-strip] button[aria-label='New tab']"); await ui.idle()
     await page.evaluate((f) => { location.hash = `#file/${encodeURIComponent(f)}` }, file)
     await until(async () => (await tabs()).some((t) => t.includes(file.replace(/\.md$/, ""))), 6000)
-    await page.click(`[data-tab-strip] [role=tab]:has-text("Terminal")`); await wait(300)
+    await page.click(`[data-tab-strip] [role=tab]:has-text("Terminal")`); await ui.idle()
     await page.click(`[data-tab-strip] [role=tab]:has-text("${file.replace(/\.md$/, "")}")`, { button: "right" })
     await menuItem("Open in split right").click()
     return until(async () => { const g = await groups(); return g.length === 2 ? g : null }, 6000)
   }
-  writeFileSync(paneFile, "A pane on its own.\n")
+  await ui.sees("Qa ws pane.md", () => writeFileSync(paneFile, "A pane on its own.\n"))
   let gs = await openRight("Qa ws pane.md")
   check("pane: a split with the file on the right", gs?.length === 2 && gs[1].tabs[0].includes("Qa ws pane"), gs)
   const handle = (id) => page.locator(`[data-pane-handle='${id}']`)
@@ -275,7 +277,7 @@ try {
   // That pane onto number 3 (unused): 3 is made with it, this window keeps the terminal's pane.
   gs = await groups()
   const moving = gs.find((g) => g.tabs[0].includes("Qa ws pane"))
-  await page.hover(`[data-pane-bar='${moving.id}']`); await wait(300)
+  await page.hover(`[data-pane-bar='${moving.id}']`); await ui.idle()
   seen = await drag(await mid(handle(moving.id)), 3)
   check("pane onto an unused number: it lights up, 'Move pane to workspace 3'", JSON.stringify(seen.lit) === "[\"3\"]" && seen.ghost.includes("Move pane to workspace 3"), seen)
   check("...3 has the pane", !!(await until(() => JSON.stringify(data()[2]?.layout ?? {}).includes("Qa ws pane.md"), 6000)), data()[2])
@@ -284,16 +286,16 @@ try {
   await page.screenshot({ path: `${OUT}6-pane-moved.png`, clip: { x: 0, y: 0, width: 520, height: 120 } })
 
   // ---------- a file from the tree, a pinned page, a folder: onto a number ----------
-  writeFileSync(openFile, "Opened in another workspace.\n")
+  await ui.sees("Qa ws open.md", () => writeFileSync(openFile, "Opened in another workspace.\n"))
   // Workspace 2 hides the tree: show it here for the drags (saved into 2, put back after).
   // (Hidden panels are under More ▸, ticked there one after another in one menu.)
   const showAll = async () => {
-    await page.click("aside [data-titlebar]", { button: "right", position: { x: 50, y: 20 } })
-    await page.locator("[role=menu] button", { hasText: /^More$/ }).first().hover(); await wait(300)
+    await ui.menu.context(page.locator("aside [data-titlebar]"), { position: { x: 50, y: 20 } })
+    await page.locator("[role=menu] button", { hasText: /^More$/ }).first().hover(); await page.locator("[role=menu]").nth(1).waitFor()
     for (const name of ["Search field", "Pinned pages", "File explorer"]) {
-      await page.locator("[role=menu]").last().locator("[role=menuitemcheckbox]", { hasText: name }).first().click(); await wait(150)
+      await ui.menu.top().locator("[role=menuitemcheckbox]", { hasText: name }).first().click(); await ui.idle()
     }
-    for (let i = 0; i < 3 && await page.$("[role=menu]"); i++) { await page.keyboard.press("Escape"); await wait(100) }
+    await ui.menu.close()
   }
   await showAll()
   await until(async () => (await panels()).length === 4, 6000)
@@ -317,12 +319,12 @@ try {
   check("...opened in 5, and still pinned", !!(await until(() => JSON.stringify(data()[4]?.layout ?? {}).includes(firstPin), 6000)) && pinned()[0] === firstPin, [data()[4], pinned()])
   // Hide them again (ticked, in one menu that stays open): 2 is Terminals only.
   await page.click("aside [data-titlebar]", { button: "right", position: { x: 50, y: 20 } })
-  for (const name of ["Search field", "Pinned pages", "File explorer"]) { await menuItem(name).click(); await wait(150) }
+  for (const name of ["Search field", "Pinned pages", "File explorer"]) { await menuItem(name).click(); await ui.idle() }
   await page.keyboard.press("Escape")
   await until(async () => JSON.stringify(await panels()) === JSON.stringify(["terminal:sessions"]), 6000)
 
   // ---------- the menu: no Reset; Delete with Undo; Duplicate into an unused one ----------
-  const menuOf = async (n) => { await openList(); await row(n).click({ button: "right" }); await wait(150); const t = await page.$$eval("[role=menuitem]", (els) => els.map((e) => e.innerText.trim())); return t }
+  const menuOf = async (n) => { await openList(); await ui.menu.context(row(n)); const t = await page.$$eval("[role=menuitem]", (els) => els.map((e) => e.innerText.trim())); return t }
   let items = await menuOf(5)
   check("menu: Rename, Duplicate, Delete; no Reset", items.some((t) => t.startsWith("Rename")) && items.some((t) => t.startsWith("Duplicate")) && items.includes("Delete") && !items.some((t) => /Reset/.test(t)), items)
   await menuItem("Delete").click()
@@ -360,7 +362,7 @@ try {
   await until(async () => (await lit()) === "2", 6000)
 
   // ---------- the rail ----------
-  await page.click("[data-sidebar-toggle='']"); await wait(400)
+  await page.click("[data-sidebar-toggle='']"); await ui.idle()
   // At the top of the rail, right under the toggle: one switcher showing the current number, among the header's items in
   // their header order (the Inbox's button, sort 50, comes before it), above the panels; its list opens beside the rail.
   check("rail: one switcher, showing 2", (await page.locator(SWITCHER).count()) === 1 && (await lit()) === "2", await lit())
@@ -388,7 +390,7 @@ try {
   // A tab dragged over the rail's switcher opens its list too; let go on the list's heading (no row): nothing moves.
   // (once the tab bar has settled beside the rail: it slides with the sidebar's edge)
   const termTab = page.locator("[data-tab-strip] [role=tab]", { hasText: "Terminal" }).first()
-  const railTab = await until(async () => { const a = await center(termTab); await wait(150); const b = await center(termTab); return a.x === b.x && a.y === b.y ? b : null }, 3000) ?? await center(termTab)
+  const railTab = await until(async () => { const a = await center(termTab); await ui.idle(); const b = await center(termTab); return a.x === b.x && a.y === b.y ? b : null }, 3000) ?? await center(termTab)
   const tabsNow = JSON.stringify(await tabs())
   await page.mouse.move(railTab.x, railTab.y); await page.mouse.down()
   await page.mouse.move(railTab.x + 10, railTab.y + 6, { steps: 3 })
@@ -396,23 +398,22 @@ try {
   await page.mouse.move(rs.x, rs.y, { steps: 10 })
   check("rail: dragging over the switcher opens the list", !!(await until(() => isOpen(), 2000)))
   const head = await center(page.locator(LIST).getByText("Workspaces", { exact: true }))
-  await page.mouse.move(head.x, head.y, { steps: 4 }); await wait(150)
+  await page.mouse.move(head.x, head.y, { steps: 4 }); await ui.idle()
   await page.mouse.up()
   check("rail: ...closed when the drag ends, nothing moved", !!(await until(async () => !(await isOpen()), 2000)) && JSON.stringify(await tabs()) === tabsNow && (await lit()) === "2", await tabs())
-  await page.click("[data-sidebar-toggle='']"); await wait(400)
+  await page.click("[data-sidebar-toggle='']"); await ui.idle()
 
   // ---------- Undo of a move: the tab comes back to its place in the bar, not the end ----------
   for (const f of undoFiles) {
-    writeFileSync(path.join(VAULT, f), "Moved and back.\n")
-    await page.click("[data-tab-strip] button[aria-label='New tab']"); await wait(200)
+    await ui.sees(f, () => writeFileSync(path.join(VAULT, f), "Moved and back.\n"))
+    await page.click("[data-tab-strip] button[aria-label='New tab']"); await ui.idle()
     await page.evaluate((f) => { location.hash = `#file/${encodeURIComponent(f)}` }, f)
     await until(async () => (await tabs()).some((t) => t.includes(f.replace(/\.md$/, ""))), 6000)
   }
   const order = await tabs()
   check("undo: 2 has the two files' tabs, last", order.length >= 3 && order.at(-2).includes("Qa ws undo a") && order.at(-1).includes("Qa ws undo b"), order)
-  await page.locator("[data-tab-strip] [role=tab]", { hasText: "Qa ws undo a" }).click(); await wait(300)
-  await page.keyboard.press("ControlOrMeta+p"); await wait(300)
-  await page.keyboard.type("Move current tab to workspace 1"); await wait(300); await page.keyboard.press("Enter")
+  await page.locator("[data-tab-strip] [role=tab]", { hasText: "Qa ws undo a" }).click(); await ui.idle()
+  await command(page, "Move current tab to workspace 1", 0)
   check("undo: moved, gone from the bar", !!(await until(async () => (await tabs()).length === order.length - 1, 6000)), await tabs())
   await page.locator("[data-sonner-toast]", { hasText: "Moved to" }).locator("button", { hasText: "Undo" }).click()
   check("undo: back in its place in the bar, before the other", !!(await until(async () => JSON.stringify(await tabs()) === JSON.stringify(order), 6000)), [await tabs(), order])
@@ -422,22 +423,22 @@ try {
   const vaultPins = JSON.parse(readFileSync(path.join(VAULT, ".vaultite/pages.json"), "utf8")).pinned
   await fetch(`${B}api/workspaces/2/pins`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: vaultPins[0], pinned: false }) })
   await until(() => data()[1]?.pinned, 6000)
-  await wait(1500)
+  await pastSaveTabsSoon()
   const kept = JSON.stringify(data())
   const tabsOn = await tabs()
-  setPlugins({ disabled: ["backlinks"], ...withWorkspaces(false) })
+  await ui.sees(".vaultite/plugins.json", () => setPlugins({ disabled: ["backlinks"], ...withWorkspaces(false) }))
   check("off: no switcher", !!(await until(async () => !(await page.$(SWITCHER)), 6000)))
   check("off: sidebars.json's panels", !!(await until(async () => (await panels()).length === 4, 6000)), await panels())
   const pinsOff = await page.$$eval("aside [data-pin]", (els) => els.map((e) => e.getAttribute("data-pin")))
   check("off: pages.json's pinned pages", pinsOff[0] === vaultPins[0], [pinsOff, vaultPins])
   const before = await until(async () => { const t = await tabs(); return JSON.stringify(t) === JSON.stringify(own) ? t : null }, 6000) ?? await tabs()
   check("off: this device's own tabs come back, as they were before Workspaces", JSON.stringify(before) === JSON.stringify(own), [before, own])
-  await page.keyboard.press(workspaceKey(1)); await wait(500)
+  await page.keyboard.press(workspaceKey(1)); await ui.idle()
   check("off: ⌃1 does nothing", JSON.stringify(await tabs()) === JSON.stringify(before), await tabs())
   await page.screenshot({ path: `${OUT}8-off.png`, clip: { x: 0, y: 0, width: 260, height: 90 } })
-  await wait(1500)
+  await pastSaveTabsSoon()
   check("off: its files untouched", JSON.stringify(data()) === kept)
-  setPlugins({ disabled: ["backlinks"], ...withWorkspaces(true) })
+  await ui.sees(".vaultite/plugins.json", () => setPlugins({ disabled: ["backlinks"], ...withWorkspaces(true) }))
   check("on again: 2's panels", !!(await until(async () => JSON.stringify(await panels()) === JSON.stringify(["terminal:sessions"]), 6000)), await panels())
   check("on again: 2's tabs", !!(await until(async () => JSON.stringify(await tabs()) === JSON.stringify(tabsOn), 6000)), [await tabs(), tabsOn])
   noErrors()
@@ -445,7 +446,7 @@ try {
   // Put things back: end the shell, forget the workspaces.
   if (sid) {
     try {
-      await page.keyboard.press("ControlOrMeta+p"); await wait(200); await page.keyboard.type("End terminal session"); await page.keyboard.press("Enter"); await wait(500)
+      await command(page, "End terminal session", 0); await ui.idle()
     } catch { /* already gone */ }
   }
   clearWorkspaces(B)

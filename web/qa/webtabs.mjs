@@ -12,7 +12,8 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, qa, until, wait, keepAwake, uiAt } from "./lib/qa.mjs"
+import { ROOT, qa, until, keepAwake, uiAt } from "./lib/qa.mjs"
+import { app as appOf } from "./lib/app.mjs"
 
 const { args: [VAULT], check, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-webtabs-"))
@@ -54,13 +55,14 @@ fs.writeFileSync(plugins, JSON.stringify({ ...on, enabled: [...new Set([...(on.e
 const DOWNLOADS = path.join(TMP, "Downloads")
 fs.mkdirSync(DOWNLOADS)
 const MOD = process.platform === "darwin" ? "meta" : "control"
-let app, win, origin
+let app, win, ui, origin
 async function launch() {
   app = await _electron.launch({
     executablePath: path.join(ROOT, "node_modules/.bin/electron"), args: [ROOT, "--vault", VAULT],
     env: { ...process.env, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_USER_DATA: path.join(TMP, "userData"), VAULTITE_LOCAL: path.join(TMP, "local") },
   })
   win = await app.firstWindow()
+  ui = appOf(win)
   watch(win, { console: true, fail: false })
   await win.waitForSelector("[role=tree]", { timeout: 60000 })
   origin = new URL(win.url()).origin
@@ -86,7 +88,7 @@ async function launch() {
   })
 }
 await launch()
-const ui = (body) => uiAt(origin)(body)
+const uiOp = (body) => uiAt(origin)(body)
 const skipped = () => win.evaluate(() => window.__skipFocus ?? [])
 const menuClick = async (label) => { await win.evaluate((l) => { window.__step = l }, label); await menuClick_(label) }
 const menuClick_ = (label) => app.evaluate(({ Menu, BaseWindow, BrowserWindow }, label) => {
@@ -128,9 +130,9 @@ const showTab = async (to) => {
     .catch(async (e) => { throw new Error(`${e.message.split("\n")[0]} (skip link left with the keyboard after: ${JSON.stringify(await skipped())}, active: ${await win.evaluate(() => document.activeElement?.outerHTML.slice(0, 80))})`) })
 }
 async function openOpener() {
-  await ui({ action: "open", path: at("/opener"), newTab: true })
+  await uiOp({ action: "open", path: at("/opener"), newTab: true })
   check("(the opener's page is shown)", await until(async () => (await shownUrl()) === at("/opener"), 30000), await pages())
-  await wait(500)
+  await ui.idle()
 }
 
 // ---------- the skip link: a Tab from nothing focused is its keyboard, and it shows ----------
@@ -183,9 +185,9 @@ check("a link to a new tab that downloads: the file lands", await until(() => fs
 check("… and its tab closes itself", await until(async () => (await tabs()).list.length === before && (await tabs()).active === at("/opener"), 8000), await tabs())
 
 // ---------- a page's own script opening a tab with no click (a popup blocker) ----------
-await ui({ action: "open", path: at("/auto"), newTab: true })
+await uiOp({ action: "open", path: at("/auto"), newTab: true })
 await until(async () => (await shownUrl()) === at("/auto"), 10000)
-await wait(2000)
+await ui.toast.wait("Blocked a pop-up").catch(() => {})
 const unasked = (await tabs()).list.filter((t) => t === at("/two")).length
 check("a page's script opening a tab with nobody clicking: blocked", unasked === 1, await tabs())
 check("… and the user told, with Open", await until(async () => (await win.locator("[data-sonner-toast]", { hasText: "Blocked a pop-up" }).count()) > 0, 5000))
@@ -223,7 +225,7 @@ check("Open in tab: a tab of its own, the same page (not loaded again)", await u
 await menuClick("Close tab")
 
 // ---------- links in notes ----------
-await ui({ action: "open", path: "Notes/Qa tabs.md" })
+await uiOp({ action: "open", path: "Notes/Qa tabs.md" })
 await win.waitForSelector("section [data-pane] .cm-link[data-url]", { timeout: 10000 })
 const n0 = (await tabs()).list.length
 // (forced: Playwright counts the link hidden while a page's view is laid over the window, though it's drawn)
@@ -233,7 +235,7 @@ check("⌘-click on a web link in a note: a web tab behind it", await until(asyn
 await noteLink().click({ force: true, modifiers: ["ControlOrMeta", "Shift"] })
 check("⌘⇧-click: a web tab in front", await until(async () => (await tabs()).list.length === n0 + 2 && (await tabs()).active === at("/one"), 8000), await tabs())
 // (a title measured hidden is 0 high: shown again, the note under it moved a frame later, under the next click)
-await wait(300)
+await ui.idle()
 check("… the note kept behind it keeps its title's height", await win.evaluate(() => {
   const t = [...document.querySelectorAll("[data-title-row] textarea")].find((x) => !x.offsetWidth)
   return !!t && t.style.height !== "0px"
@@ -251,7 +253,7 @@ const op = async (id, params) => {
   const j = await r.json().catch(() => ({}))
   return r.ok ? (j.result ?? j) : { error: j.error ?? r.status }
 }
-await wait(1000)
+await ui.idle()
 const mine = await tabs()
 const T = (await op("open", { url: at("/opener"), task: "reading" }))?.tab
 check("(an agent's page)", typeof T === "number", T)
@@ -286,7 +288,7 @@ await until(async () => (await shownUrl()) === at("/opener"), 8000)
 const opener = (await tabs()).activeId, rest = (await tabs()).list.filter((t) => t !== at("/opener"))
 const opened = (await pages()).filter((p) => [at("/one"), at("/two"), at("/child")].includes(p.url)).length
 await menuClick("Close tab")
-await wait(1500)
+await ui.idle()
 check("closing a page: the tabs it opened stay, behind and in front", await until(async () => {
   const t = await tabs()
   return !t.ids.includes(opener) && JSON.stringify(t.list.filter((x) => x !== at("/opener"))) === JSON.stringify(rest)
@@ -306,7 +308,7 @@ await clickInPage("#a")
 await until(async () => (await shownUrl()) === at("/one"), 8000)
 check("(a page navigates in its own frame under Playwright)", (await frameShown()) === frame0, [frame0, await frameShown()])
 await menuClick("Close tab")
-await wait(500)
+await ui.idle()
 await menuClick("Reopen closed tab")
 check("⌘⇧T: the tab back at its page", await until(async () => (await shownUrl()) === at("/one"), 10000), await pages())
 /** The shown page's history (its addresses, where it is), and Back in it. */
@@ -325,12 +327,15 @@ await openOpener()
 await clickInPage("#b")
 await until(async () => (await shownUrl()) === at("/two"), 8000)
 await menuClick("Close other tabs")
-await ui({ action: "open", path: at("/three"), newTab: true })
+await uiOp({ action: "open", path: at("/three"), newTab: true })
 await until(async () => (await shownUrl()) === at("/three"), 15000)
 await menuClick("Close tab")
 await until(async () => (await shownUrl()) === at("/two"), 8000)
 await menuClick("Close tab")
-await wait(2500) // (the page histories are written a moment later)
+const closedLast = () => win.evaluate(() => JSON.stringify(JSON.parse(localStorage.getItem("vaultite.tabs.closed") ?? "[]").at(-1) ?? null))
+await until(async () => (await closedLast()).includes(at("/two")), 8000)
+const pastFile = path.join(await app.evaluate(({ app: a }) => a.getPath("userData")), "web-tab-history.json")
+await until(() => { try { return Object.values(JSON.parse(fs.readFileSync(pastFile, "utf8"))).some((p) => p.entries.some((e, i) => e.url === at("/two") && p.entries[i - 1]?.url === at("/opener"))) } catch { return false } }, 8000)
 // (a playground vault starts afresh on another port: what the app keeps in localStorage is carried over)
 check("closing pages and tabs: the skip link is never left with the keyboard with no Tab", !(await skipped()).length, await skipped())
 const kept = await win.evaluate(() => ["vaultite.tabs.closed"].map((k) => [k, localStorage.getItem(k)]))

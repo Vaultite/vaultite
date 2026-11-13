@@ -8,13 +8,14 @@
 // section, and the one lit is the one showing. Writes nothing.
 //   node web/qa/settingsnarrow.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
-import { openPalette, palette, qa, until, wait } from "./lib/qa.mjs"
+import { openPalette, palette, qa, until } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
 
 const { args: [B, OUT = "/tmp/settingsnarrow-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 820 } })
-const page = watch(await ctx.newPage(), { label: "1280" })
+const page = watch(await ctx.newPage(), { label: "1280" }), ui = app(page)
 const layout = () => page.locator("[data-settings] [data-rail-layout]").getAttribute("data-rail-layout")
 const menu = page.locator("[data-settings] [data-settings-list]")
 const back = page.locator("[data-settings] [data-settings-back]")
@@ -27,12 +28,12 @@ async function rightSidebar(open) {
   const t = page.locator("[data-sidebar-toggle=right]")
   if ((await t.getAttribute("aria-expanded") === "true") !== open) await t.click()
   await until(async () => (await t.getAttribute("aria-expanded") === "true") === open, 3000)
-  await wait(400)
+  await ui.idle()
 }
 
 try {
   await page.goto(`${B}#settings`)
-  await until(() => page.locator("[data-settings]").count(), 8000); await wait(1000)
+  await until(() => page.locator("[data-settings]").count(), 8000); await ui.idle()
   await rightSidebar(true)
   check("both sidebars: Settings is narrow (its menu is the page)", await layout() === "narrow" && await menu.isVisible(), await layout())
 
@@ -44,7 +45,7 @@ try {
   const broken = []
   for (const id of ids) {
     await menu.locator(`[data-settings-nav="${id}"]`).click()
-    if (!(await inPlace(id)) || !(await back.isVisible())) { broken.push(id); await page.goto(`${B}#settings`); await wait(1500); continue }
+    if (!(await inPlace(id)) || !(await back.isVisible())) { broken.push(id); await page.goto(`${B}#settings`); await ui.idle(); continue }
     if (id === "plugins") await page.screenshot({ path: `${OUT}plugins.png` })
     if (id === "mcp:remote") {
       const says = await until(async () => await shown(id).locator("[data-cloud-sign-in]").count() && shown(id).innerText(), 6000)
@@ -71,12 +72,12 @@ try {
   await page.locator("[data-app-page=setup]").click()
   check("the sidebar's Plugins button opens Plugins", await inPlace("plugins"))
   await toMenu()
-  await page.goto(`${B}#Start%20here.md`); await wait(1500)
+  await page.goto(`${B}#Start%20here.md`); await ui.idle()
   await page.locator("[data-app-page=setup]").click()
   check("…from another tab too", await inPlace("plugins"))
 
   // The palette, and search's results.
-  await palette(page, "Get plugins and layouts")
+  await palette(page, "Get plugins and layouts", 0); await ui.idle()
   check("the palette's Get plugins opens Get", await inPlace("get"))
   await toMenu()
   await page.locator("[data-settings-search] input").fill("plugin updates")
@@ -107,7 +108,7 @@ try {
 
   // An old tab or link at #get: Settings' section, in a narrow pane too.
   await page.goto("about:blank"); await page.goto(`${B}#get`)
-  await until(() => page.locator("[data-settings]").count(), 8000); await wait(1000)
+  await until(() => page.locator("[data-settings]").count(), 8000); await ui.idle()
   await rightSidebar(true)
   check("#get shows Settings' Get plugins", await inPlace("get") && !(await page.locator("[data-setup] [data-setup-tab]").count()))
 
@@ -116,7 +117,7 @@ try {
   async function whereItIs(name) {
     await openPalette(page); await page.waitForSelector("[role=dialog] input:focus"); await page.keyboard.type(name)
     await until(() => page.locator("[role=option]", { hasText: name }).count(), 3000)
-    await page.keyboard.press("ControlOrMeta+Enter"); await wait(600)
+    await page.keyboard.press("ControlOrMeta+Enter"); await ui.idle()
   }
   if (await back.count()) await toMenu()
   await whereItIs("File icons")
@@ -132,7 +133,7 @@ try {
   // Settings itself (the sidebar's button, ⌘,) with a section left open: its menu and its search, not that section.
   const search = page.locator("[data-settings] [data-settings-search] input")
   const atMenu = async () => !!(await until(async () => await menu.isVisible() && await search.isVisible() && !(await back.count()), 3000))
-  await page.locator("aside").first().getByText("Start here", { exact: true }).first().click(); await wait(800)
+  await page.locator("aside").first().getByText("Start here", { exact: true }).first().click(); await ui.idle()
   await page.locator("[data-app-page=settings]").click()
   check("Settings' button, a section left open: the menu, with its search", await atMenu())
   await menu.locator('[data-settings-nav="editor"]').click(); await inPlace("editor")
@@ -142,8 +143,8 @@ try {
 
   // A phone: Plugins is its own page.
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
-  const pp = watch(await phone.newPage(), { label: "390" })
-  await pp.goto(`${B}#settings`); await until(() => pp.locator("[data-settings-list]").count(), 8000); await wait(800)
+  const pp = watch(await phone.newPage(), { label: "390" }), phoneUi = app(pp)
+  await pp.goto(`${B}#settings`); await until(() => pp.locator("[data-settings-list]").count(), 8000); await phoneUi.idle()
   await pp.locator('[data-settings-list] [data-settings-nav="plugins"]').click()
   check("a phone: Plugins is its own page", !!(await until(() => pp.locator('[data-setup="plugins"] [data-plugin-row]').count(), 4000)))
   await phone.close()
