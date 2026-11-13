@@ -1,9 +1,13 @@
 import fs from "node:fs"
+import { z } from "zod"
 import path from "node:path"
 import { agentLines, LOADED, Plugin, ROOT, WriteRefused } from "../../../core/plugins.ts"
 import { fetchFromICloud, writeAtomic } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
+
+const ERRNO = z.object({ errno: z.number() })
+const MADE = z.array(z.string()).catch([])
 
 export const RULES = ".vaultite/AGENTS.md"
 export const OWN = "## Your own rules"
@@ -16,13 +20,13 @@ export const LINES: Record<string, string> = {
 
 const read = (p: string) => {
   try { return fs.readFileSync(p, "utf8") } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null
+    if (e instanceof Error && "code" in e && e.code === "ENOENT") return null
     fetchFromICloud(p, e)
     throw e
   }
 }
 /** iCloud's placeholder of a file another Mac wrote (errno 11): not yet here, not a failure. */
-const notHereYet = (e: unknown) => Math.abs((e as NodeJS.ErrnoException)?.errno ?? 0) === 11
+const notHereYet = (e: unknown) => Math.abs(ERRNO.safeParse(e).data?.errno ?? 0) === 11
 
 function ownPart(text: string | null) {
   if (!text) return ""
@@ -37,7 +41,7 @@ export function rulesText(own: string) {
   return [core, lines.length ? `## Plugins\n${lines.join("\n")}` : "", `${OWN}\n${OWN_NOTE}${own ? `\n\n${own}` : ""}`].filter(Boolean).join("\n\n") + "\n"
 }
 
-const made = () => (plugin.settings({}, "made").files ?? []) as string[]
+const made = () => MADE.parse(plugin.settings({}, "made").files ?? [])
 const setMade = (files: string[]) => plugin.saveSettings(files.length ? { files } : null, "made")
 
 export function point(abs: (rel: string) => string, name: string, on: boolean) {
