@@ -1,5 +1,3 @@
-// Workspaces' state: the slots (the store's, with this app's own changes on top), the current one, saving the tabs
-// into it and following the file (see index.tsx). No components here: they're in Numbers.tsx and Mark.tsx.
 import { Box, CircleSlash, Copy, LayoutPanelLeft, Palette, Pencil, Plus, Settings2, Smile, Trash2 } from "lucide-react"
 import {
   cell, colorItems, colorVar, del, devicePref, dotIcon, isColor, mergeTabsSeen, pickIcon, tabsSeenSince, webContainers, getStore, getTabLayout, isViewOpen, notify, notifyError, openFile, openPluginSettings, openView, placePin, post, put, readSidebars,
@@ -15,18 +13,11 @@ type Def = { name?: string; icon?: string; tint?: Color; container?: string; sid
 type Slots = (Def | null)[]
 
 const current_ = devicePref<number>("workspace", 0)
-/** The address the app was opened at (a deep link), before any workspace was put in place. */
 const arrival = location.hash
-/** Where the user went (a link, Back, the address bar) before the workspace arrived: opened then instead, so its arrival
- *  doesn't take them back to where the page loaded. */
 let wentTo: string | null = null
 let arrived = false
 for (const ev of ["hashchange", "popstate"]) addEventListener(ev, (e) => { if (e.isTrusted && !arrived) wentTo = location.hash })
 
-// ---------- the slots: the store's, with this app's own changes on top until the store brings them back ----------
-// An unused slot (blank.ts) reads as null everywhere here, and a change leaving one like that empties it.
-
-/** A workspace's sidebars are the default: none of its own, or the same as sidebars.json's. */
 export const defaultSidebars = (x: unknown) => x === undefined || sameSidebars(readSidebars(x), savedSidebars())
 const unusedIfBlank = (list: unknown[]): Slots => SLOTS.map((n) => {
   const d = list[n - 1]
@@ -38,7 +29,6 @@ const unusedIfBlank = (list: unknown[]): Slots => SLOTS.map((n) => {
 let seen: unknown = undefined
 let seenDef = ""
 let local: Slots | null = null
-/** The slots (null until /api/state arrived). */
 export function slots(): Slots | null {
   const w = (getStore() as unknown as { workspaces?: unknown } | null)?.workspaces
   const d = JSON.stringify(savedSidebars())
@@ -48,22 +38,15 @@ export function slots(): Slots | null {
   }
   return local
 }
-/** The workspace this device picked (0: none yet, a new device or browser). */
 const picked = () => { const n = current_.get(); return n >= 1 && n <= MAX ? n : 0 }
-/** The current workspace: there always is one, 1 to 5 (unused or not: this device is on it). A device that never
- *  picked one is on the first in use, else 1. 0 only until /api/state arrived. */
 export const current = () => (slots() ? picked() || used()[0] || 1 : 0)
-/** The number lit in the header. */
 export const lit = () => current() || 1
 
 const version = cell(0)
 export const emit = () => { version.update((n) => n + 1); workspaceChanged() }
 export const useVersion = () => version.use()
 
-/** The last write on its way (a move waits for it, so the server has this device's tabs first). */
 let writing: Promise<unknown> = Promise.resolve()
-/** Send a write after the ones before (so they land in order), retrying for about half a minute while the server can't
- *  read the file (503: iCloud holds it after a write) or be reached; else the next state would take the change back. */
 function queue(write: () => Promise<unknown>): Promise<unknown> {
   return writing.catch(() => {}).then(async () => {
     for (let wait = 1000; ; wait *= 2) {
@@ -75,26 +58,21 @@ function queue(write: () => Promise<unknown>): Promise<unknown> {
     }
   })
 }
-/** Change slot n's keys here at once and on the server (a null value removes a key). One the change leaves unused
- *  (blank.ts) is emptied instead. */
 export function patch(n: number, keys: Partial<Record<keyof Def, unknown>>) {
   const list = [...(slots() ?? SLOTS.map(() => null))]
   const had = list[n - 1]
   const next: Record<string, unknown> = { ...(had ?? {}) }
   for (const [k, v] of Object.entries(keys)) { if (v === null) delete next[k]; else next[k] = v }
   if (isBlank(next, defaultSidebars)) { if (had) clear(n); return null }
-  // Made just now: what this device kept for it while it was unused (open folders...) goes in with it.
   const held = memory.get(n)
   if (!had && held && Object.keys(held).length) { next.state = { ...held, ...(next.state as object ?? {}) }; memory.delete(n) }
   list[n - 1] = next as Def
   local = list
   emit(); sidebarsChanged()
-  writing = queue(() => put(`workspaces/${n}`, had ? keys : next)).catch(() => { /* offline: it applies here meanwhile */ })
+  writing = queue(() => put(`workspaces/${n}`, had ? keys : next)).catch(() => {})
   return next as Def
 }
 
-// ---------- what the app and plugins keep per workspace (`state`, useScopedState in the app: core/scope.ts) ----------
-/** Values kept for workspaces that are unused (nothing's written for those): they go into the slot when it's made. */
 const memory = new Map<number, Record<string, unknown>>()
 export function getState(key: string): unknown {
   const n = current()
@@ -121,14 +99,9 @@ export function setState(key: string, value: unknown) {
   list[n - 1] = { ...d, state }
   local = list
   emit()
-  // Only this key: the server merges `state` key by key (another device's keys stay).
   writing = queue(() => put(`workspaces/${n}`, { state: { [key]: v } })).catch(() => {})
 }
 
-// ---------- the workspace's pinned pages (POST /api/workspaces/<n>/pins: one change, on the list as it is) ----------
-// Without a list of its own it shows the vault's; its first change copies that list (server and here alike).
-
-/** The current workspace's own pinned pages, or null: none of its own (the vault's apply). */
 const pinnedHere = (): string[] | null => { const n = current(); const p = n ? slots()?.[n - 1]?.pinned : undefined; return Array.isArray(p) ? p : null }
 function pinHere(path: string, on: boolean, before: string | null | undefined, base: string[]) {
   const n = current()
@@ -136,7 +109,6 @@ function pinHere(path: string, on: boolean, before: string | null | undefined, b
   const cur = pinnedHere() ?? base
   const next = placePin(cur, path, on, before)
   if (next.join("\n") === cur.join("\n")) return Promise.resolve()
-  // Shown at once; the server's answer (the list as it applied the change) comes back with the store.
   const list = [...(slots() ?? SLOTS.map(() => null))]
   list[n - 1] = { ...(list[n - 1] ?? {}), pinned: next }
   local = list
@@ -144,18 +116,14 @@ function pinHere(path: string, on: boolean, before: string | null | undefined, b
   writing = queue(() => post(`workspaces/${n}/pins`, { path, pinned: on, ...(before !== undefined ? { before } : {}) })).catch((e) => { notifyError(e, "Couldn't pin it") })
   return writing
 }
-/** Make workspace n's pinned pages the default new workspaces start with (pages.json's), as the server has them. */
 export function pinsForNew(n: number) {
   writing = queue(() => post(`workspaces/${n}/pins/default`, {})).then(() => { notify("New workspaces start with these pinned pages") }, (e) => { notifyError(e) })
   return writing
 }
 
-/** Every place a layout's panes show, its pop-outs' too (one saved by hand is read as the app reads it). */
 const placesIn = (l: unknown): string[] => { const w = clean(l); return w ? [w, ...(w.windows ?? [])].flatMap(allPanes).map((p) => p.to) : [] }
-/** The places each workspace's tabs show (the current one's: what's on screen). */
 const placesOf = (n: number): string[] => placesIn(n === current() ? getTabLayout() : slots()?.[n - 1]?.layout).filter((to) => to !== "new")
 
-/** What the app asks Workspaces (WorkspaceHost in the plugin API; core/scope.ts). */
 export const host: WorkspaceHost = {
   current: () => current() || 1,
   picked: () => picked(),
@@ -182,39 +150,26 @@ function clear(n: number) {
   writing = queue(() => del(`workspaces/${n}`)).catch(() => {})
 }
 
-// ---------- tabs ----------
-/** What a tab keeps only for this visit, not saved: its back/forward history, the tab it opened beside. */
 const VISIT = new Set(["back", "fwd", "from"])
-/** The tabs as saved: without what's kept for this visit. */
 const strip = (l: TabLayout): TabLayout => JSON.parse(JSON.stringify(l, (k, v) => (VISIT.has(k) ? undefined : v)))
-/** What devices share of a layout: tabs, panes, places, splits, groups; not what's shown, focused or zoomed (each device's
- *  own), nor when a pane was seen (that rides along: tabsSeenSince). "" for none. */
 const shape = (l: TabLayout | null | undefined) =>
   !l || blankLayout(l) ? "" : JSON.stringify(l, (k, v) => (VISIT.has(k) || k === "active" || k === "focus" || k === "zoom" || k === "seen" ? undefined : v))
-/** Each workspace's tabs as they were left in this visit, history and all. */
 const kept = new Map<number, TabLayout>()
-/** What this device saved lately: the file bringing one back is its own write coming round, not news. */
 const mine = new Set<string>()
 let timer = 0
-/** A change of this device's tabs is waiting to be saved. */
 export const savePending = () => !!timer
 export function saveTabs() {
   clearTimeout(timer); timer = 0
-  // A move on its way decides this workspace's tabs: a change made meanwhile is saved after it.
   if (moving) { timer = window.setTimeout(saveTabs, 300); return }
   const n = current()
   if (!n) return
   const saved = slots()?.[n - 1]?.layout, there = saved && clean(saved)
-  // (this window's tabs into what's saved: a pop-out writes only its own)
   const l = strip(there ? withMyTabs(there) : getTabLayout())
   if (shape(l) === shape(saved) && !tabsSeenSince(saved)) return
   mine.add(shape(l))
   if (mine.size > 20) mine.delete(mine.values().next().value!)
-  // Back to a lone blank tab: the layout goes (null), so a workspace that's nothing more than that is unused again.
   patch(n, { layout: shape(l) ? l : null })
 }
-/** Putting a layout in place ourselves (a switch, another device's change): not a change to save. `kept`: what it
- *  takes off screen is kept in a workspace (switched from, moved to), so it isn't remembered as closed. */
 let applying = false
 function apply(l: TabLayout | null, merge = false, kept = false) {
   applying = true
@@ -222,45 +177,31 @@ function apply(l: TabLayout | null, merge = false, kept = false) {
 }
 export const saveTabsSoon = () => { if (applying) return; clearTimeout(timer); timer = window.setTimeout(saveTabs, 1000) }
 
-/** The first sync of this page has happened (what it arrived at is opened then). */
 let synced = false
-/** Workspaces took this window's tabs just now (turned on: a layout): an unused workspace takes the tabs on screen. */
 let carry = false
-/** Workspaces took the tabs (core/workspace.ts tabsInWorkspace): the next sync is a first one again; in the window the
- *  user is in, an unused workspace keeps what's on screen rather than showing a blank tab. */
 export function tookTabs() { synced = false; mine.clear(); carry = document.hasFocus() }
 const UNSAVED = "vaultite.workspaces.unsaved"
-/** The page is going away (a reload, a closed window) with a change of its tabs the vault doesn't have yet (not just
- *  another tab shown): saved now, and noted for this tab's next page in case the request doesn't get out in time. */
 export function leaving() {
   if (!savePending() || shape(strip(getTabLayout())) === shape(slots()?.[current() - 1]?.layout)) return
   try { sessionStorage.setItem(UNSAVED, String(current())) } catch { /* private mode */ }
   saveTabs()
 }
 
-/** The address this page was opened at (#file/Notes%2FIdea.md, a deep link), or the one the user went to since (wentTo),
- *  opens once the workspace's tabs are in place: in them, as a tab of its own when it isn't one already. */
 function arrive() {
   arrived = true
   const at = wentTo ?? arrival
   const m = /^#(file|view)\/([^/]+)/.exec(at)
-  if (m) { try { const to = decodeURIComponent(m[2]); if (m[1] === "file") openFile(to, { newTab: !placesIn(getTabLayout()).includes(`file:${to}`) }); else openView(to, { newTab: !isViewOpen(to) }) } catch { /* a bad address */ } }
-  // Any other place (a sheet, like #new/plugin/graph): the address again, for the app to follow as it would have.
+  if (m) { try { const to = decodeURIComponent(m[2]); if (m[1] === "file") openFile(to, { newTab: !placesIn(getTabLayout()).includes(`file:${to}`) }); else openView(to, { newTab: !isViewOpen(to) }) } catch {} }
   else if (at.length > 1 && location.hash !== at) replaceHash(at)
 }
 
-/** The vault changed: the current workspace's tabs as they are there now (an unused one's: a blank tab). A change of
- *  ours still on its way wins (last write wins); a device on no workspace yet takes the first. */
 export function sync() {
   const list = slots()
   if (!list) return
   if (!picked()) {
-    // A device that never picked a workspace goes to the first in use, else 1 (which these tabs make). The first sync
-    // happens once, so the next doesn't undo what the user did meanwhile.
     synced = true
     const first = used()[0]
     current_.set(first || 1)
-    // (A page started on a new tab after the app stopped: its tabs are the workspace's now, not the other way.)
     if (!first || startedFresh) {
       const l = strip(getTabLayout())
       if (shape(l)) patch(first || 1, { layout: l })
@@ -275,8 +216,6 @@ export function sync() {
   const n = current()
   if (!synced) {
     synced = true
-    // This page's tabs changed less than a second before the last one went away (a reload, a closed window): they're
-    // newer than the workspace's, so they're saved rather than replaced.
     let unsaved = false
     try { unsaved = sessionStorage.getItem(UNSAVED) === String(n); sessionStorage.removeItem(UNSAVED) } catch { /* private mode */ }
     const took = carry
@@ -297,18 +236,13 @@ export function sync() {
   apply(want, true)
 }
 
-// ---------- sending tabs, panes and files to another workspace ----------
-/** What goes: a tab (by id, all its panes), a pane (by id: out of its split) or files to open there (vault paths). */
 export type Sent = { tab: string } | { pane: string } | { open: string[] }
 let moving = false
 
-/** The layout without a tab or a pane: what shows while its move is on its way; null when nothing would be left. */
 function without(l: TabLayout, what: { tab: string } | { pane: string }): TabLayout | null {
   return "tab" in what ? withoutTabs(l, new Set([what.tab])) : withoutPanes(l, new Set([what.pane]))
 }
 
-/** Send a tab, pane or files to workspace n (dropped on its number), through the server so every device on either
- *  follows; what goes leaves here at once (unless it's all there is), and the server's result is put in place. */
 export async function sendTo(n: number, what: Sent) {
   if (!slots() || moving) return
   const from = current()
@@ -326,10 +260,7 @@ export async function sendTo(n: number, what: Sent) {
     mine.add(shape(l))
     apply(l, true)
     emit()
-    // A move can be undone (it comes back, to this workspace's pane focused last, or as a pane of its own), like
-    // every other move in the app; files opened there left nothing here to bring back.
     const back: Sent | null = "open" in what || !r.tabs.length ? null : { tab: r.tabs[0].id }
-    // (back where it was: a pane out of a split, beside its tab)
     const i = before.tabs.findIndex((t) => ("tab" in what ? t.id === what.tab : "pane" in what && placesOfTab(t).some((p) => p.id === what.pane)))
     const place = i < 0 ? {} : "tab" in what ? { at: i, group: before.tabs[i].group } : { at: i + 1 }
     notify(r.tabs.length ? ("open" in what ? `Opened in ${named(n)}` : `Moved to ${named(n)}`) : `Already open in ${named(n)}`,
@@ -341,8 +272,6 @@ export async function sendTo(n: number, what: Sent) {
     moving = false
   }
 }
-/** Undo a move to workspace n: what went there comes back to workspace `to`, and if that's still this device's, it
- *  shows here at once. */
 async function bringBack(n: number, to: number, what: Sent, place: { at?: number; group?: string }) {
   if (timer) saveTabs()
   await writing
@@ -359,23 +288,18 @@ async function bringBack(n: number, to: number, what: Sent, place: { at?: number
   }
 }
 
-/** Move tab `id` from the current workspace to workspace n. */
 export const moveTab = (id: string, n: number) => sendTo(n, { tab: id })
 
-/** The tab on screen, showing something (not a blank one): what "Move current tab to workspace n" moves. */
 export function currentTab(): string | null {
   const t = shownTab(getTabLayout())
   return t && focusedPane(t).to !== "new" ? t.id : null
 }
 
-// ---------- switching ----------
 export function switchTo(n: number) {
   if (!slots()) return
   const now = current()
   if (n === now) return
   if (now) { saveTabs(); kept.set(now, getTabLayout()) }
-  // An unused one is nothing until it's used: the default sidebars and one blank tab, and nothing written (the first
-  // tab opened or panel changed there makes it).
   const d = slots()![n - 1]
   current_.set(n)
   emit(); sidebarsChanged()
@@ -385,7 +309,6 @@ export function switchTo(n: number) {
 
 export const used = () => SLOTS.filter((n) => slots()?.[n - 1])
 
-/** Every place open in the other workspaces' tabs (what closing a pane here mustn't end: a terminal they show too). */
 export function openElsewhere(): string[] {
   const n = current()
   return (slots() ?? []).flatMap((d, i) => (d && i + 1 !== n ? placesIn(d.layout) : []))
@@ -397,26 +320,20 @@ export function cycle(dir: 1 | -1) {
   switchTo(u[(i + dir + u.length) % u.length])
 }
 
-// ---------- menus ----------
-/** The workspace whose name is being edited, on its row in the switcher's list (0: none). */
 let renaming = 0
 export const getRenaming = () => renaming
 export const setRenaming = (n: number) => { renaming = n; emit() }
 export const label = (n: number) => slots()?.[n - 1]?.name || `Workspace ${n}`
-/** Workspace n's icon, tint and container, those it has. */
 export function lookOf(n: number): Pick<WorkspaceInfo, "icon" | "tint" | "container"> {
   const d = slots()?.[n - 1]
   return { ...(typeof d?.icon === "string" && d.icon ? { icon: d.icon } : {}), ...(isColor(d?.tint) ? { tint: d.tint } : {}),
     ...(typeof d?.container === "string" && d.container ? { container: d.container } : {}) }
 }
-/** Pick workspace n's icon. */
 export const askIcon = (n: number) => pickIcon({ title: `Icon for ${named(n)}`, current: lookOf(n).icon, onPick: (i) => { patch(n, { icon: i }) } })
-/** Workspace n's colours to pick from (the sidebars take a little of it). */
 export function tintItems(n: number): MenuItem[] {
   const { tint } = lookOf(n)
   return [{ label: "No colour", checked: !tint, run: () => { patch(n, { tint: null }) } }, ...colorItems(tint ?? "", (c) => { patch(n, { tint: c }) })]
 }
-/** The containers workspace n's web pages can open in (the Browser's; none without it), and the one it has. */
 export function containerItems(n: number): { items: MenuItem[]; name?: string } {
   const { container } = lookOf(n), boxes = webContainers()
   if (!boxes.length) return { items: [] }
@@ -425,7 +342,6 @@ export function containerItems(n: number): { items: MenuItem[]; name?: string } 
     ...boxes.map((b) => ({ label: b.name, icon: dotIcon(colorVar(b.color)), checked: b.id === container, run: () => { patch(n, { container: b.id }) } })),
   ] }
 }
-/** Workspace n's look as menu rows: its icon, colour and container. */
 export function lookItems(n: number): MenuItem[] {
   const { icon, tint } = lookOf(n), box = containerItems(n)
   return [
@@ -435,18 +351,14 @@ export function lookItems(n: number): MenuItem[] {
     ...(box.items.length ? [{ label: "Container", icon: Box, hint: box.name, run: () => {}, items: box.items }] : []),
   ]
 }
-/** A workspace in the middle of a sentence: its name, else "workspace 2". */
 export const named = (n: number) => slots()?.[n - 1]?.name || `workspace ${n}`
 
-/** Workspace n as it is now: for the current one, what's on screen (its last second of changes may not be saved yet). */
 function now(n: number): Def | null {
   if (n !== current()) return slots()?.[n - 1] ?? null
   const d: Def = { ...(slots()?.[n - 1] ?? {}), layout: strip(getTabLayout()) }
   return isBlank(d, defaultSidebars) ? null : d
 }
 
-/** Empty workspace n (Delete). Nothing is closed: its terminals keep running (the Terminals panel has them). If it's the
- *  current one, this device stays on it, now unused: the default sidebars and a blank tab. A toast offers Undo. */
 export function remove(n: number) {
   const was = now(n)
   if (!was) return
@@ -461,16 +373,12 @@ export function remove(n: number) {
   } } })
 }
 
-/** Workspace n's menu. `rename: false`: without Rename (the phone's, which edits the name in a field of its own). */
 export function slotMenu(n: number, rename = true): MenuItem[] {
   const has = !!now(n)
   const d = slots()?.[n - 1]
-  // Duplicate goes to the first unused slot (the current one too, when it's unused: it then shows the copy).
   const free = SLOTS.find((m) => m !== n && !now(m))
-  // Panels of its own that differ from the default (sidebars.json's, what new workspaces start with).
   const own = d?.sidebars && !defaultSidebars(d.sidebars) ? d.sidebars : null
   return [
-    // The name is edited on its row in the switcher's list (which opens for it).
     ...(rename ? [{ label: "Rename", icon: Pencil, run: () => setRenaming(n) }] : []),
     ...lookItems(n),
     { label: !has ? "Duplicate" : free ? `Duplicate to workspace ${free}` : "Duplicate (all five are in use)", icon: Copy, disabled: !has || !free, run: () => {
@@ -481,7 +389,6 @@ export function slotMenu(n: number, rename = true): MenuItem[] {
     ...(own ? [
       { label: "Use these panels for new workspaces", icon: LayoutPanelLeft, sep: true, run: () => { setDefaultSidebars(own); notify("New workspaces start with these panels") } },
     ] : []),
-    // The current one's name, pins and panels: Workspaces' settings sheet.
     ...(n === current() ? [{ label: "Settings…", icon: Settings2, sep: !own, run: () => openPluginSettings("workspaces") }] : []),
     { label: "Delete", icon: Trash2, danger: true, sep: true, disabled: !has, run: () => remove(n) },
   ]

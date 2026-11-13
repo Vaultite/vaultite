@@ -1,5 +1,3 @@
-// Workspaces' components: the switcher in the sidebar's header (and at the top of the rail), and the background work
-// that keeps the tabs and the vault in step.
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { Check, ChevronDown } from "lucide-react"
@@ -10,14 +8,10 @@ import {
   SLOTS, switchTo, sync, tookTabs, used, useVersion, type Sent,
 } from "./state"
 
-// ---------- the header ----------
-
-/** Workspace n's mark, as it looks now. */
 function Mark({ n, look, size }: { n: number; look: string; size?: string }) {
   return <Look n={n} {...lookOf(n)} look={look} size={size} />
 }
 
-/** Workspace n's row while renamed: a field; Enter, a click elsewhere or the list closing keeps it, Escape doesn't. */
 function Rename({ n, on, end }: { n: number; on: boolean; end: (enter: boolean) => void }) {
   const done = (name: string | null) => renamed(n, name)
   return (
@@ -35,22 +29,17 @@ function Rename({ n, on, end }: { n: number; on: boolean; end: (enter: boolean) 
   )
 }
 
-/** The rename of workspace n ends: with its new name, or null (Escape) for none. */
 function renamed(n: number, name: string | null) {
   if (getRenaming() !== n) return
   setRenaming(0)
   if (name !== null) patch(n, { name: name.trim() || null })
 }
 
-/** The switcher: the current number, opening a list of all five beside it (click switches, right-click for its menu).
- *  Dragging a tab over it opens the list so it can be dropped on another workspace. */
 function Switcher({ lit, over, rail }: { lit: number; over: number | null; rail: boolean }) {
   const list = slots()!
   const [shown, setOpen] = useState(false)
-  // Rename (in a workspace's menu) opens the list too, the name edited on its row.
   const renaming = getRenaming()
   const open = shown || !!renaming
-  // Closing it (a click outside, the button) ends a rename, keeping what was typed: the field goes before its blur.
   const shut = () => {
     const m = getRenaming()
     if (m) renamed(m, box.current?.querySelector("input")?.value ?? null)
@@ -60,7 +49,6 @@ function Switcher({ lit, over, rail }: { lit: number; over: number | null; rail:
   const box = useRef<HTMLDivElement>(null)
   const [at, setAt] = useState({ left: 0, top: 0 })
   const sprung = useRef(false)
-  // A drag that can go to another workspace, over the button: open the list (and close it again when the drag ends).
   const dragging = useDrag((d) => !!d)
   const overButton = useDrag((d) => {
     const r = d && sent(d.item) ? btn.current?.getBoundingClientRect() : null
@@ -75,13 +63,10 @@ function Switcher({ lit, over, rail }: { lit: number; over: number | null; rail:
     const r = btn.current.getBoundingClientRect(), w = box.current?.offsetWidth ?? 208
     setAt(rail ? { left: r.right + 8, top: r.top - 4 } : { left: Math.max(8, Math.min(r.left, innerWidth - 8 - w)), top: r.bottom + 4 })
   }, [open, rail])
-  // (Escape in the name's field only ends the rename.)
   useDismiss(open, shut, { inside: "[data-workspace-list], [role=menu], [aria-label='Close menu']", anchor: btn, escape: (e) => !(e.target as Element | null)?.closest?.("input") })
-  // The keyboard: on the current workspace's row (not while a drag opened it), and back where it was on closing.
   useEffect(() => {
     if (open && !sprung.current && !getRenaming()) box.current?.querySelector<HTMLElement>("[aria-pressed=true]")?.focus({ preventScroll: true })
   }, [open])
-  // Up and down between the rows, like a menu (Home, End: the first and last); Enter or Space picks one.
   const arrows = (e: React.KeyboardEvent) => {
     if ((e.target as Element).closest("input")) return
     const rows = [...(box.current?.querySelectorAll<HTMLElement>("[data-workspace]") ?? [])]
@@ -92,7 +77,6 @@ function Switcher({ lit, over, rail }: { lit: number; over: number | null; rail:
     e.preventDefault()
     rows[to]?.focus()
   }
-  // A rename ended from the keyboard: Enter closes the list, Escape goes back to the row (if the list was open before).
   const ended = (m: number, enter: boolean) => {
     if (enter) shut()
     else requestAnimationFrame(() => box.current?.querySelector<HTMLElement>(`button[data-workspace="${m}"]`)?.focus({ preventScroll: true }))
@@ -105,7 +89,6 @@ function Switcher({ lit, over, rail }: { lit: number; over: number | null; rail:
         onClick={() => (open ? shut() : setOpen(true))} onContextMenu={menuFor(() => slotMenu(n))}
         className={cn("flex shrink-0 cursor-pointer items-center justify-center gap-0.5 rounded-[5px] text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground",
           rail ? "size-7" : "h-6 pr-0.5 pl-1", open && "bg-foreground/[0.08] text-foreground")}>
-        {/* In the sidebar's own grey, like its other buttons (the toggle): it's a control, not a selection. */}
         <Mark n={n} look="border-[1.5px] border-current font-semibold" />
         {!rail && <ChevronDown className="size-3 text-tertiary" strokeWidth={2.25} />}
       </button>
@@ -123,7 +106,6 @@ function Switcher({ lit, over, rail }: { lit: number; over: number | null; rail:
                 onClick={() => { setOpen(false); switchTo(m) }}
                 onContextMenu={menuFor(() => slotMenu(m))}
                 className={cn("flex h-7 cursor-pointer items-center gap-2 rounded-[5px] px-1.5 text-left text-[13px] transition-colors",
-                  // (as a menu's rows: the highlight follows the pointer and the keyboard, a check says which is on)
                   "outline-none focus-visible:bg-foreground/[0.07]", over === m ? "bg-primary/15 ring-1 ring-primary/50" : "hover:bg-foreground/[0.07]")}>
                 <Mark n={m} look={cn("border", on ? "border-primary/60 bg-primary/10 font-semibold text-primary"
                   : has ? "border-border font-medium text-foreground" : "border-dashed border-border text-tertiary")} />
@@ -140,13 +122,10 @@ function Switcher({ lit, over, rail }: { lit: number; over: number | null; rail:
   )
 }
 
-/** Runs while the plugin is on, computers and phones alike: saves the current workspace's tabs as they change, and
- *  follows the file when it changes; the window takes the workspace's tint, and a swipe over a sidebar switches. */
 export function Background({ store }: { store: Store }) {
   const w = (store as unknown as { workspaces?: unknown }).workspaces
   useVersion()
   const tint = lookOf(litNow()).tint
-  // (the sidebars mix a little of it into their background: index.css's --color-sidebar)
   useEffect(() => {
     const root = document.documentElement
     if (tint) root.style.setProperty("--space-tint", colorVar(tint)); else root.style.removeProperty("--space-tint")
@@ -154,7 +133,6 @@ export function Background({ store }: { store: Store }) {
   }, [tint])
   useSwipes()
   useEffect(() => {
-    // (before the first sync: this device's own tabs are set aside, not overwritten, till Workspaces is off again)
     if (tabsInWorkspace(true)) tookTabs()
     const off = onTabLayoutChange(saveTabsSoon), unsaved = trackSoon("tabs", savePending, true)
     addEventListener("pagehide", leaving)
@@ -164,8 +142,6 @@ export function Background({ store }: { store: Store }) {
   return null
 }
 
-/** A two-finger swipe sideways over a sidebar goes to the next or previous workspace in use, as Arc's and Zen's do: once
- *  a swipe (its momentum included), and not over something that scrolls sideways itself. */
 function useSwipes() {
   useEffect(() => {
     let sum = 0, done = false, quiet = 0
@@ -191,12 +167,9 @@ function useSwipes() {
   }, [])
 }
 
-/** What a dragged item (core/drag.ts) sends to another workspace: a tab moves with its panes, a pane (by its bar)
- *  moves out of its split, a file from the tree or a pinned page opens there. Folders, panels, blank tabs: nothing. */
 function sent(item: DragItem): Sent | null {
   if (item.pane) return { pane: item.pane }
   if (item.tab) return item.to && item.to !== "new" ? { tab: item.tab } : null
-  // Several selected together: the files among them (a folder doesn't open).
   if (item.paths && (item.from === "tree" || item.from === "pin")) {
     const s = getStore(), files = new Set([...(s?.files.files ?? []), ...(s?.files.others ?? [])].map((f) => f.path))
     const open = item.from === "pin" ? item.paths : item.paths.filter((p) => files.has(p))
@@ -206,8 +179,6 @@ function sent(item: DragItem): Sent | null {
   return null
 }
 
-/** The switcher's rows take drops: on another workspace's row, what's dragged goes there (sent) and this window
- *  stays on its own. Not the current one's row (the panes here take those drops). */
 function useSendDrop() {
   const id = `workspaces:${useId()}`
   useDropTarget<{ n: number; what: Sent }>(id, (item, _x, _y, el) => {
@@ -226,9 +197,7 @@ export function Workspaces({ open, phone }: SidebarCtx) {
   const over = useSendDrop()
   const list = slots()
   if (!list) return null
-  // Before any exists, the setup as it is counts as workspace 1.
   const lit = litNow()
-  // Phones: the tab list's title pages through them (TabSwitcher, through core/scope.ts).
   if (phone) return null
   return <Switcher lit={lit} over={over} rail={!open} />
 }

@@ -1,5 +1,3 @@
-// Workspaces' settings sheet: the current workspace's name, and whether its pins and panels are its own or the default
-// ("Use for new workspaces").
 import { useState } from "react"
 import { COLOR_NAMES, colorVar, commandKeys, Group, menuBelow, namedIcon, notify, Section, SettingRow, setDefaultSidebars, useEnabled } from "@vaultite"
 import { askIcon, containerItems, current, defaultSidebars, label, lookOf, patch, pinsForNew, slots, tintItems, useVersion } from "./state"
@@ -17,7 +15,6 @@ function Name({ n }: { n: number }) {
   )
 }
 
-/** Its icon, tint and container: each a button saying what it is now, opening its choices. */
 function Look({ n }: { n: number }) {
   const { icon, tint } = lookOf(n), box = containerItems(n)
   const Icon = icon ? namedIcon(icon) : null
@@ -47,7 +44,7 @@ function Look({ n }: { n: number }) {
 
 export function WorkspaceSettings() {
   useVersion()
-  const pinning = useEnabled()("pages") // pinned pages are Pinned's: none without it
+  const pinning = useEnabled()("pages")
   const n = current()
   if (!n) return null
   const d = slots()?.[n - 1] ?? null

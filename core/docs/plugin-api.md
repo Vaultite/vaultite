@@ -265,8 +265,8 @@ by its path.
 - `now:file` (now)
 - `obsidian:stand-ins` (other-apps)
 - `pages:installed` (pages)
-- `pins:installed` (workspaces): Pages just pinned in the vault's list because their plugin wrote them, turned on (Pinned): a workspace with a list of its own gets them too, at its end, so a plugin turned on shows its pages wherever you are.
-- `pins:of` (workspaces): Workspace n's pinned pages, for Pinned's ops (`vau pin`): its own list (null: pages.json's, until its first change) and one change to it.
+- `pins:installed` (workspaces): Pages a plugin just pinned in the vault's list: a workspace with a list of its own gets them too, at its end.
+- `pins:of` (workspaces): Workspace n's pinned pages, for Pinned's ops (`vau pin`): its own list (null: pages.json's) and one change to it.
 - `property-types` (other-apps)
 - `provenance:user` (provenance): What the user said or wrote, made by another plugin's backend (Inbox's voice notes): the label to give it.
 - `provenance:agent` (provenance): And what an agent's are labelled (an AI app's note for the inbox).
@@ -286,7 +286,7 @@ by its path.
 - `sync:settle` (sync): Settle one (the user merged it in or kept the note as it is): a version on the file that says so, on every device.
 - `sync:rooms` (sync): Where this machine's windows type a note together with the others' (companion's bridge.ts): the hub's rooms, for every note, while this machine syncs the vault it serves and isn't the hub; null otherwise (its own rooms).
 - `sync:hub` (sync): The hub this vault's settings name (vau sync hub), or null: Machines' first then.
-- `tabs:open` (workspaces): Every place open in any workspace's tabs, as this machine has them, for "tabs:open": a terminal shown in a workspace nobody's looking at isn't idle.
+- `tabs:open` (workspaces): Every place open in any workspace's tabs, as this machine has them: a terminal shown in a workspace nobody's looking at isn't idle.
 - `templates:folder` (templates): Its folder's notes are patterns: the vault never reads them as items (a `type: person` template isn't a person).
 - `terminal:<…>` (meters, locate, agent-env, wait, trouble, of, of-pids, info, ask, waits, state, ended, agent-waits, screen, access, runs): agent-meters; terminal
 - `text:<…>` (canvas, docx, epub, fb2, pptx, base, csv): canvas; documents; ebooks; presentations; query; tables
