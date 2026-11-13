@@ -6,7 +6,7 @@ import { run, swiftHelper } from "./swiftbuild.ts"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { messageOf } from "./browser/errors.ts"
+import { messageOf } from "./browser/messageof.ts"
 import { logger } from "../core/log.ts"
 
 const log = logger("dictation")

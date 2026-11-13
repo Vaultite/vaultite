@@ -4,7 +4,7 @@ import crypto from "node:crypto"
 import { argon2 } from "./argon2.ts"
 import { CryptoEngine, Credentials, Kdbx, KdbxError, ProtectedValue, type KdbxEntry, type KdbxGroup } from "./kdbx/index.ts"
 import { getDomain } from "tldts-experimental"
-import { messageOf } from "./errors.ts"
+import { messageOf } from "./messageof.ts"
 
 CryptoEngine.setArgon2Impl(argon2)
 

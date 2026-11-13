@@ -13,7 +13,7 @@ import { BRANCH, CODE, HOST, SHELL } from "./identity.ts"
 import { mainLog } from "./mainlog.ts"
 import { readJson, SHA, type StoreHost, userData } from "./storehost.ts"
 import { policyFor, SHELL_EVERY, storeDir } from "./storepolicy.ts"
-import { messageOf } from "./browser/errors.ts"
+import { messageOf } from "./browser/messageof.ts"
 import { atExit } from "../core/exit.ts"
 
 const exec = promisify(execFile)

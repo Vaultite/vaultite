@@ -1,7 +1,7 @@
 // Argon2 for argon2.ts, off the main process: hash-wasm's WebAssembly holds the thread for the whole derivation.
 import { parentPort } from "node:worker_threads"
 import { argon2d, argon2id } from "hash-wasm"
-import { messageOf } from "./errors.ts"
+import { messageOf } from "./messageof.ts"
 
 type Ask = { id: number; password: Uint8Array; salt: Uint8Array; memory: number; iterations: number; length: number; parallelism: number; type: 0 | 2 }
 

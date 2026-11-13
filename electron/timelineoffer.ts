@@ -2,7 +2,7 @@
  *  to turn it on (its button or a spoken yes), never a dead end; on, it keeps from then, and says what came before wasn't. */
 import { answerOf } from "../core/desktop/yesno.ts"
 import type { Answer } from "./takeoverlogic.ts"
-import { messageOf } from "./browser/errors.ts"
+import { messageOf } from "./browser/messageof.ts"
 
 /** What needed it: a replay of the last seconds, or a skill from what they just did. */
 export type Needs = "replay" | "skill"

@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url"
 import { eachPage, eachSession, handle, tell, type EnginePage, logger } from "./engine.ts"
 import { newKey, publicOf, qrText, run, type Progress } from "./hybrid.ts"
 import { prepareCreate, prepareGet, readCreate, readGet, WebAuthnError, type Prepared } from "./webauthn.ts"
-import { messageOf } from "./errors.ts"
+import { messageOf } from "./messageof.ts"
 
 const log = logger("passkeys")
 

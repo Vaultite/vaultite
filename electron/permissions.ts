@@ -7,7 +7,7 @@ import os from "node:os"
 import path from "node:path"
 import { PERMISSIONS, VAULT_PANE, actionOf, paneUrl, signingOf, type Permission, type PermissionDef, type PermissionState, type Signing } from "../core/permissions.ts"
 import { macAddon, type MacAddon } from "./macaddons.ts"
-import { messageOf } from "./browser/errors.ts"
+import { messageOf } from "./browser/messageof.ts"
 import { logger } from "../core/log.ts"
 
 const log = logger("permissions")

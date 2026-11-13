@@ -8,7 +8,7 @@ import { docOf, exposed, filling, heldNear, markRan, scrub, scrubDeep, wasFilled
 import { clipboardKey, keyEvent } from "./keypress.ts"
 import { axLines, changes, INTERACTIVE, mainLines, type AXNode, type Refs } from "./axlines.ts"
 import { agentBusy } from "./agentbusy.ts"
-import { messageOf } from "./errors.ts"
+import { messageOf } from "./messageof.ts"
 import { ACT, AT, BY, PAGE_TEXT, WAIT, type Act, type By, type Field, type Upload, type Wait } from "./agentwire.ts"
 
 export const THUMB_WIDTH = 320

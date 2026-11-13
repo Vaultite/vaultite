@@ -11,7 +11,7 @@ import type { Database, Entry } from "./keepass.ts"
 import { fillLogin } from "./fill.ts"
 import { ASSERTED, CREATED, PASSKEY, register, verify, type Passkey } from "./presence.ts"
 import { z } from "zod"
-import { messageOf } from "./errors.ts"
+import { messageOf } from "./messageof.ts"
 
 // (its reader, kdbx/, loads at the first login: a Mac whose agents never log in never loads it)
 const keepass = () => import("./keepass.ts")

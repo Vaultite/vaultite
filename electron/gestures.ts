@@ -2,7 +2,7 @@
 import { app, type BaseWindow } from "electron"
 import path from "node:path"
 import { macAddon, type MacAddon } from "./macaddons.ts"
-import { messageOf } from "./browser/errors.ts"
+import { messageOf } from "./browser/messageof.ts"
 import { logger } from "../core/log.ts"
 
 const log = logger("gestures")

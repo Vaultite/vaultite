@@ -9,7 +9,7 @@ import { filledLately, fillLogin } from "./fill.ts"
 import { saveOffer } from "./loginform.ts"
 import { ranNear, siteOf } from "./pagesecrets.ts"
 import { configured, entriesForUrl, samePassword, saveLogin, secretsOf } from "./passwords.ts"
-import { messageOf } from "./errors.ts"
+import { messageOf } from "./messageof.ts"
 
 const log = logger("logins")
 

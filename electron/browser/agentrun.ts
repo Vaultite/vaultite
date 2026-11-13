@@ -6,7 +6,7 @@ import { scrub } from "./pagesecrets.ts"
 import { actIn, acting, GLIDE_MS, hostOf, navigateIn, OUTSIDE, pageFor, readIn, record, refFor, serve, snapshot, waitIn } from "./agent.ts"
 import { ACT, BY, WAIT, type By } from "./agentwire.ts"
 import { z } from "zod"
-import { messageOf } from "./errors.ts"
+import { messageOf } from "./messageof.ts"
 import path from "node:path"
 
 // (in a world of its own and a closed shadow root: the page's scripts and styles never reach it)

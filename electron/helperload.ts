@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url"
 import { leaseIn, storeRootOf } from "../core/update/lease.ts"
 import type { HelperHost } from "./helper.ts"
 import { CODE } from "./identity.ts"
-import { messageOf } from "./browser/errors.ts"
+import { messageOf } from "./browser/messageof.ts"
 
 type Helper = typeof import("./helper.ts")
 const ROOT = path.dirname(import.meta.dirname)

@@ -3,7 +3,7 @@
 import { CODE } from "./identity.ts"
 import { pinOf } from "./storepolicy.ts"
 import type { UpdatesHost } from "./updates.ts"
-import { messageOf } from "./browser/errors.ts"
+import { messageOf } from "./browser/messageof.ts"
 
 type Host = Pick<UpdatesHost, "windows" | "ownsServer" | "nameOf">
 

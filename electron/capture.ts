@@ -4,7 +4,7 @@ import { screen } from "electron"
 import { type BoxAt, boxesSince, boxMoved, boxOf, captureCommand, type Narration, type Point, RECORD_MOST_MS, type Rect, type RegionScene, REPLAY_MS } from "../core/desktop/clips.ts"
 import { type Clip, holdVideo, onVideoStopped, REAL, saveClip, stopVideo, videoAt } from "./recorder.ts"
 import { happened, queryTimeline, timelineOn, timelineRefollow } from "./timeline.ts"
-import { messageOf } from "./browser/errors.ts"
+import { messageOf } from "./browser/messageof.ts"
 
 /** What helper.ts lends it. */
 export type CaptureHost = {

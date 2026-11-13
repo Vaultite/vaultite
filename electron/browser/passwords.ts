@@ -7,7 +7,7 @@ import path from "node:path"
 import { allPages, handle, tellAll, logger } from "./engine.ts"
 import type { Change, Full, Row } from "./kdbxedit.ts"
 import type { Otp } from "./keepass.ts"
-import { messageOf } from "./errors.ts"
+import { messageOf } from "./messageof.ts"
 
 const log = logger("passwords")
 

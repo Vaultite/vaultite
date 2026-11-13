@@ -11,7 +11,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { messageOf } from "./errors.ts"
+import { messageOf } from "./messageof.ts"
 
 const log = logger("extensions")
 

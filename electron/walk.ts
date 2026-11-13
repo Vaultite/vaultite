@@ -7,7 +7,7 @@ import type { Rect, Thing } from "../core/desktop/uimodel.ts"
 import { countText, dwellAt, type Point, sentences, thingAt, walkCommand, type WalkItem, type WalkPlace, type WalkScene } from "../core/desktop/walks.ts"
 import { captureDir } from "./recorder.ts"
 import { happened, queryTimeline, timelineFilmed } from "./timeline.ts"
-import { messageOf } from "./browser/errors.ts"
+import { messageOf } from "./browser/messageof.ts"
 import { logger } from "../core/log.ts"
 
 const log = logger("walk")

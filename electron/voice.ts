@@ -7,7 +7,7 @@ import { cloudVoice, type CloudConfig, type CloudVoice } from "./tts.ts"
 import { voice, type Voice } from "./voicelogic.ts"
 import type { Heard } from "../core/desktop/screenmarks.ts"
 import { voiceSwift } from "./swiftbuild.ts"
-import { messageOf } from "./browser/errors.ts"
+import { messageOf } from "./browser/messageof.ts"
 import { logger } from "../core/log.ts"
 
 const log = logger("voice")

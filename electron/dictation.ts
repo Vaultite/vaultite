@@ -9,7 +9,7 @@ import { dictationSwift, parakeetModel } from "./dictation-build.ts"
 import { replacer } from "../core/dictationtext.ts"
 import { pickMic, type Devices, type MicPick } from "./miclogic.ts"
 import type { Keeping } from "./dictationkeep.ts"
-import { messageOf } from "./browser/errors.ts"
+import { messageOf } from "./browser/messageof.ts"
 
 let helper: ChildProcess | null = null
 let starting: Promise<ChildProcess> | null = null

@@ -1,6 +1,6 @@
 // The browser engine: each feature adds itself here for every web session and page as they are made.
 import type { AuthInfo, AuthenticationResponseDetails, BaseWindow, OnBeforeRequestListenerDetails, Session, WebContents } from "electron"
-import { messageOf } from "./errors.ts"
+import { messageOf } from "./messageof.ts"
 import { logger, logTo, unlogged, type Logger } from "./enginelog.ts"
 export { logger }
 

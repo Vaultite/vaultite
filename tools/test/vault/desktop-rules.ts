@@ -178,7 +178,7 @@ async function agentActs(check: Check) {
   const fields = ACT.parse({ action: "fill", fields: [{ ref: " e3 ", value: true }, { name: " Email ", value: null }, { ref: "e4", value: "x" }, ...Array.from({ length: 300 }, () => ({ ref: "e5", value: 1 }))] }).fields ?? []
   check("browser agents: a form's fields each by its ref or name, values as text, at most 200",
     same([[fields.length, 200], [fields.slice(0, 3), [{ ref: "e3", value: "true" }, { ref: "", name: "Email", value: "" }, { ref: "e4", value: "x" }]]]), fields.slice(0, 3))
-  const { messageOf } = await import("../../../electron/browser/errors.ts")
+  const { messageOf } = await import("../../../electron/browser/messageof.ts")
   const refused = (x: Parameters<typeof ACT.parse>[0]) => { try { ACT.parse(x); return "" } catch (e) { return messageOf(e) } }
   const each = "fields: each needs a ref (e12) or its control's name, and its value", list = "fields: a list of { ref, value }"
   check("browser agents: malformed fields are refused saying how, no fields at all is no form", same([
