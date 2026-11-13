@@ -1,5 +1,3 @@
-// Machines: other computers serving this vault's app, in its settings (a server adds itself once; entries are the
-// user's). No accounts: whoever reaches one machine reaches the others through it, but shells stay the owner's.
 import crypto from "node:crypto"
 import os from "node:os"
 import { API_VERSION, APP_VERSION, bullets, HTTPError, inDesktop, LOADED, localDate, noDesktop, MACHINE_CLIENT, onTailnet, Plugin, replyWithin, reply, running, section, Text } from "../../../core/plugins.ts"
@@ -14,11 +12,8 @@ export type Machine = {
   id: string; label: string; url: string; online: boolean; self: boolean
   dial?: boolean; readOnly?: boolean; via?: string; home?: string
   host?: string; platform?: string; version?: string; commit?: string; plugins?: string[]; vault?: string; error?: string
-  /** A desktop app's browser answers its agents (plugin.desktop). */
   desktop?: boolean
-  /** Its server runs on its own, not in the desktop app: an always-on one, whose browser answers other machines too. */
   standalone?: boolean
-  /** Its last probe timed out, but it answered within the last two minutes: online, as it said then (a loaded server). */
   slow?: boolean
 } & Partial<Now>
 
@@ -27,10 +22,8 @@ const STANDALONE = process.env.VAULTITE_DESKTOP !== "1"
 const HOST = os.hostname().replace(/\.local$/, "")
 const ID = /^[a-z0-9][a-z0-9-]{0,62}$/
 
-/** A host name as a machine id: "Studio-Mac.local" -> "studio-mac". */
 export const slug = (s: string) => s.toLowerCase().replace(/\.local$/, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 63)
 
-/** The machines in the settings, checked: a usable id and a tailnet url (onTailnet), each id once. */
 function listed(): DialEntry[] {
   const raw = plugin.settings({}).machines
   const out: DialEntry[] = []
@@ -48,11 +41,9 @@ function enabledPlugins() {
   return LOADED.map((p) => p.id).filter((id) => !skip.has(id))
 }
 
-/** This vault's id (vault.json, made once while machines are listed, synced with the vault): machines that say the same
- *  one share it; "" when unknown. */
 function vaultId(): string {
   let cur: Item | null
-  try { cur = plugin.readSettings("vault") } catch { return "" } // there but unreadable (mid-sync)
+  try { cur = plugin.readSettings("vault") } catch { return "" }
   if (typeof cur?.id === "string" && cur.id) return cur.id
   if (!listed().length) return ""
   const id = crypto.randomUUID()
@@ -63,28 +54,21 @@ function vaultId(): string {
 async function self() {
   return { instance: INSTANCE, host: HOST, platform: process.platform, version: APP_VERSION, api: API_VERSION,
     commit: (await running()).commit?.slice(0, 7) ?? "", plugins: enabledPlugins(), vault: vaultId(), desktop: inDesktop(), standalone: STANDALONE, ...machineNow(latest),
-    // (the agent machines listed, as connected here: whoever asks has those that dial in here without asking again)
     dialed: Object.fromEntries(listed().filter((m) => m.via).map((m) => [m.id, dial.summary(m.id)])) }
 }
 
-
 const PORT = Number(process.env.PORT || 8793)
 const LOOPBACK = new RegExp(`^https?://(127\\.0\\.0\\.1|localhost|\\[::1\\]):${PORT}$`)
-/** This server's own address on the network (Tailscale Serve's handler to its port), or "". */
 const ownUrl = async () => String(await plugin.ask("machines:url", "")).replace(/\/+$/, "")
-/** An entry whose address is this very server's (no need to ask it). */
 const knownOwn = new Set<string>()
 const isOwn = (url: string, own: string) => LOOPBACK.test(url) || (!!own && url === own) || knownOwn.has(url)
 
 const dial = dialIn(plugin, listed, selfId)
 
 type Probed = { machine: Machine; dialed?: Record<string, Item> }
-/** Each address's last answer, and when: a peer busy enough to miss one probe (a load of test runs) is still up. */
 const answered = new Map<string, { at: number; probed: Probed }>()
-/** How long a peer that stops answering in time still reads as online, as it last answered (`slow`). */
 const SLOW_GRACE_MS = 2 * 60_000
 
-/** A machine with its own address: this server, else its /api/machines/self. */
 async function probeDirect(m: DialEntry, own: string): Promise<Probed> {
   if (isOwn(m.url, own)) {
     const s = await self()
@@ -102,7 +86,6 @@ async function probeDirect(m: DialEntry, own: string): Promise<Probed> {
     answered.set(m.url, { at: Date.now(), probed })
     return probed
   } catch (e) {
-    // (only too slow, and it answered a moment ago: loaded, not gone; refused or not found is offline at once)
     const last = answered.get(m.url)
     if ((e as Error).name === "TimeoutError" && last && Date.now() - last.at < SLOW_GRACE_MS) return { ...last.probed, machine: { ...last.probed.machine, ...m, slow: true } }
     answered.delete(m.url)
@@ -110,15 +93,12 @@ async function probeDirect(m: DialEntry, own: string): Promise<Probed> {
   }
 }
 
-/** What another machine said of itself now (machineNow), as far as it said it (an older one says none). */
 function nowOf(s: Item): Partial<Now> {
   const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : undefined), mem = s.memory as Item | undefined
   const memory = mem && n(mem.total) !== undefined && n(mem.free) !== undefined ? { total: n(mem.total)!, free: n(mem.free)! } : undefined
   return { ...(n(s.cores) ? { cores: n(s.cores) } : {}), ...(n(s.load) !== undefined ? { load: n(s.load) } : {}), ...(memory ? { memory } : {}), ...(typeof s.display === "boolean" ? { display: s.display } : {}) }
 }
 
-/** Why a machine didn't answer, in words: its name not found (DNS: Tailscale's off, or its DNS is) reads apart from a
- *  machine that's there but not serving. */
 function unreachable(e: unknown) {
   if ((e as Error).name === "TimeoutError") return "no answer"
   const code = ((e as { cause?: { code?: string } }).cause)?.code
@@ -127,8 +107,6 @@ function unreachable(e: unknown) {
   return "unreachable"
 }
 
-/** A machine as listed: one with an address asked (`direct`: once per listing, which its agent machines share), one
- *  dialing in as its relay says (in its answer to that ask; a relay from before says it at /info). */
 async function probe(m: DialEntry, own: string, direct = (e: DialEntry) => probeDirect(e, own)): Promise<Machine> {
   if (!m.via) return (await direct(m)).machine
   const offline = { ...m, online: false, self: false, dial: true, readOnly: true, plugins: [], error: "relay unavailable" }
@@ -149,14 +127,13 @@ async function probe(m: DialEntry, own: string, direct = (e: DialEntry) => probe
 async function machines(): Promise<Machine[]> {
   return plugin.memoStale(20, async function machines(key: string) {
     void key
-    vaultId() // (made before another machine is asked, so it's there to compare)
+    vaultId()
     const own = await ownUrl(), asked = new Map<string, Promise<Probed>>()
     const direct = (e: DialEntry) => { let p = asked.get(e.id); if (!p) asked.set(e.id, p = probeDirect(e, own)); return p }
     return Promise.all(listed().map((m) => probe(m, own, direct)))
   }, JSON.stringify(listed()))
 }
 
-/** This server's id in the list (null: it isn't listed). By address first, without asking anyone; else by asking. */
 async function selfId(): Promise<string | null> {
   const list = listed()
   if (!list.length) return null
@@ -166,7 +143,6 @@ async function selfId(): Promise<string | null> {
   return (await machines()).find((m) => m.self)?.id ?? null
 }
 
-/** The machine `id` names: its id, else its id or label in any case ("M4", "Mini PC"), as agents write what they read. */
 async function machine(id: string) {
   const list = await machines(), key = id.trim().toLowerCase()
   return list.find((m) => m.id === id) ?? list.find((m) => m.id.toLowerCase() === key)
@@ -193,15 +169,10 @@ plugin.route("GET", "machines/health", async (req) => {
   return health(req.query.since || "24h")
 }, { lock: false })
 
-// --- the browser of an always-on machine (plugin.desktop on a server with none attached): a laptop's app answers only
-// its own server's agents
-
-/** The first listed always-on machine with this vault and a desktop app attached: whose browser this server's agents use. */
 async function browserThere(all: Machine[]) {
   const own = vaultId()
   return all.find((x) => !x.self && !x.via && x.online && x.desktop && x.standalone && (!own || x.vault === own)) ?? null
 }
-/** Ask that machine's browser engine; `waits`: how long the call itself may wait (plugin.desktopWaiting). */
 async function desktopThere(name: string, args: unknown[], waits = 0) {
   const own = vaultId(), all = await machines()
   const m = await browserThere(all)
@@ -227,7 +198,6 @@ plugin.provide("machines:browser", async () => (inDesktop() ? selfId() : (await 
 
 plugin.route("POST", "machines/desktop", async (req) => {
   await plugin.ownerOnly(req, "The desktop app's browser")
-  // (only this server's own engine: never passed on again)
   if (!inDesktop()) throw new HTTPError(409, "no desktop app is attached to this machine's server")
   const name = String(req.body?.name ?? "")
   if (!/^agent:[a-z-]+$/.test(name)) throw new HTTPError(400, "only the browser's agent calls")
@@ -238,8 +208,6 @@ plugin.route("POST", "machines/desktop", async (req) => {
 
 const FS: Record<string, string> = { "fs/list": "ls", "fs/read": "read", "fs/recent": "recent" }
 
-/** An agent machine's files, read for this server's own code (the Muse plugin's blocks): its file agent's answer when
- *  this server is its relay, else the relay's. `rest`: info, fs/list, fs/read or fs/recent. */
 async function agentFs(id: string, rest: string, query: Record<string, string> = {}): Promise<unknown> {
   const m = listed().find((x) => x.id === id)
   if (!m?.via) throw new HTTPError(404, `no agent machine '${id}'`)
@@ -270,7 +238,6 @@ plugin.route("GET", "machines/*/**", async (req) => {
     await plugin.ownerOnly(req, "Reading an agent machine's files")
     return agentFs(id, rest, req.query)
   }
-  // (that machine sees this one's tailnet login, the owner's: only the owner asks through it)
   await plugin.ownerOnly(req, "Another machine's API")
   const qs = new URLSearchParams(req.query).toString()
   let r: Response
@@ -282,31 +249,25 @@ plugin.route("GET", "machines/*/**", async (req) => {
   }
   const type = r.headers.get("content-type") ?? "application/octet-stream"
   const body = Buffer.from(await r.arrayBuffer())
-  // (its answer is that machine's, not this app's: a page or an SVG never runs on this origin)
   if (r.status === 200) return new Text(body, type, { "Content-Security-Policy": "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'", "X-Content-Type-Options": "nosniff" })
   let err: unknown = { error: body.toString("utf8").slice(0, 500) }
-  if (type.includes("json")) try { err = JSON.parse(body.toString("utf8")) } catch { /* as text */ }
+  if (type.includes("json")) try { err = JSON.parse(body.toString("utf8")) } catch {}
   return reply(r.status, err)
 }, { lock: false })
 
-// --- adding itself
-
-/** Add this server to the list once, when it knows its own address and isn't there yet (by id or by address). `added`
- *  remembers that it did: one the user removed stays removed. */
 async function register() {
   const url = await ownUrl()
   if (/^https?:\/\//.test(url)) join(url)
 }
 function join(url: string) {
   let cur: Item | null
-  try { cur = plugin.readSettings() } catch { return } // there but unreadable (mid-sync): leave it
+  try { cur = plugin.readSettings() } catch { return }
   const list = Array.isArray(cur?.machines) ? cur.machines as Item[] : []
   const added = Array.isArray(cur?.added) ? (cur.added as unknown[]).map(String) : []
   const id = slug(HOST)
   if (!id) return
   const listed = list.some((m) => String(m?.url ?? "").replace(/\/+$/, "") === url || String(m?.id ?? "").toLowerCase() === id)
   if (added.includes(id)) return
-  // (listed by hand, or added before `added` was kept: noted once, so removing it later sticks too)
   plugin.saveSettings({ ...(cur ?? {}), machines: listed ? list : [...list, { id, label: HOST, url }], added: [...added, id] })
   plugin.forget()
 }
@@ -316,11 +277,8 @@ const hourly = setInterval(() => { if (plugin.loaded) void register() }, 3600 * 
 first.unref?.(); hourly.unref?.()
 plugin.onUnload(() => { clearTimeout(first); clearInterval(hourly) })
 
-// --- this machine's health, a sample a minute (health.ts)
-
 const healthLog = plugin.dayLog<Sample>("health")
 const watching = watch()
-/** The last sample (machineNow's memory). */
 let latest: Sample | null = null
 function health(span: string): Report {
   let since: number
@@ -339,8 +297,6 @@ async function sampleHealth() {
   for (const a of alerts(watching, s, HOST))
     await plugin.ask("inbox:event", null, { source: "machines", kind: "error", key: `health-${HOST}-${a.key}`, title: a.title, body: a.body })
 }
-// (not in a test run: a loaded runner's real samples, and their alerts, landed among the tests' own; what reads one is
-// tested apart)
 if (process.env.VAULTITE_TEST !== "1") {
   const sampler = setInterval(() => void sampleHealth().catch((e) => console.error("machines: health sample:", e)), EVERY)
   sampler.unref?.()
@@ -365,12 +321,10 @@ as long, is also sent to the inbox, once in 6 hours.
   run: async ({ since, machine }, ctx) => {
     if (!machine) return health(since)
     const r = await ctx.api("GET", `machines/${encodeURIComponent(machine)}/machines/health?since=${encodeURIComponent(since)}`)
-    return typeof r === "string" || Buffer.isBuffer(r) ? JSON.parse(String(r)) : r // (the other machine's answer comes back as text)
+    return typeof r === "string" || Buffer.isBuffer(r) ? JSON.parse(String(r)) : r
   },
   text: (r: Report) => reportText(r),
 })
-
-// --- blocks as text
 
 plugin.block("machines", async () => {
   const ms = await machines()
@@ -378,7 +332,6 @@ plugin.block("machines", async () => {
     ? ["online", m.host, m.version && `Vaultite ${m.version}${m.commit ? ` (${m.commit})` : ""}`].filter(Boolean).join(", ")
     : `offline (${m.error})`}${m.dial ? `, read-only files via ${m.via}` : `, ${m.url}`}`), "No machines yet: add them to .vaultite/plugins/machines/data.json."))
 })
-
 
 plugin.route("GET", "machines/enrollment", async (req) => {
   await plugin.ownerOnly(req, "Enrolling agent machines")
@@ -408,7 +361,6 @@ plugin.op({
   },
 })
 
-
 async function relayWrite(via: DialEntry, route: string, body: Item) {
   let r: Response
   try { r = await fetch(`${via.url}/api/${route}`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) }) }
@@ -425,7 +377,6 @@ plugin.route("POST", "machines/*/approve", async (req) => {
   if (isOwn(via.url, own) || (await probe(via, own)).self) return dial.approve(String(req.body.code ?? ""))
   return relayWrite(via, "ops/machines.approve", { code: String(req.body.code ?? "") })
 }, { lock: false })
-
 
 for (const [id, route, summary] of [
   ["machines.files", "list", "List a folder on a read-only agent machine."],

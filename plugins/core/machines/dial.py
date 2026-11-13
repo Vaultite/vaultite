@@ -64,9 +64,6 @@ def note(state, **more):
         pass
 
 
-# --- a WebSocket client (RFC 6455): text frames, ping and close are all it needs
-
-
 class Closed(Exception):
     pass
 
@@ -129,7 +126,6 @@ class Socket:
         head, self.buf = head.split(b"\r\n\r\n", 1)
         status = head.split(b"\r\n", 1)[0].decode(errors="replace")
         code = (status.split(" ") + ["", ""])[1]
-        # A revoked key; a 404 can be a server still starting (or its machine list unreadable for a moment): tried again.
         if code in ("401", "403"):
             raise Refused(status)
         if code != "101":
@@ -152,7 +148,7 @@ class Socket:
         else:
             head = bytes([0x80 | op, 0xFF]) + struct.pack(">Q", n)
         mask = os.urandom(4)
-        self.sock.settimeout(20)  # (a whole frame out; reads never wait)
+        self.sock.settimeout(20)
         try:
             self.sock.sendall(head + mask + (masked(data, mask) if n else b""))
         finally:
@@ -217,9 +213,6 @@ class Socket:
             pass
 
 
-# --- what it answers: a folder's entries and a file's contents, nothing else
-
-
 def full(p):
     p = os.path.expanduser(str(p or "~"))
     return os.path.abspath(p if os.path.isabs(p) else os.path.join(HOME, p))
@@ -258,7 +251,7 @@ def read(args):
     out = {"path": p, "size": st.st_size, "mtime": int(st.st_mtime * 1000), "truncated": st.st_size > len(data)}
     text = None
     if b"\0" not in data[:8192]:
-        for cut in range(4):  # (a cut in the middle of a character, at the end)
+        for cut in range(4):
             try:
                 text = (data[:-cut] if cut else data).decode("utf-8")
                 break
@@ -320,7 +313,7 @@ def answer(msg):
         if not op:
             raise ValueError("this computer only lists folders and reads files")
         return {"t": "res", "id": rid, "ok": True, "data": op(msg.get("args") or {})}
-    except Exception as e:  # (any failure is the request's answer, never the connection's end)
+    except Exception as e:
         return {"t": "res", "id": rid, "ok": False, "error": "%s: %s" % (type(e).__name__, e)}
 
 
@@ -351,8 +344,7 @@ def run():
         log("connected to", cfg["url"])
         note("connected")
         wait = 1
-        # Only this thread touches the socket (TLS can't take a read and a write at once from two threads): answers
-        # are worked out on others and queued, and the socket pair wakes this one to send them.
+        # TLS can't take a read and a write at once from two threads
         outbox, slots = queue.Queue(), threading.BoundedSemaphore(16)
         wake_r, wake_w = socket.socketpair()
         wake_r.setblocking(False)
@@ -403,9 +395,6 @@ def run():
             wake_r.close()
             wake_w.close()
         time.sleep(1)
-
-
-# --- set up, start and stop
 
 
 def load():

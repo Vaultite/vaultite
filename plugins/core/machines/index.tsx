@@ -8,11 +8,7 @@ import {
 import { DevicesPanel } from "@plugins/tabs/devices"
 import { EnrollMachine } from "./Enroll"
 
-// The file browser, with its previews, loads with its first tab.
 const MachineFiles = lazy(() => import("./Files").then((m) => ({ default: m.MachineFiles })))
-
-// Machines: your other computers running Vaultite, each with whether it answers and what it runs; a click opens a
-// terminal, an agent or its app there.
 
 const dot = (m: Machine) => (m.online ? "var(--green)" : "var(--gray)")
 const about = (m: Machine) => m.online
@@ -20,10 +16,8 @@ const about = (m: Machine) => m.online
     m.dial && "Read-only files", m.version && `Vaultite ${m.version}${m.commit ? ` (${m.commit})` : ""}`].filter(Boolean).join(" · ")
   : `Offline${m.error ? `: ${m.error}` : ""}`
 
-/** A machine's menu: a terminal or an agent there, and its app in the browser. */
 const hasTerminal = (m: Machine) => canRunAgents() && m.online && (m.self || !!m.plugins?.includes("terminal"))
 
-/** Machines whose file access is being revoked: their row says so till it's done. */
 const revoking = cell(new Set<string>())
 const marking = (id: string, on: boolean) => revoking.update((s) => { const next = new Set(s); if (on) next.add(id); else next.delete(id); return next })
 
@@ -32,7 +26,6 @@ async function revokeMachine(m: Machine) {
   marking(m.id, true)
   try { await op("machines.revoke", { id: m.id }); notify("File access revoked") } catch (e) { notifyError(e, "Couldn't revoke it") } finally { marking(m.id, false) }
 }
-
 
 async function machineItems(m: Machine): Promise<MenuItem[]> {
   const terminal = hasTerminal(m)
@@ -54,7 +47,6 @@ async function machineMenu(e: MouseEvent, m: Machine) {
   if (items.length) menuBelow(at, items)
 }
 
-/** Right-click: the machine's items at the pointer (the panel's own menu is its heading's). */
 function machineContextMenu(e: MouseEvent, m: Machine) {
   e.preventDefault(); e.stopPropagation()
   const at = { x: e.clientX, y: e.clientY }
@@ -120,8 +112,6 @@ const mock: Machine[] = [
   { id: "box", label: "Box", url: "https://box.example.ts.net:8447", online: false, self: false, error: "no answer" },
 ]
 
-/** The machines in the quick switcher and the search tab: picking one opens a terminal there (its app when it has no
- *  terminal for you, the Machines tab when it's offline). Asked for again each time one opens. */
 let found: Machine[] = []
 function machineDocs(): SearchDoc[] {
   return found.map((m) => {

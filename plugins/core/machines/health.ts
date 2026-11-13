@@ -1,15 +1,11 @@
-// Machine health: a sample a minute of load, memory and the busiest processes, kept on this machine, never the vault
-// (a write a minute into iCloud adds to the very churn it's there to catch). Read it with `vau machines health`.
 import { execFile } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 
 export type Pressure = "normal" | "warn" | "critical"
-/** A process at a sample: its CPU % over the last minute (100 is one core) and its resident memory in MB. */
 export type Top = { name: string; pid: number; cpu: number; rss: number }
 export type Sample = {
   t: number; load: number[]
-  /** Memory in MB; `free` the % free (macOS' memorystatus level, Linux's MemAvailable). */
   mem: { total: number; free: number; pressure: Pressure }
   swap: { used: number; total: number }
   procs: Top[]
@@ -19,19 +15,19 @@ type Row = { pid: number; name: string; pcpu: number; secs: number; rss: number 
 export const EVERY = 60_000
 export const KEEP_DAYS = 7
 const TOP = 5
-const HOG_CPU = 50, HOG_MIN = 5 // a report's sustained hog: this % (or a tenth of RAM) for this many samples
+const HOG_CPU = 50, HOG_MIN = 5
 export const ALERT_CPU = 80, ALERT_SAMPLES = 10, ALERT_GAP = 6 * 3600_000
 
 const run = (cmd: string, args: string[]) => new Promise<string>((resolve) =>
   execFile(cmd, args, { timeout: 5000, maxBuffer: 8 << 20, env: { ...process.env, LC_ALL: "C" } }, (_e, out) => resolve(String(out ?? ""))))
 
-/** ps' cumulative CPU time in seconds: macOS' "2266:09.79", procps' "01:02:03" or "1-02:03:04". */
+// ps' cumulative CPU time: macOS' "2266:09.79", procps' "01:02:03" or "1-02:03:04"
 export function cpuSeconds(s: string) {
   const m = /^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+(?:\.\d+)?)$/.exec(s.trim())
   return m ? Number(m[1] ?? 0) * 86400 + Number(m[2] ?? 0) * 3600 + Number(m[3]) * 60 + Number(m[4]) : 0
 }
 
-/** `ps -A -o pid=,pcpu=,time=,rss=,comm=` as rows (comm last: macOS gives a path, with spaces). */
+// comm last: macOS gives a path, with spaces
 export function parsePs(text: string): Row[] {
   const out: Row[] = []
   for (const line of text.split("\n")) {
@@ -41,8 +37,7 @@ export function parsePs(text: string): Row[] {
   return out
 }
 
-/** The top processes by CPU and by memory, CPU from the time each used since the last sample (ps' own % is a decayed
- *  average on macOS and a lifetime one on Linux); a process new since then has ps' %. */
+// ps' own % is a decayed average on macOS and a lifetime one on Linux
 export function topOf(rows: Row[], prev: Map<number, number>, ms: number): Top[] {
   const all = rows.map((r) => {
     const was = prev.get(r.pid)
@@ -54,7 +49,6 @@ export function topOf(rows: Row[], prev: Map<number, number>, ms: number): Top[]
   return [...new Set([...byCpu, ...byRss])]
 }
 
-/** macOS' `sysctl -n hw.memsize vm.swapusage kern.memorystatus_vm_pressure_level kern.memorystatus_level`. */
 export function parseSysctl(text: string) {
   const [mem, swap, level, free] = text.trim().split("\n")
   const mb = (k: string) => { const m = new RegExp(`${k} = ([\\d.]+)([MG])`).exec(swap ?? ""); return m ? Math.round(Number(m[1]) * (m[2] === "G" ? 1024 : 1)) : 0 }
@@ -62,7 +56,6 @@ export function parseSysctl(text: string) {
   return { mem: { total: Math.round(Number(mem) / 1048576) || 0, free: Number(free) || 0, pressure }, swap: { used: mb("used"), total: mb("total") } }
 }
 
-/** Linux's /proc/meminfo: pressure from what's available (under 5% critical, 15% warn). */
 export function parseMeminfo(text: string) {
   const kb = (k: string) => Number(new RegExp(`^${k}:\\s+(\\d+)`, "m").exec(text)?.[1] ?? 0)
   const total = kb("MemTotal"), free = total ? Math.round(kb("MemAvailable") / total * 100) : 0
@@ -71,7 +64,6 @@ export function parseMeminfo(text: string) {
 }
 
 let last: { t: number; secs: Map<number, number> } | null = null
-/** One sample of this machine now (null on Windows: no ps). */
 export async function sample(): Promise<Sample | null> {
   if (process.platform !== "darwin" && process.platform !== "linux") return null
   const t = Date.now()
@@ -86,20 +78,15 @@ export async function sample(): Promise<Sample | null> {
   return { t, load: os.loadavg().map((x) => Math.round(x * 100) / 100), ...mem, procs }
 }
 
-/** This machine now, as it tells the others (where a job goes): its cores, its load over the last minute, its memory (MB,
- *  % free: the last sample's while fresh, else read now) and whether it has a desktop to show windows on. */
 export type Now = { cores: number; load: number; memory: { total: number; free: number }; display: boolean }
 export function machineNow(last: Sample | null, at = Date.now()): Now {
   let memory = last && at - last.t < 3 * EVERY ? { total: last.mem.total, free: last.mem.free } : null
-  if (!memory && process.platform === "linux") { try { memory = parseMeminfo(fs.readFileSync("/proc/meminfo", "utf8")).mem } catch { /* none */ } }
+  if (!memory && process.platform === "linux") { try { memory = parseMeminfo(fs.readFileSync("/proc/meminfo", "utf8")).mem } catch {} }
   memory ??= { total: Math.round(os.totalmem() / 1048576), free: Math.round(os.freemem() / os.totalmem() * 100) }
-  // (a Linux server's desktop is the session it runs in: a headless box has none)
   const display = process.platform !== "linux" || !!(process.env.DISPLAY || process.env.WAYLAND_DISPLAY)
   return { cores: os.cpus().length, load: Math.round(os.loadavg()[0] * 100) / 100, memory: { total: memory.total, free: memory.free }, display }
 }
 
-/** What's held this machine over the samples: processes busy (CPU) or big (memory) through many of them, each with when
- *  it was first and last seen so, and how often memory was under pressure. */
 export type Hog = { name: string; pid: number; samples: number; cpu: number; rss: number; first: number; last: number }
 export type Report = {
   host: string; cores: number; since: number; samples: number; from: number | null; now: Sample | null
@@ -149,8 +136,6 @@ export function reportText(r: Report) {
   return out.join("\n")
 }
 
-/** What to tell the user after a sample: a process over ALERT_CPU or memory critical (pressure, or swap past 3/4 of RAM)
- *  for ALERT_SAMPLES in a row, each once per ALERT_GAP. `state` is kept between calls. */
 export type Watch = { streaks: Map<string, { since: number; n: number; cpu: number }>; told: Map<string, number> }
 export const watch = (): Watch => ({ streaks: new Map(), told: new Map() })
 export type Alert = { key: string; title: string; body: string }
@@ -169,7 +154,7 @@ export function alerts(w: Watch, s: Sample, host: string): Alert[] {
     return st
   }
   for (const p of s.procs) {
-    if (seen.has(`cpu-${p.name}`)) continue // (one streak a name: a sample's second Chrome helper isn't another minute)
+    if (seen.has(`cpu-${p.name}`)) continue
     const st = step(`cpu-${p.name}`, p.cpu >= ALERT_CPU, p.cpu)
     if (st) out.push({ key: `cpu-${p.name}`, title: `${host}: ${p.name} has used ${Math.round(st.cpu)}% CPU for ${Math.round((s.t - st.since) / EVERY) + 1} min`,
       body: `Since ${when(st.since)}, pid ${p.pid}, ${gb(p.rss)}. \`vau machines health\` on ${host} says what else.` })
@@ -181,7 +166,6 @@ export function alerts(w: Watch, s: Sample, host: string): Alert[] {
   return out
 }
 
-/** "6h", "30m", "2d" as ms. */
 export function duration(s: string) {
   const m = /^(\d+(?:\.\d+)?)\s*([mhd])$/.exec(s.trim())
   if (!m) throw new Error(`'${s}' isn't a duration like 30m, 6h or 2d`)

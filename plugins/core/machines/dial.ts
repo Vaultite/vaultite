@@ -50,7 +50,6 @@ export function dialIn(plugin: Plugin, entries: () => DialEntry[], selfId: () =>
       })
     })
   }
-  // A dropped connection (a tunnel's hiccup) comes back within seconds: a read is asked again once it has, never twice.
   const request = async (id: string, op: string, args: Item): Promise<unknown> => {
     const was = !!ready(id)
     try { return await once(id, op, args) } catch (e) {

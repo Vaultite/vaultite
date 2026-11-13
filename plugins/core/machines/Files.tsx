@@ -42,7 +42,6 @@ export function MachineFiles({ arg, setArg }: ViewCtx) {
     setRecent(had ?? null)
     if (had !== undefined) return
     let on = true
-    // An older file agent has no fs/recent (400): the section stays away.
     get<Recent>(machinePath(id, `fs/recent?path=${encodeURIComponent(here)}`)).then((d) => d, () => null).then((d) => { recents.current.set(key, d); if (on) setRecent(d) })
     return () => { on = false }
   }, [id, here, tick])

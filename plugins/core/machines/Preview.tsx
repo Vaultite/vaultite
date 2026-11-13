@@ -21,7 +21,6 @@ export function fmtSize(n: number) {
 }
 const isObj = (v: unknown): v is Obj => !!v && typeof v === "object" && !Array.isArray(v)
 
-/** A file of an agent machine, drawn by its kind; Raw shows the text as it is. */
 export function FilePreview({ id, path, tick }: { id: string; path: string; tick: number }) {
   const [file, setFile] = useState<Contents | null>(null)
   const [error, setError] = useState("")
@@ -30,7 +29,6 @@ export function FilePreview({ id, path, tick }: { id: string; path: string; tick
     let on = true
     setFile(null); setError("")
     const read = (max?: number) => get<Contents>(machinePath(id, `fs/read?path=${encodeURIComponent(path)}${max ? `&max=${max}` : ""}`))
-    // An image cut at the 1 MB preview is unreadable: ask once more for up to 8 MB.
     read().then((d) => d.truncated && isImage(path) && d.base64 !== undefined ? read(BIG) : d)
       .then((d) => { if (on) setFile(d) }, (e) => { if (on) setError(errorText(e)) })
     return () => { on = false }
@@ -81,14 +79,11 @@ function parseJson(text: string): unknown {
   try { return JSON.parse(text) } catch { return undefined }
 }
 
-/** Text cut at `max` characters, with the rest a click away. */
 function Clip({ text, max = 400, className }: { text: string; max?: number; className?: string }) {
   const [all, setAll] = useState(false)
   if (all || text.length <= max) return <span className={className}>{text}</span>
   return <span className={className}>{text.slice(0, max)}… <button type="button" className="text-primary hover:underline" onClick={() => setAll(true)}>Show all ({fmtSize(text.length)})</button></span>
 }
-
-// --- Markdown with its frontmatter as a list
 
 function MarkdownFile({ text }: { text: string }) {
   const { meta, body } = useMemo(() => splitFrontmatter(text), [text])
@@ -112,8 +107,6 @@ function splitFrontmatter(text: string): { meta: [string, string][]; body: strin
   return { meta, body: text.slice(m[0].length) }
 }
 
-// --- JSON as a tree
-
 function JsonNode({ name, value, depth }: { name?: string; value: unknown; depth: number }) {
   const [open, setOpen] = useState(depth < 2)
   const [more, setMore] = useState(false)
@@ -134,8 +127,6 @@ function JsonNode({ name, value, depth }: { name?: string; value: unknown; depth
     </div>}
   </details>
 }
-
-// --- JSON lines: a conversation when they read as one, else a tree per line
 
 const CAP = 400
 type Ev = { kind: string; role?: string; text?: string; name?: string; args?: string; output?: string; callId?: string; at?: unknown; raw: unknown }
