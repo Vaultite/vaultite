@@ -6,7 +6,8 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { handle } from "./engine.ts"
-import { add, type How, type Removed } from "./history.ts"
+import { add } from "./history.ts"
+import type { How, Removed } from "./historyrows.ts"
 
 export type Browser = "brave" | "chrome"
 const NAMES: Record<Browser, string> = { brave: "Brave", chrome: "Chrome" }

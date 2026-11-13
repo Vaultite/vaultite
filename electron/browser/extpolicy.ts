@@ -5,6 +5,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import * as store from "./extstore.ts"
+import { ID, MANIFEST } from "./extwire.ts"
 
 /** Where the policy is read, both at once: the machine's, for every Vaultite app (made as an administrator, so changing
  *  it takes one too), and this app's own in its userData. `{ "extensions": ["<an unpacked extension's folder>", "<a Web Store id>"] }` */
@@ -29,7 +30,7 @@ function wanted(said: string[]) {
     const list = (j as { extensions?: unknown })?.extensions
     if (!Array.isArray(list)) { said.push(`${f} has no "extensions" list`); continue }
     for (const x of list) {
-      if (typeof x === "string" && (store.ID.test(x) || path.isAbsolute(x))) out.push(store.ID.test(x) ? x : path.resolve(x))
+      if (typeof x === "string" && (ID.test(x) || path.isAbsolute(x))) out.push(ID.test(x) ? x : path.resolve(x))
       else said.push(`${f}: ${JSON.stringify(x)} is neither an extension's folder (a full path) nor a Web Store id`)
     }
   }
@@ -64,10 +65,10 @@ export async function applyPolicy(): Promise<store.Installed[]> {
     x.managed = managed
     keep.add(x.id)
   }
-  for (const dir of wants.filter((w) => !store.ID.test(w))) {
+  for (const dir of wants.filter((w) => !ID.test(w))) {
     let had: store.Installed | undefined
     try {
-      const m = JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8").replace(/^﻿/, "")) as store.Manifest
+      const m = MANIFEST.parse(JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8").replace(/^﻿/, "")))
       had = store.get(store.idOfFolder(dir, m))
       const sig = signature(dir)
       const x = had?.managed?.sig === sig ? had : store.fromFolder(dir)
@@ -82,7 +83,7 @@ export async function applyPolicy(): Promise<store.Installed[]> {
       console.error(`vaultite: couldn't add the managed extension ${dir}:`, e)
     }
   }
-  for (const id of wants.filter((w) => store.ID.test(w))) {
+  for (const id of wants.filter((w) => ID.test(w))) {
     try {
       let x = store.get(id)
       if (!x) { x = await store.fromStore(id); load.push(x) }

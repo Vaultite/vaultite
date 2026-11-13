@@ -217,7 +217,84 @@ async function takeoverSteps(check: Check) {
     [null, "click", { el: near[0] }, { action: "click", el: { frame: { x: 1, y: 2 } } }, { action: "click", at: { x: "1", y: 2 } }, { action: 5 }].every((s) => !STEP.safeParse(s).success))
 }
 
+async function historyRows(check: Check) {
+  const H = await import("../../../electron/browser/historyrows.ts")
+  const { DatabaseSync } = await import("node:sqlite")
+  const db = new DatabaseSync(":memory:")
+  db.exec(H.TABLES)
+  db.exec(`INSERT INTO urls (id, url, title, host, visits, typed, last, frecency) VALUES (1, 'https://lighthouse.example.com/', 'Lighthouse', 'lighthouse.example.com', 2, 1, 20, 140.5), (2, 'https://example.com/a', '', 'example.com', 0, 0, 0, 0);
+    INSERT INTO visits (id, url, at, profile, how) VALUES (1, 1, 10, 'p1', 'typed'), (2, 1, 20, 'p1', 'sideways')`)
+  const counts = H.COUNTS.parse(db.prepare("SELECT count(*) AS n, sum(how = 'typed') AS typed, max(at) AS last FROM visits WHERE url = ?").get(1))
+  const none = H.COUNTS.parse(db.prepare("SELECT count(*) AS n, sum(how = 'typed') AS typed, max(at) AS last FROM visits WHERE url = ?").get(2))
+  const ranked = H.RANKED.parse(db.prepare("SELECT url, title, host, visits, typed, last, frecency FROM urls WHERE frecency > 0").all())
+  const visits = H.VISITS.parse(db.prepare("SELECT v.id, v.at, v.profile, v.how, u.url, u.title, u.host FROM visits v JOIN urls u ON u.id = v.url ORDER BY v.at").all())
+  const gone = H.GONE.parse(db.prepare("SELECT v.id, v.url AS urlId, v.at, v.profile, v.how, v.source, u.url, u.title FROM visits v JOIN urls u ON u.id = v.url WHERE u.host = ?").all("lighthouse.example.com"))
+  check("browser history: its SQLite rows read as their types, a visit's unknown way as other", same([
+    [counts, { n: 2, typed: 1, last: 20 }], [none, { n: 0, typed: null, last: null }], [ranked.map((r) => r.frecency), [140.5]],
+    [visits.map((v) => v.how), ["typed", "other"]], [gone.map((g) => [g.id, g.urlId, g.source]), [[1, 1, ""], [2, 1, ""]]],
+  ]), [counts, none, visits])
+  db.close()
+  const back = H.RESTORED.parse([{ url: "https://a.example.com/", title: "A", at: 5, profile: "p1", how: "link", source: "chrome" }, { url: 5, at: 1 }, null,
+    { url: "https://b.example.com/", at: NaN }, { url: "https://c.example.com/", at: 7, how: "sideways", title: 3 }])
+  check("browser history: visits given back are each well-formed or left out, as the app's undo sends them", same([
+    [back, [{ url: "https://a.example.com/", title: "A", at: 5, profile: "p1", how: "link", source: "chrome" }, { url: "https://c.example.com/", title: "", at: 7, profile: "", how: "other", source: "" }]],
+    [H.RESTORED.parse("x"), []], [H.REMOVE_ASK.parse({ visits: ["3", 4], urls: [5] }), { visits: [3, 4], urls: ["5"] }], [H.REMOVE_ASK.parse(null), { visits: [], urls: [] }],
+  ]), back)
+}
+
+async function extManifests(check: Check) {
+  const X = await import("../../../electron/browser/extwire.ts")
+  const m = X.MANIFEST.parse({ name: "__MSG_name__", version: "1.2", manifest_version: 3, permissions: ["storage", { fileSystem: ["write"] }, "tabs"], host_permissions: ["<all_urls>"],
+    action: { default_title: "Lighthouse", default_popup: "popup.html", default_icon: { 16: "i16.png" } }, commands: { _execute_action: { description: "Open" }, bad: 5 }, key: 5, options_ui: "x" })
+  check("extensions: a manifest's fields read as their types, a malformed one as absent", same([
+    [m.permissions, ["storage", "tabs"]], [m.action, { default_title: "Lighthouse", default_icon: { 16: "i16.png" }, default_popup: "popup.html" }],
+    [m.commands, { _execute_action: { description: "Open" }, bad: {} }], [[m.key, m.options_ui], [null, null]], [X.MANIFEST.safeParse(null).success, false],
+  ]), m)
+  const raw = { name: "x", content_scripts: [{ js: ["a.js"], matches: ["<all_urls>"] }, { js: ["b.js"], world: "MAIN" }, { js: ["vaultite/content.js", "c.js"] }, { css: ["x.css"] }], extra: 1 }
+  check("extensions: the manifest written for Electron has its key and the storage shim first in each isolated content script, the rest as it was", same([
+    [X.prepared(raw, "vaultite/content.js", "KEY"), { ...raw, key: "KEY", content_scripts: [{ js: ["vaultite/content.js", "a.js"], matches: ["<all_urls>"] }, ...raw.content_scripts.slice(1)] }],
+    [X.prepared({ key: "MINE" }, "s.js", "KEY"), { key: "MINE" }], [X.prepared({ content_scripts: "x" }, "s.js"), { content_scripts: "x" }],
+  ]))
+  check("extensions: a locale's messages, another browser's profile names and a native app's manifest read as their types", same([
+    [X.MESSAGES.parse({ name: { message: "Lighthouse" }, bad: 3, n: { message: 4 } }), { name: { message: "Lighthouse" }, bad: {}, n: {} }], [X.MESSAGES.parse("x"), {}],
+    [X.PROFILE_NAMES.parse({ profile: { info_cache: { Default: { name: "Alice" }, "Profile 1": { name: 5 } } } }), { Default: { name: "Alice" }, "Profile 1": {} }], [X.PROFILE_NAMES.parse(null), {}],
+    [X.NATIVE_HOST.safeParse({ path: "/bin/x", allowed_origins: "chrome-extension://abc/" }).success, false], [X.NATIVE_HOST.safeParse({ path: "/bin/x", allowed_origins: [1, "o"] }).success, true],
+  ]))
+}
+
+async function extState(check: Check) {
+  const X = await import("../../../electron/browser/extwire.ts")
+  const id = "a".repeat(32), good = { id, dir: "1-abc", name: "Lighthouse", version: "1", on: true, pinned: true, from: "store", added: 5, granted: ["tabs"], later: "kept" }
+  const st = X.STATE.parse({ list: [good, { id: "b".repeat(32), dir: "2-def" }, { id: "nope", dir: "x" }, { id }, null], checked: 9, seen: { p1: { [id]: "1" }, p2: 3 }, partitions: { p1: "persist:p1" } })
+  check("extensions: the installed list keeps each well-formed one as it was, an older one's missing fields as off, unpinned and from a folder", same([
+    [st.list, [good, { id: "b".repeat(32), dir: "2-def", name: "", version: "", on: false, pinned: false, from: "folder", added: 0 }]], [st.seen, { p1: { [id]: "1" }, p2: {} }],
+    [[st.checked, st.partitions], [9, { p1: "persist:p1" }]], [X.STATE.parse("x"), { list: [], checked: 0, seen: {}, partitions: {} }],
+  ]), st)
+}
+
+async function extCalls(check: Check) {
+  const X = await import("../../../electron/browser/extwire.ts")
+  const icon = X.BUTTON_ASK.parse({ tabId: 3, imageData: { 16: new Uint8Array([1]), 32: "x" } })
+  check("extensions: a button's details by their types, nothing from a non-object", same([
+    [[icon.tabId, icon.imageData?.[16]?.length, icon.imageData?.[32]?.length], [3, 1, 0]], [X.BUTTON_ASK.parse({ tabId: "3", title: 5 }), { title: 5 }], [X.BUTTON_ASK.parse(null), {}],
+  ]))
+  check("extensions: tabs.query reads each filter by its type, and refuses what isn't a query", same([
+    [X.TABS_QUERY.parse(undefined), {}], [X.TABS_QUERY.parse({ active: true, windowId: "x", title: "*Mail*", index: 2 }), { active: true, title: "*Mail*", index: 2 }],
+    [X.TABS_QUERY.safeParse(null).success, false], [X.PERMISSIONS.parse(undefined), {}], [X.PERMISSIONS.safeParse({ permissions: "tabs" }).success, false],
+  ]))
+  const cookie = { url: "https://example.com/", name: "SID", value: "v", secure: true, sameSite: "lax", storeId: "0" }
+  check("extensions: cookies.set takes only what Electron does, well-formed", same([
+    [X.COOKIE_SET.parse(cookie), { url: "https://example.com/", name: "SID", value: "v", secure: true, sameSite: "lax" }],
+    [X.COOKIE_SET.safeParse({ name: "SID" }).success, false], [X.COOKIE_SET.safeParse({ ...cookie, sameSite: "none" }).success, false],
+    [X.COOKIE_FILTER.parse({ domain: "example.com", storeId: "0", partitionKey: {} }), { domain: "example.com" }],
+  ]))
+  check("extensions: a blocking listener's reply keeps what's well-formed, nothing from a non-object", same([
+    [X.REPLY.parse({ cancel: true }), { cancel: true }], [X.REPLY.parse({ requestHeaders: [{ name: "A", value: "1" }, null], redirectUrl: 5 }), {}],
+    [X.REPLY.parse({ responseHeaders: [{ name: "A", value: 1 }] }), { responseHeaders: [{ name: "A" }] }], [X.REPLY.parse("x"), null], [X.REPLY.parse({ authCredentials: { username: "u" } }), {}],
+  ]))
+}
+
 export default async ($: VaultTest) => {
   winspawnFirst($.check)
-  for (const t of [bridge, clipboard, snapshots, linkText, accounts, hangs, cloudSessions, webWire, agentAsks, agentActs, agentWaits, takeoverSteps]) await t($.check)
+  for (const t of [bridge, clipboard, snapshots, linkText, accounts, hangs, cloudSessions, webWire, agentAsks, agentActs, agentWaits, takeoverSteps, historyRows, extManifests, extState, extCalls]) await t($.check)
 }

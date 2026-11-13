@@ -5,12 +5,8 @@ import path from "node:path"
 import { eachPage, handle, tellAll } from "./engine.ts"
 import { literal } from "./mask.ts"
 import { hasSecret, scrub } from "./pagesecrets.ts"
-
-export type How = "typed" | "link" | "bookmark" | "form" | "other"
-const HOWS = new Set<string>(["typed", "link", "bookmark", "form", "other"])
-export type Visit = { id: number; url: string; title: string; host: string; at: number; profile: string; how: How }
-export type Removed = { url: string; title: string; at: number; profile: string; how: How; source: string }
-export type Suggestion = { url: string; title: string; host: string; visits: number; typed: number; last: number }
+import { COUNTS, GONE, HOST_LAST, ID_ROW, ID_ROWS, LIST_ASK, RANKED, RECENT, REMOVE_ASK, RESTORED, SUGGESTIONS, TABLES, URL_ROWS, VISITS,
+  type How, type Removed, type Suggestion } from "./historyrows.ts"
 
 let db: DatabaseSync | null = null
 const q = new Map<string, StatementSync>()
@@ -19,16 +15,7 @@ const sql = (text: string) => { let s = q.get(text); if (!s) q.set(text, s = ope
 function open() {
   if (db) return db
   db = new DatabaseSync(path.join(app.getPath("userData"), "web-history.sqlite"))
-  db.exec(`PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON;
-    CREATE TABLE IF NOT EXISTS urls (id INTEGER PRIMARY KEY, url TEXT NOT NULL UNIQUE, title TEXT NOT NULL DEFAULT '',
-      host TEXT NOT NULL DEFAULT '', visits INTEGER NOT NULL DEFAULT 0, typed INTEGER NOT NULL DEFAULT 0,
-      last INTEGER NOT NULL DEFAULT 0, frecency REAL NOT NULL DEFAULT 0, scored INTEGER NOT NULL DEFAULT 0);
-    CREATE TABLE IF NOT EXISTS visits (id INTEGER PRIMARY KEY, url INTEGER NOT NULL REFERENCES urls(id) ON DELETE CASCADE,
-      at INTEGER NOT NULL, profile TEXT NOT NULL DEFAULT '', how TEXT NOT NULL DEFAULT 'link', source TEXT NOT NULL DEFAULT '');
-    CREATE UNIQUE INDEX IF NOT EXISTS visits_once ON visits(url, at);
-    CREATE INDEX IF NOT EXISTS visits_at ON visits(at);
-    CREATE INDEX IF NOT EXISTS urls_host ON urls(host);
-    CREATE INDEX IF NOT EXISTS urls_frecency ON urls(frecency);`)
+  db.exec(TABLES)
   rescoreStale()
   setInterval(rescoreStale, 6 * 3600_000).unref()
   return db
@@ -52,14 +39,14 @@ function frecencyOf(count: number, recent: { at: number; how: string }[]) {
 }
 
 function rescore(urlId: number) {
-  const n = sql("SELECT count(*) AS n, sum(how = 'typed') AS typed, max(at) AS last FROM visits WHERE url = ?").get(urlId) as { n: number; typed: number | null; last: number | null }
+  const n = COUNTS.parse(sql("SELECT count(*) AS n, sum(how = 'typed') AS typed, max(at) AS last FROM visits WHERE url = ?").get(urlId))
   if (!n.n) { sql("DELETE FROM urls WHERE id = ?").run(urlId); return }
-  const recent = sql("SELECT at, how FROM visits WHERE url = ? ORDER BY at DESC LIMIT 10").all(urlId) as { at: number; how: string }[]
+  const recent = RECENT.parse(sql("SELECT at, how FROM visits WHERE url = ? ORDER BY at DESC LIMIT 10").all(urlId))
   sql("UPDATE urls SET visits = ?, typed = ?, last = ?, frecency = ?, scored = ? WHERE id = ?").run(n.n, n.typed ?? 0, n.last ?? 0, frecencyOf(n.n, recent), today(), urlId)
 }
 
 function rescoreStale() {
-  const stale = sql("SELECT id FROM urls WHERE scored < ?").all(today()) as { id: number }[]
+  const stale = ID_ROWS.parse(sql("SELECT id FROM urls WHERE scored < ?").all(today()))
   if (!stale.length) return
   tx(() => { for (const { id } of stale) rescore(id) })
 }
@@ -70,7 +57,7 @@ export const hostKey = (u: string) => { try { return new URL(u).hostname.toLower
 function addVisit(url: string, title: string, at: number, profile: string, how: How, source = "") {
   sql("INSERT INTO urls (url, title, host) VALUES (?, ?, ?) ON CONFLICT(url) DO UPDATE SET title = CASE WHEN excluded.title <> '' THEN excluded.title ELSE title END")
     .run(url, title, hostKey(url))
-  const { id } = sql("SELECT id FROM urls WHERE url = ?").get(url) as { id: number }
+  const { id } = ID_ROW.parse(sql("SELECT id FROM urls WHERE url = ?").get(url))
   const r = sql("INSERT OR IGNORE INTO visits (url, at, profile, how, source) VALUES (?, ?, ?, ?, ?)").run(id, at, profile, how, source)
   return { id, added: Number(r.changes) > 0 }
 }
@@ -132,7 +119,7 @@ eachPage(({ wc, profile }) => {
 
 export function lastVisits(profile: string): Map<string, number> {
   try {
-    const rows = sql("SELECT u.host AS host, max(v.at) AS at FROM visits v JOIN urls u ON u.id = v.url WHERE v.profile = ? GROUP BY u.host").all(profile) as { host: string; at: number }[]
+    const rows = HOST_LAST.parse(sql("SELECT u.host AS host, max(v.at) AS at FROM visits v JOIN urls u ON u.id = v.url WHERE v.profile = ? GROUP BY u.host").all(profile))
     return new Map(rows.map((r) => [r.host, r.at]))
   } catch { return new Map() }
 }
@@ -145,8 +132,8 @@ export function search(text: string, limit = 8): { complete: { text: string; url
   const t = text.trim().toLowerCase(), ws = words(t)
   if (!ws.length) return { complete: null, rows: [] }
   const where = ws.map(() => "(instr(lower(url), ?) > 0 OR instr(lower(title), ?) > 0)").join(" AND ")
-  const found = sql(`SELECT url, title, host, visits, typed, last, frecency FROM urls WHERE frecency > 0 AND ${where} ORDER BY frecency DESC LIMIT 400`)
-    .all(...ws.flatMap((w) => [w, w])) as (Suggestion & { frecency: number })[]
+  const found = RANKED.parse(sql(`SELECT url, title, host, visits, typed, last, frecency FROM urls WHERE frecency > 0 AND ${where} ORDER BY frecency DESC LIMIT 400`)
+    .all(...ws.flatMap((w) => [w, w])))
   const scored = found.flatMap((r) => {
     const b = bare(r.url).toLowerCase(), title = r.title.toLowerCase()
     if (!ws.every((w) => w.length >= 3 || startsWord(b, w) || startsWord(title, w))) return []
@@ -179,7 +166,7 @@ function completion(t: string, rows: (Suggestion & { frecency: number })[]) {
 }
 
 export function top(limit = 8): Suggestion[] {
-  const rows = sql("SELECT url, title, host, visits, typed, last FROM urls WHERE frecency > 0 ORDER BY frecency DESC LIMIT 200").all() as Suggestion[]
+  const rows = SUGGESTIONS.parse(sql("SELECT url, title, host, visits, typed, last FROM urls WHERE frecency > 0 ORDER BY frecency DESC LIMIT 200").all())
   const seen = new Set<string>(), out: Suggestion[] = []
   for (const r of rows) { if (seen.has(r.host)) continue; seen.add(r.host); out.push(r); if (out.length >= limit) break }
   return out
@@ -188,21 +175,18 @@ export function top(limit = 8): Suggestion[] {
 export function list(opts: { before?: number; text?: string; limit?: number }) {
   const ws = words(opts.text ?? ""), limit = Math.min(Math.max(1, opts.limit ?? 200), 1000)
   const where = ["v.at < ?", ...ws.map(() => "(instr(lower(u.url), ?) > 0 OR instr(lower(u.title), ?) > 0)")].join(" AND ")
-  const rows = sql(`SELECT v.id, v.at, v.profile, v.how, u.url, u.title, u.host FROM visits v JOIN urls u ON u.id = v.url WHERE ${where} ORDER BY v.at DESC LIMIT ?`)
-    .all(opts.before ?? Number.MAX_SAFE_INTEGER, ...ws.flatMap((w) => [w, w]), limit + 1) as Visit[]
+  const rows = VISITS.parse(sql(`SELECT v.id, v.at, v.profile, v.how, u.url, u.title, u.host FROM visits v JOIN urls u ON u.id = v.url WHERE ${where} ORDER BY v.at DESC LIMIT ?`)
+    .all(opts.before ?? Number.MAX_SAFE_INTEGER, ...ws.flatMap((w) => [w, w]), limit + 1))
   return { visits: rows.slice(0, limit), more: rows.length > limit }
 }
 
-export function remove(o: { visits?: number[]; urls?: string[] }): Removed[] {
-  const ids = (o.visits ?? []).filter((n) => Number.isInteger(n)).slice(0, 100_000)
-  const urls = (o.urls ?? []).filter((u) => typeof u === "string").slice(0, 10_000)
+export function remove(o: { visits: number[]; urls: string[] }): Removed[] {
+  const ids = o.visits.filter((n) => Number.isInteger(n)).slice(0, 100_000)
+  const urls = o.urls.slice(0, 10_000)
   const out = tx(() => {
-    const gone: (Removed & { urlId: number; id: number })[] = []
-    for (const id of ids) {
-      const r = sql("SELECT v.id, v.url AS urlId, v.at, v.profile, v.how, v.source, u.url, u.title FROM visits v JOIN urls u ON u.id = v.url WHERE v.id = ?").get(id)
-      if (r) gone.push(r as unknown as Removed & { urlId: number; id: number })
-    }
-    for (const url of urls) gone.push(...sql("SELECT v.id, v.url AS urlId, v.at, v.profile, v.how, v.source, u.url, u.title FROM visits v JOIN urls u ON u.id = v.url WHERE u.url = ?").all(url) as unknown as (Removed & { urlId: number; id: number })[])
+    const gone: Gone = []
+    for (const id of ids) gone.push(...GONE.parse(sql("SELECT v.id, v.url AS urlId, v.at, v.profile, v.how, v.source, u.url, u.title FROM visits v JOIN urls u ON u.id = v.url WHERE v.id = ?").all(id)))
+    for (const url of urls) gone.push(...GONE.parse(sql("SELECT v.id, v.url AS urlId, v.at, v.profile, v.how, v.source, u.url, u.title FROM visits v JOIN urls u ON u.id = v.url WHERE u.url = ?").all(url)))
     return takeOut(gone)
   })
   changed()
@@ -212,13 +196,14 @@ export function remove(o: { visits?: number[]; urls?: string[] }): Removed[] {
 export function removeSite(site: string): Removed[] {
   const s = site.toLowerCase().replace(/^www\./, "")
   if (!s) return []
-  const out = tx(() => takeOut(sql("SELECT v.id, v.url AS urlId, v.at, v.profile, v.how, v.source, u.url, u.title FROM visits v JOIN urls u ON u.id = v.url WHERE u.host = ? OR u.host LIKE ?")
-    .all(s, `%.${s}`) as unknown as (Removed & { urlId: number; id: number })[]))
+  const out = tx(() => takeOut(GONE.parse(sql("SELECT v.id, v.url AS urlId, v.at, v.profile, v.how, v.source, u.url, u.title FROM visits v JOIN urls u ON u.id = v.url WHERE u.host = ? OR u.host LIKE ?")
+    .all(s, `%.${s}`))))
   changed()
   return out
 }
 
-function takeOut(gone: (Removed & { urlId: number; id: number })[]): Removed[] {
+type Gone = ReturnType<typeof GONE.parse>
+function takeOut(gone: Gone): Removed[] {
   const del = sql("DELETE FROM visits WHERE id = ?"), touched = new Set<number>(), seen = new Set<number>()
   const out: Removed[] = []
   for (const g of gone) {
@@ -235,7 +220,7 @@ function takeOut(gone: (Removed & { urlId: number; id: number })[]): Removed[] {
 export function clear(from?: number | null, to?: number | null): number {
   const lo = typeof from === "number" ? from : 0, hi = typeof to === "number" ? to : Number.MAX_SAFE_INTEGER
   const n = tx(() => {
-    const touched = sql("SELECT DISTINCT url FROM visits WHERE at >= ? AND at < ?").all(lo, hi) as { url: number }[]
+    const touched = URL_ROWS.parse(sql("SELECT DISTINCT url FROM visits WHERE at >= ? AND at < ?").all(lo, hi))
     const r = sql("DELETE FROM visits WHERE at >= ? AND at < ?").run(lo, hi)
     for (const { url } of touched) rescore(url)
     return Number(r.changes)
@@ -250,9 +235,8 @@ export function add(visits: Removed[]): number {
     const touched = new Set<number>()
     let added = 0
     for (const v of visits) {
-      if (!v || typeof v.url !== "string" || !web(v.url) || !Number.isFinite(v.at)) continue
-      const r = addVisit(v.url, typeof v.title === "string" ? v.title : "", v.at, typeof v.profile === "string" ? v.profile : "",
-        HOWS.has(v.how) ? v.how : "other", typeof v.source === "string" ? v.source : "")
+      if (!web(v.url) || !Number.isFinite(v.at)) continue
+      const r = addVisit(v.url, v.title, v.at, v.profile, v.how, v.source)
       if (r.added) { added++; touched.add(r.id) }
     }
     for (const id of touched) rescore(id)
@@ -268,7 +252,7 @@ const num = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x : u
 handle("history:search", (_w, t, limit) => search(text(t, 500), Math.min(20, num(limit) ?? 8)))
 handle("history:top", (_w, limit) => top(Math.min(24, num(limit) ?? 8)))
 handle("history:list", (_w, o) => {
-  const x = (o && typeof o === "object" ? o : {}) as Record<string, unknown>
+  const x = LIST_ASK.parse(o)
   return list({ before: num(x.before), text: text(x.text, 500), limit: num(x.limit) })
 })
 handle("history:typed", (_w, url, how) => {
@@ -277,10 +261,7 @@ handle("history:typed", (_w, url, how) => {
   for (const [k, v] of asked) if (Date.now() - v.at > ASKED_FOR) asked.delete(k)
   asked.set(u, { how: how === "bookmark" ? "bookmark" : "typed", at: Date.now() })
 })
-handle("history:remove", (_w, o) => {
-  const x = (o && typeof o === "object" ? o : {}) as Record<string, unknown>
-  return remove({ visits: Array.isArray(x.visits) ? x.visits.map(Number) : [], urls: Array.isArray(x.urls) ? x.urls.map(String) : [] })
-})
+handle("history:remove", (_w, o) => remove(REMOVE_ASK.parse(o)))
 handle("history:remove-site", (_w, site) => removeSite(text(site, 300)))
 handle("history:clear", (_w, from, to) => clear(num(from) ?? null, num(to) ?? null))
-handle("history:restore", (_w, visits) => add(Array.isArray(visits) ? visits as Removed[] : []))
+handle("history:restore", (_w, visits) => add(RESTORED.parse(visits)))

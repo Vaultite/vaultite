@@ -8,6 +8,7 @@ import fs from "node:fs"
 import { createRequire } from "node:module"
 import os from "node:os"
 import path from "node:path"
+import { ID, MANIFEST, MESSAGES, NATIVE_HOST, PROFILE_NAMES, prepared, RAW_MANIFEST, STATE, type Manifest } from "./extwire.ts"
 
 /** A file written whole or not at all (a crash mid-write leaves the old one). */
 function writeAtomic(p: string, text: string) {
@@ -38,19 +39,17 @@ type State = { list: Installed[]; checked: number; seen: Record<string, Record<s
   partitions: Record<string, string> }
 
 const STORE = "https://clients2.google.com/service/update2/crx"
-export const ID = /^[a-p]{32}$/
 const root = () => path.join(app.getPath("userData"), "extensions")
 const stateFile = () => path.join(root(), "extensions.json")
 let state: State | null = null
 
 export function load(): State {
   if (state) return state
-  let j: Partial<State> = {}
-  try { j = JSON.parse(fs.readFileSync(stateFile(), "utf8")) } catch { /* none yet */ }
-  const list = (Array.isArray(j.list) ? j.list : []).filter((x): x is Installed => !!x && ID.test(x.id) && typeof x.dir === "string"
-    && fs.existsSync(path.join(root(), x.id, x.dir, "manifest.json")))
-  state = { list, checked: typeof j.checked === "number" ? j.checked : 0, seen: j.seen && typeof j.seen === "object" ? j.seen : {},
-    partitions: j.partitions && typeof j.partitions === "object" ? j.partitions : {} }
+  let text = ""
+  try { text = fs.readFileSync(stateFile(), "utf8") } catch { /* none yet */ }
+  const j = STATE.parse(text ? parsed(text) : {})
+  const list: Installed[] = j.list.filter((x) => fs.existsSync(path.join(root(), x.id, x.dir, "manifest.json")))
+  state = { ...j, list }
   return state
 }
 export function save() {
@@ -63,21 +62,13 @@ export const dirOf = (x: Installed) => path.join(root(), x.id, x.dir)
 
 // ---------- reading an extension's files ----------
 
-export type Manifest = Record<string, unknown> & {
-  name?: string; version?: string; manifest_version?: number; description?: string; default_locale?: string
-  icons?: Record<string, string>; permissions?: string[]; optional_permissions?: string[]; host_permissions?: string[]
-  content_scripts?: { js?: string[]; world?: string }[]
-  action?: { default_title?: string; default_icon?: string | Record<string, string>; default_popup?: string }
-  browser_action?: Manifest["action"]
-  options_ui?: { page?: string }; options_page?: string; commands?: Record<string, { description?: string }>
-  key?: string
-}
+const parsed = (text: string) => { try { return JSON.parse(text.replace(/^\uFEFF/, "")) } catch { return null } }
+const rawManifest = (dir: string) => RAW_MANIFEST.parse(JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8").replace(/^\uFEFF/, "")))
 const manifests = new Map<string, Manifest>()
 export function manifestOf(dir: string): Manifest {
   let m = manifests.get(dir)
   if (!m) {
-    const text = fs.readFileSync(path.join(dir, "manifest.json"), "utf8").replace(/^﻿/, "")
-    m = JSON.parse(text) as Manifest
+    m = MANIFEST.parse(rawManifest(dir))
     manifests.set(dir, m)
   }
   return m
@@ -91,7 +82,7 @@ export function said(dir: string, text: unknown): string {
   const locale = String(manifestOf(dir).default_locale ?? "en")
   for (const l of [locale, "en", "en_US"]) {
     try {
-      const msgs = JSON.parse(fs.readFileSync(path.join(dir, "_locales", l, "messages.json"), "utf8").replace(/^﻿/, "")) as Record<string, { message?: string }>
+      const msgs = MESSAGES.parse(JSON.parse(fs.readFileSync(path.join(dir, "_locales", l, "messages.json"), "utf8").replace(/^﻿/, "")))
       const hit = Object.entries(msgs).find(([k]) => k.toLowerCase() === m[1].toLowerCase())?.[1]?.message
       if (hit) return hit
     } catch { /* that locale isn't there */ }
@@ -99,13 +90,14 @@ export function said(dir: string, text: unknown): string {
   return text
 }
 
+const MIMES = new Map([["png", "image/png"], ["jpg", "image/jpeg"], ["jpeg", "image/jpeg"], ["gif", "image/gif"], ["svg", "image/svg+xml"], ["webp", "image/webp"], ["ico", "image/x-icon"]])
 /** A file of the extension's as a data URL (an icon), the size nearest `want` when there are several; "" if none. */
 export function imageOf(dir: string, icon: unknown, want = 32): string {
   let rel = typeof icon === "string" ? icon : ""
   if (icon && typeof icon === "object") {
     const sizes = Object.keys(icon).map(Number).filter((n) => n > 0).sort((a, b) => a - b)
     const size = sizes.find((n) => n >= want) ?? sizes[sizes.length - 1]
-    rel = size ? String((icon as Record<string, unknown>)[String(size)]) : ""
+    rel = size ? String(new Map(Object.entries(icon)).get(String(size))) : ""
   }
   if (!rel) return ""
   const file = path.resolve(dir, rel.replace(/^\/+/, ""))
@@ -114,7 +106,7 @@ export function imageOf(dir: string, icon: unknown, want = 32): string {
     const buf = fs.readFileSync(file)
     if (buf.length > 512 * 1024) return ""
     const ext = path.extname(file).slice(1).toLowerCase()
-    const mime = ({ png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", svg: "image/svg+xml", webp: "image/webp", ico: "image/x-icon" } as Record<string, string>)[ext]
+    const mime = MIMES.get(ext)
     return mime ? `data:${mime};base64,${buf.toString("base64")}` : ""
   } catch { return "" }
 }
@@ -128,12 +120,7 @@ const SHIM = "vaultite/content.js"
  *  its content scripts (Electron's content scripts have no sync area, and a preload can't reach them). */
 function prepare(dir: string, key?: Buffer) {
   manifests.delete(dir)
-  const m = manifestOf(dir)
-  if (key && !m.key) m.key = key.toString("base64")
-  for (const cs of m.content_scripts ?? []) {
-    if (cs.world === "MAIN" || !cs.js?.length || cs.js[0] === SHIM) continue
-    cs.js = [SHIM, ...cs.js]
-  }
+  const m = prepared(rawManifest(dir), SHIM, key?.toString("base64"))
   fs.mkdirSync(path.join(dir, "vaultite"), { recursive: true })
   fs.writeFileSync(path.join(dir, SHIM), `(${String(shim())})();\n`)
   fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify(m, null, 2))
@@ -306,7 +293,7 @@ export function others(): Found[] {
           if (!v) continue
           const dir = path.join(exts, id, v), m = manifestOf(dir)
           // (the browser's own parts, which aren't extensions a person installed)
-          if (!m.name || (m as { theme?: unknown }).theme) continue
+          if (!m.name || m.theme) continue
           out.set(id, { browser, id, name: said(dir, m.name), version: String(m.version ?? ""), icon: imageOf(dir, m.icons, 32), dir })
         } catch { /* unreadable: left out */ }
       }
@@ -325,13 +312,13 @@ export function sources(id: string): Source[] {
   for (const [browser, base] of BROWSERS) {
     let profiles: string[] = []
     try { profiles = fs.readdirSync(base).filter((p) => p === "Default" || /^Profile \d+$/.test(p)) } catch { continue }
-    let names: Record<string, { name?: unknown }> = {}
-    try { names = JSON.parse(fs.readFileSync(path.join(base, "Local State"), "utf8"))?.profile?.info_cache ?? {} } catch { /* named by folder */ }
+    let text = ""
+    try { text = fs.readFileSync(path.join(base, "Local State"), "utf8") } catch { /* named by folder */ }
+    const names = PROFILE_NAMES.parse(parsed(text))
     for (const prof of profiles.sort((a, b) => (a === "Default" ? -1 : b === "Default" ? 1 : a.localeCompare(b, undefined, { numeric: true })))) {
       const dir = path.join(base, prof)
       if (!AREAS.some((a) => fs.existsSync(path.join(dir, a, id)))) continue
-      const name = names[prof]?.name
-      out.push({ browser, profile: prof, name: typeof name === "string" && name ? name : prof, dir })
+      out.push({ browser, profile: prof, name: names[prof]?.name || prof, dir })
     }
   }
   return out
@@ -360,9 +347,9 @@ export function nativeHost(name: string, ext: string): { path: string } | null {
   if (process.platform === "win32") {
     for (const file of windowsManifests(name)) {
       try {
-        const j = JSON.parse(fs.readFileSync(file, "utf8")) as { path?: string; allowed_origins?: string[] }
+        const j = NATIVE_HOST.safeParse(JSON.parse(fs.readFileSync(file, "utf8"))).data
         // (Windows lets the app's path be relative to its manifest)
-        if (typeof j.path === "string" && j.allowed_origins?.includes(`chrome-extension://${ext}/`)) return { path: path.resolve(path.dirname(file), j.path) }
+        if (j?.allowed_origins.includes(`chrome-extension://${ext}/`)) return { path: path.resolve(path.dirname(file), j.path) }
       } catch { /* not readable */ }
     }
     return null
@@ -372,8 +359,8 @@ export function nativeHost(name: string, ext: string): { path: string } | null {
     : [...BROWSERS.map(([, b]) => path.join(b, "NativeMessagingHosts")), "/etc/opt/chrome/native-messaging-hosts", "/etc/chromium/native-messaging-hosts"]
   for (const d of dirs) {
     try {
-      const j = JSON.parse(fs.readFileSync(path.join(d, `${name}.json`), "utf8")) as { path?: string; allowed_origins?: string[] }
-      if (typeof j.path === "string" && path.isAbsolute(j.path) && j.allowed_origins?.includes(`chrome-extension://${ext}/`)) return { path: j.path }
+      const j = NATIVE_HOST.safeParse(JSON.parse(fs.readFileSync(path.join(d, `${name}.json`), "utf8"))).data
+      if (j && path.isAbsolute(j.path) && j.allowed_origins.includes(`chrome-extension://${ext}/`)) return { path: j.path }
     } catch { /* not there */ }
   }
   return null

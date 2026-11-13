@@ -2,8 +2,9 @@
 // its request hooks relay them to what extensions.preload.cjs adds; onAuthRequired comes from Electron's `login`.
 import { type Session, type WebFrameMain } from "electron"
 import { allPages, onLogin, onRequest, requestsChanged, type RequestAnswer, type RequestDetails, type RequestEvent } from "./engine.ts"
-import { addCalls, onUnlisten, permsOf, workerOf, type Ctx } from "./extapi.ts"
+import { addCalls, onUnlisten, permsOf, workerOf } from "./extapi.ts"
 import { dirOf, manifestOf } from "./extstore.ts"
+import { LISTENER_FILTER, REPLY, type Reply } from "./extwire.ts"
 
 type Event = RequestEvent | "onAuthRequired"
 const EVENTS: Event[] = ["onBeforeRequest", "onBeforeSendHeaders", "onSendHeaders", "onHeadersReceived", "onAuthRequired", "onResponseStarted",
@@ -109,8 +110,6 @@ const wants = (l: Listener, u: URL, type: string, src: Source) =>
   (!l.types || l.types.has(type)) && (l.tabId === undefined || l.tabId === src.tabId) && (l.windowId === undefined || l.windowId === src.windowId)
   && l.urls.some((m) => m(u)) && l.hosts.some((m) => m(u))
 
-type Reply = { cancel?: boolean; redirectUrl?: string; requestHeaders?: { name: string; value?: string }[]
-  responseHeaders?: { name: string; value?: string }[]; authCredentials?: { username: string; password: string } } | null
 
 /** Tells the extensions listening for `ev`: an answer only when a blocking listener gives one. */
 function relay(ev: Event, d: RequestDetails, s: Session, extra?: Record<string, unknown>): Promise<Answer | void> | void {
@@ -138,7 +137,7 @@ type Answer = RequestAnswer & { authCredentials?: { username: string; password: 
 /** Chrome's way with several: a cancel wins, else the last redirect (or headers, or credentials) given. */
 function answerOf(ev: Event, rs: Reply[], d: RequestDetails): Answer | void {
   if (rs.some((r) => r?.cancel === true)) return { cancel: true }
-  const last = <K extends keyof NonNullable<Reply>>(k: K) => rs.map((r) => r?.[k]).filter((v) => v !== undefined).pop() as NonNullable<Reply>[K] | undefined
+  const last = <K extends keyof NonNullable<Reply>>(k: K) => rs.map((r) => r?.[k]).filter((v) => v !== undefined).pop()
   if (ev === "onAuthRequired") {
     const a = last("authCredentials")
     return a && typeof a === "object" ? { authCredentials: { username: String(a.username ?? ""), password: String(a.password ?? "") } } : undefined
@@ -205,8 +204,8 @@ const allowedBlocking = (m: ReturnType<typeof manifestOf>, ev: Event) => {
 }
 
 addCalls({
-  "webRequest.addListener": (c: Ctx, event: unknown, lid: unknown, filter: { urls?: unknown; types?: unknown; tabId?: unknown; windowId?: unknown } = {}, spec: unknown) => {
-    const ev = EVENTS.find((e) => e === event)
+  "webRequest.addListener": (c, event, lid, given, spec) => {
+    const filter = LISTENER_FILTER.parse(given), ev = EVENTS.find((e) => e === event)
     const m = manifestOf(dirOf(c.ext))
     if (!ev || typeof lid !== "string" || !(m.permissions ?? []).includes("webRequest")) throw new Error("webRequest isn't allowed")
     const specs = new Set(Array.isArray(spec) ? spec.map(String) : [])
@@ -224,10 +223,10 @@ addCalls({
     })
     changed(c.s)
   },
-  "webRequest.removeListener": (c: Ctx, lid: unknown) => { if (listeners.get(c.s)?.delete(`${c.ext.id} ${String(lid)}`)) changed(c.s) },
-  "webRequest.reply": (c: Ctx, rid: unknown, r: unknown) => {
+  "webRequest.removeListener": (c, lid) => { if (listeners.get(c.s)?.delete(`${c.ext.id} ${String(lid)}`)) changed(c.s) },
+  "webRequest.reply": (c, rid, r) => {
     const p = pending.get(String(rid))
-    if (p && p.ext === c.ext.id) p.done(r && typeof r === "object" ? (r as Reply) : null)
+    if (p && p.ext === c.ext.id) p.done(REPLY.parse(r))
   },
 })
 

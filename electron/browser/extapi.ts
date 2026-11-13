@@ -4,6 +4,8 @@ import { dialog, ipcMain, Notification, webFrameMain, WebContentsView, type IpcM
 import { allPages, appWindows, focusedWindow, ownedByAgent, tell, tellAll, windowById, windowOfPage, type EnginePage, type EngineWindow } from "./engine.ts"
 import { extensionPage } from "./crx.ts"
 import { dirOf, get, imageOf, manifestOf, nativeHost, said, change, type Installed } from "./extstore.ts"
+import { BUTTON_ASK, COOKIE_FILTER, COOKIE_SET, FRAME_ASK, NAMED_COOKIE, NOTE, PAGE_ASK, PERMISSIONS, POPULATE, TAB_CREATE, TAB_HIGHLIGHT, TAB_UPDATE, TABS_QUERY,
+  WINDOW_CREATE, WINDOW_UPDATE, type ButtonAsk, type Permissions } from "./extwire.ts"
 import { spawn, type ChildProcess } from "node:child_process"
 import crypto from "node:crypto"
 
@@ -151,20 +153,18 @@ const color = (c: unknown) => {
   if (Array.isArray(c) && c.length >= 3) return `rgba(${c.slice(0, 3).map(Number).join(",")},${c.length > 3 ? Number(c[3]) / 255 : 1})`
   return ""
 }
-function setAction(c: Ctx, details: unknown, patch: Action) {
-  const d = (details ?? {}) as { tabId?: unknown }
+function setAction(c: Ctx, d: ButtonAsk, patch: Action) {
   const a = actionOf(c.s, c.ext.id)
-  if (typeof d.tabId === "number") a.tabs.set(d.tabId, { ...a.tabs.get(d.tabId), ...patch })
+  if (d.tabId !== undefined) a.tabs.set(d.tabId, { ...a.tabs.get(d.tabId), ...patch })
   else Object.assign(a.all, patch)
   actionsChanged()
 }
-function readAction<K extends keyof Action>(c: Ctx, details: unknown, k: K, fallback: Action[K]) {
-  const d = (details ?? {}) as { tabId?: unknown }
+function readAction<K extends keyof Action>(c: Ctx, d: ButtonAsk, k: K, fallback: Action[K]) {
   const a = actionOf(c.s, c.ext.id)
-  return (typeof d.tabId === "number" ? a.tabs.get(d.tabId)?.[k] : undefined) ?? a.all[k] ?? fallback
+  return (d.tabId !== undefined ? a.tabs.get(d.tabId)?.[k] : undefined) ?? a.all[k] ?? fallback
 }
-function iconFrom(c: Ctx, d: { path?: unknown; imageData?: Record<string, Uint8Array> }) {
-  if (d.imageData && typeof d.imageData === "object") {
+function iconFrom(c: Ctx, d: ButtonAsk) {
+  if (d.imageData) {
     const sizes = Object.keys(d.imageData).map(Number).sort((a, b) => a - b)
     const size = sizes.find((n) => n >= 32) ?? sizes[sizes.length - 1]
     const png = d.imageData[String(size)]
@@ -299,91 +299,93 @@ export const permsOf = (x: Installed) => {
   return { permissions: [...(m.permissions ?? []).filter((p) => !p.includes("/") && p !== "<all_urls>"), ...(x.granted ?? []).filter((p) => !p.includes("/"))],
     origins: [...(m.host_permissions ?? []), ...(m.permissions ?? []).filter((p) => p.includes("/") || p === "<all_urls>"), ...(x.granted ?? []).filter((p) => p.includes("/"))] }
 }
-const has = (x: Installed, want: { permissions?: string[]; origins?: string[] }) => {
+const has = (x: Installed, want: Permissions) => {
   const mine = permsOf(x)
   return (want.permissions ?? []).every((p) => mine.permissions.includes(p))
     && (want.origins ?? []).every((o) => mine.origins.some((h) => h === o || h === "<all_urls>" || h === "*://*/*" || matches(h, o.replace(/\*/g, "x"))))
 }
 
-export type Call = (c: Ctx, ...args: any[]) => unknown // eslint-disable-line @typescript-eslint/no-explicit-any
+export type Call = (c: Ctx, ...args: unknown[]) => unknown
+const button = <T>(fn: (c: Ctx, d: ButtonAsk) => T): Call => (c, d) => fn(c, BUTTON_ASK.parse(d))
 const CALLS: Record<string, Call> = {
-  "action.setTitle": (c, d) => setAction(c, d, { title: String(d?.title ?? "").slice(0, 200) }),
-  "action.getTitle": (c, d) => readAction(c, d, "title", buttonOf(c.ext, c.s, -1).title),
-  "action.setIcon": (c, d) => setAction(c, d, { icon: iconFrom(c, d ?? {}) }),
-  "action.setBadgeText": (c, d) => setAction(c, d, { badge: String(d?.text ?? "").slice(0, 8) }),
-  "action.getBadgeText": (c, d) => readAction(c, d, "badge", ""),
-  "action.setBadgeBackgroundColor": (c, d) => setAction(c, d, { badgeColor: color(d?.color) }),
-  "action.getBadgeBackgroundColor": (c, d) => readAction(c, d, "badgeColor", "") || [0, 0, 0, 0],
-  "action.setBadgeTextColor": (c, d) => setAction(c, d, { badgeTextColor: color(d?.color) }),
-  "action.getBadgeTextColor": (c, d) => readAction(c, d, "badgeTextColor", "") || [255, 255, 255, 255],
-  "action.setPopup": (c, d) => setAction(c, d, { popup: String(d?.popup ?? "") }),
-  "action.getPopup": (c, d) => { const p = readAction(c, d, "popup", undefined); return p === undefined ? popupOf(c.ext, c.s, Number(d?.tabId ?? -1)) : p ? new URL(p, `chrome-extension://${c.ext.id}/`).href : "" },
+  "action.setTitle": button((c, d) => setAction(c, d, { title: String(d.title ?? "").slice(0, 200) })),
+  "action.getTitle": button((c, d) => readAction(c, d, "title", buttonOf(c.ext, c.s, -1).title)),
+  "action.setIcon": button((c, d) => setAction(c, d, { icon: iconFrom(c, d) })),
+  "action.setBadgeText": button((c, d) => setAction(c, d, { badge: String(d.text ?? "").slice(0, 8) })),
+  "action.getBadgeText": button((c, d) => readAction(c, d, "badge", "")),
+  "action.setBadgeBackgroundColor": button((c, d) => setAction(c, d, { badgeColor: color(d.color) })),
+  "action.getBadgeBackgroundColor": button((c, d) => readAction(c, d, "badgeColor", "") || [0, 0, 0, 0]),
+  "action.setBadgeTextColor": button((c, d) => setAction(c, d, { badgeTextColor: color(d.color) })),
+  "action.getBadgeTextColor": button((c, d) => readAction(c, d, "badgeTextColor", "") || [255, 255, 255, 255]),
+  "action.setPopup": button((c, d) => setAction(c, d, { popup: String(d.popup ?? "") })),
+  "action.getPopup": button((c, d) => { const p = readAction(c, d, "popup", undefined); return p === undefined ? popupOf(c.ext, c.s, d.tabId ?? -1) : p ? new URL(p, `chrome-extension://${c.ext.id}/`).href : "" }),
   "action.enable": (c, tabId) => setAction(c, typeof tabId === "number" ? { tabId } : {}, { enabled: true }),
   "action.disable": (c, tabId) => setAction(c, typeof tabId === "number" ? { tabId } : {}, { enabled: false }),
   "action.isEnabled": (c, tabId) => readAction(c, typeof tabId === "number" ? { tabId } : {}, "enabled", true),
   "action.getUserSettings": (c) => ({ isOnToolbar: c.ext.pinned }),
   "action.openPopup": (c) => { const w = current(c); if (w) tell(w, { type: "engine:ext:popup-ask", ext: c.ext.id }) },
 
-  "tabs.query": (c, q: Record<string, unknown> = {}) => {
-    const win = current(c)
-    const urls = q.url === undefined ? null : ([] as unknown[]).concat(q.url).map(String)
+  "tabs.query": (c, given) => {
+    const win = current(c), q = TABS_QUERY.parse(given)
+    const urls = q.url === undefined ? null : (Array.isArray(q.url) ? q.url : [q.url]).map(String)
     return pagesIn(c.s).map(tabOf).filter((t) => {
       if (q.active !== undefined && t.active !== q.active) return false
       if (q.highlighted !== undefined && t.highlighted !== q.highlighted) return false
       if ((q.currentWindow === true || q.lastFocusedWindow === true || q.windowId === -2) && t.windowId !== win?.id) return false
-      if (typeof q.windowId === "number" && q.windowId >= 0 && t.windowId !== q.windowId) return false
-      if (typeof q.status === "string" && t.status !== q.status) return false
-      if (typeof q.title === "string" && !glob(q.title).test(t.title)) return false
-      if (typeof q.index === "number" && t.index !== q.index) return false
-      if (typeof q.audible === "boolean" && t.audible !== q.audible) return false
+      if (q.windowId !== undefined && q.windowId >= 0 && t.windowId !== q.windowId) return false
+      if (q.status !== undefined && t.status !== q.status) return false
+      if (q.title !== undefined && !glob(q.title).test(t.title)) return false
+      if (q.index !== undefined && t.index !== q.index) return false
+      if (q.audible !== undefined && t.audible !== q.audible) return false
       if (q.pinned === true || q.discarded === true) return false
       return !urls || urls.some((u) => matches(u, t.url))
     })
   },
-  "tabs.get": (c, id) => { const p = pageOf(c.s, id); if (!p) throw new Error(`No tab with id: ${id}.`); return tabOf(p) },
+  "tabs.get": (c, id) => { const p = pageOf(c.s, id); if (!p) throw new Error(`No tab with id: ${String(id)}.`); return tabOf(p) },
   "tabs.getCurrent": (c) => { const p = c.tab === undefined ? undefined : pageOf(c.s, c.tab); return p ? tabOf(p) : undefined },
-  "tabs.create": async (c, o: Record<string, unknown> = {}) => {
-    const win = (typeof o.windowId === "number" && windowById(o.windowId)) || current(c)
+  "tabs.create": async (c, given) => {
+    const o = TAB_CREATE.parse(given), win = (o.windowId !== undefined && windowById(o.windowId)) || current(c)
     if (!win) throw new Error("No current window")
     return openTab(win, c.s, addressFor(c, o.url) || "https://duckduckgo.com/", o.active !== false)
   },
   "tabs.update": async (c, a, b) => {
-    const [id, o] = typeof a === "number" ? [a, (b ?? {}) as Record<string, unknown>] : [c.tab ?? frontOf(current(c)!, c.s), (a ?? {}) as Record<string, unknown>]
+    const [id, o] = typeof a === "number" ? [a, TAB_UPDATE.parse(b)] : [c.tab ?? frontOf(current(c)!, c.s), TAB_UPDATE.parse(a)]
     const p = pageOf(c.s, id)
     if (!p) throw new Error(`No tab with id: ${id}.`)
     if (o.url) await p.wc.loadURL(addressFor(c, o.url)).catch(() => {})
-    if (typeof o.muted === "boolean") p.wc.setAudioMuted(o.muted)
+    if (o.muted !== undefined) p.wc.setAudioMuted(o.muted)
     if (o.active === true || o.highlighted === true) { setFront(p); tell(p.win, { type: "engine:ext:show", url: p.wc.getURL(), profile: profileOf(c.s) }) }
     return tabOf(p)
   },
-  "tabs.highlight": (c, o: { tabs?: number | number[] } = {}) => {
-    const p = pageOf(c.s, ([] as number[]).concat(o.tabs ?? [])[0])
+  "tabs.highlight": (c, given) => {
+    const { tabs } = TAB_HIGHLIGHT.parse(given), p = pageOf(c.s, Array.isArray(tabs) ? tabs[0] : tabs)
     if (p) { setFront(p); tell(p.win, { type: "engine:ext:show", url: p.wc.getURL(), profile: profileOf(c.s) }); return windowOf(p.win, c.s, true) }
   },
   "tabs.remove": (c, ids) => {
-    for (const id of ([] as unknown[]).concat(ids)) { const p = pageOf(c.s, id); if (p) tell(p.win, { type: "engine:ext:close", url: p.wc.getURL(), profile: profileOf(c.s) }) }
+    for (const id of Array.isArray(ids) ? ids : [ids]) { const p = pageOf(c.s, id); if (p) tell(p.win, { type: "engine:ext:close", url: p.wc.getURL(), profile: profileOf(c.s) }) }
   },
 
-  "windows.get": (c, id, o?: { populate?: boolean }) => { const w = id === -2 ? current(c) : windows(c.s).find((x) => x.id === id); if (!w) throw new Error(`No window with id: ${id}.`); return windowOf(w, c.s, o?.populate) },
-  "windows.getCurrent": (c, o?: { populate?: boolean }) => { const w = current(c); if (!w) throw new Error("No current window"); return windowOf(w, c.s, o?.populate) },
-  "windows.getLastFocused": (c, o?: { populate?: boolean }) => CALLS["windows.getCurrent"](c, o),
-  "windows.getAll": (c, o?: { populate?: boolean }) => windows(c.s).map((w) => windowOf(w, c.s, o?.populate)),
-  "windows.create": async (c, o: { url?: string | string[] } = {}) => {
-    const win = current(c)
+  "windows.get": (c, id, o) => { const w = id === -2 ? current(c) : windows(c.s).find((x) => x.id === id); if (!w) throw new Error(`No window with id: ${String(id)}.`); return windowOf(w, c.s, !!POPULATE.parse(o)?.populate) },
+  "windows.getCurrent": (c, o) => { const w = current(c); if (!w) throw new Error("No current window"); return windowOf(w, c.s, !!POPULATE.parse(o)?.populate) },
+  "windows.getLastFocused": (c, o) => CALLS["windows.getCurrent"](c, o),
+  "windows.getAll": (c, o) => windows(c.s).map((w) => windowOf(w, c.s, !!POPULATE.parse(o)?.populate)),
+  "windows.create": async (c, given) => {
+    const win = current(c), { url } = WINDOW_CREATE.parse(given)
     if (!win) throw new Error("No current window")
-    for (const u of ([] as string[]).concat(o.url ?? [])) await openTab(win, c.s, addressFor(c, u))
+    for (const u of url === undefined || url === null ? [] : Array.isArray(url) ? url : [url]) await openTab(win, c.s, addressFor(c, u))
     win.focus()
     return windowOf(win, c.s, true)
   },
-  "windows.update": (c, id, o: { focused?: boolean } = {}) => { const w = windows(c.s).find((x) => x.id === id) ?? current(c); if (w && o.focused) w.focus(); return w ? windowOf(w, c.s) : undefined },
+  "windows.update": (c, id, given) => { const o = WINDOW_UPDATE.parse(given), w = windows(c.s).find((x) => x.id === id) ?? current(c); if (w && o.focused) w.focus(); return w ? windowOf(w, c.s) : undefined },
   // (an extension never closes a vault's window)
   "windows.remove": () => undefined,
 
   "permissions.getAll": (c) => permsOf(c.ext),
-  "permissions.contains": (c, want = {}) => has(c.ext, want),
-  "permissions.request": async (c, want: { permissions?: string[]; origins?: string[] } = {}) => {
+  "permissions.contains": (c, want) => has(c.ext, PERMISSIONS.parse(want)),
+  "permissions.request": async (c, given) => {
+    const want = PERMISSIONS.parse(given)
     if (has(c.ext, want)) return true
-    const m = manifestOf(dirOf(c.ext)), optional = [...(m.optional_permissions ?? []), ...((m.optional_host_permissions as string[] | undefined) ?? [])]
+    const m = manifestOf(dirOf(c.ext)), optional = [...(m.optional_permissions ?? []), ...(m.optional_host_permissions ?? [])]
     const asked = [...(want.permissions ?? []), ...(want.origins ?? [])]
     const allowedAsk = asked.every((p) => optional.includes(p) || p.includes("/"))
     if (!allowedAsk) return false
@@ -395,19 +397,19 @@ const CALLS: Record<string, Call> = {
     emit(c.s, "permissions.onAdded", [{ permissions: want.permissions ?? [], origins: want.origins ?? [] }], c.ext.id)
     return true
   },
-  "permissions.remove": (c, want: { permissions?: string[]; origins?: string[] } = {}) => {
-    const drop = new Set([...(want.permissions ?? []), ...(want.origins ?? [])])
+  "permissions.remove": (c, given) => {
+    const want = PERMISSIONS.parse(given), drop = new Set([...(want.permissions ?? []), ...(want.origins ?? [])])
     change(c.ext.id, { granted: (c.ext.granted ?? []).filter((p) => !drop.has(p)) })
     return true
   },
 
-  "webNavigation.getFrame": (c, d: { tabId?: number; frameId?: number } = {}) => {
-    const p = pageOf(c.s, d.tabId)
+  "webNavigation.getFrame": (c, given) => {
+    const d = FRAME_ASK.parse(given), p = pageOf(c.s, d.tabId)
     const f = p && (d.frameId === 0 ? p.wc.mainFrame : p.wc.mainFrame.framesInSubtree.find((x) => x.frameTreeNodeId === d.frameId))
     return f ? { url: f.url, frameId: d.frameId, parentFrameId: f.parent ? (f.parent === p!.wc.mainFrame ? 0 : f.parent.frameTreeNodeId) : -1, errorOccurred: false } : null
   },
-  "webNavigation.getAllFrames": (c, d: { tabId?: number } = {}) => {
-    const p = pageOf(c.s, d.tabId)
+  "webNavigation.getAllFrames": (c, given) => {
+    const p = pageOf(c.s, FRAME_ASK.parse(given).tabId)
     if (!p) return null
     const main = p.wc.mainFrame
     return main.framesInSubtree.map((f) => ({ url: f.url, frameId: f === main ? 0 : f.frameTreeNodeId, parentFrameId: !f.parent ? -1 : f.parent === main ? 0 : f.parent.frameTreeNodeId, errorOccurred: false }))
@@ -421,28 +423,26 @@ const CALLS: Record<string, Call> = {
     .map((f) => ({ fontId: f, displayName: f })),
 
   // (a session's cookie jar, as Chrome's cookies API has it: its one store, "0")
-  "cookies.get": async (c, d: { url?: string; name?: string } = {}) => {
-    const [x] = await c.s.cookies.get({ url: String(d.url ?? ""), name: String(d.name ?? "") })
+  "cookies.get": async (c, given) => {
+    const d = NAMED_COOKIE.parse(given), [x] = await c.s.cookies.get({ url: String(d.url ?? ""), name: String(d.name ?? "") })
     return x ? cookieOf(x) : null
   },
-  "cookies.getAll": async (c, d: Record<string, unknown> = {}) => {
-    const { storeId: _s, partitionKey: _p, ...filter } = d
-    return (await c.s.cookies.get(filter as Electron.CookiesGetFilter)).map(cookieOf)
-  },
-  "cookies.set": async (c, d: Record<string, unknown> = {}) => {
-    const { storeId: _s, partitionKey: _p, ...details } = d
-    await c.s.cookies.set(details as unknown as Electron.CookiesSetDetails)
-    const [x] = await c.s.cookies.get({ url: String(d.url ?? ""), name: String(d.name ?? "") })
+  "cookies.getAll": async (c, filter) => (await c.s.cookies.get(COOKIE_FILTER.parse(filter))).map(cookieOf),
+  "cookies.set": async (c, given) => {
+    const d = COOKIE_SET.parse(given)
+    await c.s.cookies.set(d)
+    const [x] = await c.s.cookies.get({ url: d.url, name: d.name ?? "" })
     return x ? cookieOf(x) : null
   },
-  "cookies.remove": async (c, d: { url?: string; name?: string } = {}) => {
+  "cookies.remove": async (c, given) => {
+    const d = NAMED_COOKIE.parse(given)
     await c.s.cookies.remove(String(d.url ?? ""), String(d.name ?? ""))
     return { url: d.url, name: d.name, storeId: "0" }
   },
   "cookies.getAllCookieStores": (c) => [{ id: "0", tabIds: pagesIn(c.s).map((p) => p.wc.id) }],
 
-  "offscreen.createDocument": (c, d: { url?: string } = {}) => {
-    const url = extensionPage(c.ext.id, String(d.url ?? ""))
+  "offscreen.createDocument": (c, given) => {
+    const url = extensionPage(c.ext.id, String(PAGE_ASK.parse(given).url ?? ""))
     if (!url) throw new Error("The offscreen document must be one of the extension's own pages.")
     const key = `${c.ext.id}`
     let byExt = offscreen.get(c.s)
@@ -457,7 +457,7 @@ const CALLS: Record<string, Call> = {
   "offscreen.hasDocument": (c) => !!offscreen.get(c.s)?.get(c.ext.id),
 
   "notifications.create": (c, a, b) => {
-    const [id, o] = typeof a === "string" ? [a, (b ?? {}) as Record<string, unknown>] : [crypto.randomUUID(), (a ?? {}) as Record<string, unknown>]
+    const [id, o] = typeof a === "string" ? [a, NOTE.parse(b)] : [crypto.randomUUID(), NOTE.parse(a)]
     if (!Notification.isSupported()) return id
     const n = new Notification({ title: String(o.title ?? c.ext.name), body: String(o.message ?? ""), silent: !!o.silent })
     n.on("click", () => emit(c.s, "notifications.onClicked", [id], c.ext.id))
@@ -476,7 +476,7 @@ const CALLS: Record<string, Call> = {
     const win = current(c)
     if (win) await openTab(win, c.s, new URL(page, `chrome-extension://${c.ext.id}/`).href)
   },
-  "runtime.connectNative": (c, app: string, event: string) => {
+  "runtime.connectNative": (c, app, event) => {
     const proc = nativeStart(c, String(app)), id = crypto.randomUUID()
     natives.set(id, { proc, s: c.s, ext: c.ext.id, event: String(event) })
     readFrames(proc, (m) => emit(c.s, String(event), ["message", m], c.ext.id))
@@ -485,9 +485,9 @@ const CALLS: Record<string, Call> = {
     proc.on("error", end)
     return id
   },
-  "runtime.nativePost": (c, id: string, m: unknown) => { const n = natives.get(id); if (n && n.ext === c.ext.id) writeFrame(n.proc, m) },
-  "runtime.nativeClose": (c, id: string) => { const n = natives.get(id); if (n && n.ext === c.ext.id) { n.proc.kill(); natives.delete(id) } },
-  "runtime.sendNativeMessage": (c, app: string, m: unknown) => new Promise((done, fail) => {
+  "runtime.nativePost": (c, id, m) => { const n = natives.get(String(id)); if (n && n.ext === c.ext.id) writeFrame(n.proc, m) },
+  "runtime.nativeClose": (c, id) => { const n = natives.get(String(id)); if (n && n.ext === c.ext.id) { n.proc.kill(); natives.delete(String(id)) } },
+  "runtime.sendNativeMessage": (c, app, m) => new Promise((done, fail) => {
     const proc = nativeStart(c, String(app))
     const t = setTimeout(() => { proc.kill(); fail(new Error("Native host has exited.")) }, 30_000)
     readFrames(proc, (reply) => { clearTimeout(t); proc.kill(); done(reply) })
