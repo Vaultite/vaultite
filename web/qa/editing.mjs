@@ -162,7 +162,8 @@ check("folding a heading hides its section, subheadings included, not the next h
 check("a … marks the fold", await ed.locator(".cm-foldPlaceholder").count() === 1)
 await shot("folded")
 // remembered
-await until(() => page.evaluate((p) => !!JSON.parse(localStorage.getItem("vaultite.folds") ?? "{}")[p], NOTE))
+await ui.saved()
+check("the fold is kept", await page.evaluate((p) => !!JSON.parse(localStorage.getItem("vaultite.folds") ?? "{}")[p], NOTE))
 await page.reload()
 check("the fold is remembered after a reload", await until(async () => await line("Apple pie").count() === 0 && await ed.locator(".cm-foldPlaceholder").count() === 1, 10000))
 await palette("Unfold all headings and lists")

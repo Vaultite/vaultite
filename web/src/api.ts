@@ -224,8 +224,9 @@ export { switchPreview, type Preview, type PreviewOption } from "@/components/Se
 export { Frame } from "@/components/ChoicePictures"
 // A form in a sheet that isn't saved as you type: closing the sheet with something unsaved asks first.
 export { useSheetGuard } from "@/components/DetailSheet"
-// Something under way (a recording) that a reload into a new build or the app's restart waits for.
-export { trackUnderway } from "@/core/unsaved"
+// Something under way (a recording) that a reload into a new build or the app's restart waits for; what's due in a
+// moment (a debounced save) that only QA waits for.
+export { trackSave, trackSoon, trackUnderway } from "@/core/unsaved"
 /** Buttons a sheet's content puts in its header, left of Close; and a tab's target drawn in a sheet (a glance). */
 export { SheetActions } from "@/components/DetailSheet"
 export { TargetView } from "@/components/TargetView"

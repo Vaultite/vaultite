@@ -1,6 +1,7 @@
 // Where you left a place (scroll, cursor, Properties open), per place, device and vault, so coming back shows it as it
 // was. A text file's place is also its top line: the editor guesses unseen heights, so a scrollTop can drift.
 import { getStore } from "@/core/data"
+import { trackSave } from "@/core/unsaved"
 
 type Place = { y?: number; props?: boolean; at?: [number, number]
   /** The body's line at the top (0-based) and how far into it (a share of its height). */
@@ -29,7 +30,6 @@ const save = () => {
   saving = null
   try { localStorage.setItem(KEPT, JSON.stringify({ vault: keptFor, places: [...all()] })) } catch { /* private mode, or full */ }
 }
-// (and before the page goes: a reload right after scrolling comes back there)
 addEventListener("pagehide", () => { if (saving) save() })
 function update(key: string, change: Place) {
   const m = all()
@@ -67,6 +67,7 @@ export const keepScroll = (key: string, y: number, box: HTMLElement | null = nul
   }, 200))
 }
 const settling = new Map<HTMLElement | null, ReturnType<typeof setTimeout>>()
+trackSave("a place's save", () => saving !== null || settling.size > 0)
 
 /** A file or folder was renamed or moved: its places go with it, so a tab that follows it (a report archived by a reply
  *  sent from it) stays where it was read. */
@@ -141,7 +142,6 @@ export function takeRestore(key: string): { box: HTMLElement | null; line: numbe
   const at = all().get(key)
   if (!p || at?.line === undefined) return null
   p.stop(true)
-  // (shown whatever happens, a moment later)
   const show = () => { clearTimeout(late); p.show(); found(key) }
   const late = setTimeout(show, 400)
   return { box: p.box, line: at.line, into: at.into ?? 0, show }

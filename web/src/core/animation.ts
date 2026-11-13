@@ -1,6 +1,7 @@
 // Motion (appearance `animation`, the CSS tokens in index.css): one timing for Web Animations and CSS alike, and one
 // check, `still()`, that every animation and smooth scroll asks, so Reduce motion and animations off act the same.
 import { getPrefs } from "@/core/prefs"
+import { trackSoon } from "@/core/unsaved"
 
 export type Pace = "fast" | "base" | "spring"
 
@@ -12,8 +13,15 @@ export function moves() {
   return typeof document !== "undefined" && typeof document.documentElement.animate === "function" && !still()
 }
 
+let gliding = 0
+globalThis.addEventListener?.("scrollend", () => { gliding = 0 }, { capture: true, passive: true })
+trackSoon("a smooth scroll", () => performance.now() < gliding)
 /** A scroll's `behavior`: smooth, unless things are kept still. */
-export const glide = (): ScrollBehavior => (still() ? "instant" : "smooth")
+export function glide(): ScrollBehavior {
+  if (still()) return "instant"
+  gliding = performance.now() + 1000
+  return "smooth"
+}
 
 const SPRING = "linear(0, 0.0155, 0.056, 0.1138, 0.1826, 0.2575, 0.3347, 0.4113, 0.4852, 0.5549, 0.6195, 0.6783, 0.7312, 0.7782, 0.8193, 0.855, 0.8856, 0.9115, 0.9331, 0.9511, 0.9657, 0.9774, 0.9867, 0.9938, 0.9992, 1.0031, 1.0059, 1.0076, 1.0086, 1.0089, 1.0088, 1.0084, 1.0077, 1.0069, 1.0059, 1.0049, 1.0038, 1.0028, 1.0018, 1.0009, 1)"
 const OUT = "cubic-bezier(0.2, 0, 0, 1)"

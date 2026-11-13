@@ -13,10 +13,10 @@ function requestsOut(page) {
 }
 
 /** After a frame is drawn: web/src/core/unsaved.ts' vaultiteBusy, and motion that will end (not one a scroll drives). */
-const pageBusy = (page) => page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => {
+const pageBusy = (page, saves) => page.evaluate((saves) => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => {
   const moving = document.getAnimations().filter((a) => a.playState === "running" && a.timeline instanceof DocumentTimeline && a.effect?.getComputedTiming().endTime !== Infinity)
-  done([...(window.vaultiteBusy?.() ?? []), ...(moving.length ? [`${moving.length} animations`] : [])])
-}))))
+  done([...(window.vaultiteBusy?.({ saves }) ?? []), ...(moving.length ? [`${moving.length} animations`] : [])])
+}))), saves)
 
 function framesHeard(page) {
   const waiters = new Set()
@@ -33,13 +33,13 @@ function changedPaths(url, payload) {
 
 export function app(page) {
   const out = requestsOut(page), heard = framesHeard(page)
-  /** Nothing out, unsaved or moving for `quiet` ms: a request a timer starts comes a moment after the last. */
-  async function idle({ timeout = 10_000, quiet = 150 } = {}) {
+  /** Nothing out, unsaved, due or moving for `quiet` ms: a request a timer starts comes a moment after the last. */
+  async function idle({ timeout = 10_000, quiet = 150, saves = false } = {}) {
     const end = Date.now() + timeout
     let since = 0, last = []
     for (;;) {
       last = [...(out.size ? [`${out.size} requests: ${[...out].slice(0, 3).map((r) => new URL(r.url()).pathname).join(", ")}`] : []),
-        ...await pageBusy(page).catch((e) => [`no answer: ${e.message.split("\n")[0]}`])]
+        ...await pageBusy(page, saves).catch((e) => [`no answer: ${e.message.split("\n")[0]}`])]
       if (last.length) since = 0
       else if (!since) since = Date.now()
       else if (Date.now() - Math.max(since, out.at) >= quiet) return
@@ -63,6 +63,9 @@ export function app(page) {
   /** Runs `act` (a write to the vault), then waits till the app hears `file` (its vault path) changed, and is idle. */
   const sees = (file, act, { timeout = 10_000 } = {}) =>
     hearing((url, payload) => { const paths = changedPaths(url, payload); return paths === null || !!paths?.includes(file) }, act, timeout, `the app didn't hear ${file} change`)
+
+  /** idle, and the debounced saves done (trackSave): before a reload or reading localStorage. */
+  const saved = (o = {}) => idle({ timeout: 15_000, ...o, saves: true })
 
   const hears = (socket, act, { timeout = 10_000 } = {}) => hearing((url) => socket.test(url), act, timeout, `the page heard nothing on ${socket}`)
 
@@ -93,5 +96,5 @@ export function app(page) {
   const toast = () => toasts.allInnerTexts()
   toast.wait = async (text, { timeout = 10_000 } = {}) => { const t = toasts.filter({ hasText: text }).first(); await t.waitFor({ timeout }); return t }
 
-  return { idle, sees, hears, menu, pane, toast }
+  return { idle, saved, sees, hears, menu, pane, toast }
 }

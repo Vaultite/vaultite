@@ -6,6 +6,7 @@ import { noteActivity } from "@/core/activity"
 import { isDesktop, isMac as MAC } from "@/core/platform"
 import { noticesSince, notifyError, type Notice } from "@/core/notify"
 import { signal } from "@/core/signal"
+import { trackSoon } from "@/core/unsaved"
 import { guestCommand } from "@/core/share"
 import { confirmDialog } from "@/components/ConfirmDialog"
 
@@ -337,6 +338,7 @@ let pending: Pending | null = null
 let pendingTimer = 0
 const pendingSubs = signal()
 const WAIT = 1000
+trackSoon("a key sequence's command", () => !!pending?.exact)
 function setPending(p: Pending | null) {
   clearTimeout(pendingTimer)
   pending = p

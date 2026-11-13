@@ -6,6 +6,7 @@ import { get, send } from "@/core/http"
 import { hydratePrefs } from "@/core/prefs"
 import { errorText, notifyError } from "@/core/notify"
 import { span } from "@/core/spans"
+import { trackSave, trackSoon } from "@/core/unsaved"
 import { setHere } from "@/core/here"
 import { usePane } from "@/core/pane"
 import { setVaultAppearance, type VaultAppearance } from "@/core/appearance"
@@ -147,7 +148,6 @@ function liveData(paths: Paths, route: string) {
 }
 /** Does a change to what the server keeps (core/kept.ts, "<plugin id>/<name>") touch a plugin's route? */
 const keptData = (names: string[] | null, route: string) => names === null || names.some((n) => n.slice(0, n.indexOf("/")) === route.split(/[/?]/)[0])
-// Before any card refetches, forget what's in flight, so they share one new request.
 onVaultChange((paths) => { changes++; for (const k of [...inflight.keys()]) if (liveData(paths, k)) inflight.delete(k) })
 onKeptChange((names) => { changes++; for (const k of [...inflight.keys()]) if (keptData(names, k)) inflight.delete(k) })
 
@@ -169,6 +169,7 @@ function recall(path: string) {
   return answers.get(path)
 }
 let keeping: ReturnType<typeof setTimeout> | null = null
+trackSave("the answers' save", () => keeping !== null)
 function remember(path: string, data: unknown, json: string) {
   const same = answers.get(path)?.json === json
   answers.delete(path)
@@ -398,6 +399,7 @@ export const reload = () => load()
 const GAP = 1000
 let lastLoad = 0
 let soon: ReturnType<typeof setTimeout> | null = null
+trackSoon("the store's reload", () => soon !== null)
 function loadSoon() {
   if (soon) return
   const wait = lastLoad + GAP - Date.now()
@@ -428,7 +430,6 @@ export function useStoreWith<T>(pick: (s: Store | null) => T): T {
   return useSyncExternalStore(onStore, () => pick(loaded.store))
 }
 
-// ---------- dates (local) ----------
 export const pad = (n: number) => String(n).padStart(2, "0")
 export const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 export const parse = (s: string) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d) }

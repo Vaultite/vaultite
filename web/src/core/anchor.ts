@@ -3,6 +3,7 @@
 import type { ChangeDesc } from "@codemirror/state"
 import type { EditorView } from "@codemirror/view"
 import { trace } from "@/core/trace"
+import { trackSoon } from "@/core/unsaved"
 import { scrollingBox } from "@/lib/utils"
 
 /** What scrolls `el`: the nearest box that scrolls, or null for the window. */
@@ -72,6 +73,7 @@ function inSight(box: HTMLElement | null, y: number): number {
 }
 
 const holding = new Map<HTMLElement | Window, () => void>()
+trackSoon("a held scroll", () => holding.size > 0)
 /** Scroll `box` (null: the window) by `off()`, how far something is below its place (null: not drawn yet), each frame
  *  (`measure`: an editor's) until still for half a second, 3 s at most, or the reader acts; `there`: first in place. */
 export function holdPlace(box: HTMLElement | null, off: () => number | null, opts: {

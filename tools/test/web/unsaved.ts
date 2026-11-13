@@ -24,5 +24,14 @@ await section("safe to reload", async () => {
   check("unsaved: sound playing holds it", !u.safeToReload())
   media = [{ paused: false, ended: false, muted: true }, { paused: true, ended: false, muted: false }]
   check("unsaved: muted or paused doesn't", u.safeToReload())
+  let due = true, saving = true
+  const offSoon = u.trackSoon("a hint's delay", () => due), offSave = u.trackSave("a place's save", () => saving)
+  check("busy: what's due soon holds it for QA, not a reload", u.safeToReload() && g.vaultiteBusy().join() === "a hint's delay")
+  check("busy: a debounced save only when saves are asked for", g.vaultiteBusy({ saves: true }).join() === "a hint's delay,a place's save")
+  due = saving = false
+  check("busy: done, neither", g.vaultiteBusy({ saves: true }).length === 0)
+  due = saving = true
+  offSoon(); offSave()
+  check("busy: untracked, neither", g.vaultiteBusy({ saves: true }).length === 0)
   delete g.document
 })

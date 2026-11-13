@@ -29,12 +29,15 @@ const same = (a, b) => !!a && !!b && a.text === b.text && Math.abs(a.y - b.y) <=
 const said = (a) => (a ? `${a.text} at ${a.y}` : "none")
 const fileView = (page, p) => page.locator(`article.file-view[data-path="${p}"]:visible`).first()
 const open = async (page, ui, p) => { await page.evaluate((h) => { location.hash = h }, hash(p)); await fileView(page, p).waitFor(); await ui.idle() }
-const kept = (page, p) => until(() => page.evaluate((key) => {
-  const box = document.getElementById("main-scroll")
-  const y = box && /auto|scroll/.test(getComputedStyle(box).overflowY) ? box.scrollTop : scrollY
-  const place = new Map(JSON.parse(localStorage.getItem("vaultite.places") ?? "null")?.places ?? []).get(key)
-  return place?.y === Math.round(y) && place.line !== undefined
-}, `file:${p}`), 5000)
+const kept = async (page, ui, p) => {
+  await ui.saved()
+  check(`${p}'s place is kept`, await page.evaluate((key) => {
+    const box = document.getElementById("main-scroll")
+    const y = box && /auto|scroll/.test(getComputedStyle(box).overflowY) ? box.scrollTop : scrollY
+    const place = new Map(JSON.parse(localStorage.getItem("vaultite.places") ?? "null")?.places ?? []).get(key)
+    return place?.y === Math.round(y) && place.line !== undefined
+  }, `file:${p}`))
+}
 // A computer: panes.
 {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
@@ -44,7 +47,7 @@ const kept = (page, p) => until(() => page.evaluate((key) => {
   const propsOpen = () => props.locator("button[aria-expanded]").first().getAttribute("aria-expanded")
   await page.goto(`${B}${hash(LONG)}`); await fileView(page, LONG).locator(".cm-content").waitFor(); await props.waitFor(); await ui.idle()
   check("editing a note: Properties folded", await props.count() === 1 && await propsOpen() === "false")
-  await page.evaluate(() => { document.getElementById("main-scroll").scrollTop = 3000 }); await kept(page, LONG)
+  await page.evaluate(() => { document.getElementById("main-scroll").scrollTop = 3000 }); await kept(page, ui, LONG)
   const left = await top(), leftAt = await headingAt(page)
   await open(page, ui, "Projects/Lighthouse.md")
   check(`another file starts at its top (${await top()})`, await top() < 50)
@@ -198,7 +201,7 @@ const kept = (page, p) => until(() => page.evaluate((key) => {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
   const page = await ctx.newPage(), ui = app(page)
   await page.goto(`${B}${hash(LONG)}`); await fileView(page, LONG).locator(".cm-content").waitFor(); await ui.idle()
-  await page.evaluate(() => scrollTo(0, 2000)); await kept(page, LONG)
+  await page.evaluate(() => scrollTo(0, 2000)); await kept(page, ui, LONG)
   const phoneAt = await headingAt(page)
   await open(page, ui, "Projects/Lighthouse.md")
   check(`phone: another file starts at its top (${await page.evaluate(() => scrollY)})`, await page.evaluate(() => scrollY) < 50)

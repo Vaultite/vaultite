@@ -4,6 +4,7 @@ import { codeFolding, ensureSyntaxTree, foldEffect, foldedRanges, foldState, syn
 import { type EditorState, type Extension, type StateEffect } from "@codemirror/state"
 import { EditorView, gutter, GutterMarker, gutters, ViewPlugin, type ViewUpdate } from "@codemirror/view"
 import type { SyntaxNode } from "@lezer/common"
+import { trackSave } from "@vaultite"
 
 type Range = { from: number; to: number }
 /** Each heading level's line height, in the editor's em (index.css: .cm-h1...), so a chevron sits beside its text. */
@@ -243,6 +244,7 @@ function remember(path: string) {
   return ViewPlugin.fromClass(class {
     timer: ReturnType<typeof setTimeout> | null = null
     view: EditorView
+    saving = trackSave("the folds' save", () => this.timer !== null)
     constructor(view: EditorView) {
       this.view = view
       // (not while the editor is being set up: a moment after)
@@ -254,7 +256,7 @@ function remember(path: string) {
       if (this.timer) clearTimeout(this.timer)
       this.timer = setTimeout(() => { this.timer = null; keep(path, this.view.state) }, 300)
     }
-    destroy() { if (this.timer) { clearTimeout(this.timer); keep(path, this.view.state) } }
+    destroy() { this.saving(); if (this.timer) { clearTimeout(this.timer); keep(path, this.view.state) } }
   })
 }
 

@@ -14,6 +14,7 @@ import { kindOf } from "@/core/filekinds"
 import { usePluginsVersion, vaultPluginsIn } from "@/core/plugins"
 import { setFocusedPane, useFileTab } from "@/core/workspace"
 import { getPrefs, usePrefs } from "@/core/prefs"
+import { trackSave } from "@/core/unsaved"
 import { barShown, barShows, type BarItem, type BarPlace, moveBarItem, showAllBarItems, showBarItem } from "@/core/statusbar"
 import { INCOMING, reorder, slotAt, useSlide } from "@/core/slide"
 import { cn } from "@/lib/utils"
@@ -124,6 +125,7 @@ function useLoadHolds(bars: RefObject<HTMLElement | null>[], rows: RefObject<HTM
     const save = () => {
       clearTimeout(saving)
       saving = setTimeout(() => {
+        saving = undefined
         if (!vaultPluginsIn()) return save()
         if (els.some((b) => b.hasAttribute("data-off"))) return
         const slots = rs.flatMap((r) => [...r.querySelectorAll<HTMLElement>("[data-status-key]")]), mins = slots.map((x) => x.style.minWidth)
@@ -145,7 +147,8 @@ function useLoadHolds(bars: RefObject<HTMLElement | null>[], rows: RefObject<HTM
     const ro = new ResizeObserver(save)
     for (const c of [...els, ...rs]) ro.observe(c)
     save()
-    return () => { clearTimeout(saving); ro.disconnect() }
+    const off = trackSave("the status bar's save", () => saving !== undefined)
+    return () => { off(); clearTimeout(saving); ro.disconnect() }
   }, [path, setup]) // eslint-disable-line react-hooks/exhaustive-deps -- bars and rows are refs
   return useMemo(() => (h.done ? null : h.kept.filter(([k]) => !h.drawn.has(k))), [h, h.done, drawn])
 }

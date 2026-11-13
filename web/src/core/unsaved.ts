@@ -37,5 +37,18 @@ export const safeToReload = () => !hasUnsavedEdits() && !underway() && (hidden()
 /** The app may restart by itself: nothing unsaved or under way, and the page hidden or untouched for 10 minutes. */
 export const safeToRestart = () => !hasUnsavedEdits() && !underway() && (hidden() || Date.now() - lastInput >= 10 * 60_000)
 
-declare global { var vaultiteBusy: () => string[] }
-globalThis.vaultiteBusy = () => [hasUnsavedEdits() && "unsaved edits", [...going].some(isDirty) && "under way"].filter((x): x is string => !!x)
+const soon = new Map<() => boolean, { what: string; save: boolean }>()
+/** What the page will do by itself in a moment (a hint's delay, a held scroll): QA's `idle()` waits while `on()`. */
+export function trackSoon(what: string, on: () => boolean) {
+  soon.set(on, { what, save: false })
+  return () => { soon.delete(on) }
+}
+/** A debounced save of this device's state (a place, folds): QA's `saved()` waits while `on()`. */
+export function trackSave(what: string, on: () => boolean) {
+  soon.set(on, { what, save: true })
+  return () => { soon.delete(on) }
+}
+
+declare global { var vaultiteBusy: (o?: { saves?: boolean }) => string[] }
+globalThis.vaultiteBusy = ({ saves = false } = {}) => [hasUnsavedEdits() && "unsaved edits", [...going].some(isDirty) && "under way",
+  ...[...soon].flatMap(([on, s]) => ((saves || !s.save) && isDirty(on) ? [s.what] : []))].filter((x): x is string => !!x)

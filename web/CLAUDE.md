@@ -83,8 +83,9 @@
   `counts.json`) and `requests.mjs` (requests per flow, `requests.json`); after a win, run it with `--ratchet` and
   commit the lowered limits. `loading.mjs` fails on any shift
   in the sidebars or the status bar, however small: one scores a few thousandths, under any CLS limit.
-- Scripts ask the app, not the clock (`web/qa/lib/app.mjs`): `idle()` after an action, `sees(file, write)` after a
-  write to the vault, `menu`, `pane`, `toast`.
+- Scripts ask the app, not the clock (`web/qa/lib/app.mjs`): `idle()` after an action, `saved()` before a reload or
+  reading localStorage, `sees(file, write)` after a write to the vault, `menu`, `pane`, `toast`. A timer the app runs
+  (a debounce, a delay) reports itself (`trackSoon`, `trackSave` in `web/src/core/unsaved.ts`) so scripts needn't wait.
 - QA is still (Reduce motion, desktop copies too): a script about motion says `qa(url, { motion: true })`. A desktop
   copy's pointer is `globalThis.qaPointer`, never the user's.
 - `visual.mjs` holds the main screens against a machine's own pictures (OS and fonts draw text differently): one with
