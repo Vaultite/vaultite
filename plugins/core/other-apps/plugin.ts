@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import { z } from "zod"
 import { OpError, Plugin, type OpCtx } from "../../../core/plugins.ts"
 import { obsidianDefaults, obsidianSettings, obsidianTypes } from "./settings.ts"
 
@@ -19,7 +20,8 @@ type Row = { id: string; name: string; here: { id: string; name: string; on: boo
 type Listed = { id: string; name: string; tier: string; on: boolean }
 type Found = { id: string; name: string; source: string; installed: string | null; replaces?: { obsidian?: string[] } }
 const json = (f: string) => { try { return JSON.parse(fs.readFileSync(f, "utf8")) } catch { return null } }
-const obsidianOf = (m: unknown) => { const r = (m as { replaces?: { obsidian?: unknown } })?.replaces?.obsidian; return Array.isArray(r) ? r.filter((x): x is string => typeof x === "string") : [] }
+const REPLACES = z.object({ replaces: z.object({ obsidian: z.array(z.unknown()) }) })
+const obsidianOf = (m: unknown) => { const r = REPLACES.safeParse(m); return r.success ? r.data.replaces.obsidian.filter((x): x is string => typeof x === "string") : [] }
 const covers = (m: unknown, id: string) => obsidianOf(m).includes(id)
 const manifest = (p: { id: string; tier: string }) => p.tier === "vault" ? json(plugin.vault.abs(`.vaultite/plugins/${p.id}/manifest.json`)) : plugin.peer(p.id)?.manifest
 const communityIds = () => { const l = json(path.join(plugin.vault.path, ".obsidian", "community-plugins.json")); return Array.isArray(l) ? l.filter((x): x is string => typeof x === "string") : [] }
@@ -155,7 +157,7 @@ plugin.provide("obsidian:stand-ins", async () => {
 
 plugin.around("plugin.enable", async (call, next) => {
   const r = await next(call.params)
-  const id = String((call.params as { id?: string }).id ?? "")
+  const id = String(call.params.id ?? "")
   const p = ((await call.ctx.op("plugin.list", {})) as Listed[]).find((x) => x.id === id)
   const ids = p && p.tier === "vault" ? obsidianOf(manifest(p)).filter((x) => x !== "*") : []
   const run = plugin.service("obsidian:run")
