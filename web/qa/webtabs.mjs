@@ -258,7 +258,7 @@ const mine = await tabs()
 const T = (await op("open", { url: at("/opener"), task: "reading" }))?.tab
 check("(an agent's page)", typeof T === "number", T)
 const snap = (await op("snapshot", { tab: T }))?.snapshot ?? ""
-const ref = /link "the third part in a new tab" \[ref=(e\d+)\]/.exec(snap)?.[1]
+const ref = /link "the third part in a new tab" (?:\(→ [^)]*\) )?\[ref=(e\d+)\]/.exec(snap)?.[1]
 await op("act", { tab: T, action: "click", ref })
 const theirs = async () => (Array.isArray(await op("tabs")) ? await op("tabs") : []).filter((t) => t.url === at("/three"))
 check("an agent's click on a link to a new tab: a page of the agent's", await until(async () => (await theirs()).length === 1, 10000), await op("tabs"))
