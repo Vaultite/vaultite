@@ -2,7 +2,8 @@
 // dark. Writes QA provenance/, plugins.json, appearance.json and the plugins' settings (put back): throwaway only.
 //   node web/qa/provenance.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
-import { qa, until, wait } from "./lib/qa.mjs"
+import { qa, until } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
 const { args: [BASE, VAULT, OUT = "/tmp/provenance-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 const B = BASE.replace(/\/+$/, "") // its paths are `${B}/...`: a base given with its slash would open the app at "//"
 mkdirSync(OUT, { recursive: true })
@@ -32,18 +33,20 @@ await plugins((c) => ({ enabled: (c.enabled ?? []).filter((x) => x !== "token-co
 
 async function open(w, h, mobile = false) {
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, ...(mobile ? { isMobile: true, hasTouch: true } : {}) })
-  return { ctx, page: watch(await ctx.newPage(), { label: w }) }
+  const page = watch(await ctx.newPage(), { label: w })
+  return { ctx, page, ui: app(page) }
 }
 // (hidden tabs stay drawn: only the one on screen counts)
-const go = async (page, rel) => { await page.goto(`${B}/#file/${enc(rel)}`); await page.locator(`.file-view[data-path="${rel}"]:visible`).waitFor({ timeout: 10000 }); await wait(800) }
+const go = async (page, ui, rel) => { await page.goto(`${B}/#file/${enc(rel)}`); await page.locator(`.file-view[data-path="${rel}"]:visible`).waitFor({ timeout: 10000 }); await ui.idle() }
 const shown = (page, rel, sel = "") => page.locator(`.file-view[data-path="${rel}"]:visible ${sel}`.trim())
 // (by the start of its text: "AI" is also in Reviewed's hint)
-const choose = async (page, label) => { await page.locator("[role=menu] [role=menuitemradio]").filter({ hasText: new RegExp(`^\\s*${label}`) }).first().click(); await wait(200) }
+const choose = async (page, ui, label) => { await page.locator("[role=menu] [role=menuitemradio]").filter({ hasText: new RegExp(`^\\s*${label}`) }).first().click(); await ui.idle() }
+const look = async (page, ui, t) => { await theme(t); await until(() => page.evaluate((dark) => document.documentElement.classList.contains("dark") === dark, t === "dark")); await ui.idle() }
 
 // ---------- desktop ----------
 {
-  const { ctx, page } = await open(1280, 800)
-  await go(page, AI)
+  const { ctx, page, ui } = await open(1280, 800)
+  await go(page, ui, AI)
   const head = shown(page, AI, "[data-chip=origin]")
   const status = page.locator("[role=status] [data-chip=origin]")
   check("desktop: the header says AI", (await head.getAttribute("data-value")) === "ai" && (await head.innerText()).trim() === "AI", await head.innerText())
@@ -63,24 +66,24 @@ const choose = async (page, label) => { await page.locator("[role=menu] [role=me
   check("desktop: the label sits before the view button, centred with it, the next item close by", order.before && order.gap !== null && order.gap >= 0 && order.gap <= 12 && order.mid < 1, order)
   check("desktop: no token count while Token count is off", (await page.locator("[data-tokens]").count()) === 0)
   for (const t of ["light", "dark"]) {
-    await theme(t); await wait(700)
+    await look(page, ui, t)
     const box = await head.boundingBox()
     await page.screenshot({ path: `${OUT}desktop-${t}-header.png`, clip: { x: Math.max(0, box.x - 500), y: Math.max(0, box.y - 12), width: 620, height: 52 } })
     const sb = await page.locator("[data-status-right]").boundingBox()
     await page.screenshot({ path: `${OUT}desktop-${t}-status.png`, clip: { x: sb.x - 8, y: sb.y - 8, width: sb.width + 8, height: sb.height + 8 } })
   }
   // Choosing in the header writes the key, and the status bar follows.
-  await head.click(); await wait(200)
+  await ui.menu.open(head)
   await page.screenshot({ path: `${OUT}desktop-dark-menu.png`, clip: { x: 700, y: 0, width: 580, height: 260 } })
-  await choose(page, "Reviewed")
+  await choose(page, ui, "Reviewed")
   check("desktop: Reviewed from the header is saved", await until(() => origin(AI) === "reviewed"), text(AI))
   check("desktop: the status bar follows", await until(async () => (await status.getAttribute("data-value")) === "reviewed"))
   // From the status bar: Human, then Unlabeled removes the key (and the header goes back to its icon).
-  await status.click(); await wait(200); await choose(page, "Mixed")
+  await ui.menu.open(status); await choose(page, ui, "Mixed")
   check("desktop: Mixed, a default value too", await until(() => origin(AI) === "mixed") && await until(async () => (await head.innerText()).trim() === "Mixed"), text(AI))
-  await status.click(); await wait(200); await choose(page, "Human")
+  await ui.menu.open(status); await choose(page, ui, "Human")
   check("desktop: Human from the status bar", await until(() => origin(AI) === "human"), text(AI))
-  await status.click(); await wait(200); await choose(page, "Unlabeled")
+  await ui.menu.open(status); await choose(page, ui, "Unlabeled")
   check("desktop: Unlabeled removes the key, nothing else", await until(() => text(AI) === "---\n---\n\n## Beds\n\n- Tomatoes along the fence\n- Basil between them\n" || !/origin:/.test(text(AI))) && text(AI).includes("## Beds"), text(AI))
   check("desktop: unlabeled, the header shows no label, the status bar says so", await until(async () => (await head.count()) === 0 && (await status.innerText()).includes("Unlabeled")))
   // With the user's notes labelled (on from here): the header asks too, and the app's new note is the first value.
@@ -89,43 +92,43 @@ const choose = async (page, label) => { await page.locator("[role=menu] [role=me
   const MINE = `${DIR}/Mine.md`
   await api("PUT", "file", { path: MINE, text: "Mine.\n" }, { "X-Vaultite-Client": "app/desktop" })
   check("label_user on: the app's new note is labelled the first value (human)", origin(MINE) === "human", text(MINE))
-  await go(page, PLAIN)
-  await shown(page, PLAIN, "[data-chip=origin]").click(); await wait(200); await choose(page, "AI")
+  await go(page, ui, PLAIN)
+  await ui.menu.open(shown(page, PLAIN, "[data-chip=origin]")); await choose(page, ui, "AI")
   check("desktop: labelling keeps the other keys and the text", await until(() => text(PLAIN) === plain.replace("\n---\n\n", "\norigin: ai\n---\n\n")), text(PLAIN))
 
   // Asked of every kind of file, a person too.
   const person = (await api("GET", "state")).people?.[0]
   if (person) {
-    await go(page, `${person.id}.md`)
+    await go(page, ui, `${person.id}.md`)
     check("desktop: a person is labelled too", await until(async () => (await page.locator("[data-chip=origin]:visible").count()) > 0))
   }
 
   // The values are the vault's: a label typed in the settings sheet shows in the header; Reset puts the defaults back.
-  await go(page, AI)
+  await go(page, ui, AI)
   await page.goto(`${B}/#settings/plugin-settings/provenance`)
   const row = page.locator("[data-chip-value=human]")
   check("settings: the values, in order", await until(async () => (await page.locator("[data-chip-value]").evaluateAll((es) => es.map((e) => e.dataset.chipValue))).join() === "human,reviewed,mixed,ai"))
   await row.locator("input[aria-label=Label]").fill("Mine"); await row.locator("input[aria-label=Label]").press("Enter")
   check("settings: saved in its data.json", await until(() => /"label": "Mine"/.test(text(".vaultite/plugins/provenance/data.json"))), text(".vaultite/plugins/provenance/data.json"))
-  await row.locator("button[aria-expanded]").click(); await wait(200)
+  await row.locator("button[aria-expanded]").click(); await ui.idle()
   await page.locator("[role=radiogroup][aria-label=Colour] [aria-label=orange]").click()
   check("settings: a colour picked", await until(() => /"tint": "orange"/.test(text(".vaultite/plugins/provenance/data.json"))))
-  for (const t of ["light", "dark"]) { await theme(t); await wait(600); await page.screenshot({ path: `${OUT}settings-${t}.png` }) }
-  await page.keyboard.press("Escape"); await wait(400)
-  await go(page, AI)
-  await status.click(); await wait(200); await choose(page, "Mine")
+  for (const t of ["light", "dark"]) { await look(page, ui, t); await page.screenshot({ path: `${OUT}settings-${t}.png` }) }
+  await page.keyboard.press("Escape"); await ui.idle()
+  await go(page, ui, AI)
+  await ui.menu.open(status); await choose(page, ui, "Mine")
   check("settings: the header says the new label", await until(async () => (await head.innerText()).trim() === "Mine" && origin(AI) === "human"), await head.innerText())
   await page.goto(`${B}/#settings/plugin-settings/provenance`)
   await page.locator("[data-provenance-reset]").click()
   check("settings: Reset puts the defaults back", await until(() => !/values/.test(text(".vaultite/plugins/provenance/data.json"))), text(".vaultite/plugins/provenance/data.json"))
-  await page.keyboard.press("Escape"); await wait(400)
+  await page.keyboard.press("Escape"); await ui.idle()
 
   // A pinned property: a chip of its own, only on the kinds it names.
   await api("PATCH", "config/plugin/properties", { chips: [{ key: "status", values: [{ value: "draft", icon: "pencil", tint: "orange" }, { value: "done", icon: "circle-check", tint: "green" }], types: ["note"] }] })
-  await go(page, PLAIN)
+  await go(page, ui, PLAIN)
   const st = shown(page, PLAIN, "[data-chip=status]")
   check("chips: a pinned property shows, unset", await until(async () => (await st.count()) === 1 && (await st.getAttribute("data-value")) === "none"))
-  await st.click(); await wait(200); await choose(page, "Draft")
+  await ui.menu.open(st); await choose(page, ui, "Draft")
   check("chips: choosing writes the key", await until(() => /^status: draft$/m.test(text(PLAIN))), text(PLAIN))
   check("chips: it shows the value, before the origin", await until(async () => (await st.innerText()).trim() === "Draft") && await page.evaluate(() => {
     const a = [...document.querySelectorAll(".file-view [data-chip=status]")].find((e) => e.checkVisibility()), b = [...document.querySelectorAll(".file-view [data-chip=origin]")].find((e) => e.checkVisibility())
@@ -133,22 +136,22 @@ const choose = async (page, label) => { await page.locator("[role=menu] [role=me
   }))
   check("chips: not in the status bar unless asked", (await page.locator("[role=status] [data-chip=status]").count()) === 0)
   for (const t of ["light", "dark"]) {
-    await theme(t); await wait(700)
+    await look(page, ui, t)
     const box = await st.boundingBox()
     await page.screenshot({ path: `${OUT}desktop-${t}-chips.png`, clip: { x: Math.max(0, box.x - 400), y: Math.max(0, box.y - 12), width: 620, height: 52 } })
   }
   if (person) {
-    await go(page, `${person.id}.md`)
+    await go(page, ui, `${person.id}.md`)
     check("chips: not on a kind it doesn't name", (await page.locator("[data-chip=status]:visible").count()) === 0)
   }
   await api("PATCH", "config/plugin/properties", { chips: null })
-  await go(page, PLAIN)
+  await go(page, ui, PLAIN)
 
   // Token count: on, it shows after the counts and follows typing.
   await plugins((c) => ({ enabled: [...(c.enabled ?? []).filter((x) => x !== "token-count"), "token-count"] }))
   const tokens = page.locator("[role=status] [data-tokens]")
   check("tokens: shown once turned on", await until(async () => (await tokens.count()) === 1, 8000))
-  await go(page, PLAIN) // (the workspace's tabs may have been put back meanwhile)
+  await go(page, ui, PLAIN) // (the workspace's tabs may have been put back meanwhile)
   const t0 = Number(await tokens.getAttribute("data-tokens"))
   // (each item is its own slot in the bar: the tokens' after the words' and characters')
   const last = await page.evaluate(() => {
@@ -161,7 +164,7 @@ const choose = async (page, label) => { await page.locator("[role=menu] [role=me
   await page.keyboard.type(" And a few more words about each of them, so the count goes up.")
   check("tokens: follow typing", await until(async () => Number(await tokens.getAttribute("data-tokens")) > t0 + 10), [t0, await tokens.getAttribute("data-tokens")])
   for (const t of ["light", "dark"]) {
-    await theme(t); await wait(700)
+    await look(page, ui, t)
     const sb = await page.locator("[data-status-right]").boundingBox()
     await page.screenshot({ path: `${OUT}desktop-${t}-status-tokens.png`, clip: { x: sb.x - 8, y: sb.y - 8, width: sb.width + 8, height: sb.height + 8 } })
   }
@@ -189,44 +192,44 @@ await upload(IMG_MARKED, marked(PNG), { "X-Vaultite-Client": "app/desktop" })
 check("files: an agent's upload is listed ai, its bytes as sent", listed()[IMG_AI] === "ai" && readFileSync(file(IMG_AI)).toString("base64") === PNG, listed())
 check("files: the user's is listed human, its bytes as sent", listed()[IMG_MINE] === "human" && readFileSync(file(IMG_MINE)).toString("base64") === PNG, listed())
 {
-  const { ctx, page } = await open(1280, 800)
-  await go(page, IMG_AI)
+  const { ctx, page, ui } = await open(1280, 800)
+  await go(page, ui, IMG_AI)
   const head = shown(page, IMG_AI, "[data-chip=origin]")
   const status = page.locator("[role=status] [data-chip=origin]")
   check("files desktop: an agent's image says AI in its header", await until(async () => (await head.count()) === 1 && (await head.getAttribute("data-value")) === "ai"), await head.count())
   check("files desktop: and in the status bar", await until(async () => (await status.getAttribute("data-value")) === "ai"))
   for (const t of ["light", "dark"]) {
-    await theme(t); await wait(700)
+    await look(page, ui, t)
     const box = await head.boundingBox()
     await page.screenshot({ path: `${OUT}files-desktop-${t}-header.png`, clip: { x: Math.max(0, box.x - 500), y: Math.max(0, box.y - 12), width: 620, height: 52 } })
     const sb = await page.locator("[data-status-right]").boundingBox()
     await page.screenshot({ path: `${OUT}files-desktop-${t}-status.png`, clip: { x: sb.x - 8, y: sb.y - 8, width: sb.width + 8, height: sb.height + 8 } })
   }
   const bytes = readFileSync(file(IMG_AI)).toString("base64")
-  await head.click(); await wait(200); await choose(page, "Reviewed")
+  await ui.menu.open(head); await choose(page, ui, "Reviewed")
   check("files desktop: Reviewed from the header goes in the list, the image untouched", await until(() => listed()[IMG_AI] === "reviewed") && readFileSync(file(IMG_AI)).toString("base64") === bytes, listed())
   check("files desktop: both places follow", await until(async () => (await head.getAttribute("data-value")) === "reviewed" && (await status.getAttribute("data-value")) === "reviewed"))
-  await status.click(); await wait(200); await choose(page, "Unlabeled")
+  await ui.menu.open(status); await choose(page, ui, "Unlabeled")
   // (its bytes don't carry the mark: unlisted, it's unlabeled)
   check("files desktop: Unlabeled takes it out of the list; then it says nothing its bytes don't", await until(() => !(IMG_AI in listed()))
     && await until(async () => (await status.getAttribute("data-value")) === "none"), [listed(), await status.getAttribute("data-value")])
-  await go(page, IMG_MINE)
+  await go(page, ui, IMG_MINE)
   check("files desktop: the user's image says Human", await until(async () => (await shown(page, IMG_MINE, "[data-chip=origin]").getAttribute("data-value")) === "human"))
-  await go(page, IMG_MARKED)
+  await go(page, ui, IMG_MARKED)
   const m = shown(page, IMG_MARKED, "[data-chip=origin]")
   check("files desktop: an unlisted image carrying the mark says AI, with why", await until(async () => (await m.getAttribute("data-value")) === "ai") && /file says an AI made it/.test(await m.getAttribute("data-tip")) && !(IMG_MARKED in listed()), [await m.getAttribute("data-tip"), listed()])
-  await m.click(); await wait(200); await choose(page, "Human")
+  await ui.menu.open(m); await choose(page, ui, "Human")
   check("files desktop: the user's label wins over what it carries", await until(() => listed()[IMG_MARKED] === "human") && await until(async () => (await m.getAttribute("data-value")) === "human"), listed())
   // Moved in the app: the label follows.
   await api("POST", "file/move", { from: IMG_MINE, to: `${DIR}/Moved/Photo.png` }, { "X-Vaultite-Client": "app/desktop" })
   check("files: a moved image keeps its label", await until(() => listed()[`${DIR}/Moved/Photo.png`] === "human" && !(IMG_MINE in listed())), listed())
-  await go(page, `${DIR}/Moved/Photo.png`)
+  await go(page, ui, `${DIR}/Moved/Photo.png`)
   check("files desktop: shown where it went", await until(async () => (await shown(page, `${DIR}/Moved/Photo.png`, "[data-chip=origin]").getAttribute("data-value")) === "human"))
   await ctx.close()
 }
 {
-  const { ctx, page } = await open(390, 844, true)
-  await go(page, IMG_MARKED)
+  const { ctx, page, ui } = await open(390, 844, true)
+  await go(page, ui, IMG_MARKED)
   const chip = shown(page, IMG_MARKED, "[data-chip=origin]")
   check("files 390: an image's label is in the line above its name", await until(async () => (await chip.count()) === 1 && (await chip.getAttribute("data-value")) === "human"))
   const fit = await page.evaluate(() => {
@@ -234,8 +237,8 @@ check("files: the user's is listed human, its bytes as sent", listed()[IMG_MINE]
     return { right: Math.round(c.right), h: Math.round(c.height), wide: document.documentElement.scrollWidth }
   })
   check("files 390: it fits, a 44px target, nothing wider than the screen", fit.right <= 390 && fit.h >= 44 && fit.wide <= 390, fit)
-  for (const t of ["light", "dark"]) { await theme(t); await wait(700); await page.screenshot({ path: `${OUT}files-phone-${t}.png`, clip: { x: 0, y: 0, width: 390, height: 360 } }) }
-  await chip.click(); await wait(300); await choose(page, "Mixed")
+  for (const t of ["light", "dark"]) { await look(page, ui, t); await page.screenshot({ path: `${OUT}files-phone-${t}.png`, clip: { x: 0, y: 0, width: 390, height: 360 } }) }
+  await ui.menu.open(chip); await choose(page, ui, "Mixed")
   check("files 390: choosing saves it in the list", await until(() => listed()[IMG_MARKED] === "mixed"), listed())
   await ctx.close()
 }
@@ -243,8 +246,8 @@ check("files: the user's is listed human, its bytes as sent", listed()[IMG_MINE]
 // ---------- phone ----------
 {
   await api("PUT", "file", { path: AI, text: `---\norigin: ai\n---\n\n${text(AI).replace(/^---\n[\s\S]*?\n?---\n\n?/, "")}` })
-  const { ctx, page } = await open(390, 844, true)
-  await go(page, AI)
+  const { ctx, page, ui } = await open(390, 844, true)
+  await go(page, ui, AI)
   const chip = shown(page, AI, "[data-chip=origin]")
   check("390: the label is in the line above the title", (await chip.count()) === 1 && (await chip.getAttribute("data-value")) === "ai")
   const fit = await page.evaluate(() => {
@@ -253,12 +256,12 @@ check("files: the user's is listed human, its bytes as sent", listed()[IMG_MINE]
   })
   check("390: it fits, a 44px target, nothing wider than the screen", fit.right <= 390 && fit.h >= 44 && fit.wide <= 390, fit)
   for (const t of ["light", "dark"]) {
-    await theme(t); await wait(700)
+    await look(page, ui, t)
     await page.screenshot({ path: `${OUT}phone-${t}.png`, clip: { x: 0, y: 0, width: 390, height: 260 } })
   }
-  await chip.click(); await wait(300)
+  await ui.menu.open(chip)
   await page.screenshot({ path: `${OUT}phone-dark-menu.png`, clip: { x: 0, y: 0, width: 390, height: 420 } })
-  await choose(page, "Reviewed")
+  await choose(page, ui, "Reviewed")
   check("390: choosing saves it", await until(() => origin(AI) === "reviewed"), text(AI))
   await ctx.close()
 }
