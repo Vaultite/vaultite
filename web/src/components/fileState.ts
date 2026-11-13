@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useSyncExternalStore } from "react"
+import { useCallback, useEffect, useRef, useSyncExternalStore, type ReactNode } from "react"
+import type { Store } from "@/core/data"
 import { BookOpen, Code2, Pencil, type LucideIcon } from "lucide-react"
 import type { MenuItem } from "@/components/ContextMenu"
 import type { FileHead } from "@/core/define"
@@ -73,6 +74,11 @@ export function useMode(own?: string): [Mode, (m: Mode) => void, string, Editing
   const v = useSyncExternalStore(subscribeMode, () => viewOf(tab))
   return [v.mode, set, tab, v.edit]
 }
+type DrawFile = (store: Store, path: string, docked?: string) => ReactNode
+let fileView: DrawFile | null = null
+export const setFileView = (fn: DrawFile) => { fileView = fn }
+export const drawFileView: DrawFile = (store, path, docked) => fileView?.(store, path, docked) ?? null
+
 export const VIEWS: { value: Mode; label: string }[] = [
   { value: "read", label: "Reading view" }, { value: "live", label: "Live preview" }, { value: "source", label: "Source mode" },
 ]

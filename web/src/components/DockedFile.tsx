@@ -7,8 +7,7 @@ import { useCommandKeys } from "@/core/commands"
 import { HeadingButton } from "@/components/Button"
 import { menuOnCard } from "@/components/ContextMenu"
 import { FileEmbed } from "@/components/FileEmbed"
-import { drawFileView } from "@/components/drawFile"
-import { MODES, useMode, viewItems, VIEWS } from "@/components/fileState"
+import { drawFileView, MODES, useMode, viewItems, VIEWS } from "@/components/fileState"
 
 function editsDocked(store: Store, path: string, disabled: string[]) {
   if (!isMd(path) || isHidden(path) || isOutside(path) || !inVault(store, path) || fileFormatFor(path, disabled) || formatFor(path, disabled)) return false

@@ -3,7 +3,7 @@ import { tabPath } from "../../../core/layout.ts"
 import { offText, viewFor } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 import { Drawn } from "@/components/Guard"
-import { drawFileView } from "@/components/drawFile"
+import { drawFileView } from "@/components/fileState"
 
 /** A tab's target drawn outside the panes, in a sheet (a glance): a file as a sheet shows one, a plugin's view as its
  *  tab draws it, filling the sheet when it fills a pane. `setTarget`: the view changed its own arg (a page followed a link). */
