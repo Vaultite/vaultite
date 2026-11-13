@@ -6,6 +6,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { performance } from "node:perf_hooks"
+import { z } from "zod"
 import { freePort, isolated, makeVault } from "./vault.ts"
 
 const arg = (name: string, dflt: string) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : dflt }
@@ -27,6 +28,14 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-perf-"))
 const VAULT = path.join(tmp, "vault"), LOCAL = path.join(tmp, "local")
 
 type Boot = { child: ChildProcess; up: number; ready: number; cpu: number }
+const Version = z.object({ v: z.string().optional() })
+const Row = z.object({ median: z.number(), cpu: z.number(), wire: z.number() })
+const Compared = z.object({
+  boot: z.object({ firstMs: z.number(), firstCpu: z.number(), warmUp: z.number(), warm: z.object({ median: z.number() }), warmCpu: z.number() }),
+  burst: z.object({ median: z.number(), cpu: z.number() }).optional(),
+  endpoints: z.record(z.string(), Row).optional(),
+  refresh: z.record(z.string(), Row).optional(),
+})
 
 /** Start the server; resolves once the API answers, with when the page answered first and its CPU by then. */
 async function boot(): Promise<Boot> {
@@ -101,7 +110,8 @@ const stats = (xs: number[]) => {
 async function measure(child: ChildProcess) {
   const pageOutsideImportMap = fs.readFileSync(path.join(ROOT, "web", "dist", "index.html"), "utf8").replace(/<script type="importmap">[\s\S]*?<\/script>/, "")
   const assets = pageOutsideImportMap.match(/\.\/assets\/[^"]+/g) ?? []
-  const endpoints: Record<string, unknown> = {}
+  type Endpoint = ReturnType<typeof stats> & { cpu: number; status: number; bytes: number; wire: number; encoding: string; cache: string; again: number | null }
+  const endpoints: Record<string, Endpoint> = {}
   for (const url of [...ENDPOINTS, ...assets.map((a) => a.slice(1))]) {
     await time(url) // warm-up
     const ms: number[] = []
@@ -113,7 +123,6 @@ async function measure(child: ChildProcess) {
     const w = await wire(url, "br, gzip")
     endpoints[url] = { ...stats(ms), cpu: cpuMs, status: last.status, bytes: last.bytes, wire: w.bytes, encoding: w.encoding, cache: w.cache, again: w.again }
   }
-  result.endpoints = endpoints
   // What a first load asks for at once (web/src/core/data.ts and the shell): all in flight together.
   const burst = ["/api/state?since=0", "/api/files", "/api/plugins", "/api/render?path=Start%20here.md", "/api/graph", "/api/tags", "/api/vault", "/api/config/plugins"]
   const bursts: number[] = []
@@ -123,7 +132,7 @@ async function measure(child: ChildProcess) {
     await Promise.all(burst.map((u) => time(u)))
     bursts.push(performance.now() - t0)
   }
-  result.burst = { requests: burst.length, ...stats(bursts), cpu: +((cpu(child) - c0) / RUNS).toFixed(1) }
+  const bursted = { requests: burst.length, ...stats(bursts), cpu: +((cpu(child) - c0) / RUNS).toFixed(1) }
 
   // A change on disk and the web app's refresh after it (GET /api/state?since=<v>), over the network: a note, a timeline
   // line, a workspace's tabs. A checkout that doesn't know `since` answers the whole state.
@@ -136,10 +145,10 @@ async function measure(child: ChildProcess) {
     workspaces: (i) => fs.writeFileSync(ws, JSON.stringify({ workspaces: [{ name: "Perf", panels: [], layout: { root: { id: "g0",
       tabs: Array.from({ length: 1 + (i % 4) }, (_, k) => ({ id: `t${k}`, to: "file:ME.md" })), active: "t0" } } }] })),
   }
-  const refreshes: Record<string, unknown> = {}
+  const refresh: Record<string, ReturnType<typeof stats> & { cpu: number; wire: number }> = {}
   const headers = { ...APP, "Accept-Encoding": "br, gzip", "X-Forwarded-For": "100.64.0.1" }
   for (const [kind, edit] of Object.entries(edits)) {
-    let v = ((await (await fetch(`${BASE}/api/state?since=0`, { headers: APP })).json()) as { v?: string }).v ?? "0"
+    let v = Version.parse(await (await fetch(`${BASE}/api/state?since=0`, { headers: APP })).json()).v ?? "0"
     const ms: number[] = [], wires: number[] = []
     const c1 = cpu(child)
     for (let i = 0; i < RUNS; i++) {
@@ -147,56 +156,60 @@ async function measure(child: ChildProcess) {
       const t0 = performance.now()
       const r = await fetch(`${BASE}/api/state?since=${encodeURIComponent(v)}`, { headers })
       const len = Number(r.headers.get("content-length"))
-      v = ((await r.json()) as { v?: string }).v ?? "0"
+      v = Version.parse(await r.json()).v ?? "0"
       ms.push(performance.now() - t0)
       wires.push(len)
     }
-    refreshes[kind] = { ...stats(ms), cpu: +((cpu(child) - c1) / RUNS).toFixed(1), wire: stats(wires).median }
+    refresh[kind] = { ...stats(ms), cpu: +((cpu(child) - c1) / RUNS).toFixed(1), wire: stats(wires).median }
   }
-  result.refresh = refreshes
+  return { endpoints, burst: bursted, refresh }
 }
 
-makeVault(VAULT, SCALE)
-const result: Record<string, unknown> = { scale: SCALE, runs: RUNS, node: process.version, date: new Date().toISOString() }
-try {
+async function run() {
+  const date = new Date().toISOString()
   const boots: Boot[] = [await boot()]
   for (let i = 0; i < BOOTS; i++) { await stop(boots[boots.length - 1].child); boots.push(await boot()) }
   const child = boots[boots.length - 1].child
   const warm = boots.slice(1)
-  result.boot = { firstMs: +boots[0].ready.toFixed(0), firstCpu: boots[0].cpu, warm: stats(warm.map((b) => b.ready)),
+  const booted = { firstMs: +boots[0].ready.toFixed(0), firstCpu: boots[0].cpu, warm: stats(warm.map((b) => b.ready)),
     warmUp: stats(warm.map((b) => b.up)).median, warmCpu: stats(warm.map((b) => b.cpu)).median }
-  if (ONLY !== "boot") await measure(child)
+  const measured = ONLY !== "boot" ? await measure(child) : null
   await stop(child)
+  return { head: { scale: SCALE, runs: RUNS, node: process.version, date, boot: booted }, measured }
+}
+
+makeVault(VAULT, SCALE)
+let ran: Awaited<ReturnType<typeof run>>
+try {
+  ran = await run()
 } finally {
   // (a server stopping may still be writing there: tried again, and a leftover temp folder isn't worth hiding an error)
-  try { fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }) } catch (e) { console.error(`left ${tmp}: ${(e as Error).message}`) }
+  try { fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }) } catch (e) { console.error(`left ${tmp}: ${e instanceof Error ? e.message : String(e)}`) }
 }
 
 const fmt = (n: number) => n >= 1024 * 1024 ? `${(n / 1048576).toFixed(1)}M` : n >= 1024 ? `${(n / 1024).toFixed(0)}K` : `${n}B`
-const before = COMPARE ? JSON.parse(fs.readFileSync(COMPARE, "utf8")) : null
+const before = COMPARE ? Compared.parse(JSON.parse(fs.readFileSync(COMPARE, "utf8"))) : null
 const ratio = (a?: number, b?: number) => a && b ? ` (${(a / b).toFixed(1)}x)` : ""
-const boot0 = result.boot as { firstMs: number; warm: { median: number }; firstCpu: number; warmCpu: number; warmUp: number }
+const { head, measured } = ran, result = { ...head, ...measured }, boot0 = head.boot
 console.log(`scale ${SCALE}, node ${process.version}, ${ROOT}`)
 console.log(`boot: new vault ${boot0.firstMs}ms${ratio(before?.boot.firstMs, boot0.firstMs)} (cpu ${boot0.firstCpu}ms${ratio(before?.boot.firstCpu, boot0.firstCpu)}), ` +
   `again: page ${boot0.warmUp}ms${ratio(before?.boot.warmUp, boot0.warmUp)}, API ${boot0.warm.median}ms${ratio(before?.boot.warm.median, boot0.warm.median)} ` +
   `(cpu ${boot0.warmCpu}ms${ratio(before?.boot.warmCpu, boot0.warmCpu)})`)
-if (ONLY === "boot") {
+if (!measured) {
   if (OUT) fs.writeFileSync(OUT, JSON.stringify(result, null, 2))
   process.exit(0)
 }
-const burst0 = result.burst as { median: number; p90: number; cpu: number }
-console.log(`first-load burst (8 requests at once): median ${burst0.median}ms p90 ${burst0.p90}ms${ratio(before?.burst.median, burst0.median)}, ` +
-  `cpu ${burst0.cpu}ms${ratio(before?.burst.cpu, burst0.cpu)}`)
-type Row = { median: number; p90: number; cpu: number; bytes: number; wire: number; encoding: string; cache: string; again: number | null }
-for (const [url, e] of Object.entries(result.endpoints as Record<string, Row>)) {
-  const b = before?.endpoints[url] as Row | undefined
+const burst0 = measured.burst
+console.log(`first-load burst (8 requests at once): median ${burst0.median}ms p90 ${burst0.p90}ms${ratio(before?.burst?.median, burst0.median)}, ` +
+  `cpu ${burst0.cpu}ms${ratio(before?.burst?.cpu, burst0.cpu)}`)
+for (const [url, e] of Object.entries(measured.endpoints)) {
+  const b = before?.endpoints?.[url]
   console.log(`${url.slice(0, 50).padEnd(50)} ${String(e.median).padStart(7)}ms p90 ${String(e.p90).padStart(7)}ms cpu ${String(e.cpu).padStart(5)}ms ` +
     `${fmt(e.bytes).padStart(6)} wire ${fmt(e.wire).padStart(6)} ${e.encoding.padEnd(8)} ${e.cache.includes("immutable") ? "immutable" : e.again === 304 ? "etag" : ""}` +
     (b ? `  time${ratio(b.median, e.median)} cpu${ratio(b.cpu, e.cpu)} wire${ratio(b.wire, e.wire)}` : ""))
 }
-type Refresh = { median: number; cpu: number; wire: number }
-for (const [kind, e] of Object.entries(result.refresh as Record<string, Refresh>)) {
-  const b = before?.refresh?.[kind] as Refresh | undefined
+for (const [kind, e] of Object.entries(measured.refresh)) {
+  const b = before?.refresh?.[kind]
   console.log(`refresh after a change (${kind})`.padEnd(50) + ` ${String(e.median).padStart(7)}ms cpu ${String(e.cpu).padStart(5)}ms wire ${fmt(e.wire).padStart(6)}` +
     (b ? `  time${ratio(b.median, e.median)} cpu${ratio(b.cpu, e.cpu)} wire${ratio(b.wire, e.wire)}` : ""))
 }
