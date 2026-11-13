@@ -1,13 +1,16 @@
 // The user's passkeys, approving agents' logins (logins.ts): a registration read and an assertion verified by WebAuthn's
 // rules, in the app that fills (never the server, which only passes them on). Node only, so its tests run without the app.
 import crypto from "node:crypto"
+import { z } from "zod"
 import { bytesAt, decode } from "./cbor.ts"
 import { spki } from "./webauthn.ts"
 
-/** A passkey the user registered: its site (rpId) and the page's origin it was made on, its public key (SPKI, base64). */
-export type Passkey = { id: string; rpId: string; origin: string; key: string; counter: number; name: string; added: number }
-export type Created = { clientDataJSON: string; attestationObject: string }
-export type Asserted = { id: string; clientDataJSON: string; authenticatorData: string; signature: string }
+export const PASSKEY = z.object({ id: z.string(), rpId: z.string(), origin: z.string(), key: z.string(), counter: z.number(), name: z.string(), added: z.number() })
+export type Passkey = z.infer<typeof PASSKEY>
+export const CREATED = z.object({ clientDataJSON: z.string(), attestationObject: z.string() })
+export type Created = z.infer<typeof CREATED>
+export const ASSERTED = z.object({ id: z.string(), clientDataJSON: z.string(), authenticatorData: z.string(), signature: z.string() })
+export type Asserted = z.infer<typeof ASSERTED>
 
 const sha = (b: Uint8Array) => crypto.createHash("sha256").update(b).digest()
 const bytes = (s: unknown) => Buffer.from(typeof s === "string" ? s : "", "base64url")

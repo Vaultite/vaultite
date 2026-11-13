@@ -8,7 +8,8 @@ import { acting, byOf, pageFor, record, serve, settle, taskOf } from "./agent.ts
 import { allPages, handle, tellAll, type EnginePage } from "./engine.ts"
 import type { Database, Entry } from "./keepass.ts"
 import { fillLogin } from "./fill.ts"
-import { register, verify, type Asserted, type Created, type Passkey } from "./presence.ts"
+import { ASSERTED, CREATED, PASSKEY, register, verify, type Passkey } from "./presence.ts"
+import { z } from "zod"
 import { messageOf } from "./errors.ts"
 
 // (its reader, kdbx/, loads at the first login: a Mac whose agents never log in never loads it)
@@ -25,11 +26,12 @@ const keyring = () => safeStorage.isEncryptionAvailable()
  *  vault's. */
 const CONFIG = () => path.join(app.getPath("userData"), "agent-logins.json")
 type Config = { file: string; key: string | null }
+const CONFIG_FILE = z.object({ file: z.string(), key: z.string().optional().catch(undefined) })
 let held: { file: string; password: string } | null = null
 function config(): Config | null {
   try {
-    const c = JSON.parse(fs.readFileSync(CONFIG(), "utf8")) as Partial<Config>
-    return typeof c.file === "string" ? { file: c.file, key: typeof c.key === "string" ? c.key : null } : null
+    const c = CONFIG_FILE.safeParse(JSON.parse(fs.readFileSync(CONFIG(), "utf8")))
+    return c.success ? { file: c.data.file, key: c.data.key ?? null } : null
   } catch { return null }
 }
 
@@ -86,8 +88,7 @@ let heldPasskeys: Passkey[] = []
 function passkeys(): Passkey[] {
   if (!keyring()) return heldPasskeys
   try {
-    const list = JSON.parse(safeStorage.decryptString(fs.readFileSync(PASSKEYS()))) as unknown
-    return Array.isArray(list) ? list as Passkey[] : []
+    return z.array(PASSKEY).catch([]).parse(JSON.parse(safeStorage.decryptString(fs.readFileSync(PASSKEYS()))))
   } catch { return [] }
 }
 function savePasskeys(list: Passkey[]) {
@@ -131,7 +132,9 @@ serve("agent:passkey-options", (_win, token) => {
 serve("agent:passkey-add", async (_win, token, given, name) => {
   const a = additionFor(token)
   additions.delete(String(token))
-  const pk = register((given && typeof given === "object" ? given : {}) as Created, a.challenge, String(name ?? "").trim() || "A passkey")
+  const created = CREATED.safeParse(given)
+  if (!created.success) throw new Error("not a passkey's registration")
+  const pk = register(created.data, a.challenge, String(name ?? "").trim() || "A passkey")
   if (!await here(`add a passkey (${pk.name}) to approve agents' logins`)) throw new Error("not added: Touch ID on this Mac confirms a new passkey")
   savePasskeys([...passkeys().filter((k) => k.id !== pk.id), pk])
   return { name: pk.name, site: pk.rpId }
@@ -145,17 +148,19 @@ serve("agent:login-options", (_win, id) => {
   g.challenge = crypto.randomBytes(32)
   return { ...shown, challenge: b64u(g.challenge), allow: keys.map((k) => k.id) }
 })
+const DENIED = z.object({ deny: z.literal(true) })
 serve("agent:login-answer", (_win, id, given) => {
   const g = grantFor(id)
   if (g.state !== "waiting") throw new Error(`it was ${g.state} already`)
-  const a = (given && typeof given === "object" ? given : {}) as Asserted & { deny?: unknown }
-  if (a.deny === true) { decide(g, "denied"); return { state: g.state } }
+  if (DENIED.safeParse(given).success) { decide(g, "denied"); return { state: g.state } }
   // (one answer per challenge: a replayed one finds none)
   const challenge = g.challenge
   g.challenge = null
   if (!challenge) throw new Error("load the approval page again")
+  const asserted = ASSERTED.safeParse(given)
+  if (!asserted.success) throw new Error("not a passkey's answer")
   const keys = passkeys()
-  const { passkey, counter } = verify(a, keys, challenge)
+  const { passkey, counter } = verify(asserted.data, keys, challenge)
   if (counter !== passkey.counter) savePasskeys(keys.map((k) => (k.id === passkey.id ? { ...k, counter } : k)))
   approvals.set(g.key, { until: Date.now() + APPROVAL_MS, by: `the user's passkey (${passkey.name})` })
   decide(g, "approved", `the user's passkey (${passkey.name})`)
@@ -217,7 +222,8 @@ handle("logins:forget", () => {
 
 // ---------- the call ----------
 
-type Opts = { entry?: unknown; submit?: unknown }
+const OPTS = z.object({ entry: z.unknown().optional(), submit: z.unknown().optional() }).catch({})
+type Opts = z.infer<typeof OPTS>
 const shown = (e: Entry) => ({ id: e.id, title: e.title, username: e.username })
 const named = (e: Entry) => (e.username ? `${e.title} (${e.username})` : e.title)
 
@@ -263,7 +269,7 @@ async function login(p: EnginePage, o: Opts, who: ReturnType<typeof byOf>) {
   try {
     return { ...await fill(p, e, db, o, who, approved), ...(e.free ? {} : { ask }) }
   } catch (err) {
-    log(`failed: ${(err as Error).message}`, e, approved)
+    log(`failed: ${messageOf(err)}`, e, approved)
     throw err
   }
 }
@@ -279,4 +285,4 @@ async function fill(p: EnginePage, e: Entry, db: Database, o: Opts, who: ReturnT
 }
 
 // (the server's call: for an entry that needs the user's yes, it tells them (the Inbox) and waits (agent:login-wait))
-serve("agent:login", (_win, tab, opts, by) => login(pageFor(tab, "act", byOf(by)), (opts && typeof opts === "object" ? opts : {}) as Opts, byOf(by)))
+serve("agent:login", (_win, tab, opts, by) => login(pageFor(tab, "act", byOf(by)), OPTS.parse(opts), byOf(by)))

@@ -163,7 +163,7 @@ async function cloudFor(sink: DictationSink, language: string): Promise<{ cloud?
     const said = c.languages?.length ? c.languages : [language, ...app.getPreferredSystemLanguages()]
     const languages = [...new Set(said.map((l) => l.split(/[-_]/)[0].toLowerCase()).filter((l) => /^[a-z]{2,3}$/.test(l)))].slice(0, 6)
     return { cloud: { url: c.url, key: c.key, model: c.model, languages }, ...words }
-  } catch (e) { return { why: `Vaultite's server didn't answer (${(e as Error).name === "TimeoutError" ? "timed out" : messageOf(e)})`, ...lastWords } }
+  } catch (e) { return { why: `Vaultite's server didn't answer (${e instanceof Error && e.name === "TimeoutError" ? "timed out" : messageOf(e)})`, ...lastWords } }
 }
 
 export const termsOf = (terms: string[]) => [...new Set(terms.filter((w) => !!w.trim()).map((w) => w.trim().slice(0, 100)))].slice(0, 100)
