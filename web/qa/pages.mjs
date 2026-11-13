@@ -4,7 +4,8 @@
 import { execFileSync } from "node:child_process"
 import { mkdirSync } from "node:fs"
 import path from "node:path"
-import { apiAt, qa } from "./lib/qa.mjs"
+import { apiAt, qa, until } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
 import { pagePath } from "./subjects.mjs"
 const { args: [B], browser, check, watch, done } = await qa(import.meta.url)
 const OUT = "/tmp/vaultite-pages/"
@@ -26,11 +27,21 @@ for (const name of PAGES) {
 // (where the vault keeps its pages: Dashboards/, or a folder of the user's)
 const DIR = (await pagePath(B, "People")).split("/").slice(0, -1).join("/")
 const hashOf = (name) => `#file/${encodeURIComponent(`${DIR}/${name}.md`)}`
+const cardsOf = (p, name) => p.locator(`article.file-view[data-path="${DIR}/${name}.md"]:visible .grid > div`)
+const moves = async (p, ui, act) => {
+  const was = await p.evaluate(() => location.hash)
+  await act(); await until(() => p.evaluate((h) => location.hash !== h, was)); await ui.idle()
+}
 
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
-const page = watch(await ctx.newPage())
+const page = watch(await ctx.newPage()), ui = app(page)
+const submenu = async (name, at = (l) => l.first()) => {
+  const row = at(page.locator("[role=menu] button", { hasText: new RegExp(`^${name}$`) }))
+  await row.hover(); await page.locator(`[role=menu] button[aria-expanded=true]`, { hasText: new RegExp(`^${name}$`) }).waitFor(); await ui.idle()
+}
+const panelMenu = () => ui.menu.context(page.locator("[data-panel='pages:pages'] [data-panel-handle]").first())
 for (const [id, name] of [["people", "People"], ["claude-code", "Claude"], ["terminal", "Agents"], ["player", "Queue"], ["people-map", "People map"]]) {
-  await page.goto(`${B}${hashOf(name)}`); await page.waitForTimeout(1500)
+  await page.goto(`${B}${hashOf(name)}`); await cardsOf(page, name).first().waitFor(); await ui.idle()
   const hash = await page.evaluate(() => location.hash)
   check(`${name}'s address shows it`, hash === hashOf(name), hash)
   const cards = await page.locator("article.file-view .grid > div").count()
@@ -40,37 +51,37 @@ for (const [id, name] of [["people", "People"], ["claude-code", "Claude"], ["ter
 const side = async () => (side.last = await page.locator("nav[aria-label=Pages] a").allInnerTexts())
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 check("the sidebar lists the pinned pages", (await side()).length >= 5, await side())
-await page.locator("[data-panel='pages:pages'] [data-panel-handle]").first().click({ button: "right" }); await page.waitForTimeout(200)
+await panelMenu()
 // The panel heading's menu: the pages are a submenu, Pinned pages ▸.
-await page.locator("[role=menu] button", { hasText: /^Pinned pages$/ }).first().hover(); await page.waitForTimeout(300)
+await submenu("Pinned pages")
 const items = await page.locator("[role=menu] [role=menuitemcheckbox]").allInnerTexts()
 // The Queue page's own row (by its whole name)
 const row = page.locator("[role=menu]").getByRole("menuitemcheckbox", { name: "Queue", exact: true })
 check("right-click lists the pages with checks", items.includes("Queue") && items.includes("People"), items)
 const order = () => page.locator("[role=menu] [role=menuitemcheckbox]").allInnerTexts()
 const sideBefore = await side()
-await row.click(); await page.waitForTimeout(300)
+await row.click(); await ui.idle()
 check("unticking hides the page, the menu stays", !(await side()).includes("Queue") && await page.locator("[role=menu]").first().isVisible(), await side())
 check("its row stays where it was, unticked", await row.getAttribute("aria-checked") === "false" && same(await order(), items), await order())
 await page.screenshot({ path: `${OUT}desktop-menu.png` })
-await row.click(); await page.waitForTimeout(300)
+await row.click(); await ui.idle()
 check("ticking brings it back, ticked, in its place", same(await side(), sideBefore) && await row.getAttribute("aria-checked") === "true", [await side(), sideBefore])
-await page.keyboard.press("Escape"); await page.keyboard.press("Escape") // the submenu, then the menu
+await ui.menu.close()
 // Right-clicked on a page's row: only its own items, Unpin last (the panel's menu is its heading's).
-await page.locator("nav[aria-label=Pages] a", { hasText: /^People$/ }).click({ button: "right" }); await page.waitForTimeout(200)
+await ui.menu.context(page.locator("nav[aria-label=Pages] a", { hasText: /^People$/ }))
 const rowItems = await page.locator("[role=menu] [role^=menuitem]").allInnerTexts()
 check("a page's row: its own items, a file's (Copy path), Unpin last, no panel items", rowItems.at(-1) === "Unpin" && rowItems.filter((t) => t === "Unpin").length === 1 && rowItems.includes("Copy path") && !rowItems.some((t) => /^(Pinned pages|Panels|Hide |Move to )/.test(t)), rowItems)
-await page.keyboard.press("Escape")
+await ui.menu.close()
 // Its … (on hover): the same menu.
 await page.locator("nav[aria-label=Pages] a", { hasText: /^People$/ }).hover()
-await page.locator("nav[aria-label=Pages] a", { hasText: /^People$/ }).locator("[data-row-more]").click(); await page.waitForTimeout(200)
+await ui.menu.open(page.locator("nav[aria-label=Pages] a", { hasText: /^People$/ }).locator("[data-row-more]"))
 const dotItems = await page.locator("[role=menu] [role^=menuitem]").allInnerTexts()
 check("a page's …: the same menu as right-click", JSON.stringify(dotItems) === JSON.stringify(rowItems), [dotItems, rowItems])
-await page.keyboard.press("Escape")
-await page.locator("[data-panel='pages:pages'] [data-panel-handle]").first().click({ button: "right" }); await page.waitForTimeout(200)
-await page.locator("[role=menu] button", { hasText: /^Pinned pages$/ }).first().hover(); await page.waitForTimeout(300)
+await ui.menu.close()
+await panelMenu()
+await submenu("Pinned pages")
 // Pages not pinned are under More ▸: ticking one pins it at the end; the menu stays, its row ticked where it was.
-await page.locator("[role=menu] button", { hasText: /^More$/ }).last().hover(); await page.waitForTimeout(300)
+await submenu("More", (l) => l.last())
 const moreRows = () => page.locator("[role=menu]").last().locator("[role=menuitemcheckbox]")
 const more = await moreRows().allInnerTexts()
 // (its groups: the pages, the file on screen, the plugins' views; a view may share a page's name: the Agents view, the Agents page)
@@ -88,22 +99,23 @@ check("More ▸ lists the pages not pinned, then the views not pinned, unticked"
   (await moreRows().evaluateAll((els) => els.every((e) => e.getAttribute("aria-checked") === "false"))), { groups, pins })
 if (more.length > 1) {
   const [a, b] = [more[0].split("\n")[0], more[1].split("\n")[0]]
-  await moreRows().nth(0).click(); await page.waitForTimeout(300)
-  await moreRows().nth(1).click(); await page.waitForTimeout(400)
+  await moreRows().nth(0).click(); await ui.idle()
+  await moreRows().nth(1).click(); await ui.idle()
   check("ticking two in More ▸ pins both at the end, the menu open", same((await side()).slice(-2), [a, b]) && await page.locator("[role=menu]").count() === 3, await side())
   check("...both ticked where they were in More ▸", same(await moreRows().allInnerTexts(), more) && await moreRows().nth(0).getAttribute("aria-checked") === "true" && await moreRows().nth(1).getAttribute("aria-checked") === "true", await moreRows().allInnerTexts())
-  await moreRows().nth(0).click(); await page.waitForTimeout(300)
-  await moreRows().nth(1).click(); await page.waitForTimeout(400)
+  await moreRows().nth(0).click(); await ui.idle()
+  await moreRows().nth(1).click(); await ui.idle()
   check("...and unticking them there unpins them", !(await side()).includes(a) && !(await side()).includes(b), await side())
 }
-for (let i = 0; i < 3 && await page.$("[role=menu]"); i++) { await page.keyboard.press("Escape"); await page.waitForTimeout(100) }
-await page.goto(`${B}${hashOf("People")}`); await page.waitForTimeout(1200)
-await page.keyboard.press("ControlOrMeta+e"); await page.waitForTimeout(1200)
+await ui.menu.close()
+await page.goto(`${B}${hashOf("People")}`); await cardsOf(page, "People").first().waitFor(); await ui.idle()
+await page.keyboard.press("ControlOrMeta+e"); await page.locator("article.file-view .cm-editor").first().waitFor({ timeout: 5000 }).catch(() => {}); await ui.idle()
 check("⌘E edits the dashboard's text", (await page.locator("article.file-view .cm-editor").count()) > 0)
 
 const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
-const m = watch(await phone.newPage(), { label: "phone" })
-await m.goto(B); await m.waitForTimeout(1500)
+const m = watch(await phone.newPage(), { label: "phone" }), mui = app(m)
+const drawerOpen = async () => { await m.locator("[data-phone-header] button[aria-label='Open sidebar']").tap(); await m.locator("[data-phone-drawer=left][aria-hidden=false]").waitFor(); await mui.idle() }
+await m.goto(B); await m.locator("article.file-view:visible").first().waitFor(); await mui.idle()
 // (the vault's first pin, wherever it is: the sandbox's is Start here.md, at the top)
 const firstPin = (await (await fetch(`${B}api/config/pages`)).json()).pinned.find((p) => p.endsWith(".md"))
 check("a phone opens on the first pinned page", decodeURIComponent(await m.evaluate(() => location.hash)) === `#file/${firstPin}`, [firstPin, await m.evaluate(() => location.hash)])
@@ -113,23 +125,23 @@ const ws1 = (await (await fetch(`${B}api/workspaces`)).json()).workspaces?.[0]?.
 const pinnedNow = (ws1 ?? (await (await fetch(`${B}api/config/pages`)).json()).pinned).filter((p) => !p.includes("/") || p.endsWith(".md"))
 check("the bar has no pages in it", !(await m.locator("[data-phone-bar] a").count()), await m.locator("[data-phone-bar] a").count())
 await m.screenshot({ path: `${OUT}phone-home.png`, fullPage: true })
-await m.locator("[data-phone-header] button[aria-label='Open sidebar']").tap(); await m.waitForTimeout(500)
+await drawerOpen()
 const drawer = await m.locator("[data-phone-drawer=left] nav[aria-label=Pages] a").evaluateAll((as) => as.map((a) => decodeURIComponent(a.getAttribute("href"))))
 check("the drawer lists the pinned pages, in order, as page files", drawer.length >= 5 && drawer.join() === pinnedNow.map((p) => `#file/${p}`).slice(0, drawer.length).join(), { drawer, pinnedNow })
 await m.screenshot({ path: `${OUT}phone-drawer.png` })
-await m.locator("[data-phone-drawer=left] nav[aria-label=Pages] a").nth(1).tap(); await m.waitForTimeout(800)
+await moves(m, mui, () => m.locator("[data-phone-drawer=left] nav[aria-label=Pages] a").nth(1).tap())
 check("a page from the drawer opens it", (await m.evaluate(() => decodeURIComponent(location.hash))) === drawer[1], [drawer[1], await m.evaluate(() => location.hash)])
-await m.locator("[data-bar=new]").tap(); await m.waitForTimeout(500)
+await m.locator("[data-bar=new]").tap(); await m.locator("[data-new-tab-pages] a").first().waitFor(); await mui.idle()
 const tiles = await m.locator("[data-new-tab-pages] a").evaluateAll((as) => as.map((a) => decodeURIComponent(a.getAttribute("href"))))
 check("a new tab shows the pinned pages as tiles", tiles.length === drawer.length && tiles.join() === drawer.join(), { tiles, drawer })
 await m.screenshot({ path: `${OUT}phone-new-tab.png`, fullPage: true })
 // A day's recap is drawn as a page, but one a day: never offered to pin among the pages.
 const api = apiAt(B), RECAP = "Recaps/2026-01-02.md"
-await api("PUT", "file", { path: RECAP, text: "---\ntype: recap\n---\n\n- 09:00 Edited [[Start here]]\n" })
-await m.goto(`${B}#settings`); await m.waitForTimeout(1500)
+await mui.sees(RECAP, () => api("PUT", "file", { path: RECAP, text: "---\ntype: recap\n---\n\n- 09:00 Edited [[Start here]]\n" }))
+await m.goto(`${B}#settings`); await m.locator('[data-settings-nav="files"]').waitFor(); await mui.idle()
 check("Settings doesn't list the pages (Pinned's settings do)", !(await m.locator("[data-page-row]").count()))
 // (a part of Files)
-await m.locator('[data-settings-nav="files"]').tap(); await m.waitForTimeout(800)
+await m.locator('[data-settings-nav="files"]').tap(); await m.locator("dialog[open] [data-page-row]").first().waitFor(); await mui.idle()
 check("Pinned's settings: the pages, saying how many are pinned", (await m.locator("dialog[open] [data-page-row]").count()) >= drawer.length &&
   (await m.locator("dialog[open] [data-pages-count]").innerText()).includes(`${drawer.length} pinned`), await m.locator("dialog[open] [data-pages-count]").innerText().catch(() => ""))
 check("Pinned's settings: a day's recap isn't among the pages not pinned", !(await m.locator(`dialog[open] [data-page-row="${RECAP}"]`).count()))
@@ -139,35 +151,35 @@ await m.screenshot({ path: `${OUT}phone-settings.png`, fullPage: true })
 // Tiles: the open sidebar's pages as a grid of icons, named by their tooltips, in the list's order; the drawer keeps rows.
 // Chosen in the palette: "Show pinned pages as…" says what's in use, and offers both.
 const listed = await side()
-await page.goto("about:blank"); await page.goto(`${B}${hashOf("People")}`); await page.waitForTimeout(1500)
-await page.keyboard.press("ControlOrMeta+p"); await page.waitForTimeout(300); await page.keyboard.type("show pinned pages as"); await page.waitForTimeout(300)
+await page.goto("about:blank"); await page.goto(`${B}${hashOf("People")}`); await cardsOf(page, "People").first().waitFor(); await ui.idle()
 const cmd = page.locator("[role=option]", { hasText: "Show pinned pages as…" }).first()
+await page.keyboard.press("ControlOrMeta+p"); await page.locator("[role=dialog] input:focus").waitFor(); await page.keyboard.type("show pinned pages as"); await cmd.waitFor(); await ui.idle()
 check("palette: Show pinned pages as…, saying List", (await cmd.locator("[data-choice-value]").innerText().catch(() => "")) === "List")
 await page.screenshot({ path: `${OUT}desktop-palette-row.png` })
-await page.keyboard.press("Enter"); await page.waitForTimeout(400)
+await page.keyboard.press("Enter"); await page.locator("[role=option]", { hasText: "Tiles" }).waitFor(); await ui.idle()
 const offered = await page.locator("[role=option]").allInnerTexts()
 check("palette: it offers List and Tiles", same(offered.map((t) => t.trim()), ["List", "Tiles"]), offered)
 await page.screenshot({ path: `${OUT}desktop-palette-choice.png` })
-await page.locator("[role=option]", { hasText: "Tiles" }).click(); await page.waitForTimeout(600)
+await page.locator("[role=option]", { hasText: "Tiles" }).click(); await ui.idle()
 check("palette: picking Tiles writes it", (await (await fetch(`${B}api/config/plugin/pages`)).json()).show === "tiles")
 await page.waitForSelector("[data-pin-tiles] [data-pin]", { timeout: 10000 }).catch(() => {})
 const grid = await page.locator("[data-pin-tiles] [data-pin]").evaluateAll((ts) => ts.map((t) => ({ tip: t.getAttribute("data-tip"), text: t.textContent, top: Math.round(t.getBoundingClientRect().top) })))
 check("Tiles: the sidebar's pages as a grid, named by tooltips", grid.length >= 5 && grid.every((t) => t.tip && !t.text) && grid[0].top === grid[3].top && same(grid.map((t) => t.tip), listed.map((l) => l.replaceAll(" / ", "/"))), [grid.map((t) => t.tip), listed])
 check("Tiles: the open page's tile is the active one", await page.locator('[data-pin-tiles] [aria-current="page"]').getAttribute("data-tip") === "People")
 await page.screenshot({ path: `${OUT}desktop-tiles.png` })
-await page.locator("[data-pin-tiles] [data-pin]").nth(1).click(); await page.waitForTimeout(600)
+await page.locator("[data-pin-tiles] [data-pin]").nth(1).click(); await ui.idle()
 check("Tiles: a click opens its page", await page.locator("[data-pin-tiles] [data-pin]").nth(1).getAttribute("aria-current") === "page")
-await m.goto("about:blank"); await m.goto(`${B}#files`); await m.waitForTimeout(1200)
-await m.locator("[data-phone-header] button[aria-label='Open sidebar']").tap(); await m.waitForTimeout(500)
+await m.goto("about:blank"); await m.goto(`${B}#files`); await m.locator("[data-phone-header] button[aria-label='Open sidebar']").waitFor(); await mui.idle()
+await drawerOpen()
 check("Tiles: a phone's drawer shows them as tiles too", (await m.locator("[data-phone-drawer=left] [data-pin-tiles] [data-pin]").count()) >= 5)
 await m.screenshot({ path: `${OUT}phone-drawer-tiles.png` })
 // Back to the list from the panel's menu: Show as ▸ List, Tiles, the one in use checked.
-await page.locator("[data-panel='pages:pages'] [data-panel-handle]").first().click({ button: "right" }); await page.waitForTimeout(200)
-await page.locator("[role=menu] button", { hasText: /^Show as$/ }).first().hover(); await page.waitForTimeout(300)
+await panelMenu()
+await submenu("Show as")
 const tilesItem = page.locator("[role=menu]").getByRole("menuitemradio", { name: "Tiles", exact: true })
 check("panel menu: Show as ▸ Tiles, checked", await tilesItem.getAttribute("aria-checked") === "true")
 await page.screenshot({ path: `${OUT}desktop-show-as.png` })
-await page.locator("[role=menu]").getByRole("menuitemradio", { name: "List", exact: true }).click(); await page.waitForTimeout(600)
+await page.locator("[role=menu]").getByRole("menuitemradio", { name: "List", exact: true }).click(); await ui.idle()
 check("panel menu: List puts the list back", !(await page.locator("[data-pin-tiles]").count()) && (await page.locator("nav[aria-label=Pages] a").count()) >= 5 &&
   (await (await fetch(`${B}api/config/plugin/pages`)).json()).show === undefined)
 await setShow(showBefore)

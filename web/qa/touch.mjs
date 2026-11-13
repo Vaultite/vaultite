@@ -1,7 +1,8 @@
 // Touch at iPhone size: sheets, the header, the drawer, menus and links opening in tabs; subjects from the vault
 // (subjects.mjs). It TICKS A ROUTINE (writes a daily note): throwaway server on a copy of the vault.
 //   node web/qa/touch.mjs <base url>   (a throwaway's server: vau sandbox /tmp/v; VAULTITE_VAULT=/tmp/v VAULTITE_LOCAL=/tmp/local PORT=<port> npm start)
-import { SHOTS, qa } from "./lib/qa.mjs"
+import { SHOTS, fingers, qa, until } from "./lib/qa.mjs"
+import { app } from "./lib/app.mjs"
 import { pageHash, subjects } from "./subjects.mjs"
 const { args: [B], browser, check, done } = await qa(import.meta.url)
 let v = await subjects(B)
@@ -13,10 +14,17 @@ if (!HEALTH) console.log("skip a workout's log from Health: no Health in this va
 // (a long page to scroll: Health, else People)
 const scrolledPage = HEALTH ? health : people, scrolledTitle = HEALTH ? "Health" : "People"
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
-const page = await ctx.newPage()
+const page = await ctx.newPage(), ui = app(page)
 const errs = []; page.on("pageerror", (e) => errs.push(String(e)))
 const out = {}
 const sheetOpen = () => page.evaluate(() => { const d = document.querySelector("dialog"); return !!d && d.open })
+const sheet = page.locator("dialog[open]")
+const sheetShown = async () => { await sheet.waitFor({ timeout: 2000 }).catch(() => {}); await ui.idle() }
+const moves = async (act) => {
+  const was = await page.evaluate(() => location.hash)
+  await act(); await until(() => page.evaluate((h) => location.hash !== h, was)); await ui.idle()
+}
+const weekBack = page.locator('button[aria-label="Previous week"]')
 const shot = (n) => page.screenshot({ path: `${SHOTS}t-${n}.png` })
 
 // Past days to poke at: Tuesday and Wednesday of last week (the grid is paged back one week first).
@@ -45,78 +53,78 @@ v.need(v.linked, "a note that links to another note and to a person")
 const cells = page.locator(`button[aria-label^=${JSON.stringify(`${tueRoutine}, ${TUE}`)}]`)
 const cdp = await ctx.newCDPSession(page)
 if (ROUTINES) {
-await page.goto(B + today); await page.waitForTimeout(1500)
-await page.locator('button[aria-label="Previous week"]').tap(); await page.waitForTimeout(300)
+await page.goto(B + today); await weekBack.waitFor(); await ui.idle()
+await weekBack.tap(); await ui.idle()
 // 1. tap an empty, past cell (last Tuesday, a routine not ticked then) -> should toggle, not open sheet
 out.cellFound = await cells.count()
-await cells.first().tap(); await page.waitForTimeout(500)
+await cells.first().tap(); await ui.idle()
 out.afterTapPressed = await cells.first().getAttribute("aria-pressed"); out.sheetAfterTapEmpty = await sheetOpen()
 // 2. tap the now-done cell -> opens sheet
-await cells.first().tap(); await page.waitForTimeout(600)
+await cells.first().tap(); await sheetShown()
 out.sheetAfterTapDone = await sheetOpen(); out.hashDone = await page.evaluate(() => location.hash)
 await shot("routine-day")
 // 3. back button closes the sheet
-await page.goBack(); await page.waitForTimeout(600)
+await moves(() => page.goBack())
 out.sheetAfterBack = await sheetOpen(); out.hashAfterBack = await page.evaluate(() => location.hash)
 // 4. long-press an empty cell (Wed) -> opens sheet, does not tick
 const wed = page.locator(`button[aria-label^=${JSON.stringify(`${wedRoutine}, ${WED}`)}]`).first()
+await wed.evaluate((e) => e.scrollIntoView({ block: "center" })); await ui.idle()
 const b = await wed.boundingBox()
 const pt = { x: b.x + b.width / 2, y: b.y + b.height / 2 }
 await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [pt] })
-await page.waitForTimeout(700)
+await sheet.waitFor({ timeout: 2000 }).catch(() => {})
 await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
-await page.waitForTimeout(600)
+await ui.idle()
 out.sheetAfterLongPress = await sheetOpen(); out.wedPressed = await wed.getAttribute("aria-pressed")
 // 5. swipe down on the sheet to close
 if (await sheetOpen()) {
   const box = await page.locator("dialog").boundingBox()
   const s = { x: box.x + box.width / 2, y: box.y + 20 }
-  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [s] })
-  for (let i = 1; i <= 10; i++) { await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: s.x, y: s.y + i * 30 }] }); await page.waitForTimeout(16) }
-  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
-  await page.waitForTimeout(700)
+  await (await fingers(page)).swipe(s.x, s.y, s.x, s.y + 300, 10)
+  await ui.idle()
   out.sheetAfterSwipe = await sheetOpen()
 }
 }
 // 6. health: open a workout row. A log is a file: on a phone it opens in a tab (Back returns), like a computer's.
 let healthHash = null
 if (HEALTH) {
-await page.goto(B + health); await page.waitForTimeout(1500)
+const row = page.locator("main button", { hasText: workout }).first()
+await page.goto(B + health); await row.waitFor(); await ui.idle()
 healthHash = await page.evaluate(() => location.hash)
-await page.locator("main button", { hasText: workout }).first().tap(); await page.waitForTimeout(900)
+await moves(() => row.tap())
 out.gymTab = await page.evaluate(() => [decodeURIComponent(location.hash), !!document.querySelector("dialog[open]"), document.querySelector("[data-phone-title]")?.textContent])
 await shot("gym")
-await page.goBack(); await page.waitForTimeout(700)
+await moves(() => page.goBack())
 out.gymBack = await page.evaluate(() => location.hash)
 }
 // A sheet that isn't a file (a routine's day) scrolls inside, locks the page, and Done (its bottom bar: no backdrop, it fills the screen) closes it.
 if (ROUTINES) {
 // (loaded fresh: the Today tab, still drawn, would keep the week it was paged to)
-await page.goto("about:blank"); await page.goto(B + today); await page.waitForTimeout(1500)
-await page.locator('button[aria-label="Previous week"]').tap(); await page.waitForTimeout(300)
-await cells.first().tap(); await page.waitForTimeout(700)
+await page.goto("about:blank"); await page.goto(B + today); await weekBack.waitFor(); await ui.idle()
+await weekBack.tap(); await ui.idle()
+await cells.first().tap(); await sheetShown()
 out.daySheet = await sheetOpen()
 out.dialogBox = await page.locator("dialog").boundingBox()
 out.locked = await page.evaluate(() => document.documentElement.style.overflow === "hidden")
 await shot("day-sheet")
-await page.locator("dialog [data-sheet-done]").tap(); await page.waitForTimeout(600)
+await page.locator("dialog [data-sheet-done]").tap(); await ui.idle()
 out.sheetAfterBackdrop = await sheetOpen()
 }
 // 7. the header while the page scrolls: it stays at the top, naming the page (the old compact title bar's job)
-await page.goto(B + scrolledPage); await page.waitForTimeout(1500)
-await page.evaluate(() => window.scrollTo(0, 600)); await page.waitForTimeout(500)
+await page.goto(B + scrolledPage); await page.locator("[data-phone-title]", { hasText: scrolledTitle }).waitFor(); await ui.idle()
+await page.evaluate(() => window.scrollTo(0, 600)); await ui.idle()
 out.scrolled = await page.evaluate(() => {
   const h = document.querySelector("[data-phone-header]"), r = h?.getBoundingClientRect()
   return { y: scrollY, top: r && Math.round(r.top), height: r && Math.round(r.height), title: document.querySelector("[data-phone-title]")?.textContent, opacity: h && getComputedStyle(h).opacity }
 })
 await shot("scrolled")
 // 8. a pinned page from the drawer (the header's button): it shows, at the top, and the drawer closes
-await page.locator("[data-phone-header] button[aria-label='Open sidebar']").tap(); await page.waitForTimeout(500)
+await page.locator("[data-phone-header] button[aria-label='Open sidebar']").tap(); await page.locator("[data-phone-drawer=left][aria-hidden=false]").waitFor(); await ui.idle()
 const drawerPages = page.locator("[data-phone-drawer=left] nav[aria-label=Pages] a")
 out.drawerPages = await drawerPages.count()
 await shot("drawer")
 const lastPage = await drawerPages.last().getAttribute("href")
-await drawerPages.last().tap(); await page.waitForTimeout(800)
+await moves(() => drawerPages.last().tap())
 out.tabHash = [lastPage, await page.evaluate(() => location.hash)]; out.scrollAfterTab = await page.evaluate(() => scrollY)
 out.drawerClosed = await page.evaluate(() => document.querySelector("[data-phone-drawer]")?.getAttribute("aria-hidden") !== "false")
 // 9. the bar's menu (New note, Commands, Plugins, Settings): opens above the bar, a page navigates and closes it, a
@@ -125,44 +133,48 @@ const menuOpen = () => page.locator("#bar-menu").isVisible()
 // (a toast up first, where the menu opens: it must go under the menu)
 await fetch(new URL("api/ops/ui.notify", B.endsWith("/") ? B : `${B}/`), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "Qa touch: a toast under the menu" }) })
 await page.waitForSelector("[data-sonner-toast]", { timeout: 5000 }).catch(() => {})
-await page.locator("[data-bar=menu]").tap(); await page.waitForTimeout(300)
+await page.locator("[data-bar=menu]").tap(); await page.locator("#bar-menu").waitFor({ timeout: 2000 }).catch(() => {}); await ui.idle()
 out.menuOpen = await menuOpen()
 out.menuAbove = await page.evaluate(() => document.querySelector("#bar-menu").getBoundingClientRect().bottom <= document.querySelector("[data-phone-bar]").getBoundingClientRect().top)
 // (each row on top: a toast, the playground's notice, never covers the menu the user opened)
 out.menuCovered = await page.$$eval("#bar-menu [role=menuitem]", (els) => els.filter((e) => { const b = e.getBoundingClientRect(); return !e.contains(document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2)) }).map((e) => e.textContent.trim()))
 const menuPage = page.locator("#bar-menu a[role=menuitem]").last()
 const menuHref = await menuPage.getAttribute("href").catch(() => null)
-if (menuHref) { await menuPage.tap(); await page.waitForTimeout(600) }
+if (menuHref) await moves(() => menuPage.tap())
 out.menuHash = [menuHref, await page.evaluate(() => location.hash)]; out.menuClosedAfterNav = !(await menuOpen())
-await page.locator("[data-bar=menu]").tap(); await page.waitForTimeout(300)
-await page.touchscreen.tap(195, 200); await page.waitForTimeout(300)
+await page.locator("[data-bar=menu]").tap(); await page.locator("#bar-menu").waitFor(); await ui.idle()
+await page.touchscreen.tap(195, 200); await ui.idle()
 out.menuClosedAfterBackdrop = !(await menuOpen()); out.hashAfterBackdrop = await page.evaluate(() => location.hash)
 // 10. a person from the People page opens their file in a tab beside it, with the profile and the timeline
-await page.goto(B + people); await page.waitForTimeout(1200)
+const personRow = page.locator("main button", { hasText: person }).first()
+await page.goto(B + people); await personRow.waitFor(); await ui.idle()
 const peopleHash = await page.evaluate(() => location.hash)
 const tabsBefore = Number(await page.locator("[data-tabs-button]").innerText())
-await page.locator("main button", { hasText: person }).first().tap(); await page.waitForTimeout(900)
+await moves(() => personRow.tap())
 out.profile = await page.evaluate(() => [decodeURIComponent(location.hash), !!document.querySelector("dialog[open]"), document.querySelector("[data-phone-title]")?.textContent])
 out.profileTabs = [tabsBefore, Number(await page.locator("[data-tabs-button]").innerText())]
 out.profileHasTimeline = await page.locator("main :text('Timeline')").count()
 await shot("profile")
-await page.goBack(); await page.waitForTimeout(600)
+await moves(() => page.goBack())
 out.profileBack = await page.evaluate(() => location.hash)
 // 11. A note in a tab: a person link replaces it in the tab, Back returns, and a link in the note as a sheet closes the
 // sheet and opens the file in a tab.
 const noteHash = `#file/${encodeURIComponent(`${v.linked.note.id}.md`)}`
-await page.goto(B + noteHash); await page.waitForTimeout(1500)
+const personLink = page.locator("main .cm-wikilink", { hasText: v.linked.personText }).first()
+await page.goto(B + noteHash); await personLink.waitFor(); await ui.idle()
 out.noteTab = await page.evaluate(() => [location.hash, !!document.querySelector("dialog[open]")])
-await page.locator("main .cm-wikilink", { hasText: v.linked.personText }).first().tap(); await page.waitForTimeout(800)
+await moves(() => personLink.tap())
 out.wikiPerson = await page.evaluate(() => [decodeURIComponent(location.hash), !!document.querySelector("dialog[open]")])
-await page.goBack(); await page.waitForTimeout(700)
+await moves(() => page.goBack())
 out.backToNote = await page.evaluate(() => [location.hash, !!document.querySelector("dialog[open]")])
-await page.locator("main .cm-wikilink", { hasText: v.linked.ideaText }).first().tap(); await page.waitForTimeout(800)
+const ideaLink = page.locator("main .cm-wikilink", { hasText: v.linked.ideaText }).first()
+await ideaLink.waitFor(); await moves(() => ideaLink.tap())
 out.wikiNote = await page.evaluate(() => [decodeURIComponent(location.hash), !!document.querySelector("dialog[open]")])
 await shot("note")
-await page.goto(`${B}${ROUTINES ? today : people}/file/${encodeURIComponent(`${v.linked.note.id}.md`)}`); await page.waitForTimeout(1500)
+const sheetLink = page.locator("dialog .cm-wikilink", { hasText: v.linked.personText }).first()
+await page.goto(`${B}${ROUTINES ? today : people}/file/${encodeURIComponent(`${v.linked.note.id}.md`)}`); await sheetLink.waitFor({ timeout: 5000 }).catch(() => {}); await ui.idle()
 out.noteSheet = await sheetOpen()
-await page.locator("dialog .cm-wikilink", { hasText: v.linked.personText }).first().tap(); await page.waitForTimeout(1000)
+await moves(() => sheetLink.tap()); await sheet.waitFor({ state: "detached", timeout: 2000 }).catch(() => {}); await ui.idle()
 out.sheetLink = await page.evaluate(() => [decodeURIComponent(location.hash), !!document.querySelector("dialog[open]")])
 out.errs = errs
 console.log(JSON.stringify(out, null, 1))
