@@ -1,5 +1,3 @@
-// vau: Vaultite from a terminal. Every command is an op of the server's catalog (help and flags come from the op), so
-// agents, scripts and MCP do the same things; what touches this computer's files is LOCAL. Node only: starts fast.
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -16,49 +14,32 @@ import { isObj } from "./values.ts"
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const DEFAULT_URL = "http://127.0.0.1:8793"
-/** How long a call the server never got is tried again: a server restarting into an update answers within seconds. */
 const RESTART_RETRY_MS = 60_000
-/** How long a server that refuses is waited for by what the app started (its terminals, agents, hooks: VAULTITE=1), so
- *  its restart (an update, the app relaunching) isn't an error; elsewhere nothing up is said at once. */
 const COMING_BACK_MS = 30_000
 
 export type Obj = Record<string, unknown>
 export type Args = { _: string[]; flags: Record<string, string | true>
-  /** The command line's words as given, after the command's name (a plugin's command handing them to an op as they are). */
   raw?: string[] }
-/** What a command answers; `code`: its exit code, when it isn't 0 for a success (vau terminal wait: the terminal's). */
 export type Result = { data: unknown; text: string; code?: number }
-/** One API call: the status and the body (JSON parsed, else text). */
 export type Api = (method: string, route: string, body?: unknown) => Promise<{ status: number; body: unknown }>
 export type Command = {
   name: string
-  /** The word after its name that it is (`vau terminal attach`: name terminal, sub attach), beside the ops under that
-   *  name; without one, every `vau <name> ...` is it. */
   sub?: string
-  /** One line, for the list. */
   summary: string
   usage: string
-  /** What it does and examples, for `vau <name> --help`. */
   help: string
-  /** Flags that take no value. */
   bool?: string[]
-  /** A plugin's command: the command it follows in `vau --help`'s list (else it goes at the end). */
   after?: string
   run: (a: Args, c: Ctx) => Promise<Result>
 }
 
-/** What an app plugin adds to vau that can't be an op of its plugin.ts (`vau mcp`, a server over stdio): its `cli.ts`
- *  exports `cli` (core/cli.ts finds it, like the server finds plugin.ts). */
 export type PluginCli = {
   commands?: Command[]
-  /** How vau handles one of its plugin's ops around the server (Local, by op id): its exit code, its own printing. */
   ops?: Record<string, Local>
 }
 
-/** A command that failed (exit 1), or one written wrong (`usage`: a missing or bad argument, exit 2). */
 export class CliError extends Error {
   usage: boolean
-  /** Nothing was listening: the server never got the call. */
   refused = false
   constructor(message: string, usage = false) {
     super(message)
@@ -82,8 +63,6 @@ function parseJson(s: string): unknown {
   }
 }
 
-// ---------- where the server is ----------
-
 /** One HTTP request, with Node's http module: fetch would load undici, a third of a short command's start. */
 async function request(url: string, method: string, body?: string, extra: Record<string, string> = {}) {
   const u = new URL(url)
@@ -101,14 +80,11 @@ async function request(url: string, method: string, body?: string, extra: Record
   })
 }
 
-/** The desktop app's folder for this user (its vaults.json; vau's prompt history): Electron's userData. */
 export const userData = (env: Record<string, string | undefined> = process.env, platform: string = process.platform) => env.VAULTITE_USER_DATA || (
   platform === "darwin" ? path.join(os.homedir(), "Library", "Application Support", "Vaultite")
   : platform === "win32" ? path.join(env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "Vaultite")
   : path.join(env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"), "Vaultite"))
 
-/** Where a server may be when VAULTITE_URL doesn't say, in order: the one serving the vault we're in (core/serving.ts,
- *  else the desktop app's vaults.json), the default port, then the app's other open vaults, most recent first. */
 export function servers(env: Record<string, string | undefined> = process.env, cwd = process.cwd()): string[] {
   const data = userData(env)
   type Known = { path: string; port: number; open?: boolean; last?: number }
@@ -128,32 +104,23 @@ export function servers(env: Record<string, string | undefined> = process.env, c
   return [...new Set([...served, ...mine.map(url), DEFAULT_URL, ...others.map(url)])]
 }
 
-/** The environment op `e` runs with: one reaching the user (Op.home), from a job's worker on another machine, goes to
- *  its home (VAULTITE_HOME; VAULTITE_HOME_AS: this machine's id there, naming its terminal). null: this server's. */
 export function homeEnv(env: Record<string, string | undefined>, e: { home?: true }): Record<string, string | undefined> | null {
   const home = env.VAULTITE_HOME?.trim().replace(/\/+$/, "") ?? "", as = env.VAULTITE_HOME_AS?.trim() ?? "", t = env.VAULTITE_TERMINAL ?? ""
   if (!e.home || !/^https?:\/\//.test(home) || home === env.VAULTITE_URL?.replace(/\/+$/, "")) return null
   return { ...env, VAULTITE_URL: home, ...(t && as && !t.includes("@") ? { VAULTITE_TERMINAL: `${t}@${as}` } : {}) }
 }
 
-/** stdin's text; `implicit`: read unasked (a body piped in), so "" rather than an error from a terminal. */
 export type Stdin = (implicit?: boolean) => Promise<string>
 export type CtxOptions = { url?: string; api?: Api; env?: Record<string, string | undefined>; stdin?: Stdin
-  /** Who's calling, when it isn't the CLI as such (X-Vaultite-Client: "mcp" for `vau mcp`'s tools) and the agent it
-   *  calls for (X-Vaultite-Agent: "claude-code"), when its variables can't say (an MCP client names itself). */
   client?: string; agent?: string }
 
-/** What a command works with: the server, through its API. */
 export class Ctx {
   url: string
   env: Record<string, string | undefined>
   api: Api
   stdin: Stdin
-  /** The command running (`vau open`: "open"), told to the server with each call (X-Vaultite-Command). */
   command = ""
-  /** Servers still to try when this one doesn't answer (none when VAULTITE_URL or --url said which). */
   private next: string[]
-  /** VAULTITE_URL or --url said which server. */
   fixed: boolean
   private client: string
   private agent: string | undefined
@@ -176,11 +143,9 @@ export class Ctx {
     for (;;) {
       try {
         res = await request(`${this.url}/api/${route}`, method, body === undefined ? undefined : JSON.stringify(body), this.who())
-        this.next = [] // (it answered: this command's server, restarting or not)
+        this.next = []
         break
       } catch (e) {
-        // Nothing listening: the next server that may be, and it's the one from then on (only then: a request that
-        // failed on its way may have been done, and must not be done again elsewhere).
         const refused = e instanceof Error && "code" in e && e.code === "ECONNREFUSED"
         if (refused && !this.next.length && this.comingBack()) { await new Promise((ok) => setTimeout(ok, 500)); continue }
         if (!this.next.length || !refused) { this.next = []; throw Object.assign(new CliError(this.down()), { refused }) }
@@ -194,10 +159,8 @@ export class Ctx {
     return { status: res.status, body: out }
   }
 
-  /** When a refused call stops waiting for its server to come back (COMING_BACK_MS from the first refusal). */
   private patience: number | null = null
   private told = false
-  /** Whether a refused call waits for the server once more: the app's own processes, within COMING_BACK_MS. */
   private comingBack() {
     if (this.env.VAULTITE !== "1") return false
     this.patience ??= Date.now() + COMING_BACK_MS
@@ -209,20 +172,14 @@ export class Ctx {
     return true
   }
 
-  /** Who's calling, for the server's Activity: the CLI, the coding agent it runs under when its variables say so (Claude
-   *  Code sets CLAUDECODE, Codex CODEX_SANDBOX..., the server also looks at the calling process), and the command. */
   private who(): Record<string, string> {
     const agent = this.agentName()
-    // (a vault plugin's schedule, startup or event command acts on its own: core/writegate.ts)
     const actor = process.env.VAULTITE_ACTOR
     return { "X-Vaultite-Client": this.client, ...(agent ? { "X-Vaultite-Agent": agent } : {}), ...(this.command ? { "X-Vaultite-Command": this.command } : {}),
       ...(actor ? { "X-Vaultite-Actor": actor } : {}), ...(agent ? this.session() : {}),
-      // (a test run's: the user's own server refuses it, core/testrun.ts)
       ...(inTestRun(this.env) ? { [TEST_HEADER]: testRunId(this.env) || "test" } : {}) }
   }
 
-  /** Which session of its coding agent this is, for who-wrote-what (provenance): the app terminal it runs in, its
-   *  session id, and the model and effort when its variables say them (Claude Code: CLAUDE_EFFORT, ANTHROPIC_MODEL). */
   private session(): Record<string, string> {
     const e = this.env, out: Record<string, string> = {}
     const put = (k: string, v: string | undefined) => { if (v && /^[\w.:@/ -]{1,120}$/.test(v)) out[k] = v }
@@ -233,7 +190,6 @@ export class Ctx {
     return out
   }
 
-  /** The coding agent this runs under, by its variables ("claude-code", "codex"...), or "". */
   agentName(): string {
     const e = this.env
     return this.agent ?? (e.CLAUDECODE ? "claude-code" : Object.keys(e).some((k) => k.startsWith("CODEX_") && k !== "CODEX_HOME") ? "codex"
@@ -245,10 +201,7 @@ export class Ctx {
       "service: vau service install), or set VAULTITE_URL to the server that's running."
   }
 
-  /** An op called, sent again through the server's restart where safe: one it never got (nothing listening) for up to
-   *  RESTART_RETRY_MS; one it may have got (cut, a proxy's empty 502 to 504) once, if it only reads. Never a write twice. */
   async op(e: { id: string; kind: string }, query: string, params: unknown, o: { resend?: boolean } = {}): Promise<{ status: number; body: unknown }> {
-    // (`resend` false: a long call sends itself again, with the time it has left)
     const until = Date.now() + (o.resend === false ? 0 : RESTART_RETRY_MS)
     let resent = false
     for (;;) {
@@ -262,13 +215,11 @@ export class Ctx {
     }
   }
 
-  /** An op's answer through op(); a failure (4xx, 5xx) is an error with the server's message. */
   // oxlint-disable-next-line anti-slop/no-unknown-returns, anti-slop/no-unknown-parameters -- the server's answer, for the caller to parse; params are JSON
   async callOp(e: { id: string; kind: string }, query: string, params: unknown): Promise<unknown> {
     return this.answer(await this.op(e, query, params), `ops/${e.id}`)
   }
 
-  /** An API call's body; a failure (4xx, 5xx) is an error with the server's message. */
   // oxlint-disable-next-line anti-slop/no-unknown-returns, anti-slop/no-unknown-parameters -- the server's answer, for the caller to parse; a body is JSON
   async call(method: string, route: string, body?: unknown): Promise<unknown> {
     return this.answer(await this.api(method, route, body), route)
@@ -296,11 +247,8 @@ export class Ctx {
 }
 
 let piped: Promise<string> | null = null
-/** How long an open pipe nobody writes to (an agent's spawned process: a socket) is waited for, when read unasked. */
 const UNASKED_MS = 250
 
-/** stdin's text, read once. Asked for (`-`), it's waited for until it ends; unasked, nothing from a terminal, and a socket
- *  that says nothing at first (an agent's process with stdin left open) isn't waited for. */
 function readStdin(implicit = false): Promise<string> {
   if (process.stdin.isTTY) {
     if (implicit) return Promise.resolve("")
@@ -320,9 +268,6 @@ function readStdin(implicit = false): Promise<string> {
   return piped
 }
 
-// ---------- what only vau does ----------
-
-/** The commands that aren't ops: they run here. */
 export const COMMANDS: Command[] = [{
   name: "sandbox",
   summary: "Make the sandbox (a made-up vault to try the app in, dated as of today) in a folder.",
@@ -437,7 +382,6 @@ Never over another program's vau.
     return done(rs, rs.map((r) => `${r.distro}: ${r.did}`).join("\n"))
   },
 }, {
-  // (streams, so it's a command rather than an op: it's the op events.wait, asked again with each answer's cursor)
   name: "events",
   summary: "Print the vault's events as they happen (files changed, operations done), one JSON object per line.",
   usage: "vau events [--type <t1,t2>] [--path <prefix>] [--once] [--timeout <s>] [--after <cursor>]",
@@ -468,7 +412,7 @@ vau events | while read -r ev; do echo "$ev" | jq -r .type; done`,
       for (const ev of r.events ?? []) {
         if (once) return done(ev, JSON.stringify(ev))
         if (a.flags.json) kept.push(ev)
-        else process.stdout.write(JSON.stringify(ev) + "\n") // as they come
+        else process.stdout.write(JSON.stringify(ev) + "\n")
       }
       if (Date.now() >= end) break
     }
@@ -480,28 +424,21 @@ vau events | while read -r ev; do echo "$ev" | jq -r .type; done`,
 /** A path on this computer as the shell gave it (~ is home: PowerShell and cmd leave it to vau). */
 const local = (p: string) => path.resolve(String(p).replace(/^~(?=[\\/]|$)/, os.homedir()))
 
-/** What vau does around an op with what only this computer has: `params` turns paths into text, `extra` takes more words,
- *  `out` prints the answer, `code` its exit code (else 0). */
 // oxlint-disable-next-line anti-slop/no-unknown-parameters -- out and code read the server's answer, each parsing what it reads
 export type Local = { params?: (p: Obj, c: Ctx) => Promise<Obj>; extra?: number; out?: (result: unknown, p: Obj, extra: string[]) => string; code?: (result: unknown) => number
-  /** A long call the server's restart cut, `ms` into it: the parameters to send again (null: none). */
   again?: (p: Obj, ms: number) => Obj | null
-  /** The answer once it's given up on (`why`: how the server stayed silent), or null for an error. */
   gone?: (p: Obj, why: string, ms: number) => { result: unknown; text: string } | null }
 const Live = z.looseObject({ live: z.looseObject({ live: z.unknown().optional() }) })
 const LOCAL: Record<string, Local> = {
-  // vau version <commit>: HEAD or a branch named as this checkout knows it, in full; exit 1 when it isn't live; a wait
-  // goes on through the server's restart (an update's).
   "app.version": {
     params: async (p) => {
       const given = typeof p.commit === "string" ? p.commit.trim() : ""
       if (!given || /^[0-9a-f]{40}$/.test(given) || !/^[\w./~^-]+$/.test(given) || given.startsWith("-")) return p
       const { execFileSync } = await import("node:child_process")
       try { return { ...p, commit: execFileSync("git", ["rev-parse", "--verify", "--quiet", `${given}^{commit}`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], env: gitEnv() }).trim() || given } }
-      catch { return p } // (not a checkout, or one without it: the server's to find)
+      catch { return p }
     },
     code: (r) => { const l = Live.safeParse(r); return l.success && !l.data.live.live ? 1 : 0 },
-    // (sent again with the time left, saying the time spent: the wait's timeout counts once, across restarts)
     again: (p, ms) => {
       const left = Math.round(Number(p.timeout ?? 900) - ms / 1000)
       return p.wait && left > 5 ? { ...p, timeout: left, waited: Number(p.waited ?? 0) + Math.round(ms / 1000) } : null
@@ -513,7 +450,6 @@ const LOCAL: Record<string, Local> = {
       return { result: { live }, text: live.why }
     },
   },
-  // vau write <path> [--from <file>] [--base <file>]: the text from a file or stdin, the base from a file.
   "file.write": {
     params: async ({ from, base, ...p }, c) => {
       const read = (f: string, what: string) => { try { return fs.readFileSync(local(f), "utf8") } catch { throw new CliError(`can't read ${f} (${what})`) } }
@@ -521,7 +457,6 @@ const LOCAL: Record<string, Local> = {
       return { ...p, text, ...(base !== undefined && base !== true ? { base: read(String(base), "--base: the file with the text you started from") } : {}) }
     },
   },
-  // vau bundle import <file|folder|owner/name>: a bundle's JSON file, a folder shaped like a bundle, or a repository.
   "bundle.import": {
     params: async (p) => {
       const b = p.bundle
@@ -534,7 +469,6 @@ const LOCAL: Record<string, Local> = {
         for (const rel of fs.readdirSync(from, { recursive: true, encoding: "utf8" })) {
           const full = path.join(from, rel)
           if (!fs.statSync(full).isFile() || rel.split(path.sep).some((x) => x.startsWith("."))) continue
-          // (a file that isn't text, an image or a font, as its bytes: the export's form)
           const data = fs.readFileSync(full)
           try { files[rel.split(path.sep).join("/")] = utf8.decode(data) } catch { files[rel.split(path.sep).join("/")] = { base64: data.toString("base64") } }
         }
@@ -543,7 +477,6 @@ const LOCAL: Record<string, Local> = {
       try { return { ...p, bundle: JSON.parse(fs.readFileSync(from, "utf8")) } } catch { throw new CliError(`${from} isn't a bundle's JSON file`) }
     },
   },
-  // vau bundle export <id> [<file>|-]: written to <id>.bundle.json, or the file given; - prints it.
   "bundle.export": {
     extra: 1,
     out: (r, p, extra) => {
@@ -556,14 +489,9 @@ const LOCAL: Record<string, Local> = {
   },
 }
 
-// ---------- plugins' commands ----------
-
 let loaded: Promise<Command[]> | null = null
-/** The plugins' Local, by op id (their cli.ts' `ops`). */
 const pluginLocal = new Map<string, Local>()
 
-/** The built-in plugins' `cli.ts` (a vault plugin's code runs only in the server), merged into the
- *  core's commands, each after the one it names. */
 function loadPlugins(): Promise<Command[]> {
   loaded ??= (async () => {
     const subdirs = (d: string) => {
@@ -582,12 +510,8 @@ function loadPlugins(): Promise<Command[]> {
   return loaded
 }
 
-/** The commands that run here: the sandbox and the plugins', in `vau --help`'s order. */
 export const commands = () => loadPlugins()
 
-// ---------- running ----------
-
-/** vau's own switches, on any command: --copy also puts the output on the clipboard; --count and --paths read a list. */
 const GLOBAL_BOOL = ["json", "help", "copy", "count", "paths"]
 
 export function parseArgs(argv: string[], bool: Iterable<string> = []): Args {
@@ -608,8 +532,6 @@ export function parseArgs(argv: string[], bool: Iterable<string> = []): Args {
   return { _, flags }
 }
 
-/** The words a command line starts with, before its first flag (global ones before them skipped): what names the
- *  command (`vau plugin on reddit --json`: plugin, on, reddit). */
 function leadingWords(argv: string[]) {
   const out: string[] = []
   for (let i = 0; i < argv.length; i++) {
@@ -624,7 +546,6 @@ function leadingWords(argv: string[]) {
 }
 
 function usage(cmds: Command[], ops: OpEntry[] | null = null) {
-  // Ops with a CLI name, one row each (a group of several words under its first: `inbox`), then the local commands.
   const rows: [string, string][] = []
   for (const e of ops ?? []) {
     if (!e.cli) continue
@@ -661,10 +582,6 @@ every change live. File formats: vau docs.`
 
 const commandHelp = (c: Command) => `${c.usage}\n\n${c.summary}\n\n${c.help}`
 
-// ---------- operations (core/ops.ts): every op is a command ----------
-
-/** The server's catalog of operations (`word`: those a command starting with it can name), or null when it can't be
- *  asked (no server, an older one). */
 async function catalog(c: Ctx, word?: string): Promise<OpEntry[] | null> {
   let r
   try {
@@ -673,22 +590,15 @@ async function catalog(c: Ctx, word?: string): Promise<OpEntry[] | null> {
     if (e instanceof CliError) return null
     throw e
   }
-  // (refused, not missing: say why, e.g. a test run's call to the user's own server)
   if (r.status === 403) throw new CliError(String((isObj(r.body) ? r.body.error : undefined) ?? "the server refused"))
   return r.status === 200 ? catalogOf(r.body) : null
 }
 
 
-/** An op's parameters from a command line: `args` by position, the rest as --flags (kebab or camel), `--params <json>`,
- *  `-` for stdin. Values stay text (the server reads the schema); extra words are `extra`, up to `allow`. */
 async function opParams(e: OpEntry, argv: string[], c: Ctx, allow = 0): Promise<{ params: Obj; extra: string[] }> {
   const props = e.params.properties ?? {}
   const bools = Object.entries(props).filter(([, s]) => s.type === "boolean").flatMap(([k]) => [k, kebab(k)])
-  // A switch takes no value (`--error`), unless the next word is one (`--inbox false`): written `--inbox=false` then;
-  // `--no-<switch>` is it off (`--no-enter`).
   const said = argv.map((x) => (x.startsWith("--no-") && bools.includes(x.slice(5)) ? `--${x.slice(5)}=false` : x)).flatMap((x, i) => (x.startsWith("--") && bools.includes(x.slice(2)) && /^(true|false|yes|no|on|off)$/i.test(argv[i + 1] ?? "") ? [`${x}=${argv[i + 1]}`] : i > 0 && argv[i - 1].startsWith("--") && bools.includes(argv[i - 1].slice(2)) && /^(true|false|yes|no|on|off)$/i.test(x) ? [] : [x]))
-  // A list's flag takes the words after it, and adds up when given again (`--images a.png b.png`, `--questions a
-  // --questions b`); one word stays text, a list at its commas as before (`--blocks a,b`).
   const lists: Record<string, string[]> = {}, rest: string[] = []
   for (let i = 0; i < said.length; i++) {
     const k = said[i].startsWith("--") ? camel(said[i].slice(2)) : ""
@@ -710,7 +620,6 @@ async function opParams(e: OpEntry, argv: string[], c: Ctx, allow = 0): Promise<
     if (["url", "params", ...GLOBAL_BOOL].includes(k)) continue
     params[camel(k) in props ? camel(k) : k] = v
   }
-  // `-` as a value is stdin (`--body -`, `vau dev eval -`); a param that takes it (`stdin`) is filled when text is piped in.
   for (const [k, v] of Object.entries(params)) if (v === "-") params[k] = (await c.stdin()).replace(/\n$/, "")
   for (const [k, s] of Object.entries(props)) if (params[k] === undefined && s.env && c.env[s.env]) params[k] = c.env[s.env]
   const fill = Object.entries(props).find(([k, s]) => s.stdin && params[k] === undefined)
@@ -721,17 +630,14 @@ async function opParams(e: OpEntry, argv: string[], c: Ctx, allow = 0): Promise<
   return { params, extra: pos }
 }
 
-/** How an answer is printed: Markdown (the op's own text), JSON, or what its list holds (how many, or their paths). */
 type Shape = { json?: boolean; count?: boolean; paths?: boolean }
 
-/** The list an answer is: itself, or its first list (file.list's files, tag.list's tags); null when it has none. */
 function listOf(r: unknown): unknown[] | null {
   if (Array.isArray(r)) return r
   if (r && typeof r === "object") for (const v of Object.values(r)) if (Array.isArray(v)) return v
   return null
 }
 
-/** What --paths reads of a listed thing, and of the vault's files (GET /api/files). */
 const OptionalText = z.string().optional().catch(undefined)
 const Waited = z.looseObject({ cursor: z.string().optional(), missed: z.boolean().optional(), events: z.array(z.unknown()).optional() })
 const Named = z.object({ path: OptionalText, file: OptionalText, id: OptionalText }).catch({})
@@ -740,12 +646,10 @@ const Tree = z.object({ files: Rows, others: Rows }).catch({ files: [], others: 
 const Failure = z.object({ problems: z.array(z.string()).optional().catch(undefined) }).catch({})
 const Both = z.object({ result: z.unknown(), text: z.unknown() }).partial().catch({})
 
-/** An answer as --count or --paths print it: the number of items its list has, or each one's vault path on a line. */
 async function listed(r: unknown, how: Shape, c: Ctx): Promise<string> {
   const rows = listOf(r)
   if (!rows) throw new CliError(`${how.count ? "--count" : "--paths"} reads a list, and this command's answer isn't one (see it with --json)`)
   if (how.count) return String(rows.length)
-  // An item's path, file, or id (a vault path without .md: kept when it's a file of the vault).
   let tree: Set<unknown> | null = null
   const out: string[] = []
   for (const x of rows) {
@@ -761,20 +665,16 @@ async function listed(r: unknown, how: Shape, c: Ctx): Promise<string> {
   return out.join("\n")
 }
 
-/** An op's error as its command line says it: only where the server names a parameter (a problem's leading name, or a
- *  `name` in backticks), it's the flag (actionOpen is --action-open) or <arg>; `problems`: those not in the message. */
 export function cliError(e: OpEntry, msg: string, problems: string[]): { msg: string; problems: string[] } {
   const props = e.params.properties ?? {}
   const shown = (k: string) => (!Object.hasOwn(props, k) ? null : e.args.includes(k) ? `<${k}>` : flagOf(k))
   const marked = (s: string) => s.replace(/`([A-Za-z_]\w*)`/g, (m, k: string) => shown(k) ?? m)
-  // (a parameter it has no such one of was given as a flag too, or in --params)
   const lead = (p: string) => p.replace(/^([A-Za-z_][\w-]*)(?=[[.:]| is )/, (m, k: string) => shown(k) ?? (p.includes(" has no such parameter") ? flagOf(k) : m))
     .replace(/\(did you mean (\w+)\?\)$/, (m, k: string) => (shown(k) ? `(did you mean ${shown(k)}?)` : m))
   for (const p of problems) msg = msg.replace(p, () => lead(p))
   return { msg: marked(msg), problems: problems.filter((p) => !msg.includes(lead(p))).map((p) => marked(lead(p))) }
 }
 
-/** Run an op from a command line, printed as `how` says. */
 async function runOp(e: OpEntry, argv: string[], c: Ctx, how: Shape): Promise<{ out: string; code: number }> {
   const loc = LOCAL[e.id] ?? (await loadPlugins(), pluginLocal.get(e.id)) ?? {}
   const given = await opParams(e, argv, c, loc.extra ?? 0)
@@ -782,9 +682,7 @@ async function runOp(e: OpEntry, argv: string[], c: Ctx, how: Shape): Promise<{ 
   const list = !!how.count || !!how.paths
   const json = !!how.json || list
   const out = !!loc.out && !json
-  // (an exit code read from the answer: the answer and its text, both)
   const both = !!loc.code && !json && !out
-  // A long call (a wait) the server's restart cut is sent again till its time is up, to the same server.
   const began = Date.now()
   let r: { status: number; body: unknown } | null = null, down: number | null = null
   for (let p = params; ;) {
@@ -804,7 +702,6 @@ async function runOp(e: OpEntry, argv: string[], c: Ctx, how: Shape): Promise<{ 
     const b = r.body, { problems } = Failure.parse(b)
     const reason = String(isObj(b) && "error" in b ? b.error : b).replace(`${e.id}: `, "") || `the server answered ${r.status}, with no reason`
     const said = cliError(e, reason, problems ?? [])
-    // (a 400 with problems is the parameters' check: the command line was wrong)
     throw new CliError([said.msg, ...said.problems.map((x) => `  - ${x}`)].join("\n"), r.status === 400 && !!problems)
   }
   const shown = both ? Both.parse(r.body) : null
@@ -816,8 +713,6 @@ async function runOp(e: OpEntry, argv: string[], c: Ctx, how: Shape): Promise<{ 
   return { out: e.exact ? String(text ?? "") : String(text ?? "").replace(/\n+$/, ""), code }
 }
 
-/** The names a mistyped word may have meant, nearest first: a typo's distance away (`serch`: search), or starting
- *  like it (`work`: workspace); at most 4. */
 function nearby(word: string, names: string[]): string[] {
   const w = word.toLowerCase(), most = Math.max(1, Math.floor((w.length + 2) / 3))
   const scored = [...new Set(names)].map((n) => ({ n, d: distance(w, n.toLowerCase()) }))
@@ -825,8 +720,6 @@ function nearby(word: string, names: string[]): string[] {
   return scored.sort((x, y) => x.d - y.d).slice(0, 4).map((x) => x.n)
 }
 
-/** Run one command line: [exit code, stdout, stderr]. Nothing is printed (bin/vau prints; tests read). A command is an
- *  operation of the server's catalog, by id or CLI name, else one that runs here (COMMANDS, the plugins'). */
 export async function execute(argv: string[], opts: CtxOptions = {}): Promise<{ code: number; out: string; err: string; exact?: boolean }> {
   const all = await commands()
   const a = parseArgs(argv, all.flatMap((c) => c.bool ?? []))
@@ -856,14 +749,12 @@ export async function execute(argv: string[], opts: CtxOptions = {}): Promise<{ 
   }
   let c = ctx()
   const ops = await catalog(c, which)
-  // An op by its id, or by its CLI name, which may be several words (`plugin on`): the longest the words start with.
   const said = (e: OpEntry) => (e.cli ?? "").split(" ").filter(Boolean)
   const fits = (ops ?? []).filter((e) => e.id === which || (e.cli && said(e).every((w, i) => named[i] === w)))
     .sort((x, y) => (y.id === which ? 99 : said(y).length) - (x.id === which ? 99 : said(x).length))
   const op = fits[0]
   if (!ops && !(await c.up())) return { code: 1, out: "", err: `vau ${which}: ${c.down()}` }
   if (!op) {
-    // A group's name (`vau bundle`): the ops under it.
     const group = (ops ?? []).filter((e) => e.cli?.startsWith(`${which} `) || e.id.startsWith(`${which}.`))
     const more = named.length > 1 && !help && !a.flags.help
     if (group.length) {
@@ -876,11 +767,9 @@ export async function execute(argv: string[], opts: CtxOptions = {}): Promise<{ 
     return { code: 2, out: "", err: `vau: no command '${which}'.${near.length ? ` Did you mean ${near.join(" or ")}?` : ""} See vau --help${ops ? " (a plugin's commands are there while it's on: vau plugins)" : ` (and ${c.down()})`}.` }
   }
   if (help || a.flags.help) return { code: 0, out: opDoc(op, "#").replace(/^# .*/, `vau ${op.cli ? `${op.cli} (${op.id})` : op.id}`), err: "" }
-  // (a job's worker telling the user something: to the job's home server, unless --url names one)
   const home = flag(a, "url") ?? opts.url ? null : homeEnv(c.env, op)
   if (home) c = new Ctx({ ...opts, api: undefined, env: home })
   c.command = op.cli ?? op.id
-  // The words that named it are left out of its arguments.
   const rest = [...argv]
   for (const w of [...(help ? ["help"] : []), ...(op.id === which ? [which] : said(op))]) rest.splice(rest.indexOf(w), 1)
   try {
@@ -888,14 +777,12 @@ export async function execute(argv: string[], opts: CtxOptions = {}): Promise<{ 
     return { code, out, err: "", ...(op.exact && !a.flags.json ? { exact: true } : {}) }
   } catch (e) {
     if (!(e instanceof CliError)) throw e
-    // (`vau errors 3f9a`: the command under it that takes the word, `vau errors show 3f9a`)
     const under = e.message.startsWith("too many arguments") ? (ops ?? []).filter((x) => x.cli?.startsWith(`${op.cli ?? op.id} `) && x.args.length) : []
     const hint = under.length ? ` Did you mean ${under.slice(0, 3).map((x) => `vau ${x.cli} ${rest.find((w) => !w.startsWith("-")) ?? ""}`.trim()).join(" or ")}?` : ""
     return { code: e.usage ? 2 : 1, out: "", err: `vau ${op.cli ?? op.id}: ${e.message}${hint}` }
   }
 }
 
-/** Put text on the clipboard with the system's tool: "" when it's there, else why not. */
 export async function toClipboard(text: string, platform: string = process.platform, env: Record<string, string | undefined> = process.env): Promise<string> {
   const tools = platform === "darwin" ? [["pbcopy"]] : platform === "win32" ? [["clip"]]
     : [...(env.WAYLAND_DISPLAY ? [["wl-copy"]] : []), ["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"]]
@@ -913,7 +800,6 @@ export async function toClipboard(text: string, platform: string = process.platf
   return `--copy: no clipboard here (${tools.map((t) => t[0]).join(", ")} not found): printed only`
 }
 
-/** A command line's result printed: stdout, stderr, and with --copy the output on the clipboard too. */
 export async function print(r: { code: number; out: string; err: string; exact?: boolean }, copy = false) {
   if (r.out) process.stdout.write(r.out.endsWith("\n") || (r.exact && !process.stdout.isTTY) ? r.out : r.out + "\n")
   if (r.err) process.stderr.write(r.err + "\n")
@@ -924,14 +810,12 @@ export async function print(r: { code: number; out: string; err: string; exact?:
 }
 
 export async function main(argv = process.argv.slice(2)) {
-  // Piped into a reader that stops (`vau files | head`): its going away ends vau quietly, not with an error.
   // (on macOS a pipe from Node is a socket, so a reader gone mid-write may say ECONNRESET or ENOTCONN instead of EPIPE)
   const gone = (e: NodeJS.ErrnoException) => ["EPIPE", "ECONNRESET", "ENOTCONN", "ERR_STREAM_DESTROYED"].includes(e.code ?? "")
   process.stdout.on("error", (e: NodeJS.ErrnoException) => { if (!gone(e)) throw e; process.exit(process.exitCode ?? 0) })
   process.stderr.on("error", (e: NodeJS.ErrnoException) => { if (!gone(e)) throw e })
   if (!argv.length && process.stdin.isTTY && process.stdout.isTTY) return (await import("./repl.ts")).repl()
   const r = await execute(argv)
-  // Windows' vau run from WSL (core/vaushims.ts' wslShim): the paths it prints as WSL reaches them.
   if (process.env.VAULTITE_WSL && process.platform === "win32") {
     const { wslText } = await import("./wsl.ts")
     const json = !!parseArgs(argv).flags.json

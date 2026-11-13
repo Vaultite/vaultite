@@ -155,13 +155,11 @@ export class Tally {
     this.name = name
   }
 
-  /** A project by its key: its root folder, or a name of its own when it isn't one (`root` null). */
   project(key: string, root: string | null = key, name = this.name(key)) {
     if (!this.projects.has(key)) this.projects.set(key, { name, ...(root !== null ? { root } : {}), cost: 0, tokens: 0, active_min: 0, sessions: new Set(), last: 0 })
     return this.projects.get(key)!
   }
 
-  /** A session by its id, `init` its fields the first time (a `root` names its project; `model`, one to fall back on). */
   session(id: string, init: () => Item) {
     if (!this.sessions.has(id)) this.sessions.set(id, { id, ...init(), cost: 0, tokens: 0, active_min: 0, votes: new Map<string, number>() })
     return this.sessions.get(id)!
@@ -173,8 +171,6 @@ export class Tally {
     if (r.min && "active_min" in b) b.active_min += r.min
   }
 
-  /** One request, in `session` (an id: a day counts it) of `project`; `s`, the session's own row when it has one, which
-   *  `vote` (a model, by `weight`) gives its model. */
   count(r: Counted, session: string, project: Item, s?: Item, vote = r.model, weight = (r.cost ?? 0) + r.tokens / 1e9) {
     this.total.unpriced += r.cost === null ? 1 : 0
     this.total.read += r.read
@@ -194,12 +190,10 @@ export class Tally {
     s.votes.set(vote, (s.votes.get(vote) ?? 0) + weight)
   }
 
-  /** Minutes a turn worked, counted apart from its requests. */
   work(day: string, project: string, session: string, min: number) {
     for (const b of [this.days.get(day), this.projects.get(project), this.sessions.get(session)]) if (b) b.active_min += min
   }
 
-  /** The answer: a session's model its votes' winner through `model`, the 60 latest sessions. */
   result(model = (m: string) => m) {
     const iso = isoOf
     for (const s of this.sessions.values()) {
@@ -271,7 +265,6 @@ export async function cwds(pids: number[]): Promise<Map<number, string>> {
 /** The app's terminal a process runs in (Terminal's, while it's on): its session id, or null. */
 export const terminalOf = (plugin: Plugin, pid: number) => plugin.ask<string | null>("terminal:of", null, pid)
 
-/** Live sessions, working ones first, then by when they started. */
 const busyFirst = (live: Item[]) => sortBy(live, (s) => [s.status !== "busy" ? 1 : 0, s.started || ""])
 
 /** A command line's words after its program: `opt(...names)` an option's value ("" for a switch; `--x=v` too), the
@@ -355,9 +348,7 @@ export type AgentMeter = { terminal: string; session?: string; account?: string;
 /** What Terminal gives an agent's "agent:<name>" service, which answers the command (and folder) to run in a login
  *  shell, which then stays a plain shell (AgentCommand). Ids: <name>-<id>, <name>_<profile>-<id>, resume-<name>-<session>. */
 export type AgentStart = {
-  /** The session to resume, or null for a new one. */
   resume: string | null
-  /** What to tell the agent about where it runs (context.md): its system prompt's addition, if it takes one. */
   context: string
   /** A shell command marking the terminal's state for the Terminals panel and the Inbox, for the agent's hooks (`kind`:
    *  what a waiting one asks). Where the agent speaks OSC 7501 (the terminal reads it), the command does nothing. */
@@ -458,8 +449,6 @@ export type SampleAsk = { prompt: string; system: string; tier: "quick" | "defau
   onText?: (delta: string) => void; signal?: AbortSignal }
 export type SampleAnswer = { text: string; truncated: boolean; model?: string }
 
-/** Start terminal `id` running its agent (Terminal's route, as `ctx`'s caller), told `prompt` first: its answer. Throws
- *  when no plugin that's on brings that agent (the terminal goes again). */
 const Opened = z.looseObject({ agent: z.unknown().optional() })
 
 export async function startAgent(ctx: OpCtx, id: string, prompt?: string, how: AgentHow = {}, home?: { url: string; as: string }) {
@@ -582,7 +571,6 @@ export class Transcript<T extends Talk> {
     this.file = file; this.make = make; this.talk = make(); this.wanted = wanted.map((w) => Buffer.from(w))
   }
 
-  /** Reads on from where the last read stopped; reads run one at a time. */
   read(): Promise<this> {
     const r = this.reading.then(() => this.readOn())
     this.reading = r.catch(() => {})
@@ -632,9 +620,9 @@ export const scanEvery = (ms: number) => { scanMs = ms }
  *  days): `line` hears each new line with its file's state (`fresh`, again when the file was rewritten). */
 export class JsonlScan<R extends { ts: number }, F extends { offset: number } = { offset: number }> {
   files = new Map<string, F>()
-  resp = new Map<string, R>()   // a response by its key: what it cost
+  resp = new Map<string, R>()
   turns = new Map<string, Turn>()
-  version = 0                   // bumps when anything above changed
+  version = 0
   refresh = throttled(() => scanMs, () => this.scan(), () => this.reach < scanDays())
   private dirs: () => string[]
   private pruned = 0
@@ -645,7 +633,6 @@ export class JsonlScan<R extends { ts: number }, F extends { offset: number } = 
   private running = false
   private saved = { version: 0, at: 0 }
   private seen = new Set<string>()
-  // keep: a file on the server's disk, so a restart reads on from there
   constructor(dirs: () => string[], keep?: () => string) {
     this.dirs = dirs
     this.keep = keep ?? null
@@ -654,7 +641,6 @@ export class JsonlScan<R extends { ts: number }, F extends { offset: number } = 
 
   protected fresh(_file: string): F { return { offset: 0 } as F }
   protected line(_line: Buffer, _f: F) { /* the agent's */ }
-  /** What else a scan knows that's kept with it (titles, names), and given back after a restart. */
   protected extra(): unknown { return null }
   protected restore(_extra: unknown) { /* the agent's */ }
 
@@ -746,7 +732,6 @@ export function firstPrompts(find: (id: string) => string) {
 }
 
 let sqlite: typeof import("node:sqlite") | null | undefined
-/** Node's node:sqlite (22.13 and later), loaded when first needed (never while the plugins load); null without it. */
 function nodeSqlite() {
   if (sqlite === undefined) {
     try { sqlite = process.getBuiltinModule("node:sqlite") ?? null } catch { sqlite = null }
@@ -822,13 +807,11 @@ export class SqliteFile {
     }
   }
 
-  /** Whether `table` has `col`: older versions lack some columns. */
   has(table: string, col: string) {
     if (!this.cols.has(table)) this.cols.set(table, new Set(this.all(`PRAGMA table_info(${table})`).map((r) => String(r.name))))
     return this.cols.get(table)!.has(col)
   }
 
-  /** `col` of `table` for a SELECT, or NULL in its place. */
   col(table: string, col: string) {
     return this.has(table, col) ? col : `NULL AS ${col}`
   }
@@ -841,7 +824,6 @@ export class SqliteFile {
     return v !== was || v === -1
   }
 
-  /** Whether to read it again: at most every 5 s, only when it changed; `none` runs when there's no database. */
   due(none: () => void) {
     const wider = this.reach < reach
     if (!wider && Date.now() - this.at < 5000) return false
@@ -901,7 +883,6 @@ export const limitRows = (windows: { label: string; used: number; resets_at: str
 const sessionLine = (s: Item) => [s.private ? "Private session" : s.title || s.name || "Untitled", s.project, s.accountLabel, s.model,
   (s.active_min ?? 0) >= 1 && fmtMin(s.active_min), money(s.cost || 0)].filter(Boolean).join(" · ")
 
-/** How an agent's blocks word things. */
 type Words = {
   /** Its name ("Claude Code"). */
   name: string
@@ -934,8 +915,6 @@ export function usedFirst<A extends { id: string }>(accts: A[], used: Map<string
   return [...[...used.keys()].flatMap((id) => tagged.filter((a) => a.id === id)), ...tagged.filter((a) => !used.has(a.id))]
 }
 
-/** Which of agent `terminal`'s accounts (`all`) `uses` names, and for what: one named without an account is its first
- *  (the default). Several uses of one account are said once each. */
 function accountUses(uses: AgentUse[], terminal: string, all: { id: string }[]) {
   const out = new Map<string, string[]>()
   for (const u of uses) {
@@ -984,13 +963,11 @@ export function codingAgent<A extends Account>(plugin: Plugin, a: CodingAgent<A>
   const accountsFor = (id: unknown) => (a.accounts ? accountsNamed(a.accounts.all(), id, a.accounts.word) : [])
   const project = a.projectOf ?? ((cwd: string) => projectOf(cwd))
   const terminal = KNOWN_AGENTS.find((k) => k.id === a.id)?.terminal ?? a.id
-  /** Its accounts plugin `by` runs it in, and for what (its service "agents-used:<plugin>"); none: an empty map. */
   async function usedBy(by: unknown) {
     if (typeof by !== "string" || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(by) || !a.accounts) return new Map<string, string[]>()
     const uses = await plugin.ask<AgentUse[]>(`agents-used:${by}`, [])
     return accountUses(Array.isArray(uses) ? uses : [], terminal, a.accounts.all())
   }
-  /** Its plan and limits; `by` (a plugin) puts the accounts it uses first, saying for what. */
   async function planOf(accts: A[], by: unknown) {
     const p = await a.plan?.(accts) ?? { plan: null, limits: null }
     const each = p.accounts as { id: string }[] | undefined
@@ -1034,8 +1011,6 @@ export function codingAgent<A extends Account>(plugin: Plugin, a: CodingAgent<A>
   return { accountsFor, usedBy, accountOf: (id: unknown) => (id ? accountsFor(id)[0] : a.accounts?.all()[0]) }
 }
 
-/** The agent blocks every agent draws (the Coding agents plugin declares them): its sessions, usage, projects, models,
- *  and one project's. */
 function usageBlocks(plugin: Plugin, w: Words, usage: (days: number, account: unknown) => Promise<Usage>) {
   const [sessions, usageBlock, projects, models, project] = USAGE_BLOCKS
   const noun = w.noun ?? "session", count = w.count ?? "session"

@@ -25,7 +25,6 @@ export { extract, hasTag, tagName, tagsOf } from "./sections.ts"
 export { ARCHIVE_DIR, archiveTwin, effectiveType, inArchive, isArchived, isHiddenPath, unarchived } from "./fileprops.ts"
 export { bodyLine, FM, frontmatter, keepBlocks, loadFm, parseText, prose, renameProperty, renameTagText, setPropertyText } from "./frontmatter.ts"
 
-// Items are plain records: what a plugin's parse makes of a file. Keys starting with _ are private (the API drops them).
 export type Item = Record<string, any>
 
 
@@ -95,7 +94,7 @@ export function splitTags(s: unknown): string[] {
 
 let tmpN = 0
 const HELD_LONG = 30_000
-const VOUCH = 10_000 // the longest the app's reads trust the watcher without walking the vault
+const VOUCH = 10_000
 
 /** A new file, whole or not at all (a full disk or a crash mid-write leaves no cut-off file to be refused as "already
  *  exists"); false if one came at `p` meanwhile. Renamed, not hard-linked: iCloud Drive's folders may not take links. */
@@ -201,7 +200,6 @@ function configStat(file: string) {
   return `${st.mtimeNs}:${st.size}`
 }
 
-/** A read failed because the file isn't there (not because iCloud holds it or has it in the cloud only for now). */
 function gone(file: string, e: unknown) {
   return codeOf(e) === "ENOENT" && !fs.existsSync(path.join(path.dirname(file), `.${path.basename(file)}.icloud`))
 }
@@ -237,7 +235,6 @@ const stillDownloading = (p: string, cause?: unknown) =>
 /** How long a sync waits for a file before going on without it; a read going on SLOW ms is held (iCloud). */
 export const READ_WAIT = 2000
 const SLOW = 1000
-/** How long a read waits for iCloud to bring down a placeholder before failing (the next sync asks again). */
 const ARRIVAL = 60_000
 const reading = new Map<string, { since: number; data: Promise<Buffer> }>()
 
@@ -289,8 +286,6 @@ export const iCloud = {
 const placeholder = (e: unknown) => iCloud.on && Math.abs(errnoOf(e) ?? 0) === 11
 const evicted = (abs: string, st: fs.BigIntStats | fs.Stats) => iCloud.on && iCloud.evicted(abs, st)
 
-/** Ask iCloud for a placeholder (`brctl download`, once a minute per file till it's read); `e`: the read's error, if it
- *  isn't one. */
 const fetching = new Map<string, number>()
 export function fetchFromICloud(p: string, e: unknown) {
   if (!placeholder(e)) return
@@ -511,7 +506,6 @@ export class Kind {
     this.titleKey = spec.titleKey ?? "title"
   }
 
-  /** Its single file, if it's kept in one (its plugin's setting may move it). */
   get file(): string | undefined {
     const f = this.spec.file
     return typeof f === "function" ? f() : f
@@ -541,8 +535,6 @@ export class Kind {
 
   merge(old: Item, patch: Item) { return this.spec.merge ? this.spec.merge(old, patch) : { ...old, ...patch } }
 
-  /** Whether a file without a known `type` is this kind: only its single file is (any case: ME.md, and Me.md). Every
-   *  other file is a kind's by its `type` alone, never by its folder. */
   owns(rel: string) {
     const f = this.file
     return !!f && rel.toLowerCase() === f.toLowerCase()
@@ -571,10 +563,7 @@ export function sortBy<T>(xs: T[], key: (x: T) => unknown, reverse = false): T[]
     .sort((p, q) => (reverse ? cmp(q[1], p[1]) : cmp(p[1], q[1])) || p[2] - q[2]).map((p) => p[0])
 }
 
-/** A file's modified time (ns), size, and when it was made (ms: macOS keeps a birth time; else its oldest time). */
 type Stat = { ns: bigint; size: number; born: number }
-/** Folders of installed packages and compiled caches (a code project dropped into the vault): never listed. Every
- *  request walks the vault, and these can hold tens of thousands of files nobody opens. */
 const CACHES = new Set(["node_modules", "__pycache__"])
 const unscanned = (rel: string) => rel.split("/").some((n, i, all) => (n.startsWith(".") && (n !== ARCHIVE_DIR || i === all.length - 1)) ||
   n.endsWith(".icloud") || n.includes(".tmp-") || (i < all.length - 1 && CACHES.has(n)))
@@ -601,7 +590,7 @@ export class Entry {
   bodyLine = 0
   item: Item | null = null
   problems: string[] = []
-  broken = false // its header doesn't parse: fm/body/item are the last good read
+  broken = false
 
   constructor(rel: string, stat: Stat, kind: Kind | null) {
     this.rel = rel; this.stat = stat; this.kind = kind
@@ -626,8 +615,6 @@ export class Entry {
 const base = (rel: string) => rel.slice(rel.lastIndexOf("/") + 1)
 export const stemOf = (rel: string) => base(rel).replace(/\.md$/, "")
 
-/** A new file's owned keys with its title in `aliases` when its kind names files by their title and this one's name
- *  can't hold it (links find a file by its name or aliases, never its `title:`/`name:`). */
 function named(k: Kind, item: Item, rel: string, owned: Item): Item {
   const title = item[k.titleKey]
   if (k.spec.filename || typeof title !== "string" || !title.trim() || stemOf(rel) === title) return owned
@@ -666,12 +653,12 @@ export class Vault {
   path: string
   kinds: Kind[] = []
   entries = new Map<string, Entry>()
-  byId = new Map<string, string>()         // collection + "\0" + id -> relpath
+  byId = new Map<string, string>()
   others = new Map<string, Stat>()
   folders: string[] = []
   private missing = new Map<string, number>()
-  version = 0                              // bumps on every change to the files (other files and folders too), so callers can cache derived data
-  settingsVersion = 0                      // the same for settings: .vaultite/ (see settingsStats) and the .obsidian/ files the app reads
+  version = 0
+  settingsVersion = 0
   private settingsSeen = ""
   private ordered = new Map<Kind, readonly Item[]>()
   private settings = new Map<string, string | null>()
@@ -681,30 +668,19 @@ export class Vault {
   private hooks = new Set<(vault: Vault) => void>()
   private types: Map<string, Kind> | null = null
   private plainDirs: string[] = []
-  /** The folders whose files are patterns, never items (the Templates plugin's, through the service
-   *  `templates:folder`, and the sample folders: core/app.ts): a `type: person` template there isn't a person. */
   plain: () => string[] = () => []
-  /** Defaults another app's settings give the vault's settings files, by file (`files`, `plugins/<id>/data`): what
-   *  applies to a key a file doesn't set, never written (the plugins' `setting-defaults`: core/app.ts). */
   defaults: () => Record<string, Item> = () => ({})
   private seeds: { version: number; all: Record<string, Item> } | null = null
   pluginList: { id: string; manifest: Manifest; tier?: string }[] = []
   private off: { conf: string | null | undefined; list: unknown; off: Set<string> } | null = null
-  /** While a server starts, the texts its last start read (core/fmcache.ts): the first walk takes those of files unchanged
-   *  since, and keeps what it has in `now` for the next start. */
   startTexts: StartTexts | null = null
-  /** Files a sync went on without, still being read (iCloud downloading them): as last read, or not indexed yet. */
   downloading: string[] = []
   private evicted: string[] = []
   private arrivals = new Set<(rel: string) => void>()
   private writes = new Set<(rel: string) => void>()
 
-  /** May the plugin acting on its own write `rel` (outside .vaultite/)? The App asks the grants (core/grants.ts);
-   *  without one, never. */
   mayWrite: (plugin: string, rel: string) => boolean = () => false
-  /** Whether this machine writes what plugins generate and runs the jobs (core/app.ts: the sync hub, else Machines' first). */
   writerHere = true
-  /** Told of each write the gate refused (core/writegate.ts): the App logs it and asks the user. */
   writeRefused: (plugin: string, rel: string) => void = (plugin, rel) => log.error(`write refused: ${plugin} may not write ${rel} on its own`)
 
   constructor(p: string) {
@@ -713,7 +689,6 @@ export class Vault {
       wrote: (rel) => { for (const fn of this.writes) fn(rel) } })
   }
 
-  /** Run fn with the vault to itself: writes (and the sync before them) take turns, so a file is never half-updated. */
   lock<T>(fn: () => Promise<T> | T): Promise<T> {
     const watched = async () => {
       const t0 = Date.now(), by = errorContext.getStore() ?? "the server's own work"
@@ -729,10 +704,8 @@ export class Vault {
   private watched = false
   private stale = true
   private walked = 0
-  private linkedOut = false // a linked folder was followed: the watcher doesn't see into it
+  private linkedOut = false
 
-  /** Live watches the vault, or stopped (until it restarts, every read walks it). `untold`: whether it heard changes
-   *  it hasn't passed on yet, when its watcher hears each change as it's made (Linux's inotify; not FSEvents). */
   watching(on: boolean, untold?: () => boolean) {
     this.watched = on
     this.untold = on ? untold ?? null : null
@@ -745,10 +718,8 @@ export class Vault {
     for (let waited = 0; this.untold?.() && waited < 1000; waited += 20) await new Promise((r) => setTimeout(r, 20))
     return !this.next && this.vouched() && !!this.untold && !this.untold()
   }
-  /** Changes Live heard so far (and starts and stops): what was worked out from the disk at one count still holds. */
   heardCount = 0
 
-  /** Live heard a change on disk: the next read walks the vault. */
   heard(rel: string | null) {
     if (rel && unseen(rel)) return
     if (rel && this.indexed(rel)) return
@@ -756,8 +727,6 @@ export class Vault {
     this.heardCount++
   }
 
-  /** What the watcher heard at once (null: it couldn't say). While the index is vouched for, files are taken on their own
-   *  as `reread` takes them (Markdown read off the main thread); anything else (a new file, a folder, still downloading) walks. */
   async hear(rels: string[] | null): Promise<boolean> {
     const told = rels?.filter((r) => !unseen(r) && !this.indexed(r))
     if (told && !told.length) return false
@@ -778,13 +747,11 @@ export class Vault {
   }
 
   private letGo = new Set<string>()
-  /** Whether the watcher has told of every change so far (one hearing each as it's made): the index is the disk's. */
   async caughtUp() {
     await turn(); await turn()
     return this.vouched() && !!this.untold && !this.untold()
   }
 
-  /** Whether these changes heard are in the index already (or what no sync looks at). */
   told(rels: Iterable<string>) {
     for (const r of rels) if (!unseen(r) && !this.indexed(r)) return false
     return true
@@ -802,8 +769,6 @@ export class Vault {
     }
   }
 
-  /** Index `rels` after writing, adding, moving or removing them: only those while the watcher vouches for the rest,
-   *  else (a folder, a hidden or new folder, a placeholder) a whole sync. */
   async reread(rels: string[]): Promise<boolean> {
     if (!this.vouched()) return this.sync()
     const stats = rels.map((rel) => fs.statSync(this.abs(rel), { bigint: true, throwIfNoEntry: false }))
@@ -839,15 +804,11 @@ export class Vault {
   }
 
   private rewalk: ReturnType<typeof setTimeout> | null = null
-  /** Whether the index is as the disk is, by the watcher's word. Not while files are still downloading or evicted, a
-   *  folder is missing, or the last walk is older than VOUCH (in case the watcher missed something). */
   vouched(within = VOUCH) {
     return this.watched && !this.stale && !this.linkedOut && !this.downloading.length && !this.evicted.length &&
       !this.missing.size && Date.now() - this.walked < within
   }
 
-  /** Sync before a read; reads asking before the next turn share one walk. `trusting`: the watcher's word will do (the
-   *  app's reads, not an agent's, which may have just written), and past VOUCH a walk after the answer makes sure. */
   synced({ trusting = false, drained = false } = {}): Promise<boolean> {
     if (trusting && !this.next && this.vouched()) return Promise.resolve(false)
     if (drained && this.untold && !this.next) return this.drain().then((ok) => (ok ? false : this.synced()))
@@ -866,20 +827,14 @@ export class Vault {
     return path.join(this.path, rel)
   }
 
-  /** fn(vault) after every sync, whether or not the index changed (File history compares stats). Returns the function
-   *  that removes it. */
   afterSync(fn: (vault: Vault) => void) {
     return added(this.hooks, fn)
   }
 
-  /** fn(rel) when a file a sync went on without (downloading) has been read: Live syncs then. Returns the function that
-   *  removes it. */
   onArrive(fn: (rel: string) => void) {
     return added(this.arrivals, fn)
   }
 
-  /** fn(rel) when this server writes a file of the vault (Live tells the apps at once, not when the watcher does).
-   *  Returns the function that removes it. */
   onWrote(fn: (rel: string) => void) {
     return added(this.writes, fn)
   }
@@ -887,7 +842,7 @@ export class Vault {
   private async readAll(rels: string[]) {
     const texts = new Map<string, string | Error>(), late: string[] = [], was = new Set(this.downloading)
     const deadline = Date.now() + READ_WAIT
-    let at = 0 // (not shift(): on a big array each one moves the rest, so a vault's 30,000 files cost a second)
+    let at = 0
     const next = async () => {
       for (let rel = rels[at++]; rel !== undefined; rel = rels[at++]) {
         const abs = path.join(this.path, rel)
@@ -906,7 +861,6 @@ export class Vault {
     return { texts, late: late.sort() }
   }
 
-  /** Bring down the settings iCloud evicted, before the plugins first read them (a sync does it after). */
   async fetchSettings() {
     this.evicted = []
     this.settingsStats()
@@ -925,8 +879,6 @@ export class Vault {
   }
 
   private movers = new Set<MoveHook>()
-  /** fn(from, to) when a file or folder is moved through the API, restored from .trash, or trashed (to: null, and
-   *  `trashed` where it went), so open tabs and plugins follow. Returns the function that removes it. */
   onMove(fn: MoveHook) {
     return added(this.movers, fn)
   }
@@ -936,8 +888,6 @@ export class Vault {
     }
   }
 
-  /** Every file as links see it: its path and aliases (its name is its title: `title:` and `name:` aren't link names).
-   *  With `names` (lowercase), only `also` and the files a link by one of them could find: of that name, or that alias. */
   linkFiles(names?: Set<string>, also?: Map<string, string>): LinkFile[] {
     const out: LinkFile[] = []
     const named = (rel: string) => {
@@ -952,8 +902,6 @@ export class Vault {
     return out
   }
   private links: { version: number; resolve: Resolve<string>; names: Map<string, string> } | null = null
-  /** The file a [[link]] written in `from` goes to (core/links.ts: the closest of its name), or null. The resolver is
-   *  kept while the files have the same names (paths, aliases): an edit doesn't make it again. */
   resolveLink(target: string, from?: string): string | null {
     const was = this.links
     if (was?.version !== this.version) {
@@ -962,7 +910,6 @@ export class Vault {
     }
     return this.links!.resolve(target, from)
   }
-  /** What links find each file by, past its path: its aliases, and whether it's archived (other files: ""). */
   linkNames(): Map<string, string> {
     const out = new Map<string, string>()
     for (const [rel, e] of this.entries) out.set(rel, linkKey(e))
@@ -976,8 +923,6 @@ export class Vault {
     return true
   }
 
-  /** Point links to moved files (already in the index at `to`) at their new paths. A link changes only
-   *  when it found the file before and wouldn't now. Returns the files changed. */
   relink(moves: [string, string][]): string[] {
     if (!moves.length) return []
     const fwd = new Map(moves), back = new Map(moves.map(([f, t]) => [t, f]))
@@ -1041,8 +986,6 @@ export class Vault {
     return changed
   }
 
-  /** The plugins that are off: in plugins.json's `disabled` (never an `alwaysOn` one), `offByDefault` ones not in
-   *  `enabled`, the `ai` ones while AI is off (plugins.json `ai: false`), and those whose `requires` are off or missing. */
   switchedOff(): Set<string> {
     const { disabled, enabled, ai } = this.config("plugins"), conf = this.settings.get("plugins")
     const memo = this.off
@@ -1072,8 +1015,6 @@ export class Vault {
   }
 
   private placers = new Set<{ plugin: string; fn: ArchiveHook }>()
-  /** fn(path, archived) when the API archives or unarchives an item: the folder its file moves to, or null to leave it.
-   *  Only while `plugin` is on. Returns the function that removes it. */
   onArchive(plugin: string, fn: ArchiveHook) {
     return added(this.placers, { plugin, fn })
   }
@@ -1085,12 +1026,9 @@ export class Vault {
   }
 
   private creators = new Set<{ plugin: string; fn: CreateHook }>()
-  /** fn(path, fm, writer) when the API makes a Markdown file: the keys it answers are added (the file's own win). Only
-   *  while `plugin` is on. Returns the function that removes it. */
   onCreate(plugin: string, fn: CreateHook) {
     return added(this.creators, { plugin, fn })
   }
-  /** The keys the onCreate hooks add to a new file at `rel` whose frontmatter is `fm`. */
   creating(rel: string, fm: Item): Item {
     const who = requestWriter.getStore() ?? null
     const out: Item = {}
@@ -1101,8 +1039,6 @@ export class Vault {
     }
     return out
   }
-  /** A new Markdown file's text as the API writes it: with the keys the onCreate hooks add, as a small edit (the
-   *  text's own header lines stay as they are). The text as it was when they add none, or its header doesn't read. */
   created(rel: string, text: string): string {
     if (!rel.toLowerCase().endsWith(".md") || !this.creators.size) return text
     const m = FM.exec(text)
@@ -1112,8 +1048,6 @@ export class Vault {
   }
 
   private writers = new Set<{ plugin: string; fn: WriteHook }>()
-  /** fn(path, before, after, writer) after a request (the app, the CLI, an agent) wrote a Markdown file outside
-   *  .vaultite/, by any route or op. Only while `plugin` is on. Returns the function that removes it. */
   onWrite(plugin: string, fn: WriteHook) {
     return added(this.writers, { plugin, fn })
   }
@@ -1128,13 +1062,9 @@ export class Vault {
   }
 
   private savers = new Set<{ plugin: string; fn: SaveHook }>()
-  /** fn(path, now, was, writer) when the API saves new text over a Markdown file: the keys it answers are set in that
-   *  text, so they go in the same write. Only while `plugin` is on. Returns the function that removes it. */
   onSave(plugin: string, fn: SaveHook) {
     return added(this.savers, { plugin, fn })
   }
-  /** A Markdown file's new `text` as the API writes it over `was`: with the keys the onSave hooks set, as a small edit.
-   *  The text as it was when they set none, or a header doesn't read. */
   saving(rel: string, was: string, text: string): string {
     if (!rel.toLowerCase().endsWith(".md") || !this.savers.size || was === text) return text
     const m = FM.exec(text), w = FM.exec(was)
@@ -1154,12 +1084,9 @@ export class Vault {
   }
 
   private fileCreators = new Set<{ plugin: string; fn: FileCreateHook }>()
-  /** fn(path, file, writer) when the API makes a file that isn't Markdown (an upload, an SVG), to look at, never to
-   *  change. Only while `plugin` is on. Returns the function that removes it. */
   onCreateFile(plugin: string, fn: FileCreateHook) {
     return added(this.fileCreators, { plugin, fn })
   }
-  /** Tell the onCreateFile hooks of a new file the API writes (a Markdown file's are created()'s). */
   fileCreated(rel: string, file: NewFile) {
     if (rel.toLowerCase().endsWith(".md")) return
     const who = requestWriter.getStore() ?? null
@@ -1179,7 +1106,6 @@ export class Vault {
     return kind
   }
 
-  /** A kind whose plugin was unloaded (a vault plugin): its files become plain files on the next sync. */
   unregister(kind: Kind) {
     this.kinds = this.kinds.filter((k) => k !== kind)
     this.ordered.clear()
@@ -1198,8 +1124,6 @@ export class Vault {
     return this.kinds.some((k) => k.collection === collection)
   }
 
-  /** A file's kind: its `type`'s anywhere, else the one file's kind (ME.md), else, with no `type`, one claiming it by
-   *  name (a daily note); never its folder's alone. Files in a patterns folder (Templates/) are plain. */
   kindFor(rel: string, fm: Item): Kind | null {
     for (const d of this.plainDirs) if (rel.startsWith(d + "/")) return null
     const typed = this.typed(fm)
@@ -1215,8 +1139,6 @@ export class Vault {
     return this.types.get(t.trim().toLowerCase()) ?? null
   }
 
-  /** Where a file is now: `rel`, or, when its folder was moved outside the app (Dashboards/ into Personal/), the one
-   *  file whose path ends with it, so pins and paths written before the move still find it. */
   relocated(rel: string): string {
     if (!rel || this.entries.has(rel) || this.others.has(rel) || this.missing.has(rel.split("/")[0])) return rel
     const tail = `/${rel}`
@@ -1231,15 +1153,11 @@ export class Vault {
     return hit ?? rel
   }
 
-  /** The folder set for new files of a kind (.vaultite/folders.json by its collection, or `dashboards`; else another
-   *  app's: Obsidian's daily notes), null when none is: see home. */
   folderSet(collection: string): string | null {
     const f = this.configWithDefaults("folders")[collection]
     return typeof f === "string" ? f.trim().replace(/^\/+|\/+$/g, "") : null
   }
 
-  /** Where new files of a kind go: its set folder (unless `where`), else where most of those files are, preferring a
-   *  folder named like it; else null. So, unset, moving People/ into Personal/ moves where new people go too. */
   home(collection: string, where?: (item: Item) => boolean): string | null {
     const set = where ? null : this.folderSet(collection)
     if (set !== null) return set
@@ -1256,8 +1174,6 @@ export class Vault {
   }
   private homes = new WeakMap<readonly Item[], { missing: string; home: string | null }>()
 
-  /** Where pages go (the user's, and those plugins write): the folder set (folders.json `dashboards`), else the one
-   *  most of their dashboards are in, else Dashboards/. */
   pagesHome(): string {
     const mine = [...this.entries.values()].filter((e) => e.fm.type === "dashboard").map((e) => e.rel)
     return this.folderSet("dashboards") ?? homeFolder(mine, "Dashboards") ?? "Dashboards"
@@ -1271,7 +1187,6 @@ export class Vault {
     const folders: string[] = []
     const stack = [""]
     const root = path.join(this.path, "/")
-    // Linked folders followed (and the vault's own): a link back up (`ln -s .. x`) is walked once, not until paths are too long.
     const linked = new Set<string>()
     try { const r = fs.statSync(root, { bigint: true }); linked.add(`${r.dev}:${r.ino}`) } catch { /* read below */ }
     while (stack.length) {
@@ -1317,8 +1232,6 @@ export class Vault {
     return found
   }
 
-  /** The stats of the settings: .vaultite/ (but what isn't settings: artifacts' storage, which artifacts write often,
-   *  plugins' caches of live data and the app's own copies in generated/) and the .obsidian/ files the app reads. */
   private settingsStats() {
     const out: string[] = []
     const stack = [".vaultite"]
@@ -1340,7 +1253,6 @@ export class Vault {
           continue
         }
         if (st.isDirectory()) { stack.push(rel); continue }
-        // (one iCloud evicted: brought down by the sync, and its arrival is a change, so what was read without it is again)
         const away = evicted(this.abs(rel), st)
         if (away) this.evicted.push(rel)
         out.push(`${rel}:${st.mtimeNs}:${st.size}${away ? ":evicted" : ""}`)
@@ -1359,10 +1271,8 @@ export class Vault {
     return out.sort().join("\n")
   }
 
-  /** A top-level folder vanished and its files are still indexed (sync lets go of them a few seconds later). */
   waiting() { return this.missing.size > 0 }
 
-  /** Re-read every file that changed since the last sync. Returns true if anything changed. */
   async sync(): Promise<boolean> {
     const t0 = Date.now()
     this.stale = false
@@ -1404,8 +1314,6 @@ export class Vault {
     const late = [...unread, ...away].sort()
     if (late.join("\n") !== this.downloading.join("\n")) { this.downloading = late; this.version++ }
     changed = changed.filter((r) => texts.has(r))
-    // A whole folder missing (vault unmounted, mid-move) is not "everything was deleted" at once; still missing a few
-    // seconds later (deleted in Finder, rm -rf) it is. The vault itself missing never is.
     const now = Date.now()
     const vanished = (top: string) => {
       if (isDir(this.abs(top))) { this.missing.delete(top); return true }
@@ -1439,8 +1347,6 @@ export class Vault {
     return !!(changed.length || gone.length)
   }
 
-  /** Read a file into the index: its frontmatter and body, its kind (kindFor) and that kind's item. `text`: its text
-   *  (or why it couldn't be read), when already read. */
   read(rel: string, st: Stat, text?: string | Error): Entry {
     const e = new Entry(rel, st, null)
     const old = this.entries.get(rel)
@@ -1500,13 +1406,10 @@ export class Vault {
     if (e && e.item && e.kind) this.byId.delete(e.kind.collection + "\0" + e.item.id)
   }
 
-  /** A kind's items, in its order: copies, each call's own. */
   items(collection: string): Item[] {
     return this.shared(collection).map((i) => ({ ...i }))
   }
 
-  /** A kind's items in its order as the index keeps them: frozen, the same objects while their files are (so /api/state
-   *  serializes only what changed), the order worked out again once one of its files was read or dropped. */
   shared(collection: string): readonly Item[] {
     const k = this.kind(collection)
     noteSource("kinds", collection)
@@ -1519,7 +1422,6 @@ export class Vault {
     return hit
   }
 
-  /** An item by id ("People/Alice Park"), by file name ("Alice Park"), or by its key (a note's `id`). */
   get(collection: string, ref: unknown): Item | null {
     if (ref === null || ref === undefined) return null
     const k = this.kind(collection)
@@ -1552,8 +1454,6 @@ export class Vault {
     return null
   }
 
-  /** Write an item to its file (new, updated or renamed), merged over the old one, as small edits; nothing when nothing
-   *  changed. Returns it read back. `archiving`: the caller set `archived` (PUT), so the onArchive hooks place it. */
   async save(collection: string, item: Item, id?: string | null, archiving = false): Promise<Item | null> {
     const k = this.kind(collection)
     const old = id ? this.get(collection, id) : this.find(collection, item)
@@ -1579,8 +1479,6 @@ export class Vault {
     return e.item !== null ? { ...e.item } : null
   }
 
-  /** After the app wrote `rel` for someone (an edit in the app, a new file): what its kind fills in (ids, dates), saved as
-   *  a small edit. `before`: its entry before that write. A fill that fails is the file's problem, not the write's. */
   async fillIn(rel: string, before: Entry | null) {
     const e = this.entries.get(rel), kind = e?.kind
     if (!e || e.item === null || !kind?.fill || e.broken) return
@@ -1594,8 +1492,6 @@ export class Vault {
     }
   }
 
-  /** The file's new text, or null if unchanged: only changed frontmatter keys are rewritten (a cleared value keeps its
-   *  key, as Obsidian does) and the body is patched; what can't be a small edit is a conflict, never a rewrite. */
   private compose(k: Kind, e: Entry | null, old: Item | null, owned: Item, body: string): string | null {
     const full: Item = { type: k.type, ...owned }
     if (e === null) return frontmatter(mergeFm({}, full), withKindBlocks(k.blocksFor(full), body) ?? body)
@@ -1680,7 +1576,6 @@ export class Vault {
     return rel
   }
 
-  /** Move an item's file to .trash. Returns false if there's no such item. */
   delete(collection: string, id: string) {
     const item = this.get(collection, id)
     if (!item) return false
@@ -1689,7 +1584,6 @@ export class Vault {
     return true
   }
 
-  /** Move a note to .trash, its index and pins following; returns where it went. */
   trash(rel: string) {
     const to = this.toTrash(rel)
     this.drop(rel)
@@ -1697,7 +1591,6 @@ export class Vault {
     return to
   }
 
-  /** Move a file or folder to .trash, named with the time (" 1", " 2"... when taken); returns where it went. Index untouched. */
   toTrash(rel: string) {
     guard(this.abs(rel))
     const ext = fs.statSync(this.abs(rel)).isDirectory() ? "" : path.extname(rel), stem = `.trash/${rel.slice(0, rel.length - ext.length)} ${localStamp()}`
@@ -1708,8 +1601,6 @@ export class Vault {
     return to
   }
 
-  /** A settings file (.vaultite/<name>.json), or `fallback`. While it's there but unreadable (iCloud holds it while it
-   *  uploads) or half-written, it's the text it last read as: never {}, which would show no workspaces, no pins. */
   config(name: string, fallback?: Item): Item {
     if (name.startsWith("plugins/") && name.endsWith("/data")) noteSource("settings", name.slice(8, -5))
     let text = this.settings.get(name)
@@ -1729,25 +1620,19 @@ export class Vault {
     return text === null ? fallback ?? {} : JSON.parse(text)
   }
 
-  /** Whether a file is excluded (files.json `excluded`, else another app's: core/fileprops.ts excluder): still a file
-   *  you open, but out of search, the graph and unlinked mentions. */
   excluded(rel: string): boolean {
     if (this.exclusions?.version !== this.settingsVersion) this.exclusions = { version: this.settingsVersion, test: excluder(this.configWithDefaults("files").excluded) }
     return this.exclusions.test(rel)
   }
   private exclusions: { version: number; test: (rel: string) => boolean } | null = null
 
-  /** The sample folders (files.json `samples`): examples, not the user's data. Their files have no kind, and queries
-   *  (tasks, Dataview, bases) leave them out unless asked from a file in that folder. */
   samples(): string[] {
     return strings(this.config("files").samples).map((d) => d.replace(/^\/+|\/+$/g, "")).filter(Boolean)
   }
-  /** The sample folder `rel` is in, or null. */
   sampleOf(rel: string): string | null {
     return this.samples().find((d) => rel.startsWith(`${d}/`)) ?? null
   }
 
-  /** A settings file with another app's defaults (`defaults`) under its own keys: what applies, never to write back. */
   configWithDefaults(name: string): Item {
     if (this.seeds?.version !== this.settingsVersion) {
       let all: Record<string, Item> = {}
@@ -1757,8 +1642,6 @@ export class Vault {
     return { ...this.seeds.all[name], ...this.config(name) }
   }
 
-  /** A settings file as on disk, for read-modify-write: null when there's none; ConfigError when it can't be read safely
-   *  (mid-write, iCloud-only), which a save would wipe. One iCloud holds unchanged since our own write is that text. */
   readConfig(name: string): Item | null {
     let buf: Buffer
     const file = this.abs(`.vaultite/${name}.json`)
@@ -1778,8 +1661,6 @@ export class Vault {
     throw new ConfigError(`.vaultite/${name}.json isn't a JSON object`, false)
   }
 
-  /** Change some keys of .vaultite/<name>.json on disk now (other keys and their order stay; `null` removes one unless
-   *  `nullRemoves` is false). One there that doesn't read (iCloud mid-sync) is refused, never overwritten. */
   patchConfig(name: string, changes: Item, { nullRemoves = true }: { nullRemoves?: boolean } = {}): Item {
     const cur = this.readConfig(name)
     const next: Item = { ...(cur ?? {}) }
@@ -1788,13 +1669,10 @@ export class Vault {
     return next
   }
 
-  /** Read a settings file again on its next config(): for a check made before the request's sync (which re-reads
-   *  them all), like which plugins hear a request starting. */
   forgetConfig(name: string) {
     this.settings.delete(name)
   }
 
-  /** Remove a settings file (gone already: nothing to do). */
   removeConfig(name: string) {
     fs.rmSync(this.abs(`.vaultite/${name}.json`), { force: true })
     this.settings.delete(name)
@@ -1817,8 +1695,6 @@ export class Vault {
   }
 }
 
-/** Every string in a frontmatter value, nested ones too (links in lists and maps); null when a list holds a list, which
- *  is how YAML reads an unquoted `[[link]]`. */
 function stringsIn(v: unknown, out: string[] = []): string[] | null {
   if (typeof v === "string") out.push(v)
   else if (Array.isArray(v)) { for (const x of v) if (Array.isArray(x) || stringsIn(x, out) === null) return null }

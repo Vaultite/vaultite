@@ -36,22 +36,15 @@ const LOOK_DEFAULTS: Item = LOOK, EDITOR_DEFAULTS: Item = EDITOR
 const MAX_BYTES = 64 * 1024 * 1024
 
 export type Files = Record<string, string | Buffer>
-/** `error`: why its files couldn't be read (then there are none). */
 export type Bundle = { id: string; source: "app" | "vault"; files: Files; error?: string }
 export type Host = {
   vault: Vault
-  /** The app's plugins, then the vault's that are loaded. */
   plugins: () => Plugin[]
   vaultPlugins: () => Item[]
-  /** One request to this API (method, route under /api/, body): its body; OpError when it fails. */
   call: (method: string, route: string, body?: unknown) => Promise<unknown>
-  /** Load or unload vault plugins after plugins.json changed; those turned on write their pages (core/pages.ts), but
-   *  with `pages: false` (a restore: they were on before). */
   syncPlugins: (opts?: { pages?: boolean }) => Promise<unknown>
   writePages: (opts?: { pin?: boolean; only?: string[] }) => string[]
   allow: (ids: string[]) => Promise<void>
-  /** Install a vault plugin from its source (plugin.install, off): at `commit` when pinned, refused unless its files
-   *  hash to `hash`; and uninstall one (plugin.uninstall). */
   install: (source: string, tag: string | null, pin: { commit: string | null; hash: string | null }) => Promise<void>
   uninstall: (id: string) => Promise<void>
 }
@@ -111,7 +104,6 @@ export function find(vault: Vault, id: string): Bundle {
   return b
 }
 
-/** A JSON file of the bundle as an object (null when it hasn't that file; a 400 when it isn't an object). */
 function json(files: Files, rel: string): Item | null {
   const t = files[rel]
   if (t === undefined) return null
@@ -139,7 +131,7 @@ function installsOf(files: Files, host?: Host): Install[] {
 function parts(files: Files) {
   const code = new Set<string>()
   for (const f of Object.keys(files)) { const m = /^plugins\/([^/]+)\/manifest\.json$/.exec(f); if (m) code.add(m[1]) }
-  const settings = new Map<string, string>() // plugin id -> its data.json path
+  const settings = new Map<string, string>()
   const vaultFiles: string[] = [], hidden: string[] = []
   for (const f of Object.keys(files)) {
     if (f === "bundle.json" || CONFIGS.some((c) => f === `${c}.json`)) continue
@@ -157,34 +149,19 @@ function parts(files: Files) {
 
 export type Info = {
   id: string; source: "app" | "vault"; name: string; description: string; icon: string; tint: string; author: string; sort: number
-  /** What it is (bundle.json's `kind`): a layout (the picker's), a pack (plugins and pages, the store's), or a look (a
-   *  restyle: unsaid, one with only appearance, themes and snippets). */
   kind: Kind
-  /** The look it sets (appearance.json's), for its card. */
   theme: string | null; scheme: string | null; density: string | null
-  /** The app plugins that are on with it (null: it leaves them as they are), and the pages it pins (null: same). */
   on: string[] | null; pinned: string[] | null
-  /** Its sidebars' panels (null: it leaves them as they are, or the default), for its card. */
   panels: { left: string[]; right: string[]; collapsed: string[] } | null
-  /** How its window is drawn, for its picture (core/bundlesketch.ts). */
   shape: Sketch["shape"]
-  /** What the first page it pins draws, for its picture: its blocks in order (null: it pins nothing; [] not known). */
   home: HomeBlock[] | null
-  /** Vault plugins it brings or installs: they run code; `official`: only Vaultite's own, installed from its directory. */
   code: string[]; official: boolean
-  /** The repository it was imported from (bundle.json's `from`), or null. */
   from: string | null
-  /** The note it brings that says how the setup works (bundle.json's `guide`): opened after applying. */
   guide: string | null
   hotkeys: boolean
   problems: string[]
-  /** It has tweaks remembered (tweaks/<id>.json): applying it brings them back, unless fresh. */
   tweaked: boolean
-  /** The setup is this bundle's (the list's, for the workspace it's asked for): it's the one applied last, or applying it
-   *  would change nothing. */
   inUse?: boolean
-  /** The bundle applied last only: when, the changes it was applied without, and whether the setup has changed since
-   *  (`differs`: its plan's change ids that would apply now, those skipped then left out). */
   applied?: { at: string; skip: string[] }; modified?: boolean; differs?: string[]
 }
 const kindOf = (b: Bundle, m: Item) => kindFrom(m, Object.keys(b.files))
@@ -224,7 +201,6 @@ function info(b: Bundle, host: Host): Info {
   }
 }
 
-/** What's wrong with a bundle's files (the shapes, not whether this app has what it names: the plan says that). */
 export function problems(files: Files): string[] {
   const out: string[] = []
   if (files["bundle.json"] === undefined) out.push("it has no bundle.json")
@@ -264,8 +240,6 @@ function known(host: Host) {
   return out
 }
 
-/** Which plugins the bundle turns on (true) or off (false), by id: the app's (by its plugins.json) and the vault
- *  plugins it brings. Null when it has no plugins.json (it leaves them as they are). */
 function pluginTargets(b: Bundle, host: Host): Map<string, boolean> | null {
   const pj = json(b.files, "plugins.json")
   if (!pj) return null
@@ -311,43 +285,24 @@ function pinOps(cur: string[], want: string[]): { path: string; pinned: boolean;
   return ops
 }
 
-/** A value a plan changes: `change` is its id (PlanChange). */
 type Change = { change: string; key: string; from: unknown; to: unknown }
-/** One change applying makes, by an id that's the same for the same bundle and setup (`<part>:<what>`, below): what
- *  apply's `skip` and fork's take. A plugin's page a pin needs is added with the pin. */
 export type PlanChange = { id: string; part: "install" | "plugin" | "setting" | "panels" | "file" | "pin" | "pins" | "appearance" | "editor" | "hotkey" | "newtab"
   label: string; from?: unknown; to?: unknown }
 export type Plan = {
-  /** The workspace it changes the panels and pins of (null: the vault's only). */
   workspace: number | null
-  /** Plugins it turns on and off (ids), ids it names that this app doesn't have, and `added`: plugins the user added
-   *  (the vault's, on) that it doesn't name, left as they are unless planned with offAdded. */
   plugins: { on: string[]; off: string[]; missing: string[]; added: string[] }
-  /** Vault plugins it brings (they run code): `kept` when the vault has one by that id already; `source` (and its pin)
-   *  where one it installs comes from (plugins.json `install`), else it brings its files. `change`: its id, if added. */
   code: { id: string; name: string; kept: boolean; source?: string; tag?: string | null; commit?: string | null; hash?: string | null; change?: string }[]
   settings: (Change & { plugin: string })[]
-  /** Settings it can't set here: `local` ones (this machine's), or a plugin this app doesn't have. */
   skipped: { plugin: string; key: string; why: string }[]
-  /** The panels it sets (null: it leaves them), whether they change, and the workspace whose own ones it drops. */
   panels: { setup: Sidebars | null; changed: boolean; workspace: number | null }
-  /** The pages it pins, the vault's list it makes, what's pinned and unpinned, pins it can't make, and the workspace's
-   *  own list (null: none). Null: pins stay as they are. */
   pins: { want: string[]; list: string[]; pin: string[]; unpin: string[]; missing: string[]; workspace: string[] | null } | null
   appearance: Change[]
-  /** The editor's settings it sets (editor.json). */
   editor: Change[]
   hotkeys: Change[]
-  /** A new tab's keys it sets (newtab.json: its sections, buttons, page). */
   newtab: Change[]
-  /** Vault files it adds (and plugin dashboards it brings back), and the ones already there (left as they are). */
   files: { add: string[]; kept: string[] }
-  /** Every change it makes, by id: install:<plugin>, plugin:<plugin> (on or off), ai (AI on), setting:<plugin>.<key>, panels,
-   *  file:<vault path>, pin:<vault path> (pinned or unpinned), pins:order, appearance:<key>, editor:<key>, hotkey:<command>, newtab:<key>. */
   changes: PlanChange[]
-  /** The changes left out as asked (skip), by id. */
   omitted: string[]
-  /** Nothing would change. */
   empty: boolean
 }
 
@@ -371,11 +326,8 @@ async function firstWorkspace(host: Host): Promise<number | null> {
 
 const title = (p: string) => path.basename(p).replace(/\.(md|base)$/, "")
 
-/** `skip`: change ids to leave out. `offAdded`: the plugins the user added that it doesn't name go off too. `landing`:
- *  without workspaces (n null), the one the window goes to if it turns Workspaces on (null: the device picked none). */
 type PlanOptions = { skip?: ReadonlySet<string>; offAdded?: boolean; landing?: number | null }
 
-/** What applying bundle b would change in this vault (and in workspace n, the one the user is on). */
 export async function plan(b: Bundle, host: Host, n: number | null, { skip = new Set(), offAdded = false, landing = null }: PlanOptions = {}): Promise<Plan> {
   const v = host.vault, kinds = known(host)
   const { code, settings, vaultFiles, hidden } = parts(b.files)
@@ -441,8 +393,6 @@ export async function plan(b: Bundle, host: Host, n: number | null, { skip = new
     if (pm) { if (codeInfo.some((c) => c.id === pm[1] && !c.kept)) add.push(h); continue }
     if (!fs.existsSync(v.abs(h))) addFile(h)
   }
-  // A page it names (a pin, the new tab's) as this vault has it: one the bundle brings, a plugin's page in the pages
-  // folder (added when it isn't there, below), or the user's file; null when there's none, false when its file is skipped.
   const tpl = pluginPages(host), pages: string[] = []
   const placed = (p: string): string | null | false => {
     if (!safePath(p)) return null
@@ -506,33 +456,20 @@ export async function plan(b: Bundle, host: Host, n: number | null, { skip = new
     changes, omitted, empty: !changes.length }
 }
 
-/** What's kept before an apply (.vaultite/bundles/previous.json), to put back. Values are the keys' old ones (null:
- *  the key wasn't there); `absent`: settings files that weren't there at all. */
 export type Previous = {
   bundle: string; name: string; at: string
   config: Record<string, Item>
-  /** Each changed file's keys in their order before, so a restore leaves them as they were. */
   order?: Record<string, string[]>
   absent: string[]
-  /** The vault's pinned pages before, and the pages the apply pinned. */
   pins: string[] | null; pinned: string[]
-  /** The workspace the apply changed: its own panels and pins before (null: none of its own), the pages it pinned. */
   workspace: { n: number; sidebars: unknown; pins: string[] | null; pinned: string[] } | null
-  /** Files it added, with their text's hash (trashed on restore while unchanged). */
   added: { path: string; hash: string }[]
-  /** Files the layout it replaced had added, unchanged, that it took to the trash (`trash`: where): put back on restore. */
   taken?: { path: string; trash: string }[]
-  /** Vault plugins it installed from their source (uninstalled on restore). */
   installed?: string[]
-  /** The bundle applied before it (applied.json), applied again by a restore. */
   was?: Applied | null
-  /** The layouts' tweaks before it (tweaks/<id>.json, null: none), put back by a restore. */
   tweaks?: Record<string, Tweaks | null>
 }
-/** The bundle applied last (applied.json), the changes it was applied without, the files it added (taken back by the
- *  next layout while unchanged), and `guided`: the layouts whose guide this vault has had (it opens only the first time). */
 type Applied = { bundle: string; name: string; at: string; skip: string[]; added?: Previous["added"]; guided?: string[] }
-/** A bundle being tried (trial.json): Keep ends it, Restore puts back the setup from before it. */
 export type Trial = { bundle: string; name: string; at: string }
 
 function readRecord<T>(v: Vault, rel: string, ok: (o: Item) => boolean): T | null {
@@ -550,8 +487,6 @@ function writeRecord(v: Vault, rel: string, o: object | null) {
   else try { fs.unlinkSync(v.abs(rel)) } catch {}
 }
 
-/** For /api/state: the setup that can be restored, the bundle being tried, the one applied last, and whether a new
- *  vault is still being offered the bundles. */
 export function status(v: Vault) {
   const p = readPrevious(v), t = readTrial(v), a = readApplied(v)
   return { previous: p ? { bundle: p.bundle, name: p.name, at: p.at } : null, trial: t ? { id: t.bundle, name: t.name, at: t.at } : null,
@@ -568,8 +503,6 @@ function doneOnboarding(v: Vault) {
   try { fs.unlinkSync(v.abs(ONBOARDING)) } catch {}
 }
 
-/** Bring a vault's bundles up to date as it opens: one of the user's under an id the app's took moves to a free id,
- *  and a setup applied from a bundle since folded into another (FOLDED) is that one's. */
 export function tidy(v: Vault) {
   const prev = readPrevious(v), applied = readApplied(v), trial = readTrial(v), dir = v.abs(VAULT_BUNDLES)
   const records: { bundle: string; name: string }[] = [prev, applied, trial, prev?.was].filter((r) => !!r)
@@ -594,7 +527,6 @@ export function tidy(v: Vault) {
   if (trial) writeRecord(v, TRIAL, trial)
 }
 
-/** The PATCH that turns `cur` into `next`: the keys that change, null for the ones that go. */
 function patchOf(cur: Item, next: Item) {
   const out: Item = {}
   for (const [k, val] of Object.entries(next)) if (!same(cur[k], val)) out[k] = val
@@ -637,18 +569,12 @@ function merged(old: Previous, now: Previous): Previous {
 }
 
 type ApplyOptions = {
-  /** False: nothing to restore (a new vault's first). */
   remember?: boolean
-  /** The plugins the user added go off too. */
   offAdded?: boolean
-  /** Change ids left out. */
   skip?: string[]
-  /** It's tried (Keep or Restore end it; applied during one, restore goes to before that). */
   trial?: boolean
   landing?: number | null
-  /** Applied clean, its tweaks forgotten (Reset); else with them. The layout in use leaves its own behind either way. */
   fresh?: boolean
-  /** Nothing to open after (`open`: the guide it added, else its first pin). */
   quiet?: boolean
 }
 
@@ -777,8 +703,6 @@ export async function apply(b: Bundle, host: Host, n: number | null, allowCode: 
     trial: trial && remember ? { id: b.id, name, at: prev.at } : null, open: quiet ? null : (added && !guided.includes(b.id) ? guide : pins?.list[0] ?? null) }
 }
 
-/** Put back the setup from before the last apply (from before a trial, while one lasts), and forget it. Changes made
- *  since to other keys stay. */
 async function restore(host: Host) {
   const v = host.vault
   const prev = readPrevious(v)
@@ -841,7 +765,6 @@ async function restore(host: Host) {
   return { restored: prev.name, trashed }
 }
 
-/** End a trial keeping its setup: restore still puts back the one from before it, as after any apply. */
 function keep(v: Vault) {
   const t = readTrial(v)
   if (!t) throw new HTTPError(404, "no bundle is being tried")
@@ -861,14 +784,10 @@ function pruneDirs(v: Vault, rel: string) {
 
 const SaveRequest = z.object({ name: z.string().optional(), description: z.string().optional(), icon: z.string().optional(), tint: z.string().optional(),
   hotkeys: z.boolean().optional(), vaultPlugins: z.boolean().optional(), workspace: z.number().nullable().optional(), replace: z.boolean().optional(), look: z.boolean().optional(),
-  /** Save changes to a bundle (its id): one of the user's is saved over, keeping its name, card and where it came from;
-   *  one of the app's is saved as a new "My <Name>" (or `name`). */
   over: z.string().optional() })
 type SaveRequest = z.infer<typeof SaveRequest>
 type SaveOptions = SaveRequest & { name: string }
 
-/** The current setup as a bundle's files, which applied after anything is this setup again (settings below, the whole
- *  look, the editor's, panels, pins and their dashboards; hotkeys and vault plugins if asked). `meta`: its bundle.json (saving over). */
 async function current(host: Host, o: SaveOptions, meta: Item | null = null): Promise<Files> {
   const v = host.vault, kinds = known(host)
   const files: Files = {}
@@ -961,7 +880,6 @@ async function setupOf(host: Host, o: SaveOptions, files: Files, put: (rel: stri
   if (o.hotkeys) { const h = v.config("hotkeys"); if (Object.keys(h).length) put("hotkeys.json", h) }
 }
 
-/** Write a bundle's files as the user's bundle `id` (a new folder; `replace`: the one there goes to the trash first). */
 function writeBundle(v: Vault, id: string, files: Files, replace: boolean) {
   const rel = `${VAULT_BUNDLES}/${id}`
   if (fs.existsSync(v.abs(rel))) {
@@ -1033,8 +951,6 @@ function saveName(v: Vault, host: Host) {
   return mineName(v, b ? info(b, host).name : a?.name ?? "setup")
 }
 
-/** Bundle `id` as the user's "My <Name>" without the changes `skip` names: applied anywhere, it does what applying
- *  it without them does here. A value skipped is this setup's (still said); a pin, file or plugin skipped is left out. */
 async function fork(host: Host, id: string, skip: string[], n: number | null) {
   const v = host.vault, b = find(v, id)
   if (b.error) throw new HTTPError(400, `${b.id}: ${b.error}`)
@@ -1104,8 +1020,6 @@ async function forkedFiles(host: Host, b: Bundle, skip: string[], n: number | nu
   return files
 }
 
-/** What differed from a bundle when the user left it (tweaks/<id>.json): `set`, its JSON files' keys as they were (a
- *  file whole when it hadn't one; sidebars.json always whole); `drop`, its files they had left out (a page, a guide). */
 export type Tweaks = { bundle: string; at: string; set: Record<string, Item>; drop: string[] }
 
 const readTweaks = (v: Vault, id: string) => readRecord<Tweaks>(v, `${TWEAKS}/${id}.json`, (o) => isObj(o.set))
@@ -1114,7 +1028,6 @@ function writeTweaks(v: Vault, id: string, t: Tweaks | null) {
   if (!t) pruneDirs(v, TWEAKS)
 }
 
-/** The tweaks of bundle b in this setup: every change applying it would make here, as this setup has it (null: none). */
 async function tweaksOf(host: Host, b: Bundle, n: number | null): Promise<Tweaks | null> {
   const p = await plan(b, host, n)
   if (p.empty) return null
@@ -1148,15 +1061,11 @@ function withTweaks(b: Bundle, t: Tweaks | null): Bundle {
 
 const tweakedOf = (v: Vault, b: Bundle, fresh = false) => (fresh || b.error ? b : withTweaks(b, readTweaks(v, b.id)))
 
-/** One part of a bundle to share or leave out: `on` what's sent unless the user says; `own` a page with text of the
- *  user's own (outside its blocks and headings). */
 export type ShareItem = { path: string; kind: "page" | "file" | "settings" | "hotkeys" | "code"; label: string; on: boolean; own?: boolean; keys?: string[] }
 
 const ownText = (t: string) => t.replace(/^---\n[\s\S]*?\n---\n?/, "").replace(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[ \t]*$/gm, "")
   .split("\n").some((l) => !!l.trim() && !/^#{1,6}\s/.test(l.trim()))
 
-/** The parts sharing sends, the user's own off (a page with their text); `dropped`: pins to their notes,
- *  never sent. */
 function shareOf(b: Bundle, host: Host): { items: ShareItem[]; dropped: string[] } {
   const { code, settings, vaultFiles } = parts(b.files)
   const items: ShareItem[] = []
@@ -1190,8 +1099,6 @@ function dropped(b: Bundle, host: Host) {
   return [...pins, ...(typeof page === "string" ? [page] : [])].filter((p, i, all) => !known(p) && all.indexOf(p) === i)
 }
 
-/** A bundle as shared: its parts as shareOf chose them, `include` and `leave` (paths: a plugin's code as plugins/<id>/)
- *  changing that; pins to what isn't sent are taken out. `all`: every file as it is (a copy kept to undo a delete). */
 function shared(b: Bundle, host: Host, o: { all?: boolean; include?: string[]; leave?: string[] } = {}): Bundle {
   if (o.all || b.error) return b
   const { items, dropped: gone } = shareOf(b, host)
@@ -1206,7 +1113,6 @@ function shared(b: Bundle, host: Host, o: { all?: boolean; include?: string[]; l
   return { ...b, files }
 }
 
-/** A bundle as one JSON file: a JSON file as its JSON, text as a string, other bytes as `{"base64": ...}`. */
 function exportOf(b: Bundle) {
   if (b.error) throw new HTTPError(400, `${b.id}: ${b.error}`)
   const files: Record<string, unknown> = {}
@@ -1233,8 +1139,6 @@ function filesOf(o: unknown): { files: Files; id: string | null } {
   return { files, id: typeof o.id === "string" && ID.test(o.id) ? o.id : null }
 }
 
-/** A bundle from a repository (at @<commit>: that whole sha; else its newest tag, else its default branch): its folder
- *  at the top, without the repository's own files, or one .bundle.json. bundle.json's `from` keeps where, pinned too. */
 async function fetchFrom(given: string): Promise<{ files: Files; id: string | null }> {
   const pin = /@([0-9a-f]{40})$/.exec(given.trim())
   const place = pin ? given.trim().slice(0, pin.index) : given
@@ -1273,7 +1177,6 @@ async function fetchFrom(given: string): Promise<{ files: Files; id: string | nu
   }
 }
 
-/** What an import is given: an export (or `{file}`: one), or `{from}`: a repository to fetch it from. Checked. */
 async function incomingFiles(body: unknown) {
   const got = isObj(body) && typeof body.from === "string" ? await fetchFrom(body.from) : filesOf(isObj(body) && isObj(body.file) ? body.file : body)
   const bad = problems(got.files)
@@ -1296,8 +1199,6 @@ export function imports(v: Vault): { id: string; from: string }[] {
   })
 }
 
-/** A bundle into the user's bundles (from an export or a repository). Never applied here; one replacing the user's
- *  from the same repository (an update) only with `replace`, the user's go after its preview said what changed. */
 async function importOf(v: Vault, body: unknown, host: Host) {
   const { files, id: want } = await incomingFiles(body)
   const { id, replaces } = idFor(v, files, want)
@@ -1309,8 +1210,6 @@ async function importOf(v: Vault, body: unknown, host: Host) {
   return { bundle: info(find(v, id), host) }
 }
 
-/** What an update of a bundle changes in the copy the user has: its files added, changed and removed, and the plugins
- *  it installs whose pin (commit, else tag) changed, came or went (null: none). */
 function changesOf(was: Files, now: Files, host: Host) {
   const same = (f: string) => Buffer.isBuffer(was[f]) || Buffer.isBuffer(now[f]) ? Buffer.compare(Buffer.from(was[f]), Buffer.from(now[f])) === 0 : was[f] === now[f]
   const pin = (x: Install | undefined) => (x ? x.commit ?? x.tag ?? "" : null)
@@ -1325,8 +1224,6 @@ function changesOf(was: Files, now: Files, host: Host) {
   }
 }
 
-/** What importing a bundle would add, and what applying it then would change here, without writing anything: the
- *  import's preview. `file`: it as an export, to import as previewed (a repository isn't fetched again). */
 async function incoming(host: Host, body: Item) {
   const { files, id: want } = await incomingFiles(body)
   const { id, replaces } = idFor(host.vault, files, want)
@@ -1351,7 +1248,6 @@ function pageLooks(b: Bundle, host: Host, paths: string[]) {
 
 const workspaceOf = (x: unknown) => { const n = Number(x); return Number.isInteger(n) && n >= 1 && n <= 5 ? n : null }
 
-/** What /api/bundles/... answers, for ops calling it in-process (core/coreops/bundles.ts). */
 export type Answers = {
   list: { bundles: Info[]; default: string; saveName: string } & ReturnType<typeof status>
   show: { bundle: Info; files: string[]; plan: Plan; pages: ReturnType<typeof pageLooks> }
@@ -1360,7 +1256,6 @@ export type Answers = {
   delete: { deleted: string; trashed: string }
 }
 
-/** /api/bundles/...: undefined when it isn't one of these routes. */
 export async function handle(host: Host, method: string, parts: string[], query: Record<string, string>, body: Item): Promise<unknown> {
   const v = host.vault
   const [id, action] = parts

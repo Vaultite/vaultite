@@ -1,5 +1,3 @@
-// Vault plugins (.vaultite/plugins/<id>/): the app's plugin shape and rules, off until turned on and allowed on this machine
-// (core/trust.ts). A changed one reloads: plugin.ts as a new module URL, index.tsx bundled against the app's React.
 import crypto from "node:crypto"
 import fs from "node:fs"
 import { isBuiltin, registerHooks } from "node:module"
@@ -24,7 +22,7 @@ import { isObj, messageOf } from "./values.ts"
 
 export const DIR = ".vaultite/plugins"
 const CACHE = path.join(LOCAL, "cache", "plugins")
-const CSS = path.join(ROOT, "web", "src", "index.css") // the app's Tailwind setup: a plugin's classes compile against it
+const CSS = path.join(ROOT, "web", "src", "index.css")
 const short = (...parts: string[]) => parts.reduce((h, p) => h.update(p).update("\0"), crypto.createHash("sha256")).digest("hex").slice(0, 8)
 let built: { at: string; build: string } | null = null
 function buildKey() {
@@ -32,42 +30,30 @@ function buildKey() {
   if (built?.at !== at) built = { at, build: short(readText(CSS), ...[styles, compileStyles, classesOfApp, escapeClass, withStyles].map(String)) }
   return built.build
 }
-// Apart from the styles' key: bundling Excalidraw again for each new stylesheet took seconds off the app's start.
 const CODE = short(JSON.stringify(JSON.parse(readText(path.join(ROOT, "package.json"))).dependencies ?? {}), JSON.stringify([...SHARED, ...SHARED_EDITOR]),
   ...[bundle, withAssets].map(String))
 
 export type VaultPlugin = {
   id: string; dir: string; manifest: Manifest
-  /** Its manifest's icon as the app draws it (core/pluginmeta.ts iconOf): a name, or its SVG file as a data address. */
   icon: string | null
-  /** Its files' sizes and times (cheap to compare), and a hash of their contents and the app's build: its version. */
   stat: string; hash: string
-  /** Its contents' hash and each file's (what this machine approves: core/trust.ts). */
   digest: Digest
-  /** Why the plugin index blocks this version (core/pluginindex.ts), or null. */
   blocked: string | null
   problems: string[]
-  /** Where it breaks the block contract (core/rules.ts blockProblems): it loads anyway. */
   warnings: string[]
   plugin: Plugin | null; loaded: string
-  /** Its built frontend: bundle.js and the chunks it imports when it needs them (a big package loaded only when used). */
   bundle: { hash: string; code: string; chunks: Record<string, string> } | null
-  /** What went wrong loading plugin.ts or building index.tsx, at which version (tried again when its files change). */
   failed: { load?: [string, string]; build?: [string, string] }
 }
 
 const plain = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "").trim()
 const message = (e: unknown) => plain(messageOf(e)).split("\n").slice(0, 6).join("\n")
 
-// --- plugin.ts: what it may import
-/** Vault plugin id -> its folder, the version loaded and its files' hashes then (what its imports must still be). */
 const FOLDERS = new Map<string, { dir: string; hash: string; files: Record<string, string> }>()
 const APP = pathToFileURL(path.join(ROOT, "server.ts")).href
 const TAG = /[?&]plugin=([^&]+)&v=(\w+)$/
 const BUILT_IN = path.join(ROOT, "plugins", "core") + path.sep
 
-/** Module `name` of plugin `id` (@plugins/<id>/<name>) for an importer that requires it: the app's plugin's file, or a
- *  loaded vault plugin's at its version (the same module its own plugin.ts has). */
 function moduleUrl(id: string, name: string, vault: boolean): string | null {
   const own = path.join(BUILT_IN, id)
   if (fs.existsSync(path.join(own, "manifest.json"))) { const f = exportFile(own, name); return f && pathToFileURL(f).href }
@@ -86,7 +72,6 @@ const asModule = <R extends { url: string; format?: string | null }>(r: R): R =>
 }
 
 registerHooks({
-  // (a module it imports later, after it was allowed: as allowed, or not at all)
   load(url, context, next) {
     const r = next(url, context), m = TAG.exec(url)
     if (!m || !url.startsWith("file:")) return r
@@ -127,16 +112,13 @@ registerHooks({
       return asModule({ ...r, url: `${r.url}?plugin=${m[1]}&v=${m[2]}` })
     }
     if (/^(@[\w.-]+\/)?[\w.-]/.test(spec) && !spec.includes(":") && !spec.startsWith("@vaultite") && !spec.startsWith("@plugins/")) {
-      return listedPackage(spec) ? next(spec, { ...context, parentURL: APP }) : refuse(UNLISTED) // an npm package: the app's
+      return listedPackage(spec) ? next(spec, { ...context, parentURL: APP }) : refuse(UNLISTED)
     }
     return refuse("a vault plugin's backend imports its own folder, @vaultite/core/plugins.ts (vault.ts, client.ts, " +
       "timeline.ts, agents.ts, layout.ts), modules of plugins it requires (@plugins/<id>/<module>), Node's modules and the npm packages the app gives plugins")
   },
 })
 
-// --- index.tsx: one ES module for the web app
-
-/** The app's built stylesheet (web/dist), to tell which classes it has; "" before a build. */
 let appCss: { file: string; text: string } | null = null
 function builtCss() {
   const dist = served.dist
@@ -148,7 +130,6 @@ function builtCss() {
 
 const escapeClass = (c: string) => c.replace(/^(\d)/, "\\3$1 ").replace(/[^\w-]/g, (ch) => `\\${ch}`)
 
-/** The classes the app's built stylesheet has, as its selectors write them: read once per stylesheet. */
 let appClasses: { file: string; names: Set<string> } | null = null
 function classesOfApp() {
   const text = builtCss(), file = appCss?.file ?? ""
@@ -156,14 +137,11 @@ function classesOfApp() {
   return appClasses.names
 }
 
-/** Its styles (compileStyles), kept by what they're made of (its classes, which of them the app has): an app update
- *  rarely changes a plugin's. */
-const stylesFile = new Map<string, string>() // each plugin's styles' cache file, as last made or read (build keeps it)
+const stylesFile = new Map<string, string>()
 async function styles(id: string, dir: string, used: Set<string>) {
   const { Scanner } = await import("@tailwindcss/oxide")
   const scanner = new Scanner({})
   const candidates = new Set<string>()
-  // (only the modules its bundle has: other files in its folder, data or another app's code, aren't its classes)
   for (const f of walk(dir)) {
     if (!/\.[jt]sx?$/.test(f) || !used.has(f)) continue
     for (const c of scanner.getCandidatesWithPositions({ content: readText(f), extension: path.extname(f).slice(1) })) candidates.add(c.candidate)
@@ -181,8 +159,6 @@ async function styles(id: string, dir: string, used: Set<string>) {
   return css
 }
 
-/** Its Tailwind classes in the `plugins` layer, under the app's utilities, so it never restyles the app. Variants the
- *  app lacks (`md:-m-1`) go in `plugin-variants` above them, to win on its own elements as they would in the app. */
 async function compileStyles(dir: string, candidates: Set<string>, theirs: (c: string) => boolean) {
   const { compile } = await import("@tailwindcss/node")
   const top = [...candidates].filter((c) => c.replace(/\[[^\]]*\]/g, "").includes(":") && !theirs(c))
@@ -209,20 +185,15 @@ function withAssets(file: string, css: string) {
   })
 }
 
-/** The bundle: its styles and the plugins it requires first, then the module (its default export: the
- *  definePlugin({...})) with the modules it exports, and the chunks its import()s load. */
 async function bundle(vp: VaultPlugin) {
   const { rolldown } = await import("rolldown")
   const dir = fs.realpathSync(vp.dir)
   const requires = new Set(vp.manifest.requires ?? [])
   const preload = new Set<string>()
-  const sheets: string[] = [] // stylesheets it imports (a package's own: "@excalidraw/excalidraw/index.css"), in order
+  const sheets: string[] = []
   const refuse = (spec: string, why: string): never => { throw new Error(`can't import '${spec}': ${why}`) }
-  // Its icon by a Lucide name comes in the bundle (`icon`), so the app needn't load all of Lucide's to draw it; the
-  // modules it exports too (`__exports`: what plugins that require it import, the same instances as its own).
   const index = path.join(dir, "index.tsx"), ENTRY = "\0vau-entry"
   const lucide = vp.icon && ICON_NAME.test(vp.icon) ? path.join(ROOT, "node_modules", "lucide-react", "dist", "esm", "icons", `${vp.icon}.mjs`) : ""
-  // (not a backend's module: its plugins' backends import it, never the browser)
   const offered = exportsOf(vp.manifest).flatMap((x) => { const f = exportFile(dir, x, vp.manifest); return f && !backendOnly(dir, f) ? [[x, f]] : [] })
   const entry = [fs.existsSync(index) ? `export { default } from ${JSON.stringify(index)}` : "",
     lucide && fs.existsSync(lucide) ? `export { default as icon } from ${JSON.stringify(lucide)}` : "",
@@ -236,7 +207,7 @@ async function bundle(vp: VaultPlugin) {
     // (an import()ed chunk imports what it shares from its own chunks, not its importer's: one that is a package's worker
     // too, Excalidraw's fonts, would run the plugin's code there, reading globalThis.__vaultite, which no worker has)
     experimental: { chunkOptimization: { avoidRedundantChunkLoads: false } },
-    resolve: { conditionNames: ["production", "browser", "import", "default"] }, // (as the app's own build)
+    resolve: { conditionNames: ["production", "browser", "import", "default"] },
     transform: { jsx: { runtime: "automatic" }, define: { "process.env.NODE_ENV": JSON.stringify("production") } },
     plugins: [{
       name: "vaultite",
@@ -249,7 +220,7 @@ async function bundle(vp: VaultPlugin) {
           preload.add(spec)
           return `\0vau:${spec}`
         }
-        if (!importer || importer.includes(`${path.sep}node_modules${path.sep}`)) return null // the entry; a package's own imports
+        if (!importer || importer.includes(`${path.sep}node_modules${path.sep}`)) return null
         if (spec.startsWith("./") || spec.startsWith("../")) {
           const r = await this.resolve(spec, importer, { skipSelf: true })
           if (!r) refuse(spec, "no such file")
@@ -272,7 +243,6 @@ async function bundle(vp: VaultPlugin) {
     }],
   })
   try {
-    // (with modules to preload, the module is a chunk that bundle.js imports after them: withStyles)
     const out = await build.generate({ format: "esm", minify: true, entryFileNames: preload.size ? MAIN : "bundle.js", chunkFileNames: "[name]-[hash].js" })
     const chunks: Record<string, string> = {}
     let entry = ""
@@ -284,9 +254,8 @@ async function bundle(vp: VaultPlugin) {
 }
 type Code = Awaited<ReturnType<typeof bundle>>
 
-const MAIN = "main.js" // (not a chunk's name: theirs have a hash)
+const MAIN = "main.js"
 
-/** The bundle as the app loads it: its code with its styles (its Tailwind classes, compiled against the app's). */
 async function withStyles(vp: VaultPlugin, c: Code) {
   const css = c.sheets.join("\n") + await styles(vp.id, fs.realpathSync(vp.dir), new Set(c.used))
   const style = `globalThis.__vaultite.style(${JSON.stringify(vp.id)}, ${JSON.stringify(css)});\n`
@@ -297,21 +266,15 @@ async function withStyles(vp: VaultPlugin, c: Code) {
     `const m = await import("./${MAIN}");\nexport default m.default;\nexport const { icon, __exports } = m;\n`, chunks: { ...c.chunks, [MAIN]: c.entry } }
 }
 
-// --- the folder
-
-/** The files that aren't its code: its settings (data.json, <name>.json) and its manifest's `userFiles` (changing them
- *  isn't a new version). */
 function notCode(dir: string) {
   const own = userFilesOf(dir)
   return (f: string) => settingsFile(path.relative(dir, f)) || own.has(path.relative(dir, f).split(path.sep).join("/"))
 }
-/** What wasn't its code before its other settings files were (2026-10): data.json and its `userFiles`. */
 function notCodeBefore(dir: string) {
   const own = userFilesOf(dir)
   return (f: string) => f === path.join(dir, "data.json") || own.has(path.relative(dir, f).split(path.sep).join("/"))
 }
 
-/** Its files, as `<path>:<size>:<mtime>` lines (its settings and userFiles left out). */
 function statOf(dir: string) {
   const skip = notCode(dir)
   return walk(dir).filter((f) => !skip(f)).map((f) => {
@@ -326,8 +289,6 @@ function statOf(dir: string) {
 
 const fileHash = (b: Buffer) => crypto.createHash("sha256").update(b).digest("hex").slice(0, 16)
 
-/** Each of its files' hash (its settings and userFiles left out), and the whole's: what this machine approves, and the
- *  lock records. `before`: as it was hashed before its other settings files were left out (core/installs.ts asLocked). */
 export function digestOf(dir: string, before = false): Digest {
   const files: Record<string, string> = {}
   const whole = crypto.createHash("sha256")
@@ -341,7 +302,6 @@ export function digestOf(dir: string, before = false): Digest {
   return { content: whole.digest("hex").slice(0, 16), files, note: notesOf(dir) }
 }
 
-/** Names in an order where each comes after those it `deps` on (a cycle: as they are). */
 function dependencyOrder(names: string[], deps: Map<string, string[]>) {
   const out: string[] = [], seen = new Set<string>()
   const visit = (n: string, path: string[]) => {
@@ -354,8 +314,6 @@ function dependencyOrder(names: string[], deps: Map<string, string[]>) {
   return out
 }
 
-/** What's wrong with a vault plugin's folder, as `label`: its manifest (read unless given), files, commands, and for
- *  one to install (`installable`, `tag`) its version and repo. `ids`: id -> tier; `dirOf`: a vault plugin's folder. Warnings: it loads anyway. */
 export function checkVaultPlugin(dir: string, o: { ids: Map<string, string>; label: string; tag?: string | null; installable?: boolean; manifest?: Item
   dirOf?: (id: string) => string }) {
   const { ids, label } = o
@@ -374,19 +332,14 @@ export function checkVaultPlugin(dir: string, o: { ids: Map<string, string>; lab
 
 export class VaultPlugins {
   vault: Vault
-  /** The app's plugins: id -> tier (a vault plugin can't take one's id, and may require them). */
   tiers: Map<string, string>
-  found = new Map<string, VaultPlugin>() // by folder name, sorted
-  /** Their manifests' commands: ops, event hooks, startup, schedule (core/hooks.ts). */
+  found = new Map<string, VaultPlugin>()
   hooks: Hooks
-  /** What this machine approved (core/trust.ts). */
   trust: Trust
-  /** Why the plugin index blocks a plugin's version, or null (the App sets it: core/pluginindex.ts). */
   blocked: (vp: VaultPlugin) => string | null = () => null
-  /** Updated elsewhere on their own, being checked against their source to be allowed here (App.adopt). */
   adopting = new Set<string>()
   private queue: Promise<unknown> = Promise.resolve()
-  private declared = new WeakSet<Op>() // the ops a plugin got from its manifest (dropped when it's loaded again)
+  private declared = new WeakSet<Op>()
 
   constructor(vault: Vault, app: Plugin[]) {
     this.vault = vault
@@ -396,23 +349,17 @@ export class VaultPlugins {
     this.hooks.allowed = (vp) => { try { return this.trust.approved(vp.id, digestOf(vp.dir)) } catch { return false } }
   }
 
-  /** An event (core/events.ts): the event hooks of the plugins that are loaded and on. */
   heard(ev: VaultEvent) {
-    // (plugins.json as the last sync read it: one just turned off hears nothing, though it's unloaded only at the next
-    // request)
     const on = this.onIn(this.vault.config("plugins"))
     this.hooks.heard(ev, [...this.found.values()].filter((v) => v.plugin && on.has(v.id)))
   }
 
-  /** The ones turned on, read from plugins.json as it is now: this runs before the request's sync, when vault.config()
-   *  may be a request late. Unreadable (mid-sync): what was read last. */
   enabled() {
     let conf: Item
     try { conf = this.vault.readConfig("plugins") ?? {} } catch { conf = this.vault.config("plugins") }
     return this.onIn(conf)
   }
 
-  /** plugins.json's `enabled`, but those whose manifest says `ai` while AI is off (`ai: false`; Vault.switchedOff). */
   private onIn(conf: Item) {
     const e: unknown = conf.enabled
     const on = new Set<string>(Array.isArray(e) ? e.filter((x) => typeof x === "string") : [])
@@ -420,7 +367,6 @@ export class VaultPlugins {
     return on
   }
 
-  /** Whether plugin `id`'s manifest says it's for AI (`ai: true`): as last read, else from its folder (not read yet). */
   private aiOf(id: string) {
     const m = this.found.get(id)?.manifest
     if (m) return m.ai === true
@@ -429,8 +375,6 @@ export class VaultPlugins {
     return r.ok && r.value.ai === true
   }
 
-  /** Let plugin `id` run on this machine as its files are now (core/trust.ts), remembered as `version` or its manifest's,
-   *  with where the lock says it came from and what it says it does; throws when its files can't be read yet. */
   allow(id: string, o: { version?: string; edits?: boolean; digest?: Digest } = {}): Digest {
     const dir = this.vault.abs(`${DIR}/${id}`)
     const d = o.digest ?? digestOf(dir)
@@ -440,13 +384,10 @@ export class VaultPlugins {
     return d
   }
 
-  /** The loaded ones (on, and nothing wrong), by folder name. */
   loaded() {
     return [...this.found.values()].flatMap((v) => (v.plugin ? [v.plugin] : []))
   }
 
-  /** Look at the folder again and load or unload what changed (one sync at a time). True if the loaded plugins
-   *  changed (the app then rebuilds its list, AGENTS.md and dashboards). */
   sync(): Promise<boolean> {
     const run = this.queue.then(() => this.run())
     this.queue = run.catch(() => {})
@@ -467,7 +408,6 @@ export class VaultPlugins {
     }
     const ids = new Map([...names.map((n): [string, string] => [n, "vault"]), ...this.tiers])
     const on = this.enabled()
-    // (the plugins it requires first: it imports their modules, at their versions, which are part of its own)
     const deps = new Map(names.map((n) => [n, requiresOf(path.join(root, n)).filter((r) => r !== n && names.includes(r))]))
     for (const name of dependencyOrder(names, deps)) {
       const dir = path.join(root, name)
@@ -481,7 +421,6 @@ export class VaultPlugins {
           const { problems, warnings } = r
           manifest = r.manifest ?? manifest
           const digest = digestOf(dir)
-          // (the app's built stylesheet too: which of its classes the app has decides their layer; CODE: code bundled anew is a new version)
           const hash = crypto.createHash("sha256").update(buildKey()).update(CODE).update((builtCss(), appCss?.file ?? "")).update(digest.content).update(theirs).digest("hex").slice(0, 12)
           const icon = iconOf(manifest.icon, (f) => { const file = path.join(dir, f); return inside(dir, file) && fs.statSync(file, { throwIfNoEntry: false })?.isFile() ? readText(file) : null })
           vp = { plugin: null, loaded: "", bundle: null, failed: {}, blocked: null, ...vp, id: name, dir, manifest, icon, stat, problems, warnings, hash, digest }
@@ -494,7 +433,7 @@ export class VaultPlugins {
       }
       vp.blocked = this.blocked(vp)
       const want = on.has(name) && !vp.problems.length && !vp.blocked && this.trust.approved(name, vp.digest)
-      if (!want) { vp.failed = {}; this.hooks.stopped(name) } // turned on again: tried again, its startup runs again
+      if (!want) { vp.failed = {}; this.hooks.stopped(name) }
       if (vp.plugin && (!want || vp.loaded !== vp.hash)) { this.unload(vp); changed = true }
       if (want && !vp.plugin && vp.failed.load?.[0] !== vp.hash && (await this.load(vp))) changed = true
       const front = fs.existsSync(path.join(dir, "index.tsx")) || exportsOf(vp.manifest).length > 0
@@ -517,10 +456,9 @@ export class VaultPlugins {
       for (const k of p.kinds) if (this.vault.has(k.collection)) throw new Error(`its kind '${k.collection}' is another plugin's`)
       p.vault = this.vault
       for (const k of p.kinds) this.vault.register(k)
-      // Its manifest's ops (core/hooks.ts), besides plugin.ts's (the same module again keeps only one set).
       p.ops = p.ops.filter((o) => !this.declared.has(o))
       for (const op of this.hooks.opsOf(vp)) { this.declared.add(op); p.op(op) }
-      for (const j of this.hooks.jobsOf(vp, p)) p.every(j.name, j, j.run) // (by name: loaded again, it replaces itself)
+      for (const j of this.hooks.jobsOf(vp, p)) p.every(j.name, j, j.run)
       vp.plugin = p
       vp.loaded = vp.hash
       delete vp.failed.load
@@ -533,7 +471,6 @@ export class VaultPlugins {
     }
   }
 
-  /** Unload them all (the server serves another vault now: Manage vaults on the web). */
   async close() {
     await this.queue
     for (const vp of this.found.values()) if (vp.plugin) this.unload(vp)
@@ -543,7 +480,7 @@ export class VaultPlugins {
   private unload(vp: VaultPlugin) {
     const p = vp.plugin!
     const at = FOLDERS.get(vp.id)
-    if (at) at.hash = "" // (its modules aren't another's to import now)
+    if (at) at.hash = ""
     p.unload()
     for (const k of p.kinds) this.vault.unregister(k)
     p.forget()
@@ -553,7 +490,6 @@ export class VaultPlugins {
 
   private async build(vp: VaultPlugin) {
     const file = path.join(CACHE, `${vp.id}-${vp.hash}.json`)
-    // (its code alone, kept apart: an app update that changes only the stylesheet doesn't bundle it again)
     const codeHash = crypto.createHash("sha256").update(CODE).update(vp.digest.content).digest("hex").slice(0, 12)
     const codeFile = path.join(CACHE, `${vp.id}-code-${codeHash}.json`)
     try {
@@ -565,12 +501,11 @@ export class VaultPlugins {
         try { code = JSON.parse(readText(codeFile)) } catch {
           code = await bundle(vp)
           bundled = true
-          // (what it read as it built is what was allowed: the app runs it as the user's own code)
           if (digestOf(vp.dir).content !== vp.digest.content) throw new Error("its files changed as it was built: it's built again once allowed")
         }
         built = await withStyles(vp, code)
         fs.mkdirSync(CACHE, { recursive: true })
-        const mine = new RegExp(`^${vp.id.replace(/[^\w-]/g, "\\$&")}-(code-|styles-)?[0-9a-f]{12}\\.json$`) // (not claude-chat's for claude)
+        const mine = new RegExp(`^${vp.id.replace(/[^\w-]/g, "\\$&")}-(code-|styles-)?[0-9a-f]{12}\\.json$`)
         const keep = new Set([path.basename(codeFile), stylesFile.get(vp.id)])
         for (const old of fs.readdirSync(CACHE)) if (mine.test(old) && !keep.has(old)) fs.rmSync(path.join(CACHE, old), { force: true })
         if (bundled) writeAtomic(codeFile, JSON.stringify(code))
@@ -584,20 +519,16 @@ export class VaultPlugins {
     }
   }
 
-  /** A file of its built frontend for the web app (bundle.js, or a chunk it imports), at this version, if it's on and built. */
   code(id: string, version: string, file = "bundle.js") {
     const vp = this.found.get(id)
     if (!vp?.plugin || vp.bundle?.hash !== vp.hash || version !== vp.hash) return null
     return file === "bundle.js" ? vp.bundle.code : Object.hasOwn(vp.bundle.chunks, file) ? vp.bundle.chunks[file] : null
   }
 
-  /** On in the vault, but not allowed on this machine at this version. */
   private waits(vp: VaultPlugin, on = this.enabled()) {
     return on.has(vp.id) && !vp.problems.length && !vp.blocked && !this.trust.approved(vp.id, vp.digest)
   }
 
-  /** The ones this machine allowed that changed since, so they stopped until it allows them again (not one being
-   *  updated: App.adopt allows it): what changed, and their schedule, which doesn't run meanwhile. */
   paused() {
     const on = this.enabled()
     return [...this.found.values()].filter((vp) => this.trust.approval(vp.id) && !this.adopting.has(vp.id) && this.waits(vp, on)).map((vp) => ({
@@ -606,8 +537,6 @@ export class VaultPlugins {
     }))
   }
 
-  /** What the web app shows (/api/state's `vaultPlugins`, GET /api/plugins): every vault plugin, on or off; `problems`
-   *  keep it from loading, `warnings` don't (a block without its declaration or its text side). */
   list(): Item[] {
     const on = this.enabled()
     const lock = this.vault.config("plugins-lock")
@@ -616,7 +545,6 @@ export class VaultPlugins {
       const failed = Object.values(vp.failed).filter((f) => f && f[0] === vp.hash).map((f) => f![1])
       const pages = path.join(vp.dir, "pages")
       const str = (k: string) => (typeof m[k] === "string" && m[k] ? m[k] as string : null)
-      // Waiting: what changed since it was allowed here (all of it when never).
       const changes = this.waits(vp, on) ? this.trust.changes(vp.id, vp.digest) : null
       return {
         id: vp.id, name: typeof m.name === "string" && m.name ? m.name : vp.id, description: typeof m.description === "string" ? m.description : "",
@@ -631,17 +559,12 @@ export class VaultPlugins {
         ...(m.marks && typeof m.marks === "object" && !Array.isArray(m.marks) ? { marks: m.marks } : {}),
         folder: `${DIR}/${vp.id}`, on: on.has(vp.id), loaded: !!vp.plugin, problems: [...vp.problems, ...failed, ...(vp.blocked ? [vp.blocked] : [])], warnings: vp.warnings,
         version: str("version"), author: str("author"), repo: str("repo"), fundingUrl: str("fundingUrl"), disclosures: disclosuresOf(m),
-        // where it was installed from (.vaultite/plugins-lock.json: core/installs.ts), null for one made here
         source: lock[vp.id] && typeof lock[vp.id] === "object" ? { ...lock[vp.id], official: official(String(lock[vp.id].source ?? "")) } : null,
-        // ("moved": one of the app's own plugins, installed when it moved out of the app: asked once with the others)
         approval: changes ? { state: this.adopting.has(vp.id) ? "updating" : changes.since ? "changed" : (lock[vp.id] as Item | undefined)?.moved ? "moved" : "new",
           since: changes.since, changed: changes.files } : null,
         blocked: vp.blocked, hash: vp.digest.content, edits: !!this.trust.approval(vp.id)?.edits,
-        // its blocks as its manifest declares them (core/blocks.ts): the app checks their options against them
         blocks: declsOf(m), draws: drawsOf(m),
-        // its settings as its manifest declares them: the app draws them as a form in its settings sheet
         settings: settingsOf(m),
-        // the bundle's version (the web app imports it again when it changes), null when there's none to load
         bundle: this.code(vp.id, vp.hash) !== null ? vp.hash : null,
         pages: (fs.existsSync(pages) ? fs.readdirSync(pages).filter((n) => n.endsWith(".md") && !n.startsWith(".")).sort() : [])
           .map((n) => ({ name: n.slice(0, -3), text: readText(path.join(pages, n)) })),
