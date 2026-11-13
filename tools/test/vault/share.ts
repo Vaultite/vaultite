@@ -103,6 +103,9 @@ export default async ($: VaultTest) => {
     check("share: the guest's files are the folder's, by their own paths: nothing hidden, no links out, nothing beside it",
       JSON.stringify(paths) === JSON.stringify(["A.md", "Sub/B.md", "img.png"]) && JSON.stringify(state.state.files.folders) === JSON.stringify(["Sub"])
       && !JSON.stringify(state).includes("Secret") && !JSON.stringify(state).includes("Shared/") && state.state.vault.path === "Shared", state.state)
+    const manifest = await (await get(`${a.at}/api/state/manifest`, as(a))).json()
+    check("share: the state's manifest, asked first by the app, is the folder's whole state: no chunks of the vault's", !("tree" in manifest)
+      && JSON.stringify(manifest.state.files) === JSON.stringify(state.state.files), manifest)
     write("Shared/Probe.md", "[a](a/../../Secret/S.md) [b](a/../../Secret/NOPE.md) [c](../Secret/S.md) [d](../Nope.md) [[Sub/B]]\n")
     await $.vault.sync()
     const probe = await (await get(`${a.at}/api/file/linked?path=Probe.md`, as(a))).json()

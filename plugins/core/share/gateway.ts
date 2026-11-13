@@ -331,7 +331,7 @@ export class Gateway {
     const api = (m: string, r: string, body?: unknown) => this.plugin.host.api(m, r, body, guestWho(g.share), m === "GET" ? {} : { report: `share ${m} ${r.split("?")[0]}` })
     const theirs = (x: Item) => ({ ...x, path: f.see(String(x.path)), problems: [] })
     const key = `${method} ${route}`
-    if (key === "GET state") return this.json(res, 200, { v: this.v(), state: await this.state(g, f) })
+    if (key === "GET state" || key === "GET state/manifest") return this.json(res, 200, { v: this.v(), state: await this.state(g, f) })
     if (key === "GET file") return this.json(res, 200, theirs(await api("GET", `file?path=${encodeURIComponent(f.at(q.path))}`) as Item))
     if (key === "GET file/info") return this.json(res, 200, theirs(await api("GET", `file/info?path=${encodeURIComponent(f.at(q.path))}`) as Item))
     // api/raw/<its name>?path=...: the name only for the browser's sake
