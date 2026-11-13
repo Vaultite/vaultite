@@ -1,5 +1,5 @@
 import type { Any, VaultTest } from "./harness.ts"
-import { portOf } from "../fakes.ts"
+import { portOf } from "../../../core/listening.ts"
 
 export default async ($: VaultTest) => {
   const { api, app, check, sleep, vault, write } = $

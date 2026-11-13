@@ -5,7 +5,7 @@ import fs from "node:fs"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 import { skip, standIn, waitFor } from "../lib.ts"
-import { portOf } from "../fakes.ts"
+import { portOf } from "../../../core/listening.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "../../..")
 

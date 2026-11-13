@@ -1,5 +1,5 @@
 import { check, section } from "../lib.ts"
-import { portOf } from "../fakes.ts"
+import { portOf } from "../../../core/listening.ts"
 
 // ---------- Browser: passkeys from a phone (electron/browser/hybrid.ts, webauthn.ts) ----------
 // Chromium's and a real phone's vectors (via kanidm's webauthn-authenticator-rs), then sign-up and sign-in with a fake phone.

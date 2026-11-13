@@ -4,7 +4,7 @@ import path from "node:path"
 import { pathToFileURL } from "node:url"
 import type { Any, VaultTest } from "./harness.ts"
 import { gitEnv } from "../../../core/gitenv.ts"
-import { portOf } from "../fakes.ts"
+import { portOf } from "../../../core/listening.ts"
 import { messageOf } from "../../../core/values.ts"
 
 export default async ($: VaultTest) => {

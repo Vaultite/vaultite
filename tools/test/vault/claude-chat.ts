@@ -5,7 +5,7 @@ import http from "node:http"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 import { waitFor } from "../lib.ts"
-import { portOf } from "../fakes.ts"
+import { portOf } from "../../../core/listening.ts"
 import { request } from "../fakes.ts"
 
 /** A stand-in for the Agent SDK's query: it answers each message by what it says ("permission", "question", "plan", "slow",

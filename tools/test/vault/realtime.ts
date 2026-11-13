@@ -4,7 +4,7 @@ import http from "node:http"
 import path from "node:path"
 import { WebSocketServer, type WebSocket } from "ws"
 import type { Any, VaultTest } from "./harness.ts"
-import { portOf } from "../fakes.ts"
+import { portOf } from "../../../core/listening.ts"
 
 export default async ($: VaultTest) => {
   const { check, sleep } = $

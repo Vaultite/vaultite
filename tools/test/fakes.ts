@@ -1,6 +1,5 @@
 import { IncomingMessage, type IncomingHttpHeaders } from "node:http"
-import { type Server, Socket } from "node:net"
-import { z } from "zod"
+import { Socket } from "node:net"
 
 export function request(headers: IncomingHttpHeaders = {}, o: { remote?: string; body?: Buffer[] } = {}): IncomingMessage {
   const socket = new Socket()
@@ -11,4 +10,3 @@ export function request(headers: IncomingHttpHeaders = {}, o: { remote?: string;
   return req
 }
 
-export const portOf = (s: Pick<Server, "address">) => z.object({ port: z.number() }).parse(s.address()).port

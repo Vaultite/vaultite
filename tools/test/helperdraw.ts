@@ -7,7 +7,7 @@ import path from "node:path"
 import { mock } from "node:test"
 import { pathToFileURL } from "node:url"
 import { WebSocketServer, type WebSocket } from "ws"
-import { portOf } from "./fakes.ts"
+import { portOf } from "../../core/listening.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "../..")
 const at = (f: string) => pathToFileURL(path.join(ROOT, "electron", f)).href

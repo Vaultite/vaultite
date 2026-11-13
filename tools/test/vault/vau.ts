@@ -1,7 +1,8 @@
 import fs from "node:fs"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
-import { portOf, request } from "../fakes.ts"
+import { request } from "../fakes.ts"
+import { portOf } from "../../../core/listening.ts"
 import { messageOf } from "../../../core/values.ts"
 
 export default async ($: VaultTest) => {

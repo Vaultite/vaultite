@@ -5,7 +5,8 @@ import os from "node:os"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 import { waitFor } from "../lib.ts"
-import { portOf, request } from "../fakes.ts"
+import { request } from "../fakes.ts"
+import { portOf } from "../../../core/listening.ts"
 
 export default async ($: VaultTest) => {
   // (the companion acting: its own tool call, not any agent's vau)

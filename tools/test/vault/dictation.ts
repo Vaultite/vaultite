@@ -5,7 +5,7 @@ import path from "node:path"
 import { WebSocketServer } from "ws"
 import type { Any, VaultTest } from "./harness.ts"
 import { sharedTmp } from "../../../core/testrun.ts"
-import { portOf } from "../fakes.ts"
+import { portOf } from "../../../core/listening.ts"
 import { messageOf } from "../../../core/values.ts"
 
 export default async ($: VaultTest) => {
