@@ -102,17 +102,25 @@ await wait(600)
 check("… which stays while the pointer is in the gap", (await barOf()) === "out", await look())
 check("… and goes once it's left", await away(), await look())
 
-// A quick pass through the gap onto the page (a frame in the gap, less than the rest): no bar.
-await win.mouse.move(mid(strip).x, mid(strip).y)
-await win.mouse.move(g.x + g.width / 2, g.y + g.height / 2)
-await wait(20)
-await app.evaluate(({ BaseWindow }) => {
+// A quick pass from the page through the gap and back: no bar. (faked moves never send Chromium's own mouseLeave)
+const inPage = (type) => app.evaluate(({ BaseWindow }, type) => {
   const w = BaseWindow.getAllWindows()[0]
   const v = w.contentView.children.find((c) => c.webContents && c.webContents !== w.webContents && c.getVisible())
-  v.webContents.sendInputEvent({ type: "mouseMove", x: 400, y: 200 })
-})
+  v.webContents.sendInputEvent({ type, x: 400, y: type === "mouseLeave" ? 0 : 200 })
+}, type)
+const intoPage = () => inPage("mouseMove")
+let pass = Infinity
+for (let i = 0; i < 5 && pass >= 40; i++) {
+  await away()
+  await inPage("mouseLeave")
+  await win.mouse.move(mid(strip).x, mid(strip).y)
+  const at = Date.now()
+  await win.mouse.move(g.x + g.width / 2, g.y + g.height / 2)
+  await intoPage()
+  pass = Date.now() - at
+}
 await wait(500)
-check("a quick pass through the gap into the page: the bar stays away", (await barOf()) === "in", await look())
+check("a quick pass through the gap into the page: the bar stays away", pass < 40 && (await barOf()) === "in", { pass, ...(await look()) })
 
 // From the page's top up into the gap, the page telling it left after the window heard the gap: one band.
 await win.mouse.move(mid(strip).x, mid(strip).y)
