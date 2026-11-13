@@ -1,6 +1,8 @@
 // iOS ends a page in the background: in the iPhone app the shell plays the sound (ios/App/App/Audio.swift).
 import { phoneAudio, type PhoneAudioState } from "@vaultite"
-import { clock, parkEl, take } from "./now"
+import { clock, parkEl, take, type MediaEl } from "./now"
+
+declare global { interface WindowEventMap { "vaultite:audio": CustomEvent<PhoneAudioState> } }
 
 let owner: NativeAudio | null = null
 type Err = { code: number; message: string }
@@ -19,8 +21,8 @@ class NativeAudio extends HTMLElement {
   private ticker: ReturnType<typeof setInterval> | undefined
   private adopting = false
   private bar: { play: HTMLButtonElement; at: HTMLElement; range: HTMLInputElement; left: HTMLElement } | null = null
-  textTracks = [] as unknown as TextTrackList
-  preload = "metadata"
+  textTracks: TextTrack[] = []
+  preload: HTMLMediaElement["preload"] = "metadata"
   seeking = false
 
   get src() { return this.url }
@@ -35,7 +37,7 @@ class NativeAudio extends HTMLElement {
   get paused() { return this.stopped }
   get ended() { return this.done }
   get readyState() { return this.ready }
-  get error() { return this.err as MediaError | null }
+  get error() { return this.err }
   get currentTime() {
     const t = this.moving ? this.t + ((performance.now() - this.sampled) / 1000) * this.rate : this.t
     return Number.isFinite(this.d) ? Math.min(t, this.d) : t
@@ -180,11 +182,15 @@ class NativeAudio extends HTMLElement {
 
 if (phoneAudio && !customElements.get("vaultite-audio")) customElements.define("vaultite-audio", NativeAudio)
 
-export const nativeAudio = () => (phoneAudio ? (document.createElement("vaultite-audio") as unknown as HTMLMediaElement) : null)
-export const isNative = (el: HTMLMediaElement) => el.localName === "vaultite-audio"
+export function nativeAudio() {
+  const el = phoneAudio ? document.createElement("vaultite-audio") : null
+  return el instanceof NativeAudio ? el : null
+}
+export const isNative = (el: MediaEl) => el.localName === "vaultite-audio"
+export const isMediaEl = (el: Element | null): el is MediaEl => el instanceof HTMLMediaElement || el instanceof NativeAudio
 
 if (phoneAudio) addEventListener("vaultite:audio", (e) => {
-  const s = (e as CustomEvent<PhoneAudioState>).detail
+  const s = e.detail
   if (!owner) return
   if (s.type === "stop" || s.path !== owner.dataset.playerFor) { if (s.type === "stop") owner = null; return }
   owner.apply(s)
@@ -194,10 +200,10 @@ export function adoptNative() {
   if (!phoneAudio) return
   phoneAudio.state().then((s) => {
     if (!s.path || owner?.dataset.playerFor === s.path) return
-    const el = (document.querySelector(`vaultite-audio[data-player-for="${CSS.escape(s.path)}"]`) ?? take(s.path, false)) as unknown as NativeAudio
-    if (!isNative(el as unknown as HTMLMediaElement)) return
+    const el = document.querySelector(`vaultite-audio[data-player-for="${CSS.escape(s.path)}"]`) ?? take(s.path, false)
+    if (!(el instanceof NativeAudio)) return
     if (s.from && !el.dataset.from) el.dataset.from = s.from
-    if (!el.isConnected) parkEl(el as unknown as HTMLMediaElement)
+    if (!el.isConnected) parkEl(el)
     el.adopt(s)
   }, () => {})
 }

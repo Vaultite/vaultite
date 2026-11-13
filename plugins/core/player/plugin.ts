@@ -1,4 +1,5 @@
 import fs from "node:fs"
+import * as z from "zod"
 import { bullets, HTTPError, Plugin, section, Text, vaultPath } from "../../../core/plugins.ts"
 import { isArchived, str, type Item } from "../../../core/vault.ts"
 import { readMeta } from "./meta.ts"
@@ -8,7 +9,13 @@ export const plugin = new Plugin(import.meta.url)
 
 const MAX = 500
 type Marks = Record<string, Mark[]>
-const marksNow = () => (plugin.settings({}, "marks").marks ?? {}) as Marks
+const MarkData = z.object({ t: z.number(), note: z.string().optional() })
+const MarksFile = z.object({ marks: z.record(z.string(), z.array(MarkData).catch([])).catch({}) })
+const PlaceData = z.object({ t: z.number().catch(0), d: z.number().optional().catch(undefined), at: z.number(), done: z.boolean().optional().catch(undefined), marks: z.array(MarkData).optional().catch(undefined) })
+const OldPlaces = z.object({ places: z.record(z.string(), PlaceData.nullable().catch(null)).catch({}) })
+const PlaceBody = z.object({ path: z.string().optional().catch(undefined), t: z.number().optional().catch(undefined), d: z.number().optional().catch(undefined), done: z.boolean().optional().catch(undefined) })
+const MarksBody = z.object({ path: z.string(), marks: z.array(z.object({ t: z.number(), note: z.unknown().optional() }).nullable().catch(null)) })
+const marksNow = (): Marks => MarksFile.parse(plugin.settings({}, "marks")).marks
 function places(): Record<string, Place> {
   const all = { ...(plugin.kept<{ places?: Record<string, Place> }>("places", {}).places ?? {}) }, marks = marksNow()
   for (const [p, m] of Object.entries(marks)) if (Array.isArray(m) && m.length) all[p] = { ...(all[p] ?? { t: 0, at: 0 }), marks: m }
@@ -30,8 +37,8 @@ plugin.onSync((vault) => {
   try { old = plugin.readSettings("places") } catch { return }
   if (!old) return
   const had = places(), next = { ...had }
-  for (const [p, x] of Object.entries((old.places ?? {}) as Record<string, Place>)) {
-    if (!x || typeof x.at !== "number") continue
+  for (const [p, x] of Object.entries(OldPlaces.parse(old).places)) {
+    if (!x) continue
     const mine = had[p]
     next[p] = { ...(mine && mine.at >= x.at ? mine : x), ...(mine?.marks?.length || x.marks?.length ? { marks: mine?.marks?.length ? mine.marks : x.marks } : {}) }
   }
@@ -42,12 +49,13 @@ plugin.onSync((vault) => {
 plugin.route("GET", "player/places", () => ({ places: places() }))
 
 plugin.route("PUT", "player/places", (req) => {
-  const { path, t, d, done } = req.body as { path?: string; t?: number; d?: number; done?: boolean }
-  if (!path || typeof path !== "string") return { ok: false }
+  const body = PlaceBody.safeParse(req.body)
+  if (!body.success || !body.data.path) return { ok: false }
+  const { path, t, d, done } = body.data
   const all = { ...places() }
   const was = all[path]
-  const len = Number.isFinite(d) && d! > 0 ? d! : was?.d
-  const at = Number.isFinite(t) ? Math.max(0, t!) : was?.t ?? 0
+  const len = d !== undefined && Number.isFinite(d) && d > 0 ? d : was?.d
+  const at = t !== undefined && Number.isFinite(t) ? Math.max(0, t) : was?.t ?? 0
   const finished = done ?? (len ? at >= len - Math.min(30, len * 0.05) : was?.done)
   all[path] = { t: finished && done === undefined ? 0 : at, ...(len ? { d: Math.round(len) } : {}), at: Date.now(), ...(finished ? { done: true } : {}), ...(was?.marks ? { marks: was.marks } : {}) }
   save(all)
@@ -55,9 +63,10 @@ plugin.route("PUT", "player/places", (req) => {
 })
 
 plugin.route("PUT", "player/marks", (req) => {
-  const { path, marks } = req.body as { path?: string; marks?: Mark[] }
-  if (!path || typeof path !== "string" || !Array.isArray(marks)) return { ok: false }
-  const list = marks.filter((m) => Number.isFinite(m?.t) && m.t >= 0).slice(0, 500)
+  const body = MarksBody.safeParse(req.body)
+  if (!body.success || !body.data.path) return { ok: false }
+  const { path, marks } = body.data
+  const list = marks.flatMap((m) => (m && Number.isFinite(m.t) && m.t >= 0 ? [m] : [])).slice(0, 500)
     .map((m) => ({ t: Math.round(m.t), ...(typeof m.note === "string" && m.note.trim() ? { note: m.note.trim().slice(0, 500) } : {}) }))
     .sort((a, b) => a.t - b.t)
   const all = { ...places() }
@@ -117,7 +126,7 @@ plugin.block("queue", (ctx) => {
     const left = path ? leftText(all[path]) : ""
     return `[[${r.id}|${r.title}]]${left ? ` (${left})` : ""}`
   }
-  const shelves = (["watch", "listen", "read"] as Shelf[]).filter((k) => show === "all" || show === k)
+  const shelves = (["watch", "listen", "read"] satisfies Shelf[]).filter((k) => show === "all" || show === k)
   const parts = shelves.map((k) => [k, items.filter((x) => x.s.shelf === k)] as const).filter(([, xs]) => xs.length)
     .map(([k, xs]) => `${LABEL[k]}:\n${bullets(xs.map(line))}`)
   return section("Queue", ...(parts.length ? parts : ["_Nothing waiting._"]))

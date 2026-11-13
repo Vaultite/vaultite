@@ -1,6 +1,6 @@
-import { useState, type MouseEvent } from "react"
+import { useState } from "react"
 import { BookOpen, Check, CheckCheck, Globe, ListVideo, Pause, Play, RotateCcw } from "lucide-react"
-import { cn, Empty, fmtAgo, isArchived, List, menuFor, op, openFile, optimistic, Panel, rawUrl, resolver, Row, Segmented, SwipeRow, type Store, type SwipeAction } from "@vaultite"
+import { cn, Empty, fmtAgo, isArchived, List, menuFor, op, openFile, optimistic, Panel, rawUrl, resolver, Row, Segmented, SwipeRow, type Store, type BlockCtx, type SwipeAction } from "@vaultite"
 import { leftText, shelfOf, type Place, type Shelf } from "./shelves"
 import { getNow, pictureOf, playFile, markDone, useNow, usePlaces, useTick } from "./now"
 
@@ -23,10 +23,11 @@ function books(store: Store) {
   return list.filter((b) => b.status === "reading" && !isArchived(b))
 }
 
+const SHELVES: Shelf[] = ["watch", "listen", "read"]
 const LABELS: Record<Show, string> = { all: "All", watch: "Watch", listen: "Listen", read: "Read" }
 
-export function QueueBlock({ store, options }: { store: Store; options: Record<string, unknown> }) {
-  const fixed = (["watch", "listen", "read"] as string[]).includes(String(options.show)) ? options.show as Shelf : null
+export function QueueBlock({ store, options }: { store: Store; options: BlockCtx["options"] }) {
+  const fixed = SHELVES.find((s) => s === options.show) ?? null
   const [pick, setPick] = useState<Show>("all")
   const show = fixed ?? pick
   const places = usePlaces()
@@ -42,7 +43,7 @@ export function QueueBlock({ store, options }: { store: Store; options: Record<s
     <Panel title="Queue" icon={ListVideo}>
       {!fixed && (
         <Segmented label="Show" value={pick} onChange={setPick} className="mb-3"
-          options={(["all", "watch", "listen", "read"] as Show[]).map((k) => ({ value: k, label: count(k) ? `${LABELS[k]} ${count(k)}` : LABELS[k] }))} />
+          options={(["all", "watch", "listen", "read"] satisfies Show[]).map((k) => ({ value: k, label: count(k) ? `${LABELS[k]} ${count(k)}` : LABELS[k] }))} />
       )}
       {!list.length && !(withBooks && reading.length) ? (
         <Empty>{show === "all" ? "Nothing waiting. Saved videos, podcasts and pages land here." : `Nothing to ${LABELS[show].toLowerCase()}.`}</Empty>
@@ -102,7 +103,7 @@ function QueueRow({ e, place }: { e: Entry; place?: Place }) {
   const Icon = e.shelf === "read" ? Globe : ListVideo
   return (
     <SwipeRow actions={swipe} data-queue-row={e.id}>
-      <div onContextMenu={menu as unknown as (ev: MouseEvent) => void}>
+      <div onContextMenu={menu}>
         <Row title={e.title} meta={meta} onOpen={() => openFile(e.note)} lead={<Thumb pic={e.media ? pictureOf(e.media) : null} icon={Icon} wide={e.shelf === "watch"} />}
           right={e.media ? (
             <span role="button" tabIndex={0} aria-label={playing && !now!.el.paused ? "Pause" : "Play"}

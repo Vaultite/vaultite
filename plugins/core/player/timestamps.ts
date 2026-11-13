@@ -75,7 +75,7 @@ export function timestamps(ctx: EditorCtx): Extension {
   })
   const click = EditorView.domEventHandlers({
     click(e, view) {
-      const hit = (e.target as HTMLElement).closest(".cm-timestamp")
+      const hit = e.target instanceof Element ? e.target.closest(".cm-timestamp") : null
       if (!hit || e.metaKey || e.ctrlKey || e.shiftKey) return false
       const v = view.state.field(field)
       const pos = view.posAtDOM(hit)

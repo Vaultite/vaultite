@@ -1,11 +1,11 @@
-import { useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react"
+import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react"
 import { Airplay, Bookmark, FileText, Pause, Play, SkipBack, SkipForward, Trash2 } from "lucide-react"
 import { cn, kindIcon, List, menuFor, notify, openFile, phoneFiles, Segmented, SwipeRow, type SwipeAction } from "@vaultite"
 import type { Chapter, Mark } from "./shelves"
 import { btn, icon, Keep, MarkButton, SleepButton, Skip, SpeedButton } from "./Buttons"
-import { artOf, BACK, chapterAt, clock, FORWARD, getNow, labelOf, setMarks, stepChapter, useMeta, usePlaces, useTick } from "./now"
+import { artOf, BACK, chapterAt, clock, FORWARD, getNow, labelOf, setMarks, stepChapter, useMeta, usePlaces, useTick, type MediaEl } from "./now"
 
-export function Full({ el, path }: { el: HTMLMediaElement; path: string }) {
+export function Full({ el, path }: { el: MediaEl; path: string }) {
   useTick(el)
   const meta = useMeta(path)
   const cs = meta?.chapters ?? []
@@ -31,7 +31,7 @@ export function Full({ el, path }: { el: HTMLMediaElement; path: string }) {
         <MarkButton el={el} path={path} cs={cs} />
         {"webkitShowPlaybackTargetPicker" in el && (
           <button type="button" className={btn} aria-label="AirPlay" data-tip="AirPlay"
-            onClick={() => (el as HTMLMediaElement & { webkitShowPlaybackTargetPicker: () => void }).webkitShowPlaybackTargetPicker()}>
+            onClick={() => el.webkitShowPlaybackTargetPicker?.()}>
             <Airplay className={icon} strokeWidth={2} />
           </button>
         )}
@@ -43,7 +43,7 @@ export function Full({ el, path }: { el: HTMLMediaElement; path: string }) {
   )
 }
 
-function Scrubber({ el, cs, className }: { el: HTMLMediaElement; cs: Chapter[]; className?: string }) {
+function Scrubber({ el, cs, className }: { el: MediaEl; cs: Chapter[]; className?: string }) {
   const bar = useRef<HTMLDivElement>(null)
   const [drag, setDrag] = useState<number | null>(null)
   const d = Number.isFinite(el.duration) ? el.duration : 0
@@ -80,7 +80,7 @@ function Scrubber({ el, cs, className }: { el: HTMLMediaElement; cs: Chapter[]; 
   )
 }
 
-function Transport({ el, cs, className }: { el: HTMLMediaElement; cs: Chapter[]; className?: string }) {
+function Transport({ el, cs, className }: { el: MediaEl; cs: Chapter[]; className?: string }) {
   const skip = (s: number) => { el.currentTime = Math.max(0, Math.min(el.duration || Infinity, el.currentTime + s)) }
   const b = "grid size-12 shrink-0 cursor-pointer place-items-center rounded-full text-foreground hover:bg-foreground/[0.06] disabled:cursor-default disabled:opacity-30"
   const i = chapterAt(cs, el.currentTime)
@@ -99,7 +99,7 @@ function Transport({ el, cs, className }: { el: HTMLMediaElement; cs: Chapter[];
 }
 
 type Shelf = "chapters" | "marks"
-export function Book({ el, path, cs, className }: { el: HTMLMediaElement; path: string; cs: Chapter[]; className?: string }) {
+export function Book({ el, path, cs, className }: { el: MediaEl; path: string; cs: Chapter[]; className?: string }) {
   const marks = usePlaces()[path]?.marks ?? []
   const [pick, setPick] = useState<Shelf | null>(null)
   const show: Shelf = cs.length > 1 ? pick ?? "chapters" : "marks"
@@ -118,7 +118,7 @@ export function Book({ el, path, cs, className }: { el: HTMLMediaElement; path: 
   )
 }
 
-function Chapters({ el, cs, go }: { el: HTMLMediaElement; cs: Chapter[]; go: (t: number) => void }) {
+function Chapters({ el, cs, go }: { el: MediaEl; cs: Chapter[]; go: (t: number) => void }) {
   const i = chapterAt(cs, el.currentTime)
   return (
     <List>
@@ -149,7 +149,7 @@ function Marks({ path, marks, cs, go }: { path: string; marks: Mark[]; cs: Chapt
         const swipe = (): SwipeAction[] => [{ label: "Delete", icon: Trash2, danger: true, removes: true, run: () => drop(m) }]
         return (
           <SwipeRow key={m.t} actions={swipe}>
-            <div onContextMenu={menu as unknown as (e: MouseEvent) => void} className="flex min-h-11 items-center gap-3 py-2">
+            <div onContextMenu={menu} className="flex min-h-11 items-center gap-3 py-2">
               <Bookmark className="size-4 shrink-0 text-primary" strokeWidth={2} />
               {editing === m.t ? (
                 <input autoFocus defaultValue={m.note ?? ""} placeholder="Note" aria-label="Note"

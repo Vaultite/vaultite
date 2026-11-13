@@ -1,10 +1,17 @@
 import { useSyncExternalStore } from "react"
 import { currentFile, devicePref, get, getStore, phoneFiles, put, rawUrl } from "@vaultite"
 import { VIDEO, type Chapter, type Mark, type Place } from "./shelves"
-import { describeNative, isNative, nativeAudio, sleepNative } from "./native"
+import { describeNative, isMediaEl, isNative, nativeAudio, sleepNative } from "./native"
 import { steady } from "./steady"
 
-export type Now = { path: string; el: HTMLMediaElement; video: boolean; from?: string }
+export type MediaEl = HTMLElement & Pick<HTMLMediaElement, "src" | "currentSrc" | "currentTime" | "duration" | "paused" | "ended" | "readyState" | "playbackRate" | "controls" | "preload" | "seeking" | "play" | "pause" | "load"> & {
+  readonly error: { readonly code: number; readonly message: string } | null
+  readonly textTracks: ArrayLike<TextTrack>
+  webkitPresentationMode?: string
+  webkitSetPresentationMode?: (mode: string) => void
+  webkitShowPlaybackTargetPicker?: () => void
+}
+export type Now = { path: string; el: MediaEl; video: boolean; from?: string }
 
 let now: Now | null = null
 const subs = new Set<() => void>()
@@ -24,7 +31,7 @@ export const useNow = () => useSyncExternalStore(subscribe, () => now)
 export const getNow = () => now
 
 const ticks = new Set<() => void>()
-export const useTick = (el: HTMLMediaElement | null) => useSyncExternalStore(
+export const useTick = (el: MediaEl | null) => useSyncExternalStore(
   (f) => { ticks.add(f); return () => { ticks.delete(f) } }, () => (el ? `${Math.floor(el.currentTime * 4)}:${el.paused}:${el.playbackRate}:${el.duration}` : ""))
 const tick = () => { for (const f of ticks) f() }
 export const subscribeTime = (f: () => void) => { ticks.add(f); return () => { ticks.delete(f) } }
@@ -43,8 +50,8 @@ export function loadPlaces(force = false) {
 }
 export const usePlaces = () => useSyncExternalStore((f) => { placeSubs.add(f); loadPlaces(); return () => { placeSubs.delete(f) } }, () => places)
 
-const lastSaved = new WeakMap<HTMLMediaElement, number>()
-export function savePlace(path: string, el: HTMLMediaElement, extra: { done?: boolean } = {}) {
+const lastSaved = new WeakMap<MediaEl, number>()
+export function savePlace(path: string, el: MediaEl, extra: { done?: boolean } = {}) {
   if (!Number.isFinite(el.duration) || el.duration < 60) return
   lastSaved.set(el, Date.now())
   const d = el.duration, t = el.currentTime
@@ -87,7 +94,7 @@ export const useMeta = (path: string) => useSyncExternalStore((f) => { metaSubs.
 export const chaptersOf = (path: string) => metaOf(path)?.chapters ?? []
 export const chapterAt = (cs: Chapter[], t: number) => { let i = -1; cs.forEach((c, k) => { if (c.t <= t + 0.25) i = k }); return i }
 export const chapterEnd = (cs: Chapter[], i: number, d: number) => cs[i + 1]?.t ?? d
-export function stepChapter(el: HTMLMediaElement, cs: Chapter[], by: 1 | -1) {
+export function stepChapter(el: MediaEl, cs: Chapter[], by: 1 | -1) {
   const i = chapterAt(cs, el.currentTime)
   if (by > 0) { if (cs[i + 1]) el.currentTime = cs[i + 1].t; return }
   el.currentTime = i > 0 && el.currentTime - cs[i].t < 3 ? cs[i - 1].t : Math.max(0, cs[i]?.t ?? 0)
@@ -114,7 +121,7 @@ export function labelOf(n: Pick<Now, "path" | "from">) {
 export const isVideo = (path: string) => VIDEO.test(path)
 
 let park: HTMLDivElement | null = null
-export function parkEl(el: HTMLMediaElement) {
+export function parkEl(el: MediaEl) {
   if (!park) {
     park = document.createElement("div")
     park.dataset.playerPark = ""
@@ -123,25 +130,30 @@ export function parkEl(el: HTMLMediaElement) {
   }
   if (el.parentElement !== park) park.append(el)
 }
-export const isParked = (el: HTMLMediaElement) => !!park && el.parentElement === park
-const orphan = (el: HTMLMediaElement) => !el.isConnected || isParked(el) || !!el.closest("[data-mini-player]")
+export const isParked = (el: MediaEl) => !!park && el.parentElement === park
+const orphan = (el: MediaEl) => !el.isConnected || isParked(el) || !!el.closest("[data-mini-player]")
 
 // Moving the element would end its full screen or picture in picture.
-export function presenting(el: HTMLMediaElement) {
-  const mode = (el as HTMLVideoElement & { webkitPresentationMode?: string }).webkitPresentationMode
+export function presenting(el: MediaEl) {
+  const mode = el.webkitPresentationMode
   return document.fullscreenElement === el || document.pictureInPictureElement === el || (!!mode && mode !== "inline")
 }
 
-const slots = new Map<HTMLElement, { el: HTMLMediaElement; seen: boolean }>()
-export function setSlot(div: HTMLElement, el: HTMLMediaElement | null, seen = false) {
+const slots = new Map<HTMLElement, { el: MediaEl; seen: boolean }>()
+export function setSlot(div: HTMLElement, el: MediaEl | null, seen = false) {
   if (el) slots.set(div, { el, seen }); else slots.delete(div)
   changed()
 }
-export const shown = (el: HTMLMediaElement) => [...slots].some(([div, s]) => s.el === el && s.seen && div.contains(el))
-export const homeOf = (el: HTMLMediaElement) => [...slots].find(([div, s]) => s.el === el && div.isConnected && div.getClientRects().length > 0)?.[0] ?? null
+export const shown = (el: MediaEl) => [...slots].some(([div, s]) => s.el === el && s.seen && div.contains(el))
+export const homeOf = (el: MediaEl) => [...slots].find(([div, s]) => s.el === el && div.isConnected && div.getClientRects().length > 0)?.[0] ?? null
 export const useVersion = () => useSyncExternalStore(subscribe, () => version)
 
-export function take(path: string, video: boolean, v?: number): HTMLMediaElement {
+export function playerOf(path: string, within: ParentNode | null | undefined) {
+  const el = within?.querySelector(`[data-player-for="${CSS.escape(path)}"]`) ?? null
+  return isMediaEl(el) ? el : null
+}
+
+export function take(path: string, video: boolean, v?: number): MediaEl {
   if (now && now.path === path) return now.el
   const el = (!video && nativeAudio()) || document.createElement(video ? "video" : "audio")
   el.src = rawUrl(path, { v })
@@ -152,7 +164,7 @@ export function take(path: string, video: boolean, v?: number): HTMLMediaElement
   if (video) {
     el.setAttribute("autopictureinpicture", "")
     const pic = pictureOf(path)
-    if (pic) (el as HTMLVideoElement).poster = rawUrl(pic)
+    if (pic && el instanceof HTMLVideoElement) el.poster = rawUrl(pic)
   }
   el.dataset.playerFor = path
   el.dataset.keepsPlaying = ""
@@ -167,7 +179,7 @@ export function take(path: string, video: boolean, v?: number): HTMLMediaElement
   return el
 }
 
-export function release(el: HTMLMediaElement) {
+export function release(el: MediaEl) {
   if (now?.el === el) { if (!presenting(el)) parkEl(el); changed(); return }
   el.pause()
   el.removeAttribute("src")
@@ -194,11 +206,11 @@ export function playFile(path: string, from?: string) {
   void el.play().catch(() => {})
 }
 
-const pausedAt = new WeakMap<HTMLMediaElement, number>()
+const pausedAt = new WeakMap<MediaEl, number>()
 const rewindFor = (ms: number) => (ms < 30_000 ? 0 : ms < 300_000 ? 5 : ms < 3_600_000 ? 10 : 20)
-const rewinds = (el: HTMLMediaElement) => !(el instanceof HTMLVideoElement) && el.duration >= 600
+const rewinds = (el: MediaEl) => !(el instanceof HTMLVideoElement) && el.duration >= 600
 
-function wire(el: HTMLMediaElement, path: string, video: boolean) {
+function wire(el: MediaEl, path: string, video: boolean) {
   let restored = false
   askMeta(path)
   el.addEventListener("loadedmetadata", () => {
@@ -236,7 +248,7 @@ function wire(el: HTMLMediaElement, path: string, video: boolean) {
 }
 
 // iOS stops a page's video in the background, not its audio.
-let swapped: HTMLVideoElement | null = null
+let swapped: MediaEl | null = null
 function away() {
   if (!now) return
   savePlace(now.path, now.el)
@@ -256,7 +268,7 @@ function toSound() {
   a.currentTime = at
   a.addEventListener("loadedmetadata", () => { a.currentTime = at }, { once: true })
   parkEl(a)
-  swapped = v as HTMLVideoElement
+  swapped = v
   v.pause()
   void a.play().catch(() => { swapped = null; void v.play().catch(() => {}) })
 }
@@ -296,7 +308,7 @@ export function setSleep(s: Sleep) {
   if (now && isNative(now.el)) sleepNative(s ? ("until" in s ? { until: s.until } : { chapter: true }) : {})
   for (const f of sleepSubs) f()
 }
-function sleepCheck(el: HTMLMediaElement | undefined) {
+function sleepCheck(el: MediaEl | undefined) {
   if (!sleep || !el || now?.el !== el) return
   if ("until" in sleep) { if (Date.now() >= sleep.until) { el.pause(); setSleep(null) } return }
   const cs = chaptersOf(now.path), i = chapterAt(cs, el.currentTime)
@@ -305,14 +317,14 @@ function sleepCheck(el: HTMLMediaElement | undefined) {
 }
 
 let titled = ""
-function retitle(el: HTMLMediaElement, path: string) {
+function retitle(el: MediaEl, path: string) {
   const cs = chaptersOf(path)
   if (!cs.length || now?.el !== el) return
   const key = `${path}#${chapterAt(cs, el.currentTime)}`
   if (key !== titled) session(el, path)
 }
 
-function session(el: HTMLMediaElement, path: string) {
+function session(el: MediaEl, path: string) {
   const art = artOf(path), cs = chaptersOf(path), i = chapterAt(cs, el.currentTime)
   titled = `${path}#${i}`
   if (isNative(el)) { // (the shell names the chapter itself, as the page may be asleep)
@@ -339,7 +351,7 @@ function session(el: HTMLMediaElement, path: string) {
   on("previoustrack", cs.length ? () => stepChapter(el, chaptersOf(path), -1) : null)
   position(el)
 }
-function position(el: HTMLMediaElement) {
+function position(el: MediaEl) {
   const ms = navigator.mediaSession
   if (!ms || now?.el !== el || isNative(el)) return
   ms.playbackState = el.paused ? "paused" : "playing"
@@ -356,7 +368,7 @@ function clearSession() {
 
 export function seek(path: string, t: number, within?: Element | null) {
   const el = now?.path === path ? now.el
-    : (within?.querySelector(`[data-player-for="${CSS.escape(path)}"]`) ?? document.querySelector(`[data-player-for="${CSS.escape(path)}"]`)) as HTMLMediaElement | null
+    : playerOf(path, within) ?? playerOf(path, document)
   const target = el ?? take(path, isVideo(path))
   if (!target.isConnected) parkEl(target)
   const go = () => { target.currentTime = t; void target.play().catch(() => {}) }

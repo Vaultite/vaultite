@@ -3,19 +3,19 @@ import { ArrowDownToLine, BookmarkPlus, Check, CircleCheck, Moon, RotateCcw, Rot
 import { cn, menuBelow, notify } from "@vaultite"
 import type { Chapter } from "./shelves"
 import { keep, keptOf, unkeep, useKept } from "./phone"
-import { BACK, chapterAt, chapterEnd, clock, FORWARD, setMarks, setSleep, speed, SPEEDS, usePlaces, useSleep } from "./now"
+import { BACK, chapterAt, chapterEnd, clock, FORWARD, setMarks, setSleep, speed, SPEEDS, usePlaces, useSleep, type MediaEl } from "./now"
 
 export const icon = "size-5 md:size-4"
 export const btn = "inline-flex h-11 min-w-11 cursor-pointer items-center justify-center gap-1.5 rounded-[8px] px-2 text-[15px] font-medium text-muted-foreground tabular-nums hover:bg-foreground/[0.06] hover:text-foreground md:h-8 md:min-w-8 md:text-[13px] aria-pressed:text-primary"
 
-export function SpeedButton({ el }: { el: HTMLMediaElement }) {
+export function SpeedButton({ el }: { el: MediaEl }) {
   const pick = (e: MouseEvent) => menuBelow(e, SPEEDS.map((r) => ({ label: `${r}×`, icon: el.playbackRate === r ? Check : undefined, checked: el.playbackRate === r,
     run: () => { el.playbackRate = r; speed.set(r) } })))
   return <button type="button" className={cn(btn, "min-w-12")} onClick={pick} data-tip="Speed" aria-label={`Speed: ${el.playbackRate}×`}>{el.playbackRate}×</button>
 }
 
 const SLEEPS = [5, 10, 15, 30, 45, 60]
-export function SleepButton({ el, cs }: { el: HTMLMediaElement; cs: Chapter[] }) {
+export function SleepButton({ el, cs }: { el: MediaEl; cs: Chapter[] }) {
   const sleep = useSleep()
   const [, redraw] = useState(0)
   useEffect(() => { if (!sleep || !("until" in sleep)) return; const t = setInterval(() => redraw((n) => n + 1), 1000); return () => clearInterval(t) }, [sleep])
@@ -34,7 +34,7 @@ export function SleepButton({ el, cs }: { el: HTMLMediaElement; cs: Chapter[] })
   )
 }
 
-export function MarkButton({ el, path, cs }: { el: HTMLMediaElement; path: string; cs: Chapter[] }) {
+export function MarkButton({ el, path, cs }: { el: MediaEl; path: string; cs: Chapter[] }) {
   const places = usePlaces()
   const add = () => {
     const t = Math.floor(el.currentTime), was = places[path]?.marks ?? []

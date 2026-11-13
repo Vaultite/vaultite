@@ -3,9 +3,9 @@ import { Captions, FileText, PictureInPicture2 } from "lucide-react"
 import { cn, openFile, phoneFiles, type PlayerProps } from "@vaultite"
 import { btn, icon, Keep, MarkButton, Skip, SpeedButton } from "./Buttons"
 import { Book, Full } from "./Full"
-import { artOf, BACK, captionsOf, FORWARD, getNow, homeOf, presenting, release, setSlot, take, useMeta, useTick } from "./now"
+import { artOf, BACK, captionsOf, FORWARD, getNow, homeOf, presenting, release, setSlot, take, useMeta, useTick, type MediaEl } from "./now"
 
-const hold = (home: HTMLElement, m: HTMLMediaElement) => {
+const hold = (home: HTMLElement, m: MediaEl) => {
   m.controls = true
   ;(home.querySelector<HTMLElement>("[data-player-slot]") ?? home).append(m)
 }
@@ -13,7 +13,7 @@ const captionsOn = { get: () => localStorage.getItem("vau:player:captions") === 
 
 export function Player({ path, video, place, height, v, onDuration, onFail }: PlayerProps) {
   const root = useRef<HTMLDivElement>(null)
-  const [el, setEl] = useState<HTMLMediaElement | null>(null)
+  const [el, setEl] = useState<MediaEl | null>(null)
   const [sound, setSound] = useState(!video)
   const fail = useRef(onFail), dur = useRef(onDuration)
   fail.current = onFail
@@ -68,12 +68,12 @@ export function Player({ path, video, place, height, v, onDuration, onFail }: Pl
   )
 }
 
-function VideoBook({ el, path }: { el: HTMLMediaElement; path: string }) {
+function VideoBook({ el, path }: { el: MediaEl; path: string }) {
   const cs = useMeta(path)?.chapters ?? []
   return <Book el={el} path={path} cs={cs} className="mt-4 px-1.5" />
 }
 
-export function Controls({ el, path, video, mark }: { el: HTMLMediaElement; path: string; video: boolean; mark?: boolean }) {
+export function Controls({ el, path, video, mark }: { el: MediaEl; path: string; video: boolean; mark?: boolean }) {
   useTick(el)
   const cs = useMeta(path)?.chapters ?? []
   const from = getNow()?.el === el ? getNow()!.from : undefined
@@ -83,10 +83,10 @@ export function Controls({ el, path, video, mark }: { el: HTMLMediaElement; path
   const pip = video && (document.pictureInPictureEnabled || "webkitSetPresentationMode" in el)
   const skip = (s: number) => { el.currentTime = Math.max(0, Math.min(el.duration || Infinity, el.currentTime + s)) }
   const togglePip = () => {
-    const v = el as HTMLVideoElement & { webkitSetPresentationMode?: (m: string) => void; webkitPresentationMode?: string }
-    if (document.pictureInPictureElement === v) void document.exitPictureInPicture()
-    else if (v.requestPictureInPicture) void v.requestPictureInPicture().catch(() => v.webkitSetPresentationMode?.("picture-in-picture"))
-    else v.webkitSetPresentationMode?.(v.webkitPresentationMode === "picture-in-picture" ? "inline" : "picture-in-picture")
+    const toPip = () => el.webkitSetPresentationMode?.("picture-in-picture")
+    if (document.pictureInPictureElement === el) void document.exitPictureInPicture()
+    else if (el instanceof HTMLVideoElement && el.requestPictureInPicture) void el.requestPictureInPicture().catch(toPip)
+    else el.webkitSetPresentationMode?.(el.webkitPresentationMode === "picture-in-picture" ? "inline" : "picture-in-picture")
   }
   const items: ReactNode[] = [
     <button key="back" type="button" className={btn} onClick={() => skip(-BACK)} data-tip={`Back ${BACK} seconds`} aria-label={`Back ${BACK} seconds`}><Skip back /></button>,

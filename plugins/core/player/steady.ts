@@ -1,7 +1,7 @@
 // iOS ends a background page it wants the memory of.
 import { useEffect } from "react"
 import { adoptNative, isNative } from "./native"
-import { getNow, isVideo, parkEl, take } from "./now"
+import { getNow, isVideo, parkEl, playerOf, take, type MediaEl } from "./now"
 
 type Playing = { path: string; t: number; from?: string; at: number }
 const KEY = "vaultite.player.playing"
@@ -10,7 +10,7 @@ const write = (p: Playing | null) => { try { if (p) sessionStorage.setItem(KEY, 
 
 const STUCK = 20_000, TRIES = 10
 
-export function steady(el: HTMLMediaElement, path: string) {
+export function steady(el: MediaEl, path: string) {
   if (isNative(el)) return
   let wanted = false, tries = 0, waiting = false, kept = 0, last = -1, still = 0
   let timer: ReturnType<typeof setInterval> | null = null
@@ -56,7 +56,7 @@ function resume() {
   const now = getNow()
   if (now && !now.el.paused) return
   const el = now?.path === p.path ? now.el
-    : (document.querySelector(`[data-player-for="${CSS.escape(p.path)}"]`) as HTMLMediaElement | null) ?? take(p.path, isVideo(p.path))
+    : playerOf(p.path, document) ?? take(p.path, isVideo(p.path))
   if (p.from && !el.dataset.from) el.dataset.from = p.from
   if (!el.isConnected) parkEl(el)
   const go = () => {
