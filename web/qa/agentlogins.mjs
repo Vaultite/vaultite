@@ -1,12 +1,7 @@
-// Agents logging in with the user's passwords for agents (electron/browser/logins.ts), end to end in the desktop app on
-// a throwaway vault, against a made-up site served here and a made-up agents.kdbx written here: the app fills username,
-// password and a one-time code (a box per digit too) and the site gets them; an entry needs the user's yes through the
-// Inbox unless tagged agent-free; several entries are picked by name; a site with none says so. Then every way an agent
-// reads a page tries to get the filled password (snapshot, read, evaluate, run, wait, act's diff, copying, screenshot,
-// pdf, tabs, a revealed field, a GET form putting it in the address) and gets nothing; nor do the runs kept on the Mac,
-// the vault or the server's files. A script run in a page stops a login there till it loads again.
+// Agents log in with the user's passwords for agents (a made-up site and agents.kdbx), and nothing they read has one.
 // WRITES: the throwaway vault only.
 //   node web/qa/agentlogins.mjs <vault copy>
+// electron/browser/logins.ts
 import { _electron } from "playwright-core"
 import crypto from "node:crypto"
 import fs from "node:fs"
@@ -20,7 +15,6 @@ import { totp, otpOf } from "../../electron/browser/keepass.ts"
 const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-logins-"))
 
-// ---------- a made-up agents.kdbx ----------
 const { Credentials, Kdbx, ProtectedValue } = await import("../../electron/browser/kdbx/index.ts")
 const DB_PASSWORD = "made-up database password"
 const SECRET = "Q7-lantern!pw word", ADMIN = "Harbor-admin-pw-42", HARBOR = "Harbor-pw-31"
@@ -33,7 +27,6 @@ const add = (title, user, pw, url, tags = [], more = {}) => {
   e.tags = tags
 }
 
-// ---------- the made-up site: a sign-in, then a one-time code ----------
 const saw = []
 const page = (title, body) => `<!doctype html><title>${title}</title>${body}`
 const handler = (req, res) => {
@@ -62,7 +55,6 @@ const handler = (req, res) => {
     if (u.pathname === "/login-get") return res.end(page("Sign in", `<form method="get" action="/after"><input name="user" autocomplete="username"><input name="pw" type="password"><button>Go</button></form>`))
     if (u.pathname === "/after") return res.end(page("Signed in", "<h1>Signed in</h1>"))
     if (u.pathname === "/other") return res.end(page("Other", "<h1>Another page</h1>"))
-    // (a username-first sign-in, as x.com's: its password fields are there, sized, but no one could type in them yet)
     if (u.pathname === "/first") return res.end(page("Sign in", `<form><label>Email or username <input name="text" autocomplete="username"></label>
 <input type="password" name="password" aria-hidden="true" tabindex="-1" style="position:absolute;left:0;top:0;width:20px;height:20px;opacity:0">
 <input type="password" name="password2" style="visibility:hidden;width:20px;height:20px"><button>Next</button></form>`))
@@ -80,7 +72,6 @@ add("Harbor admin", "admin", ADMIN, LOCAL)
 const DB = path.join(TMP, "agents.kdbx")
 fs.writeFileSync(DB, Buffer.from(await db.save()))
 
-// ---------- the app ----------
 const plugins = path.join(VAULT, ".vaultite/plugins.json")
 const on = fs.existsSync(plugins) ? JSON.parse(fs.readFileSync(plugins, "utf8")) : { enabled: [], disabled: [] }
 fs.writeFileSync(plugins, JSON.stringify({ ...on, enabled: [...new Set([...(on.enabled ?? []), "web-viewer", "inbox"])], disabled: (on.disabled ?? []).filter((x) => x !== "inbox") }))
@@ -98,7 +89,6 @@ watch(win, { console: true, fail: false })
 await win.waitForSelector("[role=tree]", { timeout: 60000 })
 const origin = new URL(win.url()).origin
 await app.evaluate(({ BaseWindow }) => { const w = BaseWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1400, height: 860 }) })
-/** A browser op, as an agent calls it: its answer, or { error }. */
 const op = async (id, params) => {
   const r = await fetch(`${origin}/api/ops/web-viewer.${id}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "mcp", "X-Vaultite-Agent": "claude-code" }, body: JSON.stringify(params ?? {}) })
   const j = await r.json().catch(() => ({}))
@@ -107,7 +97,6 @@ const op = async (id, params) => {
 const engine = (name, ...args) => win.evaluate(([n, a]) => window.vaultite.web.engine(n, ...a), [name, args])
 await wait(2000)
 
-// ---------- setting it up (as the container menu's Passwords for agents does) ----------
 check("no passwords for agents yet", (await engine("logins:status")) === null)
 const early = await op("open", { url: `${SITE}/login` })
 const unset = await op("login", { tab: early.tab })
@@ -125,15 +114,12 @@ const keyring = await app.evaluate(({ safeStorage }) => safeStorage.isEncryption
 check(keyring ? "… with the keyring's key" : "… or, with no keyring here, not kept at all: held till the app quits", keyring
   ? typeof JSON.parse(kept).key === "string" && !set?.held && !status?.held : JSON.parse(kept).key === null && set?.held === true && status?.held === true, [keyring, set, status])
 
-// ---------- a free entry: username and password, then the one-time code ----------
 const t = early.tab
 const filled = await op("login", { tab: t })
 check("login fills the username and password, answering no value", filled?.status === "filled" && filled.filled?.join() === "username,password" && !JSON.stringify(filled).includes(SECRET), filled)
 check("… from the agent-free entry, with no ask", /free/.test(filled?.approved ?? ""), filled?.approved)
 
-// ---------- every way to read the filled password back ----------
 const FORMS = [SECRET, encodeURIComponent(SECRET), new URLSearchParams([["pw", SECRET]]).toString().slice(3), SECRET.slice(0, 8)]
-/** Whether an answer has the password, or its first characters, in any form. */
 const has = (x) => { const s = JSON.stringify(x ?? null); return FORMS.some((f) => s.includes(f) || s.includes(JSON.stringify(f).slice(1, -1))) }
 const snap = await op("snapshot", { tab: t })
 check("snapshot: the password field shows no value, nor its length", !has(snap) && /textbox "Password" \[ref=e\d+\](: •••)?$/m.test(snap?.snapshot ?? ""), snap?.snapshot)
@@ -189,7 +175,6 @@ await op("act", { tab: t, action: "press", key: "Enter" })
 await op("wait", { tab: t, text: "Welcome alice", timeout: 10 })
 check("… and the site got each digit", /Welcome alice/.test((await op("read", { tab: t }))?.text ?? ""), [split, boxes, saw.at(-1)])
 
-// ---------- a GET form puts the password in the address: still never seen (in Work, which agents may act in too) ----------
 await fetch(`${origin}/api/config/plugin/web-viewer`, { method: "PATCH", headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ containers: [{ id: "agents", name: "Agents", color: "purple", agents: "act" }, { id: "work", name: "Work", color: "orange", agents: "act" }] }) })
 const w = await until(async () => { const o = await op("open", { url: `${SITE}/login-get`, container: "work" }); return o.tab ? o : null }, 15000)
@@ -200,7 +185,6 @@ check("… and in tabs, read and wait --url", !has(await op("tabs")) && !has(awa
 const evGet = await op("evaluate", { tab: w?.tab, expression: "location.href" })
 check("… evaluate refused there: its address holds it", /its address has a secret/.test(String(evGet.error)), evGet)
 
-// ---------- a script run in the page first: no login till it loads again ----------
 await op("navigate", { tab: t, to: `${SITE}/login` })
 const ran = await op("evaluate", { tab: t, expression: "(document.addEventListener('input', (e) => { window.caught = e.target.value }, true), 1)" })
 check("an agent's script listening in the sign-in page", ran?.value === "1", ran)
@@ -209,7 +193,6 @@ check("… the app won't fill there till it loads again", /this page since it lo
 const caught = await op("evaluate", { tab: t, expression: "window.caught ?? null" })
 check("… so its listener caught nothing", caught?.value === "null", caught)
 await op("navigate", { tab: t, to: "reload" })
-// (a script in another page of the site, as another agent's reading it: no login here either, and it says which tab)
 const other = (await op("open", { url: `${SITE}/other`, task: "reader" })).tab
 await op("evaluate", { tab: other, expression: "1" })
 const byOther = await op("login", { tab: t })
@@ -224,7 +207,6 @@ await op("navigate", { tab: t, to: "back" })
 const restored = await op("evaluate", { tab: t, expression: "typeof window.mark" })
 check("going back loads the page anew (no back/forward cache): a script's state is gone", restored?.value === '"undefined"', restored)
 
-// ---------- several entries, the user's yes, a no, and a site with none ----------
 const h = (await op("open", { url: `${LOCAL}/login`, task: "harbor" })).tab
 const many = await op("login", { tab: h })
 check("a site with two entries: their titles and usernames, to pick", many?.status === "choose" && many.entries?.map((e) => e.title).sort().join() === "Harbor,Harbor admin" && !has(many) && !JSON.stringify(many).includes(HARBOR), many)
@@ -232,7 +214,6 @@ const inbox = () => fetch(`${origin}/api/inbox/events?local=1`).then((r) => r.js
 const noKey = await op("login", { tab: h, entry: "alice@example.com", task: "harbor" })
 check("an entry not tagged agent-free, and no passkey set up: refused, saying how", /none is set up/.test(String(noKey.error)), noKey)
 
-// The user's passkey: a made-up one here (a P-256 key, as a phone's), for a made-up https address of this server.
 const RP = "vault.example.ts.net", ORIGIN = `https://${RP}:8447`
 const sha = (b) => crypto.createHash("sha256").update(b).digest()
 const b64u = (b) => Buffer.from(b).toString("base64url")
@@ -286,7 +267,6 @@ const unknown = await route("POST", "approve", { grant, ...signed(stranger, opts
 const pending = await Promise.race([asking.then(() => "answered"), wait(1500).then(() => "waiting")])
 check("no yes but the passkey's: an agent answering the Inbox, a forged signature, an unknown passkey: the login still waits", asAgent >= 400 && asApp >= 400
   && /signature/.test(String(forged.error)) && /isn't a passkey set up/.test(String(unknown.error)) && pending === "waiting", [asAgent, asApp, forged, unknown, pending])
-// (the page as a browser draws it, in a window of the app's own, never shown)
 const facts = await app.evaluate(async ({ BrowserWindow }, url) => {
   const w = new BrowserWindow({ show: false })
   await w.loadURL(url)
@@ -326,8 +306,6 @@ const none = await op("open", { url: `${NONE}/login` })
 const noEntry = await op("login", { tab: none.tab })
 check("a site with no entry (another port: another site) says so", /no login for 127\.0\.0\.1:\d+/.test(String(noEntry.error)), noEntry)
 
-// ---------- nothing kept anywhere has it ----------
-/** Every file under `dir` (none when it isn't there); one that can't be read (a socket, a dangling link) left out alone. */
 const files = (dir) => { try { return fs.readdirSync(dir, { recursive: true }).map((f) => path.join(dir, String(f))).filter((f) => { try { return fs.statSync(f).isFile() } catch { return false } }) } catch { return [] } }
 const leaks = (dir) => files(dir).filter((f) => { const b = fs.readFileSync(f); return [...FORMS.slice(0, 3), HARBOR, ADMIN].some((s) => b.includes(s)) })
 const runs = path.join(USER_DATA, "agent-runs")
@@ -342,7 +320,6 @@ check("nor the browser's history (the GET form's address isn't kept, nor a title
 check("no secret in the vault, nor the server's own files", files(VAULT).length > 10 && files(LOCAL_DIR).length > 0 && !leaks(VAULT).length && !leaks(LOCAL_DIR).length, [...leaks(VAULT), ...leaks(LOCAL_DIR)])
 check("no secret in the app's or the server's output", ![SECRET, HARBOR, ADMIN, DB_PASSWORD].some((s) => output.includes(s)), output.slice(-500))
 
-// ---------- after a restart: still set with a keyring; with none, locked till the user types it again ----------
 await app.close()
 const app2 = await launch()
 const win2 = await app2.firstWindow()

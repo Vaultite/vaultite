@@ -1,10 +1,7 @@
-// The Agents panel (the terminals socket, the chats route and the machines stood in for): offered once in the right
-// sidebar, every agent in one flat list (needs you, working, done) with its state's glyph and a short time, the ones
-// asking nothing a few minutes folded under Earlier (never one ready for review or unread: core/agentorder.ts), the
-// filter on the tab only, a click opening its tab, and a phone's drawer; rows holding still while the pointer, a menu or
-// a finger is in the list, and settling once it's let go (core/steadyrows.tsx). Writes the sidebars: throwaway server
-// only.
+// The Agents panel: one list in the right sidebar and a phone's drawer, earlier ones folded, rows still under the pointer.
+// Writes the sidebars: throwaway server only.
 //   node web/qa/agentspanel.mjs <base url> [out dir]
+// core/agentorder.ts, core/steadyrows.tsx
 import { mkdirSync } from "node:fs"
 import { execFileSync } from "node:child_process"
 import path from "node:path"
@@ -13,7 +10,6 @@ import { app } from "./lib/app.mjs"
 const { args: [B, OUT = "/tmp/agentspanel-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const vau = (...a) => execFileSync(process.execPath, [path.resolve(import.meta.dirname, "../../bin/vau"), "--url", B, ...a], { encoding: "utf8" })
-// (Machines on, whatever the sandbox has: its machines name the rows; the panel hidden, to be offered)
 vau("plugin", "on", "machines")
 vau("panels", "hide", "agents", "--vault")
 
@@ -35,14 +31,11 @@ const C = {
   asks: chat("c-asks", { state: "waiting", title: "Plan the Lighthouse launch", asks: ["a1"], at: now - 120000 }),
   works: chat("c-works@laptop", { state: "working", title: "Summarize Alice's notes", turn: { prompt: "Summarize Alice's notes from this week", text: "" } }),
   rests: chat("c-rests", { state: "idle", title: "Companion", by: "companion", at: now - 3600000 }),
-  // the session a terminal took over: shown once, as the terminal
   dup: chat("took-over@box", { state: "idle", title: "Tidy the Lighthouse README" }),
 }
 const LIST = JSON.stringify({ t: "sessions", list: [...Object.values(T), shell] })
-// (the one at rest asking now: sorted, it goes up to the second row)
 const ASKS = JSON.stringify({ t: "sessions", list: [T.asks, T.works, { ...T.rests, state: "blocked", kind: "permission", msg: "Push?" }, shell] })
 
-/** Stands in for the server; says a new terminals list to the page's sockets. */
 async function standIn(page) {
   const socks = new Set()
   await page.routeWebSocket(/\/api\/terminals(\?.*)?$/, (ws) => { socks.add(ws); ws.send(LIST) })
@@ -60,7 +53,6 @@ const rowsOf = (page, scope) => page.$$eval(`${scope} [data-agent-run]`, (els) =
   id: e.dataset.agentRun, kind: e.dataset.kind, state: e.dataset.state, text: e.innerText.trim().replace(/\s+/g, " "),
   where: e.querySelector("[data-agent-where]")?.textContent ?? "", when: e.querySelector("[data-agent-when]")?.textContent ?? "", tip: e.dataset.tip ?? "", dot: e.querySelector("[data-dot]")?.dataset.dot ?? null, bold: e.className.includes("font-medium") })))
 
-// ---------- desktop: offered in the right sidebar, in its order ----------
 const D = watch(await browser.newPage({ viewport: { width: 1440, height: 900 } }), { console: true, ignore: /favicon|Failed to load resource|WebSocket/ })
 const sayD = await standIn(D), ui = app(D)
 await D.goto(B)
@@ -84,7 +76,6 @@ check("Agents: a short time at the end of the ones not asking", rows.slice(2).ev
 check("Agents: what each is doing", by[`terminal:${T.works.id}`]?.text.includes("Write the release notes") && by["chat:c-works@laptop"]?.text.includes("Summarize Alice's notes"), rows)
 await D.locator("[data-agents-panel]").screenshot({ path: `${OUT}panel.png` })
 
-// ---------- earlier ones fold ----------
 const earlier = D.locator("[data-agents-panel] [data-agent-earlier]")
 check("Agents: the one done an hour ago folded under Earlier 1, closed", (await earlier.innerText().catch(() => "")).replace(/\s+/g, " ").trim() === "Earlier 1"
   && (await earlier.getAttribute("data-agent-earlier")) === "closed")
@@ -97,7 +88,6 @@ await earlier.click()
 await ui.idle()
 check("Agents: and closing it folds it again", (await rowsOf(D, "[data-agents-panel]")).length === 5)
 
-// ---------- nothing moves under the pointer ----------
 const R = `terminal:${T.rests.id}`
 const resorted = [`terminal:${T.asks.id}`, R, "chat:c-asks", `terminal:${T.works.id}`, "chat:c-works@laptop"]
 const ids = async (p = D, scope = "[data-agents-panel]") => (await rowsOf(p, scope)).map((r) => r.id)
@@ -111,7 +101,6 @@ await ui.idle()
 check("Agents: a row starting to ask under the pointer says so in its place, nothing moving", asked && same(await ids(), order), await ids())
 await away()
 check("Agents: once the pointer leaves, it settles into its place", await until(async () => same(await ids(), resorted), 5000), await ids())
-// (a row's menu open, the pointer gone to it: still held)
 await D.click(`[data-agents-panel] [data-agent-run="${R}"]`, { button: "right" })
 await D.waitForSelector("[role=menu]", { timeout: 5000 }).catch(() => {})
 await away()
@@ -123,7 +112,6 @@ check("Agents: nor while a row's menu is open", menued && same(await ids(), reso
 await D.keyboard.press("Escape")
 check("Agents: and settles once it closes", await until(async () => same(await ids(), order), 5000), await ids())
 
-// ---------- what asks nothing folds a few minutes after it's done; what's for the user never does ----------
 const ago = (m) => now - m * 60000
 const Q = {
   quiet: term(5, { state: "idle", since: ago(10), clients: 0, title: "Rename the Lighthouse assets" }),
@@ -150,7 +138,6 @@ await ui.idle()
 sayD(LIST)
 await until(async () => !(await ids()).includes(qid("just")), 5000)
 
-// ---------- a click opens it in its own place ----------
 const active = () => D.$eval("[data-tab-bar] [data-tab-id][aria-selected=true], [data-tab-bar] [data-tab-id][data-active]", (e) => e.dataset.tabId).catch(() => "")
 const hash = () => D.evaluate(() => decodeURIComponent(location.hash))
 await D.click(`[data-agent-run="terminal:${T.works.id}"]`)
@@ -162,7 +149,6 @@ await ui.idle()
 check("Agents: a chat's row opens its chat tab", (await hash()).includes("claude-session/c-works@laptop"), await hash())
 await D.screenshot({ path: `${OUT}desktop.png` })
 
-// ---------- as a tab ----------
 await D.goto("about:blank")
 await D.goto(`${B}#view/agents`)
 await D.waitForSelector("[data-agents-view] [data-agent-run]", { timeout: 15000 })
@@ -174,20 +160,17 @@ check("Agents tab: what it asks spelled out", step === "Run npm test?", step)
 await D.screenshot({ path: `${OUT}tab.png` })
 await D.close()
 
-// ---------- a phone: the same list in its drawer ----------
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true })
 const P = watch(await ctx.newPage(), { ignore: /favicon|Failed to load resource|WebSocket/ })
 const sayP = await standIn(P), phoneUi = app(P)
 await P.goto(B)
 await phoneUi.idle()
-// (the right sidebar's panels are the right drawer's)
 await P.locator("[data-phone-header] button[aria-label='Open right sidebar']").tap()
 await phoneUi.idle()
 const phone = await rowsOf(P, "[data-phone-drawer] [data-agents-panel]").catch(() => [])
 check("phone: the drawer lists them in the same order", JSON.stringify(phone.map((r) => r.id)) === JSON.stringify(want.slice(0, 5)), phone.map((r) => r.id))
 const tall = await P.$eval("[data-phone-drawer] [data-agent-run]", (e) => e.getBoundingClientRect().height).catch(() => 0)
 check("phone: rows at the sidebar's phone size (40px)", tall >= 39.5, tall)
-// (a finger has no hover: a touch holds the list, a moment past it)
 await P.locator("[data-phone-drawer] [data-agent-earlier]").tap()
 sayP(ASKS)
 const heard = await until(async () => (await rowsOf(P, "[data-phone-drawer] [data-agents-panel]")).find((r) => r.id === R)?.dot === "ask", 5000)

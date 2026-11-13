@@ -1,31 +1,24 @@
-// The Ask box (plugins/core/terminal/AskBox.tsx, terminal:ask): the command opens it with its field focused; the field
-// grows with what's typed and Shift+Enter is a new line; Esc or a click off closes it, keeping what's typed for the next
-// (caret at its end) until it's asked; the row under it picks the agent (remembered); Enter asks in a new terminal in the background (terminal.ask, here on haiku): the box closes, no tab opens, the
-// Terminals list has it, and a toast "Asked Claude: <first words>" has Open, which opens its tab. On a phone it fits the
-// screen with 44px targets. An image or file pasted in shows above the field (its x takes it off) and goes with the
-// question: saved as an attachment, its path in terminal.ask's files. Run by hand on a server with Claude Code, its session answers (tools/qa.ts' stand-in only
-// starts): throwaway server only, the session ended after.
+// The Ask box: opened focused, its draft kept, the agent picked, files pasted, Enter asking in the background with a toast.
+// Throwaway server only, the session ended after; run by hand with Claude Code, its session answers.
 //   node web/qa/askbox.mjs <base url> [out dir]
+// plugins/core/terminal/AskBox.tsx, tools/qa.ts (its stand-in only starts)
 import { mkdirSync } from "node:fs"
 import { apiAt, palette, qa, until, wait } from "./lib/qa.mjs"
 
 const { args: [arg, OUT = "/tmp/askbox-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 const B = arg.endsWith("/") ? arg : `${arg}/`
 const api = apiAt(B, { "X-Vaultite-Client": "cli" })
-/** As the app's own Approve: only the user's surfaces answer a terminal's question. */
 const asApp = apiAt(B, { "X-Vaultite-Client": "app/qa" })
 mkdirSync(OUT, { recursive: true })
 const PROMPT = "Reply with just the word pong."
 const box = (p) => p.locator("[data-ask-box]")
 const sessions = async () => (await api("POST", "ops/terminal.list", {})).sessions ?? []
 const started = []
-/** What each ask sent (terminal.ask's body). */
 const asked = []
 
 try {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
   const page = watch(await ctx.newPage(), { label: "desktop" })
-  // A cheap model for the session it starts (the box asks with the agent's default).
   await page.route("**/api/ops/terminal.ask", (r) => { const b = JSON.parse(r.request().postData() ?? "{}"); asked.push(b); return r.continue({ postData: JSON.stringify({ ...b, model: "haiku" }) }) })
   await page.goto(B)
   await page.waitForFunction(() => document.querySelector("#root > *"), null, { timeout: 20000 })
@@ -56,7 +49,6 @@ try {
   await page.keyboard.press("Escape")
   await until(async () => (await box(page).count()) === 0, 2000)
 
-  // The agent picker: a menu of the agents that are on, its pick remembered for the next box.
   await palette(page, "Ask an agent in the background", 400)
   await box(page).getByRole("button", { name: "Agent" }).click()
   const menu = page.locator("[role=menu]").last()
@@ -67,7 +59,6 @@ try {
   await wait(200)
   check("its menu closing leaves the box open", await box(page).count() === 1)
 
-  // Pasted files: shown above the field, kept when the box closes, one taken off by its x.
   const paste = (files) => page.evaluate(async (files) => {
     const d = new DataTransfer()
     for (const f of files) d.items.add(f.png
@@ -89,7 +80,6 @@ try {
   await box(page).getByRole("button", { name: "Remove notes.txt" }).click()
   check("its x takes one off", await until(async () => (await thumbs().count()) === 1, 2000))
 
-  // Enter: a session in the background, a toast with Open.
   const before = new Set((await sessions()).map((s) => s.id))
   await box(page).locator("textarea").click()
   await page.keyboard.type(PROMPT)
@@ -107,12 +97,10 @@ try {
   check("the Terminals list has the new session, with no tab", !!fresh && !fresh.tabs?.length, fresh)
   const hash = await page.evaluate(() => location.hash)
   check("no tab opened for it", !hash.includes(fresh?.id ?? "-"), hash)
-  // (before the toast times out)
   await toast.getByRole("button", { name: "Open" }).click().catch(() => {})
   check("Open opens its terminal's tab", await until(async () => decodeURIComponent(await page.evaluate(() => location.hash)).includes(`terminal/${fresh?.id}`), 5000), await page.evaluate(() => location.hash))
-  // A folder Claude Code hasn't trusted asks first (in the inbox, for the user): approved here.
   if (fresh) {
-    // (the trust question shows once Claude Code has started; a folder trusted before has none)
+    // (Claude Code asks its trust question once started, only for a folder it hasn't trusted)
     let last = ""
     const answered = async () => { const t = last = ((await api("POST", "ops/terminal.capture", { id: fresh.id, lines: 40 })).text ?? ""); return /a stand-in for QA|⏺ pong[\s\S]*haiku/i.test(t) ? t : null }
     await until(async () => (await asApp("POST", `terminals/${fresh.id}/answer`, { answer: "approve" }))?.answer === "approve" || await answered(), 20000, 1000)
@@ -125,7 +113,6 @@ try {
   await page.keyboard.press("Escape")
   await ctx.close()
 
-  // A phone: the box fits the screen, its targets 44px, its text 17px.
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 })
   const pp = watch(await phone.newPage(), { label: "phone" })
   await pp.goto(B)

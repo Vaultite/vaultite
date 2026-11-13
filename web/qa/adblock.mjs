@@ -1,10 +1,5 @@
-// Shields in the desktop app (Electron), end to end on a throwaway vault, against a made-up site this script serves on
-// 127.0.0.1 and a small filter list of its own (VAULTITE_ADBLOCK_LISTS: no network): an ad script's request never
-// reaches the site and the page's Shields button counts it, a site's hiding rule, a generic one (on an element added
-// later) and a procedural one (:has-text) hide their elements, a scriptlet runs before the page's own first script; "Shields for 127.0.0.1" off in the
-// button's menu reloads the page with nothing blocked and keeps the site in the plugin's settings, on again blocks
-// again; the Shields setting off blocks nothing anywhere.
-// WRITES: the throwaway vault only.
+// Shields in the desktop app: a made-up site's ads, hiding rules and scriptlets blocked; off for a site, or everywhere.
+// WRITES: the throwaway vault only. Its own filter list (VAULTITE_ADBLOCK_LISTS: no network).
 //   node web/qa/adblock.mjs <vault copy>
 import { _electron } from "playwright-core"
 import fs from "node:fs"
@@ -17,7 +12,6 @@ const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-adblock-"))
 keepAwake(600)
 
-// ---------- a made-up site with an ad, things to hide and a scriptlet's target ----------
 let adHits = 0
 const server = http.createServer((req, res) => {
   const u = new URL(req.url ?? "/", "http://127.0.0.1")
@@ -47,7 +41,6 @@ fs.writeFileSync(pluginsFile, JSON.stringify({ ...plugins, enabled: [...(plugins
   disabled: (plugins.disabled ?? []).filter((x) => x !== "web-viewer") }, null, 2) + "\n")
 const dataFile = path.join(VAULT, ".vaultite/plugins/web-viewer/data.json")
 
-// ---------- the app ----------
 const app = await _electron.launch({
   executablePath: path.join(ROOT, "node_modules/.bin/electron"), args: [ROOT, "--vault", VAULT],
   env: { ...process.env, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_USER_DATA: path.join(TMP, "userData"), VAULTITE_LOCAL: path.join(TMP, "local"),
@@ -61,7 +54,6 @@ await app.evaluate(({ BaseWindow }) => { const w = BaseWindow.getAllWindows()[0]
 const ui = (body) => uiAt(origin)(body)
 const setting = (o) => fetch(`${origin}/api/config/plugin/web-viewer`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(o) })
 
-/** What the visible page shows: the scriptlet's flag, whether its ad ran, and what's hidden. */
 const seen = () => app.evaluate(({ BaseWindow }) => {
   const w = BaseWindow.getAllWindows()[0]
   const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
@@ -76,7 +68,6 @@ const blocked = (s) => s?.flag === "no" && s.ad === "" && s.box === false && s.s
 const open = (s) => s?.flag === "undefined" && s.ad === "ran" && s.box === true && s.late === true && s.promo === true
 const button = win.locator("[data-web-shields]")
 
-// The lists are built as the app starts: a page opened before then loads unblocked, and blocks once reloaded.
 await ui({ action: "open", path: `view:web/${SITE}` })
 check("a page opens", await until(async () => (await seen())?.url === SITE, 20000), await seen())
 await until(async () => { await reload(); await wait(1200); return blocked(await seen()) }, 20000, 500)
@@ -87,7 +78,6 @@ check("… the ad never reached the site", adHits === before, adHits - before)
 check("… the bar's Shields button counts it", await until(async () => (await button.getAttribute("data-count").catch(() => "")) === "1", 10000),
   [await button.getAttribute("data-count").catch(() => null), await button.getAttribute("data-web-shields").catch(() => null)])
 
-// ---------- Shields down for the site, from its menu ----------
 await button.click()
 const item = win.locator("[role^=menuitem]", { hasText: /^Shields for 127\.0\.0\.1/ })
 check("the menu says what was blocked and has the site's switch", await until(async () => (await item.count()) === 1, 5000)
@@ -102,7 +92,6 @@ await win.locator("[role^=menuitem]", { hasText: /^Shields for 127\.0\.0\.1/ }).
 check("Shields up again: blocked again", await until(async () => blocked(await seen()), 10000), await seen())
 check("… the site out of the settings", await until(() => !JSON.parse(fs.readFileSync(dataFile, "utf8")).shieldsDown?.length, 5000), fs.readFileSync(dataFile, "utf8"))
 
-// ---------- the setting ----------
 await setting({ shields: false })
 await wait(1500)
 await reload()

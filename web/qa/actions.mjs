@@ -1,6 +1,7 @@
-// A file's actions (core/actions.ts: Add to timeline from a person's menu, ⌘.) and the status bar's ambient items.
+// A file's actions (Add to timeline from a person's menu, ⌘.) and the status bar's ambient items.
 // WRITES "Qa actions" and appearance.json: throwaway server only.
 //   node web/qa/actions.mjs <base url> [out dir]
+// core/actions.ts
 import { readFileSync } from "node:fs"
 import path from "node:path"
 import { SHOTS, qa, until } from "./lib/qa.mjs"
@@ -18,7 +19,6 @@ const D = "Qa actions", P = `${D}/Zoe Quinn.md`
 await fetch(`${B}api/file?path=${encodeURIComponent(D)}`, { method: "DELETE" })
 await api("POST", "folder", { path: D })
 await api("POST", "file", { path: P, text: "---\ntype: person\n---\n\n## Timeline\n" })
-// (one new in the inbox, for its status bar item; in the test's folder, removed with it)
 await api("POST", "file", { path: `${D}/Research.md`, text: "---\ntype: inbox\nstatus: new\n---\n\nSomething to read.\n" })
 const look = await api("GET", "config/appearance")
 await api("PATCH", "config/appearance", { statusBar: null })
@@ -33,14 +33,12 @@ try {
 
   await page.goto(`${B}#file/${encodeURIComponent(P)}`); await ui.idle()
 
-  // 1. The tree's menu on a person: its kind's action, run from there (kind picked, text typed).
   await page.locator('aside [aria-label="Collapse all"]').click().catch(() => {}); await ui.idle()
   await row(D).locator("button").first().click(); await ui.idle()
   await ui.menu.context(row(P)); await ui.idle()
   check("tree menu: a person has Add to timeline", await menuItem("Add to timeline").count() === 1, await ui.menu.items())
   check("tree menu: Archive once (the op's action is left to the menu's own)", await menuItem("Archive").count() === 1)
   await ui.menu.pick("Add to timeline")
-  // (any word is a kind: the palette says the ones with icons)
   check("asks the kind in the palette, saying the kinds", /Add to timeline: what it was[\s\S]*call, hang out/.test(await palette.innerText().catch(() => "")), await palette.innerText().catch(() => ""))
   await page.keyboard.type("call"); await page.keyboard.press("Enter"); await ui.idle()
   await page.keyboard.type("Talked about the garden"); await ui.idle(); await page.keyboard.press("Enter")
@@ -48,7 +46,6 @@ try {
   check("a toast says what it did", !!(await until(async () => (await page.locator("[data-sonner-toast]").count()) > 0)))
   await page.screenshot({ path: `${OUT}actions-1-timeline.png` })
 
-  // 2. ⌘. lists the open file's actions (the menu's plugin items and the ones the menu leaves to its own).
   await page.locator(`.file-view[data-path="${P}"]`).first().click(); await ui.idle()
   await page.keyboard.press("ControlOrMeta+Period"); await palette.waitFor(); await ui.idle()
   const listed = await palette.innerText().catch(() => "")
@@ -56,8 +53,6 @@ try {
   await page.screenshot({ path: `${OUT}actions-2-palette.png` })
   await page.keyboard.press("Escape"); await ui.idle()
 
-  // 3. The status bar's ambient items: the inbox's new items, on a page and on a blank tab.
-  // (the bar holding it: there's one on each side)
   const INBOX = "[data-ambient] button[data-tip^='Inbox, ']"
   const bar = page.locator("[role=status]").filter({ has: page.locator(INBOX) })
   const chip = () => page.locator(`[role=status] ${INBOX}`)

@@ -14,7 +14,7 @@ async function run(label, viewport, mobile) {
   await page.goto(B)
   await page.waitForSelector(mobile ? "main" : "[role=tree]", { timeout: 60000 })
   await page.bringToFront()
-  await page.mouse.click(5, viewport.height / 2) // (the window the user used last is the one that's driven)
+  await page.mouse.click(5, viewport.height / 2)
   await wait(800)
   const hash = () => page.evaluate(() => decodeURIComponent(location.hash))
   const before = await hash()

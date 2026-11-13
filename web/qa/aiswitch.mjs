@@ -1,9 +1,7 @@
-// Use AI (Settings > AI, core/ai.ts): off, the app shows nothing for AI (the companion, token counts, agents' commands
-// and keys, at once with no reload (App.tsx), Settings > AI's settings (pluginSettings.ts), Screen, who wrote a line,
-// the Inbox panel, AI plugins on the Plugins page, the new tab's Connect your AI) while ops and MCP still answer; back on, every plugin is as its own switch was. Settings >
-// AI's agents show their paths only on hover. Shots: light, dark, 390px phone, on and off. WRITES plugins.json and a
-// note: throwaway server only.
+// Use AI off: the app shows nothing for AI at once, with no reload, while ops and MCP still answer; back on, as it was.
+// WRITES plugins.json and a note: throwaway server only.
 //   node web/qa/aiswitch.mjs <base url> <vault path> [out dir]
+// core/ai.ts, App.tsx, pluginSettings.ts
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { SHOTS, apiAt, command, qa, until } from "./lib/qa.mjs"
@@ -18,13 +16,11 @@ const NOTE = "Qa ai/Harbour plan.md"
 await api("POST", "ops/settings.set", { name: "plugins", values: { ai: null } })
 await api("POST", "file", { path: NOTE, text: "# Harbour plan\n\nAlice Park walks the Lighthouse path at dawn.\n" })
 const before = lists(conf())
-// (the Inbox panel in the sidebar, as the Standard layout has it)
 const SIDEBARS = path.join(VAULT, ".vaultite", "sidebars.json")
 const hadSidebars = (() => { try { return readFileSync(SIDEBARS, "utf8") } catch { return null } })()
 writeFileSync(SIDEBARS, JSON.stringify({ left: ["pages:pages", "files:files", "inbox:inbox"], right: [], collapsed: [] }, null, 2))
 
 const uis = new WeakMap(), uiOf = (page) => uis.get(page)
-/** A window at `w`×`h` on the note, its colour scheme `scheme`. */
 async function open(w, h, scheme = "light", mobile = false) {
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, colorScheme: scheme, ...(mobile ? { isMobile: true, hasTouch: true } : {}) })
   const page = watch(await ctx.newPage(), { label: `${w} ${scheme}` })
@@ -34,7 +30,6 @@ async function open(w, h, scheme = "light", mobile = false) {
   await uiOf(page).idle()
   return { ctx, page }
 }
-/** Settings, on its AI section. */
 async function settingsAi(page) {
   await page.goto("about:blank"); await page.goto(`${B}#settings`)
   await page.locator('[data-settings-nav="ai"]').click()
@@ -49,7 +44,6 @@ const hasCommand = async (page, name) => {
   return !!hit
 }
 
-// ---------- on: the section, the agents (paths on hover only), the AI items
 const { ctx, page } = await open(1280, 800), ui = uiOf(page)
 check("on at first: the companion and the token count are in the status bar", !!(await until(async () =>
   (await page.locator('[data-status-key="companion:status"]').count()) && (await page.locator('[data-status-key^="token-count:"]').count()), 6000)))
@@ -79,7 +73,6 @@ if (rows.length) {
   await page.mouse.move(5, 5)
 }
 
-// ---------- off: nothing for AI, the plugins' own switches untouched
 await aiSwitch(page).click()
 check("off: plugins.json says ai false, its lists as they were", !!(await until(() => conf().ai === false, 4000)) && lists(conf()) === before, conf())
 check("...the section keeps only the switch, off", !!(await until(async () => !(await page.locator("[data-ai-agents]").count()) && !(await page.locator("[data-ai-part]").count()), 3000))
@@ -87,7 +80,6 @@ check("...the section keeps only the switch, off", !!(await until(async () => !(
 await ui.idle()
 await page.screenshot({ path: `${OUT}aiswitch-off-light.png` })
 check("...nor any plugin's settings under it (the Agents panel's, MCP's, the Inbox's)", !(await page.locator("[data-settings-member]").count()))
-// (in the same page: what the plugins registered goes as AI does, not at the next reload)
 await page.evaluate((n) => { location.hash = `#file/${encodeURIComponent(n)}` }, NOTE); await page.waitForSelector("main"); await ui.idle()
 check("...at once, no reload: no Open Claude Code, Ask the companion or the Agents panel's settings", !(await hasCommand(page, "Open Claude Code")) &&
   !(await hasCommand(page, "Ask the companion")) && !(await hasCommand(page, "Sort agents by")) && !(await hasCommand(page, "Agents at work")))
@@ -95,7 +87,6 @@ check("...nor who wrote a line, MCP's settings, the Inbox's agents' answers or C
   !(await hasCommand(page, "Open MCP settings")) && !(await hasCommand(page, "Agents' answers")) && !(await hasCommand(page, "Open connections")))
 check("...the inbox itself stays (the app's notices)", await hasCommand(page, "Open inbox"))
 await page.goto("about:blank"); await page.goto(`${B}#file/${encodeURIComponent(NOTE)}`); await page.waitForSelector("main"); await ui.idle()
-// (an item that draws nothing keeps its empty slot: Agents at work's, with no agent at work)
 const keys = await page.locator("[data-status-key]").evaluateAll((els) => els.filter((e) => e.childElementCount).map((e) => e.getAttribute("data-status-key")))
 check("...no companion, token count, agents or who wrote it in the status bar", !keys.some((k) => /^(companion|token-count|provenance|review):|^terminal:agents$/.test(k)), keys)
 check("...nor the Inbox panel", !(await page.locator('[data-panel="inbox:inbox"]').count()))
@@ -120,7 +111,6 @@ const tools = (await mcp({ jsonrpc: "2.0", id: 2, method: "tools/list" }, init.s
 check("...and MCP: its tools are there (search, write_file)", tools.some((t) => t.name === "write_file") && tools.some((t) => t.name === "search"), tools.map((t) => t.name).slice(0, 12))
 check("...the CLI's ai op says so", (await api("POST", "ops/ai.set", {})).ai === false)
 
-// ---------- on again: as it was
 await settingsAi(page)
 await aiSwitch(page).click()
 check("on again: plugins.json without ai, its lists as they were", !!(await until(() => !("ai" in conf()), 4000)) && lists(conf()) === before, conf())
@@ -130,7 +120,6 @@ check("...the companion and the token count are back", !!(await until(async () =
 check("...and Open Claude Code", await hasCommand(page, "Open Claude Code"))
 await ctx.close()
 
-// ---------- dark, and a phone
 const dark = await open(1280, 800, "dark")
 await settingsAi(dark.page); await until(() => dark.page.locator("[data-ai-agent], [data-ai-none]").count(), 8000); await uiOf(dark.page).idle()
 await dark.page.screenshot({ path: `${OUT}aiswitch-on-dark.png` })

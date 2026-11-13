@@ -1,8 +1,7 @@
-// An agent's page draws, so its clicks land (electron/websession.ts readyView, webspot.ts drawing): pages opened at once (no spare to
-// take, each view new) draw and take their first click. A page that draws no frame drops presses (Chromium), so an act
-// "changed nothing". (Under Playwright a hidden view's page never hides, so a page that stopped drawing isn't made here.)
+// An agent's pages opened at once draw and take their first click (a page drawing no frame drops presses: Chromium).
 // WRITES: the throwaway vault only.
 //   node web/qa/agentdraws.mjs <vault copy>
+// electron/websession.ts, webspot.ts
 import { _electron } from "playwright-core"
 import fs from "node:fs"
 import http from "node:http"
@@ -37,12 +36,10 @@ try {
     const j = await r.json().catch(() => ({}))
     return r.ok ? (j.result ?? j) : { error: j.error ?? r.status, status: r.status }
   }
-  /** What the page at `url` answers to `code`, asked from the app's side: an agent's call would wake it. */
   const ask = (url, code) => app.evaluate(({ BaseWindow }, [url, code]) => {
     const v = BaseWindow.getAllWindows()[0].contentView.children.find((x) => x.webContents?.getURL() === url)
     return v ? v.webContents.executeJavaScriptInIsolatedWorld(999, [{ code }]) : null
   }, [url, code])
-  /** Whether the page at `url` draws a frame within a second. */
   const draws = (url) => ask(url, "new Promise((done) => { const t = setTimeout(() => done(false), 1000); requestAnimationFrame(() => { clearTimeout(t); done(true) }) })")
   const shipped = (url) => ask(url, "document.getElementById('out').textContent")
   const click = async (tab) => {
@@ -51,7 +48,6 @@ try {
   }
   await wait(2000)
 
-  // Three at once: the spare goes to one, the others' views are new.
   const urls = [1, 2, 3].map((n) => `${SITE}?n=${n}`)
   const tabs = (await Promise.all(urls.map((url) => op("open", { url, task: "draws", summary: "Shipping orders" })))).map((r) => r?.tab)
   check("pages opened at once all open", tabs.every((t) => typeof t === "number"), tabs)

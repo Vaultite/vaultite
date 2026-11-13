@@ -1,7 +1,7 @@
-// Agents' states in their tabs (the sessions socket stood in for): the Terminals panel's order and each tab's dot, on
-// the tab bar, the Tabs panel and the phone's tab list, and what a screen reader is told as they change. Writes
-// workspaces: throwaway server only.
+// Agents' states in their tabs: the Terminals panel's order, each tab's dot (bar, Tabs panel, phone), what's announced.
+// Writes workspaces: throwaway server only.
 //   node web/qa/agenttabs.mjs <base url> [out dir]
+// core/announce.ts
 import { execFileSync } from "node:child_process"
 import { mkdirSync } from "node:fs"
 import path from "node:path"
@@ -11,7 +11,6 @@ mkdirSync(OUT, { recursive: true })
 const vault = (await (await fetch(new URL("/api/vault", B))).json()).path
 const vau = (...a) => execFileSync(process.execPath, [path.resolve(import.meta.dirname, "../../bin/vau"), "--url", B, ...a],
   { encoding: "utf8", env: { ...process.env, VAULTITE_URL: B, VAULTITE_VAULT: vault } })
-// (what it uses, whatever the sandbox hid: Workspaces, so the phone shares the tabs, and the Terminals and Tabs panels)
 vau("plugin", "on", "workspaces")
 for (const p of ["terminals", "tabs"]) if (!new RegExp(`\\d+\\. \\w+:${p === "terminals" ? "sessions" : "tabs"}`).test(vau("panels", "--vault"))) vau("panels", "show", p, "--vault")
 await wait(1500)
@@ -29,7 +28,6 @@ const shell = { id: `${id}5`, agent: null, process: "zsh", busy: false, clients:
 const LIST = JSON.stringify({ t: "sessions", list: [working, blocked, unseen, seen, failed, shell] })
 let sock = null
 async function standIn(page) {
-  // The list as above; each terminal's own socket answers as attached.
   await page.routeWebSocket(/\/api\/terminals(\?.*)?$/, (ws) => { sock = ws; ws.send(LIST) })
   await page.routeWebSocket(/\/api\/terminal\/[^/?]+/, (ws) => {
     ws.send(JSON.stringify({ t: "attached", fresh: false, tmux: false, scrollback: 1000 }))
@@ -43,7 +41,6 @@ await D.goto(B)
 await D.waitForSelector("[role=tree]", { timeout: 60000 })
 await until(async () => !!(await D.$(`[data-session="${working.id}"]`)), 10000)
 
-// ---------- the Terminals panel: needs you first ----------
 const rows = await D.$$eval("[data-session]", (els) => els.map((e) => ({ id: e.dataset.session, needs: e.dataset.needs !== undefined, bold: e.className.includes("font-semibold"),
   dot: e.querySelector("[data-dot]")?.dataset.dot ?? null, icon: e.querySelector("svg")?.getAttribute("class") ?? "" })))
 const order = rows.map((r) => r.id)
@@ -58,7 +55,6 @@ check("Terminals: Claude's logo on each, its state a dot: working, ask (amber: b
 const ambient = await D.$eval('[data-status-items] > [data-status-key$="agents"]', (e) => e.innerText.trim()).catch(() => "")
 check("status bar: agents at work count what Terminals says needs you (blocked, not an unread row)", ambient === "1 · 1 needs you", ambient)
 
-// ---------- tabs: each session opened from its row ----------
 for (const s of [working, blocked, unseen, seen, failed]) { await D.click(`[data-session="${s.id}"]`); await wait(400) }
 const look = (page, sel) => page.$$eval(sel, (els) => els.map((e) => ({ text: e.innerText.trim().split("\n")[0], dot: e.querySelector("[data-dot]")?.dataset.dot ?? "none" })))
 const states = (list) => Object.fromEntries(list.filter((x) => / one$/.test(x.text)).map((x) => [x.text, x.dot]))
@@ -69,13 +65,11 @@ const panel = states(await look(D, "[data-open-tab]"))
 check("Tabs panel: the same", JSON.stringify(panel) === WANT, panel)
 await D.screenshot({ path: `${OUT}desktop.png` })
 
-// ---------- screen readers: a turn's end, a wait, a failure said once (core/announce.ts), never each list ----------
 const said = (live) => D.$eval(`[data-announce=${live}]`, (e) => [...e.children].map((p) => p.textContent))
 const send = async (...changed) => {
   sock.send(JSON.stringify({ t: "sessions", list: [working, blocked, unseen, seen, failed, shell].map((s) => changed.find((c) => c.id === s.id) ?? s) }))
   await wait(400)
 }
-// (what was said so far, the sandbox's notice, put aside: each line goes by itself after 7 s)
 await D.$$eval("[data-announce]", (els) => els.forEach((e) => e.replaceChildren()))
 const lines = async () => JSON.stringify([...await said("polite"), ...(await said("assertive")).map((t) => `! ${t}`)])
 for (let i = 0; i < 3; i++) await send()
@@ -91,11 +85,9 @@ check("screen reader: its turn's end is said, a failure interrupts (assertive)",
   await lines() === JSON.stringify(["Working one is waiting for you", "Working one finished", "! Seen one failed"]), await lines())
 await send()
 
-// ---------- the phone's tab list ----------
 const pctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true })
 const P = watch(await pctx.newPage(), { console: true, ignore: /favicon|Failed to load resource|WebSocket/ })
 await standIn(P)
-// (each opened here by its address: a session's tab that the server doesn't run isn't kept in the workspace)
 for (const s of [working, blocked, unseen, seen, failed]) {
   await P.goto("about:blank")
   await P.goto(`${B}#view/${encodeURIComponent(`terminal/${s.id}`)}`)

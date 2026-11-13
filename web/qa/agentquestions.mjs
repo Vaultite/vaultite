@@ -9,7 +9,6 @@ mkdirSync(OUT, { recursive: true })
 const api = apiAt(B)
 await api("DELETE", "inbox/events")
 
-// Sessions asking, as their host tells it (no terminal: what they're sent is caught before it goes anywhere).
 const ask = (session, title, questions) => api("POST", "inbox/sessions", { agent: "claude", session, state: "waiting", ask: "question", title, questions })
 await ask("qa-one", "Fruit for the party", [{ question: "Which fruit should it buy?", header: "Fruit",
   options: [{ label: "Apple", description: "Crisp, keeps a week" }, { label: "Banana" }, { label: "Cherry" }, { label: "Date" }] }])
@@ -21,7 +20,6 @@ const events = await until(async () => { const es = (await api("GET", "inbox/eve
 check("three sessions asking", !!events, events)
 const id = (title) => events.find((e) => e.title === title).id
 
-/** A context whose inbox.answer calls are kept, not sent. */
 async function open(ctxOpts) {
   const ctx = await browser.newContext(ctxOpts)
   await ctx.addInitScript(() => { if (location.protocol !== "about:" && !sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } })
@@ -42,7 +40,6 @@ async function open(ctxOpts) {
   return { page, sent, sheetOf }
 }
 
-// 1. Desktop: one question.
 const d = await open({ viewport: { width: 1280, height: 800 } })
 let sheet = await d.sheetOf("Fruit for the party")
 const rows = await sheet.locator("[data-question='0'] [data-option]").allInnerTexts()
@@ -65,7 +62,6 @@ await sheet.locator("[data-chat-about]").click()
 await until(() => d.sent.length === 3)
 check("Chat about this is its own answer", JSON.stringify(d.sent[2]) === JSON.stringify({ id: id("Fruit for the party"), answer: "chat" }), d.sent[2])
 
-// 2. Several questions, one a multi-select: each picked or typed, then Send answers; a reply puts them aside.
 sheet = await d.sheetOf("Pizza order")
 const send = sheet.locator("[data-send-answers]")
 check("several: Send answers waits for every answer; a reply box for something else", await send.isDisabled() &&
@@ -87,14 +83,12 @@ await send.click()
 await until(() => d.sent.length === 5)
 check("an option picked after typing is the answer (the typed one no longer is)", JSON.stringify(d.sent[4].picks) === '["1","1,3"]' && JSON.stringify(d.sent[4].typed) === '["","Feta"]', d.sent[4])
 
-// 3. A dialog read off its screen: only its options.
 sheet = await d.sheetOf("Read outside the folder")
 check("a dialog: only its options, no Type something nor Chat about this; a reply box", (await sheet.locator("[data-option]").count()) === 3 &&
   (await sheet.locator("[data-chat-about]").count()) === 0 && (await sheet.locator("[data-reply]").count()) === 1)
 await d.page.screenshot({ path: `${OUT}4-dialog.png` })
 await d.page.context().close()
 
-// 4. A phone: the same, in its width, with a finger's targets and text the keyboard doesn't zoom.
 const p = await open({ ...devices["iPhone 13"], viewport: { width: 390, height: 844 } })
 sheet = await p.sheetOf("Fruit for the party")
 const sizes = await sheet.evaluate((el) => ({
@@ -109,7 +103,6 @@ await sheet.locator("[data-send-typed]").tap()
 await until(() => p.sent.length === 1)
 check("phone: its send button answers with what's typed", JSON.stringify(p.sent[0]?.typed) === '["Mango"]', p.sent)
 
-// 5. The chat tab (a session the keeper runs, its socket played here): the same picker, answered with chat-answer.
 {
   const ctx = await browser.newContext({ viewport: { width: 1100, height: 800 } })
   const page = watch(await ctx.newPage(), { console: true, label: "chat", ignore: /favicon|Failed to load resource|WebSocket/ })
@@ -132,7 +125,6 @@ check("phone: its send button answers with what's typed", JSON.stringify(p.sent[
   await card.locator("[data-send-answers]").click()
   await until(() => sent.length === 1)
   check("chat tab: a multi-select's picks go with what's typed", JSON.stringify(sent[0]) === JSON.stringify({ id: "qa-chat", ask: "ask1", picks: ["1"], typed: ["Feta"] }), sent[0])
-  // (answered, the card waits for the session's news: a fresh one for the next)
   await page.reload()
   await until(() => card.locator("[data-chat-about]").count(), 8000)
   await card.locator("[data-chat-about]").click()

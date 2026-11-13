@@ -1,15 +1,7 @@
-// Agents in the desktop app's browser (Electron), end to end on a throwaway vault, against a made-up site this script
-// serves on 127.0.0.1: through the browser ops (POST /api/ops/web-viewer.*), an agent opens a page (in the Agents
-// container, in the background: no tab of the user's), snapshots it, fills a form and submits it with real input, reads the result
-// and takes a screenshot; it can't use a tab in Personal (no access), nor one the user paused; its steps can be replayed.
-// Each act answers what it changed (refs lasting), a whole form fills in one call, a script runs a flow in one call in a
-// sandbox (no network, 30 s), a page saves as a PDF, and the cockpit shows the tab live (Pause) and finds past runs.
-// Then as Claude Code over MCP (vau mcp, plugins/core/mcp/cli.ts): its pages named by task and marked its own, a
-// form filled, a file uploaded and one downloaded, the page searched, a picture, an expression in its own world, the
-// user asked for help (its page opens as a tab, Done on its card), its tab closed; and a server on another machine with no desktop app
-// (plugins/core/machines/plugin.ts) isn't answered by this app's, a laptop's (web/qa/attach.mjs: an always-on one's is).
+// Agents in the desktop app's browser on a made-up site, through the browser ops and over MCP: open, act, replay, limits.
 // WRITES: the throwaway vault only.
 //   node web/qa/agents.mjs <vault copy>
+// plugins/core/mcp/cli.ts, plugins/core/machines/plugin.ts, web/qa/attach.mjs
 import { _electron } from "playwright-core"
 import { spawn } from "node:child_process"
 import fs from "node:fs"
@@ -24,7 +16,6 @@ const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-agents-"))
 keepAwake(600)
 
-// ---------- a made-up site with a form ----------
 const server = http.createServer((req, res) => {
   const u = new URL(req.url ?? "/", SITE)
   if (u.pathname === "/file.txt") { res.writeHead(200, { "Content-Type": "text/plain", "Content-Disposition": "attachment; filename=\"log book.txt\"" }); return res.end("Day one: calm.\n") }
@@ -38,7 +29,6 @@ const server = http.createServer((req, res) => {
 <script>save.onclick = () => setTimeout(() => { out.innerHTML = '<p role="status">Saved</p><button>Close</button>' }, 200)</script>`)
   }
   if (u.pathname === "/keeper") {
-    // (what a site keeps as its tab closes: Discord puts its sign-in back in localStorage on beforeunload)
     return res.end(`<!doctype html><title>Keeper</title><p id="kept"></p>
 <script>kept.textContent = "kept " + (localStorage.getItem("kept") ?? "nothing")
 addEventListener("beforeunload", () => localStorage.setItem("kept", ${JSON.stringify(u.searchParams.get("v") ?? "")}))</script>`)
@@ -57,8 +47,6 @@ addEventListener("beforeunload", () => localStorage.setItem("kept", ${JSON.strin
 await new Promise((ok, fail) => { server.once("error", fail); server.listen(0, "127.0.0.1", ok) })
 const SITE = `http://127.0.0.1:${server.address().port}`
 
-// ---------- the app ----------
-// (Machines on: a server with no desktop app passes its agents' calls to this one)
 const plugins = path.join(VAULT, ".vaultite/plugins.json")
 const on = fs.existsSync(plugins) ? JSON.parse(fs.readFileSync(plugins, "utf8")) : { enabled: [], disabled: [] }
 fs.writeFileSync(plugins, JSON.stringify({ ...on, enabled: [...new Set([...(on.enabled ?? []), "machines", "web-viewer"])], disabled: (on.disabled ?? []).filter((x) => x !== "machines") }))
@@ -76,15 +64,13 @@ await win.waitForSelector("[role=tree]", { timeout: 60000 })
 const origin = new URL(win.url()).origin
 await app.evaluate(({ app: a, BaseWindow }, dl) => { a.setPath("downloads", dl); const w = BaseWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1400, height: 860 }); w.focus() }, DOWNLOADS)
 const ui = (body) => uiAt(origin)(body)
-/** A browser op, as an agent calls it: its answer, or { error } with its status. */
 const op = async (id, params) => {
   const r = await fetch(`${origin}/api/ops/web-viewer.${id}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "mcp", "X-Vaultite-Agent": "claude-code" }, body: JSON.stringify(params ?? {}) })
   const j = await r.json().catch(() => ({}))
   return r.ok ? (j.result ?? j) : { error: j.error ?? r.status, status: r.status }
 }
-await wait(2000) // (the app tells the desktop app what agents may do as it starts)
+await wait(2000)
 
-// ---------- open, snapshot, fill, submit ----------
 const opened = await op("open", { url: `${SITE}/form` })
 check("an agent opens a tab: its number", typeof opened?.tab === "number", opened)
 await wait(1500)
@@ -110,7 +96,6 @@ const shot = await op("screenshot", { tab: opened.tab })
 check("a screenshot, as a PNG file", typeof shot?.path === "string" && fs.existsSync(shot.path) && fs.readFileSync(shot.path).subarray(1, 4).toString() === "PNG", shot)
 check("the corner card says an agent is at work", await until(async () => (await win.locator("[data-agents-card]:visible").count()) === 1, 5000), null)
 
-// ---------- what agents may not do ----------
 await ui({ action: "open", path: `view:web/@personal/${SITE}/form?mine`, newTab: true })
 const mine = await until(async () => (await op("tabs")).find?.((t) => t.url.endsWith("?mine")), 15000)
 check("a tab in Personal: no access", mine?.access === "none", mine)
@@ -122,7 +107,6 @@ check("a tab the user paused: acting is refused", /paused/.test(String(paused.er
 await win.evaluate((id) => window.vaultite.web.engine("agents:pause", id, false), opened.tab)
 check("resumed: it acts again", !(await op("act", { tab: opened.tab, action: "press", key: "Tab" })).error, null)
 
-// ---------- replay ----------
 const runs = () => win.evaluate(() => window.vaultite.web.engine("agents:runs"))
 check("its steps are kept to replay", await until(async () => { const r = await runs(); return r.length === 1 && r[0].steps >= 6 }, 5000), await runs())
 const engine = (...a) => win.evaluate((a) => window.vaultite.web.engine(...a).then((v) => ({ v }), (e) => ({ error: String(e?.message ?? e) })), a)
@@ -131,7 +115,6 @@ const ran0 = (await engine("agents:run", runName)).v ?? []
 check("a run's steps come without their pictures, each naming its own; acts say how long they took", ran0.length >= 6 && ran0.every((s) => s.shot === null || /^\d+\.jpg$/.test(s.shot))
   && ran0.some((s) => s.shot) && ran0.some((s) => s.action === "fill" && typeof s.ms === "number"), ran0.map((s) => [s.action, s.shot, s.ms]))
 const since = (await engine("agents:run", runName, ran0.length - 2)).v ?? []
-// (a step still being kept may land after the first read)
 check("… a live run's new ones only, from where the view is", since.length >= 2 && since[0].t === ran0.at(-2).t && since[1].t === ran0.at(-1).t, since.map((s) => s.t))
 const pic = ran0.find((s) => s.shot)?.shot
 const pics = (await engine("agents:shots", runName, [pic], true)).v ?? {}
@@ -147,7 +130,6 @@ await win.keyboard.press("Home")
 check("… Home goes to its first step, → to the next", await until(async () => /^1 of/.test(await win.locator("[data-web-replay-at]").textContent()), 3000)
   && (await win.keyboard.press("ArrowRight"), await until(async () => /^2 of/.test(await win.locator("[data-web-replay-at]").textContent()), 3000)), await win.locator("[data-web-replay-at]").textContent())
 
-// ---------- act answers what changed; a whole form at once; a script in one call; the cockpit; a PDF ----------
 const o3 = await op("open", { url: `${SITE}/menu`, task: "cockpit", summary: "Checking the made-up menu" })
 const t3 = o3.tab
 const menu = await op("snapshot", { tab: t3 })
@@ -199,7 +181,6 @@ check("the cockpit's live list: the tab, its summary, last step and picture", l3
   && /^data:image\/jpeg;base64,/.test(l3.shot ?? ""), l3 && { ...l3, shot: l3.shot?.slice(0, 40) })
 check("… past runs say their task and summary", (await runs()).some((r) => r.task === "cockpit" && r.summary === "Checking the made-up menu"), await runs())
 await ui({ action: "command", id: "web:agent-runs" })
-// (still at the run replayed above: back to the list)
 await win.locator("[data-web-replay-back]").dispatchEvent("click")
 check("… the view shows it live", await until(async () => (await win.locator(`[data-web-live="${t3}"] img`).count()) === 1, 5000), null)
 await win.locator(`[data-web-live="${t3}"] [data-web-live-pause]`).dispatchEvent("click")
@@ -209,7 +190,6 @@ await win.locator("[data-web-replays] input[type=search]").fill("made-up menu")
 check("… runs searched by summary", await until(async () => (await win.locator("[data-web-replay]").count()) === 1, 5000), await win.locator("[data-web-replay]").count())
 await op("close", { tab: t3 })
 
-// ---------- a page's window is its tab's, as in a browser (not the app's, sidebars and all) ----------
 const sized = (await op("open", { url: `${SITE}/size` })).tab
 let size = ""
 await until(async () => /wider/.test(size = ((await op("read", { tab: sized }))?.text ?? "").trim()), 5000)
@@ -217,7 +197,6 @@ const [wider, taller] = (size.match(/-?\d+/g) ?? []).map(Number)
 check("a page's window is its tab's: no wider, and taller by a browser's bar (sites take more for DevTools open)", wider === 0 && taller > 0 && taller < 160, size)
 await op("close", { tab: sized })
 
-// ---------- a closed tab's page unloads, as in a browser ----------
 const kept = async (v) => {
   const t = (await op("open", { url: `${SITE}/keeper?v=${v}` })).tab
   await until(async () => /kept/.test((await op("read", { tab: t }))?.text ?? ""), 5000)
@@ -231,8 +210,6 @@ await op("close", { tab: k2.t })
 const k3 = await kept("at quit")
 check("… what it kept as it closed is there", /kept second/.test(k3.text), k3.text)
 
-// ---------- as Claude Code over MCP (vau mcp, on stdio) ----------
-/** An MCP client on stdio, as Claude Code runs `vau mcp`: its JSON-RPC calls, and a tool's result. */
 function stdio(url) {
   const p = spawn(process.execPath, [path.join(ROOT, "bin/vau"), "mcp"], { env: { ...process.env, VAULTITE_URL: url, CLAUDECODE: "" }, stdio: ["pipe", "pipe", "inherit"] })
   let buf = "", n = 0
@@ -291,7 +268,7 @@ check("… and the Inbox", events.events?.some((e) => e.source === "browser" && 
 const waited2 = mcp.tool("browser_wait", { tab: t1, helped: true, timeout: 20 })
 await wait(500)
 const t0 = Date.now()
-await win.locator("[data-web-agent-done]").dispatchEvent("click") // (a toast of the playground's may be over the corner)
+await win.locator("[data-web-agent-done]").dispatchEvent("click")
 const w2 = await waited2
 check("… its Done ends the agent's wait at once", !w2.isError && Date.now() - t0 < 3000, [text(w2), Date.now() - t0])
 const after = await fetch(`${origin}/api/inbox/events?local=1`).then((r) => r.json())
@@ -302,8 +279,6 @@ check("MCP: closing the user's tab is refused", notMine.isError && /the user's/.
 const closed = await mcp.tool("browser_close", { tab: t2 })
 check("MCP: its own tab closes", !closed.isError && !(await op("tabs")).some((t) => t.tab === t2), text(closed))
 
-// ---------- a server on another machine (its own TMPDIR) with no desktop app: a laptop's app doesn't answer it ----------
-// (a free port, never one of the 20000-40000 the desktop app gives its vaults: one taken would be the user's server)
 const PLAIN = await freePort()
 fs.mkdirSync(path.join(TMP, "run-plain"))
 const plain = testServer({ stdio: ["ignore", "pipe", "pipe"],
@@ -333,7 +308,6 @@ const held = (await fetch(`${origin}/api/ops/errors.list`, { method: "POST", hea
 check("agents' calls never held the vault's writes", !held.some((g) => /vault: held/.test(g.message)), held.map((g) => g.message))
 console.log(errs.length ? `page errors:\n${errs.slice(0, 5).join("\n")}` : "no page errors")
 await app.close()
-// (quitting unloads the pages too: opened again, the page that was open finds what it kept)
 const relaunched = await _electron.launch({
   executablePath: path.join(ROOT, "node_modules/.bin/electron"), args: [ROOT, "--vault", VAULT],
   env: { ...process.env, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_USER_DATA: path.join(TMP, "userData"), VAULTITE_LOCAL: path.join(TMP, "local") },

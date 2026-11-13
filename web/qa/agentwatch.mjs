@@ -11,7 +11,6 @@ import { ROOT, qa, until, wait, uiAt } from "./lib/qa.mjs"
 const { args: [VAULT, SHOTS], check, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-agentwatch-"))
 
-// ---------- a made-up site whose layout follows its width (as a doc's or a store's does), with a button ----------
 const site = http.createServer((_q, res) => {
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
   res.end(`<!doctype html><title>clicks=0</title><style>body{font:16px system-ui;margin:24px}button{font-size:18px;padding:10px 20px}
@@ -43,7 +42,7 @@ try {
   }
   const shot = async (name) => { if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); await win.screenshot({ path: path.join(SHOTS, `${name}.png`) }) } }
   const ui = (body) => uiAt(origin)(body)
-  await wait(2000) // (the app tells the desktop app what agents may do as it starts)
+  await wait(2000)
   for (let i = 0; i < 5 && await until(() => win.locator("[data-confirm-ok]").count(), i ? 1500 : 4000); i++) { await win.getByRole("button", { name: "Not now" }).first().click().catch(() => {}); await wait(300) }
 
   const opened = await op("open", { url: SITE, task: "orders", summary: "Tracking an order" })
@@ -62,7 +61,6 @@ try {
   const png = pngSize(await op("screenshot", { tab: T }))
   check("… and a screenshot is the whole of it", png?.[0] === 1280 && png?.[1] === 800, png)
 
-  // ---------- the user's own tab of the site, zoomed: Chromium shares a site's zoom among its pages ----------
   const container = (await tabOf())?.container
   await ui({ action: "open", path: `view:web/${container ? `@${container}/` : ""}${SITE}mine`, newTab: true })
   const mine = await until(async () => (await op("tabs")).find?.((t) => t.tab !== T && t.url.startsWith(SITE)), 15000)
@@ -71,7 +69,6 @@ try {
   await wait(500)
   check("… and zooms it: the agent's page keeps its size", agentSize(await size()), await size())
 
-  // ---------- Open as tab: a picture of it, the page untouched ----------
   await win.locator("[data-agent-open]").first().click()
   const watching = win.locator("[data-web-agent-watch]")
   check("Open as tab: the tab shows it live, as a picture", await until(() => watching.locator("img[data-web-agent-frame]").count(), 8000), await watching.count())
@@ -87,7 +84,6 @@ try {
   check("a window resizing changes nothing of its size", agentSize(await size()), await size())
   await setBounds({ x: 40, y: 40, width: 1400, height: 860 })
 
-  // ---------- Take over: the page itself, the agent paused; Give back ----------
   await win.locator("[data-web-agent-take]").click()
   check("Take over: the page itself in the tab", await until(async () => (await tabOf())?.shown === true, 8000), await tabOf())
   check("… the picture gone", await until(async () => (await watching.count()) === 0, 5000))
@@ -102,7 +98,6 @@ try {
   await click()
   check("… and the agent acts again", await until(async () => (await clicks()) === 2, 5000), await tabOf())
 
-  // ---------- the tab closed: the page goes on in the background ----------
   const closeKey = process.platform === "darwin" ? "Meta+w" : "Control+w"
   await win.locator("[data-web-agent-watch]").click({ position: { x: 5, y: 5 } }).catch(() => {})
   await win.keyboard.press(closeKey)
@@ -112,7 +107,6 @@ try {
   check("… where the agent still acts", await until(async () => (await clicks()) === 3, 5000), await tabOf())
   check("… at its size", agentSize(await size()), await size())
 
-  // ---------- the agent closing it ends it ----------
   check("the agent closing its page ends it", !(await op("close", { tab: T })).error && !(await tabOf()))
 } finally {
   await app.close().catch(() => {})

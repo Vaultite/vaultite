@@ -4,7 +4,7 @@
 import { execFileSync } from "node:child_process"
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { runtimeDir } from "../../core/runtime.ts" // (where the server keeps terminal states: $TMPDIR on a Mac, not on Linux)
+import { runtimeDir } from "../../core/runtime.ts"
 import path from "node:path"
 import { qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT, CLAUDE, OUT = "/tmp/agentmeters-shots/"], browser, check, watch, done } = await qa(import.meta.url)
@@ -13,7 +13,7 @@ mkdirSync(OUT, { recursive: true })
 const api = async (p, init) => (await fetch(new URL(`/api/${p}`, B), init)).json()
 const send = (id, text) => fetch(new URL(`/api/terminals/${encodeURIComponent(id)}/send`, B), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) })
 
-// A stand-in for Claude Code: a program named claude that only sleeps (a copied system binary won't run: its signature).
+// (a copied system binary won't run on a Mac: its signature)
 const standDir = mkdtempSync(path.join(tmpdir(), "qa-claude-"))
 const stand = path.join(standDir, "claude")
 writeFileSync(`${stand}.c`, "#include <unistd.h>\n#include <stdlib.h>\nint main(int c, char **v) { sleep(c > 1 ? atoi(v[1]) : 60); return 0; }\n")
@@ -21,7 +21,6 @@ execFileSync("cc", ["-o", stand, `${stand}.c`])
 
 const SID = "0a1b2c3d-9999-4222-8333-444455556666"
 const transcript = path.join(CLAUDE, "projects", "-qa-meters", `${SID}.jsonl`)
-/** The transcript's last request, `ago` seconds ago (`pad` grows the file, so the server reads it again). */
 const request = (ago, pad = "") => {
   mkdirSync(path.dirname(transcript), { recursive: true })
   writeFileSync(transcript, JSON.stringify({ type: "assistant", sessionId: SID, timestamp: new Date(Date.now() - ago * 1000).toISOString(), message: { model: "claude-sonnet-4-5",
@@ -37,14 +36,12 @@ const page = watch(await browser.newPage({ viewport: { width: 1280, height: 800 
 try {
   await api("config/plugins", { method: "PATCH", body: JSON.stringify({ enabled: [...(pluginsBefore.enabled ?? []).filter((x) => x !== "workspaces"), "agent-meters"] }) })
   await api("config/sidebars", { method: "PUT", body: JSON.stringify({ left: ["search:search", "pages:pages", "terminal:sessions", "files:files"], right: [], collapsed: [] }) })
-  // (turning a plugin on reloads the app's plugins: the terminal opens once that's done)
   await page.goto(B); await page.waitForSelector("aside"); await wait(1500)
   await page.goto(`${B}#view/terminal%2F${term}`)
   const listed = await until(async () => (await api("terminals/sessions")).sessions?.some((x) => x.id === term), 10000)
   await send(term, "echo QA-PID-$$")
   const pid = Number(await until(async () => /QA-PID-(\d+)/.exec(((await api(`terminals/${encodeURIComponent(term)}/capture?lines=50`)).text ?? ""))?.[1], 10000)) || 0
   check("the terminal's shell runs", listed && pid > 0, pid)
-  // Its session: Claude Code's file for the process (the shell, which the stand-in runs under), and its transcript.
   request(150)
   mkdirSync(path.join(CLAUDE, "sessions"), { recursive: true })
   fakeFile = path.join(CLAUDE, "sessions", `${pid}.json`)
@@ -81,7 +78,6 @@ try {
   check('  "Percent used": its context as a number', pct === "26%", pct)
   await page.screenshot({ path: `${OUT}rings.png`, clip: { x: 0, y: 160, width: 240, height: 80 } })
 
-  // Its row's menu: its agent's session id and its terminal id copied, the conversation opened.
   const sid = async () => (await api("terminals/sessions")).sessions?.find((x) => x.id === term)?.session
   check("the list says its agent's own session id", (await sid()) === SID, await sid())
   await page.evaluate(() => { window.__copied = []; navigator.clipboard.writeText = async (t) => { window.__copied.push(t) } })

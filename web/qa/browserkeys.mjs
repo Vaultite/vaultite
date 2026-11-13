@@ -1,11 +1,7 @@
-// The Browser's keys and navigation act on the page, as Chrome's (plugins/core/web-viewer, electron/web.ts,
-// core/workspace.ts navigate and restTab), in the desktop app (Electron) against pages this script serves on 127.0.0.1:
-// Back and Forward from the app's keys, the page's, the mouse's buttons (over the page and the app) and the bar (its list
-// on a right-click); find in page (⌘F from the page and the app, Enter, ⌘G, Esc, its words kept; a card over the page's
-// top right that leaves the page its size and its clicks; a site's own ⌘F left to it); a site's zoom (⌘= in the page and the app, kept per host, said in a toast, the bar's reset), never the app's, and a pinch's
-// magnifying (under a toast too, its ⌃ passed on); ⌘R, ⇧⌘R and ⌥⌘I the
-// page's, never the app's menu; Esc stops a load; ⇧⌘[ ]; ⌘W on a pinned web tab rests it. WRITES: the throwaway vault.
+// The Browser's keys and navigation act on the page as Chrome's: Back and Forward, find in page, zoom, pinch, reload, tabs.
+// WRITES: the throwaway vault only.
 //   node web/qa/browserkeys.mjs <vault copy>
+// plugins/core/web-viewer, electron/web.ts, core/workspace.ts, web/qa/pinch.mjs
 import { _electron } from "playwright-core"
 import fs from "node:fs"
 import http from "node:http"
@@ -18,13 +14,11 @@ if (process.platform !== "darwin") { console.log("browserkeys: a Mac's keys, ski
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-browserkeys-"))
 keepAwake(600)
 
-// ---------- made-up pages ----------
 const page = (title, body, script = "") => `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>
 <style>body{font:18px/1.5 Georgia,serif;margin:0;padding:40px 60px}</style>${script}</head><body>${body}</body></html>`
 const ARTICLE = page("Lighthouse field notes", `<h1>Lighthouse field notes</h1>
 <p>The keeper climbs one hundred and twelve steps every evening. In winter its keeper sounds the horn.</p>
 <p>Read <a id="next" href="/two">the second part</a>.</p>`)
-// (a site with its own find: it takes ⌘F)
 const OWN = page("Own find", "<h1>Own find</h1>", `<script>addEventListener("keydown", (e) => { if (e.metaKey && e.code === "KeyF") { e.preventDefault(); window.__ownFind = true } })</script>`)
 const server = http.createServer((req, res) => {
   const u = req.url ?? "/"
@@ -37,7 +31,6 @@ const SITE = `http://127.0.0.1:${server.address().port}`
 fs.mkdirSync(path.join(VAULT, "Notes"), { recursive: true })
 fs.writeFileSync(path.join(VAULT, "Notes/Reading list.md"), `# Reading list\n\nStart with [the field notes](${SITE}/article) today.\n\nMore to read later.\n`)
 
-// ---------- the app ----------
 const USER = path.join(TMP, "userData")
 const app = await _electron.launch({
   executablePath: path.join(ROOT, "node_modules/.bin/electron"), args: [ROOT, "--vault", VAULT],
@@ -52,7 +45,6 @@ const menuClick = (label) => app.evaluate(({ Menu, BaseWindow }, label) => {
   const find = (items) => { for (const i of items) { if (i.label === label) return i; const s = i.submenu && find(i.submenu.items); if (s) return s } }
   find(Menu.getApplicationMenu().items).click(undefined, BaseWindow.getAllWindows()[0])
 }, label)
-/** The web pages laid over the window. */
 const pages = () => app.evaluate(({ BaseWindow }) => {
   const w = BaseWindow.getAllWindows()[0]
   return w.contentView.children.filter((v) => v.webContents && v.webContents !== w.webContents)
@@ -68,13 +60,11 @@ const inPage = (code) => app.evaluate(({ BaseWindow }, code) => {
 const clickInPage = (sel) => app.evaluate(async ({ BaseWindow }, sel) => {
   const w = BaseWindow.getAllWindows()[0]
   const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
-  // (in the page's CSS pixels, which its zoom makes more of the view's)
   const z = v.webContents.getZoomFactor()
   const [x, y] = (await v.webContents.executeJavaScript(`(() => { const r = document.querySelector(${JSON.stringify(sel)}).getClientRects()[0]; return [r.left + r.width / 2, r.top + r.height / 2] })()`)).map((n) => Math.round(n * z))
   v.webContents.sendInputEvent({ type: "mouseDown", x, y, button: "left", clickCount: 1 })
   v.webContents.sendInputEvent({ type: "mouseUp", x, y, button: "left", clickCount: 1 })
 }, sel)
-/** A key pressed in the shown page, as the Mac's keyboard sends it there (before-input-event, then the page). */
 const pressInPage = (keyCode, modifiers = []) => app.evaluate(async ({ BaseWindow }, [keyCode, modifiers]) => {
   const w = BaseWindow.getAllWindows()[0]
   const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
@@ -83,13 +73,11 @@ const pressInPage = (keyCode, modifiers = []) => app.evaluate(async ({ BaseWindo
   v.webContents.sendInputEvent({ type: "keyDown", keyCode, modifiers })
   v.webContents.sendInputEvent({ type: "keyUp", keyCode, modifiers })
 }, [keyCode, modifiers])
-/** The keyboard in the app's own page (the address bar, a field: anything but the web page). */
 const appKeys = async (keys) => {
   await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0].webContents.focus())
   await win.evaluate(() => { document.activeElement?.blur?.() })
   await win.keyboard.press(keys)
 }
-/** A picture of the window with its pages in it (each page is a view of its own, under the window's): in SHOTS. */
 const shotWithPages = async (name) => {
   const pics = await app.evaluate(async ({ BaseWindow }) => {
     const w = BaseWindow.getAllWindows()[0]
@@ -109,7 +97,6 @@ const shotWithPages = async (name) => {
   fs.mkdirSync(SHOTS, { recursive: true })
   fs.writeFileSync(path.join(SHOTS, `browserkeys-${name}.png`), Buffer.from(png, "base64"))
 }
-/** Whether a key pressed in the app's page is taken there (so the menu bar never sees it: its Developer reload). */
 const takenInApp = (o) => win.evaluate((o) => { const e = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...o }); document.body.dispatchEvent(e); return e.defaultPrevented }, o)
 const tabs = () => win.evaluate(() => {
   const w = JSON.parse(localStorage.getItem("vaultite.tabs")), leaf = (n) => (n.kids ? n.kids.flatMap(leaf) : [n])
@@ -117,7 +104,6 @@ const tabs = () => win.evaluate(() => {
   return { tabs: w.tabs.map((t) => ({ to: pane(t).to, pinned: !!t.pinned, home: pane(t).home })), active: pane(w.tabs.find((t) => t.id === w.active)).to }
 })
 
-// ---------- a page, and Back and Forward ----------
 await fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "open", path: "Notes/Reading list.md" }) })
 await win.waitForSelector(".cm-link[data-url]", { timeout: 15000 })
 await win.locator(".cm-line", { hasText: "More to read later" }).first().click()
@@ -157,8 +143,6 @@ check("Back's right-click lists its places and the full history", !!listed && li
 await win.locator("[role=menuitem]", { hasText: "Lighthouse field notes" }).first().click()
 check("… a place picked goes there", await until(() => at("/article"), 5000), await pages())
 
-// ---------- find in page ----------
-/** Where the shown page is in the window. */
 const pageBounds = () => app.evaluate(({ BaseWindow }) => {
   const w = BaseWindow.getAllWindows()[0]
   return w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())?.getBounds() ?? null
@@ -189,11 +173,9 @@ check("Esc closes it", await until(async () => (await win.locator("[data-web-fin
 await appKeys("Meta+F")
 check("⌘F from the app: open again with its words", await until(async () => (await win.locator("[data-web-find] input").count()) === 1 && (await win.locator("[data-web-find] input").inputValue()) === "keeper", 4000))
 await shotWithPages("find")
-// (dark for a picture only: the vault's scheme picks the look, not the system's)
 const dark = await win.evaluate(() => document.documentElement.classList.toggle("dark")); await wait(400)
 await shotWithPages(dark ? "find-dark" : "find-light")
 await win.evaluate(() => document.documentElement.classList.toggle("dark"))
-// (a click beside the card is the page's: the window passes it on)
 const link = await inPage(`(() => { const r = document.querySelector("#next").getClientRects()[0]; return { x: r.left + r.width / 2, y: r.top + r.height / 2 } })()`)
 await win.mouse.click(unfound.x + link.x, unfound.y + link.y)
 check("with it open, a click beside it is the page's", await until(() => at("/two"), 5000), await pages())
@@ -204,7 +186,6 @@ await until(() => at("/own"), 5000); await wait(500)
 await pressInPage("F", ["meta"]); await wait(800)
 check("a site's own ⌘F is the site's", (await inPage("window.__ownFind === true")) && (await win.locator("[data-web-find]").count()) === 0, await inPage("!!window.__ownFind"))
 
-// ---------- zoom ----------
 await inPage(`location.href = "${SITE}/article"; 1`)
 await until(() => at("/article"), 5000); await wait(300)
 const appZoom = () => app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0].webContents.getZoomFactor())
@@ -225,11 +206,9 @@ await win.locator("[data-web-zoom]").click()
 check("the bar's 110% clicked: back to 100%, forgotten", await until(async () => (await shownPage())?.zoom === 1 && !kept()["127.0.0.1"] && (await win.locator("[data-web-zoom]").count()) === 0, 4000),
   [await pages(), kept(), await win.locator("[data-web-zoom]").count()])
 
-// A pinch magnifies the page, as Safari's (the layout keeps its width); the app's own page never.
 const pinch = (scale, own = false) => app.evaluate(async ({ BaseWindow }, [scale, own]) => {
   const w = BaseWindow.getAllWindows()[0]
   const wc = own ? w.webContents : w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible()).webContents
-  // (the app's own debugger may be on it already: then that one)
   const had = wc.debugger.isAttached()
   if (!had) wc.debugger.attach("1.3")
   try { await wc.debugger.sendCommand("Input.synthesizePinchGesture", { x: 300, y: 300, scaleFactor: scale }) } finally { if (!had) wc.debugger.detach() }
@@ -242,8 +221,6 @@ check("a pinch magnifies the page, not reflowing it", pinched[0] > 1.5 && pinche
 const unpinched = await pinch(0.25)
 check("… and pinches back to its size, no smaller", Math.abs(unpinched[0] - 1) < 0.01, unpinched)
 check("the app's own page doesn't magnify", Math.abs((await pinch(2, true))[0] - 1) < 0.01)
-// Under a toast, what the window's page passes on keeps its keys: a pinch it got reaches the page as ⌃-wheels (sites
-// that zoom themselves read them). A real pinch is handed to the page natively before that: web/qa/pinch.mjs.
 const covered = () => app.evaluate(({ BaseWindow }) => {
   const w = BaseWindow.getAllWindows()[0], kids = w.contentView.children
   return kids.indexOf(w.view) > kids.findIndex((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
@@ -256,7 +233,6 @@ const wheels = await inPage("__wheels")
 check("… a pinch on the window's page there reaches the page with its ⌃", wheels.length > 0 && wheels.every(Boolean), wheels)
 await until(async () => !(await covered()), 15000)
 
-// ---------- reload, DevTools, Esc ----------
 await win.evaluate(() => { window.__alive = 1 })
 await inPage("window.__mark = 1")
 await pressInPage("R", ["meta", "shift"])
@@ -277,7 +253,6 @@ await until(async () => (await shownPage())?.loading, 3000)
 await pressInPage("Escape")
 check("Esc while it loads stops it", await until(async () => !(await shownPage())?.loading, 3000) && await at("/two"), await pages())
 
-// ---------- tabs ----------
 const active = async () => (await tabs()).active
 const web = await active()
 await appKeys("Meta+Shift+BracketLeft")

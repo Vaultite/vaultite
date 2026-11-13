@@ -1,14 +1,7 @@
-// Windows for a call (a film shared, a friend's camera beside it) in the desktop app. A pop-out with its bars hidden (Hide
-// window bars: core/workspace.ts hideBars), a web page in it: no tab, pane, page or status bar, the page edge to edge;
-// its traffic lights hidden, and with the pointer at its top they show with a strip that drags it (electron/topstrip.ts,
-// as a player's), always in full screen; the page's right-click brings the bars back, and so does the palette; kept
-// across a reload. Keep window on top (core/ontop.ts, electron/ontop.ts): the palette's, the strip's pin, the menu bar's.
-// A popup the page opens (electron/popup.ts): a window of its own at the size it asked, its opener still its opener,
-// staying as the vault's window minimizes. One of the page's own (its site's, or one it writes into: a call's video
-// popped out) is bare, titled by its page, locked to its video's aspect and kept as last left (title bar, on top);
-// another site's (a sign-in) has its title bar, titled by that site. Mac only (the lights; elsewhere windows keep
-// their frames). WRITES: the throwaway vault only. Frames go to [out dir].
+// Windows for a call in the desktop app: a pop-out with its bars hidden, Keep window on top, the page's popups. Mac only.
+// WRITES: the throwaway vault only. Frames go to [out dir].
 //   node web/qa/barewindow.mjs <vault copy> [out dir]
+// core/workspace.ts, electron/topstrip.ts, core/ontop.ts, electron/ontop.ts, electron/popup.ts
 import { _electron } from "playwright-core"
 import fs from "node:fs"
 import http from "node:http"
@@ -23,9 +16,6 @@ if (OUT) fs.mkdirSync(OUT, { recursive: true })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-barewindow-"))
 keepAwake(600)
 
-// A made-up watch party: the page one colour edge to edge, buttons that open its popups: a camera (a page of its site),
-// the room's video popped out (written into a blank window, as video call sites do: a 4:3 camera in a 16:9 window), and
-// signing in with another site (localhost), sent there at once or first opened blank.
 const ROOM = `<!doctype html><title>Lighthouse watch party</title><style>html,body{margin:0;height:100%;background:#2e86c1}
 button{position:fixed;left:200px;width:120px;height:40px}</style><script>window.__token = "room"
 function popOut() {
@@ -61,7 +51,6 @@ try {
   const origin = new URL(win.url()).origin
   await app.evaluate(({ BaseWindow, Menu }) => {
     BaseWindow.getAllWindows()[0].setBounds({ x: 40, y: 40, width: 1280, height: 800 })
-    // (a pop-out's traffic lights as it shows them, and the menus the pages pop up)
     globalThis.__lights = []
     const vis = BaseWindow.prototype.setWindowButtonVisibility
     globalThis.__popupLights = {}
@@ -74,7 +63,6 @@ try {
   })
   const lights = () => app.evaluate(() => globalThis.__lights.at(-1))
   const ui = (body) => uiAt(origin)(body)
-  /** The pop-out: its content's size and place, its web page's bounds, its strip (the data: page over it) and drag. */
   const where = () => app.evaluate(async ({ BaseWindow }, src) => {
     const w = BaseWindow.getAllWindows().find((x) => x.webContents?.getURL().includes("?popout="))
     if (!w) return null
@@ -85,7 +73,6 @@ try {
       strip: strip ? { shown: strip.getVisible(), top: kids.at(-1) === strip, bounds: strip.getBounds(),
         drag: await strip.webContents.executeJavaScript("getComputedStyle(document.body).webkitAppRegion").catch(() => null) } : null }
   }, SITE)
-  /** Input events to the pop-out's web page (`page`) or its own page. */
   const send = (events, page = true) => app.evaluate(({ BaseWindow }, [events, page, src]) => {
     const w = BaseWindow.getAllWindows().find((x) => x.webContents?.getURL().includes("?popout="))
     const wc = page ? w.contentView.children.find((x) => x.webContents?.getURL().startsWith(src))?.webContents : w.webContents
@@ -106,13 +93,11 @@ try {
     await p.keyboard.type(name)
     const text = () => p.evaluate(() => document.querySelector("[role=listbox]")?.textContent ?? "")
     const listed = (await until(async () => { const t = await text(); return t.includes(name) ? t : null }, 3000)) ?? await text()
-    // (Enter once the row picked is the one asked for)
     await until(() => p.evaluate((n) => document.querySelector("[role=listbox] [aria-selected=true]")?.textContent?.includes(n), name), 3000)
     await p.keyboard.press("Enter"); await wait(400)
     return listed
   }
 
-  // ---------- the page moved into a window of its own ----------
   await ui({ action: "open", path: `view:web/${SITE}`, newTab: true })
   await until(() => win.locator("[data-web-page]:visible").count(), 15000)
   await wait(800)
@@ -126,7 +111,6 @@ try {
   check("… no strip of its own", before && !before.strip)
   await shot("1-popout")
 
-  // ---------- Hide window bars ----------
   const listed = await palette(pop, "Hide window bars")
   check("the palette offers Hide window bars", /Hide window bars/.test(listed), listed.slice(0, 200))
   const bare = await until(async () => { const w = await where(); return w?.page && w.page.y === 0 && w.strip ? w : null }, 5000)
@@ -137,7 +121,6 @@ try {
   check("… the traffic lights hidden, and the strip", (await lights()) === false && !bare?.strip.shown, { lights: await lights(), strip: bare?.strip })
   await shot("2-bare")
 
-  // ---------- the pointer at its top ----------
   const at = bare.at
   await app.evaluate((_e, c) => { globalThis.qaPointer = c }, { x: at.x + 300, y: at.y + 12 })
   await send([{ type: "mouseMove", x: 300, y: 12 }])
@@ -145,7 +128,6 @@ try {
   check("the pointer at its top: a strip across it over the page, which drags the window", shown && shown.strip.top && shown.strip.bounds.y === 0
     && shown.strip.bounds.width === shown.content.width && shown.strip.bounds.height === 40 && shown.strip.drag === "drag", shown?.strip)
   check("… and the traffic lights", (await lights()) === true)
-  // (its right-click: the window's own, as a title bar's)
   await app.evaluate(({ BaseWindow }) => {
     globalThis.__menu = null
     const wc = BaseWindow.getAllWindows().find((x) => x.webContents?.getURL().includes("?popout=")).contentView.children.find((x) => x.webContents?.getURL().startsWith("data:")).webContents
@@ -159,18 +141,15 @@ try {
     .contentView.children.find((x) => x.webContents?.getURL().startsWith("data:")).webContents.capturePage()).toPNG().toString("base64")), "base64"))
   await app.evaluate((_e, c) => { globalThis.qaPointer = c }, { x: at.x + 300, y: at.y + 300 })
   check("the pointer leaving the top hides them", await until(async () => !(await where()).strip.shown, 2000) && (await lights()) === false)
-  // (its own page's pointer too: a note or a terminal there)
   await app.evaluate((_e, c) => { globalThis.qaPointer = c }, { x: at.x + 300, y: at.y + 12 })
   await send([{ type: "mouseMove", x: 300, y: 12 }], false)
   check("… over the window's own page too", await until(async () => (await where()).strip.shown, 2000) && (await lights()) === true)
   await app.evaluate((_e, c) => { globalThis.qaPointer = c }, { x: at.x + 300, y: at.y + 300 })
   await until(async () => !(await where()).strip.shown, 2000)
-  // (lower down, the page has the pointer: its own top is its own)
   await send([{ type: "mouseMove", x: 300, y: 300 }, { type: "mouseDown", x: 300, y: 300, button: "left", clickCount: 1 }, { type: "mouseUp", x: 300, y: 300, button: "left", clickCount: 1 }])
   await wait(300)
   check("… elsewhere nothing shows", !(await where()).strip.shown && (await lights()) === false)
 
-  // ---------- full screen ----------
   await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows().find((x) => x.webContents?.getURL().includes("?popout=")).setFullScreen(true))
   await wait(400)
   check("full screen: the traffic lights shown (the system's top)", (await lights()) === true)
@@ -178,7 +157,6 @@ try {
   await wait(400)
   check("… out of it, hidden again", (await lights()) === false)
 
-  // ---------- kept ----------
   await pop.reload()
   await pop.waitForSelector("[data-web-page]", { timeout: 20000 })
   const again = await until(async () => { const w = await where(); return w?.page?.y === 0 && w.strip ? w : null }, 10000)
@@ -189,7 +167,6 @@ try {
     return w?.windows?.find((x) => x.id === id)?.barsHidden === true
   }))
 
-  // ---------- the page's right-click: Show window bars ----------
   await send([{ type: "mouseDown", x: 300, y: 300, button: "right", clickCount: 1 }, { type: "mouseUp", x: 300, y: 300, button: "right", clickCount: 1 }])
   const menu = await until(() => app.evaluate(() => globalThis.__menu?.items.map((i) => i.label) ?? null), 3000)
   check("the page's right-click offers Show window bars, first", menu?.[0] === "Show window bars", menu)
@@ -200,13 +177,11 @@ try {
   check("… and not kept hidden", await pop.evaluate(() => !document.documentElement.hasAttribute("data-bars-hidden")))
   await shot("4-back")
 
-  // ---------- the palette, both ways ----------
   check("the palette's Hide window bars again", /Hide window bars/.test(await palette(pop, "Hide window bars")) && await until(async () => (await where())?.page?.y === 0, 5000))
   check("… and Show window bars", /Show window bars/.test(await palette(pop, "Show window bars")) && await until(async () => (await where())?.page?.y >= 30, 5000))
   check("the main window doesn't offer it", !/window bars/.test(await palette(win, "window bars")))
   await win.keyboard.press("Escape")
 
-  // ---------- Keep window on top ----------
   const popWin = (fn) => app.evaluate(({ BaseWindow }, fn) => {
     const w = BaseWindow.getAllWindows().find((x) => x.webContents?.getURL().includes("?popout="))
     return new Function("w", `return (${fn})(w)`)(w)
@@ -229,7 +204,6 @@ try {
     find(Menu.getApplicationMenu().items).click(undefined, w)
   })
   check("… its click lets that window go", await until(async () => !(await popWin((w) => w.isAlwaysOnTop() || w.isVisibleOnAllWorkspaces())), 3000))
-  // (the strip's pin, its bars hidden)
   await palette(pop, "Hide window bars")
   await until(async () => (await where())?.strip, 3000)
   await app.evaluate(({ BaseWindow }) => {
@@ -243,15 +217,12 @@ try {
   check("… and the palette lets it go", await until(async () => !(await popWin((w) => w.isAlwaysOnTop())), 3000))
   await palette(pop, "Show window bars")
 
-  // ---------- the page's popups ----------
   await until(async () => (await where())?.page?.y >= 30, 5000)
   const click = (y) => send([{ type: "mouseMove", x: 250, y }, { type: "mouseDown", x: 250, y, button: "left", clickCount: 1 }, { type: "mouseUp", x: 250, y, button: "left", clickCount: 1 }])
-  /** A popup's window (`by`: its title, or an address its page is at) through `fn`, or null. */
   const popupDo = (by, fn) => app.evaluate(({ BaseWindow }, [by, fn]) => {
     const w = BaseWindow.getAllWindows().find((x) => !x.webContents && (by.title ? x.getTitle() === by.title : x.contentView.children.some((v) => v.webContents?.getURL().includes(by.url))))
     return w ? new Function("w", `return (${fn})(w)`)(w) : null
   }, [by, fn.toString()])
-  /** Its size and place, its page's bounds, its title bar (the drawn one) or its top strip, its traffic lights. */
   const popupState = (by) => popupDo(by, (w) => {
     const kids = w.contentView.children, page = kids.find((v) => v.webContents && !v.webContents.getURL().startsWith("data:"))
     const data = kids.filter((v) => v.webContents?.getURL().startsWith("data:"))
@@ -270,19 +241,16 @@ try {
     return until(() => app.evaluate(() => globalThis.__menu?.items.map((i) => i.label) ?? null), 3000)
   }
   const pick = (label) => app.evaluate((_e, label) => globalThis.__menu.items.find((i) => i.label === label).click(), label)
-  // (its page gone too, so the next window.open by its name makes a new one)
   const closePopup = async (by) => {
     const id = await popupDo(by, (w) => { const id = w.contentView.children.find((v) => v.webContents && !v.webContents.getURL().startsWith("data:")).webContents.id; w.close(); return id })
     await until(() => app.evaluate(({ webContents }, id) => !webContents.fromId(id) || webContents.fromId(id).isDestroyed(), id), 3000)
   }
-  // (a frame, when it's been painted: a quiet window's first may not have been yet)
   const shotOf = async (by, name) => {
     if (!OUT) return
     const png = await popupDo(by, (w) => w.contentView.children.find((v) => v.webContents && !v.webContents.getURL().startsWith("data:")).webContents.capturePage().then((i) => i.toPNG().toString("base64"))).catch(() => null)
     if (png) fs.writeFileSync(path.join(OUT, `${name}.png`), Buffer.from(png, "base64"))
   }
 
-  // ---------- a page of its site: a pop-out ----------
   const CAM_BY = { url: "/cam" }
   await click(220)
   const cam = await until(async () => { const c = await popupState(CAM_BY); return c?.visible && c.title === "Alice's camera" && c.strip ? c : null }, 8000) ?? await popupState(CAM_BY)
@@ -299,7 +267,6 @@ try {
   await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows().find((x) => !x.webContents?.getURL().includes("?popout=") && x.webContents?.getURL().startsWith("http")).restore())
   const camMenu = await popupMenu(CAM_BY)
   check("its right-click: Keep window on top and Show title bar", camMenu?.includes("Keep window on top") && camMenu?.includes("Show title bar"), camMenu)
-  // (the strip's own right-click, as a title bar's)
   await app.evaluate(() => { globalThis.__menu = null })
   await popupDo(CAM_BY, (w) => { const wc = w.contentView.children.find((v) => v.webContents?.getURL().startsWith("data:") && v.getBounds().height === 40).webContents; for (const type of ["mouseDown", "mouseUp"]) wc.sendInputEvent({ type, x: 100, y: 12, button: "right", clickCount: 1 }) })
   const camStripMenu = await until(() => app.evaluate(() => globalThis.__menu?.items.map((i) => i.label) ?? null), 3000)
@@ -307,7 +274,6 @@ try {
   await shotOf(CAM_BY, "5-cam")
   await closePopup(CAM_BY)
 
-  // ---------- written into a blank window: a pop-out ----------
   const ROOM_BY = { title: "Alice's room" }
   await click(280)
   const room = await until(async () => { const r = await popupState(ROOM_BY); return r?.visible && r.strip ? r : null }, 8000) ?? await popupState(ROOM_BY)
@@ -341,7 +307,6 @@ try {
   check("… kept for its opener's site, on this machine (not the vault)", keptNow?.["127.0.0.1"]?.bare === true && keptNow["127.0.0.1"].onTop === true, keptNow)
   await closePopup(ROOM_BY)
 
-  // ---------- another site's: a sign-in ----------
   for (const [y, how] of [[340, "sent there at once"], [400, "opened blank, then sent there"]]) {
     const SIGN_BY = { url: "/signin" }
     await click(y)
@@ -357,8 +322,6 @@ try {
     await closePopup(SIGN_BY)
   }
 
-  // ---------- back to the main window, its page live ----------
-  // (its only tab: the pop-out closes as it goes, which mustn't take the page with it)
   await palette(pop, "Hide window bars")
   await until(async () => (await where())?.page?.y === 0, 5000)
   const pageJs = (code) => app.evaluate(({ webContents }, [code, src]) => {
@@ -381,7 +344,6 @@ try {
 } finally {
   const port = await app.evaluate(({ BaseWindow }) => new URL(BaseWindow.getAllWindows().find((x) => x.webContents)?.webContents.getURL() ?? "http://x:0").port).catch(() => "")
   await app.close().catch(() => {})
-  // (and its terminal keeper, which outlives the app: CLAUDE.md, Running and verifying)
   if (port) stopTerminals(port)
   server.close()
   fs.rmSync(TMP, { recursive: true, force: true })

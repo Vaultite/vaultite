@@ -17,7 +17,6 @@ const plugins = path.join(VAULT, ".vaultite/plugins.json")
 const on = fs.existsSync(plugins) ? JSON.parse(fs.readFileSync(plugins, "utf8")) : { enabled: [], disabled: [] }
 fs.writeFileSync(plugins, JSON.stringify({ ...on, enabled: [...new Set([...(on.enabled ?? []), "machines", "web-viewer"])], disabled: (on.disabled ?? []).filter((x) => x !== "machines") }))
 
-/** A server on the vault, as the service runs one (TMPDIR: which machine it's on). */
 async function serve(port, tmpdir, local) {
   const p = testServer({ stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, VAULTITE_VAULT: VAULT, VAULTITE_LOCAL: path.join(TMP, local), HOST: "127.0.0.1", PORT: String(port), VAULTITE_DESKTOP: "", TMPDIR: tmpdir, XDG_RUNTIME_DIR: tmpdir } })
@@ -27,7 +26,6 @@ async function serve(port, tmpdir, local) {
   await until(() => /vaultite: vault read/.test(out), 60000)
   return p
 }
-// (a free port, never one of the 20000-40000 the desktop app gives its vaults: one taken would be the user's server)
 const PORT = await freePort()
 const ORIGIN = `http://127.0.0.1:${PORT}`
 let server = await serve(PORT, RUN, "local")
@@ -70,7 +68,6 @@ check("the server restarted: the app attaches again, the agent's tab still there
 await until(async () => await win.locator("[role=tree]").count() > 0, 20000)
 check("… and the window's page came back", await win.locator("[role=tree]").count() > 0)
 
-// ---------- a server on another machine (another TMPDIR): this always-on machine's browser answers it ----------
 const OTHER_PORT = await freePort()
 fs.mkdirSync(path.join(VAULT, ".vaultite/plugins/machines"), { recursive: true })
 fs.writeFileSync(path.join(VAULT, ".vaultite/plugins/machines/data.json"), JSON.stringify({ machines: [
@@ -84,5 +81,5 @@ await app.close()
 await until(async () => (await self()).desktop === false, 10000)
 check("the app quit: the server has no browser, and keeps serving", (await self()).desktop === false)
 server.kill()
-try { fs.rmSync(TMP, { recursive: true, force: true }) } catch { /* a server still writing its folder */ }
+try { fs.rmSync(TMP, { recursive: true, force: true }) } catch {}
 await done()

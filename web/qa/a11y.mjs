@@ -1,7 +1,5 @@
-// Accessibility that only gets better: axe-core's WCAG A/AA and best-practice rules over the app's surfaces (desktop
-// light and dark, an open palette, menu and sheet, the phone), each rule's failing elements held to a11y.json's limit
-// (a rule not there: none); and the keyboard: Tab never lands on what can't be seen, and isn't trapped. --ratchet
-// lowers a limit a win beat (commit it). Reads only, but opens tabs: throwaway server.
+// Accessibility only gets better: axe-core's rules over the app's surfaces, held to a11y.json's limits; Tab never trapped.
+// Reads only, but opens tabs: throwaway server. --ratchet lowers a limit a win beat (commit it).
 //   node web/qa/a11y.mjs <base url> [--ratchet]
 import fs from "node:fs"
 import { createRequire } from "node:module"
@@ -18,15 +16,12 @@ const v = await subjects(B)
 const person = v.people?.[0] ?? v.linked?.person
 const page$ = async (name) => { try { return `#${await pageHash(B, name)}` } catch { return null } }
 
-/** rule -> failing elements, summed over every surface; and where each was seen first (a selector, for the report). */
 const now = {}, where = {}
 async function audit(page, surface) {
   if (!(await page.evaluate(() => "axe" in window))) {
     await page.addScriptTag({ content: AXE })
-    // A menu open over the page is a popup of its own, as axe's dialogs are, not page content outside a landmark
     await page.evaluate(() => window.axe.configure({ checks: [{ id: "region", options: { regionMatcher: "dialog, [role=dialog], [role=alertdialog], [role=menu], svg" } }] }))
   }
-  // (what's still fading in reads as low contrast: measured once its animations end, endless ones aside)
   await page.evaluate(() => Promise.race([new Promise((r) => setTimeout(r, 1500)), Promise.all(document.getAnimations()
     .filter((a) => a.effect?.getComputedTiming().endTime !== Infinity).map((a) => a.finished.catch(() => {})))]))
   const found = await page.evaluate(async (tags) => (await window.axe.run(document, { runOnly: { type: "tag", values: tags }, resultTypes: ["violations"] }))
@@ -35,7 +30,6 @@ async function audit(page, surface) {
 }
 async function go(page, hash) { await page.goto("about:blank"); await page.goto(`${B}${hash}`); await wait(1800) }
 
-// ---------- desktop, light and dark ----------
 for (const scheme of ["light", "dark"]) {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: scheme })
   const page = watch(await ctx.newPage())
@@ -43,7 +37,6 @@ for (const scheme of ["light", "dark"]) {
     ["get", "#get"], ["agents", "#agents"], ["errors", "#errors"], ["today", await page$("Today")], ["people", await page$("People")]]
   for (const [name, hash] of surfaces) if (hash !== null) { await go(page, hash); await audit(page, `${scheme} ${name}`) }
   if (scheme === "light") {
-    // Over the page: the palette, a file's menu, a person's sheet.
     await go(page, "")
     await openPalette(page); await until(() => page.locator("[role=option]").count(), 3000)
     await audit(page, "palette"); await page.keyboard.press("Escape"); await wait(300)
@@ -54,8 +47,6 @@ for (const scheme of ["light", "dark"]) {
     }
     if (person) { await go(page, `#file/${enc(`${person.id}.md`)}`); await audit(page, "person") }
 
-    // The keyboard: Tab round the whole window from a note, back to where it began, every stop seen; in the note's
-    // editor Tab indents, and Escape then Tab goes on.
     await go(page, `#file/${enc(NOTE)}`)
     await page.mouse.click(720, 3)
     const stops = [], hidden = [], places = new Set()
@@ -63,7 +54,6 @@ for (const scheme of ["light", "dark"]) {
     for (let i = 0; i < 200 && !round; i++) {
       if (editor) await page.keyboard.press("Escape")
       await page.keyboard.press("Tab")
-      // (once what focus reveals has faded in: a bar shown by :focus-within starts at opacity 0)
       const s = await page.evaluate(async () => {
         await Promise.all(document.getAnimations().filter((a) => a instanceof CSSTransition).map((a) => a.finished.catch(() => {})))
         const e = document.activeElement
@@ -71,7 +61,6 @@ for (const scheme of ["light", "dark"]) {
         const r = e.getBoundingClientRect(), cs = getComputedStyle(e)
         const seen = r.width > 0 && r.height > 0 && cs.visibility !== "hidden" && r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth
           && ![...function* () { for (let p = e; p; p = p.parentElement) yield p }()].some((p) => getComputedStyle(p).opacity === "0")
-        // (by the element itself: two buttons may share a name)
         const met = window.__stops ??= new WeakSet(), again = met.has(e)
         met.add(e)
         return { key: `${e.tagName.toLowerCase()} ${e.getAttribute("aria-label") ?? e.textContent?.trim().slice(0, 40) ?? ""}`, seen, again,
@@ -94,7 +83,6 @@ for (const scheme of ["light", "dark"]) {
   await ctx.close()
 }
 
-// ---------- the phone ----------
 const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
 const P = watch(await phone.newPage(), { label: "phone" })
 for (const [name, hash] of [["start", ""], ["settings", "#settings"], ["today", await page$("Today")], ["person", person ? `#file/${enc(`${person.id}.md`)}` : null]]) {
@@ -102,7 +90,6 @@ for (const [name, hash] of [["start", ""], ["settings", "#settings"], ["today", 
 }
 await phone.close()
 
-// ---------- the limits ----------
 const limits = JSON.parse(fs.readFileSync(LIMITS, "utf8"))
 const rules = [...new Set([...Object.keys(limits), ...Object.keys(now)])].sort()
 console.table(Object.fromEntries(rules.map((k) => [k, { now: now[k] ?? 0, limit: limits[k] ?? 0, first: where[k] ?? "" }])))

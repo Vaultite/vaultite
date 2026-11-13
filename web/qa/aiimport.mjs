@@ -11,8 +11,6 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 const { args: [B, OUT = `${SHOTS}aiimport/`], browser, check, watch, done } = await qa(import.meta.url)
 fs.mkdirSync(OUT, { recursive: true })
 const ROOT = fileURLToPath(new URL("../../", import.meta.url))
-// What it uses, whatever the vault turned off (the sandbox starts calm: AI import is off). `--url` naming this server
-// makes vau ask it for its vault; the vault variables a Vaultite terminal sets (the user's) are left out besides.
 {
   const env = { ...process.env }
   for (const k of ["VAULTITE_VAULT", "VAULTITE_URL"]) delete env[k]
@@ -22,7 +20,6 @@ const api = apiAt(B)
 const file = async (p) => (await api("GET", `file?path=${encodeURIComponent(p)}`)).text ?? null
 const files = async (pre) => (await api("GET", "files")).files.map((f) => f.path).filter((p) => p.startsWith(pre))
 
-// The made-up exports, and a big one (random text, so it stays over 8 MB zipped).
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "aiimport-qa-"))
 execFileSync("node", [path.join(ROOT, "tools/fixtures/ai-import/make.ts"), dir])
 const { zipFiles } = await import(pathToFileURL(path.join(ROOT, "core/zipfile.ts")).href)
@@ -48,12 +45,10 @@ const importVia = async (name) => {
 
 await page.goto(B); await page.locator("[data-pane]").first().waitFor()
 
-// 1. ChatGPT's export through the palette.
 await importVia("chatgpt-export.zip")
 const done1 = toast("ChatGPT: 3 chats")
 await done1.waitFor({ timeout: 30_000 })
 const t1 = await done1.innerText()
-// (a one-message chat is kept too: Fewest messages is 1)
 check("the toast says what it did", /3 chats \(3 new\)/.test(t1) && !/skipped/.test(t1) && /1 image/.test(t1) && /6 memories to review/.test(t1), t1)
 check("with Review memories", (await done1.locator("[data-button]").innerText()) === "Review memories")
 await page.screenshot({ path: `${OUT}toast.png` })
@@ -61,16 +56,12 @@ const chats = await files("Chats/ChatGPT/")
 check("the chats are notes in Chats/ChatGPT, the image in Attachments", chats.includes("Chats/ChatGPT/2026-09-20 Trip to Lisbon.md") && chats.includes("Chats/ChatGPT/Memories to review.md") &&
   (await api("GET", "files")).others.some((f) => f.path === "Chats/ChatGPT/Attachments/file-Img001-beach.png"), chats)
 
-// 2. The review list: its card, ticked ones added to ME.md.
 await done1.locator("[data-button]").click()
 await page.locator(".cm-content", { hasText: "Biscuit" }).first().waitFor({ timeout: 15_000 }).catch(() => {})
-// (a note opens with the cursor at its start, which shows a block there as its source: read it instead)
 await palette(page, "Switch to reading view", 0)
 const rel = "Chats/ChatGPT/Memories to review.md"
 const review = page.locator(`article.file-view[data-path="${rel}"]`).first()
 const card = review.locator("[data-memory-add]").first()
-// (the command runs once the palette has closed, and the note is hidden until it's back at its place: its card is read
-// once it's in reading and shown, not the editing view's card from before)
 await until(() => review.evaluate((el) => el.querySelector(".cm-content")?.getAttribute("contenteditable") === "false" &&
   getComputedStyle(el.querySelector("[data-memory-add]") ?? el).visibility === "visible" && !!el.querySelector("[data-memory-add]")), 15_000)
 check("Review memories opens the list, its card says nothing is ticked", (await card.innerText()) === "Tick the ones to add", await card.innerText().catch(() => null))
@@ -87,25 +78,21 @@ const me = await file("ME.md")
 check("Add puts them in ME.md, under About me and How to work with me", /## About me[\s\S]*- I have a dog named Biscuit\./.test(me) && /## How to work with me[\s\S]*- Prefer concise answers with bullet points\./.test(me), me)
 const after = await file(rel)
 check("and moves them under Added", /## Added\n\n- ME.md, About me · I have a dog named Biscuit\./.test(after) && !after.includes("[x]"), after.slice(after.indexOf("## To review")))
-// The page follows the files live: the store reloads at most once a second, so the count comes within about that.
 const counted = () => page.locator("section", { has: card }).first().innerText()
 await page.locator("section", { has: card }).first().filter({ hasText: /4 to review, 0 ticked/ }).waitFor({ timeout: 30_000 }).catch(() => {})
 check("the card counts what's left", /4 to review, 0 ticked/.test(await counted()), await counted())
 
-// 3. Again: nothing new, nothing doubled.
 await importVia("chatgpt-export.zip")
 const done2 = toast("3 already here")
 await done2.waitFor({ timeout: 30_000 }).catch(() => {})
 check("importing again: already here, no memories come back", (await done2.isVisible()) && !/memories to review/.test(await done2.innerText()), await page.locator("[data-sonner-toast]").allInnerTexts())
 check("no second files", (await files("Chats/ChatGPT/")).length === chats.length, await files("Chats/ChatGPT/"))
 
-// 4. Claude's .dms.
 await importVia("claude-export.dms")
 const done3 = toast("Claude: 3 chats")
 await done3.waitFor({ timeout: 30_000 }).catch(() => {})
 check("Claude's export: chats, a project, memories", (await done3.isVisible()) && /1 project/.test(await done3.innerText()) && /5 memories/.test(await done3.innerText()), await page.locator("[data-sonner-toast]").allInnerTexts())
 
-// 5. Over 8 MB: in pieces.
 const pieces = []
 page.on("request", (r) => { if (r.url().includes("/api/ai-import/upload")) pieces.push(r.url()) })
 await importVia("big-claude.zip")
@@ -113,11 +100,9 @@ const done4 = toast("Claude: 1100 chats")
 await done4.waitFor({ timeout: 180_000 }).catch(() => {})
 check("a big export goes up in pieces and imports", pieces.length >= 2 && (await done4.isVisible()) && /1100 new/.test(await done4.innerText()), [pieces.length, await page.locator("[data-sonner-toast]").allInnerTexts()])
 
-// 6. vau import: the same, from a terminal; idempotent.
 const out = execFileSync("node", [path.join(ROOT, "bin/vau"), "import", path.join(dir, "claude-export.dms")], { env: { ...process.env, VAULTITE_URL: B.replace(/\/$/, "") }, encoding: "utf8" })
 check("vau import: said and nothing doubled", /Claude: 3 chats in Chats\/Claude\/: 0 new, 0 updated, 2 already there/.test(out), out)
 
-// 7. A chat at 390px.
 const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
 const pp = watch(await phone.newPage())
 await pp.goto(`${B}#file/${encodeURIComponent("Chats/Claude/2026-09-21 Recipe ideas.md")}`); await wait(2500)

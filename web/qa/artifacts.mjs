@@ -41,13 +41,12 @@ async function open(width, height, mobile = false) {
 const frameOf = async (page, name = "QA%20artifact.html") => {
   for (let i = 0; i < 40; i++) {
     const f = page.frames().find((x) => x.url().includes(`/v/QA/${name}`) && x.url().includes("frame=1"))
-    if (f) { try { await f.waitForFunction(() => window.__t && window.__t.rows !== undefined && window.__t.net && window.__t.api, null, { timeout: 8000 }); return f } catch { /* still loading */ } }
+    if (f) { try { await f.waitForFunction(() => window.__t && window.__t.rows !== undefined && window.__t.net && window.__t.api, null, { timeout: 8000 }); return f } catch {} }
     await wait(250)
   }
   return null
 }
 
-// Desktop: the artifact opened.
 let page = await open(1280, 860)
 await page.goto(`${B}#file/${enc("QA/QA artifact.html")}`)
 await wait(1500)
@@ -66,11 +65,10 @@ if (f) {
 }
 await wait(800)
 let state = null
-try { state = JSON.parse(readFileSync(`${VAULT}/.vaultite/artifacts/QA/QA artifact.html.json`, "utf8")) } catch { /* not saved */ }
+try { state = JSON.parse(readFileSync(`${VAULT}/.vaultite/artifacts/QA/QA artifact.html.json`, "utf8")) } catch {}
 check("localStorage kept in the vault", state?.visits === "1", state)
 await page.screenshot({ path: `${OUT}artifact-desktop.png` })
 
-// Theme: dark, sent to the frame.
 await page.evaluate(() => fetch("api/config/appearance", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theme: "dark" }) }))
 await page.reload()
 await wait(1500)
@@ -84,17 +82,15 @@ if (f) {
 await page.screenshot({ path: `${OUT}artifact-dark.png` })
 await page.evaluate(() => fetch("api/config/appearance", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theme: "system" }) }))
 
-// Live: the CSV changes on disk, the artifact redraws.
 writeFileSync(`${VAULT}/QA/QA table.csv`, readFileSync(`${VAULT}/QA/QA table.csv`, "utf8") + "2026-01-04,-9,Books\n")
 let live = false
 for (let i = 0; i < 30 && !live; i++) {
   await wait(500)
   const fr = page.frames().find((x) => x.url().includes("/v/QA/") && x.url().includes("frame=1"))
-  try { live = (await fr?.evaluate(() => window.__t?.rows)) === 4 } catch { /* reloading */ }
+  try { live = (await fr?.evaluate(() => window.__t?.rows)) === 4 } catch {}
 }
 check("a changed CSV redraws the artifact", live)
 
-// Links: a web link opens a new tab, asking first once the page read the vault; a vault link opens the note in the app.
 const popup = () => page.context().waitForEvent("page", { timeout: 10_000 }).catch(() => null)
 const asked = () => until(() => page.$("dialog[data-confirm]"), 2000)
 if (f) {
@@ -117,7 +113,6 @@ if (f) {
   check("vault link opens the note", await until(async () => decodeURIComponent(await page.evaluate(() => location.hash)).includes("QA/QA note.md")), await page.evaluate(() => location.hash))
 }
 
-// A page in the vault asks before a link out even when it read nothing: it's given what it kept from its first load.
 writeFileSync(`${VAULT}/QA/QA plain.html`, `<!doctype html><p>plain</p><a id="ext" href="https://example.com/">example</a><script>window.__t = { ready: 1 }</script>`)
 await page.goto(`${B}#file/${enc("QA/QA plain.html")}`)
 let plain = null
@@ -133,7 +128,6 @@ if (plain) {
   if (p2) await p2.close()
 } else check("a page that read nothing opens", false)
 
-// A note with both embedded, being read.
 await page.goto(`${B}#file/${enc("QA/QA note.md")}`)
 await viewsAt(B)("read")
 await page.evaluate(() => { localStorage.removeItem("vaultite.tabViews") })
@@ -145,14 +139,12 @@ const tableRows = await page.locator(".csv-view tbody tr").count()
 check("table embedded in a note", tableRows === 4, tableRows)
 await page.screenshot({ path: `${OUT}artifact-embeds.png`, fullPage: true })
 
-// A dashboard with an embed.
 await page.goto(`${B}#file/${enc("QA/QA board.md")}`)
 await wait(2000)
 f = await frameOf(page)
 const bh = (await page.locator("iframe").first().boundingBox())?.height
 check("artifact in a dashboard, with its height", !!f && Math.abs(bh - 300) < 2, bh)
 
-// The table opened: filter and sort.
 await page.goto(`${B}#file/${enc("QA/QA table.csv")}`)
 check("table opens as a table", await until(async () => (await page.locator(".csv-view tbody tr").count()) === 4))
 await page.fill(".csv-view input", "coffee")
@@ -163,7 +155,6 @@ const firstAmount = await page.locator(".csv-view tbody tr:first-child td:nth-ch
 check("sort numbers as numbers", firstAmount === "-42", firstAmount)
 await page.screenshot({ path: `${OUT}table-desktop.png` })
 
-// Phone: the artifact in the sheet, no sideways scroll.
 page = await open(390, 844, true)
 await page.goto(`${B}#file/${enc("QA/QA artifact.html")}`)
 await wait(2500)
@@ -173,14 +164,12 @@ const over = await page.evaluate(() => document.documentElement.scrollWidth - wi
 check("phone: no sideways scroll", over <= 0, over)
 await page.screenshot({ path: `${OUT}artifact-phone.png` })
 
-// It can't navigate itself off this server, carrying what it read.
 writeFileSync(`${VAULT}/QA/QA leak.html`, `<!doctype html><p>leak</p><script>setTimeout(() => { location.href = "https://example.com/?leak=1" }, 200)</script>`)
 await page.goto(`${B}#file/${enc("QA/QA leak.html")}`)
 await wait(3000)
 const away = page.frames().map((x) => x.url()).filter((u) => u.startsWith("https://example.com"))
 check("an artifact can't navigate itself to another site", !away.length, away)
 
-// As text, for AIs.
 const text = await (await fetch(`${B}api/render?path=${enc("QA/QA note.md")}`)).text()
 check("render: artifact and table as text", text.includes("Reads: `QA/QA table.csv`") && text.includes("| 2026-01-01 | -5.20 | Coffee, large |"), text.slice(0, 400))
 

@@ -14,7 +14,6 @@ await post("file", { path: `${DIR}/First match.md`, text: "---\ntype: note\nkind
 await post("file", { path: `${DIR}/Second match.md`, text: "---\ntype: note\nkind: note\ntags: [Qasource]\n---\n\nTwo.\n" })
 await post("file", { path: NOTE, text: "---\ntype: note\nkind: note\n---\n\nIntro line, about [[First match]] and [[Second match]].\n\n```block-graph\ntitle: Qa sources\n```\n\nEnd line.\n" })
 
-// The API, as an agent asks it.
 const fenceLine = (await (await fetch(`${B}api/file?path=${enc(NOTE)}`)).json()).text.split("\n").indexOf("```block-graph")
 const all = await (await fetch(`${B}api/blocks/sources?path=${enc(NOTE)}`)).json()
 const q = all.blocks?.[0]
@@ -64,7 +63,6 @@ const line = await page.evaluate(() => {
 check(`…with the cursor on its first option (${JSON.stringify(line)})`, line === "title: Qa sources")
 await page.screenshot({ path: `${OUT}blocksource-edit.png` })
 
-// In live preview, right-click on a drawn block opens the same menu, not its source.
 await page.keyboard.press("Escape")
 await page.locator(".vau-editor .cm-line", { hasText: "End line." }).first().click(); await ui.idle()
 const drawn = page.locator(".cm-block").getByText("Qa sources").first()
@@ -74,7 +72,6 @@ check("…and the block stays drawn", (await page.locator(".cm-block").getByText
 await page.keyboard.press("Escape")
 await ctx.close()
 
-// A phone: a finger held on the block opens the menu.
 const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
 const pp = await phone.newPage(), pui = app(pp)
 await pp.goto(`${B}#file/${enc(NOTE)}`)
@@ -101,7 +98,6 @@ for (const device of ["desktop", "phone"]) {
   await p.goto(`${B}#file/${enc(BOARD)}`)
   const title = p.getByText("Qa target", { exact: true }).first()
   await title.waitFor(); await pu.idle()
-  // (the block a third of the way down, as it's read)
   await title.scrollIntoViewIfNeeded()
   await title.evaluate((el) => { const r = el.getBoundingClientRect(); let s = el.parentElement; while (s && !(s.scrollHeight > s.clientHeight && /auto|scroll/.test(getComputedStyle(s).overflowY))) s = s.parentElement; (s ?? document.scrollingElement).scrollBy(0, r.top - innerHeight / 3) })
   await pu.idle()
@@ -113,7 +109,6 @@ for (const device of ["desktop", "phone"]) {
   } else await pu.menu.context(title)
   await pu.idle()
   await p.locator("[role=menu]").getByRole("menuitem", { name: "Edit source" }).click(); await pu.idle()
-  // Its fence's line: the one before its first option.
   const fence = await p.evaluate(() => {
     const l = [...document.querySelectorAll(".cm-line")].find((x) => x.getClientRects().length && x.textContent === `filters: 'type == "project"'`)
     return l ? Math.round(l.previousElementSibling.getBoundingClientRect().top) : null

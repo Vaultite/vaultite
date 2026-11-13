@@ -42,7 +42,6 @@ check("a page not bookmarked: an outline star at the end of the address bar", aw
   await win.locator("[data-web-address-bar]").innerHTML().catch(() => ""))
 const bar = await win.locator("[data-web-page] [data-web-address-bar]:visible").boundingBox(), at = await star.boundingBox()
 check("… last in the field, at its right end", !!bar && !!at && bar.x + bar.width - (at.x + at.width) < 8, { bar, at })
-// (the star names a bookmark with the page's title as it is then: before it has one, its address)
 check("(the page's title has come)", await until(() => win.locator("[data-tab-strip] [role=tab]", { hasText: "Lighthouse field notes" }).count(), 20000))
 
 await star.click()

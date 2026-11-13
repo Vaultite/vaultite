@@ -12,8 +12,6 @@ const { check, fails } = await qa(import.meta.url, { chrome: false })
 if (!fs.existsSync(CHROME)) { console.log("boot: skipped (no Google Chrome here)"); process.exit(0) }
 if (!process.argv[2] && !fs.existsSync(path.join(ROOT, "web/dist/index.html"))) { console.error("boot: no web/dist (npm run build first)"); process.exit(1) }
 
-// The server: the one given, else this checkout's on a sandbox vault of its own (stopped by its own handle, and its
-// terminals by its port, at the end).
 const servers = []
 async function serve(vault, local) {
   const port = await freePort()
@@ -33,7 +31,6 @@ async function serve(vault, local) {
 let base = process.argv[2], tmp = null, github = null, bundles = null
 if (!base) {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vau-boot-"))
-  // (a bundle installing Vaultite's own plugins gets them from a made-up Vaultite/plugins here, never GitHub)
   github = officialRepos(path.join(tmp, "official"))
   bundles = officialBundles(path.join(tmp, "official"))
   const made = spawnSync(process.execPath, [path.join(ROOT, "bin/vau"), "sandbox", path.join(tmp, "vault")], { encoding: "utf8" })
@@ -43,7 +40,6 @@ if (!base) {
 if (!base.endsWith("/")) base += "/"
 
 async function stop() {
-  // (its files removed only once it's gone: on a busy machine a server took over the 2 s of retries to exit, still writing)
   await Promise.all(servers.map(async ({ server, port }) => {
     if (server.exitCode === null && server.signalCode === null) {
       const gone = new Promise((ok) => server.once("exit", ok))
@@ -56,7 +52,6 @@ async function stop() {
 }
 
 const browser = await launch()
-// A page whose code loops never answers a wait: the run fails naming where, not hours later at the job's timeout.
 let doing = "starting"
 setTimeout(async () => {
   console.error(`boot: stuck 10 min at ${doing}`)
@@ -64,15 +59,11 @@ setTimeout(async () => {
   await stop()
   process.exit(1)
 }, 600_000).unref()
-// Generous waits: a busy machine is slow, not broken (a broken build fails fast: the error screen, a pageerror).
 const SLOW = 60_000
-/** Each route on a desktop and a phone: it draws and throws nothing. */
 async function visit(base, prefix = "") {
-  // A note to open (its editor is a chunk of its own).
   const state = await (await fetch(`${base}api/state`)).json()
   const note = state.notes?.[0]?.id ?? null
   const sizes = { desktop: { viewport: { width: 1280, height: 800 } }, phone: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } }
-  // (each size in a context of its own, at once: their waits overlap)
   await Promise.all(Object.entries(sizes).map(async ([name, opts]) => {
     const ctx = await browser.newContext(opts)
     const page = await ctx.newPage()
@@ -84,7 +75,7 @@ async function visit(base, prefix = "") {
       doing = `${prefix}${name}: ${r || "first page"}`
       await page.goto(base + r)
       const drawn = await page.waitForFunction(() => document.getElementById("vau-boot-error") || document.querySelector("#root > *"), null, { timeout: SLOW }).catch(() => null)
-      await wait(1500) // (what comes just after: the store, lazy chunks, effects)
+      await wait(1500)
       const screen = await page.evaluate(() => document.getElementById("vau-boot-error")?.innerText ?? null)
       const label = `${prefix}${name}: ${r || "first page"}`
       check(`${label} draws`, drawn && !screen, screen ?? `nothing drawn in ${SLOW / 1000} s`)
@@ -95,7 +86,6 @@ async function visit(base, prefix = "") {
   }))
 }
 
-/** Every file under dir but .vaultite/: path -> its bytes. */
 function files(dir) {
   const out = {}
   for (const f of fs.readdirSync(dir, { recursive: true }).sort()) {
@@ -109,7 +99,6 @@ try {
   await visit(base)
   doing = "the error screen"
 
-  // The screen: the app's own code throwing as it loads, and its code not loading at all.
   const broken = async (label, how, expect) => {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
     const page = await ctx.newPage()
@@ -146,10 +135,8 @@ try {
     const after = files(own)
     const touched = Object.keys({ ...before, ...after }).filter((f) => before[f] !== after[f])
     check("own vault: opening it changes none of the user's files and adds none outside .vaultite/", !touched.length, touched.join(", "))
-    // Set up Vaultite's way (electron/setupwin.ts): a setup picked, its plugins write their pages (core/pages.ts).
     const call = (method, route, body) => fetch(`${ownBase}api/${route}`, { method, headers: { "Content-Type": "application/json" }, body: body && JSON.stringify(body) })
     const applied = []
-    // (Days, as the directory's Life OS, installs Vaultite's own plugins, Today and Books among them: as the user's yes in the app)
     fs.cpSync(path.join(ROOT, "tools/fixtures/bundles/days"), path.join(own, ".vaultite/bundles/days"), { recursive: true })
     for (const id of ["standard", "days"]) applied.push((await call("POST", `bundles/${id}/apply`, { allowCode: true })).status)
     await fetch(`${ownBase}api/state`)
@@ -160,7 +147,6 @@ try {
     const guide = (await (await call("GET", "bundles/days")).json()).bundle?.guide
     check("own vault: ...and adds only its plugins' pages, in Dashboards/, and its guide", added.length > 0 && added.includes(guide) &&
       added.every((f) => f === guide || (f.startsWith("Dashboards/") && /^type: dashboard$/m.test(later[f]))), added)
-    // ...its pages pinned and drawn, the user's files now.
     const st = await (await fetch(`${ownBase}api/state`)).json()
     const people = st.files.files.find((f) => f.path === "Dashboards/People.md")
     const pinned = (await (await call("GET", "config/pages")).json()).pinned ?? []
@@ -172,17 +158,14 @@ try {
     check("own vault: the page draws its blocks", await page.waitForSelector("[data-block=people-due]", { timeout: SLOW }).then(() => true, () => false))
     check("own vault: the sidebar lists it", await page.locator("aside >> text=People").count() > 0)
     await ctx.close()
-    // Every plugin on, the app running a while and every schedule run (as its plugin does, on its own): nothing outside
-    // .vaultite/ changes but what the user did, until a plugin is allowed to write there.
     const list = await (await call("GET", "plugins")).json()
-    // (Activity and the agents' plugins too, off by default)
     const agents = ["activity", "token-count", "workspaces", "codex"]
     await call("PATCH", "config/plugins", { disabled: [], enabled: [...list.filter((p) => p.optIn || p.tier === "vault").map((p) => p.id), ...agents] })
     await fetch(`${ownBase}api/state`)
     const editedAt = Date.now()
-    await call("PUT", "file", { path: "Notes/Plain.md", text: "Just a thought, edited.\n" }) // (the user's own: Activity's recap has a day to write)
+    await call("PUT", "file", { path: "Notes/Plain.md", text: "Just a thought, edited.\n" })
     const edited = files(own)
-    await wait(6000) // (the scheduler's first turn, timers, the change heard)
+    await wait(6000) // (the app running a while: the scheduler's first turn, its timers)
     const jobs = await (await call("POST", "ops/schedule.list", {})).json()
     const runs = await Promise.all(jobs.map((j) => call("POST", "ops/schedule.run", { id: j.id }).then((r) => r.json(), () => null)))
     await wait(2000)
@@ -192,7 +175,6 @@ try {
     check("own vault: every plugin on, schedules run: nothing written outside .vaultite/ without a grant", jobs.length > 0 && !wrote.length, [jobs.map((j) => j.id), wrote, runs])
     check("own vault: ...the refused write asks the user (Activity's recaps)", grants.writes.some((g) => g.plugin === "activity" && g.answer === "ask"), grants)
     await call("POST", "ops/plugin.grant", { id: "activity" })
-    // (just after midnight it writes yesterday's too, as it should: a run spanning midnight gets two)
     const day = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}.md` }
     const days = [day(editedAt - 864e5), day(editedAt), day(Date.now())]
     await call("POST", "ops/schedule.run", { id: "activity/recaps" })

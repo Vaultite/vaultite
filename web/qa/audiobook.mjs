@@ -8,7 +8,7 @@ const { args: [B, VAULT, OUT = SHOTS], browser, check, watch, done } = await qa(
 const enc = encodeURIComponent
 const BOOK = "Qa audiobook/The keeper's log.m4b", OTHER = "Qa audiobook/Other.md"
 
-// A 5 minute book (Opus in MP4: Chromium for Testing has no AAC) with three chapters and a cover inside it.
+// (Opus in MP4: Chromium for Testing has no AAC)
 const dir = `${VAULT}/Qa audiobook`
 fs.mkdirSync(dir, { recursive: true })
 const ff = (...a) => execFileSync("ffmpeg", ["-loglevel", "error", "-y", ...a])
@@ -52,7 +52,7 @@ for (const [label, viewport] of [["desktop", { width: 1280, height: 820 }], ["ph
   await page.getByRole("menuitem", { name: "15 minutes" }).click(); await wait(1200)
   const sleep = await full.getByRole("button", { name: /^Sleep timer:/ }).innerText().catch(() => "")
   check(`${label}: the sleep timer counts down on its button`, /1[45]:\d\d/.test(sleep), sleep)
-  await until(async () => !(await page.locator("[data-sonner-toast]").count()), 10_000) // (the bookmark's toast, with its Undo)
+  await until(async () => !(await page.locator("[data-sonner-toast]").count()), 10_000)
   await page.screenshot({ path: `${OUT}audiobook-full-${label}.png`, fullPage: false })
 
   await page.goto(`${B}#file/${enc(OTHER)}`); await wait(1500)

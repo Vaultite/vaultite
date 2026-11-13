@@ -33,8 +33,6 @@ try {
   const options = () => win.locator("[role=dialog] [role=option]").allInnerTexts()
   const tabName = () => win.evaluate(() => document.querySelector("[data-tab-bar] [role=tab][aria-selected=true]")?.textContent?.trim() ?? "")
 
-  // ---------- Rename tab… ----------
-  // (a file's tab renames its file in its title; a page of the app's is named in the palette)
   await palette("Open settings"); await wait(1200)
   const before = await tabName()
   check("Rename tab… is in the palette", await palette("Rename tab"))
@@ -51,7 +49,6 @@ try {
   check("...Enter renames, the palette closed", !(await win.$("[role=dialog] input")), before)
   check("...the tab takes the name", (await tabName()).includes("Lighthouse notes"), [before, await tabName()])
 
-  // ---------- Escape leaves it ----------
   check("Rename tab… again", await palette("Rename tab"))
   await win.keyboard.type("Not this"); await win.keyboard.press("Escape"); await wait(500)
   check("...Esc leaves the name as it was", (await tabName()).includes("Lighthouse notes"), await tabName())
@@ -59,8 +56,6 @@ try {
   await win.keyboard.press("Backspace"); await wait(200); await win.keyboard.press("Enter"); await wait(600)
   check("...an empty Enter brings the automatic name back", (await tabName()) === before, [before, await tabName()])
 
-  // ---------- a new container ----------
-  // (the Sites panel's New container button; no palette command makes one)
   await palette("Sites"); await wait(800)
   const btn = win.locator("[data-web-new-container]").first()
   const opened = (await btn.count()) > 0 && await btn.click().then(() => true, () => false)

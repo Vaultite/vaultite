@@ -1,9 +1,7 @@
-// Agents' pages out of the user's tabs (electron/web.ts parks them, electron/browser/agent.ts; AgentsPanel.tsx): an
-// agent's page opens with no tab, draws on through a cross-site load (screenshots, the corner card's live picture), its
-// pointer in the page; Open as tab hands the same page to a tab and Move to background takes it back; an ask opens it as
-// a tab with a card and Done; it outlives the window reloading.
+// Agents' pages out of the user's tabs: no tab, drawn through a cross-site load, Open as tab and back, an ask, a reload.
 // WRITES: the throwaway vault only.
 //   node web/qa/agentpages.mjs <vault copy> [shots dir]   (SHOW=1 on a Mac: on screen, the shots taken by macOS)
+// electron/web.ts, electron/browser/agent.ts, AgentsPanel.tsx
 import { _electron } from "playwright-core"
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
@@ -17,7 +15,6 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-agentpages-"))
 keepAwake(600)
 if (SHOTS) fs.mkdirSync(SHOTS, { recursive: true })
 
-// ---------- a made-up site: a button counting its clicks in the title, on two sites (127.0.0.1 and localhost) ----------
 const site = http.createServer((_q, res) => {
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
   res.end(`<!doctype html><title>clicks=0</title><style>body{font:18px system-ui;margin:40px}button{font-size:20px;padding:12px 24px}</style>
@@ -46,7 +43,7 @@ const op = async (id, params) => {
   const j = await r.json().catch(() => ({}))
   return r.ok ? (j.result ?? j) : { error: j.error ?? r.status, status: r.status }
 }
-/** The window as macOS draws it, pages and all (a page's own screenshot leaves the native pages out). */
+// (a page's own screenshot leaves the window's native views out)
 async function shot(name) {
   if (!SHOTS) return
   if (process.env.SHOW && process.platform === "darwin") {
@@ -55,12 +52,11 @@ async function shot(name) {
     execFileSync("screencapture", ["-x", "-R", `${BOUNDS.x},${BOUNDS.y},${BOUNDS.width},${BOUNDS.height}`, path.join(SHOTS, `${name}.png`)])
   } else await win.screenshot({ path: path.join(SHOTS, `${name}.png`) })
 }
-await wait(2000) // (the app tells the desktop app what agents may do as it starts)
+await wait(2000)
 const tabOf = async (T) => (await op("tabs")).find?.((t) => t.tab === T)
 const pageTabs = () => win.locator("[data-web-page]").count()
 const card = win.locator("[data-agents-card]")
 
-// ---------- in the background ----------
 const opened = await op("open", { url: SITE, task: "order status", summary: "Checking where order 1042 is" })
 const T = opened?.tab
 check("an agent opens a page: its number", typeof T === "number", opened)
@@ -77,28 +73,24 @@ check("a click in it, with real input", (await tabOf(T))?.title === "clicks=1", 
 const pointer = await op("evaluate", { tab: T, expression: "!!document.querySelector('vaultite-agent')" })
 check("… its pointer drawn in the page, in a root of its own", pointer?.value === "true", pointer)
 
-// ---------- live in the card ----------
 const live = card.locator("[data-agent-live] img")
 check("the card shows the page live", await until(async () => /^data:image\/jpeg/.test(await live.getAttribute("src").catch(() => "") ?? ""), 8000))
 await op("act", { tab: T, action: "hover", ref })
 await wait(900)
 await shot("1-panel")
-// (a list that reuses its rows puts another item in the same element: the old ref no longer acts there)
 const swap = (from, to) => op("evaluate", { tab: T, expression: `(() => { const b = [...document.querySelectorAll("button")].find((x) => x.textContent === ${JSON.stringify(from)}); if (b) b.textContent = ${JSON.stringify(to)}; return !!b })()` })
 await swap("Track order", "Cancel order")
 const stale = await op("act", { tab: T, action: "click", ref })
 check("a ref whose element now says something else isn't acted on: take a new snapshot", /now button "Cancel order".*new snapshot/.test(stale?.error ?? "") && (await tabOf(T))?.title === "clicks=1", stale)
 await swap("Cancel order", "Track order")
 
-// ---------- a cross-site load: it still draws ----------
 await op("navigate", { tab: T, to: OTHER })
 check("after a cross-site load it still draws: a screenshot", png(await op("screenshot", { tab: T })))
 const before = await live.getAttribute("src")
 await op("act", { tab: T, action: "click", ref: /button "Track order" \[ref=(e\d+)\]/.exec((await op("snapshot", { tab: T }))?.snapshot ?? "")?.[1] })
 check("… and its live picture moves on", await until(async () => (await live.getAttribute("src")) !== before, 5000))
 
-// ---------- open as tab, and back ----------
-await card.locator("[data-agent-open]").dispatchEvent("click") // (the playground's own toast stays over the corner)
+await card.locator("[data-agent-open]").dispatchEvent("click")
 check("Open as tab: a tab for it", await until(async () => (await win.locator(`[data-web-page="${T}"]`).count()) === 1, 8000), await pageTabs())
 check("… showing it live, as a picture, while the agent holds it (agentwatch.mjs)", await until(() => win.locator(`[data-web-page="${T}"] [data-web-agent-watch] img`).count(), 8000))
 check("… the same page, not loaded again, nor placed in the tab", (await tabOf(T))?.title === "clicks=1" && (await tabOf(T))?.shown === false, await tabOf(T))
@@ -112,11 +104,9 @@ check("Move to background: its tab closes", await until(async () => (await pageT
 check("… the page goes on", (await tabOf(T))?.title === "clicks=1" && (await tabOf(T))?.shown === false, await tabOf(T))
 check("… back in the corner card", await until(() => card.isVisible(), 5000))
 
-// ---------- closed, then an ask ----------
 await card.locator("[aria-label=Close]").dispatchEvent("click")
 check("the card closes", await until(async () => (await card.count()) === 0, 5000))
 
-// ---------- unused and unwatched a minute, it rests (hidden, throttled), till an agent needs it ----------
 const throttled = () => app.evaluate(({ webContents }, u) => webContents.getAllWebContents().find((w) => w.getURL().startsWith(u))?.getBackgroundThrottling(), OTHER)
 check("in use, a page in the background isn't throttled", await throttled() === false)
 check("unused a minute, it rests", await until(async () => (await throttled()) === true, 90_000), await throttled())
@@ -130,11 +120,10 @@ await wait(500)
 await shot("3-ask")
 check("… no toast of it (the Inbox has it), which hid Done", (await win.locator("[data-sonner-toast]", { hasText: "needs you in the browser" }).count()) === 0)
 const waiting = op("wait", { tab: T, helped: true, timeout: 20 })
-await ask.locator("[data-web-agent-done]").dispatchEvent("click") // (the playground's own toast stays over the corner)
+await ask.locator("[data-web-agent-done]").dispatchEvent("click")
 check("… Done ends the agent's wait", !(await waiting).error, await waiting)
 check("… and the card goes", await until(async () => (await ask.count()) === 0, 5000))
 
-// ---------- the window reloading ----------
 await win.locator(`[data-web-page="${T}"] [data-web-agent]`).dispatchEvent("click")
 await win.getByRole("menuitem", { name: "Move to background" }).click()
 await until(async () => (await pageTabs()) === 0, 5000)
@@ -144,11 +133,10 @@ await wait(10_000) // (past the time a reloaded window's tabs have to take their
 check("a window reloading keeps the agent's page in the background", (await tabOf(T))?.title === "clicks=1", await tabOf(T))
 check("… and the corner card shows it again", await until(() => card.isVisible(), 5000))
 
-// ---------- closed by the agent ----------
 check("the agent closes it", !(await op("close", { tab: T })).error && !(await tabOf(T)))
 check("… and the card goes", await until(async () => (await card.count()) === 0, 5000))
 
 await app.close()
 site.close()
-try { fs.rmSync(TMP, { recursive: true, force: true }) } catch { /* a server still writing its folder */ }
+try { fs.rmSync(TMP, { recursive: true, force: true }) } catch {}
 await done()

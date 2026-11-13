@@ -11,7 +11,6 @@ fs.mkdirSync(OUT, { recursive: true })
 const api = apiAt(B)
 const saved = await api("GET", "config/appearance")
 const set = (patch) => api("PUT", "config/appearance", { ...saved, theme: "system", scheme: "default", density: "compact", interfaceFont: "", textFont: "", monoFont: "", snippets: [], ...patch })
-// Workspaces keep tabs that would take the page's address over: none during the run (put back at the end).
 const putBackWs = setAsideWorkspaces(B)
 const files = (await api("GET", "files")).files
 const note = files.find((f) => f.path.startsWith("Notes/") && f.path.endsWith(".md"))?.path ?? files.find((f) => f.path.endsWith(".md")).path
@@ -26,14 +25,12 @@ async function open(w, dark, hash, contrast = "no-preference") {
   uis.set(page, ui)
   await page.goto(`${B}#${hash}`)
   await page.locator(hash === "settings" ? '[data-settings-nav="appearance"]' : "article.file-view:visible").first().waitFor(); await ui.idle()
-  // Settings' Appearance: beside the list, or its sheet on a phone.
   if (hash === "settings") { await page.locator('[data-settings-nav="appearance"]').click(); await page.locator("[data-settings-row=theme]:visible").first().waitFor(); await ui.idle() }
   return page
 }
 const shot = (page, name) => page.screenshot({ path: `${OUT}${name}.png` })
 const token = (page, t) => page.evaluate((t) => getComputedStyle(document.documentElement).getPropertyValue(`--${t}`).trim(), t)
 const fileHash = (p) => `file/${encodeURIComponent(p)}`
-/** The lowest contrast of text and muted text on the background, a card and the sidebar (WCAG's ratio). */
 const lowest = (page) => page.evaluate(() => {
   // (through a canvas: a computed colour may be oklch or oklab, not rgb)
   const probe = document.body.appendChild(document.createElement("i")), cx = document.createElement("canvas").getContext("2d", { willReadFrequently: true })
@@ -45,13 +42,11 @@ const lowest = (page) => page.evaluate(() => {
   return Math.round(r * 100) / 100
 })
 
-// Settings, desktop and phone, light and dark
 await set({})
 for (const [w, dark] of [[1440, false], [1440, true], [390, false], [390, true]]) {
   const page = await open(w, dark, "settings"), ui = uis.get(page)
   await shot(page, `settings-${w}-${dark ? "dark" : "light"}`)
   if (w === 390 && !dark) {
-    // At a phone's width: the scheme strip flush under its label, and Style wrapped under Theme.
     const fit = await page.evaluate(() => {
       const row = document.querySelector("[data-settings-row=scheme]"), first = row.querySelector("[role=radio]")
       const theme = document.querySelector("[data-settings-row=theme]").getBoundingClientRect(), style = document.querySelector("[data-settings-row=translucent]").getBoundingClientRect()
@@ -60,14 +55,12 @@ for (const [w, dark] of [[1440, false], [1440, true], [390, false], [390, true]]
     check("phone: the scheme strip flush under its label, Style under Theme", Math.abs(fit.flush) <= 1 && fit.wrapped, fit)
   }
   if (w === 1440 && !dark) {
-    // (sliders there are Glass's transparency: none sets a size)
     const sliders = await page.locator('input[type="range"]').evaluateAll((els) => els.map((e) => e.getAttribute("aria-label") ?? ""))
     check("no font size setting", !(await page.getByText("Font size", { exact: true }).count()) && !sliders.some((l) => /font|size|text/i.test(l)), sliders)
     const appearance = page.locator('[data-settings-section="appearance"]')
     check("CSS snippets are inside Appearance", (await appearance.locator('section[aria-label="CSS snippets"]').count()) === 1)
     check("no CSS snippets panel of its own", !(await page.getByRole("heading", { name: "CSS snippets" }).count()))
     const text = await appearance.innerText()
-    // (the sidebars' switches are in their sheet, opened from the Sidebars row)
     const at = ["Theme", "Colour scheme", "Density", "Sidebars", "File icons", "New tabs open", "Fonts", "Note text size", "CSS snippets"].map((t) => text.indexOf(t))
     check("in order: theme, colour scheme, density, sidebars, file icons, new tabs, fonts, CSS snippets", at.every((x, i) => x >= 0 && (!i || x > at[i - 1])), at)
     const radios = () => appearance.getByRole("radiogroup", { name: "Colour scheme" }).getByRole("radio").evaluateAll((els) => els.map((e) => `${e.getAttribute("aria-label")}${e.getAttribute("aria-checked") === "true" ? "*" : ""}`))
@@ -83,7 +76,6 @@ for (const [w, dark] of [[1440, false], [1440, true], [390, false], [390, true]]
     await ui.sees(".vaultite/appearance.json", () => page.getByRole("dialog").getByRole("radio", { name: "Nord", exact: true }).click())
     await page.keyboard.press("Escape"); await page.getByRole("dialog").waitFor({ state: "detached" }); await ui.idle()
     check("the strip follows the gallery's pick", (await radios()).includes("Nord*"), await radios())
-    // Style: Glass unfolds its own rows (translucent pages), Solid folds them away.
     const pagesRow = appearance.locator('[data-settings-row="translucent-pages"]')
     const shown = () => pagesRow.evaluate((el) => el.getBoundingClientRect().height > 0 && !el.closest("[inert]"))
     check("solid: no translucent pages row", !(await shown()))
@@ -92,11 +84,8 @@ for (const [w, dark] of [[1440, false], [1440, true], [390, false], [390, true]]
     await ui.sees(".vaultite/appearance.json", () => appearance.getByRole("radio", { name: "Solid", exact: true }).click())
     check("solid again: it folds away", (await api("GET", "config/appearance")).translucent === false && !(await shown()))
     await ui.sees(".vaultite/appearance.json", () => set({}))
-    // Rows are even: every row of the list has the same room above and below what it draws (its label and its control).
-    // (a folded row, Glass's while Solid, has no room at all)
     const pads = await appearance.evaluate((sec) => [...sec.querySelector(".hairline").children].filter((r) => r.getBoundingClientRect().height > 0).map((r) => {
       const row = r
-      // (a sideways strip's padding only keeps its rings unclipped: its pictures are what it draws)
       const box = row.getBoundingClientRect(), kids = [...row.children].map((k) => (k.matches("[data-picture-choice].overflow-x-auto") ? k.querySelector("[role=radio]") : k).getBoundingClientRect())
       return [Math.round(Math.min(...kids.map((k) => k.top)) - box.top), Math.round(box.bottom - Math.max(...kids.map((k) => k.bottom)))]
     }))
@@ -107,14 +96,12 @@ for (const [w, dark] of [[1440, false], [1440, true], [390, false], [390, true]]
     await page.evaluate(() => document.querySelector("#main-scroll")?.scrollTo(0, 99999)); await ui.idle()
     await shot(page, `settings-${w}-light-end`)
   }
-  // The gallery as a sheet (More…, the command "Colour scheme…")
   await page.evaluate(() => { location.hash = "settings/schemes" }); await page.getByRole("dialog").getByRole("radio").first().waitFor(); await ui.idle()
   check(`the gallery's sheet at ${w}px: the same grid`, (await page.getByRole("dialog").getByRole("radio").count()) === 16 + themes.filter((t) => !t.problem).length)
   await shot(page, `gallery-${w}-${dark ? "dark" : "light"}`)
   await page.close()
 }
 
-// Every scheme on Today and a note, dark and light
 const ids = ["default", "gruvbox", "catppuccin", "nord", "dracula", "solarized", "tokyo-night", "rose-pine", "everforest", "kanagawa", "one", "ayu", "github", "flexoki", "amethyst", "paper", ...themes.map((t) => `theme:${t.name}`)]
 for (const scheme of ids) {
   await set({ scheme })
@@ -126,7 +113,6 @@ for (const scheme of ids) {
     if (scheme === "dracula") check("dracula stays dark", await page.evaluate(() => document.documentElement.classList.contains("dark")))
     await shot(page, `scheme-${scheme.replace(":", "-")}-${dark ? "dark" : "light"}`)
     await page.close()
-    // The system's Increase contrast: text and muted text read at 4.5:1 or more on every surface, whatever the scheme.
     if (!scheme.startsWith("theme:")) {
       const more = await open(1440, dark, fileHash(today), "more")
       const low = await lowest(more)
@@ -136,8 +122,6 @@ for (const scheme of ids) {
   }
 }
 
-// A scheme only recolours: the key elements' boxes must be where Default puts them in light, schemes switched live so
-// a switch that reflows is caught too.
 const KEY = "aside, nav, main, section, header, h1, h2, h3, button, a, input, [role=switch], [role=radio], [role=tab], [role=treeitem], [role=tablist], [data-titlebar], #main-scroll, [data-panel-handle], label, kbd"
 const boxes = (page) => page.evaluate((KEY) => [...document.querySelectorAll(KEY)].filter((el) => el.getClientRects().length).map((el) => {
   const b = el.getBoundingClientRect()
@@ -148,7 +132,6 @@ const settle = async (page, scheme) => {
   await page.waitForFunction((s) => (document.documentElement.dataset.scheme ?? "default") === s, scheme, { timeout: 8000 }).catch(() => {})
   await uis.get(page).idle()
 }
-// The base once the page is done loading: what comes when it's idle (the status bar's file part) isn't a scheme's doing.
 const loaded = async (page) => { await uis.get(page).idle(); return boxes(page) }
 for (const [w, hash] of [[1440, "settings"], [1440, fileHash(today)], [1440, fileHash(note)], [390, "settings"], [390, fileHash(today)]]) {
   await set({})
@@ -165,7 +148,6 @@ for (const [w, hash] of [[1440, "settings"], [1440, fileHash(today)], [1440, fil
         const names = (l) => l.map((b) => b[0]), gone = names(base).filter((n) => !names(now).includes(n)), added = names(now).filter((n) => !names(base).includes(n))
         moved.push(`${scheme} ${dark ? "dark" : "light"}: ${base.length} -> ${now.length} elements (gone ${JSON.stringify(gone)}, new ${JSON.stringify(added)})`); continue
       }
-      // Settings' second tile changes scheme and name with the scheme in use: the same box.
       const d = now.map((b, i) => [base[i], b]).filter(([a, b]) => a.slice(1).join() !== b.slice(1).join())
       if (d.length) moved.push(`${scheme} ${dark ? "dark" : "light"}: ${d.length} moved, first ${JSON.stringify(d[0])}`)
     }
@@ -174,7 +156,6 @@ for (const [w, hash] of [[1440, "settings"], [1440, fileHash(today)], [1440, fil
   await page.close()
 }
 
-// Density
 await set({ density: "comfortable", scheme: "nord" })
 for (const [w, dark] of [[1440, false], [1440, true], [390, true]]) {
   const page = await open(w, dark, fileHash(today))
@@ -189,7 +170,6 @@ for (const [w, dark] of [[1440, false], [1440, true], [390, true]]) {
   await page.close()
 }
 
-// The font pickers. An old fontSize key is ignored.
 await set({ fontSize: 22 })
 {
   const page = await open(1440, false, "settings"), ui = uis.get(page)
@@ -209,7 +189,6 @@ await set({ fontSize: 22 })
   check("fonts listed (this device's)", (await rows.count()) > (process.platform === "darwin" ? 10 : 2), await rows.count())
   check("the current one is selected", (await rows.first().getAttribute("aria-selected")) === "true")
   await shot(page, "font-picker")
-  // Georgia, else a listed family whose start no other shares (this device's fonts)
   const names = (await rows.allTextContents()).slice(1).filter((n) => !/Monospace|…/.test(n))
   const FONT = names.includes("Georgia") ? "Georgia" : names.find((n) => names.filter((m) => m.toLowerCase().startsWith(n.slice(0, 5).toLowerCase())).length === 1) ?? names[0]
   await page.keyboard.type(FONT.slice(0, 5).toLowerCase()); await ui.idle()
@@ -223,7 +202,6 @@ await set({ fontSize: 22 })
   check("the interface is drawn in it", (await page.evaluate(() => getComputedStyle(document.body).fontFamily)).replace(/"/g, "").startsWith(FONT))
   check("the button shows it, in itself", (await button.getAttribute("aria-label")) === `Interface font: ${FONT}` &&
     (await button.evaluate((el) => getComputedStyle(el.querySelector("span")).fontFamily)).replace(/"/g, "").startsWith(FONT))
-  // A name that isn't listed
   await page.getByRole("button", { name: /^Text font:/ }).click(); await page.getByRole("dialog", { name: "Text font" }).waitFor(); await ui.idle()
   await page.keyboard.type("Qa Unlisted Serif"); await ui.idle()
   const other = page.getByRole("dialog").getByRole("option").last()
@@ -232,14 +210,12 @@ await set({ fontSize: 22 })
   check("…and used", (await api("GET", "config/appearance")).textFont === "Qa Unlisted Serif")
   check("fonts: the row says which are set", (await page.locator("[data-fonts-open]").innerText()).includes(`${FONT}, Qa Unlisted Serif`), await page.locator("[data-fonts-open]").innerText())
   check("quoted in the stack", (await page.evaluate(() => document.documentElement.style.getPropertyValue("--font-text"))).startsWith('"Qa Unlisted Serif"'))
-  // Monospace: monospace fonts first
   await page.getByRole("button", { name: /^Monospace font:/ }).click(); await page.getByRole("dialog", { name: "Monospace font" }).waitFor(); await ui.idle()
   const second = await page.getByRole("dialog").getByRole("option").nth(1).textContent()
   check("monospace: monospace fonts first", /Monospace/.test(second), second)
   await page.keyboard.press("Escape"); await ui.idle()
   check("Escape closes it, the fonts' sheet stays", !(await page.getByRole("dialog", { name: "Monospace font" }).count()) &&
     (await page.locator("dialog[open]").getByRole("button", { name: /^Interface font:/ }).count()) === 1)
-  // Back to the default
   await button.click(); await dialog.waitFor(); await ui.idle()
   await ui.sees(".vaultite/appearance.json", () => dialog.getByRole("option").first().click())
   check("the default row resets it", (await api("GET", "config/appearance")).interfaceFont === "")
@@ -262,7 +238,6 @@ await set({ fontSize: 22 })
   await page.close()
 }
 
-// Snippets: on, then edited on disk while the page is open
 const snip = path.join(VAULT, ".vaultite/snippets/Qa snippet.css")
 fs.mkdirSync(path.dirname(snip), { recursive: true })
 fs.writeFileSync(snip, ":root { --primary: rgb(1, 2, 3); }\n")

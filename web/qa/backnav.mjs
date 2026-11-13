@@ -15,8 +15,6 @@ const PEOPLE = await pagePath(B, "People")
 const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)
 const read = (p) => readFileSync(`${VAULT}/${p}`, "utf8")
 
-/** Scroll the page down to its drawn timeline: the editor draws only what's near the screen, so on a long page (a
- *  person's profile, with its check-ins) the timeline isn't there until it's scrolled near. */
 const toTimeline = async (page, ui) => {
   for (let i = 0; i < 40 && !(await page.locator(".file-timeline").count()); i++) {
     await page.evaluate(() => { const s = document.querySelector("#main-scroll") ?? document.scrollingElement; s.scrollTop += s.clientHeight * 0.8 })
@@ -31,7 +29,6 @@ const open = async (w, h, mobile = false) => {
 const fileView = (page, p) => page.locator(`article.file-view[data-path="${p}"]:visible`)
 const shown = async (page, ui, p) => { await fileView(page, p).waitFor(); await ui.idle() }
 
-// ---------- desktop: Back from a file opened from a page ----------
 {
   const { ctx, page, ui } = await open(1440, 700)
   await page.goto(`${B}#file/${enc(PEOPLE)}`); await shown(page, ui, PEOPLE)
@@ -39,8 +36,6 @@ const shown = async (page, ui, p) => { await fileView(page, p).waitFor(); await 
   const tabs = () => page.evaluate(() => [...document.querySelectorAll("[data-tab-strip] [role=tab]")].map((t) => ({ name: t.innerText.trim(), on: t.getAttribute("aria-selected") === "true" })))
   const active = async () => (await tabs()).find((t) => t.on)?.name
   const scrollTop = () => page.evaluate(() => document.getElementById("main-scroll")?.scrollTop ?? 0)
-  // A person the page lists on its first screen, low enough to stay in sight once it's scrolled (clicking one out of
-  // sight would scroll the page itself), whose tab isn't open yet.
   const SCROLL = 150
   const [name, nth] = await (async () => {
     const box = await page.locator("#main-scroll").boundingBox()
@@ -59,7 +54,6 @@ const shown = async (page, ui, p) => { await fileView(page, p).waitFor(); await 
   }
   if ((await active()) !== "People") { await page.locator("[role=tab]", { hasText: "People" }).first().click(); await shown(page, ui, PEOPLE) }
   await page.evaluate((top) => document.getElementById("main-scroll").scrollTo({ top }), SCROLL)
-  // (until the app has kept where it is: core/viewstate.ts)
   const kept = () => page.evaluate((key) => { try { return new Map(JSON.parse(localStorage.getItem("vaultite.places")).places).get(key)?.y } catch { return undefined } }, `file:${PEOPLE}`)
   check("People scrolls, and where is kept", await until(async () => { const t = await scrollTop(); return t > 0 && (await kept()) === t }), { now: await scrollTop(), kept: await kept() })
   const y = await scrollTop()
@@ -70,10 +64,8 @@ const shown = async (page, ui, p) => { await fileView(page, p).waitFor(); await 
   check("...and its Back can go somewhere", await back.isEnabled())
   await back.click(); await shown(page, ui, PEOPLE)
   check("Back closes it and shows People", (await active()) === "People" && !(await tabs()).some((t) => t.name === person.name), await tabs())
-  // (restored as People draws again: up to 1.5 s on a loaded machine)
   check("...where it was scrolled", !!(await until(async () => (await scrollTop()) === y, 4000)), { y, now: await scrollTop() })
   check("...and the address follows", await page.evaluate(() => location.hash) === `#file/${enc(PEOPLE)}`, await page.evaluate(() => location.hash))
-  // Open already (left by switching tabs): the same.
   await row().click(); await shown(page, ui, person.path)
   await page.locator("[role=tab]", { hasText: "People" }).first().click(); await shown(page, ui, PEOPLE)
   await row().click(); await shown(page, ui, person.path)
@@ -81,13 +73,11 @@ const shown = async (page, ui, p) => { await fileView(page, p).waitFor(); await 
   await page.keyboard.press(BACK_KEY); await shown(page, ui, PEOPLE)
   check("Back's keys from it close it and shows People", (await active()) === "People" && !(await tabs()).some((t) => t.name === person.name), await tabs())
 
-  // A sheet open: Back closes it first, the tab stays.
   await page.evaluate(() => { location.hash = `${location.hash}/plugin-settings/page-preview` }); await ui.idle()
   check("a sheet is open", await page.locator("dialog[open]").count() > 0)
   await page.keyboard.press(BACK_KEY); await ui.idle()
   check("Back closes the sheet, the tab stays", !(await page.locator("dialog[open]").count()) && (await active()) === "People", await tabs())
 
-  // The path bar's folder: in the file tree, opened and in sight.
   await page.goto(`${B}#file/${enc(withTl.path)}`); await shown(page, ui, withTl.path)
   const folder = withTl.path.split("/").slice(0, -1).join("/")
   await page.locator("nav[aria-label='File path'] button", { hasText: folder.split("/").pop() }).first().click(); await ui.idle()
@@ -105,10 +95,8 @@ const shown = async (page, ui, p) => { await fileView(page, p).waitFor(); await 
   const seen = await until(async () => { const s = await where(); return s?.open === "true" && s.inSight && s }) || await where()
   check("the path bar's folder opens in the file tree, in sight", seen?.open === "true" && seen.inSight, seen)
   await page.screenshot({ path: `${OUT}folder.png` })
-  // (with no Files panel the tree opened as a tab: back to the person)
   await page.goto(`${B}#file/${enc(withTl.path)}`); await page.reload(); await shown(page, ui, withTl.path)
 
-  // ---------- desktop: Add on a drawn timeline ----------
   await toTimeline(page, ui)
   const tl = page.locator(".file-timeline")
   await tl.locator("button", { hasText: "Add" }).first().scrollIntoViewIfNeeded()
@@ -137,7 +125,6 @@ const shown = async (page, ui, p) => { await fileView(page, p).waitFor(); await 
   await ctx.close()
 }
 
-// ---------- phone: Add on a drawn timeline ----------
 {
   const { ctx, page, ui } = await open(390, 844, true)
   await page.goto(`${B}#file/${enc(withTl.path)}`); await shown(page, ui, withTl.path)

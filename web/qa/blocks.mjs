@@ -40,11 +40,9 @@ await page.locator('[data-block-notes="week-goals"]').scrollIntoViewIfNeeded()
 await page.screenshot({ path: `${OUT}blocks-notes.png` })
 check("the block with a note is still drawn", await page.locator(".cm-content", { hasText: "This week" }).count() > 0)
 
-// Fixed on disk (as an AI would): its line goes.
 await fetch(`${B}api/file`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: NOTE, text: read(NOTE).replace("titel: Mine", "title: Mine") }) })
 check("fixed on disk, its note goes", await until(async () => !(await notes.allInnerTexts()).some((t) => t.includes("titel")), 10000))
 
-// Source mode: suggestions inside a block's fence.
 await palette(page, "Switch to source mode")
 const menu = page.locator(".cm-tooltip-autocomplete")
 await page.locator(".vau-editor .cm-line", { hasText: "depth: 9" }).first().click()
@@ -69,7 +67,6 @@ await page.keyboard.type("de"); await wait(400)
 check("outside a block, no option suggestions", !(await menu.isVisible()))
 await page.keyboard.press("Escape")
 
-// The slash menu's block comes with its required options.
 await palette(page, "Switch to live preview")
 await page.locator(".vau-editor .cm-line", { hasText: "Intro line." }).first().click()
 await page.keyboard.press("End"); await page.keyboard.press("Enter"); await page.keyboard.press("Enter")
@@ -79,7 +76,6 @@ if (await pick.count()) await pick.first().click(); else await page.keyboard.pre
 await wait(300); await page.keyboard.type("workouts")
 check("a block from the slash menu comes with its required options, the cursor at the first", await until(async () => /```block-area\narea: workouts\n```/.test(read(NOTE))))
 
-// The Plugins page: listed by category, not by where a plugin came from.
 await page.goto(`${B}#plugins`); await wait(1500)
 const heads = await page.locator("[data-plugin-category]").evaluateAll((els) => els.map((e) => e.dataset.pluginCategory))
 check(`sections are categories (${heads.join(", ")})`, heads[0] === "navigation" && !heads.some((h) => /built-in|core|vault|community/i.test(h)))

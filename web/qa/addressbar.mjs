@@ -1,7 +1,4 @@
-// The Browser's address bar and ⌘T in the desktop app (Electron), against pages this script serves on 127.0.0.1 and
-// localhost: what's typed stays on leaving the field and switching tabs (Esc reverts it); the chip shows where it opens
-// (a site's rule) and changes while typing without losing it (⌥↓ too), the move keeping Back; a name with a port is an
-// address; ⌘L from the app; Switch to tab from a new tab closes it; ⌘T completes a site and Enter (⇧Enter too) goes there.
+// The Browser's address bar and ⌘T in the desktop app: drafts kept, the container chip, ⌘L, Switch to tab, completion.
 // WRITES: the throwaway vault only.
 //   node web/qa/addressbar.mjs <vault copy>
 import { _electron } from "playwright-core"
@@ -24,7 +21,7 @@ await new Promise((ok, fail) => { server.once("error", fail); server.listen(0, "
 const PORT = server.address().port
 const SITE = `http://127.0.0.1:${PORT}`, LOCAL = `localhost:${PORT}`
 
-// (written before the app starts: what it reads then needs no file watching, which a busy Mac can drop)
+// (written before the app starts: a busy Mac can drop file watching's events)
 const own = (rel, data) => { fs.mkdirSync(path.dirname(path.join(VAULT, rel)), { recursive: true }); fs.writeFileSync(path.join(VAULT, rel), JSON.stringify(data, null, 2) + "\n") }
 own(".vaultite/plugins/web-viewer/data.json", { containers: [{ id: "personal", name: "Personal", color: "blue" }, { id: "work", name: "Work", color: "orange", sites: ["localhost"] }, { id: "agents", name: "Agents", color: "purple" }] })
 own(".vaultite/newtab.json", { opens: "switcher" })
@@ -41,7 +38,6 @@ await app.evaluate(({ BaseWindow }) => { const w = BaseWindow.getAllWindows()[0]
 const post = (url, body, method = "POST") => fetch(`${origin}/api/${url}`, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
 const open = async (to) => { await post("ui", { action: "open", path: to, newTab: true }); await wait(500) }
 
-/** The visible web page: its address, its session's partition and its back history. */
 const visible = () => app.evaluate(({ BaseWindow, session }) => {
   const w = BaseWindow.getAllWindows()[0]
   const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
@@ -52,15 +48,13 @@ const visible = () => app.evaluate(({ BaseWindow, session }) => {
 })
 const field = () => win.locator("[data-web-page] [data-web-address]:visible")
 const value = () => field().inputValue()
-// (a real click on the field gives the window's own page the keyboard; Playwright's reaches only its DOM, leaving the
-// keyboard in a web page that had it, where the window has the focus: xvfb)
+// (Playwright's click reaches only the field's DOM, leaving the keyboard in a web page that had it: xvfb)
 const clickField = async () => { await field().click(); await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0].webContents.focus()) }
 const chip = () => win.locator("[data-web-page] [data-web-container]:visible")
 const chipIs = async () => ({ id: await chip().getAttribute("data-web-container"), why: await chip().getAttribute("data-web-container-why") })
 const typing = () => win.evaluate(() => !!document.activeElement?.matches("[data-web-address]"))
 const tabs = () => win.locator("[role=tablist] [role=tab]").count()
 
-// ---------- a draft is kept ----------
 await open(`view:web/${SITE}/one`)
 check("a page in no container", await until(async () => (await visible())?.url === `${SITE}/one`, 15000), await visible())
 check("the address shows the page's (http shown, as it's not secure)", await until(async () => (await value()) === `${SITE}/one`, 5000), await value())
@@ -80,7 +74,6 @@ await win.keyboard.press("Escape")
 await win.keyboard.press("Escape")
 check("Esc (twice: the list, then the draft) puts the page's address back", await until(async () => (await value()) === `${SITE}/one`, 3000) && await typing(), await value())
 
-// ---------- the chip shows where it opens, and changes while typing ----------
 check("not typing: the chip is the tab's (none)", (await chipIs()).id === "", await chipIs())
 await win.keyboard.type(`${LOCAL}/who`)
 check("typing an address whose site opens in Work: the chip says Work, and why", await until(async () => { const c = await chipIs(); return c.id === "work" && /localhost always opens in Work/.test(c.why ?? "") }, 5000), { chip: await chipIs(), value: await value() })
@@ -102,11 +95,9 @@ check("Enter: it opens in Personal, the chosen one", !!moved, await visible())
 check("… with its back history from before the move", !!moved && moved.back && moved.past.includes(`${SITE}/one`), moved)
 check("… the address shows it, trimmed while not edited", await until(async () => (await value()) === `http://${LOCAL}/who`, 5000), await value())
 
-// ---------- local names, ⌘L ----------
 await win.locator("[role=tab][aria-selected=true]").click()
 await win.keyboard.press(process.platform === "darwin" ? "Meta+L" : "Control+L")
 check("⌘L with the keyboard in the app: the address", await until(typing, 3000), null)
-// (on its own, whatever ⌘L did)
 if (!(await typing())) await clickField()
 await win.keyboard.type("nas:5000")
 check("a name with a port is an address (http), not a search", await until(async () => (await win.locator("[data-suggestion]").first().getAttribute("data-url").catch(() => "")) === "http://nas:5000/", 3000),
@@ -114,7 +105,6 @@ check("a name with a port is an address (http), not a search", await until(async
 await win.keyboard.press("Escape")
 await win.keyboard.press("Escape")
 
-// ---------- Switch to tab from a new tab closes it ----------
 const before = await tabs()
 await open("view:web/")
 await until(async () => (await tabs()) === before + 1, 5000)
@@ -125,7 +115,6 @@ check("a new tab offers the open one", await until(() => row.count().then((n) =>
 await row.first().click()
 check("… Switch to tab: there, and the new tab is gone", await until(async () => (await tabs()) === before && (await visible())?.url === `${SITE}/two`, 5000), { tabs: await tabs(), v: await visible() })
 
-// ---------- ⌘T's launcher ----------
 const SEARCH = '[role="dialog"][aria-label="Search"]'
 const options = () => win.$$eval("#palette-results [role=option]", (els) => els.map((e) => e.textContent.trim()))
 const newTab = () => app.evaluate(({ Menu, BaseWindow }) => {

@@ -5,7 +5,6 @@ import path from "node:path"
 
 export const wsDir = (vault) => path.join(vault, ".vaultite/plugins/workspaces")
 
-/** One API call, answered before it returns (the checks that poll these are synchronous). */
 function call(base, method, route, body) {
   const js = "const [u, m, b] = process.argv.slice(1); fetch(u, { method: m, headers: { 'Content-Type': 'application/json' }, ...(b ? { body: b } : {}) })" +
     ".then((r) => r.text()).then((t) => process.stdout.write(t), (e) => { console.error(e.message); process.exit(1) })"

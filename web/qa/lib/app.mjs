@@ -12,7 +12,6 @@ function requestsOut(page) {
   return out
 }
 
-/** After a frame is drawn: web/src/core/unsaved.ts' vaultiteBusy, and motion that will end (not one a scroll drives). */
 const pageBusy = (page, saves) => page.evaluate((saves) => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => {
   const moving = document.getAnimations().filter((a) => a.playState === "running" && a.timeline instanceof DocumentTimeline && a.effect?.getComputedTiming().endTime !== Infinity)
   done([...(window.vaultiteBusy?.({ saves }) ?? []), ...(moving.length ? [`${moving.length} animations`] : [])])
@@ -33,8 +32,7 @@ function changedPaths(url, payload) {
 
 export function app(page) {
   const out = requestsOut(page), heard = framesHeard(page)
-  /** Nothing out, unsaved, due or moving for `quiet` ms: a request a timer starts comes a moment after the last.
-   *  `held`: requests the script holds itself (page.route), not waited for. */
+  /** Nothing out, unsaved, due or moving for `quiet` ms; `held`: requests the script holds itself (page.route). */
   async function idle({ timeout = 10_000, quiet = 150, saves = false, held = () => false } = {}) {
     const end = Date.now() + timeout
     let since = 0, last = []

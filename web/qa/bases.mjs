@@ -72,9 +72,7 @@ const url = (p) => `${B}#file/${encodeURIComponent(p)}`
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
 const page = watch(await ctx.newPage()), ui = app(page)
 
-// The .base in its tab.
 await page.goto(url(`${F}/Qa.base`)); await page.locator("[data-pane] [data-base]").first().waitFor(); await ui.idle()
-// The file's own view, in its pane (a hover preview of a note embedding it, from the Links panel, has another).
 const base = page.locator(`[data-pane] [data-base="${F}/Qa.base"]`)
 const tabs = () => base.locator("[data-base-view]").evaluateAll((els) => els.map((e) => e.dataset.baseView))
 check("the views are tabs", JSON.stringify(await tabs()) === JSON.stringify(["Books", "Shelf", "Board", "Places", "Gallery"]), await tabs())
@@ -98,8 +96,6 @@ await page.screenshot({ path: `${OUT}base-cards-desktop.png` })
 await base.locator('[data-base-view="Gallery"]').click(); await ui.idle()
 check("a layout this app doesn't draw: a table, and a note saying so", (await base.locator("[data-query-notes]").innerText()).includes("draws gallery views as a table")
   && (await base.locator("table").count()) === 1, await base.locator("[data-query-notes]").innerText())
-// A plugin's layout of that type (an Obsidian plugin's Bases view, through plugin-compat) draws it instead, with its
-// rows, and is in the Layout menu; gone again, the table is back.
 const off = await page.evaluateHandle(() => globalThis.__vaultite.modules["@vaultite"].registerBaseLayout({ type: "gallery", name: "Qa gallery",
   mount: (el, ctx) => { const draw = (c) => { el.textContent = `${c.name}: ${c.rows.groups.flatMap((g) => g.rows.map((r) => r.title)).sort().join(", ")}` }; draw(ctx); return { update: draw } } }))
 const byPlugin = base.locator('[data-base-plugin-layout="gallery"]')
@@ -115,7 +111,6 @@ await page.evaluate((f) => f(), off)
 await until(async () => (await base.locator("table").count()) === 1, 10000).catch(() => {})
 check("unregistered, the view is a table again", (await byPlugin.count()) === 0 && (await base.locator("table").count()) === 1)
 
-// Kanban: drag a card to another column; its note's one line changes.
 await base.locator('[data-base-view="Board"]').click(); await ui.idle()
 const cols = () => base.locator("[data-board-col]").evaluateAll((els) => els.map((e) => [e.dataset.boardCol, [...e.querySelectorAll("[data-query-row]")].map((r) => r.dataset.queryRow.split("/").pop().replace(".md", ""))]))
 await until(async () => (await cols()).length > 0, 15000).catch(() => {})
@@ -132,7 +127,6 @@ await ui.sees(`${F}/Books/Tide tables.md`, () => dragTo(base.locator(`[data-quer
 const tide = read(`${F}/Books/Tide tables.md`)
 check("kanban: the move writes that one key (groupBy note.status: status)", tide === "---\ntype: qa-book   # keep this\nstatus: want\npages: 100\nread: 100\nprice: 20\n---\n", tide)
 await page.screenshot({ path: `${OUT}base-board-desktop.png` })
-// A column's +: a new file in it (its status) and in the view (its filter's type), opened in a tab of its own.
 await base.locator('[data-board-add="reading"]').click()
 const fresh = await until(async () => { const h = decodeURIComponent(await page.evaluate(() => location.hash)); return /Untitled[^/]*\.md$/.test(h) && h.replace(/^#file\//, "") }, 8000).catch(() => null)
 let card = ""; try { card = fresh ? read(fresh) : "" } catch {}
@@ -140,7 +134,6 @@ check("kanban: a column's + makes a file with its value, opened", !!fresh && car
 if (fresh) await api("DELETE", `file?path=${encodeURIComponent(fresh)}`)
 await page.goto("about:blank"); await page.goto(url(`${F}/Qa.base`)); await base.waitFor(); await ui.idle()
 
-// Map.
 await base.locator('[data-base-view="Places"]').click()
 await until(async () => (await base.locator(".nm-pin").count()) === 2, 15000)
 const pins = await base.locator(".nm-pin").count()
@@ -150,7 +143,6 @@ const green = await base.locator(`.nm-pin[data-pin="${F}/Places/North pier.md"] 
 check("map: markerColor (an app colour's name: its token)", green === "var(--green)", green)
 await page.screenshot({ path: `${OUT}base-map-desktop.png` })
 
-// The table's header and toolbar: each change a small edit to the view in the file, the rows following.
 await base.locator('[data-base-view="Books"]').click()
 await until(async () => (await base.locator("thead th").count()) === 4, 15000).catch(() => {})
 const menuItem = (name) => page.locator("[role=menu]").getByText(name, { exact: true })
@@ -164,7 +156,6 @@ const byStatus = ["Harbour lights", "Lighthouse keeper", "Tide tables"].map((n) 
 await until(async () => JSON.stringify(await rows()) === JSON.stringify(byStatus), 8000).catch(() => {})
 check("header: the rows follow", JSON.stringify(await rows()) === JSON.stringify(byStatus), [await rows(), byStatus])
 check("header: its arrow shows", (await base.locator('[data-query-sort="status"] svg').count()) === 1)
-// Drag a header: the columns' order.
 const hb = await base.locator('th[data-query-col="formula.left"]').boundingBox(), sb = await base.locator('th[data-query-col="status"]').boundingBox()
 await page.mouse.move(hb.x + 20, hb.y + hb.height / 2); await page.mouse.down()
 await page.mouse.move(hb.x + 10, hb.y + hb.height / 2, { steps: 3 }); await page.mouse.move(sb.x + 8, sb.y + sb.height / 2, { steps: 8 })
@@ -173,7 +164,6 @@ await waitFile(`${F}/Qa.base`, (t) => t.includes("order: [file.name, formula.lef
 check("header: dragged before another, the order changes (flow style kept)", viewText(read(`${F}/Qa.base`)).includes("order: [file.name, formula.left, status, formula.cost]"), viewText(read(`${F}/Qa.base`)))
 await until(async () => (await base.locator("thead th").allInnerTexts()).map((h) => h.trim()).join() === "Name,Pages left,Status,Cost", 5000).catch(() => {})
 check("header: drawn in the new order", (await base.locator("thead th").allInnerTexts()).map((h) => h.trim()).join() === "Name,Pages left,Status,Cost", await base.locator("thead th").allInnerTexts())
-// Resize: the right edge, as columnSize.
 const edge = await base.locator('[data-query-resize="status"]').boundingBox()
 const before = (await base.locator('th[data-query-col="status"]').boundingBox()).width
 await page.mouse.move(edge.x + 3, edge.y + edge.height / 2); await page.mouse.down()
@@ -182,7 +172,6 @@ await waitFile(`${F}/Qa.base`, (t) => t.includes("columnSize"))
 const size = Number(/columnSize:\n {6}status: (\d+)/.exec(read(`${F}/Qa.base`))?.[1])
 const after = (await base.locator('th[data-query-col="status"]').boundingBox()).width
 check("resize: columnSize written once, the column that wide", Math.abs(size - (before + 60)) <= 2 && Math.abs(after - size) <= 2, [before, size, after, viewText(read(`${F}/Qa.base`))])
-// Rename and hide from the header's menu.
 await base.locator('[data-query-sort="status"]').click(); await menuItem("Rename").click()
 await base.locator('[data-query-rename="status"]').fill("State"); await base.locator('[data-query-rename="status"]').press("Enter")
 await waitFile(`${F}/Qa.base`, (t) => t.includes("displayName: State"))
@@ -195,7 +184,6 @@ check("rename: Escape cancels it", (await base.locator('[data-query-rename="stat
 await base.locator('[data-query-sort="formula.cost"]').click(); await menuItem("Hide property").click()
 await waitFile(`${F}/Qa.base`, (t) => t.includes("order: [file.name, formula.left, status] "))
 check("hide: out of the order, the column gone", viewText(read(`${F}/Qa.base`)).includes("order: [file.name, formula.left, status]") && (await base.locator('th[data-query-col="formula.cost"]').count()) === 0)
-// Sort menu: a second key from the palette, then the first removed.
 await base.locator('[data-base-button="Sort"]').click()
 await page.locator("[data-base-add-sort]").click()
 await page.locator("[data-overlay] input[role=combobox]").fill("File name"); await page.keyboard.press("Enter")
@@ -206,7 +194,6 @@ await waitFile(`${F}/Qa.base`, (t) => !t.includes("property: status"))
 check("sort menu: a sort removed", viewText(read(`${F}/Qa.base`)).includes("sort:\n      - property: file.name\n        direction: ASC\n"), viewText(read(`${F}/Qa.base`)))
 await page.screenshot({ path: `${OUT}base-sort-menu-desktop.png` })
 await page.keyboard.press("Escape")
-// Filter menu: the base's or-group shown as Any, a view's condition added (property, operator, value).
 await base.locator('[data-base-button="Filter"]').click()
 const pop = page.locator('[data-base-pop="Filter"]')
 check("filter menu: the base's filters, an or as Any, its conditions read", (await pop.locator('[data-base-filters-of="all"] [data-base-kind]').first().innerText()) === "Any of the following are true"
@@ -232,7 +219,6 @@ check("filter menu: the results follow", JSON.stringify(await rows()) === JSON.s
 await page.screenshot({ path: `${OUT}base-filter-menu-desktop.png` })
 await pop.locator("[data-base-cond-value]").first().press("Escape")
 check("filter menu: Escape in a value closes it", await pop.count() === 0)
-// Properties menu: a property shown from the ones the files have.
 await base.locator('[data-base-button="Properties"]').click()
 await page.locator('[data-base-pop="Properties"] [data-base-prop="pages"] input').click()
 await waitFile(`${F}/Qa.base`, (t) => t.includes("note.pages"))
@@ -244,7 +230,6 @@ await find.fill("pag"); await find.press("Escape")
 check("properties menu: Escape in its search clears it first", (await find.inputValue()) === "" && await page.locator('[data-base-pop="Properties"]').isVisible())
 await find.press("Escape")
 check("properties menu: Escape in its field closes it", await page.locator('[data-base-pop="Properties"]').count() === 0)
-// Properties menu: a formula added (a mistake said, then fixed), shown as a column; then edited.
 await base.locator('[data-base-button="Properties"]').click()
 await page.locator("[data-base-add-formula]").click()
 await page.locator("[data-base-formula-name]").fill("Price doubled")
@@ -268,7 +253,6 @@ await page.locator('[data-base-edit-formula="price_doubled"]').click(); await pa
 await waitFile(`${F}/Qa.base`, (t) => !t.includes("price_doubled"))
 check("formula: deleted, with its column and display name", !read(`${F}/Qa.base`).includes("price_doubled"), read(`${F}/Qa.base`))
 await page.keyboard.press("Escape")
-// Group menu: rows under each status, written as Obsidian's groupBy; removed again.
 await base.locator('[data-base-button="Group"]').click()
 await page.locator("[data-base-add-group-by]").click()
 await page.locator("[data-overlay] input[role=combobox]").fill("status"); await page.keyboard.press("Enter")
@@ -282,7 +266,6 @@ await waitFile(`${F}/Qa.base`, (t) => viewText(t).includes("direction: DESC\n"))
 await until(async () => JSON.stringify(await heads2()) === JSON.stringify(["want", "reading"]), 8000).catch(() => {})
 check("group menu: the other direction", viewText(read(`${F}/Qa.base`)).includes("direction: DESC\n") && JSON.stringify(await heads2()) === JSON.stringify(["want", "reading"]), await heads2())
 await page.screenshot({ path: `${OUT}base-group-menu-desktop.png` })
-// Manual (Obsidian's groupOrder): every group listed in the order shown, so nothing moves; then hidden, shown, added.
 const order = () => /groupOrder:\n((?: {6}- .*\n)*)/.exec(viewText(read(`${F}/Qa.base`)))?.[1].trim().split(/\n\s*/).map((l) => l.slice(2)).join() ?? null
 await page.locator("[data-base-group-dir]").click(); await menuItem("Manual").click()
 await waitFile(`${F}/Qa.base`, (t) => viewText(t).includes("groupOrder:"))
@@ -312,7 +295,6 @@ await page.locator("[data-base-group-dir]").click(); await menuItem("Z → A").c
 await waitFile(`${F}/Qa.base`, (t) => !viewText(t).includes("groupOrder"))
 check("group menu: back to a direction drops groupOrder", !viewText(read(`${F}/Qa.base`)).includes("groupOrder"))
 await page.keyboard.press("Escape")
-// A heading folds its group (not written anywhere), and unfolds it.
 const wantRows = () => base.locator('[data-query-row*="Harbour lights"]').count()
 await base.locator('[data-query-group="want"]').click()
 await until(async () => (await wantRows()) === 0, 4000).catch(() => {})
@@ -327,7 +309,6 @@ await page.locator('[data-base-group-menu] button[aria-label="Remove grouping"]'
 await waitFile(`${F}/Qa.base`, (t) => !viewText(t).includes("groupBy:"))
 check("group menu: removed", !viewText(read(`${F}/Qa.base`)).includes("groupBy:"))
 await page.keyboard.press("Escape")
-// Results menu: a limit, and the rows copied as Markdown and saved as a CSV beside the base.
 await page.evaluate(() => { window.__copied = []; navigator.clipboard.writeText = async (t) => { window.__copied.push(t) } })
 await base.locator('[data-base-button="Results"]').click()
 await page.locator("[data-base-copy=markdown]").click()
@@ -347,7 +328,6 @@ await page.locator("[data-base-limit]").fill(""); await page.keyboard.press("Ent
 await waitFile(`${F}/Qa.base`, (t) => !viewText(t).includes("limit:"))
 check("results menu: no limit removes it", !viewText(read(`${F}/Qa.base`)).includes("limit:"))
 await page.keyboard.press("Escape")
-// Search: the rows whose shown values have the words typed; Escape clears it, then closes it. The file is unchanged.
 const beforeSearch = read(`${F}/Qa.base`)
 await base.locator('[data-base-button="Search"]').click()
 await page.locator("[data-base-search]").fill("harb")
@@ -363,15 +343,12 @@ await page.locator("[data-base-search]").press("Escape")
 check("search: Escape clears it", (await rows()).length === 2 && (await page.locator("[data-base-search]").inputValue()) === "")
 await page.locator("[data-base-search]").press("Escape")
 check("search: Escape again closes it, the base's file as it was", (await page.locator("[data-base-search]").count()) === 0 && read(`${F}/Qa.base`) === beforeSearch)
-// New: a file the view lists (the view's type == "qa-book" filter as its property), opened in a tab of its own.
 await base.locator("[data-base-new]").click()
 const opened = await until(async () => { const h = decodeURIComponent(await page.evaluate(() => location.hash)); return /Untitled[^/]*\.md$/.test(h) && h.replace(/^#file\//, "") }, 8000).catch(() => null)
 let made = ""; try { made = opened ? read(opened) : "" } catch {}
 check("new: a file with the view's properties, opened", !!opened && made.includes("type: qa-book"), [opened, made])
 if (opened) await api("DELETE", `file?path=${encodeURIComponent(opened)}`)
 await page.goto("about:blank"); await page.goto(url(`${F}/Qa.base`)); await base.waitFor(); await ui.idle()
-// Keyboard: the table is a grid with a cell cursor (rows: Harbour lights, Lighthouse keeper; Name, Pages left, State,
-// Pages). A double-clicked cell edited, Tab saves it and moves the cursor right.
 const HL = `${F}/Books/Harbour lights.md`, LK = `${F}/Books/Lighthouse keeper.md`, hlText = read(HL), lkText = read(LK)
 const cursor = () => base.locator("table[role=grid]").evaluate((t) => {
   const c = document.getElementById(t.getAttribute("aria-activedescendant") ?? "")
@@ -412,7 +389,6 @@ await ui.sees(HL, () => writeFileSync(`${VAULT}/${HL}`, hlText)); await ui.sees(
 await page.goto("about:blank"); await page.goto(url(`${F}/Qa.base`)); await base.waitFor(); await ui.idle()
 await ui.sees(`${F}/Qa.base`, () => writeFileSync(`${VAULT}/${F}/Qa.base`, BASE))
 
-// The … menu: small edits to the file (its comment and the key this app doesn't know stay).
 await base.locator('[data-base-view="Books"]').click(); await ui.idle()
 await ui.menu.open(base.locator("[data-base-menu]"))
 await ui.sees(`${F}/Qa.base`, () => ui.menu.pick("Layout", "List"))
@@ -431,7 +407,6 @@ await ui.sees(`${F}/Qa.base`, () => page.getByRole("button", { name: "Undo" }).c
 check("delete view: Undo brings it back", read(`${F}/Qa.base`).includes("name: Table\n"))
 await page.screenshot({ path: `${OUT}base-edited-desktop.png` })
 
-// A note: the fence, the embed (on its view), a fence's formula and summaries.
 await page.goto(url(`${F}/Demo.md`)); await page.locator("section.glass h2", { hasText: "Qa query" }).first().waitFor(); await ui.idle()
 const fence = page.locator("section.glass", { has: page.locator("h2", { hasText: "Qa inline" }) }).first()
 check("a ```base fence draws its view", await fence.isVisible() && (await fence.locator("[data-query-row]").count()) === 3, await fence.innerText().catch(() => ""))
@@ -441,7 +416,6 @@ check("![[Qa.base#Board]] shows that view", (await embed.locator('[data-base-vie
 const q = page.locator("section.glass", { has: page.locator("h2", { hasText: "Qa query" }) }).first()
 const qs = (await q.locator('[data-query-summaries="all"]').innerText()).replace(/\s+/g, " ").trim()
 check("a fence: a formula column and summaries", qs === "Sum 600 Max 200", qs)
-// A fence's header changes the fence in its note; an embed's toolbar, the .base it shows.
 await q.locator('[data-query-sort="pages"]').click(); await menuItem("Sort descending").click()
 await waitFile(`${F}/Demo.md`, (t) => t.includes("direction: DESC"))
 check("a fence: its sort written in the fence", read(`${F}/Demo.md`).includes("    order: [file.name, pages, formula.left]\n    summaries:\n      pages: Sum\n      formula.left: Max\n    sort:\n      - property: pages\n        direction: DESC\n```"), read(`${F}/Demo.md`))
@@ -463,8 +437,7 @@ await base.locator('[data-base-button="Filter"]').click(); await ui.idle()
 await page.screenshot({ path: `${OUT}base-filter-menu-desktop-dark.png` })
 await page.keyboard.press("Escape")
 
-// Every row (no cap): 700 notes, drawn as they come near the screen, every one reached by scrolling.
-// (32 at a time: 700 connections at once overflow macOS's accept queue of 128, and one dropped fails the run)
+// (32 at a time: 700 connections at once overflow macOS's accept queue of 128)
 for (let i = 0; i < 700; i += 32) await Promise.all(Array.from({ length: Math.min(32, 700 - i) }, (_, k) => put(`${F}/Many/Row ${String(i + k + 1).padStart(3, "0")}.md`, `---\ntype: qa-row\nn: ${i + k + 1}\n---\n`)))
 await put(`${F}/Many.base`, `filters: file.inFolder("${F}/Many")\nviews:\n  - type: table\n    name: All\n    order: [file.name, n]\n    summaries:\n      n: Sum\n`)
 const many = page.locator(`[data-pane] [data-base="${F}/Many.base"]`)
@@ -475,7 +448,6 @@ check("every row: the count says all of them; only the first are drawn at once",
 await until(async () => { await many.locator("[data-base-body]").evaluate((e) => { e.scrollTop = e.scrollHeight }); return (await drawn()) === 700 }, 15000, 300).catch(() => {})
 const sum = (await many.locator('[data-query-summaries="all"]').innerText().catch(() => "")).replace(/\s+/g, " ").trim()
 check("every row: scrolling down reaches the last, the summary under all of them", (await drawn()) === 700 && (await many.locator(`[data-query-row="${F}/Many/Row 700.md"]`).count()) === 1 && /^Sum 245.?350$/.test(sum), [await drawn(), sum])
-// The keyboard's row kept drawn: Cmd/Ctrl+ArrowDown on a fresh load goes to the last row, drawn and scrolled to.
 await page.goto("about:blank"); await page.goto(url(`${F}/Many.base`)); await many.locator("[data-query-row]").first().waitFor(); await ui.idle()
 await many.locator("table[role=grid]").focus(); await page.keyboard.press("ControlOrMeta+ArrowDown"); await ui.idle()
 const end = await many.locator("table[role=grid]").evaluate((t) => {
@@ -484,7 +456,6 @@ const end = await many.locator("table[role=grid]").evaluate((t) => {
 })
 check("every row: Cmd/Ctrl+ArrowDown draws the last row and scrolls to it", end?.row === `${F}/Many/Row 700.md` && end.seen, end)
 
-// Phone.
 const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
 const m = watch(await phone.newPage(), { label: "phone" }), mui = app(m)
 for (const p of [`${F}/Qa.base`, `${F}/Demo.md`]) {
@@ -494,7 +465,6 @@ for (const p of [`${F}/Qa.base`, `${F}/Demo.md`]) {
   await m.screenshot({ path: `${OUT}base-phone-${p.split("/").pop().replace(/\W+/g, "-")}.png`, fullPage: true })
 }
 
-// Phone: a header's menu on a tap, the filter menu inside the screen (a fence's table).
 await m.goto(url(`${F}/Demo.md`)); await m.locator("[data-query-row]:visible").first().waitFor(); await mui.idle()
 const mb = m.locator("section.glass", { has: m.locator("h2", { hasText: "Qa query" }) }).first()
 await mb.locator('[data-query-sort="pages"]').waitFor({ timeout: 15000 }).catch(() => {})
@@ -519,7 +489,6 @@ await m.evaluate(() => document.documentElement.classList.add("dark")); await mu
 await m.screenshot({ path: `${OUT}base-phone-filter-menu-dark.png` })
 await m.emulateMedia({ colorScheme: "light" }); await m.evaluate(() => document.documentElement.classList.remove("dark"))
 
-// Phone: a heading held, then dragged past another, moves its column (a tap still opens its menu: above).
 await put(`${F}/Touch.base`, `filters: 'type == "qa-book"'\nviews:\n  - type: table\n    name: Touch\n    order: [file.name, status, pages]\n`)
 await m.goto("about:blank"); await m.goto(url(`${F}/Touch.base`))
 const th = (k) => m.locator(`thead th[data-query-col="${k}"]:visible`).first()

@@ -36,7 +36,6 @@ await page.locator(".vau-editor .cm-line", { hasText: "Last line." }).click(); a
 await card.locator(".text-\\[13px\\]").first().click({ force: true }); await ui.idle()
 check("a click on the card keeps it drawn (no ```block-person)", !(await fenceShows()) && await card.isVisible())
 
-// Its fields change in place.
 await card.getByText("Add how you know them").click(); await ui.idle()
 await page.keyboard.type("Met at a pottery class"); await page.keyboard.press("Enter"); await ui.idle()
 check("a field typed in the card is written to the frontmatter", /context: Met at a pottery class/.test(await read(PERSON)))
@@ -49,7 +48,6 @@ check("…changed elsewhere, the field edits what it says now", await until(() =
 await page.keyboard.press("Escape"); await until(async () => (await card.locator("input").count()) === 0, 3000)
 await page.screenshot({ path: `${OUT}blockedit-card.png` })
 
-// The bar: its name, the menu, </>.
 await card.hover(); await ui.idle()
 const bar = card.locator(".cm-block-bar")
 check("hovering shows its bar, with its name", await bar.isVisible() && /Person/.test(await bar.innerText()))
@@ -59,7 +57,6 @@ const text = await menu.innerText()
 check(`its menu says where the data is and edits its source (${text.replace(/\n/g, " | ")})`, text.includes("This file's properties") && text.includes("Edit source"))
 await page.keyboard.press("Escape"); await ui.idle()
 
-// Right-click keeps the block (and the line with the cursor) as they were.
 await page.locator(".vau-editor .cm-line", { hasText: "Last line." }).click(); await ui.idle()
 await ui.menu.context(card); await ui.idle()
 const lineRaw = await page.locator(".vau-editor .cm-line", { hasText: "Last line." }).count()
@@ -67,7 +64,6 @@ check("right-click: its menu, the block still drawn", await menu.isVisible() && 
 await page.keyboard.press("Escape"); await ui.idle()
 check("…and still drawn once the menu closes", !(await fenceShows()) && lineRaw > 0)
 
-// </> shows its Markdown, with Done under it; right-click there is the block's menu.
 await card.hover(); await ui.idle()
 await card.locator(".cm-block-source").click(); await ui.idle()
 check("</> shows its Markdown", await fenceShows())
@@ -80,12 +76,10 @@ await page.keyboard.press("Escape"); await ui.idle()
 await foot.getByRole("button", { name: "Done" }).click(); await ui.idle()
 check("Done draws it again", !(await fenceShows()) && await page.locator(".cm-block-block").first().isVisible())
 
-// This file's properties: open, in view.
 await ui.menu.context(page.locator(".cm-block-block").first())
 await ui.menu.pick("This file's properties")
 check("This file's properties opens them", await page.locator("section[aria-label=Properties] [aria-expanded=true]").count() > 0)
 
-// An empty block draws a place to right-click; Options writes its fence.
 await open(GROUP)
 const group = page.locator(".cm-block-block").first()
 check("a group with no one says so", /No one/.test(await group.innerText()))
@@ -101,7 +95,6 @@ await ui.sees(GROUP, () => put(GROUP, group1.replace("title: Qa people", "title:
 check("…changed elsewhere, the form shows it", await until(async () => (await title.inputValue().catch(() => "")) === "Qa folks", 5000))
 await page.screenshot({ path: `${OUT}blockedit-options.png` })
 
-// An alias another file has.
 await shown(TWO)
 await shown(ONE)
 const banners = await page.locator(".file-view").innerText()

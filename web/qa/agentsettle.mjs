@@ -1,8 +1,7 @@
-// An agent's act answers what it did (electron/browser/agent.ts act, settle, quiet): a page that goes elsewhere a moment
-// after the click, a web component's shadow DOM changing, a fetch still running while an iframe navigates, and the first
-// act in a page seeing its requests. Never "nothing changed" when something did, nor an open stream waited out.
+// An agent's act answers what it did: a late navigation, shadow DOM, a fetch while an iframe navigates, an open stream.
 // WRITES: the throwaway vault only.
 //   node web/qa/agentsettle.mjs <vault copy>
+// electron/browser/agent.ts
 import { _electron } from "playwright-core"
 import fs from "node:fs"
 import http from "node:http"
@@ -37,7 +36,6 @@ const site = http.createServer((q, res) => {
   const send = (body) => { res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); res.end(body) }
   if (q.url === "/order") return send("<!doctype html><title>Order 1042</title><h1>Order 1042</h1><p>Ships Tuesday from the Lisbon depot.</p>")
   if (q.url.startsWith("/frame")) return send("<!doctype html><p>frame</p>")
-  // (a page's open channel: its answer begins and never ends)
   if (q.url === "/live") return send(`<!doctype html><title>Live</title><h1>Live orders</h1><p id="n"></p><script>
     fetch("/stream").then(() => { n.textContent = "Channel open" })</script>`)
   if (q.url === "/stream") { res.writeHead(200, { "Content-Type": "application/json" }); res.write("{"); return }
@@ -69,19 +67,15 @@ try {
   const refOf = async (name) => new RegExp(`button "${name}" \\[ref=(e\\d+)\\]`).exec((await op("snapshot", { tab: T }))?.snapshot ?? "")?.[1]
   const text = (r) => JSON.stringify(r)
 
-  // A fetch with an iframe navigating meanwhile: its answer waits for the fetch (the frame's navigation doesn't end it).
   const slow = await op("act", { tab: T, action: "click", ref: await refOf("Load notes") })
   check("the first act waits for its fetch, an iframe navigating meanwhile", /Gate code 4417/.test(text(slow)), slow)
 
-  // Shadow DOM: its change is waited for.
   const sh = await op("act", { tab: T, action: "click", ref: await refOf("Show status") })
   check("a change in a shadow root is waited for", /Ships Tuesday/.test(text(sh)), sh)
 
-  // A navigation its script starts 300 ms after the click.
   const late = await op("act", { tab: T, action: "click", ref: await refOf("Open order 1042") })
   check("a navigation set off after the click is waited for", late?.navigated === true && /order/.test(late?.url ?? ""), late)
 
-  // An open stream (its answer begun, never ended) isn't waited out: the page is answered once it's drawn.
   const t0 = Date.now(), live = await op("navigate", { tab: T, to: `${SITE}live` }), took = Date.now() - t0
   check("a page's open stream isn't waited for", took < 2500 && /Channel open/.test(text(live)), { took, live })
 } finally {

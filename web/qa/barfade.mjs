@@ -1,8 +1,7 @@
-// Fade the file bar (appearance `fileBarFade`): always, the bar above a note is out of sight until the pointer is at its
-// pane's top (beside it too, or just under it), and back out once it leaves; typing, it fades after two keys and is back when the pointer moves.
-// Glass's transparency (`translucency`) sets index.css's --glass-level. WRITES appearance.json and a note: throwaway
-// server only.
+// Fade the file bar (appearance `fileBarFade`): hidden till the pointer is at its pane's top, faded by typing; Glass's level.
+// WRITES appearance.json and a note: throwaway server only.
 //   node web/qa/barfade.mjs <base url>
+// index.css
 import { apiAt, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B], browser, check, watch, done } = await qa(import.meta.url)
 const api = apiAt(B)
@@ -51,7 +50,6 @@ await wait(600); await page.mouse.move(box.x + 200, box.y + 400, { steps: 8 })
 check("…the pointer moved, it's back", (await settled(1)) === 1, await opacity())
 
 const level = () => page.evaluate(() => document.documentElement.style.getPropertyValue("--glass-level"))
-// (the setting reaches the page over its live connection: a while on a busy machine)
 await setLook({ fileBarFade: "off", translucency: 80 })
 check("translucency 80: the glass level is 1.6", await until(async () => (await level()) === "1.6", 5000), await level())
 await setLook({ fileBarFade: "off", translucency: 50 })

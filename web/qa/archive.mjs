@@ -8,7 +8,6 @@ const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.
 const api = apiAt(B, { "X-Vaultite-Client": "app/qa" })
 const VAULT = (await api("GET", "vault")).path
 const read = (rel) => { try { return readFileSync(path.join(VAULT, rel), "utf8") } catch { return "" } }
-// (Provenance's `origin` and Note dates' created and updated in what the API makes: compare from the body on)
 const body = (rel) => read(rel).replace(/^---\n[\s\S]*?\n---\n\n?/, "")
 
 const D = "Qa archive"
@@ -32,7 +31,6 @@ await page.goto(B); await wait(1500)
 await page.locator('aside [aria-label="Collapse all"]').click().catch(() => {}); await wait(200)
 await row(D).locator("button").first().click(); await wait(300)
 
-// 1. Archive from the tree's menu: moved into .archive/ with the key, links follow, the tree doesn't show it.
 const old = read(`${D}/Old.md`)
 await row(`${D}/Old.md`).click({ button: "right" }); await wait(200)
 await menuItem("Archive").click()
@@ -40,15 +38,12 @@ check("Archive: moved into .archive/, archived: true", !!(await until(() => read
 check("Archive: a link to it follows", body(`${D}/Links.md`) === `See [[${D}/.archive/Old]].\n`, read(`${D}/Links.md`))
 check("Archive: gone from the tree (.archive hidden)", !!(await until(async () => !(await shown(`${D}/Old.md`)) && !(await shown(`${D}/.archive`)))))
 await page.screenshot({ path: `${OUT}archive-1-archived.png` })
-// Undo in the toast: back where it was, key removed, the link back.
 await page.locator("[data-sonner-toast]", { hasText: "Archived" }).getByRole("button", { name: "Undo" }).click()
 check("Undo: back as it was, key removed", !!(await until(() => read(`${D}/Old.md`) === old)) && !read(`${D}/.archive/Old.md`), read(`${D}/Old.md`))
 check("Undo: the link back", !!(await until(() => body(`${D}/Links.md`) === `See [[${D}/Old]].\n`)), read(`${D}/Links.md`))
 
-// 2. Through the API (as an agent would), then the tree's toggle shows .archive/, dimmed.
 await api("POST", "ops/archive.add", { path: `${D}/Old.md` })
 check("a base leaves it out", !(await api("GET", `render?path=${encodeURIComponent(`${D}/List.md`)}`)).includes("Old"))
-// (the header's … menu: its switch, as Settings names it; a pressed button hides them again)
 await page.locator('aside [aria-label="More for Files"]').click()
 const toggle = page.getByRole("menuitemcheckbox", { name: "Show archived files" })
 check("the tree's … menu offers Show archived files, off", !!(await until(() => toggle.count())) && (await toggle.getAttribute("aria-checked")) === "false")
@@ -59,7 +54,6 @@ check("the .archive folder shows", !!(await until(() => shown(`${D}/.archive`)))
 await row(`${D}/.archive`).locator("button").first().click(); await wait(300)
 check("the archived file shows, dimmed", !!(await until(async () => (await shown(`${D}/.archive/Old.md`)) && (await row(`${D}/.archive/Old.md`).locator("button[data-archived]").count()) === 1)))
 await page.screenshot({ path: `${OUT}archive-2-shown.png` })
-// 3. Unarchive from its menu.
 await row(`${D}/.archive/Old.md`).click({ button: "right" }); await wait(200)
 await menuItem("Unarchive").click()
 check("Unarchive: back as it was, key removed", !!(await until(() => read(`${D}/Old.md`) === old)), read(`${D}/Old.md`))
@@ -67,7 +61,6 @@ check("Unarchive: in the tree again, not dimmed", !!(await until(async () => (aw
 await page.locator('aside [aria-label="Hide archived files"]').click()
 check("Hide archived files: off again", !!(await until(async () => (await api("GET", "config/files")).showArchived === false)))
 
-// 4. Archived by hand: stays; the palette's command moves it, after asking.
 await api("PUT", "file", { path: `${D}/Keep.md`, text: "---\narchived: true\n---\n\nStill here.\n" })
 await wait(500)
 check("by hand: the key alone doesn't move it", !!read(`${D}/Keep.md`))
@@ -78,7 +71,6 @@ await page.screenshot({ path: `${OUT}archive-3-tidy.png` })
 await dialog.getByRole("button", { name: "Move" }).click()
 check("tidy: moved", !!(await until(() => read(`${D}/.archive/Keep.md`))) && !read(`${D}/Keep.md`))
 
-// 5. A canvas made from an archived note goes beside it as if it weren't archived, never into .archive/.
 await api("POST", "ops/archive.add", { path: `${D}/Old.md` })
 await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, `${D}/.archive/Old.md`)
 await page.locator(`main .file-view[data-path="${D}/.archive/Old.md"] .cm-content`).first().click({ timeout: 30_000 }); await wait(300)
