@@ -358,7 +358,7 @@ export function onPanel(a: PanelActs) {
     a.more(p.name, { window: p.w, x: Math.round(m.x), y: Math.round(m.y) })
   })
 }
-/** Its menu closed (helper.ts' More): back to closing when the user clicks elsewhere. */
+/** Its menu closed (helpermenu.ts panelMenu): back to closing when the user clicks elsewhere. */
 export function panelMenuClosed() {
   if (!panel || panel.w.isDestroyed()) return
   panel.menu = false

@@ -1,4 +1,4 @@
-// The menus' icons: each one electron/menu.ts and helper.ts name, lucide's or ours (electron/tray/<name>.svg), as template
+// The menus' icons: each one electron/menu.ts and helpermenu.ts name, lucide's or ours (electron/tray/<name>.svg), as template
 // PNGs (16px, @2x) in electron/menu-icons/: node tools/menu_icons.ts after adding one (needs ImageMagick's magick).
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
@@ -9,7 +9,7 @@ const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const OUT = path.join(ROOT, "electron", "menu-icons")
 const LUCIDE = path.join(ROOT, "node_modules", "lucide-react", "dist", "esm", "icons")
 
-const src = ["menu.ts", "helper.ts"].map((f) => fs.readFileSync(path.join(ROOT, "electron", f), "utf8")).join("\n")
+const src = ["menu.ts", "helpermenu.ts"].map((f) => fs.readFileSync(path.join(ROOT, "electron", f), "utf8")).join("\n")
 const names = new Set<string>()
 for (const re of [/icon\("([a-z0-9-]+)"\)/g, /cmd\("[^"]+", (?:"[^"]+"|MAC \? "[^"]+" : "[^"]+"), "([a-z0-9-]+)"/g, /sub\("[^"]+", "([a-z0-9-]+)"/g, /files\([^,]+, "([a-z0-9-]+)"\)/g])
   for (const m of src.matchAll(re)) names.add(m[1])

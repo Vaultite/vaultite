@@ -371,7 +371,7 @@ export const badgeOf = (unread: number, jobs: HelperJob[]) => { const n = unread
  *  drives (VAULTITE_QUIET) or run from source unless asked (VAULTITE_HELPER_TAP=1): a test can't take their Talk key. */
 export const liveInput = (env: Record<string, string | undefined>, packaged: boolean) => !env.VAULTITE_QUIET && (packaged || env.VAULTITE_HELPER_TAP === "1")
 
-/** The size two pictures of the display are compared at (helper.ts' shotChanged): a cell is about 30 points. */
+/** The size two pictures of the display are compared at (helperat.ts shotChanged): a cell is about 30 points. */
 export const THUMB = { w: 48, h: 32 }
 /** Whether two same-size BGRA bitmaps differ past noise: a few cells changed clearly (a toast, a menu, a dialog), not
  *  one a little (a caret's blink, a clock's second). */
