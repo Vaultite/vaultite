@@ -14,10 +14,11 @@ export const SORTS: { id: Sort; label: string }[] = [{ id: "status", label: "Sta
 
 export function useView() {
   const s = settings.use()
-  return { group: GROUPS.some((g) => g.id === s.group) ? s.group! : "none" as Group, sort: s.sort === "recent" ? "recent" as Sort : "status" as Sort, hide: s.hide ?? [] }
+  const group: Group = GROUPS.some((g) => g.id === s.group) ? s.group! : "none", sort: Sort = s.sort === "recent" ? "recent" : "status"
+  return { group, sort, hide: s.hide ?? [] }
 }
 
-export const viewMenu = (e: MouseEvent, kinds: { kind: AgentRun["kind"]; label: string }[]) => {
-  const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+export const viewMenu = (e: MouseEvent<HTMLElement>, kinds: { kind: AgentRun["kind"]; label: string }[]) => {
+  const r = e.currentTarget.getBoundingClientRect()
   void import("./menu").then((m) => m.viewMenu(r, kinds))
 }

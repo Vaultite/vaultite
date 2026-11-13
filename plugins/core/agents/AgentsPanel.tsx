@@ -53,9 +53,10 @@ const LEAD: Record<Lead, string> = {
   ask: "bg-[var(--yellow)] dot-ping", working: "bg-foreground/70 breathe motion-reduce:animate-none", error: "bg-[var(--red)]",
   unread: "bg-[var(--blue)]", rest: "border-[1.5px] border-current opacity-40",
 }
-const GLYPHS = Object.fromEntries((Object.keys(LEAD) as Lead[]).map((k) => [k, function Glyph({ className }: { className?: string }) {
+const glyph = (k: Lead) => function Glyph({ className }: { className?: string }) {
   return <span aria-hidden className={cn(className, "grid place-items-center")} data-dot={k === "rest" ? undefined : k}><span className={cn("relative size-[7px] rounded-full", LEAD[k])} /></span>
-}])) as Record<Lead, (p: { className?: string }) => ReactNode>
+}
+const GLYPHS: Record<Lead, (p: { className?: string }) => ReactNode> = { ask: glyph("ask"), working: glyph("working"), error: glyph("error"), unread: glyph("unread"), rest: glyph("rest") }
 
 function Row({ r, open: wide, tab, page, where }: { r: AgentRun; open: boolean; tab: string; page?: boolean; where?: string }) {
   const k = kindOf(r.kind)
@@ -180,8 +181,8 @@ export function AgentsView() {
             : "Coding agents on every machine show here: in terminals, in chats and in the cloud."}
         </p>
         {kinds.length > 1 && (
-          <Segmented label="Which agents" value={filter} onChange={pick}
-            options={[{ value: "all" as Filter, label: "All" }, ...kinds.map((k) => ({ value: k.kind as Filter, label: k.label, count: runs.filter((r) => r.kind === k.kind).length }))]} />
+          <Segmented<Filter> label="Which agents" value={filter} onChange={pick}
+            options={[{ value: "all", label: "All" }, ...kinds.map((k) => ({ value: k.kind, label: k.label, count: runs.filter((r) => r.kind === k.kind).length }))]} />
         )}
         <HeadingButton icon={ListFilter} label="View options" tip="Group, sort and show" className="size-7" onClick={(e) => viewMenu(e, every)} data-agent-view="" />
       </div>
