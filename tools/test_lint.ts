@@ -24,6 +24,8 @@ await section("rules on past mistakes", () => {
   fires("vaultite(no-sleep)", "web/qa/barfade.mjs",
     "await setLook({ fileBarFade: \"off\", translucency: 80 }); await wait(800)",
     "await setLook({ fileBarFade: \"off\", translucency: 80 }); await page.waitForFunction(() => !document.getAnimations().length)")
+  check("a member wait() for a state isn't a sleep", !rulesOf("web/qa/x.mjs", "await ui.toast.wait(\"Saved\")").includes("vaultite(no-sleep)"))
+  check("a member wait(ms) is", rulesOf("web/qa/x.mjs", "await page.wait(500)").includes("vaultite(no-sleep)"))
   fires("vaultite(disable-reason)", "web/src/x.tsx",
     "// eslint-disable-next-line react-hooks/exhaustive-deps\nconst a = 1",
     "// eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per pane: its id never changes\nconst a = 1")

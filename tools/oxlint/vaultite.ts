@@ -44,7 +44,9 @@ const noSleep = defineRule({
     return {
       CallExpression(node) {
         if (node.callee.type === "Super" || node.callee.type === "V8IntrinsicExpression") return
-        if (SLEEPS.has(calleeName(node.callee))) context.report({ node, messageId: "sleep" })
+        const first = node.arguments[0]
+        const timed = node.callee.type === "Identifier" || calleeName(node.callee) === "waitForTimeout" || (first?.type === "Literal" && /^[\d.]/.test(first.raw ?? ""))
+        if (SLEEPS.has(calleeName(node.callee)) && timed) context.report({ node, messageId: "sleep" })
       },
     }
   },
