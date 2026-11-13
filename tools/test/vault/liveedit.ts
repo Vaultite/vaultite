@@ -1,11 +1,10 @@
 import { execFileSync } from "node:child_process"
-import { EventEmitter } from "node:events"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 import { waitFor } from "../lib.ts"
-import { job as aJob, moment, plugin, request, where } from "../fakes.ts"
+import { job as aJob, moment, plugin, request, socket, where } from "../fakes.ts"
 import type { FileEdit } from "../../../plugins/core/claude-code/edits.ts"
 import type { current } from "../../../plugins/core/terminal/terms.ts"
 
@@ -135,8 +134,8 @@ export default async ($: VaultTest) => {
     const cMoments = await import("../../../plugins/core/companion/momentstext.ts")
     const cScreen = await import("../../../plugins/core/companion/screensocket.ts")
     const { matchSocket } = await import("../../../core/plugins.ts")
-    const heard: Any[] = [], sc = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, send: (d: string) => heard.push(JSON.parse(d)), close() {}, ping() {}, terminate() {} })
-    matchSocket(app.plugins, ["companion", "live"])![1].fn(sc as Any, request(), { wild: [], query: { screen: "1" } })
+    const heard: Any[] = [], sc = socket((d) => heard.push(JSON.parse(d)))
+    matchSocket(app.plugins, ["companion", "live"])![1].fn(sc, request(), { wild: [], query: { screen: "1" } })
     const agent = request({ host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" }, { remote: "127.0.0.1" })
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "live-")), repo = path.join(tmp, "site"), page = path.join(repo, "index.html")
     fs.mkdirSync(repo, { recursive: true })

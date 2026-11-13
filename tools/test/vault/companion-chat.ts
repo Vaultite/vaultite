@@ -1,6 +1,5 @@
 import { spawn } from "node:child_process"
 import crypto from "node:crypto"
-import { EventEmitter } from "node:events"
 import fs from "node:fs"
 import net from "node:net"
 import os from "node:os"
@@ -9,7 +8,7 @@ import { pathToFileURL } from "node:url"
 import type { Any, VaultTest } from "./harness.ts"
 import { waitFor } from "../lib.ts"
 import { onItsOwn } from "../../../core/writegate.ts"
-import { request } from "../fakes.ts"
+import { request, socket } from "../fakes.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "..", "..", "..")
 const CHATD = path.join(ROOT, "plugins/core/claude-code/chatd.ts")
@@ -50,7 +49,7 @@ function wire(sock: string) {
 async function window(path: string, how: { hidden?: boolean; closes?: boolean } = {}) {
   const { matchSocket } = await import("../../../core/plugins.ts")
   const got: Any[] = [], typed = new Map<string, string>()
-  const ws = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, send(d: string) { const m = JSON.parse(d); got.push(m); answer(m) }, close() {}, ping() {}, terminate() {} })
+  const ws = socket((d) => { const m = JSON.parse(d); got.push(m); answer(m) })
   const reply = (m: object) => setTimeout(() => ws.emit("message", Buffer.from(JSON.stringify(m))), 5)
   const answer = (m: Any) => {
     if (how.hidden && (m.t === "edit" || m.t === "stream")) reply({ t: "done", rid: m.rid, ok: false })
@@ -61,7 +60,7 @@ async function window(path: string, how: { hidden?: boolean; closes?: boolean } 
     else if (m.t === "stream-end") reply({ t: "done", rid: m.rid, ok: true, text: m.text })
   }
   return { ws, got, typed, open: (plugins: Any[]) => {
-    matchSocket(plugins, ["companion", "live"])![1].fn(ws as Any, request(), { wild: [], query: {} })
+    matchSocket(plugins, ["companion", "live"])![1].fn(ws, request(), { wild: [], query: {} })
     ws.emit("message", Buffer.from(JSON.stringify({ t: "where", open: [path], shown: [path], focus: { path, line: 3 }, active: true })))
   }, close: () => ws.emit("close") }
 }
@@ -416,7 +415,7 @@ export default async ($: VaultTest) => {
       await idle(quick!)
       // (the helper's socket: marks are drawn only where it is)
       const { matchSocket: socketOf } = await import("../../../core/plugins.ts")
-      const screen1: Any = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, got: [] as Any[], send(t: string) { screen1.got.push(JSON.parse(t)) }, close() {}, ping() {}, terminate() {} })
+      const screen1Got: Any[] = [], screen1 = Object.assign(socket((t) => screen1Got.push(JSON.parse(t))), { got: screen1Got })
       socketOf($.app.plugins, ["companion", "live"])![1].fn(screen1, request(), { wild: [], query: { screen: "1" } })
       cScreen.screenMoment({ kind: "ask", agent: "Claude", text: 'words Here [frame 10,20,30,40 "Tabs"], not [ring "Nowhere at all"].', app: "com.example.mail", window: 9, sx: 150, sy: 90,
         shot, shotAt: { x: 100, y: 50, width: 1329, height: 864 }, ink: [{ shape: "ring", box: { x: 400, y: 300, width: 50, height: 40 }, points: [[400, 300], [450, 340]] }] })
@@ -537,7 +536,7 @@ export default async ($: VaultTest) => {
       {
         const { matchSocket } = await import("../../../core/plugins.ts")
         let onHelper: (m: Any) => void = () => {}
-        const helper: Any = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, got: [] as Any[], send(t: string) { const m = JSON.parse(t); helper.got.push(m); onHelper(m) }, close() {}, ping() {}, terminate() {} })
+        const helperGot: Any[] = [], helper = Object.assign(socket((t) => { const m = JSON.parse(t); helperGot.push(m); onHelper(m) }), { got: helperGot })
         matchSocket($.app.plugins, ["companion", "live"])![1].fn(helper, request(), { wild: [], query: { screen: "1" } })
         const tell = (m: object) => helper.emit("message", Buffer.from(JSON.stringify(m)))
         tell({ t: "moment", kind: "none" })
@@ -614,8 +613,8 @@ export default async ($: VaultTest) => {
       // (its process gone, idle a while: its Talk key pressed starts a fresh one before the ask)
       await api("POST", "ops/claude-code.chat-stop", { id: quick })
       const { matchSocket } = await import("../../../core/plugins.ts")
-      const sc = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, send() {}, close() {}, ping() {}, terminate() {} })
-      matchSocket($.app.plugins, ["companion", "live"])![1].fn(sc as Any, request(), { wild: [], query: { screen: "1" } })
+      const sc = socket()
+      matchSocket($.app.plugins, ["companion", "live"])![1].fn(sc, request(), { wild: [], query: { screen: "1" } })
       sc.emit("message", Buffer.from(JSON.stringify({ t: "summoning" })))
       const warmed = await waitFor(() => { try { const x = JSON.parse(fs.readFileSync(laneFile, "utf8")).id; return x !== quick ? x : null } catch { return null } }, 5000, 50)
       check("summoned: its Talk key pressed with no process up, a fresh one starts while they speak", !!warmed && (await api("POST", "ops/claude-code.chat-list", {}))[1].sessions.some((s: Any) => s.id === warmed), warmed)

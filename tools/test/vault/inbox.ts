@@ -6,7 +6,7 @@ import type { Turn } from "../../../plugins/core/inbox/needs.ts"
 import type { Last } from "../../../plugins/core/inbox/rows.ts"
 import type { StateChange } from "../../../plugins/core/terminal/terms.ts"
 import { waitFor } from "../lib.ts"
-import { request } from "../fakes.ts"
+import { request, socket } from "../fakes.ts"
 import { portOf } from "../../../core/listening.ts"
 import { messageOf } from "../../../core/values.ts"
 
@@ -981,13 +981,11 @@ export default async ($: VaultTest) => {
       {
         // Another machine following this one (local=1) isn't told of the followed machines' changes: two machines that
         // follow each other would echo forever (two Macs once sent 17 lists a second, and ran out of memory).
-        const { EventEmitter } = await import("node:events")
         const { matchSocket } = await import("../../../core/plugins.ts")
         const watcher = (local: boolean) => {
-          const ws = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, got: [] as string[], send(m: string) { ws.got.push(m) }, close() {},
-            ping() { ws.emit("pong") }, terminate() {} }) // (the inbox pings its sockets every 15 s: a slow run reaches it)
-          matchSocket(app.plugins, ["inbox", "live"])![1].fn(ws as Any, request(), { wild: [], query: local ? { local: "1" } : {} })
-          return ws
+          const got: string[] = [], ws = socket((m) => got.push(m)) // (the inbox pings its sockets every 15 s: a slow run reaches it)
+          matchSocket(app.plugins, ["inbox", "live"])![1].fn(ws, request(), { wild: [], query: local ? { local: "1" } : {} })
+          return Object.assign(ws, { got })
         }
         const there = watcher(true), here = watcher(false)
         await sleep(100)

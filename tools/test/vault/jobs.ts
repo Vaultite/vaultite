@@ -1,11 +1,10 @@
 import { execFileSync, spawn } from "node:child_process"
-import { EventEmitter } from "node:events"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 import { waitFor } from "../lib.ts"
-import { request } from "../fakes.ts"
+import { request, socket } from "../fakes.ts"
 import { portOf } from "../../../core/listening.ts"
 
 export default async ($: VaultTest) => {
@@ -440,10 +439,10 @@ export default async ($: VaultTest) => {
     const cIntake = await import("../../../plugins/core/companion/intake.ts")
     const cScreen = await import("../../../plugins/core/companion/screensocket.ts")
     const { matchSocket } = await import("../../../core/plugins.ts")
-    const heard: Any[] = [], sc = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, send: (d: string) => heard.push(JSON.parse(d)), close() {}, ping() {}, terminate() {} })
+    const heard: Any[] = [], sc = socket((d) => heard.push(JSON.parse(d)))
     // (the helper's socket, as its upgrade request comes: what its asks' ops run as)
     const helperReq = request({ host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" }, { remote: "127.0.0.1" })
-    matchSocket(app.plugins, ["companion", "live"])![1].fn(sc as Any, helperReq, { wild: [], query: { screen: "1" } })
+    matchSocket(app.plugins, ["companion", "live"])![1].fn(sc, helperReq, { wild: [], query: { screen: "1" } })
     const agent = request({ host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" }, { remote: "127.0.0.1" })
     const cc = app.plugins.find((p) => p.id === "claude-code")!.services, was = { ...cc }
     const said: Any[] = []
@@ -524,11 +523,11 @@ export default async ($: VaultTest) => {
         fs.mkdirSync(path.join(VAULT, "Pics"), { recursive: true }); fs.writeFileSync(path.join(VAULT, "Pics/Before.png"), png)
         await api("POST", "ops/companion.tour-save", { title: "The blue heading", job: card.id, text: '1. The heading is blue now [ring "Lighthouse"]. (before: "Pics/Before.png")' }, agent)
         const heading = { role: "heading", label: "Lighthouse", frame: { x: 200, y: 120, width: 320, height: 40 } }
-        const win = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, close() {}, ping() {}, terminate() {}, send(t: string) {
+        const win = socket((t) => {
           const m = JSON.parse(t)
           if (m.t === "things") setImmediate(() => win.emit("message", JSON.stringify({ t: "done", rid: m.rid, ok: true, window: { x: 0, y: 25, width: 1440, height: 875 }, things: [heading] })))
-        } })
-        matchSocket(app.plugins, ["companion", "live"])![1].fn(win as Any, request(), { wild: [], query: {} })
+        })
+        matchSocket(app.plugins, ["companion", "live"])![1].fn(win, request(), { wild: [], query: {} })
         win.emit("message", JSON.stringify({ t: "where", open: [], shown: [], focus: null, at: Date.now() }))
         heard.length = 0
         ;[pst, pb] = await api("POST", "ops/companion.job-show", { id: card.id, displays: [{ x: 0, y: 0, width: 1440, height: 900 }] })
@@ -799,8 +798,8 @@ export default async ($: VaultTest) => {
       linkEnd(b)
       check("Do it: only words is a job too", st === 200 && /Tidy the trip note/.test(said.at(-1)?.prompt ?? ""), [st, b])
       // (an "it" between two jobs: their ask over one's terminal, an agent naming the other: it asks which, unless their words name it)
-      const pwin = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, close() {}, ping() {}, terminate() {}, send() {} })
-      matchSocket(app.plugins, ["companion", "live"])![1].fn(pwin as Any, helperReq, { wild: [], query: {} })
+      const pwin = socket()
+      matchSocket(app.plugins, ["companion", "live"])![1].fn(pwin, helperReq, { wild: [], query: {} })
       pwin.emit("message", JSON.stringify({ t: "where", open: [], shown: [], focus: null, at: Date.now(), active: true, panes: [{ id: "pjob", to: b.link, title: "Tidy the trip note", tab: "t1" }], pane: "pjob" }))
       cIntake.addMoment({ kind: "ask", for: "Claude", text: "so let's merge the heading one", pane: "pjob" })
       const [ust, ub] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "merge it", job: card.id, land: true }, agent))

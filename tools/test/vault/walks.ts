@@ -1,10 +1,9 @@
 import { execFileSync, spawn } from "node:child_process"
-import { EventEmitter } from "node:events"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
-import { request } from "../fakes.ts"
+import { request, socket } from "../fakes.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, app, check } = $
@@ -84,8 +83,8 @@ export default async ($: VaultTest) => {
     cc["agent-turn:claude"] = async () => null
     await import("../../../plugins/core/companion/plugin.ts")
     const { matchSocket } = await import("../../../core/plugins.ts")
-    const sc = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, send() {}, close() {}, ping() {}, terminate() {} })
-    matchSocket(app.plugins, ["companion", "live"])![1].fn(sc as Any, request(), { wild: [], query: { screen: "1" } })
+    const sc = socket()
+    matchSocket(app.plugins, ["companion", "live"])![1].fn(sc, request(), { wild: [], query: { screen: "1" } })
     const at = new Date(2026, 10, 6, 22, 0, 0).getTime()
     const item = (said: string, place: Any, more: Any = {}) => ({ said, from: at, to: at + 2000, at: { x: 100, y: 100 }, place, ...more })
     const items = [
