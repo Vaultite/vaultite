@@ -92,6 +92,18 @@ try {
   check("search tabs: picked, all three back where they were", await is("a*,[b 0.30|c 0.70],d(Trip),e"), await tabs())
   await page.keyboard.press("Escape")
 
+  await page.clock.install()
+  await command(page, "Close all other tabs")
+  const held = await shows(1)
+  await toast.hover()
+  await page.clock.fastForward("00:11")
+  const kept = await toast.count()
+  await command(page, "Reopen closed tab")
+  const gone = await until(async () => (await toast.count()) === 0, 1500)
+  check(`a toast held under the pointer past 10 s goes all the same once its tabs are back (${kept} shown, ${gone ? "gone" : "still shown"} once they're back)`,
+    held && kept === 1 && gone && await is("a*,[b 0.30|c 0.70],d(Trip),e"), await tabs())
+  await page.mouse.move(0, 0)
+
   // A pop-out window closed: ⌘⇧T opens it again, with its tabs.
   const windows = () => page.evaluate(() => (JSON.parse(localStorage.getItem("vaultite.tabs.workspace") ?? localStorage.getItem("vaultite.tabs")).windows ?? []).map((w) => w.tabs.length))
   await page.click("[data-tab-strip] [data-tab-id='te']")

@@ -244,8 +244,8 @@ setClosedTogether((id, n) => {
   const keys = commandKeys("tab:reopen"), toast = notify(`Closed ${n} tabs${keys ? ` · Reopen with ${keys}` : ""}`,
     { id: "tabs-closed", action: { label: "Undo", run: () => reopenClosed(id, fileGone) } })
   const back = () => { if (!closedTabs().some((e) => e.id === id)) { dismissNotice(toast); closedToast() } }
-  const off = onWorkspaceChange(back), timer = setTimeout(() => closedToast(), 10_000)
-  closedToast = () => { off(); clearTimeout(timer); closedToast = () => {} }
+  const off = onWorkspaceChange(back)
+  closedToast = () => { off(); closedToast = () => {} }
 })
 
 setSheetFile((store, path) => <FileView store={store} path={path} pane={false} />)

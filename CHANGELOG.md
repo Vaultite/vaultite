@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The "Closed 3 tabs" toast goes once they're back, however late**: held under the pointer past 10 seconds, it
+  stayed after ⌘⇧T reopened them, its Undo doing nothing.
 - **The Mac's traffic lights sit cleanly beside a sidebar rail with panes as cards**: with no tab bar they and the
   sidebar's button move into the top-left card's title row instead of straddling its corner, and the sidebars' top
   rows line up with the cards' title rows.
