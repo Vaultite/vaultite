@@ -270,7 +270,7 @@ id, or nothing.
   })]
 }
 
-const Choice = z.object({ id: z.unknown(), label: z.unknown(), detail: z.unknown(), icon: z.unknown() })
+const Choice = z.object({ id: z.unknown(), label: z.unknown(), detail: z.unknown(), icon: z.unknown() }).partial()
 type ChoiceItem = { id: string; label: string; detail?: string; icon?: string }
 function chooseItems(items: unknown[]): ChoiceItem[] {
   const text = (v: unknown, most: number) => (typeof v === "string" || typeof v === "number" ? String(v).trim().slice(0, most) : "")
