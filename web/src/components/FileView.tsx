@@ -28,7 +28,7 @@ import { renderMarkdown } from "@/core/markdown"
 import { notify, notifyError } from "@/core/notify"
 import { merge3 } from "@/core/merge"
 import { draftOf, dropDraft, keepDraft, type Draft } from "@/core/drafts"
-import { blockFor, fileFormatFor, noteTopItems, fileViewFor, fillsPane, formatFor, timelineKinds, usePluginsVersion, useReadBlock, type FileCtx, type PageCtx } from "@/core/plugins"
+import { blockFor, fileFormatFor, noteItems, fileViewFor, fillsPane, formatFor, timelineKinds, usePluginsVersion, useReadBlock, type FileCtx, type PageCtx } from "@/core/plugins"
 import type { FileFormat, FileHead } from "@/core/define"
 import { FormatBox, FormatGuard } from "@/components/FormatView"
 import { Drawn, Guard } from "@/components/Guard"
@@ -209,13 +209,15 @@ const PathBar = memo(function PathBar({ path, mode, setMode, edit, views, settle
   )
 })
 
-function NoteTop({ head, place }: { head: FileHead; place: "page" | "sheet" }) {
+const withParts = (path: string, source: boolean, drawing: boolean) => isMd(path) && !source && !drawing
+
+const NoteParts = memo(function NoteParts({ head, place, at, on }: { head: FileHead; place: "page" | "sheet"; at: "top" | "end"; on: boolean }) {
   const { disabled, enabled } = usePrefs()
   const plugins = usePluginsVersion()
-  const items = useMemo(() => noteTopItems(disabled), [disabled, enabled, plugins])
+  const items = useMemo(() => (on ? noteItems(disabled, at) : []), [disabled, enabled, plugins, at, on])
   const ctx = useMemo(() => ({ ...head, place }), [head, place])
   return <>{items.map(({ key, item }) => <Guard key={key} what="This part" reset={head.path}><Drawn draw={() => item.render(ctx)} /></Guard>)}</>
-}
+})
 
 const folderLine = (path: string) => (folderOf(path) ? folderOf(path).split("/").join(" / ") : share?.folder ?? "Vault")
 
@@ -810,6 +812,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   } : undefined
   if (fills && drawing) return <PaneFile path={path} kind={kind} bar={pathBar("mb-0")} toggle={phoneToggle} notices={notices} onContextMenu={outsideMenu}>{drawing}</PaneFile>
 
+  const parted = withParts(path, !!source, !!drawing), place = pane ? "page" : "sheet"
   const fileArticle = (
     <article ref={article} className={cn("file-view", pane && "pb-24", column && "mx-auto", column && (wide || code || notebook || format ? "max-w-[1040px]" : readable && "max-w-(--line-width)"))} data-path={path} data-kind={kind}
       data-grid={editGrid ? "" : undefined}
@@ -832,7 +835,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
         {notices}
         <div className={cn(!page && "mt-4")}>
           {showProps && <Properties path={path} block={fm} readOnly={ro || shown === "read"} onChange={setProps} types={store.propertyTypes} stamps={kindStamps(store, path)} />}
-          {isMd(path) && !source && !drawing && <NoteTop head={fileHead} place={pane ? "page" : "sheet"} />}
+          <NoteParts head={fileHead} place={place} at="top" on={parted} />
           {board && pageView ? pageView.render(pageCtx) : <Suspense fallback={<Arriving className="min-h-40" />}>
             {drawing ? framed(layout, pane, drawing) : notebook && !source ? (
               <Notebook text={cur.current.body} />
@@ -854,6 +857,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
                 onChange={(text, start, remote) => typed(text, source || fmText ? null : start, remote)} />
             )}
           </Suspense>}
+          <NoteParts head={fileHead} place={place} at="end" on={parted && !board} />
         </div>
       </div>
     </article>

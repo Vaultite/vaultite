@@ -18,6 +18,7 @@ import type { BlockDecls, SettingDecls } from "../../../core/blocks.ts"
 import type { PropTypes } from "../../../core/proptypes.ts"
 import type { Disclosures } from "../../../core/pluginmeta.ts"
 import type { Home } from "../../../core/fileprops.ts"
+import type { LinkStyle } from "../../../core/linkformat.ts"
 import type { PluginState } from "@/api"
 import { isObj, isText } from "../../../core/values.ts"
 import { keptEntries } from "@/core/keptEntries"
@@ -48,7 +49,7 @@ export type State = PluginState & {
    *  a key is unset there, never written (core/plugins.ts settingDefaults). */
   settingDefaults?: Record<string, Record<string, unknown>>
   /** Where things go (core/filing.ts): the attachment folder, the excluded files, each kind's folder. */
-  filing?: { attachments: string; excluded: string[]; samples?: string[]; homes: Home[] }
+  filing?: { attachments: string; excluded: string[]; samples?: string[]; homes: Home[]; links?: LinkStyle }
   /** Property types (core/proptypes.ts): every declared one (Obsidian's too), and the keys .vaultite/types.json has. */
   propertyTypes?: { types: PropTypes; own: string[] }
   /** What the app draws or keeps itself in a kind's files, by collection: `## ` sections its view draws (a person's

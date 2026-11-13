@@ -3,13 +3,6 @@ import { type EditorState, Prec, StateEffect, StateField } from "@codemirror/sta
 import { keymap, ViewPlugin, type EditorView } from "@codemirror/view"
 import { trackSoon } from "@/core/unsaved"
 
-// Replaces the `]]` that closeBrackets already typed after the cursor.
-export const pickLink = (text: string) => (view: EditorView, _c: Completion, from: number, to: number) => {
-  const end = view.state.sliceDoc(to, to + 2) === "]]" ? to + 2 : to
-  const insert = `${text}]]`
-  view.dispatch({ changes: { from, to: end, insert }, selection: { anchor: from + insert.length }, scrollIntoView: true, userEvent: "input.complete" })
-}
-
 const dismiss = StateEffect.define<number>()
 const dismissed = StateField.define<number | null>({
   create: () => null,

@@ -75,6 +75,42 @@ export default async ($: VaultTest) => {
     check("web: an address keeps its own parentheses, not the link's", JSON.stringify(urlsIn("[w](https://en.wikipedia.org/wiki/Foo_(bar)) (https://a.org/x).").map((u) => u.url)) ===
       JSON.stringify(["https://en.wikipedia.org/wiki/Foo_(bar)", "https://a.org/x"]), urlsIn("[w](https://en.wikipedia.org/wiki/Foo_(bar)) (https://a.org/x)."))
   }
+  await blockRefs($)
   // (its notes would be where the next ones go: new notes go beside the others)
   await api("DELETE", "file?path=Links test")
+}
+
+async function blockRefs({ VAULT, api, check, read, write }: VaultTest) {
+  write("Links test/Blocks.md", "---\ntype: note\n---\n\n# Plan\n\nShip the first cut.\nThen ask Alice.\n\n- launch checklist\n- done already ^kept\n\nShip it twice.\n")
+  let [c, r] = await api("POST", "ops/file.block-link", { path: "Links test/Blocks.md", text: "ask alice" })
+  const id = r.id
+  check("block link: the block gets a ^id at its end, the rest of the file as it was, and its link",
+    c === 200 && r.added && /^[a-z0-9]{6}$/.test(id) && r.link === `[[Blocks#^${id}]]` &&
+    read("Links test/Blocks.md").replace(/^---\n[\s\S]*?\n---\n/, "") === `\n# Plan\n\nShip the first cut.\nThen ask Alice. ^${id}\n\n- launch checklist\n- done already ^kept\n\nShip it twice.\n`, [r, read("Links test/Blocks.md")])
+  ;[c, r] = await api("POST", "ops/file.block-link", { path: "Blocks", text: "done already" })
+  check("block link: a block that has an id keeps it, the file untouched", c === 200 && !r.added && r.id === "kept" && r.link === "[[Blocks#^kept]]", r)
+  ;[c, r] = await api("POST", "ops/file.block-link", { path: "Links test/Blocks.md", text: "ship" })
+  check("block link: words in several blocks ask for more", c === 400 && /2 blocks/.test(r.error), r)
+  ;[c, r] = await api("POST", "ops/file.block-link", { path: "Links test/Blocks.md", text: "launch checklist", id: "kept" })
+  check("block link: an id another block has is refused", c === 409, r)
+  ;[c, r] = await api("POST", "ops/file.anchors", { kind: "block", query: "launch check" })
+  check("anchors: blocks across the vault by their words", c === 200 && r.found.some((f: Any) => f.path === "Links test/Blocks.md" && f.text === "launch checklist"), r)
+  ;[c, r] = await api("POST", "ops/file.anchors", { kind: "heading", query: "plan" })
+  check("anchors: headings across the vault", c === 200 && r.found.some((f: Any) => f.path === "Links test/Blocks.md" && f.text === "Plan"), r)
+  await api("PATCH", "config/files", { wikilinks: false, linkFormat: "relative" })
+  let [, st] = await api("GET", "state")
+  check("link style: files.json's, in the state", JSON.stringify(st.filing.links) === JSON.stringify({ format: "relative", wikilinks: false }), st.filing)
+  ;[c, r] = await api("POST", "ops/file.block-link", { path: "Links test/Blocks.md", text: "done already", from: "Links test/Md/Notes/Top.md" })
+  check("block link: as a Markdown link, relative to the note it goes in", c === 200 && r.link === "[Blocks](../../Blocks.md#^kept)", r)
+  write("Links test/Mention.md", "Saw Ada Stone today.\n")
+  const [, un] = await api("GET", "backlinks/unlinked?path=Links test/Md/Ada Stone.md")
+  ;[c] = await api("POST", "backlinks/link", { ...un.mentions.find((m: Any) => m.path === "Links test/Mention.md"), target: "Links test/Md/Ada Stone.md" })
+  check("Link: an unlinked mention is linked the vault's way", c === 200 && read("Links test/Mention.md") === "Saw [Ada Stone](Md/Ada%20Stone.md) today.\n", read("Links test/Mention.md"))
+  await api("PATCH", "config/files", { wikilinks: null, linkFormat: null })
+  write(".obsidian/app.json", JSON.stringify({ useMarkdownLinks: true, newLinkFormat: "absolute" }))
+  ;[, st] = await api("GET", "state")
+  check("link style: Obsidian's useMarkdownLinks and newLinkFormat when files.json says nothing", JSON.stringify(st.filing.links) === JSON.stringify({ format: "absolute", wikilinks: false }), st.filing)
+  fs.rmSync(path.join(VAULT, ".obsidian"), { recursive: true, force: true })
+  ;[, st] = await api("GET", "state")
+  check("link style: else shortest wikilinks", JSON.stringify(st.filing.links) === JSON.stringify({ format: "shortest", wikilinks: true }), st.filing)
 }

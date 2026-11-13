@@ -17,6 +17,7 @@ import { active, type LinkTarget } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
 import { WIKI_LINK } from "@/core/markdown"
 import { type LinkEntry, linkIndex } from "../../../core/links.ts"
+import { formatLink, LINK_STYLE, type LinkStyle, type NewLink, shortestName } from "../../../core/linkformat.ts"
 import { elementOf } from "@/core/dom"
 
 export type Target = LinkTarget
@@ -267,15 +268,14 @@ function linkIndexOf(s: Store): Index {
 export const resolver = (s: Store): Resolve => linkIndexOf(s).resolve
 
 export function shortestLink(s: Store, path: string, from?: string): string {
-  const resolve = resolver(s)
-  const parts = path.split("/"), named = stem(path)
-  const last = named !== parts[parts.length - 1] ? named : parts[parts.length - 1]
-  for (let i = parts.length - 1; i >= 0; i--) {
-    const c = [...parts.slice(i, -1), last].join("/")
-    if (resolve(c, from)?.file === path) return c
-  }
-  return [...parts.slice(0, -1), last].join("/")
+  const resolve = resolver(s), named = stem(path), last = path.slice(path.lastIndexOf("/") + 1)
+  const finds = (c: string) => { const r = resolve(c, from); return r?.file === path || (!r && !inVault(s, path)) }
+  return shortestName(path, finds, named !== last ? named : last)
 }
+
+export const linkStyle = (s: Store | null | undefined): LinkStyle => s?.filing?.links ?? LINK_STYLE
+
+export const newLink = (s: Store, to: NewLink, from = ""): string => formatLink(to, from, linkStyle(s), (p) => shortestLink(s, p, from || undefined))
 
 const didYouMean = (s: Store, target: string, from?: string) => linkIndexOf(s).suggest(target, from)
 

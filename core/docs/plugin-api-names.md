@@ -150,7 +150,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `commandList()`: Every command registered now, available or not (`available` says which can run).
 - `confirmDialog(opts)`: Ask; resolves true when confirmed, false when cancelled.
 - `ConfirmOptions`
-- `Conventions`: How the vault wants new files placed and links written, when it says so itself (another app's settings in it); undefined leaves it to the app.
+- `Conventions`: How the vault wants new files placed, when it says so itself (another app's settings in it); undefined leaves it to the app.
+- `copyBlockLink(view)`
 - `copyText(text)`: Put text on the clipboard: the Clipboard API (https and localhost), else a hidden text field and copy.
 - `Corner`
 - `CORNERS`
@@ -355,6 +356,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Layout`: A block's place on a dashboard's grid: COMMON's `wide` and `stack`.
 - `leaveList()`: Give the keyboard back to the focused pane: its editor or terminal, else nothing (so the page's keys work).
 - `Link`: A link as drawn Markdown names it: a [[link]]'s target, a Markdown link's address, or a #tag.
+- `linkableHere(view)`
 - `linkClick(e)`
 - `LinkClick`: How a link was clicked: ⌘ (Ctrl elsewhere) or a middle click is a new tab (a web page's behind the one on screen, in front with ⇧ too, as browsers do); ⌥⌘ sends a web page to the system browser…
 - `LinkEdit`: What changes a link where it's written (an editor's): its target selected to type over, or the link taken out leaving its text.
@@ -363,7 +365,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `linksIn(text, offset?)`: The links in a line (`offset`: where it starts): [[wiki]], ![[embed]], [text](url), <url>, a bare URL, a #tag.
 - `LinkSpan`: A link in a line of Markdown: its span, where its target is written (`target`) and its text (`text`: a [[link|alias]]'s alias, a [text](url)'s text); `embed`: an ![[embed]] or ![image](url).
 - `LinkTarget`: Something a [[wikilink]] can point to: `names` match exactly (any case), after files' names and paths.
-- `linkTo(path, from?)`: A [[link]] to a file (written in `from`), as short as the app's links allow: the shortest path that finds it.
+- `linkTo(path, from?, to?)`: A new link to a file, written in `from`, as the vault writes links (Settings, Files).
 - `List({ children })`
 - `listening()`: Listening now: a session not told to stop.
 - `Loading({ error, className })`: A block's data on its way: "Loading…", shimmering, or what went wrong getting it (`error`: "Couldn't ask Tailscale.").
@@ -413,8 +415,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `NoteEditor(props)`: Markdown that isn't a file, edited like a note (a canvas's text card).
 - `NoteEditorProps`
 - `noteFor(store, target, from)`: The note an embed names, or null (not a note, or no such file).
+- `NoteItem`: Drawn in a note's page above its text (noteTop) or under it (noteEnd), in every mode but source; `place`: in a tab or a sheet.
 - `NotePreview({ store, target, from })`: A note drawn whole for a glance (Page preview's popover), scrolled to the heading `target` names; a block target shows only that block.
-- `NoteTopItem`: Drawn in a note's page under its properties, above its text (a toolbar, a banner): every Markdown file, dashboards too, in every mode but source; `place`: in a tab or a sheet.
 - `Notice`: The toasts shown lately, newest last: what an agent asks after its command (`vau command`), and the companion when the user points at one that's gone.
 - `noticesSince(t)`: Toasts shown since `t` (ms), newest last.
 - `notify(text, opts?)`: Show a toast.
@@ -500,7 +502,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `parseDate(text, fmt, opts?)`: The date `text` names in a moment.js format (a week's first day), or null if the format doesn't write it ("2026-13-01" in YYYY-MM-DD); `loose`: what the text starts with, read as moment does.
 - `parseTerminal(id)`: The agent terminal `id` runs, in which account, the session it resumes and the machine it's on; null: a shell.
 - `parseTimeline(text)`: The entries in a timeline section (the Markdown under its heading), in file order.
-- `pasteAttachments(s, from, files)`: Save pasted files as attachments of `from` (saveAttachments) and answer what to type for them: `![[name]]` (or `![](path)` with Markdown links), one per line.
+- `pasteAttachments(s, from, files)`
 - `pastedFiles(d)`: The files a paste brings, only when it has no text of its own, as Obsidian takes it: Excel or Word cells come as text and a picture of them.
 - `pastEnd(list, last, x, y, el)`: Whether a drag at (x, y) over `el` is just past a list's `last` row, where a drop puts it at the end: under it, down to its panel's bottom or a row's height (a panel often ends right under it),…
 - `patch(path, body)`

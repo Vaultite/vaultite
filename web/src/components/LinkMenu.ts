@@ -6,7 +6,7 @@ import { setProperty } from "@/core/frontmatter"
 import { notify, notifyError } from "@/core/notify"
 import { webContainers, webLinkOpensIn } from "@/core/plugins"
 import type { WebContainer } from "@/core/define"
-import { followLink, linkPlace, openTag, openWebLink, shortestLink, type Link as Linked } from "@/core/links"
+import { followLink, linkPlace, newLink, openTag, openWebLink, type Link as Linked } from "@/core/links"
 import { desktop } from "@/core/desktop"
 import { isDesktop } from "@/core/platform"
 import { openInSplit } from "@/core/splits"
@@ -51,7 +51,7 @@ export function linkItems(link: Linked, opts: { from?: string; text?: string; ed
     const file = place.file, anchor = place.anchor ?? "", desk = isDesktop()
     return grouped([
       [openItem(() => (anchor ? openAt(file, anchor, { newTab: true }) : openFile(file, { newTab: true })), desk ? () => openInSplit(`file:${file}`, "right") : undefined)],
-      [{ label: "Copy link", icon: Link, run: () => copied(`[[${shortestLink(s, file)}${anchor ? `#${anchor}` : ""}]]`, "link") }, ...copyText],
+      [{ label: "Copy link", icon: Link, run: () => copied(newLink(s, { path: file, anchor: anchor || undefined }), "link") }, ...copyText],
       change,
       [{ label: "More file actions", icon: Ellipsis, run: () => {}, items: fileMenu(file, { inside: true, phone: !desk }) }],
     ])

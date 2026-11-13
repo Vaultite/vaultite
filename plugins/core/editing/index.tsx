@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, ClipboardPaste, Delete, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, ImagePlus, Link, Link2, List, ListIndentDecrease, ListIndentIncrease, ListOrdered, ListTodo, Pilcrow, RemoveFormatting, SquareCheck, Superscript, TextQuote } from "lucide-react"
-import { activeFile, currentEditor, definePlugin, HIGHLIGHT_EMOJI, isMac, keysInEditor, notifyError, unhighlight, type PluginCommand } from "@vaultite"
+import { activeFile, copyBlockLink, currentEditor, definePlugin, HIGHLIGHT_EMOJI, isMac, keysInEditor, linkableHere, notifyError, unhighlight, type PluginCommand } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
 import { NoteKeys, ToolbarSettings } from "./keys"
 import { addPhotos } from "./photo"
@@ -15,6 +15,7 @@ const run = (fn: (m: typeof import("./edit")) => (v: EditorView) => unknown) => 
   if (edit) { fn(edit)(v); v.focus() } else void load().then((m) => { fn(m)(v); v.focus() })
 }
 const when = () => !!note()
+const shown = () => { const ed = currentEditor(); return ed?.kind === "markdown" ? ed.view : null }
 const coarse = () => matchMedia("(pointer: coarse)").matches
 
 const marks: [string, string, string, string[]?][] = [
@@ -38,6 +39,7 @@ export default definePlugin({
     { id: "editor:clear-formatting", name: "Clear formatting", when, run: run((e) => (v) => e.clearFormatting(v, HIGHLIGHT_EMOJI)), icon: RemoveFormatting },
     { id: "editor:insert-link", name: "Insert Markdown link", keys: ["Mod+K"], when, run: run((e) => e.insertLink), icon: Link },
     { id: "editor:insert-wikilink", name: "Add internal link", when, run: run((e) => e.insertWikilink), icon: Link2 },
+    { id: "editor:copy-block-link", name: "Copy link to block", when: () => { const v = shown(); return !!v && !!linkableHere(v) }, run: () => { const v = shown(); if (v) copyBlockLink(v) }, icon: Link2 },
     { id: "editor:toggle-checklist-status", name: "Toggle checkbox status", keys: ["Mod+L"], when, run: run((e) => e.toggleChecklist), icon: SquareCheck },
     { id: "editor:toggle-bullet-list", name: "Toggle bullet list", keys: ["Mod+Shift+8"], when, run: run((e) => e.toggleBullets), icon: List },
     { id: "editor:toggle-numbered-list", name: "Toggle numbered list", keys: ["Mod+Shift+7"], when, run: run((e) => e.toggleNumbers), icon: ListOrdered },

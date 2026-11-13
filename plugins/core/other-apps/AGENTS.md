@@ -3,7 +3,8 @@ A vault another Markdown app also opens keeps that app's settings in `.obsidian/
 sets that mean the same thing here (and never writes `.obsidian/`):
 - `newFileLocation` / `newFileFolderPath`: where new notes go (`root`, `current`: the open file's folder, `folder`: that
   folder), else the top.
-- `useMarkdownLinks`: `[[` suggestions and pasted images are written as Markdown links (`[Note](Note.md)`).
+- `useMarkdownLinks` and `newLinkFormat` (`shortest`, `relative`, `absolute`): how new links are written, as the
+  defaults of `.vaultite/files.json`'s `wikilinks` (false when it uses Markdown links) and `linkFormat` (`vau docs app`).
 - Defaults of the app's own settings (`vau docs app`), while those are unset: `attachmentFolderPath` (where pasted files
   go: `/`, `./`, `./sub` or a folder) and `userIgnoreFilters` (excluded files); `templates.json`'s `folder`,
   `dateFormat`, `timeFormat` (Templates); `daily-notes.json`'s `folder`, `format`, `template` (Daily notes).

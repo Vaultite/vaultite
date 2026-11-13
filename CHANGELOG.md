@@ -17,6 +17,14 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   adds a cursor, ⌘⌥↑ and ⌘⌥↓ one above or below, ⌥-drag a column (⇧⌥-drag one alone), and Select next occurrence is
   in the palette; a web page's formatting pastes as Markdown (⇧⌘V keeps the text) and an address pasted over selected
   text links it; `^[text]` is a footnote; a callout type of your own keeps its name for snippets to style.
+- **Block references, as in Obsidian**: `[[note#^` suggests a note's paragraphs and list items and gives the picked one
+  a `^id`; `[[##` and `[[^^` find headings and blocks across the vault; Copy link to block (the editor's menu, the
+  palette); `vau block-link` does it for agents.
+- **Files dragged from inside the app onto a note's text go in as links**: from the file tree, search, Links, Pinned
+  and Recent, at the point they're let go; an image or other attachment as an embed.
+- **New link format and Use wikilinks** in Settings, Files: shortest, relative or absolute paths, wikilinks or Markdown
+  links (from Obsidian's settings when unset), for every new link: suggestions, drops, pasted files, copied links.
+- **Backlinks in document**: a Links setting, off by default, shows a note's linked and unlinked mentions under its text.
 - **An app on the internet asking to allow a vault plugin reaches the owner again**: the ask, which names the plugin
   and what it discloses, failed before it was sent, so the app was only told it couldn't.
 - **Errors the app catches are kept in Errors, and a base's failed edit says so**: a Vim command that couldn't be set up

@@ -1,8 +1,10 @@
-import { ArrowDownUp, Archive, Blend, Sparkles, BookOpenText, Brackets, Eye, Heading, Layers2, LayoutPanelLeft, LayoutPanelTop, ListOrdered, ListTree, MousePointer2, PanelLeft, PanelLeftDashed, PanelTop, SeparatorHorizontal, Shapes, SpellCheck, SunDim, WrapText } from "lucide-react"
+import { ArrowDownUp, Archive, Blend, Sparkles, BookOpenText, Brackets, Eye, Heading, Layers2, LayoutPanelLeft, Link2, LayoutPanelTop, ListOrdered, ListTree, MousePointer2, PanelLeft, PanelLeftDashed, PanelTop, SeparatorHorizontal, Shapes, SpellCheck, SunDim, WrapText } from "lucide-react"
 import { setAi } from "@/core/ai"
 import { canTranslucent, getTranslucency, onTranslucency } from "@/core/appearance"
 import type { Command } from "@/core/commands"
-import { reload } from "@/core/data"
+import { getStore, reload } from "@/core/data"
+import { linkStyle } from "@/core/links"
+import { setWikilinks } from "@/core/linkstyle"
 import { editorSet, editorSettings, setEditor, type EditorSettings } from "@/core/editorPrefs"
 import { openDetail } from "@/core/nav"
 import { notify, notifyError } from "@/core/notify"
@@ -86,6 +88,9 @@ const CORE: SwitchDef[] = [
     ...files("showArchived", "Adds the .archive folders archived files move into, dimmed (hidden files or not); without it, an archived file shows only while it's open") },
   { id: "setting:auto-reveal", name: "Reveal the open file", icon: ListTree, words: "auto-reveal current file tree",
     ...files("autoReveal", "Opens its folders in the tree and scrolls to it") },
+  { id: "setting:wikilinks", name: "Use wikilinks", icon: Link2, words: "links markdown [[ ]] link format", plugin: { id: "files", key: "wikilinks" },
+    sub: () => "New links are written [[Note]]; off, as Markdown links: [Note](Note.md)",
+    get: () => linkStyle(getStore()).wikilinks, set: (on) => setWikilinks(on) },
 ]
 
 export const coreSwitch = (id: string) => CORE.find((s) => s.id === id)!

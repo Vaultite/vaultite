@@ -8,12 +8,15 @@ import { Group } from "@/components/kit"
 import { SORTS } from "@/components/FileTree"
 import { Field } from "@/components/PluginSettings"
 import type { SettingDecl } from "../../../core/blocks.ts"
+import { LINK_FORMATS } from "../../../core/linkformat.ts"
+import { linkStyle } from "@/core/links"
+import { setLinkFormat } from "@/core/linkstyle"
 
 const sorts = SORTS.flat()
 const FOLDER_VIEWS: FolderView[] = ["grid", "list", "columns", "gallery"]
 const FOLDER_GROUPS: FolderGroup[] = ["none", "kind", "modified"]
 const switchOf = (row: string) => coreSwitch(`setting:${row}`)
-const DECLS: Record<"fileSort" | "folderView" | "folderGroup" | "folderLimit" | "attachmentFolder" | "excluded" | "samples", SettingDecl> = {
+const DECLS: Record<"fileSort" | "folderView" | "folderGroup" | "folderLimit" | "attachmentFolder" | "linkFormat" | "excluded" | "samples", SettingDecl> = {
   fileSort: { type: "enum", default: "name", label: "Sort order", values: sorts.map((s) => s.value),
     labels: Object.fromEntries(sorts.map((s) => [s.value, s.label])), description: "folders stay first, by name" },
   folderView: { type: "enum", default: "list", label: "Show folders as", values: ["grid", "list", "columns", "gallery"],
@@ -25,6 +28,9 @@ const DECLS: Record<"fileSort" | "folderView" | "folderGroup" | "folderLimit" | 
     description: "how many of a folder's files show before a Show more row (in the sort order; its folders always show); 0 shows them all" },
   attachmentFolder: { type: "string", default: "Attachments", label: "Attachment folder",
     description: "where pasted and dropped files go: a folder, / for the top, ./ beside the note, ./name in a folder beside it" },
+  linkFormat: { type: "enum", default: "shortest", label: "New link format", values: LINK_FORMATS,
+    labels: { shortest: "Shortest path when possible", relative: "Relative path to file", absolute: "Absolute path in vault" },
+    description: "how a new link names its file: by name unless another file has it, from the note's folder (../Notes/Idea), or from the vault's top" },
   excluded: { type: "list", default: [], lines: true, label: "Excluded files",
     description: "paths they start with (Archive/) or /regular expressions/: out of search, the graph and unlinked mentions, last in the quick switcher" },
   samples: { type: "list", default: [], lines: true, label: "Sample folders",
@@ -59,6 +65,9 @@ export function FilesSettings() {
         set={(v) => void setPrefs({ folderLimit: typeof v === "number" && v >= 0 ? Math.floor(v) : 0 })} />
       <SwitchRow s={switchOf("auto-reveal")} />
       {filing && <Field k="attachmentFolder" d={at} value={own(filing.attachments, at.default)} set={(v) => saveFiles("attachmentFolder", v, seeds.attachmentFolder)} />}
+      <SwitchRow s={switchOf("wikilinks")} />
+      {filing && <Field k="linkFormat" d={DECLS.linkFormat} value={linkStyle(store).format}
+        set={(v) => setLinkFormat(LINK_FORMATS.find((f) => f === v) ?? "shortest")} />}
       {filing && <Field k="excluded" d={ex} value={filing.excluded} set={(v) => saveFiles("excluded", v, seeds.excluded)} />}
       {filing && <Field k="samples" d={DECLS.samples} value={filing.samples ?? []} set={(v) => saveFiles("samples", v, undefined)} />}
     </Group>

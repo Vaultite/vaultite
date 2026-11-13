@@ -1,9 +1,10 @@
 import { useCallback, useMemo, type ReactNode } from "react"
 import { createRoot } from "react-dom/client"
 import type { Store } from "@/core/data"
-import { findEmbed, folderOf, isMd, openFile, readFile, stem } from "@/core/files"
-import { followLink, resolver, shortestLink, type LinkClick, type Target } from "@/core/links"
-import { attachDropped, markdownLinks } from "@/core/conventions"
+import { findEmbed, folderOf, inVault, isMd, openFile, readFile, stem } from "@/core/files"
+import { followLink, newLink, resolver, type LinkClick, type Target } from "@/core/links"
+import { attachDropped } from "@/core/conventions"
+import { op } from "@/core/http"
 import type { Dropped } from "@/core/filedrop"
 import { notifyError } from "@/core/notify"
 import { slashItems } from "@/core/slash"
@@ -13,7 +14,7 @@ import { rawUrl } from "@/components/FileViewers"
 import { Catch } from "@/components/Guard"
 import { EmbedView, noteFor } from "@/components/NoteEmbed"
 import type { Drawn, EmbedEdit, PreviewConfig } from "@/editor/livePreview"
-import { headingsOf, linkText } from "../../../core/sections.ts"
+import type { Anchor, LinkName, Linking } from "@/editor/linkComplete"
 
 const failed = () => <p className="text-[15px] text-muted-foreground">This section couldn't be drawn. Click to edit its Markdown.</p>
 
@@ -51,39 +52,44 @@ export function linkKind(resolve: (t: string) => Target | null, target: string):
   return !hit ? null : hit.kind === "file" || hit.kind === "note" ? "" : hit.kind
 }
 
-function linkNames(store: Store, from: string) {
-  const out: { label: string; detail?: string; path?: string; insert?: string; link?: string }[] = []
+function linkNames(store: Store): LinkName[] {
+  const out: LinkName[] = []
   for (const f of store.files.files) {
-    out.push({ label: stem(f.path), detail: folderOf(f.path) || undefined, path: f.path, insert: shortestLink(store, f.path, from) })
-    for (const a of f.aliases) if (a !== stem(f.path)) out.push({ label: a, detail: `→ ${stem(f.path)}`, path: f.path, link: shortestLink(store, f.path, from) })
+    out.push({ label: stem(f.path), detail: folderOf(f.path) || undefined, path: f.path })
+    for (const a of f.aliases) if (a !== stem(f.path)) out.push({ label: a, detail: `→ ${stem(f.path)}`, path: f.path, alias: true })
   }
-  for (const f of store.files.others) out.push({ label: stem(f.path), detail: folderOf(f.path) || undefined, path: f.path, insert: shortestLink(store, f.path, from) })
+  for (const f of store.files.others) out.push({ label: stem(f.path), detail: folderOf(f.path) || undefined, path: f.path })
   return out
+}
+
+function linking(store: Store, from: string, resolve: (t: string) => Target | null, own: () => string): Linking {
+  let names: LinkName[] | null = null
+  return {
+    from,
+    names: () => (names ??= linkNames(store)),
+    isFile: (path) => inVault(store, path),
+    note: async (name) => {
+      const file = name.trim() ? resolve(name)?.file : from
+      if (!file || !isMd(file)) return null
+      const text = file === from ? own() : await readFile(file).then((f) => f.text, () => null)
+      return text === null ? null : { path: file, text }
+    },
+    across: (kind, query) => op<{ found: Anchor[] }>("file.anchors", { kind, query }).then((r) => r.found, () => []),
+    link: (to) => newLink(store, to, from),
+    giveId: (path, text, id) => { op("file.block-link", { path, text, id }).catch((e) => notifyError(e, "Couldn't give the block its id")) },
+  }
 }
 
 export function useVaultEditing(store: Store, from: string, own: () => string) {
   const resolve = useMemo(() => { let r: ReturnType<typeof resolver> | null = null; return (t: string) => (r ??= resolver(store))(t, from) }, [store, from])
-  const names = useMemo(() => { let list: ReturnType<typeof linkNames> | null = null; return () => (list ??= linkNames(store, from)) }, [store, from])
-  const tags = useCallback(() => vocabOf(store.files.files).tagFiles.filter((t) => t.only !== from), [store, from])
   // eslint-disable-next-line react-hooks/exhaustive-deps -- own is a getter, read at each call
-  const headings = useCallback((name: string) => headingsIn(resolve, name, from, own), [resolve, from])
+  const links = useMemo(() => linking(store, from, resolve, own), [store, from, resolve])
+  const tags = useCallback(() => vocabOf(store.files.files).tagFiles.filter((t) => t.only !== from), [store, from])
   const onOpen = useCallback((link: { wiki?: string; url?: string; tag?: string }, how: boolean | LinkClick) => followLink(store, link, how, from), [store, from])
-  const mdLinks = useCallback(() => markdownLinks(store), [store])
   const slash = useCallback(() => slashItems(store), [store])
   const attach = useCallback(async (d: Dropped) => {
     const n = d.files.length + d.images.length
     try { return await attachDropped(store, from, d) } catch (e) { notifyError(e, n > 1 ? "Couldn't save the files" : "Couldn't save the file"); return null }
   }, [store, from])
-  return { resolve, names, tags, headings, onOpen, markdownLinks: mdLinks, slash, attach }
-}
-
-async function headingsIn(resolve: (t: string) => Target | null, name: string, from: string, own: () => string) {
-  let text = ""
-  if (!name.trim()) text = own()
-  else {
-    const file = resolve(name)?.file
-    if (file && isMd(file)) text = file === from ? own() : await readFile(file).then((f) => f.text, () => "")
-  }
-  const plain = (h: string) => linkText(h).replace(/[[\]|#^]/g, " ").replace(/\s+/g, " ").trim()
-  return [...new Set(headingsOf(text).map((h) => plain(h.text)).filter(Boolean))]
+  return { resolve, links, tags, onOpen, slash, attach }
 }

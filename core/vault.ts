@@ -13,6 +13,7 @@ import { tagsOf } from "./sections.ts"
 import { bodyLine, FM, frontmatter, loadFm, parseText, prose, stripNl } from "./frontmatter.ts"
 import { ARCHIVE_DIR, archiveTwin, effectiveType, excluder, homeFolder, inArchive, isArchived, isHiddenPath } from "./fileprops.ts"
 import { kindOf } from "./filetypes.ts"
+import { formatLink, linkStyleOf, type NewLink, shortestName } from "./linkformat.ts"
 import { type LinkFile, linkResolver, mapLinks, relativePath, type Resolve, resolvePath } from "./links.ts"
 import { errorContext } from "./serverlog.ts"
 import { noteRead, noteSource } from "./sources.ts"
@@ -909,6 +910,11 @@ export class Vault {
       else this.links = { version: this.version, resolve: linkResolver(this.linkFiles()), names: this.linkNames() }
     }
     return this.links!.resolve(target, from)
+  }
+  newLink(to: NewLink, from: string): string {
+    const finds = (p: string, c: string) => { const r = this.resolveLink(c, from); return r === p || (r === null && !this.entries.has(p) && !this.others.has(p)) }
+    const shortest = (p: string) => shortestName(p, (c) => finds(p, c), /\.md$/i.test(p) ? stemOf(p) : base(p))
+    return formatLink(to, from, linkStyleOf(this.configWithDefaults("files")), shortest)
   }
   linkNames(): Map<string, string> {
     const out = new Map<string, string>()

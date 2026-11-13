@@ -606,7 +606,7 @@ export function fileBarItems(disabled: string[], saved = getPrefs().fileBar) {
   const at = (k: string) => { const i = saved?.indexOf(k) ?? -1; return i < 0 ? Infinity : i }
   return saved ? [...all].sort((a, b) => at(a.key) - at(b.key)) : all
 }
-export const noteTopItems = (disabled: string[]) => slotItems((p) => p.noteTop, disabled)
+export const noteItems = (disabled: string[], at: "top" | "end") => slotItems((p) => (at === "top" ? p.noteTop : p.noteEnd), disabled)
 
 export function ambientItems(disabled: string[]) {
   const ai = getPrefs().ai

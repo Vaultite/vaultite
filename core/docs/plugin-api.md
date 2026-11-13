@@ -138,11 +138,12 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `status`: What it draws in the status bar, by name (see StatusItem).
 - `ambient`: What it draws in the status bar whatever is open, by name (see AmbientItem).
 - `fileBar`: What it draws in a file's header, by name (see FileBarItem).
-- `noteTop`: What it draws at the top of a note's page, by name (see NoteTopItem).
+- `noteTop`: What it draws at the top of a note's page, by name (see NoteItem).
+- `noteEnd`: What it draws at the end of a note's page, under its text, by name (see NoteItem).
 - `textSizes`: Content with a text size of its own apart from the interface size (core/textsize.ts), by id: ⌘+ ⌘- ⌘0 and ⌘+scroll over it (`useTextSizeWheel`), commands and a Settings row step it; the view reads `useTextSize(id)`.
 - `keyGroups`: Names for the first steps of its commands' key sequences, which the keys hint shows while one is under way (`{"Space F": "Files"}`; steps spelled as in `keys`).
 - `sidebarSetup`: Keeps the sidebars' setup itself, instead of sidebars.json (see SidebarSetup).
-- `conventions`: Where new files go and how links are written, as the vault says (see Conventions).
+- `conventions`: Where new files go, as the vault says (see Conventions).
 - `openElsewhere`: The places open in tabs it keeps off screen (other workspaces' tabs), so closing a tab here doesn't end what it shows (a terminal's shell) while one of those still has it.
 - `workspace`: Keeps workspaces (see WorkspaceHost): one plugin at a time, the first that's on.
 - `fileMenu`: Items it adds to a vault file's menu, wherever it shows (the tree, a tab, the file's view, an embed, a canvas card), for that file's path; [] for none.

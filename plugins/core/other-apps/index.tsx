@@ -32,7 +32,6 @@ export default definePlugin({
       }
       return undefined
     },
-    markdownLinks: (s) => settings(s)?.useMarkdownLinks,
     editor: (s) => {
       const o = settings(s)
       if (!o) return undefined

@@ -7,7 +7,7 @@ import {
   TextSelect, type LucideIcon,
 } from "lucide-react"
 import {
-  copyText, drawnLink, editorMenuItems, editorOf, grouped, highlightItems, keyHint, keysOf, linkItems, linksIn, lookUp, notifyError, offeredCommand, openMenu,
+  copyBlockLink, copyText, drawnLink, editorMenuItems, editorOf, grouped, highlightItems, keyHint, keysOf, linkableHere, linkItems, linksIn, lookUp, notifyError, offeredCommand, openMenu,
   selectAllIn, selectedText, spelling, type Link as Linked, type LinkEdit, type LinkSpan, type MenuItem,
 } from "@vaultite"
 
@@ -74,7 +74,7 @@ function menuItems(view: EditorView, at: { x: number; y: number }, link: ReturnT
   return grouped([
     editable && pos !== null && spelled?.word ? spellItems(view, spelled, pos) : [],
     link ? linkItems(link.link, { from: editorOf(view)?.path, text: link.text, edit })
-      : [...command(view, ["editor:insert-wikilink", "Add link", Link]), ...command(view, ["editor:insert-link", "Add external link", Link2])],
+      : [...command(view, ["editor:insert-wikilink", "Add link", Link]), ...command(view, ["editor:insert-link", "Add external link", Link2]), ...blockLinkItem(view)],
     [...submenu(view, "Format", Bold, FORMAT), ...submenu(view, "Paragraph", Pilcrow, PARAGRAPH), ...submenu(view, "Insert", TextCursorInput, editable ? INSERT : [])],
     editorMenuItems(view),
     [
@@ -90,6 +90,11 @@ function menuItems(view: EditorView, at: { x: number; y: number }, link: ReturnT
       ...command(view, ["web:search-selection", "Search the web", Globe]),
     ],
   ])
+}
+
+function blockLinkItem(view: EditorView): MenuItem[] {
+  const here = linkableHere(view)
+  return here ? [{ label: here.heading !== undefined ? "Copy link to heading" : "Copy link to block", icon: Link2, run: () => void copyBlockLink(view) }] : []
 }
 
 function spellItems(view: EditorView, { word, suggestions }: Spelled, pos: number): MenuItem[] {

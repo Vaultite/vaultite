@@ -9,6 +9,7 @@ export type ObsidianSettings = {
   newFileFolderPath?: string
   attachmentFolderPath?: string
   useMarkdownLinks?: boolean
+  newLinkFormat?: "shortest" | "relative" | "absolute"
   userIgnoreFilters?: string[]
   spellcheck?: boolean
   useTab?: boolean
@@ -39,7 +40,7 @@ export function obsidianSettings(vault: Vault): ObsidianSettings | null {
   if (["root", "current", "folder"].includes(raw.newFileLocation)) out.newFileLocation = raw.newFileLocation
   if (typeof raw.newFileFolderPath === "string") out.newFileFolderPath = folder(raw.newFileFolderPath)
   if (typeof raw.attachmentFolderPath === "string" && raw.attachmentFolderPath.trim()) out.attachmentFolderPath = raw.attachmentFolderPath.trim()
-  if (typeof raw.useMarkdownLinks === "boolean") out.useMarkdownLinks = raw.useMarkdownLinks
+  Object.assign(out, linksOf(raw))
   if (Array.isArray(raw.userIgnoreFilters)) out.userIgnoreFilters = raw.userIgnoreFilters.filter((f: unknown): f is string => typeof f === "string" && !!f.trim())
   for (const k of ["spellcheck", "useTab", "autoPairBrackets", "autoPairMarkdown", "readableLineLength"] as const) if (typeof raw[k] === "boolean") out[k] = raw[k]
   if (Number.isInteger(raw.tabSize) && raw.tabSize >= 1 && raw.tabSize <= 8) out.tabSize = raw.tabSize
@@ -47,6 +48,13 @@ export function obsidianSettings(vault: Vault): ObsidianSettings | null {
   if (raw.defaultViewMode === "source" || raw.defaultViewMode === "preview") out.defaultView = raw.defaultViewMode === "source" ? "editing" : "reading"
   if (typeof raw.livePreview === "boolean") out.editingMode = raw.livePreview ? "live" : "source"
   cache.set(vault, { mtime, value: out })
+  return out
+}
+
+function linksOf(raw: Item): Pick<ObsidianSettings, "useMarkdownLinks" | "newLinkFormat"> {
+  const out: Pick<ObsidianSettings, "useMarkdownLinks" | "newLinkFormat"> = {}
+  if (typeof raw.useMarkdownLinks === "boolean") out.useMarkdownLinks = raw.useMarkdownLinks
+  if (["shortest", "relative", "absolute"].includes(raw.newLinkFormat)) out.newLinkFormat = raw.newLinkFormat
   return out
 }
 
@@ -92,7 +100,8 @@ export function obsidianDefaults(vault: Vault): Record<string, Item> {
   const app = obsidianSettings(vault)
   if (app === null) return {}
   const out: Record<string, Item> = {}
-  const files = keys({ excluded: app.userIgnoreFilters?.length ? app.userIgnoreFilters : undefined, attachmentFolder: app.attachmentFolderPath })
+  const files = keys({ excluded: app.userIgnoreFilters?.length ? app.userIgnoreFilters : undefined, attachmentFolder: app.attachmentFolderPath,
+    linkFormat: app.newLinkFormat, wikilinks: app.useMarkdownLinks === undefined ? undefined : !app.useMarkdownLinks })
   if (Object.keys(files).length) out.files = files
   const t = obsidianJson(vault, "templates")
   if (t) {

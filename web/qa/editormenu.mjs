@@ -31,7 +31,7 @@ try {
   const pick = async (n, path, at) => {
     await open(n, at ? { position: at } : {})
     for (const [i, name] of path.entries()) {
-      const it = page.locator("[role=menu]").nth(i).getByRole("menuitem", { name, exact: false }).first()
+      const it = page.locator("[role=menu]").nth(i).getByRole("menuitem", { name, exact: false }).filter({ hasNotText: "link to" }).first()
       await it.click(); await ui.idle()
     }
   }
@@ -112,7 +112,7 @@ try {
   await select(1)
   await open(4)
   got = await items()
-  check("outside the selection: no Cut, Copy or Search for", !got.some((i) => /^(Cut|Copy|Search for)/.test(i)) && got.some((i) => i.startsWith("Paste")) && got.some((i) => i.startsWith("Insert")), got)
+  check("outside the selection: no Cut, Copy or Search for", !got.some((i) => /^(Cut|Copy(?! link)|Search for)/.test(i)) && got.some((i) => i.startsWith("Paste")) && got.some((i) => i.startsWith("Insert")), got)
   await page.getByRole("menuitem", { name: "Insert" }).click(); await ui.idle()
   await page.locator("[role=menu]").nth(1).getByRole("menuitem", { name: "Horizontal rule" }).click(); await ui.idle()
   check("…and the cursor went where the click was", await saved("epsilon\n\n---\n"), disk())

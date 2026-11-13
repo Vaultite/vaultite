@@ -95,10 +95,7 @@ plugin.route("POST", "backlinks/link", (req) => {
   const m = { line: String(b.line ?? ""), nth: Math.trunc(Number(b.nth) || 0), col: Math.trunc(Number(b.col) || 0),
     len: Math.trunc(Number(b.len) || 0), text: String(b.text ?? "") }
   if (!findMentions(m.text, namesOf(to)).length) throw new HTTPError(400, `'${m.text}' isn't a name of ${stemOf(to)}`)
-  const stem = stemOf(to)
-  const shared = [...plugin.vault.entries.keys()].some((r) => r !== to && stemOf(r).toLowerCase() === stem.toLowerCase())
-  const name = shared ? to.replace(/\.md$/, "") : stem
-  const link = !shared && namesOf(to).includes(m.text) ? `[[${m.text}]]` : `[[${name}|${m.text}]]`
+  const link = plugin.vault.newLink({ path: to, text: m.text }, rel)
   const abs = plugin.vault.abs(rel)
   const next = linkMention(fs.readFileSync(abs, "utf8"), m, link)
   if (next === null) throw new HTTPError(409, `${rel} changed there since: look again`)

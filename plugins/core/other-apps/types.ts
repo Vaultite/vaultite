@@ -3,6 +3,7 @@ export type ObsidianSettings = {
   newFileFolderPath?: string
   attachmentFolderPath?: string
   useMarkdownLinks?: boolean
+  newLinkFormat?: "shortest" | "relative" | "absolute"
   spellcheck?: boolean
   useTab?: boolean
   tabSize?: number

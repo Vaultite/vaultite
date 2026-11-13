@@ -2,7 +2,7 @@ import { StateEffect, StateField, type EditorState, type Extension } from "@code
 import { EditorView, layer, RectangleMarker } from "@codemirror/view"
 import { bodyStart, shownStart } from "./frontmatter"
 
-export type DropSpot = { pos: number; where: "before" | "after" | "in" }
+export type DropSpot = { pos: number; where: "before" | "after" | "in" | "at" }
 
 const showSpot = StateEffect.define<DropSpot | null>()
 const holdSpot = StateEffect.define<{ id: number; spot: DropSpot | null }>()
@@ -43,6 +43,11 @@ export function spotAt(view: EditorView, at: { x: number; y: number }): DropSpot
   return h < (b.top + b.bottom) / 2 ? { pos: Math.max(b.from, floor), where: "before" } : { pos: b.to, where: "after" }
 }
 
+export function pointAt(view: EditorView, at: { x: number; y: number }): DropSpot {
+  const floor = Math.max(bodyStart(view.state.doc), shownStart(view.state)), pos = view.posAtCoords(at)
+  return pos === null || pos < floor ? spotAt(view, at) : { pos, where: "at" }
+}
+
 // A drag that leaves the window or is called off tells nothing to what it was over, so the line times out.
 export function markDrop(view: EditorView, spot: DropSpot | null) {
   clearTimeout(timers.get(view))
@@ -80,6 +85,12 @@ const dropLine = layer({
   markers(view) {
     const spot = view.state.field(shown)
     if (!spot) return []
+    if (spot.where === "at") {
+      const at = view.coordsAtPos(Math.min(spot.pos, view.state.doc.length)), base = view.scrollDOM.getBoundingClientRect()
+      if (!at) return []
+      const x = (at.left - base.left) / view.scaleX + view.scrollDOM.scrollLeft, top = (at.top - base.top) / view.scaleY + view.scrollDOM.scrollTop
+      return [new RectangleMarker("cm-file-drop", x - 1, top, 2, (at.bottom - at.top) / view.scaleY)]
+    }
     const b = view.lineBlockAt(Math.min(spot.pos, view.state.doc.length))
     const y = spot.where === "before" ? b.top : spot.where === "after" ? b.bottom : (b.top + b.bottom) / 2
     const base = view.scrollDOM.getBoundingClientRect(), c = view.contentDOM.getBoundingClientRect()

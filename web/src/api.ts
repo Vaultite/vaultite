@@ -26,7 +26,7 @@ export { definePlugin, detailPath } from "@/core/define"
 export { API_VERSION, APP_VERSION } from "../../core/version.ts"
 /** What a pinned entry is: a file, a heading in a note ("Notes/Idea.md#Plan"), a search ("search:<query>"). */
 export { pinKind, placePin, SEARCH as PIN_SEARCH, VIEW as PIN_VIEW } from "../../core/pins.ts"
-export type { AgentDef, AgentRun, AmbientItem, BlockCtx, DoTask, BrowseEntry, BrowseSource, Conventions, DetailDef, EditorCtx, EditorExtension, FileBarItem, FileCtx, FileHead, FileFormat, FileIcon, FileMark, FileMenuItem, FileRow, FileRowPart, FileView, FormatCtx, NoteTopItem, HeaderItem, HostedPlugin, LinkTarget, NewFile, NewTabCtx, NewTabSection, OpenFile, PageCtx, PageView, PlayerProps, PluginCommand, PluginDef, PluginHost, ReadingBlock, ReadingBlocks, ReadingDrawn, SearchDoc, SettingChoice, SettingsSearchEntry, SidebarCtx, SidebarPanel, SidebarSetup, SlashItem, StatusItem, TabButton, TimelineKind, ViewCtx, ViewDef, WebContainer, WebPageAction, WorkspaceHost, WorkspaceInfo } from "@/core/define"
+export type { AgentDef, AgentRun, AmbientItem, BlockCtx, DoTask, BrowseEntry, BrowseSource, Conventions, DetailDef, EditorCtx, EditorExtension, FileBarItem, FileCtx, FileHead, FileFormat, FileIcon, FileMark, FileMenuItem, FileRow, FileRowPart, FileView, FormatCtx, NoteItem, HeaderItem, HostedPlugin, LinkTarget, NewFile, NewTabCtx, NewTabSection, OpenFile, PageCtx, PageView, PlayerProps, PluginCommand, PluginDef, PluginHost, ReadingBlock, ReadingBlocks, ReadingDrawn, SearchDoc, SettingChoice, SettingsSearchEntry, SidebarCtx, SidebarPanel, SidebarSetup, SlashItem, StatusItem, TabButton, TimelineKind, ViewCtx, ViewDef, WebContainer, WebPageAction, WorkspaceHost, WorkspaceInfo } from "@/core/define"
 export { parseTimeline, timelineOf, type Entry as TimelineEntry } from "../../core/timeline.ts"
 /** A button opening the form that adds a line to a file's `## Timeline` (made when it has none). */
 export { AddToTimeline } from "@/components/Timeline"
@@ -100,6 +100,7 @@ export { DiffRows, textDiff, type DiffLine } from "@/components/DiffLines"
 export { beforeStart, edgeScroller, laidOut, pastEnd, rehit, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 export { confirmDialog, type ConfirmOptions, secretDialog, setSecretKeeper, type SecretKeeper } from "@/components/ConfirmDialog"
 export { copyText, fileMenu, filesMenu, folderMenu, grouped, linkTo, openItem, pluginFileGroups, rowFileMenu } from "@/components/FileActions"
+export { copyBlockLink, linkableHere } from "@/components/blockLink"
 export { deleteFile, restoreFile } from "@/core/files"
 // "Move file to…": the folder picker, then the move (with Undo); `before` runs once a folder is picked. Or straight
 // into a folder (a drop on it), one toast with Undo.
@@ -210,7 +211,7 @@ export { formatSize, kindIcon } from "@/core/filekinds"
 export { AmbientButton } from "@/components/Ambient"
 export { CORNERS, useCornerDrag, useCornerStack, type Corner } from "@/components/CornerCard"
 export { Button, buttonClass, HeadingButton } from "@/components/Button"
-// A note over a file's text and what can be done about it (a NoteTopItem's).
+// A note over a file's text and what can be done about it (a NoteItem's).
 export { Banner } from "@/components/Banner"
 // A cursor's conversation: its last words and what the user asked, above a box to ask more (the window's and the screen's).
 export { Chat, type ChatItem } from "@/components/Chat"

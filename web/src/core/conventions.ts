@@ -10,6 +10,7 @@ import { attachmentDir, unarchived } from "../../../core/fileprops.ts"
 import { activeFile } from "@/core/active"
 import { folderOf, isHidden } from "@/core/files"
 import { isPage } from "@/core/pages"
+import { newLink } from "@/core/links"
 
 type Args = { [K in keyof Conventions]-?: Parameters<NonNullable<Conventions[K]>> }
 type Answers = { [K in keyof Conventions]-?: ReturnType<NonNullable<Conventions[K]>> }
@@ -53,8 +54,6 @@ export function besideActive<T>(fallback: T, skip?: (path: string) => boolean): 
 
 export const vaultEditor = (s: Store | null | undefined) => (s ? ask("editor", s) : undefined) ?? {}
 
-export const markdownLinks = (s: Store | null | undefined) => (s ? ask("markdownLinks", s) : undefined) === true
-
 /** The folder a file pasted into the note `from` goes in: the File explorer's attachment folder (another app's when
  *  unset: core/filing.ts), else Attachments. */
 export function attachmentFolder(s: Store | null | undefined, from: string): string {
@@ -84,16 +83,10 @@ export async function saveAttachments(s: Store, from: string, files: File[], fol
   return out
 }
 
-/** Save pasted files as attachments of `from` (saveAttachments) and answer what to type for them: `![[name]]` (or
- *  `![](path)` with Markdown links), one per line. */
 export async function pasteAttachments(s: Store, from: string, files: File[]): Promise<string> {
   const paths = await saveAttachments(s, from, files)
-  return paths.map((path) => embedOf(s, path)).join("\n")
+  return paths.map((path) => newLink(s, { path, embed: true }, from)).join("\n")
 }
-
-const embedOf = (s: Store, path: string) => markdownLinks(s)
-  ? `![](${path.replace(/%/g, "%25").replace(/ /g, "%20").replace(/\(/g, "%28").replace(/\)/g, "%29")})`
-  : `![[${path.split("/").pop()!}]]`
 
 export async function attachDropped(s: Store, from: string, d: Dropped): Promise<string> {
   const lines = d.files.length ? [await pasteAttachments(s, from, d.files)] : []
@@ -111,7 +104,7 @@ async function imageFrom(s: Store, from: string, url: string): Promise<string> {
     const now = Date.now()
     mutate((st) => st.files.others.some((o) => o.path === path) ? st
       : { ...st, files: { ...st.files, others: [...st.files.others, { path, mtime: now, ctime: now, size: bytes }] } })
-    return embedOf(s, path)
+    return newLink(s, { path, embed: true }, from)
   } catch {
     notify("Couldn't download the image into the vault, so the note shows it from the web", { id: "drop-image" })
     return `![](${url.replace(/ /g, "%20").replace(/\(/g, "%28").replace(/\)/g, "%29")})`

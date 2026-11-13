@@ -1,9 +1,10 @@
 import { Link2, NotebookPen } from "lucide-react"
 import { definePlugin, openView } from "@vaultite"
-import { LinksPanel, LinksView, openPageNote } from "./Links"
+import { LinksInNote, LinksPanel, LinksView, openPageNote } from "./Links"
 
 export default definePlugin({
   sidebar: { links: { title: "Links", heading: false, needsHeading: true, sort: 40, hidden: true, view: "links", flyout: { icon: Link2 }, render: (ctx) => <LinksPanel {...ctx} /> } },
+  noteEnd: { mentions: { render: ({ path }) => <LinksInNote key={path} path={path} /> } },
   views: {
     links: { icon: Link2, title: () => "Links", render: ({ store }) => <LinksView store={store} /> },
   },

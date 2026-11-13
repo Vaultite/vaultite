@@ -504,9 +504,9 @@ export type FileBarItem = {
   sort?: number
 }
 
-/** Drawn in a note's page under its properties, above its text (a toolbar, a banner): every Markdown file, dashboards
- *  too, in every mode but source; `place`: in a tab or a sheet. Nothing when render answers null. */
-export type NoteTopItem = {
+/** Drawn in a note's page above its text (noteTop) or under it (noteEnd), in every mode but source; `place`: in a tab
+ *  or a sheet. Nothing when render answers null. */
+export type NoteItem = {
   render: (file: FileHead & { place: "page" | "sheet" }) => ReactNode
   /** Its place, top to bottom, when several plugins have one. */
   sort?: number
@@ -563,13 +563,11 @@ export type SlashItem = { id: string; title: string
   text?: string
   run?: (insert: (text: string) => void) => void | Promise<void> }
 
-/** How the vault wants new files placed and links written, when it says so itself (another app's settings in it);
+/** How the vault wants new files placed, when it says so itself (another app's settings in it);
  *  undefined leaves it to the app. The first plugin that's on and answers wins. */
 export type Conventions = {
   /** The folder a new note goes in ("" = the top). `from`: the file the user is on ("" for none). */
   newNoteFolder?: (store: Store, from: string) => string | undefined
-  /** Links are written as Markdown links (`[Note](Note.md)`), not [[wikilinks]]: [[ suggestions, pasted images. */
-  markdownLinks?: (store: Store) => boolean | undefined
   /** The editor's settings the vault sets (spellcheck, indent...), under the app's own editor.json. */
   editor?: (store: Store) => Partial<EditorSettings> | undefined
   /** A [[link]] to nothing made the plugin's way, when its name is one of its notes' (a date: that day's daily note, in
@@ -761,8 +759,10 @@ export type PluginDef = {
   ambient?: Record<string, AmbientItem>
   /** What it draws in a file's header, by name (see FileBarItem). */
   fileBar?: Record<string, FileBarItem>
-  /** What it draws at the top of a note's page, by name (see NoteTopItem). */
-  noteTop?: Record<string, NoteTopItem>
+  /** What it draws at the top of a note's page, by name (see NoteItem). */
+  noteTop?: Record<string, NoteItem>
+  /** What it draws at the end of a note's page, under its text, by name (see NoteItem). */
+  noteEnd?: Record<string, NoteItem>
   /** Content with a text size of its own apart from the interface size (core/textsize.ts), by id: ⌘+ ⌘- ⌘0 and ⌘+scroll
    *  over it (`useTextSizeWheel`), commands and a Settings row step it; the view reads `useTextSize(id)`. */
   textSizes?: Record<string, TextSizeKind>
@@ -771,7 +771,7 @@ export type PluginDef = {
   keyGroups?: Record<string, string>
   /** Keeps the sidebars' setup itself, instead of sidebars.json (see SidebarSetup). */
   sidebarSetup?: SidebarSetup
-  /** Where new files go and how links are written, as the vault says (see Conventions). */
+  /** Where new files go, as the vault says (see Conventions). */
   conventions?: Conventions
   /** The places open in tabs it keeps off screen (other workspaces' tabs), so closing a tab here doesn't end what it
    *  shows (a terminal's shell) while one of those still has it. */

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react"
-import { autocompletion, closeBrackets, closeBracketsKeymap, closeCompletion, completionStatus, type CompletionContext } from "@codemirror/autocomplete"
+import { autocompletion, closeBrackets, closeBracketsKeymap, closeCompletion, completionStatus } from "@codemirror/autocomplete"
 import { defaultKeymap, history, historyKeymap, indentLess, indentMore, isolateHistory, redo, undo } from "@codemirror/commands"
 import { html as htmlLang } from "@codemirror/lang-html"
 import { json as jsonLang } from "@codemirror/lang-json"
@@ -18,7 +18,8 @@ import { slashSource } from "./slash"
 import { followReader, sightMargins } from "./sight"
 import { blockOptionSource } from "./blockOptions"
 import { highlightSource, optionDot } from "./highlights"
-import { optionGlyph, optionTrail, PICK_DELAY, pickLink, pluginSuggest, quiet, suggestKeys } from "./suggest"
+import { optionGlyph, optionTrail, PICK_DELAY, pluginSuggest, quiet, suggestKeys } from "./suggest"
+import { linkSource, type Linking } from "./linkComplete"
 import { tagSource } from "./tags"
 import { numberGutter } from "./numbers"
 import { cursors } from "./cursors"
@@ -37,6 +38,7 @@ import { conflicts, leaveConflicts, revealConflict, showConflicts, type Open } f
 import { pastedFiles } from "@/core/files"
 import { droppedFrom, fromOutside, type Dropped } from "@/core/filedrop"
 import { dropInto, fileDrops, markDrop, spotAt } from "./filedrop"
+import { linkDrops, takesDrops } from "./linkDrop"
 import { pasteTable } from "./tables"
 import { pasteHtml, pasteLink } from "./paste"
 import { editorExtensions, usePluginsVersion } from "@/core/plugins"
@@ -69,10 +71,8 @@ type Props = {
   onChange: (doc: string, start: number, remote: boolean) => void
   onUndoFrontmatter?: () => void
   onOpen: (link: { wiki?: string; url?: string }, how: boolean | LinkClick) => void
-  names: () => { label: string; detail?: string; path?: string; insert?: string; link?: string }[]
+  links?: Linking
   tags?: () => { tag: string; count: number }[]
-  headings?: (name: string) => Promise<string[]>
-  markdownLinks?: () => boolean
   onAttach?: (d: Dropped) => Promise<string | null>
   docPath?: string
   slash?: () => SlashItem[]
@@ -169,8 +169,6 @@ function writing(e: EditorSettings, doc: string) {
   ]
 }
 
-const linkPath = (p: string) => p.replace(/%/g, "%25").replace(/ /g, "%20").replace(/\(/g, "%28").replace(/\)/g, "%29")
-
 function scrollToLine(v: EditorView, line: number) {
   const n = Math.min(Math.max(line + 1, 1), v.state.doc.lines)
   const pos = v.state.doc.line(n).from
@@ -187,7 +185,6 @@ function scrollToLine(v: EditorView, line: number) {
 }
 
 
-const takesDrops = (view: EditorView) => view.state.facet(EditorView.editable) && !!view.dom.parentElement?.hasAttribute("data-file-drop")
 
 function pasteFiles(e: Event, view: EditorView, files: File[], attach?: (d: Dropped) => Promise<string | null>) {
   if (!files.length || !attach || !view.state.facet(EditorView.editable)) return false
@@ -215,7 +212,7 @@ function traceUpdate(u: ViewUpdate, path: string) {
 }
 const callers = () => (new Error().stack ?? "").split("\n").slice(3, 12).map((l) => l.trim().replace(/^at /, "")).join(" < ")
 
-export default function Editor({ doc, editable, config, onChange, onOpen, names, tags, headings, slash, onReady, placeholderText, label, source, frontmatter: hides, title, code, language, markdownLinks, onAttach, docPath, floatingTooltips, onEscape, onBlur, numbered, onUndoFrontmatter, keep }: Props) {
+export default function Editor({ doc, editable, config, onChange, onOpen, links, tags, slash, onReady, placeholderText, label, source, frontmatter: hides, title, code, language, onAttach, docPath, floatingTooltips, onEscape, onBlur, numbered, onUndoFrontmatter, keep }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
   const cfg = useRef(new Compartment())
@@ -230,42 +227,11 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
   const plugins = usePluginsVersion()
   const { tab } = usePane()
   const showNumbers = !!numbered && numbersOn && language === undefined
-  const cb = useRef({ onChange, onOpen, names, tags, headings, slash, markdownLinks, onAttach, onEscape, onBlur, onUndoFrontmatter })
-  cb.current = { onChange, onOpen, names, tags, headings, slash, markdownLinks, onAttach, onEscape, onBlur, onUndoFrontmatter }
+  const cb = useRef({ onChange, onOpen, links, tags, slash, onAttach, onEscape, onBlur, onUndoFrontmatter })
+  cb.current = { onChange, onOpen, links, tags, slash, onAttach, onEscape, onBlur, onUndoFrontmatter }
   const fill = (text: string) => (hides ? withBodyLine(text) : text)
 
   useEffect(() => {
-    const complete = async (ctx: CompletionContext) => {
-      const m = ctx.matchBefore(/\[\[[^[\]\n]*/)
-      if (!m) return null
-      const md = !!cb.current.markdownLinks?.()
-      const hash = m.text.indexOf("#")
-      if (hash >= 0) {
-        const rest = m.text.slice(hash + 1)
-        if (md || m.text.includes("|") || rest.startsWith("^") || !cb.current.headings) return null
-        const list = await cb.current.headings(m.text.slice(2, hash))
-        if (!list.length) return null
-        return {
-          from: m.from + hash + 1,
-          options: list.map((h) => ({ label: h, apply: pickLink(h) })),
-          validFor: /^[^[\]\n|#^]*$/,
-        }
-      }
-      return {
-        from: m.from + 2,
-        options: cb.current.names().map((n) => ({
-          label: n.label, detail: n.detail,
-          apply: md && n.path
-            ? (view: EditorView, _c: unknown, from: number, to: number) => {
-              const insert = `[${n.label}](${linkPath(n.path!)})`
-              const end = view.state.sliceDoc(to, to + 2) === "]]" ? to + 2 : to
-              view.dispatch({ changes: { from: from - 2, to: end, insert }, selection: { anchor: from - 2 + insert.length }, userEvent: "input.complete" })
-            }
-            : pickLink(n.link ? `${n.link}|${n.label}` : n.insert ?? n.label),
-        })),
-        validFor: /^[^[\]\n|#]*$/,
-      }
-    }
     // Only an open list takes Escape: one still being looked up would just be cancelled by it.
     const end = (view: EditorView) => {
       const f = cb.current.onEscape
@@ -331,7 +297,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
           edit.current.of([EditorView.editable.of(editable), EditorState.readOnly.of(!editable)]),
           livePreview,
           linkHandler((l, t) => cb.current.onOpen(l, t)),
-          fileDrops,
+          fileDrops, linkDrops(() => { const l = cb.current.links; return l && { isFile: l.isFile, link: (p) => l.link({ path: p, embed: !/\.md$/i.test(p) }) } }),
           EditorView.domEventHandlers({
             paste: (e, view) => pasteFiles(e, view, pastedFiles(e.clipboardData), cb.current.onAttach) || pasteTable(e, view) || pasteLink(e, view) || pasteHtml(e, view),
             dragover(e, view) {
@@ -352,7 +318,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
           }),
           suggestKeys,
           autocompletion({
-            override: [complete, tagSource(() => cb.current.tags?.() ?? []), slashSource(() => cb.current.slash?.() ?? []), blockOptionSource((name) => blockFor(name, getPrefs().disabled).decl), highlightSource, pluginSuggest].map(quiet),
+            override: [linkSource(() => cb.current.links), tagSource(() => cb.current.tags?.() ?? []), slashSource(() => cb.current.slash?.() ?? []), blockOptionSource((name) => blockFor(name, getPrefs().disabled).decl), highlightSource, pluginSuggest].map(quiet),
             icons: false, interactionDelay: PICK_DELAY, addToOptions: [{ render: optionDot, position: 20 }, { render: optionGlyph, position: 20 }, { render: optionTrail, position: 90 }],
           }),
           keymap.of([

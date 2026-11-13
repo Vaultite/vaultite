@@ -67,6 +67,10 @@ else `Attachments`); `excluded`, files left out of search, the graph and unlinke
 switcher, still files you open (each a path they start with, `Archive/`, or a `/regex/`; unset: Obsidian's
 `userIgnoreFilters`; `[]` none); `samples`, folders of examples, not the user's data (`["Examples"]`): their files
 have no kind, and tasks, Dataview and query blocks leave them out unless the query is in a file in that folder;
+`wikilinks` (default true; false: new links are Markdown links, `[Note](Note.md)`) and `linkFormat`, how a new link names
+its file: `shortest` (default: its name, with folders only when another file has it), `relative` (from the note's
+folder, `../Notes/Idea`) or `absolute` (from the vault's top); unset: Obsidian's `useMarkdownLinks` and `newLinkFormat`.
+Every new link follows them (suggestions, drops, pasted files, block links, `vau block-link`, uploads' embeds);
 `folderView`, how a folder's page (a folder opened as a tab: `vau open <folder>`) shows what it holds, `list` (default),
 `grid` (cards: a note's first lines, a picture of anything else), `columns` (each folder down to it side by side, a
 preview of the picked file) or `gallery` (the picked thing large over a strip), the same for every folder (a phone shows

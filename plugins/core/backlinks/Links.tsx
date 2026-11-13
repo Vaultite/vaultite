@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { FileQuestion, FileText, Globe, NotebookPen, SquareArrowOutUpRight } from "lucide-react"
 import {
   Bar, cn, createNamed, Foldable, get, getStore, HeadingButton, isDesktop, newNoteFolder, openDetail, openFile, openInSplit, openView, post, resolver,
-  SidebarHeading, snippet, startDrag, stem, useFocusedFile, useHeldHeight, useKeptCount, useLive, useNearEnd, useVaultChange, viewInfo, type SidebarCtx, type Store,
+  SidebarHeading, snippet, startDrag, stem, useFocusedFile, useHeldHeight, useKeptCount, useLive, useNearEnd, usePluginSettings, useStore, useVaultChange, viewInfo, type SidebarCtx, type Store,
 } from "@vaultite"
 import { siteOf } from "./weblinks"
 
@@ -96,12 +96,31 @@ function Held({ id, children }: { id: string; children: ReactNode }) {
   return <div ref={held} className="flex flex-col gap-px">{children}</div>
 }
 
-export function LinksList({ store, path, pane }: { store: Store; path: string; pane?: string }) {
+const placeOf = (inNote?: boolean, pane?: string) => (inNote ? "note" : pane ? "tab" : "panel")
+
+function OutgoingLinks({ outgoing, held, open }: { outgoing: Out[] | null; held: string; open: (p: string) => void }) {
+  return (
+    <Foldable data-links-group="outgoing" keep="links.outgoing" title="Outgoing links" count={outgoing ? outgoing.length : null}>
+      <Held id={held}>
+        {!outgoing ? <Looking count={0} /> : outgoing.length ? outgoing.map((o) => {
+          const to = o.file, detail = o.detail
+          return (
+            <Item key={o.key} icon={to || detail ? FileText : FileQuestion} title={o.title} faint={!to && !detail}
+              tip={!to && !detail ? "No file has this name yet" : undefined}
+              onOpen={to ? () => open(to) : detail ? () => openDetail(detail) : undefined} path={to || undefined} />
+          )
+        }) : empty("It doesn't link anywhere.")}
+      </Held>
+    </Foldable>
+  )
+}
+
+export function LinksList({ store, path, pane, inNote }: { store: Store; path: string; pane?: string; inNote?: boolean }) {
   const { linked, outgoing, unlinked, more, refresh } = useLinks(store, path)
   const [busy, setBusy] = useState("")
   const looking = useKeptCount(`links:unlinked:${path}`, unlinked ? unlinked.mentions.length : undefined, 0, 6)
   const lookingLinked = useKeptCount(`links:linked:${path}`, linked ? linked.length : undefined, 0, 6)
-  const at = pane ? "tab" : "panel"
+  const at = placeOf(inNote, pane)
   const open = (p: string, e?: { metaKey: boolean; ctrlKey: boolean }) => openFile(p, { newTab: !!(e?.metaKey || e?.ctrlKey), pane })
   const link = async (m: Mention) => {
     const key = `${m.path}:${m.line}:${m.nth}:${m.col}`
@@ -137,18 +156,7 @@ export function LinksList({ store, path, pane }: { store: Store; path: string; p
           <More key={unlinked.mentions.length} onNear={more}>{unlinked.total - unlinked.mentions.length} more…</More>
         )}</> : empty(isMd(path) ? "Its name isn't written anywhere else." : "Only notes have mentions.")}
       </Foldable>
-      <Foldable data-links-group="outgoing" keep="links.outgoing" title="Outgoing links" count={outgoing ? outgoing.length : null}>
-        <Held id={`links:outgoing:${at}:${path}`}>
-          {!outgoing ? <Looking count={0} /> : outgoing.length ? outgoing.map((o) => {
-            const to = o.file, detail = o.detail
-            return (
-              <Item key={o.key} icon={to || detail ? FileText : FileQuestion} title={o.title} faint={!to && !detail}
-                tip={!to && !detail ? "No file has this name yet" : undefined}
-                onOpen={to ? () => open(to) : detail ? () => openDetail(detail) : undefined} path={to || undefined} />
-            )
-          }) : empty("It doesn't link anywhere.")}
-        </Held>
-      </Foldable>
+      {!inNote && <OutgoingLinks outgoing={outgoing} held={`links:outgoing:${at}:${path}`} open={open} />}
     </div>
   )
 }
@@ -220,5 +228,20 @@ export function LinksView({ store }: { store: Store }) {
       <p className="mb-4 text-[13px] text-muted-foreground max-md:text-[15px]">{path ? "What links here, where it's mentioned, and what it links to. Follows the file you're on." : "Open a file in another pane to see its links here."}</p>
       {path && <div className="size-up-bleed"><div data-size-up><LinksList store={store} path={path} pane={group} /></div></div>}
     </div>
+  )
+}
+
+export function LinksInNote({ path }: { path: string }) {
+  const [settings] = usePluginSettings("backlinks")
+  return settings?.inDocument === true ? <InNote path={path} /> : null
+}
+
+function InNote({ path }: { path: string }) {
+  const { store } = useStore()
+  if (!store) return null
+  return (
+    <section className="mt-12 border-t-[0.5px] border-border pt-3" data-links-in-note data-chrome aria-label="Backlinks">
+      <LinksList store={store} path={path} inNote />
+    </section>
   )
 }

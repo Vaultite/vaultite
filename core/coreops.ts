@@ -7,6 +7,7 @@ import { contextOps } from "./coreops/context.ts"
 import { devOps } from "./coreops/dev.ts"
 import { permissionOps } from "./coreops/permissions.ts"
 import { secretOps } from "./coreops/secret.ts"
+import { anchorOps } from "./coreops/anchors.ts"
 import { fileOps } from "./coreops/files.ts"
 import { uploadOps } from "./coreops/uploads.ts"
 import { itemOps } from "./coreops/items.ts"
@@ -29,7 +30,7 @@ import { defineOp, type Op, OpError, quoted } from "./ops.ts"
 import { isOutside } from "./fileprops.ts"
 
 export function coreOps(app: App): Op[] {
-  return [...contextOps(app), ...fileOps(app), ...typeOps(app), ...propTypeOps(app), ...uploadOps(app), ...pluginOps(app), ...aiOps(app), ...installOps(app), ...bundleOps(app), ...panelOps(app), ...newTabOps(app), ...pageOps(app), ...settingsOps(app), ...paletteOps(app), ...keptOps(app), ...itemOps(app),
+  return [...contextOps(app), ...fileOps(app), ...anchorOps(app), ...typeOps(app), ...propTypeOps(app), ...uploadOps(app), ...pluginOps(app), ...aiOps(app), ...installOps(app), ...bundleOps(app), ...panelOps(app), ...newTabOps(app), ...pageOps(app), ...settingsOps(app), ...paletteOps(app), ...keptOps(app), ...itemOps(app),
     ...docsOps(app), ...uiOps(app), ...secretOps(), ...permissionOps(app), ...devOps(), ...versionOps(), ...updateOps(), ...opsOps(app)]
 }
 

@@ -7,7 +7,8 @@ import { newNoteFolder, saveAttachments } from "@/core/conventions"
 import { copyFile, deleteFile, fileOf, folderList, folderTarget, inTrash, isHidden, isMd, isProtected, isReadOnly, openFile, openFolder, openNew, restoreFile, shownName, stem } from "@/core/files"
 import { askRename, isPopout } from "@/core/workspace"
 import { setProperty } from "@/core/frontmatter"
-import { shortestLink } from "@/core/links"
+import { newLink } from "@/core/links"
+import type { NewLink } from "../../../core/linkformat.ts"
 import { PLUGINS, isEnabled } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
 import { isDesktop, isLinux, isMac, isWindows, revealLabel } from "@/core/platform"
@@ -43,10 +44,10 @@ export const copied = (text: string, what: string) => copyText(text).then(() => 
 export const copyPath = (path: string) => copied(path, "path")
 export const copyLink = (path: string) => copied(linkTo(path), "link")
 
-/** A [[link]] to a file (written in `from`), as short as the app's links allow: the shortest path that finds it. */
-export function linkTo(path: string, from?: string) {
+/** A new link to a file, written in `from`, as the vault writes links (Settings, Files). */
+export function linkTo(path: string, from?: string, to: Omit<NewLink, "path"> = {}) {
   const s = getStore()
-  return `[[${s ? shortestLink(s, path, from) : path.replace(/\.md$/i, "")}]]`
+  return s ? newLink(s, { ...to, path }, from) : `${to.embed ? "!" : ""}[[${path.replace(/\.md$/i, "")}${to.anchor ? `#${to.anchor}` : ""}]]`
 }
 
 const vaultRoot = () => getStore()?.vault.path.replace(/\/+$/, "") ?? ""

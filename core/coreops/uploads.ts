@@ -75,7 +75,7 @@ that can reach it; claude.ai's code sandbox sees the chat's files in /mnt/user-d
       if (given > 1) throw new OpError("give one of `file`, `url` or `data`")
       const fileId = file?.file_id ?? ""
       const again = fileId && saved.get(fileId)
-      if (again && again.until > Date.now()) return { path: again.path, again: true, embed: embedOf(again.path) }
+      if (again && again.until > Date.now()) return { path: again.path, again: true, embed: embedOf(app, again.path, note) }
       if (!given) {
         const link = ctx.who.client === "mcp" ? serviceOn(app, "mcp:upload-link") : null
         const made = link ? await link({ name: p.name, folder: p.folder, note } satisfies Pending, ctx.who) : null
@@ -120,7 +120,8 @@ that can reach it; claude.ai's code sandbox sees the chat's files in /mnt/user-d
   })]
 }
 
-const embedOf = (p: string) => `![[${path.posix.basename(p)}]]`
+
+const embedOf = (app: App, p: string, note = "") => app.vault.newLink({ path: p, embed: true }, note)
 
 /** A file's first bytes (enough to tell its type). */
 function headOf(p: string) {
@@ -142,6 +143,7 @@ async function save(app: App, ctx: OpCtx, bytes: Buffer | Readable, named: strin
   if (dir) await ctx.api("POST", "folder", { path: dir }).catch(() => {}) // (there already: fine)
   const rel = await uploadName(ctx, dir, name)
   await ctx.api("POST", "upload", { path: rel, bytes })
-  if (f) await saveFile(ctx, { path: f.path, text: `${f.text.replace(/\s*$/, "")}\n\n${embedOf(rel)}\n`, base: f.text })
-  return { path: rel, bytes: fs.statSync(app.vault.abs(rel)).size, type: mime || null, embed: embedOf(rel), note: note ?? null }
+  const embed = embedOf(app, rel, note)
+  if (f) await saveFile(ctx, { path: f.path, text: `${f.text.replace(/\s*$/, "")}\n\n${embed}\n`, base: f.text })
+  return { path: rel, bytes: fs.statSync(app.vault.abs(rel)).size, type: mime || null, embed, note: note ?? null }
 }
