@@ -5,11 +5,14 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { parseAst } from "rolldown/parseAst"
+import type { ESTree } from "rolldown/utils"
+import { z } from "zod"
 import { declsOf, drawnBy, drawsOf, optionNotes, parseOptions, type BlockDecls } from "../core/blocks.ts"
 import { blocksIn } from "../core/sections.ts"
 import { blockProblems, iconNames, inside, listedPackage, nodeSide, PLUGIN_PACKAGES, pluginProblems, SHARED, SHARED_EDITOR, walk } from "../core/rules.ts"
 import { ICON_NAME } from "../core/pluginmeta.ts"
 import { opProblems } from "../core/ops.ts"
+import { isObj } from "../core/values.ts"
 
 // core/plugins.ts reads VAULTITE_LOCAL as it loads: set it first, and import what imports it only after.
 const SCRATCH = fs.mkdtempSync(path.join((await import("node:os")).tmpdir(), "vaultite-check-"))
@@ -85,35 +88,39 @@ for (const [name, [tier, d]] of found) {
 }
 
 const AT_LOAD = new Set(["agentPlugin", "cell", "definePlugin", "devicePref", "pluginSettings", "removals"])
-type Node = { type: string; start: number; [k: string]: unknown }
 const INSIDE = new Set(["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression", "ClassBody"])
+const isAstNode = (v: unknown): v is ESTree.Node => isObj(v) && typeof v.type === "string" && typeof v.start === "number"
+const calleeName = (callee: ESTree.Node) => {
+  let c = callee
+  for (;;) {
+    if (c.type === "MemberExpression") c = c.object
+    else if (c.type === "ChainExpression" || c.type === "TSNonNullExpression" || c.type === "ParenthesizedExpression") c = c.expression
+    else return c.type === "Identifier" ? c.name : null
+  }
+}
 function loadTimeProblems(file: string, rel: string): string[] {
   const src = fs.readFileSync(file, "utf8")
-  let ast: { body: Node[] }
-  try { ast = parseAst(src, { lang: file.endsWith(".tsx") ? "tsx" : "ts" }, file) as unknown as { body: Node[] } } catch (e) { return [`${rel}: doesn't parse: ${(e as Error).message}`] }
+  let ast: ESTree.Program
+  try { ast = parseAst(src, { lang: file.endsWith(".tsx") ? "tsx" : "ts" }, file) } catch (e) { return [`${rel}: doesn't parse: ${e instanceof Error ? e.message : String(e)}`] }
   const api = new Set<string>() // what it imports from the plugin API, by its local name
   for (const s of ast.body) {
-    if (s.type !== "ImportDeclaration" || (s.source as { value: string }).value !== "@vaultite" || s.importKind === "type") continue
-    for (const sp of s.specifiers as Node[]) if (sp.type === "ImportSpecifier" && sp.importKind !== "type") api.add((sp.local as { name: string }).name)
+    if (s.type !== "ImportDeclaration" || s.source.value !== "@vaultite" || s.importKind === "type") continue
+    for (const sp of s.specifiers) if (sp.type === "ImportSpecifier" && sp.importKind !== "type") api.add(sp.local.name)
   }
   if (!api.size) return []
   const out: string[] = []
-  const say = (n: Node, name: string, what: string) =>
+  const say = (n: ESTree.Node, name: string, what: string) =>
     out.push(`${rel}:${src.slice(0, n.start).split("\n").length}: ${what} ${name} while the module loads (the plugin API may not be ready then: use it inside a function, e.g. on first use)`)
   const visit = (n: unknown): void => {
-    if (!n || typeof n !== "object") return
     if (Array.isArray(n)) return n.forEach(visit)
-    const node = n as Node
-    if (typeof node.type !== "string" || INSIDE.has(node.type) || node.type.startsWith("TS")) return
-    if (node.type === "CallExpression" || node.type === "NewExpression" || node.type === "TaggedTemplateExpression") {
-      let c = (node.callee ?? node.tag) as Node | undefined
-      while (c && ["MemberExpression", "ChainExpression", "TSNonNullExpression", "ParenthesizedExpression"].includes(c.type)) c = (c.object ?? c.expression) as Node
-      if (c?.type === "Identifier" && api.has(c.name as string) && !AT_LOAD.has(c.name as string)) say(node, `${c.name as string}()`, "calls")
-    } else if (node.type === "MemberExpression") {
-      const o = node.object as Node
-      if (o.type === "Identifier" && api.has(o.name as string)) say(node, `${o.name as string}.${src.slice((node.property as Node).start, (node.property as { end: number }).end)}`, "reads")
+    if (!isAstNode(n) || INSIDE.has(n.type) || n.type.startsWith("TS")) return
+    if (n.type === "CallExpression" || n.type === "NewExpression" || n.type === "TaggedTemplateExpression") {
+      const name = calleeName(n.type === "TaggedTemplateExpression" ? n.tag : n.callee)
+      if (name && api.has(name) && !AT_LOAD.has(name)) say(n, `${name}()`, "calls")
+    } else if (n.type === "MemberExpression") {
+      if (n.object.type === "Identifier" && api.has(n.object.name)) say(n, `${n.object.name}.${src.slice(n.property.start, n.property.end)}`, "reads")
     }
-    for (const [k, v] of Object.entries(node)) if (k !== "type" && k !== "start" && k !== "end") visit(v)
+    for (const [k, v] of Object.entries(n)) if (k !== "type" && k !== "start" && k !== "end") visit(v)
   }
   for (const s of ast.body) if (s.type !== "ImportDeclaration") visit(s)
   return out
@@ -227,6 +234,7 @@ for (const id of fs.existsSync(APP_BUNDLES) ? fs.readdirSync(APP_BUNDLES).sort()
   const { LOOK_KEYS, PERSONAL_LOOK } = await import("../core/look.ts")
   const { EDITOR_KEYS } = await import("../core/editor.ts")
   const { CONFIGS } = await import("../core/bundles.ts")
+  const lookKeys: readonly string[] = LOOK_KEYS, editorKeys: readonly string[] = EDITOR_KEYS
   const keysOf = (files: Record<string, string | Buffer>, f: string) => { try { return Object.keys(JSON.parse(String(files[f] ?? "{}"))) } catch { return [] } }
   const said = new Map<string, string>() // "<file>\0<key>" -> the bundle that says it
   for (const [id, files] of builtIns) {
@@ -244,8 +252,8 @@ for (const id of fs.existsSync(APP_BUNDLES) ? fs.readdirSync(APP_BUNDLES).sort()
       if (PERSONAL_LOOK.includes(k)) { if (look.includes(k)) problems.push(`bundles/${id}/appearance.json: it says ${k}, the user's own (core/look.ts PERSONAL_LOOK): a layout leaves it as it is`) }
       else if (!look.includes(k)) problems.push(`bundles/${id}/appearance.json: it doesn't say ${k}: the look says every key but the user's own (core/look.ts), the default too`)
     }
-    for (const k of look) if (!(LOOK_KEYS as string[]).includes(k)) problems.push(`bundles/${id}/appearance.json: '${k}' isn't a key of the look (core/look.ts)`)
-    for (const k of keysOf(files, "editor.json")) if (!(EDITOR_KEYS as string[]).includes(k)) problems.push(`bundles/${id}/editor.json: '${k}' isn't an editor setting (core/editor.ts)`)
+    for (const k of look) if (!lookKeys.includes(k)) problems.push(`bundles/${id}/appearance.json: '${k}' isn't a key of the look (core/look.ts)`)
+    for (const k of keysOf(files, "editor.json")) if (!editorKeys.includes(k)) problems.push(`bundles/${id}/editor.json: '${k}' isn't an editor setting (core/editor.ts)`)
   }
 }
 
@@ -334,7 +342,7 @@ const UNTYPED: Record<string, string> = {
 {
   const { spawnSync } = await import("node:child_process")
   const { gitEnv } = await import("../core/gitenv.ts")
-  const projects = (JSON.parse(fs.readFileSync(path.join(ROOT, "tsconfig.json"), "utf8")) as { references: { path: string }[] }).references.map((r) => r.path)
+  const projects = z.object({ references: z.array(z.object({ path: z.string() })) }).parse(JSON.parse(fs.readFileSync(path.join(ROOT, "tsconfig.json"), "utf8"))).references.map((r) => r.path)
   const typed = new Set(projects.flatMap((p) => spawnSync(process.execPath, [path.join(ROOT, "node_modules/typescript/bin/tsc"), "-p", p, "--listFilesOnly"], { cwd: ROOT, encoding: "utf8" })
     .stdout.split("\n").filter(Boolean).map((f) => path.relative(ROOT, f.trim()).split(path.sep).join("/"))))
   const ts = spawnSync("git", ["ls-files", "*.ts", "*.tsx", "*.mts", "*.cts"], { cwd: ROOT, encoding: "utf8", env: gitEnv() }).stdout.split("\n").filter(Boolean)
@@ -394,8 +402,11 @@ const LOADERS: Record<string, string> = {
 }
 
 {
-  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"))
-  const lock = JSON.parse(fs.readFileSync(path.join(ROOT, "package-lock.json"), "utf8")) as { packages: Record<string, { version?: string; resolved?: string; integrity?: string; hasInstallScript?: boolean; link?: boolean; inBundle?: boolean }> }
+  const pkg = z.object({ dependencies: z.record(z.string(), z.string()).optional(), allowScripts: z.record(z.string(), z.unknown()).optional() })
+    .parse(JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")))
+  const LockPackage = z.object({ version: z.string().optional(), resolved: z.string().optional(), integrity: z.string().optional(), hasInstallScript: z.boolean().optional(),
+    link: z.boolean().optional(), inBundle: z.boolean().optional() })
+  const lock = z.object({ packages: z.record(z.string(), LockPackage) }).parse(JSON.parse(fs.readFileSync(path.join(ROOT, "package-lock.json"), "utf8")))
   for (const n of PLUGIN_PACKAGES) if (!pkg.dependencies?.[n]) problems.push(`package.json: ${n} is one of the packages vault plugins import (core/rules.ts PLUGIN_PACKAGES): it goes in dependencies`)
   for (const n of [...SHARED, ...SHARED_EDITOR]) if (n !== "@vaultite" && !listedPackage(n)) problems.push(`core/rules.ts: ${n}, which the app hands vault plugins, isn't in PLUGIN_PACKAGES`)
   const reviewed = pkg.allowScripts ?? {}
