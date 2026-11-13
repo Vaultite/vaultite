@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The Mac's traffic lights sit cleanly beside a sidebar rail with panes as cards**: with no tab bar they and the
+  sidebar's button move into the top-left card's title row instead of straddling its corner, and the sidebars' top
+  rows line up with the cards' title rows.
 - **A terminal showing big pictures no longer freezes the window**: a terminal's screen with a long history and a
   large picture in it (Claude Code reading screenshots) could crash or loop forever on the next lines of output.
 - **The companion says a handoff once**: when its own words already said it handed something off, the app no longer

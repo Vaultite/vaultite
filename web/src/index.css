@@ -1366,8 +1366,21 @@ section[data-moving="up"] { z-index: 4; }
 :root[data-pane-cards] aside[data-side]:not([data-peek]) { border-color: transparent; }
 html[data-electron][data-platform=darwin][data-pane-cards]:not([data-fullscreen]) aside[data-side=left][data-collapsed]::before,
 html[data-electron][data-platform=darwin][data-pane-cards]:not([data-fullscreen]) aside[data-side=left][data-collapsed]::after { content: none; }
+html[data-electron][data-platform=darwin][data-pane-cards]:not([data-top-tabs], [data-fullscreen]) aside[data-side=left][data-collapsed] [data-rail] { padding-top: 0; }
+/* With no tab bar the cards' title rows start a gap down: the sidebars' top rows, their toggles (and the lights in
+   the left one) are centred on the same line. */
+:root[data-pane-cards]:not([data-top-tabs]) aside[data-side]:not([data-peek]) [data-titlebar] { margin-top: var(--pane-gap); }
+:root[data-pane-cards]:not([data-top-tabs]) [data-sidebar-toggle] { translate: 0 var(--pane-gap); }
 /* With no right sidebar and no tab bar, its toggle sits in the top-right card's bar: as far in as the card is. */
 :root[data-pane-cards]:not([data-right-sidebar]):not([data-top-tabs]) [data-sidebar-toggle=right] { translate: calc(var(--pane-gap) * -0.5) var(--pane-gap); }
+/* Beside a Mac's rail (narrower than the lights) with no tab bar, the lights sit in the top-left card's title row
+   (core/peek.ts), as far from its corner as from the window's; the toggle and the row's items follow them as there. */
+html[data-electron][data-platform=darwin][data-left-rail][data-pane-cards]:not([data-top-tabs], [data-fullscreen]) [data-sidebar-toggle=""] {
+  left: calc(var(--spacing) * 11 + var(--pane-gap) + 88px);
+}
+html[data-electron][data-platform=darwin][data-left-rail][data-pane-cards]:not([data-top-tabs], [data-fullscreen]) [data-corner] > [data-title-row] {
+  padding-left: calc(88px + var(--spacing) * 10);
+}
 html[data-translucent][data-pane-cards] [data-pane-area] { background: var(--chrome-sidebar); }
 html[data-translucent][data-pane-cards] [data-pane-area] > section[data-pane-frame]:not([data-floating]) { background: none; }
 html[data-translucent][data-pane-cards] section[data-pane-frame] > [data-pane-bar] { background: var(--chrome); }

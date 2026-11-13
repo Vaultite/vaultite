@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react"
 import { getDrag } from "@/core/drag"
 import { hasLights, lightsFrame, showLights, webPages, type LightsFrame } from "@/core/desktop"
+import { lightsCard } from "@/core/pane"
 import { resizing } from "@/core/resizing"
 import { space } from "@/lib/utils"
 
@@ -41,13 +42,17 @@ export function useSideMotion(hidden: boolean, shown: boolean): "in" | "out" | u
   return was.current.motion
 }
 
+function spacingPx(units: number) {
+  const html = document.documentElement, unit = getComputedStyle(html).getPropertyValue("--spacing")
+  return units * parseFloat(unit) * (unit.endsWith("rem") ? parseFloat(getComputedStyle(html).fontSize) : 1)
+}
+
 /** Where the traffic lights go (CSS px): `x` the left sidebar's edge from the window's, `mid` the centre line of
  *  its top row, where the toggle and its header's items are; a pop-out's top bar is as tall (10 spacing units). */
 function lightsAt(aside: Element | null) {
-  if (!aside) {
-    const html = document.documentElement, unit = getComputedStyle(html).getPropertyValue("--spacing")
-    return { x: 0, mid: 5 * parseFloat(unit) * (unit.endsWith("rem") ? parseFloat(getComputedStyle(html).fontSize) : 1) }
-  }
+  const card = !aside || "leftRail" in document.documentElement.dataset ? lightsCard() : null
+  if (card) return { x: card.x, mid: card.y + spacingPx(5) }
+  if (!aside) return { x: 0, mid: spacingPx(5) }
   const a = aside.getBoundingClientRect(), row = aside.querySelector("[data-titlebar]")!.getBoundingClientRect()
   return a.right > 0 ? { x: a.left, mid: row.top + row.height / 2 } : null
 }
@@ -115,8 +120,10 @@ export function usePeekLights(hidden: boolean, peek: Peek) {
     const sized = new ResizeObserver(() => place())
     const row = aside?.querySelector("[data-titlebar]")
     if (row) sized.observe(row)
+    const looks = new MutationObserver(() => place())
+    looks.observe(document.documentElement, { attributeFilter: ["data-pane-cards", "data-top-tabs", "data-left-rail"] })
     addEventListener("resize", place)
-    return () => { live = false; sized.disconnect(); removeEventListener("resize", place) }
+    return () => { live = false; sized.disconnect(); looks.disconnect(); removeEventListener("resize", place) }
   }, [hidden, shown, drawn])
   return drawn
 }

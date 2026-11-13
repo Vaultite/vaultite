@@ -20,7 +20,6 @@ const CLEAR = 8
  *  one sliding over the view), clear of what's fixed over the window's corners (sidebar toggles, a Mac's lights). */
 export function usePaneTopBar(ref: RefObject<HTMLElement | null>, title = true) {
   const { pane, hidden } = usePane()
-  // (before the paint, so the pane's bar takes its place in the same frame)
   useLayoutEffect(() => {
     if (!pane || hidden || !ref.current || !title) return
     barred.set(pane, (barred.get(pane) ?? 0) + 1)
@@ -70,11 +69,25 @@ function overCorners(): DOMRect[] {
   if (!("noRails" in d)) for (const t of document.querySelectorAll("[data-sidebar-toggle]")) out.push(t.getBoundingClientRect())
   // (index.css: the lights take the window's first 88px; electron/main.ts: they're 16px tall, 14 down at most. A pop-out
   // with its bars hidden shows them only over its page, with the pointer at its top: electron/topstrip.ts)
-  if ("electron" in d && d.platform === "darwin" && !("fullscreen" in d) && ("leftRail" in d || ("popout" in d && !("barsHidden" in d)))) out.push(new DOMRect(0, 0, 88 - CLEAR, 30))
+  if (lightsOverPanes(d)) {
+    const card = lightsCard() ?? { x: 0, y: 0 }
+    out.push(new DOMRect(card.x, 0, 88 - CLEAR, 30 + card.y))
+  }
   // (Windows' controls: the window's top-right corner, as wide as electron/preload.cjs says, a title row high)
   if ("electron" in d && d.platform === "win32" && !("fullscreen" in d)) {
     const w = parseFloat(document.documentElement.style.getPropertyValue("--window-controls")) || 138
     out.push(new DOMRect(innerWidth - w + CLEAR, 0, w - CLEAR, 30))
   }
   return out
+}
+
+const lightsOverPanes = (d: DOMStringMap) =>
+  "electron" in d && d.platform === "darwin" && !("fullscreen" in d) && ("leftRail" in d || ("popout" in d && !("barsHidden" in d)))
+
+/** With cards and no tab bar, the top-left card's corner (px): a Mac's lights beside a rail sit in its title row. */
+export function lightsCard(): { x: number; y: number } | null {
+  const d = document.documentElement.dataset, area = document.querySelector("[data-pane-area]")
+  if (!area || !("paneCards" in d) || "topTabs" in d) return null
+  const a = area.getBoundingClientRect(), gap = parseFloat(getComputedStyle(area).getPropertyValue("--pane-gap")) || 0
+  return { x: a.left + gap, y: a.top + gap }
 }
