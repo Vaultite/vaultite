@@ -54,8 +54,10 @@ export default async ($: VaultTest) => {
     check("events: a write op is op.done, with who and its parameters", st === 200 && opd.length === 1 && opd[0].id === "ui.command" && opd[0].ok === true && same(opd[0].params, { id: "sidebar:toggle" }), [st, body, opd])
     ;[st] = await api("POST", "ops/ui.open", {})
     check("events: one that fails is op.done too, not ok", st === 400 && bus.last({ types: ["op.done"] }, 1)[0].ok === false && /path is missing/.test(String(bus.last({ types: ["op.done"] }, 1)[0].error)))
+    const beforeRead = bus.cursor
     ;[st] = await api("POST", "ops/docs.list", {})
-    check("events: a read op isn't", bus.last({ types: ["op.done"] }, 1)[0].id === "ui.open")
+    const afterRead = bus.since(beforeRead, { types: ["op.done"] }).events
+    check("events: a read op isn't", st === 200 && !afterRead.some((e) => e.id === "docs.list"), afterRead.map((e) => e.id))
 
     // events.wait (an op: kind read, so it holds nothing while it waits) and vau events.
     const c2 = bus.cursor
@@ -78,7 +80,10 @@ export default async ($: VaultTest) => {
     vr = await vau("events", "--once", "--type", "nothing.here", "--timeout", "0.05")
     check("vau events --once: nothing in time is exit 1", vr.code === 1 && vr.err.includes("no matching event"), vr)
     vr = await vau("events", "--after", c2, "--type", "file.moved,op.done", "--timeout", "0", "--json")
-    check("vau events --after --json: what came since, as a list", vr.code === 0 && JSON.parse(vr.out).map((e: Any) => e.type).join() === "file.moved,op.done", vr.out)
+    const since: Any[] = vr.code === 0 ? JSON.parse(vr.out) : []
+    const ours = since.filter((e) => (e.type === "file.moved" && e.from === "a.md") || (e.type === "op.done" && e.params?.id === "theme:dark"))
+    check("vau events --after --json: what came since, as a list", vr.code === 0 && since.every((e) => e.type === "file.moved" || e.type === "op.done") &&
+      ours.map((e) => e.type).join() === "file.moved,op.done", vr.out)
     vr = await vau("events", "--help")
     check("vau events --help: lists the types", vr.code === 0 && vr.out.includes("file.changed") && vr.out.includes("op.done"), vr.out)
 
