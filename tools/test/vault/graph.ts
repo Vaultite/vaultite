@@ -366,9 +366,10 @@ export default async ($: VaultTest) => {
     const sorted = (g: Any) => JSON.stringify([g.nodes.map((n: Any) => JSON.stringify(n)).sort(), g.edges.map((e: Any) => JSON.stringify(e)).sort()])
     let same = true, linked = true
     for (const text of edits) {
-      write("Graph test/Alone.md", text)
+      write("Graph test/Alone.md", text); await $.vault.sync()
       const [, edited] = await api("GET", "graph?archived=true")
-      write("Graph test/Scratch.md", "x\n"); await api("GET", "graph"); fs.rmSync(path.join(VAULT, "Graph test/Scratch.md"))
+      write("Graph test/Scratch.md", "x\n"); await $.vault.sync(); await api("GET", "graph")
+      fs.rmSync(path.join(VAULT, "Graph test/Scratch.md")); await $.vault.sync()
       const [, scratch] = await api("GET", "graph?archived=true")
       same &&= sorted(edited) === sorted(scratch)
       linked &&= edited.nodes.some((n: Any) => n.path === "Graph test/pic.png") === text.includes("pic.png")
