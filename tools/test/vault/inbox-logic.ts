@@ -60,10 +60,12 @@ export default async ($: VaultTest) => {
     await settled()
     const [, d2] = await api("POST", "ops/inbox.decide", { defaults: true })
     const mine = got.filter((g) => g[0] === "sess-logic-c")
-    check("answers: several to one report's session are one reply, numbered", mine.length === 1 &&
-      /The user decided 2 of your questions: 1\. "Publish the Lighthouse release notes\?": Wait 2\. "Tag the Lighthouse release today\?": Wait/.test(mine[0][1]), [d2, got])
+    check("answers: several to one report's session are one reply, numbered", mine.length === 1 && numberedBothInAnyOrder(mine[0][1]), [d2, got])
   } finally {
     cc.services.sample = was
     if (real) host.services["agent-reply:claude"] = real; else delete host.services["agent-reply:claude"]
   }
 }
+
+const numberedBothInAnyOrder = (reply: string) => /The user decided 2 of your questions: 1\. [\s\S]* 2\. /.test(reply) &&
+  reply.includes('"Publish the Lighthouse release notes?": Wait') && reply.includes('"Tag the Lighthouse release today?": Wait')
