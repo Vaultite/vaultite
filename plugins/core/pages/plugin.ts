@@ -1,5 +1,5 @@
 import { HTTPError, movedFilePanels, type OpCtx, OpError, type Param, pinProblem, placePin, Plugin, readSidebars, relocatedPin, repinList, sameSidebars } from "../../../core/plugins.ts"
-import { ConfigError, type Item, type Vault } from "../../../core/vault.ts"
+import { ConfigError, type Vault } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -10,7 +10,7 @@ export function pinned(vault: Vault): string[] {
 
 export function labels(vault: Vault): Record<string, string> {
   const l = vault.config("pages").labels
-  return l && typeof l === "object" && !Array.isArray(l) ? Object.fromEntries(Object.entries(l).filter(([, v]) => typeof v === "string")) as Record<string, string> : {}
+  return l && typeof l === "object" && !Array.isArray(l) ? Object.fromEntries(Object.entries(l).filter((e): e is [string, string] => typeof e[1] === "string")) : {}
 }
 
 plugin.state(() => ({ pinned: pinned(plugin.vault), pinLabels: labels(plugin.vault) }))
@@ -44,7 +44,7 @@ export function setLabel(vault: Vault, p: string, label: string) {
 }
 
 plugin.route("POST", "pins/label", (req) => {
-  const { path: p, label } = (req.body ?? {}) as { path?: unknown; label?: unknown }
+  const { path: p, label } = req.body ?? {}
   if (typeof p !== "string" || !p.startsWith("view:") || typeof label !== "string") throw new HTTPError(400, "path (a view: view:<name>/<arg>) and label are required")
   setLabel(plugin.vault, p, label)
   return { ok: true }
@@ -77,7 +77,7 @@ export function pinInstalled(vault: Vault, { made }: Installed) {
     throw e
   }
   if (conf?.pinNew === false) return
-  const list = Array.isArray(conf?.pinned) ? conf.pinned as unknown[] : []
+  const list: unknown[] = Array.isArray(conf?.pinned) ? conf.pinned : []
   const add = made.filter((m) => !list.includes(m))
   if (!add.length) return
   vault.setConfig("pages", { ...conf, pinned: [...list, ...add] })
@@ -95,7 +95,7 @@ async function target(ctx: OpCtx, { workspace, vault }: { workspace?: number; va
   if (!of && workspace) throw new OpError("Workspaces is off: there's one list of pinned pages (leave out `workspace`)")
   let n: number | null = null
   if (of && !vault) {
-    try { const w = workspace ?? (await ctx.ui(null) as Item)?.workspace; n = Number.isInteger(w) ? w as number : null } catch { n = workspace ?? null }
+    try { const w: unknown = workspace ?? (await ctx.ui(null))?.workspace; n = Number.isInteger(w) ? Number(w) : null } catch { n = workspace ?? null }
   }
   const t = n ? of!(n) : null
   return { t, pinned: t ? t.pinned ?? own : own, label: t ? t.label : "pages.json" }
