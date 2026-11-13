@@ -249,12 +249,17 @@ function Guide({ id, address }: { id: AppId; address: string }) {
 
 export const SETUP_DETAIL = "connect-app"
 export const APPS: AppId[] = ["claude", "chatgpt", "muse", "grok-bot"]
-export const setupTitle = (id: string) => (id in GUIDES && id !== "other" ? `Set up ${GUIDES[id as AppId].name}` : "Set up another app")
+const isAppId = (id: string): id is AppId => Object.hasOwn(GUIDES, id)
+export const setupTitle = (id: string) => (isAppId(id) && id !== "other" ? `Set up ${GUIDES[id].name}` : "Set up another app")
 export const appIcon = (id: AppId): LucideIcon => (id === "other" ? Plug : iconNamed(GUIDES[id].icon) ?? Bot)
 const connectionOf = (id: AppId, cs: Connection[]) => cs.find((c) => GUIDES[id].match.test(c.name))
 const appOf = (c: Connection) => APPS.find((id) => GUIDES[id].match.test(c.name)) ?? null
 
-export function SetupSheet({ id }: { id: AppId }) {
+export function SetupSheet({ id }: { id: string }) {
+  return isAppId(id) ? <AppSetup id={id} /> : null
+}
+
+function AppSetup({ id }: { id: AppId }) {
   const { data, error, reload } = useConnections()
   const g = GUIDES[id]
   if (!g) return null

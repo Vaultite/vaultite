@@ -18,7 +18,7 @@ The same tools are served over HTTP at <server>/api/mcp (this machine and its ow
     run: async (_a, c) => {
       if (process.stdin.isTTY) throw new CliError("vau mcp talks MCP on stdin and stdout: an MCP client starts it (see vau mcp --help)")
       const { APP_VERSION } = await import("../../../core/plugins.ts")
-      const { clientOf, handleBody, ToolError } = await import("./protocol.ts")
+      const { clientOf, handleBody, Pictured, ToolError } = await import("./protocol.ts")
       const { toolsOf } = await import("./catalog.ts")
       type Client = import("./protocol.ts").Client
       const session: import("./protocol.ts").Session = { client: null }
@@ -46,7 +46,7 @@ The same tools are served over HTTP at <server>/api/mcp (this machine and its ow
           pictured = new Set(entries.filter((e) => e.image).map((e) => e.id))
           kinds = new Map(entries.map((e) => [e.id, e.kind]))
           homes = new Set(entries.filter((e) => e.home).map((e) => e.id))
-          envs = new Map(entries.map((e) => [e.id, Object.entries(e.params.properties ?? {}).flatMap(([k, s]) => (s.env ? [[k, s.env] as [string, string]] : []))]))
+          envs = new Map(entries.map((e) => [e.id, Object.entries(e.params.properties ?? {}).flatMap(([k, s]): [string, string][] => (s.env ? [[k, s.env]] : []))]))
           return toolsOf(entries)
         },
         ctx: (client: Client, tool: string) => {
@@ -56,7 +56,7 @@ The same tools are served over HTTP at <server>/api/mcp (this machine and its ow
             const call = home ? as(client.agent, tool, home) : here
             for (const [k, v] of envs.get(id) ?? []) if (params[k] === undefined && env[v]) params[k] = env[v]
             if (!pictured.has(id)) return String(await call.op(id, "?as=text", params) ?? "")
-            const r = await call.op(id, "?as=answer", params) as { text?: unknown; image?: { data: string; mimeType: string } } | null
+            const r = Pictured.parse(await call.op(id, "?as=answer", params))
             return { text: String(r?.text ?? ""), image: r?.image ?? null }
           } }
         },

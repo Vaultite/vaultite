@@ -1,5 +1,8 @@
+import { z } from "zod"
 import type { OpEntry, Schema } from "../../../core/plugins.ts"
 import { type Tool, ToolError } from "./protocol.ts"
+
+const PARAMS = z.record(z.string(), z.unknown())
 
 export const RESERVED = new Set(["ops", "call"])
 
@@ -19,7 +22,7 @@ export function toolOf(e: OpEntry): Tool {
     name: e.mcp!,
     title: titleOf(e),
     description: [e.summary, e.help?.trim()].filter(Boolean).join("\n\n"),
-    inputSchema: e.params as Record<string, unknown>,
+    inputSchema: e.params,
     annotations: hints(e.kind),
     run: (args, ctx) => ctx.op(e.id, args),
   }
@@ -79,9 +82,9 @@ function generic(entries: OpEntry[]): Tool[] {
     run: async (args, ctx) => {
       const id = typeof args.id === "string" ? args.id.trim() : ""
       if (!id) throw new ToolError("id is missing: an operation's id (ops lists them)")
-      const params = args.params ?? {}
-      if (typeof params !== "object" || Array.isArray(params)) throw new ToolError("params is an object of the operation's parameters")
-      return ctx.op(id, params as Record<string, unknown>)
+      const params = PARAMS.safeParse(args.params ?? {})
+      if (!params.success) throw new ToolError("params is an object of the operation's parameters")
+      return ctx.op(id, params.data)
     },
   }]
 }

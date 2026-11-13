@@ -1,3 +1,4 @@
+import { z } from "zod"
 import { OpError, type Who, whoOf } from "../../../core/plugins.ts"
 import { cardData, contents, linked, listed, type McpApp, takesUi, UI_EXTENSION, UI_MIME } from "./apps.ts"
 
@@ -23,9 +24,6 @@ export class ToolError extends Error {}
 
 export const clientOf = (name: unknown): Client => whoOf("mcp", typeof name === "string" ? name : null)
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Any = any
-
 /** The versions it speaks, newest first: a client asking for another gets the newest. */
 export const PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"]
 
@@ -41,7 +39,11 @@ export function instructionsOf(lines: string[], ops: { id: string; mcp?: string 
   return [INTRO, ...[...lines, ...LAST, ...extra].map((l) => `- ${say(l)}`)].join("\n")
 }
 
-export type Message = { jsonrpc?: string; id?: string | number | null; method?: string; params?: Any; result?: unknown; error?: unknown }
+const Params = z.looseObject({ clientInfo: z.looseObject({ name: z.unknown() }).optional().catch(undefined) })
+const Message = z.looseObject({ id: z.union([z.string(), z.number(), z.null()]).optional(), method: z.unknown(), params: Params.optional().catch(undefined) })
+type Message = z.infer<typeof Message>
+const Args = z.record(z.string(), z.unknown())
+export const Pictured = z.object({ text: z.unknown(), image: z.object({ data: z.string(), mimeType: z.string() }).nullish().catch(null) }).nullable().catch(null)
 export type Answer = { jsonrpc: "2.0"; id: string | number | null; result?: unknown; error?: { code: number; message: string; data?: unknown } }
 
 export type Session = { client: Client | null; ui?: boolean }
@@ -64,12 +66,12 @@ export const declared = (t: Tool) => ({ name: t.name, title: t.title, descriptio
 
 export async function handle(msg: unknown, session: Session, server: Server): Promise<Answer | null> {
   if (!msg || typeof msg !== "object" || Array.isArray(msg)) return fail(null, -32600, "Invalid Request: a JSON-RPC message is an object")
-  const m = msg as Message
+  const m = Message.safeParse(msg).data
+  if (!m) return fail(null, -32600, "Invalid Request: its id is a string or a number")
   const isRequest = m.id !== undefined && m.id !== null
   if (typeof m.method !== "string") return isRequest ? fail(m.id, -32600, "Invalid Request: no method") : null
   if (!isRequest) return null
-  const id = m.id!
-  const ok = (result: unknown): Answer => ({ jsonrpc: "2.0", id, result })
+  const id = m.id!, ok = (result: unknown): Answer => ({ jsonrpc: "2.0", id, result })
   switch (m.method) {
     case "initialize": {
       const asked = String(m.params?.protocolVersion ?? "")
@@ -91,10 +93,10 @@ export async function handle(msg: unknown, session: Session, server: Server): Pr
       const tools = await toolsWithApps(server)
       const tool = tools.find((t) => t.name === name)
       if (!tool) return fail(id, -32602, `Unknown tool: ${name || "(none)"}. Tools: ${tools.map((t) => t.name).join(", ")}`)
-      const args = m.params?.arguments
-      if (args !== undefined && (args === null || typeof args !== "object" || Array.isArray(args))) return fail(id, -32602, "arguments is an object")
+      const given = m.params?.arguments, args = Args.safeParse(given === undefined ? {} : given)
+      if (!args.success) return fail(id, -32602, "arguments is an object")
       const client = session.client ?? clientOf("")
-      return ok(await callTool(tool, (args ?? {}) as Record<string, unknown>, server.ctx(client, tool.name), session.ui !== false ? server.appUrl?.() ?? null : undefined))
+      return ok(await callTool(tool, args.data, server.ctx(client, tool.name), session.ui !== false ? server.appUrl?.() ?? null : undefined))
     }
     case "resources/list":
       return ok({ resources: (await server.apps?.() ?? []).map(listed) })
@@ -125,7 +127,8 @@ export async function callTool(tool: Tool, args: Record<string, unknown>, ctx: T
   } catch (e) {
     const known = e instanceof ToolError || e instanceof OpError
     if (!known) console.error(`mcp: ${tool.name}:`, e)
-    return { content: [{ type: "text", text: known ? (e as Error).message : `${tool.name} failed: ${(e as Error)?.message ?? e}` }], isError: true }
+    const message = e instanceof Error ? e.message : String(e)
+    return { content: [{ type: "text", text: known ? message : `${tool.name} failed: ${message}` }], isError: true }
   }
 }
 
@@ -139,5 +142,5 @@ export async function handleBody(body: unknown, session: Session, server: Server
   return handle(body, session, server)
 }
 
-export const initializes = (body: unknown) => (Array.isArray(body) ? body : [body]).some((m) => (m as Message)?.method === "initialize")
+export const initializes = (body: unknown) => (Array.isArray(body) ? body : [body]).some((m) => Message.safeParse(m).data?.method === "initialize")
 

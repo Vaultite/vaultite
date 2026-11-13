@@ -2,6 +2,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import http, { type IncomingMessage, type ServerResponse } from "node:http"
 import path from "node:path"
+import { z } from "zod"
 import type { OpEntry } from "../../../core/contracts/ops.ts"
 import { whoOf } from "../../../core/ops.ts"
 import { agentLines, APP_VERSION, fromInternet, OpError, type Plugin, type Who } from "../../../core/plugins.ts"
@@ -67,6 +68,8 @@ export function gateOf(id: string, kind: OpEntry["kind"], params: Record<string,
 
 const UPLOAD_TTL = 15 * 60_000
 const BODY_MAX = 4 << 20
+class TooBig extends Error {}
+const RESULT = z.record(z.string(), z.unknown()).catch({})
 const REDIRECT_HOSTS = ["claude.ai", "claude.com", "chatgpt.com", "openai.com", "cursor.com", "agent.meta.ai"]
 const ACCESS_TTL = 3600, REFRESH_TTL = 30 * 86400, SIGN_IN_TTL = 10 * 60, CODE_TTL = 120
 const SLOW = 15, FAILED_TTL = 10 * 60
@@ -207,12 +210,12 @@ export class PublicMcp {
     return `${body}.${this.sign(body)}`
   }
 
-  unsign<T>(kind: string, t: string): T | null {
+  unsign<T>(kind: string, t: string, claims: z.ZodType<T>): T | null {
     const [body, sig] = t.split(".")
     if (!body || !sig || !same(sig, this.sign(body))) return null
     try {
       const d = JSON.parse(Buffer.from(body, "base64url").toString())
-      return d.k === kind ? d as T : null
+      return d?.k === kind ? claims.safeParse(d).data ?? null : null
     } catch { return null }
   }
 
@@ -380,8 +383,8 @@ export class PublicMcp {
   async body(req: IncomingMessage): Promise<string> {
     let size = 0
     const parts: Buffer[] = []
-    for await (const c of req) if ((size += (c as Buffer).length) <= BODY_MAX) parts.push(c as Buffer)
-    if (size > BODY_MAX) throw Object.assign(new Error("too big"), { status: 413 })
+    for await (const c of req) { const chunk: Buffer = c; if ((size += chunk.length) <= BODY_MAX) parts.push(chunk) }
+    if (size > BODY_MAX) throw new TooBig()
     return Buffer.concat(parts).toString("utf8")
   }
 
@@ -474,7 +477,7 @@ export class PublicMcp {
   }
 
   appOf(clientId: string): App | null {
-    return this.unsign<{ a: App }>("client", clientId)?.a ?? null
+    return this.unsign("client", clientId, z.object({ a: z.object({ name: z.string(), redirects: z.array(z.string()) }) }))?.a ?? null
   }
 
   authorize(req: IncomingMessage, res: ServerResponse, url: URL, base: string) {
@@ -568,7 +571,7 @@ export class PublicMcp {
 
   grantOf(req: IncomingMessage): [string, Grant] | null {
     const m = /^Bearer\s+(\S+)$/i.exec(String(req.headers.authorization ?? ""))
-    const t = m && this.unsign<{ g: string; e: number }>("access", m[1])
+    const t = m && this.unsign("access", m[1], z.object({ g: z.string(), e: z.number() }))
     if (!t || t.e < now()) return null
     const g = this.grants()[t.g]
     return g ? [t.g, g] : null
@@ -591,7 +594,7 @@ export class PublicMcp {
     if (req.method !== "POST") return this.json(res, 405, { error: "method_not_allowed" })
     let body: unknown
     try { body = JSON.parse(await this.body(req)) } catch (e) {
-      if ((e as { status?: number }).status === 413) {
+      if (e instanceof TooBig) {
         return this.json(res, 413, { jsonrpc: "2.0", id: null, error: { code: -32600, message: `A request here is at most ${BODY_MAX >> 20} MB. ` +
           "To save a file of any size, call upload_file without file, url or data: it answers a one-time upload link to PUT the bytes to (curl -T <file> <link>)." } })
       }
@@ -718,10 +721,10 @@ export class PublicMcp {
     this.uploads.delete(token)
     try {
       const r = await this.plugin.host.call("file.upload", u.pending, u.who, { report: "mcp upload", http: req, input: req })
-      return this.json(res, 201, { ...(r.result as object), text: r.text })
+      return this.json(res, 201, { ...RESULT.parse(r.result), text: r.text })
     } catch (e) {
       const empty = e instanceof OpError && e.message === "the file is empty"
-      return this.json(res, e instanceof OpError ? e.status : 500, { error: empty ? "no bytes came: PUT the file as the body (curl -T <file> <link>)" : (e as Error).message })
+      return this.json(res, e instanceof OpError ? e.status : 500, { error: empty ? "no bytes came: PUT the file as the body (curl -T <file> <link>)" : e instanceof Error ? e.message : String(e) })
     }
   }
 

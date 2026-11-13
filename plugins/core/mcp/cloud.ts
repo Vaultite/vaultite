@@ -2,12 +2,14 @@ import { execFile } from "node:child_process"
 import http from "node:http"
 import os from "node:os"
 import WebSocket from "ws"
+import { z } from "zod"
 import type { Plugin } from "../../../core/plugins.ts"
 import { RELAY_HEADER, RELAYED, RELAYED_GUEST } from "./public.ts"
 
 const RELAY = (process.env.VAULTITE_CLOUD || "https://cloud.vaultite.com").replace(/\/+$/, "")
 
-type Stored = { token: string; handle: string; url: string }
+const STORED = z.object({ token: z.string(), handle: z.string(), url: z.string() })
+type Stored = z.infer<typeof STORED>
 type Frame = { t: string; id?: string; method?: string; path?: string; headers?: [string, string][]; body?: string; key?: string
   text?: string; data?: string; code?: number; reason?: string; guest?: boolean; handle?: string; url?: string }
 
@@ -23,6 +25,13 @@ export type CloudStatus = {
 }
 
 /** HTTP's hop-by-hop headers: one connection's, not the request's. */
+const ANSWER = z.record(z.string(), z.unknown()).catch({})
+
+export class CloudError extends Error {
+  status: number
+  constructor(message: string, status: number) { super(message); this.status = status }
+}
+
 const HOP = new Set(["connection", "keep-alive", "transfer-encoding", "te", "trailer", "upgrade", "proxy-authorization", "proxy-authenticate", "host", "content-length", "forwarded"])
 /** Headers only this machine's own proxies set (Tailscale Serve, the app): never from the internet. */
 const OURS = /^(tailscale-|x-vaultite-(?!cloud$))/
@@ -65,12 +74,12 @@ export class Cloud {
   }
 
   stored(): Stored | null {
-    const c = (this.plugin.secrets().mcp as { cloud?: Stored } | undefined)?.cloud
+    const c = STORED.safeParse(this.plugin.secrets().mcp?.cloud).data
     return c?.token ? c : null
   }
 
   save(c: Stored | null) {
-    const all = structuredClone((this.plugin.secrets().mcp ?? {}) as Record<string, unknown>)
+    const all = structuredClone(this.plugin.secrets().mcp ?? {})
     if (c) all.cloud = c; else delete all.cloud
     this.plugin.saveSecrets(all)
   }
@@ -120,9 +129,9 @@ export class Cloud {
       method: "POST", body: JSON.stringify(body), signal: AbortSignal.timeout(15_000),
       headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     })
-    const d = await r.json().catch(() => ({})) as Record<string, unknown>
-    if (r.status === 429) throw Object.assign(new Error("Too many tries: wait a minute"), { status: 429 })
-    if (!r.ok) throw Object.assign(new Error(String(d.error ?? d.message ?? `Vaultite Cloud answered ${r.status}`)), { status: r.status })
+    const d = ANSWER.parse(await r.json().catch(() => ({})))
+    if (r.status === 429) throw new CloudError("Too many tries: wait a minute", 429)
+    if (!r.ok) throw new CloudError(String(d.error ?? d.message ?? `Vaultite Cloud answered ${r.status}`), r.status)
     return d
   }
 
@@ -217,13 +226,13 @@ export class Cloud {
       if (f.t === "ping") ws.send(JSON.stringify({ t: "pong" }))
       else if (f.t === "handle") this.moved(f)
       else if (f.t === "connect" && typeof f.key === "string" && f.key) { const was = this.connectKey; this.connectKey = f.key; if (!was) this.onChange(this.status()) }
-      else if (f.t === "ws") this.openSocket(ws, f).catch((e) => this.send(ws, { t: "wsno", id: String(f.id), status: 502, message: (e as Error).message }))
+      else if (f.t === "ws") this.openSocket(ws, f).catch((e) => this.send(ws, { t: "wsno", id: String(f.id), status: 502, message: e instanceof Error ? e.message : String(e) }))
       else if (f.t === "wsmsg") { const s = this.sockets.get(String(f.id)); if (s?.readyState === WebSocket.OPEN) s.send(typeof f.data === "string" ? Buffer.from(f.data, "base64") : String(f.text ?? ""), { binary: typeof f.data === "string" }) }
       else if (f.t === "wsclose") { const s = this.sockets.get(String(f.id)); this.sockets.delete(String(f.id)); s?.close(closeCode(f.code), String(f.reason ?? "").slice(0, 120)) }
       else if (f.t === "cancel") { const r = this.inflight.get(String(f.id)); this.inflight.delete(String(f.id)); r?.destroy() }
       else if (f.t === "req") this.forward(ws, f).catch((e) => {
         this.inflight.delete(String(f.id))
-        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: "err", id: String(f.id), message: (e as Error).message }))
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: "err", id: String(f.id), message: e instanceof Error ? e.message : String(e) }))
       })
     })
     ws.on("error", (e) => { if (this.ws === ws) this.message = e.message })
@@ -289,7 +298,7 @@ export class Cloud {
     })
     s.on("message", (data, binary) => {
       if (!live()) return
-      const buf = Buffer.isBuffer(data) ? data : Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data as ArrayBuffer)
+      const buf = Buffer.isBuffer(data) ? data : Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data)
       this.send(ws, binary ? { t: "wsmsg", id, data: buf.toString("base64") } : { t: "wsmsg", id, text: buf.toString("utf8") })
     })
     s.on("error", () => { if (live() && s.readyState !== WebSocket.OPEN) { this.sockets.delete(id); this.send(ws, { t: "wsno", id, status: 502 }) } })

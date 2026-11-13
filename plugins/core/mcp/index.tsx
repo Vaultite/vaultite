@@ -1,6 +1,6 @@
 import { Bot, Copy, Globe, Plug } from "lucide-react"
 import { aiOn, copyText, definePlugin, Group, notify, notifyError, openView, Panel, Section, SettingRow } from "@vaultite"
-import { AiApps, CONNECTION_DETAIL, ConnectionSheet, ConnectionsView, ConnectSection, connectionTitle, RemoteAccess, SETUP_DETAIL, SetupSheet, setupTitle, type AppId } from "./Connections"
+import { AiApps, CONNECTION_DETAIL, ConnectionSheet, ConnectionsView, ConnectSection, connectionTitle, RemoteAccess, SETUP_DETAIL, SetupSheet, setupTitle } from "./Connections"
 import { GrokBotIcon, MuseIcon } from "./marks"
 
 function Preview() {
@@ -41,7 +41,7 @@ export default definePlugin({
   settingsPanelFirst: true,
   icons: { "grok-bot": GrokBotIcon, muse: MuseIcon },
   details: {
-    [SETUP_DETAIL]: { title: (_s, [id]) => setupTitle(id), render: (_s, [id]) => <SetupSheet id={id as AppId} /> },
+    [SETUP_DETAIL]: { title: (_s, [id]) => setupTitle(id), render: (_s, [id]) => <SetupSheet id={id} /> },
     [CONNECTION_DETAIL]: { title: (_s, [id]) => connectionTitle(id), render: (_s, [id]) => <ConnectionSheet id={id} /> },
   },
   settingsPages: {

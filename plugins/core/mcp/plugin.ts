@@ -1,13 +1,16 @@
 import crypto from "node:crypto"
+import { z } from "zod"
 import { agentLines, APP_VERSION, HTTPError, OpError, Plugin, reply, type Request, Text, type Who } from "../../../core/plugins.ts"
 import { appsFrom, contents, cspOf } from "./apps.ts"
 import { toolsOf } from "./catalog.ts"
-import { Cloud, type CloudStatus } from "./cloud.ts"
+import { Cloud, CloudError, type CloudStatus } from "./cloud.ts"
 import { viaConnect } from "./connect.ts"
 import { PublicMcp } from "./public.ts"
 import { callTool, type Client, declared, handleBody, initializes, instructionsOf, type Session, type ToolCtx, ToolError, toolsWithApps } from "./protocol.ts"
 
 export const plugin = new Plugin(import.meta.url)
+
+const Body = z.record(z.string(), z.unknown()).catch({})
 
 const sessions = new Map<string, Session>()
 
@@ -56,7 +59,7 @@ plugin.route("POST", "mcp", async (req) => {
   await allowed(req)
   const sid = String(req.http?.headers["mcp-session-id"] ?? "")
   const session: Session = { ...sessions.get(sid) ?? { client: null } }
-  const body = req.body as unknown
+  const body: unknown = req.body
   const out = await handleBody(body, session, serverFor(req.http))
   const headers: Record<string, string> = {}
   if (initializes(body)) {
@@ -120,7 +123,7 @@ function publicMcp() {
   return pub
 }
 const cloud = new Cloud(plugin, () => publicMcp().ready)
-const ownerTools = () => (plugin.secrets().mcp as { connect?: { ownerTools?: boolean } } | undefined)?.connect?.ownerTools === true
+const ownerTools = () => plugin.secrets().mcp?.connect?.ownerTools === true
 let signedIn = false
 let handle = cloud.stored()?.handle ?? null
 cloud.onChange = (s) => {
@@ -149,9 +152,9 @@ plugin.route("GET", "mcp/connections", async (req) => {
 plugin.route("POST", "mcp/connect", async (req) => {
   await allowed(req)
   await plugin.ownerOnly(req, "Changing what answers over Vaultite Connect")
-  const on = (req.body as { ownerTools?: unknown })?.ownerTools === true
-  const all = structuredClone((plugin.secrets().mcp ?? {}) as Record<string, unknown>)
-  const c = { ...(all.connect as object | undefined) } as Record<string, unknown>
+  const on = Body.parse(req.body).ownerTools === true
+  const all = structuredClone(plugin.secrets().mcp ?? {})
+  const c = { ...all.connect }
   if (on) c.ownerTools = true; else delete c.ownerTools
   if (Object.keys(c).length) all.connect = c; else delete all.connect
   plugin.saveSecrets(all)
@@ -161,7 +164,7 @@ plugin.route("POST", "mcp/connect", async (req) => {
 plugin.route("POST", "mcp/connections", async (req) => {
   await allowed(req)
   if (!pub) throw new HTTPError(404, "MCP isn't on the internet here: sign in to Vaultite Cloud, or set mcp.public.url in data/config.json")
-  const b = (req.body ?? {}) as { code?: unknown; as?: unknown }
+  const b = Body.parse(req.body)
   const name = pub.approve(String(b.code ?? ""), typeof b.as === "string" && b.as.trim() ? b.as.trim() : undefined)
   if (!name) throw new HTTPError(404, "No sign-in waits with that code: check it, or start again from the app (a code lasts 10 minutes)")
   return { ok: true, name }
@@ -169,11 +172,12 @@ plugin.route("POST", "mcp/connections", async (req) => {
 
 plugin.route("PATCH", "mcp/connections/*", async (req) => {
   await allowed(req)
-  const b = (req.body ?? {}) as { name?: unknown; access?: unknown }
+  const b = Body.parse(req.body)
   const name = typeof b.name === "string" ? b.name.trim() : undefined
+  const access = b.access === "read" || b.access === "write" ? b.access : undefined
   if (b.name !== undefined && !name) throw new HTTPError(400, "name: what to call the app")
-  if (b.access !== undefined && b.access !== "read" && b.access !== "write") throw new HTTPError(400, "access: read or write")
-  if (!pub?.update(req.arg(0), { name, access: b.access as "read" | "write" | undefined })) throw new HTTPError(404, "no such connection")
+  if (b.access !== undefined && !access) throw new HTTPError(400, "access: read or write")
+  if (!pub?.update(req.arg(0), { name, access })) throw new HTTPError(404, "no such connection")
   return { ok: true }
 }, { lock: false })
 
@@ -235,10 +239,10 @@ connects this machine to their account. Without a code: signed out, where to get
     if (code?.trim()) signedIn = true
     try { return await cloud.signIn(code ?? "") } catch (e) {
       signedIn = false
-      const status = (e as { status?: number }).status
+      const status = e instanceof CloudError ? e.status : undefined
       if (status === 400) throw new OpError(`That code doesn't work: it may be mistyped, used or older than 10 minutes. Get a new one at ${cloud.status().connectUrl}`, 400)
       if (status === 429) throw new OpError("Too many tries: wait a minute and try again", 429)
-      throw new OpError(`Couldn't reach Vaultite Cloud: ${(e as Error).message}`, 502)
+      throw new OpError(`Couldn't reach Vaultite Cloud: ${e instanceof Error ? e.message : String(e)}`, 502)
     }
   },
   text: cloudText,

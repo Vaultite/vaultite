@@ -2,10 +2,12 @@ import crypto from "node:crypto"
 import http, { type IncomingMessage, type ServerResponse } from "node:http"
 import net from "node:net"
 import type { Duplex } from "node:stream"
+import { z } from "zod"
 import { CONNECT_HEADER } from "../../../core/plugins.ts"
 
 export const SIGNED_HEADER = "x-vaultite-cloud"
-export type ConnectClaims = { sub: string; handle: string; role: string; exp: number; email?: string | null }
+const ConnectClaims = z.looseObject({ handle: z.string(), role: z.string(), exp: z.number() })
+export type ConnectClaims = z.infer<typeof ConnectClaims>
 
 export const MCP_PATHS = /^\/(mcp|register|token|authorize(\/status)?|\.well-known\/oauth-[a-z-]+(\/mcp)?|upload\/.*|icon\.svg|icon\.png|favicon\.ico)\/?$/
 const OWNER_PATHS = /^\/api\/(terminals?|dispatch|screens|herdr|bundles|machines|schedule|vaults|ui|file\/open|vaultite-cloud\/export|web-viewer\/(tabs|live))(\/|$)/
@@ -21,8 +23,8 @@ export function verifyConnect(key: string | null, token: unknown, handle: string
   const want = crypto.createHmac("sha256", key).update(body).digest("base64url")
   if (want.length !== sig.length || !crypto.timingSafeEqual(Buffer.from(want), Buffer.from(sig))) return null
   try {
-    const c = JSON.parse(Buffer.from(body, "base64url").toString()) as ConnectClaims
-    if (c.handle !== handle || c.role !== "owner" || typeof c.exp !== "number" || c.exp <= at || c.exp > at + 3600) return null
+    const c = ConnectClaims.safeParse(JSON.parse(Buffer.from(body, "base64url").toString())).data
+    if (!c || c.handle !== handle || c.role !== "owner" || c.exp <= at || c.exp > at + 3600) return null
     return c
   } catch { return null }
 }
