@@ -6,7 +6,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { execFileSync } from "node:child_process"
-import { ROOT, qa, wait } from "./lib/qa.mjs"
+import { ROOT, qa, until, wait } from "./lib/qa.mjs"
 const { args: [VAULT], check, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-revive-"))
 
@@ -89,6 +89,12 @@ try {
   check("a page in a loop: asked to wait or reload", asked, await boxes())
   s = await drawnBy(hung)
   check(`… Reload: drawn again by a new renderer ${s.pid}`, s.pid !== hung && s.drawn > 20, s)
+  const op = (id, params = {}) => fetch(`http://127.0.0.1:${port}/api/ops/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params) }).then((r) => r.json())
+  const told = await until(async () => (await op("errors.list", { source: "app" })).groups?.find((g) => g.kind === "hung"), 10_000)
+  const shown = told ? await op("errors.show", { id: told.id }).catch(() => null) : null
+  console.log(JSON.stringify(shown ?? told, null, 1)?.slice(0, 1500))
+  check("… the hang is kept in Errors, with its script's stack and how it ended",
+    /stopped responding \(in its script\)/.test(told?.message ?? "") && /until it was reloaded/.test(JSON.stringify(shown ?? told)), told)
 
   // Crashing again and again: the one it's left at, the box says so; Reload draws it.
   // (killed until it's left: three a minute are reloaded, however many of those were before)

@@ -74,7 +74,29 @@ async function accounts(check: Check) {
   check("browser: who's signed in to a site never holds a token or a cookie's secret, whatever its answer carries", !leaks.length, leaks)
 }
 
+async function hangs(check: Check) {
+  const H = await import("../../../electron/hang.ts")
+  const machine = { load: 3.2, freeMB: 120, totalMB: 8192 }
+  const at = (t: number, stack: string, cpuSeconds: number | null) => ({ at: t, stack, cpuSeconds, memoryMB: 900 })
+  const run = (samples: ReturnType<typeof at>[], how: "recovered" | "reloaded" | "gone" | "still" = "recovered", frames: Parameters<typeof H.hangReport>[4] = []) =>
+    H.hangReport("MyVault", samples.reduce(H.sampled, H.hangStarted(0)), { at: 42_000, how }, machine, frames)
+  const loop = "at render (http://127.0.0.1:8793/assets/main.js:1:2)", other = "at parse (http://127.0.0.1:8793/assets/state.js:3:4)"
+  const inScript = run([at(0, other, 0), at(3000, loop, 3), at(6000, loop, 6)])
+  check("hangs: a script caught running says so, its most frequent stack first so Errors groups by it",
+    inScript.message === "MyVault's page stopped responding (in its script)" && inScript.stack.startsWith(loop) && inScript.stack.includes(`also, 1 of 3 times:\n${other}`) &&
+    inScript.stack.includes("42 s, then came back") && inScript.stack.includes("100% CPU, 900 MB"), inScript)
+  check("hangs: no script caught, the renderer's CPU over the hang tells busy from waiting",
+    run([at(0, "", 10), at(3000, "", 12.7)]).message.endsWith("(busy outside its script: layout, style or garbage collection)") &&
+    run([at(0, "", 10), at(3000, "", 10.1)]).message.endsWith("(idle: waiting on something)") &&
+    run([at(0, "", null)]).message.endsWith("(its script's stack unknown)") && run([]).message.endsWith("(its script's stack unknown)"))
+  const framed = run([at(0, "", 1)], "recovered", [{ ms: 41_000, blockingMs: 40_950, scripts: [{ ms: 40_900, where: "TimerHandler:setTimeout tick http://127.0.0.1:8793/assets/main.js:120" }] }])
+  check("hangs: how it ended, the machine, and the long frame that held it with its script",
+    framed.stack.includes("this machine: load 3.2, 120 of 8192 MB free") && framed.stack.includes("a 41000 ms frame (40950 ms blocking):\n  40900 ms TimerHandler:setTimeout tick") &&
+    run([], "reloaded").stack.includes("until it was reloaded") && run([], "still").stack.includes("and still not"), framed.stack)
+  check("hangs: at most a few looks are kept", Array.from({ length: 30 }, (_, i) => at(i, "", null)).reduce(H.sampled, H.hangStarted(0)).samples.length === H.MAX_SAMPLES)
+}
+
 export default async ($: VaultTest) => {
   winspawnFirst($.check)
-  for (const t of [bridge, clipboard, snapshots, accounts]) await t($.check)
+  for (const t of [bridge, clipboard, snapshots, accounts, hangs]) await t($.check)
 }

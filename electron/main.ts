@@ -5,8 +5,10 @@ import { app, BaseWindow, type BaseWindowConstructorOptions, clipboard, dialog, 
 import { AppWindow } from "./appwindow.ts"
 import { relaunchOptions, vaultArg } from "./argv.ts"
 import { QUIET, fakePointer, quiet, quietPage } from "./quiet.ts"
+import { hangReport, hangStarted, LONG_FRAME_LIST, LONG_FRAMES, MAX_SAMPLES, SAMPLE_EVERY_MS, sampled, type Hang, type HangEnd, type LongFrame } from "./hang.ts"
 import { execFile, execFileSync, fork, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
+import os from "node:os"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { menuTemplate, type MenuSnapshot } from "./menu.ts"
@@ -361,17 +363,47 @@ const waiting: string[] = []
 
 function hangs(win: AppWindow, name: string) {
   let asking: AbortController | null = null
+  let hang: Hang | null = null, reported = false, timer: NodeJS.Timeout | undefined
+  const sample = async () => {
+    const pid = win.webContents.getOSProcessId()
+    const stack = await Promise.race([win.webContents.mainFrame.collectJavaScriptCallStack(), new Promise<undefined>((r) => setTimeout(r, 2500))]).catch(() => undefined)
+    const m = app.getAppMetrics().find((x) => x.pid === pid)
+    if (hang) hang = sampled(hang, { at: Date.now(), stack: stack ?? "", cpuSeconds: m?.cpu.cumulativeCPUUsage ?? null, memoryMB: m ? Math.round(m.memory.workingSetSize / 1024) : null })
+  }
+  const report = async (how: HangEnd) => {
+    if (!hang || reported) return
+    reported = true
+    if (!hang.samples.length && !win.isDestroyed() && how !== "gone") await sample()
+    const frames = how === "recovered" && !win.isDestroyed()
+      ? await Promise.race([win.webContents.executeJavaScriptInIsolatedWorld(1003, [{ code: LONG_FRAMES }]).then((v) => LONG_FRAME_LIST.parse(v)), new Promise<LongFrame[]>((r) => setTimeout(() => r([]), 3000))]).catch(() => [])
+      : []
+    const r = hangReport(name, hang, { at: Date.now(), how }, { load: os.loadavg()[0], freeMB: Math.round(os.freemem() / 2 ** 20), totalMB: Math.round(os.totalmem() / 2 ** 20) }, frames)
+    reportError("hung", r.message, r.stack)
+  }
+  const look = async () => {
+    if (!hang || reported || win.isDestroyed()) return
+    await sample()
+    if (!hang || reported) return
+    if (hang.samples.length < MAX_SAMPLES) timer = setTimeout(() => void look(), SAMPLE_EVERY_MS)
+    else void report("still")
+  }
+  const ended = async (how: HangEnd) => {
+    clearTimeout(timer)
+    await report(how)
+    hang = null
+  }
   win.webContents.on("unresponsive", async () => {
+    if (!hang) { hang = hangStarted(Date.now()); reported = false; void look() }
     if (asking || win.isDestroyed()) return
     const ask = (asking = new AbortController())
-    void Promise.race([win.webContents.mainFrame.collectJavaScriptCallStack(), new Promise<void>((r) => setTimeout(r, 5000))])
-      .then((stack) => reportError("hung", `${name}'s page stopped responding${stack ? "" : " (its script's stack unknown)"}`, stack ?? ""), () => {})
     const r = await dialog.showMessageBox(win, { type: "warning", message: `${name} isn't responding`, detail: "Wait for it, or reload its page.",
       buttons: ["Wait", "Reload"], defaultId: 0, cancelId: 0, signal: ask.signal }).catch(() => ({ response: 0 }))
     asking = null
-    if (r.response === 1 && !ask.signal.aborted && !win.isDestroyed()) win.webContents.forcefullyCrashRenderer()
+    if (r.response === 1 && !ask.signal.aborted && !win.isDestroyed()) { await ended("reloaded"); if (!win.isDestroyed()) win.webContents.forcefullyCrashRenderer() }
   })
-  win.webContents.on("responsive", () => asking?.abort())
+  win.webContents.on("responsive", () => { asking?.abort(); void ended("recovered") })
+  win.webContents.on("render-process-gone", () => void ended("reloaded"))
+  win.on("closed", () => void ended("gone"))
 }
 function crashedFor(win: AppWindow, name: string) {
   return () => {
