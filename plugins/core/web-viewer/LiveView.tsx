@@ -1,5 +1,3 @@
-// The browser's tabs, every machine's (liveroutes.ts on the server, electron/browser/live.ts in the desktop app): whose
-// each is, then one watched live to tap, type and scroll in, its agents stopped or an ask done. A tab is `3` or `3@m1`.
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
 import { createPortal } from "react-dom"
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bot, ChevronLeft, ClipboardPaste, Copy, Globe, Keyboard, MousePointer2, Pause, Play } from "lucide-react"
@@ -10,11 +8,8 @@ import type { LiveStep, LiveTab, LiveTabs } from "./livetabs"
 import { keepTitle } from "./livetitles"
 
 const idOf = (t: Pick<LiveTab, "tab" | "machine">) => onMachine(String(t.tab), t.machine)
-/** Tab `tab` on `machine` in the list ("": the answering server's). */
 const find = (r: LiveTabs, tab: number, machine: string) => r.tabs.find((x) => x.tab === tab && (x.machine ?? "") === (machine || r.self || ""))
 
-/** Show a desktop page's tab: its own, or one made anew beside the user's work when its tab is gone (the page went on
- *  through a restart of the window), which the page comes back to. */
 export function showAppTab(t: Pick<LiveTab, "appTab" | "url" | "container">) {
   if (!selectPane(t.appTab)) openInSplit(`view:web/${argOf(t.url, t.container)}`, "right", true, t.appTab)
 }
@@ -22,7 +17,6 @@ export function showAppTab(t: Pick<LiveTab, "appTab" | "url" | "container">) {
 const TIME = { hour: "numeric", minute: "2-digit" } as const
 const whose = (t: Pick<LiveTab, "by" | "task">) => (t.by ? [t.by, t.task].filter(Boolean).join("/") : "Yours")
 
-/** Whether the page is on screen (a phone's app in the background isn't): what's live stops meanwhile. */
 function useOnScreen() {
   const [on, setOn] = useState(document.visibilityState === "visible")
   useEffect(() => {
@@ -33,7 +27,6 @@ function useOnScreen() {
   return on
 }
 
-/** The tabs, read again every 2 s while shown. */
 function useTabs(on: boolean) {
   const [tabs, setTabs] = useState<LiveTab[] | null>(null)
   const [error, setError] = useState("")
@@ -76,7 +69,6 @@ function Tabs({ open }: { open: (t: LiveTab) => void }) {
   const asking = (tabs ?? []).filter((t) => t.asking)
   const agents = (tabs ?? []).filter((t) => !t.asking && t.by)
   const yours = (tabs ?? []).filter((t) => !t.asking && !t.by)
-  // (each tab's machine named once there's more than one)
   const machines = new Set((tabs ?? []).map((t) => t.machine ?? "")).size > 1
   const kept = useKeptCount("web-viewer:live-tabs", tabs?.length)
   const rows = (list: LiveTab[]) => (
@@ -109,16 +101,13 @@ function Tabs({ open }: { open: (t: LiveTab) => void }) {
   )
 }
 
-/** w and h: the page's size in its own CSS pixels. */
 type State = Partial<LiveTab> & { tab: number; w?: number; h?: number }
 type View = { s: number; x: number; y: number }
 type Point = { clientX: number; clientY: number }
-/** A touch from its first finger down to its last up; `two` once a second finger came. */
 type Gesture = { start: Point; last: Point; t: number; moved: boolean; hold: number
   two: { from: View; fromAt: Point; d: number; last: Point; kind: "pinch" | "scroll" | null } | null }
 const MAX_ZOOM = 4, SHARP_AT = 1.3
 const SLOP = 8, HOLD_MS = 450, DOUBLE_MS = 350
-/** Trackpad mode: the pointer moves this much faster than the finger, and the zoomed picture follows it this near its edge. */
 const TRACKPAD_SPEED = 1.5, EDGE = 24
 const SPECIAL = new Set(["Enter", "Tab", "Escape", "Backspace", "Delete", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"])
 const BUTTON = ["left", "middle", "right"]
@@ -144,7 +133,6 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
   usePaneTopBar(bar)
   const live = !hidden && onScreen
 
-  // In the desktop app whose tab it is, the tab itself is there: shown instead (an Inbox item's link opens this).
   useEffect(() => {
     if (!webPages?.engine || !own) return
     void get<LiveTabs>("web-viewer/tabs").then((r) => {
@@ -191,7 +179,7 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
         timer = window.setTimeout(connect, Math.min(10_000, 1000 * 2 ** retry++))
       }
     }
-    // (asked over HTTP first: a refused socket says nothing of why)
+    // A refused WebSocket says nothing of why, so HTTP is asked first.
     void get<LiveTabs>("web-viewer/tabs").then((r) => {
       if (stop) return
       const t = find(r, tab, machine)
@@ -203,7 +191,6 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
     return () => { stop = true; clearTimeout(timer); sock.current?.close(); sock.current = null }
   }, [tab, machine, id, live])
 
-  // What agents did here since it opened, from Activity.
   useEffect(() => {
     if (!live) return
     let stop = false
@@ -224,19 +211,16 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
   }
   const inside = (p: { x: number; y: number }) => p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1
 
-  // The picture zoomed (a pinch, or ⌘ and the wheel on a trackpad): scale s, moved x and y px from where it fits, set on
-  // the element rather than through React (a pinch moves it every frame). Zoomed in, frames come at twice the size.
   const view = useRef<View>({ s: 1, x: 0, y: 0 })
   const sharpSent = useRef(false)
   const [zoomed, setZoomed] = useState(false)
   const [trackpad, setTrackpad] = useScopedState("web-viewer:live-trackpad", false, "device")
-  /** The pointer drawn on the picture (the page's own isn't in its frames): where, 0 to 1, and whether it's held down. */
+  // Screencast frames carry no cursor, so one is drawn.
   const cursor = useRef({ x: 0.5, y: 0.5, held: false })
   const fit = (v: View): View => {
     const el = img.current, bx = box.current
     if (!el || !bx) return { s: 1, x: 0, y: 0 }
     const s = Math.min(MAX_ZOOM, Math.max(1, v.s))
-    // (bigger than the box, it covers it; smaller, it's centred)
     const axis = (off: number, size: number, room: number, t: number) =>
       size * s <= room ? (room - size * s) / 2 - off : Math.min(-off, Math.max(room - size * s - off, t))
     return { s, x: axis(el.offsetLeft, el.offsetWidth, bx.clientWidth, v.x), y: axis(el.offsetTop, el.offsetHeight, bx.clientHeight, v.y) }
@@ -249,7 +233,6 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
     const el = img.current, pt = pointer.current
     if (!el) return
     const v = view.current, z = v.s > 1.001
-    // (its size held while zoomed: sharper frames, twice as big, mustn't grow it)
     if (z && !el.style.width) { el.style.width = `${el.offsetWidth}px`; el.style.height = `${el.offsetHeight}px` }
     else if (!z && el.style.width) { el.style.width = ""; el.style.height = "" }
     el.style.transform = z || v.x || v.y ? `translate(${v.x}px, ${v.y}px) scale(${v.s})` : ""
@@ -265,8 +248,6 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
   const trackpadOn = useRef(trackpad)
   trackpadOn.current = trackpad
   useEffect(apply, [trackpad])
-  /** Zoomed to s around a point on screen, which stays where it is (`from`: the view the gesture began with, `fromAt`
-   *  where the point was then: a pinch's midpoint, moving, pans too). */
   const zoomTo = (s: number, to: { clientX: number; clientY: number }, from = view.current, fromAt = to) => {
     const el = img.current, b = box.current?.getBoundingClientRect()
     if (!el || !b) return
@@ -285,8 +266,6 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
     return () => ro.disconnect()
   }, [])
 
-  // A scroll of the page, by screen px, sent at most every 40 ms. Zoomed, a drag or the wheel moves the picture first,
-  // and only what's left at its edge scrolls the page (as a zoomed page in Safari).
   const scrolled = useRef({ dx: 0, dy: 0, x: 0, y: 0, timer: 0 })
   const scroll = (dx: number, dy: number, where: { x: number; y: number }) => {
     const q = scrolled.current, r = img.current!.getBoundingClientRect()
@@ -308,7 +287,6 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
     const rx = dx - (n.x - v.x), ry = dy - (n.y - v.y)
     if (Math.abs(rx) + Math.abs(ry) > 0.5) scroll(-rx, -ry, where)
   }
-  /** Trackpad: the pointer moved by screen px, the picture following it when zoomed. */
   const moveCursor = (dx: number, dy: number) => {
     const el = img.current, bx = box.current, c = cursor.current
     if (!el || !bx) return
@@ -321,8 +299,6 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
     apply()
   }
 
-  // Fingers: a tap clicks (two, a double click), a drag scrolls, two pinch, one held still presses and drags (selecting);
-  // in trackpad mode one moves a pointer that a tap clicks, two scroll or pinch. A mouse is itself.
   const fingers = useRef(new Map<number, { x: number; y: number }>())
   const gesture = useRef<Gesture | null>(null)
   const lastTap = useRef({ t: 0, x: 0, y: 0 })
@@ -340,7 +316,6 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
     const [a, b] = [...fingers.current.values()]
     return { mid: { clientX: (a.x + b.x) / 2, clientY: (a.y + b.y) / 2 }, d: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)) }
   }
-  /** A finger's press let go (it lifted, or a second came). */
   const release = (g: Gesture) => {
     clearTimeout(g.hold)
     if (!cursor.current.held) return
@@ -354,7 +329,7 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
       e.preventDefault()
       keys.current?.focus({ preventScroll: true })
       e.currentTarget.setPointerCapture(e.pointerId)
-      // (a pointer event's detail is always 0: clicks are counted here, a double click's second press count 2)
+      // A pointerdown's detail is always 0, so clicks are counted here.
       const c = clicked.current, now = Date.now()
       c.n = now - c.t < DOUBLE_MS && Math.hypot(e.clientX - c.x, e.clientY - c.y) < 5 ? Math.min(3, c.n + 1) : 1
       Object.assign(c, { t: now, x: e.clientX, y: e.clientY })
@@ -364,7 +339,6 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
     fingers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
     if (fingers.current.size === 1) {
       const g: Gesture = { start: { clientX: e.clientX, clientY: e.clientY }, last: { clientX: e.clientX, clientY: e.clientY }, t: Date.now(), moved: false, two: null, hold: 0 }
-      // (held still, it presses: at the finger, or the trackpad's pointer)
       const where = at(e)
       if (trackpadOn.current || inside(where)) g.hold = window.setTimeout(() => {
         if (gesture.current !== g || g.moved || g.two) return
@@ -395,7 +369,6 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
     if (g.two) {
       if (fingers.current.size < 2) return
       const t = g.two, p = pair()
-      // (trackpad: two fingers scroll, unless they spread or close: then it's a pinch, for the rest of the gesture)
       t.kind ??= !trackpadOn.current ? "pinch" : Math.abs(p.d - t.d) > 24 ? "pinch"
         : Math.hypot(p.mid.clientX - t.fromAt.clientX, p.mid.clientY - t.fromAt.clientY) > SLOP ? "scroll" : null
       if (t.kind === "pinch") zoomTo(t.from.s * (p.d / t.d), p.mid, t.from, t.fromAt)
@@ -456,7 +429,7 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
     const wheel = (e: WheelEvent) => {
       e.preventDefault()
       const r = img.current!.getBoundingClientRect(), k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? r.height : 1
-      // (a trackpad's pinch comes as the wheel with Control held)
+      // A trackpad's pinch comes as the wheel with Control held.
       if (e.ctrlKey) return zoomTo(view.current.s * Math.exp((-e.deltaY * k) / 100), e)
       if (view.current.s > 1.001) return panOrScroll(-e.deltaX * k, -e.deltaY * k, at(e))
       if (e.target !== img.current) return
@@ -487,16 +460,14 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
     if (e.nativeEvent.isComposing) return
     const chord = (e.metaKey || e.ctrlKey) && e.key.length === 1
     if (!SPECIAL.has(e.key) && !chord) return
-    if (chord && e.key.toLowerCase() === "v") return // (the paste event brings the text)
-    // (copying is to this device's clipboard, not the Mac's whose page it is)
+    if (chord && e.key.toLowerCase() === "v") return
     if (chord && e.key.toLowerCase() === "c" && !e.altKey && !e.shiftKey) { e.preventDefault(); return copy() }
     e.preventDefault()
     e.stopPropagation()
     send({ type: "key", key: [e.metaKey && "Meta", e.ctrlKey && "Control", e.altKey && "Alt", e.shiftKey && "Shift", e.key].filter(Boolean).join("+") })
   }
 
-  // Copy: the page's selection (a double tap selects a word, a held finger drags over more) onto this device's clipboard.
-  // Safari lets a tap write to it only with the text still coming, through a ClipboardItem given its promise.
+  // Safari lets a tap write the clipboard only through a ClipboardItem given the text's promise.
   const copy = async () => {
     const got = get<{ text: string }>(`web-viewer/tabs/${id}/selection`).then((r) => r.text)
     const none = () => notify("Nothing is selected in the page: double-tap a word, or hold a finger on the text and drag")
@@ -505,7 +476,7 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
         await navigator.clipboard.write([new ClipboardItem({ "text/plain": got.then((t) => { if (!t) throw new Error("nothing selected"); return new Blob([t], { type: "text/plain" }) }) })])
         return notify("Copied")
       }
-    } catch { /* nothing selected, or the other way */ }
+    } catch {}
     let text: string
     try { text = await got } catch (e) { return notifyError(e, "Couldn't copy from the page") }
     if (!text) return none()
@@ -514,7 +485,6 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
   }
   const paste = () => void navigator.clipboard?.readText().then((text) => { if (text) send({ type: "text", text }) },
     (e) => { if ((e as Error)?.name !== "NotAllowedError") notifyError(e, "Couldn't paste") })
-  // Phones: while typing, the keys their keyboard lacks in a row over it, as a terminal's.
   const [typing, setTyping] = useState(false)
   const area = useVisibleArea(coarse && typing)
   const arrow = (name: string, Icon: typeof ArrowUp) => ({ name, label: <Icon className="size-[17px]" strokeWidth={2} />, run: () => send({ type: "key", key: `Arrow${name}` }) })

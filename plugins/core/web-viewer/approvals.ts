@@ -1,12 +1,9 @@
-// Pages a phone's Safari opens (over https: passkeys need it) to approve an agent's login or add the passkey that does;
-// the desktop app checks their answers (electron/browser/logins.ts). Routes, never ops: no agent answers for the user.
 import { type Plugin, servedAt, Text } from "../../../core/plugins.ts"
 import { desktopOf } from "./machinecalls.ts"
 
 const HEADERS = { "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
   "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" }
 
-/** A page of the approvals': its title, and its script (an async body with `api`, `say`, `b64u`, `bytes` and `$`). */
 const page = (title: string, script: string) => new Text(`<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title><style>
 :root { color-scheme: light dark; font: 17px/1.4 -apple-system, system-ui, sans-serif }
@@ -99,6 +96,5 @@ export function approvals(plugin: Plugin) {
     return desktop("agent:passkey-add", String(b.token ?? ""), { clientDataJSON: String(b.clientDataJSON ?? ""), attestationObject: String(b.attestationObject ?? "") },
       String(b.name ?? "").slice(0, 60))
   }, o)
-  // (where the phone reaches this server over https, for the app's QR code)
   plugin.route("GET", "web-viewer/https", async (req) => { await plugin.ownerOnly(req, what); return { url: await servedAt(Number(process.env.PORT || 8793)) } }, o)
 }

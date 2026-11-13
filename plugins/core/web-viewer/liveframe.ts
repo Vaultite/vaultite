@@ -1,11 +1,8 @@
-// An agent's page live in this window: its frames as the desktop app sends them while the window watches it
-// (electron/browser/live.ts), for the agents' corner card and a tab watching an agent's page.
 import { useEffect, useRef, useState } from "react"
 import { webPages } from "@vaultite"
 
 const engine = (name: string, ...args: unknown[]) => Promise.resolve(webPages?.engine?.(name, ...args))
 
-/** Whether this window is on screen: what's live stops while it isn't. */
 export function useShown() {
   const [on, setOn] = useState(!document.hidden)
   useEffect(() => {
@@ -16,13 +13,10 @@ export function useShown() {
   return on
 }
 
-/** Page `id` live: its frames as the desktop app sends them while this window watches it (renewed: a window gone stops
- *  it). */
 export function useFrame(id: number, on = true) {
   const [frame, setFrame] = useState<string | null>(null)
   const shown = useShown() && on
   const last = useRef(0)
-  // (its own watch: another view of the page in this window going, the corner card as its tab opens, leaves this one)
   const [key] = useState(() => Math.random().toString(36).slice(2, 10))
   useEffect(() => {
     if (!shown) return

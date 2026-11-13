@@ -1,5 +1,3 @@
-// A run of an agent's, replayed: the page after the step picked, what it did and took, and the run as a timeline (a strip
-// over its time to hover and scrub, a filmstrip by page with repeats folded); ← → Home End Space are replaykeys.ts'.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, ExternalLink, Globe, Pause, Play } from "lucide-react"
 import { Bar, Button, cn, dateText, ink, notifyError, openWebLink, usePaneTopBar, webPages } from "@vaultite"
@@ -13,20 +11,17 @@ const TIME = { hour: "numeric", minute: "2-digit", second: "2-digit" } as const
 const DAY = { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" } as const
 const time = (t: number) => dateText(t, TIME)
 const engine = (name: string, ...args: unknown[]) => Promise.resolve(webPages?.engine?.(name, ...args))
-/** The filmstrip: each item a gutter (the pause before it) and a card. */
 const GUT = 30, CARD = 128, SLOT = GUT + CARD
 const SPEEDS = [1, 2, 4]
 const RANK = ["failed", "user", "go", "input", "look", "script"]
 const tint = (color: string, pct: number) => `color-mix(in srgb, ${color} ${pct}%, transparent)`
 
-/** The item (filmstrip card) step `i` is in. */
 function itemAt(items: Item[], i: number) {
   let lo = 0, hi = items.length - 1
   while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (items[mid].first <= i) lo = mid; else hi = mid - 1 }
   return lo
 }
 
-/** `info`: the run as the list had it (its title while the steps come). */
 export function Replay({ run, info, live, back }: { run: string; info?: Run; live: boolean; back: () => void }) {
   const [steps, setSteps] = useState<Step[] | null>(null)
   const [at, setAt] = useState(0)
@@ -37,8 +32,6 @@ export function Replay({ run, info, live, back }: { run: string; info?: Run; liv
   const bar = useRef<HTMLDivElement>(null)
   usePaneTopBar(bar)
 
-  // Its steps (no pictures: they come as they're drawn); a live run's new ones as they come, followed from its last.
-  // (kept across the run ending, which stops the reading but leaves the view where it is)
   const had = useRef<{ run: string; steps: Step[] }>({ run, steps: [] })
   useEffect(() => {
     let stop = false
@@ -69,7 +62,6 @@ export function Replay({ run, info, live, back }: { run: string; info?: Run; liv
     if (!playing && at >= n - 1 && !live) setAt(0)
     setPlaying(!playing)
   }, [playing, at, n, live])
-  // Playing: a card a beat (a folded run of repeats at once, to its last), till the end.
   useEffect(() => {
     if (!playing || !steps) return
     const k = itemAt(items, at), next = items[k + 1]
@@ -82,7 +74,6 @@ export function Replay({ run, info, live, back }: { run: string; info?: Run; liv
     const t = setTimeout(() => setAt(next.last), 1000 / speed)
     return () => clearTimeout(t)
   }, [playing, at, items, steps, speed, live, run])
-  // (the pictures either side, so stepping shows them at once)
   useEffect(() => { if (steps) wantShots(run, [steps[at + 1]?.shot, steps[at - 1]?.shot], false) }, [steps, at, run])
 
   const keys = useRef<ReplayKeys>(null!)
@@ -142,14 +133,12 @@ export function Replay({ run, info, live, back }: { run: string; info?: Run; liv
   )
 }
 
-/** The page as it was after the step: its picture, or, for a step with none (a failure keeps none), the one before. */
 function Stage({ run, steps, at }: { run: string; steps: Step[] | null; at: number }) {
   const s = steps?.[at]
   let from = at
   if (steps && s && !s.shot) { from = -1; for (let i = at - 1; i >= 0; i--) if (steps[i].shot) { from = i; break } }
   const shot = from >= 0 ? steps?.[from]?.shot : null
   const big = useShot(run, shot, false), small = useShot(run, shot, true)
-  // (while the next one comes, the last one shown stays: stepping never flashes empty)
   const [last, setLast] = useState<string | null>(null)
   const now = big ?? small ?? null
   if (now && now !== last) setLast(now)
@@ -190,7 +179,6 @@ const KNOWN = new Set(["t", "tab", "by", "task", "summary", "url", "title", "act
 const LABELS: Record<string, string> = { site: "Site", result: "Result", approved: "Approved", entry: "Entry" }
 const label = "mb-1 text-[11px] font-medium text-tertiary"
 
-/** What the step did, when, how long it and the pause before it took, its page, and what it typed or ran. */
 function Details({ steps, at, unfolded, fold }: { steps: Step[]; at: number; unfolded: ReadonlySet<number>; fold: (first: number) => void }) {
   const s = steps[at], before = steps[at - 1]
   const k = kindOf(s)
@@ -289,8 +277,6 @@ function Fact({ name, value, warn, dim }: { name: string; value: string; warn?: 
   )
 }
 
-/** The run over its time: a tick per moment (a step or many, coloured by kind; failures red, full height), pauses over
- *  a minute shortened and marked, where the replay is; hover to preview a step, click or drag to go to it. */
 function Track({ run, steps, axis, at, go }: { run: string; steps: Step[]; axis: ReturnType<typeof axisOf>; at: number; go: (i: number) => void }) {
   const box = useRef<HTMLDivElement>(null)
   const [w, setW] = useState(0)
@@ -307,7 +293,6 @@ function Track({ run, steps, axis, at, go }: { run: string; steps: Step[]; axis:
   const bars = useMemo(() => {
     if (!w) return []
     const n = Math.max(1, Math.floor(w / 3))
-    // (a moment of many steps takes the colour of the rarest kind of thing in it: a page opened among scripts shows)
     const tally = Array.from({ length: n }, () => ({ steps: 0, failed: false, rank: 99, color: "" }))
     steps.forEach((s, i) => {
       const b = tally[Math.min(n - 1, Math.floor(axis.x[i] * n))]
@@ -322,7 +307,6 @@ function Track({ run, steps, axis, at, go }: { run: string; steps: Step[]; axis:
       color: b.failed ? "var(--red)" : b.color,
     }] : [])
   }, [steps, axis, w])
-  // (the longest pauses named first, each where there's room for it)
   const breaks = useMemo(() => {
     const named: number[] = []
     const out = axis.breaks.map((b) => ({ ...b, named: false }))
@@ -378,8 +362,6 @@ function Preview({ run, s, i, n, left }: { run: string; s: Step; i: number; n: n
   )
 }
 
-/** The steps as cards, by page (a page's name over its first), the pause before each in the gap, repeats folded into
- *  one card; only the cards near the screen are drawn. */
 function Filmstrip({ run, steps, items, at, go, fold, count: expected }: {
   run: string; steps: Step[] | null; items: Item[]; at: number; go: (i: number) => void; fold: (first: number) => void; count?: number
 }) {
@@ -392,13 +374,11 @@ function Filmstrip({ run, steps, items, at, go, fold, count: expected }: {
     const ro = new ResizeObserver(look)
     ro.observe(el)
     el.addEventListener("scroll", look, { passive: true })
-    // (a mouse's wheel scrolls it sideways)
     const wheel = (e: WheelEvent) => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && el.scrollWidth > el.clientWidth) { e.preventDefault(); el.scrollLeft += e.deltaY } }
     el.addEventListener("wheel", wheel, { passive: false })
     return () => { ro.disconnect(); el.removeEventListener("scroll", look); el.removeEventListener("wheel", wheel) }
   }, [])
   const cur = items.length ? itemAt(items, at) : 0
-  // The card picked stays in sight: near, it slides there; far (Home, End, the strip), it's there at once.
   useLayoutEffect(() => {
     const el = box.current
     if (!el || !items.length) return
@@ -407,7 +387,6 @@ function Filmstrip({ run, steps, items, at, go, fold, count: expected }: {
     const to = Math.max(0, x - (el.clientWidth - CARD) / 2)
     el.scrollTo({ left: to, behavior: Math.abs(to - el.scrollLeft) < el.clientWidth * 2 ? "smooth" : "auto" })
   }, [cur, items.length])
-  // Where each page's run of cards ends (its name spans them).
   const pageEnds = useMemo(() => {
     const ends = new Int32Array(items.length)
     let end = items.length
@@ -415,7 +394,6 @@ function Filmstrip({ run, steps, items, at, go, fold, count: expected }: {
     return ends
   }, [items])
   const from = Math.max(0, Math.floor((view.left - 800) / SLOT)), to = Math.min(items.length, Math.ceil((view.left + view.width + 800) / SLOT))
-  // (the page of the first card in sight keeps its name at the left, over its cards)
   let lead = -1
   if (steps) for (let k = Math.min(Math.floor(view.left / SLOT), items.length - 1); k >= 0; k--) if (items[k].startsPage) { lead = k; break }
   return (

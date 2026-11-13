@@ -1,13 +1,9 @@
-// The owner's routes' browser: this machine's desktop app, or another machine's (Machines), asked through its server
-// (the same route there). The live view's, logins' and approvals'.
 import { HTTPError, MACHINE_CLIENT, type Machine, type Plugin } from "../../../core/plugins.ts"
 
-/** This machine's desktop app, asked by an owner's route: its refusal a 409. */
 export const desktopOf = (plugin: Plugin) => async <T>(name: string, ...args: unknown[]) => {
   try { return (await plugin.desktop(name, ...args)) as T } catch (e) { throw new HTTPError(409, (e as Error).message) }
 }
 
-/** The machine `id` names, answering (null: this server's own, by its id or none). */
 export async function machineOf(plugin: Plugin, id: string): Promise<Machine | null> {
   if (!id || id === await plugin.ask<string | null>("machines:self", null)) return null
   const m = await plugin.ask<Machine | null>("machines:machine", null, id)
@@ -16,7 +12,6 @@ export async function machineOf(plugin: Plugin, id: string): Promise<Machine | n
   return m
 }
 
-/** The same route on machine `m`, its error passed on. */
 export async function askThere<T>(m: Machine, method: string, route: string, body?: unknown, ms = 10_000): Promise<T> {
   let r: Response
   try {
@@ -28,7 +23,6 @@ export async function askThere<T>(m: Machine, method: string, route: string, bod
   return answer as T
 }
 
-/** The other machines with this plugin and a desktop app's browser, answering now. */
 export async function otherBrowsers(plugin: Plugin): Promise<{ self: Machine | null; others: Machine[] }> {
   const ms = await plugin.ask<Machine[]>("machines", [])
   return { self: ms.find((m) => m.self) ?? null, others: ms.filter((m) => !m.self && m.online && m.desktop && m.plugins?.includes(plugin.id)) }

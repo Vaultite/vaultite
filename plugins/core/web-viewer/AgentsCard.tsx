@@ -1,5 +1,3 @@
-// Agents' pages, out of the user's tabs: while agents browse, a card in a corner (as the mini player), the picked page live
-// with the agent's pointer moving in it, Open as tab and Pause. A float (layers.ts): pages under it stay live.
 import { useEffect, useState, type MouseEvent } from "react"
 import { createPortal } from "react-dom"
 import { AppWindow, Check, ChevronDown, ChevronUp, Ellipsis, Globe, MousePointer2, Pause, Play, X } from "lucide-react"
@@ -9,10 +7,7 @@ import { onScreen, pictured } from "./state"
 import { useFrame, useShown } from "./liveframe"
 import { agentPages, closeAgentPage, doneAsk, openAsTab, pauseAgents, toBackground, whoOf, working, type AgentPage } from "./agentpages"
 
-/** Pages the user closed the card on: it shows again for another page, or an ask. null: none closed. */
 const dismissed = cell<Set<number> | null>(null)
-/** What the card shows: pages out of sight (one in a tab on screen is seen), none while one on screen asks (its card at
- *  the tab's foot has the user's attention, and Done). */
 const outOfSight = (pages: AgentPage[], seen: Set<number>) => (pages.some((p) => p.asking && seen.has(p.id)) ? [] : pages.filter((p) => !seen.has(p.id)))
 const shows = (pages: AgentPage[], gone: Set<number> | null) => pages.length > 0 && (!gone || pages.some((p) => !gone.has(p.id) || p.asking))
 const seenNow = (a: Set<number>, b: Set<number>) => (b.size ? new Set([...a, ...b]) : a)
@@ -23,7 +18,6 @@ const PURPLE = "var(--purple)"
 const engine = (name: string, ...args: unknown[]) => Promise.resolve(webPages?.engine?.(name, ...args))
 const icon = "grid size-8 shrink-0 cursor-pointer place-items-center rounded-full text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
 
-/** The card, on a computer, while some page is at work and it isn't closed. */
 export function AgentsCard() {
   const all = agentPages.use()
   const seen = seenNow(onScreen.use(), pictured.use())
@@ -36,7 +30,6 @@ export function AgentsCard() {
   return createPortal(<Card pages={pages} />, document.body)
 }
 
-/** The page shown first: one asking, else the latest at work. */
 const first = (pages: AgentPage[]) => pages.find((p) => p.asking) ?? [...pages].sort((a, b) => (b.at ?? 0) - (a.at ?? 0))[0]
 
 function Card({ pages }: { pages: AgentPage[] }) {
@@ -48,7 +41,6 @@ function Card({ pages }: { pages: AgentPage[] }) {
   const shots = useShots(pages.map((p) => p.id).join(" "))
   const drag = useCornerDrag(corner, setCorner)
   const at = CORNERS[corner] ? corner : "br"
-  // (above the mini player sharing its corner; toasts keep clear of both)
   const place = useCornerStack("agents", at, 1, drag.ref)
   return (
     <div role="region" aria-label="Agents in the browser" data-agents-card={open ? "open" : "closed"} {...drag}
@@ -81,7 +73,6 @@ function Card({ pages }: { pages: AgentPage[] }) {
   )
 }
 
-/** The picked page as it is now: a click opens it as a tab (shows its tab). */
 function Live({ page: p }: { page: AgentPage }) {
   const frame = useFrame(p.id)
   return (
@@ -95,7 +86,6 @@ function Live({ page: p }: { page: AgentPage }) {
   )
 }
 
-/** Who and what: its agent and task, and what it's doing now (else what it's for, or where it is). */
 function Lines({ page: p, more = 0 }: { page: AgentPage; more?: number }) {
   const now = useNow(!!p.at)
   const what = p.asking ? "Needs you" : p.paused ? "Paused" : working(p, now) ? p.what : p.summary || p.title || hostOf(p.url)
@@ -139,7 +129,6 @@ function Thumb({ src, className }: { src: string | null | undefined; className?:
     : <span className={cn("grid place-items-center bg-muted", className)}><Globe className="size-4 text-tertiary" strokeWidth={1.5} /></span>
 }
 
-/** Each page's small picture, every 2 s while shown. */
 function useShots(ids: string) {
   const [shots, setShots] = useState<Record<number, string>>({})
   const shown = useShown()
@@ -158,7 +147,6 @@ function useShots(ids: string) {
   return shots
 }
 
-/** Now, again every second while `on` (what's "now" ages out). */
 function useNow(on: boolean) {
   const [now, setNow] = useState(Date.now())
   useEffect(() => {

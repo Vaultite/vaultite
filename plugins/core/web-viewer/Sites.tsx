@@ -1,5 +1,3 @@
-// Sites: a set of logins' accounts and the sites always opened there, then the rest folded with its trackers (Clear).
-// Drawn as the sidebar's Sites panel (one set of logins), the Sites tab (every set, containers managed) and in settings.
 import { forwardRef, useEffect, useId, useRef, useState } from "react"
 import { ArrowRightLeft, Bot, ChevronDown, ChevronRight, ChevronsUpDown, Copy, Ellipsis, EyeOff, Fingerprint, Globe, LogOut, Pin, Plus, Settings2 } from "lucide-react"
 import {
@@ -15,14 +13,11 @@ import { agentsSay, canLockNow, containerItems, newContainer, useCanLock } from 
 import { allLogins, allLoginsOn, andList, isIn, loginsOf, loginsOn, moveLogin, nameOf, NEUTRAL, ownLogins, refreshElsewhere, setOrder, signingOut, sitesIn, sitesOf, type Logins } from "./loginsets"
 import { settings } from "./state"
 
-/** Show every set of logins and their containers' options: the Sites tab. */
 export const manageContainers = () => openView("web-pages", { newTab: !isViewOpen("view:web-pages") })
 
-/** The Sites panel's logins, per workspace: a container's id, or null for the workspace's own. */
 const PICKED = "web-viewer:sites-in"
 const pickedNow = () => scopedState<string | null>(PICKED, null)
 
-/** Open an address in a web tab (a new one, or the tab already showing it), in a container or none. */
 type Open = (url: string, container?: string | null) => void
 
 function useOwnLogins(): Logins {
@@ -37,8 +32,6 @@ function useAllLogins(): Logins[] {
   return allLogins()
 }
 
-/** The sites of `prof` as last listed (a move lists both sides again), asked again when a page done loading may have
- *  signed in or out; the ones leaving from here gone at once (`leaving`: a row's while it folds away). */
 function useSites(prof: string) {
   const sites = listed.use((m) => m.get(prof) ?? null)
   useEffect(() => {
@@ -56,14 +49,12 @@ function useSites(prof: string) {
     refresh: () => void webPages?.sites?.(prof).then((s) => keep(prof, s), () => {}) }
 }
 
-/** Forget sites in a set of logins: their rows go at once; the list is asked again once it's done. */
 function forget(l: Logins, names: string[], failed: string, done: () => void) {
   const web = webPages
   if (!web?.forget) return
   void signingOut(l.prof).remove(names, () => Promise.all(names.map((n) => web.forget!(l.prof, n))), failed).then(done)
 }
 
-/** Everyone signed in, in a line. */
 const whoText = (s: WebSite) => [s.account, ...(s.more ?? [])].filter(Boolean).join(", ")
 
 async function signOut(l: Logins, s: WebSite, done: () => void) {
@@ -76,7 +67,6 @@ async function signOut(l: Logins, s: WebSite, done: () => void) {
   if (ok) forget(l, names, "Couldn't sign out", done)
 }
 
-/** Clear the trackers' cookies (and storage), after showing which. */
 async function clearTrackers(l: Logins, others: WebSite[], done: () => void) {
   const names = others.map((s) => s.site)
   const ok = await confirmDialog({
@@ -91,7 +81,6 @@ const Dot = ({ color }: { color: string }) => <span aria-hidden className="size-
 
 const trackersTip = (others: WebSite[]) => `Cookies from sites you didn't open, left by other sites' pages: ${others.map((s) => s.site).join(", ")}`
 
-/** A set of logins' sites, as sidebar rows (the panel) or setting rows (the settings). */
 function SiteList({ logins: l, look, openPage }: { logins: Logins; look: "sidebar" | "settings"; openPage?: Open }) {
   const { sites, others, leaving, refresh } = useSites(l.prof)
   const trackersLeaving = others.length && others.every((s) => leaving(s.site) === "") ? "" : undefined
@@ -100,7 +89,6 @@ function SiteList({ logins: l, look, openPage }: { logins: Logins; look: "sideba
   const c = l.container ? containers.find((x) => x.id === l.container) : undefined
   const [unfolded, unfold] = useState(false)
   if (look === "settings") {
-    // A row per set of logins, unfolding to its sites: the section stays short above the options.
     const Chevron = unfolded ? ChevronDown : ChevronRight
     const row = "flex min-h-10 items-center gap-2.5 py-1 pl-4.5 text-[14px]"
     return (
@@ -138,12 +126,9 @@ function SiteList({ logins: l, look, openPage }: { logins: Logins; look: "sideba
 }
 
 type Listed = ReturnType<typeof useSites>
-/** Shown without folding when this few are left over. */
 const FEW = 3
 const matches = (s: WebSite, q: string) => sitesOf(s).some((x) => x.includes(q)) || whoText(s).toLowerCase().includes(q)
 
-/** A set of logins' sites as rows: accounts and always-open sites in the order dragged into (else pinned, then A to Z),
- *  then the rest and trackers, folded past a few; dragged onto another card to move there (another machine's: only shown). */
 function SiteRows({ logins: l, data, openPage, filter = "" }: { logins: Logins; data: Listed; openPage?: Open; filter?: string }) {
   const { sites, leaving, refresh } = data, there = !!l.machine
   const others = there ? [] : data.others
@@ -151,7 +136,6 @@ function SiteRows({ logins: l, data, openPage, filter = "" }: { logins: Logins; 
   const c = l.container ? containers.find((x) => x.id === l.container) : undefined
   const [unfolded, unfold] = useState(false)
   const open = (url: string) => openPage?.(url, l.container)
-  // A container's sites always opened there, signed in to or not.
   const always = c?.sites ?? []
   const q = filter.trim().toLowerCase()
   const all = [...(sites ?? []), ...(sites ? always.filter((a) => !sites.some((s) => sitesOf(s).includes(a))).map((site): WebSite => ({ site })) : [])]
@@ -176,7 +160,6 @@ function SiteRows({ logins: l, data, openPage, filter = "" }: { logins: Logins; 
   const to = (o: Logins, copy: boolean) => (s: WebSite): MenuItem => ({ label: o.name, icon: dotIcon(o.color), run: () => void moveLogin(l, o, s, copy) })
   const targets = (copy: boolean) => (s: WebSite): MenuItem[] => [
     ...allLogins().filter((o) => o.prof !== l.prof).map((o) => to(o, copy)(s)),
-    // (another machine's take a copy: sealed for its app, never signed out there from here)
     ...(copy && webPages?.seal ? (machines ?? []).flatMap((m) => [
       { label: m.label, caption: true, sep: true, run: () => {} },
       ...allLogins().map((o) => to(loginsOn({ id: m.machine, label: m.label }, o), true)(s)),
@@ -201,7 +184,6 @@ function SiteRows({ logins: l, data, openPage, filter = "" }: { logins: Logins; 
       {!isIn(s) && !pinned(s) && s.last ? <span className="mr-1 shrink-0 text-[11px] text-tertiary tabular-nums group-hover/row:hidden">{fmtAgo(s.last, { short: true })}</span> : null}
     </SidebarRow>
   )
-  // (only what has cookies here goes elsewhere: a site only pinned has nothing to move, but takes its place in the order)
   const draggable = (s: WebSite) => there ? <div key={s.site}>{row(s)}</div> : (
     <div key={s.site} data-slide={s.site} className={lifted === s.site ? "opacity-40" : undefined}
       onPointerDown={(e) => startDrag(e, { from: "site", site: { logins: l.prof, site: s.site }, label: s.account ? `${s.site} · ${s.account}` : s.site })}>
@@ -232,8 +214,6 @@ function SiteRows({ logins: l, data, openPage, filter = "" }: { logins: Logins; 
   )
 }
 
-/** A set of logins' top rows (`keys`, none while filtered) take one of theirs dragged among them: it goes where the
- *  others make way, and the order is kept. The order a drop would leave (null: none). */
 function useSiteOrder(box: React.RefObject<HTMLDivElement | null>, prof: string, keys: string[]) {
   const id = `web-viewer:site-order:${useId()}`
   useDropTarget<{ order: string[] }>(id, (item, x, y) => {
@@ -259,8 +239,6 @@ function SiteLabel({ s }: { s: WebSite }) {
 }
 
 const accountIcons = new Map<string, LucideIcon>()
-/** A signed-in row's icon (a lucide icon's props): the account's picture with its site's icon on its corner, as a
- *  browser's profile button has it; the site's icon alone without one. */
 function accountIcon(site: string, avatar?: string): LucideIcon {
   const key = `${site} ${avatar?.length ?? 0} ${avatar?.slice(-24) ?? ""}`
   let c = accountIcons.get(key)
@@ -276,8 +254,6 @@ function accountIcon(site: string, avatar?: string): LucideIcon {
   return c
 }
 
-/** What's set on a container beyond its sites (Touch ID, agents), as icons beside its picker: a tip says which, a click
- *  its options. Not a row: under the heading, a row read as one of its sites. */
 function About({ c }: { c: Container }) {
   const can = useCanLock()
   const agents = agentsSay(c)
@@ -293,7 +269,6 @@ function About({ c }: { c: Container }) {
   )
 }
 
-/** The Sites panel's own items atop its right-click menu: a new container, the picked one's options. */
 export function sitesPanelMenu(): MenuItem[] {
   const c = containersNow().find((x) => x.id === pickedNow().get())
   return [
@@ -303,7 +278,6 @@ export function sitesPanelMenu(): MenuItem[] {
 }
 const containersNow = () => containersOf(settings.get())
 
-/** The sidebar's Sites panel: one set of logins' sites, picked on the heading's right (this workspace's, or a container's). */
 export function SitesPanel({ open, openPage, newTab }: Pick<SidebarCtx, "open"> & { openPage: Open; newTab?: (container: string | null) => void }) {
   const [pickedId, pick] = useScopedState<string | null>(PICKED, null)
   const own = useOwnLogins()
@@ -333,7 +307,6 @@ export function SitesPanel({ open, openPage, newTab }: Pick<SidebarCtx, "open"> 
   return (
     <div className="flex shrink-0 flex-col" data-web-sites-panel>
       <SidebarHeading title="Sites" open={open} aside={picker}>
-        {/* (a new tab is what's done here often; a new container is rare, in … and the picker) */}
         {webPages?.sites && newTab && <HeadingButton icon={Plus} label={`New tab in ${logins.name}`} onClick={() => newTab(inside?.id ?? null)} data-web-new-tab="" />}
       </SidebarHeading>
       {webPages?.sites
@@ -343,11 +316,8 @@ export function SitesPanel({ open, openPage, newTab }: Pick<SidebarCtx, "open"> 
   )
 }
 
-/** A set of logins' heading in the Sites tab: its dot and name, what's set on a container (Touch ID, agents), how many
- *  accounts, and its options on hover and right-click. A container's is where it's dragged to another place. */
 function LoginsHeading({ l, c, count }: { l: Logins; c?: Container; count: string }) {
   const can = useCanLock()
-  // (another machine's container is changed here too, in its own card: the vault's)
   const own = l.machine ? undefined : c
   const items = () => (own ? containerItems(own, can) : [])
   const agents = c ? agentsSay(c) : ""
@@ -367,12 +337,10 @@ function LoginsHeading({ l, c, count }: { l: Logins; c?: Container; count: strin
   )
 }
 
-/** A set of logins in the Sites tab, a card in its colour: its heading and its sites; nothing while a filter matches none. */
 function LoginsSection(props: { l: Logins; c?: Container; openPage: Open; filter: string }) {
   return <LoginsCard {...props} data={useSites(props.l.prof)} />
 }
 
-/** Another machine's set of logins, as last listed there. */
 function MachineSection(props: { l: Logins; c?: Container; openPage: Open; filter: string }) {
   const sites = elsewhere.use(() => sitesIn(props.l) ?? null)
   return <LoginsCard {...props} data={{ sites: sites?.filter((s) => !s.other) ?? null, others: [], leaving: () => undefined, refresh: () => void refreshElsewhere() }} />
@@ -387,7 +355,6 @@ function LoginsCard({ l, c, data, openPage, filter }: { l: Logins; c?: Container
   const accounts = data.sites?.filter(isIn).length ?? 0
   const count = accounts ? plural(accounts, "account") : ""
   return (
-    // (a card in its colour, faint, so every row reads as inside it)
     <section ref={card} data-web-logins-section={l.container ?? l.prof} data-web-machine={l.machine?.id} data-slide={l.machine ? undefined : c?.id} data-web-logins-taking={taking ? (taking.copy ? "copy" : "move") : undefined}
       className={`rounded-[12px] border px-1.5 pt-1 pb-1.5 transition-[background-color,border-color] ${lifted ? "opacity-40" : ""}`}
       style={{ background: `color-mix(in srgb, ${l.color} ${taking ? 14 : 6}%, transparent)`, borderColor: `color-mix(in srgb, ${l.color} ${taking ? 60 : 20}%, transparent)` }}>
@@ -397,9 +364,7 @@ function LoginsCard({ l, c, data, openPage, filter }: { l: Logins; c?: Container
   )
 }
 
-/** ⌥ held while a site is dragged: dropping it on another set of logins copies it there. */
 let copying = false
-/** Whether ⌥ is held, heard while the Sites tab is open: the drag's hint changes as it's pressed, the pointer still. */
 function useCopyKey() {
   useEffect(() => {
     const hear = (e: KeyboardEvent | PointerEvent) => { if (e.altKey !== copying) { copying = e.altKey; rehit() } }
@@ -408,8 +373,6 @@ function useCopyKey() {
   }, [])
 }
 
-/** A set of logins' card takes a site's login dragged from another set's (one it has cookies in): moved here, or copied
- *  with ⌥. What a drop would do (null: nothing). */
 function useLoginDrop(card: React.RefObject<HTMLElement | null>, l: Logins) {
   const id = `web-viewer:logins:${l.prof}${l.machine ? `@${l.machine.id}` : ""}`
   const verb = (copy: boolean) => `${copy ? "Copy" : "Move"} to ${nameOf(l)}`
@@ -418,7 +381,6 @@ function useLoginDrop(card: React.RefObject<HTMLElement | null>, l: Logins) {
     if (!from || (from.logins === l.prof && !l.machine) || !el || !(l.machine ? webPages?.seal : webPages?.move)) return null
     if (!listed.get().get(from.logins)?.some((s) => s.site === from.site && !s.other)) return null
     const b = el.getBoundingClientRect()
-    // (another machine's set only takes a copy)
     return x >= b.left && x <= b.right && y >= b.top && y <= b.bottom ? { copy: copying || !!l.machine } : null
   }, (item, h) => {
     const from = allLogins().find((o) => o.prof === item.site!.logins)
@@ -430,8 +392,6 @@ function useLoginDrop(card: React.RefObject<HTMLElement | null>, l: Logins) {
 
 type Reorder = { before: string | null; order: string[] }
 const DROP = "web-viewer:containers"
-/** The Sites tab's containers take one dragged by its heading: it goes where the others make way. The order a drag
- *  would leave (null: none). */
 function useContainerDrop(box: React.RefObject<HTMLDivElement | null>) {
   const [edge] = useState(() => edgeScroller())
   useDropTarget<Reorder>(DROP, (item, x, y) => {
@@ -447,7 +407,6 @@ function useContainerDrop(box: React.RefObject<HTMLDivElement | null>) {
   return useDropHit<Reorder>(DROP)?.order ?? null
 }
 
-/** The Sites tab: every set of logins with who's signed in where and its sites, where containers are added and changed. */
 export function SitesView({ openPage }: { openPage: Open }) {
   const all = useAllLogins()
   const containers = useContainers()
@@ -471,10 +430,8 @@ export function SitesView({ openPage }: { openPage: Open }) {
   )
 }
 
-/** How often the Sites tab lists the other machines' logins again while it's open. */
 const ELSEWHERE_MS = 30_000
 
-/** The other machines' browsers with sets of logins, listed again while the Sites tab shows. */
 function useMachines() {
   useWorkspaceVersion()
   const machines = elsewhere.use()
@@ -486,7 +443,6 @@ function useMachines() {
   return (machines ?? []).filter((m) => Object.keys(m.sets).length)
 }
 
-/** Another machine's sets of logins with sites, under its name: what's signed in there, and where a login is copied. */
 function MachineLogins({ m, openPage, filter }: { m: MachineSets; openPage: Open; filter: string }) {
   const containers = useContainers()
   const sets = allLoginsOn({ id: m.machine, label: m.label }).filter((l) => m.sets[l.prof])
@@ -499,7 +455,6 @@ function MachineLogins({ m, openPage, filter }: { m: MachineSets; openPage: Open
   )
 }
 
-/** The settings' Sites and logins: every set of logins with its sites. */
 export function SitesSettings() {
   const all = useAllLogins()
   const workspaces = all.filter((l) => !l.container).length > 1

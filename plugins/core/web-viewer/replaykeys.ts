@@ -1,12 +1,8 @@
-// The keyboard's way through a replay of an agent's run: the commands (index.tsx: ← →, Home, End, Space) act on the
-// replay that has the keyboard, which each Replay says by its element while it's drawn.
 import { activePane, typingIn } from "@vaultite"
 
 export type ReplayKeys = { step: (by: number) => void; edge: (last: boolean) => void; play: () => void; playing: () => boolean }
 export const replays = new WeakMap<HTMLElement, () => ReplayKeys>()
 
-/** The replay with the keyboard (not in a field, a menu or a dialog), or, with nothing focused in a page, the focused
- *  pane's; none while hidden (a kept tab). */
 export function focusedReplay(): ReplayKeys | null {
   const a = document.activeElement
   let el: HTMLElement | null = null

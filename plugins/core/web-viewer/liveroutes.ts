@@ -1,5 +1,3 @@
-// The browser's tabs for their owner, watched live (electron/browser/live.ts), tapped and typed in, agents paused, an ask
-// done; `3@m1` is another machine's, asked there. Owner only, and routes, never ops: no agent drives a page this way.
 import type { IncomingMessage } from "node:http"
 import type { RawData, WebSocket } from "ws"
 import { HTTPError, inDesktop, machineSocket, pipeSockets, splitMachine, type Machine, type Plugin } from "../../../core/plugins.ts"
@@ -7,21 +5,18 @@ import { askThere, desktopOf, machineOf, otherBrowsers } from "./machinecalls.ts
 import type { LiveStep, LiveTab } from "./livetabs.ts"
 
 const RENEW_MS = 10_000
-/** A watcher behind on frames (a slow phone) skips them rather than queueing. */
 const BEHIND = 1 << 20
 const STEP = /\bbrowser tab (\d+)\b/
 
 export function liveView(plugin: Plugin) {
   const what = "The browser's live view"
   const desktop = desktopOf(plugin)
-  /** "3" or "3@m1": the tab, and the other machine whose browser has it (null: this server's, its own id too). */
   const tabOf = async (raw: string): Promise<[number, Machine | null]> => {
     const [n, id] = splitMachine(raw)
     if (!/^\d+$/.test(n) || !Number(n)) throw new HTTPError(400, "a tab is its number")
     return [Number(n), await machineOf(plugin, id)]
   }
 
-  // This server's browser's tabs and the other machines' (each named); `local`: only its own, what another machine asks.
   plugin.route("GET", "web-viewer/tabs", async (req) => {
     await plugin.ownerOnly(req, what)
     const { self, others } = await otherBrowsers(plugin)
@@ -29,7 +24,6 @@ export function liveView(plugin: Plugin) {
     if (req.query.local) return { tabs: inDesktop() ? own(await desktop<LiveTab[]>("agent:live:tabs")) : [] }
     const theirs = await Promise.all(others.map((m) => askThere<{ tabs: LiveTab[] }>(m, "GET", "web-viewer/tabs?local=1", undefined, 4000)
       .then((r) => r.tabs.map((t) => ({ ...t, machine: m.id, machineLabel: m.label, appTab: "" })), () => [])))
-    // (with no browser of its own and no other machine's, plugin.desktop's: an always-on machine's, or why there's none)
     const mine = inDesktop() || !others.length ? own(await desktop<LiveTab[]>("agent:live:tabs")) : []
     return { tabs: [...mine, ...theirs.flat()], self: self?.id ?? null }
   }, { lock: false, sync: false })
@@ -50,7 +44,6 @@ export function liveView(plugin: Plugin) {
     return r
   }, { lock: false, sync: false })
 
-  // What's selected in the tab, for the owner's Copy.
   plugin.route("GET", "web-viewer/tabs/*/selection", async (req) => {
     await plugin.ownerOnly(req, what)
     const [tab, m] = await tabOf(req.arg(0))
@@ -58,7 +51,6 @@ export function liveView(plugin: Plugin) {
     return desktop<{ text: string }>("agent:live:selection", tab)
   }, { lock: false, sync: false })
 
-  // What agents did in the tab since it opened: Activity's events of the browser's ops that name it.
   plugin.route("GET", "web-viewer/tabs/*/steps", async (req) => {
     await plugin.ownerOnly(req, what)
     const [tab, m] = await tabOf(req.arg(0))
@@ -72,10 +64,8 @@ export function liveView(plugin: Plugin) {
     return { steps, kept: true }
   }, { lock: false, sync: false })
 
-  // ---------- watching: a socket per viewer, the engine's frames to each, their input back ----------
 
   const watchers = new Map<number, Set<WebSocket>>()
-  /** The viewers zoomed in, for whom the engine sends frames twice the size. */
   const sharp = new Set<WebSocket>()
   const sharpen = (tab: number) => void desktop("agent:live:sharp", tab, [...watchers.get(tab) ?? []].some((ws) => sharp.has(ws))).catch(() => {})
   let renew: ReturnType<typeof setInterval> | null = null
@@ -111,7 +101,6 @@ export function liveView(plugin: Plugin) {
 
   plugin.socket("web-viewer/live/*", async (ws, _req, { wild }) => {
     const [tab, m] = await tabOf(wild[0]).catch(() => [0, null] as const)
-    // (another machine's: joined to its same socket, which sends the frames and takes the input)
     if (m) {
       return pipeSockets(ws, machineSocket(m, `web-viewer/live/${tab}`), () => {
         json(ws, { t: "error", text: `${m.label} doesn't answer` })

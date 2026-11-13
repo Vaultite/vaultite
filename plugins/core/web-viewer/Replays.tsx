@@ -1,5 +1,3 @@
-// Agents in the browser: the tabs agents work in now, live (Show tab, Pause), then past runs by day, searched, each to
-// replay (Replay.tsx), kept on this Mac a fortnight (electron/browser/agent.ts writes them, agentruns.ts reads them).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Bot, Globe, Pause, Play } from "lucide-react"
 import { Bar, Button, cn, dateText, FilterField, fmtDay, fmtLongDay, get, iso, notifyError, PageHeader, selectPane, SidebarHeading, useChosen, useKeptCount, useNearScreen, usePane, webPages } from "@vaultite"
@@ -27,7 +25,6 @@ export function ReplaysView() {
   const [q, setQ] = useState("")
   const back = useCallback(() => setOpen(null), [])
   const has = !!webPages?.engine
-  // Live: read every second while shown (each with a fresh picture of its page).
   useEffect(() => {
     if (hidden || open || !has) return
     let stop = false
@@ -36,7 +33,6 @@ export function ReplaysView() {
     const timer = setInterval(() => { if (document.visibilityState === "visible") read() }, 1000)
     return () => { stop = true; clearInterval(timer) }
   }, [hidden, open, has])
-  // Past runs: again whenever a live one took a step (the desktop app reads only what's new).
   const stepped = live.map((l) => `${l.run}@${l.at}`).join(" ")
   useEffect(() => {
     if (hidden || !has) return
@@ -124,7 +120,6 @@ function Loading({ count: n }: { count: number }) {
   )
 }
 
-/** A past run: its last picture, what it was for, where, how long and how busy. */
 function RunRow({ r, open }: { r: Run; open: () => void }) {
   const box = useRef<HTMLButtonElement>(null)
   const near = useNearScreen(box)
@@ -156,7 +151,6 @@ function RunRow({ r, open }: { r: Run; open: () => void }) {
   )
 }
 
-/** How busy the run was over its time: a bar per slice of it (failures red); a gap is a pause. */
 function Activity({ r }: { r: Run }) {
   const most = Math.max(1, ...r.activity)
   return (
@@ -171,10 +165,7 @@ function Activity({ r }: { r: Run }) {
   )
 }
 
-/** A tab an agent is at work in: its page as it is now, who, what for and its last step. */
 function LiveCard({ live: l, replay }: { live: Live; replay: (run: string) => void }) {
-  // (its container from the owner's list: the tab may be gone, made anew there)
-  // (an agent's page in the background opens as a tab)
   const show = () => {
     if (!l.appTab) { const p = agentPage(l.tab); if (p) void openAsTab(p); return }
     if (!selectPane(l.appTab)) void get<{ tabs: LiveTab[] }>("web-viewer/tabs").then((r) => { const t = r.tabs.find((x) => x.tab === l.tab); if (t) showAppTab(t) }, (e) => notifyError(e, "Couldn't show the tab"))

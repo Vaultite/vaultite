@@ -1,5 +1,3 @@
-// Agents in the Browser's pages (`vau browser ...`, browser_ tools; electron/browser/agent.ts answers and checks access),
-// Bookmarks.md and the plugin's files in .vaultite (blocked elements, site styles): what's in them in the store, their ops.
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -15,8 +13,6 @@ import { approvals } from "./approvals.ts"
 import { machineLogins } from "./machinelogins.ts"
 
 export const plugin = new Plugin(import.meta.url)
-// (the owner watching and driving tabs from the web app, approving agents' logins with a passkey, and other machines'
-// logins: routes, not ops)
 liveView(plugin)
 approvals(plugin)
 machineLogins(plugin)
@@ -25,23 +21,16 @@ type Tab = { tab: number; url: string; title: string; container: string | null; 
   by: string | null; mine: boolean; summary?: string; paused?: boolean; asking?: string }
 type Download = { name: string; state: string; path?: string }
 type Page = { tab: number; url: string; title: string; downloads?: Download[] }
-/** What an act changed: lines gone (-) and new (+), or the new page's first lines when it went to another (`page`). */
 type Acted = Page & { navigated: boolean; diff?: { page: boolean; lines: string[]; more: number }; opened?: { tab: number; url: string; title: string }[] }
 
-/** Ask the engine, its refusals as plain errors for the agent. */
 const ask = <T>(name: string, ...args: unknown[]) => askWaiting<T>(0, name, ...args)
-/** ask for a call that itself waits up to `ms` (agent:wait): answered within that, not the usual 90 s. */
 async function askWaiting<T>(ms: number, name: string, ...args: unknown[]): Promise<T> {
   try { return (await plugin.desktopWaiting(ms, name, ...args)) as T } catch (e) { throw new OpError((e as Error).message, 409) }
 }
-/** Who asks: `remote` when it isn't this machine's owner (an app on the internet, a guest through another machine), whose
- *  pages never reach this machine or its network (the engine checks). */
 const by = async (ctx: OpCtx, p: { terminal?: string; task?: string; summary?: string }) => ({ name: ctx.who.label, session: p.terminal || ctx.who.agent || "",
   task: p.task ?? "", summary: p.summary ?? "", remote: !!(await ctx.refusal?.("the browser's pages on this machine")) })
 const terminal = { type: "string" as const, env: "VAULTITE_TERMINAL", description: "the app terminal you run in (filled in from VAULTITE_TERMINAL): your steps are kept together for replay" }
 const task = { type: "string" as const, description: "your task in two or three words (flight search): your tabs are grouped as <you>/<task>, and tabs marks them yours" }
-// (ops that only drive the desktop app's pages are lock: false: an act settling or a run's 30 s never hold the vault's
-// writes; pdf's file.upload holds it for its own)
 const tab = { type: "integer" as const, required: true, description: "the tab's number (browser tabs)" }
 const got = (d: Download) => `Downloaded ${d.name}${d.path ? ` to ${d.path}` : ""}${d.state === "completed" ? "" : ` (${d.state})`}`
 const DONE: Record<string, string> = { click: "Clicked", dblclick: "Double-clicked", hover: "Pointed at", fill: "Filled", type: "Typed in", paste: "Pasted into", press: "Pressed",
@@ -144,7 +133,6 @@ each with the lines it's inside: a control looked for without the whole tree.
   text: (r: Page & { snapshot: string; find?: string }) => `${where(r)}\n\n${r.find && !r.snapshot ? `No line has "${r.find}".` : r.snapshot}`,
 })
 
-/** Files for a page's file input, read here: the vault's by path, this machine's by absolute path (its owner only). */
 async function filesFor(given: unknown, ctx: OpCtx) {
   const list = (Array.isArray(given) ? given : [given]).map((f) => String(f ?? "").trim()).filter(Boolean)
   if (!list.length) throw new OpError("upload needs `files`: vault paths (Attachments/cv.pdf), or absolute paths on this machine")
@@ -215,7 +203,6 @@ changed, + new, - gone), or the new page's content when it went to another. Act 
       ...(p.action === "upload" ? { files: await filesFor(p.files, ctx) } : {}) }, await by(ctx, p))
   },
   text: (r: Acted) => `${r.navigated ? "Went to another page. " : ""}${where(r)}${(r.opened ?? []).map((o) => `\nOpened tab ${o.tab}: ${o.title || "(untitled)"} ${o.url} (yours: act there by its number)`).join("")}${changed(r)}`,
-  // (each names its tab, "browser tab 3": the live view lists a tab's steps from Activity by it)
   did: (p) => ({ action: "run", text: Array.isArray(p.fields) ? `Filled ${p.fields.length} fields in browser tab ${String(p.tab)}`
     : `${DONE[String(p.action)] ?? String(p.action)}${p.action === "press" && p.key ? ` ${String(p.key)}` : ""}${p.ref ? ` ${String(p.ref)}` : ""} in browser tab ${String(p.tab)}` }),
 })
@@ -467,7 +454,6 @@ they did it (--text, --url). Never ask for their password: they type it themselv
   args: ["tab", "reason"],
   run: async (p, ctx) => {
     const r = await ask<Page>("agent:help", p.tab, p.reason, await by(ctx, p))
-    // (the live view's tab names whose browser it's in, so the Inbox on any machine opens that one)
     const on = await plugin.ask<string | null>("machines:browser", null)
     await plugin.ask("inbox:event", null, { source: "browser", kind: "waiting", key: `help-${p.tab}`, title: `${ctx.who.label} needs you in the browser`,
       body: `${String(p.reason).slice(0, 300)} (${r.title || r.url})`, link: `view:web-live/${r.tab}${on ? `@${on}` : ""}` })
@@ -477,16 +463,13 @@ they did it (--text, --url). Never ask for their password: they type it themselv
   did: (p) => ({ action: "run", text: `Asked for help in browser tab ${String(p.tab)}: ${String(p.reason).slice(0, 80)}` }),
 })
 
-// ---------- logging in with the user's passwords for agents (electron/browser/logins.ts fills; agents never see one) ----------
 
 type Shown = { id?: string; title: string; username: string }
 type Login = Page & { status: "filled" | "choose" | "approval" | "waiting"; site: string; entry?: Shown; entries?: Shown[]; filled?: string[]
   submitted?: boolean; approved?: string; navigated?: boolean; grant?: string; ask?: string; approve?: string | null }
-/** How long a login waits for the user's yes before saying it waits. */
 const APPROVAL_WAIT = 60_000
 const as = (e: Shown) => (e.username ? `${e.title} (${e.username})` : e.title)
 
-/** Which agent used which of the user's logins, and when: for the Passwords page, every machine's (shared). */
 type Use = { t: number; entry: Shown; site: string; agent: string; task?: string; status: string; approved?: string; machine?: string }
 const USES = "login-uses"
 function loginUses(): Use[] { const u = plugin.kept(USES); return Array.isArray(u) ? u as Use[] : [] }
@@ -529,8 +512,6 @@ the site's pages, load the page again (browser go <tab> reload) before logging i
     const used = (r: Login, status: string) => { if (r.entry) loginUsed({ entry: r.entry, site: r.site, agent: ctx.who.label, task: p.task, status, approved: r.approved }) }
     const r = await ask<Login>("agent:login", p.tab, asked, who)
     if (r.status !== "approval") { if (r.status === "filled") { drop(r); used(r, "filled") } return r }
-    // The user's yes is their passkey's, on a page the desktop app checks: the Inbox only tells them (their phone), and
-    // nothing here, nor any agent, can say it for them.
     if (!r.approve) {
       throw new OpError(`${as(r.entry!)} needs the user's yes with a passkey, and none is set up on the Mac whose browser this is: they add one (Passwords for agents, in an Agents container's menu) or tag the entry agent-free`, 409)
     }
@@ -555,7 +536,6 @@ the site's pages, load the page again (browser go <tab> reload) before logging i
   did: (p) => ({ action: "run", text: `Logged in with the passwords for agents in browser tab ${String(p.tab)}${p.entry ? ` (${clean(p.entry, 80)})` : ""}` }),
 })
 
-// ---------- bookmarks ----------
 
 plugin.kind(new Kind({
   type: "bookmarks", collection: "bookmarks", file: "Bookmarks.md",
@@ -604,7 +584,6 @@ isn't added again; a folder that isn't there yet gets its heading. links adds ma
   did: (p) => ({ action: "edit", text: Array.isArray(p.links) ? `Bookmarked ${p.links.length} pages` : `Bookmarked ${clean(p.url, 120)}` }),
 })
 
-/** The bookmarks note, changed by `change` and saved when it did (its path, or null when there's none). */
 async function changeNote(change: (body: string) => { body: string; did: boolean }) {
   const old = note()
   if (!old) return { path: null, changed: false }
@@ -707,16 +686,13 @@ plugin.op({
     ? `Renamed the bookmarks folder ${clean(p.folder, 120)}` : `Made the bookmarks folder ${clean(p.folder, 120)}` }),
 })
 
-// ---------- blocked elements ----------
 
-/** A file of the plugin's in .vaultite, its text ("" when there's none). */
 const textOf = (v: Vault, rel: string) => { try { return fs.readFileSync(v.abs(rel), "utf8") } catch { return "" } }
 const blockedText = (v: Vault) => textOf(v, BLOCKED)
 const RULES_HELP = `Rules are standard hiding rules, a site, ## and a CSS selector (youtube.com##ytd-reel-shelf-renderer), as
 in uBlock Origin and Brave; with no site, every site. They're kept in ${BLOCKED}, a heading per site, and the desktop
 app's web pages hide what they match as soon as it changes.`
 
-/** The rule `p` names: whole, or a selector and its site. */
 function ruleFrom(p: { rule?: unknown; site?: unknown }) {
   const r = makeRule(clean(p.rule, 2000), clean(p.site, 300) || undefined)
   if (!r) throw new OpError("give a rule like youtube.com##ytd-reel-shelf-renderer, or a CSS selector and `site`")
@@ -786,9 +762,7 @@ plugin.op({
   text: (r) => (r.rules.length ? `${r.rules.join("\n")}\n\n(${r.path})` : "Nothing hidden."),
 })
 
-// ---------- site styles ----------
 
-/** Every site's style, by its file in STYLES (youtube.com.css). */
 function siteStyles(v: Vault): SiteStyle[] {
   let names: string[] = []
   try { names = fs.readdirSync(v.abs(STYLES)) } catch { return [] }

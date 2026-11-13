@@ -1,5 +1,3 @@
-// Passkeys that approve agents' logins on this Mac (electron/browser/logins.ts): the list, and adding one from a phone,
-// whose Safari opens this server's page by a QR code (plugins/core/web-viewer/approvals.ts) and Touch ID here confirms it.
 import { useCallback, useEffect, useState } from "react"
 import { KeyRound, Plus, Trash2 } from "lucide-react"
 import { Bar, Button, cn, dateText, Empty, get, notifyError, PageHeader, Panel, useKeptCount, webPages } from "@vaultite"
@@ -14,7 +12,6 @@ export function AgentPasskeys() {
   const [adding, setAdding] = useState<{ url: string } | { error: string } | null>(null)
   const read = useCallback(() => void engine<Key[]>("logins:passkeys").then((k) => setKeys(Array.isArray(k) ? k : []), () => setKeys([])), [])
   useEffect(read, [read])
-  // (a passkey added from the phone: the list shows it, the QR code goes)
   useEffect(() => webPages?.on((m) => { if (m.type === "engine:logins:passkeys") { read(); setAdding(null) } }), [read])
   const add = async () => {
     try {

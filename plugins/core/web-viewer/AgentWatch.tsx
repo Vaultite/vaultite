@@ -1,5 +1,3 @@
-// An agent's page in a tab while the agent holds it (electron/browser/agent.ts `held`): a live picture, as a screen share,
-// never the page itself, so nothing the user does lands mid-act. Take over hands them the page; Give back returns it.
 import { useEffect } from "react"
 import { MousePointer2, Pause } from "lucide-react"
 import { Button, cn } from "@vaultite"
@@ -9,7 +7,6 @@ import { setPictured } from "./state"
 
 export function AgentWatch({ page: p, shown }: { page: AgentPage; shown: boolean }) {
   const frame = useFrame(p.id, shown)
-  // (seen here: the corner card leaves it out, as it does a page on screen)
   useEffect(() => {
     if (!shown) return
     setPictured(p.id, true)

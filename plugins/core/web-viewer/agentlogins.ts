@@ -1,8 +1,6 @@
-// Passwords for agents: the KeePass file (agents.kdbx) the browser fills agents' logins from on this computer
-// (electron/browser/logins.ts), and its password, given here and kept in its keyring, never in the vault.
 import { choose, isMac, notify, notifyError, openView, plural, secretDialog, webPages } from "@vaultite"
 
-/** `held`: no keyring here (Linux without one), so the password is kept only till the app quits; then it's `locked`. */
+// `held`: Linux without a keyring keeps the password only till the app quits.
 type Status = { file: string; entries?: number; free?: number; error?: string; held?: boolean; locked?: boolean } | null
 const HERE = isMac ? "this Mac" : "this computer"
 const engine = (name: string, ...args: unknown[]) => Promise.resolve(webPages?.engine?.(name, ...args))
@@ -23,7 +21,6 @@ async function adoptFile(chosen?: string) {
   } catch (e) { notifyError(e, `Couldn't use ${fileName(file)}`) }
 }
 
-/** Set up, change or stop the passwords agents log in with on this computer. */
 export async function passwordsForAgents() {
   let st: Status
   try { st = (await engine("logins:status")) as Status } catch (e) { return notifyError(e, "Couldn't read the passwords for agents") }
