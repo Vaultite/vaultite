@@ -112,7 +112,8 @@ export function AddressBar({ url, tab, blank, draft, setDraft, lead, trail, inpu
   }, [typed, text, suffix, c, found, search, tabs, bookmarks, tab])
   const list = focused && open && rows.length > 0
   const at = Math.min(sel, Math.max(0, rows.length - 1))
-  const filled = list && moved && at > 0 ? (rows[at].kind === "search" ? (rows[at] as { words: string }).words : rows[at].url) : null
+  const row = rows[at]
+  const filled = list && moved && at > 0 ? (row.kind === "search" ? row.words : row.url) : null
   const shown = filled ?? (typed !== null ? typed + suffix : focused ? url : trimmed(url))
   const target = typed === null ? null : (list ? rows[at] : rows[0])?.url ?? null
   useEffect(() => onTarget(target), [target, onTarget])
@@ -204,7 +205,7 @@ export function AddressBar({ url, tab, blank, draft, setDraft, lead, trail, inpu
           role="combobox" aria-expanded={list} aria-controls="web-suggestions" aria-autocomplete="both"
           value={shown}
           onChange={(e) => {
-            const deleting = (e.nativeEvent as InputEvent).inputType?.startsWith("delete")
+            const deleting = e.nativeEvent instanceof InputEvent && e.nativeEvent.inputType.startsWith("delete")
             edit(e.target.value)
             setAuto(!deleting)
             setOpen(true)

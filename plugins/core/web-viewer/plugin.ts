@@ -2,6 +2,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { marked } from "marked"
+import { z } from "zod"
 import { OpError, Plugin, vaultPath, type OpCtx } from "../../../core/plugins.ts"
 import { Kind, writeAtomic, type Vault } from "../../../core/vault.ts"
 import { addBookmarks, addFolder, editBookmark, folderPath, readBookmarks, readFolders, removeBookmark, removeFolder, renameFolder, type Bookmark } from "./bookmarks.ts"
@@ -25,7 +26,7 @@ type Acted = Page & { navigated: boolean; diff?: { page: boolean; lines: string[
 
 const ask = <T>(name: string, ...args: unknown[]) => askWaiting<T>(0, name, ...args)
 async function askWaiting<T>(ms: number, name: string, ...args: unknown[]): Promise<T> {
-  try { return (await plugin.desktopWaiting(ms, name, ...args)) as T } catch (e) { throw new OpError((e as Error).message, 409) }
+  try { return (await plugin.desktopWaiting(ms, name, ...args)) as T } catch (e) { throw new OpError(e instanceof Error ? e.message : String(e), 409) }
 }
 const by = async (ctx: OpCtx, p: { terminal?: string; task?: string; summary?: string }) => ({ name: ctx.who.label, session: p.terminal || ctx.who.agent || "",
   task: p.task ?? "", summary: p.summary ?? "", remote: !!(await ctx.refusal?.("the browser's pages on this machine")) })
@@ -400,9 +401,9 @@ plugin.op({
     const r = await ask<Page & { pdf: string }>("agent:pdf", p.tab, await by(ctx, p))
     const name = `${String(p.name ?? "").trim() || r.title.trim() || new URL(r.url).hostname}`.replace(/\.pdf$/i, "").slice(0, 120)
     const saved = await plugin.runOp("file.upload", { data: r.pdf, name: `${name}.pdf`, folder: p.folder, note: p.note }, ctx.who)
-    return { tab: r.tab, url: r.url, ...saved.result as { path: string; note: string | null } }
+    return { tab: r.tab, url: r.url, ...UPLOADED.parse(saved.result) }
   },
-  text: (r: { path: string; note: string | null }) => `Saved ${r.path}${r.note ? `, embedded in ${r.note}` : ""}.`,
+  text: (r: { path: string; note?: string | null }) => `Saved ${r.path}${r.note ? `, embedded in ${r.note}` : ""}.`,
   did: (p) => ({ action: "edit", text: `Saved browser tab ${String(p.tab)} as a PDF` }),
 })
 
@@ -432,9 +433,9 @@ logins and its address as referrer, so what you could open there downloads, with
     const ext = path.extname(r.name)
     const name = String(p.name ?? "").trim() ? `${String(p.name).trim().replace(new RegExp(`${ext.replace(".", "\\.")}$`, "i"), "")}${ext}` : r.name
     const saved = await plugin.runOp("file.upload", { data: r.data, name: name.slice(0, 160), folder: p.folder, note: p.note }, ctx.who)
-    return { tab: r.tab, url: r.url, type: r.type, bytes: Buffer.from(r.data, "base64").length, ...saved.result as { path: string; note: string | null } }
+    return { tab: r.tab, url: r.url, type: r.type, bytes: Buffer.from(r.data, "base64").length, ...UPLOADED.parse(saved.result) }
   },
-  text: (r: { path: string; note: string | null; bytes: number; type: string }) => `Saved ${r.path} (${Math.max(1, Math.round(r.bytes / 1024))} KB${r.type ? `, ${r.type.split(";")[0]}` : ""})${r.note ? `, embedded in ${r.note}` : ""}.`,
+  text: (r: { path: string; note?: string | null; bytes: number; type: string }) => `Saved ${r.path} (${Math.max(1, Math.round(r.bytes / 1024))} KB${r.type ? `, ${r.type.split(";")[0]}` : ""})${r.note ? `, embedded in ${r.note}` : ""}.`,
   did: (p) => ({ action: "edit", text: `Downloaded ${String(p.url)} from browser tab ${String(p.tab)}` }),
 })
 
@@ -464,15 +465,19 @@ they did it (--text, --url). Never ask for their password: they type it themselv
 })
 
 
-type Shown = { id?: string; title: string; username: string }
+const SHOWN = z.object({ id: z.string().optional(), title: z.string(), username: z.string() })
+type Shown = z.infer<typeof SHOWN>
 type Login = Page & { status: "filled" | "choose" | "approval" | "waiting"; site: string; entry?: Shown; entries?: Shown[]; filled?: string[]
   submitted?: boolean; approved?: string; navigated?: boolean; grant?: string; ask?: string; approve?: string | null }
 const APPROVAL_WAIT = 60_000
+const UPLOADED = z.looseObject({ path: z.string(), note: z.string().nullable().optional() })
 const as = (e: Shown) => (e.username ? `${e.title} (${e.username})` : e.title)
 
-type Use = { t: number; entry: Shown; site: string; agent: string; task?: string; status: string; approved?: string; machine?: string }
+const USE = z.object({ t: z.number(), entry: SHOWN, site: z.string(), agent: z.string(), task: z.string().optional(), status: z.string(),
+  approved: z.string().optional(), machine: z.string().optional() })
+type Use = z.infer<typeof USE>
 const USES = "login-uses"
-function loginUses(): Use[] { const u = plugin.kept(USES); return Array.isArray(u) ? u as Use[] : [] }
+const loginUses = (): Use[] => z.array(USE).catch([]).parse(plugin.kept(USES))
 function loginUsed(u: Omit<Use, "t" | "machine">) {
   plugin.keep(USES, [{ ...u, t: Date.now(), machine: os.hostname().replace(/\.local$/, "") }, ...loginUses()].slice(0, 500), { shared: true })
 }
@@ -543,8 +548,9 @@ plugin.kind(new Kind({
   render: (b) => [{}, typeof b.body === "string" ? b.body : ""],
 }))
 
-const note = () => plugin.vault.get("bookmarks", "bookmarks")
-plugin.state(() => ({ bookmarks: (note()?.links as Bookmark[] | undefined) ?? [], bookmarkFolders: (note()?.folders as string[] | undefined) ?? [], bookmarksNote: note() ? `${note()!.id}.md` : null, blockedElements: readRules(blockedText(plugin.vault)), siteStyles: siteStyles(plugin.vault) }))
+type BookmarksNote = { id?: string; body?: string; links?: Bookmark[]; folders?: string[] }
+const note = (): BookmarksNote | null => plugin.vault.get("bookmarks", "bookmarks")
+plugin.state(() => ({ bookmarks: note()?.links ?? [], bookmarkFolders: note()?.folders ?? [], bookmarksNote: note() ? `${note()!.id}.md` : null, blockedElements: readRules(blockedText(plugin.vault)), siteStyles: siteStyles(plugin.vault) }))
 
 const clean = (v: unknown, n: number) => (typeof v === "string" ? v.trim().slice(0, n) : "")
 
@@ -568,13 +574,13 @@ isn't added again; a folder that isn't there yet gets its heading. links adds ma
   },
   args: ["url"],
   run: async (p) => {
-    const given = Array.isArray(p.links) ? p.links as Record<string, unknown>[] : p.url ? [{ url: p.url, title: p.title, folder: p.folder }] : []
+    const given = Array.isArray(p.links) ? p.links : p.url ? [{ url: p.url, title: p.title, folder: p.folder }] : []
     const links: Bookmark[] = given.slice(0, 50_000).map((l) => ({ url: clean(l?.url, 4000), title: clean(l?.title, 300), folder: clean(l?.folder, 300) }))
     if (!links.length) throw new OpError("give a `url`, or `links`")
     const bad = links.find((l) => !/^https?:\/\/\S+$/i.test(l.url))
     if (bad) throw new OpError(`not a web address: ${bad.url || "(empty)"}`)
     const old = note()
-    const { body, added } = addBookmarks(typeof old?.body === "string" ? old.body : "", links)
+    const { body, added } = addBookmarks(old?.body ?? "", links)
     if (!added) return { path: old ? `${old.id}.md` : null, added: 0, already: links.length }
     const saved = await plugin.vault.save("bookmarks", { body }, old?.id ?? null)
     return { path: saved ? `${saved.id}.md` : null, added, already: links.length - added }
@@ -587,11 +593,11 @@ isn't added again; a folder that isn't there yet gets its heading. links adds ma
 async function changeNote(change: (body: string) => { body: string; did: boolean }) {
   const old = note()
   if (!old) return { path: null, changed: false }
-  const r = change(typeof old.body === "string" ? old.body : "")
+  const r = change(old.body ?? "")
   if (r.did) await plugin.vault.save("bookmarks", { body: r.body }, old.id)
   return { path: `${old.id}.md`, changed: r.did }
 }
-const urlOf = (p: Record<string, unknown>) => {
+const urlOf = (p: { url?: string }) => {
   const url = clean(p.url, 4000)
   if (!/^https?:\/\/\S+$/i.test(url)) throw new OpError(`not a web address: ${url || "(empty)"}`)
   return url
@@ -618,7 +624,7 @@ plugin.op({
     if (typeof p.title !== "string" && typeof p.folder !== "string" && typeof p.before !== "string") throw new OpError("give a `title`, a `folder` or `before`")
     const change = { ...(typeof p.title === "string" ? { title: clean(p.title, 300) } : {}), ...(typeof p.folder === "string" ? { folder: clean(p.folder, 300) } : {}),
       ...(typeof p.before === "string" ? { before: clean(p.before, 4000) } : {}) }
-    if (!readBookmarks(typeof note()?.body === "string" ? note()!.body as string : "").some((b) => b.url === url)) throw new OpError(`${url} isn't bookmarked`)
+    if (!readBookmarks(note()?.body ?? "").some((b) => b.url === url)) throw new OpError(`${url} isn't bookmarked`)
     return changeNote((body) => { const r = editBookmark(body, url, change); return { body: r.body, did: r.changed } })
   },
   text: (r) => (r.changed ? `Changed the bookmark in ${r.path}.` : "The bookmark was already so."),
@@ -659,7 +665,7 @@ plugin.op({
   run: async (p) => {
     const folder = folderPath(clean(p.folder, 300))
     if (!folder) throw new OpError("give a `folder`")
-    const old = note(), body = typeof old?.body === "string" ? old.body : ""
+    const old = note(), body = old?.body ?? ""
     const there = readFolders(body).some((f) => f.toLowerCase() === folder.toLowerCase())
     if ((p.remove || typeof p.rename === "string") && !there) throw new OpError(`there's no bookmarks folder ${folder}`)
     if (p.remove) {

@@ -8,13 +8,11 @@ import { showAppTab } from "./LiveView"
 import { agentPage, openAsTab } from "./agentpages"
 import { Replay } from "./Replay"
 import { useShot } from "./runshots"
-import { count, kindOf, said, span, type Run, type Step } from "./steps"
+import { engine, type LiveRun as Live } from "./engine"
+import { count, kindOf, said, span, type Run } from "./steps"
 
-type Live = { tab: number; appTab: string; by: string; task: string; summary: string; url: string; title: string; run: string | null; at: number | null
-  step: Partial<Step> | null; paused: boolean; asking: string | null; shot: string | null }
 
 const TIME = { hour: "numeric", minute: "2-digit" } as const
-const engine = (name: string, ...args: unknown[]) => Promise.resolve(webPages?.engine?.(name, ...args))
 const nameOf = (r: { task: string; title: string; url: string }) => r.task || r.title || hostOf(r.url) || "A run"
 
 export function ReplaysView() {
@@ -28,7 +26,7 @@ export function ReplaysView() {
   useEffect(() => {
     if (hidden || open || !has) return
     let stop = false
-    const read = () => void engine("agents:live").then((l) => { if (!stop) setLive(Array.isArray(l) ? (l as Live[]) : []) }, () => {})
+    const read = () => void engine("agents:live").then((l) => { if (!stop) setLive(Array.isArray(l) ? l : []) }, () => {})
     read()
     const timer = setInterval(() => { if (document.visibilityState === "visible") read() }, 1000)
     return () => { stop = true; clearInterval(timer) }
@@ -37,7 +35,7 @@ export function ReplaysView() {
   useEffect(() => {
     if (hidden || !has) return
     let stop = false
-    void engine("agents:runs").then((r) => { if (!stop) setRuns(Array.isArray(r) ? (r as Run[]) : []) }, () => { if (!stop) setRuns([]) })
+    void engine("agents:runs").then((r) => { if (!stop) setRuns(Array.isArray(r) ? r : []) }, () => { if (!stop) setRuns([]) })
     return () => { stop = true }
   }, [hidden, open, has, stepped])
   const days = useMemo(() => {
@@ -172,7 +170,7 @@ function LiveCard({ live: l, replay }: { live: Live; replay: (run: string) => vo
   }
   const [paused, choose] = useChosen(!!l.paused)
   const pause = () => choose(!paused, () => engine("agents:pause", l.tab, !paused), paused ? "Couldn't resume it" : "Couldn't pause it")
-  const k = l.step?.action ? kindOf(l.step as Step) : null
+  const k = l.step?.action ? kindOf(l.step) : null
   const state = l.asking ? "Needs you" : paused ? "Paused" : "Live"
   return (
     <div className="flex min-w-0 flex-col overflow-hidden rounded-[12px] border-[0.5px] border-border bg-card" data-web-live={l.tab}>

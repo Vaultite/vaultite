@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react"
-import { webPages } from "@vaultite"
+import { engine } from "./engine"
 
 const kept = new Map<string, string | null>()
 const KEEP = { s: 1200, b: 40 }
@@ -8,10 +8,10 @@ const asked = new Set<string>()
 let batch: Map<string, { run: string; small: boolean; shots: Set<string> }> | null = null
 
 const keyOf = (run: string, shot: string, small: boolean) => `${small ? "s" : "b"}:${run}/${shot}`
-function put(key: string, v: string | null) {
+function put(key: string, small: boolean, v: string | null) {
   kept.delete(key)
   kept.set(key, v)
-  const size = key[0] as "s" | "b"
+  const size = small ? "s" : "b"
   let n = 0
   for (const k of kept.keys()) if (k[0] === size) n++
   for (const k of kept.keys()) { if (n <= KEEP[size]) break; if (k[0] === size && !listeners.get(k)?.size) { kept.delete(k); n-- } }
@@ -40,9 +40,9 @@ function flush() {
     const list = [...shots]
     for (let i = 0; i < list.length; i += small ? 24 : 4) {
       const part = list.slice(i, i + (small ? 24 : 4))
-      void Promise.resolve(webPages?.engine?.("agents:shots", run, part, small)).then((r) => {
-        const got = (r && typeof r === "object" ? r : {}) as Record<string, string | null>
-        for (const s of part) { const k = keyOf(run, s, small); asked.delete(k); put(k, typeof got[s] === "string" ? got[s] : null) }
+      void engine("agents:shots", run, part, small).then((r) => {
+        const got = r ?? {}
+        for (const s of part) { const k = keyOf(run, s, small); asked.delete(k); put(k, small, typeof got[s] === "string" ? got[s] : null) }
       }, () => { for (const s of part) asked.delete(keyOf(run, s, small)) })
     }
   }

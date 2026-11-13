@@ -1,19 +1,18 @@
 import { useEffect } from "react"
 import { setSecretKeeper, webPages } from "@vaultite"
+import { needEngine } from "./engine"
 
-type Row = { id: string; title: string; username: string; group: string }
-type Status = { locked: boolean; touchId: boolean; error?: string } | null
-const engine = <T,>(name: string, ...args: unknown[]) => Promise.resolve(webPages?.engine?.(name, ...args)) as Promise<T>
+const engine = needEngine("passwords need the desktop app")
 
 async function entries() {
-  const st = await engine<Status>("passwords:status")
+  const st = await engine("passwords:status")
   if (!st || st.error) return null
   if (st.locked) {
     if (!st.touchId) return null
-    const r = await engine<{ ok?: boolean }>("passwords:unlock")
+    const r = await engine("passwords:unlock")
     if (!r?.ok) return null
   }
-  const { groups, entries } = await engine<{ groups: { id: string; bin: boolean }[]; entries: Row[] }>("passwords:list")
+  const { groups, entries } = await engine("passwords:list")
   const bin = new Set(groups.filter((g) => g.bin).map((g) => g.id))
   return entries.filter((e) => !bin.has(e.group)).map(({ id, title, username }) => ({ id, title, username }))
 }
@@ -22,11 +21,11 @@ export function useSecretKeeper() {
   useEffect(() => {
     if (!webPages?.engine) return
     let on = true
-    const check = () => void engine<Status>("passwords:status").then((st) => {
+    const check = () => void engine("passwords:status").then((st) => {
       if (!on) return
       setSecretKeeper(st && !st.error ? {
         entries,
-        value: (id) => engine<string>("passwords:give", id),
+        value: (id) => engine("passwords:give", id),
         keep: (title, value) => engine("passwords:keep-secret", title, value).then(() => {}),
       } : null)
     }, () => {})

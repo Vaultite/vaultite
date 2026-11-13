@@ -55,7 +55,7 @@ export function LockScreen({ status }: { status: NonNullable<Status> }) {
   const input = useRef<HTMLInputElement>(null)
   const unlock = (given?: string) => void run(async () => {
     try {
-      const r = await call<{ ok?: true; error?: string }>("unlock", given)
+      const r = await call("unlock", given)
       if (r?.error) { setError(capitalize(r.error)); if (given) input.current?.select(); return }
       setPassword(""); setError("")
       await refresh()
@@ -154,7 +154,7 @@ function Unlocked({ status, groups, entries }: { status: NonNullable<Status>; gr
     { label: "Use another file…", icon: Folder, run: () => void chooseFile() },
     { label: "Stop using it", icon: Trash2, danger: true, sep: true, run: () => void forgetFile() },
   ]
-  const onKey = (e: KeyboardEvent) => { if (e.key === "Enter" && shown[0] && where !== AGENTS && (e.target as Element).matches("input")) { e.preventDefault(); openDetail(detailPath(ENTRY_DETAIL, shown[0].id)) } }
+  const onKey = (e: KeyboardEvent) => { if (e.key === "Enter" && shown[0] && where !== AGENTS && e.target instanceof Element && e.target.matches("input")) { e.preventDefault(); openDetail(detailPath(ENTRY_DETAIL, shown[0].id)) } }
   return (
     <div className="@container flex h-full min-h-0" data-passwords={fileName(status.file)}>
       <nav aria-label="Groups" data-size-up className="hidden w-56 shrink-0 flex-col gap-px overflow-y-auto border-r-[0.5px] border-border px-2 py-3 @2xl:flex" data-passwords-groups>
@@ -215,7 +215,7 @@ export function Marks({ e }: { e: Row }) {
 
 const open = (e: Row) => openDetail(detailPath(ENTRY_DETAIL, e.id))
 async function copyPassword(e: Row) {
-  try { const f = await call<Full>("get", e.id); await copySecret(f.password, "password") } catch (err) { if (!lockedNow(err)) notifyError(err, "Couldn't copy the password") }
+  try { const f = await call("get", e.id); await copySecret(f.password, "password") } catch (err) { if (!lockedNow(err)) notifyError(err, "Couldn't copy the password") }
 }
 
 function EntryRow({ e, group, binned, leaving }: { e: Row; group: string; binned: boolean; leaving?: "" }) {
@@ -251,7 +251,7 @@ export async function removeEntry(e: Row, full?: Full) {
   const inBin = !!state.get().groups.find((g) => g.id === e.group)?.bin
   if (inBin && !(await confirmDialog({ title: `Delete “${name}” for good?`, body: "It's in the recycle bin: deleting it there can't be undone.", confirm: "Delete", danger: true }))) return
   let kept = full
-  if (!inBin && !kept) { try { kept = await call<Full>("get", e.id) } catch { } }
+  if (!inBin && !kept) { try { kept = await call("get", e.id) } catch { } }
   const ok = await deleting.remove(e.id, () => call("delete", e.id), "Couldn't delete it")
   if (!ok) return
   if (inBin) return notify(`Deleted “${name}”`)

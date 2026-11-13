@@ -61,7 +61,7 @@ export function siteIcon(url: string, color?: string): LucideIcon {
           <SiteIcon url={page} className="size-full" />
           <span data-container-line className="absolute inset-x-0 -bottom-[3px] h-[2px] rounded-full" style={{ background: color }} />
         </span>
-      : <SiteIcon url={page} className={className} />) as unknown as LucideIcon
+      : <SiteIcon url={page} className={className} />)
     components.set(key, c)
   }
   return c
@@ -80,7 +80,7 @@ export function spinnerIcon(color?: string): LucideIcon {
         </svg>
         {color && <span data-container-line className="absolute inset-x-0 -bottom-[3px] h-[2px] rounded-full" style={{ background: color }} />}
       </span>
-    )) as unknown as LucideIcon
+    ))
     spinners.set(key, c)
   }
   return c

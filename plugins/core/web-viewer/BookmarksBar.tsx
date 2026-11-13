@@ -117,7 +117,7 @@ export function BookmarksBar({ open, page }: { open: Open; page: { url: string; 
   const hidden = (i: number) => i >= fit
   return (
     <div className="relative flex h-8 shrink-0 items-center border-b-[0.5px] border-border pr-1.5 pl-1" data-web-marks data-own-drops onContextMenu={(e) => {
-      if (!(e.target as Element).closest("[data-web-mark], [data-web-mark-folder], [data-web-marks-more]")) menuFor(barMenu)(e)
+      if (!(e.target instanceof Element && e.target.closest("[data-web-mark], [data-web-mark-folder], [data-web-marks-more]"))) menuFor(barMenu)(e)
     }}>
       <div ref={box} className="relative flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden" data-web-marks-list>
         {!count && <span className="truncate px-1.5 text-[12px] text-tertiary" data-web-marks-empty>

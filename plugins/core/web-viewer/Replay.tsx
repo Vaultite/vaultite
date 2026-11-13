@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, ExternalLink, Globe, Pause, Play } from "lucide-react"
-import { Bar, Button, cn, dateText, ink, notifyError, openWebLink, usePaneTopBar, webPages } from "@vaultite"
+import { Bar, Button, cn, dateText, ink, notifyError, openWebLink, usePaneTopBar } from "@vaultite"
 import { hostOf } from "./address"
 import { SiteIcon } from "./icons"
 import { replays, type ReplayKeys } from "./replaykeys"
 import { useShot, wantShots } from "./runshots"
+import { engine } from "./engine"
 import { axisOf, count, itemsOf, kindOf, nearest, pageOf, PAUSE_MS, repeatsOf, said, short, SLOW_MS, span, verbOf, type Item, type Run, type Step } from "./steps"
 
 const TIME = { hour: "numeric", minute: "2-digit", second: "2-digit" } as const
 const DAY = { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" } as const
 const time = (t: number) => dateText(t, TIME)
-const engine = (name: string, ...args: unknown[]) => Promise.resolve(webPages?.engine?.(name, ...args))
 const GUT = 30, CARD = 128, SLOT = GUT + CARD
 const SPEEDS = [1, 2, 4]
 const RANK = ["failed", "user", "go", "input", "look", "script"]
@@ -38,7 +38,7 @@ export function Replay({ run, info, live, back }: { run: string; info?: Run; liv
     if (had.current.run !== run) had.current = { run, steps: [] }
     const read = () => void engine("agents:run", run, had.current.steps.length).then((r) => {
       if (stop) return
-      const more = Array.isArray(r) ? (r as Step[]) : []
+      const more = Array.isArray(r) ? r : []
       let have = had.current.steps
       if (have.length && !more.length) return
       const first = !have.length

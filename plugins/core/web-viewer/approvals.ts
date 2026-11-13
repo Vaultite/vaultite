@@ -1,3 +1,4 @@
+import { z } from "zod"
 import { type Plugin, servedAt, Text } from "../../../core/plugins.ts"
 import { desktopOf } from "./machinecalls.ts"
 
@@ -76,6 +77,10 @@ const ADD = `
     } catch (e) { say("Not added: " + e.message) }
   }`
 
+const text = z.string().catch("")
+const ANSWER = z.object({ grant: text, deny: z.literal(true).optional().catch(undefined), id: text, clientDataJSON: text, authenticatorData: text, signature: text })
+const ADDED = z.object({ token: text, name: text, clientDataJSON: text, attestationObject: text })
+
 export function approvals(plugin: Plugin) {
   const what = "Approving agents' logins"
   const desktop = desktopOf(plugin)
@@ -84,17 +89,15 @@ export function approvals(plugin: Plugin) {
   plugin.route("GET", "web-viewer/approve/options", async (req) => { await plugin.ownerOnly(req, what); return desktop("agent:login-options", String(req.query.grant ?? "")) }, o)
   plugin.route("POST", "web-viewer/approve", async (req) => {
     await plugin.ownerOnly(req, what)
-    const b = (req.body ?? {}) as Record<string, unknown>
-    return desktop("agent:login-answer", String(b.grant ?? ""), b.deny === true ? { deny: true }
-      : { id: String(b.id ?? ""), clientDataJSON: String(b.clientDataJSON ?? ""), authenticatorData: String(b.authenticatorData ?? ""), signature: String(b.signature ?? "") })
+    const { grant, deny, ...asserted } = ANSWER.parse(req.body ?? {})
+    return desktop("agent:login-answer", grant, deny ? { deny } : asserted)
   }, o)
   plugin.route("GET", "web-viewer/passkey", async (req) => { await plugin.ownerOnly(req, what); return page("Add a passkey", ADD) }, o)
   plugin.route("GET", "web-viewer/passkey/options", async (req) => { await plugin.ownerOnly(req, what); return desktop("agent:passkey-options", String(req.query.token ?? "")) }, o)
   plugin.route("POST", "web-viewer/passkey", async (req) => {
     await plugin.ownerOnly(req, what)
-    const b = (req.body ?? {}) as Record<string, unknown>
-    return desktop("agent:passkey-add", String(b.token ?? ""), { clientDataJSON: String(b.clientDataJSON ?? ""), attestationObject: String(b.attestationObject ?? "") },
-      String(b.name ?? "").slice(0, 60))
+    const { token, name, ...created } = ADDED.parse(req.body ?? {})
+    return desktop("agent:passkey-add", token, created, name.slice(0, 60))
   }, o)
   plugin.route("GET", "web-viewer/https", async (req) => { await plugin.ownerOnly(req, what); return { url: await servedAt(Number(process.env.PORT || 8793)) } }, o)
 }

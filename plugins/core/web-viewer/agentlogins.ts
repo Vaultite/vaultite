@@ -1,29 +1,28 @@
-import { choose, isMac, notify, notifyError, openView, plural, secretDialog, webPages } from "@vaultite"
+import { choose, isMac, notify, notifyError, openView, plural, secretDialog } from "@vaultite"
+import { engine, type AgentLogins } from "./engine"
 
-// `held`: Linux without a keyring keeps the password only till the app quits.
-type Status = { file: string; entries?: number; free?: number; error?: string; held?: boolean; locked?: boolean } | null
 const HERE = isMac ? "this Mac" : "this computer"
-const engine = (name: string, ...args: unknown[]) => Promise.resolve(webPages?.engine?.(name, ...args))
 const fileName = (file: string) => file.split("/").pop() ?? file
 const count = (n: number, free: number) => `${plural(n, "entry", "entries")}, ${free} free to use without asking`
 
 async function adoptFile(chosen?: string) {
-  const file = chosen ?? (await engine("logins:choose")) as string | null
+  const file = chosen ?? (await engine("logins:choose"))
   if (!file) return
   const kept = isMac ? "Kept in this Mac's Keychain" : "Kept in this computer's keyring (with none, only till the app quits)"
   const given = await secretDialog({ title: `Password of ${fileName(file)}`, confirm: "Use", field: "secret",
     body: `${kept}, never in the vault. The browser fills agents' logins from it; agents never see what's in it.` })
   if (!given) return
   try {
-    const r = (await engine("logins:set", file, given.value)) as { error?: string; entries?: number; free?: number; held?: boolean }
+    const r = await engine("logins:set", file, given.value)
+    if (!r) return
     if (r.error) notify(`Couldn't use ${fileName(file)}: ${r.error}`, { kind: "error" })
     else notify(`Agents can log in with ${fileName(file)}${r.held ? " till the app quits (no keyring here)" : ""}: ${count(r.entries ?? 0, r.free ?? 0)}`, { action: { label: "Passkeys", run: () => openView("agent-passkeys") } })
   } catch (e) { notifyError(e, `Couldn't use ${fileName(file)}`) }
 }
 
 export async function passwordsForAgents() {
-  let st: Status
-  try { st = (await engine("logins:status")) as Status } catch (e) { return notifyError(e, "Couldn't read the passwords for agents") }
+  let st: AgentLogins | undefined
+  try { st = await engine("logins:status") } catch (e) { return notifyError(e, "Couldn't read the passwords for agents") }
   if (!st) return void adoptFile()
   choose({
     title: "Passwords for agents", placeholder: "Passwords for agents",

@@ -1,10 +1,11 @@
 import { useEffect, useState, type MouseEvent } from "react"
 import { createPortal } from "react-dom"
 import { AppWindow, Check, ChevronDown, ChevronUp, Ellipsis, Globe, MousePointer2, Pause, Play, X } from "lucide-react"
-import { Button, cell, cn, CORNERS, menuBelow, openView, useCornerDrag, useCornerStack, useDesktop, useScopedState, webPages, type Corner } from "@vaultite"
+import { Button, cell, cn, CORNERS, menuBelow, openView, useCornerDrag, useCornerStack, useDesktop, useScopedState, type Corner } from "@vaultite"
 import { hostOf } from "./address"
 import { onScreen, pictured } from "./state"
 import { useFrame, useShown } from "./liveframe"
+import { engine } from "./engine"
 import { agentPages, closeAgentPage, doneAsk, openAsTab, pauseAgents, toBackground, whoOf, working, type AgentPage } from "./agentpages"
 
 const dismissed = cell<Set<number> | null>(null)
@@ -15,7 +16,6 @@ export const agentsCardShown = () => shows(outOfSight(agentPages.get(), seenNow(
 export const showAgentsCard = (on: boolean) => dismissed.set(on ? null : new Set(agentPages.get().map((p) => p.id)))
 
 const PURPLE = "var(--purple)"
-const engine = (name: string, ...args: unknown[]) => Promise.resolve(webPages?.engine?.(name, ...args))
 const icon = "grid size-8 shrink-0 cursor-pointer place-items-center rounded-full text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
 
 export function AgentsCard() {
@@ -138,7 +138,7 @@ function useShots(ids: string) {
     const want = new Set(ids.split(" ").map(Number))
     const read = () => void engine("agents:live").then((l) => {
       if (stop || !Array.isArray(l)) return
-      setShots(Object.fromEntries((l as { tab: number; shot: string | null }[]).filter((x) => want.has(x.tab) && x.shot).map((x) => [x.tab, x.shot!])))
+      setShots(Object.fromEntries(l.filter((x) => want.has(x.tab) && x.shot).map((x) => [x.tab, x.shot!])))
     }, () => {})
     read()
     const t = setInterval(read, 2000)

@@ -1,5 +1,6 @@
-import { announceAgent, cell, closePane, notifyError, openInGroup, selectPane, viewsChanged, webPages } from "@vaultite"
+import { announceAgent, cell, closePane, notifyError, openInGroup, selectPane, viewsChanged } from "@vaultite"
 import { argOf, containerOfProfile } from "./containers"
+import { engine } from "./engine"
 
 export type AgentPage = { id: number; tab: string; url: string; title: string; profile: string; by: string; task: string; summary: string
   group: string
@@ -21,7 +22,6 @@ export const whoOf = (p: Pick<AgentPage, "by" | "task">) => [p.by, p.task].filte
 export const WORKING_MS = 8000
 export const working = (p: AgentPage, now = Date.now()) => !!p.at && now - p.at < WORKING_MS && !p.paused
 
-const engine = (name: string, ...args: unknown[]) => Promise.resolve(webPages?.engine?.(name, ...args))
 
 export async function openAsTab(p: Pick<AgentPage, "id" | "tab" | "url" | "profile" | "group">, here = true) {
   if (p.tab) { selectPane(p.tab); return }

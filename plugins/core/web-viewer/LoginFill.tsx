@@ -1,24 +1,24 @@
 import { useEffect, useState } from "react"
 import { KeyRound } from "lucide-react"
 import { cell, choose, menuBelow, notify, notifyError, secretDialog, webPages } from "@vaultite"
+import { engine, type FillLogin as Login } from "./engine"
 
-type Login = { id: string; title: string; username: string; otp: boolean }
-const engine = (name: string, ...args: unknown[]) => Promise.resolve(webPages?.engine?.(name, ...args))
+type Offer = { type: string; offer?: unknown; site?: unknown; username?: unknown; kind?: unknown }
 const forms = cell(new Set<number>())
 const changes = cell(0)
 export const hasLoginForm = (id: number) => !!id && forms.get().has(id)
 const nameOf = (l: Login) => l.title || l.username || "this login"
 
-const loginsFor = (id: number) => engine("passwords:fill-list", id) as Promise<Login[] | null>
+const loginsFor = (id: number) => engine("passwords:fill-list", id)
 
 async function unlock(): Promise<boolean> {
-  const st = await engine("passwords:status") as { touchId?: boolean } | null
+  const st = await engine("passwords:status")
   if (!st) return false
-  if (st.touchId && (await engine("passwords:unlock") as { ok?: boolean })?.ok) return true
+  if (st.touchId && (await engine("passwords:unlock"))?.ok) return true
   const given = await secretDialog({ title: "Unlock your passwords", confirm: "Unlock", field: "secret",
     body: "Type the password of your passwords file. It stays on this computer." })
   if (!given) return false
-  const r = await engine("passwords:unlock", given.value) as { ok?: boolean; error?: string }
+  const r = await engine("passwords:unlock", given.value)
   if (r?.ok) return true
   notify(`Couldn't unlock your passwords${r?.error ? `: ${r.error}` : ""}`, { kind: "error" })
   return false
@@ -26,10 +26,10 @@ async function unlock(): Promise<boolean> {
 
 async function fill(id: number, l: Login) {
   try {
-    let r = await engine("passwords:fill", id, l.id) as { locked?: boolean } | null
+    let r = await engine("passwords:fill", id, l.id)
     if (r?.locked) {
       if (!await unlock()) return
-      r = await engine("passwords:fill", id, l.id) as { locked?: boolean } | null
+      r = await engine("passwords:fill", id, l.id)
       if (r?.locked) return
     }
     void webPages?.go(id, "focus")
@@ -37,7 +37,7 @@ async function fill(id: number, l: Login) {
 }
 
 export async function fillLoginIn(id: number) {
-  let list: Login[] | null
+  let list: Login[] | null | undefined
   try { list = await loginsFor(id) } catch (e) { return void notifyError(e, "Couldn't read your passwords") }
   if (!list) return void notify("No passwords file is set up on this computer")
   if (!list.length) return void notify("Your passwords have no login for this site")
@@ -46,7 +46,7 @@ export async function fillLoginIn(id: number) {
     onPick: (it) => { const l = list.find((x) => x.id === it.id); if (l) void fill(id, l) } })
 }
 
-function offered(m: Record<string, unknown>) {
+function offered(m: Offer) {
   const site = String(m.site ?? ""), user = String(m.username ?? ""), update = m.kind === "update"
   notify(update ? `Update your password for ${user ? `${user} on ` : ""}${site}?` : `Save your login for ${site}${user ? ` (${user})` : ""} to your passwords?`, {
     id: `passwords-offer-${String(m.offer)}`, duration: 20_000,
@@ -72,7 +72,7 @@ export function watchLogins() {
 export function LoginButton({ id, url }: { id: number; url: string }) {
   const form = forms.use((s) => s.has(id))
   const version = changes.use()
-  const [logins, setLogins] = useState<Login[] | null>(null)
+  const [logins, setLogins] = useState<Login[] | null | undefined>(null)
   useEffect(() => {
     if (!form) return setLogins(null)
     let gone = false

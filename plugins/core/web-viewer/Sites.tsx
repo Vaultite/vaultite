@@ -248,7 +248,7 @@ function accountIcon(site: string, avatar?: string): LucideIcon {
           <img src={avatar} alt="" draggable={false} className="size-full rounded-full object-cover" />
           <SiteIcon host={site} className="absolute -right-[3px] -bottom-[3px] size-[9px] rounded-[2px] bg-background" />
         </span>
-      : <SiteIcon host={site} className={className} />) as unknown as LucideIcon
+      : <SiteIcon host={site} className={className} />)
     accountIcons.set(key, c)
   }
   return c

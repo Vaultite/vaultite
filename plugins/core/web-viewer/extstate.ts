@@ -1,21 +1,19 @@
 import { useEffect } from "react"
 import { cell, notify, notifyError, viewsChanged, webPages } from "@vaultite"
+import { needEngine } from "./engine"
 
 export type Ext = { id: string; name: string; version: string; on: boolean; pinned: boolean; from: "store" | "folder"; description: string; icon: string
   options: boolean; mv2: boolean; error: string
   settingsFrom: { browser: string; profile: string; name: string }[]
   managed: boolean }
-export const engine = <T,>(name: string, ...args: unknown[]) => {
-  if (!webPages?.engine) return Promise.reject(new Error("extensions need the desktop app"))
-  return webPages.engine(name, ...args) as Promise<T>
-}
+export const engine = needEngine("extensions need the desktop app")
 export const hasExtensions = () => !!webPages?.engine
 
 const list = cell<Ext[] | null>(null)
 export const version = cell(0)
 let asking: Promise<void> | null = null
 function refresh() {
-  asking ??= engine<Ext[]>("ext:list").then((l) => { list.set(l); viewsChanged() }, () => { list.set([]) }).finally(() => { asking = null })
+  asking ??= engine("ext:list").then((l) => { list.set(l); viewsChanged() }, () => { list.set([]) }).finally(() => { asking = null })
 }
 export function extensionsChanged() { version.set(version.get() + 1); refresh() }
 export function extensionPageName(url: string) {
@@ -41,7 +39,7 @@ export function storeIdOf(url: string) {
 
 export async function addExtension(input: string) {
   try {
-    const r = await engine<{ id: string; name: string }>("ext:install", input)
+    const r = await engine("ext:install", input)
     notify(`Added ${r.name}`)
     return true
   } catch (e) { notifyError(e, "Couldn't add the extension"); return false }

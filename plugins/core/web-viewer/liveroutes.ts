@@ -1,12 +1,18 @@
 import type { IncomingMessage } from "node:http"
 import type { RawData, WebSocket } from "ws"
+import { z } from "zod"
 import { HTTPError, inDesktop, machineSocket, pipeSockets, splitMachine, type Machine, type Plugin } from "../../../core/plugins.ts"
-import { askThere, desktopOf, machineOf, otherBrowsers } from "./machinecalls.ts"
+import { askThere, desktopOf, JSON_ANSWER, machineOf, otherBrowsers } from "./machinecalls.ts"
 import type { LiveStep, LiveTab } from "./livetabs.ts"
 
 const RENEW_MS = 10_000
 const BEHIND = 1 << 20
 const STEP = /\bbrowser tab (\d+)\b/
+const THEIR_TABS = z.object({ tabs: z.array(z.looseObject({})) })
+const EVENTS = z.object({ events: z.array(z.object({ t: z.number(), last: z.number().optional(), actor: z.object({ name: z.string() }),
+  action: z.string(), text: z.string(), route: z.string().optional() })) })
+const FRAME = z.looseObject({ tab: z.number(), jpeg: z.string().optional() })
+const SAID = z.discriminatedUnion("t", [z.looseObject({ t: z.literal("input") }), z.object({ t: z.literal("sharp"), on: z.unknown() })])
 
 export function liveView(plugin: Plugin) {
   const what = "The browser's live view"
@@ -22,7 +28,7 @@ export function liveView(plugin: Plugin) {
     const { self, others } = await otherBrowsers(plugin)
     const own = (tabs: LiveTab[]) => tabs.map((t) => ({ ...t, ...(self ? { machine: self.id, machineLabel: self.label } : {}) }))
     if (req.query.local) return { tabs: inDesktop() ? own(await desktop<LiveTab[]>("agent:live:tabs")) : [] }
-    const theirs = await Promise.all(others.map((m) => askThere<{ tabs: LiveTab[] }>(m, "GET", "web-viewer/tabs?local=1", undefined, 4000)
+    const theirs = await Promise.all(others.map((m) => askThere(m, "GET", "web-viewer/tabs?local=1", THEIR_TABS, undefined, 4000)
       .then((r) => r.tabs.map((t) => ({ ...t, machine: m.id, machineLabel: m.label, appTab: "" })), () => [])))
     const mine = inDesktop() || !others.length ? own(await desktop<LiveTab[]>("agent:live:tabs")) : []
     return { tabs: [...mine, ...theirs.flat()], self: self?.id ?? null }
@@ -31,14 +37,14 @@ export function liveView(plugin: Plugin) {
   plugin.route("POST", "web-viewer/tabs/*/pause", async (req) => {
     await plugin.ownerOnly(req, what)
     const [tab, m] = await tabOf(req.arg(0))
-    if (m) return askThere(m, "POST", `web-viewer/tabs/${tab}/pause`, { on: req.body?.on !== false })
+    if (m) return askThere(m, "POST", `web-viewer/tabs/${tab}/pause`, JSON_ANSWER, { on: req.body?.on !== false })
     return desktop("agent:live:pause", tab, req.body?.on !== false)
   }, { lock: false, sync: false })
 
   plugin.route("POST", "web-viewer/tabs/*/done", async (req) => {
     await plugin.ownerOnly(req, what)
     const [tab, m] = await tabOf(req.arg(0))
-    if (m) return askThere(m, "POST", `web-viewer/tabs/${tab}/done`, {})
+    if (m) return askThere(m, "POST", `web-viewer/tabs/${tab}/done`, JSON_ANSWER, {})
     const r = await desktop("agent:live:done", tab)
     await plugin.ask("inbox:drop", null, "browser", `help-${tab}`)
     return r
@@ -47,7 +53,7 @@ export function liveView(plugin: Plugin) {
   plugin.route("GET", "web-viewer/tabs/*/selection", async (req) => {
     await plugin.ownerOnly(req, what)
     const [tab, m] = await tabOf(req.arg(0))
-    if (m) return askThere(m, "GET", `web-viewer/tabs/${tab}/selection`)
+    if (m) return askThere(m, "GET", `web-viewer/tabs/${tab}/selection`, JSON_ANSWER)
     return desktop<{ text: string }>("agent:live:selection", tab)
   }, { lock: false, sync: false })
 
@@ -55,11 +61,10 @@ export function liveView(plugin: Plugin) {
     await plugin.ownerOnly(req, what)
     const [tab, m] = await tabOf(req.arg(0))
     const since = Number(req.query.since) || Date.now() - 86400_000
-    if (m) return askThere(m, "GET", `web-viewer/tabs/${tab}/steps?since=${since}`)
+    if (m) return askThere(m, "GET", `web-viewer/tabs/${tab}/steps?since=${since}`, JSON_ANSWER)
     if (plugin.vault.switchedOff().has("activity")) return { steps: [], kept: false }
-    type Event = { t: number; last?: number; actor: { kind: string; name: string }; action: string; text: string; route?: string }
-    const got = await plugin.host.api("GET", `activity?since=${since}&limit=500`).catch(() => null) as { events?: Event[] } | null
-    const steps: LiveStep[] = (got?.events ?? []).filter((e) => e.route?.startsWith("ops/web-viewer.") && Number(STEP.exec(e.text)?.[1]) === tab)
+    const got = EVENTS.safeParse(await plugin.host.api("GET", `activity?since=${since}&limit=500`).catch(() => null))
+    const steps: LiveStep[] = (got.data?.events ?? []).filter((e) => e.route?.startsWith("ops/web-viewer.") && Number(STEP.exec(e.text)?.[1]) === tab)
       .slice(0, 100).map((e) => ({ t: e.last ?? e.t, by: e.actor.name, text: e.text.replace(/ in browser tab \d+/, ""), failed: e.action === "failed" }))
     return { steps, kept: true }
   }, { lock: false, sync: false })
@@ -73,8 +78,8 @@ export function liveView(plugin: Plugin) {
   const json = (ws: WebSocket, m: unknown) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(m)) }
 
   plugin.onDesktopEvent((name, data) => {
-    const d = (data ?? {}) as { tab?: number; jpeg?: string }
-    if (typeof d.tab !== "number" || !watchers.has(d.tab)) return
+    const d = FRAME.safeParse(data).data
+    if (!d || !watchers.has(d.tab)) return
     if (name === "live:frame" && typeof d.jpeg === "string") {
       const frame = Buffer.from(d.jpeg, "base64")
       each(d.tab, (ws) => { if (ws.bufferedAmount < BEHIND) ws.send(frame) })
@@ -111,17 +116,17 @@ export function liveView(plugin: Plugin) {
     renew ??= setInterval(() => { for (const t of watchers.keys()) void desktop("agent:live:watch", t).catch(() => {}) }, RENEW_MS)
     ws.on("close", () => leave(tab, ws))
     ws.on("message", (raw: RawData) => {
-      let m: { t?: unknown }
-      try { m = JSON.parse(String(raw)) } catch { return }
-      if (m?.t === "input") void desktop("agent:live:input", tab, m).catch((e) => json(ws, { t: "error", text: (e as Error).message }))
-      else if (m?.t === "sharp" && sharp.has(ws) !== ((m as { on?: unknown }).on === true)) {
-        if ((m as { on?: unknown }).on === true) sharp.add(ws)
+      let m: z.infer<typeof SAID> | undefined
+      try { m = SAID.safeParse(JSON.parse(String(raw))).data } catch { return }
+      if (m?.t === "input") void desktop("agent:live:input", tab, m).catch((e) => json(ws, { t: "error", text: e instanceof Error ? e.message : String(e) }))
+      else if (m?.t === "sharp" && sharp.has(ws) !== (m.on === true)) {
+        if (m.on === true) sharp.add(ws)
         else sharp.delete(ws)
         sharpen(tab)
       }
     })
     try { await watch(tab, ws) } catch (e) {
-      json(ws, { t: "error", text: (e as Error).message, fatal: true })
+      json(ws, { t: "error", text: e instanceof Error ? e.message : String(e), fatal: true })
       ws.close(4404, "unavailable")
     }
   }, {

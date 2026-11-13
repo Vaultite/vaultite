@@ -29,6 +29,7 @@ import { focusedReplay } from "./replaykeys"
 import { openFromApp } from "./linklogins"
 import { fillLoginIn, hasLoginForm, watchLogins } from "./LoginFill"
 import { useSecretKeeper } from "./secretkeeper"
+import { engine } from "./engine"
 
 const WebPage = lazy(() => import("./WebPage"))
 const ReplaysView = lazy(() => import("./Replays").then((m) => ({ default: m.ReplaysView })))
@@ -92,7 +93,7 @@ async function saveImage(m: Extract<WebEvent, { type: "image" }>) {
   const s = getStore()
   try {
     if (!m.data || !s) throw new Error(m.error ? `Couldn't get the image: ${m.error}` : "Couldn't get the image")
-    const ext = ({ "image/jpeg": "jpg", "image/svg+xml": "svg" } as Record<string, string>)[m.mime] ?? m.mime.split("/")[1] ?? "png"
+    const ext = m.mime === "image/jpeg" ? "jpg" : m.mime === "image/svg+xml" ? "svg" : m.mime.split("/")[1] ?? "png"
     // Chromium names a data: image "download.png".
     const when = new Date().toISOString().slice(0, 19).replace(/\D/g, "")
     let name = m.name && !/^download(\.\w+)?$/.test(m.name) ? m.name : `Web image ${when}`
@@ -161,7 +162,7 @@ function Background() {
     return () => { off(); clearTimeout(timer) }
   }, [])
   useEffect(readDownloads, [])
-  useEffect(() => { void Promise.resolve(webPages?.engine?.("agents:pages")).then((l) => { if (Array.isArray(l)) setAgentPages(l as AgentPage[]) }, () => {}) }, [])
+  useEffect(() => { void engine("agents:pages").then((l) => { if (Array.isArray(l)) setAgentPages(l) }, () => {}) }, [])
   useEffect(() => webPages?.on((m) => {
     if (m.type === "state") stateCame(m.id, m.state)
     else if (m.type === "open") opened(m)

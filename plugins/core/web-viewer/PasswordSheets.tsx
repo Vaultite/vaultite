@@ -22,10 +22,10 @@ function useFull(id: string | undefined) {
   useEffect(() => {
     if (!id || !open) return
     let stop = false
-    call<Full>("get", id).then((f) => { if (!stop) setFull(f) }, (e) => { if (!stop && !lockedNow(e)) setFull(null) })
+    call("get", id).then((f) => { if (!stop) setFull(f) }, (e) => { if (!stop && !lockedNow(e)) setFull(null) })
     return () => { stop = true }
   }, [id, open, entries])
-  return { status, open, full: id ? full : null, again: () => id && call<Full>("get", id).then(setFull, (e) => { if (!lockedNow(e)) setFull(null) }) }
+  return { status, open, full: id ? full : null, again: () => id && call("get", id).then(setFull, (e) => { if (!lockedNow(e)) setFull(null) }) }
 }
 
 function Gate({ children }: { children: ReactNode }) {
@@ -193,7 +193,7 @@ function Form({ full, group }: { full: Full | null; group?: string }) {
       urls: v.urls.map((u) => u.trim()).filter(Boolean), tags, notes: v.notes }
     void run(async () => {
       try {
-        const r = await call<{ id: string }>("save", change)
+        const r = await call("save", change)
         saved.current = true
         if (full) backDetail()
         else replaceDetail(detailPath(ENTRY_DETAIL, r.id))

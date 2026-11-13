@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { webPages } from "@vaultite"
+import { engine } from "./engine"
 
-const engine = (name: string, ...args: unknown[]) => Promise.resolve(webPages?.engine?.(name, ...args))
 
 export function useShown() {
   const [on, setOn] = useState(!document.hidden)
@@ -22,7 +22,7 @@ export function useFrame(id: number, on = true) {
     if (!shown) return
     let stop = false
     const watch = () => void engine("agents:watch", id, key).then((r) => {
-      const f = (r as { frame?: string } | undefined)?.frame
+      const f = r?.frame
       if (!stop && f && !last.current) setFrame(`data:image/jpeg;base64,${f}`)
     }, () => {})
     watch()

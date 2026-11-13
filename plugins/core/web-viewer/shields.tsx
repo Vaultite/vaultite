@@ -5,6 +5,7 @@ import { BLOCKED, onSite, PRESETS, type ElementRule } from "./elements"
 import { siteName, type SiteStyle } from "./sitestyles"
 import { settings } from "./state"
 import { darkPagesOn, editStyle, setDark, setStyled, styleOf } from "./stylestate"
+import { engine, type PageShields } from "./engine"
 
 const counts = cell(new Map<number, number>())
 
@@ -56,8 +57,8 @@ const siteOfRule = (rule: string) => rule.slice(0, rule.indexOf("##")).split(","
 export async function pickElement(id: number, site?: string, point?: { x: number; y: number }) {
   if (!webPages?.engine || !id) return
   try {
-    const at = site ?? ((await webPages.engine("adblock:page", id)) as PageShields | null)?.site ?? ""
-    const r = (await webPages.engine("adblock:pick", id, at, point)) as { selector: string } | null
+    const at = site ?? (await engine("adblock:page", id))?.site ?? ""
+    const r = await engine("adblock:pick", id, at, point)
     if (r?.selector) await hideRule(`${at}##${r.selector}`)
   } catch (e) { notifyError(e, "Couldn't block it") }
 }
@@ -99,7 +100,6 @@ function darkItems(url: string, off: string[]): MenuItem[] {
   return [{ label: `Dark pages for ${host}`, icon: Moon, checked: on, run: () => setDark(host, !on) }]
 }
 
-type PageShields = { site: string; count: number }
 
 export function ShieldsButton({ id, url, loading }: { id: number; url: string; loading?: boolean }) {
   const [page, setPage] = useState<PageShields | null>(null)
@@ -109,7 +109,7 @@ export function ShieldsButton({ id, url, loading }: { id: number; url: string; l
   const styles = useStore().store?.siteStyles ?? NONE
   useEffect(() => {
     let gone = false
-    void Promise.resolve(webPages?.engine?.("adblock:page", id)).then((r) => { if (!gone) setPage((r as PageShields | null) ?? null) }, () => {})
+    void engine("adblock:page", id).then((r) => { if (!gone) setPage(r ?? null) }, () => {})
     return () => { gone = true }
   }, [id, url, loading])
   if (!webPages?.engine || !page?.site) return null

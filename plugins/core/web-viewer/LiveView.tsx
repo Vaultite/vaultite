@@ -15,7 +15,7 @@ export function showAppTab(t: Pick<LiveTab, "appTab" | "url" | "container">) {
 }
 
 const TIME = { hour: "numeric", minute: "2-digit" } as const
-const whose = (t: Pick<LiveTab, "by" | "task">) => (t.by ? [t.by, t.task].filter(Boolean).join("/") : "Yours")
+const whose = (t: { by?: string | null; task?: string }) => (t.by ? [t.by, t.task].filter(Boolean).join("/") : "Yours")
 
 function useOnScreen() {
   const [on, setOn] = useState(document.visibilityState === "visible")
@@ -102,6 +102,11 @@ function Tabs({ open }: { open: (t: LiveTab) => void }) {
 }
 
 type State = Partial<LiveTab> & { tab: number; w?: number; h?: number }
+type At = { x: number; y: number }
+type Input = (At & { type: "wheel"; dx: number; dy: number; modifiers?: number })
+  | (At & { type: "mouse"; action: "down" | "move" | "up"; button: string; count?: number; modifiers?: number })
+  | (At & { type: "tap"; count: number }) | { type: "key"; key: string } | { type: "text"; text: string }
+type Said = ({ t: "input" } & Input) | { t: "sharp"; on: boolean }
 type View = { s: number; x: number; y: number }
 type Point = { clientX: number; clientY: number }
 type Gesture = { start: Point; last: Point; t: number; moved: boolean; hold: number
@@ -153,10 +158,10 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
       let ended = false
       ws.onopen = () => { retry = 0 }
       ws.onmessage = (m) => {
-        if (typeof m.data !== "string") {
+        if (m.data instanceof Blob) {
           const el = img.current
           if (!el) return
-          const was = el.dataset.url, url = URL.createObjectURL(m.data as Blob)
+          const was = el.dataset.url, url = URL.createObjectURL(m.data)
           el.src = url
           el.dataset.url = url
           if (was) URL.revokeObjectURL(was)
@@ -203,8 +208,8 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
 
   useEffect(() => () => { const u = img.current?.dataset.url; if (u) URL.revokeObjectURL(u) }, [])
 
-  const raw = (m: Record<string, unknown>) => { const ws = sock.current; if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m)) }
-  const send = (m: Record<string, unknown>) => raw({ t: "input", ...m })
+  const raw = (m: Said) => { const ws = sock.current; if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m)) }
+  const send = (m: Input) => raw({ t: "input", ...m })
   const at = (e: { clientX: number; clientY: number }) => {
     const r = img.current!.getBoundingClientRect()
     return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height }
@@ -484,7 +489,7 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
     notify("Copied")
   }
   const paste = () => void navigator.clipboard?.readText().then((text) => { if (text) send({ type: "text", text }) },
-    (e) => { if ((e as Error)?.name !== "NotAllowedError") notifyError(e, "Couldn't paste") })
+    (e) => { if (!(e instanceof Error && e.name === "NotAllowedError")) notifyError(e, "Couldn't paste") })
   const [typing, setTyping] = useState(false)
   const area = useVisibleArea(coarse && typing)
   const arrow = (name: string, Icon: typeof ArrowUp) => ({ name, label: <Icon className="size-[17px]" strokeWidth={2} />, run: () => send({ type: "key", key: `Arrow${name}` }) })
@@ -512,7 +517,7 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
           <span className="truncate text-[15px] font-medium md:text-[13px]">{info.title || (info.url ? hostOf(info.url) : "")}</span>
           <span className="flex min-w-0 items-center gap-2 text-[12px] text-muted-foreground">
             {info.by && <Bot className="size-3 shrink-0" strokeWidth={2} style={{ color: "var(--purple)" }} />}
-            <span className="truncate">{info.by ? whose(info as LiveTab) : info.url ? hostOf(info.url) : ""}</span>
+            <span className="truncate">{info.by ? whose(info) : info.url ? hostOf(info.url) : ""}</span>
             <Container id={info.container ?? null} />
           </span>
         </span>

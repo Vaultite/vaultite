@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { afterSheets, cell, get, isMac, isViewOpen, notify, notifyError, openView, removals, secretDialog, Section, SettingRow, webPages } from "@vaultite"
+import { needEngine } from "./engine"
 
 export type Status = null | { file: string; locked: boolean; touchId: boolean; held?: boolean; error?: string }
 export type Group = { id: string; name: string; parent: string | null; share: string | null; bin: boolean }
@@ -19,8 +20,9 @@ export const hasPasswords = () => !!webPages?.engine
 export const fileName = (file: string) => file.split(/[\\/]/).pop() ?? file
 const HERE = isMac ? "this Mac" : "this computer"
 
-export const call = <T,>(name: string, ...args: unknown[]) => {
-  const p = Promise.resolve(webPages?.engine?.(`passwords:${name}`, ...args)) as Promise<T>
+const engine = needEngine("passwords need the desktop app")
+export const call = <N extends string>(name: N, ...args: unknown[]) => {
+  const p = engine(`passwords:${name}`, ...args)
   if (OPENING.has(name)) void p.then(() => lapses(), () => {})
   return p
 }
@@ -38,10 +40,10 @@ export function refresh(): Promise<void> {
   if (reading) { again = true; return reading }
   reading = (async () => {
     let status: Status
-    try { status = await call<Status>("status") } catch { status = null }
+    try { status = await call("status") } catch { status = null }
     if (!status || status.locked || status.error) return state.set({ status, groups: [], entries: null })
     try {
-      const { groups, entries } = await call<{ groups: Group[]; entries: Row[] }>("list")
+      const { groups, entries } = await call("list")
       state.set({ status, groups, entries })
     } catch (e) {
       state.set({ status: { ...status, locked: isLocked(e) || status.locked }, groups: [], entries: isLocked(e) ? null : [] })
@@ -73,13 +75,13 @@ export function usePasswordsLive() {
 
 export async function chooseFile(chosen?: string) {
   let file: string | null
-  try { file = chosen ?? await call<string | null>("choose") } catch (e) { return notifyError(e, "Couldn't open the file picker") }
+  try { file = chosen ?? await call("choose") } catch (e) { return notifyError(e, "Couldn't open the file picker") }
   if (!file) return
   const given = await secretDialog({ title: `Password of ${fileName(file)}`, confirm: "Open", field: "secret",
     body: isMac ? "Kept in this Mac's Keychain, never in the vault." : "Kept in this computer's keyring (with none, only till the app quits), never in the vault." })
   if (!given) return
   try {
-    const r = await call<Status & { error?: string }>("set", file, given.value)
+    const r = await call("set", file, given.value)
     if (r?.error) notify(`Couldn't open ${fileName(file)}: ${r.error}`, { kind: "error" })
     else if (r?.held) notify(`Opened ${fileName(file)}: its password is kept till the app quits (no keyring here)`)
     await refresh()
@@ -97,7 +99,7 @@ export async function copySecret(text: string, what: string) {
   notify(`Copied the ${what}: cleared in 30 seconds`)
 }
 
-export const fetchUses = () => (get("web-viewer/login-uses") as Promise<{ uses?: Use[] }>).then((r) => (Array.isArray(r?.uses) ? r.uses : null), () => null)
+export const fetchUses = () => get<{ uses?: Use[] }>("web-viewer/login-uses").then((r) => (Array.isArray(r?.uses) ? r.uses : null), () => null)
 export const usesOf = (uses: Use[], e: Pick<Row, "id" | "title" | "username">) =>
   uses.filter((u) => (u.entry.id ? u.entry.id === e.id : u.entry.title === e.title && u.entry.username === e.username))
 export function approvedText(u: Use) {
@@ -125,7 +127,7 @@ const showPasswords = () => afterSheets(() => openView("passwords", { newTab: !i
 
 export function PasswordsSetting() {
   const [status, setStatus] = useState<Status | undefined>(undefined)
-  useEffect(() => { if (hasPasswords()) void call<Status>("status").then(setStatus, () => setStatus(null)) }, [])
+  useEffect(() => { if (hasPasswords()) void call("status").then(setStatus, () => setStatus(null)) }, [])
   return (
     <div data-setting="passwords" className="mt-6">
       <Section title="Passwords">

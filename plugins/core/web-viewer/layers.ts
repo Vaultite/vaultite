@@ -64,7 +64,7 @@ function slides(box: HTMLElement, r: DOMRect) {
   // Just before its end: at it, an animation finishes and fires its events.
   const now = box.getBoundingClientRect(), all = [...runs.values()].flat().concat(holding), was = all.map((a) => a.currentTime)
   try {
-    for (const a of all) a.currentTime = (a.effect!.getComputedTiming().endTime as number) - 0.01
+    for (const a of all) a.currentTime = Number(a.effect!.getComputedTiming().endTime) - 0.01
     const b = box.getBoundingClientRect()
     return crosses(new DOMRect(r.left + b.left - now.left, r.top + b.top - now.top, r.width + b.width - now.width, r.height + b.height - now.height))
   } finally {
@@ -117,15 +117,21 @@ export function passPointer(box: HTMLElement, id: () => number | null, area: () 
   }
   const inBox = (e: Event) => e.target instanceof Node && box.contains(e.target)
   const bit = (e: MouseEvent) => 1 << e.button
-  const on: [EventTarget, string, (e: MouseEvent) => void][] = [
-    [box, "mousedown", (e) => { if (raised === "through") held |= bit(e); send(e, "mouseDown") }],
-    [window, "mousemove", (e) => { if (held || inBox(e)) send(e, "mouseMove") }],
-    [window, "mouseup", (e) => { if (held & bit(e) || inBox(e)) { send(e, "mouseUp"); held &= ~bit(e) } }],
-    [box, "mouseleave", (e) => { if (!held) send(e, "mouseLeave") }],
-    [box, "wheel", (e) => send(e, "mouseWheel")]]
-  for (const [at, ev, fn] of on) at.addEventListener(ev, fn as EventListener, { passive: true })
+  const onBox: ["mousedown" | "mouseleave" | "wheel", (e: MouseEvent) => void][] = [
+    ["mousedown", (e) => { if (raised === "through") held |= bit(e); send(e, "mouseDown") }],
+    ["mouseleave", (e) => { if (!held) send(e, "mouseLeave") }],
+    ["wheel", (e) => send(e, "mouseWheel")]]
+  const onWindow: ["mousemove" | "mouseup", (e: MouseEvent) => void][] = [
+    ["mousemove", (e) => { if (held || inBox(e)) send(e, "mouseMove") }],
+    ["mouseup", (e) => { if (held & bit(e) || inBox(e)) { send(e, "mouseUp"); held &= ~bit(e) } }]]
+  for (const [ev, fn] of onBox) box.addEventListener(ev, fn, { passive: true })
+  for (const [ev, fn] of onWindow) window.addEventListener(ev, fn, { passive: true })
   const off = webPages?.on((m) => { if (m.type === "cursor" && m.id === id()) box.style.cursor = cssCursor(m.cursor) })
-  return () => { for (const [at, ev, fn] of on) at.removeEventListener(ev, fn as EventListener); off?.(); box.style.cursor = "" }
+  return () => {
+    for (const [ev, fn] of onBox) box.removeEventListener(ev, fn)
+    for (const [ev, fn] of onWindow) window.removeEventListener(ev, fn)
+    off?.(); box.style.cursor = ""
+  }
 }
 
 

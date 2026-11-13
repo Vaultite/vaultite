@@ -2,12 +2,11 @@ import { forwardRef, useEffect, useState, type FormEvent, type MouseEvent } from
 import { ArrowDownToLine, Download, FolderOpen, Lock, MoreHorizontal, Pin, PinOff, Plus, Puzzle, RefreshCw, Settings2, Trash2, type LucideIcon, type LucideProps } from "lucide-react"
 import { Bar, Button, cn, confirmDialog, Empty, menuBelow, notify, notifyError, PageHeader, Panel, plural, removals, Switch, useKeptCount, type MenuItem } from "@vaultite"
 import { addExtension, changeExtension, engine, extensionsChanged, hasExtensions, openExtensions, popupOpen, storeIdOf, useExtensions, version, type Ext } from "./extstate"
+import type { ExtButton, OtherExt } from "./engine"
 
 const removing = removals()
 const pin = (b: { id: string; pinned: boolean }) => changeExtension(b.id, { pinned: !b.pinned }, () => engine("ext:pin", b.id, !b.pinned), b.pinned ? "Couldn't unpin it" : "Couldn't pin it")
 
-type Button = { id: string; name: string; pinned: boolean; title: string; icon: string; badge: string; badgeColor: string; badgeTextColor: string; popup: boolean; enabled: boolean }
-type Other = { browser: string; id: string; name: string; version: string; icon: string }
 
 
 const iconComponents = new Map<string, LucideIcon>()
@@ -16,7 +15,7 @@ function imageIcon(src: string): LucideIcon {
   if (!c) {
     c = forwardRef<SVGSVGElement, LucideProps>(({ className }, _ref) => src
       ? <img src={src} alt="" draggable={false} className={cn(className, "object-contain")} />
-      : <Puzzle className={className} strokeWidth={2} />) as unknown as LucideIcon
+      : <Puzzle className={className} strokeWidth={2} />)
     iconComponents.set(src, c)
   }
   return c
@@ -24,15 +23,15 @@ function imageIcon(src: string): LucideIcon {
 
 
 export function useExtensionBar(pageId: number, url: string) {
-  const [buttons, setButtons] = useState<Button[]>([])
+  const [buttons, setButtons] = useState<ExtButton[]>([])
   const v = version.use((n) => n)
   useEffect(() => {
     if (!pageId || !hasExtensions()) return
     let gone = false
-    void engine<Button[]>("ext:bar", pageId).then((b) => { if (!gone) setButtons(b) }, () => {})
+    void engine("ext:bar", pageId).then((b) => { if (!gone) setButtons(b) }, () => {})
     return () => { gone = true }
   }, [pageId, v, url])
-  const click = (b: Button, el: HTMLElement) => {
+  const click = (b: ExtButton, el: HTMLElement) => {
     const r = el.getBoundingClientRect()
     void engine("ext:click", pageId, b.id, { x: r.left, y: r.top, width: r.width, height: r.height }).catch((e) => notifyError(e, `Couldn't open ${b.name}`))
   }
@@ -95,7 +94,7 @@ export function ExtensionsView({ openPage }: { openPage: (url: string) => void }
   const { list: exts, leaving } = removing.use(useExtensions(), (x) => x.id)
   const [typed, setTyped] = useState("")
   const [busy, setBusy] = useState("")
-  const [others, setOthers] = useState<Other[] | null>(null)
+  const [others, setOthers] = useState<OtherExt[] | null>(null)
   const [problems, setProblems] = useState<string[]>([])
   const v = version.use((n) => n)
   useEffect(() => {
@@ -106,8 +105,8 @@ export function ExtensionsView({ openPage }: { openPage: (url: string) => void }
   }, [])
   useEffect(() => {
     if (!hasExtensions()) return
-    void engine<Other[]>("ext:others").then(setOthers, () => setOthers([]))
-    void engine<{ problems: string[] }>("ext:policy").then((p) => setProblems(p.problems), () => {})
+    void engine("ext:others").then(setOthers, () => setOthers([]))
+    void engine("ext:policy").then((p) => setProblems(p.problems), () => {})
   }, [v])
   const rows = useKeptCount("web-viewer:extensions", exts?.length)
   const otherRows = useKeptCount("web-viewer:extensions-others", others?.length, 0)
@@ -197,7 +196,7 @@ export function ExtensionsView({ openPage }: { openPage: (url: string) => void }
         </Button>
         {!!exts?.some((x) => x.from === "store") && (
           <Button look="quiet" size="small" disabled={busy === "update"} data-ext-update
-            onClick={() => run("update", async () => { const n = await engine<number>("ext:update"); notify(n ? `Updated ${plural(n, "extension")}` : "They're up to date") }, "Couldn't look for updates")}>
+            onClick={() => run("update", async () => { const n = await engine("ext:update"); notify(n ? `Updated ${plural(n, "extension")}` : "They're up to date") }, "Couldn't look for updates")}>
             <RefreshCw className="size-4" strokeWidth={2} />{busy === "update" ? "Looking…" : "Look for updates"}
           </Button>
         )}
@@ -222,7 +221,7 @@ export function ExtensionsView({ openPage }: { openPage: (url: string) => void }
                     <div className="truncate text-[14px] leading-[20px]">{o.name}</div>
                     <div className={cn(line, "text-muted-foreground")}>{o.browser}</div>
                   </div>
-                  <Button size="small" disabled={!!busy} onClick={() => run(o.id, async () => { const r = await engine<{ name: string; settings: boolean }>("ext:import", o.id); notify(r.settings ? `Added ${r.name}, with its settings from ${o.browser}` : `Added ${r.name}`) }, "Couldn't add it")}>
+                  <Button size="small" disabled={!!busy} onClick={() => run(o.id, async () => { const r = await engine("ext:import", o.id); notify(r.settings ? `Added ${r.name}, with its settings from ${o.browser}` : `Added ${r.name}`) }, "Couldn't add it")}>
                     <Download className="size-4" strokeWidth={2} />{busy === o.id ? "Adding…" : "Add"}
                   </Button>
                 </div>

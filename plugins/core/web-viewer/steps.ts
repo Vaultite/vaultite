@@ -48,7 +48,7 @@ const KINDS: Record<string, Kind> = {
   help: { icon: Hand, color: "var(--green)", kind: "user" }, login: { icon: KeyRound, color: "var(--green)", kind: "user" },
 }
 const FAILED: Kind = { icon: CircleAlert, color: "var(--red)", kind: "failed" }
-export const kindOf = (s: Pick<Step, "action" | "failed">): Kind => (s.failed ? FAILED : KINDS[s.action] ?? input(MousePointerClick))
+export const kindOf = (s: Partial<Pick<Step, "action" | "failed">>): Kind => (s.failed ? FAILED : KINDS[s.action ?? ""] ?? input(MousePointerClick))
 export const LEGEND: { label: string; color: string }[] = [
   { label: "Pages", color: "var(--blue)" }, { label: "Input", color: "var(--purple)" }, { label: "Scripts", color: "var(--orange)" },
   { label: "Reading", color: "var(--teal)" }, { label: "The user", color: "var(--green)" }, { label: "Failed", color: "var(--red)" },

@@ -2,20 +2,20 @@ import { useCallback, useEffect, useState } from "react"
 import { KeyRound, Plus, Trash2 } from "lucide-react"
 import { Bar, Button, cn, dateText, Empty, get, notifyError, PageHeader, Panel, useKeptCount, webPages } from "@vaultite"
 import { Qr } from "./Passkey"
+import { needEngine, type Passkey as Key } from "./engine"
 
-type Key = { id: string; name: string; site: string; added: number }
 const DAY: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric" }
-const engine = <T,>(name: string, ...args: unknown[]) => Promise.resolve(webPages?.engine?.(name, ...args)) as Promise<T>
+const engine = needEngine("passkeys need the desktop app")
 
 export function AgentPasskeys() {
   const [keys, setKeys] = useState<Key[] | null>(null)
   const [adding, setAdding] = useState<{ url: string } | { error: string } | null>(null)
-  const read = useCallback(() => void engine<Key[]>("logins:passkeys").then((k) => setKeys(Array.isArray(k) ? k : []), () => setKeys([])), [])
+  const read = useCallback(() => void engine("logins:passkeys").then((k) => setKeys(Array.isArray(k) ? k : []), () => setKeys([])), [])
   useEffect(read, [read])
   useEffect(() => webPages?.on((m) => { if (m.type === "engine:logins:passkeys") { read(); setAdding(null) } }), [read])
   const add = async () => {
     try {
-      const [{ url }, { token }] = await Promise.all([get("web-viewer/https") as Promise<{ url: string }>, engine<{ token: string }>("logins:passkey-start")])
+      const [{ url }, { token }] = await Promise.all([get<{ url: string }>("web-viewer/https"), engine("logins:passkey-start")])
       setAdding(url ? { url: `${url}/api/web-viewer/passkey?token=${token}` }
         : { error: "Your phone reaches this Mac's Vaultite over https on your tailnet, which isn't served yet: run tailscale serve --https=8447 8793 here (8793: Vaultite's port), then add one." })
     } catch (e) { notifyError(e, "Couldn't start adding a passkey") }

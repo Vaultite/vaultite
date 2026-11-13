@@ -376,8 +376,8 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
 
   const onWeb = http(state.url)
   useZoomTarget(box, id > 0 && onWeb ? async (step) => {
-    const z = await web.go(id, step > 0 ? "zoom-in" : step < 0 ? "zoom-out" : "zoom-reset") as { host?: unknown; zoom?: unknown } | null | undefined
-    if (typeof z?.zoom !== "number" || typeof z.host !== "string") return null
+    const z = await web.go(id, step > 0 ? "zoom-in" : step < 0 ? "zoom-out" : "zoom-reset")
+    if (!z || typeof z !== "object" || !("zoom" in z) || typeof z.zoom !== "number" || !("host" in z) || typeof z.host !== "string") return null
     return { text: `${z.host.replace(/^www\./, "")} ${Math.round(z.zoom * 100)}%`, actual: Math.abs(z.zoom - 1) < 0.001 }
   } : null)
   const bookmarked = useStore().store?.bookmarks?.some((b) => b.url === state.url) ?? false
@@ -398,7 +398,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       { label: "Show full history", icon: History, sep: list.length > 0, run: () => openView("web-history", { newTab: true }) },
     ])
   }
-  const barMenu = (e: React.MouseEvent) => { if (!(e.target as Element).closest("button, input, [role=listbox]")) menuFor(() => barItems())(e) }
+  const barMenu = (e: React.MouseEvent) => { if (!(e.target instanceof Element && e.target.closest("button, input, [role=listbox]"))) menuFor(() => barItems())(e) }
   return (
     <div className={cn("relative flex h-full min-h-0 flex-col", barHid && "overflow-hidden")} data-web-page={id || ""}>
       <div ref={bar} onContextMenu={barMenu} data-web-bar data-web-bar-hidden={barHid ? (barOut ? "out" : "in") : undefined}
@@ -500,13 +500,15 @@ function AgentChip({ id }: { id: number }) {
   )
 }
 
+const ASK_LOOK = { background: "color-mix(in srgb, var(--purple) 9%, var(--card))", "--tw-ring-color": "color-mix(in srgb, var(--purple) 40%, transparent)" }
+
 function AskCard({ id }: { id: number }) {
   const page = agentPages.use((l) => l.find((p) => p.id === id && !!p.asking))
   if (!page?.asking) return null
   return (
     <div className="@container/ask shrink-0 border-t-[0.5px] border-border px-3 py-2.5" data-web-agent-ask>
       <div className="mx-auto flex max-w-[720px] animate-in items-center gap-3 rounded-[12px] px-3.5 py-3 shadow-md ring-1 duration-300 fade-in slide-in-from-bottom-2"
-        style={{ background: "color-mix(in srgb, var(--purple) 9%, var(--card))", ["--tw-ring-color" as string]: "color-mix(in srgb, var(--purple) 40%, transparent)" }}>
+        style={ASK_LOOK}>
         <span className="grid size-9 shrink-0 place-items-center rounded-full @max-sm/ask:hidden" style={{ background: "color-mix(in srgb, var(--purple) 18%, transparent)" }}>
           <MousePointer2 className="size-[18px]" strokeWidth={2.25} style={{ color: "var(--purple)" }} />
         </span>
