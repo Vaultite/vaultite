@@ -37,7 +37,7 @@ export const toggleMark = (m: string) => (view: EditorView) => {
       const pieces = blockPieces(state.doc, from, to)
       if (!pieces.length) return { range: r }
       const offs = pieces.map((p) => unmarkOf(state, p.from, p.to, m))
-      const changes = offs.every((o) => o) ? offs.flat() as { from: number; to: number; insert?: string }[]
+      const changes = offs.every((o) => o !== null) ? offs.flat()
         : pieces.flatMap((p, i) => offs[i] ? [] : [{ from: p.from, insert: m }, { from: p.to, insert: m }])
       const cs = state.changes(changes)
       return { changes: cs, range: EditorSelection.range(cs.mapPos(pieces[0].from, 1), cs.mapPos(pieces[pieces.length - 1].to, -1)) }

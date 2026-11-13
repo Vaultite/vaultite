@@ -55,7 +55,7 @@ export default definePlugin({
     // (not through `run`: the picker opens only while the tap or key is being handled)
     { id: "editor:add-photo", name: "Add photo", when: () => !!activeFile(), run: () => { const f = activeFile(); if (f) void addPhotos(f.path) }, icon: ImagePlus },
     { id: "editor:paste-plain-text", name: "Paste as plain text", keys: ["Mod+Shift+V"], when, run: () => { const v = note(); if (v) void load().then((m) => m.pastePlain(v)).catch((e) => notifyError(e, "Couldn't read the clipboard")) }, icon: ClipboardPaste },
-  ] as PluginCommand[]).map((c) => ({ ...c, keysWhen: () => keysInEditor() })),
+  ] satisfies PluginCommand[]).map((c) => ({ ...c, keysWhen: () => keysInEditor() })),
   slash: () => (!activeFile() ? [] : [{
     id: "editor:add-photo", title: "Photo", section: "Media", keywords: "photo image picture camera library attachment upload",
     detail: coarse() ? "Library or camera" : "Image file", line: true,

@@ -138,7 +138,7 @@ async function paste(view: EditorView) {
 
 export const editorMenu = EditorView.domEventHandlers({
   contextmenu(e, view) {
-    if (e.defaultPrevented || (e.shiftKey && !spelling) || (e as PointerEvent).pointerType === "touch") return false
+    if (e.defaultPrevented || (e.shiftKey && !spelling) || (e instanceof PointerEvent && e.pointerType === "touch")) return false
     const link = linkAt(view, e.target)
     const editable = view.state.facet(EditorView.editable)
     if (editable) view.focus()

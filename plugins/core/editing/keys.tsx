@@ -16,7 +16,8 @@ const ICONS: Partial<Record<string, LucideIcon>> = {
   "editor:toggle-code": Code, "editor:set-heading-1": Heading1, "editor:set-heading-2": Heading2, "editor:set-heading-3": Heading3,
   "editor:toggle-blockquote": Quote, "editor:add-photo": ImagePlus,
 }
-const { default: DEFAULT, labels: LABELS } = manifest.settings.toolbar
+const DEFAULT = manifest.settings.toolbar.default
+const LABELS: Partial<Record<string, string>> = manifest.settings.toolbar.labels
 
 function typingIn(): EditorView | null {
   const ed = currentEditor()
@@ -39,7 +40,7 @@ export function NoteKeys() {
   const ids = Array.isArray(settings?.toolbar) ? settings.toolbar as string[] : DEFAULT
   const keys = ids.flatMap((id) => {
     const Icon = ICONS[id], c = offeredCommand(id)
-    return Icon && c ? [{ name: LABELS[id as keyof typeof LABELS] ?? c.name, label: <Icon className="size-[18px]" strokeWidth={2} />, run: () => void c.run() }] : []
+    return Icon && c ? [{ name: LABELS[id] ?? c.name, label: <Icon className="size-[18px]" strokeWidth={2} />, run: () => void c.run() }] : []
   })
   return createPortal(
     <div className="fixed inset-x-0 z-[45] -translate-y-full" style={{ top: area.top + area.height }}>
@@ -57,7 +58,7 @@ export function ToolbarSettings() {
   const rest = Object.keys(ICONS).filter((id) => !ids.includes(id))
   const custom = Array.isArray(settings?.toolbar)
   const put = (next: string[]) => save({ toolbar: next.join() === DEFAULT.join() ? null : next }).catch((e) => notifyError(e, "Couldn't save it"))
-  const name = (id: string) => LABELS[id as keyof typeof LABELS] ?? id
+  const name = (id: string) => LABELS[id] ?? id
   const at = picked ? ids.indexOf(picked) : -1
   const move = (by: number) => {
     const j = at + by
