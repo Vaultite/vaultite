@@ -1,12 +1,13 @@
 import fs from "node:fs"
+import { z } from "zod"
 import os from "node:os"
 import path from "node:path"
 import { type Machine, OpError, type Plugin, ROOT } from "../../../core/plugins.ts"
 import { type Handoff, type Where, str } from "./jobs.ts"
 import { cap, type Machines } from "./jobmachines.ts"
 import type { workerLinks } from "./links.ts"
-import { CLOUD, cloudIn, lacks, type Needs, type Ranked, type RepoRule, rulesIn, rulesNeed, RULES_FILE, type Traits } from "./placement.ts"
-import type { Moment } from "./types.ts"
+import { CLOUD, cloudIn, lacks, type Needs, type Ranked, RepoRules, rulesIn, rulesNeed, RULES_FILE, type Traits } from "./placement.ts"
+import type { JobAsk } from "./types.ts"
 import { APP_REPO, appUiOf, branchOf, checkoutNamed, checkoutsLine, type Found, fileAt, githubOf, headOf, jobBase, machineOfUrl, onlyHere, type Over, refusal, repoOf, resolveHere, rootsLine, sitesIn, tilde, unpushed, urlsIn, watched } from "./where.ts"
 
 export const sameDir = (a: string, b: string) => { try { return fs.realpathSync(a) === fs.realpathSync(b) } catch { return false } }
@@ -28,8 +29,10 @@ export function appAsk(o: Over, about: string) {
 export const pageWins = (page: { cwd: string; repo: string; from?: Found["from"] }, repo: string, text: string) =>
   !!page.from && page.from !== "vault" && !sameRepo(page, repo) && !namesRepo(text, repo)
 
-export type Placed = Found & { repo: string; base: string; refused: string; missing?: boolean; looked?: string; have?: string; live?: boolean; carried?: boolean
-  rules?: RepoRule[]; cloudOk?: boolean; cloud?: boolean }
+export const Placed = z.object({ cwd: z.string(), why: z.string(), from: z.enum(["note", "github", "preview", "site", "editor", "vault"]).optional(), preview: z.string().optional(),
+  repo: z.string(), base: z.string(), refused: z.string(), missing: z.boolean().optional(), looked: z.string().optional(), have: z.string().optional(),
+  live: z.boolean().optional(), carried: z.boolean().optional(), rules: RepoRules.optional(), cloudOk: z.boolean().optional(), cloud: z.boolean().optional() })
+export type Placed = z.output<typeof Placed> & Found
 
 export function jobPlaces(plugin: Plugin, m: Machines, atMachine: ReturnType<typeof workerLinks>["atMachine"]) {
   const { machines, hostOf, labelOf, traitsOf, ranking, harnessOf, cloudAccount } = m
@@ -56,7 +59,7 @@ export function jobPlaces(plugin: Plugin, m: Machines, atMachine: ReturnType<typ
   async function elsewhere(cwd: string, repo: string, here: Placed, base: Base): Promise<{ machine: string; there: Placed }> {
     const r = await ranking({ has: [], ...base.agent }), asked: string[] = []
     for (const { t, why } of r.ranked.filter((x) => !x.t.self && !x.t.cloud)) {
-      const far = await atMachine(t.id, "companion.where", { ...(cwd ? { cwd } : {}), ...(repo ? { repo } : {}) }, 6).catch(() => null) as Placed | null
+      const far = await atMachine(t.id, "companion.where", { ...(cwd ? { cwd } : {}), ...(repo ? { repo } : {}) }, 6).then((r) => Placed.parse(r)).catch(() => null)
       const no = !far ? "it doesn't answer" : far.missing ? "" : ruled(t, far, base)
       asked.push(`${t.label}${no ? ` (${no})` : ""}`)
       if (far && !far.missing && !no) return { machine: t.id, there: { ...far, why: `${far.why}, on ${t.label} (none on ${await labelOf("")}${why ? `; ${why}` : ""})` } }
@@ -64,11 +67,11 @@ export function jobPlaces(plugin: Plugin, m: Machines, atMachine: ReturnType<typ
     throw new OpError(`${await missingLine(here, "")}${asked.length ? `, nor on ${asked.join(", ")}` : ""}. Leave cwd out (it runs where the ask was), or name the repo (repo: each machine finds its own checkout) with machine`, 404)
   }
   const missingLine = async (there: Placed, machine: string) => `on ${await labelOf(machine)}, ${there.why}${there.looked ? ` (looked in ${there.looked}; its checkouts: ${there.have || "none"})` : ""}`
-  async function route(m: Moment | undefined, p: Handoff): Promise<Omit<Where, "agent" | "account" | "harness" | "model" | "effort">> {
+  async function route(m: JobAsk | undefined, p: Handoff): Promise<Omit<Where, "agent" | "account" | "harness" | "model" | "effort">> {
     const { from: _, ...r } = await routed(m, p)
     return r
   }
-  async function routed(m: Moment | undefined, p: Handoff): Promise<Omit<Where, "agent" | "account" | "harness" | "model" | "effort"> & { from?: Found["from"] }> {
+  async function routed(m: JobAsk | undefined, p: Handoff): Promise<Omit<Where, "agent" | "account" | "harness" | "model" | "effort"> & { from?: Found["from"] }> {
     const o: Over = m ? { url: m.url, app: m.app, title: m.title, path: m.path, screen: m.screen, under: m.under, ui: m.ui, chrome: m.chrome } : {}
     const own = !str(p.repo).trim() && !str(p.cwd) ? appAsk(o, str(p.about)) : ""
     if (own) {
@@ -105,7 +108,7 @@ export function jobPlaces(plugin: Plugin, m: Machines, atMachine: ReturnType<typ
     }
     let there = machine
       ? await atMachine(machine, "companion.where", { ...(str(p.cwd) ? { cwd: str(p.cwd) } : {}), ...(repo ? { repo } : {}), ...(o.url ? { url: o.url } : urlsIn(o)[0] ? { url: urlsIn(o)[0].href } : {}),
-        ...(o.app ? { app: o.app } : {}), ...(o.title ? { title: o.title } : {}), ...(o.path ? { path: o.path } : {}) }) as unknown as Placed
+        ...(o.app ? { app: o.app } : {}), ...(o.title ? { title: o.title } : {}), ...(o.path ? { path: o.path } : {}) }).then((r) => Placed.parse(r))
       : await placeHere(o, str(p.cwd), repo)
     if (there.missing && machine) throw new OpError(await missingLine(there, machine), 404)
     const base = baseOf(m, p)
@@ -119,7 +122,7 @@ export function jobPlaces(plugin: Plugin, m: Machines, atMachine: ReturnType<typ
       ...(moved ? { moved } : {}), ...(there.live ? { live: true } : {}), ...(there.carried ? { carried: true } : {}), ...(there.from ? { from: there.from } : {}) }
   }
   type Base = { words: string; agent: Pick<Needs, "agent" | "account"> }
-  const baseOf = (m: Moment | undefined, p: Handoff): Base => {
+  const baseOf = (m: JobAsk | undefined, p: Handoff): Base => {
     const account = str(p.account).trim().toLowerCase()
     return { words: [str(p.task), m?.text ?? ""].join("\n"), agent: { agent: str(p.agent) || "claude", ...(account && account !== "default" ? { account } : {}) } }
   }
@@ -151,7 +154,7 @@ export function jobPlaces(plugin: Plugin, m: Machines, atMachine: ReturnType<typ
     return placed(here, { has: rulesNeed(here.rules ?? [], base.words), repo: slug || here.repo, ...base.agent, ...(here.cloudOk ? { cloud: true } : {}) }, async ({ t, why }) => {
       if (!slug) return `its repo isn't on GitHub, so ${t.label} can't have it`
       if (left) return `${left} it starts from would be missing on ${t.label}`
-      const far = await atMachine(t.id, "companion.where", { url: `https://github.com/${slug}` }, 6).catch(() => null) as Placed | null
+      const far = await atMachine(t.id, "companion.where", { url: `https://github.com/${slug}` }, 6).then((r) => Placed.parse(r)).catch(() => null)
       if (!far || far.missing || !far.repo) return far ? `not checked out on ${t.label}` : `${t.label} doesn't answer`
       const no = ruled(t, far, base)
       if (no) return `${t.label} ${no}`
@@ -169,7 +172,7 @@ export function jobPlaces(plugin: Plugin, m: Machines, atMachine: ReturnType<typ
     return placed(here, n, async ({ t, why }) => {
       if (local && !slug) return `its repo isn't on GitHub, so ${t.label} can't have it`
       if (left) return `${left}, not yet pushed, would be lost on ${t.label}`
-      const far = await atMachine(t.id, "companion.where", { ...(gh ? { url: gh } : {}), ...(o.path ? { path: o.path } : {}) }, 6).catch(() => null) as Placed | null
+      const far = await atMachine(t.id, "companion.where", { ...(gh ? { url: gh } : {}), ...(o.path ? { path: o.path } : {}) }, 6).then((r) => Placed.parse(r)).catch(() => null)
       if (!far || (!far.repo && here.repo)) return far ? `not checked out on ${t.label}` : `${t.label} doesn't answer`
       const no = ruled(t, far, base)
       if (no) return `${t.label} ${no}`

@@ -1,7 +1,7 @@
 import type { Who } from "../../../core/ops.ts"
 import { parseTerminal, resumeTerminalId } from "../../../core/terminalids.ts"
 import type { Going, JobEvent } from "./joblife.ts"
-import type { Moment } from "./types.ts"
+import type { JobAsk } from "./types.ts"
 
 export const str = (v: unknown) => (typeof v === "string" ? v : "")
 export const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e))
@@ -77,7 +77,7 @@ export type Waits = { kind: "permission" | "question"; question: string; choices
 export const inPlace = (w: Pick<Where, "repo" | "preview" | "live" | "moved">) => !!w.repo && !!w.preview && !w.live && !w.moved
 
 export type Marks = { whole: string; each: string[] }
-export type Queued = { note: string; text: string; at: number; shown?: string; land?: boolean; title?: string; start?: Handoff; ask?: Moment; by?: Who; teller?: string }
+export type Queued = { note: string; text: string; at: number; shown?: string; land?: boolean; title?: string; start?: Handoff; ask?: JobAsk; by?: Who; teller?: string }
 export type Job = {
   id: string; title: string; state: JobState; where: Where
   queued?: Queued[]
@@ -191,7 +191,7 @@ export function linksIn(text: string, preview?: string): Pick<Result, "pr" | "li
   return { ...(pr ? { pr } : {}), ...(link ? { link: link.replace(/[.,;:]+$/, "") } : {}) }
 }
 
-function askLines(m: Moment | undefined) {
+function askLines(m: JobAsk | undefined) {
   const named = !!m?.appName && m.appName !== m.app
   const where = !m ? "" : m.app ? `on their screen, in ${m.title ? `"${m.title}" (${named ? `${m.appName}, ` : ""}${m.app})` : named ? `${m.appName} (${m.app})` : m.app}` : m.path ? `in their note ${m.path}${m.line ? `, line ${m.line}` : ""}`
     : m.pane || m.ui ? `in Vaultite, ${m.title ? `"${m.title}"` : m.pane ?? m.ui}${m.url ? ` (${m.url})` : ""}` : ""
@@ -224,7 +224,7 @@ export function proofTask(id: string, video = true) {
   return `If your change shows on screen, show it working rather than say so: before you end, record a short demo of it (what Show me plays for them when you're ready, wherever your change is): ${save} --record <your own copy's address> --text '<steps>'. --record plays the steps there in a headless Chrome (never on their screen, no sound) and keeps the video (an mp4 of a few MB) with the proof: run your own copy of the change for it, never their live app (your dev server, or for Vaultite a throwaway server from your worktree: vau sandbox <dir>, then its npm start on a free port, as its CLAUDE.md says), and --open the note or page it shows on there. ${STEPS} Then embed the video in your report: vau inbox report ... --video <the video's path tour-save gave>. Nothing to show on screen (research, a backend change): skip it.`
 }
 export const WRITING = `What you write for them (a report, a proposal, a note): plain, short sentences anyone could follow, each thing called by its full name, no clipped shorthand. Anything about a UI (a proposal, its options, an explanation of how something looks or moves) shows it rather than tells it: each option as a real, high-fidelity picture, a screenshot of a quick prototype of it running on your own copy or a polished HTML mockup in the vault (one element per option), made into PNGs with vau html picture and embedded in the note (![[...png]]) with a line under each saying what it is. Never ASCII art or a layout described in words. Look at each picture before you show it.`
-export function jobTask(task: string, m: Moment | undefined, w?: Pick<Where, "cwd" | "repo" | "base" | "tree" | "branch" | "live" | "label" | "moved" | "carried" | "preview" | "watched" | "cloud">, id?: string,
+export function jobTask(task: string, m: JobAsk | undefined, w?: Pick<Where, "cwd" | "repo" | "base" | "tree" | "branch" | "live" | "label" | "moved" | "carried" | "preview" | "watched" | "cloud">, id?: string,
   o: { land?: boolean; proof?: ProofMode } = {}) {
   if (w?.cloud) return cloudTask(task, m, w, o.land)
   const asked = askLines(m), coding = !!w?.repo, watching = coding && !!w.watched, lands = coding && !watching && !!o.land && !!w.tree
@@ -239,7 +239,7 @@ export function jobTask(task: string, m: Moment | undefined, w?: Pick<Where, "cw
     .filter(Boolean).join("\n\n")
 }
 
-function cloudTask(task: string, m: Moment | undefined, w: Pick<Where, "cwd" | "tree" | "branch" | "live" | "cloud">, land?: boolean) {
+function cloudTask(task: string, m: JobAsk | undefined, w: Pick<Where, "cwd" | "tree" | "branch" | "live" | "cloud">, land?: boolean) {
   const asked = askLines(m)
   return [task.trim(), asked.length ? `The user asked for this through their companion in Vaultite:\n${asked.join("\n")}` : "",
     "You're a job they handed off, run in a cloud session of Claude Code: Vaultite follows this session from their machine and tells them how it goes. You have no vau and no way into their vault or their screen: what you'd tell them goes in your messages, and a choice only they can make goes to AskUserQuestion (they answer it from Vaultite), only on a real tradeoff. Pictures or files their words name stay on their machine. Before your checks, set up as this repo's rules say for a cloud session.",
@@ -248,7 +248,7 @@ function cloudTask(task: string, m: Moment | undefined, w: Pick<Where, "cwd" | "
     .filter(Boolean).join("\n\n")
 }
 
-export function followTask(task: string, m: Moment | undefined, id?: string) {
+export function followTask(task: string, m: JobAsk | undefined, id?: string) {
   const asked = askLines(m), watched = !!id && m?.reviewed === id
   return [watched ? "They just watched your demo (Show me) and read its choice card: this is their feedback on what you made, whatever note or page their screen shows." : "",
     task.trim(), asked.length ? `(The user, through their companion: ${asked.join(" · ")})` : ""].filter(Boolean).join(" ")

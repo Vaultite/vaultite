@@ -4,7 +4,7 @@ import type { OpCtx, Plugin } from "../../../core/plugins.ts"
 import { OpError } from "../../../core/plugins.ts"
 import { captureTitle, narrationLines } from "../../../core/desktop/clips.ts"
 import { type Job, live, type Where } from "./jobs.ts"
-import type { Moment } from "./types.ts"
+import type { JobAsk } from "./types.ts"
 import type { Found, Over } from "./where.ts"
 import { localStamp } from "../../../core/desktop/names.ts"
 import { freeBase, ownCapture, saveFiles, vaultFileOn } from "./vaultfiles.ts"
@@ -23,7 +23,7 @@ const CaptureIn = z.object({
   place: Spot.catch({}), end: Spot.optional().catch(undefined),
 })
 export type Capture = z.infer<typeof CaptureIn>
-type Jobs = { list: () => Job[]; begin: (ctx: OpCtx, task: (w: Where) => Promise<string>, m: Moment | undefined, p: { title: string }) => Promise<Job>
+type Jobs = { list: () => Job[]; begin: (ctx: OpCtx, task: (w: Where) => Promise<string>, m: JobAsk | undefined, p: { title: string }) => Promise<Job>
   tell: (ctx: OpCtx, id: string, text: string) => Promise<void>; placeHere: (o: Over) => Promise<Found & { repo: string }> }
 
 const str = (v: unknown) => (typeof v === "string" ? v : "")
@@ -110,7 +110,7 @@ export function captureOps(plugin: Plugin, jobs: Jobs) {
           to = `Sent to ${job.title}`
           sent = job.id
         } else if (said) {
-          const m = { kind: "ask", t: Date.now(), text: said, voice: true, summoned: true, ...over } as Moment
+          const m = { kind: "ask", t: Date.now(), text: said, voice: true, summoned: true, ...over } satisfies JobAsk
           const j = await jobs.begin(ctx, async (w) => `${said}\n\n${captureText(c, saved, await vaultFileOn(plugin, w.machine), true)}`, m, { title })
           went = `Sent to a new job, "${j.title}" (${j.id}).`
           to = `Started a job: ${j.title}`

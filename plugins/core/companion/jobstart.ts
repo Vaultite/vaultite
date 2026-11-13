@@ -7,7 +7,7 @@ import type { Tell } from "./jobtell.ts"
 import { COMPANION } from "./jobtold.ts"
 import { cut } from "./jobword.ts"
 import type { workerLinks } from "./links.ts"
-import type { Moment } from "./types.ts"
+import type { JobAsk } from "./types.ts"
 import { surfaceOf, tilde } from "./where.ts"
 
 const newId = () => `j${Array.from({ length: 7 }, () => "abcdefghijklmnopqrstuvwxyz0123456789"[Math.floor(Math.random() * 36)]).join("")}`
@@ -71,7 +71,7 @@ export function jobStarts(plugin: Plugin, o: StartDeps) {
     await accountThere(ctx, j.where.machine, p)
     await launch(ctx, j, q.text, q.ask, p)
   }
-  async function begin(ctx: OpCtx, task: string | ((w: Where) => Promise<string>), m: Moment | undefined, p: Handoff, by = COMPANION) {
+  async function begin(ctx: OpCtx, task: string | ((w: Where) => Promise<string>), m: JobAsk | undefined, p: Handoff, by = COMPANION) {
     const titleOf = (told: string) => (str(p.title).trim() || told.replace(/\s+/g, " ")).slice(0, 80).replace(/^(.{60,}?)\s.*$/, "$1…")
     const asked = str(p.machine).trim()
     let where: Where
@@ -93,7 +93,7 @@ export function jobStarts(plugin: Plugin, o: StartDeps) {
     }
     return j
   }
-  async function waitFor(ctx: OpCtx, task: string, title: string, m: Moment | undefined, p: Handoff, machine: string, by: string) {
+  async function waitFor(ctx: OpCtx, task: string, title: string, m: JobAsk | undefined, p: Handoff, machine: string, by: string) {
     const now = Date.now(), label = await labelOf(machine), { say: _, ...start } = p
     const where: Where = { machine, label, cwd: str(p.cwd), repo: "", why: `${label} is offline: it starts once it's back`, ...await harnessOf(p) }
     const j: Job = { id: newId(), title, state: "waiting", where, terminal: "", now: `Waiting for ${label} to come back`, ...(m ? { asked: m.t } : {}), started: now, turn: now, at: now,
@@ -103,7 +103,7 @@ export function jobStarts(plugin: Plugin, o: StartDeps) {
     changed()
     return j
   }
-  async function launch(ctx: OpCtx, j: Job, told: string, m: Moment | undefined, p: Handoff) {
+  async function launch(ctx: OpCtx, j: Job, told: string, m: JobAsk | undefined, p: Handoff) {
     const where = j.where
     const on = typeof p.on === "string" ? p.on : surfaceOf(m)
     if (on) j.on = on

@@ -51,8 +51,8 @@ export function itsOwn(name: string, ctx: OpCtx) {
   const w = requestWriter.getStore(), from = [w?.terminal, w?.session].filter(Boolean)
   return from.length > 0 && sessions().some((s) => from.includes(s.id) && key(s.name) === key(name))
 }
-export const apiCtx = { api: (method: string, route: string, body?: unknown) => plugin.host.api(method, route, body) } as unknown as OpCtx
-export const liveCtx = (from?: IncomingMessage): OpCtx => ({ ...apiCtx, op: async (id: string, p?: Parameters<OpCtx["op"]>[1]) => (await plugin.runOp(id, p ?? {}, undefined, from)).result })
+export const apiCtx = plugin.ctx()
+export const liveCtx = (from?: IncomingMessage) => plugin.ctx({ http: from })
 
 const ToolArgs = z.looseObject({ done: z.unknown().optional() }).catch({})
 export function toolsFor(name: string, list = TOOLS): ChatTool[] {

@@ -104,8 +104,9 @@ export type RepoRule = { when?: string; needs: Need[] }
 export const RULES_FILE = ".vaultite-jobs.json"
 const Listed = z.object({ needs: z.array(z.unknown()) })
 const Rule = z.object({ when: z.unknown().optional(), needs: z.array(z.unknown()) })
-export function rulesIn(text: string): RepoRule[] {
-  const list = Listed.safeParse(parseJson(text)).data?.needs ?? []
+export const rulesIn = (text: string): RepoRule[] => rulesOf(Listed.safeParse(parseJson(text)).data?.needs ?? [])
+export const RepoRules = z.array(z.unknown()).transform((list) => rulesOf(list))
+function rulesOf(list: unknown[]): RepoRule[] {
   return list.flatMap((r) => {
     const x = Rule.safeParse(r).data
     const needs = x ? x.needs.map((v) => String(v).toLowerCase()).filter(isNeed) : []

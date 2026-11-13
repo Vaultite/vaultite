@@ -29,6 +29,7 @@ Written from the code's own doc comments (tools/plugin_api_doc.ts), so it's what
 - `plugin.every(name, when, fn)`: fn on a server timer: `every` "15m", "2h", "1d", "1w", or `at` "07:00" (local) with whole days; `machine` a Machines id (else the first). One run at a time; a name again replaces it, `when` null removes it.
 - `plugin.host`: The core's operations and events, for this plugin's vault (core/app.ts gives them).
 - `plugin.runOp(name, params, who?, http?)`: Run an op of the catalog (any plugin's, by id or CLI name) as `who` (else the request's), for the request `http` (req.http: pass it, so owner checks apply): plugin.host.call.
+- `plugin.ctx(o)`: An op's context for code of the plugin's that runs outside an op (a timer, a socket): as `who`, else as whoever made the request being answered; `http` as runOp's.
 - `plugin.emit(type, data)`: Tell the vault's events something happened: its type is `<plugin id>.<name>` ("finance.imported").
 - `plugin.state(fn)`: fn() -> a record merged into /api/state. Default: each of the plugin's kinds as {collection: items}.
 - `plugin.folders(fn)`: fn() -> the folders on this machine its live data is read from (absolute): a block's menu offers to open them (POST /api/file/open opens these and nothing else outside the vault).

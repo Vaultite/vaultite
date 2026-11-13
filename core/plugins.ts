@@ -15,7 +15,7 @@ import { type BlockDecls, blocksDoc, declsOf, drawsOf, settingsDoc, settingsOf, 
 import type { EventFilter, VaultEvent } from "./events.ts"
 import type { Present } from "./live.ts"
 import type { OpEntry, OpKind } from "./contracts/ops.ts"
-import { defineOp, entryOf, type Op, type OpDef, type Params, type OpCtx, type OpDid, type OpImage, pluginOpsDoc, type Who } from "./ops.ts"
+import { defineOp, entryOf, type Op, type OpDef, type Params, type OpCtx, type OpDid, type OpImage, pluginOpsDoc, type Who, whoOf } from "./ops.ts"
 import { type Job, type When, whenProblems } from "./schedule.ts"
 import { ownerRefusal } from "./owner.ts"
 export { gitEnv } from "./gitenv.ts"
@@ -44,7 +44,7 @@ import { notHereYet, onItsOwn, runHook } from "./writegate.ts"
 /** A write the core refused: a plugin acting on its own wrote outside .vaultite/ where the user hasn't allowed it
  *  (its manifest's `writes`, core/writegate.ts). Keep the data in .vaultite/, or wait for the user's yes. */
 export { WriteRefused } from "./writegate.ts"
-import { type ArchiveHook, type CreateHook, type FileCreateHook, isHiddenPath, type Item, Kind, type MoveHook, readText, type SaveHook, type Vault, type WriteHook, writeAtomic } from "./vault.ts"
+import { type ArchiveHook, type CreateHook, type FileCreateHook, isHiddenPath, type Item, Kind, type MoveHook, readText, requestWriter, type SaveHook, type Vault, type WriteHook, writeAtomic } from "./vault.ts"
 
 /** What kind of file a name is (core/filetypes.ts), for plugins that treat text files differently, and the type it is served with. */
 export { contentType, isTextKind, kindOf } from "./filetypes.ts"
@@ -337,6 +337,8 @@ export type OpsHost = {
   api: (method: string, route: string, body?: unknown, who?: Who, opts?: { report?: string; http?: IncomingMessage }) => Promise<unknown>
   /** What a call of an op did, given these params, as its `did` words it (null: it has none, or couldn't say). */
   did: (name: string, params: unknown) => OpDid | null
+  /** Drive the user's open window, as an op's ctx.ui. */
+  ui: OpCtx["ui"]
   /** Tell the vault's event bus (core/events.ts). */
   emit: (type: string, data?: Item) => VaultEvent
   /** The devices with app windows open on this server (each app's device id: web/src/core/device.ts). */
@@ -579,6 +581,20 @@ export class Plugin {
    *  (req.http: pass it, so owner checks apply): plugin.host.call. */
   runOp(name: string, params: unknown = {}, who?: Who, http?: IncomingMessage) {
     return this.host.call(name, params, who, { http })
+  }
+
+  /** An op's context for code of the plugin's that runs outside an op (a timer, a socket): as `who`, else as whoever made
+   *  the request being answered; `http` as runOp's. */
+  ctx(o: { who?: Who; http?: IncomingMessage } = {}): OpCtx {
+    const { who, http } = o, vault = () => this.vault
+    return {
+      get vault() { return vault() },
+      plugin: this.id,
+      get who() { const w = requestWriter.getStore(); return who ?? whoOf(w?.client ?? null, w?.agent ?? null) },
+      op: async (id, params, input) => (await this.host.call(id, params ?? {}, who, { http, input })).result,
+      api: (method, route, body) => this.host.api(method, route, body, who, { http }),
+      ui: (message) => this.host.ui(message),
+    }
   }
 
   /** Tell the vault's events something happened: its type is `<plugin id>.<name>` ("finance.imported"). */

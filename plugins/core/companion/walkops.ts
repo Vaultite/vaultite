@@ -4,14 +4,14 @@ import type { OpCtx, Plugin } from "../../../core/plugins.ts"
 import { inDesktop, OpError } from "../../../core/plugins.ts"
 import { anchorText } from "../../../core/desktop/anchor.ts"
 import type { Job, Where } from "./jobs.ts"
-import type { Moment } from "./types.ts"
+import type { JobAsk } from "./types.ts"
 import { countText, type Project, projectFor, projectOf, type WalkItem, walkJobText, type WalkPlace } from "../../../core/desktop/walks.ts"
 import type { Found, Over } from "./where.ts"
 import { localStamp, localTime } from "../../../core/desktop/names.ts"
 import { freeBase, ownCapture, saveFiles, vaultFileOn } from "./vaultfiles.ts"
 import { messageOf } from "./errors.ts"
 
-type Jobs = { begin: (ctx: OpCtx, task: (w: Where) => Promise<string>, m: Moment | undefined, p: { title: string; on: string; cwd?: string }) => Promise<Job>
+type Jobs = { begin: (ctx: OpCtx, task: (w: Where) => Promise<string>, m: JobAsk | undefined, p: { title: string; on: string; cwd?: string }) => Promise<Job>
   placeHere: (o: Over) => Promise<Found & { repo: string }> }
 
 const str = (v: unknown) => (typeof v === "string" ? v : "")
@@ -121,7 +121,7 @@ with screen recording allowed, a frame and a short clip from the screen's timeli
       const sent: { label: string; items: number[]; id?: string; title?: string; why?: string }[] = []
       for (const g of await grouped(items)) {
         const its = g.items.map((it) => byN.get(it.n)!), first = g.items[0].place
-        const m = { kind: "ask", t: Date.now(), summoned: true, ...(g.project?.repo ? { url: `https://github.com/${g.project.repo}` } : { url: first.url, app: first.app, title: first.title, screen: first.screen }) } as Moment
+        const m = { kind: "ask", t: Date.now(), summoned: true, ...(g.project?.repo ? { url: `https://github.com/${g.project.repo}` } : { url: first.url, app: first.app, title: first.title, screen: first.screen }) } satisfies JobAsk
         const title = `QA walk: ${g.label} (${its.length})`
         try {
           const j = await jobs.begin(ctx, async (w) => walkJobText(g.label, its, since, saved.note, await vaultFileOn(plugin, w.machine), p.clips === true), m,

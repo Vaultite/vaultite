@@ -1,9 +1,10 @@
 import fs from "node:fs"
 import { parseTerminal } from "../../../core/agents.ts"
+import { Relayed } from "../../../core/contracts/version.ts"
 import { logger, type OpCtx, OpError, type Plugin, type Who, whoOf } from "../../../core/plugins.ts"
 import { cardOf, commitsIn, turnWord, fixTask, landedSaid, mergedCommit, mergedSaid, type Handoff, type Job, type JobCard, jobsLine, jobTimings, lastOf, linkOf, linksIn, live, type Marks, messageOf, nowOf,
   type Queued, toldBy, type Result, resumeOf, str, type Waits, type Where } from "./jobs.ts"
-import { type Clock, due, endEvent, type Going, type GoingEvent, going, goingLine, type JobEvent, PACE, type Pace, read, readTurn, restEvent, shipDue, step, turnOver, type Verdict, waitsLive } from "./joblife.ts"
+import { type Clock, due, endEvent, type Going, type GoingEvent, going, goingLine, type JobEvent, PACE, type Pace, read, readTurn, restEvent, shipDue, step, turnOver, waitsLive } from "./joblife.ts"
 import { diffSince, marksOf, onMainSince } from "./jobgit.ts"
 import { handoffOps } from "./jobhandoff.ts"
 import { jobMachines } from "./jobmachines.ts"
@@ -11,7 +12,7 @@ import { jobsOps } from "./jobops.ts"
 import { jobStarts } from "./jobstart.ts"
 import { jobTell } from "./jobtell.ts"
 import { jobPlaces, sameDir } from "./jobplace.ts"
-import type { Moment } from "./types.ts"
+import type { JobAsk, Moment } from "./types.ts"
 import { tilde, type Over } from "./where.ts"
 import { type Read, workerLinks } from "./links.ts"
 import { workerOps } from "./workerops.ts"
@@ -49,9 +50,10 @@ export type JobCore = {
   land: (ctx: OpCtx, j: Job, note?: string, shown?: string, by?: string) => Promise<void>
   steer: (ctx: OpCtx, j: Job, text: string, shown?: string, by?: string, how?: "tell" | "land") => Promise<void>
   retitle: (ctx: OpCtx, j: Job, title: string) => Promise<void>
-  begin: (ctx: OpCtx, task: string | ((w: Where) => Promise<string>), m: Moment | undefined, p: Handoff, by?: string) => Promise<Job>
+  begin: (ctx: OpCtx, task: string | ((w: Where) => Promise<string>), m: JobAsk | undefined, p: Handoff, by?: string) => Promise<Job>
 }
 const APP = whoOf("app/companion", null)
+const Answered = Relayed.omit({ machine: true })
 const SIGHUP = 1
 const crashed = (x: Seen["exit"]) => !!x && (!!x.lost || x.code !== 0 || (x.signal !== 0 && x.signal !== SIGHUP))
 const pace: Pace = { ...PACE }
@@ -242,7 +244,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     looking.add(j.id)
     clockOf(j).live = Date.now()
     try {
-      const out = await links.of(j.where).there(appCtx(), "app.version", { commit: g.commit }, 30).catch(() => null) as { live?: Verdict } | null
+      const out = Answered.safeParse(await links.of(j.where).there(appCtx(), "app.version", { commit: g.commit }, 30).catch(() => null)).data
       const was = j.going?.why
       const x = going(j.going, { type: "verdict", commit: g.commit, since: g.since, v: out?.live ?? null, where: j.where.label || "its server" }, Date.now())
       if (x.going === j.going) return
@@ -345,7 +347,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   plugin.onUnload(() => clearInterval(timer))
 
   function appCtx(by: Who = APP) {
-    return { who: by, op: async (id: string, ps?: Record<string, unknown>) => (await plugin.runOp(id, ps ?? {}, by)).result } as unknown as OpCtx
+    return plugin.ctx({ who: by })
   }
   const jobOf = (id: string) => {
     const want = id.trim(), j = all().find((x) => x.id === want) ?? all().find((x) => want.length >= 3 && x.id.endsWith(want))

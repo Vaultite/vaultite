@@ -31,6 +31,7 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
   pane?: string; ui?: string; row?: number; el?: string
   chrome?: string
   what?: string; url?: string }
+export type JobAsk = Omit<Moment, "seq">
 export type Rect = { x: number; y: number; width: number; height: number }
 export type Near = import("./takeover.ts").Near
 type Ink = { shape: string; box: Rect; points: [number, number][] }

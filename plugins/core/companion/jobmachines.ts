@@ -1,4 +1,5 @@
 import os from "node:os"
+import { z } from "zod"
 import { agentModel, agentName, KNOWN_AGENTS, parseTerminal } from "../../../core/agents.ts"
 import { inDesktop, type Machine, OpError, type Plugin } from "../../../core/plugins.ts"
 import { type Handoff, type ProofMode, str } from "./jobs.ts"
@@ -7,6 +8,9 @@ import { capOf, CLOUD, type Needs, place, type Traits } from "./placement.ts"
 import { checkoutNames } from "./where.ts"
 
 export const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s)
+
+const Capacity = z.object({ jobs: z.number(), cap: z.number(), repos: z.array(z.string()).optional(), agents: z.array(z.string()).optional(),
+  accounts: z.array(z.string()).optional() })
 
 export function jobMachines(plugin: Plugin, links: ReturnType<typeof workerLinks>) {
   const setting = (k: string) => str(plugin.settings()[k]).trim() || str(plugin.manifest.settings?.[k]?.default)
@@ -30,11 +34,10 @@ export function jobMachines(plugin: Plugin, links: ReturnType<typeof workerLinks
     const accounts = await plugin.ask<string[] | null>("agent-accounts:claude", null).catch(() => null)
     return { jobs: await links.running(), cap: set > 0 ? Math.round(set) : capOf(os.cpus().length, os.totalmem() / 1048576), repos: checkoutNames(), agents, ...(accounts ? { accounts } : {}) }
   }
-  type Capacity = Awaited<ReturnType<typeof capacity>>
   async function traitsOf(): Promise<Traits[]> {
     const vault = await plugin.ask<string>("machines:vault", ""), all = (await machines()).filter((m) => m.self || m.plugins?.includes("companion"))
     const out = await Promise.all(all.map(async (m): Promise<Traits> => {
-      const c = m.self ? await capacity() : m.online ? await atMachine(m.id, "companion.capacity", {}, 4).catch(() => null) as Capacity | null : null
+      const c = m.self ? await capacity() : m.online ? Capacity.safeParse(await atMachine(m.id, "companion.capacity", {}, 4).catch(() => null)).data ?? null : null
       return { id: m.id, label: m.label, self: m.self, online: m.online, standalone: !!m.standalone, platform: m.self ? process.platform : m.platform, vault: m.self || (!!vault && m.vault === vault),
         app: !!m.desktop, ...(m.display !== undefined ? { display: m.display } : {}), ...(m.cores ? { cores: m.cores } : {}), ...(m.load !== undefined ? { load: m.load } : {}),
         ...(m.memory ? { memory: m.memory } : {}), ...(c ? { jobs: c.jobs, cap: c.cap, ...(m.self ? {} : { repos: c.repos }), agents: c.agents, ...(c.accounts ? { accounts: c.accounts } : {}) } : {}),

@@ -719,10 +719,7 @@ export class App {
         const { parts, query } = routeOf(route)
         return bodyOrThrow(await this.respond(method, parts, query, body, http, true))
       },
-      ui: async (message) => {
-        if (!this.ui) throw new OpError("the app's window can only be driven through the server (it isn't running one here)", 503)
-        return await this.ui(message)
-      },
+      ui: (message) => this.driveUi(message),
       refusal,
       ...(input && op.input ? { input } : {}),
     }
@@ -806,6 +803,11 @@ export class App {
         token.on = false
       }
     })
+  }
+
+  private async driveUi(message: Item | null) {
+    if (!this.ui) throw new OpError("the app's window can only be driven through the server (it isn't running one here)", 503)
+    return await this.ui(message)
   }
 
   /** Who made the request being answered (X-Vaultite-Client and -Agent), as ops name them. */
@@ -899,6 +901,7 @@ export class App {
       call: (name, params, who, o) => this.callOp(name, params, who, { report: o?.report, http: o?.http, input: o?.input }),
       api: (method, route, body, who, o) => this.apiAs(method, route, body, who, o),
       did: (name, params) => { const hit = this.opNamed(name); return hit ? didOf(hit.op, params) : null },
+      ui: (message) => this.driveUi(message),
       emit: (type, data) => bus.emit(type, data ?? {}),
       devices: () => this.presence?.list() ?? [],
       tell: (device, msg) => this.presence?.tell(device, msg) ?? 0,

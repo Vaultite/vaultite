@@ -4,7 +4,7 @@ import { type Machine, OpError, type Plugin } from "../../../core/plugins.ts"
 import { marksIn } from "./jobgit.ts"
 import { str } from "./jobs.ts"
 import type { Machines } from "./jobmachines.ts"
-import type { jobPlaces, Placed } from "./jobplace.ts"
+import { type jobPlaces, Placed } from "./jobplace.ts"
 import type { Read, workerLinks } from "./links.ts"
 import type { Seen } from "./workers.ts"
 import { dropTree, tilde } from "./where.ts"
@@ -33,7 +33,7 @@ a guess from a look at one machine's folders.
       const machine = str(p.machine).trim(), self = machine ? (await plugin.ask<Machine | null>("machines:machine", null, machine))?.self : true
       const { machine: _, ...rest } = p
       const r = self ? await placeHere({ url: str(p.url) || undefined, app: str(p.app) || undefined, title: str(p.title) || undefined, path: str(p.path) || undefined }, str(p.cwd), str(p.repo))
-        : await atMachine(machine, "companion.where", rest, 8) as unknown as Placed
+        : Placed.parse(await atMachine(machine, "companion.where", rest, 8))
       return { ...r, label: await labelOf(self ? "" : machine) }
     },
     text: (r) => r.missing ? `On ${r.label}: ${r.why} (looked in ${r.looked ?? "its project folders"}). Its checkouts: ${r.have || "none"}.`

@@ -1304,7 +1304,7 @@ setTimeout(draw, 300)
           await asItsTool(() => api("POST", "ops/companion.job-stop", { id: b.id }, agent)).catch(() => {})
           stage = "working"
           calls.length = 0
-          verdicts.splice(0, verdicts.length, { commit: "1a2b3c4d", live: false, final: true, outcome: "blocked", why: "1a2b3c4 won't be live here: its checkout has uncommitted changes" })
+          verdicts.splice(0, verdicts.length, { commit: "1a2b3c4d", live: false, final: true, outcome: "never", why: "1a2b3c4 won't be live here: its checkout has uncommitted changes" })
           const [, s] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Fix the header live", machine: "studio", cwd: "~/Projects/site" }, agent))
           const job2 = async () => (await api("POST", "ops/companion.job", { id: s.id }))[1]
           await waitFor(async () => (await job2()).state === "working", 10000, 100)
